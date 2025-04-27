@@ -13,7 +13,9 @@ collect_router = Blueprint("collect", url_prefix="/collect")
 
 @collect_router.get("/collect_info")
 async def collect(request):
-    params = {i[0]: i[1] for i in request.query_args}
+    params = {k.split("_cmdb_", 1)[-1]: v for k, v in dict(request.headers).items() if k.startswith("_cmdb")}
+    if not params:
+        params = {i[0]: i[1] for i in request.query_args}
     collect_service = CollectService(params)
     metrics_data = collect_service.collect()
     logger.info("Metrics data generated....")
