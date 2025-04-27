@@ -4,6 +4,6 @@ from src.loader.markdown_loader import MarkdownLoader
 
 
 def test_markdown_loader():
-    loader = MarkdownLoader(path='tests/assert/full_markdown_loader.md')
+    loader = MarkdownLoader(path='../readme.md')
     rs = loader.load()
     logger.info(rs)

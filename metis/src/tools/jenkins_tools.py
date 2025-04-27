@@ -8,8 +8,8 @@ from langchain_core.tools import tool
 
 def get_client(config: RunnableConfig):
     client = jenkins.Jenkins(config['configurable']['jenkins_url'],
-                             username=config['configurable']['username'],
-                             password=config['configurable']['password'])
+                             username=config['configurable']['jenkins_username'],
+                             password=config['configurable']['jenkins_password'])
     return client
 
 

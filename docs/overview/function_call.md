@@ -25,8 +25,8 @@
 | 参数名 | 中文名称 | 作用 |
 |-------|---------|------|
 |`jenkins_url` | Jenkins服务器地址 | Jenkins服务器的URL地址 |
-|`username` | Jenkins用户名 | 用于身份验证的用户名 |
-|`password` | Jenkins密码 | 用于身份验证的密码 |
+|`jenkins_username` | Jenkins用户名 | 用于身份验证的用户名 |
+|`jenkins_password` | Jenkins密码 | 用于身份验证的密码 |
 
 | 函数名 | 中文名称 | 作用 |
 |-------|---------|------|
