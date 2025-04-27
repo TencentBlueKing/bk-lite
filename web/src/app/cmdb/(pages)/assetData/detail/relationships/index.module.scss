@@ -1,0 +1,67 @@
+.relationships {
+  max-height: calc(100vh - 170px);
+  overflow-y: auto;
+
+  :global {
+    .ant-collapse-item {
+      border: none;
+      margin-bottom: 20px;
+    }
+    .ant-collapse-content {
+      background: var(--color-bg-1) !important;
+    }
+    .ant-collapse {
+      background: var(--color-bg-1) !important;
+    }
+    .ant-collapse-header {
+      font-size: 14px;
+      font-weight: 600;
+      color: var(--color-text-2) !important;
+      background: var(--color-fill-2) !important;
+    }
+    .ant-collapse-arrow {
+      color: var(--color-text-2) !important;
+    }
+    .ant-collapse-content-box {
+      padding: 0 !important;
+    }
+  }
+}
+
+.header {
+  position: relative;
+
+  .operation {
+    display: flex;
+    align-items: center;
+    position: absolute;
+    top: 0;
+    right: 0;
+
+    .expand {
+      display: flex;
+      align-items: center;
+      font-size: 17px;
+      cursor: pointer;
+
+      .expandText {
+        font-size: 14px;
+        margin-left: 4px;
+      }
+    }
+  }
+
+  :global {
+    .ant-btn-link {
+      color: var(--color-text-2) !important;
+    }
+  }
+}
+
+.topo {
+  :global {
+    .x6-widget-minimap {
+      background: var(--color-bg-1);
+    }
+  }
+}

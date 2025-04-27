@@ -1,0 +1,234 @@
+.asset {
+    display: flex;
+    overflow: hidden;
+
+    .assetTree {
+        display: flex;
+        flex-direction: column;
+        height: calc(100vh - 146px);
+        padding: 20px 10px;
+        background-color: var(--color-bg-1);
+        overflow-y: auto;
+        overflow-x: hidden;
+
+        .tree {
+            height: 100%;
+        }
+
+        :global {
+            .ant-tree-list {
+                width: 100%;
+            }
+        }
+    }
+
+    .table {
+        background: var(--color-bg-1);
+        height: calc(100vh - 146px);
+        padding: 20px;
+        margin-left: 10px;
+
+        .search {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 20px;
+        }
+
+        :global {
+            .ant-table {
+                width: calc(100vw - 280px);
+            }
+        }
+    }
+}
+
+.strategy {
+    width: 100%;
+    overflow: hidden;
+
+    :global {
+        .ant-form-item-required:not(.ant-form-item-required-mark-optional)::before {
+            position: absolute;
+            right: -3px;
+        }
+
+        .ant-form-item-label>label {
+            margin-right: 10px;
+        }
+    }
+
+    .title {
+        font-size: 16px;
+        margin-bottom: 10px;
+    }
+
+    .form {
+        height: calc(100vh - 190px);
+        overflow-y: auto;
+        padding: 10px;
+
+        .clusterLabel {
+            .label {
+                width: 100px;
+            }
+
+            :global {
+                .ant-form-item-required::after {
+                    visibility: hidden;
+                }
+
+                .ant-form-item-required::before {
+                    display: none !important;
+                }
+            }
+        }
+
+        .filterLabel {
+            width: 150px;
+
+            :global {
+                .ant-select-selector {
+                    border-radius: 6px 0 0 6px;
+                }
+            }
+        }
+
+        .thesholdvalue {
+            width: 150px;
+            border-radius: 0 6px 6px 0;
+        }
+
+
+
+        .condition {
+            display: flex;
+            flex-wrap: wrap;
+
+            :global {
+                .ant-btn-default {
+                    min-width: 32px;
+                }
+            }
+
+            .conditionItem {
+
+                .itemLabel {
+                    font-weight: 600;
+                    font-size: 13px;
+                    margin-bottom: 10px;
+                }
+
+                .itemOption {
+                    display: flex;
+                }
+
+                .source {
+                    .sourceObjectType {
+                        :global {
+                            .ant-select-selector {
+                                border-radius: 6px 0 0 6px;
+                            }
+                        }
+                    }
+
+                    .sourceObject {
+                        :global {
+                            .ant-select-selector {
+                                border-radius: 0 6px 6px 0;
+                            }
+                        }
+                    }
+                }
+
+                .conditions {
+                    display: flex;
+                    flex-wrap: wrap;
+
+                    .conditionTitle {
+                        height: 32px;
+                        line-height: 32px;
+                        margin-right: 10px;
+                    }
+
+                    .filter {
+                        margin-bottom: 10px;
+
+                        :global {
+                            .ant-btn:nth-of-type(1) {
+                                border-radius: 0 6px 6px 0;
+                                margin-right: 10px;
+                            }
+
+                            .ant-btn:nth-of-type(2) {
+                                margin-right: 10px;
+                            }
+
+                            .ant-btn {
+                                background: var(--color-fill-2);
+                            }
+
+                            .ant-btn-icon {
+                                transform: scale(0.8);
+                            }
+
+                            .ant-select-selector {
+                                border-radius: 0;
+                            }
+
+                            .ant-input {
+                                border-radius: 0;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    .footer {
+        margin-top: 10px;
+        padding-left: 20px;
+    }
+}
+
+.selectInstance {
+    display: flex;
+
+    .instanceList {
+        width: 650px;
+        padding-right: 10px;
+    }
+
+    .previewList {
+        flex: 1;
+        padding: 0 0 10px 10px;
+        border-left: 1px solid var(--ant-color-border);
+
+        .list {
+            overflow-y: hidden;
+            overflow-y: auto;
+
+            .listItem {
+                display: flex;
+                justify-content: space-between;
+                align-items: center;
+                padding: 4px 10px;
+
+                .operate {
+                    visibility: hidden;
+                }
+
+                &:hover {
+                    background: var(--color-fill-1);
+
+                    .operate {
+                        visibility: visible;
+                        cursor: pointer;
+                        color: var(--color-primary);
+                    }
+                }
+            }
+        }
+    }
+
+}

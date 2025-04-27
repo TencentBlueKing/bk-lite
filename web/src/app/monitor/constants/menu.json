@@ -1,0 +1,178 @@
+{
+  "zh": [
+    {
+      "title": "搜索",
+      "icon": "search-f",
+      "url": "/monitor/search",
+      "name": "search"
+    },
+    {
+      "title": "视图",
+      "icon": "daohang-yunyingfenxishi",
+      "url": "/monitor/view",
+      "name": "view_list",
+      "children": [
+        {
+          "url": "/monitor/view/detail",
+          "name": "Detail",
+          "isNotMenuItem": true
+        }
+      ]
+    },
+    {
+      "title": "事件",
+      "icon": "shujumoxingguanli",
+      "url": "/monitor/event",
+      "name": "Event",
+      "children": [
+        {
+          "icon": "weiwangguanicon-defuben-",
+          "title": "告警",
+          "url": "/monitor/event/alert",
+          "name": "alert_list"
+        },
+        {
+          "icon": "mulu",
+          "title": "策略",
+          "url": "/monitor/event/strategy",
+          "name": "strategy_list",
+          "children": [
+            {
+              "url": "/monitor/event/strategy/detail",
+              "name": "strategy_list_detail",
+              "isNotMenuItem": true
+            }
+          ]
+        },
+        {
+          "icon": "zichan-quanbushebei",
+          "title": "模板",
+          "url": "/monitor/event/template",
+          "name": "template_list"
+        }
+      ]
+    },
+    {
+      "title": "集成",
+      "icon": "moxing2",
+      "url": "/monitor/intergration",
+      "name": "Integration",
+      "children": [
+        {
+          "title": "资产",
+          "icon": "_quota_management",
+          "url": "/monitor/intergration/asset",
+          "name": "asset"
+        },
+        {
+          "title": "集成",
+          "icon": "zichan-quanbushebei",
+          "url": "/monitor/intergration/list",
+          "name": "integration_list",
+          "children": [
+            {
+              "title": "配置",
+              "icon": "settings-fill",
+              "url": "/monitor/intergration/list/detail/configure",
+              "name": "integration_configure"
+            },
+            {
+              "title": "指标",
+              "icon": "guanli",
+              "url": "/monitor/intergration/list/detail/metric",
+              "name": "integration_metric"
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "en": [
+    {
+      "title": "Search",
+      "icon": "search-f",
+      "url": "/monitor/search",
+      "name": "search"
+    },
+    {
+      "title": "View",
+      "icon": "daohang-yunyingfenxishi",
+      "url": "/monitor/view",
+      "name": "view_list",
+      "children": [
+        {
+          "url": "/monitor/view/detail",
+          "name": "Detail",
+          "isNotMenuItem": true
+        }
+      ]
+    },
+    {
+      "title": "Event",
+      "icon": "shujumoxingguanli",
+      "url": "/monitor/event",
+      "name": "Event",
+      "children": [
+        {
+          "icon": "weiwangguanicon-defuben-",
+          "title": "Alert",
+          "url": "/monitor/event/alert",
+          "name": "alert_list"
+        },
+        {
+          "icon": "mulu",
+          "title": "Strategy",
+          "url": "/monitor/event/strategy",
+          "name": "strategy_list",
+          "children": [
+            {
+              "url": "/monitor/event/strategy/detail",
+              "name": "strategy_list_detail",
+              "isNotMenuItem": true
+            }
+          ]
+        },
+        {
+          "icon": "zichan-quanbushebei",
+          "title": "Template",
+          "url": "/monitor/event/template",
+          "name": "template_list"
+        }
+      ]
+    },
+    {
+      "title": "Intergration",
+      "icon": "moxing2",
+      "url": "/monitor/intergration",
+      "name": "Integration",
+      "children": [
+        {
+          "title": "Asset",
+          "icon": "_quota_management",
+          "url": "/monitor/intergration/asset",
+          "name": "asset"
+        },
+        {
+          "title": "Intergration",
+          "icon": "zichan-quanbushebei",
+          "url": "/monitor/intergration/list",
+          "name": "integration_list",
+          "children": [
+            {
+              "title": "Configure",
+              "icon": "settings-fill",
+              "url": "/monitor/intergration/list/detail/configure",
+              "name": "integration_configure"
+            },
+            {
+              "title": "Metric",
+              "icon": "guanli",
+              "url": "/monitor/intergration/list/detail/metric",
+              "name": "integration_metric"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

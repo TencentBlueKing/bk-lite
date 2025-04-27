@@ -1,0 +1,18 @@
+.recordDetail {
+    .description {
+        margin-bottom: 10px;
+
+        .desItem {
+            line-height: 28px;
+            display: flex;
+            align-items: center;
+
+            .label {
+                width: 120px;
+                display: flex;
+                flex-wrap: wrap;
+                justify-content: flex-end;
+            }
+        }
+    }
+}

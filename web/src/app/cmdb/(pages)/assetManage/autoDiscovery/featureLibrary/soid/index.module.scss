@@ -1,0 +1,16 @@
+.wrapper {
+  :global {
+    .ant-select-single:not(.ant-select-customize-input) .ant-select-selector {
+      border-right: none;
+      border-top-right-radius: 0;
+      border-bottom-right-radius: 0;
+    }
+
+    .ant-input {
+      &:first-of-type {
+        border-top-left-radius: 0;
+        border-bottom-left-radius: 0;
+      }
+    }
+  }
+}

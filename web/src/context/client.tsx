@@ -34,7 +34,11 @@ export const ClientProvider: React.FC<{ children: ReactNode }> = ({ children }) 
       if (data) {
         setClientData(data);
       }
-      const myClientData = await get('/core/api/get_my_client/');
+      const myClientData = await get('/core/api/get_my_client/', {
+        params: {
+          client_id: process.env.NEXT_PUBLIC_CLIENT_ID || ''
+        }
+      });
       if (myClientData) {
         setMyClientData(myClientData);
       }

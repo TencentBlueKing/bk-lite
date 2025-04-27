@@ -1,0 +1,103 @@
+.assetLoading {
+  .assetData {
+    display: flex;
+    background: var(--color-bg-1);
+    padding: 12px;
+    .assetList {
+      flex: 1;
+      min-width: 988px;
+      height: calc(100vh - 124px);
+      overflow: hidden;
+      padding: 12px 16px;
+      position: relative;
+
+      &::before {
+        content: '';
+        position: absolute;
+        left: 0;
+        top: 12px;
+        bottom: 0;
+        width: 1px;
+        background-color: var(--color-border-1);
+      }
+    }
+
+    .groupSelector {
+      height: calc(100vh - 124px);
+      padding: 12px 16px 12px 8px;
+      overflow: auto;
+      width: 260px;
+      min-width: 260px;
+      position: relative;
+
+      .treeSearchWrapper {
+        position: sticky;
+        top: 0;
+        z-index: 1;
+        padding-bottom: 12px;
+        background-color: var(--color-bg-1);
+      }
+
+      .treeLabel {
+        display: inline-block;
+        max-width: 134px;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+
+      .treeWrapper {
+        height: calc(100% - 44px);
+        overflow: auto;
+      }
+
+      :global {
+        .ant-radio-button-wrapper {
+          border: none;
+          background: transparent;
+          border-radius: 4px !important;
+          white-space: nowrap;
+          margin-right: 10px;
+
+          &::before {
+            width: 0;
+          }
+
+          &:hover {
+            color: var(--color-primary);
+            background: var(--color-bg-1);
+          }
+        }
+
+        .ant-radio-button-wrapper-checked {
+          background: var(--color-bg-1);
+          color: var(--color-primary);
+        }
+
+        .ant-radio-group-solid {
+          display: flex;
+          overflow-x: auto;
+          overflow-y: hidden;
+        }
+      }
+    }
+
+    .owner {
+      display: flex;
+      align-items: center;
+
+      .userAvatar {
+        display: flex;
+        width: 24px;
+        height: 24px;
+        border-radius: 50%;
+        margin-right: 10px;
+        align-items: center;
+        justify-content: center;
+        background: var(--color-fill-3);
+        color: var(--color-bg-1);
+        font-size: 12px;
+      }
+    }
+  }
+}

@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import path from 'path';
 import fs from 'fs/promises';
 
-const EXCLUDED_DIRECTORIES = ['(core)', 'no-permission'];
+const INSTALL_APPS = (process.env.NEXTAPI_INSTALL_APP || 'example').split(',').map(app => app.trim());
 
 interface NestedMessages {
   [key: string]: string | NestedMessages;
@@ -51,22 +51,19 @@ const getMergedMessages = async () => {
     zh: { ...baseMessages.zh },
   };
 
-  // Merge messages from app subdirectories
-  const apps = await fs.readdir(localesDir, { withFileTypes: true });
-  for (const app of apps) {
-    if (app.isDirectory() && !EXCLUDED_DIRECTORIES.includes(app.name)) {
-      const appLocalesDir = path.join(localesDir, app.name, 'locales');
+  // 遍历所有配置的安装应用
+  for (const app of INSTALL_APPS) {
+    const appLocalesDir = path.join(localesDir, app, 'locales');
 
-      for (const locale of ['en', 'zh']) {
-        try {
-          const filePath = path.join(appLocalesDir, `${locale}.json`);
-          await fs.access(filePath);
+    for (const locale of ['en', 'zh']) {
+      try {
+        const filePath = path.join(appLocalesDir, `${locale}.json`);
+        await fs.access(filePath);
 
-          const messages = flattenMessages(JSON.parse(await fs.readFile(filePath, 'utf8')));
-          mergedMessages[locale as Locale] = deepMerge(mergedMessages[locale as Locale], messages);
-        } catch (error) {
-          console.error(`Error loading locale for ${app.name}:`, error);
-        }
+        const messages = flattenMessages(JSON.parse(await fs.readFile(filePath, 'utf8')));
+        mergedMessages[locale as Locale] = deepMerge(mergedMessages[locale as Locale], messages);
+      } catch (error) {
+        console.error(`Error loading locale for ${app}:`, error);
       }
     }
   }

@@ -1,0 +1,91 @@
+{
+  "client_id": "node",
+  "name": "Node",
+  "url": "/node-manager/cloudregion",
+  "description": "Create roles for the Node app to manage data permissions, menu permissions, and feature permissions.",
+  "menus": [
+    {
+      "name": "Cloud Region",
+      "children": [
+        {
+          "id": "cloud_region_list",
+          "name": "Cloud Region-List",
+          "operation": ["View", "Edit"]
+        },
+        {
+          "id": "cloud_region_node",
+          "name": "Cloud Region-Node",
+          "operation": [
+            "View",
+            "InstallController",
+            "UninstallController",
+            "OperateCollector"
+          ]
+        },
+        {
+          "id": "cloud_region_configuration",
+          "name": "Cloud Region-Configuration",
+          "operation": [
+            "View",
+            "Add",
+            "Apply",
+            "Edit",
+            "Delete",
+            "SubConfiguration"
+          ]
+        },
+        {
+          "id": "cloud_region_variable",
+          "name": "Cloud Region-Variable",
+          "operation": ["View", "Add", "Edit", "Delete"]
+        }
+      ]
+    },
+    {
+      "name": "Probe",
+      "children": [
+        {
+          "id": "controller_list",
+          "name": "Controller-List",
+          "operation": ["View", "AddPacket"]
+        },
+        {
+          "id": "controller_packet",
+          "name": "Controller-Packet",
+          "operation": ["Delete"]
+        },
+        {
+          "id": "collector_list",
+          "name": "Collector-List",
+          "operation": ["View", "Add", "Edit", "Delete", "AddPacket"]
+        },
+        {
+          "id": "collector_packet",
+          "name": "Collector-Packet",
+          "operation": ["Delete"]
+        }
+      ]
+    }
+  ],
+  "roles": [
+    {
+      "name": "admin",
+      "role_name": "node_admin",
+      "menus": []
+    },
+    {
+      "name": "normal",
+      "role_name": "node_normal",
+      "menus": [
+        "cloud_region_list-View",
+        "cloud_region_node-View",
+        "cloud_region_configuration-View",
+        "cloud_region_variable-View",
+        "controller_list-View",
+        "controller_packet-View",
+        "collector_list-View",
+        "collector_packet-View"
+      ]
+    }
+  ]
+}

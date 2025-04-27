@@ -32,7 +32,8 @@ class KeycloakAuthBackend(ModelBackend):
         if not token:
             return None
         client = SystemMgmt()
-        result = client.verify_token(token, os.getenv("CLIENT_ID", ""))
+        app = os.getenv("CLIENT_ID", "")
+        result = client.verify_token(token, app)
         # 判断token是否验证通过,不通过则返回None
         if not result["result"]:
             return None
@@ -41,10 +42,14 @@ class KeycloakAuthBackend(ModelBackend):
             if user_info["locale"] == "zh-CN":
                 user_info["locale"] = "zh-Hans"
             translation.activate(user_info["locale"])
-        return self.set_user_info(user_info)
+        current_group = request.COOKIES.get("current_team")
+        rules = {}
+        if current_group:
+            rules = client.get_user_rules(app, current_group, user_info["username"])
+        return self.set_user_info(user_info, rules)
 
     @staticmethod
-    def set_user_info(user_info):
+    def set_user_info(user_info, rules):
         try:
             user, _ = User.objects.get_or_create(username=user_info["username"])
             user.email = user_info.get("email", "")
@@ -54,6 +59,7 @@ class KeycloakAuthBackend(ModelBackend):
             user.roles = user_info["roles"]
             user.locale = user_info.get("locale", "en")
             user.save()
+            user.rules = rules
             return user
         except IntegrityError:
             logger.exception(traceback.format_exc())

@@ -1,0 +1,8 @@
+.variable {
+   :global {
+      .tablewidth {
+         max-width: calc(100vw - 288px);
+         min-width: 1000px;
+      }
+   }
+}

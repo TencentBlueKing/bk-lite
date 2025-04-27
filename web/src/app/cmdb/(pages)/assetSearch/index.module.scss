@@ -1,0 +1,204 @@
+@mixin hide-text {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.assetSearch {
+    width: 100%;
+    height: calc(100vh - 90px);
+
+    .title {
+        font-size: 15px;
+        font-weight: 600;
+    }
+
+    :global {
+        .ant-input-search-button {
+            padding: 0;
+        }
+    }
+
+    .searchBtn {
+        height: 100%;
+        display: flex;
+        align-items: center;
+        padding: 0 10px;
+    }
+
+    .searchInput {
+        width: 100%;
+        height: 100%;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        padding-top: 12%;
+        background-image: url('../../public/asset-search.png');
+        background-repeat: no-repeat;
+        background-position: center;
+        background-size: auto;
+
+        .searchTitle {
+            font-weight: 600;
+            font-size: 25px;
+            margin-bottom: 25px;
+        }
+
+        .inputBtn,
+        .history {
+            width: 40%;
+            min-width: 500px;
+        }
+
+        .history {
+            margin-top: 25px;
+
+            .description {
+                display: flex;
+                justify-content: space-between;
+
+                .historyName {
+                    font-size: 16px;
+                    font-weight: 800;
+                    margin-bottom: 25px;
+                }
+
+            }
+
+            ul {
+                display: flex;
+                flex-wrap: wrap;
+
+                li {
+                    margin-right: 6px;
+                    cursor: pointer;
+
+                    :global {
+                        .ant-tag {
+                            color: var(--color-text-1);
+
+                            .anticon {
+                                display: none;
+                                position: absolute;
+                                top: -3px;
+                                right: -3px;
+                            }
+
+                            &:hover {
+                                .anticon {
+                                    display: block;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    .searchDetail {
+        .input {
+            min-width: 500px;
+            width: calc(100vw - 450px);
+        }
+
+        .searchResult {
+            display: flex;
+
+            .list {
+                background: var(--color-bg-1);
+                padding: 10px;
+                flex: 1;
+                max-height: calc(100vh - 180px);
+                min-width: 500px;
+                overflow-y: auto;
+
+                .active {
+                    background: var(--color-fill-1);
+                    border-left: 2px solid var(--color-primary) !important;
+                }
+
+                .listItem {
+                    margin-bottom: 10px;
+                    cursor: pointer;
+                    padding: 10px;
+                    border-left: 2px solid var(--color-bg-1);
+
+                    ul {
+                        display: flex;
+                        flex-wrap: wrap;
+                        width: 100%;
+
+                        li {
+                            margin-right: 20px;
+                            line-height: 26px;
+                            color: var(--color-text-2);
+                            font-size: 13px;
+                        }
+                    }
+                }
+            }
+
+            .detail {
+                width: 400px;
+                padding: 10px 20px;
+                background: var(--color-bg-1);
+                margin-left: 20px;
+                max-height: calc(100vh - 180px);
+                overflow-y: auto;
+
+                .detailTile {
+                    display: flex;
+                    justify-content: space-between;
+                    align-items: center;
+
+                    .title {
+                        max-width: 100%;
+                        margin-right: 10px;
+                        @include hide-text;
+                    }
+
+                    :global {
+                        .ant-btn-link {
+                            margin: 0 !important;
+                            padding: 0 !important;
+                        }
+                    }
+                }
+
+                ul {
+                    .detailListItem {
+                        display: flex;
+                        align-items: center;
+                        font-size: 13px;
+                        line-height: 26px;
+
+                        .listItemLabel {
+                            display: flex;
+                            width: 37%;
+                            margin-right: 10px;
+
+                            .label {
+                                max-width: 100%;
+                                @include hide-text;
+                            }
+                        }
+
+                        .listItemValue {
+                            flex: 1;
+                            @include hide-text;
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    :global {
+
+        .ant-spin-nested-loading,
+        .ant-spin-container {
+            height: 100%;
+        }
+    }
+}

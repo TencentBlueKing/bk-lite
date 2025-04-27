@@ -1,0 +1,7 @@
+.results-item {
+  background-color: var(--color-fill-1);
+  border-color: var(--color-border);
+  &:hover {
+    background-color: var(--color-text-hover);
+  }
+}

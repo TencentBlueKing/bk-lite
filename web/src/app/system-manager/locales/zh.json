@@ -1,0 +1,179 @@
+{
+  "system": {
+    "common": {
+      "modifyrole": "批量修改角色",
+      "modifydelete": "批量修改角色",
+      "batchmodifyroles": "批量修改角色",
+      "selectedusers": "选定的用户",
+      "english": "英文",
+      "chinese": "中文(简体)",
+      "password": "密码"
+    },
+    "zoneinfo": {
+      "PacificHonolulu": "太平洋/檀香山 (UTC-10:00)",
+      "AmericaAnchorage": "美国/安克雷奇 (UTC-09:00)",
+      "AmericaLosAngeles": "美国/洛杉矶 (UTC-08:00)",
+      "AmericaDenver": "美国/丹佛 (UTC-07:00)",
+      "AmericaChicago": "美国/芝加哥 (UTC-06:00)",
+      "AmericaNewYork": "美国/纽约 (UTC-05:00)",
+      "AmericaCaracas": "委内瑞拉/加拉加斯 (UTC-04:00)",
+      "AmericaHalifax": "加拿大/哈利法克斯 (UTC-04:00)",
+      "AmericaSaoPaulo": "巴西/圣保罗 (UTC-03:00)",
+      "AtlanticSouthGeorgia": "大西洋/南乔治亚 (UTC-02:00)",
+      "AtlanticAzores": "大西洋/亚速尔群岛 (UTC-01:00)",
+      "EuropeLondon": "欧洲/伦敦 (UTC+00:00)",
+      "AfricaLagos": "非洲/拉各斯 (UTC+01:00)",
+      "EuropeBerlin": "欧洲/柏林 (UTC+01:00)",
+      "EuropeAthens": "欧洲/雅典 (UTC+02:00)",
+      "AsiaJerusalem": "亚洲/耶路撒冷 (UTC+02:00)",
+      "EuropeIstanbul": "欧洲/伊斯坦布尔 (UTC+03:00)",
+      "AsiaDubai": "亚洲/迪拜 (UTC+04:00)",
+      "IndianMaldives": "印度洋/马尔代夫 (UTC+05:00)",
+      "AsiaYekaterinburg": "亚洲/叶卡捷琳堡 (UTC+05:00)",
+      "AsiaKolkata": "亚洲/加尔各答 (UTC+05:30)",
+      "AsiaKathmandu": "亚洲/加德满都 (UTC+05:45)",
+      "AsiaAlmaty": "亚洲/阿拉木图 (UTC+06:00)",
+      "AsiaBangkok": "亚洲/曼谷 (UTC+07:00)",
+      "AsiaShanghai": "亚洲/上海 (UTC+08:00)",
+      "AsiaTokyo": "亚洲/东京 (UTC+09:00)",
+      "AustraliaSydney": "澳大利亚/悉尼 (UTC+10:00)",
+      "PacificNoumea": "太平洋/努美阿 (UTC+11:00)",
+      "PacificAuckland": "太平洋/奥克兰 (UTC+12:00)"
+    },
+    "modules": {
+      "bot": "工作台",
+      "skill": "智能体",
+      "knowledge": "知识库",
+      "tools": "工具",
+      "provider": "模型",
+      "llm_model": "LLM 模型",
+      "embed_model": "嵌入模型",
+      "rerank_model": "重排序模型",
+      "ocr_model": "OCR 模型"
+    },
+    "user": {
+      "title": "用户",
+      "desc": "显示所有信息。您可以维护用户信息并分配角色。",
+      "search": "搜索",
+      "table": {
+        "username": "用户名",
+        "lastName": "姓名",
+        "email": "邮箱",
+        "number": "号码",
+        "role": "角色"
+      },
+      "passwordTitle": "设置密码",
+      "form": {
+        "username": "用户名",
+        "lastName": "姓名",
+        "name": "姓名",
+        "email": "邮箱",
+        "group": "分组",
+        "role": "角色",
+        "zoneinfo": "时区",
+        "locale": "语言环境",
+        "administrator": "管理员",
+        "normalusers": "普通用户",
+        "password": "密码",
+        "confirmPassword": "确认密码",
+        "passwordMismatch": "两次密码不一致",
+        "temporary": "暂时的",
+        "tempTooltip": "如果开启，用户必须在下一次登录的时候改变密码"
+      },
+      "admin": {
+        "title": "管理员具有以下权限：",
+        "desc1": "1. 管理系统设置中的组织和用户。",
+        "desc2": "2. 在其它应用中拥有最高权限，能访问所有数据并执行所有功能操作。"
+      },
+      "normal": {
+        "title": "普通用户具有以下权限：",
+        "desc1": "1. 无法管理组织和用户。",
+        "desc2": "2. 在其他应用中只能访问其所属组织的数据。",
+        "desc3": "3. 在其他应用中仅有使用页面的操作权限，管理页面只能进行查看。"
+      }
+    },
+    "group": {
+      "title": "分组",
+      "desc": "显示所有信息。您可以维护用户信息并分配角色。",
+      "addSubGroups": "添加子分组",
+      "rename": "重命名",
+      "renameSuccess": "重命名成功",
+      "form": {
+        "name": "团队名"
+      }
+    },
+    "role": {
+      "title": "角色",
+      "users": "用户",
+      "permissions": "权限",
+      "name": "名称",
+      "addRole": "添加角色",
+      "addUser": "添加用户",
+      "updateRole": "更新角色",
+      "permission": {
+        "menu": "菜单",
+        "operation": "操作"
+      }
+    },
+    "channel": {
+      "email": "电子邮件",
+      "emailDesc": "电子邮件渠道支持集成各种通知方式，并灵活配置不同的通知模板。",
+      "weCom": "群聊小助手",
+      "weComDesc": "群聊小助手渠道支持集成各种通知方式，并灵活配置不同的通知模板。",
+      "table": {
+        "name": "名称",
+        "description": "描述"
+      },
+      "settings": {
+        "name": "名称",
+        "type": "类型",
+        "description": "描述",
+        "addChannel": "新增通知渠道",
+        "editChannel": "编辑通知渠道",
+        "deleteConfirm": "你确认要删除选中的渠道吗?",
+        "smtp_server": "Smtp 服务器地址",
+        "port": "端口",
+        "smtp_user": "Smtp 用户",
+        "smtp_pwd": "Smtp 密码",
+        "smtp_usessl": "是否使用 SSL",
+        "smtp_usetls": "是否使用 TLS",
+        "mail_sender": "邮件发送者",
+        "bot_key": "机器人Key"
+      },
+      "template": {
+        "name": "标题",
+        "app": "应用",
+        "detail": "详情",
+        "context": "通知内容"
+      }
+    },
+    "data": {
+      "name": "名称",
+      "description": "描述",
+      "group": "所属分组",
+      "deleteConfirm": "确定要删除该数据吗？"
+    },
+    "permission": {
+      "setDataPermission": "设置数据权限",
+      "group": "分组",
+      "pleaseInputGroupName": "请输入分组名称",
+      "dataPermission": "数据权限",
+      "app": "应用",
+      "readOnly": "只读",
+      "readWrite": "读写",
+      "manage": "管理",
+      "fullPermission": "全权限",
+      "dataPermissionRule": "数据权限规则",
+      "type": "类型",
+      "allData": "所有数据",
+      "specificData": "指定数据",
+      "permissions": "权限",
+      "view": "查看",
+      "operate": "操作",
+      "data": "数据",
+      "actions": "操作",
+      "noSpecificDataSupport": "此模块不支持指定数据编辑",
+      "noAvailableModules": "没有可用的权限模块"
+    }
+  }
+}

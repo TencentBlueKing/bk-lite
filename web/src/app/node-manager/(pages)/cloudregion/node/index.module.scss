@@ -1,0 +1,76 @@
+.node {
+    :global {
+        .ant-table-cell {
+            .ant-tag.ant-tag-error {
+                width: 60px;
+                text-align: center;
+            }
+
+            .ant-tag.ant-tag-success {
+                width: 60px;
+                text-align: center;
+            }
+
+            :where(.css-dev-only-do-not-override-yta69t).ant-space-gap-col-small {
+                height: 100%;
+            }
+        }
+
+        .tablewidth {
+            max-width: calc(100vw - 288px);
+            min-width: 1000px;
+        }
+    }
+}
+
+.controllerInstall {
+    width: 100%;
+    overflow: hidden;
+
+    :global {
+        .ant-form-item-required:not(.ant-form-item-required-mark-optional)::before {
+            position: absolute;
+            right: -3px;
+        }
+
+        .ant-form-item-label>label {
+            margin-right: 10px;
+        }
+
+        .ant-table {
+            .ant-form-item {
+                margin: 0;
+            }
+        }
+    }
+
+    .title {
+        font-size: 16px;
+        margin-bottom: 10px;
+    }
+
+    .form {
+        height: calc(100vh - 310px);
+        width: calc(100vw - 280px);
+        min-width: 600px;
+        overflow-y: auto;
+        padding: 10px;
+
+        .description {
+            margin-top: 8px;
+            font-size: 12px;
+            color: var(--color-text-3);
+        }
+    }
+
+    .table {
+        height: calc(100vh - 260px);
+        overflow-y: auto;
+        padding: 10px;
+    }
+
+    .footer {
+        margin-top: 10px;
+        padding-left: 20px;
+    }
+}

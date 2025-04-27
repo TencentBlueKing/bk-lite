@@ -59,6 +59,15 @@ export interface ClientData {
   icon?: string;
 }
 
+export interface TourItem {
+  title: string;
+  description: string;
+  cover?: string;
+  target: string;
+  mask?: any;
+  order: number;
+}
+
 export interface MenuItem {
   name: string;
   display_name?: string;
@@ -66,6 +75,7 @@ export interface MenuItem {
   icon: string;
   title: string;
   operation: string[];
+  tour?: TourItem;
   isNotMenuItem?: boolean;
   children?: MenuItem[];
 }
@@ -83,7 +93,9 @@ export interface EntityListProps<T> {
   filterOptions?: Option[];
   filter?: boolean;
   filterLoading?: boolean;
+  search?: boolean;
   operateSection?: React.ReactNode;
+  infoText?: string;
   menuActions?: (item: T) => React.ReactNode;
   singleAction?: (item: T) => { text: string, onClick: (item: T) => void };
   openModal?: (item?: T) => void;

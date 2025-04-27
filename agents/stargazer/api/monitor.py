@@ -31,14 +31,10 @@ def get_config(monitor_type: str, monitor_instance: str):
 @monitor_router.get("/vmware/metrics")
 async def vmware_metrics(request):
 
-    username = request.args.get("username")
-    password = request.args.get("password")
-    host = request.args.get("host")
+    username = request.headers.get("username")
+    password = request.headers.get("password")
+    host = request.headers.get("host")
     minutes = request.args.get("minutes", 5)
-    # resource_id = request.args.get("resource_id")
-    # if not resource_id:
-    #     return response.json({"error": "resource_id are required"}, status=400)
-    # config = get_config("vmware", resource_id)
 
     driver = CMPDriver(
         username,

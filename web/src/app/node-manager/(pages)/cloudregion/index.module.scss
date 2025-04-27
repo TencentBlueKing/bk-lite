@@ -1,0 +1,18 @@
+.cloudregion {
+   :global {
+      textarea#nest-messages_user_introduction {
+         height: 108px !important;
+      }
+
+      .crp {
+         font-size: smaller;
+         color: var(--color-text-3);
+      }
+
+      .textclip {
+         overflow: hidden;
+         text-overflow: ellipsis;
+         white-space: wrap;
+      }
+   }
+}

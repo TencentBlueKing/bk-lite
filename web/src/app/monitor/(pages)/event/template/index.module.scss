@@ -1,0 +1,41 @@
+.container {
+    display: flex;
+    height: calc(100vh - 146px);
+    overflow: hidden;
+
+    .containerTree {
+        display: flex;
+        flex-direction: column;
+        height: 100%;
+        width: 200px;
+        padding: 20px 10px;
+        background-color: var(--color-bg-1);
+        overflow-y: auto;
+        overflow-x: hidden;
+
+        .tree {
+            height: 100%;
+        }
+
+        :global {
+            .ant-tree-list {
+                width: 100%;
+            }
+        }
+    }
+
+    .table {
+        background: var(--color-bg-1);
+        padding: 20px;
+        margin-left: 10px;
+        flex: 1;
+        height: 100%;
+        overflow-y: auto;
+
+        :global {
+            .grid-cols-1 {
+                padding-bottom: 10px;
+            }
+        }
+    }
+}

@@ -3,6 +3,24 @@ import json
 from django_celery_beat.models import CrontabSchedule, IntervalSchedule, PeriodicTask
 
 
+def crontab_format(value_type: str, value: str):
+    """将数据转换成crontab格式"""
+    is_interval = True
+    if value_type == "cycle":
+        scan_cycle = "*/{} * * * *".format(int(value))
+    elif value_type == "timing":
+        time_data = value.split(":")
+        if len(time_data) != 2:
+            raise Exception("定时时间格式错误！")
+        scan_cycle = "{} {} * * *".format(int(time_data[1]), int(time_data[0]))
+    elif value_type == "close":
+        scan_cycle = ""
+        is_interval = False
+    else:
+        raise Exception("定时类型错误！")
+    return is_interval, scan_cycle
+
+
 class CeleryUtils:
     @staticmethod
     def create_or_update_periodic_task(name, crontab=None, interval=None, task=None, args=None, kwargs=None,
@@ -39,7 +57,7 @@ class CeleryUtils:
             args=json.dumps(args) if args else '[]',
             kwargs=json.dumps(kwargs) if kwargs else '{}',
             enabled=enabled,
-            schedule=schedule,
+            crontab=schedule,
         )
         PeriodicTask.objects.update_or_create(name=name, defaults=defaults)
 

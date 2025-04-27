@@ -1,0 +1,10 @@
+{
+  "plugin": "SNMP Trap",
+  "plugin_desc": "SNMP Trap is a mechanism used by network devices to actively send asynchronous notification messages to the management system via SNMP. It is used to quickly report device failures, status changes, or critical events.",
+  "name": "SNMP Trap",
+  "type": "Other",
+  "description": "",
+  "metrics": [
+  ]
+}
+    

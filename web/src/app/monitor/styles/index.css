@@ -1,0 +1,47 @@
+.column-user {
+    display: flex;
+    align-items: center;
+}
+
+.column-user .user-avatar {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 24px;
+    height: 24px;
+    min-width: 24px;
+    border-radius: 50%;
+    margin-right: 10px;
+    background: var(--color-fill-3);
+    color: var(--color-bg);
+    font-size: 12px;
+}
+
+.column-user .user-name,
+.hide-text {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.ant-modal-confirm-btns {
+    display: flex;
+    flex-direction: row-reverse;
+}
+
+.ant-modal-confirm-btns button:nth-child(1) {
+    margin-left: 8px;
+}
+
+.custom-tabs {
+    background: transparent;
+    color: var(--color-text-1);
+}
+
+.custom-tabs .ant-segmented-item {
+    margin-right: 8px;
+}
+
+.custom-tabs .ant-segmented-item-selected {
+    color: var(--color-primary);
+}

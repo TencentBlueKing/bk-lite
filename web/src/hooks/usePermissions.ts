@@ -14,7 +14,7 @@ const useBtnPermissions = () => {
       return () => false;
     }
 
-    const routePermissions = permissions[currentPath] || [];
+    const routePermissions = currentPath ? permissions[currentPath] || [] : [];
 
     return (requiredPermissions: string[]): boolean => {
       const userPermissions = new Set<string>();

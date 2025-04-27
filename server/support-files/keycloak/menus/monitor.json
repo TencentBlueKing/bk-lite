@@ -1,0 +1,121 @@
+{
+  "client_id": "monitor",
+  "name": "Monitor",
+  "url": "/monitor/search",
+  "description": "Create roles for the Monitor app to manage data permissions, menu permissions, and feature permissions.",
+  "menus": [
+    {
+      "name": "Search",
+      "children": [
+        {
+          "id": "search",
+          "name": "Search",
+          "operation": [
+            "View"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "View",
+      "children": [
+        {
+          "id": "view_list",
+          "name": "List",
+          "operation": [
+            "View",
+            "Detail"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Event",
+      "children": [
+        {
+          "id": "alert_list",
+          "name": "Alert",
+          "operation": [
+            "View",
+            "Operate"
+          ]
+        },
+        {
+          "id": "strategy_list",
+          "name": "Strategy",
+          "operation": [
+            "View",
+            "Add",
+            "Edit",
+            "Delete"
+          ]
+        },
+        {
+          "id": "template_list",
+          "name": "Template",
+          "operation": ["View"]
+        }
+      ]
+    },
+    {
+      "name": "Integration",
+      "children": [
+        {
+          "id": "integration_list",
+          "name": "Integration-list",
+          "operation": [
+            "View",
+            "Setting"
+          ]
+        },
+        {
+          "id": "integration_configure",
+          "name": "Integration-configure",
+          "operation": [
+            "View",
+            "Add"
+          ]
+        },
+        {
+          "id": "integration_metric",
+          "name": "Integration-metric",
+          "operation": [
+            "View",
+            "Add Group",
+            "Add Metric",
+            "Edit Group",
+            "Edit Metric",
+            "Delete Group",
+            "Delete Metric"
+          ]
+        },
+        {
+          "id": "asset",
+          "name": "Asset",
+          "operation": [
+            "View",
+            "Edit",
+            "Delete"
+          ]
+        }
+      ]
+    }
+  ],
+  "roles": [
+    {
+      "name": "admin",
+      "role_name": "monitor_admin",
+      "menus": []
+    },
+    {
+      "name": "normal",
+      "role_name": "monitor_normal",
+      "menus": [
+        "search-View",
+        "view_list-View",
+        "alert_list-View",
+        "strategy_list-View"
+      ]
+    }
+  ]
+}

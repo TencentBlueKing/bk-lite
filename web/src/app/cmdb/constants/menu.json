@@ -1,0 +1,186 @@
+{
+    "zh": [
+        {
+            "title": "搜索",
+            "icon": "search-f",
+            "url": "/cmdb/assetSearch",
+            "name": "search"
+        },
+        {
+            "title": "视图",
+            "icon": "mulu",
+            "url": "/cmdb/assetOverview",
+            "name": "view_list"
+        },
+        {
+            "title": "资产",
+            "icon": "zichan-quanbushebei",
+            "url": "/cmdb/assetData",
+            "name": "asset_list",
+            "children": [{
+                "title": "基础信息",
+                "icon": "shujumoxingguanli",
+                "url": "/cmdb/assetData/detail/baseInfo",
+                "name": "asset_basic_information"
+            },
+            {
+                "title": "关联关系",
+                "icon": "shujumoxingguanli",
+                "url": "/cmdb/assetData/detail/relationships",
+                "name": "asset_relationships"
+            },
+            {
+                "title": "变更记录",
+                "icon": "shujumoxingguanli",
+                "url": "/cmdb/assetData/detail/changeRecords",
+                "name": "asset_change_records"
+            }]
+        },
+        {
+            "title": "管理",
+            "icon": "shujumoxingguanli",
+            "url": "/cmdb/assetManage",
+            "name": "Management",
+            "children": [
+                {
+                    "title": "模型管理",
+                    "icon": "shujumoxingguanli",
+                    "url": "/cmdb/assetManage/management",
+                    "name": "model_management",
+                    "children": [
+                        {
+                            "title": "属性",
+                            "icon": "shujumoxingguanli",
+                            "url": "/cmdb/assetManage/management/detail/attributes",
+                            "name": "model_attributes"
+                        },
+                        {
+                            "title": "关系",
+                            "icon": "shujumoxingguanli",
+                            "url": "/cmdb/assetManage/management/detail/associations",
+                            "name": "model_relationships"
+                        }
+                    ]
+                },
+                {
+                    "title": "自动发现",
+                    "icon": "shujumoxingguanli",
+                    "url": "/cmdb/assetManage/autoDiscovery",
+                    "name": "auto_discovery",
+                    "children": [
+                        {
+                            "title": "采集",
+                            "icon": "shujumoxingguanli",
+                            "url": "/cmdb/assetManage/autoDiscovery/collection",
+                            "name": "discovery_collection"
+                        },
+                        {
+                            "title": "SOID特征库",
+                            "icon": "shujumoxingguanli",
+                            "url": "/cmdb/assetManage/autoDiscovery/featureLibrary",
+                            "name": "discovery_feature_library"
+                        }
+                    ]
+                },
+                {
+                    "title": "操作日志",
+                    "icon": "shujumoxingguanli",
+                    "url": "/cmdb/assetManage/operationLog",
+                    "name": "operation_log"
+                }
+            ]
+        }
+    ],
+    "en": [
+        {
+            "title": "Search",
+            "icon": "search-f",
+            "url": "/cmdb/assetSearch",
+            "name": "search"
+        },
+        {
+            "title": "Overview",
+            "icon": "mulu",
+            "url": "/cmdb/assetOverview",
+            "name": "view_list"
+        },
+        {
+            "title": "Asset",
+            "icon": "zichan-quanbushebei",
+            "url": "/cmdb/assetData",
+            "name": "asset_list",
+            "children": [{
+                "title": "Basic Information",
+                "icon": "shujumoxingguanli",
+                "url": "/cmdb/assetData/detail/baseInfo",
+                "name": "asset_basic_information"
+            },
+            {
+                "title": "Relationships",
+                "icon": "shujumoxingguanli",
+                "url": "/cmdb/assetData/detail/relationships",
+                "name": "asset_relationships"
+            },
+            {
+                "title": "Change Records",
+                "icon": "shujumoxingguanli",
+                "url": "/cmdb/assetData/detail/changeRecords",
+                "name": "asset_change_records"
+            }]
+        },
+        {
+            "title": "Management",
+            "icon": "shujumoxingguanli",
+            "url": "/cmdb/assetManage",
+            "name": "Management",
+            "children": [
+                {
+                    "title": "Model Management",
+                    "icon": "shujumoxingguanli",
+                    "url": "/cmdb/assetManage/management",
+                    "name": "model_management",
+                    "children": [
+                        {
+                            "title": "Attributes",
+                            "icon": "shujumoxingguanli",
+                            "url": "/cmdb/assetManage/management/detail/attributes",
+                            "name": "model_attributes"
+                        },
+                        {
+                            "title": "Associations",
+                            "icon": "shujumoxingguanli",
+                            "url": "/cmdb/assetManage/management/detail/associations",
+                            "name": "model_relationships"
+                        }
+                    ]
+                },
+                {
+                    "title": "Auto discover",
+                    "icon": "shujumoxingguanli",
+                    "url": "/cmdb/assetManage/autoDiscovery",
+                    "name": "auto_discovery",
+                    "children": [
+                        {
+                            "title": "Collection",
+                            "icon": "shujumoxingguanli",
+                            "url": "/cmdb/assetManage/autoDiscovery/collection",
+                            "name": "discovery_collection"
+                        },
+                        {
+                            "title": "SOID library",
+                            "icon": "shujumoxingguanli",
+                            "url": "/cmdb/assetManage/autoDiscovery/featureLibrary",
+                            "name": "discovery_feature_library"
+                        }
+                    ]
+                },              
+                {
+                    "title": "Operation Log",
+                    "icon": "shujumoxingguanli",
+                    "url": "/cmdb/assetManage/operationLog",
+                    "name": "operation_log"
+                }
+            ]
+        }
+    ]
+}

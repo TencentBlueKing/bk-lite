@@ -1,1 +1,0 @@
-langchain-elasticsearch==0.3.2

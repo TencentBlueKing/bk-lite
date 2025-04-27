@@ -29,7 +29,7 @@ const SideMenu: React.FC<SideMenuProps> = ({
   const searchParams = useSearchParams();
 
   const buildUrlWithParams = (path: string) => {
-    const params = new URLSearchParams(searchParams);
+    const params = new URLSearchParams(searchParams || undefined);
     return `${path}?${params.toString()}`;
   };
 

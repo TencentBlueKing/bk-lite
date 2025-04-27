@@ -1,0 +1,245 @@
+{
+  "client_id": "opspilot",
+  "name": "OpsPilot",
+  "url": "/opspilot/studio",
+  "description": "Create roles for the OpsPilot app to manage data permissions, menu permissions, and feature permissions.",
+  "menus": [
+    {
+      "name": "Studio",
+      "children": [
+        {
+          "id": "bot_list",
+          "name": "APP list",
+          "operation": [
+            "View",
+            "Add",
+            "Edit",
+            "Delete"
+          ]
+        },
+        {
+          "id": "bot_settings",
+          "name": "APP Setting",
+          "operation": [
+            "View",
+            "Edit",
+            "Test",
+            "Mark",
+            "Save&Publish"
+          ]
+        },
+        {
+          "id": "bot_channel",
+          "name": "APP Channel",
+          "operation": [
+            "View",
+            "Setting"
+          ]
+        },
+        {
+          "id": "bot_conversation_log",
+          "name": "APP Conversation-Log",
+          "operation": [
+            "View",
+            "Mark"
+          ]
+        },
+        {
+          "id": "bot_statistics",
+          "name": "APP Statistics",
+          "operation": [
+            "View"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Agent",
+      "children": [
+        {
+          "id": "skill_list",
+          "name": "Agent list",
+          "operation": [
+            "View",
+            "Add",
+            "Edit",
+            "Delete"
+          ]
+        },
+        {
+          "id": "skill_setting",
+          "name": "Agent Setting",
+          "operation": [
+            "View",
+            "Edit",
+            "Test",
+            "Mark"
+          ]
+        },
+        {
+          "id": "skill_rule",
+          "name": "Agent Rule",
+          "operation": [
+            "View",
+            "Add",
+            "Edit",
+            "Delete"
+          ]
+        },
+        {
+          "id": "skill_invocation_logs",
+          "name": "Agent Invocation Logs",
+          "operation": [
+            "View"
+          ]
+        },
+        {
+          "id": "skill_api",
+          "name": "Agent Api",
+          "operation": [
+            "View"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Knowledge",
+      "children": [
+        {
+          "id": "knowledge_list",
+          "name": " Knowledge list",
+          "operation": [
+            "View",
+            "Add",
+            "Edit",
+            "Delete"
+          ]
+        },
+        {
+          "id": "knowledge_document",
+          "name": " Knowledge Document",
+          "operation": [
+            "View",
+            "Add",
+            "Set",
+            "Train",
+            "Delete"
+          ]
+        },
+        {
+          "id": "knowledge_testing",
+          "name": "Knowledge Testing",
+          "operation": [
+            "View",
+            "Edit"
+          ]
+        },
+        {
+          "id": "knowledge_setting",
+          "name": "Knowledge Setting",
+          "operation": [
+            "View",
+            "Edit"
+          ]
+        },
+        {
+          "id": "knowledge_api",
+          "name": "Knowledge API",
+          "operation": [
+            "View"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Model",
+      "children": [
+        {
+          "id": "provide_list",
+          "name": "Model list",
+          "operation": [
+            "Add",
+            "View",
+            "Setting",
+            "Delete"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Tool",
+      "children": [
+        {
+          "id": "tool_list",
+          "name": "Tool list",
+          "operation": [
+            "View",
+            "Edit",
+            "Add",
+            "Delete"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Setting",
+      "icon": "settings-fill",
+      "children": [
+        {
+          "id": "mange_quota",
+          "name": "Mange Quota",
+          "operation": [
+            "View",
+            "Add",
+            "Edit",
+            "Delete"
+          ]
+        },
+        {
+          "id": "my_quota",
+          "name": "My Quota",
+          "operation": [
+            "View"
+          ]
+        },
+        {
+          "id": "api_secret_key",
+          "name": "API Secret Key",
+          "operation": [
+            "View",
+            "Add",
+            "Delete"
+          ]
+        }
+      ]
+    }
+  ],
+  "roles": [
+    {
+      "name": "admin",
+      "role_name": "opspilot_admin",
+      "menus": []
+    },
+    {
+      "name": "normal",
+      "role_name": "opspilot_normal",
+      "menus": [
+        "bot_list-View",
+        "bot_settings-View",
+        "bot_channel-View",
+        "bot_conversation_log-View",
+        "bot_statistics-View",
+        "knowledge_document-View",
+        "knowledge_list-View",
+        "knowledge_setting-View",
+        "knowledge_testing-View",
+        "my_quota-View",
+        "provide_list-View",
+        "skill_api-View",
+        "skill_list-View",
+        "skill_rule-View",
+        "skill_setting-View"
+      ]
+    }
+  ]
+}

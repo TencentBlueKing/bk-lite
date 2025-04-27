@@ -1,0 +1,36 @@
+.configure {
+    background: var(--color-bg-1);
+    height: calc(100vh - 236px);
+    overflow-y: auto;
+
+    :global {
+        .ant-form-item-required:not(.ant-form-item-required-mark-optional)::before {
+            position: absolute;
+            right: -3px;
+        }
+
+        .ant-form-item-label>label {
+            margin-right: 10px;
+        }
+    }
+
+    .interval {
+        :global {
+            .ant-form-item-control-input-content {
+                display: flex;
+            }
+
+            label::before {
+                display: inline-block;
+                margin-inline-end: var(--ant-margin-xxs);
+                color: var(--ant-form-label-required-mark-color);
+                font-size: var(--ant-font-size);
+                font-family: SimSun, sans-serif;
+                line-height: 1;
+                content: '*';
+                position: absolute;
+                right: -3px;
+            }
+        }
+    }
+}

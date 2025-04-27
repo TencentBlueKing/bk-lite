@@ -26,6 +26,7 @@
     ],
     "react-hooks/exhaustive-deps": "off",
     "react/display-name": "warn",
+    "@next/next/no-img-element": "off",
     "@typescript-eslint/no-non-null-assertion": "off",
     "@typescript-eslint/no-explicit-any": "off",
     "@typescript-eslint/no-unused-expressions": ["error", { "allowShortCircuit": true }]

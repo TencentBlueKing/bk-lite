@@ -1,0 +1,136 @@
+.searchWrapper {
+    .time {
+        display: flex;
+        justify-content: flex-end;
+        margin-bottom: 10px;
+    }
+
+    .searchMain {
+        display: flex;
+        overflow: hidden;
+
+        .tree {
+            padding: 20px 10px 10px 10px;
+            background: var(--color-bg-1);
+            width: 210px;
+            min-width: 210px;
+            margin-right: 10px;
+            height: calc(100vh - 134px);
+            overflow-y: auto;
+        }
+
+        .search {
+            width: calc(100vw - 250px);
+            flex: 1;
+
+            .criteria {
+                background: var(--color-bg-1);
+                padding: 20px;
+
+                :global {
+                    .collapse-content {
+                        padding: 0 !important;
+                    }
+                }
+
+                .condition {
+                    display: flex;
+                    flex-wrap: wrap;
+
+                    .conditionItem {
+                        margin: 10px 15px 0 0;
+
+                        .itemLabel {
+                            font-weight: 600;
+                            font-size: 13px;
+                            margin-bottom: 10px;
+                        }
+
+                        .conditionLabel {
+                            margin-bottom: 0 !important;
+                        }
+
+                        .itemOption {
+                            display: flex;
+                        }
+
+                        .source {
+                            .sourceObjectType {
+                                :global {
+                                    .ant-select-selector {
+                                        border-radius: 6px 0 0 6px;
+                                    }
+                                }
+                            }
+
+                            .sourceObject {
+                                :global {
+                                    .ant-select-selector {
+                                        border-radius: 0 6px 6px 0;
+                                    }
+                                }
+                            }
+                        }
+
+                        .conditions {
+                            display: flex;
+                            flex-wrap: wrap;
+
+                            .filter {
+                                margin-top: 10px;
+
+                                .filterLabel {
+                                    :global {
+                                        .ant-select-selector {
+                                            border-radius: 6px 0 0 6px;
+                                        }
+                                    }
+                                }
+
+
+                                :global {
+                                    .ant-btn:nth-of-type(1) {
+                                        border-radius: 0 6px 6px 0;
+                                        margin-right: 10px;
+                                    }
+
+                                    .ant-btn:nth-of-type(2) {
+                                        margin-right: 10px;
+                                    }
+
+                                    .ant-btn {
+                                        background: var(--color-fill-2);
+                                    }
+
+                                    .ant-btn-icon {
+                                        transform: scale(0.8);
+                                    }
+
+                                    .ant-select-selector {
+                                        border-radius: 0;
+                                    }
+
+                                    .ant-input {
+                                        border-radius: 0;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            .chart {
+                margin-top: 20px;
+                padding: 20px;
+                background: var(--color-bg-1);
+                width: 100%;
+                height: calc(100vh - 310px);
+
+                .chartArea {
+                    height: calc(100% - 55px);
+                }
+            }
+        }
+    }
+}

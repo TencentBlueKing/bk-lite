@@ -1,0 +1,97 @@
+.alert {
+    display: flex;
+    overflow: hidden;
+    flex-direction: row;
+    width: 100%;
+
+    .filters {
+        width: 210px;
+        min-width: 210px;
+        background-color: var(--color-bg-1);
+        padding: 20px;
+        margin-right: 10px;
+        height: calc(100vh - 144px);
+        overflow-y: auto;
+
+        .level {
+            border-left: 4px solid #F43B2C;
+            padding-left: 8px;
+        }
+
+        .assetType {
+            :global {
+                .collapse-title {
+                    padding: 0 !important;
+                    background-color: var(--color-bg-1);
+                }
+            }
+        }
+
+        :global {
+            .collapse-title {
+                padding: 3px 10px;
+                border-radius: 2px;
+
+                .title {
+                    font-weight: 500 !important;
+                }
+            }
+        }
+    }
+
+    .chartWrapper {
+        background-color: var(--color-bg-1);
+        padding: 20px 20px 0 10px;
+        margin-bottom: 10px;
+
+        .chart {
+            height: 100px;
+
+            :global {
+                .ant-empty-normal {
+                    margin: 0;
+                    transform: translateY(20px);
+                }
+            }
+        }
+    }
+
+    .table {
+        width: calc(100vw - 250px);
+        background-color: var(--color-bg-1);
+        height: calc(100vh - 308px);
+        padding: 10px 20px 20px 20px;
+    }
+}
+
+.information {
+    .level {
+        border-left: 4px solid #F43B2C;
+        padding-left: 8px;
+    }
+
+    :global {
+        .ant-descriptions-item-label {
+            background: var(--color-fill-1) !important;
+            padding: 10px !important;
+        }
+
+        .ant-collapse-content-box {
+            padding: 0 !important;
+        }
+
+        .ant-descriptions-item-label {
+            width: 150px !important;
+        }
+
+        .ant-descriptions-item-content {
+            width: 300px !important;
+            padding: 10px !important;
+        }
+
+        .ant-btn-link {
+            padding: 0;
+            margin: 0;
+        }
+    }
+}

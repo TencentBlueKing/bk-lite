@@ -1,0 +1,29 @@
+.resultWrap {
+  height: calc(100% - 100px);
+  overflow: auto;
+}
+.resultCard {
+  color: var(--color-text-1);
+  background: var(--color-fill-2);
+  :global {
+    .ant-card-body {
+      height: 115px;
+    }
+  }
+  span {
+    color: var(--color-text-3);
+  }
+  .truncateLines {
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 3;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: normal;
+  }
+  .number {
+    border: 1px solid var(--color-border-3);
+    border-radius: 6px;
+    padding: 2px 6px;
+  }
+}

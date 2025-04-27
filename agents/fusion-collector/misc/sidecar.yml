@@ -1,0 +1,21 @@
+server_url: "__SERVER__URL__"
+server_api_token: "__SERVER__API__TOKEN__"
+node_id: "file:/opt/fusion-collectors/node-id"
+node_name: ""
+update_interval: 10
+tls_skip_verify: false
+send_status: true
+list_log_files: []
+cache_path: "/opt/fusion-collectors/cache"
+log_path: "/opt/fusion-collectors/log"
+log_rotate_max_file_size: "10MiB"
+log_rotate_keep_files: 10
+collector_validation_timeout: "1m"
+collector_shutdown_timeout: "10s"
+collector_configuration_directory: "/opt/fusion-collectors/generated"
+
+tags:
+  - proxy
+
+collector_binaries_accesslist:
+  - "/opt/fusion-collectors/bin/*"

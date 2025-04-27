@@ -1,0 +1,16 @@
+.menuContainer {
+  :global {
+    .ant-dropdown-menu-item {
+      padding: 0 !important;
+      div {
+        width: 100%;
+      }
+      span {
+        width: 100%;
+      }
+      .block {
+        padding: 5px 12px;
+      }
+    }
+  }
+}

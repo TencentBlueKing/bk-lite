@@ -24,6 +24,7 @@ class User(AbstractUser):
     group_list = models.JSONField(default=list)
     roles = models.JSONField(default=list)
     locale = models.CharField(max_length=32, default="zh-CN")
+    # rules = models.JSONField(default=dict)
 
     class Meta(AbstractUser.Meta):
         swappable = "AUTH_USER_MODEL"

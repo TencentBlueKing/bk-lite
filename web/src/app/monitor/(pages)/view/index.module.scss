@@ -1,0 +1,79 @@
+.view {
+    display: flex;
+
+    .tree {
+        height: calc(100vh - 90px);
+        padding: 20px 10px 10px 10px;
+        background: var(--color-bg-1);
+        width: 210px;
+        min-width: 210px;
+        margin-right: 10px;
+        overflow-y: auto;
+    }
+
+    .table {
+        width: calc(100vw - 246px);
+        padding: 20px;
+        background: var(--color-bg-1);
+        height: calc(100vh - 90px);
+    }
+
+    :global {
+        .ant-progress-outer {
+            flex-direction: row-reverse;
+        }
+
+        .ant-progress-text-outer {
+            margin: 0 0 0 10px !important;
+        }
+    }
+}
+
+.detail {
+    display: flex;
+    width: 100%;
+    height: 100%;
+
+    .leftSide {
+        width: 200px;
+        height: calc(100vh - 90px);
+        margin-right: 16px;
+        display: flex;
+        flex-direction: column;
+
+        .topIntro {
+            padding: 10px;
+            display: flex;
+            align-items: center;
+            background: var(--color-bg-1);
+            height: 80px;
+            border-radius: 4px;
+        }
+
+        .menu {
+            background: var(--color-bg-1);
+            margin-top: 16px;
+            padding: 20px 10px;
+            flex: 1;
+            overflow-y: auto;
+            border-radius: 4px;
+            position: relative;
+
+            :global {
+                .custom-tabs {
+                    width: 100%;
+
+                    .ant-segmented-item {
+                        margin-bottom: 4px;
+                    }
+                }
+            }
+        }
+    }
+
+    .rightSide {
+        width: calc(100vw - 246px);
+        background-color: var(--color-bg-1);
+        padding: 20px;
+    }
+}

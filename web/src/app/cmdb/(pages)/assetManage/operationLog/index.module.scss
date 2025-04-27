@@ -1,0 +1,39 @@
+.container {
+  position: relative;
+  height: 100%;
+  padding: 0 16px 16px;
+  :global {
+    .introduction {
+      margin-bottom: 16px;
+    }
+  }
+}
+
+.content {
+  background-color: #fff;
+  padding: 16px;
+  border-radius: 8px;
+  border: 1px solid #f0f0f0;
+}
+
+.filterWrapper {
+  padding: 16px 0;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.06);
+}
+
+.wrapper {
+  :global {
+    .ant-select-single:not(.ant-select-customize-input) .ant-select-selector {
+      border-right: none;
+      border-top-right-radius: 0;
+      border-bottom-right-radius: 0;
+    }
+
+    .ant-input {
+      &:first-of-type {
+        border-top-left-radius: 0;
+        border-bottom-left-radius: 0;
+      }
+    }
+  }
+}

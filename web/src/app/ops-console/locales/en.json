@@ -1,0 +1,33 @@
+{
+  "opsConsole": {
+    "serviceHotline": "Service Hotline",
+    "qqConsultation": "QQ Consultation",
+    "console": "Wecome to WeOps X Console",
+    "description": "WeOps X is a native operation and maintenance intelligent platform based on artificial intelligence technology. The platform includes AI intelligent analysis, operation and maintenance asset supervision and other functions, which help to comprehensively optimize operation and maintenance management.",
+    "freeApply": "Free Apply",
+    "contactUs": "Contact Us",
+    "clickToEnter": "Enter",
+    "date": "Date",
+    "initUserSet": "Init User Set",
+    "group": "Group Name",
+    "intelligentModels": "Models",
+    "toolManagement": "Tool",
+    "knowledgeManagement": "Knowledge",
+    "skillManagement": "Skill",
+    "robots": "Robots",
+    "user": "User",
+    "orangization": "Organizations",
+    "rolePermissions": "Permissions",
+    "notification": "Channels",
+    "monitorIntegration": "Integration",
+    "monitorDashboard": "Dashboard",
+    "metricsQuery": "Metrics",
+    "policies": "Alerts",
+    "probeManagement": "Probe",
+    "nodeAccess": "Node",
+    "assetModeling": "Modeling",
+    "automatedAsset": "Asset Registration",
+    "assetManagement": "Asset",
+    "associatedTopology": "Topology"
+  }
+}

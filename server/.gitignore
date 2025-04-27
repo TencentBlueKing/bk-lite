@@ -5,7 +5,6 @@
 static
 *.sqlite3
 */__pycache__/
-.vscode
 *.pyc
 .pytest_cache
 .coverage

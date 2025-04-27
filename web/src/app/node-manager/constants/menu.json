@@ -1,0 +1,126 @@
+{
+  "zh": [
+    {
+      "title": "云区域",
+      "icon": "yunchang-yunquyu",
+      "url": "/node-manager/cloudregion",
+      "name": "cloud_region_list",
+      "children": [
+        {
+          "title": "节点",
+          "url": "/node-manager/cloudregion/node",
+          "icon": "shezhi",
+          "name": "cloud_region_node"
+        },
+        {
+          "title": "配置",
+          "url": "/node-manager/cloudregion/configuration",
+          "icon": "shezhi",
+          "name": "cloud_region_configuration"
+        },
+        {
+          "title": "变量",
+          "url": "/node-manager/cloudregion/variable",
+          "icon": "shezhi",
+          "name": "cloud_region_variable"
+        }
+      ]
+    },
+    {
+      "title": "探针",
+      "icon": "xiaocaijiqi",
+      "url": "/node-manager/sidecar",
+      "name": "Probe",
+      "children": [
+        {
+          "title": "采集器",
+          "url": "/node-manager/sidecar/collector",
+          "name": "collector_list",
+          "children": [
+            {
+              "title": "包管理",
+              "url": "/node-manager/sidecar/collector/detail",
+              "icon": "shezhi",
+              "name": "collector_packet"
+            }
+          ]
+        },
+        {
+          "title": "控制器",
+          "url": "/node-manager/sidecar/controller",
+          "name": "controller_list",
+          "children": [
+            {
+              "title": "包管理",
+              "url": "/node-manager/sidecar/controller/detail",
+              "icon": "shezhi",
+              "name": "controller_packet"
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "en": [
+    {
+      "title": "Cloud Region",
+      "icon": "yunchang-yunquyu",
+      "url": "/node-manager/cloudregion",
+      "name": "cloud_region_list",
+      "children": [
+        {
+          "title": "Node",
+          "url": "/node-manager/cloudregion/node",
+          "icon": "shezhi",
+          "name": "cloud_region_node"
+        },
+        {
+          "title": "Configuration",
+          "url": "/node-manager/cloudregion/configuration",
+          "icon": "shezhi",
+          "name": "cloud_region_configuration"
+        },
+        {
+          "title": "Variable",
+          "url": "/node-manager/cloudregion/variable",
+          "icon": "shezhi",
+          "name": "cloud_region_variable"
+        }
+      ]
+    },
+    {
+      "title": "Sidecar",
+      "icon": "xiaocaijiqi",
+      "url": "/node-manager/sidecar",
+      "name": "Probe",
+      "children": [
+        {
+          "title": "Collector",
+          "url": "/node-manager/sidecar/collector",
+          "name": "collector_list",
+          "children": [
+            {
+              "title": "Package Management",
+              "url": "/node-manager/sidecar/collector/detail",
+              "icon": "shezhi",
+              "name": "collector_packet"
+            }
+          ]
+        },
+        {
+          "title": "Controller",
+          "url": "/node-manager/sidecar/controller",
+          "name": "controller_list",
+          "children": [
+            {
+              "title": "Package Management",
+              "url": "/node-manager/sidecar/controller/detail",
+              "icon": "shezhi",
+              "name": "controller_list"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

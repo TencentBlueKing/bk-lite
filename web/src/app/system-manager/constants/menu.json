@@ -1,0 +1,99 @@
+{
+  "zh": [
+    {
+      "title": "用户",
+      "icon": "yonghu1",
+      "name": "user_list",
+      "url": "/system-manager/user"
+    },
+    {
+      "title": "组织",
+      "icon": "jiedianhuiyuanfenzu",
+      "name": "group_list",
+      "url": "/system-manager/group"
+    },
+    {
+      "title": "应用",
+      "icon": "guanli",
+      "name": "application_list",
+      "url": "/system-manager/application",
+      "children": [
+        {
+          "title": "角色",
+          "icon": "guanliyuan_jiaoseguanli",
+          "name": "application_role",
+          "url": "/system-manager/application/manage/role"
+        },
+        {
+          "title": "数据权限",
+          "icon": "line-DataPermissions",
+          "name": "data_permission",
+          "url": "/system-manager/application/manage/data"
+        }
+      ]
+    },
+    {
+      "title": "通知渠道",
+      "icon": "Channel",
+      "name": "channel_list",
+      "url": "/system-manager/channel",
+      "children": [
+        {
+          "title": "设置",
+          "icon": "shezhi",
+          "name": "channel_setting",
+          "url": "/system-manager/channel/detail/settings"
+        }
+      ]
+    }
+  ],
+  "en": [
+    {
+      "title": "User",
+      "icon": "yonghu1",
+      "name": "user_list",
+      "url": "/system-manager/user"
+    },
+    {
+      "title": "Group",
+      "icon": "jiedianhuiyuanfenzu",
+      "name": "group_list",
+      "url": "/system-manager/group"
+    },
+    {
+      "title": "Application",
+      "icon": "guanli",
+      "name": "application_list",
+      "url": "/system-manager/application",
+      "children": [
+        {
+          "title": "Role",
+          "icon": "guanliyuan_jiaoseguanli",
+          "name": "application_role",
+          "url": "/system-manager/application/manage/role"
+        },
+        {
+          "title": "Data Permission",
+          "icon": "line-DataPermissions",
+          "name": "data_permission",
+          "url": "/system-manager/application/manage/data"
+        }
+      ]
+    },
+    {
+      "title": "Channel",
+      "icon": "Channel",
+      "name": "channel_list",
+      "url": "/system-manager/channel",
+      "children": [
+        {
+          "title": "Settings",
+          "icon": "shezhi",
+          "name": "channel_setting",
+          "url": "/system-manager/channel/detail/settings"
+        }
+      ]
+    }
+  ]
+}
+

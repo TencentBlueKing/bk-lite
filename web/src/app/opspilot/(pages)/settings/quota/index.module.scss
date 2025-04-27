@@ -1,0 +1,41 @@
+@keyframes progressAnimation {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+
+.progressContainer {
+  width: 100%;
+  .progressBar {
+    background: #f1f1f1;
+    border-radius: 5px;
+    overflow: hidden;
+    height: 10px;
+  }
+  .progress {
+    height: 100%;
+    position: relative;
+    overflow: hidden;
+    background: linear-gradient(
+      270deg,
+      #4caf50,
+      #4caf50 25%,
+      #8bc34a 50%,
+      #4caf50 75%,
+      #4caf50
+    );
+    background-size: 200% 100%;
+    animation: progressAnimation 2s linear infinite;
+  }
+  .overLimit {
+    background: linear-gradient(
+      270deg,
+      #f44336,
+      #f44336 25%,
+      #e57373 50%,
+      #f44336 75%,
+      #f44336
+    );
+    background-size: 200% 100%;
+    animation: progressAnimation 2s linear infinite;
+  }
+}

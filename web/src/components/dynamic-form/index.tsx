@@ -1,11 +1,12 @@
 import React from 'react';
 import { Form, Input, Select, InputNumber, Switch, FormInstance } from 'antd';
+import EditablePasswordField from './editPasswordField'; // Import EditablePasswordField
 
 interface Field {
   name: string;
   type: string;
   label: string;
-  placeholder: string;
+  placeholder?: string;
   rules?: any[];
   options?: { value: string | number; label: string }[];
   component?: React.ReactNode;
@@ -21,6 +22,7 @@ interface DynamicFormProps {
 const componentMap: { [key: string]: React.FC<any> } = {
   input: (props) => <Input {...props} />,
   inputPwd: (props) => <Input.Password {...props} />,
+  editablePwd: (props) => <EditablePasswordField {...props} />,
   textarea: (props) => <Input.TextArea {...props} />,
   switch: (props) => <Switch {...props} />,
   select: ({ options, ...props }) => (

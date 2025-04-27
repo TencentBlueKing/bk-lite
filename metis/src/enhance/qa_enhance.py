@@ -1,0 +1,2 @@
+class QAEnhance:
+    pass

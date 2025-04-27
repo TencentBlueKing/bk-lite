@@ -2,26 +2,23 @@ import { NextRequest, NextResponse } from 'next/server';
 import path from 'path';
 import fs from 'fs/promises';
 
-const EXCLUDED_DIRECTORIES = ['(core)', 'no-permission'];
+const INSTALL_APPS = (process.env.NEXTAPI_INSTALL_APP || 'example').split(',').map(app => app.trim());
 
 const getDynamicMenuItems = async (locale: string) => {
   const dirPath = path.join(process.cwd(), 'src', 'app');
-  const directories = await fs.readdir(dirPath, { withFileTypes: true });
 
   let allMenuItems: any[] = [];
 
-  for (const dirent of directories) {
-    if (dirent.isDirectory() && !EXCLUDED_DIRECTORIES.includes(dirent.name)) {
-      const menuPath = path.join(dirPath, dirent.name, 'constants', 'menu.json');
+  for (const app of INSTALL_APPS) {
+    const menuPath = path.join(dirPath, app, 'constants', 'menu.json');
 
-      try {
-        await fs.access(menuPath);
-        const menuContent = await fs.readFile(menuPath, 'utf-8');
-        const menu = JSON.parse(menuContent);
-        allMenuItems = allMenuItems.concat(menu[locale] || []);
-      } catch (err) {
-        console.error(`Failed to load menu for ${dirent.name}:`, err);
-      }
+    try {
+      await fs.access(menuPath);
+      const menuContent = await fs.readFile(menuPath, 'utf-8');
+      const menu = JSON.parse(menuContent);
+      allMenuItems = allMenuItems.concat(menu[locale] || []);
+    } catch (err) {
+      console.error(`Failed to load menu for ${app}:`, err);
     }
   }
 

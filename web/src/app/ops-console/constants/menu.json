@@ -1,0 +1,20 @@
+{
+  "zh": [
+    {
+      "title": "控制台",
+      "icon": "jiqiren2",
+      "url": "/ops-console/home",
+      "name": "bot_list",
+      "isNotMenuItem": true
+    }
+  ],
+  "en": [
+    {
+      "title": "Console",
+      "icon": "jiqiren2",
+      "url": "/ops-console/home",
+      "name": "bot_list",
+      "isNotMenuItem": true
+    }
+  ]
+}

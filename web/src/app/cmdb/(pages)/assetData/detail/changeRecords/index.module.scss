@@ -1,0 +1,12 @@
+.changeRecords {
+    .operator {
+        border-left: 1px solid var(--color-text-4);
+        padding-left: 10px;
+        margin-left: 10px;
+    }
+
+    .list {
+        height: calc(100vh - 170px);
+        overflow-y: auto;
+    }
+}

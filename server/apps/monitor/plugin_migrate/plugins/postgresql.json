@@ -1,0 +1,141 @@
+{
+  "plugin": "Postgres",
+  "plugin_desc": "Collecting PostgreSQL's session management, transaction metrics, and I/O performance data helps monitor resource usage, access behavior, operational efficiency, and identify potential issues within the database.",
+  "name": "Postgres",
+  "type": "Database",
+  "description": "",
+  "metrics": [
+    {
+      "metric_group": "Performance",
+      "name": "postgresql_active_time",
+      "display_name": "Active Time",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "d",
+      "dimensions": [],
+      "description": "This metric indicates the total active time of PostgreSQL, reflecting the duration of database activity.",
+      "query": "sum(postgresql_active_time{__$labels__}) by (instance_id)/60/24/2"
+    },
+    {
+      "metric_group": "Performance",
+      "name": "postgresql_blk_read_time",
+      "display_name": "Block Read Time",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "ms",
+      "dimensions": [],
+      "description": "This metric indicates the total time spent by PostgreSQL reading blocks from the disk.",
+      "query": "rate(postgresql_blk_read_time{__$labels__}[5m])"
+    },
+    {
+      "metric_group": "Performance",
+      "name": "postgresql_blk_write_time",
+      "display_name": "Block Write Time",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "ms",
+      "dimensions": [],
+      "description": "This metric indicates the total time spent by PostgreSQL writing blocks to the disk.",
+      "query": "rate(postgresql_blk_write_time{__$labels__}[5m])"
+    },
+    {
+      "metric_group": "Cache",
+      "name": "postgresql_blks_hit",
+      "display_name": "Block Cache Hits",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "short",
+      "dimensions": [],
+      "description": "This metric indicates the number of times PostgreSQL queries hit the cache, reflecting cache efficiency.",
+      "query": "sum(rate(postgresql_blks_hit{__$labels__}[5m])) by (instance_id)"
+    },
+    {
+      "metric_group": "Cache",
+      "name": "postgresql_blks_read",
+      "display_name": "Block Reads",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "short",
+      "dimensions": [],
+      "description": "This metric indicates the number of blocks read by PostgreSQL from the disk.",
+      "query": "rate(postgresql_blks_read{__$labels__}[5m])"
+    },
+    {
+      "metric_group": "Memory",
+      "name": "postgresql_buffers_alloc",
+      "display_name": "Buffers Allocated",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "short",
+      "dimensions": [],
+      "description": "This metric indicates the number of buffer blocks allocated by PostgreSQL to monitor memory usage.",
+      "query": "rate(postgresql_buffers_alloc{__$labels__}[5m])"
+    },
+    {
+      "metric_group": "Memory",
+      "name": "postgresql_buffers_checkpoint",
+      "display_name": "Checkpoint Buffers",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "short",
+      "dimensions": [],
+      "description": "This metric indicates the number of buffer blocks written during checkpoints in PostgreSQL.",
+      "query": "rate(postgresql_buffers_checkpoint{__$labels__}[5m])"
+    },
+    {
+      "metric_group": "Transaction",
+      "name": "postgresql_xact_commit",
+      "display_name": "Transaction Commits",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "short",
+      "dimensions": [],
+      "description": "This metric indicates the total number of transactions committed by PostgreSQL, reflecting the workload of the database.",
+      "query": "rate(postgresql_xact_commit{__$labels__}[5m])"
+    },
+    {
+      "metric_group": "Transaction",
+      "name": "postgresql_xact_rollback",
+      "display_name": "Transaction Rollbacks",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "short",
+      "dimensions": [],
+      "description": "This metric indicates the total number of transaction rollbacks performed by PostgreSQL.",
+      "query": "rate(postgresql_xact_rollback{__$labels__}[5m])"
+    },
+    {
+      "metric_group": "Session",
+      "name": "postgresql_sessions",
+      "display_name": "Total Sessions",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "short",
+      "dimensions": [],
+      "description": "This metric indicates the total number of sessions created by PostgreSQL, reflecting database connection activity.",
+      "query": "rate(postgresql_sessions{__$labels__}[5m])"
+    },
+    {
+      "metric_group": "Session",
+      "name": "postgresql_sessions_abandoned",
+      "display_name": "Abandoned Sessions",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "short",
+      "dimensions": [],
+      "description": "This metric indicates the count of sessions abandoned due to prolonged inactivity.",
+      "query": "rate(postgresql_sessions_abandoned{__$labels__}[5m])"
+    },
+    {
+      "metric_group": "Session",
+      "name": "postgresql_sessions_killed",
+      "display_name": "Killed Sessions",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "short",
+      "dimensions": [],
+      "description": "This metric indicates the total number of sessions terminated by an administrator or system.",
+      "query": "rate(postgresql_sessions_killed{__$labels__}[5m])"
+    }
+  ]
+}

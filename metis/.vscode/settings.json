@@ -1,0 +1,30 @@
+{
+    "python.testing.pytestArgs": [
+        "tests"
+    ],
+    "python.testing.unittestEnabled": false,
+    "python.testing.pytestEnabled": true,
+    "python.defaultInterpreterPath": "${workspaceFolder}/.venv/${command:python.interpreterPath.os}",
+    "python.interpreterPath.os": {
+        "windows": "Scripts\\python.exe",
+        "linux": "bin/python",
+        "osx": "bin/python"
+    },
+    "files.exclude": {
+        "**/__pycache__": true,
+        "**/.venv": true,
+        "**/.pytest_cache": true,
+        "**/.idea": true
+    },
+    "search.exclude": {
+        "**/__pycache__": true,
+        "**/.venv": true,
+        "**/.pytest_cache": true,
+        "**/.idea": true
+    },
+    "[python]": {
+        "editor.defaultFormatter": "ms-python.autopep8",
+        "editor.formatOnSave": true
+    },
+    "makefile.configureOnOpen": false
+}

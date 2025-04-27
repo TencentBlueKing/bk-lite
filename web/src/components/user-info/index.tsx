@@ -68,7 +68,7 @@ const UserInfo: React.FC = () => {
     setSelectedGroup(nextGroup);
     setDropdownVisible(false);
 
-    const pathSegments = pathname.split('/').filter(Boolean);
+    const pathSegments = pathname ? pathname.split('/').filter(Boolean) : [];
     if (pathSegments.length > 2) {
       router.push(`/${pathSegments.slice(0, 2).join('/')}`);
     } else {

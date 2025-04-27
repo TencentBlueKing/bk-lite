@@ -19,23 +19,25 @@ repos:
     - id: flake8
       additional_dependencies: ["flake8>=4.0.1"]
       language_version: python3.10
+      args: ["--config=./server/.flake8"]
   - repo: https://github.com/pre-commit/mirrors-isort
     rev: v5.10.1
     hooks:
     - id: isort
+      args: ["--settings-path=./server/.isort.cfg"]
   - repo: local
     hooks:
       - id: check-migrate
         name: check migrate
-        entry: python scripts/check_migrate/check_migrate.py
+        entry: python ./server/scripts/check_migrate/check_migrate.py
         language: system
         types: [python]
       - id: check-commit-message
         name: Check commit message
-        entry: python scripts/check_commit_message.py
+        entry: python ./server/scripts/check_commit_message.py
         language: system
         stages: [commit-msg]
       - id: check-requirements
         name: Check Requirements
-        entry: python scripts/check_requirements.py
+        entry: python ./server/scripts/check_requirements.py
         language: system

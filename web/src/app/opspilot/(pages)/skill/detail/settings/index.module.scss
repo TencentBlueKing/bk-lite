@@ -1,0 +1,15 @@
+
+.llmSection {
+  overflow-y: auto;
+  .llmContainer {
+    color: var(--color-text-2);
+    h2 {
+      padding: 10px;
+      background-image: linear-gradient(90deg, var(--color-bg-image-gradient-1), var(--color-bg-image-gradient-2));
+    }
+    .contentWrapper {
+      margin: 10px 20px;
+      background: var(--color-fill-1);
+    }
+  }
+}

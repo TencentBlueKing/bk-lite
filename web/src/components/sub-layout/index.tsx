@@ -38,7 +38,7 @@ const WithSideMenuLayout: React.FC<WithSideMenuLayoutProps> = ({
   const curRouterName = usePathname();
   const pathname = pagePathName ?? curRouterName;
   const { menus } = usePermissions();
-  const [selectedKey, setSelectedKey] = useState<string>(pathname);
+  const [selectedKey, setSelectedKey] = useState<string>(pathname ?? '');
   const [menuItems, setMenuItems] = useState<MenuItem[]>([])
 
   const getMenuItemsForPath = (menus: MenuItem[], currentPath: string): MenuItem[] => {
@@ -62,17 +62,17 @@ const WithSideMenuLayout: React.FC<WithSideMenuLayoutProps> = ({
     return [];
   };
 
-  const updateMenuItems = useMemo(() => getMenuItemsForPath(menus, pathname), [pathname]);
+  const updateMenuItems = useMemo(() => getMenuItemsForPath(menus, pathname ?? ''), [pathname]);
 
   useEffect(() => {
     setMenuItems(updateMenuItems?.filter(menu => !menu.isNotMenuItem));
   }, [updateMenuItems]);
 
   useEffect(() => {
-    let urlKey: string | undefined = curRouterName;
+    let urlKey: string | undefined = curRouterName ?? undefined;
     if (pagePathName) {
       urlKey = menuItems.find(
-        (menu) => menu.url && curRouterName.startsWith(menu.url)
+        (menu) => menu.url && curRouterName && curRouterName.startsWith(menu.url)
       )?.url;
     }
     setSelectedKey(urlKey as string);

@@ -1,0 +1,130 @@
+.markdownBody {
+  font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
+  line-height: 1.5;
+  overflow-wrap: break-word;
+  font-size: 14px;
+
+  h1, h2, h3, h4, h5, h6 {
+    margin-top: 1.5em;
+    margin-bottom: .75em;
+    font-weight: bold;
+  }
+
+  h1 {
+    font-size: 2em;
+  }
+
+  h2 {
+    font-size: 1.75em;
+  }
+
+  h3 {
+    font-size: 1.5em;
+  }
+
+  code {
+    padding: 10px;
+    font-size: 85%;
+  }
+
+  pre {
+    background: var(--color-fill-1);
+    padding: 10px;
+    border-radius: 5px;
+    margin: 10px 0;
+    overflow: auto;
+  }
+}
+
+.chatContainer {
+  background: var(--color-fill-1);
+  .avatar {
+    width: 35px;
+    height: 35px;
+  }
+
+  .sender {
+    background-color: var(--color-bg);
+  }
+
+  :global {
+    .ant-avatar {
+      background: transparent;
+    }
+    .ant-bubble-content-wrapper {
+      max-width: 100%;
+    }
+    .ant-bubble-end {
+      .ant-bubble-content-wrapper {
+        align-items: flex-end;
+      }
+    }
+    .ant-bubble-content {
+      background-color: var(--color-bg-1);
+    }
+    .ant-bubble-footer {
+      margin-top: 5px;
+    }
+  }
+  .bubbleWrapper {
+    cursor: pointer;
+    &:hover {
+      .operationContainer {
+        opacity: 1;
+      }
+    }
+    .operationContainer {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      background: var(--color-fill-2);
+      padding: 3px 0;
+      border-radius: 5px;
+      opacity: 0;
+      .icon {
+        font-size: 12px;
+        display: inline-block;
+        border: none;
+        color: var(--color-text-3);
+        background: transparent;
+        border-radius: 3px;
+        padding: 2px 5px;
+        cursor: pointer;
+        &:hover {
+          color: var(--color-text-2);
+          background: var(--color-fill-3);
+        }
+      }
+    }
+  }
+}
+.fullscreen {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  z-index: 9999;
+  overflow: auto;
+  padding: 10px;
+  background-color: var(--color-bg);
+}
+.knowledgeItem {
+  background-color: var(--color-fill-2);
+  .title,
+  .references {
+    color: var(--color-primary);
+  }
+}
+.highlightIcon {
+  color: var(--color-primary) !important;
+}
+.knowledgeTitle {
+  color: var(--color-text-3);
+  background: var(--color-bg-1);
+  padding: 5px 10px;
+  border-radius: 5px;
+  &:hover {
+    color: var(--color-primary);
+  }
+}

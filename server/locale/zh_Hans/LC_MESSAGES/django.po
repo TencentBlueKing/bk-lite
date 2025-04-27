@@ -8,7 +8,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: PACKAGE VERSION\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2024-12-16 09:48+0000\n"
+"POT-Creation-Date: 2025-03-25 17:38+0800\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
@@ -17,84 +17,464 @@ msgstr ""
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: 8bit\n"
 "Plural-Forms: nplurals=1; plural=0;\n"
-#: apps/core/decorators/api_perminssion.py:39
+
+#: .\apps\base\user_api_secret_mgmt\views.py:34
+msgid "This user already has an API Secret"
+msgstr "该用户已拥有 API 密钥"
+
+#: .\apps\bot_mgmt\models\bot.py:47 .\apps\channel_mgmt\models\channel.py:19
+#: .\apps\knowledge_mgmt\models\knowledge_document.py:29
+msgid "name"
+msgstr "名称"
+
+#: .\apps\bot_mgmt\models\bot.py:48 .\apps\bot_mgmt\models\channel_user.py:10
+#: .\apps\bot_mgmt\models\channel_user.py:28
+#: .\apps\channel_mgmt\models\channel.py:20
+msgid "channel type"
+msgstr "渠道类型"
+
+#: .\apps\bot_mgmt\models\bot.py:49 .\apps\channel_mgmt\models\channel.py:21
+msgid "channel config"
+msgstr "渠道配置"
+
+#: .\apps\bot_mgmt\models\bot.py:50 .\apps\channel_mgmt\models\channel.py:22
+msgid "enabled"
+msgstr "启用"
+
+#: .\apps\bot_mgmt\services\bot_init_service.py:12
+msgid "Core Model"
+msgstr "核心模型"
+
+#: .\apps\bot_mgmt\viewsets\bot_view.py:25
+msgid "Bot count exceeds quota limit."
+msgstr "机器人数量超过配额限制。"
+
+#: .\apps\channel_mgmt\models\channel.py:10
+msgid "Enterprise WeChat"
+msgstr "企业微信"
+
+#: .\apps\channel_mgmt\models\channel.py:11
+msgid "Enterprise WeChat Bot"
+msgstr "企业微信机器人"
+
+#: .\apps\channel_mgmt\models\channel.py:12
+msgid "WeChat Official Account"
+msgstr "微信公众号"
+
+#: .\apps\channel_mgmt\models\channel.py:13
+msgid "Ding Talk"
+msgstr "钉钉"
+
+#: .\apps\channel_mgmt\models\channel.py:14
+msgid "Web"
+msgstr "网页"
+
+#: .\apps\channel_mgmt\models\channel.py:15
+msgid "GitLab"
+msgstr "GitLab"
+
+#: .\apps\channel_mgmt\models\channel.py:25
+msgid "channel"
+msgstr "渠道"
+
+#: .\apps\core\decorators\api_perminssion.py:40
 msgid "insufficient permissions"
-msgstr ""
+msgstr "权限不足"
 
-#: apps/core/middlewares/api_middleware.py:25 apps/core/views/index_view.py:28
+#: .\apps\core\middlewares\api_middleware.py:25
 msgid "token validation failed"
-msgstr ""
+msgstr "令牌验证失败"
 
-#: apps/core/middlewares/keycloak_auth_middleware.py:26
-#: apps/core/middlewares/keycloak_auth_middleware.py:36
-#: apps/core/views/index_view.py:21
+#: .\apps\core\middlewares\keycloak_auth_middleware.py:32
+#: .\apps\core\middlewares\keycloak_auth_middleware.py:42
 msgid "please provide Token"
-msgstr ""
+msgstr "请提供令牌"
 
-#: apps/core/models/maintainer_info.py:11
+#: .\apps\core\models\maintainer_info.py:11
 msgid "Maintainer Fields"
-msgstr ""
+msgstr "维护者字段"
 
-#: apps/core/models/maintainer_info.py:14
+#: .\apps\core\models\maintainer_info.py:14
 msgid "Creator"
-msgstr ""
+msgstr "创建者"
 
-#: apps/core/models/maintainer_info.py:15
+#: .\apps\core\models\maintainer_info.py:15
 msgid "Updater"
-msgstr ""
+msgstr "更新者"
 
-#: apps/core/models/time_info.py:11
+#: .\apps\core\models\time_info.py:11
 msgid "Time Fields"
-msgstr ""
+msgstr "时间字段"
 
-#: apps/core/models/time_info.py:14
+#: .\apps\core\models\time_info.py:14
 msgid "Created Time"
-msgstr ""
+msgstr "创建时间"
 
-#: apps/core/models/time_info.py:15
+#: .\apps\core\models\time_info.py:15
 msgid "Updated Time"
-msgstr ""
+msgstr "更新时间"
 
-#: apps/core/models/vtype_mixin.py:39
+#: .\apps\core\models\vtype_mixin.py:39
 msgid "string"
-msgstr ""
+msgstr "字符串"
 
-#: apps/core/models/vtype_mixin.py:40
+#: .\apps\core\models\vtype_mixin.py:40
 msgid "integer"
-msgstr ""
+msgstr "整数"
 
-#: apps/core/models/vtype_mixin.py:41
+#: .\apps\core\models\vtype_mixin.py:41
 msgid "float"
-msgstr ""
+msgstr "浮点数"
 
-#: apps/core/models/vtype_mixin.py:42
+#: .\apps\core\models\vtype_mixin.py:42
 msgid "datetime"
-msgstr ""
+msgstr "日期时间"
 
-#: apps/core/models/vtype_mixin.py:43
+#: .\apps\core\models\vtype_mixin.py:43
 msgid "time"
-msgstr ""
+msgstr "时间"
 
-#: apps/core/models/vtype_mixin.py:44
+#: .\apps\core\models\vtype_mixin.py:44
 msgid "date"
-msgstr ""
+msgstr "日期"
 
-#: apps/core/models/vtype_mixin.py:45
+#: .\apps\core\models\vtype_mixin.py:45
 msgid "json"
-msgstr ""
+msgstr "JSON"
 
-#: apps/core/models/vtype_mixin.py:46
+#: .\apps\core\models\vtype_mixin.py:46
 msgid "boolean"
-msgstr ""
+msgstr "布尔值"
 
-#: apps/core/models/vtype_mixin.py:47
+#: .\apps\core\models\vtype_mixin.py:47
 msgid "default"
-msgstr ""
+msgstr "默认"
 
-#: apps/core/models/vtype_mixin.py:50
+#: .\apps\core\models\vtype_mixin.py:50
 msgid "Type"
+msgstr "类型"
+
+#: .\apps\core\models\vtype_mixin.py:53
+msgid "Text Value Type Fields"
+msgstr "文本数值类型字段"
+
+#: .\apps\core\views\index_view.py:81
+msgid "Not Authorized"
 msgstr ""
 
-#: apps/core/models/vtype_mixin.py:53
-msgid "Text Value Type Fields"
+#: .\apps\knowledge_mgmt\file_knowledge_mgmt\views.py:33
+#, python-brace-format
+msgid "File size exceeds quota limit. Available size: {no_used_file_size} MB"
+msgstr "文件大小超过配额限制。可用大小：{no_used_file_size} MB"
+
+#: .\apps\knowledge_mgmt\file_knowledge_mgmt\views.py:58
+msgid "Failed to import file."
+msgstr "文件导入失败。"
+
+#: .\apps\knowledge_mgmt\knowledge_base_mgmt\views.py:34
+msgid "The team field is required."
+msgstr "需要提供团队字段。"
+
+#: .\apps\knowledge_mgmt\knowledge_base_mgmt\views.py:39
+#: .\apps\knowledge_mgmt\knowledge_base_mgmt\views.py:75
+msgid "The knowledge base name already exists."
+msgstr "知识库名称已存在。"
+
+#: .\apps\knowledge_mgmt\knowledge_base_mgmt\views.py:63
+msgid "The knowledge base is training and cannot be modified."
+msgstr "知识库正在训练，无法修改。"
+
+#: .\apps\knowledge_mgmt\knowledge_base_mgmt\views.py:98
+msgid "This knowledge base contains documents and cannot be deleted."
+msgstr "该知识库包含文档，无法删除。"
+
+#: .\apps\knowledge_mgmt\knowledge_document_mgmt\views.py:58
+msgid "training document can not be retrained"
+msgstr "训练文档不可重新训练"
+
+#: .\apps\knowledge_mgmt\knowledge_document_mgmt\views.py:68
+#: .\apps\knowledge_mgmt\knowledge_document_mgmt\views.py:183
+msgid "training document can not be deleted"
+msgstr "训练文档不可删除"
+
+#: .\apps\knowledge_mgmt\knowledge_document_mgmt\views.py:90
+msgid "query is required"
+msgstr "查询内容为必填项"
+
+#: .\apps\knowledge_mgmt\knowledge_document_mgmt\views.py:150
+#: .\apps\knowledge_mgmt\knowledge_document_mgmt\views.py:167
+msgid "chunk_id is required"
+msgstr "chunk_id 为必填项"
+
+#: .\apps\knowledge_mgmt\knowledge_document_mgmt\views.py:160
+msgid "update failed"
+msgstr "更新失败"
+
+#: .\apps\knowledge_mgmt\knowledge_document_mgmt\views.py:176
+#: .\apps\knowledge_mgmt\knowledge_document_mgmt\views.py:192
+msgid "delete failed"
+msgstr "删除失败"
+
+#: .\apps\knowledge_mgmt\knowledge_document_mgmt\views.py:230
+msgid "Not a file"
 msgstr ""
+
+#: .\apps\knowledge_mgmt\knowledge_document_mgmt\views.py:233
+#, fuzzy
+#| msgid "Skill id not found"
+msgid "File not found"
+msgstr "未找到技能 ID"
+
+#: .\apps\knowledge_mgmt\models\file_knowledge.py:13
+msgid "File"
+msgstr "文件"
+
+#: .\apps\knowledge_mgmt\models\file_knowledge.py:21
+#: .\apps\knowledge_mgmt\models\knowledge_document.py:75
+#: .\apps\knowledge_mgmt\models\manual_knowledge.py:9
+#: .\apps\knowledge_mgmt\models\web_page_knowledge.py:9
+msgid "Knowledge Document"
+msgstr "知识文档"
+
+#: .\apps\knowledge_mgmt\models\file_knowledge.py:34
+msgid "File Knowledge"
+msgstr "文件知识"
+
+#: .\apps\knowledge_mgmt\models\knowledge_base.py:17
+msgid "Embed Model"
+msgstr "嵌入模型"
+
+#: .\apps\knowledge_mgmt\models\knowledge_base.py:23
+msgid "Enable Vector Search"
+msgstr "启用向量搜索"
+
+#: .\apps\knowledge_mgmt\models\knowledge_base.py:25
+msgid "Vector Search weight"
+msgstr "向量搜索权重"
+
+#: .\apps\knowledge_mgmt\models\knowledge_base.py:26
+msgid "Enable Text Search"
+msgstr "启用文本搜索"
+
+#: .\apps\knowledge_mgmt\models\knowledge_base.py:27
+msgid "Text Search Weight"
+msgstr "文本搜索权重"
+
+#: .\apps\knowledge_mgmt\models\knowledge_base.py:28
+msgid "Enable Rerank"
+msgstr "启用重排"
+
+#: .\apps\knowledge_mgmt\models\knowledge_base.py:32
+msgid "Rerank Model"
+msgstr "重排模型"
+
+#: .\apps\knowledge_mgmt\models\knowledge_base.py:36
+msgid "Number of Results"
+msgstr "结果数量"
+
+#: .\apps\knowledge_mgmt\models\knowledge_base.py:37
+msgid "Number of Candidates"
+msgstr "候选数量"
+
+#: .\apps\knowledge_mgmt\models\knowledge_base.py:38
+msgid "Text search mode"
+msgstr "文本搜索模式"
+
+#: .\apps\knowledge_mgmt\models\knowledge_document.py:19
+msgid "Training"
+msgstr "训练中"
+
+#: .\apps\knowledge_mgmt\models\knowledge_document.py:20
+msgid "Ready"
+msgstr "就绪"
+
+#: .\apps\knowledge_mgmt\models\knowledge_document.py:21
+msgid "Error"
+msgstr "错误"
+
+#: .\apps\knowledge_mgmt\models\knowledge_document.py:22
+msgid "Pending"
+msgstr "待处理"
+
+#: .\apps\knowledge_mgmt\models\knowledge_document.py:23
+msgid "Chunking"
+msgstr "分块处理中"
+
+#: .\apps\knowledge_mgmt\models\knowledge_document.py:30
+msgid "chunk size"
+msgstr "块大小"
+
+#: .\apps\knowledge_mgmt\models\knowledge_document.py:31
+msgid "train status"
+msgstr "训练状态"
+
+#: .\apps\knowledge_mgmt\models\knowledge_document.py:32
+msgid "train progress"
+msgstr "训练进度"
+
+#: .\apps\knowledge_mgmt\models\knowledge_document.py:33
+msgid "enable general parse"
+msgstr "启用通用解析"
+
+#: .\apps\knowledge_mgmt\models\knowledge_document.py:34
+msgid "general parse chunk size"
+msgstr "通用解析块大小"
+
+#: .\apps\knowledge_mgmt\models\knowledge_document.py:35
+msgid "general parse chunk overlap"
+msgstr "通用解析块重叠"
+
+#: .\apps\knowledge_mgmt\models\knowledge_document.py:36
+msgid "enable semantic chunk parse"
+msgstr "启用语义块解析"
+
+#: .\apps\knowledge_mgmt\models\knowledge_document.py:42
+msgid "embedding model"
+msgstr "嵌入模型"
+
+#: .\apps\knowledge_mgmt\models\knowledge_document.py:44
+msgid "enable OCR parse"
+msgstr "启用 OCR 解析"
+
+#: .\apps\knowledge_mgmt\models\knowledge_document.py:46
+msgid "OCR model"
+msgstr "OCR 模型"
+
+#: .\apps\knowledge_mgmt\models\knowledge_document.py:48
+msgid "enable Excel parse"
+msgstr "启用 Excel 解析"
+
+#: .\apps\knowledge_mgmt\models\knowledge_document.py:49
+msgid "Excel header row parse"
+msgstr "Excel 表头解析"
+
+#: .\apps\knowledge_mgmt\models\knowledge_document.py:50
+msgid "Excel full content parse"
+msgstr "Excel 全文解析"
+
+#: .\apps\knowledge_mgmt\models\knowledge_document.py:51
+msgid "source type"
+msgstr "来源类型"
+
+#: .\apps\knowledge_mgmt\models\knowledge_document.py:64
+msgid "Document {} successfully deleted."
+msgstr "文档 {} 删除成功。"
+
+#: .\apps\knowledge_mgmt\models\knowledge_document.py:66
+msgid "Document {} not found, skipping deletion."
+msgstr "未找到文档 {}，跳过删除。"
+
+#: .\apps\knowledge_mgmt\models\manual_knowledge.py:6
+msgid "content"
+msgstr "内容"
+
+#: .\apps\knowledge_mgmt\models\manual_knowledge.py:16
+msgid "Manual Knowledge"
+msgstr "手动知识"
+
+#: .\apps\knowledge_mgmt\models\web_page_knowledge.py:6
+msgid "URL"
+msgstr "网址"
+
+#: .\apps\knowledge_mgmt\models\web_page_knowledge.py:14
+msgid "max depth"
+msgstr "最大深度"
+
+#: .\apps\knowledge_mgmt\models\web_page_knowledge.py:17
+msgid "Web Page Knowledge"
+msgstr "网页知识"
+
+#: .\apps\knowledge_mgmt\web_page_knowledge_mgmt\views.py:21
+msgid "url is required"
+msgstr "网址为必填项"
+
+#: .\apps\model_provider_mgmt\models\llm_skill.py:11
+msgid "Use specified knowledge base"
+msgstr "使用指定的知识库"
+
+#: .\apps\model_provider_mgmt\services\llm_service.py:157
+msgid "Token used up"
+msgstr ""
+
+#: .\apps\model_provider_mgmt\services\llm_service.py:308
+msgid ""
+"\n"
+"The following is the background knowledge provided to you. The format of the "
+"background knowledge is as follows:\n"
+"--------\n"
+"Knowledge Title: [Title]\n"
+"Knowledge Content: [Content]\n"
+"--------\n"
+"\n"
+"             "
+msgstr ""
+"\n"
+"以下是为您提供的背景知识。背景知识的格式如下：\n"
+"--------\n"
+"知识标题：[Title]\n"
+"知识内容：[Content]\n"
+"--------\n"
+"\n"
+"             "
+
+#: .\apps\model_provider_mgmt\services\llm_service.py:321
+msgid "Knowledge Title:[{}]\n"
+msgstr "知识标题：[{}]\n"
+
+#: .\apps\model_provider_mgmt\services\llm_service.py:322
+msgid "Knowledge Content:[{}]\n"
+msgstr "知识内容：[{}]\n"
+
+#: .\apps\model_provider_mgmt\views\llm_view.py:39
+msgid "Skill count exceeds quota limit."
+msgstr "技能数量超过配额限制。"
+
+#: .\apps\model_provider_mgmt\views\llm_view.py:42
+#: .\apps\model_provider_mgmt\views\llm_view.py:58
+#, python-brace-format
+msgid "A skill with the same name already exists in group {validate_msg}."
+msgstr ""
+
+#: .\apps\model_provider_mgmt\views\llm_view.py:112
+msgid "No Group ID"
+msgstr ""
+
+#: .\apps\model_provider_mgmt\views\llm_view.py:115
+msgid "Group does not exist."
+msgstr ""
+
+#: .\apps\model_provider_mgmt\views\llm_view.py:122
+#, fuzzy
+#| msgid "The team field is required."
+msgid "The team is empty."
+msgstr "需要提供团队字段。"
+
+#: .\apps\model_provider_mgmt\views\llm_view.py:125
+#: .\apps\model_provider_mgmt\views\llm_view.py:144
+#, python-brace-format
+msgid "A LLM Model with the same name already exists in group {validate_msg}."
+msgstr ""
+
+#: .\apps\model_provider_mgmt\views\llm_view.py:151
+msgid "Built-in model is not allowed to be deleted"
+msgstr ""
+
+#: .\apps\model_provider_mgmt\views\llm_view.py:170
+msgid "Skill id not found"
+msgstr "未找到技能 ID"
+
+msgid "Search tools"
+msgstr "检索工具"
+
+msgid "General tools"
+msgstr "通用工具"
+
+#~ msgid "The name already exists."
+#~ msgstr "名称已存在。"
+
+msgid "Built-in commonly used tools, including holiday queries, current time queries, etc., to provide additional information."
+msgstr "内置场常用的工具，包括节假日查询、当前时间查询等，以便提供额外信息"
+
+
+msgid "Enables quick search and retrieval of information through the internet to obtain real-time data."
+msgstr "能够通过互联网快速搜索和获取信息，以便获取实时数据"

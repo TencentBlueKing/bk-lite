@@ -40,13 +40,13 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+tsconfig.lint.json
 
 # npm、pnpm 和 yarn lock
 package-lock.json
 pnpm-lock.yaml
 yarn.lock
 
-.vscode
 .history
 
 .idea/
@@ -64,3 +64,4 @@ server.js
 server.key
 
 .env.local
+pnpm-workspace.yaml

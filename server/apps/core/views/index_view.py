@@ -52,7 +52,7 @@ def get_client(request):
 
 def get_my_client(request):
     client = SystemMgmt()
-    client_id = os.getenv("CLIENT_ID", "")
+    client_id = request.GET.get("client_id", "") or os.getenv("CLIENT_ID", "")
     return_data = client.get_client(client_id)
     return JsonResponse(return_data)
 

@@ -5,6 +5,8 @@
 [![Release Version](https://img.shields.io/badge/release-dev--in--progress-orange.svg)](https://github.com/TencentBlueKing/bk-cmdb/releases)
 [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](https://github.com/TencentBlueKing/bk-cmdb/pulls)
 
+![logo](./docs/resource/img/logo.png)
+
 [(中文文档)](Readme.md)
 
 Blueking Lite is an AI-first lightweight operation and maintenance product, comprising the following modules:

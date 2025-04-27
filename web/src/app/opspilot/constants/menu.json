@@ -1,0 +1,368 @@
+{
+  "zh": [
+    {
+      "title": "工作台",
+      "icon": "jiqiren2",
+      "url": "/opspilot/studio",
+      "name": "bot_list",
+      "tour": {
+        "title": "第四步: 与用户对话",
+        "description": "创建机器人指定智能体技能,并发布出去,与用户进行对话,检测机器人的使用情况。",
+        "target": "bot_list",
+        "order": 4
+      },
+      "children": [
+        {
+          "title": "设置",
+          "url": "/opspilot/studio/detail/settings",
+          "icon": "shezhi",
+          "name": "bot_settings"
+        },
+        {
+          "title": "通知",
+          "url": "/opspilot/studio/detail/channel",
+          "icon": "channel1",
+          "name": "bot_channel"
+        },
+        {
+          "title": "日志",
+          "url": "/opspilot/studio/detail/logInfo",
+          "icon": "talk-line",
+          "name": "bot_conversation_log"
+        },
+        {
+          "title": "统计",
+          "url": "/opspilot/studio/detail/statistics",
+          "icon": "tongji",
+          "name": "bot_statistics"
+        }
+      ]
+    },
+    {
+      "title": "智能体",
+      "icon": "weibiaoti3",
+      "url": "/opspilot/skill",
+      "name": "skill_list",
+      "tour": {
+        "title": "第三步: 创建自己的智能体",
+        "description": "可以使用LLM大模型,引用私域知识,使用内置工具,让您的智能体技能更加丰富。",
+        "target": "skill_list",
+        "order": 3
+      },
+      "children": [
+        {
+          "title": "设置",
+          "url": "/opspilot/skill/detail/settings",
+          "icon": "shezhi",
+          "name": "skill_setting"
+        },
+        {
+          "title": "规则",
+          "url": "/opspilot/skill/detail/rules",
+          "icon": "guize",
+          "name": "skill_rule"
+        },
+        {
+          "title": "调用日志",
+          "url": "/opspilot/skill/detail/invocationLogs",
+          "icon": "talk-line",
+          "name": "skill_invocation_logs"
+        },
+        {
+          "title": "接口",
+          "url": "/opspilot/skill/detail/api",
+          "icon": "api",
+          "name": "skill_api"
+        }
+      ]
+    },
+    {
+      "title": "知识库",
+      "icon": "zhishiku1",
+      "url": "/opspilot/knowledge",
+      "name": "knowledge_list",
+      "tour": {
+        "title": "第二步: 上传私域知识",
+        "description": "自定义上传并处理自己所需知识,支持本地文档,网页引用和自定义文本。",
+        "cover": "/app/tours/knowledge_tour.png",
+        "target": "knowledge_list",
+        "order": 2
+      },
+      "children": [
+        {
+          "title": "文档",
+          "url": "/opspilot/knowledge/detail/documents",
+          "icon": "shiyongwendang",
+          "name": "knowledge_document"
+        },
+        {
+          "title": "文档编辑",
+          "url": "/opspilot/knowledge/detail/documents/modify",
+          "name": "knowledge_document_modify",
+          "isNotMenuItem": true
+        },
+        {
+          "title": "文档详情",
+          "url": "/opspilot/knowledge/detail/documents/result",
+          "name": "knowledge_document_result",
+          "isNotMenuItem": true
+        },
+        {
+          "title": "文件预览",
+          "url": "/opspilot/knowledge/preview",
+          "name": "file_preview",
+          "isNotMenuItem": true
+        },
+        {
+          "title": "测试",
+          "url": "/opspilot/knowledge/detail/testing",
+          "icon": "ceshi",
+          "name": "knowledge_testing"
+        },
+        {
+          "title": "设置",
+          "url": "/opspilot/knowledge/detail/settings",
+          "icon": "shezhi",
+          "name": "knowledge_setting"
+        },
+        {
+          "title": "接口",
+          "url": "/opspilot/knowledge/detail/api",
+          "icon": "api",
+          "name": "knowledge_api"
+        }
+      ]
+    },
+    {
+      "title": "工具",
+      "icon": "gongju-",
+      "url": "/opspilot/tool",
+      "name": "tool_list"
+    },
+    {
+      "title": "模型",
+      "icon": "moxing2",
+      "url": "/opspilot/provider",
+      "name": "provide_list",
+      "tour": {
+        "title": "第一步: 接入LLM大模型",
+        "description": "使用内置的大模型,或者自行接入大模型,以便智能体使用。",
+        "cover": "/app/tours/model_tour.png",
+        "target": "provide_list",
+        "order": 1
+      }
+    },
+    {
+      "title": "设置",
+      "icon": "settings-fill",
+      "url": "/opspilot/settings",
+      "name": "Setting",
+      "children": [
+        {
+          "title": "管理配额",
+          "url": "/opspilot/settings/manage",
+          "icon": "_quota_management",
+          "name": "mange_quota"
+        },
+        {
+          "title": "我的配额",
+          "url": "/opspilot/settings/quota",
+          "icon": "quota",
+          "name": "my_quota"
+        },
+        {
+          "title": "接口秘密值",
+          "url": "/opspilot/settings/key",
+          "icon": "key",
+          "name": "api_secret_key"
+        }
+      ]
+    }
+  ],
+  "en": [
+    {
+      "title": "Studio",
+      "icon": "jiqiren2",
+      "url": "/opspilot/studio",
+      "name": "bot_list",
+      "tour": {
+        "title": "The Fourth Step: Talk to Users",
+        "description": "Create a bot with a specific skill, publish it, talk to users, and monitor bot usage.",
+        "target": "bot_list",
+        "order": 4
+      },
+      "children": [
+        {
+          "title": "Settings",
+          "url": "/opspilot/studio/detail/settings",
+          "icon": "shezhi",
+          "name": "bot_settings"
+        },
+        {
+          "title": "Channel",
+          "url": "/opspilot/studio/detail/channel",
+          "icon": "channel1",
+          "name": "bot_channel"
+        },
+        {
+          "title": "Logs",
+          "url": "/opspilot/studio/detail/logInfo",
+          "icon": "talk-line",
+          "name": "bot_conversation_log"
+        },
+        {
+          "title": "Statistics",
+          "url": "/opspilot/studio/detail/statistics",
+          "icon": "tongji",
+          "name": "bot_statistics"
+        }
+      ]
+    },
+    {
+      "title": "Agent",
+      "icon": "weibiaoti3",
+      "url": "/opspilot/skill",
+      "name": "skill_list",
+      "tour": {
+        "title": "The Third Step: Create Your Own Agent",
+        "description": "You can use the LLM large model, reference private domain knowledge, use built-in tools, and make your agent skills more abundant.",
+        "target": "skill_list",
+        "order": 3
+      },
+      "children": [
+        {
+          "title": "Setting",
+          "url": "/opspilot/skill/detail/settings",
+          "icon": "shezhi",
+          "name": "skill_setting"
+        },
+        {
+          "title": "Rules",
+          "url": "/opspilot/skill/detail/rules",
+          "icon": "guize",
+          "name": "skill_rule"
+        },
+        {
+          "title": "Invocation Logs",
+          "url": "/opspilot/skill/detail/invocationLogs",
+          "icon": "talk-line",
+          "name": "skill_invocation_logs"
+        },
+        {
+          "title": "API",
+          "url": "/opspilot/skill/detail/api",
+          "icon": "api",
+          "name": "skill_api"
+        }
+      ]
+    },
+    {
+      "title": "Knowledge",
+      "icon": "zhishiku1",
+      "url": "/opspilot/knowledge",
+      "name": "knowledge_list",
+      "tour": {
+        "title": "The Second Step: Upload Private Domain Knowledge",
+        "description": "Customize and upload the knowledge you need, support local documents, web references, and custom text.",
+        "cover": "/app/tours/knowledge_tour.png",
+        "target": "knowledge_list",
+        "order": 2
+      },
+      "children": [
+        {
+          "title": "Documents",
+          "url": "/opspilot/knowledge/detail/documents",
+          "icon": "shiyongwendang",
+          "name": "knowledge_document"
+        },
+        {
+          "title": "DocumentsModify",
+          "url": "/opspilot/knowledge/detail/documents/modify",
+          "name": "knowledge_document_modify",
+          "isNotMenuItem": true
+        },
+        {
+          "title": "Result",
+          "url": "/opspilot/knowledge/detail/documents/result",
+          "name": "knowledge_document_result",
+          "isNotMenuItem": true
+        },
+        {
+          "title": "File Preview",
+          "url": "/opspilot/knowledge/preview",
+          "name": "file_preview",
+          "isNotMenuItem": true
+        },
+        {
+          "title": "Testing",
+          "url": "/opspilot/knowledge/detail/testing",
+          "icon": "ceshi",
+          "name": "knowledge_testing"
+        },
+        {
+          "title": "Settings",
+          "url": "/opspilot/knowledge/detail/settings",
+          "icon": "shezhi",
+          "name": "knowledge_setting"
+        },
+        {
+          "title": "API",
+          "url": "/opspilot/knowledge/detail/api",
+          "icon": "api",
+          "name": "knowledge_api"
+        },
+        {
+          "title": "Invocation Logs",
+          "url": "/opspilot/knowledge/detail/invocationLogs",
+          "icon": "talk-line",
+          "name": "knowledge_invocation_logs"
+        }
+      ]
+    },
+    {
+      "title": "Tool",
+      "icon": "gongju-",
+      "url": "/opspilot/tool",
+      "name": "tool_list"
+    },
+    {
+      "title": "Model",
+      "icon": "moxing2",
+      "url": "/opspilot/provider",
+      "name": "provide_list",
+      "tour": {
+        "title": "The First Step: Access to LLM Large Model",
+        "description": "Use the built-in large model, or access the large model by yourself, so that the agent can use it.",
+        "cover": "/app/tours/model_tour.png",
+        "target": "provide_list",
+        "order": 1
+      }
+    },
+    {
+      "title": "Settings",
+      "icon": "settings-fill",
+      "url": "/opspilot/settings",
+      "name": "Setting",
+      "children": [
+        {
+          "title": "Manage Quota",
+          "url": "/opspilot/settings/manage",
+          "icon": "_quota_management",
+          "name": "mange_quota"
+        },
+        {
+          "title": "My Quota",
+          "url": "/opspilot/settings/quota",
+          "icon": "quota",
+          "name": "my_quota"
+        },
+        {
+          "title": "API Secret Keys",
+          "url": "/opspilot/settings/key",
+          "icon": "key",
+          "name": "api_secret_key"
+        }
+      ]
+    }
+  ]
+}

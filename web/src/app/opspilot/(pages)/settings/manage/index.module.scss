@@ -1,0 +1,16 @@
+.multipleSelect {
+  :global {
+    .ant-select-selector {
+      width: 100% !important;
+    }
+  }
+}
+
+.tokenSetWrapper {
+  :global {
+    .ant-form-item {
+      position: relative;
+      margin-bottom: 24px;
+    }
+  }
+}

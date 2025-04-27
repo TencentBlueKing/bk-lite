@@ -1,0 +1,11 @@
+.introduction {
+  .subName {
+    color: var(--color-text-3);
+  }
+
+  :global {
+    .ant-card-body {
+      padding: 15px !important;
+    }
+  }
+}

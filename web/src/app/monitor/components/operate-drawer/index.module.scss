@@ -1,0 +1,31 @@
+.customDrawer {
+    :global {
+        .ant-drawer-header {
+            padding: 16px;
+            background: var(--color-modal-header-color) !important;
+            border-bottom: 1px solid var(--color-border-1);
+        }
+    }
+
+    .customDrawerHeader {
+        display: flex;
+        align-items: center;
+    }
+
+    .ant-drawer-footer {
+        padding: 16px;
+        text-align: right;
+        border-top: 1px solid var(--color-border-1);
+    }
+
+    .customDrawerFooter {
+        display: flex;
+        justify-content: flex-end;
+        gap: 8px;
+    }
+
+    .ant-drawer-body {
+        padding: 16px;
+        overflow-y: auto;
+    }
+}

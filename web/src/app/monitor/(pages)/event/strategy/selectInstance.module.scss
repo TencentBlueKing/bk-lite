@@ -1,0 +1,42 @@
+.selectInstance {
+    display: flex;
+
+    .instanceList {
+        width: 550px;
+        padding-right: 10px;
+    }
+
+    .previewList {
+        flex: 1;
+        padding: 0 0 10px 10px;
+        border-left: 1px solid var(--ant-color-border);
+
+        .list {
+            height: calc(100vh - 260px);
+            overflow-y: hidden;
+            overflow-y: auto;
+
+            .listItem {
+                display: flex;
+                justify-content: space-between;
+                align-items: center;
+                padding: 4px 10px;
+
+                .operate {
+                    visibility: hidden;
+                }
+
+                &:hover {
+                    background: var(--color-fill-1);
+
+                    .operate {
+                        visibility: visible;
+                        cursor: pointer;
+                        color: var(--color-primary);
+                    }
+                }
+            }
+        }
+    }
+
+}

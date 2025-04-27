@@ -1,0 +1,48 @@
+.sideMenuLayout {
+  height: var(--custom-height, calc(100vh - 90px));
+  overflow: hidden;
+  .sectionContainer {
+    background: var(--color-components-side-nav-bg);
+  }
+  .sectionContext {
+    height: 100%;
+    overflow: auto;
+  }
+}
+.sideMenu {
+  color: var(--color-components-side-nav-text);
+  .introduction {
+    background: var(--color-components-side-nav-bg);
+  }
+  .nav {
+    background: var(--color-components-side-nav-bg);
+    .relationList {
+      max-height: calc(100% - 180px);
+      overflow: auto;
+    }
+    li {
+      &:hover {
+        background: var(--color-components-side-nav-hover-bg);
+      }
+      &.active {
+        color: var(--color-components-side-nav-text-active);
+        background: var(--color-components-side-nav-text-active-bg);
+      }
+    }
+  }
+}
+.segmented {
+  :global {
+    .ant-segmented {
+      background: transparent;
+      color: var(--color-text-1);
+      .ant-segmented-item {
+        margin-right: 8px;
+        padding: 3px 6px !important;
+      }
+      .ant-segmented-item-selected {
+        color: var(--color-primary);
+      }
+    }
+  }
+}

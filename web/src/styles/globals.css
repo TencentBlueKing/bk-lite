@@ -29,6 +29,7 @@
 
 :root {
   --color-primary: #155AEF;
+  --color-primary-bg-active: #e1edfc;
   --color-secondary: #F2F4F7;
   --color-text-1: #1E252E;
   --color-text-2: #475468;
@@ -84,6 +85,7 @@
 
 .dark {
   --color-primary: #155AEF;
+  --color-primary-bg-active: #172637;
   --color-secondary: #1d1d20;
   --color-text-1: rgba(255,255,255, 0.9);
   --color-text-2: rgba(255,255,255, 0.7);
@@ -136,6 +138,7 @@
 body {
   color: var(--color-components-nav-button-text);
   background: var(--color-background-body);
+  min-width: 1280px;
 }
 
 html:not(.dark) body {

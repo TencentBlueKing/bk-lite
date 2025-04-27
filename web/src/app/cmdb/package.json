@@ -1,0 +1,21 @@
+{
+  "name": "cmdb",
+  "version": "1.0.0",
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start"
+  },
+  "dependencies": {
+    "@ant-design/icons": "^5.5.1",
+    "@antv/x6": "^2.18.1",
+    "@antv/x6-react-shape": "^2.2.3",
+    "@antv/xflow": "^2.2.4",
+    "react-activation": "^0.13.0",
+    "react-beautiful-dnd": "^13.1.1",
+    "react-masonry-css": "latest"
+  },
+  "devDependencies": {
+    "@types/react-beautiful-dnd": "^13.1.8"
+  }
+}

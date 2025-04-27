@@ -1,0 +1,33 @@
+{
+  "opsConsole": {
+    "serviceHotline": "服务热线",
+    "qqConsultation": "QQ咨询",
+    "console": "欢迎使用WeOps X控制台",
+    "description": "WeOps X是基于人工智能技术的原生运维智能平台。平台包括AI智能分析、运维资产监管等功能，帮助全面优化运维管理。",
+    "freeApply": "免费申请演示",
+    "contactUs": "联系我们",
+    "clickToEnter": "点击进入",
+    "date": "日期",
+    "initUserSet": "初始化用户配置",
+    "group": "分组名",
+    "intelligentModels": "智能模型",
+    "toolManagement": "工具管理",
+    "knowledgeManagement": "知识管理",
+    "skillManagement": "技能管理",
+    "robots": "机器人",
+    "user": "用户",
+    "orangization": "组织",
+    "rolePermissions": "角色权限",
+    "notification": "通知渠道",
+    "monitorIntegration": "监控接入",
+    "monitorDashboard": "监控视图",
+    "metricsQuery": "指标检索",
+    "policies": "策略与告警",
+    "probeManagement": "探针管理",
+    "nodeAccess": "节点接入",
+    "assetModeling": "资产建模",
+    "automatedAsset": "自动纳管",
+    "assetManagement": "资产管理",
+    "associatedTopology": "关联拓扑"
+  }
+}

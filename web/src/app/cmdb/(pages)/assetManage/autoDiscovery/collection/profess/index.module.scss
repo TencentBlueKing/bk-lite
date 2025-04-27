@@ -1,0 +1,71 @@
+// 基础标题样式
+%titleBase {
+  font-size: 16px;
+  font-weight: bold;
+  margin-bottom: 12px;
+  padding-bottom: 8px;
+}
+
+.sectionTitle {
+  @extend %titleBase;
+  margin-left: 10px;
+}
+
+.panelHeader {
+  font-size: 16px;
+  font-weight: bold;
+  margin-left: 0;
+  display: inline-flex;
+  align-items: center;
+}
+
+.mainContent {
+  height: calc(100vh - 140px);
+  overflow-y: auto;
+
+  :global {
+    .ant-collapse-content-box {
+      padding-left: 0 !important;
+    }
+  }
+}
+
+.status {
+  border: 3px solid var(--color-border);
+  border-radius: 50%;
+  height: 13px;
+  margin-right: 6px;
+  width: 13px;
+  display: inline-block;
+  vertical-align: middle;
+
+  &.success {
+    background: #4acf88;
+  }
+
+  &.fail {
+    background: #ff6a57;
+  }
+}
+
+.statusText {
+  display: flex;
+  align-items: center;
+}
+
+.taskDetail {
+  margin-top: -16px; 
+  :global(.ant-drawer-body) {
+    padding-top: 0;
+  }
+}
+
+.taskFooter {
+    display: flex;
+    justify-content: start;
+    position: absolute;
+    bottom: -50px;
+    border-top: var(--color-border) solid 1px;
+    padding-top: 8px;
+    width: 100%;
+}

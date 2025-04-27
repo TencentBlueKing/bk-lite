@@ -1,0 +1,18 @@
+.radioItem {
+    width: 100%;
+    border: 1px solid var(--color-border-2);
+    border-radius: 4px;
+    padding: 16px;
+    margin-bottom: 8px;
+    cursor: pointer;
+    transition: border-color 0.3s;
+  
+    &:hover {
+      border-color: var(--color-primary);
+    }
+  }
+  
+  .radioItemSelected {
+    border-color: var(--color-primary);
+  }
+  

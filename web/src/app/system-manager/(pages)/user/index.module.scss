@@ -1,0 +1,28 @@
+.userInfo {
+  font-weight: 300;
+
+  :global {
+    .ant-tree-node-selected {
+      color: var(--color-primary) !important;
+    }
+
+    .ant-tree-treenode-selected {
+      .ant-tree-switcher-icon {
+        color: var(--color-primary) !important;
+      }
+    }
+
+    .ant-table-thead > tr > th {
+      border-left: none !important;
+    }
+
+    .ant-tree {
+      color: var(--color-text-2) !important;
+    }
+
+    .sub-layout_sideMenuLayout__LStLh .sub-layout_sectionContext__6mM_M {
+      overflow: hidden;
+    }
+
+  }
+}

@@ -1,3 +1,4 @@
+from celery.schedules import crontab
 from dotenv import load_dotenv
 from split_settings.tools import include, optional
 

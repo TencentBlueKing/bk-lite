@@ -1,7 +1,7 @@
 import path from 'path';
 import fs from 'fs-extra';
 
-const EXCLUDED_DIRECTORIES = ['(core)', 'no-permission'];
+const INSTALL_APPS = (process.env.NEXTAPI_INSTALL_APP || 'example').split(',').map(app => app.trim());
 
 const mergeMessages = (target, source) => {
   for (const key in source) {
@@ -42,20 +42,17 @@ const combineLocales = async () => {
     zh: flattenMessages(baseLocales.zh),
   };
 
-  const apps = await fs.readdir(localesDir, { withFileTypes: true });
-  for (const app of apps) {
-    if (app.isDirectory() && !EXCLUDED_DIRECTORIES.includes(app.name)) {
-      const appLocalesDir = path.join(localesDir, app.name, 'locales');
-      for (const locale of ['en', 'zh']) {
-        try {
-          const filePath = path.join(appLocalesDir, `${locale}.json`);
-          if (await fs.pathExists(filePath)) {
-            const messages = flattenMessages(await fs.readJSON(filePath));
-            mergedMessages[locale] = mergeMessages(mergedMessages[locale], messages);
-          }
-        } catch (error) {
-          console.error(`Error loading locale for ${app.name}:`, error);
+  for (const app of INSTALL_APPS) {
+    const appLocalesDir = path.join(localesDir, app, 'locales');
+    for (const locale of ['en', 'zh']) {
+      try {
+        const filePath = path.join(appLocalesDir, `${locale}.json`);
+        if (await fs.pathExists(filePath)) {
+          const messages = flattenMessages(await fs.readJSON(filePath));
+          mergedMessages[locale] = mergeMessages(mergedMessages[locale], messages);
         }
+      } catch (error) {
+        console.error(`Error loading locale for ${app}:`, error);
       }
     }
   }
@@ -71,25 +68,25 @@ const combineLocales = async () => {
 const combineMenus = async () => {
   const dirPath = path.join(process.cwd(), 'src/app');
   const publicMenusDir = path.resolve(process.cwd(), 'public/menus');
-  const directories = await fs.readdir(dirPath, { withFileTypes: true });
+
   let allMenusEn = [];
   let allMenusZh = [];
-  for (const dirent of directories) {
-    if (dirent.isDirectory() && !EXCLUDED_DIRECTORIES.includes(dirent.name)) {
-      try {
-        const menuPath = path.join(dirPath, dirent.name, 'constants', 'menu.json');
-        if (await fs.pathExists(menuPath)) {
-          const menu = await fs.readJSON(menuPath);
-          if (menu.en && menu.zh) {
-            allMenusEn = allMenusEn.concat(menu.en);
-            allMenusZh = allMenusZh.concat(menu.zh);
-          }
+
+  for (const app of INSTALL_APPS) {
+    try {
+      const menuPath = path.join(dirPath, app, 'constants', 'menu.json');
+      if (await fs.pathExists(menuPath)) {
+        const menu = await fs.readJSON(menuPath);
+        if (menu.en && menu.zh) {
+          allMenusEn = allMenusEn.concat(menu.en);
+          allMenusZh = allMenusZh.concat(menu.zh);
         }
-      } catch (err) {
-        console.error(`Failed to load menu for ${dirent.name}:`, err);
       }
+    } catch (err) {
+      console.error(`Failed to load menu for ${app}:`, err);
     }
   }
+
   await fs.ensureDir(publicMenusDir);
   await fs.writeJSON(path.join(publicMenusDir, 'en.json'), allMenusEn, { spaces: 2 });
   await fs.writeJSON(path.join(publicMenusDir, 'zh.json'), allMenusZh, { spaces: 2 });
@@ -98,14 +95,10 @@ const combineMenus = async () => {
 
 const copyPublicDirectories = () => {
   const srcDir = path.resolve(process.cwd(), 'src/app');
-  const apps = fs.readdirSync(srcDir).filter(file =>
-    fs.lstatSync(path.join(srcDir, file)).isDirectory() && !EXCLUDED_DIRECTORIES.includes(file)
-  );
-
   const mainDestinationPath = path.resolve(process.cwd(), 'public', 'app');
   fs.ensureDirSync(mainDestinationPath);
 
-  apps.forEach(app => {
+  INSTALL_APPS.forEach(app => {
     const sourcePath = path.join(srcDir, app, 'public');
     const destinationPath = path.join(mainDestinationPath);
 

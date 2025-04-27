@@ -16,6 +16,7 @@ const EntityList = <T,>({
   filterOptions = [],
   filter = false,
   filterLoading = false,
+  search = true,
   operateSection,
   menuActions,
   singleAction,
@@ -23,6 +24,7 @@ const EntityList = <T,>({
   onSearch,
   onCardClick,
   changeFilter,
+  infoText,
 }: EntityListProps<T>) => {
   const { t } = useTranslation();
   const [searchTerm, setSearchTerm] = useState('');
@@ -92,15 +94,18 @@ const EntityList = <T,>({
           <p
             className={`text-xs mt-3 text-sm max-h-[66px] ${(isSingleButtonAction && hoveredCard === id) ? 'line-clamp-2' : 'line-clamp-3'} ${styles.desc}`}>{description}</p>
         </div>
-        {tagList && tagList.length > 0 && (
-          <div className="mt-2">
-            {tagList.map((t: any, idx: number) => (
-              <Tag key={idx} className="mr-1 mb-1 font-mini">
-                {t}
-              </Tag>
-            ))}
+        {(tagList && tagList.length > 0) || infoText ? (
+          <div className="mt-2 flex justify-between items-end">
+            <div>
+              {tagList && tagList.length > 0 && tagList.map((t: any, idx: number) => (
+                <Tag key={idx} className="mr-1 font-mini">
+                  {t}
+                </Tag>
+              ))}
+            </div>
+            {infoText && <span className='text-[var(--color-text-4)] font-mini'>{infoText}</span>}
           </div>
-        )}
+        ) : null}
         {isSingleButtonAction && (
           <Button
             size="small"
@@ -134,14 +139,14 @@ const EntityList = <T,>({
             loading={filterLoading}
             onChange={handleFilter}
           />)}
-          <Search
+          {search && (<Search
             size={searchSize}
             allowClear
             enterButton
             placeholder={`${t('common.search')}...`}
             className="w-60"
             onSearch={handleSearch}
-          />
+          />)}
         </Space.Compact>
         {operateSection && <>{operateSection}</>}
       </div>
@@ -154,7 +159,7 @@ const EntityList = <T,>({
           {filteredItems.length === 0 ? (
             <Empty description={t('common.noData')} />
           ) : (
-            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 2xl:grid-cols-5 gap-6">
               {openModal && (
                 <PermissionWrapper
                   requiredPermissions={['Add']}

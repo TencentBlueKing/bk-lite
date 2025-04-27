@@ -49,12 +49,12 @@ const LayoutWithProviders = ({ children }: { children: React.ReactNode }) => {
   useEffect(() => {
     const checkPermission = async () => {
       if (!isLoading) {
-        if (excludedPaths.includes(pathname)) {
+        if (pathname && excludedPaths.includes(pathname)) {
           setIsAllowed(true);
           return;
         }
 
-        if (isPathInMenu(pathname, configMenus)) {
+        if (pathname && isPathInMenu(pathname, configMenus)) {
           if (hasPermission(pathname)) {
             setIsAllowed(true);
           } else {
@@ -72,7 +72,7 @@ const LayoutWithProviders = ({ children }: { children: React.ReactNode }) => {
   }, [isLoading, pathname]);
 
   // 显示加载动画，或在没有权限时避免加载页面
-  if (isLoading || (!isAllowed && !excludedPaths.includes(pathname))) {
+  if (isLoading || (!isAllowed && pathname && !excludedPaths.includes(pathname))) {
     return <Loader />;
   }
 

@@ -1,0 +1,118 @@
+{
+  "client_id": "system-manager",
+  "name": "Setting",
+  "url": "/system-manager/user",
+  "description": "Create roles for the Setting app to manage data permissions, menu permissions, and feature permissions.",
+  "menus": [
+    {
+      "name": "User",
+      "children": [
+        {
+          "id": "user_list",
+          "name": "User-list",
+          "operation": [
+            "View",
+            "Add",
+            "Edit",
+            "Delete"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Group",
+      "children": [
+        {
+          "id": "group_list",
+          "name": "Group-list",
+          "operation": [
+            "View",
+            "Add",
+            "Edit",
+            "Delete"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Application",
+      "children": [
+        {
+          "id": "application_list",
+          "name": "Application-list",
+          "operation": [
+            "View"
+          ]
+        },
+        {
+          "id": "application_role",
+          "name": "Application-role",
+          "operation": [
+            "View",
+            "Edit",
+            "Add",
+            "Add user",
+            "Edit Permission",
+            "Delete"
+          ]
+        },
+        {
+          "id": "data_permission",
+          "name": "Data permission",
+          "operation": [
+            "View",
+            "Edit",
+            "Add",
+            "Delete"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Channel",
+      "children": [
+        {
+          "id": "channel_list",
+          "name": "Channel-list",
+          "operation": [
+            "View",
+            "Edit",
+            "Delete",
+            "Add"
+          ]
+        },
+        {
+          "id": "channel_setting",
+          "name": "Channel-setting",
+          "operation": [
+            "Save",
+            "View"
+          ]
+        },
+        {
+          "id": "channel_template",
+          "name": "Channel-template",
+          "operation": [
+            "View",
+            "Detail"
+          ]
+        }
+      ]
+    }
+  ],
+  "roles": [
+    {
+      "name": "admin",
+      "role_name": "system-manager_admin",
+      "menus": []
+    },
+    {
+      "name": "normal",
+      "role_name": "system-manager_normal",
+      "menus": [
+        "user_list-View",
+        "group_list-View"
+      ]
+    }
+  ]
+}

@@ -1,2 +1,0 @@
-duckduckgo-search==7.2.1
-langmem==0.0.16

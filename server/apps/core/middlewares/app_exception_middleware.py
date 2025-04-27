@@ -35,7 +35,7 @@ class AppExceptionMiddleware(MiddlewareMixin):
                 ),
             )
 
-            return WebUtils.response_error(error_message=exception.message, status_code=exception.ERROR_CODE)
+            return WebUtils.response_error(error_message=exception.message, status_code=exception.STATUS_CODE)
 
         # 用户未主动捕获的异常
         logger.error(

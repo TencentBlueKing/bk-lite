@@ -6,6 +6,7 @@ import FieldSettingModal from './fieldSettingModal';
 import { ColumnItem, GroupFieldItem } from '@/types/index';
 import { TableCurrentDataSource, FilterValue, SorterResult } from 'antd/es/table/interface';
 import { cloneDeep } from 'lodash';
+import EllipsisWithTooltip from '../ellipsis-with-tooltip';
 
 interface CustomTableProps<T>
   extends Omit<TableProps<T>, 'bordered' | 'fieldSetting' | 'onSelectFields'> {
@@ -54,6 +55,7 @@ const CustomTable = <T extends object>({
   const [filters, setFilters] = useState<Record<string, FilterValue | null>>({});
   const [sorter, setSorter] = useState<SorterResult<T> | SorterResult<T>[]>({});
   const [extra, setExtra] = useState<TableCurrentDataSource<T>>();
+  const [columns, setColumns] = useState<any[]>([]);
 
   useEffect(() => {
     const updateTableHeight = () => {
@@ -68,8 +70,37 @@ const CustomTable = <T extends object>({
     };
   }, [scroll]);
 
+  useEffect(() => {
+    const initialColumns = renderColumns();
+    setColumns(initialColumns);
+  }, [TableProps.columns, rowDraggable]);
+
+  const enhanceColumnRender = (column: any) => {
+    if (column.render) return column;
+
+    return {
+      ...column,
+      render: (text: any) => {
+        if ([null, undefined, ''].includes(text)) return '--';
+        if (typeof text === 'string') {
+          return (
+            <EllipsisWithTooltip
+              text={text}
+              className="truncate w-full"
+            />
+          );
+        }
+        return text;
+      }
+    };
+  };
+
   const renderColumns = useCallback(() => {
-    if (rowDraggable)
+    let cols = TableProps.columns || [];
+
+    cols = cols.map(col => enhanceColumnRender(col));
+
+    if (rowDraggable) {
       return [
         {
           key: 'sort',
@@ -81,9 +112,10 @@ const CustomTable = <T extends object>({
             <HolderOutlined className="font-[800] text-[16px] mr-[6px] cursor-move" />
           ),
         },
-        ...(TableProps.columns || []),
+        ...cols,
       ];
-    return TableProps.columns;
+    }
+    return cols;
   }, [TableProps.columns, rowDraggable]);
 
   const parseCalcY = (value: string): number => {
@@ -212,7 +244,7 @@ const CustomTable = <T extends object>({
         }
         onRow={(record, index) => renderRow(index!)}
         {...TableProps}
-        columns={renderColumns() as TableProps<T>['columns']}
+        columns={columns}
         onChange={(pageConfig, filters, sorter, extra) =>
           handleTableChange(filters, sorter, extra)
         }
@@ -228,6 +260,7 @@ const CustomTable = <T extends object>({
       </div>)}
       {fieldSetting.showSetting ? (
         <SettingFilled
+          style={{ top: size === 'small' ? 12 : size === 'middle' ? 16 : 20 }}
           className={customTableStyle.setting}
           onClick={showFieldSetting}
         />

@@ -88,10 +88,15 @@ export const PermissionsProvider = ({ children }: { children: ReactNode }) => {
     if (!clientLoading && !apiLoading && !menuLoading) {
       setLoading(true);
       try {
-        const params = { id: myClientData?.[0]?.id }
-        const data: MenuItem[] = await get('/core/api/get_user_menus/', { params });
-
-        const permissionMap = collectPermissionOperations(data);
+        let allMenuData: MenuItem[] = [];
+        if (myClientData && myClientData.length > 0) {
+          const menuPromises = myClientData.map(client =>
+            get('/core/api/get_user_menus/', { params: { id: client.id } })
+          );
+          const menuResults = await Promise.all(menuPromises);
+          allMenuData = menuResults.flat();
+        }
+        const permissionMap = collectPermissionOperations(allMenuData);
         const filteredMenus = filterMenusByPermission(permissionMap, configMenus);
         const parsedPermissions = extractPermissions(filteredMenus);
         setMenuItems(filteredMenus);
@@ -102,7 +107,7 @@ export const PermissionsProvider = ({ children }: { children: ReactNode }) => {
         setLoading(false);
       }
     }
-  }, [get, apiLoading, clientLoading, menuLoading]);
+  }, [get, apiLoading, clientLoading, menuLoading, myClientData, configMenus]);
 
   useEffect(() => {
     if (!clientLoading && myClientData.length) {

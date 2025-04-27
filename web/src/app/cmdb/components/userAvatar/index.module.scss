@@ -1,0 +1,40 @@
+.user-avatar {
+  .user-name {
+    font-size: 14px;
+    color: #333;
+  }
+}
+
+.user-avatar-wrapper {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  max-width: 100%;
+}
+
+.member-circle {
+  border-radius: 50%;
+  display: flex;
+  height: 24px;
+  width: 24px;
+  justify-content: center;
+  align-items: center;
+  flex-shrink: 0;
+  color: #fff;
+  font-size: 14px;
+
+  &.small {
+    height: 20px;
+    width: 20px;
+    font-size: 12px;
+  }
+}
+
+.member-name {
+  font-size: 14px;
+  color: #333;
+  line-height: 1.5715;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}

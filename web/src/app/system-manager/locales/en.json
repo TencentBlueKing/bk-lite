@@ -1,0 +1,179 @@
+{
+  "system": {
+    "common": {
+      "modifyrole": "Modify Role",
+      "modifydelete": "Modify Delete",
+      "batchmodifyroles": "Batch Modify Roles",
+      "selectedusers": "Selected Users",
+      "english": "English",
+      "chinese": "Chinese",
+      "password": "Password"
+    },
+    "zoneinfo": {
+      "PacificHonolulu": "Pacific/Honolulu (UTC-10:00)",
+      "AmericaAnchorage": "America/Anchorage (UTC-09:00)",
+      "AmericaLosAngeles": "America/Los_Angeles (UTC-08:00)",
+      "AmericaDenver": "America/Denver (UTC-07:00)",
+      "AmericaChicago": "America/Chicago (UTC-06:00)",
+      "AmericaNewYork": "America/New_York (UTC-05:00)",
+      "AmericaCaracas": "America/Caracas (UTC-04:00)",
+      "AmericaHalifax": "America/Halifax (UTC-04:00)",
+      "AmericaSaoPaulo": "America/Sao_Paulo (UTC-03:00)",
+      "AtlanticSouthGeorgia": "Atlantic/South_Georgia (UTC-02:00)",
+      "AtlanticAzores": "Atlantic/Azores (UTC-01:00)",
+      "EuropeLondon": "Europe/London (UTC+00:00)",
+      "AfricaLagos": "Africa/Lagos (UTC+01:00)",
+      "EuropeBerlin": "Europe/Berlin (UTC+01:00)",
+      "EuropeAthens": "Europe/Athens (UTC+02:00)",
+      "AsiaJerusalem": "Asia/Jerusalem (UTC+02:00)",
+      "EuropeIstanbul": "Europe/Istanbul (UTC+03:00)",
+      "AsiaDubai": "Asia/Dubai (UTC+04:00)",
+      "IndianMaldives": "Indian/Maldives (UTC+05:00)",
+      "AsiaYekaterinburg": "Asia/Yekaterinburg (UTC+05:00)",
+      "AsiaKolkata": "Asia/Kolkata (UTC+05:30)",
+      "AsiaKathmandu": "Asia/Kathmandu (UTC+05:45)",
+      "AsiaAlmaty": "Asia/Almaty (UTC+06:00)",
+      "AsiaBangkok": "Asia/Bangkok (UTC+07:00)",
+      "AsiaShanghai": "Asia/Shanghai (UTC+08:00)",
+      "AsiaTokyo": "Asia/Tokyo (UTC+09:00)",
+      "AustraliaSydney": "Australia/Sydney (UTC+10:00)",
+      "PacificNoumea": "Pacific/Noumea (UTC+11:00)",
+      "PacificAuckland": "Pacific/Auckland (UTC+12:00)"
+    },
+    "modules": {
+      "bot": "Studio",
+      "skill": "Agent",
+      "knowledge": "Knowledge Base",
+      "tools": "Tools",
+      "provider": "Model",
+      "llm_model": "LLM Model",
+      "embed_model": "Embedding Model",
+      "rerank_model": "Reranking Model",
+      "ocr_model": "OCR Model"
+    },
+    "user": {
+      "title": "User",
+      "desc": "Display all information.You can maintain user information and assign roles.",
+      "search": "Search",
+      "table": {
+        "username": "USERNAME",
+        "lastName": "NAME",
+        "email": "EMAIL",
+        "number": "NUMBER",
+        "role": "ROLE"
+      },
+      "passwordTitle": "Set Password",
+      "form": {
+        "username": "Username",
+        "lastName": "Name",
+        "name": "Name",
+        "email": "Email",
+        "group": "Group",
+        "role": "Role",
+        "zoneinfo": "zoneInfo",
+        "locale": "Locale",
+        "administrator": "Administrator",
+        "normalusers": "Normal Users",
+        "password": "Password",
+        "confirmPassword": "Confirm Password",
+        "passwordMismatch": "Passwords do not match",
+        "temporary": "Temporary",
+        "tempTooltip": "If enabled, the user must change the password on next login"
+      },
+      "admin": {
+        "title": "The administrator has the following permissions:",
+        "desc1": "1.Manage organizations and users in system settings.",
+        "desc2": "2.Have the highest privileges in other apps, possessing access to all data and the ability to perform all functionality operations."
+      },
+      "normal": {
+        "title": "Normal users have the following permissions:",
+        "desc1": "1. Cannot manage organizations and users.",
+        "desc2": "2. In other apps, have data access rights only for their own organization.",
+        "desc3": "3. In other apps, have only operational permissions for using pages, with management pages having view-only access."
+      }
+    },
+    "group": {
+      "title": "Group",
+      "desc": "Display all information.You can maintain user information and assign roles.",
+      "addSubGroups": "Add Sub-Groups",
+      "rename": "Rename",
+      "renameSuccess": "Rename Success",
+      "form": {
+        "name": "Group Name"
+      }
+    },
+    "role": {
+      "title": "Role",
+      "users": "Users",
+      "permissions": "Permissions",
+      "name": "Name",
+      "addRole": "Add Role",
+      "addUser": "Add User",
+      "updateRole": "Update Role",
+      "permission": {
+        "menu": "MENU",
+        "operation": "OPERATION"
+      }
+    },
+    "channel": {
+      "email": "Email",
+      "emailDesc": "The email channel supports the integration of various notification methods and the flexible configuration of different notification templates.",
+      "weCom": "Chat Group Helper",
+      "weComDesc": "The Chat Group Helper channel supports the integration of various notification methods and the flexible configuration of different notification templates.",
+      "table": {
+        "name": "NAME",
+        "description": "DESCRIPTION"
+      },
+      "settings": {
+        "name": "Name",
+        "type": "Type",
+        "description": "Description",
+        "addChannel": "Add Channel",
+        "editChannel": "Edit Channel",
+        "deleteConfirm": "Are you sure you want to delete this channel?",
+        "smtp_server": "Smtp Server",
+        "port": "Port",
+        "smtp_user": "Smtp User",
+        "smtp_pwd": "Smtp Password",
+        "smtp_usessl": "Use SSL",
+        "smtp_usetls": "Use TLS",
+        "mail_sender": "Mail Sender",
+        "bot_key": "Bot Key"
+      },
+      "template": {
+        "name": "NAME",
+        "app": "APP",
+        "detail": "Detail",
+        "context": "CONTEXT"
+      }
+    },
+    "data": {
+      "name": "Name",
+      "description": "Description",
+      "group": "Group",
+      "deleteConfirm": "Are you sure you want to delete this data?"
+    },
+    "permission": {
+      "setDataPermission": "Set Data Permission",
+      "group": "Group",
+      "pleaseInputGroupName": "Please input group name",
+      "dataPermission": "Data Permission",
+      "app": "App",
+      "readOnly": "Read Only",
+      "readWrite": "Read Write",
+      "manage": "Manage",
+      "fullPermission": "Full Permission",
+      "dataPermissionRule": "Data Permission Rule",
+      "type": "Type",
+      "allData": "All Data",
+      "specificData": "Specific Data",
+      "permissions": "Permissions",
+      "view": "View",
+      "operate": "Operate",
+      "data": "Data",
+      "actions": "Actions",
+      "noSpecificDataSupport": "This module does not support specific data editing",
+      "noAvailableModules": "No available permission modules"
+    }
+  }
+}

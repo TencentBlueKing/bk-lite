@@ -1,0 +1,23 @@
+.progressContainer {
+  width: 100%;
+  height: 8px;
+  background-color: var(--color-fill-2);
+  border-radius: 4px;
+  overflow: hidden;
+  position: relative;
+}
+.progressBar {
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(90deg, rgba(0, 123, 255, 0.5) 25%, rgba(0, 123, 255, 1) 50%, rgba(0, 123, 255, 0.5) 75%);
+  background-size: 200% 100%;
+  animation: progressAnimation 2s linear infinite;
+}
+@keyframes progressAnimation {
+  0% {
+    background-position: 200% 0;
+  }
+  100% {
+    background-position: -200% 0;
+  }
+}

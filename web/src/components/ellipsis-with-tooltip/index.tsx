@@ -3,10 +3,10 @@ import { Tooltip } from 'antd';
 
 interface EllipsisWithTooltipProps {
   text: string | null;
-  className: string;
+  className?: string;
 }
 
-const EllipsisWithTooltip: React.FC<EllipsisWithTooltipProps> = ({ text, className }) => {
+const EllipsisWithTooltip: React.FC<EllipsisWithTooltipProps> = ({ text, className = '' }) => {
   const textRef = useRef<HTMLDivElement>(null);
   const [isOverflow, setIsOverflow] = useState(false);
 

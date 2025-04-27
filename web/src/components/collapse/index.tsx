@@ -4,7 +4,6 @@ import {
   CaretDownOutlined,
   HolderOutlined,
 } from '@ant-design/icons';
-import classNames from 'classnames';
 
 interface AccordionProps {
   title: string;
@@ -36,7 +35,7 @@ const Collapse: React.FC<AccordionProps> = ({
   onDrop,
 }) => {
   const [open, setOpen] = useState(isOpen);
-  const collapseClass = classNames('text-[12px]', className);
+  const collapseClass = `text-[12px] ${className}`;
 
   useEffect(() => {
     setOpen(isOpen);

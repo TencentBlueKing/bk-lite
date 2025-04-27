@@ -79,6 +79,7 @@
     "noPermission": "You don't have permission to access this page",
     "preview": "Preview",
     "download": "Download",
+    "officialDocument": "Official Document",
     "timeSelector": {
       "15Minutes": "The past 15 minutes",
       "30Minutes": "The past 30 minutes",

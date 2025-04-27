@@ -1,0 +1,42 @@
+.conditionOperatorColumn {
+  .conditionRow {
+    margin-bottom: 10px;
+    :global {
+      .ant-form-item {
+        margin-bottom: 0;
+      }
+    }
+    &::before {
+      content: '';
+      position: absolute;
+      top: 16px;
+      left: -88px;
+      right: 0;
+      width: 88px;
+      height: 1px;
+      background: var(--color-border);
+      transform: translateY(-50%);
+      z-index: 0;
+    }
+    &::after {
+      content: '';
+      position: absolute;
+      top: 16px;
+      height: 42px;
+      bottom: 0;
+      left: -89px;
+      width: 0;
+      border-left: 1px dashed var(--color-border);
+      transform: translateX(-50%);
+      z-index: 0;
+    }
+    &:last-child {
+      &::after {
+        border-left: none;
+      }
+    }
+  }
+}
+.ruleContainer {
+  background: var(--color-fill-1);
+}

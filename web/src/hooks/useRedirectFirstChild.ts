@@ -12,13 +12,13 @@ export const useRedirectFirstChild = () => {
   const { menus } = usePermissions();
 
   const currentMenu = useMemo(() => {
-    return menus?.find((menu: MenuItem) => menu?.url && pathname.startsWith(menu.url));
+    return menus?.find((menu: MenuItem) => menu?.url && pathname?.startsWith(menu.url));
   }, [pathname, menus]);
 
   useEffect(() => {
     if (currentMenu?.children?.length) {
       const firstChildPath = currentMenu.children[0].url;
-      const params = new URLSearchParams(searchParams);
+      const params = new URLSearchParams(searchParams || undefined);
       const targetUrl = `${firstChildPath}?${params.toString()}`;
       router.replace(targetUrl);
     }

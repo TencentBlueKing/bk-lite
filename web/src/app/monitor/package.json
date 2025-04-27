@@ -1,0 +1,14 @@
+{
+  "name": "monitor",
+  "version": "1.0.0",
+  "scripts": {
+    "build": "next build",
+    "dev": "next dev",
+    "lint": "next lint"
+  },
+  "dependencies": {
+    "@ant-design/colors": "^8.0.0",
+    "react-ace": "^14.0.1",
+    "recharts": "^2.15.0"
+  }
+}

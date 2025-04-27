@@ -6,14 +6,15 @@ interface ContentDrawerProps {
   visible: boolean;
   onClose: () => void;
   content: string;
+  title?: string;
 }
 
-const ContentDrawer: React.FC<ContentDrawerProps> = ({ visible, onClose, content }) => {
+const ContentDrawer: React.FC<ContentDrawerProps> = ({ visible, onClose, content, title }) => {
   const { t } = useTranslation();
 
   return (
     <Drawer
-      title={t('common.viewDetails')}
+      title={title || t('common.viewDetails')}
       placement="right"
       onClose={onClose}
       visible={visible}

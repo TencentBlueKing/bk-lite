@@ -1,4 +1,8 @@
-#!/usr/bin/env sh
-. "$(dirname -- "$0")/_/husky.sh"
+#!/bin/sh
+cd "$(dirname "$0")/.." || exit 1  # Critical line: change to web directory
 
+# First generate tsconfig.lint.json
+npm run precommit
+
+# Then run lint and type-check
 npm run lint && npm run type-check

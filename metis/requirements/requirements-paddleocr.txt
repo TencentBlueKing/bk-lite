@@ -1,4 +1,0 @@
-paddlepaddle==3.0.0rc1
-paddleocr==2.10.0
-paddleclas==2.5.2
-numpy==1.26.4
