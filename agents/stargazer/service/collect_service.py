@@ -25,6 +25,10 @@ class CollectService(object):
             "mysql_info": "MysqlInfo",
             "aliyun_info": "CwAliyun",
             "host_info": "HostInfo",
+            "redis_info": "RedisInfo",
+            "nginx_info": "NginxInfo",
+            "zookeeper_info": "ZookeeperInfo",
+            "kafka_info": "KafkaInfo"
         }
 
     def import_plugin(self, plugin_name):

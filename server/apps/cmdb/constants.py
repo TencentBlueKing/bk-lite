@@ -148,6 +148,7 @@ class CollectPluginTypes(object):
     CLOUD = "cloud"
     PROTOCOL = "protocol"
     HOST = "host"
+    REDIS = "redis"
     MIDDLEWARE = "middleware"
     IP = "ip"
     OTHER = "other"
@@ -159,6 +160,7 @@ class CollectPluginTypes(object):
         (CLOUD, "云采集"),
         (PROTOCOL, "协议采集"),
         (HOST, "主机采集"),
+        (REDIS, "Redis采集"),
         (MIDDLEWARE, "中间件采集"),
         (IP, "IP采集"),
         (OTHER, "其他采集"),
@@ -232,7 +234,14 @@ COLLECT_OBJ_TREE = [
         "name": "数据库",
         "children": [
             {"id": "mysql", "model_id": "mysql", "name": "Mysql", "task_type": CollectPluginTypes.PROTOCOL,
-             "type": CollectDriverTypes.PROTOCOL}
+             "type": CollectDriverTypes.PROTOCOL},
+            {
+                "id": "redis",
+                "model_id": "redis",
+                "name": "Redis",
+                "task_type": CollectPluginTypes.REDIS,
+                "type": CollectDriverTypes.JOB,
+            }
         ],
     },
     {
@@ -251,6 +260,19 @@ COLLECT_OBJ_TREE = [
              "type": CollectDriverTypes.JOB}
         ],
     },
+    {
+        "id": "middleware",
+        "name": "中间件",
+        "children": [
+            {"id": "nginx", "model_id": "nginx", "name": "Nginx", "task_type": CollectPluginTypes.MIDDLEWARE,
+             "type": CollectDriverTypes.JOB},
+            {"id": "zookeeper", "model_id": "zookeeper", "name": "Zookeeper",
+             "task_type": CollectPluginTypes.MIDDLEWARE,
+             "type": CollectDriverTypes.JOB},
+            {"id": "kafka", "model_id": "kafka", "name": "Kafka", "task_type": CollectPluginTypes.MIDDLEWARE,
+             "type": CollectDriverTypes.JOB}
+        ],
+    }
 
 ]
 

@@ -327,6 +327,113 @@ class HostNodeParams(BaseNodeParams):
             return f"{self.instance.id}_{instance}"
 
 
+class RedisNodeParams(BaseNodeParams):
+    supported_model_id = "redis"
+    plugin_name = "redis_info"
+    interval_map = {plugin_name: 300}
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.host_field = "ip_addr"
+
+    def set_credential(self, *args, **kwargs):
+        host = kwargs["host"]
+        node_ip = self.instance.access_point[0]["ip"]
+        credential_data = {
+            "node_id": self.instance.access_point[0]["id"],
+            "execute_timeout": self.instance.timeout,
+        }
+        if host["ip_addr"] != node_ip:
+            credential_data["username"] = self.credential.get("username", ""),
+            credential_data["password"] = self.credential.get("password", ""),
+            credential_data["port"] = self.credential.get("port", 22),
+        return credential_data
+
+    def get_instance_id(self, instance):
+        return f"{self.instance.id}_{instance}_{instance['inst_name']}" if self.has_set_instances else f"{self.instance.id}_{instance}"
+
+
+class NginxNodeParams(BaseNodeParams):
+    def get_instance_id(self, instance):
+        return f"{self.instance.id}_{instance}_{instance['inst_name']}" if self.has_set_instances else f"{self.instance.id}_{instance}"
+
+    supported_model_id = "nginx"
+    plugin_name = "nginx_info"
+
+    interval_map = {plugin_name: 300}
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.host_field = "ip_addr"
+
+    def set_credential(self, *args, **kwargs):
+        host = kwargs["host"]
+        node_ip = self.instance.access_point[0]["ip"]
+        credential_data = {
+            "node_id": self.instance.access_point[0]["id"],
+            "execute_timeout": self.instance.timeout,
+        }
+        if host["ip_addr"] != node_ip:
+            credential_data["username"] = self.credential.get("username", ""),
+            credential_data["password"] = self.credential.get("password", "")
+            credential_data["port"] = self.credential.get("port", 22),
+        return credential_data
+
+
+class ZookeeperNodeParams(BaseNodeParams):
+    supported_model_id = "zookeeper"
+    plugin_name = "zookeeper_info"
+
+    interval_map = {plugin_name: 300}
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.host_field = "ip_addr"
+
+    def set_credential(self, *args, **kwargs):
+        host = kwargs["host"]
+        node_ip = self.instance.access_point[0]["ip"]
+        credential_data = {
+            "node_id": self.instance.access_point[0]["id"],
+            "execute_timeout": self.instance.timeout,
+        }
+        if host["ip_addr"] != node_ip:
+            credential_data["username"] = self.credential.get("username", ""),
+            credential_data["password"] = self.credential.get("password", "")
+            credential_data["port"] = self.credential.get("port", 22),
+        return credential_data
+
+    def get_instance_id(self, instance):
+        return f"{self.instance.id}_{instance}_{instance['inst_name']}" if self.has_set_instances else f"{self.instance.id}_{instance}"
+
+
+class KafkaNodeParams(BaseNodeParams):
+    supported_model_id = "kafka"
+    plugin_name = "kafka_info"
+
+    interval_map = {plugin_name: 300}
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.host_field = "ip_addr"
+
+    def get_instance_id(self, instance):
+        return f"{self.instance.id}_{instance}_{instance['inst_name']}" if self.has_set_instances else f"{self.instance.id}_{instance}"
+
+    def set_credential(self, *args, **kwargs):
+        host = kwargs["host"]
+        node_ip = self.instance.access_point[0]["ip"]
+        credential_data = {
+            "node_id": self.instance.access_point[0]["id"],
+            "execute_timeout": self.instance.timeout,
+        }
+        if host["ip_addr"] != node_ip:
+            credential_data["username"] = self.credential.get("username", ""),
+            credential_data["password"] = self.credential.get("password", "")
+            credential_data["port"] = self.credential.get("port", 22),
+        return credential_data
+
+
 class NodeParamsFactory:
     """
     工厂类，根据 instance 的 model_id 返回对应的 NodeParams 实例

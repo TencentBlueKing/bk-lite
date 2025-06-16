@@ -2,7 +2,7 @@ import os
 
 from config.components.locale import TIME_ZONE
 
-IS_USE_CELERY = os.getenv("ENABLE_CELERY", "False").lower() == "true"
+IS_USE_CELERY = os.getenv("IS_USE_CELERY", "False").lower() == "true"
 # celery
 CELERY_IMPORTS = ()
 CELERY_TIMEZONE = TIME_ZONE  # celery 时区问题
