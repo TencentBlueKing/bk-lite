@@ -5,7 +5,7 @@ setup:
 	virtualenv .venv -p python3.10
 	./.venv/bin/pip install pip-tools
 
-install:
+compile:
 	./.venv/bin/pip-compile ./requirements/requirements-core.txt \
 							./requirements/requirements-cmdb.txt \
 							./requirements/requirements-console.txt \
@@ -15,6 +15,8 @@ install:
 							./requirements/requirements-system_mgmt.txt \
 							./requirements/requirements-mlops.txt \
 							-v --output-file ./requirements.txt
+
+install:
 	./.venv/bin/pip-sync -v
 
 win-install:

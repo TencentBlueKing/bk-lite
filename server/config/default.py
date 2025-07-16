@@ -19,4 +19,5 @@ include(
     "components/unfold.py",
     "components/extra.py",
     "components/mlflow.py",
+    "components/metis.py",
 )
