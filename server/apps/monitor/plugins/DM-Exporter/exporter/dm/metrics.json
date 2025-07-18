@@ -1,0 +1,12 @@
+{
+  "plugin": "DM-Exporter",
+  "plugin_desc": "DM Exporter is used to collect and export metrics from DM databases, including connection counts, query performance, cache usage, and error rates, to help monitor the health and performance of DM instances.",
+  "name": "DM",
+  "icon": "dm",
+  "type": "Database",
+  "description": "",
+  "default_metric": "any({instance_type='dm'}) by (instance_id)",
+  "instance_id_keys": ["instance_id"],
+  "supplementary_indicators": [],
+  "metrics": []
+}
