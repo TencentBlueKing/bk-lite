@@ -34,6 +34,8 @@ class CollectService(object):
             "apache_info": "ApacheInfo",
             "activemq_info": "ActiveMQInfo",
             "pgsql_info": "PgsqlInfo",
+            "weblogic_info": "WebLogicInfo",
+            "keepalived_info": "KeepalivedInfo",
         }
 
     def import_plugin(self, plugin_name):

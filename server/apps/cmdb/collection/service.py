@@ -1587,7 +1587,30 @@ class MiddlewareCollectMetrics(CollectBase):
                 "java_version":"java_version",
                 "xms":"xms",
                 "xmx":"xmx",
-            }
+            },
+            "weblogic": {
+                "inst_name": self.get_inst_name,
+                "bk_obj_id": "bk_obj_id",
+                "ip_addr": "ip_addr",
+                "port": "port",
+                "wlst_path": "wlst_path",
+                "java_version": "java_version",
+                "domain_version": "domain_version",
+                "admin_server_name": "admin_server_name",
+                "name": "name",
+            },
+            "keepalived": {
+                "inst_name": self.get_inst_name,
+                "ip_addr": "ip_addr",
+                "bk_obj_id": "bk_obj_id",
+                "version": "version",
+                "priority": "priority",
+                "state": "state",
+                "virtual_router_id": "virtual_router_id",
+                "user_name": "user_name",
+                "install_path": "install_path",
+                "config_file": "config_file",
+            },
 
         }
 
@@ -1952,26 +1975,6 @@ class DBCollectCollectMetrics(CollectBase):
 
     def get_inst_name(self, data):
         return f"{data['ip_addr']}-{self.model_id}-{data['port']}"
-
-    def format_data(self, data):
-        """格式化数据"""
-        for index_data in data["result"]:
-            metric_name = index_data["metric"]["__name__"]
-            value = index_data["value"]
-            _time, value = value[0], value[1]
-            if not self.timestamp_gt:
-                if timestamp_gt_one_day_ago(_time):
-                    break
-                else:
-                    self.timestamp_gt = True
-
-            index_dict = dict(
-                index_key=metric_name,
-                index_value=value,
-                **index_data["metric"],
-            )
-
-            self.collection_metrics_dict[metric_name].append(index_dict)
 
     @property
     def model_field_mapping(self):

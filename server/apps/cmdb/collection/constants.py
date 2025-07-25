@@ -139,6 +139,8 @@ MIDDLEWARE_METRIC_MAP = {
     "tomcat": ["tomcat_info_gauge"],
     "apache": ["apache_info_gauge"],
     "activemq": ["activemq_info_gauge"],
+    "weblogic": ["weblogic_info_gauge"],
+    "keepalived": ["keepalived_info_gauge"],
 }
 
 # Tencent cloud

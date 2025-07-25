@@ -87,6 +87,8 @@ class BaseSSHPlugin(BasePlugin):
         }
         subject = f"{self.nast_id}.{self.node_id}"
         response = await self.nats_client.request(subject=subject, params=exec_params)  # 使用 await 调用异步方法
+        if isinstance(response["result"], str):
+            response["result"] = response["result"].replace("{{bk_host_innerip}}", self.host)
         return json.loads(response["result"])
 
     async def list_all_resources(self):

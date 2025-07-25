@@ -442,6 +442,16 @@ class PgsqlNodeParams(SSHNodeParamsMixin, BaseNodeParams):
     plugin_name = "pgsql_info"
 
 
+class WeblogicNodeParams(SSHNodeParamsMixin, BaseNodeParams):
+    supported_model_id = "weblogic"
+    plugin_name = "weblogic_info"
+
+
+class KeepalivedNodeParams(SSHNodeParamsMixin, BaseNodeParams):
+    supported_model_id = "weblogic"
+    plugin_name = "weblogic_info"
+
+
 class NodeParamsFactory:
     """
     工厂类，根据 instance 的 model_id 返回对应的 NodeParams 实例
