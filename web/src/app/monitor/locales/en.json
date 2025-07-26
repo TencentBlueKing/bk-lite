@@ -476,7 +476,13 @@
       "publishPortDes": "The specific port that the program listens on during runtime, responsible for receiving requests and connections from external sources.",
       "mechanism": "Mechanism",
       "mechanismDes": "Used to process and respond to requests received through the publishing port, including the complete process of request parsing, processing, and returning results.",
-      "kafkaVersionDes": "Specify the version details of the current program"
+      "kafkaVersionDes": "Specify the version details of the current program",
+      "lcAll": "Primary Language",
+      "lcAllDes": "The primary language environment used by the system",
+      "lang": "Base Language",
+      "langDes": "The default underlying language setting of the system",
+      "libraryPath": "Driver Library Directory",
+      "libraryPathDes": "The path where driver library files are stored"
     }
   }
 }

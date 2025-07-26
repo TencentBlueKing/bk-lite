@@ -1,10 +1,13 @@
 import { useClickHouseTelegraf } from '../../plugins/database/clickHouseTelegraf';
+import { useClickHouseExporter } from '../../plugins/database/clickHouseExporter';
 
 export const useClickHouseConfig = () => {
   const clickHouseTelegraf = useClickHouseTelegraf();
+  const clickHouseExporter = useClickHouseExporter();
 
   const plugins = {
     ClickHouse: clickHouseTelegraf,
+    'ClickHouse-Exporter': clickHouseExporter,
   };
 
   return {

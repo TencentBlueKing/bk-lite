@@ -6,18 +6,18 @@ import {
   IntergrationMonitoredObject,
 } from '@/app/monitor/types/monitor';
 import { TableDataItem } from '@/app/monitor/types';
-import { useClickHouseExporterFormItems } from '../../common/clickHouseExporterFormItems';
+import { useDb2ExporterFormItems } from '../../common/db2ExporterFormItems';
 import { cloneDeep } from 'lodash';
 
-export const useClickHouseExporter = () => {
+export const useDb2Exporter = () => {
   const { t } = useTranslation();
-  const clickHouseExporterFormItems = useClickHouseExporterFormItems();
+  const db2ExporterFormItems = useDb2ExporterFormItems();
   const pluginConfig = {
     collect_type: 'exporter',
-    config_type: ['clickhouse'],
-    collector: 'ClickHouse-Exporter',
-    instance_type: 'clickhouse',
-    object_name: 'ClickHouse',
+    config_type: ['db2'],
+    collector: 'DB2-Exporter',
+    instance_type: 'db2',
+    object_name: 'DB2',
   };
 
   return {
@@ -31,9 +31,11 @@ export const useClickHouseExporter = () => {
         config: InstNameConfig
       ) => {
         const _dataSource = cloneDeep(extra.dataSource || []);
-        _dataSource[config.index][config.field] = _dataSource[
-          config.index
-        ].instance_name = e.target.value;
+        const fieldValue =
+          _dataSource[config.index][config.dataIndex as string];
+        _dataSource[config.index][config.field] = e.target.value;
+        _dataSource[config.index].instance_name =
+          e.target.value + `:${fieldValue || ''}`;
         extra.onTableDataChange?.(_dataSource);
       };
 
@@ -49,9 +51,24 @@ export const useClickHouseExporter = () => {
         extra.onTableDataChange?.(_dataSource);
       };
 
+      const handlePortAndInstNameChange = (
+        val: number,
+        config: {
+          index: number;
+          field: string;
+          dataIndex: string;
+        }
+      ) => {
+        const _dataSource = cloneDeep(extra.dataSource || []);
+        const host = _dataSource[config.index][config.dataIndex] || '';
+        _dataSource[config.index][config.field] = val;
+        _dataSource[config.index].instance_name = `${host}:${val || ''}`;
+        extra.onTableDataChange?.(_dataSource);
+      };
+
       const formItems = (
         <>
-          {clickHouseExporterFormItems.getCommonFormItems()}
+          {db2ExporterFormItems.getCommonFormItems()}
           <Form.Item label={t('monitor.intergrations.listeningPort')} required>
             <Form.Item
               noStyle
@@ -73,10 +90,10 @@ export const useClickHouseExporter = () => {
               {t('monitor.intergrations.listeningPortDes')}
             </span>
           </Form.Item>
-          <Form.Item label={t('monitor.intergrations.url')} required>
+          <Form.Item label={t('monitor.intergrations.host')} required>
             <Form.Item
               noStyle
-              name="SCRAPE_URI"
+              name="DATABASE_HOSTNAME"
               rules={[
                 {
                   required: true,
@@ -87,7 +104,28 @@ export const useClickHouseExporter = () => {
               <Input className="w-[300px] mr-[10px]" />
             </Form.Item>
             <span className="text-[12px] text-[var(--color-text-3)]">
-              {t('monitor.intergrations.urlDes')}
+              {t('monitor.intergrations.commonHostDes')}
+            </span>
+          </Form.Item>
+          <Form.Item label={t('monitor.intergrations.port')} required>
+            <Form.Item
+              noStyle
+              name="DATABASE_PORT"
+              rules={[
+                {
+                  required: true,
+                  message: t('common.required'),
+                },
+              ]}
+            >
+              <InputNumber
+                className="w-[300px] mr-[10px]"
+                min={1}
+                precision={0}
+              />
+            </Form.Item>
+            <span className="text-[12px] text-[var(--color-text-3)]">
+              {t('monitor.intergrations.commonPortDes')}
             </span>
           </Form.Item>
         </>
@@ -95,10 +133,11 @@ export const useClickHouseExporter = () => {
 
       const config = {
         auto: {
-          formItems: clickHouseExporterFormItems.getCommonFormItems({}, 'auto'),
+          formItems: db2ExporterFormItems.getCommonFormItems('auto'),
           initTableItems: {
             ENV_LISTEN_PORT: null,
-            ENV_SCRAPE_URI: null,
+            ENV_DATABASE_HOSTNAME: null,
+            ENV_DATABASE_PORT: null,
           },
           defaultForm: {},
           columns: [
@@ -123,18 +162,39 @@ export const useClickHouseExporter = () => {
               ),
             },
             {
-              title: t('monitor.intergrations.url'),
-              dataIndex: 'ENV_SCRAPE_URI',
-              key: 'ENV_SCRAPE_URI',
+              title: t('monitor.intergrations.host'),
+              dataIndex: 'ENV_DATABASE_HOSTNAME',
+              key: 'ENV_DATABASE_HOSTNAME',
               width: 200,
               render: (_: unknown, record: TableDataItem, index: number) => (
                 <Input
-                  value={record.ENV_SCRAPE_URI}
+                  value={record.ENV_DATABASE_HOSTNAME}
                   onChange={(e) =>
                     handleFieldAndInstNameChange(e, {
                       index,
-                      field: 'ENV_SCRAPE_URI',
-                      dataIndex: 'ENV_SCRAPE_URI',
+                      field: 'ENV_DATABASE_HOSTNAME',
+                      dataIndex: 'ENV_DATABASE_PORT',
+                    })
+                  }
+                />
+              ),
+            },
+            {
+              title: t('monitor.intergrations.port'),
+              dataIndex: 'ENV_DATABASE_PORT',
+              key: 'ENV_DATABASE_PORT',
+              width: 200,
+              render: (_: unknown, record: TableDataItem, index: number) => (
+                <InputNumber
+                  value={record.ENV_DATABASE_PORT}
+                  className="w-full"
+                  min={1}
+                  precision={0}
+                  onChange={(val) =>
+                    handlePortAndInstNameChange(val, {
+                      index,
+                      field: 'ENV_DATABASE_PORT',
+                      dataIndex: 'ENV_DATABASE_HOSTNAME',
                     })
                   }
                 />
@@ -160,9 +220,10 @@ export const useClickHouseExporter = () => {
                 return {
                   ...item,
                   ENV_LISTEN_PORT: String(item.ENV_LISTEN_PORT),
+                  ENV_DATABASE_PORT: String(item.ENV_DATABASE_PORT),
                   node_ids: [item.node_ids].flat(),
                   instance_type: pluginConfig.instance_type,
-                  instance_id: item.ENV_SCRAPE_URI,
+                  instance_id: `${item.ENV_DATABASE_HOSTNAME}:${item.ENV_DATABASE_PORT}`,
                 };
               }),
             };
@@ -176,9 +237,14 @@ export const useClickHouseExporter = () => {
           getParams: (formData: TableDataItem, configForm: TableDataItem) => {
             [
               'LISTEN_PORT',
-              'SCRAPE_URI',
-              'CLICKHOUSE_USER',
-              'CLICKHOUSE_PASSWORD',
+              'DATABASE_HOSTNAME',
+              'DATABASE_PORT',
+              'DATABASE_USER',
+              'DATABASE_PASSWORD',
+              'DATABASE_NAME',
+              'LC_ALL',
+              'LANG',
+              'LD_LIBRARY_PATH',
             ].forEach((item) => {
               if (formData[item]) {
                 configForm.base.env_config[item] = String(formData[item]);
@@ -191,7 +257,7 @@ export const useClickHouseExporter = () => {
           defaultForm: {},
           formItems,
           getParams: (row: TableDataItem) => {
-            const instanceId = row.SCRAPE_URI;
+            const instanceId = `${row.DATABASE_HOSTNAME}:${row.ENV_DATABASE_PORT}`;
             return {
               instance_id: instanceId,
               instance_name: instanceId,

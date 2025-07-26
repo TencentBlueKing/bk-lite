@@ -476,7 +476,13 @@
       "publishPortDes": "程序运行时监听的特定端口，负责接收来自外部的请求和连接",
       "mechanism": "运行机制",
       "mechanismDes": "用于处理和响应通过发布端口接收的请求，包括请求的解析、处理和返回结果的完整流程。",
-      "kafkaVersionDes": "指定当前程序的版本详情"
+      "kafkaVersionDes": "指定当前程序的版本详情",
+      "lcAll": "优先语言",
+      "lcAllDes": "系统首要使用的语言环境",
+      "lang": "基本语言",
+      "langDes": "系统默认的底层语言设置",
+      "libraryPath": "驱动程序的lib日录",
+      "libraryPathDes": "存放驱动程序库文件的路径‌"
     }
   }
 }
