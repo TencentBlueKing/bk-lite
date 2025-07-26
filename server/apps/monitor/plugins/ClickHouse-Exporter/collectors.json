@@ -1,7 +1,7 @@
 [
   {
     "id": "exporter_clickhouse_linux",
-    "name": "Clickhouse-Exporter",
+    "name": "ClickHouse-Exporter",
     "controller_default_run": false,
     "icon": "",
     "node_operating_system": "linux",
@@ -10,6 +10,6 @@
     "execute_parameters": "--clickhouse_only --scrape_uri $SCRAPE_URI --telemetry.address 127.0.0.1:$LISTEN_PORT",
     "validation_parameters": "",
     "default_template": "",
-    "introduction": "Clickhouse Exporter is a monitoring tool that collects and exports Clickhouse metrics, providing insights into database performance and health."
+    "introduction": "ClickHouse Exporter is a monitoring tool that collects and exports ClickHouse metrics, providing insights into database performance and health."
   }
 ]

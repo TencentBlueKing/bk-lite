@@ -1,0 +1,12 @@
+{
+  "plugin": "ClickHouse-Exporter",
+  "plugin_desc": "ClickHouse Exporter is used to collect and export metrics from ClickHouse databases, including connection counts, query performance, cache usage, and error rates, to help monitor the health and performance of ClickHouse instances.",
+  "name": "ClickHouse",
+  "icon": "clickhouse",
+  "type": "Database",
+  "description": "",
+  "default_metric": "any({instance_type='clickhouse'}) by (instance_id)",
+  "instance_id_keys": ["instance_id"],
+  "supplementary_indicators": [],
+  "metrics": []
+}

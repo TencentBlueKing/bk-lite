@@ -1,6 +1,6 @@
 {
-  "object": "Clickhouse",
-  "plugin": "Clickhouse-Exporter",
+  "object": "ClickHouse",
+  "plugin": "ClickHouse-Exporter",
   "templates": [
     {
       "name": "实例存活状态",
