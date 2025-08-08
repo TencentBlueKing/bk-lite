@@ -1,0 +1,725 @@
+{% if db_type=="pg" %}
+# 人大金仓数据库pg模式下查询结果是小写
+collector_name: kingbase_sql_pg
+
+# Similar to global.min_interval, but applies to the queries defined by this collector only.
+#min_interval: 0s
+
+metrics:
+  # base
+  - metric_name: kingbase_database_mode
+    type: gauge
+    help: '数据库模式'
+    key_labels:
+      - database_mode
+    values:
+      - value
+    query: |
+      SELECT 1 as value, database_mode FROM (SELECT current_setting('database_mode') as database_mode) t
+
+  # connection
+  # 告警: conns超过max_connections的80%
+  - metric_name: kingbase_exporter_current_connections
+    type: gauge
+    help: '数据库当前连接数'
+    values:
+      - conns
+    query: |
+      SELECT count(*) as conns FROM pg_stat_activity WHERE backend_type IN ('client backend', 'walsender')
+
+  - metric_name: kingbase_exporter_max_connections_limit
+    type: gauge
+    help: '数据库最大连接数限制'
+    values:
+      - max_connections
+    query: |
+        show max_connections
+
+  - metric_name: kingbase_exporter_active_connections
+    type: gauge
+    help: '数据库活动进程数'
+    key_labels:
+      - datname
+    values:
+      - active
+    query_ref: connection_query
+
+  - metric_name: kingbase_exporter_idle_connections
+    type: gauge
+    help: '数据库空闲进程数'
+    key_labels:
+      - datname
+    values:
+      - idle
+    query_ref: connection_query
+
+  - metric_name: kingbase_exporter_idle_in_trans_connections
+    type: gauge
+    help: '数据库空闲事务进程数'
+    key_labels:
+      - datname
+    values:
+      - idle_in_trans
+    query_ref: connection_query
+
+  - metric_name: kingbase_exporter_slow_query_number
+    type: gauge
+    help: '慢查询数量'
+    key_labels:
+      - datname
+    values:
+      - slow_query
+    query_ref: connection_query
+
+  - metric_name: kingbase_exporter_db_max_tran_duration
+    type: gauge
+    help: '数据库当前执行事务的最长时间(s)'
+    key_labels:
+      - datname
+    values:
+      - maxduration
+    query_ref: connection_query
+
+  # buffer
+  - metric_name: kingbase_exporter_buffers_clean
+    type: gauge
+    help: '后台编写器写入的缓冲区数'
+    values:
+      - buffers_clean
+    query_ref: buffer_query
+
+  - metric_name: kingbase_exporter_buffers_checkpoint
+    type: gauge
+    help: '检查点期间写入的缓冲区数'
+    values:
+      - buffers_checkpoint
+    query_ref: buffer_query
+
+  - metric_name: kingbase_exporter_buffers_backend
+    type: gauge
+    help: '后端直接写入的缓冲区数'
+    values:
+      - buffers_backend
+    query_ref: buffer_query
+
+  # conflict
+  - metric_name: kingbase_exporter_conflict_tablespaces
+    type: gauge
+    help: '由于删除表空间而取消的查询数'
+    key_labels:
+      - datname
+    values:
+      - confl_tablespace
+    query_ref: conflict_query
+
+  - metric_name: kingbase_exporter_conflict_locks
+    type: gauge
+    help: '由于锁定超时而取消的查询数'
+    key_labels:
+      - datname
+    values:
+      - confl_lock
+    query_ref: conflict_query
+
+  - metric_name: kingbase_exporter_conflict_snapshots
+    type: gauge
+    help: '由于旧快照而取消的查询数'
+    key_labels:
+      - datname
+    values:
+      - confl_snapshot
+    query_ref: conflict_query
+
+  - metric_name: kingbase_exporter_conflict_bufferpins
+    type: gauge
+    help: '由于固定缓冲区而取消的查询数'
+    key_labels:
+      - datname
+    values:
+      - confl_bufferpin
+    query_ref: conflict_query
+
+  - metric_name: kingbase_exporter_conflict_deadlock
+    type: gauge
+    help: '由于死锁而取消的查询数'
+    key_labels:
+      - datname
+    values:
+      - confl_deadlock
+    query_ref: conflict_query
+
+  # disk
+  - metric_name: kingbase_exporter_database_used_disk
+    type: gauge
+    help: '数据库使用的磁盘空间(bytes)'
+    key_labels:
+      - datname
+    values:
+      - sys_database_size
+    query: |
+        SELECT datname, sys_catalog.sys_database_size(datname) FROM sys_catalog.sys_database
+
+  # lock
+  - metric_name: kingbase_exporter_locks_waiting_all
+    type: gauge
+    help: '当前等待封锁的进程数量'
+    values:
+      - count
+    query: |
+      SELECT count(*) FROM pg_locks WHERE granted = false
+
+  - metric_name: kingbase_exporter_locks_granted
+    type: gauge
+    help: '已授予的锁数量'
+    key_labels:
+      - datname
+      - locktype
+    values:
+      - granted_count
+    query_ref: lock_query
+
+  - metric_name: kingbase_exporter_locks_waiting
+    type: gauge
+    help: '等待授予的锁数量'
+    key_labels:
+      - datname
+      - locktype
+    values:
+      - wait_count
+    query_ref: lock_query
+
+  # cursor
+  - metric_name: kingbase_exporter_opened_cursors
+    type: gauge
+    help: '打开的游标数'
+    values:
+      - count
+    query: |
+      SELECT count(*) FROM pg_cursors
+
+  # system
+  - metric_name: kingbase_exporter_buffers_hit_percent
+    type: gauge
+    help: '缓冲区缓存命中率(%)'
+    key_labels:
+      - datname
+    values:
+      - cache_hit_percent
+    query_ref: system_query
+
+  - metric_name: kingbase_exporter_deadlocks
+    type: gauge
+    help: '死锁数量'
+    key_labels:
+      - datname
+    values:
+      - deadlocks
+    query_ref: system_query
+
+  - metric_name: kingbase_exporter_returned_tuples
+    type: gauge
+    help: '全表扫描记录数'
+    key_labels:
+      - datname
+    values:
+      - tup_returned
+    query_ref: system_query
+
+  - metric_name: kingbase_exporter_xact_commit
+    type: gauge
+    help: '数据库中已提交的事务数'
+    key_labels:
+      - datname
+    values:
+      - xact_commit
+    query_ref: system_query
+
+  - metric_name: kingbase_exporter_xact_rollback
+    type: gauge
+    help: '数据库中已回滚的事务数'
+    key_labels:
+      - datname
+    values:
+      - xact_rollback
+    query_ref: system_query
+
+  - metric_name: kingbase_exporter_rollback_percent
+    type: gauge
+    help: '数据库的事务回滚率(%)'
+    key_labels:
+      - datname
+    values:
+      - rollback_percent
+    query_ref: system_query
+
+  # age
+  # 告警: age或 mxid_age超过2^32 – 30000000
+  - metric_name: kingbase_exporter_database_frozen_age
+    type: gauge
+    help: '数据库中最老事务的年龄'
+    key_labels:
+      - datname
+    values:
+      - age
+    query_ref: age_query
+
+  - metric_name: kingbase_exporter_database_min_mxid_age
+    type: gauge
+    help: '数据库中最小mxid的年龄'
+    key_labels:
+      - datname
+    values:
+      - mxid_age
+    query_ref: age_query
+
+  # license
+  - metric_name: kingbase_exporter_license_validdays
+    type: gauge
+    help: 'license剩余有效期(days)'
+    values:
+      - valid_days
+    query: |
+      SELECT get_license_validdays() AS valid_days
+
+queries:
+  - query_name: buffer_query
+    query: |
+        SELECT
+          buffers_clean,
+          buffers_checkpoint,
+          buffers_backend,
+          100 * (buffers_checkpoint / (buffers_checkpoint + buffers_clean + buffers_backend + 0.000001)) AS checkpoint_write_percent
+        FROM
+            pg_stat_bgwriter
+
+  - query_name: conflict_query
+    query: |
+      SELECT
+        datname,
+        confl_tablespace,
+        confl_lock,
+        confl_snapshot,
+        confl_bufferpin,
+        confl_deadlock
+      FROM
+        pg_stat_database_conflicts
+      WHERE
+        datname NOT IN ('template0', 'template1', 'template2')
+
+  - query_name: connection_query
+    query: |
+      select dtb.datname, count(act.pid) filter (where act.state = 'active') as active, count(act.pid) filter (where act.state = 'idle') as idle, count(act.pid) filter (where act.state = 'idle in transaction') as idle_in_trans,  count(pid) filter(where act.STATE = 'active' AND now( ) - act.query_start > INTERVAL '1 second') AS slow_query, MAX(EXTRACT(EPOCH FROM now() - xact_start))::float AS maxduration from pg_stat_activity act right join pg_database dtb on act.datname = dtb.datname group by dtb.datname
+
+  - query_name: lock_query
+    query: |
+      SELECT
+        case
+          WHEN dtb.datname IS NULL THEN 'other'
+          ELSE dtb.datname
+        end,
+        l.locktype,
+        count(l.locktype) filter(
+          WHERE
+            granted = 't'
+        ) AS granted_count,
+        count(l.locktype) filter(
+          WHERE
+            granted != 't'
+        ) AS wait_count
+      FROM
+        pg_locks l
+        LEFT JOIN pg_database dtb ON l.database = dtb.oid
+      GROUP BY
+        l.locktype,
+        dtb.datname,
+        l.granted
+
+  - query_name: system_query
+    query: |
+      SELECT
+        datname,
+        CAST (
+          blks_hit /(blks_read + blks_hit + 0.000001) * 100.0 AS NUMERIC (5, 2)
+        ) AS cache_hit_percent,
+        deadlocks,
+        tup_returned,
+        xact_commit,
+        xact_rollback,
+        100.0 * xact_rollback /(xact_rollback + xact_commit + 0.000001) AS rollback_percent
+      FROM
+        pg_stat_database
+      WHERE
+        datname NOT IN ('template0', 'template1', 'template2')
+
+  - query_name: age_query
+    query: |
+      SELECT
+        datname,
+        age(datfrozenxid),
+        mxid_age(datminmxid)
+      FROM
+        pg_database
+
+{% else %}
+
+# 人大金仓数据库查询结果大小写与输入一致
+collector_name: kingbase_sql
+
+# Similar to global.min_interval, but applies to the queries defined by this collector only.
+#min_interval: 0s
+
+metrics:
+  # base
+  - metric_name: kingbase_database_mode
+    type: gauge
+    help: '数据库模式'
+    key_labels:
+      - database_mode
+    values:
+      - value
+    query: |
+      SELECT 1 as value, database_mode FROM (SELECT current_setting('database_mode') as database_mode) t
+
+  # connection
+  # 告警: conns超过max_connections的80%
+  - metric_name: kingbase_exporter_current_connections
+    type: gauge
+    help: '数据库当前连接数'
+    values:
+      - conns
+    query: |
+      SELECT count(*) as conns FROM sys_stat_activity WHERE backend_type IN ('client backend', 'walsender')
+
+  - metric_name: kingbase_exporter_max_connections_limit
+    type: gauge
+    help: '数据库最大连接数限制'
+    values:
+      - max_connections
+    query: |
+        show max_connections
+
+  - metric_name: kingbase_exporter_active_connections
+    type: gauge
+    help: '数据库活动进程数'
+    key_labels:
+      - datname
+    values:
+      - active
+    query_ref: connection_query
+
+  - metric_name: kingbase_exporter_idle_connections
+    type: gauge
+    help: '数据库空闲进程数'
+    key_labels:
+      - datname
+    values:
+      - idle
+    query_ref: connection_query
+
+  - metric_name: kingbase_exporter_idle_in_trans_connections
+    type: gauge
+    help: '数据库空闲事务进程数'
+    key_labels:
+      - datname
+    values:
+      - idle_in_trans
+    query_ref: connection_query
+
+  - metric_name: kingbase_exporter_slow_query_number
+    type: gauge
+    help: '慢查询数量'
+    key_labels:
+      - datname
+    values:
+      - slow_query
+    query_ref: connection_query
+
+  - metric_name: kingbase_exporter_db_max_tran_duration
+    type: gauge
+    help: '数据库当前执行事务的最长时间(s)'
+    key_labels:
+      - datname
+    values:
+      - maxduration
+    query_ref: connection_query
+
+  # buffer
+  - metric_name: kingbase_exporter_buffers_clean
+    type: gauge
+    help: '后台编写器写入的缓冲区数'
+    values:
+      - buffers_clean
+    query_ref: buffer_query
+
+  - metric_name: kingbase_exporter_buffers_checkpoint
+    type: gauge
+    help: '检查点期间写入的缓冲区数'
+    values:
+      - buffers_checkpoint
+    query_ref: buffer_query
+
+  - metric_name: kingbase_exporter_buffers_backend
+    type: gauge
+    help: '后端直接写入的缓冲区数'
+    values:
+      - buffers_backend
+    query_ref: buffer_query
+
+  # conflict
+  - metric_name: kingbase_exporter_conflict_tablespaces
+    type: gauge
+    help: '由于删除表空间而取消的查询数'
+    key_labels:
+      - datname
+    values:
+      - confl_tablespace
+    query_ref: conflict_query
+
+  - metric_name: kingbase_exporter_conflict_locks
+    type: gauge
+    help: '由于锁定超时而取消的查询数'
+    key_labels:
+      - datname
+    values:
+      - confl_lock
+    query_ref: conflict_query
+
+  - metric_name: kingbase_exporter_conflict_snapshots
+    type: gauge
+    help: '由于旧快照而取消的查询数'
+    key_labels:
+      - datname
+    values:
+      - confl_snapshot
+    query_ref: conflict_query
+
+  - metric_name: kingbase_exporter_conflict_bufferpins
+    type: gauge
+    help: '由于固定缓冲区而取消的查询数'
+    key_labels:
+      - datname
+    values:
+      - confl_bufferpin
+    query_ref: conflict_query
+
+  - metric_name: kingbase_exporter_conflict_deadlock
+    type: gauge
+    help: '由于死锁而取消的查询数'
+    key_labels:
+      - datname
+    values:
+      - confl_deadlock
+    query_ref: conflict_query
+
+  # disk
+  - metric_name: kingbase_exporter_database_used_disk
+    type: gauge
+    help: '数据库使用的磁盘空间(bytes)'
+    key_labels:
+      - datname
+    values:
+      - sys_database_size
+    query: |
+        SELECT datname, sys_catalog.sys_database_size(datname) FROM sys_catalog.sys_database
+
+  # lock
+  - metric_name: kingbase_exporter_locks_waiting_all
+    type: gauge
+    help: '当前等待封锁的进程数量'
+    values:
+      - count
+    query: |
+      SELECT count(*) FROM sys_locks WHERE granted = false
+
+  - metric_name: kingbase_exporter_locks_granted
+    type: gauge
+    help: '已授予的锁数量'
+    key_labels:
+      - datname
+      - locktype
+    values:
+      - granted_count
+    query_ref: lock_query
+
+  - metric_name: kingbase_exporter_locks_waiting
+    type: gauge
+    help: '等待授予的锁数量'
+    key_labels:
+      - datname
+      - locktype
+    values:
+      - wait_count
+    query_ref: lock_query
+
+  # cursor
+  - metric_name: kingbase_exporter_opened_cursors
+    type: gauge
+    help: '打开的游标数'
+    values:
+      - count
+    query: |
+      SELECT count(*) FROM sys_cursors
+
+  # system
+  - metric_name: kingbase_exporter_buffers_hit_percent
+    type: gauge
+    help: '缓冲区缓存命中率(%)'
+    key_labels:
+      - datname
+    values:
+      - cache_hit_percent
+    query_ref: system_query
+
+  - metric_name: kingbase_exporter_deadlocks
+    type: gauge
+    help: '死锁数量'
+    key_labels:
+      - datname
+    values:
+      - deadlocks
+    query_ref: system_query
+
+  - metric_name: kingbase_exporter_returned_tuples
+    type: gauge
+    help: '全表扫描记录数'
+    key_labels:
+      - datname
+    values:
+      - tup_returned
+    query_ref: system_query
+
+  - metric_name: kingbase_exporter_xact_commit
+    type: gauge
+    help: '数据库中已提交的事务数'
+    key_labels:
+      - datname
+    values:
+      - xact_commit
+    query_ref: system_query
+
+  - metric_name: kingbase_exporter_xact_rollback
+    type: gauge
+    help: '数据库中已回滚的事务数'
+    key_labels:
+      - datname
+    values:
+      - xact_rollback
+    query_ref: system_query
+
+  - metric_name: kingbase_exporter_rollback_percent
+    type: gauge
+    help: '数据库的事务回滚率(%)'
+    key_labels:
+      - datname
+    values:
+      - rollback_percent
+    query_ref: system_query
+
+  # age
+  # 告警: age或 mxid_age超过2^32 – 30000000
+  - metric_name: kingbase_exporter_database_frozen_age
+    type: gauge
+    help: '数据库中最老事务的年龄'
+    key_labels:
+      - datname
+    values:
+      - age
+    query_ref: age_query
+
+  - metric_name: kingbase_exporter_database_min_mxid_age
+    type: gauge
+    help: '数据库中最小mxid的年龄'
+    key_labels:
+      - datname
+    values:
+      - mxid_age
+    query_ref: age_query
+
+  # license
+  - metric_name: kingbase_exporter_license_validdays
+    type: gauge
+    help: 'license剩余有效期(days)'
+    values:
+      - valid_days
+    query: |
+      SELECT get_license_validdays() AS valid_days
+
+queries:
+  - query_name: buffer_query
+    query: |
+        SELECT
+          buffers_clean,
+          buffers_checkpoint,
+          buffers_backend,
+          100 * (buffers_checkpoint / (buffers_checkpoint + buffers_clean + buffers_backend + 0.000001)) AS checkpoint_write_percent
+        FROM
+            sys_stat_bgwriter
+
+  - query_name: conflict_query
+    query: |
+      SELECT
+        datname,
+        confl_tablespace,
+        confl_lock,
+        confl_snapshot,
+        confl_bufferpin,
+        confl_deadlock
+      FROM
+        sys_stat_database_conflicts
+      WHERE
+        datname NOT IN ('template0', 'template1', 'template2')
+
+  - query_name: connection_query
+    query: |
+      select dtb.datname, count(act.pid) filter (where act.state = 'active') as active, count(act.pid) filter (where act.state = 'idle') as idle, count(act.pid) filter (where act.state = 'idle in transaction') as idle_in_trans,  count(pid) filter(where act.STATE = 'active' AND now( ) - act.query_start > INTERVAL '1 second') AS slow_query, MAX(EXTRACT(EPOCH FROM now() - xact_start))::float AS maxduration from sys_stat_activity act right join sys_database dtb on act.datname = dtb.datname group by dtb.datname
+
+  - query_name: lock_query
+    query: |
+      SELECT
+        case
+          WHEN dtb.datname IS NULL THEN 'other'
+          ELSE dtb.datname
+        end,
+        l.locktype,
+        count(l.locktype) filter(
+          WHERE
+            granted = true
+        ) AS granted_count,
+        count(l.locktype) filter(
+          WHERE
+            granted = false
+        ) AS wait_count
+      FROM
+        sys_locks l
+        LEFT JOIN sys_database dtb ON l.database = dtb.oid
+      GROUP BY
+        l.locktype,
+        dtb.datname
+
+  - query_name: system_query
+    query: |
+      SELECT
+        datname,
+        CAST (
+          blks_hit /(blks_read + blks_hit + 0.000001) * 100.0 AS NUMERIC (5, 2)
+        ) AS cache_hit_percent,
+        deadlocks,
+        tup_returned,
+        xact_commit,
+        xact_rollback,
+        100.0 * xact_rollback /(xact_rollback + xact_commit + 0.000001) AS rollback_percent
+      FROM
+        sys_stat_database
+      WHERE
+        datname NOT IN ('template0', 'template1', 'template2')
+
+  - query_name: age_query
+    query: |
+      SELECT
+        datname,
+        age(datfrozenxid),
+        mxid_age(datminmxid)
+      FROM
+        sys_database
+
+{% endif %}

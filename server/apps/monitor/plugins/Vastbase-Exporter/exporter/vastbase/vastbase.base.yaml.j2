@@ -1,0 +1,898 @@
+# 海量数据库查询结果返回小写
+collector_name: vastbase_sql
+
+# Similar to global.min_interval, but applies to the queries defined by this collector only.
+#min_interval: 0s
+
+metrics:
+  # disk
+  # 有出现过超大数据量查询时间达到5m的情况
+  - metric_name: vastbaseG100_exporter_database_used_disk_bytes
+    type: gauge
+    help: '数据库使用的磁盘空间(bytes)'
+    key_labels:
+      - datname
+    values:
+      - size
+    query: |
+      SELECT d.datname AS datname, CASE WHEN pg_catalog.has_database_privilege(d.datname, 'CONNECT') THEN pg_catalog.pg_database_size(d.datname) END AS size FROM pg_catalog.pg_database d
+
+  # slow query
+  # 8.x版本 SELECT count(*) FROM pg_stat_activity WHERE waiting = 'f' AND now( ) - query_start > INTERVAL '1 second'
+  - metric_name: vastbaseG100_exporter_slow_query
+    type: gauge
+    help: '慢查询数量>1s (version>=9.2)'
+    values:
+      - count
+    query: |
+      SELECT count(*) FROM pg_stat_activity WHERE STATE = 'active' AND now( ) - query_start > INTERVAL '1 second'
+
+  # wait
+  - metric_name: vastbaseG100_exporter_wait_count
+    type: gauge
+    help: '等待数量'
+    values:
+      - wait_count
+    query: |
+      SELECT count(*) wait_count FROM pg_stat_activity WHERE state IN ('active', 'fastpath function call') AND pid <> pg_backend_pid()
+
+  # auth
+  - metric_name: vastbaseG100_exporter_user_pass_valid
+    type: gauge
+    help: '用户密码剩余有效时间(days)'
+    key_labels:
+      - rolname
+    values:
+      - valid_days
+    query: |
+      SELECT rolname, round( extract( epoch FROM rolvaliduntil - NOW() ) / 86400, 2 ) valid_days FROM pg_authid ORDER BY rolvaliduntil
+
+  # 大表监控
+  - metric_name: vastbaseG100_exporter_table_size_bytes
+    type: gauge
+    help: '数据库表大小(bytes)'
+    key_labels:
+      - datname
+      - table_schema
+      - table_name
+    values:
+      - size_bytes
+    query: |
+      SELECT current_database() AS datname, table_schema, table_name, pg_relation_size(table_schema || '.' || table_name) AS size_bytes FROM information_schema.tables WHERE table_schema NOT IN ('pg_catalog', 'information_schema') ORDER BY size_bytes DESC LIMIT 10
+
+  # 表空间使用量
+  - metric_name: vastbaseG100_exporter_tablespace_total_used_mb
+    type: gauge
+    help: '表已用空间大小(MB)'
+    key_labels:
+      - spcname
+      - pg_tablespace_location
+    values:
+      - tablespace_total_usedmsize
+    query: |
+      SELECT pg_tablespace_size(spcname) / 1024 / 1024 AS tablespace_total_usedmsize, spcname, case WHEN pg_tablespace_location(oid) = '' THEN ( SELECT setting FROM pg_settings WHERE name = 'data_directory' ) ELSE pg_tablespace_location(oid) end FROM pg_tablespace
+
+
+  # lock
+  - metric_name: vastbaseG100_exporter_granted_locks
+    type: counter
+    help: '已授予的锁数量'
+    key_labels:
+      - datname
+    values:
+      - count
+    query: |
+      SELECT CASE WHEN datname is null THEN 'null' ELSE datname END, count(*) FROM pg_catalog.pg_locks l LEFT OUTER JOIN pg_catalog.pg_database d ON (l.database = d.oid) where l.granted = true group by datname
+
+  - metric_name: vastbaseG100_exporter_db_locks
+    type: gauge
+    help: '数据库中不同类型锁的数量'
+    key_labels:
+      - datname
+      - mode
+    values:
+      - count
+    query: |
+      SELECT pg_database.datname, tmp.mode, COALESCE(count, 0) AS count FROM ( VALUES ('accesssharelock'), ('rowsharelock'), ('rowexclusivelock'), ('shareupdateexclusivelock'), ('sharelock'), ('sharerowexclusivelock'), ('exclusivelock'), ('accessexclusivelock'), ('sireadlock') ) AS tmp(MODE) CROSS JOIN pg_database LEFT JOIN ( SELECT DATABASE, lower(MODE) AS MODE, count(*) AS count FROM pg_locks WHERE DATABASE IS NOT NULL GROUP BY DATABASE, lower(MODE) ) AS tmp2 ON tmp.mode = tmp2.mode AND pg_database.oid = tmp2.database ORDER BY 1
+
+  # memory
+
+  # 'max_process_memory': 'VastbaseG100实例允许占用的最大内存',
+  # 'process_used_memory': '数据库进程占用的内存',
+  # 'max_dynamic_memory': '最大动态内存',
+  # 'dynamic_used_memory': '已使用的动态内存',
+  # 'dynamic_peak_memory': '内存的动态峰值',
+  # 'dynamic_used_shrctx': '最大动态共享内存上下文',
+  # 'dynamic_peak_shrctx': '共享内存上下文的动态峰值',
+  # 'max_shared_memory': '最大共享内存',
+  # 'shared_used_memory': '已使用的共享内存',
+  # 'max_cstore_memory': '列存所允许使用的最大内存',
+  # 'cstore_used_memory': '列存已使用的内存大小',
+  # 'max_sctpcomm_memory': 'sctp通信所允许使用的最大内存',
+  # 'sctpcomm_used_memory': 'sctp通信已使用的内存大小',
+  # 'sctpcomm_peak_memory': 'sctp通信的内存峰值',
+  # 'other_used_memory': '其他已使用的内存大小',
+  # 'gpu_max_dynamic_memory': 'GPU最大动态内存',
+  # 'gpu_dynamic_used_memory': 'GPU已使用的动态内存',
+  # 'gpu_dynamic_peak_memory': 'GPU内存的动态峰值',
+  # 'pooler_conn_memory': '链接池申请内���计数',
+  # 'pooler_freeconn_memory': '链接池空闲连接的内存计数',
+  # 'storage_compress_memory': '存储模块压缩使用的内存大小',
+  # 'udf_reserved_memory': 'UDF预留的内存大小'
+  - metric_name: vastbaseG100_exporter_memory_info
+    type: gauge
+    help: '内存使用情况(bytes)'
+    key_labels:
+      - memorytype
+    values:
+      - memorymbytes
+    query: |
+      SELECT memorytype, memorymbytes FROM dbe_perf.MEMORY_NODE_DETAIL
+
+
+  # 事务
+  - metric_name: vastbaseG100_exporter_long_xact
+    type: gauge
+    help: '执行时间大于300秒的长事务数'
+    values:
+      - long_xact
+    query: |
+      SELECT count(*) long_xact FROM pg_stat_activity WHERE STATE <> 'idle' AND NOW() - xact_start > INTERVAL '300 SECOND' AND query NOT LIKE 'autovacuum: VACUUM %'
+
+  - metric_name: vastbaseG100_exporter_long_xact_duration
+    type: gauge
+    help: '数据库执行查询的事务最大耗时(s)'
+    key_labels:
+      - datname
+    values:
+      - maxduration
+    query: |
+      SELECT dtbs.datname, MAX( EXTRACT( EPOCH FROM NOW() - xact_start ) ) :: float AS maxduration FROM pg_stat_activity act RIGHT JOIN pg_database dtbs ON act.datname = dtbs.datname GROUP BY dtbs.datname
+
+  # connection
+  - metric_name: vastbaseG100_exporter_connections
+    type: gauge
+    help: '数据库当前会话数'
+    values:
+      - current_connections
+    query_ref: connection_query
+
+  - metric_name: vastbaseG100_exporter_setting_max_connections
+    type: gauge
+    help: '数据库允许的最大会话数'
+    values:
+      - max_connections
+    query_ref: connection_query
+
+  - metric_name: vastbaseG100_exporter_active_connections
+    type: gauge
+    help: '当前活跃会话数'
+    values:
+      - active_count
+    query: |
+      SELECT count(*) AS active_count FROM pg_stat_activity where state = 'active'
+
+  - metric_name: vastbaseG100_exporter_connection_used_percent
+    type: gauge
+    help: '当前会话数使用率(%)'
+    values:
+      - connection_used_percent
+    query_ref: connection_query
+
+  - metric_name: vastbaseG100_exporter_block_connections
+    type: gauge
+    help: '阻塞会话数'
+    values:
+      - block_count
+    query: |
+      SELECT count(*) AS block_count FROM pg_locks WHERE granted = 'f'
+
+  - metric_name: vastbaseG100_exporter_idle_connections
+    type: gauge
+    help: '空闲会话数'
+    values:
+      - count
+    query: |
+      SELECT count(*) AS count FROM pg_stat_activity WHERE state IN ('idle', 'idle in transaction')
+
+
+  # BgWriter
+  - metric_name: vastbaseG100_exporter_buffers_clean
+    type: gauge
+    help: '后台编写器写入的缓冲区数'
+    values:
+      - buffers_clean
+    query_ref: bgwriter_query
+
+  - metric_name: vastbaseG100_exporter_buffers_checkpoint
+    type: gauge
+    help: '检查点期间写入的缓冲区数'
+    values:
+      - buffers_checkpoint
+    query_ref: bgwriter_query
+
+  - metric_name: vastbaseG100_exporter_buffers_backend
+    type: gauge
+    help: '后端直接写入的缓冲区数'
+    values:
+      - buffers_backend
+    query_ref: bgwriter_query
+
+  - metric_name: vastbaseG100_exporter_checkpoint_write_percent
+    type: gauge
+    help: '检查点期间写入率(%)'
+    values:
+      - checkpoint_write_percent
+    query_ref: bgwriter_query
+
+  # buffer
+  - metric_name: vastbaseG100_exporter_buffers_hit_percent
+    type: gauge
+    help: '缓存命中率(%)'
+    key_labels:
+      - datname
+    values:
+      - buffer_hit
+    query_ref: buffer_query
+
+  - metric_name: vastbaseG100_exporter_xact_trans_percent
+    type: gauge
+    help: '事务提交率(%)'
+    key_labels:
+      - datname
+    values:
+      - success_trans
+    query_ref: buffer_query
+
+  # database_status
+  - metric_name: vastbaseG100_exporter_xact_commit
+    type: gauge
+    help: '已提交事务数'
+    key_labels:
+      - datname
+    values:
+      - xact_commit
+    query_ref: database_status_query
+
+  - metric_name: vastbaseG100_exporter_xact_rollback
+    type: gauge
+    help: '已回滚事务数'
+    key_labels:
+      - datname
+    values:
+      - xact_rollback
+    query_ref: database_status_query
+
+  - metric_name: vastbaseG100_exporter_blks_read
+    type: gauge
+    help: '块读取数'
+    key_labels:
+      - datname
+    values:
+      - blks_read
+    query_ref: database_status_query
+
+  - metric_name: vastbaseG100_exporter_blks_hit
+    type: gauge
+    help: '块命中数'
+    key_labels:
+      - datname
+    values:
+      - blks_hit
+    query_ref: database_status_query
+
+  - metric_name: vastbaseG100_exporter_tup_returned
+    type: gauge
+    help: '查询返回行数'
+    key_labels:
+      - datname
+    values:
+      - tup_returned
+    query_ref: database_status_query
+
+  - metric_name: vastbaseG100_exporter_tup_fetched
+    type: gauge
+    help: '查询获取行数'
+    key_labels:
+      - datname
+    values:
+      - tup_fetched
+    query_ref: database_status_query
+
+  - metric_name: vastbaseG100_exporter_tup_inserted
+    type: gauge
+    help: '插入行数'
+    key_labels:
+      - datname
+    values:
+      - tup_inserted
+    query_ref: database_status_query
+
+  - metric_name: vastbaseG100_exporter_tup_updated
+    type: gauge
+    help: '更新行数'
+    key_labels:
+      - datname
+    values:
+      - tup_updated
+    query_ref: database_status_query
+
+  - metric_name: vastbaseG100_exporter_tup_deleted
+    type: gauge
+    help: '删除行数'
+    key_labels:
+      - datname
+    values:
+      - tup_deleted
+    query_ref: database_status_query
+
+  - metric_name: vastbaseG100_exporter_conflicts
+    type: gauge
+    help: '取消查询数量'
+    key_labels:
+      - datname
+    values:
+      - conflicts
+    query_ref: database_status_query
+
+  - metric_name: vastbaseG100_exporter_temp_files
+    type: gauge
+    help: '临时文件数'
+    key_labels:
+      - datname
+    values:
+      - temp_files
+    query_ref: database_status_query
+
+  - metric_name: vastbaseG100_exporter_temp_bytes
+    type: gauge
+    help: '临时文件字节数(bytes)'
+    key_labels:
+      - datname
+    values:
+      - temp_bytes
+    query_ref: database_status_query
+
+  - metric_name: vastbaseG100_exporter_deadlocks
+    type: gauge
+    help: '死锁数'
+    key_labels:
+      - datname
+    values:
+      - deadlocks
+    query_ref: database_status_query
+
+  - metric_name: vastbaseG100_exporter_blk_read_time
+    type: gauge
+    help: '读取数据文件块耗时(ms)'
+    key_labels:
+      - datname
+    values:
+      - blk_read_time
+    query_ref: database_status_query
+
+  - metric_name: vastbaseG100_exporter_blk_write_time
+    type: gauge
+    help: '写入数据文件块耗时(ms)'
+    key_labels:
+      - datname
+    values:
+      - blk_write_time
+    query_ref: database_status_query
+
+  - metric_name: vastbaseG100_exporter_backend_connections
+    type: gauge
+    help: '后端连接数'
+    key_labels:
+      - datname
+    values:
+      - numbackends
+    query_ref: database_status_query
+
+  # index
+  - metric_name: vastbaseG100_exporter_index_ipages
+    type: gauge
+    help: '索引页数'
+    key_labels:
+      - datname
+      - schemaname
+      - tablename
+      - iname
+    values:
+      - ipages
+    query_ref: index_query
+
+  - metric_name: vastbaseG100_exporter_index_iotta
+    type: gauge
+    help: '索引预期页数'
+    key_labels:
+      - datname
+      - schemaname
+      - tablename
+      - iname
+    values:
+      - iotta
+    query_ref: index_query
+
+  - metric_name: vastbaseG100_exporter_index_ibloat
+    type: gauge
+    help: '索引膨胀比率(ratio 1.0)'
+    key_labels:
+      - datname
+      - schemaname
+      - tablename
+      - iname
+    values:
+      - ibloat
+    query_ref: index_query
+
+  - metric_name: vastbaseG100_exporter_index_wastedpages
+    type: gauge
+    help: '索引浪费页数'
+    key_labels:
+      - datname
+      - schemaname
+      - tablename
+      - iname
+    values:
+      - wastedipages
+    query_ref: index_query
+
+  - metric_name: vastbaseG100_exporter_index_wastedibytes
+    type: gauge
+    help: '索引浪费字节数(bytes)'
+    key_labels:
+      - datname
+      - schemaname
+      - tablename
+      - iname
+    values:
+      - wastedibytes
+    query_ref: index_query
+
+  - metric_name: vastbaseG100_exporter_index_totalwastedbytes
+    type: gauge
+    help: '索引总浪费字节数(bytes)'
+    key_labels:
+      - datname
+      - schemaname
+      - tablename
+      - iname
+    values:
+      - totalwastedbytes
+    query_ref: index_query
+
+  # table
+  - metric_name: vastbaseG100_exporter_table_tups
+    type: gauge
+    help: '表行数'
+    key_labels:
+      - datname
+      - schemaname
+      - tablename
+      - iname
+    values:
+      - tups
+    query_ref: table_query
+
+  - metric_name: vastbaseG100_exporter_table_pages
+    type: gauge
+    help: '表页数'
+    key_labels:
+      - datname
+      - schemaname
+      - tablename
+      - iname
+    values:
+      - pages
+    query_ref: table_query
+
+  - metric_name: vastbaseG100_exporter_table_otta
+    type: gauge
+    help: '表预期页数'
+    key_labels:
+      - datname
+      - schemaname
+      - tablename
+      - iname
+    values:
+      - otta
+    query_ref: table_query
+
+  - metric_name: vastbaseG100_exporter_table_tbloat
+    type: gauge
+    help: '表膨胀比率(ratio 1.0)'
+    key_labels:
+      - datname
+      - schemaname
+      - tablename
+      - iname
+    values:
+      - tbloat
+    query_ref: table_query
+
+  - metric_name: vastbaseG100_exporter_table_wastedbytes
+    type: gauge
+    help: '表浪费空间大小(bytes)'
+    key_labels:
+      - datname
+      - schemaname
+      - tablename
+      - iname
+    values:
+      - wastedpages
+    query_ref: table_query
+
+  # memory used percent
+  - metric_name: vastbaseG100_exporter_process_used_memory_percent
+    type: gauge
+    help: '进程最大使用内存百分比(%)'
+    values:
+      - process_used_memory_percent
+    query_ref: memory_used_percent_query
+
+  - metric_name: vastbaseG100_exporter_dynamic_used_memory_percent
+    type: gauge
+    help: '动态最大使用内存百分比(%)'
+    values:
+      - dynamic_used_memory_percent
+    query_ref: memory_used_percent_query
+
+  - metric_name: vastbaseG100_exporter_shared_used_memory_percent
+    type: gauge
+    help: '共享最大使用内存百分比(%)'
+    values:
+      - shared_used_memory_percent
+    query_ref: memory_used_percent_query
+
+  # WAL
+  - metric_name: vastbaseG100_exporter_wal_write_buffer
+    type: gauge
+    help: 'WAL写入缓冲区数'
+    values:
+      - phywrts
+    query_ref: WAL_query
+
+  - metric_name: vastbaseG100_exporter_wal_write_block
+    type: gauge
+    help: 'WAL写入块数'
+    values:
+      - phyblkwrt
+    query_ref: WAL_query
+
+  # backup
+  - metric_name: vastbaseG100_exporter_backup_state
+    type: gauge
+    help: '主备进程状态'
+    key_labels:
+      - application_name
+      - client_addr
+      - backend_start
+    values:
+      - state
+    query_ref: backup_query
+
+  - metric_name: vastbaseG100_exporter_backup_sync_state
+    type: gauge
+    help: '主备进程同步状态'
+    key_labels:
+      - application_name
+      - client_addr
+      - backend_start
+    values:
+      - sync_state
+    query_ref: backup_query
+
+  - metric_name: vastbaseG100_exporter_backup_slave_latency
+    type: gauge
+    help: '备库WAL延迟应用量(MB)'
+    key_labels:
+      - application_name
+      - client_addr
+      - backend_start
+    values:
+      - slave_latency_mb
+    query_ref: backup_query
+
+  - metric_name: vastbaseG100_exporter_backup_send_latency
+    type: gauge
+    help: '备库WAL延迟接收量(MB)'
+    key_labels:
+      - application_name
+      - client_addr
+      - backend_start
+    values:
+      - send_latency_mb
+    query_ref: backup_query
+
+  - metric_name: vastbaseG100_exporter_backup_flush_latency
+    type: gauge
+    help: '备库WAL延迟刷盘量(MB)'
+    key_labels:
+      - application_name
+      - client_addr
+      - backend_start
+    values:
+      - flush_latency_mb
+    query_ref: backup_query
+
+queries:
+  # BgWriter
+  - query_name: bgwriter_query
+    query: |
+      SELECT
+        buffers_clean,
+        buffers_checkpoint,
+        buffers_backend,
+        100 * (buffers_checkpoint / (buffers_checkpoint + buffers_clean + buffers_backend + 0.000001)) AS checkpoint_write_percent
+      FROM
+        pg_stat_bgwriter
+
+  # buffer
+  - query_name: buffer_query
+    query: |
+      SELECT
+        a.datname,
+        CAST(
+          blks_hit / (blks_read + blks_hit + 0.000001) * 100.0 AS NUMERIC(5, 2)
+        ) AS buffer_hit,
+        CAST(
+          xact_commit / (xact_rollback + xact_commit + 0.000001) * 100.0 AS NUMERIC(5, 2)
+        ) AS success_trans
+      FROM
+        pg_stat_database a
+      where
+        datname not in ('template0', 'template1')
+      ORDER BY
+        pg_database_size(a.datid) DESC
+
+
+  # database_status
+  - query_name: database_status_query
+    query: |
+      SELECT
+        datname,
+        numbackends,
+        xact_commit,
+        xact_rollback,
+        blks_read,
+        blks_hit,
+        tup_returned,
+        tup_fetched,
+        tup_inserted,
+        tup_updated,
+        tup_deleted,
+        conflicts,
+        temp_files,
+        temp_bytes,
+        deadlocks,
+        blk_read_time,
+        blk_write_time,
+        stats_reset
+      FROM
+        dbe_perf.STAT_DATABASE
+      WHERE
+        datname NOT IN('template0', 'template1')
+      ORDER BY
+        deadlocks DESC,
+        xact_commit DESC
+
+  # index
+  - query_name: index_query
+    query: |
+      SELECT
+        current_database() AS datname, schemaname, tablename, reltuples::bigint AS tups, relpages::bigint AS pages, otta,
+        ROUND(CASE WHEN otta=0 OR sml.relpages=0 OR sml.relpages=otta THEN 0.0 ELSE sml.relpages/otta::numeric END,1) AS tbloat,
+        CASE WHEN relpages < otta THEN '0 bytes'::text ELSE (bs*(relpages-otta))::bigint || ' bytes' END AS wastedsize,
+        iname, ituples::bigint AS itups, ipages::bigint AS ipages, iotta,
+        ROUND(CASE WHEN iotta=0 OR ipages=0 OR ipages=iotta THEN 0.0 ELSE ipages/iotta::numeric END,1) AS ibloat,
+        CASE WHEN ipages < iotta THEN 0 ELSE ipages::bigint - iotta END AS wastedipages,
+        CASE WHEN ipages < iotta THEN 0 ELSE bs*(ipages-iotta) END AS wastedibytes,
+        CASE WHEN ipages < iotta THEN '0 bytes' ELSE (bs*(ipages-iotta))::bigint || ' bytes' END AS wastedisize,
+        CASE WHEN relpages < otta THEN
+          CASE WHEN ipages < iotta THEN 0 ELSE bs*(ipages-iotta::bigint) END
+          ELSE CASE WHEN ipages < iotta THEN bs*(relpages-otta::bigint)
+            ELSE bs*(relpages-otta::bigint + ipages-iotta::bigint) END
+        END AS totalwastedbytes
+      FROM (
+        SELECT
+          nn.nspname AS schemaname,
+          cc.relname AS tablename,
+          COALESCE(cc.reltuples,0) AS reltuples,
+          COALESCE(cc.relpages,0) AS relpages,
+          COALESCE(bs,0) AS bs,
+          COALESCE(CEIL((cc.reltuples*((datahdr+ma-
+            (CASE WHEN datahdr%ma=0 THEN ma ELSE datahdr%ma END))+nullhdr2+4))/(bs-20::float)),0) AS otta,
+          COALESCE(c2.relname,'?') AS iname, COALESCE(c2.reltuples,0) AS ituples, COALESCE(c2.relpages,0) AS ipages,
+          COALESCE(CEIL((c2.reltuples*(datahdr-12))/(bs-20::float)),0) AS iotta -- very rough approximation, assumes all cols
+        FROM
+           pg_class cc
+        JOIN pg_namespace nn ON cc.relnamespace = nn.oid AND nn.nspname <> 'information_schema'
+        LEFT JOIN
+        (
+          SELECT
+            ma,bs,foo.nspname,foo.relname,
+            (datawidth+(hdr+ma-(case when hdr%ma=0 THEN ma ELSE hdr%ma END)))::numeric AS datahdr,
+            (maxfracsum*(nullhdr+ma-(case when nullhdr%ma=0 THEN ma ELSE nullhdr%ma END))) AS nullhdr2
+          FROM (
+            SELECT
+              ns.nspname, tbl.relname, hdr, ma, bs,
+              SUM((1-coalesce(null_frac,0))*coalesce(avg_width, 2048)) AS datawidth,
+              MAX(coalesce(null_frac,0)) AS maxfracsum,
+              hdr+(
+                SELECT 1+count(*)/8
+                FROM pg_stats s2
+                WHERE null_frac<>0 AND s2.schemaname = ns.nspname AND s2.tablename = tbl.relname
+              ) AS nullhdr
+            FROM pg_attribute att
+            JOIN pg_class tbl ON att.attrelid = tbl.oid
+            JOIN pg_namespace ns ON ns.oid = tbl.relnamespace
+            LEFT JOIN pg_stats s ON s.schemaname=ns.nspname
+            AND s.tablename = tbl.relname
+            AND s.inherited=false
+            AND s.attname=att.attname,
+            (
+              SELECT
+                (SELECT current_setting('block_size')::numeric) AS bs,
+                  CASE WHEN SUBSTRING(SPLIT_PART(v, ' ', 2) FROM '#"[0-9]+.[0-9]+#"%' for '#')
+                    IN ('8.0','8.1','8.2') THEN 27 ELSE 23 END AS hdr,
+                CASE WHEN v ~ 'mingw32' OR v ~ '64-bit' THEN 8 ELSE 4 END AS ma
+              FROM (SELECT version() AS v) AS foo
+            ) AS constants
+            WHERE att.attnum > 0 AND tbl.relkind='r'
+            GROUP BY 1,2,3,4,5
+          ) AS foo
+        ) AS rs
+        ON cc.relname = rs.relname AND nn.nspname = rs.nspname
+        LEFT JOIN pg_index i ON indrelid = cc.oid
+        LEFT JOIN pg_class c2 ON c2.oid = i.indexrelid
+      ) AS sml order by wastedibytes desc limit 5
+
+# table
+  - query_name: table_query
+    query: |
+      SELECT
+        current_database() AS datname, schemaname, tablename, reltuples::bigint AS tups, relpages::bigint AS pages, otta,
+        ROUND(CASE WHEN otta=0 OR sml.relpages=0 OR sml.relpages=otta THEN 0.0 ELSE sml.relpages/otta::numeric END,1) AS tbloat,
+        CASE WHEN relpages < otta THEN 0 ELSE relpages::bigint - otta END AS wastedpages,
+        CASE WHEN relpages < otta THEN 0 ELSE bs*(sml.relpages-otta)::bigint END AS wastedbytes,
+        CASE WHEN relpages < otta THEN '0 bytes'::text ELSE (bs*(relpages-otta))::bigint || ' bytes' END AS wastedsize,
+        iname, ituples::bigint AS itups, ipages::bigint AS ipages, iotta,
+        ROUND(CASE WHEN iotta=0 OR ipages=0 OR ipages=iotta THEN 0.0 ELSE ipages/iotta::numeric END,1) AS ibloat,
+        CASE WHEN ipages < iotta THEN 0 ELSE ipages::bigint - iotta END AS wastedipages,
+        CASE WHEN ipages < iotta THEN 0 ELSE bs*(ipages-iotta) END AS wastedibytes,
+        CASE WHEN ipages < iotta THEN '0 bytes' ELSE (bs*(ipages-iotta))::bigint || ' bytes' END AS wastedisize,
+        CASE WHEN relpages < otta THEN
+          CASE WHEN ipages < iotta THEN 0 ELSE bs*(ipages-iotta::bigint) END
+          ELSE CASE WHEN ipages < iotta THEN bs*(relpages-otta::bigint)
+            ELSE bs*(relpages-otta::bigint + ipages-iotta::bigint) END
+        END AS totalwastedbytes
+      FROM (
+        SELECT
+          nn.nspname AS schemaname,
+          cc.relname AS tablename,
+          COALESCE(cc.reltuples,0) AS reltuples,
+          COALESCE(cc.relpages,0) AS relpages,
+          COALESCE(bs,0) AS bs,
+          COALESCE(CEIL((cc.reltuples*((datahdr+ma-
+            (CASE WHEN datahdr%ma=0 THEN ma ELSE datahdr%ma END))+nullhdr2+4))/(bs-20::float)),0) AS otta,
+          COALESCE(c2.relname,'?') AS iname, COALESCE(c2.reltuples,0) AS ituples, COALESCE(c2.relpages,0) AS ipages,
+          COALESCE(CEIL((c2.reltuples*(datahdr-12))/(bs-20::float)),0) AS iotta -- very rough approximation, assumes all cols
+        FROM
+           pg_class cc
+        JOIN pg_namespace nn ON cc.relnamespace = nn.oid AND nn.nspname <> 'information_schema'
+        LEFT JOIN
+        (
+          SELECT
+            ma,bs,foo.nspname,foo.relname,
+            (datawidth+(hdr+ma-(case when hdr%ma=0 THEN ma ELSE hdr%ma END)))::numeric AS datahdr,
+            (maxfracsum*(nullhdr+ma-(case when nullhdr%ma=0 THEN ma ELSE nullhdr%ma END))) AS nullhdr2
+          FROM (
+            SELECT
+              ns.nspname, tbl.relname, hdr, ma, bs,
+              SUM((1-coalesce(null_frac,0))*coalesce(avg_width, 2048)) AS datawidth,
+              MAX(coalesce(null_frac,0)) AS maxfracsum,
+              hdr+(
+                SELECT 1+count(*)/8
+                FROM pg_stats s2
+                WHERE null_frac<>0 AND s2.schemaname = ns.nspname AND s2.tablename = tbl.relname
+              ) AS nullhdr
+            FROM pg_attribute att
+            JOIN pg_class tbl ON att.attrelid = tbl.oid
+            JOIN pg_namespace ns ON ns.oid = tbl.relnamespace
+            LEFT JOIN pg_stats s ON s.schemaname=ns.nspname
+            AND s.tablename = tbl.relname
+            AND s.inherited=false
+            AND s.attname=att.attname,
+            (
+              SELECT
+                (SELECT current_setting('block_size')::numeric) AS bs,
+                  CASE WHEN SUBSTRING(SPLIT_PART(v, ' ', 2) FROM '#"[0-9]+.[0-9]+#"%' for '#')
+                    IN ('8.0','8.1','8.2') THEN 27 ELSE 23 END AS hdr,
+                CASE WHEN v ~ 'mingw32' OR v ~ '64-bit' THEN 8 ELSE 4 END AS ma
+              FROM (SELECT version() AS v) AS foo
+            ) AS constants
+            WHERE att.attnum > 0 AND tbl.relkind='r'
+            GROUP BY 1,2,3,4,5
+          ) AS foo
+        ) AS rs
+        ON cc.relname = rs.relname AND nn.nspname = rs.nspname
+        LEFT JOIN pg_index i ON indrelid = cc.oid
+        LEFT JOIN pg_class c2 ON c2.oid = i.indexrelid
+      ) AS sml order by wastedbytes desc limit 5
+
+  # memory_used_percent_query
+  - query_name: memory_used_percent_query
+    query: |
+      SELECT
+        100 * (process_used_memory / max_process_memory) AS process_used_memory_percent,
+        100 * (dynamic_used_memory / max_dynamic_memory) AS dynamic_used_memory_percent,
+        100 * (shared_used_memory / max_shared_memory) AS shared_used_memory_percent
+      FROM
+        pg_total_memory_detail pivot(
+          sum(memorymbytes) FOR memorytype IN (
+            'max_process_memory' AS max_process_memory,
+            'process_used_memory' AS process_used_memory,
+            'max_dynamic_memory' AS max_dynamic_memory,
+            'dynamic_used_memory' AS dynamic_used_memory,
+            'max_shared_memory' AS max_shared_memory,
+            'shared_used_memory' AS shared_used_memory
+          )
+        )
+
+  # WAL
+  - query_name: WAL_query
+    query: |
+      SELECT
+        phywrts,
+        phyblkwrt,
+        writetim,
+        avgiotim,
+        lstiotim,
+        miniotim,
+        maxiowtm
+      FROM
+        dbe_perf.FILE_REDO_IOSTAT
+
+  # connection used percent
+  - query_name: connection_query
+    query: |
+      SELECT
+        current_setting('max_connections') :: int AS max_connections,
+        count(*) AS current_connections,
+        100.0 * count(*) / current_setting('max_connections') :: int AS connection_used_percent
+      FROM
+        pg_stat_activity
+
+  # backup
+  - query_name: backup_query
+    query: |
+      SELECT
+        usename,
+        application_name,
+        client_addr,
+        client_hostname,
+        client_port,
+        backend_start,
+        CASE
+          WHEN state = 'Startup' THEN 1
+          WHEN state = 'Catchup' THEN 2
+          WHEN state = 'Streaming' THEN 3
+          WHEN state = 'Backup' THEN 4
+          WHEN state = 'Stopping' THEN 5
+          ELSE 0
+        END AS state,
+        CASE
+          WHEN sync_state = 'Async' THEN 1
+          WHEN sync_state = 'Potential' THEN 2
+          WHEN sync_state = 'Sync' THEN 3
+          WHEN sync_state = 'Quorum' THEN 4
+          ELSE 0
+        END AS sync_state,
+        pg_xlog_location_diff(A.c1, receiver_replay_location) /(1024 * 1024) AS slave_latency_mb,
+        pg_xlog_location_diff(A.c1, sender_sent_location) /(1024 * 1024) AS send_latency_mb,
+        pg_xlog_location_diff(A.c1, receiver_flush_location) /(1024 * 1024) AS flush_latency_mb,
+        NOW() :: timestamptz AS query_time
+      FROM
+        pg_stat_replication,
+        pg_current_xlog_location() AS A(c1);

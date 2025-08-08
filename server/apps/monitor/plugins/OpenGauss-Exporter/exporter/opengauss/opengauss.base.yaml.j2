@@ -1,0 +1,438 @@
+# opengauss数据库查询结果为小写！
+collector_name: opengauss_sql
+
+# Similar to global.min_interval, but applies to the queries defined by this collector only.
+#min_interval: 0s
+
+metrics:
+  # memory
+  # "max_process_memory":      "GaussDB(DWS)集群实例所占用的内存大小"
+  # "process_used_memory":     "GaussDB(DWS)进程所使用的内存大小"
+  # "max_dynamic_memory":      "最大动态内存"
+  # "dynamic_used_memory":     "已使用的动态内存"
+  # "dynamic_peak_memory":     "内存的动态峰值"
+  # "dynamic_used_shrctx":     "最大动态共享内存上下文"
+  # "dynamic_peak_shrctx":     "共享内存上下文的动态峰值"
+  # "max_shared_memory":       "最大共享内存"
+  # "shared_used_memory":      "已使用的共享内存"
+  # "max_cstore_memory":       "列存所允许使用的最大内存"
+  # "cstore_used_memory":      "列存已使用的内存大小"
+  # "max_sctpcomm_memory":     "通信库所允许使用的最大内存"
+  # "sctpcomm_used_memory":    "通信库已使用的内存大小"
+  # "sctpcomm_peak_memory":    "通信库的内存峰值"
+  # "other_used_memory":       "其他已使用的内存大小"
+  # "gpu_max_dynamic_memory":  "GPU内存最大值"
+  # "gpu_dynamic_used_memory": "当前GPU可用内存和当前临时GPU内存之和"
+  # "gpu_dynamic_peak_memory": "GPU内存使用的最大内存"
+  # "pooler_conn_memory":      "连接占用内存大小"
+  # "pooler_freeconn_memory":  "空闲连接占用的内存大小"
+  # "storage_compress_memory": "列存压缩和解压缩使用的内存大小"
+  # "udf_reserved_memory":     "为UDF Worker进程预留的内存大小"
+  - metric_name: opengauss_exporter_memory_usage
+    type: gauge
+    help: '内存使用情况(MB)'
+    values:
+      - memorymbytes
+    key_labels:
+      - memorytype
+    query: |
+        SELECT memorytype, memorymbytes FROM pv_total_memory_detail()
+
+  # conflict
+  - metric_name: opengauss_exporter_conflict_tablespaces
+    type: gauge
+    help: '由于删除表空间而取消的查询数'
+    values:
+      - confl_tablespace
+    key_labels:
+      - datname
+    query_ref: conflict_query
+
+  - metric_name: opengauss_exporter_conflict_locks
+    type: gauge
+    help: '由于锁定超时而取消的查询数'
+    values:
+      - confl_lock
+    key_labels:
+      - datname
+    query_ref: conflict_query
+
+  - metric_name: opengauss_exporter_conflict_snapshots
+    type: gauge
+    help: '由于旧快照而取消的查询数'
+    values:
+      - confl_snapshot
+    key_labels:
+      - datname
+    query_ref: conflict_query
+
+  - metric_name: opengauss_exporter_conflict_bufferpins
+    type: gauge
+    help: '由于固定缓冲区而取消的查询数'
+    values:
+      - confl_bufferpin
+    key_labels:
+      - datname
+    query_ref: conflict_query
+
+  - metric_name: opengauss_exporter_conflict_deadlock
+    type: gauge
+    help: '由于死锁而取消的查询数'
+    values:
+      - confl_deadlock
+    key_labels:
+      - datname
+    query_ref: conflict_query
+
+  - metric_name: opengauss_exporter_locks
+    type: gauge
+    help: '数据库中锁数的数量'
+    values:
+      - count
+    key_labels:
+      - datname
+      - mode
+    query: |
+        SELECT
+            datname,
+            MODE,
+            coalesce(count, 0) AS count
+        FROM
+            (
+                SELECT
+                    d.oid AS DATABASE,
+                    d.datname,
+                    l.mode
+                FROM
+                    pg_database d,
+                    unnest(
+                        ARRAY ['AccessShareLock','RowShareLock','RowExclusiveLock','ShareUpdateExclusiveLock','ShareLock','ShareRowExclusiveLock','ExclusiveLock','AccessExclusiveLock']
+                    ) l(MODE)
+                WHERE
+                    d.datname NOT IN ('template0', 'template1', '')
+            ) base
+            LEFT JOIN (
+                SELECT
+                    DATABASE,
+                    MODE,
+                    count(1) AS count
+                FROM
+                    pg_locks
+                WHERE
+                    DATABASE IS NOT NULL
+                GROUP BY
+                    DATABASE,
+                    MODE
+            ) cnt USING (DATABASE, MODE)
+
+
+  - metric_name: opengauss_exporter_slow_queries
+    type: gauge
+    help: '当前慢查询数量'
+    values:
+      - count
+    key_labels:
+      - datname
+    query: |
+        SELECT
+            dt.datname,
+            (
+                SELECT
+                    count(*)
+                FROM
+                    pg_stat_activity act
+                WHERE
+                    act.STATE <> 'idle'
+                    AND NOW() - act.query_start > INTERVAL '1 second'
+                    AND act.datname = dt.datname
+            )
+        FROM
+            pg_database dt
+        WHERE
+            dt.datname NOT IN ('template0', 'template1', '')
+
+  # static
+  - metric_name: opengauss_exporter_buffers_hit_ratio
+    type: gauge
+    help: '数据库缓冲区缓存命中率(%)'
+    values:
+      - buffer_hit_ratio
+    key_labels:
+      - datname
+    query_ref: stat_query
+
+  - metric_name: opengauss_exporter_tup_returns
+    type: gauge
+    help: '进行全表扫描的记录数'
+    values:
+      - tup_returned
+    key_labels:
+      - datname
+    query_ref: stat_query
+
+  - metric_name: opengauss_exporter_deadlocks
+    type: gauge
+    help: '死锁数'
+    values:
+      - deadlocks
+    key_labels:
+      - datname
+    query_ref: stat_query
+
+  # xact
+  - metric_name: opengauss_exporter_xact_commit
+    type: gauge
+    help: '数据库中已提交的事务数'
+    values:
+      - xact_commit
+    key_labels:
+      - datname
+    query_ref: xact_query
+
+  - metric_name: opengauss_exporter_xact_rollback
+    type: gauge
+    help: '数据库中已回滚的事务数'
+    values:
+      - xact_rollback
+    key_labels:
+      - datname
+    query_ref: xact_query
+
+  - metric_name: opengauss_exporter_xact_rollback_ratio
+    type: gauge
+    help: '数据库事务回滚率(%)'
+    values:
+      - rollback_ratio
+    key_labels:
+      - datname
+    query_ref: xact_query
+
+  - metric_name: opengauss_exporter_max_transaction_time
+    type: gauge
+    help: '当前最长的事务时间(s)'
+    values:
+      - max_tx_duration
+    key_labels:
+      - datname
+    query: |
+        SELECT
+            pg_database.datname,
+            COALESCE(max_tx_duration, 0) AS max_tx_duration
+        FROM
+            pg_database
+            LEFT JOIN(
+                SELECT
+                    datname,
+                    MAX(
+                        EXTRACT(
+                            EPOCH
+                            FROM
+                                NOW() - xact_start
+                        )
+                    ) :: float AS max_tx_duration
+                FROM
+                    pg_stat_activity
+                GROUP BY
+                    datname
+            ) AS tmp2 ON pg_database.datname = tmp2.datname
+        WHERE
+            pg_database.datname NOT IN ('template0', 'template1')
+
+  - metric_name: opengauss_exporter_connection_used_ratio
+    type: gauge
+    help: '连接使用率(%)'
+    values:
+      - case
+    query: |
+        SELECT case WHEN current_setting('max_connections') > 0 THEN ( 100.0 *( SELECT count(*) FROM pg_stat_activity ) / current_setting('max_connections') ) ELSE 0 end
+
+  - metric_name: opengauss_exporter_connections
+    type: gauge
+    help: '不同状态下的连接数'
+    values:
+      - count
+    key_labels:
+      - datname
+      - state
+    query: |
+        SELECT
+            pg_database.datname,
+            tmp.state,
+            COALESCE(count, 0) as count
+        FROM
+            (
+                VALUES
+                    ('active'),
+                    ('idle'),
+                    ('idle in transaction'),
+                    ('idle in transaction (aborted)'),
+                    ('fastpath function call'),
+                    ('disabled')
+            ) AS tmp(state)
+            CROSS JOIN pg_database
+            LEFT JOIN(
+                SELECT
+                    datname,
+                    state,
+                    count(*) AS count
+                FROM
+                    pg_stat_activity
+                GROUP BY
+                    datname,
+                    state
+            ) AS tmp2 ON tmp.state = tmp2.state
+            AND pg_database.datname = tmp2.datname
+        where
+            pg_database.datname not in ('template0', 'template1')
+
+  # database
+  - metric_name: opengauss_exporter_database_size
+    type: gauge
+    help: '数据库磁盘使用空间(bytes)'
+    values:
+      - size_bytes
+    key_labels:
+      - datname
+    query_ref: database_query
+
+  - metric_name: opengauss_exporter_database_connection_limit
+    type: gauge
+    help: '数据库连接限制'
+    values:
+      - conn_limit
+    key_labels:
+      - datname
+    query_ref: database_query
+
+  # checkpoint
+  - metric_name: opengauss_exporter_scheduled_checkpoints
+    type: gauge
+    help: '执行定期checkpoint的数量'
+    values:
+      - checkpoints_timed
+    query_ref: checkpoints_query
+
+  - metric_name: opengauss_exporter_request_checkpoints
+    type: gauge
+    help: '执行请求checkpoint的数量'
+    values:
+      - checkpoints_req
+    query_ref: checkpoints_query
+
+  - metric_name: opengauss_exporter_checkpoint_write_time
+    type: gauge
+    help: '处理checkpoint文件写入磁盘的时间(ms)'
+    values:
+      - checkpoint_write_time
+    query_ref: checkpoints_query
+
+  - metric_name: opengauss_exporter_checkpoint_sync_time
+    type: gauge
+    help: '处理checkpoint文件同步到磁盘的时间(ms)'
+    values:
+      - checkpoint_sync_time
+    query_ref: checkpoints_query
+
+  - metric_name: opengauss_exporter_buffers_checkpoint
+    type: gauge
+    help: 'checkpoint期间写缓冲区数量'
+    values:
+      - buffers_checkpoint
+    query_ref: checkpoints_query
+
+  - metric_name: opengauss_exporter_buffers_clean
+    type: gauge
+    help: '后端写进程写缓冲区数量'
+    values:
+      - buffers_clean
+    query_ref: checkpoints_query
+
+  - metric_name: opengauss_exporter_buffers_backend
+    type: gauge
+    help: '后端直接写缓冲区数'
+    values:
+      - buffers_backend
+    query_ref: checkpoints_query
+
+  - metric_name: opengauss_exporter_buffers_backend_fsync
+    type: gauge
+    help: '后端必须执行自己的fsync次数'
+    values:
+      - buffers_backend_fsync
+    query_ref: checkpoints_query
+
+  - metric_name: opengauss_exporter_buffers_alloc
+    type: gauge
+    help: '分配的缓冲区数量'
+    values:
+      - buffers_alloc
+    query_ref: checkpoints_query
+
+
+queries:
+  - query_name: conflict_query
+    query: |
+        SELECT
+            datname,
+            confl_tablespace,
+            confl_lock,
+            confl_snapshot,
+            confl_bufferpin,
+            confl_deadlock
+        FROM
+            pg_stat_database_conflicts
+        WHERE
+            datname NOT IN ('template0', 'template1')
+
+  - query_name: stat_query
+    query: |
+        SELECT
+            datname,
+            CAST (
+                blks_hit / (blks_read + blks_hit + 0.000001) * 100.0 AS NUMERIC (5, 2)
+            ) AS buffer_hit_ratio,
+            tup_returned,
+            deadlocks
+        FROM
+            pg_stat_database
+        WHERE
+            datname NOT IN ('template0', 'template1', '')
+
+  - query_name: xact_query
+    query: |
+        SELECT
+            datname,
+            xact_commit,
+            xact_rollback,
+            (100.0 * xact_rollback) /(xact_commit + xact_rollback + 0.0000001) AS rollback_ratio
+        FROM
+            pg_stat_database
+        WHERE
+            datname NOT IN ('template0', 'template1', '')
+
+  - query_name: database_query
+    query: |
+        SELECT
+            datname,
+            pg_database_size(pg_database.datname) as size_bytes,
+            datconnlimit AS conn_limit
+        FROM
+            pg_database
+        where
+            datname NOT IN ('template0', 'template1')
+
+  - query_name: checkpoints_query
+    query: |
+        SELECT
+            checkpoints_timed,
+            checkpoints_req,
+            checkpoint_write_time,
+            checkpoint_sync_time,
+            buffers_checkpoint,
+            buffers_clean,
+            buffers_backend,
+            buffers_backend_fsync,
+            buffers_alloc
+        FROM
+            pg_stat_bgwriter
+

@@ -1,0 +1,488 @@
+# gbase8a数据库查询结果为小写！
+collector_name: gbase8a_sql
+
+# Similar to global.min_interval, but applies to the queries defined by this collector only.
+#min_interval: 0s
+
+metrics:
+  # dc
+  - metric_name: gbase8a_exporter_dc_hit_rate
+    type: gauge
+    help: 'DC命中率(%)'
+    values:
+      - hit_rate
+    key_labels:
+      - host
+    query_ref: dc_query
+
+  - metric_name: gbase8a_exporter_total_dc
+    type: gauge
+    help: 'DC总数量'
+    values:
+      - total_dc
+    key_labels:
+      - host
+    query_ref: dc_query
+
+  - metric_name: gbase8a_exporter_unlocked_dc
+    type: gauge
+    help: '没有被锁住的DC总数量'
+    values:
+      - unlocked_dc
+    key_labels:
+      - host
+    query_ref: dc_query
+
+  - metric_name: gbase8a_exporter_total_dc_size
+    type: gauge
+    help: 'DC占用总内存大小(bytes)'
+    values:
+      - total_dc_size
+    key_labels:
+      - host
+    query_ref: dc_query
+
+  - metric_name: gbase8a_exporter_unlocked_dc_size
+    type: gauge
+    help: '没有被锁住的DC占用内存大小(bytes)'
+    values:
+      - unlocked_dc_size
+    key_labels:
+      - host
+    query_ref: dc_query
+
+  - metric_name: gbase8a_exporter_hot_total_dc
+    type: gauge
+    help: '热数据DC数量'
+    values:
+      - hot_total_dc
+    key_labels:
+      - host
+    query_ref: dc_query
+
+  - metric_name: gbase8a_exporter_hot_unlocked_dc
+    type: gauge
+    help: '没有被锁住的热数据DC数量'
+    values:
+      - hot_unlocked_dc
+    key_labels:
+      - host
+    query_ref: dc_query
+
+  - metric_name: gbase8a_exporter_hot_total_dc_size
+    type: gauge
+    help: '热数据DC占用总内存大小(bytes)'
+    values:
+      - hot_total_dc_size
+    key_labels:
+      - host
+    query_ref: dc_query
+
+  - metric_name: gbase8a_exporter_hot_unlocked_dc_size
+    type: gauge
+    help: '没有被锁住的热数据DC占用内存大小(bytes)'
+    values:
+      - hot_unlocked_dc_size
+    key_labels:
+      - host
+    query_ref: dc_query
+
+  - metric_name: gbase8a_exporter_cold_total_dc
+    type: gauge
+    help: '冷数据DC数量'
+    values:
+      - cold_total_dc
+    key_labels:
+      - host
+    query_ref: dc_query
+
+  - metric_name: gbase8a_exporter_cold_unlocked_dc
+    type: gauge
+    help: '没有被锁住的冷数据DC数量'
+    values:
+      - cold_unlocked_dc
+    key_labels:
+      - host
+    query_ref: dc_query
+
+  - metric_name: gbase8a_exporter_cold_total_dc_size
+    type: gauge
+    help: '冷数据DC占用总内存大小(bytes)'
+    values:
+      - cold_total_dc_size
+    key_labels:
+      - host
+    query_ref: dc_query
+
+  - metric_name: gbase8a_exporter_cold_unlocked_dc_size
+    type: gauge
+    help: '没有被锁住的冷数据DC占用内存大小(bytes)'
+    values:
+      - cold_unlocked_dc_size
+    key_labels:
+      - host
+    query_ref: dc_query
+
+  - metric_name: gbase8a_exporter_file_disk_used_size
+    type: gauge
+    help: '数据库文件磁盘使用空间(bytes)'
+    values:
+      - total_size
+    key_labels:
+      - host
+      - dir_type
+    query: |
+        SELECT
+            host,
+            dir_type,
+            sum(dir_size) AS total_size
+        FROM
+            performance_schema.disk_usage_info
+        GROUP BY
+            host,
+            dir_type
+
+  # heap
+  - metric_name: gbase8a_exporter_heap_size
+    type: gauge
+    help: '堆总大小(bytes)'
+    values:
+      - heap_size
+    key_labels:
+      - host
+      - heap_type
+    query_ref: heap_query
+
+  - metric_name: gbase8a_exporter_used_in_heap
+    type: gauge
+    help: '堆使用中的大小(bytes)'
+    values:
+      - used_in_heap
+    key_labels:
+      - host
+      - heap_type
+    query_ref: heap_query
+
+  - metric_name: gbase8a_exporter_used_in_system
+    type: gauge
+    help: '从操作系统额外申请的堆大小(bytes)'
+    values:
+      - used_in_system
+    key_labels:
+      - host
+      - heap_type
+    query_ref: heap_query
+
+  - metric_name: gbase8a_exporter_max_used_block
+    type: gauge
+    help: '当前堆中最大块的大小(bytes)'
+    values:
+      - max_used_block
+    key_labels:
+      - host
+      - heap_type
+    query_ref: heap_query
+
+  - metric_name: gbase8a_exporter_max_free_block
+    type: gauge
+    help: '当前堆中最大可用块的大小(bytes)'
+    values:
+      - max_free_block
+    key_labels:
+      - host
+      - heap_type
+    query_ref: heap_query
+
+  - metric_name: gbase8a_exporter_used_blocks
+    type: gauge
+    help: '堆中使用的块个数'
+    values:
+      - used_blocks
+    key_labels:
+      - host
+      - heap_type
+    query_ref: heap_query
+
+  # session
+  - metric_name: gbase8a_exporter_sessions
+    type: gauge
+    help: '当前session连接数'
+    values:
+      - sessions
+    key_labels:
+      - host
+    query_ref: session_query
+
+  - metric_name: gbase8a_exporter_session_current_mem
+    type: gauge
+    help: 'session当前使用的内存总量(bytes)'
+    values:
+      - sessions
+    key_labels:
+      - host
+    query_ref: session_query
+
+  - metric_name: gbase8a_exporter_session_temp_space
+    type: gauge
+    help: 'session临时空间使用总量(bytes)'
+    values:
+      - sessions
+    key_labels:
+      - host
+    query_ref: session_query
+
+  - metric_name: gbase8a_exporter_running_threads
+    type: gauge
+    help: '当前运行中的线程数'
+    values:
+      - Value
+    query: |
+        SHOW STATUS LIKE 'threads_running'
+
+  # memory
+  - metric_name: gbase8a_exporter_memory_upper_limit
+    type: gauge
+    help: '内存上限大小(bytes)'
+    values:
+      - upper_limit
+    key_labels:
+      - host
+    query_ref: memory_query
+
+  - metric_name: gbase8a_exporter_memory_current_used
+    type: gauge
+    help: '内存当前使用量(bytes)'
+    values:
+      - current_used
+    key_labels:
+      - host
+    query_ref: memory_query
+
+  - metric_name: gbase8a_exporter_memory_peak_used
+    type: gauge
+    help: '内存使用峰值(bytes)'
+    values:
+      - memory_peak
+    key_labels:
+      - host
+    query_ref: memory_query
+
+  - metric_name: gbase8a_exporter_phsical_memory_usage
+    type: gauge
+    help: '物理内存使用率(%)'
+    values:
+      - usage_percentage
+    key_labels:
+      - host
+    query_ref: memory_query
+
+  # table
+  - metric_name: gbase8a_exporter_table_max_rowid
+    type: gauge
+    help: '数据表历史最大rowid'
+    values:
+      - max_rowid
+    key_labels:
+      - dbname
+      - table_name
+    query_ref: table_query
+
+  - metric_name: gbase8a_exporter_table_deleted_rows
+    type: gauge
+    help: '数据表标记为已删除的数据行数'
+    values:
+      - delete_rows
+    key_labels:
+      - dbname
+      - table_name
+    query_ref: table_query
+
+  - metric_name: gbase8a_exporter_table_rows
+    type: gauge
+    help: '数据表行数'
+    values:
+      - table_rows
+    key_labels:
+      - dbname
+      - table_name
+    query_ref: table_query
+
+  - metric_name: gbase8a_exporter_table_storage_size
+    type: gauge
+    help: '数据表占用存储空间(bytes)'
+    values:
+      - storage_size
+    key_labels:
+      - dbname
+      - table_name
+    query_ref: table_query
+
+  - metric_name: gbase8a_exporter_table_deletable_size
+    type: gauge
+    help: '数据表标记为已删除的空间大小(bytes)'
+    values:
+      - deletable_size
+    key_labels:
+      - dbname
+      - table_name
+    query_ref: table_query
+
+  - metric_name: gbase8a_exporter_table_shrinkable_size
+    type: gauge
+    help: '数据表可收缩空间大小(bytes)'
+    values:
+      - shrinkable_size
+    key_labels:
+      - dbname
+      - table_name
+    query_ref: table_query
+
+  - metric_name: gbase8a_exporter_table_delete_ratio
+    type: gauge
+    help: '数据表数据空洞率(%)'
+    values:
+      - delete_ratio
+    key_labels:
+      - dbname
+      - table_name
+    query_ref: table_query
+
+  # db table
+  - metric_name: gbase8a_exporter_db_tables
+    type: gauge
+    help: '数据库中表数量'
+    values:
+      - TABLES
+    key_labels:
+      - dbname
+    query_ref: db_table_query
+
+  - metric_name: gbase8a_exporter_db_storage_size
+    type: gauge
+    help: '数据库占用空间(bytes)'
+    values:
+      - total_size
+    key_labels:
+      - dbname
+    query_ref: db_table_query
+
+  - metric_name: gbase8a_exporter_db_deletable_size
+    type: gauge
+    help: '数据库中标记为已删除的数据大小(bytes)'
+    values:
+      - tota_deletable_size
+    key_labels:
+      - dbname
+    query_ref: db_table_query
+
+  - metric_name: gbase8a_exporter_db_shrinkable_size
+    type: gauge
+    help: '数据库中可收缩空间大小(bytes)'
+    values:
+      - total_shrinkable_size
+    key_labels:
+      - dbname
+    query_ref: db_table_query
+
+queries:
+  - query_name: dc_query
+    query: |
+        SELECT
+            host,
+            total_dc,
+            unlocked_dc,
+            total_dc_size,
+            unlocked_dc_size,
+            hot_total_dc,
+            hot_unlocked_dc,
+            hot_total_dc_size,
+            hot_unlocked_dc_size,
+            cold_total_dc,
+            cold_unlocked_dc,
+            cold_total_dc_size,
+            cold_unlocked_dc_size,
+            -- 处理 hit_rate 列，去掉百分号并处理 'nan%' 的情况
+            CASE
+                WHEN hit_rate = 'nan%' THEN NULL
+                ELSE CAST(REPLACE(hit_rate, '%', '') AS DECIMAL(5, 2))
+            END AS hit_rate
+        FROM
+            performance_schema.cache_usage_info
+
+  - query_name: heap_query
+    query: |
+        SELECT
+            host,
+            heap_type,
+            heap_size,
+            used_in_heap,
+            used_in_system,
+            max_used_block,
+            max_free_block,
+            used_blocks
+        FROM
+            performance_schema.heap_usage_info
+
+  - query_name: session_query
+    query: |
+        SELECT
+            host,
+            count(*) AS sessions,
+            sum(current) current_session_mem,
+            sum(temp_space) AS sum_temp_space
+        FROM
+            performance_schema.session_memory_usage_info
+        GROUP BY
+            host
+
+  - query_name: memory_query
+    query: |
+        SELECT
+            host,
+            upper_limit,
+            current_used,
+            memory_peak,
+            phsical_memory,
+            (current_used / phsical_memory) * 100 AS usage_percentage
+        FROM
+            performance_schema.memory_usage_info
+
+  - query_name: table_query
+    query: |
+        SELECT
+            table_schema AS dbname,
+            table_name,
+            max_rowid,
+            delete_rows,
+            table_rows,
+            storage_size,
+            deletable_size,
+            shrinkable_size,
+            delete_ratio
+        FROM
+            performance_schema.tables
+        WHERE
+            table_schema NOT IN (
+                'information_schema',
+                'performance_schema',
+                'gbase'
+            )
+
+  - query_name: db_table_query
+    query: |
+        SELECT
+            table_schema AS dbname,
+            count(*) AS TABLES,
+            sum(storage_size) AS total_size,
+            sum(deletable_size) tota_deletable_size,
+            sum(shrinkable_size) AS total_shrinkable_size
+        FROM
+            performance_schema.tables
+        WHERE
+            table_schema NOT IN (
+                'information_schema',
+                'performance_schema',
+                'gbase'
+            )
+        GROUP BY
+            table_schema

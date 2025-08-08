@@ -1,0 +1,15 @@
+[
+  {
+    "id": "exporter_kingbase_linux",
+    "name": "Kingbase-Exporter",
+    "controller_default_run": false,
+    "icon": "",
+    "node_operating_system": "linux",
+    "service_type": "exec",
+    "executable_path": "/opt/fusion-collectors/bin/kingbase_exporter",
+    "execute_parameters": "--web.listen-address 127.0.0.1:$LISTEN_PORT --collector.file %s",
+    "validation_parameters": "",
+    "default_template": "",
+    "introduction": "Kingbase Exporter is a monitoring tool that collects and exports Kingbase metrics, providing insights into database performance and health."
+  }
+]

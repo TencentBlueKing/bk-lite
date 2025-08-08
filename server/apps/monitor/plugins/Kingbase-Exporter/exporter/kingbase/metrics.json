@@ -1,0 +1,12 @@
+{
+  "plugin": "Kingbase-Exporter",
+  "plugin_desc": "Kingbase-Exporter is used to collect and export metrics from Kingbase databases, including connection counts, query performance, cache usage, and error rates, to help monitor the health and performance of Kingbase instances.",
+  "name": "Kingbase",
+  "icon": "kingbase",
+  "type": "Database",
+  "description": "",
+  "default_metric": "any({instance_type='kingbase'}) by (instance_id)",
+  "instance_id_keys": ["instance_id"],
+  "supplementary_indicators": [],
+  "metrics": []
+}

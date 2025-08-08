@@ -1,0 +1,12 @@
+{
+  "plugin": "GBase8a-Exporter",
+  "plugin_desc": "GBase8a-Exporter is used to collect and export metrics from GBase8a databases, including connection counts, query performance, cache usage, and error rates, to help monitor the health and performance of GBase8a instances.",
+  "name": "GBase8a",
+  "icon": "gbase8a",
+  "type": "Database",
+  "description": "",
+  "default_metric": "any({instance_type='gbase8a'}) by (instance_id)",
+  "instance_id_keys": ["instance_id"],
+  "supplementary_indicators": [],
+  "metrics": []
+}

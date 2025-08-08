@@ -1,0 +1,12 @@
+{
+  "plugin": "OpenGauss-Exporter",
+  "plugin_desc": "OpenGauss Exporter is used to collect and export metrics from OpenGauss databases, including connection counts, query performance, cache usage, and error rates, to help monitor the health and performance of OpenGauss instances.",
+  "name": "OpenGauss",
+  "icon": "opengauss",
+  "type": "Database",
+  "description": "",
+  "default_metric": "any({instance_type='opengauss'}) by (instance_id)",
+  "instance_id_keys": ["instance_id"],
+  "supplementary_indicators": [],
+  "metrics": []
+}
