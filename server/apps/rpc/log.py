@@ -23,3 +23,25 @@ class Log(object):
         """
         return_data = self.client.run("get_log_module_list", **kwargs)
         return return_data
+
+    def search(self, query, start_time, end_time, limit=10):
+        """
+        日志搜索
+        query: 日志查询语句
+        start_time: 开始时间，eg:2025-08-16T11:52:13.106Z
+        end_time: 结束时间，eg:2025-08-16T11:52:13.106Z
+        limit: 返回结果条数，默认10
+        """
+        return self.client.run("log_search", query, start_time, end_time, limit)
+
+    def hits(self, query, start_time, end_time, field, fields_limit=5, step="5m"):
+        """
+        日志命中
+        query: 日志查询语句
+        start_time: 开始时间，eg:2025-08-16T11:52:13.106Z
+        end_time: 结束时间，eg:2025-08-16T11:52:13.106Z
+        field: 要统计的字段
+        fields_limit: 返回的字段值个数限制，默认5
+        step: 统计粒度，默认5m
+        """
+        return self.client.run("hits", query, start_time, end_time, field, fields_limit, step)
