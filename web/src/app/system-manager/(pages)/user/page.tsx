@@ -15,6 +15,7 @@ import { UserDataType, TableRowSelection } from '@/app/system-manager/types/user
 import PageLayout from '@/components/page-layout';
 import PermissionWrapper from '@/components/permission';
 import OperateModal from '@/components/operate-modal';
+import { useLocalizedTime } from '@/hooks/useLocalizedTime';
 import styles from './index.module.scss';
 
 import GroupTree from '@/app/system-manager/components/user/GroupTree';
@@ -58,6 +59,7 @@ const User: React.FC = () => {
   const { confirm } = Modal;
   const { getUsersList, getOrgTree, deleteUser } = useUserApi();
   const { addTeamData, updateGroup, deleteTeam } = useGroupApi();
+  const { convertToLocalizedTime } = useLocalizedTime();
 
   const appIconMap = new Map(
     clientData
@@ -79,6 +81,7 @@ const User: React.FC = () => {
         email: item.email,
         role: item.role,
         roles: item.roles || [],
+        last_login: item.last_login,
       }));
       setTableData(data);
       setTotal(res.count);
@@ -122,6 +125,7 @@ const User: React.FC = () => {
   const columns = createUserTableColumns({
     t,
     appIconMap,
+    convertToLocalizedTime,
     onEditUser: (userId: string) => {
       userModalRef.current?.showModal({ type: 'edit', userId });
     },

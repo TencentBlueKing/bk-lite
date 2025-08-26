@@ -60,7 +60,8 @@
         "lastName": "姓名",
         "email": "邮箱",
         "number": "号码",
-        "role": "角色"
+        "role": "角色",
+        "lastLogin": "最后登录时间"
       },
       "passwordTitle": "设置密码",
       "form": {

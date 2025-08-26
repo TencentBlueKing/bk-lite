@@ -11,6 +11,7 @@ interface UserDataType {
   role?: string;
   roles: Array<{ id: string; name: string }>;
   groups: Array<any>;
+  last_login?: string;
 }
 
 interface Access {

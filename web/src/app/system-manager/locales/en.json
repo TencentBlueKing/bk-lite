@@ -60,7 +60,8 @@
         "lastName": "NAME",
         "email": "EMAIL",
         "number": "NUMBER",
-        "role": "ROLE"
+        "role": "ROLE",
+        "lastLogin": "LAST LOGIN"
       },
       "passwordTitle": "Set Password",
       "form": {

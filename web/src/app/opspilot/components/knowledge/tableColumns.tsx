@@ -249,32 +249,38 @@ export const getQAPairColumns = (
   {
     title: t('knowledge.documents.actions'),
     key: 'action',
-    render: (_: any, record: QAPairData) => (
-      <Space>
-        <PermissionWrapper
-          requiredPermissions={['Delete']}
-          instPermissions={knowledgeBasePermissions}>
-          <Button
-            type="link"
-            size="small"
-            loading={exportLoadingMap[record.id]}
-            onClick={() => onExport(record.id, record.name)}
-          >
-            {t('common.export')}
-          </Button>
-        </PermissionWrapper>
-        <PermissionWrapper
-          requiredPermissions={['Delete']}
-          instPermissions={knowledgeBasePermissions}>
-          <Button
-            type="link"
-            size="small"
-            onClick={() => onDeleteSingle(record.id)}
-          >
-            {t('common.delete')}
-          </Button>
-        </PermissionWrapper>
-      </Space>
-    ),
+    render: (_: any, record: QAPairData) => {
+      const isProcessing = record.status === 'pending' || record.status === 'generating';
+      
+      return (
+        <Space>
+          <PermissionWrapper
+            requiredPermissions={['Delete']}
+            instPermissions={knowledgeBasePermissions}>
+            <Button
+              type="link"
+              size="small"
+              loading={exportLoadingMap[record.id]}
+              disabled={isProcessing}
+              onClick={() => onExport(record.id, record.name)}
+            >
+              {t('common.export')}
+            </Button>
+          </PermissionWrapper>
+          <PermissionWrapper
+            requiredPermissions={['Delete']}
+            instPermissions={knowledgeBasePermissions}>
+            <Button
+              type="link"
+              size="small"
+              disabled={isProcessing}
+              onClick={() => onDeleteSingle(record.id)}
+            >
+              {t('common.delete')}
+            </Button>
+          </PermissionWrapper>
+        </Space>
+      );
+    },
   }
 ];
