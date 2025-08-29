@@ -76,7 +76,7 @@ Cover_DaMeng(){
         bin_path=${dm_bin_path[$i]}
         Get_Port_Join_Str $pid
         bk_inst_name="$bk_host_innerip-DaMeng-$port_str"
-        json_str=$(printf '{"inst_name":"%s","ip_addr":"%s","port":"%s","user":"%s","version":"%s","bin_path":"%s","bk_obj_id":"dameng"}' "$bk_inst_name" "$bk_host_innerip" "$port_str" "$user" "$version" "$bin_path")
+        json_str=$(printf '{"inst_name":"%s","ip_addr":"%s","port":"%s","user":"%s","version":"%s","bin_path":"%s","dm_db_name":"dameng"}' "$bk_inst_name" "$bk_host_innerip" "$port_str" "$user" "$version" "$bin_path")
         echo $json_str
     done
 }

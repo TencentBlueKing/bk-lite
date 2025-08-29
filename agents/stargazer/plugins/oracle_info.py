@@ -68,8 +68,8 @@ class OracleInfo:
         logger.info("Starting data collection from Oracle database.")
         try:
             self.info["version"] = self._exec_sql(self.SQL_QUERIES["version"]).get("BANNER", "")
-            self.info["max_mem"] = self._exec_sql(self.SQL_QUERIES["max_mem"]).get("TOTAL_MEMORY", 0)
-            self.info["max_conn"] = self._exec_sql(self.SQL_QUERIES["max_conn"]).get("VALUE", 0)
+            self.info["max_mem"] = str(self._exec_sql(self.SQL_QUERIES["max_mem"]).get("TOTAL_MEMORY", 0))
+            self.info["max_conn"] = str(self._exec_sql(self.SQL_QUERIES["max_conn"]).get("VALUE", 0))
             self.info["db_name"] = self._exec_sql(self.SQL_QUERIES["db_name"]).get("NAME", "")
             self.info["database_role"] = self._exec_sql(self.SQL_QUERIES["database_role"]).get("DATABASE_ROLE", "")
             self.info["sid"] = self._exec_sql(self.SQL_QUERIES["sid"]).get("SID", "")

@@ -41,6 +41,7 @@ class CollectService(object):
             "oracle_info": "OracleInfo",
             "db2_info": "DB2Info",
             "tidb_info": "TiDBInfo",
+            "mssql_info": "MSSQLInfo",
         }
 
     def import_plugin(self, plugin_name):
