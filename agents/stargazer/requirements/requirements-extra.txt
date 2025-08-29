@@ -112,5 +112,6 @@ pyasn1-modules==0.2.8
 
 PyMySQL==1.1.1
 oracledb==3.3.0
+pyodbc==5.2.0
 # paramiko
 paramiko==3.5.0
