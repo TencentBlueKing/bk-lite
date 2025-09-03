@@ -36,8 +36,6 @@ django-auditlog==2.3.0
 
 psycopg2-binary==2.9.9
 pymysql==1.1.1
-oracledb==3.3.0
-pyodbc==5.2.0
 django-import-export==3.3.6
 
 # minio相关
