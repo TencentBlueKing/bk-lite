@@ -507,6 +507,13 @@ class TiDBNodeParams(SSHNodeParamsMixin, BaseNodeParams):
     supported_model_id = "tidb"
     plugin_name = "tidb_info"
 
+class JettyNodeParams(SSHNodeParamsMixin, BaseNodeParams):
+    supported_model_id = "jetty"
+    plugin_name = "jetty_info"
+
+class HBaseNodeParams(SSHNodeParamsMixin, BaseNodeParams):
+    supported_model_id = "hbase"
+    plugin_name = "hbase_info"
 
 class NodeParamsFactory:
     """

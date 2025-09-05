@@ -1670,6 +1670,20 @@ class MiddlewareCollectMetrics(CollectBase):
                 "metaspace_size": "metaspace_size",
                 "max_metaspace_size": "max_metaspace_size",
             },
+            "jetty": {
+                "inst_name": self.get_inst_name,
+                "ip_addr": "ip_addr",
+                "port": "port",
+                "version": "version",
+                "jetty_home": "jetty_home",
+                "java_version": "java_version",
+                "monitored_dir": "monitored_dir",
+                "bin_path": "bin_path",
+                "java_vendor": "java_vendor",
+                "war_name": "war_name",
+                "jvm_para": "jvm_para",
+                "max_threads": "max_threads",
+            },
         }
 
         return mapping
@@ -2123,6 +2137,19 @@ class DBCollectCollectMetrics(CollectBase):
                 "dm_redo_log": "dm_redo_log",
                 "dm_datafile": "dm_datafile",
                 "dm_mode": "dm_mode",
+            },
+            "hbase": {
+                "inst_name": self.get_inst_name,
+                "ip_addr": "ip_addr",
+                "port": "port",
+                "version": "version",
+                "install_path": "install_path",
+                "log_path": "log_path",
+                "config_file": "config_file",
+                "tmp_dir": "tmp_dir",
+                "cluster_distributed": "cluster_distributed",
+                "unsafe_stream_capability_enforce": "unsafe_stream_capability_enforce",
+                "java_path": "java_path",
             }
         }
         return mapping
