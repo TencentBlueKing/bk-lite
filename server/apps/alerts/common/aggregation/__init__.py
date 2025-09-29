@@ -24,7 +24,6 @@ DuckDB聚合告警模块
 """
 
 from .duckdb_engine import DuckDBEngine
-from .duckdb_sql import DuckDBSQL
 
 # 查找 DuckDBEngine 相关配置文件
 # 通常位于同目录下的其他模块中
@@ -34,5 +33,4 @@ __author__ = "windyzhao"
 
 __all__ = [
     'DuckDBEngine',
-    'DuckDBSQL',
 ]

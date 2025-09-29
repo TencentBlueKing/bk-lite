@@ -2,7 +2,7 @@
 # @File: duckdb_engine.py
 # @Time: 2025/9/15 15:06
 # @Author: windyzhao
-from typing import Any, Dict, List, Tuple, Optional
+from typing import Any, Dict, List, Tuple
 import duckdb
 import pandas as pd
 from contextlib import contextmanager
@@ -54,7 +54,6 @@ class DuckDBEngine:
             connection_params = DEFAULT_DUCKDB_CONFIG
 
         self.database = connection_params.get('database', ':memory:')
-        self.read_only = connection_params.get('read_only', False)
         self.config = connection_params.get('config', {})
 
         self.connection = None
@@ -65,7 +64,6 @@ class DuckDBEngine:
         try:
             self.connection = duckdb.connect(
                 database=self.database,
-                read_only=self.read_only,
                 config=self.config
             )
 

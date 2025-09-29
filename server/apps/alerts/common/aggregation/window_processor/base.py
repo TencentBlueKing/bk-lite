@@ -81,10 +81,16 @@ class BaseWindowProcessor(ABC):
                 if created_ids:
                     self.processor.alert_auto_assign(alert_id_list=created_ids)
 
+        except Exception as e:  # noqa
+            import traceback
+            logger.error(f"执行{self.get_window_type()}窗口告警处理新增告警失败: {traceback.format_exc()}")
+
+        try:
+
             if update_alert_list:
                 self.processor.update_alerts(alerts=update_alert_list)
-
-        except Exception as e:
-            logger.error(f"执行{self.get_window_type()}窗口告警处理失败: {str(e)}")
+        except Exception as e:  # noqa
+            import traceback
+            logger.error(f"执行{self.get_window_type()}窗口告警处理更新告警失败: {traceback.format_exc()}")
 
         return alerts_created, alerts_updated

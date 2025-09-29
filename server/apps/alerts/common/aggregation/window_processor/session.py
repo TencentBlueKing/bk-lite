@@ -7,7 +7,7 @@ from typing import List, Tuple, Dict, Any
 
 from django.db import transaction
 
-from apps.alerts.common.aggregation.enum import WindowCalculator
+from apps.alerts.common.aggregation.util import WindowCalculator
 from apps.alerts.common.aggregation.window_processor.base import BaseWindowProcessor
 from apps.alerts.constants import AlertStatus
 from apps.alerts.models import CorrelationRules, SessionWindow, SessionEventRelation, Alert

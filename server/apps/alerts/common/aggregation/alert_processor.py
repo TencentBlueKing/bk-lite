@@ -12,11 +12,11 @@ from django.db import transaction, IntegrityError
 from django.utils import timezone
 
 from apps.alerts.common.aggregation import DuckDBEngine
-from apps.alerts.common.aggregation.alert_engine import AlertRule
+from apps.alerts.common.aggregation.util import WindowCalculator
 from apps.alerts.common.assignment import execute_auto_assignment_for_alerts
 from apps.alerts.common.rules.rule_adapter import create_rule_adapter
 from apps.alerts.constants import AlertStatus, LevelType, EventStatus
-from apps.alerts.common.aggregation.enum import WindowType, WindowConfig, WindowCalculator, DEFAULT_TITLE, \
+from apps.alerts.common.aggregation.enum import WindowType, WindowConfig, DEFAULT_TITLE, \
     DEFAULT_CONTENT
 from apps.alerts.models import Event, Alert, Level, AggregationRules, CorrelationRules, SessionWindow
 from apps.alerts.utils.util import generate_instance_fingerprint

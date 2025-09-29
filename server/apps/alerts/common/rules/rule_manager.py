@@ -123,7 +123,6 @@ class SmartWindowScheduler:
 
             elif window_type == 'session':
                 # 会话窗口：根据超时时间判断执行频率
-                # if self._should_execute_session_window(rule.session_timeout):
                 executable_rules['session'].append(rule)
 
         return executable_rules
