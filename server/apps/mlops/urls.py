@@ -4,6 +4,7 @@ from apps.mlops.views.anomaly_detection import *
 from apps.mlops.views.timeseries_predict import *
 from apps.mlops.views.log_clustering import *
 from apps.mlops.views.rasa import *
+from apps.mlops.views.classification import *
 
 router = routers.DefaultRouter()
 
