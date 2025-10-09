@@ -52,3 +52,4 @@ class MonitorObjectOrganizationRule(TimeInfo, MaintainerInfo):
     organizations = models.JSONField(default=list, verbose_name='所属组织')
     rule = models.JSONField(default=dict, verbose_name='分组规则详情')
     is_active = models.BooleanField(default=True, verbose_name='是否启用')
+    monitor_instance_id = models.CharField(db_index=True, max_length=200, default="", verbose_name='关联监控对象实例ID')

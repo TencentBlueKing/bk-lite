@@ -1,6 +1,4 @@
-import os
 from django.core.management import BaseCommand
-from apps.node_mgmt.models.sidecar import SidecarApiToken
 from apps.node_mgmt.node_init.cloud_init import cloud_init
 from apps.node_mgmt.node_init.collector_init import collector_init
 from apps.node_mgmt.node_init.controller_init import controller_init
@@ -22,9 +20,3 @@ class Command(BaseCommand):
         logger.info("初始化采集器！")
         collector_init()
         logger.info("初始化采集器完成！")
-
-        # if os.getenv('SIDECAR_INIT_TOKEN'):
-        #     logger.info("初始化sidecar token！")
-        #     SidecarApiToken.objects.get_or_create(token=os.getenv('SIDECAR_INIT_TOKEN'),
-        #                                           defaults={"created_by": "system", "updated_by": "system"})
-        #     logger.info("初始化sidecar token完成！")

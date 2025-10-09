@@ -1,15 +1,19 @@
 import hashlib
+import json
 from datetime import datetime, timezone
 from string import Template
 from django.core.cache import cache
-from django.http import JsonResponse, HttpResponse
-from apps.core.utils.crypto.aes_crypto import AESCryptor
-from apps.node_mgmt.constants import CACHE_TIMEOUT, DEFAULT_UPDATE_INTERVAL
+from django.http import HttpResponse
+from django.core.serializers.json import DjangoJSONEncoder
+
+from apps.node_mgmt.constants.controller import ControllerConstants
+from apps.node_mgmt.utils.crypto_helper import EncryptedJsonResponse
 from apps.node_mgmt.default_config.default_config import create_default_config
 from apps.node_mgmt.models.cloud_region import SidecarEnv
 from apps.node_mgmt.models.sidecar import Node, Collector, CollectorConfiguration, NodeOrganization
 from apps.node_mgmt.utils.sidecar import format_tags_dynamic
 from apps.core.logger import node_logger as logger
+from apps.core.utils.crypto.aes_crypto import AESCryptor
 
 
 class Sidecar:
@@ -20,9 +24,35 @@ class Sidecar:
         return hashlib.md5(data.encode('utf-8')).hexdigest()
 
     @staticmethod
-    def get_version():
+    def generate_response_etag(data, request):
+        """
+        根据响应数据和请求生成 ETag
+        考虑加密情况，确保 ETag 基于实际发送内容
+        """
+        # 检查是否需要加密
+        encryption_key = None
+        if request:
+            encryption_key = request.META.get('HTTP_X_ENCRYPTION_KEY')
+
+        if encryption_key:
+            # 如果需要加密，基于加密后的内容生成 ETag
+            from apps.node_mgmt.utils.crypto_helper import encrypt_response_data
+            try:
+                encrypted_content = encrypt_response_data(data, encryption_key)
+                return hashlib.md5(encrypted_content.encode('utf-8')).hexdigest()
+            except Exception:
+                # 加密失败，回退到明文内容，使用 Django JSON 编码器处理 datetime
+                json_content = json.dumps(data, ensure_ascii=False, cls=DjangoJSONEncoder)
+                return hashlib.md5(json_content.encode('utf-8')).hexdigest()
+        else:
+            # 不需要加密，基于 JSON 内容生成 ETag，使用 Django JSON 编码器处理 datetime
+            json_content = json.dumps(data, ensure_ascii=False, cls=DjangoJSONEncoder)
+            return hashlib.md5(json_content.encode('utf-8')).hexdigest()
+
+    @staticmethod
+    def get_version(request):
         """获取版本信息"""
-        return JsonResponse({"version": "5.0.0"})
+        return EncryptedJsonResponse({"version": "5.0.0"}, request=request)
 
     @staticmethod
     def get_collectors(request):
@@ -47,15 +77,15 @@ class Sidecar:
         for collector in collectors:
             collector.pop("default_template")
 
-        # 生成新的 ETag
-        _collectors = JsonResponse(collectors, safe=False).content
-        new_etag = Sidecar.generate_etag(_collectors.decode('utf-8'))
+        # 生成新的 ETag - 基于实际响应内容
+        collectors_data = {'collectors': collectors}
+        new_etag = Sidecar.generate_response_etag(collectors_data, request)
 
         # 更新缓存中的 ETag
-        cache.set('collectors_etag', new_etag, CACHE_TIMEOUT)
+        cache.set('collectors_etag', new_etag, ControllerConstants.E_CACHE_TIMEOUT)
 
         # 返回采集器列表和新的 ETag
-        return JsonResponse({'collectors': collectors}, headers={'ETag': new_etag})
+        return EncryptedJsonResponse(collectors_data, headers={'ETag': new_etag}, request=request)
 
     @staticmethod
     def asso_groups(node_id: str, groups: list):
@@ -91,7 +121,7 @@ class Sidecar:
         # 从缓存中获取node的ETag
         cached_etag = cache.get(f"node_etag_{node_id}")
 
-        # 如果缓存的ETag存��且与客户端的相同，则返回304 Not Modified
+        # 如果缓存的ETag存在且与客户端的相同，则返回304 Not Modified
         if cached_etag and cached_etag == if_none_match:
 
             # 更新时间
@@ -150,7 +180,7 @@ class Sidecar:
 
         # 构造响应数据
         response_data = dict(
-            configuration={"update_interval": DEFAULT_UPDATE_INTERVAL, "send_status": True},  # 配置信息, DEFAULT_UPDATE_INTERVAL s更新一次
+            configuration={"update_interval": ControllerConstants.DEFAULT_UPDATE_INTERVAL, "send_status": True},  # 配置信息, DEFAULT_UPDATE_INTERVAL s更新一次
             configuration_override=True,  # 是否覆盖配置
             actions=[],  # 采集器状态
             assignments=[],  # 采集器配置
@@ -168,14 +198,13 @@ class Sidecar:
             response_data.update(
                 assignments=[{"collector_id": i.collector_id, "configuration_id": i.id} for i in assignments])
 
-        # 生成新的ETag
-        _response_data = JsonResponse(response_data).content
-        new_etag = Sidecar.generate_etag(_response_data.decode('utf-8'))
+        # 生成新的ETag - 基于实际响应内容
+        new_etag = Sidecar.generate_response_etag(response_data, request)
         # 更新缓存中的ETag
-        cache.set(f"node_etag_{node_id}", new_etag, CACHE_TIMEOUT)
+        cache.set(f"node_etag_{node_id}", new_etag, ControllerConstants.E_CACHE_TIMEOUT)
 
         # 返回响应
-        return JsonResponse(status=202, data=response_data, headers={'ETag': new_etag})
+        return EncryptedJsonResponse(status=202, data=response_data, headers={'ETag': new_etag}, request=request)
 
     @staticmethod
     def get_node_config(request, node_id, configuration_id):
@@ -198,13 +227,13 @@ class Sidecar:
         # 从数据库获取节点信息
         node = Node.objects.filter(id=node_id).first()
         if not node:
-            return JsonResponse(status=404, data={}, manage="Node collector Configuration not found")
+            return EncryptedJsonResponse(status=404, data={}, manage="Node collector Configuration not found", request=request)
 
         # 查询配置，并预取关联的子配置
         configuration = CollectorConfiguration.objects.filter(id=configuration_id).prefetch_related(
             'childconfig_set').first()
         if not configuration:
-            return JsonResponse(status=404, data={}, manage="Configuration not found")
+            return EncryptedJsonResponse(status=404, data={}, manage="Configuration not found", request=request)
 
         # 合并子配置内容到模板
         merged_template = configuration.config_template
@@ -213,7 +242,7 @@ class Sidecar:
             merged_template += f"\n# {child_config.collect_type} - {child_config.config_type}\n"
             merged_template += Sidecar.render_template(child_config.content, child_config.env_config)
 
-        configuration = dict(
+        configuration_data = dict(
             id=configuration.id,
             collector_id=configuration.collector_id,
             name=configuration.name,
@@ -222,35 +251,34 @@ class Sidecar:
         )
         # TODO test merged_template
 
-        # 生成新的 ETag
-        _configuration = JsonResponse(configuration).content
-        new_etag = Sidecar.generate_etag(_configuration.decode('utf-8'))
-
-        # 更新缓存中的 ETag
-        cache.set(f"configuration_etag_{configuration_id}", new_etag, CACHE_TIMEOUT)
-
         variables = Sidecar.get_variables(node)
         # 如果配置中有 env_config，则合并到变量中
-        if configuration.get('env_config'):
-            variables.update(configuration['env_config'])
+        if configuration_data.get('env_config'):
+            variables.update(configuration_data['env_config'])
 
         # 渲染配置模板
-        configuration['template'] = Sidecar.render_template(configuration['template'], variables)
+        configuration_data['template'] = Sidecar.render_template(configuration_data['template'], variables)
+
+        # 生成新的 ETag - 基于实际响应内容
+        new_etag = Sidecar.generate_response_etag(configuration_data, request)
+
+        # 更新缓存中的 ETag
+        cache.set(f"configuration_etag_{configuration_id}", new_etag, ControllerConstants.E_CACHE_TIMEOUT)
 
         # 返回配置信息和新的 ETag
-        return JsonResponse(configuration, headers={'ETag': new_etag})
+        return EncryptedJsonResponse(configuration_data, headers={'ETag': new_etag}, request=request)
 
     @staticmethod
-    def get_node_config_env(node_id, configuration_id):
+    def get_node_config_env(request, node_id, configuration_id):
         node = Node.objects.filter(id=node_id).first()
         if not node:
-            return JsonResponse(status=404, data={}, manage="Node collector Configuration not found")
+            return EncryptedJsonResponse(status=404, data={}, manage="Node collector Configuration not found", request=request)
 
         obj = CollectorConfiguration.objects.filter(id=configuration_id).first()
         if not obj:
-            return JsonResponse(status=404, data={}, manage="Configuration environment not found")
+            return EncryptedJsonResponse(status=404, data={}, manage="Configuration environment not found", request=request)
 
-        return JsonResponse(dict(id=configuration_id, env_config={k: str(v) for k, v in obj.env_config.items()}))
+        return EncryptedJsonResponse(dict(id=configuration_id, env_config={k: str(v) for k, v in obj.env_config.items()}), request=request)
 
     @staticmethod
     def get_variables(node_obj):

@@ -9,4 +9,8 @@ export const AUTH_SOURCE_TYPE_MAP: Record<string, AuthSourceTypeConfig> = {
     icon: 'dengdeng',
     description: '支持BK-Lite认证源'
   },
+  'blueking': {
+    icon: 'blueking-icon',
+    description: '支持蓝鲸平台认证源'
+  },
 };

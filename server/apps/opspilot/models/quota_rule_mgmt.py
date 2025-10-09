@@ -12,17 +12,6 @@ class QuotaRule(TimeInfo):
     unit = models.CharField(max_length=10, verbose_name="Size Unit")
     skill_count = models.IntegerField(verbose_name="Skill Count", default=0)
     bot_count = models.IntegerField(verbose_name="Bot Count", default=0)
-    token_set = models.JSONField(default=list, verbose_name="Token Set")
 
     class Meta:
         db_table = "base_quotarule"
-
-
-class TeamTokenUseInfo(TimeInfo):
-    group = models.CharField(max_length=100, verbose_name="Group")
-    llm_model = models.CharField(max_length=100, verbose_name="LLM Model")
-    used_token = models.BigIntegerField(verbose_name="Used Token")
-
-    class Meta:
-        unique_together = ("group", "llm_model")
-        db_table = "base_teamtokenuseinfo"

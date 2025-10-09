@@ -1,7 +1,5 @@
 FROM bklite/metis:base
 
-ENV DEFAULT_DATABASE=neo4j 
-
 WORKDIR /app
 
 ADD . .

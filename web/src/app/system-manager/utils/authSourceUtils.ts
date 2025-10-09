@@ -6,7 +6,7 @@ export const enhanceAuthSourceWithDisplayInfo = (authSource: AuthSource): AuthSo
   
   return {
     ...authSource,
-    icon: typeConfig?.icon || 'default',
+    icon: typeConfig?.icon || 'tiyanzhongtai',
     description: typeConfig?.description || authSource.source_type,
   };
 };

@@ -145,5 +145,6 @@ def bootstrap() -> Sanic:
         logger.info('download tiktoken')
         import tiktoken
         encoding = tiktoken.get_encoding("cl100k_base")
+        encoding = tiktoken.get_encoding("o200k_base")
         encoding.encode('Metis')
     return app

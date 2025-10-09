@@ -35,6 +35,11 @@ interface WeChatSettings {
   redirect_uri?: string;
 }
 
+interface BkSettings {
+  is_open_logining: boolean;
+  url?: string;
+}
+
 export default function SigninClient({ searchParams: { callbackUrl, error }, signinErrors }: SigninClientProps) {
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
@@ -49,13 +54,16 @@ export default function SigninClient({ searchParams: { callbackUrl, error }, sig
   const [qrCodeUrl, setQrCodeUrl] = useState<string>("");
   const [wechatSettings, setWechatSettings] = useState<WeChatSettings | null>(null);
   const [loadingWechatSettings, setLoadingWechatSettings] = useState(true);
+  const [bkSettings, setBkSettings] = useState<BkSettings | null>(null);
+  const [loadingBkSettings, setLoadingBkSettings] = useState(true);
 
   useEffect(() => {
     const userAgent = navigator.userAgent.toLowerCase();
     setIsWechatBrowser(userAgent.includes('micromessenger') || userAgent.includes('wechat'));
     
-    // Fetch WeChat settings and domain list
+    // Fetch WeChat settings, BK settings and domain list
     fetchWechatSettings();
+    fetchBkSettings();
     fetchDomainList();
   }, []);
 
@@ -92,7 +100,7 @@ export default function SigninClient({ searchParams: { callbackUrl, error }, sig
   const fetchWechatSettings = async () => {
     try {
       setLoadingWechatSettings(true);
-      const response = await fetch('/api/proxy/core/api/get_wechat_settings/', {
+      const response = await fetch("/api/proxy/core/api/get_wechat_settings/", {
         method: "GET",
         headers: { 
           "Content-Type": "application/json" 
@@ -114,6 +122,34 @@ export default function SigninClient({ searchParams: { callbackUrl, error }, sig
       setWechatSettings({ enabled: false });
     } finally {
       setLoadingWechatSettings(false);
+    }
+  };
+
+  const fetchBkSettings = async () => {
+    try {
+      setLoadingBkSettings(true);
+      const response = await fetch('/api/proxy/core/api/get_bk_settings/', {
+        method: "GET",
+        headers: { 
+          "Content-Type": "application/json" 
+        },
+      });
+
+      const responseData = await response.json();
+
+      if (response.ok && responseData.result) {
+        setBkSettings({
+          is_open_logining: responseData.data.bk_login_open,
+          url: responseData.data.url,
+        });
+      } else {
+        setBkSettings({ is_open_logining: false });
+      }
+    } catch (error) {
+      console.error("Failed to fetch BK settings:", error);
+      setBkSettings({ is_open_logining: false });
+    } finally {
+      setLoadingBkSettings(false);
     }
   };
 
@@ -286,6 +322,15 @@ export default function SigninClient({ searchParams: { callbackUrl, error }, sig
     });
   };
 
+  const handleBkSignIn = () => {
+    if (bkSettings?.url) {
+      const currentDomain = window.location.origin;
+      const bkLoginUrl = `${bkSettings.url}?callbackUrl=${encodeURIComponent(currentDomain)}`;
+      console.log("Redirecting to BK login:", bkLoginUrl);
+      window.location.href = bkLoginUrl;
+    }
+  };
+
   const renderLoginForm = () => (
     <form onSubmit={handleLoginSubmit} className="flex flex-col space-y-6 w-full">
       <div className="space-y-2">
@@ -404,7 +449,12 @@ export default function SigninClient({ searchParams: { callbackUrl, error }, sig
   );
 
   const renderWechatLoginSection = () => {
-    if (loadingWechatSettings) {
+    const isLoading = loadingWechatSettings || loadingBkSettings;
+    const hasWechat = wechatSettings?.enabled;
+    const hasBkLogin = bkSettings?.is_open_logining;
+    const hasAnyLogin = hasWechat || hasBkLogin;
+
+    if (isLoading) {
       return (
         <div className="mt-6">
           <div className="relative">
@@ -416,14 +466,17 @@ export default function SigninClient({ searchParams: { callbackUrl, error }, sig
             </div>
           </div>
           
-          <div className="mt-6">
+          <div className="mt-6 space-y-3">
             <div className="w-full h-12 bg-gray-200 rounded-lg animate-pulse"></div>
+            {loadingBkSettings && (
+              <div className="w-full h-12 bg-gray-200 rounded-lg animate-pulse"></div>
+            )}
           </div>
         </div>
       );
     }
 
-    if (!wechatSettings?.enabled) {
+    if (!hasAnyLogin) {
       return null;
     }
 
@@ -438,16 +491,27 @@ export default function SigninClient({ searchParams: { callbackUrl, error }, sig
           </div>
         </div>
         
-        <div className="mt-6">
-          <button
-            onClick={handleWechatSignIn}
-            className="w-full flex items-center justify-center px-4 py-3 text-sm font-medium rounded-lg shadow-sm text-white bg-green-600 hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500"
-          >
-            Sign in with WeChat
-          </button>
+        <div className="mt-6 space-y-3">
+          {hasWechat && (
+            <button
+              onClick={handleWechatSignIn}
+              className="w-full flex items-center justify-center px-4 py-3 text-sm font-medium rounded-lg shadow-sm text-white bg-green-600 hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500 transition-colors duration-200"
+            >
+              Sign in with WeChat
+            </button>
+          )}
+          
+          {hasBkLogin && (
+            <button
+              onClick={handleBkSignIn}
+              className="w-full flex items-center justify-center px-4 py-3 text-sm font-medium rounded-lg shadow-sm text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-colors duration-200"
+            >
+              Sign in with BlueKing
+            </button>
+          )}
         </div>
         
-        {isWechatBrowser && (
+        {isWechatBrowser && hasWechat && (
           <div className="mt-4 text-center text-sm text-green-600">
             You are using WeChat browser, for best experience use the WeChat login.
           </div>

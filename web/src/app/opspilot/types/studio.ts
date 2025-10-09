@@ -42,6 +42,20 @@ export interface LogRecord {
   conversation?: CustomChatMessage[];
 }
 
+export interface WorkflowTaskResult {
+  key: string;
+  id: number;
+  run_time: string;
+  status: string;
+  input_data: string;
+  output_data: any;
+  last_output: string;
+  execute_type: string;
+  bot_work_flow: number;
+  execution_duration?: number;
+  error_log?: string;
+}
+
 export interface Channel {
   id: string;
   name: string;

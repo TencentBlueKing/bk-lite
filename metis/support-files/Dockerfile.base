@@ -18,5 +18,7 @@ RUN uv run playwright install chromium
 ADD ./support-files/service.conf /etc/supervisor/conf.d/service.conf
 
 ADD . .
+
+ENV TIKTOKEN_CACHE_DIR=/app/models
 RUN uv run sanic server:bootstrap exec download_models
 RUN mv ./models /tmp/models && rm -Rf ./* && mv /tmp/models ./models

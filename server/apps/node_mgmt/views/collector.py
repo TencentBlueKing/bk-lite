@@ -1,4 +1,3 @@
-from drf_yasg.utils import swagger_auto_schema
 from rest_framework import status
 from rest_framework.response import Response
 from rest_framework.viewsets import ModelViewSet
@@ -14,17 +13,9 @@ class CollectorViewSet(ModelViewSet):
     serializer_class = CollectorSerializer
     filterset_class = CollectorFilter
 
-    @swagger_auto_schema(
-        operation_summary="获取采集器列表",
-        tags=['Collector']
-    )
     def list(self, request, *args, **kwargs):
         return super().list(request, *args, **kwargs)
 
-    @swagger_auto_schema(
-        operation_summary="创建采集器",
-        tags=['Collector']
-    )
     def create(self, request, *args, **kwargs):
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
@@ -36,24 +27,11 @@ class CollectorViewSet(ModelViewSet):
         headers = self.get_success_headers(serializer.data)
         return Response(serializer.data, status=status.HTTP_201_CREATED, headers=headers)
 
-    @swagger_auto_schema(
-        operation_summary="更新采集器",
-        tags=['Collector']
-    )
     def update(self, request, *args, **kwargs):
         return super().update(request, *args, **kwargs)
 
-    @swagger_auto_schema(
-        operation_id="collector_del",
-        operation_summary="删除采集器",
-        tags=['Collector']
-    )
     def destroy(self, request, *args, **kwargs):
         return super().destroy(request, *args, **kwargs)
 
-    @swagger_auto_schema(
-        operation_summary="获取采集器详情",
-        tags=['Collector']
-    )
     def retrieve(self, request, *args, **kwargs):
         return super().retrieve(request, *args, **kwargs)

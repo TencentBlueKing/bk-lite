@@ -17,3 +17,6 @@ for _setting in dir(_module):
 INSTALLED_APPS = locals()["INSTALLED_APPS"]
 CELERY_IMPORTS = locals()["CELERY_IMPORTS"]
 MIDDLEWARE = locals()["MIDDLEWARE"]
+
+# 屏蔽 User.username 非唯一警告（auth.W004）
+SILENCED_SYSTEM_CHECKS = ["auth.W004"]

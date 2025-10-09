@@ -26,7 +26,7 @@ services:
       SERVER_API_TOKEN: ${SIDECAR_INIT_TOKEN}
       SIDECAR_ZONE: 1
       SIDECAR_GROUP: 1
-      SIDECAR_NODEID: 1
+      SIDECAR_NODEID: ${SIDECAR_NODE_ID}
       SIDECAR_NODENAME: fusion-collector
     networks:
       - prod

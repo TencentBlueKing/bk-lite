@@ -15,7 +15,6 @@ from apps.opspilot.models import KnowledgeBase, LLMModel, LLMSkill, SkillRequest
 from apps.opspilot.serializers.llm_serializer import LLMModelSerializer, LLMSerializer, SkillRequestLogSerializer, SkillToolsSerializer
 from apps.opspilot.utils.quota_utils import get_quota_client
 from apps.opspilot.utils.sse_chat import stream_chat
-from apps.opspilot.views import validate_remaining_token
 
 
 class LLMFilter(FilterSet):
@@ -192,10 +191,6 @@ class LLMViewSet(AuthViewSet):
                 current_ip = current_ip.split(",")[0].strip()
             else:
                 current_ip = request.META.get("REMOTE_ADDR", "")
-
-            # 验证配额限制（如果不是超级用户）
-            if not request.user.is_superuser:
-                validate_remaining_token(skill_obj)
                 # 这里可以添加具体的配额检查逻辑
             params["skill_type"] = skill_obj.skill_type
             params["tools"] = params.get("tools", [])

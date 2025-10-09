@@ -107,7 +107,6 @@ const ProviderModal: React.FC<ProviderModalProps> = ({
               ? modelDetail.llm_config?.openai_base_url || '' 
               : config?.base_url || '',
             enabled: modelDetail.enabled || false,
-            consumer_team: modelDetail.consumer_team ?? '',
           });
         } catch (error) {
           console.error('Failed to fetch model detail:', error);
@@ -246,16 +245,6 @@ const ProviderModal: React.FC<ProviderModalProps> = ({
               onChange={(value) => form.setFieldsValue({ team: value })}
               placeholder={`${t('common.selectMsg')}${t('provider.form.group')}`}
               multiple={true}
-            />
-          </Form.Item>
-          <Form.Item
-            name="consumer_team"
-            label={t('provider.form.consumerTeam')}>
-            <GroupTreeSelect
-              value={form.getFieldValue('consumer_team') ? [form.getFieldValue('consumer_team')] : []}
-              onChange={(value) => form.setFieldsValue({ consumer_team: value[0] || '' })}
-              placeholder={`${t('common.selectMsg')}${t('provider.form.consumerTeam')}`}
-              multiple={false}
             />
           </Form.Item>
         </Form>

@@ -18,7 +18,14 @@ COLLECTORS = [
         "default_config": {
         "nats": """nats_urls: "nats://${NATS_USERNAME}:${NATS_PASSWORD}@${NATS_SERVERS}"
 nats_instanceId: "${node.id}"
-nats_conn_timeout: 600""",
+nats_conn_timeout: 600
+tls_enabled: "${TLS_ENABLED}" 
+tls_skip_verify: "${TLS_SKIP_VERIFY}"
+tls_hostname: "${TLS_HOSTNAME}"
+tls_ca_file: "${TLS_CA_FILE}"
+tls_cert_file: "${TLS_CERT_FILE}"
+tls_key_file: "${TLS_KEY_FILE}"
+""",
         }
     },
     {
@@ -37,7 +44,14 @@ nats_conn_timeout: 600""",
         "default_config": {
         "nats": """nats_urls: "nats://${NATS_USERNAME}:${NATS_PASSWORD}@${NATS_SERVERS}"
 nats_instanceId: "${node.id}"
-nats_conn_timeout: 600""",
+nats_conn_timeout: 600
+tls_enabled: ${TLS_ENABLED}
+tls_skip_verify: ${TLS_SKIP_VERIFY}
+tls_hostname: "${TLS_HOSTNAME}"
+tls_ca_file: "${TLS_CA_FILE}"
+tls_cert_file: "${TLS_CERT_FILE}"
+tls_key_file: "${TLS_KEY_FILE}"
+""",
         }
     },
 ]

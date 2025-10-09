@@ -447,6 +447,9 @@
     "label": "Label",
     "description": "Description",
     "mcpUrl": "URL",
+    "subTools": "Sub Tools",
+    "subToolName": "Sub Tool Name",
+    "subToolDescription": "Sub Tool Description",
     "variables": "Variables",
     "general": "General",
     "search": "Search",
@@ -850,6 +853,12 @@
     },
     "expandSidebar": "Expand Sidebar",
     "collapseSidebar": "Collapse Sidebar",
-    "information": "Information"
+    "information": "Information",
+    "executeNode": "Execute Node",
+    "executeMessage": "Execute Message",
+    "executeMessagePlaceholder": "Enter execution message (optional)...",
+    "executeResult": "Execution Result",
+    "executeSuccess": "Node executed successfully",
+    "executeFailed": "Node execution failed"
   }
 }

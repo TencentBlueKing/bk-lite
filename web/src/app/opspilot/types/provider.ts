@@ -20,7 +20,6 @@ export interface Model {
     embed_config?: ModelConfig;
     rerank_config?: ModelConfig;
     ocr_config?: ModelConfig;
-    consumer_team: string;
     permissions?: string[];
     // 新增分组相关字段
     group_id?: string;

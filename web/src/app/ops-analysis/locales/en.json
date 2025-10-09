@@ -123,6 +123,12 @@
     "edgeView": "Edge View",
     "edgeSetting": "Edge Configuration",
     "lineType": "Line Type",
+    "architecture": {
+        "loadFailed": "Load failed",
+        "saveFailed": "Save failed",
+        "diagramSaved": "Diagram saved",
+        "unableToSave": "Unable to save: missing required information"
+    },
     "layerMessages": {
         "bringToFrontSuccess": "Node brought to front",
         "bringToBackSuccess": "Node sent to back",

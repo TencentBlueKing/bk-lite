@@ -1,5 +1,3 @@
-from drf_yasg import openapi
-from drf_yasg.utils import swagger_auto_schema
 from rest_framework.viewsets import ModelViewSet
 from apps.core.utils.web_utils import WebUtils
 from apps.core.utils.permission_utils import get_permission_rules, permission_filter
@@ -14,22 +12,6 @@ class LogGroupViewSet(ModelViewSet):
     serializer_class = LogGroupSerializer
     filterset_class = LogGroupFilter
 
-    @swagger_auto_schema(
-        operation_description="创建日志分组",
-        request_body=openapi.Schema(
-            type=openapi.TYPE_OBJECT,
-            properties={
-                "id": openapi.Schema(type=openapi.TYPE_STRING, description="日志分组ID（可选，不提供时自动生成UUID）"),
-                "name": openapi.Schema(type=openapi.TYPE_STRING, description="日志分组名称"),
-                "description": openapi.Schema(type=openapi.TYPE_STRING, description="描述"),
-                "rule": openapi.Schema(type=openapi.TYPE_OBJECT, description="分组规则"),
-                "organizations": openapi.Schema(
-                    type=openapi.TYPE_ARRAY,
-                    items=openapi.Schema(type=openapi.TYPE_INTEGER, description="组织ID")),
-            },
-            required=["name", "rule", "organizations"]
-        )
-    )
     def create(self, request, *args, **kwargs):
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
@@ -80,20 +62,6 @@ class LogGroupViewSet(ModelViewSet):
         serializer = self.get_serializer(queryset, many=True)
         return WebUtils.response_success(serializer.data)
 
-    @swagger_auto_schema(
-        operation_description="更新日志分组",
-        request_body=openapi.Schema(
-            type=openapi.TYPE_OBJECT,
-            properties={
-                "name": openapi.Schema(type=openapi.TYPE_STRING, description="日志分组名称"),
-                "description": openapi.Schema(type=openapi.TYPE_STRING, description="描述"),
-                "rule": openapi.Schema(type=openapi.TYPE_OBJECT, description="分组规则"),
-                "organizations": openapi.Schema(
-                    type=openapi.TYPE_ARRAY,
-                    items=openapi.Schema(type=openapi.TYPE_INTEGER, description="组织ID")),
-            }
-        )
-    )
     def update(self, request, *args, **kwargs):
         partial = kwargs.pop('partial', False)
         instance = self.get_object()

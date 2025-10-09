@@ -1,8 +1,10 @@
 FROM python:3.12
 WORKDIR /apps
 
-RUN apt-get update -y
-RUN apt-get install -y vim supervisor
+RUN apt-get update -y && \
+    apt-get install -y vim supervisor && \
+    apt-get clean && \
+    rm -rf /var/lib/apt/lists/*
 
 ADD ./support-files/release/supervisor/app.conf  /etc/supervisor/conf.d/app.conf
 ADD ./support-files/release/supervisor/nats.conf  /etc/supervisor/conf.d/nats.conf

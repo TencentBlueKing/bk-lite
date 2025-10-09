@@ -1,8 +1,6 @@
 import json
 
 from django_celery_beat.models import PeriodicTask, CrontabSchedule
-from drf_yasg import openapi
-from drf_yasg.utils import swagger_auto_schema
 from rest_framework import viewsets
 from rest_framework.decorators import action
 
@@ -160,26 +158,11 @@ class MonitorPolicyVieSet(viewsets.ModelViewSet):
         create_objs = [PolicyOrganization(policy_id=policy_id, organization=org_id) for org_id in create_set]
         PolicyOrganization.objects.bulk_create(create_objs, batch_size=200)
 
-    @swagger_auto_schema(
-        operation_id="policy_template",
-        operation_description="获取策略模板",
-        request_body=openapi.Schema(
-            type=openapi.TYPE_OBJECT,
-            properties={
-                "monitor_object_name": openapi.Schema(type=openapi.TYPE_STRING, description="监控对象名称")
-            },
-            required=["monitor_object_name"]
-        )
-    )
     @action(methods=['post'], detail=False, url_path='template')
     def template(self, request):
         data = PolicyService.get_policy_templates(request.data['monitor_object_name'])
         return WebUtils.response_success(data)
 
-    @swagger_auto_schema(
-        operation_id="template_monitor_object",
-        operation_description="获取策略模板监控对象",
-    )
     @action(methods=['get'], detail=False, url_path='template/monitor_object')
     def template_monitor_object(self, request):
         data = PolicyService.get_policy_templates_monitor_object()

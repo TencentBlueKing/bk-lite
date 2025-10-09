@@ -18,30 +18,63 @@ from apps.core.logger import cmdb_logger as logger
 load_dotenv()
 
 
+class FalkorDBConnectionPool:
+    """FalkorDB连接池，避免重复初始化"""
+    _instance = None
+    _client = None
+    _graph = None
+    _initialized = False
+
+    def __new__(cls):
+        if cls._instance is None:
+            cls._instance = super(FalkorDBConnectionPool, cls).__new__(cls)
+        return cls._instance
+
+    def get_connection(self):
+        """获取连接，如果未初始化则初始化"""
+        if not self._initialized:
+            self._initialize()
+        return self._client, self._graph
+
+    def _initialize(self):
+        """初始化连接"""
+        if self._initialized:
+            return
+
+        try:
+            password = os.getenv("FALKORDB_REQUIREPASS", "") or None
+            host = os.getenv('FALKORDB_HOST', '127.0.0.1')
+            port = int(os.getenv("FALKORDB_PORT", "6379"))
+            database = os.getenv("FALKORDB_DATABASE", "cmdb_graph")
+
+            self._client = falkordb.FalkorDB(
+                host=host,
+                port=port,
+                password=password
+            )
+            self._graph = self._client.select_graph(database)
+            self._initialized = True
+            logger.info(f"已连接到 FalkorDB，选择Graph: {database}")
+        except Exception:
+            import traceback
+            logger.error(f"连接失败: {traceback.format_exc()}")
+            raise
+
+
 class FalkorDBClient:
     def __init__(self):
-        self.password = os.getenv("FALKORDB_REQUIREPASS", "") or None
-        self.host = os.getenv('FALKORDB_HOST', '10.10.40.189')
-        self.port = int(os.getenv("FALKORDB_PORT", "6379"))
-        self.database = os.getenv("FALKORDB_DATABASE", "default_graph")
+        self._pool = FalkorDBConnectionPool()
         self._client = None
         self._graph = None
 
     def connect(self):
         """建立连接并选择Graph"""
         try:
-            self._client = falkordb.FalkorDB(
-                host=self.host,
-                port=self.port,
-                password=self.password
-            )
-            self._graph = self._client.select_graph(self.database)
-            logger.info(f"已连接到 FalkorDB，选择Graph: {self.database}")
-
+            self._client, self._graph = self._pool.get_connection()
             return True
         except Exception:  # noqa
             import traceback
-            logger.info(f"连接失败: {traceback.format_exc()}")
+            logger.error(f"连接失败: {traceback.format_exc()}")
             return False
 
     def close(self):
@@ -66,6 +99,32 @@ class FalkorDBClient:
         """对象销毁时自动关闭连接"""
         # self.close()
         pass
+
+    def _execute_query(self, query: str):
+        """
+        统一的查询执行方法，记录CQL日志
+
+        Args:
+            query: CQL查询语句
+
+        Returns:
+            查询结果
+        """
+        import time
+        start_time = time.time()
+
+        # 记录查询日志
+        logger.info(f"[CQL] {query}")
+
+        try:
+            result = self._graph.query(query)
+            execution_time = (time.time() - start_time) * 1000  # 转换为毫秒
+            logger.info(f"[CQL Result] 查询成功，耗时: {execution_time:.2f}ms")
+            return result
+        except Exception as e:
+            execution_time = (time.time() - start_time) * 1000
+            logger.error(f"[CQL Error] 查询失败，耗时: {execution_time:.2f}ms，错误: {str(e)}")
+            raise
 
     def entity_to_list(self, data):
         """将使用fetchall查询的结果转换成列表类型"""
@@ -95,12 +154,21 @@ class FalkorDBClient:
         return _data
 
     @staticmethod
+    def escape_cql_string(value: str) -> str:
+        """转义CQL字符串中的特殊字符"""
+        if not isinstance(value, str):
+            return value
+        # 转义反斜杠和单引号
+        return value.replace("\\", "\\\\").replace("'", "\\'")
+
+    @staticmethod
     def format_properties(properties: dict):
-        """将属性格式化为sql中的字符串格式"""
+        """将属性格式化为CQL中的字符串格式，正确处理字符串转义"""
         properties_str = "{"
         for key, value in properties.items():
-            if type(value) == str:
-                properties_str += f"{key}:'{value}',"
+            if isinstance(value, str):
+                escaped_value = FalkorDBClient.escape_cql_string(value)
+                properties_str += f"{key}:'{escaped_value}',"
             else:
                 properties_str += f"{key}:{value},"
         properties_str = properties_str[:-1]
@@ -190,7 +258,7 @@ class FalkorDBClient:
 
         # 创建实体
         properties_str = self.format_properties(properties)
-        entity = self._graph.query(f"CREATE (n:{label} {properties_str}) RETURN n")
+        entity = self._execute_query(f"CREATE (n:{label} {properties_str}) RETURN n")
 
         return self.entity_to_dict(entity)
 
@@ -226,7 +294,7 @@ class FalkorDBClient:
 
         # 校验边是否已经存在
         check_asst_val = properties.get(check_asst_key)
-        result = self._graph.query(
+        result = self._execute_query(
             f"MATCH (a:{a_label})-[e]-(b:{b_label}) WHERE ID(a) = {a_id} AND ID(b) = {b_id} AND e.{check_asst_key} = '{check_asst_val}' RETURN COUNT(e) AS count"
             # noqa
         )
@@ -237,7 +305,7 @@ class FalkorDBClient:
 
         # 创建边
         properties_str = self.format_properties(properties)
-        edge = self._graph.query(
+        edge = self._execute_query(
             f"MATCH (a:{a_label}) WHERE ID(a) = {a_id} WITH a MATCH (b:{b_label}) WHERE ID(b) = {b_id} CREATE (a)-[e:{label} {properties_str}]->(b) RETURN e"
             # noqa
         )
@@ -345,7 +413,7 @@ class FalkorDBClient:
                                      additional_param_type: str = "AND") -> str:
         """
         构建基础权限过滤条件
-        
+
         Args:
             teams: 用户所在的团队列表
             inst_names: 特殊授权的实例名称列表  
@@ -353,10 +421,10 @@ class FalkorDBClient:
             model_id: 模型ID (可选，用于进一步限制范围)
             additional_params: 额外的查询参数列表
             additional_param_type: 额外参数的连接类型 ("AND" 或 "OR")
-            
+
         Returns:
             str: 完整的WHERE条件字符串 (不包含WHERE关键字)
-            
+
         权限逻辑：
         1. 当前用户所在组织的数据: n.organization CONTAINS team_id
         2. 用户创建的在当前组织的数据: n._creator = 'username' 
@@ -369,7 +437,15 @@ class FalkorDBClient:
             team_conditions = []
             for team in teams:
                 if team:  # 确保team不为空
-                    team_conditions.append(f"{team} IN n.organization")
+                    # 处理团队数据，支持字典格式（如 {'id': 3}）和简单值
+                    if isinstance(team, dict):
+                        team_id = team.get('id') or team.get('team_id')
+                        if team_id:
+                            team_conditions.append(f"{team_id} IN n.organization")
+                        else:
+                            logger.warning(f"Team dict missing id field: {team}")
+                    else:
+                        team_conditions.append(f"{team} IN n.organization")
 
             if team_conditions:
                 team_condition_str = " OR ".join(team_conditions)
@@ -386,10 +462,6 @@ class FalkorDBClient:
             if inst_names_list:
                 permission_conditions.append(f"n.inst_name IN {inst_names_list}")
 
-        # 4. 模型限制 (可选)
-        if model_id:
-            permission_conditions.append(f"n.model_id = '{model_id}'")
-
         # 组合权限条件 (使用OR，因为满足任一权限即可访问)
         base_permission_str = ""
         if permission_conditions:
@@ -401,14 +473,17 @@ class FalkorDBClient:
         if additional_params:
             additional_params_str = self.format_search_params(additional_params, additional_param_type)
 
-        # 6. 组合基础权限和额外参数 (使用AND，额外参数在权限范围内进行过滤)
-        final_condition = ""
-        if base_permission_str and additional_params_str:
-            final_condition = f"{base_permission_str} AND {additional_params_str}"
-        elif base_permission_str:
-            final_condition = base_permission_str
-        elif additional_params_str:
-            final_condition = additional_params_str
+        # 6. 组合所有条件：权限条件 + 额外参数 + 模型限制
+        conditions = []
+        if base_permission_str:
+            conditions.append(base_permission_str)
+        if additional_params_str:
+            conditions.append(additional_params_str)
+        # 模型限制作为强制条件，而不是权限条件的一部分
+        if model_id:
+            conditions.append(f"n.model_id = '{model_id}'")
+
+        final_condition = " AND ".join(conditions) if conditions else ""
 
         return final_condition
 
@@ -425,7 +500,7 @@ class FalkorDBClient:
                                      order_type: str = "ASC"):
         """
         带权限的实体查询 - 统一权限逻辑入口
-        
+
         Args:
             label: 实体标签
             teams: 用户所在的团队列表
@@ -437,7 +512,7 @@ class FalkorDBClient:
             page: 分页参数 {"skip": 0, "limit": 10}
             order: 排序字段
             order_type: 排序类型 ("ASC" 或 "DESC")
-            
+
         Returns:
             tuple: (实体列表, 总数)
         """
@@ -464,13 +539,13 @@ class FalkorDBClient:
         count = None
         if page:
             count_str = f"MATCH (n{label_str}) {where_clause} RETURN COUNT(n) AS count"
-            _result = self._graph.query(count_str)
+            _result = self._execute_query(count_str)
             result = FormatDBResult(_result).to_list_of_lists()
             count = result[0] if result else 0
             sql_str += f" SKIP {page['skip']} LIMIT {page['limit']}"
 
         # 执行查询
-        objs = self._graph.query(sql_str)
+        objs = self._execute_query(sql_str)
         return self.entity_to_list(objs), count
 
     def query_entity(
@@ -528,12 +603,12 @@ class FalkorDBClient:
         count_str = f"MATCH (n{label_str}) {params_str} RETURN COUNT(n) AS count"
         count = None
         if page:
-            _result = self._graph.query(count_str)
+            _result = self._execute_query(count_str)
             result = FormatDBResult(_result).to_list_of_lists()
             count = result[0] if result else 0
             sql_str += f" SKIP {page['skip']} LIMIT {page['limit']}"
 
-        objs = self._graph.query(sql_str)
+        objs = self._execute_query(sql_str)
         return self.entity_to_list(objs), count
 
     def query_entity_by_id(self, id: int):
@@ -591,11 +666,12 @@ class FalkorDBClient:
         return edges[0]
 
     def format_properties_set(self, properties: dict):
-        """格式化properties的set数据"""
+        """格式化properties的set数据，正确处理字符串转义"""
         properties_str = ""
         for key, value in properties.items():
-            if type(value) == str:
-                properties_str += f"n.{key}='{value}',"
+            if isinstance(value, str):
+                escaped_value = self.escape_cql_string(value)
+                properties_str += f"n.{key}='{escaped_value}',"
             else:
                 properties_str += f"n.{key}={value},"
         return properties_str if properties_str == "" else properties_str[:-1]
@@ -965,37 +1041,35 @@ class FalkorDBClient:
     def full_text(self, search: str, permission_params: str = "", inst_name_params: str = "", created: str = ""):
         """全文检索"""
 
-        or_filters = []
+        # 构建过滤条件
+        conditions = []
 
+        # 添加权限和实例名称过滤条件
+        or_filters = []
         if permission_params:
             or_filters.append(permission_params)
         if inst_name_params:
             or_filters.append(inst_name_params)
 
-        filter_str = " "
-
         if or_filters:
             or_condition = " OR ".join(or_filters)
-            filter_str += f"({or_condition})"
+            conditions.append(f"({or_condition})")
 
-        params = []
-
+        # 添加创建者过滤条件
         if created:
-            params.append({"field": "_creator", "type": "str=", "value": created})
-
-        if params:
+            params = [{"field": "_creator", "type": "str=", "value": created}]
             params_str = self.format_search_params(params)
-            if or_filters:
-                filter_str += f" AND ({params_str})"
-            else:
-                filter_str += f" {params_str}"
+            if params_str:
+                conditions.append(params_str)
 
+        # 添加全文检索条件
+        escaped_search = self.escape_cql_string(search)
+        search_condition = f"ANY(key IN keys(n) WHERE key <> 'organization' AND n[key] IS NOT NULL AND toString(n[key]) CONTAINS '{escaped_search}')"
+        conditions.append(search_condition)
 
-        # 使用 FalkorDB 兼容的全文检索语法
-        # 通过 toString() 函数将所有属性值转换为字符串进行搜索
-        search_condition = f" ANY(key IN keys(n) WHERE key <> 'organization' AND n[key] IS NOT NULL AND toString(n[key]) CONTAINS '{search}')"
-
-        query = f"""MATCH (n:{INSTANCE}) WHERE {filter_str}{search_condition} RETURN n"""
+        # 构建完整WHERE子句
+        where_clause = " AND ".join(conditions) if conditions else "true"
+        query = f"""MATCH (n:{INSTANCE}) WHERE {where_clause} RETURN n"""
 
         try:
             objs = self._graph.query(query)
@@ -1004,8 +1078,27 @@ class FalkorDBClient:
             logger.error(f"Full text search failed: {e}")
             # 如果还是失败，使用最简单的方案：只搜索特定的字符串字段
             try:
-                # 搜索常见的字符串字段
-                fallback_query = f"""MATCH (n:{INSTANCE}) WHERE {filter_str}(n.inst_name CONTAINS '{search}' OR n.model_id CONTAINS '{search}' OR toString(n._id) CONTAINS '{search}') RETURN n"""
+                # 重新构建简化的条件列表（不包含复杂的ANY条件）
+                simple_conditions = []
+
+                # 保留权限和创建者过滤条件
+                if or_filters:
+                    or_condition = " OR ".join(or_filters)
+                    simple_conditions.append(f"({or_condition})")
+
+                if created:
+                    params = [{"field": "_creator", "type": "str=", "value": created}]
+                    params_str = self.format_search_params(params)
+                    if params_str:
+                        simple_conditions.append(params_str)
+
+                # 添加简化的搜索条件
+                simple_search_condition = f"(n.inst_name CONTAINS '{escaped_search}' OR n.model_id CONTAINS '{escaped_search}' OR toString(n._id) CONTAINS '{escaped_search}')"
+                simple_conditions.append(simple_search_condition)
+
+                simple_where_clause = " AND ".join(simple_conditions) if simple_conditions else "true"
+                fallback_query = f"""MATCH (n:{INSTANCE}) WHERE {simple_where_clause} RETURN n"""
+
                 objs = self._graph.query(fallback_query)
                 return self.entity_to_list(objs)
             except Exception as fallback_e:
@@ -1069,7 +1162,7 @@ class FalkorDBClient:
                                      search_param_type: str = "AND"):
         """
         带权限的实体统计查询
-        
+
         Args:
             label: 实体标签
             group_by_attr: 分组统计的属性
@@ -1079,7 +1172,7 @@ class FalkorDBClient:
             model_id: 模型ID
             search_params: 额外搜索参数
             search_param_type: 搜索参数连接类型
-            
+
         Returns:
             list: 统计结果 [{"attr_value": "value", "count": 10}, ...]
         """
@@ -1112,7 +1205,7 @@ class FalkorDBClient:
                                         search_param_type: str = "AND"):
         """
         带权限的全文检索
-        
+
         Args:
             search: 搜索关键词
             teams: 用户所在的团队列表
@@ -1121,7 +1214,7 @@ class FalkorDBClient:
             model_id: 模型ID
             search_params: 额外搜索参数
             search_param_type: 搜索参数连接类型
-            
+
         Returns:
             list: 搜索结果实体列表
         """
@@ -1177,7 +1270,7 @@ class FalkorDBClient:
                                         search_param_type: str = "AND"):
         """
         带权限的实体导出查询
-        
+
         Args:
             label: 实体标签
             teams: 用户所在的团队列表
@@ -1187,7 +1280,7 @@ class FalkorDBClient:
             inst_ids: 指定要导出的实例ID列表 (在权限范围内进行过滤)
             search_params: 额外搜索参数
             search_param_type: 搜索参数连接类型
-            
+
         Returns:
             list: 符合权限和条件的实体列表
         """

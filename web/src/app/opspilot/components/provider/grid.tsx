@@ -71,8 +71,7 @@ const ProviderGrid: React.FC<ProviderGridProps> = ({ models, filterType, loading
       label: values.label,
       model_type: values.model_type,
       enabled: values.enabled,
-      team: values.team,
-      consumer_team: values.consumer_team
+      team: values.team
     };
 
     // Build different config based on provider type

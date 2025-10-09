@@ -450,6 +450,9 @@
     "description": "描述",
     "mcpUrl": "链接",
     "variables": "变量",
+    "subTools": "子工具",
+    "subToolName": "子工具名称",
+    "subToolDescription": "子工具描述",
     "general": "通用",
     "search": "搜索",
     "maintenance": "运维",
@@ -852,6 +855,12 @@
     },
     "expandSidebar": "展开侧边栏",
     "collapseSidebar": "收缩侧边栏",
-    "information": "信息"
+    "information": "信息",
+    "executeNode": "执行节点",
+    "executeMessage": "执行消息",
+    "executeMessagePlaceholder": "请输入执行消息（可选）...",
+    "executeResult": "执行结果",
+    "executeSuccess": "节点执行成功",
+    "executeFailed": "节点执行失败"
   }
 }

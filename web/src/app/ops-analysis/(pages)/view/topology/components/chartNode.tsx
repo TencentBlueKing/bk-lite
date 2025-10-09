@@ -1,11 +1,11 @@
 import React from 'react';
 import { Spin } from 'antd';
 import type { Node } from '@antv/x6';
+import { useTranslation } from '@/utils/i18n';
 import { NODE_DEFAULTS } from '../constants/nodeDefaults';
 import ComLine from '../../dashBoard/widgets/comLine';
 import ComPie from '../../dashBoard/widgets/comPie';
 import ComBar from '../../dashBoard/widgets/comBar';
-import { useTranslation } from '@/utils/i18n';
 
 const componentMap: Record<string, React.ComponentType<any>> = {
   line: ComLine,

@@ -147,6 +147,12 @@
     "fitView": "适配视图",
     "selectMode": "按住shift框选",
     "addText": "添加文本",
+    "architecture": {
+        "loadFailed": "加载失败",
+        "saveFailed": "保存失败",
+        "diagramSaved": "图表已保存",
+        "unableToSave": "无法保存：缺少必要信息"
+    },
     "deleteSelected": "删除选中",
     "exitEdit": "退出编辑",
     "viewAlarmList": "查看告警列表",

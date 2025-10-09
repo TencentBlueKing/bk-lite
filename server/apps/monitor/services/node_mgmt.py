@@ -86,17 +86,20 @@ class InstanceConfigService:
 
         rules = []
 
+        _monitor_instance_id = ast.literal_eval(monitor_instance_id)[0]
+
         for child_obj in child_objs:
             metric_obj = Metric.objects.filter(monitor_object_id=child_obj.id).first()
             rules.append(MonitorObjectOrganizationRule(
                 name=f"{child_obj.name}-{monitor_instance_id}",
-                monitor_object=child_obj.id,
+                monitor_object_id=child_obj.id,
                 rule={
                     "type": "metric",
                     "metric_id": metric_obj.id,
-                    "filter": [{"name": "instance_id", "method": "==",  "value": monitor_instance_id}]
+                    "filter": [{"name": "instance_id", "method": "=",  "value": _monitor_instance_id}]
                 },
-                organizations=group_ids
+                organizations=group_ids,
+                monitor_instance_id=monitor_instance_id,
             ))
         MonitorObjectOrganizationRule.objects.bulk_create(rules, batch_size=200)
 

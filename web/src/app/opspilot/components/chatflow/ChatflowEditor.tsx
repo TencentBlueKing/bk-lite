@@ -20,10 +20,13 @@ import {
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 import { Modal, message } from 'antd';
+import { PlayCircleOutlined } from '@ant-design/icons';
 import { useTranslation } from '@/utils/i18n';
 import Icon from '@/components/icon';
 import NodeConfigDrawer from './NodeConfigDrawer';
+import ExecuteNodeDrawer from './ExecuteNodeDrawer';
 import styles from './ChatflowEditor.module.scss';
+import { useStudioApi } from '../../api/studio';
 
 interface ChatflowNodeData {
   label: string;
@@ -93,6 +96,19 @@ const BaseNode = ({
     onConfig(id);
   };
 
+  // 检查是否为触发类型节点
+  const isTriggerNode = ['celery', 'restful', 'openai'].includes(data.type);
+
+  // 处理执行按钮点击
+  const handleExecuteClick = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    // 触发自定义事件，由父组件处理
+    const event = new CustomEvent('executeNode', {
+      detail: { nodeId: id, nodeType: data.type }
+    });
+    window.dispatchEvent(event);
+  };
+
   // Format node configuration information for display
   const formatConfigInfo = () => {
     const config = data.config;
@@ -112,7 +128,6 @@ const BaseNode = ({
           const timeStr = config.time ? ` ${config.time.format ? config.time.format('HH:mm') : config.time}` : '';
           const weekdayStr = config.weekday !== undefined ? ` ${t('chatflow.weekday')}${config.weekday}` : '';
           const dayStr = config.day ? ` ${config.day}${t('chatflow.day')}` : '';
-          
           return `${frequencyMap[config.frequency] || config.frequency}${timeStr}${weekdayStr}${dayStr}`;
         }
         return t('chatflow.triggerFrequency') + ': --';
@@ -161,6 +176,17 @@ const BaseNode = ({
           position={Position.Left} 
           className={`w-2.5 h-2.5 ${handleColorClasses[color as keyof typeof handleColorClasses] || handleColorClasses.blue} !border-2 !border-white shadow-md`} 
         />
+      )}
+      
+      {/* Execute button for trigger nodes */}
+      {isTriggerNode && (
+        <button
+          onClick={handleExecuteClick}
+          className="absolute -top-3 -right-3 w-8 h-8 bg-green-500 hover:bg-green-600 rounded-full flex items-center justify-center shadow-lg transition-colors z-10"
+          title={t('chatflow.executeNode')}
+        >
+          <PlayCircleOutlined className="text-white text-xl" />
+        </button>
       )}
       
       <div className={styles.nodeHeader}>
@@ -254,6 +280,7 @@ interface ChatflowEditorProps {
 
 const ChatflowEditor = forwardRef<ChatflowEditorRef, ChatflowEditorProps>(({ onSave, initialData }, ref) => {
   const { t } = useTranslation();
+  const { executeWorkflow } = useStudioApi();
   const reactFlowWrapper = useRef<HTMLDivElement>(null);
   const [reactFlowInstance, setReactFlowInstance] = useState<any>(null);
   const [selectedNode, setSelectedNode] = useState<ChatflowNode | null>(null);
@@ -261,6 +288,13 @@ const ChatflowEditor = forwardRef<ChatflowEditorRef, ChatflowEditorProps>(({ onS
   const [selectedNodes, setSelectedNodes] = useState<Node[]>([]);
   const [selectedEdges, setSelectedEdges] = useState<Edge[]>([]);
   const [viewport, setViewport] = useState({ x: 0, y: 0, zoom: 0.6 });
+
+  // 添加执行相关状态
+  const [isExecuteDrawerVisible, setIsExecuteDrawerVisible] = useState(false);
+  const [executeNodeId, setExecuteNodeId] = useState<string>('');
+  const [executeMessage, setExecuteMessage] = useState<string>('');
+  const [executeResult, setExecuteResult] = useState<any>(null);
+  const [executeLoading, setExecuteLoading] = useState(false);
 
   const [nodes, setNodes, onNodesChange] = useNodesState(
     initialData?.nodes && Array.isArray(initialData.nodes) ? initialData.nodes : []
@@ -620,6 +654,53 @@ const ChatflowEditor = forwardRef<ChatflowEditorRef, ChatflowEditorProps>(({ onS
     setIsConfigDrawerVisible(false);
   }, [setNodes]);
 
+  // 处理执行节点事件
+  useEffect(() => {
+    const handleExecuteNode = (event: any) => {
+      const { nodeId } = event.detail;
+      setExecuteNodeId(nodeId);
+      setExecuteMessage('');
+      setExecuteResult(null);
+      setIsExecuteDrawerVisible(true);
+    };
+
+    window.addEventListener('executeNode', handleExecuteNode);
+    return () => {
+      window.removeEventListener('executeNode', handleExecuteNode);
+    };
+  }, []);
+
+  // 执行节点
+  const handleExecuteNode = async () => {
+    if (!executeNodeId) return;
+
+    setExecuteLoading(true);
+    try {
+      const response = await executeWorkflow({
+        message: executeMessage,
+        bot_id: getBotIdFromUrl(),
+        node_id: executeNodeId,
+      });
+
+      setExecuteResult(response);
+      message.success(t('chatflow.executeSuccess'));
+    } catch (error) {
+      console.error('Execute node error:', error);
+      message.error(t('chatflow.executeFailed'));
+    } finally {
+      setExecuteLoading(false);
+    }
+  };
+
+  // 从URL获取botId的辅助函数
+  const getBotIdFromUrl = () => {
+    if (typeof window !== 'undefined') {
+      const urlParams = new URLSearchParams(window.location.search);
+      return urlParams.get('id') || '1';
+    }
+    return '1';
+  };
+
   return (
     <div className={styles.chatflowEditor}>
       <div 
@@ -680,6 +761,18 @@ const ChatflowEditor = forwardRef<ChatflowEditorRef, ChatflowEditorProps>(({ onS
         onClose={() => setIsConfigDrawerVisible(false)}
         onSave={handleSaveConfig}
         onDelete={handleDeleteNode}
+      />
+
+      {/* 执行节点侧边栏 */}
+      <ExecuteNodeDrawer
+        visible={isExecuteDrawerVisible}
+        nodeId={executeNodeId}
+        message={executeMessage}
+        result={executeResult}
+        loading={executeLoading}
+        onMessageChange={setExecuteMessage}
+        onExecute={handleExecuteNode}
+        onClose={() => setIsExecuteDrawerVisible(false)}
       />
     </div>
   );

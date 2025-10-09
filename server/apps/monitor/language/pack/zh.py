@@ -541,8 +541,6 @@ MONITOR_OBJECT_METRIC_GROUP = {
     }
 }
 
-
-
 MONITOR_OBJECT_METRIC = {
     "Host": {
     "cpu_summary.usage": {

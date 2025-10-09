@@ -8,6 +8,7 @@ from apps.cmdb.utils.export import Export
 from apps.cmdb.utils.Import import Import
 from apps.cmdb.utils.permission import PermissionManage
 from apps.core.exceptions.base_app_exception import BaseAppException
+from apps.core.logger import cmdb_logger as logger
 
 
 class InstanceManage(object):
@@ -455,6 +456,13 @@ class InstanceManage(object):
         _import = Import(model_id, attrs, exist_items, operator)
         add_results, update_results, asso_result = _import.import_inst_list_support_edit(file_stream)
 
+        # 检查是否存在验证错误
+        if _import.validation_errors:
+            error_summary = f"数据导入失败：发现 {len(_import.validation_errors)} 个数据验证错误\n"
+            error_details = "\n".join(_import.validation_errors)
+            logger.warning(f"模型 {model_id} 数据导入验证失败，错误数量: {len(_import.validation_errors)}")
+            return {"success": False, "message": error_summary + error_details}
+
         add_changes = [
             dict(
                 inst_id=i["data"]["_id"],
@@ -480,7 +488,8 @@ class InstanceManage(object):
         batch_create_change_record(INSTANCE, CREATE_INST, add_changes, operator=operator)
         batch_create_change_record(INSTANCE, UPDATE_INST, update_changes, operator=operator)
         result_message = self.format_result_message(_import.import_result_message)
-        return result_message
+        logger.info(f"模型 {model_id} 数据导入成功")
+        return {"success": True, "message": result_message}
 
     @staticmethod
     def format_result_message(result: dict):
@@ -501,6 +510,10 @@ class InstanceManage(object):
         attrs = ModelManage.search_model_attr_v2(model_id)
         association = ModelManage.model_association_search(model_id)
 
+        # 添加调试日志
+        logger.info(f"导出参数 - model_id: {model_id}, ids: {ids}, association_list: {association_list}")
+        logger.info(f"查询到的所有关联关系: {len(association)} 个")
+
         with GraphClient() as ag:
             # 使用新的基础权限过滤方法获取有权限的实例
             inst_list = ag.export_entities_with_permission(
@@ -513,8 +526,12 @@ class InstanceManage(object):
             )
 
         attrs = [i for i in attrs if i["attr_id"] in attr_list] if attr_list else attrs
+        # 只有当用户明确选择了关联关系时才包含关联关系
         association = [i for i in association if
                        i["model_asst_id"] in association_list] if association_list else []
+        
+        logger.info(f"过滤后的关联关系: {len(association)} 个")
+        
         return Export(attrs, model_id=model_id, association=association).export_inst_list(inst_list)
 
     @staticmethod

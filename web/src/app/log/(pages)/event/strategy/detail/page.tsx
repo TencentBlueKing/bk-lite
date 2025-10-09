@@ -727,36 +727,74 @@ const StrategyOperation = () => {
                                   </span>
                                 )}
                               </Form.Item>
-                              <Form.Item<StrategyFields>
-                                label={
-                                  <span className="w-[100px]">
-                                    {t('log.event.notifier')}
-                                  </span>
+                              <Form.Item
+                                noStyle
+                                shouldUpdate={(prevValues, currentValues) =>
+                                  prevValues.notice_type_id !==
+                                  currentValues.notice_type_id
                                 }
-                                name="notice_users"
-                                rules={[
-                                  {
-                                    required: true,
-                                    message: t('common.required'),
-                                  },
-                                ]}
                               >
-                                <Select
-                                  style={{
-                                    width: '800px',
-                                  }}
-                                  showSearch
-                                  allowClear
-                                  mode="multiple"
-                                  maxTagCount="responsive"
-                                  placeholder={t('log.event.notifier')}
-                                >
-                                  {userList.map((item) => (
-                                    <Option value={item.id} key={item.id}>
-                                      {item.display_name || item.username}
-                                    </Option>
-                                  ))}
-                                </Select>
+                                {({ getFieldValue }) =>
+                                  channelList.find(
+                                    (item) =>
+                                      item.id ===
+                                      getFieldValue('notice_type_id')
+                                  )?.channel_type === 'email' ? (
+                                      <Form.Item<StrategyFields>
+                                        label={
+                                          <span className="w-[100px]">
+                                            {t('log.event.notifier')}
+                                          </span>
+                                        }
+                                        name="notice_users"
+                                        rules={[
+                                          {
+                                            required: true,
+                                            message: t('common.required'),
+                                          },
+                                        ]}
+                                      >
+                                        <Select
+                                          style={{
+                                            width: '800px',
+                                          }}
+                                          showSearch
+                                          allowClear
+                                          mode="multiple"
+                                          maxTagCount="responsive"
+                                          placeholder={t('log.event.notifier')}
+                                        >
+                                          {userList.map((item) => (
+                                            <Option value={item.id} key={item.id}>
+                                              {item.display_name || item.username}
+                                            </Option>
+                                          ))}
+                                        </Select>
+                                      </Form.Item>
+                                    ) : (
+                                      <Form.Item<StrategyFields>
+                                        label={
+                                          <span className="w-[100px]">
+                                            {t('log.event.notifier')}
+                                          </span>
+                                        }
+                                        name="notice_users"
+                                        rules={[
+                                          {
+                                            required: true,
+                                            message: t('common.required'),
+                                          },
+                                        ]}
+                                      >
+                                        <Input
+                                          style={{
+                                            width: '800px',
+                                          }}
+                                          placeholder={t('log.event.notifier')}
+                                        />
+                                      </Form.Item>
+                                    )
+                                }
                               </Form.Item>
                             </>
                           ) : null

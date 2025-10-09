@@ -9,6 +9,7 @@ import React, {
   useRef,
 } from 'react';
 import styles from './index.module.scss';
+import { useTranslation } from '@/utils/i18n';
 import { iconList } from '@/app/cmdb/utils/common';
 import { message, Spin } from 'antd';
 import { useArchitectureApi } from '@/app/ops-analysis/api/architecture';
@@ -24,6 +25,8 @@ import azureIsopack from '@isoflow/isopacks/dist/azure';
 import isoflowIsopack from '@isoflow/isopacks/dist/isoflow';
 import kubernetesIsopack from '@isoflow/isopacks/dist/kubernetes';
 import ArchitectureToolbar from './components/toolbar';
+import { DEFAULT_COLORS } from '@/app/ops-analysis/constants/common';
+import { svgToBase64 } from '@/app/ops-analysis/utils/common';
 
 const Isoflow = dynamic(
   () => import('fossflow').then((mod) => ({ default: mod.Isoflow })),
@@ -37,20 +40,6 @@ const Isoflow = dynamic(
   }
 );
 
-const svgToBase64 = async (svgPath: string): Promise<string> => {
-  try {
-    const response = await fetch(`/app/assets/assetModelIcon/${svgPath}.svg`);
-    const svgText = await response.text();
-    const base64 = btoa(unescape(encodeURIComponent(svgText)));
-    return `data:image/svg+xml;base64,${base64}`;
-  } catch {
-    const fallbackSvg =
-      '<svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><rect width="24" height="24" fill="#e0e0e0"/><text x="12" y="12" text-anchor="middle" dominant-baseline="middle" font-size="8" fill="#666">?</text></svg>';
-    const fallbackBase64 = btoa(unescape(encodeURIComponent(fallbackSvg)));
-    return `data:image/svg+xml;base64,${fallbackBase64}`;
-  }
-};
-
 const createCmdbIsopack = async () => {
   const icons = await Promise.all(
     iconList.map(async (icon) => ({
@@ -60,7 +49,6 @@ const createCmdbIsopack = async () => {
       isIsometric: true,
     }))
   );
-
   return {
     id: 'cmdb',
     name: 'CMDB',
@@ -68,20 +56,14 @@ const createCmdbIsopack = async () => {
   };
 };
 
-const patchIconSize = (icon: any) => ({
-  ...icon,
-  width: icon.width || icon.size || 48,
-  height: icon.height || icon.size || 48,
-});
-
 export interface ArchitectureRef {
   hasUnsavedChanges: () => boolean;
 }
 
 const Architecture = forwardRef<ArchitectureRef, ArchitectureProps>(
   ({ selectedArchitecture }, ref) => {
+    const { t } = useTranslation();
     const { getArchitectureDetail, saveArchitecture } = useArchitectureApi();
-
     const [diagramName, setDiagramName] = useState('');
     const [fossflowKey, setFossflowKey] = useState(0);
     const [currentModel, setCurrentModel] = useState<DiagramData | null>(null);
@@ -96,21 +78,11 @@ const Architecture = forwardRef<ArchitectureRef, ArchitectureProps>(
     const debounceTimeoutRef = useRef<NodeJS.Timeout | null>(null);
     const lastModelUpdateRef = useRef<string>('');
     const isUpdatingRef = useRef<boolean>(false);
-    const defaultColors = [
-      { id: 'blue', value: '#0066cc' },
-      { id: 'green', value: '#00aa00' },
-      { id: 'red', value: '#cc0000' },
-      { id: 'orange', value: '#ff9900' },
-      { id: 'purple', value: '#9900cc' },
-      { id: 'black', value: '#000000' },
-      { id: 'gray', value: '#666666' },
-    ];
-
     const [diagramData, setDiagramData] = useState<DiagramData>(() => {
       return {
         title: 'Untitled Diagram',
         icons: [],
-        colors: defaultColors,
+        colors: DEFAULT_COLORS,
         items: [],
         views: [],
         fitToScreen: true,
@@ -122,10 +94,7 @@ const Architecture = forwardRef<ArchitectureRef, ArchitectureProps>(
       createCmdbIsopack().then((cmdbIsopack) => {
         const allIcons = flattenCollections([
           cmdbIsopack,
-          {
-            ...isoflowIsopack,
-            icons: isoflowIsopack.icons.map(patchIconSize),
-          },
+          isoflowIsopack,
           awsIsopack,
           azureIsopack,
           gcpIsopack,
@@ -149,7 +118,6 @@ const Architecture = forwardRef<ArchitectureRef, ArchitectureProps>(
 
       const currentArchitectureId = selectedArchitecture?.data_id;
 
-      // 只有在架构图ID真正改变时才重新加载
       if (
         currentArchitectureId &&
         currentArchitectureId !== loadedArchitectureId
@@ -163,13 +131,11 @@ const Architecture = forwardRef<ArchitectureRef, ArchitectureProps>(
             setDiagramData({
               title: 'Loading...',
               icons: uniqueIcons,
-              colors: defaultColors,
+              colors: DEFAULT_COLORS,
               items: [],
               views: [],
               fitToScreen: true,
             });
-            setFossflowKey((prev) => prev + 1);
-
             const data = await getArchitectureDetail(currentArchitectureId);
             const viewSets = Array.isArray(data.view_sets)
               ? { items: [], views: [] }
@@ -180,7 +146,7 @@ const Architecture = forwardRef<ArchitectureRef, ArchitectureProps>(
                 views: viewSets.views || [],
                 title: data.name || diagramName,
                 icons: uniqueIcons,
-                colors: defaultColors,
+                colors: DEFAULT_COLORS,
                 fitToScreen: true,
               };
 
@@ -190,7 +156,7 @@ const Architecture = forwardRef<ArchitectureRef, ArchitectureProps>(
               setFossflowKey((prev) => prev + 1);
               setHasUnsaved(false);
               setLoadedArchitectureId(currentArchitectureId);
-              setIsEditMode(false); // 切换架构图后默认为视图模式
+              setIsEditMode(false);
 
               lastModelUpdateRef.current = JSON.stringify({
                 items: viewSets.items || [],
@@ -199,7 +165,7 @@ const Architecture = forwardRef<ArchitectureRef, ArchitectureProps>(
             }
           } catch (error) {
             console.error('Load failed:', error);
-            message.error('加载失败');
+            message.error(t('opsAnalysis.architecture.loadFailed'));
           } finally {
             setLoading(false);
             setTimeout(() => {
@@ -208,19 +174,18 @@ const Architecture = forwardRef<ArchitectureRef, ArchitectureProps>(
           }
         })();
       } else if (!currentArchitectureId && loadedArchitectureId) {
-        // 清空选择时重置状态
         setCurrentModel(null);
         setDiagramData({
           title: 'Untitled Diagram',
           icons: uniqueIcons,
-          colors: defaultColors,
+          colors: DEFAULT_COLORS,
           items: [],
           views: [],
           fitToScreen: true,
         });
         setFossflowKey((prev) => prev + 1);
         setHasUnsaved(false);
-        setIsEditMode(false); // 清空选择时重置为视图模式
+        setIsEditMode(false);
         setLoadedArchitectureId(null);
         lastModelUpdateRef.current = '';
       }
@@ -230,16 +195,12 @@ const Architecture = forwardRef<ArchitectureRef, ArchitectureProps>(
       const newEditMode = !isEditMode;
       setIsEditMode(newEditMode);
       if (newEditMode) {
-        // 进入编辑模式时重置未保存状态
         setHasUnsaved(false);
       }
-      // 切换编辑模式时更新 key，但不重新加载数据
-      setFossflowKey((prev) => prev + 1);
     };
 
     const saveDiagram = async () => {
       if (!selectedArchitecture?.data_id || !currentModel) {
-        message.error('无法保存：缺少必要信息');
         return;
       }
       try {
@@ -255,18 +216,16 @@ const Architecture = forwardRef<ArchitectureRef, ArchitectureProps>(
 
         await saveArchitecture(selectedArchitecture.data_id, saveData);
 
-        // 更新最后保存的模型快照，避免刷新时重新加载
         lastModelUpdateRef.current = JSON.stringify({
           items: currentModel.items || [],
           views: currentModel.views || [],
         });
 
         setHasUnsaved(false);
-        setIsEditMode(false); // 保存后退出编辑模式
-        message.success('图表已保存');
-      } catch (error) {
-        console.error('Save failed:', error);
-        message.error('保存失败');
+        setIsEditMode(false);
+        message.success(t('topology.architecture.diagramSaved'));
+      } catch {
+        message.error(t('topology.architecture.saveFailed'));
       } finally {
         setLoading(false);
       }
@@ -358,7 +317,7 @@ const Architecture = forwardRef<ArchitectureRef, ArchitectureProps>(
         >
           {loading && (
             <div className="absolute inset-0 bg-white bg-opacity-80 flex items-center justify-center z-50">
-              <Spin size="large" tip="加载架构图..." />
+              <Spin size="large" />
             </div>
           )}
           <Isoflow

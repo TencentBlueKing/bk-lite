@@ -1,11 +1,11 @@
-from apps.node_mgmt.constants import RUN_COMMAND, UNINSTALL_COMMAND
+from apps.node_mgmt.constants.controller import ControllerConstants
 from apps.rpc.executor import Executor
 
 
 # 获取安装命令
 def get_install_command(os, package_name, cloud_region_id, sidecar_token, server_url, groups, node_name, node_id):
     """获取安装命令"""
-    unzip_run_command = RUN_COMMAND.get(os)
+    unzip_run_command = ControllerConstants.RUN_COMMAND.get(os)
     unzip_run_command = unzip_run_command.format(
         package_name=package_name,
         server_url=server_url,
@@ -21,7 +21,7 @@ def get_install_command(os, package_name, cloud_region_id, sidecar_token, server
 # 获取卸载命令
 def get_uninstall_command(os):
     """获取卸载命令"""
-    uninstall_command = UNINSTALL_COMMAND.get(os)
+    uninstall_command = ControllerConstants.UNINSTALL_COMMAND.get(os)
     return uninstall_command
 
 

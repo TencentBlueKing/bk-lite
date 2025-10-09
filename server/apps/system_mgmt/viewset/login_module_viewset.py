@@ -22,19 +22,17 @@ class LoginModuleViewSet(viewsets.ModelViewSet):
         """
         Create a new login module.
         """
-        domain = request.data.get("other_config", {}).get("domain", "")
-        if not domain:
-            return JsonResponse({"result": False, "message": _("Domain is required for creating a login module.")})
-        if LoginModule.objects.filter(name=request.data["name"], source_type=request.data["source_type"]).exists():
-            return JsonResponse(
-                {"result": False, "message": _("Login module with this name and source type already exists.")}
-            )
-        exist_login_module = list(
-            LoginModule.objects.filter(source_type="bk_lite").values_list("other_config", flat=True)
-        )
-        domain_list = [i.get("domain") for i in exist_login_module]
-        if domain in domain_list:
-            return JsonResponse({"result": False, "message": _("Login module with this domain already exists.")})
+        source_type = request.data["source_type"]
+        if source_type != "bk_login":
+            domain = request.data.get("other_config", {}).get("domain", "")
+            if not domain:
+                return JsonResponse({"result": False, "message": _("Domain is required for creating a login module.")})
+            if LoginModule.objects.filter(name=request.data["name"], source_type=request.data["source_type"]).exists():
+                return JsonResponse({"result": False, "message": _("Login module with this name and source type already exists.")})
+            exist_login_module = list(LoginModule.objects.filter(source_type="bk_lite").values_list("other_config", flat=True))
+            domain_list = [i.get("domain") for i in exist_login_module]
+            if domain in domain_list:
+                return JsonResponse({"result": False, "message": _("Login module with this domain already exists.")})
         return super().create(request, *args, **kwargs)
 
     def update(self, request, *args, **kwargs):
@@ -46,19 +44,9 @@ class LoginModuleViewSet(viewsets.ModelViewSet):
             domain = request.data.get("other_config", {}).get("domain", "")
             if not domain:
                 return JsonResponse({"result": False, "message": _("Domain is required for creating a login module.")})
-            if (
-                LoginModule.objects.filter(name=request.data["name"], source_type=request.data["source_type"])
-                .exclude(id=obj.id)
-                .exists()
-            ):
-                return JsonResponse(
-                    {"result": False, "message": _("Login module with this name and source type already exists.")}
-                )
-            exist_login_module = list(
-                LoginModule.objects.filter(source_type="bk_lite")
-                .exclude(id=obj.id)
-                .values_list("other_config", flat=True)
-            )
+            if LoginModule.objects.filter(name=request.data["name"], source_type=request.data["source_type"]).exclude(id=obj.id).exists():
+                return JsonResponse({"result": False, "message": _("Login module with this name and source type already exists.")})
+            exist_login_module = list(LoginModule.objects.filter(source_type="bk_lite").exclude(id=obj.id).values_list("other_config", flat=True))
             domain_list = [i.get("domain") for i in exist_login_module]
             if domain in domain_list:
                 return JsonResponse({"result": False, "message": _("Login module with this domain already exists.")})

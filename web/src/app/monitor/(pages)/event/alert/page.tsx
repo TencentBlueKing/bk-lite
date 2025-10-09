@@ -404,10 +404,11 @@ const Alert: React.FC = () => {
     try {
       setTableLoading(type !== 'timer');
       const data = await getMonitorAlert(params);
-      setTableData(data.results);
+
+      setTableData(data.results || []);
       setPagination((pre) => ({
         ...pre,
-        total: data.count,
+        total: data.count || 0,
       }));
     } finally {
       setTableLoading(false);

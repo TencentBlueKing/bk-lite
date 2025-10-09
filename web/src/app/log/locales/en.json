@@ -303,7 +303,7 @@
       "effective": "Effective",
       "policyType": "Policy Type",
       "queryCriteria": "Query Criteria",
-      "polymerizationConditions": "Polymerization Conditions",
+      "polymerizationConditions": "Polymerization",
       "polymerizationConditionsDes": "Please select fields for aggregation, such as selecting the source field for aggregation. The source: 1.1.1.1 and source: 1.1.1.2 in the original log will be calculated separately as two alarm policies, each generating events and alarms",
       "queryCriteriaTips": "Please fill in the query criteria. Once the query criteria are met, an alarm will be generated",
       "keywordAlert": "Keyword Alert",

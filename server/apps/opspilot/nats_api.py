@@ -1,16 +1,6 @@
 import nats_client
 from apps.core.logger import opspilot_logger as logger
-from apps.opspilot.models import (
-    Bot,
-    EmbedProvider,
-    KnowledgeBase,
-    LLMModel,
-    LLMSkill,
-    OCRProvider,
-    QuotaRule,
-    RerankProvider,
-    SkillTools,
-)
+from apps.opspilot.models import Bot, EmbedProvider, KnowledgeBase, LLMModel, LLMSkill, OCRProvider, QuotaRule, RerankProvider, SkillTools
 
 
 @nats_client.register
@@ -25,7 +15,6 @@ def init_user_set(group_id, group_name):
             unit="MB",
             skill_count=2,
             bot_count=2,
-            token_set={"GPT-4o": {"value": "50", "unit": "thousand"}},
         )
         return {"result": True}
     except Exception as e:

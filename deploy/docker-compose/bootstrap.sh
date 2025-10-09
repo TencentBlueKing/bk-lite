@@ -247,10 +247,46 @@ else
 
     # 将输入的配置写入port.env
     cat > port.env <<EOF
-HOST_IP=${HOST_IP}
-TRAEFIK_WEB_PORT=${TRAEFIK_WEB_PORT}
+export HOST_IP=${HOST_IP}
+export TRAEFIK_WEB_PORT=${TRAEFIK_WEB_PORT}
 EOF
 fi
+
+generate_tls_certs() {
+    : "${HOST_IP:?HOST_IP 未设置}"
+    local dir=./conf/nats/certs
+    local san="DNS:nats,DNS:localhost,IP:127.0.0.1,IP:${HOST_IP}"
+    local cn="nats"
+    # 当存在server.crt时，跳过生成
+    if [ -f "$dir/server.crt" ] && [ -f "$dir/server.key" ] && [ -f "$dir/ca.crt" ]; then
+        log "SUCCESS" "TLS 证书已存在，跳过生成步骤..."
+        return
+    fi
+    log "INFO" "生成自签名 TLS 证书..."
+    mkdir -p ./conf/nats/certs
+
+    # CA
+    openssl genrsa -out "$dir/ca.key" 2048
+    openssl req -x509 -new -nodes -key "$dir/ca.key" -sha256 -days 3650 \
+        -subj "/CN=Blueking Lite" -out "$dir/ca.crt"
+
+    # Server key
+    openssl genrsa -out "$dir/server.key" 2048
+
+    # 用进程替代传 config，CSR 走 stdout
+    openssl req -new -key "$dir/server.key" -out - \
+        -config <(printf '[req]\ndistinguished_name=req\nreq_extensions=req_ext\nprompt=no\n[req_ext]\nsubjectAltName=%s\n[keyUsage]\n[dn]\n' "$san") \
+        -subj "/CN=${cn}" \
+    | openssl x509 -req -CA "$dir/ca.crt" -CAkey "$dir/ca.key" -CAcreateserial \
+        -days 825 -sha256 -out "$dir/server.crt" \
+        -extfile <(printf '%s\n%s\n%s\n%s\n' \
+            "subjectAltName=${san}" \
+            "basicConstraints=CA:FALSE" \
+            "keyUsage=digitalSignature,keyEncipherment,keyAgreement" \
+            "extendedKeyUsage=serverAuth")
+
+    log "SUCCESS" "TLS 证书生成完成：$(ls -1 $dir/server.crt)"
+}
 
 # 检查common.env文件是否存在，存在则加载，不存在则生成
 # 检查并设置MIRROR环境变量
@@ -266,7 +302,6 @@ else
     export REDIS_PASSWORD=$(generate_password 32)
     export SECRET_KEY=$(generate_password 32)
     export NEXTAUTH_SECRET=$(generate_password 12)
-    export SIDECAR_INIT_TOKEN=$(generate_password 64)
     export NATS_ADMIN_USERNAME=admin
     export NATS_ADMIN_PASSWORD=$(generate_password 32)
     export NATS_MONITOR_USERNAME=monitor
@@ -286,7 +321,6 @@ export POSTGRES_PASSWORD=$POSTGRES_PASSWORD
 export REDIS_PASSWORD=$REDIS_PASSWORD
 export SECRET_KEY=$SECRET_KEY
 export NEXTAUTH_SECRET=$NEXTAUTH_SECRET
-export SIDECAR_INIT_TOKEN=$SIDECAR_INIT_TOKEN
 export NATS_ADMIN_USERNAME=$NATS_ADMIN_USERNAME
 export NATS_ADMIN_PASSWORD=$NATS_ADMIN_PASSWORD
 export NATS_MONITOR_USERNAME=$NATS_MONITOR_USERNAME
@@ -370,6 +404,14 @@ trace: true
 debug: false
 logtime: false
 
+allow_non_tls: true
+
+tls {
+  cert_file: "/etc/nats/certs/server.crt"
+  key_file: "/etc/nats/certs/server.key"
+  ca_file: "/etc/nats/certs/ca.crt"
+}
+
 jetstream: enabled
 jetstream {
   store_dir=/nats/storage
@@ -411,7 +453,6 @@ POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
 REDIS_PASSWORD=${REDIS_PASSWORD}
 SECRET_KEY=${SECRET_KEY}
 NEXTAUTH_SECRET=${NEXTAUTH_SECRET}
-SIDECAR_INIT_TOKEN=${SIDECAR_INIT_TOKEN}
 NATS_ADMIN_USERNAME=${NATS_ADMIN_USERNAME}
 NATS_ADMIN_PASSWORD=${NATS_ADMIN_PASSWORD}
 NATS_MONITOR_USERNAME=${NATS_MONITOR_USERNAME}
@@ -454,6 +495,9 @@ EOF
 log "INFO" "生成合成的 docker-compose.yaml 文件..."
 $COMPOSE_CMD > docker-compose.yaml
 
+# 生成nats需要的tls自签名证书
+generate_tls_certs
+
 log "INFO" "拉取最新的镜像..."
 ${DOCKER_COMPOSE_CMD} pull
 
@@ -484,7 +528,28 @@ uv run manage.py collector_package_init --os linux --object Vector --pk_version 
 uv run manage.py collector_package_init --os linux --object Nats-Executor --pk_version latest --file_path /apps/pkgs/collector/nats-executor
 EOF
 
+if [ -z "${SIDECAR_NODE_ID:-}" ]; then
+    log "WARNING" "重新初始化 Sidecar Node ID 和 Token，可能会导致已注册的 Sidecar 失效"
+    mapfile -t ARR < <($DOCKER_COMPOSE_CMD exec -T server /bin/bash -c 'uv run manage.py node_token_init --ip default' 2>&1| grep -oP 'node_id: \K[0-9a-f]+|token: \K\S+')
+    SIDECAR_NODE_ID=${ARR[0]}
+    SIDECAR_INIT_TOKEN=${ARR[1]}
+    log "SUCCESS" "Sidecar Node ID: $SIDECAR_NODE_ID, Token: $SIDECAR_INIT_TOKEN"
+    # 如果里面没有SIDECAR_INIT_TOKEN变量，则添加，有则更新
+    if ! grep -q "^SIDECAR_INIT_TOKEN=" common.env; then
+        echo "export SIDECAR_INIT_TOKEN=$SIDECAR_INIT_TOKEN" >> common.env
+    else
+        sed -i "s/^export SIDECAR_INIT_TOKEN=.*$/export SIDECAR_INIT_TOKEN=\"$SIDECAR_INIT_TOKEN\"/g" common.env
+    fi
+    echo "export SIDECAR_NODE_ID=$SIDECAR_NODE_ID" >> common.env
+    log "SUCCESS" "已将 Sidecar Node ID 和 Token 保存到 common.env 文件"
+else
+    log "SUCCESS" "检测到 SIDECAR_NODE_ID 环境变量，跳过 Sidecar Token 初始化"
+fi
+
+echo "SIDECAR_NODE_ID=$SIDECAR_NODE_ID" >> .env
+echo "SIDECAR_INIT_TOKEN=$SIDECAR_INIT_TOKEN" >> .env
+
+${DOCKER_COMPOSE_CMD} up -d fusion-collector
+
 log "SUCCESS" "部署成功，访问 http://$HOST_IP:$TRAEFIK_WEB_PORT 访问系统"
 log "SUCCESS" "初始用户名: admin, 初始密码: password"
-log "SUCCESS" "控制器安装信息："
-log "SUCCESS" "Token: ${SIDECAR_INIT_TOKEN}"

@@ -78,7 +78,7 @@ const NodeConfigDrawer: React.FC<NodeConfigDrawerProps> = ({
   // 复制API URL到剪贴板
   const copyApiUrl = async () => {
     const currentOrigin = typeof window !== 'undefined' ? window.location.origin : '';
-    const apiUrl = `${currentOrigin}/api/v1/opspilot/bot_mgmt/execute_chat_flow/?bot_id=${botId || '1'}&node_id=${node?.id || 'abcdef'}`;
+    const apiUrl = `${currentOrigin}/api/v1/opspilot/bot_mgmt/execute_chat_flow/${botId || '1'}/${node?.id || 'abcdef'}`;
     
     try {
       await navigator.clipboard.writeText(apiUrl);
@@ -651,7 +651,7 @@ const NodeConfigDrawer: React.FC<NodeConfigDrawerProps> = ({
 
             case 'restful':
               const currentOrigin = typeof window !== 'undefined' ? window.location.origin : '';
-              const restfulApiUrl = `${currentOrigin}/api/v1/opspilot/bot_mgmt/execute_chat_flow/?bot_id=${botId || '1'}&node_id=${node?.id || 'abcdef'}`;
+              const restfulApiUrl = `${currentOrigin}/api/v1/opspilot/bot_mgmt/execute_chat_flow/${botId || '1'}/${node?.id || 'abcdef'}`;
               
               return (
                 <>
@@ -685,7 +685,7 @@ const NodeConfigDrawer: React.FC<NodeConfigDrawerProps> = ({
 
             case 'openai':
               const currentOriginForOpenai = typeof window !== 'undefined' ? window.location.origin : '';
-              const openaiApiUrl = `${currentOriginForOpenai}/api/v1/opspilot/bot_mgmt/execute_chat_flow/?bot_id=${botId || '1'}&node_id=${node?.id || 'abcdef'}`;
+              const openaiApiUrl = `${currentOriginForOpenai}/api/v1/opspilot/bot_mgmt/execute_chat_flow/${botId || '1'}/${node?.id || 'abcdef'}`;
               
               return (
                 <>

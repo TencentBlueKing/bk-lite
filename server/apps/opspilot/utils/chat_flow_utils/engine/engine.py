@@ -8,8 +8,9 @@ from graphlib import CycleError, TopologicalSorter
 from typing import Any, Callable, Dict, List, Optional, Set
 
 from apps.core.logger import opspilot_logger as logger
+from apps.opspilot.enum import WorkFlowTaskStatus, WorkFlowExecuteType
 from apps.opspilot.models import BotWorkFlow
-
+from apps.opspilot.models.bot_mgmt import WorkFlowTaskResult
 from .core.base_executor import BaseNodeExecutor
 from .core.enums import NodeStatus
 from .core.models import NodeExecutionContext
@@ -27,7 +28,6 @@ class ChatFlowEngine:
         # 验证流程
         validation_errors = self.validate_flow()
         if validation_errors:
-
             def err_gen():
                 yield f"data: {json.dumps({'result': False, 'error': '流程验证失败'})}\n\n"
                 yield "data: [DONE]\n\n"
@@ -121,6 +121,60 @@ class ChatFlowEngine:
         """
         return self.last_message or ""
 
+    def _record_execution_result(self, input_data: Dict[str, Any], result: Any, success: bool, start_node_type: str = None) -> None:
+        """记录工作流执行结果
+        
+        Args:
+            input_data: 输入数据
+            result: 执行结果 
+            success: 是否执行成功
+            start_node_type: 启动节点类型
+        """
+        try:
+
+            # 确定执行类型
+            execute_type = WorkFlowExecuteType.OPENAI  # 默认值
+            if start_node_type:
+                if start_node_type.lower() in [choice[0] for choice in WorkFlowExecuteType.choices]:
+                    execute_type = start_node_type.lower()
+
+            # 收集所有节点的输出数据
+            output_data = {}
+            for node_id, context in self.execution_contexts.items():
+                if context.output_data:
+                    output_data[node_id] = context.output_data
+
+            # 确定状态
+            status = WorkFlowTaskStatus.SUCCESS if success else WorkFlowTaskStatus.FAIL
+
+            # 准备输入数据字符串（记录第一个输入）
+            input_data_str = json.dumps(input_data, ensure_ascii=False)
+
+            # 准备最后输出
+            last_output = ""
+            if isinstance(result, dict):
+                last_output = json.dumps(result, ensure_ascii=False)
+            elif isinstance(result, str):
+                last_output = result
+            else:
+                last_output = str(result)
+
+            # 创建执行结果记录
+            WorkFlowTaskResult.objects.create(
+                bot_work_flow=self.instance,
+                status=status,
+                input_data=input_data_str,
+                output_data=output_data,
+                last_output=last_output,
+                execute_type=execute_type
+            )
+
+            logger.info(f"工作流执行结果已记录: flow_id={self.instance.id}, status={status}, execute_type={execute_type}")
+
+        except Exception as e:
+            logger.error(f"记录工作流执行结果失败: {str(e)}")
+            # 记录失败不影响主流程
+
     def validate_flow(self) -> List[str]:
         """验证流程定义
 
@@ -198,11 +252,19 @@ class ChatFlowEngine:
                 # 如果没有指定起始节点但有入口节点，选择第一个
                 chosen_start_node = self.entry_nodes[0]
             else:
-                return {"success": False, "error": "没有找到起始节点", "execution_time": time.time() - start_time}
+                error_result = {"success": False, "error": "没有找到起始节点", "execution_time": time.time() - start_time}
+                self._record_execution_result(input_data, error_result, False)
+                return error_result
 
             # 验证选择的起始节点是否存在
-            if not self._get_node_by_id(chosen_start_node):
-                return {"success": False, "error": f"指定的起始节点不存在: {chosen_start_node}", "execution_time": time.time() - start_time}
+            start_node = self._get_node_by_id(chosen_start_node)
+            if not start_node:
+                error_result = {"success": False, "error": f"指定的起始节点不存在: {chosen_start_node}", "execution_time": time.time() - start_time}
+                self._record_execution_result(input_data, error_result, False)
+                return error_result
+
+            # 获取起始节点类型
+            start_node_type = start_node.get("type", "")
 
             # 从选择的起始节点开始执行
             self._execute_node_chain(chosen_start_node, input_data, timeout - (time.time() - start_time))
@@ -213,18 +275,31 @@ class ChatFlowEngine:
             # 获取最终的 last_message 作为主要输出结果
             final_last_message = self.variable_manager.get_variable("last_message")
 
+            # 记录成功的执行结果
+            self._record_execution_result(input_data, final_last_message, True, start_node_type)
+
             return final_last_message
 
         except Exception as e:
             execution_time = time.time() - start_time
             logger.error(f"流程执行失败: {str(e)}")
-            return {
+            error_result = {
                 "success": False,
                 "error": str(e),
                 "variables": self.variable_manager.get_all_variables(),
                 "execution_contexts": {k: v.__dict__ for k, v in self.execution_contexts.items()},
                 "execution_time": execution_time,
             }
+
+            # 记录失败的执行结果
+            start_node_type = None
+            if self.entry_nodes:
+                start_node = self._get_node_by_id(self.entry_nodes[0])
+                if start_node:
+                    start_node_type = start_node.get("type", "")
+            self._record_execution_result(input_data, error_result, False, start_node_type)
+
+            return error_result
 
     def _execute_node_chain(self, node_id: str, input_data: Dict[str, Any], remaining_timeout: float) -> Dict[str, Any]:
         """执行节点链
@@ -463,7 +538,6 @@ class ChatFlowEngine:
             executor = self.custom_node_executors[node_type]
             # 如果是函数，需要包装成执行器类
             if callable(executor) and not hasattr(executor, "execute"):
-
                 class FunctionExecutor(BaseNodeExecutor):
                     def __init__(self, func, variable_manager):
                         super().__init__(variable_manager)

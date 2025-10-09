@@ -308,7 +308,6 @@ const ProviderPage: React.FC = () => {
       name: values.name,
       enabled: values.enabled,
       team: values.team,
-      consumer_team: values.consumer_team,
       label: values.label,
       model_type: values.model_type,
     };

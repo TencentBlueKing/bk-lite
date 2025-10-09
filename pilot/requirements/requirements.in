@@ -7,3 +7,4 @@ nats-py==2.7.2
 transformers==4.41.0
 wechatpy==1.8.18
 pycryptodome==3.20.0
+pyarmor==9.0.7

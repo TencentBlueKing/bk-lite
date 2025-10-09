@@ -1,7 +1,7 @@
-from datetime import datetime, timezone
+from datetime import timezone
 
 from apps.core.utils.permission_utils import get_permission_rules
-from apps.node_mgmt.constants import NODE_MODULE
+from apps.node_mgmt.constants.node import NodeConstants
 from apps.node_mgmt.models import NodeCollectorInstallStatus
 from apps.node_mgmt.models.sidecar import Node, Collector, CollectorConfiguration, Action
 from apps.node_mgmt.serializers.node import NodeSerializer
@@ -125,7 +125,7 @@ class NodeService:
                 user_obj,
                 permission_data["current_team"],
                 "node_mgmt",
-                NODE_MODULE,
+                NodeConstants.MODULE,
             )
             # 如果提供了权限信息，使用权限过滤
             qs = permission_filter(Node, permission, team_key="nodeorganization__organization__in", id_key="id__in")

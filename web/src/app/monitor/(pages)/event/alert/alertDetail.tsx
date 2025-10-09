@@ -20,12 +20,14 @@ import {
   Pagination,
   TimeLineItem,
 } from '@/app/monitor/types';
+import { HeatMapDataItem } from '@/types';
 import { MetricItem } from '@/app/monitor/types/monitor';
 import { AlertOutlined } from '@ant-design/icons';
 import { useLocalizedTime } from '@/hooks/useLocalizedTime';
 import { useAlertDetailTabs } from '@/app/monitor/hooks/event';
 import useMonitorApi from '@/app/monitor/api/index';
 import Information from './information';
+import EventHeatMap from '@/components/heat-map';
 import { getEnumValueUnit, renderChart } from '@/app/monitor/utils/common';
 import {
   LEVEL_MAP,
@@ -58,9 +60,11 @@ const AlertDetail = forwardRef<ModalRef, ModalConfig>(
       pageSize: 100,
     });
     const [tableLoading, setTableLoading] = useState<boolean>(false);
+    const [eventChartLoading, setEventChartLoading] = useState<boolean>(false);
     const [pageLoading, setPageLoading] = useState<boolean>(false);
     const tabs: TabItem[] = useAlertDetailTabs();
     const [timeLineData, setTimeLineData] = useState<TimeLineItem[]>([]);
+    const [eventData, setEventData] = useState<HeatMapDataItem[]>([]);
     const timelineRef = useRef<HTMLDivElement>(null); // 用于引用 Timeline 容器
     const isFetchingRef = useRef<boolean>(false); // 用于标记是否正在加载数据
 
@@ -69,6 +73,9 @@ const AlertDetail = forwardRef<ModalRef, ModalConfig>(
         setGroupVisible(true);
         setTitle(title);
         getMetrics(form, objectId);
+        if (form.id) {
+          getEventData(form.id);
+        }
       },
     }));
 
@@ -162,6 +169,7 @@ const AlertDetail = forwardRef<ModalRef, ModalConfig>(
           },
           []
         );
+
         const config = [
           {
             instance_id_values: form.instance_id_values,
@@ -189,6 +197,22 @@ const AlertDetail = forwardRef<ModalRef, ModalConfig>(
         setTrapData(responseData);
       } finally {
         setLoading(false);
+      }
+    };
+
+    const getEventData = async (formId?: string | number) => {
+      if (!formId) return;
+      setEventChartLoading(true);
+      try {
+        const _data = await getMonitorEventDetail(formId, {
+          page: 1,
+          page_size: -1,
+        });
+        setEventData(_data.results || []);
+      } catch {
+        setEventData([]);
+      } finally {
+        setEventChartLoading(false);
       }
     };
 
@@ -223,6 +247,7 @@ const AlertDetail = forwardRef<ModalRef, ModalConfig>(
       setChartData([]);
       setTrapData({});
       setTimeLineData([]);
+      setEventData([]);
     };
 
     const changeTab = (val: string) => {
@@ -235,6 +260,10 @@ const AlertDetail = forwardRef<ModalRef, ModalConfig>(
       });
       setLoading(false);
       setTableLoading(false);
+      setEventChartLoading(false);
+      if (formData.id) {
+        getEventData(formData.id);
+      }
       if (val === 'information') {
         if (formData.policy?.query_condition?.type === 'pmq') {
           getRawData();
@@ -298,8 +327,8 @@ const AlertDetail = forwardRef<ModalRef, ModalConfig>(
               </ul>
             </div>
             <Tabs activeKey={activeTab} items={tabs} onChange={changeTab} />
-            <Spin className="w-full" spinning={loading || tableLoading}>
-              {isInformation ? (
+            {isInformation ? (
+              <Spin className="w-full" spinning={loading}>
                 <Information
                   formData={formData}
                   objects={objects}
@@ -308,21 +337,29 @@ const AlertDetail = forwardRef<ModalRef, ModalConfig>(
                   onClose={closeModal}
                   trapData={trapData}
                   chartData={chartData}
+                  eventData={eventData}
                 />
-              ) : (
-                <div
-                  className="pt-[10px]"
-                  style={{
-                    height: 'calc(100vh - 276px)',
-                    overflowY: 'auto',
-                  }}
-                  ref={timelineRef}
-                  onScroll={handleScroll}
-                >
-                  <Timeline items={timeLineData} />
-                </div>
-              )}
-            </Spin>
+              </Spin>
+            ) : (
+              <div>
+                <Spin spinning={eventChartLoading}>
+                  <EventHeatMap data={eventData} className="mb-4" />
+                </Spin>
+                <Spin spinning={tableLoading}>
+                  <div
+                    className="pt-[10px]"
+                    style={{
+                      height: 'calc(100vh - 520px)',
+                      overflowY: 'auto',
+                    }}
+                    ref={timelineRef}
+                    onScroll={handleScroll}
+                  >
+                    <Timeline items={timeLineData} />
+                  </div>
+                </Spin>
+              </div>
+            )}
           </Spin>
         </OperateModal>
       </div>

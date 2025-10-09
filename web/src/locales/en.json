@@ -100,6 +100,13 @@
       "custom": "Custom",
       "off": "off"
     },
+    "heatMap": {
+      "monthDisplay": "Monthly Display",
+      "dayDisplay": "Daily Display",
+      "selectMonth": "Select Month",
+      "selectDate": "Select Date",
+      "quantity": "Count"
+    },
     "copySuccess": "Copied successfully",
     "copyFailed": "Failed to copy",
     "successfullyExported": "Successfully exported",
