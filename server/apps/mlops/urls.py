@@ -9,6 +9,11 @@ from apps.mlops.views.timeseries_predict_train_data import TimeSeriesPredictTrai
 from apps.mlops.views.timeseries_predict_train_job import TimeSeriesPredictTrainJobViewSet
 from apps.mlops.views.timeseries_predict_train_history import TimeSeriesPredictTrainHistoryViewSet
 from apps.mlops.views.timeseries_predict_serving import TimeSeriesPredictServingViewSet
+from apps.mlops.views.classification_dataset import ClassificationDatasetViewSet
+from apps.mlops.views.classification_train_data import ClassificationTrainDataViewSet
+from apps.mlops.views.classification_train_job import ClassificationTrainJobViewSet
+from apps.mlops.views.classification_train_history import ClassificationTrainHistoryViewSet
+from apps.mlops.views.classification_serving import ClassificationServingViewSet
 from apps.mlops.views.log_clustering_dataset import LogClusteringDatasetViewSet
 from apps.mlops.views.log_clustering_train_data import LogClusteringTrainDataViewSet
 from apps.mlops.views.log_clustering_train_job import LogClusteringTrainJobViewSet
@@ -39,6 +44,13 @@ router.register(r'timeseries_predict_train_data', TimeSeriesPredictTrainDataView
 router.register(r'timeseries_predict_train_jobs', TimeSeriesPredictTrainJobViewSet, basename='timeseries_predict_train_jobs')
 router.register(r'timeseries_predict_train_history', TimeSeriesPredictTrainHistoryViewSet, basename='timeseries_predict_train_history')
 router.register(r'timeseries_predict_servings', TimeSeriesPredictServingViewSet, basename='timeseries_predict_servings')
+
+# 分类任务
+router.register(r'classification_datasets', ClassificationDatasetViewSet, basename='classification_datasets')
+router.register(r'classification_train_data', ClassificationTrainDataViewSet, basename='classification_train_data')
+router.register(r'classification_train_jobs', ClassificationTrainJobViewSet, basename='classification_train_jobs')
+router.register(r'classification_train_history', ClassificationTrainHistoryViewSet, basename='classification_train_history')
+router.register(r'classification_servings', ClassificationServingViewSet, basename='classification_servings')
 
 # 日志聚类
 router.register(r'log_clustering_datasets', LogClusteringDatasetViewSet, basename='log_clustering_datasets')
