@@ -13,12 +13,6 @@
         font-weight: 600;
     }
 
-    :global {
-        .ant-input-search-button {
-            padding: 0;
-        }
-    }
-
     .searchBtn {
         height: 100%;
         display: flex;
@@ -72,25 +66,6 @@
                 li {
                     margin-right: 6px;
                     cursor: pointer;
-
-                    :global {
-                        .ant-tag {
-                            color: var(--color-text-1);
-
-                            .anticon {
-                                display: none;
-                                position: absolute;
-                                top: -3px;
-                                right: -3px;
-                            }
-
-                            &:hover {
-                                .anticon {
-                                    display: block;
-                                }
-                            }
-                        }
-                    }
                 }
             }
         }
@@ -157,13 +132,6 @@
                         margin-right: 10px;
                         @include hide-text;
                     }
-
-                    :global {
-                        .ant-btn-link {
-                            margin: 0 !important;
-                            padding: 0 !important;
-                        }
-                    }
                 }
 
                 ul {
@@ -193,12 +161,33 @@
             }
         }
     }
+}
 
-    :global {
+.assetSearch :global(.ant-input-search-button) {
+    padding: 0;
+}
 
-        .ant-spin-nested-loading,
-        .ant-spin-container {
-            height: 100%;
-        }
-    }
+.assetSearch .searchInput .history ul li :global(.ant-tag) {
+    color: var(--color-text-1);
+}
+
+.assetSearch .searchInput .history ul li :global(.ant-tag .anticon) {
+    display: none;
+    position: absolute;
+    top: -3px;
+    right: -3px;
+}
+
+.assetSearch .searchInput .history ul li :global(.ant-tag:hover .anticon) {
+    display: block;
+}
+
+.assetSearch .searchDetail .searchResult .detail .detailTile :global(.ant-btn-link) {
+    margin: 0 !important;
+    padding: 0 !important;
+}
+
+.assetSearch :global(.ant-spin-nested-loading),
+.assetSearch :global(.ant-spin-container) {
+    height: 100%;
 }

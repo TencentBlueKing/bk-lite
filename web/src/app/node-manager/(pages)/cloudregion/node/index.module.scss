@@ -1,56 +1,33 @@
+.node :global(.ant-table-cell .ant-tag.ant-tag-error) {
+    width: 60px;
+    text-align: center;
+}
+
+.node :global(.ant-table-cell .ant-tag.ant-tag-success) {
+    width: 60px;
+    text-align: center;
+}
+
+.node :global(.ant-table-cell :where(.css-dev-only-do-not-override-yta69t).ant-space-gap-col-small) {
+    height: 100%;
+}
+
 .node {
-    :global {
-        .ant-table-cell {
-            .ant-tag.ant-tag-error {
-                width: 60px;
-                text-align: center;
-            }
-
-            .ant-tag.ant-tag-success {
-                width: 60px;
-                text-align: center;
-            }
-
-            :where(.css-dev-only-do-not-override-yta69t).ant-space-gap-col-small {
-                height: 100%;
-            }
-        }
-    }
-
     .table {
         max-width: calc(100vw - 288px);
         min-width: 1000px;
-
-        :global {
-            .ant-tag {
-                width: auto !important;
-                margin-top: 5px;
-                margin-bottom: 5px;
-            }
-        }
     }
+}
+
+.node .table :global(.ant-tag) {
+    width: auto !important;
+    margin-top: 5px;
+    margin-bottom: 5px;
 }
 
 .controllerInstall {
     width: 100%;
     overflow: hidden;
-
-    :global {
-        .ant-form-item-required:not(.ant-form-item-required-mark-optional)::before {
-            position: absolute;
-            right: -3px;
-        }
-
-        .ant-form-item-label>label {
-            margin-right: 10px;
-        }
-
-        .ant-table {
-            .ant-form-item {
-                margin: 0;
-            }
-        }
-    }
 
     .title {
         font-size: 16px;
@@ -81,4 +58,17 @@
         margin-top: 10px;
         padding-left: 20px;
     }
+}
+
+.controllerInstall :global(.ant-form-item-required:not(.ant-form-item-required-mark-optional)::before) {
+    position: absolute;
+    right: -3px;
+}
+
+.controllerInstall :global(.ant-form-item-label>label) {
+    margin-right: 10px;
+}
+
+.controllerInstall :global(.ant-table .ant-form-item) {
+    margin: 0;
 }

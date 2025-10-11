@@ -1,11 +1,7 @@
-.attrLayout {
-  :global {
-    .ant-card-body {
-      padding: 16px !important;
-    }
+.attrLayout :global(.ant-card-body) {
+  padding: 16px !important;
+}
 
-    section {
-      width: calc(100vw - 250px);
-    }
-  }
+.attrLayout :global(section) {
+  width: calc(100vw - 250px);
 }

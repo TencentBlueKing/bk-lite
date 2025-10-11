@@ -16,12 +16,6 @@
         .tree {
             height: 100%;
         }
-
-        :global {
-            .ant-tree-list {
-                width: 100%;
-            }
-        }
     }
 
     .table {
@@ -31,11 +25,13 @@
         flex: 1;
         height: 100%;
         overflow-y: auto;
-
-        :global {
-            .grid-cols-1 {
-                padding-bottom: 10px;
-            }
-        }
     }
+}
+
+.container .containerTree :global(.ant-tree-list) {
+    width: 100%;
+}
+
+.container .table :global(.grid-cols-1) {
+    padding-bottom: 10px;
 }

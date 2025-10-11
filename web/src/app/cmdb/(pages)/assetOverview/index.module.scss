@@ -74,15 +74,13 @@
       }
     }
   }
+}
 
-  :global {
-    .my-masonry-grid_column {
-      padding-left: 20px;
-      background-clip: padding-box;
-    }
+.assetsOverview :global(.my-masonry-grid_column) {
+  padding-left: 20px;
+  background-clip: padding-box;
+}
 
-    .my-masonry-grid_column > div {
-      margin-bottom: 20px;
-    }
-  }
+.assetsOverview :global(.my-masonry-grid_column > div) {
+  margin-bottom: 20px;
 }

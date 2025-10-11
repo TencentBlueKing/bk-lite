@@ -37,19 +37,18 @@
 }
 
 .segmented {
-  :global {
-    .ant-segmented {
-      background: transparent;
-      color: var(--color-text-1);
+}
 
-      .ant-segmented-item {
-        margin-right: 8px;
-        padding: 3px 6px !important;
-      }
+.segmented :global(.ant-segmented) {
+  background: transparent;
+  color: var(--color-text-1);
+}
 
-      .ant-segmented-item-selected {
-        color: var(--color-primary);
-      }
-    }
-  }
+.segmented :global(.ant-segmented .ant-segmented-item) {
+  margin-right: 8px;
+  padding: 3px 6px !important;
+}
+
+.segmented :global(.ant-segmented .ant-segmented-item-selected) {
+  color: var(--color-primary);
 }

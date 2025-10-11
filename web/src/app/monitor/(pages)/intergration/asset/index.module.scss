@@ -12,12 +12,6 @@
         overflow-x: hidden;
         padding: 20px 10px;
         background-color: var(--color-bg-1);
-
-        :global {
-            .ant-tree-list {
-                width: 100%;
-            }
-        }
     }
 
     .rule {
@@ -74,13 +68,6 @@
                             font-size: 18px;
                             cursor: pointer;
                         }
-
-                        :global {
-                            .ant-btn-icon-only {
-                                width: auto;
-                                transform: scale(0.8);
-                            }
-                        }
                     }
                 }
             }
@@ -110,13 +97,20 @@
     }
 }
 
-.conditionItem {
-    :global {
-        .ant-btn-default {
-            min-width: 32px;
-        }
-    }
+.asset .tree :global(.ant-tree-list) {
+    width: 100%;
+}
 
+.asset .rule .ruleList .ruleItem .editItem .operate :global(.ant-btn-icon-only) {
+    width: auto;
+    transform: scale(0.8);
+}
+
+.conditionItem :global(.ant-btn-default) {
+    min-width: 32px;
+}
+
+.conditionItem {
     .itemLabel {
         font-weight: 600;
         font-size: 13px;
@@ -129,19 +123,9 @@
 
     .source {
         .sourceObjectType {
-            :global {
-                .ant-select-selector {
-                    border-radius: 6px 0 0 6px;
-                }
-            }
         }
 
         .sourceObject {
-            :global {
-                .ant-select-selector {
-                    border-radius: 0 6px 6px 0;
-                }
-            }
         }
     }
 
@@ -158,33 +142,39 @@
 
         .filter {
             margin-bottom: 10px;
-
-            :global {
-                .ant-btn:nth-of-type(1) {
-                    border-radius: 0 6px 6px 0;
-                    margin-right: 10px;
-                }
-
-                .ant-btn:nth-of-type(2) {
-                    margin-right: 10px;
-                }
-
-                .ant-btn {
-                    background: var(--color-fill-2);
-                }
-
-                .ant-btn-icon {
-                    transform: scale(0.8);
-                }
-
-                .ant-select-selector {
-                    border-radius: 0;
-                }
-
-                .ant-input {
-                    border-radius: 0;
-                }
-            }
         }
     }
+}
+
+.conditionItem .source .sourceObjectType :global(.ant-select-selector) {
+    border-radius: 6px 0 0 6px;
+}
+
+.conditionItem .source .sourceObject :global(.ant-select-selector) {
+    border-radius: 0 6px 6px 0;
+}
+
+.conditionItem .conditions .filter :global(.ant-btn:nth-of-type(1)) {
+    border-radius: 0 6px 6px 0;
+    margin-right: 10px;
+}
+
+.conditionItem .conditions .filter :global(.ant-btn:nth-of-type(2)) {
+    margin-right: 10px;
+}
+
+.conditionItem .conditions .filter :global(.ant-btn) {
+    background: var(--color-fill-2);
+}
+
+.conditionItem .conditions .filter :global(.ant-btn-icon) {
+    transform: scale(0.8);
+}
+
+.conditionItem .conditions .filter :global(.ant-select-selector) {
+    border-radius: 0;
+}
+
+.conditionItem .conditions .filter :global(.ant-input) {
+    border-radius: 0;
 }

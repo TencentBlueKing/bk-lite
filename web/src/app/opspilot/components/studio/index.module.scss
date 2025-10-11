@@ -18,10 +18,9 @@
 .proChatDetail {
   background: var(--color-fill-1);
   box-shadow: 2px 4px 6px var(--color-fill-3);
-  :global {
-    .ant-pro-chat-input-area,
-    .ant-editor-action-group-content {
-      display: none;
-    }
-  }
+}
+
+.proChatDetail :global(.ant-pro-chat-input-area),
+.proChatDetail :global(.ant-editor-action-group-content) {
+  display: none;
 }

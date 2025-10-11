@@ -51,36 +51,6 @@
         height: calc(100% - 44px);
         overflow: auto;
       }
-
-      :global {
-        .ant-radio-button-wrapper {
-          border: none;
-          background: transparent;
-          border-radius: 4px !important;
-          white-space: nowrap;
-          margin-right: 10px;
-
-          &::before {
-            width: 0;
-          }
-
-          &:hover {
-            color: var(--color-primary);
-            background: var(--color-bg-1);
-          }
-        }
-
-        .ant-radio-button-wrapper-checked {
-          background: var(--color-bg-1);
-          color: var(--color-primary);
-        }
-
-        .ant-radio-group-solid {
-          display: flex;
-          overflow-x: auto;
-          overflow-y: hidden;
-        }
-      }
     }
 
     .owner {
@@ -101,4 +71,32 @@
       }
     }
   }
+}
+
+.assetLoading .assetData .groupSelector :global(.ant-radio-button-wrapper) {
+  border: none;
+  background: transparent;
+  border-radius: 4px !important;
+  white-space: nowrap;
+  margin-right: 10px;
+}
+
+.assetLoading .assetData .groupSelector :global(.ant-radio-button-wrapper::before) {
+  width: 0;
+}
+
+.assetLoading .assetData .groupSelector :global(.ant-radio-button-wrapper:hover) {
+  color: var(--color-primary);
+  background: var(--color-bg-1);
+}
+
+.assetLoading .assetData .groupSelector :global(.ant-radio-button-wrapper-checked) {
+  background: var(--color-bg-1);
+  color: var(--color-primary);
+}
+
+.assetLoading .assetData .groupSelector :global(.ant-radio-group-solid) {
+  display: flex;
+  overflow-x: auto;
+  overflow-y: hidden;
 }
