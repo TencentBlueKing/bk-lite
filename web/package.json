@@ -61,7 +61,7 @@
     "@types/react-dom": "^18",
     "autoprefixer": "^10.4.21",
     "dotenv": "^16.4.7",
-    "eslint": "^8",
+    "eslint": "^8.57.1",
     "eslint-config-next": "15.0.3",
     "eslint-plugin-storybook": "^0.11.1",
     "fs-extra": "^11.2.0",
