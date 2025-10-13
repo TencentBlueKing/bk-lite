@@ -25,7 +25,7 @@ import {
   getRecentTimeRange,
 } from '@/app/monitor/utils/common';
 import dayjs, { Dayjs } from 'dayjs';
-import { INIT_VIEW_MODAL_FORM } from '@/app/monitor/constants/monitor';
+import { INIT_VIEW_MODAL_FORM } from '@/app/monitor/constants/view';
 import LazyMetricItem from './lazyMetricItem';
 
 const MonitorView: React.FC<ViewModalProps> = ({

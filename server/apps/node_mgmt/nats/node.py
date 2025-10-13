@@ -1,8 +1,8 @@
 from django.core.cache import cache
 
 import nats_client
+from apps.node_mgmt.management.services.node_init.collector_init import import_collector
 from apps.node_mgmt.models import CloudRegion
-from apps.node_mgmt.node_init.collector_init import import_collector
 from apps.node_mgmt.services.node import NodeService
 # from apps.core.logger import node_logger as logger
 

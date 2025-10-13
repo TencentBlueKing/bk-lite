@@ -2,6 +2,7 @@ FROM python:3.12
 WORKDIR /apps
 
 RUN apt-get update -y && \
+    apt-get upgrade -y && \
     apt-get install -y vim supervisor && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*

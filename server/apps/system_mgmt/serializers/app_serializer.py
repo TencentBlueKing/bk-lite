@@ -1,6 +1,7 @@
-from django.utils.translation import gettext as _
 from rest_framework import serializers
+from rest_framework.fields import empty
 
+from apps.core.utils.loader import LanguageLoader
 from apps.system_mgmt.models import App
 
 
@@ -11,11 +12,15 @@ class AppSerializer(serializers.ModelSerializer):
         model = App
         fields = "__all__"
 
-    @staticmethod
-    def get_description_cn(obj):
+    def __init__(self, instance=None, data=empty, **kwargs):
+        super(AppSerializer, self).__init__(instance, data, **kwargs)
+        locale = getattr(self.context.get("request").user, "locale", "en") or "en"
+        self.loader = LanguageLoader(app="system_mgmt", default_lang=locale)
+
+    def get_description_cn(self, obj):
         # 如果是内置模块，翻译name
         if obj.is_build_in:
-            return _(obj.description)
+            return self.loader.get(f"app.{obj.name}") or obj.description
             # 否则返回原始name
         return obj.description
 

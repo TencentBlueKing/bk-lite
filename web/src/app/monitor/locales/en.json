@@ -358,8 +358,8 @@
       "systemManage": "system management",
       "config": "to configure it."
     },
-    "intergrations": {
-      "intergration": "Intergration",
+    "integrations": {
+      "integration": "Integration",
       "configure": "Configure",
       "configureTitle": "Please follow the following guidelines to install the collector.",
       "metricTitle": "The following monitoring indicators are supported by this collector",

@@ -37,7 +37,7 @@ const CustomPopover: React.FC<CustomPopoverProps> = ({
 
   return (
     <Popover
-      className="custom-popover"
+      overlayClassName="custom-popover"
       title={title}
       arrow={false}
       trigger="click"

@@ -8,12 +8,13 @@ from django.core.serializers.json import DjangoJSONEncoder
 
 from apps.node_mgmt.constants.controller import ControllerConstants
 from apps.node_mgmt.utils.crypto_helper import EncryptedJsonResponse
-from apps.node_mgmt.default_config.default_config import create_default_config
 from apps.node_mgmt.models.cloud_region import SidecarEnv
 from apps.node_mgmt.models.sidecar import Node, Collector, CollectorConfiguration, NodeOrganization
 from apps.node_mgmt.utils.sidecar import format_tags_dynamic
-from apps.core.logger import node_logger as logger
 from apps.core.utils.crypto.aes_crypto import AESCryptor
+from jinja2 import Template as JinjaTemplate
+
+from apps.core.logger import node_logger as logger
 
 
 class Sidecar:
@@ -163,7 +164,7 @@ class Sidecar:
             Sidecar.asso_groups(node_id, tags_data.get("group", []))
 
             # 创建默认的配置
-            create_default_config(node)
+            Sidecar.create_default_config(node)
 
         else:
             # 更新时间
@@ -281,8 +282,8 @@ class Sidecar:
         return EncryptedJsonResponse(dict(id=configuration_id, env_config={k: str(v) for k, v in obj.env_config.items()}), request=request)
 
     @staticmethod
-    def get_variables(node_obj):
-        """获取变量"""
+    def get_cloud_region_envconfig(node_obj):
+        """获取云区域环境变量"""
         objs = SidecarEnv.objects.filter(cloud_region=node_obj.cloud_region_id)
         variables = {}
         for obj in objs:
@@ -294,6 +295,12 @@ class Sidecar:
             else:
                 # 如果是普通变量，直接使用
                 variables[obj.key] = obj.value
+        return variables
+
+    @staticmethod
+    def get_variables(node_obj):
+        """获取变量"""
+        variables = Sidecar.get_cloud_region_envconfig(node_obj)
         node_dict = {
             "node__id": node_obj.id,
             "node__cloud_region": node_obj.cloud_region_id,
@@ -318,3 +325,43 @@ class Sidecar:
         template_str = template_str.replace('node.', 'node__')
         template = Template(template_str)
         return template.safe_substitute(variables)
+
+
+    @staticmethod
+    def create_default_config(node):
+
+        collector_objs = Collector.objects.filter(enabled_default_config=True,
+                                                  node_operating_system=node.operating_system)
+        variables = Sidecar.get_cloud_region_envconfig(node)
+        default_sidecar_mode = variables.get("SIDECAR_INPUT_MODE", "nats")
+
+        for collector_obj in collector_objs:
+            try:
+
+                if not collector_obj.default_config:
+                    continue
+
+                config_template = collector_obj.default_config.get(default_sidecar_mode, None)
+
+                if not config_template:
+                    continue
+
+                tpl = JinjaTemplate(config_template)
+                _config_template = tpl.render(variables)
+
+                # 如果已经存在关联的配置就跳过
+                if CollectorConfiguration.objects.filter(collector=collector_obj, nodes=node).exists():
+                    logger.info(
+                        f"Node {node.id} already has a configuration for collector {collector_obj.name}, skipping.")
+                    continue
+
+                configuration = CollectorConfiguration.objects.create(
+                    name=f'{collector_obj.name}-{node.id}',
+                    collector=collector_obj,
+                    config_template=_config_template,
+                    is_pre=True,
+                )
+                configuration.nodes.add(node)
+
+            except Exception as e:
+                logger.error(f"create node {node.id} {collector_obj.name} default configuration failed {e}")

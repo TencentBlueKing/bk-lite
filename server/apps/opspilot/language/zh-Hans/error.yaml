@@ -1,0 +1,104 @@
+# 用户与认证错误
+user_api_secret_exists: 该用户已拥有 API 密钥
+insufficient_permissions: 权限不足
+token_validation_failed: 令牌验证失败
+token_required: 请提供令牌
+token_used_up: 令牌已用完
+not_authorized: 未授权
+permission_update_denied: 你没有权限更新此实例
+no_update_permission: 你没有权限更新此实例
+no_delete_permission: 你没有权限删除此实例
+no_view_permission: 你没有权限查看此实例
+
+# 配额与限制错误
+bot_quota_exceeded: 机器人数量超过配额限制。
+skill_quota_exceeded: 技能数量超过配额限制。
+file_size_exceeded: 文件大小超过配额限制。
+
+# 文件操作错误
+file_import_failed: 文件导入失败。
+not_a_file: 不是文件
+file_not_found: 未找到文件
+
+# 必填字段错误
+team_required: 需要提供团队字段。
+query_required: 查询内容为必填项
+chunk_id_required: chunk_id 为必填项
+url_required: 网址为必填项
+
+# 通用操作错误
+update_failed: 更新失败
+delete_failed: 删除失败
+
+# 知识库错误
+knowledge_base_name_exists: 知识库名称已存在。
+knowledge_base_training: 知识库正在训练，无法修改。
+knowledge_base_has_documents: 该知识库包含文档，无法删除。
+
+# 训练文档错误
+training_document_no_retrain: 训练文档不可重新训练
+training_document_no_delete: 训练文档不可删除
+
+# 技能错误
+skill_not_found: 未找到技能 ID
+skill_name_exists: 组 {validate_msg} 中已存在同名技能。
+skill_name_exists_update: 组 {validate_msg} 中已存在同名技能。
+
+# 组相关错误
+no_group_id: 无组 ID
+group_not_exists: 组不存在。
+team_empty: 团队为空。
+
+# LLM模型错误
+llm_model_name_exists: 组 {validate_msg} 中已存在同名 LLM 模型。
+builtin_model_no_delete: 不允许删除内置模型
+builtin_model_delete_denied: 不允许删除内置模型
+
+# QA对相关错误
+qa_pairs_generating: QA 对正在生成中，无法删除
+generate_question_failed: 生成问题失败
+generate_answer_failed: 生成答案失败
+qa_pairs_id_required: QA 对 ID 为必填项。
+invalid_file_format: 无效的文件格式。仅允许 .json 和 .csv 文件。
+invalid_json_file: 无效的 JSON 文件
+qa_pair_update_failed: 更新 QA 对失败。
+qa_pair_delete_failed: 删除 QA 对失败。
+knowledge_base_has_qa_pairs: 该知识库包含问答对，无法删除。
+
+# 模型类型错误  
+builtin_model_types_no_modify: 内置模型类型无法修改
+builtin_model_types_no_delete: 内置模型类型无法删除
+
+# 智能体与技能错误
+no_agent_update_permission: 你没有权限更新此智能体。
+skill_not_found_detail: 未找到技能。
+
+# 知识图谱错误
+knowledge_graph_training: 知识图谱正在训练，无法删除
+knowledge_graph_not_completed: 知识图谱未完成
+knowledge_graph_not_found: 未找到知识图谱
+
+# 图操作错误
+graph_create_failed: 创建图失败。请检查服务器日志。
+graph_search_failed: 搜索图失败。请检查服务器日志。
+
+# 知识文档错误
+knowledge_base_id_required: knowledge_base_id 为必填项
+chunk_not_found: 未找到块
+
+# 机器人相关错误
+no_bot_update_permission: 你没有权限更新此机器人。
+pilot_start_failed: Pilot 启动失败。
+no_bot_start_permission: 你没有权限启动此机器人。
+no_bot_stop_permission: 你没有权限停止此机器人
+
+# 视图相关错误
+bot_node_id_required: Bot ID 和 Node ID 为必填项。
+no_bot_online: 没有在线的机器人
+no_chat_flow_config: 此机器人未配置聊天流程。
+chat_flow_config_empty: 聊天流程配置为空。
+task_id_required: 任务 ID 为必填项。
+
+# 服务相关错误
+url_request_failed: URL 请求失败
+

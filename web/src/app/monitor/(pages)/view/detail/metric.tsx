@@ -16,7 +16,7 @@ import {
   GroupInfo,
   IndexViewItem,
   SearchParams,
-  IntergrationItem,
+  IntegrationItem,
   ViewDetailProps,
 } from '@/app/monitor/types/monitor';
 import { useTranslation } from '@/utils/i18n';
@@ -25,7 +25,7 @@ import {
   renderChart,
   getRecentTimeRange,
 } from '@/app/monitor/utils/common';
-import { useObjectConfigInfo } from '@/app/monitor/hooks/intergration/common/getObjectConfig';
+import { useObjectConfigInfo } from '@/app/monitor/hooks/integration/common/getObjectConfig';
 import dayjs, { Dayjs } from 'dayjs';
 import LazyMetricItem from '../lazyMetricItem';
 
@@ -58,7 +58,7 @@ const MetricViews: React.FC<ViewDetailProps> = ({
   const [metricData, setMetricData] = useState<IndexViewItem[]>([]);
   const [originMetricData, setOriginMetricData] = useState<IndexViewItem[]>([]);
   const [activeTab, setActiveTab] = useState<string>('');
-  const [plugins, setPlugins] = useState<IntergrationItem[]>([]);
+  const [plugins, setPlugins] = useState<IntegrationItem[]>([]);
   const [expandedIds, setExpandedIds] = useState<Set<number>>(new Set());
 
   // 添加懒加载和请求管理相关状态
@@ -176,7 +176,7 @@ const MetricViews: React.FC<ViewDetailProps> = ({
     const responseData = await getMonitorPlugin({
       monitor_object_id: monitorObjectId,
     });
-    const _plugins = responseData.map((item: IntergrationItem) => ({
+    const _plugins = responseData.map((item: IntegrationItem) => ({
       label: getCollectType(monitorObjectName, item.name as string),
       value: item.id,
     }));

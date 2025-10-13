@@ -13,10 +13,8 @@ import {
 import { useTranslation } from '@/utils/i18n';
 import MonitorView from './monitorView';
 import MonitorAlarm from './monitorAlarm';
-import {
-  INIT_VIEW_MODAL_FORM,
-  OBJECT_DEFAULT_ICON,
-} from '@/app/monitor/constants/monitor';
+import { OBJECT_DEFAULT_ICON } from '@/app/monitor/constants';
+import { INIT_VIEW_MODAL_FORM } from '@/app/monitor/constants/view';
 
 const ViewModal = forwardRef<ModalRef, ViewModalProps>(
   ({ monitorObject, monitorName, plugins, metrics, objects = [] }, ref) => {

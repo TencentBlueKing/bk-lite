@@ -257,33 +257,68 @@ generate_tls_certs() {
     local dir=./conf/nats/certs
     local san="DNS:nats,DNS:localhost,IP:127.0.0.1,IP:${HOST_IP}"
     local cn="nats"
+    local openssl_image=$(add_mirror_prefix "alpine/openssl:3.5.4")
+    
     # 当存在server.crt时，跳过生成
     if [ -f "$dir/server.crt" ] && [ -f "$dir/server.key" ] && [ -f "$dir/ca.crt" ]; then
         log "SUCCESS" "TLS 证书已存在，跳过生成步骤..."
         return
     fi
-    log "INFO" "生成自签名 TLS 证书..."
+    log "INFO" "生成自签名 TLS 证书（使用容器：${openssl_image}）..."
     mkdir -p ./conf/nats/certs
 
-    # CA
-    openssl genrsa -out "$dir/ca.key" 2048
-    openssl req -x509 -new -nodes -key "$dir/ca.key" -sha256 -days 3650 \
-        -subj "/CN=Blueking Lite" -out "$dir/ca.crt"
+    # 获取绝对路径，用于容器挂载
+    local abs_dir=$(cd "$dir" && pwd)
 
-    # Server key
-    openssl genrsa -out "$dir/server.key" 2048
+    # CA 私钥生成
+    log "INFO" "生成 CA 私钥..."
+    docker run --rm -v "${abs_dir}:/certs" "${openssl_image}" \
+        genrsa -out "/certs/ca.key" 2048
 
-    # 用进程替代传 config，CSR 走 stdout
-    openssl req -new -key "$dir/server.key" -out - \
-        -config <(printf '[req]\ndistinguished_name=req\nreq_extensions=req_ext\nprompt=no\n[req_ext]\nsubjectAltName=%s\n[keyUsage]\n[dn]\n' "$san") \
-        -subj "/CN=${cn}" \
-    | openssl x509 -req -CA "$dir/ca.crt" -CAkey "$dir/ca.key" -CAcreateserial \
-        -days 825 -sha256 -out "$dir/server.crt" \
-        -extfile <(printf '%s\n%s\n%s\n%s\n' \
-            "subjectAltName=${san}" \
-            "basicConstraints=CA:FALSE" \
-            "keyUsage=digitalSignature,keyEncipherment,keyAgreement" \
-            "extendedKeyUsage=serverAuth")
+    # CA 证书生成
+    log "INFO" "生成 CA 证书..."
+    docker run --rm -v "${abs_dir}:/certs" "${openssl_image}" \
+        req -x509 -new -nodes -key "/certs/ca.key" -sha256 -days 3650 \
+        -subj "/CN=Blueking Lite" -out "/certs/ca.crt"
+
+    # Server 私钥生成
+    log "INFO" "生成服务器私钥..."
+    docker run --rm -v "${abs_dir}:/certs" "${openssl_image}" \
+        genrsa -out "/certs/server.key" 2048
+
+    # 创建 OpenSSL 配置文件
+    log "INFO" "创建 OpenSSL 配置文件..."
+    cat > "${dir}/openssl.conf" << EOF
+[req]
+distinguished_name = req
+req_extensions = req_ext
+prompt = no
+
+[req_ext]
+subjectAltName = ${san}
+
+[v3_ext]
+subjectAltName = ${san}
+basicConstraints = CA:FALSE
+keyUsage = digitalSignature,keyEncipherment,keyAgreement
+extendedKeyUsage = serverAuth
+EOF
+
+    # 生成证书签名请求 (CSR)
+    log "INFO" "生成证书签名请求..."
+    docker run --rm -v "${abs_dir}:/certs" "${openssl_image}" \
+        req -new -key "/certs/server.key" -out "/certs/server.csr" \
+        -config "/certs/openssl.conf" -subj "/CN=${cn}"
+
+    # 使用 CA 签名生成服务器证书
+    log "INFO" "签名生成服务器证书..."
+    docker run --rm -v "${abs_dir}:/certs" "${openssl_image}" \
+        x509 -req -in "/certs/server.csr" -CA "/certs/ca.crt" -CAkey "/certs/ca.key" \
+        -CAcreateserial -days 825 -sha256 -out "/certs/server.crt" \
+        -extensions v3_ext -extfile "/certs/openssl.conf"
+
+    # 清理临时文件
+    rm -f "${dir}/server.csr" "${dir}/openssl.conf"
 
     log "SUCCESS" "TLS 证书生成完成：$(ls -1 $dir/server.crt)"
 }

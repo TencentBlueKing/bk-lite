@@ -25,25 +25,19 @@ import { MetricItem } from '@/app/monitor/types/monitor';
 import { AlertOutlined } from '@ant-design/icons';
 import { useLocalizedTime } from '@/hooks/useLocalizedTime';
 import { useAlertDetailTabs } from '@/app/monitor/hooks/event';
-import useMonitorApi from '@/app/monitor/api/index';
+import { useLevelList, useStateMap } from '@/app/monitor/hooks';
+import useMonitorApi from '@/app/monitor/api';
+import useEventApi from '@/app/monitor/api/event';
 import Information from './information';
 import EventHeatMap from '@/components/heat-map';
 import { getEnumValueUnit, renderChart } from '@/app/monitor/utils/common';
-import {
-  LEVEL_MAP,
-  useLevelList,
-  useStateMap,
-} from '@/app/monitor/constants/monitor';
+import { LEVEL_MAP } from '@/app/monitor/constants';
 
 const AlertDetail = forwardRef<ModalRef, ModalConfig>(
   ({ objects, userList, onSuccess, objectId }, ref) => {
     const { t } = useTranslation();
-    const {
-      getMonitorEventDetail,
-      getSnapshot,
-      getEventRaw,
-      getMonitorMetrics,
-    } = useMonitorApi();
+    const { getMonitorMetrics } = useMonitorApi();
+    const { getMonitorEventDetail, getEventRaw, getSnapshot } = useEventApi();
     const { convertToLocalizedTime } = useLocalizedTime();
     const STATE_MAP = useStateMap();
     const LEVEL_LIST = useLevelList();

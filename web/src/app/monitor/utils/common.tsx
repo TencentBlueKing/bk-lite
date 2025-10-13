@@ -23,7 +23,7 @@ import {
   APPOINT_METRIC_IDS,
   DERIVATIVE_OBJECTS,
   OBJECT_DEFAULT_ICON,
-} from '@/app/monitor/constants/monitor';
+} from '@/app/monitor/constants';
 import { useLocalizedTime } from '@/hooks/useLocalizedTime';
 import EllipsisWithTooltip from '@/components/ellipsis-with-tooltip';
 import dayjs from 'dayjs';

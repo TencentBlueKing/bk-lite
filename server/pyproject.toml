@@ -11,7 +11,7 @@ name = "server"
 version = "3.7.0"
 description = "BKLite Server"
 readme = "README.md"
-requires-python = ">=3.10"
+requires-python = ">=3.12"
 dependencies = [
     "better-exceptions==0.3.3",
     "celery==5.4.0",
@@ -60,6 +60,7 @@ dependencies = [
     "openpyxl==3.1.5",
     "setuptools==80.9.0",
     "attrs==25.3.0",
+    "loguru==0.7.3",
 ]
 
 [project.optional-dependencies]
@@ -84,15 +85,9 @@ dev = [
     "django-extensions==4.1",
     "ipython==8.37.0",
 ]
+
 mlops = [
-    "boto3==1.38.41",
-    "hyperopt==0.2.7",
-    "imblearn==0.0",
-    "mlflow==3.1.0",
-    "pyod==2.0.5",
-    "scikit-learn==1.6.1",
-    "suod==0.1.4",
-    "xgboost==3.0.0",
+    "neco[mlops]==0.0.0.post11",
 ]
 
 opspilot = [

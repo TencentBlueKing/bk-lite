@@ -1,0 +1,30 @@
+# Basic permission and authentication errors
+insufficient_permissions: insufficient permissions
+token_validation_failed: token validation failed
+please_provide_token: please provide Token
+update_failed: update failed
+delete_failed: delete failed
+not_authorized: Not Authorized
+
+# Application management related errors
+cannot_delete_builtin_app: Cannot delete built-in application
+
+# Login module related errors
+domain_required_for_login_module: Domain is required for creating a login module.
+login_module_name_exists: Login module with this name and source type already exists.
+login_module_domain_exists: Login module with this domain already exists.
+
+# Group management related errors
+no_permission_create_group: You do not have permission to create a group under this parent group.
+default_group_cannot_modify: Default group cannot be modified.
+no_permission_edit_group: You do not have permission to edit this group.
+default_group_cannot_delete: Default group cannot be deleted.
+no_permission_delete_group: You do not have permission to delete this group.
+group_has_users_remove_first: This group or sub groups has users, please remove the users first!
+
+# Data rule related errors
+module_not_found: Module not found
+app_not_found: APP not found
+
+# Task related messages
+sync_task_initiated: Sync task has been initiated.

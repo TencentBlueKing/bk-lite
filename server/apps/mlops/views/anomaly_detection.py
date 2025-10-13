@@ -14,7 +14,8 @@ from django.http import Http404
 import pandas as pd
 import numpy as np
 from rest_framework.decorators import action
-from apps.mlops.algorithm.anomaly_detection.random_forest_detector import RandomForestAnomalyDetector
+from neco.mlops.anomaly_detection.random_forest_detector import RandomForestAnomalyDetector
+from apps.mlops.tasks.anomaly_detection_train_task import start_anomaly_detection_train
 
 
 class AnomalyDetectionDatasetViewSet(ModelViewSet):
@@ -361,15 +362,6 @@ class AnomalyDetectionServingViewSet(ModelViewSet):
             if 'timestamp' not in df.columns and len(time_series_data) > 0:
                 # 如果没有timestamp列，添加索引作为timestamp
                 df['timestamp'] = [item.get('timestamp', f'index_{i}') for i, item in enumerate(time_series_data)]
-
-            # 调试：检查数据转换后的状态
-            logger.info(f"数据预处理前调试信息:")
-            logger.info(f"  - 原始数据长度: {len(time_series_data)}")
-            logger.info(f"  - DataFrame形状: {df.shape}")
-            logger.info(f"  - DataFrame列: {df.columns.tolist()}")
-            logger.info(f"  - DataFrame前5行: {df.head().to_dict('records')}")
-            logger.info(f"  - DataFrame后5行: {df.tail().to_dict('records')}")
-
             # 根据算法类型选择对应的检测器
             if algorithm == 'RandomForest':
                 detector = RandomForestAnomalyDetector()

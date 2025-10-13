@@ -1,0 +1,133 @@
+# Operating System
+linux: Linux
+windows: Windows
+
+# Common Labels and Fields
+name: name
+channel_type: channel type
+channel_config: channel config
+enabled: enabled
+channel: channel
+core_model: Core Model
+content: content
+url: URL
+file: File
+type: Type
+default: default
+
+# Time and Maintainer Fields
+time_fields: Time Fields
+created_time: Created Time
+updated_time: Updated Time
+maintainer_fields: Maintainer Fields
+creator: Creator
+updater: Updater
+
+# Data Types
+string: string
+integer: integer
+float: float
+datetime: datetime
+time: time
+date: date
+json: json
+boolean: boolean
+text_value_type_fields: Text Value Type Fields
+
+# Channel Types
+enterprise_wechat: Enterprise WeChat
+enterprise_wechat_bot: Enterprise WeChat Bot
+wechat_official_account: WeChat Official Account
+ding_talk: Ding Talk
+web: Web
+gitlab: GitLab
+wechat_open_platform: Wechat Open Platform
+
+# Model and Knowledge Related
+core_model: Core Model
+embed_model: Embed Model
+rerank_model: Rerank Model
+ocr_model: OCR Model
+llm_model: LLM Model
+knowledge_document: Knowledge Document
+file_knowledge: File Knowledge
+manual_knowledge: Manual Knowledge
+web_page_knowledge: Web Page Knowledge
+
+# Training Status
+training: Training
+ready: Ready
+error: Error
+pending: Pending
+chunking: Chunking
+
+# Knowledge Base Features
+enable_vector_search: Enable Vector Search
+vector_search_weight: Vector Search weight
+enable_text_search: Enable Text Search
+text_search_weight: Text Search Weight
+enable_rerank: Enable Rerank
+number_of_results: Number of Results
+number_of_candidates: Number of Candidates
+text_search_mode: Text search mode
+chunk_size: chunk size
+train_status: train status
+train_progress: train progress
+enable_general_parse: enable general parse
+general_parse_chunk_size: general parse chunk size
+general_parse_chunk_overlap: general parse chunk overlap
+enable_semantic_chunk_parse: enable semantic chunk parse
+embedding_model: embedding model
+enable_ocr_parse: enable OCR parse
+enable_excel_parse: enable Excel parse
+excel_header_row_parse: Excel header row parse
+excel_full_content_parse: Excel full content parse
+source_type: source type
+max_depth: max depth
+
+# Skill Related
+use_specified_knowledge_base: Use specified knowledge base
+
+# Tool Categories
+search_tools: Search tools
+general_tools: General tools
+
+# Feature Descriptions
+builtin_tools_desc: Built-in commonly used tools, including holiday queries, current time queries, etc., to provide additional information.
+internet_search_desc: Enables quick search and retrieval of information through the internet to obtain real-time data.
+
+# Module Names
+studio: Studio
+agent: Agent
+knowledge: Knowledge
+tool: Tool
+model: Model
+
+# Additional Model Fields
+rerank_top_k: Rerank Top K
+search_type: Search Type
+score_threshold: Score threshold
+qa_size: QA size
+graph_size: Graph size
+mode: mode
+chunk_type: chunk type
+sync_enabled: Sync Enabled
+sync_time: Sync Time
+
+# Bot Type Choices
+pilot: Pilot
+lobe_chat: LobeChat
+chat_flow: ChatFlow
+
+# Skill Type Choices
+basic_tool: Basic Tool
+knowledge_tool: Knowledge Tool
+plan_execute: Plan Execute
+lats: Lats
+
+# Workflow Related
+openai: OpenAI
+restful: RESTful
+celery: Celery
+success: Success
+fail: Fail

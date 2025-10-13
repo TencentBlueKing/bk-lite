@@ -1,5 +1,6 @@
 import uuid
 
+from apps.core.utils.crypto.aes_crypto import AESCryptor
 from apps.node_mgmt.constants.node import NodeConstants
 from apps.node_mgmt.models import SidecarEnv
 from apps.node_mgmt.models.installer import ControllerTask, ControllerTaskNode, CollectorTaskNode, CollectorTask
@@ -31,6 +32,7 @@ class InstallerService:
             status="waiting",
         )
         creates = []
+        aes_obj = AESCryptor()
         for node in nodes:
             creates.append(ControllerTaskNode(
                 task_id=task_obj.id,
@@ -40,7 +42,7 @@ class InstallerService:
                 organizations=node["organizations"],
                 port=node["port"],
                 username=node["username"],
-                password=node["password"],
+                password=aes_obj.encode(node["password"]),
                 status="waiting",
             ))
         ControllerTaskNode.objects.bulk_create(creates, batch_size=100)
@@ -48,7 +50,7 @@ class InstallerService:
 
     @staticmethod
     def uninstall_controller(cloud_region_id, work_node, nodes):
-        """安装控制器"""
+        """卸载控制器"""
         task_obj = ControllerTask.objects.create(
             cloud_region_id=cloud_region_id,
             work_node=work_node,
@@ -56,6 +58,7 @@ class InstallerService:
             status="waiting",
         )
         creates = []
+        aes_obj = AESCryptor()
         for node in nodes:
             creates.append(ControllerTaskNode(
                 task_id=task_obj.id,
@@ -63,7 +66,7 @@ class InstallerService:
                 os=node["os"],
                 port=node["port"],
                 username=node["username"],
-                password=node["password"],
+                password=aes_obj.encode(node["password"]),
                 status="waiting",
             ))
         ControllerTaskNode.objects.bulk_create(creates, batch_size=100)

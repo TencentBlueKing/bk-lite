@@ -1,11 +1,10 @@
 from django.http import JsonResponse
-from django.utils.translation import gettext as _
 from django_filters import filters
 from django_filters.rest_framework import FilterSet
-from rest_framework import viewsets
 from rest_framework.decorators import action
 
 from apps.core.decorators.api_permission import HasPermission
+from apps.core.viewsets.base_viewset import BaseSystemMgmtViewSet
 from apps.rpc.cmdb import CMDB
 from apps.rpc.log import Log
 from apps.rpc.monitor import Monitor
@@ -22,7 +21,7 @@ class GroupDataRuleFilter(FilterSet):
     app = filters.CharFilter(field_name="app", lookup_expr="exact")
 
 
-class GroupDataRuleViewSet(viewsets.ModelViewSet):
+class GroupDataRuleViewSet(BaseSystemMgmtViewSet):
     queryset = GroupDataRule.objects.all().order_by("-id")
     serializer_class = GroupDataRuleSerializer
     filterset_class = GroupDataRuleFilter
@@ -53,7 +52,8 @@ class GroupDataRuleViewSet(viewsets.ModelViewSet):
             return JsonResponse({"result": False, "message": str(e)})
         fun = getattr(client, "get_module_data", None)
         if fun is None:
-            return JsonResponse({"result": False, "message": _("Module not found")})
+            message = self.loader.get("error.module_not_found") if self.loader else "Module not found"
+            return JsonResponse({"result": False, "message": message})
         params["page"] = int(params.get("page", "1"))
         params["page_size"] = int(params.get("page_size", "10"))
         return_data = fun(**params)
@@ -69,13 +69,16 @@ class GroupDataRuleViewSet(viewsets.ModelViewSet):
             return JsonResponse({"result": False, "message": str(e)})
         fun = getattr(client, "get_module_list", None)
         if fun is None:
-            return JsonResponse({"result": False, "message": _("Module not found")})
+            message = self.loader.get("error.module_not_found") if self.loader else "Module not found"
+            return JsonResponse({"result": False, "message": message})
         return_data = fun()
         for i in return_data:
-            i["display_name"] = _(i["display_name"])
+            translated_name = self.loader.get(f"base_constant.{i['display_name']}") if self.loader else None
+            i["display_name"] = translated_name or i["display_name"]
             if "children" in i:
                 for child in i["children"]:
-                    child["display_name"] = _(child["display_name"])
+                    translated_child_name = self.loader.get(f"base_constant.{child['display_name']}") if self.loader else None
+                    child["display_name"] = translated_child_name or child["display_name"]
         return JsonResponse({"result": True, "data": return_data})
 
     @staticmethod
@@ -90,6 +93,6 @@ class GroupDataRuleViewSet(viewsets.ModelViewSet):
         }
         app = params.pop("app")
         if app not in client_map.keys():
-            raise Exception(_("APP not found"))
+            raise Exception("APP not found")
         client = client_map[app]()
         return client

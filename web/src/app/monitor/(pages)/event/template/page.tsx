@@ -2,6 +2,7 @@
 import React, { useEffect, useState } from 'react';
 import useApiClient from '@/utils/request';
 import useMonitorApi from '@/app/monitor/api';
+import useEventApi from '@/app/monitor/api/event';
 import templateStyle from './index.module.scss';
 import { TreeItem, TableDataItem } from '@/app/monitor/types';
 import { ObjectItem } from '@/app/monitor/types/monitor';
@@ -16,8 +17,8 @@ import EntityList from '@/components/entity-list';
 
 const Template: React.FC = () => {
   const { isLoading } = useApiClient();
-  const { getPolicyTemplate, getMonitorObject, getTemplateObjects } =
-    useMonitorApi();
+  const { getMonitorObject } = useMonitorApi();
+  const { getPolicyTemplate, getTemplateObjects } = useEventApi();
   const searchParams = useSearchParams();
   const objId = searchParams.get('objId');
   const router = useRouter();

@@ -21,14 +21,21 @@ def _create_ssl_context():
     if not os.getenv("NATS_TLS_ENABLED", "false").lower() == "true":
         return None
 
-    # 创建 SSL 上下文
-    ssl_context = ssl.create_default_context()
-
-    # 自定义 CA 证书文件（企业内部 CA 或自签名证书）
+    # 检查自定义 CA 证书文件
     ca_file = os.getenv("NATS_TLS_CA_FILE")
     if ca_file and Path(ca_file).exists():
-        # 清空默认 CA 证书，只信任指定的 CA
+        # 使用自定义 CA 证书（企业内部 CA 或自签名证书）
         ssl_context = ssl.create_default_context(cafile=ca_file)
+    else:
+        # 使用系统默认 CA 证书（适用于公共 CA 签发的证书）
+        ssl_context = ssl.create_default_context()
+        # 如果指定了 CA 文件但文件不存在，记录警告
+        if ca_file:
+            import logging
+
+            logging.warning(
+                f"指定的 CA 证书文件不存在: {ca_file}，将使用系统默认 CA 证书"
+            )
 
     # 是否跳过证书验证（用于测试环境）
     if os.getenv("NATS_TLS_INSECURE", "false").lower() == "true":
@@ -50,8 +57,7 @@ NATS_OPTIONS = {
     "tls": _create_ssl_context(),
     "tls_hostname": os.getenv("NATS_TLS_HOSTNAME"),  # 证书验证主机名（通过IP连接域名证书时需要）
 
-    # 基础连接配置
-    "connect_timeout": int(os.getenv("NATS_CONNECT_TIMEOUT", "5")),  # 连接超时（秒）
+    # 基础连接配置 - 移除 connect_timeout 避免与 nats.connect() 参数冲突
     "reconnect_time_wait": int(os.getenv("NATS_RECONNECT_WAIT", "2")),  # 重连等待时间（秒）
     "max_reconnect_attempts": int(os.getenv("NATS_MAX_RECONNECT", "60")),  # 最大重连次数
 

@@ -4,8 +4,8 @@ import { PlusOutlined, CloseOutlined } from '@ant-design/icons';
 import { useTranslation } from '@/utils/i18n';
 import { ListItem } from '@/app/monitor/types';
 import strategyStyle from '../index.module.scss';
-import { useConditionList } from '@/app/monitor/constants/monitor';
-import { useObjectConfigInfo } from '@/app/monitor/hooks/intergration/common/getObjectConfig';
+import { useConditionList } from '@/app/monitor/hooks';
+import { useObjectConfigInfo } from '@/app/monitor/hooks/integration/common/getObjectConfig';
 import { MetricItem } from '@/app/monitor/types/monitor';
 
 const { Option } = Select;

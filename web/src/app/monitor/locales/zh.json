@@ -358,8 +358,8 @@
       "systemManage": "系统管理",
       "config": "配置。"
     },
-    "intergrations": {
-      "intergration": "集成",
+    "integrations": {
+      "integration": "集成",
       "configure": "配置",
       "configureTitle": "请按照以下指南安装收集器。",
       "metricTitle": "此收集器支持以下监控指标",

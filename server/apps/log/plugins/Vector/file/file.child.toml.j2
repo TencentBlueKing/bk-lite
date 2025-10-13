@@ -37,7 +37,7 @@ source = '''
 type = "nats"
 inputs = ["file_enrich_{{ instance_id }}"]
 subject = "vector"
-url = "nats://${NATS_SERVERS}"
+url = "${NATS_PROTOCOL}://${NATS_SERVERS}"
 
 [sinks.vmlogs_{{ instance_id }}.auth]
 strategy = "user_password"

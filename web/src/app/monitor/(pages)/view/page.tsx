@@ -12,7 +12,7 @@ import TreeSelector from '@/app/monitor/components/treeSelector';
 import ViewList from './viewList';
 import ViewHive from './viewHive';
 
-const Intergration = () => {
+const Integration = () => {
   const { isLoading } = useApiClient();
   const { getMonitorObject } = useMonitorApi();
   const [treeData, setTreeData] = useState<TreeItem[]>([]);
@@ -124,4 +124,4 @@ const Intergration = () => {
     </div>
   );
 };
-export default Intergration;
+export default Integration;

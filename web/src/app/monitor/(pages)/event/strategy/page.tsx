@@ -3,6 +3,7 @@ import React, { useEffect, useState, useRef } from 'react';
 import { Spin, Input, Button, message, Switch, Popconfirm } from 'antd';
 import useApiClient from '@/utils/request';
 import useMonitorApi from '@/app/monitor/api';
+import useEventApi from '@/app/monitor/api/event';
 import assetStyle from './index.module.scss';
 import { useTranslation } from '@/utils/i18n';
 import {
@@ -33,12 +34,9 @@ import Permission from '@/components/permission';
 const Strategy: React.FC = () => {
   const { t } = useTranslation();
   const { isLoading } = useApiClient();
-  const {
-    getMonitorPolicy,
-    getMonitorObject,
-    patchMonitorPolicy,
-    deleteMonitorPolicy,
-  } = useMonitorApi();
+  const { getMonitorObject } = useMonitorApi();
+  const { getMonitorPolicy, patchMonitorPolicy, deleteMonitorPolicy } =
+    useEventApi();
   const searchParams = useSearchParams();
   const { convertToLocalizedTime } = useLocalizedTime();
   const objId = searchParams.get('objId');

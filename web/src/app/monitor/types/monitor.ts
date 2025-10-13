@@ -64,7 +64,7 @@ export interface ObjectInstItem {
   [key: string]: unknown;
 }
 
-export interface IntergrationItem {
+export interface IntegrationItem {
   label: string;
   value: string;
   list: ObjectItem[];
@@ -303,7 +303,7 @@ export interface ChartProps {
 export interface ViewModalProps {
   monitorObject: React.Key;
   monitorName: string;
-  plugins: IntergrationItem[];
+  plugins: IntegrationItem[];
   form?: ChartProps;
   metrics?: MetricItem[];
   objects?: ObjectItem[];
@@ -316,7 +316,7 @@ export interface ViewListProps {
   updateTree?: () => void;
 }
 
-export interface IntergrationMonitoredObject {
+export interface IntegrationMonitoredObject {
   key?: string;
   node_ids?: string | string[] | null;
   instance_name?: string | null;
@@ -372,7 +372,7 @@ export interface ChartDataConfig {
   queryMetric: string;
 }
 
-export interface IntergrationAccessProps {
+export interface IntegrationAccessProps {
   showInterval?: boolean;
 }
 

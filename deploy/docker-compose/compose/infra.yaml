@@ -186,10 +186,13 @@ services:
     container_name: nats-executor
     environment:
       - NATS_INSTANCE_ID=default
-      - NATS_URLS=nats://$NATS_ADMIN_USERNAME:$NATS_ADMIN_PASSWORD@nats:4222
+      - NATS_URLS=tls://$NATS_ADMIN_USERNAME:$NATS_ADMIN_PASSWORD@nats:4222
+      - NATS_CA_FILE=/etc/nats/certs/ca.crt
     networks:
       - prod
     restart: always
+    volumes:
+      - ../conf/nats/certs:/etc/nats/certs:ro
 
   falkordb:
     image: ${DOCKER_IMAGE_FALKORDB}

@@ -11,11 +11,8 @@ import { findUnitNameById, showGroupName } from '@/app/monitor/utils/common';
 import { useCommon } from '@/app/monitor/context/common';
 import { Popconfirm, message, Button } from 'antd';
 import useMonitorApi from '@/app/monitor/api';
-import {
-  LEVEL_MAP,
-  useLevelList,
-  OBJECT_DEFAULT_ICON,
-} from '@/app/monitor/constants/monitor';
+import { useLevelList } from '@/app/monitor/hooks';
+import { OBJECT_DEFAULT_ICON, LEVEL_MAP } from '@/app/monitor/constants';
 import Permission from '@/components/permission';
 
 interface InformationProps extends TableDataItem {

@@ -23,7 +23,7 @@ import DimensionFilter from './dimensionFilter';
 import DimensionTable from './dimensionTable';
 import { ChartData, ListItem, TableDataItem } from '@/app/monitor/types';
 import { MetricItem, ThresholdField } from '@/app/monitor/types/monitor';
-import { LEVEL_MAP } from '@/app/monitor/constants/monitor';
+import { LEVEL_MAP } from '@/app/monitor/constants';
 import { isNumber } from 'lodash';
 
 interface LineChartProps {

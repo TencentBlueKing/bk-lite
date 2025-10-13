@@ -137,3 +137,11 @@ export interface TimeValuesProps {
   timeRange: number[];
   originValue: number | null;
 }
+
+export interface InstanceParam {
+  page?: number;
+  page_size?: number;
+  add_metrics?: boolean;
+  name?: string;
+  vm_params?: any;
+}

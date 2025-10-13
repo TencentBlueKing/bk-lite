@@ -4,10 +4,10 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple, Union
 
 from django.conf import settings
-from django.utils.translation import gettext as _
 
 from apps.core.logger import opspilot_logger as logger
 from apps.core.mixinx import EncryptMixin
+from apps.core.utils.loader import LanguageLoader
 from apps.opspilot.enum import SkillTypeChoices
 from apps.opspilot.models import KnowledgeBase, KnowledgeDocument, LLMModel, SkillTools
 from apps.opspilot.services.knowledge_search_service import KnowledgeSearchService
@@ -192,7 +192,9 @@ class LLMService:
             url = f"{settings.METIS_SERVER_URL}/api/agent/invoke_lats_agent"
         result = ChatServerHelper.post_chat_server(chat_kwargs, url)
         if not result:
-            return {"message": _("URL request failed")}, doc_map, title_map
+            loader = LanguageLoader(app="opspilot", default_lang="en")
+            message = loader.get("error.url_request_failed") or "URL request failed"
+            return {"message": message}, doc_map, title_map
         data = result["message"]
 
         # 更新团队令牌使用信息 (已移除TeamTokenUseInfo相关逻辑)

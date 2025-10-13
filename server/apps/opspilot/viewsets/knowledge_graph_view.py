@@ -1,11 +1,11 @@
 from django.http import JsonResponse
-from django.utils.translation import gettext as _
 from django_filters import filters
 from django_filters.rest_framework import FilterSet
 from rest_framework.decorators import action
 
 from apps.core.decorators.api_permission import HasPermission
 from apps.core.utils.viewset_utils import MaintainerViewSet
+from apps.core.viewsets.base_viewset import BaseOpsPilotViewSet
 from apps.opspilot.models import KnowledgeGraph
 from apps.opspilot.serializers.knowledge_graph_serializers import KnowledgeGraphSerializer
 from apps.opspilot.tasks import rebuild_graph_community_by_instance
@@ -17,7 +17,7 @@ class KnowledgeGraphFilter(FilterSet):
     knowledge_base_id = filters.NumberFilter(field_name="knowledge_base_id", lookup_expr="exact")
 
 
-class KnowledgeGraphViewSet(MaintainerViewSet):
+class KnowledgeGraphViewSet(BaseOpsPilotViewSet, MaintainerViewSet):
     queryset = KnowledgeGraph.objects.all()
     serializer_class = KnowledgeGraphSerializer
     filterset_class = KnowledgeGraphFilter
@@ -61,7 +61,7 @@ class KnowledgeGraphViewSet(MaintainerViewSet):
             return JsonResponse(
                 {
                     "result": False,
-                    "message": _("Knowledge graph is training, cannot delete"),
+                    "message": "Knowledge graph is training, cannot delete",
                 }
             )
         try:
@@ -77,9 +77,9 @@ class KnowledgeGraphViewSet(MaintainerViewSet):
         knowledge_base_id = request.data.get("knowledge_base_id")
         graph_obj = KnowledgeGraph.objects.filter(knowledge_base_id=knowledge_base_id).first()
         if graph_obj.status != "completed":
-            return JsonResponse({"result": False, "message": _("Knowledge graph is not completed")})
+            return JsonResponse({"result": False, "message": "Knowledge graph is not completed"})
         if not graph_obj:
-            return JsonResponse({"result": False, "message": _("Knowledge graph not found")})
+            return JsonResponse({"result": False, "message": "Knowledge graph not found"})
         try:
             rebuild_graph_community_by_instance.delay(graph_obj.id)
             return JsonResponse({"result": True})

@@ -2,7 +2,7 @@
 import React, { useEffect, useState, useRef } from 'react';
 import { Spin, Select, Button, Segmented, Input, Tooltip } from 'antd';
 import { BellOutlined, CloseOutlined, PlusOutlined } from '@ant-design/icons';
-import { useConditionList } from '@/app/monitor/constants/monitor';
+import { useConditionList } from '@/app/monitor/hooks';
 import useApiClient from '@/utils/request';
 import useMonitorApi from '@/app/monitor/api';
 import TimeSelector from '@/components/time-selector';

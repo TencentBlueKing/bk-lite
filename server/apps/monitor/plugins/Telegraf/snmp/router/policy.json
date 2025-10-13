@@ -51,7 +51,7 @@
     ]
   },
   {
-    "name": "接口接收丢包包过高",
+    "name": "接口接收丢包数过高",
     "alert_name": "路由器${metric_instance_id} 接口 ${metric_ifDescr} 每秒接收丢包数过高",
     "description": "实时监控设备机接口的丢包情况，当接收丢包速率超过阈值时告警，帮助排查网络接收质量问题并优化链路性能。",
     "metric_name": "ifInDiscards",
@@ -75,7 +75,7 @@
     ]
   },
   {
-    "name": "接口发送丢包包过高",
+    "name": "接口发送丢包数过高",
     "alert_name": "路由器${metric_instance_id} 接口 ${metric_ifDescr} 每秒发送丢包数过高",
     "description": "监测接口发送丢包速率是否异常，当发送丢包数量高于预设阈值时触发告警，为网络发送端问题提供及时反馈。",
     "metric_name": "ifOutDiscards",

@@ -23,7 +23,6 @@ class Command(BaseCommand):
 
     def handle(self, *args, **options):
         logger.info("初始化日志插件开始！")
-        migrate_collector()
         migrate_collect_type()
         logger.info("日志插件初始化完成！")
 

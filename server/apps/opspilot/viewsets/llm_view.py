@@ -1,8 +1,7 @@
 from django.http import JsonResponse, StreamingHttpResponse
-from django.utils.translation import gettext as _
 from django_filters import filters
 from django_filters.rest_framework import FilterSet
-from rest_framework import status, viewsets
+from rest_framework import status
 from rest_framework.decorators import action
 from rest_framework.response import Response
 
@@ -11,6 +10,7 @@ from apps.core.logger import opspilot_logger as logger
 from apps.core.mixinx import EncryptMixin
 from apps.core.utils.async_utils import create_async_compatible_generator
 from apps.core.utils.viewset_utils import AuthViewSet
+from apps.core.viewsets.base_viewset import BaseOpsPilotViewSet
 from apps.opspilot.models import KnowledgeBase, LLMModel, LLMSkill, SkillRequestLog, SkillTools
 from apps.opspilot.serializers.llm_serializer import LLMModelSerializer, LLMSerializer, SkillRequestLogSerializer, SkillToolsSerializer
 from apps.opspilot.utils.quota_utils import get_quota_client
@@ -30,7 +30,7 @@ class LLMFilter(FilterSet):
         return qs.filter(skill_type__in=[int(i.strip()) for i in value.split(",") if i.strip()])
 
 
-class LLMViewSet(AuthViewSet):
+class LLMViewSet(BaseOpsPilotViewSet, AuthViewSet):
     serializer_class = LLMSerializer
     queryset = LLMSkill.objects.all()
     filterset_class = LLMFilter
@@ -58,10 +58,13 @@ class LLMViewSet(AuthViewSet):
             client = get_quota_client(request)
             skill_count, used_skill_count, __ = client.get_skill_quota()
             if skill_count != -1 and skill_count <= used_skill_count:
-                return JsonResponse({"result": False, "message": _("Skill count exceeds quota limit.")})
+                message = self.loader.get("skill_quota_exceeded") if self.loader else "Skill count exceeds quota limit."
+                return JsonResponse({"result": False, "message": message})
         validate_msg = self._validate_name(params["name"], request.user.group_list, params["team"])
         if validate_msg:
-            message = _(f"A skill with the same name already exists in group {validate_msg}.")
+            message = self.loader.get("skill_name_exists") if self.loader else f"A skill with the same name already exists in group {validate_msg}."
+            if self.loader:
+                message = message.format(validate_msg=validate_msg)
             return JsonResponse({"result": False, "message": message})
         params["team"] = params.get("team", []) or [int(request.COOKIES.get("current_team"))]
         params["enable_conversation_history"] = True
@@ -88,7 +91,9 @@ class LLMViewSet(AuthViewSet):
                 return JsonResponse(
                     {
                         "result": False,
-                        "message": _("You do not have permission to update this instance"),
+                        "message": self.loader.get("permission_update_denied")
+                        if self.loader
+                        else "You do not have permission to update this instance",
                     }
                 )
 
@@ -100,7 +105,11 @@ class LLMViewSet(AuthViewSet):
             exclude_id=instance.id,
         )
         if validate_msg:
-            message = _(f"A skill with the same name already exists in group {validate_msg}.")
+            message = (
+                self.loader.get("skill_name_exists_update") if self.loader else f"A skill with the same name already exists in group {validate_msg}."
+            )
+            if self.loader:
+                message = message.format(validate_msg=validate_msg)
             return JsonResponse({"result": False, "message": message})
         if (not request.user.is_superuser) and (instance.created_by != request.user.username):
             params.pop("team", [])
@@ -184,7 +193,8 @@ class LLMViewSet(AuthViewSet):
                 current_team = request.COOKIES.get("current_team", "0")
                 has_permission = self.get_has_permission(request.user, skill_obj, current_team, is_check=True)
                 if not has_permission:
-                    return self._create_error_stream_response(_("You do not have permission to update this agent."))
+                    message = self.loader.get("no_agent_update_permission") if self.loader else "You do not have permission to update this agent."
+                    return self._create_error_stream_response(message)
 
             current_ip = request.META.get("HTTP_X_FORWARDED_FOR")
             if current_ip:
@@ -202,7 +212,8 @@ class LLMViewSet(AuthViewSet):
             # 调用stream_chat函数返回流式响应
             return stream_chat(params, skill_obj.name, {}, current_ip, params["user_message"])
         except LLMSkill.DoesNotExist:
-            return self._create_error_stream_response(_("Skill not found."))
+            message = self.loader.get("skill_not_found_detail") if self.loader else "Skill not found."
+            return self._create_error_stream_response(message)
         except Exception as e:
             logger.exception(e)
             return self._create_error_stream_response(str(e))
@@ -221,7 +232,7 @@ class ObjFilter(FilterSet):
         return qs.filter(enabled=enabled)
 
 
-class LLMModelViewSet(AuthViewSet):
+class LLMModelViewSet(BaseOpsPilotViewSet, AuthViewSet):
     serializer_class = LLMModelSerializer
     queryset = LLMModel.objects.all()
     permission_key = "provider.llm_model"
@@ -241,10 +252,15 @@ class LLMModelViewSet(AuthViewSet):
     def create(self, request, *args, **kwargs):
         params = request.data
         if not params.get("team"):
-            return JsonResponse({"result": False, "message": _("The team is empty.")})
+            message = self.loader.get("team_empty") if self.loader else "The team is empty."
+            return JsonResponse({"result": False, "message": message})
         validate_msg = self._validate_name(params["name"], request.user.group_list, params["team"])
         if validate_msg:
-            message = _(f"A LLM Model with the same name already exists in group {validate_msg}.")
+            message = (
+                self.loader.get("llm_model_name_exists") if self.loader else f"A LLM Model with the same name already exists in group {validate_msg}."
+            )
+            if self.loader:
+                message = message.format(validate_msg=validate_msg)
             return JsonResponse({"result": False, "message": message})
         LLMModel.objects.create(
             name=params["name"],
@@ -268,7 +284,11 @@ class LLMModelViewSet(AuthViewSet):
             exclude_id=instance.id,
         )
         if validate_msg:
-            message = _(f"A LLM Model with the same name already exists in group {validate_msg}.")
+            message = (
+                self.loader.get("llm_model_name_exists") if self.loader else f"A LLM Model with the same name already exists in group {validate_msg}."
+            )
+            if self.loader:
+                message = message.format(validate_msg=validate_msg)
             return JsonResponse({"result": False, "message": message})
         return super().update(request, *args, **kwargs)
 
@@ -279,7 +299,7 @@ class LLMModelViewSet(AuthViewSet):
             return JsonResponse(
                 {
                     "result": False,
-                    "message": _("Built-in model is not allowed to be deleted"),
+                    "message": self.loader.get("builtin_model_delete_denied") if self.loader else "Built-in model is not allowed to be deleted",
                 }
             )
         return super().destroy(request, *args, **kwargs)
@@ -292,7 +312,7 @@ class LogFilter(FilterSet):
     end_time = filters.DateTimeFilter(field_name="created_at", lookup_expr="lte")
 
 
-class SkillRequestLogViewSet(viewsets.ModelViewSet):
+class SkillRequestLogViewSet(BaseOpsPilotViewSet):
     serializer_class = SkillRequestLogSerializer
     queryset = SkillRequestLog.objects.all()
     filterset_class = LogFilter
@@ -301,7 +321,8 @@ class SkillRequestLogViewSet(viewsets.ModelViewSet):
     @HasPermission("skill_invocation_logs-View")
     def list(self, request, *args, **kwargs):
         if not request.GET.get("skill_id"):
-            return JsonResponse({"result": False, "message": _("Skill id not found")})
+            message = self.loader.get("skill_not_found") if self.loader else "Skill id not found"
+            return JsonResponse({"result": False, "message": message})
         return super().list(request, *args, **kwargs)
 
 
@@ -309,7 +330,7 @@ class ToolsFilter(FilterSet):
     display_name = filters.CharFilter(field_name="display_name", lookup_expr="icontains")
 
 
-class SkillToolsViewSet(AuthViewSet):
+class SkillToolsViewSet(BaseOpsPilotViewSet, AuthViewSet):
     serializer_class = SkillToolsSerializer
     queryset = SkillTools.objects.all()
     filterset_class = ToolsFilter

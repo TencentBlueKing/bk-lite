@@ -1,0 +1,36 @@
+[
+    {
+        "id": "natsexecutor_linux",
+        "name": "NATS-Executor",
+        "controller_default_run": true,
+        "icon": "caijixinxi",
+        "node_operating_system": "linux",
+        "service_type": "exec",
+        "executable_path": "/opt/fusion-collectors/bin/nats-executor",
+        "execute_parameters": "--config %s",
+        "validation_parameters": "",
+        "default_template": "",
+        "introduction": "NATS Executor is a task scheduling and management tool that automates data storage, backup, and distributed file processing tasks.",
+        "enabled_default_config": true,
+        "default_config": {
+          "nats": "nats_urls: \"${NATS_PROTOCOL}://${NATS_USERNAME}:${NATS_PASSWORD}@${NATS_SERVERS}\"\nnats_instanceId: \"${node.id}\"\nnats_conn_timeout: 600\ntls_enabled: \"${TLS_ENABLED}\" \ntls_skip_verify: \"${TLS_SKIP_VERIFY}\"\ntls_hostname: \"${TLS_HOSTNAME}\"\ntls_ca_file: \"${TLS_CA_FILE}\"\ntls_cert_file: \"${TLS_CERT_FILE}\"\ntls_key_file: \"${TLS_KEY_FILE}\""
+        }
+    },
+    {
+        "id": "natsexecutor_windows",
+        "name": "NATS-Executor",
+        "controller_default_run": true,
+        "icon": "caijixinxi",
+        "node_operating_system": "windows",
+        "service_type": "exec",
+        "executable_path": "C:\\bklite\\fusion-collectors\\bin\\nats-executor.exe",
+        "execute_parameters": "--config %s",
+        "validation_parameters": "",
+        "default_template": "",
+        "introduction": "NATS Executor is a task scheduling and management tool that automates data storage, backup, and distributed file processing tasks.",
+        "enabled_default_config": true,
+        "default_config": {
+          "nats": "nats_urls: \"${NATS_PROTOCOL}://${NATS_USERNAME}:${NATS_PASSWORD}@${NATS_SERVERS}\"\nnats_instanceId: \"${node.id}\"\nnats_conn_timeout: 600\ntls_enabled: ${TLS_ENABLED}\ntls_skip_verify: ${TLS_SKIP_VERIFY}\ntls_hostname: \"${TLS_HOSTNAME}\"\ntls_ca_file: \"${TLS_CA_FILE}\"\ntls_cert_file: \"${TLS_CERT_FILE}\"\ntls_key_file: \"${TLS_KEY_FILE}\""
+        }
+    }
+]

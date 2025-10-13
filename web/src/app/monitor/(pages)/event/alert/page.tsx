@@ -41,14 +41,11 @@ import StackedBarChart from '@/app/monitor/components/charts/stackedBarChart';
 import AlertDetail from './alertDetail';
 import { useLocalizedTime } from '@/hooks/useLocalizedTime';
 import { useAlarmTabs, useStateList } from '@/app/monitor/hooks/event';
+import { useLevelList, useStateMap } from '@/app/monitor/hooks';
 import dayjs, { Dayjs } from 'dayjs';
 import { useCommon } from '@/app/monitor/context/common';
 import alertStyle from './index.module.scss';
-import {
-  LEVEL_MAP,
-  useLevelList,
-  useStateMap,
-} from '@/app/monitor/constants/monitor';
+import { LEVEL_MAP } from '@/app/monitor/constants';
 import useMonitorApi from '@/app/monitor/api/index';
 import TreeSelector from '@/app/monitor/components/treeSelector';
 import { cloneDeep } from 'lodash';
