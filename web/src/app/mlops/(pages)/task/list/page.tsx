@@ -62,6 +62,7 @@ const TrainTask = () => {
     total: 0,
     pageSize: 10,
   });
+  const showTrain = ['anomaly', 'classification'];
 
   // 数据集获取映射
   const datasetApiMap: Record<string, () => Promise<DataSet[]>> = {
@@ -221,7 +222,7 @@ const TrainTask = () => {
         const [key] = selectedKeys;
         return (
           <>
-            {key === 'anomaly' &&
+            {showTrain.includes(key) &&
               (<>
                 <PermissionWrapper requiredPermissions={['Train']}>
                   <Popconfirm

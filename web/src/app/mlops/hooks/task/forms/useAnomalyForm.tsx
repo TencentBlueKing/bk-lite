@@ -168,20 +168,27 @@ export const useAnomalyForm = ({ datasetOptions, activeTag, onSuccess, formRef }
 
   // 渲染文件选项
   const renderOptions = useCallback(async (dataset: number) => {
-    if (!formRef.current || !dataset) return;
-    // 加载训练数据选项
-    const trainOptions = await loadTrainOptions(dataset, key);
-    setTrainDataOption(trainOptions);
-    formRef.current.setFieldsValue({
-      train_data_id: formData?.train_data_id,
-      val_data_id: formData?.val_data_id,
-      test_data_id: formData?.test_data_id,
-    });
+    setLoadingState(prev => ({ ...prev, select: true }));
+    try {
+      if (!formRef.current || !dataset) return;
+      // 加载训练数据选项
+      const trainOptions = await loadTrainOptions(dataset, key);
+      setTrainDataOption(trainOptions);
+      formRef.current.setFieldsValue({
+        train_data_id: formData?.train_data_id,
+        val_data_id: formData?.val_data_id,
+        test_data_id: formData?.test_data_id,
+      });
+    } catch (e) {
+      console.log(e);
+    } finally {
+      setLoadingState(prev => ({ ...prev, select: false }));
+    }
   }, [loadTrainOptions, formData]);
 
   // 渲染超参数表单项
   const renderItem = useCallback((param: AlgorithmParam[]) => {
-    if(!param) return [];
+    if (!param) return [];
     return param.map((item) => (
       <Form.Item key={item.name} name={['hyperopt_config', item.name]} label={item.name} rules={[{ required: true, message: t('common.inputMsg') }]}>
         {item.type === 'randint' ?

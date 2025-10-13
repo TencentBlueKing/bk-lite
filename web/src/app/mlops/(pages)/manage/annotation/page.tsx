@@ -14,7 +14,7 @@ import TableContent from "./tableContent";
 
 const AnnotationPage = () => {
   const searchParams = useSearchParams();
-  const { getAnomalyTrainData, getTimeSeriesPredictTrainData, getLogClusteringTrainData } = useMlopsManageApi();
+  const { getAnomalyTrainData, getTimeSeriesPredictTrainData, getLogClusteringTrainData, getClassificationTrainData } = useMlopsManageApi();
   const [menuItems, setMenuItems] = useState<AnomalyTrainData[]>([]);
   const [loadingState, setLoadingState] = useState({
     loading: false,
@@ -24,11 +24,12 @@ const AnnotationPage = () => {
   // const [selectedTags, setSelectedTags] = useState<string[]>([]);
   const [isChange, setIsChange] = useState<boolean>(false);
   const [flag, setFlag] = useState<boolean>(true);
-  const chartList = ['anomaly', 'timeseries_predict', 'classification'];
+  const chartList = ['anomaly', 'timeseries_predict'];
   const getTrainDataListMap: Record<string, any> = {
     'anomaly': getAnomalyTrainData,
     'timeseries_predict': getTimeSeriesPredictTrainData,
-    'log_clustering': getLogClusteringTrainData
+    'log_clustering': getLogClusteringTrainData,
+    'classification': getClassificationTrainData
   };
 
   useEffect(() => {
@@ -86,7 +87,7 @@ const AnnotationPage = () => {
           }}
         >
           <div
-            className={`pt-4 pr-4 flex-1 rounded-md overflow-auto ${sideMenuStyle.sectionContainer} ${sideMenuStyle.sectionContext}`}
+            className={`p-4 flex-1 rounded-md overflow-auto ${sideMenuStyle.sectionContainer} ${sideMenuStyle.sectionContext}`}
             style={{
               transition: 'width 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
               willChange: 'width',
