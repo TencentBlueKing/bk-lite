@@ -24,7 +24,7 @@ const AnnotationPage = () => {
   // const [selectedTags, setSelectedTags] = useState<string[]>([]);
   const [isChange, setIsChange] = useState<boolean>(false);
   const [flag, setFlag] = useState<boolean>(true);
-  const chartList = ['anomaly', 'timeseries_predict'];
+  const chartList = ['anomaly', 'timeseries_predict', 'classification'];
   const getTrainDataListMap: Record<string, any> = {
     'anomaly': getAnomalyTrainData,
     'timeseries_predict': getTimeSeriesPredictTrainData,
