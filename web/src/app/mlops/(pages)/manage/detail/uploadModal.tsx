@@ -228,7 +228,7 @@ const UploadModal = forwardRef<ModalRef, UploadModalProps>(({ onSuccess }, ref) 
       // 3. 读取并处理文件内容
       const text = await file.originFileObj!.text();
       const rawData = handleFileRead(text, formData?.activeTap || '');
-      
+
       // 根据类型决定传递的数据结构
       let dataToProcess: ProcessedData;
       if (formData?.activeTap === 'classification' && rawData.headers) {
@@ -236,7 +236,7 @@ const UploadModal = forwardRef<ModalRef, UploadModalProps>(({ onSuccess }, ref) 
       } else {
         dataToProcess = rawData.train_data;
       }
-      
+
       const processedData = strategy.processData(dataToProcess);
 
       // 4. 构建提交参数
@@ -287,22 +287,7 @@ const UploadModal = forwardRef<ModalRef, UploadModalProps>(({ onSuccess }, ref) 
         "timestamp": 1704038580
       }
     ];
-    const columns = [
-      {
-        title: t('common.time'),
-        key: 'timestamp',
-        dataIndex: 'timestamp',
-        width: 80,
-        align: 'center',
-      },
-      {
-        title: t('datasets.value'),
-        key: 'value',
-        dataIndex: 'value',
-        align: 'center',
-        width: 30,
-      },
-    ]
+    const columns = ['timestamp', 'value']
     const blob = exportToCSV(data, columns);
     if (blob) {
       const url = URL.createObjectURL(blob);

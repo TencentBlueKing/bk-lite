@@ -1,5 +1,6 @@
 import { useState, useCallback, useEffect, RefObject } from 'react';
-import { FormInstance, message, Form, Select, Input, InputNumber, Divider } from 'antd';
+import { FormInstance, message, Form, Select, Input, InputNumber, Divider, Transfer, Spin } from 'antd';
+import type { TransferProps } from 'antd';
 import { useTranslation } from '@/utils/i18n';
 import useMlopsTaskApi from '@/app/mlops/api/task';
 import useTrainDataLoader from '@/app/mlops/hooks/task/useTrainDataLoader';
@@ -20,6 +21,12 @@ interface UseAnomalyFormProps {
   activeTag: string[];
   onSuccess: () => void;
   formRef: RefObject<FormInstance>
+}
+
+interface RecordType {
+  key: string;
+  title: string;
+  description?: string;
 }
 
 export const useAnomalyForm = ({ datasetOptions, activeTag, onSuccess, formRef }: UseAnomalyFormProps) => {
@@ -47,11 +54,13 @@ export const useAnomalyForm = ({ datasetOptions, activeTag, onSuccess, formRef }
   const [loadingState, setLoadingState] = useState<{
     confirm: boolean,
     dataset: boolean,
-    select: boolean
+    select: boolean,
+    transfer: boolean
   }>({
     confirm: false,
     dataset: false,
-    select: false
+    select: false,
+    transfer: false
   });
   const [traindataOption, setTrainDataOption] = useState<{
     trainOption: Option[],
@@ -64,6 +73,9 @@ export const useAnomalyForm = ({ datasetOptions, activeTag, onSuccess, formRef }
   });
   const [isShow, setIsShow] = useState<boolean>(false);
   const [algorithmType, setAlgorithmsType] = useState<string>('');
+  const [selectedColumns, setSelectedColumns] = useState<RecordType[]>([]);
+  const [targetKeys, setTargetKeys] = useState<TransferProps['targetKeys']>([]);
+  const [selectedKeys, setSelectedKeys] = useState<TransferProps['targetKeys']>([]);
   const addTrainTask: Record<string, any> = {
     'anomaly': addAnomalyTrainTask,
     'log_clustering': addLogClusteringTrainTask,
@@ -143,15 +155,32 @@ export const useAnomalyForm = ({ datasetOptions, activeTag, onSuccess, formRef }
     }
   };
 
+  const onTrainSelectChange = async (value: number) => {
+    if (!value) return;
+    try {
+      setLoadingState(prev => ({...prev, transfer: true}));
+      const { metadata } = await getDatasetByTrainId(value, key);
+      if (key === 'classification' && metadata.headers) {
+        const _headers = metadata.headers?.map((item: string, index: number) => ({
+          key: index,
+          title: item
+        })).slice(0, metadata.headers?.length - 1);
+        setSelectedColumns(_headers);
+        setTargetKeys(_headers.map((item: any) => item.key));
+      }
+    } catch (e) {
+      console.log(e);
+    } finally {
+      setLoadingState(prev => ({...prev, transfer: false}));
+    }
+  };
+
   // 以训练文件ID获取数据ID
   const handleAsyncDataLoading = useCallback(async (trainDataId: number, formData: TrainJob) => {
     if (!trainDataId) return;
-
     setLoadingState((prev) => ({ ...prev, select: true }));
-
     try {
-      const dataset = await getDatasetByTrainId(formData.train_data_id as number, key);
-
+      const { dataset } = await getDatasetByTrainId(formData.train_data_id as number, key);
       if (dataset && formRef.current) {
         formRef.current.setFieldsValue({
           dataset_id: dataset
@@ -173,6 +202,7 @@ export const useAnomalyForm = ({ datasetOptions, activeTag, onSuccess, formRef }
       if (!formRef.current || !dataset) return;
       // 加载训练数据选项
       const trainOptions = await loadTrainOptions(dataset, key);
+      onTrainSelectChange(formData?.train_data_id as number);
       setTrainDataOption(trainOptions);
       formRef.current.setFieldsValue({
         train_data_id: formData?.train_data_id,
@@ -185,6 +215,17 @@ export const useAnomalyForm = ({ datasetOptions, activeTag, onSuccess, formRef }
       setLoadingState(prev => ({ ...prev, select: false }));
     }
   }, [loadTrainOptions, formData]);
+
+  // 穿梭框控制操作
+  const onChange: TransferProps['onChange'] = (nextTargetKeys) => {
+    setTargetKeys(nextTargetKeys);
+  };
+
+  const onSelectChange: TransferProps['onSelectChange'] = (sourceSelectedKeys, targetSelectedKeys) => {
+    setSelectedKeys([...sourceSelectedKeys, ...targetSelectedKeys])
+  };
+
+
 
   // 渲染超参数表单项
   const renderItem = useCallback((param: AlgorithmParam[]) => {
@@ -227,6 +268,10 @@ export const useAnomalyForm = ({ datasetOptions, activeTag, onSuccess, formRef }
         hyperopt_config,
         description: value.name || ''
       };
+      if(key === 'classification') {
+        params['selected_columns'] = selectedColumns.filter(item => targetKeys?.includes(item.key)).map(item => item.title);
+      }
+      console.log(params);
 
       if (modalState.type === 'add') {
         await addTrainTask[key](params);
@@ -247,6 +292,13 @@ export const useAnomalyForm = ({ datasetOptions, activeTag, onSuccess, formRef }
     }
   }, [modalState.type, formData, onSuccess, addAnomalyTrainTask, updateAnomalyTrainTask, renderParams, t]);
 
+  const transferVaildate = useCallback(() => {
+    if(targetKeys?.length === 0) {
+      return Promise.reject(new Error(`请至少选择一个列用于训练`))
+    }
+    return Promise.resolve();
+  }, [t])
+
   // 取消处理
   const handleCancel = useCallback(() => {
     setModalState({
@@ -260,6 +312,7 @@ export const useAnomalyForm = ({ datasetOptions, activeTag, onSuccess, formRef }
       valOption: [],
       testOption: []
     });
+    setSelectedColumns([]);
     setIsShow(false);
   }, []);
 
@@ -307,7 +360,7 @@ export const useAnomalyForm = ({ datasetOptions, activeTag, onSuccess, formRef }
               label={t('datasets.train')}
               rules={[{ required: true, message: t('common.selectMsg') }]}
             >
-              <Select placeholder={t('common.selectMsg')} loading={loadingState.select} options={traindataOption.trainOption} />
+              <Select placeholder={t('common.selectMsg')} loading={loadingState.select} options={traindataOption.trainOption} onChange={(value) => onTrainSelectChange(value)} />
             </Form.Item>
             <Form.Item
               name='val_data_id'
@@ -325,6 +378,27 @@ export const useAnomalyForm = ({ datasetOptions, activeTag, onSuccess, formRef }
             >
               <Select placeholder={t('common.selectMsg')} loading={loadingState.select} options={traindataOption.testOption} />
             </Form.Item>
+            {key === 'classification' &&
+              <Form.Item
+                name='selected_columns'
+                className='ml-2'
+                label={t(`traintask.selectedColumns`)}
+                rules={[{ required: true, validator: transferVaildate }]}
+              >
+                <Spin spinning={loadingState.transfer}>
+                  <Transfer
+                    rootClassName='justify-center'
+                    dataSource={selectedColumns}
+                    titles={['未使用', '已使用']}
+                    targetKeys={targetKeys}
+                    selectedKeys={selectedKeys}
+                    onChange={onChange}
+                    onSelectChange={onSelectChange}
+                    render={(item) => item.title}
+                  />
+                </Spin>
+              </Form.Item>
+            }
             <Divider orientation='start' orientationMargin={'0'} plain style={{ borderColor: '#d1d5db' }}>
               {t(`traintask.hyperopt`)}
             </Divider>
