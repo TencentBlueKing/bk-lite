@@ -23,12 +23,9 @@ import {
   Organization,
   Pagination,
   TableDataItem,
-} from '@/app/monitor/types';
-import {
   ObjectItem,
-  RuleInfo,
-  ObjectInstItem,
-} from '@/app/monitor/types/monitor';
+} from '@/app/monitor/types';
+import { RuleInfo, ObjectInstItem } from '@/app/monitor/types/integration';
 import CustomTable from '@/components/custom-table';
 import TimeSelector from '@/components/time-selector';
 import { PlusOutlined, DownOutlined } from '@ant-design/icons';
@@ -37,7 +34,6 @@ import RuleModal from './ruleModal';
 import { useCommon } from '@/app/monitor/context/common';
 import { useAssetMenuItems } from '@/app/monitor/hooks/integration/common/assetMenuItems';
 import {
-  deepClone,
   showGroupName,
   getBaseInstanceColumn,
 } from '@/app/monitor/utils/common';
@@ -52,6 +48,7 @@ import { NODE_STATUS_MAP } from '@/app/monitor/constants/integration';
 import Permission from '@/components/permission';
 import EllipsisWithTooltip from '@/components/ellipsis-with-tooltip';
 import type { TableProps, MenuProps } from 'antd';
+import { cloneDeep } from 'lodash';
 
 type TableRowSelection<T extends object = object> =
   TableProps<T>['rowSelection'];
@@ -427,7 +424,7 @@ const Asset = () => {
       };
       const data = await getMonitorObject(params);
       setObjects(data);
-      const _treeData = getTreeData(deepClone(data));
+      const _treeData = getTreeData(cloneDeep(data));
       setTreeData(_treeData);
       const defaultKey = data[0]?.id || defaultSelectObj || '';
       if (defaultKey) {
@@ -491,7 +488,7 @@ const Asset = () => {
   };
 
   const expandRow = async (expanded: boolean, row: any) => {
-    const _dataSource = deepClone(tableData);
+    const _dataSource = cloneDeep(tableData);
     const targetIndex = _dataSource.findIndex(
       (item: any) => item.instance_id === row.instance_id
     );

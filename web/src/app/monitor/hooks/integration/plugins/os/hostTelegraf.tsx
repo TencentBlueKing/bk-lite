@@ -1,7 +1,7 @@
 import React from 'react';
 import { Form, Input } from 'antd';
 import { useTranslation } from '@/utils/i18n';
-import { IntegrationMonitoredObject } from '@/app/monitor/types/monitor';
+import { IntegrationMonitoredObject } from '@/app/monitor/types/integration';
 import { TableDataItem } from '@/app/monitor/types';
 import { useHostFormItems } from '../../common/hostFormItems';
 import { cloneDeep } from 'lodash';

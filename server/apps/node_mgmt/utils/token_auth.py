@@ -43,9 +43,9 @@ def generate_node_token(node_id: str, ip: str, user: str, secret: str = SECRET_K
     data = {"node_id": node_id, "ip": ip, "user": user}
     # 将数据序列化为 JSON 字符串
     json_data = json.dumps(data, sort_keys=True).encode('utf-8')
-    # 使用 HMAC 生成 token
+    # 使用 HMAC-SHA256 生成签名（固定32字节）
     signature = hmac.new(secret.encode('utf-8'), json_data, hashlib.sha256).digest()
-    # 将签名与数据一起返回
+    # Token格式: signature(32字节) + '.'(1字节) + json_data
     token = base64.urlsafe_b64encode(signature + b"." + json_data).decode('utf-8')
     SidecarApiToken.objects.update_or_create(node_id=node_id, defaults={"token": token})
     cache.set(f"node_token_{node_id}", token)
@@ -68,12 +68,20 @@ def decode_token(token: str, secret: str = SECRET_KEY):
         # 解码 token
         decoded_data = base64.urlsafe_b64decode(token)
         
-        # 分割签名和数据，处理格式错误的情况
-        parts = decoded_data.split(b".", 1)
-        if len(parts) != 2:
+        # Token格式: signature(32字节) + '.'(1字节) + json_data
+        # 最小长度: 32(签名) + 1(点号) + 2(最小JSON "{}")  = 35
+        if len(decoded_data) < 35:
             raise BaseAppException("token 格式错误")
         
-        signature, json_data = parts
+        # 前32字节是签名
+        signature = decoded_data[:32]
+
+        # 第33字节必须是点号分隔符
+        if decoded_data[32:33] != b".":
+            raise BaseAppException("token 格式错误")
+
+        # 第34字节开始是JSON数据
+        json_data = decoded_data[33:]
 
         # 验证签名
         expected_signature = hmac.new(secret.encode('utf-8'), json_data, hashlib.sha256).digest()

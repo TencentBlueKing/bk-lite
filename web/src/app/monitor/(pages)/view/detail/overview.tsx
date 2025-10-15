@@ -11,21 +11,17 @@ import SingleValue from '@/app/monitor/components/charts/singleValue';
 import useApiClient from '@/utils/request';
 import useMonitorApi from '@/app/monitor/api';
 import useViewApi from '@/app/monitor/api/view';
-import {
-  MetricItem,
-  ChartDataItem,
-  SearchParams,
-  InterfaceTableItem,
-  ViewDetailProps,
-} from '@/app/monitor/types/monitor';
+import { InterfaceTableItem, ViewDetailProps } from '@/app/monitor/types/view';
+import { SearchParams } from '@/app/monitor/types/search';
 import {
   TableDataItem,
   TimeSelectorDefaultValue,
   TimeValuesProps,
+  MetricItem,
+  ChartDataItem,
 } from '@/app/monitor/types';
 import { useTranslation } from '@/utils/i18n';
 import {
-  deepClone,
   findUnitNameById,
   calculateMetrics,
   getEnumValueUnit,
@@ -38,6 +34,7 @@ import dayjs, { Dayjs } from 'dayjs';
 import { useInterfaceLabelMap } from '@/app/monitor/hooks/view';
 import Icon from '@/components/icon';
 import { ColumnItem } from '@/types';
+import { cloneDeep } from 'lodash';
 
 const Overview: React.FC<ViewDetailProps> = ({
   monitorObjectId,
@@ -249,7 +246,7 @@ const Overview: React.FC<ViewDetailProps> = ({
   };
 
   const handleSearch = (type: string) => {
-    const _metricData = deepClone(originMetricData);
+    const _metricData = cloneDeep(originMetricData);
     fetchViewData(_metricData, type);
   };
 

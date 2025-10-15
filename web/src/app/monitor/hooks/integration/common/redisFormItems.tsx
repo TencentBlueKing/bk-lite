@@ -28,7 +28,7 @@ const useRedisFormItems = () => {
             label={t('monitor.integrations.password')}
             required={false}
           >
-            <Form.Item noStyle name="password">
+            <Form.Item noStyle name="ENV_PASSWORD">
               <Password
                 className="w-[300px] mr-[10px]"
                 disabled={disabledFormItems.password}

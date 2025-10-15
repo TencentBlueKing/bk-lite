@@ -33,7 +33,7 @@ const useActiveMQFormItems = () => {
           <Form.Item label={t('monitor.integrations.password')} required>
             <Form.Item
               noStyle
-              name="password"
+              name="ENV_PASSWORD"
               rules={[
                 {
                   required: true,

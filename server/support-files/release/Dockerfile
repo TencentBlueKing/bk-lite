@@ -11,7 +11,6 @@ ADD ./support-files/release/supervisor/app.conf  /etc/supervisor/conf.d/app.conf
 ADD ./support-files/release/supervisor/nats.conf  /etc/supervisor/conf.d/nats.conf
 ADD ./support-files/release/supervisor/beat.conf  /etc/supervisor/conf.d/beat.conf
 ADD ./support-files/release/supervisor/celery.conf  /etc/supervisor/conf.d/celery.conf
-ADD ./support-files/release/supervisor/consumer.conf  /etc/supervisor/conf.d/consumer.conf
 
 ADD . .
 RUN pip install uv

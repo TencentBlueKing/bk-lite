@@ -19,9 +19,9 @@ import {
   ChartData,
   Pagination,
   TimeLineItem,
+  MetricItem,
 } from '@/app/monitor/types';
 import { HeatMapDataItem } from '@/types';
-import { MetricItem } from '@/app/monitor/types/monitor';
 import { AlertOutlined } from '@ant-design/icons';
 import { useLocalizedTime } from '@/hooks/useLocalizedTime';
 import { useAlertDetailTabs } from '@/app/monitor/hooks/event';

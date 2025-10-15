@@ -275,11 +275,46 @@ class Sidecar:
         if not node:
             return EncryptedJsonResponse(status=404, data={}, manage="Node collector Configuration not found", request=request)
 
-        obj = CollectorConfiguration.objects.filter(id=configuration_id).first()
+        # 查询配置，并预取关联的子配置
+        obj = CollectorConfiguration.objects.filter(id=configuration_id).prefetch_related('childconfig_set').first()
         if not obj:
             return EncryptedJsonResponse(status=404, data={}, manage="Configuration environment not found", request=request)
 
-        return EncryptedJsonResponse(dict(id=configuration_id, env_config={k: str(v) for k, v in obj.env_config.items()}), request=request)
+        # 合并环境变量：主配置的 env_config
+        merged_env_config = {}
+        if obj.env_config and isinstance(obj.env_config, dict):
+            merged_env_config.update(obj.env_config)
+
+        # 合并子配置的 env_config，按排序顺序处理
+        for child_config in obj.childconfig_set.all():
+            if child_config.env_config and isinstance(child_config.env_config, dict):
+                merged_env_config.update(child_config.env_config)
+
+        # 解密包含password的环境变量
+        decrypted_env_config = {}
+        aes_obj = AESCryptor()
+        
+        for key, value in merged_env_config.items():
+            if 'password' in key.lower() and value:
+                try:
+                    # 对包含password的key进行解密
+                    decrypted_env_config[key] = aes_obj.decode(str(value))
+                except Exception as e:
+                    logger.warning(f"Failed to decrypt password field {key}: {e}")
+                    # 如果解密失败，可能是明文存储的，直接使用原值
+                    decrypted_env_config[key] = str(value)
+            else:
+                decrypted_env_config[key] = str(value)
+
+        logger.debug(f"Merged env config for configuration {configuration_id}: {len(decrypted_env_config)} variables")
+
+        return EncryptedJsonResponse(
+            dict(
+                id=configuration_id, 
+                env_config=decrypted_env_config
+            ), 
+            request=request
+        )
 
     @staticmethod
     def get_cloud_region_envconfig(node_obj):

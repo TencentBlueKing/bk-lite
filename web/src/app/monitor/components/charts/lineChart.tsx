@@ -21,8 +21,13 @@ import chartLineStyle from './index.module.scss';
 import dayjs, { Dayjs } from 'dayjs';
 import DimensionFilter from './dimensionFilter';
 import DimensionTable from './dimensionTable';
-import { ChartData, ListItem, TableDataItem } from '@/app/monitor/types';
-import { MetricItem, ThresholdField } from '@/app/monitor/types/monitor';
+import {
+  ChartData,
+  ListItem,
+  TableDataItem,
+  MetricItem,
+  ThresholdField,
+} from '@/app/monitor/types';
 import { LEVEL_MAP } from '@/app/monitor/constants';
 import { isNumber } from 'lodash';
 

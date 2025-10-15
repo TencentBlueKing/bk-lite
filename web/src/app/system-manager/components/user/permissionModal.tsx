@@ -12,7 +12,7 @@ import {
   DataPermission as PermissionDataType
 } from '@/app/system-manager/types/permission';
 
-const PermissionModal: React.FC<PermissionModalProps> = ({ visible, rules = [], node, onOk, onCancel }) => {
+const PermissionModal: React.FC<PermissionModalProps> = ({ visible, rules = {}, node, onOk, onCancel }) => {
   const { t } = useTranslation();
   const [form] = Form.useForm<PermissionFormValues>();
   const { clientData } = useClientData();
@@ -31,17 +31,27 @@ const PermissionModal: React.FC<PermissionModalProps> = ({ visible, rules = [], 
         groupName: typeof node?.title === 'string' ? node.title : ''
       });
 
-      setAppData(
-        clientModules.map((item, index) => {
-          const appRules = rules && typeof rules === 'object' ? rules[item as keyof typeof rules] : null;
-          const permission = appRules && Array.isArray(appRules) && appRules.length > 0 ? appRules[0] : 0;
-          return {
-            key: index.toString(),
-            app: item,
-            permission: permission,
-          };
-        })
-      );
+      const newAppData = clientModules.map((item, index) => {
+        let permission = 0;
+        const ruleValue = rules[item];
+        
+        if (Array.isArray(ruleValue)) {
+          permission = ruleValue.find(val => val !== 0) || 0;
+        } else if (typeof ruleValue === 'number') {
+          permission = ruleValue;
+        } else {
+          permission = 0;
+        }
+        
+        
+        return {
+          key: index.toString(),
+          app: item,
+          permission: permission,
+        };
+      });
+      
+      setAppData(newAppData);
     }
   }, [visible, node, rules]);
 
@@ -103,7 +113,7 @@ const PermissionModal: React.FC<PermissionModalProps> = ({ visible, rules = [], 
       title: t('system.permission.dataPermission'),
       dataIndex: 'permission',
       key: 'permission',
-      render: (_text: unknown, record: AppPermission) => {
+      render: (_text: unknown, record: AppPermission, index: number) => {
         const options = [
           { value: 0, label: t('system.permission.fullPermission') }
         ];
@@ -116,21 +126,27 @@ const PermissionModal: React.FC<PermissionModalProps> = ({ visible, rules = [], 
         }
 
         const isAppLoading = appLoadingStates[record.app] || false;
+        
+        const currentPermission = appData[index]?.permission ?? 0;
+        
 
         return (
           <Select
-            value={record.permission}
+            key={`${record.app}-${currentPermission}`}
+            value={currentPermission}
             className="w-full"
             options={options}
             loading={isAppLoading}
             disabled={isAppLoading}
             placeholder={t('common.select')}
             onChange={(value: number) => {
-              setAppData(prevData =>
-                prevData.map(item =>
-                  item.key === record.key ? { ...item, permission: value } : item
-                )
-              );
+              setAppData(prevData => {
+                const newData = [...prevData];
+                if (newData[index]) {
+                  newData[index] = { ...newData[index], permission: value };
+                }
+                return newData;
+              });
             }}
           />
         );

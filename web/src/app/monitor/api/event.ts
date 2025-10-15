@@ -1,5 +1,5 @@
 import useApiClient from '@/utils/request';
-import { SourceFeild } from '@/app/monitor/types/monitor';
+import { SourceFeild } from '@/app/monitor/types/event';
 
 const useEventApi = () => {
   const { get, post, patch, del } = useApiClient();

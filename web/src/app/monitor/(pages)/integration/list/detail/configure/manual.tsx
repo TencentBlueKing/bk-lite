@@ -9,7 +9,7 @@ import CodeEditor from '@/app/monitor/components/codeEditor';
 import { TableDataItem } from '@/app/monitor/types';
 const { Option } = Select;
 import Permission from '@/components/permission';
-import { IntegrationAccessProps } from '@/app/monitor/types/monitor';
+import { IntegrationAccessProps } from '@/app/monitor/types/integration';
 import { useMonitorConfig } from '@/app/monitor/hooks/integration/index';
 import { cloneDeep } from 'lodash';
 

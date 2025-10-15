@@ -63,7 +63,7 @@ class BootStrap(object):
             #     ]
             # }
             "event_broker": {
-                "url": server_settings.nats_host,
+                "url": server_settings.nats_url,
                 "namespace": server_settings.nats_namespace,
                 "type": "custom_broker.nats_broker.NATSEventBroker",
             },

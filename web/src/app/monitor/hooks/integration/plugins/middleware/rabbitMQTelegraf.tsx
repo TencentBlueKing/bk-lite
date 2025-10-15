@@ -4,7 +4,7 @@ import { useTranslation } from '@/utils/i18n';
 import {
   InstNameConfig,
   IntegrationMonitoredObject,
-} from '@/app/monitor/types/monitor';
+} from '@/app/monitor/types/integration';
 import { TableDataItem } from '@/app/monitor/types';
 import { useRabbitMQFormItems } from '../../common/rabbitMQFormItems';
 import { cloneDeep } from 'lodash';
@@ -124,14 +124,20 @@ export const useRabbitMQTelegraf = () => {
           formItems,
           getDefaultForm: (formData: TableDataItem) => {
             const url = formData?.child?.content?.config?.url || '';
+            const configId = (formData?.child?.id || '').toUpperCase();
+            const password =
+              formData?.child?.env_config?.[`PASSWORD__${configId}`];
             return {
               monitor_url: url,
+              ENV_PASSWORD: password,
             };
           },
           getParams: (
             row: IntegrationMonitoredObject,
             config: TableDataItem
           ) => {
+            const configId = (config.child.id || '').toUpperCase();
+            config.child.env_config[`PASSWORD__${configId}`] = row.ENV_PASSWORD;
             return config;
           },
         },

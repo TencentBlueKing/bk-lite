@@ -1,9 +1,7 @@
 import json
 import uuid
 from datetime import datetime
-from typing import Dict, Any, List
-from dataclasses import dataclass
-from enum import Enum
+from typing import Dict, Any
 
 from loguru import logger
 from sanic import Blueprint, json as sanic_json
@@ -65,423 +63,240 @@ async def invoke_lats_agent_sse(request, body: LatsAgentRequest):
         return sanic_json({"error": "启动失败，请稍后重试"}, status=500)
 
 
-# ==================== 数据模型 ====================
+async def stream_lats_response(workflow, body: Dict[str, Any], chat_id: str, model: str, res) -> None:
+    """LATS Agent 流式响应"""
+    created = int(datetime.now().timestamp())
+    sent_contents = set()
+    iteration_count = 0
+    has_shown_tool_complete = False
 
-class SearchPhase(Enum):
-    """搜索阶段"""
-    INITIALIZING = "initializing"
-    GENERATING = "generating"
-    EVALUATING = "evaluating"
-    SEARCHING = "searching"
-    TOOL_CALLING = "tool_calling"
-    FINALIZING = "finalizing"
-    COMPLETED = "completed"
+    try:
+        logger.info(f"[LATS SSE] 开始流式处理，chat_id: {chat_id}")
+
+        # 开始消息
+        start_content = "🎯 **正在分析您的请求...**\n"
+        await _write_sse_data(res, chat_id, created, model, start_content)
+        sent_contents.add(start_content)
+
+        stream_iter = await workflow.stream(body)
+
+        async for chunk in stream_iter:
+            if not chunk:
+                continue
+
+            # 处理最终状态
+            if _is_final_state(chunk):
+                await _handle_final_state(res, chunk, chat_id, created, model, sent_contents)
+                continue
+
+            # 处理字典类型的 chunk（节点转换和评估结果）
+            if isinstance(chunk, dict):
+                # 1. 检测评估结果（在 expand 之后）
+                if 'evaluation_results' in chunk:
+                    eval_results = chunk['evaluation_results']
+                    if eval_results and iteration_count > 0:
+                        best_score = max(e.get('score', 0)
+                                         for e in eval_results)
+                        solutions = sum(1 for e in eval_results if e.get(
+                            'found_solution', False))
+                        content = f"📊 评估完成 - 最高分: {best_score}/10"
+                        if solutions > 0:
+                            content += f" | ✅ 找到 {solutions} 个解决方案"
+                        content += "\n"
+                        if content not in sent_contents:
+                            await _write_sse_data(res, chat_id, created, model, content)
+                            sent_contents.add(content)
+                    continue
+
+                # 2. 检测节点（单键字典）
+                node_keys = list(chunk.keys())
+                if len(node_keys) == 1:
+                    node_name = node_keys[0]
+
+                    # expand 节点（树搜索扩展）
+                    if node_name == 'expand':
+                        iteration_count += 1
+                        content = f"\n🌳 **搜索迭代 {iteration_count}** - 探索新方案\n"
+                        logger.info(
+                            f"[LATS SSE] 检测到 expand 节点，当前迭代: {iteration_count}")
+                        if content not in sent_contents:
+                            await _write_sse_data(res, chat_id, created, model, content)
+                            sent_contents.add(content)
+                        continue
+
+                    # generate_initial_response 节点
+                    elif node_name == 'generate_initial_response':
+                        content = "🤔 **生成初始方案...**\n"
+                        if content not in sent_contents:
+                            await _write_sse_data(res, chat_id, created, model, content)
+                            sent_contents.add(content)
+                        continue
+
+                    # reflect 节点（评估）
+                    elif node_name == 'reflect':
+                        content = "🔍 **评估方案质量...**\n"
+                        if content not in sent_contents:
+                            await _write_sse_data(res, chat_id, created, model, content)
+                            sent_contents.add(content)
+                        continue
+
+                    # tools 节点
+                    elif node_name == 'tools':
+                        tool_name = _get_tool_name(chunk[node_name])
+                        content = f"🔧 正在使用 **{tool_name}**\n"
+                        if content not in sent_contents:
+                            await _write_sse_data(res, chat_id, created, model, content)
+                            sent_contents.add(content)
+                        continue
+
+            # 处理消息流
+            if isinstance(chunk, (tuple, list)) and len(chunk) > 0:
+                message = chunk[0]
+                if not message:
+                    continue
+
+                message_type = type(message).__name__
+
+                # AIMessageChunk - 流式内容直接输出
+                if message_type == "AIMessageChunk":
+                    if hasattr(message, 'content') and message.content:
+                        await _write_sse_data(res, chat_id, created, model, message.content)
+                    continue
+
+                # AIMessage - 过滤评分等内容
+                elif message_type == "AIMessage":
+                    content = _extract_ai_content(message)
+                    if content and content not in sent_contents:
+                        await _write_sse_data(res, chat_id, created, model, content)
+                        sent_contents.add(content)
+
+                # ToolMessage - 显示工具执行完成
+                elif message_type == "ToolMessage":
+                    if not has_shown_tool_complete:
+                        tool_name = _get_tool_name(message)
+                        content = f"✅ **{tool_name}** 执行完成\n"
+                        if content not in sent_contents:
+                            await _write_sse_data(res, chat_id, created, model, content)
+                            sent_contents.add(content)
+                            has_shown_tool_complete = True
+
+        # 完成消息
+        if iteration_count > 0:
+            completion_content = f"\n✨ **搜索完成！** 共 {iteration_count} 轮迭代\n"
+        else:
+            completion_content = "\n✨ **任务完成！**\n"
+
+        await _write_sse_data(res, chat_id, created, model, completion_content)
+
+        # 发送结束标志
+        await _write_sse_end(res, chat_id, created, model)
+
+        logger.info(
+            f"[LATS SSE] 流式处理完成，chat_id: {chat_id}，迭代: {iteration_count}轮")
+
+    except Exception as e:
+        logger.error(f"[LATS SSE] 处理出错: {str(e)}", exc_info=True)
+        error_content = f"\n❌ **处理遇到问题**\n"
+        await _write_sse_data(res, chat_id, created, model, error_content, finish_reason="stop")
 
 
-@dataclass
-class SearchStats:
-    """搜索统计"""
-    iteration: int = 0
-    best_score: float = 0.0
-    solutions_found: int = 0
-
-
-# ==================== SSE 格式化器 ====================
-
-class LatsSSEFormatter:
-    """LATS Agent SSE 消息格式化"""
-
-    # 工具友好名称映射
-    TOOL_NAMES = {
-        "naive_rag_search": "知识库搜索",
-        "web_search": "网络搜索",
-        "search_tool": "搜索工具",
-        "analysis_tool": "分析工具"
+async def _write_sse_data(res, chat_id: str, created: int, model: str, content: str, finish_reason: str = None):
+    """写入SSE数据"""
+    response = {
+        "id": chat_id,
+        "object": "chat.completion.chunk",
+        "created": created,
+        "model": model,
+        "choices": [{
+            "delta": {"role": "assistant", "content": content},
+            "index": 0,
+            "finish_reason": finish_reason
+        }]
     }
+    json_str = json.dumps(response, ensure_ascii=False, separators=(',', ':'))
+    await res.write(f"data: {json_str}\n\n".encode('utf-8'))
 
-    def __init__(self, chat_id: str, model: str):
-        self.chat_id = chat_id
-        self.model = model
-        self.created_time = int(datetime.now().timestamp())
-        self.start_time = datetime.now()
-        self.stats = SearchStats()
-        self._sequence = 0
 
-    def _create_sse(self, content: str = None, finish_reason: str = None,
-                    metadata: Dict[str, Any] = None) -> str:
-        """创建 SSE 消息"""
-        self._sequence += 1
+async def _write_sse_end(res, chat_id: str, created: int, model: str):
+    """写入SSE结束标志"""
+    end_response = {
+        "id": chat_id,
+        "object": "chat.completion.chunk",
+        "created": created,
+        "model": model,
+        "choices": [{"delta": {}, "index": 0, "finish_reason": "stop"}]
+    }
+    json_str = json.dumps(
+        end_response, ensure_ascii=False, separators=(',', ':'))
+    await res.write(f"data: {json_str}\n\n".encode('utf-8'))
+    await res.write("data: [DONE]\n\n".encode('utf-8'))
 
-        response = {
-            "id": self.chat_id,
-            "object": "chat.completion.chunk",
-            "created": self.created_time,
-            "model": self.model,
-            "choices": [{
-                "delta": {"role": "assistant"},
-                "index": 0,
-                "finish_reason": finish_reason
-            }]
-        }
 
-        if content:
-            response["choices"][0]["delta"]["content"] = content
+async def _handle_final_state(res, chunk, chat_id: str, created: int, model: str, sent_contents: set):
+    """处理最终状态"""
+    messages = chunk.get('messages', [])
+    if not messages:
+        return
 
-        if metadata:
-            response["metis_metadata"] = {
-                **metadata, "sequence": self._sequence}
+    final_msg = messages[-1]
+    if hasattr(final_msg, 'content') and final_msg.content:
+        msg_type = type(final_msg).__name__
+        if msg_type not in ['SystemMessage', 'HumanMessage']:
+            content = _format_content(final_msg.content)
+            if content and content not in sent_contents:
+                await _write_sse_data(res, chat_id, created, model, content)
+                sent_contents.add(content)
 
-        return f"data: {json.dumps(response, ensure_ascii=False, separators=(',', ':'))}\n\n"
 
-    def format_phase(self, phase: str, content: str) -> str:
-        """格式化阶段消息"""
-        return self._create_sse(content, metadata={"phase": phase})
-
-    def format_content(self, content: str) -> str:
-        """格式化内容消息"""
-        return self._create_sse(content) if content else ""
-
-    def format_tool_call(self, tool_name: str) -> str:
-        """格式化工具调用"""
-        display_name = self.TOOL_NAMES.get(tool_name, tool_name)
-        return self.format_phase(
-            "tool_calling",
-            f"\n🔧 **调用 {display_name}**\n\n💡 正在搜索相关信息..."
-        )
-
-    def format_evaluation(self, score: float, reflection: str = None) -> str:
-        """格式化评估结果"""
-        emoji = "🌟" if score >= 9 else "⭐" if score >= 8 else "✨" if score >= 6 else "💡"
-        status = "🎯" if score >= 9 else "👍" if score >= 7 else "📈"
-
-        content = f"\n{status} **评分：{score}/10** {emoji}\n"
-        if reflection:
-            content = f"\n📝 **{reflection[:600]}**\n" + content
-
-        self.stats.best_score = max(self.stats.best_score, score)
-        return self.format_phase("evaluating", content)
-
-    def format_iteration(self, iteration: int) -> str:
-        """格式化搜索迭代"""
-        self.stats.iteration = iteration
-        return self.format_phase(
-            "searching",
-            f"\n\n---\n\n🌳 **搜索迭代 #{iteration}**\n\n🔍 探索新的解决方案路径..."
-        )
-
-    def format_candidates(self, evaluations: List[Dict[str, Any]]) -> str:
-        """格式化候选评估"""
-        if not evaluations:
+def _extract_ai_content(message) -> str:
+    """提取AI消息内容"""
+    try:
+        if not hasattr(message, 'content'):
             return ""
 
-        best_score = max(e.get("score", 0) for e in evaluations)
-        solutions = sum(1 for e in evaluations if e.get(
-            "found_solution", False))
+        content = message.content.strip()
+        if not content:
+            return ""
 
-        self.stats.best_score = max(self.stats.best_score, best_score)
-        self.stats.solutions_found = solutions
+        # 跳过评分和JSON内容
+        if any(keyword in content for keyword in ['"reflections"', '"score"', '"found_solution"', "评分：", "/10"]):
+            return ""
 
-        content = f"\n📊 **评估 {len(evaluations)} 个候选方案**\n\n"
-        content += f"🏆 最高评分：**{best_score}/10**\n"
+        # 跳过过短内容
+        if len(content) < 15:
+            return ""
 
-        if solutions > 0:
-            content += f"✅ 找到 **{solutions}** 个解决方案\n"
+        return content
 
-        # 展示前3个最佳候选
-        top = sorted(evaluations, key=lambda x: x.get(
-            "score", 0), reverse=True)[:3]
-        content += "\n🔝 **优秀候选：**\n"
-        for i, c in enumerate(top, 1):
-            status = "🎯" if c.get("found_solution") else "💡"
-            content += f"   {status} #{i}: {c.get('score', 0)}/10\n"
+    except Exception as e:
+        logger.debug(f"[LATS SSE] 提取内容失败: {e}")
+        return ""
 
-        return self.format_phase("evaluating", content)
 
-    def format_completion(self) -> str:
-        """格式化完成消息"""
-        elapsed = int((datetime.now() - self.start_time).total_seconds())
-
-        content = f"\n\n---\n\n🎊 **LATS 搜索完成！**\n\n"
-        content += f"📊 **统计：**\n"
-        content += f"   • 迭代轮次：{self.stats.iteration}\n"
-        content += f"   • 最佳评分：{self.stats.best_score}/10\n"
-        content += f"   • 执行时间：{elapsed}秒\n"
-
-        return self._create_sse(content, finish_reason="stop", metadata={
-            "phase": "completed",
-            "stats": {
-                "iterations": self.stats.iteration,
-                "best_score": self.stats.best_score,
-                "execution_time": f"{elapsed}秒"
+def _get_tool_name(data) -> str:
+    """获取工具名称"""
+    try:
+        if isinstance(data, dict) and 'name' in data:
+            tool_mapping = {
+                "naive_rag_search": "知识库搜索",
+                "web_search": "网络搜索",
             }
-        })
+            return tool_mapping.get(data['name'], data['name'])
 
-    def format_error(self, error: str) -> str:
-        """格式化错误消息"""
-        return self._create_sse(
-            f"\n❌ **搜索遇到问题**\n\n🔧 {error}\n\n💡 请稍后重试",
-            finish_reason="error"
-        )
+        if hasattr(data, 'name') and data.name:
+            return data.name
 
-
-# ==================== SSE 处理器 ====================
-
-class LatsSSEHandler:
-    """LATS SSE 流式处理"""
-
-    def __init__(self, chat_id: str, model: str):
-        self.formatter = LatsSSEFormatter(chat_id, model)
-        self.final_answer_started = False
-
-    async def send(self, res, message: str) -> None:
-        """发送 SSE 消息"""
-        if message:
-            await res.write(message.encode('utf-8'))
-
-    async def handle_flow(self, res, workflow, body) -> None:
-        """处理搜索流程"""
-        try:
-            # 初始化
-            await self.send(res, self.formatter.format_phase(
-                "initializing",
-                "🔍 **启动 LATS 智能搜索**\n\n💡 分析问题并生成多个候选解决方案"
-            ))
-
-            # 处理流
-            iteration = 0
-            async for chunk in await workflow.stream(body):
-                await self._process_chunk(res, chunk, iteration)
-
-                if self._is_new_iteration(chunk):
-                    iteration += 1
-
-            # 完成
-            await self._send_completion(res)
-
-        except Exception as e:
-            logger.error(f"处理出错: {e}", exc_info=True)
-            await self.send(res, self.formatter.format_error(str(e)))
-
-    async def _process_chunk(self, res, chunk, iteration: int) -> None:
-        """处理数据块"""
-        # 最终状态
-        if self._is_final_state(chunk):
-            await self._handle_final_state(res, chunk)
-            return
-
-        # 评估结果
-        if self._is_evaluation(chunk):
-            await self._handle_evaluation(res, chunk)
-            return
-
-        # 节点转换
-        if self._is_node_transition(chunk):
-            await self._handle_node(res, chunk, iteration)
-            return
-
-        # 消息流
-        if self._is_message_stream(chunk):
-            await self._handle_message(res, chunk)
-
-    async def _handle_final_state(self, res, chunk) -> None:
-        """处理最终状态"""
-        root = chunk.get('root')
-        messages = chunk.get('messages', [])
-
-        if not (root and messages):
-            return
-
-        # 展示反思
-        if hasattr(root, 'reflection') and root.reflection:
-            reflection = root.reflection
-            if hasattr(reflection, 'reflections') and reflection.reflections:
-                await self.send(res, self.formatter.format_content(
-                    "\n🧠 **深度分析过程**\n\n"
-                ))
-                await self.send(res, self.formatter.format_evaluation(
-                    reflection.score,
-                    reflection.reflections
-                ))
-
-        # 解决方案状态
-        if hasattr(root, 'is_solved') and root.is_solved:
-            score = root.reflection.score if hasattr(
-                root, 'reflection') else 10
-            await self.send(res, self.formatter.format_phase(
-                "solution_found",
-                f"\n🎉 **找到高质量解决方案！**\n\n🌟 评分：**{score}/10**"
-            ))
-
-        # 最终答案
-        if not self.final_answer_started:
-            await self.send(res, self.formatter.format_phase(
-                "finalizing",
-                "\n\n---\n\n✨ **整理最终答案**\n\n"
-            ))
-            self.final_answer_started = True
-
-        # 输出内容
-        if messages:
-            final_msg = messages[-1]
-            if hasattr(final_msg, 'content') and final_msg.content:
-                if not self._is_system_or_user_msg(final_msg):
-                    content = self._format_ai_content(final_msg.content)
-                    await self.send(res, self.formatter.format_content(
-                        f"\n📋 **最终解答**\n\n{content}\n\n"
-                    ))
-
-    async def _handle_evaluation(self, res, chunk) -> None:
-        """处理评估"""
-        if 'initial_evaluation' in chunk:
-            eval_data = chunk['initial_evaluation']
-            score = eval_data.get('score', 0)
-            reflection = eval_data.get('reflections', '')
-
-            await self.send(res, self.formatter.format_content(
-                "\n🧠 **分析初始方案...**\n\n"
-            ))
-            await self.send(res, self.formatter.format_evaluation(score, reflection))
-
-        elif 'evaluation_results' in chunk:
-            await self.send(res, self.formatter.format_candidates(
-                chunk['evaluation_results']
-            ))
-
-    async def _handle_node(self, res, chunk, iteration: int) -> None:
-        """处理节点转换"""
-        node_name = next(iter(chunk.keys()))
-
-        handlers = {
-            "generate_initial_response": "🤔 **生成初始回答...**",
-            "expand": lambda: self.formatter.format_iteration(iteration + 1),
-            "tools": lambda: self._handle_tool_node(chunk[node_name]),
-            "reflect": "🔍 **评估方案质量...**",
-        }
-
-        handler = handlers.get(node_name)
-        if callable(handler):
-            msg = handler()
-        elif handler:
-            msg = self.formatter.format_content(f"\n{handler}\n\n")
-        else:
-            msg = None
-
-        if msg:
-            await self.send(res, msg)
-
-    def _handle_tool_node(self, node_data) -> str:
-        """处理工具节点"""
-        tool_name = "知识库搜索"
-        if isinstance(node_data, dict) and 'name' in node_data:
-            tool_name = self.formatter.TOOL_NAMES.get(
-                node_data['name'],
-                node_data['name']
-            )
-        return self.formatter.format_tool_call(tool_name)
-
-    async def _handle_message(self, res, chunk) -> None:
-        """处理消息流"""
-        message = chunk[0] if chunk else None
-        if not message or self._is_system_or_user_msg(message):
-            return
-
-        if hasattr(message, 'content') and message.content:
-            content = message.content
-
-            # 处理 reflection JSON
-            if self._contains_reflection_json(content):
-                await self._handle_reflection_json(res, content)
-            else:
-                await self.send(res, self.formatter.format_content(content))
-
-    async def _handle_reflection_json(self, res, content: str) -> None:
-        """处理包含 reflection 的 JSON"""
-        try:
-            parts = content.split('{', 1)
-            if len(parts) == 2:
-                normal = parts[0].strip()
-                json_part = '{' + parts[1]
-
-                if normal:
-                    await self.send(res, self.formatter.format_content(normal))
-
-                data = json.loads(json_part)
-                score = data.get('score', 0)
-                reflection = data.get('reflections', '')
-
-                if reflection:
-                    await self.send(res, self.formatter.format_evaluation(
-                        score, reflection
-                    ))
-        except:
-            await self.send(res, self.formatter.format_content(content))
-
-    async def _send_completion(self, res) -> None:
-        """发送完成消息"""
-        await self.send(res, self.formatter.format_completion())
-
-        end = {
-            "id": self.formatter.chat_id,
-            "object": "chat.completion.chunk",
-            "created": self.formatter.created_time,
-            "model": self.formatter.model,
-            "choices": [{"delta": {}, "index": 0, "finish_reason": "stop"}]
-        }
-
-        await res.write(f"data: {json.dumps(end, ensure_ascii=False)}\n\n".encode('utf-8'))
-        await res.write("data: [DONE]\n\n".encode('utf-8'))
-
-    # ==================== 工具方法 ====================
-
-    @staticmethod
-    def _is_final_state(chunk) -> bool:
-        return isinstance(chunk, dict) and 'messages' in chunk and 'root' in chunk
-
-    @staticmethod
-    def _is_evaluation(chunk) -> bool:
-        return isinstance(chunk, dict) and (
-            'evaluation_results' in chunk or 'initial_evaluation' in chunk
-        )
-
-    @staticmethod
-    def _is_node_transition(chunk) -> bool:
-        return isinstance(chunk, dict) and len(chunk) == 1
-
-    @staticmethod
-    def _is_message_stream(chunk) -> bool:
-        return isinstance(chunk, (tuple, list)) and len(chunk) > 0
-
-    @staticmethod
-    def _is_new_iteration(chunk) -> bool:
-        return isinstance(chunk, dict) and 'expand' in chunk
-
-    @staticmethod
-    def _is_system_or_user_msg(message) -> bool:
-        msg_type = type(message).__name__
-        return msg_type in ['SystemMessage', 'HumanMessage']
-
-    @staticmethod
-    def _contains_reflection_json(content: str) -> bool:
-        try:
-            return ('"reflections"' in content and
-                    '"score"' in content and
-                    '"found_solution"' in content and
-                    content.strip().startswith('{') and
-                    content.strip().endswith('}'))
-        except:
-            return False
-
-    @staticmethod
-    def _format_ai_content(content: str) -> str:
-        """格式化 AI 内容"""
-        lines = [line.strip() for line in content.split('\n') if line.strip()]
-        return '\n\n'.join(lines)
+        return "工具"
+    except Exception:
+        return "工具"
 
 
-# ==================== 流式响应入口 ====================
+def _format_content(content: str) -> str:
+    """格式化内容"""
+    lines = [line.strip() for line in content.split('\n') if line.strip()]
+    return '\n\n'.join(lines)
 
-async def stream_lats_response(workflow, body: Dict[str, Any], chat_id: str,
-                               model: str, res) -> None:
-    """LATS Agent 流式响应"""
-    handler = LatsSSEHandler(chat_id, model)
-    await handler.handle_flow(res, workflow, body)
+
+def _is_final_state(chunk) -> bool:
+    """判断是否为最终状态"""
+    return isinstance(chunk, dict) and 'messages' in chunk and 'root' in chunk

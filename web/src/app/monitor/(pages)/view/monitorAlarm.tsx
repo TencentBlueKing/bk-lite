@@ -14,7 +14,7 @@ import {
   TimeValuesProps,
 } from '@/app/monitor/types';
 import { getRecentTimeRange } from '@/app/monitor/utils/common';
-import { ViewModalProps } from '@/app/monitor/types/monitor';
+import { ViewModalProps } from '@/app/monitor/types/view';
 import TimeSelector from '@/components/time-selector';
 import Permission from '@/components/permission';
 import AlertDetail from '@/app/monitor/(pages)/event/alert/alertDetail';

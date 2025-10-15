@@ -5,7 +5,7 @@
     username = "{{ username }}"
     {% endif %}
 
-    password = "{{ password }}"
+    password = "${PASSWORD__{{ config_id }}}"
     interval = "{{ interval }}s"
     [inputs.redis.tags]
         instance_id = "{{ instance_id }}"

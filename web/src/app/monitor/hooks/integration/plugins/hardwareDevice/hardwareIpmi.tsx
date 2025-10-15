@@ -4,7 +4,7 @@ import { useTranslation } from '@/utils/i18n';
 import {
   InstNameConfig,
   IntegrationMonitoredObject,
-} from '@/app/monitor/types/monitor';
+} from '@/app/monitor/types/integration';
 import { TableDataItem } from '@/app/monitor/types';
 import { useIpmiCommonFormItems } from '../../common/ipmiCommonFormItems';
 import { cloneDeep } from 'lodash';
@@ -137,10 +137,20 @@ export const useHardwareIpmiPlugin = () => {
           formItems,
           getDefaultForm: (formData: TableDataItem) => {
             const url = formData?.child?.content?.config?.servers?.[0] || '';
-            return extractIPMIUrl(url);
+            const configId = (formData?.child?.id || '').toUpperCase();
+            const password =
+              formData?.child?.env_config?.[`PASSWORD__${configId}`];
+            return {
+              ...extractIPMIUrl(url),
+              ENV_PASSWORD: password,
+            };
           },
-          getParams: (formData: TableDataItem, configForm: TableDataItem) =>
-            configForm,
+          getParams: (formData: TableDataItem, configForm: TableDataItem) => {
+            const configId = (configForm.child.id || '').toUpperCase();
+            configForm.child.env_config[`PASSWORD__${configId}`] =
+              formData.ENV_PASSWORD;
+            return configForm;
+          },
         },
         manual: {
           defaultForm: {

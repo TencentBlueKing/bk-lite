@@ -1,4 +1,4 @@
-import { ObjectIconMap } from '@/app/monitor/types/monitor';
+import { ObjectIconMap } from '@/app/monitor/types';
 
 const CONNECTION_LIFETIME_UNITS: string[] = ['m'];
 

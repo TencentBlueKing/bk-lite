@@ -1,5 +1,5 @@
 [[inputs.mysql]]
-    servers = ["{{ username }}:{{ password }}@tcp({{ host }}:{{ port }})/?tls=false"]
+    servers = ["{{ username }}:${PASSWORD__{{ config_id }}}@tcp({{ host }}:{{ port }})/?tls=false"]
     metric_version = 2
     interval = "{{ interval }}s"
     [inputs.mysql.tags]

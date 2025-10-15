@@ -11,7 +11,7 @@ import { TableDataItem } from '@/app/monitor/types';
 import {
   IntegrationAccessProps,
   IntegrationMonitoredObject,
-} from '@/app/monitor/types/monitor';
+} from '@/app/monitor/types/integration';
 import { useUserInfoContext } from '@/context/userInfo';
 import Permission from '@/components/permission';
 import { useMonitorConfig } from '@/app/monitor/hooks/integration/index';

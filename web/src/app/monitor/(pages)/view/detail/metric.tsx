@@ -10,15 +10,13 @@ import {
   TableDataItem,
   TimeSelectorDefaultValue,
   TimeValuesProps,
-} from '@/app/monitor/types';
-import {
-  MetricItem,
   GroupInfo,
-  IndexViewItem,
-  SearchParams,
   IntegrationItem,
-  ViewDetailProps,
-} from '@/app/monitor/types/monitor';
+  MetricItem,
+  IndexViewItem,
+} from '@/app/monitor/types';
+import { ViewDetailProps } from '@/app/monitor/types/view';
+import { SearchParams } from '@/app/monitor/types/search';
 import { useTranslation } from '@/utils/i18n';
 import {
   mergeViewQueryKeyValues,

@@ -1,5 +1,5 @@
 import useApiClient from '@/utils/request';
-import { SearchParams } from '@/app/monitor/types/monitor';
+import { SearchParams } from '@/app/monitor/types/search';
 import { InstanceParam } from '@/app/monitor/types';
 
 const useViewApi = () => {

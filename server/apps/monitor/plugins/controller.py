@@ -81,19 +81,24 @@ class Controller:
             template_dir = os.path.join(base_dir, config_info["collector"], config_info["collect_type"], config_info["instance_type"])
             templates = self.get_template_info_by_type(template_dir, config_info["type"])
             env_config = {k[4:]: v for k, v in config_info.items() if k.startswith("ENV_")}
+
             for template in templates:
                 is_child = True if template["config_type"] == "child" else False
                 collector_name = "Telegraf" if is_child else config_info["collector"]
                 config_id = str(uuid.uuid4().hex)
+
                 # 生成配置
                 template_config = self.render_template(
                     template_dir,
                     f"{template['type']}.{template['config_type']}.{template['file_type']}.j2",
-                    config_info,
+                    {**config_info, "config_id": config_id.upper()},
                 )
 
                 # 节点管理创建配置
                 if is_child:
+                    # 子配置环境变量加上config_id作后缀，确保环境变量名为大写
+                    child_env_config = {f"{k.upper()}__{config_id.upper()}": v for k, v in env_config.items()}
+
                     node_child_config = dict(
                         id=config_id,
                         collect_type=config_info["collect_type"],
@@ -101,7 +106,7 @@ class Controller:
                         content=template_config,
                         node_id=config_info["node_id"],
                         collector_name=collector_name,
-                        env_config=env_config,
+                        env_config=child_env_config,
                     )
                     node_child_configs.append(node_child_config)
                 else:

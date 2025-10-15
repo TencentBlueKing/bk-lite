@@ -4,12 +4,8 @@ import React, { useState, forwardRef, useImperativeHandle } from 'react';
 import { useRouter } from 'next/navigation';
 import { Button, Tabs } from 'antd';
 import OperateDrawer from '@/app/monitor/components/operate-drawer';
-import { ModalRef, TabItem } from '@/app/monitor/types';
-import {
-  ChartProps,
-  ViewModalProps,
-  ObjectItem,
-} from '@/app/monitor/types/monitor';
+import { ModalRef, TabItem, ChartProps, ObjectItem } from '@/app/monitor/types';
+import { ViewModalProps } from '@/app/monitor/types/view';
 import { useTranslation } from '@/utils/i18n';
 import MonitorView from './monitorView';
 import MonitorAlarm from './monitorAlarm';

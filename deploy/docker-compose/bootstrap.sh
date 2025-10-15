@@ -380,7 +380,7 @@ fi
 DOCKER_IMAGE_TRAEFIK=$(add_mirror_prefix "traefik:3.3.3")
 DOCKER_IMAGE_REDIS=$(add_mirror_prefix "redis:5.0.14")
 DOCKER_IMAGE_NATS=$(add_mirror_prefix "nats:2.10.25")
-DOCKER_IMAGE_NATS_CLI=$(add_mirror_prefix "bitnami/natscli:0.1.6")
+DOCKER_IMAGE_NATS_CLI=$(add_mirror_prefix "natsio/nats-box:latest")
 DOCKER_IMAGE_VICTORIA_METRICS=$(add_mirror_prefix "victoriametrics/victoria-metrics:v1.106.1")
 DOCKER_IMAGE_POSTGRES=$(add_mirror_prefix "postgres:15")
 DOCKER_IMAGE_SERVER=$(add_mirror_prefix "bklite/server")
@@ -543,7 +543,7 @@ ${DOCKER_COMPOSE_CMD} up -d traefik redis nats victoria-metrics falkordb victori
 # 创建 JetStream - 使用正确的网络名称
 log "INFO" "创建JetStream..."
 docker run --rm --network=bklite-prod \
-    $DOCKER_IMAGE_NATS_CLI -s nats://nats:4222 \
+    $DOCKER_IMAGE_NATS_CLI nats -s nats://nats:4222 \
     --user $NATS_ADMIN_USERNAME --password $NATS_ADMIN_PASSWORD \
     stream add metrics --subjects=metrics.* --storage=file \
     --replicas=1 --retention=limits  --discard=old \

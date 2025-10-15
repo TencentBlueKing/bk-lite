@@ -1,11 +1,10 @@
 import React, { useEffect, useState } from 'react';
 import { Tree, Spin, Input, Empty } from 'antd';
-import { TreeItem, TableDataItem } from '@/app/log/types';
+import { TreeItem, TableDataItem, TreeSortData } from '@/app/monitor/types';
 import { useTranslation } from '@/utils/i18n';
 import type { TreeProps, TreeDataNode } from 'antd';
 import { cloneDeep } from 'lodash';
-import { findTreeParentKey } from '@/app/log/utils/common';
-import { TreeSortData } from '@/app/log/types/event';
+import { findTreeParentKey } from '@/app/monitor/utils/common';
 
 const { Search } = Input;
 

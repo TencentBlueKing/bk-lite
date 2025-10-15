@@ -1,5 +1,5 @@
 [[inputs.postgresql]]
-    address = "host={{ host }} port={{ port }} user={{ username }} password={{ password }} sslmode=disable"
+    address = "host={{ host }} port={{ port }} user={{ username }} password=${PASSWORD__{{ config_id }}} sslmode=disable"
     ignored_databases = ["template0", "template1"]
     interval = "{{ interval }}s"
     [inputs.postgresql.tags]

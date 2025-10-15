@@ -4,7 +4,7 @@ import { useTranslation } from '@/utils/i18n';
 import {
   InstNameConfig,
   IntegrationMonitoredObject,
-} from '@/app/monitor/types/monitor';
+} from '@/app/monitor/types/integration';
 import { TableDataItem } from '@/app/monitor/types';
 import { useOpenGaussExporterFormItems } from '../../common/openGaussExporterFormItems';
 import { cloneDeep } from 'lodash';

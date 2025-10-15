@@ -93,11 +93,13 @@ class Controller:
                 template_config = self.render_template(
                     template_dir,
                     f"{template['type']}.{template['config_type']}.{template['file_type']}.j2",
-                    config_info,
+                    {**config_info, "config_id": config_id.upper()},
                 )
 
                 # 节点管理创建配置
                 if is_child:
+                    # 子配置环境变量加上config_id作后缀，确保环境变量名为大写
+                    child_env_config = {f"{k.upper()}__{config_id.upper()}": v for k, v in env_config.items()}
                     node_child_config = dict(
                         id=config_id,
                         collect_type=config_info["collect_type"],
@@ -105,7 +107,7 @@ class Controller:
                         content=template_config,
                         node_id=config_info["node_id"],
                         collector_name=collector_name,
-                        env_config=env_config,
+                        env_config=child_env_config,
                         sort_order=self.get_child_config_sort_order(config_info["collect_type"]),
                     )
                     node_child_configs.append(node_child_config)

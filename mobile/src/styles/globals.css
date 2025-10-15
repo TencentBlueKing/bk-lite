@@ -1,0 +1,70 @@
+
+@import "tailwindcss";
+@import "./variables.css";
+@import "./theme-overrides.css";
+
+
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--color-fill-4) var(--color-bg-7);
+}
+
+*::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+  background-color: var(--color-bg-7);
+  border-radius: 10px;
+}
+
+*::-webkit-scrollbar-thumb {
+  border-radius: 10px;
+  background: var(--color-fill-4);
+}
+
+*::-webkit-scrollbar-thumb:hover {
+  background: var(--color-fill-4);
+  box-shadow: inset 0 0 6px var(--color-fill-4);
+}
+
+/* ========== 移动端自定义滚动条 ========== */
+
+.custom-scrollbar::-webkit-scrollbar {
+  width: 4px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb {
+  background: var(--color-fill-4);
+  border-radius: 2px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: var(--color-fill-5);
+}
+
+/* Firefox 滚动条样式 */
+.custom-scrollbar {
+  scrollbar-width: thin;
+  scrollbar-color: var(--color-fill-4) transparent;
+}
+
+/* ========== 全局 body 样式 ========== */
+
+body {
+  background: var(--color-background-body);
+  color: var(--foreground);
+  font-family: Arial, Helvetica, sans-serif;
+  transition: background-color 0.3s ease, color 0.3s ease;
+}
+
+/* ========== 媒体查询 - 系统偏好设置 ========== */
+
+@media (prefers-color-scheme: dark) {
+  :root:not(.light) {
+    --background: #0a0a0a;
+    --foreground: #ededed;
+  }
+}

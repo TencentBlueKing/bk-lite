@@ -1,4 +1,4 @@
-import { LevelMap } from '@/app/monitor/types/monitor';
+import { LevelMap } from '@/app/monitor/types';
 
 const UNIT_LIST = [
   {

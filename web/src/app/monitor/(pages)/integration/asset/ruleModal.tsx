@@ -13,23 +13,23 @@ import Icon from '@/components/icon';
 import OperateModal from '@/components/operate-modal';
 import type { FormInstance } from 'antd';
 import useApiClient from '@/utils/request';
-import { ModalRef, ListItem } from '@/app/monitor/types';
 import {
-  RuleInfo,
-  GroupingRules,
-  ObjectItem,
-  IndexViewItem,
-  MetricItem,
+  ModalRef,
+  ListItem,
   GroupInfo,
+  ObjectItem,
+  MetricItem,
+  IndexViewItem,
   FilterItem,
-} from '@/app/monitor/types/monitor';
+} from '@/app/monitor/types';
+import { RuleInfo, GroupingRules } from '@/app/monitor/types/integration';
 import { PlusOutlined, CloseOutlined } from '@ant-design/icons';
 import { useTranslation } from '@/utils/i18n';
-import { deepClone } from '@/app/monitor/utils/common';
 import GroupTreeSelector from '@/components/group-tree-select';
 import useMonitorApi from '@/app/monitor/api';
 import { useConditionList } from '@/app/monitor/hooks';
 import strategyStyle from './index.module.scss';
+import { cloneDeep } from 'lodash';
 const { Option } = Select;
 
 interface ModalProps {
@@ -69,7 +69,7 @@ const RuleModal = forwardRef<ModalRef, ModalProps>(
     useImperativeHandle(ref, () => ({
       showModal: ({ type, form, title }) => {
         // 开启弹窗的交互
-        const formData = deepClone(form);
+        const formData = cloneDeep(form);
         setGroupVisible(true);
         setType(type);
         const dom = (
@@ -126,7 +126,7 @@ const RuleModal = forwardRef<ModalRef, ModalProps>(
         const getMetrics = getMonitorMetrics(params);
         Promise.all([getGroupList, getMetrics])
           .then((res) => {
-            const metricData = deepClone(res[1] || []);
+            const metricData = cloneDeep(res[1] || []);
             setMetrics(res[1] || []);
             const groupData = res[0].map((item: GroupInfo) => ({
               ...item,
@@ -220,13 +220,13 @@ const RuleModal = forwardRef<ModalRef, ModalProps>(
     };
 
     const handleLabelChange = (val: string, index: number) => {
-      const _conditions = deepClone(conditions);
+      const _conditions = cloneDeep(conditions);
       _conditions[index].name = val;
       setConditions(_conditions);
     };
 
     const handleConditionChange = (val: string, index: number) => {
-      const _conditions = deepClone(conditions);
+      const _conditions = cloneDeep(conditions);
       _conditions[index].method = val;
       setConditions(_conditions);
     };
@@ -235,13 +235,13 @@ const RuleModal = forwardRef<ModalRef, ModalProps>(
       e: React.ChangeEvent<HTMLInputElement>,
       index: number
     ) => {
-      const _conditions = deepClone(conditions);
+      const _conditions = cloneDeep(conditions);
       _conditions[index].value = e.target.value;
       setConditions(_conditions);
     };
 
     const addConditionItem = () => {
-      const _conditions = deepClone(conditions);
+      const _conditions = cloneDeep(conditions);
       _conditions.push({
         name: null,
         method: null,
@@ -251,7 +251,7 @@ const RuleModal = forwardRef<ModalRef, ModalProps>(
     };
 
     const deleteConditionItem = (index: number) => {
-      const _conditions = deepClone(conditions);
+      const _conditions = cloneDeep(conditions);
       _conditions.splice(index, 1);
       setConditions(_conditions);
     };

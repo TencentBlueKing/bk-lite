@@ -1,7 +1,7 @@
 [[inputs.tomcat]]
     url = "{{ url }}"
     username = "{{ username }}"
-    password = "{{ password }}"
+    password = "${PASSWORD__{{ config_id }}}"
     interval = "{{ interval }}s"
     [inputs.tomcat.tags]
         instance_id = "{{ instance_id }}"

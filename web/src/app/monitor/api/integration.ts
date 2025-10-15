@@ -1,6 +1,10 @@
 import useApiClient from '@/utils/request';
-import { TreeSortData, InstanceInfo } from '@/app/monitor/types/monitor';
-import { OrderParam, NodeConfigParam } from '@/app/monitor/types/integration';
+import { TreeSortData } from '@/app/monitor/types';
+import {
+  OrderParam,
+  NodeConfigParam,
+  InstanceInfo,
+} from '@/app/monitor/types/integration';
 
 const useIntegrationApi = () => {
   const { get, post, del } = useApiClient();

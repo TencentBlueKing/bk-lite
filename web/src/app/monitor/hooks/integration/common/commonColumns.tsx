@@ -2,7 +2,7 @@ import React from 'react';
 import { Input, Select, Button } from 'antd';
 import { useTranslation } from '@/utils/i18n';
 import { TableDataItem } from '@/app/monitor/types';
-import { IntegrationMonitoredObject } from '@/app/monitor/types/monitor';
+import { IntegrationMonitoredObject } from '@/app/monitor/types/integration';
 import GroupTreeSelector from '@/components/group-tree-select';
 import { cloneDeep } from 'lodash';
 import { v4 as uuidv4 } from 'uuid';

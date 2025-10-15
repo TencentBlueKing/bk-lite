@@ -1,7 +1,7 @@
 [[inputs.mongodb]]
     servers = [
-        {% if username and password %}
-        "mongodb://{{ username }}:{{ password }}@{{ host }}:{{ port }}/?connect=direct"
+        {% if username %}
+        "mongodb://{{ username }}:${PASSWORD__{{ config_id }}}@{{ host }}:{{ port }}/?connect=direct"
         {% else %}
         "mongodb://{{ host }}:{{ port }}/?connect=direct"
         {% endif %}

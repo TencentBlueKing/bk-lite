@@ -14,11 +14,7 @@ import {
 import useApiClient from '@/utils/request';
 import { useTranslation } from '@/utils/i18n';
 import Icon from '@/components/icon';
-import {
-  deepClone,
-  getRandomColor,
-  getRecentTimeRange,
-} from '@/app/monitor/utils/common';
+import { getRandomColor, getRecentTimeRange } from '@/app/monitor/utils/common';
 import {
   ColumnItem,
   ModalRef,
@@ -29,10 +25,10 @@ import {
   TimeSelectorDefaultValue,
   TimeValuesProps,
   TreeItem,
+  ObjectItem,
 } from '@/app/monitor/types';
-import { ObjectItem } from '@/app/monitor/types/monitor';
 import { AlertOutlined } from '@ant-design/icons';
-import { FiltersConfig } from '@/app/monitor/types/monitor';
+import { FiltersConfig } from '@/app/monitor/types/event';
 import CustomTable from '@/components/custom-table';
 import EllipsisWithTooltip from '@/components/ellipsis-with-tooltip';
 import TimeSelector from '@/components/time-selector';
@@ -300,7 +296,7 @@ const Alert: React.FC = () => {
         add_policy_count: true,
       });
       setObjects(data);
-      const _treeData = getTreeData(deepClone(data));
+      const _treeData = getTreeData(cloneDeep(data));
       setTreeData(_treeData);
     } finally {
       setPageLoading(false);
@@ -423,7 +419,7 @@ const Alert: React.FC = () => {
       extra?.tab || activeTab,
       extra?.filtersConfig || filters
     );
-    const chartParams = deepClone(params);
+    const chartParams: any = cloneDeep(params);
     delete chartParams.page;
     delete chartParams.page_size;
     chartParams.content = '';

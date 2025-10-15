@@ -113,6 +113,7 @@
     "exportFailed": "Failed to export",
     "leave": "Leave",
     "addFail": "Failed to add",
-    "updateFail": "Failed to update"
+    "updateFail": "Failed to update",
+    "execute": "Execute"
   }
 }

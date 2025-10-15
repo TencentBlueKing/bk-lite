@@ -1,7 +1,7 @@
 import { useMemo } from 'react';
 import { useTranslation } from '@/utils/i18n';
 import { ApartmentOutlined, BarsOutlined } from '@ant-design/icons';
-import { ObjectIconMap } from '@/app/monitor/types/monitor';
+import { ObjectIconMap } from '@/app/monitor/types';
 
 const useTableOptions = () => {
   return [

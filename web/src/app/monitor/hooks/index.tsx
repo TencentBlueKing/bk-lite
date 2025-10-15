@@ -1,6 +1,6 @@
 import { useMemo } from 'react';
 import { ListItem } from '@/types';
-import { StateMap } from '@/app/monitor/types/monitor';
+import { StateMap } from '@/app/monitor/types';
 import { message } from 'antd';
 import { useTranslation } from '@/utils/i18n';
 const useHandleCopy = (value: string) => {

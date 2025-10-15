@@ -4,7 +4,7 @@ import { useTranslation } from '@/utils/i18n';
 import {
   InstNameConfig,
   IntegrationMonitoredObject,
-} from '@/app/monitor/types/monitor';
+} from '@/app/monitor/types/integration';
 import { TableDataItem } from '@/app/monitor/types';
 import { useMongoDFormItems } from '../../common/mongoDBFormItems';
 import { cloneDeep } from 'lodash';
@@ -189,12 +189,20 @@ export const useMongoDBTelegraf = () => {
           formItems,
           getDefaultForm: (formData: TableDataItem) => {
             const server = formData?.child?.content?.config?.servers?.[0] || '';
-            return extractMongoDBUrl(server);
+            const configId = (formData?.child?.id || '').toUpperCase();
+            const password =
+              formData?.child?.env_config?.[`PASSWORD__${configId}`];
+            return {
+              ...extractMongoDBUrl(server),
+              ENV_PASSWORD: password,
+            };
           },
           getParams: (
             row: IntegrationMonitoredObject,
             config: TableDataItem
           ) => {
+            const configId = (config.child.id || '').toUpperCase();
+            config.child.env_config[`PASSWORD__${configId}`] = row.ENV_PASSWORD;
             return config;
           },
         },

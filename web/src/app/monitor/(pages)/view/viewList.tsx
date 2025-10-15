@@ -6,7 +6,6 @@ import useMonitorApi from '@/app/monitor/api';
 import useViewApi from '@/app/monitor/api/view';
 import { useTranslation } from '@/utils/i18n';
 import {
-  deepClone,
   getEnumValueUnit,
   getEnumColor,
   getK8SData,
@@ -14,19 +13,17 @@ import {
 } from '@/app/monitor/utils/common';
 import { useObjectConfigInfo } from '@/app/monitor/hooks/integration/common/getObjectConfig';
 import { useRouter } from 'next/navigation';
-import {
-  IntegrationItem,
-  ObjectItem,
-  MetricItem,
-  ViewListProps,
-} from '@/app/monitor/types/monitor';
 import ViewModal from './viewModal';
 import {
   ColumnItem,
   ModalRef,
   Pagination,
   TableDataItem,
+  IntegrationItem,
+  ObjectItem,
+  MetricItem,
 } from '@/app/monitor/types';
+import { ViewListProps } from '@/app/monitor/types/view';
 import CustomTable from '@/components/custom-table';
 import TimeSelector from '@/components/time-selector';
 import EllipsisWithTooltip from '@/components/ellipsis-with-tooltip';
@@ -36,6 +33,7 @@ import {
   OBJECT_DEFAULT_ICON,
   DERIVATIVE_OBJECTS,
 } from '@/app/monitor/constants';
+import { cloneDeep } from 'lodash';
 const { Option } = Select;
 
 const ViewList: React.FC<ViewListProps> = ({
@@ -320,7 +318,7 @@ const ViewList: React.FC<ViewListProps> = ({
             },
           };
         });
-        const originColumns = deepClone([
+        const originColumns = cloneDeep([
           ...getBaseInstanceColumn({
             objects,
             row: targetObject,

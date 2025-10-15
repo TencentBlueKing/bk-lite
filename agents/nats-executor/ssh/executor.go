@@ -28,11 +28,13 @@ func Execute(req ExecuteRequest, instanceId string) ExecuteResponse {
 	})
 
 	if err != nil {
+		errMsg := fmt.Sprintf("Failed to create SSH client: %v", err)
 		log.Printf("[SSH Execute] Instance: %s, Failed to create SSH client for %s@%s:%d - Error: %v", instanceId, req.User, req.Host, req.Port, err)
 		return ExecuteResponse{
 			InstanceId: instanceId,
 			Success:    false,
-			Output:     fmt.Sprintf("Failed to create new SSH client: %v", err),
+			Output:     errMsg,
+			Error:      errMsg,
 		}
 	}
 
@@ -51,9 +53,12 @@ func Execute(req ExecuteRequest, instanceId string) ExecuteResponse {
 	duration := time.Since(startTime)
 
 	if err != nil {
+		var errMsg string
 		if ctx.Err() == context.DeadlineExceeded {
+			errMsg = fmt.Sprintf("Command timed out after %v (timeout: %ds)", duration, req.ExecuteTimeout)
 			log.Printf("[SSH Execute] Instance: %s, Command timed out after %v (timeout: %ds)", instanceId, duration, req.ExecuteTimeout)
 		} else {
+			errMsg = fmt.Sprintf("Command execution failed: %v", err)
 			log.Printf("[SSH Execute] Instance: %s, Command execution failed after %v - Error: %v", instanceId, duration, err)
 		}
 		log.Printf("[SSH Execute] Instance: %s, Output: %s", instanceId, string(out))
@@ -61,6 +66,7 @@ func Execute(req ExecuteRequest, instanceId string) ExecuteResponse {
 			Output:     string(out),
 			InstanceId: instanceId,
 			Success:    false,
+			Error:      errMsg,
 		}
 	}
 
@@ -189,7 +195,17 @@ func SubscribeDownloadToRemote(nc *nats.Conn, instanceId *string) {
 			log.Printf("[Download Subscribe] Instance: %s, File transfer to remote host failed: %s", *instanceId, responseData.Output)
 		}
 
-		responseContent, _ := json.Marshal(responseData)
+		responseContent, err := json.Marshal(responseData)
+		if err != nil {
+			log.Printf("[Download Subscribe] Instance: %s, Error marshalling response: %v", *instanceId, err)
+			errorResponse := local.ExecuteResponse{
+				InstanceId: *instanceId,
+				Success:    false,
+				Error:      fmt.Sprintf("Failed to marshal response: %v", err),
+			}
+			responseContent, _ = json.Marshal(errorResponse)
+		}
+
 		if err := msg.Respond(responseContent); err != nil {
 			log.Printf("[Download Subscribe] Instance: %s, Error responding to download request: %v", *instanceId, err)
 		} else {

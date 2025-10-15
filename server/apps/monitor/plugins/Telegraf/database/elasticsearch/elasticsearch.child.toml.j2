@@ -1,7 +1,7 @@
 [[inputs.elasticsearch]]
     servers = ["{{ server }}"]
     username = "{{ username }}"
-    password = "{{ password }}"
+    password = "${PASSWORD__{{ config_id }}}"
     interval = "{{ interval }}s"
     [inputs.elasticsearch.tags]
         instance_id = "{{ instance_id }}"

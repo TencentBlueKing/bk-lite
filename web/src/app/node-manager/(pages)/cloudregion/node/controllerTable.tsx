@@ -131,8 +131,14 @@ const ControllerTable: React.FC<ControllerInstallProps> = ({
   const checkDetail = (type: string, row: TableDataItem) => {
     let str = '';
     if (row.status === 'error') {
-      const { action, message } = row.result || {};
-      str = `${action ? action + ': ' : ''}${message}`;
+      const { steps = [] } = row.result || {};
+      str = steps.reduce((pre: string, cur: TableDataItem, index: number) => {
+        const { action, message } = cur || {};
+        const isLast = index === steps.length - 1;
+        return (pre += `${action ? action + ': ' : ''}${message}${
+          isLast ? '' : '\n'
+        }`);
+      }, '');
     }
     guidance.current?.showModal({
       title: t('node-manager.cloudregion.node.log'),

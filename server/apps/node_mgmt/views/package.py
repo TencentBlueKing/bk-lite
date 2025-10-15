@@ -29,8 +29,6 @@ class PackageMgmtView(
         PackageService.delete_file(obj)
         return super().destroy(request, *args, **kwargs)
 
-        tags=['PackageMgmt']
-    
     def create(self, request, *args, **kwargs):
         uploaded_file = request.FILES.get('file')
         if not uploaded_file:

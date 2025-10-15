@@ -677,18 +677,26 @@ const SmartSearchInput: React.FC<SmartSearchInputProps> = React.memo(
       [value, onChange, parseContext]
     );
 
-    const handlePressEnter = useCallback(() => {
-      setOptions([]);
-      setDropdownOpen(false);
-      onPressEnter?.();
-    }, [onPressEnter]);
+    // 处理键盘事件，确保Enter键总是执行搜索而不是选择选项
+    const handleKeyDown = useCallback(
+      (e: React.KeyboardEvent<HTMLInputElement>) => {
+        if (e.key === 'Enter') {
+          e.preventDefault();
+          e.stopPropagation();
+          setOptions([]);
+          setDropdownOpen(false);
+          onPressEnter?.();
+        }
+      },
+      [onPressEnter]
+    );
 
     // 自定义输入框组件，捕获真实光标位置
     const customInput = useMemo(
       () => (
         <Input
           placeholder={defaultPlaceholder}
-          onPressEnter={handlePressEnter}
+          onKeyDown={handleKeyDown}
           addonAfter={addonAfter}
           disabled={disabled}
           onInput={(e: React.FormEvent<HTMLInputElement>) => {
@@ -710,7 +718,7 @@ const SmartSearchInput: React.FC<SmartSearchInputProps> = React.memo(
           }}
         />
       ),
-      [defaultPlaceholder, handlePressEnter, addonAfter, disabled]
+      [defaultPlaceholder, handleKeyDown, addonAfter, disabled]
     );
 
     return (

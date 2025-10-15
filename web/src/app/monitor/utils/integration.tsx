@@ -1,4 +1,4 @@
-import { TableDataItem } from '@/app/monitor/types/monitor';
+import { TableDataItem } from '@/app/monitor/types';
 
 export const replaceTemplate = (
   template: string,

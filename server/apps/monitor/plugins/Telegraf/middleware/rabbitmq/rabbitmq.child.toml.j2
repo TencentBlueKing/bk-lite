@@ -1,7 +1,7 @@
 [[inputs.rabbitmq]]
     url = "{{ url }}"
     username = "{{ username }}"
-    password = "{{ password }}"
+    password = "${PASSWORD__{{ config_id }}}"
     interval = "{{ interval }}s"
     {% if collect_federation_links is defined and collect_federation_links %}
     collect_federation_links = {{ collect_federation_links | bool | lower }}

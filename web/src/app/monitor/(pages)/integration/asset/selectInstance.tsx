@@ -19,11 +19,11 @@ import {
   ModalConfig,
   Pagination,
   TableDataItem,
+  ObjectItem,
 } from '@/app/monitor/types';
 import { getBaseInstanceColumn } from '@/app/monitor/utils/common';
 import { CloseOutlined } from '@ant-design/icons';
 import { useLocalizedTime } from '@/hooks/useLocalizedTime';
-import { ObjectItem } from '@/app/monitor/types/monitor';
 
 const SelectInstance = forwardRef<ModalRef, ModalConfig>(
   ({ onSuccess, monitorObject, list, objects }, ref) => {

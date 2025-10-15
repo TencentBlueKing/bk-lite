@@ -11,8 +11,7 @@ import { Input, Button, Form, message } from 'antd';
 import OperateModal from '@/components/operate-modal';
 import type { FormInstance } from 'antd';
 import useApiClient from '@/utils/request';
-import { ModalRef } from '@/app/monitor/types';
-import { GroupInfo } from '@/app/monitor/types/monitor';
+import { ModalRef, GroupInfo } from '@/app/monitor/types';
 import { useTranslation } from '@/utils/i18n';
 
 interface GroupModalProps {

@@ -4,7 +4,7 @@ import { useTranslation } from '@/utils/i18n';
 import {
   InstNameConfig,
   IntegrationMonitoredObject,
-} from '@/app/monitor/types/monitor';
+} from '@/app/monitor/types/integration';
 import { TableDataItem } from '@/app/monitor/types';
 import { useElasticSearchFormItems } from '../../common/elasticSearchFormItems';
 import { cloneDeep } from 'lodash';
@@ -123,12 +123,19 @@ export const useElasticSearchTelegraf = () => {
           getDefaultForm: (formData: TableDataItem) => {
             const server =
               formData?.child?.content?.config?.servers?.[0] || null;
+            const configId = (formData?.child?.id || '').toUpperCase();
+            const password =
+              formData?.child?.env_config?.[`PASSWORD__${configId}`];
             return {
               server,
+              ENV_PASSWORD: password,
             };
           },
           getParams: (formData: TableDataItem, configForm: TableDataItem) => {
+            const configId = (configForm.child.id || '').toUpperCase();
             configForm.child.content.config.servers = [formData.server];
+            configForm.child.env_config[`PASSWORD__${configId}`] =
+              formData.ENV_PASSWORD;
             return configForm;
           },
         },

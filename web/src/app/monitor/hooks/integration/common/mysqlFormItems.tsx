@@ -10,10 +10,7 @@ const useMysqlFormItems = () => {
     getCommonFormItems: (disabledFormItems: Record<string, boolean> = {}) => {
       return (
         <>
-          <Form.Item
-            label={t('monitor.integrations.username')}
-            required={true}
-          >
+          <Form.Item label={t('monitor.integrations.username')} required={true}>
             <Form.Item
               noStyle
               name="username"
@@ -33,13 +30,10 @@ const useMysqlFormItems = () => {
               {t('monitor.integrations.usernameDes')}
             </span>
           </Form.Item>
-          <Form.Item
-            label={t('monitor.integrations.password')}
-            required={true}
-          >
+          <Form.Item label={t('monitor.integrations.password')} required={true}>
             <Form.Item
               noStyle
-              name="password"
+              name="ENV_PASSWORD"
               rules={[
                 {
                   required: true,

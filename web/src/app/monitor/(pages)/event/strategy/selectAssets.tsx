@@ -20,6 +20,7 @@ import {
   TabItem,
   Pagination,
   TableDataItem,
+  ObjectItem,
 } from '@/app/monitor/types';
 import { CloseOutlined } from '@ant-design/icons';
 import { useLocalizedTime } from '@/hooks/useLocalizedTime';
@@ -28,7 +29,6 @@ import {
   getBaseInstanceColumn,
   showInstName,
 } from '@/app/monitor/utils/common';
-import { ObjectItem } from '@/app/monitor/types/monitor';
 import { useUserInfoContext } from '@/context/userInfo';
 import EllipsisWithTooltip from '@/components/ellipsis-with-tooltip';
 

@@ -17,21 +17,27 @@ from apps.node_mgmt.utils.token_auth import generate_node_token
 from config.components.nats import NATS_NAMESPACE
 
 
-def _add_step(steps, action, status, message, timestamp=None):
+def _add_step(steps, action, status, message, timestamp=None, details=None):
     """添加执行步骤记录"""
-    steps.append({
+    step = {
         "action": action,
         "status": status,
         "message": message,
         "timestamp": timestamp or datetime.now().isoformat()
-    })
+    }
+    # 添加详细信息，特别是错误详情
+    if details:
+        step["details"] = details
+    steps.append(step)
 
 
-def _update_step_status(steps, status, message):
+def _update_step_status(steps, status, message, details=None):
     """更新最后一个步骤的状态"""
     if steps and steps[-1]["status"] == "running":
         steps[-1]["status"] = status
         steps[-1]["message"] = message
+        if details:
+            steps[-1]["details"] = details
 
 
 def _save_node_result(node_obj, steps, overall_status, final_message):
@@ -45,12 +51,55 @@ def _save_node_result(node_obj, steps, overall_status, final_message):
     node_obj.save()
 
 
-def _handle_step_exception(steps, error_message, timestamp=None):
+def _handle_step_exception(steps, error_message, exception_obj=None, timestamp=None):
     """处理步骤执行异常"""
+    import json
+    import re
+
+    details = {
+        "exception_type": type(exception_obj).__name__ if exception_obj else "Unknown",
+        "error_message": str(exception_obj) if exception_obj else error_message,
+    }
+
+    if exception_obj:
+        error_str = str(exception_obj)
+
+        # 尝试解析Go服务的JSON错误响应
+        json_match = re.search(r'{.*"success".*}', error_str)
+        if json_match:
+            try:
+                go_response = json.loads(json_match.group())
+                if isinstance(go_response, dict) and not go_response.get("success", True):
+                    # 提取Go服务的关键错误信息
+                    if "error" in go_response:
+                        details["service_error"] = go_response["error"]
+                    if "result" in go_response:
+                        details["command_output"] = go_response["result"]
+                    if "instance_id" in go_response:
+                        details["instance_id"] = go_response["instance_id"]
+
+                    # 简单的错误分类
+                    error_text = go_response.get("error", "").lower()
+                    if "exit code" in error_text:
+                        exit_code_match = re.search(r'exit code (\d+)', error_text)
+                        if exit_code_match:
+                            details["exit_code"] = int(exit_code_match.group(1))
+
+                    if "timed out" in error_text:
+                        details["error_type"] = "timeout"
+                    elif "ssh client" in error_text or "connection" in error_text:
+                        details["error_type"] = "connection"
+                    elif "command execution failed" in error_text:
+                        details["error_type"] = "execution"
+
+            except (json.JSONDecodeError, KeyError):
+                pass
+
+    # 更新步骤状态
     if steps and steps[-1]["status"] == "running":
-        _update_step_status(steps, "error", f"Step failed: {error_message}")
+        _update_step_status(steps, "error", f"Step failed: {error_message}", details)
     else:
-        _add_step(steps, "unknown", "error", f"Unexpected error: {error_message}", timestamp)
+        _add_step(steps, "unknown", "error", f"Unexpected error: {error_message}", timestamp, details)
 
 
 @shared_task
@@ -135,7 +184,7 @@ def install_controller(task_id):
             _update_step_status(steps, "success", "Controller installation completed successfully")
 
         except Exception as e:
-            _handle_step_exception(steps, str(e), timestamp)
+            _handle_step_exception(steps, str(e), e, timestamp)
             overall_status = "error"
 
         # 保存结果
@@ -195,7 +244,7 @@ def uninstall_controller(task_id):
             _update_step_status(steps, "success", "Node removed from database successfully")
 
         except Exception as e:
-            _handle_step_exception(steps, str(e), timestamp)
+            _handle_step_exception(steps, str(e), e, timestamp)
             overall_status = "error"
 
         # 保存结果
@@ -255,7 +304,7 @@ def install_collector(task_id):
                 _update_step_status(steps, "success", "Execution permissions set successfully")
 
         except Exception as e:
-            _handle_step_exception(steps, str(e), timestamp)
+            _handle_step_exception(steps, str(e), e, timestamp)
             overall_status = "error"
 
         # 保存结果

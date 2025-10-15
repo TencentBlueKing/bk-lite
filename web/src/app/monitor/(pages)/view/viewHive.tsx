@@ -11,16 +11,16 @@ import useMonitorApi from '@/app/monitor/api';
 import useViewApi from '@/app/monitor/api/view';
 import { useTranslation } from '@/utils/i18n';
 import {
-  MetricItem,
   ViewListProps,
   NodeThresholdColor,
   ChartDataConfig,
-} from '@/app/monitor/types/monitor';
+} from '@/app/monitor/types/view';
 import {
   Pagination,
   TableDataItem,
   HexagonData,
   ModalRef,
+  MetricItem,
 } from '@/app/monitor/types';
 import TimeSelector from '@/components/time-selector';
 import HexGridChart from '@/app/monitor/components/charts/hexgrid';

@@ -24,22 +24,21 @@ import {
   UserItem,
   SegmentedItem,
   TableDataItem,
+  GroupInfo,
+  ObjectItem,
+  MetricItem,
+  IndexViewItem,
+  ThresholdField,
+  FilterItem,
 } from '@/app/monitor/types';
 import GroupTreeSelector from '@/components/group-tree-select';
 import {
-  StrategyFields,
-  SourceFeild,
-  MetricItem,
-  FilterItem,
-  ThresholdField,
   PluginItem,
-  IndexViewItem,
-  GroupInfo,
+  SourceFeild,
+  StrategyFields,
   ChannelItem,
-  ObjectItem,
-} from '@/app/monitor/types/monitor';
+} from '@/app/monitor/types/event';
 import { useCommon } from '@/app/monitor/context/common';
-import { deepClone } from '@/app/monitor/utils/common';
 import { useObjectConfigInfo } from '@/app/monitor/hooks/integration/common/getObjectConfig';
 import strategyStyle from '../index.module.scss';
 import { PlusOutlined, ArrowLeftOutlined } from '@ant-design/icons';
@@ -52,6 +51,7 @@ import { useLevelList } from '@/app/monitor/hooks';
 import { SCHEDULE_UNIT_MAP } from '@/app/monitor/constants/event';
 import ThresholdList from './thresholdList';
 import ConditionSelector from './conditionSelector';
+import { cloneDeep } from 'lodash';
 const { Option } = Select;
 const defaultGroup = ['instance_id'];
 const { TextArea } = Input;
@@ -272,7 +272,7 @@ const StrategyOperation = () => {
   };
 
   const feedbackThreshold = (data: TableDataItem) => {
-    const _threshold = deepClone(threshold);
+    const _threshold = cloneDeep(threshold);
     _threshold.forEach((item: ThresholdField) => {
       const target = data.find(
         (tex: TableDataItem) => tex.level === item.level
@@ -370,7 +370,7 @@ const StrategyOperation = () => {
       const getMetrics = getMonitorMetrics(params);
       Promise.all([getGroupList, getMetrics])
         .then((res) => {
-          const metricData = deepClone(res[1] || []);
+          const metricData = cloneDeep(res[1] || []);
           setMetrics(res[1] || []);
           const groupData = res[0].map((item: GroupInfo) => ({
             ...item,
@@ -459,7 +459,7 @@ const StrategyOperation = () => {
 
   const createStrategy = () => {
     form?.validateFields().then((values) => {
-      const params = deepClone(values);
+      const params = cloneDeep(values);
       const target: any = pluginList.find(
         (item) => item.value === params.collect_type
       );

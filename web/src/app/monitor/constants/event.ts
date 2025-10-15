@@ -1,5 +1,5 @@
 import { ListItem } from '@/types';
-import { UnitMap } from '@/app/monitor/types/monitor';
+import { UnitMap } from '@/app/monitor/types/event';
 
 const COMPARISON_METHOD: ListItem[] = [
   { label: '>', value: '>' },
