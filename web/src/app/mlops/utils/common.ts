@@ -1,6 +1,8 @@
-import { MetricItem, ListItem, ColumnItem, UserProfile } from "@/app/mlops/types";
+import { MetricItem, ListItem, UserProfile } from "@/app/mlops/types";
 import { useLocalizedTime } from "@/hooks/useLocalizedTime";
 import dayjs from "dayjs";
+import JSZip from 'jszip';
+import { saveAs } from 'file-saver';
 
 // 判断一个字符串是否是字符串的数组
 export const isStringArray = (input: string): boolean => {
@@ -97,15 +99,14 @@ export const calculateMetrics = (data: any[], key = 'value1') => {
 };
 
 // 导出文件为csv
-export const exportToCSV = (data: any[], columns: ColumnItem[]) => {
+export const exportToCSV = (data: any[], columns: string[]) => {
   // 1. 生成表头
-  const headers = columns.map(col => col.dataIndex).join(',');
-  console.log(headers)
+  const headers = columns.join(',');
   // 2. 生成数据行
   const rows = data.map(row =>
     columns.map(col => {
-      let value = row[col.dataIndex] || 0;
-      if (col.dataIndex === 'timestamp' && value) {
+      let value = row[col] || 0;
+      if (col === 'timestamp' && value) {
         // 支持秒或毫秒时间戳
         value = dayjs(
           typeof value === 'number'
@@ -135,4 +136,29 @@ export const getName = (targetID: string, data: UserProfile[] | null) => {
     return name || '--';
   }
   return '--';
+};
+
+// 训练数据集压缩包下载
+export const exportTrainFileToZip = async (
+  files: Array<{ data: any, columns: string[], filename: string }>,
+  zipFilename: string = 'export.zip'
+) => {
+  const zip = new JSZip();
+
+  files.forEach(({ data, columns, filename }) => {
+    if (filename.endsWith('.csv')) {
+      const csvBlob = exportToCSV(data, columns);
+      zip.file(filename, csvBlob)
+    } else if (filename.endsWith('.json')) {
+      const jsonBlob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+      zip.file(filename, jsonBlob);
+    } else if (filename.endsWith('.txt')) {
+      const _data = data?.join('\n') || '';
+      const txtBlob = new Blob([_data], { type: 'text/plain' });
+      zip.file(filename, txtBlob);
+    }
+  });
+
+  const zipBlob = await zip.generateAsync({ type: 'blob' });
+  saveAs(zipBlob, zipFilename)
 };

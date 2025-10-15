@@ -158,6 +158,7 @@ export const useAnomalyForm = ({ datasetOptions, activeTag, onSuccess, formRef }
   const onTrainSelectChange = async (value: number) => {
     if (!value) return;
     try {
+      if(key !== 'classification') return;
       setLoadingState(prev => ({...prev, transfer: true}));
       const { metadata } = await getDatasetByTrainId(value, key);
       if (key === 'classification' && metadata.headers) {

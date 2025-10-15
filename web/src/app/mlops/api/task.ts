@@ -246,7 +246,20 @@ const useMlopsTaskApi = () => {
     return await del(`/mlops/classification_train_jobs/${id}/`);
   };
 
+  // 获取训练所用的数据集数据
+  const getTrainTaskFile = async (id: string, tap: string) => {
+    const TRAINJOB_MAP: Record<string, string> = {
+      'anomaly': 'anomaly_detection_train_jobs',
+      'classification': 'classification_train_jobs',
+      'timeseries_predict': 'timeseries_predict_train_jobs',
+      'log_clustering': 'log_clustering_train_jobs',
+      'rasa': 'rasa_pipelines'
+    }
+    return await get(`/mlops/${TRAINJOB_MAP[tap]}/${id}/get_file`);
+  };
+
   return {
+    getTrainTaskFile,
     getAnomalyTaskList,
     getOneAnomalyTask,
     getTrainTaskState,
