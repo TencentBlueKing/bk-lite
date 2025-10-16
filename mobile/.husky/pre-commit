@@ -1,0 +1,5 @@
+#!/bin/sh
+cd "$(dirname "$0")/.." || exit 1  # Change to mobile directory
+
+# Run lint and type-check
+pnpm lint && pnpm type-check

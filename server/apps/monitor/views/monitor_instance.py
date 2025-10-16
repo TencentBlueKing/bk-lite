@@ -4,7 +4,7 @@ from rest_framework.decorators import action
 from apps.core.exceptions.base_app_exception import BaseAppException
 from apps.core.utils.permission_utils import get_permission_rules, permission_filter
 from apps.core.utils.web_utils import WebUtils
-from apps.monitor.constants import INSTANCE_MODULE, DEFAULT_PERMISSION
+from apps.monitor.constants.permission import PermissionConstants
 from apps.monitor.models import MonitorInstance, MonitorObject, CollectConfig, MonitorObjectOrganizationRule
 from apps.monitor.services.monitor_instance import InstanceSearch
 from apps.monitor.services.monitor_object import MonitorObjectService
@@ -24,7 +24,7 @@ class MonitorInstanceVieSet(viewsets.ViewSet):
             request.user,
             request.COOKIES.get("current_team"),
             "monitor",
-            f"{INSTANCE_MODULE}.{monitor_object_id}",
+            f"{PermissionConstants.INSTANCE_MODULE}.{monitor_object_id}",
         )
         qs = permission_filter(MonitorInstance, permission, team_key="monitorinstanceorganization__organization__in", id_key="id__in")
         page, page_size = request.GET.get("page", 1), request.GET.get("page_size", 10)
@@ -42,7 +42,7 @@ class MonitorInstanceVieSet(viewsets.ViewSet):
             if instance_info["instance_id"] in inst_permission_map:
                 instance_info["permission"] = inst_permission_map[instance_info["instance_id"]]
             else:
-                instance_info["permission"] = DEFAULT_PERMISSION
+                instance_info["permission"] = PermissionConstants.DEFAULT_PERMISSION
 
         return WebUtils.response_success(data)
 
@@ -57,7 +57,7 @@ class MonitorInstanceVieSet(viewsets.ViewSet):
             request.user,
             request.COOKIES.get("current_team"),
             "monitor",
-            f"{INSTANCE_MODULE}.{monitor_object_id}",
+            f"{PermissionConstants.INSTANCE_MODULE}.{monitor_object_id}",
         )
         qs = permission_filter(MonitorInstance, permission, team_key="monitorinstanceorganization__organization__in", id_key="id__in")
 
@@ -73,7 +73,7 @@ class MonitorInstanceVieSet(viewsets.ViewSet):
             if instance_info["instance_id"] in inst_permission_map:
                 instance_info["permission"] = inst_permission_map[instance_info["instance_id"]]
             else:
-                instance_info["permission"] = DEFAULT_PERMISSION
+                instance_info["permission"] = PermissionConstants.DEFAULT_PERMISSION
         return WebUtils.response_success(data)
 
     @action(methods=['post'], detail=False, url_path='(?P<monitor_object_id>[^/.]+)/generate_instance_id')

@@ -1,0 +1,269 @@
+Host:
+  CPU: CPU
+  System: System
+  Disk IO: Disk IO
+  DISK: Disk
+  Process: Process
+  MEMORY: Memory
+  Net: Net
+Website:
+  HTTP: HTTP
+Ping:
+  Ping: Ping
+Cluster:
+  Counts: Counts
+  Utilization: Utilization
+Pod:
+  Status: Status
+  CPU: CPU
+  Memory: Memory
+  Disk: Disk
+  Network: Network
+Node:
+  Status: Status
+  CPU: CPU
+  Memory: Memory
+  Disk: Disk
+  Net: Net
+  Load: Load
+Switch:
+  Base: Base
+  Status: Status
+  Bandwidth: Bandwidth
+  Packet Error: Packet Error
+  Packet Loss: Packet Loss
+  Packet: Packet
+  Traffic: Traffic
+Router:
+  Base: Base
+  Status: Status
+  Bandwidth: Bandwidth
+  Packet Error: Packet Error
+  Packet Loss: Packet Loss
+  Packet: Packet
+  Traffic: Traffic
+Loadbalance:
+  Base: Base
+  Status: Status
+  Bandwidth: Bandwidth
+  Packet Error: Packet Error
+  Packet Loss: Packet Loss
+  Packet: Packet
+  Traffic: Traffic
+Firewall:
+  Base: Base
+  Status: Status
+  Bandwidth: Bandwidth
+  Packet Error: Packet Error
+  Packet Loss: Packet Loss
+  Packet: Packet
+  Traffic: Traffic
+Detection Device:
+  Base: Base
+  Status: Status
+  Bandwidth: Bandwidth
+  Packet Error: Packet Error
+  Packet Loss: Packet Loss
+  Packet: Packet
+  Traffic: Traffic
+Bastion Host:
+  Base: Base
+  Status: Status
+  Bandwidth: Bandwidth
+  Packet Error: Packet Error
+  Packet Loss: Packet Loss
+  Packet: Packet
+  Traffic: Traffic
+Scanning Device:
+  Base: Base
+  Status: Status
+  Bandwidth: Bandwidth
+  Packet Error: Packet Error
+  Packet Loss: Packet Loss
+  Packet: Packet
+  Traffic: Traffic
+Storage:
+  Base: Base
+  Status: Status
+  Bandwidth: Bandwidth
+  Packet Error: Packet Error
+  Packet Loss: Packet Loss
+  Packet: Packet
+  Traffic: Traffic
+  Power: Power
+  Environment: Environment
+Hardware Server:
+  Base: Base
+  Status: Status
+  Bandwidth: Bandwidth
+  Packet Error: Packet Error
+  Packet Loss: Packet Loss
+  Packet: Packet
+  Traffic: Traffic
+  Power: Power
+  Environment: Environment
+SNMP Trap: {}
+Zookeeper:
+  Uptime: Uptime
+  Performance: Performance
+  Connection: Connection
+  Znode: Znode
+  Traffic: Traffic
+Apache:
+  Uptime: Uptime
+  Work: Work
+  Request: Request
+  CPU: CPU
+  Duration: Duration
+ClickHouse:
+  Uptime: Uptime
+  Memory: Memory
+  Disk: Disk
+  Query: Query
+  Part: Part
+  Load: Load
+RabbitMQ:
+  Exchange: Exchange
+  Node: Node
+  Message: Message
+ActiveMQ:
+  Topic: Topic
+Nginx:
+  Request: Request
+  Connection: Connection
+  Efficiency: Efficiency
+Tomcat:
+  Request: Request
+  Net: Net
+  Threads: Threads
+  Error: Error
+  JMX : "JMX "
+Consul:
+  Check: Check
+ElasticSearch:
+  Disk: Disk
+  HTTP: HTTP
+  IO: IO
+  Indices: Indices
+  Cache: Cache
+  Circuit Breakers: Circuit Breakers
+MongoDB:
+  Active Operations: Active Operations
+  Commands: Commands
+  Connections: Connections
+  Latency: Latency
+  Memory: Memory
+  Traffic: Traffic
+  Storage: Storage
+Mysql:
+  Connection: Connection
+  Error: Error
+  Cache: Cache
+  Traffic: Traffic
+  Command: Command
+  Session: Session
+Postgres:
+  Performance: Performance
+  Cache: Cache
+  Memory: Memory
+  Transaction: Transaction
+  Session: Session
+Redis:
+  Performance: Performance
+  Cache: Cache
+  Memory: Memory
+  Clients: Clients
+  CPU: CPU
+  Replication: Replication
+  Disk: Disk
+  Connectivity: Connectivity
+Docker:
+  Docker Count: Docker Count
+Docker Container:
+  Memory: Memory
+  CPU: CPU
+  Net: Net
+  Status: Status
+  IO: IO
+vCenter:
+  Quantity: Quantity
+ESXI:
+  Memory: Memory
+  CPU: CPU
+  Disk: Disk
+  Network: Network
+DataStorage:
+  Default: Default
+VM:
+  Memory: Memory
+  CPU: CPU
+  Disk: Disk
+  Network: Network
+  Power: Power
+JVM:
+  JMXselfMonitor: JMX Self-Monitoring Information
+  Memory: Memory
+  Thread: Thread
+  OS: Operating System
+  BufferPool: Buffer Pool
+  GC: Garbage Collection
+  MemoryPool: Memory Pool
+ActiveMQ-JMX:
+  Connection: Connection
+  Memory: Memory
+  Queue: Queue
+  Message: Message
+  Producer: Producer
+  Consumer: Consumer
+  Other: Other
+  JvmMemory: JVM Memory
+  JMXselfMonitor: JMX Self-Monitoring Information
+Jetty-JMX:
+  Queuedthreadpool: Queued Thread Pool
+  JvmMemory: JVM Memory
+  Httpconfiguration: HTTP Configuration
+  Bufferpool: Buffer Pool
+  Serverconnector: Server Connector
+  Managedselector: Managed Selector
+  Reservedthread: Reserved Thread
+  JMXselfMonitor: JMX Self-Monitoring Information
+Tomcat-JMX:
+  GlobalRequestProcessor: Global Request Processing
+  Threadpool: Thread Pool
+  Session: Session
+  JMXselfMonitor: JMX Self-Monitoring Information
+WebLogic-JMX:
+  Threadpool: Thread Pool
+  Application: Application
+  WorkManager: Work Manager
+  JMS: Messaging Service
+  PersistentStore: Persistent Storage
+  JMXselfMonitor: JMX Self-Monitoring Information
+TCP: {}
+CVM:
+  CPU: CPU
+  Memory: Memory
+  Disk: Disk
+  Network: Network
+Oracle-Exporter:
+  Base: Base
+  Activity: Activity
+  Wait: Wait
+  SGA: SGA
+  PGA: PGA
+  Tablespace: Tablespace
+  RAC: RAC
+  Process: Process
+  selfMonitor: selfMonitor
+Minio:
+  Audit: Audit
+  ClusterCapacity: Cluster Capacity
+  ClusterDrive: Cluster Drive
+  ClusterHealth: Cluster Health
+  S3Request: S3 Request
+  BucketUsage: Bucket Usage
+  BucketRequests: Bucket Requests
+  DriveResource: Drive Resource
+  NetworkInterface: Network Interface
+  CPU: CPU
+

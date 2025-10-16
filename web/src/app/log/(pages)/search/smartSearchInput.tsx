@@ -19,7 +19,7 @@ interface FieldValueItem {
 }
 
 export interface SmartSearchInputProps {
-  value?: string;
+  defaultValue?: string;
   onChange?: (value: string) => void;
   onPressEnter?: () => void;
   placeholder?: string;
@@ -32,7 +32,7 @@ export interface SmartSearchInputProps {
 
 const SmartSearchInput: React.FC<SmartSearchInputProps> = React.memo(
   ({
-    value = '',
+    defaultValue = '',
     onChange,
     onPressEnter,
     placeholder,
@@ -46,6 +46,7 @@ const SmartSearchInput: React.FC<SmartSearchInputProps> = React.memo(
     const [options, setOptions] = useState<DefaultOptionType[]>([]);
     const [loading, setLoading] = useState(false);
     const [dropdownOpen, setDropdownOpen] = useState(false);
+    const [innerValue, setInnerValue] = useState<string>(defaultValue);
 
     // 设置默认的 placeholder
     const defaultPlaceholder =
@@ -64,9 +65,17 @@ const SmartSearchInput: React.FC<SmartSearchInputProps> = React.memo(
 
     // 添加防护标志，防止循环更新
     const isUpdatingRef = useRef(false);
-    const lastValueRef = useRef(value);
+    const lastValueRef = useRef(defaultValue);
     const lastRequestKeyRef = useRef<string>('');
     const lastContextRef = useRef<any>(null);
+
+    // 监听 defaultValue 变化，同步更新 innerValue
+    useEffect(() => {
+      if (defaultValue !== lastValueRef.current) {
+        setInnerValue(defaultValue);
+        lastValueRef.current = defaultValue;
+      }
+    }, [defaultValue]);
 
     // 使用 API hook
     const { getFieldValues } = useIntegrationApi();
@@ -355,13 +364,6 @@ const SmartSearchInput: React.FC<SmartSearchInputProps> = React.memo(
       []
     );
 
-    // 同步外部 value 变化
-    useEffect(() => {
-      if (!isUpdatingRef.current && value !== lastValueRef.current) {
-        lastValueRef.current = value;
-      }
-    }, [value]);
-
     // 清理防抖函数
     useEffect(() => {
       return () => {
@@ -475,6 +477,7 @@ const SmartSearchInput: React.FC<SmartSearchInputProps> = React.memo(
     // 统一的输入处理函数 - 重新设计逻辑
     const handleInputChange = useCallback(
       (newValue: string) => {
+        setInnerValue(newValue);
         isUpdatingRef.current = true;
         lastValueRef.current = newValue;
 
@@ -566,16 +569,12 @@ const SmartSearchInput: React.FC<SmartSearchInputProps> = React.memo(
                 setDropdownOpen(true);
                 debouncedGetFieldValues.current(currentContext.fieldName);
               } else {
-                console.log(
-                  'Already requested and empty, not requesting again'
-                );
                 // 已请求过且为空
                 setOptions([]);
                 setDropdownOpen(false);
               }
             }
           } else {
-            console.log('Other case, clearing options');
             // 其他情况
             setOptions([]);
             setDropdownOpen(false);
@@ -604,14 +603,14 @@ const SmartSearchInput: React.FC<SmartSearchInputProps> = React.memo(
       (selectedValue: string, option: DefaultOptionType) => {
         try {
           // 使用真实的光标位置解析上下文
-          const context = parseContext(value, realCursorPosRef.current);
+          const context = parseContext(innerValue, realCursorPosRef.current);
 
-          let newValue = value;
+          let newValue = innerValue;
 
           if (option.type === 'field') {
             // 选择字段名，替换当前字段并自动添加冒号
-            const beforeSelection = value.slice(0, context.startPos);
-            const afterSelection = value.slice(context.endPos);
+            const beforeSelection = innerValue.slice(0, context.startPos);
+            const afterSelection = innerValue.slice(context.endPos);
 
             // 检查是否需要添加冒号：如果替换后的位置紧跟着冒号，则不添加
             const needsColon = !afterSelection.startsWith(':');
@@ -620,6 +619,7 @@ const SmartSearchInput: React.FC<SmartSearchInputProps> = React.memo(
             newValue = `${beforeSelection}${selectedValue}${colonSuffix}${afterSelection}`;
 
             // 更新值
+            setInnerValue(newValue);
             lastValueRef.current = newValue;
             onChange?.(newValue);
 
@@ -659,10 +659,11 @@ const SmartSearchInput: React.FC<SmartSearchInputProps> = React.memo(
             });
           } else if (option.type === 'value') {
             // 选择字段值，只替换当前字段的值部分
-            const beforeSelection = value.slice(0, context.startPos);
-            const afterSelection = value.slice(context.endPos);
+            const beforeSelection = innerValue.slice(0, context.startPos);
+            const afterSelection = innerValue.slice(context.endPos);
             newValue = `${beforeSelection}${selectedValue}${afterSelection}`;
 
+            setInnerValue(newValue);
             lastValueRef.current = newValue;
             onChange?.(newValue);
             setOptions([]);
@@ -674,7 +675,7 @@ const SmartSearchInput: React.FC<SmartSearchInputProps> = React.memo(
           }, 0);
         }
       },
-      [value, onChange, parseContext]
+      [innerValue, onChange, parseContext]
     );
 
     // 处理键盘事件，确保Enter键总是执行搜索而不是选择选项
@@ -724,7 +725,7 @@ const SmartSearchInput: React.FC<SmartSearchInputProps> = React.memo(
     return (
       <AutoComplete
         className={className}
-        value={value}
+        value={innerValue}
         options={options}
         onSelect={handleSelect}
         onChange={handleInputChange} // 只使用一个统一的处理函数
@@ -737,19 +738,6 @@ const SmartSearchInput: React.FC<SmartSearchInputProps> = React.memo(
       >
         {customInput}
       </AutoComplete>
-    );
-  },
-  (prevProps, nextProps) => {
-    // 自定义比较函数，避免不必要的重新渲染
-    return (
-      prevProps.value === nextProps.value &&
-      prevProps.placeholder === nextProps.placeholder &&
-      prevProps.className === nextProps.className &&
-      prevProps.disabled === nextProps.disabled &&
-      prevProps.onChange === nextProps.onChange &&
-      prevProps.onPressEnter === nextProps.onPressEnter &&
-      prevProps.getTimeRange === nextProps.getTimeRange &&
-      JSON.stringify(prevProps.fields) === JSON.stringify(nextProps.fields)
     );
   }
 );
