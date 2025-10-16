@@ -1,0 +1,384 @@
+{
+  "plugin": "JVM",
+  "plugin_desc": "The JMX-JVM collection plugin is a tool used for gathering Java Virtual Machine (JVM) performance data, including memory usage, garbage collection, thread counts, and CPU usage. It helps monitor the health and performance of Java applications.",
+  "name": "JVM",
+  "type": "Other",
+  "description": "",
+  "default_metric": "any({instance_type='jvm'}) by (instance_id)",
+  "instance_id_keys": ["instance_id"],
+  "supplementary_indicators": [],
+  "metrics": [
+    {
+      "metric_group": "JMXselfMonitor",
+      "name": "jmx_scrape_duration_seconds_gauge",
+      "display_name": "JMX Scrape Duration",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "s",
+      "dimensions": [
+        {
+          "name": "type",
+          "description": "Type of JMX data collection"
+        }
+      ],
+      "description": "The duration of the most recent JMX monitoring data collection, measured in seconds, is used to evaluate the performance of data collection.",
+      "query": "jmx_scrape_duration_seconds_gauge{instance_type=\"jvm\",__$labels__}"
+    },
+    {
+      "metric_group": "JMXselfMonitor",
+      "name": "jmx_scrape_error_gauge",
+      "display_name": "JMX Scrape Error",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Enum",
+      "unit": "[{\"name\":\"采集正常\",\"id\":0,\"color\":\"#1ac44a\"},{\"name\":\"采集报错\",\"id\":1,\"color\":\"#ff4d4f\"}]",
+      "dimensions": [
+        {
+          "name": "type",
+          "description": "Type of JMX data collection"
+        }
+      ],
+      "description": "Indicates whether there is a failure during the JMX scraping process. A non-zero value indicates a failure",
+      "query": "jmx_scrape_error_gauge{instance_type=\"jvm\",__$labels__}"
+    },
+    {
+      "metric_group": "Memory",
+      "name": "jvm_memory_usage_init_value",
+      "display_name": "JVM Memory Init",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "MiB",
+      "dimensions": [
+        {
+          "name": "type",
+          "description": "Type of JMX data collection"
+        }
+      ],
+      "description": "The size of memory initialized and allocated when the Java Virtual Machine starts, reflecting the initial memory configuration",
+      "query": "jvm_memory_usage_init_value{__$labels__} / (1024 * 1024)"
+    },
+    {
+      "metric_group": "Memory",
+      "name": "jvm_memory_usage_committed_value",
+      "display_name": "JVM Memory Committed",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "MiB",
+      "dimensions": [
+        {
+          "name": "type",
+          "description": "Type of JMX data collection"
+        }
+      ],
+      "description": "The current size of memory committed for use by the Java Virtual Machine, which can be used to assess memory resource occupancy",
+      "query": "jvm_memory_usage_committed_value{__$labels__} / (1024 * 1024)"
+    },
+    {
+      "metric_group": "Memory",
+      "name": "jvm_memory_usage_used_value",
+      "display_name": "JVM Memory Used",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "MiB",
+      "dimensions": [
+        {
+          "name": "type",
+          "description": "Type of JMX data collection"
+        }
+      ],
+      "description": "The current actual amount of memory used by the Java Virtual Machine, directly reflecting the memory usage",
+      "query": "jvm_memory_usage_used_value{__$labels__} / (1024 * 1024)"
+    },
+    {
+      "metric_group": "Memory",
+      "name": "jvm_memory_usage_max_value",
+      "display_name": "JVM Memory Usage Max",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "MiB",
+      "dimensions": [
+        {
+          "name": "type",
+          "description": "Type of JMX data collection"
+        }
+      ],
+      "description": "The maximum amount of memory used by the Java Virtual Machine during operation, which can be used to detect memory pressure and leaks",
+      "query": "jvm_memory_usage_max_value{__$labels__} / (1024 * 1024)"
+    },
+    {
+      "metric_group": "Thread",
+      "name": "jvm_threads_total_started_count_value",
+      "display_name": "JVM Total Threads Started/sec",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "short",
+      "dimensions": [],
+      "description": "The total number of threads created and started by the Java Virtual Machine since startup, showing the scale of thread creation",
+      "query": "jvm_threads_total_started_count_value{__$labels__}"
+    },
+    {
+      "metric_group": "Thread",
+      "name": "jvm_threads_daemon_count_value",
+      "display_name": "JVM Daemon Threads",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "short",
+      "dimensions": [],
+      "description": "The current number of active daemon threads in the Java Virtual Machine. Daemon threads are used to serve other threads",
+      "query": "jvm_threads_daemon_count_value{__$labels__}"
+    },
+    {
+      "metric_group": "Thread",
+      "name": "jvm_threads_peak_count_value",
+      "display_name": "JVM Peak Threads",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "short",
+      "dimensions": [],
+      "description": "The peak number of threads during the operation of the Java Virtual Machine, which can assist in analyzing peak thread resource usage",
+      "query": "jvm_threads_peak_count_value{__$labels__}"
+    },
+    {
+      "metric_group": "Thread",
+      "name": "jvm_threads_count_value",
+      "display_name": "JVM Current Threads Count",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "short",
+      "dimensions": [],
+      "description": "The current number of running threads in the Java Virtual Machine, real-time reflecting thread activity",
+      "query": "jvm_threads_count_value{__$labels__}"
+    },
+    {
+      "metric_group": "Thread",
+      "name": "jvm_threads_current_user_time_value",
+      "display_name": "JVM Thread User Time",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "ms",
+      "dimensions": [],
+      "description": "The CPU time spent by the current threads in the Java Virtual Machine executing user code, used to analyze thread performance",
+      "query": "jvm_threads_current_user_time_value{__$labels__} / 1000 / 1000"
+    },
+    {
+      "metric_group": "OS",
+      "name": "jvm_os_memory_physical_free_value",
+      "display_name": "Free Physical Memory",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "MiB",
+      "dimensions": [],
+      "description": "The current available size of physical memory in the system, reflecting the remaining memory resources",
+      "query": "jvm_os_memory_physical_free_value{__$labels__} / (1024 * 1024)"
+    },
+    {
+      "metric_group": "OS",
+      "name": "jvm_os_memory_physical_total_value",
+      "display_name": "Total Physical Memory",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "MiB",
+      "dimensions": [],
+      "description": "The total capacity of physical memory in the system, which is a fixed parameter of the hardware configuration",
+      "query": "sum(jvm_os_memory_physical_total_value{__$labels__}) by (instance_id) / (1024 * 1024)"
+    },
+    {
+      "metric_group": "OS",
+      "name": "jvm_os_memory_swap_free_value",
+      "display_name": "Free Swap Space",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "MiB",
+      "dimensions": [],
+      "description": "The current available size of swap space in the system, used to temporarily store data when physical memory is insufficient",
+      "query": "jvm_os_memory_swap_free_value{__$labels__} / (1024 * 1024)"
+    },
+    {
+      "metric_group": "OS",
+      "name": "jvm_os_memory_swap_total_value",
+      "display_name": "Total Swap Space",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "MiB",
+      "dimensions": [],
+      "description": "The total capacity of swap space in the system, determining the upper limit of expandable virtual memory",
+      "query": "sum(jvm_os_memory_swap_total_value{__$labels__}) by (instance_id) / (1024 * 1024)"
+    },
+    {
+      "metric_group": "OS",
+      "name": "jvm_os_memory_committed_virtual_value",
+      "display_name": "Committed Virtual Memory",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "MiB",
+      "dimensions": [],
+      "description": "The size of virtual memory committed for use by the Java Virtual Machine, reflecting the occupancy of virtual memory resources",
+      "query": "jvm_os_memory_committed_virtual_value{__$labels__} / (1024 * 1024)"
+    },
+    {
+      "metric_group": "OS",
+      "name": "jvm_os_available_processors_value",
+      "display_name": "Available Processors",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "short",
+      "dimensions": [],
+      "description": "The current number of processor cores available for executing threads in the system, affecting the program's parallel processing ability",
+      "query": "jvm_os_available_processors_value{__$labels__}"
+    },
+    {
+      "metric_group": "OS",
+      "name": "jvm_os_processcputime_seconds_value",
+      "display_name": "JVM Process CPU Time",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "s",
+      "dimensions": [],
+      "description": "The total cumulative CPU time consumed by the JVM process since startup, used to measure process resource occupancy",
+      "query": "jvm_os_processcputime_seconds_value{__$labels__}"
+    },
+    {
+      "metric_group": "BufferPool",
+      "name": "jvm_bufferpool_count_value",
+      "display_name": "BufferPool Count",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "short",
+      "dimensions": [
+        {
+          "name": "type",
+          "description": "Type of JMX data collection"
+        }
+      ],
+      "description": "The number of buffer objects in the BufferPool of Java NIO, used to monitor the scale of the resource pool",
+      "query": "jvm_bufferpool_count_value{__$labels__}"
+    },
+    {
+      "metric_group": "BufferPool",
+      "name": "jvm_bufferpool_memoryused_value",
+      "display_name": "BufferPool Memory Used",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "MiB",
+      "dimensions": [
+        {
+          "name": "type",
+          "description": "Type of JMX data collection"
+        }
+      ],
+      "description": "The current size of memory used by the BufferPool in Java NIO, reflecting the usage of the resource pool",
+      "query": "sum(jvm_bufferpool_memoryused_value{__$labels__}) by (instance_id,type) / (1024 * 1024)"
+    },
+    {
+      "metric_group": "BufferPool",
+      "name": "jvm_bufferpool_totalcapacity_value",
+      "display_name": "BufferPool Total Capacity",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "MiB",
+      "dimensions": [
+        {
+          "name": "type",
+          "description": "Type of JMX data collection"
+        }
+      ],
+      "description": "The total memory capacity of the BufferPool in Java NIO, showing the maximum carrying capacity of the resource pool",
+      "query": "sum(jvm_bufferpool_totalcapacity_value{__$labels__}) by (instance_id,type) / (1024 * 1024)"
+    },
+    {
+      "metric_group": "GC",
+      "name": "jvm_gc_collectiontime_seconds_value",
+      "display_name": "GC Collection Time",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "s",
+      "dimensions": [
+        {
+          "name": "type",
+          "description": "Type of JMX data collection"
+        }
+      ],
+      "description": "The total cumulative time consumed by garbage collection operations in the Java Virtual Machine, used to evaluate GC performance",
+      "query": "sum(jvm_gc_collectiontime_seconds_value{__$labels__}) by (instance_id,type) / 1000"
+    },
+    {
+      "metric_group": "GC",
+      "name": "jvm_gc_collectioncount_value",
+      "display_name": "GC Collection Count",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "short",
+      "dimensions": [
+        {
+          "name": "type",
+          "description": "Type of JMX data collection"
+        }
+      ],
+      "description": "The cumulative number of garbage collection operations in the Java Virtual Machine, reflecting the frequency of GC activities",
+      "query": "sum(jvm_gc_collectioncount_value{__$labels__}) by (instance_id,type)"
+    },
+    {
+      "metric_group": "MemoryPool",
+      "name": "jvm_memorypool_usage_init_value",
+      "display_name": "MemoryPool Init Usage",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "MiB",
+      "dimensions": [
+        {
+          "name": "type",
+          "description": "Type of JMX data collection"
+        }
+      ],
+      "description": "The initialized memory usage of the memory pool in the Java Virtual Machine, reflecting the initial state of the memory pool",
+      "query": "sum(jvm_memorypool_usage_init_value{__$labels__}) by (instance_id,type) / (1024 * 1024)"
+    },
+    {
+      "metric_group": "MemoryPool",
+      "name": "jvm_memorypool_usage_committed_value",
+      "display_name": "MemoryPool Committed",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "MiB",
+      "dimensions": [
+        {
+          "name": "type",
+          "description": "Type of JMX data collection"
+        }
+      ],
+      "description": "The current committed memory usage of the memory pool in the Java Virtual Machine, showing the occupancy of memory pool resources",
+      "query": "sum(jvm_memorypool_usage_committed_value{__$labels__}) by (instance_id,type) / (1024 * 1024)"
+    },
+    {
+      "metric_group": "MemoryPool",
+      "name": "jvm_memorypool_usage_used_value",
+      "display_name": "MemoryPool Used",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "MiB",
+      "dimensions": [
+        {
+          "name": "type",
+          "description": "Type of JMX data collection"
+        }
+      ],
+      "description": "The current actual memory usage of the memory pool in the Java Virtual Machine, directly reflecting the usage level of the memory pool",
+      "query": "sum(jvm_memorypool_usage_used_value{__$labels__}) by (instance_id,type) / (1024 * 1024)"
+    },
+    {
+      "metric_group": "MemoryPool",
+      "name": "jvm_memorypool_usage_max_value",
+      "display_name": "MemoryPool Max Usage",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "MiB",
+      "dimensions": [
+        {
+          "name": "type",
+          "description": "Type of JMX data collection"
+        }
+      ],
+      "description": "The maximum memory usage ever reached by the memory pool during the operation of the Java Virtual Machine, which can detect memory pool pressure",
+      "query": "max(jvm_memorypool_usage_max_value{__$labels__}) by (instance_id,type) / (1024 * 1024)"
+    }
+  ]
+}

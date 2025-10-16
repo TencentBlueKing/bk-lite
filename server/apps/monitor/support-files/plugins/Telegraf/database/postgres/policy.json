@@ -1,0 +1,150 @@
+{
+  "object": "Postgres",
+  "plugin": "Postgres",
+  "templates": [
+    {
+      "name": "缓存命中率下降",
+      "alert_name": "PostgreSQL 实例 ${metric_instance_id} 缓存效率低",
+      "description": "监控数据块缓存命中率，低命中率会导致大量物理IO。需优化shared_buffers配置或检查查询模式。",
+      "metric_name": "postgresql_blks_hit_ratio",
+      "algorithm": "min",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 85,
+          "method": "<="
+        },
+        {
+          "level": "error",
+          "value": 90,
+          "method": "<="
+        },
+        {
+          "level": "warning",
+          "value": 95,
+          "method": "<="
+        }
+      ]
+    },
+    {
+      "name": "磁盘写入延迟",
+      "alert_name": "PostgreSQL 实例 ${metric_instance_id} 写入性能下降",
+      "description": "检测块写入耗时，高延迟表明磁盘IO瓶颈。需检查存储性能或WAL配置。",
+      "metric_name": "postgresql_blk_write_time",
+      "algorithm": "max",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 500,
+          "method": ">="
+        },
+        {
+          "level": "error",
+          "value": 300,
+          "method": ">="
+        },
+        {
+          "level": "warning",
+          "value": 100,
+          "method": ">="
+        }
+      ]
+    },
+    {
+      "name": "检查点频繁触发",
+      "alert_name": "PostgreSQL 实例 ${metric_instance_id} 检查点过频",
+      "description": "监控检查点缓冲区写入数速率，频繁检查点影响性能。需调整checkpoint_segments/wal配置。",
+      "metric_name": "postgresql_buffers_checkpoint",
+      "algorithm": "max",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 1000,
+          "method": ">="
+        },
+        {
+          "level": "error",
+          "value": 500,
+          "method": ">="
+        },
+        {
+          "level": "warning",
+          "value": 200,
+          "method": ">="
+        }
+      ]
+    },
+    {
+      "name": "连接异常终止",
+      "alert_name": "PostgreSQL 实例 ${metric_instance_id} 连接异常",
+      "description": "检测被终止会话频率，突增可能表明应用连接泄漏。",
+      "metric_name": "postgresql_sessions_killed",
+      "algorithm": "max",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 10,
+          "method": ">="
+        },
+        {
+          "level": "error",
+          "value": 5,
+          "method": ">="
+        },
+        {
+          "level": "warning",
+          "value": 1,
+          "method": ">="
+        }
+      ]
+    },
+    {
+      "name": "物理读过高",
+      "alert_name": "PostgreSQL 实例 ${metric_instance_id} 物理 IO 压力",
+      "description": "检测块缓存命中率，反映缓存的有效性",
+      "metric_name": "postgresql_blks_read",
+      "algorithm": "max",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 85,
+          "method": "<"
+        },
+        {
+          "level": "error",
+          "value": 95,
+          "method": "<"
+        },
+        {
+          "level": "warning",
+          "value": 99,
+          "method": "<"
+        }
+      ]
+    },
+    {
+      "name": "事务执行时间异常",
+      "alert_name": "PostgreSQL 实例 ${metric_instance_id} 长事务堆积",
+      "description": "检测活跃事务累计执行时间，长事务会阻塞vacuum和DDL操作。",
+      "metric_name": "postgresql_active_time",
+      "algorithm": "max",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 3600,
+          "method": ">="
+        },
+        {
+          "level": "error",
+          "value": 1800,
+          "method": ">="
+        },
+        {
+          "level": "warning",
+          "value": 540,
+          "method": ">="
+        }
+      ]
+    }
+  ]
+}

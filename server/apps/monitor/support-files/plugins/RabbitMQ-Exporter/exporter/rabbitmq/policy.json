@@ -1,0 +1,130 @@
+{
+  "object": "RabbitMQ",
+  "plugin": "RabbitMQ-Exporter",
+  "templates": [
+    {
+      "name": "服务存活状态",
+      "alert_name": "RabbitMQ节点 ${metric_instance_id} 服务中断",
+      "description": "监测RabbitMQ服务基础可用性，服务中断将导致消息不可用。需检查服务日志和端口状态。",
+      "metric_name": "rabbitmq_up",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 1,
+          "method": "!="
+        }
+      ]
+    },
+    {
+      "name": "节点运行时间",
+      "alert_name": "RabbitMQ节点 ${metric_instance_id} 异常重启",
+      "description": "监控节点持续运行时间，短时间重启可能表明崩溃。需检查OOM或心跳超时。",
+      "metric_name": "rabbitmq_uptime",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 60,
+          "method": "<="
+        }
+      ]
+    },
+    {
+      "name": "消息积压告警",
+      "alert_name": "RabbitMQ集群 ${metric_instance_id} 消费延迟",
+      "description": "监控就绪消息总数，持续积压表明消费者处理能力不足。",
+      "metric_name": "rabbitmq_queue_messages_ready_global",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 100000,
+          "method": ">="
+        },
+        {
+          "level": "error",
+          "value": 50000,
+          "method": ">="
+        },
+        {
+          "level": "warning",
+          "value": 10000,
+          "method": ">="
+        }
+      ]
+    },
+    {
+      "name": "磁盘空间告警",
+      "alert_name": "RabbitMQ节点 ${metric_instance_id} 存储将满",
+      "description": "检测剩余磁盘空间，写满会导致持久化消息失败。需清理队列数据。",
+      "metric_name": "rabbitmq_node_disk_free",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 5,
+          "method": "<="
+        },
+        {
+          "level": "error",
+          "value": 10,
+          "method": "<="
+        },
+        {
+          "level": "warning",
+          "value": 20,
+          "method": "<="
+        }
+      ]
+    },
+    {
+      "name": "队列状态异常",
+      "alert_name": "RabbitMQ队列 ${metric_instance_id} 同步延迟",
+      "description": "检测队列进程内存使用，异常值可能表明消息堆积或泄漏。",
+      "metric_name": "rabbitmq_memory_queue_procs_bytes",
+      "algorithm": "max",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 1,
+          "method": ">="
+        },
+        {
+          "level": "error",
+          "value": 0.5,
+          "method": ">="
+        },
+        {
+          "level": "warning",
+          "value": 0.1,
+          "method": ">="
+        }
+      ]
+    },
+    {
+      "name": "通道数过载",
+      "alert_name": "RabbitMQ节点 ${metric_instance_id} 通道泄漏",
+      "description": "监控当前通道数量，过多会消耗系统资源。需检查客户端连接管理。",
+      "metric_name": "rabbitmq_channels",
+      "algorithm": "max",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 10000,
+          "method": ">="
+        },
+        {
+          "level": "error",
+          "value": 5000,
+          "method": ">="
+        },
+        {
+          "level": "warning",
+          "value": 1000,
+          "method": ">="
+        }
+      ]
+    }
+  ]
+}

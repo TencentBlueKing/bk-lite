@@ -111,6 +111,7 @@ const SearchTable: React.FC<SearchTableProps> = ({
               label: key,
               value,
             }))
+            .filter((item) => item.label !== 'id')
             .map((item: TableDataItem, index: number) => (
               <li className="flex items-start mt-[10px]" key={index}>
                 <div className="flex items-center min-w-[250px] w-[250px] mr-[10px]">

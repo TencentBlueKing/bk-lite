@@ -1,0 +1,164 @@
+{
+  "object": "MSSQL",
+  "plugin": "MSSQL-Exporter",
+  "templates": [
+    {
+      "name": "实例存活状态",
+      "alert_name": "Mssql 实例 ${metric_instance_id} 宕机",
+      "description": "监测Mssql服务存活状态，实例宕机将导致所有数据库操作中断。需立即检查Mssql服务状态和错误日志。",
+      "metric_name": "up",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 0,
+          "method": "<="
+        }
+      ]
+    },
+    {
+      "name": "阻塞进程堆积",
+      "alert_name": "Mssql 实例 ${metric_instance_id} 进程阻塞",
+      "description": "检测当前被阻塞的进程数，阻塞链过长会导致系统停滞。需分析锁争用情况。",
+      "metric_name": "mssql_processes_blocked",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 10,
+          "method": ">="
+        },
+        {
+          "level": "error",
+          "value": 5,
+          "method": ">="
+        },
+        {
+          "level": "warning",
+          "value": 2,
+          "method": ">="
+        }
+      ]
+    },
+    {
+      "name": "缓存命中率低",
+      "alert_name": "Mssql 实例 ${metric_instance_id} 缓存失效",
+      "description": "监控缓冲池缓存命中率，低命中率会导致物理IO增加。需优化内存配置。",
+      "metric_name": "mssql_buffer_cache_hit_ratio",
+      "algorithm": "min",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 85,
+          "method": "<="
+        },
+        {
+          "level": "error",
+          "value": 90,
+          "method": "<="
+        },
+        {
+          "level": "warning",
+          "value": 95,
+          "method": "<="
+        }
+      ]
+    },
+    {
+      "name": "数据库文件空间",
+      "alert_name": "Mssql 数据库 ${metric_instance_id} 空间不足",
+      "description": "检测数据库文件使用率，空间耗尽会导致写入失败。需及时扩容或清理数据。",
+      "metric_name": "mssql_db_file_used_ratio",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 90,
+          "method": ">="
+        },
+        {
+          "level": "error",
+          "value": 80,
+          "method": ">="
+        },
+        {
+          "level": "warning",
+          "value": 70,
+          "method": ">="
+        }
+      ]
+    },
+    {
+      "name": "死锁频繁发生",
+      "alert_name": "Mssql 实例 ${metric_instance_id} 死锁异常",
+      "description": "监控死锁数量，频繁死锁表明事务设计问题。需检查应用锁获取顺序。",
+      "metric_name": "mssql_deadlocks",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 5,
+          "method": ">="
+        },
+        {
+          "level": "error",
+          "value": 2,
+          "method": ">="
+        },
+        {
+          "level": "warning",
+          "value": 1,
+          "method": ">="
+        }
+      ]
+    },
+    {
+      "name": "日志增长异常",
+      "alert_name": "Mssql 数据库 ${metric_instance_id} 日志暴涨",
+      "description": "检测事务日志增长数，异常增长可能表明长事务或未提交事务。",
+      "metric_name": "mssql_log_growths",
+      "algorithm": "max",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 5,
+          "method": ">="
+        },
+        {
+          "level": "error",
+          "value": 3,
+          "method": ">="
+        },
+        {
+          "level": "warning",
+          "value": 1,
+          "method": ">="
+        }
+      ]
+    },
+    {
+      "name": "备份延迟告警",
+      "alert_name": "Mssql 数据库 ${metric_instance_id} 备份滞后",
+      "description": "监控上次备份距今时间，延迟过长会增加数据丢失风险。需检查备份作业状态。",
+      "metric_name": "mssql_last_backup_duration",
+      "algorithm": "max",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 24,
+          "method": ">="
+        },
+        {
+          "level": "error",
+          "value": 12,
+          "method": ">="
+        },
+        {
+          "level": "warning",
+          "value": 6,
+          "method": ">="
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,140 @@
+{
+  "object": "Jetty",
+  "plugin": "Jetty-JMX",
+  "templates": [
+    {
+      "name": "Jetty 线程池利用率过高",
+      "alert_name": "Jetty ${metric_instance_id} 线程池过载",
+      "description": "监控线程池利用率，持续过高会导致请求排队，需调整线程池配置或优化任务处理逻辑。",
+      "metric_name": "jetty_queuedthreadpool_utilizationrate_value",
+      "algorithm": "avg",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 90,
+          "method": ">="
+        },
+        {
+          "level": "error",
+          "value": 80,
+          "method": ">="
+        },
+        {
+          "level": "warning",
+          "value": 70,
+          "method": ">="
+        }
+      ]
+    },
+    {
+      "name": "Jetty Selector 选择次数突增",
+      "alert_name": "Jetty ${metric_instance_id} Selector 负载过高",
+      "description": "监控 Selector 每秒选择次数，突增表明网络事件处理压力大。",
+      "metric_name": "jetty_managedselector_selectcount_increase",
+      "algorithm": "max",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 1000,
+          "method": ">="
+        },
+        {
+          "level": "error",
+          "value": 500,
+          "method": ">="
+        },
+        {
+          "level": "warning",
+          "value": 200,
+          "method": ">="
+        }
+      ]
+    },
+    {
+      "name": "Jetty 空闲连接超时风险",
+      "alert_name": "Jetty ${metric_instance_id} 连接空闲时间不足",
+      "description": "检测连接空闲超时时间，过短可能导致频繁重建连接。",
+      "metric_name": "jetty_serverconnector_idletimeout_value",
+      "algorithm": "min",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 10,
+          "method": "<="
+        },
+        {
+          "level": "error",
+          "value": 30,
+          "method": "<="
+        },
+        {
+          "level": "warning",
+          "value": 60,
+          "method": "<="
+        }
+      ]
+    },
+    {
+      "name": "Jetty 输出缓冲区不足",
+      "alert_name": "Jetty ${metric_instance_id} 输出缓冲区紧张",
+      "description": "监控输出缓冲区大小，过小可能影响大响应传输性能。",
+      "metric_name": "jetty_httpconfiguration_outputbuffersize_value",
+      "algorithm": "min",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 32,
+          "method": "<="
+        },
+        {
+          "level": "error",
+          "value": 64,
+          "method": "<="
+        },
+        {
+          "level": "warning",
+          "value": 128,
+          "method": "<="
+        }
+      ]
+    },
+    {
+      "name": "Jetty 空闲线程不足",
+      "alert_name": "Jetty ${metric_instance_id} 线程池恢复能力差",
+      "description": "检测可用空闲线程数，过少可能导致突发流量无法处理。",
+      "metric_name": "jetty_reservedthreadexecutor_available_value",
+      "algorithm": "min",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 5,
+          "method": "<="
+        },
+        {
+          "level": "error",
+          "value": 10,
+          "method": "<="
+        },
+        {
+          "level": "warning",
+          "value": 20,
+          "method": "<="
+        }
+      ]
+    },
+    {
+      "name": "Jetty JMX 监控采集失败",
+      "alert_name": "Jetty ${metric_instance_id} 监控数据异常",
+      "description": "监控 JMX 采集状态，失败需检查网络或防火墙配置。",
+      "metric_name": "jmx_scrape_error_gauge",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 0,
+          "method": "!="
+        }
+      ]
+    }
+  ]
+}

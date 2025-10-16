@@ -1,0 +1,364 @@
+{
+  "plugin": "WebLogic-JMX",
+  "plugin_desc": "This plugin uses JMX to collect WebLogic's key metrics, including thread pools, connection pools, memory, EJB, Servlet, JMS performance, and Web service response times. It enables real-time monitoring, performance optimization, and risk early warning to ensure system stability.",
+  "name": "WebLogic",
+  "icon": "weblogic",
+  "type": "Middleware",
+  "description": "",
+  "default_metric": "any({instance_type='weblogic'}) by (instance_id)",
+  "instance_id_keys": ["instance_id"],
+  "supplementary_indicators": [],
+  "metrics": [
+  {
+    "metric_group": "Threadpool",
+    "name": "weblogic_threadpool_throughput_value",
+    "display_name": "Thread Pool Throughput",
+    "instance_id_keys": ["instance_id"],
+    "data_type": "Number",
+    "unit": "reqps",
+    "dimensions": [
+      {
+        "name": "name",
+        "description": "Thread pool name, such as 'DefaultWorkManager'."
+      },
+      {
+          "name": "runtime",
+          "description": "Runtime environment, such as 'Production' or 'Development'."
+      }
+    ],
+    "description": "The number of requests processed per second by the thread pool, reflecting processing capacity. A higher value indicates stronger request processing capability. A significant drop in throughput may indicate performance bottlenecks or insufficient resources in the thread pool.",
+    "query": "weblogic_threadpool_throughput_value{__$labels__}"
+  },
+  {
+    "metric_group": "Threadpool",
+    "name": "weblogic_threadpool_pending_user_request_count_value",
+    "display_name": "Pending User Requests",
+    "instance_id_keys": ["instance_id"],
+    "data_type": "Number",
+    "unit": "short",
+    "dimensions": [
+      {
+        "name": "name",
+        "description": "Thread pool name, such as 'DefaultWorkManager'."
+      },
+      {
+          "name": "runtime",
+          "description": "Runtime environment, such as 'Production' or 'Development'."
+      }
+    ],
+    "description": "The length of the user request queue waiting to be processed by the thread pool. Continuous growth may lead to response delays. If this metric keeps increasing, it indicates that the thread pool cannot process requests as fast as they arrive, which may degrade user experience.",
+    "query": "weblogic_threadpool_pending_user_request_count_value{__$labels__}"
+  },
+  {
+    "metric_group": "Threadpool",
+    "name": "weblogic_threadpool_queue_length_value",
+    "display_name": "Thread Pool Queue Length",
+    "instance_id_keys": ["instance_id"],
+    "data_type": "Number",
+    "unit": "short",
+    "dimensions": [
+      {
+        "name": "name",
+        "description": "Thread pool name, such as 'DefaultWorkManager'."
+      },
+      {
+          "name": "runtime",
+          "description": "Runtime environment, such as 'Production' or 'Development'."
+      }
+    ],
+    "description": "The number of tasks in the thread pool request queue, reflecting request backlog. A long queue length means many requests are waiting to be processed, which may require increasing thread pool resources or optimizing request processing logic.",
+    "query": "weblogic_threadpool_queue_length_value{__$labels__}"
+  },
+  {
+    "metric_group": "Threadpool",
+    "name": "weblogic_threadpool_stuck_thread_count_value",
+    "display_name": "Stuck Thread Count",
+    "instance_id_keys": ["instance_id"],
+    "data_type": "Number",
+    "unit": "short",
+    "dimensions": [
+      {
+        "name": "name",
+        "description": "Thread pool name, such as 'DefaultWorkManager'."
+      },
+      {
+          "name": "runtime",
+          "description": "Runtime environment, such as 'Production' or 'Development'."
+      }
+    ],
+    "description": "The number of threads that have been running for a long time without completing, possibly indicating deadlocks or slow queries. When this metric is greater than 0, it is necessary to investigate whether there are code logic issues or database query performance problems.",
+    "query": "weblogic_threadpool_stuck_thread_count_value{__$labels__}"
+  },
+  {
+    "metric_group": "Threadpool",
+    "name": "weblogic_threadpool_load_ratio",
+    "display_name": "Thread Pool Load Ratio",
+    "instance_id_keys": ["instance_id"],
+    "data_type": "Number",
+    "unit": "percent",
+    "dimensions": [
+      {
+        "name": "name",
+        "description": "Thread pool name, such as 'DefaultWorkManager'."
+      },
+      {
+          "name": "runtime",
+          "description": "Runtime environment, such as 'Production' or 'Development'."
+      }
+    ],
+    "description": "Evaluate the load pressure of the thread pool. A value greater than 1 indicates that the request exceeds the processing capacity, and a value of 80% should trigger a severe warning. This metric helps determine whether the thread pool is overloaded, so that measures can be taken in time to prevent system crashes.",
+    "query": "(weblogic_threadpool_pending_user_request_count_value{__$labels__} + weblogic_threadpool_queue_length_value{__$labels__}) / (weblogic_threadpool_execute_thread_total_count_value{__$labels__} - weblogic_threadpool_execute_thread_idle_count_value{__$labels__}) *100"
+  },
+  {
+    "metric_group": "Threadpool",
+    "name": "weblogic_threadpool_average_utilization",
+    "display_name": "Thread Pool Average Utilization",
+    "instance_id_keys": ["instance_id"],
+    "data_type": "Number",
+    "unit": "percent",
+    "dimensions": [
+      {
+        "name": "name",
+        "description": "Thread pool name, such as 'DefaultWorkManager'."
+      },
+      {
+          "name": "runtime",
+          "description": "Runtime environment, such as 'Production' or 'Development'."
+      }
+    ],
+    "description": "Reflect the average utilization rate of the thread pool over a period of time. High utilization may lead to thread pool overload, while low utilization may indicate resource waste. It is generally recommended to maintain it between 60% and 80%.",
+    "query": "100 - (avg_over_time(weblogic_threadpool_execute_thread_idle_count_value{__$labels__}[5m]) / avg_over_time(weblogic_threadpool_execute_thread_total_count_value{__$labels__}[5m]) * 100)"
+  },
+  {
+    "metric_group": "Application",
+    "name": "weblogic_application_healthstatejmx_is_critical_value",
+    "display_name": "Application Health Critical State",
+    "instance_id_keys": ["instance_id"],
+    "data_type": "Enum",
+    "unit": "[{\"name\":\"健康\",\"id\":0,\"color\":\"#1ac44a\"},{\"name\":\"异常\",\"id\":1,\"color\":\"#ff4d4f\"}]",
+    "dimensions": [
+      {
+        "name": "name",
+        "description": "Thread pool name, such as 'DefaultWorkManager'."
+      },
+      {
+          "name": "runtime",
+          "description": "Runtime environment, such as 'Production' or 'Development'."
+      }
+    ],
+    "description": "Flag indicating whether the application is in a critical abnormal state, directly reflecting business availability. When this metric is 1, it indicates that the application has a serious problem that needs to be investigated and repaired immediately.",
+    "query": "weblogic_application_healthstatejmx_is_critical_value{__$labels__}"
+  },
+  {
+    "metric_group": "Application",
+    "name": "weblogic_application_overallhealthstatejmx_is_critical_value",
+    "display_name": "Application Overall Health Critical State",
+    "instance_id_keys": ["instance_id"],
+    "data_type": "Enum",
+    "unit": "[{\"name\":\"健康\",\"id\":0,\"color\":\"#1ac44a\"},{\"name\":\"异常\",\"id\":1,\"color\":\"#ff4d4f\"}]",
+    "dimensions": [
+      {
+        "name": "name",
+        "description": "Thread pool name, such as 'DefaultWorkManager'."
+      },
+      {
+          "name": "runtime",
+          "description": "Runtime environment, such as 'Production' or 'Development'."
+      }
+    ],
+    "description": "Flag indicating whether the overall health state of the application, evaluated based on multiple metrics, is critically abnormal. When this metric is 1, it indicates that the overall health of the application is poor, which may affect the normal operation of the business.",
+    "query": "weblogic_application_overallhealthstatejmx_is_critical_value{__$labels__}"
+  },
+  {
+    "metric_group": "WorkManager",
+    "name": "weblogic_workmanager_stuck_thread_count_value",
+    "display_name": "Global WorkManager Stuck Threads",
+    "instance_id_keys": ["instance_id"],
+    "data_type": "Number",
+    "unit": "short",
+    "dimensions": [
+      {
+        "name": "name",
+        "description": "Thread pool name, such as 'DefaultWorkManager'."
+      },
+      {
+          "name": "runtime",
+          "description": "Runtime environment, such as 'Production' or 'Development'."
+      }
+    ],
+    "description": "The number of stuck threads in the global work manager, used for system-level thread issue troubleshooting. When this metric is greater than 0, it is necessary to check whether there are thread blocking or resource contention issues in the system.",
+    "query": "weblogic_workmanager_stuck_thread_count_value{__$labels__}"
+  },
+  {
+    "metric_group": "WorkManager",
+    "name": "weblogic_workmanager_pending_requests_value",
+    "display_name": "Global WorkManager Pending Requests",
+    "instance_id_keys": ["instance_id"],
+    "data_type": "Number",
+    "unit": "short",
+    "dimensions": [
+      {
+        "name": "name",
+        "description": "Thread pool name, such as 'DefaultWorkManager'."
+      },
+      {
+          "name": "runtime",
+          "description": "Runtime environment, such as 'Production' or 'Development'."
+      }
+    ],
+    "description": "The number of requests waiting to be processed in the global work manager. If this metric keeps increasing, it may affect the system's response speed.",
+    "query": "weblogic_workmanager_pending_requests_value{__$labels__}"
+  },
+  {
+    "metric_group": "JMS",
+    "name": "weblogic_jms_jmsservers_current_count_value",
+    "display_name": "JMS Servers Current Count",
+    "instance_id_keys": ["instance_id"],
+    "data_type": "Number",
+    "unit": "short",
+    "dimensions": [
+      {
+        "name": "name",
+        "description": "Thread pool name, such as 'DefaultWorkManager'."
+      },
+      {
+          "name": "runtime",
+          "description": "Runtime environment, such as 'Production' or 'Development'."
+      }
+    ],
+    "description": "The current number of running JMS server instances. Changes in the number may affect the performance and reliability of message delivery.",
+    "query": "weblogic_jms_jmsservers_current_count_value{__$labels__}"
+  },
+  {
+    "metric_group": "JMS",
+    "name": "weblogic_jms_connections_high_count_value",
+    "display_name": "JMS Connections High Watermark",
+    "instance_id_keys": ["instance_id"],
+    "data_type": "Number",
+    "unit": "short",
+    "dimensions": [
+      {
+        "name": "name",
+        "description": "Thread pool name, such as 'DefaultWorkManager'."
+      },
+      {
+          "name": "runtime",
+          "description": "Runtime environment, such as 'Production' or 'Development'."
+      }
+    ],
+    "description": "The historical highest record of JMS connections, used to evaluate the rationality of connection pool configuration. If the current number of connections is close to the peak value, it may be necessary to adjust the size of the connection pool.",
+    "query": "weblogic_jms_connections_high_count_value{__$labels__}"
+  },
+  {
+    "metric_group": "JMS",
+    "name": "weblogic_jms_connections_current_count_value",
+    "display_name": "JMS Current Connections",
+    "instance_id_keys": ["instance_id"],
+    "data_type": "Number",
+    "unit": "short",
+    "dimensions": [
+      {
+        "name": "name",
+        "description": "Thread pool name, such as 'DefaultWorkManager'."
+      },
+      {
+          "name": "runtime",
+          "description": "Runtime environment, such as 'Production' or 'Development'."
+      }
+    ],
+    "description": "The current number of established JMS connections. Too many connections may lead to resource tension, while too few may affect the efficiency of message delivery.",
+    "query": "weblogic_jms_connections_current_count_value{__$labels__}"
+  },
+  {
+    "metric_group": "PersistentStore",
+    "name": "weblogic_persistentstore_object_count_value",
+    "display_name": "Persistent Store Object Count",
+    "instance_id_keys": ["instance_id"],
+    "data_type": "Number",
+    "unit": "short",
+    "dimensions": [
+      {
+        "name": "name",
+        "description": "Thread pool name, such as 'DefaultWorkManager'."
+      },
+      {
+          "name": "runtime",
+          "description": "Runtime environment, such as 'Production' or 'Development'."
+      }
+    ],
+    "description": "The current number of objects (such as messages, transaction logs) stored in the persistent store. Too many objects may lead to insufficient storage space, which requires regular cleanup.",
+    "query": "weblogic_persistentstore_object_count_value{__$labels__}"
+  },
+  {
+    "metric_group": "PersistentStore",
+    "name": "weblogic_persistentstore_physical_write_count_value",
+    "display_name": "Persistent Store Physical Rate",
+    "instance_id_keys": ["instance_id"],
+    "data_type": "Number",
+    "unit": "wps",
+    "dimensions": [
+      {
+        "name": "name",
+        "description": "Thread pool name, such as 'DefaultWorkManager'."
+      },
+      {
+          "name": "runtime",
+          "description": "Runtime environment, such as 'Production' or 'Development'."
+      }
+    ],
+    "description": "Indicates the number of physical writes per second in the persistent store, reflecting write load. A high write frequency may lead to a decline in storage performance.",
+    "query": "rate(weblogic_persistentstore_physical_write_count_value{__$labels__}[5m])"
+  },
+  {
+    "metric_group": "PersistentStore",
+    "name": "weblogic_persistentstore_read_count_value",
+    "display_name": "Persistent Store Reads",
+    "instance_id_keys": ["instance_id"],
+    "data_type": "Number",
+    "unit": "short",
+    "dimensions": [
+      {
+        "name": "name",
+        "description": "Thread pool name, such as 'DefaultWorkManager'."
+      },
+      {
+          "name": "runtime",
+          "description": "Runtime environment, such as 'Production' or 'Development'."
+      }
+    ],
+    "description": "The number of read operations performed by the persistent store, reflecting read load. Frequent read operations may affect storage performance, and it is necessary to optimize read strategies.",
+    "query": "weblogic_persistentstore_read_count_value{__$labels__}"
+  },
+  {
+    "metric_group": "PersistentStore",
+    "name": "weblogic_persistentstore_total_io_rate_value",
+    "display_name": "Persistent Store Total I/O Rate",
+    "instance_id_keys": ["instance_id"],
+    "data_type": "Number",
+    "unit": "iops",
+    "dimensions": [
+      {
+        "name": "name",
+        "description": "Thread pool name, such as 'DefaultWorkManager'."
+      },
+      {
+          "name": "runtime",
+          "description": "Runtime environment, such as 'Production' or 'Development'."
+      }
+    ],
+    "description": "Indicates the total number of I/O operations per second in the persistent store, including reads and writes. A high I/O frequency may lead to storage performance bottlenecks, and it is necessary to pay attention to the performance metrics of the storage system.",
+    "query": "rate(weblogic_persistentstore_physical_write_count_value{__$labels__}[5m]) + rate(weblogic_persistentstore_read_count_value{__$labels__}[5m])"
+  },
+  {
+    "metric_group": "JMXselfMonitor",
+    "name": "jmx_scrape_error_gauge",
+    "display_name": "JMX Scrape Error",
+    "instance_id_keys": ["instance_id"],
+    "data_type": "Enum",
+    "unit": "[{\"name\":\"成功\",\"id\":0,\"color\":\"#1ac44a\"},{\"name\":\"失败\",\"id\":1,\"color\":\"#ff4d4f\"}]",
+    "dimensions": [],
+    "description": "JMX scrape status: 0 for success, 1 for failure.",
+    "query": "jmx_scrape_error_gauge{instance_type=\"weblogic\",__$labels__}"
+  }
+]
+}

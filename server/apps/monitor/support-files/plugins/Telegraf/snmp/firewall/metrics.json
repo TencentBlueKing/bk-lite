@@ -1,0 +1,222 @@
+{
+  "plugin": "Firewall SNMP General",
+  "plugin_desc": "The SNMP general plugin is used to monitor and manage the status of devices through SNMP. Administrators can obtain key information about the device, such as interface traffic, error statistics, and status information, thereby optimizing network performance and improving management efficiency.",
+  "name": "Firewall",
+  "icon": "Firewall",
+  "type": "Network Device",
+  "description": "",
+  "default_metric": "any({instance_type='firewall'}) by (instance_id)",
+  "instance_id_keys": ["instance_id"],
+  "supplementary_indicators": ["sysUpTime", "iftotalInOctets", "iftotalOutOctets"],
+  "metrics": [
+    {
+      "metric_group": "Base",
+      "name": "sysUpTime",
+      "query": "sum(snmp_uptime{instance_type=\"firewall\",__$labels__}) by (instance_id) / 6000 / 60 / 24",
+      "display_name": "System Uptime",
+      "data_type": "Number",
+      "unit": "d",
+      "dimensions": [],
+      "instance_id_keys": ["instance_id"],
+      "description": "This metric indicates the uptime of the device since the last restart, measured in days. By monitoring the uptime, network administrators can understand the stability and reliability of the device and identify potential reboot or failure issues."
+    },
+    {
+      "metric_group": "Status",
+      "name": "ifAdminStatus",
+      "query": "interface_ifAdminStatus{instance_type=\"firewall\",__$labels__}",
+      "display_name": "Interface Admin Status",
+      "data_type": "Enum",
+      "unit": "[{\"name\":\"up\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"down\",\"id\":2,\"color\":\"#ff4d4f\"},{\"name\":\"testing\",\"id\":3,\"color\":\"#faad14\"}]",
+      "dimensions": [
+        {
+          "name": "ifDescr",
+          "description": "ifDescr"
+        }
+      ],
+      "instance_id_keys": ["instance_id"],
+      "description": "This metric indicates the administrative status of the network switch interface. It serves to indicate whether the interface is enabled (up) or disabled (down) by an administrator, along with other states such as testing or not present. This information is vital for network management and troubleshooting."
+    },
+    {
+      "metric_group": "Status",
+      "name": "ifOperStatus",
+      "query": "interface_ifOperStatus{instance_type=\"firewall\",__$labels__}",
+      "display_name": "Interface Oper Status",
+      "data_type": "Enum",
+      "unit": "[{\"name\":\"up\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"down\",\"id\":2,\"color\":\"#ff4d4f\"},{\"name\":\"testing\",\"id\":3,\"color\":\"#faad14\"}]",
+      "dimensions": [
+        {
+          "name": "ifDescr",
+          "description": "ifDescr"
+        }
+      ],
+      "instance_id_keys": ["instance_id"],
+      "description": "This metric reflects the actual operational status of the network switch interface, indicating whether the interface is operational. Unlike the administrative status, the operational status shows whether the interface can successfully receive and send traffic, which is crucial for monitoring network health."
+    },
+    {
+      "metric_group": "Bandwidth",
+      "name": "ifHighSpeed",
+      "query": "interface_ifSpeed{instance_type=\"firewall\",__$labels__}/1000000",
+      "display_name": "Interface Bandwidth",
+      "data_type": "Number",
+      "unit": "decmbytes",
+      "dimensions": [
+        {
+          "name": "ifDescr",
+          "description": "ifDescr"
+        }
+      ],
+      "instance_id_keys": ["instance_id"],
+      "description": "This metric indicates the maximum data transmission speed supported by the network interface, usually measured in KB per second. Understanding the maximum speed of the interface helps administrators optimize traffic and utilize network resources effectively."
+    },
+    {
+      "metric_group": "Packet Error",
+      "name": "ifInErrors",
+      "query": "rate(interface_ifInErrors{instance_type=\"firewall\",__$labels__}[5m])",
+      "display_name": "Incoming Errors Rate (per second)",
+      "data_type": "Number",
+      "unit": "pps",
+      "dimensions": [
+        {
+          "name": "ifDescr",
+          "description": "ifDescr"
+        }
+      ],
+      "instance_id_keys": ["instance_id"],
+      "description": "This metric calculates the average rate of incoming error packets over the past 5 minutes, measured in packets per second. Monitoring incoming errors allows administrators to detect potential issues, such as physical connection faults or configuration errors, in a timely manner."
+    },
+    {
+      "metric_group": "Packet Error",
+      "name": "ifOutErrors",
+      "query": "rate(interface_ifOutErrors{instance_type=\"firewall\",__$labels__}[5m])",
+      "display_name": "Outgoing Errors Rate (per second)",
+      "data_type": "Number",
+      "unit": "pps",
+      "dimensions": [
+        {
+          "name": "ifDescr",
+          "description": "ifDescr"
+        }
+      ],
+      "instance_id_keys": ["instance_id"],
+      "description": "This metric calculates the average rate of outgoing error packets over the past 5 minutes, measured in packets per second. Monitoring outgoing errors is essential for identifying transmission issues and ensuring data integrity."
+    },
+    {
+      "metric_group": "Packet Loss",
+      "name": "ifInDiscards",
+      "query": "rate(interface_ifInDiscards{instance_type=\"firewall\",__$labels__}[5m])",
+      "display_name": "Incoming Discards Rate (per second)",
+      "data_type": "Number",
+      "unit": "pps",
+      "dimensions": [
+        {
+          "name": "ifDescr",
+          "description": "ifDescr"
+        }
+      ],
+      "instance_id_keys": ["instance_id"],
+      "description": "This metric represents the average rate of incoming discarded packets over the past 5 minutes, measured in packets per second. Packet discards may indicate network congestion or resource shortages, and monitoring this metric can help administrators optimize network performance."
+    },
+    {
+      "metric_group": "Packet Loss",
+      "name": "ifOutDiscards",
+      "query": "rate(interface_ifOutDiscards{instance_type=\"firewall\",__$labels__}[5m])",
+      "display_name": "Outgoing Discards Rate (per second)",
+      "data_type": "Number",
+      "unit": "pps",
+      "dimensions": [
+        {
+          "name": "ifDescr",
+          "description": "ifDescr"
+        }
+      ],
+      "instance_id_keys": ["instance_id"],
+      "description": "This metric calculates the average rate of outgoing discarded packets over the past 5 minutes, measured in packets per second. Monitoring outgoing discards can help identify network transmission issues and misconfigurations."
+    },
+    {
+      "metric_group": "Packet",
+      "name": "ifInUcastPkts",
+      "query": "rate(interface_ifInUcastPkts{instance_type=\"firewall\",__$labels__}[5m])",
+      "display_name": "Incoming Unicast Packets Rate (per second)",
+      "data_type": "Number",
+      "unit": "pps",
+      "dimensions": [
+        {
+          "name": "ifDescr",
+          "description": "ifDescr"
+        }
+      ],
+      "instance_id_keys": ["instance_id"],
+      "description": "This metric indicates the average rate of incoming unicast packets over the past 5 minutes, measured in packets per second. Monitoring unicast packets is crucial for assessing interface utilization and traffic load."
+    },
+    {
+      "metric_group": "Packet",
+      "name": "ifOutUcastPkts",
+      "query": "rate(interface_ifOutUcastPkts{instance_type=\"firewall\",__$labels__}[5m])",
+      "display_name": "Outgoing Unicast Packets Rate (per second)",
+      "data_type": "Number",
+      "unit": "pps",
+      "dimensions": [
+        {
+          "name": "ifDescr",
+          "description": "ifDescr"
+        }
+      ],
+      "instance_id_keys": ["instance_id"],
+      "description": "This metric calculates the average rate of outgoing unicast packets over the past 5 minutes, measured in packets per second. By monitoring the number of unicast packets, administrators can assess the transmission performance of the interface and the usage of traffic."
+    },
+    {
+      "metric_group": "Traffic",
+      "name": "ifInOctets",
+      "query": "rate(interface_ifInOctets{instance_type=\"firewall\",__$labels__}[5m]) / 1024/1024",
+      "display_name": "Interface Incoming Traffic Rate (per second)",
+      "data_type": "Number",
+      "unit": "MBs",
+      "dimensions": [
+        {
+          "name": "ifDescr",
+          "description": "ifDescr"
+        }
+      ],
+      "instance_id_keys": ["instance_id"],
+      "description": "This metric indicates the average rate of bytes received over the past 5 minutes, converted to megabytes (MB). Monitoring byte traffic helps evaluate the load on the interface and bandwidth usage."
+    },
+    {
+      "metric_group": "Traffic",
+      "name": "ifOutOctets",
+      "query": "rate(interface_ifInOctets{instance_type=\"firewall\",__$labels__}[5m]) / 1024/1024",
+      "display_name": "Interface Outgoing Traffic Rate (per second)",
+      "data_type": "Number",
+      "unit": "MBs",
+      "dimensions": [
+        {
+          "name": "ifDescr",
+          "description": "ifDescr"
+        }
+      ],
+      "instance_id_keys": ["instance_id"],
+      "description": "This metric calculates the average rate of bytes sent over the past 5 minutes, measured in megabytes (MB). Monitoring outgoing traffic is crucial for ensuring data transmission quality and optimizing network performance."
+    },
+    {
+      "metric_group": "Traffic",
+      "name": "iftotalInOctets",
+      "query": "sum(rate(interface_ifInOctets{instance_type=\"firewall\",__$labels__}[5m]) / 1024 / 1024)by (instance_id)",
+      "display_name": "Device Total Incoming Traffic (per second)",
+      "data_type": "Number",
+      "unit": "MBs",
+      "dimensions": [],
+      "instance_id_keys": ["instance_id"],
+      "description": "This metric indicates the average rate of total bytes received by the entire device over the past 5 minutes, measured in megabytes per second (MB/s). By summing the incoming byte counts from multiple interfaces, this metric helps administrators obtain an overview of the device's incoming traffic, supporting overall traffic monitoring and capacity planning."
+    },
+    {
+      "metric_group": "Traffic",
+      "name": "iftotalOutOctets",
+      "query": "sum(rate(interface_ifInOctets{instance_type=\"firewall\",__$labels__}[5m]) / 1024 / 1024) by (instance_id)",
+      "display_name": "Device Total Outgoing Traffic (per second)",
+      "data_type": "Number",
+      "unit": "MBs",
+      "dimensions": [],
+      "instance_id_keys": ["instance_id"],
+      "description": "This metric represents the average rate of total bytes sent by the entire device over the past 5 minutes, measured in megabytes per second (MB/s). By summing the outgoing byte counts from multiple interfaces, this metric allows administrators to comprehensively assess the sending performance of the entire system, enabling more effective traffic management and optimization."
+    }
+  ]
+}

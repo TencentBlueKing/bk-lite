@@ -1,0 +1,126 @@
+{
+  "object": "Nginx",
+  "plugin": "Nginx",
+  "templates": [
+    {
+      "name": "Nginx 请求处理速率过低",
+      "alert_name": "Nginx ${metric_instance_id} 请求处理速率过低",
+      "description": "监控 Nginx 每秒处理的请求数（requests），若持续过低可能表明服务吞吐量下降或客户端请求减少，需检查后端服务状态或网络连接。",
+      "metric_name": "nginx_requests",
+      "algorithm": "avg",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 10,
+          "method": "<="
+        },
+        {
+          "level": "error",
+          "value": 20,
+          "method": "<="
+        },
+        {
+          "level": "warning",
+          "value": 50,
+          "method": "<="
+        }
+      ]
+    },
+    {
+      "name": "Nginx 活跃连接数过高",
+      "alert_name": "Nginx ${metric_instance_id} 活跃连接数过高",
+      "description": "检测 Nginx 当前活跃连接数（active），若持续过高可能导致资源耗尽，需优化长连接或扩容。",
+      "metric_name": "nginx_active",
+      "algorithm": "avg",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 1000,
+          "method": ">="
+        },
+        {
+          "level": "error",
+          "value": 800,
+          "method": ">="
+        },
+        {
+          "level": "warning",
+          "value": 500,
+          "method": ">="
+        }
+      ]
+    },
+    {
+      "name": "Nginx 等待连接数堆积",
+      "alert_name": "Nginx ${metric_instance_id} 等待连接数堆积",
+      "description": "监控 Nginx 等待空闲连接的客户端数（waiting），若过高表明工作进程不足，需调整 worker_processes 或优化后端响应速度。",
+      "metric_name": "nginx_waiting",
+      "algorithm": "max",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 500,
+          "method": ">="
+        },
+        {
+          "level": "error",
+          "value": 300,
+          "method": ">="
+        },
+        {
+          "level": "warning",
+          "value": 100,
+          "method": ">="
+        }
+      ]
+    },
+    {
+      "name": "Nginx 请求读取时间过长",
+      "alert_name": "Nginx ${metric_instance_id} 请求读取时间异常",
+      "description": "检测 Nginx 正在读取请求头的连接数（reading），若持续过高可能表明客户端网络差或恶意慢连接，需启用限速策略。",
+      "metric_name": "nginx_reading",
+      "algorithm": "avg",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 100,
+          "method": ">="
+        },
+        {
+          "level": "error",
+          "value": 50,
+          "method": ">="
+        },
+        {
+          "level": "warning",
+          "value": 20,
+          "method": ">="
+        }
+      ]
+    },
+    {
+      "name": "Nginx 响应写入时间过长",
+      "alert_name": "Nginx ${metric_instance_id} 响应写入时间异常",
+      "description": "监控 Nginx 正在发送响应的连接数（writing），若过高可能表明后端响应慢或文件过大，需优化静态资源或压缩策略。",
+      "metric_name": "nginx_writing",
+      "algorithm": "max",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 100,
+          "method": ">="
+        },
+        {
+          "level": "error",
+          "value": 50,
+          "method": ">="
+        },
+        {
+          "level": "warning",
+          "value": 20,
+          "method": ">="
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,8 @@
+[[inputs.docker]]
+    endpoint = "{{ endpoint }}"
+    interval = "{{ interval }}s"
+    [inputs.docker.tags]
+        instance_id = "{{ instance_id }}"
+        instance_type = "{{ instance_type }}"
+        collect_type = "docker"
+        config_type = "docker"

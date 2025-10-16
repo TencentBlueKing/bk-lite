@@ -1,0 +1,150 @@
+{
+  "object": "ActiveMQ",
+  "plugin": "ActiveMQ-JMX",
+  "templates": [
+    {
+      "name": "Topic积压量",
+      "alert_name": "Topic ${metric_instance_id} 消息堆积",
+      "description": "监控Topic队列中的消息数量，过多会占用内存和磁盘资源。",
+      "metric_name": "activemq_topic_queue_size_value",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 100000,
+          "method": ">="
+        },
+        {
+          "level": "error",
+          "value": 50000,
+          "method": ">="
+        },
+        {
+          "level": "warning",
+          "value": 10000,
+          "method": ">="
+        }
+      ]
+    },
+    {
+      "name": "消息过期风险",
+      "alert_name": "Topic ${metric_instance_id} 消息失效",
+      "description": "监控过期消息数量，过多表明消费者处理不及时。需调整TTL设置。",
+      "metric_name": "activemq_topic_expired_count_value",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 100,
+          "method": ">="
+        },
+        {
+          "level": "error",
+          "value": 50,
+          "method": ">="
+        },
+        {
+          "level": "warning",
+          "value": 10,
+          "method": ">="
+        }
+      ]
+    },
+    {
+      "name": "存储使用率",
+      "alert_name": "ActiveMQ节点 ${metric_instance_id} 磁盘过载",
+      "description": "检测持久化存储使用比例，写满会导致消息无法持久化。",
+      "metric_name": "activemq_store_usage_ratio_gauge",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 90,
+          "method": ">="
+        },
+        {
+          "level": "error",
+          "value": 80,
+          "method": ">="
+        },
+        {
+          "level": "warning",
+          "value": 70,
+          "method": ">="
+        }
+      ]
+    },
+    {
+      "name": "内存消息占比",
+      "alert_name": "Topic ${metric_instance_id} 内存压力",
+      "description": "检测Topic内存使用比例，过高会触发流控。需优化消息体积。",
+      "metric_name": "activemq_topic_memory_percent_usage_value",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 70,
+          "method": ">="
+        },
+        {
+          "level": "error",
+          "value": 60,
+          "method": ">="
+        },
+        {
+          "level": "warning",
+          "value": 50,
+          "method": ">="
+        }
+      ]
+    },
+    {
+      "name": "非堆内存泄漏",
+      "alert_name": "ActiveMQ节点 ${metric_instance_id} 元数据溢出",
+      "description": "检测JVM非堆内存使用趋势，持续增长可能表明元数据泄漏。",
+      "metric_name": "jvm_memory_nonheap_usage_used_rate",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 100,
+          "method": ">="
+        },
+        {
+          "level": "error",
+          "value": 50,
+          "method": ">="
+        },
+        {
+          "level": "warning",
+          "value": 20,
+          "method": ">="
+        }
+      ]
+    },
+    {
+      "name": "阻塞发送告警",
+      "alert_name": "Topic ${metric_instance_id} 写入超时",
+      "description": "监控被阻塞的发送请求数，表明系统处理能力不足。",
+      "metric_name": "activemq_topic_blocked_sends_value",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 10,
+          "method": ">="
+        },
+        {
+          "level": "error",
+          "value": 5,
+          "method": ">="
+        },
+        {
+          "level": "warning",
+          "value": 2,
+          "method": ">="
+        }
+      ]
+    }
+  ]
+}

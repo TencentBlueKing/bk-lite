@@ -1,0 +1,78 @@
+{
+  "object": "Mysql",
+  "plugin": "Mysql",
+  "templates": [
+    {
+      "name": "异常连接中断",
+      "alert_name": "MySQL 实例 ${metric_instance} 客户端异常断开",
+      "description": "监控异常终止的客户端连接数，突增可能表明网络问题或客户端超时。需检查wait_timeout和客户端稳定性。",
+      "metric_name": "mysql_aborted_clients",
+      "algorithm": "max",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 50,
+          "method": ">="
+        },
+        {
+          "level": "error",
+          "value": 20,
+          "method": ">="
+        },
+        {
+          "level": "warning",
+          "value": 10,
+          "method": ">="
+        }
+      ]
+    },
+    {
+      "name": "连接拒绝告警",
+      "alert_name": "MySQL 实例 ${metric_instance} 认证失败",
+      "description": "检测因权限错误或密码错误的连接拒绝次数，频繁失败可能表明暴力破解。需检查认证日志和安全组配置。",
+      "metric_name": "mysql_access_denied_errors",
+      "algorithm": "max",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 10,
+          "method": ">="
+        },
+        {
+          "level": "error",
+          "value": 5,
+          "method": ">="
+        },
+        {
+          "level": "warning",
+          "value": 1,
+          "method": ">="
+        }
+      ]
+    },
+    {
+      "name": "查询请求突增",
+      "alert_name": "MySQL 实例 ${metric_instance} 读请求过载",
+      "description": "检测SELECT查询执行次数，异常增长可能导致CPU过载。需优化查询或增加只读副本。",
+      "metric_name": "mysql_com_select",
+      "algorithm": "max",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 10000,
+          "method": ">="
+        },
+        {
+          "level": "error",
+          "value": 5000,
+          "method": ">="
+        },
+        {
+          "level": "warning",
+          "value": 1000,
+          "method": ">="
+        }
+      ]
+    }
+  ]
+}

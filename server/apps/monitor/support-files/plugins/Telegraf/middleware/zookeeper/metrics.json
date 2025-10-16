@@ -1,0 +1,101 @@
+{
+  "plugin": "Zookeeper",
+  "plugin_desc": "By collecting runtime performance data and stability metrics of Zookeeper, such as uptime, average latency, and read-write ratios, users can monitor the cluster status in real-time and optimize performance.",
+  "name": "Zookeeper",
+  "icon": "Zookeeper",
+  "type": "Middleware",
+  "description": "",
+  "default_metric": "any({instance_type='zookeeper'}) by (instance_id)",
+  "instance_id_keys": ["instance_id"],
+  "supplementary_indicators": ["zookeeper_uptime", "zookeeper_avg_latency"],
+  "metrics": [
+    {
+      "metric_group": "Uptime",
+      "name": "zookeeper_uptime",
+      "display_name": "Uptime",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "d",
+      "dimensions": [],
+      "description": "This metric shows the uptime of the Zookeeper service, helping to monitor if the system is running normally.",
+      "query": "sum(zookeeper_uptime{__$labels__}) by (instance_id)/1000/60/60/24"
+    },
+    {
+      "metric_group": "Performance",
+      "name": "zookeeper_avg_latency",
+      "display_name": "Average Latency",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "ms",
+      "dimensions": [],
+      "description": "This metric represents the average latency of Zookeeper processing requests, used to monitor system response capability.",
+      "query": "sum(zookeeper_avg_latency{__$labels__}) by (instance_id)"
+    },
+    {
+      "metric_group": "Performance",
+      "name": "zookeeper_read_write_ratio",
+      "display_name": "Read/Write Ratio",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "percent",
+      "dimensions": [],
+      "description": "This metric represents the ratio of commits to snapshots in Zookeeper, helping to assess the read/write load distribution.",
+      "query": "sum(rate(zookeeper_commit_count{__$labels__}[5m])) by (instance_id) / sum(rate(zookeeper_snap_count{__$labels__}[5m])) by (instance_id)"
+    },
+    {
+      "metric_group": "Performance",
+      "name": "zookeeper_snapshot_to_commit_ratio",
+      "display_name": "Snapshot to Commit Ratio",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "percent",
+      "dimensions": [],
+      "description": "This metric represents the ratio of snapshot generation frequency to commit request frequency in Zookeeper, helping to monitor the relationship between persistence operations and transaction commits.",
+      "query": "sum(rate(zookeeper_snap_count{__$labels__}[5m])by (instance_id)  / sum(rate(zookeeper_commit_count{__$labels__}[5m])) by (instance_id)"
+    },
+    {
+      "metric_group": "Connection",
+      "name": "zookeeper_connection_drop_count",
+      "display_name": "Snapshot to Commit Ratio",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "short",
+      "dimensions": [],
+      "description": "This metric represents the number of connection drops in Zookeeper, used to monitor connection stability.",
+      "query": "rate(zookeeper_connection_drop_count{__$labels__}[5m])"
+    },
+    {
+      "metric_group": "Connection",
+      "name": "zookeeper_connection_rejected",
+      "display_name": "Connection Rejected",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "short",
+      "dimensions": [],
+      "description": "This metric represents the number of rejected connections in Zookeeper, helping to monitor if connections are being correctly handled.",
+      "query": "rate(zookeeper_connection_rejected{__$labels__}[5m])"
+    },
+    {
+      "metric_group": "Znode",
+      "name": "zookeeper_znode_count",
+      "display_name": "Znode Count",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "short",
+      "dimensions": [],
+      "description": "This metric represents the number of znodes in Zookeeper, helping to monitor changes in Zookeeper's data size.",
+      "query": "rate(zookeeper_znode_count{__$labels__}[5m])"
+    },
+    {
+      "metric_group": "Traffic",
+      "name": "zookeeper_packets_received",
+      "display_name": "Packets Received",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "short",
+      "dimensions": [],
+      "description": "This metric shows the number of packets received by Zookeeper, helping to monitor the network traffic.",
+      "query": "rate(zookeeper_packets_received{__$labels__}[5m])"
+    }
+  ]
+}

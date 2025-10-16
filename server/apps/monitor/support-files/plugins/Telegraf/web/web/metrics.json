@@ -1,0 +1,78 @@
+{
+  "plugin": "Website",
+  "plugin_desc": "The purpose of the website monitoring plugin is to periodically check the availability and performance of HTTP/HTTPS connections.",
+  "name": "Website",
+  "icon": "wangzhan1",
+  "type": "Web",
+  "description": "",
+  "default_metric": "any({instance_type='web'}) by (instance_id)",
+  "instance_id_keys": ["instance_id"],
+  "supplementary_indicators": ["http_duration", "http_success.rate", "http_code"],
+  "metrics": [
+    {
+      "metric_group": "HTTP",
+      "name": "http_success.rate",
+      "query": "count(last_over_time(http_response_result_type{instance_type=\"web\",result=\"success\",__$labels__})) by (instance_id) *100",
+      "display_name": "Success Rate",
+      "data_type": "Number",
+      "unit": "percent",
+      "dimensions": [
+        {
+          "name": "agent_id",
+          "description": "agent_id"
+        }
+      ],
+      "instance_id_keys": ["instance_id"],
+      "description": "Measures the success rate of multiple nodes probing targets (the percentage of successful responses out of the total number of requests)."
+    },
+    {
+      "metric_group": "HTTP",
+      "name": "http_duration",
+      "query": "avg(http_response_response_time{instance_type=\"web\",__$labels__})by (instance_id,agent_id)",
+      "display_name": "Response Time",
+      "data_type": "Number",
+      "unit": "s",
+      "dimensions": [
+        {
+          "name": "agent_id",
+          "description": "agent_id"
+        }
+      ],
+      "instance_id_keys": ["instance_id"],
+      "description": "This metric represents the total time taken from initiating an HTTP request to receiving the HTTP response. It is used to assess the performance of web services, especially when handling user requests. An extended duration may indicate lower backend processing efficiency or network latency, which can adversely affect the user experience. It is crucial for enhancing system responsiveness and optimizing performance."
+    },
+    {
+      "metric_group": "HTTP",
+      "name": "http_code",
+      "query": "http_response_http_response_code{instance_type=\"web\",__$labels__}",
+      "display_name": "HTTP Code",
+      "data_type": "Number",
+      "unit": "short",
+      "dimensions": [
+        {
+          "name": "agent_id",
+          "description": "agent_id"
+        }
+      ],
+      "instance_id_keys": ["instance_id"],
+      "description": "This metric represents the HTTP response status code for an HTTP request. It captures the value of the HTTP response status codes, such as 200 (OK), 404 (Not Found), 500 (Internal Server Error), etc. These status codes are vital for monitoring the health and performance of web applications, assisting in identifying potential issues."
+    },
+    {
+      "metric_group": "HTTP",
+      "name": "http_content.length",
+      "query": "http_response_content_length{instance_type=\"web\",__$labels__}/1024",
+      "display_name": "HTTP Content Length",
+      "data_type": "Number",
+      "unit": "kibibytes",
+      "dimensions": [
+        {
+          "name": "agent_id",
+          "description": "agent_id"
+        }
+      ],
+      "instance_id_keys": ["instance_id"],
+      "description": "This metric indicates the length of the HTTP response content in bytes. Larger content lengths can result in extended data transfer times and consume more bandwidth. Monitoring this metric is crucial for optimizing website performance or analyzing bandwidth usage. Understanding the size of the response content can assist developers in making optimizations."
+    }
+  ]
+}
+    

@@ -20,12 +20,12 @@ import { TYPE_CONTENT, TYPE_COLOR } from "@/app/mlops/constants";
 import { ColumnItem, ModalRef, Pagination, TableData } from '@/app/mlops/types';
 const { Search } = Input;
 
-const AnomalyDetail = () => {
+const ClassificationDetail = () => {
   const { t } = useTranslation();
   const router = useRouter();
   const modalRef = useRef<ModalRef>(null);
   const searchParams = useSearchParams();
-  const { getAnomalyTrainData, deleteAnomalyTrainData, labelingData } = useMlopsManageApi();
+  const { getClassificationTrainData, deleteClassificationTrainData, updateClassificationTrainData } = useMlopsManageApi();
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
   const [tableData, setTableData] = useState<TableData[]>([]);
   const [currentData, setCurrentData] = useState<any>(null);
@@ -35,7 +35,7 @@ const AnomalyDetail = () => {
   const [pagination, setPagination] = useState<Pagination>({
     current: 1,
     total: 0,
-    pageSize: 10,
+    pageSize: 20,
   });
 
   const {
@@ -57,11 +57,6 @@ const AnomalyDetail = () => {
       dataIndex: 'name',
     },
     {
-      title: t('datasets.anomalyTitle'),
-      key: 'count',
-      dataIndex: 'count',
-    },
-    {
       title: t('datasets.trainFileType'),
       key: 'type',
       dataIndex: 'type',
@@ -69,6 +64,7 @@ const AnomalyDetail = () => {
         const activeTypes = Object.entries(record.type)
           .filter(([, value]) => value === true)
           .map(([key]) => <Tag key={key} color={TYPE_COLOR[key]}>{t(`datasets.${TYPE_CONTENT[key]}`)}</Tag>);
+
         return (<>{activeTypes.length ? activeTypes : '--'}</>)
       },
     },
@@ -80,13 +76,15 @@ const AnomalyDetail = () => {
       fixed: 'right',
       render: (_: unknown, record) => (
         <>
-          <Button
-            type="link"
-            className="mr-[10px]"
-            onClick={() => toAnnotation(record)}
-          >
-            {t('datasets.annotate')}
-          </Button>
+          <PermissionWrapper requiredPermissions={['File Edit']}>
+            <Button
+              type="link"
+              className="mr-[10px]"
+              onClick={() => toAnnotation(record)}
+            >
+              {t('common.detail')}
+            </Button>
+          </PermissionWrapper>
           <PermissionWrapper requiredPermissions={['File Edit']}>
             <Button
               type="link"
@@ -133,15 +131,20 @@ const AnomalyDetail = () => {
     getDataset(search);
   };
 
+  const toAnnotation = (data: any) => {
+    router.push(`/mlops/manage/annotation?id=${data.id}&folder_id=${folder_id}&folder_name=${folder_name}&description=${description}&activeTap=${activeTap}`);
+  };
+
   const getDataset = useCallback(async (search: string = '') => {
     setLoading(true);
     try {
-      const { count, items } = await getAnomalyTrainData({
+      const { count, items } = await getClassificationTrainData({
         name: search,
         dataset: folder_id as string,
         page: pagination.current,
         page_size: pagination.pageSize
       });
+      
       const _tableData = items?.map((item: any) => {
         return {
           id: item?.id,
@@ -164,7 +167,7 @@ const AnomalyDetail = () => {
       });
     }
     catch (e) { console.log(e) }
-    finally { setLoading(false) }
+    finally { setLoading(false); }
   }, [t, searchParams]);
 
   const onUpload = () => {
@@ -179,17 +182,13 @@ const AnomalyDetail = () => {
   const onDelete = async (data: any) => {
     setConfirmLoading(true);
     try {
-      await deleteAnomalyTrainData(data.id);
+      await deleteClassificationTrainData(data.id);
     } catch (e) {
       console.log(e);
     } finally {
       setConfirmLoading(false);
       getDataset();
     }
-  };
-
-  const toAnnotation = (data: any) => {
-    router.push(`/mlops/manage/annotation?id=${data.id}&folder_id=${folder_id}&folder_name=${folder_name}&description=${description}&activeTap=${activeTap}`);
   };
 
   const handleChange = (value: any) => {
@@ -203,13 +202,13 @@ const AnomalyDetail = () => {
   const handleSubmit = async () => {
     setConfirmLoading(true);
     try {
-      if (activeTap === 'anomaly') {
+      if (activeTap === 'log_clustering') {
         const params = {
           is_train_data: selectedTags.includes('is_train_data'),
           is_val_data: selectedTags.includes('is_val_data'),
           is_test_data: selectedTags.includes('is_test_data')
         };
-        await labelingData(currentData?.id, params);
+        await updateClassificationTrainData(currentData?.id, params);
         message.success(t(`common.updateSuccess`));
         setModalOpen(false);
         getDataset();
@@ -295,4 +294,4 @@ const AnomalyDetail = () => {
   )
 };
 
-export default AnomalyDetail;
+export default ClassificationDetail;

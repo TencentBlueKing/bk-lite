@@ -1,0 +1,43 @@
+Host: 主机
+Website: 网站
+Ping: Ping
+RabbitMQ: RabbitMQ
+Nginx: Nginx
+Apache: Apache
+ClickHouse: ClickHouse
+Consul: Consul
+Tomcat: Tomcat
+Zookeeper: Zookeeper
+ActiveMQ: ActiveMQ
+ElasticSearch: ElasticSearch
+MongoDB: MongoDB
+Mysql: Mysql
+Postgres: Postgres
+Redis: Redis
+Switch: 交换机
+Router: 路由器
+Loadbalance: 负载均衡
+Firewall: 防火墙
+Detection Device: 检测设备
+Bastion Host: 堡垒机
+Scanning Device: 扫描设备
+Storage: 存储设备
+Hardware Server: 硬件服务器
+Docker: Docker
+Docker Container: Docker容器
+Cluster: K8S集群
+Pod: Pod
+Node: Node
+SNMP Trap: SNMP Trap
+vCenter: vCenter
+ESXI: ESXI
+VM: 虚拟机
+DataStorage: 数据存储
+JVM: JVM
+Jetty: Jetty
+WebLogic: WebLogic
+TCP: 云平台
+CVM: 云服务器
+Oracle: Oracle
+Minio: Minio
+

@@ -1,0 +1,7 @@
+[[inputs.mem]]
+    interval = "{{ interval }}s"
+    [inputs.mem.tags]
+        instance_id = "{{ instance_id }}"
+        instance_type = "{{ instance_type }}"
+        collect_type = "host"
+        config_type = "mem"

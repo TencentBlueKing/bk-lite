@@ -1,0 +1,8 @@
+[[inputs.apache]]
+    urls = ["{{ url }}"]
+    interval = "{{ interval }}s"
+    [inputs.apache.tags]
+        instance_id = "{{ instance_id }}"
+        instance_type = "{{ instance_type }}"
+        collect_type = "middleware"
+        config_type = "apache"

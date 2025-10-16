@@ -1,0 +1,615 @@
+{
+  "plugin": "Host",
+  "plugin_desc": "The host monitoring plugin is used to collect and analyze performance data of hosts, including CPU, memory, disk, and network usage.",
+  "name": "Host",
+  "icon": "Host",
+  "type": "OS",
+  "description": "",
+  "default_metric": "any({instance_type='os'}) by (instance_id)",
+  "instance_id_keys": ["instance_id"],
+  "supplementary_indicators": ["cpu_summary.usage", "mem.pct_used", "load5"],
+  "metrics": [
+    {
+      "metric_group": "CPU",
+      "name": "cpu_summary.usage",
+      "query": "100 - avg(cpu_usage_idle{cpu=\"cpu-total\", instance_type=\"os\", __$labels__}) by (instance_id)",
+      "display_name": "CPU Usage Rate",
+      "data_type": "Number",
+      "unit": "percent",
+      "dimensions": [],
+      "instance_id_keys": ["instance_id"],
+      "description": "Displays the CPU usage rate to indicate the system's load. It is derived by subtracting the idle from total. This metric is crucial for monitoring system performance."
+    },
+    {
+      "metric_group": "CPU",
+      "name": "cpu_summary.idle",
+      "query": "avg(cpu_usage_idle{cpu=\"cpu-total\", instance_type=\"os\", __$labels__}) by (instance_id)",
+      "display_name": "CPU Idle Rate",
+      "data_type": "Number",
+      "unit": "percent",
+      "dimensions": [],
+      "instance_id_keys": ["instance_id"],
+      "description": "Displays the CPU idle rate, representing the amount of unused CPU resources in the system. It helps to know if the system is under high load. This metric is crucial for analyzing system performance and efficiency."
+    },
+    {
+      "metric_group": "CPU",
+      "name": "cpu_summary.iowait",
+      "query": "avg(cpu_usage_iowait{cpu=\"cpu-total\", instance_type=\"os\", __$labels__}) by (instance_id)",
+      "display_name": "Percentage of Time Waiting for IO",
+      "data_type": "Number",
+      "unit": "percent",
+      "dimensions": [],
+      "instance_id_keys": ["instance_id"],
+      "description": "Displays the percentage of CPU time spent waiting for IO operations, indicating the impact of disk or network performance on the system. Reducing wait time helps improve system performance. This metric is very useful for analyzing system bottlenecks."
+    },
+    {
+      "metric_group": "CPU",
+      "name": "cpu_summary.system",
+      "query": "avg(cpu_usage_system{cpu=\"cpu-total\", instance_type=\"os\", __$labels__}) by (instance_id)",
+      "display_name": "System Usage Rate",
+      "data_type": "Number",
+      "unit": "percent",
+      "dimensions": [],
+      "instance_id_keys": ["instance_id"],
+      "description": "Displays the system usage rate, showing the CPU resources consumed by kernel processes. Analyzing this value helps optimize system kernel performance and stability."
+    },
+    {
+      "metric_group": "CPU",
+      "name": "cpu_summary.user",
+      "query": "avg(cpu_usage_user{cpu=\"cpu-total\", instance_type=\"os\", __$labels__}) by (instance_id)",
+      "display_name": "User Usage Rate",
+      "data_type": "Number",
+      "unit": "percent",
+      "dimensions": [],
+      "instance_id_keys": ["instance_id"],
+      "description": "Displays the percentage of CPU resources used by user processes, helping understand the performance of applications and services. This metric is helpful in understanding the CPU consumption of specific applications."
+    },
+    {
+      "metric_group": "System",
+      "name": "load1",
+      "query": "system_load1{instance_type=\"os\", __$labels__}",
+      "display_name": "1 Minute Average Load",
+      "data_type": "Number",
+      "unit": "short",
+      "dimensions": [],
+      "instance_id_keys": ["instance_id"],
+      "description": "Displays the average system load over the last 1 minute, providing a snapshot of short-term system activity. This metric helps monitor system performance in real-time."
+    },
+    {
+      "metric_group": "System",
+      "name": "load5",
+      "query": "avg(system_load5{instance_type=\"os\", __$labels__}) by (instance_id)",
+      "display_name": "5 Minute Average Load",
+      "data_type": "Number",
+      "unit": "short",
+      "dimensions": [],
+      "instance_id_keys": ["instance_id"],
+      "description": "Displays the average system load over the last 5 minutes, reflecting the medium-term load on the system. This medium-term metric helps identify sustained and intermittent high load situations."
+    },
+    {
+      "metric_group": "System",
+      "name": "load15",
+      "query": "system_load15{instance_type=\"os\", __$labels__}",
+      "display_name": "15 Minute Average Load",
+      "data_type": "Number",
+      "unit": "short",
+      "dimensions": [],
+      "instance_id_keys": ["instance_id"],
+      "description": "Displays the average system load over the last 15 minutes, providing long-term load observation to understand the overall performance trend of the system."
+    },
+    {
+      "metric_group": "Disk IO",
+      "name": "diskio_writes",
+      "query": "rate(diskio_writes{instance_type=\"os\", __$labels__}[5m])",
+      "display_name": "Disk I/O Write Rate",
+      "data_type": "Number",
+      "unit": "short",
+      "dimensions": [
+        {
+          "name": "name",
+          "description": "name"
+        }
+      ],
+      "instance_id_keys": ["instance_id"],
+      "description": "Counts the number of data write operations to the disk in the specified time interval."
+    },
+    {
+      "metric_group": "Disk IO",
+      "name": "diskio_write_bytes",
+      "query": "rate(diskio_write_bytes{instance_type=\"os\", __$labels__}[5m])/1024/1024",
+      "display_name": "Disk I/O Write Bytes Rate",
+      "data_type": "Number",
+      "unit": "mebibytes",
+      "dimensions": [
+        {
+          "name": "name",
+          "description": "name"
+        }
+      ],
+      "instance_id_keys": ["instance_id"],
+      "description": "Counts the number of bytes written to the disk in the specified time interval, represented in megabytes (MB)."
+    },
+    {
+      "metric_group": "Disk IO",
+      "name": "diskio_write_time",
+      "query": "rate(diskio_write_time{instance_type=\"os\", __$labels__}[5m])/1000",
+      "display_name": "Disk I/O Write Time Rate",
+      "data_type": "Number",
+      "unit": "s",
+      "dimensions": [
+        {
+          "name": "name",
+          "description": "name"
+        }
+      ],
+      "instance_id_keys": ["instance_id"],
+      "description": "Counts the time taken to write data to the disk in the specified time interval, represented in seconds (s)."
+    },
+    {
+      "metric_group": "Disk IO",
+      "name": "diskio_reads",
+      "query": "rate(diskio_reads{instance_type=\"os\", __$labels__}[5m])",
+      "display_name": "Disk I/O Read Rate",
+      "data_type": "Number",
+      "unit": "short",
+      "dimensions": [
+        {
+          "name": "name",
+          "description": "name"
+        }
+      ],
+      "instance_id_keys": ["instance_id"],
+      "description": "Counts the number of data read operations from the disk in the specified time interval."
+    },
+    {
+      "metric_group": "Disk IO",
+      "name": "diskio_read_bytes",
+      "query": "rate(diskio_read_bytes{instance_type=\"os\", __$labels__}[5m])/1024/1024",
+      "display_name": "Disk I/O Read Bytes Rate",
+      "data_type": "Number",
+      "unit": "mebibytes",
+      "dimensions": [
+        {
+          "name": "name",
+          "description": "name"
+        }
+      ],
+      "instance_id_keys": ["instance_id"],
+      "description": "Counts the number of bytes read from the disk in the specified time interval, represented in megabytes (MB)."
+    },
+    {
+      "metric_group": "Disk IO",
+      "name": "diskio_read_time",
+      "query": "rate(diskio_read_time{instance_type=\"os\", __$labels__}[5m])/1000",
+      "display_name": "Disk I/O Read Time Rate",
+      "data_type": "Number",
+      "unit": "s",
+      "dimensions": [
+        {
+          "name": "name",
+          "description": "name"
+        }
+      ],
+      "instance_id_keys": ["instance_id"],
+      "description": "Counts the time taken to read data from the disk in the specified time interval, represented in seconds (s)."
+    },
+    {
+      "metric_group": "Disk",
+      "name": "disk.is_use",
+      "query": "any(disk_used_percent{instance_type=\"os\", __$labels__}) by (instance_id)",
+      "display_name": "Disk Usage Rate",
+      "data_type": "Number",
+      "unit": "percent",
+      "dimensions": [],
+      "instance_id_keys": ["instance_id"],
+      "description": "Displays the percentage of disk space used, helping understand the utilization of disk resources. This metric is important for preventing disk overflow."
+    },
+    {
+      "metric_group": "Disk",
+      "name": "disk.used",
+      "query": "sum(disk_used{instance_type=\"os\", __$labels__}) by (instance_id, device, path) / 1000 / 1000 / 1000",
+      "display_name": "Disk Used Size",
+      "data_type": "Number",
+      "unit": "decgbytes",
+      "dimensions": [
+        {
+          "name": "device",
+          "description": "device"
+        },
+        {
+          "name": "path",
+          "description": "path"
+        }
+      ],
+      "instance_id_keys": ["instance_id"],
+      "description": "Displays the actual used disk space (in GB), used to determine disk capacity usage. This metric is helpful for monitoring disk space usage."
+    },
+    {
+      "metric_group": "Process",
+      "name": "env.procs",
+      "query": "sum(processes_total{instance_type=\"os\", __$labels__}) by (instance_id)",
+      "display_name": "Total Number of Processes",
+      "data_type": "Number",
+      "unit": "short",
+      "dimensions": [],
+      "instance_id_keys": ["instance_id"],
+      "description": "Displays the total number of processes running on the system, helping understand the load distribution. This metric is important for monitoring the overall operation of the system."
+    },
+    {
+      "metric_group": "Process",
+      "name": "env.proc_running_current",
+      "query": "sum(processes_running{instance_type=\"os\", __$labels__}) by (instance_id)",
+      "display_name": "Number of Running Processes",
+      "data_type": "Number",
+      "unit": "short",
+      "dimensions": [],
+      "instance_id_keys": ["instance_id"],
+      "description": "Displays the number of processes currently running, used to assess the concurrency. This metric is valuable for real-time monitoring of system load."
+    },
+    {
+      "metric_group": "Process",
+      "name": "env.procs_blocked_current",
+      "query": "sum(processes_blocked{instance_type=\"os\", __$labels__}) by (instance_id)",
+      "display_name": "Number of IO Blocked Processes",
+      "data_type": "Number",
+      "unit": "short",
+      "dimensions": [],
+      "instance_id_keys": ["instance_id"],
+      "description": "Displays the number of processes currently blocked by IO operations. Analyzing this value helps optimize the system and reduce bottlenecks. This metric is helpful for identifying IO bottlenecks."
+    },
+    {
+      "metric_group": "Memory",
+      "name": "mem.total",
+      "query": "avg(mem_total{instance_type=\"os\", __$labels__}) by (instance_id) / 1024 / 1024 / 1024",
+      "display_name": "Total Physical Memory Size",
+      "data_type": "Number",
+      "unit": "gbytes",
+      "dimensions": [],
+      "instance_id_keys": ["instance_id"],
+      "description": "Displays the total physical memory of the system (in GB), providing an overview of system resource configuration. This metric is important for understanding the base configuration of system resources."
+    },
+    {
+      "metric_group": "Memory",
+      "name": "mem.free",
+      "query": "avg(mem_free{instance_type=\"os\", __$labels__}) by (instance_id) / 1024 / 1024 / 1024",
+      "display_name": "Free Physical Memory Amount",
+      "data_type": "Number",
+      "unit": "gbytes",
+      "dimensions": [],
+      "instance_id_keys": ["instance_id"],
+      "description": "Displays the amount of free physical memory currently available (in GB), helping understand the available resources. This metric is crucial for keeping track of memory resource usage."
+    },
+    {
+      "metric_group": "Memory",
+      "name": "mem.cached",
+      "query": "avg(mem_cached{instance_type=\"os\", __$labels__}) by (instance_id) / 1024 / 1024 / 1024",
+      "display_name": "Cache Memory Size",
+      "data_type": "Number",
+      "unit": "gbytes",
+      "dimensions": [],
+      "instance_id_keys": ["instance_id"],
+      "description": "Displays the amount of memory used for caching (in GB), used to improve system performance. This metric is important for understanding memory caching strategies."
+    },
+    {
+      "metric_group": "Memory",
+      "name": "mem.buffer",
+      "query": "avg(mem_buffered{instance_type=\"os\", __$labels__}) by (instance_id) / 1024 / 1024 / 1024",
+      "display_name": "Buffer Memory Size",
+      "data_type": "Number",
+      "unit": "gbytes",
+      "dimensions": [],
+      "instance_id_keys": ["instance_id"],
+      "description": "Displays the amount of memory used for buffering (in GB), ensuring stable data transfer. This metric is crucial for performance optimization strategies."
+    },
+    {
+      "metric_group": "Memory",
+      "name": "mem.usable",
+      "query": "avg(mem_available{instance_type=\"os\", __$labels__}) by (instance_id) / 1024 / 1024 / 1024",
+      "display_name": "Available Memory for Applications",
+      "data_type": "Number",
+      "unit": "gbytes",
+      "dimensions": [],
+      "instance_id_keys": ["instance_id"],
+      "description": "Displays the memory available for applications (in GB), ensuring smooth application operation. This metric is important for maintaining application performance and stability."
+    },
+    {
+      "metric_group": "Memory",
+      "name": "mem.pct_usable",
+      "query": "avg(mem_available_percent{instance_type=\"os\", __$labels__}) by (instance_id)",
+      "display_name": "Available Memory Percentage for Applications",
+      "data_type": "Number",
+      "unit": "percent",
+      "dimensions": [],
+      "instance_id_keys": ["instance_id"],
+      "description": "Displays the percentage of memory available, helping determine if there is sufficient memory to support applications. This metric is useful for monitoring memory pressure and capacity planning strategies."
+    },
+    {
+      "metric_group": "Memory",
+      "name": "mem.used",
+      "query": "avg(mem_used{instance_type=\"os\", __$labels__}) by (instance_id) / 1024 / 1024 / 1024",
+      "display_name": "Memory Used by Applications",
+      "data_type": "Number",
+      "unit": "gbytes",
+      "dimensions": [],
+      "instance_id_keys": ["instance_id"],
+      "description": "Displays the memory used by applications (in GB), analyzing this value helps optimize application memory usage. This metric is crucial for monitoring application resource consumption."
+    },
+    {
+      "metric_group": "Memory",
+      "name": "mem.pct_used",
+      "query": "avg(mem_used_percent{instance_type=\"os\", __$labels__}) by (instance_id)",
+      "display_name": "Application Memory Usage Percentage",
+      "data_type": "Number",
+      "unit": "percent",
+      "dimensions": [],
+      "instance_id_keys": ["instance_id"],
+      "description": "Displays the percentage of memory used by applications, understanding memory usage distribution. This metric is valuable for optimizing memory usage."
+    },
+    {
+      "metric_group": "Memory",
+      "name": "mem.psc_used",
+      "query": "avg((mem_total{instance_type=\"os\", __$labels__} - mem_free{instance_type=\"os\", __$labels__}) / 1024 / 1024 / 1024)",
+      "display_name": "Used Physical Memory Amount",
+      "data_type": "Number",
+      "unit": "gbytes",
+      "dimensions": [],
+      "instance_id_keys": ["instance_id"],
+      "description": "Displays the total amount of physical memory used by the system (in GB), helping understand the overall distribution of memory resources. This metric is crucial for gaining a comprehensive understanding of system memory usage."
+    },
+    {
+      "metric_group": "Memory",
+      "name": "mem.shared",
+      "query": "avg(mem_shared{instance_type=\"os\", __$labels__}) by(instance_id) / 1024 / 1024 / 1024",
+      "display_name": "Shared Memory Usage",
+      "data_type": "Number",
+      "unit": "gbytes",
+      "dimensions": [],
+      "instance_id_keys": ["instance_id"],
+      "description": "Displays the usage of shared memory (in GB), used for data sharing between processes. This metric helps optimize system memory allocation strategies."
+    },
+    {
+      "metric_group": "Net",
+      "name": "net.speed_packets_recv",
+      "query": "rate(net_packets_recv{instance_type=\"os\", __$labels__}[5m])",
+      "display_name": "Incoming Packets on NIC",
+      "data_type": "Number",
+      "unit": "short",
+      "dimensions": [
+        {
+          "name": "interface",
+          "description": "interface"
+        }
+      ],
+      "instance_id_keys": ["instance_id"],
+      "description": "Displays the number of data packets received by the network interface per unit of time, used to evaluate network reception performance. This metric is crucial for monitoring network traffic."
+    },
+    {
+      "metric_group": "Net",
+      "name": "net.speed_packets_sent",
+      "query": "rate(net_packets_sent{instance_type=\"os\", __$labels__}[5m])",
+      "display_name": "Outgoing Packets on NIC",
+      "data_type": "Number",
+      "unit": "short",
+      "dimensions": [
+        {
+          "name": "interface",
+          "description": "interface"
+        }
+      ],
+      "instance_id_keys": ["instance_id"],
+      "description": "Displays the number of data packets sent by the network interface per unit of time, used to evaluate network transmission performance. This metric is crucial for monitoring network traffic."
+    },
+    {
+      "metric_group": "Net",
+      "name": "net.speed_recv",
+      "query": "rate(net_bytes_recv{instance_type=\"os\", __$labels__}[5m]) / 1024 / 1024",
+      "display_name": "Incoming Bytes on NIC",
+      "data_type": "Number",
+      "unit": "MBs",
+      "dimensions": [
+        {
+          "name": "interface",
+          "description": "interface"
+        }
+      ],
+      "instance_id_keys": ["instance_id"],
+      "description": "Displays the number of bytes received by the network interface per unit of time (in MB), used to evaluate network bandwidth utilization. This metric is important for monitoring network bandwidth."
+    },
+    {
+      "metric_group": "Net",
+      "name": "net.speed_sent",
+      "query": "rate(net_bytes_sent{instance_type=\"os\", __$labels__}[5m]) / 1024 / 1024",
+      "display_name": "Outgoing Bytes on NIC",
+      "data_type": "Number",
+      "unit": "MBs",
+      "dimensions": [
+        {
+          "name": "interface",
+          "description": "interface"
+        }
+      ],
+      "instance_id_keys": ["instance_id"],
+      "description": "Displays the number of bytes sent by the network interface per unit of time (in MB), used to evaluate network bandwidth utilization. This metric is crucial for monitoring network bandwidth."
+    },
+    {
+      "metric_group": "Net",
+      "name": "net.errors_in",
+      "query": "rate(net_err_in{instance_type=\"os\", __$labels__}[5m])",
+      "display_name": "NIC Error Packets",
+      "data_type": "Number",
+      "unit": "short",
+      "dimensions": [
+        {
+          "name": "interface",
+          "description": "interface"
+        }
+      ],
+      "instance_id_keys": ["instance_id"],
+      "description": "Displays the number of error packets received by the network interface, used to detect network issues. This metric is helpful for identifying network faults and abnormal traffic."
+    },
+    {
+      "metric_group": "Net",
+      "name": "net.errors_out",
+      "query": "rate(net_err_out{instance_type=\"os\", __$labels__}[5m])",
+      "display_name": "NIC Error Packets",
+      "data_type": "Number",
+      "unit": "short",
+      "dimensions": [
+        {
+          "name": "interface",
+          "description": "interface"
+        }
+      ],
+      "instance_id_keys": ["instance_id"],
+      "description": "Displays the number of error packets sent by the network interface, helping understand network transmission errors. This metric is helpful for identifying network faults and abnormal traffic."
+    },
+    {
+      "metric_group": "Net",
+      "name": "net.dropped_in",
+      "query": "rate(net_drop_in{instance_type=\"os\", __$labels__}[5m])",
+      "display_name": "NIC Dropped Packets",
+      "data_type": "Number",
+      "unit": "short",
+      "dimensions": [
+        {
+          "name": "interface",
+          "description": "interface"
+        }
+      ],
+      "instance_id_keys": ["instance_id"],
+      "description": "Displays the number of dropped packets received by the network interface, indicating network congestion. This metric is crucial for monitoring network reliability."
+    },
+    {
+      "metric_group": "Net",
+      "name": "net.dropped_out",
+      "query": "rate(net_drop_out{instance_type=\"os\", __$labels__}[5m])",
+      "display_name": "NIC Dropped Packets",
+      "data_type": "Number",
+      "unit": "short",
+      "dimensions": [
+        {
+          "name": "interface",
+          "description": "interface"
+        }
+      ],
+      "instance_id_keys": ["instance_id"],
+      "description": "Displays the number of dropped packets sent by the network interface, indicating network transmission congestion. This metric is crucial for monitoring network reliability."
+    },
+    {
+      "metric_group": "Nvidia GPU",
+      "name": "nvidia_smi_memory_free",
+      "display_name": "GPU Memory Free",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "gibibytes",
+      "dimensions": [
+        {
+          "name": "index",
+          "description": "index"
+        }
+      ],
+      "description": "The remaining capacity of GPU memory currently unoccupied, used to assess available resources.",
+      "query": "avg without(pstate) (nvidia_smi_memory_free{instance_type=\"os\", __$labels__})/1024"
+    },
+    {
+      "metric_group": "Nvidia GPU",
+      "name": "nvidia_smi_memory_used",
+      "display_name": "GPU Memory Used",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "gibibytes",
+      "dimensions": [
+        {
+          "name": "index",
+          "description": "index"
+        }
+      ],
+      "description": "The capacity of GPU memory currently occupied, reflecting the memory size used by running tasks.",
+      "query": "avg without(pstate) (nvidia_smi_memory_used{instance_type=\"os\", __$labels__})/1024"
+    },
+    {
+      "metric_group": "Nvidia GPU",
+      "name": "nvidia_smi_memory_total",
+      "display_name": "GPU Memory Total",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "gibibytes",
+      "dimensions": [
+        {
+          "name": "index",
+          "description": "index"
+        }
+      ],
+      "description": "The total capacity of GPU memory, indicating the maximum memory the device supports.",
+      "query": "avg without(pstate) (nvidia_smi_memory_total{instance_type=\"os\", __$labels__})/1024"
+    },
+    {
+      "metric_group": "Nvidia GPU",
+      "name": "nvidia_smi_utilization_memory",
+      "display_name": "GPU Memory Utilization",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "percent",
+      "dimensions": [
+        {
+          "name": "index",
+          "description": "index"
+        }
+      ],
+      "description": "The percentage of current memory usage, indicating the utilization of GPU memory resources (0%-100%), useful for optimizing memory allocation.",
+      "query": "100 * (avg without(pstate) (nvidia_smi_memory_used{instance_type=\"os\", __$labels__} / nvidia_smi_memory_total{instance_type=\"os\", __$labels__}))"
+    },
+    {
+      "metric_group": "Nvidia GPU",
+      "name": "nvidia_smi_power_draw",
+      "display_name": "GPU Power Draw",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "watts",
+      "dimensions": [
+        {
+          "name": "index",
+          "description": "index"
+        }
+      ],
+      "description": "The real-time power consumption of GPU, measured in watts (W), used to monitor energy consumption level.",
+      "query": "avg without(pstate) (nvidia_smi_power_draw{instance_type=\"os\", __$labels__})"
+    },
+    {
+      "metric_group": "Nvidia GPU",
+      "name": "nvidia_smi_temperature_gpu",
+      "display_name": "GPU Core Temperature",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "celsius",
+      "dimensions": [
+        {
+          "name": "index",
+          "description": "index"
+        }
+      ],
+      "description": "The operating temperature of the GPU core, measured in degrees Celsius (°C), used to monitor device status and safety.",
+      "query": "avg without(pstate) (nvidia_smi_temperature_gpu{instance_type=\"os\", __$labels__})"
+    },
+    {
+      "metric_group": "Nvidia GPU",
+      "name": "nvidia_smi_fan_speed",
+      "display_name": "GPU Fan Speed Percentage",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "percent",
+      "dimensions": [
+        {
+          "name": "index",
+          "description": "index"
+        }
+      ],
+      "description": "The percentage of current GPU fan speed relative to the maximum speed (0%-100%), used to monitor cooling condition and operational status.",
+      "query": "avg without(pstate) (nvidia_smi_fan_speed{instance_type=\"os\", __$labels__})"
+    }
+  ]
+}
+
+
+
+

@@ -1,0 +1,21 @@
+{
+    "python.defaultInterpreterPath": "./.venv/bin/python",
+    "python.defaultInterpreterPath@windows": ".\\.venv\\Scripts\\python.exe",
+    "python.terminal.activateEnvironment": true,
+    "python.terminal.activateEnvInCurrentTerminal": true,
+    "python.analysis.autoImportCompletions": true,
+    "python.autoComplete.extraPaths": [
+        "./.venv/lib/python3.10/site-packages",
+        "./.venv/lib/python3.11/site-packages",
+        "./.venv/lib/python3.12/site-packages",
+    ],
+    "python.analysis.extraPaths":[
+        "./.venv/lib/python3.10/site-packages",
+        "./.venv/lib/python3.11/site-packages",
+        "./.venv/lib/python3.12/site-packages",
+    ],    
+    "[python]": {
+        "editor.formatOnType": true,
+        "editor.defaultFormatter": "ms-python.autopep8"
+    },
+}

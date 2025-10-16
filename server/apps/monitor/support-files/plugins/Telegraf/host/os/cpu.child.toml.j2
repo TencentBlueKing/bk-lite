@@ -1,0 +1,12 @@
+[[inputs.cpu]]
+    percpu = true
+    totalcpu = true
+    collect_cpu_time = false
+    report_active = false
+    core_tags = false
+    interval = "{{ interval }}s"
+    [inputs.cpu.tags]
+        instance_id = "{{ instance_id }}"
+        instance_type = "{{ instance_type }}"
+        collect_type = "host"
+        config_type = "cpu"

@@ -1,0 +1,57 @@
+{
+  "plugin": "ActiveMQ",
+  "plugin_desc": "Used for collecting ActiveMQ topic-related metrics, enabling real-time monitoring of consumer count, enqueue/dequeue rates, and topic message backlog to ensure stable message queue operation.",
+  "name": "ActiveMQ",
+  "icon": "02_ActiveMQ",
+  "type": "Middleware",
+  "description": "",
+  "default_metric": "any({instance_type='activemq'}) by (instance_id)",
+  "instance_id_keys": ["instance_id"],
+  "supplementary_indicators": ["activemq_topic_consumer_count"],
+  "metrics": [
+    {
+      "metric_group": "Topic",
+      "name": "activemq_topic_consumer_count",
+      "display_name": "Consumer Count",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "short",
+      "dimensions": [],
+      "description": "This metric represents the number of consumers per topic, used to monitor if consumers are evenly distributed.",
+      "query": "sum(activemq_topics_consumer_count{__$labels__}) by (instance_id)"
+    },
+    {
+      "metric_group": "Topic",
+      "name": "activemq_topic_dequeue_rate",
+      "display_name": "Dequeue Rate",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "pps",
+      "dimensions": [],
+      "description": "This metric shows the rate at which messages are consumed from the topic, indicating the consumption rate per second.",
+      "query": "rate(activemq_topics_dequeue_count{__$labels__}[5m])"
+    },
+    {
+      "metric_group": "Topic",
+      "name": "activemq_topic_enqueue_rate",
+      "display_name": "Enqueue Rate",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "pps",
+      "dimensions": [],
+      "description": "This metric shows the rate at which messages are enqueued to the topic, indicating the incoming message rate per second.",
+      "query": "rate(activemq_topics_enqueue_count{__$labels__}[5m])"
+    },
+    {
+      "metric_group": "Topic",
+      "name": "activemq_topic_size",
+      "display_name": "Topic Size",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "short",
+      "dimensions": [],
+      "description": "This metric shows the number of unconsumed messages in the topic, helping to identify potential message backlog.",
+      "query": "activemq_topics_size{__$labels__}"
+    }
+  ]
+}

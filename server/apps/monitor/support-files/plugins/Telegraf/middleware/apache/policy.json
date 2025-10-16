@@ -1,0 +1,92 @@
+{
+  "object": "Apache",
+  "plugin": "Apache",
+  "templates": [
+    {
+      "name": "服务存活状态",
+      "alert_name": "Apache实例 ${metric_instance_id} 服务中断",
+      "description": "监测Apache服务持续运行时间，异常重启会导致连接中断。需检查错误日志和系统资源。",
+      "metric_name": "apache_uptime",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 60,
+          "method": "<="
+        }
+      ]
+    },
+    {
+      "name": "请求速率突增",
+      "alert_name": "Apache实例 ${metric_instance_id} 请求过载",
+      "description": "检测每秒请求数，异常增长可能表明CC攻击或流量激增。需启用限流模块。",
+      "metric_name": "apache_req_per_sec",
+      "algorithm": "max",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 1000,
+          "method": ">="
+        },
+        {
+          "level": "error",
+          "value": 500,
+          "method": ">="
+        },
+        {
+          "level": "warning",
+          "value": 200,
+          "method": ">="
+        }
+      ]
+    },
+    {
+      "name": "响应时间延迟",
+      "alert_name": "Apache实例 ${metric_instance_id} 处理延迟",
+      "description": "监控平均请求耗时，延迟过高会导致用户体验下降。需优化后端应用或静态资源。",
+      "metric_name": "apache_duration_per_req",
+      "algorithm": "max",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 0.5,
+          "method": ">="
+        },
+        {
+          "level": "error",
+          "value": 0.3,
+          "method": ">="
+        },
+        {
+          "level": "warning",
+          "value": 0.1,
+          "method": ">="
+        }
+      ]
+    },
+    {
+      "name": "CPU负载过高",
+      "alert_name": "Apache实例 ${metric_instance_id} CPU过载",
+      "description": "监控工作进程CPU使用率，持续高负载会导致性能下降。需优化代码或扩容。",
+      "metric_name": "apache_cpu_load",
+      "algorithm": "avg",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 90,
+          "method": ">="
+        },
+        {
+          "level": "error",
+          "value": 80,
+          "method": ">="
+        },
+        {
+          "level": "warning",
+          "value": 70,
+          "method": ">="
+        }
+      ]
+    }
+  ]
+}

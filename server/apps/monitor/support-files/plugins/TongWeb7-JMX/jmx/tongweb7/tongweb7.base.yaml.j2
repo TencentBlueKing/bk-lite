@@ -1,0 +1,41 @@
+username: {{ username }}
+password: {{ password }}
+jmxUrl: {{ jmx_url }}
+ssl: false
+startDelaySeconds: 0
+lowercaseOutputName: true
+lowercaseOutputLabelNames: true
+
+# 白名单限制采集范围
+whitelistObjectNames:
+  - TONGWEB:type=Connector,port=*
+  - TONGWEB:type=GlobalRequestProcessor,name=*
+  - TONGWEB:type=Manager,host=*,context=*
+  - TONGWEB:type=ThreadPool,name=*
+
+rules:
+  # Connector
+  - pattern: TONGWEB<type=Connector, port=(.+)><>(maxPostSize|maxSavePostSize|maxParameterCount|asyncTimeout)
+    name: tongweb7_Connector_$2
+    labels:
+      port: $1
+
+  # GlobalRequestProcessor
+  - pattern: TONGWEB<type=GlobalRequestProcessor, name=(.+)><>(requestCount|maxTime|bytesReceived|bytesSent|processingTime|errorCount)
+    name: tongweb7_GlobalRequestProcessor_$2
+    labels:
+      name_info: $1
+
+  # Manager
+  - pattern: TONGWEB<type=Manager, host=(.+), context=(.+)><>(rejectedSessions|activeSessions|sessionMaxAliveTime|sessionAverageAliveTime|maxActive|expiredSessions)
+    name: tongweb7_Manager_$3
+    labels:
+      host_info: $1
+      context_info: $2
+
+  # ThreadPool
+  - pattern: TONGWEB<type=ThreadPool, name=(.+)><>(currentThreadsBusy|currentThreadCount|currentThreadsHang|keepAliveCount|queueSize)
+    name: tongweb7_ThreadPool_$2
+    labels:
+      name_info: $1
+

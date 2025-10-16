@@ -1,0 +1,57 @@
+{
+  "plugin": "Consul",
+  "plugin_desc": "Used for real-time monitoring of Consul service health, collecting status check results, analyzing passing, warning, and critical metrics to help users promptly identify issues and ensure service availability.\n",
+  "name": "Consul",
+  "icon": "zhongjianjian",
+  "type": "Middleware",
+  "description": "",
+  "default_metric": "any({instance_type='consul'}) by (instance_id)",
+  "instance_id_keys": ["instance_id"],
+  "supplementary_indicators": ["consul_health_checks_status", "consul_health_checks_passing"],
+  "metrics": [
+    {
+      "metric_group": "Check",
+      "name": "consul_health_checks_status",
+      "display_name": "Health Check Status",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Enum",
+      "unit": "[{\"name\":\"passing\",\"id\":0,\"color\":\"#1ac44a\"},{\"name\":\"warning\",\"id\":1,\"color\":\"#faad14\"},{\"name\":\"critical\",\"id\":2,\"color\":\"#ff4d4f\"s}]",
+      "dimensions": [],
+      "description": "This metric represents the status of the health check in Consul, where 0=passing, 1=warning, 2=critical.",
+      "query": "sum(consul_health_checks_status{__$labels__}) by (instance_id)"
+    },
+    {
+      "metric_group": "Check",
+      "name": "consul_health_checks_passing",
+      "display_name": "Passing Health Checks",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "short",
+      "dimensions": [],
+      "description": "This metric indicates the number of passing health checks, used to monitor the health status of services.",
+      "query": "sum(consul_health_checks_passing{__$labels__}) by (instance_id)"
+    },
+    {
+      "metric_group": "Check",
+      "name": "consul_health_checks_warning",
+      "display_name": "Warning Health Checks",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "short",
+      "dimensions": [],
+      "description": "This metric shows the number of health checks in warning status, used to monitor potential issues.",
+      "query": "consul_health_checks_warning{__$labels__}"
+    },
+    {
+      "metric_group": "Check",
+      "name": "consul_health_checks_critical",
+      "display_name": "Critical Health Checks",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "short",
+      "dimensions": [],
+      "description": "This metric shows the number of health checks in critical status, used to monitor critical failures.",
+      "query": "consul_health_checks_critical{__$labels__}"
+    }
+  ]
+}

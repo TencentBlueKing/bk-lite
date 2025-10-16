@@ -1,0 +1,163 @@
+{
+  "object": "Zookeeper",
+  "plugin": "Zookeeper",
+  "templates": [
+    {
+      "name": "实例存活状态",
+      "alert_name": "ZooKeeper节点 ${metric_instance_id} 服务宕机",
+      "description": "监测ZooKeeper服务存活时间，实例重启会导致临时节点丢失。需立即检查zkServer.sh status和日志。",
+      "metric_name": "zookeeper_uptime",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 60
+        }
+      ]
+    },
+    {
+      "name": "请求延迟过高",
+      "alert_name": "ZooKeeper节点 ${metric_instance_id} 响应延迟",
+      "description": "监控平均请求处理延迟，高延迟会影响依赖ZK的协调服务。需检查网络和磁盘IO性能。",
+      "metric_name": "zookeeper_avg_latency",
+      "algorithm": "max",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 500,
+          "method": ">="
+        },
+        {
+          "level": "error",
+          "value": 300,
+          "method": ">="
+        },
+        {
+          "level": "warning",
+          "value": 100,
+          "method": ">="
+        }
+      ]
+    },
+    {
+      "name": "连接异常断开",
+      "alert_name": "ZooKeeper集群 ${metric_instance_id} 连接丢失",
+      "description": "检测客户端连接异常断开次数，突增可能表明网络问题或客户端超时。",
+      "metric_name": "zookeeper_connection_drop_count",
+      "algorithm": "max",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 10,
+          "method": ">="
+        },
+        {
+          "level": "error",
+          "value": 5,
+          "method": ">="
+        },
+        {
+          "level": "warning",
+          "value": 3,
+          "method": ">="
+        }
+      ]
+    },
+    {
+      "name": "数据节点暴增",
+      "alert_name": "ZooKeeper集群 ${metric_instance_id} znode过多",
+      "description": "监控znode总数，过量znode会导致内存压力和同步延迟。需清理临时节点或扩容集群。",
+      "metric_name": "zookeeper_znode_count",
+      "algorithm": "max",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 1000000,
+          "method": ">="
+        },
+        {
+          "level": "error",
+          "value": 500000,
+          "method": ">="
+        },
+        {
+          "level": "warning",
+          "value": 100000,
+          "method": ">="
+        }
+      ]
+    },
+    {
+      "name": "读写比例失衡",
+      "alert_name": "ZooKeeper集群 ${metric_instance_id} 写入压力",
+      "description": "检测读写请求比例，写比例过高会影响集群吞吐量。需优化客户端使用模式。",
+      "metric_name": "zookeeper_read_write_ratio",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 20,
+          "method": "<="
+        },
+        {
+          "level": "error",
+          "value": 50,
+          "method": "<="
+        },
+        {
+          "level": "warning",
+          "value": 80,
+          "method": "<="
+        }
+      ]
+    },
+    {
+      "name": "快照积压告警",
+      "alert_name": "ZooKeeper集群 ${metric_instance_id} 快照延迟",
+      "description": "监控未提交日志与快照的比例，过高会导致恢复时间延长。需检查磁盘性能。",
+      "metric_name": "zookeeper_snapshot_to_commit_ratio",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 300,
+          "method": ">="
+        },
+        {
+          "level": "error",
+          "value": 200,
+          "method": ">="
+        },
+        {
+          "level": "warning",
+          "value": 150,
+          "method": ">="
+        }
+      ]
+    },
+    {
+      "name": "网络包异常",
+      "alert_name": "ZooKeeper节点 ${metric_instance_id} 流量异常",
+      "description": "监控接收的网络包数量，突增可能表明客户端异常或攻击行为。",
+      "metric_name": "zookeeper_packets_received",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 1000,
+          "method": ">="
+        },
+        {
+          "level": "error",
+          "value": 500,
+          "method": ">="
+        },
+        {
+          "level": "warning",
+          "value": 200,
+          "method": ">="
+        }
+      ]
+    }
+  ]
+}

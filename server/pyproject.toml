@@ -54,7 +54,7 @@ dependencies = [
     "pyotp==2.9.0",
     "qrcode==8.2",
     "pillow==11.3.0",
-    "cryptography==46.0.1",
+    "cryptography==45.0.0",
     "django-yaml-field==0.1.0",
     "pyjwt==2.10.1",
     "openpyxl==3.1.5",
@@ -87,7 +87,7 @@ dev = [
 ]
 
 mlops = [
-    "neco[mlops]==0.0.0.post11",
+    "neco[mlflow,mlops]==1.0.1",
 ]
 
 opspilot = [

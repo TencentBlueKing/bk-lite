@@ -1,0 +1,68 @@
+{
+  "object": "Website",
+  "plugin": "Website",
+  "templates": [
+  {
+    "name": "拨测成功率过低",
+    "alert_name": "HTTP 拨测目标 ${metric_instance_id} 拨测节点${metric_agent_id} 成功率过低",
+    "description": "通过HTTP拨测目标服务的成功率，若成功率显著降低将触发告警，提醒用户关注服务的实际可用性状态。",
+    "metric_name": "http_success.rate",
+    "algorithm": "last_over_time",
+    "threshold": [
+        {
+            "level": "critical",
+            "value": 95,
+            "method": "<"
+        },
+        {
+            "level": "error",
+            "value": 98,
+            "method": "<"
+        },
+        {
+            "level": "warning",
+            "value": 99,
+            "method": "<"
+        }
+    ]
+  },
+  {
+    "name": "HTTP 响应时间过长",
+    "alert_name": "HTTP 拨测目标 ${metric_instance_id} 拨测节点 ${metric_agent_id} 响应时间过长",
+    "description": "检测目标HTTP服务响应速度，若超过正常时间触发告警，提示用户排查服务响应延迟或网络瓶颈问题。",
+    "metric_name": "http_duration",
+    "algorithm": "last_over_time",
+    "threshold": [
+        {
+            "level": "critical",
+            "value": 5,
+            "method": ">"
+        },
+        {
+            "level": "error",
+            "value": 2,
+            "method": ">"
+        },
+        {
+            "level": "warning",
+            "value": 1.5,
+            "method": ">"
+        }
+    ]
+  },
+  {
+    "name": "HTTP 状态码异常",
+    "alert_name": "HTTP 拨测目标 ${metric_instance_id} 拨测节点 ${metric_agent_id} 状态码异常",
+    "description": "监控目标 HTTP 服务的状态码，若返回异常状态码则生成告警，提示用户检查服务稳定性或问题原因。",
+    "metric_name": "http_code",
+    "algorithm": "last_over_time",
+    "threshold": [
+        {
+            "level": "critical",
+            "value": 200,
+            "method": "!="
+        }
+    ]
+  }
+]
+}

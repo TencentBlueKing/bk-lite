@@ -1,0 +1,54 @@
+{
+  "object": "Ping",
+  "plugin": "Ping",
+  "templates": [
+  {
+    "name": "Ping 丢包率过高",
+    "alert_name": "目标${metric_instance_id} 节点${metric_agent_id}数据包丢失率过高",
+    "description": "监控目标节点的Ping丢包率，若数据包大量丢失将触发告警，帮助用户定位网络异常或连接问题。",
+    "metric_name": "ping_packet_loss_rate",
+    "algorithm": "last_over_time",
+    "threshold": [
+        {
+            "level": "critical",
+            "value": 10,
+            "method": ">="
+        },
+        {
+            "level": "error",
+            "value": 5,
+            "method": ">="
+        },
+        {
+            "level": "warning",
+            "value": 1,
+            "method": ">="
+        }
+    ]
+  },
+  {
+    "name": "Ping 响应时间过高",
+    "alert_name": "目标${metric_instance_id} 节点${metric_agent_id}平均响应时间过高",
+    "description": "评估Ping响应时间，若连接延迟超过阈值发出告警，提示用户检查目标节点的网络性能或连通性问题。",
+    "metric_name": "ping_response_time",
+    "algorithm": "last_over_time",
+    "threshold": [
+        {
+            "level": "critical",
+            "value": 500,
+            "method": ">="
+        },
+        {
+            "level": "error",
+            "value": 300,
+            "method": ">="
+        },
+        {
+            "level": "warning",
+            "value": 200,
+            "method": ">="
+        }
+    ]
+  }
+]
+}

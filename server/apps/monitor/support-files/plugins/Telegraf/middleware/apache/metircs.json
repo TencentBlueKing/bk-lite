@@ -1,0 +1,134 @@
+{
+  "plugin": "Apache",
+  "plugin_desc": "Real-time collection of Apache runtime data, resource utilization, request processing efficiency, and bandwidth statistics, helping users optimize performance, diagnose issues, and achieve efficient operations management.",
+  "name": "Apache",
+  "icon": "apache",
+  "type": "Middleware",
+  "description": "",
+  "default_metric": "any({instance_type='apache'}) by (instance_id)",
+  "instance_id_keys": ["instance_id"],
+  "supplementary_indicators": ["apache_uptime", "apache_req_per_sec", "apache_cpu_load"],
+  "metrics": [
+    {
+      "metric_group": "Uptime",
+      "name": "apache_uptime",
+      "display_name": "Uptime",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "d",
+      "dimensions": [],
+      "description": "This metric represents the uptime of the Apache server since it was started, used to monitor the server's health.",
+      "query": "sum(apache_Uptime{__$labels__}) by (instance_id)/60/60/24"
+    },
+    {
+      "metric_group": "Work",
+      "name": "apache_busy_workers",
+      "display_name": "Busy Workers",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "short",
+      "dimensions": [],
+      "description": "This metric represents the number of busy worker processes in the Apache server, used to assess the server's load.",
+      "query": "apache_BusyWorkers{__$labels__}"
+    },
+    {
+      "metric_group": "Work",
+      "name": "apache_idle_workers",
+      "display_name": "Idle Workers",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "short",
+      "dimensions": [],
+      "description": "This metric represents the number of idle worker processes in the Apache server, reflecting the server's resource utilization.",
+      "query": "apache_IdleWorkers{__$labels__}"
+    },
+    {
+      "metric_group": "Request",
+      "name": "apache_req_per_sec",
+      "display_name": "Requests per Second",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "short",
+      "dimensions": [],
+      "description": "This metric represents the number of requests handled by Apache per second, used to monitor the server's request processing capability.",
+      "query": "sum(apache_ReqPerSec{__$labels__}) by (instance_id)"
+    },
+    {
+      "metric_group": "Request",
+      "name": "apache_bytes_per_sec",
+      "display_name": "Bytes per Second",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "Bps",
+      "dimensions": [],
+      "description": "This metric represents the number of bytes transferred by Apache per second, reflecting the network traffic.",
+      "query": "apache_BytesPerSec{__$labels__}"
+    },
+    {
+      "metric_group": "Request",
+      "name": "apache_total_accesses",
+      "display_name": "Total Accesses",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "short",
+      "dimensions": [],
+      "description": "This metric represents the total number of accesses to the Apache server since startup, reflecting the overall request volume.",
+      "query": "apache_TotalAccesses{__$labels__}"
+    },
+    {
+      "metric_group": "Request",
+      "name": "apache_total_duration",
+      "display_name": "Total Duration",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "s",
+      "dimensions": [],
+      "description": "This metric represents the total request processing duration since the Apache server started, used to assess the server's processing load.",
+      "query": "apache_TotalDuration{__$labels__}"
+    },
+    {
+      "metric_group": "CPU",
+      "name": "apache_cpu_system",
+      "display_name": "System CPU Usage",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "percent",
+      "dimensions": [],
+      "description": "This metric represents the CPU usage at the system level for Apache server.",
+      "query": "apache_CPUSystem{__$labels__}"
+    },
+    {
+      "metric_group": "CPU",
+      "name": "apache_cpu_user",
+      "display_name": "System CPU Usage",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "percent",
+      "dimensions": [],
+      "description": "This metric represents the CPU usage at the user process level for Apache server.",
+      "query": "apache_CPUUser{__$labels__}"
+    },
+    {
+      "metric_group": "CPU",
+      "name": "apache_cpu_load",
+      "display_name": "CPU Load",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "percent",
+      "dimensions": [],
+      "description": "This metric represents the CPU load of the Apache server, reflecting the overall load of the system.",
+      "query": "sum(apache_CPULoad{__$labels__}) by (instance_id)"
+    },
+    {
+      "metric_group": "Duration",
+      "name": "apache_duration_per_req",
+      "display_name": "Duration per Request",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "s",
+      "dimensions": [],
+      "description": "This metric represents the average duration per request, helping to evaluate the efficiency of request handling by the server.",
+      "query": "apache_DurationPerReq{__$labels__}"
+    }
+  ]
+}

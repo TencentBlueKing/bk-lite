@@ -1,0 +1,145 @@
+{
+  "plugin": "Tomcat",
+  "plugin_desc": "Collects key performance metrics of Tomcat connectors and JVM memory to monitor server resource usage, request processing efficiency, and errors, optimizing system performance.",
+  "name": "Tomcat",
+  "icon": "Tomcat",
+  "type": "Middleware",
+  "description": "",
+  "default_metric": "any({instance_type='tomcat'}) by (instance_id)",
+  "instance_id_keys": ["instance_id"],
+  "supplementary_indicators": ["tomcat_connector_request_count", "tomcat_connector_current_threads_busy", "tomcat_connector_error_count"],
+  "metrics": [
+    {
+      "metric_group": "Request",
+      "name": "tomcat_connector_request_count",
+      "display_name": "Request Count",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "short",
+      "dimensions": [],
+      "description": "This metric represents the total number of requests processed per second on average by the Tomcat connector in the past 5 minutes, and is used to monitor the request load.",
+      "query": "sum(rate(tomcat_connector_request_count{__$labels__}[5m])) by (instance_id)"
+    },
+    {
+      "metric_group": "Request",
+      "name": "tomcat_connector_processing_time",
+      "display_name": "Processing Time",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "s",
+      "dimensions": [],
+      "description": "This metric is used to measure the average per - second change in the time taken by the Tomcat connector to process requests over the past 5 minutes. It can reflect the efficiency of the server in processing requests.",
+      "query": "rate(tomcat_connector_processing_time{__$labels__}[5m])"
+    },
+    {
+      "metric_group": "Request",
+      "name": "tomcat_connector_max_time",
+      "display_name": "Max Processing Time",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "s",
+      "dimensions": [],
+      "description": "This metric indicates the maximum time taken to process a single request in Tomcat, reflecting the performance of the slowest request.",
+      "query": "tomcat_connector_max_time{__$labels__}"
+    },
+    {
+      "metric_group": "Net",
+      "name": "tomcat_connector_bytes_received",
+      "display_name": "Bytes Received",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "mebibytes",
+      "dimensions": [],
+      "description": "It represents the number of bytes of data received per second on average by the Tomcat connector in the past 5 minutes.\nIt can be used to monitor the network traffic load of the Tomcat server.",
+      "query": "rate(tomcat_connector_bytes_received{__$labels__}[5m])/1024/1024"
+    },
+    {
+      "metric_group": "Net",
+      "name": "tomcat_connector_bytes_sent",
+      "display_name": "Bytes Sent",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "mebibytes",
+      "dimensions": [],
+      "description": "This metric represents the average number of bytes sent per second by the Tomcat connector in the past 5 minutes, and it is used to monitor traffic and response load.",
+      "query": "rate(tomcat_connector_bytes_sent{__$labels__}[5m])/1024/1024"
+    },
+    {
+      "metric_group": "Threads",
+      "name": "tomcat_connector_current_thread_count",
+      "display_name": "Current Thread Count",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "short",
+      "dimensions": [],
+      "description": "This metric shows the current number of threads used by the Tomcat connector, used to monitor concurrency capabilities.",
+      "query": "tomcat_connector_current_thread_count{__$labels__}"
+    },
+    {
+      "metric_group": "Threads",
+      "name": "tomcat_connector_current_threads_busy",
+      "display_name": "Busy Thread Count",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "short",
+      "dimensions": [],
+      "description": "This metric indicates the number of busy threads in the Tomcat connector, used to monitor concurrent processing.",
+      "query": "sum(tomcat_connector_current_threads_busy{__$labels__}) by (instance_id)"
+    },
+    {
+      "metric_group": "Threads",
+      "name": "tomcat_connector_max_threads",
+      "display_name": "Max Thread Count",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "short",
+      "dimensions": [],
+      "description": "This metric indicates the maximum number of threads for the Tomcat connector, used to monitor Tomcat's concurrency capabilities.",
+      "query": "tomcat_connector_max_threads{__$labels__}"
+    },
+    {
+      "metric_group": "Error",
+      "name": "tomcat_connector_error_count",
+      "display_name": "Error Count",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "short",
+      "dimensions": [],
+      "description": "This metric represents the average number of errors per second that occur when the Tomcat connector processes requests in the past 5 minutes, and it is used to monitor the error rate.",
+      "query": "sum(rate(tomcat_connector_error_count{__$labels__}[5m])) by (instance_id)"
+    },
+    {
+      "metric_group": "JMX",
+      "name": "tomcat_jvm_memory_free",
+      "display_name": "JMX Free Memory",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "mebibytes",
+      "dimensions": [],
+      "description": "This metric shows the free memory in Tomcat JVM, used to monitor memory usage.",
+      "query": "tomcat_jvm_memory_free{__$labels__}/1024/1024"
+    },
+    {
+      "metric_group": "JMX",
+      "name": "tomcat_jvm_memory_max",
+      "display_name": "JMX Max Memory",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "mebibytes",
+      "dimensions": [],
+      "description": "This metric indicates the maximum memory available to Tomcat JVM, used to monitor memory limits.",
+      "query": "tomcat_jvm_memory_max{__$labels__}/1024/1024"
+    },
+    {
+      "metric_group": "JMX",
+      "name": "tomcat_jvm_memorypool_used",
+      "display_name": "JMX Used Memory Pool",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "mebibytes",
+      "dimensions": [],
+      "description": "This metric shows the amount of memory used in the Tomcat JVM memory pool, used to monitor memory pool usage.",
+      "query": "tomcat_jvm_memorypool_used{__$labels__}/1024/1024"
+    }
+  ]
+}

@@ -1,0 +1,374 @@
+{
+  "plugin": "VMWare",
+  "plugin_desc": "vCenter is VMware's virtualization hub for monitoring resources (CPU/memory/storage/network), analyzing performance, and optimizing configurations. It helps identify VM/host anomalies and improves environment efficiency.",
+  "is_compound_object": true,
+  "objects": [
+    {
+      "name": "vCenter",
+      "icon": "vmware",
+      "type": "VMWare",
+      "level": "base",
+      "description": "",
+      "default_metric": "any({instance_type='vmware'}) by (instance_id)",
+      "instance_id_keys": ["instance_id"],
+      "supplementary_indicators": ["vmware_esxi_count", "vmware_datastore_count", "vmware_vm_count"],
+      "metrics": [
+        {
+          "metric_group": "Quantity",
+          "name": "vmware_esxi_count",
+          "query": "count by (instance_id) (sum by (instance_id, resource_id) ({resource_type=\"vmware_esxi\"}))",
+          "display_name": "Number of ESXi",
+          "data_type": "Number",
+          "unit": "short",
+          "dimensions": [],
+          "instance_id_keys": ["instance_id"],
+          "description": "This metric counts the number of ESXi hosts in the VMware environment, helping administrators understand the current physical host resources."
+        },
+        {
+          "metric_group": "CPU",
+          "name": "vmware_datastore_count",
+          "query": "count by (instance_id) (sum by (instance_id, resource_id) ({resource_type=\"vmware_ds\"}))",
+          "display_name": "Number of Datastores",
+          "data_type": "Number",
+          "unit": "short",
+          "dimensions": [],
+          "instance_id_keys": ["instance_id"],
+          "description": "This metric counts the number of datastores in the VMware environment, facilitating the monitoring of storage resource allocation and usage."
+        },
+        {
+          "metric_group": "CPU",
+          "name": "vmware_vm_count",
+          "query": "count by (instance_id) (sum by (instance_id, resource_id) ({resource_type=\"vmware_vm\"}))",
+          "display_name": "Number of VM",
+          "data_type": "Number",
+          "unit": "short",
+          "dimensions": [],
+          "instance_id_keys": ["instance_id"],
+          "description": "This metric counts the number of virtual machines in the VMware environment, used to assess the utilization of virtualization resources."
+        }
+      ]
+    },
+    {
+      "name": "ESXI",
+      "icon": "ESXI",
+      "type": "VMWare",
+      "level": "derivative",
+      "description": "",
+      "default_metric": "any({resource_type='vmware_esxi'}) by (instance_id, resource_id)",
+      "instance_id_keys": ["instance_id", "resource_id"],
+      "supplementary_indicators": ["esxi_cpu_usage_average_gauge", "esxi_mem_usage_average_gauge", "esxi_disk_read_average_gauge"],
+      "metrics": [
+        {
+          "metric_group": "CPU",
+          "name": "esxi_cpu_usage_average_gauge",
+          "query": "cpu_usage_average_gauge{resource_type=\"vmware_esxi\",__$labels__}",
+          "display_name": "CPU usage",
+          "data_type": "Number",
+          "unit": "percent",
+          "dimensions": [],
+          "instance_id_keys": ["instance_id", "resource_id"],
+          "description": "It represents the CPU utilization rate of the system or application program, which is a key indicator for measuring CPU load and performance."
+        },
+        {
+          "metric_group": "CPU",
+          "name": "esxi_cpu_usagemhz_average_gauge",
+          "query": "cpu_usagemhz_average_gauge{resource_type=\"vmware_esxi\",__$labels__}",
+          "display_name": "CPU utilization rate",
+          "data_type": "Number",
+          "unit": "megahertz",
+          "dimensions": [],
+          "instance_id_keys": ["instance_id", "resource_id"],
+          "description": "It represents the CPU usage, measured in megahertz (MHz), and reflects the actual operating frequency of the CPU."
+        },
+        {
+          "metric_group": "Memory",
+          "name": "esxi_mem_usage_average_gauge",
+          "query": "mem_usage_average_gauge{resource_type=\"vmware_esxi\",__$labels__}",
+          "display_name": "Memory utilization rate",
+          "data_type": "Number",
+          "unit": "percent",
+          "dimensions": [],
+          "instance_id_keys": ["instance_id", "resource_id"],
+          "description": "The memory utilization rate indicates the usage situation of the memory and is used to evaluate the memory load of the system or application program."
+        },
+        {
+          "metric_group": "Memory",
+          "name": "esxi_mem_consumed_average_gauge",
+          "query": "mem_consumed_average_gauge{resource_type=\"vmware_esxi\",__$labels__} / 1024",
+          "display_name": "Active memory",
+          "data_type": "Number",
+          "unit": "MB",
+          "dimensions": [],
+          "instance_id_keys": ["instance_id", "resource_id"],
+          "description": "The active memory represents the actual amount of memory used by the system or application program and is a key indicator of memory consumption."
+        },
+        {
+          "metric_group": "Disk",
+          "name": "esxi_disk_read_average_gauge",
+          "query": "disk_read_average_gauge{resource_type=\"vmware_esxi\",__$labels__} / 1024",
+          "display_name": "Disk read rate",
+          "data_type": "Number",
+          "unit": "MBs",
+          "dimensions": [],
+          "instance_id_keys": ["instance_id", "resource_id"],
+          "description": "The disk read rate represents the amount of data read from the disk per second and is an important indicator for measuring the disk read performance."
+        },
+        {
+          "metric_group": "Disk",
+          "name": "esxi_disk_write_average_gauge",
+          "query": "disk_write_average_gauge{resource_type=\"vmware_esxi\",__$labels__} / 1024",
+          "display_name": "Disk write rate",
+          "data_type": "Number",
+          "unit": "MBs",
+          "dimensions": [],
+          "instance_id_keys": ["instance_id", "resource_id"],
+          "description": "The disk write rate represents the amount of data written to the disk per second and is an important indicator for measuring the disk write performance."
+        },
+        {
+          "metric_group": "Disk",
+          "name": "esxi_disk_numberRead_summation_gauge",
+          "query": "rate(disk_numberRead_summation_gauge{resource_type=\"vmware_esxi\",__$labels__}[5m])",
+          "display_name": "Disk read I/O",
+          "data_type": "Number",
+          "unit": "iops",
+          "dimensions": [],
+          "instance_id_keys": ["instance_id", "resource_id"],
+          "description": "Represents the number of disk read operations completed per second, an important metric for measuring the frequency of disk read requests. Higher values indicate more frequent read requests."
+        },
+        {
+          "metric_group": "Disk",
+          "name": "esxi_disk_numberWrite_summation_gauge",
+          "query": "rate(disk_numberWrite_summation_gauge{resource_type=\"vmware_esxi\",__$labels__}[5m])",
+          "display_name": "Disk write I/O",
+          "data_type": "Number",
+          "unit": "iops",
+          "dimensions": [],
+          "instance_id_keys": ["instance_id", "resource_id"],
+          "description": "Represents the number of disk write operations completed per second, an important metric for measuring the frequency of disk write requests."
+        },
+        {
+          "metric_group": "Network",
+          "name": "esxi_net_bytesRx_average_gauge",
+          "query": "net_bytesRx_average_gauge{resource_type=\"vmware_esxi\",__$labels__} / 1024",
+          "display_name": "Network receive rate",
+          "data_type": "Number",
+          "unit": "KBs",
+          "dimensions": [],
+          "instance_id_keys": ["instance_id", "resource_id"],
+          "description": "The network receive rate represents the amount of data received per second and is an important criterion for measuring network traffic."
+        },
+        {
+          "metric_group": "Network",
+          "name": "esxi_net_bytesTx_average_gauge",
+          "query": "net_bytesTx_average_gauge{resource_type=\"vmware_esxi\",__$labels__} / 1024",
+          "display_name": "Network transmit rate",
+          "data_type": "Number",
+          "unit": "KBs",
+          "dimensions": [],
+          "instance_id_keys": ["instance_id", "resource_id"],
+          "description": "The network transmit rate represents the amount of data sent out per second and is an important criterion for measuring network traffic."
+        }
+      ]
+    },
+    {
+      "name": "VM",
+      "icon": "xuniji",
+      "type": "VMWare",
+      "level": "derivative",
+      "description": "",
+      "default_metric": "any({resource_type='vmware_vm'}) by (instance_id, resource_id)",
+      "instance_id_keys": ["instance_id", "resource_id"],
+      "supplementary_indicators": ["vm_cpu_usage_average_gauge", "vm_mem_usage_average_gauge", "vm_disk_io_usage_gauge"],
+      "metrics": [
+        {
+          "metric_group": "CPU",
+          "name": "vm_cpu_usage_average_gauge",
+          "query": "cpu_usage_average_gauge{resource_type=\"vmware_vm\",__$labels__}",
+          "display_name": "CPU utilization rate",
+          "data_type": "Number",
+          "unit": "percent",
+          "dimensions": [],
+          "instance_id_keys": ["instance_id", "resource_id"],
+          "description": "It represents the CPU utilization rate of the system within a specific time period, usually expressed as a percentage. This indicator helps to understand the CPU load situation, so as to carry out performance optimization and capacity planning."
+        },
+        {
+          "metric_group": "CPU",
+          "name": "vm_cpu_usagemhz_average_gauge",
+          "query": "cpu_usagemhz_average_gauge{resource_type=\"vmware_vm\",__$labels__}",
+          "display_name": "CPU usage",
+          "data_type": "Number",
+          "unit": "megahertz",
+          "dimensions": [],
+          "instance_id_keys": ["instance_id", "resource_id"],
+          "description": "It represents the CPU usage of the system within a specific time period, usually measured in MHz. This indicator is used to measure the actual operating frequency of the CPU and helps to analyze the consumption of CPU resources."
+        },
+        {
+          "metric_group": "Memory",
+          "name": "vm_mem_usage_average_gauge",
+          "query": "mem_usage_average_gauge{resource_type=\"vmware_vm\",__$labels__}",
+          "display_name": "Memory utilization rate",
+          "data_type": "Number",
+          "unit": "percent",
+          "dimensions": [],
+          "instance_id_keys": ["instance_id", "resource_id"],
+          "description": "It represents the memory utilization rate of the system within a specific time period, usually expressed as a percentage. This indicator helps to understand the memory load situation, which is helpful for optimizing memory usage and conducting capacity planning."
+        },
+        {
+          "metric_group": "Memory",
+          "name": "vm_mem_consumed_average_gauge",
+          "query": "mem_consumed_average_gauge{resource_type=\"vmware_vm\",__$labels__} / 1024",
+          "display_name": "Active memory",
+          "data_type": "Number",
+          "unit": "mebibytes",
+          "dimensions": [],
+          "instance_id_keys": ["instance_id", "resource_id"],
+          "description": "It represents the active memory of the system within a specific time period, usually measured in MB or GB. This indicator is used to measure the actual memory resources consumed by the system and helps to analyze the memory usage situation."
+        },
+        {
+          "metric_group": "Disk",
+          "name": "vm_disk_io_usage_gauge",
+          "query": "disk_io_usage_gauge{resource_type=\"vmware_vm\",__$labels__}",
+          "display_name": "Disk I/O Usage",
+          "data_type": "Number",
+          "unit": "percent",
+          "dimensions": [],
+          "instance_id_keys": ["instance_id", "resource_id"],
+          "description": "Indicates the I/O usage of the VM's disk, i.e., the busyness of the disk over a period of time. Higher values indicate higher disk load."
+        },
+        {
+          "metric_group": "Disk",
+          "name": "vm_disk_read_average_gauge",
+          "query": "disk_read_average_gauge{resource_type=\"vmware_vm\",__$labels__} / 1024",
+          "display_name": "Disk Read Throughput",
+          "data_type": "Number",
+          "unit": "MBs",
+          "dimensions": [],
+          "instance_id_keys": ["instance_id", "resource_id"],
+          "description": "Represents the average read throughput of the VM's disk over a period of time. Higher values indicate better read performance."
+        },
+        {
+          "metric_group": "Disk",
+          "name": "vm_disk_used_average_gauge",
+          "query": "disk_used_average_gauge{resource_type=\"vmware_vm\",__$labels__}",
+          "display_name": "Disk Usage",
+          "data_type": "Number",
+          "unit": "percent",
+          "dimensions": [],
+          "instance_id_keys": ["instance_id", "resource_id"],
+          "description": "Represents the average usage of the VM's disk, i.e., the proportion of disk space used. Higher values indicate tighter disk space."
+        },
+        {
+          "metric_group": "Disk",
+          "name": "vm_disk_numberRead_summation_gauge",
+          "query": "rate(disk_numberRead_summation_gauge{resource_type=\"vmware_vm\",__$labels__}[5m])",
+          "display_name": "Disk read I/O",
+          "data_type": "Number",
+          "unit": "iops",
+          "dimensions": [],
+          "instance_id_keys": ["instance_id", "resource_id"],
+          "description": "Represents the number of disk read operations completed per second, an important metric for measuring the frequency of disk read requests. Higher values indicate more frequent read requests."
+        },
+        {
+          "metric_group": "Disk",
+          "name": "vm_disk_numberWrite_summation_gauge",
+          "query": "rate(disk_numberWrite_summation_gauge{resource_type=\"vmware_vm\",__$labels__}[5m])",
+          "display_name": "Disk write I/O",
+          "data_type": "Number",
+          "unit": "iops",
+          "dimensions": [],
+          "instance_id_keys": ["instance_id", "resource_id"],
+          "description": "Represents the number of disk write operations completed per second, an important metric for measuring the frequency of disk write requests."
+        },
+        {
+          "metric_group": "Disk",
+          "name": "vm_disk_write_average_gauge",
+          "query": "disk_write_average_gauge{resource_type=\"vmware_vm\",__$labels__} / 1024",
+          "display_name": "Disk Write Throughput",
+          "data_type": "Number",
+          "unit": "MBs",
+          "dimensions": [],
+          "instance_id_keys": ["instance_id", "resource_id"],
+          "description": "Represents the average write throughput of the VM's disk over a period of time. Higher values indicate better write performance."
+        },
+        {
+          "metric_group": "Network",
+          "name": "vm_net_bytesRx_average_gauge",
+          "query": "net_bytesRx_average_gauge{resource_type=\"vmware_vm\",__$labels__} / 1024",
+          "display_name": "Network receive rate",
+          "data_type": "Number",
+          "unit": "KBs",
+          "dimensions": [],
+          "instance_id_keys": ["instance_id", "resource_id"],
+          "description": "It represents the network receive rate of the system within a specific time period, usually measured in MB/s or GB/s. This indicator is used to measure the network receiving performance and helps to analyze network traffic and bandwidth usage."
+        },
+        {
+          "metric_group": "Network",
+          "name": "vm_net_bytesTx_average_gauge",
+          "query": "net_bytesTx_average_gauge{resource_type=\"vmware_vm\",__$labels__} / 1024",
+          "display_name": "Network transmit rate",
+          "data_type": "Number",
+          "unit": "KBs",
+          "dimensions": [],
+          "instance_id_keys": ["instance_id", "resource_id"],
+          "description": "It represents the network transmit rate of the system within a specific time period, usually measured in MB/s or GB/s. This indicator is used to measure the network transmitting performance and helps to analyze network traffic and bandwidth usage."
+        },
+        {
+          "metric_group": "Power",
+          "name": "vm_power_state_gauge",
+          "query": "power_state_gauge{resource_type=\"vmware_vm\",__$labels__}",
+          "display_name": "Power state",
+          "data_type": "Enum",
+          "unit": "[{\"name\":\"关机\",\"id\":0,\"color\":\"#ff4d4f\"},{\"name\":\"开机\",\"id\":1,\"color\":\"#1ac44a\"}]",
+          "dimensions": [],
+          "instance_id_keys": ["instance_id", "resource_id"],
+          "description": "It indicates the current power status of a virtual machine (VM). This metric helps administrators monitor whether a VM is powered on or off.This metric is essential for tracking VM availability, optimizing resource allocation, and automating workflows in VMware environments."
+        }
+      ]
+    },
+    {
+      "name": "DataStorage",
+      "icon": "yuncunchu",
+      "type": "VMWare",
+      "level": "derivative",
+      "description": "",
+      "default_metric": "any({resource_type='vmware_ds'}) by (instance_id, resource_id)",
+      "instance_id_keys": ["instance_id", "resource_id"],
+      "supplementary_indicators": ["data_storage_disk_used_average_gauge", "data_storage_store_accessible_gauge"],
+      "metrics": [
+        {
+          "metric_group": "Default",
+          "name": "data_storage_disk_used_average_gauge",
+          "query": "disk_used_average_gauge{__$labels__}",
+          "display_name": "Disk utilization rate",
+          "data_type": "Number",
+          "unit": "percent",
+          "dimensions": [],
+          "instance_id_keys": ["instance_id", "resource_id"],
+          "description": "The disk utilization rate indicates the usage situation of disk space and is an indicator for measuring the utilization rate of disk storage."
+        },
+        {
+          "metric_group": "Default",
+          "name": "data_storage_disk_free_average_gauge",
+          "query": "disk_free_average_gauge{__$labels__} / 1024",
+          "display_name": "Disk remaining capacity",
+          "data_type": "Number",
+          "unit": "mebibytes",
+          "dimensions": [],
+          "instance_id_keys": ["instance_id", "resource_id"],
+          "description": "The remaining disk space represents the amount of unused space in the disk and is a key indicator for evaluating the disk capacity."
+        },
+        {
+          "metric_group": "Default",
+          "name": "data_storage_store_accessible_gauge",
+          "query": "store_accessible_gauge{__$labels__}",
+          "display_name": "Storage connection status",
+          "data_type": "Enum",
+          "unit": "[{\"name\":\"断开\",\"id\":0,\"color\":\"#ff4d4f\"},{\"name\":\"正常\",\"id\":1,\"color\":\"#1ac44a\"}]",
+          "dimensions": [],
+          "instance_id_keys": ["instance_id", "resource_id"],
+          "description": "The storage connection status indicates the connectability of the storage device and is an indicator for evaluating the health status of the storage system."
+        }
+      ]
+    }
+  ]
+}

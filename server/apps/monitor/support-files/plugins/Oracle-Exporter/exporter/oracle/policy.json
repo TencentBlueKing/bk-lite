@@ -1,0 +1,154 @@
+{
+  "object": "Oracle",
+  "plugin": "Oracle-Exporter",
+  "templates": [
+    {
+      "name": "实例存活状态",
+      "alert_name": "Oracle 实例 ${metric_instance_id} 服务宕机",
+      "description": "监测Oracle数据库服务存活状态，实例宕机将导致所有业务中断。需立即检查监听器状态和alert日志。",
+      "metric_name": "oracledb_up_gauge",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 0,
+          "method": "<="
+        }
+      ]
+    },
+    {
+      "name": "表空间空间告警",
+      "alert_name": "Oracle 实例 ${metric_instance_id} 表空间不足",
+      "description": "监控表空间使用比例，空间耗尽会导致应用写入失败。需及时扩容或清理历史数据。",
+      "metric_name": "oracledb_tablespace_used_percent_gauge",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 95,
+          "method": ">="
+        },
+        {
+          "level": "error",
+          "value": 90,
+          "method": ">="
+        },
+        {
+          "level": "warning",
+          "value": 85,
+          "method": ">="
+        }
+      ]
+    },
+    {
+      "name": "SGA内存压力",
+      "alert_name": "Oracle 实例 ${metric_instance_id} SGA 内存不足",
+      "description": "检测共享内存区使用率，内存不足会导致频繁磁盘IO。需调整sga_target参数或优化SQL。",
+      "metric_name": "oracledb_sga_used_percent_gauge",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 90,
+          "method": ">="
+        },
+        {
+          "level": "error",
+          "value": 80,
+          "method": ">="
+        },
+        {
+          "level": "warning",
+          "value": 70,
+          "method": ">="
+        }
+      ]
+    },
+    {
+      "name": "用户等待时间",
+      "alert_name": "Oracle 实例 ${metric_instance_id} 用户 IO 等待过高",
+      "description": "监控用户IO等待时间占比，高等待表明存储性能瓶颈。需检查ASM磁盘组或存储阵列。",
+      "metric_name": "oracledb_wait_time_user_io_gauge",
+      "algorithm": "max",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 500,
+          "method": ">="
+        },
+        {
+          "level": "error",
+          "value": 200,
+          "method": ">="
+        },
+        {
+          "level": "warning",
+          "value": 100,
+          "method": ">="
+        }
+      ]
+    },
+    {
+      "name": "回滚率异常",
+      "alert_name": "Oracle 实例 ${metric_instance_id} 事务回滚突增",
+      "description": "监控事务回滚速率，异常增长表明应用逻辑错误或死锁。需检查业务事务逻辑。",
+      "metric_name": "oracledb_activity_user_rollbacks_rate",
+      "algorithm": "max",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 10,
+          "method": ">="
+        },
+        {
+          "level": "error",
+          "value": 5,
+          "method": ">="
+        },
+        {
+          "level": "warning",
+          "value": 1,
+          "method": ">="
+        }
+      ]
+    },
+    {
+      "name": "PGA内存溢出",
+      "alert_name": "Oracle 实例 ${metric_instance_id} PGA 使用超标",
+      "description": "检测PGA内存使用比例，过高会导致临时表空间溢出。需优化排序/哈希操作或增加pga_aggregate_target。",
+      "metric_name": "oracledb_pga_used_percent_gauge",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 90,
+          "method": ">="
+        },
+        {
+          "level": "error",
+          "value": 80,
+          "method": ">="
+        },
+        {
+          "level": "warning",
+          "value": 70,
+          "method": ">="
+        }
+      ]
+    },
+    {
+      "name": "RAC节点状态",
+      "alert_name": "Oracle RAC 节点 ${metric_instance_id} 异常",
+      "description": "监控RAC节点存活状态，节点离线会导致负载不均。需检查私网通信和CRS服务。",
+      "metric_name": "oracledb_rac_node_gauge",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 0,
+          "method": "<="
+        }
+      ]
+    }
+  ]
+}

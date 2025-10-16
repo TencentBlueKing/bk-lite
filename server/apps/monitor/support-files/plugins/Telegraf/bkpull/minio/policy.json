@@ -1,0 +1,116 @@
+{
+  "object": "Minio",
+  "plugin": "Minio",
+  "templates": [
+    {
+      "name": "MinIO 集群健康状态异常",
+      "alert_name": "MinIO ${metric_instance_id} 集群不健康",
+      "description": "检测集群健康状态（health_status），非1表示集群异常，需立即检查节点和网络状态。",
+      "metric_name": "minio_cluster_health_status_gauge",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 1,
+          "method": "!="
+        }
+      ]
+    },
+    {
+      "name": "MinIO 节点离线率过高",
+      "alert_name": "MinIO ${metric_instance_id} 节点大量离线",
+      "description": "检测离线节点占比（nodes_offline_rate），过高可能影响数据可用性和写入quorum。",
+      "metric_name": "minio_cluster_nodes_offline_rate",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 50,
+          "method": ">="
+        },
+        {
+          "level": "error",
+          "value": 30,
+          "method": ">="
+        },
+        {
+          "level": "warning",
+          "value": 10,
+          "method": ">="
+        }
+      ]
+    },
+    {
+      "name": "MinIO 磁盘离线率过高",
+      "alert_name": "MinIO ${metric_instance_id} 磁盘大量离线",
+      "description": "监控离线磁盘占比（drive_offline_rate），过高可能导致数据丢失风险。",
+      "metric_name": "minio_cluster_drive_offline_rate",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 30,
+          "method": ">="
+        },
+        {
+          "level": "error",
+          "value": 20,
+          "method": ">="
+        },
+        {
+          "level": "warning",
+          "value": 10,
+          "method": ">="
+        }
+      ]
+    },
+    {
+      "name": "MinIO 磁盘利用率过高",
+      "alert_name": "MinIO ${metric_instance_id} 磁盘过载",
+      "description": "监控磁盘使用率（drive_perc_util），持续过高可能导致IO性能下降。",
+      "metric_name": "minio_node_drive_perc_util_gauge",
+      "algorithm": "avg",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 90,
+          "method": ">="
+        },
+        {
+          "level": "error",
+          "value": 80,
+          "method": ">="
+        },
+        {
+          "level": "warning",
+          "value": 70,
+          "method": ">="
+        }
+      ]
+    },
+    {
+      "name": "MinIO 请求排队数过多",
+      "alert_name": "MinIO ${metric_instance_id} 请求积压严重",
+      "description": "检测等待处理的S3请求数（requests_waiting_total），积压过多表明服务过载。",
+      "metric_name": "minio_s3_requests_waiting_total_gauge",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 100,
+          "method": ">="
+        },
+        {
+          "level": "error",
+          "value": 50,
+          "method": ">="
+        },
+        {
+          "level": "warning",
+          "value": 20,
+          "method": ">="
+        }
+      ]
+    }
+  ]
+}

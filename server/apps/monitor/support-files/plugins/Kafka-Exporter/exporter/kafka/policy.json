@@ -1,0 +1,130 @@
+{
+  "object": "Kafka",
+  "plugin": "Kafka-Exporter",
+  "templates": [
+    {
+      "name": "Kafka 服务存活状态异常",
+      "alert_name": "Kafka ${metric_instance_id} 服务不可用",
+      "description": "检测 Kafka 进程是否存活，若为 0 表示服务崩溃，需立即重启并检查错误日志。",
+      "metric_name": "kafka_up",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 1,
+          "method": "!="
+        }
+      ]
+    },
+    {
+      "name": "Kafka Broker 数量异常",
+      "alert_name": "Kafka ${metric_instance_id} Broker 数量不足",
+      "description": "监控集群 Broker 数量，若低于副本因子数可能导致数据不可用。",
+      "metric_name": "kafka_brokers",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 2,
+          "method": "<="
+        },
+        {
+          "level": "error",
+          "value": 3,
+          "method": "<="
+        },
+        {
+          "level": "warning",
+          "value": 4,
+          "method": "<="
+        }
+      ]
+    },
+    {
+      "name": "Kafka 分区不同步副本",
+      "alert_name": "Kafka ${metric_instance_id} 分区副本不同步",
+      "description": "检测分区不同步副本数，不等于0 表明副本同步异常。",
+      "metric_name": "kafka_topic_partition_under_replicated_partition",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 0,
+          "method": "!="
+        }
+      ]
+    },
+    {
+      "name": "Kafka 消费者组延迟过高",
+      "alert_name": "Kafka ${metric_instance_id} 消费延迟严重",
+      "description": "监控消费者组延迟消息数，过高可能导致数据延迟处理。",
+      "metric_name": "kafka_consumergroup_lag",
+      "algorithm": "max",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 10000,
+          "method": ">="
+        },
+        {
+          "level": "error",
+          "value": 5000,
+          "method": ">="
+        },
+        {
+          "level": "warning",
+          "value": 1000,
+          "method": ">="
+        }
+      ]
+    },
+    {
+      "name": "Kafka 分区偏移量停滞",
+      "alert_name": "Kafka ${metric_instance_id} 分区无新数据",
+      "description": "检测分区最新偏移量增长率，停滞可能表明生产者异常。",
+      "metric_name": "kafka_topic_partition_current_offset",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 1,
+          "method": "<="
+        },
+        {
+          "level": "error",
+          "value": 5,
+          "method": "<="
+        },
+        {
+          "level": "warning",
+          "value": 10,
+          "method": "<="
+        }
+      ]
+    },
+    {
+      "name": "Kafka 虚拟内存过大",
+      "alert_name": "Kafka ${metric_instance_id} 虚拟内存异常",
+      "description": "检测进程虚拟内存，过大可能发生内存交换。",
+      "metric_name": "process_virtual_memory_bytes",
+      "algorithm": "max",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 32,
+          "method": ">="
+        },
+        {
+          "level": "error",
+          "value": 16,
+          "method": ">="
+        },
+        {
+          "level": "warning",
+          "value": 8,
+          "method": ">="
+        }
+      ]
+    }
+  ]
+}

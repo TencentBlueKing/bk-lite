@@ -1,0 +1,84 @@
+username: {{ username }}
+password: {{ password }}
+jmxUrl: {{ jmx_url }}
+ssl: false
+startDelaySeconds: 0
+lowercaseOutputName: true
+lowercaseOutputLabelNames: true
+
+# 白名单限制采集范围
+whitelistObjectNames:
+  - java.lang:type=Memory
+  - java.lang:type=Threading
+  - java.lang:type=OperatingSystem
+  - java.nio:type=BufferPool,name=*
+  - java.lang:type=GarbageCollector,name=*
+  - java.lang:type=MemoryPool,name=*
+
+rules:
+  # 内存相关指标
+  - pattern: java.lang<type=Memory><(\w+)MemoryUsage>(\w+)
+    name: jvm_memory_usage_$2
+    labels:
+      type: $1
+
+  # 线程相关指标
+  - pattern: java.lang<type=Threading><>ThreadCount
+    name: jvm_threads_count
+  - pattern: java.lang<type=Threading><>DaemonThreadCount
+    name: jvm_threads_daemon_count
+  - pattern: java.lang<type=Threading><>PeakThreadCount
+    name: jvm_threads_peak_count
+  - pattern: java.lang<type=Threading><>TotalStartedThreadCount
+    name: jvm_threads_total_started_count
+  - pattern: java.lang<type=Threading><>CurrentThreadUserTime
+    name: jvm_threads_current_user_time
+    valueFactor: 0.001
+
+  # 操作系统指标
+  - pattern: java.lang<type=OperatingSystem><>FreePhysicalMemorySize
+    name: jvm_os_memory_physical_free
+  - pattern: java.lang<type=OperatingSystem><>TotalPhysicalMemorySize
+    name: jvm_os_memory_physical_total
+  - pattern: java.lang<type=OperatingSystem><>FreeSwapSpaceSize
+    name: jvm_os_memory_swap_free
+  - pattern: java.lang<type=OperatingSystem><>TotalSwapSpaceSize
+    name: jvm_os_memory_swap_total
+  - pattern: java.lang<type=OperatingSystem><>CommittedVirtualMemorySize
+    name: jvm_os_memory_committed_virtual
+  - pattern: java.lang<type=OperatingSystem><>AvailableProcessors
+    name: jvm_os_available_processors
+  - pattern: java.lang<type=OperatingSystem><>ProcessCpuTime
+    name: jvm_os_processcputime_seconds
+    valueFactor: 0.000000001
+
+  # BufferPool 指标
+  - pattern: java.nio<type=BufferPool, name=(.+)><>Count
+    name: jvm_bufferpool_count
+    labels:
+      type: $1
+  - pattern: java.nio<type=BufferPool, name=(.+)><>MemoryUsed
+    name: jvm_bufferpool_memoryused
+    labels:
+      type: $1
+  - pattern: java.nio<type=BufferPool, name=(.+)><>TotalCapacity
+    name: jvm_bufferpool_totalcapacity
+    labels:
+      type: $1
+
+  # GC 指标
+  - pattern: java.lang<type=GarbageCollector, name=(.+)><>CollectionTime
+    name: jvm_gc_collectiontime_seconds
+    valueFactor: 0.001
+    labels:
+      type: $1
+  - pattern: java.lang<type=GarbageCollector, name=(.+)><>CollectionCount
+    name: jvm_gc_collectioncount
+    labels:
+      type: $1
+
+  # MemoryPool 指标
+  - pattern: java.lang<type=MemoryPool, name=(.+)><Usage>(\w+)
+    name: jvm_memorypool_usage_$2
+    labels:
+      type: $1

@@ -4,7 +4,8 @@ from datetime import datetime, timezone, timedelta
 from django.db.models import F
 
 from apps.core.exceptions.base_app_exception import BaseAppException
-from apps.monitor.constants import LEVEL_WEIGHT, THRESHOLD, NO_DATA
+from apps.monitor.constants.alert_policy import AlertConstants
+
 from apps.monitor.models import MonitorPolicy, MonitorInstanceOrganization, MonitorAlert, MonitorEvent, MonitorInstance, \
     Metric, MonitorEventRawData, MonitorAlertMetricSnapshot
 from apps.monitor.tasks.task_utils.metric_query import format_to_vm_filter
@@ -428,7 +429,7 @@ class MonitorPolicyScan:
             if not event_obj or event_obj.level == "no_data":
                 continue
             # 告警等级升级
-            if LEVEL_WEIGHT.get(event_obj.level) > LEVEL_WEIGHT.get(alert.level):
+            if AlertConstants.LEVEL_WEIGHT.get(event_obj.level) > AlertConstants.LEVEL_WEIGHT.get(alert.level):
                 alert.level = event_obj.level
                 alert.value = event_obj.value
                 alert.content = event_obj.content
@@ -661,7 +662,7 @@ class MonitorPolicyScan:
         new_alerts = []  # 初始化新告警列表
         alert_events, info_events, no_data_events = [], [], []  # 初始化事件数据
 
-        if THRESHOLD in self.policy.enable_alerts:
+        if AlertConstants.THRESHOLD in self.policy.enable_alerts:
             # 告警事件
             alert_events, info_events = self.alert_event()
             # 正常、异常事件计数
@@ -669,7 +670,7 @@ class MonitorPolicyScan:
             # 告警恢复
             self.recovery_alert()
 
-        if NO_DATA in self.policy.enable_alerts:
+        if AlertConstants.NO_DATA in self.policy.enable_alerts:
             # 无数据事件
             no_data_events = self.no_data_event()
             # 无数据告警恢复

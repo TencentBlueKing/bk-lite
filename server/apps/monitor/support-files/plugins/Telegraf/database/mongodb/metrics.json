@@ -1,0 +1,112 @@
+{
+  "plugin": "MongoDB",
+  "plugin_desc": "By collecting metrics on MongoDB read and write activities, command execution, connection counts, latency, memory usage, and network traffic, this helps optimize performance and ensure efficient and stable database operations.",
+  "name": "MongoDB",
+  "icon": "mongodb",
+  "type": "Database",
+  "description": "",
+  "default_metric": "any({instance_type='mongodb'}) by (instance_id)",
+  "instance_id_keys": ["instance_id"],
+  "supplementary_indicators": ["mongodb_connections_current", "mongodb_latency_commands", "mongodb_resident_megabytes"],
+  "metrics": [
+    {
+      "metric_group": "Active Operations",
+      "name": "mongodb_active_reads",
+      "display_name": "Active Reads",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "short",
+      "dimensions": [],
+      "description": "The number of active read operations currently being executed, used to monitor database load.",
+      "query": "rate(mongodb_active_reads{__$labels__}[5m])"
+    },
+    {
+      "metric_group": "Active Operations",
+      "name": "mongodb_active_writes",
+      "display_name": "Active Writes",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "short",
+      "dimensions": [],
+      "description": "The number of active write operations currently being executed, used to monitor write pressure.",
+      "query": "rate(mongodb_active_writes{__$labels__}[5m])"
+    },
+    {
+      "metric_group": "Commands",
+      "name": "mongodb_commands",
+      "display_name": "Commands Per Second",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "cps",
+      "dimensions": [],
+      "description": "The number of database operations per second, reflecting database load.",
+      "query": "rate(mongodb_commands{__$labels__}[5m])"
+    },
+    {
+      "metric_group": "Connections",
+      "name": "mongodb_connections_current",
+      "display_name": "Current Connections",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "short",
+      "dimensions": [],
+      "description": "The number of active client connections to the database.",
+      "query": "sum(mongodb_connections_current{__$labels__}) by (instance_id)"
+    },
+    {
+      "metric_group": "Latency",
+      "name": "mongodb_latency_commands",
+      "display_name": "Command Latency",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "ms",
+      "dimensions": [],
+      "description": "The average latency of database commands, used to assess database performance.",
+      "query": "sum(rate(mongodb_latency_commands{__$labels__}[5m])) by (instance_id)/ 1e6"
+    },
+    {
+      "metric_group": "Memory",
+      "name": "mongodb_resident_megabytes",
+      "display_name": "Resident Memory Usage",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "mebibytes",
+      "dimensions": [],
+      "description": "The amount of physical memory used by MongoDB, reflecting resource usage.",
+      "query": "sum(mongodb_resident_megabytes{__$labels__}) by (instance_id)"
+    },
+    {
+      "metric_group": "Traffic",
+      "name": "mongodb_net_in_bytes",
+      "display_name": "Incoming Traffic",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "MBs",
+      "dimensions": [],
+      "description": "The amount of incoming data received per second, used to monitor network traffic.",
+      "query": "rate(mongodb_net_in_bytes{__$labels__}[5m]) / 1024 / 1024"
+    },
+    {
+      "metric_group": "Traffic",
+      "name": "mongodb_net_out_bytes",
+      "display_name": "Outgoing Traffic",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "MBs",
+      "dimensions": [],
+      "description": "The amount of outgoing data sent per second, used to monitor network traffic.",
+      "query": "rate(mongodb_net_out_bytes{__$labels__}[5m]) / 1024 / 1024"
+    },
+    {
+      "metric_group": "Storage",
+      "name": "mongodb_total_docs_scanned",
+      "display_name": "Documents Scanned",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "short",
+      "dimensions": [],
+      "description": "The number of documents scanned per second during queries, used to assess query performance.",
+      "query": "rate(mongodb_total_docs_scanned{__$labels__}[5m])"
+    }
+  ]
+}

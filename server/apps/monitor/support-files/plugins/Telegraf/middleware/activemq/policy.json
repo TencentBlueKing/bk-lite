@@ -1,0 +1,54 @@
+{
+  "object": "ActiveMQ",
+  "plugin": "ActiveMQ",
+  "templates": [
+    {
+      "name": "Topic消费能力",
+      "alert_name": "Topic ${metric_instance_id} 消费者不足",
+      "description": "监控Topic消费者数量，过少可能导致消息积压。需检查消费者应用状态。",
+      "metric_name": "activemq_topic_consumer_count",
+      "algorithm": "min",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 1,
+          "method": "<="
+        },
+        {
+          "level": "error",
+          "value": 3,
+          "method": "<="
+        },
+        {
+          "level": "warning",
+          "value": 5,
+          "method": "<="
+        }
+      ]
+    },
+    {
+      "name": "Topic积压量",
+      "alert_name": "Topic ${metric_instance_id} 消息堆积",
+      "description": "检测当前积压消息数，过多会占用内存和存储资源。需扩容消费者。",
+      "metric_name": "activemq_topic_size",
+      "algorithm": "max",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 100000,
+          "method": ">="
+        },
+        {
+          "level": "error",
+          "value": 50000,
+          "method": ">="
+        },
+        {
+          "level": "warning",
+          "value": 10000,
+          "method": ">="
+        }
+      ]
+    }
+  ]
+}

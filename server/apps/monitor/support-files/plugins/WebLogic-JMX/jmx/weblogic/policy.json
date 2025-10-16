@@ -1,0 +1,216 @@
+{
+  "object": "WebLogic",
+  "plugin": "WebLogic-JMX",
+  "templates": [
+    {
+      "name": "WebLogic 线程池吞吐量过低",
+      "alert_name": "WebLogic ${metric_instance_id} 线程池吞吐量过低",
+      "description": "检测 WebLogic 线程池吞吐量是否低于阈值，若持续过低可能表明线程池处理能力不足，需检查线程阻塞或资源竞争问题。",
+      "metric_name": "weblogic_threadpool_throughput_value",
+      "algorithm": "min",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 10,
+          "method": "<="
+        },
+        {
+          "level": "error",
+          "value": 20,
+          "method": "<="
+        },
+        {
+          "level": "warning",
+          "value": 30,
+          "method": "<="
+        }
+      ]
+    },
+    {
+      "name": "WebLogic 线程池待处理请求数过高",
+      "alert_name": "WebLogic ${metric_instance_id} 待处理请求数过高",
+      "description": "监控 WebLogic 线程池待处理用户请求数，若积压过多可能导致请求延迟或超时，需优化线程池配置或排查慢请求。",
+      "metric_name": "weblogic_threadpool_pending_user_request_count_value",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 50,
+          "method": ">="
+        },
+        {
+          "level": "error",
+          "value": 30,
+          "method": ">="
+        },
+        {
+          "level": "warning",
+          "value": 20,
+          "method": ">="
+        }
+      ]
+    },
+    {
+      "name": "WebLogic 线程池队列积压",
+      "alert_name": "WebLogic ${metric_instance_id} 线程队列积压",
+      "description": "检测 WebLogic 线程池队列长度，若持续堆积可能表明线程池过载，需增加线程数或优化任务处理逻辑。",
+      "metric_name": "weblogic_threadpool_queue_length_value",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 100,
+          "method": ">="
+        },
+        {
+          "level": "error",
+          "value": 80,
+          "method": ">="
+        },
+        {
+          "level": "warning",
+          "value": 50,
+          "method": ">="
+        }
+      ]
+    },
+    {
+      "name": "WebLogic 线程池卡死线程数异常",
+      "alert_name": "WebLogic ${metric_instance_id} 卡死线程数异常",
+      "description": "监控 WebLogic 线程池卡死线程数量，卡死线程会占用资源且无法处理新请求，需及时排查死锁或长时间阻塞操作。",
+      "metric_name": "weblogic_threadpool_stuck_thread_count_value",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 5,
+          "method": ">="
+        },
+        {
+          "level": "error",
+          "value": 3,
+          "method": ">="
+        },
+        {
+          "level": "warning",
+          "value": 1,
+          "method": ">="
+        }
+      ]
+    },
+    {
+      "name": "WebLogic 线程池负载比过高",
+      "alert_name": "WebLogic ${metric_instance_id} 线程池过载",
+      "description": "检测 WebLogic 线程池负载比率，若持续过高表明线程池资源紧张，需调整线程数或优化任务分配策略。",
+      "metric_name": "weblogic_threadpool_load_ratio",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 90,
+          "method": ">="
+        },
+        {
+          "level": "error",
+          "value": 80,
+          "method": ">="
+        },
+        {
+          "level": "warning",
+          "value": 70,
+          "method": ">="
+        }
+      ]
+    },
+    {
+      "name": "WebLogic 应用健康状态异常",
+      "alert_name": "WebLogic ${metric_instance_id} 应用健康状态异常",
+      "description": "监控 WebLogic 应用健康状态（Critical），若异常需立即检查应用日志及依赖服务，防止服务不可用。",
+      "metric_name": "weblogic_application_healthstatejmx_is_critical_value",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 0,
+          "method": "!="
+        }
+      ]
+    },
+    {
+      "name": "WebLogic WorkManager 卡死线程数过高",
+      "alert_name": "WebLogic ${metric_instance_id} WorkManager 卡死线程",
+      "description": "检测 WebLogic WorkManager 卡死线程数，卡死线程会影响异步任务处理，需检查任务逻辑或资源竞争问题。",
+      "metric_name": "weblogic_workmanager_stuck_thread_count_value",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 5,
+          "method": ">="
+        },
+        {
+          "level": "error",
+          "value": 3,
+          "method": ">="
+        },
+        {
+          "level": "warning",
+          "value": 1,
+          "method": ">="
+        }
+      ]
+    },
+    {
+      "name": "WebLogic JMS 当前连接数过高",
+      "alert_name": "WebLogic ${metric_instance_id} JMS 连接数过高",
+      "description": "监控 WebLogic JMS 当前连接数，连接数过多可能导致资源耗尽，需优化 JMS 客户端或调整连接池配置。",
+      "metric_name": "weblogic_jms_connections_current_count_value",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 500,
+          "method": ">="
+        },
+        {
+          "level": "error",
+          "value": 400,
+          "method": ">="
+        },
+        {
+          "level": "warning",
+          "value": 300,
+          "method": ">="
+        }
+      ]
+    },
+    {
+      "name": "WebLogic JMX 监控采集失败",
+      "alert_name": "WebLogic ${metric_instance_id} JMX 采集失败",
+      "description": "检测 WebLogic JMX 监控数据采集是否失败，若失败将导致监控数据缺失，需检查网络、权限或 JMX 服务状态。",
+      "metric_name": "jmx_scrape_error_gauge",
+      "algorithm": "max",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 0,
+          "method": "!="
+        }
+      ]
+    },
+    {
+      "name": "WebLogic 整体健康状态异常",
+      "alert_name": "WebLogic ${metric_instance_id} 整体健康状态异常",
+      "description": "监控 WebLogic 整体健康状态（Critical），若异常表明核心服务不可用，需立即介入排查避免业务中断。",
+      "metric_name": "weblogic_application_overallhealthstatejmx_is_critical_value",
+      "algorithm": "max",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 0,
+          "method": "!="
+        }
+      ]
+    }
+  ]
+}

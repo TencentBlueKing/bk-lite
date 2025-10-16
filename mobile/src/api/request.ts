@@ -3,7 +3,7 @@
  * 所有请求统一通过 Tauri Rust 后端转发
  */
 
-import { tauriFetch, getApiBaseUrl, isTauriApp } from '../utils/tauriFetch';
+import { tauriFetch, getApiBaseUrl } from '../utils/tauriFetch';
 
 const API_BASE_URL = getApiBaseUrl();
 

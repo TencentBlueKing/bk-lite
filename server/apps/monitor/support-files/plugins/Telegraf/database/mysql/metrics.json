@@ -1,0 +1,145 @@
+{
+  "plugin": "Mysql",
+  "plugin_desc": "Used to collect and monitor key metrics for MySQL database health and performance.",
+  "name": "Mysql",
+  "icon": "mysql1",
+  "type": "Database",
+  "description": "",
+  "default_metric": "any({instance_type='mysql'}) by (instance_id)",
+  "instance_id_keys": ["instance_id"],
+  "supplementary_indicators": ["mysql_bytes_received", "mysql_bytes_sent", "mysql_connections_total"],
+  "metrics": [
+    {
+      "metric_group": "Connection",
+      "name": "mysql_aborted_clients",
+      "display_name": "Aborted Clients",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "short",
+      "dimensions": [],
+      "description": "This metric represents the number of connections aborted due to client errors. Monitoring this metric can help identify connection reliability issues.",
+      "query": "rate(mysql_aborted_clients{__$labels__}[5m])"
+    },
+    {
+      "metric_group": "Connection",
+      "name": "mysql_aborted_connects",
+      "display_name": "Aborted Connects",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "short",
+      "dimensions": [],
+      "description": "This metric represents the number of connection attempts aborted due to connection issues. High values may indicate configuration issues or server overload.",
+      "query": "rate(mysql_aborted_connects{__$labels__}[5m])"
+    },
+    {
+      "metric_group": "Error",
+      "name": "mysql_access_denied_errors",
+      "display_name": "Access Denied Errors",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "short",
+      "dimensions": [],
+      "description": "This metric represents the number of access denials due to insufficient privileges or authentication failures. Monitoring this metric helps in identifying and resolving permission issues.",
+      "query": "rate(mysql_access_denied_errors{__$labels__}[5m])"
+    },
+    {
+      "metric_group": "Cache",
+      "name": "mysql_aria_pagecache_blocks_unused",
+      "display_name": "Aria Pagecache Blocks Unused",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "short",
+      "dimensions": [],
+      "description": "This metric indicates the number of unused page cache blocks in the Aria storage engine. Monitoring this metric helps optimize cache allocation.",
+      "query": "rate(mysql_aria_pagecache_blocks_unused{__$labels__}[5m])"
+    },
+    {
+      "metric_group": "Cache",
+      "name": "mysql_aria_pagecache_blocks_used",
+      "display_name": "Aria Pagecache Blocks Used",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "short",
+      "dimensions": [],
+      "description": "This metric indicates the number of used page cache blocks in the Aria storage engine. Monitoring this metric helps assess the effective utilization of the cache.",
+      "query": "rate(mysql_aria_pagecache_blocks_used{__$labels__}[5m])"
+    },
+    {
+      "metric_group": "Traffic",
+      "name": "mysql_bytes_received",
+      "display_name": "Bytes Received",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "bytes",
+      "dimensions": [],
+      "description": "This metric indicates the number of bytes received by the MySQL server. Monitoring this metric helps understand the network traffic load.",
+      "query": "sum(rate(mysql_bytes_received{__$labels__}[5m])) by (instance_id)"
+    },
+    {
+      "metric_group": "Traffic",
+      "name": "mysql_bytes_sent",
+      "display_name": "Bytes Sent",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "bytes",
+      "dimensions": [],
+      "description": "This metric indicates the number of bytes sent by the MySQL server. Monitoring this metric helps understand the network traffic load.",
+      "query": "sum(rate(mysql_bytes_sent{__$labels__}[5m])) by (instance_id)"
+    },
+    {
+      "metric_group": "Command",
+      "name": "mysql_com_select",
+      "display_name": "Select Commands",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "short",
+      "dimensions": [],
+      "description": "This metric represents the number of Select queries executed. Monitoring this metric helps understand the frequency of read operations and system load.",
+      "query": "rate(mysql_com_select{__$labels__}[5m])"
+    },
+    {
+      "metric_group": "Command",
+      "name": "mysql_com_insert",
+      "display_name": "Insert Commands",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "short",
+      "dimensions": [],
+      "description": "This metric represents the number of Insert commands executed. Monitoring this metric helps understand the frequency of write operations and system load.",
+      "query": "rate(mysql_com_insert{__$labels__}[5m])"
+    },
+    {
+      "metric_group": "Command",
+      "name": "mysql_com_update",
+      "display_name": "Update Commands",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "short",
+      "dimensions": [],
+      "description": "This metric represents the number of Update commands executed. Monitoring this metric helps understand the frequency of update operations and system load.",
+      "query": "rate(mysql_com_update{__$labels__}[5m])"
+    },
+    {
+      "metric_group": "Command",
+      "name": "mysql_com_delete",
+      "display_name": "Delete Commands",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "short",
+      "dimensions": [],
+      "description": "This metric represents the number of Delete commands executed. Monitoring this metric helps understand the frequency of delete operations and system load.",
+      "query": "rate(mysql_com_delete{__$labels__}[5m])"
+    },
+    {
+      "metric_group": "Session",
+      "name": "mysql_connections_total",
+      "display_name": "Total Connections Created",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "short",
+      "dimensions": [],
+      "description": "This metric represents the total number of connections created since the server started. Monitoring the total connections helps understand connection patterns and load.",
+      "query": "sum(rate(mysql_threads_connected{__$labels__}[5m])) by (instance_id)"
+    }
+  ]
+}

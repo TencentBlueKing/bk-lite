@@ -5,7 +5,7 @@ from collections import defaultdict
 from django.db import transaction
 
 from apps.core.exceptions.base_app_exception import BaseAppException
-from apps.monitor.constants import OBJ_ORDER, DEFAULT_OBJ_ORDER, MONITOR_OBJ_KEYS
+from apps.monitor.constants.monitor_object import MonitorObjConstants
 from apps.monitor.models.monitor_metrics import Metric
 from apps.monitor.models.monitor_object import MonitorInstance, MonitorObject, MonitorInstanceOrganization
 from apps.monitor.models.setting import Setting
@@ -78,7 +78,7 @@ class MonitorObjectService:
         monitor_obj = MonitorObject.objects.filter(id=monitor_object_id).first()
         if not monitor_obj:
             raise BaseAppException("Monitor object does not exist")
-        monitor_objs = MonitorObject.objects.all().values(*MONITOR_OBJ_KEYS)
+        monitor_objs = MonitorObject.objects.all().values(*MonitorObjConstants.OBJ_KEYS)
         obj_metric_map = {i["name"]: i for i in monitor_objs}
         obj_metric_map = obj_metric_map.get(monitor_obj.name)
         if not obj_metric_map:
@@ -158,7 +158,7 @@ class MonitorObjectService:
     @staticmethod
     def set_object_order(order: list):
         """设置监控对象排序"""
-        Setting.objects.update_or_create(name=OBJ_ORDER, defaults={"value": order})
+        Setting.objects.update_or_create(name=MonitorObjConstants.OBJ_ORDER, defaults={"value": order})
 
     @staticmethod
     def sort_items(data):
@@ -167,8 +167,8 @@ class MonitorObjectService:
         :return: 排序后的数据列表
         """
 
-        order_obj = Setting.objects.filter(name=OBJ_ORDER).first()
-        order_obj_value = order_obj.value if order_obj else DEFAULT_OBJ_ORDER
+        order_obj = Setting.objects.filter(name=MonitorObjConstants.OBJ_ORDER).first()
+        order_obj_value = order_obj.value if order_obj else MonitorObjConstants.DEFAULT_OBJ_ORDER
         item_order = {i["type"]: i["name_list"] for i in order_obj_value}
         group_order = [i["type"] for i in order_obj_value]
 

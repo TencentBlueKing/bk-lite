@@ -1,0 +1,222 @@
+{
+  "object": "Host",
+  "plugin": "Host",
+  "templates": [
+    {
+    "name": "主机 CPU 使用率过高",
+    "alert_name": "主机 ${metric_instance_id} CPU 使用率过高",
+    "description": "检测主机 CPU 使用率是否超标，当超过预设阈值触发告警，提醒用户注意系统过载风险。",
+    "metric_name": "cpu_summary.usage",
+    "algorithm": "max",
+    "threshold": [
+        {
+            "level": "critical",
+            "value": 90,
+            "method": ">="
+        },
+        {
+            "level": "error",
+            "value": 85,
+            "method": ">="
+        },
+        {
+            "level": "warning",
+            "value": 80,
+            "method": ">="
+        }
+    ]
+  },
+  {
+    "name": "主机内存使用率过高",
+    "alert_name": "主机 ${metric_instance_id} 内存使用率过高",
+    "description": "监控主机内存使用率，若长时间高于预设阈值会触发告警，提示用户检查内存消耗情况或性能瓶颈。",
+    "metric_name": "mem.pct_used",
+    "algorithm": "max",
+    "threshold": [
+        {
+            "level": "critical",
+            "value": 90,
+            "method": ">="
+        },
+        {
+            "level": "error",
+            "value": 85,
+            "method": ">="
+        },
+        {
+            "level": "warning",
+            "value": 80,
+            "method": ">="
+        }
+    ]
+  },
+  {
+    "name": "主机磁盘使用率过高",
+    "alert_name": "主机 ${metric_instance_id} 磁盘使用率过高",
+    "description": "检测磁盘使用状态，若使用率超过阈值将告警，协助用户及时处理磁盘空间不足的潜在风险。",
+    "metric_name": "disk.is_use",
+    "algorithm": "max",
+    "threshold": [
+        {
+            "level": "critical",
+            "value": 90,
+            "method": ">="
+        },
+        {
+            "level": "error",
+            "value": 85,
+            "method": ">="
+        },
+        {
+            "level": "warning",
+            "value": 80,
+            "method": ">="
+        }
+    ]
+  },
+  {
+    "name": "平均负载过高 (5 分钟)",
+    "alert_name": "主机 ${metric_instance_id} 平均5分钟负载过高",
+    "description": "定期评估主机 5 分钟内的平均负载，若处于高负载状态会触发告警，帮助用户及时发现性能问题。",
+    "metric_name": "load5",
+    "algorithm": "max",
+    "threshold": [
+        {
+            "level": "critical",
+            "value": 10,
+            "method": ">="
+        },
+        {
+            "level": "error",
+            "value": 8,
+            "method": ">="
+        },
+        {
+            "level": "warning",
+            "value": 6,
+            "method": ">="
+        }
+    ]
+  },
+  {
+    "name": "磁盘写入速率过高",
+    "alert_name": "主机 ${metric_instance_id} 磁盘写入速率过高",
+    "description": "检测磁盘的写入操作速率，若写入速率异常超过阈值将触发告警，提醒用户关注磁盘写入性能及可用性。",
+    "metric_name": "diskio_write_bytes",
+    "algorithm": "max",
+    "threshold": [
+        {
+            "level": "critical",
+            "value": 100,
+            "method": ">="
+        },
+        {
+            "level": "error",
+            "value": 80,
+            "method": ">="
+        },
+        {
+            "level": "warning",
+            "value": 60,
+            "method": ">="
+        }
+    ]
+  },
+  {
+    "name": "磁盘读取速率过高",
+    "alert_name": "主机 ${metric_instance_id} 磁盘读取速率过高",
+    "description": "监控磁盘的读取速率，若超过阈值则发出告警，协助用户分析磁盘 IO 相关的性能和潜在问题。",
+    "metric_name": "diskio_read_bytes",
+    "algorithm": "max",
+    "threshold": [
+        {
+            "level": "critical",
+            "value": 100,
+            "method": ">="
+        },
+        {
+            "level": "error",
+            "value": 80,
+            "method": ">="
+        },
+        {
+            "level": "warning",
+            "value": 60,
+            "method": ">="
+        }
+    ]
+  },
+  {
+    "name": "等待 IO 时间过高",
+    "alert_name": "主机 ${metric_instance_id} 等待 IO 时间过高",
+    "description": "监控主机等待 I/O 操作的时间，若时间过长则触发告警，提示用户优化 I/O 性能的问题。",
+    "metric_name": "cpu_summary.iowait",
+    "algorithm": "max",
+    "threshold": [
+        {
+            "level": "critical",
+            "value": 100,
+            "method": ">="
+        },
+        {
+            "level": "error",
+            "value": 80,
+            "method": ">="
+        },
+        {
+            "level": "warning",
+            "value": 60,
+            "method": ">="
+        }
+    ]
+  },
+  {
+    "name": "网卡入流量过高",
+    "alert_name": "主机 ${metric_instance_id}接口${metric_interface} 网卡入流量过高",
+    "description": "检测网卡入流量是否异常增长，若流量达到预设阈值触发告警，提醒用户注意网络流量异常或性能瓶颈。",
+    "metric_name": "net.speed_recv",
+    "algorithm": "max_over_time",
+    "threshold": [
+        {
+            "level": "critical",
+            "value": 100,
+            "method": ">="
+        },
+        {
+            "level": "error",
+            "value": 80,
+            "method": ">="
+        },
+        {
+            "level": "warning",
+            "value": 60,
+            "method": ">="
+        }
+    ]
+  },
+  {
+    "name": "网卡出流量过高",
+    "alert_name": "主机 ${metric_instance_id}接口${metric_interface} 网卡出流量过高",
+    "description": "监控网卡出流量水平，若超出安全值将发出告警，协助用户排查网络出口压力及数据流向的问题。",
+    "metric_name": "net.speed_sent",
+    "algorithm": "max_over_time",
+    "threshold": [
+        {
+            "level": "critical",
+            "value": 100,
+            "method": ">="
+        },
+        {
+            "level": "error",
+            "value": 80,
+            "method": ">="
+        },
+        {
+            "level": "warning",
+            "value": 60,
+            "method": ">="
+        }
+    ]
+  }
+]
+}

@@ -1,0 +1,268 @@
+{
+  "object": "Storage",
+  "plugin": "Storage SNMP General",
+  "templates": [
+  {
+    "name": "接口接收错误包过高",
+    "alert_name": "存储设备${metric_instance_id} 接口 ${metric_ifDescr} 每秒接收错误包数过高",
+    "description": "监控设备接口接收的错误包数情况，当每秒错误包数超出设定阈值时触发告警，便于发现网络接口隐患。",
+    "metric_name": "ifInErrors",
+    "algorithm": "last_over_time",
+    "threshold": [
+        {
+            "level": "critical",
+            "value": 100,
+            "method": ">"
+        },
+        {
+            "level": "error",
+            "value": 50,
+            "method": ">"
+        },
+        {
+            "level": "warning",
+            "value": 10,
+            "method": ">"
+        }
+    ]
+  },
+  {
+    "name": "接口发送错误包过高",
+    "alert_name": "存储设备${metric_instance_id} 接口 ${metric_ifDescr} 每秒发送错误包数过高",
+    "description": "监控设备接口发送端错误包数，每秒发送错误包数量超出限制时发出告警，及时定位和处理网络发送问题。",
+    "metric_name": "ifOutErrors",
+    "algorithm": "last_over_time",
+    "threshold": [
+        {
+            "level": "critical",
+            "value": 100,
+            "method": ">"
+        },
+        {
+            "level": "error",
+            "value": 50,
+            "method": ">"
+        },
+        {
+            "level": "warning",
+            "value": 10,
+            "method": ">"
+        }
+    ]
+  },
+  {
+    "name": "接口接收丢包数过高",
+    "alert_name": "存储设备${metric_instance_id} 接口 ${metric_ifDescr} 每秒接收丢包数过高",
+    "description": "实时监控设备机接口的丢包情况，当接收丢包速率超过阈值时告警，帮助排查网络接收质量问题并优化链路性能。",
+    "metric_name": "ifInDiscards",
+    "algorithm": "last_over_time",
+    "threshold": [
+        {
+            "level": "critical",
+            "value": 100,
+            "method": ">"
+        },
+        {
+            "level": "error",
+            "value": 50,
+            "method": ">"
+        },
+        {
+            "level": "warning",
+            "value": 10,
+            "method": ">"
+        }
+    ]
+  },
+  {
+    "name": "接口发送丢包数过高",
+    "alert_name": "存储设备${metric_instance_id} 接口 ${metric_ifDescr} 每秒发送丢包数过高",
+    "description": "监测接口发送丢包速率是否异常，当发送丢包数量高于预设阈值时触发告警，为网络发送端问题提供及时反馈。",
+    "metric_name": "ifOutDiscards",
+    "algorithm": "last_over_time",
+    "threshold": [
+        {
+            "level": "critical",
+            "value": 100,
+            "method": ">"
+        },
+        {
+            "level": "error",
+            "value": 50,
+            "method": ">"
+        },
+        {
+            "level": "warning",
+            "value": 10,
+            "method": ">"
+        }
+    ]
+  },
+  {
+    "name": "接口接收单播包过低",
+    "alert_name": "存储设备${metric_instance_id} 接口 ${metric_ifDescr} 单播数据包接收过低",
+    "description": "跟踪接口单播包接收量，当接收单播包数量低于合理水平时触发告警，提示可能存在设备配置异常或流量问题。",
+    "metric_name": "ifInUcastPkts",
+    "algorithm": "last_over_time",
+    "threshold": [
+        {
+            "level": "critical",
+            "value": 1000,
+            "method": "<"
+        }
+    ]
+  },
+  {
+    "name": "接口发送单播包过低",
+    "alert_name": "存储设备${metric_instance_id} 接口 ${metric_ifDescr} 单播数据包发送过低",
+    "description": "检查设备接口发送的单播包数量，当数量显著偏低时触发告警，便于快速识别流量发送效率异常的位置。",
+    "metric_name": "ifOutUcastPkts",
+    "algorithm": "last_over_time",
+    "threshold": [
+        {
+            "level": "critical",
+            "value": 1000,
+            "method": "<"
+        }
+    ]
+  },
+  {
+    "name": "接口接收流量过高",
+    "alert_name": "存储设备${metric_instance_id} 接口 ${metric_ifDescr} 接收流量过高",
+    "description": "监控接口接收数据流量，当流量超过设定最大值时触发警报，提醒潜在的网络带宽瓶颈或异常流量激增。",
+    "metric_name": "ifInOctets",
+    "algorithm": "max",
+    "threshold": [
+        {
+            "level": "critical",
+            "value": 900,
+            "method": ">"
+        }
+    ]
+  },
+  {
+    "name": "接口发送流量过高",
+    "alert_name": "存储设备${metric_instance_id} 接口 ${metric_ifDescr} 发送流量过高",
+    "description": "检查接口的发送流量情况，当数据发送速率过高时发出报警，帮助追踪与修复异常流量或设备问题。",
+    "metric_name": "ifOutOctets",
+    "algorithm": "max",
+    "threshold": [
+        {
+            "level": "critical",
+            "value": 900,
+            "method": ">"
+        }
+    ]
+  },
+  {
+    "name": "设备功率过高",
+    "alert_name": "设备 ${metric_instance_id} 功率过高",
+    "description": "测量设备功率使用情况，若功率输出超标发出告警，帮助用户关注设备能耗问题或硬件异常。",
+    "metric_name": "ipmi_power_watts",
+    "algorithm": "max",
+    "threshold": [
+        {
+            "level": "critical",
+            "value": 200,
+            "method": ">="
+        },
+        {
+            "level": "error",
+            "value": 150,
+            "method": ">="
+        },
+        {
+            "level": "warning",
+            "value": 100,
+            "method": ">="
+        }
+    ]
+  },
+  {
+    "name": "电压异常",
+    "alert_name": "设备 ${metric_instance_id} 电压异常",
+    "description": "检测设备的电压变化，若发生异常波动或不稳定，将告警提示用户检查供电或设备电力问题。",
+    "metric_name": "ipmi_voltage_volts",
+    "algorithm": "last_over_time",
+    "threshold": [
+        {
+            "level": "critical",
+            "value": 240,
+            "method": ">="
+        },
+        {
+            "level": "error",
+            "value": 220,
+            "method": ">="
+        },
+        {
+            "level": "warning",
+            "value": 200,
+            "method": ">="
+        }
+    ]
+  },
+  {
+    "name": "风扇转速过高",
+    "alert_name": "设备 ${metric_instance_id} 风扇转速过高",
+    "description": "监测设备风扇的运行状态，若转速过高可能导致损耗或散热问题，及时提醒用户采取降温措施。",
+    "metric_name": "ipmi_fan_speed_rpm",
+    "algorithm": "last_over_time",
+    "threshold": [
+        {
+            "level": "critical",
+            "value": 5000,
+            "method": ">="
+        },
+        {
+            "level": "error",
+            "value": 4000,
+            "method": ">="
+        },
+        {
+            "level": "warning",
+            "value": 3000,
+            "method": ">="
+        }
+    ]
+  },
+  {
+    "name": "温度异常",
+    "alert_name": "设备 ${metric_instance_id} 温度异常",
+    "description": "持续检测设备温度，若检测到过高或过低的异常情况，触发告警以确保设备在安全温控范围内工作。",
+    "metric_name": "ipmi_temperature_celsius",
+    "algorithm": "last_over_time",
+    "threshold": [
+        {
+            "level": "critical",
+            "value": 80,
+            "method": ">="
+        },
+        {
+            "level": "error",
+            "value": 70,
+            "method": ">="
+        },
+        {
+            "level": "warning",
+            "value": 60,
+            "method": ">="
+        }
+    ]
+  },
+  {
+    "name": "电源状态异常",
+    "alert_name": "设备 ${metric_instance_id} 电源状态异常",
+    "description": "监控设备电源的工作状态，若出现断电、电源损坏或其他异常情况，将触发告警以防止设备运行异常。",
+    "metric_name": "ipmi_chassis_power_state",
+    "algorithm": "last_over_time",
+    "threshold": [
+        {
+            "level": "critical",
+            "value": 1,
+            "method": "!="
+        }
+    ]
+  }
+]
+}

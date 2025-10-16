@@ -2,7 +2,7 @@ from celery import shared_task
 
 from apps.core.exceptions.base_app_exception import BaseAppException
 from apps.core.logger import celery_logger as logger
-from apps.monitor.constants import MONITOR_OBJ_KEYS
+from apps.monitor.constants.monitor_object import MonitorObjConstants
 from apps.monitor.models import Metric
 from apps.monitor.models.monitor_object import MonitorObjectOrganizationRule, MonitorInstanceOrganization, MonitorObject, \
     MonitorInstance
@@ -35,7 +35,7 @@ class SyncInstance:
     def get_instance_map_by_metrics(self):
         """通过查询指标获取实例信息"""
         instances_map = {}
-        monitor_objs = MonitorObject.objects.all().values(*MONITOR_OBJ_KEYS)
+        monitor_objs = MonitorObject.objects.all().values(*MonitorObjConstants.OBJ_KEYS)
 
         for monitor_info in monitor_objs:
             if monitor_info["name"] not in self.monitor_map:
@@ -153,7 +153,7 @@ class RuleGrouping:
     @staticmethod
     def get_asso_by_condition_rule(rule):
         """根据条件类型规则获取关联信息"""
-        monitor_objs = MonitorObject.objects.all().values(*MONITOR_OBJ_KEYS)
+        monitor_objs = MonitorObject.objects.all().values(*MonitorObjConstants.OBJ_KEYS)
         obj_metric_map = {i["name"]: i for i in monitor_objs}
         obj_metric_map = obj_metric_map.get(rule.monitor_object.name)
         obj_instance_id_set = set(MonitorInstance.objects.filter(monitor_object_id=rule.monitor_object_id).values_list("id", flat=True))

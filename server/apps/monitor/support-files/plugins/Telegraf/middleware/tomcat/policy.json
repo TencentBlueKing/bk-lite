@@ -1,0 +1,126 @@
+{
+  "object": "Tomcat",
+  "plugin": "Tomcat",
+  "templates": [
+    {
+      "name": "Tomcat 请求处理时间过长",
+      "alert_name": "Tomcat ${metric_instance_id} 请求延迟过高",
+      "description": "检测 Tomcat 请求平均处理时间，若超阈值需优化应用代码或数据库查询。",
+      "metric_name": "tomcat_connector_processing_time",
+      "algorithm": "avg",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 0.5,
+          "method": ">="
+        },
+        {
+          "level": "error",
+          "value": 0.3,
+          "method": ">="
+        },
+        {
+          "level": "warning",
+          "value": 0.1,
+          "method": ">="
+        }
+      ]
+    },
+    {
+      "name": "Tomcat 单请求最大耗时异常",
+      "alert_name": "Tomcat ${metric_instance_id} 存在超长请求",
+      "description": "监控单个请求最大耗时，若过高可能表明存在阻塞操作或死锁，需检查线程堆栈。",
+      "metric_name": "tomcat_connector_max_time",
+      "algorithm": "max",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 5,
+          "method": ">="
+        },
+        {
+          "level": "error",
+          "value": 3,
+          "method": ">="
+        },
+        {
+          "level": "warning",
+          "value": 1,
+          "method": ">="
+        }
+      ]
+    },
+    {
+      "name": "Tomcat 错误请求数突增",
+      "alert_name": "Tomcat ${metric_instance_id} 错误率升高",
+      "description": "检测错误请求数，若突增需检查应用日志或依赖服务状态。",
+      "metric_name": "tomcat_connector_error_count",
+      "algorithm": "max",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 10,
+          "method": ">="
+        },
+        {
+          "level": "error",
+          "value": 5,
+          "method": ">="
+        },
+        {
+          "level": "warning",
+          "value": 2,
+          "method": ">="
+        }
+      ]
+    },
+    {
+      "name": "Tomcat 网络出流量异常",
+      "alert_name": "Tomcat ${metric_instance_id} 出流量突增",
+      "description": "监控发送的字节数，若突增可能表明响应数据过大，需优化压缩策略。",
+      "metric_name": "tomcat_connector_bytes_sent",
+      "algorithm": "max",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 100,
+          "method": ">="
+        },
+        {
+          "level": "error",
+          "value": 50,
+          "method": ">="
+        },
+        {
+          "level": "warning",
+          "value": 20,
+          "method": ">="
+        }
+      ]
+    },
+    {
+      "name": "Tomcat 网络入流量异常",
+      "alert_name": "Tomcat ${metric_instance_id} 入流量突增",
+      "description": "检测接收的字节数，若异常增长可能遭受攻击或大数据上传，需启用限流。",
+      "metric_name": "tomcat_connector_bytes_received",
+      "algorithm": "max",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 100,
+          "method": ">="
+        },
+        {
+          "level": "error",
+          "value": 50,
+          "method": ">="
+        },
+        {
+          "level": "warning",
+          "value": 20,
+          "method": ">="
+        }
+      ]
+    }
+  ]
+}

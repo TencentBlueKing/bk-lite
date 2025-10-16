@@ -1,0 +1,281 @@
+username: {{ username }}
+password: {{ password }}
+jmxUrl: {{ jmx_url }}
+ssl: false
+startDelaySeconds: 0
+lowercaseOutputName: true
+lowercaseOutputLabelNames: true
+rules:
+  - pattern: java.lang<type=Memory><HeapMemoryUsage>max
+    name: jvm_memory_heap_usage_max
+  - pattern: java.lang<type=Memory><HeapMemoryUsage>used
+    name: jvm_memory_heap_usage_used
+  - pattern: java.lang<type=Memory><HeapMemoryUsage>committed
+    name: jvm_memory_heap_usage_committed
+  - pattern: java.lang<type=Memory><HeapMemoryUsage>init
+    name: jvm_memory_heap_usage_init
+  - pattern: java.lang<type=Memory><NonHeapMemoryUsage>max
+    name: jvm_memory_nonheap_usage_max
+  - pattern: java.lang<type=Memory><NonHeapMemoryUsage>used
+    name: jvm_memory_nonheap_usage_used
+  - pattern: java.lang<type=Memory><NonHeapMemoryUsage>committed
+    name: jvm_memory_nonheap_usage_committed
+  - pattern: java.lang<type=Memory><NonHeapMemoryUsage>init
+    name: jvm_memory_nonheap_usage_init
+  - pattern: org.eclipse.jetty.io<type=arraybytebufferpool, id=0><>heapMemory
+    name: jetty_bufferpool_heapMemory
+  - pattern: org.eclipse.jetty.deploy<type=deploymentmanager, id=(.+)><>stopTimeout
+    name: jetty_deploymentmanager_stopTimeout
+    labels:
+      id: "$1"
+  - pattern: org.eclipse.jetty.deploy.providers<type=webappprovider, id=(.+)><>stopTimeout
+    name: jetty_webappprovider_stopTimeout
+    labels:
+      id: "$1"
+  - pattern: org.eclipse.jetty.io<type=arraybytebufferpool, id=(.+)><>heapMemory
+    name: jetty_arraybufferpool_heapMemory
+    labels:
+      id: "$1"
+  - pattern: org.eclipse.jetty.io<type=arraybytebufferpool, id=(.+)><>directByteBufferCount
+    name: jetty_arraybufferpool_directByteBufferCount
+    labels:
+      id: "$1"
+  - pattern: org.eclipse.jetty.io<type=arraybytebufferpool, id=(.+)><>directMemory
+    name: jetty_arraybufferpool_directMemory
+    labels:
+      id: "$1"
+  - pattern: org.eclipse.jetty.io<type=arraybytebufferpool, id=(.+)><>heapByteBufferCount
+    name: jetty_arraybufferpool_heapByteBufferCount
+    labels:
+      id: "$1"
+  - pattern: org.eclipse.jetty.io<context=(.+), type=managedselector, id=(.+)><>stopTimeout
+    name: jetty_managedselector_stopTimeout
+    labels:
+      context: "$1"
+      id:  "$2"
+  - pattern: org.eclipse.jetty.io<context=(.+), type=managedselector, id=(.+)><>averageSelectedKeys
+    name: jetty_managedselector_averageSelectedKeys
+    labels:
+      context: "$1"
+      id: "$2"
+  - pattern: org.eclipse.jetty.io<context=(.+), type=managedselector, id=(.+)><>maxSelectedKeys
+    name: jetty_managedselector_maxSelectedKeys
+    labels:
+      context: "$1"
+      id: "$2"
+  - pattern: org.eclipse.jetty.io<context=(.+), type=managedselector, id=(.+)><>selectCount
+    name: jetty_managedselector_selectCount
+    labels:
+      context: "$1"
+      id: "$2"
+  - pattern: org.eclipse.jetty.io<context=(.+), type=managedselector, id=(.+)><>totalKeys
+    name: jetty_managedselector_totalKeys
+    labels:
+      context: "$1"
+      id: "$2"
+  - pattern: org.eclipse.jetty.server<context=(.+), type=httpconfiguration, id=(.+)><>responseHeaderSize
+    name: jetty_httpconfiguration_responseHeaderSize
+    labels:
+      context: "$1"
+      id: "$2"
+  - pattern: org.eclipse.jetty.server<context=(.+), type=httpconfiguration, id=(.+)><>requestHeaderSize
+    name: jetty_httpconfiguration_requestHeaderSize
+    labels:
+      context: "$1"
+      id: "$2"
+  - pattern: org.eclipse.jetty.server<context=(.+), type=httpconfiguration, id=(.+)><>maxErrorDispatches
+    name: jetty_httpconfiguration_maxErrorDispatches
+    labels:
+      context: "$1"
+      id: "$2"
+  - pattern: org.eclipse.jetty.server<context=(.+), type=httpconfiguration, id=(.+)><>idleTimeout
+    name: jetty_httpconfiguration_idleTimeout
+    labels:
+      context: "$1"
+      id: "$2"
+  - pattern: org.eclipse.jetty.server<context=(.+), type=httpconfiguration, id=(.+)><>outputBufferSize
+    name: jetty_httpconfiguration_outputBufferSize
+    labels:
+      context: "$1"
+      id: "$2"
+  - pattern: org.eclipse.jetty.server<context=(.+), type=httpconfiguration, id=(.+)><>headerCacheSize
+    name: jetty_httpconfiguration_headerCacheSize
+    labels:
+      context: "$1"
+      id: "$2"
+  - pattern: org.eclipse.jetty.server<context=(.+), type=httpconfiguration, id=(.+)><>minRequestDataRate
+    name: jetty_httpconfiguration_minRequestDataRate
+    labels:
+      context: "$1"
+      id: "$2"
+  - pattern: org.eclipse.jetty.server<context=(.+), type=httpconfiguration, id=(.+)><>outputAggregationSize
+    name: jetty_httpconfiguration_outputAggregationSize
+    labels:
+      context: "$1"
+      id: "$2"
+  - pattern: org.eclipse.jetty.server<context=(.+), type=httpconfiguration, id=(.+)><>blockingTimeout
+    name: jetty_httpconfiguration_blockingTimeout
+    labels:
+      context: "$1"
+      id: "$2"
+  - pattern: org.eclipse.jetty.server<context=(.+), type=httpconfiguration, id=(.+)><>minResponseDataRate
+    name: jetty_httpconfiguration_minResponseDataRate
+    labels:
+      context: "$1"
+      id: "$2"
+  - pattern: org.eclipse.jetty.server<context=(.+), type=serverconnector, id=(.+)><>stopTimeout
+    name: jetty_serverconnector_stopTimeout
+    labels:
+      context: "$1"
+      id: "$2"
+  - pattern: org.eclipse.jetty.server<context=(.+), type=serverconnector, id=(.+)><>acceptQueueSize
+    name: jetty_serverconnector_acceptQueueSize
+    labels:
+      context: "$1"
+      id: "$2"
+  - pattern: org.eclipse.jetty.server<context=(.+), type=serverconnector, id=(.+)><>acceptedReceiveBufferSize
+    name: jetty_serverconnector_acceptedReceiveBufferSize
+    labels:
+      context: "$1"
+      id: "$2"
+  - pattern: org.eclipse.jetty.server<context=(.+), type=serverconnector, id=(.+)><>acceptedSendBufferSize
+    name: jetty_serverconnector_acceptedSendBufferSize
+    labels:
+      context: "$1"
+      id: "$2"
+  - pattern: org.eclipse.jetty.server<context=(.+), type=serverconnector, id=(.+)><>idleTimeout
+    name: jetty_serverconnector_idleTimeout
+    labels:
+      context: "$1"
+      id: "$2"
+  - pattern: org.eclipse.jetty.server<context=(.+), type=serverconnector$serverconnectormanager, id=(.+)><>selectorCount
+    name: jetty_serverconnector_selectorCount
+    labels:
+      context: "$1"
+      id: "$2"
+  - pattern: org.eclipse.jetty.server<context=(.+), type=serverconnector$serverconnectormanager, id=(.+)><>connectTimeout
+    name: jetty_serverconnector_connectTimeout
+    labels:
+      context: "$1"
+      id: "$2"
+  - pattern: org.eclipse.jetty.util.thread<type=queuedthreadpool, id=(.+)><>threadsPriority
+    name: jetty_queuedthreadpool_threadsPriority
+    labels:
+      id: "$1"
+  - pattern: org.eclipse.jetty.util.thread<type=queuedthreadpool, id=(.+)><>queueSize
+    name: jetty_queuedthreadpool_queueSize
+    labels:
+      id: "$1"
+  - pattern: org.eclipse.jetty.util.thread<type=queuedthreadpool, id=(.+)><>availableReservedThreads
+    name: jetty_queuedthreadpool_availableReservedThreads
+    labels:
+      id: "$1"
+  - pattern: org.eclipse.jetty.util.thread<type=queuedthreadpool, id=(.+)><>stopTimeout
+    name: jetty_queuedthreadpool_stopTimeout
+    labels:
+      id: "$1"
+  - pattern: org.eclipse.jetty.util.thread<type=queuedthreadpool, id=(.+)><>utilizedThreads
+    name: jetty_queuedthreadpool_utilizedThreads
+    labels:
+      id: "$1"
+  - pattern: org.eclipse.jetty.util.thread<type=queuedthreadpool, id=(.+)><>utilizationRate
+    name: jetty_queuedthreadpool_utilizationRate
+    labels:
+      id: "$1"
+  - pattern: org.eclipse.jetty.util.thread<type=queuedthreadpool, id=(.+)><>minThreads
+    name: jetty_queuedthreadpool_minThreads
+    labels:
+      id: "$1"
+  - pattern: org.eclipse.jetty.util.thread<type=queuedthreadpool, id=(.+)><>maxReservedThreads
+    name: jetty_queuedthreadpool_maxReservedThreads
+    labels:
+      id: "$1"
+  - pattern: org.eclipse.jetty.util.thread<type=queuedthreadpool, id=(.+)><>threads
+    name: jetty_queuedthreadpool_threads
+    labels:
+      id: "$1"
+  - pattern: org.eclipse.jetty.util.thread<type=queuedthreadpool, id=(.+)><>reservedThreads
+    name: jetty_queuedthreadpool_reservedThreads
+    labels:
+      id: "$1"
+  - pattern: org.eclipse.jetty.util.thread<type=queuedthreadpool, id=(.+)><>readyThreads
+    name: jetty_queuedthreadpool_readyThreads
+    labels:
+      id: "$1"
+  - pattern: org.eclipse.jetty.util.thread<type=queuedthreadpool, id=(.+)><>leasedThreads
+    name: jetty_queuedthreadpool_leasedThreads
+    labels:
+      id: "$1"
+  - pattern: org.eclipse.jetty.util.thread<type=queuedthreadpool, id=(.+)><>maxAvailableThreads
+    name: jetty_queuedthreadpool_maxAvailableThreads
+    labels:
+      id: "$1"
+  - pattern: org.eclipse.jetty.util.thread<type=queuedthreadpool, id=(.+)><>busyThreads
+    name: jetty_queuedthreadpool_busyThreads
+    labels:
+      id: "$1"
+  - pattern: org.eclipse.jetty.util.thread<type=queuedthreadpool, id=(.+)><>lowThreadsThreshold
+    name: jetty_queuedthreadpool_lowThreadsThreshold
+    labels:
+      id: "$1"
+  - pattern: org.eclipse.jetty.util.thread<type=queuedthreadpool, id=(.+)><>idleTimeout
+    name: jetty_queuedthreadpool_idleTimeout
+    labels:
+      id: "$1"
+  - pattern: org.eclipse.jetty.util.thread<type=queuedthreadpool, id=(.+)><>idleThreads
+    name: jetty_queuedthreadpool_idleThreads
+    labels:
+      id: "$1"
+  - pattern: org.eclipse.jetty.util.thread<type=queuedthreadpool, id=(.+)><>maxThreads
+    name: jetty_queuedthreadpool_maxThreads
+    labels:
+      id: "$1"
+  - pattern: org.eclipse.jetty.util.thread<type=queuedthreadpool, id=(.+)><>maxLeasedThreads
+    name: jetty_queuedthreadpool_maxLeasedThreads
+    labels:
+      id: "$1"
+  - pattern: org.eclipse.jetty.util.thread<type=reservedthreadexecutor, id=(.+)><>pending
+    name: jetty_reservedthreadexecutor_pending
+    labels:
+      id: "$1"
+  - pattern: org.eclipse.jetty.util.thread<type=reservedthreadexecutor, id=(.+)><>available
+    name: jetty_reservedthreadexecutor_available
+    labels:
+      id: "$1"
+  - pattern: org.eclipse.jetty.util.thread<type=reservedthreadexecutor, id=(.+)><>idleTimeoutMs
+    name: jetty_reservedthreadexecutor_idleTimeoutMs
+    labels:
+      id: "$1"
+  - pattern: org.eclipse.jetty.util.thread<type=reservedthreadexecutor, id=(.+)><>capacity
+    name: jetty_reservedthreadexecutor_capacity
+    labels:
+      id: "$1"
+  - pattern: org.eclipse.jetty.util.thread<type=threadpoolbudget, id=(.+)><>leasedThreads
+    name: jetty_threadpoolbudget_leasedThreads
+    labels:
+      id: "$1"
+  - pattern: org.eclipse.jetty.util.thread.strategy<context=(.+), type=eatwhatyoukill, id=(.+)><>stopTimeout
+    name: jetty_eatwhatyoukill_stopTimeout
+    labels:
+      context: "$1"
+      id: "$2"
+  - pattern: org.eclipse.jetty.util.thread.strategy<context=(.+), type=eatwhatyoukill, id=(.+)><>pCTasksConsumed
+    name: jetty_eatwhatyoukill_pCTasksConsumed
+    labels:
+      context: "$1"
+      id: "$2"
+  - pattern: org.eclipse.jetty.util.thread.strategy<context=(.+), type=eatwhatyoukill, id=(.+)><>pECTasksExecuted
+    name: jetty_eatwhatyoukill_pECTasksExecuted
+    labels:
+      context: "$1"
+      id: "$2"
+  - pattern: org.eclipse.jetty.util.thread.strategy<context=(.+), type=eatwhatyoukill, id=(.+)><>ePCTasksConsumed
+    name: jetty_eatwhatyoukill_ePCTasksConsumed
+    labels:
+      context: "$1"
+      id: "$2"
+  - pattern: org.eclipse.jetty.util.thread.strategy<context=(.+), type=eatwhatyoukill, id=(.+)><>pICTasksExecuted
+    name: jetty_eatwhatyoukill_pICTasksExecuted
+    labels:
+      context: "$1"
+      id: "$2"

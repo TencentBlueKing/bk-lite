@@ -1,0 +1,8 @@
+[[inputs.http_response]]
+    urls = ["{{ url }}"]
+    interval = "{{ interval }}s"
+    [inputs.http_response.tags]
+        instance_id = "{{ instance_id }}"
+        instance_type = "{{ instance_type }}"
+        collect_type = "web"
+        config_type = "http_response"

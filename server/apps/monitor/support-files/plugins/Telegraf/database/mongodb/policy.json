@@ -1,0 +1,78 @@
+{
+  "object": "MongoDB",
+  "plugin": "MongoDB",
+  "templates": [
+    {
+      "name": "命令执行延迟告警",
+      "alert_name": "MongoDB 实例 ${metric_instance_id} 操作延迟超标",
+      "description": "监控命令执行P99延迟，高延迟表明数据库负载过重。需优化慢查询或检查硬件资源瓶颈。",
+      "metric_name": "mongodb_latency_commands",
+      "algorithm": "max",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 500,
+          "method": ">="
+        },
+        {
+          "level": "error",
+          "value": 300,
+          "method": ">="
+        },
+        {
+          "level": "warning",
+          "value": 100,
+          "method": ">="
+        }
+      ]
+    },
+    {
+      "name": "活跃写入操作堆积",
+      "alert_name": "MongoDB 实例 ${metric_instance_id} 写入延迟",
+      "description": "监控当前活跃写入操作数量，持续高位可能导致写入排队。需检查存储引擎性能或分片均衡状态。",
+      "metric_name": "mongodb_active_writes",
+      "algorithm": "max",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 100,
+          "method": ">="
+        },
+        {
+          "level": "error",
+          "value": 50,
+          "method": ">="
+        },
+        {
+          "level": "warning",
+          "value": 20,
+          "method": ">="
+        }
+      ]
+    },
+    {
+      "name": "全表扫描风险告警",
+      "alert_name": "MongoDB 集合 ${metric_instance_id} 扫描文档数超标",
+      "description": "监控全集合扫描文档数量，全表扫描会严重拖慢查询性能。需检查缺失索引或优化查询条件。",
+      "metric_name": "mongodb_total_docs_scanned",
+      "algorithm": "max",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 1000000,
+          "method": ">="
+        },
+        {
+          "level": "error",
+          "value": 100000,
+          "method": ">="
+        },
+        {
+          "level": "warning",
+          "value": 10000,
+          "method": ">="
+        }
+      ]
+    }
+  ]
+}

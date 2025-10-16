@@ -1,0 +1,9 @@
+[[inputs.nvidia_smi]]
+  # bin_path = "/usr/bin/nvidia-smi"
+  # timeout = "5s"
+    interval = "{{ interval }}s"
+    [inputs.nvidia_smi.tags]
+        instance_id = "{{ instance_id }}"
+        instance_type = "{{ instance_type }}"
+        collect_type = "host"
+        config_type = "gpu"

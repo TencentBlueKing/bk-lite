@@ -1,0 +1,116 @@
+{
+  "object": "RabbitMQ",
+  "plugin": "RabbitMQ",
+  "templates": [
+    {
+      "name": "节点存活状态",
+      "alert_name": "RabbitMQ节点 ${metric_instance_id} 服务中断",
+      "description": "监测节点持续运行时间，异常重启会导致连接中断。需检查服务日志和主机资源。",
+      "metric_name": "rabbitmq_node_uptime",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 60,
+          "method": "<="
+        }
+      ]
+    },
+    {
+      "name": "磁盘空间告警",
+      "alert_name": "RabbitMQ节点 ${metric_instance_id} 磁盘将满",
+      "description": "监控剩余磁盘空间，写满会导致消息持久化失败。需清理队列或扩容存储。",
+      "metric_name": "rabbitmq_node_disk_free",
+      "algorithm": "min",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 5,
+          "method": "<="
+        },
+        {
+          "level": "error",
+          "value": 10,
+          "method": "<="
+        },
+        {
+          "level": "warning",
+          "value": 20,
+          "method": "<="
+        }
+      ]
+    },
+    {
+      "name": "就绪消息堆积",
+      "alert_name": "RabbitMQ集群 ${metric_instance_id} 消费延迟",
+      "description": "检测待消费消息数，持续积压表明消费者处理能力不足。",
+      "metric_name": "rabbitmq_overview_messages_ready",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 100000,
+          "method": ">="
+        },
+        {
+          "level": "error",
+          "value": 50000,
+          "method": ">="
+        },
+        {
+          "level": "warning",
+          "value": 10000,
+          "method": ">="
+        }
+      ]
+    },
+    {
+      "name": "发布速率突增",
+      "alert_name": "RabbitMQ交换器 ${metric_instance_id} 写入过载",
+      "description": "检测消息发布速率，异常增长可能导致积压。需评估生产者流量。",
+      "metric_name": "rabbitmq_exchange_publish_in_rate",
+      "algorithm": "max",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 1000,
+          "method": ">="
+        },
+        {
+          "level": "error",
+          "value": 500,
+          "method": ">="
+        },
+        {
+          "level": "warning",
+          "value": 200,
+          "method": ">="
+        }
+      ]
+    },
+    {
+      "name": "内存压力预警",
+      "alert_name": "RabbitMQ节点 ${metric_instance_id} GC压力",
+      "description": "检测内存使用与限制的比例，接近阈值会触发流控。",
+      "metric_name": "rabbitmq_fd_usage_ratio",
+      "algorithm": "avg",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 90,
+          "method": ">="
+        },
+        {
+          "level": "error",
+          "value": 80,
+          "method": ">="
+        },
+        {
+          "level": "warning",
+          "value": 70,
+          "method": ">="
+        }
+      ]
+    }
+  ]
+}

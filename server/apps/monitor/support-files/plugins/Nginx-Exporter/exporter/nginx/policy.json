@@ -1,0 +1,116 @@
+{
+  "object": "Nginx",
+  "plugin": "Nginx-Exporter",
+  "templates": [
+    {
+      "name": "Nginx 服务存活状态异常",
+      "alert_name": "Nginx ${metric_instance_id} 服务不可用",
+      "description": "检测 Nginx 进程是否存活，若为 0 表示服务崩溃，需立即重启并检查错误日志。",
+      "metric_name": "nginx_up",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 1,
+          "method": "!="
+        }
+      ]
+    },
+    {
+      "name": "Nginx 等待连接数堆积",
+      "alert_name": "Nginx ${metric_instance_id} 等待连接数过高",
+      "description": "检测等待空闲连接的客户端数，若持续过高需增加 worker 或优化后端响应速度。",
+      "metric_name": "nginx_connections_waiting",
+      "algorithm": "max",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 500,
+          "method": ">="
+        },
+        {
+          "level": "error",
+          "value": 300,
+          "method": ">="
+        },
+        {
+          "level": "warning",
+          "value": 100,
+          "method": ">="
+        }
+      ]
+    },
+    {
+      "name": "Nginx 平均请求耗时过长",
+      "alert_name": "Nginx ${metric_instance_id} 请求延迟过高",
+      "description": "监控请求平均处理时间，若超阈值需优化后端服务或静态资源。",
+      "metric_name": "nginx_vts_server_requestMsec",
+      "algorithm": "avg",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 500,
+          "method": ">="
+        },
+        {
+          "level": "error",
+          "value": 300,
+          "method": ">="
+        },
+        {
+          "level": "warning",
+          "value": 100,
+          "method": ">="
+        }
+      ]
+    },
+    {
+      "name": "Nginx 上游响应时间异常",
+      "alert_name": "Nginx ${metric_instance_id} 上游服务延迟",
+      "description": "检测上游服务器平均响应时间，若过高需排查后端性能瓶颈。",
+      "metric_name": "nginx_vts_upstream_responseMsec",
+      "algorithm": "avg",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 1000,
+          "method": ">="
+        },
+        {
+          "level": "error",
+          "value": 500,
+          "method": ">="
+        },
+        {
+          "level": "warning",
+          "value": 200,
+          "method": ">="
+        }
+      ]
+    },
+    {
+      "name": "Nginx RTMP 流数超载",
+      "alert_name": "Nginx ${metric_instance_id} RTMP 流数超限",
+      "description": "检测当前 RTMP 直播流数量，超过阈值可能导致卡顿，需扩容。",
+      "metric_name": "nginx_rtmp_server_current_streams",
+      "algorithm": "max",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 100,
+          "method": ">="
+        },
+        {
+          "level": "error",
+          "value": 80,
+          "method": ">="
+        },
+        {
+          "level": "warning",
+          "value": 50,
+          "method": ">="
+        }
+      ]
+    }
+  ]
+}

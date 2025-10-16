@@ -1,0 +1,112 @@
+{
+  "plugin": "Nginx",
+  "plugin_desc": "By collecting metrics such as Nginx requests, connection status, and processing efficiency, this helps monitor and optimize the website's performance and stability.",
+  "name": "Nginx",
+  "icon": "nginx",
+  "type": "Middleware",
+  "description": "",
+  "default_metric": "any({instance_type='nginx'}) by (instance_id)",
+  "instance_id_keys": ["instance_id"],
+  "supplementary_indicators": ["nginx_requests", "nginx_active"],
+  "metrics": [
+    {
+      "metric_group": "Request",
+      "name": "nginx_requests",
+      "display_name": "Requests Rate",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "short",
+      "dimensions": [],
+      "description": "Indicates the number of HTTP requests per second processed over the last 5 minutes, reflecting server load.",
+      "query": "sum(rate(nginx_requests{__$labels__}[5m])) by (instance_id)"
+    },
+    {
+      "metric_group": "Connection",
+      "name": "nginx_accepts",
+      "display_name": "Accepted Connections Rate",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "short",
+      "dimensions": [],
+      "description": "Indicates the number of client connections successfully established per second over the last 5 minutes, used to monitor connection activity.",
+      "query": "rate(nginx_accepts{__$labels__}[5m])"
+    },
+    {
+      "metric_group": "Connection",
+      "name": "nginx_handled",
+      "display_name": "Handled Connections Rate",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "short",
+      "dimensions": [],
+      "description": "Indicates the number of connected sessions successfully handled per second over the last 5 minutes, monitoring connection handling capacity.",
+      "query": "rate(nginx_handled{__$labels__}[5m])"
+    },
+    {
+      "metric_group": "Connection",
+      "name": "nginx_active",
+      "display_name": "Active Connections",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "short",
+      "dimensions": [],
+      "description": "The number of active connections currently including those in reading, writing, and waiting states.",
+      "query": "sum(nginx_active{__$labels__}) by (instance_id)"
+    },
+    {
+      "metric_group": "Connection",
+      "name": "nginx_waiting",
+      "display_name": "Waiting Connections",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "short",
+      "dimensions": [],
+      "description": "The current number of idle connections waiting to be processed, reflecting the waiting connection queue.",
+      "query": "nginx_waiting{__$labels__}"
+    },
+    {
+      "metric_group": "Connection",
+      "name": "nginx_reading",
+      "display_name": "Reading Connections",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "short",
+      "dimensions": [],
+      "description": "The number of connections currently reading client requests (header or body), used to monitor load in the reading stage.",
+      "query": "nginx_reading{__$labels__}"
+    },
+    {
+      "metric_group": "Connection",
+      "name": "nginx_writing",
+      "display_name": "Writing Connections",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "short",
+      "dimensions": [],
+      "description": "The number of connections currently writing response data to clients, used to monitor performance in the response stage.",
+      "query": "nginx_writing{__$labels__}"
+    },
+    {
+      "metric_group": "Efficiency",
+      "name": "nginx_connect_rate",
+      "display_name": "Connection Handling Success Rate",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "percent",
+      "dimensions": [],
+      "description": "The percentage of handled connections out of total accepted connections over the last 5 minutes, used to analyze connection handling stability.",
+      "query": "100 * (sum(rate(nginx_handled{__$labels__}[5m])) by (instance_id) /sum(rate(nginx_accepts{__$labels__}[5m])) by (instance_id))"
+    },
+    {
+      "metric_group": "Efficiency",
+      "name": "nginx_request_handling_efficiency",
+      "display_name": "Requests per Handled Connection",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "short",
+      "dimensions": [],
+      "description": "Indicates the average number of requests per handled connection, indirectly reflecting Nginx's efficiency and load level.",
+      "query": "rate(nginx_requests{__$labels__}[5m]) / rate(nginx_handled{__$labels__}[5m])"
+    }
+  ]
+}

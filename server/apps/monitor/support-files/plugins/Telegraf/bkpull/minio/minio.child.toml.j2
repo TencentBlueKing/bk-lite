@@ -1,0 +1,14 @@
+[[inputs.prometheus]]
+    urls = [
+        "http://{{ host }}:{{ port }}/minio/v2/metrics/cluster",
+        "http://{{ host }}:{{ port }}/minio/v2/metrics/bucket",
+        "http://{{ host }}:{{ port }}/minio/v2/metrics/resource",
+    ]
+    interval = "{{ interval }}s"
+    timeout = "30s"
+    response_timeout = "30s"
+    [inputs.prometheus.tags]
+        instance_id = "{{ instance_id }}"
+        instance_type = "{{ instance_type }}"
+        collect_type = "bkpull"
+        config_type = "minio"

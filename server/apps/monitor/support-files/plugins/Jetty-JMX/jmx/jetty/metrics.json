@@ -1,0 +1,372 @@
+{
+  "plugin": "Jetty-JMX",
+  "plugin_desc": "Collects key performance metrics of Jetty task processing, thread pools, network connections, HTTP configurations, and JMX self-monitoring to track server resource usage, task handling capabilities, and connection status—enabling optimized system performance and improved service stability.",
+  "name": "Jetty",
+  "icon": "jetty",
+  "type": "Middleware",
+  "description": "",
+  "default_metric": "any({instance_type='jetty'}) by (instance_id)",
+  "instance_id_keys": ["instance_id"],
+  "supplementary_indicators": [],
+  "metrics": [
+     {
+      "metric_group": "Queuedthreadpool",
+      "name": "jetty_queuedthreadpool_utilizationrate_value",
+      "display_name": "Utilization Rate",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "percent",
+      "dimensions": [
+        {
+          "name": "id",
+          "description": "ID"
+        }
+      ],
+      "description": "Current utilization rate of threads performing temporary jobs in the thread pool (The ratio of currently active threads to the maximum number of threads in the thread pool), indicating resource utilization pressure.",
+      "query": "jetty_queuedthreadpool_utilizationrate_value{__$labels__} * 100"
+    },
+    {
+      "metric_group": "Queuedthreadpool",
+      "name": "jetty_queuedthreadpool_threads_value",
+      "display_name": "Thread Count",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "short",
+      "dimensions": [
+        {
+          "name": "id",
+          "description": "ID"
+        }
+      ],
+      "description": "Total number of threads currently managed by the thread pool, including active and idle threads.",
+      "query": "jetty_queuedthreadpool_threads_value{__$labels__}"
+    },
+    {
+      "metric_group": "Queuedthreadpool",
+      "name": "jetty_queuedthreadpool_maxthreads_value",
+      "display_name": "Maximum Threads Count",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "short",
+      "dimensions": [
+        {
+          "name": "id",
+          "description": "ID"
+        }
+      ],
+      "description": "The maximum number of threads allowed in the Jetty thread pool, and the time threshold after which an idle thread will be reclaimed.",
+      "query": "jetty_queuedthreadpool_maxthreads_value{__$labels__}"
+    },
+    {
+      "metric_group": "Queuedthreadpool",
+      "name": "jetty_queuedthreadpool_idletimeout_value",
+      "display_name": "Idle Timeout for Threads",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "s",
+      "dimensions": [
+        {
+          "name": "id",
+          "description": "ID"
+        }
+      ],
+      "description": "Maximum allowable idle timeout for threads in Jetty thread pools.",
+      "query": "jetty_queuedthreadpool_idletimeout_value{__$labels__} / 1000"
+    },
+    {
+      "metric_group": "Queuedthreadpool",
+      "name": "jetty_queuedthreadpool_readythreads_value",
+      "display_name": "Jetty Ready Threads",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "short",
+      "dimensions": [
+        {
+          "name": "id",
+          "description": "ID"
+        }
+      ],
+      "description": "The number of ready threads in the Jetty server, used to assess idle resources in the thread pool.",
+      "query": "jetty_queuedthreadpool_readythreads_value{__$labels__}"
+    },
+    {
+      "metric_group": "JvmMemory",
+      "name": "jvm_memory_heap_usage_used_rate",
+      "display_name": "Heap Memory Usage Change Rate",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "MBs",
+      "dimensions": [],
+      "description": "The average rate of change in JVM heap memory usage over 5 minutes, measured in megabytes per minute, used to monitor the trend of heap memory usage in real-time and detect memory leaks or memory pressure issues.",
+      "query": "rate(jvm_memory_heap_usage_used_value{instance_type=\"jetty\",__$labels__}[5m]) / (1024*1024)"
+    },
+    {
+      "metric_group": "JvmMemory",
+      "name": "jvm_memory_heap_usage_max_value",
+      "display_name": "Heap Memory Usage (Max)",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "mebibytes",
+      "dimensions": [],
+      "description": "The maximum amount of heap memory available to the JVM, used to assess the upper limit of heap memory to prevent memory overflow.",
+      "query": "jvm_memory_heap_usage_max_value{instance_type=\"jetty\",__$labels__} / (1024*1024)"
+    },
+    {
+      "metric_group": "JvmMemory",
+      "name": "jvm_memory_heap_usage_used_value",
+      "display_name": "Heap Memory Usage (Used)",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "mebibytes",
+      "dimensions": [],
+      "description": "The portion of JVM heap memory that is currently in use, used to assess the current heap memory usage.",
+      "query": "jvm_memory_heap_usage_used_value{instance_type=\"jetty\",__$labels__} / (1024*1024)"
+    },
+    {
+      "metric_group": "JvmMemory",
+      "name": "jvm_memory_heap_usage_committed_value",
+      "display_name": "Heap Memory Usage (Committed)",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "mebibytes",
+      "dimensions": [],
+      "description": "The portion of JVM heap memory that has been committed, used to assess the actual amount of heap memory allocated to the JVM.",
+      "query": "jvm_memory_heap_usage_committed_value{instance_type=\"jetty\",__$labels__} / (1024*1024)"
+    },
+    {
+      "metric_group": "JvmMemory",
+      "name": "jvm_memory_nonheap_usage_used_rate",
+      "display_name": "Non-Heap Memory Usage Change Rate",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "MBs",
+      "dimensions": [],
+      "description": "The average rate of change in JVM non-heap memory usage over 5 minutes, measured in megabytes per minute, used to monitor the trend of non-heap memory usage.",
+      "query": "rate(jvm_memory_nonheap_usage_used_value{instance_type=\"jetty\",__$labels__}[5m]) / (1024*1024)"
+    },
+    {
+      "metric_group": "JvmMemory",
+      "name": "jvm_memory_nonheap_usage_max_value",
+      "display_name": "Non-Heap Memory Usage (Max)",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "mebibytes",
+      "dimensions": [],
+      "description": "The maximum amount of non-heap memory available to the JVM, used to assess the upper limit of non-heap memory.",
+      "query": "jvm_memory_nonheap_usage_max_value{instance_type=\"jetty\",__$labels__} / (1024*1024)"
+    },
+    {
+      "metric_group": "Httpconfiguration",
+      "name": "jetty_httpconfiguration_outputbuffersize_value",
+      "display_name": "HTTP Output Buffer Size",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "kibibytes",
+      "dimensions": [
+        {
+          "name": "id",
+          "description": "ID"
+        },
+        {
+          "name": "context",
+          "description": "context"
+        }
+      ],
+      "description": "Represents the output buffer size (KB) for HTTP responses in Jetty, controlling data buffering to balance performance and memory usage.",
+      "query": "jetty_httpconfiguration_outputbuffersize_value{__$labels__} / 1024"
+    },
+    {
+      "metric_group": "Httpconfiguration",
+      "name": "jetty_httpconfiguration_idletimeout_value",
+      "display_name": "HTTP Idle Timeout",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "s",
+      "dimensions": [
+        {
+          "name": "id",
+          "description": "ID"
+        },
+        {
+          "name": "context",
+          "description": "context"
+        }
+      ],
+      "description": "Indicates the maximum keep-alive time (seconds) for HTTP connections without data transfer, releasing idle resources to prevent waste and malicious occupation.",
+      "query": "jetty_httpconfiguration_idletimeout_value{__$labels__} / 1000"
+    },
+    {
+      "metric_group": "Httpconfiguration",
+      "name": "jetty_httpconfiguration_headercachesize_value",
+      "display_name": "HTTP Header Cache Size",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "bytes",
+      "dimensions": [
+        {
+          "name": "id",
+          "description": "ID"
+        },
+        {
+          "name": "context",
+          "description": "context"
+        }
+      ],
+      "description": "Represents the maximum number of HTTP request/response headers cached by Jetty to reduce parsing overhead and improve request processing speed.",
+      "query": "jetty_httpconfiguration_headercachesize_value{__$labels__}"
+    },
+    {
+      "metric_group": "Httpconfiguration",
+      "name": "jetty_httpconfiguration_maxerrordispatches_value",
+      "display_name": "Max Error Dispatches",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "short",
+      "dimensions": [
+        {
+          "name": "id",
+          "description": "ID"
+        },
+        {
+          "name": "context",
+          "description": "context"
+        }
+      ],
+      "description": "Indicates the maximum number of error dispatches allowed in Jetty to prevent infinite loops and resource exhaustion during error handling.",
+      "query": "jetty_httpconfiguration_maxerrordispatches_value{__$labels__}"
+    },
+    {
+      "metric_group": "Bufferpool",
+      "name": "jetty_bufferpool_heapmemory_value",
+      "display_name": "Heap Memory Reserved for Buffers",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "mebibytes",
+      "dimensions": [],
+      "description": "Represents the heap memory usage (MB) by Jetty's buffer pool for data block caching, monitoring memory leaks and usage.",
+      "query": "jetty_bufferpool_heapmemory_value{__$labels__} / (1024*1024)"
+    },
+    {
+      "metric_group": "Bufferpool",
+      "name": "jetty_bufferpool_heapmemory_rate",
+      "display_name": "Heap Memory Reserved for Buffers Rate",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "MBs",
+      "dimensions": [],
+      "description": "Represents the average rate of heap memory change (MB/s) for buffers over 5 minutes, identifying usage trends and anomalies.",
+      "query": "rate(jetty_bufferpool_heapmemory_value{__$labels__}[5m]) / (1024*1024)"
+    },
+    {
+      "metric_group": "Bufferpool",
+      "name": "jetty_arraybufferpool_directmemory_value",
+      "display_name": "DirectMemory Reserved for DirectBuffer",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "mebibytes",
+      "dimensions": [
+        {
+          "name": "id",
+          "description": "ID"
+        }
+      ],
+      "description": "Represents the direct memory usage (MB) by Jetty's direct buffers for high-performance I/O, preventing out-of-memory errors in non-heap space.",
+      "query": "jetty_arraybufferpool_directmemory_value{__$labels__} / (1024*1024)"
+    },
+    {
+      "metric_group": "Bufferpool",
+      "name": "jetty_arraybufferpool_directmemory_rate",
+      "display_name": "DirectMemory Reserved for DirectBuffer Rate",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "MBs",
+      "dimensions": [
+        {
+          "name": "id",
+          "description": "ID"
+        }
+      ],
+      "description": "Represents the average rate of direct memory change (MB/s) over 5 minutes, analyzing allocation patterns and leak risks.",
+      "query": "rate(jetty_arraybufferpool_directmemory_value{__$labels__}[5m]) / (1024*1024)"
+    },
+    {
+      "metric_group": "Serverconnector",
+      "name": "jetty_serverconnector_idletimeout_value",
+      "display_name": "Idle Timeout",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "s",
+      "dimensions": [
+        {
+          "name": "id",
+          "description": "ID"
+        },
+        {
+          "name": "context",
+          "description": "context"
+        }
+      ],
+      "description": "Indicates the idle timeout (seconds) for network connections in Jetty, managing TCP connection lifecycles to optimize long-connection resource recycling.",
+      "query": "jetty_serverconnector_idletimeout_value{__$labels__} / 1000"
+    },
+    {
+      "metric_group": "Managedselector",
+      "name": "jetty_managedselector_selectcount_value",
+      "display_name": "Selector Loop Select Count",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "short",
+      "dimensions": [
+        {
+          "name": "id",
+          "description": "ID"
+        }
+      ],
+      "description": "Represents the cumulative number of select() method invocations by Jetty's selector, reflecting I/O event processing frequency and network load.",
+      "query": "jetty_managedselector_selectcount_value{__$labels__}"
+    },
+    {
+      "metric_group": "Managedselector",
+      "name": "jetty_managedselector_selectcount_increase",
+      "display_name": "Selector Loop Select Count Increase",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "short",
+      "dimensions": [
+        {
+          "name": "id",
+          "description": "ID"
+        }
+      ],
+      "description": "Represents the increase in selector select() calls over 5 minutes, eliminating counter reset effects to measure I/O trends accurately.",
+      "query": "increase(jetty_managedselector_selectcount_value{__$labels__}[5m])"
+    },
+    {
+      "metric_group": "Reservedthread",
+      "name": "jetty_reservedthreadexecutor_available_value",
+      "display_name": "Available Reserved Threads",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "short",
+      "dimensions": [
+        {
+          "name": "id",
+          "description": "ID"
+        }
+      ],
+      "description": "Represents the number of available reserved threads in Jetty's executor, monitoring high-priority task pool load to avoid processing delays.",
+      "query": "jetty_reservedthreadexecutor_available_value{__$labels__}"
+    },
+    {
+      "metric_group": "JMXselfMonitor",
+      "name": "jmx_scrape_error_gauge",
+      "display_name": "JMX Scrape Error",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Enum",
+      "unit": "[{\"name\":\"成功\",\"id\":0,\"color\":\"#1ac44a\"},{\"name\":\"失败\",\"id\":1,\"color\":\"#ff4d4f\"}]",
+      "dimensions": [],
+      "description": "JMX scrape status: 0 for success, 1 for failure.",
+      "query": "jmx_scrape_error_gauge{instance_type=\"jetty\",__$labels__}"
+    }
+  ]
+}

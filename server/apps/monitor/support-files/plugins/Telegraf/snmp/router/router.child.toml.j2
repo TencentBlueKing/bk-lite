@@ -1,0 +1,39 @@
+[[inputs.snmp]]
+    interval = "{{ interval }}s"
+    {% if version == 2 %}
+    agents = ["udp://{{ ip }}:{{ port }}"]
+    version = 2
+    community = "{{ community }}"
+    timeout = "{{ timeout }}"
+    {% elif version == 3 %}
+    agents = ["udp://{{ ip }}:{{ port }}"]
+    version = 3
+    timeout = "{{ timeout }}"
+    sec_name = "{{ sec_name }}"
+    sec_level = "{{ sec_level }}"
+    auth_protocol = "{{ auth_protocol }}"
+    auth_password = "{{ auth_password }}"
+    priv_protocol = "{{ priv_protocol }}"
+    priv_password = "{{ priv_password }}"
+    {% else %}
+    {% endif %}
+    [inputs.snmp.tags]
+        instance_id = "{{ instance_id }}"
+        instance_type = "{{ instance_type }}"
+        collect_type = "snmp"
+        config_type = "router"
+    [[inputs.snmp.field]]
+        oid = "RFC1213-MIB::sysUpTime.0"
+        name = "uptime"
+    [[inputs.snmp.field]]
+        oid = "RFC1213-MIB::sysName.0"
+        name = "source"
+        is_tag = true
+    [[inputs.snmp.table]]
+        oid = "IF-MIB::ifTable"
+        name = "interface"
+        inherit_tags = ["source"]
+    [[inputs.snmp.table.field]]
+        oid = "IF-MIB::ifDescr"
+        name = "ifDescr"
+        is_tag = true

@@ -1,0 +1,178 @@
+{
+  "object": "ElasticSearch",
+  "plugin": "ElasticSearch",
+  "templates": [
+    {
+      "name": "磁盘剩余空间告警",
+      "alert_name": "ES 节点 ${metric_instance_id} 磁盘空间不足",
+      "description": "监测数据节点磁盘剩余空间，空间不足会导致索引自动设为只读甚至节点离线。建议设置预留缓冲空间，及时清理旧索引或扩容存储。",
+      "metric_name": "elasticsearch_fs_total_free_in_bytes",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 5,
+          "method": "<="
+        },
+        {
+          "level": "error",
+          "value": 10,
+          "method": "<="
+        },
+        {
+          "level": "warning",
+          "value": 20,
+          "method": "<="
+        }
+      ]
+    },
+    {
+      "name": "磁盘写入压力告警",
+      "alert_name": "ES 节点 ${metric_instance_id} 磁盘写入过高",
+      "description": "监控磁盘写入吞吐量，持续高写入可能导致IO瓶颈。需检查段合并操作或优化批量写入策略，避免影响查询性能。",
+      "metric_name": "elasticsearch_fs_io_stats_total_write_kilobytes",
+      "algorithm": "max",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 100,
+          "method": ">="
+        },
+        {
+          "level": "error",
+          "value": 50,
+          "method": ">="
+        },
+        {
+          "level": "warning",
+          "value": 30,
+          "method": ">="
+        }
+      ]
+    },
+    {
+      "name": "HTTP连接数超限",
+      "alert_name": "ES 节点 ${metric_instance_id} HTTP 连接泄漏",
+      "description": "检测当前HTTP连接数，异常增长可能表明连接泄漏或客户端异常。需检查长时间运行的查询和客户端连接池配置。",
+      "metric_name": "elasticsearch_http_current_open",
+      "algorithm": "max",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 1000,
+          "method": ">="
+        },
+        {
+          "level": "error",
+          "value": 800,
+          "method": ">="
+        },
+        {
+          "level": "warning",
+          "value": 500,
+          "method": ">="
+        }
+      ]
+    },
+    {
+      "name": "索引文档数激增",
+      "alert_name": "ES 索引 ${metric_instance_id} 文档数异常增长",
+      "description": "监控索引文档总量，突发增长可能导致分片大小不均。需评估是否需要拆分索引或调整分片策略。",
+      "metric_name": "elasticsearch_indices_docs_count",
+      "algorithm": "max",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 10000000,
+          "method": ">="
+        },
+        {
+          "level": "error",
+          "value": 5000000,
+          "method": ">="
+        },
+        {
+          "level": "warning",
+          "value": 2000000,
+          "method": ">="
+        }
+      ]
+    },
+    {
+      "name": "查询缓存效率下降",
+      "alert_name": "ES 节点 ${metric_instance_id} 查询缓存失效",
+      "description": "统计查询缓存项数量，数量骤降可能表明缓存失效。需检查查询模式变化或强制刷新操作。",
+      "metric_name": "elasticsearch_indices_query_cache_cache_count",
+      "algorithm": "min",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 1000,
+          "method": "<="
+        },
+        {
+          "level": "error",
+          "value": 3000,
+          "method": "<="
+        },
+        {
+          "level": "warning",
+          "value": 5000,
+          "method": "<="
+        }
+      ]
+    },
+    {
+      "name": "父级断路器触发",
+      "alert_name": "ES 集群 ${metric_instance_id} 资源熔断",
+      "description": "监控父级断路器触发状态，触发表明集群资源已达极限。需立即扩容或优化高资源消耗操作。",
+      "metric_name": "elasticsearch_breakers_parent_tripped",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 1,
+          "method": ">="
+        }
+      ]
+    },
+    {
+      "name": "Fielddata断路器触发",
+      "alert_name": "ES 节点 ${metric_instance_id} Fielddata 超限",
+      "description": "检测Fielddata内存断路器触发，会导致字段数据操作失败。需优化字段数据类型或增加堆内存。",
+      "metric_name": "elasticsearch_breakers_fielddata_tripped",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 1,
+          "method": ">="
+        }
+      ]
+    },
+    {
+      "name": "删除文档堆积告警",
+      "alert_name": "ES 索引 ${metric_instance_id} 删除文档未合并",
+      "description": "监控标记为删除的文档数量，过多未合并删除会影响查询性能。需强制段合并或调整合并策略。",
+      "metric_name": "elasticsearch_indices_docs_deleted",
+      "algorithm": "max",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 1000000,
+          "method": ">="
+        },
+        {
+          "level": "error",
+          "value": 500000,
+          "method": ">="
+        },
+        {
+          "level": "warning",
+          "value": 100000,
+          "method": ">="
+        }
+      ]
+    }
+  ]
+}

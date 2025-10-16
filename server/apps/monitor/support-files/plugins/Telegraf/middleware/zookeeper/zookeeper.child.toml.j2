@@ -1,0 +1,9 @@
+[[inputs.zookeeper]]
+    servers = ["{{ url }}"]
+    timeout = "{{ timeout }}s"
+    interval = "{{ interval }}s"
+    [inputs.zookeeper.tags]
+        instance_id = "{{ instance_id }}"
+        instance_type = "{{ instance_type }}"
+        collect_type = "middleware"
+        config_type = "zookeeper"

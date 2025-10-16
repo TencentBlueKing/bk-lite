@@ -1,0 +1,283 @@
+{
+  "plugin": "Tomcat-JMX",
+  "plugin_desc": "Collects Tomcat key performance metrics via JMX, including thread pools, HTTP connections, JVM memory, and request latency, to monitor operational status and resource efficiency for performance optimization and fault detection.",
+  "name": "Tomcat",
+  "icon": "Tomcat",
+  "type": "Middleware",
+  "description": "",
+  "default_metric": "any({instance_type='tomcat'}) by (instance_id)",
+  "instance_id_keys": ["instance_id"],
+  "supplementary_indicators": [],
+  "metrics": [
+  {
+    "metric_group": "GlobalRequestProcessor",
+    "name": "tomcat_bytesreceived_increase",
+    "display_name": "Received Bytes Increase",
+    "instance_id_keys": ["instance_id"],
+    "data_type": "Number",
+    "unit": "kibibytes",
+    "dimensions": [
+      {
+        "name": "port",
+        "description": "Port number of the Tomcat instance"
+      },
+      {
+        "name": "protocol_type",
+        "description": "Protocol type (e.g., HTTP, HTTPS)"
+      }
+    ],
+    "description": "Increase in received bytes over the past 5 minutes (in kibibytes), reflecting network input rate. A continuous increase may indicate higher network input traffic, requiring attention to network bandwidth.",
+    "query": "increase(tomcat_bytesreceived_total_counter{__$labels__}[5m]) /1024"
+  },
+  {
+    "metric_group": "GlobalRequestProcessor",
+    "name": "tomcat_bytessent_increase",
+    "display_name": "Sent Bytes Increase",
+    "instance_id_keys": ["instance_id"],
+    "data_type": "Number",
+    "unit": "kibibytes",
+    "dimensions": [
+      {
+        "name": "port",
+        "description": "Port number of the Tomcat instance"
+      },
+      {
+        "name": "protocol_type",
+        "description": "Protocol type (e.g., HTTP, HTTPS)"
+      }
+    ],
+    "description": "Increase in sent bytes over the past 5 minutes (in kibibytes), reflecting network output rate. A high value may indicate significant network output traffic, requiring attention to network bandwidth.",
+    "query": "increase(tomcat_bytessent_total_counter{__$labels__}[5m]) /1024"
+  },
+  {
+    "metric_group": "GlobalRequestProcessor",
+    "name": "tomcat_errorcount_increase",
+    "display_name": "Error Increase",
+    "instance_id_keys": ["instance_id"],
+    "data_type": "Number",
+    "unit": "short",
+    "dimensions": [
+      {
+        "name": "port",
+        "description": "Port number of the Tomcat instance"
+      },
+      {
+        "name": "protocol_type",
+        "description": "Protocol type (e.g., HTTP, HTTPS)"
+      }
+    ],
+    "description": "Increase in errors over the past 5 minutes, reflecting changes in error frequency. A high value may indicate numerous system issues that need prompt investigation.",
+    "query": "increase(tomcat_errorcount_total_counter{__$labels__}[5m])"
+  },
+  {
+    "metric_group": "GlobalRequestProcessor",
+    "name": "tomcat_processingtime_increase",
+    "display_name": "Total Processing Time Increase",
+    "instance_id_keys": ["instance_id"],
+    "data_type": "Number",
+    "unit": "s",
+    "dimensions": [
+      {
+        "name": "port",
+        "description": "Port number of the Tomcat instance"
+      },
+      {
+        "name": "protocol_type",
+        "description": "Protocol type (e.g., HTTP, HTTPS)"
+      }
+    ],
+    "description": "Increase in total time (in seconds) taken to process requests over the past 5 minutes, evaluating changes in overall processing efficiency. A continuous increase may indicate growing request processing time, suggesting further analysis for potential performance bottlenecks.",
+    "query": "increase(tomcat_processingtime_total_counter{__$labels__}[5m]) /1000"
+  },
+  {
+    "metric_group": "GlobalRequestProcessor",
+    "name": "tomcat_maxtime_total_counter",
+    "display_name": "Max Processing Time",
+    "instance_id_keys": ["instance_id"],
+    "data_type": "Number",
+    "unit": "s",
+    "dimensions": [
+      {
+        "name": "port",
+        "description": "Port number of the Tomcat instance"
+      },
+      {
+        "name": "protocol_type",
+        "description": "Protocol type (e.g., HTTP, HTTPS)"
+      }
+    ],
+    "description": "Maximum request processing time (in seconds) for a specific port and protocol, locating slow requests. A high value may indicate a performance bottleneck, suggesting optimization of application performance.",
+    "query": "tomcat_maxtime_total_counter{__$labels__} /1000"
+  },
+  {
+    "metric_group": "GlobalRequestProcessor",
+    "name": "tomcat_requestcount_increase",
+    "display_name": "Request Increase",
+    "instance_id_keys": ["instance_id"],
+    "data_type": "Number",
+    "unit": "short",
+    "dimensions": [
+      {
+        "name": "port",
+        "description": "Port number of the Tomcat instance"
+      },
+      {
+        "name": "protocol_type",
+        "description": "Protocol type (e.g., HTTP, HTTPS)"
+      }
+    ],
+    "description": "Increase in requests over the past 5 minutes, reflecting traffic trends. A continuous increase may indicate higher traffic, requiring attention to system load.",
+    "query": "increase(tomcat_requestcount_total_counter{__$labels__}[5m])"
+  },
+  {
+    "metric_group": "Threadpool",
+    "name": "tomcat_threadpool_currentthreadcount_gauge",
+    "display_name": "Current Threads",
+    "instance_id_keys": ["instance_id"],
+    "data_type": "Number",
+    "unit": "short",
+    "dimensions": [
+      {
+        "name": "port",
+        "description": "Port number of the Tomcat instance"
+      },
+      {
+        "name": "protocol_type",
+        "description": "Protocol type (e.g., HTTP, HTTPS)"
+      }
+    ],
+    "description": "Current number of threads in the thread pool, monitoring concurrent load. A high value may indicate heavy thread pool load, suggesting optimization of thread pool configuration.",
+    "query": "tomcat_threadpool_currentthreadcount_gauge{__$labels__}"
+  },
+  {
+    "metric_group": "Threadpool",
+    "name": "tomcat_threadpool_utilization",
+    "display_name": "Threadpool Utilization",
+    "instance_id_keys": ["instance_id"],
+    "data_type": "Number",
+    "unit": "percent",
+    "dimensions": [
+      {
+        "name": "port",
+        "description": "Port number of the Tomcat instance"
+      },
+      {
+        "name": "protocol_type",
+        "description": "Protocol type (e.g., HTTP, HTTPS)"
+      }
+    ],
+    "description": "Utilization of the thread pool, reflecting its usage. A high value may indicate the thread pool is nearing saturation, suggesting the need to increase thread pool capacity or optimize application performance.",
+    "query": "(tomcat_threadpool_currentthreadsbusy_gauge{__$labels__} / tomcat_threadpool_maxthreads_gauge{__$labels__}) * 100"
+  },
+  {
+    "metric_group": "Threadpool",
+    "name": "tomcat_threadpool_currentthreadsbusy_gauge",
+    "display_name": "Busy Threads",
+    "instance_id_keys": ["instance_id"],
+    "data_type": "Number",
+    "unit": "short",
+    "dimensions": [
+      {
+        "name": "port",
+        "description": "Port number of the Tomcat instance"
+      },
+      {
+        "name": "protocol_type",
+        "description": "Protocol type (e.g., HTTP, HTTPS)"
+      }
+    ],
+    "description": "Number of busy threads, determining processing capacity bottlenecks. A high value may indicate insufficient processing capacity, suggesting optimization of thread pool configuration.",
+    "query": "tomcat_threadpool_currentthreadsbusy_gauge{__$labels__}"
+  },
+  {
+    "metric_group": "Threadpool",
+    "name": "tomcat_threadpool_running_gauge",
+    "display_name": "Running Threads",
+    "instance_id_keys": ["instance_id"],
+    "data_type": "Number",
+    "unit": "short",
+    "dimensions": [
+      {
+        "name": "port",
+        "description": "Port number of the Tomcat instance"
+      },
+      {
+        "name": "protocol_type",
+        "description": "Protocol type (e.g., HTTP, HTTPS)"
+      }
+    ],
+    "description": "Number of actively running threads in the thread pool, reflecting actual workload. A high value may indicate heavy thread pool load, suggesting optimization of thread pool configuration.",
+    "query": "tomcat_threadpool_running_gauge{__$labels__}"
+  },
+  {
+    "metric_group": "Session",
+    "name": "tomcat_session_processingtime_avg",
+    "display_name": "Average Session Processing Time",
+    "instance_id_keys": ["instance_id"],
+    "data_type": "Number",
+    "unit": "ms",
+    "dimensions": [
+        {
+            "name": "host",
+            "description": "Host name of the Tomcat instance"
+        }
+    ],
+    "description": "Over the past 5 minutes, the average session processing time per second (in milliseconds). This metric reflects the average efficiency of the system in processing sessions. A lower value indicates that the system processes sessions quickly and efficiently; a higher value may indicate performance bottlenecks in the system when processing sessions.",
+    "query": "rate(tomcat_session_processingtime_total_counter{__$labels__}[5m])"
+  },
+  {
+    "metric_group": "Session",
+    "name": "tomcat_session_sessioncounter_total_counter",
+    "display_name": "Active Sessions",
+    "instance_id_keys": ["instance_id"],
+    "data_type": "Number",
+    "unit": "short",
+    "dimensions": [
+        {
+            "name": "host",
+            "description": "Host name of the Tomcat instance"
+        }
+    ],
+    "description": "Total number of active sessions for a specific host, monitoring session resource usage. A high value may indicate excessive session resource usage, suggesting optimization of session management.",
+    "query": "tomcat_session_sessioncounter_total_counter{__$labels__}"
+  },
+  {
+    "metric_group": "Session",
+    "name": "tomcat_session_expiredsessions_total_counter",
+    "display_name": "Expired Sessions",
+    "instance_id_keys": ["instance_id"],
+    "data_type": "Number",
+    "unit": "short",
+    "dimensions": [
+        {
+            "name": "host",
+            "description": "Host name of the Tomcat instance"
+        }
+    ],
+    "description": "Total number of expired sessions for a specific host, detecting session timeouts. A high value may indicate frequent session timeouts, requiring a review of session configuration or resource limits.",
+    "query": "tomcat_session_expiredsessions_total_counter{__$labels__}"
+  },
+  {
+    "metric_group": "Session",
+    "name": "tomcat_session_rejectionrate",
+    "display_name": "Session Rejection Rate",
+    "instance_id_keys": ["instance_id"],
+    "data_type": "Number",
+    "unit": "percent",
+    "dimensions": [],
+    "description": "Session rejection rate, reflecting the proportion of session creation failures. A high value may indicate issues with session management, requiring a review of session configuration or resource limits.",
+    "query": "sum(increase(tomcat_session_rejectedsessions_total_counter[1h]) or vector(0)) / sum(increase(tomcat_session_sessioncounter_total_counter[1h]) or vector(1)) by (instance_id,__$labels__}) *100"
+  },
+  {
+    "metric_group": "JMXselfMonitor",
+    "name": "jmx_scrape_error_gauge",
+    "display_name": "JMX Scrape Error",
+    "instance_id_keys": ["instance_id"],
+    "data_type": "Enum",
+    "unit": "[{\"name\":\"成功\",\"id\":0,\"color\":\"#1ac44a\"},{\"name\":\"失败\",\"id\":1,\"color\":\"#ff4d4f\"}]",
+    "dimensions": [],
+    "description": "JMX scrape status: 0 for success, 1 for failure.",
+    "query": "jmx_scrape_error_gauge{instance_type=\"tomcat\",__$labels__}"
+  }
+]
+}

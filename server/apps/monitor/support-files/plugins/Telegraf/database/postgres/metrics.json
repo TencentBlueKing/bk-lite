@@ -1,0 +1,191 @@
+{
+  "plugin": "Postgres",
+  "plugin_desc": "Collecting PostgreSQL's session management, transaction metrics, and I/O performance data helps monitor resource usage, access behavior, operational efficiency, and identify potential issues within the database.",
+  "name": "Postgres",
+  "icon": "postgres",
+  "type": "Database",
+  "description": "",
+  "default_metric": "any({instance_type='postgres'}) by (instance_id)",
+  "instance_id_keys": ["instance_id"],
+  "supplementary_indicators": ["postgresql_active_time", "postgresql_blks_hit"],
+  "metrics": [
+    {
+      "metric_group": "Performance",
+      "name": "postgresql_active_time",
+      "display_name": "PostgreSQL Active Time",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "h",
+      "dimensions": [],
+      "description": "This metric indicates the total duration of the PostgreSQL instance in an active state, reflecting the duration of database activity.",
+      "query": "sum(postgresql_active_time{__$labels__}) by (instance_id) /60/60"
+    },
+    {
+      "metric_group": "Performance",
+      "name": "postgresql_blk_read_time",
+      "display_name": "PostgreSQL Block Read Time Rate",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "mss",
+      "dimensions": [
+        {
+          "name": "db",
+          "description": "The name of the database within the PostgreSQL instance."
+        }
+      ],
+      "description": "Indicates the rate of time spent on block read operations by the PostgreSQL instance (in seconds per second). Used for monitoring read performance.",
+      "query": "rate(postgresql_blk_read_time{__$labels__}[5m])"
+    },
+    {
+      "metric_group": "Performance",
+      "name": "postgresql_blk_write_time",
+      "display_name": "PostgreSQL Block Write Time Rate",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "mss",
+      "dimensions": [
+        {
+          "name": "db",
+          "description": "The name of the database within the PostgreSQL instance."
+        }
+      ],
+      "description": "Indicates the rate of time spent on block write operations by the PostgreSQL instance (in seconds per second). Used for monitoring write performance.",
+      "query": "rate(postgresql_blk_write_time{__$labels__}[5m])"
+    },
+    {
+      "metric_group": "Cache",
+      "name": "postgresql_blks_hit",
+      "display_name": "PostgreSQL Blocks Hit Rate",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "cps",
+      "dimensions": [
+        {
+          "name": "db",
+          "description": "The name of the database within the PostgreSQL instance."
+        }
+      ],
+      "description": "Indicates the rate of block cache hits by the PostgreSQL instance (in hits per second). Used for monitoring cache efficiency.",
+      "query": "rate(postgresql_blks_hit{__$labels__}[5m])"
+    },
+    {
+      "metric_group": "Cache",
+      "name": "postgresql_blks_read",
+      "display_name": "PostgreSQL Blocks Read Rate",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "cps",
+      "dimensions": [
+        {
+          "name": "db",
+          "description": "The name of the database within the PostgreSQL instance."
+        }
+      ],
+      "description": "Indicates the rate of block reads by the PostgreSQL instance (in reads per second). Used for monitoring read frequency.",
+      "query": "rate(postgresql_blks_read{__$labels__}[5m])"
+    },
+    {
+      "metric_group": "Cache",
+      "name": "postgresql_blks_hit_ratio",
+      "display_name": "PostgreSQL Blocks Hit Ratio(5m)",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "percent",
+      "dimensions": [
+        {
+          "name": "db",
+          "description": "The name of the database within the PostgreSQL instance."
+        }
+      ],
+      "description": "Indicates the PostgreSQL instance's block cache hit ratio over the past 5 minutes, reflecting cache effectiveness. A high hit ratio means most data requests are fulfilled from the cache, reducing disk reads and improving query performance.",
+      "query": "(rate(postgresql_blks_hit{__$labels__}[5m]) / (rate(postgresql_blks_hit{__$labels__}[5m]) + rate(postgresql_blks_read{__$labels__}[5m]))) * 100"
+    },
+    {
+      "metric_group": "Memory",
+      "name": "postgresql_buffers_alloc",
+      "display_name": "PostgreSQL Buffers Allocated Rate",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "cps",
+      "dimensions": [],
+      "description": "Indicates the rate of buffer allocations by the PostgreSQL instance (in allocations per second). Used for monitoring buffer allocation.",
+      "query": "sum(rate(postgresql_buffers_alloc{__$labels__}[5m])) by (instance_id)"
+    },
+    {
+      "metric_group": "Memory",
+      "name": "postgresql_buffers_checkpoint",
+      "display_name": "PostgreSQL Buffers Checkpoint Rate",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "cps",
+      "dimensions": [],
+      "description": "Indicates the rate of buffers at checkpoints by the PostgreSQL instance (in checkpoints per second). Used for monitoring checkpoint frequency.",
+      "query": "sum(rate(postgresql_buffers_checkpoint{__$labels__}[5m])) by (instance_id)"
+    },
+    {
+      "metric_group": "Transaction",
+      "name": "postgresql_xact_commit",
+      "display_name": "PostgreSQL Transactions Committed Rate",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "cps",
+      "dimensions": [
+        {
+          "name": "db",
+          "description": "The name of the database within the PostgreSQL instance."
+        }
+      ],
+      "description": "Indicates the rate of transactions committed by the PostgreSQL instance (in commits per second). Used for monitoring transaction commit frequency.",
+      "query": "rate(postgresql_xact_commit{__$labels__}[5m])"
+    },
+    {
+      "metric_group": "Transaction",
+      "name": "postgresql_xact_rollback",
+      "display_name": "PostgreSQL Transactions Rolled Back Rate",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "cps",
+      "dimensions": [
+        {
+          "name": "db",
+          "description": "The name of the database within the PostgreSQL instance."
+        }
+      ],
+      "description": "Indicates the rate of transactions rolled back by the PostgreSQL instance (in rollbacks per second). Used for monitoring transaction rollback frequency.",
+      "query": "rate(postgresql_xact_rollback{__$labels__}[5m])"
+    },
+    {
+      "metric_group": "Session",
+      "name": "postgresql_sessions",
+      "display_name": "PostgreSQL Active Sessions",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "short",
+      "dimensions": [],
+      "description": "Indicates the total number of sessions for the PostgreSQL instance. Used for monitoring total session count.",
+      "query": "sum(postgresql_sessions{__$labels__}) by (instance_id)"
+    },
+    {
+      "metric_group": "Session",
+      "name": "postgresql_sessions_abandoned",
+      "display_name": "PostgreSQL Abandoned Sessions Rate",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "cps",
+      "dimensions": [],
+      "description": "Rate of sessions abnormally disconnected due to network/client issues per second, used to identify client/network instability and resource leaks.",
+      "query": "sum(rate(postgresql_sessions_abandoned{__$labels__}[5m])) by (instance_id)"
+    },
+    {
+      "metric_group": "Session",
+      "name": "postgresql_sessions_killed",
+      "display_name": "PostgreSQL Killed Sessions Rate",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "cps",
+      "dimensions": [],
+      "description": "Indicates the rate of killed sessions for the PostgreSQL instance (in terminations per second). Used for monitoring session termination frequency.",
+      "query": "sum(rate(postgresql_sessions_killed{__$labels__}[5m])) by (instance_id)"
+    }
+  ]
+}

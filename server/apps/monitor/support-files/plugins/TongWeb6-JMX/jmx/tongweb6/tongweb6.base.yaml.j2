@@ -1,0 +1,42 @@
+username: {{ username }}
+password: {{ password }}
+jmxUrl: {{ jmx_url }}
+ssl: false
+startDelaySeconds: 0
+lowercaseOutputName: true
+lowercaseOutputLabelNames: true
+whitelistObjectNames:
+  - TWNT:*
+  - monitor:*
+
+
+rules:
+  # runtime
+  - pattern: monitor<name=runtime, group=jvm><Uptime>(count)
+    name: tongweb6_monitor_runtime_uptime
+    help: 实例已运行时间(ms)
+
+  # http-connector
+  - pattern: monitor<name=(.+), group=http-connector><(.+)>(count)
+    name: tongweb6_monitor_http_connector_$2
+    labels:
+      name_info: $1
+
+  # GlobalRequestProcessor
+  - pattern: TWNT<type=GlobalRequestProcessor, name=(.+)><>(requestCount|maxTime|bytesReceived|bytesSent|processingTime|errorCount)
+    name: tongweb6_global_request_processor_$2
+    labels:
+      name_info: $1
+
+  # Manager
+  - pattern: TWNT<type=Manager, context=(.+), host=(.+)><>(activeSessions|expiredSessions|maxActive|processingTime|rejectedSessions|sessionAverageAliveTime|sessionMaxAliveTime)
+    name: tongweb6_manager_$3
+    labels:
+      host_info: $1
+      context_info: $2
+
+  # ThreadPool
+  - pattern: TWNT<type=ThreadPool, name=(.+)><>(currentThreadsBusy|currentThreadsHang|keepAliveCount)
+    name: tongweb6_thread_pool_$2
+    labels:
+      name_info: $1

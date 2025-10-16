@@ -1,0 +1,130 @@
+{
+  "object": "Zookeeper",
+  "plugin": "Zookeeper-Exporter",
+  "templates": [
+    {
+      "name": "实例存活状态",
+      "alert_name": "ZooKeeper节点 ${metric_instance_id} 服务异常",
+      "description": "监测ZK服务基础健康状态，非Leader节点异常可能导致客户端重连。需检查zkServer.sh status和日志。",
+      "metric_name": "zk_up",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 1,
+          "method": "!="
+        }
+      ]
+    },
+    {
+      "name": "领导者状态",
+      "alert_name": "ZooKeeper集群 ${metric_instance_id} Leader失联",
+      "description": "检测当前节点是否为Leader，Leader宕机会导致选举风暴。需配合zk_ruok综合判断。",
+      "metric_name": "zk_server_leader",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 1,
+          "method": "!="
+        }
+      ]
+    },
+    {
+      "name": "请求延迟过高",
+      "alert_name": "ZooKeeper节点 ${metric_instance_id} 处理延迟",
+      "description": "监控最大请求延迟，高延迟会影响会话超时判断。需检查磁盘IO和GC日志。",
+      "metric_name": "zk_max_latency",
+      "algorithm": "max",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 1000,
+          "method": ">="
+        },
+        {
+          "level": "error",
+          "value": 500,
+          "method": ">="
+        },
+        {
+          "level": "warning",
+          "value": 200,
+          "method": ">="
+        }
+      ]
+    },
+    {
+      "name": "临时节点泄漏",
+      "alert_name": "ZooKeeper集群 ${metric_instance_id} 临时节点堆积",
+      "description": "监控临时节点数量，异常增长可能表明客户端未正常释放。需检查客户端会话状态。",
+      "metric_name": "zk_ephemerals_count",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 100,
+          "method": ">="
+        },
+        {
+          "level": "error",
+          "value": 50,
+          "method": ">="
+        },
+        {
+          "level": "warning",
+          "value": 20,
+          "method": ">="
+        }
+      ]
+    },
+    {
+      "name": "数据大小超标",
+      "alert_name": "ZooKeeper节点 ${metric_instance_id} 内存压力",
+      "description": "检测ZNode数据总大小，过大可能导致内存溢出。需清理历史数据或扩容。",
+      "metric_name": "zk_approximate_data_size",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 1024,
+          "method": ">="
+        },
+        {
+          "level": "error",
+          "value": 500,
+          "method": ">="
+        },
+        {
+          "level": "warning",
+          "value": 200,
+          "method": ">="
+        }
+      ]
+    },
+    {
+      "name": "Watch数量异常",
+      "alert_name": "ZooKeeper集群 ${metric_instance_id} Watch堆积",
+      "description": "检测Watch数量，过多会消耗大量服务端内存。需优化客户端监听逻辑。",
+      "metric_name": "zk_watch_count",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 50000,
+          "method": ">="
+        },
+        {
+          "level": "error",
+          "value": 30000,
+          "method": ">="
+        },
+        {
+          "level": "warning",
+          "value": 10000,
+          "method": ">="
+        }
+      ]
+    }
+  ]
+}

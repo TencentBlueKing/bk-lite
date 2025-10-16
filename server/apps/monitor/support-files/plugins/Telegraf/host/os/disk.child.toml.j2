@@ -1,0 +1,8 @@
+[[inputs.disk]]
+    ignore_fs = ["tmpfs", "devtmpfs", "devfs", "iso9660", "overlay", "aufs", "squashfs"]
+    interval = "{{ interval }}s"
+    [inputs.disk.tags]
+        instance_id = "{{ instance_id }}"
+        instance_type = "{{ instance_type }}"
+        collect_type = "host"
+        config_type = "disk"

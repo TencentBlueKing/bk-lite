@@ -1,0 +1,10 @@
+[[inputs.prometheus]]
+    urls = ["http://127.0.0.1:${LISTEN_PORT}/metrics"]
+    interval = "{{ interval }}s"
+    timeout = "20s"
+    response_timeout = "20s"
+    [inputs.prometheus.tags]
+        instance_id = "{{ instance_id }}"
+        instance_type = "{{ instance_type }}"
+        collect_type = "exporter"
+        config_type = "mssql"

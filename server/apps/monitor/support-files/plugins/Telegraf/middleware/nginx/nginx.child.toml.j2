@@ -1,0 +1,8 @@
+[[inputs.nginx]]
+    urls = ["{{ url }}"]
+    interval = "{{ interval }}s"
+    [inputs.nginx.tags]
+        instance_id = "{{ instance_id }}"
+        instance_type = "{{ instance_type }}"
+        collect_type = "middleware"
+        config_type = "nginx"

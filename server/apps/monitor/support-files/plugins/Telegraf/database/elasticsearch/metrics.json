@@ -1,0 +1,134 @@
+{
+  "plugin": "ElasticSearch",
+  "plugin_desc": "By collecting Elasticsearch file system metrics, HTTP requests, IO statistics, document statistics, query cache, and circuit breaker metrics, this plugin helps users monitor the health and performance of their cluster.",
+  "name": "ElasticSearch",
+  "icon": "elasticsearch-Elasticsearch",
+  "type": "Database",
+  "description": "",
+  "default_metric": "any({instance_type='elasticsearch'}) by (instance_id)",
+  "instance_id_keys": ["instance_id"],
+  "supplementary_indicators": ["elasticsearch_fs_total_available_in_bytes", "elasticsearch_http_current_open", "elasticsearch_indices_docs_count"],
+  "metrics": [
+    {
+      "metric_group": "Disk",
+      "name": "elasticsearch_fs_total_available_in_bytes",
+      "display_name": "Total Available Disk Space",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "gibibytes",
+      "dimensions": [],
+      "description": "Indicates total available disk space, converted to GB.",
+      "query": "sum(elasticsearch_fs_total_available_in_bytes{__$labels__}) by (instance_id)/ 1024 / 1024 / 1024"
+    },
+    {
+      "metric_group": "Disk",
+      "name": "elasticsearch_fs_total_free_in_bytes",
+      "display_name": "Total Free Disk Space",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "gibibytes",
+      "dimensions": [],
+      "description": "Represents unallocated available disk space.",
+      "query": "elasticsearch_fs_total_free_in_bytes{__$labels__} / 1024 / 1024 / 1024"
+    },
+    {
+      "metric_group": "HTTP",
+      "name": "elasticsearch_http_current_open",
+      "display_name": "Current Open HTTP Connections",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "short",
+      "dimensions": [],
+      "description": "Tracks the number of currently open HTTP connections.",
+      "query": "sum(elasticsearch_http_current_open{__$labels__}) by (instance_id)"
+    },
+    {
+      "metric_group": "HTTP",
+      "name": "elasticsearch_http_total_opened",
+      "display_name": "New HTTP Connections in 5m",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "short",
+      "dimensions": [],
+      "description": "Number of new HTTP connections opened in 5 minutes.",
+      "query": "increase(elasticsearch_http_total_opened{__$labels__}[5m])"
+    },
+    {
+      "metric_group": "IO",
+      "name": "elasticsearch_fs_io_stats_total_write_kilobytes",
+      "display_name": "Disk Write Throughput",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "MBs",
+      "dimensions": [],
+      "description": "Monitors disk write throughput (MB/s).",
+      "query": "rate(elasticsearch_fs_io_stats_total_write_kilobytes{__$labels__}[5m]) / 1024"
+    },
+    {
+      "metric_group": "IO",
+      "name": "elasticsearch_fs_io_stats_total_read_kilobytes",
+      "display_name": "Disk Read Throughput",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "MBs",
+      "dimensions": [],
+      "description": "Tracks disk read throughput (MB/s).",
+      "query": "rate(elasticsearch_fs_io_stats_total_read_kilobytes{__$labels__}[5m]) / 1024"
+    },
+    {
+      "metric_group": "Indices",
+      "name": "elasticsearch_indices_docs_count",
+      "display_name": "Total Document Count",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "short",
+      "dimensions": [],
+      "description": "Total number of document entries in Elasticsearch.",
+      "query": "sum(elasticsearch_indices_docs_count{__$labels__}) by (instance_id)"
+    },
+    {
+      "metric_group": "Indices",
+      "name": "elasticsearch_indices_docs_deleted",
+      "display_name": "Total Deleted Document Count",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "short",
+      "dimensions": [],
+      "description": "Total number of deleted documents in Elasticsearch.",
+      "query": "sum(elasticsearch_indices_docs_deleted{__$labels__}) by (instance_id)"
+    },
+    {
+      "metric_group": "Cache",
+      "name": "elasticsearch_indices_query_cache_cache_count",
+      "display_name": "Query Cache Count",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "short",
+      "dimensions": [],
+      "description": "Tracks the number of query cache entries.",
+      "query": "rate(elasticsearch_indices_query_cache_cache_count{__$labels__}[5m])"
+    },
+    {
+      "metric_group": "Circuit Breakers",
+      "name": "elasticsearch_breakers_parent_tripped",
+      "display_name": "Parent Circuit Breaker Tripped",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "short",
+      "dimensions": [],
+      "description": "Parent circuit breaker trips in 5 minutes.",
+      "query": "rate(elasticsearch_breakers_parent_tripped{__$labels__}[5m])"
+    },
+    {
+      "metric_group": "Circuit Breakers",
+      "name": "elasticsearch_breakers_fielddata_tripped",
+      "display_name": "Field Data Circuit Breaker Tripped",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "short",
+      "dimensions": [],
+      "description": "Field data circuit breaker trips in 5 minutes.",
+      "query": "rate(elasticsearch_breakers_fielddata_tripped{__$labels__}[5m])"
+    }
+  ]
+}

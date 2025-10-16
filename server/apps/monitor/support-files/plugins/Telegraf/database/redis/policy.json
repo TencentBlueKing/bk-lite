@@ -1,0 +1,102 @@
+{
+  "object": "Redis",
+  "plugin": "Redis",
+  "templates": [
+    {
+      "name": "内存碎片过高",
+      "alert_name": "Redis 实例 ${metric_instance_id} 内存碎片化",
+      "description": "检测内存碎片比率，过高会导致内存浪费和性能下降。需重启实例或启用内存碎片整理。",
+      "metric_name": "redis_mem_fragmentation_ratio",
+      "algorithm": "max",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 2.0,
+          "method": ">="
+        },
+        {
+          "level": "error",
+          "value": 1.5,
+          "method": ">="
+        },
+        {
+          "level": "warning",
+          "value": 1.2,
+          "method": ">="
+        }
+      ]
+    },
+    {
+      "name": "操作吞吐突增",
+      "alert_name": "Redis 实例 ${metric_instance_id} 请求过载",
+      "description": "监控每秒操作数，异常增长可能导致CPU饱和。需检查热点key或考虑分片。",
+      "metric_name": "redis_instantaneous_ops_per_sec",
+      "algorithm": "max",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 50000,
+          "method": ">="
+        },
+        {
+          "level": "error",
+          "value": 30000,
+          "method": ">="
+        },
+        {
+          "level": "warning",
+          "value": 10000,
+          "method": ">="
+        }
+      ]
+    },
+    {
+      "name": "缓存命中率低",
+      "alert_name": "Redis 实例 ${metric_instance_id} 缓存失效",
+      "description": "检测key查找未命中次数，高未命中率导致后端压力。需优化缓存策略或预热数据。",
+      "metric_name": "redis_keyspace_misses",
+      "algorithm": "max",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 1000,
+          "method": ">="
+        },
+        {
+          "level": "error",
+          "value": 500,
+          "method": ">="
+        },
+        {
+          "level": "warning",
+          "value": 100,
+          "method": ">="
+        }
+      ]
+    },
+    {
+      "name": "数据逐出告警",
+      "alert_name": "Redis 实例 ${metric_instance_id} 数据被逐出",
+      "description": "监控因内存不足被逐出的key数量，突增表明内存压力。需扩容或设置合理淘汰策略。",
+      "metric_name": "redis_evicted_keys",
+      "algorithm": "max",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 100,
+          "method": ">="
+        },
+        {
+          "level": "error",
+          "value": 50,
+          "method": ">="
+        },
+        {
+          "level": "warning",
+          "value": 10,
+          "method": ">="
+        }
+      ]
+    }
+  ]
+}
