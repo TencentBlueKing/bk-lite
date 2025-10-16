@@ -159,3 +159,17 @@ QCLOUD_COLLECT_CLUSTER = [
     "qcloud_clb_info_gauge","qcloud_eip_info_gauge","qcloud_bucket_info_gauge","qcloud_filesystem_info_gauge",
     "qcloud_domain_info_gauge"
 ]
+
+# AWS cloud
+AWS_CLOUD_COLLECT_CLUSTER = [
+    "aws_ec2_info_gauge",
+    "aws_rds_info_gauge",
+    "aws_msk_info_gauge",
+    "aws_elasticache_info_gauge",
+    "aws_eks_info_gauge",
+    "aws_cloudfront_info_gauge",
+    "aws_elb_info_gauge",
+    "aws_s3_bucket_info_gauge",
+    "aws_docdb_info_gauge",
+    "aws_memdb_info_gauge",
+]
