@@ -75,11 +75,11 @@ def decode_token(token: str, secret: str = SECRET_KEY):
         
         # 前32字节是签名
         signature = decoded_data[:32]
-        
+
         # 第33字节必须是点号分隔符
         if decoded_data[32:33] != b".":
             raise BaseAppException("token 格式错误")
-        
+
         # 第34字节开始是JSON数据
         json_data = decoded_data[33:]
 

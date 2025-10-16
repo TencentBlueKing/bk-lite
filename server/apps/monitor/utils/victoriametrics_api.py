@@ -1,15 +1,16 @@
 import requests
 
-from apps.monitor.constants.victoriametrics import VictoriaMetricsConstants
+from apps.log.constants import VICTORIALOGS_SSL_VERIFY
+from apps.monitor.constants import VICTORIAMETRICS_HOST, VICTORIAMETRICS_USER, VICTORIAMETRICS_PWD
 
 
 class VictoriaMetricsAPI:
     def __init__(self):
-        self.host = VictoriaMetricsConstants.HOST
-        self.username = VictoriaMetricsConstants.USER
-        self.password = VictoriaMetricsConstants.PWD
+        self.host = VICTORIAMETRICS_HOST
+        self.username = VICTORIAMETRICS_USER
+        self.password = VICTORIAMETRICS_PWD
         # 添加SSL验证配置，支持环境变量控制
-        self.ssl_verify = VictoriaMetricsConstants.SSL_VERIFY
+        self.ssl_verify = VICTORIALOGS_SSL_VERIFY
 
     def query(self, query, step="5m", time=None):
         params = {"query": query}

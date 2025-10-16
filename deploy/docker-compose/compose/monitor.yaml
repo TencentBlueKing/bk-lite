@@ -15,9 +15,6 @@ services:
     networks:
       - prod
     restart: always
-    depends_on:
-      server:
-        condition: service_healthy
 
 
   fusion-collector:
@@ -31,14 +28,9 @@ services:
       SIDECAR_GROUP: 1
       SIDECAR_NODEID: ${SIDECAR_NODE_ID}
       SIDECAR_NODENAME: fusion-collector
-    volumes:
-      - ../conf/certs:/opt/fusion-collectors/certs:ro
     networks:
       - prod
     restart: always
-    depends_on:
-      server:
-        condition: service_healthy
 
   stargazer:
     image: ${DOCKER_IMAGE_STARGAZER}

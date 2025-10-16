@@ -7,7 +7,7 @@ from rest_framework.decorators import action
 from apps.core.exceptions.base_app_exception import BaseAppException
 from apps.core.utils.permission_utils import get_permission_rules, permission_filter
 from apps.core.utils.web_utils import WebUtils
-from apps.monitor.constants.permission import PermissionConstants
+from apps.monitor.constants import POLICY_MODULE, DEFAULT_PERMISSION
 from apps.monitor.filters.monitor_policy import MonitorPolicyFilter
 from apps.monitor.models import PolicyOrganization
 from apps.monitor.models.monitor_policy import MonitorPolicy
@@ -29,7 +29,7 @@ class MonitorPolicyVieSet(viewsets.ModelViewSet):
             request.user,
             request.COOKIES.get("current_team"),
             "monitor",
-            f"{PermissionConstants.POLICY_MODULE}.{monitor_object_id}",
+            f"{POLICY_MODULE}.{monitor_object_id}",
         )
         qs = permission_filter(MonitorPolicy, permission, team_key="policyorganization__organization__in", id_key="id__in")
 
@@ -59,7 +59,7 @@ class MonitorPolicyVieSet(viewsets.ModelViewSet):
             if instance_info['id'] in inst_permission_map:
                 instance_info['permission'] = inst_permission_map[instance_info['id']]
             else:
-                instance_info['permission'] = PermissionConstants.DEFAULT_PERMISSION
+                instance_info['permission'] = DEFAULT_PERMISSION
 
         return WebUtils.response_success(dict(count=queryset.count(), items=results))
 

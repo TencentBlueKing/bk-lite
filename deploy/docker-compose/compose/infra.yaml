@@ -62,7 +62,7 @@ services:
     restart: always
     volumes:
       - ../conf/nats/nats.conf:/etc/nats/nats.conf:ro
-      - ../conf/certs:/etc/nats/certs:ro
+      - ../conf/nats/certs:/etc/nats/certs:ro
       - nats:/nats
     ports:
       - "4222:4222"

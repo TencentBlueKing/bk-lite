@@ -7,10 +7,9 @@
     "dev:tauri": "tauri dev",
     "build": "next build --turbopack",
     "start": "next start --port 3001",
-    "lint": "eslint .",
+    "lint": "eslint . --ext .js,.jsx,.ts,.tsx",
     "type-check": "tsc --noEmit",
     "clean": "rm -rf .next",
-    "prepare": "husky",
     "tauri": "tauri",
     "build:android": "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/29.0.14206865 pnpm tauri android build --target aarch64",
     "build:android-debug": "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/29.0.14206865 pnpm tauri android build --debug --target aarch64",
@@ -28,8 +27,8 @@
     "intl-messageformat": "^10.7.18",
     "next": "15.5.3",
     "next-auth": "^4.24.10",
-    "react": "^18.3.1",
-    "react-dom": "^18.3.1",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0",
     "react-intl": "^7.0.1"
   },
   "devDependencies": {
@@ -41,9 +40,8 @@
     "@types/react-dom": "^18",
     "@typescript-eslint/eslint-plugin": "^8.0.0",
     "@typescript-eslint/parser": "^8.0.0",
-    "eslint": "^8.57.1",
+    "eslint": "^9",
     "eslint-config-next": "15.5.3",
-    "husky": "^9.1.7",
     "tailwindcss": "^4",
     "typescript": "^5"
   }

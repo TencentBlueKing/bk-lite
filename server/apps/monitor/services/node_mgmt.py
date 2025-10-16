@@ -1,11 +1,11 @@
 import ast
 
 from apps.core.exceptions.base_app_exception import BaseAppException
+from apps.monitor.plugins.controller import Controller
 from apps.monitor.models import MonitorInstance, MonitorInstanceOrganization, CollectConfig, MonitorObject, \
     MonitorObjectOrganizationRule, Metric
 from apps.monitor.utils.config_format import ConfigFormat
 from apps.monitor.utils.instance import calculation_status
-from apps.monitor.utils.plugin_controller import Controller
 from apps.monitor.utils.victoriametrics_api import VictoriaMetricsAPI
 from apps.rpc.node_mgmt import NodeMgmt
 

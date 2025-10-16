@@ -28,8 +28,6 @@ services:
       - DEFAULT_ZONE_VAR_NATS_USERNAME=${NATS_ADMIN_USERNAME}
       - DEFAULT_ZONE_VAR_STARGAZER_URL=http://stargazer:8083
       - DEFAULT_ZONE_VAR_NODE_SERVER_URL=http://${HOST_IP}:${TRAEFIK_WEB_PORT}
-      - DEFAULT_ZONE_VAR_NATS_PROTOCOL=tls
-      - DEFAULT_ZONE_VAR_NATS_TLS_CA_FILE=/opt/fusion-collectors/certs/ca.crt
       - VICTORIAMETRICS_HOST=http://victoria-metrics:8428
       - TOP_GROUP=Default
       - DEFAULT_GROUP_NAME=Guest
@@ -72,7 +70,7 @@ services:
       - prod
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
-      - ../conf/certs:/etc/nats/certs:ro
+      - ../conf/nats/certs:/etc/nats/certs:ro
       - ../pkgs:/apps/pkgs
     labels:
       - "traefik.enable=true"
