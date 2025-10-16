@@ -1,4 +1,5 @@
 import useApiClient from '@/utils/request';
+import { TRAINJOB_MAP } from '@/app/mlops/constants';
 
 interface TrainTaskParams {
   name: string;
@@ -127,8 +128,8 @@ const useMlopsTaskApi = () => {
   };
 
   // 获取训练状态数据
-  const getTrainTaskState = async (id: number) => {
-    return await get(`/mlops/anomaly_detection_train_jobs/${id}/runs_data_list/`)
+  const getTrainTaskState = async (id: number, activeTap: string) => {
+    return await get(`/mlops/${TRAINJOB_MAP[activeTap]}/${id}/runs_data_list/`)
   };
 
   // 获取日志聚类训练历史记录
@@ -140,15 +141,15 @@ const useMlopsTaskApi = () => {
   const getTimeSeriesHistories = async (id: number) => {
     return await get(`/mlops/timeseries_predict_train_history/${id}`);
   };
-  
+
   // 获取状态指标
-  const getTrainTaskMetrics = async (id: string) => {
-    return await get(`/mlops/anomaly_detection_train_jobs/runs_metrics_list/${id}`)
+  const getTrainTaskMetrics = async (id: string, activeTap: string) => {
+    return await get(`/mlops/${TRAINJOB_MAP[activeTap]}/runs_metrics_list/${id}`)
   };
 
   // 获取具体指标信息
-  const getTrainTaskMetricsDetail = async (id: string, metrics_name: string) => {
-    return await get(`/mlops/anomaly_detection_train_jobs/runs_metrics_history/${id}/${metrics_name}`);
+  const getTrainTaskMetricsDetail = async (id: string, metrics_name: string, activeTap: string) => {
+    return await get(`/mlops/${TRAINJOB_MAP[activeTap]}/runs_metrics_history/${id}/${metrics_name}`);
   };
 
   // 新建异常检测训练任务
@@ -248,13 +249,6 @@ const useMlopsTaskApi = () => {
 
   // 获取训练所用的数据集数据
   const getTrainTaskFile = async (id: string, tap: string) => {
-    const TRAINJOB_MAP: Record<string, string> = {
-      'anomaly': 'anomaly_detection_train_jobs',
-      'classification': 'classification_train_jobs',
-      'timeseries_predict': 'timeseries_predict_train_jobs',
-      'log_clustering': 'log_clustering_train_jobs',
-      'rasa': 'rasa_pipelines'
-    }
     return await get(`/mlops/${TRAINJOB_MAP[tap]}/${id}/get_file`);
   };
 

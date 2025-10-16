@@ -90,7 +90,7 @@ const UploadModal = forwardRef<ModalRef, UploadModalProps>(({ onSuccess }, ref) 
               obj[key] = timestamp / 1000;
             } else {
               const numValue = Number(value);
-              obj[key] = numValue || value;
+              obj[key] = isNaN(numValue) ? value : numValue;
             }
 
             obj['index'] = index;

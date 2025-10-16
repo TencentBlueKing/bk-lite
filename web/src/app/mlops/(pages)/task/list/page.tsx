@@ -107,7 +107,7 @@ const TrainTask = () => {
     'rasa': false,
     'log_clustering': false,
     'timeseries_predict': false,
-    'classification': false
+    'classification': true
   };
 
   // 数据处理映射
@@ -530,7 +530,7 @@ const TrainTask = () => {
         }
       />
       <TrainTaskModal ref={modalRef} onSuccess={() => onRefresh()} activeTag={selectedKeys} datasetOptions={datasetOptions} />
-      <TrainTaskDrawer open={drawerOpen} onCancel={() => setDrawOpen(false)} selectId={selectedTrain} />
+      <TrainTaskDrawer open={drawerOpen} onCancel={() => setDrawOpen(false)} activeTag={selectedKeys} selectId={selectedTrain} />
     </>
   );
 };
