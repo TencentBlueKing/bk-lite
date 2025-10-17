@@ -26,7 +26,7 @@ def start_classification_train(train_job_id: int) -> dict:
     """
   try:
         
-      # 获取训练任务，使用select_related预加载相关对象
+        # 获取训练任务，使用select_related预加载相关对象
         train_job = ClassificationTrainJob.objects.select_related(
             'train_data_id', 'val_data_id', 'test_data_id'
         ).get(id=train_job_id)
@@ -72,6 +72,7 @@ def start_classification_train(train_job_id: int) -> dict:
         model_name = f"{train_job.id}_{train_job.name}"
         result = detector.train(
             model_name=model_name,
+            experiment_name=experiment_name,
             train_dataframe=train_df,
             val_dataframe=val_df,
             test_dataframe=test_df,

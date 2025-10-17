@@ -1,3 +1,5 @@
+from unittest import result
+from sklearn.ensemble import RandomForestClassifier
 from config.drf.viewsets import ModelViewSet
 from rest_framework import viewsets
 from rest_framework.decorators import action
@@ -13,6 +15,7 @@ from config.drf.pagination import CustomPageNumberPagination
 from apps.mlops.tasks.classification_train_task import start_classification_train
 import mlflow
 import pandas as pd
+import numpy as np
 from config.components.mlflow import MLFLOW_TRACKER_URL
 
 
@@ -73,6 +76,90 @@ class ClassificationServingViewSet(ModelViewSet):
     @HasPermission("classification_servings-Edit")
     def update(self, request, *args, **kwargs):
         return super().update(request, *args, **kwargs)
+    
+    @HasPermission("classification_servings-View")
+    @action(detail=False, methods=['post'], url_path='predict')
+    def predirect(self, request):
+        try:
+            # 获取并验证请求数据
+            data = request.data
+            serving_id = data.get("serving_id")
+            time_series = data.get("data")
+
+            # 参数验证
+            if not serving_id:
+                return Response(
+                    {'error': 'serving_id参数是必需的'},
+                    status=status.HTTP_400_INTERNAL_SERVER_ERROR
+                )
+            
+            if not time_series:
+                return Response(
+                    {'error': 'data参数是必需的'},
+                    status.HTTP_400_BAD_REQUEST
+                )
+            
+            # 获取分类服务配置
+            try:
+                serving = ClassificationServing.objects.select_related(
+                    'classification_train_job'
+                ).get(id = serving_id)
+            except ClassificationServing.DoesNotExist:
+                return Response(
+                    {'error': f'分类任务服务不存在: {serving_id}'},
+                    status=status.HTTP_404_NOT_FOUND
+                )
+            
+            # 检查服务是否启用
+            if serving.status != 'active':
+                 return Response(
+                     {'error': f'分类任务服务未启用，当前状态: {serving.status}'},
+                     status=status.HTTP_400_BAD_REQUEST
+                 )
+            
+            # 检查服务关联任务状态
+            train_job = serving.classification_train_job
+            if(train_job.status != 'compeleted'):
+                return Response(
+                    {'error': f'关联的训练任务未完成，当前状态: {train_job.status}'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            
+            # 从服务配置中获取模型信息
+            model_name = f"{train_job.algorithm}_{train_job.id}"
+            model_version = serving.model_version
+            algorithm = train_job.algorithm
+
+            # 将数据转为DataFrame
+            df = pd.DataFrame(time_series)
+            # 根据算法类型选择对应的检测器
+            if algorithm == 'RandomForest':
+                detector = RandomForestClassifier()
+            else:
+                return Response(
+                    {'error': f'不支持的算法类型: {algorithm}'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+
+            result_df = detector.predict(df,model_name,model_version)
+
+            return Response({
+                'success': True,
+                'serving_id': serving_id,
+                'serving_name': serving.name,
+                'train_job_id': train_job.id,
+                'train_job_name': train_job.name,
+                'algorithm': algorithm,
+                'model_name': model_name,
+                'model_version': model_version,
+                'predictions': result_df
+            }, status=status.HTTP_200_OK)
+
+        except Exception as e:
+            return Response(
+                {'error': f'推理失败: {str(e)}'},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
     
 class ClassificationTrainDataViewSet(ModelViewSet):
     queryset = ClassificationTrainData.objects.all()
@@ -301,6 +388,8 @@ class ClassificationTrainJobViewSet(ModelViewSet):
                     "run_name": str(run_name)
                 }
                 run_datas.append(run_data)
+            
+            logger.info(len(run_datas))
 
             return Response(
                 {
@@ -309,7 +398,7 @@ class ClassificationTrainJobViewSet(ModelViewSet):
                 }
             )
         except Exception as e:
-
+            logger.info(e)
             return Response(
                 {
                     'train_job_name': train_job.name,
