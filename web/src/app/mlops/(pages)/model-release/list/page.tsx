@@ -91,6 +91,9 @@ const ModelRelease = () => {
       width: 180,
       render: (_, record: TableData) => (<>
         <PermissionWrapper requiredPermissions={['Edit']}>
+          <Button type="link" className="mr-2" onClick={() => testPredirect(record)}>测试</Button>
+        </PermissionWrapper>
+        <PermissionWrapper requiredPermissions={['Edit']}>
           <Button type="link" className="mr-2" onClick={() => handleEdit(record)}>{t(`common.edit`)}</Button>
         </PermissionWrapper>
         <PermissionWrapper requiredPermissions={['Delete']}>
@@ -180,25 +183,25 @@ const ModelRelease = () => {
       setTableData([]);
       return;
     }
-    
+
     setLoading(true);
     try {
       const params = {
         page: pagination.current,
         page_size: pagination.pageSize,
       };
-      
+
       // 获取任务列表和服务列表
       const [taskList, { count, items }] = await Promise.all([
-        getTaskMap[activeTypes]({}), 
+        getTaskMap[activeTypes]({}),
         getServingsMap[activeTypes](params)
       ]);
-      
+
       const _data = taskList.map((item: TrainJob) => ({
         label: item.name,
         value: item.id
       }));
-      
+
       setTrainjobs(_data);
       setTableData(items);
       setPagination((prev) => ({
@@ -245,6 +248,19 @@ const ModelRelease = () => {
     } finally {
       getModelServings();
     }
+  };
+
+  // 测试推理
+  const testPredirect = async (serving: any) => {
+    const params = {
+      serving_id: serving.serving_id,
+      model_name: `RandomForest_${serving.serving_id}`,
+      algorithm: "RandomForest",
+      model_version: serving.model_version,
+      anomaly_threshold: serving.anomaly_threshold,
+      data: [],
+    };
+    console.log(params)
   };
 
   return (
