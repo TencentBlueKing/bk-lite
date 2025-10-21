@@ -2,6 +2,7 @@ import React from 'react';
 import { Button, Tooltip } from 'antd';
 import { useTranslation } from '@/utils/i18n';
 import { ToolbarProps } from '@/app/ops-analysis/types/topology';
+import TimeSelector from '@/components/time-selector';
 import {
   ZoomInOutlined,
   ZoomOutOutlined,
@@ -28,6 +29,8 @@ const TopologyToolbar: React.FC<ToolbarProps> = ({
   onRedo,
   canUndo = false,
   canRedo = false,
+  onRefresh,
+  onFrequencyChange,
 }) => {
   const { t } = useTranslation();
 
@@ -49,6 +52,17 @@ const TopologyToolbar: React.FC<ToolbarProps> = ({
 
       {/* 右侧：工具栏 */}
       <div className="flex items-center space-x-1 rounded-lg p-2">
+        {/* 刷新控件 */}
+        {onRefresh && onFrequencyChange && (
+          <div className="mr-2">
+            <TimeSelector
+              onlyRefresh={true}
+              onRefresh={onRefresh}
+              onFrequenceChange={onFrequencyChange}
+            />
+          </div>
+        )}
+
         <Tooltip title={t('topology.zoomIn')}>
           <Button
             type="text"
