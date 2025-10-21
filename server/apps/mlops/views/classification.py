@@ -1,5 +1,4 @@
 from unittest import result
-from sklearn.ensemble import RandomForestClassifier
 from config.drf.viewsets import ModelViewSet
 from rest_framework import viewsets
 from rest_framework.decorators import action
@@ -13,6 +12,7 @@ from apps.mlops.serializers.classification import *
 from apps.mlops.filters.classification import *
 from config.drf.pagination import CustomPageNumberPagination
 from apps.mlops.tasks.classification_train_task import start_classification_train
+from neco.mlops.classification.random_forest_classifier import RandomForestClassifier
 import mlflow
 import pandas as pd
 import numpy as np
@@ -90,7 +90,7 @@ class ClassificationServingViewSet(ModelViewSet):
             if not serving_id:
                 return Response(
                     {'error': 'serving_id参数是必需的'},
-                    status=status.HTTP_400_INTERNAL_SERVER_ERROR
+                    status=status.HTTP_400_BAD_REQUEST
                 )
             
             if not time_series:
@@ -119,17 +119,18 @@ class ClassificationServingViewSet(ModelViewSet):
             
             # 检查服务关联任务状态
             train_job = serving.classification_train_job
-            if(train_job.status != 'compeleted'):
+            if(train_job.status != 'completed'):
                 return Response(
                     {'error': f'关联的训练任务未完成，当前状态: {train_job.status}'},
                     status=status.HTTP_400_BAD_REQUEST
                 )
             
             # 从服务配置中获取模型信息
-            model_name = f"{train_job.algorithm}_{train_job.id}"
+            model_name = f"{train_job.id}_{train_job.name}"
             model_version = serving.model_version
             algorithm = train_job.algorithm
 
+            mlflow.set_tracking_uri(MLFLOW_TRACKER_URL)
             # 将数据转为DataFrame
             df = pd.DataFrame(time_series)
             # 根据算法类型选择对应的检测器
@@ -140,9 +141,8 @@ class ClassificationServingViewSet(ModelViewSet):
                     {'error': f'不支持的算法类型: {algorithm}'},
                     status=status.HTTP_400_BAD_REQUEST
                 )
-
             result_df = detector.predict(df,model_name,model_version)
-
+            
             return Response({
                 'success': True,
                 'serving_id': serving_id,
@@ -152,6 +152,7 @@ class ClassificationServingViewSet(ModelViewSet):
                 'algorithm': algorithm,
                 'model_name': model_name,
                 'model_version': model_version,
+                'data': time_series,
                 'predictions': result_df
             }, status=status.HTTP_200_OK)
 

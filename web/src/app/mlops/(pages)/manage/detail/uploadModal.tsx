@@ -93,7 +93,9 @@ const UploadModal = forwardRef<ModalRef, UploadModalProps>(({ onSuccess }, ref) 
               obj[key] = isNaN(numValue) ? value : numValue;
             }
 
-            obj['index'] = index;
+            if(type === 'anomaly') {
+              obj['index'] = index;
+            }
             return obj;
           }, {});
         });

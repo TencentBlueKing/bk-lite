@@ -125,6 +125,7 @@ const TableContent = () => {
     setLoading(true);
     try {
       const data = await getTrainDataInfoMap[key](id, true, true);
+      console.log(data);
       let processedData: TableDataItem[] = [];
       
       if (key === 'classification') {
