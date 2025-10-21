@@ -22,6 +22,28 @@ from apps.system_mgmt.utils.channel_utils import send_by_bot, send_email
 from apps.system_mgmt.utils.group_utils import GroupUtils
 
 
+def get_user_all_roles(user):
+    """
+    获取用户的所有角色（个人角色 + 组角色）
+    :param user: User实例
+    :return: 包含所有角色ID的列表
+    """
+    # 用户直接授权的角色
+    personal_role_ids = set(user.role_list)
+
+    # 用户所属组织的角色（只包含直接所属组织，不递归子组）
+    group_role_ids = set()
+    if user.group_list:
+        # 使用ManyToMany关系获取组角色
+        groups = Group.objects.filter(id__in=user.group_list)
+        for group in groups:
+            group_role_ids.update(group.roles.values_list("id", flat=True))
+
+    # 合并去重
+    all_role_ids = list(personal_role_ids | group_role_ids)
+    return all_role_ids
+
+
 def _verify_token(token):
     token = token.split("Basic ")[-1]
     secret_key = os.getenv("SECRET_KEY")
@@ -47,7 +69,10 @@ def get_pilot_permission_by_token(token, bot_id, group_list):
         user = _verify_token(token)
     except Exception:
         return {"result": False}
-    role_list = Role.objects.filter(id__in=user.role_list)
+
+    # 获取用户所有角色（个人角色 + 组角色）
+    all_role_ids = get_user_all_roles(user)
+    role_list = Role.objects.filter(id__in=all_role_ids)
     role_names = {f"{role.app}--{role.name}" if role.app else role.name for role in role_list}
     if {"admin", "system-manager--admin", "opspilot--admin"}.intersection(role_names):
         return {"result": True, "data": {"username": user.username}}
@@ -80,7 +105,10 @@ def verify_token(token):
         user = _verify_token(token)
     except Exception as e:
         return {"result": False, "message": str(e)}
-    role_list = Role.objects.filter(id__in=user.role_list)
+
+    # 获取用户所有角色（个人角色 + 组角色）
+    all_role_ids = get_user_all_roles(user)
+    role_list = Role.objects.filter(id__in=all_role_ids)
     role_names = [f"{role.app}--{role.name}" if role.app else role.name for role in role_list]
     is_superuser = "admin" in role_names or "system-manager--admin" in role_names
     group_list = Group.objects.all()
@@ -115,7 +143,7 @@ def verify_token(token):
             "group_list": groups,
             "group_tree": groups_data,
             "roles": role_names,
-            "role_ids": user.role_list,
+            "role_ids": all_role_ids,  # 返回所有角色ID（个人+组）
             "locale": user.locale,
             "permission": menus,
         },
@@ -146,7 +174,10 @@ def get_client(client_id="", username="", domain="domain.com"):
         user = User.objects.filter(username=username, domain=domain).first()
         if not user:
             return {"result": False, "message": "User not found"}
-        app_name_list = list(Role.objects.filter(id__in=user.role_list).values_list("app", flat=True).distinct())
+
+        # 获取用户所有角色（个人角色 + 组角色）
+        all_role_ids = get_user_all_roles(user)
+        app_name_list = list(Role.objects.filter(id__in=all_role_ids).values_list("app", flat=True).distinct())
         if "" not in app_name_list:
             app_list = app_list.filter(name__in=app_name_list)
     return_data = list(app_list.order_by("name").values())
@@ -330,8 +361,12 @@ def get_user_rules_by_module(group_id, username, domain, app, module):
     if not user_obj:
         return {"result": False, "message": "User not found"}
     all_permission = {"all": {"instance": [], "team": admin_teams}}
+
+    # 获取用户所有角色（个人角色 + 组角色）
+    all_role_ids = get_user_all_roles(user_obj)
+
     # 如果是管理员，返回所有权限
-    if set(user_obj.role_list).intersection(admin_list):
+    if set(all_role_ids).intersection(admin_list):
         # 需要获取模块结构来构建完整的返回数据
         return {"result": True, "data": all_permission, "team": admin_teams}
     if has_guest_group:
@@ -394,7 +429,11 @@ def get_user_rules_by_app(group_id, username, domain, app, module, child_module=
         admin_teams.append(guest_group.id)
     if not user_obj:
         return {"instance": [], "team": []}
-    if set(user_obj.role_list).intersection(admin_list):
+
+    # 获取用户所有角色（个人角色 + 组角色）
+    all_role_ids = get_user_all_roles(user_obj)
+
+    if set(all_role_ids).intersection(admin_list):
         return {"instance": [], "team": admin_teams}
     if has_guest_group:
         base_filter = Q(group_rule__group_id=group_id) | Q(group_rule__group_name="OpsPilotGuest")
