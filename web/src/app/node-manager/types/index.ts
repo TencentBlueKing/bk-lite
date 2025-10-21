@@ -39,15 +39,6 @@ interface OptionItem {
   template?: string;
 }
 
-//云区域的卡片
-interface Collectorcardprops {
-  id: string;
-  name: string;
-  system: string[];
-  introduction: string;
-  icon: string;
-}
-
 interface DropDownItem {
   key: string;
   label: string;
@@ -63,6 +54,13 @@ interface Pagination {
   total: number;
   pageSize: number;
 }
+export interface CardItem {
+  id: string;
+  name: string;
+  description: string;
+  icon: string;
+  tagList: string[];
+}
 
 export type {
   TableDataItem,
@@ -70,7 +68,6 @@ export type {
   ModalRef,
   TopSectionProps,
   OptionItem,
-  Collectorcardprops,
   DropDownItem,
   Pagination,
   SegmentedItem,

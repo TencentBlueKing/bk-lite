@@ -4,14 +4,13 @@ import React, { useEffect, useState } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import { useTranslation } from '@/utils/i18n';
 import Icon from '@/components/icon';
-import type { Collectorcardprops } from '@/app/node-manager/types/index';
+import type { ControllerCardProps } from '@/app/node-manager/types/controller';
 
-const SidecarLayout = ({ children }: { children: React.ReactNode }) => {
+const ControllerLayout = ({ children }: { children: React.ReactNode }) => {
   const router = useRouter();
   const { t } = useTranslation();
   const pathname = usePathname();
-  const isDetail = pathname.includes('/detail');
-  const [detaildata, setDetaildata] = useState<Collectorcardprops>({
+  const [detaildata, setDetaildata] = useState<ControllerCardProps>({
     id: '',
     name: '',
     system: [],
@@ -26,16 +25,16 @@ const SidecarLayout = ({ children }: { children: React.ReactNode }) => {
       name: searchParams.get('name') || '',
       system: [searchParams.get('system') || ''],
       introduction: searchParams.get('introduction') || '',
-      icon: searchParams.get('icon') || 'caijiqizongshu'
+      icon: searchParams.get('icon') || 'caijiqizongshu',
     };
     setDetaildata(info);
-  }, [isDetail]);
+  }, [pathname]);
 
   //顶部的组件
   const Topsection = () => {
     return (
       <div className="flex flex-col h-[90px] p-4 overflow-hidden">
-        <h1 className="text-lg">{t('node-manager.collector.title')}</h1>
+        <h1 className="text-lg">{t('node-manager.packetManage.title')}</h1>
         <p className="text-sm overflow-hidden w-full min-w-[1000px] mt-[8px]">
           {detaildata.introduction}
         </p>
@@ -43,7 +42,7 @@ const SidecarLayout = ({ children }: { children: React.ReactNode }) => {
     );
   };
 
-  const Collectorintro = () => {
+  const CollectorIntro = () => {
     return (
       <div className="h-[58px] flex flex-col justify-items-center">
         <div className="flex justify-center mb-[8px]">
@@ -62,10 +61,10 @@ const SidecarLayout = ({ children }: { children: React.ReactNode }) => {
   return (
     <div className="w-full">
       <SubLayout
-        layoutType={!isDetail ? 'segmented' : 'sideMenu'}
-        topSection={!isDetail || <Topsection></Topsection>}
+        layoutType={'sideMenu'}
+        topSection={<Topsection></Topsection>}
         showBackButton={true}
-        intro={!isDetail || <Collectorintro></Collectorintro>}
+        intro={<CollectorIntro></CollectorIntro>}
         onBackButtonClick={() => {
           router.back();
         }}
@@ -76,4 +75,4 @@ const SidecarLayout = ({ children }: { children: React.ReactNode }) => {
   );
 };
 
-export default SidecarLayout;
+export default ControllerLayout;

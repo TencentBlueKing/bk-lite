@@ -13,6 +13,7 @@ import type { FormInstance } from 'antd';
 import { useTranslation } from '@/utils/i18n';
 import { ModalSuccess, ModalRef } from '@/app/node-manager/types';
 import useApiCollector from '@/app/node-manager/api/collector';
+import useApiNode from '@/app/node-manager/api';
 import useApiCloudRegion from '@/app/node-manager/api/cloudRegion';
 import type { TableDataItem } from '@/app/node-manager/types';
 import useCloudId from '@/app/node-manager/hooks/useCloudRegionId';
@@ -28,7 +29,8 @@ interface Option {
 const CollectorModal = forwardRef<ModalRef, ModalSuccess>(
   ({ onSuccess }, ref) => {
     const { t } = useTranslation();
-    const { getCollectorlist, getPackageList } = useApiCollector();
+    const { getCollectorlist } = useApiCollector();
+    const { getPackageList } = useApiNode();
     const {
       installCollector,
       batchOperationCollector,
