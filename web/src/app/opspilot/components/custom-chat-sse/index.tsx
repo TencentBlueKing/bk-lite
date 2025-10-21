@@ -12,11 +12,13 @@ import styles from '../custom-chat/index.module.scss';
 import MessageActions from '../custom-chat/actions';
 import KnowledgeBase from '../custom-chat/knowledgeBase';
 import AnnotationModal from '../custom-chat/annotationModal';
+import KnowledgeGraphView from '../knowledge/knowledgeGraphView';
 import PermissionWrapper from '@/components/permission';
 import { CustomChatMessage, Annotation } from '@/app/opspilot/types/global';
 import { useSession } from 'next-auth/react';
 import { useAuth } from '@/context/auth';
 import { useKnowledgeApi } from '@/app/opspilot/api/knowledge';
+import { transformGraphData } from '@/app/opspilot/utils/graphUtils';
 import {
   CustomChatSSEProps,
   ActionRender,
@@ -78,7 +80,9 @@ const CustomChatSSE: React.FC<CustomChatSSEProps> = ({
   const [drawerContent, setDrawerContent] = useState<DrawerContentState>({
     visible: false,
     title: '',
-    content: ''
+    content: '',
+    chunkType: undefined,
+    graphData: undefined
   });
 
   const { getChunkDetail } = useKnowledgeApi();
@@ -172,6 +176,7 @@ const CustomChatSSE: React.FC<CustomChatSSEProps> = ({
                 data-ref-number="${refNumber}" 
                 data-chunk-id="${chunkId}" 
                 data-knowledge-id="${knowledgeId}"
+                data-chunk-type="${chunkType}"
                 style="color: #1890ff; cursor: pointer; margin: 0 2px;">
                 <svg class="icon icon-${iconType} inline-block" style="width: 1em; height: 1em; vertical-align: text-bottom;" aria-hidden="true">
                   <use href="#icon-${iconType}"></use>
@@ -283,6 +288,7 @@ const CustomChatSSE: React.FC<CustomChatSSEProps> = ({
     if (referenceElement && referenceElement.classList.contains('reference-link')) {
       const chunkId = referenceElement.getAttribute('data-chunk-id');
       const knowledgeId = referenceElement.getAttribute('data-knowledge-id');
+      const chunkType = referenceElement.getAttribute('data-chunk-type') || 'Document';
             
       if (!knowledgeId) {
         console.warn('Missing knowledge_id in reference link');
@@ -292,7 +298,9 @@ const CustomChatSSE: React.FC<CustomChatSSEProps> = ({
       setDrawerContent({
         visible: true,
         title: `${t('chat.chunkDetails')}`,
-        content: ''
+        content: '',
+        chunkType: chunkType as "Document" | "QA" | "Graph",
+        graphData: undefined
       });
 
       setReferenceModal(prev => ({
@@ -301,13 +309,54 @@ const CustomChatSSE: React.FC<CustomChatSSEProps> = ({
       }));
 
       try {
-        // Fetch knowledge details using the knowledge_id
-        const data = await getChunkDetail(knowledgeId, chunkId);
+        // Use type parameter instead of is_qa_pairs
+        // QA type uses 'QA', other types (Document/Graph) use their respective values
+        const data = await getChunkDetail(knowledgeId, chunkId, chunkType as "Document" | "QA" | "Graph" | undefined);
         
-        setDrawerContent(prev => ({
-          ...prev,
-          content: data?.content || '--'
-        }));
+        if (chunkType === 'Graph' && data) {
+          // For Graph type, prepare graph data
+          let graphData: { nodes: any[], edges: any[] } = { nodes: [], edges: [] };
+          
+          // data is already the graph data array from getChunkDetail API
+          if (Array.isArray(data)) {
+            graphData = transformGraphData(data);
+          } else if (data.content) {
+            // Fallback: try to parse content as JSON for graph data
+            try {
+              const parsedContent = JSON.parse(data.content);
+              if (Array.isArray(parsedContent)) {
+                graphData = transformGraphData(parsedContent);
+              } else if (parsedContent.nodes && parsedContent.edges) {
+                graphData = parsedContent;
+              }
+            } catch (e) {
+              console.warn('Failed to parse graph data from content:', e);
+            }
+          }
+          
+          setDrawerContent(prev => ({
+            ...prev,
+            graphData: graphData
+          }));
+        } else {
+          // For Document and QA types, handle as before
+          let displayContent = '';
+          
+          if (chunkType === 'QA' && data) {
+            // For QA pairs, format as Question: xxx, Answer: xxx
+            const question = data.question || '';
+            const answer = data.answer || '';
+            displayContent = `问题：${question}\n\n答案：${answer}`;
+          } else {
+            // For Document type, use content directly
+            displayContent = data?.content || '--';
+          }
+          
+          setDrawerContent(prev => ({
+            ...prev,
+            content: displayContent
+          }));
+        }
       } catch (error) {
         console.error('Failed to fetch reference details:', error);
       } finally {
@@ -317,7 +366,7 @@ const CustomChatSSE: React.FC<CustomChatSSEProps> = ({
         }));
       }
     }
-  }, [getChunkDetail]);
+  }, []);
 
   // Handsuggestion button click
   const handleSuggestionClick = useCallback((event: React.MouseEvent<HTMLDivElement>) => {
@@ -725,7 +774,9 @@ const CustomChatSSE: React.FC<CustomChatSSEProps> = ({
     setDrawerContent({
       visible: false,
       title: '',
-      content: ''
+      content: '',
+      chunkType: undefined,
+      graphData: undefined
     });
   }, []);
 
@@ -823,7 +874,7 @@ const CustomChatSSE: React.FC<CustomChatSSEProps> = ({
       
       {/* Reference Details Drawer */}
       <Drawer
-        width={480}
+        width={drawerContent.chunkType === 'Graph' ? 800 : 480}
         visible={drawerContent.visible}
         title={drawerContent.title}
         onClose={closeDrawer}
@@ -833,9 +884,18 @@ const CustomChatSSE: React.FC<CustomChatSSEProps> = ({
             <Spin size="large" />
           </div>
         ) : (
-          <div className="whitespace-pre-wrap leading-6">
-            {drawerContent.content}
-          </div>
+          <>
+            {drawerContent.chunkType === 'Graph' ? (
+              <KnowledgeGraphView 
+                data={drawerContent.graphData || { nodes: [], edges: [] }}
+                height={500}
+              />
+            ) : (
+              <div className="whitespace-pre-wrap leading-6">
+                {drawerContent.content}
+              </div>
+            )}
+          </>
         )}
       </Drawer>
     </div>

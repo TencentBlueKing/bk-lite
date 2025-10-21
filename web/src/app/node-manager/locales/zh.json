@@ -21,8 +21,6 @@
     "bulkEdit": "批量编辑",
     "valueValidate": "值不能为空",
     "prompt": "提示",
-    "copy": "复制",
-    "successfulCopied": "复制成功！",
     "download": "下载",
     "successfulDownloaded": "下载成功！",
     "operationSuccessful": "操作成功！",
@@ -32,8 +30,6 @@
     "createdAt": "创建时间",
     "updatedBy": "更新人",
     "updatedAt": "更新时间",
-    "inputPassword": "请输入密码",
-    "reset": "重置",
     "deleteTips": "您确定要修改此项吗？"
   },
   "node-manager": {

@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Input, Button, Tooltip } from 'antd';
 import { CopyOutlined, EditOutlined } from '@ant-design/icons';
-import { useHandleCopy } from '@/app/node-manager/hooks';
+import { useCopy } from '@/hooks/useCopy';
 import { useTranslation } from '@/utils/i18n';
 
 interface PasswordProps {
@@ -28,7 +28,7 @@ const Password: React.FC<PasswordProps> = ({
   onReset,
 }) => {
   const { t } = useTranslation();
-  const { handleCopy } = useHandleCopy(value);
+  const { copy } = useCopy();
   const [password, setPassword] = useState<string>('');
   const [isEditing, setIsEditing] = useState<boolean>(false);
 
@@ -54,7 +54,7 @@ const Password: React.FC<PasswordProps> = ({
       onCopy(password);
       return;
     }
-    handleCopy();
+    copy(value);
   };
 
   return (

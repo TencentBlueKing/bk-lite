@@ -30,7 +30,7 @@ import { useStudioApi } from '../../api/studio';
 
 interface ChatflowNodeData {
   label: string;
-  type: 'celery' | 'restful' | 'openai' | 'agents' | 'condition' | 'http';
+  type: 'celery' | 'restful' | 'openai' | 'agents' | 'condition' | 'http' | 'notification';
   config?: any;
   description?: string;
   [key: string]: unknown;
@@ -55,6 +55,7 @@ const nodeConfig = {
   agents: { icon: 'zhinengti', color: 'orange' },
   condition: { icon: 'tiaojianfenzhi', color: 'yellow' },
   http: { icon: 'HTTP', color: 'cyan' },
+  notification: { icon: 'alarm', color: 'pink' },
 };
 
 // Base node component with configurable input/output handles
@@ -158,6 +159,21 @@ const BaseNode = ({
       case 'restful':
       case 'openai':
         return t('chatflow.apiInterface');
+
+      case 'notification':
+        if (config.notificationType && config.notificationMethod && config.notificationChannels) {
+          // Find the channel name from notificationChannels array
+          const selectedChannel = config.notificationChannels.find((channel: any) => 
+            channel.id === config.notificationMethod
+          );
+          const channelName = selectedChannel ? selectedChannel.name : `ID: ${config.notificationMethod}`;
+          const typeDisplay = config.notificationType === 'email' ? t('chatflow.email') : t('chatflow.enterpriseWechatBot');
+          return `${typeDisplay} - ${channelName}`;
+        } else if (config.notificationType) {
+          const typeDisplay = config.notificationType === 'email' ? t('chatflow.email') : t('chatflow.enterpriseWechatBot');
+          return `${typeDisplay} - ${t('chatflow.notificationMethod')}: --`;
+        }
+        return t('chatflow.notificationCategory') + ': --';
 
       default:
         return t('chatflow.notConfigured');
@@ -267,6 +283,10 @@ const IfConditionNode = (props: any) => (
     hasOutput={false}
     hasMultipleOutputs={true} 
   />
+);
+
+const NotificationNode = (props: any) => (
+  <BaseNode {...props} icon={nodeConfig.notification.icon} color={nodeConfig.notification.color} hasInput={true} hasOutput={true} />
 );
 
 interface ChatflowEditorRef {
@@ -397,6 +417,7 @@ const ChatflowEditor = forwardRef<ChatflowEditorRef, ChatflowEditorProps>(({ onS
       agents: createNodeComponent(AgentsNode),
       condition: createNodeComponent(IfConditionNode),
       http: createNodeComponent(HttpRequestNode),
+      notification: createNodeComponent(NotificationNode),
     };
   }, [handleDeleteNode, handleConfigNode]);
 

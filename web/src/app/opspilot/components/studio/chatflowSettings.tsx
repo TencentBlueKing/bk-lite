@@ -39,7 +39,8 @@ const nodeCategories = [
     key: 'actions',
     labelKey: 'chatflow.actionNodes',
     items: [
-      { type: 'http', icon: 'HTTP', labelKey: 'chatflow.http' }
+      { type: 'http', icon: 'HTTP', labelKey: 'chatflow.http' },
+      { type: 'notification', icon: 'alarm', labelKey: 'chatflow.notification' }
     ]
   }
 ];

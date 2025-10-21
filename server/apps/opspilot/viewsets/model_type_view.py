@@ -2,13 +2,12 @@ from django.db import models
 from django.http import JsonResponse
 from rest_framework.decorators import action
 
-from apps.core.utils.viewset_utils import GenericViewSetFun
-from apps.core.viewsets.base_viewset import BaseOpsPilotViewSet
+from apps.core.utils.viewset_utils import GenericViewSetFun, LanguageViewSet
 from apps.opspilot.models import EmbedProvider, LLMModel, ModelType, OCRProvider, RerankProvider
 from apps.opspilot.serializers.model_type_serializer import ModelTypeSerializer
 
 
-class ModelTypeViewSet(BaseOpsPilotViewSet, GenericViewSetFun):
+class ModelTypeViewSet(LanguageViewSet, GenericViewSetFun):
     serializer_class = ModelTypeSerializer
     queryset = ModelType.objects.all()
     ordering = ("index",)

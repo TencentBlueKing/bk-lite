@@ -6,8 +6,18 @@ import tiktoken
 from langchain_core.messages import AIMessageChunk, AIMessage
 from langgraph.constants import START
 from loguru import logger
+from langchain_core.messages.base import BaseMessage
+from typing import List
+from langchain_core.messages import SystemMessage, HumanMessage, AIMessage
 
 class BasicGraph(ABC):
+    
+    async def filter_messages(self, chunk: BaseMessage) -> List:
+        if type(chunk[0]) is SystemMessage or type(chunk[0]) is HumanMessage:
+            return ""
+        else:
+            return chunk[0].content
+            
     def count_tokens(self, text: str, encoding_name='gpt-4o') -> int:
         try:
             encoding = tiktoken.encoding_for_model(

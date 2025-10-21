@@ -126,6 +126,14 @@ export const useStudioApi = () => {
     return post(`/opspilot/bot_mgmt/execute_chat_flow/${payload.bot_id}/${payload.node_id}`, { message: payload.message, is_test: true });
   };
 
+  /**
+   * Gets all users for notification configuration.
+   * @returns Promise<any[]> - List of all users with id, display_name, username.
+   */
+  const getAllUsers = async (): Promise<any[]> => {
+    return get('/system_mgmt/user/user_id_all/');
+  };
+
   return {
     fetchLogs,
     fetchWorkflowTaskResult,
@@ -141,5 +149,6 @@ export const useStudioApi = () => {
     fetchConversations,
     fetchActiveUsers,
     executeWorkflow,
+    getAllUsers,
   };
 };

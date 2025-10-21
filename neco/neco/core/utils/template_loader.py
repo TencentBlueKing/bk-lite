@@ -108,8 +108,6 @@ class TemplateLoader:
 
         # 缓存环境对象
         cls._env_cache[base_path_str] = env
-        logger.debug(f"Created new Jinja2 environment for: {base_path_str}")
-
         return env
 
     @classmethod

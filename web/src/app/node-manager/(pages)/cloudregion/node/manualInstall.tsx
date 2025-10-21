@@ -28,6 +28,7 @@ const ManualInstall: React.FC<{ config: any }> = ({ config }) => {
   const [loadingCommand, setLoadingCommand] = useState<boolean>(false);
   const [sidecar, setSidecar] = useState<string | null>(null);
   const [nodeName, setNodeName] = useState<string>('');
+  const [nodeIp, setNodeIp] = useState<string>('');
   const [groups, setGroups] = useState<any[] | null>([
     commonContext.selectedGroup?.id,
   ]);
@@ -105,6 +106,7 @@ const ManualInstall: React.FC<{ config: any }> = ({ config }) => {
           cloud_region_id: cloudId,
           organizations: groups,
           node_name: nodeName,
+          ip: nodeIp,
         };
         const data = await getInstallCommand(params);
         setScript(data);
@@ -134,6 +136,17 @@ const ManualInstall: React.FC<{ config: any }> = ({ config }) => {
                 className="w-[500px]"
                 value={nodeName}
                 onChange={(e) => setNodeName(e.target.value)}
+              />
+            </Form.Item>
+            <Form.Item
+              required
+              label={t('node-manager.cloudregion.node.ip')}
+              name="ip"
+            >
+              <Input
+                className="w-[500px]"
+                value={nodeIp}
+                onChange={(e) => setNodeIp(e.target.value)}
               />
             </Form.Item>
             <Form.Item
@@ -170,7 +183,7 @@ const ManualInstall: React.FC<{ config: any }> = ({ config }) => {
                   allowClear
                   placeholder={t('common.pleaseSelect')}
                   value={sidecar}
-                  disabled={!nodeName || !groups?.length}
+                  disabled={!nodeName || !groups?.length || !nodeIp}
                   onChange={(value: string) => {
                     handleSidecarChange(value);
                   }}

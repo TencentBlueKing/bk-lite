@@ -171,6 +171,7 @@ def consume_bot_event(kwargs):
             channel_user_id=user.id,
             created_at=created_at,
             created_by=bot.created_by,
+            domain=bot.domain,
             conversation_role=kwargs["event"],
             conversation=kwargs["text"] or "",
             citing_knowledge=citing_knowledge,

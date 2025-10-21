@@ -1,0 +1,6 @@
+# Core - User and Authentication Errors
+user_not_found: User not found in request
+no_permission_view: User does not have permission to view this instance
+no_permission_delete: User does not have permission to delete this instance
+no_permission_update: User does not have permission to update this instance
+

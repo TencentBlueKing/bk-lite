@@ -2,7 +2,7 @@ from django.core.cache import cache
 
 import nats_client
 from apps.node_mgmt.management.services.node_init.collector_init import import_collector
-from apps.node_mgmt.models import CloudRegion
+from apps.node_mgmt.models import CloudRegion, SidecarEnv
 from apps.node_mgmt.services.node import NodeService
 # from apps.core.logger import node_logger as logger
 
@@ -236,6 +236,33 @@ class NatsService:
     def delete_configs(self, ids):
         """删除配置"""
         CollectorConfiguration.objects.filter(id__in=ids).delete()
+
+
+@nats_client.register
+def cloudregion_tls_env_by_node_id(node_id):
+    """根据节点ID获取对应的边车环境变量配置"""
+    # 先查询节点获取云区域ID
+    node = Node.objects.filter(id=node_id).first()
+    if not node:
+        return {
+            "NATS_PROTOCOL": "nats",
+            "NATS_TLS_CA_FILE": "",
+        }
+
+    # 查询该云区域下的所有环境变量
+    objs = SidecarEnv.objects.filter(key__in=["NATS_PROTOCOL", "NATS_TLS_CA_FILE"], cloud_region_id=node.cloud_region_id)
+
+    # 返回环境变量字典，默认值
+    result = {
+        "NATS_PROTOCOL": "nats",
+        "NATS_TLS_CA_FILE": "",
+    }
+    
+    # 用查询到的值覆盖默认值
+    for obj in objs:
+        result[obj.key] = obj.value
+
+    return result
 
 
 @nats_client.register

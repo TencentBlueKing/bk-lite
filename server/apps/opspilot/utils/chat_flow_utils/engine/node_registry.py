@@ -6,7 +6,7 @@ from typing import Any, Callable, Dict, Optional, Type
 
 from apps.core.logger import opspilot_logger as logger
 
-from ..nodes.action.action import HttpActionNode
+from ..nodes.action.action import HttpActionNode, NotifyNode
 from ..nodes.agent.agent import AgentNode
 from ..nodes.basic.entry_exit import EntryNode, ExitNode
 from ..nodes.condition.branch import BranchNode
@@ -37,6 +37,7 @@ class NodeRegistry:
 
         # 动作节点
         self.register_node_class("http", HttpActionNode)
+        self.register_node_class("notification", NotifyNode)
 
         # 函数节点
         self.register_node_class("function", FunctionNode)

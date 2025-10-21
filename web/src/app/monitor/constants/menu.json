@@ -54,7 +54,7 @@
     },
     {
       "title": "集成",
-      "icon": "moxing2",
+      "icon": "zichan-quanbushebei",
       "url": "/monitor/integration",
       "name": "Integration",
       "children": [
@@ -142,7 +142,7 @@
     },
     {
       "title": "Integration",
-      "icon": "moxing2",
+      "icon": "zichan-quanbushebei",
       "url": "/monitor/integration",
       "name": "Integration",
       "children": [

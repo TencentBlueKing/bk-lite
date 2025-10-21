@@ -290,15 +290,7 @@ def _generate_sse_stream(url, headers, chat_kwargs, skill_name, show_think):
         yield ("STATS", "")
 
 
-def _log_and_update_tokens_sync(
-    final_stats,
-    skill_name,
-    skill_id,
-    current_ip,
-    kwargs,
-    user_message,
-    show_think,
-):
+def _log_and_update_tokens_sync(final_stats, skill_name, skill_id, current_ip, kwargs, user_message, show_think, history_log=None):
     try:
         # 处理最终内容
         final_content = final_stats["content"]
@@ -319,14 +311,16 @@ def _log_and_update_tokens_sync(
                 }
             ],
         }
-
+        if history_log:
+            history_log.conversation = final_content
+            history_log.save()
         insert_skill_log(current_ip, skill_id, log_data, kwargs, user_message=user_message)
 
     except Exception as e:
         logger.error(f"Log update error: {e}")
 
 
-def stream_chat(params, skill_name, kwargs, current_ip, user_message, skill_id=None):
+def stream_chat(params, skill_name, kwargs, current_ip, user_message, skill_id=None, history_log=None):
     llm_model = LLMModel.objects.get(id=params["llm_model"])
     show_think = params.pop("show_think", True)
     params.pop("group", 0)
@@ -361,15 +355,7 @@ def stream_chat(params, skill_name, kwargs, current_ip, user_message, skill_id=N
                     if final_stats["content"]:
                         # 使用线程异步处理日志记录，避免阻塞流式响应
                         def log_in_background():
-                            _log_and_update_tokens_sync(
-                                final_stats,
-                                skill_name,
-                                skill_id,
-                                current_ip,
-                                kwargs,
-                                user_message,
-                                show_think,
-                            )
+                            _log_and_update_tokens_sync(final_stats, skill_name, skill_id, current_ip, kwargs, user_message, show_think, history_log)
 
                         threading.Thread(target=log_in_background, daemon=True).start()
                 else:

@@ -14,6 +14,10 @@ class Controller:
     def __init__(self, data):
         self.data = data
 
+    def tls_context(self, node_id):
+        context = NodeMgmt().cloudregion_tls_env_by_node_id(node_id)
+        return context
+
     def get_template_info_by_type(self, template_dir: str, type_name: str):
         """
         从指定目录中查找匹配类型的 j2 模板文件，并解析出 type、config_type、file_type。
@@ -83,6 +87,7 @@ class Controller:
             template_dir = os.path.join(base_dir, config_info["collector"], config_info["collect_type"])
             templates = self.get_template_info_by_type(template_dir, config_info["collect_type"])
             env_config = {k[4:]: v for k, v in config_info.items() if k.startswith("ENV_")}
+            tls_context = self.tls_context(config_info["node_id"])
             for template in templates:
                 is_child = True if template["config_type"] == "child" else False
                 # 采集器名称
@@ -93,7 +98,7 @@ class Controller:
                 template_config = self.render_template(
                     template_dir,
                     f"{template['type']}.{template['config_type']}.{template['file_type']}.j2",
-                    {**config_info, "config_id": config_id.upper()},
+                    {**tls_context, **config_info, "config_id": config_id.upper()},
                 )
 
                 # 节点管理创建配置

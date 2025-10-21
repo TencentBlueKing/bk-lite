@@ -21,8 +21,6 @@
     "bulkEdit": "Bulk Edit",
     "valueValidate": "The value cannot be empty",
     "prompt": "Prompt",
-    "copy": "Copy",
-    "successfulCopied": "Copy successful !",
     "download": "download",
     "successfulDownloaded": "Download successful !",
     "operationSuccessful": "Operation successful !",
@@ -32,8 +30,6 @@
     "createdAt": "Created At",
     "updatedBy": "Updated By",
     "updatedAt": "Updated At",
-    "inputPassword": "Please input the password",
-    "reset": "Reset",
     "deleteTips": "Are you sure you want to modify this item?"
   },
   "node-manager": {

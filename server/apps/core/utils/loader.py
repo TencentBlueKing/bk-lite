@@ -1,5 +1,7 @@
 import os
+
 import yaml
+
 
 class LanguageLoader:
     def __init__(self, app: str, default_lang: str = "en"):

@@ -479,10 +479,10 @@ const User: React.FC = () => {
         <Form ref={renameGroupFormRef}>
           <Form.Item
             name="renameTeam"
-            label={t('system.user.form.name')}
+            label={t('system.group.form.name')}
             rules={[{ required: true, message: t('common.inputRequired') }]}
           >
-            <Input placeholder={`${t('common.inputMsg')}${t('system.user.form.name')}`} />
+            <Input placeholder={`${t('common.inputMsg')}${t('system.group.form.name')}`} />
           </Form.Item>
         </Form>
       </OperateModal>

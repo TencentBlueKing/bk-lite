@@ -1,4 +1,4 @@
-
+import { LoginUserInfo } from './user';
 
 export type AuthStep = 'login' | 'reset-password' | 'otp-verification';
 
@@ -7,6 +7,7 @@ export interface AuthContextType {
   isAuthenticated: boolean;
   isLoading: boolean;
   isInitializing: boolean;
-  login: (token: string) => void;
+  userInfo: LoginUserInfo | null;
+  login: (token: string, userInfo: LoginUserInfo) => void;
   logout: () => Promise<void>;
 }

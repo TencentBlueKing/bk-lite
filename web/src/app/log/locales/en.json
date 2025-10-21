@@ -77,7 +77,6 @@
     "successfullyDeleted": "Delete successfully !",
     "successfullyAdded": "New successfully added !",
     "successfulSetted": "Setting successful !",
-    "successfulCopied": "Copy successful !",
     "successfullyModified": "Modified successfully !",
     "successfullyExported": "Export successfully !",
     "successfullyImported": "Import successfully !",
@@ -97,10 +96,7 @@
     "more": "More",
     "organizations": "Organizations",
     "all": "All",
-    "copy": "Copy",
     "remove": "Remove",
-    "inputPassword": "Please input the password",
-    "reset": "Reset",
     "prompt": "Prompt",
     "batchEdit": "Batch Edit",
     "belongingGroup": "Belonging Group"

@@ -31,11 +31,8 @@
         "languageSelectionSubtitle": "Choose Language"
     },
     "navigation": {
-        "chat": "对话",
-        "chats": "会话",
-        "conversations": "会话",
-        "me": "我的",
-        "profile": "个人中心"
+        "conversations": "对话",
+        "profile": "我的"
     },
     "chat": {
         "searchPlaceholder": "搜索对话",
@@ -56,7 +53,7 @@
         "loginFailed": "登录失败",
         "logoutSuccess": "退出登录成功",
         "logoutFailed": "退出登录失败，请重试",
-        "logoutConfirm": "确定要退出登录吗？退出后需要重新登录才能使用。"
+        "logoutConfirm": "确定要退出登录吗？"
     },
     "profile": {
         "title": "个人资料",

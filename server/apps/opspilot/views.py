@@ -143,8 +143,8 @@ def get_skill_and_params(kwargs, team, bot_id=None):
     return skill_obj, params, None
 
 
-def invoke_chat(params, skill_obj, kwargs, current_ip, user_message):
-    return_data, _ = get_chat_msg(current_ip, kwargs, params, skill_obj, user_message)
+def invoke_chat(params, skill_obj, kwargs, current_ip, user_message, history_log=None):
+    return_data, _ = get_chat_msg(current_ip, kwargs, params, skill_obj, user_message, history_log)
     return JsonResponse(return_data)
 
 
@@ -158,7 +158,7 @@ def format_knowledge_sources(content, skill_obj, doc_map=None, title_map=None):
     return content
 
 
-def get_chat_msg(current_ip, kwargs, params, skill_obj, user_message):
+def get_chat_msg(current_ip, kwargs, params, skill_obj, user_message, history_log=None):
     data, doc_map, title_map = llm_service.invoke_chat(params)
     content = format_knowledge_sources(data["message"], skill_obj, doc_map, title_map)
     return_data = {
@@ -185,6 +185,10 @@ def get_chat_msg(current_ip, kwargs, params, skill_obj, user_message):
             }
         ],
     }
+    if history_log:
+        history_log.conversation = content
+        history_log.citing_knowledge = list(doc_map.values())
+        history_log.save()
     insert_skill_log(current_ip, skill_obj.id, return_data, kwargs, user_message=user_message)
     return return_data, content
 
@@ -267,9 +271,28 @@ def lobe_skill_execute(request):
     params["enable_suggest"] = skill_obj.enable_suggest
     params["enable_query_rewrite"] = skill_obj.enable_query_rewrite
     user_message = params.get("user_message")
+    bot = Bot.objects.get(id=kwargs["studio_id"])
+    BotConversationHistory.objects.create(
+        bot_id=kwargs.get("studio_id"),
+        channel_user_id=user["username"],
+        created_by=bot.created_by,
+        domain=bot.domain,
+        conversation_role="user",
+        conversation=user_message,
+        citing_knowledge=[],
+    )
+    history_log = BotConversationHistory(
+        bot_id=kwargs.get("studio_id"),
+        channel_user_id=user["username"],
+        created_by=bot.created_by,
+        domain=bot.domain,
+        conversation_role="bot",
+        conversation="",
+        citing_knowledge=[],
+    )
     if not stream_mode:
-        return invoke_chat(params, skill_obj, kwargs, current_ip, user_message)
-    return stream_chat(params, skill_obj.name, kwargs, current_ip, user_message)
+        return invoke_chat(params, skill_obj, kwargs, current_ip, user_message, history_log)
+    return stream_chat(params, skill_obj.name, kwargs, current_ip, user_message, history_log=history_log)
 
 
 @api_exempt

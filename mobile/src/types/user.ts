@@ -25,3 +25,17 @@ export interface UserLoginInfo {
   group_list: any[];
   group_tree: any[];
 }
+
+// 登录接口返回的用户信息类型
+export interface LoginUserInfo {
+  token: string;
+  username: string;
+  display_name: string;
+  id: number;
+  domain: string;
+  locale: string;
+  temporary_pwd: boolean;
+  enable_otp: boolean;
+  qrcode: boolean;
+  redirect_url?: string;
+}

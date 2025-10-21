@@ -2,14 +2,14 @@ from django.http import JsonResponse
 from rest_framework.decorators import action
 
 from apps.core.decorators.api_permission import HasPermission
-from apps.core.viewsets.base_viewset import BaseSystemMgmtViewSet
+from apps.core.utils.viewset_utils import LanguageViewSet
 from apps.system_mgmt.models import Group, User
 from apps.system_mgmt.serializers.group_serializer import GroupSerializer
 from apps.system_mgmt.utils.group_utils import GroupUtils
 from apps.system_mgmt.utils.viewset_utils import ViewSetUtils
 
 
-class GroupViewSet(BaseSystemMgmtViewSet, ViewSetUtils):
+class GroupViewSet(LanguageViewSet, ViewSetUtils):
     queryset = Group.objects.all()
     serializer_class = GroupSerializer
 

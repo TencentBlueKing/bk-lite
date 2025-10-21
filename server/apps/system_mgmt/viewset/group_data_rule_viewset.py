@@ -4,7 +4,7 @@ from django_filters.rest_framework import FilterSet
 from rest_framework.decorators import action
 
 from apps.core.decorators.api_permission import HasPermission
-from apps.core.viewsets.base_viewset import BaseSystemMgmtViewSet
+from apps.core.utils.viewset_utils import LanguageViewSet
 from apps.rpc.cmdb import CMDB
 from apps.rpc.log import Log
 from apps.rpc.monitor import Monitor
@@ -21,7 +21,7 @@ class GroupDataRuleFilter(FilterSet):
     app = filters.CharFilter(field_name="app", lookup_expr="exact")
 
 
-class GroupDataRuleViewSet(BaseSystemMgmtViewSet):
+class GroupDataRuleViewSet(LanguageViewSet):
     queryset = GroupDataRule.objects.all().order_by("-id")
     serializer_class = GroupDataRuleSerializer
     filterset_class = GroupDataRuleFilter

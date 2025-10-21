@@ -68,7 +68,7 @@ const KnowledgeDetailLayout = ({ children }: { children: React.ReactNode }) => {
     
     // For bot type 2, only show the first menu item
     if (botType === 2 && originalMenuItems.length > 0) {
-      return [originalMenuItems[0]];
+      return originalMenuItems.filter(m => !['bot_channel', 'bot_api'].includes(m.name));
     }
 
     if (botType === 3 && originalMenuItems.length > 0) {

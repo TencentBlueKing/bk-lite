@@ -3,6 +3,7 @@ import React, { createContext, useContext, useEffect, useState } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import { SpinLoading } from 'antd-mobile';
 import { AuthContextType } from '@/types/auth';
+import { LoginUserInfo } from '@/types/user';
 
 const AuthContext = createContext<AuthContextType | null>(null);
 
@@ -19,6 +20,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false);
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [isInitializing, setIsInitializing] = useState<boolean>(true);
+  const [userInfo, setUserInfo] = useState<LoginUserInfo | null>(null);
   const router = useRouter();
   const pathname = usePathname();
 
@@ -34,9 +36,23 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
       try {
         const localToken =
           typeof window !== 'undefined' ? localStorage.getItem('token') : null;
+        const localUserInfo =
+          typeof window !== 'undefined'
+            ? localStorage.getItem('userInfo')
+            : null;
 
         setToken(localToken);
         setIsAuthenticated(!!localToken);
+
+        // 恢复用户信息
+        if (localUserInfo) {
+          try {
+            const parsedUserInfo = JSON.parse(localUserInfo);
+            setUserInfo(parsedUserInfo);
+          } catch (error) {
+            console.error('解析用户信息失败:', error);
+          }
+        }
 
         // 如果是初始化阶段，等待一小段时间确保路由稳定
         await new Promise((resolve) => setTimeout(resolve, 100));
@@ -56,6 +72,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
         console.error('认证初始化错误:', error);
         setToken(null);
         setIsAuthenticated(false);
+        setUserInfo(null);
 
         if (!isPublicPath) {
           router.push('/login');
@@ -68,10 +85,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
     initializeAuth();
   }, [pathname, router, isPublicPath]);
 
-  const login = (newToken: string) => {
+  const login = (newToken: string, newUserInfo: LoginUserInfo) => {
     setToken(newToken);
     setIsAuthenticated(true);
+    setUserInfo(newUserInfo);
     localStorage.setItem('token', newToken);
+    localStorage.setItem('userInfo', JSON.stringify(newUserInfo));
     router.push('/conversations');
   };
 
@@ -89,6 +108,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
       // 更新认证状态
       setToken(null);
       setIsAuthenticated(false);
+      setUserInfo(null);
 
       console.log('用户已成功退出登录');
 
@@ -104,6 +124,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
       }
       setToken(null);
       setIsAuthenticated(false);
+      setUserInfo(null);
       router.push('/login');
     } finally {
       setIsLoading(false);
@@ -135,6 +156,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
         isAuthenticated,
         isLoading,
         isInitializing,
+        userInfo,
         login,
         logout,
       }}

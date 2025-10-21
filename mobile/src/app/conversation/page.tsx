@@ -2,16 +2,30 @@
 
 import React, { useState, useEffect } from 'react';
 import { Flex, type GetProp } from 'antd';
-import { NavBar, Avatar, Toast } from 'antd-mobile';
+import { Avatar, Toast } from 'antd-mobile';
 import { LeftOutline } from 'antd-mobile-icons';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { Bubble, Sender, useXAgent, useXChat } from '@ant-design/x';
-import { UserOutlined } from '@ant-design/icons';
+import { Bubble, Sender, useXAgent, useXChat, Actions } from '@ant-design/x';
+import { UserOutlined, CopyOutlined, RedoOutlined } from '@ant-design/icons';
 import { mockChatData } from '@/constants/mockData';
+import { mockAIResponses, mockTextResponses } from '@/constants/mockResponses';
 import { ChatInfo } from '@/types/conversation';
 
 const sleep = (ms: number = 1000) =>
   new Promise((resolve) => setTimeout(resolve, ms));
+
+const actionItems = [
+  {
+    key: 'copy',
+    icon: <CopyOutlined />,
+    label: '复制',
+  },
+  {
+    key: 'regenerate',
+    icon: <RedoOutlined />,
+    label: '重新生成',
+  },
+];
 
 const roles: GetProp<typeof Bubble.List, 'roles'> = {
   ai: {
@@ -25,7 +39,7 @@ const roles: GetProp<typeof Bubble.List, 'roles'> = {
     },
     typing: { step: 5, interval: 20 },
     style: {
-      maxWidth: '70%',
+      maxWidth: '90%',
     },
   },
   local: {
@@ -38,7 +52,9 @@ const roles: GetProp<typeof Bubble.List, 'roles'> = {
       children: '我',
     },
     style: {
+      maxWidth: '90%',
       color: '#ffffff',
+      marginLeft: 'auto',
     },
   },
 };
@@ -53,34 +69,42 @@ export default function ConversationDetail() {
   const [content, setContent] = useState('');
 
   // 模拟智能AI回复逻辑
-  const getAIReply = (userMessage: string): string => {
+  const getAIReply = (userMessage: string): string | React.ReactNode => {
     const message = userMessage.toLowerCase();
 
-    if (message.includes('产品') || message.includes('功能')) {
-      return '我们的产品具有以下核心功能：\n\n• 🚀 智能运维自动化\n• 📊 实时监控告警\n• 🔧 故障快速定位\n• 💡 AI 智能分析\n\n您想了解哪个功能的详细信息？';
+    if (message.includes('表格') || message.includes('table')) {
+      return mockAIResponses.table();
+    } else if (message.includes('代码') || message.includes('code')) {
+      return mockAIResponses.code();
+    } else if (message.includes('卡片') || message.includes('card')) {
+      return mockAIResponses.card();
+    } else if (message.includes('列表') || message.includes('list')) {
+      return mockAIResponses.list();
+    } else if (message.includes('产品') || message.includes('功能')) {
+      return mockTextResponses.product;
     } else if (message.includes('技术') || message.includes('支持')) {
-      return '我很乐意为您提供技术支持！请告诉我您遇到的具体问题：\n\n• 🔍 系统配置问题\n• 🐛 故障排查\n• 📋 使用指南\n• 🔗 集成对接\n\n我会尽快为您解答。';
+      return mockTextResponses.support;
     } else if (message.includes('谢谢') || message.includes('感谢')) {
-      return '不客气！😊 很高兴能帮助到您。如果还有其他问题，随时可以问我！';
+      return mockTextResponses.thanks;
     } else if (message.includes('帮助') || message.includes('help')) {
-      return '我是您的AI助手，可以帮您：\n\n🔹 产品功能咨询\n🔹 技术问题解答\n🔹 使用指导\n🔹 故障排查\n\n请告诉我您需要什么帮助？';
+      return mockTextResponses.help;
     } else {
-      const responses = [
-        '我理解您的问题，让我为您详细解答...',
-        '这是一个很好的问题！根据我的了解...',
-        '关于这个问题，我建议您...',
-        '我来帮您分析一下这个情况...',
+      return mockTextResponses.default[
+        Math.floor(Math.random() * mockTextResponses.default.length)
       ];
-      return responses[Math.floor(Math.random() * responses.length)];
     }
   };
 
-  const [agent] = useXAgent<string, { message: string }, string>({
+  const [agent] = useXAgent<
+    string | React.ReactNode,
+    { message: string },
+    string | React.ReactNode
+  >({
     request: async ({ message }, { onSuccess, onError }) => {
       await sleep(1500);
       try {
         const aiReply = getAIReply(message);
-        onSuccess([aiReply]);
+        onSuccess([aiReply as any]);
       } catch {
         onError(new Error('AI 回复失败，请稍后重试'));
       }
@@ -92,6 +116,25 @@ export default function ConversationDetail() {
     requestPlaceholder: '正在思考中...',
     requestFallback: 'AI 暂时无法回复，请稍后重试。',
   });
+
+  const handleActionClick = (
+    key: string,
+    message: string | React.ReactNode
+  ) => {
+    switch (key) {
+      case 'copy':
+        const textContent =
+          typeof message === 'string'
+            ? message
+            : '内容包含富文本，无法直接复制';
+        navigator.clipboard.writeText(textContent);
+        Toast.show({ content: '已复制到剪贴板', icon: 'success' });
+        break;
+      case 'regenerate':
+        Toast.show({ content: '正在重新生成...', icon: 'loading' });
+        break;
+    }
+  };
 
   useEffect(() => {
     if (!chatId) {
@@ -126,32 +169,33 @@ export default function ConversationDetail() {
 
   if (loading || !chatInfo) {
     return (
-      <div className="flex items-center justify-center h-screen">
+      <div className="flex items-center justify-center h-full">
         <div className="text-[var(--color-text-3)]">加载中...</div>
       </div>
     );
   }
 
   return (
-    <div className="flex flex-col h-screen bg-[var(--color-bg)]">
+    <div className="flex flex-col h-full bg-[var(--color-bg)]">
       {/* 顶部导航栏 */}
-      <NavBar onBack={() => router.back()} backIcon={<LeftOutline />}>
-        <div className="flex items-center">
+      <div className="flex items-center justify-between px-2 py-3 bg-[var(--color-bg)] border-b border-[var(--color-border)]">
+        <button
+          onClick={() => router.back()}
+          className="flex items-center justify-center w-6 h-8"
+        >
+          <LeftOutline fontSize={24} className="text-[var(--color-text-1)]" />
+        </button>
+        <div className="flex items-center absolute left-1/2 transform -translate-x-1/2">
           <Avatar
             src={chatInfo.avatar}
-            style={{ '--size': '32px' }}
-            className="mr-3"
+            style={{ '--size': '36px' }}
+            className="mr-2 flex-shrink-0"
           />
-          <div className="flex flex-col">
-            <div className="text-sm font-medium text-[var(--color-text-1)] leading-tight">
-              {chatInfo.name}
-            </div>
-            <div className="text-xs text-[var(--color-text-3)] mt-0.5">
-              {chatInfo.status === 'online' ? '在线' : '离线'}
-            </div>
+          <div className="text-base font-medium text-[var(--color-text-1)]">
+            {chatInfo.name}
           </div>
         </div>
-      </NavBar>
+      </div>
 
       {/* 聊天内容区域 */}
       <div className="flex-1 bg-[var(--color-background-body)] overflow-hidden">
@@ -171,20 +215,48 @@ export default function ConversationDetail() {
                 width: '100%',
               }}
               className="w-full"
-              items={messages.map(({ id, message, status }) => ({
-                key: id,
-                loading: status === 'loading',
-                role: status === 'local' ? 'local' : 'ai',
-                content: message,
-              }))}
+              items={messages.map(({ id, message, status }) => {
+                const isAIMessage = status !== 'local' && status !== 'loading';
+                return {
+                  key: id,
+                  loading: status === 'loading',
+                  role: status === 'local' ? 'local' : 'ai',
+                  content: message,
+                  ...(isAIMessage && {
+                    footer: (
+                      <Actions
+                        items={actionItems}
+                        onClick={({ keyPath }) =>
+                          handleActionClick(keyPath[0], message)
+                        }
+                      />
+                    ),
+                  }),
+                };
+              })}
             />
           </div>
 
           {/* 发送器 */}
           <div
-            className="mt-4 mr-2 bg-[var(--color-bg)] rounded-2xl"
+            className="mt-4 mr-2 bg-[var(--color-bg)] rounded-2xl sender-container"
             style={{ boxShadow: '0 2px 8px rgba(0, 0, 0, 0.08)' }}
           >
+            <style
+              dangerouslySetInnerHTML={{
+                __html: `
+                  .sender-container .ant-sender-input{
+                    font-size: 16px !important;
+                  }
+                  .ant-bubble-footer {
+                    margin-top: 0 !important;
+                  }
+                  .ant-bubble-content {
+                    font-size: 16px !important;
+                  }
+                `,
+              }}
+            />
             <Sender
               loading={agent.isRequesting()}
               value={content}

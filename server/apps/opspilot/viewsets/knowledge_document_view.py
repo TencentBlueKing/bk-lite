@@ -9,7 +9,7 @@ from rest_framework.decorators import action
 
 from apps.core.decorators.api_permission import HasPermission
 from apps.core.logger import opspilot_logger as logger
-from apps.core.viewsets.base_viewset import BaseOpsPilotViewSet
+from apps.core.utils.viewset_utils import LanguageViewSet
 from apps.opspilot.enum import DocumentStatus
 from apps.opspilot.models import (
     ConversationTag,
@@ -37,7 +37,7 @@ class ObjFilter(FilterSet):
     train_status = filters.NumberFilter(field_name="train_status", lookup_expr="exact")
 
 
-class KnowledgeDocumentViewSet(BaseOpsPilotViewSet):
+class KnowledgeDocumentViewSet(LanguageViewSet):
     queryset = KnowledgeDocument.objects.all()
     serializer_class = KnowledgeDocumentSerializer
     filterset_class = ObjFilter
@@ -47,7 +47,7 @@ class KnowledgeDocumentViewSet(BaseOpsPilotViewSet):
     def destroy(self, request, *args, **kwargs):
         instance: KnowledgeDocument = self.get_object()
         if instance.train_status == DocumentStatus.TRAINING:
-            message = self.loader.get("training_document_no_delete") if self.loader else "training document can not be deleted"
+            message = self.loader.get("training_document_no_delete")
             return JsonResponse({"result": False, "message": message})
         with transaction.atomic():
             ConversationTag.objects.filter(knowledge_document_id=instance.id).delete()
@@ -64,7 +64,7 @@ class KnowledgeDocumentViewSet(BaseOpsPilotViewSet):
         if type(knowledge_document_ids) is not list:
             knowledge_document_ids = [knowledge_document_ids]
         KnowledgeDocument.objects.filter(id__in=knowledge_document_ids).update(train_status=DocumentStatus.TRAINING)
-        general_embed.delay(
+        general_embed(
             knowledge_document_ids,
             request.user.username,
             request.user.domain,
@@ -77,7 +77,7 @@ class KnowledgeDocumentViewSet(BaseOpsPilotViewSet):
     def get_my_tasks(self, request):
         knowledge_base_id = request.GET.get("knowledge_base_id", 0)
         if not knowledge_base_id:
-            message = self.loader.get("knowledge_base_id_required") if self.loader else "knowledge_base_id is required"
+            message = self.loader.get("knowledge_base_id_required")
             return JsonResponse({"result": False, "message": message})
         task_list = list(
             KnowledgeTask.objects.filter(created_by=request.user.username, knowledge_base_id=knowledge_base_id)
@@ -192,41 +192,52 @@ class KnowledgeDocumentViewSet(BaseOpsPilotViewSet):
     @HasPermission("knowledge_document-View")
     def get_chunk_detail(self, request):
         knowledge_id = request.GET.get("knowledge_id")
-        instance = KnowledgeDocument.objects.get(id=knowledge_id)
         chunk_id = request.GET.get("chunk_id")
+        chunk_type = request.GET.get("type", "document")
         if not chunk_id:
-            return JsonResponse(
-                {
-                    "result": True,
-                    "message": self.loader.get("chunk_id_required") if self.loader else "chunk_id is required",
-                }
-            )
-        index_name = instance.knowledge_index_name()
+            return JsonResponse({"result": True, "message": self.loader.get("chunk_id_required")})
+        if chunk_type == "QA":
+            qa_paris_id = knowledge_id.split("qa_pairs_id_")[-1]
+            index_name = QAPairs.objects.get(id=qa_paris_id).knowledge_base.knowledge_index_name()
+        elif chunk_type == "Document":
+            instance = KnowledgeDocument.objects.get(id=knowledge_id)
+            index_name = instance.knowledge_index_name()
+        elif chunk_type == "Graph":
+            graph_id = knowledge_id.split("graph-")[-1]
+            return self.get_graph_detail(graph_id, chunk_id)
+        else:
+            return JsonResponse({"result": True, "message": self.loader.get("no_support_chunk_type")})
         res = ChunkHelper.get_document_es_chunk(
             index_name,
             1,
             1,
             "",
-            metadata_filter={"chunk_id": chunk_id, "is_doc": "1"},
+            metadata_filter={"chunk_id": chunk_id},
         )
         if res["documents"]:
             return_data = res["documents"][0]
-            return JsonResponse(
-                {
-                    "result": True,
-                    "data": {
-                        "id": return_data["metadata"]["chunk_id"],
-                        "content": return_data["page_content"],
-                        "index_name": index_name,
-                    },
+            if chunk_type == "Document":
+                data = {
+                    "id": return_data["metadata"]["chunk_id"],
+                    "content": return_data["page_content"],
+                    "index_name": index_name,
                 }
-            )
-        return JsonResponse(
-            {
-                "result": False,
-                "message": "Chunk not found",
-            }
-        )
+            else:
+                data = {
+                    "question": return_data["metadata"]["qa_question"],
+                    "answer": return_data["metadata"]["qa_answer"],
+                    "id": return_data["metadata"]["chunk_id"],
+                    "base_chunk_id": return_data["metadata"].get("base_chunk_id", ""),
+                }
+            return JsonResponse({"result": True, "data": data})
+        return JsonResponse({"result": False, "message": self.loader.get("chunk_not_found")})
+
+    def get_graph_detail(self, graph_id, chunk_id):
+        obj = KnowledgeGraph.objects.filter(id=graph_id).first()
+        if not obj:
+            return JsonResponse({"result": True, "message": self.loader.get("knowledge_graph_not_found")})
+        res = GraphUtils.search_graph(obj, 10, chunk_id)
+        return JsonResponse(res)
 
     @action(methods=["POST"], detail=False)
     @HasPermission("knowledge_document-Delete")
@@ -237,7 +248,8 @@ class KnowledgeDocumentViewSet(BaseOpsPilotViewSet):
         for chunk_id in chunk_ids:
             result = ChunkHelper.delete_es_content(chunk_id, True, keep_qa)
             if not result:
-                return JsonResponse({"result": False, "message": "Failed to delete QA pair."})
+                message = self.loader.get("qa_pair_delete_failed")
+                return JsonResponse({"result": False, "message": message})
         return JsonResponse({"result": True})
 
     @action(methods=["POST"], detail=True)
@@ -250,7 +262,7 @@ class KnowledgeDocumentViewSet(BaseOpsPilotViewSet):
             return JsonResponse(
                 {
                     "result": False,
-                    "message": self.loader.get("chunk_id_required") if self.loader else "chunk_id is required",
+                    "message": self.loader.get("chunk_id_required"),
                 }
             )
         try:
@@ -261,7 +273,7 @@ class KnowledgeDocumentViewSet(BaseOpsPilotViewSet):
             return JsonResponse(
                 {
                     "result": False,
-                    "message": self.loader.get("update_failed") if self.loader else "update failed",
+                    "message": self.loader.get("update_failed"),
                 }
             )
 
@@ -280,7 +292,7 @@ class KnowledgeDocumentViewSet(BaseOpsPilotViewSet):
             QAPairs.objects.filter(document_id__in=doc_ids).delete()
         except Exception as e:
             logger.exception(e)
-            return JsonResponse({"result": False, "message": "delete failed"})
+            return JsonResponse({"result": False, "message": self.loader.get("delete_failed")})
         return JsonResponse({"result": True})
 
     @action(methods=["GET"], detail=True)
@@ -346,20 +358,10 @@ class KnowledgeDocumentViewSet(BaseOpsPilotViewSet):
     def get_file_link(self, request, *args, **kwargs):
         instance: KnowledgeDocument = self.get_object()
         if instance.knowledge_source_type != "file":
-            return JsonResponse(
-                {
-                    "result": False,
-                    "message": self.loader.get("not_a_file") if self.loader else "Not a file",
-                }
-            )
+            return JsonResponse({"result": False, "message": self.loader.get("not_a_file")})
         file_obj = FileKnowledge.objects.filter(knowledge_document_id=instance.id).first()
         if not file_obj:
-            return JsonResponse(
-                {
-                    "result": False,
-                    "message": self.loader.get("file_not_found") if self.loader else "File not found",
-                }
-            )
+            return JsonResponse({"result": False, "message": self.loader.get("file_not_found")})
         storage = MinioBackend(bucket_name="munchkin-private")
         file_data = storage.open(file_obj.file.name, "rb")
         # Calculate ETag

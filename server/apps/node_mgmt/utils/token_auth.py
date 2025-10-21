@@ -3,9 +3,8 @@ import hashlib
 import hmac
 import json
 from django.core.cache import cache
-from django.http import JsonResponse
 
-from apps.core.exceptions.base_app_exception import BaseAppException
+from apps.core.exceptions.base_app_exception import BaseAppException, UnauthorizedException
 from apps.node_mgmt.models.sidecar import SidecarApiToken
 from config.components.base import SECRET_KEY
 from config.components.drf import AUTH_TOKEN_HEADER_NAME
@@ -25,18 +24,33 @@ def get_client_token(request):
 
 
 def check_token_auth(node_id, request):
+    """
+    校验节点Token认证
+
+    Args:
+        node_id: 节点ID
+        request: HTTP请求对象
+
+    Raises:
+        UnauthorizedException: 当认证失败时抛出异常
+    """
     client_token = get_client_token(request)
 
     if not node_id or not client_token:
-        return JsonResponse({'error': 'Unauthorized'}, status=401)
+        logger.warning(f"Token认证失败: node_id={node_id}, has_token={bool(client_token)}")
+        raise UnauthorizedException("缺少必要的认证信息")
 
     client_token_data = decode_token(client_token)
     if node_id != client_token_data["node_id"]:
-        return JsonResponse({'error': 'Unauthorized'}, status=401)
+        logger.warning(f"Token认证失败: node_id不匹配 expected={node_id}, got={client_token_data.get('node_id')}")
+        raise UnauthorizedException("节点ID不匹配")
 
     server_token = get_node_cache_token(node_id)
     if client_token != server_token:
-        return JsonResponse({'error': 'Unauthorized'}, status=401)
+        logger.warning(f"Token认证失败: token不匹配 node_id={node_id}")
+        raise UnauthorizedException("Token无效或已过期")
+
+    logger.debug(f"Token认证成功: node_id={node_id}")
 
 
 def generate_node_token(node_id: str, ip: str, user: str, secret: str = SECRET_KEY):
@@ -67,19 +81,19 @@ def decode_token(token: str, secret: str = SECRET_KEY):
     try:
         # 解码 token
         decoded_data = base64.urlsafe_b64decode(token)
-        
+
         # Token格式: signature(32字节) + '.'(1字节) + json_data
         # 最小长度: 32(签名) + 1(点号) + 2(最小JSON "{}")  = 35
         if len(decoded_data) < 35:
             raise BaseAppException("token 格式错误")
-        
+
         # 前32字节是签名
         signature = decoded_data[:32]
-        
+
         # 第33字节必须是点号分隔符
         if decoded_data[32:33] != b".":
             raise BaseAppException("token 格式错误")
-        
+
         # 第34字节开始是JSON数据
         json_data = decoded_data[33:]
 

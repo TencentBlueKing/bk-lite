@@ -15,7 +15,8 @@ import useFetchConfigData from '@/app/opspilot/hooks/useFetchConfigData';
 import Icon from '@/components/icon';
 import KnowledgeGraphView from '@/app/opspilot/components/knowledge/knowledgeGraphView';
 import NodeDetailDrawer from '@/app/opspilot/components/knowledge/NodeDetailDrawer';
-import { GraphData, TestKnowledgeResponse, GraphNode } from '@/app/opspilot/types/knowledge';
+import { transformGraphData } from '@/app/opspilot/utils/graphUtils';
+import { TestKnowledgeResponse, GraphNode } from '@/app/opspilot/types/knowledge';
 
 const { TextArea } = Input;
 
@@ -39,64 +40,6 @@ const TestingPage: React.FC = () => {
     showDrawer,
     hideDrawer,
   } = useContentDrawer();
-
-  const transformGraphData = (graphData: any): GraphData => {
-    if (!graphData || !Array.isArray(graphData)) {
-      return { nodes: [], edges: [] };
-    }
-
-    const nodesMap = new Map();
-    const edges: any[] = [];
-
-    graphData.forEach((relation: any, index: number) => {
-      const { source_node, target_node, fact, name } = relation;
-      
-      if (!source_node || !target_node) {
-        return;
-      }
-
-      if (source_node.uuid && !nodesMap.has(source_node.uuid)) {
-        nodesMap.set(source_node.uuid, {
-          id: source_node.uuid,
-          label: source_node.name || `节点${source_node.uuid.slice(0, 8)}`,
-          type: 'entity',
-          labels: source_node.labels || [],
-          uuid: source_node.uuid,
-          name: source_node.name,
-          summary: source_node.summary
-        });
-      }
-
-      if (target_node.uuid && !nodesMap.has(target_node.uuid)) {
-        nodesMap.set(target_node.uuid, {
-          id: target_node.uuid,
-          label: target_node.name || `节点${target_node.uuid.slice(0, 8)}`,
-          type: 'entity',
-          labels: target_node.labels || [],
-          uuid: target_node.uuid,
-          name: target_node.name,
-          summary: target_node.summary,
-        });
-      }
-
-      if (source_node.uuid && target_node.uuid) {
-        edges.push({
-          id: `edge-${index}`,
-          source: source_node.uuid,
-          target: target_node.uuid,
-          label: name,
-          type: 'relation',
-          relation_type: name,
-          fact: fact
-        });
-      }
-    });
-
-    return {
-      nodes: Array.from(nodesMap.values()),
-      edges: edges
-    };
-  };
 
   const getSegmentedOptions = () => {
     const options = [];

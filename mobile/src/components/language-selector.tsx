@@ -53,15 +53,15 @@ export default function LanguageSelector({ onSelect }: LanguageSelectorProps) {
     text: (
       <div className="flex items-center justify-between w-full px-4 py-1">
         <div className="flex flex-col items-start">
-          <span className="text-sm font-medium text-[var(--color-text-1)]">
+          <span className="text-base font-medium text-[var(--color-text-1)]">
             {language.label}
           </span>
-          <span className="text-xs text-[var(--color-text-3)] mt-0.5">
+          <span className="text-sm text-[var(--color-text-3)] mt-0.5">
             {language.nativeLabel}
           </span>
         </div>
         {locale === language.key && (
-          <CheckOutline className="text-[var(--color-primary)] text-base ml-3" />
+          <CheckOutline className="text-[var(--color-primary)] text-lg ml-3" />
         )}
       </div>
     ),
@@ -73,12 +73,12 @@ export default function LanguageSelector({ onSelect }: LanguageSelectorProps) {
       <List.Item
         prefix={
           <div className="flex items-center justify-center w-7 h-7 bg-[var(--color-primary-bg-active)] rounded-lg mr-2.5">
-            <GlobalOutline className="text-[var(--color-primary)] text-base" />
+            <GlobalOutline className="text-[var(--color-primary)] text-lg" />
           </div>
         }
         extra={
           <div className="flex items-center">
-            <span className="text-[var(--color-text-3)] text-xs mr-2">
+            <span className="text-[var(--color-text-3)] text-sm mr-2">
               {currentLanguage.label}
             </span>
           </div>
@@ -86,7 +86,7 @@ export default function LanguageSelector({ onSelect }: LanguageSelectorProps) {
         onClick={() => setVisible(true)}
         clickable
       >
-        <span className="text-[var(--color-text-1)] text-sm font-medium">
+        <span className="text-[var(--color-text-1)] text-base font-medium">
           {t('common.languageSettings')}
         </span>
       </List.Item>
@@ -98,10 +98,10 @@ export default function LanguageSelector({ onSelect }: LanguageSelectorProps) {
         closeOnAction={false}
         extra={
           <div className="text-center py-2">
-            <div className="text-base font-semibold text-[var(--color-text-1)] mb-0.5">
+            <div className="text-lg font-semibold text-[var(--color-text-1)] mb-0.5">
               {t('common.languageSelectionTitle')}
             </div>
-            <div className="text-xs text-[var(--color-text-3)]">
+            <div className="text-sm text-[var(--color-text-3)]">
               {t('common.languageSelectionSubtitle')}
             </div>
           </div>

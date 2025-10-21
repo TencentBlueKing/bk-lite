@@ -1,13 +1,11 @@
 'use client';
-import React, { useState, useEffect } from 'react';
+import React from 'react';
 import BottomTabBar from '@/components/bottom-tab-bar';
 import LanguageSelector from '@/components/language-selector';
 import { useAuth } from '@/context/auth';
 import { useTheme } from '@/context/theme';
 import { useTranslation } from '@/utils/i18n';
-import { getLoginInfo } from '@/api/auth';
-import { UserLoginInfo } from '@/types/user';
-import { List, Avatar, Button, Switch, Toast } from 'antd-mobile';
+import { List, Avatar, Switch, Toast, Dialog } from 'antd-mobile';
 import {
   RightOutline,
   SetOutline,
@@ -17,44 +15,29 @@ import {
 export default function ProfilePage() {
   const { t } = useTranslation();
   const { toggleTheme, isDark } = useTheme();
-  const [userInfo, setUserInfo] = useState<UserLoginInfo | null>(null);
-  const [loading, setLoading] = useState(true);
-  const { logout, isLoading: authLoading } = useAuth();
+  const { userInfo, logout, isLoading: authLoading } = useAuth();
 
-  useEffect(() => {
-    const fetchUserInfo = async () => {
-      try {
-        setLoading(true);
-        const { data } = await getLoginInfo();
-        setUserInfo(data);
-      } catch (error) {
-        console.error('获取用户信息失败:', error);
-        Toast.show({
-          content: '获取用户信息失败',
-          icon: 'fail',
-        });
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    fetchUserInfo();
-  }, []);
-
-  const handleLogout = async () => {
-    try {
-      await logout();
-      Toast.show({
-        content: t('auth.logoutSuccess'),
-        icon: 'success',
-      });
-    } catch (error) {
-      console.error('退出登录失败:', error);
-      Toast.show({
-        content: t('auth.logoutFailed'),
-        icon: 'fail',
-      });
-    }
+  const handleLogoutClick = () => {
+    Dialog.confirm({
+      content: t('auth.logoutConfirm'),
+      confirmText: t('common.confirm'),
+      cancelText: t('common.cancel'),
+      onConfirm: async () => {
+        try {
+          await logout();
+          Toast.show({
+            content: t('auth.logoutSuccess'),
+            icon: 'success',
+          });
+        } catch (error) {
+          console.error('退出登录失败:', error);
+          Toast.show({
+            content: t('auth.logoutFailed'),
+            icon: 'fail',
+          });
+        }
+      },
+    });
   };
 
   const menuItems = [
@@ -71,10 +54,10 @@ export default function ProfilePage() {
   ];
 
   return (
-    <div className="flex flex-col h-screen bg-[var(--color-background-body)]">
+    <div className="flex flex-col h-full bg-[var(--color-background-body)]">
       {/* 顶部导航栏 */}
       <div className="flex items-center justify-center px-4 py-3 bg-[var(--color-bg)]">
-        <h1 className="text-base font-medium text-[var(--color-text-1)]">
+        <h1 className="text-lg font-medium text-[var(--color-text-1)]">
           {t('navigation.profile')}
         </h1>
       </div>
@@ -84,28 +67,17 @@ export default function ProfilePage() {
         <div className="flex items-center">
           <Avatar
             src="/avatars/default.png"
-            style={{ '--size': '48px' }}
+            style={{ '--size': '56px' }}
             className="mr-3"
           />
           <div className="flex-1">
-            <h2 className="text-base font-semibold text-[var(--color-text-1)] mb-1">
-              {loading
-                ? t('common.loading')
-                : userInfo?.display_name || userInfo?.username || '用户'}
+            <h2 className="text-lg font-semibold text-[var(--color-text-1)] mb-1">
+              {userInfo?.display_name || userInfo?.username || '用户'}
             </h2>
-            {userInfo?.is_superuser && (
-              <div className="inline-flex items-center px-2 py-1 bg-gradient-to-r from-yellow-400 to-orange-400 rounded-full">
+            {userInfo?.domain && (
+              <div className="inline-flex items-center px-2 py-0.5 bg-blue-500 rounded">
                 <span className="text-white text-xs font-medium">
-                  超级管理员
-                </span>
-              </div>
-            )}
-            {!userInfo?.is_superuser &&
-              userInfo?.roles &&
-              userInfo.roles.length > 0 && (
-              <div className="inline-flex items-center px-2 py-1 bg-gradient-to-r from-blue-400 to-purple-400 rounded-full">
-                <span className="text-white text-xs font-medium">
-                  {userInfo.roles[0]}
+                  {userInfo.domain}
                 </span>
               </div>
             )}
@@ -124,14 +96,14 @@ export default function ProfilePage() {
                 prefix={
                   <div className="flex items-center justify-center w-7 h-7 bg-[var(--color-primary-bg-active)] rounded-lg mr-2.5">
                     {React.cloneElement(item.icon, {
-                      className: 'text-[var(--color-primary)] text-base',
+                      className: 'text-[var(--color-primary)] text-lg',
                     })}
                   </div>
                 }
                 onClick={item.onClick}
                 clickable
               >
-                <span className="text-[var(--color-text-1)] text-sm font-medium">
+                <span className="text-[var(--color-text-1)] text-base font-medium">
                   {item.title}
                 </span>
               </List.Item>
@@ -162,7 +134,7 @@ export default function ProfilePage() {
                 />
               }
             >
-              <span className="text-[var(--color-text-1)] text-sm font-medium">
+              <span className="text-[var(--color-text-1)] text-base font-medium">
                 {t('common.darkMode')}
               </span>
             </List.Item>
@@ -170,25 +142,21 @@ export default function ProfilePage() {
         </div>
 
         {/* 退出登录按钮 */}
-        <div className="mx-4 mt-6">
-          <Button
-            block
-            size="small"
-            color="danger"
-            fill="outline"
-            className="rounded-md text-xs"
-            loading={authLoading}
-            onClick={handleLogout}
-            style={
-              {
-                '--border-radius': '0.375rem',
-                height: '36px',
-                fontSize: '12px',
-              } as React.CSSProperties
-            }
+        <div className="mx-4 mt-6 mb-4">
+          <div
+            className="bg-[var(--color-bg)] rounded-2xl shadow-sm overflow-hidden cursor-pointer active:opacity-70"
+            onClick={authLoading ? undefined : handleLogoutClick}
           >
-            {authLoading ? t('common.loggingOut') : t('common.logout')}
-          </Button>
+            <div className="py-2.5 text-center">
+              <span
+                className={`text-base font-medium ${
+                  authLoading ? 'text-[var(--color-text-3)]' : 'text-red-500'
+                }`}
+              >
+                {authLoading ? t('common.loggingOut') : t('common.logout')}
+              </span>
+            </div>
+          </div>
         </div>
       </div>
 

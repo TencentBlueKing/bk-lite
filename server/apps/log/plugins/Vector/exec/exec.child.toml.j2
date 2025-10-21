@@ -35,5 +35,13 @@ strategy = "user_password"
 user = "${NATS_USERNAME}"
 password = "${NATS_PASSWORD}"
 
+{% if NATS_PROTOCOL == "tls" %}
+# TLS 配置
+[sinks.vmlogs_{{ instance_id }}.tls]
+enabled = true
+verify_certificate = true
+ca_file = "${NATS_TLS_CA_FILE}"
+{% endif %}
+
 [sinks.vmlogs_{{ instance_id }}.encoding]
 codec = "json"

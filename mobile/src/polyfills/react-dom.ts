@@ -23,6 +23,20 @@ if (typeof window !== 'undefined') {
   // 抑制 antd-mobile 的 React 版本警告
   (window as any).__ANTD_MOBILE_COMPATIBLE__ = true;
 
+  // 屏蔽 antd-mobile 的 React 18+ 兼容性警告
+  const originalConsoleError = console.error;
+  console.error = function(...args: any[]) {
+    // 过滤掉 antd-mobile 的 React 版本警告
+    if (
+      typeof args[0] === 'string' &&
+      args[0].includes('[Compatible] antd-mobile v5 support React is 16 ~ 18')
+    ) {
+      return;
+    }
+    // 其他错误正常输出
+    originalConsoleError.apply(console, args);
+  };
+
   // 存储所有的 roots
   const roots = new WeakMap<Container, any>();
 

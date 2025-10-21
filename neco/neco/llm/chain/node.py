@@ -18,6 +18,7 @@ from langgraph.prebuilt import ToolNode, create_react_agent
 from langgraph.graph import StateGraph
 from langgraph.constants import END
 from langchain_core.messages import AIMessage, BaseMessage, ToolMessage, SystemMessage
+from sympy import true
 
 class BasicNode:
         
@@ -286,7 +287,7 @@ class BasicNode:
                     'chunk_id': f"summary_{content_hash}",
                     'segment_number': 1,
                     'segment_id': f"summary_{content_hash}",
-                    'chunk_type': 'Document'
+                    'chunk_type': 'Graph'
                 }
 
         return SummaryResult()
@@ -429,6 +430,14 @@ class ToolsNodes(BasicNode):
         self.tools_prompt_tokens = 0
         self.tools_completions_tokens = 0
 
+    def get_tools_description(self) -> str:
+        if self.tools:
+            tools_info = ""
+            for tool in self.tools:
+                tools_info += f"{tool.name}: {tool.description}\n"
+            return tools_info
+        return ""
+    
     async def call_with_structured_output(self, llm, user_message: str, pydantic_model):
         """
         通用结构化输出调用方法
@@ -451,9 +460,7 @@ class ToolsNodes(BasicNode):
         self.structured_output_parser = StructuredOutputParser(self.llm)
         
         # 初始化MCP客户端配置
-        logger.debug(f"工具服务器数量: {len(request.tools_servers)}")
         for server in request.tools_servers:
-            logger.debug(f"Tools Server: {server}")
             if server.url.startswith("langchain:"):
                 continue
 
@@ -502,113 +509,139 @@ class ToolsNodes(BasicNode):
                           additional_system_prompt: Optional[str] = None,
                           next_node: str = END,
                           tools_node: Optional[ToolNode] = None) -> str:
-        """
-        构建 ReAct Agent 节点，直接使用 LangGraph 的 create_react_agent
-
-        Args:
-            graph_builder: StateGraph 构建器
-            composite_node_name: 组合节点名称前缀
-            additional_system_prompt: 追加的系统提示（会与基础提示合并）
-            next_node: ReAct Agent 完成后的下一个节点
-            tools_node: 外部工具节点，如果提供则优先使用
-
-        Returns:
-            str: ReAct 节点的入口节点名称
-        """
-        # 创建包装节点名称
+        """构建ReAct Agent节点"""
         react_wrapper_name = f"{composite_node_name}_wrapper"
         
         async def react_wrapper_node(state: Dict[str, Any], config: RunnableConfig) -> Dict[str, Any]:
-            """ReAct Agent 包装节点 - 使用 LangGraph 标准实现"""
-            try:
-                graph_request = config["configurable"]["graph_request"]
-                
-                # 获取 LLM 客户端
-                llm = self.get_llm_client(graph_request)
-                
-                # 构建完整的系统提示（基础 + 追加）
-                base_system_prompt = self._build_base_react_system_prompt(graph_request)
-                
-                if additional_system_prompt:
-                    final_system_prompt = f"{base_system_prompt}\n\n{additional_system_prompt}"
-                else:
-                    final_system_prompt = base_system_prompt
-                
-                # 获取当前工具
-                current_tools = self._get_current_tools(tools_node)
-                
-                # 使用 LangGraph 标准的 create_react_agent
-                react_agent = create_react_agent(
-                    model=llm,
-                    tools=current_tools,
-                    prompt=SystemMessage(content=final_system_prompt),
-                    checkpointer=None,  # 不使用检查点
-                    debug=False
-                )
-                
-                self.log(config, f"ReAct Agent 开始处理，工具数量: {len(current_tools)}")
-                
-                # 调用标准的 ReAct Agent
-                result = await react_agent.ainvoke(
-                    {"messages": state["messages"]},
-                    config=config
-                )
-                
-                # 提取最后的 AI 消息作为结果
-                final_messages = result.get("messages", [])
-                if final_messages:
-                    # 找到最后一个 AI 消息
-                    last_ai_message = None
-                    for msg in reversed(final_messages):
-                        if isinstance(msg, AIMessage):
-                            last_ai_message = msg
-                            break
-                    
-                    if last_ai_message:
-                        self.log(config, "ReAct Agent 处理完成")
-                        return {"messages": last_ai_message}
-                    else:
-                        return {"messages": AIMessage(content="ReAct Agent 未产生有效的 AI 响应")}
-                else:
-                    return {"messages": AIMessage(content="ReAct Agent 未返回任何消息")}
-                    
-            except Exception as e:
-                logger.error(f"ReAct Agent 处理失败: {e}")
-                return {"messages": AIMessage(content=f"ReAct Agent 处理失败: {str(e)}")}
+            """ReAct Agent 包装节点"""
+            graph_request = config["configurable"]["graph_request"]
+            
+            # 创建系统提示
+            final_system_prompt = TemplateLoader.render_template(
+                'prompts/graph/react_agent_system_message', {
+                "user_system_message": graph_request.system_message_prompt,
+                "additional_system_prompt": additional_system_prompt or ""
+            })
+            
+            # 创建并调用 ReAct Agent
+            react_agent = create_react_agent(
+                model=self.llm,
+                tools=self.tools,
+                prompt=SystemMessage(content=final_system_prompt),
+                checkpointer=None,
+                debug=False
+            )
+            
+            result = await react_agent.ainvoke({"messages": state["messages"]}, config=config)
+            
+            # 处理结果
+            final_messages = result.get("messages", [])
+            if not final_messages:
+                return {"messages": AIMessage(content="ReAct Agent 未返回任何消息")}
+            
+            # 收集执行的工具 - 从多个来源收集工具调用信息
+            executed_tools = []
+            for msg in final_messages:
+                if isinstance(msg, AIMessage) and hasattr(msg, 'tool_calls') and msg.tool_calls:
+                    # 从 AIMessage 的 tool_calls 中提取
+                    for tool_call in msg.tool_calls:
+                        if hasattr(tool_call, 'name'):
+                            executed_tools.append(tool_call.name)
+                elif isinstance(msg, ToolMessage):
+                    # 从 ToolMessage 中提取工具名称
+                    tool_name = getattr(msg, 'name', None)
+                    if not tool_name and hasattr(msg, 'additional_kwargs'):
+                        tool_name = msg.additional_kwargs.get('name')
+                    if tool_name:
+                        executed_tools.append(tool_name)
+            
+            # 去重工具名称
+            executed_tools = list(dict.fromkeys(executed_tools))
+            
+            # 找到最后一个 AI 消 Messages
+            last_ai_message = None
+            for msg in reversed(final_messages):
+                if isinstance(msg, AIMessage):
+                    last_ai_message = msg
+                    break
+            
+            if not last_ai_message:
+                return {"messages": AIMessage(content="ReAct Agent 未产生有效的 AI 响应")}
+            
+            # 增强内容
+            enhanced_content = last_ai_message.content
+            if executed_tools:
+                tools_info = "、".join(executed_tools)
+                enhanced_content = f"执行工具: [{tools_info}]\n\n" + enhanced_content
+            
+            enhanced_message = AIMessage(
+                content=enhanced_content,
+                response_metadata=last_ai_message.response_metadata,
+                tool_calls=getattr(last_ai_message, 'tool_calls', []),
+                usage_metadata=getattr(last_ai_message, 'usage_metadata', None)
+            )
+            
+            return {"messages": enhanced_message}
         
-        # 将包装节点添加到图中
         graph_builder.add_node(react_wrapper_name, react_wrapper_node)
-        
-        logger.debug(f"ReAct 节点构建完成: {react_wrapper_name}")
-        
         return react_wrapper_name
     
-    def _build_base_react_system_prompt(self, graph_request) -> str:
-        """构建基础的 ReAct 系统提示"""
+    async def invoke_react_for_candidate(self, user_message: str, messages: List[BaseMessage], config: RunnableConfig, system_prompt: str) -> AIMessage:
+        """通用的 ReAct 候选生成方法
+        
+        Args:
+            user_message: 用户消息
+            messages: 上下文消息列表
+            config: 运行配置
+            system_prompt: 系统提示词
+            
+        Returns:
+            生成的 AI 消息
+        """
         try:
-            # 使用模板系统生成基础系统提示
-            base_prompt = TemplateLoader.render_template(
-                'prompts/graph/react_agent_system_message', {
-                    "user_system_message": getattr(graph_request, 'system_message_prompt', 
-                                                 "你是一个智能助手，能够使用工具来帮助解决问题。")
-                })
-            return base_prompt
+            # 创建临时状态图来使用可复用的 ReAct 节点组合
+            temp_graph_builder = StateGraph(dict)
+            
+            # 使用可复用的 ReAct 节点组合构建图
+            react_entry_node = await self.build_react_nodes(
+                graph_builder=temp_graph_builder,
+                composite_node_name="temp_react_candidate",
+                additional_system_prompt=system_prompt,
+                next_node=END
+            )
+            
+            # 设置起始节点
+            temp_graph_builder.set_entry_point(react_entry_node)
+            temp_graph_builder.add_edge(react_entry_node, END)
+            
+            # 编译临时图
+            temp_graph = temp_graph_builder.compile()
+            
+            # 调用 ReAct 节点
+            result = await temp_graph.ainvoke(
+                {"messages": messages[-3:] if len(messages) > 3 else messages},
+                config=config
+            )
+            
+            # 提取最后的 AI 消息
+            result_messages = result.get("messages", [])
+            if isinstance(result_messages, list):
+                for msg in reversed(result_messages):
+                    if isinstance(msg, AIMessage):
+                        return msg
+            elif isinstance(result_messages, AIMessage):
+                return result_messages
+            
+            # 如果没有找到 AI 消息，返回默认响应
+            return AIMessage(content=f"正在分析问题: {user_message}")
+            
         except Exception as e:
-            logger.warning(f"加载 ReAct 系统提示模板失败: {e}，使用默认提示")
-            return """你是一个智能助手，能够使用工具来帮助解决问题。
+            logger.warning(f"ReAct 调用失败: {e}，使用降级方案")
+            return AIMessage(
+                content=f"正在重新分析这个问题: {user_message}，寻找更好的解决方案...",
+                tool_calls=[]
+            )
 
-请按照 ReAct (Reasoning and Acting) 模式工作：
-1. **Thought**: 仔细分析用户的问题，思考需要哪些信息或工具
-2. **Action**: 选择合适的工具并调用
-3. **Observation**: 观察工具的返回结果
-4. **Thought**: 基于结果继续思考，决定是否需要更多工具或可以给出最终答案
-
-重要规则：
-- 始终先思考再行动
-- 如果需要当前时间等实时信息，请使用相应的工具获取
-- 提供完整、准确的答案
-- 如果遇到错误，请解释并尝试其他方法"""
-    
     def _get_current_tools(self, tools_node: Optional[ToolNode]) -> list:
         """获取当前可用的工具列表"""
         if tools_node and hasattr(tools_node, 'tools'):

@@ -114,6 +114,9 @@
     "leave": "Leave",
     "addFail": "Failed to add",
     "updateFail": "Failed to update",
-    "execute": "Execute"
+    "execute": "Execute",
+    "copy": "Copy",
+    "reset": "Reset",
+    "inputPassword": "Please input the password"
   }
 }

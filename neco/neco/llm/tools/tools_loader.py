@@ -129,7 +129,6 @@ class ToolsLoader:
             if processed_tool:
                 tools.append(processed_tool)
 
-        logger.info(f"成功加载 {len(tools)} 个 '{tools_name}' 类别的工具")
         return tools
 
     @staticmethod

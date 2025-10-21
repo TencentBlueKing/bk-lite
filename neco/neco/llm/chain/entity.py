@@ -46,3 +46,5 @@ class BasicLLMRequest(BaseModel):
     extra_config: Optional[dict] = {}
 
     graph_user_message: Optional[str] = ''
+    
+    tools_servers: List[ToolsServer] = []

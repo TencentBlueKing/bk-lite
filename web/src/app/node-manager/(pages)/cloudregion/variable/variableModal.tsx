@@ -15,7 +15,7 @@ import { ModalSuccess, ModalRef } from '@/app/node-manager/types';
 import type { TableDataItem } from '@/app/node-manager/types';
 import useApiCloudRegion from '@/app/node-manager/api/cloudRegion';
 import useCloudId from '@/app/node-manager/hooks/useCloudRegionId';
-import Password from '@/app/node-manager/components/password';
+import Password from '@/components/password';
 import { ListItem } from '@/types';
 const { Option } = Select;
 

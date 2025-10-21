@@ -2,8 +2,8 @@
   "system": {
     "common": {
       "modifyrole": "批量修改角色",
-      "modifydelete": "批量修改角色",
-      "batchmodifyroles": "批量修改角色",
+      "modifydelete": "批量删除角色",
+      "batchmodifyroles": "批量编辑角色",
       "selectedusers": "选定的用户",
       "english": "英文",
       "chinese": "中文(简体)",

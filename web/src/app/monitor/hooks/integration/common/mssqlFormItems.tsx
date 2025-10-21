@@ -1,7 +1,7 @@
 import React from 'react';
 import { Form, Input } from 'antd';
 import { useTranslation } from '@/utils/i18n';
-import Password from '@/app/monitor/components/password';
+import Password from '@/components/password';
 
 const useMssqlFormItems = () => {
   const { t } = useTranslation();

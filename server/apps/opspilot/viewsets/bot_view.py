@@ -6,7 +6,6 @@ from rest_framework.decorators import action
 from apps.core.decorators.api_permission import HasPermission
 from apps.core.logger import opspilot_logger as logger
 from apps.core.utils.viewset_utils import AuthViewSet
-from apps.core.viewsets.base_viewset import BaseOpsPilotViewSet
 from apps.opspilot.enum import BotTypeChoice, ChannelChoices
 from apps.opspilot.models import Bot, BotChannel, BotWorkFlow, Channel, LLMSkill
 from apps.opspilot.serializers import BotSerializer
@@ -26,7 +25,7 @@ class BotFilter(FilterSet):
         return qs.filter(bot_type__in=[int(i.strip()) for i in value.split(",") if i.strip()])
 
 
-class BotViewSet(BaseOpsPilotViewSet, AuthViewSet):
+class BotViewSet(AuthViewSet):
     serializer_class = BotSerializer
     queryset = Bot.objects.all()
     permission_key = "bot"

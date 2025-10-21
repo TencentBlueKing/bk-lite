@@ -14,19 +14,20 @@ export default function BottomTabBar() {
   const { t } = useTranslation();
   const router = useRouter();
   const pathname = usePathname();
+  const ICON_SIZE = 30;
 
   const tabs = [
     {
       key: '/conversations',
       title: t('navigation.conversations'),
-      icon: <MessageOutline />,
-      activeIcon: <MessageFill />,
+      icon: <MessageOutline style={{ fontSize: ICON_SIZE }} />,
+      activeIcon: <MessageFill style={{ fontSize: ICON_SIZE }} />,
     },
     {
       key: '/profile',
       title: t('navigation.profile'),
-      icon: <UserOutline />,
-      activeIcon: <UserSetOutline />,
+      icon: <UserOutline style={{ fontSize: ICON_SIZE }} />,
+      activeIcon: <UserSetOutline style={{ fontSize: ICON_SIZE }} />,
     },
   ];
 
@@ -50,6 +51,7 @@ export default function BottomTabBar() {
           __html: `
           .tab-bar-container .adm-tab-bar-item-title {
             font-weight: 500 !important;
+            margin-top: 5px !important;
           }
         `,
         }}
@@ -59,7 +61,7 @@ export default function BottomTabBar() {
         onChange={handleTabChange}
         style={
           {
-            '--adm-font-size-7': '13px',
+            '--adm-font-size-2': '12px',
             '--adm-color-text-secondary': 'var(--color-text-2)',
           } as React.CSSProperties
         }
