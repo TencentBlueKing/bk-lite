@@ -24,10 +24,7 @@ import {
 } from '@/app/node-manager/types/cloudregion';
 import controllerInstallSyle from './index.module.scss';
 import { useSearchParams } from 'next/navigation';
-import {
-  useInstallWays,
-  OPERATE_SYSTEMS,
-} from '@/app/node-manager/constants/cloudregion';
+import { OPERATE_SYSTEMS } from '@/app/node-manager/constants/cloudregion';
 import CustomTable from '@/components/custom-table';
 import BatchEditModal from './batchEditModal';
 import {
@@ -41,6 +38,7 @@ import { useAuth } from '@/context/auth';
 import axios from 'axios';
 import useApiCloudRegion from '@/app/node-manager/api/cloudRegion';
 import useCloudId from '@/app/node-manager/hooks/useCloudRegionId';
+import { useInstallWays } from '@/app/node-manager/hooks/node';
 import ControllerTable from './controllerTable';
 import ManualInstallFormItems from './manualInstall';
 import { useUserInfoContext } from '@/context/userInfo';

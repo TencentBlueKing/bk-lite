@@ -1,6 +1,4 @@
-import { useTranslation } from '@/utils/i18n';
-import { useMemo } from 'react';
-
+// 采集器显示插件列表
 const DISPLAY_PLUGINS: string[] = [
   'Telegraf',
   'Vector',
@@ -9,6 +7,7 @@ const DISPLAY_PLUGINS: string[] = [
   'JMX',
 ];
 
+// 采集器标签映射
 const COLLECTOR_LABEL: Record<string, string[]> = {
   Telegraf: ['Telegraf'],
   Vector: ['Vector'],
@@ -58,31 +57,4 @@ const COLLECTOR_LABEL: Record<string, string[]> = {
   ],
 };
 
-const useMenuItem = () => {
-  const { t } = useTranslation();
-  return useMemo(
-    () => [
-      {
-        key: 'edit',
-        role: 'Edit',
-        title: 'edit',
-        config: {
-          title: 'editCollector',
-          type: 'edit',
-        },
-      },
-      {
-        key: 'upload',
-        role: 'AddPacket',
-        title: 'uploadPackage',
-        config: {
-          title: 'uploadPackage',
-          type: 'upload',
-        },
-      },
-    ],
-    [t]
-  );
-};
-
-export { COLLECTOR_LABEL, useMenuItem, DISPLAY_PLUGINS };
+export { COLLECTOR_LABEL, DISPLAY_PLUGINS };

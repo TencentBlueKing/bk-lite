@@ -12,10 +12,10 @@ export interface CollectorListResponse {
   template: string;
 }
 
-export interface CardItem {
+export interface CollectorCardProps {
   id: string;
   name: string;
-  description: string;
+  system: string[];
+  introduction: string;
   icon: string;
-  tagList: string[];
 }

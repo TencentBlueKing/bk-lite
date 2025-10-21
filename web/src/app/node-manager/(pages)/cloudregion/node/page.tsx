@@ -28,13 +28,17 @@ import CollectorModal from './collectorModal';
 import { useTranslation } from '@/utils/i18n';
 import { ModalRef, TableDataItem } from '@/app/node-manager/types';
 import CustomTable from '@/components/custom-table';
-import { useColumns } from '@/app/node-manager/hooks/node';
+import {
+  useColumns,
+  useTelegrafMap,
+  useSidecarItems,
+  useCollectorItems,
+} from '@/app/node-manager/hooks/node';
 import MainLayout from '../mainlayout/layout';
 import useApiClient from '@/utils/request';
 import useApiCloudRegion from '@/app/node-manager/api/cloudRegion';
 import useApiCollector from '@/app/node-manager/api/collector';
 import useCloudId from '@/app/node-manager/hooks/useCloudRegionId';
-import { useTelegrafMap } from '@/app/node-manager/constants/cloudregion';
 import {
   COLLECTOR_LABEL,
   DISPLAY_PLUGINS,
@@ -44,11 +48,7 @@ import ControllerUninstall from './controllerUninstall';
 import CollectorInstallTable from './controllerTable';
 import { useRouter, useSearchParams } from 'next/navigation';
 import PermissionWrapper from '@/components/permission';
-import {
-  OPERATE_SYSTEMS,
-  useSidecarItems,
-  useCollectorItems,
-} from '@/app/node-manager/constants/cloudregion';
+import { OPERATE_SYSTEMS } from '@/app/node-manager/constants/cloudregion';
 import { cloneDeep } from 'lodash';
 import { ColumnItem } from '@/types';
 const { confirm } = Modal;

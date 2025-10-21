@@ -3,14 +3,14 @@ import React, { useEffect, useState } from 'react';
 import { useTranslation } from '@/utils/i18n';
 import { message } from 'antd';
 import CustomTable from '@/components/custom-table';
-import { useDetailColumns } from '@/app/node-manager/hooks/collector';
-import useApiCollector from '@/app/node-manager/api/collector';
+import { useDetailColumns } from '@/app/node-manager/hooks';
+import useApiNode from '@/app/node-manager/api';
 import useApiClient from '@/utils/request';
 import type { Pagination, TableDataItem } from '@/app/node-manager/types';
 
 const Collectordetail = () => {
   const { t } = useTranslation();
-  const { getPackageList, deletePackage } = useApiCollector();
+  const { getPackageList, deletePackage } = useApiNode();
   const { isLoading } = useApiClient();
   const [pagination, setPagination] = useState<Pagination>({
     current: 1,
@@ -31,7 +31,7 @@ const Collectordetail = () => {
   }, [isLoading]);
 
   useEffect(() => {
-    if(!isLoading) getTableData();  
+    if (!isLoading) getTableData();
   }, [pagination.current, pagination.pageSize]);
 
   const getTableData = async () => {

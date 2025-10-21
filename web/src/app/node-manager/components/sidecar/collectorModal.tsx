@@ -17,6 +17,7 @@ import { FormInstance } from 'antd/lib';
 import { useTranslation } from '@/utils/i18n';
 import OperateModal from '@/components/operate-modal';
 import useApiCollector from '@/app/node-manager/api/collector';
+import useApiNode from '@/app/node-manager/api';
 import { cloneDeep } from 'lodash';
 const { TextArea } = Input;
 const { Dragger } = Upload;
@@ -32,8 +33,8 @@ const initData = {
 const CollectorModal = forwardRef<ModalRef, ModalSuccess>(
   ({ onSuccess }, ref) => {
     const { t } = useTranslation();
-    const { uploadPackage, addCollector, editCollecttor } =
-      useApiCollector();
+    const { addCollector, editCollecttor } = useApiCollector();
+    const { uploadPackage } = useApiNode();
     const formRef = useRef<FormInstance>(null);
     const [form] = Form.useForm();
     const [title, setTitle] = useState<string>('editCollector');
@@ -144,7 +145,7 @@ const CollectorModal = forwardRef<ModalRef, ModalSuccess>(
       });
       uploadPackage(params).then(() => {
         setConfirmLoading(false);
-        message.success(t('node-manager.collector.uploadSuccess'));
+        message.success(t('node-manager.packetManage.uploadSuccess'));
         setVisible(false);
       });
     };
@@ -175,7 +176,7 @@ const CollectorModal = forwardRef<ModalRef, ModalSuccess>(
     return (
       <div>
         <OperateModal
-          title={t(`node-manager.collector.${title}`)}
+          title={title}
           open={visible}
           onCancel={handleCancel}
           footer={
@@ -252,14 +253,17 @@ const CollectorModal = forwardRef<ModalRef, ModalSuccess>(
                     { required: true, message: t('common.inputRequired') },
                   ]}
                 >
-                  <TextArea disabled={type === 'delete'} placeholder={t('common.inputMsg')} />
+                  <TextArea
+                    disabled={type === 'delete'}
+                    placeholder={t('common.inputMsg')}
+                  />
                 </Form.Item>
               </>
             )}
             {type === 'upload' && (
               <>
                 <Form.Item
-                  label={t('node-manager.collector.version')}
+                  label={t('node-manager.packetManage.version')}
                   name="version"
                   rules={[
                     { required: true, message: t('common.inputRequired') },
@@ -268,7 +272,7 @@ const CollectorModal = forwardRef<ModalRef, ModalSuccess>(
                   <Input placeholder={t('common.inputMsg')} />
                 </Form.Item>
                 <Form.Item
-                  label={t('node-manager.collector.importFile')}
+                  label={t('node-manager.packetManage.importFile')}
                   name="upload"
                   valuePropName="fileList"
                   getValueFromEvent={normFile}
@@ -280,7 +284,9 @@ const CollectorModal = forwardRef<ModalRef, ModalSuccess>(
                     </p>
                     <p className="flex justify-center content-center items-center">
                       {t('common.uploadText')}
-                      <Button type="link">{t('node-manager.collector.clickUpload')}</Button>
+                      <Button type="link">
+                        {t('node-manager.packetManage.clickUpload')}
+                      </Button>
                     </p>
                   </Dragger>
                 </Form.Item>
