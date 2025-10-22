@@ -1,6 +1,7 @@
 import uuid
 
 from apps.core.utils.crypto.aes_crypto import AESCryptor
+from apps.node_mgmt.constants.database import DatabaseConstants
 from apps.node_mgmt.constants.node import NodeConstants
 from apps.node_mgmt.models import SidecarEnv
 from apps.node_mgmt.models.installer import ControllerTask, ControllerTaskNode, CollectorTaskNode, CollectorTask
@@ -45,7 +46,7 @@ class InstallerService:
                 password=aes_obj.encode(node["password"]),
                 status="waiting",
             ))
-        ControllerTaskNode.objects.bulk_create(creates, batch_size=100)
+        ControllerTaskNode.objects.bulk_create(creates, batch_size=DatabaseConstants.BULK_CREATE_BATCH_SIZE)
         return task_obj.id
 
     @staticmethod
@@ -69,7 +70,7 @@ class InstallerService:
                 password=aes_obj.encode(node["password"]),
                 status="waiting",
             ))
-        ControllerTaskNode.objects.bulk_create(creates, batch_size=100)
+        ControllerTaskNode.objects.bulk_create(creates, batch_size=DatabaseConstants.BULK_CREATE_BATCH_SIZE)
         return task_obj.id
 
     @staticmethod
@@ -103,7 +104,7 @@ class InstallerService:
                 node_id=node_id,
                 status="waiting",
             ))
-        CollectorTaskNode.objects.bulk_create(creates, batch_size=100)
+        CollectorTaskNode.objects.bulk_create(creates, batch_size=DatabaseConstants.BULK_CREATE_BATCH_SIZE)
         return task_obj.id
 
     @staticmethod

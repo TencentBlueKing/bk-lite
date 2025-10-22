@@ -2,6 +2,7 @@ import os
 import json
 
 from apps.core.logger import monitor_logger as logger
+from apps.monitor.constants.database import DatabaseConstants
 from apps.monitor.constants.plugin import PluginConstants
 from apps.monitor.services.plugin import MonitorPluginService
 from apps.monitor.services.policy import PolicyService
@@ -110,9 +111,9 @@ def migrate_default_order():
 
             # 批量更新
             if type_updates:
-                MonitorObjectType.objects.bulk_update(type_updates, ['order'], batch_size=100)
+                MonitorObjectType.objects.bulk_update(type_updates, ['order'], batch_size=DatabaseConstants.MONITOR_OBJECT_BATCH_SIZE)
             if object_updates:
-                MonitorObject.objects.bulk_update(object_updates, ['order'], batch_size=100)
+                MonitorObject.objects.bulk_update(object_updates, ['order'], batch_size=DatabaseConstants.MONITOR_OBJECT_BATCH_SIZE)
 
     except Exception as e:
         logger.error(f'初始化默认排序失败！原因：{e}')
