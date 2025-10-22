@@ -38,7 +38,7 @@ const CloudRegion = () => {
         item.icon = 'yunquyu';
         return item;
       });
-      setCloudItems(regionData);
+      setCloudItems(regionData.sort((a: any, b: any) => a.id - b.id));
     } finally {
       setLoading(false);
     }
