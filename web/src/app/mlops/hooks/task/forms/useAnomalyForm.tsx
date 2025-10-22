@@ -152,6 +152,10 @@ export const useAnomalyForm = ({ datasetOptions, activeTag, onSuccess, formRef }
       formRef.current.setFieldsValue(immediateData);
       setIsShow(true);
       handleAsyncDataLoading(formData.train_data_id as number, formData);
+      if(key === 'classification') {
+        console.log(formData.labels)
+        setTargetKeys(formData.labels || [])
+      }
     }
   };
 
@@ -162,12 +166,14 @@ export const useAnomalyForm = ({ datasetOptions, activeTag, onSuccess, formRef }
       setLoadingState(prev => ({...prev, transfer: true}));
       const { metadata } = await getDatasetByTrainId(value, key);
       if (key === 'classification' && metadata.headers) {
-        const _headers = metadata.headers?.map((item: string, index: number) => ({
-          key: index,
+        const _headers = metadata.headers?.map((item: string) => ({
+          key: item,
           title: item
         })).slice(0, metadata.headers?.length - 1);
         setSelectedColumns(_headers);
-        setTargetKeys(_headers.map((item: any) => item.key));
+        if(modalState.type === 'add') {
+          setTargetKeys(_headers.map((item: any) => item.key));
+        }
       }
     } catch (e) {
       console.log(e);
@@ -270,7 +276,7 @@ export const useAnomalyForm = ({ datasetOptions, activeTag, onSuccess, formRef }
         description: value.name || ''
       };
       if(key === 'classification') {
-        params['selected_columns'] = selectedColumns.filter(item => targetKeys?.includes(item.key)).map(item => item.title);
+        params['labels'] = selectedColumns.filter(item => targetKeys?.includes(item.key)).map(item => item.title);
       }
       console.log(params);
 

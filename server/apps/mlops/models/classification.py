@@ -123,6 +123,12 @@ class ClassificationTrainJob(MaintainerInfo, TimeInfo):
         help_text="关联的分类测试数据集"
     )
 
+    labels = models.JSONField(
+        verbose_name="训练特征",
+        help_text="用户指定的用于训练的特征",
+        default=list
+    )
+
     hyperopt_config = models.JSONField(
         verbose_name="超参数优化配置",
         help_text="用于超参数优化的配置参数",

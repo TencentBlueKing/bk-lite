@@ -89,25 +89,30 @@ const ModelRelease = () => {
       dataIndex: 'action',
       key: 'action',
       width: 180,
-      render: (_, record: TableData) => (<>
-        <PermissionWrapper requiredPermissions={['Edit']}>
-          <Button type="link" className="mr-2" onClick={() => testPredirect(record)}>测试</Button>
-        </PermissionWrapper>
-        <PermissionWrapper requiredPermissions={['Edit']}>
-          <Button type="link" className="mr-2" onClick={() => handleEdit(record)}>{t(`common.edit`)}</Button>
-        </PermissionWrapper>
-        <PermissionWrapper requiredPermissions={['Delete']}>
-          <Popconfirm
-            title={t(`model-release.delModel`)}
-            description={t(`model-release.delModelContent`)}
-            okText={t('common.confirm')}
-            cancelText={t('common.cancel')}
-            onConfirm={() => handleDelete(record.id)}
-          >
-            <Button type="link" danger>{t(`common.delete`)}</Button>
-          </Popconfirm>
-        </PermissionWrapper>
-      </>)
+      render: (_, record: TableData) => {
+        const [key] = selectedKeys;
+        return (<>
+          {key === 'classification' &&
+            <PermissionWrapper requiredPermissions={['Edit']}>
+              <Button type="link" className="mr-2" onClick={() => testPredirect(record)}>测试</Button>
+            </PermissionWrapper>
+          }
+          <PermissionWrapper requiredPermissions={['Edit']}>
+            <Button type="link" className="mr-2" onClick={() => handleEdit(record)}>{t(`common.edit`)}</Button>
+          </PermissionWrapper>
+          <PermissionWrapper requiredPermissions={['Delete']}>
+            <Popconfirm
+              title={t(`model-release.delModel`)}
+              description={t(`model-release.delModelContent`)}
+              okText={t('common.confirm')}
+              cancelText={t('common.cancel')}
+              onConfirm={() => handleDelete(record.id)}
+            >
+              <Button type="link" danger>{t(`common.delete`)}</Button>
+            </Popconfirm>
+          </PermissionWrapper>
+        </>)
+      }
     }
   ];
 
@@ -254,7 +259,7 @@ const ModelRelease = () => {
   const testPredirect = async (serving: any) => {
     const params = {
       serving_id: serving.id,
-      model_name: `RandomForest_${serving.id}`,
+      model_name: `Classification_RandomForest_${serving.id}`,
       algorithm: "RandomForest",
       model_version: serving.model_version,
       data: [
@@ -656,9 +661,15 @@ const ModelRelease = () => {
         }
       ],
     };
+    message.info('推理开始....')
     console.log('params: ', params);
     const result = await classificationReason(params);
     console.log('result: ', result);
+    if (result.success) {
+      message.success('推理成功')
+    } else {
+      message.error('推理失败')
+    }
   };
 
   return (

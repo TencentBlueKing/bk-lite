@@ -126,7 +126,7 @@ class ClassificationServingViewSet(ModelViewSet):
                 )
             
             # 从服务配置中获取模型信息
-            model_name = f"{train_job.id}_{train_job.name}"
+            model_name = f"Classification_{train_job.algorithm}_{train_job.id}"
             model_version = serving.model_version
             algorithm = train_job.algorithm
 

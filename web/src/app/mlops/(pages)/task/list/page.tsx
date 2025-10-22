@@ -112,7 +112,7 @@ const TrainTask = () => {
 
   // 数据处理映射
   const dataProcessorMap: Record<string, (data: any) => { tableData: TrainJob[], total: number }> = {
-    'anomaly': (data) => processAnomalyLikeData(data),
+    'anomaly': (data) => processAnomalyLikeData(data, 'anomaly'),
     'rasa': (data) => {
       const _data = data.map((item: any) => ({
         id: item.id,
@@ -127,9 +127,9 @@ const TrainTask = () => {
       }));
       return { tableData: _data, total: data?.length || 0 };
     },
-    'log_clustering': (data) => processAnomalyLikeData(data),
-    'timeseries_predict': (data) => processAnomalyLikeData(data),
-    'classification': (data) => processAnomalyLikeData(data)
+    'log_clustering': (data) => processAnomalyLikeData(data, 'log_clustering'),
+    'timeseries_predict': (data) => processAnomalyLikeData(data, 'timeseries_predict'),
+    'classification': (data) => processAnomalyLikeData(data, 'classification')
   };
 
   const treeData: TreeDataNode[] = [
@@ -318,21 +318,30 @@ const TrainTask = () => {
     getTasks();
   }, [pagination.current, pagination.pageSize, selectedKeys]);
 
-  const processAnomalyLikeData = (data: any) => {
+  const processAnomalyLikeData = (data: any, key: string) => {
     const { items, count } = data;
-    const _data = items?.map((item: any) => ({
-      id: item.id,
-      name: item.name,
-      train_data_id: item.train_data_id,
-      val_data_id: item.val_data_id,
-      test_data_id: item.test_data_id,
-      created_at: item.created_at,
-      creator: item?.created_by,
-      status: item?.status,
-      max_evals: item.max_evals,
-      algorithm: item.algorithm,
-      hyperopt_config: item.hyperopt_config
-    })) || [];
+    const _data = items?.map((item: any) => {
+      const job = {
+        id: item.id,
+        name: item.name,
+        train_data_id: item.train_data_id,
+        val_data_id: item.val_data_id,
+        test_data_id: item.test_data_id,
+        created_at: item.created_at,
+        creator: item?.created_by,
+        status: item?.status,
+        max_evals: item.max_evals,
+        algorithm: item.algorithm,
+        hyperopt_config: item.hyperopt_config
+      }
+      if (key === 'classification') {
+        const classjob = Object.assign(job, {
+          labels: item.labels || []
+        });
+        return classjob
+      }
+      return job
+    }) || [];
     return { tableData: _data, total: count || 1 };
   };
 
