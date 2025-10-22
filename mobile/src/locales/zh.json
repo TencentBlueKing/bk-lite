@@ -32,6 +32,7 @@
     },
     "navigation": {
         "conversations": "对话",
+        "workbench": "工作台",
         "profile": "我的"
     },
     "chat": {
