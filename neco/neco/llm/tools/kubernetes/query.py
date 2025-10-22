@@ -10,20 +10,71 @@ from neco.llm.tools.kubernetes.utils import prepare_context
 @tool()
 def kubectl_get_resources(resource_type, namespace=None, label_selector=None, field_selector=None, output_format="json", config: RunnableConfig = None):
     """
-    高级资源查询工具，类似于 kubectl get
-
-    支持多种资源类型的查询，可以使用标签选择器和字段选择器进行过滤
-
+    高级资源查询 - 类似kubectl get的灵活过滤
+    
+    **何时使用此工具：**
+    - 用户说"查看带有标签app=nginx的Pod"（需要label selector）
+    - "查看Running状态的Pod"（需要field selector）
+    - 需要精确过滤资源，不是简单列表
+    - 查询多种资源类型（支持别名，如po、svc、deploy）
+    
+    **工具能力：**
+    - 支持20+资源类型（pods、services、deployments、nodes等）
+    - Label Selector过滤（如app=nginx,env=prod）
+    - Field Selector过滤（如status.phase=Running）
+    - 支持kubectl别名（po→pods, svc→services, deploy→deployments）
+    - 多种输出格式（json/table/yaml）
+    
+    **典型使用场景：**
+    1. 按标签过滤：查找特定应用的所有Pod
+       - label_selector="app=nginx"
+    2. 按状态过滤：只看Running的Pod
+       - field_selector="status.phase=Running"
+    3. 组合过滤：特定应用的Running Pod
+       - label_selector="app=nginx" + field_selector="status.phase=Running"
+    
+    **支持的资源类型：**
+    - 工作负载: pods, deployments, replicasets, statefulsets, daemonsets, jobs
+    - 网络: services, ingresses, endpoints
+    - 配置: configmaps, secrets
+    - 存储: persistentvolumes, persistentvolumeclaims
+    - 集群: nodes, namespaces, events
+    
     Args:
-        resource_type (str): 资源类型 (pods, deployments, services, nodes等)
-        namespace (str, optional): 命名空间，对于集群级资源可为None
-        label_selector (str, optional): 标签选择器，如 "app=nginx,version=v1"
-        field_selector (str, optional): 字段选择器，如 "status.phase=Running"
-        output_format (str): 输出格式 (json, table, yaml)
-        config (RunnableConfig): 工具配置
+        resource_type (str): 资源类型（必填），支持完整名称和别名
+            - "pods" 或 "po": Pod列表
+            - "deployments" 或 "deploy": Deployment列表
+            - "services" 或 "svc": Service列表
+            - "nodes" 或 "no": Node列表
+        namespace (str, optional): 命名空间，集群级资源（如nodes）可不填
+        label_selector (str, optional): 标签选择器
+            - "app=nginx": 单个标签
+            - "app=nginx,version=v1": 多个标签（AND关系）
+            - "app!=nginx": 排除标签
+        field_selector (str, optional): 字段选择器
+            - "status.phase=Running": Pod状态过滤
+            - "spec.nodeName=node1": 特定节点的Pod
+        output_format (str): 输出格式，默认json
+            - "json": 结构化数据（推荐，便于LLM解析）
+            - "table": 表格格式（人类可读）
+            - "yaml": YAML格式
+        config (RunnableConfig): 工具配置（自动传递）
 
     Returns:
-        str: 查询结果
+        根据output_format返回：
+        - json: {"items": [...], "total": N}
+        - table: 格式化的表格文本
+        - yaml: YAML格式文本
+        
+    **配合其他工具使用：**
+    - 过滤后发现问题Pod → 使用 diagnose_kubernetes_pod_issues
+    - 需要更新label → 使用kubectl命令行（超出SDK范围）
+    - 按label批量操作 → 结合label_selector和相应操作工具
+    
+    **注意事项：**
+    - label_selector和field_selector不是所有资源都支持
+    - field_selector支持的字段有限（主要是status.phase、spec.nodeName等）
+    - 复杂查询建议分步进行
     """
     return _query_resources_internal(resource_type, namespace, label_selector, field_selector, output_format, config)
 
@@ -681,14 +732,60 @@ def _format_nodes_table(nodes):
 @tool()
 def kubectl_get_all_resources(namespace=None, config: RunnableConfig = None):
     """
-    获取指定命名空间中的所有主要资源，类似于 kubectl get all
-
+    查看命名空间的所有主要资源 - 全景视图
+    
+    **何时使用此工具：**
+    - 用户说"查看所有资源"、"给我看看整体情况"
+    - 新接手一个命名空间，需要了解全貌
+    - 快速评估命名空间的资源规模
+    - 排查问题前的整体扫描
+    
+    **工具能力：**
+    - 一次性获取8种主要资源类型
+    - 统计每种资源的数量
+    - 类似 kubectl get all 的效果
+    - 提供资源概览和数量统计
+    
+    **查询的资源类型：**
+    1. pods - 运行的应用实例
+    2. services - 服务暴露
+    3. deployments - 无状态应用
+    4. replicasets - 副本集（Deployment管理）
+    5. daemonsets - 节点守护进程
+    6. statefulsets - 有状态应用
+    7. configmaps - 配置数据
+    8. secrets - 敏感信息（数量，不显示内容）
+    
+    **与kubectl get all的区别：**
+    - kubectl get all: 不包括ConfigMap和Secret
+    - 本工具: 额外包含ConfigMap和Secret统计
+    
     Args:
-        namespace (str, optional): 命名空间，如果为None则查看所有命名空间
-        config (RunnableConfig): 工具配置
+        namespace (str, optional): 命名空间，None=所有命名空间
+            - None: 查看整个集群的资源（数据量大）
+            - "default": 只看default命名空间
+            - "prod": 只看生产环境
+        config (RunnableConfig): 工具配置（自动传递）
 
     Returns:
-        str: JSON格式的所有资源概览
+        JSON格式，包含所有资源分类：
+        - namespace: 查询的命名空间
+        - timestamp: 查询时间
+        - resources: 各类型资源
+          - pods: {count: N, items: [...]}
+          - services: {count: N, items: [...]}
+          - deployments: {count: N, items: [...]}
+          - ... （其他类型）
+          
+    **配合其他工具使用：**
+    - 发现问题资源 → 使用对应的诊断工具（diagnose_pod_issues等）
+    - 查看具体资源详情 → 使用 kubectl_get_resources 精确查询
+    - 清理无用资源 → 使用 get_kubernetes_orphaned_resources
+    
+    **注意事项：**
+    - 查询所有命名空间时数据量可能很大
+    - 建议先查询单个命名空间
+    - 此工具适合快速概览，不适合深度分析
     """
     try:
         prepare_context(config)

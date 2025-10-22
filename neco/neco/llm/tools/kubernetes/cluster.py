@@ -11,15 +11,42 @@ from neco.llm.tools.kubernetes.utils import prepare_context
 @tool()
 def verify_kubernetes_connection(config: RunnableConfig = None):
     """
-    验证与Kubernetes集群的连接状态
-
-    执行基本的连接测试，类似于 kubectl cluster-info
-
+    验证K8s集群连接和权限 - 故障排查第一步
+    
+    **何时使用此工具：**
+    - 用户说"连不上集群"、"kubectl不工作"
+    - 开始诊断前验证环境可用性
+    - 检查当前kubeconfig是否正确
+    - 排查权限问题（403/401错误）
+    - 验证API Server是否可访问
+    
+    **工具能力：**
+    - 测试与API Server的连接
+    - 获取集群版本信息
+    - 验证基本读取权限（list namespaces）
+    - 识别常见连接和权限问题
+    
+    **典型问题识别：**
+    - 连接失败 → 网络问题或kubeconfig错误
+    - 权限受限 → RBAC配置不足
+    - 版本信息获取失败 → API Server不可用
+    
     Args:
-        config (RunnableConfig): 工具配置
+        config (RunnableConfig): 工具配置（自动传递）
 
     Returns:
-        str: JSON格式的连接状态信息
+        JSON格式，包含：
+        - connection_status: 连接状态（成功/失败）
+        - kubernetes_version: 集群版本
+        - api_server: API Server状态
+        - permissions: 权限检查结果
+        - error: 错误信息（失败时）
+        - suggestion: 修复建议
+        
+    **配合其他工具使用：**
+    - 连接成功后 → 可以正常使用其他诊断工具
+    - 连接失败 → 检查kubeconfig文件和网络配置
+    - 权限不足 → 联系集群管理员分配权限
     """
     try:
         prepare_context(config)
