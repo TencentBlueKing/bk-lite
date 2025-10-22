@@ -107,7 +107,8 @@ const Collector = () => {
     });
   };
 
-  const handleSubmit = () => {
+  const handleSubmit = (type?: string) => {
+    if (type === 'upload') return;
     fetchCollectorlist();
   };
 

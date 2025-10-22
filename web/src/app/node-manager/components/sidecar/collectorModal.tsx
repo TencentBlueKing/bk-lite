@@ -146,6 +146,7 @@ const CollectorModal = forwardRef<ModalRef, ModalSuccess>(
       uploadPackage(params).then(() => {
         setConfirmLoading(false);
         message.success(t('node-manager.packetManage.uploadSuccess'));
+        onSuccess('upload');
         setVisible(false);
       });
     };
