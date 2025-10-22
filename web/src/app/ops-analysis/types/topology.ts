@@ -247,6 +247,8 @@ export interface ToolbarProps {
   onRedo: () => void;
   canUndo?: boolean;
   canRedo?: boolean;
+  onRefresh?: () => void;
+  onFrequencyChange?: (frequency: number) => void;
 }
 
 // ViewConfig 表单值类型

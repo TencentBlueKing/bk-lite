@@ -1,3 +1,6 @@
+# 1.0.5
+* 优化 PlanAndExecute Agent 复杂决策无限循环的问题
+
 # 1.0.4
 * 修复知识图谱的 Document Type 为 Graph
 
