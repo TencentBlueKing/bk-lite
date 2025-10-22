@@ -107,12 +107,15 @@ class RoleViewSet(LanguageViewSet, ViewSetUtils):
     @action(detail=False, methods=["POST"])
     @HasPermission("application_role-Add user")
     def add_user(self, request):
-        pk = request.data.get("role_id")
+        role_id = request.data.get("role_id")
         user_ids = request.data.get("user_ids")
+        is_superuser = request.data.get("is_superuser") or False
+        if is_superuser:
+            role_id = Role.objects.get(name="admin", app="").id
         user_list = User.objects.filter(id__in=user_ids)
         for i in user_list:
-            if pk not in i.role_list:
-                i.role_list.append(int(pk))
+            if role_id not in i.role_list:
+                i.role_list.append(int(role_id))
         User.objects.bulk_update(user_list, ["role_list"], batch_size=100)
         return JsonResponse({"result": True})
 
@@ -222,7 +225,6 @@ class RoleViewSet(LanguageViewSet, ViewSetUtils):
         try:
             role_id = request.GET.get("role_id")
             search = request.GET.get("search", "")
-
             if not role_id:
                 return JsonResponse({"result": False, "message": self.loader.get("error.role_id_required")})
 
@@ -231,7 +233,6 @@ class RoleViewSet(LanguageViewSet, ViewSetUtils):
                 role = Role.objects.get(id=role_id)
             except Role.DoesNotExist:
                 return JsonResponse({"result": False, "message": self.loader.get("error.some_roles_not_exist")})
-
             # 获取拥有该角色的组织，支持按组名筛选
             queryset = role.group_set.all()
             if search:
@@ -246,4 +247,28 @@ class RoleViewSet(LanguageViewSet, ViewSetUtils):
 
         except Exception as e:
             logger.exception(f"查询角色组织失败: {e}")
+            return JsonResponse({"result": False, "message": str(e)})
+
+    @action(detail=False, methods=["POST"])
+    @HasPermission("user_group-Edit User")
+    def get_groups_roles(self, request):
+        """
+        查询一批组织的角色列表（去重）
+        """
+        try:
+            group_ids = request.data.get("group_ids", [])
+
+            if not isinstance(group_ids, list):
+                return JsonResponse({"result": False, "message": "group_ids must be a list"})
+
+            if not group_ids:
+                return JsonResponse({"result": True, "data": []})
+
+            # 查询这批组织的所有角色，去重
+            roles = Role.objects.filter(group__id__in=group_ids).distinct().values("id", "name", "app").order_by("id")
+
+            return JsonResponse({"result": True, "data": list(roles)})
+
+        except Exception as e:
+            logger.exception(f"查询组织角色列表失败: {e}")
             return JsonResponse({"result": False, "message": str(e)})

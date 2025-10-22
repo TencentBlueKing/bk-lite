@@ -23,18 +23,38 @@ class UserViewSet(ViewSetUtils):
         # 获取请求参数
         search = request.GET.get("search", "")
         group_id = request.GET.get("group_id", "")
+        page = int(request.GET.get("page", 1))
+        page_size = int(request.GET.get("page_size", 10))
+
         # 过滤用户数据
         queryset = User.objects.filter(Q(username__icontains=search) | Q(display_name__icontains=search) | Q(email__icontains=search))
+
         # 如果指定了用户组ID，则过滤该组内的用户
         if group_id:
             queryset = queryset.filter(group_list__contains=int(group_id))
+
+        # 排序
+        queryset = queryset.order_by("-id")
+
+        # 分页
+        total = queryset.count()
+        start = (page - 1) * page_size
+        end = page * page_size
+        users = queryset[start:end]
+
+        # 使用 UserSerializer 序列化数据（自动包含 group_role_list）
+        serializer = UserSerializer(users, many=True)
+        data = serializer.data
+
+        # 添加角色信息（保持原有逻辑）
         roles = Role.objects.all().values("id", "name", "app")
         role_map = {}
         for i in roles:
             role_map[i["id"]] = f"{i['app']}@@{i['name']}"
-        data, total = self.search_by_page(queryset.order_by("-id"), request, User.display_fields())
-        for i in data:
-            i["roles"] = [role_map.get(role_id, "") for role_id in i["role_list"]]
+
+        for user_data in data:
+            user_data["roles"] = [role_map.get(role_id, "") for role_id in user_data.get("role_list", [])]
+
         return JsonResponse({"result": True, "data": {"count": total, "users": data}})
 
     @action(detail=False, methods=["GET"])
