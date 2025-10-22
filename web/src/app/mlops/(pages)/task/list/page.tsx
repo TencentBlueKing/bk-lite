@@ -448,12 +448,13 @@ const TrainTask = () => {
     const [key] = selectedKeys;
     try {
       const zipname = `${record.name}_${record.id}`;
-      message.info(`等待数据中...`)
+      message.info(t(`traintask.waitData`))
       const data = await getTrainTaskFile(record.id, key);
-      message.success(`数据加载完毕，开始下载文件`);
+      message.success(t(`traintask.downloadStart`));
       exportTrainFileToZip(data, zipname);
     } catch (e) {
       console.log(e);
+      message.error(t(`traintask.downloadFailed`));
     }
   };
 

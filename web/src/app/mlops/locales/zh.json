@@ -163,7 +163,10 @@
     "maxEvalsMsg": "请输入最大训练轮次",
     "hyperopt": "超参数",
     "getTrainStatusFailed": "获取训练状态错误",
-    "selectedColumns": "选中的列"
+    "selectedColumns": "选中的列",
+    "waitData": "等待数据中...",
+    "downloadStart": "数据加载完毕，开始下载文件",
+    "downloadFailed": "下载失败"
   },
   "model-release": {
     "modelName":"能力名称",
