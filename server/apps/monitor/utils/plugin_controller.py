@@ -4,6 +4,7 @@ import uuid
 
 from jinja2 import Environment, FileSystemLoader, DebugUndefined
 
+from apps.monitor.constants.database import DatabaseConstants
 from apps.monitor.constants.plugin import PluginConstants
 from apps.monitor.models import CollectConfig
 from apps.rpc.node_mgmt import NodeMgmt
@@ -136,7 +137,7 @@ class Controller:
                 )
 
         # 记录实例与配置的关系
-        CollectConfig.objects.bulk_create(collect_configs, batch_size=100)
+        CollectConfig.objects.bulk_create(collect_configs, batch_size=DatabaseConstants.COLLECT_CONFIG_BATCH_SIZE)
         # 创建配置
         NodeMgmt().batch_add_node_config(node_configs)
         # 创建子配置
