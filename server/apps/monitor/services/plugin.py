@@ -2,7 +2,7 @@ from django.db import transaction
 
 from apps.monitor.models import MonitorPlugin
 from apps.monitor.models.monitor_metrics import MetricGroup, Metric
-from apps.monitor.models.monitor_object import MonitorObject
+from apps.monitor.models.monitor_object import MonitorObject, MonitorObjectType
 
 
 class MonitorPluginService:
@@ -21,6 +21,16 @@ class MonitorPluginService:
         metrics = data.pop("metrics")
         plugin = data.pop("plugin")
         desc = data.pop("plugin_desc", "")
+
+        # 处理type字段：确保MonitorObjectType存在
+        type_value = data.get("type")
+        if type_value:
+            # 如果提供了type，确保对应的MonitorObjectType存在
+            obj_type, created = MonitorObjectType.objects.get_or_create(
+                id=type_value,
+                defaults={'order': 999}  # 新导入的分类默认排序为999
+            )
+            data["type"] = obj_type
 
         monitor_obj = MonitorObject.objects.filter(name=data["name"]).first()
 
@@ -147,7 +157,7 @@ class MonitorPluginService:
             "plugin": plugin_obj.name,
             "plugin_desc": plugin_obj.description,
             "name": monitor_obj.name,
-            "type": monitor_obj.type,
+            "type": monitor_obj.type_id if monitor_obj.type else None,  # 导出type的id值
             "description": monitor_obj.description,
             "metrics": [
                 {
