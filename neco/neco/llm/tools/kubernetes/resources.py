@@ -11,16 +11,34 @@ from neco.llm.tools.kubernetes.utils import prepare_context
 @tool()
 def get_kubernetes_namespaces(config: RunnableConfig):
     """
-    List all namespaces in the Kubernetes cluster.
+    列出集群中的所有命名空间
+    
+    **何时使用此工具：**
+    - 用户问"有哪些命名空间"、"项目空间列表"
+    - 需要了解集群的租户/项目划分
+    - 作为其他查询的前置步骤（先选择namespace）
+    - 检查命名空间是否存在或状态异常
+    
+    **工具能力：**
+    - 列出所有命名空间及其状态
+    - 显示标签和注解（用于分类和管理）
+    - 识别Terminating状态的命名空间（删除中）
+    - 提供创建时间
+    
+    Args:
+        config (RunnableConfig): 工具配置（自动传递）
 
     Returns:
-        str: JSON string containing an array of namespace objects with fields:
-            - name (str): Name of the namespace
-            - status (str): Phase of the namespace (Active, Terminating)
-            - creation_time (str): Timestamp when namespace was created
-
-    Raises:
-        ApiException: If there is an error communicating with the Kubernetes API
+        JSON格式，包含命名空间列表：
+        - name: 命名空间名称
+        - status: 状态（Active/Terminating）
+        - creation_time: 创建时间
+        - labels: 标签
+        - annotations: 注解
+        
+    **配合其他工具使用：**
+    - 获取namespace后 → 使用 list_kubernetes_pods 查看该空间的Pod
+    - 检查资源配额 → 使用 check_kubernetes_resource_quotas
     """
     prepare_context(config)
 
@@ -44,27 +62,51 @@ def get_kubernetes_namespaces(config: RunnableConfig):
 @tool()
 def list_kubernetes_pods(namespace=None, config: RunnableConfig = None):
     """
-    Lists all pods in the specified Kubernetes namespace or across all namespaces.
-
-    Retrieves detailed information about pods including their status, containers,
-    and hosting node.
-
+    查看Pod列表和基本状态
+    
+    **何时使用此工具：**
+    - 用户问"有哪些Pod"、"查看运行的应用"
+    - 获取特定命名空间的所有Pod概览
+    - 查看Pod分布在哪些节点
+    - 作为问题诊断的起点（先列表再深入）
+    
+    **工具能力：**
+    - 列出指定命名空间或所有命名空间的Pod
+    - 显示Pod状态、IP、所在节点
+    - 展示容器列表和就绪状态
+    - 提供标签和重启策略信息
+    
+    **与其他工具的区别：**
+    - 本工具：基础列表，显示概览信息
+    - get_failed_pods：只看失败的Pod
+    - diagnose_pod_issues：深度诊断单个Pod
+    
     Args:
-        namespace (str, optional): The namespace to filter pods by.
-            If None, pods from all namespaces will be returned. Defaults to None.
+        namespace (str, optional): 命名空间，None=所有命名空间
+            - None: 查看整个集群的Pod
+            - "default": 只看default命名空间
+            - "prod": 只看生产环境
+        config (RunnableConfig): 工具配置（自动传递）
 
     Returns:
-        str: JSON string containing an array of pod objects with fields:
-            - name (str): Name of the pod
-            - namespace (str): Namespace where the pod is running
-            - phase (str): Current phase of the pod (Running, Pending, etc.)
-            - ip (str): Pod IP address
-            - node (str): Name of the node running this pod
-            - containers (list): List of containers in the pod with their status
-            - creation_time (str): Timestamp when pod was created
-
-    Raises:
-        ApiException: If there is an error communicating with the Kubernetes API
+        JSON格式，包含Pod列表：
+        - name: Pod名称
+        - namespace: 命名空间
+        - phase: 状态（Running/Pending/Failed/Succeeded/Unknown）
+        - ip: Pod IP地址
+        - node: 所在节点
+        - containers[]: 容器列表
+          - name: 容器名
+          - ready: 是否就绪
+          - restart_count: 重启次数
+          - image: 镜像
+        - creation_time: 创建时间
+        - labels: 标签
+        
+    **配合其他工具使用：**
+    - 发现异常Pod → 使用 diagnose_kubernetes_pod_issues 诊断
+    - 查看Pod日志 → 使用 get_kubernetes_pod_logs
+    - 检查资源使用 → 使用 get_kubernetes_node_capacity
     """
     prepare_context(config)
     core_v1 = client.CoreV1Api()
@@ -355,26 +397,57 @@ def get_kubernetes_resource_yaml(namespace, resource_type, resource_name, config
 @tool()
 def get_kubernetes_pod_logs(namespace, pod_name, container=None, lines=100, tail=True, config: RunnableConfig = None):
     """
-    获取指定 Pod 中容器的日志内容。
-
-    检索特定 Pod 内容器的日志，便于大模型进行故障诊断和异常分析。可以指定容器名称和
-    要返回的日志行数，支持获取日志的开头或结尾部分。
-
+    获取Pod容器日志 - 定位应用程序错误
+    
+    **何时使用此工具：**
+    - 用户说"查看日志"、"看看报什么错"
+    - Pod启动失败需要查看启动日志
+    - 应用程序行为异常需要查看运行日志
+    - 从 diagnose_pod_issues 发现问题后查看详细错误
+    - 分析应用崩溃、异常退出的具体原因
+    
+    **工具能力：**
+    - 获取容器的标准输出日志（stdout/stderr）
+    - 支持多容器Pod（可指定容器名）
+    - 可获取最近N行或开头N行
+    - 自动处理单容器Pod（无需指定容器名）
+    
+    **日志分析场景：**
+    - CrashLoopBackOff → 查看最后100行，找panic/error
+    - ImagePullBackOff → 日志为空，检查镜像地址
+    - OOMKilled → 查看崩溃前日志，分析内存占用
+    - 应用错误 → 搜索Exception、Error、Failed关键词
+    
+    **重要提示：**
+    - 本工具只能获取当前运行容器的日志
+    - 如果容器已重启，无法获取上一次的日志（需要--previous参数，暂不支持）
+    - 日志默认最多1MB，超大日志会被截断
+    
     Args:
-        namespace (str): Pod 所在的命名空间。
-        pod_name (str): Pod 的名称。
-        container (str, optional): 容器的名称。如果 Pod 中有多个容器且未指定容器名称，
-            将返回 Pod 中第一个容器的日志。默认为 None。
-        lines (int, optional): 要返回的日志行数。默认为 100。
-        tail (bool, optional): 如果为 True，则返回日志的最后 `lines` 行；
-            如果为 False，则返回日志的前 `lines` 行。默认为 True。
-        config (RunnableConfig): 工具的配置信息。
+        namespace (str): Pod所在命名空间（必填）
+        pod_name (str): Pod名称（必填）
+        container (str, optional): 容器名称，多容器Pod必须指定
+            - None: 自动选择第一个容器（仅适用于单容器Pod）
+            - "app": 指定名为app的容器
+        lines (int, optional): 日志行数，默认100
+            - 100: 适合快速查看最近日志
+            - 500: 查看更多上下文
+            - 50: 只看最关键的错误
+        tail (bool, optional): True=最后N行，False=开头N行，默认True
+            - True: 查看最新日志（推荐）
+            - False: 查看启动初期日志
+        config (RunnableConfig): 工具配置（自动传递）
 
     Returns:
-        str: Pod 容器的日志内容，或者包含错误信息的 JSON 字符串。
-
-    Raises:
-        ApiException: 与 Kubernetes API 通信时出错
+        日志文本内容，或错误信息：
+        - 成功: 容器的实际日志输出
+        - 失败: 错误原因（Pod不存在、容器不存在、容器创建中等）
+        
+    **配合其他工具使用：**
+    - 发现Pod问题 → 使用 diagnose_kubernetes_pod_issues 确定需要查看哪个Pod
+    - 日志显示OOM → 使用 check_oom_events 分析内存配置
+    - 日志显示网络错误 → 使用 trace_service_chain 检查服务链路
+    - 需要重启恢复 → 使用 restart_pod
     """
     prepare_context(config)
     try:
