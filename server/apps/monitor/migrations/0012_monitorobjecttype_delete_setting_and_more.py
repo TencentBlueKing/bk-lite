@@ -4,6 +4,36 @@ from django.db import migrations, models
 import django.db.models.deletion
 
 
+def populate_monitor_object_types(apps, schema_editor):
+    """
+    在改变外键关系之前，先将 MonitorObject 中现有的 type 值迁移到 MonitorObjectType 表中
+    """
+    MonitorObject = apps.get_model('monitor', 'MonitorObject')
+    MonitorObjectType = apps.get_model('monitor', 'MonitorObjectType')
+
+    # 获取所有现有的 type 值（去重）
+    existing_types = MonitorObject.objects.values_list('type', flat=True).distinct()
+
+    # 为每个 type 创建对应的 MonitorObjectType 记录
+    type_objects = []
+    for type_value in existing_types:
+        if type_value:  # 跳过空值
+            type_objects.append(
+                MonitorObjectType(
+                    id=type_value,
+                    description=f'{type_value}类型',
+                    order=999,  # 默认排序值
+                    created_by='system',
+                    updated_by='system',
+                    domain='domain.com',
+                    updated_by_domain='domain.com'
+                )
+            )
+
+    if type_objects:
+        MonitorObjectType.objects.bulk_create(type_objects, ignore_conflicts=True)
+
+
 class Migration(migrations.Migration):
 
     dependencies = [
@@ -30,6 +60,8 @@ class Migration(migrations.Migration):
                 'ordering': ['order', 'id'],
             },
         ),
+        # 数据迁移：填充 MonitorObjectType 表
+        migrations.RunPython(populate_monitor_object_types, reverse_code=migrations.RunPython.noop),
         migrations.DeleteModel(
             name='Setting',
         ),
