@@ -155,12 +155,15 @@ export const useJettyJmx = () => {
               collector: pluginConfig.collector,
               instances: dataSource.map((item: TableDataItem) => {
                 delete item.key;
+                const target: TableDataItem | undefined = config.nodeList.find(
+                  (tex: IntegrationMonitoredObject) => item.node_ids === tex.id
+                );
                 return {
                   ...item,
                   ENV_LISTEN_PORT: String(item.ENV_LISTEN_PORT),
                   node_ids: [item.node_ids].flat(),
                   instance_type: pluginConfig.instance_type,
-                  instance_id: item.jmx_url,
+                  instance_id: `${target?.cloud_region}_${item.jmx_url}`,
                 };
               }),
             };

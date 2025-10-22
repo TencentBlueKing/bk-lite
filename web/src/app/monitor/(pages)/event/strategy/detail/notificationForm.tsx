@@ -104,7 +104,7 @@ const NotificationForm: React.FC<NotificationFormProps> = ({
                           }}
                           showSearch
                           allowClear
-                          mode="tags"
+                          mode="multiple"
                           maxTagCount="responsive"
                           placeholder={t('monitor.events.notifier')}
                         >
