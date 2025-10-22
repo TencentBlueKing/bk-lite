@@ -73,7 +73,8 @@
           "id": "controller_packet",
           "name": "Controller-Packet",
           "operation": [
-            "Delete"
+            "Delete",
+            "AddPacket"
           ]
         },
         {
@@ -91,7 +92,8 @@
           "id": "collector_packet",
           "name": "Collector-Packet",
           "operation": [
-            "Delete"
+            "Delete",
+            "AddPacket"
           ]
         }
       ]

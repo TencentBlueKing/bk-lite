@@ -7,11 +7,8 @@ import { ModalRef, TableDataItem } from '@/app/node-manager/types';
 import { ControllerInstallProps } from '@/app/node-manager/types/cloudregion';
 import controllerInstallSyle from './index.module.scss';
 import { ArrowLeftOutlined, ReloadOutlined } from '@ant-design/icons';
-import {
-  OPERATE_SYSTEMS,
-  useInstallMap,
-} from '@/app/node-manager/constants/cloudregion';
-import { useGroupNames } from '@/app/node-manager/hooks/node';
+import { OPERATE_SYSTEMS } from '@/app/node-manager/constants/cloudregion';
+import { useGroupNames, useInstallMap } from '@/app/node-manager/hooks/node';
 import CustomTable from '@/components/custom-table';
 import useApiCloudRegion from '@/app/node-manager/api/cloudRegion';
 import InstallGuidance from './installGuidance';
