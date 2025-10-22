@@ -7,7 +7,10 @@ sources:
     type: nats
     connection_name: vector
     subject: vector
-    url: nats://nats:4222
+    url: tls://nats:4222
+    tls:
+      enabled: true
+      ca_file: /etc/certs/ca.crt
     auth:
       strategy: user_password
       user_password:
@@ -28,7 +31,7 @@ sinks:
     inputs:
       - parse_json
     endpoints: 
-      - http://victorialogs:9428/insert/elasticsearch/
+      - http://victoria-logs:9428/insert/elasticsearch/
     compression: gzip
     healthcheck:
       enabled: false
