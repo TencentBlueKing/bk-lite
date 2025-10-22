@@ -38,6 +38,7 @@ const Topology = forwardRef<TopologyRef, TopologyProps>(
     const containerRef = useRef<HTMLDivElement>(null);
     const canvasContainerRef = useRef<HTMLDivElement>(null);
     const minimapContainerRef = useRef<HTMLDivElement>(null);
+    const refreshTimerRef = useRef<NodeJS.Timeout | null>(null);
     const [addNodeVisible, setAddNodeVisible] = useState(false);
     const [selectedNodeType, setSelectedNodeType] = useState<NodeType | null>(
       null
@@ -74,6 +75,7 @@ const Topology = forwardRef<TopologyRef, TopologyProps>(
       startInitialization,
       finishInitialization,
       clearOperationHistory,
+      refreshAllSingleValueNodes,
     } = useGraphOperations(
       containerRef,
       state,
@@ -83,6 +85,35 @@ const Topology = forwardRef<TopologyRef, TopologyProps>(
 
     const { handleEdgeConfigConfirm, closeEdgeConfig, handleMenuClick } =
       useContextMenuAndModal(containerRef, state);
+
+    // 定时刷新处理
+    const handleFrequencyChange = useCallback(
+      (frequency: number) => {
+        if (refreshTimerRef.current) {
+          clearInterval(refreshTimerRef.current);
+          refreshTimerRef.current = null;
+        }
+
+        if (frequency > 0) {
+          refreshTimerRef.current = setInterval(() => {
+            refreshAllSingleValueNodes();
+          }, frequency);
+        }
+      },
+      [refreshAllSingleValueNodes]
+    );
+
+    const handleRefresh = useCallback(() => {
+      refreshAllSingleValueNodes();
+    }, [refreshAllSingleValueNodes]);
+
+    useEffect(() => {
+      return () => {
+        if (refreshTimerRef.current) {
+          clearInterval(refreshTimerRef.current);
+        }
+      };
+    }, []);
 
     // 监听画布容器大小变化，自动调整画布大小
     const handleCanvasResize = useCallback(() => {
@@ -262,6 +293,12 @@ const Topology = forwardRef<TopologyRef, TopologyProps>(
       startInitialization();
       clearOperationHistory();
 
+      // 清除定时刷新
+      if (refreshTimerRef.current) {
+        clearInterval(refreshTimerRef.current);
+        refreshTimerRef.current = null;
+      }
+
       if (selectedTopology?.data_id && state.graphInstance) {
         handleLoadTopology(selectedTopology.data_id).finally(() => {
           setTimeout(() => {
@@ -322,6 +359,8 @@ const Topology = forwardRef<TopologyRef, TopologyProps>(
           canRedo={canRedo}
           isSelectMode={state.isSelectMode}
           isEditMode={state.isEditMode}
+          onRefresh={handleRefresh}
+          onFrequencyChange={handleFrequencyChange}
         />
 
         <div className="flex-1 flex overflow-hidden">

@@ -1,19 +1,10 @@
-import { useMemo } from 'react';
 import { useTranslation } from '@/utils/i18n';
+import { useMemo } from 'react';
 
-const useCollectorMenuItem = () => {
+const useControllerMenuItem = () => {
   const { t } = useTranslation();
   return useMemo(
     () => [
-      {
-        key: 'edit',
-        role: 'Edit',
-        title: t('common.edit'),
-        config: {
-          title: t('node-manager.collector.editCollector'),
-          type: 'edit',
-        },
-      },
       {
         key: 'upload',
         role: 'AddPacket',
@@ -28,4 +19,4 @@ const useCollectorMenuItem = () => {
   );
 };
 
-export { useCollectorMenuItem };
+export { useControllerMenuItem };
