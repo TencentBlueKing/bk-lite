@@ -46,6 +46,13 @@ const COLLECTOR_LABEL: Record<string, string[]> = {
     'DB2-Exporter',
     'Excahnge-Exporter',
     'AD-Exporter',
+    'DM-Exporter',
+    'GreenPlum-Exporter',
+    'ClickHouse-Exporter',
+    'GBase8a-Exporter',
+    'OpenGauss-Exporter',
+    'KingBase-Exporter',
+    'VastBase-Exporter',
   ],
   'BK-pull': [
     'Nacosbk-Bk-pull',
