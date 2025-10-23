@@ -125,11 +125,6 @@ services:
       - -storageDataPath=/vlogs
       - -loggerFormat=json
       - -insert.maxLineSizeBytes=10000000
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://victoria-logs:9428/health"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
 
   minio:
     image: ${DOCKER_IMAGE_MINIO}
