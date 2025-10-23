@@ -55,6 +55,11 @@
       "title": "Organization Structure",
       "desc": "Display all information about the organization structure and users. You can maintain organizations at all levels, perform CRUD operations, set user information, and assign roles and groups.",
       "search": "Search",
+      "selectAllSubGroups": "All Sub-groups",
+      "groupPermission": "Group Permission Grant",
+      "selectedGroups": "Selected Groups",
+      "includeAllSubOrganizations": "Include All Sub-organizations",
+      "organizationRoles": "Organization Roles",
       "table": {
         "username": "USERNAME",
         "lastName": "NAME",
@@ -71,6 +76,7 @@
         "email": "Email",
         "group": "Group",
         "role": "Role",
+        "rolePermissionTip": "User's role permissions are a combination of personal roles and organization roles",
         "zoneinfo": "zoneInfo",
         "locale": "Locale",
         "administrator": "Administrator",
@@ -99,7 +105,12 @@
       "addSubGroups": "Add Sub-Groups",
       "rename": "Rename",
       "renameSuccess": "Rename Success",
+      "renameFailed": "Rename Failed",
       "deleteWithChildrenWarning": "Deleting this group will also delete all its sub-groups and users. Are you sure you want to delete?",
+      "editGroup": "Edit Organization",
+      "organizationRoles": "Organization Roles",
+      "organizationRolesTooltip": "Configure unified role permissions for all users under this organization level",
+      "selectOrganizationRoles": "Please select organization roles",
       "form": {
         "name": "Group Name"
       }
@@ -108,14 +119,20 @@
       "title": "Role",
       "users": "Users",
       "permissions": "Permissions",
+      "organizations": "Organizations",
+      "organizationName": "Organization Name",
       "name": "Name",
       "addRole": "Add Role",
       "addUser": "Add User",
+      "addOrganization": "Add Organizations",
       "updateRole": "Update Role",
+      "organizationTip": "Note: When selecting organization nodes, only the current level is effective. Multiple organizations can be selected for batch authorization.",
       "permission": {
         "menu": "MENU",
         "operation": "OPERATION"
-      }
+      },
+      "personalRole": "Personal Role",
+      "organizationRole": "Organization Role"
     },
     "channel": {
       "email": "Email",

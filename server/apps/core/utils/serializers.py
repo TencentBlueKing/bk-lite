@@ -56,8 +56,9 @@ class AuthSerializer(UsernameSerializer):
         request = self.context["request"]
         self.rule_map = {}
         current_team = request.COOKIES.get("current_team", "0")
+        include_children = request.COOKIES.get("include_children", "0") == "1"
         app_name = self.get_app_name()
-        permission_rules = get_permission_rules(request.user, current_team, app_name, self.permission_key)
+        permission_rules = get_permission_rules(request.user, current_team, app_name, self.permission_key, include_children)
         self.auth_team = permission_rules.get("team", [])
         self.rule_map = {}
         for i in permission_rules.get("instance", []):

@@ -55,13 +55,13 @@ const QuotaModal: React.FC<QuotaModalProps> = ({ visible, onConfirm, onCancel, m
 
   const handleTargetTypeChange = (value: string) => {
     setTargetType(value);
-    
+
     form.setFieldsValue({
       targetList: [],
       rule: 'uniform',
       targetType: value
     });
-    
+
     if (value === 'user' && userList.length === 0) {
       fetchData();
     }
