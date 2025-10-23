@@ -217,8 +217,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           <Spin size="large" />
           <p className="mt-4 text-gray-600">
             {isAutoSigningIn ? 'Auto signing in...' : 
-              isCheckingExistingAuth ? 'Checking existing authentication...' :
-                isCheckingAuth ? 'Checking Authentication...' : 'Loading...'}
+            isCheckingExistingAuth ? 'Checking existing authentication...' :
+            isCheckingAuth ? 'Checking Authentication...' : 'Loading...'}
           </p>
         </div>
       </div>

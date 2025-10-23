@@ -14,12 +14,6 @@
         .tree {
             height: 100%;
         }
-
-        :global {
-            .ant-tree-list {
-                width: 100%;
-            }
-        }
     }
 
     .table {
@@ -33,29 +27,20 @@
             justify-content: space-between;
             margin-bottom: 20px;
         }
-
-        :global {
-            .ant-table {
-                width: calc(100vw - 280px);
-            }
-        }
     }
+}
+
+.asset .assetTree :global(.ant-tree-list) {
+    width: 100%;
+}
+
+.asset .table :global(.ant-table) {
+    width: calc(100vw - 280px);
 }
 
 .strategy {
     width: 100%;
     overflow: hidden;
-
-    :global {
-        .ant-form-item-required:not(.ant-form-item-required-mark-optional)::before {
-            position: absolute;
-            right: -3px;
-        }
-
-        .ant-form-item-label>label {
-            margin-right: 10px;
-        }
-    }
 
     .title {
         font-size: 16px;
@@ -71,26 +56,10 @@
             .label {
                 width: 100px;
             }
-
-            :global {
-                .ant-form-item-required::after {
-                    visibility: hidden;
-                }
-
-                .ant-form-item-required::before {
-                    display: none !important;
-                }
-            }
         }
 
         .filterLabel {
             width: 150px;
-
-            :global {
-                .ant-select-selector {
-                    border-radius: 6px 0 0 6px;
-                }
-            }
         }
 
         .thesholdvalue {
@@ -98,17 +67,9 @@
             border-radius: 0 6px 6px 0;
         }
 
-
-
         .condition {
             display: flex;
             flex-wrap: wrap;
-
-            :global {
-                .ant-btn-default {
-                    min-width: 32px;
-                }
-            }
 
             .conditionItem {
 
@@ -124,19 +85,9 @@
 
                 .source {
                     .sourceObjectType {
-                        :global {
-                            .ant-select-selector {
-                                border-radius: 6px 0 0 6px;
-                            }
-                        }
                     }
 
                     .sourceObject {
-                        :global {
-                            .ant-select-selector {
-                                border-radius: 0 6px 6px 0;
-                            }
-                        }
                     }
                 }
 
@@ -152,33 +103,6 @@
 
                     .filter {
                         margin-bottom: 10px;
-
-                        :global {
-                            .ant-btn:nth-of-type(1) {
-                                border-radius: 0 6px 6px 0;
-                                margin-right: 10px;
-                            }
-
-                            .ant-btn:nth-of-type(2) {
-                                margin-right: 10px;
-                            }
-
-                            .ant-btn {
-                                background: var(--color-fill-2);
-                            }
-
-                            .ant-btn-icon {
-                                transform: scale(0.8);
-                            }
-
-                            .ant-select-selector {
-                                border-radius: 0;
-                            }
-
-                            .ant-input {
-                                border-radius: 0;
-                            }
-                        }
                     }
                 }
             }
@@ -189,6 +113,64 @@
         margin-top: 10px;
         padding-left: 20px;
     }
+}
+
+.strategy :global(.ant-form-item-required:not(.ant-form-item-required-mark-optional)::before) {
+    position: absolute;
+    right: -3px;
+}
+
+.strategy :global(.ant-form-item-label>label) {
+    margin-right: 10px;
+}
+
+.strategy .form .clusterLabel :global(.ant-form-item-required::after) {
+    visibility: hidden;
+}
+
+.strategy .form .clusterLabel :global(.ant-form-item-required::before) {
+    display: none !important;
+}
+
+.strategy .form .filterLabel :global(.ant-select-selector) {
+    border-radius: 6px 0 0 6px;
+}
+
+.strategy .form .condition :global(.ant-btn-default) {
+    min-width: 32px;
+}
+
+.strategy .form .condition .conditionItem .source .sourceObjectType :global(.ant-select-selector) {
+    border-radius: 6px 0 0 6px;
+}
+
+.strategy .form .condition .conditionItem .source .sourceObject :global(.ant-select-selector) {
+    border-radius: 0 6px 6px 0;
+}
+
+.strategy .form .condition .conditionItem .conditions .filter :global(.ant-btn:nth-of-type(1)) {
+    border-radius: 0 6px 6px 0;
+    margin-right: 10px;
+}
+
+.strategy .form .condition .conditionItem .conditions .filter :global(.ant-btn:nth-of-type(2)) {
+    margin-right: 10px;
+}
+
+.strategy .form .condition .conditionItem .conditions .filter :global(.ant-btn) {
+    background: var(--color-fill-2);
+}
+
+.strategy .form .condition .conditionItem .conditions .filter :global(.ant-btn-icon) {
+    transform: scale(0.8);
+}
+
+.strategy .form .condition .conditionItem .conditions .filter :global(.ant-select-selector) {
+    border-radius: 0;
+}
+
+.strategy .form .condition .conditionItem .conditions .filter :global(.ant-input) {
+    border-radius: 0;
 }
 
 .selectInstance {

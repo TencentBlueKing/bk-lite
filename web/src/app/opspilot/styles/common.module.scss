@@ -1,15 +1,4 @@
 .CommonCard {
-  :global {
-    .ant-card-body {
-      padding: 0;
-      color: var(--color-text-1);
-      border: none;
-      background-color: var(--color-bg);
-      .ant-card-meta-title {
-        font-size: 14px;
-      }
-    }
-  }
   .iconContainer {
     position: absolute;
     top: 20px;
@@ -19,6 +8,17 @@
   .desc {
     color: var(--color-text-3);
   }
+}
+
+.CommonCard :global(.ant-card-body) {
+  padding: 0;
+  color: var(--color-text-1);
+  border: none;
+  background-color: var(--color-bg);
+}
+
+.CommonCard :global(.ant-card-body .ant-card-meta-title) {
+  font-size: 14px;
 }
 
 .addNew {
@@ -130,56 +130,53 @@
   }
 }
 
-.segmented {
-  :global {
-    .ant-segmented {
-      background: transparent;
-      color: var(--color-text-1);
-      .ant-segmented-item {
-        margin-right: 8px;
-        padding: 3px 6px !important;
-      }
-      .ant-segmented-item-selected {
-        color: var(--color-primary);
-      }
-    }
-  }
+.segmented :global(.ant-segmented) {
+  background: transparent;
+  color: var(--color-text-1);
 }
 
-.menuContainer {
-  :global {
-    .ant-dropdown-menu-item {
-      padding: 0 !important;
-      div {
-        width: 100%;
-      }
-      span {
-        width: 100%;
-      }
-      .block {
-        padding: 5px 12px;
-      }
-    }
-  }
+.segmented :global(.ant-segmented-item) {
+  margin-right: 8px;
+  padding: 3px 6px !important;
 }
 
-.batchOperationMenu {
-  :global {
-    .ant-dropdown-menu-item {
-      padding: 0 !important;
-      div {
-        width: 100%;
-      }
-      .ant-dropdown-menu-title-content {
-        width: 100%;
-        display: flex;
-        > span {
-          width: 100%;
-          button {
-            justify-content: flex-start;
-          }
-        }
-      }
-    }
-  }
+.segmented :global(.ant-segmented-item-selected) {
+  color: var(--color-primary);
+}
+
+.menuContainer :global(.ant-dropdown-menu-item) {
+  padding: 0 !important;
+}
+
+.menuContainer :global(.ant-dropdown-menu-item div) {
+  width: 100%;
+}
+
+.menuContainer :global(.ant-dropdown-menu-item span) {
+  width: 100%;
+}
+
+.menuContainer :global(.ant-dropdown-menu-item .block) {
+  padding: 5px 12px;
+}
+
+.batchOperationMenu :global(.ant-dropdown-menu-item) {
+  padding: 0 !important;
+}
+
+.batchOperationMenu :global(.ant-dropdown-menu-item div) {
+  width: 100%;
+}
+
+.batchOperationMenu :global(.ant-dropdown-menu-item .ant-dropdown-menu-title-content) {
+  width: 100%;
+  display: flex;
+}
+
+.batchOperationMenu :global(.ant-dropdown-menu-item .ant-dropdown-menu-title-content > span) {
+  width: 100%;
+}
+
+.batchOperationMenu :global(.ant-dropdown-menu-item .ant-dropdown-menu-title-content > span button) {
+  justify-content: flex-start;
 }

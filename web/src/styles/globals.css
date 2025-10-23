@@ -1,6 +1,8 @@
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+@import "tailwindcss/preflight";
+@import "tailwindcss/utilities";
+
+/* 或者简写 */
+@import "tailwindcss";
 
 * {
   scrollbar-width: thin;

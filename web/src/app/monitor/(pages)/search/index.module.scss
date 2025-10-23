@@ -27,12 +27,6 @@
                 background: var(--color-bg-1);
                 padding: 20px;
 
-                :global {
-                    .collapse-content {
-                        padding: 0 !important;
-                    }
-                }
-
                 .condition {
                     display: flex;
                     flex-wrap: wrap;
@@ -56,19 +50,9 @@
 
                         .source {
                             .sourceObjectType {
-                                :global {
-                                    .ant-select-selector {
-                                        border-radius: 6px 0 0 6px;
-                                    }
-                                }
                             }
 
                             .sourceObject {
-                                :global {
-                                    .ant-select-selector {
-                                        border-radius: 0 6px 6px 0;
-                                    }
-                                }
                             }
                         }
 
@@ -80,39 +64,6 @@
                                 margin-top: 10px;
 
                                 .filterLabel {
-                                    :global {
-                                        .ant-select-selector {
-                                            border-radius: 6px 0 0 6px;
-                                        }
-                                    }
-                                }
-
-
-                                :global {
-                                    .ant-btn:nth-of-type(1) {
-                                        border-radius: 0 6px 6px 0;
-                                        margin-right: 10px;
-                                    }
-
-                                    .ant-btn:nth-of-type(2) {
-                                        margin-right: 10px;
-                                    }
-
-                                    .ant-btn {
-                                        background: var(--color-fill-2);
-                                    }
-
-                                    .ant-btn-icon {
-                                        transform: scale(0.8);
-                                    }
-
-                                    .ant-select-selector {
-                                        border-radius: 0;
-                                    }
-
-                                    .ant-input {
-                                        border-radius: 0;
-                                    }
                                 }
                             }
                         }
@@ -133,4 +84,45 @@
             }
         }
     }
+}
+
+.searchWrapper .searchMain .search .criteria :global(.collapse-content) {
+    padding: 0 !important;
+}
+
+.searchWrapper .searchMain .search .criteria .condition .conditionItem .source .sourceObjectType :global(.ant-select-selector) {
+    border-radius: 6px 0 0 6px;
+}
+
+.searchWrapper .searchMain .search .criteria .condition .conditionItem .source .sourceObject :global(.ant-select-selector) {
+    border-radius: 0 6px 6px 0;
+}
+
+.searchWrapper .searchMain .search .criteria .condition .conditionItem .conditions .filter .filterLabel :global(.ant-select-selector) {
+    border-radius: 6px 0 0 6px;
+}
+
+.searchWrapper .searchMain .search .criteria .condition .conditionItem .conditions .filter :global(.ant-btn:nth-of-type(1)) {
+    border-radius: 0 6px 6px 0;
+    margin-right: 10px;
+}
+
+.searchWrapper .searchMain .search .criteria .condition .conditionItem .conditions .filter :global(.ant-btn:nth-of-type(2)) {
+    margin-right: 10px;
+}
+
+.searchWrapper .searchMain .search .criteria .condition .conditionItem .conditions .filter :global(.ant-btn) {
+    background: var(--color-fill-2);
+}
+
+.searchWrapper .searchMain .search .criteria .condition .conditionItem .conditions .filter :global(.ant-btn-icon) {
+    transform: scale(0.8);
+}
+
+.searchWrapper .searchMain .search .criteria .condition .conditionItem .conditions .filter :global(.ant-select-selector) {
+    border-radius: 0;
+}
+
+.searchWrapper .searchMain .search .criteria .condition .conditionItem .conditions .filter :global(.ant-input) {
+    border-radius: 0;
 }
