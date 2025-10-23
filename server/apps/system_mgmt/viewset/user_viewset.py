@@ -157,6 +157,9 @@ class UserViewSet(ViewSetUtils):
         pk = params.pop("user_id")
         rules = params.pop("rules", [])
         keys = RoleManage.get_cache_keys(params["username"])
+        is_superuser = params.pop("is_superuser", False)
+        if is_superuser:
+            params["roles"] = [Role.objects.get(name="admin", app="").id]
         with transaction.atomic():
             # 删除旧的规则
             UserRule.objects.filter(username=params["username"]).delete()

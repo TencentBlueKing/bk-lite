@@ -1,14 +1,16 @@
 from rest_framework import serializers
 
-from apps.system_mgmt.models import Group, User
+from apps.system_mgmt.models import Group, Role, User
 
 
 class UserSerializer(serializers.ModelSerializer):
     group_role_list = serializers.SerializerMethodField()
+    is_superuser = serializers.SerializerMethodField()
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self._group_roles_map = None
+        self.super_role_id = Role.objects.get(app="", name="admin").id
 
         # 仅在列表序列化时（many=True）进行批量查询
         if kwargs.get("many", False):
@@ -42,6 +44,9 @@ class UserSerializer(serializers.ModelSerializer):
     class Meta:
         model = User
         fields = "__all__"
+
+    def get_is_superuser(self, obj):
+        return self.super_role_id in obj.role_list
 
     def get_group_role_list(self, obj):
         """
