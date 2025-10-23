@@ -217,7 +217,6 @@ const ModelModal = forwardRef<ModelModalRef, ModelModalProps>(
               rules={[{ required: true, message: t('required') }]}
             >
               <GroupTreeSelector
-                allowClear
                 placeholder={t('common.selectTip')}
               />
             </Form.Item>
