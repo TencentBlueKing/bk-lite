@@ -98,6 +98,8 @@ services:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
       PGDATA: /data/postgres
+    ports:
+      - "5432:5432"
     volumes:
       - postgres:/data/postgres
       - ../conf/postgres/initdb.sql:/docker-entrypoint-initdb.d/initdb.sql
@@ -117,6 +119,8 @@ services:
       - prod
     volumes:
       - victoria-logs:/vlogs
+    ports:
+      - "9428:9428"      
     command:
       - -storageDataPath=/vlogs
       - -loggerFormat=json
@@ -133,6 +137,9 @@ services:
     environment:
       MINIO_ROOT_USER: ${MINIO_ROOT_USER}
       MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
+    ports:
+      - "9000:9000"
+      - "9001:9001"
     command: server /data --console-address ":9001"
     volumes:
       - minio:/data
@@ -155,6 +162,9 @@ services:
       - --artifacts-destination
       - s3://mlflow-artifacts/
       - --serve-artifacts
+    ports:
+      - "15000:15000"
+    restart: always   
     networks:
       - prod
     environment:
@@ -192,6 +202,8 @@ services:
     environment:
       - REDIS_ARGS=--requirepass ${FALKORDB_PASSWORD}
       - FALKORDB_ARGS=THREAD_COUNT 4
+    ports:
+      - "6479:6479"      
     networks:
       - prod
     healthcheck:

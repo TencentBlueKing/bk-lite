@@ -40,6 +40,8 @@ class CollectModelFilter(FilterSet):
         rules = get_cmdb_rules(self.request)
         result = InstancePermissionManage.get_task_permissions(rules=rules)
         filters = Q()
+        if not self.request.user.is_superuser:
+            filters |= Q(created_by=self.request.user.username)
         if not result:
             return filters
         for task_type, instance_map in result.items():

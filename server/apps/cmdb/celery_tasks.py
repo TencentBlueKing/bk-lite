@@ -30,7 +30,7 @@ def sync_collect_task(instance_id):
             collect = JobCollect(task=instance)
             result, format_data = collect.main()
         else:
-            # 插件采集
+            # 协议采集
             collect = ProtocolCollect(task=instance)
             result, format_data = collect.main()
 

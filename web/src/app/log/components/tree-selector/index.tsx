@@ -1,11 +1,12 @@
 import React, { useEffect, useState } from 'react';
-import { Tree, Spin, Input } from 'antd';
+import { Tree, Spin, Input, Empty } from 'antd';
 import { TreeItem, TableDataItem } from '@/app/log/types';
 import { useTranslation } from '@/utils/i18n';
 import type { TreeProps, TreeDataNode } from 'antd';
 import { cloneDeep } from 'lodash';
 import { findTreeParentKey } from '@/app/log/utils/common';
 import { TreeSortData } from '@/app/log/types/event';
+import treeStyle from './index.module.scss';
 
 const { Search } = Input;
 
@@ -13,18 +14,24 @@ interface TreeComponentProps {
   data: TreeItem[];
   defaultSelectedKey?: string;
   loading?: boolean;
+  draggable?: boolean;
+  showAllMenu?: boolean;
+  style?: Record<string, string | number>;
+  inputStyle?: Record<string, string | number>;
   onNodeSelect?: (key: string) => void;
   onNodeDrag?: (sortNodes: TreeSortData[], nodes: TreeDataNode[]) => void;
-  draggable?: boolean;
 }
 
 const TreeComponent: React.FC<TreeComponentProps> = ({
   data,
   defaultSelectedKey,
   loading = false,
+  draggable = false,
+  showAllMenu = false,
+  inputStyle = {},
+  style = { width: 200, height: 'calc(100vh - 146px)' },
   onNodeSelect,
   onNodeDrag,
-  draggable = false,
 }) => {
   const { t } = useTranslation();
   const [selectedKeys, setSelectedKeys] = useState<React.Key[]>([]);
@@ -42,9 +49,20 @@ const TreeComponent: React.FC<TreeComponentProps> = ({
 
   useEffect(() => {
     setOriginalTreeData(data);
-    setTreeData(data);
-    setExpandedKeys(data.map((item) => item.key));
+    const filteredData = filterAllMenu(data);
+    setTreeData(filteredData);
+    setExpandedKeys(filteredData.map((item) => item.key));
   }, [data]);
+
+  const filterAllMenu = (data: TreeItem[], searchValue: string = '') => {
+    if (!showAllMenu) {
+      return data.filter((item) => item.key !== 'all');
+    }
+    if (searchValue) {
+      return data.filter((item) => item.key !== 'all');
+    }
+    return data;
+  };
 
   const handleSelect = (selectedKeys: React.Key[], info: any) => {
     const isFirstLevel = !!info.node?.children?.length;
@@ -74,11 +92,46 @@ const TreeComponent: React.FC<TreeComponentProps> = ({
 
   const handleSearchTree = (value: string) => {
     if (!value) {
-      setTreeData(originalTreeData);
-    } else {
-      const filteredData = filterTree(originalTreeData, value);
+      const filteredData = filterAllMenu(originalTreeData);
       setTreeData(filteredData);
+      setExpandedKeys(filteredData.map((item) => item.key));
+      return;
     }
+    const filteredData = filterTree(originalTreeData, value);
+    const allMenuFilteredData = filterAllMenu(filteredData, value);
+    // 检查是否只有一级菜单匹配，如果是，则展开并显示所有子节点
+    const expandedFilteredData = allMenuFilteredData.map((item: any) => {
+      // 如果一级菜单匹配但没有子节点匹配到搜索条件，则显示所有子节点
+      const originalItem = originalTreeData.find(
+        (orig) => orig.key === item.key
+      );
+      if (
+        originalItem &&
+        item.title.toLowerCase().includes(value.toLowerCase()) &&
+        (!item.children || item.children.length === 0) &&
+        originalItem.children
+      ) {
+        return {
+          ...item,
+          children: originalItem.children,
+        };
+      }
+      return item;
+    });
+    setTreeData(expandedFilteredData);
+    // 自动展开所有包含匹配结果的一级节点
+    const keysToExpand: React.Key[] = [];
+    expandedFilteredData.forEach((item: any) => {
+      // 展开一级菜单匹配的节点
+      if (item.title.toLowerCase().includes(value.toLowerCase())) {
+        keysToExpand.push(item.key);
+      }
+      // 展开包含匹配子节点的一级节点
+      if (item.children && item.children.length > 0) {
+        keysToExpand.push(item.key);
+      }
+    });
+    setExpandedKeys(keysToExpand);
   };
 
   const onDrop: TreeProps['onDrop'] = (info) => {
@@ -172,26 +225,37 @@ const TreeComponent: React.FC<TreeComponentProps> = ({
   };
 
   return (
-    <div className="h-full">
+    <div
+      className={treeStyle.treeSelector}
+      style={{
+        ...style,
+        minWidth: style.width,
+      }}
+    >
       <Spin spinning={loading}>
         <Search
           className="mb-[10px]"
+          style={inputStyle}
           placeholder={t('common.searchPlaceHolder')}
           value={treeSearchValue}
           enterButton
           onChange={(e) => setTreeSearchValue(e.target.value)}
           onSearch={handleSearchTree}
         />
-        <Tree
-          showLine
-          draggable={draggable}
-          selectedKeys={selectedKeys}
-          expandedKeys={expandedKeys}
-          treeData={treeData}
-          onExpand={(keys) => setExpandedKeys(keys)}
-          onSelect={handleSelect}
-          onDrop={onDrop}
-        />
+        {treeData.length ? (
+          <Tree
+            showLine
+            draggable={draggable}
+            selectedKeys={selectedKeys}
+            expandedKeys={expandedKeys}
+            treeData={treeData}
+            onExpand={(keys) => setExpandedKeys(keys)}
+            onSelect={handleSelect}
+            onDrop={onDrop}
+          />
+        ) : (
+          <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} />
+        )}
       </Spin>
     </div>
   );

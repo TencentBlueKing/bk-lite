@@ -12,6 +12,8 @@ import { usePermissions } from '@/context/permissions';
 interface WithSideMenuLayoutProps {
   intro?: React.ReactNode;
   showBackButton?: boolean;
+  activeKeyword?: boolean;
+  keywordName?: string;
   onBackButtonClick?: () => void;
   children: React.ReactNode;
   topSection?: React.ReactNode;
@@ -31,6 +33,8 @@ const WithSideMenuLayout: React.FC<WithSideMenuLayoutProps> = ({
   topSection,
   showProgress,
   showSideMenu = true,
+  activeKeyword = false,
+  keywordName = '',
   layoutType = 'sideMenu',
   taskProgressComponent,
   pagePathName,
@@ -105,6 +109,8 @@ const WithSideMenuLayout: React.FC<WithSideMenuLayoutProps> = ({
               <SideMenu
                 menuItems={menuItems}
                 showBackButton={showBackButton}
+                activeKeyword={activeKeyword}
+                keywordName={keywordName}
                 showProgress={showProgress}
                 taskProgressComponent={taskProgressComponent}
                 onBackButtonClick={onBackButtonClick}

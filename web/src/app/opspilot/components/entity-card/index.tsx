@@ -24,6 +24,7 @@ interface EntityCardProps {
   skillType?: string;
   skill_type?: number;
   bot_type?: number;
+  botType?: string;
   permissions?: string[];
   onMenuClick: (action: string, entity: any) => void;
   redirectUrl: string;
@@ -42,6 +43,7 @@ const EntityCard: React.FC<EntityCardProps> = ({
   skillType,
   skill_type,
   bot_type,
+  botType,
   permissions,
   onMenuClick,
   redirectUrl,
@@ -109,7 +111,8 @@ const EntityCard: React.FC<EntityCardProps> = ({
     if (bot_type !== undefined) {
       const botTypeMap: { [key: number]: string } = {
         1: 'Copilot',
-        2: 'icon-192x192'
+        2: 'icon-192x192',
+        3: 'Chatflow'
       };
 
       return botTypeMap[bot_type] || iconTypeMapping[getStableRandom(id, iconTypeMapping.length)];
@@ -152,6 +155,11 @@ const EntityCard: React.FC<EntityCardProps> = ({
                       color={online ? 'green' : ''}
                       className={`${styles.statusTag} ${online ? styles.online : styles.offline} px-1 mr-2`}>
                       {online ? t('studio.on') : t('studio.off')}
+                    </Tag>
+                  )}
+                  {botType && (
+                    <Tag className="font-mini px-[2px] leading-inherit mr-2" color="gold">
+                      {botType}
                     </Tag>
                   )}
                   {modelName !== undefined && modelName && (

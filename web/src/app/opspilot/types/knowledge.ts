@@ -39,14 +39,8 @@ export interface ModelOption {
 }
 
 export interface ConfigDataProps {
-  selectedSearchTypes: string[];
   rerankModel: boolean;
   selectedRerankModel: string | null;
-  textSearchWeight: number;
-  vectorSearchWeight: number;
-  textSearchMode: string;
-  quantity: number;
-  candidate: number;
   selectedEmbedModel: string | null;
   resultCount: number | null;
   rerankTopK: number;
@@ -56,6 +50,10 @@ export interface ConfigDataProps {
   ragSize: number;
   qaSize: number;
   graphSize: number;
+  // New retrieval strategy fields
+  searchType: 'similarity_score_threshold' | 'mmr';
+  scoreThreshold: number;
+  ragRecallMode?: 'chunk' | 'segment';
 }
 
 export interface TableData {
@@ -86,6 +84,7 @@ export interface QAPairData {
   knowledge_base: number;
   llm_model: number;
   status: string;
+  create_type: string;
 }
 
 // 知识图谱相关类型定义
@@ -163,4 +162,65 @@ export interface TestKnowledgeResponse {
 export interface ConfigProps {
   configData: ConfigDataProps;
   setConfigData: React.Dispatch<React.SetStateAction<ConfigDataProps>>;
+}
+
+// QA对生成弹窗相关类型定义
+export interface GenerateQAPairModalProps {
+  onSuccess?: () => void;
+}
+
+export interface ModalConfig {
+  documentId: string;
+  selectedChunkIds: string[];
+  selectedChunks?: ChunkItem[];
+}
+
+export interface ModalRef {
+  showModal: (config: ModalConfig) => void;
+}
+
+export interface DocumentInfo {
+  knowledge_id: number;
+  name: string;
+  knowledge_base_id: number;
+  knowledge_source_type: string;
+}
+
+export interface FormData {
+  llmModel: number;
+  qaCount: number;
+}
+
+export interface ChunkItem {
+  id: string;
+  content: string;
+}
+
+// QAPairForm 相关类型定义
+export interface QAPairFormData {
+  questionLlmModel: number;
+  answerLlmModel: number;
+  qaCount: number;
+  questionPrompt: string;
+  answerPrompt: string;
+  selectedDocuments: string[];
+}
+
+export interface DocumentItem {
+  key: string;
+  title: string;
+  description?: string;
+  type?: string;
+}
+
+export interface QAPairFormProps {
+  initialData?: Partial<QAPairFormData>;
+  onFormChange?: (isValid: boolean) => void;
+  onFormDataChange?: (data: QAPairFormData) => void;
+}
+
+export interface PreviewQAPair {
+  question: string;
+  answer?: string;
+  content: string;
 }

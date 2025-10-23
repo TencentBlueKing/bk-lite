@@ -1,0 +1,170 @@
+/* 全局字体优化 - 提供现代化、清晰的字体体验 */
+
+/* 定义优化的字体变量 */
+:root {
+  /* 主字体栈 - 优先使用系统原生字体，确保最佳显示效果 */
+  --ifm-font-family-base: 
+    /* 苹果系统字体 */
+    -apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro Display",
+    /* 中文字体 - 苹果平方 */
+    "PingFang SC", "PingFang TC", 
+    /* Windows 系统字体 */
+    "Segoe UI", "Microsoft YaHei UI", "Microsoft YaHei",
+    /* 安卓系统字体 */
+    Roboto, "Noto Sans CJK SC", "Noto Sans",
+    /* 备用中文字体 */
+    "Hiragino Sans GB", "Source Han Sans SC", "WenQuanYi Micro Hei",
+    /* 通用字体 */
+    "Helvetica Neue", Arial, sans-serif,
+    /* emoji 字体 */
+    "Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji";
+  
+  /* 等宽字体栈 - 代码显示优化 */
+  --ifm-font-family-monospace: 
+    /* 苹果等宽字体 */
+    "SF Mono", "Monaco", "Menlo",
+    /* 编程专用字体 */
+    "Fira Code", "JetBrains Mono", "Source Code Pro",
+    /* 系统等宽字体 */
+    "Consolas", "Roboto Mono", "Ubuntu Mono",
+    /* 中文等宽字体 */
+    "PingFang SC", "Microsoft YaHei",
+    /* 备用字体 */
+    "Courier New", monospace;
+
+  /* 字体大小优化 */
+  --ifm-font-size-base: 16px;
+  --ifm-line-height-base: 1.6;
+  
+  /* 字重优化 */
+  --ifm-font-weight-light: 300;
+  --ifm-font-weight-normal: 400;
+  --ifm-font-weight-semibold: 500;
+  --ifm-font-weight-bold: 600;
+}
+
+/* 强制所有组件使用统一字体 - 覆盖所有自定义字体设置 */
+* {
+  font-family: var(--ifm-font-family-base) !important;
+}
+
+/* 代码相关元素使用等宽字体 */
+code,
+pre,
+.prism-code,
+kbd,
+samp,
+tt {
+  font-family: var(--ifm-font-family-monospace) !important;
+}
+
+/* 全局字体渲染优化 */
+html {
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+  font-feature-settings: "liga" 1, "kern" 1;
+  font-variant-ligatures: common-ligatures;
+  font-variant-numeric: proportional-nums;
+}
+
+/* 确保所有文本元素都使用统一的字体和渲染 */
+* {
+  font-family: var(--ifm-font-family-base) !important;
+}
+
+body,
+h1, h2, h3, h4, h5, h6,
+p, span, div, a, li, td, th,
+button, input, textarea, select,
+.navbar__title, .navbar__item, .navbar__link,
+.menu__link, .menu__list-item,
+.footer, .footer__link {
+  font-synthesis: weight style;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* 导航栏字体优化 */
+.navbar__title,
+.navbar__item,
+.navbar__link {
+  font-weight: var(--ifm-font-weight-semibold) !important;
+  letter-spacing: -0.01em;
+}
+
+/* 菜单字体优化 */
+.menu__link {
+  font-weight: var(--ifm-font-weight-normal) !important;
+  font-size: 0.95rem;
+}
+
+.menu__link--active {
+  font-weight: var(--ifm-font-weight-semibold) !important;
+}
+
+/* 标题字体优化 */
+h1, h2, h3, h4, h5, h6 {
+  font-weight: var(--ifm-font-weight-bold) !important;
+  letter-spacing: -0.02em;
+  line-height: 1.3;
+}
+
+h1 { font-size: 2.5rem; }
+h2 { font-size: 2rem; }
+h3 { font-size: 1.5rem; }
+h4 { font-size: 1.25rem; }
+h5 { font-size: 1.125rem; }
+h6 { font-size: 1rem; }
+
+/* 代码字体优化 */
+code,
+pre,
+.prism-code,
+kbd,
+samp {
+  font-family: var(--ifm-font-family-monospace) !important;
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum" 1, "liga" 1;
+}
+
+/* 确保 Docusaurus 组件使用统一字体 */
+.navbar,
+.footer,
+.menu,
+.main-wrapper,
+.sidebar,
+.breadcrumbs,
+.pagination,
+.table-of-contents {
+  font-family: var(--ifm-font-family-base) !important;
+}
+
+/* 移动端字体优化 */
+@media (max-width: 768px) {
+  html {
+    -webkit-text-size-adjust: 100%;
+    -moz-text-size-adjust: 100%;
+  }
+  
+  /* 移动端字体大小调整 */
+  .navbar__title {
+    font-size: 1.1rem !important;
+  }
+  
+  .menu__link {
+    font-size: 0.9rem !important;
+  }
+  
+  h1 { font-size: 2rem; }
+  h2 { font-size: 1.75rem; }
+  h3 { font-size: 1.375rem; }
+}
+
+/* 高分辨率屏幕优化 */
+@media (-webkit-min-device-pixel-ratio: 2), (min-resolution: 192dpi) {
+  * {
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+}

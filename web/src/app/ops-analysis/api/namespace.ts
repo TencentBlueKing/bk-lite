@@ -7,6 +7,10 @@ export const useNamespaceApi = () => {
     return get('/operation_analysis/api/namespace/', { params });
   };
 
+  const getTagList = async (params?: any) => {
+    return get('/operation_analysis/api/tag/', { params });
+  };
+
   const createNamespace = async (data: {
     name: string;
     account: string;
@@ -41,6 +45,7 @@ export const useNamespaceApi = () => {
 
   return {
     getNamespaceList,
+    getTagList,
     createNamespace,
     updateNamespace,
     deleteNamespace,

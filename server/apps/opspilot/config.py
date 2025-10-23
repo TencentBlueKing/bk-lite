@@ -22,6 +22,6 @@ OPSPILOT_WEB_URL = os.getenv("OPSPILOT_WEB_URL", "https://ops-pilot.canway.net/"
 
 # 运行时环境配置，kubernetes 或 docker
 PILOT_RUNTIME = os.getenv("PILOT_RUNTIME", "kubernetes")
-
+LAB_RUNTIME = os.getenv("LAB_RUNTIME", "kubernetes")
 
 LOGIN_URL = os.getenv("LOGIN_URL", "http://bklite-server:8000/api/v1/core/api/login/")

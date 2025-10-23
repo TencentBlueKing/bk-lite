@@ -48,10 +48,10 @@ const ShieldStrategy: React.FC = () => {
 
   const handleDelete = async (row: AlertShieldListItem) => {
     Modal.confirm({
-      title: t('deleteTitle'),
-      content: t('deleteContent'),
-      okText: t('confirm'),
-      cancelText: t('cancel'),
+      title: t('common.delConfirm'),
+      content: t('common.delConfirmCxt'),
+      okText: t('common.confirm'),
+      cancelText: t('common.cancel'),
       centered: true,
       onOk: async () => {
         try {

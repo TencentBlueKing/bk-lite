@@ -1,7 +1,7 @@
 import logging
 import time
 
-from apps.opspilot.bot_mgmt.models import Bot
+from apps.opspilot.models import Bot
 from apps.opspilot.utils.rasa_app.docker_client import DockerClient
 
 logger = logging.getLogger(__name__)

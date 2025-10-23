@@ -2,7 +2,6 @@
 import OperateModal from '@/components/operate-modal';
 import { useState, useImperativeHandle, forwardRef } from 'react';
 import { useTranslation } from '@/utils/i18n';
-// import { exportToCSV } from '@/app/mlops/utils/common';
 import { Upload, Button, message, type UploadFile, type UploadProps, Switch } from 'antd';
 import { InboxOutlined } from '@ant-design/icons';
 import { ModalConfig, ModalRef, TableData } from '@/app/mlops/types';
@@ -13,21 +12,6 @@ const { Dragger } = Upload;
 interface UploadModalProps {
   onSuccess: () => void
 }
-
-// interface SampleFile {
-//   id: number; // 文件ID
-//   capability: number; // 能力演示id
-//   name: string, // 文件名称
-//   created_at: string, // 创建时间,
-//   created_by: string; // 创建者
-//   train_data: [
-//     {
-//       timestamp: string;
-//       value: number;
-//     }
-//   ], // 文件数据
-//   is_active: boolean; // 是否启用
-// }
 
 const SampleManageModal = forwardRef<ModalRef, UploadModalProps>(({ onSuccess }, ref) => {
   const { t } = useTranslation();
@@ -102,8 +86,6 @@ const SampleManageModal = forwardRef<ModalRef, UploadModalProps>(({ onSuccess },
         is_active: checked,
       };
       await createSampleFile(params);
-      console.log(params);
-      setConfirmLoading(false);
       setVisiable(false);
       message.success(t('datasets.uploadSuccess'));
       onSuccess();
@@ -153,7 +135,6 @@ const SampleManageModal = forwardRef<ModalRef, UploadModalProps>(({ onSuccess },
         </p>
         <p className="ant-upload-text">{t('datasets.uploadText')}</p>
       </Dragger>
-      {/* <p>{t('datasets.downloadText')}<Button type='link' onClick={downloadTemplate}>{t('datasets.template')}</Button></p> */}
     </OperateModal>
   )
 });

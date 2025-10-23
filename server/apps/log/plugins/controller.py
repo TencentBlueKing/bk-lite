@@ -1,36 +1,22 @@
 import os
 import uuid
+import json
 
 from jinja2 import Environment, FileSystemLoader, DebugUndefined
 
 from apps.core.exceptions.base_app_exception import BaseAppException
-from apps.log.models import CollectConfig, Stream, StreamCollectInstance
+from apps.log.models import CollectConfig
 from apps.log.plugins import PLUGIN_DIRECTORY
-from apps.log.utils.stream import StreamUtils
 from apps.rpc.node_mgmt import NodeMgmt
 
 
 class Controller:
     def __init__(self, data):
         self.data = data
-        self.inst_streams_map = self.get_stream_rules()
 
-    def get_stream_rules(self):
-        """ 获取实例对应的流规则映射。"""
-        instance_ids = [instance["instance_id"] for instance in self.data["instances"]]
-        assos = StreamCollectInstance.objects.filter(collect_instance_id__in=instance_ids)
-        stream_map = dict(Stream.objects.filter(id__in=[asso.stream_id for asso in assos]).values_list("id", "rule"))
-        stream_map = {k: StreamUtils.json_to_jq_expression(v) for k, v in stream_map.items()}
-        assos_map = {}
-        for asso in assos:
-            if asso.collect_instance_id not in assos_map:
-                assos_map[asso.collect_instance_id] = {}
-            assos_map[asso.collect_instance_id][asso.stream_id] = {
-                    "stream_id": asso.stream_id,
-                    "condition": stream_map[asso.stream_id],
-                }
-
-        return {k: v.values() for k, v in assos_map.items()}
+    def tls_context(self, node_id):
+        context = NodeMgmt().cloudregion_tls_env_by_node_id(node_id)
+        return context
 
     def get_template_info_by_type(self, template_dir: str, type_name: str):
         """
@@ -57,7 +43,7 @@ class Controller:
             })
         return result
 
-    def render_template(self, template_dir: str, file_name: str, context: dict, stream_rules=None):
+    def render_template(self, template_dir: str, file_name: str, context: dict):
         """
         渲染指定目录下的 j2 模板文件。
 
@@ -66,8 +52,11 @@ class Controller:
         :return: 渲染后的配置字符串
         """
         _context = {**context}
-        _context.update(streams=stream_rules or [])
         env = Environment(loader=FileSystemLoader(template_dir), undefined=DebugUndefined)
+
+        # 添加 to_json 过滤器
+        env.filters['to_json'] = lambda obj: json.dumps(obj, ensure_ascii=False)
+
         template = env.get_template(file_name)
         return template.render(_context)
 
@@ -85,6 +74,11 @@ class Controller:
                     configs.append(_config)
         return configs
 
+    def get_child_config_sort_order(self, collect_type: str):
+        """ 获取子配置的排序顺序, 用于配置渲染顺序 """
+        sort_order = 1 if collect_type == "flows" else 0
+        return sort_order
+
     def controller(self):
         base_dir = PLUGIN_DIRECTORY
         configs = self.format_configs()
@@ -93,21 +87,24 @@ class Controller:
             template_dir = os.path.join(base_dir, config_info["collector"], config_info["collect_type"])
             templates = self.get_template_info_by_type(template_dir, config_info["collect_type"])
             env_config = {k[4:]: v for k, v in config_info.items() if k.startswith("ENV_")}
+            tls_context = self.tls_context(config_info["node_id"])
             for template in templates:
                 is_child = True if template["config_type"] == "child" else False
-                collector_name = "Vector" if is_child else config_info["collector"]
+                # 采集器名称
+                # collector_name = "Vector" if is_child else config_info["collector"]
+                collector_name = config_info["collector"]
                 config_id = str(uuid.uuid4().hex)
                 # 生成配置
-                stream_rules = self.inst_streams_map.get(config_info["instance_id"])
                 template_config = self.render_template(
                     template_dir,
                     f"{template['type']}.{template['config_type']}.{template['file_type']}.j2",
-                    config_info,
-                    stream_rules
+                    {**tls_context, **config_info, "config_id": config_id.upper()},
                 )
 
                 # 节点管理创建配置
                 if is_child:
+                    # 子配置环境变量加上config_id作后缀，确保环境变量名为大写
+                    child_env_config = {f"{k.upper()}__{config_id.upper()}": v for k, v in env_config.items()}
                     node_child_config = dict(
                         id=config_id,
                         collect_type=config_info["collect_type"],
@@ -115,7 +112,8 @@ class Controller:
                         content=template_config,
                         node_id=config_info["node_id"],
                         collector_name=collector_name,
-                        env_config=env_config,
+                        env_config=child_env_config,
+                        sort_order=self.get_child_config_sort_order(config_info["collect_type"]),
                     )
                     node_child_configs.append(node_child_config)
                 else:
@@ -162,14 +160,11 @@ class Controller:
         if template is None:
             raise BaseAppException(f"No matching template found for {self.data['collect_type']} with file type {file_type}")
 
-        stream_rules = self.inst_streams_map.get(instance_id, [])
-
         # 生成配置
         content = self.render_template(
             template_dir,
             f"{template['type']}.{template['config_type']}.{template['file_type']}.j2",
             {"instance_id": instance_id,  **context_data},
-            stream_rules
         )
 
         return content

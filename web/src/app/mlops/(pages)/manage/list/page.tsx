@@ -23,14 +23,28 @@ const { confirm } = Modal;
 const DatasetManagePage = () => {
   const { t } = useTranslation();
   const router = useRouter();
-  const { deleteAnomalyDatasets, getAnomalyDatasetsList } = useMlopsManageApi();
+  const {
+    deleteAnomalyDatasets,
+    deleteRasaDatasets,
+    getAnomalyDatasetsList,
+    getRasaDatasetsList,
+    getLogClusteringList,
+    getTimeSeriesPredictList,
+    getClassificationDatasetsList,
+    deleteLogClustering,
+    deleteTimeSeriesPredict,
+    deleteClassificationDataset,
+  } = useMlopsManageApi();
   const [datasets, setDatasets] = useState<DataSet[]>([]);
   const [loading, setLoading] = useState<boolean>(false);
   const [selectedKeys, setSelectedKeys] = useState<string[]>([]);
   const modalRef = useRef<ModalRef>(null);
-  const activeTab = 'anomaly';
   const datasetTypes = [
     { key: 'anomaly', value: 'anomaly', label: t('datasets.anomaly') },
+    { key: 'rasa', value: 'rasa', label: t('datasets.rasa') },
+    { key: 'log_clustering', value: 'log_clustering', label: t('datasets.logClustering') },
+    { key: 'timeseries_predict', value: 'timeseries_predict', label: t('datasets.timeseriesPredict') },
+    { key: 'classification', value: 'classification', label: t('datasets.classification') }
   ];
 
   const treeData: TreeDataNode[] = [
@@ -43,17 +57,49 @@ const DatasetManagePage = () => {
           title: t(`datasets.anomaly`),
           key: 'anomaly',
         },
+        {
+          title: t(`datasets.rasa`),
+          key: 'rasa',
+        },
+        {
+          title: t(`datasets.timeseriesPredict`),
+          key: 'timeseries_predict',
+        },
+        {
+          title: t(`datasets.logClustering`),
+          key: 'log_clustering',
+        },
+        {
+          title: '分类任务',
+          key: 'classification'
+        }
       ]
-    }
+    },
   ];
 
   useEffect(() => {
-    setSelectedKeys(['anomaly'])
+    setSelectedKeys(['anomaly']);
   }, []);
 
   useEffect(() => {
     getDataSets();
-  }, [selectedKeys])
+  }, [selectedKeys]);
+
+  const handleGetDatasetsMap: Record<string, any> = {
+    'anomaly': getAnomalyDatasetsList,
+    'rasa': getRasaDatasetsList,
+    'log_clustering': getLogClusteringList,
+    'timeseries_predict': getTimeSeriesPredictList,
+    'classification': getClassificationDatasetsList
+  };
+
+  const handleDelDatasetsMap: Record<string, any> = {
+    'anomaly': deleteAnomalyDatasets,
+    'rasa': deleteRasaDatasets,
+    'log_clustering': deleteLogClustering,
+    'timeseries_predict': deleteTimeSeriesPredict,
+    'classification': deleteClassificationDataset
+  };
 
 
   const getDataSets = useCallback(async () => {
@@ -61,22 +107,17 @@ const DatasetManagePage = () => {
     if (!activeTab) return;
     setLoading(true);
     try {
-      if (activeTab === 'anomaly') {
-        const data = await getAnomalyDatasetsList({ page: 1, page_size: -1 });
-        const _data: DataSet[] = data?.map((item: any) => {
-          return {
-            id: item.id,
-            name: item.name,
-            description: item.description || '--',
-            icon: 'tucengshuju',
-            creator: item?.created_by || '--',
-            tenant_id: item.tenant_id
-          }
-        }) || [];
-        setDatasets(_data);
-      } else {
-        setDatasets([]);
-      }
+      const data = await handleGetDatasetsMap[activeTab]({ page: 1, page_size: -1 });
+      const _data: DataSet[] = data?.map((item: any) => {
+        return {
+          id: item.id,
+          name: item.name,
+          description: item.description || '--',
+          icon: 'tucengshuju',
+          creator: item?.created_by || '--',
+        }
+      }) || [];
+      setDatasets(_data);
     } catch (e) {
       console.log(e);
     } finally {
@@ -85,8 +126,9 @@ const DatasetManagePage = () => {
   }, [selectedKeys]);
 
   const navigateToNode = (item: any) => {
+    const [activeTab] = selectedKeys;
     router.push(
-      `/mlops/manage/detail?folder_id=${item?.id}&folder_name=${item.name}&description=${item.description}&activeTap=${activeTab}`
+      `/mlops/manage/detail?folder_id=${item?.id}&folder_name=${item.name}&description=${item.description}&activeTap=${activeTab}&menu=${activeTab === 'rasa' ? 'intent' : ''}`
     );
   };
 
@@ -98,7 +140,8 @@ const DatasetManagePage = () => {
       cancelText: t('common.cancel'),
       onOk: async () => {
         try {
-          await deleteAnomalyDatasets(id);
+          const [activeTab] = selectedKeys;
+          await handleDelDatasetsMap[activeTab](id);
           message.success(t('common.delSuccess'));
         } catch (e) {
           console.log(e);
@@ -131,30 +174,17 @@ const DatasetManagePage = () => {
       <Menu onClick={(e) => e.domEvent.preventDefault()}>
         <Menu.Item
           className="!p-0"
-          onClick={() =>
-            handleOpenModal({ title: 'editform', type: 'edit', form: item })
-          }
+          onClick={() => handleOpenModal({ title: 'editform', type: 'edit', form: item })}
         >
-          <PermissionWrapper
-            requiredPermissions={['Edit']}
-            className="!block"
-          >
+          <PermissionWrapper requiredPermissions={['Edit']} className="!block" >
             <Button type="text" className="w-full">
               {t(`common.edit`)}
             </Button>
           </PermissionWrapper>
         </Menu.Item>
         {item?.name !== "default" && (
-          <Menu.Item
-            className="!p-0"
-            onClick={() =>
-              handleDelete(item.id)
-            }
-          >
-            <PermissionWrapper
-              requiredPermissions={['Delete']}
-              className="!block"
-            >
+          <Menu.Item className="!p-0" onClick={() => handleDelete(item.id)}>
+            <PermissionWrapper requiredPermissions={['Delete']} className="!block" >
               <Button type="text" className="w-full">
                 {t(`common.delete`)}
               </Button>
@@ -165,9 +195,7 @@ const DatasetManagePage = () => {
     )
   };
 
-  const topSection = (
-    <TopSection title={t('datasets.datasets')} content={t('traintask.description')} />
-  );
+  const topSection = (<TopSection title={t('datasets.datasets')} content={t('traintask.description')} />);
 
   const leftSection = (
     <div className='w-full'>

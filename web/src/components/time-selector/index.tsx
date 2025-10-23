@@ -198,7 +198,7 @@ const TimeSelector = forwardRef((props: TimeSelectorProps, ref) => {
             style={{
               zIndex: rangePickerOpen || selectValue == 0 ? 1 : -1,
             }}
-            className={`${timeSelectorStyle.rangePicker} ${className || ''}`}
+            className={`w-[350px] ${timeSelectorStyle.rangePicker} ${className || ''}`}
             open={rangePickerOpen}
             showTime={showTime}
             format={format}

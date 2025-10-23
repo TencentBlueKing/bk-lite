@@ -11,7 +11,9 @@ export interface DatasourceItem {
   desc: string;
   is_active: boolean;
   params: ParamItem[];
-  namespaces?: number[];
+  chart_type: any[];
+  namespaces: number[];
+  tag: any[];
 }
 
 export interface OperateModalProps {
@@ -22,14 +24,13 @@ export interface OperateModalProps {
 }
 
 export interface ParamItem {
+  id?: string;
   name: string;
   value: any;
   alias_name: string;
-  type?: string; 
+  type?: string;
   filterType?: string;
-  id?: string;
   desc?: string;
   required?: boolean;
-  options?: Array<{ label: string; value: any }>;
-  userValue?: any; // 用户配置的参数值
+  options?: any[];
 }

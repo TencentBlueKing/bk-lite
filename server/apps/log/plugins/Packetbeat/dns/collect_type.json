@@ -1,0 +1,37 @@
+{
+  "name": "dns",
+  "collector": "Packetbeat",
+  "icon": "dns_protocol",
+  "description": "Monitors DNS queries and responses for network security analysis, domain resolution tracking, and DNS performance monitoring",
+  "default_query": "collect_type: dns | stats count by dns_query_type, dns_response_code | sort by count desc",
+  "attrs": [
+    "collect_type",
+    "collector",
+    "instance_id",
+    "dns.flags.authoritative",
+    "dns.flags.recursion_available",
+    "dns.flags.recursion_desired",
+    "dns.flags.authentic_data",
+    "dns.flags.checking_disabled",
+    "dns.flags.truncated_response",
+    "dns.question.etld_plus_one",
+    "dns.answers_count",
+    "dns.authorities",
+    "dns.authorities_count",
+    "dns.authorities.name",
+    "dns.authorities.type",
+    "dns.authorities.class",
+    "dns.additionals",
+    "dns.additionals_count",
+    "dns.additionals.name",
+    "dns.additionals.type",
+    "dns.additionals.class",
+    "dns.additionals.ttl",
+    "dns.additionals.data",
+    "dns.opt.version",
+    "dns.opt.do",
+    "dns.opt.ext_rcode",
+    "dns.opt.udp_size"
+]
+}
+

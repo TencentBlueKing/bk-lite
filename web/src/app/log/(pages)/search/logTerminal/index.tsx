@@ -7,7 +7,7 @@ import React, {
   forwardRef,
   useImperativeHandle,
 } from 'react';
-import { Button, Tooltip } from 'antd';
+import { Button, message, Tooltip } from 'antd';
 import {
   FullscreenOutlined,
   FullscreenExitOutlined,
@@ -20,6 +20,7 @@ import terminalstyles from './index.module.scss';
 import { useAuth } from '@/context/auth';
 import useApiClient from '@/utils/request';
 import { useTranslation } from '@/utils/i18n';
+import { isJSON } from '@/app/log/utils/common';
 
 const LogTerminal = forwardRef<LogTerminalRef, LogTerminalProps>(
   ({ query, className = '', fetchData }, ref) => {
@@ -38,6 +39,7 @@ const LogTerminal = forwardRef<LogTerminalRef, LogTerminalProps>(
     );
     const containerRef = useRef<HTMLDivElement>(null);
     const abortControllerRef = useRef<AbortController | null>(null);
+    const MAX_LOGS_COUNT = 1000; //终端最多展示多少条日志
 
     // 自动滚动到底部
     const scrollToBottom = useCallback(() => {
@@ -97,6 +99,15 @@ const LogTerminal = forwardRef<LogTerminalRef, LogTerminalProps>(
       setIsPaused((prev) => !prev);
     }, []);
 
+    const updateLogs = (list: string) => {
+      setLogs((prevLogs) => {
+        const logList = [...prevLogs, list];
+        const length = logList.length;
+        if (length <= MAX_LOGS_COUNT) return logList;
+        return logList.slice(length - MAX_LOGS_COUNT, length);
+      });
+    };
+
     // 开始日志流
     const startLogStream = useCallback(async () => {
       // 先停止当前流和清除日志
@@ -105,11 +116,18 @@ const LogTerminal = forwardRef<LogTerminalRef, LogTerminalProps>(
       if (isStreaming.current) return;
       try {
         isStreaming.current = true;
+        // 构建查询参数
+        const groups = query.log_groups || [];
+        const queryParams = new URLSearchParams({
+          query: query.query || '*',
+          log_groups: groups.join(','),
+        });
+        if (!groups?.length) {
+          return message.error(t('log.search.searchError'));
+        }
         // 创建AbortController用于取消请求
         const abortController = new AbortController();
         abortControllerRef.current = abortController;
-        // 构建查询参数
-        const queryParams = new URLSearchParams({ query });
         // 直接使用fetch来处理EventStream，使用GET请求
         fetchData?.(true);
         const response = await fetch(
@@ -139,31 +157,30 @@ const LogTerminal = forwardRef<LogTerminalRef, LogTerminalProps>(
         while (!abortController.signal.aborted) {
           try {
             const { done, value } = await reader.read();
-            if (done) {
-              break;
-            }
+            if (done) break;
             const chunk = decoder.decode(value, { stream: true });
-            // 处理Server-Sent Events格式的数据
-            const lines = chunk.split('\n');
+            const lines = chunk.split('data:');
             for (const line of lines) {
               const trimmed = line.trim();
-              // 跳过空行和SSE协议行
-              if (!trimmed) {
+              // 跳过空行和心跳检测
+              if (!trimmed || trimmed.startsWith(':')) {
                 continue;
               }
+              // 处理SSE格式数据
               try {
-                let logContent = trimmed;
-                const msgMatch = trimmed.match(/"_msg"\s*:\s*"(.*?)",/);
-                if (msgMatch && msgMatch[1]) {
-                  logContent = msgMatch[1];
+                if (isJSON(trimmed)) {
+                  // 尝试解析JSON
+                  const logData = JSON.parse(trimmed);
+                  const msg = logData._msg || trimmed;
+                  updateLogs(msg);
+                } else {
+                  const msgMatch = trimmed.match(/"_msg"\s*:\s*"(.*?)",/);
+                  if (msgMatch?.[1]) {
+                    updateLogs(msgMatch[1]);
+                  }
                 }
-                setLogs((prevLogs) => {
-                  return [...prevLogs, logContent];
-                });
               } catch {
-                setLogs((prevLogs) => {
-                  return [...prevLogs, trimmed];
-                });
+                console.log('error', trimmed);
               }
             }
           } catch (error: any) {

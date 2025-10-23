@@ -71,6 +71,12 @@ const CommonForm: React.FC<CommonFormProps> = ({ form, modelOptions, initialValu
       title: t('studio.lobeChat'),
       desc: t('studio.lobeChatDesc'),
       icon: 'icon-192x192'
+    },
+    {
+      key: 3,
+      title: t('studio.chatflow'),
+      desc: t('studio.chatflowDesc'),
+      icon: 'Chatflow'
     }
   ];
 
@@ -142,13 +148,13 @@ const CommonForm: React.FC<CommonFormProps> = ({ form, modelOptions, initialValu
 
   const renderBotTypeSelector = () => {
     return (
-      <div className="grid grid-cols-2 gap-4">
+      <div className="grid grid-cols-3 gap-4">
         {botTypeOptions.map((option) => (
           <div
             key={option.key}
             className={`
               relative cursor-pointer rounded-lg border-2 p-4 transition-all duration-200
-              ${selectedBotType === option.key ? 'border-blue-500 bg-blue-50' : 'border-gray-200 bg-white hover:border-gray-300'}
+              ${selectedBotType === option.key ? 'border-blue-500 bg-blue-50' : 'border-[var(--color-border-2)] hover:border-[var(--color-border-1)]'}
             `}
             onClick={() => handleBotTypeSelection(option.key)}
           >

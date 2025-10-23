@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { Form, Input, Select, Button, Switch, Dropdown, Menu, Tag, Checkbox, message, Spin, InputNumber } from 'antd';
 import { useTranslation } from '@/utils/i18n';
 import { DeleteOutlined, DownOutlined, CheckOutlined } from '@ant-design/icons';
@@ -15,6 +15,8 @@ import PermissionWrapper from '@/components/permission';
 import styles from '@/app/opspilot/styles/common.module.scss';
 import Icon from '@/components/icon';
 import { useStudioApi } from '@/app/opspilot/api/studio';
+import ChatflowSettings from '@/app/opspilot/components/studio/chatflowSettings';
+import { useUnsavedChanges } from '@/app/opspilot/hooks/useUnsavedChanges';
 
 const { Option } = Select;
 const { TextArea } = Input;
@@ -39,6 +41,13 @@ const StudioSettingsPage: React.FC = () => {
   const [botPermissions, setBotPermissions] = useState<string[]>([]);
   const [online, setOnline] = useState(false);
   const [botType, setBotType] = useState<number>(1);
+  // Move workflow data state to top level
+  const [workflowData, setWorkflowData] = useState<{ nodes: any[], edges: any[] }>({ nodes: [], edges: [] });
+
+  // Track unsaved changes for workflow
+  const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
+  const [originalWorkflowData, setOriginalWorkflowData] = useState<{ nodes: any[], edges: any[] }>({ nodes: [], edges: [] });
+
   const searchParams = useSearchParams();
   const botId = searchParams ? searchParams.get('id') : null;
   const { fetchInitialData, saveBotConfig, toggleOnlineStatus } = useStudioApi();
@@ -64,6 +73,31 @@ const StudioSettingsPage: React.FC = () => {
 
         const currentBotType = botData.bot_type || 1;
         setBotType(currentBotType);
+
+        // Handle workflow data for workflow bot type
+        if (currentBotType === 3 && botData.workflow_data) {
+          console.log('Detected workflow bot type, workflow_data:', botData.workflow_data);
+          
+          // Ensure workflow_data is in correct format
+          if (botData.workflow_data && typeof botData.workflow_data === 'object') {
+            const { nodes = [], edges = [] } = botData.workflow_data;
+            
+            // Validate nodes and edges data are arrays
+            if (Array.isArray(nodes) && Array.isArray(edges)) {
+              console.log('Setting workflow data - nodes:', nodes.length, 'edges:', edges.length);
+              setWorkflowData({ nodes, edges });
+            } else {
+              console.warn('Workflow data format incorrect, nodes or edges are not arrays:', { nodes, edges });
+              setWorkflowData({ nodes: [], edges: [] });
+            }
+          } else {
+            console.log('Workflow bot type but no valid data, setting to empty');
+            setWorkflowData({ nodes: [], edges: [] });
+          }
+        } else {
+          // Non-workflow type, clear workflow data
+          setWorkflowData({ nodes: [], edges: [] });
+        }
 
         let initialRasaModel = botData.rasa_model;
         if (!initialRasaModel && rasaModelsData.length > 0) {
@@ -105,6 +139,17 @@ const StudioSettingsPage: React.FC = () => {
 
     fetchData();
   }, [botId]);
+
+  // Initialize original workflow data when page loads
+  useEffect(() => {
+    if (!pageLoading && botType === 3) {
+      setOriginalWorkflowData({ 
+        nodes: [...workflowData.nodes], 
+        edges: [...workflowData.edges] 
+      });
+      setHasUnsavedChanges(false);
+    }
+  }, [pageLoading, botType]);
 
   const handleAddSkill = () => setIsSkillModalVisible(true);
   const handleDeleteSkill = (id: number) => setSelectedSkills(prev => prev.filter(item => item !== id));
@@ -262,6 +307,175 @@ const StudioSettingsPage: React.FC = () => {
     });
   };
 
+  // Move chatflow related functions to top level
+  const handleClearCanvas = () => {
+    console.log('Clear canvas operation started');
+    const emptyWorkflowData = { nodes: [], edges: [] };
+    setWorkflowData(emptyWorkflowData);
+    
+    // Check if clearing makes data different from original
+    const originalDataStr = JSON.stringify(originalWorkflowData);
+    const emptyDataStr = JSON.stringify(emptyWorkflowData);
+    const isChanged = originalDataStr !== emptyDataStr;
+    setHasUnsavedChanges(isChanged);
+    
+    console.log('Clear canvas operation completed, unsaved:', isChanged);
+    message.success('Canvas cleared');
+  };
+
+  const handleSaveWorkflow = useCallback((newWorkflowData: { nodes: any[], edges: any[] }) => {
+    console.log('StudioSettingsPage: Workflow data updated', newWorkflowData);
+    
+    // Update workflow data
+    setWorkflowData(prev => {
+      const prevDataStr = JSON.stringify(prev);
+      const newDataStr = JSON.stringify(newWorkflowData);
+      
+      if (prevDataStr !== newDataStr) {
+        // Check if data has changed from original
+        const originalDataStr = JSON.stringify(originalWorkflowData);
+        const isChanged = newDataStr !== originalDataStr;
+        setHasUnsavedChanges(isChanged);
+        
+        console.log('StudioSettingsPage: Workflow data changed, unsaved:', isChanged);
+        return { nodes: [...newWorkflowData.nodes], edges: [...newWorkflowData.edges] };
+      }
+      
+      return prev;
+    });
+  }, [originalWorkflowData]);
+
+  const handleChatflowSave = async (isPublish = false) => {
+    setSaveLoading(true);
+    try {
+      const values = await form.validateFields();
+
+      console.log('handleChatflowSave: Preparing to save workflow data', {
+        nodesLength: workflowData.nodes.length,
+        edgesLength: workflowData.edges.length,
+        workflowData: workflowData,
+        isPublish
+      });
+
+      const payload = {
+        name: values.name,
+        introduction: values.introduction,
+        team: values.group,
+        workflow_data: workflowData,
+        is_publish: isPublish
+      };
+
+      console.log('handleChatflowSave: Complete payload being sent to backend', payload);
+
+      await saveBotConfig(botId, payload);
+      
+      // Reset unsaved changes status after successful save
+      setOriginalWorkflowData({ 
+        nodes: [...workflowData.nodes], 
+        edges: [...workflowData.edges] 
+      });
+      setHasUnsavedChanges(false);
+      
+      message.success(t(isPublish ? 'common.publishSuccess' : 'common.saveSuccess'));
+      
+      if (isPublish) {
+        setOnline(true);
+      }
+    } catch (error) {
+      console.error('handleChatflowSave: Save failed', error);
+      message.error(t('common.saveFailed'));
+    } finally {
+      setSaveLoading(false);
+    }
+  };
+
+  // Setup unsaved changes warning
+  useUnsavedChanges({
+    hasUnsavedChanges: botType === 3 && hasUnsavedChanges,
+    onSave: async () => {
+      await handleChatflowSave(false);
+    },
+    message: t('chatflow.unsavedWorkflowChanges')
+  });
+
+  // Move chatflowMenu to top level
+  const chatflowMenu = (
+    <Menu style={{ width: 300 }}>
+      <Menu.Item key="info" disabled style={{ whiteSpace: 'normal', opacity: 1, cursor: 'default' }}>
+        <div className="text-sm">{t('studio.settings.publishTip')} {t('studio.settings.selectedParams')}</div>
+      </Menu.Item>
+      <Menu.Divider />
+      <Menu.Item key="save_publish">
+        <PermissionWrapper 
+          className='w-full' 
+          requiredPermissions={['Save&Publish']} 
+          instPermissions={botPermissions}>
+          <Button type="primary" size="small" style={{ width: '100%' }} onClick={() => handleChatflowSave(true)}>
+            {t('common.save')} & {t('common.publish')}
+          </Button>
+        </PermissionWrapper>
+      </Menu.Item>
+      <Menu.Item key="save_only">
+        <PermissionWrapper 
+          className='w-full' 
+          requiredPermissions={['Edit']} 
+          instPermissions={botPermissions}>
+          <Button size="small" style={{ width: '100%' }} onClick={() => handleChatflowSave(false)}>
+            {t('common.saveOnly')}
+          </Button>
+        </PermissionWrapper>
+      </Menu.Item>
+      {online && (
+        <Menu.Item key="offline" onClick={toggleOnline}>
+          <div className="flex justify-end items-center">
+            <span className="mr-[5px] text-gray-500">{t('studio.off')}</span>
+            <Icon type="offline" />
+          </div>
+        </Menu.Item>
+      )}
+    </Menu>
+  );
+
+  // Render chatflow interface for bot_type 3
+  if (botType === 3) {
+    return (
+      <div className="relative flex w-full h-full">
+        {(pageLoading || saveLoading) && (
+          <div
+            className={`absolute inset-0 flex justify-center items-center min-h-[500px] ${overlayBgClass} bg-opacity-50 z-50`}>
+            <Spin size="large" />
+          </div>
+        )}
+        {!pageLoading && (
+          <div className="w-full flex flex-col h-full">
+            <div className="absolute top-0 right-0 flex items-center space-x-4 z-10">
+              <Tag
+                color={online ? 'green' : ''}
+                className={`${styles.statusTag} ${online ? styles.online : styles.offline}`}
+              >
+                {online ? t('studio.on') : t('studio.off')}
+              </Tag>
+              <Dropdown overlay={chatflowMenu} trigger={['click']}>
+                <Button icon={<DownOutlined />} size="small" type="primary">
+                  {t('common.settings')}
+                </Button>
+              </Dropdown>
+            </div>
+            
+            <ChatflowSettings 
+              form={form}
+              groups={groups}
+              onClear={handleClearCanvas}
+              onSaveWorkflow={handleSaveWorkflow}
+              workflowData={workflowData}
+            />
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  // Original interface for bot_type 1 and 2
   return (
     <div className="relative flex w-full">
       {(pageLoading || saveLoading) && (
@@ -327,7 +541,7 @@ const StudioSettingsPage: React.FC = () => {
                       >
                         <Select>
                           {rasaModels.map((model) => (
-                            <Option key={model.id} value={model.id} disabled={!model.enabled}>
+                            <Option key={model.id} value={model.id}>
                               {model.name}
                             </Option>
                           ))}
@@ -429,7 +643,7 @@ const StudioSettingsPage: React.FC = () => {
                             value={nodePort}
                             onChange={(e) => {
                               const value = Number(e.target.value);
-                              // 端口号的合法范围为 1-65535
+                              // Port number valid range is 1-65535
                               if (!Number.isNaN(value) && value > 0 && value <= 65535) {
                                 setNodePort(value);
                               } else if (e.target.value === '') {
@@ -517,7 +731,7 @@ const StudioSettingsPage: React.FC = () => {
                                 value={nodePort}
                                 onChange={(e) => {
                                   const value = Number(e.target.value);
-                                  // 端口号的合法范围为 1-65535
+                                  // Port number valid range is 1-65535
                                   if (!Number.isNaN(value) && value > 0 && value <= 65535) {
                                     setNodePort(value);
                                   } else if (e.target.value === '') {

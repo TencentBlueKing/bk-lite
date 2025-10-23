@@ -9,6 +9,7 @@ from rest_framework.fields import empty
 from apps.alerts.constants import AlertStatus, IncidentStatus, NotifyResultStatus
 from apps.alerts.models import AlertSource, Alert, Event, Level, AlertAssignment, AlertShield, Incident, SystemSetting, \
     NotifyResult, OperatorLog
+from apps.system_mgmt.models.user import User
 
 
 class AlertSourceModelSerializer(serializers.ModelSerializer):
@@ -203,7 +204,8 @@ class AlertModelSerializer(serializers.ModelSerializer):
     def get_operator_user(obj):
         if not obj.operator:
             return ""
-        return ", ".join(obj.operator)
+        user_name_list = User.objects.filter(username__in=obj.operator).values_list("display_name", flat=True)
+        return ", ".join(list(user_name_list))
 
     @staticmethod
     def get_incident_name(obj):
@@ -384,13 +386,14 @@ class IncidentModelSerializer(serializers.ModelSerializer):
         if not obj.operator:
             return ""
 
-        # 如果 operator 是列表，转换为逗号分隔的字符串
-        if isinstance(obj.operator, list):
-            return ", ".join(str(op) for op in obj.operator if op)
-
         # 如果 operator 是字符串，直接返回
         if isinstance(obj.operator, str):
             return obj.operator
+
+        # 如果 operator 是列表，转换为逗号分隔的字符串
+        if isinstance(obj.operator, list):
+            user_name_list = User.objects.filter(username__in=obj.operator).values_list("display_name", flat=True)
+            return ", ".join(list(user_name_list))
 
         return ""
 

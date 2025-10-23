@@ -1,5 +1,101 @@
+[build-system]
+requires = ["setuptools>=45", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+include = ["apps*", "config*", "nats_client*"]
+exclude = ["envs*", "locale*", "assets*", "templates*", "scripts*", "support-files*", "mlruns*", "coverage_html*"]
+
+[project]
+name = "server"
+version = "3.7.0"
+description = "BKLite Server"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "better-exceptions==0.3.3",
+    "celery==5.4.0",
+    "django==4.2.22",
+    "django-celery-beat==2.6.0",
+    "django-celery-results==2.6.0",
+    "django-comment-migrate==0.1.7",
+    "django-cors-headers==4.2.0",
+    "django-filter==23.2",
+    "django-minio-backend==3.6.0",
+    "django-mptt==0.16.0",
+    "django-split-settings==1.2.0",
+    "djangorestframework==3.15.2",
+    "docker==7.1.0",
+    "filetype==1.0.13",
+    "httpx==0.27.2",
+    "jinja2==3.1.6",
+    "joblib==1.3.2",
+    "jsonpickle==3.4.2",
+    "kubernetes==29.0.0",
+    "minio==7.1.13",
+    "nanoid==2.0.0",
+    "nats-py==2.9.0",
+    "pandas==2.1.4",
+    "pika==1.3.2",
+    "psycopg2-binary==2.9.9",
+    "pyarmor==9.0.7",
+    "pycryptodome==3.20.0",
+    "pydantic==2.5.3",
+    "pymysql==1.1.1",
+    "python-dotenv==1.0.0",
+    "redis==5.0.1",
+    "requests==2.32.4",
+    "sqlalchemy==2.0.20",
+    "toml==0.10.2",
+    "tqdm==4.66.4",
+    "uvicorn==0.32.0",
+    "whitenoise==6.5.0",
+    "wechatpy==1.8.18",
+    "pyotp==2.9.0",
+    "qrcode==8.2",
+    "pillow==11.3.0",
+    "cryptography==45.0.0",
+    "django-yaml-field==0.1.0",
+    "pyjwt==2.10.1",
+    "openpyxl==3.1.5",
+    "setuptools==80.9.0",
+    "attrs==25.3.0",
+    "loguru==0.7.3",
+]
+
+[project.optional-dependencies]
+cmdb = [
+    "cos-python-sdk-v5==1.9.37",
+    "falkordb==1.2.0",
+    "neo4j==5.23.1",
+    "tencentcloud-sdk-python==3.0.1403",
+]
+dev = [
+    "django-debug-toolbar==4.2.0",
+    "poethepoet>=0.37.0",
+    "pytest-asyncio==0.26.0",
+    "pytest-cov==4.1.0",
+    "pytest-django==4.7.0",
+    "pytest-dotenv==0.5.2",
+    "pytest-html==4.1.1",
+    "pytest-instafail==0.5.0",
+    "pytest-mock==3.12.0",
+    "pytest-sugar==1.0.0",
+    "pytest-xdist==3.5.0",
+    "django-extensions==4.1",
+    "ipython==8.37.0",
+]
+
+mlops = [
+    "neco[mlflow,mlops]==1.0.1",
+]
+
+opspilot = [
+    
+]
+
 [tool.black]
-line-length = 120
+line-length = 150
 include = '\.pyi?$'
 exclude = '''
 /(

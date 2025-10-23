@@ -1,0 +1,11 @@
+.formStyle {
+  width: 150px !important;
+  height: 30px;
+  :global {
+    .ant-select-selection-wrap {
+      width: 100%;
+      height: 100%;
+      overflow-y: hidden;
+    }
+  }
+}

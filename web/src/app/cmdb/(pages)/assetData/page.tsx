@@ -19,6 +19,8 @@ import GroupTreeSelector from '@/components/group-tree-select';
 import SearchFilter from './list/searchFilter';
 import ImportInst from './list/importInst';
 import SelectInstance from './detail/relationships/selectInstance';
+import ExportModal from './components/exportModal';
+import { ExportModalRef } from '@/app/cmdb/types/assetData';
 import { DownOutlined } from '@ant-design/icons';
 import { useSearchParams } from 'next/navigation';
 import assetDataStyle from './index.module.scss';
@@ -35,14 +37,11 @@ import {
   RelationInstanceRef,
   AssoTypeItem,
 } from '@/app/cmdb/types/assetManage';
-import axios from 'axios';
-import { useAuth } from '@/context/auth';
 import { useCommon } from '@/app/cmdb/context/common';
 import type { MenuProps } from 'antd';
 import { useRouter } from 'next/navigation';
 import PermissionWrapper from '@/components/permission';
 import EllipsisWithTooltip from '@/components/ellipsis-with-tooltip';
-import { useSession } from 'next-auth/react';
 import {
   useModelApi,
   useClassificationApi,
@@ -76,8 +75,7 @@ interface FieldConfig {
 
 const AssetDataContent = () => {
   const { t } = useTranslation();
-  const { getModelList, getModelAssociationTypes, getModelAttrList } =
-    useModelApi();
+  const { getModelAssociationTypes, getModelAttrList } = useModelApi();
   const { getClassificationList } = useClassificationApi();
   const {
     getInstanceProxys,
@@ -94,19 +92,16 @@ const AssetDataContent = () => {
   const assetClassificationId: string =
     searchParams.get('classificationId') || '';
   const commonContext = useCommon();
-  const authContext = useAuth();
-  const { data: session } = useSession();
-  const token = session?.user?.token || authContext?.token || null;
-  const tokenRef = useRef(token);
   const users = useRef(commonContext?.userList || []);
   const userList: UserItem[] = users.current;
+  const modelListFromContext = commonContext?.modelList || [];
   const fieldRef = useRef<FieldRef>(null);
   const importRef = useRef<ImportRef>(null);
   const instanceRef = useRef<RelationInstanceRef>(null);
+  const exportRef = useRef<ExportModalRef>(null);
   const [selectedRowKeys, setSelectedRowKeys] = useState<Array<any>>([]);
   const [loading, setLoading] = useState<boolean>(false);
   const [tableLoading, setTableLoading] = useState<boolean>(false);
-  const [exportLoading, setExportLoading] = useState<boolean>(false);
   const [modelGroup, setModelGroup] = useState<GroupItem[]>([]);
   const [originModels, setOriginModels] = useState<ModelItem[]>([]);
   const [groupId, setGroupId] = useState<string>('');
@@ -146,34 +141,37 @@ const AssetDataContent = () => {
           setProxyOptions([]);
         });
     }
-  }, [modelId, getInstanceProxys]);
+  }, [modelId]);
 
-  const handleExport = async (keys: string[]) => {
-    try {
-      setExportLoading(true);
-      const response = await axios({
-        url: `/api/proxy/cmdb/api/instance/${modelId}/inst_export/`,
-        method: 'POST',
-        responseType: 'blob',
-        data: keys,
-        headers: {
-          Authorization: `Bearer ${tokenRef.current}`,
-        },
-      });
-      const blob = new Blob([response.data], {
-        type: response.headers['content-type'],
-      });
-      const link = document.createElement('a');
-      link.href = URL.createObjectURL(blob);
-      link.download = `${modelId}资产列表.xlsx`;
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-    } catch (error: any) {
-      message.error(error.message);
-    } finally {
-      setExportLoading(false);
+  const handleExport = async (
+    exportType: 'selected' | 'currentPage' | 'all'
+  ) => {
+    let title = '';
+    let selectedKeys: string[] = [];
+
+    switch (exportType) {
+      case 'selected':
+        title = `${t('export')}${t('selected')}`;
+        selectedKeys = selectedRowKeys;
+        break;
+      case 'currentPage':
+        title = `${t('export')}${t('currentPage')}`;
+        selectedKeys = tableData.map((item) => item._id);
+        break;
+      case 'all':
+        title = `${t('export')}${t('all')}`;
+        selectedKeys = [];
+        break;
     }
+
+    exportRef.current?.showModal({
+      title,
+      modelId,
+      columns,
+      selectedKeys,
+      exportType,
+      tableData,
+    });
   };
 
   const showImportModal = () => {
@@ -196,8 +194,10 @@ const AssetDataContent = () => {
   ];
 
   useEffect(() => {
-    getModelGroup();
-  }, []);
+    if (modelListFromContext.length > 0) {
+      getModelGroup();
+    }
+  }, [modelListFromContext]);
 
   useEffect(() => {
     if (modelId) {
@@ -230,8 +230,7 @@ const AssetDataContent = () => {
   const getModelGroup = async () => {
     try {
       setLoading(true);
-      const [modeldata, groupData, assoType, instCount] = await Promise.all([
-        getModelList(),
+      const [groupData, assoType, instCount] = await Promise.all([
         getClassificationList(),
         getModelAssociationTypes(),
         getModelInstanceCount(),
@@ -242,7 +241,7 @@ const AssetDataContent = () => {
         list: [],
         count: 0,
       }));
-      modeldata.forEach((modelItem: ModelItem) => {
+      modelListFromContext.forEach((modelItem: ModelItem) => {
         const target = groups.find(
           (item: GroupItem) =>
             item.classification_id === modelItem.classification_id
@@ -256,7 +255,7 @@ const AssetDataContent = () => {
         assetClassificationId || groupData[0].classification_id;
       setGroupId(defaultGroupId);
       setModelGroup(groups);
-      const _modelList = modeldata
+      const _modelList = modelListFromContext
         .filter((item: any) => item.classification_id === defaultGroupId)
         .map((item: any) => ({
           key: item.model_id,
@@ -264,7 +263,7 @@ const AssetDataContent = () => {
           icn: item.icn,
         }));
       const defaultModelId = assetModelId || _modelList[0].key;
-      setOriginModels(modeldata);
+      setOriginModels(modelListFromContext);
       setAssoTypes(assoType);
       setModelList(_modelList);
       setModelId(defaultModelId);
@@ -404,22 +403,18 @@ const AssetDataContent = () => {
   const exportItems: MenuProps['items'] = [
     {
       key: 'batchExport',
-      label: (
-        <a onClick={() => handleExport(selectedRowKeys)}>{t('selected')}</a>
-      ),
+      label: <a onClick={() => handleExport('selected')}>{t('selected')}</a>,
       disabled: !selectedRowKeys.length,
     },
     {
       key: 'exportCurrentPage',
       label: (
-        <a onClick={() => handleExport(tableData.map((item) => item._id))}>
-          {t('currentPage')}
-        </a>
+        <a onClick={() => handleExport('currentPage')}>{t('currentPage')}</a>
       ),
     },
     {
       key: 'exportAll',
-      label: <a onClick={() => handleExport([])}>{t('all')}</a>,
+      label: <a onClick={() => handleExport('all')}>{t('all')}</a>,
     },
   ];
 
@@ -776,11 +771,7 @@ const AssetDataContent = () => {
                   </Button>
                 </Dropdown>
               </PermissionWrapper>
-              <Dropdown
-                menu={{ items: exportItems }}
-                disabled={exportLoading}
-                placement="bottom"
-              >
+              <Dropdown menu={{ items: exportItems }} placement="bottom">
                 <Button>
                   <Space>
                     {t('export')}
@@ -831,6 +822,12 @@ const AssetDataContent = () => {
             models={originModels}
             assoTypes={assoTypes}
             needFetchAssoInstIds
+          />
+          <ExportModal
+            ref={exportRef}
+            userList={userList}
+            models={originModels}
+            assoTypes={assoTypes}
           />
         </div>
       </div>

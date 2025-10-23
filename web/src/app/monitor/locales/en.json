@@ -77,7 +77,6 @@
     "successfullyDeleted": "Delete successfully !",
     "successfullyAdded": "New successfully added !",
     "successfulSetted": "Setting successful !",
-    "successfulCopied": "Copy successful !",
     "successfullyModified": "Modified successfully !",
     "successfullyExported": "Export successfully !",
     "successfullyImported": "Import successfully !",
@@ -97,10 +96,7 @@
     "more": "More",
     "organizations": "Organizations",
     "all": "All",
-    "copy": "Copy",
     "remove": "Remove",
-    "inputPassword": "Please input the password",
-    "reset": "Reset",
     "prompt": "Prompt",
     "batchEdit": "Batch Edit"
   },
@@ -353,10 +349,13 @@
       "historicalAlarmsMapTips": "Displays a graph of the distribution of all historical alarms that match the filter for the selected time range.",
       "promQLPlaceholder": "Please refer to the syntax of Prometheus to write PromQL, which can usually query and filter relevant metrics.",
       "monitoringTarget": "Monitoring target",
-      "alarmLevel": "Alarm Level"
+      "alarmLevel": "Alarm Level",
+      "noticeWay": "There is currently no notification channel available. You can go to the",
+      "systemManage": "system management",
+      "config": "to configure it."
     },
-    "intergrations": {
-      "intergration": "Intergration",
+    "integrations": {
+      "integration": "Integration",
       "configure": "Configure",
       "configureTitle": "Please follow the following guidelines to install the collector.",
       "metricTitle": "The following monitoring indicators are supported by this collector",
@@ -440,6 +439,8 @@
       "dataSourceDes": "Monitor the incoming data to ensure that the system accurately acquires the required data.",
       "dbName": "Database Name",
       "dbNameDes": "The specific name of the database required for access",
+      "dbType": "Database Type",
+      "dbTypeDes": "The database types required for collection",
       "collectorRefs": "Indicator configuration name",
       "collectorRefsDes": "Assign a clear name to the monitoring metric configuration",
       "connectionTime": "Maximum connection duration",
@@ -482,7 +483,10 @@
       "lang": "Base Language",
       "langDes": "The default underlying language setting of the system",
       "libraryPath": "Driver Library Directory",
-      "libraryPathDes": "The path where driver library files are stored"
+      "libraryPathDes": "The path where driver library files are stored",
+      "dbTimeout": "Waiting Time",
+      "dbTimeoutDes": "The maximum waiting time for database connection (in seconds)",
+      "dataTypeDes": "Define the format and rules for storing, processing, and transmitting data in a computer"
     }
   }
 }

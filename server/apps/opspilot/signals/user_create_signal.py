@@ -1,7 +1,8 @@
 from apps.base.models import User
-from apps.opspilot.bot_mgmt.services.bot_init_service import BotInitService
-from apps.opspilot.channel_mgmt.services.channel_init_service import ChannelInitService
-from apps.opspilot.model_provider_mgmt.services.model_provider_init_service import ModelProviderInitService
+from apps.opspilot.services.bot_init_service import BotInitService
+from apps.opspilot.services.channel_init_service import ChannelInitService
+
+# from apps.opspilot.model_provider_mgmt.services.model_provider_init_service import ModelProviderInitService
 
 
 def user_create_signal(**kwargs):
@@ -12,5 +13,5 @@ def user_create_signal(**kwargs):
     channel_service = ChannelInitService(owner=user)
     channel_service.init()
 
-    model_service = ModelProviderInitService(owner=user)
-    model_service.init()
+    # model_service = ModelProviderInitService(owner=user)
+    # model_service.init()

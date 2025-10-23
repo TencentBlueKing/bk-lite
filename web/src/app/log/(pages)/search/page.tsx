@@ -2,64 +2,103 @@
 import React, { useState, useRef, useEffect, useMemo } from 'react';
 import TimeSelector from '@/components/time-selector';
 import { ListItem, TimeSelectorDefaultValue, TimeSelectorRef } from '@/types';
-import { SearchOutlined, BulbFilled } from '@ant-design/icons';
+import { useSearchParams } from 'next/navigation';
+import {
+  SearchOutlined,
+  BulbFilled,
+  StarOutlined,
+  FolderOpenOutlined,
+} from '@ant-design/icons';
 import dayjs, { Dayjs } from 'dayjs';
-import { Card, Input, Button, Select, Segmented, Spin } from 'antd';
+import {
+  Card,
+  Button,
+  Select,
+  Segmented,
+  Spin,
+  InputNumber,
+  message,
+} from 'antd';
 import { useTranslation } from '@/utils/i18n';
 import searchStyle from './index.module.scss';
 import Collapse from '@/components/collapse';
 import CustomBarChart from '@/app/log/components/charts/barChart';
 import GrammarExplanation from '@/app/log/components/operate-drawer';
 import SearchTable from './searchTable';
+import FieldList from './fieldList';
 import LogTerminal from './logTerminal';
-import { ChartData, Pagination, TableDataItem } from '@/app/log/types';
+import SearchInput from './smartSearchInput';
+import {
+  ChartData,
+  ModalRef,
+  Pagination,
+  TableDataItem,
+} from '@/app/log/types';
 import useApiClient from '@/utils/request';
 import useSearchApi from '@/app/log/api/search';
 import useIntegrationApi from '@/app/log/api/integration';
-import { SearchParams, LogTerminalRef } from '@/app/log/types/search';
-import { aggregateLogs, escapeArrayToJson } from '@/app/log/utils/common';
+import {
+  SearchParams,
+  LogTerminalRef,
+  Conidtion,
+  SearchConfig,
+} from '@/app/log/types/search';
+import { aggregateLogs } from '@/app/log/utils/common';
 import { useLocalizedTime } from '@/hooks/useLocalizedTime';
 import MarkdownRenderer from '@/components/markdown';
+import AddConditions from './addConditions';
 import { v4 as uuidv4 } from 'uuid';
+import ConditionList from './conditionList';
 
 const { Option } = Select;
 const PAGE_LIMIT = 100;
 
 const SearchView: React.FC = () => {
   const { t } = useTranslation();
+  const searchParams = useSearchParams();
   const { isLoading } = useApiClient();
-  const { getLogStreams } = useIntegrationApi();
+  const { getLogStreams, getFields } = useIntegrationApi();
   const { getHits, getLogs } = useSearchApi();
   const { convertToLocalizedTime } = useLocalizedTime();
+  const queryText = searchParams.get('query') || '';
+  const startTime = searchParams.get('startTime') || '';
+  const endTime = searchParams.get('endTime') || '';
   const timerRef = useRef<NodeJS.Timeout | null>(null);
   const terminalRef = useRef<LogTerminalRef | null>(null);
   const timeSelectorRef = useRef<TimeSelectorRef>(null);
+  const conditionRef = useRef<ModalRef>(null);
+  const conditionListRef = useRef<ModalRef>(null);
+  const searchTextRef = useRef<string>(queryText);
   const [frequence, setFrequence] = useState<number>(0);
-  const [searchText, setSearchText] = useState<string>('');
+  const [defaultSearchText, setDefaultSearchText] = useState<string>(queryText);
   const [tableData, setTableData] = useState<TableDataItem[]>([]);
   const [queryTime, setQueryTime] = useState<Date>(new Date());
   const [queryEndTime, setQueryEndTime] = useState<Date>(new Date());
   const [groupList, setGroupList] = useState<ListItem[]>([]);
+  const [fields, setFields] = useState<string[]>([]);
+  const [columnFields, setColumnFields] = useState<string[]>([]);
   const [groups, setGroups] = useState<React.Key[]>([]);
   const [pagination, setPagination] = useState<Pagination>({
     current: 0,
     total: 0,
     pageSize: PAGE_LIMIT,
   });
-  const [hasMore, setHasMore] = useState<boolean>(false);
   const [expand, setExpand] = useState<boolean>(true);
   const [chartData, setChartData] = useState<ChartData[]>([]);
   const [visible, setVisible] = useState<boolean>(false);
   const [activeMenu, setActiveMenu] = useState<string>('list');
   const [pageLoading, setPageLoading] = useState<boolean>(false);
+  const [chartLoading, setChartLoading] = useState<boolean>(false);
+  const [treeLoading, setTreeLoading] = useState<boolean>(false);
   const [tableLoading, setTableLoading] = useState<boolean>(false);
   const [terminalLoading, setTerminalLoading] = useState<boolean>(false);
   const [timeDefaultValue, setTimeDefaultValue] =
     useState<TimeSelectorDefaultValue>({
-      selectValue: 15,
-      rangePickerVaule: null,
+      selectValue: startTime ? 0 : 15,
+      rangePickerVaule: endTime ? [dayjs(+startTime), dayjs(+endTime)] : null,
     });
   const [windowHeight, setWindowHeight] = useState<number>(window.innerHeight);
+  const [limit, setLimit] = useState<number | null>(100);
 
   const isList = useMemo(() => activeMenu === 'list', [activeMenu]);
 
@@ -69,8 +108,14 @@ const SearchView: React.FC = () => {
     return Math.max(200, windowHeight - fixedHeight);
   }, [windowHeight, expand]);
 
+  const disableStore = useMemo(
+    () => !groups.length || !searchTextRef.current,
+    [groups]
+  );
+
   useEffect(() => {
     if (isLoading) return;
+    getAllFields();
     initData();
   }, [isLoading]);
 
@@ -85,7 +130,7 @@ const SearchView: React.FC = () => {
     return () => {
       clearTimer();
     };
-  }, [frequence, searchText, groups]);
+  }, [frequence, groups, limit]);
 
   useEffect(() => {
     const handleResize = () => {
@@ -102,59 +147,6 @@ const SearchView: React.FC = () => {
     timerRef.current = null;
   };
 
-  // 根据chartList和页数计算时间范围和limit
-  const calculateTimeRange = (chartList: ChartData[], page: number) => {
-    if (!chartList.length) {
-      return null;
-    }
-    // 计算前面页数已经消费的数据量
-    let startIndex = 0;
-    if (page > 1) {
-      // 找到当前页的起始位置
-      for (let pageIdx = 1; pageIdx < page; pageIdx++) {
-        let pageLimit = 0;
-        let tempIndex = startIndex;
-        // 计算这一页的limit
-        while (tempIndex < chartList.length && pageLimit < PAGE_LIMIT) {
-          pageLimit += chartList[tempIndex].value;
-          tempIndex++;
-        }
-        startIndex = tempIndex;
-      }
-    }
-    // 计算当前页的数据
-    let currentPageLimit = 0;
-    let endIndex = startIndex;
-    while (endIndex < chartList.length && currentPageLimit < PAGE_LIMIT) {
-      currentPageLimit += chartList[endIndex].value;
-      endIndex++;
-    }
-    if (currentPageLimit === 0) {
-      return null;
-    }
-    // 检查是否还有下一页 - 计算剩余数据的limit
-    let nextPageLimit = 0;
-    let nextIndex = endIndex;
-    while (nextIndex < chartList.length && nextPageLimit < PAGE_LIMIT) {
-      nextPageLimit += chartList[nextIndex].value;
-      nextIndex++;
-    }
-    // 如果是最后一页，hasMore为false，否则判断下一页的limit是否>=PAGE_LIMIT
-    const isLastPage = endIndex >= chartList.length;
-    const endTime =
-      chartList[isLastPage ? endIndex - 1 : endIndex]?.time - PAGE_LIMIT;
-    return {
-      start_time: new Date(chartList[startIndex]?.time).toISOString(),
-      end_time: new Date(
-        isLastPage
-          ? Number((getParams().step || '').replace('ms', '')) + endTime
-          : endTime
-      ).toISOString(),
-      limit: currentPageLimit,
-      hasMore: !isLastPage,
-    };
-  };
-
   const onTabChange = async (val: string) => {
     setActiveMenu(val);
     setChartData([]);
@@ -165,132 +157,94 @@ const SearchView: React.FC = () => {
   };
 
   const initData = async () => {
-    setPageLoading(true);
-    Promise.all([getGroups(), getLogData('init')]).finally(() => {
-      setPageLoading(false);
-    });
-  };
-
-  const getGroups = async () => {
-    const data = await getLogStreams({
-      page_size: 99999999999,
-      page: 1,
-    });
-    setGroupList(data?.items || []);
-  };
-
-  const getLogData = async (type: string, times?: number[]) => {
     try {
-      setPageLoading(type !== 'timer');
-      setQueryTime(new Date());
-      setQueryEndTime(new Date());
-      const params = getParams(times);
-      const data = await getHits(params);
-      const chartList = aggregateLogs(data?.hits);
-      const total = chartList.reduce((pre, cur) => (pre += cur.value), 0);
-      setChartData(chartList);
+      setPageLoading(true);
+      const data = await getLogStreams({
+        page_size: -1,
+        page: 1,
+      });
+      const list = data || [];
+      const ids = list.at()?.id ? [list.at().id] : [];
+      setGroupList(list);
+      setGroups(ids);
+      if (list.length) {
+        getLogData('init', { logGroups: ids });
+      }
+    } finally {
+      setPageLoading(false);
+    }
+  };
+
+  const getAllFields = async () => {
+    setTreeLoading(true);
+    try {
+      const data = await getFields();
+      setFields(data || []);
+    } finally {
+      setTreeLoading(false);
+    }
+  };
+
+  const getChartData = async (type: string, extra?: SearchConfig) => {
+    setChartLoading(type !== 'timer');
+    try {
+      const params = getParams(extra);
+      const res = await getHits(params);
+      const chartData = aggregateLogs(res?.hits);
+      const total = chartData.reduce((pre, cur) => (pre += cur.value), 0);
       setPagination((pre) => ({
         ...pre,
         total: total,
         current: 1,
       }));
-      setHasMore(chartList.length > 0 && total > PAGE_LIMIT);
-      setTableData([]); // 重置表格数据
-      await getTableData({
-        type,
-        times,
-        chartList,
-        total,
-      });
+      setChartData(chartData);
     } finally {
-      setPageLoading(type === 'init');
-      setQueryEndTime(new Date());
+      setChartLoading(false);
     }
   };
 
-  const getTableData = async (extra: {
-    type: string;
-    chartList: ChartData[];
-    times?: number[];
-    total?: number;
-  }) => {
-    setTableLoading(extra.type === 'loadMore');
+  const getTableData = async (type: string, extra?: SearchConfig) => {
+    setTableLoading(type !== 'timer');
     try {
-      // 根据chartList和pagination计算时间范围
-      let params: SearchParams;
-      if (extra.type === 'loadMore') {
-        // 加载更多时，根据当前页数计算时间范围
-        const timeRange = calculateTimeRange(
-          extra.chartList,
-          pagination.current + 1
-        );
-        if (!timeRange) {
-          setHasMore(false);
-          return;
-        }
-        params = {
-          ...getParams(extra.times),
-          start_time: timeRange.start_time,
-          end_time: timeRange.end_time,
-          limit: timeRange.limit,
-        };
-        setHasMore(timeRange.hasMore);
-      } else {
-        // 初始加载或刷新时，使用第一页的时间范围
-        const timeRange = calculateTimeRange(extra.chartList, 1);
-        if (!timeRange) {
-          return;
-        }
-        params = {
-          ...getParams(extra.times),
-          start_time: timeRange.start_time,
-          end_time: timeRange.end_time,
-          limit: timeRange.limit,
-        };
-        setHasMore(timeRange.hasMore);
-      }
-      const data = await getLogs(params);
-      const listData = (data || []).map((item: TableDataItem) => ({
-        ...item,
-        id: uuidv4(),
-      }));
-      if (extra.type === 'loadMore') {
-        // 加载更多时，追加数据
-        setTableData((prev) => [...prev, ...listData]);
-        setPagination((pre) => ({
-          ...pre,
-          current: pre.current + 1,
-        }));
-        return;
-      }
-      // 初始加载或刷新时，替换数据
+      const params = getParams(extra);
+      const res = await getLogs(params);
+      const listData: TableDataItem[] = (res || []).map(
+        (item: TableDataItem) => ({
+          ...item,
+          id: uuidv4(),
+        })
+      );
       setTableData(listData);
-      setPagination((pre) => ({
-        ...pre,
-        current: 1,
-      }));
     } finally {
       setTableLoading(false);
     }
   };
 
-  const getParams = (seletedTimes?: number[]) => {
-    const times = seletedTimes || timeSelectorRef.current?.getValue() || [];
-    let text = searchText;
-    if (groups?.length >= 1) {
-      const groupsText =
-        groups.length > 1
-          ? `streams:"${escapeArrayToJson(groups)}"`
-          : `streams:"${groups[0]}"`;
-      text = searchText ? `${groupsText} | ${searchText}` : groupsText;
+  const getLogData = async (type: string, extra?: SearchConfig) => {
+    if (!extra?.logGroups?.length && !groups.length) {
+      return message.error(t('log.search.searchError'));
     }
+    setTableData([]);
+    setChartData([]);
+    setQueryTime(new Date());
+    setQueryEndTime(new Date());
+    Promise.all([getChartData(type, extra), getTableData(type, extra)]).finally(
+      () => {
+        setQueryEndTime(new Date());
+      }
+    );
+  };
+
+  const getParams = (extra?: SearchConfig) => {
+    const times = extra?.times || timeSelectorRef.current?.getValue() || [];
     const params: SearchParams = {
       start_time: times[0] ? new Date(times[0]).toISOString() : '',
       end_time: times[1] ? new Date(times[1]).toISOString() : '',
       field: '_stream',
       fields_limit: 5,
-      query: text || '*',
-      limit: PAGE_LIMIT,
+      log_groups: extra?.logGroups || groups,
+      query: extra?.text || searchTextRef.current || '*',
+      limit,
     };
     params.step = Math.round((times[1] - times[0]) / 100) + 'ms';
     return params;
@@ -313,18 +267,25 @@ const SearchView: React.FC = () => {
   };
 
   const addToQuery = (row: TableDataItem, type: string) => {
-    setSearchText((pre: string) => {
-      if (type === 'field') {
-        const pattern = /fields/;
-        if (pre.match(pattern)) {
-          return pre.replace(pattern, `fields ${row.label},`);
-        }
-        return pre ? `${pre} | fields ${row.label}` : `fields ${row.label}`;
+    const currentText = searchTextRef.current;
+    if (type === 'field') {
+      const pattern = /fields/;
+      if (currentText.match(pattern)) {
+        searchTextRef.current = currentText.replace(
+          pattern,
+          `fields ${row.label},`
+        );
+      } else {
+        searchTextRef.current = currentText
+          ? `${currentText} | fields ${row.label}`
+          : `fields ${row.label}`;
       }
-      return pre
-        ? `${row.label}:${row.value} | ${pre}`
+    } else {
+      searchTextRef.current = currentText
+        ? `${row.label}:${row.value} | ${currentText}`
         : `${row.label}:${row.value}`;
-    });
+    }
+    setDefaultSearchText(searchTextRef.current);
   };
 
   const onXRangeChange = (arr: [Dayjs, Dayjs]) => {
@@ -334,15 +295,65 @@ const SearchView: React.FC = () => {
       selectValue: 0,
     }));
     const times = arr.map((item) => dayjs(item).valueOf());
-    getLogData('refresh', times);
+    getLogData('refresh', { times });
   };
 
-  const loadMore = () => {
-    if (!hasMore || tableLoading) return;
-    getTableData({
-      type: 'loadMore',
-      chartList: chartData,
+  const onTimeChange = (range: number[], originValue: number | null) => {
+    setTimeDefaultValue({
+      selectValue: originValue || 0,
+      rangePickerVaule: originValue ? null : [dayjs(range[0]), dayjs(range[1])],
     });
+    onRefresh();
+  };
+
+  const openConditonsModal = (type: string) => {
+    const { query, start_time, end_time, log_groups } = getParams();
+    conditionRef.current?.showModal({
+      title: t('log.search.storageConditions'),
+      type,
+      form: {
+        query,
+        log_groups,
+        time_range: {
+          origin_value: timeDefaultValue.selectValue,
+          start: start_time,
+          end: end_time,
+        },
+      },
+    });
+  };
+
+  const loadConditions = (row = {}, type: string) => {
+    conditionListRef.current?.showModal({
+      title: t('log.search.loadConditions'),
+      type,
+      form: row,
+    });
+  };
+
+  const handleConditionSearch = (condition: Conidtion) => {
+    const { log_groups, query, time_range } = condition;
+    const start = +new Date(time_range.start);
+    const end = +new Date(time_range.end);
+    setGroups(log_groups);
+    searchTextRef.current = query;
+    setDefaultSearchText(query);
+    setTimeDefaultValue({
+      selectValue: (time_range.origin_value as number) || 0,
+      rangePickerVaule: time_range.origin_value
+        ? null
+        : [dayjs(start), dayjs(end)],
+    });
+    getLogData('refresh', {
+      logGroups: log_groups,
+      text: query,
+      times: [start, end],
+    });
+  };
+
+  // 获取时间范围的方法
+  const getTimeRange = () => {
+    return timeSelectorRef.current?.getValue() || [];
   };
 
   return (
@@ -356,8 +367,7 @@ const SearchView: React.FC = () => {
                 width: '250px',
               }}
               showSearch
-              allowClear
-              mode="tags"
+              mode="multiple"
               maxTagCount="responsive"
               placeholder={t('log.search.selectGroup')}
               value={groups}
@@ -369,10 +379,12 @@ const SearchView: React.FC = () => {
                 </Option>
               ))}
             </Select>
-            <Input
+            <SearchInput
               className="flex-1 mx-[8px]"
               placeholder={t('log.search.searchPlaceHolder')}
-              value={searchText}
+              defaultValue={defaultSearchText}
+              fields={fields}
+              getTimeRange={getTimeRange}
               addonAfter={
                 <BulbFilled
                   className="cursor-pointer px-[10px] py-[8px]"
@@ -380,8 +392,23 @@ const SearchView: React.FC = () => {
                   onClick={() => setVisible(true)}
                 />
               }
-              onChange={(e) => setSearchText(e.target.value)}
+              onChange={(value) => {
+                searchTextRef.current = value;
+              }}
               onPressEnter={handleSearch}
+            />
+            <Button
+              className="mr-[8px]"
+              icon={<StarOutlined />}
+              disabled={disableStore}
+              title={t('log.search.storageConditions')}
+              onClick={() => openConditonsModal('add')}
+            />
+            <Button
+              className="mr-[8px]"
+              icon={<FolderOpenOutlined />}
+              title={t('log.search.loadConditions')}
+              onClick={() => loadConditions({}, 'add')}
             />
             <Button
               type="primary"
@@ -401,11 +428,26 @@ const SearchView: React.FC = () => {
             ]}
             onChange={onTabChange}
           />
-          <div className={isList ? '' : 'hidden'}>
+          <div className={isList ? 'flex items-center' : 'hidden'}>
+            <span className="text-[var(--color-text-3)] text-[12px] mr-[8px]">
+              {t('log.search.listTotal')}
+            </span>
+            <div className="flex">
+              <InputNumber
+                className="mr-[8px] w-[100px]"
+                placeholder={t('common.inputMsg')}
+                value={limit}
+                min={1}
+                max={1000000}
+                precision={0}
+                controls={false}
+                onChange={(val) => setLimit(val || 1)}
+              />
+            </div>
             <TimeSelector
               ref={timeSelectorRef}
               defaultValue={timeDefaultValue}
-              onChange={onRefresh}
+              onChange={onTimeChange}
               onFrequenceChange={onFrequenceChange}
               onRefresh={onRefresh}
             />
@@ -413,43 +455,45 @@ const SearchView: React.FC = () => {
         </div>
         {isList ? (
           <>
-            <Card bordered={false} className="mb-[10px]">
-              <Collapse
-                title={t('log.search.histogram')}
-                icon={
-                  <div>
-                    <span className="mr-2">
-                      <span className="text-[var(--color-text-3)]">
-                        {t('log.search.total')}：
+            <Spin spinning={chartLoading}>
+              <Card bordered={false} className="mb-[10px]">
+                <Collapse
+                  title={t('log.search.histogram')}
+                  icon={
+                    <div>
+                      <span className="mr-2">
+                        <span className="text-[var(--color-text-3)]">
+                          {t('log.search.total')}：
+                        </span>
+                        <span>{pagination.total}</span>
                       </span>
-                      <span>{pagination.total}</span>
-                    </span>
-                    <span className="mr-2">
-                      <span className="text-[var(--color-text-3)]">
-                        {t('log.search.queryTime')}：
+                      <span className="mr-2">
+                        <span className="text-[var(--color-text-3)]">
+                          {t('log.search.queryTime')}：
+                        </span>
+                        <span>{convertToLocalizedTime(String(queryTime))}</span>
                       </span>
-                      <span>{convertToLocalizedTime(String(queryTime))}</span>
-                    </span>
-                    <span className="mr-2">
-                      <span className="text-[var(--color-text-3)]">
-                        {t('log.search.timeConsumption')}：
+                      <span className="mr-2">
+                        <span className="text-[var(--color-text-3)]">
+                          {t('log.search.timeConsumption')}：
+                        </span>
+                        <span>{`${
+                          Number(queryEndTime) - Number(queryTime)
+                        }ms`}</span>
                       </span>
-                      <span>{`${
-                        Number(queryEndTime) - Number(queryTime)
-                      }ms`}</span>
-                    </span>
-                  </div>
-                }
-                isOpen={expand}
-                onToggle={(val) => setExpand(val)}
-              >
-                <CustomBarChart
-                  className={searchStyle.chart}
-                  data={chartData}
-                  onXRangeChange={onXRangeChange}
-                />
-              </Collapse>
-            </Card>
+                    </div>
+                  }
+                  isOpen={expand}
+                  onToggle={(val) => setExpand(val)}
+                >
+                  <CustomBarChart
+                    className={searchStyle.chart}
+                    data={chartData}
+                    onXRangeChange={onXRangeChange}
+                  />
+                </Collapse>
+              </Card>
+            </Spin>
             <Card
               bordered={false}
               style={{
@@ -457,13 +501,26 @@ const SearchView: React.FC = () => {
                 overflowY: 'hidden',
               }}
             >
-              <SearchTable
-                dataSource={tableData}
-                loading={tableLoading}
-                scroll={{ y: scrollHeight }}
-                addToQuery={addToQuery}
-                onLoadMore={loadMore}
-              />
+              <div className={searchStyle.tableArea}>
+                <Spin spinning={treeLoading}>
+                  <FieldList
+                    style={{ height: scrollHeight + 'px' }}
+                    className="w-[180px] min-w-[180px]"
+                    fields={fields}
+                    addToQuery={addToQuery}
+                    changeDisplayColumns={(val) => {
+                      setColumnFields(val);
+                    }}
+                  />
+                </Spin>
+                <SearchTable
+                  loading={tableLoading}
+                  dataSource={tableData}
+                  fields={columnFields}
+                  scroll={{ x: 'calc(100vw-300px)', y: scrollHeight }}
+                  addToQuery={addToQuery}
+                />
+              </div>
             </Card>
           </>
         ) : (
@@ -471,7 +528,7 @@ const SearchView: React.FC = () => {
             <LogTerminal
               ref={terminalRef}
               className="h-[calc(100vh-244px)]"
-              query={getParams()?.query || '*'}
+              query={getParams()}
               fetchData={(val) => setTerminalLoading(val)}
             />
           </Spin>
@@ -490,6 +547,8 @@ const SearchView: React.FC = () => {
       >
         <MarkdownRenderer filePath="grammar_explanation" fileName="index" />
       </GrammarExplanation>
+      <AddConditions ref={conditionRef} />
+      <ConditionList ref={conditionListRef} onSuccess={handleConditionSearch} />
     </div>
   );
 };

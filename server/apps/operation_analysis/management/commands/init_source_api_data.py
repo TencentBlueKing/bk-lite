@@ -5,7 +5,7 @@
 
 from django.core.management import BaseCommand
 
-from apps.operation_analysis.models import DataSourceAPIModel
+from apps.operation_analysis.models import DataSourceAPIModel, NameSpace
 from apps.core.logger import operation_analysis_logger as logger
 
 from apps.operation_analysis.init_constants import INIT_SOURCE_API_DATA
@@ -22,11 +22,30 @@ class Command(BaseCommand):
             help='强制更新已存在的数据源配置',
         )
 
+    @staticmethod
+    def get_default_namespace():
+        """
+        获取默认命名空间名称
+        :return: 默认命名空间名称
+        """
+        instance = NameSpace.objects.filter(name="默认命名空间")
+        if instance.exists():
+            return instance.first().id
+        return
+
     def handle(self, *args, **options):
         logger.info("===开始初始化源API数据===")
         force_update = options['force_update']
 
         try:
+
+            namespace_id = self.get_default_namespace()
+            if not namespace_id:
+                error_msg = "未找到默认命名空间，请先初始化默认命名空间"
+                logger.error(error_msg)
+                self.stdout.write(self.style.ERROR(error_msg))
+                return
+
             created_count = 0
             updated_count = 0
 
@@ -42,6 +61,7 @@ class Command(BaseCommand):
                 )
 
                 if created:
+                    obj.namespaces.set([namespace_id])
                     created_count += 1
                     logger.info(f"创建数据源: {api_data['name']}")
                 elif force_update:

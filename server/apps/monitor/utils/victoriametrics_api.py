@@ -1,13 +1,15 @@
 import requests
 
-from apps.monitor.constants import VICTORIAMETRICS_HOST, VICTORIAMETRICS_USER, VICTORIAMETRICS_PWD
+from apps.monitor.constants.victoriametrics import VictoriaMetricsConstants
 
 
 class VictoriaMetricsAPI:
     def __init__(self):
-        self.host = VICTORIAMETRICS_HOST
-        self.username = VICTORIAMETRICS_USER
-        self.password = VICTORIAMETRICS_PWD
+        self.host = VictoriaMetricsConstants.HOST
+        self.username = VictoriaMetricsConstants.USER
+        self.password = VictoriaMetricsConstants.PWD
+        # 添加SSL验证配置，支持环境变量控制
+        self.ssl_verify = VictoriaMetricsConstants.SSL_VERIFY
 
     def query(self, query, step="5m", time=None):
         params = {"query": query}
@@ -19,6 +21,7 @@ class VictoriaMetricsAPI:
             f"{self.host}/api/v1/query",
             params=params,
             auth=(self.username, self.password),
+            verify=self.ssl_verify,  # 添加SSL验证配置
         )
         response.raise_for_status()
         return response.json()
@@ -28,6 +31,7 @@ class VictoriaMetricsAPI:
             f"{self.host}/api/v1/query_range",
             params={"query": query, "start": start, "end": end, "step": step},
             auth=(self.username, self.password),
+            verify=self.ssl_verify,  # 添加SSL验证配置
         )
         response.raise_for_status()
         return response.json()

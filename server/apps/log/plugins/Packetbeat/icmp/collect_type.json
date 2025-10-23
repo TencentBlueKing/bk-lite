@@ -1,0 +1,19 @@
+{
+  "name": "icmp",
+  "collector": "Packetbeat",
+  "icon": "icmp",
+  "description": "Monitors ICMP traffic for network diagnostics, performance monitoring, and security analysis",
+  "default_query": "collect_type: icmp | last 1 by (_time) partition by (instance_id)",
+  "attrs": [
+    "collect_type",
+    "collector",
+    "instance_id",
+    "icmp.version",
+    "icmp.request.message",
+    "icmp.request.type",
+    "icmp.request.code",
+    "icmp.response.message",
+    "icmp.response.type",
+    "icmp.response.code"
+  ]
+}

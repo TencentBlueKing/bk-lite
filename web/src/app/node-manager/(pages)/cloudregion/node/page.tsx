@@ -17,31 +17,38 @@ import {
   Dropdown,
   Segmented,
 } from 'antd';
-import { DownOutlined, ReloadOutlined } from '@ant-design/icons';
+import {
+  DownOutlined,
+  ReloadOutlined,
+  EllipsisOutlined,
+} from '@ant-design/icons';
 import type { MenuProps, TableProps, GetProps } from 'antd';
 import nodeStyle from './index.module.scss';
 import CollectorModal from './collectorModal';
 import { useTranslation } from '@/utils/i18n';
 import { ModalRef, TableDataItem } from '@/app/node-manager/types';
 import CustomTable from '@/components/custom-table';
-import { useColumns } from '@/app/node-manager/hooks/node';
+import {
+  useColumns,
+  useTelegrafMap,
+  useSidecarItems,
+  useCollectorItems,
+} from '@/app/node-manager/hooks/node';
 import MainLayout from '../mainlayout/layout';
 import useApiClient from '@/utils/request';
 import useApiCloudRegion from '@/app/node-manager/api/cloudRegion';
 import useApiCollector from '@/app/node-manager/api/collector';
 import useCloudId from '@/app/node-manager/hooks/useCloudRegionId';
-import { useTelegrafMap } from '@/app/node-manager/constants/cloudregion';
-import { COLLECTOR_LABEL } from '@/app/node-manager/constants/collector';
+import {
+  COLLECTOR_LABEL,
+  DISPLAY_PLUGINS,
+} from '@/app/node-manager/constants/collector';
 import ControllerInstall from './controllerInstall';
 import ControllerUninstall from './controllerUninstall';
 import CollectorInstallTable from './controllerTable';
 import { useRouter, useSearchParams } from 'next/navigation';
 import PermissionWrapper from '@/components/permission';
-import {
-  OPERATE_SYSTEMS,
-  useSidecarItems,
-  useCollectorItems,
-} from '@/app/node-manager/constants/cloudregion';
+import { OPERATE_SYSTEMS } from '@/app/node-manager/constants/cloudregion';
 import { cloneDeep } from 'lodash';
 import { ColumnItem } from '@/types';
 const { confirm } = Modal;
@@ -78,6 +85,7 @@ const Node = () => {
     useState<boolean>(false);
   const [system, setSystem] = useState<string>('linux');
   const [activeColumns, setActiveColumns] = useState<ColumnItem[]>([]);
+  const DISPLAY_PLUGINS_COUNT = 4; // 最多展示几个插件
 
   const columns = useColumns({
     checkConfig: (row: TableDataItem) => {
@@ -303,7 +311,12 @@ const Node = () => {
       );
       const { title, tagColor } = getStatusInfo(collectorTarget, installTarget);
       return (
-        <Tooltip title={title} key={collectorId} className="py-1 pr-1">
+        <Tooltip
+          title={title}
+          key={collectorId}
+          zIndex={99999}
+          className="py-1 pr-1"
+        >
           <Tag color={tagColor}>
             {getCollectorName(collectorId, data || [])}
           </Tag>
@@ -311,9 +324,22 @@ const Node = () => {
       );
     });
     if (tagList.length) {
+      const items = tagList.slice(DISPLAY_PLUGINS_COUNT).map((tag, index) => ({
+        key: index,
+        label: tag,
+      }));
       return (
-        <div className="flex justify-center">
-          {tagList.length ? tagList : '--'}
+        <div className="flex items-center justify-center">
+          {tagList.length > DISPLAY_PLUGINS_COUNT ? (
+            <>
+              {tagList.slice(0, DISPLAY_PLUGINS_COUNT)}
+              <Dropdown menu={{ items }} placement="bottom">
+                <EllipsisOutlined className="text-[var(--color-primary)] text-[16px] cursor-pointer" />
+              </Dropdown>
+            </>
+          ) : (
+            tagList
+          )}
         </div>
       );
     }
@@ -329,8 +355,7 @@ const Node = () => {
       selectedsystem === 'linux'
         ? 'natsexecutor_linux'
         : 'natsexecutor_windows';
-    const plugins = ['Telegraf', 'Export', 'JMX'];
-    const columnItems: any = plugins.map((type: string) => ({
+    const columnItems: any = DISPLAY_PLUGINS.map((type: string) => ({
       title: type,
       dataIndex: type,
       key: type,

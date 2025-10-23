@@ -1,0 +1,74 @@
+/* Custom Button Styling */
+.xy_theme__button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 2.5rem;
+  padding: 0 1rem;
+  border-radius: 100px;
+  border: 1px solid var(--color-primary);
+  background-color: var(--color-background);
+  color: var(--color-primary);
+  transition:
+    background-color 0.2s ease,
+    border-color 0.2s ease;
+  box-shadow: var(--xy-node-boxshadow-default);
+  cursor: pointer;
+}
+
+.xy_theme__button.active {
+  background-color: var(--color-primary);
+  color: white;
+  border-color: var(--color-primary);
+}
+
+.xy_theme__button.active:hover,
+.xy_theme__button.active:active {
+  background-color: var(--color-primary);
+  opacity: 0.9;
+}
+
+.xy_theme__button:hover {
+  background-color: var(--xy-controls-button-background-color-hover-default);
+}
+
+.xy_theme__button:active {
+  background-color: var(--color-hover-bg);
+}
+
+.xy_theme__button:disabled {
+  color: var(--color-disabled);
+  opacity: 0.8;
+  cursor: not-allowed;
+  border: 1px solid var(--color-disabled);
+}
+
+.xy_theme__button>span {
+  margin-right: 0.2rem;
+}
+
+/* Add gap between adjacent buttons */
+.xy_theme__button+.xy_theme__button {
+  margin-left: 0.3rem;
+}
+
+.flowContainer {
+
+  :global {
+    display: flex;
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+    position: relative;
+
+    .ant-spin-nested-loading,
+    .ant-spin-container {
+      width: 100%;
+      height: 100%;
+    }
+
+    .react-flow__minimap-svg {
+      border-radius: 16px !important;
+    }
+  }
+}

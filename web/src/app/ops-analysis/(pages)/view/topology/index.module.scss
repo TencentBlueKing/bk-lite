@@ -1,0 +1,236 @@
+@keyframes edgeFlowAnimation {
+  0% {
+    stroke-dashoffset: 10;
+  }
+  100% {
+    stroke-dashoffset: 0;
+  }
+}
+
+.topologyContainer {
+  :global(.x6-graph-svg) {
+    background: linear-gradient(135deg, #bbdefb, #ecd5f0) !important;
+  }
+
+  :global(.x6-node foreignObject) {
+    overflow: hidden !important;
+  }
+  
+  :global(.edge-flow-animation) {
+    animation: edgeFlowAnimation 1.5s linear infinite;
+  }
+  
+  // 全局优化minimap相关样式
+  :global(.x6-widget-minimap) {
+    border-radius: 0 0 8px 8px !important;
+    overflow: hidden !important;
+    
+    // 背景网格优化
+    :global(.x6-graph-svg) {
+      background: linear-gradient(90deg, 
+        rgba(0, 0, 0, 0.02) 1px, 
+        transparent 1px),
+      linear-gradient(180deg, 
+        rgba(0, 0, 0, 0.02) 1px, 
+        transparent 1px) !important;
+      background-size: 20px 20px !important;
+    }
+  }
+}
+
+.minimapContainer {
+  position: absolute;
+  bottom: 1rem;
+  right: 0.6rem;
+  width: 200px;
+  height: 135px;
+  border: 1px solid var(--color-border-1);
+  border-radius: 8px;
+  box-shadow: 
+    0 4px 12px rgba(0, 0, 0, 0.05),
+    0 2px 6px rgba(0, 0, 0, 0.03);
+  background: linear-gradient(135deg, 
+    rgba(255, 255, 255, 0.95) 0%, 
+    rgba(248, 249, 250, 0.95) 100%);
+  backdrop-filter: blur(6px);
+  z-index: 10;
+  overflow: hidden;
+  transition: all 0.3s ease;
+  
+  &:hover {
+    box-shadow: 
+      0 6px 16px rgba(0, 0, 0, 0.08),
+      0 3px 8px rgba(0, 0, 0, 0.04);
+    transform: translateY(-1px);
+  }
+  
+  &::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 18px;
+    background: linear-gradient(90deg, 
+      rgba(24, 144, 255, 0.05) 0%, 
+      rgba(24, 144, 255, 0.02) 100%);
+    border-bottom: 1px solid rgba(24, 144, 255, 0.08);
+    z-index: 1;
+  }
+}
+
+.minimapHeader {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  z-index: 10;
+}
+
+.minimapCloseBtn {
+  font-size: 0.75rem;
+  color: var(--color-text-3);
+  transition: color 0.2s ease;
+  width: 1rem;
+  height: 1rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 0.25rem;
+  cursor: pointer;
+  border: none;
+  background: none;
+  
+  &:hover {
+    color: var(--color-text-1);
+    background-color: var(--color-fill-3);
+  }
+}
+
+.minimapHeader {
+  position: absolute;
+  top: 2px;
+  right: 4px;
+  z-index: 20;
+}
+
+.minimapCloseBtn {
+  font-size: 10px;
+  color: var(--color-text-3);
+  transition: all 0.2s ease;
+  width: 14px;
+  height: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 3px;
+  cursor: pointer;
+  border: none;
+  background: rgba(0, 0, 0, 0.04);
+  
+  &:hover {
+    color: var(--color-text-1);
+    background: rgba(24, 144, 255, 0.1);
+    transform: scale(1.1);
+  }
+}
+
+.minimapContent {
+  width: 100%;
+  height: 100%;
+  margin-top: 18px;
+  background: transparent;
+  border-radius: 0 0 8px 8px;
+  
+  // 优化缩略图内部元素样式
+  :global(.x6-widget-minimap) {
+    border-radius: 0 0 8px 8px;
+    
+    // 视窗样式
+    :global(.x6-widget-minimap-viewport) {
+      border: 1px solid #1890ff !important;
+      border-radius: 4px !important;
+      background: rgba(24, 144, 255, 0.04) !important;
+      backdrop-filter: blur(1px) !important;
+      box-shadow: 
+        0 2px 8px rgba(24, 144, 255, 0.12),
+        inset 0 1px 0 rgba(255, 255, 255, 0.15) !important;
+      transition: all 0.2s ease !important;
+      
+      &:hover {
+        background: rgba(24, 144, 255, 0.06) !important;
+        box-shadow: 
+          0 3px 12px rgba(24, 144, 255, 0.15),
+          inset 0 1px 0 rgba(255, 255, 255, 0.2) !important;
+      }
+    }
+    
+    // 节点样式优化
+    :global(.x6-node) {
+      filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.1));
+      transition: all 0.2s ease;
+      
+      &:hover {
+        filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.15));
+      }
+    }
+    
+    // 边线样式优化
+    :global(.x6-edge) {
+      opacity: 0.7;
+      transition: opacity 0.2s ease;
+      
+      &:hover {
+        opacity: 1;
+      }
+    }
+  }
+}
+
+.minimapShowBtn {
+  position: absolute;
+  bottom: 1rem;
+  right: 1rem;
+  width: 36px;
+  height: 36px;
+  background: linear-gradient(135deg, 
+    rgba(255, 255, 255, 0.95) 0%, 
+    rgba(248, 249, 250, 0.95) 100%);
+  border: 1px solid var(--color-border-1);
+  border-radius: 10px;
+  box-shadow: 
+    0 4px 12px rgba(0, 0, 0, 0.08),
+    0 2px 6px rgba(0, 0, 0, 0.04);
+  backdrop-filter: blur(8px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  z-index: 10;
+  cursor: pointer;
+  
+  &:hover {
+    background: linear-gradient(135deg, 
+      rgba(24, 144, 255, 0.05) 0%, 
+      rgba(24, 144, 255, 0.02) 100%);
+    border-color: rgba(24, 144, 255, 0.3);
+    box-shadow: 
+      0 6px 16px rgba(24, 144, 255, 0.1),
+      0 3px 8px rgba(24, 144, 255, 0.06);
+    transform: translateY(-2px) scale(1.05);
+  }
+  
+  &:active {
+    transform: translateY(-1px) scale(1.02);
+  }
+  
+  .anticon {
+    font-size: 16px;
+    color: var(--color-text-2);
+    transition: all 0.2s ease;
+  }
+  
+  &:hover .anticon {
+    color: #1890ff;
+    transform: scale(1.1);
+  }
+}

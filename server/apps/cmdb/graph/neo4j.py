@@ -1,4 +1,5 @@
 import os
+import json
 from typing import List, Union
 
 from dotenv import load_dotenv
@@ -8,6 +9,7 @@ from neo4j.graph import Path
 from apps.cmdb.constants import INSTANCE, ModelConstraintKey
 from apps.cmdb.graph.format_type import FORMAT_TYPE
 from apps.core.exceptions.base_app_exception import BaseAppException
+from apps.core.logger import cmdb_logger as logger
 
 load_dotenv()
 
@@ -29,10 +31,12 @@ class Neo4jClient:
 
     def __enter__(self):
         self.session = self.driver.session()
+        # print("连接了neo4j")
         return self
 
     def __exit__(self, exc_type, exc_value, traceback):
         self.close()
+        # print("关闭了neo4j连接")
 
     def entity_to_list(self, data: iter):
         """将使用fetchall查询的结果转换成列表类型"""
@@ -44,14 +48,13 @@ class Neo4jClient:
 
     def edge_to_list(self, data: iter, return_entity: bool):
         """将使用fetchall查询的结果转换成列表类型"""
-        result = [
-            {
+        result = []
+        for i in data:
+            result.append({
                 "src": self.entity_to_dict((i[0].start_node,)),
                 "edge": self.edge_to_dict((i[0].relationships[0],)),
                 "dst": self.entity_to_dict((i[0].end_node,)),
-            }
-            for i in data
-        ]
+            })
         return result if return_entity else [i["edge"] for i in result]
 
     def edge_to_dict(self, data: tuple):
@@ -59,11 +62,13 @@ class Neo4jClient:
         return dict(_id=data[0].id, _label=data[0].type, **data[0]._properties)
 
     def format_properties(self, properties: dict):
-        """将属性格式化为sql中的字符串格式"""
+        """将属性格式化为CQL中的字符串格式，正确处理字符串转义"""
         properties_str = "{"
         for key, value in properties.items():
-            if type(value) == str:
-                properties_str += f"{key}:'{value}',"
+            if isinstance(value, str):
+                # 转义字符串中的单引号和反斜杠
+                escaped_value = value.replace("\\", "\\\\").replace("'", "\\'")
+                properties_str += f"{key}:'{escaped_value}',"
             else:
                 properties_str += f"{key}:{value},"
         properties_str = properties_str[:-1]
@@ -220,11 +225,11 @@ class Neo4jClient:
             result = {}
             try:
                 entity = self._create_entity(label, properties, check_attr_map, exist_items, operator)
-                result.update(data=entity, success=True)
+                result.update(data=entity, success=True, message="")
                 exist_items.append(entity)
             except Exception as e:
                 message = f"article {index + 1} data, {e}"
-                result.update(message=message, success=False)
+                result.update(message=message, success=False, data=properties)
             results.append(result)
         return results
 
@@ -377,6 +382,16 @@ class Neo4jClient:
             return []
         return self.entity_to_list(objs)
 
+    def query_entity_by_inst_names(self, inst_names: list, model_id: str = None):
+        """
+        查询实体列表 通过实例名称
+        """
+        queries = f"AND n.model_id= '{model_id}'" if model_id else ""
+        objs = self.session.run(f"MATCH (n) WHERE n.inst_name IN {inst_names} {queries} RETURN n")
+        if not objs:
+            return []
+        return self.entity_to_list(objs)
+
     def query_edge(
             self,
             label: str,
@@ -450,7 +465,6 @@ class Neo4jClient:
                                        check_attr_map: dict,
                                        check: bool = True):
         """批量更新实体属性"""
-
         if check:
             # 校验必填项
             self.check_required_attr(properties, check_attr_map.get("is_required", {}), is_update=True)
@@ -461,7 +475,7 @@ class Neo4jClient:
                 return []
 
         nodes = self.batch_update_node_properties(label, entity_ids, properties)
-        return self.entity_to_list(nodes)
+        return {"data": self.entity_to_list(nodes), "success": True, "message": ""}
 
     def batch_update_node_properties(self, label: str, node_ids: Union[int, List[int]], properties: dict):
         """批量更新节点属性"""
@@ -530,6 +544,106 @@ class Neo4jClient:
 
         return dict(
             src_result=self.format_topo(inst_id, src_objs, True), dst_result=self.format_topo(inst_id, dst_objs, False)
+        )
+
+    @staticmethod
+    def get_topo_config() -> dict:
+        try:
+            base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+            topo_config_path = os.path.join(base_dir, "cmdb_config", "instance", "topo_config.json")
+
+            if not os.path.isfile(topo_config_path):
+                logger.warning("Topo config file not found: %s", topo_config_path)
+                return {}
+
+            with open(topo_config_path, "r", encoding="utf-8") as f:
+                data = json.load(f)
+
+            if not isinstance(data, dict):
+                logger.warning("Topo config is not a dictionary: %s", topo_config_path)
+                return {}
+            return data
+
+        except (OSError, json.JSONDecodeError) as e:
+            logger.error("Failed to load topo config: %s, error: %s", topo_config_path, e)
+            return {}
+
+    def convert_to_cypher_match(self, label_str: str, model_id: str, params_str: str, dst: bool = True) -> str:
+        """
+        根据 JSON 配置生成 Neo4j Cypher 查询语句
+
+        :param label_str: 节点标签
+        :param model_id: 当前模型 ID
+        :param params_str: WHERE 附加条件（字符串）
+        :param dst: True 查询后继路径，False 查询前驱路径
+        :return: 生成的 Cypher 查询语句
+        """
+        # 方向配置
+        edge_type = "dst" if dst else "src"
+        default_match = (
+            f"MATCH p={f'(m{label_str}) - [*]->(n{label_str})' if dst else f'(n{label_str}) - [*]->(m{label_str})'}"
+            f"WHERE NOT (m){'<--()' if dst else '-->()'} {params_str} RETURN p"
+        )
+        # 获取拓扑配置
+        topo_path = self.get_topo_config().get(model_id)
+
+        # 没有配置
+        if not topo_path:
+            return default_match
+
+        edge_list = topo_path.get(edge_type)
+        if not edge_list:
+            return default_match
+
+        cypher_parts = []
+        node_aliases = {}
+        rep_alias = ""
+
+        # 为每一个关系生成相应的MATCH部分
+        for i, relation in enumerate(edge_list):
+            self_obj = relation['self_obj']
+            target_obj = relation['target_obj']
+            assoc = relation['assoc']
+
+            # 处理self_obj
+            if self_obj not in node_aliases:
+                node_aliases[self_obj] = f'v{i}'
+            self_alias = node_aliases[self_obj]
+
+            # 添加self_obj节点
+            if i == 0:
+                if edge_type == "src":
+                    rep_alias = self_alias
+                cypher_parts.append(f"({self_alias}:instance {{model_id: '{self_obj}'}})")
+
+            # 处理target_obj
+            if target_obj not in node_aliases:
+                node_aliases[target_obj] = f'v{i + 1}'
+            target_alias = node_aliases[target_obj]
+            if edge_type == "dst":
+                rep_alias = target_alias
+            # 添加关系和target_obj节点
+            cypher_parts.append(f"-[:{assoc}]->({target_alias}:instance {{model_id: '{target_obj}'}})")
+
+        # 拼接最终 MATCH
+        match_path = "".join(cypher_parts)
+        where_clause = f"WHERE 1=1 {params_str.replace('n', rep_alias)}"
+
+        return f"MATCH p={match_path}\n{where_clause}\nRETURN p"
+
+    def query_topo_test_config(self, label: str, inst_id: int, model_id: str):
+        """查询实例拓扑"""
+        label_str = f":{label}" if label else ""
+        params_str = self.format_search_params([{"field": "id", "type": "id=", "value": inst_id}])
+        if params_str:
+            params_str = f"AND {params_str}"
+
+        src_objs = self.session.run(self.convert_to_cypher_match(label_str, model_id, params_str, dst=False))
+        dst_objs = self.session.run(self.convert_to_cypher_match(label_str, model_id, params_str, dst=True))
+
+        return dict(
+            src_result=self.format_topo(inst_id, src_objs, True),
+            dst_result=self.format_topo(inst_id, dst_objs, False)
         )
 
     def format_topo(self, start_id, objs, entity_is_src=True):
@@ -608,14 +722,14 @@ class Neo4jClient:
 
         # 如果有模型ID但没有实例名称，则只统计该模型的所有实例
         instance_condition_str = " OR ".join(instance_conditions) if instance_conditions else ""
-        
+
         # 只有在存在具体模型限制时才排除其他模型
         if model_list and instance_conditions:
             instance_condition_str += f" OR (NOT n.model_id IN {model_list})"
 
         # 判断是否为全部权限：没有具体的实例限制条件
         has_full_permission = not instance_conditions and not model_list
-        
+
         # 个人创建的过滤 - 只有在没有全部权限时才添加
         if created and not has_full_permission:
             if instance_condition_str:
@@ -659,7 +773,7 @@ class Neo4jClient:
 
         # 组合最终权限条件
         permission_conditions = []
-        
+
         # 如果有组织权限，所有条件都必须在组织权限范围内
         if base_condition:
             if instance_permission_str:
@@ -671,7 +785,7 @@ class Neo4jClient:
         elif instance_permission_str:
             # 仅实例权限（包含创建人权限）
             permission_conditions.append(f"({instance_permission_str})")
-        
+
         final_permission_condition = " OR ".join(permission_conditions) if permission_conditions else ""
 
         # 组合权限条件和全文检索条件
@@ -708,10 +822,16 @@ class Neo4jClient:
                 node = item_map.get(properties_key)
                 if node:
                     # 节点更新
-                    results = self.batch_update_entity_properties(label=label, entity_ids=[node.get("_id")],
-                                                                  properties=properties,
-                                                                  check_attr_map=check_attr_map)
-                    update_results.append(results[0]) if results else None
+                    try:
+                        results = self.batch_update_entity_properties(label=label, entity_ids=[node.get("_id")],
+                                                                      properties=properties,
+                                                                      check_attr_map=check_attr_map)
+                        results["data"] = results["data"][0]
+                        update_results.append(results)
+                    except Exception as e:
+                        logger.info(f"update entity error: {e}")
+                        update_results.append({"success": False, "data": properties, "message": "update entity error"})
+
                 else:
                     # 暂存统一新增
                     add_nodes.append(properties)

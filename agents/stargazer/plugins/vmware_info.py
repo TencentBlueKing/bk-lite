@@ -2,7 +2,7 @@
 # @File: vmware_info.py
 # @Time: 2025/2/26 11:08
 # @Author: windyzhao
-from pyVim.connect import ConnectNoSSL, Disconnect, SmartConnect
+from pyVim.connect import Disconnect, SmartConnect
 from pyVmomi import vim
 from sanic.log import logger
 
@@ -43,7 +43,9 @@ class VmwareManage(object):
     def connect_vc(self):
         try:
             params = dict(host=self.host, port=int(self.port), user=self.user, pwd=self.password)
-            si = SmartConnect(**params) if self.ssl else ConnectNoSSL(**params)
+            if not self.ssl:
+                params['disableSslCertValidation'] = True
+            si = SmartConnect(**params)
             return si
         except Exception as err:
             logger.error(f"connect vcenter error! {err}")

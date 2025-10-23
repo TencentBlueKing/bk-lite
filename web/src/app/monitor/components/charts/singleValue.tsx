@@ -1,6 +1,6 @@
 import React from 'react';
 import { getEnumValue, findUnitNameById } from '@/app/monitor/utils/common';
-import { MetricItem } from '@/app/monitor/types/monitor';
+import { MetricItem } from '@/app/monitor/types';
 
 interface SingleValueDisplayProps {
   value: number | string;

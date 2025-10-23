@@ -14,12 +14,7 @@ import {
 import useApiClient from '@/utils/request';
 import { useTranslation } from '@/utils/i18n';
 import Icon from '@/components/icon';
-import {
-  deepClone,
-  getRandomColor,
-  getEnumValueUnit,
-  getRecentTimeRange,
-} from '@/app/monitor/utils/common';
+import { getRandomColor, getRecentTimeRange } from '@/app/monitor/utils/common';
 import {
   ColumnItem,
   ModalRef,
@@ -30,10 +25,10 @@ import {
   TimeSelectorDefaultValue,
   TimeValuesProps,
   TreeItem,
+  ObjectItem,
 } from '@/app/monitor/types';
-import { MetricItem, ObjectItem } from '@/app/monitor/types/monitor';
 import { AlertOutlined } from '@ant-design/icons';
-import { FiltersConfig } from '@/app/monitor/types/monitor';
+import { FiltersConfig } from '@/app/monitor/types/event';
 import CustomTable from '@/components/custom-table';
 import EllipsisWithTooltip from '@/components/ellipsis-with-tooltip';
 import TimeSelector from '@/components/time-selector';
@@ -42,14 +37,11 @@ import StackedBarChart from '@/app/monitor/components/charts/stackedBarChart';
 import AlertDetail from './alertDetail';
 import { useLocalizedTime } from '@/hooks/useLocalizedTime';
 import { useAlarmTabs, useStateList } from '@/app/monitor/hooks/event';
+import { useLevelList, useStateMap } from '@/app/monitor/hooks';
 import dayjs, { Dayjs } from 'dayjs';
 import { useCommon } from '@/app/monitor/context/common';
 import alertStyle from './index.module.scss';
-import {
-  LEVEL_MAP,
-  useLevelList,
-  useStateMap,
-} from '@/app/monitor/constants/monitor';
+import { LEVEL_MAP } from '@/app/monitor/constants';
 import useMonitorApi from '@/app/monitor/api/index';
 import TreeSelector from '@/app/monitor/components/treeSelector';
 import { cloneDeep } from 'lodash';
@@ -58,12 +50,8 @@ const { Option } = Select;
 
 const Alert: React.FC = () => {
   const { isLoading } = useApiClient();
-  const {
-    getMonitorAlert,
-    getMonitorMetrics,
-    getMonitorObject,
-    patchMonitorAlert,
-  } = useMonitorApi();
+  const { getMonitorAlert, getMonitorObject, patchMonitorAlert } =
+    useMonitorApi();
   const { t } = useTranslation();
   const STATE_MAP = useStateMap();
   const LEVEL_LIST = useLevelList();
@@ -103,9 +91,7 @@ const Alert: React.FC = () => {
   const [pageLoading, setPageLoading] = useState<boolean>(false);
   const [objects, setObjects] = useState<ObjectItem[]>([]);
   const [treeData, setTreeData] = useState<TreeItem[]>([]);
-  const [metrics, setMetrics] = useState<MetricItem[]>([]);
   const [confirmLoading, setConfirmLoading] = useState(false);
-  const [defaultSelectObj, setDefaultSelectObj] = useState<React.Key>('');
   const [objectId, setObjectId] = useState<React.Key>('');
 
   const columns: ColumnItem[] = [
@@ -288,7 +274,7 @@ const Alert: React.FC = () => {
 
   useEffect(() => {
     if (isLoading) return;
-    getInitData();
+    getObjects();
   }, [isLoading]);
 
   const changeTab = (val: string) => {
@@ -303,27 +289,18 @@ const Alert: React.FC = () => {
     getChartData('refresh', { tab: val, filtersConfig });
   };
 
-  const getInitData = () => {
-    setPageLoading(true);
-    Promise.all([getMetrics(), getObjects()]).finally(() => {
-      setPageLoading(false);
-    });
-  };
-
-  const getMetrics = async () => {
-    const data = await getMonitorMetrics();
-    setMetrics(data);
-  };
-
   const getObjects = async () => {
-    const data: ObjectItem[] = await getMonitorObject({
-      add_policy_count: true,
-    });
-    setObjects(data);
-    const _treeData = getTreeData(deepClone(data));
-    const defaulltId = (_treeData[0]?.children || [])[0]?.key;
-    setDefaultSelectObj(defaulltId);
-    setTreeData(_treeData);
+    setPageLoading(true);
+    try {
+      const data: ObjectItem[] = await getMonitorObject({
+        add_policy_count: true,
+      });
+      setObjects(data);
+      const _treeData = getTreeData(cloneDeep(data));
+      setTreeData(_treeData);
+    } finally {
+      setPageLoading(false);
+    }
   };
 
   const getTreeData = (data: ObjectItem[]): TreeItem[] => {
@@ -343,7 +320,14 @@ const Alert: React.FC = () => {
       });
       return acc;
     }, {} as Record<string, TreeItem>);
-    return Object.values(groupedData);
+    return [
+      {
+        title: t('common.all'),
+        key: 'all',
+        children: [],
+      },
+      ...Object.values(groupedData),
+    ];
   };
 
   const alertCloseConfirm = async (id: string | number) => {
@@ -372,7 +356,7 @@ const Alert: React.FC = () => {
         ? 'new'
         : filtersMap.state.join(',') || 'recovered,closed',
       level_in: filtersMap.level.join(','),
-      monitor_object_id: objectId,
+      monitor_object_id: objectId === 'all' ? '' : objectId,
       content: searchText || '',
       page: pagination.current,
       page_size: pagination.pageSize,
@@ -413,10 +397,11 @@ const Alert: React.FC = () => {
     try {
       setTableLoading(type !== 'timer');
       const data = await getMonitorAlert(params);
-      setTableData(data.results);
+
+      setTableData(data.results || []);
       setPagination((pre) => ({
         ...pre,
-        total: data.count,
+        total: data.count || 0,
       }));
     } finally {
       setTableLoading(false);
@@ -434,7 +419,7 @@ const Alert: React.FC = () => {
       extra?.tab || activeTab,
       extra?.filtersConfig || filters
     );
-    const chartParams = deepClone(params);
+    const chartParams: any = cloneDeep(params);
     delete chartParams.page;
     delete chartParams.page_size;
     chartParams.content = '';
@@ -462,18 +447,12 @@ const Alert: React.FC = () => {
   };
 
   const openAlertDetail = (row: TableDataItem) => {
-    const metricInfo =
-      metrics.find(
-        (item) => item.id === row.policy?.query_condition?.metric_id
-      ) || {};
     detailRef.current?.showModal({
       title: t('monitor.events.alertDetail'),
       type: 'add',
       form: {
         ...row,
-        metric: metricInfo,
         alertTitle: showObjName(row),
-        alertValue: getEnumValueUnit(metricInfo as MetricItem, row.value),
       },
     });
   };
@@ -573,8 +552,9 @@ const Alert: React.FC = () => {
         <div className={alertStyle.alert}>
           <div className={alertStyle.filters}>
             <TreeSelector
+              showAllMenu
               data={treeData}
-              defaultSelectedKey={defaultSelectObj as string}
+              defaultSelectedKey="all"
               onNodeSelect={handleObjectChange}
             />
           </div>
@@ -594,7 +574,7 @@ const Alert: React.FC = () => {
                       style={{ width: 200 }}
                       dropdownStyle={{ width: 130 }}
                       allowClear
-                      mode="tags"
+                      mode="multiple"
                       maxTagCount="responsive"
                       value={filters.level}
                       onChange={(val) => onFilterChange(val, 'level')}
@@ -619,7 +599,7 @@ const Alert: React.FC = () => {
                     <Select
                       style={{ width: 200 }}
                       allowClear
-                      mode="tags"
+                      mode="multiple"
                       maxTagCount="responsive"
                       value={filters.state}
                       onChange={(val) => onFilterChange(val, 'state')}
@@ -691,8 +671,8 @@ const Alert: React.FC = () => {
       </Spin>
       <AlertDetail
         ref={detailRef}
+        objectId={objectId}
         objects={objects}
-        metrics={metrics}
         userList={userList}
         onSuccess={() => getAssetInsts('refresh')}
       />

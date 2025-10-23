@@ -90,6 +90,27 @@ class MonitorEventRawData(models.Model):
     data = models.JSONField(default=dict, verbose_name='原始数据')
 
 
+class MonitorAlertMetricSnapshot(TimeInfo):
+    """告警指标快照表 - 记录告警全生命周期内的原始指标数据"""
+
+    alert = models.ForeignKey('MonitorAlert', on_delete=models.CASCADE, verbose_name='关联告警', db_index=True)
+    event = models.ForeignKey(MonitorEvent, on_delete=models.CASCADE, verbose_name='关联事件',
+                             blank=True, null=True, db_index=True)  # 允许为空，因为正常状态可能没有事件记录
+    policy_id = models.IntegerField(db_index=True, verbose_name='监控策略ID')
+    monitor_instance_id = models.CharField(db_index=True, max_length=100, verbose_name='监控对象实例ID')
+
+    # 快照数据 - 保持简洁，只存储核心数据
+    snapshot_time = models.DateTimeField(db_index=True, verbose_name='快照时间')
+    raw_data = models.JSONField(default=list, verbose_name='原始指标数据')
+
+    class Meta:
+        verbose_name = '告警指标快照'
+        verbose_name_plural = '告警指标快照'
+        indexes = [
+            models.Index(fields=['alert', 'snapshot_time']),
+        ]
+
+
 class MonitorAlert(TimeInfo):
     STATUS_CHOICES = [('new', 'New'), ('closed', 'Closed'), ('recovered', 'Recovered')]
     ALERT_TYPE_CHOICES = [('alert', 'Alert'), ('no_data', 'No Data')]

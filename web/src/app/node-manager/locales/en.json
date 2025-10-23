@@ -21,8 +21,6 @@
     "bulkEdit": "Bulk Edit",
     "valueValidate": "The value cannot be empty",
     "prompt": "Prompt",
-    "copy": "Copy",
-    "successfulCopied": "Copy successful !",
     "download": "download",
     "successfulDownloaded": "Download successful !",
     "operationSuccessful": "Operation successful !",
@@ -32,8 +30,6 @@
     "createdAt": "Created At",
     "updatedBy": "Updated By",
     "updatedAt": "Updated At",
-    "inputPassword": "Please input the password",
-    "reset": "Reset",
     "deleteTips": "Are you sure you want to modify this item?"
   },
   "node-manager": {
@@ -164,25 +160,27 @@
       }
     },
     "collector": {
-      "title": "Overview",
-      "edit": "Edit",
-      "delete": "Delete",
       "collector": "Collector",
-      "controller": "Controller",
-      "desc": "Introduce each collector, including basic information, usage scenarios, and collected data.",
       "editCollector": "Edit Collector",
+      "addCollector": "Add Collector",
+      "deleteCollector": "Delete Collector",
+      "single": "Single choice Windows/Linux",
+      "executeFilePath": "Execute file path",
+      "executeParameters": "Execution parameters"
+    },
+    "controller": {
+      "controller": "Controller"
+    },
+    "packetManage": {
       "uploadPackage": "Upload Package",
       "uploadSuccess": "Upload Success",
       "packageName": "Package Name",
       "version": "Version",
       "importFile": "Import File",
-      "addCollector": "Add Collector",
-      "deleteCollector": "Delete Collector",
-      "deleteInfo": "Are you sure to delete this Collector?",
-      "single": "Single choice Windows/Linux",
-      "executeFilePath": "Execute file path",
-      "executeParameters": "Execution parameters",
-      "clickUpload": "Click to upload"
+      "deleteInfo": "Are you sure to delete this item?",
+      "clickUpload": "Click to upload",
+      "title": "Overview",
+      "desc": "Introduce each collector, including basic information, usage scenarios, and collected data."
     }
   }
 }

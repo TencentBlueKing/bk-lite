@@ -2,7 +2,7 @@ from django.db import models
 
 from apps.core.models.maintainer_info import MaintainerInfo
 from apps.core.models.time_info import TimeInfo
-from apps.log.models import CollectType, Stream
+from apps.log.models import CollectType
 
 
 class CollectInstance(TimeInfo, MaintainerInfo):
@@ -35,23 +35,3 @@ class CollectConfig(TimeInfo, MaintainerInfo):
     class Meta:
         verbose_name = '采集配置'
         verbose_name_plural = '采集配置'
-
-
-class StreamCollectInstance(TimeInfo, MaintainerInfo):
-    stream = models.ForeignKey(
-        Stream,
-        on_delete=models.CASCADE,
-        related_name="stream_instances",
-        verbose_name="日志数据流"
-    )
-    collect_instance = models.ForeignKey(
-        CollectInstance,
-        on_delete=models.CASCADE,
-        related_name="instance_streams",
-        verbose_name="采集方式实例"
-    )
-
-    class Meta:
-        verbose_name = "数据流与采集实例关联"
-        verbose_name_plural = "数据流与采集实例关联"
-        unique_together = ("stream", "collect_instance")

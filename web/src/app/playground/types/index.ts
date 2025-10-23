@@ -6,6 +6,12 @@ export interface Option {
   value: string | number;
 }
 
+export interface Pagination {
+  current: number;
+  total: number;
+  pageSize: number;
+}
+
 export interface EntityListProps<T> {
   data: T[];
   loading: boolean;

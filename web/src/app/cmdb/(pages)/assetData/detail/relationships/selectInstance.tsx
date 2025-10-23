@@ -36,16 +36,7 @@ const { Option } = Select;
 const { confirm } = Modal;
 
 const SelectInstance = forwardRef<RelationInstanceRef, SelectInstanceProps>(
-  (
-    {
-      userList,
-      models,
-      assoTypes,
-      needFetchAssoInstIds,
-      onSuccess,
-    },
-    ref
-  ) => {
+  ({ userList, models, assoTypes, needFetchAssoInstIds, onSuccess }, ref) => {
     const { t } = useTranslation();
     const instanceApi = useInstanceApi();
     const modelApi = useModelApi();
@@ -74,7 +65,7 @@ const SelectInstance = forwardRef<RelationInstanceRef, SelectInstanceProps>(
     });
 
     useEffect(() => {
-      if (modelId) {
+      if (modelId && assoModelId && pagination?.current) {
         fetchData();
       }
     }, [pagination?.current, pagination?.pageSize, queryList]);
@@ -202,14 +193,18 @@ const SelectInstance = forwardRef<RelationInstanceRef, SelectInstanceProps>(
       try {
         const params = getTableParams();
         params.model_id = modelId;
+        params.page = 1;
         const attrList = modelApi.getModelAttrList(modelId);
         const getInstanseList = instanceApi.searchInstances(params);
         Promise.all([attrList, getInstanseList])
           .then((res) => {
             setIntancePropertyList(res[0]);
             setTableData(res[1].insts);
-            pagination.total = res[1].count;
-            setPagination(pagination);
+            setPagination((prev) => ({
+              ...prev,
+              total: res[1].count,
+              current: 1,
+            }));
             setLoading(false);
           })
           .catch(() => {
@@ -300,8 +295,10 @@ const SelectInstance = forwardRef<RelationInstanceRef, SelectInstanceProps>(
       try {
         const data = await instanceApi.searchInstances(params);
         setTableData(data.insts);
-        pagination.total = data.count;
-        setPagination(pagination);
+        setPagination((prev) => ({
+          ...prev,
+          total: data.count,
+        }));
       } catch (error) {
         console.log(error);
       } finally {
@@ -326,6 +323,10 @@ const SelectInstance = forwardRef<RelationInstanceRef, SelectInstanceProps>(
 
     const handleSearch = (condition: unknown) => {
       setQueryList(condition);
+      setPagination((prev) => ({
+        ...prev,
+        current: 1,
+      }));
     };
 
     const handleTableChange = (pagination = {}) => {

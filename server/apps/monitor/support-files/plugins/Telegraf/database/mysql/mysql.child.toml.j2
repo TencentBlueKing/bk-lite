@@ -1,0 +1,9 @@
+[[inputs.mysql]]
+    servers = ["{{ username }}:${PASSWORD__{{ config_id }}}@tcp({{ host }}:{{ port }})/?tls=false"]
+    metric_version = 2
+    interval = "{{ interval }}s"
+    [inputs.mysql.tags]
+        instance_id = "{{ instance_id }}"
+        instance_type = "{{ instance_type }}"
+        collect_type = "database"
+        config_type = "mysql"

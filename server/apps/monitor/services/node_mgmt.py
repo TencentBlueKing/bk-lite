@@ -1,10 +1,12 @@
 import ast
 
 from apps.core.exceptions.base_app_exception import BaseAppException
-from apps.monitor.plugins.controller import Controller
-from apps.monitor.models import MonitorInstance, MonitorInstanceOrganization, CollectConfig
+from apps.monitor.constants.database import DatabaseConstants
+from apps.monitor.models import MonitorInstance, MonitorInstanceOrganization, CollectConfig, MonitorObject, \
+    MonitorObjectOrganizationRule, Metric
 from apps.monitor.utils.config_format import ConfigFormat
 from apps.monitor.utils.instance import calculation_status
+from apps.monitor.utils.plugin_controller import Controller
 from apps.monitor.utils.victoriametrics_api import VictoriaMetricsAPI
 from apps.rpc.node_mgmt import NodeMgmt
 
@@ -74,16 +76,33 @@ class InstanceConfigService:
             else:
                 result[key]["config_ids"].append(config["config_id"])
 
-        # # 过滤混合配置中的子配置
-        # config_map = {
-        #     key: list(group)
-        #     for key, group in itertools.groupby(
-        #         sorted(configs, key=lambda x: (x["collect_type"], x["config_type"])),
-        #         key=lambda x: (x["collect_type"], x["config_type"]))
-        # }
-        # results = [cs[0] if len(cs) == 1 else next(c for c in cs if not c["is_child"]) for cs in config_map.values()]
-
         return list(result.values())
+
+    @staticmethod
+    def create_default_rule(monitor_object_id, monitor_instance_id, group_ids):
+        """存在子模型的要给子模型默认规则"""
+        child_objs = MonitorObject.objects.filter(parent_id=monitor_object_id)
+        if not child_objs:
+            return
+
+        rules = []
+
+        _monitor_instance_id = ast.literal_eval(monitor_instance_id)[0]
+
+        for child_obj in child_objs:
+            metric_obj = Metric.objects.filter(monitor_object_id=child_obj.id).first()
+            rules.append(MonitorObjectOrganizationRule(
+                name=f"{child_obj.name}-{monitor_instance_id}",
+                monitor_object_id=child_obj.id,
+                rule={
+                    "type": "metric",
+                    "metric_id": metric_obj.id,
+                    "filter": [{"name": "instance_id", "method": "=",  "value": _monitor_instance_id}]
+                },
+                organizations=group_ids,
+                monitor_instance_id=monitor_instance_id,
+            ))
+        MonitorObjectOrganizationRule.objects.bulk_create(rules, batch_size=DatabaseConstants.BULK_CREATE_BATCH_SIZE)
 
     @staticmethod
     def create_monitor_instance_by_node_mgmt(data):
@@ -92,8 +111,6 @@ class InstanceConfigService:
         # 格式化实例id,将实例id统一为字符串元祖（支持多维度组成的实例id）
         for instance in data["instances"]:
             instance["instance_id"] = str(tuple([instance["instance_id"]]))
-            # if "interval" not in instance:
-            #     instance["interval"] = 10
 
         # 删除逻辑删除的实例，避免影响现有逻辑
         MonitorInstance.objects.filter(id__in=[instance["instance_id"] for instance in data["instances"]], is_deleted=True).delete()
@@ -111,6 +128,10 @@ class InstanceConfigService:
                 new_instances.append(instance)
 
         data["instances"] = new_instances
+
+        for instance in data["instances"]:
+            # 创建实例默认分组规则
+            InstanceConfigService.create_default_rule(data["monitor_object_id"], instance["instance_id"], instance["group_ids"])
 
         # 实例更新
         instance_map = {
@@ -131,11 +152,11 @@ class InstanceConfigService:
                 assos.append((instance_id, group_id))
             creates.append(MonitorInstance(**instance_info))
 
-        MonitorInstance.objects.bulk_create(creates, batch_size=200)
+        MonitorInstance.objects.bulk_create(creates, batch_size=DatabaseConstants.BULK_CREATE_BATCH_SIZE)
 
         MonitorInstanceOrganization.objects.bulk_create(
             [MonitorInstanceOrganization(monitor_instance_id=asso[0], organization=asso[1]) for asso in assos],
-            batch_size=200
+            batch_size=DatabaseConstants.BULK_CREATE_BATCH_SIZE
         )
 
         # 实例配置

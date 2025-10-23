@@ -23,11 +23,6 @@ TEMPLATES = [
 ]
 
 INSTALLED_APPS = (
-    "unfold",
-    "unfold.contrib.filters",
-    "unfold.contrib.forms",
-    "unfold.contrib.inlines",
-    "unfold.contrib.import_export",
     "apps.base",
     "django.contrib.admin",
     "django.contrib.auth",
@@ -41,11 +36,13 @@ INSTALLED_APPS = (
     "django_filters",
     "mptt",
     "django_comment_migrate",
-    "import_export",
-    "django_select2",
     "apps.core",
     "nats_client",
+    "django_extensions",
 )
+
+SHELL_PLUS = "ipython"
+IPYTHON_KERNEL_DISPLAY_NAME = "BK-Lite"
 
 STORAGES = {
     "staticfiles": {
@@ -77,12 +74,12 @@ MIDDLEWARE = (
     "apps.core.middlewares.drf_middleware.DisableCSRFMiddleware",
     "apps.core.middlewares.api_middleware.APISecretMiddleware",
     "apps.core.middlewares.auth_middleware.AuthMiddleware",
+    "better_exceptions.integrations.django.BetterExceptionsMiddleware",
 )
 
 if DEBUG:
     INSTALLED_APPS += (
         "corsheaders",
-        "drf_yasg",
         "debug_toolbar",
     )  # noqa
     # 该跨域中间件需要放在前面
@@ -108,20 +105,13 @@ APPS_DIR = os.path.join(BASE_DIR, "apps")
 if os.path.exists(APPS_DIR):
     install_apps = os.getenv("INSTALL_APPS", "")
     if install_apps:
-        app_folders = [
-            name
-            for name in os.listdir(APPS_DIR)
-            if os.path.isdir(os.path.join(APPS_DIR, name)) and name in install_apps.split(",")
-        ]
+        app_folders = [name for name in os.listdir(APPS_DIR) if os.path.isdir(os.path.join(APPS_DIR, name)) and name in install_apps.split(",")]
     else:
         exclude_apps = ["base", "core", "rpc"]
         app_folders = [
             name
             for name in os.listdir(APPS_DIR)
-            if os.path.isdir(os.path.join(APPS_DIR, name))
-            and name not in exclude_apps
-            and not name.startswith("_")
-            and not name.startswith(".")
+            if os.path.isdir(os.path.join(APPS_DIR, name)) and name not in exclude_apps and not name.startswith("_") and not name.startswith(".")
         ]
 
 else:

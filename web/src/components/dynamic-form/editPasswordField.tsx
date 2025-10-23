@@ -20,6 +20,9 @@ const EditablePasswordField: React.FC<EditablePasswordFieldProps> = ({ value, on
   const handleEdit = () => {
     setIsEditable(true);
     setInternalValue('');
+    if (onChange) {
+      onChange('');
+    }
   };
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {

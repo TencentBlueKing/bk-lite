@@ -1,0 +1,30 @@
+{
+  "zh": [
+    {
+      "title": "镜像管理",
+      "icon": "Gc_103_face-Data",
+      "url": "/lab/mirror",
+      "name": "images"
+    },
+    {
+      "title": "环境管理",
+      "icon": "Gc_103_face-Data",
+      "url": "/lab/env",
+      "name": "environment"
+    }
+  ],
+  "en": [
+    {
+      "title": "Images Manage",
+      "icon": "Gc_103_face-Data",
+      "url": "/lab/mirror",
+      "name": "images"
+    },
+    {
+      "title": "Environment Manage",
+      "icon": "Gc_103_face-Data",
+      "url": "/lab/env",
+      "name": "environment"
+    }
+  ]
+}

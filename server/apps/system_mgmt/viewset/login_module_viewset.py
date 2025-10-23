@@ -1,14 +1,13 @@
 from django.http import JsonResponse
-from django.utils.translation import gettext as _
 from django_celery_beat.models import PeriodicTask
-from rest_framework import viewsets
 
+from apps.core.utils.viewset_utils import LanguageViewSet
 from apps.system_mgmt.models import Group, LoginModule, User
 from apps.system_mgmt.serializers.login_module_serializer import LoginModuleSerializer
 from apps.system_mgmt.tasks import sync_user_and_group_by_login_module
 
 
-class LoginModuleViewSet(viewsets.ModelViewSet):
+class LoginModuleViewSet(LanguageViewSet):
     queryset = LoginModule.objects.all()
     serializer_class = LoginModuleSerializer
 
@@ -22,19 +21,26 @@ class LoginModuleViewSet(viewsets.ModelViewSet):
         """
         Create a new login module.
         """
-        domain = request.data.get("other_config", {}).get("domain", "")
-        if not domain:
-            return JsonResponse({"result": False, "message": _("Domain is required for creating a login module.")})
-        if LoginModule.objects.filter(name=request.data["name"], source_type=request.data["source_type"]).exists():
-            return JsonResponse(
-                {"result": False, "message": _("Login module with this name and source type already exists.")}
-            )
-        exist_login_module = list(
-            LoginModule.objects.filter(source_type="bk_lite").values_list("other_config", flat=True)
-        )
-        domain_list = [i.get("domain") for i in exist_login_module]
-        if domain in domain_list:
-            return JsonResponse({"result": False, "message": _("Login module with this domain already exists.")})
+        source_type = request.data["source_type"]
+        if source_type != "bk_login":
+            domain = request.data.get("other_config", {}).get("domain", "")
+            if not domain:
+                message = (
+                    self.loader.get("error.domain_required_for_login_module") if self.loader else "Domain is required for creating a login module."
+                )
+                return JsonResponse({"result": False, "message": message})
+            if LoginModule.objects.filter(name=request.data["name"], source_type=request.data["source_type"]).exists():
+                message = (
+                    self.loader.get("error.login_module_name_exists")
+                    if self.loader
+                    else "Login module with this name and source type already exists."
+                )
+                return JsonResponse({"result": False, "message": message})
+            exist_login_module = list(LoginModule.objects.filter(source_type="bk_lite").values_list("other_config", flat=True))
+            domain_list = [i.get("domain") for i in exist_login_module]
+            if domain in domain_list:
+                message = self.loader.get("error.login_module_domain_exists") if self.loader else "Login module with this domain already exists."
+                return JsonResponse({"result": False, "message": message})
         return super().create(request, *args, **kwargs)
 
     def update(self, request, *args, **kwargs):
@@ -45,23 +51,22 @@ class LoginModuleViewSet(viewsets.ModelViewSet):
         if obj.source_type == "bk_lite":
             domain = request.data.get("other_config", {}).get("domain", "")
             if not domain:
-                return JsonResponse({"result": False, "message": _("Domain is required for creating a login module.")})
-            if (
-                LoginModule.objects.filter(name=request.data["name"], source_type=request.data["source_type"])
-                .exclude(id=obj.id)
-                .exists()
-            ):
-                return JsonResponse(
-                    {"result": False, "message": _("Login module with this name and source type already exists.")}
+                message = (
+                    self.loader.get("error.domain_required_for_login_module") if self.loader else "Domain is required for creating a login module."
                 )
-            exist_login_module = list(
-                LoginModule.objects.filter(source_type="bk_lite")
-                .exclude(id=obj.id)
-                .values_list("other_config", flat=True)
-            )
+                return JsonResponse({"result": False, "message": message})
+            if LoginModule.objects.filter(name=request.data["name"], source_type=request.data["source_type"]).exclude(id=obj.id).exists():
+                message = (
+                    self.loader.get("error.login_module_name_exists")
+                    if self.loader
+                    else "Login module with this name and source type already exists."
+                )
+                return JsonResponse({"result": False, "message": message})
+            exist_login_module = list(LoginModule.objects.filter(source_type="bk_lite").exclude(id=obj.id).values_list("other_config", flat=True))
             domain_list = [i.get("domain") for i in exist_login_module]
             if domain in domain_list:
-                return JsonResponse({"result": False, "message": _("Login module with this domain already exists.")})
+                message = self.loader.get("error.login_module_domain_exists") if self.loader else "Login module with this domain already exists."
+                return JsonResponse({"result": False, "message": message})
         return super().update(request, *args, **kwargs)
 
     def destroy(self, request, *args, **kwargs):
@@ -83,4 +88,5 @@ class LoginModuleViewSet(viewsets.ModelViewSet):
     def sync_data(self, request, *args, **kwargs):
         obj = self.get_object()
         sync_user_and_group_by_login_module.delay(obj.id)
-        return JsonResponse({"result": True, "message": _("Sync task has been initiated.")})
+        message = self.loader.get("error.sync_task_initiated") if self.loader else "Sync task has been initiated."
+        return JsonResponse({"result": True, "message": message})

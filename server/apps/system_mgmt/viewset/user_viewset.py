@@ -24,16 +24,14 @@ class UserViewSet(ViewSetUtils):
         search = request.GET.get("search", "")
         group_id = request.GET.get("group_id", "")
         # 过滤用户数据
-        queryset = User.objects.filter(
-            Q(username__icontains=search) | Q(display_name__icontains=search) | Q(email__icontains=search)
-        )
+        queryset = User.objects.filter(Q(username__icontains=search) | Q(display_name__icontains=search) | Q(email__icontains=search))
         # 如果指定了用户组ID，则过滤该组内的用户
         if group_id:
             queryset = queryset.filter(group_list__contains=int(group_id))
         roles = Role.objects.all().values("id", "name", "app")
         role_map = {}
         for i in roles:
-            role_map[i["id"]] = f"{i['app']}-{i['name']}"
+            role_map[i["id"]] = f"{i['app']}@@{i['name']}"
         data, total = self.search_by_page(queryset.order_by("-id"), request, User.display_fields())
         for i in data:
             i["roles"] = [role_map.get(role_id, "") for role_id in i["role_list"]]
@@ -45,23 +43,23 @@ class UserViewSet(ViewSetUtils):
         data = User.objects.all().values(*User.display_fields())
         return JsonResponse({"result": True, "data": list(data)})
 
+    @action(detail=False, methods=["GET"])
+    @HasPermission("user_group-View")
+    def user_id_all(self, request):
+        data = User.objects.all().values("id", "display_name", "username")
+        return JsonResponse({"result": True, "data": list(data)})
+
     @action(detail=False, methods=["POST"])
     @HasPermission("user_group-View")
     def get_user_detail(self, request):
         pk = request.data.get("user_id")
         user = User.objects.get(id=pk)
-        roles = Role.objects.filter(id__in=user.role_list).values(
-            role_id=F("id"), role_name=F("name"), display_name=F("name")
-        )
+        roles = Role.objects.filter(id__in=user.role_list).values(role_id=F("id"), role_name=F("name"), display_name=F("name"))
         groups = list(Group.objects.filter(id__in=user.group_list).values("id", "name"))
         group_rule_map = {}
-        rules = UserRule.objects.filter(username=user.username).values(
-            "group_rule__group_id", "group_rule_id", "group_rule__app"
-        )
+        rules = UserRule.objects.filter(username=user.username).values("group_rule__group_id", "group_rule_id", "group_rule__app")
         for rule in rules:
-            group_rule_map.setdefault(rule["group_rule__group_id"], {}).setdefault(rule["group_rule__app"], []).append(
-                rule["group_rule_id"]
-            )
+            group_rule_map.setdefault(rule["group_rule__group_id"], {}).setdefault(rule["group_rule__app"], []).append(rule["group_rule_id"])
         for i in groups:
             i["rules"] = group_rule_map.get(i["id"], {})
         data = {
@@ -114,9 +112,7 @@ class UserViewSet(ViewSetUtils):
         try:
             password = request.data.get("password")
             temporary_pwd = request.data.get("temporary", False)
-            User.objects.filter(id=request.data.get("id")).update(
-                password=make_password(password), temporary_pwd=temporary_pwd
-            )
+            User.objects.filter(id=request.data.get("id")).update(password=make_password(password), temporary_pwd=temporary_pwd)
             return JsonResponse({"result": True})
         except Exception as e:
             logger.exception(e)

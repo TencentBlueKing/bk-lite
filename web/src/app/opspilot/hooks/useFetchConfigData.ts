@@ -13,14 +13,8 @@ const useFetchConfigData = (id: string | null) => {
   const { get } = useApiClient();
   const [formData, setFormData] = useState<FormData>({});
   const [configData, setConfigData] = useState<ConfigDataProps>({
-    selectedSearchTypes: [],
     rerankModel: false,
     selectedRerankModel: null,
-    textSearchWeight: 0.5,
-    vectorSearchWeight: 0.5,
-    quantity: 10,
-    candidate: 10,
-    textSearchMode: 'match',
     selectedEmbedModel: null,
     resultCount: 100,
     rerankTopK: 10,
@@ -29,7 +23,10 @@ const useFetchConfigData = (id: string | null) => {
     enableGraphRag: false,
     ragSize: 0,
     qaSize: 0,
-    graphSize: 0
+    graphSize: 0,
+    searchType: 'similarity_score_threshold',
+    scoreThreshold: 0.3,
+    ragRecallMode: 'chunk'
   });
   const [loading, setLoading] = useState(true);
   const [knowledgeBasePermissions, setKnowledgeBasePermissions] = useState<string[]>([]);
@@ -38,9 +35,6 @@ const useFetchConfigData = (id: string | null) => {
     const fetchConfigData = async () => {
       try {
         const data = await get(`/opspilot/knowledge_mgmt/knowledge_base/${id}/`);
-        const selectedSearchTypes = [];
-        if (data.enable_text_search) selectedSearchTypes.push('textSearch');
-        if (data.enable_vector_search) selectedSearchTypes.push('vectorSearch');
 
         setFormData({
           name: data.name || '',
@@ -49,14 +43,8 @@ const useFetchConfigData = (id: string | null) => {
         });
 
         setConfigData({
-          selectedSearchTypes,
           rerankModel: data.enable_rerank || false,
           selectedRerankModel: data.rerank_model || null,
-          textSearchWeight: data.text_search_weight || 0.5,
-          vectorSearchWeight: data.vector_search_weight || 0.5,
-          quantity: data.rag_k || 10,
-          candidate: data.rag_num_candidates || 10,
-          textSearchMode: data.text_search_mode,
           selectedEmbedModel: data.embed_model || null,
           resultCount: data.result_count || 100,
           rerankTopK: data.rerank_top_k || 10,
@@ -65,7 +53,10 @@ const useFetchConfigData = (id: string | null) => {
           enableGraphRag: data.enable_graph_rag || false,
           ragSize: data.rag_size || 0,
           qaSize: data.qa_size || 0,
-          graphSize: data.graph_size || 0
+          graphSize: data.graph_size || 0,
+          searchType: data.search_type || 'similarity_score_threshold',
+          scoreThreshold: data.score_threshold || 0.3,
+          ragRecallMode: data.rag_recall_mode || 'chunk'
         });
         setKnowledgeBasePermissions(data.permissions || []);
       } catch (error) {

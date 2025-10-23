@@ -1,180 +1,164 @@
 import { useState, useRef, useCallback } from 'react';
 import type { Graph, Edge } from '@antv/x6';
-import { FORM_DEFAULTS } from '../constants/nodeDefaults';
-import { EdgeData } from '@/app/ops-analysis/types/topology';
+import {
+  EdgeData,
+  GraphState,
+  ContextMenuState,
+  EdgeConfigState,
+  NodeEditState
+} from '@/app/ops-analysis/types/topology';
 
 export const useTopologyState = () => {
-  // 图形相关状态
-  const [graphInstance, setGraphInstance] = useState<Graph | null>(null);
-  const [scale, setScale] = useState(1);
-  const [selectedCells, setSelectedCells] = useState<string[]>([]);
-  const [isSelectMode, setIsSelectMode] = useState(true);
-  const [isEditMode, setIsEditMode] = useState(false);
-  const [collapsed, setCollapsed] = useState(true);
-
-  // 右键菜单状态
-  const [contextMenuNodeId, setContextMenuNodeId] = useState<string>('');
-  const [contextMenuVisible, setContextMenuVisible] = useState(false);
-  const [contextMenuPosition, setContextMenuPosition] = useState({
-    x: 0,
-    y: 0,
+  // 图形核心状态
+  const [graphState, setGraphState] = useState<GraphState>({
+    instance: null,
+    scale: 1,
+    selectedCells: [],
+    isSelectMode: true,
+    isEditMode: false,
+    collapsed: true,
   });
 
-  // 文本编辑相关状态
-  const [isEditingText, setIsEditingText] = useState(false);
-  const [editingNodeId, setEditingNodeId] = useState<string | null>(null);
-  const [tempTextInput, setTempTextInput] = useState('');
-  const [editPosition, setEditPosition] = useState({ x: 0, y: 0 });
-  const [inputWidth, setInputWidth] = useState(120);
-  const [originalText, setOriginalText] = useState('');
+  // 右键菜单状态
+  const [contextMenuState, setContextMenuState] = useState<ContextMenuState>({
+    nodeId: '',
+    visible: false,
+    position: { x: 0, y: 0 },
+    targetType: 'node',
+  });
 
-  // 边配置相关状态
-  const [edgeConfigVisible, setEdgeConfigVisible] = useState(false);
-  const [currentEdgeData, setCurrentEdgeData] = useState<EdgeData | null>(null);
+  // 边配置状态
+  const [edgeConfigState, setEdgeConfigState] = useState<EdgeConfigState>({
+    visible: false,
+    data: null,
+  });
 
-  // 节点编辑相关状态
-  const [nodeEditVisible, setNodeEditVisible] = useState(false);
-  const [editingNodeData, setEditingNodeData] = useState<any>(null);
+  // 节点编辑状态
+  const [nodeEditState, setNodeEditState] = useState<NodeEditState>({
+    visible: false,
+    data: null,
+  });
+
+  // 视图配置状态
+  const [viewConfigVisible, setViewConfigVisible] = useState(false);
 
   // Refs
   const isDrawingRef = useRef(false);
   const drawingEdgeRef = useRef<Edge | null>(null);
-  const finishTextEditRef = useRef<(() => void) | null>(null);
-  const startTextEditRef = useRef<((nodeId: string, currentText: string) => void) | null>(null);
-  const isEditModeRef = useRef(isEditMode);
+  const isEditModeRef = useRef(graphState.isEditMode);
+
+  // 状态更新助手函数
+  const updateGraphState = useCallback((updates: Partial<GraphState>) => {
+    setGraphState(prev => ({ ...prev, ...updates }));
+  }, []);
+
+  const updateContextMenuState = useCallback((updates: Partial<ContextMenuState>) => {
+    setContextMenuState(prev => ({ ...prev, ...updates }));
+  }, []);
+
+  const updateEdgeConfigState = useCallback((updates: Partial<EdgeConfigState>) => {
+    setEdgeConfigState(prev => ({ ...prev, ...updates }));
+  }, []);
+
+  const updateNodeEditState = useCallback((updates: Partial<NodeEditState>) => {
+    setNodeEditState(prev => ({ ...prev, ...updates }));
+  }, []);
 
   // 更新绘制状态
   const updateDrawingState = useCallback((drawing: boolean) => {
     isDrawingRef.current = drawing;
   }, []);
 
-  // 切换编辑模式
-  const toggleEditMode = useCallback(() => {
-    const newEditMode = !isEditMode;
-    setIsEditMode(newEditMode);
-    isEditModeRef.current = newEditMode;
+  const resetAllStates = useCallback(() => {
+    // 重置图形状态
+    updateGraphState({
+      isEditMode: false,
+      isSelectMode: true,
+      selectedCells: [],
+    });
+    isEditModeRef.current = false;
 
-    if (graphInstance) {
-      if (newEditMode) {
-        graphInstance.enablePlugins(['selection']);
-      } else {
-        graphInstance.disablePlugins(['selection']);
+    // 重置右键菜单状态
+    updateContextMenuState({
+      visible: false,
+      nodeId: '',
+      position: { x: 0, y: 0 },
+    });
 
-        if (isEditingText) {
-          // 取消文本编辑
-          setIsEditingText(false);
-          setEditingNodeId(null);
-          setTempTextInput('');
-          setEditPosition({ x: 0, y: 0 });
-          setInputWidth(120);
-          setOriginalText('');
-        }
+    // 重置边配置状态
+    updateEdgeConfigState({
+      visible: false,
+      data: null,
+    });
 
-        setContextMenuVisible(false);
-        graphInstance.cleanSelection();
-        setSelectedCells([]);
-      }
+    // 重置节点编辑状态
+    updateNodeEditState({
+      visible: false,
+      data: null,
+    });
+    setViewConfigVisible(false);
+
+    // 重置绘制状态
+    isDrawingRef.current = false;
+    drawingEdgeRef.current = null;
+
+    // 清理图形选择状态
+    if (graphState.instance) {
+      graphState.instance.disablePlugins(['selection']);
+      graphState.instance.cleanSelection();
     }
-  }, [isEditMode, graphInstance, isEditingText]);
-
-  // 获取编辑节点的初始值
-  const getEditNodeInitialValues = useCallback(() => {
-    if (!editingNodeData) return {};
-
-    if (editingNodeData.type === 'single-value') {
-      const config = editingNodeData.config || {};
-      return {
-        name: editingNodeData.name,
-        dataSource: editingNodeData.dataSource,
-        fontSize: config.fontSize || FORM_DEFAULTS.SINGLE_VALUE.fontSize,
-        textColor: config.textColor || FORM_DEFAULTS.SINGLE_VALUE.textColor,
-        backgroundColor: config.backgroundColor || FORM_DEFAULTS.SINGLE_VALUE.backgroundColor,
-        borderColor: config.borderColor || FORM_DEFAULTS.SINGLE_VALUE.borderColor,
-        query: config.query || FORM_DEFAULTS.SINGLE_VALUE.query,
-        unit: config.unit || FORM_DEFAULTS.SINGLE_VALUE.unit,
-        threshold: config.threshold || FORM_DEFAULTS.SINGLE_VALUE.threshold,
-      };
-    }
-
-    return {
-      name: editingNodeData.name,
-      logoType: editingNodeData.logoType || 'default',
-      logoIcon:
-        editingNodeData.logoType === 'default'
-          ? editingNodeData.logo
-          : 'cc-host',
-      logoUrl:
-        editingNodeData.logoType === 'custom'
-          ? editingNodeData.logo
-          : undefined,
-      backgroundColor: editingNodeData.config?.backgroundColor || FORM_DEFAULTS.ICON_NODE.backgroundColor,
-      borderColor: editingNodeData.config?.borderColor || FORM_DEFAULTS.ICON_NODE.borderColor,
-    };
-  }, [editingNodeData]);
-
-  // 关闭节点编辑面板
-  const handleNodeEditClose = useCallback(() => {
-    setNodeEditVisible(false);
-    setEditingNodeData(null);
-  }, []);
+  }, [graphState.instance, updateGraphState, updateContextMenuState, updateEdgeConfigState, updateNodeEditState]);
 
   return {
-    // 图形相关
-    graphInstance,
-    setGraphInstance,
-    scale,
-    setScale,
-    selectedCells,
-    setSelectedCells,
-    isSelectMode,
-    setIsSelectMode,
-    isEditMode,
-    setIsEditMode,
-    collapsed,
-    setCollapsed,
-    toggleEditMode,
+    // 图形相关状态和操作
+    graphInstance: graphState.instance,
+    setGraphInstance: (instance: Graph | null) => updateGraphState({ instance }),
+    scale: graphState.scale,
+    setScale: (scale: number) => updateGraphState({ scale }),
+    selectedCells: graphState.selectedCells,
+    setSelectedCells: (cells: string[]) => updateGraphState({ selectedCells: cells }),
+    isSelectMode: graphState.isSelectMode,
+    setIsSelectMode: (mode: boolean) => updateGraphState({ isSelectMode: mode }),
+    isEditMode: graphState.isEditMode,
+    setIsEditMode: (mode: boolean) => {
+      updateGraphState({ isEditMode: mode });
+      isEditModeRef.current = mode;
+    },
+    collapsed: graphState.collapsed,
+    setCollapsed: (collapsed: boolean) => updateGraphState({ collapsed }),
 
-    // 右键菜单
-    contextMenuNodeId,
-    setContextMenuNodeId,
-    contextMenuVisible,
-    setContextMenuVisible,
-    contextMenuPosition,
-    setContextMenuPosition,
+    // 右键菜单状态和操作
+    contextMenuNodeId: contextMenuState.nodeId,
+    setContextMenuNodeId: (nodeId: string) => updateContextMenuState({ nodeId }),
+    contextMenuVisible: contextMenuState.visible,
+    setContextMenuVisible: (visible: boolean) => updateContextMenuState({ visible }),
+    contextMenuPosition: contextMenuState.position,
+    setContextMenuPosition: (position: { x: number; y: number }) => updateContextMenuState({ position }),
+    contextMenuTargetType: contextMenuState.targetType,
+    setContextMenuTargetType: (targetType: 'node' | 'edge') => updateContextMenuState({ targetType }),
 
-    // 文本编辑
-    isEditingText,
-    setIsEditingText,
-    editingNodeId,
-    setEditingNodeId,
-    tempTextInput,
-    setTempTextInput,
-    editPosition,
-    setEditPosition,
-    inputWidth,
-    setInputWidth,
-    originalText,
-    setOriginalText,
+    // 边配置状态和操作
+    edgeConfigVisible: edgeConfigState.visible,
+    setEdgeConfigVisible: (visible: boolean) => updateEdgeConfigState({ visible }),
+    currentEdgeData: edgeConfigState.data,
+    setCurrentEdgeData: (data: EdgeData | null) => updateEdgeConfigState({ data }),
 
-    // 边配置
-    edgeConfigVisible,
-    setEdgeConfigVisible,
-    currentEdgeData,
-    setCurrentEdgeData,
+    // 节点编辑状态和操作
+    nodeEditVisible: nodeEditState.visible,
+    setNodeEditVisible: (visible: boolean) => updateNodeEditState({ visible }),
+    editingNodeData: nodeEditState.data,
+    setEditingNodeData: (data: any) => updateNodeEditState({ data }),
 
-    // 节点编辑
-    nodeEditVisible,
-    setNodeEditVisible,
-    editingNodeData,
-    setEditingNodeData,
-    getEditNodeInitialValues,
-    handleNodeEditClose,
+    // 视图配置状态
+    viewConfigVisible,
+    setViewConfigVisible,
+
+    // 工具函数
+    resetAllStates,
 
     // Refs
     isDrawingRef,
     drawingEdgeRef,
-    finishTextEditRef,
-    startTextEditRef,
     isEditModeRef,
     updateDrawingState,
   };

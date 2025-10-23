@@ -2,7 +2,7 @@
 import { signIn } from "next-auth/react";
 import { useState, useEffect } from "react";
 import Image from "next/image";
-import { Select } from "antd";
+import { Select, Input } from "antd";
 import PasswordResetForm from "./PasswordResetForm";
 import OtpVerificationForm from "./OtpVerificationForm";
 import { saveAuthToken } from "@/utils/crossDomainAuth";
@@ -35,6 +35,11 @@ interface WeChatSettings {
   redirect_uri?: string;
 }
 
+interface BkSettings {
+  is_open_logining: boolean;
+  url?: string;
+}
+
 export default function SigninClient({ searchParams: { callbackUrl, error }, signinErrors }: SigninClientProps) {
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
@@ -49,13 +54,16 @@ export default function SigninClient({ searchParams: { callbackUrl, error }, sig
   const [qrCodeUrl, setQrCodeUrl] = useState<string>("");
   const [wechatSettings, setWechatSettings] = useState<WeChatSettings | null>(null);
   const [loadingWechatSettings, setLoadingWechatSettings] = useState(true);
+  const [bkSettings, setBkSettings] = useState<BkSettings | null>(null);
+  const [loadingBkSettings, setLoadingBkSettings] = useState(true);
 
   useEffect(() => {
     const userAgent = navigator.userAgent.toLowerCase();
     setIsWechatBrowser(userAgent.includes('micromessenger') || userAgent.includes('wechat'));
     
-    // Fetch WeChat settings and domain list
+    // Fetch WeChat settings, BK settings and domain list
     fetchWechatSettings();
+    fetchBkSettings();
     fetchDomainList();
   }, []);
 
@@ -92,7 +100,7 @@ export default function SigninClient({ searchParams: { callbackUrl, error }, sig
   const fetchWechatSettings = async () => {
     try {
       setLoadingWechatSettings(true);
-      const response = await fetch('/api/proxy/core/api/get_wechat_settings/', {
+      const response = await fetch("/api/proxy/core/api/get_wechat_settings/", {
         method: "GET",
         headers: { 
           "Content-Type": "application/json" 
@@ -114,6 +122,34 @@ export default function SigninClient({ searchParams: { callbackUrl, error }, sig
       setWechatSettings({ enabled: false });
     } finally {
       setLoadingWechatSettings(false);
+    }
+  };
+
+  const fetchBkSettings = async () => {
+    try {
+      setLoadingBkSettings(true);
+      const response = await fetch('/api/proxy/core/api/get_bk_settings/', {
+        method: "GET",
+        headers: { 
+          "Content-Type": "application/json" 
+        },
+      });
+
+      const responseData = await response.json();
+
+      if (response.ok && responseData.result) {
+        setBkSettings({
+          is_open_logining: responseData.data.bk_login_open,
+          url: responseData.data.url,
+        });
+      } else {
+        setBkSettings({ is_open_logining: false });
+      }
+    } catch (error) {
+      console.error("Failed to fetch BK settings:", error);
+      setBkSettings({ is_open_logining: false });
+    } finally {
+      setLoadingBkSettings(false);
     }
   };
 
@@ -248,7 +284,7 @@ export default function SigninClient({ searchParams: { callbackUrl, error }, sig
         skipValidation: 'true',
         userData: JSON.stringify(userDataForAuth),
         callbackUrl: callbackUrl || "/",
-      });
+      }) as any;
       
       console.log('SignIn result:', result);
       
@@ -286,11 +322,20 @@ export default function SigninClient({ searchParams: { callbackUrl, error }, sig
     });
   };
 
+  const handleBkSignIn = () => {
+    if (bkSettings?.url) {
+      const currentDomain = window.location.origin;
+      const bkLoginUrl = `${bkSettings.url}?callbackUrl=${encodeURIComponent(currentDomain)}`;
+      console.log("Redirecting to BK login:", bkLoginUrl);
+      window.location.href = bkLoginUrl;
+    }
+  };
+
   const renderLoginForm = () => (
     <form onSubmit={handleLoginSubmit} className="flex flex-col space-y-6 w-full">
       <div className="space-y-2">
         <div className="flex justify-between items-center">
-          <label htmlFor="domain" className="text-sm font-medium text-gray-700">Domain</label>
+          <label htmlFor="domain" className="text-sm font-medium text-[var(--color-text-1)]">Domain</label>
           {loadingDomains && (
             <div className="w-4 h-4 border-2 border-gray-300 border-t-blue-600 rounded-full animate-spin"></div>
           )}
@@ -341,28 +386,28 @@ export default function SigninClient({ searchParams: { callbackUrl, error }, sig
       </div>
 
       <div className="space-y-2">
-        <label htmlFor="username" className="text-sm font-medium text-gray-700">Username</label>
-        <input
+        <label htmlFor="username" className="text-sm font-medium text-[var(--color-text-1)]">Username</label>
+        <Input
           id="username"
-          type="text"
           placeholder="Enter your username"
           value={username}
           onChange={(e) => setUsername(e.target.value)}
-          className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition duration-150 ease-in-out"
+          size="large"
           required
+          className="h-12"
         />
       </div>
       
       <div className="space-y-2">
-        <label htmlFor="password" className="text-sm font-medium text-gray-700">Password</label>
-        <input
+        <label htmlFor="password" className="text-sm font-medium text-[var(--color-text-1)]">Password</label>
+        <Input.Password
           id="password"
-          type="password"
           placeholder="Enter your password"
           value={password}
           onChange={(e) => setPassword(e.target.value)}
-          className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition duration-150 ease-in-out"
+          size="large"
           required
+          className="h-12"
         />
       </div>
       
@@ -404,26 +449,34 @@ export default function SigninClient({ searchParams: { callbackUrl, error }, sig
   );
 
   const renderWechatLoginSection = () => {
-    if (loadingWechatSettings) {
+    const isLoading = loadingWechatSettings || loadingBkSettings;
+    const hasWechat = wechatSettings?.enabled;
+    const hasBkLogin = bkSettings?.is_open_logining;
+    const hasAnyLogin = hasWechat || hasBkLogin;
+
+    if (isLoading) {
       return (
         <div className="mt-6">
           <div className="relative">
             <div className="absolute inset-0 flex items-center">
-              <div className="w-full border-t border-gray-300"></div>
+              <div className="w-full border-t border-[var(--color-border-3)]"></div>
             </div>
             <div className="relative flex justify-center text-sm">
-              <span className="px-2 bg-gray-50 text-gray-500">Or continue with</span>
+              <span className="px-2 bg-[var(--color-bg)] text-[var(--color-text-1)]">Or continue with</span>
             </div>
           </div>
           
-          <div className="mt-6">
+          <div className="mt-6 space-y-3">
             <div className="w-full h-12 bg-gray-200 rounded-lg animate-pulse"></div>
+            {loadingBkSettings && (
+              <div className="w-full h-12 bg-gray-200 rounded-lg animate-pulse"></div>
+            )}
           </div>
         </div>
       );
     }
 
-    if (!wechatSettings?.enabled) {
+    if (!hasAnyLogin) {
       return null;
     }
 
@@ -431,23 +484,34 @@ export default function SigninClient({ searchParams: { callbackUrl, error }, sig
       <div className="mt-6">
         <div className="relative">
           <div className="absolute inset-0 flex items-center">
-            <div className="w-full border-t border-gray-300"></div>
+            <div className="w-full border-t border-[var(--color-border-3)]"></div>
           </div>
           <div className="relative flex justify-center text-sm">
-            <span className="px-2 bg-gray-50 text-gray-500">Or continue with</span>
+            <span className="px-2 bg-[var(--color-bg)] text-[var(--color-text-1)]">Or continue with</span>
           </div>
         </div>
         
-        <div className="mt-6">
-          <button
-            onClick={handleWechatSignIn}
-            className="w-full flex items-center justify-center px-4 py-3 border border-transparent text-sm font-medium rounded-lg shadow-sm text-white bg-green-600 hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500"
-          >
-            Sign in with WeChat
-          </button>
+        <div className="mt-6 space-y-3">
+          {hasWechat && (
+            <button
+              onClick={handleWechatSignIn}
+              className="w-full flex items-center justify-center px-4 py-3 text-sm font-medium rounded-lg shadow-sm text-white bg-green-600 hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500 transition-colors duration-200"
+            >
+              Sign in with WeChat
+            </button>
+          )}
+          
+          {hasBkLogin && (
+            <button
+              onClick={handleBkSignIn}
+              className="w-full flex items-center justify-center px-4 py-3 text-sm font-medium rounded-lg shadow-sm text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-colors duration-200"
+            >
+              Sign in with BlueKing
+            </button>
+          )}
         </div>
         
-        {isWechatBrowser && (
+        {isWechatBrowser && hasWechat && (
           <div className="mt-4 text-center text-sm text-green-600">
             You are using WeChat browser, for best experience use the WeChat login.
           </div>
@@ -468,18 +532,18 @@ export default function SigninClient({ searchParams: { callbackUrl, error }, sig
       >
       </div>
       
-      <div className="w-full md:w-2/5 flex items-center justify-center p-8 bg-gray-50">
-        <div className="w-full max-w-md">
+      <div className="w-full h-full md:w-2/5 flex items-center justify-center p-8 bg-[var(--bg-color-1)] overflow-y-auto">
+        <div className="w-full h-full max-w-md">
           <div className="text-center mb-10">
             <div className="flex justify-center mb-6">
               <Image src="/logo-site.png" alt="Logo" width={60} height={60} className="h-14 w-auto" />
             </div>
-            <h2 className="text-3xl font-bold text-gray-800">
+            <h2 className="text-3xl font-bold text-[var(--color-text-1)]">
               {authStep === 'login' && 'Sign In'}
               {authStep === 'reset-password' && 'Reset Password'}
               {authStep === 'otp-verification' && 'Verify Identity'}
             </h2>
-            <p className="text-gray-500 mt-2">
+            <p className="text-[var(--color-text-3)] mt-2">
               {authStep === 'login' && 'Enter your credentials to continue'}
               {authStep === 'reset-password' && 'Create a new password to secure your account'}
               {authStep === 'otp-verification' && 'Complete the verification process'}

@@ -1,3 +1,0 @@
-neo4j==5.23.1
-tencentcloud-sdk-python==3.0.1403
-cos-python-sdk-v5==1.9.37

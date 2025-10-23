@@ -42,9 +42,9 @@ export const useScheduleList = (): ListItem[] => {
   const { t } = useTranslation();
   return useMemo(
     () => [
-      { label: t('monitor.events.minutes'), value: 'min' },
-      { label: t('monitor.events.hours'), value: 'hour' },
-      { label: t('monitor.events.days'), value: 'day' },
+      { label: t('log.event.minutes'), value: 'min' },
+      { label: t('log.event.hours'), value: 'hour' },
+      { label: t('log.event.days'), value: 'day' },
     ],
     [t]
   );
@@ -54,10 +54,68 @@ export const useLevelList = (): ListItem[] => {
   const { t } = useTranslation();
   return useMemo(
     () => [
-      { label: t('monitor.events.critical'), value: 'critical' },
-      { label: t('monitor.events.error'), value: 'error' },
-      { label: t('monitor.events.warning'), value: 'warning' },
+      { label: t('log.event.critical'), value: 'critical' },
+      { label: t('log.event.error'), value: 'error' },
+      { label: t('log.event.warning'), value: 'warning' },
     ],
     [t]
   );
+};
+
+export const useAlarmTabs = () => {
+  const { t } = useTranslation();
+  return [
+    {
+      label: t('log.event.activeAlarms'),
+      key: 'activeAlarms',
+    },
+    {
+      label: t('log.event.historicalAlarms'),
+      key: 'historicalAlarms',
+    },
+  ];
+};
+
+export const useStateList = () => {
+  const { t } = useTranslation();
+  return [
+    {
+      label: t('log.event.new'),
+      value: 'new',
+    },
+    {
+      label: t('log.event.recovery'),
+      value: 'recovered',
+    },
+    {
+      label: t('log.event.closed'),
+      value: 'closed',
+    },
+  ];
+};
+
+export const useStateMap = (): Record<string, string> => {
+  const { t } = useTranslation();
+  return useMemo(
+    () => ({
+      new: t('log.event.new'),
+      recovered: t('log.event.recovery'),
+      closed: t('log.event.closed'),
+    }),
+    [t]
+  );
+};
+
+export const useAlertDetailTabs = () => {
+  const { t } = useTranslation();
+  return [
+    {
+      label: t('common.detail'),
+      key: 'information',
+    },
+    {
+      label: t('log.event.event'),
+      key: 'event',
+    },
+  ];
 };

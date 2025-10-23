@@ -1,7 +1,7 @@
 import useApiClient from "@/utils/request";
 
 interface LabelData {
-  timestamp: string;
+  timestamp: number | string;
   value: number;
   label?: number;
 }
@@ -27,14 +27,44 @@ const usePlayroundApi = () => {
     return await get(`/playground/category/`);
   };
 
-  // 获取能力发布列表
-  const getServingsList = async () => {
+  // 获取异常检测能力发布列表
+  const getAnomalyServingsList = async () => {
     return await get(`/mlops/anomaly_detection_servings/`);
+  };
+
+  // 获取时序预测能力列表
+  const getTimeSeriesPredictServingsList = async () => {
+    return await get(`/mlops/timeseries_predict_servings/`);
+  };
+
+  // 获取日志聚类能力列表
+  const getLogClusteringServingsList = async () => {
+    return await get(`/mlops/log_clustering_servings/`);
+  };
+
+  // 获取分类任务能力列表
+  const getClassificationServingsList = async () => {
+    return await get(`/mlops/classification_servings`);
   };
   
   // 获取能力发布详情
   const getServingsDetail = async (id: string) => {
     return await get(`/mlops/anomaly_detection_servings/${id}/`)
+  };
+
+  // 获取时序预测能力详情
+  const getTimeseriesServingDetail = async (id: string) => {
+    return await get(`/mlops/timeseries_predict_servings/${id}/`);
+  };
+
+  // 获取日志聚类能力详情
+  const getLogClusteringServingDetail = async (id: string) => {
+    return await get(`/mlops/log_clustering_servings/${id}/`);
+  };
+
+  // 获取分类任务能力详情
+  const getClassificationServingDetail = async (id: string) => {
+    return await get(`/mlops/classification_servings/${id}/`);
   };
 
   // 查询单个类别
@@ -53,13 +83,21 @@ const usePlayroundApi = () => {
   };
 
   // 查询所有的样本文件列表
-  const getAllSampleFileList = async () => {
-    return await get(`/playground/example/`);
+  const getAllSampleFileList = async ({
+    name = '',
+    page = 1,
+    page_size = -1,
+  }: {
+    name?: string,
+    page?: number,
+    page_size?: number
+  }) => {
+    return await get(`/playground/example/?name=${name}&page=${page}&page_size=${page_size}`);
   };
   
   // 查询指定能力体验下的样本文件
-  const getSampleFileOfServing = async (serving: string) => {
-    return await get(`/playground/example/?serving=${serving}`);
+  const getSampleFileOfCapability = async (capability: string) => {
+    return await get(`/playground/example/?capability=${capability}`);
   };
 
   // 获取指定样本文件详情
@@ -146,14 +184,20 @@ const usePlayroundApi = () => {
 
   return {
     getCategoryList,
-    getServingsList,
+    getAnomalyServingsList,
+    getTimeSeriesPredictServingsList,
+    getLogClusteringServingsList,
     getCategoryDetail,
     getCapabilityList,
     getCapabilityDetail,
     getAllSampleFileList,
     getSampleFileDetail,
     getServingsDetail,
-    getSampleFileOfServing,
+    getSampleFileOfCapability,
+    getClassificationServingsList,
+    getTimeseriesServingDetail,
+    getLogClusteringServingDetail,
+    getClassificationServingDetail,
     createCategory,
     createCapability,
     createSampleFile,

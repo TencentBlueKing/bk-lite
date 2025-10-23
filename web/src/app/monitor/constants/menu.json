@@ -54,32 +54,32 @@
     },
     {
       "title": "集成",
-      "icon": "moxing2",
-      "url": "/monitor/intergration",
+      "icon": "zichan-quanbushebei",
+      "url": "/monitor/integration",
       "name": "Integration",
       "children": [
         {
           "title": "资产",
           "icon": "_quota_management",
-          "url": "/monitor/intergration/asset",
+          "url": "/monitor/integration/asset",
           "name": "asset"
         },
         {
           "title": "集成",
           "icon": "zichan-quanbushebei",
-          "url": "/monitor/intergration/list",
+          "url": "/monitor/integration/list",
           "name": "integration_list",
           "children": [
             {
               "title": "配置",
               "icon": "settings-fill",
-              "url": "/monitor/intergration/list/detail/configure",
+              "url": "/monitor/integration/list/detail/configure",
               "name": "integration_configure"
             },
             {
               "title": "指标",
               "icon": "guanli",
-              "url": "/monitor/intergration/list/detail/metric",
+              "url": "/monitor/integration/list/detail/metric",
               "name": "integration_metric"
             }
           ]
@@ -141,33 +141,33 @@
       ]
     },
     {
-      "title": "Intergration",
-      "icon": "moxing2",
-      "url": "/monitor/intergration",
+      "title": "Integration",
+      "icon": "zichan-quanbushebei",
+      "url": "/monitor/integration",
       "name": "Integration",
       "children": [
         {
           "title": "Asset",
           "icon": "_quota_management",
-          "url": "/monitor/intergration/asset",
+          "url": "/monitor/integration/asset",
           "name": "asset"
         },
         {
-          "title": "Intergration",
+          "title": "Integration",
           "icon": "zichan-quanbushebei",
-          "url": "/monitor/intergration/list",
+          "url": "/monitor/integration/list",
           "name": "integration_list",
           "children": [
             {
               "title": "Configure",
               "icon": "settings-fill",
-              "url": "/monitor/intergration/list/detail/configure",
+              "url": "/monitor/integration/list/detail/configure",
               "name": "integration_configure"
             },
             {
               "title": "Metric",
               "icon": "guanli",
-              "url": "/monitor/intergration/list/detail/metric",
+              "url": "/monitor/integration/list/detail/metric",
               "name": "integration_metric"
             }
           ]

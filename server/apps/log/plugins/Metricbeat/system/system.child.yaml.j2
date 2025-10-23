@@ -1,0 +1,54 @@
+# ================================== System Module 配置 ==================================
+- module: system
+
+  metricsets:
+    {% if metricsets %}
+    {% for metricset in metricsets %}
+    - {{ metricset }}
+    {% endfor %}
+    {% else %}
+    # 官网推荐的默认指标集
+    - cpu
+    - load
+    - memory
+    - network
+    - process
+    - process_summary
+    - uptime
+    - socket_summary
+    {% endif %}
+
+  period: {{ period | default('10s') }}
+  processes: {{ processes | default(['.*']) | to_json }}
+
+  cpu.metrics: {{ cpu_metrics | default(['percentages', 'normalized_percentages']) | to_json }}
+  core.metrics: {{ core_metrics | default(['percentages']) | to_json }}
+
+  {% if hostfs %}
+  # 容器中监控宿主机时使用
+  hostfs: "{{ hostfs }}"
+  {% endif %}
+
+  {% if filesystem_ignore_types %}
+  # 忽略的文件系统类型
+  filesystem.ignore_types: {{ filesystem_ignore_types | to_json }}
+  {% endif %}
+
+  {% if process_include_top_n %}
+  # Top N 进程配置
+  process.include_top_n:
+    enabled: {{ process_include_top_n.enabled | default(true) | lower }}
+    {% if process_include_top_n.by_cpu %}
+    by_cpu: {{ process_include_top_n.by_cpu }}
+    {% endif %}
+    {% if process_include_top_n.by_memory %}
+    by_memory: {{ process_include_top_n.by_memory }}
+    {% endif %}
+  {% endif %}
+
+  fields:
+    collector: "Metricbeat"
+    collect_type: "system"
+    instance_id: "{{ instance_id | default('default') }}"
+    _msg: ""
+  fields_under_root: true

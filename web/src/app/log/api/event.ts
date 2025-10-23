@@ -1,6 +1,6 @@
 import useApiClient from '@/utils/request';
 import React from 'react';
-import { StrategyFields } from '@/app/log/types/event';
+import { LogAlertParams, StrategyFields } from '@/app/log/types/event';
 
 const useLogEventApi = () => {
   const { get, post, del, put, patch } = useApiClient();
@@ -41,6 +41,51 @@ const useLogEventApi = () => {
     return await del(`/log/policy/${id}/`);
   };
 
+  const getLogAlert = async (params: LogAlertParams = {}) => {
+    return await get(`/log/alert/`, {
+      params,
+    });
+  };
+
+  const patchLogAlert = async (data: LogAlertParams) => {
+    const { id, ...rest } = data;
+    return await patch(`/log/alert/${id}/`, rest);
+  };
+
+  const geEventList = async (
+    params: {
+      alert_id?: React.Key;
+      page?: number;
+      page_size?: number;
+    } = {}
+  ) => {
+    return await get(`/log/event/`, {
+      params,
+    });
+  };
+
+  const getEventRaw = async (id?: React.Key) => {
+    return await get(`/log/alert/last_event/`, {
+      params: {
+        alert_id: id,
+      },
+    });
+  };
+
+  const getEventRawData = async (id?: React.Key) => {
+    return await get(`/log/event_raw_data/by_event_id/`, {
+      params: {
+        event_id: id,
+      },
+    });
+  };
+
+  const getLogAlertStats = async (params: LogAlertParams = {}) => {
+    return await get(`/log/alert/stats/`, {
+      params,
+    });
+  };
+
   return {
     createPolicy,
     getPolicy,
@@ -48,6 +93,12 @@ const useLogEventApi = () => {
     patchPolicy,
     updatePolicy,
     deletePolicy,
+    getLogAlert,
+    getLogAlertStats,
+    patchLogAlert,
+    geEventList,
+    getEventRaw,
+    getEventRawData,
   };
 };
 

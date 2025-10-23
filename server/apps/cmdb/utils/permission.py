@@ -37,7 +37,7 @@ class InstancePermissionManage:
         if not rules:
             return result
         for task_type, rule in rules.items():
-            _all = any([True for i in rule if i["id"] in {"0", "-1"}])
+            _all = any([True for i in rule if i["id"] in {"0"}])
             if not _all:
                 result[task_type] = {i["id"]: i["permission"] for i in rule}
 

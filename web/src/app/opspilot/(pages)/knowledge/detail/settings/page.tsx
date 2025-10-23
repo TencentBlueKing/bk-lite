@@ -34,6 +34,25 @@ const SettingsPage: React.FC = () => {
     form.validateFields()
       .then(async values => {
         setConfirmLoading(true);
+        
+        // Calculate rag_k from enabled RAG types - use the maximum value from enabled types
+        let ragK = 10; // default value
+        const enabledSizes = [];
+        
+        if (configData.enableNaiveRag && configData.ragSize > 0) {
+          enabledSizes.push(configData.ragSize);
+        }
+        if (configData.enableQaRag && configData.qaSize > 0) {
+          enabledSizes.push(configData.qaSize);
+        }
+        if (configData.enableGraphRag && configData.graphSize > 0) {
+          enabledSizes.push(configData.graphSize);
+        }
+        
+        if (enabledSizes.length > 0) {
+          ragK = Math.max(...enabledSizes);
+        }
+
         const params = {
           name: values.name,
           introduction: values.introduction,
@@ -41,14 +60,9 @@ const SettingsPage: React.FC = () => {
           embed_model: configData.selectedEmbedModel,
           enable_rerank: configData.rerankModel,
           rerank_model: configData.selectedRerankModel,
-          enable_text_search: configData.selectedSearchTypes.includes('textSearch'),
-          text_search_weight: configData.textSearchWeight,
-          text_search_mode: configData.textSearchMode,
-          enable_vector_search: configData.selectedSearchTypes.includes('vectorSearch'),
-          vector_search_weight: configData.vectorSearchWeight,
-          rag_k: configData.quantity,
-          rag_num_candidates: configData.candidate,
-          result_count: configData.resultCount,
+          search_type: configData.searchType,
+          score_threshold: configData.scoreThreshold,
+          rag_k: ragK,
           rerank_top_k: configData.rerankTopK,
           enable_naive_rag: configData.enableNaiveRag,
           enable_qa_rag: configData.enableQaRag,
@@ -56,6 +70,7 @@ const SettingsPage: React.FC = () => {
           rag_size: configData.ragSize,
           qa_size: configData.qaSize,
           graph_size: configData.graphSize,
+          rag_recall_mode: configData.ragRecallMode,
         };
 
         try {

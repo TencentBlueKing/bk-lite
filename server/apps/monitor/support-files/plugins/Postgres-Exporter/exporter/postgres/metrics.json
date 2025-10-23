@@ -1,0 +1,800 @@
+{
+  "plugin": "Postgres-Exporter",
+  "plugin_desc": "The Postgres-Exporter collects Postgres database performance metrics including connection statistics, archiving status, storage utilization, and lock information.",
+  "name": "Postgres",
+  "icon": "postgres",
+  "type": "Database",
+  "description": "",
+  "default_metric": "any({instance_type='postgres'}) by (instance_id)",
+  "instance_id_keys": ["instance_id"],
+  "supplementary_indicators": [],
+  "metrics": [
+    {
+      "metric_group": "Base",
+      "name": "pg_up",
+      "query": "pg_up_gauge{__$labels__}",
+      "display_name": "PostgreSQL Monitoring Plugin Status",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Enum",
+      "unit": "[{\"id\":1,\"name\":\"Normal\",\"description\":\"Service is running normally\",\"color\":\"#52c41a\"},{\"id\":0,\"name\":\"Abnormal\",\"description\":\"Service is stopped or unavailable\",\"color\":\"#ff4d4f\"}]",
+      "dimensions": [],
+      "description": "This metric monitors PostgreSQL service status, where 1 indicates normal operation and 0 means the service is stopped or unavailable, serving as a basic health check indicator"
+    },
+    {
+      "metric_group": "Base",
+      "name": "pg_static",
+      "query": "pg_static_value{__$labels__}",
+      "display_name": "PostgreSQL Static Information",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Enum",
+      "unit": "[{\"id\":1,\"name\":\"Success\",\"description\":\"Static information collected successfully\",\"color\":\"#52c41a\"},{\"id\":2,\"name\":\"Failed\",\"description\":\"Static information collection failed\",\"color\":\"#ff4d4f\"}]",
+      "dimensions": [
+        {"name": "server_label", "description": "Server identifier"},
+        {"name": "short_version", "description": "PostgreSQL version"}
+      ],
+      "description": "This metric collection contains all static configuration parameters loaded at startup, including critical system settings like memory allocation and connection limits"
+    },
+    {
+      "metric_group": "Base",
+      "name": "pg_postmaster_start_time_seconds",
+      "query": "pg_postmaster_start_time_seconds_gauge{__$labels__}",
+      "display_name": "PostgreSQL Startup Timestamp",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "s",
+      "dimensions": [],
+      "description": "This timestamp precisely records when the postmaster main service process started, using UNIX timestamp format, useful for calculating uptime"
+    },
+    {
+      "metric_group": "Connection",
+      "name": "pg_stat_activity_max_tx_duration",
+      "query": "pg_stat_activity_max_tx_duration_gauge{__$labels__}/1000",
+      "display_name": "PostgreSQL Longest Transaction Duration",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "s",
+      "dimensions": [
+        {"name": "application_name", "description": "Application name"},
+        {"name": "datname", "description": "Database name"},
+        {"name": "server_label", "description": "Server identifier"},
+        {"name": "state", "description": "Connection state"},
+        {"name": "usename", "description": "Username"}
+      ],
+      "description": "This metric shows the duration of the longest currently running transaction in seconds, with higher values indicating long-running uncommitted transactions"
+    },
+    {
+      "metric_group": "Connection",
+      "name": "pg_stat_activity_count",
+      "query": "pg_stat_activity_count_gauge{__$labels__}",
+      "display_name": "PostgreSQL Active Connections Count",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "short",
+      "dimensions": [
+        {"name": "application_name", "description": "Application name"},
+        {"name": "datname", "description": "Database name"},
+        {"name": "server_label", "description": "Server identifier"},
+        {"name": "state", "description": "Connection state"},
+        {"name": "usename", "description": "Username"}
+      ],
+      "description": "This counter tracks the number of currently active database connections in real-time, reflecting the current connection load"
+    },
+    {
+      "metric_group": "Archive",
+      "name": "pg_stat_archiver_archived_count",
+      "query": "pg_stat_archiver_archived_count_counter{__$labels__}",
+      "display_name": "PostgreSQL Archive Count",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "short",
+      "dimensions": [
+        {"name": "server_label", "description": "Server identifier"}
+      ],
+      "description": "This cumulative counter records total successful WAL archive operations since startup, indicating normal archive performance"
+    },
+    {
+      "metric_group": "Archive",
+      "name": "pg_stat_archiver_failed_count",
+      "query": "pg_stat_archiver_failed_count_counter{__$labels__}",
+      "display_name": "PostgreSQL Archive Failures Count",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "short",
+      "dimensions": [
+        {"name": "server_label", "description": "Server identifier"}
+      ],
+      "description": "This cumulative counter tracks failed WAL archive attempts, with increasing values suggesting storage or configuration issues"
+    },
+    {
+      "metric_group": "Archive",
+      "name": "pg_stat_archiver_last_archive_age",
+      "query": "pg_stat_archiver_last_archive_age_gauge{__$labels__}",
+      "display_name": "PostgreSQL Time Since Last Archive",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "short",
+      "dimensions": [
+        {"name": "server_label", "description": "Server identifier"}
+      ],
+      "description": "This interval metric measures time elapsed since last successful WAL archive in seconds, with growing values potentially indicating archive problems"
+    },
+    {
+      "metric_group": "Space",
+      "name": "pg_database_size_bytes",
+      "query": "pg_database_size_bytes_gauge{__$labels__}/1024/1024",
+      "display_name": "PostgreSQL Database Size",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "mebibytes",
+      "dimensions": [
+        {"name": "datname", "description": "Database name"}
+      ],
+      "description": "This capacity metric measures total disk space occupied by all database files including tables, indexes and other storage objects"
+    },
+    {
+      "metric_group": "Space",
+      "name": "pg_stat_database_temp_bytes",
+      "query": "pg_stat_database_temp_bytes_counter{__$labels__}",
+      "display_name": "PostgreSQL Temporary Files Size",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "mebibytes",
+      "dimensions": [
+        {"name": "datid", "description": "Database OID"},
+        {"name": "datname", "description": "Database name"}
+      ],
+      "description": "This specialized capacity metric tracks storage used by temporary files for operations like sorting and hashing"
+    },
+    {
+      "metric_group": "Lock",
+      "name": "pg_locks_count",
+      "query": "pg_locks_count_gauge{__$labels__}",
+      "display_name": "PostgreSQL Locks Count",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "short",
+      "dimensions": [
+        {"name": "datname", "description": "Database name"},
+        {"name": "mode", "description": "Lock mode"}
+      ],
+      "description": "This value reflects the total number of locks currently held by the system, with abnormal increases potentially causing concurrency issues"
+    },
+    {
+      "metric_group": "Lock",
+      "name": "pg_stat_database_deadlocks",
+      "query": "pg_stat_database_deadlocks_counter{__$labels__}",
+      "display_name": "PostgreSQL Deadlocks Count",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "short",
+      "dimensions": [
+        {"name": "datid", "description": "Database OID"},
+        {"name": "datname", "description": "Database name"}
+      ],
+      "description": "This cumulative counter records detected deadlock occurrences, with increasing values indicating transaction concurrency control problems"
+    },
+    {
+      "metric_group": "Bgwriter",
+      "name": "pg_stat_bgwriter_buffers_alloc_total",
+      "query": "sum(pg_stat_bgwriter_buffers_alloc_total_counter{__$labels__})by(instance_id)",
+      "display_name": "PostgreSQL Background Writer Buffers Allocated Total",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "short",
+      "dimensions": [],
+      "description": "This value represents the total shared memory buffers allocated by the background writer process, reflecting usage trends and pressure on the shared memory pool in the database system."
+    },
+    {
+      "metric_group": "Bgwriter",
+      "name": "pg_stat_bgwriter_buffers_backend_total",
+      "query": "sum(pg_stat_bgwriter_buffers_backend_total_counter{__$labels__})by(instance_id)",
+      "display_name": "PostgreSQL Background Writer Buffers Written Total",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "short",
+      "dimensions": [],
+      "description": "This count shows buffers written directly to disk bypassing shared buffers, where higher values may indicate memory bottlenecks or special configuration requirements in the database."
+    },
+    {
+      "metric_group": "Bgwriter",
+      "name": "pg_stat_bgwriter_buffers_backend_fsync_total",
+      "query": "sum(pg_stat_bgwriter_buffers_backend_fsync_total_counter{__$labels__})by(instance_id)",
+      "display_name": "PostgreSQL Background Writer fsync Buffers Total",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "short",
+      "dimensions": [],
+      "description": "This cumulative total records fsync operations performed to ensure data persistence, closely related to transaction safety and overall system performance characteristics."
+    },
+    {
+      "metric_group": "Bgwriter",
+      "name": "pg_stat_bgwriter_buffers_checkpoint_total",
+      "query": "sum(pg_stat_bgwriter_buffers_checkpoint_total_counter{__$labels__})by(instance_id)",
+      "display_name": "PostgreSQL Background Writer Checkpoint Buffers Total",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "short",
+      "dimensions": [],
+      "description": "This number indicates buffers written during checkpoint operations, useful for evaluating checkpoint intensity and resulting I/O subsystem load pressure."
+    },
+    {
+      "metric_group": "Bgwriter",
+      "name": "pg_stat_bgwriter_buffers_clean_total",
+      "query": "sum(pg_stat_bgwriter_buffers_clean_total_counter{__$labels__})by(instance_id)",
+      "display_name": "PostgreSQL Background Writer Clean Buffers Total",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "short",
+      "dimensions": [],
+      "description": "This measurement shows buffers cleaned by the maintenance process, where regular cleaning improves reuse efficiency and optimizes memory utilization rates."
+    },
+    {
+      "metric_group": "Bgwriter",
+      "name": "pg_stat_bgwriter_checkpoint_sync_time_total",
+      "query": "sum(pg_stat_bgwriter_checkpoint_sync_time_total_counter{__$labels__})by(instance_id)/1000",
+      "display_name": "PostgreSQL Checkpoint Sync Time Total",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "s",
+      "dimensions": [],
+      "description": "This duration accumulates total time spent on checkpoint sync operations, serving as key evidence for evaluating disk sync performance."
+    },
+    {
+      "metric_group": "Bgwriter",
+      "name": "pg_stat_bgwriter_checkpoint_write_time_total",
+      "query": "sum(pg_stat_bgwriter_checkpoint_write_time_total_counter{__$labels__})by(instance_id)/1000",
+      "display_name": "PostgreSQL Checkpoint Write Time Total",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "s",
+      "dimensions": [],
+      "description": "This value records total time consumed by checkpoint write operations, reflecting write throughput and I/O subsystem performance capabilities."
+    },
+    {
+      "metric_group": "Access",
+      "name": "pg_stat_database_blks_hit",
+      "query": "pg_stat_database_blks_hit_counter{__$labels__}",
+      "display_name": "PostgreSQL Database Cache Hits Count",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "short",
+      "dimensions": [
+        {"name": "datid", "description": "Database OID"},
+        {"name": "datname", "description": "Database name"}
+      ],
+      "description": "This count represents successful reads from shared buffers, where high rates indicate efficient caching that significantly reduces physical I/O overhead."
+    },
+    {
+      "metric_group": "Access",
+      "name": "pg_stat_database_blks_read",
+      "query": "pg_stat_database_blks_read_counter{__$labels__}",
+      "display_name": "PostgreSQL Database Disk Reads Count",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "short",
+      "dimensions": [
+        {"name": "datid", "description": "Database OID"},
+        {"name": "datname", "description": "Database name"}
+      ],
+      "description": "This statistic measures required disk block reads during cache misses, where increases may signal insufficient cache or changing query patterns."
+    },
+    {
+      "metric_group": "Access",
+      "name": "pg_stat_database_conflicts",
+      "query": "pg_stat_database_conflicts_counter{__$labels__}",
+      "display_name": "PostgreSQL Database Conflicts Count",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "short",
+      "dimensions": [
+        {"name": "datid", "description": "Database OID"},
+        {"name": "datname", "description": "Database name"}
+      ],
+      "description": "This total counts recovery conflicts in streaming replication, revealing coordination issues between primary/standby databases and replication delays."
+    },
+    {
+      "metric_group": "Access",
+      "name": "pg_stat_database_numbackends",
+      "query": "pg_stat_database_numbackends_gauge{__$labels__}",
+      "display_name": "PostgreSQL Database Backends Count",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "short",
+      "dimensions": [
+        {"name": "datid", "description": "Database OID"},
+        {"name": "datname", "description": "Database name"}
+      ],
+      "description": "This number displays currently active database connections, serving as a key indicator for assessing system load levels."
+    },
+    {
+      "metric_group": "Tuple_Operations",
+      "name": "pg_stat_database_tup_deleted",
+      "query": "pg_stat_database_tup_deleted_counter{__$labels__}",
+      "display_name": "PostgreSQL Database Rows Deleted Count",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "short",
+      "dimensions": [
+        {"name": "datid", "description": "Database OID"},
+        {"name": "datname", "description": "Database name"}
+      ],
+      "description": "This cumulative value totals deleted rows since startup, providing important insights into database modification activities."
+    },
+    {
+      "metric_group": "Tuple_Operations",
+      "name": "pg_stat_database_tup_fetched",
+      "query": "pg_stat_database_tup_fetched_counter{__$labels__}",
+      "display_name": "PostgreSQL Database Rows Fetched Count",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "short",
+      "dimensions": [
+        {"name": "datid", "description": "Database OID"},
+        {"name": "datname", "description": "Database name"}
+      ],
+      "description": "This measurement records rows retrieved through various scan methods during query execution, reflecting query workload characteristics."
+    },
+    {
+      "metric_group": "Tuple_Operations",
+      "name": "pg_stat_database_tup_inserted",
+      "query": "pg_stat_database_tup_inserted_counter{__$labels__}",
+      "display_name": "PostgreSQL Database Rows Inserted Count",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "short",
+      "dimensions": [
+        {"name": "datid", "description": "Database OID"},
+        {"name": "datname", "description": "Database name"}
+      ],
+      "description": "This accumulated count of inserted rows helps analyze data growth rates and write workload patterns."
+    },
+    {
+      "metric_group": "Tuple_Operations",
+      "name": "pg_stat_database_tup_returned",
+      "query": "pg_stat_database_tup_returned_counter{__$labels__}",
+      "display_name": "PostgreSQL Database Rows Returned Count",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "short",
+      "dimensions": [
+        {"name": "datid", "description": "Database OID"},
+        {"name": "datname", "description": "Database name"}
+      ],
+      "description": "This statistic sums rows returned in result sets, useful for evaluating result sizes and network transfer loads."
+    },
+    {
+      "metric_group": "Tuple_Operations",
+      "name": "pg_stat_database_tup_updated",
+      "query": "pg_stat_database_tup_updated_counter{__$labels__}",
+      "display_name": "PostgreSQL Database Rows Updated Count",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "short",
+      "dimensions": [
+        {"name": "datid", "description": "Database OID"},
+        {"name": "datname", "description": "Database name"}
+      ],
+      "description": "This cumulative total of modified rows provides important references for analyzing data change frequency and update patterns."
+    },
+{
+      "metric_group": "Transaction_Operations",
+      "name": "pg_long_running_transactions",
+      "query": "pg_long_running_transactions_gauge{__$labels__}",
+      "display_name": "PostgreSQL Long-Running Transactions Count",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "short",
+      "dimensions": [],
+      "description": "Counts long-running transactions exceeding thresholds, sustained high values cause lock waits and require optimization"
+    },
+    {
+      "metric_group": "Transaction_Operations",
+      "name": "pg_stat_database_xact_commit",
+      "query": "pg_stat_database_xact_commit_counter{__$labels__}",
+      "display_name": "PostgreSQL Database Transactions Committed Count",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "short",
+      "dimensions": [
+        {"name": "datid", "description": "Database OID"},
+        {"name": "datname", "description": "Database name"}
+      ],
+      "description": "Total committed transactions, growing values indicate increasing write workload and throughput"
+    },
+    {
+      "metric_group": "Transaction_Operations",
+      "name": "pg_stat_database_xact_rollback",
+      "query": "pg_stat_database_xact_rollback_counter{__$labels__}",
+      "display_name": "PostgreSQL Database Transactions Rolled Back Count",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "short",
+      "dimensions": [
+        {"name": "datid", "description": "Database OID"},
+        {"name": "datname", "description": "Database name"}
+      ],
+      "description": "Total rolled-back transactions, spikes often reflect application errors or concurrency issues"
+    },
+    {
+      "metric_group": "Query_Performance",
+      "name": "pg_stat_statements_calls_total",
+      "query": "pg_stat_statements_calls_total_counter{__$labels__}",
+      "display_name": "PostgreSQL Total Query Executions Count",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "short",
+      "dimensions": [
+        {"name": "datname", "description": "Database name"},
+        {"name": "user", "description": "Username"}
+      ],
+      "description": "Total SQL executions, analyzing this metric identifies hot queries and access patterns"
+    },
+    {
+      "metric_group": "Query_Performance",
+      "name": "pg_stat_statements_seconds_total",
+      "query": "pg_stat_statements_seconds_total_counter{__$labels__}",
+      "display_name": "PostgreSQL Total Query Execution Time",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "short",
+      "dimensions": [
+        {"name": "datname", "description": "Database name"},
+        {"name": "user", "description": "Username"}
+      ],
+      "description": "Cumulative SQL execution time, increases often indicate performance bottlenecks"
+    },
+    {
+      "metric_group": "Query_Performance",
+      "name": "pg_stat_statements_rows_total",
+      "query": "pg_stat_statements_rows_total_counter{__$labels__}",
+      "display_name": "PostgreSQL Query Row Statistics",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "short",
+      "dimensions": [
+        {"name": "datname", "description": "Database name"},
+        {"name": "user", "description": "Username"}
+      ],
+      "description": "Total rows processed, reflects overall data handling volume and potential issues"
+    },
+    {
+      "metric_group": "Query_Performance",
+      "name": "pg_stat_statements_block_read_seconds_total",
+      "query": "pg_stat_statements_block_read_seconds_total_counter{__$labels__}",
+      "display_name": "PostgreSQL Total Time Spent Reading Blocks from Disk",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "s",
+      "dimensions": [
+        {"name": "datname", "description": "Database name"},
+        {"name": "user", "description": "Username"}
+      ],
+      "description": "Total disk block read time, directly measures physical I/O performance"
+    },
+    {
+      "metric_group": "Query_Performance",
+      "name": "pg_stat_statements_block_write_seconds_total",
+      "query": "pg_stat_statements_block_write_seconds_total_counter{__$labels__}",
+      "display_name": "PostgreSQL Total Time Spent Writing Blocks to Disk",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "s",
+      "dimensions": [
+        {"name": "datname", "description": "Database name"},
+        {"name": "user", "description": "Username"}
+      ],
+      "description": "Total disk write time, affects commit speed and indicates I/O bottlenecks"
+    },
+    {
+      "metric_group": "Cluster",
+      "name": "pg_replication_lag_seconds",
+      "query": "pg_replication_lag_seconds_gauge{__$labels__}",
+      "display_name": "PostgreSQL Replication Lag",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "s",
+      "dimensions": [],
+      "description": "Primary-standby replication lag in seconds, most critical HA health metric"
+    },
+    {
+      "metric_group": "Cluster",
+      "name": "pg_stat_replication_reply_time",
+      "query": "pg_stat_replication_reply_time_value{__$labels__}",
+      "display_name": "PostgreSQL Replication Response Timestamp",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "s",
+      "dimensions": [
+        {"name": "application_name", "description": "Application name"},
+        {"name": "client_addr", "description": "Client IP address"},
+        {"name": "server_label", "description": "Server identifier"},
+        {"name": "slot_name", "description": "Replication slot name"},
+        {"name": "state", "description": "Replication state"}
+      ],
+      "description": "Last standby response timestamp, monitors real-time replication status"
+    },
+    {
+      "metric_group": "Cluster",
+      "name": "pg_stat_replication_pg_current_wal_lsn_bytes",
+      "query": "pg_stat_replication_pg_current_wal_lsn_bytes_gauge{__$labels__}",
+      "display_name": "PostgreSQL Current WAL LSN Size",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "mebibytes",
+      "dimensions": [
+        {"name": "application_name", "description": "Application name"},
+        {"name": "client_addr", "description": "Client IP address"},
+        {"name": "server_label", "description": "Server identifier"},
+        {"name": "slot_name", "description": "Replication slot name"},
+        {"name": "state", "description": "Replication state"}
+      ],
+      "description": "Primary's current WAL position in bytes, fundamental replication reference"
+    },
+    {
+      "metric_group": "Cluster",
+      "name": "pg_stat_replication_pg_wal_lsn_diff",
+      "query": "pg_stat_replication_pg_wal_lsn_diff_gauge{__$labels__}",
+      "display_name": "PostgreSQL Replication WAL LSN Difference",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "mebibytes",
+      "dimensions": [
+        {"name": "application_name", "description": "Application name"},
+        {"name": "client_addr", "description": "Client IP address"},
+        {"name": "server_label", "description": "Server identifier"},
+        {"name": "slot_name", "description": "Replication slot name"},
+        {"name": "state", "description": "Replication state"}
+      ],
+      "description": "WAL position difference in bytes, precisely quantifies replication lag"
+    },
+ {
+      "metric_group": "Setting",
+      "name": "pg_settings_wal_recycle",
+      "query": "pg_settings_wal_recycle_gauge{__$labels__}",
+      "display_name": "PostgreSQL WAL Recycling Settings",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Enum",
+      "unit": "[{\"id\":1,\"name\":\"Enabled\",\"description\":\"WAL file recycling enabled\",\"color\":\"#52c41a\"},{\"id\":2,\"name\":\"Disabled\",\"description\":\"WAL file recycling disabled\",\"color\":\"#ff4d4f\"}]",
+      "dimensions": [
+        {"name": "server_label", "description": "Server identifier"}
+      ],
+      "description": "Determines if PostgreSQL reuses Write-Ahead Log (WAL) files instead of deleting them after use."
+    },
+    {
+      "metric_group": "Setting",
+      "name": "pg_settings_effective_cache_size_bytes",
+      "query": "pg_settings_effective_cache_size_bytes_gauge{__$labels__}/1024/1024",
+      "display_name": "PostgreSQL Effective Cache Size",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "mebibytes",
+      "dimensions": [
+        {"name": "server_label", "description": "Server identifier"}
+      ],
+      "description": "Estimates total memory available for caching data in PostgreSQL, assisting query planner (in bytes)."
+    },
+    {
+      "metric_group": "Setting",
+      "name": "pg_settings_maintenance_work_mem_bytes",
+      "query": "pg_settings_maintenance_work_mem_bytes_gauge{__$labels__}/1024/1024",
+      "display_name": "PostgreSQL Maintenance Work Memory Size",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "mebibytes",
+      "dimensions": [
+        {"name": "server_label", "description": "Server identifier"}
+      ],
+      "description": "Specifies maximum memory allocated for maintenance operations like VACUUM and CREATE INDEX (bytes)."
+    },
+    {
+      "metric_group": "Setting",
+      "name": "pg_settings_work_mem_bytes",
+      "query": "pg_settings_work_mem_bytes_gauge{__$labels__}/1024/1024",
+      "display_name": "PostgreSQL Work Memory Size",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "mebibytes",
+      "dimensions": [
+        {"name": "server_label", "description": "Server identifier"}
+      ],
+      "description": "Sets memory limit per sort/join operation before using temporary disk files in PostgreSQL (bytes)."
+    },
+    {
+      "metric_group": "Setting",
+      "name": "pg_settings_shared_buffers_bytes",
+      "query": "pg_settings_shared_buffers_bytes_gauge{__$labels__}/1024/1024",
+      "display_name": "PostgreSQL Shared Buffers Size",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "mebibytes",
+      "dimensions": [
+        {"name": "server_label", "description": "Server identifier"}
+      ],
+      "description": "Defines shared memory buffer pool for caching tables and indexes across all PostgreSQL processes (bytes)."
+    },
+    {
+      "metric_group": "Setting",
+      "name": "pg_settings_max_wal_size_bytes",
+      "query": "pg_settings_max_wal_size_bytes_gauge{__$labels__}/1024/1024",
+      "display_name": "PostgreSQL Maximum WAL Size",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "mebibytes",
+      "dimensions": [
+        {"name": "server_label", "description": "Server identifier"}
+      ],
+      "description": "Sets maximum size of Write-Ahead Log files before a checkpoint is forced in PostgreSQL (bytes)."
+    },
+    {
+      "metric_group": "Setting",
+      "name": "pg_settings_min_wal_size_bytes",
+      "query": "pg_settings_min_wal_size_bytes_gauge{__$labels__}/1024/1024",
+      "display_name": "PostgreSQL Minimum WAL Size",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "mebibytes",
+      "dimensions": [
+        {"name": "server_label", "description": "Server identifier"}
+      ],
+      "description": "Sets minimum size of Write-Ahead Log files retained after checkpoints to ensure recovery speed (bytes)."
+    },
+    {
+      "metric_group": "Setting",
+      "name": "pg_settings_max_parallel_workers",
+      "query": "pg_settings_max_parallel_workers_gauge{__$labels__}",
+      "display_name": "PostgreSQL Max Parallel Workers",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "short",
+      "dimensions": [
+        {"name": "server_label", "description": "Server identifier"}
+      ],
+      "description": "Configures maximum number of parallel worker processes for executing parallel queries in PostgreSQL."
+    },
+    {
+      "metric_group": "Setting",
+      "name": "pg_settings_max_connections",
+      "query": "pg_settings_max_connections_gauge{__$labels__}",
+      "display_name": "PostgreSQL Max Connections",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "short",
+      "dimensions": [
+        {"name": "server_label", "description": "Server identifier"}
+      ],
+      "description": "Limits maximum number of concurrent client connections allowed to a PostgreSQL database server."
+    },
+    {
+      "metric_group": "Setting",
+      "name": "pg_settings_superuser_reserved_connections",
+      "query": "pg_settings_superuser_reserved_connections_gauge{__$labels__}",
+      "display_name": "PostgreSQL Superuser Reserved Connections",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "short",
+      "dimensions": [
+        {"name": "server_label", "description": "Server identifier"}
+      ],
+      "description": "Reserves connections in PostgreSQL for superusers, ensuring critical operations aren't blocked by regular users."
+    },
+    {
+      "metric_group": "Setting",
+      "name": "pg_settings_max_wal_senders",
+      "query": "pg_settings_max_wal_senders_gauge{__$labels__}",
+      "display_name": "PostgreSQL Max WAL Senders",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "short",
+      "dimensions": [
+        {"name": "server_label", "description": "Server identifier"}
+      ],
+      "description": "Configures maximum number of Write-Ahead Log (WAL) sender processes in PostgreSQL for streaming replication."
+    },
+    {
+      "metric_group": "Setting",
+      "name": "pg_settings_max_worker_processes",
+      "query": "pg_settings_max_worker_processes_gauge{__$labels__}",
+      "display_name": "PostgreSQL Max Worker Processes",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "short",
+      "dimensions": [
+        {"name": "server_label", "description": "Server identifier"}
+      ],
+      "description": "Sets maximum number of background worker processes in PostgreSQL, including autovacuum and logical replication."
+    },
+    {
+      "metric_group": "Setting",
+      "name": "pg_settings_random_page_cost",
+      "query": "pg_settings_random_page_cost_gauge{__$labels__}",
+      "display_name": "PostgreSQL Random Page Cost",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "short",
+      "dimensions": [
+        {"name": "server_label", "description": "Server identifier"}
+      ],
+      "description": "Cost factor for random disk page access in PostgreSQL query planner, influencing index usage decisions."
+    },
+    {
+      "metric_group": "Setting",
+      "name": "pg_settings_seq_page_cost",
+      "query": "pg_settings_seq_page_cost_gauge{__$labels__}",
+      "display_name": "PostgreSQL Sequential Page Cost",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "short",
+      "dimensions": [
+        {"name": "server_label", "description": "Server identifier"}
+      ],
+      "description": "Cost factor for sequential disk page access in PostgreSQL query planner, influencing full table scan decisions."
+    },
+    {
+      "metric_group": "Process",
+      "name": "process_cpu_seconds_total",
+      "query": "process_cpu_seconds_total_counter{__$labels__,instance_type=\"postgres\"}",
+      "display_name": "PostgreSQL Process CPU Usage Time Total",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "s",
+      "dimensions": [],
+      "description": "Total CPU time (seconds) consumed by the PostgreSQL process since startup, monitoring CPU resource usage."
+    },
+    {
+      "metric_group": "Process",
+      "name": "process_resident_memory_bytes",
+      "query": "process_resident_memory_bytes_gauge{__$labels__,instance_type=\"postgres\"}/1024/1024",
+      "display_name": "PostgreSQL Process Resident Memory Size",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "mebibytes",
+      "dimensions": [],
+      "description": "Current resident memory (RAM) usage (bytes) of the PostgreSQL process, indicating real-time memory pressure."
+    },
+    {
+      "metric_group": "Process",
+      "name": "process_virtual_memory_bytes",
+      "query": "process_virtual_memory_bytes_gauge{__$labels__,instance_type=\"postgres\"}/1024/1024",
+      "display_name": "PostgreSQL Process Virtual Memory Size",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "mebibytes",
+      "dimensions": [],
+      "description": "Total virtual memory usage (bytes) of the PostgreSQL process, including unmapped memory regions."
+    },
+    {
+      "metric_group": "Process",
+      "name": "process_open_fds",
+      "query": "process_open_fds_gauge{__$labels__,instance_type=\"postgres\"}",
+      "display_name": "PostgreSQL Process Open File Descriptors Count",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "short",
+      "dimensions": [],
+      "description": "Number of open file descriptors by the PostgreSQL process, reflecting usage of files, sockets, etc."
+    },
+    {
+      "metric_group": "selfMonitor",
+      "name": "pg_exporter_last_scrape_duration_seconds",
+      "query": "pg_exporter_last_scrape_duration_seconds_gauge{__$labels__}",
+      "display_name": "PostgreSQL Monitoring Probe Last Scrape Duration",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "s",
+      "dimensions": [],
+      "description": "Time (seconds) taken by pg_exporter to scrape metrics from PostgreSQL during the last attempt."
+    },
+    {
+      "metric_group": "selfMonitor",
+      "name": "pg_exporter_scrapes_total",
+      "query": "pg_exporter_scrapes_total_counter{__$labels__}",
+      "display_name": "PostgreSQL Monitoring Probe Total Scrapes Count",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "short",
+      "dimensions": [],
+      "description": "Total number of successful metric scrapes by pg_exporter since startup, indicating scrape reliability."
+    }
+
+  ]
+}

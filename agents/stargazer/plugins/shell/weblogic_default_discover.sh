@@ -35,7 +35,7 @@ Get_Soft_Pid(){
         fi
         # 判断是不是java进程
         is_java=$(readlink /proc/$pid/exe | grep java)
-        if [ -z "is_java" ];then
+        if [ -z "$is_java" ];then
          continue
         fi
         # 过滤掉蓝鲸sass 进程
@@ -66,6 +66,11 @@ Cover_Weblogic(){
     condition='Dweblogic.Name='
     Get_Soft_Pid $condition
     inst_name_array=()
+    # 未启动weblogic服务直接打印空{}
+    if [ ${#soft_pid[@]} -eq 0 ]; then
+        echo "{}"
+        exit 0
+    fi
 
     for pid in ${soft_pid[@]}
     do

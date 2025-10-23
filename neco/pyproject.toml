@@ -1,0 +1,119 @@
+[build-system]
+requires = ["setuptools>=68", "setuptools-scm"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "neco"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.12"
+version = "1.0.5"
+
+dependencies = [
+]
+
+[dependency-groups]
+
+dev = [
+    "jupyter>=1.1.1",
+    "memory-profiler>=0.61.0",
+    "pytest==8.4.2",
+    "pytest-asyncio>=1.2.0",
+    "pytest-dotenv-modern==0.3.0",
+    "pytest-xdist==3.8.0",
+    "seaborn==0.13.2",
+]
+
+[project.optional-dependencies]
+core = [
+    "loguru==0.7.3",
+    "psycopg2-binary==2.9.9",
+    "setuptools>=68",
+    "python-dotenv==1.1.0",
+    "tqdm==4.66.4",
+    "singleton-decorator==1.0.0",
+    "falkordb==1.2.0",
+    "pyarmor==9.1.5",
+    "pandas==2.2.2",
+    "pillow==10.3.0",
+    "redis==5.0.1",
+    "jinja2==3.1.4",
+    "nanoid==2.0.0",
+    "diskcache==5.6.3",
+    "jieba==0.42.1",
+]
+
+sanic = [
+    "sanic==25.3.0",
+    "sanic-ext==23.12.0",
+    "Sanic-HTTPAuth==0.2.0",
+]
+
+mlflow = [
+    "mlflow==3.3.2",
+    "boto3==1.38.41",
+]
+
+doc_parser = [
+    "python-pptx==0.6.23",
+    "python-docx==1.1.2",
+    "openpyxl==3.1.5",
+    "tabulate==0.9.0",
+    "jpype1==1.5.2",
+    "pymupdf==1.24.5",
+    "markdownify==0.12.1",
+    "tabula-py==2.10.0",
+]
+mlops = [
+    "scikit-learn==1.6.1",
+    "tsfresh==0.21.1",
+    "hyperopt==0.2.7",
+]
+
+llm = [
+    "langchain==0.3.27",
+    "langchain-community==0.3.27",
+    "langchain-experimental==0.3.4",
+    "langchain-mcp-adapters==0.1.9",
+    "langgraph==0.6.2",
+    "langgraph-checkpoint-postgres==2.0.21",
+    "langchain-openai==0.3.28",
+    "langchain-huggingface==0.1.2",
+    "langchain-postgres==0.0.15",
+    "graphiti-core==0.20.4",
+    "json-repair==0.39.1",
+    "duckduckgo-search==7.2.1",
+]
+
+devops = [
+    "python-jenkins==1.8.2",
+    "kubernetes==32.0.1",
+    "ansible==11.5.0",
+    "ansible-runner==2.4.1",
+]
+
+ocr =[
+    "paddlepaddle==3.0.0",
+    "paddleocr==2.10.0",
+    "paddleclas==2.5.2",
+    "azure-cognitiveservices-vision-computervision==0.9.0",
+]
+
+all = [
+    "neco[mlops]",
+    "neco[llm]",
+    "neco[devops]",
+    "neco[doc_parser]",
+    "neco[sanic]",
+    "neco[ocr]",
+    "neco[core]",
+]
+
+[tool.setuptools.packages.find]
+include = ["neco*"]
+
+[tool.setuptools_scm]
+version_scheme = "post-release"
+local_scheme = "no-local-version"
+fallback_version = "1.0.1"
+

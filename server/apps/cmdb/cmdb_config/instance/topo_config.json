@@ -1,0 +1,27 @@
+{
+  "k8s_cluster": {
+      "src": [
+          {"self_obj":"k8s_cluster","target_obj":"k8s_namespace","assoc":"k8scluster_group_namespace"},
+          {"self_obj":"k8s_namespace","target_obj":"k8s_workload","assoc":"namespace_group_workload"}
+      ],
+      "dst": []
+  },
+  "k8s_workload": {
+      "src": [],
+      "dst": [
+            {"self_obj":"k8s_cluster","target_obj":"k8s_namespace","assoc":"k8scluster_group_namespace"},
+            {"self_obj":"k8s_namespace","target_obj":"k8s_workload","assoc":"namespace_group_workload"}
+      ]
+  },
+  "k8s_namespace": {
+      "src": [
+          {"self_obj":"k8s_namespace","target_obj":"k8s_workload","assoc":"namespace_group_workload"}
+      ],
+      "dst": [
+         {"self_obj":"k8s_cluster","target_obj":"k8s_namespace","assoc":"k8scluster_group_namespace"}
+      ]
+  }
+}
+
+
+

@@ -5,6 +5,7 @@ const API_ENDPOINTS = {
   directory: '/operation_analysis/api/directory/',
   dashboard: '/operation_analysis/api/dashboard/',
   topology: '/operation_analysis/api/topology/',
+  architecture: '/operation_analysis/api/architecture/',
 } as const;
 
 export const useDirectoryApi = () => {

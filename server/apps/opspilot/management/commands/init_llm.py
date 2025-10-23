@@ -1,6 +1,6 @@
 from django.core.management import BaseCommand
 
-from apps.opspilot.model_provider_mgmt.services.model_provider_init_service import ModelProviderInitService
+from apps.opspilot.services.model_provider_init_service import ModelProviderInitService
 
 
 class Command(BaseCommand):

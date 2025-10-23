@@ -12,7 +12,7 @@ class BaseNodeParams(metaclass=ABCMeta):
     PLUGIN_MAP = {}  # 插件名称映射
     plugin_name = None
     _registry = {}  # 自动收集支持的 model_id 对应的子类
-    BASE_INTERVAL_MAP = {"vmware_vc": 300, "network": 300, "network_topo": 300, "mysql_info": 300,
+    BASE_INTERVAL_MAP = {"vmware_vc": 60, "network": 300, "network_topo": 300, "mysql_info": 300,
                          "aliyun_account": 300, "qcloud": 300, }  # 默认的采集间隔时间
 
     def __init_subclass__(cls, **kwargs):
@@ -195,7 +195,14 @@ class VmwareNodeParams(BaseNodeParams):
         super().__init__(*args, **kwargs)
         # 当 instance.model_id 为 "network" 时，PLUGIN_MAP 配置为 "snmp_facts"
         self.PLUGIN_MAP.update({self.model_id: self.plugin_name})
-        self.host_field = "hostname"
+        self.host_field = "ip_addr"
+
+    def get_host_ip_addr(self, host):
+        if isinstance(host, dict):
+            ip_addr = host.get(self.host_field, "")
+        else:
+            ip_addr = host
+        return "hostname", ip_addr
 
     def set_credential(self, *args, **kwargs):
         """
@@ -300,6 +307,35 @@ class MysqlNodeParams(BaseNodeParams):
             return f"{self.instance.id}_{instance}"
 
 
+class OracleNodeParams(BaseNodeParams):
+    supported_model_id = "oracle"  # 通过此属性自动注册
+    plugin_name = "oracle_info"
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        # 当 instance.model_id 为 "vmware_vc" 时，PLUGIN_MAP 配置为 "vmware_info"
+        self.PLUGIN_MAP.update({self.model_id: self.plugin_name})
+        self.host_field = "ip_addr"
+
+    def set_credential(self, *args, **kwargs):
+        credential_data = {
+            "port": self.credential.get("port", 1521),
+            "user": self.credential.get("user", ""),
+            "password": self.credential.get("password", ""),
+            "service_name": self.credential.get("service_name", ""),
+        }
+        return credential_data
+
+    def get_instance_id(self, instance):
+        """
+        获取实例 id
+        """
+        if self.has_set_instances:
+            return f"{self.instance.id}_{instance['inst_name']}"
+        else:
+            return f"{self.instance.id}_{instance}"
+
+
 class AliyunNodeParams(BaseNodeParams):
     supported_model_id = "aliyun_account"
     plugin_name = "aliyun_info"
@@ -342,13 +378,13 @@ class SSHNodeParamsMixin:
         }
         host_ip = host.get("ip_addr", "") if host and isinstance(host, dict) else host
         if host_ip != node_ip:
-            credential_data["username"] = self.credential.get("username", ""),
-            credential_data["password"] = self.credential.get("password", ""),
-            credential_data["port"] = self.credential.get("port", 22),
+            credential_data["username"] = self.credential.get("username", "")
+            credential_data["password"] = self.credential.get("password", "")
+            credential_data["port"] = self.credential.get("port", 22)
         return credential_data
 
     def get_instance_id(self, instance):
-        return f"{self.instance.id}_{instance}_{instance['inst_name']}" if self.has_set_instances else f"{self.instance.id}_{instance}"
+        return f"{self.instance.id}_{instance['inst_name']}" if self.has_set_instances else f"{self.instance.id}_{instance}"
 
 
 class HostNodeParams(SSHNodeParamsMixin, BaseNodeParams):
@@ -451,6 +487,33 @@ class KeepalivedNodeParams(SSHNodeParamsMixin, BaseNodeParams):
     supported_model_id = "weblogic"
     plugin_name = "weblogic_info"
 
+
+class TongWebNodeParams(SSHNodeParamsMixin, BaseNodeParams):
+    supported_model_id = "tongweb"
+    plugin_name = "tongweb_info"
+
+
+class DaMengNodeParams(SSHNodeParamsMixin, BaseNodeParams):
+    supported_model_id = "dameng"
+    plugin_name = "dameng_info"
+
+
+class DB2NodeParams(SSHNodeParamsMixin, BaseNodeParams):
+    supported_model_id = "db2"
+    plugin_name = "db2_info"
+
+
+class TiDBNodeParams(SSHNodeParamsMixin, BaseNodeParams):
+    supported_model_id = "tidb"
+    plugin_name = "tidb_info"
+
+class JettyNodeParams(SSHNodeParamsMixin, BaseNodeParams):
+    supported_model_id = "jetty"
+    plugin_name = "jetty_info"
+
+class HBaseNodeParams(SSHNodeParamsMixin, BaseNodeParams):
+    supported_model_id = "hbase"
+    plugin_name = "hbase_info"
 
 class NodeParamsFactory:
     """

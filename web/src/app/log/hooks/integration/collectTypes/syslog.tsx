@@ -1,4 +1,4 @@
-import { useVectorConfig } from '../collectors/syslog/vector';
+import { useVectorConfig } from '../collectors/vector/syslog';
 
 export const useSyslogConfig = () => {
   const vector = useVectorConfig();

@@ -1,0 +1,150 @@
+/* 主题覆盖样式 */
+
+/* List 列表 */
+.dark .adm-list {
+  background-color: var(--color-bg);
+  --border-inner: solid 1px var(--color-border-1);
+  --border-top: solid 1px var(--color-border-1);
+  --border-bottom: solid 1px var(--color-border-1);
+}
+
+.dark .adm-list-body {
+  background-color: var(--color-bg);
+  border-top: solid 1px var(--color-border-1);
+  border-bottom: solid 1px var(--color-border-1);
+}
+
+.dark .adm-list-item {
+  background-color: var(--color-bg);
+  color: var(--color-text-1);
+  border-bottom: solid 1px var(--color-border-1) !important;
+}
+
+.dark .adm-list-item-content-main {
+  color: var(--color-text-1);
+}
+
+.dark .adm-list-item-description {
+  color: var(--color-text-3);
+}
+
+/* SearchBar 搜索框 */
+.dark .adm-search-bar {
+  background-color: var(--color-bg);
+}
+
+.dark .adm-search-bar-input-box {
+  background-color: var(--color-fill-2);
+  color: var(--color-text-1);
+}
+
+/* NavBar 导航栏 */
+.dark .adm-nav-bar {
+  background-color: var(--color-bg);
+  border-bottom: solid 1px var(--color-border);
+}
+
+.dark .adm-nav-bar-title {
+  color: var(--color-text-1);
+}
+
+/* TabBar 标签栏 */
+.dark .adm-tab-bar {
+  background-color: var(--color-bg);
+  border-top: solid 1px var(--color-border);
+}
+
+.dark .adm-tab-bar-item {
+  color: var(--color-text-2);
+}
+
+.dark .adm-tab-bar-item-active {
+  color: var(--color-primary);
+}
+
+/* Popup 弹出层 */
+.dark .adm-popup-body,
+.dark .adm-action-sheet,
+.dark .adm-action-sheet-button-list {
+  background-color: var(--color-bg);
+}
+
+.dark .adm-action-sheet-button-item {
+  color: var(--color-text-1);
+}
+
+/* Modal 和 Dialog 对话框 */
+.dark .adm-center-popup-body,
+.dark .adm-modal-content,
+.dark .adm-dialog-content {
+  background-color: var(--color-bg);
+  color: var(--color-text-1);
+}
+
+/* Input 输入框 */
+.dark .adm-input {
+  background-color: var(--color-fill-2);
+  color: var(--color-text-1);
+}
+
+/* ========== @ant-design/x 聊天组件 ========== */
+
+/* 聊天容器 */
+.dark .ant-conversations,
+.dark .ant-chat-container {
+  background-color: var(--color-background-body) !important;
+}
+
+/* Bubble 气泡消息 */
+.dark .ant-bubble {
+  color: var(--color-text-1) !important;
+  border-color: var(--color-border-1) !important;
+}
+
+.dark .ant-bubble-content {
+  color: var(--color-text-1) !important;
+}
+
+.dark .ant-bubble-content-filled {
+  background-color: var(--color-fill-3) !important;
+}
+
+/* AI 消息 */
+.dark .ant-bubble[data-role="ai"] {
+  background-color: var(--color-fill-4) !important;
+  color: var(--color-text-1) !important;
+}
+
+.dark .ant-bubble[data-role="ai"] .ant-bubble-content-filled {
+  background-color: var(--color-fill-3) !important;
+}
+
+/* 用户消息 */
+.dark .ant-bubble[data-role="local"] {
+  background-color: var(--color-primary) !important;
+  color: #ffffff !important;
+}
+
+/* Sender 输入区域 */
+.dark .ant-sender {
+  background-color: var(--color-bg) !important;
+  border-top: solid 1px var(--color-border) !important;
+}
+
+.dark .ant-sender-input {
+  background-color: var(--color-fill-1) !important;
+  color: var(--color-text-1) !important;
+  border-color: var(--color-border-1) !important;
+}
+
+.dark .ant-sender-input::placeholder {
+  color: var(--color-text-3) !important;
+}
+
+.dark .ant-sender-input textarea {
+  color: var(--color-text-1) !important;
+}
+
+.dark .ant-sender-button {
+  color: var(--color-primary) !important;
+}

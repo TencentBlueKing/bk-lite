@@ -521,7 +521,7 @@ const KnowledgeGraphView: React.FC<KnowledgeGraphViewProps> = ({
   return (
     <div
       ref={containerRef}
-      className="w-full border border-gray-200 rounded bg-white"
+      className="w-full border border-gray-200 rounded"
       style={{ height, minHeight: height }}
     />
   );

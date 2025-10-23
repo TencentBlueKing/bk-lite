@@ -3,6 +3,7 @@ import { Tabs, Spin, Result } from 'antd';
 import MarkdownRenderer from '@/components/markdown';
 import { useTranslation } from '@/utils/i18n';
 import OperateModal from '@/components/operate-modal';
+import { getClientIdFromRoute } from '@/utils/route';
 
 const { TabPane } = Tabs;
 
@@ -21,7 +22,8 @@ const VersionModal: React.FC<VersionModalProps> = ({ visible, onClose }) => {
 
   useEffect(() => {
     if (visible) {
-      fetch(`/api/versions?locale=${locale}`)
+      const routeClientId = getClientIdFromRoute();
+      fetch(`/api/versions?locale=${locale}&clientId=${routeClientId}`)
         .then(res => res.json())
         .then(data => {
           const files = data.versionFiles || [];

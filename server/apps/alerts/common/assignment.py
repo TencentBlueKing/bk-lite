@@ -340,8 +340,14 @@ class AlertAssignmentOperator:
                         if assignment.notification_frequency:
                             operator._create_reminder_record(alert, str(assignment.id))
 
+                        logger.info(
+                            "== assignment alert notify start ==, assignment={}, alert_id={}".format(assignment.id,
+                                                                                                     alert.alert_id))
                         # 分派成功后 立即发送提醒通知
                         ReminderService._send_reminder_notification(assignment=assignment, alert=alert)
+                        logger.info(
+                            "== assignment alert notify end ==, assignment={}, alert_id={}".format(assignment.id,
+                                                                                                   alert.alert_id))
 
                         results.append({
                             "alert_id": alert.alert_id,
@@ -351,7 +357,8 @@ class AlertAssignmentOperator:
                         })
 
                     except Exception as e:
-                        logger.error(f"Error executing assignment for alert {alert.id}: {str(e)}")
+                        import traceback
+                        logger.error(f"Error executing assignment for alert {alert.alert_id}: {traceback.format_exc()}")
                         results.append({
                             "alert_id": alert.alert_id,
                             "success": False,

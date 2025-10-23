@@ -7,6 +7,7 @@ import Icon from '@/components/icon';
 interface ChunkDetailProps {
   chunkContent: string;
   chunkId?: string;
+  knowledgeBaseId?: number;
   indexName?: string;
   visible: boolean;
 }
@@ -20,6 +21,7 @@ interface QAPair {
 const ChunkDetail: React.FC<ChunkDetailProps> = ({
   chunkContent,
   chunkId,
+  knowledgeBaseId,
   indexName,
   visible
 }) => {
@@ -40,7 +42,7 @@ const ChunkDetail: React.FC<ChunkDetailProps> = ({
     console.log('Fetching QA pairs with params:', { indexName, chunkId });
     setLoading(true);
     try {
-      const data = await fetchChunkQAPairs(indexName, chunkId);
+      const data = await fetchChunkQAPairs(indexName, chunkId, knowledgeBaseId);
       setQaPairs(data);
     } catch (error) {
       console.error('获取问答对失败:', error);
@@ -51,7 +53,6 @@ const ChunkDetail: React.FC<ChunkDetailProps> = ({
   }, [chunkId, indexName]);
 
   useEffect(() => {
-    console.log('Effect triggered', { chunkId, indexName, activeTab, visible });
     if (visible && activeTab === 'qapairs' && chunkId && indexName) {
       fetchQAPairData();
     }

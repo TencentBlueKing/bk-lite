@@ -118,3 +118,8 @@ export interface EntityListProps<T> {
 export interface TimeSelectorRef {
   getValue: () => void;
 }
+
+export interface HeatMapDataItem {
+  event_time: string;
+  [key: string]: any;
+}

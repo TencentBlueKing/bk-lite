@@ -2,17 +2,33 @@
   height: calc(100% - 100px);
   overflow: auto;
 }
+
 .resultCard {
   color: var(--color-text-1);
   background: var(--color-fill-2);
+  transition: all 0.2s ease;
+  
   :global {
     .ant-card-body {
       height: 115px;
+      position: relative;
+      padding-bottom: 15px;
+    }
+    
+    .ant-card-head {
+      padding: 8px 12px;
+      min-height: auto;
+    }
+    
+    .ant-card-head-title {
+      padding: 0;
     }
   }
+  
   span {
     color: var(--color-text-3);
   }
+  
   .truncateLines {
     display: -webkit-box;
     -webkit-box-orient: vertical;
@@ -20,10 +36,27 @@
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: normal;
+    line-height: 1.4;
   }
+  
   .number {
     border: 1px solid var(--color-border-3);
     border-radius: 6px;
     padding: 2px 6px;
+    font-weight: 500;
+  }
+  
+  &:hover {
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+    transform: translateY(-1px);
+  }
+}
+
+.selectedCard {
+  box-shadow: 0 4px 12px rgba(22, 119, 255, 0.15);
+  
+  .number {
+    border-color: #1677ff;
+    color: #1677ff;
   }
 }

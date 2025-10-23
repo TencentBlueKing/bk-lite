@@ -1,7 +1,7 @@
 'use client';
 
 import React from 'react';
-import { Button, Input, Select } from 'antd';
+import { Button, Input, Select, Card } from 'antd';
 import { PlusOutlined, CloseOutlined } from '@ant-design/icons';
 import { ConditionFilterProps } from '@/app/log/types/event';
 import { ListItem } from '@/app/log/types';
@@ -41,7 +41,7 @@ const ConditionFilter: React.FC<ConditionFilterProps> = ({
   };
 
   const handleAddCondition = () => {
-    const newData = [...data, { field: '', op: '', value: '' }];
+    const newData = [...data, { field: null, op: null, value: '' }];
     onChange?.(newData);
   };
 
@@ -51,7 +51,7 @@ const ConditionFilter: React.FC<ConditionFilterProps> = ({
   };
 
   return (
-    <div>
+    <Card className="w-[900px]">
       {data.length ? (
         <ul className={groupingStyle.conditions}>
           {data.map((conditionItem, index) => (
@@ -149,7 +149,7 @@ const ConditionFilter: React.FC<ConditionFilterProps> = ({
       ) : (
         <Button icon={<PlusOutlined />} onClick={handleAddCondition} />
       )}
-    </div>
+    </Card>
   );
 };
 

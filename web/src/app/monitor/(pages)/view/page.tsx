@@ -3,16 +3,15 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { Segmented } from 'antd';
 import useApiClient from '@/utils/request';
 import useMonitorApi from '@/app/monitor/api';
-import { deepClone } from '@/app/monitor/utils/common';
-import { ObjectItem } from '@/app/monitor/types/monitor';
-import { TreeItem } from '@/app/monitor/types';
+import { TreeItem, ObjectItem } from '@/app/monitor/types';
 import { useTableOptions } from '@/app/monitor/hooks/view';
 import viewStyle from './index.module.scss';
 import TreeSelector from '@/app/monitor/components/treeSelector';
 import ViewList from './viewList';
 import ViewHive from './viewHive';
+import { cloneDeep } from 'lodash';
 
-const Intergration = () => {
+const Integration = () => {
   const { isLoading } = useApiClient();
   const { getMonitorObject } = useMonitorApi();
   const [treeData, setTreeData] = useState<TreeItem[]>([]);
@@ -48,7 +47,7 @@ const Intergration = () => {
       const data: ObjectItem[] = await getMonitorObject({
         add_instance_count: true,
       });
-      const _treeData = getTreeData(deepClone(data));
+      const _treeData = getTreeData(cloneDeep(data));
       setTreeData(_treeData);
       if (type === 'update') return;
       setObjects(data);
@@ -124,4 +123,4 @@ const Intergration = () => {
     </div>
   );
 };
-export default Intergration;
+export default Integration;

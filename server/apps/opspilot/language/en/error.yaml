@@ -1,0 +1,105 @@
+# User and Authentication Errors
+user_api_secret_exists: This user already has an API Secret
+insufficient_permissions: insufficient permissions
+token_validation_failed: token validation failed
+token_required: please provide Token
+token_used_up: Token used up
+not_authorized: Not Authorized
+permission_update_denied: You do not have permission to update this instance
+no_update_permission: User does not have permission to update this instance
+no_delete_permission: User does not have permission to delete this instance
+no_view_permission: User does not have permission to view this instance
+
+# Quota and Limit Errors
+bot_quota_exceeded: Bot count exceeds quota limit.
+skill_quota_exceeded: Skill count exceeds quota limit.
+file_size_exceeded: File size exceeds quota limit.
+
+# File Operation Errors
+file_import_failed: Failed to import file.
+not_a_file: Not a file
+file_not_found: File not found
+
+# Required Field Errors
+team_required: The team field is required.
+query_required: query is required
+chunk_id_required: chunk_id is required
+url_required: url is required
+
+# General Operation Errors
+update_failed: update failed
+delete_failed: delete failed
+
+# Knowledge Base Errors
+knowledge_base_name_exists: The knowledge base name already exists.
+knowledge_base_training: The knowledge base is training and cannot be modified.
+knowledge_base_has_documents: This knowledge base contains documents and cannot be deleted.
+
+# Training Document Errors
+training_document_no_retrain: training document can not be retrained
+training_document_no_delete: training document can not be deleted
+
+# Skill Errors
+skill_not_found: Skill id not found
+skill_name_exists: A skill with the same name already exists in group {validate_msg}.
+skill_name_exists_update: A skill with the same name already exists in group {validate_msg}.
+
+# Group Related Errors
+no_group_id: No Group ID
+group_not_exists: Group does not exist.
+team_empty: The team is empty.
+
+# LLM Model Errors
+llm_model_name_exists: A LLM Model with the same name already exists in group {validate_msg}.
+builtin_model_no_delete: Built-in model is not allowed to be deleted
+builtin_model_delete_denied: Built-in model is not allowed to be deleted
+
+# QA Pair Related Errors
+qa_pairs_generating: QA pairs is generating, cannot delete
+generate_question_failed: generate question failed
+generate_answer_failed: generate answer failed
+qa_pairs_id_required: QA pairs ID is required.
+invalid_file_format: Invalid file format. Only .json and .csv files are allowed.
+invalid_json_file: Invalid JSON file
+qa_pair_update_failed: Failed to update QA pair.
+qa_pair_delete_failed: Failed to delete QA pair.
+knowledge_base_has_qa_pairs: This knowledge base contains Q&A pairs and cannot be deleted.
+
+# Model Type Errors
+builtin_model_types_no_modify: Built-in model types cannot be modified
+builtin_model_types_no_delete: Built-in model types cannot be deleted
+
+# Agent and Skill Errors
+no_agent_update_permission: You do not have permission to update this agent.
+skill_not_found_detail: Skill not found.
+
+# Knowledge Graph Errors
+knowledge_graph_training: Knowledge graph is training, cannot delete
+knowledge_graph_not_completed: Knowledge graph is not completed
+knowledge_graph_not_found: Knowledge graph not found
+
+# Graph Operation Errors
+graph_create_failed: Failed to create graph. Please check the server logs.
+graph_search_failed: Failed to search graph. Please check the server logs.
+
+# Knowledge Document Errors
+knowledge_base_id_required: knowledge_base_id is required
+chunk_not_found: Chunk not found
+
+# Bot Related Errors
+no_bot_update_permission: You do not have permission to update this bot.
+pilot_start_failed: Pilot start failed.
+no_bot_start_permission: You do not have permission to start this bot.
+no_bot_stop_permission: You do not have permission to stop this bot
+
+# View Related Errors
+bot_node_id_required: Bot ID and Node ID are required.
+no_bot_online: No bot online
+no_chat_flow_config: No chat flow configured for this bot.
+chat_flow_config_empty: Chat flow configuration is empty.
+task_id_required: Task ID is required.
+
+# Service Related Errors
+url_request_failed: URL request failed
+
+no_support_chunk_type: Unsupported type

@@ -39,6 +39,7 @@ export interface MenuItem {
   url: string;
   icon: string;
   title: string;
+  params?: string;
   operation: string[];
   tour?: TourItem;
   isNotMenuItem?: boolean;
@@ -167,5 +168,19 @@ export interface TableData {
   id: number,
   name: string,
   anomaly?: number,
+  [key: string]: any
+}
+
+export interface NodeType {
+  type: string;
+  label: string;
+  color?: string;
+  icon: string;
+}
+
+export interface NodeData {
+  name: string;
+  source: any[],
+  target: any[],
   [key: string]: any
 }

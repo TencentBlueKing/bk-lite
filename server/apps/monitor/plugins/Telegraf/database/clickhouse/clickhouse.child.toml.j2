@@ -1,9 +1,0 @@
-[[inputs.clickhouse]]
-    servers = ["{{ url }}"]
-    username = "default"
-    interval = "{{ interval }}s"
-    [inputs.clickhouse.tags]
-        instance_id = "{{ instance_id }}"
-        instance_type = "{{ instance_type }}"
-        collect_type = "database"
-        config_type = "clickhouse"

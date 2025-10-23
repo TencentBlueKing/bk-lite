@@ -1,0 +1,1796 @@
+Host:
+  cpu_summary.usage:
+    name: CPU 使用率
+    desc: 显示CPU的使用率，来表示系统的负载情况。它通过总量减去空闲量得出。此指标对监控系统性能非常关键。
+  cpu_summary.idle:
+    name: CPU 空闲率
+    desc: 显示CPU的空闲率，表示系统中未被使用的CPU资源量。这有助于了解系统是否处于高负载。此指标对分析系统性能和效率至关重要。
+  cpu_summary.iowait:
+    name: 等待 IO 的时间占比
+    desc: 显示CPU等待IO操作完成的时间占比，这指示出磁盘或网络性能对系统的影响程度。减少等待时间有助于提升系统性能。此指标对分析系统瓶颈点非常有用。
+  cpu_summary.system:
+    name: 系统占用率
+    desc: 显示系统占用率，表示内核进程消耗的CPU资源，分析该值有助于优化系统内核的性能和稳定性。
+  cpu_summary.user:
+    name: 用户占用率
+    desc: 显示用户进程占用的CPU资源比例，这帮助了解应用程序和服务的性能。本指标对于了解具体应用的CPU消耗有帮助。
+  load1:
+    name: 1 分钟平均负载
+    desc: 显示系统在最近一分钟内的平均负载，提供短期内系统活动的快照。本指标有助于实时监控系统性能。
+  load5:
+    name: 5 分钟平均负载
+    desc: 显示系统在最近五分钟内的平均负载，反映中期系统的负载情况。此中期指标有助于发现持续和间歇性的高负载情况。
+  load15:
+    name: 15 分钟平均负载
+    desc: 显示系统在最近十五分钟内的平均负载，长时间的负载观察有助于了解系统的整体性能趋势。
+  diskio_writes:
+    name: 磁盘写入速率
+    desc: 统计在指定时间间隔内，系统写入数据到磁盘的操作次数。
+  diskio_write_bytes:
+    name: 磁盘写入大小
+    desc: 统计在指定时间间隔内，系统写入数据到磁盘的字节数，并用兆字节 (MB) 表示。
+  diskio_write_time:
+    name: 磁盘写入耗时
+    desc: 统计在指定时间间隔内，系统写入数据到磁盘所用的时间，以秒 (s) 为单位。
+  diskio_reads:
+    name: 磁盘读出速率
+    desc: 统计在指定时间间隔内，系统从磁盘读取数据的操作次数。
+  diskio_read_bytes:
+    name: 磁盘读出大小
+    desc: 统计在指定时间间隔内，系统从磁盘读取的字节数，并用兆字节 (MB) 表示。
+  diskio_read_time:
+    name: 磁盘读出耗时
+    desc: 统计在指定时间间隔内，系统从磁盘读取数据所用的时间，以秒 (s) 为单位。
+  disk.is_use:
+    name: 磁盘使用率
+    desc: 显示磁盘空间的使用比例，帮助了解磁盘资源的使用情况。该指标对防止磁盘满溢非常重要。
+  disk.used:
+    name: 磁盘已用空间大小
+    desc: 显示实际使用的磁盘空间（以GB为单位），用于确定磁盘容量使用情况。本指标对监控磁盘空间的使用量很有帮助。
+  env.procs:
+    name: 总进程数
+    desc: 显示系统中运行的总进程数，帮助了解系统负载分布情况。此指标对监控系统的整体运行情况非常重要。
+  env.proc_running_current:
+    name: 正在运行进程数
+    desc: 显示当前正在运行的进程数，用于评估系统的并发运行情况。此指标对实时监控系统负载有重要价值。
+  env.procs_blocked_current:
+    name: 正在等待 IO 的进程数
+    desc: 显示正在等待IO操作的进程数，分析此值有助于优化系统性能并减少瓶颈。此指标对发现IO瓶颈很有帮助。
+  mem.total:
+    name: 物理内存总大小
+    desc: 显示系统的总物理内存量（单位为GB），概述系统资源配置。此指标对了解系统资源的基础配置很重要。
+  mem.free:
+    name: 物理内存空闲量
+    desc: 显示当前空闲的物理内存量（单位为GB），帮助了解可用资源。此指标是掌握内存资源使用情况的关键。
+  mem.cached:
+    name: Cache 缓存的空间大小
+    desc: 显示用于缓存的内存量（单位为GB），用于提高系统性能。该指标对理解内存缓存策略非常重要。
+  mem.buffer:
+    name: Buffer 的空间大小
+    desc: 显示用于缓冲的内存量（单位为GB），保障数据的稳定传输。此指标对于性能优化策略非常重要。
+  mem.usable:
+    name: 应用程序内存可用量
+    desc: 显示应用程序可用的内存（单位为GB），确保应用的平稳运行。此指标对维持应用性能和稳定性很重要。
+  mem.pct_usable:
+    name: 应用程序内存可用率
+    desc: 显示内存可用率，帮助确定内存是否充足以支持应用程序。该指标对监控内存压力和扩容策略有用。
+  mem.used:
+    name: 应用程序内存使用量
+    desc: 显示应用程序使用的内存量（单位为GB），分析此值有助于优化应用内存使用。此指标对监控应用资源消耗非常关键。
+  mem.pct_used:
+    name: 应用程序内存使用占比
+    desc: 显示应用程序内存使用占比，了解内存使用分布情况。此指标对优化内存使用有重要参考价值。
+  mem.psc_used:
+    name: 物理内存已用量
+    desc: 显示系统已用的物理内存总量（单位为GB），帮助整体掌握内存资源分配。此指标对全面了解系统内存使用情况非常重要。
+  mem.shared:
+    name: 共享内存使用量
+    desc: 显示共享内存的使用量（单位为GB），用于进程间的数据共享。此指标对优化系统内存分配策略有帮助。
+  net.speed_packets_recv:
+    name: 网卡入包量
+    desc: 显示单位时间内网络接口接收的数据包数量，用于评估网络接收性能。本指标对监控网络流量非常关键。
+  net.speed_packets_sent:
+    name: 网卡出包量
+    desc: 显示单位时间内网络接口发送的数据包数量，用于评估网络发送性能。本指标对监控网络流量非常关键。
+  net.speed_recv:
+    name: 网卡入流量
+    desc: 显示单位时间内网络接口接收的字节数量（单位为MB），用于评估网络带宽利用率。本指标对监控网络带宽非常重要。
+  net.speed_sent:
+    name: 网卡出流量
+    desc: 显示单位时间内网络接口发送的字节数量（单位为MB），用于评估网络带宽利用率。本指标对监控网络带宽非常关键。
+  net.errors_in:
+    name: 网卡错误包
+    desc: 显示网络接口接收到的错误包数量，用于检测网络问题。此指标对发现网络故障和不正常流量非常有帮助。
+  net.errors_out:
+    name: 网卡错误包
+    desc: 显示网络接口发送的错误包数量，帮助了解网络传输错误。此指标对发现网络故障和不正常流量非常有帮助。
+  net.dropped_in:
+    name: 网卡丢弃包
+    desc: 显示网络接口接收到的丢弃包数量，指示网络接收拥塞情况。本指标对监控网络可靠性非常关键。
+  net.dropped_out:
+    name: 网卡丢弃包
+    desc: 显示网络接口发送的丢弃包数量，指示网络发送拥塞情况。本指标对监控网络可靠性非常关键。
+  nvidia_smi_memory_free:
+    name: GPU显存剩余容量
+    desc: 当前GPU显存中未被占用的剩余容量，用于评估可用资源。
+  nvidia_smi_memory_used:
+    name: GPU显存已使用量
+    desc: 当前GPU显存已经被占用的容量，反映运行任务占用的显存大小。
+  nvidia_smi_memory_total:
+    name: GPU显存总容量
+    desc: GPU的显存总容量，表示该设备支持的最大显存量。
+  nvidia_smi_utilization_memory:
+    name: GPU显存使用率
+    desc: 当前显存使用的百分比，表示GPU显存资源的使用情况（0%~100%），有助于优化显存分配。
+  nvidia_smi_power_draw:
+    name: GPU实时功耗
+    desc: 当前GPU使用的实时功率消耗，以瓦特（W）为单位，用于监控GPU的能耗水平。
+  nvidia_smi_temperature_gpu:
+    name: GPU核心温度
+    desc: 当前GPU核心的运行温度，以摄氏度（°C）为单位，用于监控设备的运行状态和安全性。
+  nvidia_smi_fan_speed:
+    name: GPU风扇转速占比
+    desc: 当前GPU风扇运行速度的百分比，相对于风扇的最大转速（0%~100%），用于监控散热情况和工作状态。
+Website:
+  http_success.rate:
+    name: 拨测成功率
+    desc: 衡量多个节点在拨测目标时成功响应的比例（成功次数占总请求次数的百分比）。
+  http_duration:
+    name: HTTP响应时间
+    desc: 该指标表示从发起HTTP请求到接收到HTTP响应的总时间。用于评估Web服务的性能，尤其是在处理用户请求时。较长的持续时间可能表示后端处理效率低或网络延迟，影响用户体验。对提高系统响应性和优化性能至关重要。
+  http_code:
+    name: HTTP 响应状态码
+    desc: 该指标用于表示HTTP请求的响应状态码。它记录了HTTP响应状态码的值，例如200（成功）、404（未找到）、500（服务器错误）等。这些状态码对于监控Web应用程序的健康状况和性能非常重要，可以帮助识别潜在问题。
+  http_content.length:
+    name: HTTP内容长度
+    desc: 该指标表示HTTP响应的内容长度，单位为字节。较大的内容长度可能导致数据传输时间过长，并消耗更多带宽。在优化网站性能或分析带宽使用时，监测此指标至关重要。了解响应内容大小可以帮助开发者进行优化。
+Ping:
+  ping_ttl:
+    name: 平均TTL
+    desc: 表示 ping 数据包从源设备到目标设备允许的平均跳数（或时间）。此指标有助于发现数据包是否经过了异常多的跳数或是否存在路径异常。TTL 值较高时网络路径较长。
+  ping_response_time:
+    name: 平均响应时间
+    desc: 表示一段时间内，目标设备的 ping 响应时间的均值。该指标帮助衡量目标设备与源设备的延迟表现。较低的平均响应时间表示网络性能较好。
+  ping_packet_transmission_rate:
+    name: 数据包传输成功率
+    desc: 表示成功接收的数据包数占发送数据包总数的百分比。此指标用于衡量网络质量和数据传输的可靠性。丢包率低表示网络连接稳定且可靠。
+  ping_packet_loss_rate:
+    name: 数据包丢失率
+    desc: 表示在 ping 请求中丢失数据包所占的百分比。此指标帮助确定不稳定的网络连接或传输问题。较低的丢失率表示网络连接更稳定。
+  ping_error_response_code:
+    name: Ping状态
+    desc: 表示 ping 操作执行后的结果代码。结果代码为 0 表示操作成功，非零值表示网络或主机可能存在问题。该指标用于快速检测网络连接故障。
+Cluster:
+  cluster_pod_count:
+    name: Pod Count
+    desc: 用于统计当前 Kubernetes 集群中 Pods 的总数。该指标会返回集群中运行的 Pod 的数量，包括所有命名空间中的 Pod。
+  cluster_node_count:
+    name: Node Count
+    desc: 用于统计当前 Kubernetes 集群中节点的总数。该指标返回集群中可用节点的数量，帮助用户了解集群的规模和资源。
+  cluster_cpu_utilization:
+    name: CPU Utilization
+    desc: 表示集群中 CPU 的当前利用率，通常以百分比形式表示。
+  cluster_memory_utilization:
+    name: Memory Utilization
+    desc: 显示集群内存的当前利用率，以百分比形式展示。
+Pod:
+  pod_status:
+    name: Pod状态
+    desc: 获取 Pod 当前的状态信息，例如已运行、已停止等。
+  pod_restart_count:
+    name: 重启次数
+    desc: 监控 Pod 内各个容器的重启次数，以评估稳定性与问题频发程度。
+  pod_cpu_utilization:
+    name: CPU使用率
+    desc: 计算 Pod CPU 使用率，即容器 CPU 限制与请求的差值，反映 CPU 资源的入住情况。
+  pod_memory_utilization:
+    name: 内存使用率
+    desc: 计算 Pod 的内存利用率，即内存限制与请求的比例。
+  pod_io_writes:
+    name: I/O写速率
+    desc: 此指标表示特定Pod在指定时间段内的I/O写入操作次数。写入次数可以帮助分析应用程序对存储系统的写入需求。
+  pod_io_read:
+    name: I/O读速率
+    desc: 此指标表示特定Pod在指定时间段内的I/O读取操作次数。读取次数可以帮助分析应用程序对存储系统的读取需求。
+  pod_network_in:
+    name: 网络入流量
+    desc: 监控 Pod 的网络流入流量，通过 Pod 的容器数量与 IP 数量计算而得。
+  pod_network_out:
+    name: 网络出流量
+    desc: 监控 Pod 的网络流出流量，通过 Pod 的容器数量与 IP 数量计算而得。
+Node:
+  node_status_condition:
+    name: Node状态
+    desc: Node状态用于指示节点的当前运行状态，比如“运行中”或“已停止”。它有助于管理员监控和管理Kubernetes集群中的节点。
+  node_cpu_utilization:
+    name: CPU使用率
+    desc: CPU使用率表示当前节点CPU的实际使用水平，相对于其总可用CPU资源。监控此指标有助于识别CPU瓶颈和优化资源分配。
+  node_memory_usage:
+    name: 应用内存使用量
+    desc: 应用内存使用量表示在节点中运行的应用程序占用的内存总量。此指标有助于了解应用程序的内存需求及其对系统性能的影响。
+  node_memory_utilization:
+    name: 应用内存使用率
+    desc: 应用内存使用率是指应用程序已使用的内存量与其配置的内存限制之比。通过监控此指标，用户可以判断是否需要调整内存限制。
+  node_io_read:
+    name: 磁盘写速率
+    desc: 磁盘写速率表示节点在特定时间段内进行的写入操作的速率。此指标对于监控应用程序的磁盘写入性能至关重要。
+  node_io_write:
+    name: 磁盘读速率
+    desc: 磁盘读速率表示节点在特定时间段内进行的读取操作的速率。此指标有助于评估应用程序的数据读取性能和存储负载。
+  node_network_receive:
+    name: 网卡入流量
+    desc: 网卡入流量是指通过网络接口接收到的数据流量。监控此指标可帮助分析网络带宽是否足够以及网络性能情况。
+  node_network_transmit:
+    name: 网卡出流量
+    desc: 网卡出流量是指通过网络接口发送的数据流量。此指标有助于了解节点的网络出口需求和潜在的瓶颈。
+  node_cpu_load1:
+    name: 1 分钟平均负载
+    desc: 1 分钟平均负载表示过去1分钟内系统的平均负载情况。该指标有助于即时了解系统的负载水平。
+  node_cpu_load5:
+    name: 5 分钟平均负载
+    desc: 5 分钟平均负载表示过去5分钟内系统的平均负载情况。此指标有助于识别负载趋势及其对系统性能的影响。
+  node_cpu_load15:
+    name: 15 分钟平均负载
+    desc: 15 分钟平均负载表示过去15分钟内系统的平均负载情况。监控该指标可帮助管理员理解系统的长期负载状态。
+Switch:
+  sysUpTime:
+    name: 系统运行时间
+    desc: 该指标表示设备自上次启动以来的运行时间，单位为天。通过监测设备的运行时间，网络管理员可以了解到设备的稳定性及可靠性，识别潜在的重启或故障问题。
+  ifAdminStatus:
+    name: 接口管理状态
+    desc: 此指标表示网络交换机接口的管理状态。它用于指示接口是否被管理人员启用（up）或禁用（down），以及其他状态如测试或已删除等。这个信息对网络管理和故障排查非常重要。
+  ifOperStatus:
+    name: 接口操作状态
+    desc: 此指标反映网络交换机接口的实际运行状态，表明接口是否正在工作。与管理状态不同，运行状态指示接口是否能够成功接收和发送流量。这对监测网络健康至关重要。
+  ifHighSpeed:
+    name: 接口带宽
+    desc: 该指标表示网络接口支持的最高数据传输速度，单位通常为KB每秒。了解接口的最高速度能够帮助管理员优化流量和利用网络资源。
+  ifInErrors:
+    name: 每秒接收错误数据包数
+    desc: 此指标计算过去5分钟内接收到的错误包的平均速率，单位为每秒。通过监测接收错误，管理员可以及时发现潜在的问题，例如物理连接故障或配置错误。
+  ifOutErrors:
+    name: 每秒发送错误数据包数
+    desc: 该指标计算过去5分钟内发送错误包的平均速率，单位为每秒。监测发送错误对于识别传输问题和确保数据完整性至关重要。
+  ifInDiscards:
+    name: 每秒接收丢包数
+    desc: 此指标表示过去5分钟内接收到的丢弃包的平均速率，单位为每秒。丢包可能表示网络堵塞或资源不足，监控此指标可以帮助管理员优化网络性能。
+  ifOutDiscards:
+    name: 每秒发送丢包数
+    desc: 本指标计算过去5分钟内发送的丢弃包的平均速率，单位为每秒。关注发送丢包情况能够帮助识别网络传输问题和配置不当的情况。
+  ifInUcastPkts:
+    name: 每秒接收单播数据包数
+    desc: 该指标表示过去5分钟内接收到的单播包的平均速率，单位为每秒。单播包的监测对于评估接口的使用情况及流量负载非常重要。
+  ifOutUcastPkts:
+    name: 每秒发送单播数据包数
+    desc: 此指标计算过去5分钟内发送的单播包的平均速率，单位为每秒。通过监测单播包的数量，管理员可以评估接口的传输性能以及流量的使用情况。
+  ifInOctets:
+    name: 接口每秒接收流量
+    desc: 此指标表示过去5分钟内接收到的字节数的平均速率，转换为兆字节（MB）单位。监测字节流量有助于评估接口的负载及带宽使用情况。
+  ifOutOctets:
+    name: 接口每秒发送流量
+    desc: 该指标计算过去5分钟内发送的字节数的平均速率，单位为兆字节（MB）。监测发送流量对于确保数据传输质量和优化网络性能非常重要。
+  iftotalInOctets:
+    name: 设备每秒接收总流量
+    desc: 此指标表示整个设备在过去5分钟内接收到的总字节流量的平均速率，单位为兆字节每秒（MB/s）。通过对多个接口的接收字节进行汇总计算，帮助管理员获取整个设备的接收流量情况，从而支持总体流量监控以及容量规划。
+  iftotalOutOctets:
+    name: 设备每秒发送总流量
+    desc: 此指标表示整个设备在过去5分钟内发送的总字节流量的平均速率，单位为兆字节每秒（MB/s）。通过对多个接口的发送字节进行汇总，管理员可以全面评估整个系统的发送性能，从而进行更有效的流量管理和优化。
+Router:
+  sysUpTime:
+    name: 系统运行时间
+    desc: 该指标表示设备自上次启动以来的运行时间，单位为天。通过监测设备的运行时间，网络管理员可以了解到设备的稳定性及可靠性，识别潜在的重启或故障问题。
+  ifAdminStatus:
+    name: 接口管理状态
+    desc: 此指标表示网络交换机接口的管理状态。它用于指示接口是否被管理人员启用（up）或禁用（down），以及其他状态如测试或已删除等。这个信息对网络管理和故障排查非常重要。
+  ifOperStatus:
+    name: 接口操作状态
+    desc: 此指标反映网络交换机接口的实际运行状态，表明接口是否正在工作。与管理状态不同，运行状态指示接口是否能够成功接收和发送流量。这对监测网络健康至关重要。
+  ifHighSpeed:
+    name: 接口带宽
+    desc: 该指标表示网络接口支持的最高数据传输速度，单位通常为KB每秒。了解接口的最高速度能够帮助管理员优化流量和利用网络资源。
+  ifInErrors:
+    name: 每秒接收错误数据包数
+    desc: 此指标计算过去5分钟内接收到的错误包的平均速率，单位为每秒。通过监测接收错误，管理员可以及时发现潜在的问题，例如物理连接故障或配置错误。
+  ifOutErrors:
+    name: 每秒发送错误数据包数
+    desc: 该指标计算过去5分钟内发送错误包的平均速率，单位为每秒。监测发送错误对于识别传输问题和确保数据完整性至关重要。
+  ifInDiscards:
+    name: 每秒接收丢包数
+    desc: 此指标表示过去5分钟内接收到的丢弃包的平均速率，单位为每秒。丢包可能表示网络堵塞或资源不足，监控此指标可以帮助管理员优化网络性能。
+  ifOutDiscards:
+    name: 每秒发送丢包数
+    desc: 本指标计算过去5分钟内发送的丢弃包的平均速率，单位为每秒。关注发送丢包情况能够帮助识别网络传输问题和配置不当的情况。
+  ifInUcastPkts:
+    name: 每秒接收单播数据包数
+    desc: 该指标表示过去5分钟内接收到的单播包的平均速率，单位为每秒。单播包的监测对于评估接口的使用情况及流量负载非常重要。
+  ifOutUcastPkts:
+    name: 每秒发送单播数据包数
+    desc: 此指标计算过去5分钟内发送的单播包的平均速率，单位为每秒。通过监测单播包的数量，管理员可以评估接口的传输性能以及流量的使用情况。
+  ifInOctets:
+    name: 接口每秒接收流量
+    desc: 此指标表示过去5分钟内接收到的字节数的平均速率，转换为兆字节（MB）单位。监测字节流量有助于评估接口的负载及带宽使用情况。
+  ifOutOctets:
+    name: 接口每秒发送流量
+    desc: 该指标计算过去5分钟内发送的字节数的平均速率，单位为兆字节（MB）。监测发送流量对于确保数据传输质量和优化网络性能非常重要。
+  iftotalInOctets:
+    name: 设备每秒接收总流量
+    desc: 此指标表示整个设备在过去5分钟内接收到的总字节流量的平均速率，单位为兆字节每秒（MB/s）。通过对多个接口的接收字节进行汇总计算，帮助管理员获取整个设备的接收流量情况，从而支持总体流量监控以及容量规划。
+  iftotalOutOctets:
+    name: 设备每秒发送总流量
+    desc: 此指标表示整个设备在过去5分钟内发送的总字节流量的平均速率，单位为兆字节每秒（MB/s）。通过对多个接口的发送字节进行汇总，管理员可以全面评估整个系统的发送性能，从而进行更有效的流量管理和优化。
+Loadbalance:
+  sysUpTime:
+    name: 系统运行时间
+    desc: 该指标表示设备自上次启动以来的运行时间，单位为天。通过监测设备的运行时间，网络管理员可以了解到设备的稳定性及可靠性，识别潜在的重启或故障问题。
+  ifAdminStatus:
+    name: 接口管理状态
+    desc: 此指标表示网络交换机接口的管理状态。它用于指示接口是否被管理人员启用（up）或禁用（down），以及其他状态如测试或已删除等。这个信息对网络管理和故障排查非常重要。
+  ifOperStatus:
+    name: 接口操作状态
+    desc: 此指标反映网络交换机接口的实际运行状态，表明接口是否正在工作。与管理状态不同，运行状态指示接口是否能够成功接收和发送流量。这对监测网络健康至关重要。
+  ifHighSpeed:
+    name: 接口带宽
+    desc: 该指标表示网络接口支持的最高数据传输速度，单位通常为KB每秒。了解接口的最高速度能够帮助管理员优化流量和利用网络资源。
+  ifInErrors:
+    name: 每秒接收错误数据包数
+    desc: 此指标计算过去5分钟内接收到的错误包的平均速率，单位为每秒。通过监测接收错误，管理员可以及时发现潜在的问题，例如物理连接故障或配置错误。
+  ifOutErrors:
+    name: 每秒发送错误数据包数
+    desc: 该指标计算过去5分钟内发送错误包的平均速率，单位为每秒。监测发送错误对于识别传输问题和确保数据完整性至关重要。
+  ifInDiscards:
+    name: 每秒接收丢包数
+    desc: 此指标表示过去5分钟内接收到的丢弃包的平均速率，单位为每秒。丢包可能表示网络堵塞或资源不足，监控此指标可以帮助管理员优化网络性能。
+  ifOutDiscards:
+    name: 每秒发送丢包数
+    desc: 本指标计算过去5分钟内发送的丢弃包的平均速率，单位为每秒。关注发送丢包情况能够帮助识别网络传输问题和配置不当的情况。
+  ifInUcastPkts:
+    name: 每秒接收单播数据包数
+    desc: 该指标表示过去5分钟内接收到的单播包的平均速率，单位为每秒。单播包的监测对于评估接口的使用情况及流量负载非常重要。
+  ifOutUcastPkts:
+    name: 每秒发送单播数据包数
+    desc: 此指标计算过去5分钟内发送的单播包的平均速率，单位为每秒。通过监测单播包的数量，管理员可以评估接口的传输性能以及流量的使用情况。
+  ifInOctets:
+    name: 接口每秒接收流量
+    desc: 此指标表示过去5分钟内接收到的字节数的平均速率，转换为兆字节（MB）单位。监测字节流量有助于评估接口的负载及带宽使用情况。
+  ifOutOctets:
+    name: 接口每秒发送流量
+    desc: 该指标计算过去5分钟内发送的字节数的平均速率，单位为兆字节（MB）。监测发送流量对于确保数据传输质量和优化网络性能非常重要。
+  iftotalInOctets:
+    name: 设备每秒接收总流量
+    desc: 此指标表示整个设备在过去5分钟内接收到的总字节流量的平均速率，单位为兆字节每秒（MB/s）。通过对多个接口的接收字节进行汇总计算，帮助管理员获取整个设备的接收流量情况，从而支持总体流量监控以及容量规划。
+  iftotalOutOctets:
+    name: 设备每秒发送总流量
+    desc: 此指标表示整个设备在过去5分钟内发送的总字节流量的平均速率，单位为兆字节每秒（MB/s）。通过对多个接口的发送字节进行汇总，管理员可以全面评估整个系统的发送性能，从而进行更有效的流量管理和优化。
+Firewall:
+  sysUpTime:
+    name: 系统运行时间
+    desc: 该指标表示设备自上次启动以来的运行时间，单位为天。通过监测设备的运行时间，网络管理员可以了解到设备的稳定性及可靠性，识别潜在的重启或故障问题。
+  ifAdminStatus:
+    name: 接口管理状态
+    desc: 此指标表示网络交换机接口的管理状态。它用于指示接口是否被管理人员启用（up）或禁用（down），以及其他状态如测试或已删除等。这个信息对网络管理和故障排查非常重要。
+  ifOperStatus:
+    name: 接口操作状态
+    desc: 此指标反映网络交换机接口的实际运行状态，表明接口是否正在工作。与管理状态不同，运行状态指示接口是否能够成功接收和发送流量。这对监测网络健康至关重要。
+  ifHighSpeed:
+    name: 接口带宽
+    desc: 该指标表示网络接口支持的最高数据传输速度，单位通常为KB每秒。了解接口的最高速度能够帮助管理员优化流量和利用网络资源。
+  ifInErrors:
+    name: 每秒接收错误数据包数
+    desc: 此指标计算过去5分钟内接收到的错误包的平均速率，单位为每秒。通过监测接收错误，管理员可以及时发现潜在的问题，例如物理连接故障或配置错误。
+  ifOutErrors:
+    name: 每秒发送错误数据包数
+    desc: 该指标计算过去5分钟内发送错误包的平均速率，单位为每秒。监测发送错误对于识别传输问题和确保数据完整性至关重要。
+  ifInDiscards:
+    name: 每秒接收丢包数
+    desc: 此指标表示过去5分钟内接收到的丢弃包的平均速率，单位为每秒。丢包可能表示网络堵塞或资源不足，监控此指标可以帮助管理员优化网络性能。
+  ifOutDiscards:
+    name: 每秒发送丢包数
+    desc: 本指标计算过去5分钟内发送的丢弃包的平均速率，单位为每秒。关注发送丢包情况能够帮助识别网络传输问题和配置不当的情况。
+  ifInUcastPkts:
+    name: 每秒接收单播数据包数
+    desc: 该指标表示过去5分钟内接收到的单播包的平均速率，单位为每秒。单播包的监测对于评估接口的使用情况及流量负载非常重要。
+  ifOutUcastPkts:
+    name: 每秒发送单播数据包数
+    desc: 此指标计算过去5分钟内发送的单播包的平均速率，单位为每秒。通过监测单播包的数量，管理员可以评估接口的传输性能以及流量的使用情况。
+  ifInOctets:
+    name: 接口每秒接收流量
+    desc: 此指标表示过去5分钟内接收到的字节数的平均速率，转换为兆字节（MB）单位。监测字节流量有助于评估接口的负载及带宽使用情况。
+  ifOutOctets:
+    name: 接口每秒发送流量
+    desc: 该指标计算过去5分钟内发送的字节数的平均速率，单位为兆字节（MB）。监测发送流量对于确保数据传输质量和优化网络性能非常重要。
+  iftotalInOctets:
+    name: 设备每秒接收总流量
+    desc: 此指标表示整个设备在过去5分钟内接收到的总字节流量的平均速率，单位为兆字节每秒（MB/s）。通过对多个接口的接收字节进行汇总计算，帮助管理员获取整个设备的接收流量情况，从而支持总体流量监控以及容量规划。
+  iftotalOutOctets:
+    name: 设备每秒发送总流量
+    desc: 此指标表示整个设备在过去5分钟内发送的总字节流量的平均速率，单位为兆字节每秒（MB/s）。通过对多个接口的发送字节进行汇总，管理员可以全面评估整个系统的发送性能，从而进行更有效的流量管理和优化。
+Detection Device:
+  sysUpTime:
+    name: 系统运行时间
+    desc: 该指标表示设备自上次启动以来的运行时间，单位为天。通过监测设备的运行时间，网络管理员可以了解到设备的稳定性及可靠性，识别潜在的重启或故障问题。
+  ifAdminStatus:
+    name: 接口管理状态
+    desc: 此指标表示网络交换机接口的管理状态。它用于指示接口是否被管理人员启用（up）或禁用（down），以及其他状态如测试或已删除等。这个信息对网络管理和故障排查非常重要。
+  ifOperStatus:
+    name: 接口操作状态
+    desc: 此指标反映网络交换机接口的实际运行状态，表明接口是否正在工作。与管理状态不同，运行状态指示接口是否能够成功接收和发送流量。这对监测网络健康至关重要。
+  ifHighSpeed:
+    name: 接口带宽
+    desc: 该指标表示网络接口支持的最高数据传输速度，单位通常为KB每秒。了解接口的最高速度能够帮助管理员优化流量和利用网络资源。
+  ifInErrors:
+    name: 每秒接收错误数据包数
+    desc: 此指标计算过去5分钟内接收到的错误包的平均速率，单位为每秒。通过监测接收错误，管理员可以及时发现潜在的问题，例如物理连接故障或配置错误。
+  ifOutErrors:
+    name: 每秒发送错误数据包数
+    desc: 该指标计算过去5分钟内发送错误包的平均速率，单位为每秒。监测发送错误对于识别传输问题和确保数据完整性至关重要。
+  ifInDiscards:
+    name: 每秒接收丢包数
+    desc: 此指标表示过去5分钟内接收到的丢弃包的平均速率，单位为每秒。丢包可能表示网络堵塞或资源不足，监控此指标可以帮助管理员优化网络性能。
+  ifOutDiscards:
+    name: 每秒发送丢包数
+    desc: 本指标计算过去5分钟内发送的丢弃包的平均速率，单位为每秒。关注发送丢包情况能够帮助识别网络传输问题和配置不当的情况。
+  ifInUcastPkts:
+    name: 每秒接收单播数据包数
+    desc: 该指标表示过去5分钟内接收到的单播包的平均速率，单位为每秒。单播包的监测对于评估接口的使用情况及流量负载非常重要。
+  ifOutUcastPkts:
+    name: 每秒发送单播数据包数
+    desc: 此指标计算过去5分钟内发送的单播包的平均速率，单位为每秒。通过监测单播包的数量，管理员可以评估接口的传输性能以及流量的使用情况。
+  ifInOctets:
+    name: 接口每秒接收流量
+    desc: 此指标表示过去5分钟内接收到的字节数的平均速率，转换为兆字节（MB）单位。监测字节流量有助于评估接口的负载及带宽使用情况。
+  ifOutOctets:
+    name: 接口每秒发送流量
+    desc: 该指标计算过去5分钟内发送的字节数的平均速率，单位为兆字节（MB）。监测发送流量对于确保数据传输质量和优化网络性能非常重要。
+  iftotalInOctets:
+    name: 设备每秒接收总流量
+    desc: 此指标表示整个设备在过去5分钟内接收到的总字节流量的平均速率，单位为兆字节每秒（MB/s）。通过对多个接口的接收字节进行汇总计算，帮助管理员获取整个设备的接收流量情况，从而支持总体流量监控以及容量规划。
+  iftotalOutOctets:
+    name: 设备每秒发送总流量
+    desc: 此指标表示整个设备在过去5分钟内发送的总字节流量的平均速率，单位为兆字节每秒（MB/s）。通过对多个接口的发送字节进行汇总，管理员可以全面评估整个系统的发送性能，从而进行更有效的流量管理和优化。
+Bastion Host:
+  sysUpTime:
+    name: 系统运行时间
+    desc: 该指标表示设备自上次启动以来的运行时间，单位为天。通过监测设备的运行时间，网络管理员可以了解到设备的稳定性及可靠性，识别潜在的重启或故障问题。
+  ifAdminStatus:
+    name: 接口管理状态
+    desc: 此指标表示网络交换机接口的管理状态。它用于指示接口是否被管理人员启用（up）或禁用（down），以及其他状态如测试或已删除等。这个信息对网络管理和故障排查非常重要。
+  ifOperStatus:
+    name: 接口操作状态
+    desc: 此指标反映网络交换机接口的实际运行状态，表明接口是否正在工作。与管理状态不同，运行状态指示接口是否能够成功接收和发送流量。这对监测网络健康至关重要。
+  ifHighSpeed:
+    name: 接口带宽
+    desc: 该指标表示网络接口支持的最高数据传输速度，单位通常为KB每秒。了解接口的最高速度能够帮助管理员优化流量和利用网络资源。
+  ifInErrors:
+    name: 每秒接收错误数据包数
+    desc: 此指标计算过去5分钟内接收到的错误包的平均速率，单位为每秒。通过监测接收错误，管理员可以及时发现潜在的问题，例如物理连接故障或配置错误。
+  ifOutErrors:
+    name: 每秒发送错误数据包数
+    desc: 该指标计算过去5分钟内发送错误包的平均速率，单位为每秒。监测发送错误对于识别传输问题和确保数据完整性至关重要。
+  ifInDiscards:
+    name: 每秒接收丢包数
+    desc: 此指标表示过去5分钟内接收到的丢弃包的平均速率，单位为每秒。丢包可能表示网络堵塞或资源不足，监控此指标可以帮助管理员优化网络性能。
+  ifOutDiscards:
+    name: 每秒发送丢包数
+    desc: 本指标计算过去5分钟内发送的丢弃包的平均速率，单位为每秒。关注发送丢包情况能够帮助识别网络传输问题和配置不当的情况。
+  ifInUcastPkts:
+    name: 每秒接收单播数据包数
+    desc: 该指标表示过去5分钟内接收到的单播包的平均速率，单位为每秒。单播包的监测对于评估接口的使用情况及流量负载非常重要。
+  ifOutUcastPkts:
+    name: 每秒发送单播数据包数
+    desc: 此指标计算过去5分钟内发送的单播包的平均速率，单位为每秒。通过监测单播包的数量，管理员可以评估接口的传输性能以及流量的使用情况。
+  ifInOctets:
+    name: 接口每秒接收流量
+    desc: 此指标表示过去5分钟内接收到的字节数的平均速率，转换为兆字节（MB）单位。监测字节流量有助于评估接口的负载及带宽使用情况。
+  ifOutOctets:
+    name: 接口每秒发送流量
+    desc: 该指标计算过去5分钟内发送的字节数的平均速率，单位为兆字节（MB）。监测发送流量对于确保数据传输质量和优化网络性能非常重要。
+  iftotalInOctets:
+    name: 设备每秒接收总流量
+    desc: 此指标表示整个设备在过去5分钟内接收到的总字节流量的平均速率，单位为兆字节每秒（MB/s）。通过对多个接口的接收字节进行汇总计算，帮助管理员获取整个设备的接收流量情况，从而支持总体流量监控以及容量规划。
+  iftotalOutOctets:
+    name: 设备每秒发送总流量
+    desc: 此指标表示整个设备在过去5分钟内发送的总字节流量的平均速率，单位为兆字节每秒（MB/s）。通过对多个接口的发送字节进行汇总，管理员可以全面评估整个系统的发送性能，从而进行更有效的流量管理和优化。
+Scanning Device:
+  sysUpTime:
+    name: 系统运行时间
+    desc: 该指标表示设备自上次启动以来的运行时间，单位为天。通过监测设备的运行时间，网络管理员可以了解到设备的稳定性及可靠性，识别潜在的重启或故障问题。
+  ifAdminStatus:
+    name: 接口管理状态
+    desc: 此指标表示网络交换机接口的管理状态。它用于指示接口是否被管理人员启用（up）或禁用（down），以及其他状态如测试或已删除等。这个信息对网络管理和故障排查非常重要。
+  ifOperStatus:
+    name: 接口操作状态
+    desc: 此指标反映网络交换机接口的实际运行状态，表明接口是否正在工作。与管理状态不同，运行状态指示接口是否能够成功接收和发送流量。这对监测网络健康至关重要。
+  ifHighSpeed:
+    name: 接口带宽
+    desc: 该指标表示网络接口支持的最高数据传输速度，单位通常为KB每秒。了解接口的最高速度能够帮助管理员优化流量和利用网络资源。
+  ifInErrors:
+    name: 每秒接收错误数据包数
+    desc: 此指标计算过去5分钟内接收到的错误包的平均速率，单位为每秒。通过监测接收错误，管理员可以及时发现潜在的问题，例如物理连接故障或配置错误。
+  ifOutErrors:
+    name: 每秒发送错误数据包数
+    desc: 该指标计算过去5分钟内发送错误包的平均速率，单位为每秒。监测发送错误对于识别传输问题和确保数据完整性至关重要。
+  ifInDiscards:
+    name: 每秒接收丢包数
+    desc: 此指标表示过去5分钟内接收到的丢弃包的平均速率，单位为每秒。丢包可能表示网络堵塞或资源不足，监控此指标可以帮助管理员优化网络性能。
+  ifOutDiscards:
+    name: 每秒发送丢包数
+    desc: 本指标计算过去5分钟内发送的丢弃包的平均速率，单位为每秒。关注发送丢包情况能够帮助识别网络传输问题和配置不当的情况。
+  ifInUcastPkts:
+    name: 每秒接收单播数据包数
+    desc: 该指标表示过去5分钟内接收到的单播包的平均速率，单位为每秒。单播包的监测对于评估接口的使用情况及流量负载非常重要。
+  ifOutUcastPkts:
+    name: 每秒发送单播数据包数
+    desc: 此指标计算过去5分钟内发送的单播包的平均速率，单位为每秒。通过监测单播包的数量，管理员可以评估接口的传输性能以及流量的使用情况。
+  ifInOctets:
+    name: 接口每秒接收流量
+    desc: 此指标表示过去5分钟内接收到的字节数的平均速率，转换为兆字节（MB）单位。监测字节流量有助于评估接口的负载及带宽使用情况。
+  ifOutOctets:
+    name: 接口每秒发送流量
+    desc: 该指标计算过去5分钟内发送的字节数的平均速率，单位为兆字节（MB）。监测发送流量对于确保数据传输质量和优化网络性能非常重要。
+  iftotalInOctets:
+    name: 设备每秒接收总流量
+    desc: 此指标表示整个设备在过去5分钟内接收到的总字节流量的平均速率，单位为兆字节每秒（MB/s）。通过对多个接口的接收字节进行汇总计算，帮助管理员获取整个设备的接收流量情况，从而支持总体流量监控以及容量规划。
+  iftotalOutOctets:
+    name: 设备每秒发送总流量
+    desc: 此指标表示整个设备在过去5分钟内发送的总字节流量的平均速率，单位为兆字节每秒（MB/s）。通过对多个接口的发送字节进行汇总，管理员可以全面评估整个系统的发送性能，从而进行更有效的流量管理和优化。
+Storage:
+  sysUpTime:
+    name: 系统运行时间
+    desc: 该指标表示设备自上次启动以来的运行时间，单位为天。通过监测设备的运行时间，网络管理员可以了解到设备的稳定性及可靠性，识别潜在的重启或故障问题。
+  ifAdminStatus:
+    name: 接口管理状态
+    desc: 此指标表示网络交换机接口的管理状态。它用于指示接口是否被管理人员启用（up）或禁用（down），以及其他状态如测试或已删除等。这个信息对网络管理和故障排查非常重要。
+  ifOperStatus:
+    name: 接口操作状态
+    desc: 此指标反映网络交换机接口的实际运行状态，表明接口是否正在工作。与管理状态不同，运行状态指示接口是否能够成功接收和发送流量。这对监测网络健康至关重要。
+  ifHighSpeed:
+    name: 接口带宽
+    desc: 该指标表示网络接口支持的最高数据传输速度，单位通常为KB每秒。了解接口的最高速度能够帮助管理员优化流量和利用网络资源。
+  ifInErrors:
+    name: 每秒接收错误数据包数
+    desc: 此指标计算过去5分钟内接收到的错误包的平均速率，单位为每秒。通过监测接收错误，管理员可以及时发现潜在的问题，例如物理连接故障或配置错误。
+  ifOutErrors:
+    name: 每秒发送错误数据包数
+    desc: 该指标计算过去5分钟内发送错误包的平均速率，单位为每秒。监测发送错误对于识别传输问题和确保数据完整性至关重要。
+  ifInDiscards:
+    name: 每秒接收丢包数
+    desc: 此指标表示过去5分钟内接收到的丢弃包的平均速率，单位为每秒。丢包可能表示网络堵塞或资源不足，监控此指标可以帮助管理员优化网络性能。
+  ifOutDiscards:
+    name: 每秒发送丢包数
+    desc: 本指标计算过去5分钟内发送的丢弃包的平均速率，单位为每秒。关注发送丢包情况能够帮助识别网络传输问题和配置不当的情况。
+  ifInUcastPkts:
+    name: 每秒接收单播数据包数
+    desc: 该指标表示过去5分钟内接收到的单播包的平均速率，单位为每秒。单播包的监测对于评估接口的使用情况及流量负载非常重要。
+  ifOutUcastPkts:
+    name: 每秒发送单播数据包数
+    desc: 此指标计算过去5分钟内发送的单播包的平均速率，单位为每秒。通过监测单播包的数量，管理员可以评估接口的传输性能以及流量的使用情况。
+  ifInOctets:
+    name: 接口每秒接收流量
+    desc: 此指标表示过去5分钟内接收到的字节数的平均速率，转换为兆字节（MB）单位。监测字节流量有助于评估接口的负载及带宽使用情况。
+  ifOutOctets:
+    name: 接口每秒发送流量
+    desc: 该指标计算过去5分钟内发送的字节数的平均速率，单位为兆字节（MB）。监测发送流量对于确保数据传输质量和优化网络性能非常重要。
+  iftotalInOctets:
+    name: 设备每秒接收总流量
+    desc: 此指标表示整个设备在过去5分钟内接收到的总字节流量的平均速率，单位为兆字节每秒（MB/s）。通过对多个接口的接收字节进行汇总计算，帮助管理员获取整个设备的接收流量情况，从而支持总体流量监控以及容量规划。
+  iftotalOutOctets:
+    name: 设备每秒发送总流量
+    desc: 此指标表示整个设备在过去5分钟内发送的总字节流量的平均速率，单位为兆字节每秒（MB/s）。通过对多个接口的发送字节进行汇总，管理员可以全面评估整个系统的发送性能，从而进行更有效的流量管理和优化。
+  ipmi_chassis_power_state:
+    name: 电源状态
+    desc: 电源状态指标，用于监测设备是否处于开机状态。其值可以表示电源开启或关闭状态。主要用于远程管理和监控设备的电源情况。
+  ipmi_power_watts:
+    name: 功率
+    desc: 功率指标以瓦特 (watts) 为单位，反映设备当前功耗。通过此指标可以评估设备能效和功耗趋势。便于设置节能政策和资源优化。
+  ipmi_voltage_volts:
+    name: 电压功率
+    desc: 电压功率指标以伏特 (volts) 为单位，监测设备内部不同电源轨的电压情况。稳定的电压供应对于设备的可靠性至关重要。通过该指标可以快速识别电气问题，保障正常运行。
+  ipmi_fan_speed_rpm:
+    name: 风扇转速
+    desc: 风扇转速指标以每分钟转数 (rpm) 表示，监测设备内风扇的工作状态。高效的风扇运作是维护设备温度的关键。有助于防止过热，确保设备长时间稳定运行。
+  ipmi_temperature_celsius:
+    name: 温度
+    desc: 温度指标以摄氏度 (Celsius) 为单位，监控设备内部温度。通过监测温度可以预防热量累积，防止设备过热。对于维持系统的稳定性和寿命非常关键。
+Hardware Server:
+  sysUpTime:
+    name: 系统运行时间
+    desc: 该指标表示设备自上次启动以来的运行时间，单位为天。通过监测设备的运行时间，网络管理员可以了解到设备的稳定性及可靠性，识别潜在的重启或故障问题。
+  ifAdminStatus:
+    name: 接口管理状态
+    desc: 此指标表示网络交换机接口的管理状态。它用于指示接口是否被管理人员启用（up）或禁用（down），以及其他状态如测试或已删除等。这个信息对网络管理和故障排查非常重要。
+  ifOperStatus:
+    name: 接口操作状态
+    desc: 此指标反映网络交换机接口的实际运行状态，表明接口是否正在工作。与管理状态不同，运行状态指示接口是否能够成功接收和发送流量。这对监测网络健康至关重要。
+  ifHighSpeed:
+    name: 接口带宽
+    desc: 该指标表示网络接口支持的最高数据传输速度，单位通常为KB每秒。了解接口的最高速度能够帮助管理员优化流量和利用网络资源。
+  ifInErrors:
+    name: 每秒接收错误数据包数
+    desc: 此指标计算过去5分钟内接收到的错误包的平均速率，单位为每秒。通过监测接收错误，管理员可以及时发现潜在的问题，例如物理连接故障或配置错误。
+  ifOutErrors:
+    name: 每秒发送错误数据包数
+    desc: 该指标计算过去5分钟内发送错误包的平均速率，单位为每秒。监测发送错误对于识别传输问题和确保数据完整性至关重要。
+  ifInDiscards:
+    name: 每秒接收丢包数
+    desc: 此指标表示过去5分钟内接收到的丢弃包的平均速率，单位为每秒。丢包可能表示网络堵塞或资源不足，监控此指标可以帮助管理员优化网络性能。
+  ifOutDiscards:
+    name: 每秒发送丢包数
+    desc: 本指标计算过去5分钟内发送的丢弃包的平均速率，单位为每秒。关注发送丢包情况能够帮助识别网络传输问题和配置不当的情况。
+  ifInUcastPkts:
+    name: 每秒接收单播数据包数
+    desc: 该指标表示过去5分钟内接收到的单播包的平均速率，单位为每秒。单播包的监测对于评估接口的使用情况及流量负载非常重要。
+  ifOutUcastPkts:
+    name: 每秒发送单播数据包数
+    desc: 此指标计算过去5分钟内发送的单播包的平均速率，单位为每秒。通过监测单播包的数量，管理员可以评估接口的传输性能以及流量的使用情况。
+  ifInOctets:
+    name: 接口每秒接收流量
+    desc: 此指标表示过去5分钟内接收到的字节数的平均速率，转换为兆字节（MB）单位。监测字节流量有助于评估接口的负载及带宽使用情况。
+  ifOutOctets:
+    name: 接口每秒发送流量
+    desc: 该指标计算过去5分钟内发送的字节数的平均速率，单位为兆字节（MB）。监测发送流量对于确保数据传输质量和优化网络性能非常重要。
+  iftotalInOctets:
+    name: 设备每秒接收总流量
+    desc: 此指标表示整个设备在过去5分钟内接收到的总字节流量的平均速率，单位为兆字节每秒（MB/s）。通过对多个接口的接收字节进行汇总计算，帮助管理员获取整个设备的接收流量情况，从而支持总体流量监控以及容量规划。
+  iftotalOutOctets:
+    name: 设备每秒发送总流量
+    desc: 此指标表示整个设备在过去5分钟内发送的总字节流量的平均速率，单位为兆字节每秒（MB/s）。通过对多个接口的发送字节进行汇总，管理员可以全面评估整个系统的发送性能，从而进行更有效的流量管理和优化。
+  ipmi_chassis_power_state:
+    name: 电源状态
+    desc: 电源状态指标，用于监测设备是否处于开机状态。其值可以表示电源开启或关闭状态。主要用于远程管理和监控设备的电源情况。
+  ipmi_power_watts:
+    name: 功率
+    desc: 功率指标以瓦特 (watts) 为单位，反映设备当前功耗。通过此指标可以评估设备能效和功耗趋势。便于设置节能政策和资源优化。
+  ipmi_voltage_volts:
+    name: 电压功率
+    desc: 电压功率指标以伏特 (volts) 为单位，监测设备内部不同电源轨的电压情况。稳定的电压供应对于设备的可靠性至关重要。通过该指标可以快速识别电气问题，保障正常运行。
+  ipmi_fan_speed_rpm:
+    name: 风扇转速
+    desc: 风扇转速指标以每分钟转数 (rpm) 表示，监测设备内风扇的工作状态。高效的风扇运作是维护设备温度的关键。有助于防止过热，确保设备长时间稳定运行。
+  ipmi_temperature_celsius:
+    name: 温度
+    desc: 温度指标以摄氏度 (Celsius) 为单位，监控设备内部温度。通过监测温度可以预防热量累积，防止设备过热。对于维持系统的稳定性和寿命非常关键。
+SNMP Trap: {}
+Zookeeper:
+  zookeeper_uptime:
+    name: 系统运行时间
+    desc: 该指标表示Zookeeper服务的运行时长，用于监测系统是否正常运行。
+  zookeeper_avg_latency:
+    name: 平均延迟
+    desc: 该指标表示Zookeeper处理请求的平均延迟时间，用于监测系统的响应能力。
+  zookeeper_read_write_ratio:
+    name: 读写比
+    desc: 该指标表示Zookeeper提交和快照的比例，用于判断Zookeeper的读写负载分布。
+  zookeeper_snapshot_to_commit_ratio:
+    name: 快照与提交比
+    desc: 该指标表示Zookeeper生成快照的频率与提交请求的频率的比值，用于监测持久化操作与事务提交的关系。
+  zookeeper_connection_drop_count:
+    name: 连接断开次数
+    desc: 该指标表示Zookeeper连接断开的次数，用于监测连接稳定性。
+  zookeeper_connection_rejected:
+    name: 拒绝连接次数
+    desc: 该指标表示Zookeeper拒绝的连接次数，用于监测连接是否被正确处理。
+  zookeeper_znode_count:
+    name: Znode数量
+    desc: 该指标表示Zookeeper中当前5分钟内每秒Znode的变化数量，有助于监测Zookeeper的数据量变化。
+  zookeeper_packets_received:
+    name: 接收的包数量
+    desc: 该指标表示Zookeeper接收到的网络包数量，用于监测网络流量情况。
+Apache:
+  apache_uptime:
+    name: 系统运行时长
+    desc: 该指标表示Apache服务器自启动以来的运行时间，用于监测服务器的健康状态。
+  apache_busy_workers:
+    name: 繁忙工作进程数
+    desc: 该指标表示Apache服务器中当前处于繁忙状态的工作进程数，用于评估服务器的负载情况。
+  apache_idle_workers:
+    name: 空闲工作进程数
+    desc: 该指标表示Apache服务器中当前处于空闲状态的工作进程数，反映了服务器的资源利用情况。
+  apache_req_per_sec:
+    name: 每秒请求数
+    desc: 该指标表示Apache每秒处理的请求数量，用于监测服务器的请求处理能力。
+  apache_bytes_per_sec:
+    name: 每秒字节数
+    desc: 该指标表示Apache每秒传输的字节数，反映了网络流量的情况。
+  apache_total_accesses:
+    name: 总访问次数
+    desc: 该指标表示Apache服务器自启动以来的总访问次数，反映服务器的总体请求量。
+  apache_total_duration:
+    name: 总处理时长
+    desc: 该指标表示Apache服务器自启动以来的总请求处理时长，用于评估服务器的处理负载。
+  apache_cpu_system:
+    name: 系统CPU使用率
+    desc: 该指标表示Apache服务器在系统层面的CPU使用率。
+  apache_cpu_user:
+    name: 用户CPU使用率
+    desc: 该指标表示Apache服务器在用户进程层面的CPU使用率。
+  apache_cpu_load:
+    name: CPU负载
+    desc: 该指标表示Apache服务器的CPU负载情况，反映系统的总体负载状态。
+  apache_duration_per_req:
+    name: 每个请求的处理时长
+    desc: 该指标表示每个请求的平均处理时长，帮助评估服务器处理请求的效率。
+ClickHouse:
+  clickhouse_asynchronous_metrics_uptime:
+    name: 系统运行时间
+    desc: ClickHouse 运行的时间，以分钟为单位，反映实例的稳定性和重启频率。
+  clickhouse_metrics_memory_tracking:
+    name: 内存使用量
+    desc: ClickHouse 当前进程消耗的内存，用于监控内存使用增长趋势。
+  clickhouse_asynchronous_metrics_os_memory_available:
+    name: 可用内存
+    desc: 系统当前可以用于进程的物理内存总量，反映资源利用率情况。
+  clickhouse_asynchronous_metrics_disk_used_default:
+    name: 磁盘使用量（默认盘）
+    desc: 当前已使用的磁盘存储空间，用于评估存储容量和扩展需求。
+  clickhouse_asynchronous_metrics_disk_total_default:
+    name: 磁盘总容量（默认盘）
+    desc: 默认磁盘的总容量，用于评估可用存储容量以及集群规划。
+  clickhouse_events_query:
+    name: 查询速率
+    desc: ClickHouse 每秒处理的查询数量，展示系统的处理性能能力。
+  clickhouse_events_inserted_rows:
+    name: 插入行速率
+    desc: 最近五分钟内插入的行数速率，衡量数据写入性能。
+  clickhouse_events_select_query:
+    name: 查询行速率
+    desc: 最近五分钟内处理的 SELECT 查询的速率，衡量查询性能。
+  clickhouse_events_compressed_read_buffer_bytes:
+    name: 压缩数据读取速率
+    desc: ClickHouse 系统读取的压缩数据速率，展示 IO 性能和数据读取效率。
+  clickhouse_metrics_parts_active:
+    name: 活跃分片数
+    desc: 显示 MergeTree 表当前的活跃分片数量，用于监控表的碎片管理情况及状态。
+  clickhouse_metrics_parts_outdated:
+    name: 过期分片数
+    desc: 表示 MergeTree 表中的过期分片数量，用于监控分片清理及磁盘回收状态。
+  clickhouse_asynchronous_metrics_load_average1:
+    name: 系统负载（1分钟）
+    desc: 系统在最近 1 分钟的负载平均值，展示资源消耗和任务压力。
+RabbitMQ:
+  rabbitmq_exchange_publish_in_rate:
+    name: 交换发布进入速率
+    desc: 该指标表示每秒通过 RabbitMQ 交换机发布进入的消息数量。用于评估消息发布速率，帮助发现消息流入的瓶颈。
+  rabbitmq_exchange_publish_out_rate:
+    name: 交换发布输出速率
+    desc: 该指标表示每秒通过 RabbitMQ 交换机发布输出的消息数量。用于评估消息的流出速率，帮助识别消息流出问题。
+  rabbitmq_node_disk_free:
+    name: 剩余磁盘空间
+    desc: 该指标表示 RabbitMQ 节点上剩余的磁盘空间，单位为GiB。低磁盘空间可能会导致性能下降或故障。
+  rabbitmq_node_fd_used:
+    name: 已用文件描述符数量
+    desc: 该指标表示 RabbitMQ 节点已用的文件描述符数量。过多的文件描述符使用可能会导致系统无法处理更多的连接。
+  rabbitmq_node_mem_used:
+    name: 内存使用量
+    desc: 该指标表示 RabbitMQ 节点的内存使用情况。内存使用过高可能会导致性能下降，甚至导致节点崩溃。
+  rabbitmq_node_run_queue:
+    name: 正在处理的队列数
+    desc: 该指标表示 RabbitMQ 节点当前正在处理的队列数。队列数过多可能表明系统压力较大，且可能需要进行优化。
+  rabbitmq_node_uptime:
+    name: 节点运行时间
+    desc: 该指标表示 RabbitMQ 节点的运行时间，单位为分钟。长时间运行的节点可能需要重启来释放资源并进行维护。
+  rabbitmq_fd_usage_ratio:
+    name: 文件描述符使用率
+    desc: 该指标表示 RabbitMQ 节点已用文件描述符与总文件描述符的比例。过高的比例可能导致文件描述符不足。
+  rabbitmq_overview_messages_ready:
+    name: 就绪消息数
+    desc: 该指标表示当前待处理的消息数量。过多的就绪消息可能意味着消费者滞后或消息处理速度较慢。
+  rabbitmq_overview_messages_unacked:
+    name: 未确认消息数
+    desc: 该指标表示未被消费者确认的消息数量。未确认的消息过多可能表示消费者处理速度过慢，或者有未处理的消息积压。
+  rabbitmq_queue_message_backlog_ratio:
+    name: 队列消息积压率
+    desc: 该指标用于衡量队列中待处理消息与已确认消息的比例，帮助识别系统中是否存在消息积压。
+  rabbitmq_unacked_message_ratio:
+    name: 未确认消息占比
+    desc: 该指标用于衡量队列中未被消费者确认的消息比例，过高可能表示消费者处理消息滞后。
+ActiveMQ:
+  activemq_topic_consumer_count:
+    name: 消费者数量
+    desc: 该指标表示每个主题的消费者数量，用于监测消费者是否均衡分布。
+  activemq_topic_dequeue_rate:
+    name: 消息消费速率
+    desc: 该指标表示主题的消息消费速率，即每秒钟消费的消息数量。
+  activemq_topic_enqueue_rate:
+    name: 消息入队速率
+    desc: 该指标表示主题的消息入队速率，即每秒钟入队的消息数量。
+  activemq_topic_size:
+    name: 主题消息数
+    desc: 该指标表示每个主题中未消费的消息数量，有助于识别主题是否存在消息积压。
+Nginx:
+  nginx_requests:
+    name: 每秒请求量
+    desc: 表示过去 5 分钟内每秒处理的 HTTP 请求数量，反映服务器的负载情况。
+  nginx_accepts:
+    name: 每秒连接建立量
+    desc: 表示过去 5 分钟内每秒成功建立的客户端连接数量，用于监控连接活跃度。
+  nginx_handled:
+    name: 每秒连接处理量
+    desc: 表示过去 5 分钟内每秒成功处理的已连接会话数量，监控连接处理能力。
+  nginx_active:
+    name: 当前活跃连接数
+    desc: 当前所有处于活动状态的连接数，包含读取、写入和等待处理的所有连接。
+  nginx_waiting:
+    name: 当前等待连接数
+    desc: 当前处于等待状态（空闲）的连接数量，表示当前未处理的客户端连接。
+  nginx_reading:
+    name: 当前读取连接数
+    desc: 表示当前正在读取客户端请求（头部或主体）的连接数量，用于监控读取阶段的负载。
+  nginx_writing:
+    name: 当前写入连接数
+    desc: 表示当前正在向客户端写响应数据的连接数量，用于监控响应阶段的性能。
+  nginx_connect_rate:
+    name: 连接处理成功率
+    desc: 表示过去 5 分钟内已处理的连接数占总接收连接数量的百分比，可用于分析连接处理的稳定性。
+  nginx_request_handling_efficiency:
+    name: 每个连接平均请求数
+    desc: 表示每个处理连接的平均请求数量，间接反映了 Nginx 的工作效率以及负载级别。
+Tomcat:
+  tomcat_connector_request_count:
+    name: 请求数量
+    desc: 该指标表示Tomcat连接器过去5分钟内平均每秒处理的总请求数，用于监控请求负载。
+  tomcat_connector_processing_time:
+    name: 请求处理时间
+    desc: 指标用于衡量 Tomcat 连接器在过去 5 分钟内处理请求时间的平均每秒变化情况。它能反映服务器处理请求的效率。
+  tomcat_connector_max_time:
+    name: 最大请求处理时间
+    desc: 该指标表示Tomcat连接器处理单个请求的最大时间，反映最慢请求的性能。
+  tomcat_connector_bytes_received:
+    name: 接收字节数
+    desc: 该指标表示 Tomcat 连接器在过去 5 分钟内平均每秒接收数据的字节数，可用于监控 Tomcat 服务器的网络流量负载。
+  tomcat_connector_bytes_sent:
+    name: 发送字节数
+    desc: 该指标表示Tomcat连接器在过去 5 分钟内平均每秒发送的字节数，用于监控流量和响应负载。
+  tomcat_connector_current_thread_count:
+    name: 当前线程数
+    desc: 该指标表示Tomcat连接器当前使用的线程数，用于监控并发能力。
+  tomcat_connector_current_threads_busy:
+    name: 忙碌线程数
+    desc: 该指标表示Tomcat连接器当前忙碌的线程数，用于监控并发处理情况。
+  tomcat_connector_max_threads:
+    name: 最大线程数
+    desc: 该指标表示Tomcat连接器的最大线程数，用于监控Tomcat的并发能力。
+  tomcat_connector_error_count:
+    name: 错误数量
+    desc: 该指标表示Tomcat连接器在过去 5 分钟内平均每秒处理请求时的错误次数，用于监控错误率。
+  tomcat_jvm_memory_free:
+    name: JMX 空闲内存
+    desc: 该指标表示Tomcat JVM中的空闲内存量，用于监控内存使用情况。
+  tomcat_jvm_memory_max:
+    name: JMX 最大内存
+    desc: 该指标表示Tomcat JVM的最大内存量，用于监控内存限制。
+  tomcat_jvm_memorypool_used:
+    name: JMX 已使用内存池
+    desc: 该指标表示Tomcat JVM内存池已使用的内存量，用于监控内存池使用情况。
+Consul:
+  consul_health_checks_status:
+    name: 健康检查状态
+    desc: 该指标表示Consul健康检查的状态，其中0为通过，1为警告，2为严重。
+  consul_health_checks_passing:
+    name: 通过的健康检查数
+    desc: 该指标表示当前通过的健康检查数量，用于监测健康检查的正常情况。
+  consul_health_checks_warning:
+    name: 警告的健康检查数
+    desc: 该指标表示当前处于警告状态的健康检查数量，用于监测潜在的服务问题。
+  consul_health_checks_critical:
+    name: 严重的健康检查数
+    desc: 该指标表示当前处于严重状态的健康检查数量，用于监测服务的重大故障。
+ElasticSearch:
+  elasticsearch_fs_total_available_in_bytes:
+    name: 磁盘剩余空间
+    desc: 文件系统剩余可用空间，换算为 GB。
+  elasticsearch_fs_total_free_in_bytes:
+    name: 磁盘总剩余空间
+    desc: 文件系统内未分配的可用磁盘空间，用于监控整体容量。
+  elasticsearch_http_current_open:
+    name: 当前 HTTP 连接数
+    desc: 监控当前 HTTP 打开的连接数，判断负载状态。
+  elasticsearch_http_total_opened:
+    name: 每 5 分钟新增 HTTP 连接数
+    desc: 5 分钟内新建的 HTTP 连接数，可用于监测请求负载变化。
+  elasticsearch_fs_io_stats_total_write_kilobytes:
+    name: 每秒磁盘写入速率
+    desc: 监控磁盘写入速率（MB/s），用于分析 IO 性能。
+  elasticsearch_fs_io_stats_total_read_kilobytes:
+    name: 每秒磁盘读取速率
+    desc: 监控磁盘读取速率（MB/s），用于识别 IO 瓶颈。
+  elasticsearch_indices_docs_count:
+    name: 索引文档总数
+    desc: 当前 Elasticsearch 中所有索引的文档条数。
+  elasticsearch_indices_docs_deleted:
+    name: 被删除文档总数
+    desc: 被标记删除的文档总数，可用于评估段合并工作量。
+  elasticsearch_indices_query_cache_cache_count:
+    name: 查询缓存条数
+    desc: 监控查询缓存条目数，用于优化查询性能。
+  elasticsearch_breakers_parent_tripped:
+    name: 父级断路器触发次数
+    desc: 5 分钟内父级断路器触发的次数，监控内存超限情况。
+  elasticsearch_breakers_fielddata_tripped:
+    name: 字段数据断路器触发次数
+    desc: 5 分钟内字段数据断路器触发的次数，监控内存溢出情况。
+MongoDB:
+  mongodb_active_reads:
+    name: 活跃读操作
+    desc: 当前正在执行的活跃读操作数，用于监控数据库负载情况。
+  mongodb_active_writes:
+    name: 活跃写操作
+    desc: 当前正在执行的活跃写操作数，用于监控数据库写入压力。
+  mongodb_commands:
+    name: 每秒操作指令数
+    desc: 每秒执行的数据库操作指令数，反映数据库负载。
+  mongodb_connections_current:
+    name: 当前连接数
+    desc: 当前正在与数据库通信的客户端连接数。
+  mongodb_latency_commands:
+    name: 操作指令平均延迟
+    desc: 数据库指令的平均延迟情况，用于评估数据库性能。
+  mongodb_resident_megabytes:
+    name: MongoDB 内存使用量
+    desc: 数据库物理内存使用量，反映资源占用情况。
+  mongodb_net_in_bytes:
+    name: 每秒接收流量
+    desc: 每秒接收到的数据量，用于监控网络流量。
+  mongodb_net_out_bytes:
+    name: 每秒发送流量
+    desc: 每秒发送的数据量，用于监控网络流量。
+  mongodb_total_docs_scanned:
+    name: 每秒扫描文档数量
+    desc: 查询时扫描的文档数量，评估查询性能。
+Mysql:
+  mysql_aborted_clients:
+    name: 终止的客户端连接次数
+    desc: 此指标表示由于客户端错误中止的连接次数。监控此指标可以帮助识别连接可靠性问题。
+  mysql_aborted_connects:
+    name: 终止的连接尝试次数
+    desc: 此指标表示因连接问题而终止的连接尝试次数。高值可能表示系统配置问题或服务器过载。
+  mysql_access_denied_errors:
+    name: 访问拒绝错误次数
+    desc: 此指标表示由于权限不足或认证失败导致的访问拒绝次数。监控此指标有助于识别和解决权限问题。
+  mysql_aria_pagecache_blocks_unused:
+    name: 未使用的Aria页高速缓存块数
+    desc: 此指标表示Aria存储引擎中未使用的页高速缓存块数。监控此指标可以帮助优化缓存分配。
+  mysql_aria_pagecache_blocks_used:
+    name: 已使用的Aria页高速缓存块数
+    desc: 此指标表示Aria存储引擎中已使用的页高速缓存块数。监控此指标可以帮助评估缓存的有效利用。
+  mysql_bytes_received:
+    name: 接收字节数
+    desc: 此指标表示MySQL服务器接收到的字节数。监控此指标可以了解网络流量负载情况。
+  mysql_bytes_sent:
+    name: 发送字节数
+    desc: 此指标表示MySQL服务器发送的字节数。监控此指标可以了解网络流量负载情况。
+  mysql_com_select:
+    name: Select命令执行次数
+    desc: 此指标表示Select查询的执行次数。监控此指标有助于了解读取操作的频率和系统负载。
+  mysql_com_insert:
+    name: Insert命令执行次数
+    desc: 此指标表示Insert命令的执行次数。监控此指标有助于了解写入操作的频率和系统负载。
+  mysql_com_update:
+    name: Update命令执行次数
+    desc: 此指标表示Update命令的执行次数。监控此指标有助于了解更新操作的频率和系统负载。
+  mysql_com_delete:
+    name: Delete命令执行次数
+    desc: 此指标表示Delete命令的执行次数。监控此指标有助于了解删除操作的频率和系统负载。
+  mysql_connections_total:
+    name: 总连接创建数
+    desc: 此指标表示从服务器启动以来创建的总连接数。监控连接总数有助于了解连接模式和流量。
+Postgres:
+  postgresql_active_time:
+    name: PostgreSQL 活跃时间
+    desc: 此指标表示 PostgreSQL实例在活跃状态下的总时长，反映数据库活动的持续时间。
+  postgresql_blk_read_time:
+    name: PostgreSQL 块读耗时变化率
+    desc: 表示 PostgreSQL 实例的块读操作耗时变化率（秒/秒）。用于监控读操作的性能。
+  postgresql_blk_write_time:
+    name: PostgreSQL 块写耗时变化率
+    desc: 表示 PostgreSQL 实例的块写操作耗时变化率（秒/秒）。用于监控写操作的性能。
+  postgresql_blks_hit:
+    name: PostgreSQL 块缓存命中变化率
+    desc: 表示 PostgreSQL 实例的块缓存命中次数的变化率（次/秒）。用于监控缓存效率。
+  postgresql_blks_read:
+    name: PostgreSQL 块读取速率
+    desc: 表示 PostgreSQL 实例的块读取速率（次/秒）。用于监控读取操作的频率。
+  postgresql_blks_hit_ratio:
+    name: PostgreSQL 块缓存命中率（5m）
+    desc: 表示 PostgreSQL 实例在过去 5 分钟内的块缓存命中率，反映缓存的有效性。高命中率意味着大部分数据请求直接从缓存获取，减少磁盘读取，提升查询性能。
+  postgresql_buffers_alloc:
+    name: PostgreSQL 缓存分配速率
+    desc: 表示 PostgreSQL 实例的缓存分配速率（次/秒）。用于监控缓存分配情况。
+  postgresql_buffers_checkpoint:
+    name: PostgreSQL 检查点缓存速率
+    desc: 表示 PostgreSQL 实例的检查点缓存速率（次/秒）。用于监控检查点操作的频率。
+  postgresql_xact_commit:
+    name: PostgreSQL 提交事务速率
+    desc: 表示 PostgreSQL 实例的提交事务速率（次/秒）。用于监控事务提交的频率。
+  postgresql_xact_rollback:
+    name: PostgreSQL 回滚事务速率
+    desc: 表示 PostgreSQL 实例的回滚事务速率（次/秒）。用于监控事务回滚的频率。
+  postgresql_sessions:
+    name: PostgreSQL 活跃会话数
+    desc: 单个PostgreSQL 实例中所有数据库的活跃会话总数（包括空闲连接），用于监控数据库连接池使用情况，识别连接泄漏或异常激增。
+  postgresql_sessions_abandoned:
+    name: PostgreSQL 异常断开会话频率
+    desc: 每秒因网络中断或客户端崩溃导致的异常断开会话数，用于定位客户端或网络层稳定性问题，避免残留进程占用资源。
+  postgresql_sessions_killed:
+    name: PostgreSQL 被终止会话频率
+    desc: 表示 PostgreSQL 实例的被终止会话速率（次/秒）。用于监控会话终止的频率。
+Redis:
+  redis_used_memory:
+    name: 已用内存
+    desc: Redis 所使用的总内存大小，包括所有内部数据结构和缓存。
+  redis_mem_fragmentation_ratio:
+    name: 内存碎片率
+    desc: 内存碎片率，反映内存使用效率。
+  redis_instantaneous_ops_per_sec:
+    name: 每秒操作次数
+    desc: 当前每秒处理的 Redis 命令数（QPS）。
+  redis_keyspace_hits:
+    name: 键空间命中次数
+    desc: 缓存命中的次数。
+  redis_keyspace_misses:
+    name: 键空间未命中次数
+    desc: 缓存未命中的次数。
+  redis_clients:
+    name: 已连接客户端数
+    desc: 当前连接的客户端数量，反映活跃连接数。
+  redis_used_cpu_sys_rate:
+    name: Redis 系统模式 CPU 变化率
+    desc: Redis 在系统模式下每秒消耗的 CPU 时间变化率。值过高（如 >1）可能表示 I/O 操作频繁，需告警。
+  redis_evicted_keys:
+    name: 驱逐的键数
+    desc: 因内存限制而被逐出的键值数量。
+  redis_connected_slaves:
+    name: 已连接从节点数
+    desc: 当前连接到主节点的副本数量。
+  redis_rdb_last_save_time_elapsed:
+    name: 上次保存经过时间
+    desc: 上次成功进行 RDB 保存操作后的经过时间。
+  redis_rejected_connections:
+    name: 拒绝的连接数
+    desc: 因服务器过载或策略限制而被拒绝的连接数。
+Docker:
+  docker_n_containers:
+    name: 容器总数
+    desc: 该指标表示Docker主机上容器总数，反映主机的负载情况。
+  docker_n_containers_running:
+    name: 正在运行的容器数
+    desc: 该指标表示Docker主机上正在运行的容器数，反映主机的负载情况。
+  docker_n_containers_stopped:
+    name: 停止的容器数
+    desc: 该指标表示Docker主机上停止的容器数，帮助了解容器的运行情况。
+Docker Container:
+  docker_container_status:
+    name: 容器状态
+    desc: 该指标表示容器的状态，0表示容器正常。
+  docker_container_status_restart_count:
+    name: 重启次数
+    desc: 该指标表示容器的重启次数，帮助监控容器是否频繁重启。
+  docker_container_cpu_usage_percent:
+    name: CPU使用率
+    desc: 该指标表示容器的CPU使用百分比，监控容器的CPU负载情况。
+  docker_container_mem_usage_percent:
+    name: 内存使用率
+    desc: 该指标表示容器的内存使用百分比，监控容器的内存负载情况。
+  docker_container_mem_usage:
+    name: 内存使用量
+    desc: 容器使用的内存量，通常以字节为单位，显示容器实际占用的物理内存量。
+  docker_container_blkio_io_service_bytes_recursive_total:
+    name: 总块I/O字节数
+    desc: 该指标表示容器的总块I/O字节数，反映容器的磁盘I/O负载。
+  docker_container_blkio_io_service_bytes_recursive_read:
+    name: 块设备读取字节数
+    desc: 从块设备中读取的字节数，反映读取操作的负载和存储性能。
+  docker_container_blkio_io_service_bytes_recursive_write:
+    name: 块设备写入字节数
+    desc: 向块设备写入的字节数，表示写入操作的负载和存储性能。
+  docker_container_net_rx_bytes:
+    name: 接收网络字节数
+    desc: 该指标表示容器接收到的网络字节数，用于监控容器的网络流量。
+  docker_container_net_tx_bytes:
+    name: 发送网络字节数
+    desc: 该指标表示容器发送的网络字节数，用于监控容器的网络流量。
+  docker_container_net_rx_errors:
+    name: 网络接收错误总数
+    desc: 容器在接收数据包时遇到的错误总数，可用于诊断网络问题。
+  docker_container_net_tx_errors:
+    name: 网络发送错误总数
+    desc: 容器在发送数据包时遇到的错误总数，帮助识别网络发送问题。
+  docker_container_net_rx_packets:
+    name: 接收到的数据包总数
+    desc: 容器接收到的数据包数量，显示网络流入的活跃度。
+  docker_container_net_tx_packets:
+    name: 发送的数据包总数
+    desc: 容器发送的数据包数量，反映网络流出的活跃度。
+vCenter:
+  vmware_esxi_count:
+    name: ESXI数量
+    desc: 该指标用于统计 VMware 环境中 ESXi 主机的数量，帮助管理员了解当前的物理主机资源情况。
+  vmware_datastore_count:
+    name: 数据存储数量
+    desc: 该指标统计 VMware 环境中数据存储的数量，便于监控存储资源的分配和使用情况。
+  vmware_vm_count:
+    name: 虚拟机数量
+    desc: 该指标统计 VMware 环境中虚拟机的数量，用于评估虚拟化资源的使用情况。
+ESXI:
+  esxi_cpu_usage_average_gauge:
+    name: CPU使用率
+    desc: 表示系统或应用程序的CPU使用率，单位是百分比（%），是衡量CPU负载和性能的关键指标。
+  esxi_cpu_usagemhz_average_gauge:
+    name: CPU使用频率
+    desc: 代表CPU的使用量，以兆赫兹（MHz）为单位，反映了CPU的实际工作频率。
+  esxi_mem_usage_average_gauge:
+    name: 内存使用率
+    desc: 内存使用率，表示内存的使用情况，单位是百分比（%），用于评估系统或应用程序的内存负载。
+  esxi_mem_consumed_average_gauge:
+    name: 活动内存
+    desc: 活动内存，表示系统或应用程序实际使用的内存量，单位是兆字节（MB），是内存消耗的关键指标。
+  esxi_disk_read_average_gauge:
+    name: 磁盘读速率
+    desc: 磁盘读速率，表示每秒钟从磁盘读取的数据量，单位是兆字节每秒（MB/s），是衡量磁盘读性能的重要指标。
+  esxi_disk_write_average_gauge:
+    name: 磁盘写速率
+    desc: 磁盘写速率，表示每秒钟向磁盘写入的数据量，单位是兆字节每秒（MB/s），是衡量磁盘写性能的重要指标。
+  esxi_disk_numberRead_summation_gauge:
+    name: 磁盘读I/O
+    desc: 表示每秒完成的磁盘读操作次数，单位是IOPS（次/秒），是衡量磁盘读请求频率的重要指标。值越高，表示磁盘读请求越频繁。
+  esxi_disk_numberWrite_summation_gauge:
+    name: 磁盘写I/O
+    desc: 表示每秒完成的磁盘写操作次数，单位是IOPS（次/秒），是衡量磁盘写请求频率的重要指标。值越高，表示磁盘写请求越频繁。
+  esxi_net_bytesRx_average_gauge:
+    name: 网络接收速率
+    desc: 网络接收速率，表示每秒钟接收到的数据量，单位是千字节每秒（KB/s），是网络流量的重要衡量标准。
+  esxi_net_bytesTx_average_gauge:
+    name: 网络发送速率
+    desc: 网络发送速率，表示每秒钟发送出去的数据量，单位是千字节每秒（KB/s），是网络流量的重要衡量标准。
+DataStorage:
+  data_storage_disk_used_average:
+    name: 磁盘使用率
+    desc: 磁盘使用率，表示磁盘空间的使用情况，是衡量磁盘存储利用率的指标。
+  data_storage_disk_free_average:
+    name: 磁盘剩余量
+    desc: 磁盘剩余量，表示磁盘中未使用的空间量，是评估磁盘容量的关键指标。
+  data_storage_base.store_accessible:
+    name: 存储连接状态
+    desc: 存储连接状态，表示存储设备的可连接性，是评估存储系统健康状态的指标。
+VM:
+  vm_cpu_usage_average_gauge:
+    name: CPU使用率
+    desc: 表示系统在特定时间段内的CPU使用率，通常以百分比表示。这个指标帮助了解CPU的负载情况，以便进行性能优化和容量规划。
+  vm_cpu_usagemhz_average_gauge:
+    name: CPU使用量
+    desc: 表示系统在特定时间段内的CPU使用量，通常以MHz为单位。这个指标用于衡量CPU的实际工作频率，帮助分析CPU资源的消耗情况。
+  vm_mem_usage_average_gauge:
+    name: 内存使用率
+    desc: 表示系统在特定时间段内的内存使用率，通常以百分比表示。这个指标帮助了解内存的负载情况，有助于优化内存使用和进行容量规划。
+  vm_mem_consumed_average_gauge:
+    name: 活动内存
+    desc: 表示系统在特定时间段内的活动内存，通常以MB或GB为单位。这个指标用于衡量系统实际消耗的内存资源，帮助分析内存使用情况。
+  vm_disk_io_usage_gauge:
+    name: 磁盘I/O使用率
+    desc: 表示虚拟机磁盘的I/O使用率，即磁盘在特定时间段内的繁忙程度。值越高，表示磁盘负载越高。
+  vm_disk_read_average_gauge:
+    name: 磁盘读取吞吐量
+    desc: 表示虚拟机磁盘在特定时间段内的平均读取速率。值越高，表示读取性能越好。
+  vm_disk_used_average_gauge:
+    name: 磁盘使用率
+    desc: 表示虚拟机磁盘的平均使用率，即磁盘已使用的空间比例。值越高，表示磁盘空间越紧张。
+  vm_disk_numberRead_summation_gauge:
+    name: 磁盘读IO
+    desc: 表示每秒完成的磁盘读操作次数，是衡量磁盘读请求频率的重要指标。值越高，表示磁盘读请求越频繁。
+  vm_disk_numberWrite_summation_gauge:
+    name: 磁盘写IO
+    desc: 表示每秒完成的磁盘写操作次数，是衡量磁盘写请求频率的重要指标。值越高，表示磁盘写请求越频繁。
+  vm_disk_write_average_gauge:
+    name: 磁盘写入吞吐量
+    desc: 表示虚拟机磁盘在特定时间段内的平均写入速率。值越高，表示写入性能越好。
+  vm_net_bytesRx_average_gauge:
+    name: 网络接收速率
+    desc: 表示系统在特定时间段内的网络接收速率，通常以MB/s或GB/s为单位。这个指标用于衡量网络的接收性能，帮助分析网络流量和带宽使用情况。
+  vm_net_bytesTx_average_gauge:
+    name: 网络发送速率
+    desc: 表示系统在特定时间段内的网络发送速率，通常以MB/s或GB/s为单位。这个指标用于衡量网络的发送性能，帮助分析网络流量和带宽使用情况。
+  vm_power_state_gauge:
+    name: 电源状态
+    desc: 表示虚拟机（VM）当前的电源状态，用于监控 VM 是处于开机还是关机状态。该指标对于监测 VM 可用性、优化资源分配和自动化运维具有重要作用。
+JVM:
+  jmx_scrape_duration_seconds_gauge:
+    name: JMX 抓取消耗时间
+    desc: 最近一次的JMX监控数据采集耗时，以秒为单位，用于评估数据采集性能。
+  jmx_scrape_error_gauge:
+    name: JMX 抓取错误
+    desc: 标识 JMX 抓取过程中是否出现失败，非零值表示抓取失败
+  jvm_memory_usage_init_value:
+    name: 初始内存大小
+    desc: Java 虚拟机启动时初始化分配的内存大小，反映内存初始配置
+  jvm_memory_usage_committed_value:
+    name: 已提交内存大小
+    desc: Java 虚拟机当前已提交给系统使用的内存大小，可用于评估内存资源占用
+  jvm_memory_usage_used_value:
+    name: 已使用内存大小
+    desc: Java 虚拟机当前实际已使用的内存量，直观体现内存使用情况
+  jvm_memory_usage_max_value:
+    name: JVM 内存使用最大值
+    desc: Java 虚拟机在运行过程中内存使用曾达到的最大值，可用于检测内存压力和泄漏
+  jvm_threads_total_started_count_value:
+    name: 总线程数
+    desc: Java 虚拟机自启动以来总共创建并启动的线程数量，展示线程创建规模
+  jvm_threads_daemon_count_value:
+    name: 守护线程数
+    desc: Java 虚拟机中当前处于活动状态的守护线程数量，守护线程用于服务其他线程
+  jvm_threads_peak_count_value:
+    name: 峰值线程数
+    desc: Java 虚拟机运行过程中线程数量达到的峰值，可辅助分析线程资源使用高峰
+  jvm_threads_count_value:
+    name: 当前线程数
+    desc: Java 虚拟机当前正在运行的线程数量，实时反映线程活跃程度
+  jvm_threads_current_user_time_value:
+    name: 当前线程用户时间
+    desc: Java 虚拟机中当前线程执行用户代码所花费的 CPU 时间，用于分析线程性能
+  jvm_os_memory_physical_free_value:
+    name: 可用物理内存
+    desc: 系统当前可用的物理内存大小，体现系统剩余内存资源
+  jvm_os_memory_physical_total_value:
+    name: 总物理内存
+    desc: 系统中物理内存的总容量大小，是硬件配置的固定参数
+  jvm_os_memory_swap_free_value:
+    name: 可用交换空间
+    desc: 系统当前可用的交换空间大小，用于在物理内存不足时临时存储数据
+  jvm_os_memory_swap_total_value:
+    name: 总交换空间
+    desc: 系统中交换空间的总容量大小，决定可扩展的虚拟内存上限
+  jvm_os_memory_committed_virtual_value:
+    name: 提交的虚拟内存
+    desc: Java 虚拟机已提交使用的虚拟内存大小，反映对虚拟内存资源的占用
+  jvm_os_available_processors_value:
+    name: 可用处理器数
+    desc: 系统当前可用于执行线程的处理器核心数量，影响程序并行处理能力
+  jvm_os_processcputime_seconds_value:
+    name: 进程 CPU 时间
+    desc: Java 虚拟机进程自启动以来消耗的 CPU 时间，衡量进程资源占用
+  jvm_bufferpool_count_value:
+    name: BufferPool 计数
+    desc: Java NIO 中 BufferPool 的缓冲区对象数量，用于监控资源池规模
+  jvm_bufferpool_memoryused_value:
+    name: BufferPool 已用内存
+    desc: Java NIO 中 BufferPool 当前已使用的内存大小，反映资源池使用情况
+  jvm_bufferpool_totalcapacity_value:
+    name: BufferPool 总容量
+    desc: Java NIO 中 BufferPool 的总内存容量大小，展示资源池最大承载能力
+  jvm_gc_collectiontime_seconds_value:
+    name: GC 收集总时间
+    desc: Java 虚拟机中垃圾回收操作累计消耗的总时间，用于评估 GC 性能
+  jvm_gc_collectioncount_value:
+    name: GC 收集总次数
+    desc: Java 虚拟机中垃圾回收操作的累计执行次数，反映 GC 活动频率
+  jvm_memorypool_usage_init_value:
+    name: 内存池初始使用量
+    desc: Java 虚拟机中内存池初始化分配的内存使用量，体现内存池初始状态
+  jvm_memorypool_usage_committed_value:
+    name: 内存池提交内存使用量
+    desc: Java 虚拟机中内存池当前已提交使用的内存量，展示内存池资源占用
+  jvm_memorypool_usage_used_value:
+    name: 内存池已使用内存
+    desc: Java 虚拟机中内存池当前实际已使用的内存量，直观体现内存池使用程度
+  jvm_memorypool_usage_max_value:
+    name: 内存池最大使用量
+    desc: Java 虚拟机中内存池在运行过程中曾达到的最大内存使用量，可检测内存池压力
+Tomcat-JMX:
+  tomcat_bytesreceived_increase:
+    name: 全局接收流量增长数
+    desc: 过去5分钟内接收流量的增长量（以kibibytes为单位），反映网络输入速率。若数值持续增长，可能表明网络输入流量增加，需要关注网络带宽。
+  tomcat_bytessent_increase:
+    name: 全局发送流量增长数
+    desc: 过去5分钟内发送流量的增长量（以kibibytes为单位），反映网络输出速率。若数值过高，可能表示网络输出流量大，需要关注网络带宽。
+  tomcat_errorcount_increase:
+    name: 全局错误增长数
+    desc: 过去5分钟内错误次数的增长量，反映错误发生频率变化。若数值过高，可能表明系统存在较多问题，需要及时排查。
+  tomcat_processingtime_increase:
+    name: 全局处理时长增长量
+    desc: 过去5分钟内处理请求的总时间增长量（以秒为单位），用于评估整体处理效率的变化趋势。若数值持续增加，可能表示系统处理请求的时间在增长，需要进一步分析是否存在性能瓶颈。
+  tomcat_maxtime_total_counter:
+    name: 全局最大处理时长
+    desc: 特定端口和协议下的最大请求处理时长（以秒为单位），用于定位慢请求。若数值过高，可能表示存在性能瓶颈，需要优化应用性能。
+  tomcat_requestcount_increase:
+    name: 全局请求增长数
+    desc: 过去5分钟内请求数的增长量，反映流量变化趋势。若数值持续增长，可能表示流量增加，需要关注系统负载。
+  tomcat_threadpool_currentthreadcount_gauge:
+    name: 线程池当前线程数
+    desc: 当前线程池中的线程数量，实时监控并发负载。若数值过高，可能表示线程池负载过重，需要优化线程池配置。
+  tomcat_threadpool_utilization:
+    name: 线程池利用率
+    desc: 线程池的利用率，反映线程池的使用情况。若数值过高，可能表示线程池接近饱和，需要增加线程池容量或优化应用性能。
+  tomcat_threadpool_currentthreadsbusy_gauge:
+    name: 线程池繁忙线程数
+    desc: 繁忙状态的线程数量，用于判断处理能力瓶颈。若数值过高，可能表示处理能力不足，需要优化线程池配置。
+  tomcat_threadpool_running_gauge:
+    name: 线程池运行线程数
+    desc: 线程池中正在运行的线程数，反映实际工作线程负载。若数值过高，可能表示线程池负载过重，需要优化线程池配置。
+  tomcat_session_processingtime_avg:
+    name: 平均会话处理时间
+    desc: 过去5分钟内，每秒的平均会话处理时间（以毫秒为单位）。这个指标反映了系统在处理会话时的平均效率。较低的值表示系统处理会话的速度较快，效率高；较高的值可能表示系统在处理会话时存在性能瓶颈。
+  tomcat_session_sessioncounter_total_counter:
+    name: 会话总数
+    desc: 特定主机下的活跃会话总数，用于监控会话资源占用。若数值过高，可能表示会话资源占用过多，需要优化会话管理。
+  tomcat_session_expiredsessions_total_counter:
+    name: 过期会话总数
+    desc: 特定主机下的过期会话总数，用于检测会话超时情况。若数值过高，可能表示会话超时频繁，需要检查会话配置或资源限制。
+  tomcat_session_rejectionrate:
+    name: 会话拒绝率
+    desc: 会话拒绝率，反映会话创建失败的比例。若数值过高，可能表示会话管理存在问题，需要检查会话配置或资源限制。
+  jmx_scrape_error_gauge:
+    name: JMX抓取失败的监控指标
+    desc: 值为0时表示监控指标抓取成功，值为1时表示抓取失败。
+Jetty-JMX:
+  jetty_queuedthreadpool_utilizationrate_value:
+    name: 线程池利用率
+    desc: 当前线程池执行临时作业的线程利用率(线程池当前活跃线程数与最大线程数的比值),反映线程池资源使用压力。
+  jetty_queuedthreadpool_threads_value:
+    name: 线程池中的线程数
+    desc: 线程池当前管理的线程总数，包括活跃和空闲线程。
+  jetty_queuedthreadpool_maxthreads_value:
+    name: 最大线程数
+    desc: Jetty线程池中允许的最大线程数,即线程空闲多久后会被回收的时间阈值。
+  jetty_queuedthreadpool_idletimeout_value:
+    name: 线程空闲超时时间
+    desc: Jetty线程空闲的最大允许时间
+  jetty_queuedthreadpool_readythreads_value:
+    name: Jetty 就绪线程数
+    desc: Jetty 服务器中处于就绪状态的线程数量，用于评估线程池的空闲资源。
+  jvm_memory_heap_usage_used_rate:
+    name: 堆内存使用量的平均变化率
+    desc: 5分钟内JVM 堆内存使用量的平均变化率（每分钟兆字节），用于实时监控堆内存使用的变化趋势，及时发现内存泄漏或内存压力问题。
+  jvm_memory_heap_usage_max_value:
+    name: 堆内存最大值
+    desc: JVM 堆内存的最大值，用于评估堆内存的上限，防止内存溢出。
+  jvm_memory_heap_usage_used_value:
+    name: 堆内存使用量
+    desc: JVM 堆内存中已使用的部分，用于评估当前堆内存的使用情况。
+  jvm_memory_heap_usage_committed_value:
+    name: 堆内存提交量
+    desc: JVM 堆内存中已提交的部分，用于评估实际分配给 JVM 的堆内存大小。
+  jvm_memory_nonheap_usage_used_rate:
+    name: 非堆内存使用量的平均变化率
+    desc: 5分钟内，JVM 非堆内存使用量的平均变化率（每分钟兆字节），用于监控非堆内存的使用变化趋势。
+  jvm_memory_nonheap_usage_max_value:
+    name: 非堆内存最大值
+    desc: JVM 非堆内存的最大值，用于评估非堆内存的上限。
+  jetty_httpconfiguration_outputbuffersize_value:
+    name: HTTP输出缓冲区大小
+    desc: 表示 Jetty 处理 HTTP 响应时的输出缓冲区大小（KB），用于控制单次响应数据的缓冲能力，平衡性能与内存占用。
+  jetty_httpconfiguration_idletimeout_value:
+    name: HTTP空闲超时时间
+    desc: 表示 HTTP 连接无数据传输时的最长保持时间（秒），用于释放空闲连接资源，避免资源浪费和恶意连接占用。
+  jetty_httpconfiguration_headercachesize_value:
+    name: HTTP头字段缓存的最大大小
+    desc: 表示 Jetty 缓存 HTTP 请求 / 响应头的最大条目数，用于减少重复解析开销，提升请求处理速度。
+  jetty_httpconfiguration_maxerrordispatches_value:
+    name: 最大错误处理调度次数
+    desc: 表示 Jetty 处理错误时允许的最大重定向次数，用于防止错误处理循环，避免服务器资源耗尽。
+  jetty_bufferpool_heapmemory_value:
+    name: 块缓冲堆内存占用
+    desc: 表示 Jetty 缓冲区池占用的堆内存大小（MB），用于监控数据块缓存的内存使用情况，排查内存泄漏。
+  jetty_bufferpool_heapmemory_rate:
+    name: 块缓冲堆内存占用变化率
+    desc: 表示过去 5 分钟块缓冲堆内存的平均每秒变化速率（MB / 秒），用于识别内存占用趋势，定位异常波动。
+  jetty_arraybufferpool_directmemory_value:
+    name: 直接内存占用
+    desc: 表示 Jetty 直接缓冲区占用的直接内存大小（MB），用于监控高性能 I/O 操作的非堆内存使用，避免内存溢出。
+  jetty_arraybufferpool_directmemory_rate:
+    name: 直接内存占用变化率
+    desc: 表示过去 5 分钟直接内存的平均每秒变化速率（MB / 秒），用于分析直接内存分配 / 释放模式，排查泄漏风险。
+  jetty_serverconnector_idletimeout_value:
+    name: 空闲超时时间
+    desc: 表示 Jetty 网络连接器的连接空闲超时时间（秒），用于控制底层 TCP 连接存活周期，优化长连接资源回收。
+  jetty_managedselector_selectcount_value:
+    name: 选择器Loop调用次数
+    desc: 表示 Jetty 选择器的 select () 方法累计调用次数，用于反映 I/O 事件处理频率，评估网络流量或线程负载。
+  jetty_managedselector_selectcount_increase:
+    name: 选择器 Loop 调用次数增加量
+    desc: 表示过去 5 分钟选择器 select () 调用次数增量，用于消除计数器重置影响，准确衡量 I/O 操作量变化趋势。
+  jetty_reservedthreadexecutor_available_value:
+    name: 可用预留线程数
+    desc: 表示 Jetty 预留线程执行器中的可用线程数，用于监控高优先级任务线程池的负载情况，避免请求处理延迟。
+  jmx_scrape_error_gauge:
+    name: JMX抓取失败的监控指标
+    desc: 值为0时表示监控指标抓取成功，值为1时表示抓取失败。
+ActiveMQ-JMX:
+  activemq_connections_total_counter:
+    name: 连接总数
+    desc: 当前连接到ActiveMQ代理的总连接数。监控此指标有助于检测代理的负载和连接管理效率。
+  activemq_connections_total_rate:
+    name: 连接速率
+    desc: 5分钟内连接速率，用于监控连接建立频率。
+  activemq_connections_gauge:
+    name: 当前连接数
+    desc: ActiveMQ代理当前活跃的连接数。通过监控此指标，可以识别代理的实时连接状态及其可能的瓶颈情况。
+  activemq_topic_memory_percent_usage_value:
+    name: 内存使用百分比
+    desc: 显示内存消耗百分比，监控该指标可以及时优化资源分配，避免性能下降。
+  activemq_topic_memory_usage_byte_count_value:
+    name: 未投递消息的内存使用量
+    desc: 当前未交付消息占用的内存量。通过此指标可以衡量代理的内存消耗及其管理策略。
+  activemq_memory_usage_ratio_gauge:
+    name: 内存使用率
+    desc: 当前系统使用的内存限制百分比。监控此指标有助管理和优化内存使用。
+  activemq_topic_queue_size_value:
+    name: 队列大小
+    desc: 还未消费的消息总量，通过监控此指标可以确定代理的工作负载和处理能力。
+  activemq_topic_enqueue_count_value:
+    name: 发送到目标的消息数量
+    desc: 当前目标接收到的消息数量，帮助监控通信流量及流量控制措施。
+  activemq_topic_enqueue_rate:
+    name: 发送速率
+    desc: 单位时间内发送到队列的消息数量，用于实时监控系统的负载和消息处理能力。
+  activemq_dequeue_total_counter:
+    name: 确认的消息总数
+    desc: 代理上确认处理的消息总数。通过此指标可以了解整体的处理情况和效率。
+  activemq_message_total_counter:
+    name: 未确认消息总数
+    desc: 系统中未确认的消息总计。此指标帮助识别可能的消息积压问题。
+  activemq_message_total_rate:
+    name: 未确认消息消息增长速率
+    desc: 5分钟内未确认消息数量的增长速率，用于监控消息积压情况。如果增长速率持续较高，可能表示系统存在处理瓶颈或消息积压问题
+  activemq_enqueue_total_counter:
+    name: 发送到代理的消息数量
+    desc: 总共发送到代理的消息数量，反映系统的负载和通信频繁程度。
+  activemq_topic_expired_count_value:
+    name: 已过期的消息数量
+    desc: 显示已过期的消息数量，用于检测消息处理延迟或消费者处理能力不足的问题。
+  activemq_topic_blocked_sends_value:
+    name: 被流控阻塞的消息数量
+    desc: 显示因流量控制而被阻塞的消息数量，用于评估系统的流量控制状态和消息发送的顺畅性。
+  activemq_producer_total_counter:
+    name: 生产者总数
+    desc: 显示当前连接到 ActiveMQ 代理的生产者总数，用于了解系统的生产者负载和消息发送的活跃程度。
+  activemq_topic_producer_flow_control_value:
+    name: 生产者流量控制状态
+    desc: 显示指定目标主题的生产者是否启用了流量控制，1 表示启用，0 表示未启用，用于防止生产者发送过多消息导致系统过载。
+  activemq_consumer_total_counter:
+    name: 消费者总数
+    desc: 显示当前连接到 ActiveMQ 代理的消费者总数，用于了解系统的消费者负载和消息处理能力。
+  activemq_store_usage_ratio_gauge:
+    name: 存储使用率
+    desc: 持久存储的使用百分比。监控此指标助于优化存储管理和资源分配。
+  jvm_memory_heap_usage_max_value:
+    name: 堆内存最大值
+    desc: JVM 堆内存的最大值，用于评估堆内存的上限，防止内存溢出。
+  jvm_memory_heap_usage_used_value:
+    name: 堆内存使用量
+    desc: JVM 堆内存中已使用的部分，用于评估当前堆内存的使用情况。
+  jvm_memory_nonheap_usage_used_rate:
+    name: 非堆内存使用量的平均变化率
+    desc: 5分钟内，JVM 非堆内存使用量的平均变化率（每分钟兆字节），用于监控非堆内存的使用变化趋势。
+  jmx_scrape_error_gauge:
+    name: JMX抓取失败的监控指标
+    desc: 值为0时表示监控指标抓取成功，值为1时表示抓取失败。
+WebLogic-JMX:
+  weblogic_threadpool_throughput_value:
+    name: 线程池吞吐量
+    desc: 线程池每秒处理的请求数量，反映处理能力。该指标越高，表明线程池处理请求的能力越强。当吞吐量显著下降时，可能表示线程池存在性能瓶颈或资源不足。
+  weblogic_threadpool_pending_user_request_count_value:
+    name: 待处理用户请求数
+    desc: 等待线程池处理的用户请求队列长度，持续增长可能导致响应延迟。如果该指标持续增加，说明线程池处理请求的速度跟不上请求到达的速度，可能会导致用户体验下降。
+  weblogic_threadpool_queue_length_value:
+    name: 线程池队列长度
+    desc: 线程池请求队列中的任务数量，反映请求积压情况。队列长度过长意味着大量请求等待处理，可能需要增加线程池资源或优化请求处理逻辑。
+  weblogic_threadpool_stuck_thread_count_value:
+    name: 停滞线程数
+    desc: 长时间运行未完成的线程数量，可能表示存在死锁或慢查询。当该指标大于0时，需要排查是否存在代码逻辑问题或数据库查询性能问题。
+  weblogic_threadpool_load_ratio:
+    name: 线程池负载比
+    desc: 评估线程池负载压力，值 > 1 表示请求超过处理能力，80%时应严重警告。该指标可以帮助判断线程池是否处于过载状态，以便及时采取措施避免系统崩溃。
+  weblogic_threadpool_average_utilization:
+    name: 线程平均利用率
+    desc: 反映线程池在一段时间内的平均利用率。利用率过高可能导致线程池过载，过低则可能表示资源浪费。一般建议保持在60%-80%之间。
+  weblogic_application_healthstatejmx_is_critical_value:
+    name: 应用健康严重状态
+    desc: 应用是否处于严重异常状态的标志，直接反映业务可用性。当该指标为1时，表示应用出现严重问题，需要立即排查和修复。
+  weblogic_application_overallhealthstatejmx_is_critical_value:
+    name: 应用整体健康严重状态
+    desc: 综合多个指标评估的应用整体健康状态是否严重异常。当该指标为1时，说明应用的整体健康状况不佳，可能影响业务的正常运行。
+  weblogic_workmanager_stuck_thread_count_value:
+    name: 全局工作管理器停滞线程数
+    desc: 全局工作管理器中停滞的线程数量，用于系统级线程问题排查。当该指标大于0时，需要检查系统是否存在线程阻塞或资源竞争问题。
+  weblogic_workmanager_pending_requests_value:
+    name: 全局工作管理器待处理请求数
+    desc: 全局工作管理器中等待处理的请求数量。如果该指标持续增加，可能会影响系统的响应速度。
+  weblogic_jms_jmsservers_current_count_value:
+    name: JMS 服务器当前数量
+    desc: 当前正在运行的 JMS 服务器实例数量。数量的增减可能影响消息传递的性能和可靠性。
+  weblogic_jms_connections_high_count_value:
+    name: JMS 连接数峰值
+    desc: JMS 连接数的历史最高记录，用于评估连接池配置合理性。如果当前连接数接近峰值，可能需要调整连接池大小。
+  weblogic_jms_connections_current_count_value:
+    name: JMS 当前连接数
+    desc: 当前已建立的 JMS 连接数。过多的连接可能导致资源紧张，过少则可能影响消息传递效率。
+  weblogic_persistentstore_object_count_value:
+    name: 持久化存储对象数
+    desc: 持久化存储中当前保存的对象数量（如消息、事务日志）。过多的对象可能导致存储空间不足，需要定期清理。
+  weblogic_persistentstore_physical_write_count_value:
+    name: 持久化存储物理写入频率
+    desc: 表示持久化存储每秒的物理写入次数，反映写入负载。过高的写入频率可能导致存储性能下降。
+  weblogic_persistentstore_read_count_value:
+    name: 持久化存储读取次数
+    desc: 持久化存储执行的读操作次数，反映读取负载。频繁的读取操作可能影响存储性能，需要优化读取策略。
+  weblogic_persistentstore_total_io_rate_value:
+    name: 持久化存储总 I/O 频率
+    desc: 表示持久化存储每秒的总 I/O 操作次数，包括读和写。过高的 I/O 频率可能导致存储性能瓶颈，需要关注存储系统的性能指标。
+  jmx_scrape_error_gauge:
+    name: JMX抓取失败的监控指标
+    desc: 值为0时表示监控指标抓取成功，值为1时表示抓取失败。
+TCP: {}
+CVM:
+  cvm_CPU_Usage:
+    name: CPU 利用率
+    desc: 机器运行期间实时占用的 CPU 百分比
+  cvm_MemUsed:
+    name: 内存使用量
+    desc: 用户实际使用的内存量，不包括缓冲区与系统缓存占用的内存，总内存 - 可用内存（包括 buffers 与 cached）得到内存使用量数值，不包含 buffers和 cached
+  cvm_MemUsage:
+    name: 内存利用率
+    desc: 用户实际内存使用率，不包括缓冲区与系统缓存占用的内存，除去缓存、buffer 和剩余，用户实际使用内存与总内存之比
+  cvm_CvmDiskUsage:
+    name: 磁盘利用率
+    desc: 磁盘已使用容量占总容量的百分比(所有磁盘)
+  cvm_LanOuttraffic:
+    name: 内网出带宽
+    desc: 内网网卡的平均每秒出流量
+  cvm_LanIntraffic:
+    name: 内网入带宽
+    desc: 内网网卡的平均每秒入流量
+  cvm_LanOutpkg:
+    name: 内网出包量
+    desc: 内网网卡网卡的平均每秒出包量
+  cvm_LanInpkg:
+    name: 内网入包量
+    desc: 内网网卡网卡的平均每秒入包量
+  cvm_WanOuttraffic:
+    name: 外网出带宽
+    desc: 外网平均每秒出流量速率，最小粒度数据为10秒总流量/10秒计算得出，该数据为 EIP+CLB+CVM 的外网出/入带宽总和
+  cvm_WanIntraffic:
+    name: 外网入带宽
+    desc: 外网平均每秒入流量速率，最小粒度数据为10秒总流量/10秒计算得出，该数据为 EIP+CLB+CVM 的外网出/入带宽总和
+  cvm_WanOutpkg:
+    name: 外网出包量
+    desc: 外网网卡网卡的平均每秒出包量
+  cvm_WanInpkg:
+    name: 外网入包量
+    desc: 外网网卡网卡的平均每秒入包量
+Oracle-Exporter:
+  oracledb_up_gauge:
+    name: Oracle数据库运行状态
+    desc: 当前Oracle数据库运行状态，0为正常运行，1为运行异常。
+  oracledb_uptime_seconds_gauge:
+    name: Oracle数据库实例已运行时间
+    desc: Oracle数据库已运行时长
+  oracledb_activity_execute_rate:
+    name: Oracle数据库执行速率
+    desc: 监控一段时间内（如过去5分钟）SQL执行的速率，反映数据库负载的变化趋势。
+  oracledb_activity_parse_rate:
+    name: Oracle数据库解析速率
+    desc: 监控一段时间内（如过去5分钟）SQL解析的速率，帮助发现频繁解析情况。
+  oracledb_activity_user_commits_rate:
+    name: Oracle数据库用户提交速率
+    desc: 监控一段时间内（如过去5分钟）用户事务提交的速率，反映数据库事务活动情况。
+  oracledb_activity_user_rollbacks_rate:
+    name: Oracle数据库用户回滚速率
+    desc: 监控一段时间内（如过去5分钟）用户事务回滚的速率，帮助发现异常事务。
+  oracledb_wait_time_application_gauge:
+    name: Oracle数据库应用类等待时间
+    desc: 数据库客户端应用程序与数据库的通信等待时间。
+  oracledb_wait_time_commit_gauge:
+    name: Oracle数据库提交等待时间
+    desc: 等待事务提交完成的时间。
+  oracledb_wait_time_concurrency_gauge:
+    name: Oracle数据库并发等待时间
+    desc: 由于数据库资源争用而导致的等待时间，例如等待锁。
+  oracledb_wait_time_configuration_gauge:
+    name: Oracle数据库配置等待时间
+    desc: 等待系统资源配置的时间，例如等待参数更改生效的时间。
+  oracledb_wait_time_network_gauge:
+    name: Oracle数据库网络等待时间
+    desc: 等待网络传输的时间，例如等待数据从客户端发送到服务器。
+  oracledb_wait_time_other_gauge:
+    name: Oracle数据库其他等待时间
+    desc: 无法归类到其他等待时间中的等待时间。
+  oracledb_wait_time_system_io_gauge:
+    name: Oracle数据库系统I/O等待时间
+    desc: 等待系统进行I/O操作的时间，例如等待从磁盘读取数据的时间。
+  oracledb_wait_time_user_io_gauge:
+    name: Oracle数据库用户I/O等待时间
+    desc: 等待用户I/O操作完成的时间。
+  oracledb_resource_utilization_rate:
+    name: Oracle数据库资源使用率
+    desc: 当前 Oracle 数据库实例中某种资源的使用率，可以反映会话、进程、内存等资源对其资源限定值的使用百分比。当值为负数（-）时，表示该资源没有被限制，即该资源可以无限制地使用。这种情况下，监控该维度的指标的意义不大。
+  oracledb_process_count_gauge:
+    name: Oracle数据库进程数
+    desc: 当前活动的数据库进程数
+  oracledb_sessions_value_gauge:
+    name: Oracle数据库会话数
+    desc: 数据库当前打开的会话数。维度含义：status：会话状态，例如 ACTIVE, INACTIVE, BLOCKED, KILLED 等等。type：会话类型，例如 BACKGROUND, CDB, PDB, SYS, USER 等等。
+  oracledb_sga_total_gauge:
+    name: Oracle数据库SGA总大小
+    desc: SGA是Oracle数据库实例在内存中分配的一块共享内存区域，用于存储全局数据和信息，以支持数据库实例的运行和访问。本指标用于表示SGA的总内存大小，用于衡量 SGA 的整体资源分配规模。
+  oracledb_sga_free_gauge:
+    name: Oracle数据库SGA可用大小
+    desc: 表示 Oracle 数据库 SGA 当前可用的内存大小，反映 SGA 中未被使用的空闲资源量。
+  oracledb_sga_used_percent_gauge:
+    name: Oracle数据库SGA使用率
+    desc: 表示 Oracle 数据库 SGA 的内存使用率，用于评估 SGA 资源的利用效率。
+  oracledb_pga_total_gauge:
+    name: Oracle数据库PGA总大小
+    desc: PGA是Oracle数据库实例中每个用户进程或服务器进程独立分配的内存区域，用于存储会话或操作的数据和信息。本指标用于表示PGA的总内存大小，体现 PGA 的整体资源分配规模。
+  oracledb_pga_used_gauge:
+    name: Oracle数据库PGA已使用大小
+    desc: 表示 Oracle 数据库 PGA 当前已使用的内存大小，反映 PGA 资源的实际消耗情况。
+  oracledb_pga_used_percent_gauge:
+    name: Oracle数据库PGA使用率
+    desc: 表示 Oracle 数据库 PGA 的内存使用率，用于衡量 PGA 资源的利用效率。
+  oracledb_tablespace_bytes_gauge:
+    name: Oracle数据库表已使用容量大小
+    desc: 指定表空间中已使用的磁盘空间的总大小。
+  oracledb_tablespace_max_bytes_gauge:
+    name: Oracle数据库表最大容量限制
+    desc: 指定表空间的最大磁盘空间限制。
+  oracledb_tablespace_free_gauge:
+    name: Oracle数据库表可用容量大小
+    desc: 指定表空间中剩余的磁盘空间的大小。
+  oracledb_tablespace_used_percent_gauge:
+    name: Oracle数据库表空间使用率
+    desc: 指定表空间已使用容量的百分比。
+  oracledb_rac_node_gauge:
+    name: Oracle数据库RAC节点数量
+    desc: 当前Oracle数据库集群节点数量。
+  process_cpu_seconds_total_counter:
+    name: Oracle数据库监控探针进程CPU秒数总计
+    desc: Oracle数据库监控探针进程已使用的CPU时间总量。
+  process_max_fds_gauge:
+    name: Oracle数据库监控探针进程最大文件描述符数
+    desc: Oracle数据库监控探针进程能够打开的最大文件描述符数。
+  process_open_fds_gauge:
+    name: Oracle数据库监控探针进程打开文件描述符数
+    desc: Oracle数据库监控探针进程当前打开的文件描述符数。
+  process_resident_memory_bytes_gauge:
+    name: Oracle数据库监控探针进程常驻内存大小
+    desc: Oracle数据库监控探针进程当前常驻内存的大小。
+  process_virtual_memory_bytes_gauge:
+    name: Oracle数据库监控探针进程虚拟内存大小
+    desc: Oracle数据库监控探针进程当前虚拟内存的大小。
+  oracledb_exporter_last_scrape_duration_seconds_gauge:
+    name: Oracle数据库监控探针最近一次抓取时长
+    desc: 最近一次从Oracle数据库抓取指标所花费的时间。
+  oracledb_exporter_last_scrape_error_gauge:
+    name: Oracle数据库监控探针最近一次抓取状态
+    desc: OracleDB监控探针在最近一次抓取指标时是否出现错误。
+  oracledb_exporter_scrapes_total_counter:
+    name: Oracle数据库监控探针抓取指标总数
+    desc: 从OracleDB监控探针启动以来抓取指标的总次数，若进程重启将重新计算。
+Minio:
+  minio_audit_failed_messages_counter:
+    name: 未发送的消息总数
+    desc: 统计未发送消息数量，用于发现消息发送故障，保障消息传递完整性。
+  minio_audit_target_queue_length_gauge:
+    name: 目标队列中未发送的消息数
+    desc: 反映目标队列消息积压情况，帮助优化消息处理流程。
+  minio_audit_total_messages_counter:
+    name: 发送的消息总数
+    desc: 结合未发送消息数评估发送成功率，衡量消息发送稳定性。
+  minio_audit_delivery_success_rate:
+    name: 消息发送成功率
+    desc: 发送消息的成功率，用于衡量审计消息发送的可靠性、稳定性。
+  minio_cluster_capacity_usable_free_bytes_gauge:
+    name: 集群可使用容量
+    desc: 反映实际可用存储资源，便于规划数据存储。
+  minio_cluster_capacity_usable_total_bytes_gauge:
+    name: 集群已使用容量
+    desc: 统计已用存储量，用于计算存储利用率。
+  minio_cluster_capacity_storage_utilization:
+    name: 集群存储容量利用率
+    desc: 统计集群存储容量中已使用容量占总容量的百分比，监控存储资源使用情况，评估剩余存储资源。
+  minio_cluster_drive_offline_total_gauge:
+    name: 集群中处于脱机状态的驱动器总数
+    desc: 统计脱机驱动器数量，排查影响集群性能和数据可用性的问题。
+  minio_cluster_drive_online_total_gauge:
+    name: 集群中在线的驱动器总数
+    desc: 评估集群可用存储设备数量，保障集群正常运行。
+  minio_cluster_drive_total_gauge:
+    name: 集群中的驱动器总数
+    desc: 结合在线、脱机数量评估存储设备整体状况。
+  minio_cluster_drive_offline_rate:
+    name: 集群驱动器离线率
+    desc: 离线驱动器数量与总驱动器数量的比率,衡量存储设备的可靠性和可用性,超过阈值（如 5%）时可能影响数据冗余.
+  minio_cluster_nodes_offline_total_gauge:
+    name: 集群中处于离线状态的节点数量
+    desc: 统计离线节点数，处理影响集群性能和冗余的问题。
+  minio_cluster_nodes_online_total_gauge:
+    name: 集群中处于在线状态的节点数量
+    desc: 评估集群可用资源，保障服务能力。
+  minio_cluster_nodes_offline_rate:
+    name: 集群节点离线率
+    desc: 离线节点数量占总节点数量的百分比，反映集群节点的健康状况,用于评估集群节点的稳定性。
+  minio_cluster_write_quorum_gauge:
+    name: 集群最大写入确认数
+    desc: 保障数据写入一致性和可靠性，影响写入性能。
+  minio_cluster_health_status_gauge:
+    name: 集群健康状态
+    desc: 综合反映集群健康状况，快速了解运行状态。0 = 不健康，1 = 健康
+  minio_s3_traffic_sent_bytes_rate:
+    name: S3 发送流量速率
+    desc: 计算过去 5 分钟内 S3 请求发送数据的平均速率，反映数据上传性能。
+  minio_s3_traffic_received_bytes_rate:
+    name: S3 接收流量速率
+    desc: 计算过去 5 分钟内 S3 请求接收数据的平均速率，反映数据下载性能。
+  minio_s3_requests_waiting_total_gauge:
+    name: S3 等待请求总数
+    desc: 显示等待处理的 S3 请求数，优化请求处理效率，直接反映系统处理能力是否饱和。
+  minio_s3_requests_total_rate:
+    name: S3 请求速率
+    desc: 计算过去 5 分钟内 S3 请求的平均处理速率，反映系统吞吐量以及服务负载和性能基线。
+  minio_s3_requests_errors_total_rate:
+    name: S3 请求错误速率
+    desc: 过去 5 分钟内 S3 请求中发生错误的平均速率，反映系统稳定性。
+  minio_s3_requests_rejected_invalid_total_rate:
+    name: S3 无效请求速率
+    desc: 过去 5 分钟内因格式或参数错误被拒绝的 S3 请求平均速率，反映客户端请求质量。
+  minio_s3_requests_rejected_auth_total_rate:
+    name: S3 认证失败速率
+    desc: 过去 5 分钟内因认证失败被拒绝的 S3 请求平均速率，反映身份验证问题。
+  minio_bucket_usage_object_total_gauge:
+    name: 存储桶对象总数
+    desc: 统计指定存储桶内的对象数量，用于了解存储桶的数据规模，评估存储桶的使用情况。
+  minio_bucket_usage_total_bytes_gauge:
+    name: 存储桶总大小
+    desc: 统计指定存储桶所占用的存储空间大小，用于监控存储资源消耗，规划存储容量。
+  minio_bucket_requests_4xx_errors_total_rate:
+    name: 存储桶 S3 请求错误总率(4xx)
+    desc: 存储桶收到的 S3 请求中客户端错误（如 403/404）过去5分钟中的每秒发生率，反映客户端请求合法性问题的实时频率。
+  minio_bucket_requests_inflight_total_gauge:
+    name: 存储桶正在运行的 S3 请求总数
+    desc: 统计指定存储桶正在处理的 S3 请求数量，用于监控请求处理进度，优化系统性能。
+  minio_bucket_requests_total_rate:
+    name: 存储桶 S3 请求总数速率
+    desc: 存储桶收到的 S3 请求总数的每秒增长率，反映存储桶的请求流量强度和业务访问频率。
+  minio_bucket_traffic_received_rate:
+    name: 存储桶接收流量速率
+    desc: 计算存储桶 5 分钟内平均每秒接收的数据流量，转换为 MB/s 单位，用于监控数据下载或读取的带宽使用情况。
+  minio_node_drive_total_inodes_gauge:
+    name: 驱动器 inode 总数
+    desc: 统计指定驱动器的 inode 总数，用于衡量驱动器存储文件的能力上限，可评估存储资源规模。
+  minio_node_drive_used_inodes_utilization:
+    name: 驱动器inode 使用率
+    desc: 统计指定驱动器已使用的 inode 百分比，可了解驱动器的使用程度，辅助存储资源管理。
+  minio_node_drive_reads_per_sec_gauge:
+    name: 驱动器每秒读取次数
+    desc: 统计指定驱动器每秒的读取操作次数，用于评估驱动器的读取性能，排查读取相关的性能问题。
+  minio_node_drive_reads_kb_per_sec_gauge:
+    name: 驱动器每秒读取兆字节数
+    desc: 统计指定驱动器每秒读取的数据量（以千字节为单位），直观反映驱动器的读取带宽，帮助优化数据读取策略。
+  minio_node_drive_writes_per_sec_gauge:
+    name: 驱动器每秒写入次数
+    desc: 统计指定驱动器每秒的写入操作次数，用于评估驱动器的写入性能，分析写入操作对系统的影响。
+  minio_node_drive_writes_kb_per_sec_gauge:
+    name: 驱动器上每秒写入的兆字节数
+    desc: 统计指定驱动器每秒写入的数据量（以千字节为单位），反映驱动器的写入带宽，有助于优化数据写入效率。
+  minio_node_drive_perc_util_gauge:
+    name: 驱动器处于繁忙状态的时间使用率
+    desc: 统计指定驱动器处于繁忙状态的时间百分比，用于评估驱动器的负载情况，合理分配存储任务。
+  minio_node_if_rx_bytes_rate:
+    name: 每秒接收的数据量
+    desc: 统计指定服务器网络接口过去5分钟内,每秒接收多少数据量，用于监控网络流量流入情况，评估网络带宽使用。
+  minio_node_if_rx_errors_rate:
+    name: 接收错误率（每秒）
+    desc: 统计指定服务器网络接口过去5分钟内,每秒接收数据时出现的错误数量，用于排查网络接收故障，保障网络数据传输质量。
+  minio_node_if_tx_bytes_rate:
+    name: 每秒传输的数据量
+    desc: 统计指定服务器网络接口过去5分钟内,每秒传输多少数据量用于监控网络流量流出情况，评估网络带宽使用效率。
+  minio_node_if_tx_errors_rate:
+    name: 传输错误率（每秒）
+    desc: 统计指定服务器网络接口过去5分钟内,每秒传输数据时出现的错误数量，用于排查网络传输故障，提高网络通信可靠性。
+  minio_node_cpu_avg_load1_gauge:
+    name: CPU 一分钟平均负载
+    desc: 计算 CPU 过去 1 分钟平均负载，反映等待 CPU 资源的进程数（含运行中与等待进程），数值越大 CPU 越紧张，用于实时监控即时压力、发现性能问题。
+  minio_node_cpu_avg_load5_gauge:
+    name: CPU 五分钟平均负载
+    desc: 计算 CPU 过去 5 分钟平均负载，反映等待 CPU 资源的进程数（含运行中与等待进程），用于评估短期负载趋势、辅助性能优化决策。
+  minio_node_cpu_avg_load15_gauge:
+    name: CPU 十五分钟平均负载
+    desc: 计算 CPU 过去 15 分钟平均负载，反映等待 CPU 资源的进程数（含运行中与等待进程），用于分析长期负载情况、规划系统资源。

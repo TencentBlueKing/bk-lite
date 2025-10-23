@@ -161,7 +161,7 @@ export interface AppPermission {
 
 export interface PermissionModalProps {
   visible: boolean;
-  rules: number[];
+  rules: { [app: string]: number };
   node: TreeDataNode | null;
   onOk: (values: PermissionFormValues) => void;
   onCancel: () => void;

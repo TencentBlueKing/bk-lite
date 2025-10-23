@@ -1,7 +1,7 @@
 from dotenv import load_dotenv
 
 from apps.cmdb.constants import INSTANCE, INSTANCE_ASSOCIATION
-from apps.cmdb.graph.neo4j import Neo4jClient
+from apps.cmdb.graph.drivers.graph_client import GraphClient
 from apps.cmdb.services.model import ModelManage
 
 load_dotenv()
@@ -76,7 +76,7 @@ class Management:
         if not inst_list:
             return result
 
-        with Neo4jClient() as ag:
+        with GraphClient() as ag:
             exist_items, _ = ag.query_entity(INSTANCE, [{"field": "model_id", "type": "str=", "value": self.model_id}])
             for instance_info in inst_list:
                 assos = instance_info.pop("assos", [])
@@ -104,7 +104,7 @@ class Management:
         if not inst_list:
             return result
 
-        with Neo4jClient() as ag:
+        with GraphClient() as ag:
             exist_items, _ = ag.query_entity(INSTANCE, [{"field": "model_id", "type": "str=", "value": self.model_id}])
             for instance_info in inst_list:
                 try:
@@ -138,7 +138,7 @@ class Management:
         if not inst_list:
             return result
 
-        with Neo4jClient() as ag:
+        with GraphClient() as ag:
             for instance_info in inst_list:
                 try:
                     ag.detach_delete_entity(INSTANCE, instance_info["_id"])
@@ -165,7 +165,7 @@ class Management:
         for dst_info in dst_list:
             dst_id = None
             try:
-                with Neo4jClient() as ag:
+                with GraphClient() as ag:
                     dst_entity, _ = ag.query_entity(
                         INSTANCE,
                         [

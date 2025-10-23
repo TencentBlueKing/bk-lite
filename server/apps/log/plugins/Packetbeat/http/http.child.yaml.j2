@@ -1,0 +1,32 @@
+# ================================== HTTP Protocol ==================================
+- type: http
+  ports: {{ ports | default([80, 8080, 8000, 5000, 8002]) | to_json }}
+
+  # 安全配置 - 隐藏敏感信息
+  hide_keywords: {{ hide_keywords | default(["pass", "password", "passwd", "token", "auth", "secret"]) | to_json }}
+
+  # HTTP 头信息配置
+  send_headers: {{ send_headers | default(["User-Agent", "Content-Type", "Authorization"]) | to_json }}
+  send_all_headers: {{ send_all_headers | default(false) | lower }}
+
+  # Cookie 处理
+  split_cookie: {{ split_cookie | default(true) | lower }}
+
+  # 真实 IP 获取（适用于代理环境）
+  real_ip_header: "{{ real_ip_header | default('X-Forwarded-For') }}"
+
+  # 性能配置
+  max_message_size: {{ max_message_size | default(10485760) }}  # 10MB
+  transaction_timeout: {{ transaction_timeout | default('10s') }}
+
+  # 请求/响应体配置
+  include_body_for: {{ include_body_for | default(["application/json", "application/xml", "text/plain"]) | to_json }}
+  include_request_body: {{ include_request_body | default(false) | lower }}
+  include_response_body: {{ include_response_body | default(false) | lower }}
+
+  fields:
+    collector: "Packetbeat"
+    collect_type: "http"
+    instance_id: "{{ instance_id }}"
+    _msg: ""
+  fields_under_root: true

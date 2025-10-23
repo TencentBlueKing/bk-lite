@@ -10,9 +10,13 @@ export interface AuthSource {
     namespace?: string;
     root_group?: string;
     domain?: string;
+    url?: string;
     default_roles?: number[];
     sync?: boolean;
     sync_time?: string;
+    bk_url?: string;
+    app_token?: string;
+    app_id?: string;
   };
   enabled: boolean;
   is_build_in: boolean;

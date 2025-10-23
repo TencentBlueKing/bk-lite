@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import styles from './index.module.scss';
 import OperateOid from './components/operateOid';
 import CustomTable from '@/components/custom-table';
@@ -28,6 +28,14 @@ const OidLibrary: React.FC = () => {
   const { getOidList, deleteOid } = useOidApi();
 
   const listCount = useRef<number>(0);
+  const searchKeyRef = useRef<string>('');
+  const deviceTypeRef = useRef<string[]>([]);
+  const paginationRef = useRef({
+    current: 1,
+    total: 0,
+    pageSize: 20,
+  });
+
   const deviceTypeList = NETWORK_DEVICE_OPTIONS;
   const [deviceType, setDeviceType] = useState<string[]>([]);
   const [tableLoading, setTableLoading] = useState<boolean>(false);
@@ -42,6 +50,18 @@ const OidLibrary: React.FC = () => {
     total: 0,
     pageSize: 20,
   });
+
+  useEffect(() => {
+    searchKeyRef.current = searchKey;
+  }, [searchKey]);
+
+  useEffect(() => {
+    deviceTypeRef.current = deviceType;
+  }, [deviceType]);
+
+  useEffect(() => {
+    paginationRef.current = pagination;
+  }, [pagination]);
 
   useEffect(() => {
     getTableList();
@@ -63,53 +83,88 @@ const OidLibrary: React.FC = () => {
     setOperateVisible(true);
   };
 
-  const delMap = async (row: ListItem) => {
-    Modal.confirm({
-      title: t('common.delConfirm'),
-      content: t('common.delConfirmCxt'),
-      okText: t('common.confirm'),
-      cancelText: t('common.cancel'),
-      centered: true,
-      onOk: async () => {
-        try {
-          await deleteOid(row.id);
-          message.success(t('successfullyDeleted'));
-          if (pagination.current > 1 && listCount.current === 1) {
-            setPagination((prev) => ({ ...prev, current: prev.current - 1 }));
-            getTableList({
-              current: pagination.current - 1,
-              pageSize: pagination.pageSize,
-            });
-          } else {
-            getTableList();
-          }
-        } catch {
-          message.error(t('OidLibrary.operateFailed'));
-        }
-      },
-    });
-  };
+  const delMap = useCallback(
+    async (row: ListItem) => {
+      Modal.confirm({
+        title: t('common.delConfirm'),
+        content: t('common.delConfirmCxt'),
+        okText: t('common.confirm'),
+        cancelText: t('common.cancel'),
+        centered: true,
+        onOk: async () => {
+          try {
+            await deleteOid(row.id);
+            message.success(t('successfullyDeleted'));
 
-  const getTableList = async (params: any = {}) => {
+            const currentSearchKey = searchKeyRef.current;
+            const currentDeviceType = deviceTypeRef.current;
+            const currentPagination = paginationRef.current;
+            if (currentPagination.current > 1 && listCount.current === 1) {
+              const newCurrent = currentPagination.current - 1;
+              setPagination((prev) => ({ ...prev, current: newCurrent }));
+              getTableList({
+                current: newCurrent,
+                pageSize: currentPagination.pageSize,
+                searchKey: currentSearchKey,
+                deviceType: currentDeviceType,
+              });
+            } else {
+              getTableList({
+                current: currentPagination.current,
+                pageSize: currentPagination.pageSize,
+                searchKey: currentSearchKey,
+                deviceType: currentDeviceType,
+              });
+            }
+          } catch {
+            message.error(t('OidLibrary.operateFailed'));
+          }
+        },
+      });
+    },
+    [deleteOid]
+  );
+
+  const getTableList = async (
+    params: {
+      current?: number;
+      pageSize?: number;
+      searchKey?: string;
+      deviceType?: string[];
+    } = {}
+  ) => {
     try {
       setTableLoading(true);
+
       const searchVal =
-        params.searchKey !== undefined ? params.searchKey : searchKey;
-      const deviceTypeVal = params.device_type || deviceType;
+        params.searchKey !== undefined
+          ? params.searchKey
+          : searchKeyRef.current || searchKey;
+      const deviceTypeVal =
+        params.deviceType !== undefined
+          ? params.deviceType
+          : deviceTypeRef.current.length > 0
+            ? deviceTypeRef.current
+            : deviceType;
+
       const queryParams = {
-        page: params.current || pagination.current,
-        page_size: params.pageSize || pagination.pageSize,
+        page:
+          params.current !== undefined ? params.current : pagination.current,
+        page_size:
+          params.pageSize !== undefined ? params.pageSize : pagination.pageSize,
         model: filterType === 'version' ? searchVal : '',
         oid: filterType === 'oid' ? searchVal : '',
         brand: filterType === 'brand' ? searchVal : '',
         device_type: deviceTypeVal?.[0] || '',
       };
+
       const data = await getOidList(queryParams);
       setDataList(data.items || []);
       listCount.current = data.items?.length || 0;
       setPagination((prev) => ({
         ...prev,
         total: data.count || 0,
+        current: params.current !== undefined ? params.current : prev.current,
       }));
     } catch {
       message.error('加载列表失败');
@@ -120,21 +175,21 @@ const OidLibrary: React.FC = () => {
   };
 
   const handleFilterChange = () => {
-    setPagination({ ...pagination, current: 1 });
+    setPagination((prev) => ({ ...prev, current: 1 }));
     getTableList({
-      ...pagination,
       current: 1,
-      device_type: deviceType,
+      searchKey,
+      deviceType,
     });
   };
 
   const handleFilterClear = () => {
-    setPagination({ ...pagination, current: 1 });
+    setSearchKey('');
+    setPagination((prev) => ({ ...prev, current: 1 }));
     getTableList({
-      ...pagination,
       current: 1,
       searchKey: '',
-      device_type: deviceType,
+      deviceType,
     });
   };
 
@@ -150,7 +205,8 @@ const OidLibrary: React.FC = () => {
     setDeviceType(filters.device_type || []);
     getTableList({
       ...curPage,
-      device_type: filters.device_type,
+      deviceType: filters.device_type,
+      searchKey,
     });
   };
 
@@ -242,7 +298,11 @@ const OidLibrary: React.FC = () => {
     }
     handleModalClose();
     setPagination(newPagination);
-    getTableList(newPagination);
+    getTableList({
+      current: newPagination.current,
+      searchKey,
+      deviceType,
+    });
   };
 
   const handleFilterTypeChange = (value: string) => {

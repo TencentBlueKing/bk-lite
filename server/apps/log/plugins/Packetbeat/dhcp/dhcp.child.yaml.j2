@@ -1,0 +1,21 @@
+# DHCP Protocol Configuration Template
+# This template configures DHCP packet capture for Packetbeat
+
+- type: dhcp
+  enabled: {{ enabled | default(true) }}
+
+  # DHCP服务器和客户端端口
+  ports: {{ ports | default([67, 68]) }}
+
+  # 采样配置，减少数据量
+  sample_rate: {{ sample_rate | default(0.5) }}
+
+  # 事务超时时间（秒）
+  transaction_timeout: "{{ transaction_timeout | default(10) }}s"
+
+  fields:
+    collector: "Packetbeat"
+    collect_type: "dhcp"
+    instance_id: "{{ instance_id }}"
+    _msg: ""
+  fields_under_root: true

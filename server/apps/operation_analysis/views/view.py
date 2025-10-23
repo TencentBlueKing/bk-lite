@@ -7,12 +7,12 @@ from rest_framework.response import Response
 
 from apps.operation_analysis.common.get_nats_source_data import GetNatsData
 from apps.operation_analysis.filters import DataSourceAPIModelFilter, DashboardModelFilter, DirectoryModelFilter, \
-    TopologyModelFilter
+    TopologyModelFilter, NameSpaceModelFilter, DataSourceTagModelFilter, ArchitectureModelFilter
 from apps.operation_analysis.serializers import DataSourceAPIModelSerializer, DashboardModelSerializer, \
-    DirectoryModelSerializer, TopologyModelSerializer
+    DirectoryModelSerializer, TopologyModelSerializer, NameSpaceModelSerializer, DataSourceTagModelSerializer, ArchitectureModelSerializer
 from config.drf.pagination import CustomPageNumberPagination
 from config.drf.viewsets import ModelViewSet
-from apps.operation_analysis.models import DataSourceAPIModel, Dashboard, Directory, Topology
+from apps.operation_analysis.models import DataSourceAPIModel, Dashboard, Directory, Topology, NameSpace, DataSourceTag, Architecture
 from apps.core.logger import operation_analysis_logger as logger
 
 
@@ -90,6 +90,40 @@ class TreeNodeBuilder:
 
         return nodes
 
+    @staticmethod
+    def get_architecture_nodes(architectures, parent_children_map):
+        """构建架构图节点"""
+        nodes = {}
+        for architecture in architectures:
+            node_key = f"architecture_{architecture.id}"
+            nodes[node_key] = {
+                "id": node_key,
+                "data_id": architecture.id,
+                "name": architecture.name,
+                "desc": architecture.desc,
+                "type": "architecture",
+                "children": []
+            }
+
+            parent_key = f"directory_{architecture.directory_id}"
+            if parent_key not in parent_children_map:
+                parent_children_map[parent_key] = []
+            parent_children_map[parent_key].append(node_key)
+
+        return nodes
+
+
+class NameSpaceModelViewSet(ModelViewSet):
+    """
+    命名空间
+    """
+    queryset = NameSpace.objects.all()
+    serializer_class = NameSpaceModelSerializer
+    ordering_fields = ["id"]
+    ordering = ["id"]
+    filterset_class = NameSpaceModelFilter
+    pagination_class = CustomPageNumberPagination
+
 
 class DataSourceAPIModelViewSet(ModelViewSet):
     """
@@ -106,15 +140,23 @@ class DataSourceAPIModelViewSet(ModelViewSet):
     def get_source_data(self, request, *args, **kwargs):
         instance = self.get_object()
         params = request.data
-        namespace, path = instance.rest_api.split("/", 1)
-        client = GetNatsData(namespace=namespace, path=path, params=params)
+        namespace_list = instance.namespaces.all()
+        if "/" not in instance.rest_api:
+            namespace = "default"
+            path = instance.rest_api
+        else:
+            namespace, path = instance.rest_api.split("/", 1)
+        client = GetNatsData(namespace=namespace, path=path, params=params, namespace_list=namespace_list,
+                             request=request)
+        result = []
         try:
-            result = client.get_data()
+            data = client.get_data()
+            for namespace_id, _data in data.items():
+                result.append({"namespace_id": namespace_id, "data": _data})
         except Exception as e:
             logger.error("获取数据源数据失败: {}".format(e))
-            result = {}
 
-        return Response(result.get("data", []))
+        return Response(result)
 
 
 class DirectoryModelViewSet(ModelViewSet):
@@ -127,6 +169,16 @@ class DirectoryModelViewSet(ModelViewSet):
     ordering = ["id"]
     filterset_class = DirectoryModelFilter
     pagination_class = CustomPageNumberPagination
+
+    def create(self, request, *args, **kwargs):
+        data = request.data
+        Directory.objects.create(**data)
+        return Response(data)
+
+
+    def update(self, request, *args, **kwargs):
+        Directory.objects.filter(id=kwargs["pk"]).update(**request.data)
+        return Response(request.data)
 
     @action(detail=False, methods=["get"], url_path="tree")
     def tree(self, request, *args, **kwargs):
@@ -146,6 +198,11 @@ class DirectoryModelViewSet(ModelViewSet):
             directory__in=directories
         ).order_by("id")
 
+        # 增加架构图查询
+        architectures = Architecture.objects.filter(
+            directory__in=directories
+        ).order_by("id")
+
         # 构建所有节点映射
         all_nodes = {}
 
@@ -160,6 +217,10 @@ class DirectoryModelViewSet(ModelViewSet):
         # 拓扑图节点构建
         topology_nodes = TreeNodeBuilder.get_topology_nodes(topologies, parent_children_map)
         all_nodes.update(topology_nodes)
+
+        # 架构图节点构建
+        architecture_nodes = TreeNodeBuilder.get_architecture_nodes(architectures, parent_children_map)
+        all_nodes.update(architecture_nodes)
 
         def build_tree_recursive(node_key):
             """递归构建子树"""
@@ -201,4 +262,28 @@ class TopologyModelViewSet(ModelViewSet):
     ordering_fields = ["id"]
     ordering = ["id"]
     filterset_class = TopologyModelFilter
+    pagination_class = CustomPageNumberPagination
+
+
+class ArchitectureModelViewSet(ModelViewSet):
+    """
+    架构图
+    """
+    queryset = Architecture.objects.all()
+    serializer_class = ArchitectureModelSerializer
+    ordering_fields = ["id"]
+    ordering = ["id"]
+    filterset_class = ArchitectureModelFilter
+    pagination_class = CustomPageNumberPagination
+
+
+class DataSourceTagModelViewSet(ModelViewSet):
+    """
+    数据源标签
+    """
+    queryset = DataSourceTag.objects.all()
+    serializer_class = DataSourceTagModelSerializer
+    ordering_fields = ["id"]
+    ordering = ["id"]
+    filterset_class = DataSourceTagModelFilter
     pagination_class = CustomPageNumberPagination

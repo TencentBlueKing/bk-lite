@@ -1,0 +1,68 @@
+# ================================== Filestream Input 配置 ==================================
+- type: filestream
+  id: {{ instance_id }}
+
+  # ================================== 文件路径配置 ==================================
+  paths:
+    {% for path in paths %}
+    - {{ path }}
+    {% endfor %}
+
+  # 文件编码（默认: utf-8）
+  encoding: {{ encoding | default('utf-8') }}
+
+  # ================================== 文件扫描配置 ==================================
+  # 文件扫描频率（默认: 10s）
+  prospector.scanner.check_interval: {{ scan_frequency | default('10s') }}
+
+  {% if ignore_older %}
+  # 忽略过旧文件（如: 24h, 7d）
+  ignore_older: {{ ignore_older }}
+  {% endif %}
+
+  {% if exclude_files %}
+  # 排除文件模式（正则表达式数组）
+  prospector.scanner.exclude_files: {{ exclude_files | to_json }}
+  {% endif %}
+
+  # ================================== 文件处理配置 ==================================
+  # 单行最大字节数（默认: 10MB）
+  max_bytes: {{ max_bytes | default('10MB') }}
+
+  # 采集器缓冲区大小（默认: 16384）
+  harvester_buffer_size: {{ harvester_buffer_size | default(16384) }}
+
+  # 文件状态管理
+  close_inactive: {{ close_inactive | default('5m') }}
+  close_removed: {{ close_removed | default(true) | lower }}
+  clean_removed: {{ clean_removed | default(true) | lower }}
+
+  # ================================== 内容过滤配置 ==================================
+  {% if include_lines %}
+  # 仅包含匹配的日志行（正则表达式数组）
+  include_lines: {{ include_lines | to_json }}
+  {% endif %}
+
+  {% if exclude_lines %}
+  # 排除匹配的日志行（正则表达式数组）
+  exclude_lines: {{ exclude_lines | to_json }}
+  {% endif %}
+
+  # ================================== 多行日志处理 ==================================
+  {% if multiline %}
+  parsers:
+    - multiline:
+        type: pattern
+        pattern: '{{ multiline.pattern }}'
+        negate: {{ multiline.negate | default(false) | lower }}
+        match: {{ multiline.match | default('after') }}
+        timeout: {{ multiline.timeout | default(5) }}s
+        max_lines: {{ multiline.max_lines | default(500) }}
+  {% endif %}
+
+  # ================================== 字段标识配置 ==================================
+  fields:
+    collector: "Filebeat"
+    collect_type: "filestream"
+    instance_id: "{{ instance_id }}"
+  fields_under_root: {{ fields_under_root | default(true) | lower }}

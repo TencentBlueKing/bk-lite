@@ -19,6 +19,7 @@ from apps.alerts.serializers.serializers import AlertSourceModelSerializer, Aler
     LevelModelSerializer, IncidentModelSerializer, SystemSettingModelSerializer, OperatorLogModelSerializer
 from apps.alerts.service.alter_operator import AlertOperator
 from apps.alerts.service.incident_operator import IncidentOperator
+from apps.core.decorators.api_permission import HasPermission
 from apps.core.logger import alert_logger as logger
 from apps.core.utils.celery_utils import CeleryUtils
 from apps.core.utils.web_utils import WebUtils
@@ -70,6 +71,19 @@ class AlterModelViewSet(ModelViewSet):
         ).prefetch_related('events__source')
         return queryset
 
+    @HasPermission("Alarms-View")
+    def list(self, request, *args, **kwargs):
+        return super().list(request, *args, **kwargs)
+
+    @HasPermission("Alarms-Edit")
+    def update(self, request, *args, **kwargs):
+        return super().update(request, *args, **kwargs)
+
+    @HasPermission("Alarms-Delete")
+    def destroy(self, request, *args, **kwargs):
+        return super().destroy(request, *args, **kwargs)
+
+    @HasPermission("Alarms-Edit")
     @action(methods=['post'], detail=False, url_path='operator/(?P<operator_action>[^/.]+)', url_name='operator')
     @transaction.atomic
     def operator(self, request, operator_action, *args, **kwargs):
@@ -108,6 +122,10 @@ class EventModelViewSet(ModelViewSet):
     filterset_class = EventModelFilter
     pagination_class = CustomPageNumberPagination
 
+    @HasPermission("Integration-View,Alarms-View")
+    def list(self, request, *args, **kwargs):
+        return super().list(request, *args, **kwargs)
+
 
 class LevelModelViewSet(ModelViewSet):
     """
@@ -139,6 +157,11 @@ class IncidentModelViewSet(ModelViewSet):
         ).prefetch_related('alert')
         return queryset
 
+    @HasPermission("Incidents-View")
+    def list(self, request, *args, **kwargs):
+        return super().list(request, *args, **kwargs)
+
+    @HasPermission("Alarms-Edit")
     @transaction.atomic
     def create(self, request, *args, **kwargs):
         data = request.data
@@ -183,6 +206,7 @@ class IncidentModelViewSet(ModelViewSet):
         headers = self.get_success_headers(serializer.data)
         return Response(serializer.data, status=status.HTTP_201_CREATED, headers=headers)
 
+    @HasPermission("Incidents-Edit")
     @transaction.atomic
     def update(self, request, *args, **kwargs):
         partial = kwargs.pop('partial', False)
@@ -208,6 +232,7 @@ class IncidentModelViewSet(ModelViewSet):
 
         return Response(serializer.data)
 
+    @HasPermission("Incidents-Delete")
     @transaction.atomic
     def destroy(self, request, *args, **kwargs):
         instance = self.get_object()
@@ -224,6 +249,7 @@ class IncidentModelViewSet(ModelViewSet):
         OperatorLog.objects.create(**log_data)
         return Response(status=status.HTTP_204_NO_CONTENT)
 
+    @HasPermission("Incidents-Edit")
     @action(methods=['post'], detail=False, url_path='operator/(?P<operator_action>[^/.]+)', url_name='operator')
     @transaction.atomic
     def operator(self, request, operator_action, *args, **kwargs):
@@ -265,6 +291,11 @@ class SystemSettingModelViewSet(ModelViewSet):
     filterset_class = SystemSettingModelFilter
     pagination_class = CustomPageNumberPagination
 
+    @HasPermission("global_config-View")
+    def list(self, request, *args, **kwargs):
+        return super().list(request, *args, **kwargs)
+
+    @HasPermission("global_config-View")
     @action(methods=['get'], detail=False, url_path='get_setting_key/(?P<setting_key>[^/.]+)')
     def get_setting_key(self, requests, setting_key):
         """
@@ -287,6 +318,7 @@ class SystemSettingModelViewSet(ModelViewSet):
         except SystemSetting.DoesNotExist:
             return WebUtils.response_error(error_message="Setting not found", status_code=status.HTTP_404_NOT_FOUND)
 
+    @HasPermission("global_config-Add")
     @transaction.atomic
     def create(self, request, *args, **kwargs):
         serializer = self.get_serializer(data=request.data)
@@ -305,6 +337,7 @@ class SystemSettingModelViewSet(ModelViewSet):
         headers = self.get_success_headers(serializer.data)
         return Response(serializer.data, status=status.HTTP_201_CREATED, headers=headers)
 
+    @HasPermission("global_config-Edit")
     @transaction.atomic
     def update(self, request, *args, **kwargs):
         """
@@ -446,6 +479,7 @@ class SystemSettingModelViewSet(ModelViewSet):
             logger.warning(f"复杂时间间隔{minutes}分钟，简化为每小时执行")
             return "0 * * * *"
 
+    # @HasPermission("global_config-View")
     @action(methods=['get'], detail=False, url_path='get_channel_list')
     def get_channel_list(self, request):
         """
@@ -479,3 +513,7 @@ class SystemLogModelViewSet(ModelViewSet):
     ordering_fields = ["created_at"]
     ordering = ["-created_at"]
     pagination_class = CustomPageNumberPagination
+
+    @HasPermission("operation_log-View")
+    def list(self, request, *args, **kwargs):
+        return super().list(request, *args, **kwargs)

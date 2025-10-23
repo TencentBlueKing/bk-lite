@@ -1,4 +1,4 @@
-import { useVectorConfig } from '../collectors/exec/vector';
+import { useVectorConfig } from '../collectors/vector/exec';
 
 export const useExecConfig = () => {
   const vector = useVectorConfig();

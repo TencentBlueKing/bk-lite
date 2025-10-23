@@ -1,0 +1,21 @@
+# ================================== DNS Protocol ==================================
+- type: dns
+  ports: {{ ports | default([53]) | to_json }}
+
+  # DNS 记录类型配置
+  include_authorities: {{ include_authorities | default(true) | lower }}
+  include_additionals: {{ include_additionals | default(true) | lower }}
+
+  # 性能配置
+  transaction_timeout: {{ transaction_timeout | default('10s') }}
+
+  # 发送所有 DNS 头信息
+  send_request: {{ send_request | default(true) | lower }}
+  send_response: {{ send_response | default(true) | lower }}
+
+  fields:
+    collector: "Packetbeat"
+    collect_type: "dns"
+    instance_id: "{{ instance_id }}"
+    _msg: ""
+  fields_under_root: true

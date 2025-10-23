@@ -1,0 +1,10 @@
+[[inputs.activemq]]
+    url = "{{ url }}"
+    username = "{{ username }}"
+    password = "${PASSWORD__{{ config_id }}}"
+    interval = "{{ interval }}s"
+    [inputs.activemq.tags]
+        instance_id = "{{ instance_id }}"
+        instance_type = "{{ instance_type }}"
+        collect_type = "middleware"
+        config_type = "activemq"

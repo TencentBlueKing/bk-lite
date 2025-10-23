@@ -16,16 +16,17 @@ const useParamsUtil = () => {
   };
 
   // 表单数据转为请求参数
-  const renderParams = (object: Record<string, any>) => {
+  const renderParams = (object: Record<string, any>, key: string) => {
     const hyperopt_config: Record<string, any> = {};
+    if(!object) return hyperopt_config;
     Object.keys(object).forEach((item: string) => {
-      if (ALGORITHMS_TYPE['RandomForest'][item] == 'randint') {
+      if (ALGORITHMS_TYPE[key][item] == 'randint') {
         hyperopt_config[item] = {
           type: 'randint',
           min: object[item][0],
           max: object[item][1]
         }
-      } else if (ALGORITHMS_TYPE['RandomForest'][item] == 'choice') {
+      } else if (ALGORITHMS_TYPE[key][item] == 'choice') {
         hyperopt_config[item] = {
           type: 'choice',
           choice: object[item]

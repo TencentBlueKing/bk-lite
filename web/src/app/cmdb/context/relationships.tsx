@@ -13,6 +13,7 @@ import {
   CrentialsAssoInstItem,
 } from '../types/assetManage';
 import { useSearchParams } from 'next/navigation';
+import { useCommon } from './common';
 
 interface RelationshipsContextType {
   modelList: ModelItem[];
@@ -35,10 +36,11 @@ const RelationshipsContext = createContext<
 export const RelationshipsProvider: React.FC<{ children: React.ReactNode }> = ({
   children,
 }) => {
-  const { getModelList, getModelAssociationTypes } = useModelApi();
+  const { getModelAssociationTypes } = useModelApi();
   const { getAssociationInstanceList } = useInstanceApi();
+  const commonContext = useCommon();
 
-  const [modelList, setModelList] = useState<ModelItem[]>([]);
+  const modelList = commonContext?.modelList || [];
   const [assoTypes, setAssoTypes] = useState<AssoTypeItem[]>([]);
   const [assoInstances, setAssoInstances] = useState<CrentialsAssoInstItem[]>(
     []
@@ -57,16 +59,12 @@ export const RelationshipsProvider: React.FC<{ children: React.ReactNode }> = ({
   const fetchModelData = useCallback(async () => {
     setLoading(true);
     try {
-      const [models, types] = await Promise.all([
-        getModelList(),
-        getModelAssociationTypes(),
-      ]);
-      setModelList(models || []);
+      const types = await getModelAssociationTypes();
       setAssoTypes(types || []);
     } finally {
       setLoading(false);
     }
-  }, [getModelList, getModelAssociationTypes]);
+  }, [getModelAssociationTypes]);
 
   const fetchAssoInstances = useCallback(
     async (

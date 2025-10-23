@@ -4,7 +4,7 @@ from apps.cmdb.constants import (
     MODEL,
     UPDATE_CLASSIFICATION_check_attr_map,
 )
-from apps.cmdb.graph.neo4j import Neo4jClient
+from apps.cmdb.graph.drivers.graph_client import GraphClient
 from apps.cmdb.language.service import SettingLanguage
 
 
@@ -14,7 +14,7 @@ class ClassificationManage(object):
         """
         创建模型分类
         """
-        with Neo4jClient() as ag:
+        with GraphClient() as ag:
             exist_items, _ = ag.query_entity(CLASSIFICATION, [])
             result = ag.create_entity(CLASSIFICATION, data, CREATE_CLASSIFICATION_CHECK_ATTR_MAP, exist_items)
         return result
@@ -29,7 +29,7 @@ class ClassificationManage(object):
             "type": "str=",
             "value": classification_id,
         }
-        with Neo4jClient() as ag:
+        with GraphClient() as ag:
             models, _ = ag.query_entity(CLASSIFICATION, [query_data])
         if len(models) == 0:
             return {}
@@ -38,7 +38,7 @@ class ClassificationManage(object):
     @staticmethod
     def check_classification_is_used(classification_id):
         """校验模型分类是否已经使用"""
-        with Neo4jClient() as ag:
+        with GraphClient() as ag:
             model_query = {
                 "field": "classification_id",
                 "type": "str=",
@@ -53,7 +53,7 @@ class ClassificationManage(object):
         """
         删除模型分类
         """
-        with Neo4jClient() as ag:
+        with GraphClient() as ag:
             ag.batch_delete_entity(CLASSIFICATION, [id])
 
     @staticmethod
@@ -64,7 +64,7 @@ class ClassificationManage(object):
         # 不能更新classification_id、exist_model
         data.pop("classification_id", "")
         data.pop("exist_model", "")
-        with Neo4jClient() as ag:
+        with GraphClient() as ag:
             exist_items, _ = ag.query_entity(CLASSIFICATION, [])
             # 排除当前正在更新的分类，避免自己和自己比较
             exist_items = [i for i in exist_items if i["_id"] != id]
@@ -82,7 +82,7 @@ class ClassificationManage(object):
         """
         查询模型分类
         """
-        with Neo4jClient() as ag:
+        with GraphClient() as ag:
             classifications, _ = ag.query_entity(CLASSIFICATION, [])
             models, _ = ag.query_entity(MODEL, [])
 

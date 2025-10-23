@@ -39,6 +39,9 @@
     "isActive": "是否启用",
     "getSampleFileError": "获取样本文件错误",
     "missID": "缺少分类ID",
-    "modelInferFailed": "执行模型推理失败"
+    "modelInferFailed": "执行模型推理失败",
+    "timeseriesPredict": "时序预测",
+    "logClustering": "日志聚类",
+    "classification": "分类任务"
   }
 }

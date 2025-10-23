@@ -93,6 +93,11 @@ LOGGING = {
             "formatter": "verbose",
             "filename": os.path.join(log_dir, "operation_analysis.log"),
         },
+        "nats": {
+            "class": "logging.handlers.RotatingFileHandler",
+            "formatter": "verbose",
+            "filename": os.path.join(log_dir, "nats.log"),
+        },
         "monitor": {
             "class": "logging.handlers.RotatingFileHandler",
             "formatter": "verbose",
@@ -118,6 +123,11 @@ LOGGING = {
             "formatter": "verbose",
             "filename": os.path.join(log_dir, "opspilot.log"),
         },
+        "playground": {
+            "class": "logging.handlers.RotatingFileHandler",
+            "formatter": "verbose",
+            "filename": os.path.join(log_dir, "playground.log"),
+        },
     },
     "loggers": {
         "django": {"handlers": ["null"], "level": "INFO", "propagate": True},
@@ -131,6 +141,7 @@ LOGGING = {
         "app": {"handlers": ["root", "console"], "level": "DEBUG", "propagate": True},
         "cmdb": {"handlers": ["cmdb", "console"], "level": "DEBUG", "propagate": True},
         "operation_analysis": {"handlers": ["operation_analysis", "console"], "level": "DEBUG", "propagate": True},
+        "nats": {"handlers": ["nats", "console"], "level": "DEBUG", "propagate": True},
         "monitor": {"handlers": ["monitor", "console"], "level": "DEBUG", "propagate": True},
         "node": {"handlers": ["node", "console"], "level": "DEBUG", "propagate": True},
         "ops-console": {"handlers": ["ops-console", "console"], "level": "DEBUG", "propagate": True},
@@ -138,5 +149,6 @@ LOGGING = {
         "opspilot": {"handlers": ["opspilot", "console"], "level": "DEBUG", "propagate": True},
         "alert": {"handlers": ["alert", "console"], "level": "DEBUG", "propagate": True},
         "celery": {"handlers": ["root"], "level": "INFO", "propagate": True},
+        "playground": {"handlers": ["playground", "console"], "level": "DEBUG", "propagate": True},
     },
 }

@@ -29,11 +29,11 @@ import { v4 as uuidv4 } from 'uuid';
 
 interface ModalProps {
   onSuccess: () => void;
-  collectTypes: ListItem[];
+  fields: string[];
 }
 
 const EditInstance = forwardRef<ModalRef, ModalProps>(
-  ({ onSuccess, collectTypes }, ref) => {
+  ({ onSuccess, fields }, ref) => {
     const { createLogStreams, updateLogStreams, updateDefaultLogStreams } =
       useLogApi();
     const { t } = useTranslation();
@@ -53,7 +53,6 @@ const EditInstance = forwardRef<ModalRef, ModalProps>(
         value: '',
       },
     ]);
-    const [collectType, setCollectType] = useState<React.Key | null>();
 
     const isAdd = useMemo(() => {
       return modalType === 'add';
@@ -63,10 +62,6 @@ const EditInstance = forwardRef<ModalRef, ModalProps>(
       return modalType === 'builtIn';
     }, [modalType]);
 
-    const labels: string[] = useMemo(() => {
-      return collectTypes.find((item) => item.id === collectType)?.attrs || [];
-    }, [collectTypes, collectType]);
-
     useImperativeHandle(ref, () => ({
       showModal: ({ title, form, type }) => {
         // 开启弹窗的交互
@@ -75,7 +70,6 @@ const EditInstance = forwardRef<ModalRef, ModalProps>(
         setConfigForm(cloneDeep(form));
         setVisible(true);
         if (type !== 'add') {
-          setCollectType(form.collect_type);
           setTerm(form.rule?.mode || null);
           setConditions(form.rule?.conditions || []);
         }
@@ -101,8 +95,11 @@ const EditInstance = forwardRef<ModalRef, ModalProps>(
           : isBuiltIn
             ? updateDefaultLogStreams
             : updateLogStreams;
+        const msg = isAdd
+          ? t('common.successfullyAdded')
+          : t('common.successfullyModified');
         await request(params);
-        message.success(t('common.successfullyModified'));
+        message.success(msg);
         handleCancel();
         onSuccess();
       } catch (error) {
@@ -136,7 +133,6 @@ const EditInstance = forwardRef<ModalRef, ModalProps>(
         },
       ]);
       setTerm(null);
-      setCollectType(null);
     };
 
     const handleLabelChange = (val: string, index: number) => {
@@ -194,17 +190,6 @@ const EditInstance = forwardRef<ModalRef, ModalProps>(
       return Promise.resolve();
     };
 
-    const handleCollectTypeChange = (val: React.Key) => {
-      setCollectType(val);
-      const rules = cloneDeep(conditions);
-      setConditions(
-        rules.map((item) => {
-          item.field = null;
-          return item;
-        })
-      );
-    };
-
     return (
       <div>
         <OperateModal
@@ -235,24 +220,6 @@ const EditInstance = forwardRef<ModalRef, ModalProps>(
                   rules={[{ required: true, message: t('common.required') }]}
                 >
                   <Input placeholder={t('common.name')} />
-                </Form.Item>
-                <Form.Item<GroupInfo>
-                  label={t('log.integration.collectType')}
-                  name="collect_type_id"
-                  rules={[{ required: true, message: t('common.required') }]}
-                >
-                  <Select
-                    placeholder={t('log.integration.collectType')}
-                    showSearch
-                    allowClear
-                    onChange={(val) => handleCollectTypeChange(val)}
-                  >
-                    {collectTypes.map((item: ListItem) => (
-                      <Option value={item.id} key={item.id}>
-                        {item.name}
-                      </Option>
-                    ))}
-                  </Select>
                 </Form.Item>
                 <Form.Item<GroupInfo>
                   label={t('log.integration.rule')}
@@ -292,7 +259,7 @@ const EditInstance = forwardRef<ModalRef, ModalProps>(
                               value={conditionItem.field}
                               onChange={(val) => handleLabelChange(val, index)}
                             >
-                              {labels.map((item: string) => (
+                              {fields.map((item: string) => (
                                 <Option value={item} key={item}>
                                   {item}
                                 </Option>
@@ -358,5 +325,6 @@ const EditInstance = forwardRef<ModalRef, ModalProps>(
     );
   }
 );
+
 EditInstance.displayName = 'EditInstance';
 export default EditInstance;

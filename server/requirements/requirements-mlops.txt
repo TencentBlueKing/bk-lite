@@ -1,9 +1,0 @@
-scikit-learn==1.6.1
-hyperopt==0.2.7
-pyod==2.0.5
-xgboost==3.0.0
-suod==0.1.4
-mlflow==3.1.0
-hyperopt==0.2.7
-boto3==1.38.41
-imblearn==0.0

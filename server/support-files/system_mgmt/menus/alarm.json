@@ -45,7 +45,8 @@
           "id": "Integration",
           "name": "Integration",
           "operation": [
-            "View"
+            "View",
+            "Detail"
           ]
         }
       ]

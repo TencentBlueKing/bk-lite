@@ -57,6 +57,13 @@
           "operation": [
             "View"
           ]
+        },
+        {
+          "id": "bot_api",
+          "name": "APP API",
+          "operation": [
+            "View"
+          ]
         }
       ]
     },

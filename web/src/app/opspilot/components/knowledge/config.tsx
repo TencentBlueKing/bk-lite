@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Select, Slider, InputNumber, Input, Radio, message, Tooltip, Switch } from 'antd';
+import { Select, Slider, InputNumber, Input, message, Tooltip, Switch, Card, Radio } from 'antd';
 import { ModelOption, ConfigDataProps, ConfigProps } from '@/app/opspilot/types/knowledge';
 import { QuestionCircleOutlined } from '@ant-design/icons';
 import { useTranslation } from '@/utils/i18n';
@@ -51,21 +51,8 @@ const ConfigComponent: React.FC<ConfigProps> = ({ configData, setConfigData }) =
     fetchModels();
   }, []);
 
-  const handleSearchTypeChange = (type: string) => {
-    setConfigData(prevData => ({
-      ...prevData,
-      selectedSearchTypes: prevData.selectedSearchTypes.includes(type)
-        ? prevData.selectedSearchTypes.filter(t => t !== type)
-        : [...prevData.selectedSearchTypes, type]
-    }));
-  };
-
-  const handlePatternChange = (e: any) => {
-    setConfigData(prevData => ({
-      ...prevData,
-      textSearchMode: e.target.value
-    }));
-  };
+  // Check if retrieval strategy section should be shown
+  const shouldShowRetrievalStrategy = configData.enableNaiveRag || configData.enableQaRag;
 
   return (
     <>
@@ -77,6 +64,10 @@ const ConfigComponent: React.FC<ConfigProps> = ({ configData, setConfigData }) =
           disabled
           loading={loadingModels}
           value={configData.selectedEmbedModel}
+          showSearch
+          filterOption={(input, option) =>
+            typeof option?.children === 'string' && (option.children as string).toLowerCase().includes(input.toLowerCase())
+          }
           onChange={(value) => setConfigData(prevData => ({ ...prevData, selectedEmbedModel: value }))}
         >
           {modelOptions.map((model) => (
@@ -151,101 +142,75 @@ const ConfigComponent: React.FC<ConfigProps> = ({ configData, setConfigData }) =
             ))}
           </div>
           
-          <div className="p-4 pb-0 border rounded-md mb-4">
-            <div className="flex items-center mb-4 justify-between">
-              <h3 className="font-medium text-sm">{t('knowledge.textSearch')}</h3>
-              <Switch
-                size="small"
-                checked={configData.selectedSearchTypes.includes('textSearch')}
-                onChange={() => handleSearchTypeChange('textSearch')}
-              />
-            </div>
-            <p className="text-xs mb-4 text-[var(--color-text-4)]">
-              {t('knowledge.textSearchDesc')}
-            </p>
-            {configData.selectedSearchTypes.includes('textSearch') && (
-              <>
-                <div className="flex items-center justify-between mb-4">
-                  <label className="text-sm w-[100px]">{t('knowledge.pattern')}</label>
-                  <Radio.Group
-                    onChange={handlePatternChange}
-                    value={configData.textSearchMode}
-                    className="flex-1"
-                  >
-                    <Radio value="match">{t('knowledge.match')}</Radio>
-                    <Radio value="match_phrase">{t('knowledge.matchPhrase')}</Radio>
-                  </Radio.Group>
-                </div>
-                <div className="flex items-center justify-between mb-4">
-                  <label className="text-sm w-[100px]">{t('knowledge.weight')}</label>
-                  <div className="flex flex-1 items-center gap-4">
-                    <Slider
-                      className="flex-1"
-                      min={0}
-                      max={1}
-                      step={0.01}
-                      value={configData.textSearchWeight}
-                      onChange={(value) => setConfigData(prevData => ({ ...prevData, textSearchWeight: value }))}
-                    />
-                    <Input className="w-14" value={configData.textSearchWeight.toFixed(2)} readOnly />
+          {/* Conditional Retrieval Strategy Section */}
+          {shouldShowRetrievalStrategy && (
+            <div className="p-4 pb-0 border rounded-md mb-4">
+              <h3 className="font-medium text-sm mb-4">{t('knowledge.retrievalStrategy')}</h3>
+              <div className="flex gap-4 mb-4">
+                <Card
+                  size="small"
+                  className={`flex-1 cursor-pointer transition-all duration-200 ${
+                    configData.searchType === 'mmr' 
+                      ? 'border-blue-500 shadow-sm' 
+                      : 'hover:shadow-sm'
+                  }`}
+                  onClick={() => setConfigData(prevData => ({ ...prevData, searchType: 'mmr' }))}
+                >
+                  <div className="text-center">
+                    <h4 className="font-medium text-sm mb-2">MMR</h4>
+                    <p className="text-xs text-gray-500">{t('knowledge.mmrDesc')}</p>
                   </div>
-                </div>
-              </>
-            )}
-          </div>
-          <div className="p-4 pb-0 border rounded-md mb-4">
-            <div className="flex items-center mb-4 justify-between">
-              <h3 className="font-medium text-sm">{t('knowledge.vectorSearch')}</h3>
-              <Switch
-                size="small"
-                checked={configData.selectedSearchTypes.includes('vectorSearch')}
-                onChange={() => handleSearchTypeChange('vectorSearch')}
-              />
-            </div>
-            <p className="text-xs mb-4 text-[var(--color-text-4)]">
-              {t('knowledge.vectorSearchDesc')}
-            </p>
-            {configData.selectedSearchTypes.includes('vectorSearch') && (
-              <>
+                </Card>
+                <Card
+                  size="small"
+                  className={`flex-1 cursor-pointer transition-all duration-200 ${
+                    configData.searchType === 'similarity_score_threshold' 
+                      ? 'border-blue-500 shadow-sm' 
+                      : 'hover:shadow-sm'
+                  }`}
+                  onClick={() => setConfigData(prevData => ({ ...prevData, searchType: 'similarity_score_threshold' }))}
+                >
+                  <div className="text-center">
+                    <h4 className="font-medium text-sm mb-2">{t('knowledge.threshold')}</h4>
+                    <p className="text-xs text-gray-500">{t('knowledge.thresholdDesc')}</p>
+                  </div>
+                </Card>
+              </div>
+              
+              {configData.searchType === 'similarity_score_threshold' && (
                 <div className="flex items-center justify-between mb-4">
-                  <label className="text-sm w-[100px]">{t('knowledge.weight')}</label>
+                  <label className="text-sm w-[80px]">{t('knowledge.threshold')}</label>
                   <div className='flex flex-1 items-center gap-4'>
                     <Slider
                       className="flex-1"
                       min={0}
                       max={1}
                       step={0.01}
-                      value={configData.vectorSearchWeight}
-                      onChange={(value) => setConfigData(prevData => ({ ...prevData, vectorSearchWeight: value }))}
+                      value={configData.scoreThreshold}
+                      onChange={(value) => setConfigData(prevData => ({ ...prevData, scoreThreshold: value }))}
                     />
-                    <Input className="w-14" value={configData.vectorSearchWeight.toFixed(2)} readOnly />
+                    <Input className="w-14" value={configData.scoreThreshold.toFixed(2)} readOnly />
                   </div>
                 </div>
-                <div className="flex items-center justify-between mb-4">
-                  <label className="text-sm w-[100px]">{t('knowledge.returnQuantity')}</label>
-                  <InputNumber
-                    className='flex-1'
-                    min={1}
-                    value={configData.quantity}
-                    onChange={(value) => setConfigData(prevData => ({ ...prevData, quantity: value ?? 1 }))}
-                    style={{ width: '100%' }}
-                  />
-                </div>
-                <div className="flex items-center justify-between mb-4">
-                  <label className="text-sm w-[100px]">{t('knowledge.candidateQuantity')}</label>
-                  <InputNumber
-                    className='flex-1'
-                    min={1}
-                    value={configData.candidate}
-                    onChange={(value) => setConfigData(prevData => ({ ...prevData, candidate: value ?? 1 }))}
-                    style={{ width: '100%' }}
-                  />
-                </div>
-              </>
-            )}
-          </div>
+              )}
+            </div>
+          )}
         </div>
       </div>
+      {/* Conditional Recall Method Section */}
+      {configData.enableNaiveRag && (
+        <div className="mb-4 flex items-center">
+          <label className="block text-sm font-medium mb-1 w-32">{t('knowledge.recallMethod')}</label>
+          <Radio.Group
+            className="flex-1"
+            value={configData.ragRecallMode}
+            onChange={(e) => setConfigData(prevData => ({ ...prevData, ragRecallMode: e.target.value }))}
+          >
+            <Radio value="chunk">{t('knowledge.recallByChunk')}</Radio>
+            <Radio value="segment">{t('knowledge.recallBySegment')}</Radio>
+          </Radio.Group>
+        </div>
+      )}
       <div className="mb-4 flex">
         <label className="block text-sm font-medium mb-1 w-32">{t('knowledge.rerankSettings')}</label>
         <div className="flex-1">
@@ -267,6 +232,10 @@ const ConfigComponent: React.FC<ConfigProps> = ({ configData, setConfigData }) =
                     placeholder={`${t('common.selectMsg')}${t('knowledge.rerankModel')}`}
                     loading={loadingModels}
                     value={configData.selectedRerankModel}
+                    showSearch
+                    filterOption={(input, option) =>
+                      typeof option?.children === 'string' && (option.children as string).toLowerCase().includes(input.toLowerCase())
+                    }
                     onChange={(value) => setConfigData(prevData => ({ ...prevData, selectedRerankModel: value }))}
                   >
                     {rerankModelOptions.map((model) => (

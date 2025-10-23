@@ -60,7 +60,8 @@
         "lastName": "NAME",
         "email": "EMAIL",
         "number": "NUMBER",
-        "role": "ROLE"
+        "role": "ROLE",
+        "lastLogin": "LAST LOGIN"
       },
       "passwordTitle": "Set Password",
       "form": {
@@ -197,7 +198,8 @@
       "description": "Description",
       "descriptionMaxLength": "Description cannot exceed 500 characters",
       "selectIcon": "Select Icon",
-      "searchIcon": "Search Icon"
+      "searchIcon": "Search Icon",
+      "builtinAppClickTip": "Non-built-in applications are not clickable"
     },
     "security": {
       "settings": "Security Settings",

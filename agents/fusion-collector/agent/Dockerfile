@@ -8,7 +8,7 @@ ENV SIDECAR_NODEID ""
 ENV SIDECAR_NODENAME "telegraf-proxy"
 
 RUN apt-get update && \
-    apt-get install -y ca-certificates ipmitool vim snmp supervisor && \
+    apt-get install -y ca-certificates ipmitool vim snmp supervisor zip iputils-ping && \
     update-ca-certificates && \
     rm -rf /var/lib/apt/lists/*
 
@@ -36,8 +36,14 @@ ADD ./nats-executor ./bin/nats-executor
 # Vector
 ADD ./vector ./bin/vector
 
+ADD ./filebeat ./bin/filebeat
+ADD ./packetbeat ./bin/packetbeat
+ADD ./metricbeat ./bin/metricbeat
+ADD ./auditbeat ./bin/auditbeat
+
 # Suporvisor
 ADD ./service.conf /etc/supervisor/conf.d/service.conf
+
 
 ENTRYPOINT [ "/opt/fusion-collectors/startup.sh" ]
 

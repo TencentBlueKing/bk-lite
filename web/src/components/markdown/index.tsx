@@ -7,6 +7,7 @@ import html from 'remark-html';
 import gfm from 'remark-gfm';
 import 'github-markdown-css/github-markdown.css';
 import styles from './index.module.scss';
+import { getClientIdFromRoute } from '@/utils/route';
 
 interface MarkdownRendererProps {
   filePath: string;
@@ -22,7 +23,16 @@ const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({ filePath, fileName 
   useEffect(() => {
     const fetchMarkdown = async () => {
       try {
-        const response = await fetch(`/api/markdown?filePath=${filePath}${filePath.endsWith('/') ? '' : '/'}${locale === 'en' ? 'en' : 'zh'}/${fileName}.md`);
+        let requestUrl: string;
+        
+        if (filePath === 'versions') {
+          const clientId = getClientIdFromRoute();
+          requestUrl = `/api/markdown?filePath=${filePath}/${clientId}/${locale === 'en' ? 'en' : 'zh'}/${fileName}.md`;
+        } else {
+          requestUrl = `/api/markdown?filePath=${filePath}${filePath.endsWith('/') ? '' : '/'}${locale === 'en' ? 'en' : 'zh'}/${fileName}.md`;
+        }
+        
+        const response = await fetch(requestUrl);
         if (!response.ok) {
           throw new Error('Network response was not ok');
         }
@@ -37,7 +47,7 @@ const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({ filePath, fileName 
       }
     };
     fetchMarkdown();
-  }, [filePath]);
+  }, [filePath, fileName]);
 
   return (
     <Spin spinning={loading}>

@@ -393,7 +393,14 @@ const KnowledgeGraphEditPage: React.FC = () => {
           label={t('knowledge.knowledgeGraph.llmModel')}
           rules={[{ required: true, message: t('common.pleaseSelect') + t('knowledge.knowledgeGraph.llmModel') }]}
         >
-          <Select placeholder={t('common.pleaseSelect') + t('knowledge.knowledgeGraph.llmModel')} loading={llmModels.length === 0}>
+          <Select 
+            placeholder={t('common.pleaseSelect') + t('knowledge.knowledgeGraph.llmModel')} 
+            loading={llmModels.length === 0}
+            showSearch
+            filterOption={(input, option) =>
+              typeof option?.children === 'string' && (option.children as string).toLowerCase().includes(input.toLowerCase())
+            }
+          >
             {llmModels.map(model => (
               <Select.Option key={model.id} value={model.id}>
                 {model.name}
@@ -407,7 +414,14 @@ const KnowledgeGraphEditPage: React.FC = () => {
           label={t('knowledge.knowledgeGraph.rerankModel')}
           rules={[{ required: true, message: t('common.pleaseSelect') + t('knowledge.knowledgeGraph.rerankModel') }]}
         >
-          <Select placeholder={t('common.pleaseSelect') + t('knowledge.knowledgeGraph.rerankModel')} loading={rerankModels.length === 0}>
+          <Select 
+            placeholder={t('common.pleaseSelect') + t('knowledge.knowledgeGraph.rerankModel')} 
+            loading={rerankModels.length === 0}
+            showSearch
+            filterOption={(input, option) =>
+              typeof option?.children === 'string' && (option.children as string).toLowerCase().includes(input.toLowerCase())
+            }
+          >
             {rerankModels.map(model => (
               <Select.Option key={model.id} value={model.id}>
                 {model.name}
@@ -421,7 +435,14 @@ const KnowledgeGraphEditPage: React.FC = () => {
           label={t('knowledge.form.embedModel')}
           rules={[{ required: true, message: t('common.pleaseSelect') + t('knowledge.form.embedModel') }]}
         >
-          <Select placeholder={t('common.pleaseSelect') + t('knowledge.form.embedModel')} loading={embedModels.length === 0}>
+          <Select 
+            placeholder={t('common.pleaseSelect') + t('knowledge.form.embedModel')} 
+            loading={embedModels.length === 0}
+            showSearch
+            filterOption={(input, option) =>
+              typeof option?.children === 'string' && (option.children as string).toLowerCase().includes(input.toLowerCase())
+            }
+          >
             {embedModels.map(model => (
               <Select.Option key={model.id} value={model.id}>
                 {model.name}
@@ -504,7 +525,7 @@ const KnowledgeGraphEditPage: React.FC = () => {
         }
       >
         <div className="flex gap-4" style={{ height: 'calc(100vh - 160px)' }}>
-          <div className="w-3/5 border rounded-lg p-4 bg-gray-50 flex flex-col">
+          <div className="w-3/5 border rounded-lg p-4 flex flex-col">
             <Tabs
               activeKey={activeDocumentTab}
               onChange={handleTabChange}
@@ -554,7 +575,7 @@ const KnowledgeGraphEditPage: React.FC = () => {
           </div>
 
           <div className="w-2/5 flex flex-col">
-            <div className="border rounded-lg p-4 bg-white h-full flex flex-col">
+            <div className="border rounded-lg p-4 h-full flex flex-col">
               <div className="flex items-center justify-between mb-2">
                 <h4 className="text-base font-medium m-0">
                   {t('knowledge.qaPairs.pendingDocuments')} ({tempSelectedDocuments.length})
@@ -619,7 +640,7 @@ const KnowledgeGraphEditPage: React.FC = () => {
               </div>
               
               {tempSelectedDocuments.length > 0 && (
-                <div className="mt-4 pt-3 border-t border-gray-200 flex-shrink-0">
+                <div className="mt-4 pt-3 border-t border-[var(--color-border-3)] flex-shrink-0">
                   <div className="text-xs text-blue-600 text-center">
                     {t('knowledge.qaPairs.confirmToApply')}
                   </div>

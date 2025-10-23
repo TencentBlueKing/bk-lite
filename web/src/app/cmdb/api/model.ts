@@ -28,8 +28,8 @@ export const useModelApi = () => {
     post(`/cmdb/api/model/${modelId}/attr/`, params);
 
   // 更新模型属性
-  const updateModelAttr = (modelId: string, params: any) =>
-    post(`/cmdb/api/model/${modelId}/attr_update/`, params);
+  const updateModelAttr = (modelId: string, params: any) => 
+    put(`/cmdb/api/model/${modelId}/attr_update/`, params);
 
   // 删除模型属性
   const deleteModelAttr = (modelId: string, attrId: string) =>

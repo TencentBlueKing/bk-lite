@@ -1,0 +1,10 @@
+packetbeat.flows:
+  timeout: "{{ flows_timeout | default(30) }}s"
+  period: "{{ flows_period | default(10) }}s"
+
+  fields:
+    collector: "Packetbeat"
+    collect_type: "flows"
+    instance_id: "{{ instance_id }}"
+    _msg: ""
+  fields_under_root: true

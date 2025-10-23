@@ -4,5 +4,22 @@
   "icon": "syslog",
   "description": "Collects logs from syslog sources",
   "default_query": "collect_type: syslog | last 1 by (_time) partition by (instance_id)",
-  "attrs": ["*", "appname", "client_metadata", "facility", "host", "hostname", "message", "msgid", "procid", "severity", "source_ip", "source_type", "timestamp", "version"]
+  "attrs": [
+    "collect_type",
+    "collector",
+    "instance_id",
+    "appname",
+    "client_metadata",
+    "facility",
+    "host",
+    "hostname",
+    "message",
+    "msgid",
+    "procid",
+    "severity",
+    "source_ip",
+    "source_type",
+    "timestamp",
+    "version"
+]
 }

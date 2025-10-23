@@ -8,6 +8,79 @@ from rest_framework.exceptions import ValidationError
 
 from apps.core.models.maintainer_info import MaintainerInfo
 from apps.core.models.time_info import TimeInfo
+from apps.core.utils.crypto.password_crypto import PasswordCrypto
+from apps.operation_analysis.constants import SECRET_KEY
+
+
+class NameSpace(MaintainerInfo, TimeInfo):
+    name = models.CharField(max_length=128, verbose_name="命名空间名称", unique=True)
+    account = models.CharField(max_length=64, verbose_name="账号")
+    password = models.CharField(max_length=128, verbose_name="密码")
+    domain = models.CharField(max_length=255, verbose_name="域名")
+    desc = models.TextField(verbose_name="描述", blank=True, null=True)
+    is_active = models.BooleanField(default=True, verbose_name="是否启用")
+
+    class Meta:
+        db_table = "operation_analysis_namespace"
+        verbose_name = "命名空间"
+
+    def __str__(self):
+        return self.name
+
+    @staticmethod
+    def encrypt_password(raw_password):
+        """
+        加密密码
+        :param raw_password: 明文密码
+        :return: 加密后的密码
+        """
+        if not raw_password:
+            return raw_password
+
+        crypto = PasswordCrypto(SECRET_KEY)
+        return crypto.encrypt(raw_password)
+
+    @property
+    def decrypt_password(self):
+        """
+        解密密码
+        :return: 明文密码
+        """
+        if not self.password:
+            return self.password
+
+        try:
+            crypto = PasswordCrypto(SECRET_KEY)
+            return crypto.decrypt(self.password)
+        except Exception:
+            # 如果解密失败，可能是明文密码，直接返回
+            return self.password
+
+    def set_password(self, raw_password):
+        """
+        设置加密密码
+        :param raw_password: 明文密码
+        """
+        self.password = self.encrypt_password(raw_password)
+
+    def save(self, *args, **kwargs):
+        if self.password:
+            self.password = self.encrypt_password(self.password)
+        super().save(*args, **kwargs)
+
+
+class DataSourceTag(MaintainerInfo, TimeInfo):
+    tag_id = models.CharField(max_length=64, verbose_name="标签id", unique=True)
+    name = models.CharField(max_length=64, verbose_name="标签名称", unique=True)
+    desc = models.TextField(verbose_name="描述", blank=True, null=True)
+    build_in = models.BooleanField(default=False, verbose_name="是否内置")
+
+    class Meta:
+        db_table = "operation_analysis_data_source_tag"
+        verbose_name = "数据源标签"
+
+    def __str__(self):
+        return f"{self.name}({self.tag_id})"
 
 
 class DataSourceAPIModel(MaintainerInfo, TimeInfo):
@@ -16,6 +89,10 @@ class DataSourceAPIModel(MaintainerInfo, TimeInfo):
     desc = models.TextField(verbose_name="描述", blank=True, null=True)
     is_active = models.BooleanField(default=True, verbose_name="是否启用")
     params = JSONField(help_text="API请求参数", verbose_name="请求参数", blank=True, null=True)
+    namespaces = models.ManyToManyField(NameSpace, related_name='data_sources', help_text="会话关联的事件",
+                                        verbose_name="命名空间", blank=True)
+    tag = models.ManyToManyField(to=DataSourceTag, related_name='data_sources', help_text="数据源标签", blank=True)
+    chart_type = JSONField(help_text="图表类型", default=list, blank=True, null=True)
 
     class Meta:
         db_table = "operation_analysis_data_source_api"
@@ -108,6 +185,26 @@ class Topology(MaintainerInfo, TimeInfo):
     class Meta:
         db_table = "operation_analysis_topology"
         verbose_name = "拓扑图"
+
+    def __str__(self):
+        return self.name
+
+    def has_directory(self):
+        return self.directory is not None
+
+
+class Architecture(MaintainerInfo, TimeInfo):
+    name = models.CharField(max_length=128, verbose_name="架构图名称", unique=True)
+    desc = models.TextField(verbose_name="描述", blank=True, null=True)
+    directory = models.ForeignKey(
+        Directory, on_delete=models.CASCADE, related_name="architecture", verbose_name="所属目录", null=True, blank=True
+    )
+    other = JSONField(help_text="架构图其他配置", blank=True, null=True)
+    view_sets = JSONField(help_text="架构图视图集配置", default=list)
+
+    class Meta:
+        db_table = "operation_analysis_architecture"
+        verbose_name = "架构图"
 
     def __str__(self):
         return self.name

@@ -1,12 +1,13 @@
 import uuid
 from celery.app import shared_task
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from django.db.models import F
 
 from apps.core.exceptions.base_app_exception import BaseAppException
-from apps.monitor.constants import LEVEL_WEIGHT, THRESHOLD, NO_DATA
+from apps.monitor.constants.alert_policy import AlertConstants
+from apps.monitor.constants.database import DatabaseConstants
 from apps.monitor.models import MonitorPolicy, MonitorInstanceOrganization, MonitorAlert, MonitorEvent, MonitorInstance, \
-    Metric, MonitorEventRawData
+    Metric, MonitorEventRawData, MonitorAlertMetricSnapshot
 from apps.monitor.tasks.task_utils.metric_query import format_to_vm_filter
 from apps.monitor.tasks.task_utils.policy_calculate import vm_to_dataframe, calculate_alerts
 from apps.monitor.utils.system_mgmt_api import SystemMgmtUtils
@@ -313,16 +314,14 @@ class MonitorPolicyScan:
 
     def create_events(self, events):
         """创建事件"""
-        create_events, create_raw_data = [], []
+        if not events:
+            return []
+
+        create_events = []
+        events_with_raw_data = []  # 保存包含原始数据的事件信息
+
         for event in events:
             event_id = uuid.uuid4().hex
-            if event.get("raw_data"):
-                create_raw_data.append(
-                    MonitorEventRawData(
-                        event_id=event_id,
-                        data=event["raw_data"],
-                    )
-                )
             create_events.append(
                 MonitorEvent(
                     id=event_id,
@@ -335,39 +334,60 @@ class MonitorPolicyScan:
                     event_time=self.policy.last_run_time,
                 )
             )
+            # 如果有原始数据，保存事件信息以便后续处理
+            if event.get("raw_data"):
+                events_with_raw_data.append({
+                    "original_id": event_id,
+                    "raw_data": event["raw_data"],
+                    "instance_id": event["instance_id"]
+                })
 
-        event_objs = MonitorEvent.objects.bulk_create(create_events, batch_size=200)
-        MonitorEventRawData.objects.bulk_create(create_raw_data, batch_size=100)
+        # 使用 bulk_create 创建事件
+        event_objs = MonitorEvent.objects.bulk_create(create_events, batch_size=DatabaseConstants.BULK_CREATE_BATCH_SIZE)
+
+        # 兼容性处理：如果 bulk_create 没有返回对象（如 MySQL/SQLite），则手动查询
+        if not event_objs or not hasattr(event_objs[0], 'id'):
+            # 根据策略ID和时间查询刚创建的事件
+            event_objs = list(MonitorEvent.objects.filter(
+                policy_id=self.policy.id,
+                event_time=self.policy.last_run_time
+            ).order_by('-created_at')[:len(create_events)])
+
+        # 创建原始数据 - 使用实际的事件对象ID
+        if events_with_raw_data and event_objs:
+            create_raw_data = []
+            # 建立实例ID到事件对象的映射
+            event_obj_map = {obj.monitor_instance_id: obj for obj in event_objs}
+
+            for event_info in events_with_raw_data:
+                # 根据实例ID找到对应的事件对象
+                event_obj = event_obj_map.get(event_info["instance_id"])
+                if event_obj:
+                    create_raw_data.append(
+                        MonitorEventRawData(
+                            event_id=event_obj.id,  # 使用实际的事件ID
+                            data=event_info["raw_data"],
+                        )
+                    )
+
+            if create_raw_data:
+                MonitorEventRawData.objects.bulk_create(create_raw_data, batch_size=DatabaseConstants.EVENT_RAW_DATA_BATCH_SIZE)
+
         return event_objs
 
-    def get_users_email(self, usernames):
-        """获取用户邮箱"""
-        users = SystemMgmtUtils.get_user_all()
-        user_email_map = {user_info["username"]: user_info["email"] for user_info in users if user_info.get("email")}
-
-        return {username: user_email_map.get(username) for username in usernames}
-
-    def send_email(self, event_obj):
-        """发送邮件"""
+    def send_notice(self, event_obj):
+        """ 发送通知 """
         title = f"告警通知：{self.policy.name}"
         content = f"告警内容：{event_obj.content}"
         result = []
-        user_email_map = self.get_users_email(self.policy.notice_users)
-
-        for user, email in user_email_map.items():
-            if not email:
-                result.append({"user": user, "status": "failed", "error": "email not found"})
-                continue
-            else:
-                result.append({"user": user, "status": "success"})
 
         try:
             send_result = SystemMgmtUtils.send_msg_with_channel(
-                self.policy.notice_type_id, title, content, [email for email in user_email_map.values() if email]
+                self.policy.notice_type_id, title, content, self.policy.notice_users
             )
-            logger.info(f"send email success: {send_result}")
+            logger.info(f"send notice success: {send_result}")
         except Exception as e:
-            logger.error(f"send email failed: {e}")
+            logger.error(f"send notice failed: {e}")
 
         return result
 
@@ -381,10 +401,10 @@ class MonitorPolicyScan:
                 # 无数据告警通知为开启，不进行通知
                 if self.policy.no_data_alert <= 0:
                     continue
-            notice_results = self.send_email(event)
+            notice_results = self.send_notice(event)
             event.notice_result = notice_results
         # 批量更新通知结果
-        MonitorEvent.objects.bulk_update(event_objs, ["notice_result"], batch_size=200)
+        MonitorEvent.objects.bulk_update(event_objs, ["notice_result"], batch_size=DatabaseConstants.BULK_UPDATE_BATCH_SIZE)
 
     def handle_alert_events(self, event_objs):
         """处理告警事件"""
@@ -397,7 +417,8 @@ class MonitorPolicyScan:
                 new_alert_events.append(event_obj)
 
         self.update_alert(old_alert_events)
-        self.create_alert(new_alert_events)
+        new_alerts = self.create_alert(new_alert_events)
+        return new_alerts
 
 
     def update_alert(self, event_objs):
@@ -408,15 +429,18 @@ class MonitorPolicyScan:
             if not event_obj or event_obj.level == "no_data":
                 continue
             # 告警等级升级
-            if LEVEL_WEIGHT.get(event_obj.level) > LEVEL_WEIGHT.get(alert.level):
+            if AlertConstants.LEVEL_WEIGHT.get(event_obj.level) > AlertConstants.LEVEL_WEIGHT.get(alert.level):
                 alert.level = event_obj.level
                 alert.value = event_obj.value
                 alert.content = event_obj.content
                 alert_level_updates.append(alert)
-        MonitorAlert.objects.bulk_update(alert_level_updates, ["level", "value", "content"], batch_size=200)
+        MonitorAlert.objects.bulk_update(alert_level_updates, ["level", "value", "content"], batch_size=DatabaseConstants.BULK_UPDATE_BATCH_SIZE)
 
     def create_alert(self, event_objs):
         """告警生成处理"""
+        if not event_objs:
+            return []
+
         create_alerts = []
         for event_obj in event_objs:
             if event_obj.level != "no_data":
@@ -443,7 +467,21 @@ class MonitorPolicyScan:
                     operator="",
                 ))
 
-        MonitorAlert.objects.bulk_create(create_alerts, batch_size=200)
+        # 使用 bulk_create 创建告警
+        new_alerts = MonitorAlert.objects.bulk_create(create_alerts, batch_size=DatabaseConstants.BULK_CREATE_BATCH_SIZE)
+
+        # 兼容性处理：如果 bulk_create 没有返回对象（如 MySQL/SQLite），则手动查询
+        if not new_alerts or not hasattr(new_alerts[0], 'id'):
+            # 根据事件对象的实例ID和时间范围查询刚创建的告警
+            instance_ids = [event_obj.monitor_instance_id for event_obj in event_objs]
+            new_alerts = list(MonitorAlert.objects.filter(
+                policy_id=self.policy.id,
+                monitor_instance_id__in=instance_ids,
+                start_event_time=self.policy.last_run_time,
+                status="new"
+            ).order_by('id'))
+
+        return new_alerts
 
     def count_events(self, alert_events, info_events):
         """计数事件"""
@@ -461,6 +499,158 @@ class MonitorPolicyScan:
         """添加计数告警事件"""
         MonitorAlert.objects.filter(id__in=list(ids)).update(info_event_count=F("info_event_count") + 1)
 
+    def query_raw_metrics(self, period, points=1):
+        """查询原始指标数据 - 不进行聚合"""
+        end_timestamp = int(self.policy.last_run_time.timestamp())
+        period_seconds = period_to_seconds(period)
+        start_timestamp = end_timestamp - period_seconds
+
+        query = self.format_pmq()
+        step = self.for_mat_period(period, points)
+
+        # 直接查询原始数据，不使用聚合函数
+        raw_metrics = VictoriaMetricsAPI().query_range(query, start_timestamp, end_timestamp, step)
+        return raw_metrics
+
+    def create_metric_snapshots_for_active_alerts(self, info_events=None, event_objs=None, new_alerts=None):
+        """为活跃告警创建指标快照 - 直接使用事件的原始数据"""
+        # 合并现有活跃告警和新创建的告警
+        all_active_alerts = list(self.active_alerts)
+        if new_alerts:
+            all_active_alerts.extend(new_alerts)
+
+        if not all_active_alerts:
+            return
+
+        # 构建实例ID到原始数据的映射
+        instance_raw_data_map = {}
+
+        # 从event_objs中获取raw_data（通过MonitorEventRawData关联）
+        if event_objs:
+            # 批量查询这些事件的原始数据
+            event_ids = [event_obj.id for event_obj in event_objs]
+            raw_data_objs = MonitorEventRawData.objects.filter(event_id__in=event_ids).select_related('event')
+
+            # 建立实例ID到原始数据的映射
+            for raw_data_obj in raw_data_objs:
+                instance_id = raw_data_obj.event.monitor_instance_id
+                instance_raw_data_map[instance_id] = raw_data_obj.data
+
+        if info_events:
+            for event in info_events:
+                instance_id = event["instance_id"]
+                if event.get("raw_data") and instance_id not in instance_raw_data_map:
+                    instance_raw_data_map[instance_id] = event["raw_data"]
+
+        # 建立实例ID到事件对象的映射
+        event_map = {}
+        if event_objs:
+            for event_obj in event_objs:
+                event_map[event_obj.monitor_instance_id] = event_obj
+
+        create_snapshots = []
+
+        # 为每个活跃告警记录快照
+        for alert in all_active_alerts:
+            instance_id = alert.monitor_instance_id
+
+            # 获取对应的事件对象（如果有的话）
+            related_event = event_map.get(instance_id)
+
+            # 获取原始数据，优先使用当前周期的数据
+            raw_data = instance_raw_data_map.get(instance_id, {})
+
+            # 如果没有当前周期的数据，查询兜底数据（用于历史活跃告警）
+            if not raw_data:
+                fallback_data = self.query_raw_metrics(self.policy.period)
+                for metric_info in fallback_data.get("data", {}).get("result", []):
+                    metric_instance_id = str(tuple([metric_info["metric"].get(i) for i in self.instance_id_keys]))
+                    if metric_instance_id == instance_id:
+                        raw_data = metric_info
+                        break
+
+            create_snapshots.append(
+                MonitorAlertMetricSnapshot(
+                    alert_id=alert.id,
+                    event=related_event,  # 关联对应的事件对象
+                    policy_id=self.policy.id,
+                    monitor_instance_id=instance_id,
+                    snapshot_time=self.policy.last_run_time,
+                    raw_data=[raw_data] if raw_data else [],  # 转换为列表格式
+                )
+            )
+
+        if create_snapshots:
+            MonitorAlertMetricSnapshot.objects.bulk_create(create_snapshots, batch_size=DatabaseConstants.BULK_CREATE_BATCH_SIZE)
+
+    def create_pre_alert_snapshots(self, new_alerts):
+        """为新产生的告警创建告警前的快照数据"""
+        if not new_alerts:
+            return
+
+        # 计算前一个周期的时间点
+        period_seconds = period_to_seconds(self.policy.period)
+        pre_alert_time = datetime.fromtimestamp(
+            self.policy.last_run_time.timestamp() - period_seconds,
+            tz=timezone.utc
+        )
+
+        # 检查时间合理性，避免查询过早的数据
+        min_time = datetime.now(timezone.utc) - timedelta(days=7)  # 最多往前查7天
+        if pre_alert_time < min_time:
+            logger.warning(f"Pre-alert time {pre_alert_time} too early, skipping pre-alert snapshots for policy {self.policy.id}")
+            return
+
+        # 查询告警前一个周期的原始数据
+        end_timestamp = int(pre_alert_time.timestamp())
+        start_timestamp = end_timestamp - period_seconds
+
+        query = self.format_pmq()
+        step = self.for_mat_period(self.policy.period)
+        method = METHOD.get(self.policy.algorithm)
+        if not method:
+            return
+
+        group_by = ",".join(self.instance_id_keys)
+
+        try:
+            pre_alert_metrics = method(query, start_timestamp, end_timestamp, step, group_by)
+        except Exception as e:
+            logger.error(f"Failed to query pre-alert metrics for policy {self.policy.id}: {e}")
+            return
+
+        # 按实例ID分组原始数据，应用实例范围过滤
+        # 保持与正常快照相同的数据格式
+        pre_alert_data_map = {}
+        for metric_info in pre_alert_metrics.get("data", {}).get("result", []):
+            instance_id = str(tuple([metric_info["metric"].get(i) for i in self.instance_id_keys]))
+            # 应用实例范围过滤
+            if self.instances_map and instance_id not in self.instances_map:
+                continue
+            pre_alert_data_map[instance_id] = metric_info
+
+        create_snapshots = []
+
+        # 为每个新告警创建告警前快照
+        for alert in new_alerts:
+            instance_id = alert.monitor_instance_id
+            raw_data = pre_alert_data_map.get(instance_id, {})
+
+            create_snapshots.append(
+                MonitorAlertMetricSnapshot(
+                    alert_id=alert.id,
+                    event=None,  # 告警前快照不关联具体事件
+                    policy_id=self.policy.id,
+                    monitor_instance_id=instance_id,
+                    snapshot_time=pre_alert_time,  # 使用告警前的时间点
+                    raw_data=[raw_data] if raw_data else [],  # 保持与正常快照相同的格式：转换为列表
+                )
+            )
+
+        if create_snapshots:
+            MonitorAlertMetricSnapshot.objects.bulk_create(create_snapshots, batch_size=DatabaseConstants.BULK_CREATE_BATCH_SIZE)
+            logger.info(f"Created {len(create_snapshots)} pre-alert snapshots for policy {self.policy.id}")
+
     def run(self):
         """运行"""
         # 存在source范围并且没有实例，不进行计算
@@ -468,34 +658,40 @@ class MonitorPolicyScan:
             return
 
         self.set_monitor_obj_instance_key()
+        event_objs = []  # 初始化事件对象列表
+        new_alerts = []  # 初始化新告警列表
+        alert_events, info_events, no_data_events = [], [], []  # 初始化事件数据
 
-        if THRESHOLD in self.policy.enable_alerts:
+        if AlertConstants.THRESHOLD in self.policy.enable_alerts:
             # 告警事件
             alert_events, info_events = self.alert_event()
             # 正常、异常事件计数
             self.count_events(alert_events, info_events)
             # 告警恢复
             self.recovery_alert()
-        else:
-            alert_events = []
 
-        if NO_DATA in self.policy.enable_alerts:
+        if AlertConstants.NO_DATA in self.policy.enable_alerts:
             # 无数据事件
             no_data_events = self.no_data_event()
             # 无数据告警恢复
             self.recovery_no_data_alert()
-        else:
-            no_data_events = []
 
         events = alert_events + no_data_events
 
-        if not events:
-            return
+        if events:
+            # 告警事件记录
+            event_objs = self.create_events(events)
+            new_alerts = self.handle_alert_events(event_objs)
 
-        # 告警事件记录
-        event_objs = self.create_events(events)
-        self.handle_alert_events(event_objs)
+            # 事件通知
+            if self.policy.notice:
+                self.notice(event_objs)
 
-        # 事件通知
-        if self.policy.notice:
-            self.notice(event_objs)
+        self.create_metric_snapshots_for_active_alerts(
+            info_events=info_events,
+            event_objs=event_objs,
+            new_alerts=new_alerts
+        )
+
+        # 创建新告警的告警前快照
+        self.create_pre_alert_snapshots(new_alerts)

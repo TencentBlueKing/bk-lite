@@ -9,7 +9,6 @@
   "dependencies": {
     "@ant-design/icons": "^5.5.1",
     "@antv/x6": "^2.18.1",
-    "@antv/x6-react-shape": "^2.2.3",
     "@antv/xflow": "^2.2.4",
     "@dnd-kit/core": "^6.2.0",
     "@dnd-kit/modifiers": "^8.0.0",

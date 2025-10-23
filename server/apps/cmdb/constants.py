@@ -3,10 +3,12 @@ import os
 
 from enum import Enum
 
+
 class BaseEnum(str, Enum):
     """
     枚举基类
     """
+
     def __new__(cls, value, chinese):
         obj = str.__new__(cls, value)
         obj._value_ = value
@@ -119,7 +121,7 @@ CREATE_MODEL_CHECK_ATTR = dict(
 UPDATE_MODEL_CHECK_ATTR_MAP = dict(
     is_only={"model_name": "模型名称"},
     is_required={"model_name": "模型名称"},
-    editable={"model_name": "模型名称", "classification_id": "模型分类ID", "icn": "图标"},
+    editable={"model_name": "模型名称", "classification_id": "模型分类ID", "icn": "图标", "group": "组织"},
 )
 
 # 需要进行类型转换的数据类型
@@ -145,6 +147,17 @@ SUBORDINATE_MODEL = "subordinate_model"
 
 # 加密的属性列表
 ENCRYPTED_KEY = {"password", "secret_key", "encryption_key"}
+
+ATTR_TYPE_MAP = {
+    "str": "字符串",
+    "int": "整数",
+    "enum": "枚举",
+    "time": "时间",
+    "user": " 用户",
+    "pwd": "密码",
+    "bool": "布尔",
+    "organization": "组织"
+}
 
 # ===================
 
@@ -340,3 +353,4 @@ PERMISSION_TASK = "task"  # 采集任务
 PERMISSION_MODEL = "model"  # 模型
 OPERATE = "Operate"
 VIEW = "View"
+APP_NAME = "cmdb"

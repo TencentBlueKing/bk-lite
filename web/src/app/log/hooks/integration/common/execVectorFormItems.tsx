@@ -20,10 +20,7 @@ const useExecVectorFormItems = () => {
               },
             ]}
           >
-            <Input
-              className="w-[300px] mr-[10px]"
-              disabled={disabledFormItems.command}
-            />
+            <Input disabled={disabledFormItems.command} />
           </Form.Item>
         </>
       );

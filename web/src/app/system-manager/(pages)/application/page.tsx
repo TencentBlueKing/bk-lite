@@ -74,6 +74,8 @@ const ApplicationPage = () => {
   const handleCardClick = (item: any) => {
     if (item.is_build_in) {
       router.push(`/system-manager/application/manage?id=${item.id}&clientId=${item.name}`);
+    } else {
+      message.warning(t('system.application.builtinAppClickTip'));
     }
   };
 

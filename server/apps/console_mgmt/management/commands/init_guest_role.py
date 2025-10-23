@@ -25,6 +25,6 @@ class Command(BaseCommand):
         ocr_model = provider_res["data"]["ocr_model"]
         res = sys_client.create_default_rule(llm_model, ocr_model, embed_model, rerank_model)
         if not res["result"]:
-            logger.error(f"Failed to create default rule: {res['message']}")
+            logger.error(f"Failed to create default rule: {res.get('message', '')}")
         else:
             logger.info("Guest role initialized successfully.")

@@ -136,7 +136,6 @@ const BaseTaskForm = forwardRef<BaseTaskRef, BaseTaskFormProps>(
       items: NETWORK_DEVICE_OPTIONS,
     };
 
-    const isHost = nodeId === 'host_manage';
     const isCommonSelectInstNode = [
       'databases',
       'cloud',
@@ -482,7 +481,7 @@ const BaseTaskForm = forwardRef<BaseTaskRef, BaseTaskFormProps>(
                 nodeId
               ) && (
               <>
-                {!isHost && (
+                {(
                   <Radio.Group
                     value={collectionType}
                     className="ml-8 mb-6"
@@ -493,7 +492,7 @@ const BaseTaskForm = forwardRef<BaseTaskRef, BaseTaskFormProps>(
                   </Radio.Group>
                 )}
 
-                {collectionType === 'ip' && !isHost ? (
+                {collectionType === 'ip' ? (
                   <>
                     {/* IP范围 */}
                     <Form.Item

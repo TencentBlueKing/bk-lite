@@ -82,7 +82,7 @@ const SkillPage: React.FC = () => {
       />
       <OperateModal
         width={850}
-        title="Select a Template"
+        title={t('skill.selectTemplate')}
         visible={isTemplateModalVisible}
         onCancel={() => !submitting && setIsTemplateModalVisible(false)}
         footer={null}

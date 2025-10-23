@@ -2,14 +2,16 @@ import React from 'react';
 import { Button, Tooltip } from 'antd';
 import { useTranslation } from '@/utils/i18n';
 import { ToolbarProps } from '@/app/ops-analysis/types/topology';
+import TimeSelector from '@/components/time-selector';
 import {
   ZoomInOutlined,
   ZoomOutOutlined,
   FullscreenOutlined,
   DeleteOutlined,
   SelectOutlined,
-  FontSizeOutlined,
   EditOutlined,
+  UndoOutlined,
+  RedoOutlined,
 } from '@ant-design/icons';
 
 const TopologyToolbar: React.FC<ToolbarProps> = ({
@@ -23,7 +25,12 @@ const TopologyToolbar: React.FC<ToolbarProps> = ({
   onFit,
   onDelete,
   onSelectMode,
-  onAddText,
+  onUndo,
+  onRedo,
+  canUndo = false,
+  canRedo = false,
+  onRefresh,
+  onFrequencyChange,
 }) => {
   const { t } = useTranslation();
 
@@ -45,6 +52,17 @@ const TopologyToolbar: React.FC<ToolbarProps> = ({
 
       {/* 右侧：工具栏 */}
       <div className="flex items-center space-x-1 rounded-lg p-2">
+        {/* 刷新控件 */}
+        {onRefresh && onFrequencyChange && (
+          <div className="mr-2">
+            <TimeSelector
+              onlyRefresh={true}
+              onRefresh={onRefresh}
+              onFrequenceChange={onFrequencyChange}
+            />
+          </div>
+        )}
+
         <Tooltip title={t('topology.zoomIn')}>
           <Button
             type="text"
@@ -69,11 +87,20 @@ const TopologyToolbar: React.FC<ToolbarProps> = ({
 
         {isEditMode && (
           <>
-            <Tooltip title={t('topology.addText')}>
+            <Tooltip title={t('topology.undo')}>
               <Button
                 type="text"
-                icon={<FontSizeOutlined style={{ fontSize: 16 }} />}
-                onClick={onAddText}
+                icon={<UndoOutlined style={{ fontSize: 16 }} />}
+                onClick={onUndo}
+                disabled={!canUndo}
+              />
+            </Tooltip>
+            <Tooltip title={t('topology.redo')}>
+              <Button
+                type="text"
+                icon={<RedoOutlined style={{ fontSize: 16 }} />}
+                onClick={onRedo}
+                disabled={!canRedo}
               />
             </Tooltip>
             <Tooltip title={t('topology.selectMode')}>

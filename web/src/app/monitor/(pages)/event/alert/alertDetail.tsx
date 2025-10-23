@@ -6,6 +6,7 @@ import React, {
   useImperativeHandle,
   useEffect,
   useRef,
+  useMemo,
 } from 'react';
 import { Button, Tag, Tabs, Spin, Timeline } from 'antd';
 import OperateModal from '@/app/monitor/components/operate-drawer';
@@ -18,28 +19,25 @@ import {
   ChartData,
   Pagination,
   TimeLineItem,
+  MetricItem,
 } from '@/app/monitor/types';
-import { SearchParams } from '@/app/monitor/types/monitor';
+import { HeatMapDataItem } from '@/types';
 import { AlertOutlined } from '@ant-design/icons';
 import { useLocalizedTime } from '@/hooks/useLocalizedTime';
 import { useAlertDetailTabs } from '@/app/monitor/hooks/event';
-import  useMonitorApi from '@/app/monitor/api/index'
+import { useLevelList, useStateMap } from '@/app/monitor/hooks';
+import useMonitorApi from '@/app/monitor/api';
+import useEventApi from '@/app/monitor/api/event';
 import Information from './information';
-import {
-  getEnumValueUnit,
-  mergeViewQueryKeyValues,
-  renderChart,
-} from '@/app/monitor/utils/common';
-import {
-  LEVEL_MAP,
-  useLevelList,
-  useStateMap,
-} from '@/app/monitor/constants/monitor';
+import EventHeatMap from '@/components/heat-map';
+import { getEnumValueUnit, renderChart } from '@/app/monitor/utils/common';
+import { LEVEL_MAP } from '@/app/monitor/constants';
 
 const AlertDetail = forwardRef<ModalRef, ModalConfig>(
-  ({ objects, metrics, userList, onSuccess }, ref) => {
+  ({ objects, userList, onSuccess, objectId }, ref) => {
     const { t } = useTranslation();
-    const { getMonitorEventDetail, getInstanceQuery, getEventRaw } = useMonitorApi();
+    const { getMonitorMetrics } = useMonitorApi();
+    const { getMonitorEventDetail, getEventRaw, getSnapshot } = useEventApi();
     const { convertToLocalizedTime } = useLocalizedTime();
     const STATE_MAP = useStateMap();
     const LEVEL_LIST = useLevelList();
@@ -56,9 +54,11 @@ const AlertDetail = forwardRef<ModalRef, ModalConfig>(
       pageSize: 100,
     });
     const [tableLoading, setTableLoading] = useState<boolean>(false);
-    const isInformation = activeTab === 'information';
+    const [eventChartLoading, setEventChartLoading] = useState<boolean>(false);
+    const [pageLoading, setPageLoading] = useState<boolean>(false);
     const tabs: TabItem[] = useAlertDetailTabs();
     const [timeLineData, setTimeLineData] = useState<TimeLineItem[]>([]);
+    const [eventData, setEventData] = useState<HeatMapDataItem[]>([]);
     const timelineRef = useRef<HTMLDivElement>(null); // 用于引用 Timeline 容器
     const isFetchingRef = useRef<boolean>(false); // 用于标记是否正在加载数据
 
@@ -66,29 +66,17 @@ const AlertDetail = forwardRef<ModalRef, ModalConfig>(
       showModal: ({ title, form }) => {
         setGroupVisible(true);
         setTitle(title);
-        setFormData(form);
+        getMetrics(form, objectId);
+        if (form.id) {
+          getEventData(form.id);
+        }
       },
     }));
 
-    useEffect(() => {
-      if (groupVisible) {
-        if (isInformation) {
-          if (formData.policy?.query_condition?.type === 'pmq') {
-            getRawData();
-            return;
-          }
-          getChartData();
-          return;
-        }
-        getTableData();
-      }
-    }, [formData, groupVisible, activeTab]);
-
-    useEffect(() => {
-      if (formData?.id) {
-        getTableData();
-      }
-    }, [pagination.current, pagination.pageSize]);
+    const isInformation = useMemo(
+      () => activeTab === 'information',
+      [activeTab]
+    );
 
     useEffect(() => {
       // 当分页加载完成后，重置 isFetchingRef 标志位
@@ -97,40 +85,36 @@ const AlertDetail = forwardRef<ModalRef, ModalConfig>(
       }
     }, [tableLoading]);
 
-    const getParams = () => {
-      const _query: string = formData.metric?.query || '';
-      const ids = formData.metric?.instance_id_keys || [];
-      const params: SearchParams = {
-        query: _query.replace(
-          /__\$labels__/g,
-          mergeViewQueryKeyValues([
-            { keys: ids || [], values: formData.instance_id_values },
-          ])
-        ),
-      };
-      const startTime = new Date(formData.start_event_time).getTime();
-      const endTime = formData.end_event_time
-        ? new Date(formData.end_event_time).getTime()
-        : new Date().getTime();
-      const MAX_POINTS = 100; // 最大数据点数
-      const DEFAULT_STEP = 360; // 默认步长
-      if (startTime && endTime) {
-        params.start = startTime;
-        params.end = endTime;
-        params.step = Math.max(
-          Math.ceil(
-            (params.end / MAX_POINTS - params.start / MAX_POINTS) / DEFAULT_STEP
-          ),
-          1
-        );
+    const getMetrics = async (row: TableDataItem, id: React.Key) => {
+      setPageLoading(true);
+      try {
+        const data = await getMonitorMetrics({ monitor_object_id: id });
+        const metricInfo =
+          data.find(
+            (item: MetricItem) =>
+              item.id === row.policy?.query_condition?.metric_id
+          ) || {};
+        const form: TableDataItem = {
+          ...row,
+          metric: metricInfo,
+          alertValue: getEnumValueUnit(metricInfo as MetricItem, row.value),
+        };
+        setFormData(form);
+        if (form.policy?.query_condition?.type === 'pmq') {
+          getRawData(form);
+          return;
+        }
+        getChartData(form);
+      } finally {
+        setPageLoading(false);
       }
-      return params;
     };
 
-    const getTableData = async () => {
+    const getTableData = async (customPage?: number) => {
       setTableLoading(true);
+      const currentPage = customPage || pagination.current;
       const params = {
-        page: pagination.current,
+        page: currentPage,
         page_size: pagination.pageSize,
       };
       try {
@@ -161,45 +145,80 @@ const AlertDetail = forwardRef<ModalRef, ModalConfig>(
       }
     };
 
-    const getChartData = async () => {
+    const getChartData = async (form: TableDataItem = formData) => {
       setLoading(true);
       try {
-        const responseData = await getInstanceQuery(getParams());
-        const data = responseData.data?.result || [];
+        const responseData = await getSnapshot({
+          id: form.id,
+          page_size: -1,
+          page: 10,
+        });
+        const data = (responseData?.results || []).reduce(
+          (pre: any, cur: any) => {
+            const values = cur.raw_data?.[0]?.values?.at(-1);
+            if (values) {
+              pre.push(values);
+            }
+            return pre;
+          },
+          []
+        );
+
         const config = [
           {
-            instance_id_values: formData.instance_id_values,
-            instance_name: formData.monitor_instance_name,
-            instance_id: formData.monitor_instance_id,
-            instance_id_keys: formData.metric?.instance_id_keys || [],
-            dimensions: formData.metric?.dimensions || [],
-            title: formData.metric?.display_name || '--',
+            instance_id_values: form.instance_id_values,
+            instance_name: form.monitor_instance_name,
+            instance_id: form.monitor_instance_id,
+            instance_id_keys: form.metric?.instance_id_keys || [],
+            dimensions: form.metric?.dimensions || [],
+            title: form.metric?.display_name || '--',
           },
         ];
-        const _chartData = renderChart(data, config);
+        const _chartData = renderChart(
+          [{ values: data, metric: form.metric }],
+          config
+        );
         setChartData(_chartData);
       } finally {
         setLoading(false);
       }
     };
 
-    const getRawData = async () => {
+    const getRawData = async (form: TableDataItem = formData) => {
       setLoading(true);
       try {
-        const responseData = await getEventRaw(formData.id);
+        const responseData = await getEventRaw(form.id);
         setTrapData(responseData);
       } finally {
         setLoading(false);
       }
     };
 
+    const getEventData = async (formId?: string | number) => {
+      if (!formId) return;
+      setEventChartLoading(true);
+      try {
+        const _data = await getMonitorEventDetail(formId, {
+          page: 1,
+          page_size: -1,
+        });
+        setEventData(_data.results || []);
+      } catch {
+        setEventData([]);
+      } finally {
+        setEventChartLoading(false);
+      }
+    };
+
     const loadMore = () => {
       if (pagination.current * pagination.pageSize < pagination.total) {
         isFetchingRef.current = true; // 设置标志位，表示正在加载
+        const nextPage = pagination.current + 1;
         setPagination((prev) => ({
           ...prev,
-          current: prev.current + 1,
+          current: nextPage,
         }));
+        getTableData(nextPage);
       }
     };
 
@@ -222,6 +241,7 @@ const AlertDetail = forwardRef<ModalRef, ModalConfig>(
       setChartData([]);
       setTrapData({});
       setTimeLineData([]);
+      setEventData([]);
     };
 
     const changeTab = (val: string) => {
@@ -234,6 +254,19 @@ const AlertDetail = forwardRef<ModalRef, ModalConfig>(
       });
       setLoading(false);
       setTableLoading(false);
+      setEventChartLoading(false);
+      if (formData.id) {
+        getEventData(formData.id);
+      }
+      if (val === 'information') {
+        if (formData.policy?.query_condition?.type === 'pmq') {
+          getRawData();
+          return;
+        }
+        getChartData();
+        return;
+      }
+      getTableData();
     };
 
     const closeModal = () => {
@@ -254,7 +287,7 @@ const AlertDetail = forwardRef<ModalRef, ModalConfig>(
             </div>
           }
         >
-          <div>
+          <Spin spinning={pageLoading}>
             <div>
               <div>
                 <Tag
@@ -288,32 +321,40 @@ const AlertDetail = forwardRef<ModalRef, ModalConfig>(
               </ul>
             </div>
             <Tabs activeKey={activeTab} items={tabs} onChange={changeTab} />
-            <Spin className="w-full" spinning={loading || tableLoading}>
-              {isInformation ? (
+            {isInformation ? (
+              <Spin className="w-full" spinning={loading}>
                 <Information
                   formData={formData}
                   objects={objects}
-                  metrics={metrics}
+                  metrics={formData.metrics || {}}
                   userList={userList}
                   onClose={closeModal}
                   trapData={trapData}
                   chartData={chartData}
+                  eventData={eventData}
                 />
-              ) : (
-                <div
-                  className="pt-[10px]"
-                  style={{
-                    height: 'calc(100vh - 276px)',
-                    overflowY: 'auto',
-                  }}
-                  ref={timelineRef}
-                  onScroll={handleScroll}
-                >
-                  <Timeline items={timeLineData} />
-                </div>
-              )}
-            </Spin>
-          </div>
+              </Spin>
+            ) : (
+              <div>
+                <Spin spinning={eventChartLoading}>
+                  <EventHeatMap data={eventData} className="mb-4" />
+                </Spin>
+                <Spin spinning={tableLoading}>
+                  <div
+                    className="pt-[10px]"
+                    style={{
+                      height: 'calc(100vh - 520px)',
+                      overflowY: 'auto',
+                    }}
+                    ref={timelineRef}
+                    onScroll={handleScroll}
+                  >
+                    <Timeline items={timeLineData} />
+                  </div>
+                </Spin>
+              </div>
+            )}
+          </Spin>
         </OperateModal>
       </div>
     );

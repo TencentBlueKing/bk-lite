@@ -1,77 +1,52 @@
 'use client';
 import React, { useEffect, useState, useRef } from 'react';
-import {
-  Spin,
-  Input,
-  Button,
-  Form,
-  Select,
-  message,
-  Steps,
-  Switch,
-  Radio,
-  InputNumber,
-  Segmented,
-  Tooltip,
-} from 'antd';
+import { Spin, Button, Form, message, Steps } from 'antd';
 import useApiClient from '@/utils/request';
 import useMonitorApi from '@/app/monitor/api';
+import useEventApi from '@/app/monitor/api/event';
 import { useTranslation } from '@/utils/i18n';
 import {
   ModalRef,
-  ListItem,
   UserItem,
   SegmentedItem,
   TableDataItem,
-} from '@/app/monitor/types';
-import GroupTreeSelector from '@/components/group-tree-select';
-import {
-  StrategyFields,
-  SourceFeild,
-  MetricItem,
-  FilterItem,
-  ThresholdField,
-  PluginItem,
-  IndexViewItem,
   GroupInfo,
-  ChannelItem,
   ObjectItem,
-} from '@/app/monitor/types/monitor';
+  MetricItem,
+  IndexViewItem,
+  ThresholdField,
+  FilterItem,
+} from '@/app/monitor/types';
+import {
+  PluginItem,
+  SourceFeild,
+  StrategyFields,
+  ChannelItem,
+} from '@/app/monitor/types/event';
 import { useCommon } from '@/app/monitor/context/common';
-import { deepClone } from '@/app/monitor/utils/common';
-import { useObjectConfigInfo } from '@/app/monitor/hooks/intergration/common/getObjectConfig';
+import { useObjectConfigInfo } from '@/app/monitor/hooks/integration/common/getObjectConfig';
 import strategyStyle from '../index.module.scss';
-import { PlusOutlined, ArrowLeftOutlined } from '@ant-design/icons';
+import { ArrowLeftOutlined } from '@ant-design/icons';
 import SelectAssets from '../selectAssets';
-import SelectCards from './selectCard';
 import { useSearchParams, useRouter } from 'next/navigation';
 import { useUserInfoContext } from '@/context/userInfo';
-import {
-  useScheduleList,
-  useMethodList,
-  useLevelList,
-  SCHEDULE_UNIT_MAP,
-} from '@/app/monitor/constants/monitor';
-import ThresholdList from './thresholdList';
-import ConditionSelector from './conditionSelector';
-const { Option } = Select;
+import { cloneDeep } from 'lodash';
+import BasicInfoForm from './basicInfoForm';
+import MetricDefinitionForm from './metricDefinitionForm';
+import AlertConditionsForm from './alertConditionsForm';
+import NotificationForm from './notificationForm';
 const defaultGroup = ['instance_id'];
-const { TextArea } = Input;
 
 const StrategyOperation = () => {
   const { t } = useTranslation();
   const { post, put, isLoading } = useApiClient();
   const {
-    getSystemChannelList,
     getMetricsGroup,
     getMonitorMetrics,
     getMonitorPlugin,
-    getMonitorPolicy,
     getMonitorObject,
   } = useMonitorApi();
-  const METHOD_LIST = useMethodList();
-  const LEVEL_LIST = useLevelList();
-  const SCHEDULE_LIST = useScheduleList();
+  const { getMonitorPolicy, getSystemChannelList } = useEventApi();
   const commonContext = useCommon();
   const searchParams = useSearchParams();
   const [form] = Form.useForm();
@@ -150,11 +125,6 @@ const StrategyOperation = () => {
     }
   }, [isLoading]);
 
-  const getObjects = async () => {
-    const data = await getMonitorObject();
-    setObjects(data);
-  };
-
   useEffect(() => {
     form.resetFields();
     if (['builtIn', 'add'].includes(type)) {
@@ -191,7 +161,22 @@ const StrategyOperation = () => {
     } else {
       dealDetail(formData);
     }
-  }, [type, formData, pluginList, initMetricData, channelList]);
+  }, [type, formData, pluginList, channelList]);
+
+  useEffect(() => {
+    if (
+      initMetricData.length > 0 &&
+      formData &&
+      !['builtIn', 'add'].includes(type)
+    ) {
+      processMetricData(formData);
+    }
+  }, [initMetricData]);
+
+  const getObjects = async () => {
+    const data = await getMonitorObject();
+    setObjects(data);
+  };
 
   const changeCollectType = (id: string) => {
     getMetrics({
@@ -246,15 +231,6 @@ const StrategyOperation = () => {
       period: period?.value || null,
       query: query_condition?.query || null,
     });
-    if (query_condition?.type === 'metric') {
-      const _metrics = initMetricData.find(
-        (item) => item.id === query_condition?.metric_id
-      );
-      const _labels = (_metrics?.dimensions || []).map((item) => item.name);
-      setMetric(_metrics?.name || '');
-      setLabels(_labels);
-      setConditions(query_condition?.filter || []);
-    }
     setGroupBy(group_by || []);
     feedbackThreshold(thresholdList);
     if (source?.type) {
@@ -274,8 +250,23 @@ const StrategyOperation = () => {
     setEnableAlerts(enable_alerts?.length ? enable_alerts : ['threshold']);
   };
 
+  const processMetricData = (data: StrategyFields) => {
+    const { query_condition } = data;
+    if (query_condition?.type === 'metric' && initMetricData.length > 0) {
+      const _metrics = initMetricData.find(
+        (item) => item.id === query_condition?.metric_id
+      );
+      if (_metrics) {
+        const _labels = (_metrics?.dimensions || []).map((item) => item.name);
+        setMetric(_metrics?.name || '');
+        setLabels(_labels);
+        setConditions(query_condition?.filter || []);
+      }
+    }
+  };
+
   const feedbackThreshold = (data: TableDataItem) => {
-    const _threshold = deepClone(threshold);
+    const _threshold = cloneDeep(threshold);
     _threshold.forEach((item: ThresholdField) => {
       const target = data.find(
         (tex: TableDataItem) => tex.level === item.level
@@ -300,61 +291,6 @@ const StrategyOperation = () => {
     });
   };
 
-  const validateAssets = async () => {
-    if (!source.values.length) {
-      return Promise.reject(new Error(t('monitor.assetValidate')));
-    }
-    return Promise.resolve();
-  };
-
-  const validateMetric = async () => {
-    if (!metric) {
-      return Promise.reject(new Error(t('monitor.events.metricValidate')));
-    }
-    if (
-      conditions.length &&
-      conditions.some((item) => {
-        return Object.values(item).some((tex) => !tex);
-      })
-    ) {
-      return Promise.reject(new Error(t('monitor.events.conditionValidate')));
-    }
-    return Promise.resolve();
-  };
-
-  const validateThreshold = async () => {
-    if (!enableAlerts.length) {
-      return Promise.reject(new Error(t('common.required')));
-    }
-    if (
-      enableAlerts.includes('threshold') &&
-      threshold.length &&
-      (threshold.some((item) => {
-        return !item.method;
-      }) ||
-        !threshold.some((item) => {
-          return !!item.value || item.value === 0;
-        }))
-    ) {
-      return Promise.reject(new Error(t('monitor.events.conditionValidate')));
-    }
-    return Promise.resolve();
-  };
-
-  const validateNoDataAlert = async () => {
-    if (!noDataAlert || !nodataUnit) {
-      return Promise.reject(new Error(t('common.required')));
-    }
-    return Promise.resolve();
-  };
-
-  const validateNoDataRecoveryAlert = async () => {
-    if (!noDataRecovery || !noDataRecoveryUnit) {
-      return Promise.reject(new Error(t('common.required')));
-    }
-    return Promise.resolve();
-  };
-
   const onChooseAssets = (assets: SourceFeild) => {
     setSource(assets);
   };
@@ -373,7 +309,7 @@ const StrategyOperation = () => {
       const getMetrics = getMonitorMetrics(params);
       Promise.all([getGroupList, getMetrics])
         .then((res) => {
-          const metricData = deepClone(res[1] || []);
+          const metricData = cloneDeep(res[1] || []);
           setMetrics(res[1] || []);
           const groupData = res[0].map((item: GroupInfo) => ({
             ...item,
@@ -455,9 +391,14 @@ const StrategyOperation = () => {
     router.push(targetUrl);
   };
 
+  const linkToSystemManage = () => {
+    const url = '/system-manager/channel';
+    window.open(url, '_blank', 'noopener,noreferrer');
+  };
+
   const createStrategy = () => {
     form?.validateFields().then((values) => {
-      const params = deepClone(values);
+      const params = cloneDeep(values);
       const target: any = pluginList.find(
         (item) => item.value === params.collect_type
       );
@@ -569,637 +510,67 @@ const StrategyOperation = () => {
               items={[
                 {
                   title: t('monitor.events.basicInformation'),
-                  description: (
-                    <>
-                      <Form.Item<StrategyFields>
-                        label={
-                          <span className="w-[100px]">
-                            {t('monitor.events.strategyName')}
-                          </span>
-                        }
-                        name="name"
-                        rules={[
-                          { required: true, message: t('common.required') },
-                        ]}
-                      >
-                        <Input
-                          placeholder={t('monitor.events.strategyName')}
-                          className="w-[800px]"
-                        />
-                      </Form.Item>
-                      <Form.Item<StrategyFields>
-                        required
-                        label={
-                          <span className="w-[100px]">
-                            {t('monitor.events.alertName')}
-                          </span>
-                        }
-                      >
-                        <Form.Item
-                          name="alert_name"
-                          noStyle
-                          rules={[
-                            {
-                              required: true,
-                              message: t('common.required'),
-                            },
-                          ]}
-                        >
-                          <Input
-                            placeholder={t('monitor.events.alertName')}
-                            className="w-[800px]"
-                          />
-                        </Form.Item>
-                        <div className="text-[var(--color-text-3)] mt-[10px]">
-                          {t('monitor.events.alertNameTitle')}
-                        </div>
-                      </Form.Item>
-                      <Form.Item<StrategyFields>
-                        label={
-                          <span className="w-[100px]">
-                            {t('monitor.group')}
-                          </span>
-                        }
-                        name="organizations"
-                        rules={[
-                          { required: true, message: t('common.required') },
-                        ]}
-                      >
-                        <GroupTreeSelector
-                          style={{
-                            width: '800px',
-                            marginRight: '8px',
-                          }}
-                          placeholder={t('common.group')}
-                        />
-                      </Form.Item>
-                    </>
-                  ),
+                  description: <BasicInfoForm />,
                   status: 'process',
                 },
                 {
                   title: t('monitor.events.defineTheMetric'),
                   description: (
-                    <>
-                      <Form.Item
-                        className={strategyStyle.clusterLabel}
-                        name="collect_type"
-                        label={<span className={strategyStyle.label}></span>}
-                        rules={[
-                          { required: true, message: t('common.required') },
-                        ]}
-                      >
-                        <Segmented
-                          className="custom-tabs"
-                          options={pluginList}
-                          onChange={changeCollectType}
-                        />
-                      </Form.Item>
-                      <Form.Item
-                        noStyle
-                        shouldUpdate={(prevValues, currentValues) =>
-                          prevValues.collect_type !== currentValues.collect_type
-                        }
-                      >
-                        {({ getFieldValue }) =>
-                          isTrap(getFieldValue) ? (
-                            <Form.Item<StrategyFields>
-                              label={<span className="w-[100px]">PromQL</span>}
-                              name="query"
-                              rules={[
-                                {
-                                  required: true,
-                                  message: t('common.required'),
-                                },
-                              ]}
-                            >
-                              <TextArea
-                                placeholder={t(
-                                  'monitor.events.promQLPlaceholder'
-                                )}
-                                className="w-[800px]"
-                                allowClear
-                                rows={4}
-                              />
-                            </Form.Item>
-                          ) : (
-                            <>
-                              <Form.Item<StrategyFields>
-                                label={
-                                  <span className="w-[100px]">
-                                    {t('monitor.source')}
-                                  </span>
-                                }
-                                name="source"
-                                rules={[
-                                  { required: true, validator: validateAssets },
-                                ]}
-                              >
-                                <div>
-                                  <div className="flex">
-                                    {t('common.select')}
-                                    <span className="text-[var(--color-primary)] px-[4px]">
-                                      {source.values.length}
-                                    </span>
-                                    {t('monitor.assets')}
-                                    <Button
-                                      className="ml-[10px]"
-                                      icon={<PlusOutlined />}
-                                      size="small"
-                                      onClick={openInstModal}
-                                    ></Button>
-                                  </div>
-                                  <div className="text-[var(--color-text-3)] mt-[10px]">
-                                    {t('monitor.events.setAssets')}
-                                  </div>
-                                </div>
-                              </Form.Item>
-                              <Form.Item<StrategyFields>
-                                name="metric"
-                                label={
-                                  <span className="w-[100px]">
-                                    {t('monitor.metric')}
-                                  </span>
-                                }
-                                rules={[
-                                  { validator: validateMetric, required: true },
-                                ]}
-                              >
-                                <ConditionSelector
-                                  data={{
-                                    metric,
-                                    filters: conditions,
-                                    group: groupBy,
-                                  }}
-                                  metricData={originMetricData}
-                                  labels={labels}
-                                  loading={metricsLoading}
-                                  monitorName={monitorName as string}
-                                  onMetricChange={handleMetricChange}
-                                  onFiltersChange={setConditions}
-                                  onGroupChange={handleGroupByChange}
-                                />
-                                <div className="text-[var(--color-text-3)]">
-                                  {t('monitor.events.setDimensions')}
-                                </div>
-                              </Form.Item>
-                            </>
-                          )
-                        }
-                      </Form.Item>
-                      <Form.Item
-                        noStyle
-                        shouldUpdate={(prevValues, currentValues) =>
-                          prevValues.collect_type !== currentValues.collect_type
-                        }
-                      >
-                        {({ getFieldValue }) =>
-                          isTrap(getFieldValue) ? null : (
-                            <Form.Item<StrategyFields>
-                              required
-                              label={
-                                <span className="w-[100px]">
-                                  {t('monitor.events.method')}
-                                </span>
-                              }
-                            >
-                              <Form.Item
-                                name="algorithm"
-                                noStyle
-                                rules={[
-                                  {
-                                    required: true,
-                                    message: t('common.required'),
-                                  },
-                                ]}
-                              >
-                                <Select
-                                  style={{
-                                    width: '300px',
-                                  }}
-                                  placeholder={t('monitor.events.method')}
-                                  showSearch
-                                >
-                                  {METHOD_LIST.map((item: ListItem) => (
-                                    <Option value={item.value} key={item.value}>
-                                      <Tooltip
-                                        overlayInnerStyle={{
-                                          whiteSpace: 'pre-line',
-                                          color: 'var(--color-text-1)',
-                                        }}
-                                        placement="rightTop"
-                                        arrow={false}
-                                        color="var(--color-bg-1)"
-                                        title={item.title}
-                                      >
-                                        <span className="w-full flex">
-                                          {item.label}
-                                        </span>
-                                      </Tooltip>
-                                    </Option>
-                                  ))}
-                                </Select>
-                              </Form.Item>
-                              <div className="text-[var(--color-text-3)] mt-[10px]">
-                                {t('monitor.events.setMethod')}
-                              </div>
-                            </Form.Item>
-                          )
-                        }
-                      </Form.Item>
-                      <Form.Item<StrategyFields>
-                        required
-                        label={
-                          <span className="w-[100px]">
-                            {t('monitor.events.frequency')}
-                          </span>
-                        }
-                      >
-                        <Form.Item
-                          name="schedule"
-                          noStyle
-                          rules={[
-                            {
-                              required: true,
-                              message: t('common.required'),
-                            },
-                          ]}
-                        >
-                          <InputNumber
-                            min={SCHEDULE_UNIT_MAP[`${unit}Min`]}
-                            max={SCHEDULE_UNIT_MAP[`${unit}Max`]}
-                            precision={0}
-                            addonAfter={
-                              <Select
-                                value={unit}
-                                style={{ width: 120 }}
-                                onChange={handleUnitChange}
-                              >
-                                {SCHEDULE_LIST.map((item) => (
-                                  <Option key={item.value} value={item.value}>
-                                    {item.label}
-                                  </Option>
-                                ))}
-                              </Select>
-                            }
-                          />
-                        </Form.Item>
-                        <div className="text-[var(--color-text-3)] mt-[10px]">
-                          {t('monitor.events.setFrequency')}
-                        </div>
-                      </Form.Item>
-                      <Form.Item<StrategyFields>
-                        required
-                        label={
-                          <span className="w-[100px]">
-                            {t('monitor.events.period')}
-                          </span>
-                        }
-                      >
-                        <Form.Item
-                          name="period"
-                          noStyle
-                          rules={[
-                            {
-                              required: true,
-                              message: t('common.required'),
-                            },
-                          ]}
-                        >
-                          <InputNumber
-                            min={SCHEDULE_UNIT_MAP[`${periodUnit}Min`]}
-                            max={SCHEDULE_UNIT_MAP[`${periodUnit}Max`]}
-                            precision={0}
-                            addonAfter={
-                              <Select
-                                value={periodUnit}
-                                style={{ width: 120 }}
-                                onChange={handlePeriodUnitChange}
-                              >
-                                {SCHEDULE_LIST.map((item) => (
-                                  <Option key={item.value} value={item.value}>
-                                    {item.label}
-                                  </Option>
-                                ))}
-                              </Select>
-                            }
-                          />
-                        </Form.Item>
-                        <div className="text-[var(--color-text-3)] mt-[10px]">
-                          {t('monitor.events.setPeriod')}
-                        </div>
-                      </Form.Item>
-                    </>
+                    <MetricDefinitionForm
+                      pluginList={pluginList}
+                      source={source}
+                      metric={metric}
+                      metricsLoading={metricsLoading}
+                      labels={labels}
+                      conditions={conditions}
+                      groupBy={groupBy}
+                      unit={unit}
+                      periodUnit={periodUnit}
+                      originMetricData={originMetricData}
+                      monitorName={monitorName as string}
+                      onCollectTypeChange={changeCollectType}
+                      onOpenInstModal={openInstModal}
+                      onMetricChange={handleMetricChange}
+                      onFiltersChange={setConditions}
+                      onGroupChange={handleGroupByChange}
+                      onUnitChange={handleUnitChange}
+                      onPeriodUnitChange={handlePeriodUnitChange}
+                      isTrap={isTrap}
+                    />
                   ),
                   status: 'process',
                 },
                 {
                   title: t('monitor.events.setAlertConditions'),
                   description: (
-                    <>
-                      <Form.Item<StrategyFields>
-                        name="threshold"
-                        label={
-                          <span className="w-[100px]">
-                            {t('monitor.events.algorithm')}
-                          </span>
-                        }
-                        rules={[
-                          { validator: validateThreshold, required: true },
-                        ]}
-                      >
-                        <SelectCards
-                          value={enableAlerts}
-                          onChange={(val) => setEnableAlerts(val)}
-                          data={[
-                            {
-                              value: 'threshold',
-                              icon: 'yuzhiguanli',
-                              title: t('monitor.events.threshold'),
-                              content: t('monitor.events.setThreshold'),
-                            },
-                            {
-                              value: 'no_data',
-                              icon: 'yuzhiguanli',
-                              title: t('monitor.events.nodata'),
-                              content: t('monitor.events.setThreshold'),
-                            },
-                          ]}
-                        />
-                        <div>
-                          {enableAlerts.includes('threshold') && (
-                            <ThresholdList
-                              data={threshold}
-                              onChange={handleThresholdChange}
-                            />
-                          )}
-                        </div>
-                      </Form.Item>
-                      <Form.Item
-                        noStyle
-                        shouldUpdate={(prevValues, currentValues) =>
-                          prevValues.collect_type !== currentValues.collect_type
-                        }
-                      >
-                        {({ getFieldValue }) =>
-                          isTrap(getFieldValue) ? null : (
-                            <>
-                              {enableAlerts.includes('threshold') && (
-                                <Form.Item<StrategyFields>
-                                  label={
-                                    <span className="w-[100px]">
-                                      {t('monitor.events.recovery')}
-                                    </span>
-                                  }
-                                >
-                                  {t('monitor.events.recoveryCondition')}
-                                  <Form.Item
-                                    name="recovery_condition"
-                                    noStyle
-                                    rules={[
-                                      {
-                                        required: false,
-                                        message: t('common.required'),
-                                      },
-                                    ]}
-                                  >
-                                    <InputNumber
-                                      className="mx-[10px] w-[100px]"
-                                      min={1}
-                                      precision={0}
-                                    />
-                                  </Form.Item>
-                                  {t('monitor.events.consecutivePeriods')}
-                                  <div className="text-[var(--color-text-3)] mt-[10px]">
-                                    {t('monitor.events.setRecovery')}
-                                  </div>
-                                </Form.Item>
-                              )}
-                              {enableAlerts.includes('no_data') && (
-                                <>
-                                  <Form.Item<StrategyFields>
-                                    name="no_data_period"
-                                    label={
-                                      <span className="w-[100px]">
-                                        {t('monitor.intergrations.condition')}
-                                      </span>
-                                    }
-                                    rules={[
-                                      {
-                                        required: true,
-                                        validator: validateNoDataAlert,
-                                      },
-                                    ]}
-                                  >
-                                    <div className="flex items-center">
-                                      {t('monitor.events.reportedFor')}
-                                      <InputNumber
-                                        className="mx-[10px]"
-                                        min={
-                                          SCHEDULE_UNIT_MAP[`${nodataUnit}Min`]
-                                        }
-                                        max={
-                                          SCHEDULE_UNIT_MAP[`${nodataUnit}Max`]
-                                        }
-                                        value={noDataAlert}
-                                        precision={0}
-                                        addonAfter={
-                                          <Select
-                                            value={nodataUnit}
-                                            style={{ width: 120 }}
-                                            onChange={handleNodataUnitChange}
-                                          >
-                                            {SCHEDULE_LIST.map((item) => (
-                                              <Option
-                                                key={item.value}
-                                                value={item.value}
-                                              >
-                                                {item.label}
-                                              </Option>
-                                            ))}
-                                          </Select>
-                                        }
-                                        onChange={handleNoDataAlertChange}
-                                      />
-                                      {t('monitor.events.nodataPeriods')}
-                                    </div>
-                                  </Form.Item>
-                                  <Form.Item<StrategyFields>
-                                    name="no_data_level"
-                                    label={
-                                      <span className="w-[100px]">
-                                        {t('monitor.events.alarmLevel')}
-                                      </span>
-                                    }
-                                    rules={[
-                                      {
-                                        required: true,
-                                        message: t('common.required'),
-                                      },
-                                    ]}
-                                  >
-                                    <Select
-                                      style={{
-                                        width: '100px',
-                                      }}
-                                      placeholder={t('monitor.events.level')}
-                                    >
-                                      {LEVEL_LIST.map((item: ListItem) => (
-                                        <Option
-                                          value={item.value}
-                                          key={item.value}
-                                        >
-                                          {item.label}
-                                        </Option>
-                                      ))}
-                                    </Select>
-                                  </Form.Item>
-                                  <Form.Item<StrategyFields>
-                                    name="no_data_recovery_period"
-                                    label={
-                                      <span className="w-[100px]">
-                                        {t('monitor.events.noDataRecovery')}
-                                      </span>
-                                    }
-                                    rules={[
-                                      {
-                                        required: true,
-                                        validator: validateNoDataRecoveryAlert,
-                                      },
-                                    ]}
-                                  >
-                                    <div className="flex items-center">
-                                      {t(
-                                        'monitor.events.nodataRecoverCondition'
-                                      )}
-                                      <InputNumber
-                                        className="mx-[10px]"
-                                        min={
-                                          SCHEDULE_UNIT_MAP[
-                                            `${noDataRecoveryUnit}Min`
-                                          ]
-                                        }
-                                        max={
-                                          SCHEDULE_UNIT_MAP[
-                                            `${noDataRecoveryUnit}Max`
-                                          ]
-                                        }
-                                        value={noDataRecovery}
-                                        precision={0}
-                                        addonAfter={
-                                          <Select
-                                            value={noDataRecoveryUnit}
-                                            style={{ width: 120 }}
-                                            onChange={
-                                              handleNodataRecoveryUnitChange
-                                            }
-                                          >
-                                            {SCHEDULE_LIST.map((item) => (
-                                              <Option
-                                                key={item.value}
-                                                value={item.value}
-                                              >
-                                                {item.label}
-                                              </Option>
-                                            ))}
-                                          </Select>
-                                        }
-                                        onChange={handleNoDataRecoveryChange}
-                                      />
-                                      {t('monitor.events.nodataRecover')}
-                                    </div>
-                                  </Form.Item>
-                                </>
-                              )}
-                            </>
-                          )
-                        }
-                      </Form.Item>
-                    </>
+                    <AlertConditionsForm
+                      enableAlerts={enableAlerts}
+                      threshold={threshold}
+                      noDataAlert={noDataAlert}
+                      nodataUnit={nodataUnit}
+                      noDataRecovery={noDataRecovery}
+                      noDataRecoveryUnit={noDataRecoveryUnit}
+                      onEnableAlertsChange={setEnableAlerts}
+                      onThresholdChange={handleThresholdChange}
+                      onNodataUnitChange={handleNodataUnitChange}
+                      onNoDataAlertChange={handleNoDataAlertChange}
+                      onNodataRecoveryUnitChange={
+                        handleNodataRecoveryUnitChange
+                      }
+                      onNoDataRecoveryChange={handleNoDataRecoveryChange}
+                      isTrap={isTrap}
+                    />
                   ),
                   status: 'process',
                 },
                 {
                   title: t('monitor.events.configureNotifications'),
                   description: (
-                    <>
-                      <Form.Item<StrategyFields>
-                        label={
-                          <span className="w-[100px]">
-                            {t('monitor.events.notification')}
-                          </span>
-                        }
-                        name="notice"
-                      >
-                        <Switch />
-                      </Form.Item>
-                      <Form.Item
-                        noStyle
-                        shouldUpdate={(prevValues, currentValues) =>
-                          prevValues.notice !== currentValues.notice
-                        }
-                      >
-                        {({ getFieldValue }) =>
-                          getFieldValue('notice') ? (
-                            <>
-                              <Form.Item<StrategyFields>
-                                label={
-                                  <span className="w-[100px]">
-                                    {t('monitor.events.method')}
-                                  </span>
-                                }
-                                name="notice_type_id"
-                                rules={[
-                                  {
-                                    required: true,
-                                    message: t('common.required'),
-                                  },
-                                ]}
-                              >
-                                <Radio.Group>
-                                  {channelList.map((item) => (
-                                    <Radio key={item.id} value={item.id}>
-                                      {`${item.name}（${item.channel_type}）`}
-                                    </Radio>
-                                  ))}
-                                </Radio.Group>
-                              </Form.Item>
-                              <Form.Item<StrategyFields>
-                                label={
-                                  <span className="w-[100px]">
-                                    {t('monitor.events.notifier')}
-                                  </span>
-                                }
-                                name="notice_users"
-                                rules={[
-                                  {
-                                    required: true,
-                                    message: t('common.required'),
-                                  },
-                                ]}
-                              >
-                                <Select
-                                  style={{
-                                    width: '800px',
-                                  }}
-                                  showSearch
-                                  allowClear
-                                  mode="tags"
-                                  maxTagCount="responsive"
-                                  placeholder={t('monitor.events.notifier')}
-                                >
-                                  {userList.map((item) => (
-                                    <Option value={item.id} key={item.id}>
-                                      {item.username}
-                                    </Option>
-                                  ))}
-                                </Select>
-                              </Form.Item>
-                            </>
-                          ) : null
-                        }
-                      </Form.Item>
-                    </>
+                    <NotificationForm
+                      channelList={channelList}
+                      userList={userList}
+                      onLinkToSystemManage={linkToSystemManage}
+                    />
                   ),
                   status: 'process',
                 },

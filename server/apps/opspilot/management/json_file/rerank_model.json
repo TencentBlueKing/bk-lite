@@ -1,0 +1,74 @@
+[
+    {
+    "model_type": "网易有道",
+    "model": "bce-reranker-base_v1",
+    "name": "BCE Reranker Base v1",
+    "base_url": "https://docs.siliconflow.cn/reference/creatererank4"
+  },
+  {
+    "model_type": "网易有道",
+    "model": "bce-reranker-base_v1",
+    "name": "BCE Reranker Base v1",
+    "base_url": "https://docs.siliconflow.cn/reference/creatererank4"
+  },
+  {
+    "model_type": "BAAI",
+    "model": "bge-reranker-base",
+    "name": "BGE Reranker Base",
+    "base_url": "无公开默认URL"
+  },
+  {
+    "model_type": "BAAI",
+    "model": "bge-reranker-large",
+    "name": "BGE Reranker Large",
+    "base_url": "无公开默认URL"
+  },
+  {
+    "model_type": "BAAI",
+    "model": "bge-reranker-v2-gemma",
+    "name": "BGE Reranker v2 Gemma",
+    "base_url": "无公开默认URL"
+  },
+  {
+    "model_type": "BAAI",
+    "model": "bge-reranker-v2-m3",
+    "name": "BGE Reranker v2 M3",
+    "base_url": "https://modelscope.cn/models/BAAI/bge-reranker-v2-m324"
+  },
+  {
+    "model_type": "BAAI",
+    "model": "bge-reranker-v2-minicpm-layerwise",
+    "name": "BGE Reranker v2 MiniCPM Layerwise",
+    "base_url": "无公开默认URL"
+  },
+  {
+    "model_type": "Jina AI",
+    "model": "jina-reranker-v2",
+    "name": "Jina Reranker v2",
+    "base_url": "无公开默认URL"
+  },
+  {
+    "model_type": "OpenBMB",
+    "model": "minicpm-reranker",
+    "name": "MiniCPM Reranker",
+    "base_url": "无公开默认URL"
+  },
+  {
+    "model_type": "阿里",
+    "model": "Qwen3-Reranker-0.6B",
+    "name": "Qwen3 Reranker 0.6B",
+    "base_url": "https://modelscope.cn/models/Qwen/Qwen3-Reranker-0.6B25"
+  },
+  {
+    "model_type": "阿里",
+    "model": "Qwen3-Reranker-4B",
+    "name": "Qwen3 Reranker 4B",
+    "base_url": "https://modelscope.cn/models/Qwen/Qwen3-Reranker-4B25"
+  },
+  {
+    "model_type": "阿里",
+    "model": "Qwen3-Reranker-8B",
+    "name": "Qwen3 Reranker 8B",
+    "base_url": "https://modelscope.cn/models/Qwen/Qwen3-Reranker-8B25"
+  }
+]

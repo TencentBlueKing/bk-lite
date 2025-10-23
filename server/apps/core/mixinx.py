@@ -113,3 +113,10 @@ class PeriodicTaskUtils:
             },
         )
         logger.info(f"已创建周期任务: {task_name}, 执行时间: {sync_time}")
+
+    @staticmethod
+    def delete_periodic_task(task_name):
+        from django_celery_beat.models import PeriodicTask
+
+        PeriodicTask.objects.filter(name=task_name).delete()
+        logger.info(f"已删除周期任务: {task_name}")

@@ -5,15 +5,17 @@ import dayjs, { Dayjs } from 'dayjs';
 import CustomTable from '@/components/custom-table';
 import TimeSelector from '@/components/time-selector';
 import { v4 as uuidv4 } from 'uuid';
+import { getChartTypeList } from '@/app/ops-analysis/constants/common';
 import { PlusCircleOutlined, MinusCircleOutlined } from '@ant-design/icons';
 import { useDataSourceApi } from '@/app/ops-analysis/api/dataSource';
 import { useNamespaceApi } from '@/app/ops-analysis/api/namespace';
+import { useOpsAnalysis } from '@/app/ops-analysis/context/common';
 import { useTranslation } from '@/utils/i18n';
 import {
   OperateModalProps,
   ParamItem,
 } from '@/app/ops-analysis/types/dataSource';
-import { NamespaceItem } from '@/app/ops-analysis/types/namespace';
+import { NamespaceItem, TagItem } from '@/app/ops-analysis/types/namespace';
 import {
   Drawer,
   Form,
@@ -25,6 +27,7 @@ import {
   Checkbox,
   Spin,
   message,
+  Empty,
 } from 'antd';
 
 const FormTimeSelector: React.FC<{
@@ -93,16 +96,19 @@ const OperateModal: React.FC<OperateModalProps> = ({
   const [params, setParams] = React.useState<ParamItem[]>([]);
   const [loading, setLoading] = React.useState(false);
   const [duplicateNames, setDuplicateNames] = React.useState<string[]>([]);
+  const [emptyNames, setEmptyNames] = React.useState<string[]>([]);
+  const [emptyAliases, setEmptyAliases] = React.useState<string[]>([]);
   const [namespaceList, setNamespaceList] = React.useState<NamespaceItem[]>([]);
   const [namespaceLoading, setNamespaceLoading] = React.useState(false);
+  const { tagList, tagsLoading, fetchTags } = useOpsAnalysis();
   const { createDataSource, updateDataSource } = useDataSourceApi();
   const { getNamespaceList } = useNamespaceApi();
 
   const paramTypeOptions = [
     { label: t('dataSource.paramTypes.string'), value: 'string' },
     { label: t('dataSource.paramTypes.number'), value: 'number' },
-    { label: t('dataSource.paramTypes.date'), value: 'date' },
     { label: t('dataSource.paramTypes.boolean'), value: 'boolean' },
+    { label: t('dataSource.paramTypes.date'), value: 'date' },
     { label: t('dataSource.paramTypes.timeRange'), value: 'timeRange' },
   ];
 
@@ -124,15 +130,13 @@ const OperateModal: React.FC<OperateModalProps> = ({
   const fetchNamespaces = async () => {
     try {
       setNamespaceLoading(true);
-      const data = await getNamespaceList({ page_size: -1 });
-      if (data && Array.isArray(data)) {
-        setNamespaceList(data);
-        if (!currentRow && data.length > 0) {
-          form.setFieldsValue({ namespaces: [data[0].id] });
+      const { items } = await getNamespaceList({ page: 1, page_size: 10000 });
+      if (items && Array.isArray(items)) {
+        setNamespaceList(items);
+        if (!currentRow && items.length > 0) {
+          form.setFieldsValue({ namespaces: [items[0].id] });
         }
       }
-    } catch (error) {
-      console.error('获取命名空间列表失败:', error);
     } finally {
       setNamespaceLoading(false);
     }
@@ -143,10 +147,13 @@ const OperateModal: React.FC<OperateModalProps> = ({
 
     form.resetFields();
     setDuplicateNames([]);
+    setEmptyNames([]);
+    setEmptyAliases([]);
     fetchNamespaces();
+    fetchTags();
 
     if (!currentRow) {
-      setParams([createDefaultParam()]);
+      setParams([]);
       return;
     }
 
@@ -173,7 +180,7 @@ const OperateModal: React.FC<OperateModalProps> = ({
         }))
       );
     } else {
-      setParams([createDefaultParam()]);
+      setParams([]);
     }
   }, [open, currentRow, form]);
 
@@ -197,10 +204,40 @@ const OperateModal: React.FC<OperateModalProps> = ({
     return duplicates.length === 0;
   };
 
+  const checkEmptyValues = (currentParams: ParamItem[]) => {
+    const emptyNameList: string[] = [];
+    const emptyAliasList: string[] = [];
+
+    currentParams.forEach((param) => {
+      if (!param.name || !param.name.trim()) {
+        emptyNameList.push(param.id!);
+      }
+      if (!param.alias_name || !param.alias_name.trim()) {
+        emptyAliasList.push(param.id!);
+      }
+    });
+
+    setEmptyNames(emptyNameList);
+    setEmptyAliases(emptyAliasList);
+
+    return emptyNameList.length === 0 && emptyAliasList.length === 0;
+  };
+
   const handleAliasChange = (val: string, id: string) => {
     setParams((prev: ParamItem[]) =>
       prev.map((item) => (item.id === id ? { ...item, alias_name: val } : item))
     );
+  };
+
+  const handleAliasBlur = (val: string, id: string) => {
+    const newParams = params.map((item) => {
+      if (item.id === id) {
+        return { ...item, alias_name: val.trim() };
+      }
+      return item;
+    });
+    setParams(newParams);
+    checkEmptyValues(newParams);
   };
 
   const handleDefaultChange = (val: any, id: string, type: string) => {
@@ -279,11 +316,9 @@ const OperateModal: React.FC<OperateModalProps> = ({
 
   const handleDeleteParam = (id: string) => {
     const newParams = params.filter((item) => item.id !== id);
-    if (newParams.length === 0) {
-      newParams.push(createDefaultParam());
-    }
     setParams(newParams);
     checkDuplicateNames(newParams);
+    checkEmptyValues(newParams);
   };
 
   const handleParamNameChange = (val: string, id: string) => {
@@ -292,11 +327,6 @@ const OperateModal: React.FC<OperateModalProps> = ({
         return {
           ...item,
           name: val,
-          // 如果别名为空或等于旧的参数名，则同步更新别名
-          alias_name:
-            !item.alias_name || item.alias_name === item.name
-              ? val
-              : item.alias_name,
         };
       }
       return item;
@@ -313,6 +343,7 @@ const OperateModal: React.FC<OperateModalProps> = ({
     });
     setParams(newParams);
     checkDuplicateNames(newParams);
+    checkEmptyValues(newParams);
   };
 
   const columns = [
@@ -327,7 +358,12 @@ const OperateModal: React.FC<OperateModalProps> = ({
           placeholder={t('dataSource.name')}
           onChange={(e) => handleParamNameChange(e.target.value, record.id!)}
           onBlur={(e) => handleParamNameBlur(e.target.value, record.id!)}
-          status={duplicateNames.includes(record.name) ? 'error' : undefined}
+          status={
+            duplicateNames.includes(record.name) ||
+            emptyNames.includes(record.id!)
+              ? 'error'
+              : undefined
+          }
         />
       ),
     },
@@ -338,9 +374,11 @@ const OperateModal: React.FC<OperateModalProps> = ({
       width: 120,
       render: (_: any, record: ParamItem) => (
         <Input
-          value={record.alias_name || record.name}
+          value={record.alias_name || ''}
           placeholder={t('dataSource.aliasName')}
           onChange={(e) => handleAliasChange(e.target.value, record.id!)}
+          onBlur={(e) => handleAliasBlur(e.target.value, record.id!)}
+          status={emptyAliases.includes(record.id!) ? 'error' : undefined}
         />
       ),
     },
@@ -503,8 +541,13 @@ const OperateModal: React.FC<OperateModalProps> = ({
       const validParams = params.filter(
         (param) => param.name && param.name.trim()
       );
+
+      // 检查参数名称和别名是否为空
+      if (!checkEmptyValues(params)) {
+        setLoading(false);
+        return;
+      }
       if (!checkDuplicateNames(validParams)) {
-        message.error(t('dataSource.paramNameNotAllowDuplicate'));
         setLoading(false);
         return;
       }
@@ -518,14 +561,17 @@ const OperateModal: React.FC<OperateModalProps> = ({
         return false;
       });
       if (hasEmptyFixedValue) {
-        message.error(t('dataSource.fixedParamRequiredValue'));
         setLoading(false);
         return;
       }
 
       const submitData = {
-        ...values,
+        rest_api: values.rest_api,
+        name: values.name.trim(),
+        desc: values.desc ? values.desc.trim() : '',
         namespaces: values.namespaces || [],
+        tag: values.tag || [],
+        chart_type: values.chart_type || [],
         params: params
           .filter((param) => param.name && param.name.trim())
           .map((param) => ({
@@ -613,7 +659,7 @@ const OperateModal: React.FC<OperateModalProps> = ({
           ]}
         >
           <Checkbox.Group
-            options={namespaceList.map((ns) => ({
+            options={namespaceList.map((ns: NamespaceItem) => ({
               label: ns.name,
               value: ns.id,
             }))}
@@ -625,6 +671,50 @@ const OperateModal: React.FC<OperateModalProps> = ({
             </div>
           )}
         </Form.Item>
+        <Form.Item
+          name="tag"
+          label={t('dataSource.tag')}
+          rules={[
+            {
+              required: true,
+              type: 'array',
+              min: 1,
+              message: t('common.selectMsg'),
+            },
+          ]}
+        >
+          <Checkbox.Group
+            options={tagList.map((tag: TagItem) => ({
+              label: tag.name,
+              value: tag.id,
+            }))}
+            disabled={tagsLoading}
+          />
+          {tagsLoading && (
+            <div style={{ textAlign: 'center', padding: '8px 0' }}>
+              <Spin size="small" />
+            </div>
+          )}
+        </Form.Item>
+        <Form.Item
+          name="chart_type"
+          label={t('dataSource.chartType')}
+          rules={[
+            {
+              required: true,
+              type: 'array',
+              min: 1,
+              message: t('common.selectMsg'),
+            },
+          ]}
+        >
+          <Checkbox.Group
+            options={getChartTypeList().map((item) => ({
+              label: t(item.label),
+              value: item.value,
+            }))}
+          />
+        </Form.Item>
         <Form.Item name="desc" label={t('dataSource.describe')}>
           <Input.TextArea rows={3} placeholder={t('common.inputMsg')} />
         </Form.Item>
@@ -634,23 +724,41 @@ const OperateModal: React.FC<OperateModalProps> = ({
               marginBottom: '8px',
               color: 'var(--color-text-1)',
               fontSize: '14px',
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
             }}
           >
-            {t('dataSource.params')}：
+            <span>{t('dataSource.params')}：</span>
+            <Button
+              type="dashed"
+              size="small"
+              icon={<PlusCircleOutlined />}
+              onClick={() => setParams([...params, createDefaultParam()])}
+            >
+              {t('dataSource.addParam')}
+            </Button>
           </div>
-          <CustomTable
-            rowKey="id"
-            columns={columns}
-            dataSource={params}
-            pagination={false}
-          />
+          {params.length > 0 ? (
+            <CustomTable
+              rowKey="id"
+              columns={columns}
+              dataSource={params}
+              pagination={false}
+            />
+          ) : (
+            <Empty
+              image={Empty.PRESENTED_IMAGE_SIMPLE}
+              description={t('common.noData')}
+            />
+          )}
           {duplicateNames.length > 0 && (
             <div
               style={{
                 color: 'var(--color-fail)',
                 fontSize: '12px',
-                marginTop: '4px',
-                padding: '4px 8px',
+                marginTop: '2px',
+                padding: '2px 8px',
               }}
             >
               {t('dataSource.duplicateParamNames')}

@@ -71,6 +71,7 @@ const ProfessionalCollection: React.FC = () => {
       total: 0,
     },
     currentExecStatus: undefined as ExecStatusType | undefined,
+    activeTab: '',
   });
   const selectedRef = useRef<{
     nodeId: string;
@@ -95,10 +96,12 @@ const ProfessionalCollection: React.FC = () => {
   };
 
   const getParams = (tabId?: string) => {
+    const modelId = tabId || stateRef.current.activeTab;
+
     return {
       page: stateRef.current.pagination.current,
       page_size: stateRef.current.pagination.pageSize,
-      model_id: tabId || activeTab,
+      model_id: modelId,
       name: stateRef.current.searchText,
       ...(stateRef.current.currentExecStatus !== undefined && {
         exec_status: stateRef.current.currentExecStatus,
@@ -134,7 +137,7 @@ const ProfessionalCollection: React.FC = () => {
     if (timerRef.current) {
       clearTimeout(timerRef.current);
     }
-    const currentTabId = tabId || activeTab;
+    const currentTabId = tabId || stateRef.current.activeTab;
     timerRef.current = setTimeout(
       () => fetchData(false, currentTabId),
       10 * 1000
@@ -173,6 +176,7 @@ const ProfessionalCollection: React.FC = () => {
       };
 
       setActiveTab(firstItem.tabItems?.[0]?.id || '');
+      stateRef.current.activeTab = firstItem.tabItems?.[0]?.id || '';
     } catch (error) {
       console.error('Failed to fetch tree data:', error);
     } finally {
@@ -245,8 +249,10 @@ const ProfessionalCollection: React.FC = () => {
 
       if (node?.tabItems?.length) {
         setActiveTab(node.tabItems[0].id);
+        stateRef.current.activeTab = node.tabItems[0].id;
       } else {
         setActiveTab('');
+        stateRef.current.activeTab = '';
       }
     }
   };
@@ -576,6 +582,7 @@ const ProfessionalCollection: React.FC = () => {
 
   const handleTabChange = (newActiveTab: string) => {
     setActiveTab(newActiveTab);
+    stateRef.current.activeTab = newActiveTab;
 
     if (timerRef.current) {
       clearTimeout(timerRef.current);

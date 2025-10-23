@@ -1,14 +1,18 @@
 'use client';
 
 import React, { useState, useRef } from 'react';
-import Sidebar from './components/sidebar';
-import Dashboard from './dashBoard/index';
+import Sidebar from '../../components/sidebar';
+import Dashboard, { DashboardRef } from './dashBoard/index';
 import Topology from './topology/index';
+import { TopologyRef } from '@/app/ops-analysis/types/topology';
+import Architecture, { ArchitectureRef } from './architecture/index';
 import { useTranslation } from '@/utils/i18n';
 import { DirectoryType, SidebarRef } from '@/app/ops-analysis/types';
 import { LeftOutlined, RightOutlined } from '@ant-design/icons';
 import { Button, Empty, Modal } from 'antd';
 import { useRouter, usePathname } from 'next/navigation';
+import { DirItem } from '@/app/ops-analysis/types';
+import { OpsAnalysisProvider } from '../../context/common';
 
 interface ViewLayoutProps {
   children: React.ReactNode;
@@ -21,23 +25,26 @@ const ViewLayout: React.FC<ViewLayoutProps> = ({ children }) => {
   const [collapsed, setCollapsed] = useState(false);
   const [selectedType, setSelectedType] = useState<DirectoryType>('directory');
   const [selectedItem, setSelectedItem] = useState<{
-    dashboard: any;
-    topology: any;
+    dashboard: DirItem | null;
+    topology: DirItem | null;
+    architecture: DirItem | null;
   }>({
     dashboard: null,
     topology: null,
+    architecture: null,
   });
-  const dashboardRef = useRef<any>(null);
-  const topologyRef = useRef<any>(null);
+  const dashboardRef = useRef<DashboardRef>(null);
+  const architectureRef = useRef<ArchitectureRef>(null);
+  const topologyRef = useRef<TopologyRef>(null);
   const sidebarRef = useRef<SidebarRef>(null);
   const previousSelectionRef = useRef<{
     type: DirectoryType;
-    item: any;
+    item: DirItem | null;
   } | null>(null);
 
   const isInSettings = pathname.includes('/settings');
 
-  const handleSidebarDataUpdate = (updatedItem: any) => {
+  const handleSidebarDataUpdate = (updatedItem: DirItem) => {
     if (
       selectedItem.dashboard &&
       updatedItem.id === selectedItem.dashboard.id
@@ -46,6 +53,12 @@ const ViewLayout: React.FC<ViewLayoutProps> = ({ children }) => {
     }
     if (selectedItem.topology && updatedItem.id === selectedItem.topology.id) {
       setSelectedItem((prev) => ({ ...prev, topology: updatedItem }));
+    }
+    if (
+      selectedItem.architecture &&
+      updatedItem.id === selectedItem.architecture.id
+    ) {
+      setSelectedItem((prev) => ({ ...prev, architecture: updatedItem }));
     }
   };
 
@@ -57,23 +70,29 @@ const ViewLayout: React.FC<ViewLayoutProps> = ({ children }) => {
     if (selectedType === 'topology' && topologyRef.current) {
       return topologyRef.current.hasUnsavedChanges();
     }
+    if (selectedType === 'architecture' && architectureRef.current) {
+      return architectureRef.current.hasUnsavedChanges();
+    }
     return false;
   };
 
   // 处理导航
-  const handleNavigation = (type: DirectoryType, itemInfo: any) => {
+  const handleNavigation = (type: DirectoryType, itemInfo?: DirItem) => {
     const isLeavingContentPage =
-      (selectedType === 'dashboard' || selectedType === 'topology') &&
+      (selectedType === 'dashboard' ||
+        selectedType === 'topology' ||
+        selectedType === 'architecture') &&
       (type === 'settings' ||
         type !== selectedType ||
         (type === selectedType &&
-          itemInfo?.id !== selectedItem[selectedType]?.id));
+          itemInfo?.id !==
+            selectedItem[selectedType as keyof typeof selectedItem]?.id));
 
     if (isLeavingContentPage && checkUnsavedChanges()) {
       // 记录当前选中状态
       previousSelectionRef.current = {
         type: selectedType,
-        item: selectedItem[selectedType],
+        item: selectedItem[selectedType as keyof typeof selectedItem],
       };
 
       Modal.confirm({
@@ -103,75 +122,87 @@ const ViewLayout: React.FC<ViewLayoutProps> = ({ children }) => {
   };
 
   // 执行导航
-  const performNavigation = (type: DirectoryType, itemInfo: any) => {
+  const performNavigation = (type: DirectoryType, itemInfo?: DirItem) => {
     setSelectedType(type);
     setSelectedItem({
-      dashboard: type === 'dashboard' ? itemInfo : null,
-      topology: type === 'topology' ? itemInfo : null,
+      dashboard: type === 'dashboard' ? itemInfo || null : null,
+      topology: type === 'topology' ? itemInfo || null : null,
+      architecture: type === 'architecture' ? itemInfo || null : null,
     });
     if (type === 'settings') {
       router.push('/ops-analysis/view/settings/dataSource');
     } else {
-      router.push('/ops-analysis/view');
+      const params = new URLSearchParams({
+        type: itemInfo?.type || '',
+        id: itemInfo?.id || '',
+      }).toString();
+      router.push(`/ops-analysis/view?${params}`);
     }
   };
 
   return (
-    <div
-      className="flex w-full h-[calc(100vh-90px)] relative rounded-lg"
-      style={{ minWidth: collapsed ? 0 : 280 }}
-    >
+    <OpsAnalysisProvider>
       <div
-        className={`h-full border-r border-[var(--color-border-1)] relative transition-all duration-300 ${
-          collapsed ? 'w-0 min-w-0' : 'w-[280px] min-w-[280px]'
-        }`}
-        style={{
-          width: collapsed ? 0 : 280,
-          minWidth: collapsed ? 0 : 280,
-          maxWidth: collapsed ? 0 : 280,
-          flexShrink: 0,
-        }}
+        className="flex w-full h-[calc(100vh-90px)] relative rounded-lg"
+        style={{ minWidth: collapsed ? 0 : 280 }}
       >
-        <div className="w-full h-full overflow-hidden bg-[var(--color-bg-1)]">
-          <Sidebar
-            ref={sidebarRef}
-            onSelect={handleNavigation}
-            onDataUpdate={handleSidebarDataUpdate}
-          />
-        </div>
-        <Button
-          type="text"
-          onClick={() => setCollapsed(!collapsed)}
-          className={`absolute z-10 w-6 h-6 top-4 p-0 border border-[var(--color-border-3)] bg-[var(--color-bg-1)] flex items-center justify-center cursor-pointer rounded-full transition-all duration-300 ${
-            collapsed
-              ? 'left-0 border-l-0 rounded-tl-none rounded-bl-none'
-              : 'left-[100%] -translate-x-1/2'
+        <div
+          className={`h-full border-r border-[var(--color-border-1)] relative transition-all duration-300 ${
+            collapsed ? 'w-0 min-w-0' : 'w-[280px] min-w-[280px]'
           }`}
+          style={{
+            width: collapsed ? 0 : 280,
+            minWidth: collapsed ? 0 : 280,
+            maxWidth: collapsed ? 0 : 280,
+            flexShrink: 0,
+          }}
         >
-          {collapsed ? <RightOutlined /> : <LeftOutlined />}
-        </Button>
+          <div className="w-full h-full overflow-hidden bg-[var(--color-bg-1)]">
+            <Sidebar
+              ref={sidebarRef}
+              onSelect={handleNavigation}
+              onDataUpdate={handleSidebarDataUpdate}
+            />
+          </div>
+          <Button
+            type="text"
+            onClick={() => setCollapsed(!collapsed)}
+            className={`absolute z-10 w-6 h-6 top-4 p-0 border border-[var(--color-border-3)] bg-[var(--color-bg-1)] flex items-center justify-center cursor-pointer rounded-full transition-all duration-300 ${
+              collapsed
+                ? 'left-0 border-l-0 rounded-tl-none rounded-bl-none'
+                : 'left-[100%] -translate-x-1/2'
+            }`}
+          >
+            {collapsed ? <RightOutlined /> : <LeftOutlined />}
+          </Button>
+        </div>
+        <div className="h-full flex-1 flex" style={{ minWidth: 0 }}>
+          {isInSettings ? (
+            children
+          ) : selectedType === 'architecture' ? (
+            <Architecture
+              ref={architectureRef}
+              selectedArchitecture={selectedItem.architecture}
+            />
+          ) : selectedType === 'topology' ? (
+            <Topology
+              ref={topologyRef}
+              selectedTopology={selectedItem.topology}
+            />
+          ) : selectedType === 'dashboard' ? (
+            <Dashboard
+              ref={dashboardRef}
+              selectedDashboard={selectedItem.dashboard}
+            />
+          ) : (
+            <Empty
+              className="w-full mt-[20vh]"
+              description={t('opsAnalysisSidebar.selectItem')}
+            />
+          )}
+        </div>
       </div>
-      <div className="h-full flex-1 flex" style={{ minWidth: 0 }}>
-        {isInSettings ? (
-          children
-        ) : selectedType === 'topology' ? (
-          <Topology
-            ref={topologyRef}
-            selectedTopology={selectedItem.topology}
-          />
-        ) : selectedType === 'dashboard' ? (
-          <Dashboard
-            ref={dashboardRef}
-            selectedDashboard={selectedItem.dashboard}
-          />
-        ) : (
-          <Empty
-            className="w-full mt-[20vh]"
-            description={t('opsAnalysisSidebar.selectItem')}
-          />
-        )}
-      </div>
-    </div>
+    </OpsAnalysisProvider>
   );
 };
 

@@ -35,6 +35,7 @@
     "password": "密码",
     "boolean": "布尔值",
     "organization": "组织",
+    "associatedOrganization": "所属组织",
     "exportTemplate": "导出模板",
     "selectAll": "全选",
     "selected": "已选择",
@@ -104,7 +105,14 @@
         "credentialManagement": "凭据管理",
         "AssociationManagement": "关联管理",
         "confirmAndAssociate": "确认并关联",
-        "searchHistory": "搜索历史"
+        "searchHistory": "搜索历史",
+        "selectAttributes": "选择属性",
+        "selectAssociations": "选择关联关系",
+        "noAssociations": "暂无关联关系",
+        "atLeastOneAttribute": "请至少选择一个属性",
+        "exportSuccess": "导出成功",
+        "exportFailed": "导出失败",
+        "assetList": "资产列表"
     },
     "Collection": {
         "fullTitle": "全面采集",

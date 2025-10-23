@@ -59,7 +59,7 @@ const ModelModal = forwardRef<ModelModalRef, ModelModalProps>(
         formRef.current?.setFieldsValue(formData);
 
         if (type === 'add' && selectedGroup && !formData.group) {
-          formRef.current?.setFieldValue('group', selectedGroup.id);
+          formRef.current?.setFieldValue('group', [selectedGroup.id]);
         }
       }
     }, [modelVisible, modelInfo]);
@@ -212,12 +212,12 @@ const ModelModal = forwardRef<ModelModalRef, ModelModalProps>(
               </Select>
             </Form.Item>
             <Form.Item<ModelItem>
-              label={t('common.group')}
+              label={t('organization')}
               name="group"
               rules={[{ required: true, message: t('required') }]}
             >
               <GroupTreeSelector
-                multiple={false}
+                allowClear
                 placeholder={t('common.selectTip')}
               />
             </Form.Item>

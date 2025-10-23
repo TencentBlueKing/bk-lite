@@ -5,8 +5,6 @@
 from django.conf import settings
 from django.db.models import Q
 from django.http import JsonResponse
-from drf_yasg import openapi
-from drf_yasg.utils import swagger_auto_schema
 
 from apps.cmdb.models import EXECUTE
 from apps.cmdb.permission import InstanceTaskPermission
@@ -38,30 +36,12 @@ class CollectModelViewSet(ModelViewSet):
     pagination_class = CustomPageNumberPagination
     permission_classes = [InstanceTaskPermission]
 
-    @swagger_auto_schema(
-        method='get',
-        operation_id="tree",
-        operation_description="查询采集模型对象树",
-    )
     @HasPermission("auto_collection-View")
     @action(methods=["get"], detail=False, url_path="collect_model_tree")
     def tree(self, request, *args, **kwargs):
         data = COLLECT_OBJ_TREE
         return WebUtils.response_success(data)
 
-    @swagger_auto_schema(
-        method='get',
-        operation_id="collect_task_list",
-        operation_description="查询采集模型任务列表",
-        manual_parameters=[
-            openapi.Parameter("page", openapi.IN_QUERY, description="第几页", type=openapi.TYPE_STRING),
-            openapi.Parameter("page_size", openapi.IN_QUERY, description="每页条目数", type=openapi.TYPE_STRING),
-            openapi.Parameter("driver_type", openapi.IN_QUERY, description="驱动", type=openapi.TYPE_STRING),
-            openapi.Parameter("search", openapi.IN_QUERY, description="任务名称", type=openapi.TYPE_STRING),
-            openapi.Parameter("ordering", openapi.IN_QUERY, description="排序", type=openapi.TYPE_STRING),
-            openapi.Parameter("exec_status", openapi.IN_QUERY, description="采集状态", type=openapi.TYPE_STRING),
-        ]
-    )
     @HasPermission("auto_collection-View")
     @action(methods=["get"], detail=False, url_path="search")
     def search(self, request, *args, **kwargs):
@@ -95,15 +75,6 @@ class CollectModelViewSet(ModelViewSet):
         instance = self.get_object()
         return WebUtils.response_success(instance.info)
 
-    @swagger_auto_schema(
-        operation_id="collect_task_exec_task",
-        operation_description="执行配置采集任务",
-        request_body=openapi.Schema(
-            type=openapi.TYPE_OBJECT,
-            properties={},
-            required=[]
-        ),
-    )
     @HasPermission("auto_collection-Execute")
     @action(methods=["POST"], detail=True)
     def exec_task(self, request, *args, **kwargs):
@@ -158,6 +129,11 @@ class CollectModelViewSet(ModelViewSet):
             "page": int(params.get("page", 1)),
             "page_size": int(params.get("page_size", 10)),
             "name": params.get("name", ""),
+            "permission_data": {
+                "username": request.user.username,
+                "domain": request.user.domain,
+                "current_team": request.COOKIES.get("current_team"),
+            },
         }
         node = NodeMgmt()
         data = node.node_list(query_data)

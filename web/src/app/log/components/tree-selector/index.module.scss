@@ -1,0 +1,19 @@
+    .treeSelector {
+        display: flex;
+        flex-direction: column;
+        padding: 20px 10px;
+        background-color: var(--color-bg-1);
+        overflow-y: auto;
+        overflow-x: hidden;
+        margin-right: 10px;
+
+        .tree {
+            height: 100%;
+        }
+
+        :global {
+            .ant-tree-list {
+                width: 100%;
+            }
+        }
+    }

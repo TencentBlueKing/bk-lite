@@ -18,6 +18,7 @@ class SidecarEnv(models.Model):
     type = models.CharField(max_length=20, default="")
     description = models.TextField(blank=True, verbose_name="描述")
     cloud_region = models.ForeignKey(CloudRegion, default=1, on_delete=models.CASCADE, verbose_name="云区域")
+    is_pre = models.BooleanField(default=False, verbose_name="是否预置变量")
 
     class Meta:
         verbose_name = "Sidecar环境变量"

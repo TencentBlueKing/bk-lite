@@ -1,34 +1,18 @@
-
 from sanic import Blueprint, json
 from sanic_ext import validate
 
-from src.core.sanic_plus.auth.api_auth import auth
-from src.enhance.qa_enhance import QAEnhance
-from src.entity.rag.enhance.qa_enhance_request import QAEnhanceRequest
-from src.entity.rag.enhance.summarize_enhance_request import SummarizeEnhanceRequest
-from src.summarize.summarize_manager import SummarizeManager
-
+from neco.sanic.auth.api_auth import auth
+from neco.llm.rag.rag_enhance_entity import AnswerGenerateRequest, QAEnhanceRequest, QuestionGenerateRequest
+from neco.mlops.summarize.summarize_manager import SummarizeManager, SummarizeRequest
+from src.services.qa_enhance_service import QAEnhanceService
 rag_enhance_api_router = Blueprint("rag_enhance_api_router", url_prefix="/rag")
 
 
 @rag_enhance_api_router.post("/summarize_enhance")
 @auth.login_required
-@validate(json=SummarizeEnhanceRequest)
-async def summarize_enhance(request, body: SummarizeEnhanceRequest):
-    """
-    文本摘要增强
-    :param request:
-    :param body:
-    :return:
-    """
-    """
-    文本摘要增强
-    :param request:
-    :param body:
-    :return:
-    """
-    result = SummarizeManager.summarize(
-        body.content, body.model, body.openai_api_base, body.openai_api_key)
+@validate(json=SummarizeRequest)
+async def summarize_enhance(request, body: SummarizeRequest):
+    result = SummarizeManager.summarize(body)
     return json({"status": "success", "message": result})
 
 
@@ -36,16 +20,21 @@ async def summarize_enhance(request, body: SummarizeEnhanceRequest):
 @auth.login_required
 @validate(json=QAEnhanceRequest)
 async def qa_pair_generate(request, body: QAEnhanceRequest):
-    """
-    QA 问答对生成
-    :param request:
-    :return:
-    """
-    """
-    生成问答对
-    :param request:
-    :return:
-    """
-    qa_enhance = QAEnhance(body)
-    result = qa_enhance.generate_qa()
+    result = QAEnhanceService.generate_qa(body)
+    return json({"status": "success", "message": result})
+
+
+@rag_enhance_api_router.post("/question_generation")
+@auth.login_required
+@validate(json=QuestionGenerateRequest)
+async def question_generation(request, body: QuestionGenerateRequest):
+    result = QAEnhanceService.generate_question(body)
+    return json({"status": "success", "message": result})
+
+
+@rag_enhance_api_router.post("/answer_generation")
+@auth.login_required
+@validate(json=AnswerGenerateRequest)
+async def answer_generation(request, body: AnswerGenerateRequest):
+    result = QAEnhanceService.generate_answer(body)
     return json({"status": "success", "message": result})

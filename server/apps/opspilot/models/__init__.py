@@ -1,5 +1,5 @@
-from apps.opspilot.bot_mgmt.models import *  # noqa
-from apps.opspilot.channel_mgmt.models import *  # noqa
-from apps.opspilot.knowledge_mgmt.models import *  # noqa
-from apps.opspilot.model_provider_mgmt.models import *  # noqa
-from apps.opspilot.quota_rule_mgmt.models import *  # noqa
+from .bot_mgmt import *  # noqa
+from .channel_mgmt import *  # noqa
+from .knowledge_mgmt import *  # noqa
+from .model_provider_mgmt import *  # noqa
+from .quota_rule_mgmt import *  # noqa

@@ -18,17 +18,19 @@ import { useTranslation } from '@/utils/i18n';
 import { deepClone } from '@/app/cmdb/utils/common';
 import PermissionWrapper from '@/components/permission';
 import { useModelDetail } from '../context';
+import { useCommon } from '@/app/cmdb/context/common';
 
 const { confirm } = Modal;
 
 const Associations: React.FC = () => {
   const {
-    getModelList,
     deleteModelAssociation,
     getModelAssociations,
     getModelAssociationTypes,
   } = useModelApi();
   const { getClassificationList } = useClassificationApi();
+  const commonContext = useCommon();
+  const modelListFromContext = commonContext?.modelList || [];
 
   const modelDetail = useModelDetail();
   const modelId = modelDetail?.model_id;
@@ -133,10 +135,15 @@ const Associations: React.FC = () => {
   ];
 
   useEffect(() => {
-    if (modelId) {
+    if (modelId && modelListFromContext.length > 0) {
       getInitData();
     }
-  }, [pagination?.current, pagination?.pageSize, modelId]);
+  }, [
+    pagination?.current,
+    pagination?.pageSize,
+    modelId,
+    modelListFromContext,
+  ]);
 
   const showAssoModal = (type: string, row = { subTitle: '' }) => {
     const title = t(
@@ -216,26 +223,19 @@ const Associations: React.FC = () => {
 
   const getInitData = () => {
     const getAssoTypeList = getModelAssociationTypes();
-    const getModelListData = getModelList();
     const fetchAssoData = getModelAssociations(modelId!);
     const getCroupList = getClassificationList();
     setLoading(true);
-    Promise.all([
-      getModelListData,
-      getAssoTypeList,
-      fetchAssoData,
-      getCroupList,
-    ])
+    Promise.all([getAssoTypeList, fetchAssoData, getCroupList])
       .then((res) => {
-        const modeldata: ModelItem[] = res[0];
-        const assoTypeData: AssoTypeItem[] = res[1];
-        const assoTableData: AssoTypeItem[] = res[2];
-        const groupData: GroupItem[] = res[3];
+        const assoTypeData: AssoTypeItem[] = res[0];
+        const assoTableData: AssoTypeItem[] = res[1];
+        const groupData: GroupItem[] = res[2];
         const _groups = deepClone(groupData).map((item: GroupItem) => ({
           ...item,
           list: [],
         }));
-        modeldata.forEach((modelItem: ModelItem) => {
+        modelListFromContext.forEach((modelItem: ModelItem) => {
           const target = _groups.find(
             (item: GroupItem) =>
               item.classification_id === modelItem.classification_id
@@ -246,9 +246,9 @@ const Associations: React.FC = () => {
         });
         setGroups(_groups);
         setAssoTypeList(assoTypeData);
-        setModelList(modeldata);
+        setModelList(modelListFromContext);
         setTableData(assoTableData);
-        pagination.total = res[2].length || 0;
+        pagination.total = res[1].length || 0;
         setPagination(pagination);
       })
       .finally(() => {

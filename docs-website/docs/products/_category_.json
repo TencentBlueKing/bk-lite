@@ -1,0 +1,8 @@
+{
+  "label": "产品文档",
+  "position": 1,
+  "link": {
+    "type": "generated-index",
+    "description": "BlueKing Lite 产品文档，包含各个产品模块的详细介绍和使用指南。"
+  }
+}

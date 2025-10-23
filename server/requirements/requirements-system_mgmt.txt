@@ -1,5 +1,0 @@
-wechatpy==1.8.18
-pyotp==2.9.0
-
-qrcode==8.2
-Pillow==11.3.0

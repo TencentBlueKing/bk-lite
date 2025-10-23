@@ -20,12 +20,33 @@ const useIntegrationApi = () => {
     params: {
       collector?: React.Key | null;
       collect_type_id?: React.Key | null;
+      add_policy_count?: boolean;
+      add_instance_count?: boolean;
       name?: string;
       page?: number;
       page_size?: number;
     } = {}
   ) => {
     return await get('/log/collect_types/', {
+      params,
+    });
+  };
+
+  const getFields = async (params = {}) => {
+    return await get('/log/collect_types/all_attrs/', {
+      params,
+    });
+  };
+
+  const getFieldValues = async (
+    params: {
+      filed?: string;
+      start_time?: string;
+      end_time?: string;
+      limit?: number;
+    } = {}
+  ) => {
+    return await get(`/log/search/field_names/`, {
       params,
     });
   };
@@ -52,7 +73,7 @@ const useIntegrationApi = () => {
   };
 
   const getInstanceList = async (data: {
-    collect_type_id?: number;
+    collect_type_id?: React.Key;
     page?: number;
     page_size?: number;
     name?: string;
@@ -104,19 +125,19 @@ const useIntegrationApi = () => {
   };
 
   const createLogStreams = async (data: GroupInfo) => {
-    return await post(`/log/streams/`, data);
+    return await post(`/log/log_group/`, data);
   };
 
   const updateLogStreams = async (data: GroupInfo) => {
     const params = cloneDeep(data);
     delete params.id;
-    return await put(`/log/streams/${data.id}/`, params);
+    return await put(`/log/log_group/${data.id}/`, params);
   };
 
   const updateDefaultLogStreams = async (data: GroupInfo) => {
     const params = cloneDeep(data);
     delete params.id;
-    return await patch(`/log/streams/${data.id}/`, params);
+    return await patch(`/log/log_group/${data.id}/`, params);
   };
 
   const getLogStreams = async (
@@ -127,13 +148,13 @@ const useIntegrationApi = () => {
       collect_type_id?: React.Key;
     } = {}
   ) => {
-    return await get('/log/streams/', {
+    return await get('/log/log_group/', {
       params,
     });
   };
 
   const deleteLogStream = async (id: React.Key) => {
-    return await del(`/log/streams/${id}/`);
+    return await del(`/log/log_group/${id}/`);
   };
 
   return {
@@ -153,6 +174,8 @@ const useIntegrationApi = () => {
     deleteLogStream,
     updateDefaultLogStreams,
     getCollectTypesById,
+    getFields,
+    getFieldValues,
   };
 };
 

@@ -10,6 +10,8 @@ import { MenuItem } from '@/types/index';
 
 interface SideMenuProps {
   menuItems: MenuItem[];
+  activeKeyword?: boolean;
+  keywordName?: string;
   children?: React.ReactNode;
   showBackButton?: boolean;
   showProgress?: boolean;
@@ -20,6 +22,8 @@ interface SideMenuProps {
 const SideMenu: React.FC<SideMenuProps> = ({
   menuItems,
   children,
+  activeKeyword = false,
+  keywordName = '',
   showBackButton = true,
   showProgress = false,
   taskProgressComponent,
@@ -29,11 +33,19 @@ const SideMenu: React.FC<SideMenuProps> = ({
   const searchParams = useSearchParams();
 
   const buildUrlWithParams = (path: string) => {
+    if(activeKeyword) {
+      return path;
+    }
     const params = new URLSearchParams(searchParams || undefined);
     return `${path}?${params.toString()}`;
   };
 
-  const isActive = (path: string): boolean => {
+  const isActive = (path: string, name: string): boolean => {
+    if (activeKeyword) {
+      const key = searchParams.get(keywordName) || '';
+      if(keywordName === '') return false;
+      return key === name;
+    }
     if (pathname === null) return false;
     return pathname.startsWith(path);
   };
@@ -48,7 +60,7 @@ const SideMenu: React.FC<SideMenuProps> = ({
       <nav className={`flex-1 relative rounded-md ${sideMenuStyle.nav}`}>
         <ul className="p-3">
           {menuItems.map((item) => (
-            <li key={item.url} className={`rounded-md mb-1 ${isActive(item.url) ? sideMenuStyle.active : ''}`}>
+            <li key={item.url} className={`rounded-md mb-1 ${isActive(item.url, item.name) ? sideMenuStyle.active : ''}`}>
               <Link legacyBehavior href={buildUrlWithParams(item.url)}>
                 <a className={`group flex items-center h-9 rounded-md py-2 text-sm font-normal px-3`}>
                   {item.icon && <Icon type={item.icon} className="text-xl pr-1.5" />}

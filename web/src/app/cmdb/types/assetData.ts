@@ -2,7 +2,9 @@ import {
   AttrFieldType,
   ModelItem,
   UserItem,
-  AssoTypeItem
+  AssoTypeItem,
+  AssoFieldType,
+  ColumnItem
 } from '@/app/cmdb/types/assetManage';
   
 
@@ -98,4 +100,28 @@ export interface SearchFilterProps {
   userList: UserItem[];
   showExactSearch?: boolean;
   onSearch: (condition: unknown, value: any) => void;
+}
+
+export interface RelationItem extends AssoFieldType {
+  name: string;
+  relation_key: string;
+}
+
+export interface ExportModalProps {
+  userList: any[];
+  models: ModelItem[];
+  assoTypes: AssoTypeItem[];
+}
+
+export interface ExportModalConfig {
+  title: string;
+  modelId: string;
+  columns: ColumnItem[];
+  selectedKeys: string[];
+  exportType: 'selected' | 'currentPage' | 'all';
+  tableData?: any[];
+}
+
+export interface ExportModalRef {
+  showModal: (config: ExportModalConfig) => void;
 }

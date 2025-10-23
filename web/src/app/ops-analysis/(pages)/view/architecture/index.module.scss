@@ -1,0 +1,8 @@
+// 架构画布容器样式
+.architectureCanvas {
+  position: relative;
+
+  :global(img[src*="data:image"]) {
+    max-width: unset !important;
+  }
+}

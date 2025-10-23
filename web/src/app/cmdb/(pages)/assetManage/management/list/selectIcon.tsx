@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, forwardRef, useImperativeHandle } from 'react';
-import { Button, Tooltip } from 'antd';
+import { Button } from 'antd';
 import Image from 'next/image';
 import OperateModal from '@/components/operate-modal';
 import { iconList } from '@/app/cmdb/utils/common';
@@ -52,6 +52,7 @@ const SelectIcon = forwardRef<SelectIconRef, SelectIconProps>(
           title={title}
           visible={visible}
           onCancel={handleCancel}
+          width={540}
           footer={
             <div>
               <Button
@@ -66,6 +67,7 @@ const SelectIcon = forwardRef<SelectIconRef, SelectIconProps>(
           }
         >
           <ul
+            style={{ maxHeight: '50vh' }}
             className={`flex flex-wrap overflow-y-auto ${selectIconStyle.selectIcon}`}
           >
             {iconList.map((item) => {
@@ -74,20 +76,21 @@ const SelectIcon = forwardRef<SelectIconRef, SelectIconProps>(
                   key={item.key + item.describe}
                   className={`${
                     selectIconStyle.modelIcon
-                  } w-[50px] h-[50px] flex items-center justify-center ${
+                  } w-[80px] h-[70px] flex flex-col items-center justify-center p-1 ${
                     activeIcon === item.key ? selectIconStyle.active : ''
                   }`}
                   onClick={() => setActiveIcon(item.key)}
                 >
-                  <Tooltip placement="top" title={item.describe}>
-                    <Image
-                      src={`/app/assets/assetModelIcon/${item.url}.svg`}
-                      className="block cursor-pointer"
-                      alt={t('picture')}
-                      width={25}
-                      height={25}
-                    />
-                  </Tooltip>
+                  <Image
+                    src={`/app/assets/assetModelIcon/${item.url}.svg`}
+                    className="block cursor-pointer mb-1"
+                    alt={t('picture')}
+                    width={34}
+                    height={34}
+                  />
+                  <span className="text-[10px] text-center text-gray-600 leading-3 cursor-pointer max-w-full overflow-hidden text-ellipsis">
+                    {item.describe}
+                  </span>
                 </li>
               );
             })}

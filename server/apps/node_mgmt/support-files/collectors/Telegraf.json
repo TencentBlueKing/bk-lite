@@ -1,0 +1,41 @@
+[
+    {
+        "id": "telegraf_linux",
+        "name": "Telegraf",
+        "controller_default_run": false,
+        "icon": "shujucaiji",
+        "node_operating_system": "linux",
+        "service_type": "exec",
+        "executable_path": "/opt/fusion-collectors/bin/telegraf",
+        "execute_parameters": "--config %s",
+        "validation_parameters": "",
+        "default_template": "",
+        "introduction": "Telegraf is a lightweight and efficient metrics collector that supports real-time collection, processing, and transmission of multi-source data, widely used in monitoring and data analysis scenarios.",
+        "enabled_default_config": true,
+        "default_config": {
+            "nats": "[global_tags]\n    agent_id=\"${node.ip}-${node.cloud_region}\"\n\n[agent]\n    interval = \"10s\"\n    round_interval = true\n    metric_batch_size = 1000\n    metric_buffer_limit = 10000\n    collection_jitter = \"0s\"\n    flush_interval = \"30s\"\n    flush_jitter = \"0s\"\n    precision = \"0s\"\n    hostname = \"${node.ip}\"\n    omit_hostname = false\n\n[[inputs.internal]]\n    tags = { \"instance_id\"=\"${node.ip}-${node.cloud_region}\",\"instance_type\"=\"internal\",\"instance_name\"=\"${node.name}\" }\n\n[[outputs.nats]]\n    servers = [\"${NATS_PROTOCOL}://${NATS_SERVERS}\"]\n    username = \"${NATS_USERNAME}\"\n    password = \"${NATS_PASSWORD}\"\n    subject = \"metrics.${node.ip_filter}\"\n    data_format = \"influx\"\n\n{% if NATS_PROTOCOL == \"tls\" %}\n    # TLS 配置\n    secure = true\n    insecure_skip_verify = false\n    tls_ca = \"${NATS_TLS_CA_FILE}\"\n{% endif %}\n",
+            "kafka": "[global_tags]\n    agent_id=\"${node.ip}-${node.cloud_region}\"\n\n[agent]\n    interval = \"10s\"\n    round_interval = true\n    metric_batch_size = 1000\n    metric_buffer_limit = 10000\n    collection_jitter = \"0s\"\n    flush_interval = \"30s\"\n    flush_jitter = \"0s\"\n    precision = \"0s\"\n    hostname = \"${node.ip}\"\n    omit_hostname = false\n\n[[inputs.internal]]\n    tags = { \"instance_id\"=\"${node.ip}-${node.cloud_region}\",\"instance_type\"=\"internal\",\"instance_name\"=\"${node.name}\" }\n\n[[outputs.kafka]]\n    brokers = [\"${KAFKA_HOST}:${KAFKA_PORT}\"]\n    topic = \"${KAFKA_METRICS_TOPIC}\"\n    sasl_username = \"${KAFKA_USERNAME}\"\n    sasl_password = \"${KAFKA_PASSWORD}\"\n    sasl_mechanism = \"PLAIN\"\n    max_message_bytes = 10000000\n    compression_codec=1",
+            "vm": "[global_tags]\n    agent_id=\"${node.ip}-${node.cloud_region}\"\n\n[agent]\n    interval = \"10s\"\n    round_interval = true\n    metric_batch_size = 1000\n    metric_buffer_limit = 10000\n    collection_jitter = \"0s\"\n    flush_interval = \"30s\"\n    flush_jitter = \"0s\"\n    precision = \"0s\"\n    hostname = \"${node.ip}\"\n    omit_hostname = false\n\n[[inputs.internal]]\n    tags = { \"instance_id\"=\"${node.ip}-${node.cloud_region}\",\"instance_type\"=\"internal\",\"instance_name\"=\"${node.name}\" }\n\n[[outputs.influxdb]]\n  urls = [\"${VM_SERVERS}\"]\n  database = \"victoriametrics\"\n  skip_database_creation = true\n  exclude_retention_policy_tag = true\n  content_encoding = \"gzip\""
+        }
+    },
+    {
+        "id": "telegraf_windows",
+        "name": "Telegraf",
+        "controller_default_run": false,
+        "icon": "shujucaiji",
+        "node_operating_system": "windows",
+        "service_type": "exec",
+        "executable_path": "C:\\bklite\\fusion-collectors\\bin\\telegraf.exe",
+        "execute_parameters": "-config %s",
+        "validation_parameters": "",
+        "default_template": "",
+        "introduction": "Telegraf is a lightweight and efficient metrics collector that supports real-time collection, processing, and transmission of multi-source data, widely used in monitoring and data analysis scenarios.",
+        "enabled_default_config": true,
+        "default_config": {
+            "nats": "[global_tags]\n    agent_id=\"${node.ip}-${node.cloud_region}\"\n\n[agent]\n    interval = \"10s\"\n    round_interval = true\n    metric_batch_size = 1000\n    metric_buffer_limit = 10000\n    collection_jitter = \"0s\"\n    flush_interval = \"30s\"\n    flush_jitter = \"0s\"\n    precision = \"0s\"\n    hostname = \"${node.ip}\"\n    omit_hostname = false\n\n[[inputs.internal]]\n    tags = { \"instance_id\"=\"${node.ip}-${node.cloud_region}\",\"instance_type\"=\"internal\",\"instance_name\"=\"${node.name}\" }\n\n[[outputs.nats]]\n    servers = [\"${NATS_PROTOCOL}://${NATS_SERVERS}\"]\n    username = \"${NATS_USERNAME}\"\n    password = \"${NATS_PASSWORD}\"\n    subject = \"metrics.${node.ip_filter}\"\n    data_format = \"influx\"\n\n{% if NATS_PROTOCOL == \"tls\" %}\n    # TLS 配置\n    secure = true\n    insecure_skip_verify = false\n    tls_ca = \"${NATS_TLS_CA_FILE}\"\n{% endif %}\n",
+            "kafka": "[global_tags]\n    agent_id=\"${node.ip}-${node.cloud_region}\"\n\n[agent]\n    interval = \"10s\"\n    round_interval = true\n    metric_batch_size = 1000\n    metric_buffer_limit = 10000\n    collection_jitter = \"0s\"\n    flush_interval = \"30s\"\n    flush_jitter = \"0s\"\n    precision = \"0s\"\n    hostname = \"${node.ip}\"\n    omit_hostname = false\n\n[[inputs.internal]]\n    tags = { \"instance_id\"=\"${node.ip}-${node.cloud_region}\",\"instance_type\"=\"internal\",\"instance_name\"=\"${node.name}\" }\n\n[[outputs.kafka]]\n    brokers = [\"${KAFKA_HOST}:${KAFKA_PORT}\"]\n    topic = \"${KAFKA_METRICS_TOPIC}\"\n    sasl_username = \"${KAFKA_USERNAME}\"\n    sasl_password = \"${KAFKA_PASSWORD}\"\n    sasl_mechanism = \"PLAIN\"\n    max_message_bytes = 10000000\n    compression_codec=1",
+            "vm": "[global_tags]\n    agent_id=\"${node.ip}-${node.cloud_region}\"\n\n[agent]\n    interval = \"10s\"\n    round_interval = true\n    metric_batch_size = 1000\n    metric_buffer_limit = 10000\n    collection_jitter = \"0s\"\n    flush_interval = \"30s\"\n    flush_jitter = \"0s\"\n    precision = \"0s\"\n    hostname = \"${node.ip}\"\n    omit_hostname = false\n\n[[inputs.internal]]\n    tags = { \"instance_id\"=\"${node.ip}-${node.cloud_region}\",\"instance_type\"=\"internal\",\"instance_name\"=\"${node.name}\" }\n\n[[outputs.influxdb]]\n  urls = [\"${VM_SERVERS}\"]\n  database = \"victoriametrics\"\n  skip_database_creation = true\n  exclude_retention_policy_tag = true\n  content_encoding = \"gzip\""
+        }
+    }
+]
+

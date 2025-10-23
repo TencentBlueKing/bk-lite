@@ -21,10 +21,29 @@ def get_cmdb_rules(request, permission_key=PERMISSION_TASK) -> dict:
     return rules
 
 
-def format_group_params(group_id: str):
+def format_group_params(group_id):
     """
     格式化组织参数
     :param group_id: 组织ID
     :return: 格式化后的参数
     """
     return [{'id': int(group_id)}]
+
+
+def format_groups_params(teams: list):
+    """
+    格式化组织参数
+    :param teams: 组织ID列表
+    :return: 格式化后的参数
+    """
+    return [{'id': team} for team in set(teams)]
+
+
+def get_default_group_id():
+    """
+    获取默认组织ID
+    :return: 默认组织ID
+    """
+    from apps.system_mgmt.models.user import Group
+    default_group = Group.objects.get(name="Default")
+    return [default_group.id]

@@ -45,6 +45,6 @@ class MunchkinDriver:
         ), headers={
             "Authorization": f"TOKEN {server_settings.munchkin_api_key}",
             "Content-Type": "application/json"
-        }, timeout=60, verify=False).json()
+        }, timeout=180, verify=False).json()
         logger.info(f"chat result: {result}")
         return result['result']

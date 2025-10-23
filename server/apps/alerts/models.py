@@ -150,6 +150,11 @@ class Alert(models.Model):
         """格式化创建时间"""
         return self.created_at.strftime("%Y-%m-%d %H:%M:%S")
 
+    @classmethod
+    def model_fields(cls):
+        model_fields = [field.name for field in Alert._meta.get_fields() if not field.is_relation]
+        return model_fields
+
 
 class Incident(MaintainerInfo):
     """聚合后的告警（事件）"""

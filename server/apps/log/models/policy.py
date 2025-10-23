@@ -8,9 +8,11 @@ class Policy(TimeInfo, MaintainerInfo):
 
     # 基本信息
     name = models.CharField(max_length=255, verbose_name="策略名称")
-    organizations = models.JSONField(default=list, verbose_name='所属组织')
     collect_type = models.ForeignKey(CollectType, on_delete=models.CASCADE, verbose_name="采集方式")
     last_run_time = models.DateTimeField(blank=True, null=True, verbose_name="最后一次执行时间")
+
+    # 日志分组配置 - 策略作用范围
+    log_groups = models.JSONField(default=list, verbose_name="日志分组范围", help_text="策略监控的日志分组ID列表")
 
     # 告警条件（关键字 & 聚合都可能用到）
     alert_type = models.CharField(max_length=50, verbose_name="告警类型")
@@ -19,6 +21,7 @@ class Policy(TimeInfo, MaintainerInfo):
     alert_condition = models.JSONField(default=dict, verbose_name="告警条件")
     schedule = models.JSONField(default=dict, verbose_name="策略执行周期, eg: 1h执行一次, 5m执行一次")
     period = models.JSONField(default=dict, verbose_name="每次监控检测的数据周期,eg: 1h内, 5m内")
+    show_fields = models.JSONField(default=list, verbose_name="展示字段")
 
     # 通知配置
     notice = models.BooleanField(default=True, verbose_name="是否通知")
@@ -60,7 +63,7 @@ class Alert(TimeInfo):
     end_event_time = models.DateTimeField(blank=True, null=True, verbose_name='结束事件时间')
     operator = models.CharField(blank=True, null=True, max_length=50, verbose_name='告警处理人')
     info_event_count = models.IntegerField(default=0, verbose_name='正常事件计数')
-
+    notice = models.BooleanField(default=False, verbose_name="是否已通知")
     class Meta:
         verbose_name = "告警记录"
         verbose_name_plural = "告警记录"
@@ -87,7 +90,7 @@ class Event(TimeInfo):
 
 class EventRawData(models.Model):
     event = models.ForeignKey(Event, on_delete=models.CASCADE, verbose_name='事件')
-    data = models.JSONField(default=dict, verbose_name='原始数据')
+    data = models.JSONField(default=list, verbose_name='原始数据')
 
     class Meta:
         verbose_name = "事件原始数据"

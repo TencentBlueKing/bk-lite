@@ -44,9 +44,9 @@ class InstanceTaskPermission(BasePermission):
         has_permission_ids = []
 
         for _rule in obj_rule:
-            if not _all and operator in _rule.get("permission", {}) and _rule["id"] in ["0", "-1"]:
+            if not _all and operator in _rule.get("permission", {}) and _rule["id"] in ["0"]:
                 _all = True
-            if _rule["id"] not in ["0", "-1"]:
+            if _rule["id"] not in ["0"]:
                 if operator in _rule.get("permission", []):
                     has_permission_ids.append(_rule["id"])
 

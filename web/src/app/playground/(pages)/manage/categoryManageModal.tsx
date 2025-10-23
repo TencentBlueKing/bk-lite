@@ -5,13 +5,13 @@ import { forwardRef, useImperativeHandle, useState, useRef, useCallback, useEffe
 import { Button, Form, FormInstance, Input, message, Switch, Select } from 'antd';
 import { ModalRef } from "@/app/playground/types";
 import { Option } from "@/types";
-// import { CONTENT_MAP } from "@/app/playground/constants";
 const { TextArea } = Input;
 
 interface ModalProps {
   id: number;
   name: string;
-  categoryID?: number;
+  categoryID: number;
+  categoryType: string;
   description?: string;
   parent?: number;
   is_active?: boolean;
@@ -24,7 +24,10 @@ const CategoryManageModal = forwardRef<ModalRef, any>(({ onSuccess }, ref) => {
   const { t } = useTranslation();
   const formRef = useRef<FormInstance>(null);
   const {
-    getServingsList,
+    getAnomalyServingsList,
+    getTimeSeriesPredictServingsList,
+    getLogClusteringServingsList,
+    getClassificationServingsList,
     createCategory,
     createCapability,
     updateCapability,
@@ -34,16 +37,14 @@ const CategoryManageModal = forwardRef<ModalRef, any>(({ onSuccess }, ref) => {
   const [selectLoading, setSelectLoading] = useState<boolean>(false);
   const [confirm, setConfirm] = useState<boolean>(false);
   const [servingsOptions, setServingsOptions] = useState<Option[]>([]);
+  const [servingConfig, setServingConfig] = useState<any>(null);
   const [title, setTitle] = useState<string>('addCategory');
   const [type, setType] = useState<string>('');
   const [formData, setFormData] = useState<ModalProps | null>(null);
-  const [servingConfig, setServingConfig] = useState<any>(null);
-  // const CategoryType = ['addCategory', 'updateCategory'];
   const CapabilityType = ['addCapability', 'updateCapability'];
 
   useImperativeHandle(ref, () => ({
     showModal: ({ type, title, form }) => {
-      console.log(type);
       setOpen(true);
       setType(type);
       setTitle(title as string);
@@ -59,6 +60,7 @@ const CategoryManageModal = forwardRef<ModalRef, any>(({ onSuccess }, ref) => {
 
   const initForm = useCallback(async () => {
     if (!formRef.current) return;
+    // if (!formData?.categoryID) return;
     formRef.current?.resetFields();
     if (type.trim().startsWith('update')) {
       formRef.current?.setFieldsValue({
@@ -69,11 +71,6 @@ const CategoryManageModal = forwardRef<ModalRef, any>(({ onSuccess }, ref) => {
       });
     };
     await renderServingsOption();
-    // else if (formData && type.trim().startsWith('add')) {
-    //   formRef.current?.setFieldsValue({
-    //     parent: formData?.id
-    //   });
-    // }
   }, [type, formData]);
 
   const handleAdd: Record<string, any> = {
@@ -83,10 +80,18 @@ const CategoryManageModal = forwardRef<ModalRef, any>(({ onSuccess }, ref) => {
     'updateCapability': async (id: number, data: any) => await updateCapability(id, data),
   };
 
+  const getServingsList: Record<string, any> = {
+    'anomaly': getAnomalyServingsList,
+    'timeseries_predict': getTimeSeriesPredictServingsList,
+    'log_clustering': getLogClusteringServingsList,
+    'classification': getClassificationServingsList
+  };
+
   const renderServingsOption = async () => {
     setSelectLoading(true);
     try {
-      const data = await getServingsList();
+      if (!formData?.categoryType) return;
+      const data = await getServingsList[formData.categoryType]();
       const options = data?.filter((item: any) => item?.status === 'active').map((item: any) => {
         return {
           label: item?.name,
@@ -101,18 +106,17 @@ const CategoryManageModal = forwardRef<ModalRef, any>(({ onSuccess }, ref) => {
         }
       });
       setServingsOptions(options);
-      if(type.startsWith('update')) {
+      if (type.startsWith('update')) {
         const servingID = formData?.config?.serving_id;
-        const config = options.find((k:any) => k.value === servingID)?.data || {};
+        const config = options.find((k: any) => k.value === servingID)?.data || {};
         formRef.current?.setFieldValue('serving_id', servingID);
         setServingConfig(config)
       }
     } catch (e) {
       console.log(e);
-      message.error(t(`manage.modelInferFailed`));
+      message.error(t(`common.fetchFailed`));
     } finally {
       setSelectLoading(false);
-      
     }
   };
 
@@ -124,10 +128,8 @@ const CategoryManageModal = forwardRef<ModalRef, any>(({ onSuccess }, ref) => {
       const params = {
         ...data,
         config: servingConfig,
-        // category: formData?.categoryID
-        category: 4
+        category: formData?.categoryID
       };
-      console.log(params);
       if (type.trim().startsWith('add')) {
         await handleAdd[type](params);
       } else {
@@ -147,6 +149,7 @@ const CategoryManageModal = forwardRef<ModalRef, any>(({ onSuccess }, ref) => {
     setOpen(false);
     setConfirm(false);
     setFormData(null);
+    setServingsOptions([]);
   };
 
   return (

@@ -1,0 +1,71 @@
+{
+    "common": {
+        "edit": "Edit",
+        "delete": "Delete",
+        "detail": "Detail",
+        "add": "Add",
+        "search": "Search",
+        "create": "Create",
+        "update": "Update",
+        "save": "Save",
+        "cancel": "Cancel",
+        "confirm": "Confirm",
+        "retry": "Retry",
+        "refresh": "Refresh",
+        "loading": "Loading...",
+        "send": "Send",
+        "back": "Back",
+        "online": "Online",
+        "offline": "Offline",
+        "me": "Me",
+        "settings": "Settings",
+        "logout": "Logout",
+        "login": "Login",
+        "darkMode": "Dark Mode",
+        "loggingOut": "Logging out...",
+        "helpAndFeedback": "Help & Feedback",
+        "languageSettings": "Language Settings",
+        "switchedToLanguage": "Switched to",
+        "switchLanguageFailed": "Failed to switch language, please try again",
+        "languageSelectionTitle": "Select Language",
+        "languageSelectionSubtitle": "Choose Language"
+    },
+    "navigation": {
+        "conversations": "Chat",
+        "profile": "Me"
+    },
+    "chat": {
+        "searchPlaceholder": "Search chats",
+        "inputPlaceholder": "Type a message...",
+        "enterChat": "Enter chat",
+        "chatDetail": "Chat Details",
+        "messageReceived": "Message received, processing...",
+        "loadChatDataFailed": "Failed to load chat data",
+        "noMessages": "No messages",
+        "sendMessage": "Send Message"
+    },
+    "auth": {
+        "loginTitle": "Login",
+        "username": "Username",
+        "password": "Password",
+        "loginButton": "Login",
+        "loginSuccess": "Login successful",
+        "loginFailed": "Login failed",
+        "logoutSuccess": "Logout successful",
+        "logoutFailed": "Logout failed, please try again",
+        "logoutConfirm": "Are you sure you want to logout?"
+    },
+    "profile": {
+        "title": "Profile",
+        "name": "Name",
+        "email": "Email",
+        "phone": "Phone",
+        "avatar": "Avatar"
+    },
+    "error": {
+        "networkError": "Network error",
+        "serverError": "Server error",
+        "unknownError": "Unknown error",
+        "useLocaleError": "useLocale must be used within a LocaleProvider"
+    }
+}

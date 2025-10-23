@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
+import type { TablePaginationConfig } from 'antd/es/table';
 import OperateModal from './operateModal';
 import CustomTable from '@/components/custom-table';
 import { Button, Input, Card, message, Modal } from 'antd';
@@ -16,7 +17,7 @@ const Datasource: React.FC = () => {
   const [filteredList, setFilteredList] = useState<DatasourceItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [modalVisible, setModalVisible] = useState(false);
-  const [currentRow, setCurrentRow] = useState<any>(null);
+  const [currentRow, setCurrentRow] = useState<DatasourceItem | undefined>();
   const [pagination, setPagination] = useState({
     current: 1,
     total: 0,
@@ -75,7 +76,7 @@ const Datasource: React.FC = () => {
     if (type === 'edit' && row) {
       setCurrentRow(row);
     } else {
-      setCurrentRow(null);
+      setCurrentRow(undefined);
     }
     setModalVisible(true);
   };
@@ -90,8 +91,17 @@ const Datasource: React.FC = () => {
       onOk: async () => {
         try {
           await deleteDataSource(row.id);
-          message.success(t('common.deleteSuccess'));
-          fetchDataSources();
+          message.success(t('successfullyDeleted'));
+
+          if (pagination.current > 1 && filteredList.length === 1) {
+            setPagination((prev) => ({ ...prev, current: prev.current - 1 }));
+            fetchDataSources(searchKey, {
+              current: pagination.current - 1,
+              pageSize: pagination.pageSize,
+            });
+          } else {
+            fetchDataSources();
+          }
         } catch (error: any) {
           message.error(error.message);
         }
@@ -99,7 +109,7 @@ const Datasource: React.FC = () => {
     });
   };
 
-  const handleTableChange = (pg: any) => {
+  const handleTableChange = (pg: TablePaginationConfig) => {
     const newPagination = {
       current: pg.current || 1,
       pageSize: pg.pageSize || 20,
@@ -122,17 +132,6 @@ const Datasource: React.FC = () => {
       width: 200,
     },
     {
-      title: '状态',
-      dataIndex: 'is_active',
-      key: 'is_active',
-      width: 100,
-      render: (isActive: boolean) => (
-        <span style={{ color: isActive ? '#52c41a' : '#ff4d4f' }}>
-          {isActive ? '活跃' : '禁用'}
-        </span>
-      ),
-    },
-    {
       title: t('dataSource.createdTime'),
       dataIndex: 'created_at',
       key: 'created_at',
@@ -143,7 +142,7 @@ const Datasource: React.FC = () => {
       title: t('common.edit'),
       key: 'operation',
       width: 100,
-      render: (_: any, row: DatasourceItem) => (
+      render: (_: unknown, row: DatasourceItem) => (
         <div className="space-x-4">
           <Button
             type="link"

@@ -1,6 +1,6 @@
 from django.core.management import BaseCommand
 
-from apps.opspilot.channel_mgmt.services.channel_init_service import ChannelInitService
+from apps.opspilot.services.channel_init_service import ChannelInitService
 
 
 class Command(BaseCommand):

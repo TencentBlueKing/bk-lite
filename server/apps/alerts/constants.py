@@ -112,6 +112,7 @@ class AlertStatus:
         (AUTO_CLOSE, "自动关闭"),
     )
     ACTIVATE_STATUS = (PENDING, PROCESSING, UNASSIGNED)
+    CLOSED_STATUS = (CLOSED, AUTO_CLOSE)
 
 
 class AlertOperate:

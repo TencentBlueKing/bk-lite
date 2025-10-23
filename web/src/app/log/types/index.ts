@@ -48,6 +48,7 @@ export interface TreeItem {
 export interface UserItem {
   id: string;
   username: string;
+  display_name: string;
   [key: string]: unknown;
 }
 

@@ -1,0 +1,63 @@
+# ================================== Docker Module 配置 ==================================
+- module: docker
+
+  metricsets:
+    {% if metricsets %}
+    {% for metricset in metricsets %}
+    - {{ metricset }}
+    {% endfor %}
+    {% else %}
+    # 官网推荐的默认指标集
+    - container
+    - cpu
+    - diskio
+    - event
+    - healthcheck
+    - info
+    - memory
+    - network
+    {% endif %}
+
+  hosts: {{ hosts | default(['unix:///var/run/docker.sock']) | to_json }}
+  period: {{ period | default('10s') }}
+
+  {% if labels_dedot is defined %}
+  # 标签中的点号替换为下划线
+  labels.dedot: {{ labels_dedot | lower }}
+  {% endif %}
+
+  {% if podman is defined %}
+  # Podman 兼容模式
+  podman: {{ podman | lower }}
+  {% endif %}
+
+  {% if skip_major %}
+  # 跳过指定主设备号的磁盘IO指标
+  skip_major: {{ skip_major | to_json }}
+  {% endif %}
+
+  {% if cpu_cores is defined %}
+  # 按CPU核心收集指标
+  cpu.cores: {{ cpu_cores | lower }}
+  {% endif %}
+
+  {% if ssl_config %}
+  # TLS 连接配置
+  ssl:
+    {% if ssl_config.certificate_authority %}
+    certificate_authority: "{{ ssl_config.certificate_authority }}"
+    {% endif %}
+    {% if ssl_config.certificate %}
+    certificate: "{{ ssl_config.certificate }}"
+    {% endif %}
+    {% if ssl_config.key %}
+    key: "{{ ssl_config.key }}"
+    {% endif %}
+  {% endif %}
+
+  fields:
+    collector: "Metricbeat"
+    collect_type: "docker"
+    instance_id: "{{ instance_id | default('default') }}"
+    _msg: ""
+  fields_under_root: true

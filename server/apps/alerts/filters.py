@@ -51,7 +51,7 @@ class AlertModelFilter(FilterSet):
     @staticmethod
     def filter_activate(qs, field_name, value):
         """查询类型 """
-        return qs.exclude(status=AlertStatus.CLOSED)
+        return qs.exclude(status__in=AlertStatus.CLOSED_STATUS)
 
     def filter_my_alert(self, qs, field_name, value):
         """查询我的告警"""

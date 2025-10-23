@@ -27,6 +27,11 @@ interface ProcessedCapability {
   url: string;
 }
 
+interface CategoryWithCapabilities {
+  category: Category;
+  capabilities: ProcessedCapability[];
+}
+
 const useModelExperience = (shouldLoad: boolean = true) => {
   const [categoryList, setCategoryList] = useState<Category[]>([]);
   const [capabilityList, setCapabilityList] = useState<Capability[]>([]);
@@ -104,32 +109,28 @@ const useModelExperience = (shouldLoad: boolean = true) => {
     setReloadTrigger(prev => prev + 1);
   }, [shouldLoad]);
 
-  const renderMenuByName = useCallback((name: string): ProcessedCapability[] => {
+  const renderMenu = useCallback((): CategoryWithCapabilities[] => {
     if (!categoryList.length || !capabilityList.length) {
       return [];
     }
 
-    const category = categoryList.find((item: Category) => item?.name === name);
+    return categoryList.map((category: Category) => ({
+      category,
+      capabilities: capabilityList
+        .filter((item: Capability) => {
+          const categoryId = typeof item.category === 'object'
+            ? item.category.id
+            : item.category;
 
-    if (!category) {
-      console.warn(`Category "${name}" not found`);
-      return [];
-    }
-
-    return capabilityList
-      .filter((item: Capability) => {
-        const categoryId = typeof item.category === 'object'
-          ? item.category.id
-          : item.category;
-
-        return categoryId === category.id && item.is_active !== false;
-      })
-      .map((item: Capability) => ({
-        id: item.id,
-        name: item?.name || 'Unnamed',
-        description: item?.description || '',
-        url: `${item?.url}?page=anomaly-detection&id=${item?.id}&name=${encodeURIComponent(item?.name || '')}&description=${encodeURIComponent(item?.description || '')}`,
-      }));
+          return categoryId === category.id && item.is_active !== false;
+        })
+        .map((item: Capability) => ({
+          id: item.id,
+          name: item?.name || 'Unnamed',
+          description: item?.description || '',
+          url: `${item?.url}?page=anomaly-detection&id=${item?.id}&name=${encodeURIComponent(item?.name || '')}&description=${encodeURIComponent(item?.description || '')}`,
+        }))
+    })).filter(({ capabilities }) => capabilities.length > 0);
   }, [categoryList, capabilityList]);
 
   const getAllCategories = useCallback((): Category[] => {
@@ -160,7 +161,7 @@ const useModelExperience = (shouldLoad: boolean = true) => {
     loading,
     error,
     reload,
-    renderMenuByName,
+    renderMenu,
     getAllCategories,
     getCapabilitiesByCategory,
     isDataReady,

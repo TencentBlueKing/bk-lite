@@ -1,0 +1,35 @@
+# ================================== File Integrity Module 配置 ==================================
+- module: file_integrity
+  paths:
+    {% if paths %}
+    {% for path in paths %}
+    - {{ path }}
+    {% endfor %}
+    {% else %}
+    # 默认监控路径
+    - /bin
+    - /usr/bin
+    - /sbin
+    - /usr/sbin
+    - /etc
+    {% endif %}
+
+  recursive: false
+  scan_at_start: true
+  scan_rate_per_sec: 50 MiB
+  max_file_size: 100 MiB
+  hash_types: [sha1]
+
+  exclude_files:
+    - '(?i)\.sw[nop]$'  # vim swap files
+    - '~$'              # backup files
+    - '/\.git($|/)'     # git directories
+
+  include_files: []
+
+  fields:
+    collector: "Auditbeat"
+    collect_type: "file_integrity"
+    instance_id: "{{ instance_id | default('default') }}"
+    _msg: ""
+  fields_under_root: true

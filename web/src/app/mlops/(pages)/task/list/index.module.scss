@@ -53,3 +53,244 @@
     }
   }
 }
+
+.drawer {
+  :global {
+    .ant-drawer-body {
+      padding: 0 !important;
+    }
+
+    .ant-drawer-footer {
+      padding: 16px 24px;
+      border-top: 1px solid #e1e1e1;
+      background: #fafafa;
+
+      .back-to-list-btn {
+        color: #0078d4;
+        border: none;
+        padding: 8px 16px;
+        font-weight: 500;
+        
+        &:hover {
+          background: #f3f2f1;
+          color: #106ebe;
+        }
+      }
+    }
+
+    .drawer-content {
+      height: 100%;
+      overflow: hidden;
+    }
+  }
+}
+
+// Train Task Detail Styles
+.trainTaskDetail {
+  height: 100%;
+  background: #f5f5f5; // 更深的灰色背景，增加对比度
+  
+  .taskDetailContainer {
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+  }
+
+  // Header Section
+  .taskHeader {
+    background: #ffffff;
+    border-bottom: 1px solid #d1d1d1; // 稍微深一点的边框
+    padding: 20px 24px;
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.08); // 添加轻微阴影
+    
+    .taskHeaderContent {
+      max-width: 1200px;
+      margin: 0 auto;
+    }
+
+    .taskInfo {
+      display: flex;
+      gap: 32px;
+      align-items: center;
+
+      .taskInfoItem {
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+
+        .taskInfoLabel {
+          font-size: 12px;
+          color: #666666;
+          font-weight: 500;
+          text-transform: uppercase;
+          letter-spacing: 0.5px;
+        }
+
+        .taskInfoValue {
+          font-size: 16px;
+          color: #1a1a1a;
+          font-weight: 600;
+          font-family: 'Segoe UI', -apple-system, BlinkMacSystemFont, sans-serif;
+        }
+      }
+    }
+  }
+
+  // Content Section
+  .taskContent {
+    flex: 1;
+    padding: 24px;
+    overflow-y: auto;
+    max-width: 1200px;
+    margin: 0 auto;
+    width: 100%;
+  }
+
+  // Loading State
+  .taskLoading {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    height: 300px;
+    gap: 16px;
+
+    .taskLoadingText {
+      color: #666666;
+      font-size: 14px;
+    }
+  }
+
+  // Metrics Section
+  .metricsSection {
+    .metricsHeader {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 24px;
+      padding-bottom: 16px;
+      border-bottom: 2px solid #e1e1e1;
+
+      .metricsTitle {
+        font-size: 20px;
+        font-weight: 600;
+        color: #1a1a1a;
+        margin: 0;
+        font-family: 'Segoe UI', -apple-system, BlinkMacSystemFont, sans-serif;
+      }
+
+      .metricsCount {
+        background: #0078d4; // 使用微软蓝色主题
+        color: #ffffff; // 白色文字
+        padding: 8px 16px; // 增加内边距
+        border-radius: 20px; // 更圆润的边角
+        font-size: 13px; // 稍微增大字体
+        font-weight: 600; // 加粗字体
+        box-shadow: 0 2px 6px rgba(0, 120, 212, 0.2); // 添加蓝色阴影
+        border: 1px solid #106ebe; // 添加深蓝色边框
+      }
+    }
+
+    .metricsGrid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); // 减少最小宽度
+      gap: 24px; // 稍微增加间距
+      margin-top: 8px;
+    }
+  }
+
+  // Empty State
+  .taskEmpty {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    height: 300px;
+    background: #ffffff;
+    border-radius: 12px; // 与卡片保持一致的圆角
+    border: 1px solid #d1d1d1; // 与卡片保持一致的边框
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08); // 与卡片保持一致的阴影
+
+    .taskEmptyIcon {
+      font-size: 48px;
+      margin-bottom: 16px;
+      opacity: 0.6;
+    }
+
+    .taskEmptyTitle {
+      font-size: 18px;
+      font-weight: 600;
+      color: #1a1a1a;
+      margin-bottom: 8px;
+    }
+
+    .taskEmptyDescription {
+      font-size: 14px;
+      color: #666666;
+      text-align: center;
+      max-width: 300px;
+    }
+  }
+
+  // Metric Card Styles
+  .metricCard {
+    background: #ffffff;
+    border: 1px solid #d1d1d1; // 更明显的边框色
+    border-radius: 12px; // 稍微增加圆角
+    overflow: hidden;
+    transition: all 0.2s ease;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08); // 增强阴影
+
+    &:hover {
+      box-shadow: 0 6px 20px rgba(0, 0, 0, 0.15); // 更明显的hover阴影
+      border-color: #b8b8b8;
+      transform: translateY(-2px); // 添加轻微的上移效果
+    }
+
+    .metricCardHeader {
+      padding: 20px 24px 16px; // 增加垂直内边距
+      border-bottom: 1px solid #e8e8e8; // 更明显的分隔线
+      background: #f8f9fa; // 稍微深一点的头部背景
+
+      .metricCardTitle {
+        font-size: 15px; // 稍微增大字体
+        font-weight: 600;
+        color: #1a1a1a;
+        margin: 0;
+        font-family: 'Segoe UI', -apple-system, BlinkMacSystemFont, sans-serif;
+        text-overflow: ellipsis;
+        overflow: hidden;
+        white-space: nowrap;
+      }
+    }
+
+    .metricCardContent {
+      height: 280px; // 增加高度，让卡片更接近正方形
+      padding: 20px; // 增加内边距
+      position: relative;
+      background: #ffffff; // 确保内容区域是纯白色
+    }
+
+    .metricCardLoading {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      height: 100%;
+    }
+
+    .metricCardEmpty {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      height: 100%;
+      background: #f8f9fa; // 稍微深一点的空状态背景
+      border-radius: 6px; // 稍微增加圆角
+
+      .metricCardEmptyText {
+        font-size: 12px;
+        color: #999999;
+        text-align: center;
+      }
+    }
+  }
+}

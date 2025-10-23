@@ -20,10 +20,7 @@ const useSyslogVectorFormItems = () => {
               },
             ]}
           >
-            <Input
-              className="w-[300px] mr-[10px]"
-              disabled={disabledFormItems.address}
-            />
+            <Input disabled={disabledFormItems.address} />
           </Form.Item>
         </>
       );

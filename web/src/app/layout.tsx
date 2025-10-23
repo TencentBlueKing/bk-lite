@@ -13,7 +13,7 @@ import { ClientProvider } from '@/context/client';
 import { PermissionsProvider, usePermissions } from '@/context/permissions';
 import AuthProvider from '@/context/auth';
 import TopMenu from '@/components/top-menu';
-import { ConfigProvider } from 'antd';
+import { ConfigProvider, message } from 'antd';
 import Spin from '@/components/spin';
 import '@/styles/globals.css';
 import { MenuItem } from '@/types/index'
@@ -105,9 +105,16 @@ export default function RootLayout({
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  useEffect(() => {
+    message.config({
+      maxCount: 2,
+    });
+  }, []);
+
   return (
     <html lang="en">
       <head>
+        <title>BlueKing Lite - AI 原生的轻量化运维平台</title>
         <link rel="icon" href="/logo-site.png" type="image/png"/>
         <Script src="/iconfont.js" strategy="afterInteractive"/>
       </head>

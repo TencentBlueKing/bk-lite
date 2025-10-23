@@ -1,0 +1,52 @@
+{
+  "name": "mobile",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev --turbopack --port 3001",
+    "dev:tauri": "tauri dev",
+    "build": "next build --turbopack",
+    "start": "next start --port 3001",
+    "lint": "eslint .",
+    "type-check": "tsc --noEmit",
+    "clean": "rm -rf .next",
+    "prepare": "husky",
+    "tauri": "tauri",
+    "build:android": "node scripts/android-build.mjs --release",
+    "build:android-debug": "node scripts/android-build.mjs",
+    "build:android-all": "node scripts/android-build.mjs --release --all-targets",
+    "build:aab": "node scripts/android-build.mjs --aab",
+    "install:android": "node scripts/android-build.mjs --install",
+    "install:android-release": "node scripts/android-build.mjs --release --install"
+  },
+  "dependencies": {
+    "@ant-design/icons": "^6.0.2",
+    "@ant-design/x": "^1.6.1",
+    "@tauri-apps/api": "^2.8.0",
+    "antd": "^5.27.4",
+    "antd-mobile": "^5.41.1",
+    "antd-mobile-icons": "^0.3.0",
+    "axios": "^1.7.7",
+    "intl-messageformat": "^10.7.18",
+    "next": "15.5.3",
+    "next-auth": "^4.24.10",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "react-intl": "^7.0.1"
+  },
+  "devDependencies": {
+    "@eslint/eslintrc": "^3",
+    "@tailwindcss/postcss": "^4",
+    "@tauri-apps/cli": "^2.8.4",
+    "@types/node": "^20",
+    "@types/react": "^18",
+    "@types/react-dom": "^18",
+    "@typescript-eslint/eslint-plugin": "^8.0.0",
+    "@typescript-eslint/parser": "^8.0.0",
+    "eslint": "^8.57.1",
+    "eslint-config-next": "15.5.3",
+    "husky": "^9.1.7",
+    "tailwindcss": "^4",
+    "typescript": "^5"
+  }
+}

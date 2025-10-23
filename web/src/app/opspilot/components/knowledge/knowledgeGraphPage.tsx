@@ -1,5 +1,5 @@
 'use client';
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Button, Empty, message, Modal } from 'antd';
 import { SettingOutlined, ReloadOutlined, BuildOutlined, FrownOutlined } from '@ant-design/icons';
 import { useRouter } from 'next/navigation';
@@ -84,9 +84,18 @@ const KnowledgeGraphPage: React.FC<KnowledgeGraphPageProps> = ({ knowledgeBaseId
   const [nodeDetailVisible, setNodeDetailVisible] = useState(false);
   const [edgeDetailVisible, setEdgeDetailVisible] = useState(false);
   const [selectedEdge, setSelectedEdge] = useState<any | null>(null);
+  
+  // 添加定时器引用和页面可见性状态
+  const pollingIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const [isPageVisible, setIsPageVisible] = useState(true);
 
-  const initializeGraph = async () => {
-    setLoading(true);
+  const initializeGraph = async (isBackgroundRefresh = false) => {
+    // 如果是后台刷新且正在轮询中，不显示loading
+    if (!isBackgroundRefresh) {
+      setLoading(true);
+      setHasGraph(false);
+      setGraphData(null);
+    }
     
     try {
       if (!knowledgeBaseId) {
@@ -115,7 +124,9 @@ const KnowledgeGraphPage: React.FC<KnowledgeGraphPageProps> = ({ knowledgeBaseId
       setGraphExists(false);
       setStatus('');
     } finally {
-      setLoading(false);
+      if (!isBackgroundRefresh) {
+        setLoading(false);
+      }
     }
   };
 
@@ -126,6 +137,39 @@ const KnowledgeGraphPage: React.FC<KnowledgeGraphPageProps> = ({ knowledgeBaseId
       setLoading(false);
     }
   }, [knowledgeBaseId]);
+
+  // 页面可见性检测
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      setIsPageVisible(!document.hidden);
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (pollingIntervalRef.current) {
+      clearInterval(pollingIntervalRef.current);
+      pollingIntervalRef.current = null;
+    }
+
+    if (isPageVisible && (['training', 'rebuilding', 'pending'].includes(status))) {
+      pollingIntervalRef.current = setInterval(() => {
+        initializeGraph(true);
+      }, 15000);
+    }
+
+    return () => {
+      if (pollingIntervalRef.current) {
+        clearInterval(pollingIntervalRef.current);
+        pollingIntervalRef.current = null;
+      }
+    };
+  }, [status, knowledgeBaseId, isPageVisible]);
 
   const handleSettingsClick = () => {
     router.push(`/opspilot/knowledge/detail/documents/graph/edit?id=${knowledgeBaseId}&name=${name}&desc=${desc}&type=${type}`);
@@ -179,7 +223,7 @@ const KnowledgeGraphPage: React.FC<KnowledgeGraphPageProps> = ({ knowledgeBaseId
   };
 
   const canClickSettings = () => {
-    return status === 'completed' || status === 'failed';
+    return status === 'completed' || status === 'failed' || !graphExists;
   };
 
   const canRebuildCommunity = () => {
@@ -222,7 +266,7 @@ const KnowledgeGraphPage: React.FC<KnowledgeGraphPageProps> = ({ knowledgeBaseId
     <div className="knowledge-graph-container relative" style={{ height: 'calc(100vh - 300px)', minHeight: '600px' }}>
       <div className="absolute top-4 right-4 z-50 flex gap-2">
         <Button
-          icon={<ReloadOutlined />}
+          icon={loading ? undefined : <ReloadOutlined />}
           onClick={handleRefresh}
           title={t('knowledge.knowledgeGraph.refreshGraph')}
           loading={loading}

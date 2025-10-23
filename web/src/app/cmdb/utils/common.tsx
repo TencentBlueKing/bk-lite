@@ -55,7 +55,7 @@ const OrganizationDisplay: React.FC<{ value: any }> = ({ value }) => {
 };
 
 // 组织字段编辑/显示工具组件
-const OrganizationField: React.FC<{ value: any; hideUserAvatar?: boolean }> = ({
+export const OrganizationField: React.FC<{ value: any; hideUserAvatar?: boolean }> = ({
   value,
 }) => {
   const { flatGroups } = useUserInfoContext();

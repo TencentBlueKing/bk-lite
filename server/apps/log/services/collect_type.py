@@ -5,8 +5,7 @@ import yaml
 from django.db import transaction
 
 from apps.core.exceptions.base_app_exception import BaseAppException
-from apps.log.models import CollectInstance, CollectInstanceOrganization, CollectConfig, CollectType, \
-    StreamCollectInstance
+from apps.log.models import CollectInstance, CollectInstanceOrganization, CollectConfig, CollectType
 from apps.log.plugins.controller import Controller
 from apps.rpc.node_mgmt import NodeMgmt
 
@@ -26,15 +25,12 @@ class CollectTypeService:
         return collect_type.lower() if collect_type else "unknown"
 
     @staticmethod
-    def batch_create_collect_configs(data: dict) -> list:
+    def batch_create_collect_configs(data: dict):
         """
         Batch create collect configurations based on the provided data.
 
         Args:
             data (dict): The data containing collector, collect_type, configs, and instances.
-
-        Returns:
-            list: A list of created collect configurations.
         """
 
         # 过滤已存在的实例
@@ -59,19 +55,15 @@ class CollectTypeService:
                 "collect_type_id": data["collect_type_id"],
                 "node_id": instance["node_ids"][0],
                 "group_ids": instance["group_ids"],
-                "stream_ids": instance.get("stream_ids", []),
             }
             for instance in data["instances"]
         }
 
-        creates, assos, streams_assos = [], [], []
+        creates, assos = [], []
         for instance_id, instance_info in instance_map.items():
             group_ids = instance_info.pop("group_ids")
-            streams = instance_info.pop("stream_ids", [])
             for group_id in group_ids:
                 assos.append((instance_id, group_id))
-            for stream in streams:
-                streams_assos.append((instance_id, stream))
             creates.append(CollectInstance(**instance_info))
 
         CollectInstance.objects.bulk_create(creates, batch_size=200)
@@ -80,11 +72,6 @@ class CollectTypeService:
             CollectInstanceOrganization.objects.bulk_create(
                 [CollectInstanceOrganization(collect_instance_id=asso[0], organization=asso[1]) for asso in assos],
                 batch_size=200
-            )
-        if streams_assos:
-            StreamCollectInstance.objects.bulk_create(
-                [StreamCollectInstance(stream_id=stream_asso[1], collect_instance_id=stream_asso[0]) for stream_asso in streams_assos],
-                batch_size=200, ignore_conflicts=True
             )
 
         # 实例配置
@@ -138,19 +125,12 @@ class CollectTypeService:
             NodeMgmt().update_child_config_content(child_info["id"], content, child_env)
 
     @staticmethod
-    def update_instance_config_v2(child_info, base_info, instance_id, collect_type_id, stream_ids):
+    def update_instance_config_v2(child_info, base_info, instance_id, collect_type_id):
         """ 更新对象实例配置 """
         child_env = None
         collect_type_obj = CollectType.objects.filter(id=collect_type_id).first()
         if not collect_type_obj:
             raise BaseAppException("collect_type does not exist")
-
-        StreamCollectInstance.objects.filter(collect_instance_id=instance_id).delete()
-        if stream_ids:
-            StreamCollectInstance.objects.bulk_create(
-                [StreamCollectInstance(stream_id=stream_id, collect_instance_id=instance_id) for stream_id in stream_ids],
-                ignore_conflicts=True
-            )
 
         col_obj = Controller(
             {
@@ -193,24 +173,43 @@ class CollectTypeService:
             instance.collectinstanceorganization_set.create(organization=org)
 
     @staticmethod
-    def search_instance(collect_type_id, name, page, page_size):
-        queryset = CollectInstance.objects.select_related("collect_type")
+    def search_instance_with_permission(collect_type_id, name, page, page_size, queryset):
+        """
+        使用权限过滤后的查询集查询采集实例列表（参考监控模块实现）
+        支持单采集类型查询和全部采集类型查询
+
+        Args:
+            collect_type_id: 采集类型ID，可选。如果不传则查询所有类型
+            name: 实例名称，可选，支持模糊查询
+            page: 页码
+            page_size: 每页数量
+            queryset: 已经权限过滤的查询集（已包含组织过滤）
+        """
+        # 应用业务过滤条件
         if collect_type_id:
+            # 单采集类型查询
             queryset = queryset.filter(collect_type_id=collect_type_id)
+
         if name:
             queryset = queryset.filter(name__icontains=name)
 
+        # 去重并关联查询
+        queryset = queryset.distinct().select_related('collect_type')
+
         # 计算总数
         total_count = queryset.count()
+
         # 计算分页
         start = (page - 1) * page_size
-        end = page * page_size
+        end = start + page_size
+
         # 获取当前页的数据
-        data_list = queryset.values("id", "name", "node_id", "collect_type_id", "collect_type__name", "collect_type__collector")[start:end]
+        page_data = queryset[start:end]
 
-        instance_ids = [item["id"] for item in data_list]
+        # 获取实例ID列表用于补充额外信息
+        instance_ids = [instance.id for instance in page_data]
 
-        # 补充组织与配置
+        # 补充组织与配置信息
         org_map = defaultdict(list)
         org_objs = CollectInstanceOrganization.objects.filter(
             collect_instance_id__in=instance_ids
@@ -225,26 +224,25 @@ class CollectTypeService:
         for instance_id, config_id in conf_objs:
             conf_map[instance_id].append(config_id)
 
+        # 获取节点信息(只补充节点名称，可以不用鉴权)
         nodes = NodeMgmt().node_list(dict(page_size=-1))
         node_map = {node["id"]: node["name"] for node in nodes["nodes"]}
 
-        assos = StreamCollectInstance.objects.filter(collect_instance_id__in=instance_ids)
-        stream_map = {}
-        for asso in assos:
-            if asso.collect_instance_id not in stream_map:
-                stream_map[asso.collect_instance_id] = set()
-            stream_map[asso.collect_instance_id].add(asso.stream_id)
-
+        # 构建结果（与监控模块格式保持一致，使用 results 字段）
         items = []
-        for info in data_list:
-            info.update(
-                organization=org_map.get(info["id"]),
-                config_id=conf_map.get(info["id"]),
-                node_name=node_map.get(info["node_id"], ""),
-                stream_ids=list(stream_map.get(info["id"], [])),
-            )
-            items.append(info)
+        for instance in page_data:
+            item = {
+                "id": instance.id,
+                "instance_id": instance.id,  # 添加 instance_id 字段以兼容权限映射
+                "name": instance.name,
+                "node_id": instance.node_id,
+                "collect_type_id": instance.collect_type_id,
+                "collect_type__name": instance.collect_type.name,
+                "collect_type__collector": instance.collect_type.collector,
+                "organization": org_map.get(instance.id, []),
+                "config_id": conf_map.get(instance.id, []),
+                "node_name": node_map.get(instance.node_id, ""),
+            }
+            items.append(item)
 
-        data = {"count": total_count, "items": items}
-
-        return data
+        return {"count": total_count, "items": items}

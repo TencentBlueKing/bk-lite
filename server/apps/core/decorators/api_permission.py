@@ -82,8 +82,9 @@ class HasRole(object):
 
 
 class HasPermission(object):
-    def __init__(self, permission: str = ""):
+    def __init__(self, permission: str = "", app_name=""):
         self.permission = self._parse_permissions(permission)
+        self.app_name = app_name
 
     def _parse_permissions(self, permission: str) -> Set[str]:
         """解析权限字符串为集合"""
@@ -93,8 +94,11 @@ class HasPermission(object):
 
     def _get_user_permissions(self, request, app_name: str) -> Set[str]:
         """获取用户在指定app下的权限集合"""
-        app_name_map = {"system_mgmt": "system-manager", "node_mgmt": "node", "console_mgmt": "ops-console"}
-        app_name = app_name_map.get(app_name, app_name)
+        app_name_map = {"system_mgmt": "system-manager", "node_mgmt": "node", "console_mgmt": "ops-console", "alerts": "alarm"}
+        if not self.app_name:
+            app_name = app_name_map.get(app_name, app_name)
+        else:
+            app_name = self.app_name
 
         user_permissions = getattr(request.user, "permission", set())
 
@@ -131,11 +135,7 @@ class HasPermission(object):
             if self.permission & user_permissions:
                 return task_definition(*args, **kwargs)
 
-            logger.warning(
-                f"Access denied. App: {app_name},"
-                f" Required permissions: {self.permission},"
-                f"user permissions: {user_permissions}"
-            )
+            logger.warning(f"Access denied. App: {app_name}," f" Required permissions: {self.permission}," f"user permissions: {user_permissions}")
             return WebUtils.response_403(_("insufficient permissions"))
 
         return wrapper

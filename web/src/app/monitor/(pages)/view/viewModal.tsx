@@ -4,19 +4,13 @@ import React, { useState, forwardRef, useImperativeHandle } from 'react';
 import { useRouter } from 'next/navigation';
 import { Button, Tabs } from 'antd';
 import OperateDrawer from '@/app/monitor/components/operate-drawer';
-import { ModalRef, TabItem } from '@/app/monitor/types';
-import {
-  ChartProps,
-  ViewModalProps,
-  ObjectItem,
-} from '@/app/monitor/types/monitor';
+import { ModalRef, TabItem, ChartProps, ObjectItem } from '@/app/monitor/types';
+import { ViewModalProps } from '@/app/monitor/types/view';
 import { useTranslation } from '@/utils/i18n';
 import MonitorView from './monitorView';
 import MonitorAlarm from './monitorAlarm';
-import {
-  INIT_VIEW_MODAL_FORM,
-  OBJECT_DEFAULT_ICON,
-} from '@/app/monitor/constants/monitor';
+import { OBJECT_DEFAULT_ICON } from '@/app/monitor/constants';
+import { INIT_VIEW_MODAL_FORM } from '@/app/monitor/constants/view';
 
 const ViewModal = forwardRef<ModalRef, ViewModalProps>(
   ({ monitorObject, monitorName, plugins, metrics, objects = [] }, ref) => {

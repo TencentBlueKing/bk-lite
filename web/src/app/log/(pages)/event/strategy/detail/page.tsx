@@ -1,57 +1,34 @@
 'use client';
 import React, { useEffect, useState, useRef, useMemo } from 'react';
-import {
-  Spin,
-  Input,
-  Button,
-  Form,
-  Select,
-  message,
-  Steps,
-  Switch,
-  Radio,
-  InputNumber,
-} from 'antd';
+import { Spin, Button, Form, message, Steps } from 'antd';
 import useApiClient from '@/utils/request';
 import useLogEventApi from '@/app/log/api/event';
 import { useTranslation } from '@/utils/i18n';
-import { useTermList } from '@/app/log/hooks/integration/common/other';
-import GroupTreeSelector from '@/components/group-tree-select';
-import ConditionSelector from './conditionSelector';
 import { StrategyFields, ChannelItem } from '@/app/log/types/event';
 import { FilterItem } from '@/app/log/types/integration';
 import { useCommon } from '@/app/log/context/common';
 import strategyStyle from '../index.module.scss';
 import { ArrowLeftOutlined } from '@ant-design/icons';
-import SelectCard from './selectCard';
 import { useSearchParams, useRouter } from 'next/navigation';
 import { useUserInfoContext } from '@/context/userInfo';
-import { SCHEDULE_UNIT_MAP } from '@/app/log/constants';
-import {
-  useAlgorithmList,
-  useScheduleList,
-  useLevelList,
-} from '@/app/log/hooks/event';
 import { ListItem, TableDataItem, UserItem } from '@/app/log/types';
-const { Option } = Select;
 import useLogIntegrationApi from '@/app/log/api/integration';
 import { cloneDeep } from 'lodash';
+import BasicInfoForm from './basicInfoForm';
+import AlertConditionsForm from './alertConditionsForm';
+import NotificationForm from './notificationForm';
 
 const StrategyOperation = () => {
   const { t } = useTranslation();
   const { isLoading } = useApiClient();
   const { getSystemChannelList, getPolicy, createPolicy, updatePolicy } =
     useLogEventApi();
-  const { getCollectTypesById } = useLogIntegrationApi();
-  const LEVEL_LIST = useLevelList();
-  const SCHEDULE_LIST = useScheduleList();
-  const ALGORITHM_LIST = useAlgorithmList();
+  const { getCollectTypesById, getLogStreams } = useLogIntegrationApi();
   const commonContext = useCommon();
   const searchParams = useSearchParams();
   const [form] = Form.useForm();
   const router = useRouter();
   const users = useRef(commonContext?.userList || []);
-  const TERM_LIST = useTermList();
   const userList: UserItem[] = users.current;
   const userContext = useUserInfoContext();
   const currentGroup = useRef(userContext?.selectedGroup);
@@ -69,6 +46,7 @@ const StrategyOperation = () => {
   const [formData, setFormData] = useState<StrategyFields>({});
   const [channelList, setChannelList] = useState<ChannelItem[]>([]);
   const [fieldList, setFieldList] = useState<string[]>([]);
+  const [streamList, setStreamList] = useState<ListItem[]>([]);
 
   const isEdit = useMemo(() => type === 'edit', [type]);
 
@@ -78,6 +56,7 @@ const StrategyOperation = () => {
       Promise.all([
         getFields(),
         getChannelList(),
+        getGroups(),
         detailId && getStragyDetail(),
       ]).finally(() => {
         setPageLoading(false);
@@ -107,21 +86,6 @@ const StrategyOperation = () => {
     dealDetail(formData);
   }, [isEdit, formData, channelList]);
 
-  const validateConidtion = async () => {
-    if (!term || !conditions.length) {
-      return Promise.reject(new Error(t('log.event.ruleValidate')));
-    }
-    if (
-      conditions.length &&
-      conditions.some((item) => {
-        return Object.values(item).some((tex) => !tex);
-      })
-    ) {
-      return Promise.reject(new Error(t('log.event.conditionValidate')));
-    }
-    return Promise.resolve();
-  };
-
   const getChannelList = async () => {
     const data = await getSystemChannelList();
     setChannelList(data);
@@ -133,6 +97,14 @@ const StrategyOperation = () => {
     });
     const fields = data?.attrs || [];
     setFieldList(fields);
+  };
+
+  const getGroups = async () => {
+    const data = await getLogStreams({
+      page_size: -1,
+      page: 1,
+    });
+    setStreamList(data || []);
   };
 
   const dealDetail = (data: StrategyFields) => {
@@ -147,6 +119,8 @@ const StrategyOperation = () => {
     if (alert_type === 'aggregate') {
       setTerm(alert_condition.rule?.mode || '');
       setConditions(alert_condition.rule?.conditions || []);
+    } else {
+      setConditions([{ op: null, field: null, value: '', func: null }]);
     }
     form.setFieldsValue(detailData);
     setUnit(schedule?.type || '');
@@ -230,6 +204,11 @@ const StrategyOperation = () => {
     }
   };
 
+  const linkToSystemManage = () => {
+    const url = '/system-manager/channel';
+    window.open(url, '_blank', 'noopener,noreferrer');
+  };
+
   return (
     <Spin spinning={pageLoading} className="w-full">
       <div className={strategyStyle.strategy}>
@@ -256,398 +235,35 @@ const StrategyOperation = () => {
               items={[
                 {
                   title: t('log.event.basicInformation'),
-                  description: (
-                    <>
-                      <Form.Item<StrategyFields>
-                        label={
-                          <span className="w-[100px]">
-                            {t('log.event.strategyName')}
-                          </span>
-                        }
-                        name="name"
-                        rules={[
-                          { required: true, message: t('common.required') },
-                        ]}
-                      >
-                        <Input
-                          placeholder={t('log.event.strategyName')}
-                          className="w-[800px]"
-                        />
-                      </Form.Item>
-                      <Form.Item<StrategyFields>
-                        label={
-                          <span className="w-[100px]">
-                            {t('common.organizations')}
-                          </span>
-                        }
-                        name="organizations"
-                        rules={[
-                          { required: true, message: t('common.required') },
-                        ]}
-                      >
-                        <GroupTreeSelector
-                          style={{
-                            width: '800px',
-                            marginRight: '8px',
-                          }}
-                          placeholder={t('common.organizations')}
-                        />
-                      </Form.Item>
-                    </>
-                  ),
+                  description: <BasicInfoForm />,
                   status: 'process',
                 },
                 {
                   title: t('log.event.setAlertConditions'),
                   description: (
-                    <>
-                      <Form.Item<StrategyFields>
-                        name="alert_type"
-                        label={
-                          <span className="w-[100px]">
-                            {t('log.event.algorithm')}
-                          </span>
-                        }
-                        rules={[
-                          { required: true, message: t('common.required') },
-                        ]}
-                      >
-                        <SelectCard data={ALGORITHM_LIST} />
-                      </Form.Item>
-                      <Form.Item<StrategyFields>
-                        required
-                        label={
-                          <span className="w-[100px]">
-                            {t('log.event.queryCriteria')}
-                          </span>
-                        }
-                      >
-                        <Form.Item
-                          name="query"
-                          noStyle
-                          rules={[
-                            { required: true, message: t('common.required') },
-                          ]}
-                        >
-                          <Input
-                            placeholder={t('common.inputMsg')}
-                            className="w-[800px]"
-                            allowClear
-                          />
-                        </Form.Item>
-                        <div className="text-[var(--color-text-3)] mt-[10px]">
-                          {t('log.event.queryCriteriaTips')}
-                        </div>
-                      </Form.Item>
-                      <Form.Item
-                        noStyle
-                        shouldUpdate={(prevValues, currentValues) =>
-                          prevValues.alert_type !== currentValues.alert_type
-                        }
-                      >
-                        {({ getFieldValue }) =>
-                          getFieldValue('alert_type') === 'aggregate' ? (
-                            <>
-                              <Form.Item<StrategyFields>
-                                required
-                                label={
-                                  <span className="w-[100px]">
-                                    {t('log.event.polymerizationConditions')}
-                                  </span>
-                                }
-                              >
-                                <Form.Item
-                                  name="group_by"
-                                  noStyle
-                                  rules={[
-                                    {
-                                      required: true,
-                                      message: t('common.required'),
-                                    },
-                                  ]}
-                                >
-                                  <Select
-                                    style={{ width: 800 }}
-                                    allowClear
-                                    showSearch
-                                    mode="tags"
-                                    maxTagCount="responsive"
-                                  >
-                                    {fieldList.map((item) => (
-                                      <Option key={item} value={item}>
-                                        {item}
-                                      </Option>
-                                    ))}
-                                  </Select>
-                                </Form.Item>
-                                <div className="text-[var(--color-text-3)] mt-[10px]">
-                                  {t('log.event.polymerizationConditionsDes')}
-                                </div>
-                              </Form.Item>
-                              <Form.Item<StrategyFields>
-                                required
-                                label={
-                                  <span className="w-[100px]">
-                                    {t('log.integration.rule')}
-                                  </span>
-                                }
-                              >
-                                <Form.Item
-                                  name="rule"
-                                  noStyle
-                                  rules={[
-                                    {
-                                      validator: validateConidtion,
-                                      required: true,
-                                    },
-                                  ]}
-                                >
-                                  <div className="flex items-center mb-[20px] w-[800px]">
-                                    <span>{t('log.integration.meetRule')}</span>
-                                    <Select
-                                      className="ml-[8px] flex-1"
-                                      placeholder={t('log.integration.rule')}
-                                      showSearch
-                                      value={term}
-                                      onChange={(val) => setTerm(val)}
-                                    >
-                                      {TERM_LIST.map((item: ListItem) => (
-                                        <Option
-                                          value={item.value}
-                                          key={item.value}
-                                        >
-                                          {item.name}
-                                        </Option>
-                                      ))}
-                                    </Select>
-                                  </div>
-                                  <ConditionSelector
-                                    fields={fieldList}
-                                    data={conditions}
-                                    onChange={(val) => setConditions(val)}
-                                  ></ConditionSelector>
-                                </Form.Item>
-                              </Form.Item>
-                            </>
-                          ) : null
-                        }
-                      </Form.Item>
-                      <Form.Item<StrategyFields>
-                        required
-                        label={
-                          <span className="w-[100px]">
-                            {t('log.event.frequency')}
-                          </span>
-                        }
-                      >
-                        <Form.Item
-                          name="schedule"
-                          noStyle
-                          rules={[
-                            {
-                              required: true,
-                              message: t('common.required'),
-                            },
-                          ]}
-                        >
-                          <InputNumber
-                            min={SCHEDULE_UNIT_MAP[`${unit}Min`]}
-                            max={SCHEDULE_UNIT_MAP[`${unit}Max`]}
-                            precision={0}
-                            addonAfter={
-                              <Select
-                                value={unit}
-                                style={{ width: 120 }}
-                                onChange={handleUnitChange}
-                              >
-                                {SCHEDULE_LIST.map((item) => (
-                                  <Option key={item.value} value={item.value}>
-                                    {item.label}
-                                  </Option>
-                                ))}
-                              </Select>
-                            }
-                          />
-                        </Form.Item>
-                        <div className="text-[var(--color-text-3)] mt-[10px]">
-                          {t('log.event.setFrequency')}
-                        </div>
-                      </Form.Item>
-                      <Form.Item<StrategyFields>
-                        required
-                        label={
-                          <span className="w-[100px]">
-                            {t('log.event.period')}
-                          </span>
-                        }
-                      >
-                        <Form.Item
-                          name="period"
-                          noStyle
-                          rules={[
-                            {
-                              required: true,
-                              message: t('common.required'),
-                            },
-                          ]}
-                        >
-                          <InputNumber
-                            min={SCHEDULE_UNIT_MAP[`${periodUnit}Min`]}
-                            max={SCHEDULE_UNIT_MAP[`${periodUnit}Max`]}
-                            precision={0}
-                            addonAfter={
-                              <Select
-                                value={periodUnit}
-                                style={{ width: 120 }}
-                                onChange={handlePeriodUnitChange}
-                              >
-                                {SCHEDULE_LIST.map((item) => (
-                                  <Option key={item.value} value={item.value}>
-                                    {item.label}
-                                  </Option>
-                                ))}
-                              </Select>
-                            }
-                          />
-                        </Form.Item>
-                        <div className="text-[var(--color-text-3)] mt-[10px]">
-                          {t('log.event.setPeriod')}
-                        </div>
-                      </Form.Item>
-                      <Form.Item<StrategyFields>
-                        required
-                        label={
-                          <span className="w-[100px]">
-                            {t('log.event.alertName')}
-                          </span>
-                        }
-                      >
-                        <Form.Item
-                          name="alert_name"
-                          noStyle
-                          rules={[
-                            {
-                              required: true,
-                              message: t('common.required'),
-                            },
-                          ]}
-                        >
-                          <Input
-                            placeholder={t('log.event.alertName')}
-                            className="w-[800px]"
-                          />
-                        </Form.Item>
-                        <div className="text-[var(--color-text-3)] mt-[10px]">
-                          {t('log.event.alertNameTitle')}
-                        </div>
-                      </Form.Item>
-                      <Form.Item<StrategyFields>
-                        name="alert_level"
-                        label={
-                          <span className="w-[100px]">
-                            {t('log.event.alarmLevel')}
-                          </span>
-                        }
-                        rules={[
-                          {
-                            required: true,
-                            message: t('common.required'),
-                          },
-                        ]}
-                      >
-                        <Radio.Group>
-                          {LEVEL_LIST.map((item) => (
-                            <Radio key={item.value} value={item.value}>
-                              {item.label}
-                            </Radio>
-                          ))}
-                        </Radio.Group>
-                      </Form.Item>
-                    </>
+                    <AlertConditionsForm
+                      unit={unit}
+                      periodUnit={periodUnit}
+                      conditions={conditions}
+                      term={term}
+                      fieldList={fieldList}
+                      streamList={streamList}
+                      onUnitChange={handleUnitChange}
+                      onPeriodUnitChange={handlePeriodUnitChange}
+                      onConditionsChange={setConditions}
+                      onTermChange={setTerm}
+                    />
                   ),
                   status: 'process',
                 },
                 {
                   title: t('log.event.configureNotifications'),
                   description: (
-                    <>
-                      <Form.Item<StrategyFields>
-                        label={
-                          <span className="w-[100px]">
-                            {t('log.event.notification')}
-                          </span>
-                        }
-                        name="notice"
-                      >
-                        <Switch />
-                      </Form.Item>
-                      <Form.Item
-                        noStyle
-                        shouldUpdate={(prevValues, currentValues) =>
-                          prevValues.notice !== currentValues.notice
-                        }
-                      >
-                        {({ getFieldValue }) =>
-                          getFieldValue('notice') ? (
-                            <>
-                              <Form.Item<StrategyFields>
-                                label={
-                                  <span className="w-[100px]">
-                                    {t('log.event.method')}
-                                  </span>
-                                }
-                                name="notice_type_id"
-                                rules={[
-                                  {
-                                    required: true,
-                                    message: t('common.required'),
-                                  },
-                                ]}
-                              >
-                                <Radio.Group>
-                                  {channelList.map((item) => (
-                                    <Radio key={item.id} value={item.id}>
-                                      {`${item.name}（${item.channel_type}）`}
-                                    </Radio>
-                                  ))}
-                                </Radio.Group>
-                              </Form.Item>
-                              <Form.Item<StrategyFields>
-                                label={
-                                  <span className="w-[100px]">
-                                    {t('log.event.notifier')}
-                                  </span>
-                                }
-                                name="notice_users"
-                                rules={[
-                                  {
-                                    required: true,
-                                    message: t('common.required'),
-                                  },
-                                ]}
-                              >
-                                <Select
-                                  style={{
-                                    width: '800px',
-                                  }}
-                                  showSearch
-                                  allowClear
-                                  mode="tags"
-                                  maxTagCount="responsive"
-                                  placeholder={t('log.event.notifier')}
-                                >
-                                  {userList.map((item) => (
-                                    <Option value={item.id} key={item.id}>
-                                      {item.username}
-                                    </Option>
-                                  ))}
-                                </Select>
-                              </Form.Item>
-                            </>
-                          ) : null
-                        }
-                      </Form.Item>
-                    </>
+                    <NotificationForm
+                      channelList={channelList}
+                      userList={userList}
+                      onLinkToSystemManage={linkToSystemManage}
+                    />
                   ),
                   status: 'process',
                 },

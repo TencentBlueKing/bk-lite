@@ -10,45 +10,14 @@ import datetime
 from typing import Dict, Any
 from django.db.models import Count, Q
 from django.db.models.functions import TruncDate, TruncWeek, TruncMonth, TruncHour, TruncMinute
+from django.utils import timezone
 
 import nats_client
 from apps.alerts.models import Alert
+from apps.core.logger import alert_logger as logger
 
 
-@nats_client.register
-def get_alert_trend_data(group_by: str = "day", filters: dict = dict) -> Dict[str, Any]:
-    """
-    获取告警趋势数据 获取制定时间内，告警的数据
-    例如：获取7天内，每天的告警数量
-    根据group_by参数分组统计告警数据
-    :param group_by: 分组方式，支持 "minute", "hour", "day", "week", "month"
-    :param filters: 过滤条件，字典格式
-    return:
-        {
-        "result": True,
-        "data": [
-          [
-            "2025-02-02 10:00:00",
-            5
-          ]],
-          }
-
-    """
-
-    start_time = filters.get("start_time")
-    end_time = filters.get("end_time")
-    if not start_time or not end_time:
-        return {
-            "result": False,
-            "data": [],
-            "message": "start_time and end_time are required."
-        }
-
-    # 解析时间字符串
-    start_dt = datetime.datetime.strptime(start_time, '%Y-%m-%d %H:%M:%S')
-    end_dt = datetime.datetime.strptime(end_time, '%Y-%m-%d %H:%M:%S')
-
-    # 根据group_by选择截断函数和日期格式
+def group_dy_date_format(group_by):
     if group_by == "minute":
         trunc_func = TruncMinute
         date_format = "%Y-%m-%d %H:%M"
@@ -68,21 +37,57 @@ def get_alert_trend_data(group_by: str = "day", filters: dict = dict) -> Dict[st
         trunc_func = TruncDate
         date_format = "%Y-%m-%d"
 
-    # 构建查询条件
-    query_conditions = Q(created_at__gte=start_dt, created_at__lt=end_dt)
+    return trunc_func, date_format
 
+
+@nats_client.register
+def get_alert_trend_data(*args, **kwargs) -> Dict[str, Any]:
+    """
+    获取告警趋势数据 获取制定时间内，告警的数据
+    例如：获取7天内，每天的告警数量
+    根据group_by参数分组统计告警数据
+    :param group_by: 分组方式，支持 "minute", "hour", "day", "week", "month"
+    return:
+        {
+        "result": True,
+        "data": [
+          [
+            "2025-02-02 10:00:00",
+            5
+          ]],
+          }
+
+    """
+    logger.info("=== get_alert_trend_data ===, args={}, kwargs={}".format(args, kwargs))
+    time = kwargs.pop("time", [])  # 默认7天
+    if not time:
+        return {
+            "result": False,
+            "data": [],
+            "message": "start_time and end_time are required."
+        }
+    start_time, end_time = time
+    # 解析时间字符串
+    start_dt = datetime.datetime.strptime(start_time, '%Y-%m-%d %H:%M:%S')
+    end_dt = datetime.datetime.strptime(end_time, '%Y-%m-%d %H:%M:%S')
+    # 转换为时区感知时间
+    aware_start = timezone.make_aware(start_dt)
+    aware_end = timezone.make_aware(end_dt)
+
+    # 根据group_by选择截断函数和日期格式
+    group_by = kwargs.pop("group_by", "day")
+    trunc_func, date_format = group_dy_date_format(group_by)
+
+    # 构建查询条件
+    query_conditions = Q(created_at__gte=aware_start, created_at__lt=aware_end)
+
+    alert_model_fields = Alert.model_fields()
     # 应用过滤条件
-    for key, value in filters.items():
-        if key == "level" and isinstance(value, list):
-            query_conditions &= Q(level__in=value)
-        elif key == "status" and isinstance(value, list):
-            query_conditions &= Q(status__in=value)
-        elif key == "source_name" and isinstance(value, list):
-            query_conditions &= Q(source_name__in=value)
-        elif key == "resource_type":
-            query_conditions &= Q(resource_type=value)
-        elif key == "resource_id":
-            query_conditions &= Q(resource_id=value)
+    for key, value in kwargs.items():
+        if key not in alert_model_fields:
+            logger.warning(f"Invalid field '{key}' in filter conditions.")
+            continue
+        query_conditions &= Q(**{key: value})
 
     # 查询并按时间分组统计
     queryset = (
@@ -143,3 +148,12 @@ def get_alert_trend_data(group_by: str = "day", filters: dict = dict) -> Dict[st
         result.append([period_str, period_counts.get(period_str, 0)])
 
     return {"result": True, "data": result, "message": ""}
+
+
+@nats_client.register
+def alert_test(*args, **kwargs):
+    """
+    测试nats的告警接口
+    """
+    logger.info("=== alert_test ===, args={}, kwargs={}".format(args, kwargs))
+    return {"result": True, "data": "alert_test success", "message": ""}

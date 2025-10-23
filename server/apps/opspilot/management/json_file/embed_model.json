@@ -1,0 +1,218 @@
+[
+  {
+    "model_type": "网易有道",
+    "model": "bce-embedding-base_v1",
+    "name": "BCE Embedding Base v1",
+    "base_url": "可通过ollama部署：ollama pull lrs33/bce-embedding-base_v11"
+  },
+  {
+    "model_type": "BAAI",
+    "model": "bge-base-en",
+    "name": "BGE Base English",
+    "base_url": "https://huggingface.co/BAAI/bge-base-en"
+  },
+  {
+    "model_type": "BAAI",
+    "model": "bge-base-en-v1.5",
+    "name": "BGE Base English v1.5",
+    "base_url": "https://huggingface.co/BAAI/bge-base-en-v1.5"
+  },
+  {
+    "model_type": "BAAI",
+    "model": "bge-base-zh",
+    "name": "BGE Base Chinese",
+    "base_url": "https://huggingface.co/BAAI/bge-base-zh"
+  },
+  {
+    "model_type": "BAAI",
+    "model": "bge-base-zh-v1.5",
+    "name": "BGE Base Chinese v1.5",
+    "base_url": "https://huggingface.co/BAAI/bge-base-zh-v1.5"
+  },
+  {
+    "model_type": "BAAI",
+    "model": "bge-large-en",
+    "name": "BGE Large English",
+    "base_url": "https://huggingface.co/BAAI/bge-large-en"
+  },
+  {
+    "model_type": "BAAI",
+    "model": "bge-large-en-v1.5",
+    "name": "BGE Large English v1.5",
+    "base_url": "https://huggingface.co/BAAI/bge-large-en-v1.5"
+  },
+  {
+    "model_type": "BAAI",
+    "model": "bge-large-zh",
+    "name": "BGE Large Chinese",
+    "base_url": "https://huggingface.co/BAAI/bge-large-zh"
+  },
+  {
+    "model_type": "BAAI",
+    "model": "bge-large-zh-noinstruct",
+    "name": "BGE Large Chinese NoInstruct",
+    "base_url": "https://huggingface.co/BAAI/bge-large-zh-noinstruct"
+  },
+  {
+    "model_type": "BAAI",
+    "model": "bge-large-zh-v1.5",
+    "name": "BGE Large Chinese v1.5",
+    "base_url": "https://huggingface.co/BAAI/bge-large-zh-v1.5"
+  },
+  {
+    "model_type": "BAAI",
+    "model": "bge-m3",
+    "name": "BGE M3",
+    "base_url": "https://huggingface.co/BAAI/bge-m3"
+  },
+  {
+    "model_type": "BAAI",
+    "model": "bge-small-en-v1.5",
+    "name": "BGE Small English v1.5",
+    "base_url": "https://huggingface.co/BAAI/bge-small-en-v1.5"
+  },
+  {
+    "model_type": "BAAI",
+    "model": "bge-small-zh",
+    "name": "BGE Small Chinese",
+    "base_url": "https://huggingface.co/BAAI/bge-small-zh"
+  },
+  {
+    "model_type": "BAAI",
+    "model": "bge-small-zh-v1.5",
+    "name": "BGE Small Chinese v1.5",
+    "base_url": "https://huggingface.co/BAAI/bge-small-zh-v1.5"
+  },
+  {
+    "model_type": "微软",
+    "model": "e5-large-v2",
+    "name": "E5 Large v2",
+    "base_url": "https://huggingface.co/intfloat/e5-large-v2"
+  },
+  {
+    "model_type": "阿里",
+    "model": "gte-base",
+    "name": "GTE Base",
+    "base_url": "https://huggingface.co/Alibaba-NLP/gte-base"
+  },
+  {
+    "model_type": "阿里",
+    "model": "gte-large",
+    "name": "GTE Large",
+    "base_url": "https://huggingface.co/Alibaba-NLP/gte-large"
+  },
+  {
+    "model_type": "阿里",
+    "model": "gte-Qwen2",
+    "name": "GTE Qwen2",
+    "base_url": "https://huggingface.co/Alibaba-NLP/gte-Qwen2"
+  },
+  {
+    "model_type": "Jina AI",
+    "model": "jina-clip-v2",
+    "name": "Jina CLIP v2",
+    "base_url": "https://huggingface.co/jinaai/jina-clip-v2"
+  },
+  {
+    "model_type": "Jina AI",
+    "model": "jina-embeddings-v2-base-en",
+    "name": "Jina Embeddings v2 Base EN",
+    "base_url": "https://huggingface.co/jinaai/jina-embeddings-v2-base-en"
+  },
+  {
+    "model_type": "Jina AI",
+    "model": "jina-embeddings-v2-base-zh",
+    "name": "Jina Embeddings v2 Base ZH",
+    "base_url": "https://huggingface.co/jinaai/jina-embeddings-v2-base-zh"
+  },
+  {
+    "model_type": "Jina AI",
+    "model": "jina-embeddings-v2-small-en",
+    "name": "Jina Embeddings v2 Small EN",
+    "base_url": "https://huggingface.co/jinaai/jina-embeddings-v2-small-en"
+  },
+  {
+    "model_type": "Jina AI",
+    "model": "jina-embeddings-v3",
+    "name": "Jina Embeddings v3",
+    "base_url": "https://huggingface.co/jinaai/jina-embeddings-v3"
+  },
+  {
+    "model_type": "Jina AI",
+    "model": "jina-embeddings-v4",
+    "name": "Jina Embeddings v4",
+    "base_url": "https://huggingface.co/jinaai/jina-embeddings-v4"
+  },
+  {
+    "model_type": "Moka AI",
+    "model": "m3e-base",
+    "name": "M3E Base",
+    "base_url": "https://huggingface.co/moka-ai/m3e-base"
+  },
+  {
+    "model_type": "Moka AI",
+    "model": "m3e-large",
+    "name": "M3E Large",
+    "base_url": "https://huggingface.co/moka-ai/m3e-large"
+  },
+  {
+    "model_type": "Moka AI",
+    "model": "m3e-small",
+    "name": "M3E Small",
+    "base_url": "https://huggingface.co/moka-ai/m3e-small"
+  },
+  {
+    "model_type": "微软",
+    "model": "multilingual-e5-large",
+    "name": "Multilingual E5 Large",
+    "base_url": "https://huggingface.co/intfloat/multilingual-e5-large"
+  },
+  {
+    "model_type": "阿里",
+    "model": "Qwen3-Embedding-0.6B",
+    "name": "Qwen3 Embedding 0.6B",
+    "base_url": "https://modelscope.cn/models/Qwen/Qwen3-Embedding-0.6B"
+  },
+  {
+    "model_type": "阿里",
+    "model": "Qwen3-Embedding-4B",
+    "name": "Qwen3 Embedding 4B",
+    "base_url": "https://modelscope.cn/models/Qwen/Qwen3-Embedding-4B"
+  },
+  {
+    "model_type": "阿里",
+    "model": "Qwen3-Embedding-8B",
+    "name": "Qwen3 Embedding 8B",
+    "base_url": "https://modelscope.cn/models/Qwen/Qwen3-Embedding-8B"
+  },
+  {
+    "model_type": "赛博智能",
+    "model": "text2vec-base-chinese",
+    "name": "Text2Vec Base Chinese",
+    "base_url": "https://huggingface.co/shibing624/text2vec-base-chinese"
+  },
+  {
+    "model_type": "赛博智能",
+    "model": "text2vec-base-chinese-paraphrase",
+    "name": "Text2Vec Base Chinese Paraphrase",
+    "base_url": "https://huggingface.co/shibing624/text2vec-base-chinese-paraphrase"
+  },
+  {
+    "model_type": "赛博智能",
+    "model": "text2vec-base-chinese-sentence",
+    "name": "Text2Vec Base Chinese Sentence",
+    "base_url": "https://huggingface.co/shibing624/text2vec-base-chinese-sentence"
+  },
+  {
+    "model_type": "赛博智能",
+    "model": "text2vec-base-multilingual",
+    "name": "Text2Vec Base Multilingual",
+    "base_url": "https://huggingface.co/shibing624/text2vec-base-multilingual"
+  },
+  {
+    "model_type": "赛博智能",
+    "model": "text2vec-large-chinese",
+    "name": "Text2Vec Large Chinese",
+    "base_url": "https://huggingface.co/shibing624/text2vec-large-chinese"
+  }
+]

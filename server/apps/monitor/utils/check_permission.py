@@ -1,5 +1,3 @@
-
-
 def check_permission(monitor_object_id, instance_id, teams, permissions, cur_team):
 
     # 超管，校验实例是否处于当前组
@@ -7,10 +5,6 @@ def check_permission(monitor_object_id, instance_id, teams, permissions, cur_tea
     if admin_cur_team:
         if teams & set(admin_cur_team):
             return True
-    else:
-        # 如果当前实例不在当前组中，也无权限
-        return False
-
 
     cur_team = set(cur_team)
 

@@ -90,8 +90,17 @@ const Namespace: React.FC = () => {
       onOk: async () => {
         try {
           await deleteNamespace(row.id);
-          message.success(t('common.deleteSuccess'));
-          fetchNamespaces();
+          message.success(t('successfullyDeleted'));
+
+          if (pagination.current > 1 && filteredList.length === 1) {
+            setPagination((prev) => ({ ...prev, current: prev.current - 1 }));
+            fetchNamespaces(searchKey, {
+              current: pagination.current - 1,
+              pageSize: pagination.pageSize,
+            });
+          } else {
+            fetchNamespaces();
+          }
         } catch (error: any) {
           message.error(error.message);
         }

@@ -1,6 +1,6 @@
 from rest_framework import routers
 
-from apps.monitor.views.monitor_alert import MonitorAlertVieSet, MonitorEventVieSet
+from apps.monitor.views.monitor_alert import MonitorAlertVieSet, MonitorEventVieSet, MonitorAlertMetricSnapshotViewSet
 from apps.monitor.views.monitor_instance import MonitorInstanceVieSet
 from apps.monitor.views.monitor_metrics import  MetricGroupVieSet, MetricVieSet
 from apps.monitor.views.metrics_instance import MetricsInstanceVieSet
@@ -23,6 +23,7 @@ router.register(r"api/monitor_plugin", MonitorPluginVieSet, basename="MonitorPlu
 
 router.register(r"api/monitor_alert", MonitorAlertVieSet, basename="MonitorAlertVieSet")
 router.register(r"api/monitor_event", MonitorEventVieSet, basename="MonitorEventVieSet")
+router.register(r"api/monitor_alert_metric_snapshot", MonitorAlertMetricSnapshotViewSet, basename="MonitorAlertMetricSnapshotViewSet")
 
 router.register(r"api/system_mgmt", SystemMgmtView, basename="SystemMgmtView")
 router.register(r"api/node_mgmt", NodeMgmtView, basename="NodeMgmtView")

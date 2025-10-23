@@ -11,6 +11,12 @@ re_search() {
 
 discover_keepalived() {
     keepalived_pids=$(ps -ef | grep 'keepalived' | grep -v grep | awk '{print $2}')
+    # 未启动keepalived服务直接打印空{}
+    if [ ${#keepalived_pids} -eq 0 ]; then
+      echo "{}"
+      exit 0
+    fi
+
     insts=()
     for pid in $keepalived_pids; do
         if [ -z "$pid" ]; then

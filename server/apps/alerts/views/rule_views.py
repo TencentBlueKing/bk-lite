@@ -8,6 +8,7 @@ from apps.alerts.constants import LogAction, LogTargetType
 from apps.alerts.filters import CorrelationRulesModelFilter, AggregationRulesModelFilter
 from apps.alerts.models import AggregationRules, CorrelationRules, OperatorLog
 from apps.alerts.serializers.rule_serializers import AggregationRulesSerializer, CorrelationRulesSerializer
+from apps.core.decorators.api_permission import HasPermission
 from config.drf.pagination import CustomPageNumberPagination
 from apps.core.logger import alert_logger as logger
 
@@ -21,6 +22,10 @@ class AggregationRulesViewSet(viewsets.ModelViewSet):
     ordering_fields = ["created_at"]
     ordering = ["-created_at"]
     pagination_class = CustomPageNumberPagination
+
+    @HasPermission("correlation_rules-View")
+    def list(self, request, *args, **kwargs):
+        return super().list(request, *args, **kwargs)
 
     def get_queryset(self):
         """获取聚合规则查询集，预加载关联规则数据"""
@@ -78,7 +83,7 @@ class AggregationRulesViewSet(viewsets.ModelViewSet):
         try:
             # 移动导入到函数内部避免循环导入
             from apps.alerts.common.rules.rule_manager import get_rule_manager
-            
+
             rule_manager = get_rule_manager()
             rule_manager.reload_rules_from_database()
 
@@ -121,6 +126,11 @@ class CorrelationRulesViewSet(viewsets.ModelViewSet):
             )
         )
 
+    @HasPermission("correlation_rules-View")
+    def list(self, request, *args, **kwargs):
+        return super().list(request, *args, **kwargs)
+
+    @HasPermission("correlation_rules-Add")
     @transaction.atomic
     def create(self, request, *args, **kwargs):
         """创建关联规则"""
@@ -151,6 +161,7 @@ class CorrelationRulesViewSet(viewsets.ModelViewSet):
         headers = self.get_success_headers(serializer.data)
         return Response(serializer.data, status=status.HTTP_201_CREATED, headers=headers)
 
+    @HasPermission("correlation_rules-Edit")
     @transaction.atomic
     def update(self, request, *args, **kwargs):
         partial = kwargs.pop('partial', False)
@@ -176,6 +187,7 @@ class CorrelationRulesViewSet(viewsets.ModelViewSet):
 
         return Response(serializer.data)
 
+    @HasPermission("correlation_rules-Delete")
     @transaction.atomic
     def destroy(self, request, *args, **kwargs):
         instance = self.get_object()

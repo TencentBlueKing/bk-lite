@@ -3,42 +3,35 @@ import React, { useEffect, useState, useRef } from 'react';
 import { Spin, Input, Button, message, Switch, Popconfirm } from 'antd';
 import useApiClient from '@/utils/request';
 import useMonitorApi from '@/app/monitor/api';
+import useEventApi from '@/app/monitor/api/event';
 import assetStyle from './index.module.scss';
 import { useTranslation } from '@/utils/i18n';
 import {
   ColumnItem,
   TreeItem,
   Pagination,
-  ModalRef,
-} from '@/app/monitor/types';
-import {
   ObjectItem,
+  ModalRef,
   TableDataItem,
-  SourceFeild,
-} from '@/app/monitor/types/monitor';
+} from '@/app/monitor/types';
+import { SourceFeild } from '@/app/monitor/types/event';
 import CustomTable from '@/components/custom-table';
 import SelectAssets from './selectAssets';
 import EllipsisWithTooltip from '@/components/ellipsis-with-tooltip';
-import {
-  deepClone,
-  getRandomColor,
-  findLabelById,
-} from '@/app/monitor/utils/common';
+import { getRandomColor, findLabelById } from '@/app/monitor/utils/common';
 import { useLocalizedTime } from '@/hooks/useLocalizedTime';
 import { PlusOutlined } from '@ant-design/icons';
 import { useRouter, useSearchParams } from 'next/navigation';
 import TreeSelector from '@/app/monitor/components/treeSelector';
 import Permission from '@/components/permission';
+import { cloneDeep } from 'lodash';
 
 const Strategy: React.FC = () => {
   const { t } = useTranslation();
   const { isLoading } = useApiClient();
-  const {
-    getMonitorPolicy,
-    getMonitorObject,
-    patchMonitorPolicy,
-    deleteMonitorPolicy,
-  } = useMonitorApi();
+  const { getMonitorObject } = useMonitorApi();
+  const { getMonitorPolicy, patchMonitorPolicy, deleteMonitorPolicy } =
+    useEventApi();
   const searchParams = useSearchParams();
   const { convertToLocalizedTime } = useLocalizedTime();
   const objId = searchParams.get('objId');
@@ -280,7 +273,7 @@ const Strategy: React.FC = () => {
         add_policy_count: true,
       });
       setObjects(data);
-      const _treeData = getTreeData(deepClone(data));
+      const _treeData = getTreeData(cloneDeep(data));
       setDefaultSelectObj(objId ? +objId : data[0]?.id);
       setTreeData(_treeData);
     } finally {

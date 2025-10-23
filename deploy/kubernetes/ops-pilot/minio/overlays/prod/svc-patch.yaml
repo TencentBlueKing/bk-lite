@@ -1,9 +1,0 @@
-- op: add
-  path: /spec/type
-  value: NodePort
-- op: add
-  path: /spec/ports/0/nodePort
-  value: 9000 
-- op: add
-  path: /spec/ports/1/nodePort
-  value: 9001

@@ -237,7 +237,7 @@ const CloudTask: React.FC<cloudTaskFormProps> = ({
               <Form.Item
                 label={t('Collection.cloudTask.accessKey')}
                 name="accessKey"
-                rules={[{ required: true }]}
+                rules={[{ required: true, message: t('common.inputTip') }]}
               >
                 <Input
                   placeholder={t('common.inputTip')}
@@ -248,7 +248,7 @@ const CloudTask: React.FC<cloudTaskFormProps> = ({
               <Form.Item
                 label={t('Collection.cloudTask.accessSecret')}
                 name="accessSecret"
-                rules={[{ required: true }]}
+                rules={[{ required: true, message: t('common.inputTip') }]}
               >
                 <Input.Password
                   placeholder={t('common.inputTip')}
@@ -259,7 +259,7 @@ const CloudTask: React.FC<cloudTaskFormProps> = ({
               <Form.Item
                 label={t('Collection.cloudTask.region')}
                 name="regionId"
-                rules={[{ required: true }]}
+                rules={[{ required: true, message: t('common.selectTip') }]}
               >
                 <RegionSelect
                   loading={loadingRegions}

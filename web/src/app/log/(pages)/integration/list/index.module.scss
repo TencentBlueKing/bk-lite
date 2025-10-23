@@ -1,11 +1,18 @@
 .integration {
+    display: flex;
+
     .cards {
         width: 100%;
         padding: 20px;
+        background: var(--color-bg-1);
 
         .integrationList {
-            height: calc(100vh - 236px);
+            max-height: calc(100vh - 240px);
             overflow-y: auto;
+
+            .cardItem {
+                border: 1px solid var(--color-border-1);
+            }
         }
     }
 

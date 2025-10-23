@@ -1,0 +1,51 @@
+# ================================== Auditd Module 配置 ==================================
+- module: auditd
+
+  resolve_ids: true
+  failure_mode: silent
+  backlog_limit: 8192
+  rate_limit: 0
+  include_raw_message: false
+  include_warnings: false
+  backpressure_strategy: auto
+  immutable: false
+
+  {% if audit_rules %}
+  # 用户自定义审计规则
+  audit_rules: |
+    {% for rule in audit_rules %}
+    {{ rule }}
+    {% endfor %}
+  {% endif %}
+
+  {% if rule_categories %}
+  audit_rules: |
+    {% for category in rule_categories %}
+    {% if category == "security" %}
+    # 安全监控 - 身份管理 + 权限提升
+    -w /etc/passwd -p wa -k identity
+    -w /etc/shadow -p wa -k identity
+    -w /etc/sudoers -p wa -k privilege
+    -w /usr/bin/sudo -p x -k privilege
+    -w /usr/bin/su -p x -k privilege
+    {% endif %}
+    {% if category == "system" %}
+    # 系统监控 - 关键文件变更
+    -w /bin/ -p wa -k system_files
+    -w /sbin/ -p wa -k system_files
+    -w /boot/ -p wa -k system_files
+    {% endif %}
+    {% if category == "network" %}
+    # 网络监控 - 连接活动
+    -a always,exit -F arch=b64 -S socket -k network
+    -a always,exit -F arch=b32 -S socket -k network
+    {% endif %}
+    {% endfor %}
+  {% endif %}
+
+  fields:
+    collector: "Auditbeat"
+    collect_type: "auditd"
+    instance_id: "{{ instance_id | default('default') }}"
+    _msg: ""
+  fields_under_root: true

@@ -1,0 +1,17 @@
+[build-system]
+requires = ["setuptools>=45", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+include = ["src*"]
+
+
+[project]
+name = "metis"
+version = "3.7.0"
+description = "Metis"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "neco[core,llm,mlflow,sanic,doc_parser,devops,ocr]==1.0.5",
+]

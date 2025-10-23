@@ -1,0 +1,424 @@
+[
+  {
+    "name": "Baichuan",
+    "display_name": "百川",
+    "icon": "Baichuan",
+    "tags": [
+      "llm",
+      "llm"
+    ]
+  },
+  {
+    "name": "CodeLlama",
+    "display_name": "CodeLlama",
+    "icon": "MetaAI",
+    "tags": [
+      "llm",
+      "llm"
+    ]
+  },
+  {
+    "name": "CodeGeeX",
+    "display_name": "CodeGeeX",
+    "icon": "CodeGeeX",
+    "tags": [
+      "llm"
+    ]
+  },
+  {
+    "name": "CodeQwen",
+    "display_name": "CodeQwen",
+    "icon": "Alibaba",
+    "tags": [
+      "llm"
+    ]
+  },
+  {
+    "name": "CodeShell",
+    "display_name": "CodeShell",
+    "icon": "",
+    "tags": [
+      "llm"
+    ]
+  },
+  {
+    "name": "Codestral",
+    "display_name": "Codestral",
+    "icon": "Mistral",
+    "tags": [
+      "llm"
+    ]
+  },
+  {
+    "name": "CogAgent",
+    "display_name": "CogAgent",
+    "icon": "Zhipu",
+    "tags": [
+      "llm"
+    ]
+  },
+  {
+    "name": "DeepSeek",
+    "display_name": "DeepSeek",
+    "icon": "DeepSeek",
+    "tags": [
+      "llm"
+    ]
+  },
+  {
+    "name": "DianJin",
+    "display_name": "DianJin",
+    "icon": "",
+    "tags": [
+      "llm"
+    ]
+  },
+  {
+    "name": "ERNIE",
+    "display_name": "ERNIE",
+    "icon": "Baidu",
+    "tags": [
+      "llm"
+    ]
+  },
+  {
+    "name": "FinLLM",
+    "display_name": "FinLLM",
+    "icon": "",
+    "tags": [
+      "llm"
+    ]
+  },
+  {
+    "name": "Gemma",
+    "display_name": "Gemma",
+    "icon": "Gemma",
+    "tags": [
+      "llm"
+    ]
+  },
+  {
+    "name": "GLM",
+    "display_name": "智谱",
+    "icon": "ChatGLM",
+    "tags": [
+      "llm"
+    ]
+  },
+  {
+    "name": "Gorilla",
+    "display_name": "Gorilla",
+    "icon": "",
+    "tags": [
+      "llm"
+    ]
+  },
+  {
+    "name": "OpenAI",
+    "display_name": "OpenAI",
+    "icon": "GPT",
+    "tags": [
+      "llm"
+    ]
+  },
+  {
+    "name": "HuatuoGPT",
+    "display_name": "HuatuoGPT",
+    "icon": "",
+    "tags": [
+      "llm"
+    ]
+  },
+  {
+    "name": "InternLM",
+    "display_name": "InternLM",
+    "icon": "Intern",
+    "tags": [
+      "llm"
+    ]
+  },
+  {
+    "name": "InternVL",
+    "display_name": "InternVL",
+    "icon": "",
+    "tags": [
+      "llm"
+    ]
+  },
+  {
+    "name": "LLaMA",
+    "display_name": "LLaMA",
+    "icon": "Meta",
+    "tags": [
+      "llm"
+    ]
+  },
+  {
+    "name": "Marco",
+    "display_name": "Marco",
+    "icon": "",
+    "tags": [
+      "llm"
+    ]
+  },
+  {
+    "name": "MiniCPM",
+    "display_name": "MiniCPM",
+    "icon": "",
+    "tags": [
+      "llm"
+    ]
+  },
+  {
+    "name": "Mistral",
+    "display_name": "Mistral",
+    "icon": "Mistral",
+    "tags": [
+      "llm"
+    ]
+  },
+  {
+    "name": "Mixtral",
+    "display_name": "Mixtral",
+    "icon": "Mistral",
+    "tags": [
+      "llm"
+    ]
+  },
+  {
+    "name": "Moonlight",
+    "display_name": "Moonlight",
+    "icon": "",
+    "tags": [
+      "llm"
+    ]
+  },
+  {
+    "name": "OpenHermes",
+    "display_name": "OpenHermes",
+    "icon": "",
+    "tags": [
+      "llm"
+    ]
+  },
+  {
+    "name": "OPT",
+    "display_name": "OPT",
+    "icon": "",
+    "tags": [
+      "llm"
+    ]
+  },
+  {
+    "name": "Orion",
+    "display_name": "Orion",
+    "icon": "",
+    "tags": [
+      "llm"
+    ]
+  },
+  {
+    "name": "Ovis",
+    "display_name": "Ovis",
+    "icon": "",
+    "tags": [
+      "llm"
+    ]
+  },
+  {
+    "name": "Phi",
+    "display_name": "Phi",
+    "icon": "",
+    "tags": [
+      "llm"
+    ]
+  },
+  {
+    "name": "QvQ",
+    "display_name": "QvQ",
+    "icon": "",
+    "tags": [
+      "llm"
+    ]
+  },
+  {
+    "name": "Qwen",
+    "display_name": "千问",
+    "icon": "Qwen",
+    "tags": [
+      "llm"
+    ]
+  },
+  {
+    "name": "QwQ",
+    "display_name": "QwQ",
+    "icon": "",
+    "tags": [
+      "llm"
+    ]
+  },
+  {
+    "name": "SEALLM",
+    "display_name": "SEALLM",
+    "icon": "",
+    "tags": [
+      "llm"
+    ]
+  },
+  {
+    "name": "Skywork",
+    "display_name": "Skywork",
+    "icon": "",
+    "tags": [
+      "llm"
+    ]
+  },
+  {
+    "name": "Telechat",
+    "display_name": "Telechat",
+    "icon": "",
+    "tags": [
+      "llm"
+    ]
+  },
+  {
+    "name": "TinyLlama",
+    "display_name": "TinyLlama",
+    "icon": "",
+    "tags": [
+      "llm"
+    ]
+  },
+  {
+    "name": "WizardCoder",
+    "display_name": "WizardCoder",
+    "icon": "",
+    "tags": [
+      "llm"
+    ]
+  },
+  {
+    "name": "WizardMath",
+    "display_name": "WizardMath",
+    "icon": "",
+    "tags": [
+      "llm"
+    ]
+  },
+  {
+    "name": "XiYanSQL",
+    "display_name": "XiYanSQL",
+    "icon": "",
+    "tags": [
+      "llm"
+    ]
+  },
+  {
+    "name": "Xverse",
+    "display_name": "Xverse",
+    "icon": "",
+    "tags": [
+      "llm"
+    ]
+  },
+  {
+    "name": "Yi",
+    "display_name": "零一万物",
+    "icon": "Yi",
+    "tags": [
+      "llm"
+    ]
+  },
+  {
+    "name": "BAAI",
+    "display_name": "智源研究院",
+    "icon": "BAAI",
+    "tags": [
+      "embed",
+      "rerank"
+    ]
+  },
+  {
+    "name": "Moka AI",
+    "display_name": "Moka AI",
+    "icon": "",
+    "tags": [
+      "embed"
+    ]
+  },
+  {
+    "name": "Jina AI",
+    "display_name": "Jina AI",
+    "icon": "Jina",
+    "tags": [
+      "embed",
+      "rerank"
+    ]
+  },
+  {
+    "name": "网易有道",
+    "display_name": "网易有道",
+    "icon": "",
+    "tags": [
+      "embed",
+      "rerank"
+    ]
+  },
+  {
+    "name": "阿里",
+    "display_name": "阿里",
+    "icon": "Alibaba",
+    "tags": [
+      "embed",
+      "rerank"
+    ]
+  },
+  {
+    "name": "微软",
+    "display_name": "微软",
+    "icon": "Alibaba",
+    "tags": [
+      "embed"
+    ]
+  },
+  {
+    "name": "赛博智能",
+    "display_name": "赛博智能",
+    "icon": "",
+    "tags": [
+      "embed"
+    ]
+  },
+  {
+    "name": "OpenBMB",
+    "display_name": "OpenBMB",
+    "icon": "",
+    "tags": [
+      "rerank"
+    ]
+  },
+  {
+    "name": "hugging_face",
+    "display_name": "Hugging Face",
+    "icon": "",
+    "tags": ["llm", "embed", "rerank", "ocr"]
+  },
+  {
+    "name": "langserve",
+    "display_name": "LangServe",
+    "icon": "",
+    "tags": ["embed", "rerank"]
+  },
+  {
+    "name": "cloud",
+    "display_name": "Cloud",
+    "icon": "",
+    "tags": ["ocr"]
+  },
+  {
+    "name": "default",
+    "display_name": "默认",
+    "icon": "",
+    "tags": ["llm", "embed", "rerank", "ocr"]
+  }
+]

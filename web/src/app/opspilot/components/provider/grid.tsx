@@ -1,5 +1,6 @@
-import React, { useState } from 'react';
-import { Spin, message, Dropdown, Menu, Modal, Empty } from 'antd';
+import React, { useState, useMemo } from 'react';
+import { Spin, message, Dropdown, Menu, Modal, Empty, Divider } from 'antd';
+import Image from 'next/image';
 import Icon from '@/components/icon';
 import { useTranslation } from '@/utils/i18n';
 import styles from './index.module.scss';
@@ -8,40 +9,26 @@ import { Model, ModelConfig } from '@/app/opspilot/types/provider';
 import PermissionWrapper from '@/components/permission';
 import ConfigModal from '@/app/opspilot/components/provider/configModal';
 import { useProviderApi } from '@/app/opspilot/api/provider';
-import { CONFIG_MAP } from '@/app/opspilot/constants/provider';
+import { CONFIG_MAP, MODEL_CATEGORY_MAPPING } from '@/app/opspilot/constants/provider';
 
 interface ProviderGridProps {
   models: Model[];
   filterType: string;
   loading: boolean;
   setModels: React.Dispatch<React.SetStateAction<Model[]>>;
+  onRefreshData?: () => void;
 }
 
-const ProviderGrid: React.FC<ProviderGridProps> = ({ models, filterType, loading, setModels }) => {
+const ProviderGrid: React.FC<ProviderGridProps> = ({ models, filterType, loading, setModels, onRefreshData }) => {
   const { t } = useTranslation();
   const { updateProvider, deleteProvider } = useProviderApi();
   const [isModalVisible, setIsModalVisible] = useState<boolean>(false);
   const [modalLoading, setModalLoading] = useState<boolean>(false);
   const [selectedModel, setSelectedModel] = useState<Model | null>(null);
 
-  const llmIconMap: Record<string, string> = {
-    'deep-seek': 'deepseek',
-    'chat-gpt': 'chatgpticon',
-    'hugging_face': 'huggingface',
-    'default': 'chatgpticon'
-  };
-
-  const iconMap: Record<string, string> = {
-    embed_provider: 'Embeddings',
-    rerank_provider: 'jigoushuzhongxinpaixu',
-    ocr_provider: 'ocr',
-  };
-
-  const getModelIcon = (model: Model) => {
-    if (filterType === 'llm_model') {
-      return llmIconMap[model.llm_model_type || 'default'];
-    }
-    return iconMap[filterType] || 'chatgpticon';
+  const getModelIconPath = (model: Model) => {
+    const iconName = model.icon || 'Default';
+    return `/app/models/${iconName}.svg`;
   };
 
   const handleMenuClick = (action: string, model: Model) => {
@@ -81,12 +68,13 @@ const ProviderGrid: React.FC<ProviderGridProps> = ({ models, filterType, loading
     const updatedModel: Model = {
       ...selectedModel,
       name: values.name,
-      llm_model_type: values.type,
+      label: values.label,
+      model_type: values.model_type,
       enabled: values.enabled,
-      team: values.team,
-      consumer_team: values.consumer_team
+      team: values.team
     };
 
+    // Build different config based on provider type
     if (filterType === 'llm_model') {
       updatedModel.llm_config = {
         ...selectedModel.llm_config,
@@ -113,6 +101,7 @@ const ProviderGrid: React.FC<ProviderGridProps> = ({ models, filterType, loading
         message.success(t('common.updateSuccess'));
         setModels(prevModels => prevModels.map(model => (model.id === updatedModel.id ? updatedModel : model)));
         setIsModalVisible(false);
+        onRefreshData && onRefreshData();
       } else {
         message.error(t('common.updateFailed'));
       }
@@ -131,6 +120,7 @@ const ProviderGrid: React.FC<ProviderGridProps> = ({ models, filterType, loading
           await deleteProvider(filterType, model.id);
           message.success(t('common.delSuccess'));
           setModels(prevModels => prevModels.filter(item => item.id !== model.id));
+          onRefreshData && onRefreshData();
         } catch {
           message.error(t('common.delFailed'));
         }
@@ -138,38 +128,80 @@ const ProviderGrid: React.FC<ProviderGridProps> = ({ models, filterType, loading
     });
   };
 
+  // 将模型按照启用状态分组
+  const { enabledModels, disabledModels } = useMemo(() => {
+    const enabled = models.filter(model => model.enabled);
+    const disabled = models.filter(model => !model.enabled);
+    return { enabledModels: enabled, disabledModels: disabled };
+  }, [models]);
+
+  const renderModelGrid = (modelList: Model[]) => (
+    <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 2xl:grid-cols-5 gap-4">
+      {modelList.map((model) => (
+        <div className={`rounded-lg p-4 relative ${styles.gridContainer}`} key={model.id}>
+          <div className="flex justify-between items-start">
+            <div style={{flex: '0 0 auto'}}>
+              <Image
+                src={getModelIconPath(model)}
+                alt={model.name}
+                width={45}
+                height={45}
+                className="object-contain"
+              />
+            </div>
+            <div className={`flex-1 ml-2 ${styles.nameContainer}`}>
+              <h3 className={`text-sm font-semibold break-words mb-1 ${styles.name}`}>{model.name}</h3>
+              <div className="flex flex-wrap gap-1 mt-1">
+                {model.model_type_name && (
+                  <span className="inline-block font-mini px-2 py-0.2 rounded-sm bg-blue-50 text-blue-600">
+                    {model.model_type_name}
+                  </span>
+                )}
+                {model.label && (
+                  <span className="inline-block font-mini px-2 py-0.2 rounded-sm bg-green-50 text-green-600">
+                    {MODEL_CATEGORY_MAPPING[model.label] || model.label}
+                  </span>
+                )}
+              </div>
+            </div>
+            <Dropdown overlay={menu(model)} trigger={['click']} placement="bottomRight">
+              <div className="cursor-pointer">
+                <Icon type="sangedian-copy" className="text-xl" />
+              </div>
+            </Dropdown>
+          </div>
+          <div className="absolute bottom-0 right-0 rounded-lg z-20">
+            <span className={`${styles.iconTriangle} ${model.enabled ? styles.enabled : styles.disabled}`}>
+              {model.enabled ? <Icon type="select-line" /> : <Icon type="guanbi" />}
+            </span>
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+
   return (
     <>
       <Spin spinning={loading}>
         {!loading && models.length === 0 ? (
           <Empty description={t('common.noData')} />
         ) : (
-          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 2xl:grid-cols-5 gap-4">
-            {models.map((model) => (
-              <div className={`rounded-lg shadow p-4 relative ${styles.gridContainer}`} key={model.id}>
-                <div className="flex justify-between items-start">
-                  <div style={{flex: '0 0 auto'}}>
-                    <Icon type={getModelIcon(model)} className="text-5xl"/>
-                  </div>
-                  <div className={`flex-1 ml-2 ${styles.nameContainer}`}>
-                    <h3 className={`text-sm font-semibold break-words mb-1 ${styles.name}`}>{model.name}</h3>
-                    <span className="inline-block mt-1 px-2 font-mini rounded-xl border">
-                      {filterType}
-                    </span>
-                  </div>
-                  <Dropdown overlay={menu(model)} trigger={['click']} placement="bottomRight">
-                    <div className="cursor-pointer">
-                      <Icon type="sangedian-copy" className="text-xl" />
-                    </div>
-                  </Dropdown>
-                </div>
-                <div className="absolute bottom-0 right-0 rounded-lg z-20">
-                  <span className={`${styles.iconTriangle} ${model.enabled ? styles.enabled : styles.disabled}`}>
-                    {model.enabled ? <Icon type="select-line" /> : <Icon type="guanbi" />}
-                  </span>
-                </div>
+          <div className="space-y-6">
+            {enabledModels.length > 0 && (
+              <div>
+                {renderModelGrid(enabledModels)}
               </div>
-            ))}
+            )}
+
+            {enabledModels.length > 0 && disabledModels.length > 0 && (
+              <Divider className="my-6" />
+            )}
+
+            {disabledModels.length > 0 && (
+              <div>
+                {renderModelGrid(disabledModels)}
+              </div>
+            )}
           </div>
         )}
       </Spin>

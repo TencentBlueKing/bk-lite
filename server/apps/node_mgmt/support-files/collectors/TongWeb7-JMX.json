@@ -1,0 +1,16 @@
+[
+    {
+        "id": "jmx_tongweb7_linux",
+        "name": "TongWeb7-JMX",
+        "controller_default_run": false,
+        "icon": "",
+        "node_operating_system": "linux",
+        "service_type": "exec",
+        "executable_path": "/usr/bin/java",
+        "execute_parameters": "-jar /opt/fusion-collectors/bin/jmx_tongweb7.jar $LISTEN_HOST %s",
+        "validation_parameters": "",
+        "default_template": "",
+        "introduction": "JMX-TongWeb7 is a Java Management Extensions (JMX) monitoring tool that collects and monitors TongWeb7 server metrics, providing real-time performance insights."
+    }
+]
+

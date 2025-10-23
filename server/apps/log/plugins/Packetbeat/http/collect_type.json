@@ -1,0 +1,19 @@
+{
+  "name": "http",
+  "collector": "Packetbeat",
+  "icon": "http_protocol",
+  "description": "Analyzes HTTP traffic for web application monitoring, API performance tracking, and security analysis",
+  "default_query": "collect_type: http AND http_status_code: [200, 404, 500] | stats count by http_method, http_status_code | sort by count desc",
+  "attrs": [
+  "collect_type",
+  "collector",
+  "instance_id",
+  "http.request.headers",
+  "http.request.params",
+  "http.response.status_phrase",
+  "http.response.headers",
+  "http.response.code",
+  "http.response.phrase"
+]
+}
+

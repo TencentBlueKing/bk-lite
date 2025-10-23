@@ -1,27 +1,30 @@
 'use client';
 
 import React, { useRef, useState, useEffect } from 'react';
-import { Card, Modal, message } from 'antd';
-import WithSideMenuLayout from '@/components/sub-layout';
-import { useRouter } from 'next/navigation';
-import { getIconUrl } from '@/app/cmdb/utils/common';
 import Image from 'next/image';
-import { EditTwoTone, DeleteTwoTone } from '@ant-design/icons';
-import { useSearchParams } from 'next/navigation';
+import WithSideMenuLayout from '@/components/sub-layout';
 import ModelModal from '../list/modelModal';
 import attrLayoutStyle from './layout.module.scss';
 import useApiClient from '@/utils/request';
+import PermissionWrapper from '@/components/permission';
+import { Card, Modal, message } from 'antd';
+import { useRouter } from 'next/navigation';
+import { getIconUrl } from '@/app/cmdb/utils/common';
+import { EditTwoTone, DeleteTwoTone } from '@ant-design/icons';
+import { useSearchParams } from 'next/navigation';
 import { ClassificationItem } from '@/app/cmdb/types/assetManage';
 import { useTranslation } from '@/utils/i18n';
-import PermissionWrapper from '@/components/permission';
 import { useClassificationApi, useModelApi } from '@/app/cmdb/api';
 import { ModelDetailContext } from './context';
+import { useCommon } from '@/app/cmdb/context/common';
+import { OrganizationField } from '@/app/cmdb/utils/common';
 
 const AboutLayout = ({ children }: { children: React.ReactNode }) => {
   const { isLoading } = useApiClient();
   const { t } = useTranslation();
   const { confirm } = Modal;
   const router = useRouter();
+  const commonContext = useCommon();
 
   const { getClassificationList } = useClassificationApi();
   const { deleteModel, getModelDetail } = useModelApi();
@@ -59,7 +62,7 @@ const AboutLayout = ({ children }: { children: React.ReactNode }) => {
     }
   };
 
-  const onSuccess = (info: any) => {
+  const onSuccess = async (info: any) => {
     const params = new URLSearchParams({
       icn: info.icn || modelDetail.icn || '',
       model_name: info.model_name,
@@ -69,6 +72,10 @@ const AboutLayout = ({ children }: { children: React.ReactNode }) => {
     }).toString();
     router.replace(`/cmdb/assetManage/management/detail/attributes?${params}`);
     fetchModelDetail();
+
+    if (commonContext?.refreshModelList) {
+      await commonContext.refreshModelList();
+    }
   };
 
   const handleBackButtonClick = () => {
@@ -87,6 +94,9 @@ const AboutLayout = ({ children }: { children: React.ReactNode }) => {
           try {
             await deleteModel(row.model_id);
             message.success(t('successfullyDeleted'));
+            if (commonContext?.refreshModelList) {
+              await commonContext.refreshModelList();
+            }
             router.push(`/cmdb/assetManage`);
           } finally {
             resolve(true);
@@ -129,6 +139,10 @@ const AboutLayout = ({ children }: { children: React.ReactNode }) => {
               </div>
               <div className="text-[var(--color-text-2)] text-[12px] break-all">
                 {modelId}
+                <span className="ml-2">
+                  【{t('associatedOrganization')}：
+                  <OrganizationField value={modelDetail.group} />】
+                </span>
               </div>
             </div>
             {!isPre && (

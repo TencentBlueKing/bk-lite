@@ -8,25 +8,16 @@ import pyotp
 import qrcode
 from django.contrib.auth.hashers import check_password, make_password
 from django.db.models import Q
+from django.utils import timezone
 
 import nats_client
 from apps.core.backends import cache
 from apps.core.logger import system_mgmt_logger as logger
 from apps.system_mgmt.guest_menus import CMDB_MENUS, MONITOR_MENUS, OPSPILOT_GUEST_MENUS
-from apps.system_mgmt.models import (
-    App,
-    Channel,
-    ChannelChoices,
-    Group,
-    GroupDataRule,
-    LoginModule,
-    Menu,
-    Role,
-    User,
-    UserRule,
-)
+from apps.system_mgmt.models import App, Channel, ChannelChoices, Group, GroupDataRule, LoginModule, Menu, Role, User, UserRule
 from apps.system_mgmt.models.system_settings import SystemSettings
 from apps.system_mgmt.services.role_manage import RoleManage
+from apps.system_mgmt.utils.bk_user_utils import get_bk_user_info
 from apps.system_mgmt.utils.channel_utils import send_by_bot, send_email
 from apps.system_mgmt.utils.group_utils import GroupUtils
 
@@ -76,7 +67,7 @@ def get_pilot_permission_by_token(token, bot_id, group_list):
         if rule_obj is None:
             return {"result": True, "data": {"username": user.username}}
         bot_ids = [u["id"] for u in rule_obj]
-        if bot_id in bot_ids or -1 in bot_ids or 0 in bot_ids:
+        if bot_id in bot_ids or 0 in bot_ids:
             return {"result": True, "data": {"username": user.username}}
     return {"result": False}
 
@@ -201,9 +192,7 @@ def search_users(query_params):
     page = int(query_params.get("page", 1))
     page_size = int(query_params.get("page_size", 10))
     search = query_params.get("search", "")
-    queryset = User.objects.filter(
-        Q(username__icontains=search) | Q(display_name__icontains=search) | Q(email__icontains=search)
-    )
+    queryset = User.objects.filter(Q(username__icontains=search) | Q(display_name__icontains=search) | Q(email__icontains=search))
     start = (page - 1) * page_size
     end = page * page_size
     total = queryset.count()
@@ -215,14 +204,10 @@ def search_users(query_params):
 @nats_client.register
 def init_user_default_attributes(user_id, group_name, default_group_id):
     try:
-        role_ids = list(
-            Role.objects.filter(name="guest", app__in=["opspilot", "cmdb", "monitor"]).values_list("id", flat=True)
-        )
+        role_ids = list(Role.objects.filter(name="guest", app__in=["opspilot", "cmdb", "monitor", "alarm", "node"]).values_list("id", flat=True))
         normal_role = Role.objects.get(name="normal", app="opspilot")
         user = User.objects.get(id=user_id)
-        top_group, _ = Group.objects.get_or_create(
-            name=os.getenv("DEFAULT_GROUP_NAME", "Guest"), parent_id=0, defaults={"description": ""}
-        )
+        top_group, _ = Group.objects.get_or_create(name=os.getenv("DEFAULT_GROUP_NAME", "Guest"), parent_id=0, defaults={"description": ""})
         if Group.objects.filter(parent_id=top_group.id, name=group_name).exists():
             return {"result": False, "message": "Group already exists"}
 
@@ -238,12 +223,7 @@ def init_user_default_attributes(user_id, group_name, default_group_id):
         user.group_list.append(guest_group.id)
         user.group_list.append(group_obj.id)
         user.save()
-        default_rule = GroupDataRule.objects.get(name="OpsPilot内置规则", app="opspilot", group_id=guest_group.id)
-        monitor_rule = GroupDataRule.objects.get(name="OpsPilotGuest数据权限", app="monitor", group_id=guest_group.id)
-        cmdb_rule = GroupDataRule.objects.get(name="游客数据权限", app="cmdb", group_id=guest_group.id)
-        UserRule.objects.create(username=user.username, group_rule_id=default_rule.id)
-        UserRule.objects.create(username=user.username, group_rule_id=monitor_rule.id)
-        UserRule.objects.create(username=user.username, group_rule_id=cmdb_rule.id)
+        set_opspilot_guest_group_default_rule(guest_group, user)
         cache.delete(f"group_{user.username}")
         return {"result": True, "data": {"group_id": group_obj.id}}
     except Exception as e:
@@ -309,20 +289,18 @@ def send_msg_with_channel(channel_id, title, content, receivers):
     channel_obj = Channel.objects.filter(id=channel_id).first()
     if not channel_obj:
         return {"result": False, "message": "Channel not found"}
-    user_list = User.objects.filter(id__in=receivers)
     if channel_obj.channel_type == ChannelChoices.EMAIL:
+        user_list = User.objects.filter(id__in=receivers)
         return send_email(channel_obj, title, content, user_list)
     elif channel_obj.channel_type == ChannelChoices.ENTERPRISE_WECHAT_BOT:
-        return send_by_bot(channel_obj, content)
+        return send_by_bot(channel_obj, content, receivers)
     return {"result": False, "message": "Unsupported channel type"}
     # return send_wechat(channel_obj, content, user_list)
 
 
 @nats_client.register
 def get_user_rules(group_id, username):
-    rules = UserRule.objects.filter(username=username).filter(
-        Q(group_rule__group_id=group_id) | Q(group_rule__group_name="OpsPilotGuest")
-    )
+    rules = UserRule.objects.filter(username=username).filter(Q(group_rule__group_id=group_id) | Q(group_rule__group_name="OpsPilotGuest"))
     if not rules:
         return {}
     return_data = {}
@@ -362,9 +340,7 @@ def get_user_rules_by_module(group_id, username, domain, app, module):
         base_filter = Q(group_rule__group_id=group_id)
     module_filter = Q(group_rule__rules__has_key=module)
 
-    rules = UserRule.objects.filter(username=username, domain=domain, group_rule__app=app).filter(
-        base_filter & module_filter
-    )
+    rules = UserRule.objects.filter(username=username, domain=domain, group_rule__app=app).filter(base_filter & module_filter)
     if not rules:
         return {"result": True, "data": all_permission, "team": admin_teams}
     result = {}
@@ -379,7 +355,7 @@ def get_user_rules_by_module(group_id, username, domain, app, module):
             if isinstance(sub_modules, dict):
                 for sub_module_id, rule_data in sub_modules.items():
                     if sub_module_id not in result:
-                        result[sub_module_id] = {"instance": [], "team": all_permission_team}
+                        result[sub_module_id] = {"instance": [], "team": all_permission_team[:]}
 
                     # 处理规则数据
                     has_all_permission, instance_data = process_rule_data(rule_data)
@@ -389,6 +365,18 @@ def get_user_rules_by_module(group_id, username, domain, app, module):
                             result[sub_module_id]["team"].append(rule.group_rule.group_id)
                     else:
                         result[sub_module_id]["instance"].extend(instance_data)
+            else:
+                if category not in result:
+                    result[category] = {"instance": [], "team": all_permission_team[:]}
+
+                # 处理规则数据
+                has_all_permission, instance_data = process_rule_data(sub_modules)
+
+                if has_all_permission:
+                    if rule.group_rule.group_id not in result[category]["team"]:
+                        result[category]["team"].append(rule.group_rule.group_id)
+                else:
+                    result[category]["instance"].extend(instance_data)
 
     return {"result": True, "data": result, "team": admin_teams}
 
@@ -416,9 +404,7 @@ def get_user_rules_by_app(group_id, username, domain, app, module, child_module=
     module_filter = Q(group_rule__rules__has_key=module)
 
     # 如果指定了子模块，不在数据库层面过滤，在Python层面处理复杂嵌套
-    rules = UserRule.objects.filter(username=username, domain=domain, group_rule__app=app).filter(
-        base_filter & module_filter
-    )
+    rules = UserRule.objects.filter(username=username, domain=domain, group_rule__app=app).filter(base_filter & module_filter)
 
     if not rules:
         return {"instance": [], "team": admin_teams}
@@ -465,10 +451,10 @@ def process_rule_data(rule_data):
     """处理规则数据，返回是否为全部权限和具体实例数据"""
     if not rule_data:
         return True, []
-
     if isinstance(rule_data, list):
-        ids = [item.get("id") for item in rule_data if isinstance(item, dict)]
-        has_all_permission = -1 in ids or 0 in ids or "0" in ids
+        rule_data = [item for item in rule_data if isinstance(item, dict) and item.get("id") not in ["-1", -1]]
+        ids = [item.get("id") for item in rule_data]
+        has_all_permission = 0 in ids or "0" in ids
         return has_all_permission, rule_data if not has_all_permission else []
 
     return True, []
@@ -508,25 +494,21 @@ def reset_pwd(username, password):
 @nats_client.register
 def wechat_user_register(user_id, nick_name):
     user, is_first_login = User.objects.update_or_create(username=user_id, defaults={"display_name": nick_name})
-    default_group = Group.objects.get(name="OpsPilotGuest", parent_id=0)
-    if not user.group_list:
+    default_group = Group.objects.filter(name="OpsPilotGuest", parent_id=0).first()
+    if not user.group_list and default_group:
         user.group_list = [default_group.id]
     default_role = list(
         Role.objects.filter(
-            Q(name="normal", app__in=["opspilot", "ops-console"])
-            | Q(name="guest", app__in=["opspilot", "cmdb", "monitor"])
+            Q(name="normal", app__in=["opspilot", "ops-console"]) | Q(name="guest", app__in=["opspilot", "cmdb", "monitor", "log", "alarm", "node"])
         ).values_list("id", flat=True)
     )
-    role_list = list(set(user.role_list + default_role))
-    user.role_list = role_list
+    default_role.extend(user.role_list)
+    user.role_list = list(set(default_role))
+    user.last_login = timezone.now()
     user.save()
     try:
-        default_rule = GroupDataRule.objects.get(name="OpsPilot内置规则", app="opspilot", group_id=default_group.id)
-        monitor_rule = GroupDataRule.objects.get(name="OpsPilotGuest数据权限", app="monitor", group_id=default_group.id)
-        cmdb_rule = GroupDataRule.objects.get(name="游客数据权限", app="cmdb", group_id=default_group.id)
-        UserRule.objects.get_or_create(username=user.username, group_rule_id=cmdb_rule.id)
-        UserRule.objects.get_or_create(username=user.username, group_rule_id=default_rule.id)
-        UserRule.objects.get_or_create(username=user.username, group_rule_id=monitor_rule.id)
+        if default_group:
+            set_opspilot_guest_group_default_rule(default_group, user)
     except Exception:  # noqa
         pass
     secret_key = os.getenv("SECRET_KEY")
@@ -544,6 +526,19 @@ def wechat_user_register(user_id, nick_name):
             "token": token,
         },
     }
+
+
+def set_opspilot_guest_group_default_rule(default_group, user):
+    default_rule = GroupDataRule.objects.get(name="OpsPilot内置规则", app="opspilot", group_id=default_group.id)
+    monitor_rule = GroupDataRule.objects.get(name="OpsPilotGuest数据权限", app="monitor", group_id=default_group.id)
+    cmdb_rule = GroupDataRule.objects.get(name="游客数据权限", app="cmdb", group_id=default_group.id)
+    log_rule = GroupDataRule.objects.get(name="log内置规则", app="log", group_id=default_group.id)
+    node_rule = GroupDataRule.objects.get(name="节点管理内置数据权限", app="node", group_id=default_group.id)
+    UserRule.objects.get_or_create(username=user.username, group_rule_id=cmdb_rule.id)
+    UserRule.objects.get_or_create(username=user.username, group_rule_id=default_rule.id)
+    UserRule.objects.get_or_create(username=user.username, group_rule_id=monitor_rule.id)
+    UserRule.objects.get_or_create(username=user.username, group_rule_id=log_rule.id)
+    UserRule.objects.get_or_create(username=user.username, group_rule_id=node_rule.id)
 
 
 @nats_client.register
@@ -629,6 +624,8 @@ def get_user_login_token(user, username):
     user_obj = {"user_id": user.id, "login_time": int(time.time())}
     token = jwt.encode(payload=user_obj, key=secret_key, algorithm=algorithm)
     enable_otp = SystemSettings.objects.filter(key="enable_otp").first()
+    user.last_login = timezone.now()
+    user.save()
     if not enable_otp:
         enable_otp = False
     else:
@@ -651,9 +648,7 @@ def get_user_login_token(user, username):
 
 @nats_client.register
 def get_login_module_domain_list():
-    login_module_list = list(
-        LoginModule.objects.filter(source_type="bk_lite").values_list("other_config__domain", flat=True)
-    )
+    login_module_list = list(LoginModule.objects.filter(source_type="bk_lite").values_list("other_config__domain", flat=True))
     login_module_list.insert(0, "domain.com")
     return {"result": True, "data": login_module_list}
 
@@ -687,9 +682,10 @@ def delete_rules(group_ids, instance_id, app, module, child_module):
 
             # 删除指定 ID 的权限项
             original_length = len(target_list)
-            rules_data[module][child_module if child_module else module] = [
-                item for item in target_list if str(item.get("id")) != str(instance_id)
-            ]
+            if child_module:
+                rules_data[module][child_module] = [item for item in target_list if str(item.get("id")) != str(instance_id)]
+            else:
+                rules_data[module] = [item for item in target_list if str(item.get("id")) != str(instance_id)]
 
             # 如果有删除操作，更新数据库
             new_length = len(rules_data[module][child_module] if child_module else rules_data[module])
@@ -703,3 +699,52 @@ def delete_rules(group_ids, instance_id, app, module, child_module):
     except Exception as e:
         logger.exception(f"Error deleting rules: {e}")
         return {"result": False, "message": str(e)}
+
+
+@nats_client.register
+def verify_bk_token(bk_token):
+    login_module = LoginModule.objects.filter(source_type="bk_login", enabled=True).first()
+    if not login_module:
+        return {"result": True, "data": {"bk_login_open": False}}
+    bk_config = login_module.other_config
+    if not bk_token:
+        return {"result": True, "data": {"bk_login_open": True, "user": {}, "url": bk_config.get("bk_url")}}
+    res, bk_user = get_bk_user_info(bk_token, bk_config.get("app_id"), bk_config.get("app_token"), bk_config.get("bk_url"))
+    if not res:
+        return {"result": True, "data": {"bk_login_open": True, "user": {}, "url": bk_config.get("bk_url")}}
+    group_obj = Group.objects.get(name=login_module.other_config.get("root_group", "蓝鲸"), parent_id=0)
+    user, _ = User.objects.get_or_create(
+        username=bk_user["username"],
+        domain=bk_user.get("domain"),
+        defaults={
+            "email": bk_user.get("email", ""),
+            "group_list": [group_obj.id],
+            "locale": bk_user.get("language", "zh-Hans"),
+            "timezone": bk_user.get("time_zone", "Asia/Shanghai"),
+            "role_list": login_module.other_config.get("default_roles", []),
+        },
+    )
+    user.email = bk_user.get("email", "")
+    user.locale = bk_user.get("language", user.locale)
+    user.timezone = bk_user.get("time_zone", user.timezone)
+    user.save()
+    user_obj = {"user_id": user.id, "login_time": int(time.time())}
+    secret_key = os.getenv("SECRET_KEY")
+    algorithm = os.getenv("JWT_ALGORITHM", "HS256")
+    token = jwt.encode(payload=user_obj, key=secret_key, algorithm=algorithm)
+    return {
+        "result": True,
+        "data": {
+            "bk_login_open": True,
+            "user": {
+                "token": token,
+                "username": user.username,
+                "display_name": user.display_name,
+                "id": user.id,
+                "domain": user.domain,
+                "locale": user.locale,
+                "qrcode": user.otp_secret is None or user.otp_secret == "",
+            },
+            "url": bk_config.get("bk_url"),
+        },
+    }

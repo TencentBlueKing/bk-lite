@@ -1,0 +1,22 @@
+{
+  "name": "flows",
+  "collector": "Packetbeat",
+  "icon": "flows",
+  "description": "Monitors network flows for traffic analysis, bandwidth monitoring, and anomaly detection",
+  "default_query": "collect_type: flows | last 1 by (_time) partition by (flow_id)",
+  "attrs": [
+    "collect_type",
+    "collector",
+    "instance_id",
+    "flow.final",
+    "flow.id",
+    "flow.vlan",
+    "flow_id",
+    "final",
+    "vlan",
+    "source.stats.net_bytes_total",
+    "source.stats.net_packets_total",
+    "dest.stats.net_bytes_total",
+    "dest.stats.net_packets_total"
+  ]
+}

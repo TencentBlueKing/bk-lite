@@ -1,7 +1,11 @@
+import datetime
+import json
+
 import nats_client
 from apps.core.logger import opspilot_logger as logger
 from apps.opspilot.models import (
     Bot,
+    BotConversationHistory,
     EmbedProvider,
     KnowledgeBase,
     LLMModel,
@@ -11,6 +15,7 @@ from apps.opspilot.models import (
     RerankProvider,
     SkillTools,
 )
+from apps.opspilot.utils.bot_utils import get_user_info
 
 
 @nats_client.register
@@ -25,12 +30,7 @@ def init_user_set(group_id, group_name):
             unit="MB",
             skill_count=2,
             bot_count=2,
-            token_set={"GPT-4o": {"value": "50", "unit": "thousand"}},
         )
-        embed_model = EmbedProvider.objects.filter(name="FastEmbed(BAAI/bge-small-zh-v1.5)").first()
-        if embed_model:
-            embed_model.team.append(group_id)
-            embed_model.save()
         return {"result": True}
     except Exception as e:
         logger.exception(e)
@@ -132,3 +132,49 @@ def get_guest_provider(group_id):
             "ocr_model": [{"id": model.id, "name": model.name} for model in [paddle_ocr, azure_ocr, olm_ocr]],
         },
     }
+
+
+@nats_client.register
+def consume_bot_event(kwargs):
+    """
+    kwargs 参数：
+        text： 对话内容
+        send_id: 用户ID
+        timestamp： 对话时间
+        event：("user", "用户"), ("bot", "机器人")
+        input_channel：web,enterprise_wechat,dingtalk,wechat_official_account
+        citing_knowledge: 引用知识，列表 []
+    """
+    text = kwargs.get("text", "") or ""
+    if not text.strip():
+        return
+    try:
+        sender_id = kwargs["sender_id"]
+        if not sender_id.strip():
+            return
+        bot_id = int(kwargs.get("bot_id", 7))
+        created_at = datetime.datetime.fromtimestamp(kwargs["timestamp"], tz=datetime.timezone.utc)
+
+        # 优化 input_channel 获取逻辑
+        input_channel = kwargs.get("input_channel")
+        if not input_channel:
+            return
+        user, _ = get_user_info(bot_id, input_channel, sender_id)
+        bot = Bot.objects.get(id=bot_id)
+        citing_knowledge = kwargs.get("citing_knowledge", [])
+        if not citing_knowledge:
+            msg = kwargs.get("metadata", {}).get("other_data", {}).get("citing_knowledge", [])
+            msg_str = json.dumps(msg).replace("\u0000", " ").replace(r"\u0000", " ")
+            citing_knowledge = json.loads(msg_str)
+        BotConversationHistory.objects.create(
+            bot_id=bot_id,
+            channel_user_id=user.id,
+            created_at=created_at,
+            created_by=bot.created_by,
+            domain=bot.domain,
+            conversation_role=kwargs["event"],
+            conversation=kwargs["text"] or "",
+            citing_knowledge=citing_knowledge,
+        )
+    except Exception as e:
+        logger.exception(f"对话历史保存失败: {e}, 传入参数如下：{kwargs}")

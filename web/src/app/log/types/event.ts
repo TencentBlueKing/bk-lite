@@ -15,6 +15,7 @@ export interface ObjectItem {
   description: string;
   display_name?: string;
   display_type?: string;
+  collector: string;
   options?: ObjectItem[];
   label?: string;
   value?: string;
@@ -30,6 +31,7 @@ export interface StrategyFields {
   name?: string;
   alert_name?: string;
   alert_level?: string;
+  log_groups?: string[];
   organizations?: string[];
   collect_type?: number;
   schedule?: {
@@ -57,6 +59,7 @@ export interface StrategyFields {
       conditions: FilterItem[];
     };
   };
+  show_fields?: string[];
   [key: string]: unknown;
 }
 
@@ -76,4 +79,22 @@ export interface ConditionFilterProps {
   data: FilterItem[];
   fields: string[];
   onChange?: (data: FilterItem[]) => void;
+}
+
+export interface FiltersConfig {
+  level: string[];
+  state: string[];
+}
+
+export interface LogAlertParams {
+  id?: React.Key;
+  status?: string;
+  level?: string;
+  collect_type?: string;
+  policy_name?: string;
+  step?: string;
+  page?: number;
+  page_size?: number;
+  start_event_time?: string;
+  end_event_time?: string;
 }

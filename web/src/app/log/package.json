@@ -8,6 +8,8 @@
   },
   "dependencies": {
     "react-ace": "^14.0.1",
-    "recharts": "^2.15.0"
+    "recharts": "^2.15.0",
+    "echarts-for-react": "^3.0.2",
+    "react-grid-layout": "^1.5.2"
   }
 }

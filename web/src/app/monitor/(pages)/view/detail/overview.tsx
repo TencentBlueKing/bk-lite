@@ -10,21 +10,18 @@ import GuageChart from '@/app/monitor/components/charts/guageChart';
 import SingleValue from '@/app/monitor/components/charts/singleValue';
 import useApiClient from '@/utils/request';
 import useMonitorApi from '@/app/monitor/api';
-import {
-  MetricItem,
-  ChartDataItem,
-  SearchParams,
-  InterfaceTableItem,
-  ViewDetailProps,
-} from '@/app/monitor/types/monitor';
+import useViewApi from '@/app/monitor/api/view';
+import { InterfaceTableItem, ViewDetailProps } from '@/app/monitor/types/view';
+import { SearchParams } from '@/app/monitor/types/search';
 import {
   TableDataItem,
   TimeSelectorDefaultValue,
   TimeValuesProps,
+  MetricItem,
+  ChartDataItem,
 } from '@/app/monitor/types';
 import { useTranslation } from '@/utils/i18n';
 import {
-  deepClone,
   findUnitNameById,
   calculateMetrics,
   getEnumValueUnit,
@@ -32,11 +29,12 @@ import {
   renderChart,
   getRecentTimeRange,
 } from '@/app/monitor/utils/common';
-import { useObjectConfigInfo } from '@/app/monitor/hooks/intergration/common/getObjectConfig';
+import { useObjectConfigInfo } from '@/app/monitor/hooks/integration/common/getObjectConfig';
 import dayjs, { Dayjs } from 'dayjs';
-import { useInterfaceLabelMap } from '@/app/monitor/constants/monitor';
+import { useInterfaceLabelMap } from '@/app/monitor/hooks/view';
 import Icon from '@/components/icon';
 import { ColumnItem } from '@/types';
+import { cloneDeep } from 'lodash';
 
 const Overview: React.FC<ViewDetailProps> = ({
   monitorObjectId,
@@ -46,7 +44,8 @@ const Overview: React.FC<ViewDetailProps> = ({
   instanceId,
 }) => {
   const { isLoading } = useApiClient();
-  const { getMonitorMetrics, getInstanceQuery } = useMonitorApi();
+  const { getMonitorMetrics } = useMonitorApi();
+  const { getInstanceQuery } = useViewApi();
   const { getDashboardDisplay } = useObjectConfigInfo();
   const { t } = useTranslation();
   const INTERFACE_LABEL_MAP = useInterfaceLabelMap();
@@ -247,7 +246,7 @@ const Overview: React.FC<ViewDetailProps> = ({
   };
 
   const handleSearch = (type: string) => {
-    const _metricData = deepClone(originMetricData);
+    const _metricData = cloneDeep(originMetricData);
     fetchViewData(_metricData, type);
   };
 

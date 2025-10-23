@@ -10,7 +10,6 @@ import React, {
 import { Button, Input, Tabs, Tree } from 'antd';
 import OperateModal from '@/app/monitor/components/operate-drawer';
 import { useTranslation } from '@/utils/i18n';
-import useApiClient from '@/utils/request';
 import useMonitorApi from '@/app/monitor/api';
 import { convertGroupTreeToTreeSelectData } from '@/utils';
 import CustomTable from '@/components/custom-table';
@@ -21,13 +20,17 @@ import {
   TabItem,
   Pagination,
   TableDataItem,
+  ObjectItem,
 } from '@/app/monitor/types';
 import { CloseOutlined } from '@ant-design/icons';
 import { useLocalizedTime } from '@/hooks/useLocalizedTime';
 import selectInstanceStyle from './selectInstance.module.scss';
-import { getBaseInstanceColumn } from '@/app/monitor/utils/common';
-import { ObjectItem } from '@/app/monitor/types/monitor';
+import {
+  getBaseInstanceColumn,
+  showInstName,
+} from '@/app/monitor/utils/common';
 import { useUserInfoContext } from '@/context/userInfo';
+import EllipsisWithTooltip from '@/components/ellipsis-with-tooltip';
 
 const filterTreeData = (treeData: any, searchText: string) => {
   if (!searchText) return treeData;
@@ -64,31 +67,10 @@ const getLabelByKey = (key: string, treeData: any): string => {
   return '';
 };
 
-const getParentKeys = (
-  key: string,
-  treeData: any,
-  parentKeys: string[] = []
-) => {
-  for (const node of treeData) {
-    if (node.key === key) {
-      return parentKeys;
-    }
-    if (node.children?.length) {
-      const result: any = getParentKeys(key, node.children, [
-        ...parentKeys,
-        node.key,
-      ]);
-      if (result) return result;
-    }
-  }
-  return null;
-};
-
 const SelectAssets = forwardRef<ModalRef, ModalConfig>(
   ({ onSuccess, monitorObject, objects }, ref) => {
     const { t } = useTranslation();
     const { getInstanceList } = useMonitorApi();
-    const { isLoading } = useApiClient();
     const { convertToLocalizedTime } = useLocalizedTime();
     const { groupTree } = useUserInfoContext();
     const [groupVisible, setGroupVisible] = useState<boolean>(false);
@@ -102,11 +84,17 @@ const SelectAssets = forwardRef<ModalRef, ModalConfig>(
     const [title, setTitle] = useState<string>('');
     const [tableLoading, setTableLoading] = useState<boolean>(false);
     const [selectedRowKeys, setSelectedRowKeys] = useState<Array<string>>([]);
-    const [tableData, setTableData] = useState<TableDataItem[]>([]);
+    const [allTableData, setAllTableData] = useState<TableDataItem[]>([]);
     const [searchText, setSearchText] = useState<string>('');
     const [selectedTreeKeys, setSelectedTreeKeys] = useState<string[]>([]);
     const [treeSearchText, setTreeSearchText] = useState<string>('');
     const [rowId, setRowId] = useState<number>(0);
+    const [instanceSelectedKeys, setInstanceSelectedKeys] = useState<string[]>(
+      []
+    );
+    const [organizationSelectedKeys, setOrganizationSelectedKeys] = useState<
+      string[]
+    >([]);
 
     const tabs: TabItem[] = [
       {
@@ -153,11 +141,33 @@ const SelectAssets = forwardRef<ModalRef, ModalConfig>(
       return filterTreeData(treeData, treeSearchText);
     }, [treeData, treeSearchText]);
 
-    useEffect(() => {
-      if (!isLoading) {
-        fetchData();
+    // 处理表格数据：前端搜索和分页
+    const { tableData, paginationInfo } = useMemo(() => {
+      let filteredData = allTableData;
+      if (searchText) {
+        filteredData = allTableData.filter((item) =>
+          item.instance_name?.toLowerCase().includes(searchText.toLowerCase())
+        );
       }
-    }, [pagination.current, pagination.pageSize]);
+      const total = filteredData.length;
+      const startIndex = (pagination.current - 1) * pagination.pageSize;
+      const endIndex = startIndex + pagination.pageSize;
+      const paginatedData = filteredData.slice(startIndex, endIndex);
+      return {
+        tableData: paginatedData,
+        paginationInfo: {
+          ...pagination,
+          total: total,
+        },
+      };
+    }, [allTableData, searchText, pagination.current, pagination.pageSize]);
+
+    // 更新分页信息
+    useEffect(() => {
+      if (paginationInfo.total !== pagination.total) {
+        setPagination(paginationInfo);
+      }
+    }, [paginationInfo, pagination.total]);
 
     useImperativeHandle(ref, () => ({
       showModal: ({ title, form: { type, values, id } }) => {
@@ -166,35 +176,52 @@ const SelectAssets = forwardRef<ModalRef, ModalConfig>(
           ...prev,
           current: 1,
         }));
-        setTableData([]);
+        setAllTableData([]);
         setGroupVisible(true);
         setTitle(title);
         setRowId(id);
         setActiveTab(type || 'instance');
         if (type === 'instance' || !type) {
           fetchData();
-          setSelectedRowKeys(values);
+          setInstanceSelectedKeys(values || []);
+          setSelectedRowKeys(values || []);
         } else {
-          setSelectedTreeKeys(values);
+          setOrganizationSelectedKeys(values || []);
+          setSelectedTreeKeys(values || []);
         }
       },
     }));
 
     const changeTab = (val: string) => {
       setActiveTab(val);
-      setSelectedRowKeys([]);
-      setSelectedTreeKeys([]);
       if (val === 'instance') {
-        fetchData();
+        setSelectedRowKeys(instanceSelectedKeys);
+        setPagination((prev) => ({
+          ...prev,
+          current: 1,
+        }));
+        if (!allTableData.length) {
+          fetchData();
+        }
+        return;
       }
+      setSelectedTreeKeys(organizationSelectedKeys);
     };
 
     const onSelectChange = (selectedKeys: any) => {
-      setSelectedRowKeys(selectedKeys);
+      const currentPageKeys = tableData.map((item) => item.instance_id);
+      const otherPagesSelectedKeys = instanceSelectedKeys.filter(
+        (key) => !currentPageKeys.includes(key)
+      );
+      const newSelectedKeys = [...otherPagesSelectedKeys, ...selectedKeys];
+      setSelectedRowKeys(newSelectedKeys);
+      setInstanceSelectedKeys(newSelectedKeys);
     };
 
     const rowSelection = {
-      selectedRowKeys,
+      selectedRowKeys: selectedRowKeys.filter((key) =>
+        tableData.some((item) => item.instance_id === key)
+      ),
       onChange: onSelectChange,
     };
 
@@ -209,19 +236,16 @@ const SelectAssets = forwardRef<ModalRef, ModalConfig>(
       );
     };
 
-    const fetchData = async (type?: string) => {
+    const fetchData = async () => {
       try {
         setTableLoading(true);
         const data = await getInstanceList(monitorObject, {
-          page: pagination.current,
-          page_size: pagination.pageSize,
-          name: type === 'clear' ? '' : searchText,
+          page: 1,
+          page_size: -1,
+          name: '',
         });
-        setTableData(data?.results || []);
-        setPagination((prev: Pagination) => ({
-          ...prev,
-          total: data?.count || 0,
-        }));
+        const results = data?.results || [];
+        setAllTableData(results);
       } finally {
         setTableLoading(false);
       }
@@ -229,8 +253,10 @@ const SelectAssets = forwardRef<ModalRef, ModalConfig>(
 
     const handleCancel = () => {
       setGroupVisible(false);
-      setSelectedRowKeys([]); // 清空选中项
-      setSelectedTreeKeys([]); // 清空选中项
+      setSelectedRowKeys([]);
+      setSelectedTreeKeys([]);
+      setInstanceSelectedKeys([]);
+      setOrganizationSelectedKeys([]);
       setSearchText('');
       setTreeSearchText('');
     };
@@ -240,8 +266,13 @@ const SelectAssets = forwardRef<ModalRef, ModalConfig>(
     };
 
     const handleClearSelection = () => {
-      setSelectedRowKeys([]); // 清空选中项
-      setSelectedTreeKeys([]); // 清空选中项
+      if (activeTab === 'instance') {
+        setSelectedRowKeys([]);
+        setInstanceSelectedKeys([]);
+      } else {
+        setSelectedTreeKeys([]);
+        setOrganizationSelectedKeys([]);
+      }
     };
 
     const handleRemoveItem = (key: string) => {
@@ -250,38 +281,30 @@ const SelectAssets = forwardRef<ModalRef, ModalConfig>(
           (item) => item !== key
         );
         setSelectedRowKeys(newSelectedRowKeys);
+        setInstanceSelectedKeys(newSelectedRowKeys);
       } else {
-        const parentKeys = getParentKeys(key, treeData) || [];
-        const keysToRemove = [key, ...parentKeys];
         const newSelectedTreeKeys = selectedTreeKeys.filter(
-          (item) => !keysToRemove.includes(item)
+          (item) => item !== key
         );
         setSelectedTreeKeys(newSelectedTreeKeys);
+        setOrganizationSelectedKeys(newSelectedTreeKeys);
       }
     };
 
-    const handleOrganizationSelect = (selectedKeys: any) => {
-      const newSelectedKeys = selectedKeys.filter((key: string) =>
-        isLeafNode(key, filteredTreeData)
-      );
-      setSelectedTreeKeys(newSelectedKeys);
+    const handleOrganizationSelect = (checkedKeys: any) => {
+      const selectedKeys = checkedKeys.checked || checkedKeys;
+      setSelectedTreeKeys(selectedKeys);
+      setOrganizationSelectedKeys(selectedKeys);
     };
 
     const clearText = () => {
       setSearchText('');
-      fetchData('clear');
     };
 
-    const isLeafNode = (key: string, treeData: any): boolean => {
-      for (const node of treeData) {
-        if (node.key === key) {
-          return !node.children || node.children.length === 0;
-        } else if (node.children) {
-          const found = isLeafNode(key, node.children);
-          if (found) return found;
-        }
-      }
-      return false;
+    const getInstanceName = (row: TableDataItem) => {
+      const objectItem =
+        objects.find((item: ObjectItem) => item.id === +monitorObject) || {};
+      return showInstName(objectItem, row);
     };
 
     return (
@@ -316,16 +339,21 @@ const SelectAssets = forwardRef<ModalRef, ModalConfig>(
                       allowClear
                       placeholder={t('common.searchPlaceHolder')}
                       value={searchText}
-                      onPressEnter={() => fetchData()}
                       onClear={clearText}
-                      onChange={(e) => setSearchText(e.target.value)}
+                      onChange={(e) => {
+                        setSearchText(e.target.value);
+                        setPagination((prev) => ({
+                          ...prev,
+                          current: 1,
+                        }));
+                      }}
                     ></Input>
                   </div>
                   <CustomTable
                     rowSelection={rowSelection}
                     dataSource={tableData}
                     columns={columns}
-                    pagination={pagination}
+                    pagination={paginationInfo}
                     loading={tableLoading}
                     rowKey="instance_id"
                     scroll={{ x: 520, y: 'calc(100vh - 370px)' }}
@@ -333,7 +361,7 @@ const SelectAssets = forwardRef<ModalRef, ModalConfig>(
                   />
                 </div>
               ) : (
-                <div className="w-[550px]">
+                <div className={selectInstanceStyle.instanceList}>
                   <Input
                     value={treeSearchText}
                     className="w-[320px] mb-[10px]"
@@ -342,6 +370,7 @@ const SelectAssets = forwardRef<ModalRef, ModalConfig>(
                   />
                   <Tree
                     checkable
+                    checkStrictly
                     showLine
                     onCheck={handleOrganizationSelect}
                     checkedKeys={selectedTreeKeys}
@@ -357,9 +386,7 @@ const SelectAssets = forwardRef<ModalRef, ModalConfig>(
                     <span className="text-[var(--color-primary)] px-[4px]">
                       {isInstance
                         ? selectedRowKeys.length
-                        : selectedTreeKeys.filter((key) =>
-                          isLeafNode(key, treeData)
-                        ).length}
+                        : selectedTreeKeys.length}
                     </span>
                     {t('common.items')}）
                   </span>
@@ -373,7 +400,7 @@ const SelectAssets = forwardRef<ModalRef, ModalConfig>(
                 <ul className={selectInstanceStyle.list}>
                   {isInstance
                     ? selectedRowKeys.map((key) => {
-                      const item = tableData.find(
+                      const item = allTableData.find(
                         (data) => data.instance_id === key
                       );
                       return (
@@ -381,7 +408,10 @@ const SelectAssets = forwardRef<ModalRef, ModalConfig>(
                           className={selectInstanceStyle.listItem}
                           key={key}
                         >
-                          <span>{item?.instance_name || '--'}</span>
+                          <EllipsisWithTooltip
+                            text={getInstanceName(item as TableDataItem)}
+                            className="w-[170px] overflow-hidden text-ellipsis whitespace-nowrap"
+                          ></EllipsisWithTooltip>
                           <CloseOutlined
                             className={`text-[12px] ${selectInstanceStyle.operate}`}
                             onClick={() => handleRemoveItem(key)}
@@ -389,20 +419,18 @@ const SelectAssets = forwardRef<ModalRef, ModalConfig>(
                         </li>
                       );
                     })
-                    : selectedTreeKeys
-                      .filter((key) => isLeafNode(key, treeData))
-                      .map((key) => (
-                        <li
-                          className={selectInstanceStyle.listItem}
-                          key={key}
-                        >
-                          <span>{getLabelByKey(key, treeData)}</span>
-                          <CloseOutlined
-                            className={`text-[12px] ${selectInstanceStyle.operate}`}
-                            onClick={() => handleRemoveItem(key)}
-                          />
-                        </li>
-                      ))}
+                    : selectedTreeKeys.map((key) => (
+                      <li className={selectInstanceStyle.listItem} key={key}>
+                        <EllipsisWithTooltip
+                          text={getLabelByKey(key, treeData)}
+                          className="w-[170px] overflow-hidden text-ellipsis whitespace-nowrap"
+                        ></EllipsisWithTooltip>
+                        <CloseOutlined
+                          className={`text-[12px] ${selectInstanceStyle.operate}`}
+                          onClick={() => handleRemoveItem(key)}
+                        />
+                      </li>
+                    ))}
                 </ul>
               </div>
             </div>

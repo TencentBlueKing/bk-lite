@@ -7,9 +7,9 @@ import PermissionModal from './permissionModal';
 interface TreeTransferProps {
   treeData: TreeDataNode[];
   selectedKeys: number[];
-  groupRules?: { [key: string]: number[] },
+  groupRules?: { [key: string]: { [app: string]: number } };
   onChange: (newKeys: number[]) => void;
-  onChangeRule?: (newKey: number, newRules: number[]) => void;
+  onChangeRule?: (newKey: number, newRules: { [app: string]: number }) => void;
   mode?: 'group' | 'role';
   disabled?: boolean;
   loading?: boolean;
@@ -215,7 +215,7 @@ const RoleTransfer: React.FC<TreeTransferProps> = ({
 }) => {
   const [isPermissionModalVisible, setIsPermissionModalVisible] = useState<boolean>(false);
   const [currentNode, setCurrentNode] = useState<TreeDataNode | null>(null);
-  const [currentRules, setCurrentRules] = useState<number[]>([]);
+  const [currentRules, setCurrentRules] = useState<{ [app: string]: number }>({});
 
   const flattenedRoleData = useMemo(() => flattenRoleData(treeData), [treeData]);
   const leftExpandedKeys = useMemo(() => getAllKeys(treeData), [treeData]);
@@ -225,7 +225,7 @@ const RoleTransfer: React.FC<TreeTransferProps> = ({
     e.stopPropagation();
     setCurrentNode(node);
     const nodeKey = node.key as number;
-    const rules = groupRules[nodeKey] || [];
+    const rules = groupRules[nodeKey] || {};
     setCurrentRules(rules);
     setIsPermissionModalVisible(true);
   };
@@ -233,10 +233,17 @@ const RoleTransfer: React.FC<TreeTransferProps> = ({
   const handlePermissionOk = (values: any) => {
     if (!currentNode || !onChangeRule) return;
 
-    const filteredPermissions = values?.permissions?.filter((val: any) => val.permission !== 0).map((val: any) => val.permission);
+    // 构建应用权限映射对象，保持应用名和权限值的对应关系
+    const appPermissionMap: { [app: string]: number } = {};
+    values?.permissions?.forEach((permission: any) => {
+      if (permission.permission !== 0) {
+        appPermissionMap[permission.app] = permission.permission;
+      }
+    });
+
     const nodeKey = currentNode.key as number;
 
-    onChangeRule(nodeKey, filteredPermissions);
+    onChangeRule(nodeKey, appPermissionMap);
     setIsPermissionModalVisible(false);
   };
 

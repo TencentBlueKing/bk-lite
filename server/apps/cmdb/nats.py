@@ -30,7 +30,7 @@ def get_cmdb_module_data(module, child_module, page, page_size, group_id):
             page=page,
             page_size=page_size,
             order="",
-            check_permission=False  # 关闭权限检查
+            check_permission=True  # 关闭权限检查
         )
         queryset = []
         for instance in instances:
@@ -39,7 +39,7 @@ def get_cmdb_module_data(module, child_module, page, page_size, group_id):
                 "id": instance["inst_name"]
             })
     elif module == PERMISSION_MODEL:
-        models = ModelManage.search_model(classification_ids=[child_module], group=int(group_id))
+        models = ModelManage.search_model(classification_ids=[child_module], group_list=[int(group_id)])
         count = len(models)
         queryset = [{"id": model["model_id"], "name": model["model_name"]} for model in models]
 
@@ -99,4 +99,18 @@ def get_cmdb_module_list():
         {"name": PERMISSION_INSTANCES, "display_name": "Instance", "children": classification_list},
         {"name": PERMISSION_TASK, "display_name": "Task", "children": task_children}
     ]
+    return result
+
+
+@nats_client.register
+def search_instances(params):
+    """
+        根据参数查询实例
+    """
+    model_id = params["model_id"]
+    inst_name = params.get("inst_name", None)
+    _id = params.get("_id", None)
+
+    instances, _ = InstanceManage.search_inst(model_id=model_id, inst_name=inst_name, _id=_id)
+    result = instances[0] if instances else {}
     return result

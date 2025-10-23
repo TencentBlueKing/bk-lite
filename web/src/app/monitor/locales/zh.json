@@ -77,7 +77,6 @@
     "successfullyDeleted": "删除成功！",
     "successfullyAdded": "新增成功！",
     "successfulSetted": "设置成功！",
-    "successfulCopied": "复制成功！",
     "successfullyModified": "修改成功！",
     "successfullyExported": "导出成功！",
     "successfullyImported": "导入成功！",
@@ -97,10 +96,7 @@
     "more": "详情",
     "organizations": "组织",
     "all": "全部",
-    "copy": "复制",
     "remove": "删除",
-    "inputPassword": "请输入密码",
-    "reset": "重置",
     "prompt": "提示",
     "batchEdit": "批量编辑"
   },
@@ -353,10 +349,13 @@
       "historicalAlarmsMapTips": "展示所选时间范围内，符合过滤项的所有历史告警分布图。",
       "promQLPlaceholder": "请参考Prometheus的语法撰写PromQL，通常可以查询并过滤相关的指标。",
       "monitoringTarget": "监控目标",
-      "alarmLevel": "告警级别"
+      "alarmLevel": "告警级别",
+      "noticeWay": "暂无通知渠道，可去",
+      "systemManage": "系统管理",
+      "config": "配置。"
     },
-    "intergrations": {
-      "intergration": "集成",
+    "integrations": {
+      "integration": "集成",
       "configure": "配置",
       "configureTitle": "请按照以下指南安装收集器。",
       "metricTitle": "此收集器支持以下监控指标",
@@ -445,6 +444,8 @@
       "dataSourceDes": "监控数据的来源，用于确保系统准确获取所需数据。",
       "dbName": "数据库名称",
       "dbNameDes": "访问所需数据库的具体名字",
+      "dbType": "数据库类型",
+      "dbTypeDes": "采集中所需要的数据库类型",
       "collectorRefs": "指标配置名称",
       "collectorRefsDes": "为监控指标配置设定一个明确的名称",
       "connectionTime": "最长连接时长",
@@ -482,7 +483,10 @@
       "lang": "基本语言",
       "langDes": "系统默认的底层语言设置",
       "libraryPath": "驱动程序的lib日录",
-      "libraryPathDes": "存放驱动程序库文件的路径‌"
+      "libraryPathDes": "存放驱动程序库文件的路径‌",
+      "dbTimeout": "等待时长",
+      "dbTimeoutDes": "数据库连接的最长等待时间(单位为秒)",
+      "dataTypeDes": "定义数据在计算机中存储、处理及传输时的格式与规则"
     }
   }
 }

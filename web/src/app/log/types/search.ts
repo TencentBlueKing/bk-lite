@@ -3,6 +3,7 @@ import React from 'react';
 
 export interface SearchTableProps {
   dataSource: TableDataItem[];
+  fields: string[];
   loading?: boolean;
   scroll?: {
     x?: string | number;
@@ -20,6 +21,7 @@ export interface SearchParams {
   fields_limit?: number;
   step?: string;
   limit?: number | null;
+  log_groups?: React.Key[];
 }
 
 export interface LogStream {
@@ -44,10 +46,35 @@ export interface AggregatedResult {
 
 export interface LogTerminalProps {
   className?: string;
-  query: string;
+  query: SearchParams;
   fetchData?: (loading: boolean) => void;
 }
 
 export interface LogTerminalRef {
   startLogStream: () => void;
+}
+
+export interface FieldListProps {
+  loading?: boolean;
+  className?: string;
+  style?: Record<string, string>;
+  fields: string[];
+  addToQuery: (row: TableDataItem, type: string) => void;
+  changeDisplayColumns: (columns: string[]) => void;
+}
+
+export interface Conidtion {
+  query: string;
+  log_groups: React.Key[];
+  time_range: Record<string, number | string>;
+}
+export interface StoreConditions {
+  name?: string;
+  condition?: Conidtion;
+}
+
+export interface SearchConfig {
+  times?: number[];
+  logGroups?: React.Key[];
+  text?: string;
 }

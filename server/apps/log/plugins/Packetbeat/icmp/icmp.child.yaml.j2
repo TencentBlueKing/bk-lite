@@ -1,0 +1,18 @@
+# ICMP Protocol Configuration Template
+# This template configures ICMP packet capture for Packetbeat
+
+- type: icmp
+  enabled: {{ enabled | default(true) }}
+
+  # 采样配置，减少数据量
+  sample_rate: {{ sample_rate | default(0.1) }}  # 只采样10%的ICMP包，大幅减少数据量
+
+  # 事务超时时间（秒）
+  transaction_timeout: "{{ transaction_timeout | default(5) }}s"
+
+  fields:
+    collector: "Packetbeat"
+    collect_type: "icmp"
+    instance_id: "{{ instance_id }}"
+    _msg: ""
+  fields_under_root: true

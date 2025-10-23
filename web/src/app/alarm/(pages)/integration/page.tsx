@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
+import PermissionWrapper from '@/components/permission';
 import { useSourceApi } from '@/app/alarm/api/integration';
 import { Spin, Empty } from 'antd';
 import { useRouter } from 'next/navigation';
@@ -42,41 +43,42 @@ const IntegrationPage: React.FC = () => {
         ) : (
           <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 2xl:grid-cols-5 gap-6">
             {sources.map((src: SourceItem) => (
-              <div
-                key={src.id}
-                className="p-4 rounded-xl relative shadow-md hover:shadow-lg transition-shadow cursor-pointer bg-[var(--color-bg-1)]"
-                onClick={() =>
-                  router.push(
-                    `/alarm/integration/detail?sourceItemId=${src.id}`
-                  )
-                }
-              >
-                {/* header 区域 */}
-                <div className="flex items-center mb-4">
-                  <div className="flex items-center gap-3 p-[6px] bg-[#99aaf2] rounded">
-                    <img
-                      src={src.logo || ''}
-                      alt={src.description}
-                      className="w-7 h-7"
-                    />
+              <PermissionWrapper key={src.id} requiredPermissions={['Detail']}>
+                <div
+                  className="p-4 rounded-xl relative shadow-md hover:shadow-lg transition-shadow cursor-pointer bg-[var(--color-bg-1)]"
+                  onClick={() =>
+                    router.push(
+                      `/alarm/integration/detail?sourceItemId=${src.id}`
+                    )
+                  }
+                >
+                  {/* header 区域 */}
+                  <div className="flex items-center mb-4">
+                    <div className="flex items-center gap-3 p-[6px] bg-[#99aaf2] rounded">
+                      <img
+                        src={src.logo || ''}
+                        alt={src.description}
+                        className="w-7 h-7"
+                      />
+                    </div>
+                    <span className="font-semibold text-base truncate ml-2">
+                      {src.name}
+                    </span>
                   </div>
-                  <span className="font-semibold text-base truncate ml-2">
-                    {src.name}
-                  </span>
+                  {/* 信息区 */}
+                  <div className="text-xs text-[var(--color-text-3)] space-y-2">
+                    <div>
+                      {t('alarms.eventCount')}：
+                      {[undefined, null, ''].includes(src.event_count as any)
+                        ? '--'
+                        : src.event_count}
+                    </div>
+                    <div>
+                      {t('alarms.lastEventTime')}：{src.last_event_time || '--'}
+                    </div>
+                  </div>
                 </div>
-                {/* 信息区 */}
-                <div className="text-xs text-[var(--color-text-3)] space-y-2">
-                  <div>
-                    {t('alarms.eventCount')}：
-                    {[undefined, null, ''].includes(src.event_count as any)
-                      ? '--'
-                      : src.event_count}
-                  </div>
-                  <div>
-                    {t('alarms.lastEventTime')}：{src.last_event_time || '--'}
-                  </div>
-                </div>
-              </div>
+              </PermissionWrapper>
             ))}
           </div>
         )}

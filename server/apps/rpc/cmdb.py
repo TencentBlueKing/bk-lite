@@ -23,3 +23,11 @@ class CMDB(object):
         """
         return_data = self.client.run("get_cmdb_module_list", **kwargs)
         return return_data
+
+    def search_instances(self, **kwargs):
+        """
+        告警丰富查询CMDB接口
+        :return: 模块的枚举值列表
+        """
+        return_data = self.client.run("search_instances", **kwargs)
+        return return_data

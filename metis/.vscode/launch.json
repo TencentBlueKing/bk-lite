@@ -5,8 +5,10 @@
             "name": "Debug Sanic Server",
             "type": "debugpy",
             "request": "launch",
-            "module": "sanic",
+            "module": "uv",
             "args": [
+                "run",
+                "sanic",
                 "server:bootstrap",
                 "--factory",
                 "--debug",

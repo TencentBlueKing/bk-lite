@@ -4,5 +4,16 @@
   "icon": "exec",
   "description": "Collects logs from command execution",
   "default_query": "collect_type: exec | last 1 by (_time) partition by (instance_id)",
-  "attrs": ["command", "data_stream", "host", "message", "pid", "source_type", "timestamp"]
+  "attrs": [
+    "collect_type",
+    "collector",
+    "instance_id",
+    "command",
+    "data_stream",
+    "host",
+    "message",
+    "pid",
+    "source_type",
+    "timestamp"
+]
 }

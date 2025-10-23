@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import { Form, Input, Select, Button, InputNumber, Radio, Tooltip } from 'antd';
-import { InfoCircleOutlined, PlusCircleOutlined, MinusCircleOutlined } from '@ant-design/icons';
+import { InfoCircleOutlined } from '@ant-design/icons';
 import OperateModal from '@/components/operate-modal';
 import GroupTreeSelect from '@/components/group-tree-select';
 import { useTranslation } from '@/utils/i18n';
@@ -14,13 +14,10 @@ const QuotaModal: React.FC<QuotaModalProps> = ({ visible, onConfirm, onCancel, m
   const { t } = useTranslation();
   const [form] = Form.useForm();
   const [targetType, setTargetType] = useState<string>('user');
-  const [rule, setRule] = useState<string>('uniform');
   const [userList, setUserList] = useState<TargetOption[]>([]);
   const [loading, setLoading] = useState<boolean>(false);
   const [targetLoading, setTargetLoading] = useState<boolean>(false);
-  const [modelList, setModelList] = useState<TargetOption[]>([]);
-  const [modelLoading, setModelLoading] = useState<boolean>(false);
-  const { fetchGroupUsers, fetchModelsByGroup } = useQuotaApi();
+  const { fetchGroupUsers } = useQuotaApi();
 
   const fetchData = useCallback(async () => {
     setTargetLoading(true);
@@ -32,19 +29,6 @@ const QuotaModal: React.FC<QuotaModalProps> = ({ visible, onConfirm, onCancel, m
     }
   }, [form]);
 
-  const fetchModelList = useCallback(async (groupId: string) => {
-    setModelLoading(true);
-    try {
-      const data = await fetchModelsByGroup(groupId);
-      setModelList(data.map((model: string) => ({
-        id: model,
-        name: model
-      })));
-    } finally {
-      setModelLoading(false);
-    }
-  }, []);
-
   useEffect(() => {
     if (visible && targetType === 'user' && userList.length === 0) {
       fetchData()
@@ -54,24 +38,10 @@ const QuotaModal: React.FC<QuotaModalProps> = ({ visible, onConfirm, onCancel, m
   useEffect(() => {
     if (visible) {
       if (mode === 'edit' && initialValues) {
-        const tokenSet = initialValues.token_set
-          ? Object.entries(initialValues.token_set as Record<string, { value: any, unit: string }>)
-            .map(([model, { value, unit }]: [string, { value: any, unit: string }]) => ({
-              model,
-              value,
-              unit
-            }))
-          : [];
         form.setFieldsValue({
-          ...initialValues,
-          token_set: tokenSet
+          ...initialValues
         });
-        setRule(initialValues.rule_type);
         setTargetType(initialValues.targetType);
-        
-        if (initialValues.targetType === 'group' && initialValues.targetList) {
-          fetchModelList(initialValues.targetList);
-        }
       } else if (mode === 'add') {
         form.resetFields();
         setTargetType('user');
@@ -91,13 +61,9 @@ const QuotaModal: React.FC<QuotaModalProps> = ({ visible, onConfirm, onCancel, m
       rule: 'uniform',
       targetType: value
     });
-    setRule('uniform');
     
     if (value === 'user' && userList.length === 0) {
       fetchData();
-    }
-    if (value === 'group') {
-      form.setFieldValue('token_set', [{ model: '', value: '', unit: '' }]);
     }
   };
 
@@ -110,15 +76,6 @@ const QuotaModal: React.FC<QuotaModalProps> = ({ visible, onConfirm, onCancel, m
     }).catch((info) => {
       console.log('Validate Failed: ', info);
     });
-  };
-
-  const handleTokenChange = (index: number, field: string, value: any) => {
-    const tokenSet = form.getFieldValue('token_set') || [];
-    tokenSet[index] = {
-      ...tokenSet[index],
-      [field]: value
-    };
-    form.setFieldValue('token_set', tokenSet);
   };
 
   return (
@@ -181,11 +138,6 @@ const QuotaModal: React.FC<QuotaModalProps> = ({ visible, onConfirm, onCancel, m
                   multiple={false}
                   style={{ width: '70%' }}
                   placeholder={`${t('common.selectMsg')}${t('settings.manageQuota.form.target')}`}
-                  onChange={(value) => {
-                    if (value && value.length > 0) {
-                      fetchModelList(value[0].toString());
-                    }
-                  }}
                 />
               )}
             </Form.Item>
@@ -199,17 +151,7 @@ const QuotaModal: React.FC<QuotaModalProps> = ({ visible, onConfirm, onCancel, m
             disabled={targetType === 'user'}
             onChange={(e) => {
               const newRule = e.target.value;
-              setRule(newRule);
               form.setFieldsValue({ rule: newRule });
-              
-              if (targetType === 'group' && newRule === 'shared') {
-                const currentTokenSet = form.getFieldValue('token_set');
-                if (!currentTokenSet || currentTokenSet.length === 0) {
-                  form.setFieldsValue({
-                    token_set: [{ model: '', value: '', unit: 'thousand' }]
-                  });
-                }
-              }
             }}>
             <Radio value="uniform">
               {t('settings.manageQuota.form.uniform')}
@@ -264,66 +206,6 @@ const QuotaModal: React.FC<QuotaModalProps> = ({ visible, onConfirm, onCancel, m
             placeholder={`${t('common.inputMsg')}${t('settings.manageQuota.form.knowledgeBase')}`}
           />
         </Form.Item>
-        {(targetType === 'group' && rule === 'shared') && (
-          <>
-            <Form.List name="token_set">
-              {(fields, { add, remove }) => (
-                <div className={styles.tokenSetWrapper}>
-                  {fields.map((field, index) => (
-                    <Form.Item
-                      label={index === 0 ? t('settings.manageQuota.form.token') : ''}
-                      key={field.key}
-                    >
-                      <div className="flex items-center justify-center">
-                        <Input
-                          style={{ width: '100%' }}
-                          addonBefore={
-                            <Select
-                              showSearch
-                              style={{ width: 200 }}
-                              loading={modelLoading}
-                              disabled={modelLoading}
-                              value={form.getFieldValue(['token_set', index, 'model'])}
-                              onChange={(value) => handleTokenChange(index, 'model', value)}
-                            >
-                              {modelList.map(model => (
-                                <Option key={model.id} value={model.name}>{model.name}</Option>
-                              ))}
-                            </Select>
-                          }
-                          addonAfter={
-                            <Select
-                              style={{ width: 100 }}
-                              value={form.getFieldValue(['token_set', index, 'unit'])}
-                              onChange={(value) => handleTokenChange(index, 'unit', value)}
-                            >
-                              <Option value="thousand">{t('settings.manageQuota.form.thousand')}</Option>
-                              <Option value="million">{t('settings.manageQuota.form.million')}</Option>
-                            </Select>
-                          }
-                          value={form.getFieldValue(['token_set', index, 'value'])}
-                          onChange={(e) => handleTokenChange(index, 'value', e.target.value)}
-                        />
-                        <div className="w-[65px]">
-                          <PlusCircleOutlined
-                            className="ml-1"
-                            onClick={() => add(index)}
-                          />
-                          {fields.length > 1 && (
-                            <MinusCircleOutlined
-                              className="ml-1"
-                              onClick={() => remove(index)}
-                            />
-                          )}
-                        </div>
-                      </div>
-                    </Form.Item>
-                  ))}
-                </div>
-              )}
-            </Form.List>
-          </>
-        )}
       </Form>
     </OperateModal>
   );

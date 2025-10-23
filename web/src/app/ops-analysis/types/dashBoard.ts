@@ -1,18 +1,20 @@
-import { Dayjs } from 'dayjs';
-
+import { TopologyNodeData } from './topology';
 export type FilterType = 'selector' | 'fixed';
 
+export interface DataSourceParam {
+  name: string;
+  type: string;
+  value: any;
+  alias_name: string;
+  filterType: 'params' | 'fixed' | 'filter';
+}
+
 export interface WidgetConfig {
-  dataSource?: string;
-  lineColor?: string;
-  barColor?: string;
-  pageSize?: number;
-  showHeader?: boolean;
-  filterType?: FilterType;
-  timeRange?: [Dayjs, Dayjs];
-  instanceList?: string[];
+  name?: string;
+  chartType?: string;
+  dataSource?: string | number;
   params?: { [key: string]: any };
-  dataSourceParams?: any[]; // 数据源参数配置
+  dataSourceParams?: any[];
 }
 
 export interface LayoutItem {
@@ -21,30 +23,32 @@ export interface LayoutItem {
   y: number;
   w: number;
   h: number;
-  widget: string;
-  title: string;
+  name: string;
   description?: string;
-  config?: WidgetConfig;
+  valueConfig?: WidgetConfig;
 }
 
-export interface ComponentConfigProps {
+export type ViewConfigItem = LayoutItem | TopologyNodeData;
+
+export interface ViewConfigProps {
   open: boolean;
-  item?: LayoutItem;
+  item: ViewConfigItem;
   onConfirm?: (values: any) => void;
   onClose?: () => void;
 }
 
 export interface ComponentSelectorProps {
   visible: boolean;
-  onAdd: (widget: string, config?: any) => void;
   onCancel: () => void;
+  onOpenConfig?: (item: any) => void;
 }
 
 export interface BaseWidgetProps {
   config?: any;
   globalTimeRange?: any;
-  refreshKey?: number; 
+  refreshKey?: number;
   onDataChange?: (data: any) => void;
+  onReady?: (hasData?: boolean) => void;
 }
 
 export interface WidgetMeta {
@@ -58,6 +62,5 @@ export interface WidgetMeta {
 
 export interface WidgetDefinition {
   meta: WidgetMeta;
-  component: React.ComponentType<BaseWidgetProps>;
   configComponent?: React.ComponentType<any>;
 }

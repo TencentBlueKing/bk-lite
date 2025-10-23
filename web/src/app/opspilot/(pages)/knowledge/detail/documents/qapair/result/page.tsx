@@ -1,6 +1,6 @@
 'use client';
 import React, { useState, useEffect } from 'react';
-import { Card, Input, Spin, Pagination, Divider, Button, message } from 'antd';
+import { Card, Input, Spin, Pagination, Divider, Button, message, Tag } from 'antd';
 import { useSearchParams } from 'next/navigation';
 import { useTranslation } from '@/utils/i18n';
 import { useKnowledgeApi } from '@/app/opspilot/api/knowledge';
@@ -13,6 +13,7 @@ interface QAPair {
   id: string;
   question: string;
   answer: string;
+  base_chunk_id: string;
 }
 
 interface CreateQAData {
@@ -32,12 +33,14 @@ const QAPairResultPage: React.FC = () => {
   const [detailDrawerVisible, setDetailDrawerVisible] = useState<boolean>(false);
   const [selectedQAPair, setSelectedQAPair] = useState<QAPair | null>(null);
   const [submitLoading, setSubmitLoading] = useState<boolean>(false);
+  const [generateAnswerLoading, setGenerateAnswerLoading] = useState<boolean>(false);
   
   const searchParams = useSearchParams();
   const qaPairId = searchParams ? searchParams.get('qaPairId') : null;
   const knowledgeId = searchParams ? searchParams.get('id') : null;
+  const documentId = searchParams ? searchParams.get('documentId') : null;
   
-  const { fetchQAPairDetails, createOneQAPair, updateQAPair, deleteOneQAPair } = useKnowledgeApi();
+  const { fetchQAPairDetails, createOneQAPair, updateQAPair, deleteOneQAPair, generateAnswerToEs } = useKnowledgeApi();
 
   const fetchData = async (page: number, pageSize: number, searchValue?: string) => {
     if (qaPairId) {
@@ -132,10 +135,13 @@ const QAPairResultPage: React.FC = () => {
       });
       
       setQaPairsState(prev => prev.map(item => 
-        item.id === updatedQA.id ? updatedQA : item
+        item.id === updatedQA.id ? { ...item, ...updatedQA } : item
       ));
       
-      setSelectedQAPair(updatedQA);
+      const updatedFullQA = qaPairsState.find(item => item.id === updatedQA.id);
+      if (updatedFullQA) {
+        setSelectedQAPair({ ...updatedFullQA, ...updatedQA });
+      }
     } catch (error) {
       console.error('Failed to update QA pair:', error);
       throw error;
@@ -162,6 +168,28 @@ const QAPairResultPage: React.FC = () => {
     }
   };
 
+  const handleGenerateAnswer = async () => {
+    if (!qaPairId || !knowledgeId) {
+      console.error('Missing required parameters: qaPairId or knowledgeId');
+      return;
+    }
+
+    setGenerateAnswerLoading(true);
+    try {
+      await generateAnswerToEs({
+        qa_pairs_id: parseInt(qaPairId, 10)
+      });
+      
+      fetchData(currentPage, pageSize, searchTerm);
+      message.success(t('knowledge.qaPairs.answerGenerateSuccess'));
+    } catch (error) {
+      console.error('Failed to generate answer:', error);
+      message.error(t('knowledge.qaPairs.answerGenerateFailed'));
+    } finally {
+      setGenerateAnswerLoading(false);
+    }
+  };
+
   return (
     <div className="w-full h-full">
       <div className="flex justify-between items-center mb-4">
@@ -182,6 +210,13 @@ const QAPairResultPage: React.FC = () => {
           >
             {t('common.add')}
           </Button>
+          <Button
+            type="default"
+            loading={generateAnswerLoading}
+            onClick={handleGenerateAnswer}
+          >
+            {t('knowledge.qaPairs.generateAnswer')}
+          </Button>
         </div>
       </div>
       
@@ -198,9 +233,10 @@ const QAPairResultPage: React.FC = () => {
                   <Card
                     size="small"
                     className="
-                      min-h-[160px] cursor-pointer transition-all duration-200 ease-in-out
+                      min-h-[170px] cursor-pointer transition-all duration-200 ease-in-out
                       hover:-translate-y-0.5 hover:shadow-lg bg-[var(--color-fill-2)]
-                      [&_.ant-card-body]:h-auto [&_.ant-card-body]:min-h-[120px] [&_.ant-card-body]:p-4
+                      [&_.ant-card-body]:h-auto [&_.ant-card-body]:min-h-[130px] [&_.ant-card-body]:p-4
+                      relative
                     "
                     onClick={() => handleCardClick(qaPair)}
                     hoverable
@@ -234,6 +270,14 @@ const QAPairResultPage: React.FC = () => {
                         </div>
                       </div>
                     </div>
+                    {qaPair.base_chunk_id && (
+                      <Tag 
+                        color="blue" 
+                        className="absolute bottom-2 right-2 font-mini"
+                      >
+                        chunk
+                      </Tag>
+                    )}
                   </Card>
                 </div>
               ))}
@@ -256,6 +300,7 @@ const QAPairResultPage: React.FC = () => {
       <QADetailDrawer
         visible={detailDrawerVisible}
         qaPair={selectedQAPair}
+        knowledgeId={documentId ?? undefined}
         onClose={() => setDetailDrawerVisible(false)}
         onUpdate={handleUpdateQA}
         onDelete={handleDeleteQA}

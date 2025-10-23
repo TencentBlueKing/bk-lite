@@ -14,6 +14,7 @@ class User(models.Model):
     temporary_pwd = models.BooleanField(default=False)
     otp_secret = models.CharField(max_length=128, null=True, blank=True)
     domain = models.CharField(max_length=100, default="domain.com")
+    last_login = models.DateTimeField(null=True, blank=True)
 
     class Meta:
         unique_together = ("username", "domain")
@@ -30,6 +31,7 @@ class User(models.Model):
             "timezone",
             "domain",
             "role_list",
+            "last_login",
         ]
 
 

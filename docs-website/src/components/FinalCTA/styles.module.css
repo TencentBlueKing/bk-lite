@@ -1,0 +1,543 @@
+/**
+ * Apple-Inspired Final CTA
+ * Elegant, clean and sophisticated design
+ */
+
+.finalCTA {
+  padding: 4rem 0;
+  background: linear-gradient(
+    180deg,
+    #ffffff 0%,
+    #f8fafc 25%,
+    #f1f5f9 50%,
+    #e2e8f0 75%,
+    #cbd5e1 100%
+  );
+  color: #1d1d1f;
+  position: relative;
+  overflow: hidden;
+  text-align: center;
+}
+
+.finalCTA::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: radial-gradient(
+    circle at 50% 50%,
+    rgba(59, 130, 246, 0.05) 0%,
+    transparent 60%
+  );
+  pointer-events: none;
+}
+
+.ctaContainer {
+  max-width: 800px;
+  margin: 0 auto;
+  position: relative;
+  z-index: 2;
+}
+
+.ctaContent {
+  padding: 2rem 0;
+}
+
+.ctaIcon {
+  width: 80px;
+  height: 80px;
+  margin: 0 auto 2rem auto;
+  border-radius: 20px;
+  background: linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 8px 32px rgba(59, 130, 246, 0.3);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  transition: all 0.3s ease;
+}
+
+.ctaIcon:hover {
+  transform: scale(1.05);
+  box-shadow: 0 12px 40px rgba(59, 130, 246, 0.4);
+}
+
+.iconEmoji {
+  font-size: 2rem;
+  filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.2));
+}
+
+.ctaTitle {
+  font-size: 2.75rem;
+  font-weight: 700;
+  margin-bottom: 1.5rem;
+  line-height: 1.1;
+  color: #0f172a;
+  letter-spacing: -0.025em;
+  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", sans-serif;
+  max-width: 700px;
+  margin-left: auto;
+  margin-right: auto;
+}
+
+.ctaDescription {
+  font-size: 1.125rem;
+  line-height: 1.6;
+  margin-bottom: 3rem;
+  color: #334155;
+  font-weight: 500;
+  max-width: 600px;
+  margin-left: auto;
+  margin-right: auto;
+  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif;
+}
+
+.ctaButtons {
+  display: flex;
+  gap: 1.5rem;
+  margin-bottom: 4rem;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+
+.ctaButton {
+  padding: 1.25rem 2.5rem;
+  border-radius: 50px;
+  font-weight: 700;
+  font-size: 1.125rem;
+  text-decoration: none;
+  transition: all 0.3s ease;
+  border: none;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.75rem;
+  white-space: nowrap;
+  position: relative;
+  overflow: hidden;
+  letter-spacing: 0.01em;
+}
+
+.ctaPrimary {
+  background: linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%);
+  color: white;
+  box-shadow: 0 8px 25px rgba(59, 130, 246, 0.3);
+}
+
+.ctaPrimary:hover {
+  background: linear-gradient(135deg, #2563eb 0%, #1e40af 100%);
+  transform: translateY(-2px);
+  box-shadow: 0 12px 35px rgba(59, 130, 246, 0.4);
+  color: white;
+}
+
+.ctaSecondary {
+  background: rgba(255, 255, 255, 0.9);
+  color: #374151;
+  border: 2px solid rgba(59, 130, 246, 0.2);
+  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
+}
+
+.ctaSecondary:hover {
+  background: #ffffff;
+  transform: translateY(-2px);
+  box-shadow: 0 8px 25px rgba(0, 0, 0, 0.15);
+  color: #374151;
+}
+
+.ctaFeatures {
+  display: flex;
+  gap: 3rem;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+
+.feature {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  font-size: 1.125rem;
+  color: #475569;
+  font-weight: 600;
+}
+
+.featureIcon {
+  font-size: 1.375rem;
+}
+
+/* Responsive design */
+@media screen and (max-width: 996px) {
+  .finalCTA {
+    padding: 3rem 0;
+  }
+  
+  .ctaTitle {
+    font-size: 2.5rem;
+  }
+  
+  .ctaDescription {
+    font-size: 1rem;
+  }
+  
+  .ctaFeatures {
+    gap: 2rem;
+  }
+}
+
+@media screen and (max-width: 768px) {
+  .finalCTA {
+    padding: 4rem 0;
+  }
+  
+  .ctaTitle {
+    font-size: 2.75rem;
+  }
+  
+  .ctaDescription {
+    font-size: 1.125rem;
+  }
+  
+  .ctaButtons {
+    flex-direction: column;
+    align-items: center;
+    gap: 1rem;
+  }
+  
+  .ctaButton {
+    width: 100%;
+    max-width: 320px;
+    justify-content: center;
+  }
+  
+  .ctaFeatures {
+    flex-direction: column;
+    align-items: center;
+    gap: 1.5rem;
+  }
+  
+  .ctaIcon {
+    width: 90px;
+    height: 90px;
+  }
+  
+  .iconEmoji {
+    font-size: 2.5rem;
+  }
+  
+  .visualCard {
+    max-width: 100%;
+  }
+  
+  .visualContent {
+    padding: 2rem 1.5rem;
+  }
+  
+  .visualMetric {
+    gap: 1rem;
+    margin-bottom: 1.5rem;
+  }
+  
+  .metricLabel {
+    min-width: 80px;
+    font-size: 0.875rem;
+  }
+  
+  .metricValue {
+    min-width: 60px;
+    font-size: 0.875rem;
+  }
+  
+  .qrModalContent {
+    padding: 2rem 1.5rem;
+    max-width: 350px;
+  }
+  
+  .qrImage {
+    width: 180px;
+    height: 180px;
+  }
+}
+
+@media screen and (max-width: 480px) {
+  .finalCTA {
+    padding: 3rem 0;
+  }
+  
+  .ctaTitle {
+    font-size: 2.25rem;
+  }
+  
+  .ctaDescription {
+    font-size: 1rem;
+  }
+  
+  .ctaButton {
+    padding: 1rem 1.5rem;
+    font-size: 1rem;
+  }
+  
+  .ctaIcon {
+    width: 80px;
+    height: 80px;
+  }
+  
+  .iconEmoji {
+    font-size: 2rem;
+  }
+  
+  .qrModalContent {
+    padding: 1.5rem;
+    max-width: 320px;
+  }
+  
+  .qrImage {
+    width: 160px;
+    height: 160px;
+  }
+  
+  .qrTitle {
+    font-size: 1.25rem;
+  }
+}
+
+/* Dark mode adjustments */
+[data-theme='dark'] .finalCTA {
+  background: linear-gradient(135deg, #1e293b 0%, #334155 25%, #475569 50%, #64748b 75%, #94a3b8 100%);
+}
+
+[data-theme='dark'] .ctaIcon {
+  background: rgba(255, 255, 255, 0.1);
+  border-color: rgba(255, 255, 255, 0.2);
+  box-shadow: 
+    0 25px 50px rgba(0, 0, 0, 0.5),
+    0 10px 25px rgba(255, 255, 255, 0.05),
+    inset 0 1px 0 rgba(255, 255, 255, 0.2);
+}
+
+[data-theme='dark'] .ctaPrimary {
+  background: linear-gradient(135deg, #f8fafc 0%, #e2e8f0 100%);
+  color: #1e293b;
+  box-shadow: 
+    0 15px 35px rgba(255, 255, 255, 0.15),
+    0 8px 15px rgba(0, 0, 0, 0.2),
+    inset 0 1px 0 rgba(255, 255, 255, 0.9);
+}
+
+[data-theme='dark'] .ctaPrimary:hover {
+  background: #ffffff;
+  color: #1e293b;
+  box-shadow: 
+    0 20px 45px rgba(255, 255, 255, 0.2),
+    0 15px 25px rgba(0, 0, 0, 0.25),
+    inset 0 1px 0 rgba(255, 255, 255, 1);
+}
+
+[data-theme='dark'] .visualCard {
+  background: rgba(255, 255, 255, 0.95);
+  border-color: rgba(255, 255, 255, 0.2);
+  box-shadow: 
+    0 25px 60px rgba(0, 0, 0, 0.6),
+    0 15px 35px rgba(0, 0, 0, 0.3),
+    inset 0 1px 0 rgba(255, 255, 255, 0.8);
+}
+
+[data-theme='dark'] .visualHeader {
+  background: linear-gradient(135deg, #3b82f6 0%, #6366f1 50%, #8b5cf6 100%);
+}
+
+[data-theme='dark'] .visualCard::before {
+  background: linear-gradient(135deg, #3b82f6, #6366f1, #8b5cf6, #ec4899);
+}
+
+/* QR Code Modal Styles */
+.qrModal {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.8);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  -webkit-backdrop-filter: blur(8px);
+  backdrop-filter: blur(8px);
+  animation: fadeIn 0.3s ease-out;
+}
+
+.qrModalContent {
+  background: #ffffff;
+  border-radius: 20px;
+  padding: 2.5rem;
+  max-width: 400px;
+  width: 90%;
+  position: relative;
+  text-align: center;
+  box-shadow: 0 25px 50px rgba(0, 0, 0, 0.25);
+  animation: slideUp 0.3s ease-out;
+}
+
+.closeButton {
+  position: absolute;
+  top: 1rem;
+  right: 1rem;
+  background: none;
+  border: none;
+  font-size: 2rem;
+  color: #64748b;
+  cursor: pointer;
+  width: 40px;
+  height: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  transition: all 0.2s ease;
+}
+
+.closeButton:hover {
+  background: #f1f5f9;
+  color: #374151;
+}
+
+.qrTitle {
+  font-size: 1.5rem;
+  font-weight: 700;
+  margin-bottom: 1.5rem;
+  color: #0f172a;
+  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", sans-serif;
+}
+
+.qrImageContainer {
+  margin-bottom: 1.5rem;
+  padding: 1rem;
+  background: #f8fafc;
+  border-radius: 12px;
+  border: 1px solid #e2e8f0;
+}
+
+.qrImage {
+  width: 200px;
+  height: 200px;
+  max-width: 100%;
+  border-radius: 8px;
+  background: #ffffff;
+  padding: 0.5rem;
+}
+
+.qrDescription {
+  font-size: 0.9rem;
+  color: #64748b;
+  line-height: 1.5;
+  margin: 0;
+  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif;
+}
+
+/* Animation keyframes */
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes slideUp {
+  from {
+    opacity: 0;
+    transform: translateY(30px) scale(0.95);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+/* Dark mode adjustments for QR modal */
+[data-theme='dark'] .qrModalContent {
+  background: #1e293b;
+  border: 1px solid #334155;
+}
+
+[data-theme='dark'] .qrTitle {
+  color: #f1f5f9;
+}
+
+[data-theme='dark'] .qrImageContainer {
+  background: #334155;
+  border-color: #475569;
+}
+
+[data-theme='dark'] .qrDescription {
+  color: #94a3b8;
+}
+
+[data-theme='dark'] .closeButton {
+  color: #94a3b8;
+}
+
+[data-theme='dark'] .closeButton:hover {
+  background: #334155;
+  color: #f1f5f9;
+}
+
+/* Premium Animation keyframes */
+@keyframes shimmer {
+  0%, 100% {
+    opacity: 0.6;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1.02);
+  }
+}
+
+@keyframes float {
+  0%, 100% {
+    transform: translateY(0px) rotate(0deg);
+  }
+  33% {
+    transform: translateY(-15px) rotate(1deg);
+  }
+  66% {
+    transform: translateY(-8px) rotate(-0.5deg);
+  }
+}
+
+@keyframes spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes fillAnimation {
+  from {
+    width: 0;
+    opacity: 0;
+  }
+  to {
+    width: var(--target-width, 100%);
+    opacity: 1;
+  }
+}
+
+/* Set specific target widths */
+.success {
+  --target-width: 98.5%;
+}
+
+.excellent {
+  --target-width: 99.2%;
+}
+
+.good {
+  --target-width: 85%;
+}

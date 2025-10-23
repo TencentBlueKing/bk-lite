@@ -1,0 +1,22 @@
+[
+  {
+    "model_type": "default",
+    "name": "DotsOCR",
+    "base_url": "http://ocr-server/dots_ocr"
+  },
+  {
+    "model_type": "default",
+    "name": "PaddleOCR",
+    "base_url": "http://ocr-server/paddle_ocr"
+  },
+  {
+    "model_type": "cloud",
+    "name": "AzureOCR",
+    "base_url": "http://ocr-server/azure_ocr"
+  },
+  {
+    "model_type": "hugging_face",
+    "name": "OlmOCR",
+    "base_url": "ttp://ocr-server/olm_ocr"
+  }
+]

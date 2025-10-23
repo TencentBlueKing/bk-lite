@@ -16,7 +16,6 @@ import {
 } from '@/app/cmdb/types/assetData';
 import {
   AttrFieldType,
-  ModelItem,
   UserItem,
   AssoTypeItem,
 } from '@/app/cmdb/types/assetManage';
@@ -30,12 +29,12 @@ const ChangeRecords: React.FC = () => {
   const commonContext = useCommon();
   const users = useRef(commonContext?.userList || []);
   const userList: UserItem[] = users.current;
+  const modelList = commonContext?.modelList || [];
   const detailRef = useRef<detailRef>(null);
   const [loading, setLoading] = useState<boolean>(false);
   const [enumList, setEnumList] = useState<RecordsEnum>({});
   const [recordList, setRecordList] = useState<RecordItem[]>([]);
   const [attrList, setAttrList] = useState<AttrFieldType[]>([]);
-  const [modelList, setModelList] = useState<ModelItem[]>([]);
   const [assoTypes, setAssoTypes] = useState<AssoTypeItem[]>([]);
   const searchParams = useSearchParams();
   const modelId: string = searchParams.get('model_id') || '';
@@ -62,24 +61,16 @@ const ChangeRecords: React.FC = () => {
     const getChangeRecordLists = changeRecordApi.getChangeRecords(getParams());
     const getEnumData = changeRecordApi.getChangeRecordEnumData();
     const getAttrList = modelApi.getModelAttrList(modelId);
-    const getModelList = modelApi.getModelList();
     const getAssoType = modelApi.getModelAssociationTypes();
     try {
       setLoading(true);
-      Promise.all([
-        getChangeRecordLists,
-        getEnumData,
-        getAttrList,
-        getModelList,
-        getAssoType,
-      ])
+      Promise.all([getChangeRecordLists, getEnumData, getAttrList, getAssoType])
         .then((res) => {
           const enumData = res[1];
           setEnumList(enumData);
           dealRecordList(res[0]);
           setAttrList(res[2] || []);
-          setModelList(res[3] || []);
-          setAssoTypes(res[4] || []);
+          setAssoTypes(res[3] || []);
         })
         .finally(() => {
           setLoading(false);

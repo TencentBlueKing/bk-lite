@@ -10,29 +10,27 @@ import { useRouter } from 'next/navigation';
 import Image from 'next/image';
 import { Spin, Input, Empty } from 'antd';
 import EllipsisWithTooltip from '@/components/ellipsis-with-tooltip';
-import {
-  useClassificationApi,
-  useModelApi,
-  useInstanceApi,
-} from '@/app/cmdb/api';
+import { useClassificationApi, useInstanceApi } from '@/app/cmdb/api';
+import { useCommon } from '@/app/cmdb/context/common';
 
 const AssetsOverview: React.FC = () => {
   const { isLoading } = useApiClient();
   const { t } = useTranslation();
   const router = useRouter();
+  const commonContext = useCommon();
+  const modelListFromContext = commonContext?.modelList || [];
   const [loading, setLoading] = useState<boolean>(false);
   const [overViewList, setOverViewList] = useState<GroupItem[]>([]);
   const [allOverViewList, setAllOverViewList] = useState<GroupItem[]>([]);
   const [searchText, setSearchText] = useState<string>('');
 
   const { getClassificationList } = useClassificationApi();
-  const { getModelList } = useModelApi();
   const { getModelInstanceCount } = useInstanceApi();
 
   useEffect(() => {
-    if (isLoading) return;
+    if (isLoading || modelListFromContext.length === 0) return;
     fetchAssetsOverviewList();
-  }, [isLoading]);
+  }, [isLoading, modelListFromContext]);
 
   const breakpointColumnsObj = {
     default: 6,
@@ -72,8 +70,7 @@ const AssetsOverview: React.FC = () => {
   const fetchAssetsOverviewList = async () => {
     setLoading(true);
     try {
-      const [modeldata, groupData, instCount] = await Promise.all([
-        getModelList(),
+      const [groupData, instCount] = await Promise.all([
         getClassificationList(),
         getModelInstanceCount(),
       ]);
@@ -83,7 +80,7 @@ const AssetsOverview: React.FC = () => {
         list: [],
       }));
 
-      modeldata.forEach((modelItem: ModelItem) => {
+      modelListFromContext.forEach((modelItem: ModelItem) => {
         const target = groups.find(
           (item: GroupItem) =>
             item.classification_id === modelItem.classification_id

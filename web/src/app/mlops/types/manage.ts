@@ -55,7 +55,7 @@ interface DataSet {
   icon: string;
   creator: string;
   // user_id: string;
-  tenant_id: number;
+  // tenant_id: number;
 }
 
 interface AnomalyDataSet {
