@@ -770,7 +770,7 @@ package() {
         skip_opspilot_images=false
         log "INFO" "检测到 --opspilot 参数，将下载所有镜像（包括 OpsPilot 相关）"
     else
-        log "INFO" "未检测到 --opspilot 参数，将跳过 OpsPilot 相关镜像（Metis, MLFlow）"
+        log "INFO" "未检测到 --opspilot 参数，将跳过 OpsPilot 相关镜像（Metis）"
     fi
     
     log "INFO" "开始下载所有必要的 Docker 镜像..."
