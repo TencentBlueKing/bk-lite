@@ -413,7 +413,7 @@ if [[ "$CPU_ARCH" == "x86_64" ]]; then
    mkdir -p pkgs/controller/certs
    cp -av conf/certs/ca.crt pkgs/controller/certs/
    mkdir -p pkgs/collector
-   docker run --rm -v $PWD/pkgs:/pkgs --entrypoint=/bin/bash $DOCKER_IMAGE_FUSION_COLLECTOR -c "cp -av bin/* /pkgs/collector/;cd /opt; cp fusion-collectors/misc/* fusion-collectors/;mkdir -p /opt/fusion-collectors/certs/;cp /pkgs/controller/certs/ca.crt /opt/fusion-collectors/certs/;zip -r /pkgs/controller/fusion-collectors.zip fusion-collectors"
+   docker run --rm -v $PWD/pkgs:/pkgs --entrypoint=/bin/bash $DOCKER_IMAGE_FUSION_COLLECTOR -c "cp -av bin/* /pkgs/collector/;cd /opt; cp fusion-collectors/misc/* fusion-collectors/;mkdir -p /opt/fusion-collectors/certs/;cp /pkgs/controller/certs/ca.crt /opt/fusion-collectors/certs/;zip -rq /pkgs/controller/fusion-collectors.zip fusion-collectors"
 elif [[ "$CPU_ARCH" == "aarch64" ]]; then
    log "WARNING" "当前CPU架构为arm64，暂时无内置采集器"
 else
