@@ -7,6 +7,7 @@ from django.http import HttpResponse
 from django.core.serializers.json import DjangoJSONEncoder
 
 from apps.node_mgmt.constants.controller import ControllerConstants
+from apps.node_mgmt.constants.database import DatabaseConstants
 from apps.node_mgmt.utils.crypto_helper import EncryptedJsonResponse
 from apps.node_mgmt.models.cloud_region import SidecarEnv
 from apps.node_mgmt.models.sidecar import Node, Collector, CollectorConfiguration, NodeOrganization
@@ -94,7 +95,7 @@ class Sidecar:
             NodeOrganization.objects.bulk_create(
                 [NodeOrganization(node_id=node_id, organization=group) for group in groups],
                 ignore_conflicts=True,
-                batch_size=100,
+                batch_size=DatabaseConstants.BULK_CREATE_BATCH_SIZE,
             )
 
     @staticmethod
@@ -124,10 +125,11 @@ class Sidecar:
 
         # 如果缓存的ETag存在且与客户端的相同，则返回304 Not Modified
         if cached_etag and cached_etag == if_none_match:
-
-            # 更新时间
-            Node.objects.filter(id=node_id).update(updated_at=datetime.now(timezone.utc).isoformat())
-
+            # 更新时间, 更新状态
+            Node.objects.filter(id=node_id).update(
+                updated_at=datetime.now(timezone.utc).isoformat(),
+                status=request.data.get("node_details", {}).get("status", {}),
+            )
             response = HttpResponse(status=304)
             response['ETag'] = cached_etag
             return response

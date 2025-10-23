@@ -2,6 +2,7 @@ from rest_framework import viewsets
 from rest_framework.decorators import action
 
 from apps.core.utils.web_utils import WebUtils
+from apps.monitor.constants.database import DatabaseConstants
 from apps.monitor.filters.monitor_metrics import MetricGroupFilter, MetricFilter
 from apps.monitor.language.service import SettingLanguage
 from apps.monitor.serializers.monitor_metrics import MetricGroupSerializer, MetricSerializer
@@ -74,7 +75,7 @@ class MetricGroupVieSet(viewsets.ModelViewSet):
             )
             for item in request.data
         ]
-        MetricGroup.objects.bulk_update(updates, ["sort_order"], batch_size=200)
+        MetricGroup.objects.bulk_update(updates, ["sort_order"], batch_size=DatabaseConstants.BULK_UPDATE_BATCH_SIZE)
         return WebUtils.response_success()
 
 
@@ -144,5 +145,5 @@ class MetricVieSet(viewsets.ModelViewSet):
             )
             for item in request.data
         ]
-        Metric.objects.bulk_update(updates, ["sort_order"], batch_size=200)
+        Metric.objects.bulk_update(updates, ["sort_order"], batch_size=DatabaseConstants.BULK_UPDATE_BATCH_SIZE)
         return WebUtils.response_success()

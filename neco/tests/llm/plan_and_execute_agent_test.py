@@ -10,7 +10,7 @@ NEW_API_URL=os.getenv('TEST_LLM_API_URL')
 TEST_LLM_MODEL=os.getenv('TEST_LLM_MODEL')
 
 TEST_PROMPT = [
-    # '分析https://github.com/TencentBlueKing/bk-lite仓库今天的提交情况',
+    '分析https://github.com/TencentBlueKing/bk-lite仓库今天的提交情况',
     '现在几点'
 ]
 

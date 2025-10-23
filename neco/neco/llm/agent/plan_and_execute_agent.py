@@ -30,6 +30,8 @@ class PlanAndExecuteAgentState(TypedDict):
     
     # 执行相关
     execution_prompt: Optional[str]  # 当前步骤的执行提示
+    execution_count: int              # 执行计数器
+    step_history: List[str]           # 步骤执行历史，用于检测循环
     
     # 最终结果
     final_response: Optional[str]
@@ -83,6 +85,8 @@ class PlanAndExecuteAgentNode(ToolsNodes):
             "messages": [AIMessage(content=plan_display)],
             "original_plan": plan_steps,
             "current_plan": plan_steps,
+            "execution_count": 0,
+            "step_history": [],
             "final_response": None
         }
 
@@ -93,6 +97,10 @@ class PlanAndExecuteAgentNode(ToolsNodes):
             return {**state}
         
         current_step = current_plan[0]  # 取第一个待执行步骤
+        
+        # 记录即将执行的步骤
+        step_history = state.get("step_history", [])
+        execution_count = state.get("execution_count", 0)
 
         execution_prompt = TemplateLoader.render_template("prompts/plan_and_execute_agent/execute_node_prompt",{
                 "current_step": current_step,
@@ -100,10 +108,16 @@ class PlanAndExecuteAgentNode(ToolsNodes):
             }
         )
         
+        # 更新执行计数和步骤历史
+        new_step_history = step_history + [current_step]
+        new_execution_count = execution_count + 1
+        
         # 传递执行提示给React节点使用，不添加额外的显示消息
         return {
             **state,
-            "execution_prompt": execution_prompt
+            "execution_prompt": execution_prompt,
+            "step_history": new_step_history,
+            "execution_count": new_execution_count
         }
 
     async def replanner_node(self, state: PlanAndExecuteAgentState, config: RunnableConfig):
@@ -111,11 +125,43 @@ class PlanAndExecuteAgentNode(ToolsNodes):
         
         current_plan = state.get("current_plan", [])
         original_plan = state.get("original_plan", [])
+        step_history = state.get("step_history", [])
+        execution_count = state.get("execution_count", 0)
         
         if not current_plan:
             # 计划为空，只更新current_plan，不传递任何消息
             logger.debug("[replanner_node] 计划为空，准备进入总结")
             return {
+                "current_plan": []
+            }
+        
+        # 死循环检测：检查是否重复执行相同步骤
+        current_step = current_plan[0]
+        step_occurrences = step_history.count(current_step)
+        
+        # 如果同一步骤执行超过2次，强制完成任务
+        if step_occurrences >= 2:
+            logger.warning(f"[replanner_node] 检测到循环: 步骤 '{current_step}' 已执行 {step_occurrences} 次，强制完成任务")
+            
+            loop_warning = f"\n\n⚠️ **检测到重复执行模式**\n\n"
+            loop_warning += f"步骤 \"{current_step}\" 已经执行了 {step_occurrences} 次，为避免无限循环，任务将被标记为完成。\n\n"
+            loop_warning += "📝 **建议**: 如需继续执行，请重新定义具体的、可执行的步骤。\n\n"
+            
+            return {
+                "messages": [AIMessage(content=loop_warning)],
+                "current_plan": []
+            }
+        
+        # 如果总执行次数超过原计划的2倍，也强制完成
+        max_iterations = len(original_plan) * 2 if original_plan else 20
+        if execution_count >= max_iterations:
+            logger.warning(f"[replanner_node] 执行次数 ({execution_count}) 超过限制 ({max_iterations})，强制完成任务")
+            
+            limit_warning = f"\n\n⚠️ **执行次数超限**\n\n"
+            limit_warning += f"已执行 {execution_count} 个步骤，超过预期的 {max_iterations} 步，任务将被标记为完成。\n\n"
+            
+            return {
+                "messages": [AIMessage(content=limit_warning)],
                 "current_plan": []
             }
         
@@ -141,7 +187,9 @@ class PlanAndExecuteAgentNode(ToolsNodes):
             "user_message": config["configurable"]["graph_request"].user_message,
             "original_plan": original_plan,
             "current_plan": current_plan,
-            "recent_messages": recent_messages
+            "recent_messages": recent_messages,
+            "step_history": step_history,
+            "execution_count": execution_count
         })
 
         replan_response = await self.structured_output_parser.parse_with_structured_output(

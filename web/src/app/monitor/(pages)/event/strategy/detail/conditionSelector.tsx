@@ -182,7 +182,7 @@ const ConditionSelector: React.FC<ConditionSelectorProps> = ({
           }}
           showSearch
           allowClear
-          mode="tags"
+          mode="multiple"
           maxTagCount="responsive"
           placeholder={t('common.group')}
           value={data.group}
