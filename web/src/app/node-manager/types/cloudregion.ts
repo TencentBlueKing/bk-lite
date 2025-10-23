@@ -25,7 +25,7 @@ interface ConfigHookParams {
 // 子配置页面table的列定义
 interface SubConfigHookParams {
   edit: (item: ConfigListProps) => void;
-  nodeData: ConfigDate;
+  nodeData: ConfigData;
 }
 interface VariableProps {
   openUerModal: (type: string, form: TableDataItem) => void;
@@ -49,7 +49,7 @@ interface ConfigListProps extends BaseConfigItem {
 }
 
 //页面展示用的配置数据类型（将API数据转换为页面需要的格式）
-interface ConfigDate
+interface ConfigData
   extends Omit<
     BaseConfigItem,
     | 'id'
@@ -131,7 +131,7 @@ interface SubRef {
 interface SubProps {
   cancel: () => void;
   edit: (item: ConfigListProps) => void;
-  nodeData: ConfigDate;
+  nodeData: ConfigData;
   collectors: TableDataItem[];
 }
 
@@ -197,7 +197,7 @@ export type {
   UpdateConfigReq,
   NodeItemRes,
   MappedNodeItem,
-  ConfigDate,
+  ConfigData,
   SubRef,
   SubProps,
   CloudRegionItem,

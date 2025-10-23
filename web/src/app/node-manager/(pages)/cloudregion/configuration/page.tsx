@@ -11,7 +11,7 @@ import { useTranslation } from '@/utils/i18n';
 import useApiClient from '@/utils/request';
 import type {
   ConfigListProps,
-  ConfigDate,
+  ConfigData,
   SubRef,
 } from '@/app/node-manager/types/cloudregion';
 import useNodeManagerApi from '@/app/node-manager/api';
@@ -31,7 +31,7 @@ type SearchProps = GetProps<typeof Input.Search>;
 const { Search } = Input;
 const { confirm } = Modal;
 
-const Configration = () => {
+const Configuration = () => {
   const subConfiguration = useRef<SubRef>(null);
   const configurationRef = useRef<ModalRef>(null);
   const applyRef = useRef<ModalRef>(null);
@@ -49,10 +49,10 @@ const Configration = () => {
     useNodeManagerApi();
   const configBtachItems = useConfigBtachItems();
   const [loading, setLoading] = useState<boolean>(true);
-  const [configData, setConfigData] = useState<ConfigDate[]>([]);
+  const [configData, setConfigData] = useState<ConfigData[]>([]);
   const [showSub, setShowSub] = useState<boolean>(false);
   const [filters, setFilters] = useState<ColumnFilterItem[]>([]);
-  const [nodeData, setNodeData] = useState<ConfigDate>({
+  const [nodeData, setNodeData] = useState<ConfigData>({
     key: '',
     name: '',
     collector_id: '',
@@ -361,4 +361,4 @@ const Configration = () => {
   );
 };
 
-export default Configration;
+export default Configuration;
