@@ -9,7 +9,7 @@ import { useVarColumns } from '@/app/node-manager/hooks/variable';
 import type { GetProps } from 'antd';
 import MainLayout from '../mainlayout/layout';
 import { PlusOutlined } from '@ant-design/icons';
-import useApiCloudRegion from '@/app/node-manager/api/cloudRegion';
+import useNodeManagerApi from '@/app/node-manager/api';
 import useApiClient from '@/utils/request';
 import useCloudId from '@/app/node-manager/hooks/useCloudRegionId';
 import variableStyle from './index.module.scss';
@@ -21,7 +21,7 @@ const Variable = () => {
   const cloudId = useCloudId();
   const { t } = useTranslation();
   const { isLoading } = useApiClient();
-  const { getVariableList, deleteVariable } = useApiCloudRegion();
+  const { getVariableList, deleteVariable } = useNodeManagerApi();
   const variableRef = useRef<ModalRef>(null);
   const [data, setData] = useState<TableDataItem[]>([]);
   const [loading, setLoading] = useState<boolean>(true);

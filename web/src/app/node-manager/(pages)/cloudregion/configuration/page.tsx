@@ -14,8 +14,7 @@ import type {
   ConfigDate,
   SubRef,
 } from '@/app/node-manager/types/cloudregion';
-import useApiCloudRegion from '@/app/node-manager/api/cloudRegion';
-import useApiCollector from '@/app/node-manager/api/collector';
+import useNodeManagerApi from '@/app/node-manager/api';
 import useCloudId from '@/app/node-manager/hooks/useCloudRegionId';
 import { SafeStorage } from '@/app/node-manager/utils/safeStorage';
 import MainLayout from '../mainlayout/layout';
@@ -46,9 +45,8 @@ const Configration = () => {
   )?.id;
   const cloudregionId = searchParams.get('cloud_region_id') || '';
   const name = searchParams.get('name') || '';
-  const { getConfiglist, getNodeList, batchDeleteCollector } =
-    useApiCloudRegion();
-  const { getCollectorlist } = useApiCollector();
+  const { getConfiglist, batchDeleteCollector, getNodeList, getCollectorlist } =
+    useNodeManagerApi();
   const configBtachItems = useConfigBtachItems();
   const [loading, setLoading] = useState<boolean>(true);
   const [configData, setConfigData] = useState<ConfigDate[]>([]);

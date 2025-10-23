@@ -36,8 +36,7 @@ import {
 } from '@/app/node-manager/hooks/node';
 import MainLayout from '../mainlayout/layout';
 import useApiClient from '@/utils/request';
-import useApiCloudRegion from '@/app/node-manager/api/cloudRegion';
-import useApiCollector from '@/app/node-manager/api/collector';
+import useNodeManagerApi from '@/app/node-manager/api';
 import useCloudId from '@/app/node-manager/hooks/useCloudRegionId';
 import { SafeStorage } from '@/app/node-manager/utils/safeStorage';
 import {
@@ -65,8 +64,7 @@ const Node = () => {
   const cloudId = useCloudId();
   const searchParams = useSearchParams();
   const { isLoading, del } = useApiClient();
-  const { getNodeList, delNode } = useApiCloudRegion();
-  const { getCollectorlist } = useApiCollector();
+  const { getNodeList, delNode, getCollectorlist } = useNodeManagerApi();
   const sidecarItems = useSidecarItems();
   const collectorItems = useCollectorItems();
   const statusMap = useTelegrafMap();

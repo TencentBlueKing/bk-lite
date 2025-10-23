@@ -12,9 +12,7 @@ import OperateModal from '@/components/operate-modal';
 import type { FormInstance } from 'antd';
 import { useTranslation } from '@/utils/i18n';
 import { ModalSuccess, ModalRef } from '@/app/node-manager/types';
-import useApiCollector from '@/app/node-manager/api/collector';
-import useApiNode from '@/app/node-manager/api';
-import useApiCloudRegion from '@/app/node-manager/api/cloudRegion';
+import useNodeManagerApi from '@/app/node-manager/api';
 import type { TableDataItem } from '@/app/node-manager/types';
 import useCloudId from '@/app/node-manager/hooks/useCloudRegionId';
 import { COLLECTOR_LABEL } from '@/app/node-manager/constants/collector';
@@ -29,14 +27,14 @@ interface Option {
 const CollectorModal = forwardRef<ModalRef, ModalSuccess>(
   ({ onSuccess }, ref) => {
     const { t } = useTranslation();
-    const { getCollectorlist } = useApiCollector();
-    const { getPackageList } = useApiNode();
     const {
+      getCollectorlist,
+      getPackageList,
       installCollector,
       batchOperationCollector,
       getConfiglist,
       applyConfig,
-    } = useApiCloudRegion();
+    } = useNodeManagerApi();
     const cloudId = useCloudId();
     const collectorFormRef = useRef<FormInstance>(null);
     const popcConfirmArr = ['restartCollector'];
