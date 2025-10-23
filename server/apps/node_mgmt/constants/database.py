@@ -17,3 +17,19 @@ class CloudRegionConstants:
     DEFAULT_CLOUD_REGION_NAME = "default"
     DEFAULT_CLOUD_REGION_INTRODUCTION = "default cloud region!"
 
+
+class EnvVariableConstants:
+    """环境变量相关常量"""
+
+    # 默认云区域环境变量前缀
+    DEFAULT_ZONE_ENV_PREFIX = "DEFAULT_ZONE_VAR_"
+
+    # 敏感字段识别关键词（用于判断是否需要加密）
+    SENSITIVE_FIELD_KEYWORD = "password"
+
+    # 环境变量类型
+    TYPE_SECRET = "secret"
+    TYPE_NORMAL = ""
+
+    # 敏感信息掩码
+    SECRET_MASK = "******"
