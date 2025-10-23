@@ -799,7 +799,7 @@ package() {
     # 遍历所有镜像变量
     for image_var in $(compgen -v | grep '^DOCKER_IMAGE_'); do
         # 如果跳过 OpsPilot 镜像，且当前是 Metis 或 MLFlow，则跳过
-        if [ "$skip_opspilot_images" = true ] && [[ "$image_var" =~ (METIS|MLFLOW) ]]; then
+        if [ "$skip_opspilot_images" = true ] && [[ "$image_var" =~ (METIS) ]]; then
             log "INFO" "跳过 OpsPilot 镜像: ${image_var}"
             skipped_count=$((skipped_count + 1))
             continue
