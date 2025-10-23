@@ -2,6 +2,7 @@ from celery import shared_task
 
 from apps.core.exceptions.base_app_exception import BaseAppException
 from apps.core.logger import celery_logger as logger
+from apps.monitor.constants.database import DatabaseConstants
 from apps.monitor.constants.monitor_object import MonitorObjConstants
 from apps.monitor.models import Metric
 from apps.monitor.models.monitor_object import MonitorObjectOrganizationRule, MonitorInstanceOrganization, MonitorObject, \
@@ -104,13 +105,13 @@ class SyncInstance:
 
         # 新增（完全不存在的）
         if create_instances:
-            MonitorInstance.objects.bulk_create(create_instances, batch_size=200)
+            MonitorInstance.objects.bulk_create(create_instances, batch_size=DatabaseConstants.BULK_CREATE_BATCH_SIZE)
 
         # 恢复逻辑删除
         if update_instances:
             for instance in update_instances:
                 instance.is_deleted = False  # 恢复
-            MonitorInstance.objects.bulk_update(update_instances, ["name", "is_deleted", "auto"], batch_size=200)
+            MonitorInstance.objects.bulk_update(update_instances, ["name", "is_deleted", "auto"], batch_size=DatabaseConstants.BULK_UPDATE_BATCH_SIZE)
 
         # 计算不活跃实例
         no_alive_set = table_alive - vm_all
@@ -205,7 +206,7 @@ class RuleGrouping:
                 MonitorInstanceOrganization(monitor_instance_id=asso_tuple[0], organization=asso_tuple[1])
                 for asso_tuple in create_asso_set
             ]
-            MonitorInstanceOrganization.objects.bulk_create(create_objs, batch_size=200, ignore_conflicts=True)
+            MonitorInstanceOrganization.objects.bulk_create(create_objs, batch_size=DatabaseConstants.BULK_CREATE_BATCH_SIZE, ignore_conflicts=True)
 
         # if delete_asso_set:
         #     delete_ids = [exist_instance_map[asso_tuple] for asso_tuple in delete_asso_set]

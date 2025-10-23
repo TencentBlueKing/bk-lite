@@ -7,6 +7,7 @@ from django.http import HttpResponse
 from django.core.serializers.json import DjangoJSONEncoder
 
 from apps.node_mgmt.constants.controller import ControllerConstants
+from apps.node_mgmt.constants.database import DatabaseConstants
 from apps.node_mgmt.utils.crypto_helper import EncryptedJsonResponse
 from apps.node_mgmt.models.cloud_region import SidecarEnv
 from apps.node_mgmt.models.sidecar import Node, Collector, CollectorConfiguration, NodeOrganization
@@ -94,7 +95,7 @@ class Sidecar:
             NodeOrganization.objects.bulk_create(
                 [NodeOrganization(node_id=node_id, organization=group) for group in groups],
                 ignore_conflicts=True,
-                batch_size=100,
+                batch_size=DatabaseConstants.BULK_CREATE_BATCH_SIZE,
             )
 
     @staticmethod

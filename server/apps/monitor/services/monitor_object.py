@@ -4,6 +4,7 @@ import uuid
 from django.db import transaction
 
 from apps.core.exceptions.base_app_exception import BaseAppException
+from apps.monitor.constants.database import DatabaseConstants
 from apps.monitor.constants.monitor_object import MonitorObjConstants
 from apps.monitor.models.monitor_metrics import Metric
 from apps.monitor.models.monitor_object import MonitorInstance, MonitorObject, MonitorInstanceOrganization, MonitorObjectType
@@ -187,9 +188,9 @@ class MonitorObjectService:
 
             # 批量更新
             if type_updates:
-                MonitorObjectType.objects.bulk_update(type_updates, ['order'], batch_size=100)
+                MonitorObjectType.objects.bulk_update(type_updates, ['order'], batch_size=DatabaseConstants.MONITOR_OBJECT_BATCH_SIZE)
             if object_updates:
-                MonitorObject.objects.bulk_update(object_updates, ['order'], batch_size=100)
+                MonitorObject.objects.bulk_update(object_updates, ['order'], batch_size=DatabaseConstants.MONITOR_OBJECT_BATCH_SIZE)
 
     @staticmethod
     def update_instance(instance_id, name, organizations):

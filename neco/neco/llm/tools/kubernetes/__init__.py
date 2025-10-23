@@ -61,6 +61,41 @@ from neco.llm.tools.kubernetes.query import (
     kubectl_get_all_resources,
 )
 
+from neco.llm.tools.kubernetes.tracing import (
+    trace_service_chain,
+    get_resource_events_timeline,
+    analyze_pod_restart_pattern,
+    check_oom_events,
+)
+
+from neco.llm.tools.kubernetes.remediation import (
+    restart_pod,
+    scale_deployment,
+    get_deployment_revision_history,
+    rollback_deployment,
+    delete_kubernetes_resource,
+    wait_for_pod_ready,
+)
+
+from neco.llm.tools.kubernetes.optimization import (
+    check_scaling_capacity,
+    check_pod_distribution,
+    validate_probe_configuration,
+    compare_deployment_revisions,
+)
+
+from neco.llm.tools.kubernetes.diagnostics_advanced import (
+    diagnose_pending_pod_issues,
+    check_network_policies_blocking,
+    check_pvc_capacity,
+)
+
+from neco.llm.tools.kubernetes.batch_operations import (
+    batch_restart_pods,
+    find_configmap_consumers,
+    cleanup_failed_pods,
+)
+
 __all__ = [
     # 基础资源查询工具
     'get_kubernetes_namespaces',
@@ -103,6 +138,36 @@ __all__ = [
     # 高级查询工具
     'kubectl_get_resources',
     'kubectl_get_all_resources',
+
+    # 链路追踪和关联分析工具 (P0)
+    'trace_service_chain',
+    'get_resource_events_timeline',
+    'analyze_pod_restart_pattern',
+    'check_oom_events',
+
+    # 故障自愈工具 (P1)
+    'restart_pod',
+    'scale_deployment',
+    'get_deployment_revision_history',
+    'rollback_deployment',
+    'delete_kubernetes_resource',
+    'wait_for_pod_ready',
+
+    # 配置优化工具 (P2)
+    'check_scaling_capacity',
+    'check_pod_distribution',
+    'validate_probe_configuration',
+    'compare_deployment_revisions',
+
+    # 高级诊断工具 (P0-新增)
+    'diagnose_pending_pod_issues',
+    'check_network_policies_blocking',
+    'check_pvc_capacity',
+
+    # 批量操作工具 (P1-新增)
+    'batch_restart_pods',
+    'find_configmap_consumers',
+    'cleanup_failed_pods',
 
     # 通用工具函数
     'prepare_context',

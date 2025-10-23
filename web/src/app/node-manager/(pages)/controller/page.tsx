@@ -1,17 +1,17 @@
 'use client';
 import React, { useEffect, useState, useRef, useCallback } from 'react';
-import { Menu, Input, Space, Select, Button } from 'antd';
+import { Menu, Input, Button, Tag } from 'antd';
 import useApiClient from '@/utils/request';
 import useApiController from '@/app/node-manager/api/controller';
 import EntityList from '@/components/entity-list/index';
 import { useRouter } from 'next/navigation';
 import { useTranslation } from '@/utils/i18n';
 import type { CardItem } from '@/app/node-manager/types';
+import { COLLECTOR_LABEL } from '@/app/node-manager/constants/collector';
 import CollectorModal from '@/app/node-manager/components/sidecar/collectorModal';
 import { ModalRef } from '@/app/node-manager/types';
 import PermissionWrapper from '@/components/permission';
 import { useControllerMenuItem } from '@/app/node-manager/hooks/controller';
-import { Option } from '@/types';
 const { Search } = Input;
 
 const Controller = () => {
@@ -21,15 +21,16 @@ const Controller = () => {
   const { getControllerList } = useApiController();
   const menuItem = useControllerMenuItem();
   const modalRef = useRef<ModalRef>(null);
+  const [allControllerData, setAllControllerData] = useState<CardItem[]>([]);
   const [controllerCards, setControllerCards] = useState<CardItem[]>([]);
-  const [selected, setSelected] = useState<string[]>([]);
   const [search, setSearch] = useState<string>('');
-  const [options, setOptions] = useState<Option[]>([]);
   const [loading, setLoading] = useState<boolean>(false);
+  const [allTags, setAllTags] = useState<string[]>([]);
+  const [selectedTags, setSelectedTags] = useState<string[]>([]);
 
   useEffect(() => {
     if (!isLoading) {
-      fetchCollectorlist(search, selected);
+      fetchCollectorlist('');
     }
   }, [isLoading]);
 
@@ -38,24 +39,43 @@ const Controller = () => {
       /node-manager/controller/detail?id=${item.id}&name=${item.name}&introduction=${item.description}&system=${item.tagList[0]}`);
   };
 
-  const filterBySelected = (data: any[], selected: string[]) => {
-    if (!selected?.length) return data;
-    const selectedSet = new Set(selected);
+  const filterBySelected = (data: any[], selectedTags: string[]) => {
+    if (!selectedTags?.length) return data;
     return data.filter((item) =>
-      item.tagList.every((tag: string) => selectedSet.has(tag))
+      selectedTags.every((tag: string) => item.tagList.includes(tag))
     );
   };
 
-  const handleResult = (res: any, selected?: string[]) => {
-    const optionSet = new Set<string>();
-    const _options: Option[] = [];
-    const filter = res.filter((item: any) => !item.controller_default_run);
-    let tempdata = filter.map((item: any) => {
-      const system = item.node_operating_system || item.os;
-      if (system && !optionSet.has(system)) {
-        optionSet.add(system);
-        _options.push({ value: system, label: system });
+  const filterBySearch = (data: any[], searchTerm: string) => {
+    if (!searchTerm) return data;
+    return data.filter(
+      (item) =>
+        item.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        item.description.toLowerCase().includes(searchTerm.toLowerCase())
+    );
+  };
+
+  const getCollectorLabelKey = (value: string) => {
+    for (const key in COLLECTOR_LABEL) {
+      if (COLLECTOR_LABEL[key].includes(value)) {
+        return key;
       }
+    }
+  };
+
+  const handleResult = (res: any, currentSearch?: string) => {
+    const tagSet = new Set<string>();
+    const filter = res.filter((item: any) => !item.controller_default_run);
+    const tempdata = filter.map((item: any) => {
+      const system = item.node_operating_system || item.os;
+      const tagList = [system];
+      const label = getCollectorLabelKey(item.name);
+      if (label) tagList.push(label);
+      tagList.forEach((tag) => {
+        if (tag) {
+          tagSet.add(tag);
+        }
+      });
       return {
         id: item.id,
         name: item.name,
@@ -64,22 +84,26 @@ const Controller = () => {
         execute_parameters: item.execute_parameters,
         description: item.description || '--',
         icon: 'caijiqizongshu',
-        tagList: [system],
+        tagList,
       };
     });
-    tempdata = filterBySelected(tempdata, selected || []);
-    setControllerCards(tempdata);
-    setOptions(_options);
+    setAllTags(Array.from(tagSet));
+    setAllControllerData(tempdata);
+    let filteredData = tempdata;
+    const searchTerm = currentSearch !== undefined ? currentSearch : search;
+    filteredData = filterBySearch(filteredData, searchTerm);
+    filteredData = filterBySelected(filteredData, selectedTags);
+    setControllerCards(filteredData);
   };
 
-  const fetchCollectorlist = async (search?: string, selected?: string[]) => {
-    const params = { name: search };
+  const fetchCollectorlist = async (searchValue?: string) => {
+    const params = { name: searchValue };
     try {
       setLoading(true);
       const res = await getControllerList(params);
-      handleResult(res, selected);
+      handleResult(res, searchValue);
     } catch (error) {
-      console.log(error);
+      console.error('Failed to fetch controller list:', error);
     } finally {
       setLoading(false);
     }
@@ -96,7 +120,7 @@ const Controller = () => {
 
   const handleSubmit = (type?: string) => {
     if (type === 'upload') return;
-    fetchCollectorlist();
+    fetchCollectorlist(search);
   };
 
   const menuActions = useCallback(
@@ -130,19 +154,24 @@ const Controller = () => {
     [menuItem]
   );
 
-  const changeFilter = (selected: string[]) => {
-    fetchCollectorlist(search, selected);
-    setSelected(selected);
+  const handleTagClick = (tag: string) => {
+    const newSelectedTags = selectedTags.includes(tag)
+      ? selectedTags.filter((t) => t !== tag)
+      : [...selectedTags, tag];
+    setSelectedTags(newSelectedTags);
+    let filteredData = allControllerData;
+    filteredData = filterBySearch(filteredData, search);
+    filteredData = filterBySelected(filteredData, newSelectedTags);
+    setControllerCards(filteredData);
   };
 
-  const onSearch = (search: string) => {
-    setSearch(search);
-    fetchCollectorlist(search, selected);
+  const onSearch = (searchValue: string) => {
+    setSearch(searchValue);
+    fetchCollectorlist(searchValue);
   };
 
   return (
     <div className="h-[calc(100vh-88px)] w-full">
-      {/* 卡片的渲染 */}
       <EntityList
         data={controllerCards}
         loading={loading}
@@ -150,20 +179,20 @@ const Controller = () => {
         filter={false}
         search={false}
         operateSection={
-          <Space.Compact>
-            <Select
-              size="middle"
-              allowClear={true}
-              placeholder={`${t('common.select')}...`}
-              mode="multiple"
-              maxTagCount="responsive"
-              className="w-[170px]"
-              options={options}
-              value={selected}
-              onChange={changeFilter}
-            />
+          <div className="flex items-center w-full">
+            <div className="flex items-center flex-1 mr-[10px] overflow-x-auto">
+              {(allTags || []).map((tag) => (
+                <Tag
+                  key={tag}
+                  color={selectedTags.includes(tag) ? 'blue' : 'default'}
+                  className="cursor-pointer transition-all duration-200 hover:scale-105 select-none"
+                  onClick={() => handleTagClick(tag)}
+                >
+                  {tag}
+                </Tag>
+              ))}
+            </div>
             <Search
-              size="middle"
               allowClear
               enterButton
               placeholder={`${t('common.search')}...`}
@@ -172,7 +201,7 @@ const Controller = () => {
               onChange={(e) => setSearch(e.target.value)}
               onSearch={onSearch}
             />
-          </Space.Compact>
+          </div>
         }
         onCardClick={(item: CardItem) => navigateToCollectorDetail(item)}
       ></EntityList>

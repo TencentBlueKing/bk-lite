@@ -1,6 +1,6 @@
 'use client';
 import React, { useEffect, useState, useRef, useCallback } from 'react';
-import { Menu, Input, Space, Select, Button, message, Modal } from 'antd';
+import { Menu, Input, Button, message, Modal, Tag } from 'antd';
 import useApiClient from '@/utils/request';
 import useApiCollector from '@/app/node-manager/api/collector';
 import EntityList from '@/components/entity-list/index';
@@ -12,7 +12,6 @@ import { ModalRef } from '@/app/node-manager/types';
 import PermissionWrapper from '@/components/permission';
 import { COLLECTOR_LABEL } from '@/app/node-manager/constants/collector';
 import { useCollectorMenuItem } from '@/app/node-manager/hooks/collector';
-import { Option } from '@/types';
 const { Search } = Input;
 const { confirm } = Modal;
 
@@ -23,15 +22,16 @@ const Collector = () => {
   const { getCollectorlist, deleteCollector } = useApiCollector();
   const menuItem = useCollectorMenuItem();
   const modalRef = useRef<ModalRef>(null);
+  const [allCollectorData, setAllCollectorData] = useState<CardItem[]>([]);
   const [collectorCards, setCollectorCards] = useState<CardItem[]>([]);
-  const [selected, setSelected] = useState<string[]>([]);
   const [search, setSearch] = useState<string>('');
-  const [options, setOptions] = useState<Option[]>([]);
   const [loading, setLoading] = useState<boolean>(false);
+  const [allTags, setAllTags] = useState<string[]>([]);
+  const [selectedTags, setSelectedTags] = useState<string[]>([]);
 
   useEffect(() => {
     if (!isLoading) {
-      fetchCollectorlist(search, selected);
+      fetchCollectorlist('');
     }
   }, [isLoading]);
 
@@ -40,11 +40,19 @@ const Collector = () => {
       /node-manager/collector/detail?id=${item.id}&name=${item.name}&introduction=${item.description}&system=${item.tagList[0]}&icon=${item.icon}`);
   };
 
-  const filterBySelected = (data: any[], selected: string[]) => {
-    if (!selected?.length) return data;
-    const selectedSet = new Set(selected);
+  const filterBySelected = (data: any[], selectedTags: string[]) => {
+    if (!selectedTags?.length) return data;
     return data.filter((item) =>
-      item.tagList.some((tag: string) => selectedSet.has(tag))
+      selectedTags.every((tag: string) => item.tagList.includes(tag))
+    );
+  };
+
+  const filterBySearch = (data: any[], searchTerm: string) => {
+    if (!searchTerm) return data;
+    return data.filter(
+      (item) =>
+        item.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        item.description.toLowerCase().includes(searchTerm.toLowerCase())
     );
   };
 
@@ -56,19 +64,19 @@ const Collector = () => {
     }
   };
 
-  const handleResult = (res: any, selected?: string[]) => {
-    const optionSet = new Set<string>();
-    const _options: Option[] = [];
+  const handleResult = (res: any, currentSearch?: string) => {
+    const tagSet = new Set<string>();
     const filter = res.filter((item: any) => !item.controller_default_run);
-    let tempdata = filter.map((item: any) => {
+    const tempdata = filter.map((item: any) => {
       const system = item.node_operating_system || item.os;
       const tagList = [system];
       const label = getCollectorLabelKey(item.name);
       if (label) tagList.push(label);
-      if (system && !optionSet.has(system)) {
-        optionSet.add(system);
-        _options.push({ value: system, label: system });
-      }
+      tagList.forEach((tag) => {
+        if (tag) {
+          tagSet.add(tag);
+        }
+      });
       return {
         id: item.id,
         name: item.name,
@@ -80,19 +88,34 @@ const Collector = () => {
         tagList,
       };
     });
-    tempdata = filterBySelected(tempdata, selected || []);
-    setCollectorCards(tempdata);
-    setOptions(_options);
+    const sortedTags = Array.from(tagSet).sort((a, b) => {
+      const priority = ['linux', 'windows'];
+      const aIndex = priority.indexOf(a.toLowerCase());
+      const bIndex = priority.indexOf(b.toLowerCase());
+      if (aIndex !== -1 && bIndex !== -1) {
+        return aIndex - bIndex;
+      }
+      if (aIndex !== -1) return -1;
+      if (bIndex !== -1) return 1;
+      return a.localeCompare(b);
+    });
+    setAllTags(sortedTags);
+    setAllCollectorData(tempdata);
+    let filteredData = tempdata;
+    const searchTerm = currentSearch !== undefined ? currentSearch : search;
+    filteredData = filterBySearch(filteredData, searchTerm);
+    filteredData = filterBySelected(filteredData, selectedTags);
+    setCollectorCards(filteredData);
   };
 
-  const fetchCollectorlist = async (search?: string, selected?: string[]) => {
-    const params = { name: search };
+  const fetchCollectorlist = async (searchValue?: string) => {
+    const params = { name: searchValue };
     try {
       setLoading(true);
       const res = await getCollectorlist(params);
-      handleResult(res, selected);
+      handleResult(res, searchValue);
     } catch (error) {
-      console.log(error);
+      console.error('Failed to fetch collector list:', error);
     } finally {
       setLoading(false);
     }
@@ -109,7 +132,7 @@ const Collector = () => {
 
   const handleSubmit = (type?: string) => {
     if (type === 'upload') return;
-    fetchCollectorlist();
+    fetchCollectorlist(search);
   };
 
   const handleDelete = (id: string) => {
@@ -124,7 +147,7 @@ const Collector = () => {
           try {
             await deleteCollector({ id });
             message.success(t('common.successfullyDeleted'));
-            fetchCollectorlist();
+            fetchCollectorlist(search);
           } finally {
             return resolve(true);
           }
@@ -173,9 +196,15 @@ const Collector = () => {
     [menuItem]
   );
 
-  const changeFilter = (selected: string[]) => {
-    fetchCollectorlist(search, selected);
-    setSelected(selected);
+  const handleTagClick = (tag: string) => {
+    const newSelectedTags = selectedTags.includes(tag)
+      ? selectedTags.filter((t) => t !== tag)
+      : [...selectedTags, tag];
+    setSelectedTags(newSelectedTags);
+    let filteredData = allCollectorData;
+    filteredData = filterBySearch(filteredData, search);
+    filteredData = filterBySelected(filteredData, newSelectedTags);
+    setCollectorCards(filteredData);
   };
 
   const ifOpenAddModal = () => {
@@ -189,14 +218,13 @@ const Collector = () => {
     };
   };
 
-  const onSearch = (search: string) => {
-    setSearch(search);
-    fetchCollectorlist(search, selected);
+  const onSearch = (searchValue: string) => {
+    setSearch(searchValue);
+    fetchCollectorlist(searchValue);
   };
 
   return (
     <div className="h-[calc(100vh-88px)] w-full">
-      {/* 卡片的渲染 */}
       <EntityList
         data={collectorCards}
         loading={loading}
@@ -204,29 +232,29 @@ const Collector = () => {
         filter={false}
         search={false}
         operateSection={
-          <Space.Compact>
-            <Select
-              size="middle"
-              allowClear={true}
-              placeholder={`${t('common.select')}...`}
-              mode="multiple"
-              maxTagCount="responsive"
-              className="w-[170px]"
-              options={options}
-              value={selected}
-              onChange={changeFilter}
-            />
+          <div className="flex items-center w-full">
+            <div className="flex items-center flex-1 mr-[10px] overflow-x-auto">
+              {(allTags || []).map((tag) => (
+                <Tag
+                  key={tag}
+                  color={selectedTags.includes(tag) ? 'blue' : 'default'}
+                  className="cursor-pointer transition-all duration-200 hover:scale-105 select-none"
+                  onClick={() => handleTagClick(tag)}
+                >
+                  {tag}
+                </Tag>
+              ))}
+            </div>
             <Search
-              size="middle"
               allowClear
               enterButton
               placeholder={`${t('common.search')}...`}
-              className="w-60"
+              className="w-60 flex justify-end"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               onSearch={onSearch}
             />
-          </Space.Compact>
+          </div>
         }
         {...ifOpenAddModal()}
         onCardClick={(item: CardItem) => navigateToCollectorDetail(item)}

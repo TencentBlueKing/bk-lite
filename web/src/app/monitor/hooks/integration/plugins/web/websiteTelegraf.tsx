@@ -107,7 +107,7 @@ export const useWebsiteTelegraf = () => {
                   ...item,
                   node_ids: [item.node_ids].flat(),
                   instance_type: pluginConfig.instance_type,
-                  instance_id: item.url,
+                  instance_id: `${pluginConfig.instance_type}_${item.url}`,
                 };
               }),
             };
