@@ -18,7 +18,7 @@ class GroupViewSet(LanguageViewSet, ViewSetUtils):
     def search_group_list(self, request):
         # 构建嵌套组结构
         groups = [i["id"] for i in request.user.group_list]
-        queryset = Group.objects.all()
+        queryset = Group.objects.prefetch_related("roles").all()
         if not request.user.is_superuser:
             queryset = queryset.filter(id__in=groups).exclude(name="OpsPilotGuest", parent_id=0)
         groups_data = GroupUtils.build_group_tree(queryset, request.user.is_superuser, groups)
@@ -74,6 +74,7 @@ class GroupViewSet(LanguageViewSet, ViewSetUtils):
     @HasPermission("user_group-Edit Group")
     def update_group(self, request):
         obj = Group.objects.get(id=request.data.get("group_id"))
+        role_ids = request.data.get("role_ids", [])
         if obj.name == "Default" and obj.parent_id == 0:
             message = self.loader.get("error.default_group_cannot_modify") if self.loader else "Default group cannot be modified."
             return JsonResponse({"result": False, "message": message})
@@ -83,6 +84,11 @@ class GroupViewSet(LanguageViewSet, ViewSetUtils):
                 message = self.loader.get("error.no_permission_edit_group") if self.loader else "You do not have permission to edit this group."
                 return JsonResponse({"result": False, "message": message})
         Group.objects.filter(id=request.data.get("group_id")).update(name=request.data.get("group_name"))
+
+        # 更新组的角色
+        if isinstance(role_ids, list):
+            obj.roles.set(role_ids)
+
         return JsonResponse({"result": True})
 
     @action(detail=False, methods=["POST"])

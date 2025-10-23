@@ -21,7 +21,7 @@ class GenericViewSetFun(object):
                 return parts[1]
         return None
 
-    def get_has_permission(self, user, instance, current_team, is_list=False, is_check=False):
+    def get_has_permission(self, user, instance, current_team, is_list=False, is_check=False, include_children=False):
         """获取规则实例ID"""
         user_groups = [int(i["id"]) for i in user.group_list]
         if is_list:
@@ -38,7 +38,7 @@ class GenericViewSetFun(object):
             instance_id = [instance.id]
         try:
             app_name = self._get_app_name()
-            permission_rules = get_permission_rules(user, current_team, app_name, self.permission_key)
+            permission_rules = get_permission_rules(user, current_team, app_name, self.permission_key, include_children)
             if int(current_team) in permission_rules["team"]:
                 return True
 
@@ -56,6 +56,7 @@ class GenericViewSetFun(object):
             return self.value_error(message)
 
         current_team = request.COOKIES.get("current_team", "0")
+        include_children = request.COOKIES.get("include_children", "0") == "1"
         fields = [i.name for i in queryset.model._meta.fields]
         if "created_by" in fields:
             query = Q(team__contains=int(current_team), created_by=request.user.username, domain=request.user.domain)
@@ -64,7 +65,7 @@ class GenericViewSetFun(object):
         permission_key = permission_key or getattr(self, "permission_key", None)
         if permission_key:
             app_name = self._get_app_name()
-            permission_data = get_permission_rules(user, current_team, app_name, permission_key)
+            permission_data = get_permission_rules(user, current_team, app_name, permission_key, include_children)
             instance_ids = [i["id"] for i in permission_data.get("instance", [])]
             team = permission_data.get("team", [])
             if instance_ids:
@@ -222,7 +223,8 @@ class AuthViewSet(MaintainerViewSet):
             return super().retrieve(request, *args, **kwargs)
         if hasattr(self, "permission_key"):
             current_team = request.COOKIES.get("current_team", "0")
-            has_permission = self.get_has_permission(user, instance, current_team, is_check=True)
+            include_children = request.COOKIES.get("include_children", "0") == "1"
+            has_permission = self.get_has_permission(user, instance, current_team, is_check=True, include_children=include_children)
             if not has_permission:
                 message = self.loader.get("error.no_permission_view") if self.loader else "User does not have permission to view this instance"
                 return self.value_error(message)
@@ -237,7 +239,8 @@ class AuthViewSet(MaintainerViewSet):
             return super().destroy(request, *args, **kwargs)
         if hasattr(self, "permission_key"):
             current_team = request.COOKIES.get("current_team", "0")
-            has_permission = self.get_has_permission(user, instance, current_team)
+            include_children = request.COOKIES.get("include_children", "0") == "1"
+            has_permission = self.get_has_permission(user, instance, current_team, include_children=include_children)
             if not has_permission:
                 message = self.loader.get("error.no_permission_delete") if self.loader else "User does not have permission to delete this instance"
                 return self.value_error(message)
@@ -261,7 +264,8 @@ class AuthViewSet(MaintainerViewSet):
                 message = self.loader.get("error.no_permission_update") if self.loader else "User does not have permission to update this instance"
                 return self.value_error(message)
             if hasattr(self, "permission_key"):
-                has_permission = self.get_has_permission(user, instance, current_team)
+                include_children = request.COOKIES.get("include_children", "0") == "1"
+                has_permission = self.get_has_permission(user, instance, current_team, include_children=include_children)
                 if not has_permission:
                     message = (
                         self.loader.get("error.no_permission_update") if self.loader else "User does not have permission to update this instance"

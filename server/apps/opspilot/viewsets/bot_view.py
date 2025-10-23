@@ -73,7 +73,8 @@ class BotViewSet(AuthViewSet):
         obj: Bot = self.get_object()
         if not request.user.is_superuser:
             current_team = request.COOKIES.get("current_team", "0")
-            has_permission = self.get_has_permission(request.user, obj, current_team)
+            include_children = request.COOKIES.get("include_children", "0") == "1"
+            has_permission = self.get_has_permission(request.user, obj, current_team, include_children=include_children)
             if not has_permission:
                 return JsonResponse(
                     {
@@ -157,7 +158,8 @@ class BotViewSet(AuthViewSet):
         channel = BotChannel.objects.get(id=channel_id)
         if not request.user.is_superuser:
             current_team = request.COOKIES.get("current_team", "0")
-            has_permission = self.get_has_permission(request.user, channel.bot, current_team)
+            include_children = request.COOKIES.get("include_children", "0") == "1"
+            has_permission = self.get_has_permission(request.user, channel.bot, current_team, include_children=include_children)
             if not has_permission:
                 message = self.loader.get("no_bot_update_permission") if self.loader else "You do not have permission to update this bot."
                 return JsonResponse(
@@ -190,7 +192,8 @@ class BotViewSet(AuthViewSet):
         bots = Bot.objects.filter(id__in=bot_ids)
         if not request.user.is_superuser:
             current_team = request.COOKIES.get("current_team", "0")
-            has_permission = self.get_has_permission(request.user, bots, current_team, is_list=True)
+            include_children = request.COOKIES.get("include_children", "0") == "1"
+            has_permission = self.get_has_permission(request.user, bots, current_team, is_list=True, include_children=include_children)
             if not has_permission:
                 message = self.loader.get("no_bot_start_permission") if self.loader else "You do not have permission to start this bot."
                 return JsonResponse(
@@ -221,7 +224,8 @@ class BotViewSet(AuthViewSet):
         bots = Bot.objects.filter(id__in=bot_ids)
         if not request.user.is_superuser:
             current_team = request.COOKIES.get("current_team", "0")
-            has_permission = self.get_has_permission(request.user, bots, current_team, is_list=True)
+            include_children = request.COOKIES.get("include_children", "0") == "1"
+            has_permission = self.get_has_permission(request.user, bots, current_team, is_list=True, include_children=include_children)
             if not has_permission:
                 message = self.loader.get("no_bot_stop_permission") if self.loader else "You do not have permission to stop this bot"
                 return JsonResponse(
