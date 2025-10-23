@@ -7,7 +7,7 @@ from apps.monitor.constants.monitor_object import MonitorObjConstants
 from apps.monitor.models import Metric
 from apps.monitor.models.monitor_object import MonitorObjectOrganizationRule, MonitorInstanceOrganization, MonitorObject, \
     MonitorInstance
-from apps.monitor.tasks.task_utils.metric_query import format_to_vm_filter
+from apps.monitor.tasks.utils.metric_query import format_to_vm_filter
 from apps.monitor.utils.victoriametrics_api import VictoriaMetricsAPI
 
 

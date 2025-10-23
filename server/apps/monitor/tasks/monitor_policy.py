@@ -8,8 +8,8 @@ from apps.monitor.constants.alert_policy import AlertConstants
 from apps.monitor.constants.database import DatabaseConstants
 from apps.monitor.models import MonitorPolicy, MonitorInstanceOrganization, MonitorAlert, MonitorEvent, MonitorInstance, \
     Metric, MonitorEventRawData, MonitorAlertMetricSnapshot
-from apps.monitor.tasks.task_utils.metric_query import format_to_vm_filter
-from apps.monitor.tasks.task_utils.policy_calculate import vm_to_dataframe, calculate_alerts
+from apps.monitor.tasks.utils.metric_query import format_to_vm_filter
+from apps.monitor.tasks.utils.policy_calculate import vm_to_dataframe, calculate_alerts
 from apps.monitor.utils.system_mgmt_api import SystemMgmtUtils
 from apps.monitor.utils.victoriametrics_api import VictoriaMetricsAPI
 from apps.core.logger import celery_logger as logger
