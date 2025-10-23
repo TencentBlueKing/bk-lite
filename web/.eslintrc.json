@@ -16,11 +16,30 @@
       2,
       {
         "SwitchCase": 1,
-        "flatTernaryExpressions": false,
+        "flatTernaryExpressions": true,
+        "offsetTernaryExpressions": false,
         "ignoredNodes": [
           "PropertyDefinition[decorators]",
           "TSUnionType",
-          "FunctionExpression[params]:has(Identifier[decorators])"
+          "TSIntersectionType",
+          "TSTypeParameterInstantiation",
+          "FunctionExpression[params]:has(Identifier[decorators])",
+          "FunctionExpression > .params[decorators.length > 0]",
+          "FunctionExpression > .params > :matches(Decorator, :not(:first-child))",
+          "ClassBody.body > PropertyDefinition[decorators.length > 0] > .key",
+          "VariableDeclarator > ArrowFunctionExpression > BlockStatement",
+          "VariableDeclarator > ArrowFunctionExpression > CallExpression",
+          "CallExpression > ArrowFunctionExpression[body.type='BlockStatement']",
+          "CallExpression > FunctionExpression[body.type='BlockStatement']",
+          "JSXElement",
+          "JSXFragment",
+          "JSXOpeningElement",
+          "JSXClosingElement",
+          "JSXAttribute",
+          "JSXSpreadAttribute",
+          "JSXText",
+          "JSXExpressionContainer",
+          "TemplateLiteral"
         ]
       }
     ],

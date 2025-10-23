@@ -15,12 +15,10 @@
     height: 100%;
     position: relative;
     background: var(--color-bg-1);
+}
 
-    :global {
-        .recharts-tooltip-wrapper {
-            z-index: 9;
-        }
-    }
+.chart :global(.recharts-tooltip-wrapper) {
+    z-index: 9;
 }
 
 .noData {

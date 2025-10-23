@@ -9,7 +9,7 @@
   "dependencies": {
     "@ant-design/charts": "^2.2.3",
     "@ant-design/x": "1.0.0-alpha.12",
-    "@antv/g6": "^4.8.25",
+    "@antv/g6": "^5.0.49",
     "aieditor": "^1.3.3",
     "docx-preview": "^0.3.4",
     "highlight.js": "^11.11.0",

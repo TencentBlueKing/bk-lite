@@ -12,30 +12,17 @@
             justify-content: space-between;
             margin-bottom: 20px;
         }
-
-        :global {
-            .ant-table {
-                width: calc(100vw - 280px);
-                min-width: 800px;
-            }
-        }
     }
+}
+
+.asset .table :global(.ant-table) {
+    width: calc(100vw - 280px);
+    min-width: 800px;
 }
 
 .strategy {
     width: 100%;
     overflow: hidden;
-
-    :global {
-        .ant-form-item-required:not(.ant-form-item-required-mark-optional)::before {
-            position: absolute;
-            right: -3px;
-        }
-
-        .ant-form-item-label>label {
-            margin-right: 10px;
-        }
-    }
 
     .title {
         font-size: 16px;
@@ -57,4 +44,13 @@
         margin-top: 10px;
         padding-left: 20px;
     }
+}
+
+.strategy :global(.ant-form-item-required:not(.ant-form-item-required-mark-optional)::before) {
+    position: absolute;
+    right: -3px;
+}
+
+.strategy :global(.ant-form-item-label>label) {
+    margin-right: 10px;
 }

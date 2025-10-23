@@ -1,26 +1,21 @@
 .searchFilter {
-  .attrList {
-    :global {
-      .ant-select-selector {
-        border-radius: 6px 0 0 6px;
-      }
-    }
-  }
+}
 
-  :global {
-    .ant-input,
-    .ant-input-outlined,
-    .ant-input-number,
-    .ant-picker,
-    .ant-select-selector {
-      border-radius: 0;
-    }
+.searchFilter .attrList :global(.ant-select-selector) {
+  border-radius: 6px 0 0 6px;
+}
 
-    .ant-checkbox-wrapper {
-      border: var(--ant-line-width) var(--ant-line-type) var(--ant-color-border);
-      padding: 4px 4px 4px 8px;
-      height: 32px;
-      border-radius: 0 4px 4px 0;
-    }
-  }
+.searchFilter :global(.ant-input),
+.searchFilter :global(.ant-input-outlined),
+.searchFilter :global(.ant-input-number),
+.searchFilter :global(.ant-picker),
+.searchFilter :global(.ant-select-selector) {
+  border-radius: 0;
+}
+
+.searchFilter :global(.ant-checkbox-wrapper) {
+  border: var(--ant-line-width) var(--ant-line-type) var(--ant-color-border);
+  padding: 4px 4px 4px 8px;
+  height: 32px;
+  border-radius: 0 4px 4px 0;
 }

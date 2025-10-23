@@ -29,15 +29,13 @@
     height: 16px;
     vertical-align: middle;
   }
+}
 
-  :global {
-    .collapse-title {
-      padding: 3px 10px;
-      border-radius: 2px;
+.filters :global(.collapse-title) {
+  padding: 3px 10px;
+  border-radius: 2px;
 
-      .title {
-        font-weight: 500 !important;
-      }
-    }
+  .title {
+    font-weight: 500 !important;
   }
 }

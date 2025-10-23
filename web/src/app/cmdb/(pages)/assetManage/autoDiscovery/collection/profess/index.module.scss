@@ -22,12 +22,10 @@
 .mainContent {
   height: calc(100vh - 140px);
   overflow-y: auto;
+}
 
-  :global {
-    .ant-collapse-content-box {
-      padding-left: 0 !important;
-    }
-  }
+.mainContent :global(.ant-collapse-content-box) {
+  padding-left: 0 !important;
 }
 
 .status {
@@ -54,10 +52,11 @@
 }
 
 .taskDetail {
-  margin-top: -16px; 
-  :global(.ant-drawer-body) {
-    padding-top: 0;
-  }
+  margin-top: -16px;
+}
+
+.taskDetail :global(.ant-drawer-body) {
+  padding-top: 0;
 }
 
 .taskFooter {
