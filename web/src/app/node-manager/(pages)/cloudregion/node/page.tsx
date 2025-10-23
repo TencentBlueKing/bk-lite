@@ -48,7 +48,10 @@ import ControllerUninstall from './controllerUninstall';
 import CollectorInstallTable from './controllerTable';
 import { useRouter, useSearchParams } from 'next/navigation';
 import PermissionWrapper from '@/components/permission';
-import { OPERATE_SYSTEMS } from '@/app/node-manager/constants/cloudregion';
+import {
+  OPERATE_SYSTEMS,
+  DISPLAY_PLUGINS_COUNT,
+} from '@/app/node-manager/constants/cloudregion';
 import { cloneDeep } from 'lodash';
 import { ColumnItem } from '@/types';
 const { confirm } = Modal;
@@ -84,7 +87,6 @@ const Node = () => {
     useState<boolean>(false);
   const [system, setSystem] = useState<string>('linux');
   const [activeColumns, setActiveColumns] = useState<ColumnItem[]>([]);
-  const DISPLAY_PLUGINS_COUNT = 4; // 最多展示几个插件
 
   const columns = useColumns({
     checkConfig: (row: TableDataItem) => {

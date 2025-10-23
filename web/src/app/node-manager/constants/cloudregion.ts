@@ -19,4 +19,6 @@ const BATCH_FIELD_MAPS: Record<string, string> = {
   password: 'loginPassword',
 };
 
-export { OPERATE_SYSTEMS, BATCH_FIELD_MAPS };
+const DISPLAY_PLUGINS_COUNT = 4; // 最多展示几个插件
+
+export { OPERATE_SYSTEMS, BATCH_FIELD_MAPS, DISPLAY_PLUGINS_COUNT };
