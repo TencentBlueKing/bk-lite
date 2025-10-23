@@ -62,11 +62,13 @@ class Neo4jClient:
         return dict(_id=data[0].id, _label=data[0].type, **data[0]._properties)
 
     def format_properties(self, properties: dict):
-        """将属性格式化为sql中的字符串格式"""
+        """将属性格式化为CQL中的字符串格式，正确处理字符串转义"""
         properties_str = "{"
         for key, value in properties.items():
-            if type(value) == str:
-                properties_str += f"{key}:'{value}',"
+            if isinstance(value, str):
+                # 转义字符串中的单引号和反斜杠
+                escaped_value = value.replace("\\", "\\\\").replace("'", "\\'")
+                properties_str += f"{key}:'{escaped_value}',"
             else:
                 properties_str += f"{key}:{value},"
         properties_str = properties_str[:-1]

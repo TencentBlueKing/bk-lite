@@ -3,7 +3,7 @@ from django.core.management import BaseCommand
 from apps.core.logger import log_logger as logger
 from apps.log.models import LogGroup, LogGroupOrganization
 from apps.rpc.system_mgmt import SystemMgmt
-from apps.log.plugins.plugin_migrate import migrate_collector, migrate_collect_type
+from apps.log.plugins.plugin_migrate import migrate_collect_type
 
 
 def init_stream():
@@ -23,7 +23,6 @@ class Command(BaseCommand):
 
     def handle(self, *args, **options):
         logger.info("初始化日志插件开始！")
-        migrate_collector()
         migrate_collect_type()
         logger.info("日志插件初始化完成！")
 

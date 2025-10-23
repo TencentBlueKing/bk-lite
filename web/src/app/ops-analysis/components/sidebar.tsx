@@ -28,6 +28,7 @@ import {
   BarChartOutlined,
   SettingOutlined,
   FolderOutlined,
+  ApartmentOutlined,
 } from '@ant-design/icons';
 
 const Sidebar = forwardRef<SidebarRef, SidebarProps>(
@@ -117,7 +118,9 @@ const Sidebar = forwardRef<SidebarRef, SidebarProps>(
             desc: values.desc,
           };
           if (modalAction === 'addChild' && currentDir?.data_id) {
-            if (['dashboard', 'topology'].includes(newItemType)) {
+            if (
+              ['dashboard', 'topology', 'architecture'].includes(newItemType)
+            ) {
               itemData.directory = parseInt(currentDir.data_id, 10);
             } else if (newItemType === 'directory') {
               itemData.parent_id = parseInt(currentDir.data_id, 10);
@@ -180,6 +183,8 @@ const Sidebar = forwardRef<SidebarRef, SidebarProps>(
           return <BarChartOutlined className="mr-1 text-purple-600" />;
         case 'topology':
           return <Icon type="tuoputu" className="mr-1" />;
+        case 'architecture':
+          return <ApartmentOutlined className="mr-1 text-green-600 text-sm" />;
         case 'directory':
           return <FolderOutlined className="mr-1" />;
         default:
@@ -196,6 +201,7 @@ const Sidebar = forwardRef<SidebarRef, SidebarProps>(
         (child) =>
           child.type === 'dashboard' ||
           child.type === 'topology' ||
+          child.type === 'architecture' ||
           (child.type === 'directory' && hasChildren(child))
       );
     };
@@ -239,6 +245,21 @@ const Sidebar = forwardRef<SidebarRef, SidebarProps>(
               >
                 {t('opsAnalysisSidebar.addTopo')}
               </Menu.Item>
+              <Menu.Item
+                key="addArchitecture"
+                onClick={() => {
+                  setNewItemType('architecture');
+                  showModal(
+                    'addChild',
+                    t('opsAnalysisSidebar.addArch'),
+                    '',
+                    item,
+                    'architecture'
+                  );
+                }}
+              >
+                {t('opsAnalysisSidebar.addArch')}
+              </Menu.Item>
             </>
           )}
           {isRoot && (
@@ -268,7 +289,9 @@ const Sidebar = forwardRef<SidebarRef, SidebarProps>(
                   ? t('opsAnalysisSidebar.editGroup')
                   : item.type === 'dashboard'
                     ? t('opsAnalysisSidebar.editDash')
-                    : t('opsAnalysisSidebar.editTopo'),
+                    : item.type === 'topology'
+                      ? t('opsAnalysisSidebar.editTopo')
+                      : t('opsAnalysisSidebar.editArch'),
                 item.name,
                 item,
                 item.type
@@ -412,7 +435,9 @@ const Sidebar = forwardRef<SidebarRef, SidebarProps>(
       if (
         item &&
         item.type === urlType &&
-        (item.type === 'dashboard' || item.type === 'topology')
+        (item.type === 'dashboard' ||
+          item.type === 'topology' ||
+          item.type === 'architecture')
       ) {
         setSelectedKeys([item.id]);
         if (onSelect) {

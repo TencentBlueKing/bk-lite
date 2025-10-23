@@ -77,7 +77,6 @@
     "successfullyDeleted": "删除成功！",
     "successfullyAdded": "新增成功！",
     "successfulSetted": "设置成功！",
-    "successfulCopied": "复制成功！",
     "successfullyModified": "修改成功！",
     "successfullyExported": "导出成功！",
     "successfullyImported": "导入成功！",
@@ -97,10 +96,7 @@
     "more": "详情",
     "organizations": "组织",
     "all": "全部",
-    "copy": "复制",
     "remove": "删除",
-    "inputPassword": "请输入密码",
-    "reset": "重置",
     "prompt": "提示",
     "batchEdit": "批量编辑"
   },
@@ -358,8 +354,8 @@
       "systemManage": "系统管理",
       "config": "配置。"
     },
-    "intergrations": {
-      "intergration": "集成",
+    "integrations": {
+      "integration": "集成",
       "configure": "配置",
       "configureTitle": "请按照以下指南安装收集器。",
       "metricTitle": "此收集器支持以下监控指标",

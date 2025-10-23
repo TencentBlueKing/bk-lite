@@ -1,7 +1,5 @@
 import copy
 
-from drf_yasg import openapi
-from drf_yasg.utils import swagger_auto_schema
 from rest_framework import viewsets, status
 from rest_framework.decorators import action
 
@@ -72,29 +70,11 @@ class ModelViewSet(viewsets.ViewSet):
 
         return WebUtils.response_success(model_info)
 
-    @swagger_auto_schema(
-        operation_id="model_create",
-        operation_description="创建模型",
-        request_body=openapi.Schema(
-            type=openapi.TYPE_OBJECT,
-            properties={
-                "classification_id": openapi.Schema(type=openapi.TYPE_STRING, description="模型分类ID"),
-                "model_id": openapi.Schema(type=openapi.TYPE_STRING, description="模型ID"),
-                "model_name": openapi.Schema(type=openapi.TYPE_STRING, description="模型名称"),
-                "icn": openapi.Schema(type=openapi.TYPE_STRING, description="图标"),
-            },
-            required=["classification_id", "model_id", "model_name", "icn"],
-        ),
-    )
     @HasPermission("model_management-Add Model")
     def create(self, request):
         result = ModelManage.create_model(request.data, username=request.user.username)
         return WebUtils.response_success(result)
 
-    @swagger_auto_schema(
-        operation_id="model_list",
-        operation_description="查询模型",
-    )
     @HasPermission("model_management-View")
     def list(self, request):
         current_team = int(request.COOKIES.get("current_team"))
@@ -117,11 +97,6 @@ class ModelViewSet(viewsets.ViewSet):
 
         return WebUtils.response_success(result)
 
-    @swagger_auto_schema(
-        operation_id="model_delete",
-        operation_description="删除模型",
-        manual_parameters=[openapi.Parameter("id", openapi.IN_PATH, description="模型ID", type=openapi.TYPE_STRING)],
-    )
     @HasPermission("model_management-Delete Model")
     def destroy(self, request, pk: str):
         model_id = pk
@@ -160,19 +135,6 @@ class ModelViewSet(viewsets.ViewSet):
                              inst_id=model_info['_id'], model_object=OPERATOR_MODEL)
         return WebUtils.response_success()
 
-    @swagger_auto_schema(
-        operation_id="model_update",
-        operation_description="更改模型信息",
-        manual_parameters=[openapi.Parameter("id", openapi.IN_PATH, description="模型ID", type=openapi.TYPE_STRING)],
-        request_body=openapi.Schema(
-            type=openapi.TYPE_OBJECT,
-            properties={
-                "classification_id": openapi.Schema(type=openapi.TYPE_STRING, description="模型分类ID"),
-                "model_name": openapi.Schema(type=openapi.TYPE_STRING, description="模型名称"),
-                "icn": openapi.Schema(type=openapi.TYPE_STRING, description="图标"),
-            },
-        ),
-    )
     @HasPermission("model_management-Edit Model")
     def update(self, request, pk: str):
         model_id = pk
@@ -203,25 +165,6 @@ class ModelViewSet(viewsets.ViewSet):
                              inst_id=model_info['_id'], model_object=OPERATOR_MODEL)
         return WebUtils.response_success(data)
 
-    @swagger_auto_schema(
-        operation_id="model_association_create",
-        operation_description="创建模型关联",
-        request_body=openapi.Schema(
-            type=openapi.TYPE_OBJECT,
-            properties={
-                "asst_id": openapi.Schema(type=openapi.TYPE_STRING, description="关联关系"),
-                "src_model_id": openapi.Schema(type=openapi.TYPE_STRING, description="源模型ID"),
-                "dst_model_id": openapi.Schema(type=openapi.TYPE_STRING, description="目标模型ID"),
-                "mapping": openapi.Schema(type=openapi.TYPE_STRING, description="约束"),
-            },
-            required=[
-                "asst_id",
-                "src_model_id",
-                "dst_model_id",
-                "mapping",
-            ],
-        ),
-    )
     @HasPermission("model_management-Add Model")
     @action(detail=False, methods=["post"], url_path="association")
     def model_association_create(self, request):
@@ -278,18 +221,6 @@ class ModelViewSet(viewsets.ViewSet):
         )
         return WebUtils.response_success(result)
 
-    @swagger_auto_schema(
-        operation_id="model_association_delete",
-        operation_description="删除模型关联",
-        manual_parameters=[
-            openapi.Parameter(
-                "model_asst_id",
-                openapi.IN_PATH,
-                description="模型关联ID",
-                type=openapi.TYPE_STRING,
-            )
-        ],
-    )
     @HasPermission("model_management-Delete Model")
     @action(detail=False, methods=["delete"], url_path="association/(?P<model_asst_id>.+?)")
     def model_association_delete(self, request, model_asst_id: str):
@@ -345,18 +276,6 @@ class ModelViewSet(viewsets.ViewSet):
         ModelManage.model_association_delete(association_info.get("_id"))
         return WebUtils.response_success()
 
-    @swagger_auto_schema(
-        operation_id="model_association_list",
-        operation_description="查询模型关联",
-        manual_parameters=[
-            openapi.Parameter(
-                "model_id",
-                openapi.IN_PATH,
-                description="模型ID",
-                type=openapi.TYPE_STRING,
-            ),
-        ],
-    )
     @HasPermission("model_management-View")
     @action(detail=False, methods=["get"], url_path="(?P<model_id>.+?)/association")
     def model_association_list(self, request, model_id: str):
@@ -385,33 +304,6 @@ class ModelViewSet(viewsets.ViewSet):
         result = ModelManage.model_association_search(model_id)
         return WebUtils.response_success(result)
 
-    @swagger_auto_schema(
-        operation_id="model_attr_create",
-        operation_description="创建模型属性",
-        manual_parameters=[
-            openapi.Parameter(
-                "model_id",
-                openapi.IN_PATH,
-                description="模型ID",
-                type=openapi.TYPE_STRING,
-            )
-        ],
-        request_body=openapi.Schema(
-            type=openapi.TYPE_OBJECT,
-            properties={
-                "attr_id": openapi.Schema(type=openapi.TYPE_STRING, description="属性ID"),
-                "attr_name": openapi.Schema(type=openapi.TYPE_STRING, description="属性名称"),
-                "attr_type": openapi.Schema(type=openapi.TYPE_STRING, description="属性类型"),
-                "is_only": openapi.Schema(type=openapi.TYPE_BOOLEAN, description="是否唯一"),
-                "is_required": openapi.Schema(type=openapi.TYPE_BOOLEAN, description="必填项"),
-                "editable": openapi.Schema(type=openapi.TYPE_BOOLEAN, description="可编辑"),
-                "option": openapi.Schema(
-                    type=openapi.TYPE_ARRAY, description="选项", items=openapi.Schema(type=openapi.TYPE_STRING)
-                ),
-                "attr_group": openapi.Schema(type=openapi.TYPE_STRING, description="属性分组"),
-            },
-        ),
-    )
     @HasPermission("model_management-Add Model")
     @action(detail=False, methods=["post"], url_path="(?P<model_id>.+?)/attr")
     def model_attr_create(self, request, model_id):
@@ -440,31 +332,6 @@ class ModelViewSet(viewsets.ViewSet):
         result = ModelManage.create_model_attr(model_id, request.data, username=request.user.username)
         return WebUtils.response_success(result)
 
-    @swagger_auto_schema(
-        operation_id="model_attr_update",
-        operation_description="更新模型属性信息",
-        manual_parameters=[
-            openapi.Parameter(
-                "model_id",
-                openapi.IN_PATH,
-                description="模型ID",
-                type=openapi.TYPE_STRING,
-            )
-        ],
-        request_body=openapi.Schema(
-            type=openapi.TYPE_OBJECT,
-            properties={
-                "attr_id": openapi.Schema(type=openapi.TYPE_STRING, description="属性ID"),
-                "attr_name": openapi.Schema(type=openapi.TYPE_STRING, description="属性名称"),
-                "attr_type": openapi.Schema(type=openapi.TYPE_STRING, description="属性类型"),
-                "is_only": openapi.Schema(type=openapi.TYPE_BOOLEAN, description="是否唯一"),
-                "is_required": openapi.Schema(type=openapi.TYPE_BOOLEAN, description="必填项"),
-                "editable": openapi.Schema(type=openapi.TYPE_BOOLEAN, description="可编辑"),
-                "option": openapi.Schema(type=openapi.TYPE_STRING, description="选项"),
-                "attr_group": openapi.Schema(type=openapi.TYPE_STRING, description="属性分组"),
-            },
-        ),
-    )
     @HasPermission("model_management-Edit Model")
     @action(detail=False, methods=["put"], url_path="(?P<model_id>.+?)/attr_update")
     def model_attr_update(self, request, model_id):
@@ -493,24 +360,6 @@ class ModelViewSet(viewsets.ViewSet):
         result = ModelManage.update_model_attr(model_id, request.data, username=request.user.username)
         return WebUtils.response_success(result)
 
-    @swagger_auto_schema(
-        operation_id="model_attr_delete",
-        operation_description="删除模型属性",
-        manual_parameters=[
-            openapi.Parameter(
-                "model_id",
-                openapi.IN_PATH,
-                description="模型ID",
-                type=openapi.TYPE_STRING,
-            ),
-            openapi.Parameter(
-                "attr_id",
-                openapi.IN_PATH,
-                description="模型属性ID",
-                type=openapi.TYPE_STRING,
-            ),
-        ],
-    )
     @HasPermission("model_management-Delete Model")
     @action(
         detail=False,
@@ -543,18 +392,6 @@ class ModelViewSet(viewsets.ViewSet):
         result = ModelManage.delete_model_attr(model_id, attr_id, username=request.user.username)
         return WebUtils.response_success(result)
 
-    @swagger_auto_schema(
-        operation_id="model_attr_list",
-        operation_description="查询模型属性",
-        manual_parameters=[
-            openapi.Parameter(
-                "model_id",
-                openapi.IN_PATH,
-                description="模型ID",
-                type=openapi.TYPE_STRING,
-            ),
-        ],
-    )
     @HasPermission("model_management-View")
     @action(detail=False, methods=["get"], url_path="(?P<model_id>.+?)/attr_list")
     def model_attr_list(self, request, model_id: str):
@@ -584,10 +421,6 @@ class ModelViewSet(viewsets.ViewSet):
         result = ModelManage.search_model_attr(model_id, request.user.locale)
         return WebUtils.response_success(result)
 
-    @swagger_auto_schema(
-        operation_id="model_association_type",
-        operation_description="查询模型关联类型",
-    )
     @HasPermission("model_management-View")
     @action(detail=False, methods=["get"], url_path="model_association_type")
     def model_association_type(self, request):

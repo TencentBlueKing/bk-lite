@@ -52,9 +52,11 @@ class Export:
             attrs_name.append(attr_name)
             attrs_id.append(attr_info["attr_id"])
             index += 1
-            if attr_info["attr_type"] == ENUM:
+            if attr_info["attr_type"] in {ENUM}:
+                # 修复：Excel列索引需要+1，因为第一列是"字段名(请勿编辑)"
+                col_index = index + 1
                 sheet.add_data_validation(
-                    self.set_enum_validation_by_sheet_data(workbook, attr_info["attr_name"], attr_info["option"], index)
+                    self.set_enum_validation_by_sheet_data(workbook, attr_info["attr_name"], attr_info["option"], col_index)
                 )
             attrs_type.append(ATTR_TYPE_MAP[attr_info["attr_type"]])
 
@@ -152,11 +154,19 @@ class Export:
     def format_inst_asst_name(self, inst_info, sheet_data):
         from apps.cmdb.services.instance import InstanceManage
         inst_id = inst_info["_id"]
+        
+        # 只有在用户选择了关联关系时才查询，避免不必要的关联数据导出
+        if not self.association:
+            return
+            
+        # 获取所有关联关系数据
         asso_insts = InstanceManage.instance_association_instance_list(self.model_id, int(inst_id))
         model_asst_name_map = {}
         for asso_inst in asso_insts:
             model_asst_id = asso_inst["model_asst_id"]
             model_asst_name_map[model_asst_id] = [inst["inst_name"] for inst in asso_inst["inst_list"]]
+        
+        # 只处理用户选择的关联关系，而不是所有关联关系
         for association in self.association:
             model_asst_id = association['model_asst_id']
             if model_asst_id in model_asst_name_map:

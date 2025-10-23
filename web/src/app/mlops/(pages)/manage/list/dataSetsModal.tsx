@@ -24,7 +24,9 @@ const DatasetModal = forwardRef<ModalRef, DatasetModalProps>(({ onSuccess, activ
     addLogClusteringDatasets,
     addTimeSeriesPredictDatasets,
     updateLogClustering,
-    updateTimeSeriesPredict
+    updateTimeSeriesPredict,
+    addClassificationDatasets,
+    updateClassificationDataset
   } = useMlopsManageApi();
   const [isModalOpen, setIsModalOpen] = useState<boolean>(false);
   const [type, setType] = useState<string>('edit');
@@ -66,6 +68,9 @@ const DatasetModal = forwardRef<ModalRef, DatasetModalProps>(({ onSuccess, activ
     },
     'timeseries_predict': async (params: any) => {
       await addTimeSeriesPredictDatasets(params);
+    },
+    'classification': async (params: any) => {
+      await addClassificationDatasets(params)
     }
   };
 
@@ -81,6 +86,9 @@ const DatasetModal = forwardRef<ModalRef, DatasetModalProps>(({ onSuccess, activ
     },
     'timeseries_predict': async (id: number, params: any) => {
       await updateTimeSeriesPredict(id, params);
+    },
+    'classification': async (id: number, params: any) => {
+      await updateClassificationDataset(id, params);
     }
   };
 

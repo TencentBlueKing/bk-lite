@@ -43,6 +43,7 @@ const NODE_TYPE_DEFAULTS = {
   icon: NODE_DEFAULTS.ICON_NODE,
   'basic-shape': NODE_DEFAULTS.BASIC_SHAPE_NODE,
   'single-value': NODE_DEFAULTS.SINGLE_VALUE_NODE,
+  text: NODE_DEFAULTS.TEXT_NODE,
 } as const;
 
 const NodeConfPanel: React.FC<NodeConfPanelProps> = ({
@@ -263,6 +264,13 @@ const NodeConfPanel: React.FC<NodeConfPanelProps> = ({
       defaultValues.textDirection = 'bottom';
     }
 
+    if (nodeType === 'text') {
+      const textDefaults = nodeDefaults as typeof NODE_DEFAULTS.TEXT_NODE;
+      defaultValues.fontSize = textDefaults.fontSize;
+      defaultValues.textColor = textDefaults.textColor;
+      defaultValues.fontWeight = textDefaults.fontWeight;
+    }
+
     setSelectedIcon('cc-host');
     setLogoType('default');
     setLogoPreview('');
@@ -294,6 +302,7 @@ const NodeConfPanel: React.FC<NodeConfPanelProps> = ({
         width: styleConfig.width,
         height: styleConfig.height,
         fontSize: styleConfig.fontSize,
+        fontWeight: styleConfig.fontWeight,
         textColor: styleConfig.textColor,
         backgroundColor: styleConfig.backgroundColor,
         borderColor: styleConfig.borderColor,
@@ -818,7 +827,7 @@ const NodeConfPanel: React.FC<NodeConfPanelProps> = ({
             </Form.Item>
 
             {/* 阈值配色 */}
-            <Form.Item label="阈值配色">
+            <Form.Item label={t('topology.nodeConfig.thresholdColors')}>
               <div className="space-y-3">
                 {thresholdColors.map((threshold, index) => {
                   const isBaseThreshold = index === thresholdColors.length - 1;
@@ -830,7 +839,7 @@ const NodeConfPanel: React.FC<NodeConfPanelProps> = ({
                     >
                       <div className="flex items-center gap-3">
                         <span className="text-sm text-gray-600 whitespace-nowrap">
-                          当值 ≥
+                          {t('topology.nodeConfig.thresholdWhenValueGte')}
                         </span>
                         <InputNumber
                           value={parseFloat(threshold.value)}
@@ -852,7 +861,9 @@ const NodeConfPanel: React.FC<NodeConfPanelProps> = ({
                           size="small"
                           min={0}
                         />
-                        <span className="text-sm text-gray-600">时显示</span>
+                        <span className="text-sm text-gray-600">
+                          {t('topology.nodeConfig.thresholdShow')}
+                        </span>
                       </div>
                       <ColorPicker
                         value={threshold.color}
@@ -873,7 +884,7 @@ const NodeConfPanel: React.FC<NodeConfPanelProps> = ({
                             onClick={() => addThreshold(index)}
                             className="cursor-pointer text-gray-400 hover:text-gray-600 transition-colors duration-200"
                             style={{ fontSize: '16px' }}
-                            title="在此行下方添加阈值"
+                            title={t('topology.nodeConfig.addThresholdBelow')}
                           >
                             <PlusCircleOutlined />
                           </span>
@@ -892,7 +903,11 @@ const NodeConfPanel: React.FC<NodeConfPanelProps> = ({
                             }`}
                             style={{ fontSize: '16px' }}
                             title={
-                              isBaseThreshold ? '基础阈值不可删除' : '删除阈值'
+                              isBaseThreshold
+                                ? t(
+                                  'topology.nodeConfig.baseThresholdNotRemovable'
+                                )
+                                : t('topology.nodeConfig.removeThreshold')
                             }
                           >
                             <MinusCircleOutlined />
@@ -960,15 +975,26 @@ const NodeConfPanel: React.FC<NodeConfPanelProps> = ({
         {nodeType === 'icon' && (
           <>
             <Form.Item
-              label="文字位置"
+              label={t('topology.nodeConfig.textPosition')}
               name="textDirection"
               initialValue="bottom"
             >
-              <Select placeholder="请选择文字位置" disabled={readonly}>
-                <Select.Option value="top">上方</Select.Option>
-                <Select.Option value="bottom">下方</Select.Option>
-                <Select.Option value="left">左侧</Select.Option>
-                <Select.Option value="right">右侧</Select.Option>
+              <Select
+                placeholder={t('topology.nodeConfig.selectTextPosition')}
+                disabled={readonly}
+              >
+                <Select.Option value="top">
+                  {t('topology.nodeConfig.textPositionTop')}
+                </Select.Option>
+                <Select.Option value="bottom">
+                  {t('topology.nodeConfig.textPositionBottom')}
+                </Select.Option>
+                <Select.Option value="left">
+                  {t('topology.nodeConfig.textPositionLeft')}
+                </Select.Option>
+                <Select.Option value="right">
+                  {t('topology.nodeConfig.textPositionRight')}
+                </Select.Option>
               </Select>
             </Form.Item>
 
@@ -1008,7 +1034,10 @@ const NodeConfPanel: React.FC<NodeConfPanelProps> = ({
               {renderColorPicker()}
             </Form.Item>
 
-            <Form.Item label="图标间距" name="iconPadding">
+            <Form.Item
+              label={t('topology.nodeConfig.iconPadding')}
+              name="iconPadding"
+            >
               <InputNumber
                 min={0}
                 max={80}
@@ -1024,10 +1053,17 @@ const NodeConfPanel: React.FC<NodeConfPanelProps> = ({
 
         {nodeType === 'basic-shape' && (
           <>
-            <Form.Item label="渲染效果" name="renderEffect">
+            <Form.Item
+              label={t('topology.nodeConfig.renderEffect')}
+              name="renderEffect"
+            >
               <Radio.Group disabled={readonly}>
-                <Radio value="normal">普通</Radio>
-                <Radio value="glass">液态玻璃</Radio>
+                <Radio value="normal">
+                  {t('topology.nodeConfig.renderEffectNormal')}
+                </Radio>
+                <Radio value="glass">
+                  {t('topology.nodeConfig.renderEffectGlass')}
+                </Radio>
               </Radio.Group>
             </Form.Item>
 
@@ -1075,6 +1111,46 @@ const NodeConfPanel: React.FC<NodeConfPanelProps> = ({
             </Form.Item>
           </>
         )}
+
+        {nodeType === 'text' && (
+          <>
+            <Form.Item
+              label={t('topology.nodeConfig.textColor')}
+              name="textColor"
+            >
+              {renderColorPicker()}
+            </Form.Item>
+
+            <Form.Item
+              label={t('topology.nodeConfig.fontSize')}
+              name="fontSize"
+            >
+              <InputNumber
+                min={10}
+                max={48}
+                step={1}
+                addonAfter="px"
+                disabled={readonly}
+                placeholder={t('common.inputMsg')}
+                style={{ width: '120px' }}
+              />
+            </Form.Item>
+
+            <Form.Item
+              label={t('topology.nodeConfig.fontWeight')}
+              name="fontWeight"
+              initialValue="400"
+            >
+              <Select placeholder={t('common.selectMsg')} disabled={readonly}>
+                <Select.Option value="500">400</Select.Option>
+                <Select.Option value="500">500</Select.Option>
+                <Select.Option value="600">600</Select.Option>
+                <Select.Option value="700">700</Select.Option>
+                <Select.Option value="800">800</Select.Option>
+              </Select>
+            </Form.Item>
+          </>
+        )}
       </div>
     );
   }, [nodeType, readonly, form, t]);
@@ -1089,7 +1165,16 @@ const NodeConfPanel: React.FC<NodeConfPanelProps> = ({
         {nodeType === 'icon' && renderLogoSelector}
 
         <Form.Item label={t('topology.nodeConfig.name')} name="name">
-          <Input placeholder={t('common.inputMsg')} disabled={readonly} />
+          {nodeType === 'text' ? (
+            <Input.TextArea
+              placeholder={t('common.inputMsg')}
+              disabled={readonly}
+              rows={2}
+              style={{ resize: 'vertical' }}
+            />
+          ) : (
+            <Input placeholder={t('common.inputMsg')} disabled={readonly} />
+          )}
         </Form.Item>
 
         {nodeType === 'single-value' && (
@@ -1102,7 +1187,10 @@ const NodeConfPanel: React.FC<NodeConfPanelProps> = ({
               />
             </Form.Item>
 
-            <Form.Item label="换算系数" name="conversionFactor">
+            <Form.Item
+              label={t('topology.nodeConfig.conversionFactor')}
+              name="conversionFactor"
+            >
               <InputNumber
                 min={0}
                 max={100000}

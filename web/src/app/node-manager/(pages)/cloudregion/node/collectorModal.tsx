@@ -13,6 +13,7 @@ import type { FormInstance } from 'antd';
 import { useTranslation } from '@/utils/i18n';
 import { ModalSuccess, ModalRef } from '@/app/node-manager/types';
 import useApiCollector from '@/app/node-manager/api/collector';
+import useApiNode from '@/app/node-manager/api';
 import useApiCloudRegion from '@/app/node-manager/api/cloudRegion';
 import type { TableDataItem } from '@/app/node-manager/types';
 import useCloudId from '@/app/node-manager/hooks/useCloudRegionId';
@@ -28,7 +29,8 @@ interface Option {
 const CollectorModal = forwardRef<ModalRef, ModalSuccess>(
   ({ onSuccess }, ref) => {
     const { t } = useTranslation();
-    const { getCollectorlist, getPackageList } = useApiCollector();
+    const { getCollectorlist } = useApiCollector();
+    const { getPackageList } = useApiNode();
     const {
       installCollector,
       batchOperationCollector,
@@ -87,11 +89,13 @@ const CollectorModal = forwardRef<ModalRef, ModalSuccess>(
             options.push({
               label: 'Controller',
               title: 'Controller',
-              options: [{
-                label: item.name,
-                value: item.id
-              }]
-            })
+              options: [
+                {
+                  label: item.name,
+                  value: item.id,
+                },
+              ],
+            });
             return;
           }
           const tag = getCollectorLabelKey(item.name);
@@ -99,16 +103,18 @@ const CollectorModal = forwardRef<ModalRef, ModalSuccess>(
           if (tagIndex >= 0) {
             options[tagIndex].options.push({
               label: item.name,
-              value: item.id
-            })
+              value: item.id,
+            });
           } else {
             options.push({
               label: tag,
               title: tag,
-              options: [{
-                label: item.name,
-                value: item.id
-              }]
+              options: [
+                {
+                  label: item.name,
+                  value: item.id,
+                },
+              ],
             });
           }
         });
@@ -326,13 +332,21 @@ const CollectorModal = forwardRef<ModalRef, ModalSuccess>(
               name="configuration"
               label={t('node-manager.cloudregion.node.configuration')}
             >
-              <Select showSearch allowClear loading={configListLoading} placeholder={t('common.selectMsg')}>
-                {configs.map((item) => (
-                  <Option value={item.id} key={item.id}>
-                    {item.name}
-                  </Option>
-                ))}
-              </Select>
+              <Select
+                showSearch
+                allowClear
+                loading={configListLoading}
+                placeholder={t('common.selectMsg')}
+                filterOption={(input, option) =>
+                  (option?.label || '')
+                    .toLowerCase()
+                    .includes(input.toLowerCase())
+                }
+                options={configs.map((item) => ({
+                  value: item.id,
+                  label: item.name,
+                }))}
+              />
             </Form.Item>
           )}
           {type === 'installCollector' && (
@@ -346,13 +360,21 @@ const CollectorModal = forwardRef<ModalRef, ModalSuccess>(
                 },
               ]}
             >
-              <Select showSearch allowClear loading={versionLoading} placeholder={t('common.selectMsg')}>
-                {packageList.map((item) => (
-                  <Option value={item.id} key={item.id}>
-                    {item.version}
-                  </Option>
-                ))}
-              </Select>
+              <Select
+                showSearch
+                allowClear
+                loading={versionLoading}
+                placeholder={t('common.selectMsg')}
+                options={packageList.map((item) => ({
+                  value: item.id,
+                  label: item.version,
+                }))}
+                filterOption={(input, option) =>
+                  (option?.label || '')
+                    .toLowerCase()
+                    .includes(input.toLowerCase())
+                }
+              />
             </Form.Item>
           )}
         </Form>

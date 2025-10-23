@@ -77,7 +77,6 @@
     "successfullyDeleted": "删除成功！",
     "successfullyAdded": "新增成功！",
     "successfulSetted": "设置成功！",
-    "successfulCopied": "复制成功！",
     "successfullyModified": "修改成功！",
     "successfullyExported": "导出成功！",
     "successfullyImported": "导入成功！",
@@ -97,10 +96,7 @@
     "more": "详情",
     "organizations": "组织",
     "all": "全部",
-    "copy": "复制",
     "remove": "删除",
-    "inputPassword": "请输入密码",
-    "reset": "重置",
     "prompt": "提示",
     "batchEdit": "批量编辑",
     "belongingGroup": "所属组织"
@@ -126,6 +122,7 @@
     "group": "分组",
     "search": {
       "searchPlaceHolder": "在此处输入您的搜索查询，然后按Enter",
+      "smartSearchPlaceHolder": "请输入搜索条件",
       "searchCriteria": "搜索条件",
       "addToQuery": "添加到查询语句",
       "histogram": "查询直方图",
@@ -150,7 +147,11 @@
       "searchError": "日志分组不能为空",
       "storageConditions": "保存条件",
       "loadConditions": "加载条件",
-      "query": "查询"
+      "query": "查询",
+      "loading": "加载中",
+      "loadingEllipsis": "加载中...",
+      "field": "字段",
+      "noMatchValues": "无匹配的值"
     },
     "analysis": {
       "dashboard": "仪表盘",

@@ -25,15 +25,6 @@ export interface ContextMenuState {
   targetType: 'node' | 'edge';
 }
 
-export interface TextEditState {
-  isEditing: boolean;
-  nodeId: string | null;
-  tempInput: string;
-  position: { x: number; y: number };
-  inputWidth: number;
-  originalText: string;
-}
-
 export interface EdgeConfigState {
   visible: boolean;
   data: EdgeData | null;
@@ -186,8 +177,11 @@ export interface EdgeCreationData {
   config?: any;
 }
 
+// 节点类型定义
+export type NodeTypeId = 'single-value' | 'icon' | 'chart' | 'basic-shape' | 'text';
+
 export interface NodeConfPanelProps {
-  nodeType: 'single-value' | 'icon' | 'chart' | 'basic-shape';
+  nodeType: NodeTypeId;
   readonly?: boolean;
   visible?: boolean;
   title?: string;
@@ -230,22 +224,12 @@ export interface NodeType {
   id: string;
   name: string;
   icon: React.ReactNode;
-  description: string;
+  description?: string;
 }
 
 export interface DropPosition {
   x: number;
   y: number;
-}
-
-export interface TextEditInputProps {
-  isEditingText: boolean;
-  editPosition: { x: number; y: number };
-  inputWidth: number;
-  tempTextInput: string;
-  setTempTextInput: (text: string) => void;
-  finishTextEdit: () => void;
-  cancelTextEdit: () => void;
 }
 
 export interface ToolbarProps {
@@ -259,11 +243,12 @@ export interface ToolbarProps {
   onFit: () => void;
   onDelete: () => void;
   onSelectMode: () => void;
-  onAddText: () => void;
   onUndo: () => void;
   onRedo: () => void;
   canUndo?: boolean;
   canRedo?: boolean;
+  onRefresh?: () => void;
+  onFrequencyChange?: (frequency: number) => void;
 }
 
 // ViewConfig 表单值类型
@@ -300,6 +285,7 @@ export interface NodeConfigFormValues {
   borderWidth?: number;
   textColor?: string;
   fontSize?: number;
+  fontWeight?: string;
   iconPadding?: number;
   renderEffect?: 'normal' | 'glass';
   lineType?: string;

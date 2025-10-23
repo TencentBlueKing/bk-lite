@@ -9,6 +9,7 @@ import requests
 
 from apps.core.logger import opspilot_logger as logger
 from apps.opspilot.utils.chat_flow_utils.engine.core.base_executor import BaseNodeExecutor
+from apps.rpc.system_mgmt import SystemMgmt
 
 
 class HttpActionNode(BaseNodeExecutor):
@@ -148,6 +149,69 @@ class HttpActionNode(BaseNodeExecutor):
             return response.json()
         except ValueError:
             return response.text
+
+
+class NotifyNode(BaseNodeExecutor):
+    """通知节点 - 用于发送通知消息"""
+
+    def execute(self, node_id: str, node_config: Dict[str, Any], input_data: Dict[str, Any]) -> Dict[str, Any]:
+        """执行通知发送"""
+        config = node_config["data"].get("config", {})
+
+        try:
+            # 获取通知配置参数
+            channel_id = config.get("notificationMethod")
+            title = config.get("notificationSubject", "")
+            content = config.get("notificationContent", "")
+            receivers = config.get("notificationReceivers", [])
+
+            # 参数验证
+            if not channel_id:
+                raise ValueError(f"通知节点 {node_id} 缺少通知渠道ID (notificationMethod)")
+
+            if not content:
+                raise ValueError(f"通知节点 {node_id} 缺少通知内容 (notificationContent)")
+
+            # 使用Jinja2渲染通知内容
+            template_context = self.variable_manager.get_all_variables()
+            rendered_content = self._render_content(content, template_context, node_id)
+            rendered_title = self._render_content(title, template_context, node_id) if title else ""
+
+            # 调用发送通知接口
+            result = self._send_notification(channel_id, rendered_title, rendered_content, receivers, node_id)
+
+            logger.info(f"通知节点 {node_id} 执行完成，发送结果: {result}")
+            return {}
+
+        except Exception as e:
+            logger.error(f"通知节点 {node_id} 执行失败: {str(e)}")
+            # 返回失败结果而不是抛出异常，让工作流继续执行
+            return {}
+
+    def _render_content(self, content: str, template_context: Dict[str, Any], node_id: str) -> str:
+        """使用Jinja2渲染内容"""
+        try:
+            template = jinja2.Template(str(content))
+            return template.render(**template_context)
+        except Exception as e:
+            logger.warning(f"通知节点 {node_id} 内容渲染失败: {e}")
+            return content
+
+    def _send_notification(self, channel_id: int, title: str, content: str, receivers: list, node_id: str) -> Dict[str, Any]:
+        """发送通知消息"""
+        try:
+            # 创建系统管理客户端
+            system_client = SystemMgmt()
+
+            # 调用发送通知接口
+            result = system_client.send_msg_with_channel(channel_id=channel_id, title=title, content=content, receivers=receivers)
+
+            logger.info(f"通知节点 {node_id} 发送通知成功")
+            return result
+
+        except Exception as e:
+            logger.error(f"通知节点 {node_id} 发送通知失败: {str(e)}")
+            return {"result": False, "error": str(e)}
 
 
 # 向后兼容的别名

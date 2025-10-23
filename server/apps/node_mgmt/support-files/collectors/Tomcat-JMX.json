@@ -1,0 +1,16 @@
+[
+    {
+        "id": "jmx_tomcat_linux",
+        "name": "Tomcat-JMX",
+        "controller_default_run": false,
+        "icon": "",
+        "node_operating_system": "linux",
+        "service_type": "exec",
+        "executable_path": "/usr/bin/java",
+        "execute_parameters": "-jar /opt/fusion-collectors/bin/jmx_tomcat.jar $LISTEN_HOST %s",
+        "validation_parameters": "",
+        "default_template": "",
+        "introduction": "JMX-Tomcat is a Java Management Extensions (JMX) monitoring tool that collects and monitors Tomcat server metrics, providing real-time performance insights."
+    }
+]
+

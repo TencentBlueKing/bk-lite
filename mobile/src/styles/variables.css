@@ -1,0 +1,141 @@
+/*  集中管理浅色和深色模式的所有颜色变量 */
+
+/* 浅色模式 */
+:root {
+  /* 主色 */
+  --color-primary: #155AEF;
+  --color-primary-bg-active: #e1edfc;
+  --color-secondary: #F2F4F7;
+  
+  /* 文本颜色 */
+  --color-text-1: #1E252E;
+  --color-text-2: #475468;
+  --color-text-3: #7588A3;
+  --color-text-4: #B2BDCC;
+  --color-text-active: #155AEF;
+  --color-text-hover: #1018280A;
+  
+  /* 背景颜色 */
+  --color-bg: #FFFFFF;
+  --color-bg-hover: #f2f4f7;
+  --color-bg-active: #155aef14;
+  --color-bg-1: #FFFFFF;
+  --color-bg-2: #FFFFFF;
+  --color-bg-3: #FFFFFF;
+  --color-bg-4: #F4F5F8;
+  --color-bg-5: #F4F5F8;
+  --color-bg-6: rgba(255,255,255, 0.16);
+  --color-bg-7: rgba(255,255,255, 0.12);
+  
+  /* 边框颜色 */
+  --color-border: #eaecf0;
+  --color-border-1: #EDEFF3;
+  --color-border-2: #E6E9EE;
+  --color-border-3: #D1D7E1;
+  --color-border-4: #B2BDCC;
+  
+  /* 填充颜色 */
+  --color-fill-1: #F6F8F9;
+  --color-fill-2: #F4F5F8;
+  --color-fill-3: #EDEFF3;
+  --color-fill-4: #E6E9EE;
+  --color-fill-5: #D1D7E1;
+  
+  /* 状态颜色 */
+  --color-success: #27C274;
+  --color-fail: #F43B2C;
+  --color-warning: #FF9C07;
+
+  /* 特殊变量 */
+  --background: var(--color-bg);
+  --foreground: var(--color-text-1);
+  --color-background-body: var(--color-secondary);
+  
+  /* antd-mobile 变量映射 */
+  --adm-color-primary: var(--color-primary);
+  --adm-color-success: var(--color-success);
+  --adm-color-warning: var(--color-warning);
+  --adm-color-danger: var(--color-fail);
+  --adm-color-background: var(--color-bg);
+  --adm-color-box: var(--color-bg);
+  --adm-color-fill-content: var(--color-fill-1);
+  --adm-color-border: var(--color-border);
+  --adm-color-text: var(--color-text-1);
+  --adm-color-text-secondary: var(--color-text-2);
+  --adm-color-weak: var(--color-text-3);
+  --adm-color-light: var(--color-text-4);
+}
+
+/* 深色模式 */
+.dark {
+  /* 主色 */
+  --color-primary: #155AEF;
+  --color-primary-bg-active: #172637;
+  --color-secondary: #1d1d20;
+  
+  /* 文本颜色 */
+  --color-text-1: rgba(255,255,255, 0.9);
+  --color-text-2: rgba(255,255,255, 0.7);
+  --color-text-3: rgba(255,255,255, 0.5);
+  --color-text-4: rgba(255,255,255, 0.3);
+  --color-text-active: #f4f4f5;
+  --color-text-hover: #c8ceda0a;
+  
+  /* 背景颜色 */
+  --color-bg: #141414;
+  --color-bg-hover: #c8ceda24;
+  --color-bg-active: #155aef14;
+  --color-bg-1: #071d2c;
+  --color-bg-2: #0C2536;
+  --color-bg-3: #162d3e;
+  --color-bg-4: #203A4E;
+  --color-bg-5: #3D576A;
+  --color-bg-6: rgba(255,255,255, 0.16);
+  --color-bg-7: rgba(255,255,255, 0.12);
+  
+  /* 边框颜色 */
+  --color-border: #333333;
+  --color-border-1: rgba(255,255,255, 0.1);
+  --color-border-2: rgba(255,255,255, 0.2);
+  --color-border-3: rgba(255,255,255, 0.4);
+  --color-border-4: #B2BDCC;
+  
+  /* 填充颜色 */
+  --color-fill-1: rgba(255,255,255, 0.04);
+  --color-fill-2: rgba(255,255,255, 0.08);
+  --color-fill-3: rgba(255,255,255, 0.12);
+  --color-fill-4: rgba(255,255,255, 0.16);
+  --color-fill-5: rgba(255,255,255, 0.2);
+  
+  /* 状态颜色 */
+  --color-success: #27C274;
+  --color-fail: #F43B2C;
+  --color-warning: #FF9C07;
+
+  /* 特殊变量 */
+  --background: var(--color-bg);
+  --foreground: var(--color-text-1);
+  --color-background-body: var(--color-secondary);
+  
+  /* antd-mobile 变量映射 */
+  --adm-color-primary: var(--color-primary);
+  --adm-color-success: var(--color-success);
+  --adm-color-warning: var(--color-warning);
+  --adm-color-danger: var(--color-fail);
+  --adm-color-background: var(--color-bg);
+  --adm-color-box: var(--color-bg);
+  --adm-color-fill-content: var(--color-fill-1);
+  --adm-color-border: var(--color-border);
+  --adm-color-text: var(--color-text-1);
+  --adm-color-text-secondary: var(--color-text-2);
+  --adm-color-weak: var(--color-text-3);
+  --adm-color-light: var(--color-text-4);
+}
+
+/* 系统主题偏好 */
+@media (prefers-color-scheme: dark) {
+  :root:not(.light) {
+    --background: #0a0a0a;
+    --foreground: #ededed;
+  }
+}

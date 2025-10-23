@@ -14,30 +14,56 @@ const TableContent = () => {
   const { getLogClusteringTrainDataInfo, updateLogClusteringTrainData } = useMlopsManageApi();
   const [tableData, setTableData] = useState<TableDataItem[]>([]);
   const [loading, setLoading] = useState<boolean>(false);
-  const columns: ColumnItem[] = [
-    {
-      title: '日志内容',
-      dataIndex: 'name',
-      key: 'name',
-      align: 'center'
-    },
-    {
-      title: t(`common.action`),
-      dataIndex: 'action',
-      key: 'action',
-      width: 120,
-      align: 'center',
-      render: (_, record) => {
-        return (
-          <PermissionWrapper requiredPermissions={['File Edit']}>
-            <Button color="danger" variant="link" onClick={() => handleDelete(record)}>
-              {t('common.delete')}
-            </Button>
-          </PermissionWrapper>
-        )
+  const columns: Record<string, ColumnItem[]> = {
+    'log_clustering': [
+      {
+        title: '日志内容',
+        dataIndex: 'name',
+        key: 'name',
+        align: 'center'
+      },
+      {
+        title: t(`common.action`),
+        dataIndex: 'action',
+        key: 'action',
+        width: 120,
+        align: 'center',
+        render: (_, record) => {
+          return (
+            <PermissionWrapper requiredPermissions={['File Edit']}>
+              <Button color="danger" variant="link" onClick={() => handleDelete(record)}>
+                {t('common.delete')}
+              </Button>
+            </PermissionWrapper>
+          )
+        }
       }
-    }
-  ];
+    ],
+    'classification': [
+      {
+        title: '日志内容',
+        dataIndex: 'name',
+        key: 'name',
+        align: 'center'
+      },
+      {
+        title: t(`common.action`),
+        dataIndex: 'action',
+        key: 'action',
+        width: 120,
+        align: 'center',
+        render: (_, record) => {
+          return (
+            <PermissionWrapper requiredPermissions={['File Edit']}>
+              <Button color="danger" variant="link" onClick={() => handleDelete(record)}>
+                {t('common.delete')}
+              </Button>
+            </PermissionWrapper>
+          )
+        }
+      }
+    ]
+  };
 
   const getTrainDataInfoMap: Record<string, any> = {
     'log_clustering': getLogClusteringTrainDataInfo
@@ -96,7 +122,7 @@ const TableContent = () => {
     <>
       <div className="p-2">
         <CustomTable
-          columns={columns}
+          columns={columns[key]}
           rowKey='index'
           dataSource={tableData}
           loading={loading}

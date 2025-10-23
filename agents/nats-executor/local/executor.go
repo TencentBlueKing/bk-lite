@@ -40,9 +40,11 @@ func Execute(req ExecuteRequest, instanceId string) ExecuteResponse {
 	}
 
 	if ctx.Err() == context.DeadlineExceeded {
+		response.Error = fmt.Sprintf("Command timed out after %v (timeout: %ds)", duration, req.ExecuteTimeout)
 		log.Printf("[Local Execute] Instance: %s, Command timed out after %v (timeout: %ds)", instanceId, duration, req.ExecuteTimeout)
 		log.Printf("[Local Execute] Instance: %s, Partial output: %s", instanceId, string(output))
 	} else if err != nil {
+		response.Error = fmt.Sprintf("Command execution failed with exit code %d: %v", exitCode, err)
 		log.Printf("[Local Execute] Instance: %s, Command execution failed after %v", instanceId, duration)
 		log.Printf("[Local Execute] Instance: %s, Exit code: %d", instanceId, exitCode)
 		log.Printf("[Local Execute] Instance: %s, Error: %v", instanceId, err)
@@ -158,7 +160,18 @@ func SubscribeLocalExecutor(nc *nats.Conn, instanceId *string) {
 		responseData := Execute(localExecuteRequest, *instanceId)
 		log.Printf("[Local Subscribe] Instance: %s, Command execution completed, success: %v", *instanceId, responseData.Success)
 
-		responseContent, _ := json.Marshal(responseData)
+		responseContent, err := json.Marshal(responseData)
+		if err != nil {
+			log.Printf("[Local Subscribe] Instance: %s, Error marshalling response: %v", *instanceId, err)
+			// 发送一个错误响应
+			errorResponse := ExecuteResponse{
+				InstanceId: *instanceId,
+				Success:    false,
+				Error:      fmt.Sprintf("Failed to marshal response: %v", err),
+			}
+			responseContent, _ = json.Marshal(errorResponse)
+		}
+
 		if err := msg.Respond(responseContent); err != nil {
 			log.Printf("[Local Subscribe] Instance: %s, Error responding to request: %v", *instanceId, err)
 		} else {

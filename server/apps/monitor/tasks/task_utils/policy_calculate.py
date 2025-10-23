@@ -2,7 +2,7 @@ import pandas as pd
 from string import Template
 
 from apps.core.exceptions.base_app_exception import BaseAppException
-from apps.monitor.constants import THRESHOLD_METHODS
+from apps.monitor.constants.alert_policy import AlertConstants
 
 
 def vm_to_dataframe(vm_data, instance_id_keys=None):
@@ -43,7 +43,7 @@ def calculate_alerts(alert_name, df, thresholds, n=1):
         # 计算该窗口是否满足阈值
         alert_triggered = False
         for threshold_info in thresholds:
-            method = THRESHOLD_METHODS.get(threshold_info["method"])
+            method = AlertConstants.THRESHOLD_METHODS.get(threshold_info["method"])
             if not method:
                 raise BaseAppException(f"Invalid threshold method: {threshold_info['method']}")
 

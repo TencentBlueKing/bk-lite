@@ -41,10 +41,30 @@ const usePlayroundApi = () => {
   const getLogClusteringServingsList = async () => {
     return await get(`/mlops/log_clustering_servings/`);
   };
+
+  // 获取分类任务能力列表
+  const getClassificationServingsList = async () => {
+    return await get(`/mlops/classification_servings`);
+  };
   
   // 获取能力发布详情
   const getServingsDetail = async (id: string) => {
     return await get(`/mlops/anomaly_detection_servings/${id}/`)
+  };
+
+  // 获取时序预测能力详情
+  const getTimeseriesServingDetail = async (id: string) => {
+    return await get(`/mlops/timeseries_predict_servings/${id}/`);
+  };
+
+  // 获取日志聚类能力详情
+  const getLogClusteringServingDetail = async (id: string) => {
+    return await get(`/mlops/log_clustering_servings/${id}/`);
+  };
+
+  // 获取分类任务能力详情
+  const getClassificationServingDetail = async (id: string) => {
+    return await get(`/mlops/classification_servings/${id}/`);
   };
 
   // 查询单个类别
@@ -174,6 +194,10 @@ const usePlayroundApi = () => {
     getSampleFileDetail,
     getServingsDetail,
     getSampleFileOfCapability,
+    getClassificationServingsList,
+    getTimeseriesServingDetail,
+    getLogClusteringServingDetail,
+    getClassificationServingDetail,
     createCategory,
     createCapability,
     createSampleFile,

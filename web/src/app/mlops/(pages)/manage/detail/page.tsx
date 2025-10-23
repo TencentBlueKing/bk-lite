@@ -5,10 +5,11 @@ import {
 } from 'next/navigation';
 import { useTranslation } from '@/utils/i18n';
 import { useRouter } from 'next/navigation';
-import AnomalyDetail from './AnomalyDetail';
-import RasaDetail from './RasaDetail';
-import LogDetail from './LogDetail';
-import TimeSeriesPredict from './TimeSeriesPredict';
+import AnomalyDetail from './components/anomaly/AnomalyDetail';
+import RasaDetail from './components/rasa/RasaDetail';
+import LogDetail from './components/log/LogDetail';
+import TimeSeriesPredict from './components/timeseries/TimeSeriesPredict';
+import ClassificationDetail from './components/classification/classificationDetail';
 import Sublayout from '@/components/sub-layout';
 import TopSection from '@/components/top-section';
 import { MenuItem } from '@/types';
@@ -124,7 +125,8 @@ const Detail = () => {
     anomaly: <AnomalyDetail />,
     rasa: <RasaDetail />,
     log_clustering: <LogDetail />,
-    timeseries_predict: <TimeSeriesPredict />
+    timeseries_predict: <TimeSeriesPredict />,
+    classification: <ClassificationDetail />
   }), [activeTap]);
 
   const Intro = useMemo(() => (

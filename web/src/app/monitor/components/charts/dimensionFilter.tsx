@@ -39,7 +39,7 @@ const DimensionFilter: React.FC<DimensionFilterProps> = ({
   return (
     <div className={chartStyle.filterArea}>
       <div className="bg-[var(--color-fill-2)] text-[14px] font-[800] p-[4px] text-center">
-        {t('monitor.intergrations.dimension')}
+        {t('monitor.integrations.dimension')}
       </div>
       <ul className="text-[12px]">
         {getChartAreaKeys(data).map((key, index) => (

@@ -1,5 +1,5 @@
-export type DirectoryType = 'directory' | 'dashboard' | 'topology' | 'settings';
-export type CreateDirectoryType = 'directory' | 'dashboard' | 'topology';
+export type DirectoryType = 'directory' | 'dashboard' | 'topology' | 'architecture' | 'settings';
+export type CreateDirectoryType = 'directory' | 'dashboard' | 'topology' | 'architecture';
 export type ModalAction = 'addRoot' | 'addChild' | 'edit';
 
 export interface DirItem {

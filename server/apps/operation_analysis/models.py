@@ -191,3 +191,23 @@ class Topology(MaintainerInfo, TimeInfo):
 
     def has_directory(self):
         return self.directory is not None
+
+
+class Architecture(MaintainerInfo, TimeInfo):
+    name = models.CharField(max_length=128, verbose_name="架构图名称", unique=True)
+    desc = models.TextField(verbose_name="描述", blank=True, null=True)
+    directory = models.ForeignKey(
+        Directory, on_delete=models.CASCADE, related_name="architecture", verbose_name="所属目录", null=True, blank=True
+    )
+    other = JSONField(help_text="架构图其他配置", blank=True, null=True)
+    view_sets = JSONField(help_text="架构图视图集配置", default=list)
+
+    class Meta:
+        db_table = "operation_analysis_architecture"
+        verbose_name = "架构图"
+
+    def __str__(self):
+        return self.name
+
+    def has_directory(self):
+        return self.directory is not None

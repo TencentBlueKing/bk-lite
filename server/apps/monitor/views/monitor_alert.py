@@ -1,16 +1,15 @@
 import ast
 from datetime import datetime, timezone
 
-from drf_yasg import openapi
-from drf_yasg.utils import swagger_auto_schema
 from rest_framework import viewsets, mixins
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.viewsets import GenericViewSet
 
-from apps.core.utils.permission_utils import get_permission_rules, permission_filter
+from apps.core.utils.permission_utils import get_permission_rules, permission_filter, get_permissions_rules, \
+    check_instance_permission
 from apps.core.utils.web_utils import WebUtils
-from apps.monitor.constants import DEFAULT_PERMISSION, POLICY_MODULE
+from apps.monitor.constants.permission import PermissionConstants
 from apps.monitor.models import MonitorAlert, MonitorEvent, MonitorPolicy, MonitorEventRawData
 from apps.monitor.models.monitor_policy import MonitorAlertMetricSnapshot
 from apps.monitor.filters.monitor_alert import MonitorAlertFilter
@@ -30,20 +29,66 @@ class MonitorAlertVieSet(
     filterset_class = MonitorAlertFilter
     pagination_class = CustomPageNumberPagination
 
+    def _get_all_accessible_policy_ids(self, request):
+        """
+        获取当前用户所有有权限的策略ID
+        """
+        current_team = request.COOKIES.get("current_team")
+
+        # 获取所有采集类型下policy模块的权限规则
+        permissions_result = get_permissions_rules(
+            request.user,
+            current_team,
+            "monitor",
+            PermissionConstants.POLICY_MODULE,
+        )
+
+        policy_permissions = permissions_result.get("data", {})
+        cur_team = permissions_result.get("team", [])
+
+        if not policy_permissions:
+            return []
+
+        # 一次性获取所有策略及其关联组织，减少SQL查询
+        all_policies = MonitorPolicy.objects.select_related('monitor_object').prefetch_related(
+            'policyorganization_set'
+        ).all()
+
+        accessible_policy_ids = []
+
+        # 遍历所有策略，在内存中进行权限检查（使用通用权限检查函数）
+        for policy_obj in all_policies:
+            monitor_object_id = str(policy_obj.monitor_object_id)
+            policy_id = policy_obj.id
+
+            # 获取策略关联的组织
+            teams = {org.organization for org in policy_obj.policyorganization_set.all()}
+
+            # 使用通用权限检查函数
+            if check_instance_permission(monitor_object_id, policy_id, teams, policy_permissions, cur_team):
+                accessible_policy_ids.append(policy_id)
+
+        return accessible_policy_ids
+
     def list(self, request, *args, **kwargs):
         monitor_object_id = request.query_params.get('monitor_object_id', None)
-        if not monitor_object_id:
-            return WebUtils.response_error("monitor_object_id is required")
-        permission = get_permission_rules(
-            request.user,
-            request.COOKIES.get("current_team"),
-            "monitor",
-            f"{POLICY_MODULE}.{monitor_object_id}",
-        )
-        qs = permission_filter(MonitorPolicy, permission, team_key="policyorganization__organization__in", id_key="id__in")
 
-        qs = qs.filter(monitor_object_id=monitor_object_id).distinct()
-        policy_ids = qs.values_list("id", flat=True)
+        if monitor_object_id:
+            permission = get_permission_rules(
+                request.user,
+                request.COOKIES.get("current_team"),
+                "monitor",
+                f"{PermissionConstants.POLICY_MODULE}.{monitor_object_id}",
+            )
+            qs = permission_filter(MonitorPolicy, permission, team_key="policyorganization__organization__in", id_key="id__in")
+
+            qs = qs.filter(monitor_object_id=monitor_object_id).distinct()
+            policy_ids = qs.values_list("id", flat=True)
+        else:
+            policy_ids = self._get_all_accessible_policy_ids(request)
+
+        if not policy_ids:
+            return WebUtils.response_success(dict(count=0, results=[]))
 
         # 获取经过过滤器处理的数据
         queryset = self.filter_queryset(self.get_queryset())
@@ -79,19 +124,21 @@ class MonitorAlertVieSet(
         # 将策略和实例数据映射到字典中
         policy_dict = {policy.id: policy for policy in policies}
 
-        # 如果有权限规则，则添加到数据中
-        inst_permission_map = {i["id"]: i["permission"] for i in permission.get("instance", [])}
+        # # 如果有权限规则，则添加到数据中
+        # inst_permission_map = {i["id"]: i["permission"] for i in permission.get("instance", [])}
 
         # 补充策略和实例到每个 alert 中
+
         for alert in results:
 
-            # 补充权限信息
-            if alert["policy_id"] in inst_permission_map:
-                alert["permission"] = inst_permission_map[alert["policy_id"]]
-            else:
-                alert["permission"] = DEFAULT_PERMISSION
+            # # 补充权限信息
+            # if alert["policy_id"] in inst_permission_map:
+            #     alert["permission"] = inst_permission_map[alert["policy_id"]]
+            # else:
+            #     alert["permission"] = DEFAULT_PERMISSION
 
             # 补充instance_id_values
+
             try:
                 alert["instance_id_values"] = [i for i in ast.literal_eval(alert["monitor_instance_id"])]
             except Exception as e:
@@ -126,14 +173,6 @@ class MonitorAlertVieSet(
 
 class MonitorEventVieSet(viewsets.ViewSet):
 
-    @swagger_auto_schema(
-        operation_description="查询告警事件",
-        manual_parameters=[
-            openapi.Parameter("alert_id", openapi.IN_PATH, description="告警id", type=openapi.TYPE_INTEGER, required=True),
-            openapi.Parameter("page", openapi.IN_QUERY, description="页码", type=openapi.TYPE_INTEGER, required=False),
-            openapi.Parameter("page_size", openapi.IN_QUERY, description="每页数量", type=openapi.TYPE_INTEGER, required=False),
-        ],
-    )
     @action(methods=['get'], detail=False, url_path='query/(?P<alert_id>[^/.]+)')
     def get_events(self, request, alert_id):
         page = int(request.GET.get('page', 1))
@@ -166,12 +205,6 @@ class MonitorEventVieSet(viewsets.ViewSet):
         ]
         return WebUtils.response_success(dict(count=q_set.count(), results=result))
 
-    @swagger_auto_schema(
-        operation_description="查询告警最新事件的原始数据",
-        manual_parameters=[
-            openapi.Parameter("alert_id", openapi.IN_PATH, description="告警id", type=openapi.TYPE_INTEGER, required=True),
-        ],
-    )
     @action(methods=['get'], detail=False, url_path='raw_data/(?P<alert_id>[^/.]+)')
     def get_raw_data(self, request, alert_id):
         alert_obj = MonitorAlert.objects.get(id=alert_id)
@@ -183,14 +216,6 @@ class MonitorEventVieSet(viewsets.ViewSet):
 class MonitorAlertMetricSnapshotViewSet(viewsets.ViewSet):
     """告警指标快照视图集"""
 
-    @swagger_auto_schema(
-        operation_description="查询告警指标快照",
-        manual_parameters=[
-            openapi.Parameter("alert_id", openapi.IN_PATH, description="告警ID", type=openapi.TYPE_INTEGER, required=True),
-            openapi.Parameter("page", openapi.IN_QUERY, description="页码", type=openapi.TYPE_INTEGER, required=False),
-            openapi.Parameter("page_size", openapi.IN_QUERY, description="每页数量", type=openapi.TYPE_INTEGER, required=False),
-        ]
-    )
     @action(methods=['get'], detail=False, url_path='query/(?P<alert_id>[^/.]+)')
     def get_snapshots(self, request, alert_id):
         """根据告警ID查询指标快照数据"""

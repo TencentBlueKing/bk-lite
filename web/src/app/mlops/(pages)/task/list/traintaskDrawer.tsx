@@ -1,4 +1,4 @@
-import { Button, Drawer, message, } from "antd";
+import { Drawer, message, Button } from "antd";
 import { useTranslation } from "@/utils/i18n";
 // import { Tooltip } from 'antd';
 import useMlopsTaskApi from "@/app/mlops/api/task";
@@ -6,6 +6,8 @@ import useMlopsTaskApi from "@/app/mlops/api/task";
 import TrainTaskHistory from "./traintaskHistory";
 import TrainTaskDetail from "./traintaskDetail";
 import { useEffect, useMemo, useState } from "react";
+import styles from './index.module.scss'
+import { LeftOutlined } from "@ant-design/icons";
 
 const TrainTaskDrawer = ({ open, onCancel, selectId }:
   {
@@ -52,23 +54,27 @@ const TrainTaskDrawer = ({ open, onCancel, selectId }:
 
   return (
     <Drawer
-      width={960}
+      className={`${styles.drawer}`}
+      width={1000}
       title={t('traintask.trainDetail')}
       open={open}
       onClose={() => {
         setShowList(true);
         onCancel();
       }}
-      footer={
-        <Button onClick={() => {
-          setShowList(true);
-          onCancel();
-        }}>
-          {t('common.cancel')}
+      footer={!showList ? [
+        <Button
+          key='back'
+          type="text"
+          icon={<LeftOutlined />}
+          onClick={() => setShowList(true)}
+          className="back-to-list-btn"
+        >
+          返回列表
         </Button>
-      }
+      ] : null}
     >
-      <div className="flex flex-wrap justify-between">
+      <div className="drawer-content">
         {showList ?
           <TrainTaskHistory
             data={historyData}

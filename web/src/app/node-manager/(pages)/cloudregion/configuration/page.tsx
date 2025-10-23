@@ -20,8 +20,10 @@ import useCloudId from '@/app/node-manager/hooks/useCloudRegionId';
 import MainLayout from '../mainlayout/layout';
 import configStyle from './index.module.scss';
 import SubConfiguration from './subconfiguration';
-import { useConfigColumns } from '@/app/node-manager/hooks/configuration';
-import { useConfigBtachItems } from '@/app/node-manager/constants/configuration';
+import {
+  useConfigColumns,
+  useConfigBtachItems,
+} from '@/app/node-manager/hooks/configuration';
 import ConfigModal from './configModal';
 import ApplyModal from './applyModal';
 import PermissionWrapper from '@/components/permission';

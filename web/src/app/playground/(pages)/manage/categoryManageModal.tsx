@@ -27,6 +27,7 @@ const CategoryManageModal = forwardRef<ModalRef, any>(({ onSuccess }, ref) => {
     getAnomalyServingsList,
     getTimeSeriesPredictServingsList,
     getLogClusteringServingsList,
+    getClassificationServingsList,
     createCategory,
     createCapability,
     updateCapability,
@@ -82,7 +83,8 @@ const CategoryManageModal = forwardRef<ModalRef, any>(({ onSuccess }, ref) => {
   const getServingsList: Record<string, any> = {
     'anomaly': getAnomalyServingsList,
     'timeseries_predict': getTimeSeriesPredictServingsList,
-    'log_clustering': getLogClusteringServingsList
+    'log_clustering': getLogClusteringServingsList,
+    'classification': getClassificationServingsList
   };
 
   const renderServingsOption = async () => {
@@ -112,7 +114,7 @@ const CategoryManageModal = forwardRef<ModalRef, any>(({ onSuccess }, ref) => {
       }
     } catch (e) {
       console.log(e);
-      message.error(t(`manage.modelInferFailed`));
+      message.error(t(`common.fetchFailed`));
     } finally {
       setSelectLoading(false);
     }

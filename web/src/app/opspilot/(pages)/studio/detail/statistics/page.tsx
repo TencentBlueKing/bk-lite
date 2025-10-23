@@ -10,10 +10,10 @@ import styles from './index.module.scss';
 import TimeSelector from '@/components/time-selector';
 import { useStudioApi } from '@/app/opspilot/api/studio';
 
-type DataField = 'tokenOverviewData' | 'conversationsData' | 'activeUsersData';
+type DataField = 'conversationsData' | 'activeUsersData';
 
 const ChartComponent: React.FC = () => {
-  const { fetchTokenConsumption, fetchTokenOverview, fetchConversations, fetchActiveUsers } = useStudioApi();
+  const { fetchConversations, fetchActiveUsers } = useStudioApi();
   const { t } = useTranslation();
   const searchParams = useSearchParams();
   const id = searchParams ? searchParams.get('id') : null;
@@ -25,12 +25,6 @@ const ChartComponent: React.FC = () => {
     return [start.getTime(), end.getTime()];
   };
   const [dates, setDates] = useState<number[]>(getLast7Days());
-
-  const [tokenConsumption, setTokenConsumption] = useState(0);
-  const [loadingTokenConsumption, setLoadingTokenConsumption] = useState(true);
-
-  const [tokenOverviewData, setTokenOverviewData] = useState<any[]>([]);
-  const [loadingTokenOverview, setLoadingTokenOverview] = useState(true);
 
   const [conversationsData, setConversationsData] = useState<any[]>([]);
   const [loadingConversations, setLoadingConversations] = useState(true);
@@ -45,18 +39,6 @@ const ChartComponent: React.FC = () => {
       dateParams.end_time = new Date(dates[1]).toISOString();
     }
     const params = { bot_id: id, ...dateParams };
-
-    setLoadingTokenConsumption(true);
-    fetchTokenConsumption(params)
-      .then(res => setTokenConsumption(res))
-      .catch(() => message.error('Failed to fetch tokenConsumption data'))
-      .finally(() => setLoadingTokenConsumption(false));
-
-    setLoadingTokenOverview(true);
-    fetchTokenOverview(params)
-      .then(res => setTokenOverviewData(res))
-      .catch(() => message.error('Failed to fetch tokenOverview data'))
-      .finally(() => setLoadingTokenOverview(false));
 
     setLoadingConversations(true);
     fetchConversations(params)
@@ -109,10 +91,9 @@ const ChartComponent: React.FC = () => {
 
   const lineConfig = (dataField: DataField): LineConfig => {
     let chartData: any[] = [];
-    if (dataField === 'tokenOverviewData') chartData = tokenOverviewData;
     if (dataField === 'conversationsData') chartData = conversationsData;
     if (dataField === 'activeUsersData') chartData = activeUsersData;
-    const isTokenOverview = dataField === 'tokenOverviewData';
+    const isTokenOverview = false;
     return {
       data: chartData,
       xField: 'time',
@@ -159,32 +140,6 @@ const ChartComponent: React.FC = () => {
         />
       </div>
       <div className="grid grid-cols-2 gap-4">
-        {renderCard(
-          'studio.statistics.totalConsumption',
-          'studio.statistics.totalConsumptionDesc',
-          loadingTokenConsumption ? (
-            <div className="flex justify-center items-center h-[250px]">
-              <Spin size="large" />
-            </div>
-          ) : (
-            <div className="flex justify-center items-center text-8xl font-bold h-[250px]">
-              {tokenConsumption}
-            </div>
-          ),
-          'totalConsumption'
-        )}
-        {renderCard(
-          'studio.statistics.totalConsumptionOverview',
-          'studio.statistics.totalConsumptionOverviewDesc',
-          loadingTokenOverview ? (
-            <div className="flex justify-center items-center h-[250px]">
-              <Spin size="large" />
-            </div>
-          ) : (
-            <Line {...lineConfig('tokenOverviewData')} />
-          ),
-          'totalConsumptionOverview'
-        )}
         {renderCard(
           'studio.statistics.totalConversation',
           'studio.statistics.totalConversationDesc',

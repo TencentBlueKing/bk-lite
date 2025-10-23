@@ -1,0 +1,30 @@
+# 基础权限和认证错误
+insufficient_permissions: 权限不足
+token_validation_failed: 令牌验证失败
+please_provide_token: 请提供令牌
+update_failed: 更新失败
+delete_failed: 删除失败
+not_authorized: 未授权
+
+# 应用管理相关错误
+cannot_delete_builtin_app: 无法删除内置应用
+
+# 登录模块相关错误
+domain_required_for_login_module: 创建登录模块需要提供域名。
+login_module_name_exists: 已存在同名且同类型的登录模块。
+login_module_domain_exists: 该域名的登录模块已存在。
+
+# 组管理相关错误
+no_permission_create_group: 您没有权限在此父组下创建组。
+default_group_cannot_modify: 默认组无法修改。
+no_permission_edit_group: 您没有权限编辑此组。
+default_group_cannot_delete: 默认组无法删除。
+no_permission_delete_group: 您没有权限删除此组。
+group_has_users_remove_first: 此组或子组中有用户，请先移除用户！
+
+# 数据规则相关错误
+module_not_found: 未找到模块
+app_not_found: 未找到应用
+
+# 任务相关消息
+sync_task_initiated: 同步任务已启动。

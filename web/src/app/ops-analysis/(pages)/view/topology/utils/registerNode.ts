@@ -1,7 +1,7 @@
 import ChartNode from '../components/chartNode';
 import { Graph, Node } from '@antv/x6';
 import { register } from '@antv/x6-react-shape';
-import { NODE_DEFAULTS } from '../constants/nodeDefaults';
+import { NODE_DEFAULTS, PORT_DEFAULTS } from '../constants/nodeDefaults';
 import { createPortConfig } from './topologyUtils';
 import { iconList } from '@/app/cmdb/utils/common';
 import type {
@@ -60,7 +60,6 @@ const getBasicShapeAttrs = (nodeConfig: TopologyNodeData, shapeType?: string): R
     baseAttrs.body.strokeDasharray = '';
   }
 
-  // 处理形状类型
   if (shapeType === 'circle') {
     baseAttrs.body.rx = '50%';
     baseAttrs.body.ry = '50%';
@@ -166,7 +165,7 @@ const registerIconNode = () => {
         textWrap: { width: '90%', ellipsis: true }
       }
     },
-    ports: createPortConfig()
+    ports: createPortConfig(PORT_DEFAULTS.FILL_COLOR)
   });
 };
 
@@ -212,7 +211,7 @@ const registerSingleValueNode = () => {
         display: 'none'
       }
     },
-    ports: createPortConfig()
+    ports: createPortConfig(PORT_DEFAULTS.FILL_COLOR)
   });
 };
 
@@ -231,20 +230,22 @@ const registerTextNode = () => {
       body: {
         fill: TEXT_NODE.backgroundColor,
         stroke: TEXT_NODE.borderColor,
-        strokeWidth: TEXT_NODE.strokeWidth
+        strokeWidth: TEXT_NODE.strokeWidth,
+        rx: 6,
+        ry: 6
       },
       label: {
         fill: TEXT_NODE.textColor,
         fontSize: TEXT_NODE.fontSize,
         fontWeight: TEXT_NODE.fontWeight,
-        textAnchor: 'start',
-        textVerticalAnchor: 'top',
-        refX: 0,
-        refY: 0,
-        textWrap: { width: '100%', height: '100%' }
+        textAnchor: 'middle',
+        textVerticalAnchor: 'middle',
+        refX: '50%',
+        refY: '50%',
+        textWrap: { width: '85%', height: '85%', ellipsis: false }
       }
     },
-    ports: { groups: {}, items: [] }
+    ports: createPortConfig(PORT_DEFAULTS.FILL_COLOR)
   });
 };
 
@@ -268,7 +269,7 @@ const registerBasicShapeNode = () => {
         opacity: 1
       }
     },
-    ports: createPortConfig()
+    ports: createPortConfig(PORT_DEFAULTS.FILL_COLOR)
   });
 };
 
@@ -280,7 +281,7 @@ const registerChartNode = () => {
     width: CHART_NODE.width,
     height: CHART_NODE.height,
     component: ChartNode,
-    ports: createPortConfig()
+    ports: createPortConfig(PORT_DEFAULTS.FILL_COLOR)
   });
 };
 
@@ -420,20 +421,53 @@ const createSingleValueNode = (nodeConfig: TopologyNodeData, baseNodeData: BaseN
 };
 
 const createTextNode = (nodeConfig: TopologyNodeData, baseNodeData: BaseNodeData): CreatedNodeConfig => {
+  const { TEXT_NODE } = NODE_DEFAULTS;
+  const textContent = nodeConfig.name || '';
 
-  return {
+  const lines = textContent.split('\n');
+  const fontSize = nodeConfig.styleConfig?.fontSize || TEXT_NODE.fontSize;
+
+  const maxLineLength = Math.max(...lines.map(line => line.length), 1);
+
+  const charWidth = fontSize * 0.7;
+  const estimatedWidth = Math.max(
+    120,
+    Math.min(600, maxLineLength * charWidth + 40)
+  );
+
+  const lineHeight = fontSize * 1.5;
+  const estimatedHeight = Math.max(
+    60,
+    lines.length * lineHeight + 30
+  ); return {
     ...baseNodeData,
+    width: estimatedWidth,
+    height: estimatedHeight,
     data: {
       ...baseNodeData.data,
-      isPlaceholder: !nodeConfig.name || nodeConfig.name === '双击编辑文本'
+      isPlaceholder: !nodeConfig.name
     },
     attrs: {
+      body: {
+        fill: nodeConfig.styleConfig?.backgroundColor || TEXT_NODE.backgroundColor,
+        stroke: nodeConfig.styleConfig?.borderColor || TEXT_NODE.borderColor,
+        strokeWidth: TEXT_NODE.strokeWidth,
+        rx: 6,
+        ry: 6
+      },
       label: {
-        fill: nodeConfig.styleConfig?.textColor,
-        fontSize: nodeConfig.styleConfig?.fontSize,
-        text: nodeConfig.name || '双击编辑文本'
+        fill: nodeConfig.styleConfig?.textColor || TEXT_NODE.textColor,
+        fontSize: nodeConfig.styleConfig?.fontSize || TEXT_NODE.fontSize,
+        fontWeight: nodeConfig.styleConfig?.fontWeight || TEXT_NODE.fontWeight,
+        text: textContent,
+        textWrap: false,
+        textVerticalAnchor: 'middle',
+        textAnchor: 'middle',
+        refX: '50%',
+        refY: '50%'
       }
-    }
+    },
+    ports: createPortConfig(PORT_DEFAULTS.FILL_COLOR)
   };
 };
 
@@ -538,7 +572,7 @@ const updateIconNodeAttributes = (node: Node, nodeConfig: TopologyNodeData) => {
 
     if (currentWidth !== nodeConfig.styleConfig.width || currentHeight !== nodeConfig.styleConfig.height) {
       node.resize(nodeConfig.styleConfig.width, nodeConfig.styleConfig.height);
-      node.prop('ports', createPortConfig());
+      node.prop('ports', createPortConfig(PORT_DEFAULTS.FILL_COLOR));
     }
   }
 }; const updateSingleValueNodeAttributes = (node: Node, nodeConfig: TopologyNodeData) => {
@@ -585,15 +619,48 @@ const updateIconNodeAttributes = (node: Node, nodeConfig: TopologyNodeData) => {
 };
 
 const updateTextNodeAttributes = (node: Node, nodeConfig: TopologyNodeData) => {
+  const { TEXT_NODE } = NODE_DEFAULTS;
+  const textContent = nodeConfig.name || '';
+
+  const lines = textContent.split('\n');
+  const fontSize = nodeConfig.styleConfig?.fontSize || TEXT_NODE.fontSize;
+
+  const maxLineLength = Math.max(...lines.map(line => line.length), 1);
+
+  const charWidth = fontSize * 0.7;
+  const estimatedWidth = Math.max(
+    120,
+    Math.min(600, maxLineLength * charWidth + 40)
+  );
+
+  const lineHeight = fontSize * 1.5;
+  const estimatedHeight = Math.max(
+    60,
+    lines.length * lineHeight + 30
+  );
+
+  node.resize(estimatedWidth, estimatedHeight);
+
+  node.prop('ports', createPortConfig(PORT_DEFAULTS.FILL_COLOR));
+
   node.setAttrs({
     body: {
-      fill: nodeConfig.styleConfig?.backgroundColor,
-      stroke: nodeConfig.styleConfig?.borderColor,
+      fill: nodeConfig.styleConfig?.backgroundColor || TEXT_NODE.backgroundColor,
+      stroke: nodeConfig.styleConfig?.borderColor || TEXT_NODE.borderColor,
+      strokeWidth: TEXT_NODE.strokeWidth,
+      rx: 6,
+      ry: 6
     },
     label: {
-      fill: nodeConfig.styleConfig?.textColor,
-      fontSize: nodeConfig.styleConfig?.fontSize,
-      text: nodeConfig.name || '双击编辑文本',
+      fill: nodeConfig.styleConfig?.textColor || TEXT_NODE.textColor,
+      fontSize: nodeConfig.styleConfig?.fontSize || TEXT_NODE.fontSize,
+      fontWeight: nodeConfig.styleConfig?.fontWeight || TEXT_NODE.fontWeight,
+      text: textContent,
+      textWrap: false,
+      textVerticalAnchor: 'middle',
+      textAnchor: 'middle',
+      refX: '50%',
+      refY: '50%'
     }
   });
 };
@@ -610,7 +677,7 @@ const updateBasicShapeNodeAttributes = (node: Node, nodeConfig: TopologyNodeData
 
     if (currentWidth !== width || currentHeight !== height) {
       node.resize(width, height);
-      node.prop('ports', createPortConfig());
+      node.prop('ports', createPortConfig(PORT_DEFAULTS.FILL_COLOR));
     }
   }
 };

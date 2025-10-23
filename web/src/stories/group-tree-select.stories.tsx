@@ -24,10 +24,6 @@ const meta: Meta<typeof GroupTreeSelect> = {
       control: 'boolean',
       description: 'Disable the component'
     },
-    allowClear: {
-      control: 'boolean',
-      description: 'Allow clearing selection'
-    },
     placeholder: {
       control: 'text',
       description: 'Placeholder text'
@@ -191,7 +187,6 @@ export const CustomStyle: Story = {
   args: {
     placeholder: 'Custom styling',
     style: { width: '100%', borderRadius: '8px' },
-    maxTagCount: 2
   },
   render: (args) => {
     const [form] = Form.useForm();

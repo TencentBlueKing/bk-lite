@@ -19,7 +19,7 @@ const UploadModal = forwardRef<ModalRef, UploadModalProps>(({ onSuccess }, ref) 
   const { t } = useTranslation();
   const searchParams = useSearchParams();
   const activeType = searchParams.get('activeTap') || '';
-  const { addAnomalyTrainData, addTimeSeriesPredictTrainData, addLogClusteringTrainData } = useMlopsManageApi();
+  const { addAnomalyTrainData, addTimeSeriesPredictTrainData, addLogClusteringTrainData, addClassificationTrainData } = useMlopsManageApi();
   const [visiable, setVisiable] = useState<boolean>(false);
   const [confirmLoading, setConfirmLoading] = useState<boolean>(false);
   const [fileList, setFileList] = useState<UploadFile<any>[]>([]);
@@ -66,24 +66,46 @@ const UploadModal = forwardRef<ModalRef, UploadModalProps>(({ onSuccess }, ref) 
   };
 
   const handleFileRead = (text: string, type: string) => {
-    // 统一换行符为 \n
-    const lines = text.replace(/\r\n|\r|\n/g, '\n')?.split('\n').filter(line => line.trim() !== '');
-    if (!lines.length) return [];
-    if (type !== 'log_clustering') {
-      const headers = type === 'anomaly' ? ['timestamp', 'value', 'label'] : lines[0]?.split(',');
-      const data = lines.slice(1).map((line, index) => {
-        const values = line.split(',');
-        return headers.reduce((obj: Record<string, any>, key, idx) => {
-          obj[key] = key === 'timestamp'
-            ? new Date(values[idx]).getTime() / 1000
-            : Number(values[idx]);
-          obj['index'] = index;
-          return obj;
-        }, {});
-      });
-      return data as TrainDataParams[];
+    try {
+      // 统一换行符为 \n
+      const lines = text.replace(/\r\n|\r|\n/g, '\n')?.split('\n').filter(line => line.trim() !== '');
+      
+      if (!lines.length) return [];
+
+      if (type !== 'log_clustering') {
+        const headers = type === 'anomaly' ? ['timestamp', 'value', 'label'] : lines[0]?.split(',');
+        
+        if (!headers || headers.length === 0) {
+          throw new Error('文件格式不正确');
+        }
+
+        const data = lines.slice(1).map((line, index) => {
+          const values = line.split(',');
+
+          return headers.reduce((obj: Record<string, any>, key, idx) => {
+            const value = values[idx];
+            
+            if (key === 'timestamp') {
+              const timestamp = new Date(value).getTime();
+              obj[key] = timestamp / 1000;
+            } else {
+              const numValue = Number(value);
+              obj[key] = numValue;
+            }
+            
+            obj['index'] = index;
+            return obj;
+          }, {});
+        });
+        
+        return data as TrainDataParams[];
+      }
+      
+      return lines;
+    } catch (error) {
+      console.log(error);
+      throw error;
     }
-    return lines;
   };
 
   const onSelectChange = (value: string[]) => {
@@ -97,74 +119,112 @@ const UploadModal = forwardRef<ModalRef, UploadModalProps>(({ onSuccess }, ref) 
     setSelectTags(object);
   };
 
+  // 定义提交策略映射
+  const submitStrategies = {
+    anomaly: {
+      processData: (data: TrainDataParams[] | string[]) => {
+        const trainData = data as TrainDataParams[];
+        return {
+          train_data: trainData.map(item => ({ timestamp: item.timestamp, value: item.value })),
+          metadata: {
+            anomaly_point: trainData.filter(item => item?.label === 1).map(k => k.index)
+          }
+        };
+      },
+      apiCall: addAnomalyTrainData
+    },
+    timeseries_predict: {
+      processData: (data: TrainDataParams[] | string[]) => ({ train_data: data as TrainDataParams[] }),
+      apiCall: addTimeSeriesPredictTrainData
+    },
+    log_clustering: {
+      processData: (data: TrainDataParams[] | string[]) => ({ train_data: data as string[] }),
+      apiCall: addLogClusteringTrainData
+    },
+    classification: {
+      processData: (data: TrainDataParams[] | string[]) => ({ train_data: data as TrainDataParams[] }),
+      apiCall: addClassificationTrainData
+    }
+  };
+
+  // 验证文件上传
+  const validateFileUpload = (): UploadFile<any> | null => {
+    const file = fileList[0];
+    if (!file?.originFileObj) {
+      message.error(t('datasets.pleaseUpload'));
+      return null;
+    }
+    return file;
+  };
+
+  // 构建通用参数
+  const buildSubmitParams = (file: UploadFile<any>, processedData: any) => ({
+    dataset: formData?.dataset_id,
+    name: file.name,
+    ...processedData,
+    ...selectTags
+  });
+
+  // 处理提交成功
+  const handleSubmitSuccess = () => {
+    setVisiable(false);
+    setFileList([]);
+    message.success(t('datasets.uploadSuccess'));
+    onSuccess();
+  };
+
+  // 处理提交错误
+  const handleSubmitError = (error: any) => {
+    console.log(error);
+    message.error(t('datasets.uploadError') || '上传失败，请重试');
+  };
+
   const handleSubmit = async () => {
     setConfirmLoading(true);
+    
     try {
-      const file: UploadFile<any> = fileList[0];
-      if (!file?.originFileObj) {
-        setConfirmLoading(false);
-        return message.error(t('datasets.pleaseUpload'));
+      // 1. 验证文件
+      const file = validateFileUpload();
+      if (!file) return;
+
+      // 2. 获取当前类型的策略
+      const strategy = submitStrategies[formData?.activeTap as keyof typeof submitStrategies];
+      if (!strategy) {
+        throw new Error(`Unsupported upload type: ${formData?.activeTap}`);
       }
-      if (formData?.activeTap === 'anomaly') {
-        const text = await file?.originFileObj.text();
-        const data: TrainDataParams[] = handleFileRead(text, formData?.activeTap) as TrainDataParams[];
-        const train_data = data.map(item => ({ timestamp: item.timestamp, value: item.value }));
-        const points = data.filter(item => item?.label === 1).map(k => k.index);
-        const params = {
-          dataset: formData?.dataset_id,
-          name: file.name,
-          train_data: train_data,
-          metadata: {
-            anomaly_point: points
-          },
-          ...selectTags
-        };
-        await addAnomalyTrainData(params);
-        setConfirmLoading(false);
-        setVisiable(false);
-        message.success(t('datasets.uploadSuccess'));
-        onSuccess();
-      } else if (formData?.activeTap === 'timeseries_predict') {
-        const text = await file?.originFileObj.text();
-        const data: TrainDataParams[] = handleFileRead(text, formData?.activeTap) as TrainDataParams[];
-        const params = {
-          dataset: formData?.dataset_id,
-          name: file.name,
-          train_data: data,
-          ...selectTags
-        };
-        await addTimeSeriesPredictTrainData(params);
-        setConfirmLoading(false);
-        setVisiable(false);
-        message.success(t('datasets.uploadSuccess'));
-        onSuccess();
-      } else {
-        const text = await file?.originFileObj.text();
-        const data: string[] = handleFileRead(text, formData?.activeTap) as string[];
-        const params = {
-          dataset: formData?.dataset_id,
-          name: file.name,
-          train_data: data,
-          ...selectTags
-        };
-        await addLogClusteringTrainData(params);
-        setConfirmLoading(false);
-        setVisiable(false);
-        message.success(t('datasets.uploadSuccess'));
-        onSuccess();
-      }
-    } catch (e) {
-      console.log(e);
+
+      // 3. 读取并处理文件内容
+      const text = await file.originFileObj!.text();
+      const rawData = handleFileRead(text, formData?.activeTap || '');
+      const processedData = strategy.processData(rawData);
+
+      // 4. 构建提交参数
+      const params = buildSubmitParams(file, processedData);
+
+      // 5. 调用对应的API
+      await strategy.apiCall(params);
+
+      // 6. 处理成功
+      handleSubmitSuccess();
+      
+    } catch (error) {
+      handleSubmitError(error);
     } finally {
       setConfirmLoading(false);
-      setFileList([]);
     }
+  };
+
+  // 重置表单状态
+  const resetFormState = () => {
+    setFileList([]);
+    setCheckedType([]);
+    setSelectTags({});
+    setConfirmLoading(false);
   };
 
   const handleCancel = () => {
     setVisiable(false);
-    setFileList([]);
-    setCheckedType([]);
+    resetFormState();
   };
 
   const downloadTemplate = async () => {

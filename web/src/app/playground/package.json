@@ -1,5 +1,5 @@
 {
-  "name": "node",
+  "name": "playground",
   "version": "1.0.0",
   "scripts": {
     "build": "next build",

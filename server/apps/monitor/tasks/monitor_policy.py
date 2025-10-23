@@ -4,7 +4,8 @@ from datetime import datetime, timezone, timedelta
 from django.db.models import F
 
 from apps.core.exceptions.base_app_exception import BaseAppException
-from apps.monitor.constants import LEVEL_WEIGHT, THRESHOLD, NO_DATA
+from apps.monitor.constants.alert_policy import AlertConstants
+from apps.monitor.constants.database import DatabaseConstants
 from apps.monitor.models import MonitorPolicy, MonitorInstanceOrganization, MonitorAlert, MonitorEvent, MonitorInstance, \
     Metric, MonitorEventRawData, MonitorAlertMetricSnapshot
 from apps.monitor.tasks.task_utils.metric_query import format_to_vm_filter
@@ -342,7 +343,7 @@ class MonitorPolicyScan:
                 })
 
         # 使用 bulk_create 创建事件
-        event_objs = MonitorEvent.objects.bulk_create(create_events, batch_size=200)
+        event_objs = MonitorEvent.objects.bulk_create(create_events, batch_size=DatabaseConstants.BULK_CREATE_BATCH_SIZE)
 
         # 兼容性处理：如果 bulk_create 没有返回对象（如 MySQL/SQLite），则手动查询
         if not event_objs or not hasattr(event_objs[0], 'id'):
@@ -370,7 +371,7 @@ class MonitorPolicyScan:
                     )
 
             if create_raw_data:
-                MonitorEventRawData.objects.bulk_create(create_raw_data, batch_size=100)
+                MonitorEventRawData.objects.bulk_create(create_raw_data, batch_size=DatabaseConstants.EVENT_RAW_DATA_BATCH_SIZE)
 
         return event_objs
 
@@ -403,7 +404,7 @@ class MonitorPolicyScan:
             notice_results = self.send_notice(event)
             event.notice_result = notice_results
         # 批量更新通知结果
-        MonitorEvent.objects.bulk_update(event_objs, ["notice_result"], batch_size=200)
+        MonitorEvent.objects.bulk_update(event_objs, ["notice_result"], batch_size=DatabaseConstants.BULK_UPDATE_BATCH_SIZE)
 
     def handle_alert_events(self, event_objs):
         """处理告警事件"""
@@ -428,12 +429,12 @@ class MonitorPolicyScan:
             if not event_obj or event_obj.level == "no_data":
                 continue
             # 告警等级升级
-            if LEVEL_WEIGHT.get(event_obj.level) > LEVEL_WEIGHT.get(alert.level):
+            if AlertConstants.LEVEL_WEIGHT.get(event_obj.level) > AlertConstants.LEVEL_WEIGHT.get(alert.level):
                 alert.level = event_obj.level
                 alert.value = event_obj.value
                 alert.content = event_obj.content
                 alert_level_updates.append(alert)
-        MonitorAlert.objects.bulk_update(alert_level_updates, ["level", "value", "content"], batch_size=200)
+        MonitorAlert.objects.bulk_update(alert_level_updates, ["level", "value", "content"], batch_size=DatabaseConstants.BULK_UPDATE_BATCH_SIZE)
 
     def create_alert(self, event_objs):
         """告警生成处理"""
@@ -467,7 +468,7 @@ class MonitorPolicyScan:
                 ))
 
         # 使用 bulk_create 创建告警
-        new_alerts = MonitorAlert.objects.bulk_create(create_alerts, batch_size=200)
+        new_alerts = MonitorAlert.objects.bulk_create(create_alerts, batch_size=DatabaseConstants.BULK_CREATE_BATCH_SIZE)
 
         # 兼容性处理：如果 bulk_create 没有返回对象（如 MySQL/SQLite），则手动查询
         if not new_alerts or not hasattr(new_alerts[0], 'id'):
@@ -580,7 +581,7 @@ class MonitorPolicyScan:
             )
 
         if create_snapshots:
-            MonitorAlertMetricSnapshot.objects.bulk_create(create_snapshots, batch_size=200)
+            MonitorAlertMetricSnapshot.objects.bulk_create(create_snapshots, batch_size=DatabaseConstants.BULK_CREATE_BATCH_SIZE)
 
     def create_pre_alert_snapshots(self, new_alerts):
         """为新产生的告警创建告警前的快照数据"""
@@ -647,7 +648,7 @@ class MonitorPolicyScan:
             )
 
         if create_snapshots:
-            MonitorAlertMetricSnapshot.objects.bulk_create(create_snapshots, batch_size=200)
+            MonitorAlertMetricSnapshot.objects.bulk_create(create_snapshots, batch_size=DatabaseConstants.BULK_CREATE_BATCH_SIZE)
             logger.info(f"Created {len(create_snapshots)} pre-alert snapshots for policy {self.policy.id}")
 
     def run(self):
@@ -661,7 +662,7 @@ class MonitorPolicyScan:
         new_alerts = []  # 初始化新告警列表
         alert_events, info_events, no_data_events = [], [], []  # 初始化事件数据
 
-        if THRESHOLD in self.policy.enable_alerts:
+        if AlertConstants.THRESHOLD in self.policy.enable_alerts:
             # 告警事件
             alert_events, info_events = self.alert_event()
             # 正常、异常事件计数
@@ -669,7 +670,7 @@ class MonitorPolicyScan:
             # 告警恢复
             self.recovery_alert()
 
-        if NO_DATA in self.policy.enable_alerts:
+        if AlertConstants.NO_DATA in self.policy.enable_alerts:
             # 无数据事件
             no_data_events = self.no_data_event()
             # 无数据告警恢复

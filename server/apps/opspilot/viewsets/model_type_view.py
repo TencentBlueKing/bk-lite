@@ -1,15 +1,13 @@
 from django.db import models
 from django.http import JsonResponse
-from django.utils.translation import gettext as _
-from rest_framework import viewsets
 from rest_framework.decorators import action
 
-from apps.core.utils.viewset_utils import GenericViewSetFun
+from apps.core.utils.viewset_utils import GenericViewSetFun, LanguageViewSet
 from apps.opspilot.models import EmbedProvider, LLMModel, ModelType, OCRProvider, RerankProvider
 from apps.opspilot.serializers.model_type_serializer import ModelTypeSerializer
 
 
-class ModelTypeViewSet(viewsets.ModelViewSet, GenericViewSetFun):
+class ModelTypeViewSet(LanguageViewSet, GenericViewSetFun):
     serializer_class = ModelTypeSerializer
     queryset = ModelType.objects.all()
     ordering = ("index",)
@@ -44,10 +42,11 @@ class ModelTypeViewSet(viewsets.ModelViewSet, GenericViewSetFun):
     def update(self, request, *args, **kwargs):
         instance = self.get_object()
         if instance.is_build_in:
+            message = self.loader.get("builtin_model_types_no_modify") if self.loader else "Built-in model types cannot be modified"
             return JsonResponse(
                 {
                     "result": False,
-                    "message": _("Built-in model types cannot be modified"),
+                    "message": message,
                 }
             )
         return super().update(request, *args, **kwargs)
@@ -55,10 +54,11 @@ class ModelTypeViewSet(viewsets.ModelViewSet, GenericViewSetFun):
     def destroy(self, request, *args, **kwargs):
         instance = self.get_object()
         if instance.is_build_in:
+            message = self.loader.get("builtin_model_types_no_delete") if self.loader else "Built-in model types cannot be deleted"
             return JsonResponse(
                 {
                     "result": False,
-                    "message": _("Built-in model types cannot be deleted"),
+                    "message": message,
                 }
             )
         return super().destroy(request, *args, **kwargs)

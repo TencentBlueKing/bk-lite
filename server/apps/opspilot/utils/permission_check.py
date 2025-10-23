@@ -2,9 +2,9 @@ import logging
 from functools import wraps
 from typing import Any, Callable
 
-from django.utils.translation import gettext as _
 from django.views.generic.base import View
 
+from apps.core.utils.loader import LanguageLoader
 from apps.core.utils.viewset_utils import GenericViewSetFun
 from apps.core.utils.web_utils import WebUtils
 from apps.opspilot.models import KnowledgeBase
@@ -41,7 +41,9 @@ class CheckKnowledgePermission(GenericViewSetFun):
                 current_team = request.COOKIES.get("current_team", "0")
                 has_permission = self.get_has_permission(request.user, instance, current_team)
                 if not has_permission:
-                    return WebUtils.response_403(_("insufficient permissions"))
+                    loader = LanguageLoader(app="opspilot", default_lang="en")
+                    message = loader.get("error.insufficient_permissions") or "insufficient permissions"
+                    return WebUtils.response_403(message)
             return task_definition(*args, **kwargs)
 
         return wrapper

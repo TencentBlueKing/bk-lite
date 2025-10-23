@@ -1,5 +1,3 @@
-from drf_yasg import openapi
-from drf_yasg.utils import swagger_auto_schema
 from rest_framework.decorators import action
 from rest_framework.viewsets import ViewSet, ModelViewSet
 
@@ -13,15 +11,6 @@ from apps.log.filters.log_group import SearchConditionFilter
 
 class LogSearchViewSet(ViewSet):
 
-    @swagger_auto_schema(
-        operation_description="search field_names",
-        manual_parameters=[
-            openapi.Parameter('filed', openapi.IN_QUERY, description="Search filed", type=openapi.TYPE_STRING, required=True),
-            openapi.Parameter('start_time', openapi.IN_QUERY, description="Start time for the search", type=openapi.TYPE_STRING, required=True),
-            openapi.Parameter('end_time', openapi.IN_QUERY, description="End time for the search", type=openapi.TYPE_STRING, required=True),
-            openapi.Parameter('limit', openapi.IN_QUERY, description="Number of results to return", type=openapi.TYPE_INTEGER, default=100),
-        ],
-    )
     @action(methods=['get'], detail=False, url_path='field_names')
     def field_names(self, request):
         """
@@ -38,25 +27,6 @@ class LogSearchViewSet(ViewSet):
         data = SearchService.field_names(start_time, end_time, field, limit)
         return WebUtils.response_success(data)
 
-    @swagger_auto_schema(
-        operation_description="Search logs",
-        request_body=openapi.Schema(
-            type=openapi.TYPE_OBJECT,
-            properties={
-                "query": openapi.Schema(type=openapi.TYPE_STRING, description="Search query"),
-                "start_time": openapi.Schema(type=openapi.TYPE_STRING, description="Start time for the search"),
-                "end_time": openapi.Schema(type=openapi.TYPE_STRING, description="End time for the search"),
-                "limit": openapi.Schema(type=openapi.TYPE_INTEGER, description="Number of results to return", default=10),
-                "log_groups": openapi.Schema(
-                    type=openapi.TYPE_ARRAY,
-                    items=openapi.Schema(type=openapi.TYPE_STRING, description="Log group IDs"),
-                    description="List of log group IDs to filter the search"
-                ),
-            },
-            required=["query", "log_groups"]
-        ),
-        tags=['LogSearch']
-    )
     @action(methods=['post'], detail=False, url_path='search')
     def search(self, request):
         """
@@ -79,27 +49,6 @@ class LogSearchViewSet(ViewSet):
         data = SearchService.search_logs(query, start_time, end_time, limit, log_groups)
         return WebUtils.response_success(data)
 
-    @swagger_auto_schema(
-        operation_description="Search hits",
-        request_body=openapi.Schema(
-            type=openapi.TYPE_OBJECT,
-            properties={
-                "query": openapi.Schema(type=openapi.TYPE_STRING, description="Search query"),
-                "start_time": openapi.Schema(type=openapi.TYPE_STRING, description="Start time for the search"),
-                "end_time": openapi.Schema(type=openapi.TYPE_STRING, description="End time for the search"),
-                "field": openapi.Schema(type=openapi.TYPE_STRING, description="Field to search hits in"),
-                "fields_limit": openapi.Schema(type=openapi.TYPE_INTEGER, description="Limit of fields to return", default=5),
-                "step": openapi.Schema(type=openapi.TYPE_STRING, description="Step interval for hits", default='5m'),
-                "log_groups": openapi.Schema(
-                    type=openapi.TYPE_ARRAY,
-                    items=openapi.Schema(type=openapi.TYPE_STRING, description="Log group IDs"),
-                    description="List of log group IDs to filter the search"
-                ),
-            },
-            required=["query", "field", "log_groups"]
-        ),
-        tags=['LogSearch']
-    )
     @action(methods=['post'], detail=False, url_path='hits')
     def hits(self, request):
         """
@@ -124,14 +73,6 @@ class LogSearchViewSet(ViewSet):
         data = SearchService.search_hits(query, start_time, end_time, field, fields_limit, step, log_groups)
         return WebUtils.response_success(data)
 
-    @swagger_auto_schema(
-        operation_description="Tail logs",
-        manual_parameters=[
-            openapi.Parameter('query', openapi.IN_QUERY, description="Query to filter logs", type=openapi.TYPE_STRING),
-            openapi.Parameter('log_groups', openapi.IN_QUERY, description="Comma-separated log group IDs", type=openapi.TYPE_STRING)
-        ],
-        tags=['LogSearch']
-    )
     @action(methods=['get'], detail=False, url_path='tail')
     def tail_logs(self, request):
         """
@@ -171,27 +112,6 @@ class SearchConditionViewSet(ModelViewSet):
             return SearchCondition.objects.filter(organization=int(current_team))
         return SearchCondition.objects.none()
 
-    @swagger_auto_schema(
-        operation_description="创建搜索条件",
-        request_body=openapi.Schema(
-            type=openapi.TYPE_OBJECT,
-            properties={
-                "name": openapi.Schema(type=openapi.TYPE_STRING, description="搜索条件名称"),
-                "condition": openapi.Schema(
-                    type=openapi.TYPE_OBJECT,
-                    description="搜索条件配置",
-                    example={
-                        "query": "error",
-                        "log_groups": ["log-group-1", "log-group-2"],
-                        "time_range": {"start": "2024-01-01T00:00:00Z", "end": "2024-01-02T00:00:00Z"},
-                        "filters": {"level": "error"}
-                    }
-                ),
-            },
-            required=["name", "condition"]
-        ),
-        tags=['SearchCondition']
-    )
     def create(self, request, *args, **kwargs):
         """创建搜索条件"""
         current_team = request.COOKIES.get("current_team")
@@ -213,14 +133,6 @@ class SearchConditionViewSet(ModelViewSet):
             "message": "搜索条件创建成功"
         })
 
-    @swagger_auto_schema(
-        operation_description="获取搜索条件列表",
-        manual_parameters=[
-            openapi.Parameter('name', openapi.IN_QUERY, description="按名称过滤", type=openapi.TYPE_STRING),
-            openapi.Parameter('created_by', openapi.IN_QUERY, description="按创建者过滤", type=openapi.TYPE_STRING),
-        ],
-        tags=['SearchCondition']
-    )
     def list(self, request, *args, **kwargs):
         """获取搜索条件列表"""
         current_team = request.COOKIES.get("current_team")
@@ -238,10 +150,6 @@ class SearchConditionViewSet(ModelViewSet):
         serializer = self.get_serializer(queryset, many=True)
         return WebUtils.response_success(serializer.data)
 
-    @swagger_auto_schema(
-        operation_description="获取搜索条件详情",
-        tags=['SearchCondition']
-    )
     def retrieve(self, request, *args, **kwargs):
         """获取搜索条件详情"""
         current_team = request.COOKIES.get("current_team")
@@ -252,26 +160,6 @@ class SearchConditionViewSet(ModelViewSet):
         serializer = self.get_serializer(instance)
         return WebUtils.response_success(serializer.data)
 
-    @swagger_auto_schema(
-        operation_description="更新搜索条件",
-        request_body=openapi.Schema(
-            type=openapi.TYPE_OBJECT,
-            properties={
-                "name": openapi.Schema(type=openapi.TYPE_STRING, description="搜索条件名称"),
-                "condition": openapi.Schema(
-                    type=openapi.TYPE_OBJECT,
-                    description="搜索条件配置",
-                    example={
-                        "query": "error",
-                        "log_groups": ["log-group-1", "log-group-2"],
-                        "time_range": {"start": "2024-01-01T00:00:00Z", "end": "2024-01-02T00:00:00Z"},
-                        "filters": {"level": "error"}
-                    }
-                ),
-            }
-        ),
-        tags=['SearchCondition']
-    )
     def update(self, request, *args, **kwargs):
         """更新搜索条件"""
         current_team = request.COOKIES.get("current_team")
@@ -294,29 +182,11 @@ class SearchConditionViewSet(ModelViewSet):
             "message": "搜索条件更新成功"
         })
 
-    @swagger_auto_schema(
-        operation_description="部分更新搜索条件",
-        request_body=openapi.Schema(
-            type=openapi.TYPE_OBJECT,
-            properties={
-                "name": openapi.Schema(type=openapi.TYPE_STRING, description="搜索条件名称"),
-                "condition": openapi.Schema(
-                    type=openapi.TYPE_OBJECT,
-                    description="搜索条件配置"
-                ),
-            }
-        ),
-        tags=['SearchCondition']
-    )
     def partial_update(self, request, *args, **kwargs):
         """部分更新搜索条件"""
         kwargs['partial'] = True
         return self.update(request, *args, **kwargs)
 
-    @swagger_auto_schema(
-        operation_description="删除搜索条件",
-        tags=['SearchCondition']
-    )
     def destroy(self, request, *args, **kwargs):
         """删除搜索条件"""
         current_team = request.COOKIES.get("current_team")

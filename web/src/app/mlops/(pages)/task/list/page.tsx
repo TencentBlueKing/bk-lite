@@ -31,7 +31,7 @@ const getStatusText = (value: string, TrainText: Record<string, string>) => {
 const TrainTask = () => {
   const { t } = useTranslation();
   const { convertToLocalizedTime } = useLocalizedTime();
-  const { getAnomalyDatasetsList, getRasaDatasetsList, getLogClusteringList, getTimeSeriesPredictList } = useMlopsManageApi();
+  const { getAnomalyDatasetsList, getRasaDatasetsList, getLogClusteringList, getTimeSeriesPredictList, getClassificationDatasetsList } = useMlopsManageApi();
   const {
     getAnomalyTaskList,
     deleteAnomalyTrainTask,
@@ -43,7 +43,10 @@ const TrainTask = () => {
     startLogClusteringTrainTask,
     getTimeSeriesTaskList,
     deleteTimeSeriesTrainTask,
-    startTimeSeriesTrainTask
+    startTimeSeriesTrainTask,
+    getClassificationTaskList,
+    deleteClassificationTrainTask,
+    startClassificationTrainTask
   } = useMlopsTaskApi();
 
   // 状态定义
@@ -65,7 +68,8 @@ const TrainTask = () => {
     'anomaly': () => getAnomalyDatasetsList({}),
     'rasa': () => getRasaDatasetsList({}),
     'log_clustering': () => getLogClusteringList({}),
-    'timeseries_predict': () => getTimeSeriesPredictList({})
+    'timeseries_predict': () => getTimeSeriesPredictList({}),
+    'classification': () => getClassificationDatasetsList({})
   };
 
   // 任务获取映射
@@ -73,14 +77,16 @@ const TrainTask = () => {
     'anomaly': (params) => getAnomalyTaskList(params),
     'rasa': () => getRasaPipelines({}),
     'log_clustering': (params) => getLogClusteringTaskList(params),
-    'timeseries_predict': (params) => getTimeSeriesTaskList(params)
+    'timeseries_predict': (params) => getTimeSeriesTaskList(params),
+    'classification': (params) => getClassificationTaskList(params)
   };
 
   // 训练开始操作映射
   const trainStartApiMap: Record<string, (id: any) => Promise<void>> = {
     'anomaly': startAnomalyTrainTask,
     'log_clustering': startLogClusteringTrainTask,
-    'timeseries_predict': startTimeSeriesTrainTask
+    'timeseries_predict': startTimeSeriesTrainTask,
+    'classification': startClassificationTrainTask
   };
 
   // 删除操作映射
@@ -88,7 +94,8 @@ const TrainTask = () => {
     'anomaly': deleteAnomalyTrainTask,
     'rasa': deleteRasaPipelines,
     'log_clustering': deleteLogClusteringTrainTask,
-    'timeseries_predict': deleteTimeSeriesTrainTask
+    'timeseries_predict': deleteTimeSeriesTrainTask,
+    'classification': deleteClassificationTrainTask
   };
 
   // 抽屉操作映射
@@ -96,7 +103,8 @@ const TrainTask = () => {
     'anomaly': true,
     'rasa': false,
     'log_clustering': false,
-    'timeseries_predict': false
+    'timeseries_predict': false,
+    'classification': false
   };
 
   // 数据处理映射
@@ -117,7 +125,8 @@ const TrainTask = () => {
       return { tableData: _data, total: data?.length || 0 };
     },
     'log_clustering': (data) => processAnomalyLikeData(data),
-    'timeseries_predict': (data) => processAnomalyLikeData(data)
+    'timeseries_predict': (data) => processAnomalyLikeData(data),
+    'classification': (data) => processAnomalyLikeData(data)
   };
 
   const treeData: TreeDataNode[] = [
@@ -142,6 +151,10 @@ const TrainTask = () => {
           title: t(`datasets.logClustering`),
           key: 'log_clustering',
         },
+        {
+          title: t(`datasets.classification`),
+          key: 'classification'
+        }
       ]
     }
   ];

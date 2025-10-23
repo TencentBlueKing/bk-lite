@@ -88,6 +88,19 @@ const useMlopsTaskApi = () => {
     return await get(`/mlops/timeseries_predict_train_jobs/?name=${name}&page=${page}&page_size=${page_size}`);
   };
 
+  // 获取分类任务训练任务
+  const getClassificationTaskList = async ({
+    name = '',
+    page = 1,
+    page_size = -1
+  }: {
+    name?: string,
+    page?: number,
+    page_size?: number
+  }) => {
+    return await get(`/mlops/classification_train_jobs/?name=${name}&page=${page}&page_size=${page_size}`);
+  };
+
   // 查询指定的异常检测任务
   const getOneAnomalyTask = async (id: number | string) => {
     return await get(`/mlops/anomaly_detection_train_jobs/${id}`)
@@ -106,6 +119,11 @@ const useMlopsTaskApi = () => {
   // 查询指定时序预测训练任务
   const getOneTimeSeriesTask = async (id: number | string) => {
     return await get(`/mlops/timeseries_predict_train_jobs/${id}`)
+  };
+
+  // 查询指定分类任务训练任务
+  const getOneClassification = async (id: number | string) => {
+    return await get(`/mlops/classification_train_jobs/${id}`);
   };
 
   // 获取训练状态数据
@@ -153,6 +171,11 @@ const useMlopsTaskApi = () => {
     return await post(`/mlops/timeseries_predict_train_jobs/`, params)
   };
 
+  // 新建分类任务训练任务
+  const addClassificationTrainTask = async (params: TrainTaskParams) => {
+    return await post(`/mlops/classification_train_jobs`, params);
+  };
+
   // 启动异常检测训练任务
   const startAnomalyTrainTask = async (id: number | string) => {
     return await post(`/mlops/anomaly_detection_train_jobs/${id}/train/`);
@@ -166,6 +189,11 @@ const useMlopsTaskApi = () => {
   // 启动时序预测训练任务
   const startTimeSeriesTrainTask = async (id: number | string) => {
     return await post(`/mlops/timeseries_predict_train_jobs/${id}/train/`);
+  };
+
+  // 启动分类任务训练任务
+  const startClassificationTrainTask = async (id: number | string) => {
+    return await post(`/mlops/classification_train_jobs/${id}/train/`);
   };
 
   // 编辑异常检测训练任务
@@ -188,6 +216,11 @@ const useMlopsTaskApi = () => {
     return await patch(`/mlops/timeseries_predict_train_jobs/${id}/`, params);
   };
 
+  // 编辑分类任务训练任务
+  const updateClassificationTrainTask = async (id: string, params: TrainTaskParams) => {
+    return await patch(`/mlops/classification_train_jobs/${id}/`, params);
+  };
+
   // 删除异常检测训练任务
   const deleteAnomalyTrainTask = async (id: string) => {
     return await del(`/mlops/anomaly_detection_train_jobs/${id}/`);
@@ -208,6 +241,11 @@ const useMlopsTaskApi = () => {
     return await del(`/mlops/timeseries_predict_train_jobs/${id}/`);
   };
 
+  // 删除分类任务训练任务
+  const deleteClassificationTrainTask = async (id: string) => {
+    return await del(`/mlops/classification_train_jobs/${id}/`);
+  };
+
   return {
     getAnomalyTaskList,
     getOneAnomalyTask,
@@ -222,21 +260,27 @@ const useMlopsTaskApi = () => {
     getOneLogClusteringTask,
     getOneRasaTask,
     getOneTimeSeriesTask,
+    getClassificationTaskList,
+    getOneClassification,
     addAnomalyTrainTask,
     addRasaTrainTask,
     addLogClusteringTrainTask,
     addTimeSeriesTrainTask,
+    addClassificationTrainTask,
     startAnomalyTrainTask,
     startLogClusteringTrainTask,
     startTimeSeriesTrainTask,
+    startClassificationTrainTask,
     updateAnomalyTrainTask,
     updateRasaPipelines,
     updateLogClusteringTrainTask,
     updateTimeSeriesTrainTask,
+    updateClassificationTrainTask,
     deleteAnomalyTrainTask,
     deleteRasaPipelines,
     deleteLogClusteringTrainTask,
-    deleteTimeSeriesTrainTask
+    deleteTimeSeriesTrainTask,
+    deleteClassificationTrainTask
   }
 
 };

@@ -21,10 +21,14 @@ import chartLineStyle from './index.module.scss';
 import dayjs, { Dayjs } from 'dayjs';
 import DimensionFilter from './dimensionFilter';
 import DimensionTable from './dimensionTable';
-import { ChartData, ListItem, TableDataItem } from '@/app/monitor/types';
-import { MetricItem, ThresholdField } from '@/app/monitor/types/monitor';
-import { LEVEL_MAP } from '@/app/monitor/constants/monitor';
-import useApiClient from '@/utils/request';
+import {
+  ChartData,
+  ListItem,
+  TableDataItem,
+  MetricItem,
+  ThresholdField,
+} from '@/app/monitor/types';
+import { LEVEL_MAP } from '@/app/monitor/constants';
 import { isNumber } from 'lodash';
 
 interface LineChartProps {
@@ -32,7 +36,7 @@ interface LineChartProps {
   unit?: string;
   metric?: MetricItem;
   threshold?: ThresholdField[];
-  formID?: number;
+  eventData?: TableDataItem[];
   showDimensionFilter?: boolean;
   showDimensionTable?: boolean;
   allowSelect?: boolean;
@@ -64,13 +68,12 @@ const LineChart: React.FC<LineChartProps> = memo(
     showDimensionFilter = false,
     metric = {},
     threshold = [],
-    formID = null,
+    eventData = [],
     allowSelect = true,
     showDimensionTable = false,
     onXRangeChange,
   }) => {
     const { formatTime } = useFormatTime();
-    const { get, isLoading } = useApiClient();
     const [startX, setStartX] = useState<number | null>(null);
     const [endX, setEndX] = useState<number | null>(null);
     const [isDragging, setIsDragging] = useState(false);
@@ -109,11 +112,77 @@ const LineChart: React.FC<LineChartProps> = memo(
       setVisibleAreas(chartAreaKeys);
     }, [chartAreaKeys, colors.length]);
 
-    useEffect(() => {
-      if (data.length && formID && !isLoading) {
-        getEvent();
+    const timeToSecond = useCallback((time: string) => {
+      return Math.floor(new Date(time).getTime() / 1000);
+    }, []);
+
+    const cutArray = useCallback(
+      (array: TableDataItem[], subLength: number) => {
+        let index = 0;
+        const newArr = [];
+        while (index < array.length) {
+          newArr.push(array.slice(index, (index += subLength)));
+        }
+        return newArr;
+      },
+      []
+    );
+
+    // 对分割的列表进行数据处理
+    const handleCutArray = useCallback(
+      (array: TableDataItem[]) => {
+        if (!array) return [];
+        const test = array.map((item) => {
+          return item
+            .sort((prev: TableDataItem, next: TableDataItem) => {
+              let flag = null;
+              if (prev.value > next.value) {
+                flag = 1;
+              } else if (prev.value < next.value) {
+                flag = -1;
+              } else {
+                flag =
+                  timeToSecond(prev.created_at) > timeToSecond(next.created_at)
+                    ? 1
+                    : -1;
+              }
+              return flag;
+            })
+            .pop();
+        });
+        return test;
+      },
+      [timeToSecond]
+    );
+
+    const processEventData = useCallback(() => {
+      if (!eventData.length) {
+        setBoxItems([]);
+        return;
       }
-    }, [data.length, formID, isLoading]);
+
+      const time_intervals: TableDataItem[] =
+        maxTime === minTime // 折线图只存在一条数据时返回所有事件
+          ? eventData
+          : eventData.filter((item: any) => {
+            const times = timeToSecond(item.created_at);
+            if (times >= minTime && times <= maxTime) {
+              return true;
+            }
+            return false;
+          });
+      const intervals =
+        maxTime === minTime ? 120 : Math.ceil((maxTime - minTime) / 60);
+      const lengths = intervals >= 120 ? 24 : Math.ceil(intervals / 5);
+      const step = Math.ceil(eventData.length / lengths);
+      setBoxItems(handleCutArray(cutArray(time_intervals.reverse(), step)));
+    }, [eventData, maxTime, minTime, timeToSecond, handleCutArray, cutArray]);
+
+    useEffect(() => {
+      if (eventData.length > 0) {
+        processEventData();
+      }
+    }, [eventData, minTime, maxTime, processEventData]);
 
     useEffect(() => {
       if (!allowSelect) return;
@@ -201,75 +270,6 @@ const LineChart: React.FC<LineChartProps> = memo(
       [unit]
     );
 
-    const getEvent = async () => {
-      if (!formID) return;
-      try {
-        const _data = await get(`monitor/api/monitor_event/query/${formID}`, {
-          params: {
-            page: 1,
-            page_size: -1,
-          },
-        });
-        const time_intervals: TableDataItem[] =
-          maxTime === minTime // 折线图只存在一条数据时返回所有事件
-            ? _data.results
-            : _data.results?.filter((item: any) => {
-              const times = timeToSecond(item.created_at);
-              if (times >= minTime && times <= maxTime) {
-                return true;
-              }
-              return false;
-            });
-        const intervals =
-          maxTime === minTime ? 120 : Math.ceil((maxTime - minTime) / 60);
-        const lengths = intervals >= 120 ? 24 : Math.ceil(intervals / 5);
-        const step = Math.ceil(_data.results?.length / lengths);
-        setBoxItems(handleCutArray(cutArray(time_intervals.reverse(), step)));
-      } catch (error) {
-        console.log(error);
-      }
-    };
-
-    const cutArray = useCallback(
-      (array: TableDataItem[], subLength: number) => {
-        let index = 0;
-        const newArr = [];
-        while (index < array.length) {
-          newArr.push(array.slice(index, (index += subLength)));
-        }
-        return newArr;
-      },
-      []
-    );
-
-    // 对分割的列表进行数据处理
-    const handleCutArray = useCallback((array: TableDataItem[]) => {
-      if (!array) return [];
-      const test = array.map((item) => {
-        return item
-          .sort((prev: TableDataItem, next: TableDataItem) => {
-            let flag = null;
-            if (prev.value > next.value) {
-              flag = 1;
-            } else if (prev.value < next.value) {
-              flag = -1;
-            } else {
-              flag =
-                timeToSecond(prev.created_at) > timeToSecond(next.created_at)
-                  ? 1
-                  : -1;
-            }
-            return flag;
-          })
-          .pop();
-      });
-      return test;
-    }, []);
-
-    const timeToSecond = useCallback((time: string) => {
-      return Math.floor(new Date(time).getTime() / 1000);
-    }, []);
-
     return (
       <div
         className={`flex w-full h-full ${
@@ -283,7 +283,7 @@ const LineChart: React.FC<LineChartProps> = memo(
                 data={data}
                 margin={{
                   top: 10,
-                  right: formID ? 20 : 0,
+                  right: eventData?.length ? 20 : 0,
                   left: 0,
                   bottom: 0,
                 }}
@@ -372,7 +372,7 @@ const LineChart: React.FC<LineChartProps> = memo(
                 )}
               </AreaChart>
             </ResponsiveContainer>
-            {formID && (
+            {eventData?.length > 0 && (
               <div className="flex w-[100%] pl-14 pr-[15px] justify-between">
                 {boxItems?.map((item, index) => {
                   return (

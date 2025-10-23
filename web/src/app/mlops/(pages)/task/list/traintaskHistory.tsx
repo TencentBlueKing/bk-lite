@@ -53,12 +53,14 @@ const TrainTaskHistory = ({
   ]
 
   return (
-    <CustomTable
-      rowKey="run_id"
-      columns={columns}
-      dataSource={data}
-      loading={loading}
-    />
+    <div className="w-full h-full p-2">
+      <CustomTable
+        rowKey="run_id"
+        columns={columns}
+        dataSource={data}
+        loading={loading}
+      />
+    </div>
   )
 };
 

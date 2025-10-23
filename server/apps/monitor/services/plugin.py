@@ -1,8 +1,9 @@
 from django.db import transaction
 
+from apps.monitor.constants.database import DatabaseConstants
 from apps.monitor.models import MonitorPlugin
 from apps.monitor.models.monitor_metrics import MetricGroup, Metric
-from apps.monitor.models.monitor_object import MonitorObject
+from apps.monitor.models.monitor_object import MonitorObject, MonitorObjectType
 
 
 class MonitorPluginService:
@@ -21,6 +22,16 @@ class MonitorPluginService:
         metrics = data.pop("metrics")
         plugin = data.pop("plugin")
         desc = data.pop("plugin_desc", "")
+
+        # 处理type字段：确保MonitorObjectType存在
+        type_value = data.get("type")
+        if type_value:
+            # 如果提供了type，确保对应的MonitorObjectType存在
+            obj_type, created = MonitorObjectType.objects.get_or_create(
+                id=type_value,
+                defaults={'order': 999}  # 新导入的分类默认排序为999
+            )
+            data["type"] = obj_type
 
         monitor_obj = MonitorObject.objects.filter(name=data["name"]).first()
 
@@ -55,7 +66,7 @@ class MonitorPluginService:
                 name=name,
             ) for name in new_groups_name
         ]
-        MetricGroup.objects.bulk_create(create_metric_group, batch_size=200)
+        MetricGroup.objects.bulk_create(create_metric_group, batch_size=DatabaseConstants.BULK_CREATE_BATCH_SIZE)
 
         groups = MetricGroup.objects.filter(monitor_object=monitor_obj)
         groups_map = {i.name: i.id for i in groups}
@@ -100,10 +111,10 @@ class MonitorPluginService:
         if metrics_to_update:
             Metric.objects.bulk_update(metrics_to_update, [
                 "metric_group_id", "display_name", "query", "unit", "data_type", "description", "dimensions", "instance_id_keys"
-            ], batch_size=200)
+            ], batch_size=DatabaseConstants.BULK_UPDATE_BATCH_SIZE)
 
         if metrics_to_create:
-            Metric.objects.bulk_create(metrics_to_create, batch_size=200)
+            Metric.objects.bulk_create(metrics_to_create, batch_size=DatabaseConstants.BULK_CREATE_BATCH_SIZE)
 
         return monitor_obj
 
@@ -147,7 +158,7 @@ class MonitorPluginService:
             "plugin": plugin_obj.name,
             "plugin_desc": plugin_obj.description,
             "name": monitor_obj.name,
-            "type": monitor_obj.type,
+            "type": monitor_obj.type_id if monitor_obj.type else None,  # 导出type的id值
             "description": monitor_obj.description,
             "metrics": [
                 {

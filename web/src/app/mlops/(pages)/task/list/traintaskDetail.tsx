@@ -1,9 +1,10 @@
 import SimpleLineChart from "@/app/mlops/components/charts/simpleLineChart";
 import useMlopsTaskApi from "@/app/mlops/api/task";
-import { Button, Spin } from "antd";
-import { LeftOutlined } from "@ant-design/icons";
+import { Spin } from "antd";
+// import { LeftOutlined } from "@ant-design/icons";
 import { useEffect, useState, useRef, useCallback } from "react";
 import { useTranslation } from "@/utils/i18n";
+import styles from './index.module.scss';
 
 interface TrainTaskDetailProps {
   metricData: any,
@@ -106,22 +107,22 @@ const LazyChart: React.FC<LazyChartProps> = ({ metricName, runId, getMetricsDeta
   };
 
   return (
-    <div ref={chartRef} className="w-[400px] mb-6 mx-3 rounded-lg border p-3">
-      <div className="mb-3 px-2">
-        <h3 className="text-base font-medium text-gray-800 truncate">
+    <div ref={chartRef} className={styles.metricCard}>
+      <div className={styles.metricCardHeader}>
+        <h3 className={styles.metricCardTitle}>
           {metricName}
         </h3>
       </div>
-      <div className="w-full pr-2 h-[260px]">
+      <div className={styles.metricCardContent}>
         {loading ? (
-          <div className="w-full h-full flex items-center justify-center">
-            <Spin />
+          <div className={styles.metricCardLoading}>
+            <Spin size="small" />
           </div>
         ) : data.length > 0 ? (
           <SimpleLineChart data={data} />
         ) : (
-          <div className="w-full h-full flex items-center justify-center bg-gray-50">
-            <span className="text-sm text-gray-400 text-center px-4">
+          <div className={styles.metricCardEmpty}>
+            <span className={styles.metricCardEmptyText}>
               {t(`common.noData`)}
             </span>
           </div>
@@ -133,7 +134,7 @@ const LazyChart: React.FC<LazyChartProps> = ({ metricName, runId, getMetricsDeta
 
 const TrainTaskDetail = ({
   metricData,
-  backToList
+  // backToList
 }: TrainTaskDetailProps) => {
   const [metrics, setMetricsList] = useState<string[]>([]);
   const [loading, setLoading] = useState(false);
@@ -168,70 +169,70 @@ const TrainTaskDetail = ({
   }, [getTrainTaskMetricsDetail]);
 
   return (
-    <>
-      <div className="w-full h-full min-h-screen">
-        <div className="max-w-7xl mx-auto w-full h-full">
-          <div className="mb-6">
-            <Button
-              variant="link"
-              color="default"
-              icon={<LeftOutlined />}
-              onClick={backToList}
-              className="text-gray-600 hover:text-gray-800"
-            >
-              返回列表
-            </Button>
+    <div className={styles.trainTaskDetail}>
+      <div className={styles.taskDetailContainer}>
+        {/* Header Section */}
+        <div className={styles.taskHeader}>
+          <div className={styles.taskHeaderContent}>
+            <div className={styles.taskInfo}>
+              {metricData?.run_name && (
+                <div className={styles.taskInfoItem}>
+                  <span className={styles.taskInfoLabel}>任务名称</span>
+                  <span className={styles.taskInfoValue}>{metricData.run_name}</span>
+                </div>
+              )}
+              {metricData?.run_id && (
+                <div className={styles.taskInfoItem}>
+                  <span className={styles.taskInfoLabel}>任务ID</span>
+                  <span className={styles.taskInfoValue}>{metricData.run_id}</span>
+                </div>
+              )}
+            </div>
           </div>
+        </div>
 
-          {/* 指标标题 */}
-          <div className="mb-6 rounded-lg p-6 ">
-            <h2 className="text-2xl font-bold text-gray-900 mb-2">
-              训练指标详情
-            </h2>
-            {metricData?.run_name && (
-              <p className="text-sm text-gray-600">
-                任务名称: <span className="font-medium">{metricData.run_name}</span>
-              </p>
-            )}
-            {metricData?.run_id && (
-              <p className="text-sm text-gray-600 mt-1">
-                任务ID: <span className="font-mono text-xs">{metricData.run_id}</span>
-              </p>
-            )}
-          </div>
-
-          {/* 加载状态 */}
+        {/* Content Section */}
+        <div className={styles.taskContent}>
+          {/* Loading State */}
           {loading && (
-            <div className="flex w-full h-full items-center justify-center py-16 bg-white rounded-lg shadow-sm">
+            <div className={styles.taskLoading}>
               <Spin size="large" />
+              <span className={styles.taskLoadingText}>正在加载训练指标...</span>
             </div>
           )}
 
-          {/* 指标图表 */}
+          {/* Metrics Grid */}
           {!loading && metrics.length > 0 && (
-            <div className="flex flex-wrap gap-6 justify-start items-start">
-              {metrics.map((metricName) => (
-                <LazyChart
-                  key={metricName}
-                  metricName={metricName}
-                  runId={metricData?.run_id}
-                  getMetricsDetail={getMetricsDetail}
-                />
-              ))}
+            <div className={styles.metricsSection}>
+              <div className={styles.metricsHeader}>
+                <h2 className={styles.metricsTitle}>训练指标</h2>
+                <div className={styles.metricsCount}>{metrics.length} 个指标</div>
+              </div>
+              <div className={styles.metricsGrid}>
+                {metrics.map((metricName) => (
+                  <LazyChart
+                    key={metricName}
+                    metricName={metricName}
+                    runId={metricData?.run_id}
+                    getMetricsDetail={getMetricsDetail}
+                  />
+                ))}
+              </div>
             </div>
           )}
 
-          {/* 空状态 */}
+          {/* Empty State */}
           {!loading && metrics.length === 0 && (
-            <div className="flex flex-col items-center justify-center py-16 bg-white rounded-lg shadow-sm text-gray-500">
-              <div className="text-lg mb-2">暂无训练指标</div>
-              <div className="text-sm">该任务还没有生成训练指标数据</div>
+            <div className={styles.taskEmpty}>
+              <div className={styles.taskEmptyIcon}>📊</div>
+              <div className={styles.taskEmptyTitle}>暂无训练指标</div>
+              <div className={styles.taskEmptyDescription}>该任务还没有生成训练指标数据</div>
             </div>
           )}
         </div>
       </div>
-    </>
-  )
+    </div>
+  );
 };
 
 export default TrainTaskDetail;

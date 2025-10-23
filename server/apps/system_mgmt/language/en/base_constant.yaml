@@ -1,0 +1,6 @@
+# Module names and display names (from module list translations in group_data_rule_viewset.py)
+# These are display names for various modules in the system, need to be translated according to actual module list
+
+# Basic constants
+# Currently system_mgmt mainly contains error messages, with fewer basic constants
+# New constants requiring translation can be added here as needed

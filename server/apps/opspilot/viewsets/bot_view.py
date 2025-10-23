@@ -1,5 +1,4 @@
 from django.http import JsonResponse
-from django.utils.translation import gettext as _
 from django_filters import filters
 from django_filters.rest_framework import FilterSet
 from rest_framework.decorators import action
@@ -39,7 +38,8 @@ class BotViewSet(AuthViewSet):
             client = get_quota_client(request)
             bot_count, used_bot_count, __ = client.get_bot_quota()
             if bot_count != -1 and bot_count <= used_bot_count:
-                return JsonResponse({"result": False, "message": _("Bot count exceeds quota limit.")})
+                message = self.loader.get("bot_quota_exceeded") if self.loader else "Bot count exceeds quota limit."
+                return JsonResponse({"result": False, "message": message})
         current_team = data.get("team", []) or [int(request.COOKIES.get("current_team"))]
         bot_obj = Bot.objects.create(
             name=data.get("name"),
@@ -78,7 +78,7 @@ class BotViewSet(AuthViewSet):
                 return JsonResponse(
                     {
                         "result": False,
-                        "message": _("You do not have permission to update this bot."),
+                        "message": self.loader.get("no_bot_update_permission") if self.loader else "You do not have permission to update this bot.",
                     }
                 )
         data = request.data
@@ -117,7 +117,12 @@ class BotViewSet(AuthViewSet):
                     client.start_pilot(obj)
                 except Exception as e:
                     logger.exception(e)
-                    return JsonResponse({"result": False, "message": _("Pilot start failed.")})
+                    return JsonResponse(
+                        {
+                            "result": False,
+                            "message": self.loader.get("pilot_start_failed") if self.loader else "Pilot start failed.",
+                        }
+                    )
             else:
                 BotWorkFlow.create_celery_task(obj.id, workflow_data)
             obj.online = is_publish
@@ -154,10 +159,11 @@ class BotViewSet(AuthViewSet):
             current_team = request.COOKIES.get("current_team", "0")
             has_permission = self.get_has_permission(request.user, channel.bot, current_team)
             if not has_permission:
+                message = self.loader.get("no_bot_update_permission") if self.loader else "You do not have permission to update this bot."
                 return JsonResponse(
                     {
                         "result": False,
-                        "message": _("You do not have permission to update this bot."),
+                        "message": message,
                     }
                 )
 
@@ -186,10 +192,11 @@ class BotViewSet(AuthViewSet):
             current_team = request.COOKIES.get("current_team", "0")
             has_permission = self.get_has_permission(request.user, bots, current_team, is_list=True)
             if not has_permission:
+                message = self.loader.get("no_bot_start_permission") if self.loader else "You do not have permission to start this bot."
                 return JsonResponse(
                     {
                         "result": False,
-                        "message": _("You do not have permission to start this bot."),
+                        "message": message,
                     }
                 )
         client = PilotClient()
@@ -216,10 +223,11 @@ class BotViewSet(AuthViewSet):
             current_team = request.COOKIES.get("current_team", "0")
             has_permission = self.get_has_permission(request.user, bots, current_team, is_list=True)
             if not has_permission:
+                message = self.loader.get("no_bot_stop_permission") if self.loader else "You do not have permission to stop this bot"
                 return JsonResponse(
                     {
                         "result": False,
-                        "message": _("You do not have permission to stop this bot"),
+                        "message": message,
                     }
                 )
 

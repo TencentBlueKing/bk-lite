@@ -285,3 +285,4 @@ class WorkFlowTaskResult(models.Model):
     input_data = models.TextField(verbose_name="输入数据")
     output_data = models.JSONField(verbose_name="输出数据", default=dict)
     last_output = models.TextField(verbose_name="最后输出", blank=True, null=True)
+    execute_type = models.CharField(max_length=50, default="restful")

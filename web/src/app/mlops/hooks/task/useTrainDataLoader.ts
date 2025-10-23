@@ -4,11 +4,27 @@ import { TrainData } from "@/app/mlops/types/manage";
 
 
 const useTrainDataLoader = () => {
-  const { getAnomalyTrainData, getLogClusteringTrainData, getTimeSeriesPredictTrainData, getAnomalyTrainDataInfo } = useMlopsManageApi();
+  const {
+    getAnomalyTrainData,
+    getLogClusteringTrainData,
+    getTimeSeriesPredictTrainData,
+    getClassificationTrainData,
+    getAnomalyTrainDataInfo,
+    getLogClusteringTrainDataInfo,
+    getTimeSeriesPredictTrainDataInfo,
+    getClassificationTrainDataInfo
+  } = useMlopsManageApi();
   const getTrainData: Record<string, any> = {
     'anomaly': getAnomalyTrainData,
     'log_clustering': getLogClusteringTrainData,
-    'timeseries_predict': getTimeSeriesPredictTrainData
+    'timeseries_predict': getTimeSeriesPredictTrainData,
+    'classification': getClassificationTrainData
+  };
+  const getTrainDataInfo: Record<string, any> = {
+    'anomaly': getAnomalyTrainDataInfo,
+    'log_clustering': getLogClusteringTrainDataInfo,
+    'timeseries_predict': getTimeSeriesPredictTrainDataInfo,
+    'classification': getClassificationTrainDataInfo
   };
 
   const loadTrainOptions = useCallback(async (datasetId: number, key: string) => {
@@ -30,8 +46,8 @@ const useTrainDataLoader = () => {
     }
   }, [getAnomalyTrainData]);
 
-  const getDatasetByTrainId = useCallback(async (trianDataId: number) => {
-    const { dataset } = await getAnomalyTrainDataInfo(trianDataId, false, false);
+  const getDatasetByTrainId = useCallback(async (trianDataId: number, key: string) => {
+    const { dataset } = await getTrainDataInfo[key](trianDataId, false, false);
     return dataset;
   }, [getAnomalyTrainDataInfo]);
 

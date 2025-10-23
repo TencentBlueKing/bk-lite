@@ -8,6 +8,7 @@ import { useCallback, useState } from 'react';
 import type { Graph as X6Graph } from '@antv/x6';
 import { message } from 'antd';
 import { fetchWidgetData } from '@/app/ops-analysis/utils/widgetDataTransform';
+import { useTranslation } from '@/utils/i18n';
 import { useTopologyApi } from '@/app/ops-analysis/api/topology';
 import { useDataSourceApi } from '@/app/ops-analysis/api/dataSource';
 import { TopologyNodeData } from '@/app/ops-analysis/types/topology';
@@ -42,6 +43,7 @@ export const useGraphData = (
   startLoadingAnimation: (node: any) => void,
   handleSaveCallback?: () => void
 ) => {
+  const { t } = useTranslation();
   const [loading, setLoading] = useState(false);
   const { saveTopology, getTopologyDetail } = useTopologyApi();
   const { getSourceDataByApiId } = useDataSourceApi();
@@ -63,7 +65,7 @@ export const useGraphData = (
         decimalPlaces: nodeData.decimalPlaces,
         description: nodeData.description || '',
         position,
-        zIndex: zIndex || 0, 
+        zIndex: zIndex || 0,
         logoType: nodeData.logoType,
         logoIcon: nodeData.logoIcon,
         logoUrl: nodeData.logoUrl,
@@ -76,7 +78,7 @@ export const useGraphData = (
 
     const edges = graphInstance.getEdges().map((edge: any) => {
       const edgeData = edge.getData();
-      const vertices = edge.getVertices(); 
+      const vertices = edge.getVertices();
 
       return {
         id: edge.id,
@@ -103,7 +105,7 @@ export const useGraphData = (
 
   const handleSaveTopology = useCallback(async (selectedTopology: DirItem) => {
     if (!selectedTopology?.data_id) {
-      message.error('请先选择要保存的拓扑图');
+      message.error(t('topology.saveTopologySelectMsg'));
       return;
     }
 
@@ -120,10 +122,9 @@ export const useGraphData = (
 
       await saveTopology(selectedTopology.data_id, saveData);
       handleSaveCallback?.();
-      message.success('拓扑图保存成功');
+      message.success(t('topology.saveTopologySuccess'));
     } catch (error) {
-      console.error('保存拓扑图失败:', error);
-      message.error('保存拓扑图失败');
+      message.error(t('topology.saveTopologyFailed' + error));
     } finally {
       setLoading(false);
     }
@@ -206,7 +207,7 @@ export const useGraphData = (
       const edgeData: any = {
         lineType: edgeConfig.lineType as 'common_line' | 'network_line',
         lineName: edgeConfig.lineName,
-        arrowDirection: connectionType, 
+        arrowDirection: connectionType,
         sourceInterface: edgeConfig.sourceInterface,
         targetInterface: edgeConfig.targetInterface,
         vertices: edgeConfig.vertices || [],

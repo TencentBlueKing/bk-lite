@@ -5,7 +5,6 @@ from apps.node_mgmt.services.package import PackageService
 from apps.core.logger import node_logger as logger
 
 
-
 def package_version_upload(_type, options):
     _os = options["os"]
     _object = options["object"]

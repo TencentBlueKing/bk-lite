@@ -4,7 +4,6 @@ import {
   EdgeData,
   GraphState,
   ContextMenuState,
-  TextEditState,
   EdgeConfigState,
   NodeEditState
 } from '@/app/ops-analysis/types/topology';
@@ -28,16 +27,6 @@ export const useTopologyState = () => {
     targetType: 'node',
   });
 
-  // 文本编辑状态
-  const [textEditState, setTextEditState] = useState<TextEditState>({
-    isEditing: false,
-    nodeId: null,
-    tempInput: '',
-    position: { x: 0, y: 0 },
-    inputWidth: 120,
-    originalText: '',
-  });
-
   // 边配置状态
   const [edgeConfigState, setEdgeConfigState] = useState<EdgeConfigState>({
     visible: false,
@@ -56,8 +45,6 @@ export const useTopologyState = () => {
   // Refs
   const isDrawingRef = useRef(false);
   const drawingEdgeRef = useRef<Edge | null>(null);
-  const finishTextEditRef = useRef<(() => void) | null>(null);
-  const startTextEditRef = useRef<((nodeId: string, currentText: string) => void) | null>(null);
   const isEditModeRef = useRef(graphState.isEditMode);
 
   // 状态更新助手函数
@@ -67,10 +54,6 @@ export const useTopologyState = () => {
 
   const updateContextMenuState = useCallback((updates: Partial<ContextMenuState>) => {
     setContextMenuState(prev => ({ ...prev, ...updates }));
-  }, []);
-
-  const updateTextEditState = useCallback((updates: Partial<TextEditState>) => {
-    setTextEditState(prev => ({ ...prev, ...updates }));
   }, []);
 
   const updateEdgeConfigState = useCallback((updates: Partial<EdgeConfigState>) => {
@@ -102,16 +85,6 @@ export const useTopologyState = () => {
       position: { x: 0, y: 0 },
     });
 
-    // 重置文本编辑状态
-    updateTextEditState({
-      isEditing: false,
-      nodeId: null,
-      tempInput: '',
-      position: { x: 0, y: 0 },
-      inputWidth: 120,
-      originalText: '',
-    });
-
     // 重置边配置状态
     updateEdgeConfigState({
       visible: false,
@@ -128,15 +101,13 @@ export const useTopologyState = () => {
     // 重置绘制状态
     isDrawingRef.current = false;
     drawingEdgeRef.current = null;
-    finishTextEditRef.current = null;
-    startTextEditRef.current = null;
 
     // 清理图形选择状态
     if (graphState.instance) {
       graphState.instance.disablePlugins(['selection']);
       graphState.instance.cleanSelection();
     }
-  }, [graphState.instance, updateGraphState, updateContextMenuState, updateTextEditState, updateEdgeConfigState, updateNodeEditState]);
+  }, [graphState.instance, updateGraphState, updateContextMenuState, updateEdgeConfigState, updateNodeEditState]);
 
   return {
     // 图形相关状态和操作
@@ -166,20 +137,6 @@ export const useTopologyState = () => {
     contextMenuTargetType: contextMenuState.targetType,
     setContextMenuTargetType: (targetType: 'node' | 'edge') => updateContextMenuState({ targetType }),
 
-    // 文本编辑状态和操作
-    isEditingText: textEditState.isEditing,
-    setIsEditingText: (isEditing: boolean) => updateTextEditState({ isEditing }),
-    editingNodeId: textEditState.nodeId,
-    setEditingNodeId: (nodeId: string | null) => updateTextEditState({ nodeId }),
-    tempTextInput: textEditState.tempInput,
-    setTempTextInput: (tempInput: string) => updateTextEditState({ tempInput }),
-    editPosition: textEditState.position,
-    setEditPosition: (position: { x: number; y: number }) => updateTextEditState({ position }),
-    inputWidth: textEditState.inputWidth,
-    setInputWidth: (inputWidth: number) => updateTextEditState({ inputWidth }),
-    originalText: textEditState.originalText,
-    setOriginalText: (originalText: string) => updateTextEditState({ originalText }),
-
     // 边配置状态和操作
     edgeConfigVisible: edgeConfigState.visible,
     setEdgeConfigVisible: (visible: boolean) => updateEdgeConfigState({ visible }),
@@ -202,8 +159,6 @@ export const useTopologyState = () => {
     // Refs
     isDrawingRef,
     drawingEdgeRef,
-    finishTextEditRef,
-    startTextEditRef,
     isEditModeRef,
     updateDrawingState,
   };

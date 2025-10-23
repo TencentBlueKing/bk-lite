@@ -23,3 +23,4 @@ dist
 *.log
 report.html
 mlruns
+uv.lock

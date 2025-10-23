@@ -1,0 +1,12 @@
+{
+  "plugin": "Kafka-Exporter",
+  "plugin_desc": "Kafka Exporter is used to collect and export metrics from Kafka brokers, including topic statistics, partition counts, consumer group status, and more, to help monitor the health and performance of Kafka clusters.",
+  "name": "Kafka",
+  "icon": "kafka",
+  "type": "Middleware",
+  "description": "",
+  "default_metric": "any({instance_type='kafka'}) by (instance_id)",
+  "instance_id_keys": ["instance_id"],
+  "supplementary_indicators": [],
+  "metrics": []
+}

@@ -126,7 +126,8 @@
     "selectWarn": "请选择一个训练文件类型",
     "editEaxmpleTip": "每行一个样例，选中文字可添加实体标注",
     "selectEntityTip": "提示：在编辑模式下选中文字可以添加实体标注",
-    "checkpoint": "检查点"
+    "checkpoint": "检查点",
+    "classification": "分类任务"
   },
   "traintask": {
     "train": "训练",

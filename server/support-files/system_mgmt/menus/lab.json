@@ -1,0 +1,47 @@
+{
+  "client_id": "lab",
+  "name": "Lab",
+  "url": "/lab/mirror",
+  "description": "AI end-to-end lifecycle management tool, integrating dataset management and model task training functionalities, enhances the flexibility and efficiency of machine learning.",
+  "icon": "moxingguanli1",
+  "tags": [
+    "数据集管理",
+    "数据打标",
+    "模型训练",
+    "模型发布"
+  ],
+  "menus": [
+    {
+      "name": "Images",
+      "children": [
+        {
+          "id": "images",
+          "name": "Images",
+          "operation": ["View", "Add", "Delete", "Edit"]
+        }
+      ]
+    },
+    {
+      "name": "Environment",
+      "children": [
+        {
+          "id": "environment",
+          "name": "Environment",
+          "operation": ["View", "Add", "Delete", "Edit"]
+        }
+      ]
+    }
+  ],
+  "roles": [
+    {
+      "name": "admin",
+      "role_name": "lab_admin",
+      "menus": []
+    },
+    {
+      "name": "normal",
+      "role_name": "lab_normal",
+      "menus": ["images-View", "environment-View"]
+    }
+  ]
+}

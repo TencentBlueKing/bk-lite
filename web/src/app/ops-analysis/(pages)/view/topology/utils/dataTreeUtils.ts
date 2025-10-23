@@ -79,7 +79,7 @@ export const buildTreeData = (obj: any): any[] => {
     } else {
       return [
         {
-          title: '数据值',
+          title: '',
           key: 'value',
           value: 'value',
           isLeaf: true,

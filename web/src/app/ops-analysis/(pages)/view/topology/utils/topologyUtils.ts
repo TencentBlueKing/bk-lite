@@ -439,22 +439,17 @@ export const hideAllEdgeTools = (graph: any) => {
 
 export const showPorts = (graph: any, cell: any) => {
   if (cell.isNode()) {
-    // 只为有端口的节点显示主要端口（排除文本节点）
-    const nodeData = cell.getData();
-    if (nodeData?.type !== 'text') {
-      ['top', 'bottom', 'left', 'right'].forEach((port) =>
-        cell.setPortProp(port, 'attrs/circle/opacity', PORT_DEFAULTS.OPACITY.VISIBLE)
-      );
-    }
+    ['top', 'bottom', 'left', 'right'].forEach((port) =>
+      cell.setPortProp(port, 'attrs/circle/opacity', PORT_DEFAULTS.OPACITY.VISIBLE)
+    );
   } else if (cell.isEdge()) {
     ['top', 'bottom', 'left', 'right'].forEach((port) => {
       const sourceNode = graph.getCellById(cell.getSourceCellId());
       const targetNode = graph.getCellById(cell.getTargetCellId());
-      // 检查节点是否有端口
-      if (sourceNode && sourceNode.getData()?.type !== 'text') {
+      if (sourceNode) {
         sourceNode.setPortProp(port, 'attrs/circle/opacity', PORT_DEFAULTS.OPACITY.VISIBLE);
       }
-      if (targetNode && targetNode.getData()?.type !== 'text') {
+      if (targetNode) {
         targetNode.setPortProp(port, 'attrs/circle/opacity', PORT_DEFAULTS.OPACITY.VISIBLE);
       }
     });
@@ -463,13 +458,9 @@ export const showPorts = (graph: any, cell: any) => {
 
 export const hideAllPorts = (graph: any) => {
   graph.getNodes().forEach((node: any) => {
-    // 只为有端口的节点隐藏端口（排除文本节点）
-    const nodeData = node.getData();
-    if (nodeData?.type !== 'text') {
-      ['top', 'bottom', 'left', 'right'].forEach((port: string) =>
-        node.setPortProp(port, 'attrs/circle/opacity', PORT_DEFAULTS.OPACITY.HIDDEN)
-      );
-    }
+    ['top', 'bottom', 'left', 'right'].forEach((port: string) =>
+      node.setPortProp(port, 'attrs/circle/opacity', PORT_DEFAULTS.OPACITY.HIDDEN)
+    );
   });
 };
 

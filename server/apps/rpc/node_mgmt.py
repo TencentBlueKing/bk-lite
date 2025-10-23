@@ -128,3 +128,11 @@ class NodeMgmt(object):
         """
         return_data = self.client.run("import_collectors", collectors)
         return return_data
+
+    def cloudregion_tls_env_by_node_id(self, node_id):
+        """
+        获取节点对应云区域的TLS配置
+        :param node_id: 节点ID
+        """
+        return_data = self.client.run("cloudregion_tls_env_by_node_id", node_id)
+        return return_data

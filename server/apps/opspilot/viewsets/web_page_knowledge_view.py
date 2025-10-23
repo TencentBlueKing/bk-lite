@@ -1,15 +1,14 @@
 from django.http import JsonResponse
-from django.utils.translation import gettext as _
-from rest_framework import viewsets
 from rest_framework.decorators import action
 
 from apps.core.decorators.api_permission import HasPermission
+from apps.core.utils.viewset_utils import LanguageViewSet
 from apps.opspilot.models import WebPageKnowledge
 from apps.opspilot.serializers import WebPageKnowledgeSerializer
 from apps.opspilot.utils.knowledge_utils import KnowledgeDocumentUtils
 
 
-class WebPageKnowledgeViewSet(viewsets.ModelViewSet):
+class WebPageKnowledgeViewSet(LanguageViewSet):
     queryset = WebPageKnowledge.objects.all()
     serializer_class = WebPageKnowledgeSerializer
     ordering = ("-id",)
@@ -20,7 +19,7 @@ class WebPageKnowledgeViewSet(viewsets.ModelViewSet):
     def create_web_page_knowledge(self, request):
         kwargs = request.data
         if not kwargs.get("url").strip():
-            return JsonResponse({"result": False, "data": _("url is required")})
+            return JsonResponse({"result": False, "data": "url is required"})
         kwargs["knowledge_source_type"] = "web_page"
         new_doc = KnowledgeDocumentUtils.get_new_document(kwargs, request.user.username, request.user.domain)
         knowledge_obj = WebPageKnowledge.objects.create(

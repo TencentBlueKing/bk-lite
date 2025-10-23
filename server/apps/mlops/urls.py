@@ -1,35 +1,15 @@
-from apps.mlops.views.anomaly_detection_serving import AnomalyDetectionServingViewSet
-from apps.mlops.views.anomaly_detection_train_job import AnomalyDetectionTrainJobViewSet
 from rest_framework import routers
 
-from apps.mlops.views.anomaly_detection_dataset import AnomalyDetectionDatasetViewSet
-from apps.mlops.views.anomaly_detection_train_data import AnomalyDetectionTrainDataViewSet
-from apps.mlops.views.timeseries_predict_dataset import TimeSeriesPredictDatasetViewSet
-from apps.mlops.views.timeseries_predict_train_data import TimeSeriesPredictTrainDataViewSet
-from apps.mlops.views.timeseries_predict_train_job import TimeSeriesPredictTrainJobViewSet
-from apps.mlops.views.timeseries_predict_train_history import TimeSeriesPredictTrainHistoryViewSet
-from apps.mlops.views.timeseries_predict_serving import TimeSeriesPredictServingViewSet
-from apps.mlops.views.log_clustering_dataset import LogClusteringDatasetViewSet
-from apps.mlops.views.log_clustering_train_data import LogClusteringTrainDataViewSet
-from apps.mlops.views.log_clustering_train_job import LogClusteringTrainJobViewSet
-from apps.mlops.views.log_clustering_train_history import LogClusteringTrainHistoryViewSet
-from apps.mlops.views.log_clustering_serving import LogClusteringServingViewSet
-from apps.mlops.views.rasa_dataset import RasaDatasetViewSet
-from apps.mlops.views.rase_intent import RasaIntentViewSet
-from apps.mlops.views.rasa_response import RasaResponseViewSet
-from apps.mlops.views.rasa_rule import RasaRuleViewSet
-from apps.mlops.views.rasa_story import RasaStoryViewSet
-from apps.mlops.views.rasa_entity import RasaEntityViewSet
-from apps.mlops.views.rasa_slot import RasaSlotViewSet
-from apps.mlops.views.rasa_form import RasaFormViewSet
-from apps.mlops.views.rasa_action import RasaActionViewSet
-from apps.mlops.views.rasa_pipeline import RasaPipelineViewSet
+from apps.mlops.views.anomaly_detection import *
+from apps.mlops.views.timeseries_predict import *
+from apps.mlops.views.log_clustering import *
+from apps.mlops.views.rasa import *
 
 router = routers.DefaultRouter()
 
 # 异常检测
-router.register(r'anomaly_detection_datasets', AnomalyDetectionDatasetViewSet,basename='anomaly_detection_datasets')
-router.register(r'anomaly_detection_train_data', AnomalyDetectionTrainDataViewSet,basename='anomaly_detection_train_data')
+router.register(r'anomaly_detection_datasets', AnomalyDetectionDatasetViewSet, basename='anomaly_detection_datasets')
+router.register(r'anomaly_detection_train_data', AnomalyDetectionTrainDataViewSet, basename='anomaly_detection_train_data')
 router.register(r'anomaly_detection_train_jobs', AnomalyDetectionTrainJobViewSet, basename='anomaly_detection_train_jobs')
 router.register(r'anomaly_detection_servings', AnomalyDetectionServingViewSet, basename='anomaly_detection_servings')
 
@@ -47,7 +27,7 @@ router.register(r'log_clustering_train_jobs', LogClusteringTrainJobViewSet, base
 router.register(r'log_clustering_train_history', LogClusteringTrainHistoryViewSet, basename='log_clustering_train_history')
 router.register(r'log_clustering_servings', LogClusteringServingViewSet, basename='log_clustering_servings')
 
-#Rasa
+# Rasa
 router.register(r'rasa_datasets', RasaDatasetViewSet, basename='rasa_datasets')
 router.register(r'rasa_intent', RasaIntentViewSet, basename='rasa_intent')
 router.register(r'rasa_response', RasaResponseViewSet, basename='rasa_response')

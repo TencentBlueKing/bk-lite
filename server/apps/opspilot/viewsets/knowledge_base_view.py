@@ -1,6 +1,5 @@
 from django.db.transaction import atomic
 from django.http import JsonResponse
-from django.utils.translation import gettext as _
 from rest_framework import status
 from rest_framework.decorators import action
 from rest_framework.response import Response
@@ -49,14 +48,16 @@ class KnowledgeBaseViewSet(AuthViewSet):
     def create(self, request, *args, **kwargs):
         params = request.data
         if not params.get("team"):
-            return JsonResponse({"result": False, "message": _("The team field is required.")})
+            message = self.loader.get("team_required") if self.loader else "The team field is required."
+            return JsonResponse({"result": False, "message": message})
         if "embed_model" not in params:
             params["embed_model"] = EmbedProvider.objects.get(name="FastEmbed(BAAI/bge-small-zh-v1.5)").id
         if KnowledgeBase.objects.filter(name=params["name"]).exists():
+            message = self.loader.get("knowledge_base_name_exists") if self.loader else "The knowledge base name already exists."
             return JsonResponse(
                 {
                     "result": False,
-                    "message": _("The knowledge base name already exists."),
+                    "message": message,
                 }
             )
         params["created_by"] = request.user.username
@@ -82,7 +83,9 @@ class KnowledgeBaseViewSet(AuthViewSet):
                 return JsonResponse(
                     {
                         "result": False,
-                        "message": _("The knowledge base is training and cannot be modified."),
+                        "message": self.loader.get("knowledge_base_training")
+                        if self.loader
+                        else "The knowledge base is training and cannot be modified.",
                     }
                 )
             delete_qa_pairs = params.pop("delete_qa_pairs", False)
@@ -100,7 +103,9 @@ class KnowledgeBaseViewSet(AuthViewSet):
                 return JsonResponse(
                     {
                         "result": False,
-                        "message": _("You do not have permission to update this instance"),
+                        "message": self.loader.get("permission_update_denied")
+                        if self.loader
+                        else "You do not have permission to update this instance",
                     }
                 )
 
@@ -110,7 +115,7 @@ class KnowledgeBaseViewSet(AuthViewSet):
                 return JsonResponse(
                     {
                         "result": False,
-                        "message": _("The knowledge base name already exists."),
+                        "message": self.loader.get("knowledge_base_name_exists") if self.loader else "The knowledge base name already exists.",
                     }
                 )
             instance.name = kwargs["name"]
@@ -140,17 +145,23 @@ class KnowledgeBaseViewSet(AuthViewSet):
     @HasPermission("knowledge_list-Delete")
     def destroy(self, request, *args, **kwargs):
         if KnowledgeDocument.objects.filter(knowledge_base_id=kwargs["pk"]).exists():
+            message = (
+                self.loader.get("knowledge_base_has_documents") if self.loader else "This knowledge base contains documents and cannot be deleted."
+            )
             return JsonResponse(
                 {
                     "result": False,
-                    "message": _("This knowledge base contains documents and cannot be deleted."),
+                    "message": message,
                 }
             )
         elif QAPairs.objects.filter(knowledge_base_id=kwargs["pk"]).exists():
+            message = (
+                self.loader.get("knowledge_base_has_qa_pairs") if self.loader else "This knowledge base contains Q&A pairs and cannot be deleted."
+            )
             return JsonResponse(
                 {
                     "result": False,
-                    "message": _("This knowledge base contains Q&A pairs and cannot be deleted."),
+                    "message": message,
                 }
             )
         return super().destroy(request, *args, **kwargs)

@@ -44,13 +44,13 @@ const Analysis: React.FC = () => {
   return (
     <div className="flex w-full h-[calc(100vh-90px)] relative rounded-lg">
       <div
-        className={`h-full border-r border-[var(--color-border-1)] relative transition-all duration-300 ${
-          collapsed ? 'w-0 min-w-0' : 'w-[200px] min-w-[200px]'
+        className={`h-full  relative transition-all duration-300 ${
+          collapsed ? 'w-0 min-w-0' : 'w-[220px] min-w-[220px]'
         }`}
         style={{
-          width: collapsed ? 0 : 200,
-          minWidth: collapsed ? 0 : 200,
-          maxWidth: collapsed ? 0 : 200,
+          width: collapsed ? 0 : 220,
+          minWidth: collapsed ? 0 : 220,
+          maxWidth: collapsed ? 0 : 220,
           flexShrink: 0,
         }}
       >
@@ -60,7 +60,8 @@ const Analysis: React.FC = () => {
             loading={false}
             defaultSelectedKey={dashboardId}
             onNodeSelect={handleNodeSelect}
-            style={{ width: 200, height: 'calc(100vh - 90px)' }}
+            style={{ width: 220, height: 'calc(100vh - 90px)' }}
+            inputStyle={{ width: 190 }}
           />
         )}
         <Button
@@ -75,7 +76,10 @@ const Analysis: React.FC = () => {
           {collapsed ? <RightOutlined /> : <LeftOutlined />}
         </Button>
       </div>
-      <div className="h-full flex-1 flex" style={{ minWidth: 0 }}>
+      <div
+        className="h-full flex-1 flex border-l border-[var(--color-border-1)]"
+        style={{ minWidth: 0 }}
+      >
         <Dashboard
           ref={dashboardRef}
           selectedDashboard={selectedDashboard}

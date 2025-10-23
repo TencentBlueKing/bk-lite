@@ -3,7 +3,7 @@
 # @Time: 2025/7/18 10:59
 # @Author: windyzhao
 from rest_framework import serializers
-from apps.operation_analysis.models import DataSourceAPIModel, Dashboard, Directory, Topology, NameSpace, DataSourceTag
+from apps.operation_analysis.models import DataSourceAPIModel, Dashboard, Directory, Topology, NameSpace, DataSourceTag, Architecture
 
 
 class BaseFormatTimeSerializer(serializers.ModelSerializer):
@@ -47,6 +47,21 @@ class DashboardModelSerializer(BaseFormatTimeSerializer):
 class TopologyModelSerializer(BaseFormatTimeSerializer):
     class Meta:
         model = Topology
+        fields = "__all__"
+        extra_kwargs = {}
+
+    def create(self, validated_data):
+        """
+        验证创建的时候 有没有带directory_id 如果没有则报错
+        """
+        if 'directory' not in validated_data:
+            raise serializers.ValidationError({"directory": ["directory is required for creation."]})
+        return super().create(validated_data)
+
+
+class ArchitectureModelSerializer(BaseFormatTimeSerializer):
+    class Meta:
+        model = Architecture
         fields = "__all__"
         extra_kwargs = {}
 

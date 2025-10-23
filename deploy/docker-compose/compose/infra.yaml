@@ -22,6 +22,7 @@ services:
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       - ../conf/traefik/dynamic.yml:/etc/traefik/dynamic.yml
+      - ../conf/certs:/etc/certs:ro
     labels:
       - "traefik.enable=true"
       - "traefik.http.services.traefik-dashboard.loadbalancer.server.port=8080"
@@ -34,7 +35,8 @@ services:
       - "--providers.file.filename=/etc/traefik/dynamic.yml"
       - "--providers.file.watch=true"
       - "--accesslog"
-      - "--entrypoints.web.address=:${TRAEFIK_WEB_PORT}"
+      - "--entrypoints.websecure.address=:${TRAEFIK_WEB_PORT}"
+      - "--entrypoints.websecure.http.tls=true"
     networks:
       - prod
 
@@ -61,7 +63,8 @@ services:
     image: ${DOCKER_IMAGE_NATS}
     restart: always
     volumes:
-      - ../conf/nats/nats.conf:/etc/nats/nats.conf
+      - ../conf/nats/nats.conf:/etc/nats/nats.conf:ro
+      - ../conf/certs:/etc/nats/certs:ro
       - nats:/nats
     ports:
       - "4222:4222"
@@ -95,6 +98,8 @@ services:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
       PGDATA: /data/postgres
+    ports:
+      - "5432:5432"
     volumes:
       - postgres:/data/postgres
       - ../conf/postgres/initdb.sql:/docker-entrypoint-initdb.d/initdb.sql
@@ -114,6 +119,8 @@ services:
       - prod
     volumes:
       - victoria-logs:/vlogs
+    ports:
+      - "9428:9428"      
     command:
       - -storageDataPath=/vlogs
       - -loggerFormat=json
@@ -130,6 +137,9 @@ services:
     environment:
       MINIO_ROOT_USER: ${MINIO_ROOT_USER}
       MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
+    ports:
+      - "9000:9000"
+      - "9001:9001"
     command: server /data --console-address ":9001"
     volumes:
       - minio:/data
@@ -152,6 +162,9 @@ services:
       - --artifacts-destination
       - s3://mlflow-artifacts/
       - --serve-artifacts
+    ports:
+      - "15000:15000"
+    restart: always   
     networks:
       - prod
     environment:
@@ -175,10 +188,13 @@ services:
     container_name: nats-executor
     environment:
       - NATS_INSTANCE_ID=default
-      - NATS_URLS=nats://$NATS_ADMIN_USERNAME:$NATS_ADMIN_PASSWORD@nats:4222
+      - NATS_URLS=tls://$NATS_ADMIN_USERNAME:$NATS_ADMIN_PASSWORD@nats:4222
+      - NATS_CA_FILE=/etc/nats/certs/ca.crt
     networks:
       - prod
     restart: always
+    volumes:
+      - ../conf/certs:/etc/nats/certs:ro
 
   falkordb:
     image: ${DOCKER_IMAGE_FALKORDB}
@@ -186,6 +202,8 @@ services:
     environment:
       - REDIS_ARGS=--requirepass ${FALKORDB_PASSWORD}
       - FALKORDB_ARGS=THREAD_COUNT 4
+    ports:
+      - "6479:6479"      
     networks:
       - prod
     healthcheck:

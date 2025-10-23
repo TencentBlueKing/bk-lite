@@ -18,7 +18,8 @@ const ReleaseModal = forwardRef<ModalRef, ReleaseModalProps>(({ trainjobs, activ
   const { 
     addAnomalyServings, updateAnomalyServings,
     addLogClusteringServings, updateLogClusteringServings,
-    addTimeseriesPredictServings, updateTimeSeriesPredictServings
+    addTimeseriesPredictServings, updateTimeSeriesPredictServings,
+    addClassificationServings, updateClassificationServings
   } = useMlopsModelReleaseApi();
   const formRef = useRef<FormInstance>(null);
   const [type, setType] = useState<string>('add');
@@ -144,6 +145,17 @@ const ReleaseModal = forwardRef<ModalRef, ReleaseModalProps>(({ trainjobs, activ
             <Select options={trainjobs} placeholder={t(`model-release.selectTraintask`)} />
           </Form.Item>
         );
+
+      case 'classification': 
+        return (
+          <Form.Item
+            name='classification_train_job'
+            label={t(`traintask.traintask`)}
+            rules={[{ required: true, message: t('common.inputMsg') }]}
+          >
+            <Select options={trainjobs} placeholder={t(`model-release.selectTraintask`)} />
+          </Form.Item>
+        )
       
       default:
         return null;
@@ -160,7 +172,10 @@ const ReleaseModal = forwardRef<ModalRef, ReleaseModalProps>(({ trainjobs, activ
     },
     'timeseries_predict': async (params: any) => {
       await addTimeseriesPredictServings(params);
-    }
+    },
+    'classification': async (params: any) => {
+      await addClassificationServings(params);
+    },
   };
 
   const handleUpdateMap: Record<string, ((id: number, params: any) => Promise<void>) | null> = {
@@ -173,7 +188,10 @@ const ReleaseModal = forwardRef<ModalRef, ReleaseModalProps>(({ trainjobs, activ
     },
     'timeseries_predict': async (id: number, params: any) => {
       await updateTimeSeriesPredictServings(id, params);
-    }
+    },
+    'classification': async (id: number, params: any) => {
+      await updateClassificationServings(id, params);
+    },
   };
 
   const handleConfirm = async () => {

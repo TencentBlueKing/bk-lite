@@ -77,7 +77,6 @@
     "successfullyDeleted": "Delete successfully !",
     "successfullyAdded": "New successfully added !",
     "successfulSetted": "Setting successful !",
-    "successfulCopied": "Copy successful !",
     "successfullyModified": "Modified successfully !",
     "successfullyExported": "Export successfully !",
     "successfullyImported": "Import successfully !",
@@ -97,10 +96,7 @@
     "more": "More",
     "organizations": "Organizations",
     "all": "All",
-    "copy": "Copy",
     "remove": "Remove",
-    "inputPassword": "Please input the password",
-    "reset": "Reset",
     "prompt": "Prompt",
     "batchEdit": "Batch Edit",
     "belongingGroup": "Belonging Group"
@@ -126,6 +122,7 @@
     "group": "Group",
     "search": {
       "searchPlaceHolder": "Enter your search query here and press Enter to search",
+      "smartSearchPlaceHolder": "Enter search criteria",
       "searchCriteria": "Search Criteria",
       "addToQuery": "Add to query statement",
       "histogram": "Query Histogram",
@@ -150,7 +147,11 @@
       "searchError": "Log grouping cannot be empty",
       "storageConditions": "Storage Conditions",
       "loadConditions": "Load Conditions",
-      "query": "Query"
+      "query": "Query",
+      "loading": "Loading",
+      "loadingEllipsis": "Loading...",
+      "field": "Field",
+      "noMatchValues": "No matching values"
     },
     "integration": {
       "interval": "Interval",
@@ -298,7 +299,7 @@
       "effective": "Effective",
       "policyType": "Policy Type",
       "queryCriteria": "Query Criteria",
-      "polymerizationConditions": "Polymerization Conditions",
+      "polymerizationConditions": "Polymerization",
       "polymerizationConditionsDes": "Please select fields for aggregation, such as selecting the source field for aggregation. The source: 1.1.1.1 and source: 1.1.1.2 in the original log will be calculated separately as two alarm policies, each generating events and alarms",
       "queryCriteriaTips": "Please fill in the query criteria. Once the query criteria are met, an alarm will be generated",
       "keywordAlert": "Keyword Alert",

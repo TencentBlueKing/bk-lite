@@ -69,10 +69,10 @@ export const TYPOGRAPHY = {
   },
 
   FONT_WEIGHT: {
-    NORMAL: 400,
-    MEDIUM: 500,
-    SEMIBOLD: 600,
-    BOLD: 700,
+    NORMAL: '400',
+    MEDIUM: '500',
+    SEMIBOLD: '600',
+    BOLD: '700',
   },
 } as const;
 

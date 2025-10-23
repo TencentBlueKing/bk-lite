@@ -5,6 +5,7 @@ import type { DataNode as TreeDataNode } from 'antd/lib/tree';
 import TopSection from '@/components/top-section';
 import UserModal, { ModalRef } from './userModal';
 import PasswordModal, { PasswordModalRef } from '@/app/system-manager/components/user/passwordModal';
+import GroupEditModal, { GroupModalRef } from '@/app/system-manager/components/group/GroupEditModal';
 import { useTranslation } from '@/utils/i18n';
 import { useClientData } from '@/context/client';
 import CustomTable from '@/components/custom-table';
@@ -25,6 +26,7 @@ const { Search } = Input;
 
 interface ExtendedTreeDataNode extends TreeDataNode {
   hasAuth?: boolean;
+  roleIds?: number[];
   children?: ExtendedTreeDataNode[];
 }
 
@@ -43,22 +45,19 @@ const User: React.FC = () => {
 
   const [addGroupModalOpen, setAddGroupModalOpen] = useState(false);
   const [addSubGroupModalOpen, setAddSubGroupModalOpen] = useState(false);
-  const [renameGroupModalOpen, setRenameGroupModalOpen] = useState(false);
   const [addGroupLoading, setAddGroupLoading] = useState(false);
-  const [renameGroupLoading, setRenameGroupLoading] = useState(false);
   const [currentParentGroupKey, setCurrentParentGroupKey] = useState<number | null>(null);
-  const [renameGroupKey, setRenameGroupKey] = useState<number | null>(null);
 
   const addGroupFormRef = useRef<any>(null);
-  const renameGroupFormRef = useRef<any>(null);
   const userModalRef = useRef<ModalRef>(null);
   const passwordModalRef = useRef<PasswordModalRef>(null);
+  const groupEditModalRef = useRef<GroupModalRef>(null);
 
   const { clientData } = useClientData();
   const { t } = useTranslation();
   const { confirm } = Modal;
   const { getUsersList, getOrgTree, deleteUser } = useUserApi();
-  const { addTeamData, updateGroup, deleteTeam } = useGroupApi();
+  const { addTeamData, deleteTeam } = useGroupApi();
   const { convertToLocalizedTime } = useLocalizedTime();
 
   const appIconMap = new Map(
@@ -108,6 +107,7 @@ const User: React.FC = () => {
       key: group.id,
       title: group.name,
       hasAuth: group.hasAuth,
+      roleIds: group.role_ids || [],
       children: group.subGroups ? convertGroups(group.subGroups) : [],
     }));
   };
@@ -251,11 +251,15 @@ const User: React.FC = () => {
         setCurrentParentGroupKey(groupKey);
         setAddSubGroupModalOpen(true);
         break;
-      case 'rename':
-        const group = findNode(treeData, groupKey);
-        if (group) {
-          setRenameGroupKey(groupKey);
-          setRenameGroupModalOpen(true);
+      case 'edit':
+        const editGroup = findNode(treeData, groupKey);
+        if (editGroup) {
+          groupEditModalRef.current?.showModal({
+            type: 'edit',
+            groupId: groupKey,
+            groupName: editGroup.title as string,
+            roleIds: editGroup.roleIds || [], // 传入角色ID数据
+          });
         }
         break;
       case 'delete':
@@ -323,32 +327,8 @@ const User: React.FC = () => {
     }
   };
 
-  const onRenameGroup = async () => {
-    if (!renameGroupKey) return;
-    try {
-      setRenameGroupLoading(true);
-      const values = await renameGroupFormRef.current?.validateFields();
-      await updateGroup({
-        group_id: renameGroupKey,
-        group_name: values.renameTeam,
-      });
-      message.success(t('system.group.renameSuccess'));
-      await fetchTreeData();
-      setRenameGroupModalOpen(false);
-      renameGroupFormRef.current?.resetFields();
-    } catch {
-      message.error(t('system.group.renameFailed'));
-    } finally {
-      setRenameGroupLoading(false);
-    }
-  };
-
   const resetAddGroupForm = () => {
     addGroupFormRef.current?.resetFields();
-  };
-
-  const resetRenameGroupForm = () => {
-    renameGroupFormRef.current?.resetFields();
   };
 
   const openUserModal = (type: 'add') => {
@@ -360,6 +340,13 @@ const User: React.FC = () => {
 
   const onSuccessUserModal = () => {
     fetchUsers({ search: searchValue, page: currentPage, page_size: pageSize });
+  };
+
+  const onSuccessGroupEdit = () => {
+    fetchTreeData();
+    if (selectedTreeKeys.length > 0) {
+      fetchUsers({ search: searchValue, page: currentPage, page_size: pageSize });
+    }
   };
 
   useEffect(() => {
@@ -434,6 +421,9 @@ const User: React.FC = () => {
         }
       />
       
+      {/* 组织编辑弹窗 */}
+      <GroupEditModal ref={groupEditModalRef} onSuccess={onSuccessGroupEdit} />
+      
       <OperateModal
         title={t('common.add')}
         closable={false}
@@ -457,32 +447,6 @@ const User: React.FC = () => {
             rules={[{ required: true, message: t('common.inputRequired') }]}
           >
             <Input placeholder={`${t('common.inputMsg')}${t('system.group.form.name')}`} />
-          </Form.Item>
-        </Form>
-      </OperateModal>
-
-      <OperateModal
-        title={t('system.group.rename')}
-        closable={false}
-        okText={t('common.confirm')}
-        cancelText={t('common.cancel')}
-        okButtonProps={{ loading: renameGroupLoading }}
-        cancelButtonProps={{ disabled: renameGroupLoading }}
-        open={renameGroupModalOpen}
-        onOk={onRenameGroup}
-        onCancel={() => {
-          setRenameGroupModalOpen(false);
-          resetRenameGroupForm();
-        }}
-        destroyOnClose={true}
-      >
-        <Form ref={renameGroupFormRef}>
-          <Form.Item
-            name="renameTeam"
-            label={t('system.user.form.name')}
-            rules={[{ required: true, message: t('common.inputRequired') }]}
-          >
-            <Input placeholder={`${t('common.inputMsg')}${t('system.user.form.name')}`} />
           </Form.Item>
         </Form>
       </OperateModal>

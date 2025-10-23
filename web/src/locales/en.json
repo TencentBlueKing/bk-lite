@@ -88,6 +88,7 @@
     "total": "Total",
     "item": "items",
     "checked": "Checked",
+    "includeSubgroups": "Include Subgroups",
     "timeSelector": {
       "15Minutes": "The past 15 minutes",
       "30Minutes": "The past 30 minutes",
@@ -100,12 +101,23 @@
       "custom": "Custom",
       "off": "off"
     },
+    "heatMap": {
+      "monthDisplay": "Monthly Display",
+      "dayDisplay": "Daily Display",
+      "selectMonth": "Select Month",
+      "selectDate": "Select Date",
+      "quantity": "Count"
+    },
     "copySuccess": "Copied successfully",
     "copyFailed": "Failed to copy",
     "successfullyExported": "Successfully exported",
     "exportFailed": "Failed to export",
     "leave": "Leave",
     "addFail": "Failed to add",
-    "updateFail": "Failed to update"
+    "updateFail": "Failed to update",
+    "execute": "Execute",
+    "copy": "Copy",
+    "reset": "Reset",
+    "inputPassword": "Please input the password"
   }
 }

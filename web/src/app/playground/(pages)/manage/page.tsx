@@ -207,6 +207,13 @@ const PlaygroundManage = () => {
               selectable: false,
               title: renderTitle({ name: t(`manage.logClustering`), categoryID: findIDByName('日志聚类', categoryData), categoryType: 'log_clustering' }),
               children: renderCapabilityNode(findIDByName('日志聚类', categoryData), capabilityData, 'log_clustering')
+            },
+            {
+              key: 'classification',
+              name: 'classification',
+              selectable: false,
+              title: renderTitle({ name: t(`manage.classification`), categoryID: findIDByName('分类任务', categoryData), categoryType: 'classification' }),
+              children: renderCapabilityNode(findIDByName('分类任务', categoryData), capabilityData, 'classification')
             }
           ]
         },

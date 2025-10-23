@@ -71,10 +71,21 @@ async def request(
         return parsed
 
     if not parsed["success"]:
-        try:
-            exc = jsonpickle.decode(parsed["pickled_exc"])
-        except TypeError:
-            exc = NatsClientException(parsed["error"] + ": " + parsed["message"])
+        # 优先使用新的error字段（Go服务的规范化错误格式）
+        if "error" in parsed and parsed["error"]:
+            error_message = parsed["error"]
+            # 如果有result字段，将其作为详细信息添加
+            if "result" in parsed and parsed["result"]:
+                error_message += f" | Output: {parsed['result']}"
+            exc = NatsClientException(error_message)
+        else:
+            # 向后兼容：尝试使用旧的pickled_exc格式
+            try:
+                exc = jsonpickle.decode(parsed["pickled_exc"])
+            except (TypeError, KeyError):
+                # 最后的降级方案
+                fallback_message = parsed.get("message", "Unknown error occurred")
+                exc = NatsClientException(fallback_message)
 
         raise exc
 
@@ -107,10 +118,21 @@ async def request_v2(
         return parsed
 
     if not parsed["success"]:
-        try:
-            exc = jsonpickle.decode(parsed["pickled_exc"])
-        except TypeError:
-            exc = NatsClientException(parsed["error"] + ": " + parsed["message"])
+        # 优先使用新的error字段（Go服务的规范化错误格式）
+        if "error" in parsed and parsed["error"]:
+            error_message = parsed["error"]
+            # 如果有result字段，将其作为详细信息添加
+            if "result" in parsed and parsed["result"]:
+                error_message += f" | Output: {parsed['result']}"
+            exc = NatsClientException(error_message)
+        else:
+            # 向后兼容：尝试使用旧的pickled_exc格式
+            try:
+                exc = jsonpickle.decode(parsed["pickled_exc"])
+            except (TypeError, KeyError):
+                # 最后的降级方案
+                fallback_message = parsed.get("message", "Unknown error occurred")
+                exc = NatsClientException(fallback_message)
 
         raise exc
 

@@ -30,8 +30,10 @@ const DatasetManagePage = () => {
     getRasaDatasetsList,
     getLogClusteringList,
     getTimeSeriesPredictList,
+    getClassificationDatasetsList,
     deleteLogClustering,
     deleteTimeSeriesPredict,
+    deleteClassificationDataset,
   } = useMlopsManageApi();
   const [datasets, setDatasets] = useState<DataSet[]>([]);
   const [loading, setLoading] = useState<boolean>(false);
@@ -41,7 +43,8 @@ const DatasetManagePage = () => {
     { key: 'anomaly', value: 'anomaly', label: t('datasets.anomaly') },
     { key: 'rasa', value: 'rasa', label: t('datasets.rasa') },
     { key: 'log_clustering', value: 'log_clustering', label: t('datasets.logClustering') },
-    { key: 'timeseries_predict', value: 'timeseries_predict', label: t('datasets.timeseriesPredict') }
+    { key: 'timeseries_predict', value: 'timeseries_predict', label: t('datasets.timeseriesPredict') },
+    { key: 'classification', value: 'classification', label: t('datasets.classification') }
   ];
 
   const treeData: TreeDataNode[] = [
@@ -66,6 +69,10 @@ const DatasetManagePage = () => {
           title: t(`datasets.logClustering`),
           key: 'log_clustering',
         },
+        {
+          title: '分类任务',
+          key: 'classification'
+        }
       ]
     },
   ];
@@ -78,18 +85,20 @@ const DatasetManagePage = () => {
     getDataSets();
   }, [selectedKeys]);
 
-  const handleAddMap: Record<string, any> = {
+  const handleGetDatasetsMap: Record<string, any> = {
     'anomaly': getAnomalyDatasetsList,
     'rasa': getRasaDatasetsList,
     'log_clustering': getLogClusteringList,
     'timeseries_predict': getTimeSeriesPredictList,
+    'classification': getClassificationDatasetsList
   };
 
-  const handleDelMap: Record<string, any> = {
+  const handleDelDatasetsMap: Record<string, any> = {
     'anomaly': deleteAnomalyDatasets,
     'rasa': deleteRasaDatasets,
     'log_clustering': deleteLogClustering,
     'timeseries_predict': deleteTimeSeriesPredict,
+    'classification': deleteClassificationDataset
   };
 
 
@@ -98,7 +107,7 @@ const DatasetManagePage = () => {
     if (!activeTab) return;
     setLoading(true);
     try {
-      const data = await handleAddMap[activeTab]({ page: 1, page_size: -1 });
+      const data = await handleGetDatasetsMap[activeTab]({ page: 1, page_size: -1 });
       const _data: DataSet[] = data?.map((item: any) => {
         return {
           id: item.id,
@@ -132,7 +141,7 @@ const DatasetManagePage = () => {
       onOk: async () => {
         try {
           const [activeTab] = selectedKeys;
-          await handleDelMap[activeTab](id);
+          await handleDelDatasetsMap[activeTab](id);
           message.success(t('common.delSuccess'));
         } catch (e) {
           console.log(e);

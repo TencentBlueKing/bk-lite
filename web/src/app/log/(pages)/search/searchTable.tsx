@@ -9,7 +9,7 @@ import searchStyle from './index.module.scss';
 import EllipsisWithTooltip from '@/components/ellipsis-with-tooltip';
 import { TableDataItem } from '@/app/log/types';
 import { SearchTableProps } from '@/app/log/types/search';
-import { useHandleCopy } from '@/app/log/hooks';
+import { useCopy } from '@/hooks/useCopy';
 import { useLocalizedTime } from '@/hooks/useLocalizedTime';
 
 const SearchTable: React.FC<SearchTableProps> = ({
@@ -21,7 +21,7 @@ const SearchTable: React.FC<SearchTableProps> = ({
   onLoadMore,
 }) => {
   const { t } = useTranslation();
-  const { handleCopy } = useHandleCopy();
+  const { copy } = useCopy();
   const { convertToLocalizedTime } = useLocalizedTime();
   const [expandedRowKeys, setExpandedRowKeys] = useState<React.Key[]>([]);
 
@@ -75,7 +75,7 @@ const SearchTable: React.FC<SearchTableProps> = ({
           <div className="mb-1">
             <CopyTwoTone
               className="cursor-pointer mr-[4px]"
-              onClick={() => handleCopy(record._msg)}
+              onClick={() => copy(record._msg)}
             />
             <span className="font-[500] break-all">{record._msg}</span>
           </div>
@@ -111,6 +111,7 @@ const SearchTable: React.FC<SearchTableProps> = ({
               label: key,
               value,
             }))
+            .filter((item) => item.label !== 'id')
             .map((item: TableDataItem, index: number) => (
               <li className="flex items-start mt-[10px]" key={index}>
                 <div className="flex items-center min-w-[250px] w-[250px] mr-[10px]">

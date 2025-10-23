@@ -18,11 +18,12 @@ import { TrainJob } from "@/app/mlops/types/task";
 const ModelRelease = () => {
   const { t } = useTranslation();
   const modalRef = useRef<ModalRef>(null);
-  const { getAnomalyTaskList, getLogClusteringTaskList, getTimeSeriesTaskList } = useMlopsTaskApi();
+  const { getAnomalyTaskList, getLogClusteringTaskList, getTimeSeriesTaskList, getClassificationTaskList } = useMlopsTaskApi();
   const {
     getAnomalyServingsList, deleteAnomalyServing, updateAnomalyServings,
     getTimeSeriesPredictServingsList, deleteTimeSeriesPredictServing, updateTimeSeriesPredictServings,
-    getLogClusteringServingsList, deleteLogClusteringServing, updateLogClusteringServings
+    getLogClusteringServingsList, deleteLogClusteringServing, updateLogClusteringServings,
+    getClassificationServingsList, deleteClassificationServing, updateClassificationServings
   } = useMlopsModelReleaseApi();
   const [trainjobs, setTrainjobs] = useState<Option[]>([]);
   const [tableData, setTableData] = useState<TableData[]>([]);
@@ -56,7 +57,10 @@ const ModelRelease = () => {
           title: t(`datasets.logClustering`),
           key: 'log_clustering'
         },
-        
+        {
+          title: t(`datasets.classification`),
+          key: 'classification'
+        }
       ]
     }
   ];
@@ -108,14 +112,16 @@ const ModelRelease = () => {
     'anomaly': getAnomalyServingsList,
     'rasa': null, // RASA 类型留空
     'log_clustering': getLogClusteringServingsList,
-    'timeseries_predict': getTimeSeriesPredictServingsList
+    'timeseries_predict': getTimeSeriesPredictServingsList,
+    'classification': getClassificationServingsList
   };
 
   const getTaskMap: Record<string, any> = {
     'anomaly': getAnomalyTaskList,
     'rasa': null, // RASA 类型留空
     'log_clustering': getLogClusteringTaskList,
-    'timeseries_predict': getTimeSeriesTaskList
+    'timeseries_predict': getTimeSeriesTaskList,
+    'classification': getClassificationTaskList
   };
 
   // 删除操作映射
@@ -123,7 +129,8 @@ const ModelRelease = () => {
     'anomaly': deleteAnomalyServing,
     'rasa': null, // RASA 类型留空
     'log_clustering': deleteLogClusteringServing,
-    'timeseries_predict': deleteTimeSeriesPredictServing
+    'timeseries_predict': deleteTimeSeriesPredictServing,
+    'classification': deleteClassificationServing
   };
 
   // 更新操作映射
@@ -131,7 +138,8 @@ const ModelRelease = () => {
     'anomaly': updateAnomalyServings,
     'rasa': null, // RASA 类型留空
     'log_clustering': updateLogClusteringServings,
-    'timeseries_predict': updateTimeSeriesPredictServings
+    'timeseries_predict': updateTimeSeriesPredictServings,
+    'classification': updateClassificationServings
   };
 
   const topSection = (

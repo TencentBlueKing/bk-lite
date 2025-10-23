@@ -31,7 +31,9 @@ export const useAnomalyForm = ({ datasetOptions, activeTag, onSuccess, formRef }
     addLogClusteringTrainTask,
     updateLogClusteringTrainTask,
     addTimeSeriesTrainTask,
-    updateTimeSeriesTrainTask
+    updateTimeSeriesTrainTask,
+    addClassificationTrainTask,
+    updateClassificationTrainTask
   } = useMlopsTaskApi();
   const { loadTrainOptions, getDatasetByTrainId } = useTrainDataLoader();
   const { hyperoptConversion, renderParams } = useParamsUtil();
@@ -65,12 +67,14 @@ export const useAnomalyForm = ({ datasetOptions, activeTag, onSuccess, formRef }
   const addTrainTask: Record<string, any> = {
     'anomaly': addAnomalyTrainTask,
     'log_clustering': addLogClusteringTrainTask,
-    'timeseries_predict': addTimeSeriesTrainTask
+    'timeseries_predict': addTimeSeriesTrainTask,
+    'classification': addClassificationTrainTask
   };
   const updateTrainTask: Record<string, any> = {
     'anomaly': updateAnomalyTrainTask,
     'log_clustering': updateLogClusteringTrainTask,
-    'timeseries_predict': updateTimeSeriesTrainTask
+    'timeseries_predict': updateTimeSeriesTrainTask,
+    'classification': updateClassificationTrainTask
   };
   const algorithmOptions: Record<string, Option[]> = {
     'anomaly': [
@@ -85,6 +89,9 @@ export const useAnomalyForm = ({ datasetOptions, activeTag, onSuccess, formRef }
     ],
     'timeseries_predict': [
       { value: 'Prophet', label: 'Prophet' }
+    ],
+    'classification': [
+      { value: 'RandomForest', label: `RandomForest` },
     ]
   };
 
@@ -143,7 +150,7 @@ export const useAnomalyForm = ({ datasetOptions, activeTag, onSuccess, formRef }
     setLoadingState((prev) => ({ ...prev, select: true }));
 
     try {
-      const dataset = await getDatasetByTrainId(formData.train_data_id as number);
+      const dataset = await getDatasetByTrainId(formData.train_data_id as number, key);
 
       if (dataset && formRef.current) {
         formRef.current.setFieldsValue({

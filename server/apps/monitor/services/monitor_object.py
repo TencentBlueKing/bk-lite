@@ -1,14 +1,13 @@
 import ast
 import uuid
-from collections import defaultdict
 
 from django.db import transaction
 
 from apps.core.exceptions.base_app_exception import BaseAppException
-from apps.monitor.constants import OBJ_ORDER, DEFAULT_OBJ_ORDER, MONITOR_OBJ_KEYS
+from apps.monitor.constants.database import DatabaseConstants
+from apps.monitor.constants.monitor_object import MonitorObjConstants
 from apps.monitor.models.monitor_metrics import Metric
-from apps.monitor.models.monitor_object import MonitorInstance, MonitorObject, MonitorInstanceOrganization
-from apps.monitor.models.setting import Setting
+from apps.monitor.models.monitor_object import MonitorInstance, MonitorObject, MonitorInstanceOrganization, MonitorObjectType
 from apps.monitor.utils.victoriametrics_api import VictoriaMetricsAPI
 from apps.monitor.tasks.grouping_rule import sync_instance_and_group
 
@@ -78,7 +77,7 @@ class MonitorObjectService:
         monitor_obj = MonitorObject.objects.filter(id=monitor_object_id).first()
         if not monitor_obj:
             raise BaseAppException("Monitor object does not exist")
-        monitor_objs = MonitorObject.objects.all().values(*MONITOR_OBJ_KEYS)
+        monitor_objs = MonitorObject.objects.all().values(*MonitorObjConstants.OBJ_KEYS)
         obj_metric_map = {i["name"]: i for i in monitor_objs}
         obj_metric_map = obj_metric_map.get(monitor_obj.name)
         if not obj_metric_map:
@@ -156,52 +155,42 @@ class MonitorObjectService:
         sync_instance_and_group.delay()
 
     @staticmethod
-    def set_object_order(order: list):
-        """设置监控对象排序"""
-        Setting.objects.update_or_create(name=OBJ_ORDER, defaults={"value": order})
-
-    @staticmethod
-    def sort_items(data):
+    def set_object_order(order_data: list):
         """
-        :param data: list, 每个元素是 {"type": "G1", "name": "I1"}
-        :return: 排序后的数据列表
+        设置监控对象排序
+        :param order_data: [{"type": "OS", "name_list": ["Host"]}, ...]
         """
+        with transaction.atomic():
+            type_updates = []
+            object_updates = []
 
-        order_obj = Setting.objects.filter(name=OBJ_ORDER).first()
-        order_obj_value = order_obj.value if order_obj else DEFAULT_OBJ_ORDER
-        item_order = {i["type"]: i["name_list"] for i in order_obj_value}
-        group_order = [i["type"] for i in order_obj_value]
+            # 批量收集需要更新的数据
+            for idx, item in enumerate(order_data):
+                type_id = item.get("type")
+                name_list = item.get("name_list", [])
 
-        # 按 type 分组
-        grouped_data = defaultdict(list)
-        group_appearance_order = []  # 记录 type 出现顺序
-        for item in data:
-            grouped_data[item["type"]].append(item)
-            if item["type"] not in group_appearance_order:
-                group_appearance_order.append(item["type"])  # 记录出现顺序
+                # 创建或获取分类对象
+                obj_type, created = MonitorObjectType.objects.get_or_create(
+                    id=type_id,
+                    defaults={'order': idx}
+                )
+                if not created and obj_type.order != idx:
+                    obj_type.order = idx
+                    type_updates.append(obj_type)
 
-        # 确定分组排序
-        if group_order:
-            sorted_groups = sorted(grouped_data.keys(),
-                                   key=lambda g: (group_order.index(g) if g in group_order else float('inf')))
-        else:
-            sorted_groups = group_appearance_order  # 按出现顺序排序（可改成 sorted(grouped_data.keys()) 变成字母序）
+                # 收集需要更新的监控对象
+                for name_idx, name in enumerate(name_list):
+                    objects = MonitorObject.objects.filter(name=name, type_id=type_id)
+                    for obj in objects:
+                        if obj.order != name_idx:
+                            obj.order = name_idx
+                            object_updates.append(obj)
 
-        sorted_result = []
-
-        for group in sorted_groups:
-            items = grouped_data[group]
-
-            # 确定子数据排序
-            if group in item_order and item_order[group]:
-                sorted_items = sorted(items, key=lambda x: (
-                    item_order[group].index(x["name"]) if x["name"] in item_order[group] else float('inf')))
-            else:
-                sorted_items = items  # 维持原始顺序（可改成 sorted(items, key=lambda x: x["name"]) 变成按 name 排序）
-
-            sorted_result.extend(sorted_items)
-
-        return sorted_result
+            # 批量更新
+            if type_updates:
+                MonitorObjectType.objects.bulk_update(type_updates, ['order'], batch_size=DatabaseConstants.MONITOR_OBJECT_BATCH_SIZE)
+            if object_updates:
+                MonitorObject.objects.bulk_update(object_updates, ['order'], batch_size=DatabaseConstants.MONITOR_OBJECT_BATCH_SIZE)
 
     @staticmethod
     def update_instance(instance_id, name, organizations):

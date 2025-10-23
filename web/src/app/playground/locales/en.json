@@ -40,6 +40,7 @@
     "missID": "Missing classification ID",
     "modelInferFailed": "Model inference failed",
     "timeseriesPredict": "Time Series Predict",
-    "logClustering": "Log Clustering"
+    "logClustering": "Log Clustering",
+    "classification": "Classification"
   }
 }

@@ -3,9 +3,8 @@ import hashlib
 import hmac
 import json
 from django.core.cache import cache
-from django.http import JsonResponse
 
-from apps.core.exceptions.base_app_exception import BaseAppException
+from apps.core.exceptions.base_app_exception import BaseAppException, UnauthorizedException
 from apps.node_mgmt.models.sidecar import SidecarApiToken
 from config.components.base import SECRET_KEY
 from config.components.drf import AUTH_TOKEN_HEADER_NAME
@@ -15,7 +14,7 @@ from apps.core.logger import node_logger as logger
 def get_client_token(request):
     try:
         # token格式"Basic BASE64(YWRtaW46YWR:token)"
-        base64_token = request.request.META.get(AUTH_TOKEN_HEADER_NAME).split("Basic ")[-1]
+        base64_token = request.META.get(AUTH_TOKEN_HEADER_NAME).split("Basic ")[-1]
         token = base64.b64decode(base64_token).decode('utf-8')
         token = token.split(':', 1)[0]
         return token
@@ -25,62 +24,42 @@ def get_client_token(request):
 
 
 def check_token_auth(node_id, request):
+    """
+    校验节点Token认证
+
+    Args:
+        node_id: 节点ID
+        request: HTTP请求对象
+
+    Raises:
+        UnauthorizedException: 当认证失败时抛出异常
+    """
     client_token = get_client_token(request)
 
     if not node_id or not client_token:
-        return JsonResponse({'error': 'Unauthorized'}, status=401)
+        logger.warning(f"Token认证失败: node_id={node_id}, has_token={bool(client_token)}")
+        raise UnauthorizedException("缺少必要的认证信息")
 
     client_token_data = decode_token(client_token)
     if node_id != client_token_data["node_id"]:
-        return JsonResponse({'error': 'Unauthorized'}, status=401)
+        logger.warning(f"Token认证失败: node_id不匹配 expected={node_id}, got={client_token_data.get('node_id')}")
+        raise UnauthorizedException("节点ID不匹配")
 
     server_token = get_node_cache_token(node_id)
     if client_token != server_token:
-        return JsonResponse({'error': 'Unauthorized'}, status=401)
+        logger.warning(f"Token认证失败: token不匹配 node_id={node_id}")
+        raise UnauthorizedException("Token无效或已过期")
 
-
-def is_valid_token(token):
-    sidecar_api_tokens = get_cache_token()
-    return token in sidecar_api_tokens
-
-
-def get_cache_token():
-    """ 获取缓存中的 sidecar api token """
-    sidecar_api_tokens = cache.get("sidecar_api_tokens")
-
-    if not sidecar_api_tokens:
-        objs = SidecarApiToken.objects.all()
-        if not objs:
-            token = generate_token({"username": "admin"})
-            SidecarApiToken.objects.create(token=token)
-            sidecar_api_tokens = [token]
-        else:
-            sidecar_api_tokens = [obj.token for obj in objs]
-        cache.set("sidecar_api_tokens", sidecar_api_tokens)
-    return sidecar_api_tokens
-
-
-def generate_token(data: dict, secret: str = SECRET_KEY):
-    # 将数据序列化为 JSON 字符串
-    json_data = json.dumps(data, sort_keys=True).encode('utf-8')
-    # 使用 HMAC 生成 token
-    signature = hmac.new(secret.encode('utf-8'), json_data, hashlib.sha256).digest()
-    # 将签名与数据一起返回
-    token = base64.urlsafe_b64encode(signature + b"." + json_data).decode('utf-8')
-    # 将 token 存储到数据库
-    obj = SidecarApiToken.objects.filter(token=token).first()
-    if not obj:
-        SidecarApiToken.objects.create(token=token)
-    return token
+    logger.debug(f"Token认证成功: node_id={node_id}")
 
 
 def generate_node_token(node_id: str, ip: str, user: str, secret: str = SECRET_KEY):
     data = {"node_id": node_id, "ip": ip, "user": user}
     # 将数据序列化为 JSON 字符串
     json_data = json.dumps(data, sort_keys=True).encode('utf-8')
-    # 使用 HMAC 生成 token
+    # 使用 HMAC-SHA256 生成签名（固定32字节）
     signature = hmac.new(secret.encode('utf-8'), json_data, hashlib.sha256).digest()
-    # 将签名与数据一起返回
+    # Token格式: signature(32字节) + '.'(1字节) + json_data
     token = base64.urlsafe_b64encode(signature + b"." + json_data).decode('utf-8')
     SidecarApiToken.objects.update_or_create(node_id=node_id, defaults={"token": token})
     cache.set(f"node_token_{node_id}", token)
@@ -98,13 +77,32 @@ def get_node_cache_token(node_id: str):
 
 
 def decode_token(token: str, secret: str = SECRET_KEY):
-    # 解码 token
-    decoded_data = base64.urlsafe_b64decode(token)
-    signature, json_data = decoded_data.split(b".", 1)
+    """解码和验证 token"""
+    try:
+        # 解码 token
+        decoded_data = base64.urlsafe_b64decode(token)
 
-    # 验证签名
-    expected_signature = hmac.new(secret.encode('utf-8'), json_data, hashlib.sha256).digest()
-    if hmac.compare_digest(signature, expected_signature):
-        return json.loads(json_data)
-    else:
-        raise BaseAppException("无效的 token")
+        # Token格式: signature(32字节) + '.'(1字节) + json_data
+        # 最小长度: 32(签名) + 1(点号) + 2(最小JSON "{}")  = 35
+        if len(decoded_data) < 35:
+            raise BaseAppException("token 格式错误")
+
+        # 前32字节是签名
+        signature = decoded_data[:32]
+
+        # 第33字节必须是点号分隔符
+        if decoded_data[32:33] != b".":
+            raise BaseAppException("token 格式错误")
+
+        # 第34字节开始是JSON数据
+        json_data = decoded_data[33:]
+
+        # 验证签名
+        expected_signature = hmac.new(secret.encode('utf-8'), json_data, hashlib.sha256).digest()
+        if hmac.compare_digest(signature, expected_signature):
+            return json.loads(json_data)
+        else:
+            raise BaseAppException("无效的 token")
+    except (ValueError, json.JSONDecodeError, Exception) as e:
+        logger.error(f"decode_token error: {e}")
+        raise BaseAppException("token 解析失败")

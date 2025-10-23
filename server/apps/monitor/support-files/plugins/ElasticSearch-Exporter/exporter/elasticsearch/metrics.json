@@ -1,0 +1,12 @@
+{
+  "plugin": "ElasticSearch-Exporter",
+  "plugin_desc": "Used for monitoring the health and performance of ElasticSearch clusters, collecting metrics such as node status, index statistics, and query performance to help users maintain cluster stability and optimize search performance.",
+  "name": "ElasticSearch",
+  "icon": "elasticsearch-Elasticsearch",
+  "type": "Database",
+  "description": "",
+  "default_metric": "any({instance_type='elasticsearch'}) by (instance_id)",
+  "instance_id_keys": ["instance_id"],
+  "supplementary_indicators": [],
+  "metrics": []
+}

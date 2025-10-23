@@ -135,4 +135,14 @@ if [ "$opspilot_installed" = false ]; then
     rm -f /etc/supervisor/conf.d/consumer.conf
 fi
 
+# 设置进程数量环境变量默认值
+export APP_WORKERS=${APP_WORKERS:-8}
+export CELERY_CONCURRENCY=${CELERY_CONCURRENCY:-4}
+export NATS_NUMPROCS=${NATS_NUMPROCS:-4}
+
+echo "进程配置:"
+echo "  APP_WORKERS=$APP_WORKERS"
+echo "  CELERY_CONCURRENCY=$CELERY_CONCURRENCY"
+echo "  NATS_NUMPROCS=$NATS_NUMPROCS"
+
 supervisord -n

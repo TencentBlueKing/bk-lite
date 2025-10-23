@@ -1,6 +1,4 @@
 import logging
-from drf_yasg import openapi
-from drf_yasg.utils import swagger_auto_schema
 from rest_framework import viewsets
 from rest_framework.decorators import action
 
@@ -27,15 +25,6 @@ class UserGroupViewSet(viewsets.ViewSet):
         except (ValueError, TypeError):
             return 0, 20
 
-    @swagger_auto_schema(
-        operation_id="user_list",
-        operation_description="查询用户列表",
-        manual_parameters=[
-            openapi.Parameter("page", in_=openapi.IN_QUERY, type=openapi.TYPE_INTEGER),
-            openapi.Parameter("page_size", in_=openapi.IN_QUERY, type=openapi.TYPE_INTEGER),
-            openapi.Parameter("search", in_=openapi.IN_QUERY, type=openapi.TYPE_STRING),
-        ],
-    )
     @action(methods=["get"], detail=False)
     def user_list(self, request):
         try:
@@ -57,13 +46,6 @@ class UserGroupViewSet(viewsets.ViewSet):
             logger.error(f"User list query failed: {e}")
             return WebUtils.response_error("获取用户列表失败")
 
-    @swagger_auto_schema(
-        operation_id="group_list",
-        operation_description="组列表",
-        manual_parameters=[
-            openapi.Parameter("search", in_=openapi.IN_QUERY, type=openapi.TYPE_STRING),
-        ],
-    )
     @action(methods=["get"], detail=False)
     def group_list(self, request):
         try:
@@ -78,10 +60,6 @@ class UserGroupViewSet(viewsets.ViewSet):
             logger.error(f"Group list query failed: {e}")
             return WebUtils.response_error("获取组列表失败")
 
-    @swagger_auto_schema(
-        operation_id="user_groups",
-        operation_description="用户组列表",
-    )
     @action(methods=["get"], detail=False)
     def user_groups(self, request):
         try:

@@ -65,6 +65,17 @@ const useMlopsModelReleaseApi = () => {
     return await get(`/mlops/log_clustering_servings/?page=${page}&page_size=${page_size}`);
   };
 
+  // 获取分类任务能力列表
+  const getClassificationServingsList = async ({
+    page,
+    page_size
+  }: {
+    page?: number,
+    page_size?: number
+  }) => {
+    return await get(`/mlops/classification_servings/?page=${page}&page_size=${page_size}`)
+  };
+
   // 查询单个能力发布
   const getOneAnomalyServing = async (id: number) => {
     return await get(`/mlops/anomaly_detection_servings/${id}/`);
@@ -78,6 +89,11 @@ const useMlopsModelReleaseApi = () => {
   // 查询单个日志聚类能力
   const getOneLogClusteringServing = async (id: number) => {
     return await get(`/mlops/log_clustering_servings/${id}/`);
+  };
+
+  // 查询单个分类任务能力
+  const getOneClassificationServing = async (id: number) => {
+    return await get(`/mlops/classification_servings/${id}/`);
   };
 
   // 新增能力发布
@@ -116,6 +132,18 @@ const useMlopsModelReleaseApi = () => {
     return await post(`/mlops/log_clustering_servings/`, params);
   };
 
+  // 新增分类任务能力
+  const addClassificationServings = async (params: {
+    name: string;
+    description: string;
+    model_version: string;
+    classification_train_job: string;
+    status: string;
+    anomaly_threshold: number;
+  }) => {
+    return await post(`/mlops/classification_servings/`, params);
+  };
+
   // 异常检测推理
   const anomalyDetectionReason = async (params: AnomalyDetectionReason) => {
     return await post(`/mlops/anomaly_detection_servings/predict/`, params);
@@ -129,6 +157,11 @@ const useMlopsModelReleaseApi = () => {
   // 日志聚类推理
   const logClusteringReason = async (params: AnomalyDetectionReason) => {
     return await post(`/mlops/log_clustering_servings/predict/`, params);
+  };
+
+  // 分类任务推理
+  const classificationReason = async (params: AnomalyDetectionReason) => {
+    return await post(`/mlops/classification_servings/predict/`, params);
   };
 
   // 编辑能力发布
@@ -148,7 +181,7 @@ const useMlopsModelReleaseApi = () => {
     name?: string;
     description?: string;
     model_version?: string;
-    anomaly_detection_train_job?: string;
+    time_series_predict_train_job?: string;
     status?: string;
     anomaly_threshold?: number;
   }) => {
@@ -160,11 +193,23 @@ const useMlopsModelReleaseApi = () => {
     name?: string;
     description?: string;
     model_version?: string;
-    anomaly_detection_train_job?: string;
+    log_clustering_train_job?: string;
     status?: string;
     anomaly_threshold?: number;
   }) => {
     return await patch(`/mlops/log_clustering_servings/${id}/`, params);
+  };
+
+  // 编辑分类任务能力
+  const updateClassificationServings = async (id: number, params: {
+    name?: string;
+    description?: string;
+    model_version?: string;
+    classification_train_job?: string;
+    status?: string;
+    anomaly_threshold?: number;
+  }) => {
+    return await patch(`/mlops/classification_servings/${id}/`, params)
   };
 
   // 删除能力发布
@@ -182,25 +227,36 @@ const useMlopsModelReleaseApi = () => {
     return await del(`/mlops/log_clustering_servings/${id}`);
   };
 
+  // 删除分类任务能力
+  const deleteClassificationServing = async (id: number) => {
+    return await del(`/mlops/classification_servings/${id}`);
+  };
+
   return {
     getAnomalyServingsList,
     getOneAnomalyServing,
     getTimeSeriesPredictServingsList,
     getLogClusteringServingsList,
+    getClassificationServingsList,
     getOneTimeSeriesPredictServing,
     getOneLogClusteringServing,
+    getOneClassificationServing,
     addAnomalyServings,
     addLogClusteringServings,
     addTimeseriesPredictServings,
+    addClassificationServings,
     anomalyDetectionReason,
     timeseriesPredictReason,
     logClusteringReason,
+    classificationReason,
     updateAnomalyServings,
     updateTimeSeriesPredictServings,
     updateLogClusteringServings,
+    updateClassificationServings,
     deleteAnomalyServing,
     deleteTimeSeriesPredictServing,
-    deleteLogClusteringServing
+    deleteLogClusteringServing,
+    deleteClassificationServing
   };
 };
 

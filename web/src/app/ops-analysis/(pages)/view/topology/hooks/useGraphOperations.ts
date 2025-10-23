@@ -14,6 +14,7 @@ import { useDataSourceApi } from '@/app/ops-analysis/api/dataSource';
 import { TopologyNodeData } from '@/app/ops-analysis/types/topology';
 import { DataSourceParam } from '@/app/ops-analysis/types/dashBoard';
 import { updateNodeAttributes, registerNodes, createNodeByType } from '../utils/registerNode';
+import { useTranslation } from '@/utils/i18n';
 import { registerEdges } from '../utils/registerEdge';
 import { useGraphData } from './useGraphData';
 import {
@@ -36,6 +37,7 @@ export const useGraphOperations = (
   minimapContainerRef?: React.RefObject<HTMLDivElement>,
   minimapVisible?: boolean
 ) => {
+  const { t } = useTranslation();
   const { getSourceDataByApiId } = useDataSourceApi();
 
   const isPerformingUndoRedo = useRef(false);
@@ -44,12 +46,16 @@ export const useGraphOperations = (
   const resetAllStyles = useCallback((graph: X6Graph) => {
     graph.getNodes().forEach((node: any) => {
       const nodeData = node.getData();
-      if (nodeData?.type !== 'text') {
-        const borderColor = nodeData?.type === 'single-value'
-          ? (nodeData.styleConfig?.borderColor || 'transparent')
-          : nodeData.styleConfig?.borderColor;
-        node.setAttrByPath('body/stroke', borderColor);
+      let borderColor;
+      if (nodeData?.type === 'single-value') {
+        borderColor = nodeData.styleConfig?.borderColor || 'transparent';
+      } else if (nodeData?.type === 'text') {
+        borderColor = 'transparent';
+      } else {
+        borderColor = nodeData.styleConfig?.borderColor || COLORS.BORDER.DEFAULT;
       }
+      node.setAttrByPath('body/stroke', borderColor);
+      node.setAttrByPath('body/strokeWidth', 1);
     });
 
     graph.getEdges().forEach((edge: any) => {
@@ -67,10 +73,8 @@ export const useGraphOperations = (
 
   const highlightCell = useCallback((cell: any) => {
     if (cell.isNode()) {
-      const nodeData = cell.getData();
-      if (nodeData?.type !== 'text') {
-        cell.setAttrByPath('body/stroke', '#1890ff');
-      }
+      cell.setAttrByPath('body/stroke', '#1890ff');
+      cell.setAttrByPath('body/strokeWidth', 2);
     } else if (cell.isEdge()) {
       cell.setAttrs({
         line: {
@@ -84,21 +88,22 @@ export const useGraphOperations = (
   }, []);
 
   const highlightNode = useCallback((node: any) => {
-    const nodeData = node.getData();
-    if (nodeData?.type !== 'text') {
-      node.setAttrByPath('body/stroke', '#1890ff');
-    }
+    node.setAttrByPath('body/stroke', '#1890ff');
+    node.setAttrByPath('body/strokeWidth', 2);
   }, []);
 
   const resetNodeStyle = useCallback((node: any) => {
     const nodeData = node.getData();
-    if (nodeData?.type !== 'text') {
-      // 对于单值节点，如果没有边框颜色则使用透明
-      const borderColor = nodeData?.type === 'single-value'
-        ? (nodeData.styleConfig?.borderColor || 'transparent')
-        : (nodeData.styleConfig?.borderColor || '#ddd');
-      node.setAttrByPath('body/stroke', borderColor);
+    let borderColor;
+    if (nodeData?.type === 'single-value') {
+      borderColor = nodeData.styleConfig?.borderColor || 'transparent';
+    } else if (nodeData?.type === 'text') {
+      borderColor = 'transparent'; 
+    } else {
+      borderColor = nodeData.styleConfig?.borderColor || COLORS.BORDER.DEFAULT;
     }
+    node.setAttrByPath('body/stroke', borderColor);
+    node.setAttrByPath('body/strokeWidth', 1);
   }, []);
 
   const {
@@ -110,20 +115,11 @@ export const useGraphOperations = (
     setSelectedCells,
     setIsEditMode,
     isEditModeRef,
-    isEditingText,
-    setOriginalText,
-    setEditPosition,
-    setInputWidth,
-    setIsEditingText,
-    setEditingNodeId,
-    setTempTextInput,
     setContextMenuVisible,
     setContextMenuPosition,
     setContextMenuNodeId,
     setContextMenuTargetType,
     setCurrentEdgeData,
-    startTextEditRef,
-    finishTextEditRef,
   } = state;
 
   // 撤销/恢复相关函数 - 基于操作记录
@@ -312,6 +308,10 @@ export const useGraphOperations = (
       return;
     }
 
+    // 设置加载状态并启动加载动画
+    node.setData({ ...node.getData(), isLoading: true, hasError: false });
+    startLoadingAnimation(node);
+
     try {
       let requestParams = {};
 
@@ -367,7 +367,7 @@ export const useGraphOperations = (
 
         adjustSingleValueNodeSize(node, displayValue);
       } else {
-        throw new Error('无数据');
+        throw new Error(t('topology.noData'));
       }
     } catch (error) {
       console.error('更新单值节点数据失败:', error);
@@ -415,20 +415,11 @@ export const useGraphOperations = (
       hideAllPorts(graphInstance);
       hideAllEdgeTools(graphInstance);
 
-      if (isEditingText) {
-        setIsEditingText(false);
-        setEditingNodeId(null);
-        setTempTextInput('');
-        setEditPosition({ x: 0, y: 0 });
-        setInputWidth(120);
-        setOriginalText('');
-      }
-
       setContextMenuVisible(false);
       graphInstance.cleanSelection();
       setSelectedCells([]);
     }
-  }, [graphInstance, isEditingText, setIsEditMode]);
+  }, [graphInstance, setIsEditMode]);
 
   const initMiniMap = useCallback((graph: X6Graph) => {
     if (minimapContainerRef?.current && minimapVisible) {
@@ -707,21 +698,11 @@ export const useGraphOperations = (
 
       const edgeData = edge.getData() || {};
       const arrowDirection = edgeData.arrowDirection || 'single';
-      const defaultStyleConfig = {
-        lineColor: COLORS.EDGE.DEFAULT,
-        lineWidth: 1,
-        lineStyle: 'line' as const,
-        enableAnimation: false,
-      };
+      const styleConfig = edgeData.styleConfig;
 
-      edge.setAttrs(getEdgeStyleWithConfig(arrowDirection, defaultStyleConfig).attrs);
+      edge.setAttrs(getEdgeStyleWithConfig(arrowDirection, styleConfig).attrs);
       addEdgeTools(edge);
-      edge.setData({
-        lineType: 'common_line',
-        lineName: '',
-        arrowDirection: arrowDirection,
-        styleConfig: defaultStyleConfig
-      });
+
     });
 
     // 监听边的拐点变化并保存
@@ -740,10 +721,7 @@ export const useGraphOperations = (
     graph.on('edge:connecting', () => {
       if (isEditModeRef.current) {
         graph.getNodes().forEach((node: any) => {
-          const nodeData = node.getData();
-          if (nodeData?.type !== 'text') {
-            showPorts(graph, node);
-          }
+          showPorts(graph, node);
         });
       }
     });
@@ -764,20 +742,6 @@ export const useGraphOperations = (
       addEdgeTools(edge);
     });
 
-    graph.on('node:dblclick', ({ node }) => {
-      const nodeData = node.getData();
-      if (nodeData?.type === 'text') {
-        const currentText = String(
-          node.getAttrs()?.label?.text || '双击编辑文本'
-        );
-        const textToEdit =
-          nodeData?.isPlaceholder || currentText === '双击编辑文本'
-            ? ''
-            : currentText;
-        startTextEditRef.current?.(node.id, textToEdit);
-      }
-    });
-
     graph.on('blank:click', () => {
       hideAllPorts(graph);
       hideAllEdgeTools(graph);
@@ -787,22 +751,15 @@ export const useGraphOperations = (
 
       graph.cleanSelection();
       setSelectedCells([]);
-
-      setTimeout(() => {
-        finishTextEditRef.current?.();
-      }, 0);
     });
 
     graph.on('node:mouseenter', ({ node }) => {
       hideAllPorts(graph);
       hideAllEdgeTools(graph);
-      const nodeData = node.getData();
-      if (nodeData?.type !== 'text') {
-        showPorts(graph, node);
-        const isSelected = selectedCells.includes(node.id);
-        if (!isSelected) {
-          highlightNode(node);
-        }
+      showPorts(graph, node);
+      const isSelected = selectedCells.includes(node.id);
+      if (!isSelected) {
+        highlightNode(node);
       }
     });
 
@@ -930,12 +887,9 @@ export const useGraphOperations = (
     });
 
     graph.getNodes().forEach((node) => {
-      const nodeData = node.getData();
-      if (nodeData?.type !== 'text') {
-        ['top', 'bottom', 'left', 'right'].forEach((port) =>
-          node.setPortProp(port, 'attrs/circle/opacity', 0)
-        );
-      }
+      ['top', 'bottom', 'left', 'right'].forEach((port) =>
+        node.setPortProp(port, 'attrs/circle/opacity', 0)
+      );
     });
 
     return cleanup;
@@ -998,16 +952,6 @@ export const useGraphOperations = (
           if (!isEditModeRef.current) return false;
           if (!sourceMagnet || !targetMagnet) return false;
           if (sourceView === targetView) return false;
-
-          const sourceNode = sourceView?.cell;
-          const targetNode = targetView?.cell;
-
-          if (
-            sourceNode?.getData()?.type === 'text' ||
-            targetNode?.getData()?.type === 'text'
-          ) {
-            return false;
-          }
 
           const sourceMagnetType = sourceMagnet.getAttribute('magnet');
           const targetMagnetType = targetMagnet.getAttribute('magnet');
@@ -1105,7 +1049,7 @@ export const useGraphOperations = (
     const { valueConfig } = nodeConfig || {};
     const addedNode = graphInstance.addNode(nodeData);
     if (nodeConfig.type === 'single-value') {
-      adjustSingleValueNodeSize(addedNode, nodeConfig.name || '单值节点');
+      adjustSingleValueNodeSize(addedNode, nodeConfig.name || '');
     }
     if (nodeConfig.type === 'single-value' && valueConfig?.dataSource && valueConfig?.selectedFields?.length) {
       startLoadingAnimation(addedNode);
@@ -1137,6 +1081,7 @@ export const useGraphOperations = (
       styleConfig: {
         textColor: values.textColor !== undefined ? values.textColor : styleConfig?.textColor,
         fontSize: values.fontSize !== undefined ? values.fontSize : styleConfig?.fontSize,
+        fontWeight: values.fontWeight !== undefined ? values.fontWeight : styleConfig?.fontWeight,
         backgroundColor: values.backgroundColor !== undefined ? values.backgroundColor : styleConfig?.backgroundColor,
         borderColor: values.borderColor !== undefined ? values.borderColor : styleConfig?.borderColor,
         borderWidth: values.borderWidth !== undefined ? values.borderWidth : styleConfig?.borderWidth,
@@ -1250,19 +1195,6 @@ export const useGraphOperations = (
         graphInstance.enablePlugins(['selection']);
       } else {
         graphInstance.disablePlugins(['selection']);
-
-        if (state.isEditingText) {
-          state.setIsEditingText(false);
-          state.setEditingNodeId(null);
-          state.setTempTextInput('');
-          state.setEditPosition({ x: 0, y: 0 });
-          state.setInputWidth(120);
-          state.setOriginalText('');
-        }
-
-        state.setContextMenuVisible(false);
-        graphInstance.cleanSelection();
-        state.setSelectedCells([]);
       }
     }
   }, [state, graphInstance]);
@@ -1289,6 +1221,19 @@ export const useGraphOperations = (
     setOperationIndex(-1);
   }, []);
 
+  // 刷新所有单值节点
+  const refreshAllSingleValueNodes = useCallback(() => {
+    if (!graphInstance) return;
+
+    const nodes = graphInstance.getNodes();
+    nodes.forEach((node: any) => {
+      const nodeData = node.getData();
+      if (nodeData.type === 'single-value' && nodeData.valueConfig?.dataSource && nodeData.valueConfig?.selectedFields?.length) {
+        updateSingleNodeData(nodeData);
+      }
+    });
+  }, [graphInstance, updateSingleNodeData]);
+
   return {
     zoomIn,
     zoomOut,
@@ -1310,6 +1255,7 @@ export const useGraphOperations = (
     finishInitialization,
     startInitialization,
     clearOperationHistory,
+    refreshAllSingleValueNodes,
     ...dataOperations,
   };
 };
