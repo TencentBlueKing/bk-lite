@@ -244,10 +244,6 @@ const useCollectorItems = (): MenuProps['items'] => {
         ),
         key: 'stopCollector',
       },
-      //   {
-      //     label: t('node-manager.cloudregion.node.uninstallCollector'),
-      //     key: 'uninstallCollector',
-      //   },
     ],
     [t]
   );
@@ -257,14 +253,6 @@ const useSidecarItems = (): MenuProps['items'] => {
   const { t } = useTranslation();
   return useMemo(
     () => [
-      //   {
-      //     label: (
-      //       <div style={{ whiteSpace: 'nowrap' }}>
-      //         {t('node-manager.cloudregion.node.restartSidecar')}
-      //       </div>
-      //     ),
-      //     key: 'restartSidecar',
-      //   },
       {
         label: (
           <PermissionWrapper
