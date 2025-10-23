@@ -119,11 +119,6 @@ const Node = () => {
     setShowInstallCollectorTable(false);
   }, []);
 
-  const enableOperateSideCar = useMemo(() => {
-    if (!selectedRowKeys.length) return true;
-    return false;
-  }, [selectedRowKeys]);
-
   const tableColumns = useMemo(() => {
     if (!activeColumns?.length) return columns;
     const _columns = cloneDeep(columns);
@@ -477,7 +472,7 @@ const Node = () => {
                   className="mr-[8px]"
                   overlayClassName="customMenu"
                   menu={SidecarmenuProps}
-                  disabled={enableOperateSideCar}
+                  disabled={!selectedRowKeys.length}
                 >
                   <Button>
                     <Space>
