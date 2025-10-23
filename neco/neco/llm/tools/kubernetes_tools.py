@@ -7,6 +7,11 @@ Kubernetes工具入口文件
 - kubernetes/resources.py: 基础资源查询工具
 - kubernetes/diagnostics.py: 故障诊断和监控工具
 - kubernetes/analysis.py: 配置分析和策略检查工具
+- kubernetes/cluster.py: 集群管理和连接工具
+- kubernetes/query.py: 高级查询工具
+- kubernetes/tracing.py: 链路追踪和关联分析工具 (NEW)
+- kubernetes/remediation.py: 故障自愈工具 (NEW)
+- kubernetes/optimization.py: 配置优化工具 (NEW)
 - kubernetes/utils.py: 通用辅助函数
 """
 
