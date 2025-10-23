@@ -1,11 +1,12 @@
 import ast
 
 from apps.core.exceptions.base_app_exception import BaseAppException
-from apps.monitor.plugins.controller import Controller
+from apps.monitor.constants.database import DatabaseConstants
 from apps.monitor.models import MonitorInstance, MonitorInstanceOrganization, CollectConfig, MonitorObject, \
     MonitorObjectOrganizationRule, Metric
 from apps.monitor.utils.config_format import ConfigFormat
 from apps.monitor.utils.instance import calculation_status
+from apps.monitor.utils.plugin_controller import Controller
 from apps.monitor.utils.victoriametrics_api import VictoriaMetricsAPI
 from apps.rpc.node_mgmt import NodeMgmt
 
@@ -101,7 +102,7 @@ class InstanceConfigService:
                 organizations=group_ids,
                 monitor_instance_id=monitor_instance_id,
             ))
-        MonitorObjectOrganizationRule.objects.bulk_create(rules, batch_size=200)
+        MonitorObjectOrganizationRule.objects.bulk_create(rules, batch_size=DatabaseConstants.BULK_CREATE_BATCH_SIZE)
 
     @staticmethod
     def create_monitor_instance_by_node_mgmt(data):
@@ -151,11 +152,11 @@ class InstanceConfigService:
                 assos.append((instance_id, group_id))
             creates.append(MonitorInstance(**instance_info))
 
-        MonitorInstance.objects.bulk_create(creates, batch_size=200)
+        MonitorInstance.objects.bulk_create(creates, batch_size=DatabaseConstants.BULK_CREATE_BATCH_SIZE)
 
         MonitorInstanceOrganization.objects.bulk_create(
             [MonitorInstanceOrganization(monitor_instance_id=asso[0], organization=asso[1]) for asso in assos],
-            batch_size=200
+            batch_size=DatabaseConstants.BULK_CREATE_BATCH_SIZE
         )
 
         # 实例配置

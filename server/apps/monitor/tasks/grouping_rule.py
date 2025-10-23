@@ -2,7 +2,8 @@ from celery import shared_task
 
 from apps.core.exceptions.base_app_exception import BaseAppException
 from apps.core.logger import celery_logger as logger
-from apps.monitor.constants import MONITOR_OBJ_KEYS
+from apps.monitor.constants.database import DatabaseConstants
+from apps.monitor.constants.monitor_object import MonitorObjConstants
 from apps.monitor.models import Metric
 from apps.monitor.models.monitor_object import MonitorObjectOrganizationRule, MonitorInstanceOrganization, MonitorObject, \
     MonitorInstance
@@ -35,7 +36,7 @@ class SyncInstance:
     def get_instance_map_by_metrics(self):
         """通过查询指标获取实例信息"""
         instances_map = {}
-        monitor_objs = MonitorObject.objects.all().values(*MONITOR_OBJ_KEYS)
+        monitor_objs = MonitorObject.objects.all().values(*MonitorObjConstants.OBJ_KEYS)
 
         for monitor_info in monitor_objs:
             if monitor_info["name"] not in self.monitor_map:
@@ -104,13 +105,13 @@ class SyncInstance:
 
         # 新增（完全不存在的）
         if create_instances:
-            MonitorInstance.objects.bulk_create(create_instances, batch_size=200)
+            MonitorInstance.objects.bulk_create(create_instances, batch_size=DatabaseConstants.BULK_CREATE_BATCH_SIZE)
 
         # 恢复逻辑删除
         if update_instances:
             for instance in update_instances:
                 instance.is_deleted = False  # 恢复
-            MonitorInstance.objects.bulk_update(update_instances, ["name", "is_deleted", "auto"], batch_size=200)
+            MonitorInstance.objects.bulk_update(update_instances, ["name", "is_deleted", "auto"], batch_size=DatabaseConstants.BULK_UPDATE_BATCH_SIZE)
 
         # 计算不活跃实例
         no_alive_set = table_alive - vm_all
@@ -153,7 +154,7 @@ class RuleGrouping:
     @staticmethod
     def get_asso_by_condition_rule(rule):
         """根据条件类型规则获取关联信息"""
-        monitor_objs = MonitorObject.objects.all().values(*MONITOR_OBJ_KEYS)
+        monitor_objs = MonitorObject.objects.all().values(*MonitorObjConstants.OBJ_KEYS)
         obj_metric_map = {i["name"]: i for i in monitor_objs}
         obj_metric_map = obj_metric_map.get(rule.monitor_object.name)
         obj_instance_id_set = set(MonitorInstance.objects.filter(monitor_object_id=rule.monitor_object_id).values_list("id", flat=True))
@@ -205,7 +206,7 @@ class RuleGrouping:
                 MonitorInstanceOrganization(monitor_instance_id=asso_tuple[0], organization=asso_tuple[1])
                 for asso_tuple in create_asso_set
             ]
-            MonitorInstanceOrganization.objects.bulk_create(create_objs, batch_size=200, ignore_conflicts=True)
+            MonitorInstanceOrganization.objects.bulk_create(create_objs, batch_size=DatabaseConstants.BULK_CREATE_BATCH_SIZE, ignore_conflicts=True)
 
         # if delete_asso_set:
         #     delete_ids = [exist_instance_map[asso_tuple] for asso_tuple in delete_asso_set]

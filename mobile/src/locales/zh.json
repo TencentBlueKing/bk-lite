@@ -1,0 +1,71 @@
+{
+    "common": {
+        "edit": "编辑",
+        "delete": "删除",
+        "detail": "详情",
+        "add": "添加",
+        "search": "搜索",
+        "create": "创建",
+        "update": "更新",
+        "save": "保存",
+        "cancel": "取消",
+        "confirm": "确认",
+        "retry": "重试",
+        "refresh": "刷新",
+        "loading": "加载中...",
+        "send": "发送",
+        "back": "返回",
+        "online": "在线",
+        "offline": "离线",
+        "me": "我",
+        "settings": "设置",
+        "logout": "退出登录",
+        "login": "登录",
+        "darkMode": "深色模式",
+        "loggingOut": "正在退出...",
+        "helpAndFeedback": "帮助与反馈",
+        "languageSettings": "语言设置",
+        "switchedToLanguage": "已切换到",
+        "switchLanguageFailed": "切换语言失败，请重试",
+        "languageSelectionTitle": "选择语言",
+        "languageSelectionSubtitle": "Choose Language"
+    },
+    "navigation": {
+        "conversations": "对话",
+        "profile": "我的"
+    },
+    "chat": {
+        "searchPlaceholder": "搜索对话",
+        "inputPlaceholder": "输入消息...",
+        "enterChat": "进入聊天",
+        "chatDetail": "聊天详情",
+        "messageReceived": "收到您的消息，我正在处理中...",
+        "loadChatDataFailed": "加载聊天数据失败",
+        "noMessages": "暂无消息",
+        "sendMessage": "发送消息"
+    },
+    "auth": {
+        "loginTitle": "登录",
+        "username": "用户名",
+        "password": "密码",
+        "loginButton": "登录",
+        "loginSuccess": "登录成功",
+        "loginFailed": "登录失败",
+        "logoutSuccess": "退出登录成功",
+        "logoutFailed": "退出登录失败，请重试",
+        "logoutConfirm": "确定要退出登录吗？"
+    },
+    "profile": {
+        "title": "个人资料",
+        "name": "姓名",
+        "email": "邮箱",
+        "phone": "电话",
+        "avatar": "头像"
+    },
+    "error": {
+        "networkError": "网络错误",
+        "serverError": "服务器错误",
+        "unknownError": "未知错误",
+        "useLocaleError": "useLocale必须在LocaleProvider内使用"
+    }
+}

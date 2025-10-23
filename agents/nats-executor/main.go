@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"regexp"
 	"strings"
 	"time"
 
@@ -40,7 +41,34 @@ func loadConfig(path string) (*Config, error) {
 	if err := yaml.Unmarshal(data, &cfg); err != nil {
 		return nil, fmt.Errorf("failed to parse config file: %w", err)
 	}
+
+	// 渲染环境变量
+	cfg.NATSUrls = renderEnvVars(cfg.NATSUrls)
+
 	return &cfg, nil
+}
+
+// renderEnvVars 渲染字符串中的环境变量占位符
+// 支持 ${VAR_NAME} 和 $VAR_NAME 两种格式
+func renderEnvVars(s string) string {
+	if s == "" {
+		return s
+	}
+
+	// 匹配 ${VAR_NAME} 格式
+	re := regexp.MustCompile(`\$\{([A-Za-z_][A-Za-z0-9_]*)\}`)
+	result := re.ReplaceAllStringFunc(s, func(match string) string {
+		// 提取变量名（去掉 ${ 和 }）
+		varName := match[2 : len(match)-1]
+		if envValue := os.Getenv(varName); envValue != "" {
+			return envValue
+		}
+		// 如果环境变量不存在，保持原样
+		log.Printf("Warning: environment variable %s not found, keeping placeholder", varName)
+		return match
+	})
+
+	return result
 }
 
 // 判断是否是占位符（${xxx} 或 {{xxx}）

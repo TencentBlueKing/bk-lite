@@ -1,13 +1,13 @@
 from django.http import JsonResponse
 from django_celery_beat.models import PeriodicTask
 
-from apps.core.viewsets.base_viewset import BaseSystemMgmtViewSet
+from apps.core.utils.viewset_utils import LanguageViewSet
 from apps.system_mgmt.models import Group, LoginModule, User
 from apps.system_mgmt.serializers.login_module_serializer import LoginModuleSerializer
 from apps.system_mgmt.tasks import sync_user_and_group_by_login_module
 
 
-class LoginModuleViewSet(BaseSystemMgmtViewSet):
+class LoginModuleViewSet(LanguageViewSet):
     queryset = LoginModule.objects.all()
     serializer_class = LoginModuleSerializer
 

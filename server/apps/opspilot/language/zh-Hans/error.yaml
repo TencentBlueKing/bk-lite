@@ -102,3 +102,4 @@ task_id_required: 任务 ID 为必填项。
 # 服务相关错误
 url_request_failed: URL 请求失败
 
+no_support_chunk_type: 不支持的类型

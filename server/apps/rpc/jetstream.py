@@ -1,20 +1,20 @@
-import nats
 from nats.js.api import ObjectMeta
 from nats.js.errors import BucketNotFoundError
-from config.components.nats import NATS_SERVERS, NATS_NAMESPACE
+from config.components.nats import NATS_NAMESPACE
+from nats_client.clients import get_nc_client
 from apps.core.logger import logger
 
 
 class JetStreamService:
     def __init__(self, bucket_name=NATS_NAMESPACE):
-        self.servers = NATS_SERVERS
         self.bucket_name = bucket_name
         self.nc = None
         self.js = None
         self.object_store = None
 
     async def connect(self):
-        self.nc = await nats.connect(servers=self.servers)
+        # 复用 nats_client 的连接逻辑，统一使用 NATS_OPTIONS
+        self.nc = await get_nc_client()
         self.js = self.nc.jetstream()
         try:
             self.object_store = await self.js.object_store(self.bucket_name)
@@ -38,9 +38,14 @@ class JetStreamService:
         logger.info(f'Deleted entry {key}')
 
     async def list_objects(self):
-        entries = await self.object_store.list()
-        logger.info(f'The object store contains {len(entries)} entries')
-        return entries
+        try:
+            entries = await self.object_store.list()
+            logger.info(f'The object store contains {len(entries)} entries')
+            return entries
+        except Exception as e:
+            # Object Store 为空时会抛出 NotFoundError，返回空列表
+            logger.info(f'The object store is empty or error occurred: {e}')
+            return []
 
     async def watch_updates(self):
         watcher = await self.object_store.watch(include_history=False)

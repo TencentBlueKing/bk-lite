@@ -5,7 +5,6 @@ from rest_framework.decorators import action
 
 from apps.core.decorators.api_permission import HasPermission
 from apps.core.utils.viewset_utils import MaintainerViewSet
-from apps.core.viewsets.base_viewset import BaseOpsPilotViewSet
 from apps.opspilot.models import KnowledgeGraph
 from apps.opspilot.serializers.knowledge_graph_serializers import KnowledgeGraphSerializer
 from apps.opspilot.tasks import rebuild_graph_community_by_instance
@@ -17,7 +16,7 @@ class KnowledgeGraphFilter(FilterSet):
     knowledge_base_id = filters.NumberFilter(field_name="knowledge_base_id", lookup_expr="exact")
 
 
-class KnowledgeGraphViewSet(BaseOpsPilotViewSet, MaintainerViewSet):
+class KnowledgeGraphViewSet(MaintainerViewSet):
     queryset = KnowledgeGraph.objects.all()
     serializer_class = KnowledgeGraphSerializer
     filterset_class = KnowledgeGraphFilter

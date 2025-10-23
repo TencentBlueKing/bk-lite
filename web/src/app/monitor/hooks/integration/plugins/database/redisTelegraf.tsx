@@ -174,11 +174,14 @@ export const useRedisTelegraf = () => {
               collector: pluginConfig.collector,
               instances: dataSource.map((item: TableDataItem) => {
                 delete item.key;
+                const target: TableDataItem | undefined = config.nodeList.find(
+                  (tex: IntegrationMonitoredObject) => item.node_ids === tex.id
+                );
                 return {
                   ...item,
                   node_ids: [item.node_ids].flat(),
                   instance_type: pluginConfig.instance_type,
-                  instance_id: `${item.host}:${item.port}`,
+                  instance_id: `${target?.cloud_region}_${item.host}_${item.port}`,
                 };
               }),
             };
@@ -188,12 +191,20 @@ export const useRedisTelegraf = () => {
           formItems,
           getDefaultForm: (formData: TableDataItem) => {
             const server = formData?.child?.content?.config?.servers?.[0] || '';
-            return extractMongoDBUrl(server);
+            const configId = (formData?.child?.id || '').toUpperCase();
+            const password =
+              formData?.child?.env_config?.[`PASSWORD__${configId}`];
+            return {
+              ...extractMongoDBUrl(server),
+              ENV_PASSWORD: password,
+            };
           },
           getParams: (
             row: IntegrationMonitoredObject,
             config: TableDataItem
           ) => {
+            const configId = (config.child.id || '').toUpperCase();
+            config.child.env_config[`PASSWORD__${configId}`] = row.ENV_PASSWORD;
             return config;
           },
         },

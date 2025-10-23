@@ -101,3 +101,5 @@ task_id_required: Task ID is required.
 
 # Service Related Errors
 url_request_failed: URL request failed
+
+no_support_chunk_type: Unsupported type

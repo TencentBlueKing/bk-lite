@@ -4,7 +4,7 @@ import { TableDataItem } from '@/app/log/types';
 import { CopyTwoTone } from '@ant-design/icons';
 import { useTranslation } from '@/utils/i18n';
 import EllipsisWithTooltip from '@/components/ellipsis-with-tooltip';
-import { useHandleCopy } from '@/app/log/hooks';
+import { useCopy } from '@/hooks/useCopy';
 import { useLocalizedTime } from '@/hooks/useLocalizedTime';
 
 interface MsgtableProps {
@@ -19,7 +19,7 @@ const Msgtable: React.FC<MsgtableProps> = ({
   config,
 }) => {
   const { t } = useTranslation();
-  const { handleCopy } = useHandleCopy();
+  const { copy } = useCopy();
   const { convertToLocalizedTime } = useLocalizedTime();
   const [tableData, setTableData] = useState<TableDataItem[]>([]);
   const [scrollY, setScrollY] = useState<number>(300);
@@ -67,7 +67,7 @@ const Msgtable: React.FC<MsgtableProps> = ({
           <div className="mb-1">
             <CopyTwoTone
               className="cursor-pointer mr-[4px]"
-              onClick={() => handleCopy(record._msg)}
+              onClick={() => copy(record._msg)}
             />
             <span className="font-[500] break-all">{record._msg}</span>
           </div>

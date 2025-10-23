@@ -2,7 +2,7 @@ import React from 'react';
 import { Form, Input, InputNumber, Select } from 'antd';
 import { useTranslation } from '@/utils/i18n';
 import { TIMEOUT_UNITS } from '@/app/monitor/constants/integration';
-import Password from '@/app/monitor/components/password';
+import Password from '@/components/password';
 
 const { Option } = Select;
 const useSnmpCommonFormItems = () => {

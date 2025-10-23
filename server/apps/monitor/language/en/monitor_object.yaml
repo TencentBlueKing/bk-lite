@@ -1,0 +1,43 @@
+Host: Host
+Website: Website
+Ping: Ping
+RabbitMQ: RabbitMQ
+Nginx: Nginx
+Apache: Apache
+ClickHouse: ClickHouse
+Consul: Consul
+Tomcat: Tomcat
+Zookeeper: Zookeeper
+ActiveMQ: ActiveMQ
+ElasticSearch: ElasticSearch
+MongoDB: MongoDB
+Mysql: Mysql
+Postgres: Postgres
+Redis: Redis
+Switch: Switch
+Router: Router
+Loadbalance: Loadbalance
+Firewall: Firewall
+Detection Device: Detection Device
+Bastion Host: Bastion Host
+Scanning Device: Scanning Device
+Storage: Storage
+Hardware Server: Hardware Server
+Docker: Docker
+Docker Container: Docker Container
+Cluster: Cluster
+Pod: Pod
+Node: Node
+SNMP Trap: SNMP Trap
+vCenter: vCenter
+ESXI: ESXI
+VM: VM
+DataStorage: DataStorage
+JVM: JVM
+Jetty: Jetty
+WebLogic: WebLogic
+TCP: Tencent Cloud Platform
+CVM: CVM
+Oracle: Oracle
+Minio: Minio
+

@@ -1,0 +1,6 @@
+# Core - 用户与认证错误
+user_not_found: 请求中未找到用户
+no_permission_view: 你没有权限查看此实例
+no_permission_delete: 你没有权限删除此实例
+no_permission_update: 你没有权限更新此实例
+

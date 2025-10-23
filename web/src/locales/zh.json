@@ -115,6 +115,9 @@
     "leave": "离开",
     "addFail": "添加失败",
     "updateFail": "更新失败",
-    "execute": "执行"
+    "execute": "执行",
+    "copy": "复制",
+    "reset": "重置",
+    "inputPassword": "请输入密码"
   }
 }

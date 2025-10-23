@@ -241,7 +241,7 @@ else
     read -p "输入对外访问的IP地址，默认为 [$DEFAULT_IP] " HOST_IP  < /dev/tty
     export HOST_IP=${HOST_IP:-$DEFAULT_IP}
 
-    DEFAULT_TRAEFIK_WEB_PORT=80
+    DEFAULT_TRAEFIK_WEB_PORT=443
     read -p "输入访问端口，默认为 [$DEFAULT_TRAEFIK_WEB_PORT] " TRAEFIK_WEB_PORT  < /dev/tty
     export TRAEFIK_WEB_PORT=${TRAEFIK_WEB_PORT:-$DEFAULT_TRAEFIK_WEB_PORT}
 
@@ -254,9 +254,9 @@ fi
 
 generate_tls_certs() {
     : "${HOST_IP:?HOST_IP 未设置}"
-    local dir=./conf/nats/certs
+    local dir=./conf/certs
     local san="DNS:nats,DNS:localhost,IP:127.0.0.1,IP:${HOST_IP}"
-    local cn="nats"
+    local cn="BluekingLite"
     local openssl_image=$(add_mirror_prefix "alpine/openssl:3.5.4")
     
     # 当存在server.crt时，跳过生成
@@ -265,7 +265,7 @@ generate_tls_certs() {
         return
     fi
     log "INFO" "生成自签名 TLS 证书（使用容器：${openssl_image}）..."
-    mkdir -p ./conf/nats/certs
+    mkdir -p ${dir}
 
     # 获取绝对路径，用于容器挂载
     local abs_dir=$(cd "$dir" && pwd)
@@ -343,8 +343,6 @@ else
     export NATS_MONITOR_PASSWORD=$(generate_password 32)
     export MINIO_ROOT_USER=minio
     export MINIO_ROOT_PASSWORD=$(generate_password 32)
-    export RABBITMQ_DEFAULT_USER=rabbit
-    export RABBITMQ_DEFAULT_PASSWORD=$(generate_password 32)
     export FALKORDB_PASSWORD=$(generate_password 32)
     export MIRROR=${MIRROR:-""}
 
@@ -362,8 +360,6 @@ export NATS_MONITOR_USERNAME=$NATS_MONITOR_USERNAME
 export NATS_MONITOR_PASSWORD=$NATS_MONITOR_PASSWORD
 export MINIO_ROOT_USER=$MINIO_ROOT_USER
 export MINIO_ROOT_PASSWORD=$MINIO_ROOT_PASSWORD
-export RABBITMQ_DEFAULT_USER=$RABBITMQ_DEFAULT_USER
-export RABBITMQ_DEFAULT_PASSWORD=$RABBITMQ_DEFAULT_PASSWORD
 export FALKORDB_PASSWORD=$FALKORDB_PASSWORD
 export MIRROR=$MIRROR
 EOF
@@ -392,7 +388,6 @@ TRAEFIK_ENABLE_DASHBOARD=false
 DEFAULT_REQUEST_TIMEOUT=10
 DOCKER_IMAGE_STARGAZER=$(add_mirror_prefix "bklite/stargazer")
 DOCKER_IMAGE_MINIO=$(add_mirror_prefix "minio/minio:RELEASE.2024-05-01T01-11-10Z-cpuv1")
-DOCKER_IMAGE_RABBITMQ=$(add_mirror_prefix "rabbitmq:management")
 DOCKER_IMAGE_METIS=$(add_mirror_prefix "bklite/metis")
 DOCKER_IMAGE_VICTORIALOGS=$(add_mirror_prefix "victoriametrics/victoria-logs:v1.25.0")
 DOCKER_IMAGE_MLFLOW=$(add_mirror_prefix "bklite/mlflow")
@@ -405,6 +400,9 @@ DOCKER_IMAGE_VECTOR=$(add_mirror_prefix "timberio/vector:0.48.0-debian")
 # TODO: 不同OS/架构支持
 export DOCKER_IMAGE_FUSION_COLLECTOR=$(add_mirror_prefix "bklite/fusion-collector:latest")
 
+# 生成nats需要的tls自签名证书
+generate_tls_certs
+
 docker pull $DOCKER_IMAGE_FUSION_COLLECTOR
 # 从镜像生成控制器&采集器包
 log "INFO" "开始生成控制器和采集器包..."
@@ -412,9 +410,10 @@ log "INFO" "开始生成控制器和采集器包..."
 CPU_ARCH=$(uname -m)
 if [[ "$CPU_ARCH" == "x86_64" ]]; then
    [ -d pkgs ] && rm -rvf pkgs
-   mkdir -p pkgs/controller
+   mkdir -p pkgs/controller/certs
+   cp -av conf/certs/ca.crt pkgs/controller/certs/
    mkdir -p pkgs/collector
-   docker run --rm -v $PWD/pkgs:/pkgs --entrypoint=/bin/bash $DOCKER_IMAGE_FUSION_COLLECTOR -c "cp -av bin/* /pkgs/collector/;cd /opt; cp fusion-collectors/misc/* fusion-collectors/;zip -r /pkgs/controller/fusion-collectors.zip fusion-collectors"
+   docker run --rm -v $PWD/pkgs:/pkgs --entrypoint=/bin/bash $DOCKER_IMAGE_FUSION_COLLECTOR -c "cp -av bin/* /pkgs/collector/;cd /opt; cp fusion-collectors/misc/* fusion-collectors/;mkdir -p /opt/fusion-collectors/certs/;cp /pkgs/controller/certs/ca.crt /opt/fusion-collectors/certs/;zip -r /pkgs/controller/fusion-collectors.zip fusion-collectors"
 elif [[ "$CPU_ARCH" == "aarch64" ]]; then
    log "WARNING" "当前CPU架构为arm64，暂时无内置采集器"
 else
@@ -435,11 +434,9 @@ port: 4222
 
 monitor_port: 8222
 
-trace: true
+trace: false
 debug: false
 logtime: false
-
-allow_non_tls: true
 
 tls {
   cert_file: "/etc/nats/certs/server.crt"
@@ -494,8 +491,6 @@ NATS_MONITOR_USERNAME=${NATS_MONITOR_USERNAME}
 NATS_MONITOR_PASSWORD=${NATS_MONITOR_PASSWORD}
 MINIO_ROOT_USER=${MINIO_ROOT_USER}
 MINIO_ROOT_PASSWORD=${MINIO_ROOT_PASSWORD}
-RABBITMQ_DEFAULT_USER=${RABBITMQ_DEFAULT_USER}
-RABBITMQ_DEFAULT_PASSWORD=${RABBITMQ_DEFAULT_PASSWORD}
 FALKORDB_PASSWORD=${FALKORDB_PASSWORD}
 DOCKER_IMAGE_TRAEFIK=${DOCKER_IMAGE_TRAEFIK}
 DOCKER_IMAGE_REDIS=${DOCKER_IMAGE_REDIS}
@@ -508,7 +503,6 @@ DOCKER_IMAGE_WEB=${DOCKER_IMAGE_WEB}
 DOCKER_IMAGE_STARGAZER=${DOCKER_IMAGE_STARGAZER}
 DOCKER_IMAGE_FUSION_COLLECTOR=${DOCKER_IMAGE_FUSION_COLLECTOR}
 DOCKER_IMAGE_MINIO=${DOCKER_IMAGE_MINIO}
-DOCKER_IMAGE_RABBITMQ=${DOCKER_IMAGE_RABBITMQ}
 DOCKER_IMAGE_METIS=${DOCKER_IMAGE_METIS}
 DOCKER_IMAGE_TELEGRAF=${DOCKER_IMAGE_TELEGRAF}
 POSTGRES_USERNAME=${POSTGRES_USERNAME}
@@ -530,9 +524,6 @@ EOF
 log "INFO" "生成合成的 docker-compose.yaml 文件..."
 $COMPOSE_CMD > docker-compose.yaml
 
-# 生成nats需要的tls自签名证书
-generate_tls_certs
-
 log "INFO" "拉取最新的镜像..."
 ${DOCKER_COMPOSE_CMD} pull
 
@@ -543,13 +534,15 @@ ${DOCKER_COMPOSE_CMD} up -d traefik redis nats victoria-metrics falkordb victori
 # 创建 JetStream - 使用正确的网络名称
 log "INFO" "创建JetStream..."
 docker run --rm --network=bklite-prod \
-    $DOCKER_IMAGE_NATS_CLI nats -s nats://nats:4222 \
+    -v $PWD/conf/certs:/etc/certs:ro \
+    $DOCKER_IMAGE_NATS_CLI nats -s tls://nats:4222 \
+    --tlsca /etc/certs/ca.crt \
     --user $NATS_ADMIN_USERNAME --password $NATS_ADMIN_PASSWORD \
     stream add metrics --subjects=metrics.* --storage=file \
     --replicas=1 --retention=limits  --discard=old \
     --max-age=20m --max-bytes=104857600 --max-consumers=-1 \
     --max-msg-size=-1 --max-msgs=-1 --max-msgs-per-subject=1000000 \
-    --dupe-window=5m --no-allow-rollup --no-deny-delete --no-deny-purge
+    --dupe-window=5m --no-allow-rollup --no-deny-delete --no-deny-purge 
 
 log "INFO" "启动所有服务"
 ${DOCKER_COMPOSE_CMD} up -d
@@ -586,5 +579,5 @@ echo "SIDECAR_INIT_TOKEN=$SIDECAR_INIT_TOKEN" >> .env
 
 ${DOCKER_COMPOSE_CMD} up -d fusion-collector
 
-log "SUCCESS" "部署成功，访问 http://$HOST_IP:$TRAEFIK_WEB_PORT 访问系统"
+log "SUCCESS" "部署成功，访问 https://$HOST_IP:$TRAEFIK_WEB_PORT 访问系统"
 log "SUCCESS" "初始用户名: admin, 初始密码: password"

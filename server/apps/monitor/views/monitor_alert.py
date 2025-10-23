@@ -9,7 +9,7 @@ from rest_framework.viewsets import GenericViewSet
 from apps.core.utils.permission_utils import get_permission_rules, permission_filter, get_permissions_rules, \
     check_instance_permission
 from apps.core.utils.web_utils import WebUtils
-from apps.monitor.constants import POLICY_MODULE
+from apps.monitor.constants.permission import PermissionConstants
 from apps.monitor.models import MonitorAlert, MonitorEvent, MonitorPolicy, MonitorEventRawData
 from apps.monitor.models.monitor_policy import MonitorAlertMetricSnapshot
 from apps.monitor.filters.monitor_alert import MonitorAlertFilter
@@ -40,7 +40,7 @@ class MonitorAlertVieSet(
             request.user,
             current_team,
             "monitor",
-            POLICY_MODULE,
+            PermissionConstants.POLICY_MODULE,
         )
 
         policy_permissions = permissions_result.get("data", {})
@@ -78,7 +78,7 @@ class MonitorAlertVieSet(
                 request.user,
                 request.COOKIES.get("current_team"),
                 "monitor",
-                f"{POLICY_MODULE}.{monitor_object_id}",
+                f"{PermissionConstants.POLICY_MODULE}.{monitor_object_id}",
             )
             qs = permission_filter(MonitorPolicy, permission, team_key="policyorganization__organization__in", id_key="id__in")
 

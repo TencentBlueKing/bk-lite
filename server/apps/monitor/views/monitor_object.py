@@ -3,7 +3,7 @@ from rest_framework.decorators import action
 
 from apps.core.utils.permission_utils import get_permissions_rules, check_instance_permission
 from apps.core.utils.web_utils import WebUtils
-from apps.monitor.constants import INSTANCE_MODULE, POLICY_MODULE
+from apps.monitor.constants.permission import PermissionConstants
 from apps.monitor.filters.monitor_object import MonitorObjectFilter
 from apps.monitor.language.service import SettingLanguage
 from apps.monitor.models import MonitorInstance, MonitorPolicy
@@ -34,7 +34,7 @@ class MonitorObjectVieSet(viewsets.ModelViewSet):
                 request.user,
                 request.COOKIES.get("current_team"),
                 "monitor",
-                f"{INSTANCE_MODULE}",
+                f"{PermissionConstants.INSTANCE_MODULE}",
             )
 
             instance_permissions, cur_team = inst_res.get("data", {}), inst_res.get("team", [])
@@ -60,7 +60,7 @@ class MonitorObjectVieSet(viewsets.ModelViewSet):
                 request.user,
                 request.COOKIES.get("current_team"),
                 "monitor",
-                f"{POLICY_MODULE}",
+                f"{PermissionConstants.POLICY_MODULE}",
             )
 
             policy_permissions, cur_team = policy_res.get("data", {}), policy_res.get("team", [])
@@ -81,10 +81,8 @@ class MonitorObjectVieSet(viewsets.ModelViewSet):
             for result in results:
                 result["policy_count"] = policy_map.get(result["id"], 0)
 
-        # 排序
-        sorted_results = MonitorObjectService.sort_items(results)
-
-        return WebUtils.response_success(sorted_results)
+        # queryset已经通过模型的ordering自动排序，无需再次排序
+        return WebUtils.response_success(results)
 
     def create(self, request, *args, **kwargs):
         return super().create(request, *args, **kwargs)

@@ -36,13 +36,11 @@ class ChunkHelper(ChatServerHelper):
         q_kwargs = dict({"size": qa_count, "extra_prompt": question_prompt}, **llm_setting["question"])
         a_kwargs = dict({"extra_prompt": answer_prompt}, **llm_setting["answer"])
         for i in content_list:
-            generate_count = cls.generate_qa(q_kwargs, a_kwargs, i, embed_config, es_index, qa_pairs_obj, only_question)
+            generate_count = cls.generate_qa(q_kwargs, a_kwargs, i, embed_config, es_index, qa_pairs_obj, only_question, task_obj)
             # res = cls.update_document_qa_pairs_count(es_index, generate_count, i["chunk_id"])
             # if not res:
             #     logger.error(f"Failed to update document QA pairs count for chunk_id ID: {i['chunk_id']}")
             success_count += generate_count
-            task_obj.completed_count += 1
-            task_obj.save()
         return success_count
 
     @classmethod
@@ -97,8 +95,6 @@ class ChunkHelper(ChatServerHelper):
         headers = cls.get_chat_server_header()
         # SSL验证配置 - 从环境变量读取
         ssl_verify = os.getenv("METIS_SSL_VERIFY", "false").lower() == "true"
-        train_progress = round(float(1 / len(qa_paris)) * 100, 4)
-        task_progress = 0
         for i in qa_paris:
             params = dict(kwargs, **{"content": i["question"]})
             params["metadata"] = json.dumps(dict(metadata, **{"qa_question": i["question"], "qa_answer": i["answer"]}))
@@ -114,8 +110,6 @@ class ChunkHelper(ChatServerHelper):
                 continue
             success_count += 1
             task_obj.completed_count += 1
-            task_progress += train_progress
-            task_obj.train_progress = round(task_progress, 2)
             task_obj.save()
         return success_count
 
@@ -172,9 +166,7 @@ class ChunkHelper(ChatServerHelper):
 
     @classmethod
     def get_qa_content(cls, document_id, es_index, page_size=0):
-        res = cls.get_document_es_chunk(
-            es_index, 1, page_size, metadata_filter={"knowledge_id": str(document_id)}, get_count=False
-        )
+        res = cls.get_document_es_chunk(es_index, 1, page_size, metadata_filter={"knowledge_id": str(document_id)}, get_count=False)
         if res.get("status") != "success":
             raise Exception(f"Failed to get document chunk for document ID {document_id}.")
         return_data = []
@@ -195,9 +187,7 @@ class ChunkHelper(ChatServerHelper):
     def generate_question(cls, kwargs):
         ssl_verify = os.getenv("METIS_SSL_VERIFY", "false").lower() == "true"
         try:
-            response = requests.post(
-                cls.generate_question_url, headers=cls.get_chat_server_header(), json=kwargs, verify=ssl_verify
-            )
+            response = requests.post(cls.generate_question_url, headers=cls.get_chat_server_header(), json=kwargs, verify=ssl_verify)
             res = response.json()
             if res.get("status", "fail") != "success":
                 raise Exception(res.get("message", "Failed to generate question."))
@@ -210,9 +200,7 @@ class ChunkHelper(ChatServerHelper):
     def generate_answer(cls, kwargs):
         ssl_verify = os.getenv("METIS_SSL_VERIFY", "false").lower() == "true"
         try:
-            response = requests.post(
-                cls.generate_answer_url, headers=cls.get_chat_server_header(), json=kwargs, verify=ssl_verify
-            )
+            response = requests.post(cls.generate_answer_url, headers=cls.get_chat_server_header(), json=kwargs, verify=ssl_verify)
             res = response.json()
             if res.get("status", "fail") != "success":
                 raise Exception(res.get("message", "Failed to generate answer."))
@@ -224,39 +212,20 @@ class ChunkHelper(ChatServerHelper):
         return {"result": True, "data": return_data}
 
     @classmethod
-    def create_document_qa_pairs(
-        cls, content_list, embed_config, es_index, llm_setting, qa_pairs_obj, only_question, task_obj
-    ):
+    def create_document_qa_pairs(cls, content_list, embed_config, es_index, llm_setting, qa_pairs_obj, only_question, task_obj):
         success_count = 0
-        q_kwargs = dict(
-            {
-                "size": qa_pairs_obj.qa_count,
-                "extra_prompt": qa_pairs_obj.question_prompt,
-            },
-            **llm_setting["question"],
-        )
-        a_kwargs = dict(
-            {
-                "extra_prompt": qa_pairs_obj.answer_prompt,
-            },
-            **llm_setting["answer"],
-        )
-        train_progress = round(float(1 / len(content_list)) * 100, 4)
-        task_progress = 0
+        q_kwargs = dict({"size": qa_pairs_obj.qa_count, "extra_prompt": qa_pairs_obj.question_prompt}, **llm_setting["question"])
+        a_kwargs = dict({"extra_prompt": qa_pairs_obj.answer_prompt}, **llm_setting["answer"])
         for i in content_list:
-            generate_count = cls.generate_qa(q_kwargs, a_kwargs, i, embed_config, es_index, qa_pairs_obj, only_question)
+            generate_count = cls.generate_qa(q_kwargs, a_kwargs, i, embed_config, es_index, qa_pairs_obj, only_question, task_obj)
             # res = cls.update_document_qa_pairs_count(es_index, generate_count, i["chunk_id"])
             # if not res:
             #     logger.error(f"Failed to update document QA pairs count for chunk_id ID: {i['chunk_id']}")
             success_count += generate_count
-            task_progress += train_progress
-            task_obj.train_progress = round(task_progress, 2)
-            task_obj.completed_count += 1
-            task_obj.save()
         return success_count
 
     @classmethod
-    def generate_qa(cls, question_kwargs, answer_kwargs, chunk, embed_config, es_index, qa_pairs_obj, only_question):
+    def generate_qa(cls, question_kwargs, answer_kwargs, chunk, embed_config, es_index, qa_pairs_obj, only_question, task_obj):
         success_count = 0
         question_res = cls.generate_question(dict(question_kwargs, **{"content": chunk["content"]}))
         if not question_res["result"]:
@@ -265,9 +234,7 @@ class ChunkHelper(ChatServerHelper):
         for u in question_res["data"]:
             answer = ""
             if not only_question:
-                res = cls.generate_answer(
-                    dict(answer_kwargs, **{"context": chunk["content"], "content": u["question"]})
-                )
+                res = cls.generate_answer(dict(answer_kwargs, **{"context": chunk["content"], "content": u["question"]}))
                 if not res["result"]:
                     logger.error(f"Failed to generate answer for question {u['question']}.")
                     continue
@@ -281,6 +248,8 @@ class ChunkHelper(ChatServerHelper):
                 chunk["chunk_id"],
             )
             success_count += 1
+            task_obj.completed_count += 1
+            task_obj.save()
         return success_count
 
     @classmethod
@@ -288,14 +257,14 @@ class ChunkHelper(ChatServerHelper):
         if not return_data:
             return
         answer_llm = qa_pairs.answer_llm_model
-        a_kwargs = {
+        kwargs = {
             "extra_prompt": qa_pairs.answer_prompt,
             "openai_api_base": answer_llm.decrypted_llm_config["openai_base_url"],
             "openai_api_key": answer_llm.decrypted_llm_config["openai_api_key"],
             "model": answer_llm.decrypted_llm_config["model"] or answer_llm.name,
         }
         for i in return_data:
-            res = cls.generate_answer(dict(a_kwargs, **{"context": i["content"], "content": i["question"]}))
+            res = cls.generate_answer(dict(kwargs, **{"context": i["content"], "content": i["question"]}))
             if not res["result"]:
                 logger.error(f"Failed to generate answer for question {i['question']}.")
                 continue

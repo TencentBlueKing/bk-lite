@@ -6,7 +6,6 @@ from rest_framework.response import Response
 
 from apps.core.decorators.api_permission import HasPermission
 from apps.core.utils.viewset_utils import AuthViewSet
-from apps.core.viewsets.base_viewset import BaseOpsPilotViewSet
 from apps.opspilot.enum import DocumentStatus
 from apps.opspilot.models import (
     EmbedProvider,
@@ -22,7 +21,7 @@ from apps.opspilot.serializers import KnowledgeBaseSerializer
 from apps.opspilot.tasks import retrain_all
 
 
-class KnowledgeBaseViewSet(BaseOpsPilotViewSet, AuthViewSet):
+class KnowledgeBaseViewSet(AuthViewSet):
     queryset = KnowledgeBase.objects.all()
     serializer_class = KnowledgeBaseSerializer
     ordering = ("-id",)

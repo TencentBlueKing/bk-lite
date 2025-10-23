@@ -5,7 +5,7 @@ import 'ace-builds/src-noconflict/mode-python';
 import 'ace-builds/src-noconflict/theme-monokai';
 import { CopyOutlined } from '@ant-design/icons';
 import { useTranslation } from '@/utils/i18n';
-import { useHandleCopy } from '@/app/node-manager/hooks';
+import { useCopy } from '@/hooks/useCopy';
 interface CodeEditorProps {
   value?: string; // 编辑器的内容
   className?: string;
@@ -20,7 +20,7 @@ const CodeEditor: React.FC<CodeEditorProps> = ({
   ...restProps
 }) => {
   const { t } = useTranslation();
-  const { handleCopy } = useHandleCopy(value);
+  const { copy } = useCopy();
 
   return (
     <div className={className}>
@@ -31,7 +31,9 @@ const CodeEditor: React.FC<CodeEditorProps> = ({
               size="small"
               type="link"
               icon={<CopyOutlined />}
-              onClick={handleCopy}
+              onClick={() => {
+                copy(value);
+              }}
             ></Button>
           </Tooltip>
         </div>

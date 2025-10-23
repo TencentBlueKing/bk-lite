@@ -7,6 +7,7 @@ from django.http import HttpResponse
 from django.core.serializers.json import DjangoJSONEncoder
 
 from apps.node_mgmt.constants.controller import ControllerConstants
+from apps.node_mgmt.constants.database import DatabaseConstants
 from apps.node_mgmt.utils.crypto_helper import EncryptedJsonResponse
 from apps.node_mgmt.models.cloud_region import SidecarEnv
 from apps.node_mgmt.models.sidecar import Node, Collector, CollectorConfiguration, NodeOrganization
@@ -94,7 +95,7 @@ class Sidecar:
             NodeOrganization.objects.bulk_create(
                 [NodeOrganization(node_id=node_id, organization=group) for group in groups],
                 ignore_conflicts=True,
-                batch_size=100,
+                batch_size=DatabaseConstants.BULK_CREATE_BATCH_SIZE,
             )
 
     @staticmethod
@@ -124,10 +125,11 @@ class Sidecar:
 
         # 如果缓存的ETag存在且与客户端的相同，则返回304 Not Modified
         if cached_etag and cached_etag == if_none_match:
-
-            # 更新时间
-            Node.objects.filter(id=node_id).update(updated_at=datetime.now(timezone.utc).isoformat())
-
+            # 更新时间, 更新状态
+            Node.objects.filter(id=node_id).update(
+                updated_at=datetime.now(timezone.utc).isoformat(),
+                status=request.data.get("node_details", {}).get("status", {}),
+            )
             response = HttpResponse(status=304)
             response['ETag'] = cached_etag
             return response
@@ -228,13 +230,13 @@ class Sidecar:
         # 从数据库获取节点信息
         node = Node.objects.filter(id=node_id).first()
         if not node:
-            return EncryptedJsonResponse(status=404, data={}, manage="Node collector Configuration not found", request=request)
+            return EncryptedJsonResponse(status=404, data={"error": "Node not found"}, request=request)
 
         # 查询配置，并预取关联的子配置
         configuration = CollectorConfiguration.objects.filter(id=configuration_id).prefetch_related(
             'childconfig_set').first()
         if not configuration:
-            return EncryptedJsonResponse(status=404, data={}, manage="Configuration not found", request=request)
+            return EncryptedJsonResponse(status=404, data={"error": "Configuration not found"}, request=request)
 
         # 合并子配置内容到模板
         merged_template = configuration.config_template
@@ -253,6 +255,10 @@ class Sidecar:
         # TODO test merged_template
 
         variables = Sidecar.get_variables(node)
+
+        # 不在变量中渲染NATS_PASSWORD，走环境变量渲染
+        variables.pop("NATS_PASSWORD", None)
+
         # 如果配置中有 env_config，则合并到变量中
         if configuration_data.get('env_config'):
             variables.update(configuration_data['env_config'])
@@ -273,12 +279,24 @@ class Sidecar:
     def get_node_config_env(request, node_id, configuration_id):
         node = Node.objects.filter(id=node_id).first()
         if not node:
-            return EncryptedJsonResponse(status=404, data={}, manage="Node collector Configuration not found", request=request)
+            return EncryptedJsonResponse(status=404, data={"error": "Node not found"}, request=request)
 
         # 查询配置，并预取关联的子配置
         obj = CollectorConfiguration.objects.filter(id=configuration_id).prefetch_related('childconfig_set').first()
         if not obj:
-            return EncryptedJsonResponse(status=404, data={}, manage="Configuration environment not found", request=request)
+            return EncryptedJsonResponse(status=404, data={"error": "Configuration not found"}, request=request)
+
+        # 获取云区域环境变量（仅获取 NATS_PASSWORD）
+        nats_pwd_obj = SidecarEnv.objects.filter(key="NATS_PASSWORD", cloud_region=node.cloud_region_id).first()
+        cloud_region_nats_password = {}
+        if nats_pwd_obj:
+            if nats_pwd_obj.type == "secret":
+                # 如果是密文，解密后使用
+                aes_obj = AESCryptor()
+                cloud_region_nats_password = {nats_pwd_obj.key: aes_obj.decode(nats_pwd_obj.value)}
+            else:
+                # 如果是普通变量，直接使用
+                cloud_region_nats_password = {nats_pwd_obj.key: nats_pwd_obj.value}
 
         # 合并环境变量：主配置的 env_config
         merged_env_config = {}
@@ -306,13 +324,18 @@ class Sidecar:
             else:
                 decrypted_env_config[key] = str(value)
 
-        logger.debug(f"Merged env config for configuration {configuration_id}: {len(decrypted_env_config)} variables")
+        # 合并云区域环境变量（仅 NATS_PASSWORD，优先级较低，配置级的env_config会覆盖同名变量）
+        final_env_config = {}
+        final_env_config.update(cloud_region_nats_password)
+        final_env_config.update(decrypted_env_config)
+
+        logger.debug(f"Merged env config for configuration {configuration_id}: {len(final_env_config)} variables (NATS_PASSWORD from cloud region: {'yes' if 'NATS_PASSWORD' in cloud_region_nats_password else 'no'})")
 
         return EncryptedJsonResponse(
-            dict(
+            data=dict(
                 id=configuration_id, 
-                env_config=decrypted_env_config
-            ), 
+                env_config=final_env_config
+            ),
             request=request
         )
 
@@ -360,7 +383,6 @@ class Sidecar:
         template_str = template_str.replace('node.', 'node__')
         template = Template(template_str)
         return template.safe_substitute(variables)
-
 
     @staticmethod
     def create_default_config(node):

@@ -2,13 +2,13 @@ from django.http import JsonResponse
 from rest_framework.decorators import action
 
 from apps.core.decorators.api_permission import HasPermission
-from apps.core.viewsets.base_viewset import BaseOpsPilotViewSet
+from apps.core.utils.viewset_utils import LanguageViewSet
 from apps.opspilot.models import WebPageKnowledge
 from apps.opspilot.serializers import WebPageKnowledgeSerializer
 from apps.opspilot.utils.knowledge_utils import KnowledgeDocumentUtils
 
 
-class WebPageKnowledgeViewSet(BaseOpsPilotViewSet):
+class WebPageKnowledgeViewSet(LanguageViewSet):
     queryset = WebPageKnowledge.objects.all()
     serializer_class = WebPageKnowledgeSerializer
     ordering = ("-id",)

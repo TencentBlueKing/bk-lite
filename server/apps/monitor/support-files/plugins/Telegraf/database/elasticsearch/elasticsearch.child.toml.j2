@@ -1,0 +1,10 @@
+[[inputs.elasticsearch]]
+    servers = ["{{ server }}"]
+    username = "{{ username }}"
+    password = "${PASSWORD__{{ config_id }}}"
+    interval = "{{ interval }}s"
+    [inputs.elasticsearch.tags]
+        instance_id = "{{ instance_id }}"
+        instance_type = "{{ instance_type }}"
+        collect_type = "database"
+        config_type = "elasticsearch"

@@ -24,3 +24,27 @@ if IS_USE_CELERY:
     CELERY_RESULT_SERIALIZER = "json"
     CELERY_RESULT_BACKEND = os.getenv("CELERY_RESULT_BACKEND")
     DJANGO_CELERY_BEAT_TZ_AWARE = True
+
+    # # 整合各个 app 的 CELERY_BEAT_SCHEDULE 配置
+    # CELERY_BEAT_SCHEDULE = {}
+    #
+    # # 加载 alerts app 的配置
+    # try:
+    #     from apps.alerts.config import CELERY_BEAT_SCHEDULE as _schedule
+    #     CELERY_BEAT_SCHEDULE.update(_schedule)
+    # except ImportError:
+    #     pass
+    #
+    # # 加载 cmdb app 的配置
+    # try:
+    #     from apps.cmdb.config import CELERY_BEAT_SCHEDULE as _schedule
+    #     CELERY_BEAT_SCHEDULE.update(_schedule)
+    # except ImportError:
+    #     pass
+    #
+    # # 加载 monitor app 的配置
+    # try:
+    #     from apps.monitor.config import CELERY_BEAT_SCHEDULE as _schedule
+    #     CELERY_BEAT_SCHEDULE.update(_schedule)
+    # except ImportError:
+    #     pass

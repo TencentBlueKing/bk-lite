@@ -130,8 +130,7 @@ export const useSwitchSnmpPlugin = () => {
                   ...item,
                   node_ids: [item.node_ids].flat(),
                   instance_type: pluginConfig.instance_type,
-                  instance_id:
-                    pluginConfig.object_name + '-' + (target?.ip || ''),
+                  instance_id: `${target?.cloud_region}_${pluginConfig.instance_type}_snmp_${item.ip}`,
                 };
               }),
             };

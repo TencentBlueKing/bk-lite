@@ -74,6 +74,7 @@ def general_embed_by_document_list(document_list, is_show=False, username="", do
             task_obj.name = document_list[index + 1].name
         task_obj.save()
     task_obj.delete()
+    return None
 
 
 @shared_task
@@ -162,17 +163,12 @@ def format_file_invoke_kwargs(document):
 
 def format_manual_invoke_kwargs(document):
     knowledge = ManualKnowledge.objects.filter(knowledge_document_id=document.id).first()
-    return {
-        "content": document.name + knowledge.content,
-    }
+    return {"content": document.name + knowledge.content}
 
 
 def format_web_page_invoke_kwargs(document):
     knowledge = WebPageKnowledge.objects.filter(knowledge_document_id=document.id).first()
-    return {
-        "url": knowledge.url,
-        "max_depth": knowledge.max_depth,
-    }
+    return {"url": knowledge.url, "max_depth": knowledge.max_depth}
 
 
 def format_invoke_kwargs(knowledge_document: KnowledgeDocument, preview=False):
@@ -293,7 +289,7 @@ def create_qa_pairs(qa_pairs_id_list, only_question, delete_old_qa_pairs=False):
             content_list = client.get_qa_content(qa_pairs_obj.document_id, es_index)
             if delete_old_qa_pairs:
                 ChunkHelper.delete_es_content(qa_pairs_obj.id)
-            task_obj.total_count = len(content_list)
+            task_obj.total_count = len(content_list) * qa_pairs_obj.qa_count
             task_obj.save()
             success_count = client.create_document_qa_pairs(
                 content_list,
@@ -366,7 +362,7 @@ def create_graph(instance_id):
     else:
         instance.status = "completed"
         instance.save()
-        logger.info("Graph created completed: {}".format(instance.name))
+        logger.info("Graph created completed: {}".format(instance.id))
 
 
 @shared_task
@@ -465,12 +461,7 @@ def _process_qa_pairs_batch(qa_pairs_list, file_data, knowledge_base, task_obj):
 
 def _process_single_qa_pairs(qa_pairs, qa_json, kwargs, url, headers, task_obj):
     """处理单个问答对集合"""
-    metadata = {
-        "enabled": "true",
-        "base_chunk_id": "",
-        "qa_pairs_id": str(qa_pairs.id),
-        "is_doc": "0",
-    }
+    metadata = {"enabled": "true", "base_chunk_id": "", "qa_pairs_id": str(qa_pairs.id), "is_doc": "0"}
     qa_pairs.status = "generating"
     qa_pairs.save()
 
@@ -512,12 +503,7 @@ def _create_single_qa_item(qa_item, index, kwargs, metadata, url, headers):
 
     # 构建请求参数
     params = dict(kwargs, **{"content": qa_item["instruction"]})
-    params["metadata"] = json.dumps(
-        dict(
-            metadata,
-            **{"qa_question": qa_item["instruction"], "qa_answer": qa_item["output"]},
-        )
-    )
+    params["metadata"] = json.dumps(dict(metadata, **{"qa_question": qa_item["instruction"], "qa_answer": qa_item["output"]}))
 
     # 尝试创建问答对，带重试机制
     return _send_qa_request_with_retry(params, url, headers, index)
@@ -661,7 +647,7 @@ def create_qa_pairs_by_chunk(qa_pairs_id, kwargs):
         knowledge_ids=[qa_pairs_obj.id],
         train_progress=0,
         is_qa_task=True,
-        total_count=len(content_list),
+        total_count=len(content_list) * kwargs["qa_count"],
     )
     success_count = client.create_qa_pairs_by_content(
         content_list,

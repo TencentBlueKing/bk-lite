@@ -1,7 +1,7 @@
 import React from 'react';
 import { Form, Input } from 'antd';
 import { useTranslation } from '@/utils/i18n';
-import Password from '@/app/monitor/components/password';
+import Password from '@/components/password';
 
 const useRedisFormItems = () => {
   const { t } = useTranslation();
@@ -28,7 +28,7 @@ const useRedisFormItems = () => {
             label={t('monitor.integrations.password')}
             required={false}
           >
-            <Form.Item noStyle name="password">
+            <Form.Item noStyle name="ENV_PASSWORD">
               <Password
                 className="w-[300px] mr-[10px]"
                 disabled={disabledFormItems.password}

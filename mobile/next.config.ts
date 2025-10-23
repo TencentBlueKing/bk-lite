@@ -4,16 +4,38 @@ const internalHost = process.env.TAURI_DEV_HOST || 'localhost';
 
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  // Ensure Next.js uses SSG instead of SSR
-  // https://nextjs.org/docs/pages/building-your-application/deploying/static-exports
-  output: 'export',
-  // Note: This feature is required to use the Next.js Image component in SSG mode.
-  // See https://nextjs.org/docs/messages/export-image-api for different workarounds.
+  // 生产环境使用静态导出
+  output: isProd ? 'export' : undefined,
+
   images: {
     unoptimized: true,
   },
-  // Configure assetPrefix or else the server won't properly resolve your assets.
-  assetPrefix: isProd ? undefined : `http://${internalHost}:3001`,
+
+  // Tauri 开发模式：使用内部主机
+  // 浏览器开发模式：不设置 assetPrefix
+  assetPrefix: isProd ? undefined : (
+    process.env.TAURI_DEV === 'true' ? `http://${internalHost}:3001` : undefined
+  ),
+
+  // 禁用严格模式以避免 Tauri API 初始化问题
+  reactStrictMode: false,
+
+  // 开发环境代理配置（生产环境自动忽略）
+  async rewrites() {
+    // 生产环境（静态导出）不需要 rewrites
+    if (isProd) return [];
+
+    const apiTarget = process.env.NEXTAPI_URL || 'https://bklite.canway.net';
+
+    console.log('[Next.js Rewrites] Proxying /dev-proxy/* to', apiTarget);
+
+    return [
+      {
+        source: '/dev-proxy/:path(.*)',
+        destination: `${apiTarget}/:path`,
+      },
+    ];
+  },
 };
 
 export default nextConfig;

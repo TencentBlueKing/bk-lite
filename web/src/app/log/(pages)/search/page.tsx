@@ -60,16 +60,17 @@ const SearchView: React.FC = () => {
   const { getLogStreams, getFields } = useIntegrationApi();
   const { getHits, getLogs } = useSearchApi();
   const { convertToLocalizedTime } = useLocalizedTime();
+  const queryText = searchParams.get('query') || '';
+  const startTime = searchParams.get('startTime') || '';
+  const endTime = searchParams.get('endTime') || '';
   const timerRef = useRef<NodeJS.Timeout | null>(null);
   const terminalRef = useRef<LogTerminalRef | null>(null);
   const timeSelectorRef = useRef<TimeSelectorRef>(null);
   const conditionRef = useRef<ModalRef>(null);
   const conditionListRef = useRef<ModalRef>(null);
+  const searchTextRef = useRef<string>(queryText);
   const [frequence, setFrequence] = useState<number>(0);
-  const queryText = searchParams.get('query') || '';
-  const startTime = searchParams.get('startTime') || '';
-  const endTime = searchParams.get('endTime') || '';
-  const [searchText, setSearchText] = useState<string>(queryText);
+  const [defaultSearchText, setDefaultSearchText] = useState<string>(queryText);
   const [tableData, setTableData] = useState<TableDataItem[]>([]);
   const [queryTime, setQueryTime] = useState<Date>(new Date());
   const [queryEndTime, setQueryEndTime] = useState<Date>(new Date());
@@ -108,8 +109,8 @@ const SearchView: React.FC = () => {
   }, [windowHeight, expand]);
 
   const disableStore = useMemo(
-    () => !groups.length || !searchText,
-    [groups, searchText]
+    () => !groups.length || !searchTextRef.current,
+    [groups]
   );
 
   useEffect(() => {
@@ -129,7 +130,7 @@ const SearchView: React.FC = () => {
     return () => {
       clearTimer();
     };
-  }, [frequence, searchText, groups, limit]);
+  }, [frequence, groups, limit]);
 
   useEffect(() => {
     const handleResize = () => {
@@ -242,7 +243,7 @@ const SearchView: React.FC = () => {
       field: '_stream',
       fields_limit: 5,
       log_groups: extra?.logGroups || groups,
-      query: extra?.text || searchText || '*',
+      query: extra?.text || searchTextRef.current || '*',
       limit,
     };
     params.step = Math.round((times[1] - times[0]) / 100) + 'ms';
@@ -266,18 +267,25 @@ const SearchView: React.FC = () => {
   };
 
   const addToQuery = (row: TableDataItem, type: string) => {
-    setSearchText((pre: string) => {
-      if (type === 'field') {
-        const pattern = /fields/;
-        if (pre.match(pattern)) {
-          return pre.replace(pattern, `fields ${row.label},`);
-        }
-        return pre ? `${pre} | fields ${row.label}` : `fields ${row.label}`;
+    const currentText = searchTextRef.current;
+    if (type === 'field') {
+      const pattern = /fields/;
+      if (currentText.match(pattern)) {
+        searchTextRef.current = currentText.replace(
+          pattern,
+          `fields ${row.label},`
+        );
+      } else {
+        searchTextRef.current = currentText
+          ? `${currentText} | fields ${row.label}`
+          : `fields ${row.label}`;
       }
-      return pre
-        ? `${row.label}:${row.value} | ${pre}`
+    } else {
+      searchTextRef.current = currentText
+        ? `${row.label}:${row.value} | ${currentText}`
         : `${row.label}:${row.value}`;
-    });
+    }
+    setDefaultSearchText(searchTextRef.current);
   };
 
   const onXRangeChange = (arr: [Dayjs, Dayjs]) => {
@@ -328,7 +336,8 @@ const SearchView: React.FC = () => {
     const start = +new Date(time_range.start);
     const end = +new Date(time_range.end);
     setGroups(log_groups);
-    setSearchText(query);
+    searchTextRef.current = query;
+    setDefaultSearchText(query);
     setTimeDefaultValue({
       selectValue: (time_range.origin_value as number) || 0,
       rangePickerVaule: time_range.origin_value
@@ -373,7 +382,7 @@ const SearchView: React.FC = () => {
             <SearchInput
               className="flex-1 mx-[8px]"
               placeholder={t('log.search.searchPlaceHolder')}
-              value={searchText}
+              defaultValue={defaultSearchText}
               fields={fields}
               getTimeRange={getTimeRange}
               addonAfter={
@@ -383,7 +392,9 @@ const SearchView: React.FC = () => {
                   onClick={() => setVisible(true)}
                 />
               }
-              onChange={setSearchText}
+              onChange={(value) => {
+                searchTextRef.current = value;
+              }}
               onPressEnter={handleSearch}
             />
             <Button

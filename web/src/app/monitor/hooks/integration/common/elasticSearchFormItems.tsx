@@ -1,7 +1,7 @@
 import React from 'react';
 import { Form, Input } from 'antd';
 import { useTranslation } from '@/utils/i18n';
-import Password from '@/app/monitor/components/password';
+import Password from '@/components/password';
 
 const useElasticSearchFormItems = () => {
   const { t } = useTranslation();
@@ -10,10 +10,7 @@ const useElasticSearchFormItems = () => {
     getCommonFormItems: (disabledFormItems: Record<string, boolean> = {}) => {
       return (
         <>
-          <Form.Item
-            label={t('monitor.integrations.username')}
-            required={true}
-          >
+          <Form.Item label={t('monitor.integrations.username')} required={true}>
             <Form.Item
               noStyle
               name="username"
@@ -33,13 +30,10 @@ const useElasticSearchFormItems = () => {
               {t('monitor.integrations.usernameDes')}
             </span>
           </Form.Item>
-          <Form.Item
-            label={t('monitor.integrations.password')}
-            required={true}
-          >
+          <Form.Item label={t('monitor.integrations.password')} required={true}>
             <Form.Item
               noStyle
-              name="password"
+              name="ENV_PASSWORD"
               rules={[
                 {
                   required: true,

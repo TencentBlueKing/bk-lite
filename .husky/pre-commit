@@ -1,0 +1,20 @@
+#!/bin/sh
+
+# Get list of changed files
+CHANGED_FILES=$(git diff --cached --name-only --diff-filter=ACMR)
+
+# Check if any files in web/ were changed
+if echo "$CHANGED_FILES" | grep -q "^web/"; then
+  echo "🔍 Checking web project..."
+  cd web && pnpm lint && pnpm type-check || exit 1
+  cd ..
+fi
+
+# Check if any files in mobile/ were changed
+if echo "$CHANGED_FILES" | grep -q "^mobile/"; then
+  echo "🔍 Checking mobile project..."
+  cd mobile && pnpm lint && pnpm type-check || exit 1
+  cd ..
+fi
+
+echo "✅ Pre-commit checks passed!"

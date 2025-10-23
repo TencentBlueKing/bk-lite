@@ -13,3 +13,4 @@ test_results/
 !graphiti_core/models
 mcp-servers/
 mlruns/
+uv.lock

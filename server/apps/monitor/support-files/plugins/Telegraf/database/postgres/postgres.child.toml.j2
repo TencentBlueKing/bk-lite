@@ -1,0 +1,9 @@
+[[inputs.postgresql]]
+    address = "host={{ host }} port={{ port }} user={{ username }} password=${PASSWORD__{{ config_id }}} sslmode=disable"
+    ignored_databases = ["template0", "template1"]
+    interval = "{{ interval }}s"
+    [inputs.postgresql.tags]
+        instance_id = "{{ instance_id }}"
+        instance_type = "{{ instance_type }}"
+        collect_type = "database"
+        config_type = "postgres"

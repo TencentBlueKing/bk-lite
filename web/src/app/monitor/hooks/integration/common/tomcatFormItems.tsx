@@ -1,7 +1,7 @@
 import React from 'react';
 import { Form, Input } from 'antd';
 import { useTranslation } from '@/utils/i18n';
-import Password from '@/app/monitor/components/password';
+import Password from '@/components/password';
 
 const useTomcatFormItems = () => {
   const { t } = useTranslation();
@@ -33,7 +33,7 @@ const useTomcatFormItems = () => {
           <Form.Item label={t('monitor.integrations.password')} required>
             <Form.Item
               noStyle
-              name="password"
+              name="ENV_PASSWORD"
               rules={[
                 {
                   required: true,

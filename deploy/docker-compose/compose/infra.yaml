@@ -22,6 +22,7 @@ services:
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       - ../conf/traefik/dynamic.yml:/etc/traefik/dynamic.yml
+      - ../conf/certs:/etc/certs:ro
     labels:
       - "traefik.enable=true"
       - "traefik.http.services.traefik-dashboard.loadbalancer.server.port=8080"
@@ -34,7 +35,8 @@ services:
       - "--providers.file.filename=/etc/traefik/dynamic.yml"
       - "--providers.file.watch=true"
       - "--accesslog"
-      - "--entrypoints.web.address=:${TRAEFIK_WEB_PORT}"
+      - "--entrypoints.websecure.address=:${TRAEFIK_WEB_PORT}"
+      - "--entrypoints.websecure.http.tls=true"
     networks:
       - prod
 
@@ -62,7 +64,7 @@ services:
     restart: always
     volumes:
       - ../conf/nats/nats.conf:/etc/nats/nats.conf:ro
-      - ../conf/nats/certs:/etc/nats/certs:ro
+      - ../conf/certs:/etc/nats/certs:ro
       - nats:/nats
     ports:
       - "4222:4222"
@@ -192,7 +194,7 @@ services:
       - prod
     restart: always
     volumes:
-      - ../conf/nats/certs:/etc/nats/certs:ro
+      - ../conf/certs:/etc/nats/certs:ro
 
   falkordb:
     image: ${DOCKER_IMAGE_FALKORDB}

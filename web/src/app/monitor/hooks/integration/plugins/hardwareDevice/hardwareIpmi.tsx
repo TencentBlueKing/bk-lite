@@ -126,8 +126,7 @@ export const useHardwareIpmiPlugin = () => {
                   ...item,
                   node_ids: [item.node_ids].flat(),
                   instance_type: pluginConfig.instance_type,
-                  instance_id:
-                    pluginConfig.object_name + '-' + (target?.ip || ''),
+                  instance_id: `${target?.cloud_region}_${pluginConfig.instance_type}_ipmi_${item.ip}`,
                 };
               }),
             };
@@ -137,10 +136,20 @@ export const useHardwareIpmiPlugin = () => {
           formItems,
           getDefaultForm: (formData: TableDataItem) => {
             const url = formData?.child?.content?.config?.servers?.[0] || '';
-            return extractIPMIUrl(url);
+            const configId = (formData?.child?.id || '').toUpperCase();
+            const password =
+              formData?.child?.env_config?.[`PASSWORD__${configId}`];
+            return {
+              ...extractIPMIUrl(url),
+              ENV_PASSWORD: password,
+            };
           },
-          getParams: (formData: TableDataItem, configForm: TableDataItem) =>
-            configForm,
+          getParams: (formData: TableDataItem, configForm: TableDataItem) => {
+            const configId = (configForm.child.id || '').toUpperCase();
+            configForm.child.env_config[`PASSWORD__${configId}`] =
+              formData.ENV_PASSWORD;
+            return configForm;
+          },
         },
         manual: {
           defaultForm: {

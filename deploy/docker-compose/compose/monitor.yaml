@@ -9,12 +9,16 @@ services:
       METRIC_NATS_USERNAME: ${NATS_ADMIN_USERNAME}
       METRIC_NATS_PASSWORD: ${NATS_ADMIN_PASSWORD}
       METRIC_OUTPUT_URL: http://victoria-metrics:8428
-      METRIC_NATS_SERVERS: nats://nats:4222
+      METRIC_NATS_SERVERS: tls://nats:4222
     volumes:
-      - ../conf/telegraf/telegraf.conf:/etc/telegraf/telegraf.conf
+      - ../conf/telegraf/telegraf.conf:/apps/telegraf.conf:ro
+      - ../conf/certs:/etc/certs:ro
     networks:
       - prod
     restart: always
+    depends_on:
+      server:
+        condition: service_healthy
 
 
   fusion-collector:
@@ -28,15 +32,24 @@ services:
       SIDECAR_GROUP: 1
       SIDECAR_NODEID: ${SIDECAR_NODE_ID}
       SIDECAR_NODENAME: fusion-collector
+    volumes:
+      - ../conf/certs:/opt/fusion-collectors/certs:ro
     networks:
       - prod
     restart: always
+    depends_on:
+      server:
+        condition: service_healthy
 
   stargazer:
     image: ${DOCKER_IMAGE_STARGAZER}
     container_name: stargazer
     environment:
-      NATS_URLS: nats://${NATS_ADMIN_USERNAME}:${NATS_ADMIN_PASSWORD}@nats:4222
+      NATS_URLS: tls://${NATS_ADMIN_USERNAME}:${NATS_ADMIN_PASSWORD}@nats:4222
       UV_OFFLINE: True
+      NATS_TLS_ENABLED: true
+      NATS_TLS_CA_FILE: /etc/certs/ca.crt
+    volumes:
+      - ../conf/certs:/etc/certs:ro
     networks:
       - prod

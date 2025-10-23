@@ -1,8 +1,9 @@
 from django.core.cache import cache
 
 import nats_client
+from apps.node_mgmt.constants.database import DatabaseConstants
 from apps.node_mgmt.management.services.node_init.collector_init import import_collector
-from apps.node_mgmt.models import CloudRegion
+from apps.node_mgmt.models import CloudRegion, SidecarEnv
 from apps.node_mgmt.services.node import NodeService
 # from apps.core.logger import node_logger as logger
 
@@ -109,9 +110,9 @@ class NatsService:
                 )
             )
         if conf_objs:
-            CollectorConfiguration.objects.bulk_create(conf_objs, batch_size=100)
+            CollectorConfiguration.objects.bulk_create(conf_objs, batch_size=DatabaseConstants.BULK_CREATE_BATCH_SIZE)
         if node_config_assos:
-            NodeCollectorConfiguration.objects.bulk_create(node_config_assos, batch_size=100, ignore_conflicts=True)
+            NodeCollectorConfiguration.objects.bulk_create(node_config_assos, batch_size=DatabaseConstants.BULK_CREATE_BATCH_SIZE, ignore_conflicts=True)
 
     def batch_create_child_configs(self, configs: list):
         """
@@ -149,7 +150,7 @@ class NatsService:
                 sort_order=config.get("sort_order", 0),
             ))
         if node_objs:
-            ChildConfig.objects.bulk_create(node_objs, batch_size=100)
+            ChildConfig.objects.bulk_create(node_objs, batch_size=DatabaseConstants.BULK_CREATE_BATCH_SIZE)
 
     def get_child_configs_by_ids(self, ids: list):
         """根据子配置ID列表获取子配置对象"""
@@ -160,6 +161,7 @@ class NatsService:
                 "collect_type": config.collect_type,
                 "config_type": config.config_type,
                 "content": config.content,
+                "env_config": config.env_config,
             }
             for config in child_configs
         ]
@@ -235,6 +237,33 @@ class NatsService:
     def delete_configs(self, ids):
         """删除配置"""
         CollectorConfiguration.objects.filter(id__in=ids).delete()
+
+
+@nats_client.register
+def cloudregion_tls_env_by_node_id(node_id):
+    """根据节点ID获取对应的边车环境变量配置"""
+    # 先查询节点获取云区域ID
+    node = Node.objects.filter(id=node_id).first()
+    if not node:
+        return {
+            "NATS_PROTOCOL": "nats",
+            "NATS_TLS_CA_FILE": "",
+        }
+
+    # 查询该云区域下的所有环境变量
+    objs = SidecarEnv.objects.filter(key__in=["NATS_PROTOCOL", "NATS_TLS_CA_FILE"], cloud_region_id=node.cloud_region_id)
+
+    # 返回环境变量字典，默认值
+    result = {
+        "NATS_PROTOCOL": "nats",
+        "NATS_TLS_CA_FILE": "",
+    }
+    
+    # 用查询到的值覆盖默认值
+    for obj in objs:
+        result[obj.key] = obj.value
+
+    return result
 
 
 @nats_client.register

@@ -27,7 +27,9 @@ services:
       - DEFAULT_ZONE_VAR_NATS_PASSWORD=${NATS_ADMIN_PASSWORD}
       - DEFAULT_ZONE_VAR_NATS_USERNAME=${NATS_ADMIN_USERNAME}
       - DEFAULT_ZONE_VAR_STARGAZER_URL=http://stargazer:8083
-      - DEFAULT_ZONE_VAR_NODE_SERVER_URL=http://${HOST_IP}:${TRAEFIK_WEB_PORT}
+      - DEFAULT_ZONE_VAR_NODE_SERVER_URL=https://${HOST_IP}:${TRAEFIK_WEB_PORT}
+      - DEFAULT_ZONE_VAR_NATS_PROTOCOL=tls
+      - DEFAULT_ZONE_VAR_NATS_TLS_CA_FILE=/opt/fusion-collectors/certs/ca.crt
       - VICTORIAMETRICS_HOST=http://victoria-metrics:8428
       - TOP_GROUP=Default
       - DEFAULT_GROUP_NAME=Guest
@@ -35,10 +37,6 @@ services:
       - MINIO_USE_HTTPS=0
       - MINIO_ACCESS_KEY=${MINIO_ROOT_USER}
       - MINIO_SECRET_KEY=${MINIO_ROOT_PASSWORD}
-      - CONVERSATION_MQ_HOST=rabbitmq
-      - CONVERSATION_MQ_PORT=5672
-      - CONVERSATION_MQ_USER=${RABBITMQ_DEFAULT_USER}
-      - CONVERSATION_MQ_PASSWORD=${RABBITMQ_DEFAULT_PASSWORD}
       - MUNCHKIN_BASE_URL=http://${HOST_IP}:${TRAEFIK_WEB_PORT}/api/v1/opspilot
       - METIS_SERVER_URL=http://metis:18083
       - PILOT_RUNTIME=docker
@@ -70,10 +68,10 @@ services:
       - prod
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
-      - ../conf/nats/certs:/etc/nats/certs:ro
+      - ../conf/certs:/etc/nats/certs:ro
       - ../pkgs:/apps/pkgs
     labels:
       - "traefik.enable=true"
       - "traefik.http.routers.sidecar.rule=Host(`${HOST_IP}`) && PathPrefix(`/api/v1`)"
-      - "traefik.http.routers.sidecar.entrypoints=web"
+      - "traefik.http.routers.sidecar.entrypoints=websecure"
       - "traefik.http.services.sidecar.loadbalancer.server.port=8000"

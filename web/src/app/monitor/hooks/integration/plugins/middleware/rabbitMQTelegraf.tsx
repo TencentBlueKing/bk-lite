@@ -110,11 +110,14 @@ export const useRabbitMQTelegraf = () => {
               collector: pluginConfig.collector,
               instances: dataSource.map((item: TableDataItem) => {
                 delete item.key;
+                const target: TableDataItem | undefined = config.nodeList.find(
+                  (tex: IntegrationMonitoredObject) => item.node_ids === tex.id
+                );
                 return {
                   ...item,
                   node_ids: [item.node_ids].flat(),
                   instance_type: pluginConfig.instance_type,
-                  instance_id: item.url,
+                  instance_id: `${target?.cloud_region}_${item.url}`,
                 };
               }),
             };
@@ -124,14 +127,20 @@ export const useRabbitMQTelegraf = () => {
           formItems,
           getDefaultForm: (formData: TableDataItem) => {
             const url = formData?.child?.content?.config?.url || '';
+            const configId = (formData?.child?.id || '').toUpperCase();
+            const password =
+              formData?.child?.env_config?.[`PASSWORD__${configId}`];
             return {
               monitor_url: url,
+              ENV_PASSWORD: password,
             };
           },
           getParams: (
             row: IntegrationMonitoredObject,
             config: TableDataItem
           ) => {
+            const configId = (config.child.id || '').toUpperCase();
+            config.child.env_config[`PASSWORD__${configId}`] = row.ENV_PASSWORD;
             return config;
           },
         },

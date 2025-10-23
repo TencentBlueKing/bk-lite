@@ -1,12 +1,12 @@
 from django.http import JsonResponse
 
 from apps.core.decorators.api_permission import HasPermission
-from apps.core.viewsets.base_viewset import BaseSystemMgmtViewSet
+from apps.core.utils.viewset_utils import LanguageViewSet
 from apps.system_mgmt.models import App
 from apps.system_mgmt.serializers.app_serializer import AppSerializer
 
 
-class AppViewSet(BaseSystemMgmtViewSet):
+class AppViewSet(LanguageViewSet):
     queryset = App.objects.all().order_by("name")
     serializer_class = AppSerializer
 

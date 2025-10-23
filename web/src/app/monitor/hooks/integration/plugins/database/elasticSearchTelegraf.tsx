@@ -108,11 +108,14 @@ export const useElasticSearchTelegraf = () => {
               collector: pluginConfig.collector,
               instances: dataSource.map((item: TableDataItem) => {
                 delete item.key;
+                const target: TableDataItem | undefined = config.nodeList.find(
+                  (tex: IntegrationMonitoredObject) => item.node_ids === tex.id
+                );
                 return {
                   ...item,
                   node_ids: [item.node_ids].flat(),
                   instance_type: pluginConfig.instance_type,
-                  instance_id: item.server,
+                  instance_id: `${target?.cloud_region}_${item.server}`,
                 };
               }),
             };
@@ -123,12 +126,19 @@ export const useElasticSearchTelegraf = () => {
           getDefaultForm: (formData: TableDataItem) => {
             const server =
               formData?.child?.content?.config?.servers?.[0] || null;
+            const configId = (formData?.child?.id || '').toUpperCase();
+            const password =
+              formData?.child?.env_config?.[`PASSWORD__${configId}`];
             return {
               server,
+              ENV_PASSWORD: password,
             };
           },
           getParams: (formData: TableDataItem, configForm: TableDataItem) => {
+            const configId = (configForm.child.id || '').toUpperCase();
             configForm.child.content.config.servers = [formData.server];
+            configForm.child.env_config[`PASSWORD__${configId}`] =
+              formData.ENV_PASSWORD;
             return configForm;
           },
         },

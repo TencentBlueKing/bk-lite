@@ -11,6 +11,7 @@ sync-db:
 	uv run sanic server:bootstrap exec sync_db
 
 dev:
+	uv pip install -e "../neco[core,llm,mlflow,sanic,doc_parser,devops,ocr]"
 	GRAPHITI_TELEMETRY_ENABLED="false" TRANSFORMERS_OFFLINE="true" HF_DATASETS_OFFLINE="1" uv run --no-sync sanic server:bootstrap --factory --debug --host=0.0.0.0 --port=18082
 
 build-base:

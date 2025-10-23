@@ -4,14 +4,14 @@ from rest_framework.decorators import action
 
 from apps.core.decorators.api_permission import HasPermission
 from apps.core.logger import opspilot_logger as logger
-from apps.core.viewsets.base_viewset import BaseOpsPilotViewSet
+from apps.core.utils.viewset_utils import LanguageViewSet
 from apps.opspilot.models import FileKnowledge
 from apps.opspilot.serializers import FileKnowledgeSerializer
 from apps.opspilot.utils.knowledge_utils import KnowledgeDocumentUtils
 from apps.opspilot.utils.quota_utils import get_quota_client
 
 
-class FileKnowledgeViewSet(BaseOpsPilotViewSet):
+class FileKnowledgeViewSet(LanguageViewSet):
     queryset = FileKnowledge.objects.all()
     serializer_class = FileKnowledgeSerializer
     ordering = ("-id",)

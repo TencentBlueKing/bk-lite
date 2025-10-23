@@ -1,36 +1,80 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# BK-Lite Mobile
 
-## Getting Started
+基于 Next.js + Tauri 的跨平台移动应用。
 
-First, run the development server:
+## 技术栈
+
+- **Next.js 15** - React 框架
+- **Tauri 2.x** - 跨平台应用框架
+- **TypeScript** - 类型安全
+- **Ant Design Mobile** - UI 组件库
+
+## 开发
+
+### 浏览器开发（快速迭代）
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
 pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+访问 http://localhost:3001
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+### Tauri 桌面开发（测试原生功能）
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+```bash
+pnpm dev:tauri
+```
 
-## Learn More
+> 注意：会同时打开浏览器和 Tauri 窗口，使用 Tauri 窗口测试（无地址栏）
 
-To learn more about Next.js, take a look at the following resources:
+## 构建
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+### Android APK
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+```bash
+pnpm build:android-debug    # 调试版 APK（推荐用于测试）
+pnpm build:android          # 生产版 APK
+pnpm build:android-all      # 所有架构 APK (aarch64, armv7, i686, x86_64)
+pnpm build:aab              # AAB 格式（Google Play 上架）
+```
 
-## Deploy on Vercel
+**APK 输出路径：**
+- Debug: `src-tauri/gen/android/app/build/outputs/apk/universal/debug/app-universal-debug.apk`
+- Release: `src-tauri/gen/android/app/build/outputs/apk/universal/release/app-universal-release.apk`
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+> **注意**：构建命令已自动配置 Android NDK 路径，无需手动设置环境变量。
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+## 核心特性
+
+- ✅ **CORS 无障碍** - Tauri Rust 后端代理，无跨域问题
+- ✅ **自动环境适配** - Tauri 和浏览器环境自动切换
+- ✅ **统一 API 客户端** - 所有请求通过 `src/api/request.ts`
+
+## 项目结构
+
+```
+src/
+├── api/          # API 客户端
+├── app/          # Next.js 页面
+├── components/   # React 组件
+├── utils/        # 工具函数
+│   ├── tauriFetch.ts      # 统一请求入口
+│   └── tauriApiProxy.ts   # Tauri API 代理
+src-tauri/
+├── src/
+│   ├── lib.rs           # Tauri 应用入口
+│   └── api_proxy.rs     # Rust HTTP 代理
+└── tauri.conf.json      # Tauri 配置
+```
+
+## 环境检测
+
+```typescript
+import { isTauriApp } from '@/utils/tauriFetch';
+
+if (isTauriApp()) {
+  // Tauri 环境逻辑
+} else {
+  // 浏览器环境逻辑
+}
+```
