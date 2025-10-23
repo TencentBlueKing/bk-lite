@@ -1,15 +1,19 @@
 import { Button, Upload, message, Select, Spin, Slider } from "antd";
 import type { UploadProps } from 'antd';
-import { handleFileRead, formatProbability } from "@/app/playground/utils/common";
+import { handleFileRead, 
+  // formatProbability 
+} from "@/app/playground/utils/common";
 import { useCallback, useState, useEffect, useMemo, useRef } from "react";
 import { useSearchParams } from "next/navigation";
 import { useTranslation } from "@/utils/i18n";
-import LineChart from "@/app/playground/components/charts/lineChart";
-import CustomTable from "@/components/custom-table";
-import { useLocalizedTime } from "@/hooks/useLocalizedTime";
+// import LineChart from "@/app/playground/components/charts/lineChart";
+// import CustomTable from "@/components/custom-table";
+// import { useLocalizedTime } from "@/hooks/useLocalizedTime";
 import usePlayroundApi from "@/app/playground/api";
 import cssStyle from './index.module.scss'
-import { ColumnItem, Option } from "@/types";
+import { 
+  // ColumnItem,
+  Option } from "@/types";
 
 // 定义数据类型
 interface ChartDataItem {
@@ -23,7 +27,7 @@ interface ChartDataItem {
 const Classification = () => {
   const { t } = useTranslation();
   const searchParams = useSearchParams();
-  const { convertToLocalizedTime } = useLocalizedTime();
+  // const { convertToLocalizedTime } = useLocalizedTime();
   const {
     anomalyDetectionReason,
     getCapabilityDetail,
@@ -116,53 +120,53 @@ const Classification = () => {
     return allData.slice(startIndex, endIndex);
   }, [allData, visibleRange, maxRenderCount]);
 
-  const timeline = useMemo(() => {
-    const length = chartData.length;
-    return {
-      startIndex: 0,
-      endIndex: length > 10 ? Math.floor(length / 10) : Math.max(0, length - 1)
-    };
-  }, [chartData.length]);
+  // const timeline = useMemo(() => {
+  //   const length = chartData.length;
+  //   return {
+  //     startIndex: 0,
+  //     endIndex: length > 10 ? Math.floor(length / 10) : Math.max(0, length - 1)
+  //   };
+  // }, [chartData.length]);
 
-  const anomalyData = useMemo(() => {
-    return chartData?.filter((item) => item.label === 1) || [];
-  }, [chartData]);
+  // const anomalyData = useMemo(() => {
+  //   return chartData?.filter((item) => item.label === 1) || [];
+  // }, [chartData]);
 
-  const columns: ColumnItem[] = useMemo(() => [
-    {
-      title: '时间',
-      dataIndex: 'timestamp',
-      key: 'timestamp',
-      width: 80,
-      align: 'center',
-      render: (_, record) => {
-        const time = new Date(record.timestamp * 1000).toISOString();
-        return <p>{convertToLocalizedTime(time.toString(), 'YYYY-MM-DD HH:mm:ss')}</p>;
-      },
-    },
-    {
-      title: '值',
-      dataIndex: 'value',
-      key: 'value',
-      align: 'center',
-      width: 30,
-      render: (_, record) => {
-        const value = Number(record.value || 0).toFixed(2);
-        return <p>{value}</p>
-      },
-    },
-    {
-      title: '异常概率',
-      dataIndex: 'anomaly_probability',
-      key: 'anomaly_probability',
-      align: 'center',
-      width: 40,
-      render: (_, record) => {
-        const value = formatProbability(record.anomaly_probability || 0);
-        return <p>{value}</p>
-      },
-    }
-  ], [convertToLocalizedTime]);
+  // const columns: ColumnItem[] = useMemo(() => [
+  //   {
+  //     title: '时间',
+  //     dataIndex: 'timestamp',
+  //     key: 'timestamp',
+  //     width: 80,
+  //     align: 'center',
+  //     render: (_, record) => {
+  //       const time = new Date(record.timestamp * 1000).toISOString();
+  //       return <p>{convertToLocalizedTime(time.toString(), 'YYYY-MM-DD HH:mm:ss')}</p>;
+  //     },
+  //   },
+  //   {
+  //     title: '值',
+  //     dataIndex: 'value',
+  //     key: 'value',
+  //     align: 'center',
+  //     width: 30,
+  //     render: (_, record) => {
+  //       const value = Number(record.value || 0).toFixed(2);
+  //       return <p>{value}</p>
+  //     },
+  //   },
+  //   {
+  //     title: '异常概率',
+  //     dataIndex: 'anomaly_probability',
+  //     key: 'anomaly_probability',
+  //     align: 'center',
+  //     width: 40,
+  //     render: (_, record) => {
+  //       const value = formatProbability(record.anomaly_probability || 0);
+  //       return <p>{value}</p>
+  //     },
+  //   }
+  // ], [convertToLocalizedTime]);
 
   // 清理定时器
   useEffect(() => {
@@ -563,7 +567,7 @@ const Classification = () => {
               </div>
             </div>
 
-            {allData.length > 0 && (
+            {/* {allData.length > 0 && (
               <div className="text-center mt-4 text-sm text-[var(--color-text-3)]">
                 <span className="mr-4">
                   总数据量: {allData.length.toLocaleString()} 条
@@ -582,10 +586,10 @@ const Classification = () => {
                   </span>
                 )}
               </div>
-            )}
+            )} */}
           </div>
 
-          <div className="content w-[80%] mx-auto h-[604px] mt-6">
+          {/* <div className="content w-[80%] mx-auto h-[604px] mt-6">
             <div className="flex h-full overflow-auto">
               <Spin spinning={chartLoading || isRangeChanging} wrapperClassName="w-[70%] flex-1 h-full" className="h-full">
                 <div className="iframe w-full bg-[var(--color-bg-1)] border p-6" style={{ height: 604 }}>
@@ -616,7 +620,7 @@ const Classification = () => {
                 </div>
               </div>
             </div>
-          </div>
+          </div> */}
 
           {isLargeDataset && (
             <div className="data-navigator w-[80%] mx-auto mt-4 p-4 bg-white border rounded-lg shadow-sm">

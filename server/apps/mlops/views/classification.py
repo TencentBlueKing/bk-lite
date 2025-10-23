@@ -324,7 +324,7 @@ class ClassificationTrainJobViewSet(ModelViewSet):
             mlflow.set_tracking_uri(MLFLOW_TRACKER_URL)
 
             # 构造实验名称（与训练时保持一致）
-            experiment_name = f"{train_job.id}_{train_job.name}"
+            experiment_name = f"Classification_{train_job.id}_{train_job.name}"
 
             # 查找实验
             experiments = mlflow.search_experiments(filter_string=f"name = '{experiment_name}'")
