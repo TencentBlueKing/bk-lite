@@ -17,6 +17,7 @@ import type {
 import useApiCloudRegion from '@/app/node-manager/api/cloudRegion';
 import useApiCollector from '@/app/node-manager/api/collector';
 import useCloudId from '@/app/node-manager/hooks/useCloudRegionId';
+import { SafeStorage } from '@/app/node-manager/utils/safeStorage';
 import MainLayout from '../mainlayout/layout';
 import configStyle from './index.module.scss';
 import SubConfiguration from './subconfiguration';
@@ -40,9 +41,9 @@ const Configration = () => {
   const { t } = useTranslation();
   const { isLoading } = useApiClient();
   const searchParams = useSearchParams();
-  const nodeId = JSON.parse(
-    sessionStorage.getItem('cloudRegionInfo') || '{}'
-  ).id;
+  const nodeId = SafeStorage.getSessionItem<{ id: string }>(
+    'cloudRegionInfo'
+  )?.id;
   const cloudregionId = searchParams.get('cloud_region_id') || '';
   const name = searchParams.get('name') || '';
   const { getConfiglist, getNodeList, batchDeleteCollector } =
@@ -73,7 +74,7 @@ const Configration = () => {
     if (isLoading) return;
     initPage();
     return () => {
-      sessionStorage.removeItem('cloudRegionInfo');
+      SafeStorage.removeSessionItem('cloudRegionInfo');
     };
   }, [isLoading]);
 

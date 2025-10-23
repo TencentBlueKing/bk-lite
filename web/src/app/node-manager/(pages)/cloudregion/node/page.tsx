@@ -39,6 +39,7 @@ import useApiClient from '@/utils/request';
 import useApiCloudRegion from '@/app/node-manager/api/cloudRegion';
 import useApiCollector from '@/app/node-manager/api/collector';
 import useCloudId from '@/app/node-manager/hooks/useCloudRegionId';
+import { SafeStorage } from '@/app/node-manager/utils/safeStorage';
 import {
   COLLECTOR_LABEL,
   DISPLAY_PLUGINS,
@@ -93,7 +94,7 @@ const Node = () => {
         cloud_region_id: cloudId.toString(),
         name,
       };
-      sessionStorage.setItem('cloudRegionInfo', JSON.stringify({ id: row.id }));
+      SafeStorage.setSessionItem('cloudRegionInfo', { id: row.id });
       const params = new URLSearchParams(data);
       const targetUrl = `/node-manager/cloudregion/configuration?${params.toString()}`;
       router.push(targetUrl);
