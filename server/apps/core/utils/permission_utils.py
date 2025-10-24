@@ -29,7 +29,7 @@ def set_rules_module_params(app_name, permission_key):
     return app_name, child_module, client, module
 
 
-def get_permissions_rules(user, current_team, app_name, permission_key, include_children):
+def get_permissions_rules(user, current_team, app_name, permission_key, include_children=False):
     """获取某app某类权限规则"""
     app_name_map = {
         "system_mgmt": "system-manager",
