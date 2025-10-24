@@ -11,7 +11,7 @@ class MonitorObjectTypeSerializer(serializers.ModelSerializer):
 
 class MonitorObjectSerializer(serializers.ModelSerializer):
     type_info = MonitorObjectTypeSerializer(source='type', read_only=True)
-
+    
     class Meta:
         model = MonitorObject
         fields = '__all__'
