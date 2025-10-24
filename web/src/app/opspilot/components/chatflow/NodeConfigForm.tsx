@@ -338,8 +338,21 @@ export const NodeConfigForm: React.FC<any> = ({
           <h4 className="text-sm font-medium mb-3">{t('chatflow.nodeConfig.enterpriseWechatParams')}</h4>
           <div className="space-y-3">
             {['token', 'secret', 'aes_key', 'corp_id', 'agent_id'].map((field, idx) => (
-              <Form.Item key={field} name={field} label={field.toUpperCase().replace('_', ' ')} rules={[{ required: true }]} className={idx === 4 ? 'mb-0' : 'mb-3'}>
-                {field.includes('secret') || field === 'aes_key' ? <Input.Password /> : <Input />}
+              <Form.Item 
+                key={field} 
+                name={field} 
+                label={field.toUpperCase().replace('_', ' ')} 
+                rules={[{ 
+                  required: true, 
+                  message: `请输入${field.toUpperCase().replace('_', ' ')}`,
+                  whitespace: true
+                }]} 
+                className={idx === 4 ? 'mb-0' : 'mb-3'}
+              >
+                {field.includes('secret') || field === 'aes_key' ? 
+                  <Input.Password placeholder={`请输入${field.toUpperCase().replace('_', ' ')}`} /> : 
+                  <Input placeholder={`请输入${field.toUpperCase().replace('_', ' ')}`} />
+                }
               </Form.Item>
             ))}
           </div>

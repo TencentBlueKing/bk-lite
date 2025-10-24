@@ -71,7 +71,7 @@ const NodeConfigDrawer: React.FC<NodeConfigDrawerProps> = ({
 
   // 初始化表单数据
   React.useEffect(() => {
-    if (node && visible) {
+    if (node && node.data.config && visible) {
       const config = node.data.config || {};
       const formValues: any = { name: node.data.label, ...config };
 
@@ -132,16 +132,29 @@ const NodeConfigDrawer: React.FC<NodeConfigDrawerProps> = ({
     }
   }, [node, visible]);
 
-  // 保存配置
   const handleSave = () => {
     if (!node) return;
 
     form.validateFields().then((values) => {
+      console.log('NodeConfigDrawer - handleSave - Form values:', values);
+      console.log('NodeConfigDrawer - handleSave - Node type:', node.data.type);
+      
+      // 检查企微字段
+      if (node.data.type === 'enterprise_wechat') {
+        console.log('NodeConfigDrawer - Enterprise WeChat fields:');
+        console.log('  - token:', values.token);
+        console.log('  - secret:', values.secret);
+        console.log('  - aes_key:', values.aes_key);
+        console.log('  - corp_id:', values.corp_id);
+        console.log('  - agent_id:', values.agent_id);
+      }
+      
       const configData = {
         ...values,
         params: paramRows.rows.filter(row => row.key && row.value),
         headers: headerRows.rows.filter(row => row.key && row.value)
       };
+      console.log('NodeConfigDrawer - handleSave - Config data to save:', configData);
 
       if (node.data.type === 'agents') {
         configData.uploadedFiles = uploadedFiles.map(file => ({
@@ -160,6 +173,9 @@ const NodeConfigDrawer: React.FC<NodeConfigDrawerProps> = ({
 
       onSave(node.id, configData);
       message.success(t('chatflow.messages.nodeConfigured'));
+    }).catch((errorInfo) => {
+      console.log('NodeConfigDrawer - handleSave - Validation failed:', errorInfo);
+      console.log('NodeConfigDrawer - handleSave - Error fields:', errorInfo.errorFields);
     });
   };
 

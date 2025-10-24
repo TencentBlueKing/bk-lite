@@ -155,7 +155,11 @@ const ChatflowEditor = forwardRef<ChatflowEditorRef, ChatflowEditorProps>(({ onS
   }, []);
 
   const handleSaveConfig = useCallback((nodeId: string, values: any) => {
+    console.log('ChatflowEditor - handleSaveConfig - Received values:', values);
     const { name, ...config } = values;
+    console.log('ChatflowEditor - handleSaveConfig - Extracted name:', name);
+    console.log('ChatflowEditor - handleSaveConfig - Config to save:', config);
+    
     setNodes((nds) =>
       nds.map((node) =>
         node.id === nodeId
