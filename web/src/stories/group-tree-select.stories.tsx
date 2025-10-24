@@ -42,7 +42,7 @@ export const Default: Story = {
   },
   render: (args) => {
     const [form] = Form.useForm();
-    
+
     return (
       <div style={{ width: 400 }}>
         <Form form={form} layout="vertical">
@@ -67,7 +67,7 @@ export const SingleSelect: Story = {
   },
   render: (args) => {
     const [form] = Form.useForm();
-    
+
     return (
       <div style={{ width: 400 }}>
         <Form form={form} layout="vertical">
@@ -87,23 +87,23 @@ export const SingleSelect: Story = {
 export const TwoWayBinding: Story = {
   render: () => {
     const [form] = Form.useForm();
-    
+
     const handleSubmit = (values: any) => {
       alert(`Submitted values: ${JSON.stringify(values, null, 2)}`);
     };
-    
+
     const setTestValues = () => {
       form.setFieldsValue({
         multipleGroups: ['group1', 'group2'],
         singleGroup: 'group3'
       });
     };
-    
+
     const getCurrentValues = () => {
       const values = form.getFieldsValue();
       alert(`Current values: ${JSON.stringify(values, null, 2)}`);
     };
-    
+
     return (
       <div style={{ width: 600 }}>
         <Card title="Two-way Binding Demo">
@@ -118,7 +118,7 @@ export const TwoWayBinding: Story = {
                 multiple={true}
               />
             </Form.Item>
-            
+
             <Form.Item
               name="singleGroup"
               label="Single Group"
@@ -128,7 +128,7 @@ export const TwoWayBinding: Story = {
                 multiple={false}
               />
             </Form.Item>
-            
+
             <Form.Item>
               <Space>
                 <Button type="primary" htmlType="submit">
@@ -160,13 +160,13 @@ export const Disabled: Story = {
   },
   render: (args) => {
     const [form] = Form.useForm();
-    
+
     React.useEffect(() => {
       form.setFieldsValue({
         groups: ['group1', 'group2']
       });
     }, [form]);
-    
+
     return (
       <div style={{ width: 400 }}>
         <Form form={form} layout="vertical">
@@ -190,7 +190,7 @@ export const CustomStyle: Story = {
   },
   render: (args) => {
     const [form] = Form.useForm();
-    
+
     return (
       <div style={{ width: 500 }}>
         <Form form={form} layout="vertical">
