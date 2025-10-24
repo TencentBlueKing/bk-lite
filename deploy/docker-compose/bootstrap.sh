@@ -589,6 +589,20 @@ install() {
     generate_ports_env
     generate_common_env
 
+    # 生成合成的docker-compose.yaml文件
+    log "INFO" "生成合成的 docker-compose.yaml 文件..."
+    $COMPOSE_CMD > docker-compose.yaml
+
+    if [[ "$LOAD_LOCAL_IMAGES" == "true" ]]; then
+        log "INFO" "从本地加载 Docker 镜像..."
+        log "INFO" "镜像目录: ${OFFLINE_IMAGES_PATH}"
+        load_docker_images_with_hash_check "${OFFLINE_IMAGES_PATH}"
+    else
+        log "INFO" "拉取最新的镜像..."
+        ${DOCKER_COMPOSE_CMD} pull
+    fi
+    
+
     # 生成nats需要的tls自签名证书
     generate_tls_certs
 
@@ -694,19 +708,7 @@ DOCKER_IMAGE_VECTOR=${DOCKER_IMAGE_VECTOR}
 INSTALL_APPS="${INSTALL_APPS}"
 EOF
 
-    # 生成合成的docker-compose.yaml文件
-    log "INFO" "生成合成的 docker-compose.yaml 文件..."
-    $COMPOSE_CMD > docker-compose.yaml
 
-    if [[ "$LOAD_LOCAL_IMAGES" == "true" ]]; then
-        log "INFO" "从本地加载 Docker 镜像..."
-        log "INFO" "镜像目录: ${OFFLINE_IMAGES_PATH}"
-        load_docker_images_with_hash_check "${OFFLINE_IMAGES_PATH}"
-    else
-        log "INFO" "拉取最新的镜像..."
-        ${DOCKER_COMPOSE_CMD} pull
-    fi
-    
     # 按照特定顺序启动服务
     log "INFO" "启动基础服务 (Traefik, Redis, NATS, VictoriaMetrics, FalkorDB, VictoriaLogs, Minio, MLFlow, NATS Executor, Vector)..."
     ${DOCKER_COMPOSE_CMD} up -d traefik redis nats victoria-metrics falkordb victoria-logs minio mlflow nats-executor vector
