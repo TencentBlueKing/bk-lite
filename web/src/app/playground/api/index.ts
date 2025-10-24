@@ -14,6 +14,13 @@ interface AnomalyDetectionReason {
   anomaly_threshold: number;
 }
 
+interface ClassificationReason {
+  model_name: string;
+  model_version: string;
+  algorithm: string;
+  data: any[];
+}
+
 const usePlayroundApi = () => {
   const {
     get,
@@ -167,6 +174,11 @@ const usePlayroundApi = () => {
     return await post(`/mlops/anomaly_detection_servings/predict/`, params);
   };
 
+  // 分类任务推理
+  const classificationReason = async (params: ClassificationReason) => {
+    return await post(`/mlops/classification_servings/predict/`, params);
+  };
+
   // 删除类别
   const deleteCategory = async (id: number) => {
     return await del(`/playground/category/${id}/`);
@@ -205,6 +217,7 @@ const usePlayroundApi = () => {
     updateCapability,
     updateSampleFile,
     anomalyDetectionReason,
+    classificationReason,
     deleteCategory,
     deleteCapability,
     deleteSampleFile
