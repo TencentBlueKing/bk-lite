@@ -2,7 +2,7 @@
 import React, { useEffect, useState, useRef, useCallback } from 'react';
 import { Menu, Input, Button, Tag } from 'antd';
 import useApiClient from '@/utils/request';
-import useApiController from '@/app/node-manager/api/controller';
+import useNodeManagerApi from '@/app/node-manager/api';
 import EntityList from '@/components/entity-list/index';
 import { useRouter } from 'next/navigation';
 import { useTranslation } from '@/utils/i18n';
@@ -18,7 +18,7 @@ const Controller = () => {
   const router = useRouter();
   const { t } = useTranslation();
   const { isLoading } = useApiClient();
-  const { getControllerList } = useApiController();
+  const { getControllerList } = useNodeManagerApi();
   const menuItem = useControllerMenuItem();
   const modalRef = useRef<ModalRef>(null);
   const [allControllerData, setAllControllerData] = useState<CardItem[]>([]);

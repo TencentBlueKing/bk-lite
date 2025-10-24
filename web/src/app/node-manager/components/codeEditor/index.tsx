@@ -1,3 +1,5 @@
+'use client';
+
 import React from 'react';
 import ReactAce from 'react-ace';
 import { Button, Tooltip } from 'antd';

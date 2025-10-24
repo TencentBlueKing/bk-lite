@@ -1,6 +1,10 @@
 import useApiClient from '@/utils/request';
 
-const useApiController = () => {
+/**
+ * 控制器管理API Hook
+ * 职责：处理控制器相关操作
+ */
+const useControllerApi = () => {
   const { get } = useApiClient();
 
   // 获取控制器列表
@@ -27,4 +31,4 @@ const useApiController = () => {
   };
 };
 
-export default useApiController;
+export default useControllerApi;

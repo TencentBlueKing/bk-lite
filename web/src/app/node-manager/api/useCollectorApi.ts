@@ -10,11 +10,14 @@ export interface CollectorParams {
   introduction?: string;
 }
 
-// 采集器专用 API
-const useApiCollector = () => {
+/**
+ * 采集器管理API Hook
+ * 职责：处理采集器的CRUD操作
+ */
+const useCollectorApi = () => {
   const { get, post, del, put } = useApiClient();
 
-  //获取采集器列表
+  // 获取采集器列表
   const getCollectorlist = async ({
     search,
     node_operating_system,
@@ -62,4 +65,4 @@ const useApiCollector = () => {
   };
 };
 
-export default useApiCollector;
+export default useCollectorApi;

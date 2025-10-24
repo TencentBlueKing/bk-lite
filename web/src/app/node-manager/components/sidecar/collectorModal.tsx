@@ -16,8 +16,7 @@ import type { UploadProps } from 'antd';
 import { FormInstance } from 'antd/lib';
 import { useTranslation } from '@/utils/i18n';
 import OperateModal from '@/components/operate-modal';
-import useApiCollector from '@/app/node-manager/api/collector';
-import useApiNode from '@/app/node-manager/api';
+import useNodeManagerApi from '@/app/node-manager/api';
 import { cloneDeep } from 'lodash';
 const { TextArea } = Input;
 const { Dragger } = Upload;
@@ -33,8 +32,7 @@ const initData = {
 const CollectorModal = forwardRef<ModalRef, ModalSuccess>(
   ({ onSuccess }, ref) => {
     const { t } = useTranslation();
-    const { addCollector, editCollecttor } = useApiCollector();
-    const { uploadPackage } = useApiNode();
+    const { addCollector, editCollecttor, uploadPackage } = useNodeManagerApi();
     const formRef = useRef<FormInstance>(null);
     const [form] = Form.useForm();
     const [title, setTitle] = useState<string>('editCollector');

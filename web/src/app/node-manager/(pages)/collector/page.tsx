@@ -2,7 +2,7 @@
 import React, { useEffect, useState, useRef, useCallback } from 'react';
 import { Menu, Input, Button, message, Modal, Tag } from 'antd';
 import useApiClient from '@/utils/request';
-import useApiCollector from '@/app/node-manager/api/collector';
+import useNodeManagerApi from '@/app/node-manager/api';
 import EntityList from '@/components/entity-list/index';
 import { useRouter } from 'next/navigation';
 import { useTranslation } from '@/utils/i18n';
@@ -19,7 +19,7 @@ const Collector = () => {
   const router = useRouter();
   const { t } = useTranslation();
   const { isLoading } = useApiClient();
-  const { getCollectorlist, deleteCollector } = useApiCollector();
+  const { getCollectorlist, deleteCollector } = useNodeManagerApi();
   const menuItem = useCollectorMenuItem();
   const modalRef = useRef<ModalRef>(null);
   const [allCollectorData, setAllCollectorData] = useState<CardItem[]>([]);

@@ -36,9 +36,9 @@ import {
 } from '@/app/node-manager/hooks/node';
 import MainLayout from '../mainlayout/layout';
 import useApiClient from '@/utils/request';
-import useApiCloudRegion from '@/app/node-manager/api/cloudRegion';
-import useApiCollector from '@/app/node-manager/api/collector';
+import useNodeManagerApi from '@/app/node-manager/api';
 import useCloudId from '@/app/node-manager/hooks/useCloudRegionId';
+import { SafeStorage } from '@/app/node-manager/utils/safeStorage';
 import {
   COLLECTOR_LABEL,
   DISPLAY_PLUGINS,
@@ -48,7 +48,10 @@ import ControllerUninstall from './controllerUninstall';
 import CollectorInstallTable from './controllerTable';
 import { useRouter, useSearchParams } from 'next/navigation';
 import PermissionWrapper from '@/components/permission';
-import { OPERATE_SYSTEMS } from '@/app/node-manager/constants/cloudregion';
+import {
+  OPERATE_SYSTEMS,
+  DISPLAY_PLUGINS_COUNT,
+} from '@/app/node-manager/constants/cloudregion';
 import { cloneDeep } from 'lodash';
 import { ColumnItem } from '@/types';
 const { confirm } = Modal;
@@ -64,8 +67,7 @@ const Node = () => {
   const cloudId = useCloudId();
   const searchParams = useSearchParams();
   const { isLoading, del } = useApiClient();
-  const { getNodeList, delNode } = useApiCloudRegion();
-  const { getCollectorlist } = useApiCollector();
+  const { getNodeList, delNode, getCollectorlist } = useNodeManagerApi();
   const sidecarItems = useSidecarItems();
   const collectorItems = useCollectorItems();
   const statusMap = useTelegrafMap();
@@ -85,7 +87,6 @@ const Node = () => {
     useState<boolean>(false);
   const [system, setSystem] = useState<string>('linux');
   const [activeColumns, setActiveColumns] = useState<ColumnItem[]>([]);
-  const DISPLAY_PLUGINS_COUNT = 4; // 最多展示几个插件
 
   const columns = useColumns({
     checkConfig: (row: TableDataItem) => {
@@ -93,7 +94,7 @@ const Node = () => {
         cloud_region_id: cloudId.toString(),
         name,
       };
-      sessionStorage.setItem('cloudRegionInfo', JSON.stringify({ id: row.id }));
+      SafeStorage.setSessionItem('cloudRegionInfo', { id: row.id });
       const params = new URLSearchParams(data);
       const targetUrl = `/node-manager/cloudregion/configuration?${params.toString()}`;
       router.push(targetUrl);
@@ -119,11 +120,6 @@ const Node = () => {
     setShowNodeTable(true);
     setShowInstallCollectorTable(false);
   }, []);
-
-  const enableOperateSideCar = useMemo(() => {
-    if (!selectedRowKeys.length) return true;
-    return false;
-  }, [selectedRowKeys]);
 
   const tableColumns = useMemo(() => {
     if (!activeColumns?.length) return columns;
@@ -478,7 +474,7 @@ const Node = () => {
                   className="mr-[8px]"
                   overlayClassName="customMenu"
                   menu={SidecarmenuProps}
-                  disabled={enableOperateSideCar}
+                  disabled={!selectedRowKeys.length}
                 >
                   <Button>
                     <Space>

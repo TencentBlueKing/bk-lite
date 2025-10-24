@@ -5,7 +5,7 @@ import { Menu, Button, Modal, message } from 'antd';
 import cloudRegionStyle from './index.module.scss';
 import { useRouter } from 'next/navigation';
 import { useTranslation } from '@/utils/i18n';
-import useApiCloudRegion from '@/app/node-manager/api/cloudRegion';
+import useNodeManagerApi from '@/app/node-manager/api';
 import EntityList from '@/components/entity-list';
 import PermissionWrapper from '@/components/permission';
 import type {
@@ -20,7 +20,7 @@ const { confirm } = Modal;
 const CloudRegion = () => {
   const { t } = useTranslation();
   const { isLoading } = useApiClient();
-  const { getCloudList, deleteCloudRegion } = useApiCloudRegion();
+  const { getCloudList, deleteCloudRegion } = useNodeManagerApi();
   const router = useRouter();
   const modalRef = useRef<ModalRef>(null);
   const divRef = useRef(null);
