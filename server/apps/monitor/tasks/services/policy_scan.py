@@ -1016,7 +1016,7 @@ class MonitorPolicyScan:
         success, result = self._execute_step("Create events and alerts", self._create_events_and_alerts, events, critical=True)
         if not success:
             return  # 关键步骤失败，终止流程
-
+        
         event_objs, new_alerts = result
         logger.info(f"Created {len(event_objs)} events and {len(new_alerts)} new alerts")
 
