@@ -50,7 +50,6 @@
         "desc": "节点管理主要用于在每个节点上安装探针,并通过探针管理各种类型的收集器。",
         "ip": "IP",
         "sidecar": "控制器",
-        "restartSidecar": "重启控制器",
         "uninstallSidecar": "卸载控制器",
         "ipaddress": "IP地址",
         "system": "操作系统",
@@ -58,7 +57,6 @@
         "collector": "采集器",
         "startCollector": "开启采集器",
         "restartCollector": "重启采集器",
-        "uninstallCollector": "卸载采集器",
         "stopCollector": "停止采集器",
         "installCollector": "安装采集器",
         "config": "配置",
@@ -68,7 +66,6 @@
         "bindaditinfo": "绑定配置文件后，对应的采集器会自动启动。",
         "updataconfig": "更新配置",
         "restartCollectorInfo": "您确定要重新启动这些收集器吗？",
-        "uninstallCollectorInfo": "您确定要卸载这些收集器吗？",
         "ruleinputinfo": "请输入你的IP地址!",
         "group": "组织",
         "stopsuccess": "停止采集器成功",
@@ -114,7 +111,6 @@
         "scriptTips": "2、执行如下脚本，进行控制器安装",
         "finishTips": "3、手动安装后，可在节点列表中查看控制器正常的节点",
         "uninstallSidecarTips": "确定卸载这些sidecar吗？",
-        "restartSidecarTips": "确定重启这些sidecar吗？",
         "version": "版本号",
         "downloadPackage": "下载安装包",
         "downloadTemplate": "下载模板",
@@ -161,27 +157,27 @@
       }
     },
     "collector": {
-      "title": "概述",
-      "edit": "编辑",
-      "delete": "删除",
       "collector": "采集器",
-      "controller": "控制器",
-      "desc": "介绍每个收集器，包括基本信息、使用场景和收集的数据。",
       "editCollector": "编辑采集器",
+      "addCollector": "添加采集器",
+      "deleteCollector": "删除采集器",
+      "single": "单选Windows/Linux",
+      "executeFilePath": "执行文件路径",
+      "executeParameters": "执行参数"
+    },
+    "controller": {
+      "controller": "控制器"
+    },
+    "packetManage": {
       "uploadPackage": "上传包",
       "uploadSuccess": "上传成功",
       "packageName": "包名称",
-      "uploadInfo": "确认上传吗？",
       "version": "版本",
       "importFile": "导入文件",
-      "deleteCollector": "删除采集器",
-      "addCollector": "添加采集器",
-      "deleteInfo": "您确定要删除此采集器吗？",
-      "editInfo": "您确定要修改此采集器吗？",
-      "single": "单选Windows/Linux",
-      "executeFilePath": "执行文件路径",
-      "executeParameters": "执行参数",
-      "clickUpload": "点击上传"
+      "deleteInfo": "您确定要删除此项吗？",
+      "clickUpload": "点击上传",
+      "title": "概述",
+      "desc": "介绍每个收集器，包括基本信息、使用场景和收集的数据。"
     }
   }
 }

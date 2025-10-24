@@ -16,7 +16,7 @@ import {
   ModalRef,
 } from '@/app/node-manager/types';
 import { useTranslation } from '@/utils/i18n';
-import useApiCloudRegion from '@/app/node-manager/api/cloudRegion';
+import useNodeManagerApi from '@/app/node-manager/api';
 import {
   VarSourceItem,
   VarResItem,
@@ -34,9 +34,9 @@ const ConfigModal = forwardRef<ModalRef, ModalSuccess>(
     const {
       updateCollector,
       createConfig,
-      getVariableList,
       updateChildConfig,
-    } = useApiCloudRegion();
+      getVariableList,
+    } = useNodeManagerApi();
     const cloudId = useCloudId();
     const { t } = useTranslation();
     const columns = useConfigModalColumns();
@@ -363,5 +363,5 @@ const ConfigModal = forwardRef<ModalRef, ModalSuccess>(
   }
 );
 
-ConfigModal.displayName = 'configModal';
+ConfigModal.displayName = 'ConfigModal';
 export default ConfigModal;

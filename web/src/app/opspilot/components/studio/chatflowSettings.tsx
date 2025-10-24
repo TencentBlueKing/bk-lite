@@ -19,6 +19,7 @@ const nodeCategories = [
       { type: 'celery', icon: 'a-icon-dingshichufa1x', labelKey: 'chatflow.celery' },
       { type: 'restful', icon: 'RESTfulAPI', labelKey: 'chatflow.restful' },
       { type: 'openai', icon: 'icon-test2', labelKey: 'chatflow.openai' },
+      { type: 'enterprise_wechat', icon: 'qiwei2', labelKey: 'chatflow.enterpriseWechat' },
     ]
   },
   {
@@ -55,11 +56,11 @@ const NodeLibraryItem = ({ type, icon, label, onDragStart }: {
   const handleDragStart = (event: React.DragEvent<HTMLDivElement>) => {
     event.dataTransfer.setData('application/reactflow', type);
     event.dataTransfer.effectAllowed = 'move';
-    
+
     // 添加视觉反馈
     const target = event.currentTarget as HTMLDivElement;
     target.style.opacity = '0.5';
-    
+
     // 调用父组件的处理函数
     onDragStart(event, type);
   };
@@ -90,12 +91,12 @@ interface ChatflowSettingsProps {
   workflowData?: { nodes: any[], edges: any[] } | null;
 }
 
-const ChatflowSettings: React.FC<ChatflowSettingsProps> = ({ 
-  form, 
-  groups, 
-  onClear, 
+const ChatflowSettings: React.FC<ChatflowSettingsProps> = ({
+  form,
+  groups,
+  onClear,
   onSaveWorkflow,
-  workflowData 
+  workflowData
 }) => {
   const { t } = useTranslation();
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
@@ -112,7 +113,6 @@ const ChatflowSettings: React.FC<ChatflowSettingsProps> = ({
   };
 
   const handleWorkflowChange = (nodes: any[], edges: any[]) => {
-    console.log('ChatflowSettings: 工作流数据变化', { nodes: nodes.length, edges: edges.length });
     if (onSaveWorkflow) {
       onSaveWorkflow({ nodes, edges });
     }
@@ -124,7 +124,7 @@ const ChatflowSettings: React.FC<ChatflowSettingsProps> = ({
     if (chatflowEditorRef.current) {
       chatflowEditorRef.current.clearCanvas();
     }
-    
+
     // Notify parent component to clear workflow data
     if (onClear) {
       onClear();
@@ -138,7 +138,7 @@ const ChatflowSettings: React.FC<ChatflowSettingsProps> = ({
         isSidebarCollapsed ? 'w-0 opacity-0' : 'w-80'
       }`}>
         <div>
-          <Collapse 
+          <Collapse
             size="small"
             ghost
             activeKey={activeAccordionKeys}
@@ -147,7 +147,7 @@ const ChatflowSettings: React.FC<ChatflowSettingsProps> = ({
             className="bg-transparent"
           >
             {/* Information Panel - 默认不展开 */}
-            <Panel 
+            <Panel
               key="information"
               header={
                 <div className="flex items-center">
@@ -189,7 +189,7 @@ const ChatflowSettings: React.FC<ChatflowSettingsProps> = ({
             </Panel>
 
             {/* Nodes Panel - 默认展开 */}
-            <Panel 
+            <Panel
               key="nodes"
               header={
                 <div className="flex items-center">
@@ -198,14 +198,14 @@ const ChatflowSettings: React.FC<ChatflowSettingsProps> = ({
               }
             >
               <div>
-                <Collapse 
-                  size="small" 
+                <Collapse
+                  size="small"
                   ghost
                   defaultActiveKey={['triggers', 'agents', 'logic', 'actions']}
                   expandIcon={({ isActive }) => <CaretRightOutlined rotate={isActive ? 90 : 0} />}
                 >
                   {nodeCategories.map((category) => (
-                    <Panel 
+                    <Panel
                       key={category.key}
                       header={
                         <div className="flex items-center">
@@ -241,8 +241,8 @@ const ChatflowSettings: React.FC<ChatflowSettingsProps> = ({
           style={{ left: '0px' }}
           title={isSidebarCollapsed ? t('chatflow.expandSidebar') : t('chatflow.collapseSidebar')}
         >
-          <Icon 
-            type={isSidebarCollapsed ? 'icon-test1' : 'icon-test'} 
+          <Icon
+            type={isSidebarCollapsed ? 'icon-test1' : 'icon-test'}
             className="text-gray-500 text-lg"
           />
         </button>
@@ -263,9 +263,9 @@ const ChatflowSettings: React.FC<ChatflowSettingsProps> = ({
           </button>
         </div>
         <div className="border rounded-md shadow-sm bg-white h-[calc(100vh-230px)] mx-2">
-          <ChatflowEditor 
+          <ChatflowEditor
             ref={chatflowEditorRef}
-            onSave={handleWorkflowChange} 
+            onSave={handleWorkflowChange}
             initialData={workflowData}
           />
         </div>

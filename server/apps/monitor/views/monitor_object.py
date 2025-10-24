@@ -81,10 +81,8 @@ class MonitorObjectVieSet(viewsets.ModelViewSet):
             for result in results:
                 result["policy_count"] = policy_map.get(result["id"], 0)
 
-        # 排序
-        sorted_results = MonitorObjectService.sort_items(results)
-
-        return WebUtils.response_success(sorted_results)
+        # queryset已经通过模型的ordering自动排序，无需再次排序
+        return WebUtils.response_success(results)
 
     def create(self, request, *args, **kwargs):
         return super().create(request, *args, **kwargs)

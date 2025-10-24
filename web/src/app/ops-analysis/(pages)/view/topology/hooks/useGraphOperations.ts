@@ -308,6 +308,10 @@ export const useGraphOperations = (
       return;
     }
 
+    // 设置加载状态并启动加载动画
+    node.setData({ ...node.getData(), isLoading: true, hasError: false });
+    startLoadingAnimation(node);
+
     try {
       let requestParams = {};
 
@@ -1217,6 +1221,19 @@ export const useGraphOperations = (
     setOperationIndex(-1);
   }, []);
 
+  // 刷新所有单值节点
+  const refreshAllSingleValueNodes = useCallback(() => {
+    if (!graphInstance) return;
+
+    const nodes = graphInstance.getNodes();
+    nodes.forEach((node: any) => {
+      const nodeData = node.getData();
+      if (nodeData.type === 'single-value' && nodeData.valueConfig?.dataSource && nodeData.valueConfig?.selectedFields?.length) {
+        updateSingleNodeData(nodeData);
+      }
+    });
+  }, [graphInstance, updateSingleNodeData]);
+
   return {
     zoomIn,
     zoomOut,
@@ -1238,6 +1255,7 @@ export const useGraphOperations = (
     finishInitialization,
     startInitialization,
     clearOperationHistory,
+    refreshAllSingleValueNodes,
     ...dataOperations,
   };
 };

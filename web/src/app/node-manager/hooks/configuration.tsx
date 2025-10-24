@@ -1,3 +1,4 @@
+import { useMemo } from 'react';
 import { useTranslation } from '@/utils/i18n';
 import { Button, Tag, Popconfirm } from 'antd';
 import type { TableColumnsType } from 'antd';
@@ -8,8 +9,29 @@ import {
 } from '@/app/node-manager/types/cloudregion';
 import { TableDataItem } from '@/app/node-manager/types/index';
 import EllipsisWithTooltip from '@/components/ellipsis-with-tooltip';
+import type { MenuProps } from 'antd';
 
-export const useApplyColumns = ({
+const useConfigBtachItems = (): MenuProps['items'] => {
+  const { t } = useTranslation();
+  return useMemo(
+    () => [
+      {
+        label: (
+          <PermissionWrapper
+            className="customMenuItem"
+            requiredPermissions={['Delete']}
+          >
+            {t('common.delete')}
+          </PermissionWrapper>
+        ),
+        key: 'delete',
+      },
+    ],
+    [t]
+  );
+};
+
+const useApplyColumns = ({
   handleApply,
 }: {
   handleApply: (row: TableDataItem) => void;
@@ -79,7 +101,7 @@ export const useApplyColumns = ({
   return applycolumns;
 };
 
-export const useConfigColumns = ({
+const useConfigColumns = ({
   configurationClick,
   openSub,
   nodeClick,
@@ -92,7 +114,7 @@ export const useConfigColumns = ({
     {
       title: t('common.name'),
       dataIndex: 'name',
-      width: 150
+      width: 150,
     },
     {
       title: t('node-manager.cloudregion.node.node'),
@@ -189,7 +211,11 @@ export const useConfigColumns = ({
               cancelText={t('common.cancel')}
               onConfirm={() => modifyDeleteconfirm(item.key)}
             >
-              <Button variant="link" color="primary" disabled={!!item.nodes?.length}>
+              <Button
+                variant="link"
+                color="primary"
+                disabled={!!item.nodes?.length}
+              >
                 {t('common.delete')}
               </Button>
             </Popconfirm>
@@ -204,10 +230,7 @@ export const useConfigColumns = ({
   };
 };
 
-export const useSubConfigColumns = ({
-  nodeData,
-  edit,
-}: SubConfigHookParams) => {
+const useSubConfigColumns = ({ nodeData, edit }: SubConfigHookParams) => {
   const { t } = useTranslation();
   const columns: TableColumnsType<TableDataItem> = [
     {
@@ -252,7 +275,7 @@ export const useSubConfigColumns = ({
   };
 };
 
-export const useConfigModalColumns = () => {
+const useConfigModalColumns = () => {
   const { t } = useTranslation();
   return [
     {
@@ -266,4 +289,12 @@ export const useConfigModalColumns = () => {
       key: 'description',
     },
   ];
+};
+
+export {
+  useConfigBtachItems,
+  useApplyColumns,
+  useConfigColumns,
+  useSubConfigColumns,
+  useConfigModalColumns,
 };
