@@ -917,59 +917,122 @@ class MonitorPolicyScan:
 
         return pre_alert_data_map
 
+    def _execute_step(self, step_name, func, *args, critical=False, **kwargs):
+        """执行流程步骤，统一错误处理
+
+        Args:
+            step_name: 步骤名称，用于日志记录
+            func: 要执行的函数
+            *args: 函数参数
+            critical: 是否为关键步骤，失败后是否中断流程
+            **kwargs: 函数关键字参数
+
+        Returns:
+            tuple: (是否成功, 函数执行结果)
+                - 成功时返回 (True, result)
+                - 失败时返回 (False, None)，如果critical=True则直接抛出异常
+        """
+        try:
+            result = func(*args, **kwargs)
+            logger.info(f"{step_name} completed for policy {self.policy.id}")
+            return True, result
+        except Exception as e:
+            logger.error(f"Failed to {step_name.lower()} for policy {self.policy.id}: {e}", exc_info=True)
+            if critical:
+                raise
+            return False, None
+
+    def _process_threshold_alerts(self):
+        """处理阈值告警"""
+        alert_events, info_events = self.alert_event()
+        self.count_events(alert_events, info_events)
+        self.recovery_alert()
+        return alert_events, info_events
+
+    def _process_no_data_alerts(self):
+        """处理无数据告警"""
+        no_data_events = self.no_data_event()
+        self.recovery_no_data_alert()
+        return no_data_events
+
+    def _create_events_and_alerts(self, events):
+        """创建事件和告警
+
+        Args:
+            events: 事件列表
+
+        Returns:
+            tuple: (事件对象列表, 新告警列表)
+        """
+        event_objs = self.create_events(events)
+        new_alerts = []
+        if event_objs:
+            new_alerts = self.handle_alert_events(event_objs)
+        return event_objs, new_alerts
+
     def run(self):
         """执行监控策略扫描主流程
 
         流程说明:
-        1. 检查实例范围是否有效
-        2. 设置实例标识键
-        3. 处理阈值告警(如果启用)
-        4. 处理无数据告警(如果启用)
-        5. 创建事件和告警记录
-        6. 发送通知
-        7. 创建指标快照
+        1. 前置检查：实例范围、实例标识键
+        2. 处理告警：阈值告警、无数据告警（独立隔离）
+        3. 创建记录：事件、告警（关键步骤）
+        4. 后续处理：通知、快照（独立隔离）
         """
-        # 存在source范围但没有实例,不进行计算
+        # 前置检查：实例范围
         if self.policy.source and not self.instances_map:
+            logger.warning(f"Policy {self.policy.id} has source but no instances, skipping scan")
             return
 
-        # 初始化实例标识键
-        self.set_monitor_obj_instance_key()
+        # 前置检查：实例标识键（关键步骤，失败则抛出异常终止）
+        try:
+            self._execute_step("Set monitor instance key", self.set_monitor_obj_instance_key, critical=True)
+        except Exception:
+            return
 
         # 初始化结果变量
-        event_objs = []
-        new_alerts = []
         alert_events, info_events, no_data_events = [], [], []
 
-        # 处理阈值告警
+        # 步骤1: 处理阈值告警（独立隔离）
         if AlertConstants.THRESHOLD in self.policy.enable_alerts:
-            alert_events, info_events = self.alert_event()
-            self.count_events(alert_events, info_events)
-            self.recovery_alert()
+            success, result = self._execute_step("Process threshold alerts", self._process_threshold_alerts)
+            if success and result is not None:
+                alert_events, info_events = result
+                logger.info(f"Threshold alerts: {len(alert_events)} alerts, {len(info_events)} info events")
 
-        # 处理无数据告警
+        # 步骤2: 处理无数据告警（独立隔离）
         if AlertConstants.NO_DATA in self.policy.enable_alerts:
-            no_data_events = self.no_data_event()
-            self.recovery_no_data_alert()
+            success, result = self._execute_step("Process no-data alerts", self._process_no_data_alerts)
+            if success and result is not None:
+                no_data_events = result
+                logger.info(f"No-data alerts: {len(no_data_events)} events")
 
-        # 合并所有事件
+        # 步骤3: 创建事件和告警（关键步骤）
         events = alert_events + no_data_events
+        if not events:
+            logger.info(f"No events to process for policy {self.policy.id}")
+            return
 
-        # 创建事件记录和告警
-        if events:
-            event_objs = self.create_events(events)
-            new_alerts = self.handle_alert_events(event_objs)
+        success, result = self._execute_step("Create events and alerts", self._create_events_and_alerts, events, critical=True)
+        if not success:
+            return  # 关键步骤失败，终止流程
 
-            # 发送通知
-            if self.policy.notice:
-                self.notice(event_objs)
+        event_objs, new_alerts = result
+        logger.info(f"Created {len(event_objs)} events and {len(new_alerts)} new alerts")
 
-        # 创建当前周期的指标快照
-        self.create_metric_snapshots_for_active_alerts(
+        # 步骤4: 发送通知（独立隔离）
+        if self.policy.notice and event_objs:
+            self._execute_step("Send notifications", self.notice, event_objs)
+
+        # 步骤5: 创建指标快照（独立隔离）
+        self._execute_step(
+            "Create metric snapshots",
+            self.create_metric_snapshots_for_active_alerts,
             info_events=info_events,
             event_objs=event_objs,
             new_alerts=new_alerts
         )
 
-        # 创建告警前快照
-        self.create_pre_alert_snapshots(new_alerts)
+        # 步骤6: 创建告警前快照（独立隔离）
+        if new_alerts:
+            self._execute_step("Create pre-alert snapshots", self.create_pre_alert_snapshots, new_alerts)
