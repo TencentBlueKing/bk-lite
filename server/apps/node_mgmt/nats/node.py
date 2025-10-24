@@ -1,4 +1,5 @@
 from django.core.cache import cache
+from django.db import transaction
 
 import nats_client
 from apps.node_mgmt.constants.database import DatabaseConstants, EnvVariableConstants
@@ -109,10 +110,13 @@ class NatsService:
                     collector_config_id=config["id"]
                 )
             )
-        if conf_objs:
-            CollectorConfiguration.objects.bulk_create(conf_objs, batch_size=DatabaseConstants.BULK_CREATE_BATCH_SIZE)
-        if node_config_assos:
-            NodeCollectorConfiguration.objects.bulk_create(node_config_assos, batch_size=DatabaseConstants.BULK_CREATE_BATCH_SIZE, ignore_conflicts=True)
+
+        # 事务保护：确保两个表同时创建成功
+        with transaction.atomic():
+            if conf_objs:
+                CollectorConfiguration.objects.bulk_create(conf_objs, batch_size=DatabaseConstants.BULK_CREATE_BATCH_SIZE)
+            if node_config_assos:
+                NodeCollectorConfiguration.objects.bulk_create(node_config_assos, batch_size=DatabaseConstants.BULK_CREATE_BATCH_SIZE, ignore_conflicts=True)
 
     def batch_create_child_configs(self, configs: list):
         """
@@ -149,8 +153,11 @@ class NatsService:
                 env_config=encrypted_env_config,
                 sort_order=config.get("sort_order", 0),
             ))
-        if node_objs:
-            ChildConfig.objects.bulk_create(node_objs, batch_size=DatabaseConstants.BULK_CREATE_BATCH_SIZE)
+
+        # 事务保护：确保所有子配置同时创建成功
+        with transaction.atomic():
+            if node_objs:
+                ChildConfig.objects.bulk_create(node_objs, batch_size=DatabaseConstants.BULK_CREATE_BATCH_SIZE)
 
     def get_child_configs_by_ids(self, ids: list):
         """根据子配置ID列表获取子配置对象"""
