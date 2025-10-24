@@ -25,9 +25,15 @@ class UserViewSet(ViewSetUtils):
         group_id = request.GET.get("group_id", "")
         page = int(request.GET.get("page", 1))
         page_size = int(request.GET.get("page_size", 10))
+        is_superuser = request.GET.get("is_superuser", "0") == "1"
 
         # 过滤用户数据
         queryset = User.objects.filter(Q(username__icontains=search) | Q(display_name__icontains=search) | Q(email__icontains=search))
+
+        # 如果筛选超级用户，则过滤包含超管角色的用户
+        if is_superuser:
+            super_role_id = Role.objects.get(app="", name="admin").id
+            queryset = queryset.filter(role_list__contains=super_role_id)
 
         # 如果指定了用户组ID，则过滤该组内的用户
         if group_id:
@@ -74,7 +80,16 @@ class UserViewSet(ViewSetUtils):
     def get_user_detail(self, request):
         pk = request.data.get("user_id")
         user = User.objects.get(id=pk)
+
+        # 使用 UserSerializer 序列化用户数据（自动包含 group_role_list 和 is_superuser）
+        serializer = UserSerializer(user)
+        data = serializer.data
+
+        # 添加角色详情
         roles = Role.objects.filter(id__in=user.role_list).values(role_id=F("id"), role_name=F("name"), display_name=F("name"))
+        data["roles"] = list(roles)
+
+        # 添加用户组详情及规则
         groups = list(Group.objects.filter(id__in=user.group_list).values("id", "name"))
         group_rule_map = {}
         rules = UserRule.objects.filter(username=user.username).values("group_rule__group_id", "group_rule_id", "group_rule__app")
@@ -82,17 +97,8 @@ class UserViewSet(ViewSetUtils):
             group_rule_map.setdefault(rule["group_rule__group_id"], {}).setdefault(rule["group_rule__app"], []).append(rule["group_rule_id"])
         for i in groups:
             i["rules"] = group_rule_map.get(i["id"], {})
-        data = {
-            "id": user.id,
-            "username": user.username,
-            "display_name": user.display_name,
-            "email": user.email,
-            "disabled": user.disabled,
-            "locale": user.locale,
-            "timezone": user.timezone,
-            "roles": list(roles),
-            "groups": groups,
-        }
+        data["groups"] = groups
+
         return JsonResponse({"result": True, "data": data})
 
     # @action(detail=False, methods=["GET"])
