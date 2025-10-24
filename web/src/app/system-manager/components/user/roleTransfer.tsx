@@ -104,17 +104,20 @@ const isNodeDisabled = (node: TreeDataNode): boolean => {
   return node.disabled === true;
 };
 
-// 新增：当 mode 为 "group" 时，生成右侧树的节点，只保留全选节点
+// 新增：当 mode 为 "group" 时，生成右侧树的节点
 const transformRightTreeGroup = (
   nodes: TreeDataNode[],
   selectedKeys: number[],
   handlers: NodeHandlers
 ): TreeDataNode[] => {
   return nodes.reduce<TreeDataNode[]>((acc, node) => {
+    const isNodeSelected = selectedKeys.includes(node.key as number);
+    
     if (node.children && node.children.length > 0) {
       const transformedChildren = transformRightTreeGroup(node.children, selectedKeys, handlers);
-      if (isFullySelected(node, selectedKeys)) {
-        // 当所有子节点都选中时，显示父级分组节点
+      
+      // 如果当前节点被选中，显示该节点
+      if (isNodeSelected) {
         acc.push({
           ...node,
           title: (
@@ -140,12 +143,17 @@ const transformRightTreeGroup = (
           ),
           children: transformedChildren
         });
-      } else {
-        // 如果父节点不完全选中，则不显示父节点，只返回选中的子节点
-        acc.push(...transformedChildren);
+      } else if (transformedChildren.length > 0) {
+        // 如果当前节点未选中但有选中的子节点，则显示父节点但不加操作按钮
+        acc.push({
+          ...node,
+          title: typeof node.title === 'function' ? node.title(node) : node.title,
+          children: transformedChildren
+        });
       }
     } else {
-      if (selectedKeys.includes(node.key as number)) {
+      // 叶子节点：如果被选中则显示
+      if (isNodeSelected) {
         acc.push({
           ...node,
           title: (

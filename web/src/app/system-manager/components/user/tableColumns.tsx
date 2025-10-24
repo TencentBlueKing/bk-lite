@@ -65,7 +65,6 @@ export const createUserTableColumns = ({
       dataIndex: 'roles',
       width: 200,
       render: (_: string[], record: UserDataType) => {
-        // 处理个人角色（蓝色）
         const personalRoles = (record.roles || []).reduce((acc: Record<string, string[]>, role: any) => {
           const roleName = typeof role === 'string' ? role : role.name;
           const parts = roleName.split('@@');
@@ -81,7 +80,6 @@ export const createUserTableColumns = ({
           return acc;
         }, {});
 
-        // 处理组织角色（绿色）
         const groupRoles = (record.group_role_list || []).reduce((acc: Record<string, string[]>, role: string) => {
           const parts = role.split('@@');
           if (parts.length >= 2) {
