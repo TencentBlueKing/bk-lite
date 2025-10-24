@@ -1,5 +1,5 @@
 import React, { useState, useRef, forwardRef, useImperativeHandle, useEffect } from 'react';
-import { Input, Button, Form, message, Spin } from 'antd';
+import { Input, Button, Form, message } from 'antd';
 import OperateModal from '@/components/operate-modal';
 import type { FormInstance } from 'antd';
 import { useTranslation } from '@/utils/i18n';
@@ -57,7 +57,7 @@ const GroupEditModal = forwardRef<GroupModalRef, ModalProps>(({ onSuccess }, ref
     try {
       setRoleLoading(true);
       const roleData = await getRoleList({ client_list: clientData });
-      
+
       // 转换为Transfer组件需要的树形数据格式
       const formattedRoles = roleData.map((item: any) => ({
         key: item.id,
@@ -69,7 +69,7 @@ const GroupEditModal = forwardRef<GroupModalRef, ModalProps>(({ onSuccess }, ref
           selectable: true,
         })),
       }));
-      
+
       setRoleTreeData(formattedRoles);
     } catch (error) {
       console.error('Failed to fetch roles:', error);
@@ -85,11 +85,11 @@ const GroupEditModal = forwardRef<GroupModalRef, ModalProps>(({ onSuccess }, ref
       setCurrentGroupId(groupId);
       setCurrentGroupName(groupName || '');
       formRef.current?.resetFields();
-      
+
       if (type === 'edit') {
         const currentRoleIds = roleIds || [];
         setSelectedRoleIds(currentRoleIds);
-        
+
         fetchAvailableRoles();
       }
     },
@@ -147,34 +147,32 @@ const GroupEditModal = forwardRef<GroupModalRef, ModalProps>(({ onSuccess }, ref
         </Button>,
       ]}
     >
-      <Spin spinning={roleLoading}>
-        <Form ref={formRef} layout="vertical">
-          <Form.Item
-            name="groupName"
-            label={t('system.group.form.name')}
-            rules={[{ required: true, message: t('common.inputRequired') }]}
-          >
-            <Input 
-              placeholder={`${t('common.inputMsg')}${t('system.group.form.name')}`} 
-            />
-          </Form.Item>
-          
-          <Form.Item
-            name="roleIds"
-            label={t('system.group.organizationRoles')}
-            tooltip={t('system.group.organizationRolesTooltip')}
-          >
-            <RoleTransfer
-              treeData={roleTreeData}
-              selectedKeys={selectedRoleIds}
-              loading={roleLoading}
-              onChange={handleRoleChange}
-              groupRules={{}}
-              forceOrganizationRole={true}
-            />
-          </Form.Item>
-        </Form>
-      </Spin>
+      <Form ref={formRef} layout="vertical">
+        <Form.Item
+          name="groupName"
+          label={t('system.group.form.name')}
+          rules={[{ required: true, message: t('common.inputRequired') }]}
+        >
+          <Input
+            placeholder={`${t('common.inputMsg')}${t('system.group.form.name')}`}
+          />
+        </Form.Item>
+
+        <Form.Item
+          name="roleIds"
+          label={t('system.group.organizationRoles')}
+          tooltip={t('system.group.organizationRolesTooltip')}
+        >
+          <RoleTransfer
+            treeData={roleTreeData}
+            selectedKeys={selectedRoleIds}
+            loading={roleLoading}
+            onChange={handleRoleChange}
+            groupRules={{}}
+            forceOrganizationRole={true}
+          />
+        </Form.Item>
+      </Form>
     </OperateModal>
   );
 });
