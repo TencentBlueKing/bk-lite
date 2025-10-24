@@ -155,20 +155,24 @@ const ChatflowEditor = forwardRef<ChatflowEditorRef, ChatflowEditorProps>(({ onS
   }, []);
 
   const handleSaveConfig = useCallback((nodeId: string, values: any) => {
-    console.log('ChatflowEditor - handleSaveConfig - Received values:', values);
     const { name, ...config } = values;
-    console.log('ChatflowEditor - handleSaveConfig - Extracted name:', name);
-    console.log('ChatflowEditor - handleSaveConfig - Config to save:', config);
     
-    setNodes((nds) =>
-      nds.map((node) =>
+    setNodes((nds) => {
+      const updatedNodes = nds.map((node) =>
         node.id === nodeId
           ? { ...node, data: { ...node.data, label: name || node.data.label, config } }
           : node
-      )
-    );
+      );
+      
+      // 立即触发 onSave 回调，同步更新上层状态
+      if (onSave) {
+        onSave(updatedNodes, edges);
+      }
+      
+      return updatedNodes;
+    });
     setIsConfigDrawerVisible(false);
-  }, [setNodes]);
+  }, [setNodes, edges, onSave]);
 
   useEffect(() => {
     const flowContainer = reactFlowWrapper.current;
