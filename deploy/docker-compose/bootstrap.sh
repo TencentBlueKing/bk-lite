@@ -7,6 +7,9 @@ YELLOW='\033[0;33m'
 BLUE='\033[0;34m'
 NC='\033[0m' # No Color
 
+# 读取环境变量 MIRROR，如果未设置则为空
+MIRROR=${MIRROR:-""}
+
 # Function to log messages with colored output
 log() {
     local level="$1"
@@ -132,27 +135,6 @@ log "INFO" "开始检查 Docker 和 Docker Compose 版本..."
 check_docker_version
 check_docker_compose_version
 
-# 检查是否添加--opspilot参数
-if [[ "$@" == *"--opspilot"* ]]; then
-    export OPSPILOT_ENABLED=true
-    log "INFO" "检测到 --opspilot 参数，启用 OpsPilot 功能"
-else
-    export OPSPILOT_ENABLED=false
-    log "INFO" "未检测到 --opspilot 参数，禁用 OpsPilot 功能"
-fi
-
-INSTALL_APPS="system_mgmt,cmdb,monitor,node_mgmt,console_mgmt,alerts,log,mlops,operation_analysis"
-
-if [[ $OPSPILOT_ENABLED == "true" ]]; then
-    export INSTALL_APPS="${INSTALL_APPS},opspilot"
-    log "INFO" "启用 OpsPilot 功能，安装应用列表: ${INSTALL_APPS}"
-    # 使用 compose/ops_pilot.yaml 文件
-    export COMPOSE_CMD="${DOCKER_COMPOSE_CMD} -f compose/infra.yaml -f compose/monitor.yaml -f compose/server.yaml -f compose/web.yaml -f compose/ops_pilot.yaml -f compose/log.yaml config --no-interpolate"
-else
-    log "INFO" "禁用 OpsPilot 功能，安装应用列表: ${INSTALL_APPS}"
-    export COMPOSE_CMD="${DOCKER_COMPOSE_CMD} -f compose/infra.yaml -f compose/monitor.yaml -f compose/server.yaml -f compose/web.yaml -f compose/log.yaml config --no-interpolate"
-fi
-
 # Function to validate environment variables
 validate_env_var() {
     local var_name="$1"
@@ -165,6 +147,7 @@ validate_env_var() {
 # Function to add mirror prefix to docker image if MIRROR is set
 add_mirror_prefix() {
     local image="$1"
+    : "${MIRROR:=}"
     if [ -n "$MIRROR" ]; then
         # 如果镜像名包含斜杠，说明有仓库前缀
         if [[ "$image" == *"/"* ]]; then
@@ -183,6 +166,76 @@ generate_password() {
     local length=$1
     # 只使用字母和数字，避免任何特殊字符，确保在YAML文件中不会出现解析问题
     cat /dev/urandom | tr -dc 'a-zA-Z0-9' | head -c $length
+}
+
+# 加载镜像并进行 hash 校验
+# 功能：
+#   1. 读取镜像 hash 文件
+#   2. 检查本地已有镜像的 hash，跳过已存在且 hash 匹配的镜像
+#   3. 只加载需要的镜像文件，真正实现按需加载
+load_docker_images_with_hash_check() {
+    local images_dir="$1"
+    local hash_file="${images_dir}/images.sha256"
+    
+    # 检查镜像目录是否存在
+    if [ ! -d "$images_dir" ]; then
+        log "ERROR" "镜像目录不存在: $images_dir"
+        exit 1
+    fi
+    
+    # 检查 hash 文件是否存在
+    if [ ! -f "$hash_file" ]; then
+        log "ERROR" "镜像 hash 文件不存在: $hash_file"
+        log "ERROR" "请先运行 'bootstrap.sh package' 生成镜像包"
+        exit 1
+    fi
+    
+    # 检查哪些镜像需要加载
+    local loaded_count=0
+    local skipped_count=0
+    local total_count=0
+    
+    log "INFO" "检查本地镜像状态..."
+    while IFS= read -r line; do
+        if [[ -z "$line" || "$line" == \#* ]]; then
+            continue
+        fi
+        
+        local image_name=$(echo "$line" | awk '{print $1}')
+        local image_hash=$(echo "$line" | awk '{print $2}')
+        local image_file=$(echo "$line" | awk '{print $3}')
+        total_count=$((total_count + 1))
+        
+        # 检查镜像是否存在
+        if docker image inspect "$image_name" >/dev/null 2>&1; then
+            # 获取本地镜像的 hash
+            local local_hash=$(docker image inspect "$image_name" --format '{{.Id}}' 2>/dev/null | sed 's/sha256://')
+            
+            if [ "$local_hash" == "$image_hash" ]; then
+                log "SUCCESS" "镜像已存在且 hash 匹配，跳过: $image_name"
+                skipped_count=$((skipped_count + 1))
+                continue
+            else
+                log "WARNING" "镜像存在但 hash 不匹配，需要更新: $image_name"
+            fi
+        else
+            log "INFO" "镜像不存在，需要加载: $image_name"
+        fi
+        
+        # 加载单个镜像文件
+        local image_tar="${images_dir}/${image_file}"
+        if [ -f "$image_tar" ]; then
+            log "INFO" "正在加载镜像文件: $image_file"
+            docker load -i "$image_tar"
+            loaded_count=$((loaded_count + 1))
+            log "SUCCESS" "镜像加载完成: $image_name"
+        else
+            log "ERROR" "镜像文件不存在: $image_tar"
+            exit 1
+        fi
+    done < "$hash_file"
+    
+    log "SUCCESS" "镜像检查完成 - 总计: $total_count, 已加载: $loaded_count, 已跳过: $skipped_count"
 }
 
 # 等待容器健康状态函数
@@ -223,42 +276,44 @@ check_http_response() {
     return 1
 }
 
-if [ -f port.env ]; then
-    log "SUCCESS" "port.env文件已存在，跳过文件生成步骤..."
-    source port.env
-else
-        # 获取本地的第一个ip为默认ip
-    # Get IP address - compatible with both Linux and macOS
-    if command -v hostname >/dev/null 2>&1 && hostname -I >/dev/null 2>&1; then
-        DEFAULT_IP=$(hostname -I | awk '{print $1}')
-    elif command -v ifconfig >/dev/null 2>&1; then
-        DEFAULT_IP=$(ifconfig | grep "inet " | grep -v 127.0.0.1 | awk '{print $2}' | head -1)
+generate_ports_env() {
+    if [ -f port.env ]; then
+        log "SUCCESS" "port.env文件已存在，跳过文件生成步骤..."
+        source port.env
     else
-        DEFAULT_IP="127.0.0.1"
-    fi
+            # 获取本地的第一个ip为默认ip
+        # Get IP address - compatible with both Linux and macOS
+        if command -v hostname >/dev/null 2>&1 && hostname -I >/dev/null 2>&1; then
+            DEFAULT_IP=$(hostname -I | awk '{print $1}')
+        elif command -v ifconfig >/dev/null 2>&1; then
+            DEFAULT_IP=$(ifconfig | grep "inet " | grep -v 127.0.0.1 | awk '{print $2}' | head -1)
+        else
+            DEFAULT_IP="127.0.0.1"
+        fi
 
-    # 从命令行读取HOST_IP环境变量
-    read -p "输入对外访问的IP地址，默认为 [$DEFAULT_IP] " HOST_IP  < /dev/tty
-    export HOST_IP=${HOST_IP:-$DEFAULT_IP}
+        # 从命令行读取HOST_IP环境变量
+        read -p "输入对外访问的IP地址，默认为 [$DEFAULT_IP] " HOST_IP  < /dev/tty
+        export HOST_IP=${HOST_IP:-$DEFAULT_IP}
 
-    DEFAULT_TRAEFIK_WEB_PORT=443
-    read -p "输入访问端口，默认为 [$DEFAULT_TRAEFIK_WEB_PORT] " TRAEFIK_WEB_PORT  < /dev/tty
-    export TRAEFIK_WEB_PORT=${TRAEFIK_WEB_PORT:-$DEFAULT_TRAEFIK_WEB_PORT}
+        DEFAULT_TRAEFIK_WEB_PORT=443
+        read -p "输入访问端口，默认为 [$DEFAULT_TRAEFIK_WEB_PORT] " TRAEFIK_WEB_PORT  < /dev/tty
+        export TRAEFIK_WEB_PORT=${TRAEFIK_WEB_PORT:-$DEFAULT_TRAEFIK_WEB_PORT}
 
-    # 将输入的配置写入port.env
-    cat > port.env <<EOF
+        # 将输入的配置写入port.env
+        cat > port.env <<EOF
 export HOST_IP=${HOST_IP}
 export TRAEFIK_WEB_PORT=${TRAEFIK_WEB_PORT}
 EOF
-fi
+    fi
+}
 
 generate_tls_certs() {
     : "${HOST_IP:?HOST_IP 未设置}"
     local dir=./conf/certs
     local san="DNS:nats,DNS:localhost,IP:127.0.0.1,IP:${HOST_IP}"
     local cn="BluekingLite"
-    local openssl_image=$(add_mirror_prefix "alpine/openssl:3.5.4")
-    
+    local openssl_image=$DOCKER_IMAGE_OPENSSL
+
     # 当存在server.crt时，跳过生成
     if [ -f "$dir/server.crt" ] && [ -f "$dir/server.key" ] && [ -f "$dir/ca.crt" ]; then
         log "SUCCESS" "TLS 证书已存在，跳过生成步骤..."
@@ -323,31 +378,34 @@ EOF
     log "SUCCESS" "TLS 证书生成完成：$(ls -1 $dir/server.crt)"
 }
 
-# 检查common.env文件是否存在，存在则加载，不存在则生成
-# 检查并设置MIRROR环境变量
-MIRROR=${MIRROR:-""}
-COMMON_ENV_FILE="common.env"
-if [ -f "$COMMON_ENV_FILE" ]; then
-    log "SUCCESS" "发现 $COMMON_ENV_FILE 配置文件，加载已保存的环境变量..."
-    source $COMMON_ENV_FILE
-else
-    log "INFO" "未发现 $COMMON_ENV_FILE 配置文件，生成随机环境变量..."
-    # 生成随机密码
-    export POSTGRES_PASSWORD=$(generate_password 32)
-    export REDIS_PASSWORD=$(generate_password 32)
-    export SECRET_KEY=$(generate_password 32)
-    export NEXTAUTH_SECRET=$(generate_password 12)
-    export NATS_ADMIN_USERNAME=admin
-    export NATS_ADMIN_PASSWORD=$(generate_password 32)
-    export NATS_MONITOR_USERNAME=monitor
-    export NATS_MONITOR_PASSWORD=$(generate_password 32)
-    export MINIO_ROOT_USER=minio
-    export MINIO_ROOT_PASSWORD=$(generate_password 32)
-    export FALKORDB_PASSWORD=$(generate_password 32)
-    export MIRROR=${MIRROR:-""}
+generate_common_env() {
+    # 检查common.env文件是否存在，存在则加载，不存在则生成
+    # 检查并设置MIRROR环境变量
+    MIRROR=${MIRROR:-""}
+    COMMON_ENV_FILE="common.env"
+    if [ -f "$COMMON_ENV_FILE" ]; then
+        log "SUCCESS" "发现 $COMMON_ENV_FILE 配置文件，加载已保存的环境变量..."
+        source $COMMON_ENV_FILE
+    else
+        log "INFO" "未发现 $COMMON_ENV_FILE 配置文件，生成随机环境变量..."
+        # 生成随机密码
+        export POSTGRES_PASSWORD=$(generate_password 32)
+        export REDIS_PASSWORD=$(generate_password 32)
+        export SECRET_KEY=$(generate_password 32)
+        export NEXTAUTH_SECRET=$(generate_password 12)
+        export NATS_ADMIN_USERNAME=admin
+        export NATS_ADMIN_PASSWORD=$(generate_password 32)
+        export NATS_MONITOR_USERNAME=monitor
+        export NATS_MONITOR_PASSWORD=$(generate_password 32)
+        export MINIO_ROOT_USER=minio
+        export MINIO_ROOT_PASSWORD=$(generate_password 32)
+        export FALKORDB_PASSWORD=$(generate_password 32)
+        export MIRROR=${MIRROR:-""}
+        export OFFLINE=${OFFLINE:-"false"}
+        export OFFLINE_IMAGES_PATH=${OFFLINE_IMAGES_PATH:-"./images"}
 
-    # 保存到common.env文件
-    cat > $COMMON_ENV_FILE <<EOF
+        # 保存到common.env文件
+        cat > $COMMON_ENV_FILE <<EOF
 # 自动生成的环境变量配置，用于确保脚本幂等性
 # 生成日期: $(date +'%Y-%m-%d %H:%M:%S')
 export POSTGRES_PASSWORD=$POSTGRES_PASSWORD
@@ -362,74 +420,199 @@ export MINIO_ROOT_USER=$MINIO_ROOT_USER
 export MINIO_ROOT_PASSWORD=$MINIO_ROOT_PASSWORD
 export FALKORDB_PASSWORD=$FALKORDB_PASSWORD
 export MIRROR=$MIRROR
+export OFFLINE=$OFFLINE
+export OFFLINE_IMAGES_PATH=$OFFLINE_IMAGES_PATH
 EOF
-    log "SUCCESS" "环境变量已生成并保存到 $COMMON_ENV_FILE 文件"
-fi
+        log "SUCCESS" "环境变量已生成并保存到 $COMMON_ENV_FILE 文件"
+    fi
 
-if [ -n "$MIRROR" ]; then
-    log "INFO" "检测到镜像仓库 MIRROR=${MIRROR}，所有 Docker 镜像将使用此镜像仓库"
-else
-    log "INFO" "未设置 MIRROR 环境变量，使用默认镜像仓库"
-fi
+    if [ -n "$MIRROR" ]; then
+        log "INFO" "检测到镜像仓库 MIRROR=${MIRROR}，所有 Docker 镜像将使用此镜像仓库"
+    else
+        log "INFO" "未设置 MIRROR 环境变量，使用默认镜像仓库"
+    fi
+}
 
-# 固定的环境变量
-DOCKER_IMAGE_TRAEFIK=$(add_mirror_prefix "traefik:3.3.3")
-DOCKER_IMAGE_REDIS=$(add_mirror_prefix "redis:5.0.14")
-DOCKER_IMAGE_NATS=$(add_mirror_prefix "nats:2.10.25")
-DOCKER_IMAGE_NATS_CLI=$(add_mirror_prefix "natsio/nats-box:latest")
-DOCKER_IMAGE_VICTORIA_METRICS=$(add_mirror_prefix "victoriametrics/victoria-metrics:v1.106.1")
-DOCKER_IMAGE_POSTGRES=$(add_mirror_prefix "postgres:15")
-DOCKER_IMAGE_SERVER=$(add_mirror_prefix "bklite/server")
-DOCKER_IMAGE_WEB=$(add_mirror_prefix "bklite/web")
-DOCKER_NETWORK=prod
-DIST_ARCH=amd64
-POSTGRES_USERNAME=postgres
-TRAEFIK_ENABLE_DASHBOARD=false
-DEFAULT_REQUEST_TIMEOUT=10
-DOCKER_IMAGE_STARGAZER=$(add_mirror_prefix "bklite/stargazer")
-DOCKER_IMAGE_MINIO=$(add_mirror_prefix "minio/minio:RELEASE.2024-05-01T01-11-10Z-cpuv1")
-DOCKER_IMAGE_METIS=$(add_mirror_prefix "bklite/metis")
-DOCKER_IMAGE_VICTORIALOGS=$(add_mirror_prefix "victoriametrics/victoria-logs:v1.25.0")
-DOCKER_IMAGE_MLFLOW=$(add_mirror_prefix "bklite/mlflow")
-DOCKER_IMAGE_NATS_EXECUTOR=$(add_mirror_prefix "bklite/nats-executor")
-DOCKER_IMAGE_FALKORDB=$(add_mirror_prefix "falkordb/falkordb:v4.12.4")
-DOCKER_IMAGE_PGVECTOR=$(add_mirror_prefix "pgvector/pgvector:pg15")
-DOCKER_IMAGE_TELEGRAF=$(add_mirror_prefix "bklite/telegraf:latest")
-DOCKER_IMAGE_VECTOR=$(add_mirror_prefix "timberio/vector:0.48.0-debian")
-# 采集器镜像
-# TODO: 不同OS/架构支持
-export DOCKER_IMAGE_FUSION_COLLECTOR=$(add_mirror_prefix "bklite/fusion-collector:latest")
+# Function to initialize Docker image environment variables
+# This function can be called by external scripts to set up all Docker image variables
+# All variables are exported for use in docker-compose and other scripts
+init_docker_images() {
+    # Infrastructure images
+    export DOCKER_IMAGE_TRAEFIK=$(add_mirror_prefix "traefik:3.3.3")
+    export DOCKER_IMAGE_REDIS=$(add_mirror_prefix "redis:5.0.14")
+    export DOCKER_IMAGE_NATS=$(add_mirror_prefix "nats:2.10.25")
+    export DOCKER_IMAGE_NATS_CLI=$(add_mirror_prefix "natsio/nats-box:latest")
+    
+    # Database images
+    export DOCKER_IMAGE_POSTGRES=$(add_mirror_prefix "postgres:15")
+    export DOCKER_IMAGE_PGVECTOR=$(add_mirror_prefix "pgvector/pgvector:pg15")
+    export DOCKER_IMAGE_FALKORDB=$(add_mirror_prefix "falkordb/falkordb:v4.12.4")
+    
+    # Monitoring and logging images
+    export DOCKER_IMAGE_VICTORIA_METRICS=$(add_mirror_prefix "victoriametrics/victoria-metrics:v1.106.1")
+    export DOCKER_IMAGE_VICTORIALOGS=$(add_mirror_prefix "victoriametrics/victoria-logs:v1.25.0")
+    export DOCKER_IMAGE_VECTOR=$(add_mirror_prefix "timberio/vector:0.48.0-debian")
+    
+    # Application images
+    export DOCKER_IMAGE_SERVER=$(add_mirror_prefix "bklite/server")
+    export DOCKER_IMAGE_WEB=$(add_mirror_prefix "bklite/web")
+    export DOCKER_IMAGE_STARGAZER=$(add_mirror_prefix "bklite/stargazer")
+    export DOCKER_IMAGE_METIS=$(add_mirror_prefix "bklite/metis")
+    export DOCKER_IMAGE_MLFLOW=$(add_mirror_prefix "bklite/mlflow")
+    
+    # Storage images
+    export DOCKER_IMAGE_MINIO=$(add_mirror_prefix "minio/minio:RELEASE.2024-05-01T01-11-10Z-cpuv1")
+    
+    # Collector images
+    export DOCKER_IMAGE_FUSION_COLLECTOR=$(add_mirror_prefix "bklite/fusion-collector:latest")
+    export DOCKER_IMAGE_TELEGRAF=$(add_mirror_prefix "bklite/telegraf:latest")
+    export DOCKER_IMAGE_NATS_EXECUTOR=$(add_mirror_prefix "bklite/nats-executor")
+    
+    # OPENSSL image for generating TLS certificates
+    export DOCKER_IMAGE_OPENSSL=$(add_mirror_prefix "alpine/openssl:3.5.4")
+    
+    # Fixed configuration variables
+    export DOCKER_NETWORK=prod
+    export DIST_ARCH=amd64
+    export POSTGRES_USERNAME=postgres
+    export TRAEFIK_ENABLE_DASHBOARD=false
+    export DEFAULT_REQUEST_TIMEOUT=10
+    
+    log "INFO" "Docker 镜像环境变量初始化完成"
+}
 
-# 生成nats需要的tls自签名证书
-generate_tls_certs
+generate_collector_packages() {
+    local collector_image="${1:-${DOCKER_IMAGE_FUSION_COLLECTOR}}"
+    local output_dir="${2:-./pkgs}"
+    local certs_dir="${3:-./conf/certs}"
+    
+    log "INFO" "开始生成控制器和采集器包..."
+    log "INFO" "使用镜像: ${collector_image}"
+    log "INFO" "输出目录: ${output_dir}"
+    
+    # OFFLINE 模式下不拉取镜像
+    if [[ "${OFFLINE}" == "true" ]]; then
+        log "INFO" "检测到 OFFLINE=true，跳过拉取镜像步骤"
+    else
+        docker pull "${collector_image}"
+    fi
 
-docker pull $DOCKER_IMAGE_FUSION_COLLECTOR
-# 从镜像生成控制器&采集器包
-log "INFO" "开始生成控制器和采集器包..."
-# 获取当前cpu架构
-CPU_ARCH=$(uname -m)
-if [[ "$CPU_ARCH" == "x86_64" ]]; then
-   [ -d pkgs ] && rm -rvf pkgs
-   mkdir -p pkgs/controller/certs
-   cp -av conf/certs/ca.crt pkgs/controller/certs/
-   mkdir -p pkgs/collector
-   docker run --rm -v $PWD/pkgs:/pkgs --entrypoint=/bin/bash $DOCKER_IMAGE_FUSION_COLLECTOR -c "cp -av bin/* /pkgs/collector/;cd /opt; cp fusion-collectors/misc/* fusion-collectors/;mkdir -p /opt/fusion-collectors/certs/;cp /pkgs/controller/certs/ca.crt /opt/fusion-collectors/certs/;zip -r /pkgs/controller/fusion-collectors.zip fusion-collectors"
-elif [[ "$CPU_ARCH" == "aarch64" ]]; then
-   log "WARNING" "当前CPU架构为arm64，暂时无内置采集器"
-else
-   log "ERROR" "不支持的CPU架构: $CPU_ARCH"
-   exit 1
-fi
+    # Get current CPU architecture
+    local cpu_arch=$(uname -m)
+    log "INFO" "检测到CPU架构: ${cpu_arch}"
+    
+    case "${cpu_arch}" in
+        x86_64)
+            # Clean and create directories
+            [ -d "${output_dir}" ] && rm -rf "${output_dir}"
+            mkdir -p "${output_dir}/controller/certs"
+            mkdir -p "${output_dir}/collector"
+            
+            # Copy CA certificate
+            if [ -f "${certs_dir}/ca.crt" ]; then
+                cp -a "${certs_dir}/ca.crt" "${output_dir}/controller/certs/"
+            else
+                log "ERROR" "CA证书文件不存在: ${certs_dir}/ca.crt"
+                return 1
+            fi
+            
+            # Extract collector binaries and create controller package
+            docker run --rm -v "${PWD}/${output_dir}:/pkgs" \
+                --entrypoint=/bin/bash "${collector_image}" -c "\
+                cp -a bin/* /pkgs/collector/; \
+                cd /opt; \
+                cp fusion-collectors/misc/* fusion-collectors/; \
+                mkdir -p /opt/fusion-collectors/certs/; \
+                cp /pkgs/controller/certs/ca.crt /opt/fusion-collectors/certs/; \
+                zip -rq /pkgs/controller/fusion-collectors.zip fusion-collectors"
+            
+            log "SUCCESS" "控制器和采集器包生成成功"
+            log "INFO" "采集器目录: ${output_dir}/collector"
+            log "INFO" "控制器包: ${output_dir}/controller/fusion-collectors.zip"
+            return 0
+            ;;
+        aarch64)
+            log "WARNING" "当前CPU架构为arm64，暂时无内置采集器"
+            return 0
+            ;;
+        *)
+            log "ERROR" "不支持的CPU架构: ${cpu_arch}"
+            return 1
+            ;;
+    esac
+}
 
-# 检查nats.conf文件是否存在
-if [ -f ./conf/nats/nats.conf ]; then
-    log "WARNING" "nats.conf文件已存在，文件将被覆盖..."
-else
-    log "INFO" "创建 nats.conf 文件..."
-fi
+install() {
+    OFFLINE=${OFFLINE:-"false"}
+    # 在 OFFLINE 模式下，强制禁用 MIRROR 以确保镜像名称一致性
+    if [[ "${OFFLINE}" == "true" ]]; then
+        if [ -n "$MIRROR" ]; then
+            log "WARNING" "检测到 OFFLINE=true，已自动禁用 MIRROR 配置以确保镜像名称匹配"
+        fi
+        export MIRROR=""
+    fi
+    
+    # 检查是否添加--opspilot参数
+    if [[ "$@" == *"--opspilot"* ]]; then
+        export OPSPILOT_ENABLED=true
+        log "INFO" "检测到 --opspilot 参数，启用 OpsPilot 功能"
+    else
+        export OPSPILOT_ENABLED=false
+        log "INFO" "未检测到 --opspilot 参数，禁用 OpsPilot 功能"
+    fi
 
-mkdir -p ./conf/nats
-cat > ./conf/nats/nats.conf <<EOF
+    INSTALL_APPS="system_mgmt,cmdb,monitor,node_mgmt,console_mgmt,alerts,log,mlops,operation_analysis"
+    
+
+    if [[ $OPSPILOT_ENABLED == "true" ]]; then
+        export INSTALL_APPS="${INSTALL_APPS},opspilot"
+        log "INFO" "启用 OpsPilot 功能，安装应用列表: ${INSTALL_APPS}"
+        # 使用 compose/ops_pilot.yaml 文件
+        export COMPOSE_CMD="${DOCKER_COMPOSE_CMD} -f compose/infra.yaml -f compose/monitor.yaml -f compose/server.yaml -f compose/web.yaml -f compose/ops_pilot.yaml -f compose/log.yaml config --no-interpolate"
+    else
+        log "INFO" "禁用 OpsPilot 功能，安装应用列表: ${INSTALL_APPS}"
+        export COMPOSE_CMD="${DOCKER_COMPOSE_CMD} -f compose/infra.yaml -f compose/monitor.yaml -f compose/server.yaml -f compose/web.yaml -f compose/log.yaml config --no-interpolate"
+    fi
+
+
+
+    # 检查是否从本地加载镜像（使用环境变量 OFFLINE）
+    if [[ "${OFFLINE}" == "true" ]]; then
+        export LOAD_LOCAL_IMAGES=true
+        log "INFO" "检测到 OFFLINE=true，将从本地加载镜像"
+    else
+        export LOAD_LOCAL_IMAGES=false
+        log "INFO" "OFFLINE=${OFFLINE}，将从远程仓库拉取镜像"
+    fi
+
+    init_docker_images
+    generate_ports_env
+    generate_common_env
+
+    if [[ "$LOAD_LOCAL_IMAGES" == "true" ]]; then
+        log "INFO" "从本地加载 Docker 镜像..."
+        log "INFO" "镜像目录: ${OFFLINE_IMAGES_PATH}"
+        load_docker_images_with_hash_check "${OFFLINE_IMAGES_PATH}"
+    else
+        log "INFO" "拉取最新的镜像..."
+        ${DOCKER_COMPOSE_CMD} pull
+    fi
+
+    # 生成nats需要的tls自签名证书
+    generate_tls_certs
+
+    # 调用函数生成采集器包
+    generate_collector_packages || exit 1
+
+    # 检查nats.conf文件是否存在
+    if [ -f ./conf/nats/nats.conf ]; then
+        log "WARNING" "nats.conf文件已存在，文件将被覆盖..."
+    else
+        log "INFO" "创建 nats.conf 文件..."
+    fi
+
+    mkdir -p ./conf/nats
+    cat > ./conf/nats/nats.conf <<EOF
 port: 4222
 
 monitor_port: 8222
@@ -476,9 +659,9 @@ authorization {
 }
 EOF
 
-# 生成环境变量文件
-log "INFO" "生成 .env 文件..."
-cat > .env <<EOF
+    # 生成环境变量文件
+    log "INFO" "生成 .env 文件..."
+    cat > .env <<EOF
 HOST_IP=${HOST_IP}
 TRAEFIK_WEB_PORT=${TRAEFIK_WEB_PORT}
 POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
@@ -520,64 +703,154 @@ DOCKER_IMAGE_VECTOR=${DOCKER_IMAGE_VECTOR}
 INSTALL_APPS="${INSTALL_APPS}"
 EOF
 
-# 生成合成的docker-compose.yaml文件
-log "INFO" "生成合成的 docker-compose.yaml 文件..."
-$COMPOSE_CMD > docker-compose.yaml
+    # 生成合成的docker-compose.yaml文件
+    log "INFO" "生成合成的 docker-compose.yaml 文件..."
+    $COMPOSE_CMD > docker-compose.yaml
 
-log "INFO" "拉取最新的镜像..."
-${DOCKER_COMPOSE_CMD} pull
+    # 按照特定顺序启动服务
+    log "INFO" "启动基础服务 (Traefik, Redis, NATS, VictoriaMetrics, FalkorDB, VictoriaLogs, Minio, MLFlow, NATS Executor, Vector)..."
+    ${DOCKER_COMPOSE_CMD} up -d traefik redis nats victoria-metrics falkordb victoria-logs minio mlflow nats-executor vector
 
-# 按照特定顺序启动服务
-log "INFO" "启动基础服务 (Traefik, Redis, NATS, VictoriaMetrics, FalkorDB, VictoriaLogs, Minio, MLFlow, NATS Executor, Vector)..."
-${DOCKER_COMPOSE_CMD} up -d traefik redis nats victoria-metrics falkordb victoria-logs minio mlflow nats-executor vector
+    # 创建 JetStream - 使用正确的网络名称
+    log "INFO" "创建JetStream..."
+    docker run --rm --network=bklite-prod \
+        -v $PWD/conf/certs:/etc/certs:ro \
+        $DOCKER_IMAGE_NATS_CLI nats -s tls://nats:4222 \
+        --tlsca /etc/certs/ca.crt \
+        --user $NATS_ADMIN_USERNAME --password $NATS_ADMIN_PASSWORD \
+        stream add metrics --subjects=metrics.* --storage=file \
+        --replicas=1 --retention=limits  --discard=old \
+        --max-age=20m --max-bytes=104857600 --max-consumers=-1 \
+        --max-msg-size=-1 --max-msgs=-1 --max-msgs-per-subject=1000000 \
+        --dupe-window=5m --no-allow-rollup --no-deny-delete --no-deny-purge 
 
-# 创建 JetStream - 使用正确的网络名称
-log "INFO" "创建JetStream..."
-docker run --rm --network=bklite-prod \
-    -v $PWD/conf/certs:/etc/certs:ro \
-    $DOCKER_IMAGE_NATS_CLI nats -s tls://nats:4222 \
-    --tlsca /etc/certs/ca.crt \
-    --user $NATS_ADMIN_USERNAME --password $NATS_ADMIN_PASSWORD \
-    stream add metrics --subjects=metrics.* --storage=file \
-    --replicas=1 --retention=limits  --discard=old \
-    --max-age=20m --max-bytes=104857600 --max-consumers=-1 \
-    --max-msg-size=-1 --max-msgs=-1 --max-msgs-per-subject=1000000 \
-    --dupe-window=5m --no-allow-rollup --no-deny-delete --no-deny-purge 
+    log "INFO" "启动所有服务"
+    ${DOCKER_COMPOSE_CMD} up -d
+    sleep 10
 
-log "INFO" "启动所有服务"
-${DOCKER_COMPOSE_CMD} up -d
-sleep 10
-
-log "INFO" "开始初始化内置插件"
-$DOCKER_COMPOSE_CMD exec -T server /bin/bash -s <<EOF
+    log "INFO" "开始初始化内置插件"
+    $DOCKER_COMPOSE_CMD exec -T server /bin/bash -s <<EOF
 uv run manage.py controller_package_init --pk_version latest --file_path /apps/pkgs/controller/fusion-collectors.zip
 uv run manage.py collector_package_init --os linux --object Telegraf --pk_version latest --file_path /apps/pkgs/collector/telegraf
 uv run manage.py collector_package_init --os linux --object Vector --pk_version latest --file_path /apps/pkgs/collector/vector
 uv run manage.py collector_package_init --os linux --object Nats-Executor --pk_version latest --file_path /apps/pkgs/collector/nats-executor
 EOF
 
-if [ -z "${SIDECAR_NODE_ID:-}" ]; then
-    log "WARNING" "重新初始化 Sidecar Node ID 和 Token，可能会导致已注册的 Sidecar 失效"
-    mapfile -t ARR < <($DOCKER_COMPOSE_CMD exec -T server /bin/bash -c 'uv run manage.py node_token_init --ip default' 2>&1| grep -oP 'node_id: \K[0-9a-f]+|token: \K\S+')
-    SIDECAR_NODE_ID=${ARR[0]}
-    SIDECAR_INIT_TOKEN=${ARR[1]}
-    log "SUCCESS" "Sidecar Node ID: $SIDECAR_NODE_ID, Token: $SIDECAR_INIT_TOKEN"
-    # 如果里面没有SIDECAR_INIT_TOKEN变量，则添加，有则更新
-    if ! grep -q "^SIDECAR_INIT_TOKEN=" common.env; then
-        echo "export SIDECAR_INIT_TOKEN=$SIDECAR_INIT_TOKEN" >> common.env
+    if [ -z "${SIDECAR_NODE_ID:-}" ]; then
+        log "WARNING" "重新初始化 Sidecar Node ID 和 Token，可能会导致已注册的 Sidecar 失效"
+        mapfile -t ARR < <($DOCKER_COMPOSE_CMD exec -T server /bin/bash -c 'uv run manage.py node_token_init --ip default' 2>&1| grep -oP 'node_id: \K[0-9a-f]+|token: \K\S+')
+        SIDECAR_NODE_ID=${ARR[0]}
+        SIDECAR_INIT_TOKEN=${ARR[1]}
+        log "SUCCESS" "Sidecar Node ID: $SIDECAR_NODE_ID, Token: $SIDECAR_INIT_TOKEN"
+        # 如果里面没有SIDECAR_INIT_TOKEN变量，则添加，有则更新
+        if ! grep -q "^SIDECAR_INIT_TOKEN=" common.env; then
+            echo "export SIDECAR_INIT_TOKEN=$SIDECAR_INIT_TOKEN" >> common.env
+        else
+            sed -i "s/^export SIDECAR_INIT_TOKEN=.*$/export SIDECAR_INIT_TOKEN=\"$SIDECAR_INIT_TOKEN\"/g" common.env
+        fi
+        echo "export SIDECAR_NODE_ID=$SIDECAR_NODE_ID" >> common.env
+        log "SUCCESS" "已将 Sidecar Node ID 和 Token 保存到 common.env 文件"
     else
-        sed -i "s/^export SIDECAR_INIT_TOKEN=.*$/export SIDECAR_INIT_TOKEN=\"$SIDECAR_INIT_TOKEN\"/g" common.env
+        log "SUCCESS" "检测到 SIDECAR_NODE_ID 环境变量，跳过 Sidecar Token 初始化"
     fi
-    echo "export SIDECAR_NODE_ID=$SIDECAR_NODE_ID" >> common.env
-    log "SUCCESS" "已将 Sidecar Node ID 和 Token 保存到 common.env 文件"
-else
-    log "SUCCESS" "检测到 SIDECAR_NODE_ID 环境变量，跳过 Sidecar Token 初始化"
-fi
 
-echo "SIDECAR_NODE_ID=$SIDECAR_NODE_ID" >> .env
-echo "SIDECAR_INIT_TOKEN=$SIDECAR_INIT_TOKEN" >> .env
+    echo "SIDECAR_NODE_ID=$SIDECAR_NODE_ID" >> .env
+    echo "SIDECAR_INIT_TOKEN=$SIDECAR_INIT_TOKEN" >> .env
 
-${DOCKER_COMPOSE_CMD} up -d fusion-collector
+    ${DOCKER_COMPOSE_CMD} up -d fusion-collector
 
-log "SUCCESS" "部署成功，访问 https://$HOST_IP:$TRAEFIK_WEB_PORT 访问系统"
-log "SUCCESS" "初始用户名: admin, 初始密码: password"
+    log "SUCCESS" "部署成功，访问 https://$HOST_IP:$TRAEFIK_WEB_PORT 访问系统"
+    log "SUCCESS" "初始用户名: admin, 初始密码: password"
+}
+
+package() {
+    # 检查是否添加--opspilot参数
+    local skip_opspilot_images=true
+    if [[ "$@" == *"--opspilot"* ]]; then
+        skip_opspilot_images=false
+        log "INFO" "检测到 --opspilot 参数，将下载所有镜像（包括 OpsPilot 相关）"
+    else
+        log "INFO" "未检测到 --opspilot 参数，将跳过 OpsPilot 相关镜像（Metis, MLFlow）"
+    fi
+    
+    log "INFO" "开始下载所有必要的 Docker 镜像..."
+    
+    # 显示 MIRROR 配置状态
+    if [ -n "$MIRROR" ]; then
+        log "INFO" "检测到镜像仓库 MIRROR=${MIRROR}，将使用此镜像仓库下载"
+    else
+        log "INFO" "未设置 MIRROR 环境变量，使用默认镜像仓库"
+    fi
+    
+    init_docker_images
+    
+    # 创建镜像目录
+    mkdir -p images
+    
+    # 生成镜像 hash 文件
+    local hash_file="images/images.sha256"
+    echo "# 镜像 hash 文件" > "$hash_file"
+    echo "# 格式: 镜像名称(标准化) 镜像hash 文件名" >> "$hash_file"
+    echo "# 注意: 镜像名称已标准化处理(移除mirror前缀)，确保 OFFLINE 模式下名称一致" >> "$hash_file"
+    echo "# 生成时间: $(date +'%Y-%m-%d %H:%M:%S')" >> "$hash_file"
+    
+    local image_count=0
+    local skipped_count=0
+    # 遍历所有镜像变量
+    for image_var in $(compgen -v | grep '^DOCKER_IMAGE_'); do
+        # 如果跳过 OpsPilot 镜像，且当前是 Metis 或 MLFlow，则跳过
+        if [ "$skip_opspilot_images" = true ] && [[ "$image_var" =~ (METIS|MLFLOW) ]]; then
+            log "INFO" "跳过 OpsPilot 镜像: ${image_var}"
+            skipped_count=$((skipped_count + 1))
+            continue
+        fi
+        
+        image_name="${!image_var}"
+        log "INFO" "正在下载镜像: $image_name"
+        docker pull "$image_name"
+        
+        # 还原镜像名称（移除 mirror 前缀）
+        local original_name=$(echo "$image_name" | sed "s|${MIRROR}/||;s|/library/|/|")
+        docker tag "$image_name" "$original_name"
+        
+        # 生成安全的文件名（替换特殊字符）
+        local safe_filename=$(echo "$original_name" | sed 's|/|_|g' | sed 's|:|_|g').tar
+        
+        # 保存单个镜像到独立文件
+        log "INFO" "保存镜像到文件: $safe_filename"
+        docker save "$original_name" -o "images/$safe_filename"
+        
+        # 获取镜像 hash
+        local image_hash=$(docker image inspect "$original_name" --format '{{.Id}}' 2>/dev/null | sed 's/sha256://')
+        
+        # 写入 hash 文件
+        if [ -n "$image_hash" ]; then
+            echo "$original_name $image_hash $safe_filename" >> "$hash_file"
+            log "SUCCESS" "已保存: $original_name -> $safe_filename"
+            image_count=$((image_count + 1))
+        fi
+    done
+    
+    log "SUCCESS" "所有镜像已打包完成！"
+    log "SUCCESS" "总计: $image_count 个镜像已下载"
+    if [ $skipped_count -gt 0 ]; then
+        log "INFO" "跳过: $skipped_count 个 OpsPilot 镜像（使用 --opspilot 参数可下载）"
+    fi
+    PKG_NAME="bklite-offline.tar.gz"
+    tar -czf /opt/$PKG_NAME .
+    log "SUCCESS" "已生成离线镜像包: /opt/$PKG_NAME"
+}
+
+main() {
+    case "${1:-}" in
+        package)
+            shift  # 移除 'package' 参数
+            package "$@"  # 传递剩余的所有参数
+            ;;
+        *)
+            install "$@"
+            ;;
+    esac
+}
+
+main "$@"

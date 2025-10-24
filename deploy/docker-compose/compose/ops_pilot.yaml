@@ -7,7 +7,6 @@ volumes:
   falkordb-opspilot:
 
 services:
-  
   metis:
     image: ${DOCKER_IMAGE_METIS}
     restart: always

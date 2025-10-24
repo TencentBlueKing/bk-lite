@@ -51,7 +51,8 @@ class QAPairsViewSet(MaintainerViewSet):
         if not request.user.is_superuser:
             knowledge_base = KnowledgeBase.objects.get(id=params["knowledge_base_id"])
             current_team = request.COOKIES.get("current_team", "0")
-            has_permission = self.get_has_permission(request.user, knowledge_base, current_team)
+            include_children = request.COOKIES.get("include_children", "0") == "1"
+            has_permission = self.get_has_permission(request.user, knowledge_base, current_team, include_children=include_children)
             if not has_permission:
                 message = self.loader.get("no_update_permission") if self.loader else "You do not have permission to update this instance"
                 return JsonResponse(
@@ -412,7 +413,8 @@ class QAPairsViewSet(MaintainerViewSet):
         instance = QAPairs.objects.get(id=instance_id)
         if not request.user.is_superuser:
             current_team = request.COOKIES.get("current_team", "0")
-            has_permission = self.get_has_permission(request.user, instance.knowledge_base, current_team)
+            include_children = request.COOKIES.get("include_children", "0") == "1"
+            has_permission = self.get_has_permission(request.user, instance.knowledge_base, current_team, include_children=include_children)
             if not has_permission:
                 message = self.loader.get("no_update_permission") if self.loader else "You do not have permission to update this instance"
                 return JsonResponse(

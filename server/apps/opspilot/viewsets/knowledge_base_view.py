@@ -98,7 +98,8 @@ class KnowledgeBaseViewSet(AuthViewSet):
         instance: KnowledgeBase = self.get_object()
         if not request.user.is_superuser:
             current_team = request.COOKIES.get("current_team", "0")
-            has_permission = self.get_has_permission(request.user, instance, current_team)
+            include_children = request.COOKIES.get("include_children", "0") == "1"
+            has_permission = self.get_has_permission(request.user, instance, current_team, include_children=include_children)
             if not has_permission:
                 return JsonResponse(
                     {
