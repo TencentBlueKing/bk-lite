@@ -113,7 +113,6 @@ const ChatflowSettings: React.FC<ChatflowSettingsProps> = ({
   };
 
   const handleWorkflowChange = (nodes: any[], edges: any[]) => {
-    console.log('ChatflowSettings: 工作流数据变化', { nodes: nodes.length, edges: edges.length });
     if (onSaveWorkflow) {
       onSaveWorkflow({ nodes, edges });
     }

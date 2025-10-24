@@ -654,7 +654,7 @@
     "openai": "OpenAI API",
     "restful": "RESTful API",
     "celery": "Time Trigger",
-    "enterpriseWechat": "WeChat",
+    "enterpriseWechat": "WeChat Trigger",
     "agents": "Agents",
     "logicNodes": "Logic Nodes",
     "condition": "If Condition",

@@ -656,7 +656,7 @@
     "openai": "OpenAI API",
     "restful": "RESTful API",
     "celery": "定时触发",
-    "enterpriseWechat": "企微通知",
+    "enterpriseWechat": "企微触发",
     "agents": "智能体",
     "logicNodes": "逻辑判断",
     "condition": "条件分支",
