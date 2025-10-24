@@ -737,6 +737,7 @@ def execute_chat_flow_wechat(request, bot_id):
     """
 
     # 1. 验证Bot和工作流配置
+    logger.info(f"企微认证参数 【{request.GET.dict()}】")
     bot_obj, bot_chat_flow, error_response = _validate_bot_and_workflow(bot_id)
     if error_response:
         return error_response
@@ -755,7 +756,6 @@ def execute_chat_flow_wechat(request, bot_id):
 
     # 4. 处理GET请求（URL验证）
     if request.method == "GET":
-        logger.info(f"企微认证参数 【{request.GET.dict()}】")
         return _handle_wechat_url_verification(
             crypto,
             request.GET.get("msg_signature", ""),
