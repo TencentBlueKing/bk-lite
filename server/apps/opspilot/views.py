@@ -589,7 +589,7 @@ def _get_wechat_node_config(bot_chat_flow, bot_id):
     wechat_config = wechat_data.get("config", {})
 
     # 验证必需参数
-    required_params = ["token", "aes_key", "corp_id", "agent_id", "secret", "node_id"]
+    required_params = ["token", "aes_key", "corp_id", "agent_id", "secret"]
     missing_params = [p for p in required_params if not wechat_config.get(p)]
 
     if missing_params:
