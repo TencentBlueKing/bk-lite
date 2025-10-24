@@ -611,6 +611,7 @@ def _handle_wechat_url_verification(crypto, signature, timestamp, nonce, echostr
         return HttpResponse("fail")
 
     try:
+        logger.info(f"各参数如下： signature【{signature}】, timestamp【{timestamp}】, nonce【{nonce}】, echostr【{echostr}】")
         echo_str = crypto.check_signature(signature, timestamp, nonce, echostr)
         logger.info(f"企业微信URL验证成功，Bot {bot_id}")
         return HttpResponse(echo_str)
