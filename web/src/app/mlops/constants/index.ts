@@ -432,6 +432,14 @@ const POLICIES_OPTIONS: Option[] = [
   { label: 'RulePolicy', value: 'RulePolicy' },
 ];
 
+const TRAINJOB_MAP: Record<string, string> = {
+  'anomaly': 'anomaly_detection_train_jobs',
+  'classification': 'classification_train_jobs',
+  'timeseries_predict': 'timeseries_predict_train_jobs',
+  'log_clustering': 'log_clustering_train_jobs',
+  'rasa': 'rasa_pipelines'
+}
+
 
 export {
   LEVEL_MAP,
@@ -448,5 +456,6 @@ export {
   PIPELINE_TYPE_OPTIONS,
   ANOMALY_ALGORITHMS_PARAMS,
   LOG_CLUSTERING_ALGORITHMS_PARAMS,
-  TIMESERIES_PREDICT_ALGORITHMS_PARAMS
+  TIMESERIES_PREDICT_ALGORITHMS_PARAMS,
+  TRAINJOB_MAP
 }

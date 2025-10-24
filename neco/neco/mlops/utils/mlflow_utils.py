@@ -2,6 +2,7 @@ from typing import Any, Dict, List, Optional, Tuple
 import mlflow
 import mlflow.sklearn
 from loguru import logger
+import math
 
 
 class MLFlowUtils:
@@ -56,7 +57,12 @@ class MLFlowUtils:
             step: 记录步骤（用于时间序列指标）
         """
         if metrics:
-            prefixed_metrics = {f"{prefix}{k}": v for k, v in metrics.items()}
+            # prefixed_metrics = {f"{prefix}{k}": v for k, v in metrics.items()}
+            prefixed_metrics = {}
+
+            for  k,v in metrics.items():
+                if isinstance(v, (int, float)) and math.isfinite(v):
+                    prefixed_metrics[f"{prefix}{k}"] = v
             if step is not None:
                 for key, value in prefixed_metrics.items():
                     mlflow.log_metric(key, value, step=step)

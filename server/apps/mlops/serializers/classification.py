@@ -1,42 +1,31 @@
 from apps.core.utils.serializers import AuthSerializer
-from apps.mlops.models.timeseries_predict import *
+from apps.mlops.models.classification import *
 
 
-class TimeSeriesPredictDatasetSerializer(AuthSerializer):
-    """时间序列预测数据集序列化器"""
-    permission_key = "dataset.timeseries_predict_dataset"
-
+class ClassificationDatasetSerializer(AuthSerializer):
+    """分类任务数据集序列化器"""
+    permission_key = "dataset.classification_dataset"
+    
     class Meta:
-        model = TimeSeriesPredictDataset
+        model = ClassificationDataset
         fields = "__all__"
 
-
-class TimeSeriesPredictTrainJobSerializer(AuthSerializer):
-    """时间序列预测训练任务序列化器"""
-    permission_key = "dataset.timeseries_predict_train_job"
-
+class ClassificationServingSerializer(AuthSerializer):
+    """分类任务服务序列化器"""
+    permission_key = "dataset.classification_serving"
+    
     class Meta:
-        model = TimeSeriesPredictTrainJob
+        model = ClassificationServing
         fields = "__all__"
 
-
-class TimeSeriesPredictTrainHistorySerializer(AuthSerializer):
-    """时间序列预测训练历史序列化器"""
-    permission_key = "dataset.timeseries_predict_train_history"
-
+class ClassificationTrainDataSerializer(AuthSerializer):
+    """分类任务训练数据序列化器"""
+    permission_key = "dataset.classification_train_data"
+    
     class Meta:
-        model = TimeSeriesPredictTrainHistory
+        model = ClassificationTrainData
         fields = "__all__"
-
-
-class TimeSeriesPredictTrainDataSerializer(AuthSerializer):
-    """时间序列预测训练数据序列化器"""
-    permission_key = "dataset.timeseries_predict_train_data"
-
-    class Meta:
-        model = TimeSeriesPredictTrainData
-        fields = "__all__"
-
+    
     def __init__(self, *args, **kwargs):
         """
         初始化序列化器，从请求上下文中获取 include_train_data 参数
@@ -61,10 +50,18 @@ class TimeSeriesPredictTrainDataSerializer(AuthSerializer):
             representation.pop("metadata", None)  # 移除 metadata 字段
         return representation
 
-class TimeSeriesPredictServingSerializer(AuthSerializer):
-    """时间序列预测服务序列化器"""
-    permission_key = "dataset.timeseries_predict_serving"
-
+class ClassificationTrainHistorySerializer(AuthSerializer):
+    """分类任务训练历史记录序列化器"""
+    permission_key = "dataset.classification_train_history"
+    
     class Meta:
-        model = TimeSeriesPredictServing
+        model = ClassificationTrainHistory
+        fields = "__all__"
+
+class ClassificationTrainJobSerializer(AuthSerializer):
+    """分类任务训练作业序列化器"""
+    permission_key = "dataset.classification_train_job"
+    
+    class Meta:
+        model = ClassificationTrainJob
         fields = "__all__"

@@ -65,16 +65,16 @@ const UploadModal = forwardRef<ModalRef, UploadModalProps>(({ onSuccess }, ref) 
     accept: activeType !== 'log_clustering' ? '.csv' : '.txt'
   };
 
-  const handleFileRead = (text: string, type: string) => {
+  const handleFileRead = (text: string, type: string): FileReadResult => {
     try {
       // 统一换行符为 \n
       const lines = text.replace(/\r\n|\r|\n/g, '\n')?.split('\n').filter(line => line.trim() !== '');
-      
-      if (!lines.length) return [];
+
+      if (!lines.length) return { train_data: [] };
 
       if (type !== 'log_clustering') {
         const headers = type === 'anomaly' ? ['timestamp', 'value', 'label'] : lines[0]?.split(',');
-        
+
         if (!headers || headers.length === 0) {
           throw new Error('文件格式不正确');
         }
@@ -84,24 +84,35 @@ const UploadModal = forwardRef<ModalRef, UploadModalProps>(({ onSuccess }, ref) 
 
           return headers.reduce((obj: Record<string, any>, key, idx) => {
             const value = values[idx];
-            
+
             if (key === 'timestamp') {
               const timestamp = new Date(value).getTime();
               obj[key] = timestamp / 1000;
             } else {
               const numValue = Number(value);
-              obj[key] = numValue;
+              obj[key] = isNaN(numValue) ? value : numValue;
             }
-            
-            obj['index'] = index;
+
+            if(type === 'anomaly') {
+              obj['index'] = index;
+            }
             return obj;
           }, {});
         });
-        
-        return data as TrainDataParams[];
+        if (type === 'classification') {
+          return {
+            train_data: data as TrainDataParams[],
+            headers
+          };
+        }
+        return {
+          train_data: data as TrainDataParams[]
+        };
       }
-      
-      return lines;
+
+      return {
+        train_data: lines
+      };
     } catch (error) {
       console.log(error);
       throw error;
@@ -110,7 +121,7 @@ const UploadModal = forwardRef<ModalRef, UploadModalProps>(({ onSuccess }, ref) 
 
   const onSelectChange = (value: string[]) => {
     setCheckedType(value);
-    const object = value.reduce((prev: object, current: string) => {
+    const object = value.reduce((prev: Record<string, boolean>, current: string) => {
       return {
         ...prev,
         [current]: true
@@ -119,10 +130,21 @@ const UploadModal = forwardRef<ModalRef, UploadModalProps>(({ onSuccess }, ref) 
     setSelectTags(object);
   };
 
+  // 定义数据类型
+  type ProcessedData = TrainDataParams[] | string[] | {
+    train_data: TrainDataParams[],
+    headers: string[]
+  };
+
+  interface FileReadResult {
+    train_data: TrainDataParams[] | string[];
+    headers?: string[];
+  }
+
   // 定义提交策略映射
   const submitStrategies = {
     anomaly: {
-      processData: (data: TrainDataParams[] | string[]) => {
+      processData: (data: ProcessedData) => {
         const trainData = data as TrainDataParams[];
         return {
           train_data: trainData.map(item => ({ timestamp: item.timestamp, value: item.value })),
@@ -134,15 +156,27 @@ const UploadModal = forwardRef<ModalRef, UploadModalProps>(({ onSuccess }, ref) 
       apiCall: addAnomalyTrainData
     },
     timeseries_predict: {
-      processData: (data: TrainDataParams[] | string[]) => ({ train_data: data as TrainDataParams[] }),
+      processData: (data: ProcessedData) => ({ train_data: data as TrainDataParams[] }),
       apiCall: addTimeSeriesPredictTrainData
     },
     log_clustering: {
-      processData: (data: TrainDataParams[] | string[]) => ({ train_data: data as string[] }),
+      processData: (data: ProcessedData) => ({ train_data: data as string[] }),
       apiCall: addLogClusteringTrainData
     },
     classification: {
-      processData: (data: TrainDataParams[] | string[]) => ({ train_data: data as TrainDataParams[] }),
+      processData: (data: ProcessedData) => {
+        if (typeof data === 'object' && !Array.isArray(data) && 'train_data' in data) {
+          return {
+            train_data: data.train_data,
+            metadata: {
+              headers: data.headers
+            }
+          };
+        }
+        return {
+          train_data: data
+        };
+      },
       apiCall: addClassificationTrainData
     }
   };
@@ -181,7 +215,7 @@ const UploadModal = forwardRef<ModalRef, UploadModalProps>(({ onSuccess }, ref) 
 
   const handleSubmit = async () => {
     setConfirmLoading(true);
-    
+
     try {
       // 1. 验证文件
       const file = validateFileUpload();
@@ -196,7 +230,16 @@ const UploadModal = forwardRef<ModalRef, UploadModalProps>(({ onSuccess }, ref) 
       // 3. 读取并处理文件内容
       const text = await file.originFileObj!.text();
       const rawData = handleFileRead(text, formData?.activeTap || '');
-      const processedData = strategy.processData(rawData);
+
+      // 根据类型决定传递的数据结构
+      let dataToProcess: ProcessedData;
+      if (formData?.activeTap === 'classification' && rawData.headers) {
+        dataToProcess = { headers: rawData.headers, train_data: rawData.train_data as TrainDataParams[] };
+      } else {
+        dataToProcess = rawData.train_data;
+      }
+
+      const processedData = strategy.processData(dataToProcess);
 
       // 4. 构建提交参数
       const params = buildSubmitParams(file, processedData);
@@ -206,7 +249,7 @@ const UploadModal = forwardRef<ModalRef, UploadModalProps>(({ onSuccess }, ref) 
 
       // 6. 处理成功
       handleSubmitSuccess();
-      
+
     } catch (error) {
       handleSubmitError(error);
     } finally {
@@ -246,22 +289,7 @@ const UploadModal = forwardRef<ModalRef, UploadModalProps>(({ onSuccess }, ref) 
         "timestamp": 1704038580
       }
     ];
-    const columns = [
-      {
-        title: t('common.time'),
-        key: 'timestamp',
-        dataIndex: 'timestamp',
-        width: 80,
-        align: 'center',
-      },
-      {
-        title: t('datasets.value'),
-        key: 'value',
-        dataIndex: 'value',
-        align: 'center',
-        width: 30,
-      },
-    ]
+    const columns = ['timestamp', 'value']
     const blob = exportToCSV(data, columns);
     if (blob) {
       const url = URL.createObjectURL(blob);

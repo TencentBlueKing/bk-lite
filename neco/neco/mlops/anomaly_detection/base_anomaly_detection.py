@@ -149,7 +149,8 @@ class BaseAnomalyDetection(abc.ABC):
         val_scores_history = []
         
         def objective(params_raw):
-            params = space_eval(space, params_raw)
+            # params = space_eval(space, params_raw)
+            params = params_raw
             try:
                 model = self.build_model(train_params=params)
                 model.fit(X_train, y_train)
