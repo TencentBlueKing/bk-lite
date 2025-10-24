@@ -198,5 +198,5 @@ const VariableModal = forwardRef<ModalRef, ModalSuccess>(
     );
   }
 );
-VariableModal.displayName = 'variableModal';
+VariableModal.displayName = 'VariableModal';
 export default VariableModal;

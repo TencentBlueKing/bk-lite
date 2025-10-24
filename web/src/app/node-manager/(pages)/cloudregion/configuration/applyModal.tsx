@@ -156,5 +156,5 @@ const ApplyModal = forwardRef<ModalRef, ModalSuccess>(({ onSuccess }, ref) => {
   );
 });
 
-ApplyModal.displayName = 'applyModal';
+ApplyModal.displayName = 'ApplyModal';
 export default ApplyModal;

@@ -363,5 +363,5 @@ const ConfigModal = forwardRef<ModalRef, ModalSuccess>(
   }
 );
 
-ConfigModal.displayName = 'configModal';
+ConfigModal.displayName = 'ConfigModal';
 export default ConfigModal;

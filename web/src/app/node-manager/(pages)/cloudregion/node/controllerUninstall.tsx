@@ -307,5 +307,5 @@ const ControllerUninstall = forwardRef<ModalRef, ModalSuccess>(
     );
   }
 );
-ControllerUninstall.displayName = 'controllerUninstall';
+ControllerUninstall.displayName = 'ControllerUninstall';
 export default ControllerUninstall;
