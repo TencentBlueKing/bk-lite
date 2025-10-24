@@ -79,6 +79,7 @@ const User: React.FC = () => {
         name: item.display_name,
         email: item.email,
         role: item.role,
+        group_role_list: item.group_role_list || [],
         roles: item.roles || [],
         last_login: item.last_login,
       }));
