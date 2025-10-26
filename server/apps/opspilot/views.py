@@ -589,7 +589,7 @@ def _get_wechat_node_config(bot_chat_flow, bot_id):
     wechat_config = wechat_data.get("config", {})
 
     # 验证必需参数
-    required_params = ["token", "aes_key", "corp_id", "agent_id", "secret", "node_id"]
+    required_params = ["token", "aes_key", "corp_id", "agent_id", "secret"]
     missing_params = [p for p in required_params if not wechat_config.get(p)]
 
     if missing_params:
@@ -611,6 +611,7 @@ def _handle_wechat_url_verification(crypto, signature, timestamp, nonce, echostr
         return HttpResponse("fail")
 
     try:
+        logger.info(f"各参数如下： signature【{signature}】, timestamp【{timestamp}】, nonce【{nonce}】, echostr【{echostr}】")
         echo_str = crypto.check_signature(signature, timestamp, nonce, echostr)
         logger.info(f"企业微信URL验证成功，Bot {bot_id}")
         return HttpResponse(echo_str)
@@ -685,7 +686,7 @@ def _handle_wechat_message(request, crypto, bot_chat_flow, wechat_config, bot_id
         HttpResponse: 消息处理响应
     """
 
-    signature = request.GET.get("msg_signature", "")
+    signature = request.GET.get("signature", "") or request.GET.get("msg_signature", "")
     timestamp = request.GET.get("timestamp", "")
     nonce = request.GET.get("nonce", "")
 
@@ -737,6 +738,7 @@ def execute_chat_flow_wechat(request, bot_id):
     """
 
     # 1. 验证Bot和工作流配置
+    logger.info(f"企微认证参数 【{request.GET.dict()}】")
     bot_obj, bot_chat_flow, error_response = _validate_bot_and_workflow(bot_id)
     if error_response:
         return error_response
@@ -757,7 +759,7 @@ def execute_chat_flow_wechat(request, bot_id):
     if request.method == "GET":
         return _handle_wechat_url_verification(
             crypto,
-            request.GET.get("msg_signature", ""),
+            request.GET.get("signature", ""),
             request.GET.get("timestamp", ""),
             request.GET.get("nonce", ""),
             request.GET.get("echostr", ""),

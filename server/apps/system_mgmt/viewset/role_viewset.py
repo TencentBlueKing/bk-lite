@@ -122,8 +122,11 @@ class RoleViewSet(LanguageViewSet, ViewSetUtils):
     @action(detail=False, methods=["POST"])
     @HasPermission("application_role-Remove user")
     def delete_user(self, request):
-        pk = int(request.data.get("role_id"))
+        pk = int(request.data.get("role_id") or 0)
         user_ids = request.data.get("user_ids")
+        is_superuser = request.data.get("is_superuser") or False
+        if is_superuser:
+            pk = Role.objects.get(name="admin", app="").id
         user_list = User.objects.filter(id__in=user_ids)
         for i in user_list:
             if pk in i.role_list:

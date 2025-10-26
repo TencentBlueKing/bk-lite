@@ -1,5 +1,5 @@
 import React, { useState, useRef, forwardRef, useImperativeHandle } from 'react';
-import { Input, Button, Form, message, Spin, Select } from 'antd';
+import { Input, Button, Form, message, Spin, Select, Radio, Alert } from 'antd';
 import OperateModal from '@/components/operate-modal';
 import type { FormInstance } from 'antd';
 import { useTranslation } from '@/utils/i18n';
@@ -47,11 +47,11 @@ const UserModal = forwardRef<ModalRef, ModalProps>(({ onSuccess, treeData }, ref
   const [selectedRoles, setSelectedRoles] = useState<number[]>([]);
   const [groupRules, setGroupRules] = useState<{ [key: string]: { [app: string]: number } }>({});
   const [organizationRoleIds, setOrganizationRoleIds] = useState<number[]>([]);
+  const [isSuperuser, setIsSuperuser] = useState<boolean>(false);
 
   const { addUser, editUser, getUserDetail, getRoleList } = useUserApi();
   const { getGroupRoles } = useGroupApi();
 
-  // 获取组织角色 - 修改为返回数据
   const fetchGroupRoles = async (groupIds: number[]): Promise<GroupRole[]> => {
     if (groupIds.length === 0) {
       setOrganizationRoleIds([]);
@@ -61,7 +61,6 @@ const UserModal = forwardRef<ModalRef, ModalProps>(({ onSuccess, treeData }, ref
     try {
       const groupRoleData = await getGroupRoles({ group_ids: groupIds });
 
-      // 提取组织角色的ID列表
       const orgRoleIds = (groupRoleData || []).map((role: GroupRole) => role.id);
       setOrganizationRoleIds(orgRoleIds);
 
@@ -73,7 +72,6 @@ const UserModal = forwardRef<ModalRef, ModalProps>(({ onSuccess, treeData }, ref
     }
   };
 
-  // 修改角色树数据，禁用组织角色
   const processRoleTreeData = (roleData: any[], orgRoleIds: number[]): TreeDataNode[] => {
     return roleData.map((item: any) => ({
       key: item.id,
@@ -83,7 +81,7 @@ const UserModal = forwardRef<ModalRef, ModalProps>(({ onSuccess, treeData }, ref
         key: child.id,
         title: child.name,
         selectable: true,
-        disabled: orgRoleIds.includes(child.id), // 禁用组织角色
+        disabled: orgRoleIds.includes(child.id),
       })),
     }));
   };
@@ -112,27 +110,23 @@ const UserModal = forwardRef<ModalRef, ModalProps>(({ onSuccess, treeData }, ref
         setCurrentUserId(userId);
         const userGroupIds = userDetail.groups?.map((group: { id: number }) => group.id) || [];
 
-        // 先设置用户的分组信息
         setSelectedGroups(userGroupIds);
-
-        // 用户详情中的 roles 就是个人角色
         const personalRoles = userDetail.roles?.map((role: { role_id: number }) => role.role_id) || [];
-
-        // 获取组织角色信息
         const groupRoleData = await fetchGroupRoles(userGroupIds);
-
-        // 等待组织角色获取完成后，合并个人角色和组织角色
         const orgRoleIds = (groupRoleData || []).map((role: GroupRole) => role.id);
         const allRoles = [...personalRoles, ...orgRoleIds];
 
         setSelectedRoles(allRoles);
 
+        setIsSuperuser(userDetail?.is_superuser || false);
+
         formRef.current?.setFieldsValue({
           ...userDetail,
           lastName: userDetail?.display_name,
           zoneinfo: userDetail?.timezone,
-          roles: allRoles, // 设置合并后的所有角色
+          roles: allRoles,
           groups: userGroupIds,
+          is_superuser: userDetail?.is_superuser || false,
         });
 
         const groupRulesObj = userDetail.groups?.reduce((acc: { [key: string]: { [app: string]: number } }, group: {id: number; rules: { [key: string]: number } }) => {
@@ -153,9 +147,8 @@ const UserModal = forwardRef<ModalRef, ModalProps>(({ onSuccess, treeData }, ref
       setVisible(true);
       setType(type);
       formRef.current?.resetFields();
-
-      // 重置状态
       setOrganizationRoleIds([]);
+      setIsSuperuser(false);
 
       if (type === 'edit' && userId) {
         fetchUserDetail(userId);
@@ -163,17 +156,15 @@ const UserModal = forwardRef<ModalRef, ModalProps>(({ onSuccess, treeData }, ref
         setSelectedGroups(groupKeys);
         setSelectedRoles([]);
 
-        // 新增用户时也需要获取组织角色
         if (groupKeys.length > 0) {
           fetchGroupRoles(groupKeys);
         }
 
         setTimeout(() => {
-          formRef.current?.setFieldsValue({ groups: groupKeys, zoneinfo: "Asia/Shanghai", locale: "en" });
+          formRef.current?.setFieldsValue({ groups: groupKeys, zoneinfo: "Asia/Shanghai", locale: "en", is_superuser: false });
         }, 0);
       }
 
-      // 延迟获取角色信息，确保组织角色已加载
       setTimeout(() => {
         fetchRoleInfo();
       }, 100);
@@ -190,21 +181,31 @@ const UserModal = forwardRef<ModalRef, ModalProps>(({ onSuccess, treeData }, ref
       const formData = await formRef.current?.validateFields();
       const { zoneinfo, ...restData } = formData;
 
-      // 分离个人角色和组织角色
-      const personalRoles = (formData.roles || []).filter((roleId: number) => !organizationRoleIds.includes(roleId));
+      let payload;
+      
+      if (formData.is_superuser) {
+        payload = {
+          ...restData,
+          roles: [],
+          timezone: zoneinfo,
+          is_superuser: true,
+        };
+      } else {
+        const personalRoles = (formData.roles || []).filter((roleId: number) => !organizationRoleIds.includes(roleId));
 
-      // 修复 rules 数据处理逻辑，将 groupRules 转换为正确的格式
-      const rules = Object.values(groupRules)
-        .filter(group => group && typeof group === 'object' && Object.keys(group).length > 0)
-        .flatMap(group => Object.values(group))
-        .filter(rule => typeof rule === 'number');
+        const rules = Object.values(groupRules)
+          .filter(group => group && typeof group === 'object' && Object.keys(group).length > 0)
+          .flatMap(group => Object.values(group))
+          .filter(rule => typeof rule === 'number');
 
-      const payload = {
-        ...restData,
-        roles: personalRoles, // 只提交个人角色
-        rules,
-        timezone: zoneinfo,
-      };
+        payload = {
+          ...restData,
+          roles: personalRoles,
+          rules,
+          timezone: zoneinfo,
+          is_superuser: false,
+        };
+      }
 
       if (type === 'add') {
         await addUser(payload);
@@ -245,23 +246,19 @@ const UserModal = forwardRef<ModalRef, ModalProps>(({ onSuccess, treeData }, ref
     });
   };
 
-  // 处理分组变化，重新获取组织角色
   const handleGroupChange = async (newGroupIds: number[]) => {
     setSelectedGroups(newGroupIds);
     formRef.current?.setFieldsValue({ groups: newGroupIds });
 
-    // 当分组变化时，重新获取组织角色
     const newGroupRoleData = await fetchGroupRoles(newGroupIds);
     const newOrgRoleIds = newGroupRoleData.map(role => role.id);
 
-    // 更新角色选择：移除旧的组织角色，保留个人角色，添加新的组织角色
     const currentPersonalRoles = selectedRoles.filter(roleId => !organizationRoleIds.includes(roleId));
     const updatedRoles = [...currentPersonalRoles, ...newOrgRoleIds];
 
     setSelectedRoles(updatedRoles);
     formRef.current?.setFieldsValue({ roles: updatedRoles });
 
-    // 重新获取角色信息以更新禁用状态
     setTimeout(() => {
       fetchRoleInfo();
     }, 100);
@@ -335,7 +332,7 @@ const UserModal = forwardRef<ModalRef, ModalProps>(({ onSuccess, treeData }, ref
           <Form.Item
             name="groups"
             label={t('system.user.form.group')}
-            rules={[{ required: true, message: t('common.inputRequired') }]}
+            rules={[{ required: !isSuperuser, message: t('common.inputRequired') }]}
           >
             <RoleTransfer
               mode="group"
@@ -351,20 +348,47 @@ const UserModal = forwardRef<ModalRef, ModalProps>(({ onSuccess, treeData }, ref
             name="roles"
             label={t('system.user.form.role')}
             tooltip={t('system.user.form.rolePermissionTip')}
-            rules={[{ required: true, message: t('common.inputRequired') }]}
+            rules={[{ required: !isSuperuser, message: t('common.inputRequired') }]}
           >
-            <RoleTransfer
-              groupRules={groupRules}
-              treeData={roleTreeData}
-              selectedKeys={selectedRoles}
-              loading={roleLoading}
-              forceOrganizationRole={false}
-              organizationRoleIds={organizationRoleIds}
-              onChange={newKeys => {
-                setSelectedRoles(newKeys);
-                formRef.current?.setFieldsValue({ roles: newKeys });
-              }}
-            />
+            <Form.Item
+              name="is_superuser"
+              style={{ marginBottom: 8 }}
+            >
+              <Radio.Group 
+                onChange={(e) => {
+                  const value = e.target.value;
+                  setIsSuperuser(value);
+                  formRef.current?.setFieldsValue({ is_superuser: value });
+                }}
+              >
+                <Radio value={false}>{t('system.user.form.normalUser')}</Radio>
+                <Radio value={true}>{t('system.user.form.superuser')}</Radio>
+              </Radio.Group>
+            </Form.Item>
+            {!isSuperuser ? (
+              <RoleTransfer
+                groupRules={groupRules}
+                treeData={roleTreeData}
+                selectedKeys={selectedRoles}
+                loading={roleLoading}
+                forceOrganizationRole={false}
+                organizationRoleIds={organizationRoleIds}
+                onChange={newKeys => {
+                  setSelectedRoles(newKeys);
+                  formRef.current?.setFieldsValue({ roles: newKeys });
+                }}
+              />
+            ) : (
+              <div>{t('system.user.form.superuser')}</div>
+            )}
+            {isSuperuser && (
+              <Alert
+                message={t('system.user.form.superuserTip')}
+                type="info"
+                showIcon
+                style={{ marginTop: 8 }}
+              />
+            )}
           </Form.Item>
         </Form>
       </Spin>

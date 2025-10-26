@@ -589,6 +589,10 @@ install() {
     generate_ports_env
     generate_common_env
 
+    # 生成合成的docker-compose.yaml文件
+    log "INFO" "生成合成的 docker-compose.yaml 文件..."
+    $COMPOSE_CMD > docker-compose.yaml
+
     if [[ "$LOAD_LOCAL_IMAGES" == "true" ]]; then
         log "INFO" "从本地加载 Docker 镜像..."
         log "INFO" "镜像目录: ${OFFLINE_IMAGES_PATH}"
@@ -597,6 +601,7 @@ install() {
         log "INFO" "拉取最新的镜像..."
         ${DOCKER_COMPOSE_CMD} pull
     fi
+    
 
     # 生成nats需要的tls自签名证书
     generate_tls_certs
@@ -703,9 +708,6 @@ DOCKER_IMAGE_VECTOR=${DOCKER_IMAGE_VECTOR}
 INSTALL_APPS="${INSTALL_APPS}"
 EOF
 
-    # 生成合成的docker-compose.yaml文件
-    log "INFO" "生成合成的 docker-compose.yaml 文件..."
-    $COMPOSE_CMD > docker-compose.yaml
 
     # 按照特定顺序启动服务
     log "INFO" "启动基础服务 (Traefik, Redis, NATS, VictoriaMetrics, FalkorDB, VictoriaLogs, Minio, MLFlow, NATS Executor, Vector)..."
@@ -770,7 +772,7 @@ package() {
         skip_opspilot_images=false
         log "INFO" "检测到 --opspilot 参数，将下载所有镜像（包括 OpsPilot 相关）"
     else
-        log "INFO" "未检测到 --opspilot 参数，将跳过 OpsPilot 相关镜像（Metis, MLFlow）"
+        log "INFO" "未检测到 --opspilot 参数，将跳过 OpsPilot 相关镜像（Metis）"
     fi
     
     log "INFO" "开始下载所有必要的 Docker 镜像..."
@@ -799,7 +801,7 @@ package() {
     # 遍历所有镜像变量
     for image_var in $(compgen -v | grep '^DOCKER_IMAGE_'); do
         # 如果跳过 OpsPilot 镜像，且当前是 Metis 或 MLFlow，则跳过
-        if [ "$skip_opspilot_images" = true ] && [[ "$image_var" =~ (METIS|MLFLOW) ]]; then
+        if [ "$skip_opspilot_images" = true ] && [[ "$image_var" =~ (METIS) ]]; then
             log "INFO" "跳过 OpsPilot 镜像: ${image_var}"
             skipped_count=$((skipped_count + 1))
             continue
