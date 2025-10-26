@@ -120,6 +120,7 @@ const DatasetManagePage = () => {
       setDatasets(_data);
     } catch (e) {
       console.log(e);
+      setDatasets([]);
     } finally {
       setLoading(false);
     }

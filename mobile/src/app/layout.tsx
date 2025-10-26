@@ -20,6 +20,7 @@ export default function RootLayout({
           name="viewport"
           content="width=device-width, initial-scale=1.0, viewport-fit=cover, user-scalable=no"
         />
+        <link rel="stylesheet" href="/icon/font/iconfont.css"></link>
         <link rel="icon" href="/logo-site.png" type="image/png" />
       </head>
       <body className="antialiased">

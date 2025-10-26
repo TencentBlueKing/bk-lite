@@ -89,22 +89,24 @@ const ModelRelease = () => {
       dataIndex: 'action',
       key: 'action',
       width: 180,
-      render: (_, record: TableData) => (<>
-        <PermissionWrapper requiredPermissions={['Edit']}>
-          <Button type="link" className="mr-2" onClick={() => handleEdit(record)}>{t(`common.edit`)}</Button>
-        </PermissionWrapper>
-        <PermissionWrapper requiredPermissions={['Delete']}>
-          <Popconfirm
-            title={t(`model-release.delModel`)}
-            description={t(`model-release.delModelContent`)}
-            okText={t('common.confirm')}
-            cancelText={t('common.cancel')}
-            onConfirm={() => handleDelete(record.id)}
-          >
-            <Button type="link" danger>{t(`common.delete`)}</Button>
-          </Popconfirm>
-        </PermissionWrapper>
-      </>)
+      render: (_, record: TableData) => {
+        return (<>
+          <PermissionWrapper requiredPermissions={['Edit']}>
+            <Button type="link" className="mr-2" onClick={() => handleEdit(record)}>{t(`common.edit`)}</Button>
+          </PermissionWrapper>
+          <PermissionWrapper requiredPermissions={['Delete']}>
+            <Popconfirm
+              title={t(`model-release.delModel`)}
+              description={t(`model-release.delModelContent`)}
+              okText={t('common.confirm')}
+              cancelText={t('common.cancel')}
+              onConfirm={() => handleDelete(record.id)}
+            >
+              <Button type="link" danger>{t(`common.delete`)}</Button>
+            </Popconfirm>
+          </PermissionWrapper>
+        </>)
+      }
     }
   ];
 
@@ -180,25 +182,25 @@ const ModelRelease = () => {
       setTableData([]);
       return;
     }
-    
+
     setLoading(true);
     try {
       const params = {
         page: pagination.current,
         page_size: pagination.pageSize,
       };
-      
+
       // 获取任务列表和服务列表
       const [taskList, { count, items }] = await Promise.all([
-        getTaskMap[activeTypes]({}), 
+        getTaskMap[activeTypes]({}),
         getServingsMap[activeTypes](params)
       ]);
-      
+
       const _data = taskList.map((item: TrainJob) => ({
         label: item.name,
         value: item.id
       }));
-      
+
       setTrainjobs(_data);
       setTableData(items);
       setPagination((prev) => ({

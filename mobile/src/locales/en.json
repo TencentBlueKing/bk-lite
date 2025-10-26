@@ -32,6 +32,7 @@
     },
     "navigation": {
         "conversations": "Chat",
+        "workbench": "Workbench",
         "profile": "Me"
     },
     "chat": {
