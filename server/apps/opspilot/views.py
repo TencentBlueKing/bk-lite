@@ -759,7 +759,7 @@ def execute_chat_flow_wechat(request, bot_id):
     if request.method == "GET":
         return _handle_wechat_url_verification(
             crypto,
-            request.GET.get("signature", ""),
+            request.GET.get("signature", "") or request.GET.get("msg_signature", ""),
             request.GET.get("timestamp", ""),
             request.GET.get("nonce", ""),
             request.GET.get("echostr", ""),
