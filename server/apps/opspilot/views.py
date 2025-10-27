@@ -591,7 +591,7 @@ def _get_wechat_node_config(bot_chat_flow, bot_id):
     # 验证必需参数
     required_params = ["token", "aes_key", "corp_id", "agent_id", "secret"]
     missing_params = [p for p in required_params if not wechat_config.get(p)]
-
+    wechat_config["node_id"] = wechat_node["id"]
     if missing_params:
         logger.error(f"企业微信ChatFlow执行失败：Bot {bot_id} 缺少配置参数: {', '.join(missing_params)}")
         return None, HttpResponse("success")
