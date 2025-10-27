@@ -5,8 +5,8 @@ import json
 from jinja2 import Environment, FileSystemLoader, DebugUndefined
 
 from apps.core.exceptions.base_app_exception import BaseAppException
+from apps.log.constants.plugin import PluginConstants
 from apps.log.models import CollectConfig
-from apps.log.plugins import PLUGIN_DIRECTORY
 from apps.rpc.node_mgmt import NodeMgmt
 
 
@@ -80,7 +80,7 @@ class Controller:
         return sort_order
 
     def controller(self):
-        base_dir = PLUGIN_DIRECTORY
+        base_dir = PluginConstants.DIRECTORY
         configs = self.format_configs()
         node_configs, node_child_configs, collect_configs = [], [], []
         for config_info in configs:
@@ -147,7 +147,7 @@ class Controller:
     def render_config_template_content(self, file_type, context_data, instance_id):
         """ 渲染配置模板内容。"""
 
-        template_dir = os.path.join(PLUGIN_DIRECTORY, self.data["collector"], self.data["collect_type"])
+        template_dir = os.path.join(PluginConstants.DIRECTORY, self.data["collector"], self.data["collect_type"])
         templates = self.get_template_info_by_type(template_dir, self.data["collect_type"])
 
         template = None

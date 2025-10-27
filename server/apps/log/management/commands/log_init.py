@@ -1,21 +1,7 @@
 from django.core.management import BaseCommand
-
 from apps.core.logger import log_logger as logger
-from apps.log.models import LogGroup, LogGroupOrganization
-from apps.rpc.system_mgmt import SystemMgmt
-from apps.log.plugins.plugin_migrate import migrate_collect_type
-
-
-def init_stream():
-
-    if not LogGroup.objects.filter(id='default').exists():
-        LogGroup.objects.create(id='default', name='Default', created_by="system", updated_by="system")
-
-        client = SystemMgmt(is_local_client=True)
-        res = client.get_group_id("Default")
-
-        LogGroupOrganization.objects.create(
-            log_group_id='default', organization=res.get("data", 0), created_by="system", updated_by="system")
+from apps.log.management.services.plugin import migrate_collect_type
+from apps.log.management.services.stream import init_stream
 
 
 class Command(BaseCommand):

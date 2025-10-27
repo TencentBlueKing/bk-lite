@@ -5,7 +5,6 @@ import asyncio
 from apps.log.constants.victoriametrics import VictoriaLogsConstants
 from apps.log.utils.query_log import VictoriaMetricsAPI
 from apps.log.utils.log_group import LogGroupQueryBuilder
-from apps.log.constants.sse import SSEConstants
 from apps.core.logger import log_logger as logger
 
 
