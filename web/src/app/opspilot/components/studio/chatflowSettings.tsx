@@ -20,6 +20,8 @@ const nodeCategories = [
       { type: 'restful', icon: 'RESTfulAPI', labelKey: 'chatflow.restful' },
       { type: 'openai', icon: 'icon-test2', labelKey: 'chatflow.openai' },
       { type: 'enterprise_wechat', icon: 'qiwei2', labelKey: 'chatflow.enterpriseWechat' },
+      { type: 'dingtalk', icon: 'dingding', labelKey: 'chatflow.dingtalk' },
+      { type: 'wechat_official', icon: 'weixingongzhonghao', labelKey: 'chatflow.wechatOfficial' },
     ]
   },
   {

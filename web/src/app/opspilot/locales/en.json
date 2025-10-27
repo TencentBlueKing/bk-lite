@@ -655,6 +655,8 @@
     "restful": "RESTful API",
     "celery": "Time Trigger",
     "enterpriseWechat": "WeChat Trigger",
+    "dingtalk": "DingTalk Trigger",
+    "wechatOfficial": "WeChat Official Trigger",
     "agents": "Agents",
     "logicNodes": "Logic Nodes",
     "condition": "If Condition",
@@ -803,7 +805,15 @@
       "enterAesKey": "Enter AES Key",
       "pleaseEnterCorpId": "Please enter Corp ID",
       "enterCorpId": "Enter Corp ID",
-      "pleaseEnterAgentId": "Please enter Agent ID"
+      "pleaseEnterAgentId": "Please enter Agent ID",
+      "enterpriseWechatParams": "Enterprise WeChat Parameters",
+      "dingtalkParams": "DingTalk Parameters",
+      "wechatOfficialParams": "WeChat Official Parameters",
+      "pleaseEnterClientId": "Please enter Client ID",
+      "enterClientId": "Enter Client ID",
+      "pleaseEnterClientSecret": "Please enter Client Secret",
+      "enterClientSecret": "Enter Client Secret",
+      "enableEventbus": "Enable Eventbus"
     },
     "validation": {
       "valid": "Valid",
