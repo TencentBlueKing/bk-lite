@@ -4,7 +4,9 @@ from datetime import datetime, timezone
 import time
 
 from apps.core.exceptions.base_app_exception import BaseAppException
-from apps.log.constants import KEYWORD, AGGREGATE, ALERT_STATUS_NEW, WEB_URL
+from apps.log.constants.alert_policy import AlertConstants
+from apps.log.constants.web import  WebConstants
+
 from apps.log.models.policy import Policy, Alert, Event, EventRawData
 from apps.log.utils.query_log import VictoriaMetricsAPI
 from apps.log.utils.log_group import LogGroupQueryBuilder
@@ -131,7 +133,7 @@ class LogPolicyScan:
     def get_active_alerts(self):
         """获取策略的活动告警"""
         try:
-            qs = Alert.objects.filter(policy_id=self.policy.id, status=ALERT_STATUS_NEW)
+            qs = Alert.objects.filter(policy_id=self.policy.id, status=AlertConstants.STATUS_NEW)
             return qs
         except Exception as e:
             logger.error(f"get active alerts failed: {e}")
@@ -602,7 +604,7 @@ class LogPolicyScan:
             existing_alerts_qs = Alert.objects.filter(
                 policy_id=self.policy.id,
                 source_id__in=source_ids,
-                status=ALERT_STATUS_NEW
+                status=AlertConstants.STATUS_NEW
             )
 
             # 手动构建映射表，因为source_id不是唯一字段
@@ -643,7 +645,7 @@ class LogPolicyScan:
                         level=event["level"],
                         value=event.get("value"),
                         content=event["content"],
-                        status=ALERT_STATUS_NEW,
+                        status=AlertConstants.STATUS_NEW,
                         start_event_time=self.policy.last_run_time,
                         end_event_time=self.policy.last_run_time,
                         operator=""
@@ -714,7 +716,7 @@ class LogPolicyScan:
         """
         # 格式化标题
         title = "【日志告警通知】"
-        url = f"{WEB_URL}/log/event/alert"
+        url = f"{WebConstants.URL}/log/event/alert"
         # 格式化内容
         content_parts = [
             f"时间：{event_obj.event_time}",
@@ -783,9 +785,9 @@ class LogPolicyScan:
             events = []
 
             # 根据告警类型进行不同的检测
-            if self.policy.alert_type == KEYWORD:
+            if self.policy.alert_type == AlertConstants.TYPE_KEYWORD:
                 events = self.keyword_alert_detection()
-            elif self.policy.alert_type == AGGREGATE:
+            elif self.policy.alert_type == AlertConstants.TYPE_AGGREGATE:
                 events = self.aggregate_alert_detection()
             else:
                 logger.warning(f"Unknown alert type: {self.policy.alert_type} for policy {self.policy.id}")

@@ -5,7 +5,7 @@ from rest_framework.viewsets import ModelViewSet, ViewSet
 
 from apps.core.utils.permission_utils import get_permissions_rules, check_instance_permission, get_permission_rules, permission_filter, filter_instances_with_permissions
 from apps.core.utils.web_utils import WebUtils
-from apps.log.constants import POLICY_MODULE, INSTANCE_MODULE, DEFAULT_PERMISSION
+from apps.log.constants.permission import PermissionConstants
 from apps.log.models import CollectType, CollectInstance, CollectConfig
 from apps.log.models.policy import Policy
 from apps.log.serializers.collect_config import CollectTypeSerializer
@@ -41,7 +41,7 @@ class CollectTypeViewSet(ModelViewSet):
                 request.user,
                 request.COOKIES.get("current_team"),
                 "log",
-                POLICY_MODULE,
+                PermissionConstants.POLICY_MODULE,
             )
 
             policy_permissions, cur_team = policy_res.get("data", {}), policy_res.get("team", [])
@@ -75,7 +75,7 @@ class CollectTypeViewSet(ModelViewSet):
                 request.user,
                 request.COOKIES.get("current_team"),
                 "log",
-                INSTANCE_MODULE,
+                PermissionConstants.INSTANCE_MODULE,
             )
 
             instance_permissions, cur_team = instance_res.get("data", {}), instance_res.get("team", [])
@@ -147,7 +147,7 @@ class CollectInstanceViewSet(ViewSet):
                 request.user,
                 current_team,
                 "log",
-                f"{INSTANCE_MODULE}.{collect_type_id}",
+                f"{PermissionConstants.INSTANCE_MODULE}.{collect_type_id}",
             )
             # 应用权限过滤（与监控模块保持一致）
             qs = permission_filter(
@@ -171,7 +171,7 @@ class CollectInstanceViewSet(ViewSet):
                 request.user,
                 request.COOKIES.get("current_team"),
                 "log",
-                INSTANCE_MODULE,
+                PermissionConstants.INSTANCE_MODULE,
             )
             # 超管权限检查
             admin_cur_team = instance_res.get("all", {}).get("team")
@@ -215,7 +215,7 @@ class CollectInstanceViewSet(ViewSet):
             if instance_info["id"] in inst_permission_map:
                 instance_info["permission"] = inst_permission_map[instance_info["id"]]
             else:
-                instance_info["permission"] = DEFAULT_PERMISSION
+                instance_info["permission"] = PermissionConstants.DEFAULT_PERMISSION
 
         return WebUtils.response_success(data)
 
