@@ -9,7 +9,8 @@ from django.db import models
 from apps.core.exceptions.base_app_exception import BaseAppException
 from apps.core.utils.permission_utils import get_permission_rules, get_permissions_rules, permission_filter, check_instance_permission
 from apps.core.utils.web_utils import WebUtils
-from apps.log.constants import POLICY_MODULE, DEFAULT_PERMISSION, ALERT_STATUS_NEW, ALERT_STATUS_CLOSED
+from apps.log.constants.permission import PermissionConstants
+from apps.log.constants.alert_policy import AlertConstants
 from apps.log.filters.policy import PolicyFilter, AlertFilter, EventFilter, EventRawDataFilter
 from apps.log.models.policy import Policy, Alert, Event, EventRawData
 from apps.log.serializers.policy import PolicySerializer, AlertSerializer, EventSerializer, EventRawDataSerializer
@@ -30,7 +31,7 @@ class PolicyViewSet(viewsets.ModelViewSet):
             request.user,
             request.COOKIES.get("current_team"),
             "log",
-            f"{POLICY_MODULE}.{collect_type_id}",
+            f"{PermissionConstants.POLICY_MODULE}.{collect_type_id}",
         )
 
         # 应用权限过滤
@@ -69,7 +70,7 @@ class PolicyViewSet(viewsets.ModelViewSet):
             if policy_info['id'] in policy_permission_map:
                 policy_info['permission'] = policy_permission_map[policy_info['id']]
             else:
-                policy_info['permission'] = DEFAULT_PERMISSION
+                policy_info['permission'] = PermissionConstants.DEFAULT_PERMISSION
 
         return WebUtils.response_success(dict(count=queryset.count(), items=results))
 
@@ -236,7 +237,7 @@ class AlertViewSet(viewsets.ModelViewSet):
             request.user,
             current_team,
             "log",
-            POLICY_MODULE,
+            PermissionConstants.POLICY_MODULE,
         )
 
         policy_permissions = permissions_result.get("data", {})
@@ -282,7 +283,7 @@ class AlertViewSet(viewsets.ModelViewSet):
                 request.user,
                 request.COOKIES.get("current_team"),
                 "log",
-                f"{POLICY_MODULE}.{collect_type_id}",
+                f"{PermissionConstants.POLICY_MODULE}.{collect_type_id}",
             )
 
             # 应用权限过滤
@@ -368,11 +369,11 @@ class AlertViewSet(viewsets.ModelViewSet):
         alert = self.get_object()
         operator = request.user.username
 
-        alert.status = ALERT_STATUS_CLOSED
+        alert.status = AlertConstants.STATUS_CLOSED
         alert.operator = operator
         alert.save()
 
-        return WebUtils.response_success({"status": ALERT_STATUS_CLOSED, "operator": operator})
+        return WebUtils.response_success({"status": AlertConstants.STATUS_CLOSED, "operator": operator})
 
     @action(methods=['get'], detail=False, url_path='last_event')
     def get_last_event(self, request):
@@ -419,7 +420,7 @@ class AlertViewSet(viewsets.ModelViewSet):
                 request.user,
                 request.COOKIES.get("current_team"),
                 "log",
-                f"{POLICY_MODULE}.{collect_type_id}",
+                f"{PermissionConstants.POLICY_MODULE}.{collect_type_id}",
             )
 
             # 先过滤出有权限的Policy
@@ -443,7 +444,7 @@ class AlertViewSet(viewsets.ModelViewSet):
             if not policy_ids:
                 return WebUtils.response_success({
                     "total": 0,
-                    "status": request.query_params.get('status', ALERT_STATUS_NEW),
+                    "status": request.query_params.get('status', AlertConstants.STATUS_NEW),
                     "time_range": {"start": None, "end": None},
                     "step_minutes": int(request.query_params.get('step', 60)),
                     "time_series": []
@@ -454,7 +455,7 @@ class AlertViewSet(viewsets.ModelViewSet):
         queryset = queryset.filter(policy_id__in=policy_ids).distinct()
 
         # 获取参数
-        status = request.query_params.get('status', ALERT_STATUS_NEW)
+        status = request.query_params.get('status', AlertConstants.STATUS_NEW)
         step_minutes = int(request.query_params.get('step', 60))
 
         # 按状态过滤

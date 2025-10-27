@@ -4,7 +4,7 @@ from apps.core.utils.permission_utils import get_permission_rules, permission_fi
 from apps.log.models.log_group import LogGroup, LogGroupOrganization
 from apps.log.serializers.log_group import LogGroupSerializer
 from apps.log.filters.log_group import LogGroupFilter
-from apps.log.constants import LOG_GROUP_MODULE
+from apps.log.constants.permission import PermissionConstants
 
 
 class LogGroupViewSet(ModelViewSet):
@@ -32,7 +32,7 @@ class LogGroupViewSet(ModelViewSet):
             request.user,
             request.COOKIES.get("current_team"),
             "log",
-            LOG_GROUP_MODULE,
+            PermissionConstants.LOG_GROUP_MODULE,
         )
 
         # 应用权限过滤

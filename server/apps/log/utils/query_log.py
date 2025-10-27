@@ -3,16 +3,16 @@ import asyncio
 import requests
 import requests.adapters
 import time
-from apps.log.constants import VICTORIALOGS_HOST, VICTORIALOGS_USER, VICTORIALOGS_PWD, VICTORIALOGS_SSL_VERIFY
+from apps.log.constants.victoriametrics import VictoriaLogsConstants
 from apps.core.logger import log_logger as logger
 
 
 class VictoriaMetricsAPI:
     def __init__(self):
-        self.host = VICTORIALOGS_HOST
-        self.username = VICTORIALOGS_USER
-        self.password = VICTORIALOGS_PWD
-        self.ssl_verify = VICTORIALOGS_SSL_VERIFY
+        self.host = VictoriaLogsConstants.HOST
+        self.username = VictoriaLogsConstants.USER
+        self.password = VictoriaLogsConstants.PWD
+        self.ssl_verify = VictoriaLogsConstants.SSL_VERIFY
 
     def field_names(self, start, end, field, limit=100):
         data = {"query": f"{field}:*", "field":field, "start": start, "end": end, "limit": limit}
@@ -162,4 +162,3 @@ class VictoriaMetricsAPI:
                     response.close()
                 except:
                     pass  # 忽略关闭时的异常
-
