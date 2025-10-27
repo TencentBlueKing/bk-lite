@@ -28,6 +28,7 @@ class NodeRegistry:
         """注册内置节点类型"""
         # 基础节点
         self.register_node_class("restful", EntryNode)
+        self.register_node_class("enterprise_wechat", EntryNode)
         self.register_node_class("openai", EntryNode)
         self.register_node_class("exit", ExitNode)
         self.register_node_class("celery", EntryNode)
