@@ -2,15 +2,15 @@ import os
 import json
 
 from apps.core.logger import log_logger as logger
+from apps.log.constants.plugin import PluginConstants
 from apps.log.models import CollectType
-from apps.log.plugins import PLUGIN_DIRECTORY
 
 
 def migrate_collect_type():
     """迁移采集方式"""
     collect_types_path = []
-    for collector in os.listdir(PLUGIN_DIRECTORY):
-        collector_path = os.path.join(PLUGIN_DIRECTORY, collector)
+    for collector in os.listdir(PluginConstants.DIRECTORY):
+        collector_path = os.path.join(PluginConstants.DIRECTORY, collector)
         if not os.path.isdir(collector_path):
             continue
         for collect_type in os.listdir(collector_path):

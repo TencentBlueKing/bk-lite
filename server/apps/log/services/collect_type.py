@@ -6,7 +6,7 @@ from django.db import transaction
 
 from apps.core.exceptions.base_app_exception import BaseAppException
 from apps.log.models import CollectInstance, CollectInstanceOrganization, CollectConfig, CollectType
-from apps.log.plugins.controller import Controller
+from apps.log.utils.plugin_controller import Controller
 from apps.rpc.node_mgmt import NodeMgmt
 
 
