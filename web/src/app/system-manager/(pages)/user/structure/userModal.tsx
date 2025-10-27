@@ -25,7 +25,6 @@ export interface ModalRef {
   showModal: (config: ModalConfig) => void;
 }
 
-// 组织角色接口定义
 interface GroupRole {
   id: number;
   name: string;
