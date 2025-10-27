@@ -1,5 +1,6 @@
-import React, { useState, useCallback, useMemo } from 'react';
-import { Dropdown, Space, Avatar, Menu, MenuProps, message } from 'antd';
+import React, { useState, useCallback, useMemo, useEffect } from 'react';
+import { Dropdown, Space, Avatar, Menu, MenuProps, message, Checkbox, Tree } from 'antd';
+import type { DataNode } from 'antd/lib/tree';
 import { usePathname, useRouter } from 'next/navigation';
 import { useSession, signOut } from 'next-auth/react';
 import { DownOutlined } from '@ant-design/icons';
@@ -8,37 +9,48 @@ import VersionModal from './versionModal';
 import ThemeSwitcher from '@/components/theme';
 import { useUserInfoContext } from '@/context/userInfo';
 import { clearAuthToken } from '@/utils/crossDomainAuth';
+import Cookies from 'js-cookie';
+import type { Group } from '@/types/index';
 
-interface GroupItemProps {
-  id: string;
-  name: string;
-  isSelected: boolean;
-  onClick: (id: string) => void;
-}
-
-const GroupItem: React.FC<GroupItemProps> = ({ id, name, isSelected, onClick }) => (
-  <Space className="w-full" onClick={() => onClick(id)}>
-    <span
-      className={`inline-block w-2 h-2 rounded-full ${
-        isSelected ? 'bg-[var(--color-success)]' : 'bg-[var(--color-fill-4)]'
-      }`}
-    />
-    <span className="text-sm">{name}</span>
-  </Space>
-);
+// 将 Group 转换为 Tree DataNode
+const convertGroupsToTreeData = (groups: Group[], selectedGroupId: string | undefined): DataNode[] => {
+  return groups.map(group => ({
+    key: group.id,
+    title: group.name,
+    selectable: true,
+    children: group.subGroups && group.subGroups.length > 0
+      ? convertGroupsToTreeData(group.subGroups, selectedGroupId)
+      : undefined,
+  }));
+};
 
 const UserInfo: React.FC = () => {
   const { data: session } = useSession();
   const { t } = useTranslation();
   const pathname = usePathname();
   const router = useRouter();
-  const { flatGroups, selectedGroup, setSelectedGroup, displayName, isSuperUser } = useUserInfoContext();
+  const { groupTree, selectedGroup, setSelectedGroup, displayName, isSuperUser } = useUserInfoContext();
 
   const [versionVisible, setVersionVisible] = useState<boolean>(false);
   const [dropdownVisible, setDropdownVisible] = useState<boolean>(false);
   const [isLoading, setIsLoading] = useState<boolean>(false);
+  const [includeChildren, setIncludeChildren] = useState<boolean>(false);
 
   const username = displayName || session?.user?.username || 'Test';
+
+  // 初始化时从 cookie 读取 include_children 状态
+  useEffect(() => {
+    const savedValue = Cookies.get('include_children');
+    if (savedValue === '1') {
+      setIncludeChildren(true);
+    }
+  }, []);
+
+  // 处理复选框变化
+  const handleIncludeChildrenChange = useCallback((checked: boolean) => {
+    setIncludeChildren(checked);
+    Cookies.set('include_children', checked ? '1' : '0', { expires: 365 });
+  }, []);
 
   const federatedLogout = useCallback(async () => {
     setIsLoading(true);
@@ -53,24 +65,24 @@ const UserInfo: React.FC = () => {
 
       // Clear authentication token
       clearAuthToken();
-      
+
       // Use NextAuth's signOut to clear client session
       await signOut({ redirect: false });
-      
+
       // Build login page URL with current page as callback URL after successful login
       const currentPageUrl = `${window.location.origin}${pathname}`;
       const loginUrl = `/auth/signin?callbackUrl=${encodeURIComponent(currentPageUrl)}`;
-      
+
       // Redirect to login page
       window.location.href = loginUrl;
     } catch (error) {
       console.error('Logout error:', error);
       message.error(t('common.logoutFailed'));
-      
+
       // Even if API call fails, still clear token and redirect to login page
       clearAuthToken();
       await signOut({ redirect: false });
-      
+
       const currentPageUrl = `${window.location.origin}${pathname}`;
       const loginUrl = `/auth/signin?callbackUrl=${encodeURIComponent(currentPageUrl)}`;
       window.location.href = loginUrl;
@@ -79,8 +91,23 @@ const UserInfo: React.FC = () => {
     }
   }, [pathname, t]);
 
-  const handleChangeGroup = useCallback(async (key: string) => {
-    const nextGroup = flatGroups.find(group => group.id === key);
+  const handleChangeGroup = useCallback(async (selectedKeys: React.Key[]) => {
+    if (selectedKeys.length === 0) return;
+
+    const selectedKey = selectedKeys[0] as string;
+
+    const findGroup = (groups: Group[], id: string): Group | null => {
+      for (const group of groups) {
+        if (group.id === id) return group;
+        if (group.subGroups) {
+          const found = findGroup(group.subGroups, id);
+          if (found) return found;
+        }
+      }
+      return null;
+    };
+
+    const nextGroup = findGroup(groupTree, selectedKey);
     if (!nextGroup) return;
 
     setSelectedGroup(nextGroup);
@@ -92,9 +119,22 @@ const UserInfo: React.FC = () => {
     } else {
       window.location.reload();
     }
-  }, [flatGroups, pathname, router]);
+  }, [groupTree, pathname, router, setSelectedGroup]);
 
   const dropdownItems: MenuProps['items'] = useMemo(() => {
+    // 过滤掉 OpsPilotGuest
+    const filterGroups = (groups: Group[]): Group[] => {
+      return groups
+        .filter(group => isSuperUser || session?.user?.username === 'kayla' || group.name !== 'OpsPilotGuest')
+        .map(group => ({
+          ...group,
+          subGroups: group.subGroups ? filterGroups(group.subGroups) : undefined,
+        }));
+    };
+
+    const filteredGroupTree = filterGroups(groupTree);
+    const treeData = convertGroupsToTreeData(filteredGroupTree, selectedGroup?.id);
+
     const items: MenuProps['items'] = [
       {
         key: 'themeSwitch',
@@ -119,19 +159,46 @@ const UserInfo: React.FC = () => {
             <span className="text-xs text-[var(--color-text-4)]">{selectedGroup?.name}</span>
           </div>
         ),
-        children: flatGroups
-          .filter((group) => isSuperUser || session?.user?.username === 'kayla' || group.name !== 'OpsPilotGuest')
-          .map((group) => ({
-            key: group.id,
+        children: [
+          {
+            key: 'group-tree-container',
             label: (
-              <GroupItem
-                id={group.id}
-                name={group.name}
-                isSelected={selectedGroup?.name === group.name}
-                onClick={handleChangeGroup}
-              />
+              <div className="w-full" style={{ maxWidth: '400px' }}>
+                <div
+                  className="w-full py-2 px-3 border-b border-[var(--color-border-2)]"
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  <Checkbox
+                    checked={includeChildren}
+                    onChange={(e) => {
+                      e.stopPropagation();
+                      handleIncludeChildrenChange(e.target.checked);
+                    }}
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    <span className="text-sm">{t('common.includeSubgroups')}</span>
+                  </Checkbox>
+                </div>
+                <div
+                  className="w-full py-2"
+                  style={{ maxHeight: '600px', overflow: 'auto' }}
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  <Tree
+                    treeData={treeData}
+                    selectedKeys={selectedGroup ? [selectedGroup.id] : []}
+                    onSelect={handleChangeGroup}
+                    defaultExpandAll
+                    showLine
+                    blockNode
+                  />
+                </div>
+              </div>
             ),
-          })),
+            disabled: true,
+            style: { cursor: 'default', padding: 0 },
+          },
+        ],
         popupClassName: 'user-groups-submenu'
       },
       { type: 'divider' },
@@ -143,7 +210,7 @@ const UserInfo: React.FC = () => {
     ];
 
     return items;
-  }, [selectedGroup, flatGroups, isLoading]);
+  }, [selectedGroup, groupTree, isLoading, includeChildren, isSuperUser, session]);
 
   const handleMenuClick = ({ key }: any) => {
     if (key === 'version') setVersionVisible(true);

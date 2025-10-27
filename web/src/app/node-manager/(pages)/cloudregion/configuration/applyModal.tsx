@@ -11,7 +11,7 @@ import {
 import { useTranslation } from '@/utils/i18n';
 import type { GetProps } from 'antd';
 import { useApplyColumns } from '@/app/node-manager/hooks/configuration';
-import useApiCloudRegion from '@/app/node-manager/api/cloudRegion';
+import useNodeManagerApi from '@/app/node-manager/api';
 import {
   NodeItemRes,
   MappedNodeItem,
@@ -24,8 +24,8 @@ const { Search } = Input;
 const ApplyModal = forwardRef<ModalRef, ModalSuccess>(({ onSuccess }, ref) => {
   const { t } = useTranslation();
   const cloudId = useCloudId();
-  const { getNodeList, applyConfig, cancelApply, getAssoNodes } =
-    useApiCloudRegion();
+  const { applyConfig, cancelApply, getAssoNodes, getNodeList } =
+    useNodeManagerApi();
   const [configVisible, setConfigVisible] = useState<boolean>(false);
   const [configForm, setConfigForm] = useState<TableDataItem>();
   const [applyData, setApplyData] = useState<MappedNodeItem[]>();
@@ -156,5 +156,5 @@ const ApplyModal = forwardRef<ModalRef, ModalSuccess>(({ onSuccess }, ref) => {
   );
 });
 
-ApplyModal.displayName = 'applyModal';
+ApplyModal.displayName = 'ApplyModal';
 export default ApplyModal;

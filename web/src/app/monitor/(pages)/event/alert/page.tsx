@@ -574,7 +574,7 @@ const Alert: React.FC = () => {
                       style={{ width: 200 }}
                       dropdownStyle={{ width: 130 }}
                       allowClear
-                      mode="tags"
+                      mode="multiple"
                       maxTagCount="responsive"
                       value={filters.level}
                       onChange={(val) => onFilterChange(val, 'level')}
@@ -599,7 +599,7 @@ const Alert: React.FC = () => {
                     <Select
                       style={{ width: 200 }}
                       allowClear
-                      mode="tags"
+                      mode="multiple"
                       maxTagCount="responsive"
                       value={filters.state}
                       onChange={(val) => onFilterChange(val, 'state')}

@@ -1,6 +1,7 @@
 import uuid
 from celery.app import shared_task
 from datetime import datetime, timezone
+import time
 
 from apps.core.exceptions.base_app_exception import BaseAppException
 from apps.log.constants import KEYWORD, AGGREGATE, ALERT_STATUS_NEW, WEB_URL
@@ -9,34 +10,74 @@ from apps.log.utils.query_log import VictoriaMetricsAPI
 from apps.log.utils.log_group import LogGroupQueryBuilder
 from apps.monitor.utils.system_mgmt_api import SystemMgmtUtils
 from apps.core.logger import celery_logger as logger
+from apps.core.utils.celery_utils import task_lock
 
 
 @shared_task
 def scan_log_policy_task(policy_id):
-    """扫描日志策略"""
-    logger.info(f"start to scan log policy, [{policy_id}]")
+    """扫描日志策略
 
-    try:
-        policy_obj = Policy.objects.filter(id=policy_id).select_related("collect_type").first()
-        if not policy_obj:
-            raise BaseAppException(f"No Policy found with id {policy_id}")
+    Args:
+        policy_id: 日志策略ID
 
-        if policy_obj.enable:
-            # 修正时间计算逻辑 - 应该基于当前时间而非累加
+    Returns:
+        dict: 执行结果 {"success": bool, "duration": float, "message": str}
+    """
+    start_time = time.time()
+    logger.info(f"开始执行日志策略扫描任务，策略ID: {policy_id}")
+
+    # 使用分布式锁确保同一个策略同时只能有一个任务在执行
+    # 使用app命名空间避免与monitor等其他app的策略扫描任务冲突
+    lock_key = f"task_lock:log:scan_policy:{policy_id}"
+
+    with task_lock(lock_key, timeout=3600, blocking_timeout=0) as acquired:
+        if not acquired:
+            duration = time.time() - start_time
+            logger.warning(f"日志策略 [{policy_id}] 正在执行中，跳过本次调度，耗时: {duration:.2f}s")
+            return {"success": False, "duration": duration, "message": "策略正在执行中"}
+
+        try:
+            # 查询策略对象
+            policy_obj = Policy.objects.filter(id=policy_id).select_related("collect_type").first()
+            if not policy_obj:
+                raise BaseAppException(f"未找到ID为 {policy_id} 的日志策略")
+
+            # 检查策略是否启用
+            if not policy_obj.enable:
+                duration = time.time() - start_time
+                logger.info(f"日志策略 [{policy_id}] 未启用，跳过执行，耗时: {duration:.2f}s")
+                return {"success": True, "duration": duration, "message": "策略未启用"}
+
+            # 更新最后执行时间为当前时间
             current_time = datetime.now(timezone.utc)
             if not policy_obj.last_run_time:
                 policy_obj.last_run_time = current_time
+            else:
+                # 日志策略使用当前时间作为执行时间
+                policy_obj.last_run_time = current_time
 
-            # 保存当前执行时间
-            policy_obj.last_run_time = current_time
-            policy_obj.save()
+            # 只更新需要的字段，提高性能
+            Policy.objects.filter(id=policy_id).update(last_run_time=policy_obj.last_run_time)
 
+            # 执行日志策略扫描
+            logger.info(f"开始执行日志策略 [{policy_id}] 的扫描逻辑")
             LogPolicyScan(policy_obj).run()
 
-        logger.info(f"end to scan log policy, [{policy_id}]")
-    except Exception as e:
-        logger.error(f"scan log policy task failed, policy_id: {policy_id}, error: {e}")
-        raise
+            duration = time.time() - start_time
+            logger.info(f"日志策略 [{policy_id}] 扫描完成，耗时: {duration:.2f}s")
+            return {"success": True, "duration": duration, "message": "执行成功"}
+
+        except BaseAppException as e:
+            duration = time.time() - start_time
+            logger.error(f"日志策略 [{policy_id}] 执行失败（业务异常），耗时: {duration:.2f}s，错误: {str(e)}")
+            raise
+        except Exception as e:
+            duration = time.time() - start_time
+            logger.error(
+                f"日志策略 [{policy_id}] 执行失败（系统异常），耗时: {duration:.2f}s，错误: {str(e)}",
+                exc_info=True
+            )
+            raise
 
 
 def period_to_seconds(period):

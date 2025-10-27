@@ -3,13 +3,11 @@ from django.db.models import Q
 from apps.rpc.system_mgmt import SystemMgmt
 
 
-def get_permission_rules(user, current_team, app_name, permission_key):
+def get_permission_rules(user, current_team, app_name, permission_key, include_children=False):
     """获取某app某类权限的某个对象的规则"""
     app, child_module, client, module = set_rules_module_params(app_name, permission_key)
     try:
-        permission_data = client.get_user_rules_by_app(
-            int(current_team), user.username, app, module, child_module, user.domain
-        )
+        permission_data = client.get_user_rules_by_app(int(current_team), user.username, app, module, child_module, user.domain, include_children)
         return permission_data
     except Exception:
         return {}
@@ -31,7 +29,7 @@ def set_rules_module_params(app_name, permission_key):
     return app_name, child_module, client, module
 
 
-def get_permissions_rules(user, current_team, app_name, permission_key):
+def get_permissions_rules(user, current_team, app_name, permission_key, include_children=False):
     """获取某app某类权限规则"""
     app_name_map = {
         "system_mgmt": "system-manager",
@@ -43,9 +41,7 @@ def get_permissions_rules(user, current_team, app_name, permission_key):
     module = permission_key
     client = SystemMgmt()
     try:
-        permission_data = client.get_user_rules_by_module(
-            int(current_team), user.username, app_name, module, user.domain
-        )
+        permission_data = client.get_user_rules_by_module(int(current_team), user.username, app_name, module, user.domain, include_children)
         return permission_data
     except Exception:
         return {}
@@ -207,4 +203,3 @@ def filter_instances_with_permissions(instances_result, policy_permissions, curr
             result[instance_id] = DEFAULT_PERMISSION
 
     return result
-

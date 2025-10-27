@@ -7,6 +7,7 @@ from rest_framework.decorators import action
 from apps.core.exceptions.base_app_exception import BaseAppException
 from apps.core.utils.permission_utils import get_permission_rules, permission_filter
 from apps.core.utils.web_utils import WebUtils
+from apps.monitor.constants.database import DatabaseConstants
 from apps.monitor.constants.permission import PermissionConstants
 from apps.monitor.filters.monitor_policy import MonitorPolicyFilter
 from apps.monitor.models import PolicyOrganization
@@ -156,7 +157,7 @@ class MonitorPolicyVieSet(viewsets.ModelViewSet):
         # 添加新的组织
         create_set = new_set - old_set
         create_objs = [PolicyOrganization(policy_id=policy_id, organization=org_id) for org_id in create_set]
-        PolicyOrganization.objects.bulk_create(create_objs, batch_size=200)
+        PolicyOrganization.objects.bulk_create(create_objs, batch_size=DatabaseConstants.BULK_CREATE_BATCH_SIZE)
 
     @action(methods=['post'], detail=False, url_path='template')
     def template(self, request):

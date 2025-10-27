@@ -66,11 +66,10 @@ const GroupTree: React.FC<GroupTreeProps> = ({
                 ),
               },
               {
-                key: 'rename',
-                disabled: isDefaultGroup,
+                key: 'edit',
                 label: (
                   <PermissionWrapper requiredPermissions={['Edit Group']}>
-                    {t('system.group.rename')}
+                    {t('common.edit')}
                   </PermissionWrapper>
                 ),
               },

@@ -162,7 +162,11 @@
     "maxEvals": "Maximum number of training rounds",
     "maxEvalsMsg": "Please enter the maximum number of training rounds",
     "hyperopt": "Hyperparameterization",
-    "getTrainStatusFailed": "Error retrieving training status"
+    "getTrainStatusFailed": "Error retrieving training status",
+    "selectedColumns": "Selected Columns",
+    "waitData": "Waiting for data...",
+    "downloadStart": "Data loading complete. Downloading files.",
+    "downloadFailed": "Download Failed"
   },
   "model-release": {
     "modelName": "Competence Name",

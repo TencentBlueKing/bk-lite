@@ -7,22 +7,6 @@ volumes:
   falkordb-opspilot:
 
 services:
-  
-  rabbitmq:
-    image: ${DOCKER_IMAGE_RABBITMQ}
-    restart: always
-    volumes:
-      - rabbitmq:/var/lib/rabbitmq
-    environment:
-      RABBITMQ_DEFAULT_USER: ${RABBITMQ_DEFAULT_USER}
-      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_DEFAULT_PASSWORD}
-    ports:
-      - "5672:5672"
-    networks:
-      - prod
-    healthcheck:
-      test: ["CMD", "rabbitmqctl", "status"]
-  
   metis:
     image: ${DOCKER_IMAGE_METIS}
     restart: always

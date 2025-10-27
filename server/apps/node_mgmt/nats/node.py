@@ -1,6 +1,8 @@
 from django.core.cache import cache
+from django.db import transaction
 
 import nats_client
+from apps.node_mgmt.constants.database import DatabaseConstants, EnvVariableConstants
 from apps.node_mgmt.management.services.node_init.collector_init import import_collector
 from apps.node_mgmt.models import CloudRegion, SidecarEnv
 from apps.node_mgmt.services.node import NodeService
@@ -22,7 +24,7 @@ class NatsService:
         aes_obj = AESCryptor()
         
         for key, value in env_config.items():
-            if 'password' in key.lower() and value:
+            if EnvVariableConstants.SENSITIVE_FIELD_KEYWORD in key.lower() and value:
                 # 对包含password的key进行加密
                 encrypted_config[key] = aes_obj.encode(str(value))
             else:
@@ -49,7 +51,7 @@ class NatsService:
 
         for key, value in new_env_config.items():
             # 如果不是密码字段，直接使用新值
-            if 'password' not in key.lower() or not value:
+            if EnvVariableConstants.SENSITIVE_FIELD_KEYWORD not in key.lower() or not value:
                 merged_config[key] = value
                 continue
 
@@ -108,10 +110,13 @@ class NatsService:
                     collector_config_id=config["id"]
                 )
             )
-        if conf_objs:
-            CollectorConfiguration.objects.bulk_create(conf_objs, batch_size=100)
-        if node_config_assos:
-            NodeCollectorConfiguration.objects.bulk_create(node_config_assos, batch_size=100, ignore_conflicts=True)
+
+        # 事务保护：确保两个表同时创建成功
+        with transaction.atomic():
+            if conf_objs:
+                CollectorConfiguration.objects.bulk_create(conf_objs, batch_size=DatabaseConstants.BULK_CREATE_BATCH_SIZE)
+            if node_config_assos:
+                NodeCollectorConfiguration.objects.bulk_create(node_config_assos, batch_size=DatabaseConstants.BULK_CREATE_BATCH_SIZE, ignore_conflicts=True)
 
     def batch_create_child_configs(self, configs: list):
         """
@@ -148,8 +153,11 @@ class NatsService:
                 env_config=encrypted_env_config,
                 sort_order=config.get("sort_order", 0),
             ))
-        if node_objs:
-            ChildConfig.objects.bulk_create(node_objs, batch_size=100)
+
+        # 事务保护：确保所有子配置同时创建成功
+        with transaction.atomic():
+            if node_objs:
+                ChildConfig.objects.bulk_create(node_objs, batch_size=DatabaseConstants.BULK_CREATE_BATCH_SIZE)
 
     def get_child_configs_by_ids(self, ids: list):
         """根据子配置ID列表获取子配置对象"""

@@ -85,7 +85,8 @@ class LLMViewSet(AuthViewSet):
         instance: LLMSkill = self.get_object()
         if not request.user.is_superuser:
             current_team = request.COOKIES.get("current_team", "0")
-            has_permission = self.get_has_permission(request.user, instance, current_team)
+            include_children = request.COOKIES.get("include_children", "0") == "1"
+            has_permission = self.get_has_permission(request.user, instance, current_team, include_children=include_children)
             if not has_permission:
                 return JsonResponse(
                     {
@@ -190,7 +191,8 @@ class LLMViewSet(AuthViewSet):
             skill_obj = LLMSkill.objects.get(id=int(params["skill_id"]))
             if not request.user.is_superuser:
                 current_team = request.COOKIES.get("current_team", "0")
-                has_permission = self.get_has_permission(request.user, skill_obj, current_team, is_check=True)
+                include_children = request.COOKIES.get("include_children", "0") == "1"
+                has_permission = self.get_has_permission(request.user, skill_obj, current_team, is_check=True, include_children=include_children)
                 if not has_permission:
                     message = self.loader.get("no_agent_update_permission") if self.loader else "You do not have permission to update this agent."
                     return self._create_error_stream_response(message)

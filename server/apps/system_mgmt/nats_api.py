@@ -22,6 +22,28 @@ from apps.system_mgmt.utils.channel_utils import send_by_bot, send_email
 from apps.system_mgmt.utils.group_utils import GroupUtils
 
 
+def get_user_all_roles(user):
+    """
+    获取用户的所有角色（个人角色 + 组角色）
+    :param user: User实例
+    :return: 包含所有角色ID的列表
+    """
+    # 用户直接授权的角色
+    personal_role_ids = set(user.role_list)
+
+    # 用户所属组织的角色（只包含直接所属组织，不递归子组）
+    group_role_ids = set()
+    if user.group_list:
+        # 使用ManyToMany关系获取组角色
+        groups = Group.objects.filter(id__in=user.group_list)
+        for group in groups:
+            group_role_ids.update(group.roles.values_list("id", flat=True))
+
+    # 合并去重
+    all_role_ids = list(personal_role_ids | group_role_ids)
+    return all_role_ids
+
+
 def _verify_token(token):
     token = token.split("Basic ")[-1]
     secret_key = os.getenv("SECRET_KEY")
@@ -47,7 +69,10 @@ def get_pilot_permission_by_token(token, bot_id, group_list):
         user = _verify_token(token)
     except Exception:
         return {"result": False}
-    role_list = Role.objects.filter(id__in=user.role_list)
+
+    # 获取用户所有角色（个人角色 + 组角色）
+    all_role_ids = get_user_all_roles(user)
+    role_list = Role.objects.filter(id__in=all_role_ids)
     role_names = {f"{role.app}--{role.name}" if role.app else role.name for role in role_list}
     if {"admin", "system-manager--admin", "opspilot--admin"}.intersection(role_names):
         return {"result": True, "data": {"username": user.username}}
@@ -80,7 +105,10 @@ def verify_token(token):
         user = _verify_token(token)
     except Exception as e:
         return {"result": False, "message": str(e)}
-    role_list = Role.objects.filter(id__in=user.role_list)
+
+    # 获取用户所有角色（个人角色 + 组角色）
+    all_role_ids = get_user_all_roles(user)
+    role_list = Role.objects.filter(id__in=all_role_ids)
     role_names = [f"{role.app}--{role.name}" if role.app else role.name for role in role_list]
     is_superuser = "admin" in role_names or "system-manager--admin" in role_names
     group_list = Group.objects.all()
@@ -115,7 +143,7 @@ def verify_token(token):
             "group_list": groups,
             "group_tree": groups_data,
             "roles": role_names,
-            "role_ids": user.role_list,
+            "role_ids": all_role_ids,  # 返回所有角色ID（个人+组）
             "locale": user.locale,
             "permission": menus,
         },
@@ -146,7 +174,10 @@ def get_client(client_id="", username="", domain="domain.com"):
         user = User.objects.filter(username=username, domain=domain).first()
         if not user:
             return {"result": False, "message": "User not found"}
-        app_name_list = list(Role.objects.filter(id__in=user.role_list).values_list("app", flat=True).distinct())
+
+        # 获取用户所有角色（个人角色 + 组角色）
+        all_role_ids = get_user_all_roles(user)
+        app_name_list = list(Role.objects.filter(id__in=all_role_ids).values_list("app", flat=True).distinct())
         if "" not in app_name_list:
             app_list = app_list.filter(name__in=app_name_list)
     return_data = list(app_list.order_by("name").values())
@@ -312,40 +343,85 @@ def get_user_rules(group_id, username):
     return return_data
 
 
-@nats_client.register
-def get_user_rules_by_module(group_id, username, domain, app, module):
+def _prepare_user_rules_query(group_id, username, domain, app, include_children=False):
     """
-    获取用户在指定模块下的所有权限规则，按子模块分组返回
+    准备用户权限规则查询的通用逻辑
+    :param group_id: 组ID
+    :param username: 用户名
+    :param domain: 域
+    :param app: 应用名称
+    :param include_children: 是否包含子组（递归查询所有子孙组）
+    :return: (user_obj, query_group_ids, admin_teams, has_guest_group, is_admin)
     """
-    # 构建基础查询条件
-    admin_list = list(Role.objects.filter(name="admin").filter(Q(app="") | Q(app=app)).values_list("id", flat=True))
-    guest_group = Group.objects.filter(name="OpsPilotGuest").first()
+    # 获取用户对象
     user_obj = User.objects.filter(username=username, domain=domain).first()
-    admin_teams = [int(group_id)]
+    if not user_obj:
+        return None, None, None, None, None
+
+    # 获取管理员角色列表
+    admin_list = list(Role.objects.filter(name="admin").filter(Q(app="") | Q(app=app)).values_list("id", flat=True))
+
+    # 获取用户所有角色（个人角色 + 组角色）
+    all_role_ids = get_user_all_roles(user_obj)
+    is_admin = bool(set(all_role_ids).intersection(admin_list))
+
+    # 获取查询的组ID列表（包含子组）
+    if include_children:
+        query_group_ids = GroupUtils.get_all_child_groups(int(group_id), include_self=True)
+    else:
+        query_group_ids = [int(group_id)]
+
+    # 设置管理员团队
+    admin_teams = query_group_ids[:]
+
+    # 检查是否有guest组权限
+    guest_group = Group.objects.filter(name="OpsPilotGuest").first()
     has_guest_group = False
     if guest_group and guest_group.id in user_obj.group_list:
         has_guest_group = True
         admin_teams.append(guest_group.id)
 
+    return user_obj, query_group_ids, admin_teams, has_guest_group, is_admin
+
+
+@nats_client.register
+def get_user_rules_by_module(group_id, username, domain, app, module, include_children=False):
+    """
+    获取用户在指定模块下的所有权限规则，按子模块分组返回
+    :param group_id: 组ID
+    :param username: 用户名
+    :param domain: 域
+    :param app: 应用名称
+    :param module: 模块名称
+    :param include_children: 是否包含子组（递归查询所有子孙组）
+    """
+    # 使用通用查询准备函数
+    user_obj, query_group_ids, admin_teams, has_guest_group, is_admin = _prepare_user_rules_query(group_id, username, domain, app, include_children)
+
     if not user_obj:
         return {"result": False, "message": "User not found"}
+
     all_permission = {"all": {"instance": [], "team": admin_teams}}
+
     # 如果是管理员，返回所有权限
-    if set(user_obj.role_list).intersection(admin_list):
-        # 需要获取模块结构来构建完整的返回数据
+    if is_admin:
         return {"result": True, "data": all_permission, "team": admin_teams}
+
+    # 构建查询过滤条件
     if has_guest_group:
-        base_filter = Q(group_rule__group_id=group_id) | Q(group_rule__group_name="OpsPilotGuest")
+        base_filter = Q(group_rule__group_id__in=query_group_ids) | Q(group_rule__group_name="OpsPilotGuest")
     else:
-        base_filter = Q(group_rule__group_id=group_id)
+        base_filter = Q(group_rule__group_id__in=query_group_ids)
     module_filter = Q(group_rule__rules__has_key=module)
 
     rules = UserRule.objects.filter(username=username, domain=domain, group_rule__app=app).filter(base_filter & module_filter)
     if not rules:
         return {"result": True, "data": all_permission, "team": admin_teams}
+
     result = {}
     group_list = {i.group_rule.group_id for i in rules}
     all_permission_team = [i for i in admin_teams if i not in group_list]
+
     for rule in rules:
         # 获取模块数据
         module_data = rule.group_rule.rules.get(module, {})
@@ -353,53 +429,43 @@ def get_user_rules_by_module(group_id, username, domain, app, module):
         # 遍历模块下的所有分类和子模块
         for category, sub_modules in module_data.items():
             if isinstance(sub_modules, dict):
+                # 嵌套结构（如 provider.llm_model）
                 for sub_module_id, rule_data in sub_modules.items():
-                    if sub_module_id not in result:
-                        result[sub_module_id] = {"instance": [], "team": all_permission_team[:]}
-
-                    # 处理规则数据
-                    has_all_permission, instance_data = process_rule_data(rule_data)
-
-                    if has_all_permission:
-                        if rule.group_rule.group_id not in result[sub_module_id]["team"]:
-                            result[sub_module_id]["team"].append(rule.group_rule.group_id)
-                    else:
-                        result[sub_module_id]["instance"].extend(instance_data)
+                    _accumulate_rule_result(result, sub_module_id, rule_data, rule.group_rule.group_id, all_permission_team)
             else:
-                if category not in result:
-                    result[category] = {"instance": [], "team": all_permission_team[:]}
-
-                # 处理规则数据
-                has_all_permission, instance_data = process_rule_data(sub_modules)
-
-                if has_all_permission:
-                    if rule.group_rule.group_id not in result[category]["team"]:
-                        result[category]["team"].append(rule.group_rule.group_id)
-                else:
-                    result[category]["instance"].extend(instance_data)
+                # 扁平结构（如 skill、bot）
+                _accumulate_rule_result(result, category, sub_modules, rule.group_rule.group_id, all_permission_team)
 
     return {"result": True, "data": result, "team": admin_teams}
 
 
 @nats_client.register
-def get_user_rules_by_app(group_id, username, domain, app, module, child_module=""):
-    # 构建基础查询条件
-    admin_list = list(Role.objects.filter(name="admin").filter(Q(app="") | Q(app=app)).values_list("id", flat=True))
-    guest_group = Group.objects.filter(name="OpsPilotGuest").first()
-    user_obj = User.objects.filter(username=username, domain=domain).first()
-    admin_teams = [int(group_id)]
-    has_guest_group = False
-    if guest_group and guest_group.id in user_obj.group_list:
-        has_guest_group = True
-        admin_teams.append(guest_group.id)
+def get_user_rules_by_app(group_id, username, domain, app, module, child_module="", include_children=False):
+    """
+    获取用户在指定应用模块下的权限规则
+    :param group_id: 组ID
+    :param username: 用户名
+    :param domain: 域
+    :param app: 应用名称
+    :param module: 模块名称
+    :param child_module: 子模块名称
+    :param include_children: 是否包含子组（递归查询所有子孙组）
+    """
+    # 使用通用查询准备函数
+    user_obj, query_group_ids, admin_teams, has_guest_group, is_admin = _prepare_user_rules_query(group_id, username, domain, app, include_children)
+
     if not user_obj:
         return {"instance": [], "team": []}
-    if set(user_obj.role_list).intersection(admin_list):
+
+    # 如果是管理员，返回所有权限
+    if is_admin:
         return {"instance": [], "team": admin_teams}
+
+    # 构建查询过滤条件
     if has_guest_group:
-        base_filter = Q(group_rule__group_id=group_id) | Q(group_rule__group_name="OpsPilotGuest")
+        base_filter = Q(group_rule__group_id__in=query_group_ids) | Q(group_rule__group_name="OpsPilotGuest")
     else:
-        base_filter = Q(group_rule__group_id=group_id)
+        base_filter = Q(group_rule__group_id__in=query_group_ids)
     # 添加模块过滤条件
     module_filter = Q(group_rule__rules__has_key=module)
 
@@ -408,6 +474,7 @@ def get_user_rules_by_app(group_id, username, domain, app, module, child_module=
 
     if not rules:
         return {"instance": [], "team": admin_teams}
+
     group_list = {i.group_rule.group_id for i in rules}
     return_data = {"instance": [], "team": [i for i in admin_teams if i not in group_list]}
 
@@ -458,6 +525,31 @@ def process_rule_data(rule_data):
         return has_all_permission, rule_data if not has_all_permission else []
 
     return True, []
+
+
+def _accumulate_rule_result(result, key, rule_data, group_id, all_permission_team):
+    """
+    累积规则结果到指定的 key 中
+    :param result: 结果字典
+    :param key: 子模块 ID 或分类名称
+    :param rule_data: 规则数据
+    :param group_id: 组 ID
+    :param all_permission_team: 全权限团队列表
+    """
+    # 初始化结果键
+    if key not in result:
+        result[key] = {"instance": [], "team": all_permission_team[:]}
+
+    # 处理规则数据
+    has_all_permission, instance_data = process_rule_data(rule_data)
+
+    if has_all_permission:
+        # 如果有全部权限，添加组 ID 到团队列表
+        if group_id not in result[key]["team"]:
+            result[key]["team"].append(group_id)
+    else:
+        # 否则添加实例数据
+        result[key]["instance"].extend(instance_data)
 
 
 @nats_client.register

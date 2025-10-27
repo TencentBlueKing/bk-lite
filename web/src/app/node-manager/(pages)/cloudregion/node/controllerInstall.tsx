@@ -36,7 +36,7 @@ import {
 import { cloneDeep, isNumber, uniqueId } from 'lodash';
 import { useAuth } from '@/context/auth';
 import axios from 'axios';
-import useApiCloudRegion from '@/app/node-manager/api/cloudRegion';
+import useNodeManagerApi from '@/app/node-manager/api';
 import useCloudId from '@/app/node-manager/hooks/useCloudRegionId';
 import { useInstallWays } from '@/app/node-manager/hooks/node';
 import ControllerTable from './controllerTable';
@@ -61,7 +61,7 @@ const ControllerInstall: React.FC<ControllerInstallProps> = ({
     node_name: null,
   };
   const { getPackages, installController, getInstallCommand } =
-    useApiCloudRegion();
+    useNodeManagerApi();
   const cloudId = useCloudId();
   const searchParams = useSearchParams();
   const [form] = Form.useForm();

@@ -3,7 +3,7 @@ server_api_token: "__SERVER__API__TOKEN__"
 node_id: "file:/opt/fusion-collectors/node-id"
 node_name: "__SIDECAR__NODE__NAME__"
 update_interval: 10
-tls_skip_verify: false
+tls_skip_verify: true
 send_status: true
 list_log_files: []
 cache_path: "/opt/fusion-collectors/cache"

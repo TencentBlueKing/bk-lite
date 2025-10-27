@@ -9,11 +9,12 @@ import { useEffect, useMemo, useState } from "react";
 import styles from './index.module.scss'
 import { LeftOutlined } from "@ant-design/icons";
 
-const TrainTaskDrawer = ({ open, onCancel, selectId }:
+const TrainTaskDrawer = ({ open, onCancel, selectId, activeTag }:
   {
     open: boolean,
     onCancel: () => void,
-    selectId: number | null
+    selectId: number | null,
+    activeTag: string[]
   }) => {
   const { t } = useTranslation();
   const { getTrainTaskState } = useMlopsTaskApi();
@@ -21,6 +22,7 @@ const TrainTaskDrawer = ({ open, onCancel, selectId }:
   const [tableLoading, setTableLoading] = useState<boolean>(false);
   const [historyData, setHistoryData] = useState<any[]>([]);
   const [activeRunID, setActiveRunID] = useState<string>('');
+  const [key] = activeTag;
 
   const currentDetail = useMemo(() => {
     return historyData?.find((item: any) => item.run_id === activeRunID);
@@ -35,7 +37,7 @@ const TrainTaskDrawer = ({ open, onCancel, selectId }:
   const getStateData = async () => {
     setTableLoading(true);
     try {
-      const { data } = await getTrainTaskState(selectId as number);
+      const { data } = await getTrainTaskState(selectId as number, key);
       setHistoryData(data);
       // setHistoryData(Object.entries(data?.metrics_history) || []);
     } catch (e) {
@@ -81,7 +83,7 @@ const TrainTaskDrawer = ({ open, onCancel, selectId }:
             loading={tableLoading}
             openDetail={openDetail}
           /> :
-          <TrainTaskDetail backToList={() => setShowList(true)} metricData={currentDetail} />}
+          <TrainTaskDetail activeKey={key} backToList={() => setShowList(true)} metricData={currentDetail} />}
       </div>
     </Drawer>
   );

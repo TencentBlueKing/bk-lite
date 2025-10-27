@@ -61,6 +61,15 @@ export const useRoleApi = () => {
   const deleteApplication = async (params: any) => {
     return await del(`/system_mgmt/app/${params.id}/`);
   }
+  const getRoleGroups = async (params: any) => {
+    return await get('/system_mgmt/role/get_role_groups/', params);
+  }
+  const addRoleGroups = async (params: any) => {
+    return await post('/system_mgmt/role/batch_assign_group_roles/', params);
+  }
+  const deleteRoleGroups = async (params: any) => {
+    return await post('/system_mgmt/role/revoke_group_roles/', params);
+  }
   return {
     getRoles,
     addRole,
@@ -81,6 +90,10 @@ export const useRoleApi = () => {
     getAppModules,
     addApplication,
     updateApplication,
-    deleteApplication
+    deleteApplication,
+    // 新增的组织授权API
+    getRoleGroups,
+    addRoleGroups,
+    deleteRoleGroups
   };
 };

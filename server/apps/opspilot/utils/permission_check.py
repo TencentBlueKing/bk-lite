@@ -39,7 +39,8 @@ class CheckKnowledgePermission(GenericViewSetFun):
                 else:
                     instance = KnowledgeBase.objects.get(id=params.get("knowledge_base_id"))
                 current_team = request.COOKIES.get("current_team", "0")
-                has_permission = self.get_has_permission(request.user, instance, current_team)
+                include_children = request.COOKIES.get("include_children", "0") == "1"
+                has_permission = self.get_has_permission(request.user, instance, current_team, include_children=include_children)
                 if not has_permission:
                     loader = LanguageLoader(app="opspilot", default_lang="en")
                     message = loader.get("error.insufficient_permissions") or "insufficient permissions"

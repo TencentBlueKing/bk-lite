@@ -11,12 +11,12 @@ import { useTranslation } from '@/utils/i18n';
 import useApiClient from '@/utils/request';
 import type {
   ConfigListProps,
-  ConfigDate,
+  ConfigData,
   SubRef,
 } from '@/app/node-manager/types/cloudregion';
-import useApiCloudRegion from '@/app/node-manager/api/cloudRegion';
-import useApiCollector from '@/app/node-manager/api/collector';
+import useNodeManagerApi from '@/app/node-manager/api';
 import useCloudId from '@/app/node-manager/hooks/useCloudRegionId';
+import { SafeStorage } from '@/app/node-manager/utils/safeStorage';
 import MainLayout from '../mainlayout/layout';
 import configStyle from './index.module.scss';
 import SubConfiguration from './subconfiguration';
@@ -31,7 +31,7 @@ type SearchProps = GetProps<typeof Input.Search>;
 const { Search } = Input;
 const { confirm } = Modal;
 
-const Configration = () => {
+const Configuration = () => {
   const subConfiguration = useRef<SubRef>(null);
   const configurationRef = useRef<ModalRef>(null);
   const applyRef = useRef<ModalRef>(null);
@@ -40,20 +40,19 @@ const Configration = () => {
   const { t } = useTranslation();
   const { isLoading } = useApiClient();
   const searchParams = useSearchParams();
-  const nodeId = JSON.parse(
-    sessionStorage.getItem('cloudRegionInfo') || '{}'
-  ).id;
+  const nodeId = SafeStorage.getSessionItem<{ id: string }>(
+    'cloudRegionInfo'
+  )?.id;
   const cloudregionId = searchParams.get('cloud_region_id') || '';
   const name = searchParams.get('name') || '';
-  const { getConfiglist, getNodeList, batchDeleteCollector } =
-    useApiCloudRegion();
-  const { getCollectorlist } = useApiCollector();
+  const { getConfiglist, batchDeleteCollector, getNodeList, getCollectorlist } =
+    useNodeManagerApi();
   const configBtachItems = useConfigBtachItems();
   const [loading, setLoading] = useState<boolean>(true);
-  const [configData, setConfigData] = useState<ConfigDate[]>([]);
+  const [configData, setConfigData] = useState<ConfigData[]>([]);
   const [showSub, setShowSub] = useState<boolean>(false);
   const [filters, setFilters] = useState<ColumnFilterItem[]>([]);
-  const [nodeData, setNodeData] = useState<ConfigDate>({
+  const [nodeData, setNodeData] = useState<ConfigData>({
     key: '',
     name: '',
     collector_id: '',
@@ -73,7 +72,7 @@ const Configration = () => {
     if (isLoading) return;
     initPage();
     return () => {
-      sessionStorage.removeItem('cloudRegionInfo');
+      SafeStorage.removeSessionItem('cloudRegionInfo');
     };
   }, [isLoading]);
 
@@ -362,4 +361,4 @@ const Configration = () => {
   );
 };
 
-export default Configration;
+export default Configuration;

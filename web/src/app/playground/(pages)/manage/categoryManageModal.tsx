@@ -81,7 +81,7 @@ const CategoryManageModal = forwardRef<ModalRef, any>(({ onSuccess }, ref) => {
   };
 
   const getServingsList: Record<string, any> = {
-    'anomaly': getAnomalyServingsList,
+    'anomaly_detection': getAnomalyServingsList,
     'timeseries_predict': getTimeSeriesPredictServingsList,
     'log_clustering': getLogClusteringServingsList,
     'classification': getClassificationServingsList
@@ -98,6 +98,7 @@ const CategoryManageModal = forwardRef<ModalRef, any>(({ onSuccess }, ref) => {
           value: item?.id,
           data: {
             serving_id: item.id,
+            categoryType: formData.categoryType,
             model_name: `RandomForest_${item.id}`,
             model_version: item.model_version,
             algorithm: "RandomForest",

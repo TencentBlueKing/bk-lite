@@ -8,6 +8,7 @@ import {
   MessageFill,
   UserOutline,
   UserSetOutline,
+  AppstoreOutline,
 } from 'antd-mobile-icons';
 
 export default function BottomTabBar() {
@@ -24,6 +25,12 @@ export default function BottomTabBar() {
       activeIcon: <MessageFill style={{ fontSize: ICON_SIZE }} />,
     },
     {
+      key: '/workbench',
+      title: t('navigation.workbench'),
+      icon: <AppstoreOutline style={{ fontSize: ICON_SIZE }} />,
+      activeIcon: <AppstoreOutline style={{ fontSize: ICON_SIZE }} />,
+    },
+    {
       key: '/profile',
       title: t('navigation.profile'),
       icon: <UserOutline style={{ fontSize: ICON_SIZE }} />,
@@ -34,6 +41,7 @@ export default function BottomTabBar() {
   // 根据当前路径确定活跃的tab
   const getActiveKey = () => {
     if (pathname?.includes('/profile')) return '/profile';
+    if (pathname?.includes('/workbench')) return '/workbench';
     return '/conversations';
   };
 

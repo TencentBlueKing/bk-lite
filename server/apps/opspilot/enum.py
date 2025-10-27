@@ -56,12 +56,15 @@ class ActionChoice(object):
 
 class WorkFlowExecuteType(models.TextChoices):
     """工作流执行类型枚举"""
+
     OPENAI = "openai", _("OpenAI")
     RESTFUL = "restful", _("RESTful")
     CELERY = "celery", _("Celery")
+    ENTERPRISE_WECHAT = "enterprise_wechat", _("Enterprise WeChat")
 
 
 class WorkFlowTaskStatus(models.TextChoices):
     """工作流任务状态枚举"""
+
     SUCCESS = "success", _("Success")
     FAIL = "fail", _("Fail")

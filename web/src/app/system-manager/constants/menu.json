@@ -4,7 +4,21 @@
       "title": "组织架构",
       "icon": "yonghu1",
       "name": "user_group",
-      "url": "/system-manager/user"
+      "url": "/system-manager/user",
+      "children": [
+        {
+          "title": "组织架构",
+          "icon": "yonghu1",
+          "name": "user_group",
+          "url": "/system-manager/user/structure"
+        },
+        {
+          "title": "超级管理员",
+          "icon": "yonghu1",
+          "name": "user_group",
+          "url": "/system-manager/user/adminstrator"
+        }
+      ]
     },
     {
       "title": "应用",
@@ -51,8 +65,22 @@
     {
       "title": "Organization Structure",
       "icon": "yonghu1",
-      "name": "user_group",
-      "url": "/system-manager/user"
+      "name": "organization",
+      "url": "/system-manager/user",
+      "children": [
+        {
+          "title": "Organization Structure",
+          "icon": "yonghu1",
+          "name": "user_group",
+          "url": "/system-manager/user/structure"
+        },
+        {
+          "title": "Super Administrator",
+          "icon": "yonghu1",
+          "name": "user_group",
+          "url": "/system-manager/user/adminstrator"
+        }
+      ]
     },
     {
       "title": "Application",

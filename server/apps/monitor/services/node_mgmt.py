@@ -1,6 +1,10 @@
 import ast
 
+from django.db import transaction
+
 from apps.core.exceptions.base_app_exception import BaseAppException
+from apps.core.logger import monitor_logger as logger
+from apps.monitor.constants.database import DatabaseConstants
 from apps.monitor.models import MonitorInstance, MonitorInstanceOrganization, CollectConfig, MonitorObject, \
     MonitorObjectOrganizationRule, Metric
 from apps.monitor.utils.config_format import ConfigFormat
@@ -79,90 +83,254 @@ class InstanceConfigService:
 
     @staticmethod
     def create_default_rule(monitor_object_id, monitor_instance_id, group_ids):
-        """存在子模型的要给子模型默认规则"""
+        """存在子模型的要给子模型默认规则
+
+        返回创建的规则ID列表，用于失败时回滚
+        """
         child_objs = MonitorObject.objects.filter(parent_id=monitor_object_id)
         if not child_objs:
-            return
+            return []
 
         rules = []
-
         _monitor_instance_id = ast.literal_eval(monitor_instance_id)[0]
 
         for child_obj in child_objs:
             metric_obj = Metric.objects.filter(monitor_object_id=child_obj.id).first()
+            if not metric_obj:
+                logger.warning(f"子对象 {child_obj.id} 没有关联指标，跳过规则创建")
+                continue
+
             rules.append(MonitorObjectOrganizationRule(
                 name=f"{child_obj.name}-{monitor_instance_id}",
                 monitor_object_id=child_obj.id,
                 rule={
                     "type": "metric",
                     "metric_id": metric_obj.id,
-                    "filter": [{"name": "instance_id", "method": "=",  "value": _monitor_instance_id}]
+                    "filter": [{"name": "instance_id", "method": "=", "value": _monitor_instance_id}]
                 },
                 organizations=group_ids,
                 monitor_instance_id=monitor_instance_id,
             ))
-        MonitorObjectOrganizationRule.objects.bulk_create(rules, batch_size=200)
+
+        if rules:
+            created_rules = MonitorObjectOrganizationRule.objects.bulk_create(
+                rules,
+                batch_size=DatabaseConstants.BULK_CREATE_BATCH_SIZE
+            )
+            return [rule.id for rule in created_rules]
+
+        return []
+
+    @staticmethod
+    def _prepare_instances_for_creation(instances):
+        """准备待创建实例:格式化ID、检查冲突、过滤有效实例
+
+        Returns:
+            tuple: (new_instances, deleted_ids) 或抛出异常
+        """
+        # 格式化实例ID
+        for instance in instances:
+            instance["instance_id"] = str(tuple([instance["instance_id"]]))
+
+        # 检查已存在的实例
+        instance_ids = [inst["instance_id"] for inst in instances]
+        existing_instances = MonitorInstance.objects.filter(
+            id__in=instance_ids
+        ).values_list('id', 'is_deleted')
+
+        existing_map = {obj[0]: obj[1] for obj in existing_instances}
+
+        # 检查活跃实例冲突
+        active_ids = [iid for iid, is_del in existing_map.items() if not is_del]
+        if active_ids:
+            active_names = [
+                inst["instance_name"] for inst in instances
+                if inst["instance_id"] in active_ids
+            ]
+            raise BaseAppException(f"以下实例已存在:{'、'.join(active_names)}")
+
+        # 分离新实例和需恢复的已删除实例
+        new_instances = [inst for inst in instances if inst["instance_id"] not in existing_map]
+        deleted_ids = [iid for iid, is_del in existing_map.items() if is_del]
+
+        return new_instances, deleted_ids
+
+    @staticmethod
+    def _create_instances_in_db(new_instances, deleted_ids, monitor_object_id):
+        """在数据库事务中创建实例、规则和关联关系
+
+        Returns:
+            tuple: (created_instance_ids, created_rule_ids)
+        """
+        created_instance_ids = []
+        created_rule_ids = []
+
+        # 清理逻辑删除的实例
+        if deleted_ids:
+            deleted_count = MonitorInstance.objects.filter(
+                id__in=deleted_ids,
+                is_deleted=True
+            ).delete()[0]
+            logger.info(f"清理逻辑删除实例数量: {deleted_count}")
+
+        # 创建默认分组规则
+        for instance in new_instances:
+            rule_ids = InstanceConfigService.create_default_rule(
+                monitor_object_id,
+                instance["instance_id"],
+                instance["group_ids"]
+            )
+            if rule_ids:
+                created_rule_ids.extend(rule_ids)
+
+        # 构建并批量创建实例及关联关系
+        instance_objs, association_objs, created_instance_ids = (
+            InstanceConfigService._build_instance_objects(new_instances, monitor_object_id)
+        )
+
+        if instance_objs:
+            MonitorInstance.objects.bulk_create(
+                instance_objs,
+                batch_size=DatabaseConstants.BULK_CREATE_BATCH_SIZE
+            )
+
+        if association_objs:
+            MonitorInstanceOrganization.objects.bulk_create(
+                association_objs,
+                batch_size=DatabaseConstants.BULK_CREATE_BATCH_SIZE
+            )
+
+        return created_instance_ids, created_rule_ids
+
+    @staticmethod
+    def _format_instance_ids(instances):
+        """格式化实例ID为字符串元组格式"""
+        for instance in instances:
+            instance["instance_id"] = str(tuple([instance["instance_id"]]))
+
+    @staticmethod
+    def _check_existing_instances(instance_ids):
+        """检查已存在的实例,返回(已删除ID列表, 活跃ID列表)"""
+        existing_instances = MonitorInstance.objects.filter(
+            id__in=instance_ids
+        ).values_list('id', 'is_deleted')
+
+        existing_map = {obj[0]: obj[1] for obj in existing_instances}
+        deleted_ids = [iid for iid, is_del in existing_map.items() if is_del]
+        active_ids = [iid for iid, is_del in existing_map.items() if not is_del]
+
+        return deleted_ids, active_ids, existing_map
+
+    @staticmethod
+    def _build_instance_objects(new_instances, monitor_object_id):
+        """构建实例对象和关联关系,返回(实例列表, 关联列表, ID列表)"""
+        instance_objs = []
+        association_objs = []
+        instance_ids = []
+
+        for instance in new_instances:
+            instance_id = instance["instance_id"]
+            instance_ids.append(instance_id)
+
+            # 创建实例对象
+            instance_objs.append(MonitorInstance(
+                id=instance_id,
+                name=instance["instance_name"],
+                monitor_object_id=monitor_object_id
+            ))
+
+            # 创建关联对象
+            for group_id in instance["group_ids"]:
+                association_objs.append(MonitorInstanceOrganization(
+                    monitor_instance_id=instance_id,
+                    organization=group_id
+                ))
+
+        return instance_objs, association_objs, instance_ids
+
+    @staticmethod
+    def _rollback_database_changes(instance_ids, rule_ids):
+        """回滚数据库变更"""
+        try:
+            if instance_ids:
+                MonitorInstanceOrganization.objects.filter(
+                    monitor_instance_id__in=instance_ids
+                ).delete()
+                MonitorInstance.objects.filter(id__in=instance_ids).delete()
+                logger.info(f"回滚实例成功: {instance_ids}")
+
+            if rule_ids:
+                MonitorObjectOrganizationRule.objects.filter(id__in=rule_ids).delete()
+                logger.info(f"回滚规则成功,数量: {len(rule_ids)}")
+        except Exception:
+            logger.error(
+                f"回滚数据库失败,需人工清理: 实例={instance_ids}, 规则={rule_ids}",
+                exc_info=True
+            )
 
     @staticmethod
     def create_monitor_instance_by_node_mgmt(data):
-        """创建监控对象实例"""
+        """创建监控对象实例(支持事务回滚)"""
+        instances = data.get("instances", [])
+        monitor_object_id = data["monitor_object_id"]
 
-        # 格式化实例id,将实例id统一为字符串元祖（支持多维度组成的实例id）
-        for instance in data["instances"]:
-            instance["instance_id"] = str(tuple([instance["instance_id"]]))
-
-        # 删除逻辑删除的实例，避免影响现有逻辑
-        MonitorInstance.objects.filter(id__in=[instance["instance_id"] for instance in data["instances"]], is_deleted=True).delete()
-
-        # 过滤已存在的实例
-        objs = MonitorInstance.objects.filter(id__in=[instance["instance_id"] for instance in data["instances"]])
-        instance_set = {obj.id for obj in objs}
-
-        # 格式化实例id,将实例id统一为字符串元祖（支持多维度组成的实例id）
-        new_instances, old_instances = [], []
-        for instance in data["instances"]:
-            if instance["instance_id"] in instance_set:
-                old_instances.append(instance)
-            else:
-                new_instances.append(instance)
-
-        data["instances"] = new_instances
-
-        for instance in data["instances"]:
-            # 创建实例默认分组规则
-            InstanceConfigService.create_default_rule(data["monitor_object_id"], instance["instance_id"], instance["group_ids"])
-
-        # 实例更新
-        instance_map = {
-            instance["instance_id"]: {
-                "id": instance["instance_id"],
-                "name": instance["instance_name"],
-                # "interval": instance["interval"],
-                "monitor_object_id": data["monitor_object_id"],
-                "group_ids": instance["group_ids"],
-            }
-            for instance in data["instances"]
-        }
-
-        creates,  assos = [], []
-        for instance_id, instance_info in instance_map.items():
-            group_ids = instance_info.pop("group_ids")
-            for group_id in group_ids:
-                assos.append((instance_id, group_id))
-            creates.append(MonitorInstance(**instance_info))
-
-        MonitorInstance.objects.bulk_create(creates, batch_size=200)
-
-        MonitorInstanceOrganization.objects.bulk_create(
-            [MonitorInstanceOrganization(monitor_instance_id=asso[0], organization=asso[1]) for asso in assos],
-            batch_size=200
+        logger.info(
+            f"开始创建监控实例,monitor_object_id={monitor_object_id}, "
+            f"instance_count={len(instances)}"
         )
 
-        # 实例配置
-        Controller(data).controller()
+        # 快速失败:无实例直接返回
+        if not instances:
+            logger.info("没有需要创建的实例")
+            return
 
-        if old_instances:
-            raise BaseAppException(f"以下实例已存在：{'、'.join([instance['instance_name'] for instance in old_instances])}")
+        # ============ 阶段1: 参数预校验与数据准备 ============
+        try:
+            new_instances, deleted_ids = InstanceConfigService._prepare_instances_for_creation(instances)
+        except BaseAppException:
+            raise
+        except Exception as e:
+            logger.error(f"实例数据准备失败: {e}", exc_info=True)
+            raise BaseAppException(f"实例数据准备失败: {e}")
+
+        if not new_instances and not deleted_ids:
+            logger.info("没有需要创建的新实例")
+            return
+
+        logger.info(
+            f"需要创建 {len(new_instances)} 个新实例,"
+            f"需要恢复 {len(deleted_ids)} 个已删除实例"
+        )
+
+        # ============ 阶段2: 数据库操作(事务保护) ============
+        created_instance_ids = []
+        created_rule_ids = []
+
+        try:
+            with transaction.atomic():
+                created_instance_ids, created_rule_ids = InstanceConfigService._create_instances_in_db(
+                    new_instances, deleted_ids, monitor_object_id
+                )
+
+            logger.info(f"数据库事务提交成功,实例数: {len(created_instance_ids)}")
+
+            # ============ 阶段3: 调用外部服务创建采集配置 ============
+            try:
+                data["instances"] = new_instances
+                Controller(data).controller()
+                logger.info("采集配置创建成功")
+            except Exception as e:
+                logger.error(f"采集配置创建失败: {e},回滚数据库", exc_info=True)
+                InstanceConfigService._rollback_database_changes(created_instance_ids, created_rule_ids)
+                raise BaseAppException(f"采集配置创建失败: {e}")
+
+        except BaseAppException:
+            raise
+        except Exception as e:
+            logger.error(f"创建监控实例失败: {e}", exc_info=True)
+            raise BaseAppException(f"创建监控实例失败: {e}")
+
+        logger.info(f"创建监控实例成功,共 {len(created_instance_ids)} 个")
 
     @staticmethod
     def update_instance_config(child_info, base_info):
