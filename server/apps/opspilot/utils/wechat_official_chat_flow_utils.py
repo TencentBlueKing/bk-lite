@@ -155,18 +155,23 @@ class WechatOfficialChatFlowUtils(object):
         Returns:
             HttpResponse: URL验证响应
         """
-        logger.info(f"微信公众号URL验证开始，Bot {self.bot_id}，参数 - signature: {signature[:20]}..., timestamp: {timestamp}, nonce: {nonce}, appid: {appid}")
+        logger.info(
+            f"微信公众号URL验证开始，Bot {self.bot_id}，"
+            f"参数 - signature: {signature}, timestamp: {timestamp}, nonce: {nonce}, appid: {appid}, echostr: {echostr}"
+        )
 
         if not echostr:
             logger.error(f"微信公众号URL验证失败：缺少echostr参数，Bot {self.bot_id}")
             return HttpResponse("fail")
 
         try:
-            # 创建加密对象
+            # 创建加密对象并解密echostr
             crypto = WeChatCrypto(token, aes_key, appid)
-            # 解密并验证签名
-            echo_str = crypto._check_signature(signature, timestamp, nonce, echostr)
-            logger.info(f"微信公众号URL验证成功，Bot {self.bot_id}，返回 echostr: {echo_str[:50]}...")
+
+            # 使用decrypt_message解密echostr（安全模式下echostr是加密的）
+            # 注意：这里echostr就是需要解密的内容，不是完整的XML消息
+            echo_str = crypto.decrypt_message(echostr, signature, timestamp, nonce)
+            logger.info(f"微信公众号URL验证成功，Bot {self.bot_id}，返回 echostr: {echo_str if echo_str else 'empty'}...")
             return HttpResponse(echo_str)
         except InvalidSignatureException:
             logger.error(f"微信公众号URL验证失败：签名验证失败，Bot {self.bot_id}，signature: {signature}")
