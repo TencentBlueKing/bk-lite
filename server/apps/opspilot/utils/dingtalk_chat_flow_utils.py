@@ -57,7 +57,7 @@ class DingTalkChatFlowUtils(object):
                    成功时返回配置字典和None，失败时返回None和错误响应
         """
         flow_nodes = bot_chat_flow.flow_json.get("nodes", [])
-        dingtalk_nodes = [node for node in flow_nodes if node.get("type") == "ding_talk"]
+        dingtalk_nodes = [node for node in flow_nodes if node.get("type") == "dingtalk"]
 
         if not dingtalk_nodes:
             logger.error(f"钉钉ChatFlow执行失败：Bot {self.bot_id} 工作流中没有钉钉节点")
