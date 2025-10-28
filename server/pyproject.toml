@@ -51,6 +51,7 @@ dependencies = [
     "uvicorn==0.32.0",
     "whitenoise==6.5.0",
     "wechatpy==1.8.18",
+    "dingtalk-stream==0.24.3",
     "pyotp==2.9.0",
     "qrcode==8.2",
     "pillow==11.3.0",

@@ -7,7 +7,6 @@ from django.conf import settings
 from django.db.models import Count
 from django.db.models.functions import TruncDate
 from django.http import FileResponse, HttpResponse, JsonResponse, StreamingHttpResponse
-from django.utils.translation import gettext as _
 from django_minio_backend import MinioBackend
 from wechatpy.enterprise import WeChatCrypto
 
@@ -15,14 +14,34 @@ from apps.base.models import UserAPISecret
 from apps.core.logger import opspilot_logger as logger
 from apps.core.utils.async_utils import create_async_compatible_generator
 from apps.core.utils.exempt import api_exempt
+from apps.core.utils.loader import LanguageLoader
 from apps.opspilot.models import Bot, BotChannel, BotConversationHistory, BotWorkFlow, LLMSkill
 from apps.opspilot.services.llm_service import llm_service
 from apps.opspilot.services.skill_excute_service import SkillExecuteService
 from apps.opspilot.utils.bot_utils import get_client_ip, insert_skill_log, set_time_range
 from apps.opspilot.utils.chat_flow_utils.engine.factory import create_chat_flow_engine
+from apps.opspilot.utils.dingtalk_chat_flow_utils import DingTalkChatFlowUtils, start_dingtalk_stream_client
 from apps.opspilot.utils.sse_chat import generate_stream_error, stream_chat
 from apps.opspilot.utils.wechat_chat_flow_utils import WechatChatFlowUtils
+from apps.opspilot.utils.wechat_official_chat_flow_utils import WechatOfficialChatFlowUtils
+from apps.opspilot.viewsets.llm_view import LLMViewSet
 from apps.rpc.system_mgmt import SystemMgmt
+
+
+def get_loader(request=None, default_lang="en"):
+    """获取语言加载器实例
+
+    Args:
+        request: Django request对象
+        default_lang: 默认语言
+
+    Returns:
+        LanguageLoader实例
+    """
+    locale = default_lang
+    if request and hasattr(request, "user") and request.user:
+        locale = getattr(request.user, "locale", default_lang) or default_lang
+    return LanguageLoader(app="opspilot", default_lang=locale)
 
 
 @api_exempt
@@ -75,17 +94,18 @@ def model_download(request):
 
 def validate_openai_token(token, team=None):
     """Validate the OpenAI API token"""
+    loader = LanguageLoader(app="opspilot", default_lang="en")
     if not token:
-        return False, {"choices": [{"message": {"role": "assistant", "content": "No authorization"}}]}
+        return False, {"choices": [{"message": {"role": "assistant", "content": loader.get("error.no_authorization", "No authorization")}}]}
     token = token.split("Bearer ")[-1]
     user = UserAPISecret.objects.filter(api_secret=token).first()
     if not user:
         if team is None:
-            return False, {"choices": [{"message": {"role": "assistant", "content": "No authorization"}}]}
+            return False, {"choices": [{"message": {"role": "assistant", "content": loader.get("error.no_authorization", "No authorization")}}]}
         client = SystemMgmt()
         result = client.verify_token(token)
         if not result.get("result"):
-            return False, {"choices": [{"message": {"role": "assistant", "content": "No authorization"}}]}
+            return False, {"choices": [{"message": {"role": "assistant", "content": loader.get("error.no_authorization", "No authorization")}}]}
         user_info = result.get("data")
         user = UserAPISecret(
             username=user_info["username"],
@@ -95,22 +115,24 @@ def validate_openai_token(token, team=None):
 
 
 def validate_header_token(token, bot_id):
+    loader = LanguageLoader(app="opspilot", default_lang="en")
     if not token:
-        return False, {"choices": [{"message": {"role": "assistant", "content": "No authorization"}}]}
+        return False, {"choices": [{"message": {"role": "assistant", "content": loader.get("error.no_authorization", "No authorization")}}]}
     bot_obj = Bot.objects.filter(id=bot_id, online=True).first()
     if not bot_obj:
-        return False, {"choices": [{"message": {"role": "assistant", "content": "No bot online"}}]}
+        return False, {"choices": [{"message": {"role": "assistant", "content": loader.get("error.bot_not_online", "No bot online")}}]}
     token = token.split("Bearer ")[-1]
     client = SystemMgmt()
     # res = client.verify_token(token)
     res = client.get_pilot_permission_by_token(token, bot_id, bot_obj.team)
     if not res.get("result"):
-        return False, {"choices": [{"message": {"role": "assistant", "content": "No authorization"}}]}
+        return False, {"choices": [{"message": {"role": "assistant", "content": loader.get("error.no_authorization", "No authorization")}}]}
     return True, {"username": res["data"]["username"]}
 
 
 def get_skill_and_params(kwargs, team, bot_id=None):
     """Get skill object and prepare parameters for LLM invocation"""
+    loader = LanguageLoader(app="opspilot", default_lang="en")
     skill_id = kwargs.get("model")
     if not bot_id:
         skill_obj = LLMSkill.objects.filter(name=skill_id, team__contains=int(team)).first()
@@ -121,7 +143,7 @@ def get_skill_and_params(kwargs, team, bot_id=None):
         return (
             None,
             None,
-            {"choices": [{"message": {"role": "assistant", "content": "No skill"}}]},
+            {"choices": [{"message": {"role": "assistant", "content": loader.get("error.skill_not_found", "No skill")}}]},
         )
     num = kwargs.get("conversation_window_size") or skill_obj.conversation_window_size
     chat_history = [{"message": i["content"], "event": i["role"]} for i in kwargs.get("messages", [])[-1 * num :]]
@@ -323,13 +345,14 @@ def skill_execute(request):
 
 
 def get_skill_execute_result(bot_id, channel, chat_history, kwargs, request, sender_id, skill_id, user_message):
+    loader = get_loader(request)
     api_token = request.META.get("HTTP_AUTHORIZATION").split("TOKEN")[-1].strip()
     if not api_token:
-        return {"content": "No authorization"}
+        return {"content": loader.get("error.no_authorization", "No authorization")}
     bot = Bot.objects.filter(id=bot_id, api_token=api_token).first()
     if not bot:
         logger.info(f"api_token: {api_token}")
-        return {"content": "No bot found"}
+        return {"content": loader.get("error.bot_not_found", "No bot found")}
     try:
         result = SkillExecuteService.execute_skill(bot, skill_id, user_message, chat_history, sender_id, channel)
     except Exception as e:
@@ -428,8 +451,9 @@ def set_channel_type_line(end_time, queryset, start_time):
 @api_exempt
 def execute_chat_flow(request, bot_id, node_id):
     """执行ChatFlow流程"""
+    loader = get_loader(request)
     if not bot_id or not node_id:
-        return JsonResponse({"result": False, "message": _("Bot ID and Node ID are required.")})
+        return JsonResponse({"result": False, "message": loader.get("error.bot_node_id_required", "Bot ID and Node ID are required.")})
     kwargs = json.loads(request.body)
     message = kwargs.get("message", "")
     is_test = kwargs.get("is_test", False)
@@ -446,16 +470,16 @@ def execute_chat_flow(request, bot_id, node_id):
         filter_dict["online"] = True
     bot_obj = Bot.objects.filter(**filter_dict).first()
     if not bot_obj:
-        return JsonResponse({"result": False, "message": _("No bot online")})
+        return JsonResponse({"result": False, "message": loader.get("error.bot_not_online", "No bot online")})
 
     # 获取Bot的工作流配置
     bot_chat_flow = BotWorkFlow.objects.filter(bot_id=bot_obj.id).first()
     if not bot_chat_flow:
-        return JsonResponse({"result": False, "message": _("No chat flow configured for this bot.")})
+        return JsonResponse({"result": False, "message": loader.get("error.no_chat_flow_configured", "No chat flow configured for this bot.")})
 
     # 检查工作流是否有配置数据
     if not bot_chat_flow.flow_json:
-        return JsonResponse({"result": False, "message": _("Chat flow configuration is empty.")})
+        return JsonResponse({"result": False, "message": loader.get("error.chat_flow_config_empty", "Chat flow configuration is empty.")})
 
     try:
         # 创建ChatFlow引擎 - 使用数据库中的工作流配置
@@ -492,9 +516,45 @@ def execute_chat_flow(request, bot_id, node_id):
         logger.error(f"ChatFlow流程执行失败，bot_id: {bot_id}, node_id: {node_id}, 错误: {str(e)}")
         logger.exception(e)
         # 流式错误响应，参考 llm_view.py
-        from apps.opspilot.viewsets.llm_view import LLMViewSet
-
         return LLMViewSet._create_error_stream_response(str(e))
+
+
+@api_exempt
+def execute_chat_flow_wechat_official(request, bot_id):
+    """微信公众号ChatFlow执行入口
+
+    通过微信公众号发送消息，调用指定的ChatFlow进行流程节点执行并返回数据
+    """
+    # 1. 验证Bot ID
+    if not bot_id:
+        logger.error("微信公众号ChatFlow执行失败：缺少Bot ID")
+        return HttpResponse("success")
+
+    # 2. 创建工具类实例并验证Bot和工作流配置
+    wechat_official_utils = WechatOfficialChatFlowUtils(bot_id)
+    bot_chat_flow, error_response = wechat_official_utils.validate_bot_and_workflow()
+    if error_response:
+        return error_response
+
+    # 3. 获取微信公众号节点配置
+    wechat_config, error_response = wechat_official_utils.get_wechat_official_node_config(bot_chat_flow)
+    if error_response:
+        return error_response
+
+    # 4. 处理GET请求（URL验证）
+    if request.method == "GET":
+        return wechat_official_utils.handle_url_verification(
+            request.GET.get("signature", "") or request.GET.get("msg_signature", ""),
+            request.GET.get("timestamp", ""),
+            request.GET.get("nonce", ""),
+            request.GET.get("echostr", ""),
+            wechat_config["token"],
+            wechat_config["aes_key"],
+            wechat_config["appid"],
+        )
+
+    # 5. 处理POST请求（消息处理）
+    return wechat_official_utils.handle_wechat_message(request, wechat_config, bot_chat_flow)
 
 
 @api_exempt
@@ -538,6 +598,57 @@ def execute_chat_flow_wechat(request, bot_id):
 
     # 6. 处理POST请求（消息处理）
     return wechat_utils.handle_wechat_message(request, crypto, bot_chat_flow, wechat_config)
+
+
+@api_exempt
+def execute_chat_flow_dingtalk(request, bot_id):
+    """钉钉ChatFlow执行入口
+
+    支持两种模式：
+    1. HTTP回调模式：处理来自钉钉服务器的POST请求
+    2. Stream模式（长连接）：启动并返回状态检查接口
+
+    GET请求返回状态，POST请求处理消息
+    特殊操作：
+    - POST /dingtalk/{bot_id}/stream/start - 启动Stream客户端
+    """
+    loader = get_loader(request)
+
+    # 处理GET请求 - 健康检查/状态查询
+    if request.method == "GET":
+        return JsonResponse({"status": "ok", "bot_id": bot_id})
+
+    # 1. 验证Bot ID
+    if not bot_id:
+        logger.error("钉钉ChatFlow执行失败：缺少Bot ID")
+        return JsonResponse({"success": False, "message": loader.get("error.missing_bot_id", "Missing bot_id")})
+
+    # 2. 创建工具类实例并验证Bot和工作流配置
+    dingtalk_utils = DingTalkChatFlowUtils(bot_id)
+    bot_chat_flow, error_response = dingtalk_utils.validate_bot_and_workflow()
+    if error_response:
+        return error_response
+
+    # 3. 获取钉钉节点配置
+    dingtalk_config, error_response = dingtalk_utils.get_dingtalk_node_config(bot_chat_flow)
+    if error_response:
+        return error_response
+
+    # 4. 检查是否是Stream模式启动请求
+    try:
+        data = json.loads(request.body) if request.body else {}
+        if data.get("action") == "start_stream":
+            # 启动Stream客户端
+            success = start_dingtalk_stream_client(bot_id, bot_chat_flow, dingtalk_config)
+            if success:
+                return JsonResponse({"success": True, "message": "DingTalk Stream client started successfully", "mode": "stream"})
+            else:
+                return JsonResponse({"success": False, "message": "Failed to start DingTalk Stream client", "mode": "stream"})
+    except json.JSONDecodeError:
+        pass
+
+    # 5. 处理HTTP回调模式的消息
+    return dingtalk_utils.handle_dingtalk_message(request, bot_chat_flow, dingtalk_config)
 
 
 @api_exempt

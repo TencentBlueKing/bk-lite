@@ -29,6 +29,8 @@ class NodeRegistry:
         # 基础节点
         self.register_node_class("restful", EntryNode)
         self.register_node_class("enterprise_wechat", EntryNode)
+        self.register_node_class("dingtalk", EntryNode)
+        self.register_node_class("wechat_official", EntryNode)
         self.register_node_class("openai", EntryNode)
         self.register_node_class("exit", ExitNode)
         self.register_node_class("celery", EntryNode)
