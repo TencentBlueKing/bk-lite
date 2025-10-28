@@ -39,33 +39,20 @@ export default function ConversationList() {
       {/* 顶部导航栏 */}
       <div className="flex items-center justify-between px-4 py-3 bg-[var(--color-bg)]">
         <ScanningOutline fontSize={24} className="text-[var(--color-text-2)]" />
-        <h1 className="text-lg font-medium text-[var(--color-text-1)]">
+        <h1 className="text-lg font-medium text-[var(--color-text-1)] absolute left-1/2 transform -translate-x-1/2">
           {t('navigation.conversations')}
         </h1>
         <div className="flex items-center space-x-3">
-          <SearchOutline fontSize={24} className="text-[var(--color-text-2)]" />
+          <SearchOutline
+            fontSize={24}
+            className="text-[var(--color-text-2)]"
+            onClick={() => router.push('/search?type=ConversationList')}
+          />
           <AddCircleOutline
             fontSize={24}
             className="text-[var(--color-primary)]"
           />
         </div>
-      </div>
-
-      {/* 搜索框 */}
-      <div className="px-4 py-3 bg-[var(--color-bg)]">
-        <SearchBar
-          placeholder={t('common.search')}
-          value={searchValue}
-          onChange={setSearchValue}
-          style={
-            {
-              '--background': 'var(--color-fill-2)',
-              '--border-radius': '8px',
-              '--height': '38px',
-              '--font-size': '15px',
-            } as React.CSSProperties
-          }
-        />
       </div>
 
       {/* 聊天列表 */}
