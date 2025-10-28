@@ -164,9 +164,8 @@ class WechatOfficialChatFlowUtils(object):
         try:
             # 创建加密对象
             crypto = WeChatCrypto(token, aes_key, appid)
-
             # 解密并验证签名
-            echo_str = crypto.check_signature(signature, timestamp, nonce, echostr)
+            echo_str = crypto._check_signature(signature, timestamp, nonce, echostr)
             logger.info(f"微信公众号URL验证成功，Bot {self.bot_id}，返回 echostr: {echo_str[:50]}...")
             return HttpResponse(echo_str)
         except InvalidSignatureException:
