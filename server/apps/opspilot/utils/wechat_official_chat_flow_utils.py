@@ -119,7 +119,7 @@ class WechatOfficialChatFlowUtils(object):
                    成功时返回配置字典和None，失败时返回None和错误响应
         """
         flow_nodes = bot_chat_flow.flow_json.get("nodes", [])
-        wechat_nodes = [node for node in flow_nodes if node.get("type") == "wechat_official_account"]
+        wechat_nodes = [node for node in flow_nodes if node.get("type") == "wechat_official"]
 
         if not wechat_nodes:
             logger.error(f"微信公众号ChatFlow执行失败：Bot {self.bot_id} 工作流中没有微信公众号节点")
