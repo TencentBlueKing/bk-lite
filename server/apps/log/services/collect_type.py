@@ -91,7 +91,7 @@ class CollectTypeService:
                 # 步骤2：批量创建组织关联
                 if assos:
                     CollectInstanceOrganization.objects.bulk_create(
-                        [CollectInstanceOrganization(collect_instance_id=asso[0], organization=asso[1])
+                        [CollectInstanceOrganization(collect_instance_id=asso[0], organization=asso[1]) 
                          for asso in assos],
                         batch_size=200
                     )
