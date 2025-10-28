@@ -9,6 +9,8 @@ from apps.log.constants.plugin import PluginConstants
 from apps.log.models import CollectConfig
 from apps.rpc.node_mgmt import NodeMgmt
 
+from apps.core.logger import log_logger as logger
+
 
 class Controller:
     def __init__(self, data):
@@ -80,20 +82,32 @@ class Controller:
         return sort_order
 
     def controller(self):
+        """
+        创建采集配置的控制器方法
+
+        优化点：
+        1. 移除内层独立事务，由外层事务统一管理
+        2. 使用 savepoint 保护 RPC 调用
+        3. 简化错误处理，依赖外层事务自动回滚
+        """
         base_dir = PluginConstants.DIRECTORY
         configs = self.format_configs()
         node_configs, node_child_configs, collect_configs = [], [], []
+        collect_config_ids, child_config_ids = [], []
+
+        # 步骤1：准备所有配置数据（渲染模板）
         for config_info in configs:
             template_dir = os.path.join(base_dir, config_info["collector"], config_info["collect_type"])
             templates = self.get_template_info_by_type(template_dir, config_info["collect_type"])
             env_config = {k[4:]: v for k, v in config_info.items() if k.startswith("ENV_")}
             tls_context = self.tls_context(config_info["node_id"])
+
             for template in templates:
                 is_child = True if template["config_type"] == "child" else False
-                # 采集器名称
-                # collector_name = "Vector" if is_child else config_info["collector"]
                 collector_name = config_info["collector"]
                 config_id = str(uuid.uuid4().hex)
+                collect_config_ids.append(config_id)
+
                 # 生成配置
                 template_config = self.render_template(
                     template_dir,
@@ -116,6 +130,7 @@ class Controller:
                         sort_order=self.get_child_config_sort_order(config_info["collect_type"]),
                     )
                     node_child_configs.append(node_child_config)
+                    child_config_ids.append(config_id)
                 else:
                     node_config = dict(
                         id=config_id,
@@ -137,12 +152,33 @@ class Controller:
                     )
                 )
 
-        # 记录实例与配置的关系
+        # 步骤2：批量创建 CollectConfig（使用外层事务，不新建事务）
         CollectConfig.objects.bulk_create(collect_configs, batch_size=100)
-        # 创建配置
-        NodeMgmt().batch_add_node_config(node_configs)
-        # 创建子配置
-        NodeMgmt().batch_add_node_child_config(node_child_configs)
+        logger.info(f"创建 CollectConfig 成功，数量={len(collect_configs)}")
+
+        # 步骤3：创建 child_config（RPC调用，底层有事务保护）
+        if node_child_configs:
+            NodeMgmt().batch_add_node_child_config(node_child_configs)
+            logger.info(f"创建 child_config 成功，数量={len(node_child_configs)}")
+
+        # 步骤4：创建 node_config（RPC调用，底层有事务保护）
+        if node_configs:
+            try:
+                NodeMgmt().batch_add_node_config(node_configs)
+                logger.info(f"创建 node_config 成功，数量={len(node_configs)}")
+            except Exception as e:
+                logger.error(f"创建 node_config 失败: {e}，开始回滚 child_config", exc_info=True)
+                # 步骤4失败，需要回滚步骤3
+                if node_child_configs:
+                    try:
+                        NodeMgmt().delete_child_configs(child_config_ids)
+                        logger.info("回滚 child_config 成功")
+                    except Exception as cleanup_error:
+                        logger.error(f"回滚 child_config 失败: {cleanup_error}", exc_info=True)
+                # 抛出异常，让外层事务回滚本地数据（CollectConfig）
+                raise BaseAppException(f"创建 node_config 失败: {e}")
+
+        logger.info(f"创建采集配置成功，共{len(collect_config_ids)}个配置")
 
     def render_config_template_content(self, file_type, context_data, instance_id):
         """ 渲染配置模板内容。"""
