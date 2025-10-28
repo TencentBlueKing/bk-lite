@@ -9,7 +9,7 @@ import requests
 from django.http import JsonResponse
 
 from apps.core.logger import opspilot_logger as logger
-from apps.opspilot.models import BotWorkFlow
+from apps.opspilot.models import Bot, BotWorkFlow
 from apps.opspilot.utils.chat_flow_utils.engine.factory import create_chat_flow_engine
 
 
@@ -29,7 +29,6 @@ class DingTalkChatFlowUtils(object):
             tuple: (bot_chat_flow, error_response)
                    如果验证失败，error_response不为None
         """
-        from apps.opspilot.models import Bot
 
         # 验证Bot对象
         bot_obj = Bot.objects.filter(id=self.bot_id, online=True).first()
