@@ -5,6 +5,7 @@ token_validation_failed: token validation failed
 token_required: please provide Token
 token_used_up: Token used up
 not_authorized: Not Authorized
+no_authorization: No authorization
 permission_update_denied: You do not have permission to update this instance
 no_update_permission: User does not have permission to update this instance
 no_delete_permission: User does not have permission to delete this instance
@@ -87,6 +88,9 @@ knowledge_base_id_required: knowledge_base_id is required
 chunk_not_found: Chunk not found
 
 # Bot Related Errors
+bot_not_found: No bot found
+bot_not_online: No bot online
+missing_bot_id: Missing bot_id
 no_bot_update_permission: You do not have permission to update this bot.
 pilot_start_failed: Pilot start failed.
 no_bot_start_permission: You do not have permission to start this bot.
@@ -94,8 +98,7 @@ no_bot_stop_permission: You do not have permission to stop this bot
 
 # View Related Errors
 bot_node_id_required: Bot ID and Node ID are required.
-no_bot_online: No bot online
-no_chat_flow_config: No chat flow configured for this bot.
+no_chat_flow_configured: No chat flow configured for this bot.
 chat_flow_config_empty: Chat flow configuration is empty.
 task_id_required: Task ID is required.
 
