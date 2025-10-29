@@ -1,5 +1,6 @@
 from django.db.models import Q
 
+from apps.core.constants import DEFAULT_PERMISSION
 from apps.rpc.system_mgmt import SystemMgmt
 
 
@@ -163,8 +164,6 @@ def filter_instances_with_permissions(instances_result, policy_permissions, curr
     Returns:
         dict: {instance_id: [permissions]} 格式的权限映射
     """
-    from apps.log.constants import DEFAULT_PERMISSION
-
     result = {}
     current_teams_set = set(current_teams)
 
