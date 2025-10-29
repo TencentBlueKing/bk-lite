@@ -30,6 +30,8 @@ import {
   IfConditionNode,
   NotificationNode,
   EnterpriseWechatNode,
+  DingtalkNode,
+  WechatOfficialNode,
 } from './nodes';
 import { useNodeExecution } from './hooks/useNodeExecution';
 import { useNodeDeletion } from './hooks/useNodeDeletion';
@@ -136,6 +138,8 @@ const ChatflowEditor = forwardRef<ChatflowEditorRef, ChatflowEditorProps>(({ onS
       http: createNodeComponent(HttpRequestNode),
       notification: createNodeComponent(NotificationNode),
       enterprise_wechat: createNodeComponent(EnterpriseWechatNode),
+      dingtalk: createNodeComponent(DingtalkNode),
+      wechat_official: createNodeComponent(WechatOfficialNode),
     };
   }, [handleDeleteNode, handleConfigNode]);
 

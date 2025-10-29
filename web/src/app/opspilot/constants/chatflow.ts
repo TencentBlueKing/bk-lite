@@ -7,9 +7,11 @@ export const nodeConfig = {
   http: { icon: 'HTTP', color: 'cyan' as const },
   notification: { icon: 'alarm', color: 'pink' as const },
   enterprise_wechat: { icon: 'qiwei2', color: 'green' as const },
+  dingtalk: { icon: 'dingding', color: 'blue' as const },
+  wechat_official: { icon: 'weixingongzhonghao', color: 'green' as const },
 } as const;
 
-export const TRIGGER_NODE_TYPES = ['celery', 'restful', 'openai', 'enterprise_wechat'] as const;
+export const TRIGGER_NODE_TYPES = ['celery', 'restful', 'openai', 'enterprise_wechat', 'dingtalk', 'wechat_official'] as const;
 
 export const handleColorClasses = {
   green: '!bg-green-500',

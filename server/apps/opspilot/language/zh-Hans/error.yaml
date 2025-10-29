@@ -5,6 +5,7 @@ token_validation_failed: 令牌验证失败
 token_required: 请提供令牌
 token_used_up: 令牌已用完
 not_authorized: 未授权
+no_authorization: 没有授权
 permission_update_denied: 你没有权限更新此实例
 no_update_permission: 你没有权限更新此实例
 no_delete_permission: 你没有权限删除此实例
@@ -87,6 +88,9 @@ knowledge_base_id_required: knowledge_base_id 为必填项
 chunk_not_found: 未找到块
 
 # 机器人相关错误
+bot_not_found: 未找到机器人
+bot_not_online: 没有在线的机器人
+missing_bot_id: 缺少 bot_id
 no_bot_update_permission: 你没有权限更新此机器人。
 pilot_start_failed: Pilot 启动失败。
 no_bot_start_permission: 你没有权限启动此机器人。
@@ -94,8 +98,7 @@ no_bot_stop_permission: 你没有权限停止此机器人
 
 # 视图相关错误
 bot_node_id_required: Bot ID 和 Node ID 为必填项。
-no_bot_online: 没有在线的机器人
-no_chat_flow_config: 此机器人未配置聊天流程。
+no_chat_flow_configured: 此机器人未配置聊天流程。
 chat_flow_config_empty: 聊天流程配置为空。
 task_id_required: 任务 ID 为必填项。
 

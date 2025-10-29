@@ -25,7 +25,6 @@ export interface ModalRef {
   showModal: (config: ModalConfig) => void;
 }
 
-// 组织角色接口定义
 interface GroupRole {
   id: number;
   name: string;
@@ -63,12 +62,28 @@ const UserModal = forwardRef<ModalRef, ModalProps>(({ onSuccess, treeData }, ref
 
       const orgRoleIds = (groupRoleData || []).map((role: GroupRole) => role.id);
       setOrganizationRoleIds(orgRoleIds);
+      
+      await fetchRoleInfoWithOrgRoles(orgRoleIds);
 
       return groupRoleData || [];
     } catch (error) {
       console.error('Failed to fetch group roles:', error);
       setOrganizationRoleIds([]);
       return [];
+    }
+  };
+
+  const fetchRoleInfoWithOrgRoles = async (orgRoleIds: number[]) => {
+    try {
+      setRoleLoading(true);
+      const roleData = await getRoleList({ client_list: clientData });
+
+      const processedRoleData = processRoleTreeData(roleData, orgRoleIds);
+      setRoleTreeData(processedRoleData);
+    } catch {
+      message.error(t('common.fetchFailed'));
+    } finally {
+      setRoleLoading(false);
     }
   };
 
@@ -87,18 +102,7 @@ const UserModal = forwardRef<ModalRef, ModalProps>(({ onSuccess, treeData }, ref
   };
 
   const fetchRoleInfo = async () => {
-    try {
-      setRoleLoading(true);
-      const roleData = await getRoleList({ client_list: clientData });
-
-      // 根据是否有组织角色来处理角色树数据
-      const processedRoleData = processRoleTreeData(roleData, organizationRoleIds);
-      setRoleTreeData(processedRoleData);
-    } catch {
-      message.error(t('common.fetchFailed'));
-    } finally {
-      setRoleLoading(false);
-    }
+    await fetchRoleInfoWithOrgRoles(organizationRoleIds);
   };
 
   const fetchUserDetail = async (userId: string) => {
@@ -147,27 +151,29 @@ const UserModal = forwardRef<ModalRef, ModalProps>(({ onSuccess, treeData }, ref
       setVisible(true);
       setType(type);
       formRef.current?.resetFields();
-      setOrganizationRoleIds([]);
       setIsSuperuser(false);
 
       if (type === 'edit' && userId) {
+        setOrganizationRoleIds([]);
         fetchUserDetail(userId);
+        setTimeout(() => {
+          fetchRoleInfo();
+        }, 100);
       } else if (type === 'add') {
+        setOrganizationRoleIds([]);
         setSelectedGroups(groupKeys);
         setSelectedRoles([]);
 
         if (groupKeys.length > 0) {
           fetchGroupRoles(groupKeys);
+        } else {
+          fetchRoleInfoWithOrgRoles([]);
         }
 
         setTimeout(() => {
           formRef.current?.setFieldsValue({ groups: groupKeys, zoneinfo: "Asia/Shanghai", locale: "en", is_superuser: false });
         }, 0);
       }
-
-      setTimeout(() => {
-        fetchRoleInfo();
-      }, 100);
     },
   }));
 
@@ -250,18 +256,16 @@ const UserModal = forwardRef<ModalRef, ModalProps>(({ onSuccess, treeData }, ref
     setSelectedGroups(newGroupIds);
     formRef.current?.setFieldsValue({ groups: newGroupIds });
 
+    // fetchGroupRoles 会自动更新 organizationRoleIds 和角色树
     const newGroupRoleData = await fetchGroupRoles(newGroupIds);
     const newOrgRoleIds = newGroupRoleData.map(role => role.id);
 
-    const currentPersonalRoles = selectedRoles.filter(roleId => !organizationRoleIds.includes(roleId));
+    // 使用新的组织角色 ID 来过滤个人角色
+    const currentPersonalRoles = selectedRoles.filter(roleId => !newOrgRoleIds.includes(roleId));
     const updatedRoles = [...currentPersonalRoles, ...newOrgRoleIds];
 
     setSelectedRoles(updatedRoles);
     formRef.current?.setFieldsValue({ roles: updatedRoles });
-
-    setTimeout(() => {
-      fetchRoleInfo();
-    }, 100);
   };
 
   return (

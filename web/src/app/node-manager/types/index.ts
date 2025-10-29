@@ -18,6 +18,7 @@ interface ModalConfig {
   ids?: string[];
   selectedsystem?: string;
   nodes?: string[];
+  [key: string]: any;
 }
 
 //调用弹窗的类型

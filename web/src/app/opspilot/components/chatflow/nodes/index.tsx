@@ -40,3 +40,11 @@ export const NotificationNode = (props: any) => (
 export const EnterpriseWechatNode = (props: any) => (
   <BaseNode {...props} icon={nodeConfig.enterprise_wechat.icon} color={nodeConfig.enterprise_wechat.color} hasOutput={true} />
 );
+
+export const DingtalkNode = (props: any) => (
+  <BaseNode {...props} icon={nodeConfig.dingtalk.icon} color={nodeConfig.dingtalk.color} hasOutput={true} />
+);
+
+export const WechatOfficialNode = (props: any) => (
+  <BaseNode {...props} icon={nodeConfig.wechat_official.icon} color={nodeConfig.wechat_official.color} hasOutput={true} />
+);
