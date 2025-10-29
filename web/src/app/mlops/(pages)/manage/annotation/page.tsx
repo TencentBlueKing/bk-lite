@@ -14,7 +14,13 @@ import TableContent from "./tableContent";
 
 const AnnotationPage = () => {
   const searchParams = useSearchParams();
-  const { getAnomalyTrainData, getTimeSeriesPredictTrainData, getLogClusteringTrainData, getClassificationTrainData } = useMlopsManageApi();
+  const { 
+    getAnomalyTrainData, 
+    getTimeSeriesPredictTrainData, 
+    getLogClusteringTrainData, 
+    getClassificationTrainData,
+    getImageClassificationTrainData
+  } = useMlopsManageApi();
   const [menuItems, setMenuItems] = useState<AnomalyTrainData[]>([]);
   const [loadingState, setLoadingState] = useState({
     loading: false,
@@ -29,7 +35,8 @@ const AnnotationPage = () => {
     'anomaly': getAnomalyTrainData,
     'timeseries_predict': getTimeSeriesPredictTrainData,
     'log_clustering': getLogClusteringTrainData,
-    'classification': getClassificationTrainData
+    'classification': getClassificationTrainData,
+    'image_classification': getImageClassificationTrainData
   };
 
   useEffect(() => {
@@ -57,7 +64,6 @@ const AnnotationPage = () => {
       setLoadingState((prev) => ({ ...prev, loading: false }));
     }
   };
-
 
   return (
     <div className={`flex w-full h-full text-sm ${sideMenuStyle.sideMenuLayout} grow`}>

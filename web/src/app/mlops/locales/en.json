@@ -127,7 +127,8 @@
     "noSearchData": "No matching results found",
     "selectEntityTip": "Tip: Select text in edit mode to add entity annotations",
     "checkpoint": "CheckPoint",
-    "classification": "Classification"
+    "classification": "Classification",
+    "imageClassification": "Image Classification"
   },
   "traintask": {
     "train": "Train",

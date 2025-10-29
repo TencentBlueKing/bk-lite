@@ -14,7 +14,7 @@ CONVERSATION_DOCKER_NETWORK = os.getenv("CONVERSATION_DOCKER_NETWORK", "bklite-p
 
 # MINIO 配置
 MINIO_PRIVATE_BUCKETS = ["munchkin-private"]
-MINIO_PUBLIC_BUCKETS = ["munchkin-public"]
+MINIO_PUBLIC_BUCKETS = ["munchkin-public", "image-classification"]
 
 
 KUBE_CONFIG_FILE = os.getenv("KUBE_CONFIG_FILE", "")
