@@ -2,12 +2,12 @@ import time
 
 import xmltodict
 from django.http import HttpResponse
-from wechatpy import WeChatClient
-from wechatpy.crypto import WeChatCrypto
+from wechatpy import WeChatClient, parse_message
+from wechatpy.crypto import PrpCrypto
 from wechatpy.events import EVENT_TYPES
 from wechatpy.exceptions import InvalidSignatureException
 from wechatpy.messages import MESSAGE_TYPES, UnknownMessage
-from wechatpy.utils import to_text
+from wechatpy.utils import check_signature, to_text
 
 from apps.core.logger import opspilot_logger as logger
 from apps.opspilot.models import Bot, BotWorkFlow
@@ -165,14 +165,8 @@ class WechatOfficialChatFlowUtils(object):
             return HttpResponse("fail")
 
         try:
-            # 创建加密对象并解密echostr
-            crypto = WeChatCrypto(token, aes_key, appid)
-
-            # 使用decrypt_message解密echostr（安全模式下echostr是加密的）
-            # 注意：这里echostr就是需要解密的内容，不是完整的XML消息
-            echo_str = crypto.decrypt_message(echostr, signature, timestamp, nonce)
-            logger.info(f"微信公众号URL验证成功，Bot {self.bot_id}，返回 echostr: {echo_str if echo_str else 'empty'}...")
-            return HttpResponse(echo_str)
+            check_signature(token, signature, timestamp, nonce)
+            return HttpResponse(echostr)
         except InvalidSignatureException:
             logger.error(f"微信公众号URL验证失败：签名验证失败，Bot {self.bot_id}，signature: {signature}")
             return HttpResponse("fail")
@@ -248,6 +242,10 @@ class WechatOfficialChatFlowUtils(object):
             logger.error(f"微信公众号发送消息失败，Bot {self.bot_id}，OpenID: {openid}，错误: {str(e)}")
             logger.exception(e)
 
+    def decrypt(self, encrypt, key, appid):
+        pc = PrpCrypto(key)
+        return pc.decrypt(encrypt, appid)
+
     def handle_wechat_message(self, request, wechat_config, bot_chat_flow):
         """处理微信公众号消息（POST请求，安全模式）
 
@@ -274,20 +272,12 @@ class WechatOfficialChatFlowUtils(object):
             return HttpResponse("success")
 
         try:
+            xml_msg = xmltodict.parse(to_text(request.body))["xml"]
+            decode_msg = self.decrypt(xml_msg["Encrypt"], wechat_config["aes_key"], wechat_config["appid"])
+            msg = parse_message(decode_msg)
             # 创建加密对象
-            logger.info(f"微信公众号创建加密对象，Bot {self.bot_id}，appid: {wechat_config['appid']}")
-            crypto = WeChatCrypto(wechat_config["token"], wechat_config["aes_key"], wechat_config["appid"])
-
-            # 解密消息
-            logger.info(f"微信公众号开始解密消息，Bot {self.bot_id}")
-            decrypted_xml = crypto.decrypt_message(request.body, signature, timestamp, nonce)
-            logger.info(f"微信公众号消息解密成功，Bot {self.bot_id}，解密后XML长度: {len(decrypted_xml)} bytes")
-
-            # 解析消息
-            msg = self.parse_message(decrypted_xml)
-
             if not msg:
-                logger.warning(f"微信公众号消息解析失败，Bot {self.bot_id}，解密后的XML: {decrypted_xml[:500]}...")
+                logger.warning(f"微信公众号消息解析失败，Bot {self.bot_id}，解密后的XML: {decode_msg[:500]}...")
                 return HttpResponse("success")
 
             logger.info(f"微信公众号消息解析成功，Bot {self.bot_id}，消息类型: {msg.type}")
