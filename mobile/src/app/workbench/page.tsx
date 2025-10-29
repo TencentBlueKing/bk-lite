@@ -61,7 +61,7 @@ export default function WorkbenchPage() {
     const renderListItem = (item: any) => (
         <div
             key={item.id}
-            className="bg-white mx-3 mt-3 rounded-lg shadow-sm border border-gray-100 p-4 active:bg-gray-50 cursor-pointer"
+            className="bg-[var(--color-bg)] mx-3 mt-3 rounded-lg shadow-sm border border-[var(--color-border)] p-4 active:bg-[var(--color-bg-hover)] cursor-pointer"
             onClick={() => {
                 // 将应用信息存储到 sessionStorage，供详情页使用
                 sessionStorage.setItem('currentBot', JSON.stringify(item));
@@ -86,7 +86,7 @@ export default function WorkbenchPage() {
                 <div className="flex-1 min-w-0">
                     {/* 名称和状态 */}
                     <div className="flex items-center justify-between mb-1.5">
-                        <h3 className="text-base font-medium text-gray-900">
+                        <h3 className="text-base font-medium text-[var(--color-text-1)]">
                             {item.name}
                         </h3>
                         <div className="flex items-center space-x-1.5">
@@ -104,7 +104,7 @@ export default function WorkbenchPage() {
                     </div>
 
                     {/* 描述文本 */}
-                    <p className="text-xs text-gray-500 mb-3 leading-relaxed overflow-hidden"
+                    <p className="text-xs text-[var(--color-text-2)] mb-3 leading-relaxed overflow-hidden"
                         style={{
                             whiteSpace: 'nowrap',
                             overflow: 'hidden',
@@ -140,10 +140,18 @@ export default function WorkbenchPage() {
     );
 
     return (
-        <div className="flex flex-col h-screen bg-gray-50">
+        <div className="flex flex-col h-screen bg-[var(--color-background-body)]">
             {/* 标签栏和搜索图标 */}
-            <div className="bg-white border-b border-gray-200 flex items-center">
+            <div className="bg-[var(--color-bg)] flex items-center">
                 <div className="flex-1">
+                    <style dangerouslySetInnerHTML={{
+                        __html: `
+                            .adm-tabs-header {
+                                color: var(--color-text-1) !important;
+                                border-bottom: none !important;
+                            }
+                        `
+                    }} />
                     <Tabs
                         activeKey={activeTab}
                         onChange={handleTabChange}
@@ -160,7 +168,7 @@ export default function WorkbenchPage() {
                 <div className="px-4 py-3">
                     <SearchOutline
                         fontSize={22}
-                        className="text-gray-600"
+                        className="text-[var(--color-text-2)]"
                         onClick={() => router.push('/search?type=WorkbenchPage')}
                     />
                 </div>

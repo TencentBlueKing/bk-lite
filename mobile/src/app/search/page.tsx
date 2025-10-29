@@ -98,7 +98,7 @@ export default function SearchPage() {
     const renderWorkbenchItem = (item: any) => (
         <div
             key={item.id}
-            className="bg-white mx-3 mt-3 rounded-lg shadow-sm border border-gray-100 p-4 active:bg-gray-50 cursor-pointer"
+            className="bg-[var(--color-bg)] mx-3 mt-3 rounded-lg shadow-sm border border-[var(--color-border)] p-4 active:bg-[var(--color-bg-hover)] cursor-pointer"
             onClick={() => {
                 sessionStorage.setItem('currentBot', JSON.stringify(item));
                 router.push(`/workbench/detail?id=${item.id}`);
@@ -122,7 +122,7 @@ export default function SearchPage() {
                 <div className="flex-1 min-w-0">
                     {/* 名称和状态 */}
                     <div className="flex items-center justify-between mb-1.5">
-                        <h3 className="text-base font-medium text-gray-900">
+                        <h3 className="text-base font-medium text-[var(--color-text-1)]">
                             {item.name}
                         </h3>
                         <div className="flex items-center space-x-1.5">
@@ -140,8 +140,7 @@ export default function SearchPage() {
                     </div>
 
                     {/* 描述文本 */}
-                    <p
-                        className="text-xs text-gray-500 mb-3 leading-relaxed overflow-hidden"
+                    <p className="text-xs text-[var(--color-text-2)] mb-3 leading-relaxed overflow-hidden"
                         style={{
                             whiteSpace: 'nowrap',
                             overflow: 'hidden',

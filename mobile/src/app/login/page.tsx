@@ -86,7 +86,6 @@ export default function LoginPage() {
 
       if (userData.token) {
         login(userData.token, userData);
-        Toast.show({ content: 'Login successful', icon: 'success' });
       }
 
       if (userData.redirect_url) {
