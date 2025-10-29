@@ -1,0 +1,4 @@
+Auditbeat:
+  auditd:
+    name:
+    description:
