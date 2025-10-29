@@ -1,3 +1,4 @@
+import base64
 import time
 
 import xmltodict
@@ -7,7 +8,7 @@ from wechatpy.crypto import PrpCrypto
 from wechatpy.events import EVENT_TYPES
 from wechatpy.exceptions import InvalidSignatureException
 from wechatpy.messages import MESSAGE_TYPES, UnknownMessage
-from wechatpy.utils import check_signature, to_text
+from wechatpy.utils import check_signature, to_binary, to_text
 
 from apps.core.logger import opspilot_logger as logger
 from apps.opspilot.models import Bot, BotWorkFlow
@@ -242,7 +243,9 @@ class WechatOfficialChatFlowUtils(object):
             logger.error(f"微信公众号发送消息失败，Bot {self.bot_id}，OpenID: {openid}，错误: {str(e)}")
             logger.exception(e)
 
-    def decrypt(self, encrypt, key, appid):
+    def decrypt(self, encrypt, aes_key, appid):
+        encoding_aes_key = to_binary(aes_key + "=")
+        key = base64.b64decode(encoding_aes_key)
         pc = PrpCrypto(key)
         return pc.decrypt(encrypt, appid)
 
@@ -273,6 +276,7 @@ class WechatOfficialChatFlowUtils(object):
 
         try:
             xml_msg = xmltodict.parse(to_text(request.body))["xml"]
+            logger.warning(f"微信公众号，解密前的XML: {xml_msg}")
             decode_msg = self.decrypt(xml_msg["Encrypt"], wechat_config["aes_key"], wechat_config["appid"])
             msg = parse_message(decode_msg)
             # 创建加密对象
