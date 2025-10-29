@@ -2,6 +2,7 @@ import uuid
 
 from apps.core.exceptions.base_app_exception import BaseAppException
 from apps.log.constants.alert_policy import AlertConstants
+from apps.log.constants.database import DatabaseConstants
 from apps.log.constants.web import  WebConstants
 
 from apps.log.models.policy import Alert, Event, EventRawData
@@ -560,7 +561,7 @@ class LogPolicyScan:
             # 3. 批量执行数据库操作
             # 批量创建新告警
             if alerts_to_create:
-                Alert.objects.bulk_create(alerts_to_create, batch_size=100)
+                Alert.objects.bulk_create(alerts_to_create, batch_size=DatabaseConstants.DEFAULT_BATCH_SIZE)
                 logger.debug(f"Created {len(alerts_to_create)} new alerts for policy {self.policy.id}")
 
             # 批量更新现有告警
@@ -568,16 +569,16 @@ class LogPolicyScan:
                 Alert.objects.bulk_update(
                     alerts_to_update,
                     ['value', 'content', 'level', 'end_event_time'],
-                    batch_size=100
+                    batch_size=DatabaseConstants.DEFAULT_BATCH_SIZE
                 )
                 logger.debug(f"Updated {len(alerts_to_update)} existing alerts for policy {self.policy.id}")
 
             # 批量创建事件记录
-            event_objs = Event.objects.bulk_create(create_events, batch_size=200)
+            event_objs = Event.objects.bulk_create(create_events, batch_size=DatabaseConstants.DEFAULT_BATCH_SIZE)
 
             # 批量创建原始数据记录
             if create_raw_data:
-                EventRawData.objects.bulk_create(create_raw_data, batch_size=100)
+                EventRawData.objects.bulk_create(create_raw_data, batch_size=DatabaseConstants.DEFAULT_BATCH_SIZE)
 
             logger.info(f"Created {len(event_objs)} events for policy {self.policy.id}")
             return event_objs
@@ -647,12 +648,12 @@ class LogPolicyScan:
                     alerts.append((event.alert_id, is_notice))
 
             # 批量更新通知结果
-            Event.objects.bulk_update(event_objs, ["notice_result"], batch_size=200)
+            Event.objects.bulk_update(event_objs, ["notice_result"], batch_size=DatabaseConstants.DEFAULT_BATCH_SIZE)
             logger.info(f"Completed notification for {len(event_objs)} events")
 
             # 批量更新告警的通知状态
             if alerts:
-                Alert.objects.bulk_update([Alert(id=i[0], notice=i[1]) for i in alerts], ["notice"], batch_size=200)
+                Alert.objects.bulk_update([Alert(id=i[0], notice=i[1]) for i in alerts], ["notice"], batch_size=DatabaseConstants.DEFAULT_BATCH_SIZE)
 
         except Exception as e:
             logger.error(f"notice failed for policy {self.policy.id}: {e}")

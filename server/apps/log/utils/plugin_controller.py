@@ -5,6 +5,7 @@ import json
 from jinja2 import Environment, FileSystemLoader, DebugUndefined
 
 from apps.core.exceptions.base_app_exception import BaseAppException
+from apps.log.constants.database import DatabaseConstants
 from apps.log.constants.plugin import PluginConstants
 from apps.log.models import CollectConfig
 from apps.rpc.node_mgmt import NodeMgmt
@@ -153,7 +154,7 @@ class Controller:
                 )
 
         # 步骤2：批量创建 CollectConfig（使用外层事务，不新建事务）
-        CollectConfig.objects.bulk_create(collect_configs, batch_size=100)
+        CollectConfig.objects.bulk_create(collect_configs, batch_size=DatabaseConstants.DEFAULT_BATCH_SIZE)
         logger.info(f"创建 CollectConfig 成功，数量={len(collect_configs)}")
 
         # 步骤3：创建 child_config（RPC调用，底层有事务保护）
