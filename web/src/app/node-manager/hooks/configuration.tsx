@@ -9,6 +9,7 @@ import {
 } from '@/app/node-manager/types/cloudregion';
 import { TableDataItem } from '@/app/node-manager/types/index';
 import EllipsisWithTooltip from '@/components/ellipsis-with-tooltip';
+import { OPERATE_SYSTEMS } from '@/app/node-manager/constants/cloudregion';
 import type { MenuProps } from 'antd';
 
 const useConfigBtachItems = (): MenuProps['items'] => {
@@ -102,7 +103,6 @@ const useApplyColumns = ({
 };
 
 const useConfigColumns = ({
-  configurationClick,
   openSub,
   nodeClick,
   modifyDeleteconfirm,
@@ -148,10 +148,11 @@ const useConfigColumns = ({
       dataIndex: 'operatingSystem',
       width: 150,
       render: (_, record) =>
-        t(`node-manager.cloudregion.Configuration.${record.operatingSystem}`),
+        OPERATE_SYSTEMS.find((item) => item.value === record.operatingSystem)
+          ?.label || '--',
     },
     {
-      title: t('node-manager.cloudregion.Configuration.sidecar'),
+      title: t('node-manager.cloudregion.Configuration.collectorType'),
       dataIndex: 'collector_name',
       align: 'center',
       filters: filter,
@@ -165,13 +166,15 @@ const useConfigColumns = ({
       dataIndex: 'key',
       fixed: 'right',
       align: 'center',
-      width: 240,
+      width: 210,
       render: (key, item) => (
-        <div className="flex justify-center">
-          <PermissionWrapper requiredPermissions={['Apply']}>
+        <div className="flex">
+          <PermissionWrapper
+            requiredPermissions={['Apply']}
+            className="mr-[10px]"
+          >
             <Button
-              color="primary"
-              variant="link"
+              type="link"
               onClick={() => {
                 applyConfigurationClick(item);
               }}
@@ -179,29 +182,23 @@ const useConfigColumns = ({
               {t('common.apply')}
             </Button>
           </PermissionWrapper>
-          <PermissionWrapper requiredPermissions={['Edit']}>
+          <PermissionWrapper
+            requiredPermissions={['SubConfiguration']}
+            className="mr-[10px]"
+          >
             <Button
-              color="primary"
-              variant="link"
-              onClick={() => {
-                configurationClick(key);
-              }}
-            >
-              {t('common.edit')}
-            </Button>
-          </PermissionWrapper>
-          <PermissionWrapper requiredPermissions={['SubConfiguration']}>
-            <Button
-              color="primary"
-              variant="link"
+              type="link"
               onClick={() => {
                 openSub(key, item);
               }}
             >
-              {t('node-manager.cloudregion.Configuration.subconfiguration')}
+              {t('node-manager.cloudregion.Configuration.configurationDetails')}
             </Button>
           </PermissionWrapper>
-          <PermissionWrapper requiredPermissions={['Delete']}>
+          <PermissionWrapper
+            requiredPermissions={['Delete']}
+            className="mr-[10px]"
+          >
             <Popconfirm
               title={t('common.prompt')}
               description={t(
@@ -211,11 +208,7 @@ const useConfigColumns = ({
               cancelText={t('common.cancel')}
               onConfirm={() => modifyDeleteconfirm(item.key)}
             >
-              <Button
-                variant="link"
-                color="primary"
-                disabled={!!item.nodes?.length}
-              >
+              <Button type="link" disabled={!!item.nodes?.length}>
                 {t('common.delete')}
               </Button>
             </Popconfirm>
