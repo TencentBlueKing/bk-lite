@@ -1,11 +1,9 @@
-from drf_yasg import openapi
-from drf_yasg.utils import swagger_auto_schema
 from rest_framework import viewsets
 from rest_framework.decorators import action
 
 from apps.core.utils.permission_utils import get_permissions_rules, check_instance_permission
 from apps.core.utils.web_utils import WebUtils
-from apps.monitor.constants import INSTANCE_MODULE, POLICY_MODULE
+from apps.monitor.constants.permission import PermissionConstants
 from apps.monitor.filters.monitor_object import MonitorObjectFilter
 from apps.monitor.language.service import SettingLanguage
 from apps.monitor.models import MonitorInstance, MonitorPolicy
@@ -21,10 +19,6 @@ class MonitorObjectVieSet(viewsets.ModelViewSet):
     filterset_class = MonitorObjectFilter
     pagination_class = CustomPageNumberPagination
 
-    @swagger_auto_schema(
-        operation_id="monitor_object_list",
-        operation_description="监控对象列表",
-    )
     def list(self, request, *args, **kwargs):
         queryset = self.filter_queryset(self.get_queryset())
         serializer = self.get_serializer(queryset, many=True)
@@ -40,7 +34,7 @@ class MonitorObjectVieSet(viewsets.ModelViewSet):
                 request.user,
                 request.COOKIES.get("current_team"),
                 "monitor",
-                f"{INSTANCE_MODULE}",
+                f"{PermissionConstants.INSTANCE_MODULE}",
             )
 
             instance_permissions, cur_team = inst_res.get("data", {}), inst_res.get("team", [])
@@ -66,7 +60,7 @@ class MonitorObjectVieSet(viewsets.ModelViewSet):
                 request.user,
                 request.COOKIES.get("current_team"),
                 "monitor",
-                f"{POLICY_MODULE}",
+                f"{PermissionConstants.POLICY_MODULE}",
             )
 
             policy_permissions, cur_team = policy_res.get("data", {}), policy_res.get("team", [])
@@ -87,60 +81,24 @@ class MonitorObjectVieSet(viewsets.ModelViewSet):
             for result in results:
                 result["policy_count"] = policy_map.get(result["id"], 0)
 
-        # 排序
-        sorted_results = MonitorObjectService.sort_items(results)
+        # queryset已经通过模型的ordering自动排序，无需再次排序
+        return WebUtils.response_success(results)
 
-        return WebUtils.response_success(sorted_results)
-
-    @swagger_auto_schema(
-        operation_id="monitor_object_create",
-        operation_description="创建监控对象",
-    )
     def create(self, request, *args, **kwargs):
         return super().create(request, *args, **kwargs)
 
-    @swagger_auto_schema(
-        operation_id="monitor_object_update",
-        operation_description="更新监控对象",
-    )
     def update(self, request, *args, **kwargs):
         return super().update(request, *args, **kwargs)
 
-    @swagger_auto_schema(
-        operation_id="monitor_object_partial_update",
-        operation_description="部分更新监控对象",
-    )
     def partial_update(self, request, *args, **kwargs):
         return super().partial_update(request, *args, **kwargs)
 
-    @swagger_auto_schema(
-        operation_id="monitor_object_retrieve",
-        operation_description="查询监控对象",
-    )
     def retrieve(self, request, *args, **kwargs):
         return super().retrieve(request, *args, **kwargs)
 
-    @swagger_auto_schema(
-        operation_id="monitor_object_del",
-        operation_description="删除监控对象",
-    )
     def destroy(self, request, *args, **kwargs):
         return super().destroy(request, *args, **kwargs)
 
-    @swagger_auto_schema(
-        operation_id="monitor_object_order",
-        operation_description="监控对象排序",
-        request_body=openapi.Schema(
-            type=openapi.TYPE_ARRAY,
-            items=openapi.Schema(
-                type=openapi.TYPE_OBJECT,
-                properties={
-                    "type": openapi.Schema(type=openapi.TYPE_STRING, description="对象类型"),
-                    "name_list": openapi.Schema(type=openapi.TYPE_ARRAY, items=openapi.Schema(type=openapi.TYPE_STRING), description="对象名称列表"),
-                }
-            )
-        )
-    )
     @action(methods=['post'], detail=False, url_path='order')
     def order(self, request):
         MonitorObjectService.set_object_order(request.data)

@@ -1,0 +1,47 @@
+# ====================================
+# exec 日志源（含字段映射）
+# ====================================
+[sources.exec_{{ instance_id }}]
+type = "exec"
+command = ["{{ command }}"]
+timeout_secs = 5
+restart_attempts = 3
+
+# ====================================
+# enrich（字段补全）
+# ====================================
+[transforms.exec_enrich_{{ instance_id }}]
+type = "remap"
+inputs = ["exec_{{ instance_id }}"]
+source = '''
+.collector = "Vector"
+.collect_type = "exec"
+.instance_id = "{{ instance_id }}"
+'''
+
+# ====================================
+# sinks
+# ====================================
+[sinks.vmlogs_{{ instance_id }}]
+type = "nats"
+inputs = ["exec_enrich_{{ instance_id }}"]
+subject = "vector"
+url = "${NATS_PROTOCOL}://${NATS_SERVERS}"
+
+[sinks.vmlogs_{{ instance_id }}.auth]
+strategy = "user_password"
+
+[sinks.vmlogs_{{ instance_id }}.auth.user_password]
+user = "${NATS_USERNAME}"
+password = "${NATS_PASSWORD}"
+
+{% if NATS_PROTOCOL == "tls" %}
+# TLS 配置
+[sinks.vmlogs_{{ instance_id }}.tls]
+enabled = true
+verify_certificate = true
+ca_file = "${NATS_TLS_CA_FILE}"
+{% endif %}
+
+[sinks.vmlogs_{{ instance_id }}.encoding]
+codec = "json"

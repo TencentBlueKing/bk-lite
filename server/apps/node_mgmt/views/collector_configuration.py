@@ -1,9 +1,9 @@
 from rest_framework.viewsets import ModelViewSet
 from rest_framework.decorators import action
-from drf_yasg import openapi
-from drf_yasg.utils import swagger_auto_schema
 
+from apps.core.utils.permission_utils import get_permission_rules, permission_filter
 from apps.core.utils.web_utils import WebUtils
+from apps.node_mgmt.constants.node import NodeConstants
 from apps.node_mgmt.models.sidecar import CollectorConfiguration, Node
 from apps.node_mgmt.serializers.collector_configuration import (
     CollectorConfigurationSerializer,
@@ -21,16 +21,6 @@ class CollectorConfigurationViewSet(ModelViewSet):
     filterset_class = CollectorConfigurationFilter
     search_fields = ['id', 'name']
 
-    @swagger_auto_schema(
-        operation_summary="获取采集器配置列表",
-        manual_parameters=[
-            openapi.Parameter('search', openapi.IN_QUERY, description="模糊搜索(id, name)",
-                              type=openapi.TYPE_STRING),
-            openapi.Parameter('cloud_region_id', openapi.IN_QUERY, description="云区域ID", type=openapi.TYPE_INTEGER,
-                              required=True),
-        ],
-        tags=['CollectorConfiguration']
-    )
     def list(self, request, *args, **kwargs):
         response = super().list(request, *args, **kwargs)
         if isinstance(response.data, dict) and 'items' in response.data:
@@ -39,23 +29,26 @@ class CollectorConfigurationViewSet(ModelViewSet):
             response.data = CollectorConfigurationService.calculate_node_count(response.data)
         return response
 
-    @swagger_auto_schema(
-        operation_summary="查询配置信息以及关联的节点",
-        operation_id="config_node_asso",
-        request_body=openapi.Schema(
-            type=openapi.TYPE_OBJECT,
-            properties={
-                "cloud_region_id": openapi.Schema(type=openapi.TYPE_INTEGER, description="云区域ID"),
-                "ids": openapi.Schema(type=openapi.TYPE_ARRAY, items=openapi.Schema(type=openapi.TYPE_STRING,description="配置id")),
-                "name": openapi.Schema(type=openapi.TYPE_STRING, description="配置名称"),
-                "node_id": openapi.Schema(type=openapi.TYPE_INTEGER, description="节点ID"),
-            },
-            required=["cloud_region_id"]
-        ),
-    )
     @action(detail=False, methods=["post"], url_path="config_node_asso")
     def get_config_node_asso(self, request):
-        qs = CollectorConfiguration.objects.select_related("collector").prefetch_related("nodes").filter(cloud_region_id=request.data["cloud_region_id"])
+
+        # 获取用户节点权限列表
+        permission = get_permission_rules(
+            request.user,
+            request.COOKIES.get("current_team"),
+            "node_mgmt",
+            NodeConstants.MODULE,
+        )
+        queryset = permission_filter(Node, permission, team_key="nodeorganization__organization__in", id_key="id__in")
+        node_ids = list(queryset.values_list("id", flat=True).distinct())
+        if not node_ids:
+            return WebUtils.response_success([])
+
+        qs = CollectorConfiguration.objects.select_related("collector").prefetch_related("nodes").filter(
+            cloud_region_id=request.data["cloud_region_id"],
+            nodes__id__in=node_ids,     # 权限
+        )
+
         if request.data.get("ids"):
             qs = qs.filter(id__in=request.data["ids"])
         if request.data.get("node_id"):
@@ -89,11 +82,6 @@ class CollectorConfigurationViewSet(ModelViewSet):
         ]
         return WebUtils.response_success(result)
 
-    @swagger_auto_schema(
-        operation_summary="创建采集器配置",
-        tags=['CollectorConfiguration'],
-        request_body=CollectorConfigurationCreateSerializer,
-    )
     def create(self, request, *args, **kwargs):
         # 清除cache中的etag
         pk = kwargs.get('pk')
@@ -101,11 +89,6 @@ class CollectorConfigurationViewSet(ModelViewSet):
         self.serializer_class = CollectorConfigurationCreateSerializer
         return super().create(request, *args, **kwargs)
 
-    @swagger_auto_schema(
-        operation_summary="部分更新采集器配置",
-        tags=['CollectorConfiguration'],
-        request_body=CollectorConfigurationUpdateSerializer,
-    )
     def partial_update(self, request, *args, **kwargs):
         # 清除cache中的etag
         pk = kwargs.get('pk')
@@ -113,33 +96,16 @@ class CollectorConfigurationViewSet(ModelViewSet):
         self.serializer_class = CollectorConfigurationUpdateSerializer
         return super().partial_update(request, *args, **kwargs)
 
-    @swagger_auto_schema(
-        operation_summary="删除采集器配置",
-        tags=['CollectorConfiguration']
-    )
     def destroy(self, request, *args, **kwargs):
         return super().destroy(request, *args, **kwargs)
 
-    @swagger_auto_schema(
-        operation_summary="更新采集器配置",
-        tags=['CollectorConfiguration']
-    )
     def update(self, request, *args, **kwargs):
 
         return super().update(request, *args, **kwargs)
 
-    @swagger_auto_schema(
-        operation_summary="查询采集器配置详情",
-        tags=['CollectorConfiguration']
-    )
     def retrieve(self, request, *args, **kwargs):
         return super().retrieve(request, *args, **kwargs)
 
-    @swagger_auto_schema(
-        operation_summary="批量删除采集器配置",
-        request_body=BulkDeleteConfigurationSerializer,
-        tags=['CollectorConfiguration']
-    )
     @action(methods=['post'], detail=False, url_path='bulk_delete')
     def bulk_delete(self, request):
         serializer = BulkDeleteConfigurationSerializer(data=request.data)
@@ -148,20 +114,6 @@ class CollectorConfigurationViewSet(ModelViewSet):
         CollectorConfiguration.objects.filter(id__in=ids).delete()
         return WebUtils.response_success()
 
-    @swagger_auto_schema(
-        operation_summary="应用指定采集器配置到指定节点",
-        request_body=openapi.Schema(
-            type=openapi.TYPE_ARRAY,
-            items=openapi.Schema(
-                type=openapi.TYPE_OBJECT,
-                properties={
-                    "node_id": openapi.Schema(type=openapi.TYPE_INTEGER, description="节点ID"),
-                    "collector_configuration_id": openapi.Schema(type=openapi.TYPE_INTEGER, description="采集器配置ID"),
-                },
-            ),
-        ),
-        tags=['CollectorConfiguration']
-    )
     @action(methods=['post'], detail=False, url_path='apply_to_node')
     def apply_to_node(self, request):
 
@@ -179,11 +131,6 @@ class CollectorConfigurationViewSet(ModelViewSet):
 
         return WebUtils.response_success(result)
 
-    @swagger_auto_schema(
-        operation_summary="取消应用指定采集器配置到指定节点",
-        request_body=ApplyToNodeSerializer,
-        tags=['CollectorConfiguration']
-    )
     @action(methods=['post'], detail=False, url_path='cancel_apply_to_node')
     def cancel_apply_to_node(self, request):
         config_id = request.data["collector_configuration_id"]

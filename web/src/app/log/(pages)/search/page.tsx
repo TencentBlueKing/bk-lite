@@ -3,11 +3,15 @@ import React, { useState, useRef, useEffect, useMemo } from 'react';
 import TimeSelector from '@/components/time-selector';
 import { ListItem, TimeSelectorDefaultValue, TimeSelectorRef } from '@/types';
 import { useSearchParams } from 'next/navigation';
-import { SearchOutlined, BulbFilled } from '@ant-design/icons';
+import {
+  SearchOutlined,
+  BulbFilled,
+  StarOutlined,
+  FolderOpenOutlined,
+} from '@ant-design/icons';
 import dayjs, { Dayjs } from 'dayjs';
 import {
   Card,
-  Input,
   Button,
   Select,
   Segmented,
@@ -23,15 +27,28 @@ import GrammarExplanation from '@/app/log/components/operate-drawer';
 import SearchTable from './searchTable';
 import FieldList from './fieldList';
 import LogTerminal from './logTerminal';
-import { ChartData, Pagination, TableDataItem } from '@/app/log/types';
+import SearchInput from './smartSearchInput';
+import {
+  ChartData,
+  ModalRef,
+  Pagination,
+  TableDataItem,
+} from '@/app/log/types';
 import useApiClient from '@/utils/request';
 import useSearchApi from '@/app/log/api/search';
 import useIntegrationApi from '@/app/log/api/integration';
-import { SearchParams, LogTerminalRef } from '@/app/log/types/search';
+import {
+  SearchParams,
+  LogTerminalRef,
+  Conidtion,
+  SearchConfig,
+} from '@/app/log/types/search';
 import { aggregateLogs } from '@/app/log/utils/common';
 import { useLocalizedTime } from '@/hooks/useLocalizedTime';
 import MarkdownRenderer from '@/components/markdown';
+import AddConditions from './addConditions';
 import { v4 as uuidv4 } from 'uuid';
+import ConditionList from './conditionList';
 
 const { Option } = Select;
 const PAGE_LIMIT = 100;
@@ -43,14 +60,17 @@ const SearchView: React.FC = () => {
   const { getLogStreams, getFields } = useIntegrationApi();
   const { getHits, getLogs } = useSearchApi();
   const { convertToLocalizedTime } = useLocalizedTime();
-  const timerRef = useRef<NodeJS.Timeout | null>(null);
-  const terminalRef = useRef<LogTerminalRef | null>(null);
-  const timeSelectorRef = useRef<TimeSelectorRef>(null);
-  const [frequence, setFrequence] = useState<number>(0);
   const queryText = searchParams.get('query') || '';
   const startTime = searchParams.get('startTime') || '';
   const endTime = searchParams.get('endTime') || '';
-  const [searchText, setSearchText] = useState<string>(queryText);
+  const timerRef = useRef<NodeJS.Timeout | null>(null);
+  const terminalRef = useRef<LogTerminalRef | null>(null);
+  const timeSelectorRef = useRef<TimeSelectorRef>(null);
+  const conditionRef = useRef<ModalRef>(null);
+  const conditionListRef = useRef<ModalRef>(null);
+  const searchTextRef = useRef<string>(queryText);
+  const [frequence, setFrequence] = useState<number>(0);
+  const [defaultSearchText, setDefaultSearchText] = useState<string>(queryText);
   const [tableData, setTableData] = useState<TableDataItem[]>([]);
   const [queryTime, setQueryTime] = useState<Date>(new Date());
   const [queryEndTime, setQueryEndTime] = useState<Date>(new Date());
@@ -88,6 +108,11 @@ const SearchView: React.FC = () => {
     return Math.max(200, windowHeight - fixedHeight);
   }, [windowHeight, expand]);
 
+  const disableStore = useMemo(
+    () => !groups.length || !searchTextRef.current,
+    [groups]
+  );
+
   useEffect(() => {
     if (isLoading) return;
     getAllFields();
@@ -105,7 +130,7 @@ const SearchView: React.FC = () => {
     return () => {
       clearTimer();
     };
-  }, [frequence, searchText, groups, limit]);
+  }, [frequence, groups, limit]);
 
   useEffect(() => {
     const handleResize = () => {
@@ -160,13 +185,7 @@ const SearchView: React.FC = () => {
     }
   };
 
-  const getChartData = async (
-    type: string,
-    extra?: {
-      times?: number[];
-      logGroups?: React.Key[];
-    }
-  ) => {
+  const getChartData = async (type: string, extra?: SearchConfig) => {
     setChartLoading(type !== 'timer');
     try {
       const params = getParams(extra);
@@ -184,13 +203,7 @@ const SearchView: React.FC = () => {
     }
   };
 
-  const getTableData = async (
-    type: string,
-    extra?: {
-      times?: number[];
-      logGroups?: React.Key[];
-    }
-  ) => {
+  const getTableData = async (type: string, extra?: SearchConfig) => {
     setTableLoading(type !== 'timer');
     try {
       const params = getParams(extra);
@@ -207,13 +220,7 @@ const SearchView: React.FC = () => {
     }
   };
 
-  const getLogData = async (
-    type: string,
-    extra?: {
-      times?: number[];
-      logGroups?: React.Key[];
-    }
-  ) => {
+  const getLogData = async (type: string, extra?: SearchConfig) => {
     if (!extra?.logGroups?.length && !groups.length) {
       return message.error(t('log.search.searchError'));
     }
@@ -228,7 +235,7 @@ const SearchView: React.FC = () => {
     );
   };
 
-  const getParams = (extra?: { times?: number[]; logGroups?: React.Key[] }) => {
+  const getParams = (extra?: SearchConfig) => {
     const times = extra?.times || timeSelectorRef.current?.getValue() || [];
     const params: SearchParams = {
       start_time: times[0] ? new Date(times[0]).toISOString() : '',
@@ -236,7 +243,7 @@ const SearchView: React.FC = () => {
       field: '_stream',
       fields_limit: 5,
       log_groups: extra?.logGroups || groups,
-      query: searchText || '*',
+      query: extra?.text || searchTextRef.current || '*',
       limit,
     };
     params.step = Math.round((times[1] - times[0]) / 100) + 'ms';
@@ -260,18 +267,25 @@ const SearchView: React.FC = () => {
   };
 
   const addToQuery = (row: TableDataItem, type: string) => {
-    setSearchText((pre: string) => {
-      if (type === 'field') {
-        const pattern = /fields/;
-        if (pre.match(pattern)) {
-          return pre.replace(pattern, `fields ${row.label},`);
-        }
-        return pre ? `${pre} | fields ${row.label}` : `fields ${row.label}`;
+    const currentText = searchTextRef.current;
+    if (type === 'field') {
+      const pattern = /fields/;
+      if (currentText.match(pattern)) {
+        searchTextRef.current = currentText.replace(
+          pattern,
+          `fields ${row.label},`
+        );
+      } else {
+        searchTextRef.current = currentText
+          ? `${currentText} | fields ${row.label}`
+          : `fields ${row.label}`;
       }
-      return pre
-        ? `${row.label}:${row.value} | ${pre}`
+    } else {
+      searchTextRef.current = currentText
+        ? `${row.label}:${row.value} | ${currentText}`
         : `${row.label}:${row.value}`;
-    });
+    }
+    setDefaultSearchText(searchTextRef.current);
   };
 
   const onXRangeChange = (arr: [Dayjs, Dayjs]) => {
@@ -282,6 +296,64 @@ const SearchView: React.FC = () => {
     }));
     const times = arr.map((item) => dayjs(item).valueOf());
     getLogData('refresh', { times });
+  };
+
+  const onTimeChange = (range: number[], originValue: number | null) => {
+    setTimeDefaultValue({
+      selectValue: originValue || 0,
+      rangePickerVaule: originValue ? null : [dayjs(range[0]), dayjs(range[1])],
+    });
+    onRefresh();
+  };
+
+  const openConditonsModal = (type: string) => {
+    const { query, start_time, end_time, log_groups } = getParams();
+    conditionRef.current?.showModal({
+      title: t('log.search.storageConditions'),
+      type,
+      form: {
+        query,
+        log_groups,
+        time_range: {
+          origin_value: timeDefaultValue.selectValue,
+          start: start_time,
+          end: end_time,
+        },
+      },
+    });
+  };
+
+  const loadConditions = (row = {}, type: string) => {
+    conditionListRef.current?.showModal({
+      title: t('log.search.loadConditions'),
+      type,
+      form: row,
+    });
+  };
+
+  const handleConditionSearch = (condition: Conidtion) => {
+    const { log_groups, query, time_range } = condition;
+    const start = +new Date(time_range.start);
+    const end = +new Date(time_range.end);
+    setGroups(log_groups);
+    searchTextRef.current = query;
+    setDefaultSearchText(query);
+    setTimeDefaultValue({
+      selectValue: (time_range.origin_value as number) || 0,
+      rangePickerVaule: time_range.origin_value
+        ? null
+        : [dayjs(start), dayjs(end)],
+    });
+    getLogData('refresh', {
+      logGroups: log_groups,
+      text: query,
+      times: [start, end],
+    });
+  };
+
+  // 获取时间范围的方法
+  const getTimeRange = () => {
+    return timeSelectorRef.current?.getValue() || [];
   };
 
   return (
@@ -307,10 +379,12 @@ const SearchView: React.FC = () => {
                 </Option>
               ))}
             </Select>
-            <Input
+            <SearchInput
               className="flex-1 mx-[8px]"
               placeholder={t('log.search.searchPlaceHolder')}
-              value={searchText}
+              defaultValue={defaultSearchText}
+              fields={fields}
+              getTimeRange={getTimeRange}
               addonAfter={
                 <BulbFilled
                   className="cursor-pointer px-[10px] py-[8px]"
@@ -318,8 +392,23 @@ const SearchView: React.FC = () => {
                   onClick={() => setVisible(true)}
                 />
               }
-              onChange={(e) => setSearchText(e.target.value)}
+              onChange={(value) => {
+                searchTextRef.current = value;
+              }}
               onPressEnter={handleSearch}
+            />
+            <Button
+              className="mr-[8px]"
+              icon={<StarOutlined />}
+              disabled={disableStore}
+              title={t('log.search.storageConditions')}
+              onClick={() => openConditonsModal('add')}
+            />
+            <Button
+              className="mr-[8px]"
+              icon={<FolderOpenOutlined />}
+              title={t('log.search.loadConditions')}
+              onClick={() => loadConditions({}, 'add')}
             />
             <Button
               type="primary"
@@ -358,7 +447,7 @@ const SearchView: React.FC = () => {
             <TimeSelector
               ref={timeSelectorRef}
               defaultValue={timeDefaultValue}
-              onChange={onRefresh}
+              onChange={onTimeChange}
               onFrequenceChange={onFrequenceChange}
               onRefresh={onRefresh}
             />
@@ -458,6 +547,8 @@ const SearchView: React.FC = () => {
       >
         <MarkdownRenderer filePath="grammar_explanation" fileName="index" />
       </GrammarExplanation>
+      <AddConditions ref={conditionRef} />
+      <ConditionList ref={conditionListRef} onSuccess={handleConditionSearch} />
     </div>
   );
 };

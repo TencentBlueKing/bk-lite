@@ -1,5 +1,4 @@
-from django.utils.translation import gettext as _
-
+from apps.core.utils.loader import LanguageLoader
 from apps.opspilot.models import RasaModel
 
 
@@ -8,10 +7,12 @@ class BotInitService:
         self.owner = owner
 
     def init(self):
+        loader = LanguageLoader(app="opspilot", default_lang="en")
+        description = loader.get("base_constant.core_model") or "Core Model"
         rasa_model, created = RasaModel.objects.update_or_create(
             name="Core Model",
             created_by=self.owner,
-            defaults={"description": _("Core Model")},
+            defaults={"description": description},
         )
         if created:
             with open("support-files/data/ops-pilot.tar.gz", "rb") as f:

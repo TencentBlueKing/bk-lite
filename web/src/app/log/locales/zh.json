@@ -77,7 +77,6 @@
     "successfullyDeleted": "删除成功！",
     "successfullyAdded": "新增成功！",
     "successfulSetted": "设置成功！",
-    "successfulCopied": "复制成功！",
     "successfullyModified": "修改成功！",
     "successfullyExported": "导出成功！",
     "successfullyImported": "导入成功！",
@@ -97,10 +96,7 @@
     "more": "详情",
     "organizations": "组织",
     "all": "全部",
-    "copy": "复制",
     "remove": "删除",
-    "inputPassword": "请输入密码",
-    "reset": "重置",
     "prompt": "提示",
     "batchEdit": "批量编辑",
     "belongingGroup": "所属组织"
@@ -126,6 +122,7 @@
     "group": "分组",
     "search": {
       "searchPlaceHolder": "在此处输入您的搜索查询，然后按Enter",
+      "smartSearchPlaceHolder": "请输入搜索条件",
       "searchCriteria": "搜索条件",
       "addToQuery": "添加到查询语句",
       "histogram": "查询直方图",
@@ -147,31 +144,38 @@
       "search": "搜索",
       "displayFields": "表格展示字段",
       "hiddenFields": "可选字段",
-      "searchError": "日志分组不能为空"
+      "searchError": "日志分组不能为空",
+      "storageConditions": "保存条件",
+      "loadConditions": "加载条件",
+      "query": "查询",
+      "loading": "加载中",
+      "loadingEllipsis": "加载中...",
+      "field": "字段",
+      "noMatchValues": "无匹配的值"
     },
     "analysis": {
       "dashboard": "仪表盘",
       "dimension": "维度",
       "packetbeat": {
-        "dashboardName": "内置packetbeat基础视图",
-        "activeConnections": "活跃连接数",
-        "activeConnectionsDesc": "当前正在活跃的 TCP/UDP 连接数",
-        "totalNetworkTraffic": "网络总流量",
-        "totalNetworkTrafficDesc": "网络总流量（入站 + 出站）字节总和",
-        "http5xxErrors": "HTTP 5xx 错误数",
-        "http5xxErrorsDesc": "HTTP 5xx 错误总数，用于服务健康监控",
-        "networkTrafficTrend": "网络流量趋势",
-        "networkTrafficTrendDesc": "HTTP 5xx 错误总数，用于服务健康监控",
-        "httpRequestTrend": "HTTP 请求趋势",
-        "httpRequestTrendDesc": "http各个方法的请求数",
-        "networkTrafficTop10": "网络流量top10",
-        "networkTrafficTop10Desc": "排查主机间流量热点、识别高流量对端或异常流量源",
-        "httpServiceTrafficTop10": "HTTP 服务流量top10",
-        "httpServiceTrafficTop10Desc": "HTTP 服务负载分析、发现大流量请求的客户端/服务端",
-        "abnormalTrafficLogs": "异常流量日志",
-        "abnormalTrafficLogsDesc": "大流量连接记录，用于快速发现异常流量或潜在攻击",
-        "httpLargeRequestLogs": "HTTP 大请求记录",
-        "httpLargeRequestLogsDesc": "大请求流量 HTTP 请求，用于流量异常分析"
+        "dashboardName": "网络流量基础仪表盘",
+        "protocolTrafficDistribution": "协议流量分布趋势图",
+        "protocolTrafficDistributionDesc": "统计不同协议（TCP/UDP/ICMP）产生的流量比例，帮助了解网络使用情况。（单位是GB）",
+        "totalNetworkTraffic": "网络总流量趋势图",
+        "totalNetworkTrafficDesc": "显示网络流量随时间的变化，帮助管理员快速判断流量高峰和异常。（单位是GB）",
+        "totalPacketCount": "网络总包数趋势图",
+        "totalPacketCountDesc": "显示网络总包随时间的变化，便于监控网络负载及瞬时峰值。",
+        "topSourceIPs": "高消耗流量源IP Top 20",
+        "topSourceIPsDesc": "显示流量最高的 20 个源 IP 地址，便于发现大流量源或潜在异常源。（流量单位是GB）",
+        "topDestinationIPs": "高消耗流量目标IP Top 20",
+        "topDestinationIPsDesc": "展示流量最大的前 20 个目的 IP，用于发现潜在的流量热点或异常目标。（流量单位是GB）",
+        "highTrafficSankey": "高流量五元组桑基图",
+        "highTrafficSankeyDesc": "展示流量最大的源 IP + 目的 IP + 协议 + 源端口 + 目的端口组合，便于定位特定会话的流量情况。（展示top20，流量单位是GB）",
+        "sourceIP": "Source IP",
+        "destinationIP": "Destination IP",
+        "networkTrafficGB": "Network Traffic（GB）",
+        "transport": "Transport",
+        "sourcePort": "Source Port",
+        "destinationPort": "Destination Port"
       }
     },
     "integration": {
@@ -361,7 +365,9 @@
       "seeMore": "查看详情",
       "noticeWay": "暂无通知渠道，可去",
       "systemManage": "系统管理",
-      "config": "配置。"
+      "config": "配置。",
+      "displayFields": "展示字段",
+      "displayFieldsDes": "请为日志产生的告警，选择告警详情中表格的展示字段，以便获取更多的信息便于告警分析。"
     }
   }
 }

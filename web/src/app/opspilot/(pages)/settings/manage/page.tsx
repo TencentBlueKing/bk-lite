@@ -102,7 +102,7 @@ const QuotaManagementPage: React.FC = () => {
   };
 
   const handleConfirm = async (values: any) => {
-    const { name, targetType, targetList, rule, file_size, unit, skills, bots, token_set: tokenSet = [] } = values;
+    const { name, targetType, targetList, rule, file_size, unit, skills, bots } = values;
     const payload = {
       name,
       target_type: targetType,
@@ -112,13 +112,6 @@ const QuotaManagementPage: React.FC = () => {
       unit,
       skill_count: parseInt(skills, 10),
       bot_count: parseInt(bots, 10),
-      token_set: tokenSet.reduce((acc: any, item: any) => {
-        acc[item.model] = {
-          value: item.value,
-          unit: item.unit,
-        }
-        return acc;
-      }, {})
     };
 
     try {

@@ -1,4 +1,3 @@
-from drf_yasg.utils import swagger_auto_schema
 from rest_framework.decorators import action
 from rest_framework.viewsets import ViewSet
 
@@ -7,19 +6,11 @@ from apps.rpc.system_mgmt import SystemMgmt
 
 
 class SystemMgmtView(ViewSet):
-    @swagger_auto_schema(
-        operation_description="查询所有用户",
-        tags=['SystemMgmt']
-    )
     @action(methods=['get'], detail=False, url_path='user_all')
     def get_user_all(self, request):
         result = SystemMgmt().get_all_users()
         return WebUtils.response_success(result["data"])
 
-    @swagger_auto_schema(
-        operation_description="查询通知渠道",
-        tags=['SystemMgmt']
-    )
     @action(methods=['get'], detail=False, url_path='search_channel_list')
     def search_channel_list(self, request):
         channel_type = request.GET.get("channel_type", "")

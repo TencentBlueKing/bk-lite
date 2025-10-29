@@ -48,6 +48,7 @@ class PolicySerializer(serializers.ModelSerializer):
 class AlertSerializer(serializers.ModelSerializer):
     policy_name = serializers.CharField(source='policy.name', read_only=True)
     collect_type_name = serializers.CharField(source='collect_type.name', read_only=True)
+
     # 告警类型返回
     alert_type = serializers.CharField(source='policy.alert_type', read_only=True)
     alert_name = serializers.CharField(source='policy.alert_name', read_only=True)
@@ -56,6 +57,8 @@ class AlertSerializer(serializers.ModelSerializer):
     organizations = serializers.SerializerMethodField()
     notice_users = serializers.ListField(source='policy.notice_users', read_only=True)
     alert_condition = serializers.DictField(source='policy.alert_condition', read_only=True)
+    show_fields = serializers.ListField(source='policy.show_fields', read_only=True)
+    period = serializers.DictField(source='policy.period', read_only=True)
 
     def get_organizations(self, obj):
         """通过外键关系获取策略的组织列表"""

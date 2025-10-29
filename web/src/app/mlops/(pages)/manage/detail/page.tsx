@@ -5,8 +5,11 @@ import {
 } from 'next/navigation';
 import { useTranslation } from '@/utils/i18n';
 import { useRouter } from 'next/navigation';
-import AnomalyDetail from './AnomalyDetail';
-import RasaDetail from './RasaDetail';
+import AnomalyDetail from './components/anomaly/AnomalyDetail';
+import RasaDetail from './components/rasa/RasaDetail';
+import LogDetail from './components/log/LogDetail';
+import TimeSeriesPredict from './components/timeseries/TimeSeriesPredict';
+import ClassificationDetail from './components/classification/classificationDetail';
 import Sublayout from '@/components/sub-layout';
 import TopSection from '@/components/top-section';
 import { MenuItem } from '@/types';
@@ -115,12 +118,15 @@ const Detail = () => {
   ];
 
   const showSideMenu = useMemo(() => {
-    return activeTap === 'anomaly' ? false : true;
+    return activeTap !== 'rasa' ? false : true;
   }, [activeTap]);
 
   const renderPage: Record<string, React.ReactNode> = useMemo(() => ({
     anomaly: <AnomalyDetail />,
-    rasa: <RasaDetail />
+    rasa: <RasaDetail />,
+    log_clustering: <LogDetail />,
+    timeseries_predict: <TimeSeriesPredict />,
+    classification: <ClassificationDetail />
   }), [activeTap]);
 
   const Intro = useMemo(() => (
@@ -131,17 +137,12 @@ const Detail = () => {
   ), [folder_name]);
 
   const topSection = useMemo(() => {
-    if (menu) {
-      return (
-        <TopSection title={t(`datasets.${menu}`)} content={RasaContent(menu)} />
-      )
-    }
-    return <TopSection title={folder_name} content={description} />
+    if (menu)
+      return <TopSection title={t(`datasets.${menu}`)} content={RasaContent(menu)} />;
+    return <TopSection title={folder_name} content={description} />;
   }, [menu]);
 
-  const backToList = () => {
-    router.push(`/mlops/manage/list`);
-  };
+  const backToList = () => router.push(`/mlops/manage/list`);
 
   return (
     <>

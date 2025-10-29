@@ -36,6 +36,7 @@ class SkillExecuteService:
             "enable_km_route": llm_skill.enable_km_route,
             "km_llm_model": llm_skill.km_llm_model,
             "enable_suggest": llm_skill.enable_suggest,
+            "enable_query_rewrite": llm_skill.enable_query_rewrite,
         }
 
         result = llm_service.chat(params)

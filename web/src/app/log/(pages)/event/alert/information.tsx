@@ -49,6 +49,7 @@ const Information: React.FC<TableDataItem> = ({
         dataIndex: '_time',
         key: '_time',
         width: 150,
+        fixed: 'left',
         sorter: (a: any, b: any) => a.id - b.id,
         render: (val, { _time }) => (
           <>{val ? convertToLocalizedTime(_time) : '--'}</>
@@ -58,18 +59,27 @@ const Information: React.FC<TableDataItem> = ({
         title: 'message',
         dataIndex: '_msg',
         key: '_msg',
-        width: 680,
-        // fixed: 'right',
+        width: 600,
         render: (val) => <>{val || '--'}</>,
       },
     ];
+    if (!isAggregate && formData.show_fields?.length) {
+      const displayColumns = formData.show_fields.map((item: string) => ({
+        title: item,
+        dataIndex: item,
+        key: item,
+        width: 100,
+      }));
+      columns = [...columns, ...displayColumns];
+    }
     if (isAggregate && rawData.length) {
-      columns = Object.keys(rawData[0])
+      columns = Object.keys(rawData[0] || {})
         .filter((item) => item !== 'id')
         .map((item) => ({
           title: item,
           dataIndex: item,
           key: item,
+          width: 100,
         }));
     }
     return columns;
@@ -339,7 +349,7 @@ const Information: React.FC<TableDataItem> = ({
             {t('log.event.originalLog')}
           </h3>
           <CustomTable
-            scroll={{ y: '400px', x: '700px' }}
+            scroll={{ y: '400px', x: '840px' }}
             virtual
             columns={activeColumns}
             dataSource={rawData}

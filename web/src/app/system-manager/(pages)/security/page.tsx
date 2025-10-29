@@ -15,7 +15,7 @@ import wechatAuthImg from '@/app/system-manager/img/wechat_auth.png';
 import type { DataNode as TreeDataNode } from 'antd/lib/tree';
 import { useUserApi } from '@/app/system-manager/api/user/index';
 import { useClientData } from '@/context/client';
-import { getNewAuthSourceFormFields, getWeChatFormFields } from '@/app/system-manager/components/security/authSourceFormConfig';
+import { getNewAuthSourceFormFields, getBluekingFormFields, getWeChatFormFields } from '@/app/system-manager/components/security/authSourceFormConfig';
 
 const SecurityPage: React.FC = () => {
   const { t } = useTranslation();
@@ -156,6 +156,22 @@ const SecurityPage: React.FC = () => {
             },
             enabled: values.enabled
           };
+        } else if (editingSource.source_type === 'bk_login') {
+          updateData = {
+            name: values.name,
+            source_type: values.source_type,
+            other_config: {
+              app_id: values.app_id,
+              app_token: values.app_token,
+              bk_url: values.bk_url,
+              namespace: values.namespace,
+              root_group: values.root_group,
+              default_roles: values.default_roles || selectedRoles,
+              sync: values.sync || false,
+              sync_time: values.sync_time || "00:00"
+            },
+            enabled: values.enabled
+          };
         } else {
           updateData = {
             name: values.name,
@@ -186,19 +202,39 @@ const SecurityPage: React.FC = () => {
         message.success(t('common.updateSuccess'));
       } else {
         const values = await dynamicForm.validateFields();
-        const createData = {
-          name: values.name,
-          source_type: values.source_type,
-          other_config: {
-            namespace: values.namespace,
-            root_group: values.root_group,
-            domain: values.domain,
-            default_roles: values.default_roles,
-            sync: values.sync || false,
-            sync_time: values.sync_time || "00:00"
-          },
-          enabled: values.enabled || true
-        };
+        let createData: any;
+        
+        if (values.source_type === 'bk_login') {
+          createData = {
+            name: values.name,
+            source_type: values.source_type,
+            other_config: {
+              app_id: values.app_id,
+              app_token: values.app_token,
+              bk_url: values.bk_url,
+              namespace: values.namespace,
+              root_group: values.root_group,
+              default_roles: values.default_roles,
+              sync: values.sync || false,
+              sync_time: values.sync_time || "00:00"
+            },
+            enabled: values.enabled || true
+          };
+        } else {
+          createData = {
+            name: values.name,
+            source_type: values.source_type,
+            other_config: {
+              namespace: values.namespace,
+              root_group: values.root_group,
+              domain: values.domain,
+              default_roles: values.default_roles,
+              sync: values.sync || false,
+              sync_time: values.sync_time || "00:00"
+            },
+            enabled: values.enabled || true
+          };
+        }
         
         const newSource = await createAuthSource(createData);
         const enhancedSource = enhanceAuthSourcesList([newSource])[0];
@@ -237,6 +273,24 @@ const SecurityPage: React.FC = () => {
         enabled: source.enabled,
         redirect_uri: source.other_config.redirect_uri,
         callback_url: source.other_config.callback_url
+      });
+    } else if (source.source_type === 'bk_login') {
+      const { other_config } = source;
+      const defaultRoles = other_config?.default_roles || [];
+      setSelectedRoles(defaultRoles);
+      
+      dynamicForm.setFieldsValue({
+        name: source.name,
+        source_type: source.source_type,
+        namespace: other_config?.namespace,
+        root_group: other_config?.root_group,
+        app_id: other_config?.app_id,
+        app_token: other_config?.app_token,
+        bk_url: other_config?.bk_url,
+        sync: other_config?.sync || false,
+        sync_time: other_config?.sync_time || '00:00',
+        enabled: source.enabled,
+        default_roles: defaultRoles
       });
     } else {
       const { other_config } = source;
@@ -470,18 +524,77 @@ const SecurityPage: React.FC = () => {
           </div>
         )}
         {(!editingSource || editingSource?.source_type !== 'wechat') && (
-          <DynamicForm
+          <Form
             form={dynamicForm}
-            fields={getNewAuthSourceFormFields({
-              t,
-              roleTreeData,
-              selectedRoles,
-              setSelectedRoles,
-              dynamicForm,
-              copyToClipboard,
-              isBuiltIn: editingSource?.is_build_in || false
-            })}
-          />
+            layout="vertical"
+            onValuesChange={(changedValues) => {
+              // 监听类型变化并更新currentSourceType
+              if (changedValues.source_type) {
+                // 根据不同类型清空对应的特有字段
+                if (changedValues.source_type === 'bk_login') {
+                  // 蓝鲸认证源：清空bk_lite特有的字段
+                  const fieldsToReset = ['namespace', 'domain', 'sync', 'sync_time'];
+                  const resetValues = fieldsToReset.reduce((acc, field) => {
+                    acc[field] = undefined;
+                    return acc;
+                  }, {} as any);
+                  dynamicForm.setFieldsValue(resetValues);
+                } else {
+                  // BK-Lite认证源：清空blueking特有的字段
+                  const fieldsToReset = ['app_id', 'app_token', 'bk_url'];
+                  const resetValues = fieldsToReset.reduce((acc, field) => {
+                    acc[field] = undefined;
+                    return acc;
+                  }, {} as any);
+                  dynamicForm.setFieldsValue(resetValues);
+                }
+                // 公共字段重置
+                dynamicForm.setFieldsValue({ 
+                  default_roles: undefined,
+                  root_group: undefined
+                });
+                setSelectedRoles([]);
+              }
+            }}
+          >
+            <Form.Item
+              noStyle
+              shouldUpdate={(prevValues, currentValues) => 
+                prevValues.source_type !== currentValues.source_type
+              }
+            >
+              {({ getFieldValue }) => {
+                const currentSourceType = getFieldValue('source_type') || 
+                  (editingSource?.source_type !== 'wechat' ? editingSource?.source_type : 'bk_lite');
+                
+                const formFields = currentSourceType === 'bk_login' 
+                  ? getBluekingFormFields({
+                    t,
+                    roleTreeData,
+                    selectedRoles,
+                    setSelectedRoles,
+                    dynamicForm,
+                    copyToClipboard,
+                    isBuiltIn: editingSource?.is_build_in || false
+                  })
+                  : getNewAuthSourceFormFields({
+                    t,
+                    roleTreeData,
+                    selectedRoles,
+                    setSelectedRoles,
+                    dynamicForm,
+                    copyToClipboard,
+                    isBuiltIn: editingSource?.is_build_in || false
+                  });
+                return (
+                  <DynamicForm
+                    form={dynamicForm}
+                    fields={formFields}
+                  />
+                );
+              }}
+            </Form.Item>
+          </Form>
         )}
       </OperateModal>
     </div>

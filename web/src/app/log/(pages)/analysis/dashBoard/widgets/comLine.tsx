@@ -8,47 +8,35 @@ import { ChartDataTransformer } from '@/app/log/utils/chartDataTransform';
 interface TrendLineProps {
   rawData: any;
   loading?: boolean;
+  config?: any;
   onReady?: (ready: boolean) => void;
 }
 
 const TrendLine: React.FC<TrendLineProps> = ({
   rawData,
   loading = false,
+  config,
   onReady,
 }) => {
   const [isDataReady, setIsDataReady] = useState(false);
+  const [chartInstance, setChartInstance] = useState<any>(null);
   const chartRef = useRef<any>(null);
   const chartColors = randomColorForLegend();
 
   const transformData = (rawData: any) => {
-    return ChartDataTransformer.transformToLineBarData(rawData);
+    // 处理嵌套的配置结构
+    const chartConfig = config?.displayMaps || config;
+    return ChartDataTransformer.transformToLineBarData(rawData, chartConfig);
   };
 
-  console.log('chartData', transformData(rawData));
+  const chartData: any = transformData(rawData);
 
-  const chartData: any = {
-    categories: [],
-    series: [],
+  // 获取tooltip显示的字段名
+  const getTooltipFieldName = () => {
+    const chartConfig = config?.displayMaps || config;
+    return chartConfig?.tooltipField || '告警数';
   };
 
-  //   const chartData: any = {
-  //     categories: [
-  //       '2025-09-04',
-  //       '2025-09-05',
-  //       '2025-09-06',
-  //       '2025-09-07',
-  //       '2025-09-08',
-  //       '2025-09-09',
-  //       '2025-09-10',
-  //       '2025-09-11',
-  //     ],
-  //     series: [
-  //       {
-  //         name: '默认命名空间',
-  //         data: [0, 0, 0, 0, 0, 0, 0, 0],
-  //       },
-  //     ],
-  //   };
   useEffect(() => {
     if (!loading) {
       const hasData = chartData && chartData.categories.length > 0;
@@ -81,14 +69,20 @@ const TrendLine: React.FC<TrendLineProps> = ({
       },
       formatter: function (params: any) {
         if (!params || params.length === 0) return '';
+        const tooltipFieldName = getTooltipFieldName();
         let content = `<div style="padding: 4px 8px;">
           <div style="margin-bottom: 4px; font-weight: bold;">${params[0].axisValueLabel}</div>`;
 
         params.forEach((param: any) => {
+          const displayName = param.seriesName || tooltipFieldName;
+          const value =
+            param.value !== null && param.value !== undefined
+              ? param.value
+              : '--';
           content += `
             <div style="display: flex; align-items: center; margin-bottom: 2px;">
               <span style="display: inline-block; width: 10px; height: 10px; background-color: ${param.color}; border-radius: 50%; margin-right: 6px;"></span>
-              <span>${param.seriesName}: ${param.value}</span>
+              <span>${displayName}: ${value}</span>
             </div>`;
         });
 
@@ -166,7 +160,7 @@ const TrendLine: React.FC<TrendLineProps> = ({
 
   // 根据数据类型设置 series
   if (chartData && chartData.series) {
-    option.series = chartData.series.map((item: any) => ({
+    option.series = chartData.series.map((item: any, index: number) => ({
       name: item.name,
       type: 'line',
       data: item.data,
@@ -175,6 +169,26 @@ const TrendLine: React.FC<TrendLineProps> = ({
       lineStyle: {
         width: 1,
       },
+      areaStyle: {
+        opacity: 0.1,
+        color: {
+          type: 'linear',
+          x: 0,
+          y: 0,
+          x2: 0,
+          y2: 1,
+          colorStops: [
+            {
+              offset: 0,
+              color: chartColors[index % chartColors.length] || '#1890ff',
+            },
+            {
+              offset: 1,
+              color: 'rgba(255, 255, 255, 0)',
+            },
+          ],
+        },
+      },
       emphasis: {
         focus: 'series',
       },
@@ -182,13 +196,33 @@ const TrendLine: React.FC<TrendLineProps> = ({
   } else {
     option.series = [
       {
-        name: '告警数',
+        name: getTooltipFieldName(),
         type: 'line',
         data: chartData && chartData.values ? chartData.values : [],
         smooth: true,
         symbol: 'none',
         lineStyle: {
           width: 1,
+        },
+        areaStyle: {
+          opacity: 0.1,
+          color: {
+            type: 'linear',
+            x: 0,
+            y: 0,
+            x2: 0,
+            y2: 1,
+            colorStops: [
+              {
+                offset: 0,
+                color: chartColors[0] || '#1890ff',
+              },
+              {
+                offset: 1,
+                color: 'rgba(255, 255, 255, 0)',
+              },
+            ],
+          },
         },
         emphasis: {
           focus: 'series',
@@ -221,13 +255,16 @@ const TrendLine: React.FC<TrendLineProps> = ({
           ref={chartRef}
           option={option}
           style={{ height: '100%', width: '100%' }}
+          onChartReady={(chart: any) => {
+            setChartInstance(chart);
+          }}
         />
       </div>
 
       {chartData?.series && chartData.series.length > 1 && (
         <div className="w-32 ml-2 flex-shrink-0 h-full">
           <ChartLegend
-            chart={chartRef.current?.getEchartsInstance()}
+            chart={chartInstance}
             data={chartData.series}
             colors={chartColors}
           />

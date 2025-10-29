@@ -1,0 +1,10 @@
+[[inputs.sqlserver]]
+    servers = ["Server={{ host }};Port={{ port }};User Id={{ username }};Password=${PASSWORD__{{ config_id }}};app name=telegraf;log=1;"]
+    database_type = "SQLServer"
+    exclude_query = ["SQLServerAvailabilityReplicaStates", "SQLServerDatabaseReplicaStates"]
+    interval = "{{ interval }}s"
+    [inputs.sqlserver.tags]
+        instance_id = "{{ instance_id }}"
+        instance_type = "{{ instance_type }}"
+        collect_type = "database"
+        config_type = "mssql"

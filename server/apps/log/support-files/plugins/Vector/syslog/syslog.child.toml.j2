@@ -1,0 +1,46 @@
+# ====================================
+# syslog 日志源（含字段映射）
+# ====================================
+[sources.syslog_{{ instance_id }}]
+type = "syslog"
+address = "{{ address }}"
+mode = "tcp"  # 也可以是 udp
+
+# ====================================
+# enrich（字段补全）
+# ====================================
+[transforms.syslog_enrich_{{ instance_id }}]
+type = "remap"
+inputs = ["syslog_{{ instance_id }}"]
+source = '''
+.collector = "Vector"
+.collect_type = "syslog"
+.instance_id = "{{ instance_id }}"
+'''
+
+# ====================================
+# sinks
+# ====================================
+[sinks.vmlogs_{{ instance_id }}]
+type = "nats"
+inputs = ["syslog_enrich_{{ instance_id }}"]
+subject = "vector"
+url = "${NATS_PROTOCOL}://${NATS_SERVERS}"
+
+[sinks.vmlogs_{{ instance_id }}.auth]
+strategy = "user_password"
+
+[sinks.vmlogs_{{ instance_id }}.auth.user_password]
+user = "${NATS_USERNAME}"
+password = "${NATS_PASSWORD}"
+
+{% if NATS_PROTOCOL == "tls" %}
+# TLS 配置
+[sinks.vmlogs_{{ instance_id }}.tls]
+enabled = true
+verify_certificate = true
+ca_file = "${NATS_TLS_CA_FILE}"
+{% endif %}
+
+[sinks.vmlogs_{{ instance_id }}.encoding]
+codec = "json"

@@ -5,7 +5,7 @@ import { useTranslation } from '@/utils/i18n';
 import { Input } from 'antd';
 import { useSubConfigColumns } from '@/app/node-manager/hooks/configuration';
 import CustomTable from '@/components/custom-table';
-import useApiCloudRegion from '@/app/node-manager/api/cloudRegion';
+import useNodeManagerApi from '@/app/node-manager/api';
 import type { SubRef, SubProps } from '@/app/node-manager/types/cloudregion';
 import type { GetProps } from 'antd';
 import { Pagination } from '@/app/node-manager/types';
@@ -15,7 +15,7 @@ const { Search } = Input;
 const SubConfiguration = forwardRef<SubRef, SubProps>(
   ({ cancel, edit, nodeData }, ref) => {
     const { t } = useTranslation();
-    const { getChildConfig } = useApiCloudRegion();
+    const { getChildConfig } = useNodeManagerApi();
     const { isLoading } = useApiClient();
     const [tableLoading, setTableLoading] = useState<boolean>(false);
     const [tableData, setTableData] = useState<any[]>([]);
@@ -43,7 +43,7 @@ const SubConfiguration = forwardRef<SubRef, SubProps>(
     }, [isLoading]);
 
     useEffect(() => {
-      if(!isLoading) getChildConfigList(searchText);
+      if (!isLoading) getChildConfigList(searchText);
     }, [pagination.current, pagination.pageSize]);
 
     const getChildConfigList = (search?: string) => {

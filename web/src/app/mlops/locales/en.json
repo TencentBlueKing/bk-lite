@@ -96,8 +96,8 @@
     "delDatasetInfo": "Confirm deletion of dataset?",
     "anomaly": "Single Indicator Anomaly Detection",
     "rasa": "Rasa Model",
-    "forecast": "Time Series Forecasting",
-    "log": "Log",
+    "timeseriesPredict": "Time Series Predict",
+    "logClustering": "Log Clustering",
     "uploadSuccess": "Upload Successful",
     "pleaseUpload": "Please upload file",
     "uploadWarn": "Supports uploading csv files only",
@@ -105,7 +105,8 @@
     "addSuccess": "Add Successful",
     "editSuccess": "Update Successful",
     "downloadError": "Download file error",
-    "downloadText": "Only csv format files are supported, click on the",
+    "downloadCSV": "Only csv format files are supported, click on the",
+    "downloadTxt": "Only txt format files are supported, click on the",
     "template": "Download template",
     "saveError": "Save Error",
     "anomalyTitle": "Anomaly",
@@ -125,7 +126,8 @@
     "editEaxmpleTip": "One example per line. Select text to add entity annotations",
     "noSearchData": "No matching results found",
     "selectEntityTip": "Tip: Select text in edit mode to add entity annotations",
-    "checkpoint": "CheckPoint"
+    "checkpoint": "CheckPoint",
+    "classification": "Classification"
   },
   "traintask": {
     "train": "Train",
@@ -160,7 +162,11 @@
     "maxEvals": "Maximum number of training rounds",
     "maxEvalsMsg": "Please enter the maximum number of training rounds",
     "hyperopt": "Hyperparameterization",
-    "getTrainStatusFailed": "Error retrieving training status"
+    "getTrainStatusFailed": "Error retrieving training status",
+    "selectedColumns": "Selected Columns",
+    "waitData": "Waiting for data...",
+    "downloadStart": "Data loading complete. Downloading files.",
+    "downloadFailed": "Download Failed"
   },
   "model-release": {
     "modelName": "Competence Name",
@@ -179,6 +185,12 @@
     "publishSuccess": "Publish Successfully",
     "publishStatus": "Publishing status",
     "delModel": "Delete Model",
-    "delModelContent": "Are you sure you want to delete this model?"
+    "delModelContent": "Are you sure you want to delete this model?",
+    "apiEndpoint": "API Endpoint",
+    "maxRequestsPerMinute": "Max Requests Per Minute",
+    "supportedLogFormats": "Supported Log Formats",
+    "inputApiEndpoint": "Please enter API endpoint",
+    "inputMaxRequests": "Please enter max requests per minute",
+    "inputLogFormats": "Please enter supported log formats"
   }
 }

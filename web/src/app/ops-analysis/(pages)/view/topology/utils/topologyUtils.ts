@@ -48,9 +48,38 @@ export const getValueByPath = (obj: any, path: string): any => {
   }, obj);
 };
 
-export const formatDisplayValue = (value: any): string => {
-  if (value === null || value === undefined) return '-';
+export const formatDisplayValue = (
+  value: any,
+  unit?: string,
+  decimalPlaces?: number,
+  conversionFactor?: number
+): string => {
+  if (value === null || value === undefined) return '--';
+
+  // 如果是对象，直接转字符串
   if (typeof value === 'object') return JSON.stringify(value);
+
+  // 尝试转换为数字并应用换算系数
+  const numValue = typeof value === 'string' ? parseFloat(value) : value;
+
+  if (typeof numValue === 'number' && !isNaN(numValue)) {
+    // 应用换算系数
+    const factor = conversionFactor !== undefined ? conversionFactor : 1;
+    const convertedValue = numValue * factor;
+
+    // 格式化小数位
+    let formattedValue = decimalPlaces !== undefined
+      ? convertedValue.toFixed(decimalPlaces)
+      : String(convertedValue);
+
+    // 添加单位
+    if (unit && unit.trim()) {
+      formattedValue += unit;
+    }
+
+    return formattedValue;
+  }
+
   return String(value);
 };
 
@@ -251,7 +280,16 @@ export const createEdgeLabel = (text: string = '') => {
   };
 };
 
-export const getEdgeStyle = (connectionType: 'none' | 'single' | 'double') => {
+// 根据样式配置获取边线样式
+export const getEdgeStyleWithConfig = (
+  connectionType: 'none' | 'single' | 'double' = 'single',
+  styleConfig?: {
+    lineColor?: string;
+    lineWidth?: number;
+    lineStyle?: 'line' | 'dotted' | 'point';
+    enableAnimation?: boolean;
+  }
+) => {
   const arrowConfig = {
     none: { sourceMarker: null, targetMarker: null },
     single: { sourceMarker: null, targetMarker: { name: 'block', size: 8 } },
@@ -261,13 +299,33 @@ export const getEdgeStyle = (connectionType: 'none' | 'single' | 'double') => {
     },
   };
 
+  const lineAttrs: any = {
+    stroke: styleConfig?.lineColor || COLORS.EDGE.DEFAULT,
+    strokeWidth: styleConfig?.lineWidth || SPACING.STROKE_WIDTH.THIN,
+    ...arrowConfig[connectionType],
+  };
+
+  // 设置线条样式
+  if (styleConfig?.lineStyle === 'dotted') {
+    lineAttrs.strokeDasharray = '3 3';
+  } else if (styleConfig?.lineStyle === 'point') {
+    lineAttrs.strokeDasharray = '1 3';
+  } else if (styleConfig?.lineStyle === 'line') {
+    lineAttrs.strokeDasharray = null;
+  }
+
+  // 设置动画
+  if (
+    connectionType === 'single' &&
+    styleConfig?.enableAnimation &&
+    (styleConfig?.lineStyle === 'dotted' || styleConfig?.lineStyle === 'point')
+  ) {
+    lineAttrs.class = 'edge-flow-animation';
+  }
+
   return {
     attrs: {
-      line: {
-        stroke: COLORS.EDGE.DEFAULT,
-        strokeWidth: SPACING.STROKE_WIDTH.THIN,
-        ...arrowConfig[connectionType],
-      },
+      line: lineAttrs,
     },
     labels: [],
   };
@@ -275,9 +333,23 @@ export const getEdgeStyle = (connectionType: 'none' | 'single' | 'double') => {
 
 export const getEdgeStyleWithLabel = (
   edgeData: EdgeCreationData,
-  connectionType: 'none' | 'single' | 'double' = 'single'
+  connectionType: 'none' | 'single' | 'double' = 'single',
+  styleConfig?: {
+    lineColor?: string;
+    lineWidth?: number;
+    lineStyle?: 'line' | 'dotted' | 'point';
+    enableAnimation?: boolean;
+  }
 ): any => {
-  const baseStyle = getEdgeStyle(connectionType);
+  // 如果没有提供样式配置，使用默认配置
+  const defaultStyleConfig = {
+    lineColor: COLORS.EDGE.DEFAULT,
+    lineWidth: 1,
+    lineStyle: 'line' as const,
+    enableAnimation: false,
+  };
+
+  const baseStyle = getEdgeStyleWithConfig(connectionType, styleConfig || defaultStyleConfig);
 
   if (edgeData.lineType === 'common_line' && edgeData.lineName) {
     (baseStyle as any).labels = [createEdgeLabel(edgeData.lineName)];
@@ -367,22 +439,17 @@ export const hideAllEdgeTools = (graph: any) => {
 
 export const showPorts = (graph: any, cell: any) => {
   if (cell.isNode()) {
-    // 只为有端口的节点显示主要端口（排除文本节点）
-    const nodeData = cell.getData();
-    if (nodeData?.type !== 'text') {
-      ['top', 'bottom', 'left', 'right'].forEach((port) =>
-        cell.setPortProp(port, 'attrs/circle/opacity', PORT_DEFAULTS.OPACITY.VISIBLE)
-      );
-    }
+    ['top', 'bottom', 'left', 'right'].forEach((port) =>
+      cell.setPortProp(port, 'attrs/circle/opacity', PORT_DEFAULTS.OPACITY.VISIBLE)
+    );
   } else if (cell.isEdge()) {
     ['top', 'bottom', 'left', 'right'].forEach((port) => {
       const sourceNode = graph.getCellById(cell.getSourceCellId());
       const targetNode = graph.getCellById(cell.getTargetCellId());
-      // 检查节点是否有端口
-      if (sourceNode && sourceNode.getData()?.type !== 'text') {
+      if (sourceNode) {
         sourceNode.setPortProp(port, 'attrs/circle/opacity', PORT_DEFAULTS.OPACITY.VISIBLE);
       }
-      if (targetNode && targetNode.getData()?.type !== 'text') {
+      if (targetNode) {
         targetNode.setPortProp(port, 'attrs/circle/opacity', PORT_DEFAULTS.OPACITY.VISIBLE);
       }
     });
@@ -391,13 +458,9 @@ export const showPorts = (graph: any, cell: any) => {
 
 export const hideAllPorts = (graph: any) => {
   graph.getNodes().forEach((node: any) => {
-    // 只为有端口的节点隐藏端口（排除文本节点）
-    const nodeData = node.getData();
-    if (nodeData?.type !== 'text') {
-      ['top', 'bottom', 'left', 'right'].forEach((port: string) =>
-        node.setPortProp(port, 'attrs/circle/opacity', PORT_DEFAULTS.OPACITY.HIDDEN)
-      );
-    }
+    ['top', 'bottom', 'left', 'right'].forEach((port: string) =>
+      node.setPortProp(port, 'attrs/circle/opacity', PORT_DEFAULTS.OPACITY.HIDDEN)
+    );
   });
 };
 

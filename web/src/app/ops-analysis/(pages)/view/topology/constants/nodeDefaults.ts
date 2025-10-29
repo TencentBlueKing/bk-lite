@@ -1,4 +1,3 @@
-// 节点尺寸配置
 export const NODE_DIMENSIONS = {
   ICON_NODE: {
     WIDTH: 100,
@@ -14,15 +13,12 @@ export const NODE_DIMENSIONS = {
   },
 } as const;
 
-// 颜色配置
 export const COLORS = {
-  // 基础颜色
   PRIMARY: '#1890FF',
   SUCCESS: '#52c41a',
   WARNING: '#fa8c16',
   ERROR: '#ff4d4f',
 
-  // 文本颜色
   TEXT: {
     PRIMARY: '#262626',
     SECONDARY: '#595959',
@@ -30,7 +26,6 @@ export const COLORS = {
     LIGHT: '#8c8c8c',
   },
 
-  // 背景颜色
   BACKGROUND: {
     WHITE: '#ffffff',
     LIGHT_GRAY: '#f5f5f5',
@@ -38,7 +33,6 @@ export const COLORS = {
     TRANSPARENT: 'transparent',
   },
 
-  // 边框颜色
   BORDER: {
     DEFAULT: '#e0ddddff',
     LIGHT: '#f0f0f0',
@@ -46,20 +40,17 @@ export const COLORS = {
     PRIMARY: '#1890FF',
   },
 
-  // 端口颜色
   PORT: {
     STROKE: '#1890FF',
     FILL: '#FFFFFF',
   },
 
-  // 边线颜色
   EDGE: {
     DEFAULT: '#a7b5c4',
     SELECTED: '#1890FF',
   },
 } as const;
 
-// 字体配置
 export const TYPOGRAPHY = {
   FONT_FAMILY: {
     DEFAULT: 'Arial, sans-serif',
@@ -72,22 +63,19 @@ export const TYPOGRAPHY = {
     MEDIUM: 14,
     LARGE: 16,
     EXTRA_LARGE: 18,
-
-    // 节点特定字体大小
-    ICON_LABEL: 12,
-    SINGLE_VALUE: 14,
-    TEXT_NODE: 14,
+    ICON_LABEL: 16,
+    SINGLE_VALUE: 20,
+    TEXT_NODE: 18,
   },
 
   FONT_WEIGHT: {
-    NORMAL: 400,
-    MEDIUM: 500,
-    SEMIBOLD: 600,
-    BOLD: 700,
+    NORMAL: '400',
+    MEDIUM: '500',
+    SEMIBOLD: '600',
+    BOLD: '700',
   },
 } as const;
 
-// 间距配置
 export const SPACING = {
   BORDER_RADIUS: {
     SMALL: 4,
@@ -110,9 +98,7 @@ export const SPACING = {
   },
 } as const;
 
-// 节点默认样式配置
 export const NODE_DEFAULTS = {
-  // 图标节点默认配置
   ICON_NODE: {
     width: NODE_DIMENSIONS.ICON_NODE.WIDTH,
     height: NODE_DIMENSIONS.ICON_NODE.HEIGHT,
@@ -128,7 +114,6 @@ export const NODE_DEFAULTS = {
     logoUrl: '',
   },
 
-  // 单值节点默认配置
   SINGLE_VALUE_NODE: {
     width: NODE_DIMENSIONS.SINGLE_VALUE_NODE.WIDTH,
     height: NODE_DIMENSIONS.SINGLE_VALUE_NODE.HEIGHT,
@@ -141,7 +126,6 @@ export const NODE_DEFAULTS = {
     strokeWidth: SPACING.STROKE_WIDTH.THIN,
   },
 
-  // 文本节点默认配置
   TEXT_NODE: {
     width: NODE_DIMENSIONS.TEXT_NODE.WIDTH,
     height: NODE_DIMENSIONS.TEXT_NODE.HEIGHT,
@@ -153,7 +137,6 @@ export const NODE_DEFAULTS = {
     strokeWidth: SPACING.STROKE_WIDTH.THIN,
   },
 
-  // 图表节点默认配置
   CHART_NODE: {
     width: 400,
     height: 220,
@@ -166,23 +149,28 @@ export const NODE_DEFAULTS = {
     strokeWidth: SPACING.STROKE_WIDTH.THIN,
   },
 
-  // 基础图形节点默认配置
   BASIC_SHAPE_NODE: {
     width: 120,
     height: 80,
-    backgroundColor: COLORS.BACKGROUND.WHITE,
-    borderColor: COLORS.BORDER.DEFAULT,
-    borderWidth: SPACING.STROKE_WIDTH.DEFAULT,
+    backgroundColor: 'rgba(255, 255, 255, 0.2)',
+    borderColor: 'rgba(255, 255, 255, 0.2)',
+    borderWidth: 1,
     lineType: 'solid' as const,
     shapeType: 'rectangle' as const,
     textColor: COLORS.TEXT.PRIMARY,
     fontSize: TYPOGRAPHY.FONT_SIZE.DEFAULT,
     fontWeight: TYPOGRAPHY.FONT_WEIGHT.NORMAL,
-    borderRadius: SPACING.BORDER_RADIUS.DEFAULT,
+    borderRadius: 16,
+    glassEffect: {
+      enabled: true,
+      blurIntensity: 15,
+      glassOpacity: 0.2,
+      borderOpacity: 0.2,
+      shadowIntensity: '0 8px 32px 0 rgba(0, 0, 0, 0.2)'
+    }
   },
 } as const;
 
-// 端口默认配置
 export const PORT_DEFAULTS = {
   RADIUS: SPACING.PORT_RADIUS,
   STROKE_COLOR: COLORS.PORT.STROKE,

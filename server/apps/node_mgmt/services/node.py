@@ -1,9 +1,15 @@
-from datetime import datetime, timezone
+from datetime import timezone
+import time
 
+from apps.core.logger import node_logger
+from apps.core.utils.permission_utils import get_permission_rules
+from apps.node_mgmt.constants.node import NodeConstants
 from apps.node_mgmt.models import NodeCollectorInstallStatus
 from apps.node_mgmt.models.sidecar import Node, Collector, CollectorConfiguration, Action
 from apps.node_mgmt.serializers.node import NodeSerializer
 from datetime import datetime, timedelta
+
+from apps.system_mgmt.models import User
 
 
 class NodeService:
@@ -109,9 +115,33 @@ class NodeService:
             action.save()
 
     @staticmethod
-    def get_node_list(organization_ids, cloud_region_id, name, ip, os, page, page_size, is_active):
+    def get_node_list(organization_ids, cloud_region_id, name, ip, os, page, page_size, is_active, permission_data={}):
         """获取节点列表"""
-        qs = Node.objects.all()
+        start_time = time.time()
+        node_logger.info(f"[get_node_list] 开始查询节点列表, 参数: organization_ids={organization_ids}, cloud_region_id={cloud_region_id}, name={name}, ip={ip}, os={os}, page={page}, page_size={page_size}, is_active={is_active}, has_permission={bool(permission_data)}")
+
+        if permission_data:
+            step_start = time.time()
+            user_obj = User(username=permission_data["username"], domain=permission_data["domain"])
+
+            from apps.core.utils.permission_utils import permission_filter
+            permission = get_permission_rules(
+                user_obj,
+                permission_data["current_team"],
+                "node_mgmt",
+                NodeConstants.MODULE,
+            )
+            node_logger.info(f"[get_node_list] 权限规则获取完成, 耗时: {time.time() - step_start:.3f}s")
+
+            step_start = time.time()
+            # 如果提供了权限信息，使用权限过滤
+            qs = permission_filter(Node, permission, team_key="nodeorganization__organization__in", id_key="id__in")
+            node_logger.info(f"[get_node_list] 权限过滤完成, 耗时: {time.time() - step_start:.3f}s")
+        else:
+            # 兼容原有调用方式
+            qs = Node.objects.all()
+
+        step_start = time.time()
         if cloud_region_id:
             qs = qs.filter(cloud_region_id=cloud_region_id)
         if organization_ids:
@@ -122,7 +152,9 @@ class NodeService:
             qs = qs.filter(ip__icontains=ip)
         if os:
             qs = qs.filter(operating_system__icontains=os)
+        node_logger.info(f"[get_node_list] 筛选条件应用完成, 耗时: {time.time() - step_start:.3f}s")
 
+        step_start = time.time()
         # 获取当前时间前一分钟的utc时间
         now = datetime.now(timezone.utc)
         one_minute_ago = now - timedelta(minutes=1)
@@ -130,13 +162,31 @@ class NodeService:
             qs = qs.filter(updated_at__gte=one_minute_ago)
         elif is_active is False:
             qs = qs.filter(updated_at__lt=one_minute_ago)
+        node_logger.info(f"[get_node_list] 活跃度筛选完成, 耗时: {time.time() - step_start:.3f}s")
 
+        step_start = time.time()
         count = qs.count()
+        node_logger.info(f"[get_node_list] 总数统计完成, count={count}, 耗时: {time.time() - step_start:.3f}s")
+
+        step_start = time.time()
         if page_size == -1:
             nodes = qs
         else:
             start = (page - 1) * page_size
             end = start + page_size
             nodes = qs[start:end]
+        node_logger.info(f"[get_node_list] 分页数据获取完成, 实际获取数量={len(nodes)}, 耗时: {time.time() - step_start:.3f}s")
+
+        step_start = time.time()
         serializer = NodeSerializer(nodes, many=True)
-        return dict(count=count, nodes=serializer.data)
+        node_logger.info(f"[get_node_list] 序列化初始化完成, 耗时: {time.time() - step_start:.3f}s")
+
+        step_start = time.time()
+        # 如果有权限信息，为每个节点添加权限
+        node_data = serializer.data
+        node_logger.info(f"[get_node_list] 序列化数据提取完成, 耗时: {time.time() - step_start:.3f}s")
+
+        total_time = time.time() - start_time
+        node_logger.info(f"[get_node_list] 查询完成, 总耗时: {total_time:.3f}s")
+
+        return dict(count=count, nodes=node_data)

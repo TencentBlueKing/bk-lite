@@ -454,12 +454,14 @@ export const useKnowledgeApi = () => {
 
   const getChunkDetail = async (
     knowledge_id: string,
-    chunk_id: string | null
+    chunk_id: string | null,
+    type: 'Document' | 'QA' | 'Graph' = 'Document'
   ): Promise<any> => {
     return get(`/opspilot/knowledge_mgmt/knowledge_document/get_chunk_detail/`, { 
       params: {
         knowledge_id,
         chunk_id,
+        type,
       },
     });
   };

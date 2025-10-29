@@ -80,11 +80,10 @@ const ProviderPage: React.FC = () => {
     }
   };
 
-  // Update model counts in groups - mainly for updating models array, count comes from API
+  // Update model counts in groups - keep API count value, update models array
   const updateGroupCounts = (models: Model[], groups: ModelGroup[]) => {
     const updatedGroups = groups.map(group => ({
       ...group,
-      // Keep API count value, update models array for filtering
       models: models.filter(model => model.model_type === String(group.id))
     }));
     
@@ -98,7 +97,6 @@ const ProviderPage: React.FC = () => {
     
     setLoading(true);
     try {
-      // Get corresponding provider_type
       const providerType = getProviderType(type);
       
       // Parallel fetch of models and groups data
@@ -117,10 +115,9 @@ const ProviderPage: React.FC = () => {
       
       setModels(mappedData);
       
-      // Update group counts with fetched models and groups
       updateGroupCounts(mappedData, groupsData);
       
-      // Filter models by target group and category (use parameters instead of state to avoid async issue)
+      // Filter models using parameters to avoid async state issues
       filterModelsByGroup(mappedData, targetGroupId, targetCategory);
       
     } catch (error) {
@@ -138,7 +135,6 @@ const ProviderPage: React.FC = () => {
   const filterModelsByGroup = (allModels: Model[], groupId: string, categoryFilter?: string) => {
     let filteredByGroup = allModels;
     
-    // Filter by group
     if (groupId !== 'all') {
       filteredByGroup = allModels.filter(model => 
         String(model.model_type) === groupId
@@ -173,12 +169,11 @@ const ProviderPage: React.FC = () => {
     setModels([]);
     setFilteredModels([]);
     setSelectedGroupId('all');
-    setSelectedCategory('all'); // Reset category filter when switching tabs
+    setSelectedCategory('all');
     setActiveTab(key);
     
     const tab = tabConfig.find((t) => t.key === key);
     if (tab) {
-      // Pass 'all' for both group and category to ensure correct filtering
       fetchModelsData(tab.type, 'all', 'all');
     }
   };
@@ -190,7 +185,6 @@ const ProviderPage: React.FC = () => {
     } else {
       let currentModels = models;
       
-      // Filter by group
       if (selectedGroupId !== 'all') {
         currentModels = currentModels.filter(model => 
           String(model.model_type) === selectedGroupId
@@ -203,7 +197,6 @@ const ProviderPage: React.FC = () => {
         currentModels = currentModels.filter(model => model.label === selectedCategory);
       }
       
-      // Filter by search term
       setFilteredModels(
         currentModels.filter((model) =>
           model.name?.toLowerCase().includes(term)
@@ -315,9 +308,8 @@ const ProviderPage: React.FC = () => {
       name: values.name,
       enabled: values.enabled,
       team: values.team,
-      consumer_team: values.consumer_team,
       label: values.label,
-      model_type: selectedGroupId !== 'all' ? Number(selectedGroupId) : undefined,
+      model_type: values.model_type,
     };
 
     // Build payload based on provider type
@@ -376,7 +368,6 @@ const ProviderPage: React.FC = () => {
   const refreshData = async () => {
     const currentTab = tabConfig.find((tab) => tab.key === activeTab);
     if (currentTab) {
-      // Use current selectedGroupId and selectedCategory for refresh
       await fetchModelsData(currentTab.type, selectedGroupId, selectedCategory);
     }
   };

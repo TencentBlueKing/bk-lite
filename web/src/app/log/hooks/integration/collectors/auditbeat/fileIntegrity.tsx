@@ -3,6 +3,7 @@ import { IntegrationLogInstance } from '@/app/log/types/integration';
 import { TableDataItem } from '@/app/log/types';
 import { useFileIntegrityAuditbeatFormItems } from '../../common/fileIntegrityAuditbeatFormItems';
 import { cloneDeep } from 'lodash';
+import { v4 as uuidv4 } from 'uuid';
 
 export const useAuditbeatConfig = () => {
   const commonFormItems = useFileIntegrityAuditbeatFormItems();
@@ -22,7 +23,11 @@ export const useAuditbeatConfig = () => {
       const configs = {
         auto: {
           formItems: commonFormItems.getCommonFormItems(),
-          initTableItems: {},
+          initTableItems: {
+            instance_id: `${pluginConfig.collector}-${
+              pluginConfig.collect_type
+            }-${uuidv4()}`,
+          },
           defaultForm: {
             paths: ['/bin', '/usr/bin', '/sbin', '/usr/sbin', '/etc'],
           },

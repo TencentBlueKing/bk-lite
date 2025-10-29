@@ -1,0 +1,16 @@
+[
+    {
+        "id": "exporter_oracle_linux",
+        "name": "Oracle-Exporter",
+        "controller_default_run": false,
+        "icon": "",
+        "node_operating_system": "linux",
+        "service_type": "exec",
+        "executable_path": "/opt/fusion-collectors/bin/oracle_exporter",
+        "execute_parameters": "--host $HOST --port $PORT --web.listen-address 127.0.0.1:$LISTEN_PORT --isASM --isRAC --isArchiveLog --isDataGuard",
+        "validation_parameters": "",
+        "default_template": "",
+        "introduction": "Oracle Exporter is a monitoring tool that collects and exports Oracle database metrics, providing insights into database performance and health."
+    }
+]
+

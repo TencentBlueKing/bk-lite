@@ -21,7 +21,6 @@ class LLMModel(models.Model, EncryptMixin):
     team = models.JSONField(default=list)
     is_build_in = models.BooleanField(default=True, verbose_name="是否内置")
     is_demo = models.BooleanField(default=False)
-    consumer_team = models.CharField(default="", blank=True, null=True, max_length=64)
     model_type = models.ForeignKey("ModelType", on_delete=models.SET_NULL, verbose_name="模型类型", blank=True, null=True)
     label = models.CharField(max_length=100, verbose_name="标签", blank=True, null=True)
 
@@ -169,17 +168,14 @@ class LLMSkill(MaintainerInfo):
     tools = models.JSONField(default=list)
 
     temperature = models.FloatField(default=0.7, verbose_name="温度")
-    skill_type = models.IntegerField(
-        choices=SkillTypeChoices.choices, default=SkillTypeChoices.BASIC_TOOL, verbose_name="技能类型"
-    )
+    skill_type = models.IntegerField(choices=SkillTypeChoices.choices, default=SkillTypeChoices.BASIC_TOOL, verbose_name="技能类型")
     enable_rag_strict_mode = models.BooleanField(default=False, verbose_name="启用RAG严格模式")
     is_template = models.BooleanField(default=False, verbose_name="是否模板")
     enable_km_route = models.BooleanField(default=False, verbose_name="启用知识库路由")
-    km_llm_model = models.ForeignKey(
-        "LLMModel", on_delete=models.CASCADE, blank=True, null=True, related_name="km_llm_model"
-    )
+    km_llm_model = models.ForeignKey("LLMModel", on_delete=models.CASCADE, blank=True, null=True, related_name="km_llm_model")
     guide = models.TextField(default="", verbose_name="技能引导", blank=True, null=True)
     enable_suggest = models.BooleanField(default=False, verbose_name="启用建议")
+    enable_query_rewrite = models.BooleanField(default=False, verbose_name="问题优化")
 
     def __str__(self):
         return self.name
@@ -236,15 +232,3 @@ class ModelType(models.Model):
     is_build_in = models.BooleanField(default=False)
     index = models.IntegerField(default=0, verbose_name="排序")
     tags = models.JSONField(default=list)
-
-
-class TokenConsumption(models.Model):
-    bot_id = models.IntegerField(default=0, db_index=True)
-    created_at = models.DateTimeField(auto_now_add=True)
-    input_tokens = models.BigIntegerField()
-    output_tokens = models.BigIntegerField()
-    username = models.CharField(max_length=100)
-    user_id = models.CharField(max_length=100)
-
-    class Meta:
-        db_table = "model_provider_mgmt_tokenconsumption"

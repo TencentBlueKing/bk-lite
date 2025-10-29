@@ -7,7 +7,7 @@ import { message } from 'antd';
 import { v4 as uuidv4 } from 'uuid';
 import { useTranslation } from '@/utils/i18n';
 import { COLORS } from '../constants/nodeDefaults';
-import { createEdgeLabel, getEdgeStyle } from '../utils/topologyUtils';
+import { createEdgeLabel, getEdgeStyleWithConfig } from '../utils/topologyUtils';
 import { createEdgeByType } from '../utils/registerEdge';
 import {
   TopologyState,
@@ -43,7 +43,16 @@ export const useContextMenuAndModal = (
   } = state;
 
   const handleEdgeConfigConfirm = useCallback(
-    (values: { lineType: 'common_line' | 'network_line'; lineName?: string; styleConfig?: { lineColor?: string } }) => {
+    (values: {
+      lineType: 'common_line' | 'network_line';
+      lineName?: string;
+      styleConfig?: {
+        lineColor?: string;
+        lineWidth?: number;
+        lineStyle?: 'line' | 'dotted' | 'point';
+        enableAnimation?: boolean;
+      }
+    }) => {
       if (!currentEdgeData?.id || !graphInstance) return;
 
       const edge = graphInstance.getCellById(currentEdgeData.id) as Edge;
@@ -59,13 +68,39 @@ export const useContextMenuAndModal = (
         vertices: currentVertices
       });
 
-      if (values.styleConfig?.lineColor) {
-        edge.setAttrs({
-          line: {
-            ...edge.getAttrs().line,
-            stroke: values.styleConfig.lineColor,
-          },
-        });
+      if (values.styleConfig) {
+        const lineAttrs: any = {
+          ...edge.getAttrs().line,
+        };
+
+        if (values.styleConfig.lineColor) {
+          lineAttrs.stroke = values.styleConfig.lineColor;
+        }
+
+        if (values.styleConfig.lineWidth) {
+          lineAttrs.strokeWidth = values.styleConfig.lineWidth;
+        }
+
+        if (values.styleConfig.lineStyle === 'dotted') {
+          lineAttrs.strokeDasharray = '3 3';
+        } else if (values.styleConfig.lineStyle === 'point') {
+          lineAttrs.strokeDasharray = '1 3';
+        } else if (values.styleConfig.lineStyle === 'line') {
+          lineAttrs.strokeDasharray = null;
+        }
+
+        const arrowDirection = currentEdgeData.arrowDirection || 'single';
+        if (
+          arrowDirection === 'single' &&
+          values.styleConfig.enableAnimation &&
+          (values.styleConfig.lineStyle === 'dotted' || values.styleConfig.lineStyle === 'point')
+        ) {
+          lineAttrs.class = 'edge-flow-animation';
+        } else {
+          lineAttrs.class = null;
+        }
+
+        edge.setAttrs({ line: lineAttrs });
       }
 
       if (values.lineType === 'network_line') {
@@ -82,10 +117,7 @@ export const useContextMenuAndModal = (
         ...currentEdgeData,
         lineType: values.lineType,
         lineName: values.lineName,
-        styleConfig: {
-          ...currentEdgeData.styleConfig,
-          lineColor: values.styleConfig?.lineColor
-        }
+        styleConfig: values.styleConfig
       });
     },
     [currentEdgeData, graphInstance, setCurrentEdgeData]
@@ -113,6 +145,7 @@ export const useContextMenuAndModal = (
           id: edge.id,
           lineType: edgeData.lineType || 'common_line',
           lineName: edgeData.lineName || '',
+          arrowDirection: edgeData.arrowDirection,
           styleConfig: edgeData.styleConfig || { lineColor: COLORS.EDGE.DEFAULT, },
           sourceNode: {
             id: sourceNode.id,
@@ -155,16 +188,20 @@ export const useContextMenuAndModal = (
       if (key === 'bringToFront') {
         targetNode.toFront();
         newZIndex = targetNode.getZIndex() || 0;
-        message.success('节点已置顶');
+        message.success(t('topology.layerMessages.bringToFrontSuccess'));
+      } else if (key === 'bringToBack') {
+        targetNode.toBack();
+        newZIndex = targetNode.getZIndex() || 0;
+        message.success(t('topology.layerMessages.bringToBackSuccess'));
       } else if (key === 'bringForward') {
         const maxZIndex = Math.max(...cells.map(cell => cell.getZIndex() || 0));
 
         if (currentZIndex < maxZIndex) {
           newZIndex = currentZIndex + 1;
           targetNode.setZIndex(newZIndex);
-          message.success(`节点上移一层，当前层级: ${newZIndex}`);
+          message.success(t('topology.layerMessages.bringForwardSuccess').replace('{zIndex}', String(newZIndex)));
         } else {
-          message.info('节点已在最顶层');
+          message.info(t('topology.layerMessages.alreadyTop'));
           return true;
         }
       } else if (key === 'sendBackward') {
@@ -173,9 +210,9 @@ export const useContextMenuAndModal = (
         if (currentZIndex > minZIndex && currentZIndex > 0) {
           newZIndex = Math.max(0, currentZIndex - 1);
           targetNode.setZIndex(newZIndex);
-          message.success(`节点下移一层，当前层级: ${newZIndex}`);
+          message.success(t('topology.layerMessages.sendBackwardSuccess').replace('{zIndex}', String(newZIndex)));
         } else {
-          message.info('节点已在最底层');
+          message.info(t('topology.layerMessages.alreadyBottom'));
           return true;
         }
       } else {
@@ -209,15 +246,15 @@ export const useContextMenuAndModal = (
         };
         state.setEditingNodeData(chartNodeData);
         state.setViewConfigVisible(true);
-      } else if (clickedNodeData?.type !== 'text') {
-        const iconWidth = clickedNodeData.styleConfig?.width;
-        const iconHeight = clickedNodeData.styleConfig?.height;
+      } else {
+        const nodeWidth = clickedNodeData.styleConfig?.width;
+        const nodeHeight = clickedNodeData.styleConfig?.height;
         state.setEditingNodeData({
           ...clickedNodeData,
           id: selectedCell.id,
           label: selectedCell.prop('label'),
-          width: iconWidth,
-          height: iconHeight,
+          width: nodeWidth,
+          height: nodeHeight,
         });
         state.setNodeEditVisible(true);
       }
@@ -311,10 +348,18 @@ export const useContextMenuAndModal = (
         const currentPoint = getCurrentMousePosition(e);
 
         if (!tempEdge) {
+          // 临时边的默认样式配置
+          const tempEdgeStyleConfig = {
+            lineColor: COLORS.EDGE.DEFAULT,
+            lineWidth: 1,
+            lineStyle: 'line' as const,
+            enableAnimation: false,
+          };
+
           tempEdge = graphInstance.addEdge({
             source: { cell: contextMenuNodeId },
             target: currentPoint,
-            ...getEdgeStyle(connectionType),
+            ...getEdgeStyleWithConfig(connectionType, tempEdgeStyleConfig),
             data: { connectionType, isTemporary: true },
             zIndex: 1000,
           });

@@ -1,10 +1,8 @@
 'use client';
 
-import React, { useState, useRef, useEffect } from 'react';
-import { Spin, Select, Tooltip, Segmented } from 'antd';
-import { BellOutlined, SearchOutlined } from '@ant-design/icons';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
+import { Spin, Select, Segmented } from 'antd';
 import TimeSelector from '@/components/time-selector';
-import LineChart from '@/app/monitor/components/charts/lineChart';
 import Collapse from '@/components/collapse';
 import useApiClient from '@/utils/request';
 import useMonitorApi from '@/app/monitor/api';
@@ -12,25 +10,21 @@ import {
   TableDataItem,
   TimeSelectorDefaultValue,
   TimeValuesProps,
-} from '@/app/monitor/types';
-import {
-  MetricItem,
   GroupInfo,
+  MetricItem,
   IndexViewItem,
-  SearchParams,
-  ViewModalProps,
-} from '@/app/monitor/types/monitor';
+} from '@/app/monitor/types';
+import { ViewModalProps } from '@/app/monitor/types/view';
+import { SearchParams } from '@/app/monitor/types/search';
 import { useTranslation } from '@/utils/i18n';
 import {
-  deepClone,
-  findUnitNameById,
   mergeViewQueryKeyValues,
   renderChart,
   getRecentTimeRange,
 } from '@/app/monitor/utils/common';
 import dayjs, { Dayjs } from 'dayjs';
-import Icon from '@/components/icon';
-import { INIT_VIEW_MODAL_FORM } from '@/app/monitor/constants/monitor';
+import { INIT_VIEW_MODAL_FORM } from '@/app/monitor/constants/view';
+import LazyMetricItem from './lazyMetricItem';
 
 const MonitorView: React.FC<ViewModalProps> = ({
   monitorObject,
@@ -39,8 +33,8 @@ const MonitorView: React.FC<ViewModalProps> = ({
   form = INIT_VIEW_MODAL_FORM,
 }) => {
   const { isLoading } = useApiClient();
-  const { getMetricsGroup, getMonitorMetrics, getInstanceQuery } =
-    useMonitorApi();
+  const { get } = useApiClient();
+  const { getMetricsGroup, getMonitorMetrics } = useMonitorApi();
   const { t } = useTranslation();
   const timerRef = useRef<NodeJS.Timeout | null>(null);
   const [loading, setLoading] = useState<boolean>(false);
@@ -57,8 +51,89 @@ const MonitorView: React.FC<ViewModalProps> = ({
   const [frequence, setFrequence] = useState<number>(0);
   const [metricData, setMetricData] = useState<IndexViewItem[]>([]);
   const [originMetricData, setOriginMetricData] = useState<IndexViewItem[]>([]);
-  const [expandId, setExpandId] = useState<number>(0);
   const [activeTab, setActiveTab] = useState<string>('');
+  const [expandedIds, setExpandedIds] = useState<Set<number>>(new Set());
+  const [loadedMetricIds, setLoadedMetricIds] = useState<Set<number>>(
+    new Set()
+  );
+  const [loadingMetricIds, setLoadingMetricIds] = useState<Set<number>>(
+    new Set()
+  );
+  const [resetCounter, setResetCounter] = useState<number>(0);
+  const [needsRefreshOnExpand, setNeedsRefreshOnExpand] =
+    useState<boolean>(false);
+
+  const [cancelledMetricIds, setCancelledMetricIds] = useState<Set<number>>(
+    new Set()
+  );
+  // 跟踪当前可视区域内的指标
+  const [visibleMetricIds, setVisibleMetricIds] = useState<Set<number>>(
+    new Set()
+  );
+
+  // 请求并发控制
+  const MAX_CONCURRENT_REQUESTS = 12;
+  const activeRequestsRef = useRef<Map<number, AbortController>>(new Map());
+  const requestQueueRef = useRef<number[]>([]);
+
+  const cancelRequest = (metricId: number) => {
+    const abortController = activeRequestsRef.current.get(metricId);
+    if (abortController) {
+      abortController.abort();
+      activeRequestsRef.current.delete(metricId);
+    }
+    requestQueueRef.current = requestQueueRef.current.filter(
+      (id) => id !== metricId
+    );
+
+    setCancelledMetricIds((prev) => new Set(prev).add(metricId));
+
+    setLoadingMetricIds((prev) => {
+      const newSet = new Set(prev);
+      newSet.delete(metricId);
+      return newSet;
+    });
+
+    setLoadedMetricIds((prev) => {
+      const newSet = new Set(prev);
+      newSet.delete(metricId);
+      return newSet;
+    });
+  };
+
+  const cancelAllRequests = () => {
+    const cancelledIds = Array.from(activeRequestsRef.current.keys());
+
+    activeRequestsRef.current.forEach((abortController) => {
+      abortController.abort();
+    });
+    activeRequestsRef.current.clear();
+    requestQueueRef.current = [];
+
+    setCancelledMetricIds((prev) => {
+      const newSet = new Set(prev);
+      cancelledIds.forEach((id) => newSet.add(id));
+      return newSet;
+    });
+
+    setLoadingMetricIds(new Set());
+  };
+
+  const manageRequestQueue = (newMetricId: number) => {
+    if (activeRequestsRef.current.size >= MAX_CONCURRENT_REQUESTS) {
+      const oldestMetricId = requestQueueRef.current.shift();
+      if (oldestMetricId !== undefined) {
+        cancelRequest(oldestMetricId);
+        setLoadingMetricIds((prev) => {
+          const newSet = new Set(prev);
+          newSet.delete(oldestMetricId);
+          return newSet;
+        });
+      }
+    }
+
+    requestQueueRef.current.push(newMetricId);
+  };
 
   useEffect(() => {
     if (isLoading) {
@@ -67,6 +142,7 @@ const MonitorView: React.FC<ViewModalProps> = ({
     if (form?.instance_id_values.length) {
       const _activeTab = plugins[0]?.value || '';
       setActiveTab(_activeTab);
+      setNeedsRefreshOnExpand(true);
       getInitData(_activeTab);
     }
   }, [isLoading, form]);
@@ -85,12 +161,27 @@ const MonitorView: React.FC<ViewModalProps> = ({
     handleSearch('refresh');
   }, [timeValues]);
 
+  // 组件卸载时取消所有请求
+  useEffect(() => {
+    return () => {
+      cancelAllRequests();
+      clearTimer();
+    };
+  }, []);
+
   const onTabChange = (val: string) => {
     setActiveTab(val);
     setMetricId(null);
+    cancelAllRequests();
+    setResetCounter((prev) => prev + 1);
+    setNeedsRefreshOnExpand(true);
+    setVisibleMetricIds(new Set());
+
+    // 切换tab时重新初始化（需要重新获取该tab下的数据）
     getInitData(val);
   };
 
+  // 初始化数据，包括分组和指标列表（只在弹窗时调用一次）
   const getInitData = async (tab: string) => {
     const params = {
       monitor_object_id: monitorObject,
@@ -102,9 +193,9 @@ const MonitorView: React.FC<ViewModalProps> = ({
     try {
       Promise.all([getGroupList, getMetrics])
         .then((res) => {
-          const groupData = res[0].map((item: GroupInfo, index: number) => ({
+          const groupData = res[0].map((item: GroupInfo) => ({
             ...item,
-            isLoading: !index,
+            isLoading: false,
             child: [],
           }));
           const metricData = res[1];
@@ -122,10 +213,17 @@ const MonitorView: React.FC<ViewModalProps> = ({
           const _groupData = groupData.filter(
             (item: IndexViewItem) => !!item.child?.length
           );
-          setExpandId(_groupData[0]?.id || 0);
           setMetricData(_groupData);
           setOriginMetricData(_groupData);
-          fetchViewData(_groupData, _groupData[0]?.id || 0);
+          if (_groupData.length > 0) {
+            setExpandedIds(
+              new Set(_groupData.map((group: IndexViewItem) => group.id))
+            );
+          }
+          setLoadedMetricIds(new Set());
+          setLoadingMetricIds(new Set());
+          setCancelledMetricIds(new Set());
+          setVisibleMetricIds(new Set());
         })
         .finally(() => {
           setLoading(false);
@@ -133,6 +231,46 @@ const MonitorView: React.FC<ViewModalProps> = ({
     } catch {
       setLoading(false);
     }
+  };
+
+  // 清空所有指标数据，但保留分组结构，并根据当前筛选状态决定显示内容
+  const clearAllMetricData = () => {
+    let clearedData;
+
+    if (metricId) {
+      // 如果有选中的指标，只显示该指标所在的分组
+      clearedData = originMetricData
+        .map((group) => ({
+          ...group,
+          isLoading: false,
+          child: (group?.child || [])
+            .filter((item) => item.id === metricId)
+            .map((item) => ({
+              ...item,
+              viewData: [],
+            })),
+        }))
+        .filter((item) => item.child?.find((tex) => tex.id === metricId));
+    } else {
+      // 如果没有选中指标，显示所有分组和指标
+      clearedData = originMetricData.map((group) => ({
+        ...group,
+        child: (group.child || []).map((item) => ({
+          ...item,
+          viewData: [],
+        })),
+      }));
+    }
+
+    setMetricData(clearedData);
+    // 更新展开状态
+    if (clearedData.length > 0) {
+      setExpandedIds(new Set(clearedData.map((group) => group.id)));
+    }
+    setLoadedMetricIds(new Set());
+    setLoadingMetricIds(new Set());
+    setCancelledMetricIds(new Set());
+    setVisibleMetricIds(new Set());
   };
 
   const getParams = (item: MetricItem, ids: string[]) => {
@@ -147,8 +285,8 @@ const MonitorView: React.FC<ViewModalProps> = ({
     const recentTimeRange = getRecentTimeRange(timeValues);
     const startTime = recentTimeRange.at(0);
     const endTime = recentTimeRange.at(1);
-    const MAX_POINTS = 100; // 最大数据点数
-    const DEFAULT_STEP = 360; // 默认步长
+    const MAX_POINTS = 100;
+    const DEFAULT_STEP = 360;
     if (startTime && endTime) {
       params.start = startTime;
       params.end = endTime;
@@ -162,41 +300,158 @@ const MonitorView: React.FC<ViewModalProps> = ({
     return params;
   };
 
-  const fetchViewData = async (data: IndexViewItem[], groupId: number) => {
-    const metricList = data.find((item) => item.id === groupId)?.child || [];
-    const requestQueue = metricList.map((item) =>
-      getInstanceQuery(getParams(item, form?.instance_id_values || [])).then(
-        (response) => ({
-          id: item.id,
-          data: response.data.result || [],
-        })
-      )
-    );
-    try {
-      const results = await Promise.all(requestQueue);
-      results.forEach((result) => {
-        const metricItem = metricList.find((item) => item.id === result.id);
-        if (metricItem) {
-          const instanceRow = [
-            {
-              instance_id_values: form.instance_id_values,
-              instance_name: form.instance_name,
-              instance_id_keys: metricItem?.instance_id_keys,
-              dimensions: metricItem?.dimensions || [],
-              title: metricItem?.display_name || '--',
-            },
-          ];
-          metricItem.viewData = renderChart(result.data || [], instanceRow);
-        }
+  const fetchSingleMetricData = async (metric: MetricItem) => {
+    if (loadedMetricIds.has(metric.id) && !cancelledMetricIds.has(metric.id)) {
+      return;
+    }
+
+    if (loadingMetricIds.has(metric.id)) {
+      return;
+    }
+
+    const isCancelledRequest = cancelledMetricIds.has(metric.id);
+    if (isCancelledRequest) {
+      setCancelledMetricIds((prev) => {
+        const newSet = new Set(prev);
+        newSet.delete(metric.id);
+        return newSet;
       });
-    } catch (error) {
-      console.error('Error fetching view data:', error);
+    }
+
+    const abortController = new AbortController();
+
+    activeRequestsRef.current.set(metric.id, abortController);
+
+    manageRequestQueue(metric.id);
+
+    const currentController = activeRequestsRef.current.get(metric.id);
+    if (!currentController || currentController.signal.aborted) {
+      return;
+    }
+
+    setLoadingMetricIds((prev) => new Set(prev).add(metric.id));
+
+    let response;
+
+    try {
+      const params = getParams(metric, form?.instance_id_values || []);
+
+      response = await get(`/monitor/api/metrics_instance/query_range/`, {
+        params,
+        signal: abortController.signal,
+      });
+    } catch (error: any) {
+      if (error.name === 'AbortError') {
+        return;
+      }
+
+      return;
+    }
+
+    try {
+      const instanceRow = [
+        {
+          instance_id_values: form.instance_id_values,
+          instance_name: form.instance_name,
+          instance_id_keys: metric?.instance_id_keys || [],
+          dimensions: metric?.dimensions || [],
+          title: metric?.display_name || '--',
+        },
+      ];
+
+      let chartData = [];
+      if (response && response.data && response.data.result) {
+        chartData = response.data.result;
+      } else if (response && response.data) {
+        chartData = Array.isArray(response.data) ? response.data : [];
+      } else if (Array.isArray(response)) {
+        chartData = response;
+      }
+
+      const viewData = renderChart(chartData, instanceRow);
+
+      setMetricData((prevData) => {
+        const updatedData = prevData.map((group) => ({
+          ...group,
+          child: (group.child || []).map((item) =>
+            item.id === metric.id
+              ? {
+                ...item,
+                viewData: viewData,
+              }
+              : item
+          ),
+        }));
+
+        return updatedData;
+      });
+
+      // 同时更新originMetricData，保持数据同步
+      setOriginMetricData((prevData) => {
+        const updatedData = prevData.map((group) => ({
+          ...group,
+          child: (group.child || []).map((item) =>
+            item.id === metric.id
+              ? {
+                ...item,
+                viewData: viewData,
+              }
+              : item
+          ),
+        }));
+
+        return updatedData;
+      });
+
+      setLoadedMetricIds((prev) => {
+        const newSet = new Set(prev).add(metric.id);
+        return newSet;
+      });
+
+      setCancelledMetricIds((prev) => {
+        if (prev.has(metric.id)) {
+          const newSet = new Set(prev);
+          newSet.delete(metric.id);
+          return newSet;
+        }
+        return prev;
+      });
+
+      if (needsRefreshOnExpand) {
+        setNeedsRefreshOnExpand(false);
+      }
+    } catch (error: any) {
+      if (error.name === 'CancelledError') {
+        setCancelledMetricIds((prev) => {
+          const newSet = new Set(prev);
+          newSet.add(metric.id);
+          return newSet;
+        });
+        return;
+      }
+
+      return;
     } finally {
-      const _data = deepClone(data).map((item: IndexViewItem) => ({
-        ...item,
-        isLoading: false,
-      }));
-      setMetricData(_data);
+      if (activeRequestsRef.current.get(metric.id) === abortController) {
+        activeRequestsRef.current.delete(metric.id);
+        requestQueueRef.current = requestQueueRef.current.filter(
+          (id) => id !== metric.id
+        );
+      }
+
+      setLoadingMetricIds((prev) => {
+        const newSet = new Set(prev);
+        newSet.delete(metric.id);
+        return newSet;
+      });
+
+      if (abortController.signal.aborted) {
+        setLoadedMetricIds((prev) => {
+          const newSet = new Set(prev);
+          newSet.delete(metric.id);
+          return newSet;
+        });
+      }
     }
   };
 
@@ -217,65 +472,140 @@ const MonitorView: React.FC<ViewModalProps> = ({
   };
 
   const onRefresh = () => {
+    setNeedsRefreshOnExpand(true);
     handleSearch('refresh');
   };
 
-  const handleSearch = (type?: string) => {
-    const _metricData = deepClone(metricData);
-    const target = _metricData.find(
-      (item: IndexViewItem) => item.id === expandId
-    );
-    if (type === 'refresh' && target) {
-      target.isLoading = true;
+  const handleSearch = (type: string) => {
+    if (['refresh', 'timer'].includes(type)) {
+      cancelAllRequests();
+      setResetCounter((prev) => prev + 1);
+      setNeedsRefreshOnExpand(true);
+
+      // 使用新的clearAllMetricData函数清空所有指标数据
+      clearAllMetricData();
     }
-    setMetricData(_metricData);
-    fetchViewData(_metricData, expandId);
   };
 
   const handleMetricIdChange = (val: number) => {
     setMetricId(val);
+
+    cancelAllRequests();
+    setLoadedMetricIds(new Set());
+    setLoadingMetricIds(new Set());
+    setVisibleMetricIds(new Set());
+    setResetCounter((prev) => prev + 1);
+    setNeedsRefreshOnExpand(true);
+
     if (val) {
       const filteredData = originMetricData
         .map((group) => ({
           ...group,
           isLoading: false,
-          child: (group?.child || []).filter((item) => item.id === val),
+          child: (group?.child || [])
+            .filter((item) => item.id === val)
+            .map((item) => ({
+              ...item,
+              viewData: [],
+            })),
         }))
         .filter((item) => item.child?.find((tex) => tex.id === val));
-      const target = filteredData.find((item) =>
-        item.child?.find((tex) => tex.id === val)
-      );
-      if (target) {
-        target.isLoading = true;
-        const _groupId = target?.id || 0;
-        setExpandId(_groupId);
-        setMetricData(filteredData);
-        fetchViewData(filteredData, _groupId);
+
+      setMetricData(filteredData);
+      if (filteredData.length > 0) {
+        setExpandedIds(new Set(filteredData.map((group) => group.id)));
       }
     } else {
-      getInitData(activeTab);
+      // 切换回全部时，清空所有指标的viewData，但保留分组结构
+      const clearedData = originMetricData.map((group) => ({
+        ...group,
+        child: (group.child || []).map((item) => ({
+          ...item,
+          viewData: [], // 清空所有指标数据，让它们重新请求
+        })),
+      }));
+
+      setMetricData(clearedData);
+      setOriginMetricData(clearedData); // 同步更新originMetricData
+      setExpandedIds(
+        new Set(clearedData.map((group: IndexViewItem) => group.id))
+      );
     }
   };
 
+  const handleMetricVisible = useCallback(
+    (metric: MetricItem) => {
+      fetchSingleMetricData(metric);
+    },
+    [
+      loadedMetricIds,
+      loadingMetricIds,
+      cancelledMetricIds,
+      fetchSingleMetricData,
+    ]
+  );
+
+  // 处理指标可视性变化
+  const handleVisibilityChange = useCallback(
+    (metricId: number, isVisible: boolean) => {
+      setVisibleMetricIds((prev) => {
+        const newSet = new Set(prev);
+        if (isVisible) {
+          newSet.add(metricId);
+        } else {
+          newSet.delete(metricId);
+        }
+        return newSet;
+      });
+    },
+    []
+  );
+
   const toggleGroup = (expanded: boolean, groupId: number) => {
     if (expanded) {
-      const _metricData = deepClone(metricData);
-      _metricData.forEach((item: IndexViewItem) => {
-        item.isLoading = false;
-      });
-      const targetIndex = _metricData.findIndex(
-        (item: IndexViewItem) => item.id === groupId
-      );
-      if (targetIndex !== -1) {
-        _metricData[targetIndex].isLoading = true;
+      setExpandedIds((prev) => new Set(prev).add(groupId));
+
+      if (needsRefreshOnExpand) {
+        const groupMetrics =
+          metricData.find((group) => group.id === groupId)?.child || [];
+        setLoadedMetricIds((prev) => {
+          const newSet = new Set(prev);
+          groupMetrics.forEach((metric) => newSet.delete(metric.id));
+          return newSet;
+        });
+
+        setMetricData((prevData) =>
+          prevData.map((group) =>
+            group.id === groupId
+              ? {
+                ...group,
+                child: (group.child || []).map((item) => ({
+                  ...item,
+                  viewData: [],
+                })),
+              }
+              : group
+          )
+        );
       }
-      setExpandId(groupId);
-      setMetricData(_metricData);
-      fetchViewData(_metricData, groupId);
+    } else {
+      setExpandedIds((prev) => {
+        const newSet = new Set(prev);
+        newSet.delete(groupId);
+        return newSet;
+      });
     }
   };
 
   const onXRangeChange = (arr: [Dayjs, Dayjs]) => {
+    // 取消所有正在进行的请求
+    cancelAllRequests();
+    setResetCounter((prev) => prev + 1);
+    setNeedsRefreshOnExpand(true);
+
+    // 清空所有指标数据，但保留分组结构和当前筛选状态
+    clearAllMetricData();
+
     setTimeDefaultValue((pre) => ({
       ...pre,
       rangePickerVaule: arr,
@@ -347,87 +677,29 @@ const MonitorView: React.FC<ViewModalProps> = ({
       <div className="groupList">
         <Spin spinning={loading}>
           {metricData.map((metricItem) => (
-            <Spin
-              className="w-full"
-              key={metricItem.id}
-              spinning={metricItem.isLoading}
-            >
+            <Spin className="w-full" key={metricItem.id} spinning={false}>
               <Collapse
                 className="mb-[10px]"
                 title={metricItem.display_name || ''}
-                isOpen={metricItem.id === expandId}
+                isOpen={expandedIds.has(metricItem.id)}
                 onToggle={(expanded) => toggleGroup(expanded, metricItem.id)}
               >
                 <div className="flex flex-wrap justify-between">
                   {(metricItem.child || []).map((item) => (
-                    <div
-                      key={item.id}
-                      className="w-[49%] border border-[var(--color-border-1)] p-[10px] mb-[10px]"
-                    >
-                      <div className="flex justify-between items-center">
-                        <span className="text-[14px] relative">
-                          <span className="font-[600] mr-[2px]">
-                            {item.display_name}
-                          </span>
-                          <span className="text-[var(--color-text-3)] text-[12px]">
-                            {`${
-                              findUnitNameById(item.unit)
-                                ? '（' + findUnitNameById(item.unit) + '）'
-                                : ''
-                            }`}
-                          </span>
-                          <Tooltip
-                            placement="topLeft"
-                            title={item.display_description}
-                          >
-                            <div
-                              className="absolute cursor-pointer inline-block"
-                              style={{
-                                top: '-3px',
-                                right: '-14px',
-                              }}
-                            >
-                              <Icon
-                                type="a-shuoming2"
-                                className="text-[14px] text-[var(--color-text-3)]"
-                              />
-                            </div>
-                          </Tooltip>
-                        </span>
-                        <div className="text-[var(--color-text-3)]">
-                          <Tooltip
-                            placement="topRight"
-                            title={t('monitor.views.quickSearch')}
-                          >
-                            <SearchOutlined
-                              className="cursor-pointer"
-                              onClick={() => {
-                                linkToSearch(item);
-                              }}
-                            />
-                          </Tooltip>
-                          <Tooltip
-                            placement="topRight"
-                            title={t('monitor.events.createPolicy')}
-                          >
-                            <BellOutlined
-                              className="ml-[6px] cursor-pointer"
-                              onClick={() => {
-                                linkToPolicy(item);
-                              }}
-                            />
-                          </Tooltip>
-                        </div>
-                      </div>
-                      <div className="h-[200px] mt-[10px]">
-                        <LineChart
-                          metric={item}
-                          data={item.viewData || []}
-                          unit={item.unit}
-                          onXRangeChange={onXRangeChange}
-                        />
-                      </div>
-                    </div>
+                    <LazyMetricItem
+                      key={`${item.id}-${resetCounter}`}
+                      item={item}
+                      isLoading={loadingMetricIds.has(item.id)}
+                      onVisible={handleMetricVisible}
+                      onSearchClick={linkToSearch}
+                      onPolicyClick={linkToPolicy}
+                      onXRangeChange={onXRangeChange}
+                      resetKey={resetCounter}
+                      isLoaded={loadedMetricIds.has(item.id)}
+                      isCancelled={cancelledMetricIds.has(item.id)}
+                      onVisibilityChange={handleVisibilityChange}
+                      isInViewport={visibleMetricIds.has(item.id)}
+                    />
                   ))}
                 </div>
               </Collapse>
@@ -438,4 +710,5 @@ const MonitorView: React.FC<ViewModalProps> = ({
     </div>
   );
 };
+
 export default MonitorView;

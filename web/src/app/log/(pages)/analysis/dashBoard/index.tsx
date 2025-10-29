@@ -47,7 +47,7 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
     const [originalOtherConfig, setOriginalOtherConfig] = useState<any>({});
     const [pageLoading, setPageLoading] = useState<boolean>(false);
     const timeDefaultValue: TimeSelectorDefaultValue = {
-      selectValue: 10080,
+      selectValue: 15,
       rangePickerVaule: null,
     };
     const [groups, setGroups] = useState<React.Key[]>([]);

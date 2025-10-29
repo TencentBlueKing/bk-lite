@@ -99,10 +99,8 @@ class KubernetesClient(object):
             "replicas": bot.replica_count,
             "api_key": bot.api_token,
             "base_url": settings.MUNCHKIN_BASE_URL,
-            "rabbitmq_host": settings.CONVERSATION_MQ_HOST,
-            "rabbitmq_port": settings.CONVERSATION_MQ_PORT,
-            "rabbitmq_user": settings.CONVERSATION_MQ_USER,
-            "rabbitmq_password": settings.CONVERSATION_MQ_PASSWORD,
+            "nats_url": settings.NATS_SERVERS,
+            "nats_namespace": settings.NATS_NAMESPACE,
             "enable_ssl": bot.enable_ssl,
             "bot_domain": bot.bot_domain or "",
             "enable_nodeport": bot.enable_node_port,
@@ -114,9 +112,7 @@ class KubernetesClient(object):
             logger.info("尝试加载模板: pilot/deployment.yml")
             deployment_template = core_template.get_template("pilot/deployment.yml")
             deployment = deployment_template.render(dynamic_dict)
-            self.app_api.create_namespaced_deployment(
-                namespace=settings.KUBE_NAMESPACE, body=yaml.safe_load(deployment)
-            )
+            self.app_api.create_namespaced_deployment(namespace=settings.KUBE_NAMESPACE, body=yaml.safe_load(deployment))
             logger.info(f"启动Pilot[{bot.id}]Pod成功")
         except Exception as e:
             logger.error(f"启动Pilot[{bot.id}]Pod失败: {e}")

@@ -72,6 +72,14 @@ const useLogEventApi = () => {
     });
   };
 
+  const getEventRawData = async (id?: React.Key) => {
+    return await get(`/log/event_raw_data/by_event_id/`, {
+      params: {
+        event_id: id,
+      },
+    });
+  };
+
   const getLogAlertStats = async (params: LogAlertParams = {}) => {
     return await get(`/log/alert/stats/`, {
       params,
@@ -90,6 +98,7 @@ const useLogEventApi = () => {
     patchLogAlert,
     geEventList,
     getEventRaw,
+    getEventRawData,
   };
 };
 

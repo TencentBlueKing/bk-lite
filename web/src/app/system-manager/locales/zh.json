@@ -2,8 +2,8 @@
   "system": {
     "common": {
       "modifyrole": "批量修改角色",
-      "modifydelete": "批量修改角色",
-      "batchmodifyroles": "批量修改角色",
+      "modifydelete": "批量删除",
+      "batchmodifyroles": "批量编辑角色",
       "selectedusers": "选定的用户",
       "english": "英文",
       "chinese": "中文(简体)",
@@ -51,10 +51,34 @@
       "rerank_model": "重排序模型",
       "ocr_model": "OCR 模型"
     },
+    "administrator": {
+      "title": "管理员管理",
+      "desc": "管理系统超级管理员，可以查看所有管理员用户，并可以取消用户的管理员权限",
+      "adminList": "管理员列表",
+      "adminListDesc": "显示所有具有超级管理员权限的用户",
+      "status": "状态",
+      "addAdmin": "新增管理员",
+      "selectUsers": "选择用户",
+      "selectUsersPlaceholder": "请选择要设置为管理员的用户",
+      "pleaseSelectUser": "请选择要设置为管理员的用户",
+      "addSuccess": "已成功设置管理员权限",
+      "addFailed": "设置管理员权限失败",
+      "addAdminTip": "选中的用户将被设置为超级管理员，拥有系统所有权限",
+      "revokeAdmin": "取消管理员",
+      "revokeConfirm": "确认取消管理员权限",
+      "revokeConfirmContent": "取消后该用户将失去所有管理权限。",
+      "revokeSuccess": "已成功取消管理员权限",
+      "revokeFailed": "取消管理员权限失败"
+    },
     "user": {
       "title": "组织架构",
       "desc": "显示组织架构和用户的所有信息，您可以维护各级组织、增删改查、也可以设置用户信息并分配角色、分组",
       "search": "搜索",
+      "selectAllSubGroups": "全部子组织",
+      "groupPermission": "组织权限授予",
+      "selectedGroups": "已选组织",
+      "includeAllSubOrganizations": "包含所有子组织",
+      "organizationRoles": "组织角色",
       "table": {
         "username": "用户名",
         "lastName": "姓名",
@@ -71,6 +95,7 @@
         "email": "邮箱",
         "group": "分组",
         "role": "角色",
+        "rolePermissionTip": "用户的角色权限范围为个人角色与组织角色的叠加",
         "zoneinfo": "时区",
         "locale": "语言环境",
         "administrator": "管理员",
@@ -79,7 +104,11 @@
         "confirmPassword": "确认密码",
         "passwordMismatch": "两次密码不一致",
         "temporary": "暂时的",
-        "tempTooltip": "如果开启，用户必须在下一次登录的时候改变密码"
+        "tempTooltip": "如果开启，用户必须在下一次登录的时候改变密码",
+        "userType": "用户类型",
+        "superuser": "超级管理员",
+        "normalUser": "普通用户",
+        "superuserTip": "超级管理员拥有系统所有权限，包括管理组织、用户和访问所有应用数据"
       },
       "admin": {
         "title": "管理员具有以下权限：",
@@ -99,23 +128,34 @@
       "addSubGroups": "添加子分组",
       "rename": "重命名",
       "renameSuccess": "重命名成功",
+      "renameFailed": "重命名失败",
       "deleteWithChildrenWarning": "删除该分组将同时删除其所有子分组和用户，您确定要删除吗？",
+      "editGroup": "编辑组织",
+      "organizationRoles": "组织角色",
+      "organizationRolesTooltip": "为该组织层级下的所有用户配置统一的角色权限",
+      "selectOrganizationRoles": "请选择组织角色",
       "form": {
-        "name": "团队名"
+        "name": "名称"
       }
     },
     "role": {
       "title": "角色",
       "users": "用户",
       "permissions": "权限",
+      "organizations": "组织",
+      "organizationName": "组织名称",
       "name": "名称",
       "addRole": "添加角色",
       "addUser": "添加用户",
+      "addOrganization": "添加组织",
       "updateRole": "更新角色",
+      "organizationTip": "提示：选择组织节点时，仅当前层级生效。可多选组织进行批量授权。",
       "permission": {
         "menu": "菜单",
         "operation": "操作"
-      }
+      },
+      "personalRole": "个人角色",
+      "organizationRole": "组织角色"
     },
     "channel": {
       "email": "电子邮件",

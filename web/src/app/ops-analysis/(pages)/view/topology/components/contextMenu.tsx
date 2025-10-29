@@ -4,6 +4,7 @@ import { useTranslation } from '@/utils/i18n';
 import type { ContextMenuProps } from '@/app/ops-analysis/types/topology';
 import {
   VerticalAlignTopOutlined,
+  VerticalAlignBottomOutlined,
   UpOutlined,
   DownOutlined,
   LinkOutlined,
@@ -48,6 +49,9 @@ const ContextMenu: React.FC<ContextMenuProps> = ({
       </Menu.Item>
       <Menu.Item key="bringToFront" icon={<VerticalAlignTopOutlined />}>
         {t('topology.bringToFront')}
+      </Menu.Item>
+      <Menu.Item key="bringToBack" icon={<VerticalAlignBottomOutlined />}>
+        {t('topology.bringToBack')}
       </Menu.Item>
       <Menu.Item key="bringForward" icon={<UpOutlined />}>
         {t('topology.bringForward')}

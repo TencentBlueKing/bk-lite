@@ -137,3 +137,128 @@ export interface TimeValuesProps {
   timeRange: number[];
   originValue: number | null;
 }
+
+export interface InstanceParam {
+  page?: number;
+  page_size?: number;
+  add_metrics?: boolean;
+  name?: string;
+  vm_params?: any;
+}
+
+export interface GroupInfo {
+  name?: string;
+  description?: string;
+  id?: number;
+}
+
+export interface ObjectItem {
+  id: number;
+  name: string;
+  type: string;
+  plugin_name?: string;
+  plugin_id?: number;
+  display_description?: string;
+  description: string;
+  display_name?: string;
+  display_type?: string;
+  options?: ObjectItem[];
+  label?: string;
+  value?: string;
+  [key: string]: unknown;
+}
+
+export interface IntegrationItem {
+  label: string;
+  value: string;
+  list: ObjectItem[];
+  name?: string;
+  [key: string]: unknown;
+}
+
+export interface ChartProps {
+  instance_id?: string;
+  showInstName?: boolean;
+  instance_id_keys: string[];
+  instance_id_values: string[];
+  instance_name: string;
+  title: string;
+  dimensions: any[];
+  [key: string]: unknown;
+}
+
+export interface MetricItem {
+  id: number;
+  metric_group: number;
+  metric_object: number;
+  name: string;
+  type: string;
+  display_name?: string;
+  display_description?: string;
+  instance_id_keys?: string[];
+  dimensions: any[];
+  query?: string;
+  unit?: string;
+  displayType?: string;
+  description?: string;
+  viewData?: any[];
+  style?: {
+    width: string;
+    height: string;
+  };
+  [key: string]: unknown;
+}
+
+export interface IndexViewItem {
+  name?: string;
+  display_name?: string;
+  id: number;
+  isLoading?: boolean;
+  child?: any[];
+}
+
+export interface ThresholdField {
+  level: string;
+  method: string;
+  value: number | null;
+}
+
+export interface FilterItem {
+  name: string | null;
+  method: string | null;
+  value: string;
+}
+
+export interface ChartDataItem {
+  metric: Record<string, string>;
+  values: [number, string][];
+  [key: string]: any;
+}
+
+export interface LevelMap {
+  critical: string;
+  error: string;
+  warning: string;
+  [key: string]: unknown;
+}
+
+export interface StateMap {
+  new: string;
+  recovered: string;
+  closed: string;
+  [key: string]: any;
+}
+
+export interface NodeWorkload {
+  created_by_kind: string;
+  created_by_name: string;
+}
+
+export interface TreeSortData {
+  type: string;
+  name_list: string[];
+}
+
+export interface ObjectIconMap {
+  [key: string]: string;
+}

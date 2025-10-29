@@ -35,6 +35,12 @@
           "url": "/opspilot/studio/detail/statistics",
           "icon": "tongji",
           "name": "bot_statistics"
+        },
+        {
+          "title": "接口说明",
+          "url": "/opspilot/studio/detail/api",
+          "icon": "api",
+          "name": "bot_api"
         }
       ]
     },

@@ -1,5 +1,6 @@
 import React, { ReactNode } from 'react';
 import { ResultItem } from '@/app/opspilot/types/global';
+import { Tag } from 'antd';
 import Icon from '@/components/icon';
 import globalStyles from '@/app/opspilot/styles/common.module.scss';
 import { useTranslation } from '@/utils/i18n';
@@ -9,9 +10,16 @@ interface BlockResultItemProps {
   index: number;
   onClick: (content: string) => void;
   slot?: ReactNode;
+  showScore?: boolean;
 }
 
-const BlockResultItem: React.FC<BlockResultItemProps> = ({ result, index, onClick, slot }) => {
+const BlockResultItem: React.FC<BlockResultItemProps> = ({ 
+  result, 
+  index, 
+  onClick, 
+  slot,
+  showScore = true 
+}) => {
   const { t } = useTranslation();
 
   const getIconByType = (type: string) => {
@@ -35,7 +43,11 @@ const BlockResultItem: React.FC<BlockResultItemProps> = ({ result, index, onClic
           <span className="ml-2 text-xs">| {t('knowledge.ranking')}</span>
         </div>
         <div className="flex items-center space-x-2 text-sm text-gray-500">
-          <span>{t('knowledge.score')}: {result.score.toFixed(4)}</span>
+          {showScore && (
+            <Tag color="geekblue" className="font-mini">
+              {t('knowledge.score')}: {result.score.toFixed(4)}
+            </Tag>
+          )}
         </div>
       </div>
       <p className={`text-sm ${globalStyles.content} mb-2`}>{result.content}</p>

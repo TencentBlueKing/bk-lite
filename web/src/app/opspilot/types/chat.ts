@@ -44,6 +44,8 @@ export interface DrawerContentState {
   visible: boolean;
   title: string;
   content: string;
+  chunkType?: "Document" | "QA" | "Graph";
+  graphData?: { nodes: any[], edges: any[] };
 }
 
 export interface GuideParseResult {

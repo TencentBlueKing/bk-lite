@@ -130,7 +130,7 @@
           "title": "Log receive",
           "icon": "caijiqi",
           "url": "/log/integration/receive",
-          "name": "asset"
+          "name": "receive"
         },
         {
           "title": "Log Integration",
@@ -148,7 +148,7 @@
               "title": "Introduction",
               "icon": "mulu",
               "url": "/log/integration/list/detail/output",
-              "name": "integration_metric"
+              "name": "integration_output"
             }
           ]
         },

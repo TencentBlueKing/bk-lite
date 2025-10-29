@@ -4,8 +4,8 @@ import { TrainDataParams } from '@/app/mlops/types/manage';
 interface TrainDataBrochure {
   dataset: number;
   name: string;
-  train_data: TrainDataParams[];
-  metadata: object;
+  train_data: (TrainDataParams | string)[];
+  metadata?: object;
   is_train_data?: boolean;
   is_val_data?: boolean;
   is_test_data?: boolean;
@@ -40,6 +40,39 @@ const useMlopsManageApi = () => {
     page_size?: number
   }) => {
     return await get(`/mlops/rasa_datasets/?page=${page}&page_size=${page_size}`);
+  };
+
+  // 获取日志聚类数据集列表
+  const getLogClusteringList = async ({
+    page = 1,
+    page_size = -1
+  }: {
+    page?: number;
+    page_size?: number
+  }) => {
+    return await get(`/mlops/log_clustering_datasets/?page=${page}&page_size=${page_size}`);
+  };
+
+  // 获取时序预测数据集列表
+  const getTimeSeriesPredictList = async ({
+    page = 1,
+    page_size = -1
+  }: {
+    page?: number;
+    page_size?: number
+  }) => {
+    return await get(`/mlops/timeseries_predict_datasets/?page=${page}&page_size=${page_size}`);
+  };
+
+  // 获取分类任务数据集列表
+  const getClassificationDatasetsList = async ({
+    page = 1,
+    page_size = -1
+  }: {
+    page?: number;
+    page_size?: number
+  }) => {
+    return await get(`/mlops/classification_datasets/?page=${page}&page_size=${page_size}`)
   };
 
   // 获取Rasa意图列表
@@ -160,7 +193,7 @@ const useMlopsManageApi = () => {
     page_size = -1
   }: {
     name?: string;
-    dataset: string |number;
+    dataset: string | number;
     page?: number;
     page_size?: number;
   }) => {
@@ -170,6 +203,21 @@ const useMlopsManageApi = () => {
   // 获取指定异常检测数据集详情
   const getOneAnomalyDataset = async (id: number) => {
     return await get(`/mlops/anomaly_detection_datasets/${id}/`);
+  };
+
+  // 获取指定日志聚类数据集详情
+  const getOneLogClustering = async (id: number) => {
+    return await get(`/mlops/log_clustering_datasets/${id}/`);
+  };
+
+  // 获取指定时序预测数据集详情
+  const getOneTimeSeriesPredict = async (id: number) => {
+    return await get(`/mlops/timeseries_predict_datasets/${id}/`);
+  };
+
+  // 获取指定分类任务数据集详情
+  const getOneClassificationDataset = async (id: number) => {
+    return await get(`/mlops/classification_datasets/${id}/`);
   };
 
   // 查询指定数据集下的样本列表
@@ -187,9 +235,69 @@ const useMlopsManageApi = () => {
     return await get(`/mlops/anomaly_detection_train_data/?dataset=${dataset}&name=${name}&page=${page}&page_size=${page_size}`);
   };
 
+  // 查询指定日志聚类数据集下的样本列表
+  const getLogClusteringTrainData = async ({
+    name = '',
+    dataset,
+    page = 1,
+    page_size = -1
+  }: {
+    name?: string;
+    dataset?: string | number;
+    page?: number;
+    page_size?: number;
+  }) => {
+    return await get(`/mlops/log_clustering_train_data/?dataset=${dataset}&name=${name}&page=${page}&page_size=${page_size}`);
+  };
+
+  // 查询指定时序预测数据集下的样本文件
+  const getTimeSeriesPredictTrainData = async ({
+    name = '',
+    dataset,
+    page = 1,
+    page_size = -1
+  }: {
+    name?: string;
+    dataset?: string | number;
+    page?: number;
+    page_size?: number;
+  }) => {
+    return await get(`/mlops/timeseries_predict_train_data/?dataset=${dataset}&name=${name}&page=${page}&page_size=${page_size}`);
+  };
+
+  // 查询指定分类任务数据集下的样本文件
+  const getClassificationTrainData = async({
+    name = '',
+    dataset,
+    page = 1,
+    page_size = -1
+  }: {
+    name?: string;
+    dataset?: string | number;
+    page?: number;
+    page_size?: number;
+  }) => {
+    return await get(`/mlops/classification_train_data/?dataset=${dataset}&name=${name}&page=${page}&page_size=${page_size}`)
+  };
+
   // 获取指定异常检测样本的详情
   const getAnomalyTrainDataInfo = async (id: number | string, include_train_data?: boolean, include_metadata?: boolean) => {
     return await get(`/mlops/anomaly_detection_train_data/${id}?include_train_data=${include_train_data}&include_metadata=${include_metadata}`);
+  };
+
+  // 获取指定日志聚类样本的详情
+  const getLogClusteringTrainDataInfo = async (id: number | string, include_train_data?: boolean, include_metadata?: boolean) => {
+    return await get(`/mlops/log_clustering_train_data/${id}?include_train_data=${include_train_data}&include_metadata=${include_metadata}`);
+  };
+
+  // 获取指定时序预测样本的详情
+  const getTimeSeriesPredictTrainDataInfo = async (id: number | string, include_train_data?: boolean, include_metadata?: boolean) => {
+    return await get(`/mlops/timeseries_predict_train_data/${id}?include_train_data=${include_train_data}&include_metadata=${include_metadata}`);
+  };
+
+  // 获取指定分类任务样本的详情
+  const getClassificationTrainDataInfo = async (id: number | string, include_train_data?: boolean, include_metadata?: boolean) => {
+    return await get(`/mlops/classification_train_data/${id}?include_train_data=${include_train_data}&include_metadata=${include_metadata}`);
   };
 
   // 新增异常检测数据集
@@ -206,6 +314,30 @@ const useMlopsManageApi = () => {
     description: string;
   }) => {
     return await post(`/mlops/rasa_datasets/`, params);
+  };
+
+  // 新增日志聚类数据集
+  const addLogClusteringDatasets = async (params: {
+    name: string;
+    description: string;
+  }) => {
+    return await post(`/mlops/log_clustering_datasets/`, params);
+  };
+
+  // 新增时序预测数据集
+  const addTimeSeriesPredictDatasets = async (params: {
+    name: string;
+    description: string;
+  }) => {
+    return await post(`/mlops/timeseries_predict_datasets/`, params);
+  };
+
+  // 新增分类任务数据集
+  const addClassificationDatasets = async (params: {
+    name: string;
+    description: string;
+  }) => {
+    return await post(`/mlops/classification_datasets/`, params);
   };
 
   // 新增rasa意图
@@ -296,6 +428,21 @@ const useMlopsManageApi = () => {
     return await post(`/mlops/anomaly_detection_train_data`, params);
   };
 
+  // 新增日志聚类数据集样本文件
+  const addLogClusteringTrainData = async (params: TrainDataBrochure) => {
+    return await post(`/mlops/log_clustering_train_data`, params);
+  };
+
+  // 新增时序预测样本文件
+  const addTimeSeriesPredictTrainData = async (params: TrainDataBrochure) => {
+    return await post(`/mlops/timeseries_predict_train_data`, params);
+  };
+
+  // 新增分类任务样本文件
+  const addClassificationTrainData = async (params: TrainDataBrochure) => {
+    return await post(`/mlops/classification_train_data`, params);
+  };
+
   // 更新异常检测数据集
   const updateAnomalyDatasets = async (id: number, params: {
     name: string;
@@ -310,6 +457,30 @@ const useMlopsManageApi = () => {
     description: string;
   }) => {
     return await put(`/mlops/rasa_datasets/${id}`, params);
+  };
+
+  // 更新日志聚类数据集
+  const updateLogClustering = async (id: number, params: {
+    name: string;
+    description: string;
+  }) => {
+    return await put(`/mlops/log_clustering_datasets/${id}`, params);
+  };
+
+  // 更新时序预测数据集
+  const updateTimeSeriesPredict = async (id: number, params: {
+    name: string;
+    description: string;
+  }) => {
+    return await put(`/mlops/timeseries_predict_datasets/${id}`, params);
+  };
+
+  // 更新分类任务数据集
+  const updateClassificationDataset = async (id: number, params: {
+    name: string;
+    description: string;
+  }) => {
+    return await put(`/mlops/classification_datasets/${id}`, params);
   };
 
   // 更新Rasa意图文件
@@ -399,6 +570,34 @@ const useMlopsManageApi = () => {
     return await patch(`/mlops/anomaly_detection_train_data/${id}/`, params);
   };
 
+  // 更新日志聚类数据集样本文件
+  const updateLogClusteringTrainData = async (id: string, params: {
+    is_train_data?: boolean,
+    is_val_data?: boolean,
+    is_test_data?: boolean,
+    train_data?: any[]
+  }) => {
+    return await patch(`/mlops/log_clustering_train_data/${id}/`, params)
+  };
+
+  // 更新时序预测数据集样本文件
+  const updateTimeSeriesPredictTrainData = async (id: string, params: {
+    is_train_data?: boolean,
+    is_val_data?: boolean,
+    is_test_data?: boolean
+  }) => {
+    return await patch(`/mlops/timeseries_predict_train_data/${id}/`, params)
+  };
+
+  // 更新分类任务数据集样本文件
+  const updateClassificationTrainData = async (id: string, params: {
+    is_train_data?: boolean,
+    is_val_data?: boolean,
+    is_test_data?: boolean
+  }) => {
+    return await patch(`/mlops/classification_train_data/${id}`, params);
+  };
+
   // 删除异常检测数据集
   const deleteAnomalyDatasets = async (id: number) => {
     return await del(`/mlops/anomaly_detection_datasets/${id}`);
@@ -407,6 +606,21 @@ const useMlopsManageApi = () => {
   // 删除Rasa数据集
   const deleteRasaDatasets = async (id: number) => {
     return await del(`/mlops/rasa_datasets/${id}`);
+  };
+
+  // 删除日志聚类数据集
+  const deleteLogClustering = async (id: number) => {
+    return await del(`/mlops/log_clustering_datasets/${id}`);
+  };
+
+  // 删除时序预测数据集
+  const deleteTimeSeriesPredict = async (id: number) => {
+    return await del(`/mlops/timeseries_predict_datasets/${id}`);
+  };
+
+  // 删除分类任务数据集
+  const deleteClassificationDataset = async (id: number) => {
+    return await del(`/mlops/classification_datasets/${id}`);
   };
 
   // 删除指定Rasa意图文件
@@ -454,9 +668,27 @@ const useMlopsManageApi = () => {
     return await del(`/mlops/anomaly_detection_train_data/${id}/`);
   };
 
+  // 删除日志聚类训练文件
+  const deleteLogClusteringTrainData = async (id: number) => {
+    return await del(`/mlops/log_clustering_train_data/${id}/`);
+  };
+
+  // 删除时序预测训练文件
+  const deleteTimeSeriesPredictTrainData = async (id: number) => {
+    return await del(`/mlops/timeseries_predict_train_data/${id}/`);
+  };
+
+  // 删除分类任务训练文件
+  const deleteClassificationTrainData = async (id: number) => {
+    return await del(`mlops/classification_train_data/${id}/`);
+  };
+
   return {
     getAnomalyDatasetsList,
     getRasaDatasetsList,
+    getClassificationDatasetsList,
+    getLogClusteringList,
+    getTimeSeriesPredictList,
     getOneAnomalyDataset,
     getAnomalyTrainData,
     getAnomalyTrainDataInfo,
@@ -469,13 +701,28 @@ const useMlopsManageApi = () => {
     getRasaSlotList,
     getRasaFormList,
     getRasaActionList,
+    getOneLogClustering,
+    getOneTimeSeriesPredict,
+    getOneClassificationDataset,
+    getLogClusteringTrainData,
+    getTimeSeriesPredictTrainData,
+    getClassificationTrainData,
+    getLogClusteringTrainDataInfo,
+    getTimeSeriesPredictTrainDataInfo,
+    getClassificationTrainDataInfo,
     addAnomalyDatasets,
+    addLogClusteringDatasets,
+    addTimeSeriesPredictDatasets,
+    addClassificationDatasets,
     addRasaDatasets,
     addRasaIntentFile,
     addRasaResponseFile,
     addRasaRuleFile,
     addRasaEntityFile,
     addAnomalyTrainData,
+    addLogClusteringTrainData,
+    addTimeSeriesPredictTrainData,
+    addClassificationTrainData,
     addRasaStoryFile,
     addRasaSlotFile,
     addRasaFormFile,
@@ -490,6 +737,12 @@ const useMlopsManageApi = () => {
     updateRasaSlotFile,
     updateRasaFormFile,
     updateRasaActionFile,
+    updateLogClustering,
+    updateTimeSeriesPredict,
+    updateLogClusteringTrainData,
+    updateTimeSeriesPredictTrainData,
+    updateClassificationDataset,
+    updateClassificationTrainData,
     labelingData,
     deleteAnomalyDatasets,
     deleteAnomalyTrainData,
@@ -501,7 +754,13 @@ const useMlopsManageApi = () => {
     deleteRasaEntityFile,
     deleteRasaSlotFile,
     deleteRasaFormFile,
-    deleteRasaActionFile
+    deleteRasaActionFile,
+    deleteTimeSeriesPredict,
+    deleteLogClustering,
+    deleteLogClusteringTrainData,
+    deleteTimeSeriesPredictTrainData,
+    deleteClassificationDataset,
+    deleteClassificationTrainData
   }
 };
 

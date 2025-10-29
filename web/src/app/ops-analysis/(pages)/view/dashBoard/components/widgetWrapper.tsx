@@ -56,7 +56,6 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
 
       setRawData(data);
 
-      // 根据图表类型进行数据校验（只校验格式问题，不校验是否为空）
       const validation = validateChartData(data, chartType);
       setDataValidation(validation);
     } catch (err: any) {
@@ -73,6 +72,29 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
 
   // 提取数据校验逻辑
   const validateChartData = (data: any, type?: string) => {
+
+    const isDataEmpty = () => {
+      if (!data) return true;
+      if (Array.isArray(data) && data.length === 0) return true;
+
+      if (Array.isArray(data) && data.length > 0) {
+        const hasValidData = data.some(
+          (item) =>
+            item &&
+            item.data &&
+            Array.isArray(item.data) &&
+            item.data.length > 0
+        );
+        if (!hasValidData) return true;
+      }
+
+      return false;
+    };
+
+    if (isDataEmpty()) {
+      return { isValid: true };
+    }
+
     const errorMessage = t('dashboard.dataFormatMismatch');
     switch (type) {
       case 'pie':

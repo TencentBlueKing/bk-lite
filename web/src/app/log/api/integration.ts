@@ -38,6 +38,19 @@ const useIntegrationApi = () => {
     });
   };
 
+  const getFieldValues = async (
+    params: {
+      filed?: string;
+      start_time?: string;
+      end_time?: string;
+      limit?: number;
+    } = {}
+  ) => {
+    return await get(`/log/search/field_names/`, {
+      params,
+    });
+  };
+
   const getCollectTypesById = async (
     params: {
       collect_type_id?: React.Key | null;
@@ -162,6 +175,7 @@ const useIntegrationApi = () => {
     updateDefaultLogStreams,
     getCollectTypesById,
     getFields,
+    getFieldValues,
   };
 };
 

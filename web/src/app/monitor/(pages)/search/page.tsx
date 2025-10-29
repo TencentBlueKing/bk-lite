@@ -2,7 +2,7 @@
 import React, { useEffect, useState, useRef } from 'react';
 import { Spin, Select, Button, Segmented, Input, Tooltip } from 'antd';
 import { BellOutlined, CloseOutlined, PlusOutlined } from '@ant-design/icons';
-import { useConditionList } from '@/app/monitor/constants/monitor';
+import { useConditionList } from '@/app/monitor/hooks';
 import useApiClient from '@/utils/request';
 import useMonitorApi from '@/app/monitor/api';
 import TimeSelector from '@/components/time-selector';
@@ -19,20 +19,19 @@ import {
   TimeSelectorDefaultValue,
   TreeItem,
   TimeValuesProps,
+  GroupInfo,
+  MetricItem,
+  IndexViewItem,
+  ObjectItem,
 } from '@/app/monitor/types';
 import { Dayjs } from 'dayjs';
 import {
-  ObjectItem,
-  MetricItem,
-  TableDataItem,
-  ConditionItem,
   SearchParams,
-  IndexViewItem,
-  GroupInfo,
   InstanceItem,
-} from '@/app/monitor/types/monitor';
+  SearchTableDataItem,
+  ConditionItem,
+} from '@/app/monitor/types/search';
 import {
-  deepClone,
   findUnitNameById,
   mergeViewQueryKeyValues,
   renderChart,
@@ -41,6 +40,7 @@ import {
 import { useSearchParams } from 'next/navigation';
 import dayjs from 'dayjs';
 import TreeSelector from '@/app/monitor/components/treeSelector';
+import { cloneDeep } from 'lodash';
 const { Option } = Select;
 
 const SearchView: React.FC = () => {
@@ -82,7 +82,7 @@ const SearchView: React.FC = () => {
       rangePickerVaule: null,
     });
   const [columns, setColumns] = useState<ColumnItem[]>([]);
-  const [tableData, setTableData] = useState<TableDataItem[]>([]);
+  const [tableData, setTableData] = useState<SearchTableDataItem[]>([]);
   const [chartData, setChartData] = useState<ChartData[]>([]);
   const [frequence, setFrequence] = useState<number>(0);
   const [unit, setUnit] = useState<string>('');
@@ -123,7 +123,7 @@ const SearchView: React.FC = () => {
       const data: ObjectItem[] = await getMonitorObject({
         add_instance_count: true,
       });
-      const _treeData = getTreeData(deepClone(data));
+      const _treeData = getTreeData(cloneDeep(data));
       setTreeData(_treeData);
       setObjects(data);
       setDefaultSelectObj(url_obj_id ? +url_obj_id : '');
@@ -139,7 +139,7 @@ const SearchView: React.FC = () => {
       const getMetrics = getMonitorMetrics(params);
       Promise.all([getGroupList, getMetrics])
         .then((res) => {
-          const metricData = deepClone(res[1] || []);
+          const metricData = cloneDeep(res[1] || []);
           setMetrics(res[1] || []);
           const groupData = res[0].map((item: GroupInfo) => ({
             ...item,
@@ -303,13 +303,13 @@ const SearchView: React.FC = () => {
   };
 
   const handleLabelChange = (val: string, index: number) => {
-    const _conditions = deepClone(conditions);
+    const _conditions = cloneDeep(conditions);
     _conditions[index].label = val;
     setConditions(_conditions);
   };
 
   const handleConditionChange = (val: string, index: number) => {
-    const _conditions = deepClone(conditions);
+    const _conditions = cloneDeep(conditions);
     _conditions[index].condition = val;
     setConditions(_conditions);
   };
@@ -318,13 +318,13 @@ const SearchView: React.FC = () => {
     e: React.ChangeEvent<HTMLInputElement>,
     index: number
   ) => {
-    const _conditions = deepClone(conditions);
+    const _conditions = cloneDeep(conditions);
     _conditions[index].value = e.target.value;
     setConditions(_conditions);
   };
 
   const addConditionItem = () => {
-    const _conditions = deepClone(conditions);
+    const _conditions = cloneDeep(conditions);
     _conditions.push({
       label: null,
       condition: null,
@@ -334,7 +334,7 @@ const SearchView: React.FC = () => {
   };
 
   const deleteConditionItem = (index: number) => {
-    const _conditions = deepClone(conditions);
+    const _conditions = cloneDeep(conditions);
     _conditions.splice(index, 1);
     setConditions(_conditions);
   };
@@ -395,11 +395,13 @@ const SearchView: React.FC = () => {
         const _chartData = renderChart(data, list);
         setChartData(_chartData);
       } else {
-        const _tableData = data.map((item: TableDataItem, index: number) => ({
-          ...item.metric,
-          value: item.value[1] ?? '--',
-          index,
-        }));
+        const _tableData = data.map(
+          (item: SearchTableDataItem, index: number) => ({
+            ...item.metric,
+            value: item.value[1] ?? '--',
+            index,
+          })
+        );
         const metricTarget =
           metrics.find((item) => item.name === metric)?.dimensions || [];
         const colKeys = Array.from(
@@ -420,7 +422,7 @@ const SearchView: React.FC = () => {
               showTitle: true,
             },
           }));
-        const _columns = deepClone(tableColumns);
+        const _columns: any = cloneDeep(tableColumns);
         if (_columns[0]) _columns[0].fixed = 'left';
         setColumns(_columns);
         setTableData(_tableData);

@@ -12,6 +12,10 @@ export const useSkillApi = () => {
     return get('/opspilot/model_provider_mgmt/skill_log/', { params });
   };
 
+  const fetchSkill = async (params: any): Promise<any> => {
+    return get('/opspilot/model_provider_mgmt/llm/', { params });
+  };
+
   /**
    * Fetches skill details by ID.
    * @param id - Skill ID.
@@ -109,6 +113,7 @@ export const useSkillApi = () => {
 
   return {
     fetchInvocationLogs,
+    fetchSkill,
     fetchSkillDetail,
     fetchKnowledgeBases,
     updateRule,

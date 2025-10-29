@@ -1,0 +1,129 @@
+# 通用标签和字段
+name: 名称
+channel_type: 渠道类型
+channel_config: 渠道配置
+enabled: 启用
+channel: 渠道
+content: 内容
+url: 网址
+file: 文件
+type: 类型
+core_model: 核心模型
+default: 默认
+
+# 时间和维护者字段
+time_fields: 时间字段
+created_time: 创建时间
+updated_time: 更新时间
+maintainer_fields: 维护者字段
+creator: 创建者
+updater: 更新者
+
+# 数据类型
+string: 字符串
+integer: 整数
+float: 浮点数
+datetime: 日期时间
+time: 时间
+date: 日期
+json: JSON
+boolean: 布尔值
+text_value_type_fields: 文本数值类型字段
+
+# 渠道类型
+enterprise_wechat: 企业微信
+enterprise_wechat_bot: 企业微信机器人
+wechat_official_account: 微信公众号
+ding_talk: 钉钉
+web: 网页
+gitlab: GitLab
+wechat_open_platform: 微信开放平台
+
+# 模型和知识相关
+core_model: 核心模型
+embed_model: 嵌入模型
+rerank_model: 重排模型
+ocr_model: OCR 模型
+llm_model: LLM 模型
+knowledge_document: 知识文档
+file_knowledge: 文件知识
+manual_knowledge: 手动知识
+web_page_knowledge: 网页知识
+
+# 训练状态
+training: 训练中
+ready: 就绪
+error: 错误
+pending: 待处理
+chunking: 分块处理中
+
+# 知识库功能
+enable_vector_search: 启用向量搜索
+vector_search_weight: 向量搜索权重
+enable_text_search: 启用文本搜索
+text_search_weight: 文本搜索权重
+enable_rerank: 启用重排
+number_of_results: 结果数量
+number_of_candidates: 候选数量
+text_search_mode: 文本搜索模式
+chunk_size: 块大小
+train_status: 训练状态
+train_progress: 训练进度
+enable_general_parse: 启用通用解析
+general_parse_chunk_size: 通用解析块大小
+general_parse_chunk_overlap: 通用解析块重叠
+enable_semantic_chunk_parse: 启用语义块解析
+embedding_model: 嵌入模型
+enable_ocr_parse: 启用 OCR 解析
+enable_excel_parse: 启用 Excel 解析
+excel_header_row_parse: Excel 表头解析
+excel_full_content_parse: Excel 全文解析
+source_type: 来源类型
+max_depth: 最大深度
+
+# 技能相关
+use_specified_knowledge_base: 使用指定的知识库
+
+# 工具分类
+search_tools: 检索工具
+general_tools: 通用工具
+
+# 功能描述
+builtin_tools_desc: 内置场常用的工具，包括节假日查询、当前时间查询等，以便提供额外信息
+internet_search_desc: 能够通过互联网快速搜索和获取信息，以便获取实时数据
+
+# 模块名称
+studio: 工作台
+agent: 智能体
+knowledge: 知识库
+tool: 工具
+model: 模型
+
+# 更多模型字段
+rerank_top_k: 重排 Top K
+search_type: 搜索类型
+score_threshold: 分数阈值
+qa_size: QA 大小
+graph_size: 图大小
+mode: 模式
+chunk_type: 块类型
+sync_enabled: 启用同步
+sync_time: 同步时间
+
+# Bot 类型选择
+pilot: Pilot
+lobe_chat: LobeChat
+chat_flow: ChatFlow
+
+# 技能类型选择
+basic_tool: 基础工具
+knowledge_tool: 知识工具
+plan_execute: 计划执行
+lats: Lats
+
+# 工作流相关
+openai: OpenAI
+restful: RESTful
+celery: Celery
+success: 成功
+fail: 失败

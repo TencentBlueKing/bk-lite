@@ -2,7 +2,8 @@ import React from 'react';
 import { Select, InputNumber } from 'antd';
 import { useTranslation } from '@/utils/i18n';
 import { ListItem } from '@/app/monitor/types';
-import { LEVEL_MAP, COMPARISON_METHOD } from '@/app/monitor/constants/monitor';
+import { LEVEL_MAP } from '@/app/monitor/constants';
+import { COMPARISON_METHOD } from '@/app/monitor/constants/event';
 import strategyStyle from '../index.module.scss';
 import { cloneDeep } from 'lodash';
 

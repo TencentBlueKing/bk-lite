@@ -185,7 +185,6 @@ const SearchFilter: React.FC<SearchFilterProps> = ({
       case 'organization':
         return (
           <GroupTreeSelector
-            allowClear
             style={{ width: 200 }}
             value={searchValue}
             onChange={(e) => onSearchValueChange(e, isExactSearch)}

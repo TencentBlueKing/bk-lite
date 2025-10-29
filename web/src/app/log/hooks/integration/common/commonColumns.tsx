@@ -50,11 +50,15 @@ const useCommonColumns = () => {
         config.onTableDataChange(_dataSource);
       };
 
-      const handleAdd = (key: string) => {
-        const index = config.dataSource.findIndex((item) => item.key === key);
+      const handleAdd = (id: string) => {
+        const index = config.dataSource.findIndex(
+          (item) => item.instance_id === id
+        );
         const newData = {
           ...config.initTableItems,
-          instance_id: uuidv4(),
+          instance_id: replaceDynamicUUID(
+            config.initTableItems?.instance_id || ''
+          ),
         };
         const updatedData = [...config.dataSource];
         updatedData.splice(index + 1, 0, newData); // 在当前行下方插入新数据
@@ -63,22 +67,41 @@ const useCommonColumns = () => {
 
       const handleCopy = (row: IntegrationLogInstance) => {
         const index = config.dataSource.findIndex(
-          (item) => item.key === row.key
+          (item) => item.instance_id === row.instance_id
         );
         const newData: IntegrationLogInstance = {
           ...row,
-          instance_id: uuidv4(),
+          instance_id: replaceDynamicUUID(
+            config.initTableItems?.instance_id || ''
+          ),
         };
         const updatedData = [...config.dataSource];
         updatedData.splice(index + 1, 0, newData);
         config.onTableDataChange(updatedData);
       };
 
-      const handleDelete = (key: string) => {
+      const handleDelete = (id: string) => {
         const updatedData = config.dataSource.filter(
-          (item) => item.key !== key
+          (item) => item.instance_id !== id
         );
         config.onTableDataChange(updatedData);
+      };
+
+      const replaceDynamicUUID = (
+        originalStr: string,
+        prefixPattern = '.*'
+      ) => {
+        // UUID格式（8-4-4-4-12）
+        const uuidRegex =
+          /[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}/i;
+        // 构建完整正则：前缀 + UUID
+        const dynamicRegex = new RegExp(
+          `(${prefixPattern}-)${uuidRegex.source}`
+        );
+        if (!dynamicRegex.test(originalStr)) {
+          return uuidv4();
+        }
+        return originalStr.replace(dynamicRegex, `$1${uuidv4()}`);
       };
 
       return [
@@ -155,7 +178,7 @@ const useCommonColumns = () => {
               <Button
                 type="link"
                 className="mr-[10px]"
-                onClick={() => handleAdd(record.key)}
+                onClick={() => handleAdd(record.instance_id)}
               >
                 {t('common.add')}
               </Button>
@@ -167,7 +190,10 @@ const useCommonColumns = () => {
                 {t('common.copy')}
               </Button>
               {!!index && (
-                <Button type="link" onClick={() => handleDelete(record.key)}>
+                <Button
+                  type="link"
+                  onClick={() => handleDelete(record.instance_id)}
+                >
                   {t('common.delete')}
                 </Button>
               )}

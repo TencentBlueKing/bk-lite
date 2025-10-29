@@ -51,3 +51,11 @@ class BaseAppException(Exception):
             "message": self.message,
             "data": self.render_data(),
         }
+
+
+class UnauthorizedException(BaseAppException):
+    """认证失败异常，返回401状态码"""
+    ERROR_CODE = "4010001"
+    MESSAGE = "未授权访问"
+    STATUS_CODE = 401
+    LOG_LEVEL = logging.ERROR

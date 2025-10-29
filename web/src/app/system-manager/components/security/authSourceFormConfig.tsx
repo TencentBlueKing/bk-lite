@@ -37,7 +37,8 @@ export const getNewAuthSourceFormFields = ({
     label: t('system.security.authSourceType'),
     placeholder: `${t('common.select')}${t('system.security.authSourceType')}`,
     options: [
-      { value: 'bk_lite', label: 'BK-Lite认证源' }
+      { value: 'bk_lite', label: 'BK-Lite认证源' },
+      { value: 'bk_login', label: '蓝鲸认证源' }
     ],
     rules: [{ required: true, message: `${t('common.select')}${t('system.security.authSourceType')}` }],
     initialValue: 'bk_lite',
@@ -112,6 +113,94 @@ export const getNewAuthSourceFormFields = ({
         <span className="ml-2 flex-shrink-0">{t('system.security.syncOnce')}</span>
       </div>
     )
+  },
+  {
+    name: 'enabled',
+    type: 'switch',
+    label: t('system.security.enabled'),
+    size: 'small',
+    initialValue: true,
+    disabled: isBuiltIn
+  }
+];
+
+export const getBluekingFormFields = ({
+  t,
+  roleTreeData,
+  selectedRoles,
+  setSelectedRoles,
+  dynamicForm,
+  isBuiltIn = false
+}: FormConfigParams) => [
+  {
+    name: 'name',
+    type: 'input',
+    label: t('system.security.authSourceName'),
+    placeholder: `${t('common.inputMsg')}${t('system.security.authSourceName')}`,
+    rules: [{ required: true, message: `${t('common.inputMsg')}${t('system.security.authSourceName')}` }],
+    disabled: isBuiltIn
+  },
+  {
+    name: 'source_type',
+    type: 'select',
+    label: t('system.security.authSourceType'),
+    placeholder: `${t('common.select')}${t('system.security.authSourceType')}`,
+    options: [
+      { value: 'bk_lite', label: 'BK-Lite认证源' },
+      { value: 'bk_login', label: '蓝鲸认证源' }
+    ],
+    rules: [{ required: true, message: `${t('common.select')}${t('system.security.authSourceType')}` }],
+    initialValue: 'bk_login',
+    disabled: isBuiltIn
+  },
+  {
+    name: 'root_group',
+    type: 'input',
+    label: t('system.security.rootGroup'),
+    placeholder: `${t('common.inputMsg')}${t('system.security.rootGroup')}`,
+    rules: [{ required: true, message: `${t('common.inputMsg')}${t('system.security.rootGroup')}` }],
+    disabled: isBuiltIn
+  },
+  {
+    name: 'app_id',
+    type: 'input',
+    label: t('system.security.appId'),
+    placeholder: `${t('common.inputMsg')}${t('system.security.appId')}`,
+    rules: [{ required: true, message: `${t('common.inputMsg')}${t('system.security.appId')}` }],
+    disabled: isBuiltIn
+  },
+  {
+    name: 'app_token',
+    type: 'editablePwd',
+    label: t('system.security.appSecret'),
+    placeholder: `${t('common.inputMsg')}${t('system.security.appSecret')}`,
+    rules: [{ required: true, message: `${t('common.inputMsg')}${t('system.security.appSecret')}` }],
+    disabled: isBuiltIn
+  },
+  {
+    name: 'bk_url',
+    type: 'input',
+    label: '认证URL',
+    placeholder: '请输入认证URL',
+    rules: [{ required: true, message: '请输入认证URL' }],
+    disabled: isBuiltIn
+  },
+  {
+    name: 'default_roles',
+    type: 'custom',
+    label: t('system.security.defaultRoles'),
+    component: (
+      <RoleTransfer
+        treeData={roleTreeData}
+        selectedKeys={selectedRoles}
+        disabled={isBuiltIn}
+        onChange={newKeys => {
+          setSelectedRoles(newKeys);
+          dynamicForm.setFieldsValue({ default_roles: newKeys });
+        }}
+      />
+    ),
+    rules: [{ required: true, message: `${t('common.selectMsg')}${t('system.security.defaultRoles')}` }],
   },
   {
     name: 'enabled',

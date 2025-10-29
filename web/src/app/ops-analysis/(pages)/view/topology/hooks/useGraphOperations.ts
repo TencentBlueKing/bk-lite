@@ -14,10 +14,11 @@ import { useDataSourceApi } from '@/app/ops-analysis/api/dataSource';
 import { TopologyNodeData } from '@/app/ops-analysis/types/topology';
 import { DataSourceParam } from '@/app/ops-analysis/types/dashBoard';
 import { updateNodeAttributes, registerNodes, createNodeByType } from '../utils/registerNode';
+import { useTranslation } from '@/utils/i18n';
 import { registerEdges } from '../utils/registerEdge';
 import { useGraphData } from './useGraphData';
 import {
-  getEdgeStyle,
+  getEdgeStyleWithConfig,
   hideAllPorts,
   hideAllEdgeTools,
   showPorts,
@@ -28,6 +29,7 @@ import {
   createPortConfig,
   adjustSingleValueNodeSize,
 } from '../utils/topologyUtils';
+import { getColorByThreshold } from '../utils/thresholdUtils';
 
 export const useGraphOperations = (
   containerRef: React.RefObject<HTMLDivElement>,
@@ -35,6 +37,7 @@ export const useGraphOperations = (
   minimapContainerRef?: React.RefObject<HTMLDivElement>,
   minimapVisible?: boolean
 ) => {
+  const { t } = useTranslation();
   const { getSourceDataByApiId } = useDataSourceApi();
 
   const isPerformingUndoRedo = useRef(false);
@@ -43,12 +46,16 @@ export const useGraphOperations = (
   const resetAllStyles = useCallback((graph: X6Graph) => {
     graph.getNodes().forEach((node: any) => {
       const nodeData = node.getData();
-      if (nodeData?.type !== 'text') {
-        const borderColor = nodeData?.type === 'single-value'
-          ? (nodeData.styleConfig?.borderColor || 'transparent')
-          : nodeData.styleConfig?.borderColor;
-        node.setAttrByPath('body/stroke', borderColor);
+      let borderColor;
+      if (nodeData?.type === 'single-value') {
+        borderColor = nodeData.styleConfig?.borderColor || 'transparent';
+      } else if (nodeData?.type === 'text') {
+        borderColor = 'transparent';
+      } else {
+        borderColor = nodeData.styleConfig?.borderColor || COLORS.BORDER.DEFAULT;
       }
+      node.setAttrByPath('body/stroke', borderColor);
+      node.setAttrByPath('body/strokeWidth', 1);
     });
 
     graph.getEdges().forEach((edge: any) => {
@@ -66,10 +73,8 @@ export const useGraphOperations = (
 
   const highlightCell = useCallback((cell: any) => {
     if (cell.isNode()) {
-      const nodeData = cell.getData();
-      if (nodeData?.type !== 'text') {
-        cell.setAttrByPath('body/stroke', '#1890ff');
-      }
+      cell.setAttrByPath('body/stroke', '#1890ff');
+      cell.setAttrByPath('body/strokeWidth', 2);
     } else if (cell.isEdge()) {
       cell.setAttrs({
         line: {
@@ -83,21 +88,22 @@ export const useGraphOperations = (
   }, []);
 
   const highlightNode = useCallback((node: any) => {
-    const nodeData = node.getData();
-    if (nodeData?.type !== 'text') {
-      node.setAttrByPath('body/stroke', '#1890ff');
-    }
+    node.setAttrByPath('body/stroke', '#1890ff');
+    node.setAttrByPath('body/strokeWidth', 2);
   }, []);
 
   const resetNodeStyle = useCallback((node: any) => {
     const nodeData = node.getData();
-    if (nodeData?.type !== 'text') {
-      // 对于单值节点，如果没有边框颜色则使用透明
-      const borderColor = nodeData?.type === 'single-value'
-        ? (nodeData.styleConfig?.borderColor || 'transparent')
-        : (nodeData.styleConfig?.borderColor || '#ddd');
-      node.setAttrByPath('body/stroke', borderColor);
+    let borderColor;
+    if (nodeData?.type === 'single-value') {
+      borderColor = nodeData.styleConfig?.borderColor || 'transparent';
+    } else if (nodeData?.type === 'text') {
+      borderColor = 'transparent'; 
+    } else {
+      borderColor = nodeData.styleConfig?.borderColor || COLORS.BORDER.DEFAULT;
     }
+    node.setAttrByPath('body/stroke', borderColor);
+    node.setAttrByPath('body/strokeWidth', 1);
   }, []);
 
   const {
@@ -109,20 +115,11 @@ export const useGraphOperations = (
     setSelectedCells,
     setIsEditMode,
     isEditModeRef,
-    isEditingText,
-    setOriginalText,
-    setEditPosition,
-    setInputWidth,
-    setIsEditingText,
-    setEditingNodeId,
-    setTempTextInput,
     setContextMenuVisible,
     setContextMenuPosition,
     setContextMenuNodeId,
     setContextMenuTargetType,
     setCurrentEdgeData,
-    startTextEditRef,
-    finishTextEditRef,
   } = state;
 
   // 撤销/恢复相关函数 - 基于操作记录
@@ -311,6 +308,10 @@ export const useGraphOperations = (
       return;
     }
 
+    // 设置加载状态并启动加载动画
+    node.setData({ ...node.getData(), isLoading: true, hasError: false });
+    startLoadingAnimation(node);
+
     try {
       let requestParams = {};
 
@@ -335,13 +336,23 @@ export const useGraphOperations = (
         const numericValue = typeof value === 'string' ? parseFloat(value) : value;
 
         if (typeof numericValue === 'number' && !isNaN(numericValue)) {
+          // 应用换算系数
+          const conversionFactor = nodeConfig.conversionFactor !== undefined ? nodeConfig.conversionFactor : 1;
+          const convertedValue = numericValue * conversionFactor;
+
           const decimalPlaces = nodeConfig.decimalPlaces !== undefined ? nodeConfig.decimalPlaces : 2;
-          displayValue = parseFloat(numericValue.toFixed(decimalPlaces)).toString();
+          displayValue = parseFloat(convertedValue.toFixed(decimalPlaces)).toString();
         } else {
-          displayValue = formatDisplayValue(value);
+          displayValue = formatDisplayValue(value, undefined, undefined, nodeConfig.conversionFactor);
         }
         if (nodeConfig.unit && nodeConfig.unit.trim()) {
           displayValue = `${displayValue} ${nodeConfig.unit}`;
+        }
+
+        // 根据阈值配置计算文本颜色
+        let textColor = nodeConfig.styleConfig?.textColor;
+        if (nodeConfig.styleConfig?.thresholdColors?.length) {
+          textColor = getColorByThreshold(value, nodeConfig.styleConfig.thresholdColors, nodeConfig.styleConfig.textColor);
         }
 
         const currentNodeData = node.getData();
@@ -352,10 +363,11 @@ export const useGraphOperations = (
         };
         node.setData(updatedData);
         node.setAttrByPath('label/text', displayValue);
+        node.setAttrByPath('label/fill', textColor);
 
         adjustSingleValueNodeSize(node, displayValue);
       } else {
-        throw new Error('无数据');
+        throw new Error(t('topology.noData'));
       }
     } catch (error) {
       console.error('更新单值节点数据失败:', error);
@@ -403,35 +415,12 @@ export const useGraphOperations = (
       hideAllPorts(graphInstance);
       hideAllEdgeTools(graphInstance);
 
-      graphInstance.getEdges().forEach((edge: any) => {
-        const edgeData = edge.getData();
-        const customColor = edgeData?.styleConfig?.lineColor;
-
-        edge.setAttrs({
-          line: {
-            ...edge.getAttrs().line,
-            stroke: customColor || COLORS.EDGE.DEFAULT,
-            strokeWidth: 1,
-          },
-        });
-      });
-
-      if (isEditingText) {
-        setIsEditingText(false);
-        setEditingNodeId(null);
-        setTempTextInput('');
-        setEditPosition({ x: 0, y: 0 });
-        setInputWidth(120);
-        setOriginalText('');
-      }
-
       setContextMenuVisible(false);
       graphInstance.cleanSelection();
       setSelectedCells([]);
     }
-  }, [graphInstance, isEditingText, setIsEditMode]);
+  }, [graphInstance, setIsEditMode]);
 
-  // 缩略图插件初始化函数
   const initMiniMap = useCallback((graph: X6Graph) => {
     if (minimapContainerRef?.current && minimapVisible) {
       graph.disposePlugins(['minimap']);
@@ -654,6 +643,9 @@ export const useGraphOperations = (
 
     graph.on('node:contextmenu', ({ e, node }) => {
       e.preventDefault();
+      if (!isEditModeRef.current) {
+        return;
+      }
       setContextMenuVisible(true);
       setContextMenuPosition({ x: e.clientX, y: e.clientY });
       setContextMenuNodeId(node.id);
@@ -664,7 +656,6 @@ export const useGraphOperations = (
       if (e.shiftKey) {
         return;
       }
-      // 移除直接打开配置面板的逻辑，改为通过右键菜单的"编辑"选项
     });
 
     graph.on('edge:contextmenu', ({ e, edge }) => {
@@ -704,15 +695,14 @@ export const useGraphOperations = (
 
     graph.on('edge:connected', ({ edge }: any) => {
       if (!edge || !isEditModeRef.current) return;
-      edge.setAttrs(getEdgeStyle('single').attrs);
+
+      const edgeData = edge.getData() || {};
+      const arrowDirection = edgeData.arrowDirection || 'single';
+      const styleConfig = edgeData.styleConfig;
+
+      edge.setAttrs(getEdgeStyleWithConfig(arrowDirection, styleConfig).attrs);
       addEdgeTools(edge);
-      edge.setData({
-        lineType: 'common_line',
-        lineName: '',
-        styleConfig: {
-          lineColor: COLORS.EDGE.DEFAULT,
-        }
-      });
+
     });
 
     // 监听边的拐点变化并保存
@@ -731,10 +721,7 @@ export const useGraphOperations = (
     graph.on('edge:connecting', () => {
       if (isEditModeRef.current) {
         graph.getNodes().forEach((node: any) => {
-          const nodeData = node.getData();
-          if (nodeData?.type !== 'text') {
-            showPorts(graph, node);
-          }
+          showPorts(graph, node);
         });
       }
     });
@@ -755,20 +742,6 @@ export const useGraphOperations = (
       addEdgeTools(edge);
     });
 
-    graph.on('node:dblclick', ({ node }) => {
-      const nodeData = node.getData();
-      if (nodeData?.type === 'text') {
-        const currentText = String(
-          node.getAttrs()?.label?.text || '双击编辑文本'
-        );
-        const textToEdit =
-          nodeData?.isPlaceholder || currentText === '双击编辑文本'
-            ? ''
-            : currentText;
-        startTextEditRef.current?.(node.id, textToEdit);
-      }
-    });
-
     graph.on('blank:click', () => {
       hideAllPorts(graph);
       hideAllEdgeTools(graph);
@@ -778,22 +751,15 @@ export const useGraphOperations = (
 
       graph.cleanSelection();
       setSelectedCells([]);
-
-      setTimeout(() => {
-        finishTextEditRef.current?.();
-      }, 0);
     });
 
     graph.on('node:mouseenter', ({ node }) => {
       hideAllPorts(graph);
       hideAllEdgeTools(graph);
-      const nodeData = node.getData();
-      if (nodeData?.type !== 'text') {
-        showPorts(graph, node);
-        const isSelected = selectedCells.includes(node.id);
-        if (!isSelected) {
-          highlightNode(node);
-        }
+      showPorts(graph, node);
+      const isSelected = selectedCells.includes(node.id);
+      if (!isSelected) {
+        highlightNode(node);
       }
     });
 
@@ -921,12 +887,9 @@ export const useGraphOperations = (
     });
 
     graph.getNodes().forEach((node) => {
-      const nodeData = node.getData();
-      if (nodeData?.type !== 'text') {
-        ['top', 'bottom', 'left', 'right'].forEach((port) =>
-          node.setPortProp(port, 'attrs/circle/opacity', 0)
-        );
-      }
+      ['top', 'bottom', 'left', 'right'].forEach((port) =>
+        node.setPortProp(port, 'attrs/circle/opacity', 0)
+      );
     });
 
     return cleanup;
@@ -968,7 +931,12 @@ export const useGraphOperations = (
         createEdge: () =>
           graph.createEdge({
             shape: 'edge',
-            ...getEdgeStyle('single')
+            ...getEdgeStyleWithConfig('single', {
+              lineColor: COLORS.EDGE.DEFAULT,
+              lineWidth: 1,
+              lineStyle: 'line',
+              enableAnimation: false
+            })
           }),
         validateMagnet: ({ magnet }) => {
           return (
@@ -984,16 +952,6 @@ export const useGraphOperations = (
           if (!isEditModeRef.current) return false;
           if (!sourceMagnet || !targetMagnet) return false;
           if (sourceView === targetView) return false;
-
-          const sourceNode = sourceView?.cell;
-          const targetNode = targetView?.cell;
-
-          if (
-            sourceNode?.getData()?.type === 'text' ||
-            targetNode?.getData()?.type === 'text'
-          ) {
-            return false;
-          }
 
           const sourceMagnetType = sourceMagnet.getAttribute('magnet');
           const targetMagnetType = targetMagnet.getAttribute('magnet');
@@ -1091,7 +1049,7 @@ export const useGraphOperations = (
     const { valueConfig } = nodeConfig || {};
     const addedNode = graphInstance.addNode(nodeData);
     if (nodeConfig.type === 'single-value') {
-      adjustSingleValueNodeSize(addedNode, nodeConfig.name || '单值节点');
+      adjustSingleValueNodeSize(addedNode, nodeConfig.name || '');
     }
     if (nodeConfig.type === 'single-value' && valueConfig?.dataSource && valueConfig?.selectedFields?.length) {
       startLoadingAnimation(addedNode);
@@ -1100,68 +1058,65 @@ export const useGraphOperations = (
     return addedNode.id;
   }, [graphInstance, updateSingleNodeData, startLoadingAnimation]);
 
-  const handleNodeUpdate = useCallback(async (values: any) => {
-    if (!values) {
-      return;
-    }
-    const editingNode = state.editingNodeData;
+  function getUpdatedNodeConfig(editingNode: any, values: any) {
     const { valueConfig, styleConfig } = editingNode || {};
+    return {
+      id: editingNode.id,
+      type: editingNode.type,
+      name: values.name,
+      unit: values.unit,
+      conversionFactor: values.conversionFactor,
+      decimalPlaces: values.decimalPlaces,
+      description: values.description,
+      position: editingNode.position,
+      logoType: values.logoType || editingNode.logoType,
+      logoIcon: values.logoIcon || editingNode.logoIcon,
+      logoUrl: values.logoUrl || editingNode.logoUrl,
+      valueConfig: {
+        selectedFields: values.selectedFields || valueConfig?.selectedFields,
+        chartType: values.chartType || valueConfig?.chartType,
+        dataSource: values.dataSource || valueConfig?.dataSource,
+        dataSourceParams: values.dataSourceParams || valueConfig?.dataSourceParams,
+      },
+      styleConfig: {
+        textColor: values.textColor !== undefined ? values.textColor : styleConfig?.textColor,
+        fontSize: values.fontSize !== undefined ? values.fontSize : styleConfig?.fontSize,
+        fontWeight: values.fontWeight !== undefined ? values.fontWeight : styleConfig?.fontWeight,
+        backgroundColor: values.backgroundColor !== undefined ? values.backgroundColor : styleConfig?.backgroundColor,
+        borderColor: values.borderColor !== undefined ? values.borderColor : styleConfig?.borderColor,
+        borderWidth: values.borderWidth !== undefined ? values.borderWidth : styleConfig?.borderWidth,
+        iconPadding: values.iconPadding !== undefined ? values.iconPadding : styleConfig?.iconPadding,
+        renderEffect: values.renderEffect !== undefined ? values.renderEffect : styleConfig?.renderEffect,
+        width: values.width !== undefined ? values.width : styleConfig?.width,
+        height: values.height !== undefined ? values.height : styleConfig?.height,
+        lineType: values.lineType !== undefined ? values.lineType : styleConfig?.lineType,
+        shapeType: values.shapeType !== undefined ? values.shapeType : styleConfig?.shapeType,
+        nameColor: values.nameColor !== undefined ? values.nameColor : styleConfig?.nameColor,
+        nameFontSize: values.nameFontSize !== undefined ? values.nameFontSize : styleConfig?.nameFontSize,
+        textDirection: values.textDirection !== undefined ? values.textDirection : styleConfig?.textDirection,
+        thresholdColors: values.thresholdColors !== undefined ? values.thresholdColors : styleConfig?.thresholdColors,
+      },
+    };
+  }
+
+  const handleNodeUpdate = useCallback(async (values: any) => {
+    if (!values) return;
+    const editingNode = state.editingNodeData;
+    if (!editingNode || !graphInstance) return;
     try {
-      const updatedConfig = {
-        id: editingNode.id,
-        type: editingNode.type,
-        name: values.name,
-        unit: values.unit,
-        decimalPlaces: values.decimalPlaces,
-        description: values.description,
-        position: editingNode.position,
-        logoType: values.logoType || editingNode.logoType,
-        logoIcon: values.logoIcon || editingNode.logoIcon,
-        logoUrl: values.logoUrl || editingNode.logoUrl,
-        valueConfig: {
-          selectedFields: values.selectedFields || valueConfig?.selectedFields,
-          chartType: values.chartType || valueConfig?.chartType,
-          dataSource: values.dataSource || valueConfig?.dataSource,
-          dataSourceParams: values.dataSourceParams || valueConfig?.dataSourceParams,
-        },
-        styleConfig: {
-          textColor: values.textColor !== undefined ? values.textColor : styleConfig?.textColor,
-          fontSize: values.fontSize !== undefined ? values.fontSize : styleConfig?.fontSize,
-          backgroundColor: values.backgroundColor !== undefined ? values.backgroundColor : styleConfig?.backgroundColor,
-          borderColor: values.borderColor !== undefined ? values.borderColor : styleConfig?.borderColor,
-          borderWidth: values.borderWidth !== undefined ? values.borderWidth : styleConfig?.borderWidth,
-          width: values.width !== undefined ? values.width : styleConfig?.width,
-          height: values.height !== undefined ? values.height : styleConfig?.height,
-          lineType: values.lineType !== undefined ? values.lineType : styleConfig?.lineType,
-          shapeType: values.shapeType !== undefined ? values.shapeType : styleConfig?.shapeType,
-          nameColor: values.nameColor !== undefined ? values.nameColor : styleConfig?.nameColor,
-          nameFontSize: values.nameFontSize !== undefined ? values.nameFontSize : styleConfig?.nameFontSize,
-        },
-      };
-
-      if (!graphInstance) {
-        return;
-      }
-
+      const updatedConfig = getUpdatedNodeConfig(editingNode, values);
       const node = graphInstance.getCellById(updatedConfig.id);
-      if (!node) {
-        return;
-      }
-
+      if (!node) return;
       updateNodeAttributes(node, updatedConfig);
-
-      if (updatedConfig.type === 'single-value' && updatedConfig.valueConfig?.dataSource && updatedConfig.valueConfig?.selectedFields?.length) {
-        // 先设置loading状态
-        const nodeData = node.getData();
-        node.setData({
-          ...nodeData,
-          isLoading: true,
-          hasError: false
-        });
+      if (
+        updatedConfig.type === 'single-value' &&
+        updatedConfig.valueConfig?.dataSource &&
+        updatedConfig.valueConfig?.selectedFields?.length
+      ) {
+        node.setData({ ...node.getData(), isLoading: true, hasError: false });
         startLoadingAnimation(node);
         updateSingleNodeData(updatedConfig);
       }
-
       state.setNodeEditVisible(false);
       state.setEditingNodeData(null);
     } catch (error) {
@@ -1240,79 +1195,11 @@ export const useGraphOperations = (
         graphInstance.enablePlugins(['selection']);
       } else {
         graphInstance.disablePlugins(['selection']);
-
-        if (state.isEditingText) {
-          state.setIsEditingText(false);
-          state.setEditingNodeId(null);
-          state.setTempTextInput('');
-          state.setEditPosition({ x: 0, y: 0 });
-          state.setInputWidth(120);
-          state.setOriginalText('');
-        }
-
-        state.setContextMenuVisible(false);
-        graphInstance.cleanSelection();
-        state.setSelectedCells([]);
       }
     }
   }, [state, graphInstance]);
 
-  const getEditNodeInitialValues = useCallback(() => {
-    if (!state.editingNodeData) return {};
 
-    const editingNodeData = state.editingNodeData;
-    const baseValues = {
-      name: editingNodeData.name
-    };
-
-    const styleConfig = editingNodeData.styleConfig || {};
-    const valueConfig = editingNodeData.valueConfig || {};
-    switch (editingNodeData.type) {
-      case 'single-value':
-        return {
-          ...baseValues,
-          fontSize: styleConfig.fontSize,
-          textColor: styleConfig.textColor,
-          backgroundColor: styleConfig.backgroundColor,
-          borderColor: styleConfig.borderColor,
-          selectedFields: valueConfig.selectedFields || [],
-          dataSource: valueConfig.dataSource,
-          dataSourceParams: valueConfig.dataSourceParams || {},
-          nameColor: styleConfig.nameColor,
-          nameFontSize: styleConfig.nameFontSize,
-          unit: editingNodeData.unit,
-          decimalPlaces: editingNodeData.decimalPlaces,
-        };
-
-      case 'icon':
-        return {
-          ...baseValues,
-          logoType: editingNodeData.logoType || 'default',
-          logoIcon: editingNodeData.logoType === 'default' ? editingNodeData.logoIcon : 'cc-host',
-          logoUrl: editingNodeData.logoType === 'custom' ? editingNodeData.logoUrl : undefined,
-          width: styleConfig.width,
-          height: styleConfig.height,
-          backgroundColor: styleConfig.backgroundColor,
-          borderColor: styleConfig.borderColor,
-          borderWidth: styleConfig.borderWidth,
-        };
-
-      case 'basic-shape':
-        return {
-          ...baseValues,
-          width: styleConfig.width,
-          height: styleConfig.height,
-          backgroundColor: styleConfig.backgroundColor,
-          borderColor: styleConfig.borderColor,
-          borderWidth: styleConfig.borderWidth,
-          lineType: styleConfig.lineType,
-          shapeType: styleConfig.shapeType,
-        };
-
-      default:
-        return baseValues;
-    }
-  }, [state.editingNodeData]);
 
   const handleNodeEditClose = useCallback(() => {
     state.setNodeEditVisible(false);
@@ -1329,11 +1216,23 @@ export const useGraphOperations = (
     isInitializing.current = true;
   }, []);
 
-  // 清空操作历史记录
   const clearOperationHistory = useCallback(() => {
     setOperationHistory([]);
     setOperationIndex(-1);
   }, []);
+
+  // 刷新所有单值节点
+  const refreshAllSingleValueNodes = useCallback(() => {
+    if (!graphInstance) return;
+
+    const nodes = graphInstance.getNodes();
+    nodes.forEach((node: any) => {
+      const nodeData = node.getData();
+      if (nodeData.type === 'single-value' && nodeData.valueConfig?.dataSource && nodeData.valueConfig?.selectedFields?.length) {
+        updateSingleNodeData(nodeData);
+      }
+    });
+  }, [graphInstance, updateSingleNodeData]);
 
   return {
     zoomIn,
@@ -1348,7 +1247,6 @@ export const useGraphOperations = (
     handleAddChartNode,
     resizeCanvas,
     toggleEditMode,
-    getEditNodeInitialValues,
     handleNodeEditClose,
     undo,
     redo,
@@ -1357,6 +1255,7 @@ export const useGraphOperations = (
     finishInitialization,
     startInitialization,
     clearOperationHistory,
+    refreshAllSingleValueNodes,
     ...dataOperations,
   };
 };

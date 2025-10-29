@@ -17,7 +17,7 @@ interface ChartDataItem {
   value: number;
   label?: number;
   anomaly_probability?: number;
-  [key:string]: any
+  [key: string]: any
 }
 
 const AnomalyDetection = () => {
@@ -56,8 +56,8 @@ const AnomalyDetection = () => {
       "value": 33.70226097527219,
       "timestamp": 1704038580
     }
-  ]); 
-  const [visibleRange, setVisibleRange] = useState<number[]>([0, 100]); 
+  ]);
+  const [visibleRange, setVisibleRange] = useState<number[]>([0, 100]);
   const [maxRenderCount] = useState(2000);
   const [isLargeDataset, setIsLargeDataset] = useState(false);
   const [isRangeChanging, setIsRangeChanging] = useState(false);
@@ -87,12 +87,12 @@ const AnomalyDetection = () => {
   // 计算当前显示的数据
   const chartData = useMemo(() => {
     if (!allData || allData.length === 0) return [];
-    
+
     // 如果数据量小于阈值，直接返回所有数据
     if (allData.length <= maxRenderCount) {
       return allData;
     }
-    
+
     // 计算可见范围内的数据索引（使用实际范围，不是临时范围）
     const totalCount = allData.length;
     const startIndex = Math.floor((visibleRange[0] / 100) * totalCount);
@@ -100,7 +100,7 @@ const AnomalyDetection = () => {
       Math.ceil((visibleRange[1] / 100) * totalCount),
       totalCount
     );
-    
+
     // 确保渲染的数据量不超过最大值
     const rangeSize = endIndex - startIndex;
     if (rangeSize > maxRenderCount) {
@@ -112,7 +112,7 @@ const AnomalyDetection = () => {
       }
       return sampledData;
     }
-    
+
     return allData.slice(startIndex, endIndex);
   }, [allData, visibleRange, maxRenderCount]);
 
@@ -175,29 +175,29 @@ const AnomalyDetection = () => {
 
   const getConfigData = useCallback(async () => {
     if (isInitialized) return;
-    
+
     const id = searchParams.get('id') || '';
     if (!id) return;
-    
+
     try {
       const [capabilityData, sampleList] = await Promise.all([
         getCapabilityDetail(id),
         getSampleFileOfCapability(id)
       ]);
-      
+
       const options = sampleList.filter((item: any) => item?.is_active).map((item: any) => ({
         label: item?.name,
         value: item?.id,
       }));
-      
+
       setSampleOptions(options);
       setServingData(capabilityData?.config);
       setIsInitialized(true);
-      
+
     } catch (e) {
       console.error('获取配置数据失败:', e);
     }
-  }, [isInitialized, getCapabilityDetail, getSampleFileOfCapability]); 
+  }, [isInitialized, getCapabilityDetail, getSampleFileOfCapability]);
 
   useEffect(() => {
     setIsInitialized(false);
@@ -215,13 +215,13 @@ const AnomalyDetection = () => {
       tempVisibleRangeRef.current = [0, 100];
       return;
     }
-    
+
     setChartLoading(true);
     try {
       setSelectId(value);
       const data = await getSampleFileDetail(value as number);
       const trainData = data?.train_data || [];
-      
+
       setAllData(trainData);
       setIsLargeDataset(trainData.length > maxRenderCount);
       const initialRange = [0, trainData.length > maxRenderCount ? 10 : 100];
@@ -253,14 +253,14 @@ const AnomalyDetection = () => {
     const fileId = file?.uid;
 
     if (currentFileId === fileId) return;
-    
+
     setCurrentFileId(fileId);
     setChartLoading(true);
     setSelectId(null);
 
     try {
       const text = await file?.originFileObj?.text();
-      
+
       const processData = (text: string): Promise<any[]> => {
         return new Promise((resolve, reject) => {
           setTimeout(() => {
@@ -275,7 +275,7 @@ const AnomalyDetection = () => {
       };
 
       const data = await processData(text);
-      
+
       setAllData(data);
       setIsLargeDataset(data.length > maxRenderCount);
 
@@ -293,7 +293,7 @@ const AnomalyDetection = () => {
         tempVisibleRangeRef.current = fullRange;
         message.success(`文件上传成功，共 ${data.length.toLocaleString()} 条数据`);
       }
-      
+
     } catch (e) {
       console.error('文件处理失败:', e);
       message.error('文件处理失败，请检查文件格式');
@@ -321,13 +321,13 @@ const AnomalyDetection = () => {
   // 内部提交函数
   const handleSubmitInternal = useCallback(async (serving: any, dataToSubmit?: ChartDataItem[]) => {
     const dataSource = dataToSubmit || allDataRef.current;
-    
+
     if (!dataSource || dataSource.length === 0) {
       return message.error(t(`playground-common.uploadMsg`));
     }
-    
+
     if (chartLoading) return;
-    
+
     setChartLoading(true);
     try {
       const submitData = dataSource.map(item => ({
@@ -337,13 +337,13 @@ const AnomalyDetection = () => {
 
       const params = {
         serving_id: serving.serving_id,
-        model_name: `RandomForest_${serving.serving_id}`,
+        // model_name: `RandomForest_${serving.serving_id}`,
+        model_name: `AnomalyDetection_RandomForest_${serving.serving_id}`,
         algorithm: "RandomForest",
         model_version: serving.model_version,
         anomaly_threshold: serving.anomaly_threshold,
         data: submitData,
       };
-      
       const result = await anomalyDetectionReason(params);
       const labelData = result.predictions?.map((item: any) => ({
         timestamp: item.timestamp,
@@ -354,10 +354,8 @@ const AnomalyDetection = () => {
 
       setAllData(labelData);
       setIsLargeDataset(labelData.length > maxRenderCount);
-      
       const anomalyCount = labelData.filter((item: any) => item.label === 1).length;
       message.success(`检测完成，发现 ${anomalyCount} 个异常点`);
-      
     } catch (e) {
       console.error('检测失败:', e);
       message.error(t(`common.error`));
@@ -379,18 +377,18 @@ const AnomalyDetection = () => {
   const applyRangeChange = useCallback((newRange: number[]) => {
     console.log('应用范围变化:', newRange);
     setIsRangeChanging(true);
-    
+
     setTimeout(() => {
       setVisibleRange(newRange);
       setTempVisibleRange(newRange); //  同步更新临时范围
       tempVisibleRangeRef.current = newRange;
       setIsRangeChanging(false);
-      
+
       const totalCount = allDataRef.current.length;
       const startIndex = Math.floor((newRange[0] / 100) * totalCount);
       const endIndex = Math.min(Math.ceil((newRange[1] / 100) * totalCount), totalCount);
       const displayCount = Math.min(endIndex - startIndex, maxRenderCount);
-      
+
       message.success(`数据范围已更新，当前显示 ${displayCount.toLocaleString()} 条数据`);
     }, 300);
   }, [maxRenderCount]);
@@ -398,23 +396,23 @@ const AnomalyDetection = () => {
   // 优化滑块变化处理，减少状态更新频率
   const handleRangeChange = useCallback((value: number[]) => {
     console.log('滑块变化:', value);
-    
+
     // 更新 ref，但不立即更新状态
     tempVisibleRangeRef.current = value;
-    
+
     // 使用防抖更新显示状态，减少更新频率
     if (rangeChangeTimeoutRef.current) {
       clearTimeout(rangeChangeTimeoutRef.current);
     }
-    
+
     // 立即更新显示状态（用于滑块显示）
     setTempVisibleRange([...value]);
-    
+
     // 如果还没有开始拖动，标记为拖动状态
     if (!isDraggingRef.current) {
       isDraggingRef.current = true;
     }
-    
+
     rangeChangeTimeoutRef.current = setTimeout(() => {
       isDraggingRef.current = false;
       applyRangeChange(tempVisibleRangeRef.current);
@@ -423,7 +421,7 @@ const AnomalyDetection = () => {
 
   const handleQuickNav = useCallback((type: 'start' | 'end' | 'anomaly') => {
     let newRange: number[] = [0, 100];
-    
+
     if (type === 'start') {
       newRange = [0, Math.min(20, 100)];
     } else if (type === 'end') {
@@ -440,12 +438,12 @@ const AnomalyDetection = () => {
         return;
       }
     }
-    
+
     if (rangeChangeTimeoutRef.current) {
       clearTimeout(rangeChangeTimeoutRef.current);
     }
     isDraggingRef.current = false;
-    
+
     setTempVisibleRange(newRange);
     tempVisibleRangeRef.current = newRange;
     applyRangeChange(newRange);
@@ -454,19 +452,19 @@ const AnomalyDetection = () => {
   //  优化时间信息计算，减少依赖
   const rangeTimeInfo = useMemo(() => {
     if (!allDataRef.current.length || !tempVisibleRange) return null;
-    
+
     const totalCount = allDataRef.current.length;
     const startIndex = Math.floor((tempVisibleRange[0] / 100) * totalCount);
     const endIndex = Math.min(Math.ceil((tempVisibleRange[1] / 100) * totalCount), totalCount);
-    
+
     const startTimestamp = allDataRef.current[startIndex]?.timestamp;
     const endTimestamp = allDataRef.current[Math.max(0, endIndex - 1)]?.timestamp;
-    
+
     if (!startTimestamp || !endTimestamp) return null;
-    
+
     const startDate = new Date(startTimestamp * 1000);
     const endDate = new Date(endTimestamp * 1000);
-    
+
     return {
       start: startDate.toLocaleString(),
       end: endDate.toLocaleString(),
@@ -531,7 +529,7 @@ const AnomalyDetection = () => {
       <div className="banner-content w-full h-[460px] pr-[400px] pl-[200px] pt-[80px] bg-[url(/app/pg_banner_1.png)] bg-cover">
         {renderBanner}
       </div>
-      
+
       <div className="model-experience bg-[#F8FCFF] py-4">
         <div className="header text-3xl text-center">{t(`playground-common.functionExper`)}</div>
         <div className="content flex flex-col">
@@ -539,12 +537,12 @@ const AnomalyDetection = () => {
             <div className={`link-search mt-8 flex justify-center `}>
               <div className="flex w-full justify-center items-center">
                 <span className="align-middle text-sm mr-4">使用系统样本文件: </span>
-                <Select 
-                  className={`w-[70%] max-w-[500px] text-sm ${cssStyle.customSelect}`} 
-                  size="large" 
-                  allowClear 
-                  options={sampleOptions} 
-                  placeholder={t(`playground-common.selectSampleMsg`)} 
+                <Select
+                  className={`w-[70%] max-w-[500px] text-sm ${cssStyle.customSelect}`}
+                  size="large"
+                  allowClear
+                  options={sampleOptions}
+                  placeholder={t(`playground-common.selectSampleMsg`)}
                   onChange={onSelectChange}
                   value={selectId}
                 />
@@ -554,10 +552,10 @@ const AnomalyDetection = () => {
                     {t(`playground-common.localUpload`)}
                   </Button>
                 </Upload>
-                <Button 
-                  size="large" 
-                  className="rounded-none ml-4 text-sm" 
-                  type="primary" 
+                <Button
+                  size="large"
+                  className="rounded-none ml-4 text-sm"
+                  type="primary"
                   loading={chartLoading}
                   onClick={() => handleSubmit(servingData)}
                 >
@@ -587,7 +585,7 @@ const AnomalyDetection = () => {
               </div>
             )}
           </div>
-          
+
           <div className="content w-[80%] mx-auto h-[604px] mt-6">
             <div className="flex h-full overflow-auto">
               <Spin spinning={chartLoading || isRangeChanging} wrapperClassName="w-[70%] flex-1 h-full" className="h-full">
@@ -634,22 +632,22 @@ const AnomalyDetection = () => {
                   )}
                 </h4>
                 <div className="flex gap-2">
-                  <Button 
-                    size="small" 
+                  <Button
+                    size="small"
                     onClick={() => handleQuickNav('start')}
                     disabled={isRangeChanging}
                   >
                     开头
                   </Button>
-                  <Button 
-                    size="small" 
+                  <Button
+                    size="small"
                     onClick={() => handleQuickNav('anomaly')}
                     disabled={isRangeChanging}
                   >
                     定位异常
                   </Button>
-                  <Button 
-                    size="small" 
+                  <Button
+                    size="small"
                     onClick={() => handleQuickNav('end')}
                     disabled={isRangeChanging}
                   >
@@ -657,7 +655,7 @@ const AnomalyDetection = () => {
                   </Button>
                 </div>
               </div>
-              
+
               <div className="flex items-center gap-4">
                 <span className="text-xs text-[var(--color-text-3)] min-w-[60px]">
                   {tempVisibleRange[0].toFixed(1)}%
@@ -674,7 +672,7 @@ const AnomalyDetection = () => {
                     tooltip={{
                       formatter: (value) => {
                         if (!rangeTimeInfo) return `${value!.toFixed(1)}%`;
-                        
+
                         const isStart = value === tempVisibleRange[0];
                         const time = isStart ? rangeTimeInfo.start : rangeTimeInfo.end;
                         return (
@@ -691,7 +689,7 @@ const AnomalyDetection = () => {
                   {tempVisibleRange[1].toFixed(1)}%
                 </span>
               </div>
-              
+
               <div className="text-xs text-[var(--color-text-3)] mt-2 text-center">
                 {isRangeChanging ? (
                   <span className="text-blue-500">正在更新数据范围，请稍候...</span>
@@ -710,7 +708,7 @@ const AnomalyDetection = () => {
           )}
         </div>
       </div>
-      
+
       <div className="usage-scenarios pt-[80px] bg-[#F8FCFF]">
         <div className="header text-center text-3xl">
           {t(`playground-common.useScenario`)}

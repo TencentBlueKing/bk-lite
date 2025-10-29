@@ -1,6 +1,6 @@
 from django.conf import settings
-from django.utils.translation import gettext as _
 
+from apps.core.utils.loader import LanguageLoader
 from apps.opspilot.models import GraphChunkMap, KnowledgeGraph
 from apps.opspilot.utils.chunk_helper import ChunkHelper
 
@@ -21,9 +21,7 @@ class GraphUtils(ChunkHelper):
                 metadata_filter={"is_doc": "1", "knowledge_id": str(i["id"])},
                 get_count=False,
             )
-            return_data.extend(
-                [{"page_content": x["page_content"], "metadata": x["metadata"]} for x in res["documents"]]
-            )
+            return_data.extend([{"page_content": x["page_content"], "metadata": x["metadata"]} for x in res["documents"]])
         return return_data
 
     @classmethod
@@ -36,9 +34,7 @@ class GraphUtils(ChunkHelper):
             add_doc_list = [i for i in new_doc_list if i not in old_doc_list]
             delete_doc_list = [i for i in old_doc_list if i not in new_doc_list]
         delete_docs = cls.get_documents(delete_doc_list, graph_obj.knowledge_base.knowledge_index_name())
-        graph_map_list = dict(
-            GraphChunkMap.objects.filter(knowledge_graph_id=graph_obj.id).values_list("chunk_id", "graph_id")
-        )
+        graph_map_list = dict(GraphChunkMap.objects.filter(knowledge_graph_id=graph_obj.id).values_list("chunk_id", "graph_id"))
         delete_chunk = [i["metadata"]["chunk_id"] for i in delete_docs]
         graph_list = [graph_id for chunk_id, graph_id in graph_map_list.items() if chunk_id in delete_chunk]
         if graph_list:
@@ -75,12 +71,13 @@ class GraphUtils(ChunkHelper):
         try:
             res = cls.post_chat_server(kwargs, url, timeout=3600)
             if not res:
-                return {"result": False, "message": _("Failed to create graph. Please check the server logs.")}
+                loader = LanguageLoader(app="opspilot", default_lang="en")
+                message = loader.get("error.graph_create_failed") or "Failed to create graph. Please check the server logs."
+                return {"result": False, "message": message}
         except Exception as e:
             return {"result": False, "message": str(e)}
         data_list = [
-            GraphChunkMap(graph_id=graph_id, chunk_id=chunk_id, knowledge_graph_id=graph_obj.id)
-            for chunk_id, graph_id in res["result"].items()
+            GraphChunkMap(graph_id=graph_id, chunk_id=chunk_id, knowledge_graph_id=graph_obj.id) for chunk_id, graph_id in res["result"].items()
         ]
         GraphChunkMap.objects.bulk_create(data_list, batch_size=100)
         return {"result": True}
@@ -104,7 +101,9 @@ class GraphUtils(ChunkHelper):
         try:
             res = cls.post_chat_server(kwargs, url)
             if not res:
-                return {"result": False, "message": _("Failed to search graph. Please check the server logs.")}
+                loader = LanguageLoader(app="opspilot", default_lang="en")
+                message = loader.get("error.graph_search_failed") or "Failed to search graph. Please check the server logs."
+                return {"result": False, "message": message}
         except Exception as e:
             return {"result": False, "message": str(e)}
         return {"result": True, "data": res["result"]}
@@ -119,7 +118,9 @@ class GraphUtils(ChunkHelper):
         try:
             res = cls.post_chat_server(kwargs, url)
             if not res:
-                return {"result": False, "message": _("Failed to search graph. Please check the server logs.")}
+                loader = LanguageLoader(app="opspilot", default_lang="en")
+                message = loader.get("error.graph_search_failed") or "Failed to search graph. Please check the server logs."
+                return {"result": False, "message": message}
         except Exception as e:
             return {"result": False, "message": str(e)}
         return_data = {"result": True, "data": res["result"]}

@@ -20,6 +20,7 @@ import terminalstyles from './index.module.scss';
 import { useAuth } from '@/context/auth';
 import useApiClient from '@/utils/request';
 import { useTranslation } from '@/utils/i18n';
+import { isJSON } from '@/app/log/utils/common';
 
 const LogTerminal = forwardRef<LogTerminalRef, LogTerminalProps>(
   ({ query, className = '', fetchData }, ref) => {
@@ -158,27 +159,28 @@ const LogTerminal = forwardRef<LogTerminalRef, LogTerminalProps>(
             const { done, value } = await reader.read();
             if (done) break;
             const chunk = decoder.decode(value, { stream: true });
-            const lines = chunk.split('\n');
+            const lines = chunk.split('data:');
             for (const line of lines) {
-              let trimmed = line.trim();
+              const trimmed = line.trim();
               // 跳过空行和心跳检测
-              if (!trimmed || trimmed.startsWith('heartbeat:')) {
+              if (!trimmed || trimmed.startsWith(':')) {
                 continue;
               }
               // 处理SSE格式数据
               try {
-                if (trimmed.startsWith('data:')) {
-                  trimmed = trimmed.substring(5).trim();
+                if (isJSON(trimmed)) {
                   // 尝试解析JSON
                   const logData = JSON.parse(trimmed);
                   const msg = logData._msg || trimmed;
                   updateLogs(msg);
                 } else {
                   const msgMatch = trimmed.match(/"_msg"\s*:\s*"(.*?)",/);
-                  updateLogs(msgMatch ? msgMatch[1] : trimmed);
+                  if (msgMatch?.[1]) {
+                    updateLogs(msgMatch[1]);
+                  }
                 }
               } catch {
-                updateLogs(trimmed);
+                console.log('error', trimmed);
               }
             }
           } catch (error: any) {

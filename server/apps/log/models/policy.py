@@ -21,6 +21,7 @@ class Policy(TimeInfo, MaintainerInfo):
     alert_condition = models.JSONField(default=dict, verbose_name="告警条件")
     schedule = models.JSONField(default=dict, verbose_name="策略执行周期, eg: 1h执行一次, 5m执行一次")
     period = models.JSONField(default=dict, verbose_name="每次监控检测的数据周期,eg: 1h内, 5m内")
+    show_fields = models.JSONField(default=list, verbose_name="展示字段")
 
     # 通知配置
     notice = models.BooleanField(default=True, verbose_name="是否通知")

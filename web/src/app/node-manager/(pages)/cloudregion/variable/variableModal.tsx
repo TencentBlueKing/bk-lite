@@ -13,15 +13,15 @@ import type { FormInstance } from 'antd';
 import { useTranslation } from '@/utils/i18n';
 import { ModalSuccess, ModalRef } from '@/app/node-manager/types';
 import type { TableDataItem } from '@/app/node-manager/types';
-import useApiCloudRegion from '@/app/node-manager/api/cloudRegion';
+import useNodeManagerApi from '@/app/node-manager/api';
 import useCloudId from '@/app/node-manager/hooks/useCloudRegionId';
-import Password from '@/app/node-manager/components/password';
+import Password from '@/components/password';
 import { ListItem } from '@/types';
 const { Option } = Select;
 
 const VariableModal = forwardRef<ModalRef, ModalSuccess>(
   ({ onSuccess }, ref) => {
-    const { createVariable, updateVariable } = useApiCloudRegion();
+    const { createVariable, updateVariable } = useNodeManagerApi();
     const cloudId = useCloudId();
     const { t } = useTranslation();
     const formRef = useRef<FormInstance>(null);
@@ -198,5 +198,5 @@ const VariableModal = forwardRef<ModalRef, ModalSuccess>(
     );
   }
 );
-VariableModal.displayName = 'variableModal';
+VariableModal.displayName = 'VariableModal';
 export default VariableModal;

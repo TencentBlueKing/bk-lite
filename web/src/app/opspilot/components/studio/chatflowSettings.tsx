@@ -1,10 +1,10 @@
 'use client';
 
-import React, { useState } from 'react';
-import { Form, Input, Select, Collapse, Alert } from 'antd';
+import React, { useState, useRef } from 'react';
+import { Form, Input, Select, Collapse } from 'antd';
 import { CaretRightOutlined } from '@ant-design/icons';
 import { useTranslation } from '@/utils/i18n';
-import ChatflowEditor from '@/app/opspilot/components/chatflow/ChatflowEditor';
+import ChatflowEditor, { ChatflowEditorRef } from '@/app/opspilot/components/chatflow/ChatflowEditor';
 import Icon from '@/components/icon';
 
 const { Option } = Select;
@@ -19,6 +19,9 @@ const nodeCategories = [
       { type: 'celery', icon: 'a-icon-dingshichufa1x', labelKey: 'chatflow.celery' },
       { type: 'restful', icon: 'RESTfulAPI', labelKey: 'chatflow.restful' },
       { type: 'openai', icon: 'icon-test2', labelKey: 'chatflow.openai' },
+      { type: 'enterprise_wechat', icon: 'qiwei2', labelKey: 'chatflow.enterpriseWechat' },
+      { type: 'dingtalk', icon: 'dingding', labelKey: 'chatflow.dingtalk' },
+      { type: 'wechat_official', icon: 'weixingongzhonghao', labelKey: 'chatflow.wechatOfficial' },
     ]
   },
   {
@@ -40,8 +43,7 @@ const nodeCategories = [
     labelKey: 'chatflow.actionNodes',
     items: [
       { type: 'http', icon: 'HTTP', labelKey: 'chatflow.http' },
-      { type: 'prompt', icon: 'prompt_o', labelKey: 'chatflow.prompt' },
-      { type: 'knowledge', icon: 'zhishiku2', labelKey: 'chatflow.knowledge' }
+      { type: 'notification', icon: 'alarm', labelKey: 'chatflow.notification' }
     ]
   }
 ];
@@ -54,20 +56,18 @@ const NodeLibraryItem = ({ type, icon, label, onDragStart }: {
   onDragStart: (event: React.DragEvent, nodeType: string) => void;
 }) => {
   const handleDragStart = (event: React.DragEvent<HTMLDivElement>) => {
-    console.log('开始拖拽节点:', type);
     event.dataTransfer.setData('application/reactflow', type);
     event.dataTransfer.effectAllowed = 'move';
-    
+
     // 添加视觉反馈
     const target = event.currentTarget as HTMLDivElement;
     target.style.opacity = '0.5';
-    
+
     // 调用父组件的处理函数
     onDragStart(event, type);
   };
 
   const handleDragEnd = (event: React.DragEvent<HTMLDivElement>) => {
-    console.log('拖拽结束:', type);
     const target = event.currentTarget as HTMLDivElement;
     target.style.opacity = '1';
   };
@@ -89,20 +89,21 @@ interface ChatflowSettingsProps {
   form: any;
   groups: any[];
   onClear?: () => void;
-  onSaveWorkflow?: (nodes: any[], edges: any[]) => void;
-  workflowData?: { nodes: any[], edges: any[] };
+  onSaveWorkflow?: (workflowData: { nodes: any[], edges: any[] }) => void;
+  workflowData?: { nodes: any[], edges: any[] } | null;
 }
 
-const ChatflowSettings: React.FC<ChatflowSettingsProps> = ({ 
-  form, 
-  groups, 
-  onClear, 
+const ChatflowSettings: React.FC<ChatflowSettingsProps> = ({
+  form,
+  groups,
+  onClear,
   onSaveWorkflow,
-  workflowData 
+  workflowData
 }) => {
   const { t } = useTranslation();
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
-  const [activeAccordionKeys, setActiveAccordionKeys] = useState<string[]>(['nodes']); // 默认只展开节点，信息不展开
+  const [activeAccordionKeys, setActiveAccordionKeys] = useState<string[]>(['nodes']);
+  const chatflowEditorRef = useRef<ChatflowEditorRef>(null);
 
   const onDragStart = (event: React.DragEvent, nodeType: string) => {
     event.dataTransfer.setData('application/reactflow', nodeType);
@@ -113,6 +114,25 @@ const ChatflowSettings: React.FC<ChatflowSettingsProps> = ({
     setActiveAccordionKeys(Array.isArray(keys) ? keys : [keys]);
   };
 
+  const handleWorkflowChange = (nodes: any[], edges: any[]) => {
+    if (onSaveWorkflow) {
+      onSaveWorkflow({ nodes, edges });
+    }
+  };
+
+  // 处理清空画布的回调
+  const handleClearClick = () => {
+    // Clear the editor directly using ref
+    if (chatflowEditorRef.current) {
+      chatflowEditorRef.current.clearCanvas();
+    }
+
+    // Notify parent component to clear workflow data
+    if (onClear) {
+      onClear();
+    }
+  };
+
   return (
     <div className="w-full flex h-full">
       {/* Left Sidebar - Combined Information and Nodes */}
@@ -120,7 +140,7 @@ const ChatflowSettings: React.FC<ChatflowSettingsProps> = ({
         isSidebarCollapsed ? 'w-0 opacity-0' : 'w-80'
       }`}>
         <div>
-          <Collapse 
+          <Collapse
             size="small"
             ghost
             activeKey={activeAccordionKeys}
@@ -129,7 +149,7 @@ const ChatflowSettings: React.FC<ChatflowSettingsProps> = ({
             className="bg-transparent"
           >
             {/* Information Panel - 默认不展开 */}
-            <Panel 
+            <Panel
               key="information"
               header={
                 <div className="flex items-center">
@@ -171,7 +191,7 @@ const ChatflowSettings: React.FC<ChatflowSettingsProps> = ({
             </Panel>
 
             {/* Nodes Panel - 默认展开 */}
-            <Panel 
+            <Panel
               key="nodes"
               header={
                 <div className="flex items-center">
@@ -180,25 +200,18 @@ const ChatflowSettings: React.FC<ChatflowSettingsProps> = ({
               }
             >
               <div>
-                <Alert 
-                  message={t('chatflow.messages.dragToCreate')} 
-                  type="info" 
-                  showIcon 
-                  className="mb-4"
-                />
-                
-                <Collapse 
-                  size="small" 
+                <Collapse
+                  size="small"
                   ghost
                   defaultActiveKey={['triggers', 'agents', 'logic', 'actions']}
                   expandIcon={({ isActive }) => <CaretRightOutlined rotate={isActive ? 90 : 0} />}
                 >
                   {nodeCategories.map((category) => (
-                    <Panel 
+                    <Panel
                       key={category.key}
                       header={
                         <div className="flex items-center">
-                          <span className="text-xs">{t(category.labelKey)}</span>
+                          <span className="text-xs mt-[3px]">{t(category.labelKey)}</span>
                         </div>
                       }
                     >
@@ -230,8 +243,8 @@ const ChatflowSettings: React.FC<ChatflowSettingsProps> = ({
           style={{ left: '0px' }}
           title={isSidebarCollapsed ? t('chatflow.expandSidebar') : t('chatflow.collapseSidebar')}
         >
-          <Icon 
-            type={isSidebarCollapsed ? 'icon-test1' : 'icon-test'} 
+          <Icon
+            type={isSidebarCollapsed ? 'icon-test1' : 'icon-test'}
             className="text-gray-500 text-lg"
           />
         </button>
@@ -241,21 +254,20 @@ const ChatflowSettings: React.FC<ChatflowSettingsProps> = ({
       <div className={`flex-1 transition-all duration-300 ease-in-out ${
         isSidebarCollapsed ? 'pl-8' : 'pl-4'
       }`}>
-        <div className="flex items-center justify-between mb-2 px-2">
+        <div className="flex items-center mb-2 px-2">
           <h2 className="font-semibold text-sm text-[var(--color-text-1)]">{t('chatflow.canvas')}</h2>
-          {onClear && (
-            <button
-              onClick={onClear}
-              className="text-gray-500 hover:text-red-500 transition-colors p-1 rounded hover:bg-red-50"
-              title={t('chatflow.clear')}
-            >
-              <Icon type="shanchu" className="text-lg" />
-            </button>
-          )}
+          <button
+            onClick={handleClearClick}
+            className="text-gray-500 hover:text-red-500 transition-colors p-1 rounded hover:bg-red-50 ml-2"
+            title={t('chatflow.clear')}
+          >
+            <Icon type="shanchu" className="text-lg" />
+          </button>
         </div>
         <div className="border rounded-md shadow-sm bg-white h-[calc(100vh-230px)] mx-2">
-          <ChatflowEditor 
-            onSave={onSaveWorkflow} 
+          <ChatflowEditor
+            ref={chatflowEditorRef}
+            onSave={handleWorkflowChange}
             initialData={workflowData}
           />
         </div>

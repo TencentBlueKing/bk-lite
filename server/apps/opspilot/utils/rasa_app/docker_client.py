@@ -103,10 +103,8 @@ class DockerClient(object):
             "MUNCHKIN_BOT_ID": str(bot.id),
             "MUNCHKIN_API_KEY": bot.api_token,
             "MUNCHKIN_BASE_URL": settings.MUNCHKIN_BASE_URL,
-            "RABBITMQ_HOST": settings.CONVERSATION_MQ_HOST,
-            "RABBITMQ_PORT": str(settings.CONVERSATION_MQ_PORT),
-            "RABBITMQ_USERNAME": settings.CONVERSATION_MQ_USER,
-            "RABBITMQ_PASSWORD": settings.CONVERSATION_MQ_PASSWORD,
+            "NATS_URL": settings.NATS_SERVERS,
+            "NATS_NAMESPACE": settings.NATS_NAMESPACE,
             "ENABLE_SSL": "1" if bot.enable_ssl else "0",
             "BOT_DOMAIN": bot.bot_domain or "",
         }
@@ -196,7 +194,11 @@ class DockerClient(object):
         try:
             containers = self.client.containers.list(all=True, filters={"label": "app=pilot"})
             container_list = [
-                {"name": container.name, "status": container.status, "id": container.id[:12]}
+                {
+                    "name": container.name,
+                    "status": container.status,
+                    "id": container.id[:12],
+                }
                 for container in containers
             ]
             logger.info(f"共找到 {len(container_list)} 个Pilot容器")

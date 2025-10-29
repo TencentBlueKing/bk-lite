@@ -126,21 +126,24 @@ const Aside = ({
   return (
     <>
       <aside
-        className={`relative mr-4 flex flex-shrink-0 flex-col h-full ${sideMenuStyle.sideMenu} font-sans`}
+        className={`relative mr-4 flex flex-shrink-0 flex-col h-full ${sideMenuStyle.sideMenu} font-sans rounded-md`}
         style={asideStyle}
       >
-        <button
-          className="absolute z-10 top-4 left-3 flex items-center content-center py-2 px-4 rounded-md text-sm font-medium text-gray-600 cursor-pointer hover:text-blue-600"
-          onClick={goBack}
-          style={{
-            transition: 'all 0.2s ease',
-            zIndex: 20
-          }}
-        >
-          <ArrowLeftOutlined className="mr-2" />
-        </button>
+        <div className='flex flex-row relative justify-center items-center h-16 overflow-hidden'>
+          <button
+            className="absolute z-10 top-4 left-3 flex items-center content-center py-2 px-4 rounded-md text-sm font-medium text-gray-600 cursor-pointer hover:text-blue-600"
+            onClick={goBack}
+            style={{
+              transition: 'all 0.2s ease',
+              zIndex: 20
+            }}
+          >
+            <ArrowLeftOutlined className="mr-2" />
+          </button>
+          {!collapsed && <span>文件列表</span> }
+        </div>
         <nav
-          className={`flex-1 pt-[54px] relative rounded-md ${sideMenuStyle.nav}`}
+          className={`flex-1 relative rounded-md ${sideMenuStyle.nav}`}
           style={navStyle}
         >
           {loading ? (

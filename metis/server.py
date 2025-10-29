@@ -1,52 +1,25 @@
-from mlflow.tracing import configure
+
 import traceback
 
 from sanic import Sanic
 from sanic import json
-from sanic.log import logger
+from loguru import logger
 from sanic.logging.default import LOGGING_CONFIG_DEFAULTS
 import logging
 
-from src.core.embed.embed_builder import EmbedBuilder
-from src.core.rerank.rerank_manager import ReRankManager
-from src.web.api import api
-from src.core.sanic_plus.env.core_settings import core_settings
-from src.core.sanic_plus.auth.api_auth import auth
-from src.core.sanic_plus.utils.config import YamlConfig
-from src.core.sanic_plus.utils.crypto import PasswordCrypto
-from src.core.ocr.pp_ocr import PPOcr
-import mlflow
+from neco.llm.embed.embed_manager import EmbedManager
+from neco.llm.rerank.rerank_manager import ReRankManager
+from src.api import api
+from src.core_settings import core_settings
+from neco.sanic.auth.api_auth import auth
+from neco.sanic.utils.config import YamlConfig
+from neco.core.utils.crypto import PasswordCrypto
+from neco.ocr.pp_ocr import PPOcr
+from neco.llm.common.tracing import setup_llm_tracing
 import os
 
 if core_settings.enable_llm_trace:
-    mlflow.set_tracking_uri(core_settings.mlflow_tracking_uri)
-    mlflow.set_experiment("metis")
-
-    def pii_filter(span):
-        # 屏蔽 inputs 里的 *_api_key / *token* 等字段
-        if span.inputs:
-            masked = dict(span.inputs)
-            for k in list(masked.keys()):
-                if any(s in k.lower() for s in ["api_key", "token", "secret", "password"]):
-                    masked[k] = "[REDACTED]"
-            span.set_inputs(masked)
-
-        # 屏蔽 attributes 里的敏感键（有些库会把 key 放在属性里）
-        for attr_k in list(span.attributes.keys()):
-            if any(s in attr_k.lower() for s in ["api_key", "token", "secret", "password"]):
-                span.set_attribute(attr_k, "[REDACTED]")
-
-        # 如有需要，也可对 outputs 做同样处理
-        if span.outputs and isinstance(span.outputs, dict):
-            masked_out = dict(span.outputs)
-            for k in list(masked_out.keys()):
-                if any(s in k.lower() for s in ["api_key", "token", "secret", "password"]):
-                    masked_out[k] = "[REDACTED]"
-            span.set_outputs(masked_out)
-
-    configure(span_processors=[pii_filter])
-    mlflow.langchain.autolog()
-
+    setup_llm_tracing(core_settings.mlflow_tracking_uri, 'metis')
 
 # 全局变量，延迟初始化
 crypto = None
@@ -93,10 +66,10 @@ def bootstrap() -> Sanic:
 
     logging.basicConfig(level=logging.INFO)
     LOGGING_CONFIG_DEFAULTS['formatters']['generic'] = {
-        'class': 'src.core.sanic_plus.log.sanic_log_formater.SanicLogFormatter',
+        'class': 'neco.sanic.log.sanic_log_formater.SanicLogFormatter',
     }
     LOGGING_CONFIG_DEFAULTS['formatters']['access'] = {
-        'class': 'src.core.sanic_plus.log.sanic_log_formater.SanicAccessFormatter',
+        'class': 'neco.sanic.log.sanic_log_formater.SanicAccessFormatter',
     }
 
     # 禁用 Sanic access 日志
@@ -123,8 +96,12 @@ def bootstrap() -> Sanic:
             logger.info(
                 f"启动知识图谱能力, 知识图谱地址{core_settings.knowledge_graph_host}")
 
-            from src.core.rag.graph_rag.graphiti.graphiti_rag import GraphitiRAG
-            rag = GraphitiRAG()
+            from neco.llm.rag.graph_rag.graphiti.graphiti_rag import GraphitiRAG
+            rag = GraphitiRAG(
+                core_settings.knowledge_graph_host, core_settings.knowledge_graph_username,
+                core_settings.knowledge_graph_password, core_settings.knowledge_graph_port,
+                core_settings.knowledge_graph_database
+            )
             await rag.setup_graph()
         else:
             logger.info("未配置 知识图谱 地址，跳过知识图谱能力的启动......")
@@ -132,8 +109,8 @@ def bootstrap() -> Sanic:
     @app.command
     async def download_models():
         logger.info("download HuggingFace Embed Models")
-        EmbedBuilder().get_embed('local:huggingface_embedding:BAAI/bge-small-zh-v1.5')
-        EmbedBuilder().get_embed('local:huggingface_embedding:maidalun1020/bce-embedding-base_v1')
+        EmbedManager().get_embed('local:huggingface_embedding:BAAI/bge-small-zh-v1.5')
+        EmbedManager().get_embed('local:huggingface_embedding:maidalun1020/bce-embedding-base_v1')
 
         logger.info("download BCE ReRank Models")
         ReRankManager.get_local_rerank_instance(
@@ -142,4 +119,9 @@ def bootstrap() -> Sanic:
         logger.info("download PaddleOCR")
         PPOcr()
 
+        logger.info('download tiktoken')
+        import tiktoken
+        encoding = tiktoken.get_encoding("cl100k_base")
+        encoding = tiktoken.get_encoding("o200k_base")
+        encoding.encode('Metis')
     return app

@@ -1,6 +1,10 @@
 import os
 
+install_apps = os.getenv("INSTALL_APPS", "")
+
 for app in os.listdir("apps"):
+    if install_apps and app not in install_apps.split(","):
+        continue
     if app.endswith(".py") or app.startswith("__"):
         continue
     if os.path.exists(f"apps/{app}/config.py"):

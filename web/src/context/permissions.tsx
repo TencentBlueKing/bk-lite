@@ -2,6 +2,7 @@ import React, { createContext, useContext, useState, useEffect, useCallback, Rea
 import useApiClient from '@/utils/request';
 import { useMenus } from '@/context/menus';
 import { MenuItem } from '@/types/index';
+import { getClientIdFromRoute, mapClientName } from '@/utils/route';
 
 interface Permissions {
   [url: string]: string[];
@@ -22,36 +23,6 @@ const PermissionsContext = createContext<PermissionsContextValue>({
   loading: true,
   hasPermission: () => false,
 });
-
-// Extract client_id from route
-const getClientIdFromRoute = (): string => {
-  if (typeof window === 'undefined') return '';
-  
-  const pathname = window.location.pathname;
-  const pathSegments = pathname.split('/').filter(Boolean);
-  
-  // If it's auth/signin route, return default client_id
-  if (pathSegments.length >0 && pathSegments[0] === 'auth') {
-    return 'ops-console';
-  }
-  
-  // Route format: /opspilot/xxx or /client-name/xxx - take the first segment as client_id
-  if (pathSegments.length > 0) {
-    return pathSegments[0];
-  }
-  
-  return 'ops-console';
-};
-
-// Map route-based client_id to actual client name
-const mapClientName = (routeClientId: string): string => {
-  const clientNameMap: { [key: string]: string } = {
-    'node-manager': 'node',
-    // Add more mappings here if needed
-  };
-  
-  return clientNameMap[routeClientId] || routeClientId;
-};
 
 export const PermissionsProvider = ({ children }: { children: ReactNode }) => {
   const { configMenus, loading: menuLoading } = useMenus();

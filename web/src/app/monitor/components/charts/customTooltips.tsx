@@ -2,7 +2,7 @@ import React from 'react';
 import { TooltipProps } from 'recharts';
 import customTooltipStyle from './index.module.scss';
 import { getEnumValue } from '@/app/monitor/utils/common';
-import { MetricItem } from '@/app/monitor/types/monitor';
+import { MetricItem } from '@/app/monitor/types';
 import { useLocalizedTime } from '@/hooks/useLocalizedTime';
 
 interface CustomToolTipProps extends Omit<TooltipProps<any, string>, 'unit'> {

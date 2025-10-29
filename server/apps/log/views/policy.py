@@ -2,8 +2,6 @@ import json
 from datetime import timedelta
 
 from django_celery_beat.models import PeriodicTask, CrontabSchedule
-from drf_yasg import openapi
-from drf_yasg.utils import swagger_auto_schema
 from rest_framework import viewsets
 from rest_framework.decorators import action
 from django.db import models
@@ -11,8 +9,9 @@ from django.db import models
 from apps.core.exceptions.base_app_exception import BaseAppException
 from apps.core.utils.permission_utils import get_permission_rules, get_permissions_rules, permission_filter, check_instance_permission
 from apps.core.utils.web_utils import WebUtils
-from apps.log.constants import POLICY_MODULE, DEFAULT_PERMISSION, ALERT_STATUS_NEW, ALERT_STATUS_CLOSED
-from apps.log.filters.policy import PolicyFilter, AlertFilter, EventFilter
+from apps.log.constants.permission import PermissionConstants
+from apps.log.constants.alert_policy import AlertConstants
+from apps.log.filters.policy import PolicyFilter, AlertFilter, EventFilter, EventRawDataFilter
 from apps.log.models.policy import Policy, Alert, Event, EventRawData
 from apps.log.serializers.policy import PolicySerializer, AlertSerializer, EventSerializer, EventRawDataSerializer
 from config.drf.pagination import CustomPageNumberPagination
@@ -32,7 +31,7 @@ class PolicyViewSet(viewsets.ModelViewSet):
             request.user,
             request.COOKIES.get("current_team"),
             "log",
-            f"{POLICY_MODULE}.{collect_type_id}",
+            f"{PermissionConstants.POLICY_MODULE}.{collect_type_id}",
         )
 
         # 应用权限过滤
@@ -71,7 +70,7 @@ class PolicyViewSet(viewsets.ModelViewSet):
             if policy_info['id'] in policy_permission_map:
                 policy_info['permission'] = policy_permission_map[policy_info['id']]
             else:
-                policy_info['permission'] = DEFAULT_PERMISSION
+                policy_info['permission'] = PermissionConstants.DEFAULT_PERMISSION
 
         return WebUtils.response_success(dict(count=queryset.count(), items=results))
 
@@ -203,17 +202,6 @@ class PolicyViewSet(viewsets.ModelViewSet):
             enabled=True
         )
 
-    @swagger_auto_schema(
-        operation_id="policy_enable",
-        operation_description="启用/禁用策略",
-        request_body=openapi.Schema(
-            type=openapi.TYPE_OBJECT,
-            properties={
-                "enabled": openapi.Schema(type=openapi.TYPE_BOOLEAN, description="是否启用")
-            },
-            required=["enabled"]
-        )
-    )
     @action(methods=['post'], detail=True, url_path='enable')
     def enable(self, request, pk=None):
         policy = self.get_object()
@@ -249,7 +237,7 @@ class AlertViewSet(viewsets.ModelViewSet):
             request.user,
             current_team,
             "log",
-            POLICY_MODULE,
+            PermissionConstants.POLICY_MODULE,
         )
 
         policy_permissions = permissions_result.get("data", {})
@@ -279,17 +267,6 @@ class AlertViewSet(viewsets.ModelViewSet):
 
         return accessible_policy_ids
 
-    @swagger_auto_schema(
-        operation_id="alert_list",
-        operation_description="告警列表查询",
-        manual_parameters=[
-            openapi.Parameter('levels', openapi.IN_QUERY, description="告警级别多选，用逗号分隔，如：critical,warning,info", type=openapi.TYPE_STRING, required=False),
-            openapi.Parameter('content', openapi.IN_QUERY, description="告警内容关键字搜索", type=openapi.TYPE_STRING, required=False),
-            openapi.Parameter('collect_type', openapi.IN_QUERY, description="采集类型ID，如果不传则查询所有有权限的采集类型", type=openapi.TYPE_INTEGER, required=False),
-            openapi.Parameter('page', openapi.IN_QUERY, description="页码", type=openapi.TYPE_INTEGER, required=False, default=1),
-            openapi.Parameter('page_size', openapi.IN_QUERY, description="每页数据条数", type=openapi.TYPE_INTEGER, required=False, default=10),
-        ],
-    )
     def list(self, request, *args, **kwargs):
         """
         告警列表查询
@@ -306,7 +283,7 @@ class AlertViewSet(viewsets.ModelViewSet):
                 request.user,
                 request.COOKIES.get("current_team"),
                 "log",
-                f"{POLICY_MODULE}.{collect_type_id}",
+                f"{PermissionConstants.POLICY_MODULE}.{collect_type_id}",
             )
 
             # 应用权限过滤
@@ -327,8 +304,8 @@ class AlertViewSet(viewsets.ModelViewSet):
             # 查询所有有权限的采集类型的告警（使用优化后的统一方法）
             policy_ids = self._get_all_accessible_policy_ids(request)
 
-            if not policy_ids:
-                return WebUtils.response_success({"count": 0, "items": []})
+        if not policy_ids:
+            return WebUtils.response_success({"count": 0, "items": []})
 
         # 基于policy权限过滤告警
         queryset = self.filter_queryset(self.get_queryset())
@@ -352,16 +329,6 @@ class AlertViewSet(viewsets.ModelViewSet):
 
         return WebUtils.response_success({"count": total_count, "items": results})
 
-    @swagger_auto_schema(
-        operation_id="alert_list_all",
-        operation_description="查询所有有权限的采集类型告警列表",
-        manual_parameters=[
-            openapi.Parameter('levels', openapi.IN_QUERY, description="告警级别多选，用逗号分隔，如：critical,warning,info", type=openapi.TYPE_STRING, required=False),
-            openapi.Parameter('content', openapi.IN_QUERY, description="告警内容关键字搜索", type=openapi.TYPE_STRING, required=False),
-            openapi.Parameter('page', openapi.IN_QUERY, description="页码", type=openapi.TYPE_INTEGER, required=False, default=1),
-            openapi.Parameter('page_size', openapi.IN_QUERY, description="每页数据条数", type=openapi.TYPE_INTEGER, required=False, default=10),
-        ],
-    )
     @action(methods=['get'], detail=False, url_path='all')
     def alert_list_all(self, request):
         """
@@ -397,28 +364,17 @@ class AlertViewSet(viewsets.ModelViewSet):
 
         return WebUtils.response_success({"count": total_count, "items": results})
 
-    @swagger_auto_schema(
-        operation_id="alert_closed",
-        operation_description="关闭告警",
-    )
     @action(methods=['post'], detail=True, url_path='closed')
     def closed(self, request, pk=None):
         alert = self.get_object()
         operator = request.user.username
 
-        alert.status = ALERT_STATUS_CLOSED
+        alert.status = AlertConstants.STATUS_CLOSED
         alert.operator = operator
         alert.save()
 
-        return WebUtils.response_success({"status": ALERT_STATUS_CLOSED, "operator": operator})
+        return WebUtils.response_success({"status": AlertConstants.STATUS_CLOSED, "operator": operator})
 
-    @swagger_auto_schema(
-        operation_description="获取最新告警事件",
-        operation_id="get_last_event_by_alert",
-        manual_parameters=[
-            openapi.Parameter('alert_id', openapi.IN_QUERY, description="告警ID", type=openapi.TYPE_STRING)
-        ]
-    )
     @action(methods=['get'], detail=False, url_path='last_event')
     def get_last_event(self, request):
         """
@@ -441,19 +397,6 @@ class AlertViewSet(viewsets.ModelViewSet):
 
         return WebUtils.response_success(data)
 
-    @swagger_auto_schema(
-        operation_id="alert_stats",
-        operation_description="告警统计 - 基于step动态分割时间区间统计",
-        manual_parameters=[
-            openapi.Parameter('levels', openapi.IN_QUERY, description="告警级别多选，用逗号分隔，如：critical,warning,info", type=openapi.TYPE_STRING, required=False),
-            openapi.Parameter('content', openapi.IN_QUERY, description="告警内容关键字搜索", type=openapi.TYPE_STRING, required=False),
-            openapi.Parameter('collect_type', openapi.IN_QUERY, description="采集类型ID，不传则统计所有有权限的采集类型", type=openapi.TYPE_INTEGER, required=False),
-            openapi.Parameter('start_event_time', openapi.IN_QUERY, description="开始时间", type=openapi.TYPE_STRING, required=False),
-            openapi.Parameter('end_event_time', openapi.IN_QUERY, description="结束时间", type=openapi.TYPE_STRING, required=False),
-            openapi.Parameter('status', openapi.IN_QUERY, description="告警状态：new(活跃) 或 closed(关闭)", type=openapi.TYPE_STRING, enum=['new', 'closed'], default='new', required=False),
-            openapi.Parameter('step', openapi.IN_QUERY, description="时间步长，单位分钟，默认60分钟", type=openapi.TYPE_INTEGER, default=60, required=False),
-        ]
-    )
     @action(methods=['get'], detail=False, url_path='stats')
     def stats(self, request):
         """
@@ -477,7 +420,7 @@ class AlertViewSet(viewsets.ModelViewSet):
                 request.user,
                 request.COOKIES.get("current_team"),
                 "log",
-                f"{POLICY_MODULE}.{collect_type_id}",
+                f"{PermissionConstants.POLICY_MODULE}.{collect_type_id}",
             )
 
             # 先过滤出有权限的Policy
@@ -501,7 +444,7 @@ class AlertViewSet(viewsets.ModelViewSet):
             if not policy_ids:
                 return WebUtils.response_success({
                     "total": 0,
-                    "status": request.query_params.get('status', ALERT_STATUS_NEW),
+                    "status": request.query_params.get('status', AlertConstants.STATUS_NEW),
                     "time_range": {"start": None, "end": None},
                     "step_minutes": int(request.query_params.get('step', 60)),
                     "time_series": []
@@ -512,7 +455,7 @@ class AlertViewSet(viewsets.ModelViewSet):
         queryset = queryset.filter(policy_id__in=policy_ids).distinct()
 
         # 获取参数
-        status = request.query_params.get('status', ALERT_STATUS_NEW)
+        status = request.query_params.get('status', AlertConstants.STATUS_NEW)
         step_minutes = int(request.query_params.get('step', 60))
 
         # 按状态过滤
@@ -611,7 +554,29 @@ class EventViewSet(viewsets.ReadOnlyModelViewSet):
 class EventRawDataViewSet(viewsets.ReadOnlyModelViewSet):
     queryset = EventRawData.objects.all()
     serializer_class = EventRawDataSerializer
+    filterset_class = EventRawDataFilter
     pagination_class = CustomPageNumberPagination
 
     def get_queryset(self):
-        return EventRawData.objects.select_related('event').order_by('-id')
+        return EventRawData.objects.select_related('event').order_by('-event__event_time', '-id')
+
+    @action(methods=['get'], detail=False, url_path='by_event_id')
+    def rawdata_list_by_event_id(self, request):
+        """
+        根据事件ID获取原始数据
+        
+        由于每个事件只对应一条原始数据记录，所以直接返回对应的数据，无需分页
+
+        URL: /api/event-raw-data/by_event_id/?event_id=xxx
+        """
+        event_id = request.query_params.get('event_id')
+        if not event_id:
+            return WebUtils.response_error("缺少事件ID参数")
+
+        try:
+            # 直接获取对应的原始数据记录
+            event_raw_data = EventRawData.objects.select_related('event').get(event_id=event_id)
+            serializer = self.get_serializer(event_raw_data)
+            return WebUtils.response_success(serializer.data)
+        except EventRawData.DoesNotExist:
+            return WebUtils.response_error("未找到对应的原始数据")

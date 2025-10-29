@@ -37,11 +37,11 @@ const CustomPopover: React.FC<CustomPopoverProps> = ({
 
   return (
     <Popover
-      className="custom-popover"
+      overlayClassName="custom-popover"
       title={title}
       arrow={false}
       trigger="click"
-      getPopupContainer={(trigger) => trigger.parentElement || document.body}
+      getPopupContainer={(trigger) => document.body || trigger.parentElement}
       content={renderContent()}
       open={open}
       onOpenChange={handleOpenChange}

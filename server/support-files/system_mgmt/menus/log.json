@@ -14,7 +14,7 @@
         {
           "id": "search",
           "name": "Search",
-          "operation": ["View"]
+          "operation": ["View", "Delete"]
         }
       ]
     },

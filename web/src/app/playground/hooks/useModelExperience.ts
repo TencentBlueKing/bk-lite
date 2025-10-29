@@ -18,6 +18,7 @@ interface Capability {
     name?: string;
   } | number;
   is_active?: boolean;
+  config?: any
 }
 
 interface ProcessedCapability {
@@ -25,6 +26,11 @@ interface ProcessedCapability {
   name: string;
   description: string;
   url: string;
+}
+
+interface CategoryWithCapabilities {
+  category: Category;
+  capabilities: ProcessedCapability[];
 }
 
 const useModelExperience = (shouldLoad: boolean = true) => {
@@ -104,32 +110,27 @@ const useModelExperience = (shouldLoad: boolean = true) => {
     setReloadTrigger(prev => prev + 1);
   }, [shouldLoad]);
 
-  const renderMenuByName = useCallback((name: string): ProcessedCapability[] => {
+  const renderMenu = useCallback((): CategoryWithCapabilities[] => {
     if (!categoryList.length || !capabilityList.length) {
       return [];
     }
+    return categoryList.map((category: Category) => ({
+      category,
+      capabilities: capabilityList
+        .filter((item: Capability) => {
+          const categoryId = typeof item.category === 'object'
+            ? item.category.id
+            : item.category;
 
-    const category = categoryList.find((item: Category) => item?.name === name);
-
-    if (!category) {
-      console.warn(`Category "${name}" not found`);
-      return [];
-    }
-
-    return capabilityList
-      .filter((item: Capability) => {
-        const categoryId = typeof item.category === 'object'
-          ? item.category.id
-          : item.category;
-
-        return categoryId === category.id && item.is_active !== false;
-      })
-      .map((item: Capability) => ({
-        id: item.id,
-        name: item?.name || 'Unnamed',
-        description: item?.description || '',
-        url: `${item?.url}?page=anomaly-detection&id=${item?.id}&name=${encodeURIComponent(item?.name || '')}&description=${encodeURIComponent(item?.description || '')}`,
-      }));
+          return categoryId === category.id && item.is_active !== false;
+        })
+        .map((item: Capability) => ({
+          id: item.id,
+          name: item?.name || 'Unnamed',
+          description: item?.description || '',
+          url: `${item?.url}?page=${item.config?.categoryType}&id=${item?.id}&name=${encodeURIComponent(item?.name || '')}&description=${encodeURIComponent(item?.description || '')}`,
+        }))
+    })).filter(({ capabilities }) => capabilities.length > 0);
   }, [categoryList, capabilityList]);
 
   const getAllCategories = useCallback((): Category[] => {
@@ -160,7 +161,7 @@ const useModelExperience = (shouldLoad: boolean = true) => {
     loading,
     error,
     reload,
-    renderMenuByName,
+    renderMenu,
     getAllCategories,
     getCapabilitiesByCategory,
     isDataReady,

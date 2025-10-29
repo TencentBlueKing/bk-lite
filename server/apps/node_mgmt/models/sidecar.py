@@ -137,7 +137,8 @@ class Action(TimeInfo, MaintainerInfo):
 
 
 class SidecarApiToken(TimeInfo, MaintainerInfo):
-    token = models.CharField(max_length=100, verbose_name="Token")
+    node_id = models.CharField(max_length=100, default="", verbose_name="节点ID")
+    token = models.CharField(max_length=250, verbose_name="Token")
 
     class Meta:
         verbose_name = "Sidecar API Token"

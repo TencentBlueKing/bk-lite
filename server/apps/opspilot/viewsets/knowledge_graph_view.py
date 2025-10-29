@@ -1,5 +1,4 @@
 from django.http import JsonResponse
-from django.utils.translation import gettext as _
 from django_filters import filters
 from django_filters.rest_framework import FilterSet
 from rest_framework.decorators import action
@@ -61,7 +60,7 @@ class KnowledgeGraphViewSet(MaintainerViewSet):
             return JsonResponse(
                 {
                     "result": False,
-                    "message": _("Knowledge graph is training, cannot delete"),
+                    "message": "Knowledge graph is training, cannot delete",
                 }
             )
         try:
@@ -77,9 +76,9 @@ class KnowledgeGraphViewSet(MaintainerViewSet):
         knowledge_base_id = request.data.get("knowledge_base_id")
         graph_obj = KnowledgeGraph.objects.filter(knowledge_base_id=knowledge_base_id).first()
         if graph_obj.status != "completed":
-            return JsonResponse({"result": False, "message": _("Knowledge graph is not completed")})
+            return JsonResponse({"result": False, "message": "Knowledge graph is not completed"})
         if not graph_obj:
-            return JsonResponse({"result": False, "message": _("Knowledge graph not found")})
+            return JsonResponse({"result": False, "message": "Knowledge graph not found"})
         try:
             rebuild_graph_community_by_instance.delay(graph_obj.id)
             return JsonResponse({"result": True})

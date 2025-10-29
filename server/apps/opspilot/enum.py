@@ -52,3 +52,21 @@ class ActionChoice(object):
     USE_KNOWLEDGE = 0
 
     CHOICE = ((USE_KNOWLEDGE, _("Use specified knowledge base")),)
+
+
+class WorkFlowExecuteType(models.TextChoices):
+    """工作流执行类型枚举"""
+
+    OPENAI = "openai", _("OpenAI")
+    RESTFUL = "restful", _("RESTful")
+    CELERY = "celery", _("Celery")
+    ENTERPRISE_WECHAT = "enterprise_wechat", _("Enterprise WeChat")
+    WECHAT_OFFICIAL_ACCOUNT = "wechat_official", _("WeChat Official Account")
+    DINGTALK = "dingtalk", _("Ding Talk")
+
+
+class WorkFlowTaskStatus(models.TextChoices):
+    """工作流任务状态枚举"""
+
+    SUCCESS = "success", _("Success")
+    FAIL = "fail", _("Fail")

@@ -11,6 +11,16 @@ export const useProviderApi = () => {
     return get(`/opspilot/model_provider_mgmt/${type}/`);
   };
 
+
+  /**
+   * Fetches models detail by type.
+   * @param type - The type of models to fetch.
+   * @param id - The ID of the model to fetch.
+   */
+  const fetchModelDetail = async (type: string, id: number): Promise<any> => {
+    return get(`/opspilot/model_provider_mgmt/${type}/${id}/`);
+  };
+
   /**
    * Adds a new provider.
    * @param type - The type of the provider.
@@ -89,6 +99,7 @@ export const useProviderApi = () => {
 
   return {
     fetchModels,
+    fetchModelDetail,
     addProvider,
     updateProvider,
     deleteProvider,

@@ -1,5 +1,5 @@
 import django_filters
-from apps.log.models.policy import Policy, Alert, Event
+from apps.log.models.policy import Policy, Alert, Event, EventRawData
 
 
 class PolicyFilter(django_filters.FilterSet):
@@ -60,3 +60,11 @@ class EventFilter(django_filters.FilterSet):
     class Meta:
         model = Event
         fields = ['policy', 'alert', 'alert_id', 'source_id', 'level', 'event_time', 'created_at']
+
+
+class EventRawDataFilter(django_filters.FilterSet):
+    event_id = django_filters.CharFilter(field_name='event__id')
+
+    class Meta:
+        model = EventRawData
+        fields = ['event_id']

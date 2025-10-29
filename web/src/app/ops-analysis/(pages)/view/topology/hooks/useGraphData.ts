@@ -8,6 +8,7 @@ import { useCallback, useState } from 'react';
 import type { Graph as X6Graph } from '@antv/x6';
 import { message } from 'antd';
 import { fetchWidgetData } from '@/app/ops-analysis/utils/widgetDataTransform';
+import { useTranslation } from '@/utils/i18n';
 import { useTopologyApi } from '@/app/ops-analysis/api/topology';
 import { useDataSourceApi } from '@/app/ops-analysis/api/dataSource';
 import { TopologyNodeData } from '@/app/ops-analysis/types/topology';
@@ -17,9 +18,9 @@ import { createNodeByType } from '../utils/registerNode';
 
 const serializeNodeConfig = (nodeData: any, nodeType: string) => {
   const styleConfigMapping: Record<string, string[]> = {
-    'single-value': ['textColor', 'fontSize', 'backgroundColor', 'borderColor', 'nameColor', 'nameFontSize'],
-    'basic-shape': ['width', 'height', 'backgroundColor', 'borderColor', 'borderWidth', 'lineType', 'shapeType'],
-    icon: ['width', 'height', 'borderColor'],
+    'single-value': ['textColor', 'fontSize', 'backgroundColor', 'borderColor', 'nameColor', 'nameFontSize', 'thresholdColors'],
+    'basic-shape': ['width', 'height', 'backgroundColor', 'borderColor', 'borderWidth', 'lineType', 'shapeType', 'renderEffect'],
+    icon: ['width', 'height', 'backgroundColor', 'borderColor', 'fontSize', 'textColor', 'iconPadding', 'textDirection'],
     text: ['fontSize', 'fontWeight', 'textColor'],
     chart: ['width', 'height'],
   };
@@ -42,6 +43,7 @@ export const useGraphData = (
   startLoadingAnimation: (node: any) => void,
   handleSaveCallback?: () => void
 ) => {
+  const { t } = useTranslation();
   const [loading, setLoading] = useState(false);
   const { saveTopology, getTopologyDetail } = useTopologyApi();
   const { getSourceDataByApiId } = useDataSourceApi();
@@ -59,10 +61,11 @@ export const useGraphData = (
         type: nodeData.type,
         name: nodeData.name,
         unit: nodeData.unit,
+        conversionFactor: nodeData.conversionFactor,
         decimalPlaces: nodeData.decimalPlaces,
         description: nodeData.description || '',
         position,
-        zIndex: zIndex || 0, 
+        zIndex: zIndex || 0,
         logoType: nodeData.logoType,
         logoIcon: nodeData.logoIcon,
         logoUrl: nodeData.logoUrl,
@@ -75,7 +78,7 @@ export const useGraphData = (
 
     const edges = graphInstance.getEdges().map((edge: any) => {
       const edgeData = edge.getData();
-      const vertices = edge.getVertices(); 
+      const vertices = edge.getVertices();
 
       return {
         id: edge.id,
@@ -85,6 +88,7 @@ export const useGraphData = (
         targetPort: edge.getTargetPortId(),
         lineType: edgeData?.lineType || 'common_line',
         lineName: edgeData?.lineName || '',
+        arrowDirection: edgeData?.arrowDirection || 'single',
         sourceInterface: edgeData?.sourceInterface,
         targetInterface: edgeData?.targetInterface,
         vertices: vertices || [],
@@ -101,7 +105,7 @@ export const useGraphData = (
 
   const handleSaveTopology = useCallback(async (selectedTopology: DirItem) => {
     if (!selectedTopology?.data_id) {
-      message.error('请先选择要保存的拓扑图');
+      message.error(t('topology.saveTopologySelectMsg'));
       return;
     }
 
@@ -118,10 +122,9 @@ export const useGraphData = (
 
       await saveTopology(selectedTopology.data_id, saveData);
       handleSaveCallback?.();
-      message.success('拓扑图保存成功');
+      message.success(t('topology.saveTopologySuccess'));
     } catch (error) {
-      console.error('保存拓扑图失败:', error);
-      message.error('保存拓扑图失败');
+      message.error(t('topology.saveTopologyFailed' + error));
     } finally {
       setLoading(false);
     }
@@ -200,9 +203,11 @@ export const useGraphData = (
     });
 
     data.edges?.forEach((edgeConfig) => {
+      const connectionType = (edgeConfig as any).arrowDirection || 'single';
       const edgeData: any = {
         lineType: edgeConfig.lineType as 'common_line' | 'network_line',
         lineName: edgeConfig.lineName,
+        arrowDirection: connectionType,
         sourceInterface: edgeConfig.sourceInterface,
         targetInterface: edgeConfig.targetInterface,
         vertices: edgeConfig.vertices || [],
@@ -210,17 +215,7 @@ export const useGraphData = (
         config: edgeConfig.config,
       };
 
-      const edgeStyle = getEdgeStyleWithLabel(edgeData, 'single');
-
-      if (edgeConfig.styleConfig?.lineColor) {
-        edgeStyle.attrs = {
-          ...edgeStyle.attrs,
-          line: {
-            ...edgeStyle.attrs?.line,
-            stroke: edgeConfig.styleConfig.lineColor,
-          },
-        };
-      }
+      const edgeStyle = getEdgeStyleWithLabel(edgeData, connectionType, edgeConfig.styleConfig);
 
       const edge = graphInstance.createEdge({
         id: edgeConfig.id,

@@ -14,7 +14,7 @@ import {
   TimeValuesProps,
 } from '@/app/monitor/types';
 import { getRecentTimeRange } from '@/app/monitor/utils/common';
-import { ViewModalProps } from '@/app/monitor/types/monitor';
+import { ViewModalProps } from '@/app/monitor/types/view';
 import TimeSelector from '@/components/time-selector';
 import Permission from '@/components/permission';
 import AlertDetail from '@/app/monitor/(pages)/event/alert/alertDetail';
@@ -22,12 +22,9 @@ import CustomTable from '@/components/custom-table';
 import { useLocalizedTime } from '@/hooks/useLocalizedTime';
 import dayjs from 'dayjs';
 import { useCommon } from '@/app/monitor/context/common';
-import {
-  LEVEL_MAP,
-  useLevelList,
-  useStateMap,
-} from '@/app/monitor/constants/monitor';
-import { INIT_VIEW_MODAL_FORM } from '@/app/monitor/constants/monitor';
+import { useLevelList, useStateMap } from '@/app/monitor/hooks';
+import { LEVEL_MAP } from '@/app/monitor/constants';
+import { INIT_VIEW_MODAL_FORM } from '@/app/monitor/constants/view';
 
 const Alert: React.FC<ViewModalProps> = ({
   monitorObject,

@@ -1,0 +1,58 @@
+# ====================================
+# file 日志源（含字段映射）
+# ====================================
+[sources.file_{{ instance_id }}]
+type = "file"
+include = ["{{ file_path }}"]
+data_dir = "/opt/fusion-collectors"
+ignore_older = 86400  # 忽略24小时以前的日志，可按需调整
+# encoding = "utf-8"  # 如有乱码可手动开启
+
+{% if multiline %}
+# ====================================
+# 多行日志处理
+# ====================================
+multiline.condition_pattern = '{{ multiline.condition_pattern }}'
+multiline.mode = "{{ multiline.mode }}"
+multiline.start_pattern = '{{ multiline.start_pattern }}'
+multiline.timeout_ms = {{ multiline.timeout_ms }}
+{% endif %}
+
+# ====================================
+# enrich（字段补全）
+# ====================================
+[transforms.file_enrich_{{ instance_id }}]
+type = "remap"
+inputs = ["file_{{ instance_id }}"]
+source = '''
+.collector = "Vector"
+.collect_type = "file"
+.instance_id = "{{ instance_id }}"
+'''
+
+# ====================================
+# sinks
+# ====================================
+[sinks.vmlogs_{{ instance_id }}]
+type = "nats"
+inputs = ["file_enrich_{{ instance_id }}"]
+subject = "vector"
+url = "${NATS_PROTOCOL}://${NATS_SERVERS}"
+
+[sinks.vmlogs_{{ instance_id }}.auth]
+strategy = "user_password"
+
+[sinks.vmlogs_{{ instance_id }}.auth.user_password]
+user = "${NATS_USERNAME}"
+password = "${NATS_PASSWORD}"
+
+{% if NATS_PROTOCOL == "tls" %}
+# TLS 配置
+[sinks.vmlogs_{{ instance_id }}.tls]
+enabled = true
+verify_certificate = true
+ca_file = "${NATS_TLS_CA_FILE}"
+{% endif %}
+
+[sinks.vmlogs_{{ instance_id }}.encoding]
+codec = "json"

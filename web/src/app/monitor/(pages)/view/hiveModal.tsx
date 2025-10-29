@@ -6,8 +6,8 @@ import React, {
   useImperativeHandle,
   useRef,
 } from 'react';
-import { ModalRef, TableDataItem } from '@/app/monitor/types';
-import { MetricItem, NodeThresholdColor } from '@/app/monitor/types/monitor';
+import { ModalRef, TableDataItem, MetricItem } from '@/app/monitor/types';
+import { NodeThresholdColor } from '@/app/monitor/types/view';
 import OperateModal from '@/components/operate-modal';
 import { Button, Form, Select, InputNumber, ColorPicker, theme } from 'antd';
 import type { FormInstance } from 'antd';

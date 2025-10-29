@@ -133,6 +133,14 @@ def get_wechat_settings(request):
 
 
 @api_exempt
+def get_bk_settings(request):
+    bk_token = request.COOKIES.get("bk_token", "")
+    client = SystemMgmt()
+    res = client.verify_bk_token(bk_token)
+    return JsonResponse(res)
+
+
+@api_exempt
 def reset_pwd(request):
     try:
         data = _parse_request_data(request)

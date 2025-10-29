@@ -1,7 +1,7 @@
 from rest_framework import routers
 
 from apps.log.views.node import NodeViewSet
-from apps.log.views.search import LogSearchViewSet
+from apps.log.views.search import LogSearchViewSet, SearchConditionViewSet
 from apps.log.views.log_group import LogGroupViewSet
 from apps.log.views.policy import PolicyViewSet, AlertViewSet, EventViewSet, EventRawDataViewSet
 
@@ -20,6 +20,7 @@ router.register(r'collect_configs', CollectConfigViewSet, basename='collect_conf
 router.register(r'node_mgmt', NodeViewSet, basename='node_mgmt')
 router.register(r'log_group', LogGroupViewSet, basename='log_group')
 router.register(r'search', LogSearchViewSet, basename='log_search')
+router.register(r'search_conditions', SearchConditionViewSet, basename='search_condition')
 
 # 策略相关路由
 router.register(r'policy', PolicyViewSet, basename='policy')

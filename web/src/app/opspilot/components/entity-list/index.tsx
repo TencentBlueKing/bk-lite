@@ -130,8 +130,14 @@ const EntityList = <T,>({
       if (hasMoreData) {
         setCurrentPage(prev => prev + 1);
       }
-    } catch {
+    } catch (error) {
+      console.error('API request failed:', error);
       message.error(t('common.fetchFailed'));
+      if (reset) {
+        setItems([]);
+        setCurrentPage(1);
+      }
+      setHasMore(false);
     } finally {
       isFetching.current = false;
       if (reset) {

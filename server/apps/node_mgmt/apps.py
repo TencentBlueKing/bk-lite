@@ -7,3 +7,4 @@ class NodeMgmtConfig(AppConfig):
 
     def ready(self):
         import apps.node_mgmt.nats.node  # noqa
+        import apps.node_mgmt.nats.permission   #noqa

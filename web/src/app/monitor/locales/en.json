@@ -77,7 +77,6 @@
     "successfullyDeleted": "Delete successfully !",
     "successfullyAdded": "New successfully added !",
     "successfulSetted": "Setting successful !",
-    "successfulCopied": "Copy successful !",
     "successfullyModified": "Modified successfully !",
     "successfullyExported": "Export successfully !",
     "successfullyImported": "Import successfully !",
@@ -97,10 +96,7 @@
     "more": "More",
     "organizations": "Organizations",
     "all": "All",
-    "copy": "Copy",
     "remove": "Remove",
-    "inputPassword": "Please input the password",
-    "reset": "Reset",
     "prompt": "Prompt",
     "batchEdit": "Batch Edit"
   },
@@ -358,8 +354,8 @@
       "systemManage": "system management",
       "config": "to configure it."
     },
-    "intergrations": {
-      "intergration": "Intergration",
+    "integrations": {
+      "integration": "Integration",
       "configure": "Configure",
       "configureTitle": "Please follow the following guidelines to install the collector.",
       "metricTitle": "The following monitoring indicators are supported by this collector",

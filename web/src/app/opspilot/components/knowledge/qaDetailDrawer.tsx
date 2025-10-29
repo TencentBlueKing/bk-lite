@@ -60,14 +60,13 @@ const QADetailDrawer: React.FC<QADetailDrawerProps> = ({
     }
   }, [visible, qaPair]);
 
-  // 获取分块详情
   const fetchChunkDetail = async () => {
     console.log('Fetching chunk detail for base_chunk_id:', qaPair?.base_chunk_id, knowledgeId);
     if (!qaPair?.base_chunk_id || !knowledgeId) return;
     
     setChunkLoading(true);
     try {
-      const detail = await getChunkDetail(knowledgeId, qaPair.base_chunk_id);
+      const detail = await getChunkDetail(knowledgeId, qaPair.base_chunk_id, 'Document');
       setChunkDetail(detail);
     } catch (error) {
       console.error('Failed to fetch chunk detail:', error);
@@ -77,7 +76,6 @@ const QADetailDrawer: React.FC<QADetailDrawerProps> = ({
     }
   };
 
-  // 当切换到原始分块 tab 时获取数据
   const handleTabChange = (value: string | number) => {
     setActiveTab(value);
     if (value === 'chunk' && qaPair?.base_chunk_id && !chunkDetail) {

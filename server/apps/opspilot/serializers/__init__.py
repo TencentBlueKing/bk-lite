@@ -7,3 +7,4 @@ from apps.opspilot.serializers.knowledge_document_serializers import KnowledgeDo
 from apps.opspilot.serializers.manual_knowledge_serializers import ManualKnowledgeSerializer  # noqa
 from apps.opspilot.serializers.rasa_model_serializer import RasaModelSerializer  # noqa
 from apps.opspilot.serializers.web_page_knowledge_serializers import WebPageKnowledgeSerializer  # noqa
+from apps.opspilot.serializers.workflow_task_result_serializer import WorkFlowTaskResultSerializer  # noqa

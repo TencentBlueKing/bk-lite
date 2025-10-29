@@ -6,25 +6,27 @@ import { useTranslation } from '@/utils/i18n';
 import informationStyle from './index.module.scss';
 import { useLocalizedTime } from '@/hooks/useLocalizedTime';
 import LineChart from '@/app/monitor/components/charts/lineChart';
-import { ObjectItem } from '@/app/monitor/types/monitor';
+import { ObjectItem } from '@/app/monitor/types';
 import { findUnitNameById, showGroupName } from '@/app/monitor/utils/common';
 import { useCommon } from '@/app/monitor/context/common';
 import { Popconfirm, message, Button } from 'antd';
 import useMonitorApi from '@/app/monitor/api';
-import {
-  LEVEL_MAP,
-  useLevelList,
-  OBJECT_DEFAULT_ICON,
-} from '@/app/monitor/constants/monitor';
+import { useLevelList } from '@/app/monitor/hooks';
+import { OBJECT_DEFAULT_ICON, LEVEL_MAP } from '@/app/monitor/constants';
 import Permission from '@/components/permission';
 
-const Information: React.FC<TableDataItem> = ({
+interface InformationProps extends TableDataItem {
+  eventData?: TableDataItem[];
+}
+
+const Information: React.FC<InformationProps> = ({
   formData,
   chartData,
   objects,
   userList,
   onClose,
   trapData,
+  eventData = [],
 }) => {
   const { t } = useTranslation();
   const { convertToLocalizedTime } = useLocalizedTime();
@@ -186,15 +188,17 @@ const Information: React.FC<TableDataItem> = ({
             <div className="leading-[24px]">
               {/* 报文表格 */}
               <Descriptions column={2} bordered>
-                {
-                  Object.entries<string | Array<string>>(trapData).map(([key, value]) => {
+                {Object.entries<string | Array<string>>(trapData).map(
+                  ([key, value]) => {
                     return (
                       <Descriptions.Item label={key} key={key}>
-                        {Array.isArray(value) ? (value[0]?.[1] ?? "--") : (value ?? "--")}
+                        {Array.isArray(value)
+                          ? value[0]?.[1] ?? '--'
+                          : value ?? '--'}
                       </Descriptions.Item>
-                    )
-                  })
-                }
+                    );
+                  }
+                )}
               </Descriptions>
             </div>
           </div>
@@ -209,7 +213,7 @@ const Information: React.FC<TableDataItem> = ({
             <div className="h-[250px]">
               <LineChart
                 allowSelect={false}
-                formID={formData.id}
+                eventData={eventData}
                 data={chartData}
                 threshold={formData.policy?.threshold}
                 unit={formData.metric?.unit}

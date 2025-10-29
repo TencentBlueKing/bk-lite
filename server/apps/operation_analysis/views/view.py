@@ -7,12 +7,12 @@ from rest_framework.response import Response
 
 from apps.operation_analysis.common.get_nats_source_data import GetNatsData
 from apps.operation_analysis.filters import DataSourceAPIModelFilter, DashboardModelFilter, DirectoryModelFilter, \
-    TopologyModelFilter, NameSpaceModelFilter, DataSourceTagModelFilter
+    TopologyModelFilter, NameSpaceModelFilter, DataSourceTagModelFilter, ArchitectureModelFilter
 from apps.operation_analysis.serializers import DataSourceAPIModelSerializer, DashboardModelSerializer, \
-    DirectoryModelSerializer, TopologyModelSerializer, NameSpaceModelSerializer, DataSourceTagModelSerializer
+    DirectoryModelSerializer, TopologyModelSerializer, NameSpaceModelSerializer, DataSourceTagModelSerializer, ArchitectureModelSerializer
 from config.drf.pagination import CustomPageNumberPagination
 from config.drf.viewsets import ModelViewSet
-from apps.operation_analysis.models import DataSourceAPIModel, Dashboard, Directory, Topology, NameSpace, DataSourceTag
+from apps.operation_analysis.models import DataSourceAPIModel, Dashboard, Directory, Topology, NameSpace, DataSourceTag, Architecture
 from apps.core.logger import operation_analysis_logger as logger
 
 
@@ -84,6 +84,28 @@ class TreeNodeBuilder:
             }
 
             parent_key = f"directory_{topology.directory_id}"
+            if parent_key not in parent_children_map:
+                parent_children_map[parent_key] = []
+            parent_children_map[parent_key].append(node_key)
+
+        return nodes
+
+    @staticmethod
+    def get_architecture_nodes(architectures, parent_children_map):
+        """构建架构图节点"""
+        nodes = {}
+        for architecture in architectures:
+            node_key = f"architecture_{architecture.id}"
+            nodes[node_key] = {
+                "id": node_key,
+                "data_id": architecture.id,
+                "name": architecture.name,
+                "desc": architecture.desc,
+                "type": "architecture",
+                "children": []
+            }
+
+            parent_key = f"directory_{architecture.directory_id}"
             if parent_key not in parent_children_map:
                 parent_children_map[parent_key] = []
             parent_children_map[parent_key].append(node_key)
@@ -176,6 +198,11 @@ class DirectoryModelViewSet(ModelViewSet):
             directory__in=directories
         ).order_by("id")
 
+        # 增加架构图查询
+        architectures = Architecture.objects.filter(
+            directory__in=directories
+        ).order_by("id")
+
         # 构建所有节点映射
         all_nodes = {}
 
@@ -190,6 +217,10 @@ class DirectoryModelViewSet(ModelViewSet):
         # 拓扑图节点构建
         topology_nodes = TreeNodeBuilder.get_topology_nodes(topologies, parent_children_map)
         all_nodes.update(topology_nodes)
+
+        # 架构图节点构建
+        architecture_nodes = TreeNodeBuilder.get_architecture_nodes(architectures, parent_children_map)
+        all_nodes.update(architecture_nodes)
 
         def build_tree_recursive(node_key):
             """递归构建子树"""
@@ -231,6 +262,18 @@ class TopologyModelViewSet(ModelViewSet):
     ordering_fields = ["id"]
     ordering = ["id"]
     filterset_class = TopologyModelFilter
+    pagination_class = CustomPageNumberPagination
+
+
+class ArchitectureModelViewSet(ModelViewSet):
+    """
+    架构图
+    """
+    queryset = Architecture.objects.all()
+    serializer_class = ArchitectureModelSerializer
+    ordering_fields = ["id"]
+    ordering = ["id"]
+    filterset_class = ArchitectureModelFilter
     pagination_class = CustomPageNumberPagination
 
 

@@ -17,6 +17,7 @@ interface TreeComponentProps {
   draggable?: boolean;
   showAllMenu?: boolean;
   style?: Record<string, string | number>;
+  inputStyle?: Record<string, string | number>;
   onNodeSelect?: (key: string) => void;
   onNodeDrag?: (sortNodes: TreeSortData[], nodes: TreeDataNode[]) => void;
 }
@@ -27,6 +28,7 @@ const TreeComponent: React.FC<TreeComponentProps> = ({
   loading = false,
   draggable = false,
   showAllMenu = false,
+  inputStyle = {},
   style = { width: 200, height: 'calc(100vh - 146px)' },
   onNodeSelect,
   onNodeDrag,
@@ -233,6 +235,7 @@ const TreeComponent: React.FC<TreeComponentProps> = ({
       <Spin spinning={loading}>
         <Search
           className="mb-[10px]"
+          style={inputStyle}
           placeholder={t('common.searchPlaceHolder')}
           value={treeSearchValue}
           enterButton

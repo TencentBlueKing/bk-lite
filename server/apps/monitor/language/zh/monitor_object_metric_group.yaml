@@ -1,0 +1,269 @@
+Host:
+  CPU: CPU
+  System: 系统
+  Disk IO: 磁盘 IO
+  DISK: 磁盘
+  Process: 进程
+  MEMORY: 内存
+  Net: 网络
+Website:
+  HTTP: HTTP
+Ping:
+  Ping: Ping
+Cluster:
+  Counts: 数量
+  Utilization: 使用率
+Pod:
+  Status: 状态
+  CPU: CPU
+  Memory: 内存
+  Disk: 磁盘
+  Network: 网络
+Node:
+  Status: 状态
+  CPU: CPU
+  Memory: 内存
+  Disk: 磁盘
+  Net: 网络
+  Load: 负载
+Switch:
+  Base: 基础
+  Status: 状态
+  Bandwidth: 带宽
+  Packet Error: 数据包错误
+  Packet Loss: 数据包丢失
+  Packet: 数据包
+  Traffic: 流量
+Router:
+  Base: 基础
+  Status: 状态
+  Bandwidth: 带宽
+  Packet Error: 数据包错误
+  Packet Loss: 数据包丢失
+  Packet: 数据包
+  Traffic: 流量
+Loadbalance:
+  Base: 基础
+  Status: 状态
+  Bandwidth: 带宽
+  Packet Error: 数据包错误
+  Packet Loss: 数据包丢失
+  Packet: 数据包
+  Traffic: 流量
+Firewall:
+  Base: 基础
+  Status: 状态
+  Bandwidth: 带宽
+  Packet Error: 数据包错误
+  Packet Loss: 数据包丢失
+  Packet: 数据包
+  Traffic: 流量
+Detection Device:
+  Base: 基础
+  Status: 状态
+  Bandwidth: 带宽
+  Packet Error: 数据包错误
+  Packet Loss: 数据包丢失
+  Packet: 数据包
+  Traffic: 流量
+Bastion Host:
+  Base: 基础
+  Status: 状态
+  Bandwidth: 带宽
+  Packet Error: 数据包错误
+  Packet Loss: 数据包丢失
+  Packet: 数据包
+  Traffic: 流量
+Scanning Device:
+  Base: 基础
+  Status: 状态
+  Bandwidth: 带宽
+  Packet Error: 数据包错误
+  Packet Loss: 数据包丢失
+  Packet: 数据包
+  Traffic: 流量
+Storage:
+  Base: 基础
+  Status: 状态
+  Bandwidth: 带宽
+  Packet Error: 数据包错误
+  Packet Loss: 数据包丢失
+  Packet: 数据包
+  Traffic: 流量
+  Power: 功率
+  Environment: 环境
+Hardware Server:
+  Base: 基础
+  Status: 状态
+  Bandwidth: 带宽
+  Packet Error: 数据包错误
+  Packet Loss: 数据包丢失
+  Packet: 数据包
+  Traffic: 流量
+  Power: 功率
+  Environment: 环境
+SNMP Trap:
+Zookeeper:
+  Uptime: 运行时间
+  Performance: 性能
+  Connection: 连接
+  Znode: Znode
+  Traffic: 流量
+Apache:
+  Uptime: 运行时间
+  Work: 线程
+  Request: 请求
+  CPU: CPU
+  Duration: 响应时间
+ClickHouse:
+  Uptime: 运行时间
+  Memory: 内存
+  Disk: 磁盘
+  Query: 查询
+  Part: 分片
+  Load: 负载
+RabbitMQ:
+  Exchange: 交换消息
+  Node: Node
+  Message: 消息
+ActiveMQ:
+  Topic: Topic
+Nginx:
+  Request: 请求
+  Connection: 连接
+  Efficiency: 效率
+Tomcat:
+  Request: 请求
+  Net: 网络
+  Threads: 线程
+  Error: 错误
+  JMX : JMX
+Consul:
+  Check: 检查情况
+ElasticSearch:
+  Disk: 磁盘
+  HTTP: HTTP
+  IO: IO
+  Indices: 索引
+  Cache: 缓存
+  Circuit Breakers: 断路器
+MongoDB:
+  Active Operations: 活动操作
+  Commands: 指令
+  Connections: 连接
+  Latency: 延迟
+  Memory: 内存
+  Traffic: 流量
+  Storage: 存储
+Mysql:
+  Connection: 连接
+  Error: 错误
+  Cache: 缓存
+  Traffic: 流量
+  Command: 命令
+  Session: 会话
+Postgres:
+  Performance: 性能
+  Cache: 缓存
+  Memory: 内存
+  Transaction: 事务
+  Session: 会话
+Redis:
+  Performance: 性能
+  Cache: 缓存
+  Memory: 内存
+  Clients: 客户端
+  CPU: CPU
+  Replication: 复制
+  Disk: 磁盘
+  Connectivity: 连接
+Docker:
+  Docker Count: Docker数量
+Docker Container:
+  Memory: 内存
+  CPU: CPU
+  Net: 网络
+  Status: 状态
+  IO: IO
+vCenter:
+  Quantity: 数量
+ESXI:
+  Memory: 内存
+  CPU: CPU
+  Disk: 磁盘
+  Network: 网络
+DataStorage:
+  Default: 默认分组
+VM:
+  Memory: 内存
+  CPU: CPU
+  Disk: 磁盘
+  Network: 网络
+  Power: 电源
+JVM:
+  JMXselfMonitor: JMX自监控信息
+  Memory: 内存
+  Thread: 线程
+  OS: 操作系统
+  BufferPool: 缓冲池
+  GC: 垃圾回收
+  MemoryPool: 内存池
+ActiveMQ-JMX:
+  Connection: 连接
+  Memory: 内存
+  Queue: 队列
+  Message: 消息
+  Producer: 生产者
+  Consumer: 消费者
+  Other: 其他
+  JvmMemory: JVM内存
+  JMXselfMonitor: JMX自监控信息
+Jetty-JMX:
+  Queuedthreadpool: 线程池
+  JvmMemory: JVM内存
+  Httpconfiguration: HTTP配置
+  Bufferpool: 缓冲区
+  Serverconnector: 网络连接
+  Managedselector: 选择器
+  Reservedthread: 预留线程
+  JMXselfMonitor: JMX自监控信息
+Tomcat-JMX:
+  GlobalRequestProcessor: 全局请求处理
+  Threadpool: 线程池
+  Session: 会话
+  JMXselfMonitor: JMX 自监控信息
+WebLogic-JMX:
+  Threadpool: 线程池
+  Application: 应用
+  WorkManager: 工作管理器
+  JMS: 消息传递服务
+  PersistentStore: 持久化存储
+  JMXselfMonitor: JMX 自监控信息
+TCP:
+CVM:
+  CPU: CPU
+  Memory: 内存
+  Disk: 磁盘
+  Network: 网络
+Oracle-Exporter:
+  Base: 基础信息
+  Activity: 数据库活动
+  Wait: 等待时间
+  SGA: 系统全局区域
+  PGA: 程序全局区域
+  Tablespace: 表空间
+  RAC: 集群
+  Process: 进程
+  selfMonitor: 自监控信息
+Minio:
+  Audit: 审计
+  ClusterCapacity: 集群容量
+  ClusterDrive: 集群驱动器
+  ClusterHealth: 集群健康
+  S3Request: S3 请求
+  BucketUsage: 存储桶使用量
+  BucketRequests: 存储桶请求
+  DriveResource: 驱动器资源
+  NetworkInterface: 网络接口
+  CPU: CPU
+

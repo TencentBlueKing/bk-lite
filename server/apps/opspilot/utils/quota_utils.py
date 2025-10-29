@@ -1,6 +1,6 @@
 from django.db.models import Q
 
-from apps.opspilot.models import Bot, FileKnowledge, LLMSkill, QuotaRule, TeamTokenUseInfo
+from apps.opspilot.models import Bot, FileKnowledge, LLMSkill, QuotaRule
 
 
 def get_quota_client(request):
@@ -87,46 +87,3 @@ class QuotaUtils(object):
             bot_count,
             bool(bot_count_map["private"]),
         )
-
-    def get_token_quota(self):
-        if not self.quota_list:
-            return {}
-        llm_model_token_set = {}
-        unit_map = {"thousand": 1000, "million": 1000000}
-        for quota in self.quota_list:
-            token_config = quota["token_set"]
-            for llm_model, value in token_config.items():
-                if not llm_model or not value or not value.get("value"):
-                    continue
-                llm_model_token_set.setdefault(llm_model, []).append(int(value["value"]) * unit_map.get(value["unit"], 1))
-        used_token_map = dict(TeamTokenUseInfo.objects.filter(group__contains=self.team).values_list("llm_model", "used_token"))
-        return_data = {}
-        for llm_model, value in llm_model_token_set.items():
-            return_data[llm_model] = {
-                "used_token": used_token_map.get(llm_model, 0),
-                "all_token": min(value) if value else 0,
-            }
-        return return_data
-
-    @staticmethod
-    def get_remaining_token(current_team, llm_model):
-        if not current_team:
-            return 1
-        # 修改查询条件，使用正确的方式查询JSON字段中包含特定键的记录
-        quota_list = QuotaRule.objects.filter(target_type="group", target_list__contains=current_team).filter(
-            **{f"token_set__{llm_model}__isnull": False}  # 查询token_set中包含llm_model作为key的记录
-        )
-        if not quota_list:
-            return 1
-        unit_map = {"thousand": 1000, "million": 1000000}
-        llm_model_list = []
-        for quota in quota_list:
-            token_config = quota.token_set
-            for llm_model_name, value in token_config.items():
-                if llm_model_name == llm_model:
-                    llm_model_list.append(int(value["value"]) * unit_map.get(value["unit"], 1))
-                    break
-        used_token = list(TeamTokenUseInfo.objects.filter(group__contains=current_team, llm_model=llm_model).values_list("used_token", flat=True))
-        used_token = sum(used_token) if used_token else 0
-        all_token = min(llm_model_list) if llm_model_list else 0
-        return all_token - used_token

@@ -1,6 +1,7 @@
 import React from 'react';
 import { Spin } from 'antd';
 import type { Node } from '@antv/x6';
+import { useTranslation } from '@/utils/i18n';
 import { NODE_DEFAULTS } from '../constants/nodeDefaults';
 import ComLine from '../../dashBoard/widgets/comLine';
 import ComPie from '../../dashBoard/widgets/comPie';
@@ -17,6 +18,7 @@ interface ChartNodeProps {
 }
 
 const ChartNode: React.FC<ChartNodeProps> = ({ node }) => {
+  const { t } = useTranslation();
   const nodeData = node.getData();
   const {
     valueConfig,
@@ -96,7 +98,9 @@ const ChartNode: React.FC<ChartNodeProps> = ({ node }) => {
           <div className="h-full flex flex-col items-center justify-center">
             <Spin size="small" />
             <div className="text-xs text-gray-500 mt-2">
-              {hasError ? '数据加载失败' : '图表加载中...'}
+              {hasError
+                ? t('topology.chartNodeLoadFailed')
+                : t('topology.chartNodeLoading')}
             </div>
           </div>
         ) : Component ? (
@@ -115,7 +119,7 @@ const ChartNode: React.FC<ChartNodeProps> = ({ node }) => {
         ) : (
           <div className="h-full flex flex-col items-center justify-center">
             <div className="text-xs text-gray-500">
-              未知的组件类型: {valueConfig.chartType}
+              {t('topology.chartNodeUnknownType')}: {valueConfig.chartType}
             </div>
           </div>
         )}

@@ -197,6 +197,20 @@ const ConfigComponent: React.FC<ConfigProps> = ({ configData, setConfigData }) =
           )}
         </div>
       </div>
+      {/* Conditional Recall Method Section */}
+      {configData.enableNaiveRag && (
+        <div className="mb-4 flex items-center">
+          <label className="block text-sm font-medium mb-1 w-32">{t('knowledge.recallMethod')}</label>
+          <Radio.Group
+            className="flex-1"
+            value={configData.ragRecallMode}
+            onChange={(e) => setConfigData(prevData => ({ ...prevData, ragRecallMode: e.target.value }))}
+          >
+            <Radio value="chunk">{t('knowledge.recallByChunk')}</Radio>
+            <Radio value="segment">{t('knowledge.recallBySegment')}</Radio>
+          </Radio.Group>
+        </div>
+      )}
       <div className="mb-4 flex">
         <label className="block text-sm font-medium mb-1 w-32">{t('knowledge.rerankSettings')}</label>
         <div className="flex-1">
@@ -246,20 +260,6 @@ const ConfigComponent: React.FC<ConfigProps> = ({ configData, setConfigData }) =
           </div>
         </div>
       </div>
-      {/* Conditional Recall Method Section */}
-      {configData.enableNaiveRag && (
-        <div className="mb-4 flex items-center">
-          <label className="block text-sm font-medium mb-1 w-32">{t('knowledge.recallMethod')}</label>
-          <Radio.Group
-            className="flex-1"
-            value={configData.ragRecallMode}
-            onChange={(e) => setConfigData(prevData => ({ ...prevData, ragRecallMode: e.target.value }))}
-          >
-            <Radio value="chunk">{t('knowledge.recallByChunk')}</Radio>
-            <Radio value="segment">{t('knowledge.recallBySegment')}</Radio>
-          </Radio.Group>
-        </div>
-      )}
     </>
   );
 };

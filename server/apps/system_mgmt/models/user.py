@@ -40,7 +40,18 @@ class Group(models.Model):
     description = models.TextField(null=True, blank=True)
     parent_id = models.IntegerField(default=0)
     external_id = models.CharField(max_length=100, null=True, blank=True)
+    roles = models.ManyToManyField("Role", blank=True, verbose_name="角色列表")
     # is_virtual = models.BooleanField(default=False, verbose_name="是否虚拟组")
 
     class Meta:
         unique_together = ("name", "parent_id")
+
+    @staticmethod
+    def display_fields():
+        return [
+            "id",
+            "name",
+            "description",
+            "parent_id",
+            "external_id",
+        ]

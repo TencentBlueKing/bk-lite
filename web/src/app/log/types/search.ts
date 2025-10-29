@@ -62,3 +62,19 @@ export interface FieldListProps {
   addToQuery: (row: TableDataItem, type: string) => void;
   changeDisplayColumns: (columns: string[]) => void;
 }
+
+export interface Conidtion {
+  query: string;
+  log_groups: React.Key[];
+  time_range: Record<string, number | string>;
+}
+export interface StoreConditions {
+  name?: string;
+  condition?: Conidtion;
+}
+
+export interface SearchConfig {
+  times?: number[];
+  logGroups?: React.Key[];
+  text?: string;
+}

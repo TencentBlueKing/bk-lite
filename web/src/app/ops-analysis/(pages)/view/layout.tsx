@@ -5,6 +5,7 @@ import Sidebar from '../../components/sidebar';
 import Dashboard, { DashboardRef } from './dashBoard/index';
 import Topology from './topology/index';
 import { TopologyRef } from '@/app/ops-analysis/types/topology';
+import Architecture, { ArchitectureRef } from './architecture/index';
 import { useTranslation } from '@/utils/i18n';
 import { DirectoryType, SidebarRef } from '@/app/ops-analysis/types';
 import { LeftOutlined, RightOutlined } from '@ant-design/icons';
@@ -26,11 +27,14 @@ const ViewLayout: React.FC<ViewLayoutProps> = ({ children }) => {
   const [selectedItem, setSelectedItem] = useState<{
     dashboard: DirItem | null;
     topology: DirItem | null;
+    architecture: DirItem | null;
   }>({
     dashboard: null,
     topology: null,
+    architecture: null,
   });
   const dashboardRef = useRef<DashboardRef>(null);
+  const architectureRef = useRef<ArchitectureRef>(null);
   const topologyRef = useRef<TopologyRef>(null);
   const sidebarRef = useRef<SidebarRef>(null);
   const previousSelectionRef = useRef<{
@@ -50,6 +54,12 @@ const ViewLayout: React.FC<ViewLayoutProps> = ({ children }) => {
     if (selectedItem.topology && updatedItem.id === selectedItem.topology.id) {
       setSelectedItem((prev) => ({ ...prev, topology: updatedItem }));
     }
+    if (
+      selectedItem.architecture &&
+      updatedItem.id === selectedItem.architecture.id
+    ) {
+      setSelectedItem((prev) => ({ ...prev, architecture: updatedItem }));
+    }
   };
 
   // 检查是否需要显示未保存更改提示
@@ -60,23 +70,29 @@ const ViewLayout: React.FC<ViewLayoutProps> = ({ children }) => {
     if (selectedType === 'topology' && topologyRef.current) {
       return topologyRef.current.hasUnsavedChanges();
     }
+    if (selectedType === 'architecture' && architectureRef.current) {
+      return architectureRef.current.hasUnsavedChanges();
+    }
     return false;
   };
 
   // 处理导航
   const handleNavigation = (type: DirectoryType, itemInfo?: DirItem) => {
     const isLeavingContentPage =
-      (selectedType === 'dashboard' || selectedType === 'topology') &&
+      (selectedType === 'dashboard' ||
+        selectedType === 'topology' ||
+        selectedType === 'architecture') &&
       (type === 'settings' ||
         type !== selectedType ||
         (type === selectedType &&
-          itemInfo?.id !== selectedItem[selectedType]?.id));
+          itemInfo?.id !==
+            selectedItem[selectedType as keyof typeof selectedItem]?.id));
 
     if (isLeavingContentPage && checkUnsavedChanges()) {
       // 记录当前选中状态
       previousSelectionRef.current = {
         type: selectedType,
-        item: selectedItem[selectedType],
+        item: selectedItem[selectedType as keyof typeof selectedItem],
       };
 
       Modal.confirm({
@@ -111,6 +127,7 @@ const ViewLayout: React.FC<ViewLayoutProps> = ({ children }) => {
     setSelectedItem({
       dashboard: type === 'dashboard' ? itemInfo || null : null,
       topology: type === 'topology' ? itemInfo || null : null,
+      architecture: type === 'architecture' ? itemInfo || null : null,
     });
     if (type === 'settings') {
       router.push('/ops-analysis/view/settings/dataSource');
@@ -162,6 +179,11 @@ const ViewLayout: React.FC<ViewLayoutProps> = ({ children }) => {
         <div className="h-full flex-1 flex" style={{ minWidth: 0 }}>
           {isInSettings ? (
             children
+          ) : selectedType === 'architecture' ? (
+            <Architecture
+              ref={architectureRef}
+              selectedArchitecture={selectedItem.architecture}
+            />
           ) : selectedType === 'topology' ? (
             <Topology
               ref={topologyRef}

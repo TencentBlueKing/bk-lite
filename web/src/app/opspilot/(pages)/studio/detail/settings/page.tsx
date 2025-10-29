@@ -16,6 +16,7 @@ import styles from '@/app/opspilot/styles/common.module.scss';
 import Icon from '@/components/icon';
 import { useStudioApi } from '@/app/opspilot/api/studio';
 import ChatflowSettings from '@/app/opspilot/components/studio/chatflowSettings';
+import { useUnsavedChanges } from '@/app/opspilot/hooks/useUnsavedChanges';
 
 const { Option } = Select;
 const { TextArea } = Input;
@@ -40,9 +41,13 @@ const StudioSettingsPage: React.FC = () => {
   const [botPermissions, setBotPermissions] = useState<string[]>([]);
   const [online, setOnline] = useState(false);
   const [botType, setBotType] = useState<number>(1);
-  // 将工作流数据状态移到顶层
+  // Move workflow data state to top level
   const [workflowData, setWorkflowData] = useState<{ nodes: any[], edges: any[] }>({ nodes: [], edges: [] });
-  
+
+  // Track unsaved changes for workflow
+  const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
+  const [originalWorkflowData, setOriginalWorkflowData] = useState<{ nodes: any[], edges: any[] }>({ nodes: [], edges: [] });
+
   const searchParams = useSearchParams();
   const botId = searchParams ? searchParams.get('id') : null;
   const { fetchInitialData, saveBotConfig, toggleOnlineStatus } = useStudioApi();
@@ -68,6 +73,31 @@ const StudioSettingsPage: React.FC = () => {
 
         const currentBotType = botData.bot_type || 1;
         setBotType(currentBotType);
+
+        // Handle workflow data for workflow bot type
+        if (currentBotType === 3 && botData.workflow_data) {
+          console.log('Detected workflow bot type, workflow_data:', botData.workflow_data);
+          
+          // Ensure workflow_data is in correct format
+          if (botData.workflow_data && typeof botData.workflow_data === 'object') {
+            const { nodes = [], edges = [] } = botData.workflow_data;
+            
+            // Validate nodes and edges data are arrays
+            if (Array.isArray(nodes) && Array.isArray(edges)) {
+              console.log('Setting workflow data - nodes:', nodes.length, 'edges:', edges.length);
+              setWorkflowData({ nodes, edges });
+            } else {
+              console.warn('Workflow data format incorrect, nodes or edges are not arrays:', { nodes, edges });
+              setWorkflowData({ nodes: [], edges: [] });
+            }
+          } else {
+            console.log('Workflow bot type but no valid data, setting to empty');
+            setWorkflowData({ nodes: [], edges: [] });
+          }
+        } else {
+          // Non-workflow type, clear workflow data
+          setWorkflowData({ nodes: [], edges: [] });
+        }
 
         let initialRasaModel = botData.rasa_model;
         if (!initialRasaModel && rasaModelsData.length > 0) {
@@ -109,6 +139,17 @@ const StudioSettingsPage: React.FC = () => {
 
     fetchData();
   }, [botId]);
+
+  // Initialize original workflow data when page loads
+  useEffect(() => {
+    if (!pageLoading && botType === 3) {
+      setOriginalWorkflowData({ 
+        nodes: [...workflowData.nodes], 
+        edges: [...workflowData.edges] 
+      });
+      setHasUnsavedChanges(false);
+    }
+  }, [pageLoading, botType]);
 
   const handleAddSkill = () => setIsSkillModalVisible(true);
   const handleDeleteSkill = (id: number) => setSelectedSkills(prev => prev.filter(item => item !== id));
@@ -266,16 +307,43 @@ const StudioSettingsPage: React.FC = () => {
     });
   };
 
-  // 将 chatflow 相关函数移到组件顶层
+  // Move chatflow related functions to top level
   const handleClearCanvas = () => {
-    // 重置工作流数据为空
-    setWorkflowData({ nodes: [], edges: [] });
-    message.success('画布已清除');
+    console.log('Clear canvas operation started');
+    const emptyWorkflowData = { nodes: [], edges: [] };
+    setWorkflowData(emptyWorkflowData);
+    
+    // Check if clearing makes data different from original
+    const originalDataStr = JSON.stringify(originalWorkflowData);
+    const emptyDataStr = JSON.stringify(emptyWorkflowData);
+    const isChanged = originalDataStr !== emptyDataStr;
+    setHasUnsavedChanges(isChanged);
+    
+    console.log('Clear canvas operation completed, unsaved:', isChanged);
+    message.success('Canvas cleared');
   };
 
-  const handleSaveWorkflow = useCallback((nodes: any[], edges: any[]) => {
-    setWorkflowData({ nodes, edges });
-  }, []);
+  const handleSaveWorkflow = useCallback((newWorkflowData: { nodes: any[], edges: any[] }) => {
+    console.log('StudioSettingsPage: Workflow data updated', newWorkflowData);
+    
+    // Update workflow data
+    setWorkflowData(prev => {
+      const prevDataStr = JSON.stringify(prev);
+      const newDataStr = JSON.stringify(newWorkflowData);
+      
+      if (prevDataStr !== newDataStr) {
+        // Check if data has changed from original
+        const originalDataStr = JSON.stringify(originalWorkflowData);
+        const isChanged = newDataStr !== originalDataStr;
+        setHasUnsavedChanges(isChanged);
+        
+        console.log('StudioSettingsPage: Workflow data changed, unsaved:', isChanged);
+        return { nodes: [...newWorkflowData.nodes], edges: [...newWorkflowData.edges] };
+      }
+      
+      return prev;
+    });
+  }, [originalWorkflowData]);
 
   const handleChatflowSave = async (isPublish = false) => {
     setSaveLoading(true);
@@ -291,20 +359,37 @@ const StudioSettingsPage: React.FC = () => {
       };
 
       await saveBotConfig(botId, payload);
+      
+      // Reset unsaved changes status after successful save
+      setOriginalWorkflowData({ 
+        nodes: [...workflowData.nodes], 
+        edges: [...workflowData.edges] 
+      });
+      setHasUnsavedChanges(false);
+      
       message.success(t(isPublish ? 'common.publishSuccess' : 'common.saveSuccess'));
       
       if (isPublish) {
         setOnline(true);
       }
     } catch (error) {
-      console.error(error);
+      console.error('Save failed', error);
       message.error(t('common.saveFailed'));
     } finally {
       setSaveLoading(false);
     }
   };
 
-  // 将 chatflowMenu 移到组件顶层
+  // Setup unsaved changes warning
+  useUnsavedChanges({
+    hasUnsavedChanges: botType === 3 && hasUnsavedChanges,
+    onSave: async () => {
+      await handleChatflowSave(false);
+    },
+    message: t('chatflow.unsavedWorkflowChanges')
+  });
+
+  // Move chatflowMenu to top level
   const chatflowMenu = (
     <Menu style={{ width: 300 }}>
       <Menu.Item key="info" disabled style={{ whiteSpace: 'normal', opacity: 1, cursor: 'default' }}>
@@ -549,7 +634,7 @@ const StudioSettingsPage: React.FC = () => {
                             value={nodePort}
                             onChange={(e) => {
                               const value = Number(e.target.value);
-                              // 端口号的合法范围为 1-65535
+                              // Port number valid range is 1-65535
                               if (!Number.isNaN(value) && value > 0 && value <= 65535) {
                                 setNodePort(value);
                               } else if (e.target.value === '') {
@@ -637,7 +722,7 @@ const StudioSettingsPage: React.FC = () => {
                                 value={nodePort}
                                 onChange={(e) => {
                                   const value = Number(e.target.value);
-                                  // 端口号的合法范围为 1-65535
+                                  // Port number valid range is 1-65535
                                   if (!Number.isNaN(value) && value > 0 && value <= 65535) {
                                     setNodePort(value);
                                   } else if (e.target.value === '') {

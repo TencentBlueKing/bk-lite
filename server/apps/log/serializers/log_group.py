@@ -1,6 +1,6 @@
 import uuid
 from rest_framework import serializers
-from apps.log.models.log_group import LogGroup, LogGroupOrganization
+from apps.log.models.log_group import LogGroup, LogGroupOrganization, SearchCondition
 
 
 class LogGroupSerializer(serializers.ModelSerializer):
@@ -78,4 +78,39 @@ class LogGroupSerializer(serializers.ModelSerializer):
         if not all(isinstance(org_id, int) for org_id in value):
             raise serializers.ValidationError("列表中的元素必须是整数")
 
+        return value
+
+
+class SearchConditionSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = SearchCondition
+        fields = [
+            "id", "name", "condition", "organization",
+            "created_by", "created_at", "updated_at"
+        ]
+        read_only_fields = ["id", "organization", "created_by", "created_at", "updated_at"]
+
+    def validate_condition(self, value):
+        """验证搜索条件配置"""
+        if not isinstance(value, dict):
+            raise serializers.ValidationError("搜索条件配置必须是字典格式")
+        
+        # 验证必要字段
+        if 'query' not in value:
+            raise serializers.ValidationError("搜索条件配置中必须包含query字段")
+        
+        if 'log_groups' not in value:
+            raise serializers.ValidationError("搜索条件配置中必须包含log_groups字段")
+        
+        # 验证日志分组是否存在
+        log_groups = value.get('log_groups', [])
+        if not isinstance(log_groups, list):
+            raise serializers.ValidationError("log_groups必须是列表格式")
+        
+        if log_groups:
+            existing_groups = LogGroup.objects.filter(id__in=log_groups).values_list('id', flat=True)
+            invalid_groups = set(log_groups) - set(existing_groups)
+            if invalid_groups:
+                raise serializers.ValidationError(f"以下日志分组不存在: {', '.join(invalid_groups)}")
+        
         return value

@@ -9,8 +9,26 @@ import ComBar from '../widgets/comBar';
 import ComTable from '../widgets/comTable';
 import Msgtable from '../widgets/msgTable';
 import ComSingle from '../widgets/comSingle';
+import ComSankey from '../widgets/comSankey';
 import { SearchParams } from '@/app/log/types/search';
 import { useTranslation } from '@/utils/i18n';
+
+// 根据时间跨度计算时间间隔
+const calculateTimeInterval = (startTime: string, endTime: string): string => {
+  const start = new Date(startTime);
+  const end = new Date(endTime);
+  const diffInHours =
+    Math.abs(end.getTime() - start.getTime()) / (1000 * 60 * 60);
+
+  if (diffInHours <= 24) {
+    return '1m';
+  } else if (diffInHours <= 720) {
+    // 720小时 = 30天
+    return '1h';
+  } else {
+    return '1d';
+  }
+};
 
 const componentMap: Record<string, React.ComponentType<any>> = {
   line: ComLine,
@@ -19,6 +37,7 @@ const componentMap: Record<string, React.ComponentType<any>> = {
   table: ComTable,
   message: Msgtable,
   single: ComSingle,
+  sankey: ComSankey,
 };
 
 interface WidgetWrapperProps extends BaseWidgetProps {
@@ -107,13 +126,23 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
     logGroups: React.Key[];
   }) => {
     const times = extra.times;
+    const startTime = times[0] ? new Date(times[0]).toISOString() : '';
+    const endTime = times[1] ? new Date(times[1]).toISOString() : '';
+
+    // 计算时间间隔并替换query中的${_time}变量
+    let query = extra.config.dataSourceParams.query || '*';
+    if (query.includes('${_time}') && startTime && endTime) {
+      const timeInterval = calculateTimeInterval(startTime, endTime);
+      query = query.replace(/\$\{_time\}/g, timeInterval);
+    }
+
     const params: SearchParams = {
-      start_time: times[0] ? new Date(times[0]).toISOString() : '',
-      end_time: times[1] ? new Date(times[1]).toISOString() : '',
+      start_time: startTime,
+      end_time: endTime,
       field: '_stream',
       fields_limit: 5,
       log_groups: extra.logGroups,
-      query: extra.config.dataSourceParams.query || '*',
+      query: query,
       limit: 1000,
     };
     params.step = Math.round((times[1] - times[0]) / 100) + 'ms';

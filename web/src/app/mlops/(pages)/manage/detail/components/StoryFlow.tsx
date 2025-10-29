@@ -99,8 +99,6 @@ const StoryFlow: React.FC<StoryFlowWrapperProps> = ({
             position: item.position,
             source: item.data?.source,
             target: item.data?.target,
-            // source: [],
-            // target: [],
           }
         });
 
@@ -113,6 +111,7 @@ const StoryFlow: React.FC<StoryFlowWrapperProps> = ({
       }
     } catch (e) {
       console.log(e);
+      message.error(t(`common.updateFailed`));
     } finally {
       setFlowLoading(false);
     }
@@ -125,9 +124,6 @@ const StoryFlow: React.FC<StoryFlowWrapperProps> = ({
       nodeTypes={nodeTypes}
       dataset={dataset}
       loading={flowLoading}
-      // panel={[
-      //   <Button key="back" size="small" variant="outlined" className="mr-2 text-xs" onClick={backToList}>{t(`mlops-common.backToList`)}</Button>,
-      // ]}
       handleSaveFlow={(data) => updateStoryData(data)}
     />
   )

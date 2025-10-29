@@ -25,11 +25,15 @@ class Import:
                                       "update": {"success": 0, "error": 0, "data": []},
                                       "asso": {"success": 0, "error": 0, "data": []}}
         self.model_asso_map = self.get_model_asso_map()
+        # 用于收集数据验证错误
+        self.validation_errors = []
 
     def format_excel_data(self, excel_meta: bytes):
         """格式化excel"""
 
         need_val_to_id_field_map, need_update_type_field_map = {}, {}
+        # 创建属性名称映射，用于错误提示
+        attr_name_map = {attr_info["attr_id"]: attr_info["attr_name"] for attr_info in self.attrs}
 
         for attr_info in self.attrs:
             if attr_info["attr_type"] in NEED_CONVERSION_TYPE:
@@ -52,10 +56,13 @@ class Import:
         asso_key_map = {i: {} for i in keys if self.model_id in i}
         result = []
         # 从第4行第1列开始遍历
-        for row in sheet1.iter_rows(min_row=4, min_col=1):
+        for row_index, row in enumerate(sheet1.iter_rows(min_row=4, min_col=1), start=4):
             # 创建字典
             item = {"model_id": self.model_id}
             inst_name = ""
+            row_has_data = False
+            row_validation_errors_count = len(self.validation_errors)  # 记录处理该行前的错误数量
+            
             # 遍历每一列
             for i, cell in enumerate(row):
                 try:
@@ -65,6 +72,8 @@ class Import:
 
                 if not value:
                     continue
+                
+                row_has_data = True
 
                 if keys[i] == "inst_name":
                     inst_name = value
@@ -79,8 +88,14 @@ class Import:
 
                 # 将需要类型转换的键和值存入字典
                 if keys[i] in need_update_type_field_map:
-                    method = NEED_CONVERSION_TYPE[need_update_type_field_map[keys[i]]]
-                    item[keys[i]] = method(value)
+                    try:
+                        method = NEED_CONVERSION_TYPE[need_update_type_field_map[keys[i]]]
+                        item[keys[i]] = method(value)
+                    except (ValueError, TypeError) as e:
+                        error_msg = f"第{row_index}行，字段'{attr_name_map.get(keys[i], keys[i])}'的值'{value}'格式错误"
+                        self.validation_errors.append(error_msg)
+                        logger.warning(error_msg)
+                        continue
 
                 # 将需要枚举字段name与id反转的建和值存入字典
                 if keys[i] in need_val_to_id_field_map:
@@ -89,20 +104,43 @@ class Import:
                             value_list = [value]
                         else:
                             value_list = value
-                        enum_id = [need_val_to_id_field_map[keys[i]].get(j) for j in value_list]
+                        enum_id = []
+                        invalid_values = []
+                        for val in value_list:
+                            mapped_id = need_val_to_id_field_map[keys[i]].get(val)
+                            if mapped_id is not None:
+                                enum_id.append(mapped_id)
+                            else:
+                                invalid_values.append(val)
+                        
+                        if invalid_values:
+                            error_msg = f"第{row_index}行，字段'{attr_name_map.get(keys[i], keys[i])}'的值'{invalid_values}'无效"
+                            self.validation_errors.append(error_msg)
+                            logger.warning(error_msg)
+                        
+                        # 只有当没有验证错误时才设置字段值
+                        if enum_id and not invalid_values:
+                            item[keys[i]] = enum_id
                     else:
                         enum_id = need_val_to_id_field_map[keys[i]].get(value)
-                    if enum_id:
-                        item[keys[i]] = enum_id
+                        if enum_id is not None:
+                            item[keys[i]] = enum_id
+                        else:
+                            error_msg = f"第{row_index}行，字段'{attr_name_map.get(keys[i], keys[i])}'的值'{value}'无效"
+                            self.validation_errors.append(error_msg)
+                            logger.warning(error_msg)
                     continue
 
                 # 将键和值存入字典
                 item[keys[i]] = value
 
-            # 将字典添加到结果列表中
-            if not item:
-                continue
-            result.append(item)
+            # 检查该行是否有验证错误
+            row_has_validation_errors = len(self.validation_errors) > row_validation_errors_count
+            
+            # 只有当行有数据且没有验证错误时才添加到结果列表
+            if row_has_data and len(item) > 1 and not row_has_validation_errors:  
+                result.append(item)
+                
         return result, asso_key_map
 
     def get_check_attr_map(self):
@@ -141,6 +179,15 @@ class Import:
     def import_inst_list_support_edit(self, file_stream: bytes):
         """将excel主机数据导入"""
         inst_list, asso_key_map = self.format_excel_data(file_stream)
+        
+        # 如果存在验证错误，立即返回错误信息，不执行导入
+        if self.validation_errors:
+            logger.error(f"数据导入验证失败，共发现 {len(self.validation_errors)} 个错误")
+            error_result = []
+            for error in self.validation_errors:
+                error_result.append({"success": False, "data": {}, "message": error})
+            return error_result, [], []
+        
         add_results, update_results = self.inst_list_update(inst_list)
         if not self.model_asso_map:
             logger.warning(f"模型 {self.model_id} 没有关联模型, 无需处理关联数据")

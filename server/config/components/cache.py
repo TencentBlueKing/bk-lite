@@ -14,8 +14,8 @@ CACHES = {
         "BACKEND": "django.core.cache.backends.redis.RedisCache",
         "LOCATION": REDIS_CACHE_URL,
         "OPTIONS": {
-            "CLIENT_CLASS": "django_redis.client.DefaultClient",
-            "COMPRESSOR": "django_redis.compressors.zlib.ZlibCompressor",
+            # "CLIENT_CLASS": "django_redis.client.DefaultClient",
+            # "COMPRESSOR": "django_redis.compressors.zlib.ZlibCompressor",
         },
     },
 }

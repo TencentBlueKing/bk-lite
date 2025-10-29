@@ -1,7 +1,23 @@
-/* 拓扑图容器样式 */
+@keyframes edgeFlowAnimation {
+  0% {
+    stroke-dashoffset: 10;
+  }
+  100% {
+    stroke-dashoffset: 0;
+  }
+}
+
 .topologyContainer {
+  :global(.x6-graph-svg) {
+    background: linear-gradient(135deg, #bbdefb, #ecd5f0) !important;
+  }
+
   :global(.x6-node foreignObject) {
     overflow: hidden !important;
+  }
+  
+  :global(.edge-flow-animation) {
+    animation: edgeFlowAnimation 1.5s linear infinite;
   }
   
   // 全局优化minimap相关样式
@@ -22,7 +38,6 @@
   }
 }
 
-/* 缩略图相关样式 */
 .minimapContainer {
   position: absolute;
   bottom: 1rem;
@@ -175,8 +190,8 @@
   position: absolute;
   bottom: 1rem;
   right: 1rem;
-  width: 40px;
-  height: 40px;
+  width: 36px;
+  height: 36px;
   background: linear-gradient(135deg, 
     rgba(255, 255, 255, 0.95) 0%, 
     rgba(248, 249, 250, 0.95) 100%);

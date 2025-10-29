@@ -1,6 +1,6 @@
 import { Graph, Edge } from '@antv/x6';
 import { v4 as uuidv4 } from 'uuid';
-import { getEdgeStyle, addEdgeTools, calculateOptimalPorts } from './topologyUtils';
+import { getEdgeStyleWithConfig, addEdgeTools, calculateOptimalPorts } from './topologyUtils';
 import type { EdgeData } from '@/app/ops-analysis/types/topology';
 import { COLORS } from '../constants/nodeDefaults';
 
@@ -50,6 +50,14 @@ export const createEdge = (graphInstance: any, config: EdgeCreationConfig): Edge
   // 计算最佳连接端口
   const { sourcePort, targetPort } = calculateOptimalPorts(sourceNode, targetNode);
 
+  // 默认样式配置
+  const defaultStyleConfig = {
+    lineColor: COLORS.EDGE.DEFAULT,
+    lineWidth: 1,
+    lineStyle: 'line' as const,
+    enableAnimation: false,
+  };
+
   // 创建边
   const edge = graphInstance.createEdge({
     id: `edge_${uuidv4()}`,
@@ -64,7 +72,7 @@ export const createEdge = (graphInstance: any, config: EdgeCreationConfig): Edge
     shape: EDGE_DEFAULTS.shape,
     connector: EDGE_DEFAULTS.connector,
     router: EDGE_DEFAULTS.router,
-    ...getEdgeStyle(config.connectionType),
+    ...getEdgeStyleWithConfig(config.connectionType, defaultStyleConfig),
   });
 
   // 添加到图中
@@ -72,10 +80,11 @@ export const createEdge = (graphInstance: any, config: EdgeCreationConfig): Edge
 
   // 设置边数据
   edge.setData({
-    connectionType: config.connectionType,
+    arrowDirection: config.connectionType, 
     lineType: config.lineType || EDGE_DEFAULTS.lineType,
     lineName: config.lineName || EDGE_DEFAULTS.lineName,
     vertices: config.vertices || [],
+    styleConfig: defaultStyleConfig
   });
 
   // 如果有拐点数据，恢复拐点
@@ -107,6 +116,8 @@ const createEdgeData = (edge: Edge, sourceNode: any, targetNode: any): EdgeData 
     id: edge.id,
     lineType: edgeData.lineType || 'common_line',
     lineName: edgeData.lineName || '',
+    arrowDirection: edgeData.arrowDirection || 'single', 
+    styleConfig: edgeData.styleConfig || { lineColor: COLORS.EDGE.DEFAULT },
     sourceNode: {
       id: sourceNode.id,
       name: getNodeName(sourceNode),

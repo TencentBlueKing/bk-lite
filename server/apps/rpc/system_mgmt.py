@@ -13,6 +13,10 @@ class SystemMgmt(object):
         return_data = self.client.run("login", username=username, password=password)
         return return_data
 
+    def verify_bk_token(self, bk_token):
+        return_data = self.client.run("verify_bk_token", bk_token=bk_token)
+        return return_data
+
     def wechat_user_register(self, user_id, nick_name):
         """
         :param user_id: 用户ID
@@ -59,9 +63,7 @@ class SystemMgmt(object):
         :param username: 查询用户的用户名
         :param is_superuser: 是否超管
         """
-        return_data = self.client.run(
-            "get_user_menus", client_id=client_id, roles=roles, username=username, is_superuser=is_superuser
-        )
+        return_data = self.client.run("get_user_menus", client_id=client_id, roles=roles, username=username, is_superuser=is_superuser)
         return return_data
 
     def verify_token(self, token):
@@ -115,9 +117,7 @@ class SystemMgmt(object):
         :param content: 正文
         :param receivers: [1,2,3,4] 用户的ID列表
         """
-        return_data = self.client.run(
-            "send_msg_with_channel", channel_id=channel_id, title=title, content=content, receivers=receivers
-        )
+        return_data = self.client.run("send_msg_with_channel", channel_id=channel_id, title=title, content=content, receivers=receivers)
         return return_data
 
     def init_user_default_attributes(self, user_id, group_name, default_group_id):
@@ -126,9 +126,7 @@ class SystemMgmt(object):
         :param group_name: 组名
         :param default_group_id: 默认组ID
         """
-        return_data = self.client.run(
-            "init_user_default_attributes", user_id=user_id, group_name=group_name, default_group_id=default_group_id
-        )
+        return_data = self.client.run("init_user_default_attributes", user_id=user_id, group_name=group_name, default_group_id=default_group_id)
         return return_data
 
     def get_user_rules(self, group_id, username):
@@ -171,18 +169,11 @@ class SystemMgmt(object):
     def get_login_module_domain_list(self):
         return self.client.run("get_login_module_domain_list")
 
-    def get_user_rules_by_app(self, group_id, username, app, module, child_module="", domain="domain.com"):
-        return self.client.run("get_user_rules_by_app", group_id, username, domain, app, module, child_module)
+    def get_user_rules_by_app(self, group_id, username, app, module, child_module="", domain="domain.com", include_children=False):
+        return self.client.run("get_user_rules_by_app", group_id, username, domain, app, module, child_module, include_children)
 
-    def get_user_rules_by_module(self, group_id, username, app, module, domain="domain.com"):
-        return self.client.run(
-            "get_user_rules_by_module",
-            group_id,
-            username,
-            domain,
-            app,
-            module,
-        )
+    def get_user_rules_by_module(self, group_id, username, app, module, domain="domain.com", include_children=False):
+        return self.client.run("get_user_rules_by_module", group_id, username, domain, app, module, include_children)
 
     def get_pilot_permission_by_token(self, token, bot_id, group_list):
         return self.client.run("get_pilot_permission_by_token", token, bot_id, group_list)

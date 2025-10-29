@@ -1,7 +1,7 @@
 import { Tree, Dropdown, Menu, Button, Input, Spin, message, Table, Form, Popconfirm, Select, Switch } from "antd";
 import { Key, useState, useMemo, useCallback, useRef, useEffect } from "react";
 import PermissionWrapper from '@/components/permission';
-import { MoreOutlined, PlusOutlined, } from "@ant-design/icons";
+import { MoreOutlined, PlusOutlined, LeftOutlined, RightOutlined } from "@ant-design/icons";
 import { useTranslation } from "@/utils/i18n";
 import StoryFlow from "./StoryFlow";
 import contentStyle from './index.module.scss';
@@ -43,13 +43,14 @@ const PAYLOAD_OPTIONS = [
 
 const ExampleContent = ({ menu, data, dataset, loading, handleAdd, handleEdit, handleDel, onSuccess }: IntentTreeProps) => {
   const { t } = useTranslation();
+  const [form] = Form.useForm();
   const { updateRasaIntentFile, updateRasaResponseFile } = useMlopsManageApi();
   const [selectKey, setSelectKey] = useState<Key[]>([]);
   const [searchValue, setSearchValue] = useState<string>('');
   const [exampleData, setExampleData] = useState<any[]>([]);
   const [editingKey, setEditingKey] = useState<string>('');
   const [originalData, setOriginalData] = useState<any>(null);
-  const [form] = Form.useForm();
+  const [showTree, setShowTree] = useState<boolean>(true);
   const selectedTextRef = useRef<any>(null);
   const entityModalRef = useRef<EntityModalRef>(null);
 
@@ -105,12 +106,10 @@ const ExampleContent = ({ menu, data, dataset, loading, handleAdd, handleEdit, h
 
   const filterTreeData = useCallback((data: any[], searchValue: string) => {
     if (!searchValue.trim()) return data;
-
     const searchTerm = searchValue.toLowerCase().trim();
 
     return data.filter((item: any) => {
       const itemName = item?.name?.toLowerCase() || '';
-
 
       return itemName.includes(searchTerm) ||
         searchTerm.split('').every(char => itemName.includes(char));
@@ -514,7 +513,7 @@ const ExampleContent = ({ menu, data, dataset, loading, handleAdd, handleEdit, h
         // align: 'center',
         editable: true,
         render: (text: string, record: any) => {
-          
+
           if (menu === 'response') {
             // Response 类型：显示 value 和 type 信息
             return (
@@ -522,14 +521,13 @@ const ExampleContent = ({ menu, data, dataset, loading, handleAdd, handleEdit, h
                 <span className="flex-1">{record?.value || record?.text || ''}</span>
                 <div className="flex items-center gap-2">
                   {/* 类型标签显示 */}
-                  <span className={`text-xs px-2 py-1 rounded ${
-                    record?.type === 'button' 
-                      ? 'bg-green-100 text-green-600' 
-                      : 'bg-blue-100 text-blue-600'
+                  <span className={`text-xs px-2 py-1 rounded ${record?.type === 'button'
+                    ? 'bg-green-100 text-green-600'
+                    : 'bg-blue-100 text-blue-600'
                   }`}>
                     {record?.type === 'button' ? 'Button' : 'Text'}
                   </span>
-                  
+
                   {/* Payload 标签显示 */}
                   {record?.type === 'button' && (record?.payloads?.length ? (
                     <div className="flex flex-wrap gap-1">
@@ -818,8 +816,8 @@ const ExampleContent = ({ menu, data, dataset, loading, handleAdd, handleEdit, h
       <div className={`${contentStyle.flowContainer}`}>
         <Spin spinning={loading}>
           <div className="flex h-full">
-            <div className="w-[210px] mr-4 flex flex-col">
-              <div className="flex mb-1 flex-shrink-0">
+            <div className={`mr-1 flex flex-col border-r border-[#f3f4f6] relative z-10 transition-all duration-300 ease-in-out ${showTree ? 'w-[215px] px-2' : 'w-0 p-0'}`}>
+              <div className={`flex mb-1 flex-shrink-0 ${!showTree && 'hidden'}`}>
                 <Input.Search
                   size="small"
                   className="flex-1"
@@ -837,7 +835,7 @@ const ExampleContent = ({ menu, data, dataset, loading, handleAdd, handleEdit, h
                   {t(`mlops-common.noSearchData`)}
                 </div>
               )}
-              <div className="flex-1 overflow-y-auto">
+              <div className={`flex-1 overflow-y-auto ${!showTree && 'hidden'}`}>
                 <Tree
                   className="w-full h-full"
                   showLine
@@ -849,6 +847,15 @@ const ExampleContent = ({ menu, data, dataset, loading, handleAdd, handleEdit, h
                   titleRender={(nodeData: any) => renderTitle(nodeData)}
                   onSelect={onSelect}
                   selectedKeys={selectKey}
+                />
+              </div>
+              <div className='absolute right-0 top-[50%] translate-x-[50%] translate-y-[-60%] z-20'>
+                <Button
+                  className='border border-gray-200 shadow-md hover:shadow-lg transition-shadow duration-200'
+                  size='small'
+                  icon={showTree ? <LeftOutlined /> : <RightOutlined />}
+                  shape='circle'
+                  onClick={() => setShowTree(x => !x)}
                 />
               </div>
             </div>

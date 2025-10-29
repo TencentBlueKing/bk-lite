@@ -23,6 +23,7 @@ from apps.opspilot.viewsets import (
     SkillRequestLogViewSet,
     SkillToolsViewSet,
     WebPageKnowledgeViewSet,
+    WorkFlowTaskResultViewSet,
 )
 from apps.opspilot.viewsets.quota_rule_view import QuotaRuleViewSet
 
@@ -42,6 +43,7 @@ router.register(r"model_provider_mgmt/model_type", ModelTypeViewSet)
 router.register(r"bot_mgmt/bot", BotViewSet)
 router.register(r"bot_mgmt/rasa_model", RasaModelViewSet, basename="rasa_model")
 router.register(r"bot_mgmt/history", HistoryViewSet)
+router.register(r"bot_mgmt/workflow_task_result", WorkFlowTaskResultViewSet)
 
 # channel
 router.register(r"channel_mgmt/channel", ChannelViewSet)
@@ -98,6 +100,31 @@ urlpatterns += [
         r"bot_mgmt/get_token_consumption_overview/",
         views.get_token_consumption_overview,
         name="get_token_consumption_overview",
+    ),
+    path(
+        r"bot_mgmt/execute_chat_flow/<int:bot_id>/<str:node_id>/",
+        views.execute_chat_flow,
+        name="execute_chat_flow",
+    ),
+    path(
+        r"bot_mgmt/execute_chat_flow_wechat/<int:bot_id>/",
+        views.execute_chat_flow_wechat,
+        name="execute_chat_flow_wechat",
+    ),
+    path(
+        r"bot_mgmt/execute_chat_flow_wechat_official/<int:bot_id>/",
+        views.execute_chat_flow_wechat_official,
+        name="execute_chat_flow_wechat_official",
+    ),
+    path(
+        r"bot_mgmt/execute_chat_flow_dingtalk/<int:bot_id>/",
+        views.execute_chat_flow_dingtalk,
+        name="execute_chat_flow_dingtalk",
+    ),
+    path(
+        r"test/",
+        views.test,
+        name="test",
     ),
     # path(r"api/bot/automation_skill_execute", AutomationSkillExecuteView.as_view(), name="automation_skill_execute"),
 ]

@@ -4,12 +4,12 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple, Union
 
 from django.conf import settings
-from django.utils.translation import gettext as _
 
 from apps.core.logger import opspilot_logger as logger
 from apps.core.mixinx import EncryptMixin
+from apps.core.utils.loader import LanguageLoader
 from apps.opspilot.enum import SkillTypeChoices
-from apps.opspilot.models import KnowledgeBase, KnowledgeDocument, LLMModel, SkillTools, TeamTokenUseInfo, TokenConsumption
+from apps.opspilot.models import KnowledgeBase, KnowledgeDocument, LLMModel, SkillTools
 from apps.opspilot.services.knowledge_search_service import KnowledgeSearchService
 from apps.opspilot.utils.chat_server_helper import ChatServerHelper
 
@@ -32,17 +32,6 @@ class LLMService:
         """
         citing_knowledge = []
         data, doc_map, title_map = self.invoke_chat(kwargs)
-
-        # 记录token消耗
-        if "bot_id" in kwargs:
-            TokenConsumption.objects.create(
-                bot_id=kwargs["bot_id"],
-                input_tokens=data["prompt_tokens"],
-                output_tokens=data["completion_tokens"],
-                username=kwargs["username"],
-                user_id=kwargs["user_id"],
-            )
-
         # 如果启用了知识源引用，构建引用信息
         if kwargs["enable_rag_knowledge_source"]:
             citing_knowledge = [
@@ -151,6 +140,7 @@ class LLMService:
             "rag_stage": "string",
             "naive_rag_request": naive_rag_request,
             "enable_suggest": kwargs.get("enable_suggest", False),
+            "enable_query_rewrite": kwargs.get("enable_query_rewrite", False),
         }
         if kwargs.get("thread_id"):
             chat_kwargs["thread_id"] = str(kwargs["thread_id"])
@@ -188,7 +178,7 @@ class LLMService:
         """
         llm_model = LLMModel.objects.get(id=kwargs["llm_model"])
         show_think = kwargs.pop("show_think", True)
-        group = kwargs.pop("group", 0)
+        kwargs.pop("group", 0)
         # 处理用户消息和图片
         chat_kwargs, doc_map, title_map = self.format_chat_server_kwargs(kwargs, llm_model)
 
@@ -202,15 +192,12 @@ class LLMService:
             url = f"{settings.METIS_SERVER_URL}/api/agent/invoke_lats_agent"
         result = ChatServerHelper.post_chat_server(chat_kwargs, url)
         if not result:
-            return {"message": _("URL request failed")}, doc_map, title_map
+            loader = LanguageLoader(app="opspilot", default_lang="en")
+            message = loader.get("error.url_request_failed") or "URL request failed"
+            return {"message": message}, doc_map, title_map
         data = result["message"]
 
-        # 更新团队令牌使用信息
-        used_token = result["prompt_tokens"] + result["completion_tokens"]
-        team_info, is_created = TeamTokenUseInfo.objects.get_or_create(group=group, llm_model=llm_model.name, defaults={"used_token": used_token})
-        if not is_created:
-            team_info.used_token += used_token
-            team_info.save()
+        # 更新团队令牌使用信息 (已移除TeamTokenUseInfo相关逻辑)
 
         # 处理内容（可选隐藏思考过程）
         if not show_think:

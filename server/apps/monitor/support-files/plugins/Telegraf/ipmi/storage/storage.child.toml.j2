@@ -1,0 +1,8 @@
+[[inputs.ipmi_sensor]]
+    servers = ["{{ username }}:${PASSWORD__{{ config_id }}}@{{ protocol }}({{ ip }})"]
+    interval = "{{ interval }}s"
+    [inputs.ipmi_sensor.tags]
+        instance_id = "{{ instance_id }}"
+        instance_type = "{{ instance_type }}"
+        collect_type = "ipmi"
+        config_type = "storage"

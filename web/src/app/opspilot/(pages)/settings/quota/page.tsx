@@ -38,15 +38,6 @@ const QuotaUsage: React.FC = () => {
             unit: ''
           },
         ];
-        const { token_set: tokenSet } = res;
-        Object.keys(tokenSet).forEach(key => {
-          formattedData.push({
-            label: `Token-${key} (${t('settings.myQuota.shared')})`,
-            usage: tokenSet[key].used_token,
-            total: tokenSet[key].all_token,
-            unit: ''
-          });
-        });
         setData(formattedData);
       } catch (error) {
         console.error(`${t('common.fetchFailed')}:`, error);

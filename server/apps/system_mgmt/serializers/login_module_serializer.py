@@ -1,7 +1,7 @@
 from django.utils.translation import gettext_lazy as _
 from rest_framework import serializers
 
-from apps.system_mgmt.models import LoginModule
+from apps.system_mgmt.models import Group, LoginModule
 from apps.system_mgmt.tasks import sync_user_and_group_by_login_module
 
 
@@ -32,9 +32,13 @@ class LoginModuleSerializer(serializers.ModelSerializer):
         return data
 
     def create(self, validated_data):
+        source_type = validated_data.get("source_type")
+        if source_type == "bk_login":
+            Group.objects.get_or_create(parent_id=0, name=validated_data["other_config"].get("root_group", "蓝鲸"))
         instance = super().create(validated_data)
-        instance.create_sync_periodic_task()
-        sync_user_and_group_by_login_module.delay(instance.id)
+        if source_type == "bk_lite":
+            instance.create_sync_periodic_task()
+            sync_user_and_group_by_login_module.delay(instance.id)
         return instance
 
     def update(self, instance, validated_data):

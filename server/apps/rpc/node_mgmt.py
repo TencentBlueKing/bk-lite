@@ -5,6 +5,25 @@ class NodeMgmt(object):
     def __init__(self, is_local_client=False):
         self.client = AppClient("apps.node_mgmt.nats.node") if is_local_client else RpcClient()
 
+    def get_module_data(self, **kwargs):
+        """
+        :param module: 模块
+        :param child_module: 子模块
+        :param page: 页码
+        :param page_size: 页条目数
+        :param group_id: 组ID
+        """
+        return_data = self.client.run("get_node_module_data", **kwargs)
+        return return_data
+
+    def get_module_list(self, **kwargs):
+        """
+        :param module: 模块
+        :return: 模块的枚举值列表
+        """
+        return_data = self.client.run("get_node_module_list", **kwargs)
+        return return_data
+
     def cloud_region_list(self):
         """
         :return: 云区域列表
@@ -108,4 +127,12 @@ class NodeMgmt(object):
         :param collectors: 采集器列表
         """
         return_data = self.client.run("import_collectors", collectors)
+        return return_data
+
+    def cloudregion_tls_env_by_node_id(self, node_id):
+        """
+        获取节点对应云区域的TLS配置
+        :param node_id: 节点ID
+        """
+        return_data = self.client.run("cloudregion_tls_env_by_node_id", node_id)
         return return_data

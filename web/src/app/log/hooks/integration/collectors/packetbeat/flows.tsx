@@ -3,6 +3,7 @@ import { IntegrationLogInstance } from '@/app/log/types/integration';
 import { TableDataItem } from '@/app/log/types';
 import { useFlowsPacketbeatFormItems } from '../../common/flowsPacketbeatFormItems';
 import { cloneDeep } from 'lodash';
+import { v4 as uuidv4 } from 'uuid';
 
 export const usePacketbeatConfig = () => {
   const commonFormItems = useFlowsPacketbeatFormItems();
@@ -22,7 +23,11 @@ export const usePacketbeatConfig = () => {
       const configs = {
         auto: {
           formItems: commonFormItems.getCommonFormItems(),
-          initTableItems: {},
+          initTableItems: {
+            instance_id: `${pluginConfig.collector}-${
+              pluginConfig.collect_type
+            }-${uuidv4()}`,
+          },
           defaultForm: {
             flows_timeout: 30,
             flows_period: 10,

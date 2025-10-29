@@ -7,7 +7,7 @@
   border-radius: 8px;
   overflow: hidden;
   
-  /* ReactFlow 全局样式覆盖 */
+  /* ReactFlow global style overrides */
   :global(.react-flow__node) {
     cursor: pointer;
     background: transparent !important;
@@ -64,8 +64,41 @@
     border-radius: 4px !important;
     bottom: 12px !important;
     right: 12px !important;
-    width: 120px !important;
-    height: 80px !important;
+    width: 180px !important;
+    height: 120px !important;
+    z-index: 5 !important;
+    overflow: hidden !important;
+  }
+  
+  /* Minimap internal node styles */
+  :global(.react-flow__minimap-node) {
+    fill: var(--color-primary) !important;
+    stroke: var(--color-border) !important;
+    stroke-width: 1 !important;
+    opacity: 0.8 !important;
+  }
+  
+  /* Minimap viewport area styles - critical fix */
+  :global(.react-flow__minimap-mask) {
+    fill: rgba(240, 240, 240, 0.7) !important;
+    stroke-width: 2 !important;
+    stroke-dasharray: none !important;
+    opacity: 1 !important;
+  }
+  
+  /* Minimap viewport description area - ensure proper display of current visible area */
+  :global(.react-flow__minimap-describe) {
+    fill: rgba(255, 255, 255, 0.1) !important;
+    stroke-width: 2 !important;
+    stroke-opacity: 1 !important;
+    stroke-dasharray: 5,3 !important;
+  }
+  
+  /* Minimap SVG container */
+  :global(.react-flow__minimap svg) {
+    width: 100% !important;
+    height: 100% !important;
+    display: block !important;
   }
   
   :global(.react-flow__background) {
@@ -82,7 +115,7 @@
     border: 1px solid var(--color-border);
   }
 
-  /* 连接点样式 - 调整为10px */
+  /* Connection handle styles - adjusted to 10px */
   :global(.react-flow__handle) {
     width: 10px !important;
     height: 10px !important;
@@ -111,7 +144,7 @@
     right: 0px !important;
   }
   
-  /* 连线流动动画 - 向右流动 */
+  /* Connection flow animation - rightward flow */
   @keyframes flowAnimation {
     0% {
       stroke-dashoffset: 0;
@@ -151,7 +184,8 @@
   background: var(--color-bg-1);
   border: 2px solid var(--color-border);
   border-radius: 8px;
-  min-width: 160px;
+  width: 240px;
+  min-height: 120px;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
   transition: all 0.2s ease;
   
@@ -178,28 +212,39 @@
     font-size: 16px;
     margin-right: 8px;
     color: var(--color-primary);
+    flex-shrink: 0; // Prevent icon compression
   }
   
   .nodeTitle {
     font-weight: 500;
     font-size: 14px;
     color: var(--color-text);
+    word-wrap: break-word;
+    overflow-wrap: break-word;
+    flex: 1; // Take remaining space
+    line-height: 1.4;
   }
 }
 
 .nodeContent {
-  padding: 6px;
+  padding: 12px;
   
   .nodeConfigInfo {
     font-size: 12px;
     color: var(--color-text-3);
-    padding: 6px 8px;
+    padding: 8px 10px;
     background: var(--color-fill-1);
     border-radius: 4px;
-    // border-left: 2px solid var(--color-primary);
-    min-height: 20px;
+    min-height: 32px;
     display: flex;
-    align-items: center;
+    align-items: flex-start;
+    line-height: 1.4;
+    white-space: normal;
+    overflow: visible;
+    text-overflow: initial;
+    max-width: 100%;
+    word-wrap: break-word;
+    overflow-wrap: break-word;
     
     &:empty {
       display: none;
@@ -207,10 +252,18 @@
   }
   
   .nodeDescription {
-    margin: 0;
+    margin: 8px 0 0 0;
     font-size: 12px;
     color: var(--color-text-3);
     line-height: 1.4;
+    
+    display: -webkit-box;
+    -webkit-line-clamp: 3;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    word-wrap: break-word;
+    overflow-wrap: break-word;
   }
 }
 

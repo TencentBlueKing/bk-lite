@@ -6,13 +6,13 @@ services:
     image: ${DOCKER_IMAGE_WEB}
     restart: always
     environment:
-      NEXTAUTH_URL: http://${HOST_IP}:${TRAEFIK_WEB_PORT}
+      NEXTAUTH_URL: https://${HOST_IP}:${TRAEFIK_WEB_PORT}
       NEXTAUTH_SECRET: ${NEXTAUTH_SECRET}
       NEXTAPI_URL: http://server:8000
     labels:
       - "traefik.enable=true"
       - "traefik.http.routers.system-manager-web.rule=Host(`${HOST_IP}`)"
-      - "traefik.http.routers.system-manager-web.entrypoints=web"
+      - "traefik.http.routers.system-manager-web.entrypoints=websecure"
       - "traefik.http.services.system-manager-web.loadbalancer.server.port=3000"
     networks:
       - prod

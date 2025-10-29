@@ -14,6 +14,13 @@ interface AnomalyDetectionReason {
   anomaly_threshold: number;
 }
 
+interface ClassificationReason {
+  model_name: string;
+  model_version: string;
+  algorithm: string;
+  data: any[];
+}
+
 const usePlayroundApi = () => {
   const {
     get,
@@ -27,14 +34,44 @@ const usePlayroundApi = () => {
     return await get(`/playground/category/`);
   };
 
-  // 获取能力发布列表
-  const getServingsList = async () => {
+  // 获取异常检测能力发布列表
+  const getAnomalyServingsList = async () => {
     return await get(`/mlops/anomaly_detection_servings/`);
+  };
+
+  // 获取时序预测能力列表
+  const getTimeSeriesPredictServingsList = async () => {
+    return await get(`/mlops/timeseries_predict_servings/`);
+  };
+
+  // 获取日志聚类能力列表
+  const getLogClusteringServingsList = async () => {
+    return await get(`/mlops/log_clustering_servings/`);
+  };
+
+  // 获取分类任务能力列表
+  const getClassificationServingsList = async () => {
+    return await get(`/mlops/classification_servings`);
   };
   
   // 获取能力发布详情
   const getServingsDetail = async (id: string) => {
     return await get(`/mlops/anomaly_detection_servings/${id}/`)
+  };
+
+  // 获取时序预测能力详情
+  const getTimeseriesServingDetail = async (id: string) => {
+    return await get(`/mlops/timeseries_predict_servings/${id}/`);
+  };
+
+  // 获取日志聚类能力详情
+  const getLogClusteringServingDetail = async (id: string) => {
+    return await get(`/mlops/log_clustering_servings/${id}/`);
+  };
+
+  // 获取分类任务能力详情
+  const getClassificationServingDetail = async (id: string) => {
+    return await get(`/mlops/classification_servings/${id}/`);
   };
 
   // 查询单个类别
@@ -137,6 +174,11 @@ const usePlayroundApi = () => {
     return await post(`/mlops/anomaly_detection_servings/predict/`, params);
   };
 
+  // 分类任务推理
+  const classificationReason = async (params: ClassificationReason) => {
+    return await post(`/mlops/classification_servings/predict/`, params);
+  };
+
   // 删除类别
   const deleteCategory = async (id: number) => {
     return await del(`/playground/category/${id}/`);
@@ -154,7 +196,9 @@ const usePlayroundApi = () => {
 
   return {
     getCategoryList,
-    getServingsList,
+    getAnomalyServingsList,
+    getTimeSeriesPredictServingsList,
+    getLogClusteringServingsList,
     getCategoryDetail,
     getCapabilityList,
     getCapabilityDetail,
@@ -162,6 +206,10 @@ const usePlayroundApi = () => {
     getSampleFileDetail,
     getServingsDetail,
     getSampleFileOfCapability,
+    getClassificationServingsList,
+    getTimeseriesServingDetail,
+    getLogClusteringServingDetail,
+    getClassificationServingDetail,
     createCategory,
     createCapability,
     createSampleFile,
@@ -169,6 +217,7 @@ const usePlayroundApi = () => {
     updateCapability,
     updateSampleFile,
     anomalyDetectionReason,
+    classificationReason,
     deleteCategory,
     deleteCapability,
     deleteSampleFile

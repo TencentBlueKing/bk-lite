@@ -3,6 +3,7 @@ import { IntegrationLogInstance } from '@/app/log/types/integration';
 import { TableDataItem } from '@/app/log/types';
 import { useDockerMetricbeatFormItems } from '../../common/dockerMetricbeatFormItems';
 import { cloneDeep } from 'lodash';
+import { v4 as uuidv4 } from 'uuid';
 
 export const useMetricbeatConfig = () => {
   const commonFormItems = useDockerMetricbeatFormItems();
@@ -25,7 +26,11 @@ export const useMetricbeatConfig = () => {
             disabledFormItems: {},
             mode: extra.mode,
           }),
-          initTableItems: {},
+          initTableItems: {
+            instance_id: `${pluginConfig.collector}-${
+              pluginConfig.collect_type
+            }-${uuidv4()}`,
+          },
           defaultForm: {
             hosts: ['unix:///var/run/docker.sock'],
             metricsets: [

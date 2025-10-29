@@ -59,6 +59,7 @@ export interface StrategyFields {
       conditions: FilterItem[];
     };
   };
+  show_fields?: string[];
   [key: string]: unknown;
 }
 

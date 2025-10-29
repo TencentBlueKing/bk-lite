@@ -65,6 +65,7 @@ const SkillSettingsPage: React.FC = () => {
           guide: data.guide || initialGuide,
           show_think: data.show_think,
           enable_suggest: data.enable_suggest,
+          enable_query_rewrite: data.enable_query_rewrite,
         });
         setGuideValue(data.guide || initialGuide);
         setChatHistoryEnabled(data.enable_conversation_history);
@@ -159,6 +160,7 @@ const SkillSettingsPage: React.FC = () => {
           kwargs: tool.kwargs.filter((kwarg: any) => kwarg.key),
         })),
         enable_suggest: values.enable_suggest,
+        enable_query_rewrite: values.enable_query_rewrite,
       };
       setSaveLoading(true);
       await saveSkillDetail(id, payload);
@@ -217,7 +219,8 @@ const SkillSettingsPage: React.FC = () => {
         skill_id: id,
         enable_km_route: enableKmRoute,
         km_llm_model: enableKmRoute ? kmLlmModel : undefined,
-        enable_suggest: values.enable_suggest
+        enable_suggest: values.enable_suggest,
+        enable_query_rewrite: values.enable_query_rewrite,
       };
 
       return {
@@ -318,6 +321,13 @@ const SkillSettingsPage: React.FC = () => {
                     <Form.Item
                       label={t('skill.form.enableSuggest')}
                       name="enable_suggest"
+                      valuePropName="checked">
+                      <Switch size="small" />
+                    </Form.Item>
+                    <Form.Item
+                      label={t('skill.form.problemOptimization')}
+                      name="enable_query_rewrite"
+                      tooltip={t('skill.form.problemOptimizationTip')}
                       valuePropName="checked">
                       <Switch size="small" />
                     </Form.Item>

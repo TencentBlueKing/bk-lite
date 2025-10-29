@@ -1,12 +1,12 @@
 import nats_client
-from apps.core.utils.time_util import format_time_iso, format_timestamp
+from apps.core.utils.time_util import format_timestamp
 
 from apps.monitor.models import MonitorObject, Metric, MonitorInstance
 from apps.monitor.serializers.monitor_object import MonitorObjectSerializer
 from apps.monitor.serializers.monitor_metrics import MetricSerializer
 from apps.monitor.services.metrics import Metrics
 from apps.core.utils.permission_utils import get_permission_rules, permission_filter
-from apps.monitor.constants import INSTANCE_MODULE
+from apps.monitor.constants.permission import PermissionConstants
 from apps.monitor.utils.victoriametrics_api import VictoriaMetricsAPI
 from apps.core.logger import nats_logger as logger
 
@@ -67,7 +67,7 @@ def monitor_object_instances(monitor_obj_id: str, *args, **kwargs):
         user,
         current_team,
         "monitor",
-        f"{INSTANCE_MODULE}.{monitor_obj_id}",
+        f"{PermissionConstants.INSTANCE_MODULE}.{monitor_obj_id}",
     )
 
     # 使用权限过滤器获取有权限的实例
@@ -165,7 +165,7 @@ def query_monitor_data_by_metric(query_data: dict, *args, **kwargs):
         user,
         current_team,
         "monitor",
-        f"{INSTANCE_MODULE}.{monitor_obj_id}",
+        f"{PermissionConstants.INSTANCE_MODULE}.{monitor_obj_id}",
     )
 
     # 构建查询语句

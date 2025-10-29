@@ -25,15 +25,6 @@ export interface ContextMenuState {
   targetType: 'node' | 'edge';
 }
 
-export interface TextEditState {
-  isEditing: boolean;
-  nodeId: string | null;
-  tempInput: string;
-  position: { x: number; y: number };
-  inputWidth: number;
-  originalText: string;
-}
-
 export interface EdgeConfigState {
   visible: boolean;
   data: EdgeData | null;
@@ -50,6 +41,7 @@ export interface TopologyNodeData {
   type: string;
   name: string;
   unit?: string;
+  conversionFactor?: number;
   decimalPlaces?: number;
   position?: Point;
   zIndex?: number; 
@@ -76,6 +68,8 @@ export interface TopologyNodeData {
     backgroundColor?: string;
     borderColor?: string;
     borderWidth?: number;
+    renderEffect?: 'normal' | 'glass';
+    iconPadding?: number;
     lineType?: 'solid' | 'dashed' | 'dotted';
     shapeType?: 'rectangle' | 'circle';
     textColor?: string;
@@ -83,6 +77,11 @@ export interface TopologyNodeData {
     fontWeight?: string | number;
     nameColor?: string;
     nameFontSize?: number;
+    textDirection?: 'top' | 'bottom' | 'left' | 'right';
+    thresholdColors?: Array<{
+      value: string;
+      color: string;
+    }>;
   };
 }
 
@@ -137,7 +136,16 @@ export interface PortPositions {
 
 // Hook 返回类型
 export interface UseContextMenuAndModalReturn {
-  handleEdgeConfigConfirm: (values: { lineType: 'common_line' | 'network_line'; lineName?: string; styleConfig?: { lineColor?: string } }) => void;
+  handleEdgeConfigConfirm: (values: {
+    lineType: 'common_line' | 'network_line';
+    lineName?: string;
+    styleConfig?: {
+      lineColor?: string;
+      lineWidth?: number;
+      lineStyle?: 'line' | 'dotted' | 'point';
+      enableAnimation?: boolean;
+    }
+  }) => void;
   closeEdgeConfig: () => void;
   handleMenuClick: (event: MenuClickEvent) => void;
 }
@@ -147,8 +155,12 @@ export interface EdgeData {
   id?: string;
   lineType: 'common_line' | 'network_line';
   lineName?: string;
+  arrowDirection?: 'none' | 'single' | 'double';
   styleConfig?: {
     lineColor?: string;
+    lineWidth?: number;
+    lineStyle?: 'line' | 'dotted' | 'point';
+    enableAnimation?: boolean;
   };
   config?: any;
   sourceNode: { id: string; name: string };
@@ -165,15 +177,18 @@ export interface EdgeCreationData {
   config?: any;
 }
 
+// 节点类型定义
+export type NodeTypeId = 'single-value' | 'icon' | 'chart' | 'basic-shape' | 'text';
+
 export interface NodeConfPanelProps {
-  nodeType: 'single-value' | 'icon' | 'chart' | 'basic-shape';
+  nodeType: NodeTypeId;
   readonly?: boolean;
   visible?: boolean;
   title?: string;
   onClose?: () => void;
   onConfirm?: (values: NodeConfigFormValues) => void;
   onCancel?: () => void;
-  initialValues?: NodeConfigFormValues;
+  editingNodeData?: any;
 }
 
 export interface ContextMenuProps {
@@ -209,22 +224,12 @@ export interface NodeType {
   id: string;
   name: string;
   icon: React.ReactNode;
-  description: string;
+  description?: string;
 }
 
 export interface DropPosition {
   x: number;
   y: number;
-}
-
-export interface TextEditInputProps {
-  isEditingText: boolean;
-  editPosition: { x: number; y: number };
-  inputWidth: number;
-  tempTextInput: string;
-  setTempTextInput: (text: string) => void;
-  finishTextEdit: () => void;
-  cancelTextEdit: () => void;
 }
 
 export interface ToolbarProps {
@@ -238,11 +243,12 @@ export interface ToolbarProps {
   onFit: () => void;
   onDelete: () => void;
   onSelectMode: () => void;
-  onAddText: () => void;
   onUndo: () => void;
   onRedo: () => void;
   canUndo?: boolean;
   canRedo?: boolean;
+  onRefresh?: () => void;
+  onFrequencyChange?: (frequency: number) => void;
 }
 
 // ViewConfig 表单值类型
@@ -279,12 +285,20 @@ export interface NodeConfigFormValues {
   borderWidth?: number;
   textColor?: string;
   fontSize?: number;
+  fontWeight?: string;
+  iconPadding?: number;
+  renderEffect?: 'normal' | 'glass';
   lineType?: string;
   shapeType?: string;
   nameColor?: string;
   nameFontSize?: number;
   unit?: string;
+  conversionFactor?: number;
   decimalPlaces?: number;
+  thresholdColors?: Array<{
+    value: string;
+    color: string;
+  }>;
 }
 
 // Topology 组件 Props 和 Ref 类型

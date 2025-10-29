@@ -1,7 +1,9 @@
 import binascii
+import json
 import os
 
 from django.db import models
+from django.utils import timezone
 from django.utils.functional import cached_property
 from django.utils.translation import gettext_lazy as _
 from django_minio_backend import MinioBackend
@@ -225,6 +227,56 @@ class BotWorkFlow(models.Model):
         verbose_name = "机器人工作流"
         verbose_name_plural = verbose_name
 
+    @classmethod
+    def create_celery_task(cls, bot_id, work_data):
+        from django_celery_beat.models import CrontabSchedule, PeriodicTask
+
+        cls.delete_celery_task(bot_id)
+        celery_nodes = [i for i in work_data["nodes"] if i.get("type") == "celery"]
+        for i in celery_nodes:
+            node_id = i["id"]
+            data_config = i["data"]["config"]
+            hour, minute = data_config.get("time", "00:00").split(":")
+            if data_config["frequency"] == "daily":
+                crontab_config = {}
+            elif data_config["frequency"] == "weekly":
+                crontab_config = {"day_of_week": str(data_config.get("weekday", 0))}
+            else:
+                crontab_config = {
+                    "day_of_month": str(data_config.get("day", 1)),
+                }
+            # 创建或获取 Crontab 调度配置
+            crontab_schedule, created = CrontabSchedule.objects.get_or_create(
+                minute=minute,
+                hour=hour,
+                day_of_week=crontab_config.get("day_of_week", "*"),
+                day_of_month=crontab_config.get("day_of_month", "*"),
+                month_of_year="*",
+                timezone=timezone.get_current_timezone(),
+            )
+            # 准备任务参数
+            task_kwargs = {"bot_id": bot_id, "node_id": node_id, "message": data_config["message"]}
+
+            task_name = f"chat_flow_celery_task_{bot_id}_{node_id}"
+            # 创建或更新周期性任务
+            PeriodicTask.objects.update_or_create(
+                name=task_name,
+                defaults={
+                    "task": "apps.opspilot.tasks.chat_flow_celery_task",
+                    "enabled": True,
+                    "crontab": crontab_schedule,
+                    "kwargs": json.dumps(task_kwargs),  # 使用kwargs而不是args
+                    "args": "[]",  # 清空args
+                },
+            )
+
+    @staticmethod
+    def delete_celery_task(bot_id):
+        from django_celery_beat.models import PeriodicTask
+
+        task_name = f"chat_flow_celery_task_{bot_id}_"
+        PeriodicTask.objects.filter(name__startswith=task_name).delete()
+
 
 class WorkFlowTaskResult(models.Model):
     bot_work_flow = models.ForeignKey(BotWorkFlow, on_delete=models.CASCADE, verbose_name="机器人工作流")
@@ -233,3 +285,4 @@ class WorkFlowTaskResult(models.Model):
     input_data = models.TextField(verbose_name="输入数据")
     output_data = models.JSONField(verbose_name="输出数据", default=dict)
     last_output = models.TextField(verbose_name="最后输出", blank=True, null=True)
+    execute_type = models.CharField(max_length=50, default="restful")

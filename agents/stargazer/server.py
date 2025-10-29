@@ -2,7 +2,7 @@ from sanic import Sanic
 from api import api
 from core.config import YamlConfig
 from dotenv import load_dotenv
-from core.nats_instance import initialize_nats
+from core.nats import initialize_nats
 
 load_dotenv()
 
@@ -10,10 +10,10 @@ yml_config = YamlConfig(path="./config.yml")
 app = Sanic("Stargazer", config=yml_config)
 app.blueprint(api)
 
-# 初始化NATS集成
-nats = initialize_nats(app)
+# 初始化 NATS
+nats = initialize_nats(app, service_name="stargazer")
 
-# 导入nats_server模块，确保处理器被注册
+# 导入 nats_server 模块，确保处理器被注册
 from service import nats_server
 
 

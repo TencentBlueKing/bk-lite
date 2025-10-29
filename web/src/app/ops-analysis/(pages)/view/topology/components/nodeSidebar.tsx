@@ -1,5 +1,6 @@
 import React, { useEffect } from 'react';
 import Icon from '@/components/icon';
+import { useTranslation } from '@/utils/i18n';
 import { SidebarProps, NodeType } from '@/app/ops-analysis/types/topology';
 import { Button } from 'antd';
 import {
@@ -8,6 +9,7 @@ import {
   AppstoreOutlined,
   AreaChartOutlined,
   BorderOutlined,
+  FontSizeOutlined,
 } from '@ant-design/icons';
 
 const Sidebar: React.FC<SidebarProps> = ({
@@ -18,16 +20,16 @@ const Sidebar: React.FC<SidebarProps> = ({
   onShowNodeConfig,
   onShowChartSelector,
 }) => {
+  const { t } = useTranslation();
   const nodeTypes: NodeType[] = [
     {
       id: 'basic-shape',
-      name: '基础图形',
+      name: t('topology.nodeTypes.basicShape'),
       icon: <BorderOutlined className="text-blue-600" />,
-      description: '添加基础图形节点（矩形、圆形等）',
     },
     {
       id: 'single-value',
-      name: '单值',
+      name: t('topology.nodeTypes.singleValue'),
       icon: (
         <Icon
           type="danzhitu"
@@ -35,19 +37,21 @@ const Sidebar: React.FC<SidebarProps> = ({
           style={{ fontSize: '16px' }}
         />
       ),
-      description: '添加单个数值显示节点',
     },
     {
       id: 'icon',
-      name: '图标',
+      name: t('topology.nodeTypes.icon'),
       icon: <AppstoreOutlined className="text-green-500" />,
-      description: '添加图标类型节点',
     },
     {
       id: 'chart',
-      name: '图表',
+      name: t('topology.nodeTypes.chart'),
       icon: <AreaChartOutlined className="text-purple-500" />,
-      description: '添加图表类型节点',
+    },
+    {
+      id: 'text',
+      name: t('topology.nodeTypes.text'),
+      icon: <FontSizeOutlined className="text-orange-500" />,
     },
   ];
 
@@ -63,7 +67,6 @@ const Sidebar: React.FC<SidebarProps> = ({
         type: 'node',
         nodeTypeId: nodeType.id,
         nodeTypeName: nodeType.name,
-        nodeTypeDescription: nodeType.description,
       })
     );
 
@@ -134,6 +137,9 @@ const Sidebar: React.FC<SidebarProps> = ({
 
               if (nodeType.id === 'chart') {
                 onShowChartSelector?.(position);
+              } else if (nodeType.id === 'text') {
+                onShowNodeConfig?.(nodeType, position);
+                return;
               } else {
                 onShowNodeConfig?.(nodeType, position);
               }

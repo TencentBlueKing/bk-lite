@@ -147,6 +147,7 @@ const QAPairForm = forwardRef<any, QAPairFormProps>(({
       const processedItems = result.items.map((item: any) => ({
         key: item.id.toString(),
         title: item.name,
+        chunk_size: item.chunk_size || 0,
       }));
       
       setDocumentData(prev => ({
@@ -358,16 +359,27 @@ const QAPairForm = forwardRef<any, QAPairFormProps>(({
     return documentData[activeDocumentTab] || [];
   }, [documentData, activeDocumentTab]);
 
-  const columns = useMemo(() => [{
-    title: t('knowledge.documents.name'),
-    dataIndex: 'title',
-    key: 'title',
-    render: (text: string) => (
-      <div>
+  const columns = useMemo(() => [
+    {
+      title: t('knowledge.documents.name'),
+      dataIndex: 'title',
+      key: 'title',
+      render: (text: string) => (
         <div className="font-medium">{text}</div>
-      </div>
-    ),
-  }], []);
+      ),
+    },
+    {
+      title: t('knowledge.documents.chunkSize'),
+      dataIndex: 'chunk_size',
+      key: 'chunk_size',
+      width: 120,
+      render: (size: number) => (
+        <Tag color="blue" className="text-xs">
+          {size || 0}
+        </Tag>
+      ),
+    }
+  ], []);
 
   const handleCreateQAPairs = useCallback(async (onlyQuestion = false) => {
     if (!id || !formValuesRef.current.questionLlmModel || !formValuesRef.current.answerLlmModel) {

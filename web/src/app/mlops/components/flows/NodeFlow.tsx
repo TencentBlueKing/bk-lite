@@ -17,7 +17,8 @@ import {
   IsValidConnection,
   EdgeTypes,
 } from '@xyflow/react';
-import { Button } from 'antd';
+import { Button, Tooltip } from 'antd';
+import { SaveOutlined, ReloadOutlined, EyeOutlined, EyeInvisibleOutlined } from '@ant-design/icons';
 import { IntentNode, ResponseNode, SlotNode, FormNode, ActionNode, CheckPoint } from './CustomNodes';
 import CustomEdge from './ButtonEdge';
 import '@xyflow/react/dist/style.css';
@@ -50,7 +51,7 @@ const NodeFlow = ({
   const [edges, setEdges, onEdgesChange] = useEdgesState(initialEdges);
   const [detailOpen, setDetailOpen] = useState<boolean>(false);
   const [currentNode, setCurrentNode] = useState<Node | null>(null);
-  const [visiable, setVisiable] = useState<boolean>(true); // 缩略图显示控制
+  const [visiable, setVisiable] = useState<boolean>(false); // 缩略图显示控制
 
   // 用于存储边重连时的引用
   const edgeReconnectSuccessful = useRef(true);
@@ -126,7 +127,6 @@ const NodeFlow = ({
 
 
       if (!sourceChanged && !targetChanged) {
-        console.log('No connection changes detected');
         return;
       }
 
@@ -399,8 +399,6 @@ const NodeFlow = ({
       return item;
     });
 
-    // console.log(_nodes);
-    // console.log(_edges);
     setEdges(_edges);
     setNodes(_nodes);
   }, [currentNode, setNodes, setEdges]);
@@ -528,29 +526,63 @@ const NodeFlow = ({
       >
         <Background />
         <Panel position='top-right'>
-          <Button
-            key="save"
-            size="small"
-            color="default"
-            variant="outlined"
-            className="mr-2 text-xs"
-            onClick={onSave}
-          >{t(`common.save`)}</Button>
-          <Button
-            key="reset"
-            size="small"
-            variant="outlined"
-            className="mr-2 text-xs"
-            onClick={onRestore}
-          >{t(`mlops-common.reset`)}</Button>
-          <Button
-            key="visiable"
-            size="small"
-            variant="outlined"
-            className="mr-2 text-xs"
-            onClick={() => setVisiable(prev => !prev)}
-          >{t(`mlops-common.${visiable ? 'hide' : 'show'}Thumbnail`)}</Button>
-          {panel?.length > 0 && panel}
+          <div className="flex bg-white" style={{ boxShadow: '0px 0px 1px 1px #f3f4f6' }}>
+            <Tooltip title={t(`common.save`)}>
+              <Button
+                key="save"
+                size="small"
+                type="text"
+                icon={<SaveOutlined />}
+                onClick={onSave}
+                className="border rounded-none border-gray-300 hover:border-blue-400 hover:text-blue-500"
+                style={{
+                  width: 26,
+                  height: 26,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+
+                }}
+              />
+            </Tooltip>
+
+            <Tooltip title={t(`mlops-common.reset`)}>
+              <Button
+                key="reset"
+                size="small"
+                type="text"
+                icon={<ReloadOutlined />}
+                onClick={onRestore}
+                className="border rounded-none border-gray-300 hover:border-orange-400 hover:text-orange-500"
+                style={{
+                  width: 26,
+                  height: 26,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center'
+                }}
+              />
+            </Tooltip>
+
+            <Tooltip title={t(`mlops-common.${visiable ? 'hide' : 'show'}Thumbnail`)}>
+              <Button
+                key="visiable"
+                size="small"
+                type="text"
+                icon={visiable ? <EyeInvisibleOutlined /> : <EyeOutlined />}
+                onClick={() => setVisiable(prev => !prev)}
+                className="border rounded-none border-gray-300 hover:border-purple-400 hover:text-purple-500"
+                style={{
+                  width: 26,
+                  height: 26,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center'
+                }}
+              />
+            </Tooltip>
+            {panel?.length > 0 && panel}
+          </div>
         </Panel>
         <Controls position='top-left' orientation="horizontal" />
         {/* 优化后的 MiniMap */}

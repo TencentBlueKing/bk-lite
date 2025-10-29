@@ -1,0 +1,62 @@
+# ====================================
+# Docker 日志源（含字段映射）
+# ====================================
+[sources.docker_{{ instance_id }}]
+type = "docker_logs"
+docker_host = "{{ docker_host }}"
+auto_partial_merge = true
+{% if include_containers %}
+include_containers = [{{ include_containers | map('tojson') | join(', ') }}]
+{% elif exclude_containers %}
+exclude_containers = [{{ exclude_containers | map('tojson') | join(', ') }}]
+{% endif %}
+
+
+{% if multiline %}
+# ====================================
+# 多行日志处理
+# ====================================
+multiline.condition_pattern = '{{ multiline.condition_pattern }}'
+multiline.mode = "{{ multiline.mode }}"
+multiline.start_pattern = '{{ multiline.start_pattern }}'
+multiline.timeout_ms = {{ multiline.timeout_ms }}
+{% endif %}
+
+# ====================================
+# enrich（字段补全）
+# ====================================
+[transforms.docker_enrich_{{ instance_id }}]
+type = "remap"
+inputs = ["docker_{{ instance_id }}"]
+source = '''
+.collector = "Vector"
+.collect_type = "docker"
+.instance_id = "{{ instance_id }}"
+'''
+
+# ====================================
+# sinks
+# ====================================
+[sinks.vmlogs_{{ instance_id }}]
+type = "nats"
+inputs = ["docker_enrich_{{ instance_id }}"]
+subject = "vector"
+url = "${NATS_PROTOCOL}://${NATS_SERVERS}"
+
+[sinks.vmlogs_{{ instance_id }}.auth]
+strategy = "user_password"
+
+[sinks.vmlogs_{{ instance_id }}.auth.user_password]
+user = "${NATS_USERNAME}"
+password = "${NATS_PASSWORD}"
+
+{% if NATS_PROTOCOL == "tls" %}
+# TLS 配置
+[sinks.vmlogs_{{ instance_id }}.tls]
+enabled = true
+verify_certificate = true
+ca_file = "${NATS_TLS_CA_FILE}"
+{% endif %}
+
+[sinks.vmlogs_{{ instance_id }}.encoding]
+codec = "json"

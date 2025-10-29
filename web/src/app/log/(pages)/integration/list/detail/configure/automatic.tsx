@@ -77,11 +77,11 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = () => {
   useEffect(() => {
     if (configsInfo.initTableItems) {
       const initItems = {
+        instance_id: uuidv4(),
         ...configsInfo.initTableItems,
         node_ids: null,
         instance_name: null,
         group_ids: groupId,
-        instance_id: uuidv4(),
       };
       setInitTableItems(initItems);
       setDataSource([initItems]);

@@ -131,6 +131,7 @@ const Grouping = () => {
 
   useEffect(() => {
     if (!isLoading) {
+      getLogGroups(searchText);
     }
   }, [pagination.current, pagination.pageSize]);
 

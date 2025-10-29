@@ -4,11 +4,11 @@ interface TrainJob {
   id: string | number,
   name: string,
   // type: string,
-  status: string,
+  status?: string,
   created_at: string,
-  train_data_id: string | number;
-  val_data_id: string | number;
-  test_data_id: string | number;
+  train_data_id?: string | number;
+  val_data_id?: string | number;
+  test_data_id?: string | number;
   [key: string]: any
 }
 

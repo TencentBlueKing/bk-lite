@@ -23,13 +23,28 @@ const { confirm } = Modal;
 const DatasetManagePage = () => {
   const { t } = useTranslation();
   const router = useRouter();
-  const { deleteAnomalyDatasets, deleteRasaDatasets, getAnomalyDatasetsList, getRasaDatasetsList } = useMlopsManageApi();
+  const {
+    deleteAnomalyDatasets,
+    deleteRasaDatasets,
+    getAnomalyDatasetsList,
+    getRasaDatasetsList,
+    getLogClusteringList,
+    getTimeSeriesPredictList,
+    getClassificationDatasetsList,
+    deleteLogClustering,
+    deleteTimeSeriesPredict,
+    deleteClassificationDataset,
+  } = useMlopsManageApi();
   const [datasets, setDatasets] = useState<DataSet[]>([]);
   const [loading, setLoading] = useState<boolean>(false);
   const [selectedKeys, setSelectedKeys] = useState<string[]>([]);
   const modalRef = useRef<ModalRef>(null);
   const datasetTypes = [
     { key: 'anomaly', value: 'anomaly', label: t('datasets.anomaly') },
+    { key: 'rasa', value: 'rasa', label: t('datasets.rasa') },
+    { key: 'log_clustering', value: 'log_clustering', label: t('datasets.logClustering') },
+    { key: 'timeseries_predict', value: 'timeseries_predict', label: t('datasets.timeseriesPredict') },
+    { key: 'classification', value: 'classification', label: t('datasets.classification') }
   ];
 
   const treeData: TreeDataNode[] = [
@@ -45,6 +60,18 @@ const DatasetManagePage = () => {
         {
           title: t(`datasets.rasa`),
           key: 'rasa',
+        },
+        {
+          title: t(`datasets.timeseriesPredict`),
+          key: 'timeseries_predict',
+        },
+        {
+          title: t(`datasets.logClustering`),
+          key: 'log_clustering',
+        },
+        {
+          title: '分类任务',
+          key: 'classification'
         }
       ]
     },
@@ -58,14 +85,20 @@ const DatasetManagePage = () => {
     getDataSets();
   }, [selectedKeys]);
 
-  const handleAddMap: Record<string, any> = {
+  const handleGetDatasetsMap: Record<string, any> = {
     'anomaly': getAnomalyDatasetsList,
-    'rasa': getRasaDatasetsList
+    'rasa': getRasaDatasetsList,
+    'log_clustering': getLogClusteringList,
+    'timeseries_predict': getTimeSeriesPredictList,
+    'classification': getClassificationDatasetsList
   };
 
-  const handleDelMap: Record<string, any> = {
+  const handleDelDatasetsMap: Record<string, any> = {
     'anomaly': deleteAnomalyDatasets,
-    'rasa': deleteRasaDatasets
+    'rasa': deleteRasaDatasets,
+    'log_clustering': deleteLogClustering,
+    'timeseries_predict': deleteTimeSeriesPredict,
+    'classification': deleteClassificationDataset
   };
 
 
@@ -74,7 +107,7 @@ const DatasetManagePage = () => {
     if (!activeTab) return;
     setLoading(true);
     try {
-      const data = await handleAddMap[activeTab]({ page: 1, page_size: -1 });
+      const data = await handleGetDatasetsMap[activeTab]({ page: 1, page_size: -1 });
       const _data: DataSet[] = data?.map((item: any) => {
         return {
           id: item.id,
@@ -87,6 +120,7 @@ const DatasetManagePage = () => {
       setDatasets(_data);
     } catch (e) {
       console.log(e);
+      setDatasets([]);
     } finally {
       setLoading(false);
     }
@@ -95,7 +129,7 @@ const DatasetManagePage = () => {
   const navigateToNode = (item: any) => {
     const [activeTab] = selectedKeys;
     router.push(
-      `/mlops/manage/detail?folder_id=${item?.id}&folder_name=${item.name}&description=${item.description}&activeTap=${activeTab}&menu=intent`
+      `/mlops/manage/detail?folder_id=${item?.id}&folder_name=${item.name}&description=${item.description}&activeTap=${activeTab}&menu=${activeTab === 'rasa' ? 'intent' : ''}`
     );
   };
 
@@ -108,7 +142,7 @@ const DatasetManagePage = () => {
       onOk: async () => {
         try {
           const [activeTab] = selectedKeys;
-          await handleDelMap[activeTab](id);
+          await handleDelDatasetsMap[activeTab](id);
           message.success(t('common.delSuccess'));
         } catch (e) {
           console.log(e);
@@ -141,30 +175,17 @@ const DatasetManagePage = () => {
       <Menu onClick={(e) => e.domEvent.preventDefault()}>
         <Menu.Item
           className="!p-0"
-          onClick={() =>
-            handleOpenModal({ title: 'editform', type: 'edit', form: item })
-          }
+          onClick={() => handleOpenModal({ title: 'editform', type: 'edit', form: item })}
         >
-          <PermissionWrapper
-            requiredPermissions={['Edit']}
-            className="!block"
-          >
+          <PermissionWrapper requiredPermissions={['Edit']} className="!block" >
             <Button type="text" className="w-full">
               {t(`common.edit`)}
             </Button>
           </PermissionWrapper>
         </Menu.Item>
         {item?.name !== "default" && (
-          <Menu.Item
-            className="!p-0"
-            onClick={() =>
-              handleDelete(item.id)
-            }
-          >
-            <PermissionWrapper
-              requiredPermissions={['Delete']}
-              className="!block"
-            >
+          <Menu.Item className="!p-0" onClick={() => handleDelete(item.id)}>
+            <PermissionWrapper requiredPermissions={['Delete']} className="!block" >
               <Button type="text" className="w-full">
                 {t(`common.delete`)}
               </Button>
@@ -175,9 +196,7 @@ const DatasetManagePage = () => {
     )
   };
 
-  const topSection = (
-    <TopSection title={t('datasets.datasets')} content={t('traintask.description')} />
-  );
+  const topSection = (<TopSection title={t('datasets.datasets')} content={t('traintask.description')} />);
 
   const leftSection = (
     <div className='w-full'>

@@ -3,7 +3,7 @@ requires = ["setuptools>=45", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [tool.setuptools.packages.find]
-include = ["src*", "graphiti_core*"]
+include = ["src*"]
 
 
 [project]
@@ -13,63 +13,5 @@ description = "Metis"
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
-    "python-dotenv==1.1.0",
-    "tqdm==4.66.4",
-    "jinja2==3.1.4",
-    "nanoid==2.0.0",
-    "redis==5.0.1",
-    "pillow==10.3.0",
-    "pandas==2.2.2",
-    "pyarmor==9.1.5",
-    "falkordb==1.2.0",
-    "langchain-postgres==0.0.15",
-    "psycopg==3.2.3",
-    "sanic==25.3.0",
-    "sanic-ext==23.12.0",
-    "Sanic-HTTPAuth==0.2.0",
-    "langchain==0.3.27",
-    "langchain-openai==0.3.28",
-    "langchain-community==0.3.27",
-    "langchain-experimental==0.3.4",
-    "langchain-mcp-adapters==0.1.9",
-    "langgraph==0.6.2",
-    "langgraph-checkpoint-postgres==2.0.21",
-    "langchain-huggingface==0.1.2",
-    "json-repair==0.39.1",
-    "neo4j-graphrag==1.7.0",
-    "diskcache==5.6.3",
-    "python-pptx==0.6.23",
-    "python-docx==1.1.2",
-    "openpyxl==3.1.5",
-    "tabulate==0.9.0",
-    "jpype1==1.5.2",
-    "pymupdf==1.24.5",
-    "markdownify==0.12.1",
-    "tabula-py==2.10.0",
-    "paddlepaddle==3.0.0",
-    "paddleocr==2.10.0",
-    "paddleclas==2.5.2",
-    "azure-cognitiveservices-vision-computervision==0.9.0",
-    "duckduckgo-search==7.2.1",
-    "playwright==1.51.0",
-    "python-jenkins==1.8.2",
-    "kubernetes==32.0.1",
-    "jieba==0.42.1",
-    "ansible==11.5.0",
-    "ansible-runner==2.4.1",
-    "mlflow==3.3.2",
-    "graphiti-core==0.20.4",
-]
-
-[project.optional-dependencies]
-
-dev = [
-    "pytest==8.3.5",
-    "pytest-asyncio==0.26.0",
-    "pytest-dotenv==0.5.2",
-    "pytest-xdist==3.6.1",
-    "sanic-testing==24.6.0",
-    "pytest-cov==6.1.1",
-    "pytest-html==4.1.1",
-    "pytest-sugar==1.0.0"
+    "neco[core,llm,mlflow,sanic,doc_parser,devops,ocr]==1.0.5",
 ]

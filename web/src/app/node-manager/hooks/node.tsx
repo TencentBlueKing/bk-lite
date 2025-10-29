@@ -1,17 +1,28 @@
 import { useMemo } from 'react';
 import { useTranslation } from '@/utils/i18n';
 import { Button, Popconfirm } from 'antd';
+import {
+  CheckCircleOutlined,
+  ExclamationCircleOutlined,
+  CloseCircleOutlined,
+  StopOutlined,
+  LoadingOutlined,
+  WarningOutlined,
+} from '@ant-design/icons';
 import type { TableColumnsType } from 'antd';
-import { TableDataItem } from '@/app/node-manager/types';
+import { TableDataItem, SegmentedItem } from '@/app/node-manager/types';
 import { useUserInfoContext } from '@/context/userInfo';
 import Permission from '@/components/permission';
 import EllipsisWithTooltip from '@/components/ellipsis-with-tooltip';
+import PermissionWrapper from '@/components/permission';
+import { OPERATE_SYSTEMS } from '@/app/node-manager/constants/cloudregion';
+import type { MenuProps } from 'antd';
 interface HookParams {
   checkConfig: (row: TableDataItem) => void;
   deleteNode: (row: TableDataItem) => void;
 }
 
-export const useColumns = ({
+const useColumns = ({
   checkConfig,
   deleteNode,
 }: HookParams): TableColumnsType<TableDataItem> => {
@@ -27,7 +38,7 @@ export const useColumns = ({
         width: 120,
       },
       {
-        title: t('common.name'),
+        title: t('node-manager.cloudregion.node.nodeName'),
         dataIndex: 'name',
         key: 'name',
         width: 120,
@@ -43,6 +54,20 @@ export const useColumns = ({
             text={showGroupNames(organization)}
           />
         ),
+      },
+      {
+        title: t('node-manager.cloudregion.node.system'),
+        dataIndex: 'operating_system',
+        key: 'operating_system',
+        width: 120,
+        render: (value: string) => {
+          return (
+            <>
+              {OPERATE_SYSTEMS.find((item) => item.value === value)?.label ||
+                '--'}
+            </>
+          );
+        },
       },
       {
         title: t('common.actions'),
@@ -82,7 +107,7 @@ export const useColumns = ({
   return columns;
 };
 
-export const useGroupNames = () => {
+const useGroupNames = () => {
   const commonContext = useUserInfoContext();
   const showGroupNames = (ids: string[]) => {
     if (!ids?.length) return '--';
@@ -95,4 +120,329 @@ export const useGroupNames = () => {
   return {
     showGroupNames,
   };
+};
+
+const useTelegrafMap = (): Record<string, Record<string, any>> => {
+  const { t } = useTranslation();
+  return useMemo(
+    () => ({
+      1: {
+        tagColor: 'default',
+        color: '#b2b5bd',
+        text: t('node-manager.cloudregion.node.unknown'),
+        engText: 'Unknown',
+        icon: (
+          <div
+            className="w-6 h-6 rounded-lg flex items-center justify-center"
+            style={{ backgroundColor: 'rgba(178, 181, 189, 0.1)' }}
+          >
+            <ExclamationCircleOutlined
+              style={{
+                color: '#b2b5bd',
+                fontWeight: 'bold',
+                fontSize: '12px',
+              }}
+            />
+          </div>
+        ),
+      },
+      0: {
+        tagColor: 'success',
+        color: '#52c41a',
+        text: t('node-manager.cloudregion.node.normal'),
+        engText: 'Running',
+        icon: (
+          <div
+            className="w-6 h-6 rounded-lg flex items-center justify-center"
+            style={{ backgroundColor: 'rgba(82, 196, 26, 0.1)' }}
+          >
+            <CheckCircleOutlined
+              style={{
+                color: '#52c41a',
+                fontWeight: 'bold',
+                fontSize: '12px',
+              }}
+            />
+          </div>
+        ),
+      },
+      2: {
+        tagColor: 'error',
+        color: '#ff4d4f',
+        text: t('node-manager.cloudregion.node.error'),
+        engText: 'Failed',
+        icon: (
+          <div
+            className="w-6 h-6 rounded-lg flex items-center justify-center"
+            style={{ backgroundColor: 'rgba(255, 77, 79, 0.1)' }}
+          >
+            <CloseCircleOutlined
+              style={{
+                color: '#ff4d4f',
+                fontWeight: 'bold',
+                fontSize: '12px',
+              }}
+            />
+          </div>
+        ),
+      },
+      4: {
+        tagColor: '',
+        color: '#000000',
+        text: t('node-manager.cloudregion.node.notStarted'),
+        engText: 'Stopped',
+        icon: (
+          <div
+            className="w-6 h-6 rounded-lg flex items-center justify-center"
+            style={{ backgroundColor: 'rgba(0, 0, 0, 0.1)' }}
+          >
+            <StopOutlined
+              style={{
+                color: '#000000',
+                fontWeight: 'bold',
+                fontSize: '12px',
+              }}
+            />
+          </div>
+        ),
+      },
+      10: {
+        tagColor: 'processing',
+        color: '#1677ff',
+        text: t('node-manager.cloudregion.node.installing'),
+        engText: 'Installing',
+        icon: (
+          <div
+            className="w-6 h-6 rounded-lg flex items-center justify-center"
+            style={{ backgroundColor: 'rgba(22, 119, 255, 0.1)' }}
+          >
+            <LoadingOutlined
+              style={{
+                color: '#1677ff',
+                fontWeight: 'bold',
+                fontSize: '12px',
+              }}
+            />
+          </div>
+        ),
+      },
+      11: {
+        tagColor: '',
+        color: '#000000',
+        text: t('node-manager.cloudregion.node.notStarted'),
+        engText: 'Installed',
+        icon: (
+          <div
+            className="w-6 h-6 rounded-lg flex items-center justify-center"
+            style={{ backgroundColor: 'rgba(0, 0, 0, 0.1)' }}
+          >
+            <StopOutlined
+              style={{
+                color: '#000000',
+                fontWeight: 'bold',
+                fontSize: '12px',
+              }}
+            />
+          </div>
+        ),
+      },
+      12: {
+        tagColor: 'warning',
+        color: '#faad14',
+        text: t('node-manager.cloudregion.node.failInstall'),
+        engText: 'Installation failed',
+        icon: (
+          <div
+            className="w-6 h-6 rounded-lg flex items-center justify-center"
+            style={{ backgroundColor: 'rgba(250, 173, 20, 0.1)' }}
+          >
+            <WarningOutlined
+              style={{
+                color: '#faad14',
+                fontWeight: 'bold',
+                fontSize: '12px',
+              }}
+            />
+          </div>
+        ),
+      },
+    }),
+    [t]
+  );
+};
+
+const useInstallWays = (): SegmentedItem[] => {
+  const { t } = useTranslation();
+  return useMemo(
+    () => [
+      {
+        label: t('node-manager.cloudregion.node.remoteInstall'),
+        value: 'remoteInstall',
+      },
+      {
+        label: t('node-manager.cloudregion.node.manualInstall'),
+        value: 'manualInstall',
+      },
+    ],
+    [t]
+  );
+};
+
+const useInstallMap = (): Record<string, Record<string, string>> => {
+  const { t } = useTranslation();
+  return useMemo(
+    () => ({
+      waiting: {
+        color: 'var(--color-primary)',
+        text: t('node-manager.cloudregion.node.installing'),
+      },
+      waitingUninstall: {
+        color: 'var(--color-primary)',
+        text: t('node-manager.cloudregion.node.uninstalling'),
+      },
+      success: {
+        color: '#52c41a',
+        text: t('node-manager.cloudregion.node.successInstall'),
+      },
+      successUninstall: {
+        color: '#52c41a',
+        text: t('node-manager.cloudregion.node.successInstall'),
+      },
+      error: {
+        color: '#ff4d4f',
+        text: t('node-manager.cloudregion.node.failInstall'),
+      },
+      errorUninstall: {
+        color: '#ff4d4f',
+        text: t('node-manager.cloudregion.node.failUninstall'),
+      },
+    }),
+    [t]
+  );
+};
+
+const useCollectorItems = (): MenuProps['items'] => {
+  const { t } = useTranslation();
+  return useMemo(
+    () => [
+      {
+        label: (
+          <PermissionWrapper
+            className="customMenuItem"
+            requiredPermissions={['OperateCollector']}
+          >
+            {t('node-manager.cloudregion.node.installCollector')}
+          </PermissionWrapper>
+        ),
+        key: 'installCollector',
+      },
+      {
+        label: (
+          <PermissionWrapper
+            className="customMenuItem"
+            requiredPermissions={['OperateCollector']}
+          >
+            {t('node-manager.cloudregion.node.startCollector')}
+          </PermissionWrapper>
+        ),
+        key: 'startCollector',
+      },
+      {
+        label: (
+          <PermissionWrapper
+            className="customMenuItem"
+            requiredPermissions={['OperateCollector']}
+          >
+            {t('node-manager.cloudregion.node.restartCollector')}
+          </PermissionWrapper>
+        ),
+        key: 'restartCollector',
+      },
+      {
+        label: (
+          <PermissionWrapper
+            className="customMenuItem"
+            requiredPermissions={['OperateCollector']}
+          >
+            {t('node-manager.cloudregion.node.stopCollector')}
+          </PermissionWrapper>
+        ),
+        key: 'stopCollector',
+      },
+    ],
+    [t]
+  );
+};
+
+const useSidecarItems = (): MenuProps['items'] => {
+  const { t } = useTranslation();
+  return useMemo(
+    () => [
+      {
+        label: (
+          <PermissionWrapper
+            className="customMenuItem"
+            requiredPermissions={['UninstallController']}
+          >
+            {t('node-manager.cloudregion.node.uninstallSidecar')}
+          </PermissionWrapper>
+        ),
+        key: 'uninstallSidecar',
+      },
+    ],
+    [t]
+  );
+};
+
+const useMenuItem = () => {
+  const { t } = useTranslation();
+  return useMemo(
+    () => [
+      {
+        key: 'edit',
+        role: 'Edit',
+        title: 'edit',
+        config: {
+          title: 'editform',
+          type: 'edit',
+        },
+      },
+      {
+        key: 'delete',
+        role: 'Delete',
+        title: 'delete',
+        config: {
+          title: 'deleteform',
+          type: 'delete',
+        },
+      },
+    ],
+    [t]
+  );
+};
+
+const useFieldOptions = () => {
+  const { t } = useTranslation();
+  return useMemo(
+    () => [
+      { value: 'name', label: t('node-manager.cloudregion.node.nodeName') },
+      {
+        value: 'operating_system',
+        label: t('node-manager.cloudregion.node.system'),
+      },
+    ],
+    [t]
+  );
+};
+
+export {
+  useColumns,
+  useGroupNames,
+  useTelegrafMap,
+  useInstallWays,
+  useInstallMap,
+  useSidecarItems,
+  useCollectorItems,
+  useMenuItem,
+  useFieldOptions,
 };
