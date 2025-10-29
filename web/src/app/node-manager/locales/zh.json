@@ -120,14 +120,22 @@
         "inactive": "不活跃",
         "unknown": "未知的",
         "stop": "停止",
+        "notStarted": "未启动",
+        "normal": "正常",
+        "failed": "失败",
+        "installed": "已安装",
         "nodeName": "节点名称",
-        "deleteNodeTips": "自动安装的节点，建议通过卸载控制器进行删除，手动删除节点后，若后续该节点sidecar正常上报，则会自动更新在该列表中。"
+        "deleteNodeTips": "自动安装的节点，建议通过卸载控制器进行删除，手动删除节点后，若后续该节点sidecar正常上报，则会自动更新在该列表中。",
+        "collectorDetails": "采集器详情",
+        "status": "状态",
+        "message": "信息"
       },
       "Configuration": {
         "system": "操作系统",
         "linux": "Linux",
         "windows": "Windows",
         "collector": "采集器",
+        "collectorType": "采集器类型",
         "count": "节点总数",
         "ip": "IP",
         "sidecar": "探针",
@@ -141,9 +149,11 @@
         "parameterdes": "参数说明",
         "varconfig": "这些变量可用于配置中",
         "subconfiguration": "子配置",
+        "mainConfiguration": "主配置",
         "configurationList": "配置文件列表",
         "collectionType": "采集类型",
-        "configurationType": "配置类型"
+        "configurationType": "配置类型",
+        "configurationDetails": "配置详情"
       },
       "variable": {
         "value": "数值",

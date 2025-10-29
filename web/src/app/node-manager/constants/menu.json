@@ -42,7 +42,7 @@
     },
     {
       "title": "控制器",
-      "icon": "kongzhiqi",
+      "icon": "nenglifabuguanli",
       "url": "/node-manager/controller",
       "name": "controller_list",
       "children": [
@@ -65,19 +65,19 @@
         {
           "title": "Node",
           "url": "/node-manager/cloudregion/node",
-          "icon": "shezhi",
+          "icon": "jiedianguanli",
           "name": "cloud_region_node"
         },
         {
           "title": "Configuration",
           "url": "/node-manager/cloudregion/configuration",
-          "icon": "shezhi",
+          "icon": "settings-fill",
           "name": "cloud_region_configuration"
         },
         {
           "title": "Variable",
           "url": "/node-manager/cloudregion/variable",
-          "icon": "shezhi",
+          "icon": "bianliang",
           "name": "cloud_region_variable"
         }
       ]
@@ -91,21 +91,21 @@
         {
           "title": "Package Management",
           "url": "/node-manager/collector/detail",
-          "icon": "shezhi",
+          "icon": "baoguanli-full",
           "name": "collector_packet"
         }
       ]
     },
     {
       "title": "Controller",
-      "icon": "kongzhiqi",
+      "icon": "nenglifabuguanli",
       "url": "/node-manager/controller",
       "name": "controller_list",
       "children": [
         {
           "title": "Package Management",
           "url": "/node-manager/controller/detail",
-          "icon": "shezhi",
+          "icon": "baoguanli-full",
           "name": "controller_packet"
         }
       ]

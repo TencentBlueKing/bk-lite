@@ -6,7 +6,7 @@ interface CustomDrawerProps
   extends Omit<DrawerProps, 'title' | 'footer' | 'headerStyle' | 'bodyStyle'> {
   title?: React.ReactNode;
   footer?: React.ReactNode;
-  subTitle?: string;
+  subTitle?: React.ReactNode;
 }
 
 const OperateDrawer: React.FC<CustomDrawerProps> = ({
