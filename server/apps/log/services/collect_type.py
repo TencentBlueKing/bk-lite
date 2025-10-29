@@ -6,6 +6,7 @@ from django.db import transaction
 
 from apps.core.exceptions.base_app_exception import BaseAppException
 from apps.core.logger import log_logger as logger
+from apps.log.constants.database import DatabaseConstants
 from apps.log.models import CollectInstance, CollectInstanceOrganization, CollectConfig, CollectType
 from apps.log.utils.plugin_controller import Controller
 from apps.rpc.node_mgmt import NodeMgmt
@@ -85,7 +86,7 @@ class CollectTypeService:
         try:
             with transaction.atomic():
                 # 步骤1：批量创建实例
-                CollectInstance.objects.bulk_create(creates, batch_size=200)
+                CollectInstance.objects.bulk_create(creates, batch_size=DatabaseConstants.DEFAULT_BATCH_SIZE)
                 logger.info(f"创建 CollectInstance 成功，数量={len(creates)}")
 
                 # 步骤2：批量创建组织关联
@@ -93,7 +94,7 @@ class CollectTypeService:
                     CollectInstanceOrganization.objects.bulk_create(
                         [CollectInstanceOrganization(collect_instance_id=asso[0], organization=asso[1]) 
                          for asso in assos],
-                        batch_size=200
+                        batch_size=DatabaseConstants.DEFAULT_BATCH_SIZE
                     )
                     logger.info(f"创建 CollectInstanceOrganization 成功，数量={len(assos)}")
 
@@ -208,7 +209,7 @@ class CollectTypeService:
                     CollectInstanceOrganization(collect_instance_id=instance_id, organization=org)
                     for org in organizations
                 ]
-                CollectInstanceOrganization.objects.bulk_create(creates, batch_size=200)
+                CollectInstanceOrganization.objects.bulk_create(creates, batch_size=DatabaseConstants.DEFAULT_BATCH_SIZE)
 
     @staticmethod
     def search_instance_with_permission(collect_type_id, name, page, page_size, queryset):
