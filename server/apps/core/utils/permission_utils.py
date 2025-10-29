@@ -21,7 +21,7 @@ def set_rules_module_params(app_name, permission_key):
         "console_mgmt": "ops-console",
         "mlops": "mlops",
     }
-    client = SystemMgmt()
+    client = SystemMgmt(is_local_client=True)
     app_name = app_name_map.get(app_name, app_name)
     module = permission_key
     child_module = ""
@@ -40,7 +40,7 @@ def get_permissions_rules(user, current_team, app_name, permission_key, include_
     }
     app_name = app_name_map.get(app_name, app_name)
     module = permission_key
-    client = SystemMgmt()
+    client = SystemMgmt(is_local_client=True)
     try:
         permission_data = client.get_user_rules_by_module(int(current_team), user.username, app_name, module, user.domain, include_children)
         return permission_data
