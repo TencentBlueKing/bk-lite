@@ -239,9 +239,9 @@ class DingTalkChatFlowUtils(object):
             # 执行ChatFlow
             node_id = dingtalk_config["node_id"]
             reply_text = self.execute_chatflow_with_message(bot_chat_flow, node_id, text_content, sender_id)
-
+            logger.info(f"机器人回复： {reply_text}")
             # 发送回复消息（如果配置了webhook）
-            webhook_url = dingtalk_config.get("webhook_url")
+            webhook_url = data.get("sessionWebhook")
             if webhook_url and reply_text:
                 # 发送Markdown格式消息
                 markdown_content = {"title": "机器人回复", "text": reply_text}
