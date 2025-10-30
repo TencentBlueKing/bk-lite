@@ -352,7 +352,12 @@
       "alarmLevel": "Alarm Level",
       "noticeWay": "There is currently no notification channel available. You can go to the",
       "systemManage": "system management",
-      "config": "to configure it."
+      "config": "to configure it.",
+      "target": "Target",
+      "testingFrequency": "Test Frequency",
+      "collectionTemplate": "Template",
+      "convergenceMethod": "Collect Method",
+      "convergenceCycle": "Collect Cycle"
     },
     "integrations": {
       "integration": "Integration",
