@@ -465,8 +465,9 @@ const AssetDataContent = () => {
     );
   };
 
-  const selectOrganization = (value: number[]) => {
-    setOrganization(value);
+  const selectOrganization = (value: number | number[] | undefined) => {
+    const orgArray = Array.isArray(value) ? value : (value ? [value] : []);
+    setOrganization(orgArray);
   };
 
   const showInstanceModal = (row = { _id: '' }) => {

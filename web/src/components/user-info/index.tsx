@@ -122,7 +122,6 @@ const UserInfo: React.FC = () => {
   }, [groupTree, pathname, router, setSelectedGroup]);
 
   const dropdownItems: MenuProps['items'] = useMemo(() => {
-    // 过滤掉 OpsPilotGuest
     const filterGroups = (groups: Group[]): Group[] => {
       return groups
         .filter(group => isSuperUser || session?.user?.username === 'kayla' || group.name !== 'OpsPilotGuest')
@@ -163,7 +162,7 @@ const UserInfo: React.FC = () => {
           {
             key: 'group-tree-container',
             label: (
-              <div className="w-full" style={{ maxWidth: '400px' }}>
+              <div className="w-full" style={{ width: '180px' }}>
                 <div
                   className="w-full py-2 px-3 border-b border-[var(--color-border-2)]"
                   onClick={(e) => e.stopPropagation()}
@@ -181,7 +180,7 @@ const UserInfo: React.FC = () => {
                 </div>
                 <div
                   className="w-full py-2"
-                  style={{ maxHeight: '600px', overflow: 'auto' }}
+                  style={{ height: '900px', overflow: 'auto' }}
                   onClick={(e) => e.stopPropagation()}
                 >
                   <Tree
