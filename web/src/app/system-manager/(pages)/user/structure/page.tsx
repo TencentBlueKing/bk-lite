@@ -26,6 +26,7 @@ const { Search } = Input;
 
 interface ExtendedTreeDataNode extends TreeDataNode {
   hasAuth?: boolean;
+  isVirtual?: boolean;
   roleIds?: number[];
   children?: ExtendedTreeDataNode[];
 }
@@ -42,6 +43,7 @@ const User: React.FC = () => {
   const [treeData, setTreeData] = useState<ExtendedTreeDataNode[]>([]);
   const [filteredTreeData, setFilteredTreeData] = useState<ExtendedTreeDataNode[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
+  const [treeLoading, setTreeLoading] = useState<boolean>(true);
 
   const [addGroupModalOpen, setAddGroupModalOpen] = useState(false);
   const [addSubGroupModalOpen, setAddSubGroupModalOpen] = useState(false);
@@ -94,23 +96,30 @@ const User: React.FC = () => {
 
   const fetchTreeData = async () => {
     try {
+      setTreeLoading(true);
       const res = await getOrgTree();
       const convertedData = convertGroups(res);
       setTreeData(convertedData);
       setFilteredTreeData(convertedData);
     } catch {
       message.error(t('common.fetchFailed'));
+    } finally {
+      setTreeLoading(false);
     }
   };
 
   const convertGroups = (groups: OriginalGroup[]): ExtendedTreeDataNode[] => {
-    return groups.map((group) => ({
-      key: group.id,
-      title: group.name,
-      hasAuth: group.hasAuth,
-      roleIds: group.role_ids || [],
-      children: group.subGroups ? convertGroups(group.subGroups) : [],
-    }));
+    return groups.map((group) => {
+      const currentIsVirtual = group.is_virtual === true;
+      return {
+        key: group.id,
+        title: group.name,
+        hasAuth: group.hasAuth,
+        isVirtual: currentIsVirtual,
+        roleIds: group.role_ids || [],
+        children: group.subGroups ? convertGroups(group.subGroups) : [],
+      };
+    });
   };
 
   const handleDeleteUser = async (key: string) => {
@@ -259,7 +268,7 @@ const User: React.FC = () => {
             type: 'edit',
             groupId: groupKey,
             groupName: editGroup.title as string,
-            roleIds: editGroup.roleIds || [], // 传入角色ID数据
+            roleIds: editGroup.roleIds || [],
           });
         }
         break;
@@ -375,6 +384,7 @@ const User: React.FC = () => {
               onTreeSelect={handleTreeSelect}
               onGroupAction={handleGroupAction}
               t={t}
+              loading={treeLoading}
             />
           </div>
         }
