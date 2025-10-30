@@ -44,84 +44,95 @@ class GroupViewSet(LanguageViewSet, ViewSetUtils):
     @HasPermission("user_group-Add Group")
     def create_group(self, request):
         params = request.data
-        if not request.user.is_superuser:
-            groups = [i["id"] for i in request.user.group_list]
-            if params.get("parent_group_id") not in groups:
-                message = (
-                    self.loader.get("error.no_permission_create_group")
-                    if self.loader
-                    else "You do not have permission to create a group under this parent group."
-                )
-                return JsonResponse(
-                    {
-                        "result": False,
-                        "message": message,
-                    }
-                )
-
-        # 检查父组并确定是否为虚拟组
         parent_id = params.get("parent_group_id") or 0
-        is_virtual = False
+        group_name = params.get("group_name")
 
-        if parent_id != 0:
-            try:
-                parent_group = Group.objects.get(id=parent_id)
-                # 如果父组是虚拟组
-                if parent_group.is_virtual:
-                    # 检查父组是否为顶级虚拟组（parent_id=0）
-                    if parent_group.parent_id != 0:
-                        # 父组是虚拟子组，禁止在其下创建
-                        message = (
-                            self.loader.get("error.cannot_create_under_virtual_subgroup")
-                            if self.loader
-                            else "Cannot create a group under a virtual subgroup. Virtual groups can only have two levels."
-                        )
-                        return JsonResponse(
-                            {
-                                "result": False,
-                                "message": message,
-                            }
-                        )
-                    # 父组是顶级虚拟组，允许创建，子组也是虚拟组
-                    is_virtual = True
-            except Group.DoesNotExist:
-                message = self.loader.get("error.parent_group_not_found") if self.loader else "Parent group not found."
-                return JsonResponse(
-                    {
-                        "result": False,
-                        "message": message,
-                    }
-                )
-        else:
-            # 顶级组不允许手动创建虚拟组，只能是系统内置的
-            if params.get("is_virtual", False):
-                message = (
-                    self.loader.get("error.cannot_create_top_level_virtual_group")
-                    if self.loader
-                    else "Cannot create top-level virtual group. Only the built-in virtual group is allowed."
-                )
-                return JsonResponse(
-                    {
-                        "result": False,
-                        "message": message,
-                    }
-                )
-            is_virtual = False
+        # 权限校验
+        if not self._check_create_permission(request.user, parent_id):
+            message = self.loader.get("error.no_permission_create_group")
+            return JsonResponse({"result": False, "message": message})
 
-        group = Group.objects.create(
-            parent_id=parent_id,
-            name=params["group_name"],
-            is_virtual=is_virtual,
+        # 虚拟组校验并确定新组的虚拟属性
+        is_virtual, error_response = self._validate_virtual_group_creation(parent_id, params.get("is_virtual", False))
+        if error_response:
+            return error_response
+
+        # 创建组
+        group = Group.objects.create(parent_id=parent_id, name=group_name, is_virtual=is_virtual)
+
+        # 返回结果
+        return JsonResponse(
+            {
+                "result": True,
+                "data": {
+                    "id": group.id,
+                    "name": group.name,
+                    "parent_id": group.parent_id,
+                    "is_virtual": group.is_virtual,
+                    "subGroupCount": 0,
+                    "subGroups": [],
+                },
+            }
         )
-        data = {
-            "id": group.id,
-            "name": group.name,
-            "parent_id": group.parent_id,
-            "is_virtual": group.is_virtual,
-            "subGroupCount": 0,
-            "subGroups": [],
-        }
-        return JsonResponse({"result": True, "data": data})
+
+    @staticmethod
+    def _check_create_permission(user, parent_id):
+        """检查用户是否有权限在指定父组下创建子组
+
+        Args:
+            user: 当前用户
+            parent_id: 父组ID
+
+        Returns:
+            bool: 是否有权限
+        """
+        if user.is_superuser:
+            return True
+
+        if parent_id == 0:
+            return True
+
+        user_group_ids = [i["id"] for i in user.group_list]
+        return parent_id in user_group_ids
+
+    def _validate_virtual_group_creation(self, parent_id, request_is_virtual):
+        """校验虚拟组创建规则并确定新组的虚拟属性
+
+        Args:
+            parent_id: 父组ID
+            request_is_virtual: 请求中的is_virtual参数
+
+        Returns:
+            tuple: (is_virtual, error_response)
+                  is_virtual: 新组是否为虚拟组
+                  error_response: 错误响应，如果为None表示校验通过
+        """
+        # 顶级组：禁止手动创建虚拟组
+        if parent_id == 0:
+            if request_is_virtual:
+                message = self.loader.get("error.cannot_create_top_level_virtual_group")
+                return False, JsonResponse({"result": False, "message": message})
+            return False, None
+
+        # 非顶级组：检查父组
+        try:
+            parent_group = Group.objects.get(id=parent_id)
+        except Group.DoesNotExist:
+            message = self.loader.get("error.parent_group_not_found")
+            return False, JsonResponse({"result": False, "message": message})
+
+        # 父组不是虚拟组，子组也不是虚拟组
+        if not parent_group.is_virtual:
+            return False, None
+
+        # 父组是虚拟组，检查是否为顶级虚拟组
+        if parent_group.parent_id != 0:
+            # 父组是虚拟子组，禁止创建
+            message = self.loader.get("error.cannot_create_under_virtual_subgroup")
+            return False, JsonResponse({"result": False, "message": message})
+
+        # 父组是顶级虚拟组，子组继承虚拟属性
+        return True, None
 
     @action(detail=False, methods=["POST"])
     @HasPermission("user_group-Edit Group")
@@ -129,12 +140,12 @@ class GroupViewSet(LanguageViewSet, ViewSetUtils):
         obj = Group.objects.get(id=request.data.get("group_id"))
         role_ids = request.data.get("role_ids", [])
         if obj.name == "Default" and obj.parent_id == 0:
-            message = self.loader.get("error.default_group_cannot_modify") if self.loader else "Default group cannot be modified."
+            message = self.loader.get("error.default_group_cannot_modify")
             return JsonResponse({"result": False, "message": message})
         if not request.user.is_superuser:
             groups = [i["id"] for i in request.user.group_list]
             if request.data.get("group_id") not in groups:
-                message = self.loader.get("error.no_permission_edit_group") if self.loader else "You do not have permission to edit this group."
+                message = self.loader.get("error.no_permission_edit_group")
                 return JsonResponse({"result": False, "message": message})
 
         # 准备更新的字段
@@ -159,12 +170,15 @@ class GroupViewSet(LanguageViewSet, ViewSetUtils):
         group_id = int(kwargs["id"])
         obj = Group.objects.get(id=group_id)
         if obj.name == "Default" and obj.parent_id == 0:
-            message = self.loader.get("error.default_group_cannot_delete") if self.loader else "Default group cannot be deleted."
+            message = self.loader.get("error.default_group_cannot_delete")
+            return JsonResponse({"result": False, "message": message})
+        if obj.is_virtual and obj.parent_id == 0:
+            message = self.loader.get("error.default_group_cannot_delete")
             return JsonResponse({"result": False, "message": message})
         if not request.user.is_superuser:
             groups = [i["id"] for i in request.user.group_list]
             if group_id not in groups:
-                message = self.loader.get("error.no_permission_delete_group") if self.loader else "You do not have permission to delete this group."
+                message = self.loader.get("error.no_permission_delete_group")
                 return JsonResponse({"result": False, "message": message})
         # 一次性获取所有组
         all_groups = Group.objects.all().values("id", "parent_id")
@@ -193,11 +207,7 @@ class GroupViewSet(LanguageViewSet, ViewSetUtils):
         # 一次性检查这些组中是否有用户
         users = User.objects.filter(group_list__overlap=groups_to_delete).exists()
         if users:
-            message = (
-                self.loader.get("error.group_has_users_remove_first")
-                if self.loader
-                else "This group or sub groups has users, please remove the users first!"
-            )
+            message = self.loader.get("error.group_has_users_remove_first")
             return JsonResponse({"result": False, "message": message})
 
         # 删除所有收集到的组
