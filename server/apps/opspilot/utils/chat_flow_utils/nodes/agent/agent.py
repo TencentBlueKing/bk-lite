@@ -118,7 +118,7 @@ class AgentNode(BaseNodeExecutor):
         config = node_config["data"].get("config", {})
         output_key = config.get("outputParams", "last_message")
         llm_params, _ = self.set_llm_params(node_id, config, input_data)
-
+        logger.info(f"llm参数为: {llm_params}")
         data, _, _ = llm_service.invoke_chat(llm_params)
         result = data["message"]
 
