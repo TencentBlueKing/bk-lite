@@ -671,7 +671,7 @@ const Alert: React.FC = () => {
       </Spin>
       <AlertDetail
         ref={detailRef}
-        objectId={objectId}
+        objectId={objectId === 'all' ? '' : objectId}
         objects={objects}
         userList={userList}
         onSuccess={() => getAssetInsts('refresh')}
