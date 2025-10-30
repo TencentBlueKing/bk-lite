@@ -523,9 +523,11 @@ class ToolsNodes(BasicNode):
                 "additional_system_prompt": additional_system_prompt or ""
             })
             
+            llm = self.get_llm_client(graph_request)
+            
             # 创建并调用 ReAct Agent
             react_agent = create_react_agent(
-                model=self.llm,
+                model=llm,
                 tools=self.tools,
                 prompt=SystemMessage(content=final_system_prompt),
                 checkpointer=None,
@@ -543,7 +545,6 @@ class ToolsNodes(BasicNode):
             executed_tools = []
             for msg in final_messages:
                 if isinstance(msg, AIMessage) and hasattr(msg, 'tool_calls') and msg.tool_calls:
-                    # 从 AIMessage 的 tool_calls 中提取
                     for tool_call in msg.tool_calls:
                         if hasattr(tool_call, 'name'):
                             executed_tools.append(tool_call.name)
