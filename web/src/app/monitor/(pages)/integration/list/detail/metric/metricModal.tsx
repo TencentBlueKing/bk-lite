@@ -146,8 +146,6 @@ const MetricModal = forwardRef<ModalRef, ModalProps>(
         message.success(msg);
         handleCancel();
         onSuccess();
-      } catch (error) {
-        console.log(error);
       } finally {
         setConfirmLoading(false);
       }

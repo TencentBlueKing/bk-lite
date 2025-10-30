@@ -470,8 +470,6 @@ const StrategyOperation = () => {
       await requestType(url, params);
       message.success(msg);
       goBack();
-    } catch (error) {
-      console.log(error);
     } finally {
       setConfirmLoading(false);
     }

@@ -175,8 +175,8 @@ const Overview: React.FC<ViewDetailProps> = ({
           metricItem.viewData = renderChart(result.data || [], config);
         }
       });
-    } catch (error) {
-      console.error('Error fetching view data:', error);
+    } catch {
+      // Error handling for view data fetching
     } finally {
       const interfaceData = data.filter(
         (item) => item.displayType === 'multipleIndexsTable'
