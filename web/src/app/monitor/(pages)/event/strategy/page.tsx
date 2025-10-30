@@ -137,7 +137,7 @@ const Strategy: React.FC = () => {
           <Switch
             size="small"
             loading={enableLoading}
-            onChange={(val) => handleEffectiveChange(val, record.id)}
+            onChange={(val) => handleEffectiveChange(val, record.id as number)}
             checked={record.enable}
           />
         </Permission>
@@ -158,7 +158,7 @@ const Strategy: React.FC = () => {
           >
             <Button
               type="link"
-              onClick={() => linkToStrategyDetail('edit', record)}
+              onClick={() => linkToStrategyDetail('edit', record as any)}
             >
               {t('common.edit')}
             </Button>
@@ -173,7 +173,7 @@ const Strategy: React.FC = () => {
               okText={t('common.confirm')}
               cancelText={t('common.cancel')}
               okButtonProps={{ loading: confirmLoading }}
-              onConfirm={() => deleteConfirm(record.id)}
+              onConfirm={() => deleteConfirm(record.id as React.Key)}
             >
               <Button type="link">{t('common.delete')}</Button>
             </Popconfirm>
@@ -301,7 +301,7 @@ const Strategy: React.FC = () => {
     return Object.values(groupedData);
   };
 
-  const deleteConfirm = async (id: number | string) => {
+  const deleteConfirm = async (id: React.Key) => {
     setConfirmLoading(true);
     try {
       await deleteMonitorPolicy(id);

@@ -19,6 +19,7 @@ import {
   TimeValuesProps,
   MetricItem,
   ChartDataItem,
+  ChartData,
 } from '@/app/monitor/types';
 import { useTranslation } from '@/utils/i18n';
 import {
@@ -183,7 +184,12 @@ const Overview: React.FC<ViewDetailProps> = ({
       );
       const interfaceViewData = mergeData(
         interfaceData
-          .map((item) => getTableData(item.viewData || [], item.name))
+          .map((item) =>
+            getTableData(
+              (item.viewData as unknown as ChartDataItem[]) || [],
+              item.name
+            )
+          )
           .flat()
       );
       let _data = data.filter(
@@ -198,8 +204,8 @@ const Overview: React.FC<ViewDetailProps> = ({
             unit: '',
             description: '',
             display_description: '',
-            viewData: interfaceViewData,
-          },
+            viewData: interfaceViewData as unknown as ChartData[],
+          } as MetricItem,
         ];
       }
       setMetricData(_data);
