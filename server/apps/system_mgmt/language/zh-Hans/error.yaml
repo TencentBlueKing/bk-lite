@@ -27,6 +27,10 @@ login_module_domain_exists: 该域名的登录模块已存在。
 
 # 组管理相关错误
 no_permission_create_group: 您没有权限在此父组下创建组。
+cannot_create_under_virtual_group: 不能在虚拟组下创建子组。
+cannot_create_under_virtual_subgroup: 不能在虚拟子组下创建组。虚拟组最多只能有两层。
+cannot_create_top_level_virtual_group: 不能创建顶级虚拟组。只允许使用系统内置的虚拟组。
+parent_group_not_found: 父组不存在。
 default_group_cannot_modify: 默认组无法修改。
 no_permission_edit_group: 您没有权限编辑此组。
 default_group_cannot_delete: 默认组无法删除。

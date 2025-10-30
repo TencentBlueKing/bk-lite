@@ -35,6 +35,7 @@ class GroupViewSet(LanguageViewSet, ViewSetUtils):
                     "name": group.name,
                     "id": group.id,
                     "parent_id": group.parent_id,
+                    "is_virtual": group.is_virtual,
                 },
             }
         )
@@ -57,14 +58,66 @@ class GroupViewSet(LanguageViewSet, ViewSetUtils):
                         "message": message,
                     }
                 )
+
+        # 检查父组并确定是否为虚拟组
+        parent_id = params.get("parent_group_id") or 0
+        is_virtual = False
+
+        if parent_id != 0:
+            try:
+                parent_group = Group.objects.get(id=parent_id)
+                # 如果父组是虚拟组
+                if parent_group.is_virtual:
+                    # 检查父组是否为顶级虚拟组（parent_id=0）
+                    if parent_group.parent_id != 0:
+                        # 父组是虚拟子组，禁止在其下创建
+                        message = (
+                            self.loader.get("error.cannot_create_under_virtual_subgroup")
+                            if self.loader
+                            else "Cannot create a group under a virtual subgroup. Virtual groups can only have two levels."
+                        )
+                        return JsonResponse(
+                            {
+                                "result": False,
+                                "message": message,
+                            }
+                        )
+                    # 父组是顶级虚拟组，允许创建，子组也是虚拟组
+                    is_virtual = True
+            except Group.DoesNotExist:
+                message = self.loader.get("error.parent_group_not_found") if self.loader else "Parent group not found."
+                return JsonResponse(
+                    {
+                        "result": False,
+                        "message": message,
+                    }
+                )
+        else:
+            # 顶级组不允许手动创建虚拟组，只能是系统内置的
+            if params.get("is_virtual", False):
+                message = (
+                    self.loader.get("error.cannot_create_top_level_virtual_group")
+                    if self.loader
+                    else "Cannot create top-level virtual group. Only the built-in virtual group is allowed."
+                )
+                return JsonResponse(
+                    {
+                        "result": False,
+                        "message": message,
+                    }
+                )
+            is_virtual = False
+
         group = Group.objects.create(
-            parent_id=params.get("parent_group_id") or 0,
+            parent_id=parent_id,
             name=params["group_name"],
+            is_virtual=is_virtual,
         )
         data = {
             "id": group.id,
             "name": group.name,
             "parent_id": group.parent_id,
+            "is_virtual": group.is_virtual,
             "subGroupCount": 0,
             "subGroups": [],
         }
@@ -83,7 +136,15 @@ class GroupViewSet(LanguageViewSet, ViewSetUtils):
             if request.data.get("group_id") not in groups:
                 message = self.loader.get("error.no_permission_edit_group") if self.loader else "You do not have permission to edit this group."
                 return JsonResponse({"result": False, "message": message})
-        Group.objects.filter(id=request.data.get("group_id")).update(name=request.data.get("group_name"))
+
+        # 准备更新的字段
+        update_fields = {"name": request.data.get("group_name")}
+
+        # 如果请求中包含 is_virtual 字段，则更新
+        if "is_virtual" in request.data:
+            update_fields["is_virtual"] = request.data.get("is_virtual", False)
+
+        Group.objects.filter(id=request.data.get("group_id")).update(**update_fields)
 
         # 更新组的角色
         if isinstance(role_ids, list):
