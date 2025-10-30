@@ -517,7 +517,7 @@ const RoleManagement: React.FC = () => {
                     +{t('common.add')}
                   </Button>
                 </PermissionWrapper>
-                <PermissionWrapper requiredPermissions={['Delete']}>
+                <PermissionWrapper requiredPermissions={['Remove user']}>
                   <Button
                     loading={deleteLoading}
                     onClick={handleBatchDeleteUsers}
@@ -580,7 +580,7 @@ const RoleManagement: React.FC = () => {
                     +{t('common.add')}
                   </Button>
                 </PermissionWrapper>
-                <PermissionWrapper requiredPermissions={['Delete']}>
+                <PermissionWrapper requiredPermissions={['Remove group']}>
                   <Button
                     loading={deleteLoading}
                     onClick={handleBatchDeleteGroups}
