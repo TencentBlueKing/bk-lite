@@ -25,10 +25,6 @@ export default function ProfilePage() {
       onConfirm: async () => {
         try {
           await logout();
-          Toast.show({
-            content: t('auth.logoutSuccess'),
-            icon: 'success',
-          });
         } catch (error) {
           console.error('退出登录失败:', error);
           Toast.show({
@@ -149,9 +145,8 @@ export default function ProfilePage() {
           >
             <div className="py-2.5 text-center">
               <span
-                className={`text-base font-medium ${
-                  authLoading ? 'text-[var(--color-text-3)]' : 'text-red-500'
-                }`}
+                className={`text-base font-medium ${authLoading ? 'text-[var(--color-text-3)]' : 'text-red-500'
+                  }`}
               >
                 {authLoading ? t('common.loggingOut') : t('common.logout')}
               </span>

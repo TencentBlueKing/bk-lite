@@ -178,14 +178,14 @@ export default function ConversationDetail() {
   return (
     <div className="flex flex-col h-full bg-[var(--color-bg)]">
       {/* 顶部导航栏 */}
-      <div className="flex items-center justify-between px-2 py-3 bg-[var(--color-bg)] border-b border-[var(--color-border)]">
+      <div className="flex items-center justify-center px-2 py-3 bg-[var(--color-bg)] border-b border-[var(--color-border)]">
         <button
-          onClick={() => router.back()}
-          className="flex items-center justify-center w-6 h-8"
+          onClick={() => router.push('/conversations')}
+          className="flex items-center justify-center w-6 h-8 absolute left-4"
         >
           <LeftOutline fontSize={24} className="text-[var(--color-text-1)]" />
         </button>
-        <div className="flex items-center absolute left-1/2 transform -translate-x-1/2">
+        <div className="flex items-center">
           <Avatar
             src={chatInfo.avatar}
             style={{ '--size': '36px' }}
