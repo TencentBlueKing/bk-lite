@@ -1,8 +1,4 @@
 import json
-import time
-from contextlib import contextmanager
-
-from django.core.cache import cache
 from django_celery_beat.models import CrontabSchedule, IntervalSchedule, PeriodicTask
 from apps.core.logger import opspilot_logger as logger
 
