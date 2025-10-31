@@ -108,8 +108,13 @@ const GroupTreeSelect: React.FC<GroupTreeSelectProps> = ({
   // 处理 MultiCascadePanel 值变化
   const handlePanelChange = useCallback((newValue: number[]) => {
     setInternalValue(newValue);
-    onChange?.(newValue);
-  }, [onChange]);
+    if (multiple) {
+      onChange?.(newValue);
+    } else {
+      // 单选模式：传递单个值或第一个值
+      onChange?.(newValue.length > 0 ? newValue[0] : undefined);
+    }
+  }, [onChange, multiple]);
 
   const handleRemoveTag = useCallback((removedId: number) => {
     const newValue = internalValue.filter(id => id !== removedId);
@@ -132,6 +137,7 @@ const GroupTreeSelect: React.FC<GroupTreeSelectProps> = ({
         disabled={disabled}
         searchable={showSearch}
         searchPlaceholder={placeholder}
+        single={!multiple}
       />
     </div>
   );

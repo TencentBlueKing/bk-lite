@@ -27,6 +27,10 @@ login_module_domain_exists: Login module with this domain already exists.
 
 # Group management related errors
 no_permission_create_group: You do not have permission to create a group under this parent group.
+cannot_create_under_virtual_group: Cannot create a group under a virtual group.
+cannot_create_under_virtual_subgroup: Cannot create a group under a virtual subgroup. Virtual groups can only have two levels.
+cannot_create_top_level_virtual_group: Cannot create top-level virtual group. Only the built-in virtual group is allowed.
+parent_group_not_found: Parent group not found.
 default_group_cannot_modify: Default group cannot be modified.
 no_permission_edit_group: You do not have permission to edit this group.
 default_group_cannot_delete: Default group cannot be deleted.

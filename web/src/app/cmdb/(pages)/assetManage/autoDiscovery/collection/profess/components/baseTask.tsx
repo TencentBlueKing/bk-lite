@@ -522,7 +522,10 @@ const BaseTaskForm = forwardRef<BaseTaskRef, BaseTaskFormProps>(
                       <GroupTreeSelector
                         placeholder={t('common.selectTip')}
                         value={ipRangeOrg}
-                        onChange={(value) => setIpRangeOrg(value)}
+                        onChange={(value) => {
+                          const orgArray = Array.isArray(value) ? value : (value ? [value] : []);
+                          setIpRangeOrg(orgArray);
+                        }}
                         multiple={false}
                       />
                     </Form.Item>
