@@ -6,26 +6,13 @@ import yaml
 class LanguageLoader:
     def __init__(self, app: str, default_lang: str = "en"):
         self.base_dir = f"apps/{app}/language"
-        self.default_lang = self.map_language(default_lang)
+        self.default_lang = default_lang
         self.translations = {}
-        self.load_language()
+        self.load_language(default_lang)
 
-    # 语言文件映射zh-Hans - > zh
-    def map_language(self, lang: str) -> str:
-        """映射语言代码"""
-        lang_mappings = {
-            "zh-Hans": "zh",
-            "zh-CN": "zh",
-            "zh": "zh",
-            "en-US": "en",
-            "en": "en",
-        }
-        return lang_mappings.get(lang, lang)
-    
-
-    def load_language(self):
+    def load_language(self, lang: str):
         """加载指定语言目录下的所有yaml文件"""
-        lang_dir = os.path.join(self.base_dir, self.default_lang)
+        lang_dir = os.path.join(self.base_dir, lang)
         if not os.path.exists(lang_dir):
             raise FileNotFoundError(f"Language directory '{lang_dir}' not found")
 
