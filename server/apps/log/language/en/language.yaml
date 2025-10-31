@@ -1,0 +1,5 @@
+collect_type:
+  Auditbeat:
+    auditd:
+      name: Auditd
+      description: Collects Linux audit framework logs for comprehensive system security monitoring and compliance
