@@ -32,14 +32,16 @@ export const createUserTableColumns = ({
       render: (text: string) => {
         const color = getRandomColor();
         return (
-          <div className="flex" style={{ height: '17px', lineHeight: '17px' }}>
+          <div className="flex items-center" style={{ height: '17px' }}>
             <span
-              className="h-5 w-5 rounded-[10px] text-center mr-1"
-              style={{ color: '#ffffff', backgroundColor: color }}
+              className="h-5 w-5 rounded-[10px] text-center mr-1 flex-shrink-0"
+              style={{ color: '#ffffff', backgroundColor: color, lineHeight: '20px' }}
             >
               {text?.substring(0, 1)}
             </span>
-            <span>{text}</span>
+            <Tooltip title={text} placement="topLeft">
+              <span className="truncate">{text}</span>
+            </Tooltip>
           </div>
         );
       },
