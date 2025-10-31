@@ -64,7 +64,7 @@ const ChartContent = ({
   const dataRangeRef = useRef<[number, number]>([0, 2000]);
 
   const getTrainDataInfoMap: Record<string, any> = {
-    'anomaly': getAnomalyTrainDataInfo,
+    'anomaly_detection': getAnomalyTrainDataInfo,
     'timeseries_predict': getTimeSeriesPredictTrainDataInfo
   };
 
@@ -295,9 +295,7 @@ const ChartContent = ({
       const totalLength = currentFileData.length;
       if (totalLength > 0) {
         // 只在首次初始化或数据长度变化时执行
-        const shouldUpdate = !isInitializedRef.current ||
-          (isInitializedRef.current && chartData.length === 0);
-
+        const shouldUpdate = !isInitializedRef.current || chartData.length === 0;
         if (shouldUpdate) {
           // 默认显示最后2000条数据
           const start = Math.max(0, totalLength - MAX_DISPLAY_DATA);
@@ -307,6 +305,12 @@ const ChartContent = ({
           dataRangeRef.current = range;
           setChartData(currentFileData.slice(start, end));
           isInitializedRef.current = true;
+        } else {
+          // 数据更新时,保持当前范围,只更新数据内容
+          const [start, end] = dataRangeRef.current;
+          const validEnd = Math.min(end, totalLength);
+          const validStart = Math.min(start, validEnd);
+          setChartData(currentFileData.slice(validStart, validEnd));
         }
       } else {
         setChartData([]);
@@ -419,7 +423,7 @@ const ChartContent = ({
     }
   }, [currentFileData]);
 
-  const handleSava = useCallback(async () => {
+  const handleSave = useCallback(async () => {
     setLoadingState(prev => ({ ...prev, saveLoading: true }));
     const id = searchParams.get('id');
     try {
@@ -469,7 +473,7 @@ const ChartContent = ({
       sliderChangeTimeoutRef.current = setTimeout(() => {
         // 停止拖动后才显示 loading
         setLoadingState(prev => ({ ...prev, chartLoading: true }));
-        
+
         const slicedData = currentFileData.slice(range[0], range[1]);
         setChartData(slicedData);
 
@@ -530,10 +534,10 @@ const ChartContent = ({
                     showDimensionTable
                     showDimensionFilter
                     showBrush
-                    allowSelect={key === 'anomaly'}
+                    allowSelect={key === 'anomaly_detection'}
                     onXRangeChange={onXRangeChange}
                     onTimeLineChange={onTimeLineChange}
-                    onAnnotationClick={key === 'anomaly' ? onAnnotationClick : undefined}
+                    onAnnotationClick={key === 'anomaly_detection' ? onAnnotationClick : undefined}
                   />
                 </div>
               </div>
@@ -609,11 +613,11 @@ const ChartContent = ({
                 />
                 <div className="absolute bottom-0 right-0 flex justify-end gap-2 mb-4">
                   {
-                    key === 'anomaly' && (
+                    key === 'anomaly_detection' && (
                       <>
                         <Button className="mr-4" onClick={handleCancel}>{t('common.cancel')}</Button>
                         <PermissionWrapper requiredPermissions={['File Edit']}>
-                          <Button type="primary" loading={loadingState.saveLoading} onClick={handleSava}>{t('common.save')}</Button>
+                          <Button type="primary" loading={loadingState.saveLoading} onClick={handleSave}>{t('common.save')}</Button>
                         </PermissionWrapper>
                       </>
                     )

@@ -198,7 +198,10 @@ class ImageClassificationTrainDataViewSet(ModelViewSet):
                     'is_train_data': request.data.get('is_train_data', False),
                     'is_val_data': request.data.get('is_val_data', False),
                     'is_test_data': request.data.get('is_test_data', False),
-                    'train_data': []
+                    'train_data': [],
+                    'meta_data': request.data.get('meta_data', {
+                        'image_label': []
+                    })
                 }
                 
                 serializer = self.get_serializer(data=instance_data)
@@ -302,7 +305,15 @@ class ImageClassificationTrainDataViewSet(ModelViewSet):
                 
                 # 更新其他字段(如果有)
                 update_fields = ['train_data']
-                for field in ['name', 'is_train_data', 'is_val_data', 'is_test_data', 'meta_data']:
+                
+                # 处理 meta_data: 序列化器已经自动反序列化了
+                if 'meta_data' in request.data:
+                    instance.meta_data = request.data.get('meta_data')
+                    update_fields.append('meta_data')
+                    logger.debug(f"meta_data 已更新: {instance.meta_data}")
+                
+                # 处理其他简单字段
+                for field in ['name', 'is_train_data', 'is_val_data', 'is_test_data']:
                     if field in request.data:
                         setattr(instance, field, request.data[field])
                         update_fields.append(field)

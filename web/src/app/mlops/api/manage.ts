@@ -664,9 +664,16 @@ const useMlopsManageApi = () => {
   const updateImageClassificationTrainData = async (id: string, params: {
     is_train_data?: boolean,
     is_val_data?: boolean,
-    is_test_data?: boolean
-  }) => {
-    return await patch(`/mlops/image_classification_traindata/${id}`, params)
+    is_test_data?: boolean,
+    meta_data?: any
+  } | FormData) => {
+    return await patch(`/mlops/image_classification_traindata/${id}`, params,
+      {
+        headers: {
+          'Content-Type': 'multipart/form-data',
+        },
+      }
+    )
   };
 
   // 删除异常检测数据集

@@ -11,13 +11,14 @@ import { AnomalyTrainData } from '@/app/mlops/types/manage';
 import sideMenuStyle from './aside/index.module.scss';
 import ChartContent from "./charContent";
 import TableContent from "./tableContent";
+import ImageContent from "./imageContent";
 
 const AnnotationPage = () => {
   const searchParams = useSearchParams();
-  const { 
-    getAnomalyTrainData, 
-    getTimeSeriesPredictTrainData, 
-    getLogClusteringTrainData, 
+  const {
+    getAnomalyTrainData,
+    getTimeSeriesPredictTrainData,
+    getLogClusteringTrainData,
     getClassificationTrainData,
     getImageClassificationTrainData
   } = useMlopsManageApi();
@@ -30,9 +31,11 @@ const AnnotationPage = () => {
   // const [selectedTags, setSelectedTags] = useState<string[]>([]);
   const [isChange, setIsChange] = useState<boolean>(false);
   const [flag, setFlag] = useState<boolean>(true);
-  const chartList = ['anomaly', 'timeseries_predict'];
+  const chartList = ['anomaly_detection', 'timeseries_predict'];
+  const tableList = ['log_clustering', 'classification'];
+  const imageList = ['image_classification'];
   const getTrainDataListMap: Record<string, any> = {
-    'anomaly': getAnomalyTrainData,
+    'anomaly_detection': getAnomalyTrainData,
     'timeseries_predict': getTimeSeriesPredictTrainData,
     'log_clustering': getLogClusteringTrainData,
     'classification': getClassificationTrainData,
@@ -100,9 +103,14 @@ const AnnotationPage = () => {
               height: '100%',
             }}
           >
-            {chartList.includes(key) ?
-              <ChartContent flag={flag} setFlag={setFlag} isChange={isChange} setIsChange={setIsChange} /> :
+            {chartList.includes(key) &&
+              <ChartContent flag={flag} setFlag={setFlag} isChange={isChange} setIsChange={setIsChange} />
+            }
+            {tableList.includes(key) &&
               <TableContent />
+            }
+            {imageList.includes(key) &&
+              <ImageContent />
             }
           </div>
         </section>
