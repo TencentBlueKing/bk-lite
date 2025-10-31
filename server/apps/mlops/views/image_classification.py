@@ -84,7 +84,7 @@ class ImageClassificationTrainDataViewSet(ModelViewSet):
             
             for idx, image_url in enumerate(image_urls, 1):
                 try:
-                    object_name = self._extract_object_name(image_url, bucket_name)
+                    object_name = self._extract_object_name(image_url, 'munchkin-public')
                     
                     if storage.exists(object_name):
                         storage.delete(object_name)
