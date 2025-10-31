@@ -249,28 +249,8 @@ class InstanceConfigService:
         return instance_objs, association_objs, instance_ids
 
     @staticmethod
-    def _rollback_database_changes(instance_ids, rule_ids):
-        """回滚数据库变更"""
-        try:
-            if instance_ids:
-                MonitorInstanceOrganization.objects.filter(
-                    monitor_instance_id__in=instance_ids
-                ).delete()
-                MonitorInstance.objects.filter(id__in=instance_ids).delete()
-                logger.info(f"回滚实例成功: {instance_ids}")
-
-            if rule_ids:
-                MonitorObjectOrganizationRule.objects.filter(id__in=rule_ids).delete()
-                logger.info(f"回滚规则成功,数量: {len(rule_ids)}")
-        except Exception:
-            logger.error(
-                f"回滚数据库失败,需人工清理: 实例={instance_ids}, 规则={rule_ids}",
-                exc_info=True
-            )
-
-    @staticmethod
     def create_monitor_instance_by_node_mgmt(data):
-        """创建监控对象实例(支持事务回滚)"""
+        """创建监控对象实例（优化后：使用单一外层事务）"""
         instances = data.get("instances", [])
         monitor_object_id = data["monitor_object_id"]
 
@@ -302,31 +282,28 @@ class InstanceConfigService:
             f"需要恢复 {len(deleted_ids)} 个已删除实例"
         )
 
-        # ============ 阶段2: 数据库操作(事务保护) ============
-        created_instance_ids = []
-        created_rule_ids = []
-
+        # ============ 使用单一外层事务包裹所有操作 ============
         try:
             with transaction.atomic():
+                # 阶段2：数据库操作（使用外层事务）
                 created_instance_ids, created_rule_ids = InstanceConfigService._create_instances_in_db(
                     new_instances, deleted_ids, monitor_object_id
                 )
+                logger.info(f"创建实例和规则成功,实例数: {len(created_instance_ids)}")
 
-            logger.info(f"数据库事务提交成功,实例数: {len(created_instance_ids)}")
-
-            # ============ 阶段3: 调用外部服务创建采集配置 ============
-            try:
+                # 阶段3：调用 Controller 创建采集配置（使用外层事务）
                 data["instances"] = new_instances
                 Controller(data).controller()
                 logger.info("采集配置创建成功")
-            except Exception as e:
-                logger.error(f"采集配置创建失败: {e},回滚数据库", exc_info=True)
-                InstanceConfigService._rollback_database_changes(created_instance_ids, created_rule_ids)
-                raise BaseAppException(f"采集配置创建失败: {e}")
 
-        except BaseAppException:
+                # ✅ 所有操作成功，事务自动提交
+
+        except BaseAppException as e:
+            # 业务异常直接抛出（事务已自动回滚）
+            logger.error(f"创建监控实例失败: {e}")
             raise
         except Exception as e:
+            # 系统异常包装后抛出（事务已自动回滚）
             logger.error(f"创建监控实例失败: {e}", exc_info=True)
             raise BaseAppException(f"创建监控实例失败: {e}")
 

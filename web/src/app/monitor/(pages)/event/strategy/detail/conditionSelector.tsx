@@ -188,7 +188,7 @@ const ConditionSelector: React.FC<ConditionSelectorProps> = ({
           value={data.group}
           onChange={onGroupChange}
         >
-          {(getGroupIds(monitorName).list || defaultGroup).map(
+          {(getGroupIds(monitorName)?.list || defaultGroup).map(
             (item: string) => (
               <Option value={item} key={item}>
                 {item}

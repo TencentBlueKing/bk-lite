@@ -145,7 +145,7 @@ const Configure = () => {
               okText={t('common.confirm')}
               cancelText={t('common.cancel')}
               okButtonProps={{ loading: confirmLoading }}
-              onConfirm={() => handleDeleteConfirm(record)}
+              onConfirm={() => handleDeleteConfirm(record as MetricItem)}
             >
               <Button type="link" disabled={record.is_pre && !isSuperUser}>
                 {t('common.delete')}

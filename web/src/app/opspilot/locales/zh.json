@@ -657,6 +657,8 @@
     "restful": "RESTful API",
     "celery": "定时触发",
     "enterpriseWechat": "企微触发",
+    "dingtalk": "钉钉触发",
+    "wechatOfficial": "公众号触发",
     "agents": "智能体",
     "logicNodes": "逻辑判断",
     "condition": "条件分支",
@@ -807,7 +809,14 @@
       "enterCorpId": "输入Corp ID",
       "pleaseEnterAgentId": "请输入Agent ID",
       "enterAgentId": "输入Agent ID",
-      "enterpriseWechatParams": "企微参数"
+      "enterpriseWechatParams": "企微参数",
+      "dingtalkParams": "钉钉参数",
+      "wechatOfficialParams": "公众号参数",
+      "pleaseEnterClientId": "请输入Client ID",
+      "enterClientId": "输入Client ID",
+      "pleaseEnterClientSecret": "请输入Client Secret",
+      "enterClientSecret": "输入Client Secret",
+      "enableEventbus": "启用事件总线"
     },
     "validation": {
       "valid": "验证通过",

@@ -91,7 +91,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
     setUserInfo(newUserInfo);
     localStorage.setItem('token', newToken);
     localStorage.setItem('userInfo', JSON.stringify(newUserInfo));
-    router.push('/conversations');
+    router.push('/conversation?id=1');
   };
 
   const logout = async () => {

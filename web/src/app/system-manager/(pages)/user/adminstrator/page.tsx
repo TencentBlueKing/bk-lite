@@ -211,7 +211,7 @@ const AdminUsers: React.FC = () => {
       width: 120,
       render: (id: string) => (
         <Space>
-          <PermissionWrapper requiredPermissions={['Edit User']}>
+          <PermissionWrapper requiredPermissions={['Delete']}>
             <Popconfirm
               title={t('system.administrator.revokeConfirm')}
               description={t('system.administrator.revokeConfirmContent')}
@@ -242,7 +242,7 @@ const AdminUsers: React.FC = () => {
         rightSection={
           <div>
             <div className="w-full mb-4 flex justify-end">
-              <PermissionWrapper requiredPermissions={['Edit User']}>
+              <PermissionWrapper requiredPermissions={['Add']}>
                 <Button 
                   type="primary" 
                   icon={<PlusOutlined />}

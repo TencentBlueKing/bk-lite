@@ -5,9 +5,12 @@ import json
 from jinja2 import Environment, FileSystemLoader, DebugUndefined
 
 from apps.core.exceptions.base_app_exception import BaseAppException
+from apps.log.constants.database import DatabaseConstants
+from apps.log.constants.plugin import PluginConstants
 from apps.log.models import CollectConfig
-from apps.log.plugins import PLUGIN_DIRECTORY
 from apps.rpc.node_mgmt import NodeMgmt
+
+from apps.core.logger import log_logger as logger
 
 
 class Controller:
@@ -80,20 +83,30 @@ class Controller:
         return sort_order
 
     def controller(self):
-        base_dir = PLUGIN_DIRECTORY
+        """
+        创建采集配置的控制器方法
+
+        优化点：
+        1. 使用 batch_create_configs_and_child_configs 原子性创建配置和子配置
+        2. 移除手动回滚逻辑，依赖外层事务自动回滚
+        3. 简化错误处理
+        """
+        base_dir = PluginConstants.DIRECTORY
         configs = self.format_configs()
         node_configs, node_child_configs, collect_configs = [], [], []
+
+        # 步骤1：准备所有配置数据（渲染模板）
         for config_info in configs:
             template_dir = os.path.join(base_dir, config_info["collector"], config_info["collect_type"])
             templates = self.get_template_info_by_type(template_dir, config_info["collect_type"])
             env_config = {k[4:]: v for k, v in config_info.items() if k.startswith("ENV_")}
             tls_context = self.tls_context(config_info["node_id"])
+
             for template in templates:
                 is_child = True if template["config_type"] == "child" else False
-                # 采集器名称
-                # collector_name = "Vector" if is_child else config_info["collector"]
                 collector_name = config_info["collector"]
                 config_id = str(uuid.uuid4().hex)
+
                 # 生成配置
                 template_config = self.render_template(
                     template_dir,
@@ -137,17 +150,21 @@ class Controller:
                     )
                 )
 
-        # 记录实例与配置的关系
-        CollectConfig.objects.bulk_create(collect_configs, batch_size=100)
-        # 创建配置
-        NodeMgmt().batch_add_node_config(node_configs)
-        # 创建子配置
-        NodeMgmt().batch_add_node_child_config(node_child_configs)
+        # 步骤2：批量创建 CollectConfig（使用外层事务，不新建事务）
+        CollectConfig.objects.bulk_create(collect_configs, batch_size=DatabaseConstants.DEFAULT_BATCH_SIZE)
+        logger.info(f"创建 CollectConfig 成功，数量={len(collect_configs)}")
+
+        # 步骤3：原子性创建配置和子配置（RPC调用，底层有事务保护，失败会抛异常）
+        if node_configs or node_child_configs:
+            NodeMgmt().batch_create_configs_and_child_configs(node_configs, node_child_configs)
+            logger.info(f"创建配置成功，node_config={len(node_configs)}个，child_config={len(node_child_configs)}个")
+
+        logger.info(f"创建采集配置成功，共{len(collect_configs)}个配置")
 
     def render_config_template_content(self, file_type, context_data, instance_id):
         """ 渲染配置模板内容。"""
 
-        template_dir = os.path.join(PLUGIN_DIRECTORY, self.data["collector"], self.data["collect_type"])
+        template_dir = os.path.join(PluginConstants.DIRECTORY, self.data["collector"], self.data["collect_type"])
         templates = self.get_template_info_by_type(template_dir, self.data["collect_type"])
 
         template = None

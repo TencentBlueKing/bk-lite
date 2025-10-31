@@ -3,30 +3,45 @@ import hashlib
 import json
 import time
 
-import xmltodict
 from django.conf import settings
 from django.db.models import Count
 from django.db.models.functions import TruncDate
 from django.http import FileResponse, HttpResponse, JsonResponse, StreamingHttpResponse
-from django.utils.translation import gettext as _
 from django_minio_backend import MinioBackend
-from wechatpy.enterprise import WeChatClient, WeChatCrypto
-from wechatpy.enterprise.events import EVENT_TYPES
-from wechatpy.enterprise.messages import MESSAGE_TYPES
-from wechatpy.messages import UnknownMessage
-from wechatpy.utils import to_text
+from wechatpy.enterprise import WeChatCrypto
 
 from apps.base.models import UserAPISecret
 from apps.core.logger import opspilot_logger as logger
 from apps.core.utils.async_utils import create_async_compatible_generator
 from apps.core.utils.exempt import api_exempt
+from apps.core.utils.loader import LanguageLoader
 from apps.opspilot.models import Bot, BotChannel, BotConversationHistory, BotWorkFlow, LLMSkill
 from apps.opspilot.services.llm_service import llm_service
 from apps.opspilot.services.skill_excute_service import SkillExecuteService
 from apps.opspilot.utils.bot_utils import get_client_ip, insert_skill_log, set_time_range
 from apps.opspilot.utils.chat_flow_utils.engine.factory import create_chat_flow_engine
+from apps.opspilot.utils.dingtalk_chat_flow_utils import DingTalkChatFlowUtils, start_dingtalk_stream_client
 from apps.opspilot.utils.sse_chat import generate_stream_error, stream_chat
+from apps.opspilot.utils.wechat_chat_flow_utils import WechatChatFlowUtils
+from apps.opspilot.utils.wechat_official_chat_flow_utils import WechatOfficialChatFlowUtils
+from apps.opspilot.viewsets.llm_view import LLMViewSet
 from apps.rpc.system_mgmt import SystemMgmt
+
+
+def get_loader(request=None, default_lang="en"):
+    """获取语言加载器实例
+
+    Args:
+        request: Django request对象
+        default_lang: 默认语言
+
+    Returns:
+        LanguageLoader实例
+    """
+    locale = default_lang
+    if request and hasattr(request, "user") and request.user:
+        locale = getattr(request.user, "locale", default_lang) or default_lang
+    return LanguageLoader(app="opspilot", default_lang=locale)
 
 
 @api_exempt
@@ -79,17 +94,18 @@ def model_download(request):
 
 def validate_openai_token(token, team=None):
     """Validate the OpenAI API token"""
+    loader = LanguageLoader(app="opspilot", default_lang="en")
     if not token:
-        return False, {"choices": [{"message": {"role": "assistant", "content": "No authorization"}}]}
+        return False, {"choices": [{"message": {"role": "assistant", "content": loader.get("error.no_authorization", "No authorization")}}]}
     token = token.split("Bearer ")[-1]
     user = UserAPISecret.objects.filter(api_secret=token).first()
     if not user:
         if team is None:
-            return False, {"choices": [{"message": {"role": "assistant", "content": "No authorization"}}]}
+            return False, {"choices": [{"message": {"role": "assistant", "content": loader.get("error.no_authorization", "No authorization")}}]}
         client = SystemMgmt()
         result = client.verify_token(token)
         if not result.get("result"):
-            return False, {"choices": [{"message": {"role": "assistant", "content": "No authorization"}}]}
+            return False, {"choices": [{"message": {"role": "assistant", "content": loader.get("error.no_authorization", "No authorization")}}]}
         user_info = result.get("data")
         user = UserAPISecret(
             username=user_info["username"],
@@ -99,22 +115,24 @@ def validate_openai_token(token, team=None):
 
 
 def validate_header_token(token, bot_id):
+    loader = LanguageLoader(app="opspilot", default_lang="en")
     if not token:
-        return False, {"choices": [{"message": {"role": "assistant", "content": "No authorization"}}]}
+        return False, {"choices": [{"message": {"role": "assistant", "content": loader.get("error.no_authorization", "No authorization")}}]}
     bot_obj = Bot.objects.filter(id=bot_id, online=True).first()
     if not bot_obj:
-        return False, {"choices": [{"message": {"role": "assistant", "content": "No bot online"}}]}
+        return False, {"choices": [{"message": {"role": "assistant", "content": loader.get("error.bot_not_online", "No bot online")}}]}
     token = token.split("Bearer ")[-1]
     client = SystemMgmt()
     # res = client.verify_token(token)
     res = client.get_pilot_permission_by_token(token, bot_id, bot_obj.team)
     if not res.get("result"):
-        return False, {"choices": [{"message": {"role": "assistant", "content": "No authorization"}}]}
+        return False, {"choices": [{"message": {"role": "assistant", "content": loader.get("error.no_authorization", "No authorization")}}]}
     return True, {"username": res["data"]["username"]}
 
 
 def get_skill_and_params(kwargs, team, bot_id=None):
     """Get skill object and prepare parameters for LLM invocation"""
+    loader = LanguageLoader(app="opspilot", default_lang="en")
     skill_id = kwargs.get("model")
     if not bot_id:
         skill_obj = LLMSkill.objects.filter(name=skill_id, team__contains=int(team)).first()
@@ -125,7 +143,7 @@ def get_skill_and_params(kwargs, team, bot_id=None):
         return (
             None,
             None,
-            {"choices": [{"message": {"role": "assistant", "content": "No skill"}}]},
+            {"choices": [{"message": {"role": "assistant", "content": loader.get("error.skill_not_found", "No skill")}}]},
         )
     num = kwargs.get("conversation_window_size") or skill_obj.conversation_window_size
     chat_history = [{"message": i["content"], "event": i["role"]} for i in kwargs.get("messages", [])[-1 * num :]]
@@ -327,13 +345,14 @@ def skill_execute(request):
 
 
 def get_skill_execute_result(bot_id, channel, chat_history, kwargs, request, sender_id, skill_id, user_message):
+    loader = get_loader(request)
     api_token = request.META.get("HTTP_AUTHORIZATION").split("TOKEN")[-1].strip()
     if not api_token:
-        return {"content": "No authorization"}
+        return {"content": loader.get("error.no_authorization", "No authorization")}
     bot = Bot.objects.filter(id=bot_id, api_token=api_token).first()
     if not bot:
         logger.info(f"api_token: {api_token}")
-        return {"content": "No bot found"}
+        return {"content": loader.get("error.bot_not_found", "No bot found")}
     try:
         result = SkillExecuteService.execute_skill(bot, skill_id, user_message, chat_history, sender_id, channel)
     except Exception as e:
@@ -432,8 +451,9 @@ def set_channel_type_line(end_time, queryset, start_time):
 @api_exempt
 def execute_chat_flow(request, bot_id, node_id):
     """执行ChatFlow流程"""
+    loader = get_loader(request)
     if not bot_id or not node_id:
-        return JsonResponse({"result": False, "message": _("Bot ID and Node ID are required.")})
+        return JsonResponse({"result": False, "message": loader.get("error.bot_node_id_required", "Bot ID and Node ID are required.")})
     kwargs = json.loads(request.body)
     message = kwargs.get("message", "")
     is_test = kwargs.get("is_test", False)
@@ -450,16 +470,16 @@ def execute_chat_flow(request, bot_id, node_id):
         filter_dict["online"] = True
     bot_obj = Bot.objects.filter(**filter_dict).first()
     if not bot_obj:
-        return JsonResponse({"result": False, "message": _("No bot online")})
+        return JsonResponse({"result": False, "message": loader.get("error.bot_not_online", "No bot online")})
 
     # 获取Bot的工作流配置
     bot_chat_flow = BotWorkFlow.objects.filter(bot_id=bot_obj.id).first()
     if not bot_chat_flow:
-        return JsonResponse({"result": False, "message": _("No chat flow configured for this bot.")})
+        return JsonResponse({"result": False, "message": loader.get("error.no_chat_flow_configured", "No chat flow configured for this bot.")})
 
     # 检查工作流是否有配置数据
     if not bot_chat_flow.flow_json:
-        return JsonResponse({"result": False, "message": _("Chat flow configuration is empty.")})
+        return JsonResponse({"result": False, "message": loader.get("error.chat_flow_config_empty", "Chat flow configuration is empty.")})
 
     try:
         # 创建ChatFlow引擎 - 使用数据库中的工作流配置
@@ -496,238 +516,45 @@ def execute_chat_flow(request, bot_id, node_id):
         logger.error(f"ChatFlow流程执行失败，bot_id: {bot_id}, node_id: {node_id}, 错误: {str(e)}")
         logger.exception(e)
         # 流式错误响应，参考 llm_view.py
-        from apps.opspilot.viewsets.llm_view import LLMViewSet
-
         return LLMViewSet._create_error_stream_response(str(e))
 
 
-def check_signature(kwargs, crypto):
-    signature, timestamp, nonce, echostr = kwargs["signature"], kwargs["timestamp"], kwargs["nonce"], kwargs["echostr"]
-    return crypto.check_signature(signature, timestamp, nonce, echostr)
+@api_exempt
+def execute_chat_flow_wechat_official(request, bot_id):
+    """微信公众号ChatFlow执行入口
 
-
-def _send_message_chunks(user_id, text: str, agent_id, corp_id, secret):
-    """分片发送较长的消息"""
-    if not text:
-        return
-    wechat_client = WeChatClient(
-        corp_id,
-        secret,
-    )
-    if len(text) <= 500:
-        wechat_client.message.send_markdown(agent_id, user_id, text)
-        return
-
-    # 按最大长度切分消息
-    start = 0
-    while start < len(text):
-        end = start + 500
-        chunk = text[start:end]
-        time.sleep(0.2)
-        wechat_client.message.send_markdown(agent_id, user_id, chunk)
-        start = end
-
-
-def parse_message(xml):
-    if not xml:
-        return
-    message = xmltodict.parse(to_text(xml))["xml"]
-    message_type = message["MsgType"].lower()
-    if message_type == "event":
-        event_type = message["Event"].lower()
-        message_class = EVENT_TYPES.get(event_type, UnknownMessage)
-    else:
-        message_class = MESSAGE_TYPES.get(message_type, UnknownMessage)
-    return message_class(message)
-
-
-def _validate_bot_and_workflow(bot_id):
-    """验证Bot和ChatFlow配置
-
-    Returns:
-        tuple: (bot_obj, bot_chat_flow, error_response)
-               如果验证失败，error_response不为None
+    通过微信公众号发送消息，调用指定的ChatFlow进行流程节点执行并返回数据
     """
-
+    # 1. 验证Bot ID
     if not bot_id:
-        logger.error("企业微信ChatFlow执行失败：缺少Bot ID")
-        return None, None, HttpResponse("success")
-
-    bot_obj = Bot.objects.filter(id=bot_id, online=True).first()
-    if not bot_obj:
-        logger.error(f"企业微信ChatFlow执行失败：Bot {bot_id} 不存在或未上线")
-        return None, None, HttpResponse("success")
-
-    bot_chat_flow = BotWorkFlow.objects.filter(bot_id=bot_obj.id).first()
-    if not bot_chat_flow:
-        logger.error(f"企业微信ChatFlow执行失败：Bot {bot_id} 未配置工作流")
-        return bot_obj, None, HttpResponse("success")
-
-    if not bot_chat_flow.flow_json:
-        logger.error(f"企业微信ChatFlow执行失败：Bot {bot_id} 工作流配置为空")
-        return bot_obj, None, HttpResponse("success")
-
-    return bot_obj, bot_chat_flow, None
-
-
-def _get_wechat_node_config(bot_chat_flow, bot_id):
-    """从ChatFlow中获取企业微信节点配置
-
-    Returns:
-        tuple: (wechat_config_dict, error_response)
-               成功时返回配置字典和None，失败时返回None和错误响应
-    """
-    flow_nodes = bot_chat_flow.flow_json.get("nodes", [])
-    wechat_nodes = [node for node in flow_nodes if node.get("type") == "enterprise_wechat"]
-
-    if not wechat_nodes:
-        logger.error(f"企业微信ChatFlow执行失败：Bot {bot_id} 工作流中没有企业微信节点")
-        return None, HttpResponse("success")
-
-    wechat_node = wechat_nodes[0]
-    wechat_data = wechat_node.get("data", {})
-    wechat_config = wechat_data.get("config", {})
-
-    # 验证必需参数
-    required_params = ["token", "aes_key", "corp_id", "agent_id", "secret"]
-    missing_params = [p for p in required_params if not wechat_config.get(p)]
-
-    if missing_params:
-        logger.error(f"企业微信ChatFlow执行失败：Bot {bot_id} 缺少配置参数: {', '.join(missing_params)}")
-        return None, HttpResponse("success")
-
-    return wechat_config, None
-
-
-def _handle_wechat_url_verification(crypto, signature, timestamp, nonce, echostr, bot_id):
-    """处理企业微信URL验证
-
-    Returns:
-        HttpResponse: URL验证响应
-    """
-
-    if not echostr:
-        logger.error("企业微信URL验证失败：缺少echostr参数")
-        return HttpResponse("fail")
-
-    try:
-        logger.info(f"各参数如下： signature【{signature}】, timestamp【{timestamp}】, nonce【{nonce}】, echostr【{echostr}】")
-        echo_str = crypto.check_signature(signature, timestamp, nonce, echostr)
-        logger.info(f"企业微信URL验证成功，Bot {bot_id}")
-        return HttpResponse(echo_str)
-    except Exception as e:
-        logger.error(f"企业微信URL验证失败，Bot {bot_id}，错误: {str(e)}")
-        return HttpResponse("fail")
-
-
-def _execute_chatflow_with_message(bot_chat_flow, node_id, message, sender_id, bot_id):
-    """执行ChatFlow并返回结果
-
-    Returns:
-        str: ChatFlow执行结果文本
-    """
-    logger.info(f"企业微信执行ChatFlow流程开始，Bot {bot_id}, Node {node_id}, 发送者: {sender_id}, 消息: {message[:50]}...")
-
-    # 创建ChatFlow引擎
-    engine = create_chat_flow_engine(bot_chat_flow, node_id)
-
-    # 准备输入数据
-    input_data = {
-        "last_message": message,
-        "user_id": sender_id,
-        "bot_id": bot_id,
-        "node_id": node_id,
-        "channel": "enterprise_wechat",
-    }
-
-    # 执行ChatFlow
-    result = engine.execute(input_data)
-
-    # 处理执行结果
-    if isinstance(result, dict):
-        reply_text = result.get("content") or result.get("data") or str(result)
-    else:
-        reply_text = str(result) if result else "处理完成"
-
-    logger.info(f"企业微信ChatFlow流程执行完成，Bot {bot_id}，结果长度: {len(reply_text)}")
-
-    return reply_text
-
-
-def _send_reply_to_wechat(reply_text, sender_id, agent_id, corp_id, secret, bot_id):
-    """发送回复消息到企业微信
-
-    Args:
-        reply_text: 回复文本
-        sender_id: 发送者ID
-        agent_id: 企业微信应用ID
-        corp_id: 企业ID
-        secret: 应用密钥
-        bot_id: Bot ID（用于日志）
-    """
-    # 处理换行符
-    reply_text = reply_text.replace("\r\n", "\n").replace("\r", "\n")
-    reply_text_list = reply_text.split("\n")
-
-    # 每50行发送一次，避免消息过长
-    for i in range(0, len(reply_text_list), 50):
-        msg_chunk = "\n".join(reply_text_list[i : i + 50])
-        if msg_chunk.strip():  # 只发送非空消息
-            try:
-                _send_message_chunks(sender_id, msg_chunk, agent_id, corp_id, secret)
-            except Exception as send_err:
-                logger.error(f"企业微信发送消息失败，Bot {bot_id}，错误: {str(send_err)}")
-
-
-def _handle_wechat_message(request, crypto, bot_chat_flow, wechat_config, bot_id):
-    """处理企业微信消息
-
-    Returns:
-        HttpResponse: 消息处理响应
-    """
-
-    signature = request.GET.get("signature", "") or request.GET.get("msg_signature", "")
-    timestamp = request.GET.get("timestamp", "")
-    nonce = request.GET.get("nonce", "")
-
-    # 验证参数完整性
-    if not signature or not timestamp or not nonce:
-        logger.error(f"企业微信消息处理失败：缺少签名参数，Bot {bot_id}")
+        logger.error("微信公众号ChatFlow执行失败：缺少Bot ID")
         return HttpResponse("success")
 
-    try:
-        # 解密消息
-        decrypted_xml = crypto.decrypt_message(request.body, signature, timestamp, nonce)
+    # 2. 创建工具类实例并验证Bot和工作流配置
+    wechat_official_utils = WechatOfficialChatFlowUtils(bot_id)
+    bot_chat_flow, error_response = wechat_official_utils.validate_bot_and_workflow()
+    if error_response:
+        return error_response
 
-        # 解析消息
-        msg = parse_message(decrypted_xml)
+    # 3. 获取微信公众号节点配置
+    wechat_config, error_response = wechat_official_utils.get_wechat_official_node_config(bot_chat_flow)
+    if error_response:
+        return error_response
 
-        # 只处理文本消息
-        if msg.type != "text":
-            logger.info(f"企业微信收到非文本消息，类型: {msg.type}，Bot {bot_id}，忽略处理")
-            return HttpResponse("success")
+    # 4. 处理GET请求（URL验证）
+    if request.method == "GET":
+        return wechat_official_utils.handle_url_verification(
+            request.GET.get("signature", "") or request.GET.get("msg_signature", ""),
+            request.GET.get("timestamp", ""),
+            request.GET.get("nonce", ""),
+            request.GET.get("echostr", ""),
+            wechat_config["token"],
+            wechat_config["aes_key"],
+            wechat_config["appid"],
+        )
 
-        # 获取消息内容和发送者
-        message = getattr(msg, "content", "")
-        sender_id = getattr(msg, "source", "")
-
-        if not message:
-            logger.warning(f"企业微信收到空消息，Bot {bot_id}，发送者: {sender_id}")
-            return HttpResponse("success")
-
-        # 执行ChatFlow
-        node_id = wechat_config["node_id"]
-        reply_text = _execute_chatflow_with_message(bot_chat_flow, node_id, message, sender_id, bot_id)
-
-        # 发送回复消息
-        _send_reply_to_wechat(reply_text, sender_id, wechat_config["agent_id"], wechat_config["corp_id"], wechat_config["secret"], bot_id)
-
-        return HttpResponse("success")
-
-    except Exception as e:
-        logger.error(f"企业微信ChatFlow流程执行失败，Bot {bot_id}，错误: {str(e)}")
-        logger.exception(e)
-        return HttpResponse("success")
+    # 5. 处理POST请求（消息处理）
+    return wechat_official_utils.handle_wechat_message(request, wechat_config, bot_chat_flow)
 
 
 @api_exempt
@@ -736,38 +563,92 @@ def execute_chat_flow_wechat(request, bot_id):
 
     通过企业微信发送消息，调用指定的ChatFlow进行流程节点执行并返回数据
     """
+    # 1. 验证Bot ID
+    if not bot_id:
+        logger.error("企业微信ChatFlow执行失败：缺少Bot ID")
+        return HttpResponse("success")
 
-    # 1. 验证Bot和工作流配置
-    logger.info(f"企微认证参数 【{request.GET.dict()}】")
-    bot_obj, bot_chat_flow, error_response = _validate_bot_and_workflow(bot_id)
+    # 2. 创建工具类实例并验证Bot和工作流配置
+    wechat_utils = WechatChatFlowUtils(bot_id)
+    bot_chat_flow, error_response = wechat_utils.validate_bot_and_workflow()
     if error_response:
         return error_response
 
-    # 2. 获取企业微信节点配置
-    wechat_config, error_response = _get_wechat_node_config(bot_chat_flow, bot_id)
+    # 3. 获取企业微信节点配置
+    wechat_config, error_response = wechat_utils.get_wechat_node_config(bot_chat_flow)
     if error_response:
         return error_response
 
-    # 3. 创建加密对象
+    # 4. 创建加密对象
     try:
         crypto = WeChatCrypto(wechat_config["token"], wechat_config["aes_key"], wechat_config["corp_id"])
     except Exception as e:
         logger.error(f"企业微信ChatFlow执行失败：创建加密对象失败，错误: {str(e)}")
         return HttpResponse("success")
 
-    # 4. 处理GET请求（URL验证）
+    # 5. 处理GET请求（URL验证）
     if request.method == "GET":
-        return _handle_wechat_url_verification(
+        return wechat_utils.handle_url_verification(
             crypto,
-            request.GET.get("signature", ""),
+            request.GET.get("signature", "") or request.GET.get("msg_signature", ""),
             request.GET.get("timestamp", ""),
             request.GET.get("nonce", ""),
             request.GET.get("echostr", ""),
-            bot_id,
         )
 
-    # 5. 处理POST请求（消息处理）
-    return _handle_wechat_message(request, crypto, bot_chat_flow, wechat_config, bot_id)
+    # 6. 处理POST请求（消息处理）
+    return wechat_utils.handle_wechat_message(request, crypto, bot_chat_flow, wechat_config)
+
+
+@api_exempt
+def execute_chat_flow_dingtalk(request, bot_id):
+    """钉钉ChatFlow执行入口
+
+    支持两种模式：
+    1. HTTP回调模式：处理来自钉钉服务器的POST请求
+    2. Stream模式（长连接）：启动并返回状态检查接口
+
+    GET请求返回状态，POST请求处理消息
+    特殊操作：
+    - POST /dingtalk/{bot_id}/stream/start - 启动Stream客户端
+    """
+    loader = get_loader(request)
+
+    # 处理GET请求 - 健康检查/状态查询
+    if request.method == "GET":
+        return JsonResponse({"status": "ok", "bot_id": bot_id})
+
+    # 1. 验证Bot ID
+    if not bot_id:
+        logger.error("钉钉ChatFlow执行失败：缺少Bot ID")
+        return JsonResponse({"success": False, "message": loader.get("error.missing_bot_id", "Missing bot_id")})
+
+    # 2. 创建工具类实例并验证Bot和工作流配置
+    dingtalk_utils = DingTalkChatFlowUtils(bot_id)
+    bot_chat_flow, error_response = dingtalk_utils.validate_bot_and_workflow()
+    if error_response:
+        return error_response
+
+    # 3. 获取钉钉节点配置
+    dingtalk_config, error_response = dingtalk_utils.get_dingtalk_node_config(bot_chat_flow)
+    if error_response:
+        return error_response
+
+    # 4. 检查是否是Stream模式启动请求
+    try:
+        data = json.loads(request.body) if request.body else {}
+        if data.get("action") == "start_stream":
+            # 启动Stream客户端
+            success = start_dingtalk_stream_client(bot_id, bot_chat_flow, dingtalk_config)
+            if success:
+                return JsonResponse({"success": True, "message": "DingTalk Stream client started successfully", "mode": "stream"})
+            else:
+                return JsonResponse({"success": False, "message": "Failed to start DingTalk Stream client", "mode": "stream"})
+    except json.JSONDecodeError:
+        pass
+
+    # 5. 处理HTTP回调模式的消息
+    return dingtalk_utils.handle_dingtalk_message(request, bot_chat_flow, dingtalk_config)
 
 
 @api_exempt

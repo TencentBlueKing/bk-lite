@@ -68,8 +68,6 @@ const GroupMoadal = forwardRef<ModalRef, GroupModalProps>(
         message.success(msg);
         handleCancel();
         onSuccess();
-      } catch (error) {
-        console.log(error);
       } finally {
         setConfirmLoading(false);
       }

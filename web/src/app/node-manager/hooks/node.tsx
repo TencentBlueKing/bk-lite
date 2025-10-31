@@ -1,12 +1,21 @@
 import { useMemo } from 'react';
 import { useTranslation } from '@/utils/i18n';
 import { Button, Popconfirm } from 'antd';
+import {
+  CheckCircleOutlined,
+  ExclamationCircleOutlined,
+  CloseCircleOutlined,
+  StopOutlined,
+  LoadingOutlined,
+  WarningOutlined,
+} from '@ant-design/icons';
 import type { TableColumnsType } from 'antd';
 import { TableDataItem, SegmentedItem } from '@/app/node-manager/types';
 import { useUserInfoContext } from '@/context/userInfo';
 import Permission from '@/components/permission';
 import EllipsisWithTooltip from '@/components/ellipsis-with-tooltip';
 import PermissionWrapper from '@/components/permission';
+import { OPERATE_SYSTEMS } from '@/app/node-manager/constants/cloudregion';
 import type { MenuProps } from 'antd';
 interface HookParams {
   checkConfig: (row: TableDataItem) => void;
@@ -29,7 +38,7 @@ const useColumns = ({
         width: 120,
       },
       {
-        title: t('common.name'),
+        title: t('node-manager.cloudregion.node.nodeName'),
         dataIndex: 'name',
         key: 'name',
         width: 120,
@@ -45,6 +54,20 @@ const useColumns = ({
             text={showGroupNames(organization)}
           />
         ),
+      },
+      {
+        title: t('node-manager.cloudregion.node.system'),
+        dataIndex: 'operating_system',
+        key: 'operating_system',
+        width: 120,
+        render: (value: string) => {
+          return (
+            <>
+              {OPERATE_SYSTEMS.find((item) => item.value === value)?.label ||
+                '--'}
+            </>
+          );
+        },
       },
       {
         title: t('common.actions'),
@@ -99,7 +122,7 @@ const useGroupNames = () => {
   };
 };
 
-const useTelegrafMap = (): Record<string, Record<string, string>> => {
+const useTelegrafMap = (): Record<string, Record<string, any>> => {
   const { t } = useTranslation();
   return useMemo(
     () => ({
@@ -107,39 +130,141 @@ const useTelegrafMap = (): Record<string, Record<string, string>> => {
         tagColor: 'default',
         color: '#b2b5bd',
         text: t('node-manager.cloudregion.node.unknown'),
+        engText: 'Unknown',
+        icon: (
+          <div
+            className="w-6 h-6 rounded-lg flex items-center justify-center"
+            style={{ backgroundColor: 'rgba(178, 181, 189, 0.1)' }}
+          >
+            <ExclamationCircleOutlined
+              style={{
+                color: '#b2b5bd',
+                fontWeight: 'bold',
+                fontSize: '12px',
+              }}
+            />
+          </div>
+        ),
       },
       0: {
         tagColor: 'success',
         color: '#52c41a',
-        text: t('node-manager.cloudregion.node.running'),
+        text: t('node-manager.cloudregion.node.normal'),
+        engText: 'Running',
+        icon: (
+          <div
+            className="w-6 h-6 rounded-lg flex items-center justify-center"
+            style={{ backgroundColor: 'rgba(82, 196, 26, 0.1)' }}
+          >
+            <CheckCircleOutlined
+              style={{
+                color: '#52c41a',
+                fontWeight: 'bold',
+                fontSize: '12px',
+              }}
+            />
+          </div>
+        ),
       },
       2: {
         tagColor: 'error',
         color: '#ff4d4f',
         text: t('node-manager.cloudregion.node.error'),
+        engText: 'Failed',
+        icon: (
+          <div
+            className="w-6 h-6 rounded-lg flex items-center justify-center"
+            style={{ backgroundColor: 'rgba(255, 77, 79, 0.1)' }}
+          >
+            <CloseCircleOutlined
+              style={{
+                color: '#ff4d4f',
+                fontWeight: 'bold',
+                fontSize: '12px',
+              }}
+            />
+          </div>
+        ),
       },
       4: {
-        tagColor: 'default',
-        color: '#b2b5bd',
-        text: t('node-manager.cloudregion.node.stop'),
+        tagColor: '',
+        color: '#000000',
+        text: t('node-manager.cloudregion.node.notStarted'),
+        engText: 'Stopped',
+        icon: (
+          <div
+            className="w-6 h-6 rounded-lg flex items-center justify-center"
+            style={{ backgroundColor: 'rgba(0, 0, 0, 0.1)' }}
+          >
+            <StopOutlined
+              style={{
+                color: '#000000',
+                fontWeight: 'bold',
+                fontSize: '12px',
+              }}
+            />
+          </div>
+        ),
       },
       10: {
         tagColor: 'processing',
         color: '#1677ff',
         text: t('node-manager.cloudregion.node.installing'),
         engText: 'Installing',
+        icon: (
+          <div
+            className="w-6 h-6 rounded-lg flex items-center justify-center"
+            style={{ backgroundColor: 'rgba(22, 119, 255, 0.1)' }}
+          >
+            <LoadingOutlined
+              style={{
+                color: '#1677ff',
+                fontWeight: 'bold',
+                fontSize: '12px',
+              }}
+            />
+          </div>
+        ),
       },
       11: {
-        tagColor: 'success',
-        color: '#52c41a',
-        text: t('node-manager.cloudregion.node.successInstall'),
-        engText: 'Installed successfully',
+        tagColor: '',
+        color: '#000000',
+        text: t('node-manager.cloudregion.node.notStarted'),
+        engText: 'Installed',
+        icon: (
+          <div
+            className="w-6 h-6 rounded-lg flex items-center justify-center"
+            style={{ backgroundColor: 'rgba(0, 0, 0, 0.1)' }}
+          >
+            <StopOutlined
+              style={{
+                color: '#000000',
+                fontWeight: 'bold',
+                fontSize: '12px',
+              }}
+            />
+          </div>
+        ),
       },
       12: {
-        tagColor: 'error',
-        color: '#ff4d4f',
+        tagColor: 'warning',
+        color: '#faad14',
         text: t('node-manager.cloudregion.node.failInstall'),
         engText: 'Installation failed',
+        icon: (
+          <div
+            className="w-6 h-6 rounded-lg flex items-center justify-center"
+            style={{ backgroundColor: 'rgba(250, 173, 20, 0.1)' }}
+          >
+            <WarningOutlined
+              style={{
+                color: '#faad14',
+                fontWeight: 'bold',
+                fontSize: '12px',
+              }}
+            />
+          </div>
+        ),
       },
     }),
     [t]
@@ -296,6 +421,20 @@ const useMenuItem = () => {
   );
 };
 
+const useFieldOptions = () => {
+  const { t } = useTranslation();
+  return useMemo(
+    () => [
+      { value: 'name', label: t('node-manager.cloudregion.node.nodeName') },
+      {
+        value: 'operating_system',
+        label: t('node-manager.cloudregion.node.system'),
+      },
+    ],
+    [t]
+  );
+};
+
 export {
   useColumns,
   useGroupNames,
@@ -305,4 +444,5 @@ export {
   useSidecarItems,
   useCollectorItems,
   useMenuItem,
+  useFieldOptions,
 };

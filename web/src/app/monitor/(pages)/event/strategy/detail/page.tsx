@@ -82,7 +82,7 @@ const StrategyOperation = () => {
   const [noDataRecovery, setNoDataRecovery] = useState<number | null>(null);
   const [objects, setObjects] = useState<ObjectItem[]>([]);
   const [groupBy, setGroupBy] = useState<string[]>(
-    getGroupIds(monitorName as string).default || defaultGroup
+    getGroupIds(monitorName as string)?.default || defaultGroup
   );
   const [formData, setFormData] = useState<StrategyFields>({
     threshold: [],
@@ -470,8 +470,6 @@ const StrategyOperation = () => {
       await requestType(url, params);
       message.success(msg);
       goBack();
-    } catch (error) {
-      console.log(error);
     } finally {
       setConfirmLoading(false);
     }
@@ -510,7 +508,15 @@ const StrategyOperation = () => {
               items={[
                 {
                   title: t('monitor.events.basicInformation'),
-                  description: <BasicInfoForm />,
+                  description: (
+                    <BasicInfoForm
+                      source={source}
+                      unit={unit}
+                      onOpenInstModal={openInstModal}
+                      onUnitChange={handleUnitChange}
+                      isTrap={isTrap}
+                    />
+                  ),
                   status: 'process',
                 },
                 {
@@ -518,22 +524,18 @@ const StrategyOperation = () => {
                   description: (
                     <MetricDefinitionForm
                       pluginList={pluginList}
-                      source={source}
                       metric={metric}
                       metricsLoading={metricsLoading}
                       labels={labels}
                       conditions={conditions}
                       groupBy={groupBy}
-                      unit={unit}
                       periodUnit={periodUnit}
                       originMetricData={originMetricData}
                       monitorName={monitorName as string}
                       onCollectTypeChange={changeCollectType}
-                      onOpenInstModal={openInstModal}
                       onMetricChange={handleMetricChange}
                       onFiltersChange={setConditions}
                       onGroupChange={handleGroupByChange}
-                      onUnitChange={handleUnitChange}
                       onPeriodUnitChange={handlePeriodUnitChange}
                       isTrap={isTrap}
                     />

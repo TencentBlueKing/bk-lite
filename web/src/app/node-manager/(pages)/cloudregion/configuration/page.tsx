@@ -12,14 +12,13 @@ import useApiClient from '@/utils/request';
 import type {
   ConfigListProps,
   ConfigData,
-  SubRef,
 } from '@/app/node-manager/types/cloudregion';
 import useNodeManagerApi from '@/app/node-manager/api';
 import useCloudId from '@/app/node-manager/hooks/useCloudRegionId';
 import { SafeStorage } from '@/app/node-manager/utils/safeStorage';
 import MainLayout from '../mainlayout/layout';
 import configStyle from './index.module.scss';
-import SubConfiguration from './subconfiguration';
+import SubConfigDrawer from './subConfigDrawer';
 import {
   useConfigColumns,
   useConfigBtachItems,
@@ -27,12 +26,14 @@ import {
 import ConfigModal from './configModal';
 import ApplyModal from './applyModal';
 import PermissionWrapper from '@/components/permission';
+import { ListItem } from '@/types';
+
 type SearchProps = GetProps<typeof Input.Search>;
 const { Search } = Input;
 const { confirm } = Modal;
 
 const Configuration = () => {
-  const subConfiguration = useRef<SubRef>(null);
+  const subConfigDrawer = useRef<any>(null);
   const configurationRef = useRef<ModalRef>(null);
   const applyRef = useRef<ModalRef>(null);
   const cloudId = useCloudId();
@@ -50,20 +51,9 @@ const Configuration = () => {
   const configBtachItems = useConfigBtachItems();
   const [loading, setLoading] = useState<boolean>(true);
   const [configData, setConfigData] = useState<ConfigData[]>([]);
-  const [showSub, setShowSub] = useState<boolean>(false);
   const [filters, setFilters] = useState<ColumnFilterItem[]>([]);
-  const [nodeData, setNodeData] = useState<ConfigData>({
-    key: '',
-    name: '',
-    collector_id: '',
-    operatingSystem: '',
-    nodeCount: 0,
-    configInfo: '',
-    nodes: [],
-  });
   const [collectorIds, setCollectorIds] = useState<string[]>([]);
   const [originNodes, setOriginNodes] = useState<TableDataItem[]>([]);
-  const [originConfigs, setOriginConfigs] = useState<ConfigListProps[]>([]);
   const [originCollectors, setOriginCollectors] = useState<TableDataItem[]>([]);
   const [selectedConfigurationRowKeys, setSelectedConfigurationRowKeys] =
     useState<React.Key[]>([]);
@@ -106,28 +96,20 @@ const Configuration = () => {
     onClick: handleMenuClick,
   };
 
-  //点击编辑配置文件的触发事件
-  const configurationClick = (key: string) => {
-    const configurationformdata = configData.find((item) => item.key === key);
-    showConfigurationModal('edit', configurationformdata);
-  };
-
-  // 子配置编辑触发弹窗事件
-  const hanldeSubEditClick = (item: any) => {
-    showConfigurationModal('edit_child', item);
-  };
-
   const openSub = (key: string, item?: any) => {
     if (item) {
-      setNodeData({
+      const nodeData = {
         ...item,
         nodesList: originNodes.map((item) => ({
           label: item?.ip,
           value: item?.id,
         })),
+      };
+      subConfigDrawer.current?.showModal({
+        title: t('node-manager.cloudregion.Configuration.subconfiguration'),
+        form: nodeData,
       });
     }
-    setShowSub(true);
   };
 
   const nodeClick = () => {
@@ -136,7 +118,6 @@ const Configuration = () => {
     );
   };
 
-  //批量删除的确定的弹窗
   const modifyDeleteconfirm = async (id?: string) => {
     setLoading(true);
     const ids = id ? [id] : selectedConfigurationRowKeys;
@@ -155,7 +136,6 @@ const Configuration = () => {
   };
 
   const { columns } = useConfigColumns({
-    configurationClick,
     filter: filters,
     openSub,
     nodeClick,
@@ -164,7 +144,10 @@ const Configuration = () => {
   });
 
   const tableData = useMemo(() => {
-    if (!collectorIds.length) return configData;
+    if (!collectorIds.length) {
+      return configData;
+    }
+
     if (configData.length && collectorIds.length) {
       return configData.filter((item) => {
         return collectorIds.includes(item.collector_id as string);
@@ -173,23 +156,26 @@ const Configuration = () => {
     return [];
   }, [collectorIds, configData]);
 
-  //获取配置文件列表
   const initPage = async () => {
     setLoading(true);
     try {
-      const res = await Promise.all([
-        getConfiglist({
-          cloud_region_id: cloudId,
-          node_id: nodeId || '',
-        }),
-        getNodeList({ cloud_region_id: cloudId }),
-        getCollectorlist({}),
-      ]);
-      const configlist = res[0] || [];
-      const nodeList = res[1] || [];
-      const collectorList = res[2] || [];
+      let res;
+      try {
+        res = await Promise.all([
+          getConfiglist({
+            cloud_region_id: cloudId,
+            node_id: nodeId || '',
+          }),
+          getNodeList({ cloud_region_id: cloudId }),
+          getCollectorlist({}),
+        ]);
+      } catch {
+        res = [[], [], []];
+      }
+
+      const [configlist, nodeList, collectorList] = res;
+
       setFilterConfig(collectorList);
-      setOriginConfigs(configlist);
       setOriginNodes(nodeList);
       dealConfigData({
         configlist,
@@ -201,29 +187,30 @@ const Configuration = () => {
     }
   };
 
-  const dealConfigData = (
-    config = {
-      configlist: originConfigs,
-      nodeList: originNodes,
-      collectorList: originCollectors,
-    }
-  ) => {
+  const dealConfigData = (config: {
+    configlist: ConfigListProps[];
+    nodeList: TableDataItem[];
+    collectorList: TableDataItem[];
+  }) => {
     const nodes = config.nodeList.map((item) => ({
       label: item?.ip,
       value: item?.id,
     }));
-    const data: any = config.configlist.map((item: ConfigListProps) => {
-      return {
+    const data = config.configlist.map(
+      (item: ConfigListProps): ConfigData => ({
         ...item,
         key: item.id,
         operatingSystem: item.operating_system,
-        configInfo: item.config_template,
-        nodesList: nodes || [],
-        collector_name: config.collectorList.find(
-          (tex) => tex.id === item.collector_id
-        )?.name,
-      };
-    });
+        configInfo: item.config_template || '',
+        nodesList: nodes as ListItem,
+        nodeCount: item.nodes?.length || 0,
+        collector_name:
+          config.collectorList.find(
+            (collector) => collector.id === item.collector_id
+          )?.name || '',
+      })
+    );
+
     setConfigData(data);
   };
 
@@ -235,55 +222,44 @@ const Configuration = () => {
         node_id: nodeId || '',
         name: search,
       });
+
       dealConfigData({
-        configlist: data,
+        configlist: data || [],
         nodeList: originNodes,
         collectorList: originCollectors,
       });
+    } catch (error) {
+      console.error('Failed to fetch config data:', error);
+      setConfigData([]);
     } finally {
       setLoading(false);
     }
   };
 
-  // 根据采集器列表过滤数据
   const setFilterConfig = (data: TableDataItem[]) => {
     const collectors = data.filter((item: any) => !item.controller_default_run);
     setOriginCollectors(collectors);
-    const filters = new Map();
+    const filtersMap = new Map();
     const collectorIds = collectors.map((item: any) => {
-      filters.set(item.name, { text: item.name, value: item.name });
+      filtersMap.set(item.name, { text: item.name, value: item.name });
       return item.id;
     });
-    setFilters(Array.from(filters.values()) as ColumnFilterItem[]);
+    setFilters(Array.from(filtersMap.values()) as ColumnFilterItem[]);
     setCollectorIds(collectorIds);
   };
 
-  //搜索框的触发事件
   const onSearch: SearchProps['onSearch'] = (value) => {
     getConfigData(value);
   };
 
-  // 子配置返回配置页面事件
-  const handleCBack = () => {
-    getConfigData();
-    setShowSub(false);
-  };
-
-  // 弹窗确认成功后的回调
   const onSuccess = () => {
-    if (!showSub) {
-      getConfigData();
-      return;
-    }
-    subConfiguration.current?.getChildConfig();
+    getConfigData();
   };
 
-  //处理多选触发的事件逻辑
   const rowSelection: TableProps<TableProps>['rowSelection'] = {
     onChange: (selectedRowKeys: React.Key[]) => {
       setSelectedConfigurationRowKeys(selectedRowKeys);
     },
-    //禁止选中
     getCheckboxProps: (record: any) => {
       return {
         disabled: !!record.nodes?.length,
@@ -294,67 +270,61 @@ const Configuration = () => {
   return (
     <MainLayout>
       <div className={`${configStyle.config} w-full h-full`}>
-        {!showSub ? (
-          <>
-            <div className="flex justify-end mb-4">
-              <PermissionWrapper requiredPermissions={['Add']}>
-                <Button
-                  className="mr-[8px]"
-                  type="primary"
-                  onClick={() => showConfigurationModal('add', {})}
-                >
-                  + {t('common.add')}
-                </Button>
-              </PermissionWrapper>
-              <Dropdown
-                className="mr-[8px]"
-                overlayClassName="customMenu"
-                menu={ConfigBtachProps}
-                disabled={!selectedConfigurationRowKeys.length}
-              >
-                <Button>
-                  <Space>
-                    {t('common.bulkOperation')}
-                    <DownOutlined />
-                  </Space>
-                </Button>
-              </Dropdown>
-              <Search
-                className="w-64 mr-[8px]"
-                placeholder={t('common.search')}
-                enterButton
-                onSearch={onSearch}
-              />
-            </div>
-            <div className="tablewidth">
-              <CustomTable<any>
-                scroll={{ y: 'calc(100vh - 326px)', x: 'calc(100vw - 300px)' }}
-                loading={loading}
-                columns={columns}
-                dataSource={tableData}
-                rowSelection={rowSelection}
-              />
-            </div>
-          </>
-        ) : (
-          <SubConfiguration
-            ref={subConfiguration}
-            collectors={originCollectors}
-            cancel={() => handleCBack()}
-            edit={hanldeSubEditClick}
-            nodeData={nodeData}
+        <div className="flex justify-end mb-4">
+          <PermissionWrapper requiredPermissions={['Add']}>
+            <Button
+              className="mr-[8px]"
+              type="primary"
+              onClick={() => showConfigurationModal('add', {})}
+            >
+              + {t('common.add')}
+            </Button>
+          </PermissionWrapper>
+          <Dropdown
+            className="mr-[8px]"
+            overlayClassName="customMenu"
+            menu={ConfigBtachProps}
+            disabled={!selectedConfigurationRowKeys.length}
+          >
+            <Button>
+              <Space>
+                {t('common.bulkOperation')}
+                <DownOutlined />
+              </Space>
+            </Button>
+          </Dropdown>
+          <Search
+            className="w-64 mr-[8px]"
+            placeholder={t('common.search')}
+            enterButton
+            onSearch={onSearch}
           />
-        )}
-        {/* 弹窗组件（添加，编辑，应用）用于刷新页面 */}
+        </div>
+        <div className="tablewidth">
+          <CustomTable<any>
+            scroll={{ y: 'calc(100vh - 326px)', x: 'calc(100vw - 300px)' }}
+            loading={loading}
+            columns={columns}
+            dataSource={tableData}
+            rowSelection={rowSelection}
+          />
+        </div>
+
         <ConfigModal
           ref={configurationRef}
           config={{ collectors: originCollectors }}
           onSuccess={onSuccess}
-        ></ConfigModal>
+        />
         <ApplyModal
           ref={applyRef}
           config={{ nodes: originNodes }}
           onSuccess={() => getConfigData()}
+        />
+
+        <SubConfigDrawer
+          ref={subConfigDrawer}
+          collectors={originCollectors}
+          onSuccess={onSuccess}
         />
       </div>
     </MainLayout>

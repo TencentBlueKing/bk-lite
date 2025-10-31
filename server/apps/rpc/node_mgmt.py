@@ -47,6 +47,15 @@ class NodeMgmt(object):
         return_data = self.client.run("node_list", query_data)
         return return_data
 
+    def batch_create_configs_and_child_configs(self, configs: list, child_configs: list):
+        """
+        批量创建配置和子配置
+        :param configs: 配置列表
+        :param child_configs: 子配置列表
+        """
+        return_data = self.client.run("batch_create_configs_and_child_configs", configs, child_configs)
+        return return_data
+
     def batch_add_node_child_config(self, configs: list):
         """
         批量创建子配置

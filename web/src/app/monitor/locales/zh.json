@@ -352,7 +352,12 @@
       "alarmLevel": "告警级别",
       "noticeWay": "暂无通知渠道，可去",
       "systemManage": "系统管理",
-      "config": "配置。"
+      "config": "配置。",
+      "target": "目标",
+      "testingFrequency": "检测频率",
+      "collectionTemplate": "采集模板",
+      "convergenceMethod": "汇聚方式",
+      "convergenceCycle": "汇聚周期"
     },
     "integrations": {
       "integration": "集成",
