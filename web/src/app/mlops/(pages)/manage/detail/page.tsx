@@ -10,6 +10,7 @@ import RasaDetail from './components/rasa/RasaDetail';
 import LogDetail from './components/log/LogDetail';
 import TimeSeriesPredict from './components/timeseries/TimeSeriesPredict';
 import ClassificationDetail from './components/classification/classificationDetail';
+import ImageClassificationDetail from './components/image-classification/imageClassificationDetail';
 import Sublayout from '@/components/sub-layout';
 import TopSection from '@/components/top-section';
 import { MenuItem } from '@/types';
@@ -122,11 +123,12 @@ const Detail = () => {
   }, [activeTap]);
 
   const renderPage: Record<string, React.ReactNode> = useMemo(() => ({
-    anomaly: <AnomalyDetail />,
+    anomaly_detection: <AnomalyDetail />,
     rasa: <RasaDetail />,
     log_clustering: <LogDetail />,
     timeseries_predict: <TimeSeriesPredict />,
-    classification: <ClassificationDetail />
+    classification: <ClassificationDetail />,
+    image_classification: <ImageClassificationDetail />
   }), [activeTap]);
 
   const Intro = useMemo(() => (

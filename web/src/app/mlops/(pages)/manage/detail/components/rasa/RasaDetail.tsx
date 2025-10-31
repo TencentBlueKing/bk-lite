@@ -13,7 +13,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { ColumnItem } from "@/types";
 import { ModalRef, TableData } from "@/app/mlops/types";
 import useMlopsManageApi from "@/app/mlops/api/manage";
-import ExampleContent from "../exampleContent";
+import ExampleContent from "./components/exampleContent";
 const { Search } = Input;
 
 const RasaDetail = () => {

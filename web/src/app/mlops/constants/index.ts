@@ -438,7 +438,15 @@ const TRAINJOB_MAP: Record<string, string> = {
   'timeseries_predict': 'timeseries_predict_train_jobs',
   'log_clustering': 'log_clustering_train_jobs',
   'rasa': 'rasa_pipelines'
-}
+};
+
+const TYPE_FILE_MAP: Record<string, any> = {
+  'anomaly_detection': 'csv',
+  'log_clustering': 'txt',
+  'timeseries_predict': 'csv',
+  'classification': 'csv',
+  'image_classification': 'image'
+};
 
 
 export {
@@ -457,5 +465,6 @@ export {
   ANOMALY_ALGORITHMS_PARAMS,
   LOG_CLUSTERING_ALGORITHMS_PARAMS,
   TIMESERIES_PREDICT_ALGORITHMS_PARAMS,
-  TRAINJOB_MAP
+  TRAINJOB_MAP,
+  TYPE_FILE_MAP
 }
