@@ -11,43 +11,39 @@ class LanguageLoader:
         self.load_language(default_lang)
 
     def load_language(self, lang: str):
-        """加载指定语言目录下的所有yaml文件"""
+        """加载指定语言目录下的language.yaml文件"""
         lang_dir = os.path.join(self.base_dir, lang)
         if not os.path.exists(lang_dir):
             raise FileNotFoundError(f"Language directory '{lang_dir}' not found")
 
-        translations = {}
-        for file_name in os.listdir(lang_dir):
-            if file_name.endswith(".yaml"):
-                file_path = os.path.join(lang_dir, file_name)
-                key = os.path.splitext(file_name)[0]  # xxx.yaml -> xxx
-                with open(file_path, "r", encoding="utf-8") as f:
-                    translations[key] = yaml.safe_load(f) or {}
+        # 加载合并后的 language.yaml 文件
+        file_path = os.path.join(lang_dir, "language.yaml")
+        if not os.path.exists(file_path):
+            raise FileNotFoundError(f"Language file '{file_path}' not found")
 
-        self.translations = translations
+        with open(file_path, "r", encoding="utf-8") as f:
+            self.translations = yaml.safe_load(f) or {}
 
     def get(self, key: str, default: str = None) -> str:
         """
-        使用点号路径获取翻译.
+        使用点号路径获取翻译。
         例如:
-          xxx.greeting -> xxx.yaml 中的 greeting
-          xxx.error.not_found -> xxx.yaml 中的 error -> not_found
+          os.linux -> language.yaml 中的 os -> linux
+          cloud_region.default.name -> language.yaml 中的 cloud_region -> default -> name
         """
         parts = key.split(".")
         if not parts:
             return default
 
-        # 文件名（不带扩展名）
-        file_key = parts[0]
-        value = self.translations.get(file_key)
-
-        if value is None:
-            return default
+        # 从根节点开始查找
+        value = self.translations
 
         # 递归查找
-        for part in parts[1:]:
+        for part in parts:
             if isinstance(value, dict):
                 value = value.get(part)
+                if value is None:
+                    return default
             else:
                 return default
 

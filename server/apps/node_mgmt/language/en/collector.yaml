@@ -1,4 +1,0 @@
-jmx_activemq_linux:
-  name: ActiveMQ-JMX
-  introduction: JMX-ActiveMQ is a Java Management Extensions (JMX) monitoring tool that collects and monitors ActiveMQ server metrics, providing real-time performance insights.
-
