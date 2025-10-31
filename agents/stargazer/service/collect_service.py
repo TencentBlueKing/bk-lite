@@ -44,6 +44,7 @@ class CollectService(object):
             "jetty_info": "JettyInfo",
             "hbase_info": "HBaseInfo",
             "mssql_info": "MSSQLInfo",
+            "aws_info": "AWSManager",
         }
 
     def import_plugin(self, plugin_name):
