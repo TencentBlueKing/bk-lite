@@ -115,4 +115,6 @@ const EventBar: React.FC<EventBarProps> = ({ eventData, minTime, maxTime }) => {
   );
 };
 
+EventBar.displayName = 'EventBar';
+
 export default EventBar;

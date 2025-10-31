@@ -228,5 +228,5 @@ const SelectInstance = forwardRef<ModalRef, ModalConfig>(
   }
 );
 
-SelectInstance.displayName = 'slectInstance';
+SelectInstance.displayName = 'SelectInstance';
 export default SelectInstance;
