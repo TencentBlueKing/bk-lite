@@ -75,7 +75,7 @@ class ImageClassificationTrainDataViewSet(ModelViewSet):
             logger.info(f"开始删除实例 {instance.id} 及其 {len(image_urls)} 个关联文件")
             
             # 获取 MinIO 存储后端
-            bucket_name = getattr(settings, 'IMAGE_CLASSIFICATION_BUCKET', 'image-classification')
+            bucket_name = getattr(settings, 'MINIO_PUBLIC_BUCKETS', 'munchkin-public')
             storage = MinioBackend(bucket_name=bucket_name)
             
             # 删除 MinIO 中的文件
@@ -183,7 +183,7 @@ class ImageClassificationTrainDataViewSet(ModelViewSet):
             logger.info(f"开始上传 {len(file_list)} 个图片,实例名称: {instance_name}")
             
             # 获取 MinIO 存储后端
-            bucket_name = getattr(settings, 'IMAGE_CLASSIFICATION_BUCKET', 'image-classification')
+            bucket_name = getattr(settings, 'MINIO_PUBLIC_BUCKETS', 'munchkin-public')
             storage = MinioBackend(bucket_name=bucket_name)
             
             # 准备 train_data 列表
@@ -270,7 +270,7 @@ class ImageClassificationTrainDataViewSet(ModelViewSet):
             logger.info(f"更新实例 {instance.id}: 新增 {len(file_list)} 个图片")
             
             # 获取 MinIO 存储后端
-            bucket_name = getattr(settings, 'IMAGE_CLASSIFICATION_BUCKET', 'image-classification')
+            bucket_name = getattr(settings, 'MINIO_PUBLIC_BUCKETS', 'munchkin-public')
             storage = MinioBackend(bucket_name=bucket_name)
             
             # 获取现有 train_data
