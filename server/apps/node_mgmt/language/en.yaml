@@ -7,6 +7,6 @@ os:
   windows: Windows
 collector:
   jmx_activemq_linux:
-    description: Collects ActiveMQ metrics via JMX to monitor message queue performance
-      and health
+    description: Collect ActiveMQ metrics via JMX to monitor the performance and health
+      of message queues
     name: JMX ActiveMQ (Linux)
