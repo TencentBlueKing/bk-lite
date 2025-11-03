@@ -7,13 +7,10 @@ import { ModalRef, TableDataItem } from '@/app/node-manager/types';
 import { ControllerInstallProps } from '@/app/node-manager/types/cloudregion';
 import controllerInstallSyle from './index.module.scss';
 import { ArrowLeftOutlined, ReloadOutlined } from '@ant-design/icons';
-import {
-  OPERATE_SYSTEMS,
-  useInstallMap,
-} from '@/app/node-manager/constants/cloudregion';
-import { useGroupNames } from '@/app/node-manager/hooks/node';
+import { OPERATE_SYSTEMS } from '@/app/node-manager/constants/cloudregion';
+import { useGroupNames, useInstallMap } from '@/app/node-manager/hooks/node';
 import CustomTable from '@/components/custom-table';
-import useApiCloudRegion from '@/app/node-manager/api/cloudRegion';
+import useNodeManagerApi from '@/app/node-manager/api';
 import InstallGuidance from './installGuidance';
 
 const ControllerTable: React.FC<ControllerInstallProps> = ({
@@ -22,7 +19,7 @@ const ControllerTable: React.FC<ControllerInstallProps> = ({
 }) => {
   const { t } = useTranslation();
   const { isLoading } = useApiClient();
-  const { getControllerNodes, getCollectorNodes } = useApiCloudRegion();
+  const { getControllerNodes, getCollectorNodes } = useNodeManagerApi();
   const installMay = useInstallMap();
   const { showGroupNames } = useGroupNames();
   const guidance = useRef<ModalRef>(null);

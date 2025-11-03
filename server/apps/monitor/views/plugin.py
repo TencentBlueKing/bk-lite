@@ -1,9 +1,10 @@
 from rest_framework import viewsets
 from rest_framework.decorators import action
 
+from apps.core.utils.loader import LanguageLoader
 from apps.core.utils.web_utils import WebUtils
+from apps.monitor.constants.language import LanguageConstants
 from apps.monitor.filters.plugin import MonitorPluginFilter
-from apps.monitor.language.service import SettingLanguage
 from apps.monitor.models import MonitorPlugin
 from apps.monitor.serializers.pligin import MonitorPluginSerializer
 from apps.monitor.services.plugin import MonitorPluginService
@@ -20,13 +21,13 @@ class MonitorPluginVieSet(viewsets.ModelViewSet):
         queryset = self.filter_queryset(self.get_queryset())
         serializer = self.get_serializer(queryset, many=True)
         results = serializer.data
-        lan = SettingLanguage(request.user.locale)
+
+        lan = LanguageLoader(app=LanguageConstants.APP, default_lang=request.user.locale)
         for result in results:
-            plugin_map = lan.get_val("MONITOR_OBJECT_PLUGIN", result["name"])
-            if not plugin_map:
-                plugin_map = {}
-            result["display_name"] = plugin_map.get("name") or result["name"]
-            result["display_description"] = plugin_map.get("desc") or result["description"]
+            plugin_key = f"{LanguageConstants.MONITOR_OBJECT_PLUGIN}.{result['name']}"
+            result["display_name"] = lan.get(f"{plugin_key}.name") or result["name"]
+            result["display_description"] = lan.get(f"{plugin_key}.desc") or result["description"]
+
         return WebUtils.response_success(results)
 
     def create(self, request, *args, **kwargs):

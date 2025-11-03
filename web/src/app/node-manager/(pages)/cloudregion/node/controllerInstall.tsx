@@ -7,7 +7,6 @@ import React, {
   useMemo,
 } from 'react';
 import {
-  Spin,
   Button,
   Form,
   Select,
@@ -25,10 +24,7 @@ import {
 } from '@/app/node-manager/types/cloudregion';
 import controllerInstallSyle from './index.module.scss';
 import { useSearchParams } from 'next/navigation';
-import {
-  useInstallWays,
-  OPERATE_SYSTEMS,
-} from '@/app/node-manager/constants/cloudregion';
+import { OPERATE_SYSTEMS } from '@/app/node-manager/constants/cloudregion';
 import CustomTable from '@/components/custom-table';
 import BatchEditModal from './batchEditModal';
 import {
@@ -38,11 +34,13 @@ import {
   ArrowLeftOutlined,
 } from '@ant-design/icons';
 import { cloneDeep, isNumber, uniqueId } from 'lodash';
-const { Option } = Select;
-import useApiCloudRegion from '@/app/node-manager/api/cloudRegion';
+import { useAuth } from '@/context/auth';
+import axios from 'axios';
+import useNodeManagerApi from '@/app/node-manager/api';
 import useCloudId from '@/app/node-manager/hooks/useCloudRegionId';
+import { useInstallWays } from '@/app/node-manager/hooks/node';
 import ControllerTable from './controllerTable';
-import ManualInstall from './manualInstall';
+import ManualInstallFormItems from './manualInstall';
 import { useUserInfoContext } from '@/context/userInfo';
 
 const ControllerInstall: React.FC<ControllerInstallProps> = ({
@@ -52,6 +50,8 @@ const ControllerInstall: React.FC<ControllerInstallProps> = ({
   const { t } = useTranslation();
   const { isLoading } = useApiClient();
   const commonContext = useUserInfoContext();
+  const authContext = useAuth();
+  const token = authContext?.token || null;
   const INFO_ITEM = {
     ip: null,
     organizations: [commonContext.selectedGroup?.id],
@@ -60,7 +60,8 @@ const ControllerInstall: React.FC<ControllerInstallProps> = ({
     password: null,
     node_name: null,
   };
-  const { getPackages, installController } = useApiCloudRegion();
+  const { getPackages, installController, getInstallCommand } =
+    useNodeManagerApi();
   const cloudId = useCloudId();
   const searchParams = useSearchParams();
   const [form] = Form.useForm();
@@ -71,9 +72,10 @@ const ControllerInstall: React.FC<ControllerInstallProps> = ({
     value: item.id,
   }));
   const instRef = useRef<ModalRef>(null);
-  const [pageLoading, setPageLoading] = useState<boolean>(false);
   const [confirmLoading, setConfirmLoading] = useState<boolean>(false);
+  const [versionLoading, setVersionLoading] = useState<boolean>(false);
   const [installMethod, setInstallMethod] = useState<string>('remoteInstall');
+  const [os, setOs] = useState<string>('linux');
   const [showInstallTable, setShowInstallTable] = useState<boolean>(false);
   const [taskId, setTaskId] = useState<number | null>(null);
   const [sidecarVersionList, setSidecarVersionList] = useState<TableDataItem[]>(
@@ -85,6 +87,20 @@ const ControllerInstall: React.FC<ControllerInstallProps> = ({
       id: '0',
     },
   ]);
+  const [sidecarPackageLoading, setSidecarPackageLoading] =
+    useState<boolean>(false);
+  const [loadingCommand, setLoadingCommand] = useState<boolean>(false);
+  const [script, setScript] = useState<string>('');
+  const formValues = Form.useWatch([], form);
+
+  const manualFormReady = useMemo(() => {
+    if (installMethod !== 'manualInstall') return false;
+    return !!(
+      formValues?.manual_node_name &&
+      formValues?.manual_ip &&
+      formValues?.manual_organizations?.length
+    );
+  }, [formValues, installMethod]);
 
   const tableColumns = useMemo(() => {
     const columns: any = [
@@ -140,16 +156,16 @@ const ControllerInstall: React.FC<ControllerInstallProps> = ({
               maxTagCount="responsive"
               defaultValue={row.organizations}
               value={row.organizations}
+              filterOption={(input, option) =>
+                (option?.label || '')
+                  .toLowerCase()
+                  .includes(input.toLowerCase())
+              }
+              options={groupList}
               onChange={(group) =>
                 handleSelectChange(group, row, 'organizations')
               }
-            >
-              {groupList.map((item) => (
-                <Option value={item.value} key={item.value}>
-                  {item.label}
-                </Option>
-              ))}
-            </Select>
+            />
           );
         },
       },
@@ -262,14 +278,57 @@ const ControllerInstall: React.FC<ControllerInstallProps> = ({
   }, [installMethod]);
 
   useEffect(() => {
-    if (!isLoading) {
+    if (os && !isLoading) {
+      form.setFieldsValue({
+        sidecar_package: null,
+        manual_sidecar: null,
+      });
+      setScript('');
       getSidecarList();
     }
-  }, [isLoading]);
+  }, [os, isLoading]);
 
   useEffect(() => {
     form.resetFields();
+    form.setFieldsValue({
+      manual_organizations: [commonContext.selectedGroup?.id],
+    });
   }, [name]);
+
+  useEffect(() => {
+    if (installMethod === 'manualInstall' && formValues) {
+      if (
+        formValues.manual_node_name &&
+        formValues.manual_ip &&
+        formValues.manual_organizations?.length &&
+        formValues.manual_sidecar
+      ) {
+        setLoadingCommand(true);
+        (async () => {
+          try {
+            const params = {
+              os: os,
+              package_name: sidecarVersionList.find(
+                (item: TableDataItem) => item.id === formValues.manual_sidecar
+              )?.name,
+              cloud_region_id: cloudId,
+              organizations: formValues.manual_organizations,
+              node_name: formValues.manual_node_name,
+              ip: formValues.manual_ip,
+            };
+            const data = await getInstallCommand(params);
+            setScript(data);
+          } catch (error) {
+            console.error('Failed to get install command:', error);
+          } finally {
+            setLoadingCommand(false);
+          }
+        })();
+      } else {
+        setScript('');
+      }
+    }
+  }, [formValues?.manual_sidecar]);
 
   const validateTableData = useCallback(() => {
     if (
@@ -295,6 +354,10 @@ const ControllerInstall: React.FC<ControllerInstallProps> = ({
     [tableData]
   );
 
+  const cancelInstall = useCallback(() => {
+    goBack();
+  }, []);
+
   const batchEditModal = (field: string) => {
     instRef.current?.showModal({
       title: t('common.bulkEdit'),
@@ -309,7 +372,12 @@ const ControllerInstall: React.FC<ControllerInstallProps> = ({
       work_node: null,
       sidecar_package: null,
       executor_package: null,
+      manual_node_name: null,
+      manual_ip: null,
+      manual_organizations: [commonContext.selectedGroup?.id],
+      manual_sidecar: null,
     });
+    setScript('');
     const data = [
       {
         ...cloneDeep(INFO_ITEM),
@@ -377,12 +445,17 @@ const ControllerInstall: React.FC<ControllerInstallProps> = ({
   };
 
   const getSidecarList = async () => {
-    setPageLoading(true);
+    setVersionLoading(true);
     try {
-      const data = await getPackages({ os: config.os, object: 'Controller' });
+      const data = await getPackages({ os: os, object: 'Controller' });
       setSidecarVersionList(data);
+      const firstItem = data?.[0]?.id || null;
+      form.setFieldsValue({
+        manual_sidecar: firstItem,
+        sidecar_package: firstItem,
+      });
     } finally {
-      setPageLoading(false);
+      setVersionLoading(false);
     }
   };
 
@@ -426,12 +499,55 @@ const ControllerInstall: React.FC<ControllerInstallProps> = ({
     }
   };
 
-  const cancelInstall = useCallback(() => {
-    goBack();
-  }, []);
+  const handleManualSidecarChange = (value: string) => {
+    form.setFieldsValue({ manual_sidecar: value });
+  };
+
+  const handleManualDownload = async () => {
+    const sidecarId = form.getFieldValue('manual_sidecar');
+    if (!sidecarId) return;
+
+    try {
+      const name = sidecarVersionList.find(
+        (item: TableDataItem) => item.id === sidecarId
+      )?.name;
+      setSidecarPackageLoading(true);
+      const response = await axios({
+        url: `/api/proxy/node_mgmt/api/package/download/${sidecarId}/`,
+        method: 'GET',
+        responseType: 'blob', // 确保返回的是二进制数据
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
+      const blob = response.data;
+      const contentDisposition = response.headers['content-disposition'];
+      let fileName = `${name}`; // 默认文件名
+      if (contentDisposition) {
+        const fileNameMatch = contentDisposition.match(/filename="?(.+)"?/);
+        if (fileNameMatch && fileNameMatch[1]) {
+          fileName = decodeURIComponent(fileNameMatch[1]); // 解码文件名，避免中文乱码
+        }
+      }
+      const mimeType = blob.type || 'application/octet-stream';
+      const url = URL.createObjectURL(new Blob([blob], { type: mimeType }));
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = fileName;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+      message.success(t('common.successfulDownloaded'));
+    } catch (error: any) {
+      message.error(error + '');
+    } finally {
+      setSidecarPackageLoading(false);
+    }
+  };
 
   return (
-    <Spin spinning={pageLoading} className="w-full">
+    <div className="w-full">
       {showInstallTable ? (
         <ControllerTable
           config={{
@@ -452,6 +568,17 @@ const ControllerInstall: React.FC<ControllerInstallProps> = ({
           </div>
           <div className={controllerInstallSyle.form}>
             <Form form={form} name="basic" layout="vertical">
+              <Form.Item
+                name="os"
+                required
+                label={t('node-manager.cloudregion.Configuration.system')}
+              >
+                <Segmented
+                  options={OPERATE_SYSTEMS}
+                  value={os}
+                  onChange={setOs}
+                />
+              </Form.Item>
               <Form.Item<ControllerInstallFields>
                 required
                 label={t('node-manager.cloudregion.node.installationMethod')}
@@ -487,13 +614,17 @@ const ControllerInstall: React.FC<ControllerInstallProps> = ({
                         showSearch
                         allowClear
                         placeholder={t('common.pleaseSelect')}
-                      >
-                        {sidecarVersionList.map((item) => (
-                          <Option value={item.id} key={item.id}>
-                            {item.version}
-                          </Option>
-                        ))}
-                      </Select>
+                        loading={versionLoading}
+                        filterOption={(input, option) =>
+                          (option?.label || '')
+                            .toLowerCase()
+                            .includes(input.toLowerCase())
+                        }
+                        options={sidecarVersionList.map((item) => ({
+                          value: item.id,
+                          label: item.version,
+                        }))}
+                      />
                     </Form.Item>
                     <div className={controllerInstallSyle.description}>
                       {t('node-manager.cloudregion.node.sidecarVersionDes')}
@@ -512,11 +643,17 @@ const ControllerInstall: React.FC<ControllerInstallProps> = ({
                   </Form.Item>
                 </>
               ) : (
-                <ManualInstall
-                  config={{
-                    ...config,
-                    sidecarVersionList,
-                  }}
+                <ManualInstallFormItems
+                  sidecarVersionList={sidecarVersionList}
+                  sidecarPackageLoading={sidecarPackageLoading}
+                  loadingCommand={loadingCommand}
+                  script={script}
+                  groupList={groupList}
+                  versionLoading={versionLoading}
+                  selectedSidecar={formValues?.manual_sidecar}
+                  onSidecarChange={handleManualSidecarChange}
+                  onDownload={handleManualDownload}
+                  disabled={!manualFormReady}
                 />
               )}
             </Form>
@@ -546,7 +683,7 @@ const ControllerInstall: React.FC<ControllerInstallProps> = ({
         }}
         onSuccess={handleBatchEdit}
       />
-    </Spin>
+    </div>
   );
 };
 

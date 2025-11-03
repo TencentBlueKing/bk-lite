@@ -125,7 +125,7 @@ const useCommonColumns = () => {
           render: (_: unknown, record: TableDataItem, index: number) => (
             <Select
               showSearch
-              mode="tags"
+              mode="multiple"
               maxTagCount="responsive"
               loading={config.nodesLoading}
               value={record.node_ids}

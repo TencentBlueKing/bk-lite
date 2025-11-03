@@ -18,7 +18,7 @@ import {
   ModalRef,
   TableDataItem,
 } from '@/app/node-manager/types';
-import useApiCloudRegion from '@/app/node-manager/api/cloudRegion';
+import useNodeManagerApi from '@/app/node-manager/api';
 import useCloudId from '@/app/node-manager/hooks/useCloudRegionId';
 import { OPERATE_SYSTEMS } from '@/app/node-manager/constants/cloudregion';
 import { ControllerInstallFields } from '@/app/node-manager/types/cloudregion';
@@ -30,7 +30,7 @@ const ControllerUninstall = forwardRef<ModalRef, ModalSuccess>(
   ({ onSuccess, config }, ref) => {
     const { t } = useTranslation();
     const cloudId = useCloudId();
-    const { uninstallController } = useApiCloudRegion();
+    const { uninstallController } = useNodeManagerApi();
     //需要二次弹窗确定的类型
     const Popconfirmarr = ['uninstallSidecar'];
     const instRef = useRef<ModalRef>(null);
@@ -307,5 +307,5 @@ const ControllerUninstall = forwardRef<ModalRef, ModalSuccess>(
     );
   }
 );
-ControllerUninstall.displayName = 'controllerUninstall';
+ControllerUninstall.displayName = 'ControllerUninstall';
 export default ControllerUninstall;

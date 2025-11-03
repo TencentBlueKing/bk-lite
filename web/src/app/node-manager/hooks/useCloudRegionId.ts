@@ -1,7 +1,9 @@
+'use client';
 import { useMemo } from 'react';
+import { useSearchParams } from 'next/navigation';
 
 const useCloudId = () => {
-  const searchParams = new URLSearchParams(window.location.search);
+  const searchParams = useSearchParams();
   const id = searchParams.get('cloud_region_id');
   return useMemo(() => {
     if (id && typeof id === 'string') {

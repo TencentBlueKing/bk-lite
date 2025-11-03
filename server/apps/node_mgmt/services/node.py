@@ -115,11 +115,8 @@ class NodeService:
     @staticmethod
     def get_node_list(organization_ids, cloud_region_id, name, ip, os, page, page_size, is_active, permission_data={}):
         """获取节点列表"""
-
         if permission_data:
-
             user_obj = User(username=permission_data["username"], domain=permission_data["domain"])
-
             from apps.core.utils.permission_utils import permission_filter
             permission = get_permission_rules(
                 user_obj,
@@ -159,9 +156,7 @@ class NodeService:
             start = (page - 1) * page_size
             end = start + page_size
             nodes = qs[start:end]
+
         serializer = NodeSerializer(nodes, many=True)
-
-        # 如果有权限信息，为每个节点添加权限
         node_data = serializer.data
-
         return dict(count=count, nodes=node_data)

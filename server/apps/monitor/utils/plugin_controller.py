@@ -4,6 +4,9 @@ import uuid
 
 from jinja2 import Environment, FileSystemLoader, DebugUndefined
 
+from apps.core.exceptions.base_app_exception import BaseAppException
+from apps.core.logger import monitor_logger as logger
+from apps.monitor.constants.database import DatabaseConstants
 from apps.monitor.constants.plugin import PluginConstants
 from apps.monitor.models import CollectConfig
 from apps.rpc.node_mgmt import NodeMgmt
@@ -76,32 +79,38 @@ class Controller:
         return configs
 
     def controller(self):
+        """
+        创建采集配置的控制器方法
+
+        优化点：
+        1. 使用 batch_create_configs_and_child_configs 原子性创建配置和子配置
+        2. 移除手动回滚逻辑，依赖外层事务自动回滚
+        3. 简化错误处理
+        """
         base_dir = PluginConstants.DIRECTORY
         configs = self.format_configs()
         node_configs, node_child_configs, collect_configs = [], [], []
+
+        # 步骤1：准备所有配置数据（渲染模板）
         for config_info in configs:
             template_dir = os.path.join(base_dir, config_info["collector"], config_info["collect_type"], config_info["instance_type"])
             templates = self.get_template_info_by_type(template_dir, config_info["type"])
             env_config = {k[4:]: v for k, v in config_info.items() if k.startswith("ENV_")}
 
             for template in templates:
-                is_child = True if template["config_type"] == "child" else False
+                is_child = template["config_type"] == "child"
                 collector_name = "Telegraf" if is_child else config_info["collector"]
                 config_id = str(uuid.uuid4().hex)
 
-                # 生成配置
                 template_config = self.render_template(
                     template_dir,
                     f"{template['type']}.{template['config_type']}.{template['file_type']}.j2",
                     {**config_info, "config_id": config_id.upper()},
                 )
 
-                # 节点管理创建配置
                 if is_child:
-                    # 子配置环境变量加上config_id作后缀，确保环境变量名为大写
                     child_env_config = {f"{k.upper()}__{config_id.upper()}": v for k, v in env_config.items()}
-
-                    node_child_config = dict(
+                    node_child_configs.append(dict(
                         id=config_id,
                         collect_type=config_info["collect_type"],
                         type=config_info["type"],
@@ -109,35 +118,34 @@ class Controller:
                         node_id=config_info["node_id"],
                         collector_name=collector_name,
                         env_config=child_env_config,
-                    )
-                    node_child_configs.append(node_child_config)
+                    ))
                 else:
-                    node_config = dict(
+                    node_configs.append(dict(
                         id=config_id,
                         name=f'{collector_name}-{config_id}',
                         content=template_config,
                         node_id=config_info["node_id"],
                         collector_name=collector_name,
                         env_config=env_config,
-                    )
-                    node_configs.append(node_config)
+                    ))
 
-                # 监控记录配置
-                collect_configs.append(
-                    CollectConfig(
-                        id=config_id,
-                        collector=collector_name,
-                        monitor_instance_id=config_info["instance_id"],
-                        collect_type=config_info["collect_type"],
-                        config_type=config_info["type"],
-                        file_type=template["file_type"],
-                        is_child=is_child,
-                    )
-                )
+                collect_configs.append(CollectConfig(
+                    id=config_id,
+                    collector=collector_name,
+                    monitor_instance_id=config_info["instance_id"],
+                    collect_type=config_info["collect_type"],
+                    config_type=config_info["type"],
+                    file_type=template["file_type"],
+                    is_child=is_child,
+                ))
 
-        # 记录实例与配置的关系
-        CollectConfig.objects.bulk_create(collect_configs, batch_size=100)
-        # 创建配置
-        NodeMgmt().batch_add_node_config(node_configs)
-        # 创建子配置
-        NodeMgmt().batch_add_node_child_config(node_child_configs)
+        # 步骤2：批量创建 CollectConfig（使用外层事务，不新建事务）
+        CollectConfig.objects.bulk_create(collect_configs, batch_size=DatabaseConstants.COLLECT_CONFIG_BATCH_SIZE)
+        logger.info(f"创建 CollectConfig 成功，数量={len(collect_configs)}")
+
+        # 步骤3：原子性创建配置和子配置（RPC调用，底层有事务保护，失败会抛异常）
+        if node_configs or node_child_configs:
+            NodeMgmt().batch_create_configs_and_child_configs(node_configs, node_child_configs)
+            logger.info(f"创建配置成功，node_config={len(node_configs)}个，child_config={len(node_child_configs)}个")
+
+        logger.info(f"创建采集配置成功，共{len(collect_configs)}个配置")

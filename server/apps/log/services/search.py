@@ -2,9 +2,9 @@ from django.http import StreamingHttpResponse
 import time
 import asyncio
 
+from apps.log.constants.victoriametrics import VictoriaLogsConstants
 from apps.log.utils.query_log import VictoriaMetricsAPI
 from apps.log.utils.log_group import LogGroupQueryBuilder
-from apps.log.constants import SSE_MAX_CONNECTION_TIME, SSE_KEEPALIVE_INTERVAL
 from apps.core.logger import log_logger as logger
 
 
@@ -75,12 +75,12 @@ class SearchService:
             """异步事件流生成器，与ASGI兼容"""
             api = VictoriaMetricsAPI()
             connection_start_time = time.time()
-            max_connection_time = SSE_MAX_CONNECTION_TIME
+            max_connection_time = VictoriaLogsConstants.MAX_CONNECTION_TIME
             data_count = 0
 
             try:
                 last_activity_time = time.time()
-                keepalive_interval = SSE_KEEPALIVE_INTERVAL
+                keepalive_interval = VictoriaLogsConstants.KEEPALIVE_INTERVAL
                 heartbeat_interval = 3.0
 
                 logger.info("开始异步SSE tail连接", extra={

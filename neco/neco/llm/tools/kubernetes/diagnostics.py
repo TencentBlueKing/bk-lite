@@ -11,28 +11,46 @@ from neco.llm.tools.kubernetes.utils import prepare_context, format_bytes, parse
 @tool()
 def get_failed_kubernetes_pods(config: RunnableConfig = None):
     """
-    List all pods in Failed or Error state across all namespaces.
-
-    Identifies pods that are in a failed state, including those in CrashLoopBackOff,
-    ImagePullBackOff, or other error states. Provides detailed container status
-    information to aid in troubleshooting.
-
+    发现集群中所有失败或异常的Pod
+    
+    **何时使用此工具：**
+    - 用户反馈"有Pod起不来"、"服务异常"、"应用崩溃"
+    - 需要快速定位集群中所有问题Pod
+    - 排查大面积故障时的第一步
+    - 检查是否有镜像拉取、权限、资源等问题
+    
+    **工具能力：**
+    - 扫描所有命名空间的Pod状态
+    - 识别Failed、CrashLoopBackOff、ImagePullBackOff等异常状态
+    - 提供容器级别的详细状态（退出码、重启次数、错误原因）
+    - 自动过滤已完成的Job Pod（Succeeded状态）
+    
+    **典型问题类型：**
+    - CrashLoopBackOff: 应用启动后立即崩溃
+    - ImagePullBackOff: 镜像拉取失败（地址错误/无权限/网络问题）
+    - Failed: Pod运行失败终止
+    - Unknown: 节点失联或状态未知
+    
     Args:
-        config (RunnableConfig): Configuration for the tool.
+        config (RunnableConfig): 工具配置（自动传递）
 
     Returns:
-        str: JSON string containing an array of failed pod objects with fields:
-            - name (str): Name of the pod
-            - namespace (str): Namespace where the pod is running
-            - phase (str): Current phase of the pod
-            - container_statuses (list): Detailed status of each container
-              including state, reason, exit codes, and restart counts
-            - node (str): Name of the node running this pod
-            - message (str): Status message from the pod, if any
-            - reason (str): Reason for the current status, if any
-
-    Raises:
-        ApiException: If there is an error communicating with the Kubernetes API
+        JSON格式，包含失败Pod列表，每个Pod包含：
+        - name: Pod名称
+        - namespace: 命名空间
+        - phase: 当前状态
+        - container_statuses[]: 容器状态详情
+          - state: 状态（waiting/terminated/running）
+          - reason: 失败原因（如CrashLoopBackOff）
+          - exit_code: 退出码（137=OOMKilled, 1=Error）
+          - restart_count: 重启次数
+        - node: 所在节点
+        
+    **配合其他工具使用：**
+    - 发现失败Pod后 → 使用 diagnose_kubernetes_pod_issues 深入诊断
+    - 查看具体错误信息 → 使用 get_kubernetes_pod_logs 获取日志
+    - 分析镜像问题 → 检查imageRegistry配置和Secret
+    - 需要恢复服务 → 使用 restart_pod 或 delete_kubernetes_resource
     """
     prepare_context(config)
     try:
@@ -104,19 +122,44 @@ def get_failed_kubernetes_pods(config: RunnableConfig = None):
 @tool()
 def get_pending_kubernetes_pods(config: RunnableConfig = None):
     """
-    List all pods in Pending state and why they're pending
-
+    发现无法调度或启动的Pending状态Pod
+    
+    **何时使用此工具：**
+    - 用户反馈"Pod一直Pending"、"服务启动不了"、"调度失败"
+    - 新部署的应用长时间未就绪
+    - 扩容后新Pod无法启动
+    - 检查集群资源是否充足
+    
+    **工具能力：**
+    - 列出所有Pending状态的Pod
+    - 分析无法调度的具体原因（资源不足/节点亲和性/Taint/PVC等）
+    - 区分调度失败和初始化失败
+    - 提供创建时间，识别长期Pending的Pod
+    
+    **常见Pending原因：**
+    - Insufficient cpu/memory: 集群资源不足
+    - No nodes available: 没有符合条件的节点
+    - PersistentVolumeClaim not bound: 存储卷未绑定
+    - Node affinity/selector: 节点选择器不匹配
+    - Taints: 节点污点阻止调度
+    
     Args:
-        config (RunnableConfig): Configuration for the tool.
+        config (RunnableConfig): 工具配置（自动传递）
 
     Returns:
-        str: JSON string containing an array of pending pod objects with fields:
-            - name (str): Name of the pod
-            - namespace (str): Namespace where the pod is running
-            - node (str): Name of the node assigned to the pod, if any
-            - reason (str): Reason why the pod is pending
-            - message (str): Detailed message about the pending reason
-            - creation_time (str): Timestamp when pod was created
+        JSON格式，包含Pending Pod列表，每个Pod包含：
+        - name: Pod名称
+        - namespace: 命名空间
+        - node: 分配的节点（如果已调度）
+        - reason: Pending原因（如SchedulingFailed）
+        - message: 详细错误信息
+        - creation_time: 创建时间
+        
+    **配合其他工具使用：**
+    - 发现资源不足 → 使用 get_kubernetes_node_capacity 检查集群容量
+    - 调度问题深入分析 → 使用 diagnose_pending_pod_issues
+    - 检查节点状态 → 使用 diagnose_node_issues
+    - 存储问题 → 使用 check_kubernetes_persistent_volumes
     """
     prepare_context(config)
     try:
@@ -163,20 +206,53 @@ def get_pending_kubernetes_pods(config: RunnableConfig = None):
 @tool()
 def get_high_restart_kubernetes_pods(restart_threshold=5, config: RunnableConfig = None):
     """
-    Find pods with high restart counts
-
+    发现频繁重启的不稳定Pod
+    
+    **何时使用此工具：**
+    - 用户反馈"服务不稳定"、"时好时坏"、"经常掉线"
+    - 怀疑有应用程序bug或配置问题
+    - 检查是否有内存泄漏或资源配置不当
+    - 监控集群稳定性的日常巡检
+    
+    **工具能力：**
+    - 快速列出重启次数超过阈值的Pod
+    - 显示每个容器的具体重启次数
+    - 提供容器镜像信息，便于定位版本问题
+    - 展示Ready状态，判断当前是否正常
+    
+    **与analyze_pod_restart_pattern的区别：**
+    - 本工具：快速列表，找出"哪些Pod在重启"
+    - analyze_pod_restart_pattern：深度分析"为什么重启"（退出码、OOM、事件）
+    
+    **常见重启原因：**
+    - OOM（内存不足）→ 退出码137
+    - 健康检查失败 → livenessProbe配置不当
+    - 应用程序bug → 退出码1
+    - 配置错误 → 启动命令或环境变量问题
+    
     Args:
-        restart_threshold (int, optional): The minimum number of restarts
-            required to include a pod in the results. Defaults to 5.
-        config (RunnableConfig): Configuration for the tool.
+        restart_threshold (int, optional): 重启次数阈值，默认5
+            - 5: 标准阈值，找出明显不稳定的Pod
+            - 3: 更敏感，发现轻微重启问题
+            - 10: 只关注严重频繁重启的Pod
+        config (RunnableConfig): 工具配置（自动传递）
 
     Returns:
-        str: JSON string containing an array of high-restart pod objects with fields:
-            - name (str): Name of the pod
-            - namespace (str): Namespace where the pod is running
-            - node (str): Name of the node running this pod
-            - containers (list): List of containers with high restart counts,
-              including name, restart_count, ready status, and image
+        JSON格式，包含高重启Pod列表，每个Pod包含：
+        - name: Pod名称
+        - namespace: 命名空间
+        - node: 所在节点
+        - containers[]: 容器列表
+          - name: 容器名称
+          - restart_count: 重启次数
+          - ready: 是否就绪
+          - image: 容器镜像
+          
+    **配合其他工具使用：**
+    - 深入分析重启原因 → 使用 analyze_pod_restart_pattern
+    - 检查是否OOM → 使用 check_oom_events
+    - 查看完整事件历史 → 使用 get_resource_events_timeline
+    - 查看容器日志 → 使用 get_kubernetes_pod_logs
     """
     prepare_context(config)
     try:
@@ -212,34 +288,58 @@ def get_high_restart_kubernetes_pods(restart_threshold=5, config: RunnableConfig
 @tool()
 def get_kubernetes_node_capacity(config: RunnableConfig = None):
     """
-    Show available capacity and resource utilization on all nodes.
-
-    Calculates the current resource usage across all nodes, including:
-    - Pod count vs. maximum pods per node
-    - CPU requests vs. allocatable CPU
-    - Memory requests vs. allocatable memory
-
+    查看集群节点资源容量和使用情况
+    
+    **何时使用此工具：**
+    - 用户反馈"Pod调度失败"、"资源不足"
+    - 规划扩容或缩容决策
+    - 评估集群整体负载水平
+    - 检查资源碎片化问题（单个节点资源不足）
+    - 日常容量管理和监控
+    
+    **工具能力：**
+    - 统计所有节点的资源分配情况
+    - 计算CPU/内存的requests占用率（非实际使用率）
+    - 显示Pod数量使用情况
+    - 检查节点健康状态（Conditions）
+    - 识别资源紧张的节点
+    
+    **重要说明：**
+    - 本工具统计的是资源**requests**（预留），不是实际使用量
+    - 如需实际使用率，需要Metrics Server（超出纯SDK范围）
+    - 高requests占用不等于高实际使用，但会影响调度
+    
+    **资源占用率解读：**
+    - <60%: 资源充足
+    - 60-80%: 资源适中，建议监控
+    - 80-90%: 资源紧张，可能影响调度
+    - >90%: 资源严重不足，建议扩容
+    
     Args:
-        config (RunnableConfig): Configuration for the tool.
+        config (RunnableConfig): 工具配置（自动传递）
 
     Returns:
-        str: JSON string containing an array of node capacity objects with fields:
-            - name (str): Name of the node
-            - pods (dict): Pod capacity information
-              - used (int): Number of pods running on the node
-              - capacity (int): Maximum number of pods the node can run
-              - percent_used (float): Percentage of pod capacity in use
-            - cpu (dict): CPU resource information
-              - requested (float): CPU cores requested by pods
-              - allocatable (float): CPU cores available on the node
-              - percent_used (float): Percentage of CPU capacity in use
-            - memory (dict): Memory resource information
-              - requested (int): Memory requested by pods in bytes
-              - requested_human (str): Human-readable memory requested
-              - allocatable (int): Memory available on the node in bytes
-              - allocatable_human (str): Human-readable allocatable memory
-              - percent_used (float): Percentage of memory capacity in use
-            - conditions (dict): Node condition statuses
+        JSON格式，包含所有节点的容量信息：
+        - name: 节点名称
+        - pods: Pod容量
+          - used: 已运行Pod数
+          - capacity: 最大Pod数
+          - percent_used: 使用率
+        - cpu: CPU容量
+          - requested: 已分配CPU核心数
+          - allocatable: 可分配CPU核心数
+          - percent_used: 占用率
+        - memory: 内存容量
+          - requested: 已分配内存
+          - allocatable: 可分配内存
+          - percent_used: 占用率
+        - conditions: 节点状态（Ready/DiskPressure等）
+        
+    **配合其他工具使用：**
+    - 发现节点问题 → 使用 diagnose_node_issues 深入诊断
+    - Pod调度失败 → 使用 get_pending_kubernetes_pods 查看具体Pod
+    - 资源不足需扩容 → 建议添加新节点或优化Pod资源配置
+    - 检查资源碎片化 → 使用 check_pod_distribution
     """
     prepare_context(config)
     try:
@@ -333,19 +433,54 @@ def get_kubernetes_node_capacity(config: RunnableConfig = None):
 @tool()
 def get_kubernetes_orphaned_resources(config: RunnableConfig = None):
     """
-    List resources that might be orphaned (no owner references)
-
+    发现孤立资源（无控制器管理）- 资源清理和审计
+    
+    **何时使用此工具：**
+    - 用户说"清理无用资源"、"删除孤立对象"
+    - 资源审计，找出不受控制器管理的资源
+    - 成本优化，识别可能被遗忘的资源
+    - 排查资源泄漏问题
+    - 清理测试环境的临时资源
+    
+    **工具能力：**
+    - 识别没有OwnerReference的资源（无控制器管理）
+    - 扫描Pod、Service、ConfigMap、Secret、PVC
+    - 自动过滤系统资源（kube-system等）
+    - 显示创建时间，识别长期存在的孤立资源
+    
+    **什么是孤立资源：**
+    - 没有Deployment/StatefulSet等控制器管理的Pod
+    - 手动创建未删除的Service
+    - 测试时创建的临时ConfigMap/Secret
+    - 删除Deployment后残留的PVC
+    
+    **注意事项：**
+    - 并非所有孤立资源都应删除（有些是故意手动创建的）
+    - 删除前请确认资源用途
+    - Service通常是手动创建的，较多孤立是正常的
+    - 建议先核实再清理
+    
     Args:
-        config (RunnableConfig): Configuration for the tool.
+        config (RunnableConfig): 工具配置（自动传递）
 
     Returns:
-        str: JSON string containing categories of potentially orphaned resources:
-            - pods (list): Orphaned pod details
-            - services (list): Orphaned service details
-            - persistent_volume_claims (list): Orphaned PVC details
-            - config_maps (list): Orphaned ConfigMap details
-            - secrets (list): Orphaned Secret details
-            Each resource contains name, namespace and creation time
+        JSON格式，包含各类孤立资源：
+        - pods[]: 孤立的Pod列表
+        - services[]: 孤立的Service列表
+        - persistent_volume_claims[]: 孤立的PVC列表
+        - config_maps[]: 孤立的ConfigMap列表
+        - secrets[]: 孤立的Secret列表
+        
+        每个资源包含：
+        - name: 资源名称
+        - namespace: 命名空间
+        - creation_time: 创建时间
+        
+    **配合其他工具使用：**
+    - 确认资源可删除 → 检查是否被其他资源引用
+    - 删除孤立资源 → 使用 delete_kubernetes_resource
+    - 批量清理Pod → 使用 cleanup_failed_pods
+    - 查找ConfigMap使用者 → 使用 find_configmap_consumers
     """
     prepare_context(config)
     try:
@@ -433,12 +568,54 @@ def get_kubernetes_orphaned_resources(config: RunnableConfig = None):
 @tool()
 def diagnose_kubernetes_pod_issues(namespace, pod_name, config: RunnableConfig = None):
     """
-    综合诊断指定Pod的问题，包括事件、状态、资源使用等
-
+    深度诊断单个Pod的所有问题 - 一站式故障排查
+    
+    **何时使用此工具：**
+    - 用户说"这个Pod有问题，帮我看看"
+    - 已知具体Pod名称，需要全面分析
+    - 从 get_failed_pods 或 get_pending_pods 发现问题Pod后
+    - 需要详细的诊断报告（状态+事件+资源+卷）
+    
+    **工具能力（最全面的Pod诊断）：**
+    - Pod所有Conditions（Ready、Initialized、ContainersReady等）
+    - 容器状态详情（waiting/running/terminated，含退出码）
+    - Init容器状态（初始化失败诊断）
+    - 资源requests和limits配置
+    - 挂载卷配置（PVC/ConfigMap/Secret/HostPath）
+    - 最近10个相关事件（时间排序）
+    - 重启策略和节点信息
+    
+    **诊断维度：**
+    1. 容器健康：状态、退出码、重启次数
+    2. 资源配置：CPU/内存requests和limits
+    3. 依赖检查：ConfigMap、Secret、PVC是否存在
+    4. 事件分析：Warning/Error事件的原因和消息
+    5. 节点信息：调度到哪个节点，节点是否健康
+    
     Args:
-        namespace (str): Pod所在的命名空间
-        pod_name (str): Pod名称
-        config (RunnableConfig): 工具配置
+        namespace (str): Pod所在命名空间（必填）
+        pod_name (str): Pod名称（必填）
+        config (RunnableConfig): 工具配置（自动传递）
+        
+    Returns:
+        JSON格式，包含完整的诊断信息：
+        - phase: Pod状态（Running/Pending/Failed）
+        - conditions[]: 所有Condition详情
+        - containers[]: 容器状态（state、restart_count、image）
+        - init_containers[]: Init容器状态
+        - resource_requests: 资源请求配置
+        - resource_limits: 资源限制配置
+        - volumes[]: 卷挂载信息
+        - recent_events[]: 最近事件（按时间排序）
+        - node: 所在节点
+        - restart_policy: 重启策略
+        
+    **配合其他工具使用：**
+    - 查看日志定位错误 → 使用 get_kubernetes_pod_logs
+    - 检查镜像拉取问题 → 查看events中的ImagePull相关错误
+    - 资源不足 → 使用 get_kubernetes_node_capacity 检查节点容量
+    - 需要重启恢复 → 使用 restart_pod
+    - 卷挂载问题 → 使用 check_kubernetes_persistent_volumes
     """
     prepare_context(config)
     try:

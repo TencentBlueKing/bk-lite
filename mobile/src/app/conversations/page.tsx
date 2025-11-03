@@ -38,14 +38,14 @@ export default function ConversationList() {
     <div className="flex flex-col h-full bg-[var(--color-background-body)]">
       {/* 顶部导航栏 */}
       <div className="flex items-center justify-between px-4 py-3 bg-[var(--color-bg)]">
-        <ScanningOutline fontSize={20} className="text-[var(--color-text-2)]" />
-        <h1 className="text-base font-medium text-[var(--color-text-1)]">
+        <ScanningOutline fontSize={24} className="text-[var(--color-text-2)]" />
+        <h1 className="text-lg font-medium text-[var(--color-text-1)]">
           {t('navigation.conversations')}
         </h1>
         <div className="flex items-center space-x-3">
-          <SearchOutline fontSize={20} className="text-[var(--color-text-2)]" />
+          <SearchOutline fontSize={24} className="text-[var(--color-text-2)]" />
           <AddCircleOutline
-            fontSize={20}
+            fontSize={24}
             className="text-[var(--color-primary)]"
           />
         </div>
@@ -57,31 +57,44 @@ export default function ConversationList() {
           placeholder={t('common.search')}
           value={searchValue}
           onChange={setSearchValue}
-          style={{
-            '--background': 'var(--color-fill-2)',
-            '--border-radius': '8px',
-            '--height': '36px',
-          }}
+          style={
+            {
+              '--background': 'var(--color-fill-2)',
+              '--border-radius': '8px',
+              '--height': '38px',
+              '--font-size': '15px',
+            } as React.CSSProperties
+          }
         />
       </div>
 
       {/* 聊天列表 */}
       <div className="flex-1 overflow-y-auto">
         <List>
+          <style
+            dangerouslySetInnerHTML={{
+              __html: `
+                .adm-list-item-content-extra {
+                position: absolute;
+                right: 5px;
+                }
+              `,
+            }}
+          />
           {filteredChats.map((chat) => (
             <List.Item
               key={chat.id}
-              arrow={false}
+              arrowIcon={false}
               prefix={
                 <Avatar
                   src={chat.avatar}
-                  style={{ '--size': '38px' }}
+                  style={{ '--size': '48px' }}
                   className="ml-1 mr-1"
                 />
               }
               description={
                 <div className="flex items-center justify-between mt-1">
-                  <span className="text-xs text-[var(--color-text-3)] flex-1 truncate">
+                  <span className="text-sm text-[var(--color-text-3)] flex-1 truncate">
                     {chat.lastMessage}
                   </span>
                 </div>
@@ -103,7 +116,7 @@ export default function ConversationList() {
               }}
             >
               <div className="flex items-center justify-between">
-                <span className="text-sm font-medium text-[var(--color-text-1)]">
+                <span className="text-base font-medium text-[var(--color-text-1)]">
                   {chat.name}
                 </span>
                 {chat.website && (

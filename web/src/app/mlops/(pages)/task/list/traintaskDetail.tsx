@@ -8,7 +8,8 @@ import styles from './index.module.scss';
 
 interface TrainTaskDetailProps {
   metricData: any,
-  backToList: () => void
+  backToList: () => void,
+  activeKey: string
 }
 
 // 懒加载图表组件
@@ -134,6 +135,7 @@ const LazyChart: React.FC<LazyChartProps> = ({ metricName, runId, getMetricsDeta
 
 const TrainTaskDetail = ({
   metricData,
+  activeKey
   // backToList
 }: TrainTaskDetailProps) => {
   const [metrics, setMetricsList] = useState<string[]>([]);
@@ -152,7 +154,7 @@ const TrainTaskDetail = ({
 
     setLoading(true);
     try {
-      const response = await getTrainTaskMetrics(metricData.run_id);
+      const response = await getTrainTaskMetrics(metricData.run_id, activeKey);
       if (response?.metrics) {
         setMetricsList(response.metrics);
       }
@@ -164,7 +166,7 @@ const TrainTaskDetail = ({
   };
 
   const getMetricsDetail = useCallback(async (runId: string, metricsName: string) => {
-    const data = await getTrainTaskMetricsDetail(runId, metricsName);
+    const data = await getTrainTaskMetricsDetail(runId, metricsName, activeKey);
     return data;
   }, [getTrainTaskMetricsDetail]);
 

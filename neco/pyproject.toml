@@ -7,7 +7,7 @@ name = "neco"
 description = "Add your description here"
 readme = "README.md"
 requires-python = ">=3.12"
-version = "1.0.4"
+version = "1.0.7"
 
 dependencies = [
 ]

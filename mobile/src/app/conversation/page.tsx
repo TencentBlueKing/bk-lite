@@ -183,15 +183,15 @@ export default function ConversationDetail() {
           onClick={() => router.back()}
           className="flex items-center justify-center w-6 h-8"
         >
-          <LeftOutline fontSize={20} className="text-[var(--color-text-1)]" />
+          <LeftOutline fontSize={24} className="text-[var(--color-text-1)]" />
         </button>
         <div className="flex items-center absolute left-1/2 transform -translate-x-1/2">
           <Avatar
             src={chatInfo.avatar}
-            style={{ '--size': '32px' }}
+            style={{ '--size': '36px' }}
             className="mr-2 flex-shrink-0"
           />
-          <div className="text-sm font-medium text-[var(--color-text-1)]">
+          <div className="text-base font-medium text-[var(--color-text-1)]">
             {chatInfo.name}
           </div>
         </div>
@@ -239,9 +239,24 @@ export default function ConversationDetail() {
 
           {/* 发送器 */}
           <div
-            className="mt-4 mr-2 bg-[var(--color-bg)] rounded-2xl"
+            className="mt-4 mr-2 bg-[var(--color-bg)] rounded-2xl sender-container"
             style={{ boxShadow: '0 2px 8px rgba(0, 0, 0, 0.08)' }}
           >
+            <style
+              dangerouslySetInnerHTML={{
+                __html: `
+                  .sender-container .ant-sender-input{
+                    font-size: 16px !important;
+                  }
+                  .ant-bubble-footer {
+                    margin-top: 0 !important;
+                  }
+                  .ant-bubble-content {
+                    font-size: 16px !important;
+                  }
+                `,
+              }}
+            />
             <Sender
               loading={agent.isRequesting()}
               value={content}

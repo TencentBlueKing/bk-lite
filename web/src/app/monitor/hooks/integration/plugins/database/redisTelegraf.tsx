@@ -174,11 +174,14 @@ export const useRedisTelegraf = () => {
               collector: pluginConfig.collector,
               instances: dataSource.map((item: TableDataItem) => {
                 delete item.key;
+                const target: TableDataItem | undefined = config.nodeList.find(
+                  (tex: IntegrationMonitoredObject) => item.node_ids === tex.id
+                );
                 return {
                   ...item,
                   node_ids: [item.node_ids].flat(),
                   instance_type: pluginConfig.instance_type,
-                  instance_id: `${item.host}:${item.port}`,
+                  instance_id: `${target?.cloud_region}_${item.host}_${item.port}`,
                 };
               }),
             };

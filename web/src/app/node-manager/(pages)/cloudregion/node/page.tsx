@@ -6,57 +6,39 @@ import React, {
   useMemo,
   useCallback,
 } from 'react';
-import {
-  Button,
-  Input,
-  message,
-  Space,
-  Modal,
-  Tooltip,
-  Tag,
-  Dropdown,
-  Segmented,
-} from 'antd';
-import {
-  DownOutlined,
-  ReloadOutlined,
-  EllipsisOutlined,
-} from '@ant-design/icons';
-import type { MenuProps, TableProps, GetProps } from 'antd';
+import { Button, message, Space, Modal, Tooltip, Tag, Dropdown } from 'antd';
+import { DownOutlined, ReloadOutlined } from '@ant-design/icons';
+import type { MenuProps, TableProps } from 'antd';
 import nodeStyle from './index.module.scss';
 import CollectorModal from './collectorModal';
 import { useTranslation } from '@/utils/i18n';
 import { ModalRef, TableDataItem } from '@/app/node-manager/types';
+import { SearchValue } from '@/app/node-manager/types/node';
 import CustomTable from '@/components/custom-table';
-import { useColumns } from '@/app/node-manager/hooks/node';
+import SearchCombination from './searchCombination';
+import {
+  useColumns,
+  useTelegrafMap,
+  useSidecarItems,
+  useCollectorItems,
+} from '@/app/node-manager/hooks/node';
 import MainLayout from '../mainlayout/layout';
 import useApiClient from '@/utils/request';
-import useApiCloudRegion from '@/app/node-manager/api/cloudRegion';
-import useApiCollector from '@/app/node-manager/api/collector';
+import useNodeManagerApi from '@/app/node-manager/api';
 import useCloudId from '@/app/node-manager/hooks/useCloudRegionId';
-import { useTelegrafMap } from '@/app/node-manager/constants/cloudregion';
-import {
-  COLLECTOR_LABEL,
-  DISPLAY_PLUGINS,
-} from '@/app/node-manager/constants/collector';
+import { SafeStorage } from '@/app/node-manager/utils/safeStorage';
 import ControllerInstall from './controllerInstall';
 import ControllerUninstall from './controllerUninstall';
 import CollectorInstallTable from './controllerTable';
 import { useRouter, useSearchParams } from 'next/navigation';
 import PermissionWrapper from '@/components/permission';
-import {
-  OPERATE_SYSTEMS,
-  useSidecarItems,
-  useCollectorItems,
-} from '@/app/node-manager/constants/cloudregion';
 import { cloneDeep } from 'lodash';
 import { ColumnItem } from '@/types';
+import CollectorDetailDrawer from './collectorDetailDrawer';
 const { confirm } = Modal;
-const { Search } = Input;
 
 type TableRowSelection<T extends object = object> =
   TableProps<T>['rowSelection'];
-type SearchProps = GetProps<typeof Input.Search>;
 
 const Node = () => {
   const { t } = useTranslation();
@@ -64,28 +46,29 @@ const Node = () => {
   const cloudId = useCloudId();
   const searchParams = useSearchParams();
   const { isLoading, del } = useApiClient();
-  const { getNodeList, delNode } = useApiCloudRegion();
-  const { getCollectorlist } = useApiCollector();
+  const { getNodeList, delNode } = useNodeManagerApi();
   const sidecarItems = useSidecarItems();
   const collectorItems = useCollectorItems();
   const statusMap = useTelegrafMap();
   const name = searchParams.get('name') || '';
   const collectorRef = useRef<ModalRef>(null);
   const controllerRef = useRef<ModalRef>(null);
+  const collectorDetailRef = useRef<any>(null);
   const [nodeList, setNodeList] = useState<TableDataItem[]>();
   const [selectedRowKeys, setSelectedRowKeys] = useState<React.Key[]>([]);
   const [loading, setLoading] = useState<boolean>(false);
   const [showNodeTable, setShowNodeTable] = useState<boolean>(true);
-  const [searchText, setSearchText] = useState<string>('');
+  const [searchValue, setSearchValue] = useState<SearchValue>({
+    field: 'name',
+    value: '',
+  });
   const [taskId, setTaskId] = useState<string>('');
   const [tableType, setTableType] = useState<string>('');
   const [showInstallController, setShowInstallController] =
     useState<boolean>(false);
   const [showInstallCollectorTable, setShowInstallCollectorTable] =
     useState<boolean>(false);
-  const [system, setSystem] = useState<string>('linux');
   const [activeColumns, setActiveColumns] = useState<ColumnItem[]>([]);
-  const DISPLAY_PLUGINS_COUNT = 4; // 最多展示几个插件
 
   const columns = useColumns({
     checkConfig: (row: TableDataItem) => {
@@ -93,7 +76,7 @@ const Node = () => {
         cloud_region_id: cloudId.toString(),
         name,
       };
-      sessionStorage.setItem('cloudRegionInfo', JSON.stringify({ id: row.id }));
+      SafeStorage.setSessionItem('cloudRegionInfo', { id: row.id });
       const params = new URLSearchParams(data);
       const targetUrl = `/node-manager/cloudregion/configuration?${params.toString()}`;
       router.push(targetUrl);
@@ -103,7 +86,7 @@ const Node = () => {
         setLoading(true);
         await delNode(row.id as string);
         message.success(t('common.successfullyDeleted'));
-        getNodes('refresh');
+        getNodes();
       } catch {
         setLoading(false);
       }
@@ -120,39 +103,37 @@ const Node = () => {
     setShowInstallCollectorTable(false);
   }, []);
 
-  const enableOperateSideCar = useMemo(() => {
-    if (!selectedRowKeys.length) return true;
-    return false;
-  }, [selectedRowKeys]);
-
   const tableColumns = useMemo(() => {
     if (!activeColumns?.length) return columns;
     const _columns = cloneDeep(columns);
-    _columns.splice(3, 0, ...activeColumns);
+    _columns.splice(4, 0, ...activeColumns);
     return _columns;
   }, [columns, nodeList, statusMap, activeColumns]);
 
   const enableOperateCollecter = useMemo(() => {
     if (!selectedRowKeys.length) return true;
-    return false;
+    const selectedNodes = (nodeList || []).filter((item) =>
+      selectedRowKeys.includes(item.key)
+    );
+    const operatingSystems = selectedNodes.map((node) => node.operating_system);
+    const uniqueOS = [...new Set(operatingSystems)];
+    // 如果操作系统不一致，则禁用按钮
+    return uniqueOS.length !== 1;
   }, [selectedRowKeys, nodeList]);
+
+  const getFirstSelectedNodeOS = useCallback(() => {
+    const selectedNodes = (nodeList || []).filter((item) =>
+      selectedRowKeys.includes(item.key)
+    );
+    return selectedNodes[0]?.operating_system || 'linux';
+  }, [nodeList, selectedRowKeys]);
 
   useEffect(() => {
     if (!isLoading) {
-      initData();
+      getCollectors();
+      getNodes();
     }
   }, [isLoading]);
-
-  const initData = (params?: any) => {
-    setLoading(true);
-    const getNodeData = params ? getNodes('init', params) : getNodes('init');
-    Promise.all([
-      getNodeData,
-      getCollectors(params?.operating_system || system),
-    ]).finally(() => {
-      setLoading(false);
-    });
-  };
 
   const handleSidecarMenuClick: MenuProps['onClick'] = (e) => {
     if (e.key === 'uninstallSidecar') {
@@ -175,7 +156,7 @@ const Node = () => {
           try {
             await del(`/monitor/api/monitor_policy/${params}/`);
             message.success(t('common.operationSuccessful'));
-            getNodes('refresh');
+            getNodes();
           } finally {
             resolve(true);
           }
@@ -188,7 +169,7 @@ const Node = () => {
     collectorRef.current?.showModal({
       type: e.key,
       ids: selectedRowKeys as string[],
-      selectedsystem: system,
+      selectedsystem: getFirstSelectedNodeOS(),
     });
   };
 
@@ -202,7 +183,6 @@ const Node = () => {
     onClick: handleCollectorMenuClick,
   };
 
-  //选择相同的系统节点，判断是否禁用按钮
   const onSelectChange = (newSelectedRowKeys: React.Key[]) => {
     setSelectedRowKeys(newSelectedRowKeys);
   };
@@ -219,29 +199,33 @@ const Node = () => {
     getCheckboxProps: getCheckboxProps,
   };
 
-  const onSearch: SearchProps['onSearch'] = (value) => {
-    setSearchText(value);
+  const handleSearchChange = (value: SearchValue) => {
+    setSearchValue(value);
     const params = getParams();
-    params.name = value;
-    getNodes('refresh', params);
+    if (value.field === 'name') {
+      params.name = value.value;
+      params.operating_system = '';
+    } else if (value.field === 'operating_system') {
+      params.operating_system = value.value;
+      params.name = '';
+    }
+    getNodes(params);
   };
 
   const getParams = () => {
     return {
-      name: searchText,
-      operating_system: system,
+      name: searchValue.field === 'name' ? searchValue.value : '',
+      operating_system:
+        searchValue.field === 'operating_system' ? searchValue.value : '',
       cloud_region_id: cloudId,
     };
   };
 
-  const getNodes = async (
-    type: string,
-    params?: {
-      name?: string;
-      operating_system?: string;
-      cloud_region_id?: number;
-    }
-  ) => {
+  const getNodes = async (params?: {
+    name?: string;
+    operating_system?: string;
+    cloud_region_id?: number;
+  }) => {
     setLoading(true);
     try {
       const res = await getNodeList(params || getParams());
@@ -251,7 +235,7 @@ const Node = () => {
       }));
       setNodeList(data);
     } finally {
-      setLoading(type === 'init');
+      setLoading(false);
     }
   };
 
@@ -260,128 +244,23 @@ const Node = () => {
     setShowInstallController(true);
   };
 
-  const onSystemChange = (id: string) => {
-    setSystem(id);
-    setActiveColumns([]);
-    setNodeList([]);
-    const params = getParams();
-    params.operating_system = id;
-    initData(params);
-  };
-
-  const getCollectorLabelKey = (value: string = '') => {
-    for (const key in COLLECTOR_LABEL) {
-      if (COLLECTOR_LABEL[key].includes(value)) {
-        return key;
-      }
-    }
-  };
-
-  const getCollectorName = (id: string, data: TableDataItem[] = []) => {
-    return data.find((item: TableDataItem) => item.id === id)?.name || '--';
-  };
-
-  const renderColunms = (
-    record: TableDataItem,
-    {
-      type,
-      data,
-    }: {
-      type: string;
-      data: any;
-    }
-  ) => {
-    const collectors = [
-      ...new Set(
-        [
-          ...(record.status?.collectors_install || []),
-          ...(record.status?.collectors || []),
-        ].map((item) => item.collector_id)
-      ),
-    ].filter((id: string) => {
-      const labelKey = getCollectorName(id, data || []);
-      return getCollectorLabelKey(labelKey) === type;
-    });
-    const tagList = collectors.map((collectorId: string) => {
-      const collectorTarget = (record.status?.collectors || []).find(
-        (dataItem: TableDataItem) => dataItem.collector_id === collectorId
-      );
-      const installTarget = (record.status?.collectors_install || []).find(
-        (dataItem: TableDataItem) => dataItem.collector_id === collectorId
-      );
-      const { title, tagColor } = getStatusInfo(collectorTarget, installTarget);
-      return (
-        <Tooltip
-          title={title}
-          key={collectorId}
-          zIndex={99999}
-          className="py-1 pr-1"
-        >
-          <Tag color={tagColor}>
-            {getCollectorName(collectorId, data || [])}
-          </Tag>
-        </Tooltip>
-      );
-    });
-    if (tagList.length) {
-      const items = tagList.slice(DISPLAY_PLUGINS_COUNT).map((tag, index) => ({
-        key: index,
-        label: tag,
-      }));
-      return (
-        <div className="flex items-center justify-center">
-          {tagList.length > DISPLAY_PLUGINS_COUNT ? (
-            <>
-              {tagList.slice(0, DISPLAY_PLUGINS_COUNT)}
-              <Dropdown menu={{ items }} placement="bottom">
-                <EllipsisOutlined className="text-[var(--color-primary)] text-[16px] cursor-pointer" />
-              </Dropdown>
-            </>
-          ) : (
-            tagList
-          )}
-        </div>
-      );
-    }
-    return '--';
-  };
-
-  const getCollectors = async (selectedsystem: string) => {
-    const data =
-      (await getCollectorlist({
-        node_operating_system: selectedsystem,
-      })) || [];
-    const natsexecutorId =
-      selectedsystem === 'linux'
-        ? 'natsexecutor_linux'
-        : 'natsexecutor_windows';
-    const columnItems: any = DISPLAY_PLUGINS.map((type: string) => ({
-      title: type,
-      dataIndex: type,
-      key: type,
-      onCell: () => ({
-        style: {
-          minWidth: 120,
-        },
-      }),
-      align: 'center',
-      render: (_: any, record: TableDataItem) =>
-        renderColunms(record, {
-          type,
-          data,
-        }),
-    }));
+  const getCollectors = async () => {
     setActiveColumns([
       {
-        title: 'Controller',
-        dataIndex: natsexecutorId,
-        key: natsexecutorId,
+        title: t('node-manager.controller.controller'),
+        dataIndex: 'controller',
+        key: 'controller',
         onCell: () => ({
           style: {
             minWidth: 120,
           },
         }),
         render: (_: any, record: TableDataItem) => {
+          // 根据当前行的操作系统动态确定 NATS-Executor ID
+          const natsexecutorId =
+            record.operating_system === 'linux'
+              ? 'natsexecutor_linux'
+              : 'natsexecutor_windows';
           const collectorTarget = (record.status?.collectors || []).find(
             (item: TableDataItem) => item.collector_id === natsexecutorId
           );
@@ -409,8 +288,78 @@ const Node = () => {
           );
         },
       },
-      ...columnItems,
+      {
+        title: t('node-manager.cloudregion.node.collector'),
+        dataIndex: 'collectors',
+        key: 'collectors',
+        onCell: () => ({
+          style: {
+            minWidth: 200,
+          },
+        }),
+        render: (_: any, record: TableDataItem) => {
+          // 获取所有采集器（排除 NATS-Executor）
+          const natsexecutorId =
+            record.operating_system === 'linux'
+              ? 'natsexecutor_linux'
+              : 'natsexecutor_windows';
+
+          const allCollectors = [
+            ...(record.status?.collectors || []),
+            ...(record.status?.collectors_install || []),
+          ].filter(
+            (collector: any) => collector.collector_id !== natsexecutorId
+          );
+          // 按状态分组
+          const statusGroups = allCollectors.reduce(
+            (groups: any, collector: any) => {
+              const status = collector.status.toString();
+              if (!groups[status]) {
+                groups[status] = [];
+              }
+              groups[status].push(collector);
+              return groups;
+            },
+            {}
+          );
+          // 生成状态标签
+          const statusTags = Object.entries(statusGroups).map(
+            ([status, collectors]: [string, any]) => {
+              const statusInfo = statusMap[status] || {
+                tagColor: 'default',
+                text: t('node-manager.cloudregion.node.unknown'),
+              };
+
+              return (
+                <Tag
+                  key={status}
+                  color={statusInfo.tagColor}
+                  className="cursor-pointer mr-1 mb-1"
+                  onClick={() => handleCollectorTagClick(record, allCollectors)}
+                >
+                  {statusInfo.text}: {collectors.length}
+                </Tag>
+              );
+            }
+          );
+          return statusTags.length > 0 ? (
+            <div className="flex">{statusTags}</div>
+          ) : (
+            <span>--</span>
+          );
+        },
+      },
     ]);
+  };
+
+  const handleCollectorTagClick = (
+    record: TableDataItem,
+    collectors: any[]
+  ) => {
+    collectorDetailRef.current?.showModal({
+      collectors,
+      row: record,
+    });
   };
 
   const getStatusInfo = (
@@ -421,8 +370,8 @@ const Node = () => {
     const statusCode = collectorTarget
       ? collectorTarget.status
       : installTarget?.status;
-    const tagColor = statusMap[statusCode]?.tagColor || 'default';
     const color = statusMap[statusCode]?.color || '#b2b5bd';
+    const tagColor = statusMap[statusCode]?.tagColor || color || 'default';
     const status = statusMap[statusCode]?.text || '--';
     const engText = statusMap[statusCode]?.engText || '--';
     const str = message || engText;
@@ -436,7 +385,7 @@ const Node = () => {
   };
 
   const handleCollector = (config = { type: '', taskId: '' }) => {
-    getNodes('refresh');
+    getNodes();
     if (['installCollector', 'uninstallController'].includes(config.type)) {
       setTaskId(config.taskId);
       setTableType(config.type);
@@ -450,58 +399,48 @@ const Node = () => {
       {showNodeTable && (
         <div className={`${nodeStyle.node} w-full h-full`}>
           <div className="overflow-hidden">
-            <div className="flex justify-between w-full overflow-y-hidden mb-4">
-              <Segmented
-                options={OPERATE_SYSTEMS}
-                value={system}
-                onChange={onSystemChange}
+            <div className="flex justify-end mb-4">
+              <SearchCombination
+                defaultValue={searchValue}
+                onChange={handleSearchChange}
+                className="mr-[8px]"
               />
-              <div>
-                <Search
-                  className="w-64 mr-[8px]"
-                  placeholder={t('common.search')}
-                  enterButton
-                  value={searchText}
-                  onChange={(e) => setSearchText(e.target.value)}
-                  onSearch={onSearch}
-                />
-                <PermissionWrapper requiredPermissions={['InstallController']}>
-                  <Button
-                    type="primary"
-                    className="mr-[8px]"
-                    onClick={handleInstallController}
-                  >
-                    {t('node-manager.cloudregion.node.installController')}
-                  </Button>
-                </PermissionWrapper>
-                <Dropdown
+              <PermissionWrapper requiredPermissions={['InstallController']}>
+                <Button
+                  type="primary"
                   className="mr-[8px]"
-                  overlayClassName="customMenu"
-                  menu={SidecarmenuProps}
-                  disabled={enableOperateSideCar}
+                  onClick={handleInstallController}
                 >
-                  <Button>
-                    <Space>
-                      {t('node-manager.cloudregion.node.sidecar')}
-                      <DownOutlined />
-                    </Space>
-                  </Button>
-                </Dropdown>
-                <Dropdown
-                  className="mr-[8px]"
-                  overlayClassName="customMenu"
-                  menu={CollectormenuProps}
-                  disabled={enableOperateCollecter}
-                >
-                  <Button>
-                    <Space>
-                      {t('node-manager.cloudregion.node.collector')}
-                      <DownOutlined />
-                    </Space>
-                  </Button>
-                </Dropdown>
-                <ReloadOutlined onClick={() => getNodes('refresh')} />
-              </div>
+                  {t('node-manager.cloudregion.node.installController')}
+                </Button>
+              </PermissionWrapper>
+              <Dropdown
+                className="mr-[8px]"
+                overlayClassName="customMenu"
+                menu={SidecarmenuProps}
+                disabled={enableOperateCollecter}
+              >
+                <Button>
+                  <Space>
+                    {t('node-manager.cloudregion.node.sidecar')}
+                    <DownOutlined />
+                  </Space>
+                </Button>
+              </Dropdown>
+              <Dropdown
+                className="mr-[8px]"
+                overlayClassName="customMenu"
+                menu={CollectormenuProps}
+                disabled={enableOperateCollecter}
+              >
+                <Button>
+                  <Space>
+                    {t('node-manager.cloudregion.node.collector')}
+                    <DownOutlined />
+                  </Space>
+                </Button>
+              </Dropdown>
+              <ReloadOutlined onClick={() => getNodes()} />
             </div>
             <CustomTable
               className={nodeStyle.table}
@@ -519,16 +458,28 @@ const Node = () => {
             />
             <ControllerUninstall
               ref={controllerRef}
-              config={{ os: system, work_node: name }}
+              config={{
+                os: getFirstSelectedNodeOS(),
+                work_node: name,
+              }}
               onSuccess={(config) => {
                 handleCollector(config);
               }}
+            />
+            <CollectorDetailDrawer
+              ref={collectorDetailRef}
+              onSuccess={() => getNodes()}
             />
           </div>
         </div>
       )}
       {showInstallController && (
-        <ControllerInstall config={{ os: system }} cancel={cancelInstall} />
+        <ControllerInstall
+          config={{
+            os: getFirstSelectedNodeOS(),
+          }}
+          cancel={cancelInstall}
+        />
       )}
       {showInstallCollectorTable && (
         <CollectorInstallTable

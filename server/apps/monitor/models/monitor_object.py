@@ -4,12 +4,33 @@ from apps.core.models.maintainer_info import MaintainerInfo
 from apps.core.models.time_info import TimeInfo
 
 
+class MonitorObjectType(TimeInfo, MaintainerInfo):
+    """监控对象分类"""
+    id = models.CharField(primary_key=True, max_length=100, verbose_name='分类ID')
+    description = models.TextField(blank=True, verbose_name='分类描述')
+    order = models.IntegerField(default=999, db_index=True, verbose_name='排序')
+
+    class Meta:
+        verbose_name = '监控对象分类'
+        verbose_name_plural = '监控对象分类'
+        ordering = ['order', 'id']
+
+
 class MonitorObject(TimeInfo, MaintainerInfo):
     LEVEL_CHOICES = [('base', 'Base'), ('derivative', 'Derivative')]
 
     name = models.CharField(unique=True, max_length=100, verbose_name='监控对象')
     icon = models.CharField(max_length=100, default="", verbose_name='监控对象图标')
-    type = models.CharField(max_length=50, verbose_name='监控对象类型')
+    type = models.ForeignKey(
+        MonitorObjectType,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        db_column='type',
+        related_name='monitor_objects',
+        verbose_name='监控对象分类'
+    )
+    order = models.IntegerField(default=999, db_index=True, verbose_name='监控对象排序')
     level = models.CharField(default="base", max_length=50, verbose_name='监控对象级别')
     parent = models.ForeignKey('self', on_delete=models.CASCADE, null=True, blank=True, related_name='children', verbose_name='父级监控对象')
     description = models.TextField(blank=True, verbose_name='监控对象描述')
@@ -20,6 +41,7 @@ class MonitorObject(TimeInfo, MaintainerInfo):
     class Meta:
         verbose_name = '监控对象'
         verbose_name_plural = '监控对象'
+        ordering = ['type__order', 'order', 'id']
 
 
 class MonitorInstance(TimeInfo, MaintainerInfo):

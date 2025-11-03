@@ -1,5 +1,4 @@
 import json
-
 from django_celery_beat.models import CrontabSchedule, IntervalSchedule, PeriodicTask
 from apps.core.logger import opspilot_logger as logger
 

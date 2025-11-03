@@ -51,10 +51,34 @@
       "rerank_model": "Reranking Model",
       "ocr_model": "OCR Model"
     },
+    "administrator": {
+      "title": "Administrator Management",
+      "desc": "Manage system super administrators, view all admin users, and revoke admin privileges",
+      "adminList": "Administrator List",
+      "adminListDesc": "Display all users with super administrator privileges",
+      "status": "Status",
+      "addAdmin": "Add Admin",
+      "selectUsers": "Select Users",
+      "selectUsersPlaceholder": "Please select users to set as administrators",
+      "pleaseSelectUser": "Please select users to set as administrators",
+      "addSuccess": "Admin privileges set successfully",
+      "addFailed": "Failed to set admin privileges",
+      "addAdminTip": "Selected users will be set as super administrators with all system permissions",
+      "revokeAdmin": "Revoke Admin",
+      "revokeConfirm": "Confirm Revoke Admin Privileges",
+      "revokeConfirmContent": "The user will lose all administrative permissions.",
+      "revokeSuccess": "Admin privileges revoked successfully",
+      "revokeFailed": "Failed to revoke admin privileges"
+    },
     "user": {
       "title": "Organization Structure",
       "desc": "Display all information about the organization structure and users. You can maintain organizations at all levels, perform CRUD operations, set user information, and assign roles and groups.",
       "search": "Search",
+      "selectAllSubGroups": "All Sub-groups",
+      "groupPermission": "Group Permission Grant",
+      "selectedGroups": "Selected Groups",
+      "includeAllSubOrganizations": "Include All Sub-organizations",
+      "organizationRoles": "Organization Roles",
       "table": {
         "username": "USERNAME",
         "lastName": "NAME",
@@ -71,6 +95,7 @@
         "email": "Email",
         "group": "Group",
         "role": "Role",
+        "rolePermissionTip": "User's role permissions are a combination of personal roles and organization roles",
         "zoneinfo": "zoneInfo",
         "locale": "Locale",
         "administrator": "Administrator",
@@ -79,7 +104,11 @@
         "confirmPassword": "Confirm Password",
         "passwordMismatch": "Passwords do not match",
         "temporary": "Temporary",
-        "tempTooltip": "If enabled, the user must change the password on next login"
+        "tempTooltip": "If enabled, the user must change the password on next login",
+        "userType": "User Type",
+        "superuser": "Super Administrator",
+        "normalUser": "Normal User",
+        "superuserTip": "Super administrator has all system permissions, including managing organizations, users, and accessing all application data"
       },
       "admin": {
         "title": "The administrator has the following permissions:",
@@ -99,7 +128,12 @@
       "addSubGroups": "Add Sub-Groups",
       "rename": "Rename",
       "renameSuccess": "Rename Success",
+      "renameFailed": "Rename Failed",
       "deleteWithChildrenWarning": "Deleting this group will also delete all its sub-groups and users. Are you sure you want to delete?",
+      "editGroup": "Edit Organization",
+      "organizationRoles": "Organization Roles",
+      "organizationRolesTooltip": "Configure unified role permissions for all users under this organization level",
+      "selectOrganizationRoles": "Please select organization roles",
       "form": {
         "name": "Group Name"
       }
@@ -108,14 +142,20 @@
       "title": "Role",
       "users": "Users",
       "permissions": "Permissions",
+      "organizations": "Organizations",
+      "organizationName": "Organization Name",
       "name": "Name",
       "addRole": "Add Role",
       "addUser": "Add User",
+      "addOrganization": "Add Organizations",
       "updateRole": "Update Role",
+      "organizationTip": "Note: When selecting organization nodes, only the current level is effective. Multiple organizations can be selected for batch authorization.",
       "permission": {
         "menu": "MENU",
         "operation": "OPERATION"
-      }
+      },
+      "personalRole": "Personal Role",
+      "organizationRole": "Organization Role"
     },
     "channel": {
       "email": "Email",

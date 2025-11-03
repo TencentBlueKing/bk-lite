@@ -57,7 +57,7 @@ export default function ProfilePage() {
     <div className="flex flex-col h-full bg-[var(--color-background-body)]">
       {/* 顶部导航栏 */}
       <div className="flex items-center justify-center px-4 py-3 bg-[var(--color-bg)]">
-        <h1 className="text-base font-medium text-[var(--color-text-1)]">
+        <h1 className="text-lg font-medium text-[var(--color-text-1)]">
           {t('navigation.profile')}
         </h1>
       </div>
@@ -67,16 +67,16 @@ export default function ProfilePage() {
         <div className="flex items-center">
           <Avatar
             src="/avatars/default.png"
-            style={{ '--size': '52px' }}
+            style={{ '--size': '56px' }}
             className="mr-3"
           />
           <div className="flex-1">
-            <h2 className="text-base font-semibold text-[var(--color-text-1)] mb-1">
+            <h2 className="text-lg font-semibold text-[var(--color-text-1)] mb-1">
               {userInfo?.display_name || userInfo?.username || '用户'}
             </h2>
             {userInfo?.domain && (
               <div className="inline-flex items-center px-2 py-0.5 bg-blue-500 rounded">
-                <span className="text-white text-[11px] font-medium">
+                <span className="text-white text-xs font-medium">
                   {userInfo.domain}
                 </span>
               </div>
@@ -96,14 +96,14 @@ export default function ProfilePage() {
                 prefix={
                   <div className="flex items-center justify-center w-7 h-7 bg-[var(--color-primary-bg-active)] rounded-lg mr-2.5">
                     {React.cloneElement(item.icon, {
-                      className: 'text-[var(--color-primary)] text-base',
+                      className: 'text-[var(--color-primary)] text-lg',
                     })}
                   </div>
                 }
                 onClick={item.onClick}
                 clickable
               >
-                <span className="text-[var(--color-text-1)] text-sm font-medium">
+                <span className="text-[var(--color-text-1)] text-base font-medium">
                   {item.title}
                 </span>
               </List.Item>
@@ -118,7 +118,7 @@ export default function ProfilePage() {
             <List.Item
               prefix={
                 <div className="flex items-center justify-center w-7 h-7 bg-[var(--color-primary-bg-active)] rounded-lg mr-2.5">
-                  <span className="text-[var(--color-primary)] text-sm">
+                  <span className="text-[var(--color-primary)] text-base">
                     🌙
                   </span>
                 </div>
@@ -134,7 +134,7 @@ export default function ProfilePage() {
                 />
               }
             >
-              <span className="text-[var(--color-text-1)] text-sm font-medium">
+              <span className="text-[var(--color-text-1)] text-base font-medium">
                 {t('common.darkMode')}
               </span>
             </List.Item>
@@ -149,7 +149,7 @@ export default function ProfilePage() {
           >
             <div className="py-2.5 text-center">
               <span
-                className={`text-sm font-medium ${
+                className={`text-base font-medium ${
                   authLoading ? 'text-[var(--color-text-3)]' : 'text-red-500'
                 }`}
               >

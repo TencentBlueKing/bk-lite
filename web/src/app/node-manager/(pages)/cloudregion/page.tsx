@@ -5,7 +5,7 @@ import { Menu, Button, Modal, message } from 'antd';
 import cloudRegionStyle from './index.module.scss';
 import { useRouter } from 'next/navigation';
 import { useTranslation } from '@/utils/i18n';
-import useApiCloudRegion from '@/app/node-manager/api/cloudRegion';
+import useNodeManagerApi from '@/app/node-manager/api';
 import EntityList from '@/components/entity-list';
 import PermissionWrapper from '@/components/permission';
 import type {
@@ -14,13 +14,13 @@ import type {
 } from '@/app/node-manager/types/cloudregion';
 import CloudRegionModal from './cloudregionModal';
 import { ModalRef } from '@/app/node-manager/types';
-import { useMenuItem } from '@/app/node-manager/constants/cloudregion';
+import { useMenuItem } from '@/app/node-manager/hooks/node';
 const { confirm } = Modal;
 
 const CloudRegion = () => {
   const { t } = useTranslation();
   const { isLoading } = useApiClient();
-  const { getCloudList, deleteCloudRegion } = useApiCloudRegion();
+  const { getCloudList, deleteCloudRegion } = useNodeManagerApi();
   const router = useRouter();
   const modalRef = useRef<ModalRef>(null);
   const divRef = useRef(null);
@@ -38,7 +38,7 @@ const CloudRegion = () => {
         item.icon = 'yunquyu';
         return item;
       });
-      setCloudItems(regionData);
+      setCloudItems(regionData.sort((a: any, b: any) => a.id - b.id));
     } finally {
       setLoading(false);
     }
@@ -84,9 +84,9 @@ const CloudRegion = () => {
           } finally {
             return resolve(true);
           }
-        })
-      }
-    })
+        });
+      },
+    });
   };
 
   const menuActions = useCallback(
@@ -108,13 +108,8 @@ const CloudRegion = () => {
               </Button>
             </PermissionWrapper>
           </Menu.Item>
-          {data?.name !== "default" && (
-            <Menu.Item
-              className="!p-0"
-              onClick={() =>
-                handleDelete(data.id)
-              }
-            >
+          {data?.name !== 'default' && (
+            <Menu.Item className="!p-0" onClick={() => handleDelete(data.id)}>
               <PermissionWrapper
                 requiredPermissions={['Delete']}
                 className="!block"

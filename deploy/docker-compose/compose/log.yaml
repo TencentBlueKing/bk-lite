@@ -11,10 +11,11 @@ services:
     environment:
       NATS_ADMIN_USERNAME: ${NATS_ADMIN_USERNAME}
       NATS_ADMIN_PASSWORD: ${NATS_ADMIN_PASSWORD}
-      VECTOR_NATS_SERVERS: nats://nats:4222
+      VECTOR_NATS_SERVERS: tls://nats:4222
       VECTOR_VICTORIA_METRICS_URL: http://victoria-metrics:8428
     volumes:
       - ../conf/vector/vector.yaml:/etc/vector/vector.yaml
+      - ../conf/certs:/etc/certs:ro
     networks:
       - prod
     restart: always
