@@ -119,8 +119,21 @@ const Node = () => {
     );
     const operatingSystems = selectedNodes.map((node) => node.operating_system);
     const uniqueOS = [...new Set(operatingSystems)];
-    // 如果操作系统不一致，则禁用按钮
+    // 采集器：只检查操作系统是否一致
     return uniqueOS.length !== 1;
+  }, [selectedRowKeys, nodeList]);
+
+  const enableOperateController = useMemo(() => {
+    if (!selectedRowKeys.length) return true;
+    const selectedNodes = (nodeList || []).filter((item) =>
+      selectedRowKeys.includes(item.key)
+    );
+    const operatingSystems = selectedNodes.map((node) => node.operating_system);
+    const uniqueOS = [...new Set(operatingSystems)];
+    const installMethods = selectedNodes.map((node) => node.install_method);
+    const uniqueInstallMethods = [...new Set(installMethods)];
+    // 控制器：检查操作系统和安装方式是否都一致
+    return uniqueOS.length !== 1 || uniqueInstallMethods.length !== 1;
   }, [selectedRowKeys, nodeList]);
 
   const getFirstSelectedNodeOS = useCallback(() => {
@@ -231,7 +244,7 @@ const Node = () => {
     setLoading(true);
     try {
       const res = await getNodeList(params || getParams());
-      const data = res.map((item: TableDataItem) => ({
+      const data = (res || []).map((item: TableDataItem) => ({
         ...item,
         key: item.id,
       }));
@@ -439,7 +452,7 @@ const Node = () => {
                 className="mr-[8px]"
                 overlayClassName="customMenu"
                 menu={SidecarmenuProps}
-                disabled={enableOperateCollecter}
+                disabled={enableOperateController}
               >
                 <Button>
                   <Space>

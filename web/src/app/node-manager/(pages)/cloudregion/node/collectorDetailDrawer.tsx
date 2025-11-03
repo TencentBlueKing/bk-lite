@@ -3,9 +3,10 @@
 import React, { useState, forwardRef, useImperativeHandle } from 'react';
 import { Button, Tag, Empty } from 'antd';
 import { RightOutlined, GlobalOutlined } from '@ant-design/icons';
-import OperateDrawer from '@/app/log/components/operate-drawer';
+import OperateDrawer from '@/app/node-manager/components/operate-drawer';
 import { useTranslation } from '@/utils/i18n';
 import { useTelegrafMap } from '@/app/node-manager/hooks/node';
+import { useLocalizedTime } from '@/hooks/useLocalizedTime';
 import { STATUS_CODE_PRIORITY } from '@/app/node-manager/constants/cloudregion';
 import {
   ModalSuccess,
@@ -15,6 +16,7 @@ import {
 
 const CollectorDetailDrawer = forwardRef<ModalRef, ModalSuccess>(({}, ref) => {
   const { t } = useTranslation();
+  const { convertToLocalizedTime } = useLocalizedTime();
   const statusMap = useTelegrafMap();
   const [visible, setVisible] = useState<boolean>(false);
   const [selectedCollector, setSelectedCollector] =
@@ -86,6 +88,19 @@ const CollectorDetailDrawer = forwardRef<ModalRef, ModalSuccess>(({}, ref) => {
           <Tag icon={<GlobalOutlined />} color="blue" className="text-sm">
             {form?.ip || '--'}
           </Tag>
+        }
+        headerExtra={
+          <div
+            style={{
+              color: 'var(--color-text-3)',
+              fontSize: '12px',
+            }}
+          >
+            {t('node-manager.cloudregion.node.lastReportTime')}：
+            {form.last_report_time
+              ? convertToLocalizedTime(form.last_report_time)
+              : '--'}
+          </div>
         }
         open={visible}
         width={600}

@@ -112,7 +112,8 @@
         "active": "活跃",
         "installMethod": "安装方式",
         "auto": "自动",
-        "manual": "手动"
+        "manual": "手动",
+        "lastReportTime": "最后上报时间"
       },
       "editform": {
         "Introduction": "简介",
