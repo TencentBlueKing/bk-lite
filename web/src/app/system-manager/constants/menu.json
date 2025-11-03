@@ -3,7 +3,7 @@
     {
       "title": "组织架构",
       "icon": "yonghu1",
-      "name": "user_group",
+      "name": "structure",
       "url": "/system-manager/user",
       "children": [
         {
@@ -15,7 +15,7 @@
         {
           "title": "超级管理员",
           "icon": "yonghu1",
-          "name": "user_group",
+          "name": "super_admin",
           "url": "/system-manager/user/adminstrator"
         }
       ]

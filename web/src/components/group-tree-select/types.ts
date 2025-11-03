@@ -29,12 +29,12 @@ export interface GroupTreeSelectProps {
   /**
    * 当前选中的值
    */
-  value?: number[];
+  value?: number | number[];
 
   /**
    * 值变化回调
    */
-  onChange?: (value: number[]) => void;
+  onChange?: (value: number | number[] | undefined) => void;
 
   /**
    * 占位文本

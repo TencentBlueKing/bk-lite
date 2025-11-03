@@ -66,9 +66,9 @@ const AlertDetail = forwardRef<ModalRef, ModalConfig>(
       showModal: ({ title, form }) => {
         setGroupVisible(true);
         setTitle(title);
-        getMetrics(form, objectId);
-        if (form.id) {
-          getEventData(form.id);
+        getMetrics(form, objectId as React.Key);
+        if (form?.id) {
+          getEventData(form?.id);
         }
       },
     }));

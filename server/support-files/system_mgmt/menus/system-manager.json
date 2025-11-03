@@ -26,6 +26,15 @@
             "Edit Group",
             "Delete Group"
           ]
+        },
+        {
+          "id": "super_admin",
+          "name": "Super Administrator",
+          "operation": [
+            "View",
+            "Add",
+            "Delete"
+          ]
         }
       ]
     },
@@ -52,6 +61,8 @@
             "Add user",
             "Remove user",
             "Edit Permission",
+            "Add group",
+            "Remove group",
             "Delete"
           ]
         },
