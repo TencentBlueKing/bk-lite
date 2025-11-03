@@ -66,6 +66,12 @@ export interface MultiCascadePanelProps {
    * 搜索占位符
    */
   searchPlaceholder?: string;
+
+  /**
+   * 是否单选模式
+   * @default false
+   */
+  single?: boolean;
 }
 
 interface ColumnItem {
@@ -84,6 +90,7 @@ const MultiCascadePanel: React.FC<MultiCascadePanelProps> = ({
   disabled = false,
   searchable = false,
   searchPlaceholder = '搜索...',
+  single = false,
 }) => {
   const [selectedValue, setSelectedValue] = useState<number[]>(value);
   const [activeNode, setActiveNode] = useState<number | null>(null);
@@ -95,6 +102,10 @@ const MultiCascadePanel: React.FC<MultiCascadePanelProps> = ({
   useEffect(() => {
     setSelectedValue(value);
   }, [value]);
+
+  useEffect(() => {
+    setColumns([{ level: 0, nodes: data }]);
+  }, [data]);
 
   const findNode = useCallback((nodes: CascadeNode[], targetValue: number): CascadeNode | null => {
     for (const node of nodes) {
@@ -126,31 +137,15 @@ const MultiCascadePanel: React.FC<MultiCascadePanelProps> = ({
     return values;
   }, []);
 
-  // 处理节点点击（展开下一列）
-  const handleNodeClick = useCallback((node: CascadeNode, level: number) => {
-    if (disabled) return;
-
-    setActiveNode(node.value);
-
-    if (node.children && node.children.length > 0) {
-      const newColumns = columns.slice(0, level + 1);
-      newColumns.push({
-        level: level + 1,
-        nodes: node.children,
-        parentValue: node.value
-      });
-      setColumns(newColumns);
-    } else {
-      setColumns(columns.slice(0, level + 1));
-    }
-  }, [columns, disabled]);
-
   const handleCheckboxChange = useCallback((node: CascadeNode, checked: boolean) => {
     if (disabled) return;
 
     let newValue: number[] = [...selectedValue];
 
-    if (cascade) {
+    if (single) {
+      // 单选模式：直接替换为当前节点
+      newValue = [node.value];
+    } else if (cascade) {
       const childrenValues = getAllChildrenValues(node);
 
       if (checked) {
@@ -170,7 +165,52 @@ const MultiCascadePanel: React.FC<MultiCascadePanelProps> = ({
 
     setSelectedValue(newValue);
     onChange?.(newValue);
-  }, [selectedValue, cascade, disabled, onChange, getAllChildrenValues]);
+  }, [selectedValue, cascade, disabled, onChange, getAllChildrenValues, single]);
+
+  // 处理节点鼠标悬停（展开下一列）
+  const handleNodeHover = useCallback((node: CascadeNode, level: number) => {
+    if (disabled) return;
+
+    setActiveNode(node.value);
+
+    if (node.children && node.children.length > 0) {
+      const newColumns = columns.slice(0, level + 1);
+      newColumns.push({
+        level: level + 1,
+        nodes: node.children,
+        parentValue: node.value
+      });
+      setColumns(newColumns);
+    } else {
+      setColumns(columns.slice(0, level + 1));
+    }
+  }, [columns, disabled]);
+
+  // 处理节点点击（用于多选模式的展开）
+  const handleNodeClick = useCallback((node: CascadeNode, level: number) => {
+    if (disabled) return;
+
+    // 单选模式下，点击直接选择
+    if (single && !node.disabled) {
+      handleCheckboxChange(node, true);
+      return;
+    }
+
+    // 多选模式下，点击展开子级
+    setActiveNode(node.value);
+
+    if (node.children && node.children.length > 0) {
+      const newColumns = columns.slice(0, level + 1);
+      newColumns.push({
+        level: level + 1,
+        nodes: node.children,
+        parentValue: node.value
+      });
+      setColumns(newColumns);
+    } else {
+      setColumns(columns.slice(0, level + 1));
+    }
+  }, [columns, disabled, single, handleCheckboxChange]);
 
   const isNodeChecked = useCallback((node: CascadeNode): boolean => {
     return selectedValue.includes(node.value);
@@ -224,21 +264,25 @@ const MultiCascadePanel: React.FC<MultiCascadePanelProps> = ({
           transition-colors duration-200
           hover:bg-[var(--color-fill-2)]
           ${isActive ? 'bg-[var(--color-fill-2)]' : ''}
+          ${isChecked && single ? 'bg-[var(--color-primary-light-1)]' : ''}
           ${node.disabled ? 'cursor-not-allowed opacity-50' : ''}
         `}
         onClick={() => handleNodeClick(node, level)}
+        onMouseEnter={() => single ? handleNodeHover(node, level) : undefined}
       >
         <div className="flex items-center gap-2 flex-1 min-w-0">
-          <Checkbox
-            checked={isChecked}
-            indeterminate={isIndeterminate}
-            disabled={disabled || node.disabled}
-            onChange={(e: CheckboxChangeEvent) => {
-              e.stopPropagation();
-              handleCheckboxChange(node, e.target.checked);
-            }}
-            onClick={(e) => e.stopPropagation()}
-          />
+          {!single && (
+            <Checkbox
+              checked={isChecked}
+              indeterminate={isIndeterminate}
+              disabled={disabled || node.disabled}
+              onChange={(e: CheckboxChangeEvent) => {
+                e.stopPropagation();
+                handleCheckboxChange(node, e.target.checked);
+              }}
+              onClick={(e) => e.stopPropagation()}
+            />
+          )}
           <span className="truncate flex-1">{node.label}</span>
         </div>
         {hasChildren && (
@@ -252,7 +296,9 @@ const MultiCascadePanel: React.FC<MultiCascadePanelProps> = ({
     activeNode,
     disabled,
     cascade,
+    single,
     handleNodeClick,
+    handleNodeHover,
     handleCheckboxChange
   ]);
 

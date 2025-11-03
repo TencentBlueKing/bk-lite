@@ -54,7 +54,7 @@ const useEventApi = () => {
     return await patch(`/monitor/api/monitor_policy/${id}/`, data);
   };
 
-  const deleteMonitorPolicy = async (id: number | string) => {
+  const deleteMonitorPolicy = async (id: React.Key) => {
     return await del(`/monitor/api/monitor_policy/${id}/`);
   };
 

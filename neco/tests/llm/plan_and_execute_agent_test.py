@@ -10,14 +10,13 @@ NEW_API_URL=os.getenv('TEST_LLM_API_URL')
 TEST_LLM_MODEL=os.getenv('TEST_LLM_MODEL')
 
 TEST_PROMPT = [
-    '分析https://github.com/TencentBlueKing/bk-lite仓库今天的提交情况',
+    # '分析https://github.com/TencentBlueKing/bk-lite仓库今天的提交情况',
     '现在几点'
 ]
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize('prompt', TEST_PROMPT)
 async def test_plan_and_execute_agent(prompt):
-    logger.info(f"测试任务: {prompt}")
     request = PlanAndExecuteAgentRequest(
         openai_api_base=NEW_API_URL,
         openai_api_key=NEW_API_KEY,

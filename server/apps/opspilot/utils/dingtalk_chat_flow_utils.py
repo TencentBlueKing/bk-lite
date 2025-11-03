@@ -29,7 +29,6 @@ class DingTalkChatFlowUtils(object):
             tuple: (bot_chat_flow, error_response)
                    如果验证失败，error_response不为None
         """
-
         # 验证Bot对象
         bot_obj = Bot.objects.filter(id=self.bot_id, online=True).first()
         if not bot_obj:
@@ -103,7 +102,7 @@ class DingTalkChatFlowUtils(object):
         Returns:
             str: ChatFlow执行结果文本
         """
-        logger.info(f"钉钉执行ChatFlow流程开始，Bot {self.bot_id}, Node {node_id}, 发送者: {sender_id}, 消息: {message[:50]}...")
+        logger.info(f"钉钉执行ChatFlow流程开始，Bot {self.bot_id}, Node {node_id}")
 
         # 创建ChatFlow引擎
         engine = create_chat_flow_engine(bot_chat_flow, node_id)
@@ -126,7 +125,7 @@ class DingTalkChatFlowUtils(object):
         else:
             reply_text = str(result) if result else "处理完成"
 
-        logger.info(f"钉钉ChatFlow流程执行完成，Bot {self.bot_id}，结果长度: {len(reply_text)}")
+        logger.info(f"钉钉ChatFlow流程执行完成，Bot {self.bot_id}")
 
         return reply_text
 
@@ -193,7 +192,7 @@ class DingTalkChatFlowUtils(object):
         try:
             # 解析请求数据
             data = json.loads(request.body)
-            logger.info(f"钉钉收到消息，Bot {self.bot_id}，数据: {data}")
+            logger.info(f"钉钉收到消息，Bot {self.bot_id}")
 
             # 验证签名（如果有）
             timestamp = request.headers.get("timestamp")
@@ -213,7 +212,7 @@ class DingTalkChatFlowUtils(object):
             sender_id = data.get("senderStaffId", "") or data.get("senderId", "")
 
             if not text_content:
-                logger.warning(f"钉钉收到空消息，Bot {self.bot_id}，发送者: {sender_id}")
+                logger.warning(f"钉钉收到空消息，Bot {self.bot_id}")
                 return JsonResponse({"success": True})
 
             # 执行ChatFlow
@@ -221,7 +220,7 @@ class DingTalkChatFlowUtils(object):
             reply_text = self.execute_chatflow_with_message(bot_chat_flow, node_id, text_content, sender_id)
 
             # 发送回复消息（如果配置了webhook）
-            webhook_url = dingtalk_config.get("webhook_url")
+            webhook_url = data.get("sessionWebhook")
             if webhook_url and reply_text:
                 # 发送Markdown格式消息
                 markdown_content = {"title": "机器人回复", "text": reply_text}
@@ -244,7 +243,7 @@ class DingTalkStreamEventHandler(dingtalk_stream.EventHandler):
 
     async def process(self, event):
         """处理钉钉Stream事件"""
-        logger.info(f"钉钉Stream收到事件，Bot {self.bot_id}，事件类型: {event.headers.event_type}")
+        logger.info(f"钉钉Stream收到事件，Bot {self.bot_id}")
         return dingtalk_stream.AckMessage.STATUS_OK, "OK"
 
 
@@ -270,7 +269,7 @@ class DingTalkStreamCallbackHandler(dingtalk_stream.CallbackHandler):
         try:
             # 获取消息内容
             incoming_message = callback.data
-            logger.info(f"钉钉Stream收到消息，Bot {self.bot_id}，消息: {incoming_message}")
+            logger.info(f"钉钉Stream收到消息，Bot {self.bot_id}")
 
             msg_type = incoming_message.get("msgtype")
             if msg_type != "text":
@@ -281,14 +280,14 @@ class DingTalkStreamCallbackHandler(dingtalk_stream.CallbackHandler):
             sender_id = incoming_message.get("senderStaffId", "") or incoming_message.get("senderId", "")
 
             if not text_content:
-                logger.warning(f"钉钉Stream收到空消息，Bot {self.bot_id}，发送者: {sender_id}")
+                logger.warning(f"钉钉Stream收到空消息，Bot {self.bot_id}")
                 return dingtalk_stream.AckMessage.STATUS_OK, "OK"
 
             # 执行ChatFlow
             node_id = self.dingtalk_config["node_id"]
             reply_text = self.utils.execute_chatflow_with_message(self.bot_chat_flow, node_id, text_content, sender_id)
 
-            logger.info(f"钉钉Stream处理完成，Bot {self.bot_id}，回复长度: {len(reply_text)}")
+            logger.info(f"钉钉Stream处理完成，Bot {self.bot_id}")
 
             # 返回回复消息
             return dingtalk_stream.AckMessage.STATUS_OK, {"msgtype": "text", "text": {"content": reply_text}}
@@ -341,7 +340,7 @@ def start_dingtalk_stream_client(bot_id, bot_chat_flow, dingtalk_config):
         thread = threading.Thread(target=start_client, daemon=True)
         thread.start()
 
-        logger.info(f"钉钉Stream客户端已启动，Bot {bot_id}，线程ID: {thread.ident}")
+        logger.info(f"钉钉Stream客户端已启动，Bot {bot_id}")
         return True
 
     except Exception as e:

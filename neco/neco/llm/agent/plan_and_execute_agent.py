@@ -1,4 +1,3 @@
-import time
 from typing import TypedDict, Annotated, List, Optional
 
 from langchain_core.messages import BaseMessage, AIMessage, HumanMessage
@@ -9,7 +8,7 @@ from neco.core.utils.template_loader import TemplateLoader
 from pydantic import BaseModel, Field
 from loguru import logger
 
-from neco.llm.chain.entity import BasicLLMRequest, BasicLLMResponse, ToolsServer
+from neco.llm.chain.entity import BasicLLMRequest, BasicLLMResponse
 from neco.llm.chain.graph import BasicGraph
 from neco.llm.chain.node import ToolsNodes
 
@@ -30,8 +29,6 @@ class PlanAndExecuteAgentState(TypedDict):
     
     # 执行相关
     execution_prompt: Optional[str]  # 当前步骤的执行提示
-    execution_count: int              # 执行计数器
-    step_history: List[str]           # 步骤执行历史，用于检测循环
     
     # 最终结果
     final_response: Optional[str]
@@ -73,20 +70,24 @@ class PlanAndExecuteAgentNode(ToolsNodes):
         plan_steps = plan_response.plan.steps
         reasoning = plan_response.reasoning
         
-        # 改进规划显示，让结构更清晰，显示详细计划
-        plan_display = f"🎯 **执行计划已制定** ({len(plan_steps)} 个步骤)\n\n"
-        plan_display += f"📝 **计划推理**: {reasoning}\n\n"
-        plan_display += "📋 **执行步骤**:\n\n"
-        for i, step in enumerate(plan_steps, 1):
-            plan_display += f"   **{i}.** {step}\n\n"
-        plan_display += f"\n\n🚀 开始执行计划...\n\n"
+        # 格式化计划显示
+        step_list = "\n".join(f"   **{i}.** {step}" for i, step in enumerate(plan_steps, 1))
+        plan_display = f"""🎯 **执行计划已制定** ({len(plan_steps)} 个步骤)
+
+📝 **计划推理**: {reasoning}
+
+📋 **执行步骤**:
+
+{step_list}
+
+🚀 开始执行计划...
+
+"""
         
         return {
             "messages": [AIMessage(content=plan_display)],
             "original_plan": plan_steps,
             "current_plan": plan_steps,
-            "execution_count": 0,
-            "step_history": [],
             "final_response": None
         }
 
@@ -98,26 +99,16 @@ class PlanAndExecuteAgentNode(ToolsNodes):
         
         current_step = current_plan[0]  # 取第一个待执行步骤
         
-        # 记录即将执行的步骤
-        step_history = state.get("step_history", [])
-        execution_count = state.get("execution_count", 0)
-
         execution_prompt = TemplateLoader.render_template("prompts/plan_and_execute_agent/execute_node_prompt",{
                 "current_step": current_step,
                 "user_message": config["configurable"]["graph_request"].user_message
             }
         )
         
-        # 更新执行计数和步骤历史
-        new_step_history = step_history + [current_step]
-        new_execution_count = execution_count + 1
-        
         # 传递执行提示给React节点使用，不添加额外的显示消息
         return {
             **state,
-            "execution_prompt": execution_prompt,
-            "step_history": new_step_history,
-            "execution_count": new_execution_count
+            "execution_prompt": execution_prompt
         }
 
     async def replanner_node(self, state: PlanAndExecuteAgentState, config: RunnableConfig):
@@ -125,8 +116,6 @@ class PlanAndExecuteAgentNode(ToolsNodes):
         
         current_plan = state.get("current_plan", [])
         original_plan = state.get("original_plan", [])
-        step_history = state.get("step_history", [])
-        execution_count = state.get("execution_count", 0)
         
         if not current_plan:
             # 计划为空，只更新current_plan，不传递任何消息
@@ -135,51 +124,16 @@ class PlanAndExecuteAgentNode(ToolsNodes):
                 "current_plan": []
             }
         
-        # 死循环检测：检查是否重复执行相同步骤
-        current_step = current_plan[0]
-        step_occurrences = step_history.count(current_step)
-        
-        # 如果同一步骤执行超过2次，强制完成任务
-        if step_occurrences >= 2:
-            logger.warning(f"[replanner_node] 检测到循环: 步骤 '{current_step}' 已执行 {step_occurrences} 次，强制完成任务")
-            
-            loop_warning = f"\n\n⚠️ **检测到重复执行模式**\n\n"
-            loop_warning += f"步骤 \"{current_step}\" 已经执行了 {step_occurrences} 次，为避免无限循环，任务将被标记为完成。\n\n"
-            loop_warning += "📝 **建议**: 如需继续执行，请重新定义具体的、可执行的步骤。\n\n"
-            
-            return {
-                "messages": [AIMessage(content=loop_warning)],
-                "current_plan": []
-            }
-        
-        # 如果总执行次数超过原计划的2倍，也强制完成
-        max_iterations = len(original_plan) * 2 if original_plan else 20
-        if execution_count >= max_iterations:
-            logger.warning(f"[replanner_node] 执行次数 ({execution_count}) 超过限制 ({max_iterations})，强制完成任务")
-            
-            limit_warning = f"\n\n⚠️ **执行次数超限**\n\n"
-            limit_warning += f"已执行 {execution_count} 个步骤，超过预期的 {max_iterations} 步，任务将被标记为完成。\n\n"
-            
-            return {
-                "messages": [AIMessage(content=limit_warning)],
-                "current_plan": []
-            }
-        
-        # 计算执行进度 - 正确计算已完成步骤数
-        total_steps = len(original_plan) if original_plan else 1
-        completed_count = total_steps - len(current_plan) + 1  # +1 表示刚完成了一步
-        
-        # 准备模板变量 - 只获取最近的非重复消息内容
+        # 收集所有非重复的消息内容
         messages = state.get("messages", [])
-        recent_messages = []
         seen_contents = set()
+        recent_messages = []
         
-        # 从后往前遍历，避免重复内容
-        for msg in reversed(messages[-5:]):  # 只看最近5条消息
+        for msg in messages:
             if hasattr(msg, 'content') and msg.content:
                 content = msg.content.strip()
                 if content and content not in seen_contents:
-                    recent_messages.insert(0, content)  # 保持时间顺序
+                    recent_messages.append(content)
                     seen_contents.add(content)
         
         # 使用模板构建智能重新规划提示
@@ -187,9 +141,7 @@ class PlanAndExecuteAgentNode(ToolsNodes):
             "user_message": config["configurable"]["graph_request"].user_message,
             "original_plan": original_plan,
             "current_plan": current_plan,
-            "recent_messages": recent_messages,
-            "step_history": step_history,
-            "execution_count": execution_count
+            "recent_messages": recent_messages
         })
 
         replan_response = await self.structured_output_parser.parse_with_structured_output(
@@ -218,12 +170,16 @@ class PlanAndExecuteAgentNode(ToolsNodes):
             
             if updated_steps != expected_remaining:
                 # 计划发生了调整，显示调整信息
-                progress_display = f"\n\n📊 **步骤 {completed_count}/{total_steps} 完成**\n\n"
-                progress_display += f"\n\n🔄 **计划已调整**: {reasoning}\n\n"
-                progress_display += f"\n\n📋 **剩余步骤**:\n\n"
-                for i, step in enumerate(updated_steps, 1):
-                    progress_display += f"   **{i}.** {step}\n\n"
-                progress_display += f"\n\n"
+                step_list = "\n".join(f"   **{i}.** {step}" for i, step in enumerate(updated_steps, 1))
+                progress_display = f"""
+
+🔄 **计划已调整**: {reasoning}
+
+📋 **剩余步骤**:
+
+{step_list}
+
+"""
                 
                 return {
                     "messages": [AIMessage(content=progress_display)],
@@ -260,19 +216,20 @@ class PlanAndExecuteAgentNode(ToolsNodes):
         original_plan = state.get("original_plan", [])
         total_steps = len(original_plan)
         
-        # 收集整个执行过程的消息历史，去重处理
-        messages = state.get("messages", [])
-        execution_history = []
-        seen_contents = set()
+        # 如果已经生成过总结，避免重复生成
+        if state.get("final_response"):
+            logger.debug("[summary_node] 检测到已有总结，直接返回")
+            return {**state}
         
-        # 整理执行历史，过滤重复内容
+        # 收集执行历史消息（去重）
+        messages = state.get("messages", [])
+        seen_contents = set()
+        execution_history = []
+        
         for message in messages:
             if hasattr(message, 'content') and message.content:
                 content = message.content.strip()
-                # 过滤掉空内容、重复内容以及包含"最终结果"的内容（避免嵌套）
-                if (content and 
-                    content not in seen_contents and 
-                    "🎯 **最终结果**" not in content):
+                if content and content not in seen_contents:
                     execution_history.append(f"- {content}")
                     seen_contents.add(content)
         
@@ -289,10 +246,14 @@ class PlanAndExecuteAgentNode(ToolsNodes):
             HumanMessage(content=summary_prompt)
         ])
 
-        # 格式化最终总结显示
-        formatted_summary = f"\n\n🎯 **最终结果**\n\n{summary_response.content}\n\n"
-        
-        logger.debug("[summary_node] 总结生成完成")
+        # 格式化最终总结
+        formatted_summary = f"""
+
+🎯 **最终结果**
+
+{summary_response.content}
+
+"""
         
         return {
             "messages": [AIMessage(content=formatted_summary)],
@@ -317,7 +278,7 @@ class PlanAndExecuteAgentGraph(BasicGraph):
         graph_builder.add_node("summary", node_builder.summary_node)
         
         # 使用现有的ReAct节点构建方法
-        react_entry_node = await node_builder.build_react_nodes(
+        await node_builder.build_react_nodes(
             graph_builder=graph_builder,
             composite_node_name="react_step_executor", 
             additional_system_prompt="你是任务执行助手，专注完成用户最新消息中的具体步骤。请使用合适的工具完成任务，并简洁地提供结果。",

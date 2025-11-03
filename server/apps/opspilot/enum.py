@@ -61,6 +61,8 @@ class WorkFlowExecuteType(models.TextChoices):
     RESTFUL = "restful", _("RESTful")
     CELERY = "celery", _("Celery")
     ENTERPRISE_WECHAT = "enterprise_wechat", _("Enterprise WeChat")
+    WECHAT_OFFICIAL_ACCOUNT = "wechat_official", _("WeChat Official Account")
+    DINGTALK = "dingtalk", _("Ding Talk")
 
 
 class WorkFlowTaskStatus(models.TextChoices):

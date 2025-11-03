@@ -102,7 +102,7 @@ const AlertConditionsForm: React.FC<AlertConditionsFormProps> = ({
             },
             {
               value: 'no_data',
-              icon: 'yuzhiguanli',
+              icon: 'dengdeng',
               title: t('monitor.events.nodata'),
               content: t('monitor.events.setThreshold'),
             },

@@ -412,10 +412,6 @@ const ViewList: React.FC<ViewListProps> = ({
     });
   };
 
-  const handleSelectFields = (fields: string[]) => {
-    console.log(fields);
-  };
-
   const handleColonyChange = (id: string) => {
     setColony(id);
     setNameSpace(null);
@@ -577,7 +573,6 @@ const ViewList: React.FC<ViewListProps> = ({
           ],
         }}
         onChange={handleTableChange}
-        onSelectFields={handleSelectFields}
       ></CustomTable>
       <ViewModal
         ref={viewRef}
