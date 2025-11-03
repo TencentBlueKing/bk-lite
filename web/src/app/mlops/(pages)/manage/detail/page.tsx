@@ -11,6 +11,7 @@ import LogDetail from './components/log/LogDetail';
 import TimeSeriesPredict from './components/timeseries/TimeSeriesPredict';
 import ClassificationDetail from './components/classification/classificationDetail';
 import ImageClassificationDetail from './components/image-classification/imageClassificationDetail';
+import ObjectDetectionDetail from './components/object-detection/objectDetection';
 import Sublayout from '@/components/sub-layout';
 import TopSection from '@/components/top-section';
 import { MenuItem } from '@/types';
@@ -64,7 +65,8 @@ const Detail = () => {
     log_clustering: <LogDetail />,
     timeseries_predict: <TimeSeriesPredict />,
     classification: <ClassificationDetail />,
-    image_classification: <ImageClassificationDetail />
+    image_classification: <ImageClassificationDetail />,
+    object_detection: <ObjectDetectionDetail />
   }), [activeTap]);
 
   const Intro = useMemo(() => (

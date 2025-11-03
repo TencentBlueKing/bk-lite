@@ -134,7 +134,8 @@
     "selectLab": "请在右侧选择标签",
     "addImage": "添加图片",
     "tabBar": "标签栏",
-    "uploading": "上传中..."
+    "uploading": "上传中...",
+    "objectDetection": "目标检测"
   },
   "traintask": {
     "train": "训练",

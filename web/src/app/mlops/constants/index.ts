@@ -445,7 +445,8 @@ const TYPE_FILE_MAP: Record<string, any> = {
   'log_clustering': 'txt',
   'timeseries_predict': 'csv',
   'classification': 'csv',
-  'image_classification': 'image'
+  'image_classification': 'image',
+  'object_detection': 'image'
 };
 
 const RASA_MENUS = [

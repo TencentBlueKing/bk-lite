@@ -31,7 +31,8 @@ const UploadModal = forwardRef<ModalRef, UploadModalProps>(({ onSuccess }, ref) 
     addTimeSeriesPredictTrainData,
     addLogClusteringTrainData,
     addClassificationTrainData,
-    addImageClassificationTrainData
+    addImageClassificationTrainData,
+    addObjectDetectionTrainData
   } = useMlopsManageApi();
   const [visiable, setVisiable] = useState<boolean>(false);
   const [confirmLoading, setConfirmLoading] = useState<boolean>(false);
@@ -138,10 +139,6 @@ const UploadModal = forwardRef<ModalRef, UploadModalProps>(({ onSuccess }, ref) 
         };
       },
       apiCall: addClassificationTrainData
-    },
-    image_classification: {
-      processData: (data: ProcessedData) => ({ train_data: data }),
-      apiCall: addImageClassificationTrainData
     }
   };
 
@@ -189,14 +186,13 @@ const UploadModal = forwardRef<ModalRef, UploadModalProps>(({ onSuccess }, ref) 
       const fileList = validateFileUpload();
       if (!fileList?.length) return;
 
-      // 2. 获取当前类型的策略
-      const strategy = submitStrategies[formData?.activeTap as keyof typeof submitStrategies];
-      if (!strategy) {
-        throw new Error(`Unsupported upload type: ${formData?.activeTap}`);
-      }
-
-      // 3. 读取并处理文件内容
       if (TYPE_FILE_MAP[activeType] !== 'image') {
+        // 2. 获取当前类型的策略
+        const strategy = submitStrategies[formData?.activeTap as keyof typeof submitStrategies];
+        if (!strategy) {
+          throw new Error(`Unsupported upload type: ${formData?.activeTap}`);
+        }
+        // 3. 读取并处理文件内容
         const text = await fileList[0].originFileObj!.text();
         const incluede_header = formData?.activeTap === 'classification' ? true : false;
         const rawData = handleFileRead(text, formData?.activeTap || '', incluede_header);
@@ -217,8 +213,9 @@ const UploadModal = forwardRef<ModalRef, UploadModalProps>(({ onSuccess }, ref) 
         // 5. 调用对应的API
         await strategy.apiCall(params);
       } else {
+        // 图片上传处理
         const value = await formRef.current?.validateFields();
-        const submitData = new FormData;
+        const submitData = new FormData();
         submitData.append('dataset', formData?.dataset_id || '');
         submitData.append('name', value.name);
 
@@ -234,7 +231,12 @@ const UploadModal = forwardRef<ModalRef, UploadModalProps>(({ onSuccess }, ref) 
           }
         });
 
-        await addImageClassificationTrainData(submitData);
+        // 根据类型调用不同的API
+        if (formData?.activeTap === 'image_classification') {
+          await addImageClassificationTrainData(submitData);
+        } else if (formData?.activeTap === 'object_detection') {
+          await addObjectDetectionTrainData(submitData);
+        }
       }
 
       // 6. 处理成功

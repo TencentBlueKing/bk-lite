@@ -134,7 +134,8 @@
     "selectLab": "Please select a tab on the right.",
     "addImage": "Add image",
     "tabBar": "Tab Bar",
-    "uploading": "Uploading..."
+    "uploading": "Uploading...",
+    "objectDetection": "Object Detection"
   },
   "traintask": {
     "train": "Train",
