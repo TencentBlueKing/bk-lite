@@ -128,7 +128,10 @@
         "deleteNodeTips": "For nodes that are automatically installed, it is recommended to uninstall the controller for deletion. After manually deleting the node, if the node's side car reports normally in the future, it will be automatically updated in the list.",
         "collectorDetails": "Collector Details",
         "status": "Status",
-        "message": "Message"
+        "message": "Message",
+        "installMethod": "Install Method",
+        "auto": "Auto",
+        "manual": "Manual"
       },
       "Configuration": {
         "system": "Operating System",

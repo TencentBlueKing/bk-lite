@@ -128,7 +128,10 @@
         "deleteNodeTips": "自动安装的节点，建议通过卸载控制器进行删除，手动删除节点后，若后续该节点sidecar正常上报，则会自动更新在该列表中。",
         "collectorDetails": "采集器详情",
         "status": "状态",
-        "message": "信息"
+        "message": "信息",
+        "installMethod": "安装方式",
+        "auto": "自动",
+        "manual": "手动"
       },
       "Configuration": {
         "system": "操作系统",
