@@ -109,7 +109,10 @@
         "unknown": "Unknown",
         "stop": "Stop",
         "defaultNode": "Default Node",
-        "active": "Active"
+        "active": "Active",
+        "installMethod": "Install Method",
+        "auto": "Auto",
+        "manual": "Manual"
       },
       "editform": {
         "Introduction": "Introduction",

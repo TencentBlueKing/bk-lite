@@ -21,6 +21,7 @@ import {
   useTelegrafMap,
   useSidecarItems,
   useCollectorItems,
+  useInstallMethodMap,
 } from '@/app/node-manager/hooks/node';
 import MainLayout from '../mainlayout/layout';
 import useApiClient from '@/utils/request';
@@ -50,6 +51,7 @@ const Node = () => {
   const sidecarItems = useSidecarItems();
   const collectorItems = useCollectorItems();
   const statusMap = useTelegrafMap();
+  const installMethodMap = useInstallMethodMap();
   const name = searchParams.get('name') || '';
   const collectorRef = useRef<ModalRef>(null);
   const controllerRef = useRef<ModalRef>(null);
@@ -286,6 +288,25 @@ const Node = () => {
               </Tooltip>
             </>
           );
+        },
+      },
+      {
+        title: t('node-manager.cloudregion.node.installMethod'),
+        dataIndex: 'install_method',
+        key: 'install_method',
+        width: 100,
+        onCell: () => ({
+          style: {
+            minWidth: 80,
+          },
+        }),
+        render: (_: any, record: TableDataItem) => {
+          const installMethod = record.install_method;
+          if ([0, 1].includes(installMethod)) {
+            const methodInfo = installMethodMap[installMethod];
+            return <>{methodInfo.text}</>;
+          }
+          return <>--</>;
         },
       },
       {
