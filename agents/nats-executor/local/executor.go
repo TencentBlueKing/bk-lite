@@ -53,7 +53,7 @@ func Execute(req ExecuteRequest, instanceId string) ExecuteResponse {
 		// 特别针对SCP命令的错误分析
 		if contains(req.Command, "scp") || contains(req.Command, "sshpass") {
 			log.Printf("[Local Execute] Instance: %s, SCP Command detected - analyzing failure...", instanceId)
-			analyzeSCPFailure(instanceId, req.Command, string(output), exitCode)
+			analyzeSCPFailure(instanceId, string(output), exitCode)
 		}
 	} else {
 		log.Printf("[Local Execute] Instance: %s, Command executed successfully in %v", instanceId, duration)
@@ -85,7 +85,7 @@ func containsInMiddle(s, substr string) bool {
 }
 
 // SCP失败分析函数
-func analyzeSCPFailure(instanceId, command, output string, exitCode int) {
+func analyzeSCPFailure(instanceId, output string, exitCode int) {
 	log.Printf("[SCP Analysis] Instance: %s, Analyzing SCP failure with exit code: %d", instanceId, exitCode)
 
 	switch exitCode {
@@ -131,7 +131,7 @@ func SubscribeLocalExecutor(nc *nats.Conn, instanceId *string) {
 	subject := fmt.Sprintf("local.execute.%s", *instanceId)
 	log.Printf("[Local Subscribe] Instance: %s, Subscribing to subject: %s", *instanceId, subject)
 
-	nc.Subscribe(subject, func(msg *nats.Msg) {
+	_, err := nc.Subscribe(subject, func(msg *nats.Msg) {
 		log.Printf("[Local Subscribe] Instance: %s, Received message, size: %d bytes", *instanceId, len(msg.Data))
 
 		// 定义一个临时结构来接收请求方格式
@@ -178,6 +178,10 @@ func SubscribeLocalExecutor(nc *nats.Conn, instanceId *string) {
 			log.Printf("[Local Subscribe] Instance: %s, Response sent successfully, size: %d bytes", *instanceId, len(responseContent))
 		}
 	})
+
+	if err != nil {
+		log.Printf("[Local Subscribe] Instance: %s, Failed to subscribe: %v", *instanceId, err)
+	}
 }
 
 func SubscribeDownloadToLocal(nc *nats.Conn, instanceId *string) {
@@ -239,7 +243,7 @@ func SubscribeUnzipToLocal(nc *nats.Conn, instanceId *string) {
 	subject := fmt.Sprintf("unzip.local.%s", *instanceId)
 	//log.Printf("Subscribing to subject: %s", subject)
 
-	nc.Subscribe(subject, func(msg *nats.Msg) {
+	_, err := nc.Subscribe(subject, func(msg *nats.Msg) {
 		var incoming struct {
 			Args   []json.RawMessage      `json:"args"`
 			Kwargs map[string]interface{} `json:"kwargs"`
@@ -290,4 +294,8 @@ func SubscribeUnzipToLocal(nc *nats.Conn, instanceId *string) {
 			log.Printf("Error responding to unzip request: %v", err)
 		}
 	})
+
+	if err != nil {
+		log.Printf("[Unzip Local Subscribe] Instance: %s, Failed to subscribe: %v", *instanceId, err)
+	}
 }
