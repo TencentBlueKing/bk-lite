@@ -55,3 +55,12 @@ class ControllerConstants:
         NodeConstants.LINUX_OS: "rm -rf /opt/fusion-collectors",
         NodeConstants.WINDOWS_OS: "powershell -command \"Remove-Item -Path {} -Recurse\"",
     }
+
+    # 标签字段
+    GROUP_TAG = "group"
+    CLOUD_TAG = "cloud"
+    INSTALL_METHOD_TAG = "install_method"
+
+    # 安装方式
+    MANUAL = "manual"
+    AUTO = "auto"

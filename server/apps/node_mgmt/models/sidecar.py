@@ -5,6 +5,7 @@ from django.db.models import JSONField
 
 from apps.core.models.maintainer_info import MaintainerInfo
 from apps.core.models.time_info import TimeInfo
+from apps.node_mgmt.constants.controller import ControllerConstants
 from apps.node_mgmt.models.cloud_region import CloudRegion
 
 OS_TYPE = (
@@ -35,6 +36,7 @@ class Node(TimeInfo, MaintainerInfo):
     tags = JSONField(default=list, verbose_name="标签")
     log_file_list = JSONField(default=list, verbose_name="日志文件列表")
     cloud_region = models.ForeignKey(CloudRegion, default=1, on_delete=models.CASCADE, verbose_name="云区域")
+    install_method = models.CharField(max_length=50, default=ControllerConstants.AUTO, verbose_name="安装方式")
 
     class Meta:
         verbose_name = "节点信息"
