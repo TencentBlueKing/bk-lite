@@ -21,6 +21,7 @@ import {
   useTelegrafMap,
   useSidecarItems,
   useCollectorItems,
+  useInstallMethodMap,
 } from '@/app/node-manager/hooks/node';
 import MainLayout from '../mainlayout/layout';
 import useApiClient from '@/utils/request';
@@ -50,6 +51,7 @@ const Node = () => {
   const sidecarItems = useSidecarItems();
   const collectorItems = useCollectorItems();
   const statusMap = useTelegrafMap();
+  const installMethodMap = useInstallMethodMap();
   const name = searchParams.get('name') || '';
   const collectorRef = useRef<ModalRef>(null);
   const controllerRef = useRef<ModalRef>(null);
@@ -117,8 +119,21 @@ const Node = () => {
     );
     const operatingSystems = selectedNodes.map((node) => node.operating_system);
     const uniqueOS = [...new Set(operatingSystems)];
-    // 如果操作系统不一致，则禁用按钮
+    // 采集器：只检查操作系统是否一致
     return uniqueOS.length !== 1;
+  }, [selectedRowKeys, nodeList]);
+
+  const enableOperateController = useMemo(() => {
+    if (!selectedRowKeys.length) return true;
+    const selectedNodes = (nodeList || []).filter((item) =>
+      selectedRowKeys.includes(item.key)
+    );
+    const operatingSystems = selectedNodes.map((node) => node.operating_system);
+    const uniqueOS = [...new Set(operatingSystems)];
+    const installMethods = selectedNodes.map((node) => node.install_method);
+    const uniqueInstallMethods = [...new Set(installMethods)];
+    // 控制器：检查操作系统和安装方式是否都一致
+    return uniqueOS.length !== 1 || uniqueInstallMethods.length !== 1;
   }, [selectedRowKeys, nodeList]);
 
   const getFirstSelectedNodeOS = useCallback(() => {
@@ -229,7 +244,7 @@ const Node = () => {
     setLoading(true);
     try {
       const res = await getNodeList(params || getParams());
-      const data = res.map((item: TableDataItem) => ({
+      const data = (res || []).map((item: TableDataItem) => ({
         ...item,
         key: item.id,
       }));
@@ -286,6 +301,25 @@ const Node = () => {
               </Tooltip>
             </>
           );
+        },
+      },
+      {
+        title: t('node-manager.cloudregion.node.installMethod'),
+        dataIndex: 'install_method',
+        key: 'install_method',
+        width: 100,
+        onCell: () => ({
+          style: {
+            minWidth: 80,
+          },
+        }),
+        render: (_: any, record: TableDataItem) => {
+          const installMethod = record.install_method;
+          if ([0, 1].includes(installMethod)) {
+            const methodInfo = installMethodMap[installMethod];
+            return <>{methodInfo.text}</>;
+          }
+          return <>--</>;
         },
       },
       {
@@ -418,7 +452,7 @@ const Node = () => {
                 className="mr-[8px]"
                 overlayClassName="customMenu"
                 menu={SidecarmenuProps}
-                disabled={enableOperateCollecter}
+                disabled={enableOperateController}
               >
                 <Button>
                   <Space>

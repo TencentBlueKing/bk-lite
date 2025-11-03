@@ -435,6 +435,21 @@ const useFieldOptions = () => {
   );
 };
 
+const useInstallMethodMap = (): Record<number, { text: string }> => {
+  const { t } = useTranslation();
+  return useMemo(
+    () => ({
+      0: {
+        text: t('node-manager.cloudregion.node.auto'),
+      },
+      1: {
+        text: t('node-manager.cloudregion.node.manual'),
+      },
+    }),
+    [t]
+  );
+};
+
 export {
   useColumns,
   useGroupNames,
@@ -445,4 +460,5 @@ export {
   useCollectorItems,
   useMenuItem,
   useFieldOptions,
+  useInstallMethodMap,
 };
