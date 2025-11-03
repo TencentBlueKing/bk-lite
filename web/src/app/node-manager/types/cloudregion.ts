@@ -15,7 +15,6 @@ interface BaseEntityWithDescription extends BaseEntity {
 
 //配置页面的table的列定义
 interface ConfigHookParams {
-  configurationClick: (key: string) => void;
   openSub: (key: string, item?: any) => void;
   nodeClick: () => void;
   modifyDeleteconfirm: (key: string) => void;
@@ -65,6 +64,7 @@ interface ConfigData
   configInfo: string;
   nodesList?: ListItem;
   operating_system?: string;
+  collector_name?: string;
 }
 
 //后端返回的采集器列表

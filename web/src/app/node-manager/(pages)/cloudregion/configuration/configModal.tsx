@@ -93,7 +93,7 @@ const ConfigModal = forwardRef<ModalRef, ModalSuccess>(
     };
 
     const handleSuccess = () => {
-      onSuccess();
+      onSuccess(type);
       setConfirmLoading(false);
       setConfigVisible(false);
     };
@@ -343,6 +343,7 @@ const ConfigModal = forwardRef<ModalRef, ModalSuccess>(
         open={configVisible}
         onCancel={handleCancel}
         width={800}
+        zIndex={999999}
         footer={
           <div>
             <Button

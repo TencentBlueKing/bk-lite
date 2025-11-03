@@ -50,4 +50,6 @@ const SingleValueDisplay: React.FC<SingleValueDisplayProps> = ({
   );
 };
 
+SingleValueDisplay.displayName = 'SingleValueDisplay';
+
 export default SingleValueDisplay;

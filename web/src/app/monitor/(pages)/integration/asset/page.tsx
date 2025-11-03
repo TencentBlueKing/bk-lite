@@ -208,7 +208,10 @@ const Asset = () => {
         fixed: 'right',
         render: (_, record) => (
           <>
-            <Button type="link" onClick={() => checkDetail(record)}>
+            <Button
+              type="link"
+              onClick={() => checkDetail(record as ObjectInstItem)}
+            >
               {t('common.detail')}
             </Button>
             <Permission
@@ -461,7 +464,7 @@ const Asset = () => {
   const showDeleteConfirm = (row: RuleInfo) => {
     deleteModalRef.current?.showModal({
       title: t('common.prompt'),
-      form: row,
+      form: row as Record<string, unknown>,
       type: 'delete',
     });
   };

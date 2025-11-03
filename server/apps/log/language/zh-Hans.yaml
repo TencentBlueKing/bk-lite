@@ -1,0 +1,5 @@
+collect_type:
+  Auditbeat:
+    auditd:
+      description: None
+      name: None

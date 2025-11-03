@@ -20,7 +20,6 @@ class DingTalkChatFlowUtils(object):
         Args:
             bot_id: Bot ID
         """
-        logger.info(f"初始化DingTalkChatFlowUtils，入参: bot_id={bot_id}")
         self.bot_id = bot_id
 
     def validate_bot_and_workflow(self):
@@ -30,8 +29,6 @@ class DingTalkChatFlowUtils(object):
             tuple: (bot_chat_flow, error_response)
                    如果验证失败，error_response不为None
         """
-        logger.info(f"验证Bot和工作流，入参: bot_id={self.bot_id}")
-
         # 验证Bot对象
         bot_obj = Bot.objects.filter(id=self.bot_id, online=True).first()
         if not bot_obj:
@@ -57,7 +54,6 @@ class DingTalkChatFlowUtils(object):
             tuple: (dingtalk_config_dict, error_response)
                    成功时返回配置字典和None，失败时返回None和错误响应
         """
-        logger.info(f"获取钉钉节点配置，入参: bot_id={self.bot_id}, bot_chat_flow_id={bot_chat_flow.id if bot_chat_flow else None}")
         flow_nodes = bot_chat_flow.flow_json.get("nodes", [])
         dingtalk_nodes = [node for node in flow_nodes if node.get("type") == "dingtalk"]
 
@@ -90,7 +86,6 @@ class DingTalkChatFlowUtils(object):
         Returns:
             bool: 签名是否有效
         """
-        logger.info(f"验证钉钉签名，入参: bot_id={self.bot_id}, timestamp={timestamp}, sign={sign[:20] if sign else None}...")
         try:
             # 根据钉钉文档，签名算法：HmacSHA256(timestamp + "\n" + app_secret)
             string_to_sign = f"{timestamp}\n{app_secret}"
@@ -107,9 +102,7 @@ class DingTalkChatFlowUtils(object):
         Returns:
             str: ChatFlow执行结果文本
         """
-        logger.info(
-            f"钉钉执行ChatFlow流程开始，入参: bot_id={self.bot_id}, node_id={node_id}, sender_id={sender_id}, message={message[:100] if message else None}..."
-        )
+        logger.info(f"钉钉执行ChatFlow流程开始，Bot {self.bot_id}, Node {node_id}")
 
         # 创建ChatFlow引擎
         engine = create_chat_flow_engine(bot_chat_flow, node_id)
@@ -132,7 +125,7 @@ class DingTalkChatFlowUtils(object):
         else:
             reply_text = str(result) if result else "处理完成"
 
-        logger.info(f"钉钉ChatFlow流程执行完成，Bot {self.bot_id}，结果长度: {len(reply_text)}")
+        logger.info(f"钉钉ChatFlow流程执行完成，Bot {self.bot_id}")
 
         return reply_text
 
@@ -146,7 +139,6 @@ class DingTalkChatFlowUtils(object):
         Returns:
             str: access_token
         """
-        logger.info(f"获取钉钉access_token，入参: bot_id={self.bot_id}, app_key={app_key[:10] if app_key else None}...")
         try:
             url = "https://oapi.dingtalk.com/gettoken"
             params = {"appkey": app_key, "appsecret": app_secret}
@@ -170,13 +162,6 @@ class DingTalkChatFlowUtils(object):
         Returns:
             bool: 是否发送成功
         """
-        logger.info(
-            f"发送钉钉消息，"
-            f"入参: bot_id={self.bot_id}, "
-            f"msg_type={msg_type}, "
-            f"webhook_url={webhook_url[:50] if webhook_url else None}, "
-            f"content_type={type(content).__name__}"
-        )
         try:
             if not webhook_url:
                 logger.error(f"钉钉发送消息失败：缺少webhook_url，Bot {self.bot_id}")
@@ -204,16 +189,10 @@ class DingTalkChatFlowUtils(object):
         Returns:
             JsonResponse: 消息处理响应
         """
-        logger.info(
-            f"处理钉钉消息，"
-            f"入参: bot_id={self.bot_id}, "
-            f"bot_chat_flow_id={bot_chat_flow.id if bot_chat_flow else None}, "
-            f"dingtalk_config_keys={list(dingtalk_config.keys()) if dingtalk_config else None}"
-        )
         try:
             # 解析请求数据
             data = json.loads(request.body)
-            logger.info(f"钉钉收到消息，Bot {self.bot_id}，数据: {data}")
+            logger.info(f"钉钉收到消息，Bot {self.bot_id}")
 
             # 验证签名（如果有）
             timestamp = request.headers.get("timestamp")
@@ -233,7 +212,7 @@ class DingTalkChatFlowUtils(object):
             sender_id = data.get("senderStaffId", "") or data.get("senderId", "")
 
             if not text_content:
-                logger.warning(f"钉钉收到空消息，Bot {self.bot_id}，发送者: {sender_id}")
+                logger.warning(f"钉钉收到空消息，Bot {self.bot_id}")
                 return JsonResponse({"success": True})
 
             # 执行ChatFlow
@@ -241,7 +220,7 @@ class DingTalkChatFlowUtils(object):
             reply_text = self.execute_chatflow_with_message(bot_chat_flow, node_id, text_content, sender_id)
 
             # 发送回复消息（如果配置了webhook）
-            webhook_url = dingtalk_config.get("webhook_url")
+            webhook_url = data.get("sessionWebhook")
             if webhook_url and reply_text:
                 # 发送Markdown格式消息
                 markdown_content = {"title": "机器人回复", "text": reply_text}
@@ -260,16 +239,11 @@ class DingTalkStreamEventHandler(dingtalk_stream.EventHandler):
 
     def __init__(self, bot_id):
         super().__init__()
-        logger.info(f"初始化DingTalkStreamEventHandler，入参: bot_id={bot_id}")
         self.bot_id = bot_id
 
     async def process(self, event):
         """处理钉钉Stream事件"""
-        logger.info(
-            f"钉钉Stream收到事件，"
-            f"event_type={event.headers.event_type if event and event.headers else None}, "
-            f"event_id={event.headers.event_id if event and event.headers else None}"
-        )
+        logger.info(f"钉钉Stream收到事件，Bot {self.bot_id}")
         return dingtalk_stream.AckMessage.STATUS_OK, "OK"
 
 
@@ -292,11 +266,10 @@ class DingTalkStreamCallbackHandler(dingtalk_stream.CallbackHandler):
         Returns:
             tuple: (status, reply_text)
         """
-        logger.info(f"DingTalkStreamCallbackHandler.process，入参: bot_id={self.bot_id}, callback_type={type(callback).__name__ if callback else None}")
         try:
             # 获取消息内容
             incoming_message = callback.data
-            logger.info(f"钉钉Stream收到消息，Bot {self.bot_id}，消息: {incoming_message}")
+            logger.info(f"钉钉Stream收到消息，Bot {self.bot_id}")
 
             msg_type = incoming_message.get("msgtype")
             if msg_type != "text":
@@ -307,14 +280,14 @@ class DingTalkStreamCallbackHandler(dingtalk_stream.CallbackHandler):
             sender_id = incoming_message.get("senderStaffId", "") or incoming_message.get("senderId", "")
 
             if not text_content:
-                logger.warning(f"钉钉Stream收到空消息，Bot {self.bot_id}，发送者: {sender_id}")
+                logger.warning(f"钉钉Stream收到空消息，Bot {self.bot_id}")
                 return dingtalk_stream.AckMessage.STATUS_OK, "OK"
 
             # 执行ChatFlow
             node_id = self.dingtalk_config["node_id"]
             reply_text = self.utils.execute_chatflow_with_message(self.bot_chat_flow, node_id, text_content, sender_id)
 
-            logger.info(f"钉钉Stream处理完成，Bot {self.bot_id}，回复长度: {len(reply_text)}")
+            logger.info(f"钉钉Stream处理完成，Bot {self.bot_id}")
 
             # 返回回复消息
             return dingtalk_stream.AckMessage.STATUS_OK, {"msgtype": "text", "text": {"content": reply_text}}
@@ -367,7 +340,7 @@ def start_dingtalk_stream_client(bot_id, bot_chat_flow, dingtalk_config):
         thread = threading.Thread(target=start_client, daemon=True)
         thread.start()
 
-        logger.info(f"钉钉Stream客户端已启动，Bot {bot_id}，线程ID: {thread.ident}")
+        logger.info(f"钉钉Stream客户端已启动，Bot {bot_id}")
         return True
 
     except Exception as e:

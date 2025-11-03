@@ -43,7 +43,7 @@ class AgentNode(BaseNodeExecutor):
         # 处理节点中的 prompt 参数和上传文件
         node_prompt = config.get("prompt", "")
         uploaded_files = config.get("uploadedFiles", [])
-        final_message = ""
+        final_message = message
 
         # 处理上传的文件内容
         files_content = ""
@@ -118,7 +118,6 @@ class AgentNode(BaseNodeExecutor):
         config = node_config["data"].get("config", {})
         output_key = config.get("outputParams", "last_message")
         llm_params, _ = self.set_llm_params(node_id, config, input_data)
-
         data, _, _ = llm_service.invoke_chat(llm_params)
         result = data["message"]
 

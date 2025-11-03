@@ -21,7 +21,6 @@ export default function LoginPage() {
   const [domain, setDomain] = useState('');
   const [domainList, setDomainList] = useState<string[]>([]);
   const [loadingDomains, setLoadingDomains] = useState(true);
-  const [formError, setFormError] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [authStep, setAuthStep] = useState<AuthStep>('login');
   const [showPassword, setShowPassword] = useState(false);
@@ -55,7 +54,6 @@ export default function LoginPage() {
   const handleLoginSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsLoading(true);
-    setFormError('');
 
     try {
       const responseData = await authLogin({
@@ -66,8 +64,9 @@ export default function LoginPage() {
 
       if (!responseData.result) {
         const errorMessage = responseData.message || 'Login failed';
-        setFormError(errorMessage);
         Toast.show({ content: errorMessage, icon: 'fail' });
+        setUsername('');
+        setPassword('');
         setIsLoading(false);
         return;
       }
@@ -87,7 +86,6 @@ export default function LoginPage() {
 
       if (userData.token) {
         login(userData.token, userData);
-        Toast.show({ content: 'Login successful', icon: 'success' });
       }
 
       if (userData.redirect_url) {
@@ -96,7 +94,6 @@ export default function LoginPage() {
     } catch (error) {
       console.error('Login error:', error);
       const errorMessage = 'System error';
-      setFormError(errorMessage);
       Toast.show({ content: errorMessage, icon: 'fail' });
       setIsLoading(false);
     }
@@ -178,15 +175,6 @@ export default function LoginPage() {
 
         {/* 表单容器 */}
         <div className="bg-white/95 backdrop-blur-sm rounded-xl shadow-lg p-5 border border-white/30">
-          {/* 错误提示 */}
-          {formError && (
-            <div className="bg-red-50 border-l-4 border-red-500 text-red-700 p-3 rounded-lg mb-4">
-              <div className="flex items-start space-x-2">
-                <div className="text-red-500 mt-0.5 text-base">⚠</div>
-                <div className="font-medium text-base">{formError}</div>
-              </div>
-            </div>
-          )}
 
           {authStep === 'login' && (
             <form onSubmit={handleLoginSubmit} className="space-y-4">
@@ -329,22 +317,20 @@ export default function LoginPage() {
               {domainList.map((d) => (
                 <div
                   key={d}
-                  className={`flex items-center justify-between p-3 rounded-lg cursor-pointer transition-colors ${
-                    domain === d
-                      ? 'bg-blue-50 border-2 border-blue-200'
-                      : 'bg-gray-50 hover:bg-gray-100 border border-gray-200'
-                  }`}
+                  className={`flex items-center justify-between p-3 rounded-lg cursor-pointer transition-colors ${domain === d
+                    ? 'bg-blue-50 border-2 border-blue-200'
+                    : 'bg-gray-50 hover:bg-gray-100 border border-gray-200'
+                    }`}
                   onClick={() => {
                     setDomain(d);
                     setShowDomainSelector(false);
                   }}
                 >
                   <span
-                    className={`text-base ${
-                      domain === d
-                        ? 'text-blue-700 font-medium'
-                        : 'text-gray-900'
-                    }`}
+                    className={`text-base ${domain === d
+                      ? 'text-blue-700 font-medium'
+                      : 'text-gray-900'
+                      }`}
                   >
                     {d}
                   </span>

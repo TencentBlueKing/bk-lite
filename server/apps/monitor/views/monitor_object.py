@@ -1,11 +1,12 @@
 from rest_framework import viewsets
 from rest_framework.decorators import action
 
+from apps.core.utils.loader import LanguageLoader
 from apps.core.utils.permission_utils import get_permissions_rules, check_instance_permission
 from apps.core.utils.web_utils import WebUtils
+from apps.monitor.constants.language import LanguageConstants
 from apps.monitor.constants.permission import PermissionConstants
 from apps.monitor.filters.monitor_object import MonitorObjectFilter
-from apps.monitor.language.service import SettingLanguage
 from apps.monitor.models import MonitorInstance, MonitorPolicy
 from apps.monitor.models.monitor_object import MonitorObject
 from apps.monitor.serializers.monitor_object import MonitorObjectSerializer
@@ -23,10 +24,14 @@ class MonitorObjectVieSet(viewsets.ModelViewSet):
         queryset = self.filter_queryset(self.get_queryset())
         serializer = self.get_serializer(queryset, many=True)
         results = serializer.data
-        lan = SettingLanguage(request.user.locale)
+
+        lan = LanguageLoader(app=LanguageConstants.APP, default_lang=request.user.locale)
+
         for result in results:
-            result["display_type"] = lan.get_val("MONITOR_OBJECT_TYPE", result["type"]) or result["type"]
-            result["display_name"] = lan.get_val("MONITOR_OBJECT", result["name"]) or result["name"]
+            _type_key = f"{LanguageConstants.MONITOR_OBJECT_TYPE}.{result['type']}"
+            _name_key = f"{LanguageConstants.MONITOR_OBJECT}.{result['name']}"
+            result["display_type"] = lan.get(_type_key) or result["type"]
+            result["display_name"] = lan.get(_name_key) or result["name"]
 
         if request.GET.get("add_instance_count") in ["true", "True"]:
 

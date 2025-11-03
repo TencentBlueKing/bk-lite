@@ -33,24 +33,22 @@ class WechatOfficialChatFlowUtils(object):
             appid: 公众号AppID
             secret: 公众号Secret
         """
-        logger.info(f"微信公众号发送消息分片，Bot {self.bot_id}，OpenID: {openid}，消息长度: {len(text) if text else 0}")
-
         if not text:
             return
 
         wechat_client = WeChatClient(appid, secret)
 
         # 公众号客服消息单次最大长度2048字符
-        max_length = 2000
+        max_length = 1800
 
         if len(text) <= max_length:
             wechat_client.message.send_text(openid, text)
-            logger.info(f"微信公众号发送单条消息成功，Bot {self.bot_id}，OpenID: {openid}")
+            logger.info(f"微信公众号发送单条消息成功，Bot {self.bot_id}")
             return
 
         # 按最大长度切分消息
         chunk_count = (len(text) + max_length - 1) // max_length
-        logger.info(f"微信公众号消息过长，需分{chunk_count}片发送，Bot {self.bot_id}，OpenID: {openid}")
+        logger.info(f"微信公众号消息过长，需分{chunk_count}片发送，Bot {self.bot_id}")
 
         start = 0
         chunk_index = 1
@@ -59,7 +57,7 @@ class WechatOfficialChatFlowUtils(object):
             chunk = text[start:end]
             time.sleep(0.2)  # 避免发送过快
             wechat_client.message.send_text(openid, chunk)
-            logger.info(f"微信公众号发送第{chunk_index}/{chunk_count}片消息成功，Bot {self.bot_id}，OpenID: {openid}")
+            logger.info(f"微信公众号发送第{chunk_index}/{chunk_count}片消息成功，Bot {self.bot_id}")
             start = end
             chunk_index += 1
 
@@ -156,10 +154,7 @@ class WechatOfficialChatFlowUtils(object):
         Returns:
             HttpResponse: URL验证响应
         """
-        logger.info(
-            f"微信公众号URL验证开始，Bot {self.bot_id}，"
-            f"参数 - signature: {signature}, timestamp: {timestamp}, nonce: {nonce}, appid: {appid}, echostr: {echostr}"
-        )
+        logger.info(f"微信公众号URL验证开始，Bot {self.bot_id}")
 
         if not echostr:
             logger.error(f"微信公众号URL验证失败：缺少echostr参数，Bot {self.bot_id}")
@@ -169,7 +164,7 @@ class WechatOfficialChatFlowUtils(object):
             check_signature(token, signature, timestamp, nonce)
             return HttpResponse(echostr)
         except InvalidSignatureException:
-            logger.error(f"微信公众号URL验证失败：签名验证失败，Bot {self.bot_id}，signature: {signature}")
+            logger.error(f"微信公众号URL验证失败：签名验证失败，Bot {self.bot_id}")
             return HttpResponse("fail")
         except Exception as e:
             logger.error(f"微信公众号URL验证失败，Bot {self.bot_id}，错误: {str(e)}")
@@ -188,7 +183,7 @@ class WechatOfficialChatFlowUtils(object):
         Returns:
             str: ChatFlow执行结果文本
         """
-        logger.info(f"微信公众号执行ChatFlow流程开始，Bot {self.bot_id}, Node {node_id}, 发送者: {sender_id}, 消息: {message[:50]}...")
+        logger.info(f"微信公众号执行ChatFlow流程开始，Bot {self.bot_id}, Node {node_id}")
 
         # 创建ChatFlow引擎
         engine = create_chat_flow_engine(bot_chat_flow, node_id)
@@ -201,11 +196,9 @@ class WechatOfficialChatFlowUtils(object):
             "node_id": node_id,
             "channel": "wechat_official_account",
         }
-        logger.info(f"微信公众号ChatFlow输入数据，Bot {self.bot_id}: {input_data}")
 
         # 执行ChatFlow
         result = engine.execute(input_data)
-        logger.info(f"微信公众号ChatFlow原始返回结果，Bot {self.bot_id}，类型: {type(result).__name__}，内容: {str(result)[:200]}...")
 
         # 处理执行结果
         if isinstance(result, dict):
@@ -213,7 +206,7 @@ class WechatOfficialChatFlowUtils(object):
         else:
             reply_text = str(result) if result else "处理完成"
 
-        logger.info(f"微信公众号ChatFlow流程执行完成，Bot {self.bot_id}，回复文本长度: {len(reply_text)}，预览: {reply_text[:100]}...")
+        logger.info(f"微信公众号ChatFlow流程执行完成，Bot {self.bot_id}")
 
         return reply_text
 
@@ -226,10 +219,8 @@ class WechatOfficialChatFlowUtils(object):
             appid: 公众号AppID
             secret: 公众号Secret
         """
-        logger.info(f"微信公众号准备发送回复，Bot {self.bot_id}，OpenID: {openid}，消息长度: {len(reply_text) if reply_text else 0}")
-
         if not reply_text:
-            logger.warning(f"微信公众号回复消息为空，Bot {self.bot_id}，OpenID: {openid}")
+            logger.warning(f"微信公众号回复消息为空，Bot {self.bot_id}")
             return
 
         # 处理换行符
@@ -238,9 +229,9 @@ class WechatOfficialChatFlowUtils(object):
         try:
             # 使用客服消息接口发送
             self.send_message_chunks(openid, reply_text, appid, secret)
-            logger.info(f"微信公众号消息发送成功，Bot {self.bot_id}，OpenID: {openid}，实际发送长度: {len(reply_text)}")
+            logger.info(f"微信公众号消息发送成功，Bot {self.bot_id}")
         except Exception as e:
-            logger.error(f"微信公众号发送消息失败，Bot {self.bot_id}，OpenID: {openid}，错误: {str(e)}")
+            logger.error(f"微信公众号发送消息失败，Bot {self.bot_id}，错误: {str(e)}")
             logger.exception(e)
 
     def decrypt(self, encrypt, aes_key, appid):
@@ -264,24 +255,20 @@ class WechatOfficialChatFlowUtils(object):
         timestamp = request.GET.get("timestamp", "")
         nonce = request.GET.get("nonce", "")
 
-        logger.info(
-            f"微信公众号收到POST请求，Bot {self.bot_id}，请求参数 - signature: {signature[:20] if signature else 'None'}..., timestamp: {timestamp}, nonce: {nonce}"
-        )
-        logger.info(f"微信公众号请求体长度: {len(request.body)} bytes，Bot {self.bot_id}")
+        logger.info(f"微信公众号收到POST请求，Bot {self.bot_id}")
 
         # 验证参数完整性
         if not signature or not timestamp or not nonce:
-            logger.error(f"微信公众号消息处理失败：缺少签名参数，Bot {self.bot_id}，signature: {bool(signature)}, timestamp: {bool(timestamp)}, nonce: {bool(nonce)}")
+            logger.error(f"微信公众号消息处理失败：缺少签名参数，Bot {self.bot_id}")
             return HttpResponse("success")
 
         try:
             xml_msg = xmltodict.parse(to_text(request.body))["xml"]
-            logger.warning(f"微信公众号，解密前的XML: {xml_msg}")
             decode_msg = self.decrypt(xml_msg["Encrypt"], wechat_config["aes_key"], wechat_config["appid"])
             msg = parse_message(decode_msg)
-            # 创建加密对象
+
             if not msg:
-                logger.warning(f"微信公众号消息解析失败，Bot {self.bot_id}，解密后的XML: {decode_msg[:500]}...")
+                logger.warning(f"微信公众号消息解析失败，Bot {self.bot_id}")
                 return HttpResponse("success")
 
             logger.info(f"微信公众号消息解析成功，Bot {self.bot_id}，消息类型: {msg.type}")
@@ -296,14 +283,14 @@ class WechatOfficialChatFlowUtils(object):
             openid = getattr(msg, "source", "")
 
             if not message:
-                logger.warning(f"微信公众号收到空消息，Bot {self.bot_id}，OpenID: {openid}")
+                logger.warning(f"微信公众号收到空消息，Bot {self.bot_id}")
                 return HttpResponse("success")
 
-            logger.info(f"微信公众号收到消息，Bot {self.bot_id}，OpenID: {openid}，消息长度: {len(message)}，内容: {message[:100]}...")
+            logger.info(f"微信公众号收到文本消息，Bot {self.bot_id}")
 
             # 执行ChatFlow
             node_id = wechat_config["node_id"]
-            logger.info(f"微信公众号开始执行ChatFlow，Bot {self.bot_id}，node_id: {node_id}")
+            logger.info(f"微信公众号开始执行ChatFlow，Bot {self.bot_id}")
             reply_text = self.execute_chatflow_with_message(bot_chat_flow, node_id, message, openid)
 
             # 发送回复消息（使用客服消息接口，异步发送）
@@ -311,11 +298,11 @@ class WechatOfficialChatFlowUtils(object):
 
             # 微信公众号要求5秒内必须回复，这里直接返回success
             # 实际回复通过客服消息接口异步发送
-            logger.info(f"微信公众号消息处理完成，Bot {self.bot_id}，返回success")
+            logger.info(f"微信公众号消息处理完成，Bot {self.bot_id}")
             return HttpResponse("success")
 
         except InvalidSignatureException:
-            logger.error(f"微信公众号消息签名验证失败，Bot {self.bot_id}，signature: {signature}")
+            logger.error(f"微信公众号消息签名验证失败，Bot {self.bot_id}")
             return HttpResponse("success")
         except Exception as e:
             logger.error(f"微信公众号ChatFlow流程执行失败，Bot {self.bot_id}，错误: {str(e)}")

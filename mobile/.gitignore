@@ -24,6 +24,12 @@
 .DS_Store
 *.pem
 src-tauri/gen
+
+# Android 签名文件（敏感信息，切勿提交）
+*.keystore
+*.jks
+scripts/set-android-signing.ps1
+
 # debug
 npm-debug.log*
 yarn-debug.log*

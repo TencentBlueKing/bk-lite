@@ -75,7 +75,7 @@ const useMonitorApi = () => {
   };
 
   const patchMonitorAlert = async (
-    id: string | number,
+    id: React.Key,
     data: {
       status?: string;
     }
