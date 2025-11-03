@@ -112,7 +112,8 @@
         "active": "Active",
         "installMethod": "Install Method",
         "auto": "Auto",
-        "manual": "Manual"
+        "manual": "Manual",
+        "lastReportTime": "Last Report Time"
       },
       "editform": {
         "Introduction": "Introduction",

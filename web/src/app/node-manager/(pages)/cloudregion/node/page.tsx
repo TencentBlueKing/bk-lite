@@ -244,7 +244,7 @@ const Node = () => {
     setLoading(true);
     try {
       const res = await getNodeList(params || getParams());
-      const data = res.map((item: TableDataItem) => ({
+      const data = (res || []).map((item: TableDataItem) => ({
         ...item,
         key: item.id,
       }));
