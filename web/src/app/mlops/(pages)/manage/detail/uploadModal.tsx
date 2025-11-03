@@ -74,20 +74,20 @@ const UploadModal = forwardRef<ModalRef, UploadModalProps>(({ onSuccess }, ref) 
         }
         return isTxt;
       } else if (TYPE_FILE_MAP[activeType] === 'image') {
-        const isPng = file.type === 'image/png' || file.name.endsWith('.png');
+        // const isPng = file.type === 'image/png' || file.name.endsWith('.png');
         const isLt2M = file.size / 1024 / 1024 < 2;
-        if (!isPng) {
-          message.error(t('datasets.uploadWarn'));
-        }
+        // if (!isPng) {
+        //   message.error(t('datasets.uploadWarn'));
+        // }
         if (!isLt2M) {
-          message.error('大小超出2MB');
+          message.error(t('datasets.over2MB'));
         }
 
-        return (isLt2M && isPng) || Upload.LIST_IGNORE;
+        return (isLt2M) || Upload.LIST_IGNORE;
       }
 
     },
-    accept: TYPE_FILE_MAP[activeType] !== 'image' ? `.${TYPE_FILE_MAP[activeType]}` : '.png',
+    accept: TYPE_FILE_MAP[activeType] !== 'image' ? `.${TYPE_FILE_MAP[activeType]}` : 'image/*',
   };
 
   const onSelectChange = (value: string[]) => {
@@ -341,7 +341,9 @@ const UploadModal = forwardRef<ModalRef, UploadModalProps>(({ onSuccess }, ref) 
         </p>
         <p className="ant-upload-text">{t('datasets.uploadText')}</p>
       </Dragger>
-      <p>{t(`datasets.${activeType !== 'log_clustering' ? 'downloadCSV' : 'downloadTxt'}`)}<Button type='link' onClick={downloadTemplate}>{t('datasets.template')}</Button></p>
+      {TYPE_FILE_MAP[activeType] !== 'image' && (
+        <p>{t(`datasets.${activeType !== 'log_clustering' ? 'downloadCSV' : 'downloadTxt'}`)}<Button type='link' onClick={downloadTemplate}>{t('datasets.template')}</Button></p>
+      )}
     </OperateModal>
   )
 });

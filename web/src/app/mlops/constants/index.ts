@@ -448,6 +448,49 @@ const TYPE_FILE_MAP: Record<string, any> = {
   'image_classification': 'image'
 };
 
+const RASA_MENUS = [
+  {
+    menu: 'intent',
+    icon: 'suanwangyitu',
+    content: '用来描述对话流程的关键部分，他相当于对话机器人的"训练样本"，帮助模型学习如何在不同的用户输入下选择正确的动作或回复'
+  },
+  {
+    menu: 'entity',
+    icon: 'shitishu',
+    content: '用来描述对话流程的关键部分，他相当于对话机器人的"训练样本"，帮助模型学习如何在不同的用户输入下选择正确的动作或回复'
+  },
+  {
+    menu: 'action',
+    icon: 'dongzuozu',
+    content: '用来描述对话流程的关键部分，他相当于对话机器人的"训练样本"，帮助模型学习如何在不同的用户输入下选择正确的动作或回复'
+  },
+  {
+    menu: 'response',
+    icon: 'huifu',
+    content: '用来描述对话流程的关键部分，他相当于对话机器人的"训练样本"，帮助模型学习如何在不同的用户输入下选择正确的动作或回复'
+  },
+  {
+    menu: 'slot',
+    icon: 'bianliang-xin',
+    content: '用来描述对话流程的关键部分，他相当于对话机器人的"训练样本"，帮助模型学习如何在不同的用户输入下选择正确的动作或回复'
+  },
+  {
+    menu: 'form',
+    icon: 'wodegushi',
+    content: '用来描述对话流程的关键部分，他相当于对话机器人的"训练样本"，帮助模型学习如何在不同的用户输入下选择正确的动作或回复'
+  },
+  {
+    menu: 'rule',
+    icon: 'guizepeizhi',
+    content: '用来描述对话流程的关键部分，他相当于对话机器人的"训练样本"，帮助模型学习如何在不同的用户输入下选择正确的动作或回复'
+  },
+  {
+    menu: 'story',
+    icon: 'wodegushi',
+    content: '用来描述对话流程的关键部分，他相当于对话机器人的"训练样本"，帮助模型学习如何在不同的用户输入下选择正确的动作或回复'
+  },
+];
+
 
 export {
   LEVEL_MAP,
@@ -459,6 +502,7 @@ export {
   type TRAIN_STATUS,
   TYPE_COLOR,
   RASA_CONFIG,
+  RASA_MENUS,
   PIPELINE_OPTIONS,
   POLICIES_OPTIONS,
   PIPELINE_TYPE_OPTIONS,
