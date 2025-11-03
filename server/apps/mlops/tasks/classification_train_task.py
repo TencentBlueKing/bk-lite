@@ -53,17 +53,32 @@ def start_classification_train(train_job_id: int) -> dict:
         experiment_name = f"Classification_{train_job.id}_{train_job.name}"
         logger.info(f"实验名称：{experiment_name}")
 
+        # 根据用户选择的训练特征分割数据
+        labels = train_job.labels + ['label']
+
         # 准备训练数据
         train_df = pd.DataFrame(train_job.train_data_id.train_data)
+        if labels:
+            columns_set = set(train_df.columns)
+            vaild_labels = [col for col in labels if col in columns_set]
+            if not vaild_labels:
+                raise ValueError(f"指定的标签 {labels} 在数据中不存在")
+            
+            filtered_train_df = train_df[vaild_labels].copy()
+        else:
+            filtered_train_df = train_df.copy()
 
         # 准备验证数据
         val_df = pd.DataFrame(train_job.val_data_id.train_data)
+        filtered_val_df = val_df[vaild_labels].copy() if labels else val_df.copy()
 
         # 准备测试数据
         test_df = pd.DataFrame(train_job.test_data_id.train_data)
+        filtered_test_df = test_df[vaild_labels].copy() if labels else test_df.copy()
 
         # 记录训练开始信息
         logger.info(f"开始训练异常检测模型: {experiment_name}")
+        logger.info(f"选择的特征: {vaild_labels if labels else '全部特征'}")
         logger.info(f"训练数据形状: {train_df.shape}, 符合分类数量: {sum(train_df['label'])}")
         logger.info(f"验证数据形状: {val_df.shape}, 符合分类数量: {sum(val_df['label'])}")
         logger.info(f"测试数据形状: {test_df.shape}, 符合分类数量: {sum(test_df['label'])}")
@@ -73,11 +88,10 @@ def start_classification_train(train_job_id: int) -> dict:
         result = detector.train(
             model_name=model_name,
             experiment_name=experiment_name,
-            train_dataframe=train_df,
-            val_dataframe=val_df,
-            test_dataframe=test_df,
+            train_dataframe=filtered_train_df,
+            val_dataframe=filtered_val_df,
+            test_dataframe=filtered_test_df,
             train_config=train_job.hyperopt_config,
-            # ordinal_features= {},
             max_evals=train_job.max_evals,
             primary_metric="f1_weighted",
             mlflow_tracking_url=MLFLOW_TRACKER_URL,
