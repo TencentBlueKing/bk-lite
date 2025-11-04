@@ -10,7 +10,8 @@
         "execute_parameters": "-jar /opt/fusion-collectors/bin/jmx_tomcat.jar $LISTEN_HOST %s",
         "validation_parameters": "",
         "default_template": "",
-        "introduction": "JMX-Tomcat is a Java Management Extensions (JMX) monitoring tool that collects and monitors Tomcat server metrics, providing real-time performance insights."
+        "introduction": "JMX-Tomcat is a Java Management Extensions (JMX) monitoring tool that collects and monitors Tomcat server metrics, providing real-time performance insights.",
+        "tags": ["linux", "jmx", "monitor"]
     }
 ]
 
