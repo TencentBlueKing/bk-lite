@@ -20,15 +20,15 @@ import { TYPE_CONTENT, TYPE_COLOR } from "@/app/mlops/constants";
 import { ColumnItem, ModalRef, Pagination, TableData } from '@/app/mlops/types';
 const { Search } = Input;
 
-const ImageClassificationDetail = () => {
+const ObjectDetectionDetail = () => {
   const { t } = useTranslation();
   const router = useRouter();
   const modalRef = useRef<ModalRef>(null);
   const searchParams = useSearchParams();
   const {
-    getImageClassificationTrainData,
-    deleteImageClassificationTrainData,
-    updateImageClassificationTrainData
+    getObjectDetectionTrainData,
+    deleteObjectDetectionTrainData,
+    updateObjectDetectionTrainData
   } = useMlopsManageApi();
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
   const [tableData, setTableData] = useState<TableData[]>([]);
@@ -142,7 +142,7 @@ const ImageClassificationDetail = () => {
   const getDataset = useCallback(async (search: string = '') => {
     setLoading(true);
     try {
-      const { count, items } = await getImageClassificationTrainData({
+      const { count, items } = await getObjectDetectionTrainData({
         name: search,
         dataset: folder_id as string,
         page: pagination.current,
@@ -185,7 +185,7 @@ const ImageClassificationDetail = () => {
   const onDelete = async (data: any) => {
     setConfirmLoading(true);
     try {
-      await deleteImageClassificationTrainData(data.id);
+      await deleteObjectDetectionTrainData(data.id);
     } catch (e) {
       console.log(e);
     } finally {
@@ -211,7 +211,7 @@ const ImageClassificationDetail = () => {
           is_val_data: selectedTags.includes('is_val_data'),
           is_test_data: selectedTags.includes('is_test_data')
         };
-        await updateImageClassificationTrainData(currentData?.id, params);
+        await updateObjectDetectionTrainData(currentData?.id, params);
         message.success(t(`common.updateSuccess`));
         setModalOpen(false);
         getDataset();
@@ -297,4 +297,4 @@ const ImageClassificationDetail = () => {
   )
 };
 
-export default ImageClassificationDetail;
+export default ObjectDetectionDetail;

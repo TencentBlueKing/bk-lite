@@ -61,7 +61,7 @@ const ImageContent = () => {
   // 渲染识别结果
   const rendenrLabelResult = useMemo(() => {
     return trainData[currentIndex]?.label || (
-      <div className="mb-2">&lt;请在右侧选择标签&gt;</div>
+      <div className="mb-2">&lt;{t('datasets.selectLab')}&gt;</div>
     );
   }, [trainData, currentIndex]);
 
@@ -71,7 +71,7 @@ const ImageContent = () => {
     onChange: ({ file }) => {
       console.log(file.status);
       if( file.status === 'uploading') {
-        message.info('上传中...')
+        message.info(t('datasets.uploading'))
       }
       if (file.status === 'done') {
         addNewImage(file)
@@ -84,13 +84,13 @@ const ImageContent = () => {
         message.error(t('datasets.uploadWarn'));
       }
       if (!isLt2M) {
-        message.error('大小超出2MB');
+        message.error(t('datasets.over2MB'));
       }
 
       return (isLt2M && isPng) || Upload.LIST_IGNORE;
 
     },
-    accept: '.png',
+    accept: 'image/*',
   };
 
   useEffect(() => {
@@ -167,7 +167,7 @@ const ImageContent = () => {
       label: labelName
     };
     setTrainData(updatedData);
-    message.success(`已标注为: ${labelName}`);
+    // message.success(`已标注为: ${labelName}`);
 
     // 自动跳转到下一张未标注的图片
     // const nextUnlabeledIndex = updatedData.findIndex((item, idx) => idx > currentIndex && !item.label);
@@ -212,7 +212,7 @@ const ImageContent = () => {
         formData.append('images', file.originFileObj);
         await updateImageClassificationTrainData(id, formData);
         getTrainDataInfo();
-        message.success('上传成功');
+        message.success(t('datasets.uploadSuccess'));
       }
     } catch (e) {
       console.log(e)
@@ -285,13 +285,13 @@ const ImageContent = () => {
                     />
                   </>
                 ) : (
-                  <div className="text-gray-400 flex items-center justify-center h-full">暂无图片</div>
+                  <div className="text-gray-400 flex items-center justify-center h-full">{t('common.noData')}</div>
                 )}
               </div>
 
               {/* 识别结果 */}
               <div className="w-[20%] bg-white p-2 border border-gray-200 rounded flex-shrink-0">
-                <div className="font-medium mb-2">识别结果</div>
+                <div className="font-medium mb-2">{t('datasets.labelResult')}</div>
                 <div className="text-sm text-gray-500">
                   {rendenrLabelResult}
                 </div>
@@ -329,7 +329,7 @@ const ImageContent = () => {
                     )}
                     {!item.label && (
                       <div className="absolute top-1 right-1 bg-orange-500 text-white text-xs px-1 rounded">
-                        未标注
+                        {t('datasets.unlabeled')}
                       </div>
                     )}
                   </div>
@@ -341,7 +341,7 @@ const ImageContent = () => {
                   >
                     <div className="text-center">
                       <PlusOutlined className="text-2xl text-gray-400 mb-1" />
-                      <div className="text-xs text-gray-500">添加图片</div>
+                      <div className="text-xs text-gray-500">{t('datasets.addImage')}</div>
                     </div>
                   </div>
                 </Upload>
@@ -352,13 +352,13 @@ const ImageContent = () => {
           {/* 右侧标签栏 */}
           <div className="w-[20%] bg-white border border-gray-200 rounded p-4 flex flex-col">
             <div className="flex items-center justify-between mb-4">
-              <h3 className="font-medium text-lg">标签栏</h3>
+              <h3 className="font-medium text-lg">{t('datasets.tabBar')}</h3>
             </div>
 
             <div className="flex justify-center items-center mb-4 gap-1 py-1">
               {/* 搜索框 */}
               <Input
-                placeholder="搜索标签"
+                placeholder={t('common.inputMsg')}
                 prefix={<SearchOutlined />}
                 value={searchValue}
                 onChange={(e) => setSearchValue(e.target.value)}
