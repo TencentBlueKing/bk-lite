@@ -39,6 +39,7 @@ const Topology = forwardRef<TopologyRef, TopologyProps>(
     const canvasContainerRef = useRef<HTMLDivElement>(null);
     const minimapContainerRef = useRef<HTMLDivElement>(null);
     const refreshTimerRef = useRef<NodeJS.Timeout | null>(null);
+    const resizeTimeoutRef = useRef<NodeJS.Timeout | null>(null);
     const [addNodeVisible, setAddNodeVisible] = useState(false);
     const [selectedNodeType, setSelectedNodeType] = useState<NodeType | null>(
       null
@@ -107,14 +108,6 @@ const Topology = forwardRef<TopologyRef, TopologyProps>(
       refreshAllSingleValueNodes();
     }, [refreshAllSingleValueNodes]);
 
-    useEffect(() => {
-      return () => {
-        if (refreshTimerRef.current) {
-          clearInterval(refreshTimerRef.current);
-        }
-      };
-    }, []);
-
     // 监听画布容器大小变化，自动调整画布大小
     const handleCanvasResize = useCallback(() => {
       if (resizeCanvas && canvasContainerRef.current) {
@@ -132,8 +125,10 @@ const Topology = forwardRef<TopologyRef, TopologyProps>(
       if (!canvasContainerRef.current) return;
 
       const resizeObserver = new ResizeObserver(() => {
-        clearTimeout((window as any).topologyResizeTimeout);
-        (window as any).topologyResizeTimeout = setTimeout(() => {
+        if (resizeTimeoutRef.current) {
+          clearTimeout(resizeTimeoutRef.current);
+        }
+        resizeTimeoutRef.current = setTimeout(() => {
           handleCanvasResize();
         }, 150);
       });
@@ -142,9 +137,12 @@ const Topology = forwardRef<TopologyRef, TopologyProps>(
 
       return () => {
         resizeObserver.disconnect();
-        clearTimeout((window as any).topologyResizeTimeout);
+        if (resizeTimeoutRef.current) {
+          clearTimeout(resizeTimeoutRef.current);
+          resizeTimeoutRef.current = null;
+        }
       };
-    }, []);
+    }, [handleCanvasResize]);
 
     useEffect(() => {
       handleCanvasResize();
@@ -310,6 +308,13 @@ const Topology = forwardRef<TopologyRef, TopologyProps>(
           finishInitialization();
         }, 100);
       }
+
+      return () => {
+        if (refreshTimerRef.current) {
+          clearInterval(refreshTimerRef.current);
+          refreshTimerRef.current = null;
+        }
+      };
     }, [selectedTopology?.data_id, state.graphInstance]);
 
     const handleSelectMode = () => {
