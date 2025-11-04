@@ -232,7 +232,7 @@ const Architecture = forwardRef<ArchitectureRef, ArchitectureProps>(
     };
 
     const handleModelUpdated = useCallback(
-      (model: any) => {
+      (model: DiagramData) => {
         if (isUpdatingRef.current) {
           return;
         }

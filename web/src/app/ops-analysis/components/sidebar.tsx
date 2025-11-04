@@ -21,6 +21,8 @@ import {
   DirItem,
   ModalAction,
   DirectoryType,
+  FormValues,
+  ItemData,
 } from '@/app/ops-analysis/types';
 import {
   PlusOutlined,
@@ -94,7 +96,7 @@ const Sidebar = forwardRef<SidebarRef, SidebarProps>(
       setModalVisible(true);
     };
 
-    const handleSubmit = async (values: any) => {
+    const handleSubmit = async (values: FormValues) => {
       setSubmitLoading(true);
       try {
         if (modalAction === 'edit') {
@@ -113,7 +115,7 @@ const Sidebar = forwardRef<SidebarRef, SidebarProps>(
             onDataUpdate(updatedItem);
           }
         } else {
-          const itemData: any = {
+          const itemData: ItemData = {
             name: values.name,
             desc: values.desc,
           };
