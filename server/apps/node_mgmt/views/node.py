@@ -79,7 +79,11 @@ class NodeViewSet(mixins.DestroyModelMixin,
 
     @action(methods=["get"], detail=False, url_path=r"enum", filter_backends=[])
     def enum(self, request, *args, **kwargs):
-        return WebUtils.response_success(dict(sidecar_status=ControllerConstants.SIDECAR_STATUS_ENUM))
+        enum_data = dict(
+            sidecar_status=ControllerConstants.SIDECAR_STATUS_ENUM,
+            install_method=ControllerConstants.INSTALL_METHOD_ENUM,
+        )
+        return WebUtils.response_success(enum_data)
 
     @action(detail=False, methods=["post"], url_path="batch_binding_configuration")
     def batch_binding_node_configuration(self, request):

@@ -64,3 +64,8 @@ class ControllerConstants:
     # 安装方式
     MANUAL = "manual"
     AUTO = "auto"
+
+    INSTALL_METHOD_ENUM = {
+        MANUAL: "手动安装",
+        AUTO: "自动安装",
+    }

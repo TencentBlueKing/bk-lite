@@ -10,7 +10,8 @@
         "execute_parameters": "",
         "validation_parameters": "",
         "default_template": "",
-        "introduction": "Rabbitmq Exporter is a monitoring tool that collects and exports RabbitMQ metrics, providing insights into message broker performance and health."
+        "introduction": "Rabbitmq Exporter is a monitoring tool that collects and exports RabbitMQ metrics, providing insights into message broker performance and health.",
+        "tags": ["linux", "exporter", "monitor"]
     }
 ]
 

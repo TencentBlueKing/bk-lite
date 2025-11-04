@@ -10,7 +10,8 @@
         "execute_parameters": "--nginx.common --web.listen-address 127.0.0.1:$LISTEN_PORT",
         "validation_parameters": "",
         "default_template": "",
-        "introduction": "Nginx Exporter is a monitoring tool that collects and exports Nginx server metrics, providing insights into web server performance and health."
+        "introduction": "Nginx Exporter is a monitoring tool that collects and exports Nginx server metrics, providing insights into web server performance and health.",
+        "tags": ["linux", "exporter", "monitor"]
     }
 ]
 
