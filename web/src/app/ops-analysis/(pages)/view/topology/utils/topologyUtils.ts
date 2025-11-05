@@ -1,8 +1,9 @@
 import { EdgeCreationData } from '@/app/ops-analysis/types/topology';
 import { NODE_DEFAULTS, PORT_DEFAULTS, COLORS, SPACING } from '../constants/nodeDefaults';
+import type { Node, Edge, Graph } from '@antv/x6';
 
 // 通用工具函数
-export const getValueByPath = (obj: any, path: string): any => {
+export const getValueByPath = (obj: unknown, path: string): unknown => {
   if (!obj || !path) return undefined;
 
   // 处理特殊的数据结构：包含 namespace_id 和 data 的数组
@@ -40,16 +41,16 @@ export const getValueByPath = (obj: any, path: string): any => {
       }
       // 如果key不是数字，尝试在数组的每个元素中查找
       return current.length > 0 && current[0] && typeof current[0] === 'object'
-        ? current[0][key]
+        ? (current[0] as Record<string, unknown>)[key]
         : undefined;
     }
 
-    return current[key];
+    return (current as Record<string, unknown>)[key];
   }, obj);
 };
 
 export const formatDisplayValue = (
-  value: any,
+  value: unknown,
   unit?: string,
   decimalPlaces?: number,
   conversionFactor?: number
@@ -116,7 +117,7 @@ export const calculateTextWidth = (text: string, fontSize: number, fontFamily: s
  * @param minWidth 最小宽度，默认120
  * @param padding 内边距，默认20
  */
-export const adjustSingleValueNodeSize = (node: any, text: string, minWidth: number = 120, padding: number = 20) => {
+export const adjustSingleValueNodeSize = (node: Node, text: string, minWidth: number = 120, padding: number = 20) => {
   if (!node || !text) return;
 
   const nodeData = node.getData();
@@ -403,7 +404,7 @@ const createEdgeToolConfig = (opacity: number) => ({
   },
 });
 
-export const addEdgeTools = (edge: any) => {
+export const addEdgeTools = (edge: Edge) => {
   const toolConfig = createEdgeToolConfig(PORT_DEFAULTS.OPACITY.HIDDEN);
 
   // 添加顶点编辑工具（默认透明）
@@ -415,7 +416,7 @@ export const addEdgeTools = (edge: any) => {
 };
 
 // 显示边工具
-export const showEdgeTools = (edge: any) => {
+export const showEdgeTools = (edge: Edge) => {
   edge.removeTools();
 
   const toolConfig = createEdgeToolConfig(PORT_DEFAULTS.OPACITY.VISIBLE);
@@ -426,38 +427,38 @@ export const showEdgeTools = (edge: any) => {
 };
 
 // 隐藏边工具
-export const hideEdgeTools = (edge: any) => {
+export const hideEdgeTools = (edge: Edge) => {
   edge.removeTools();
 };
 
 // 隐藏所有边的工具
-export const hideAllEdgeTools = (graph: any) => {
-  graph.getEdges().forEach((edge: any) => {
+export const hideAllEdgeTools = (graph: Graph) => {
+  graph.getEdges().forEach((edge: Edge) => {
     hideEdgeTools(edge);
   });
 };
 
-export const showPorts = (graph: any, cell: any) => {
+export const showPorts = (graph: Graph, cell: Node | Edge) => {
   if (cell.isNode()) {
     ['top', 'bottom', 'left', 'right'].forEach((port) =>
       cell.setPortProp(port, 'attrs/circle/opacity', PORT_DEFAULTS.OPACITY.VISIBLE)
     );
   } else if (cell.isEdge()) {
     ['top', 'bottom', 'left', 'right'].forEach((port) => {
-      const sourceNode = graph.getCellById(cell.getSourceCellId());
-      const targetNode = graph.getCellById(cell.getTargetCellId());
-      if (sourceNode) {
-        sourceNode.setPortProp(port, 'attrs/circle/opacity', PORT_DEFAULTS.OPACITY.VISIBLE);
+      const sourceCell = graph.getCellById(cell.getSourceCellId());
+      const targetCell = graph.getCellById(cell.getTargetCellId());
+      if (sourceCell?.isNode()) {
+        sourceCell.setPortProp(port, 'attrs/circle/opacity', PORT_DEFAULTS.OPACITY.VISIBLE);
       }
-      if (targetNode) {
-        targetNode.setPortProp(port, 'attrs/circle/opacity', PORT_DEFAULTS.OPACITY.VISIBLE);
+      if (targetCell?.isNode()) {
+        targetCell.setPortProp(port, 'attrs/circle/opacity', PORT_DEFAULTS.OPACITY.VISIBLE);
       }
     });
   }
 };
 
-export const hideAllPorts = (graph: any) => {
-  graph.getNodes().forEach((node: any) => {
+export const hideAllPorts = (graph: Graph) => {
+  graph.getNodes().forEach((node: Node) => {
     ['top', 'bottom', 'left', 'right'].forEach((port: string) =>
       node.setPortProp(port, 'attrs/circle/opacity', PORT_DEFAULTS.OPACITY.HIDDEN)
     );
@@ -465,7 +466,7 @@ export const hideAllPorts = (graph: any) => {
 };
 
 // 计算两个节点之间的最佳连接端口
-export const calculateOptimalPorts = (sourceNode: any, targetNode: any): { sourcePort: string; targetPort: string } => {
+export const calculateOptimalPorts = (sourceNode: Node, targetNode: Node): { sourcePort: string; targetPort: string } => {
   const sourceBBox = sourceNode.getBBox();
   const targetBBox = targetNode.getBBox();
 

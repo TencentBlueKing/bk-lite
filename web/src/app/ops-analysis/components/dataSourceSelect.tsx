@@ -1,15 +1,15 @@
-import React from 'react';
+import React, { CSSProperties } from 'react';
 import { Select } from 'antd';
 import { DatasourceItem } from '@/app/ops-analysis/types/dataSource';
 
 interface DataSourceSelectProps {
   loading?: boolean;
   placeholder?: string;
-  style?: any;
-  value?: any;
+  style?: CSSProperties;
+  value?: number;
   disabled?: boolean;
   dataSources?: DatasourceItem[];
-  onChange?: (value: any) => void;
+  onChange?: (value: number) => void;
   onDataSourceChange?: (dataSource: DatasourceItem | undefined) => void;
 }
 
@@ -32,8 +32,7 @@ const DataSourceSelect: React.FC<DataSourceSelectProps> = ({
     }));
   };
 
-
-  const handleChange = (val: any) => {
+  const handleChange = (val: number) => {
     onChange?.(val);
     const selectedSource = dataSources.find((item) => item.id === val);
     onDataSourceChange?.(selectedSource);

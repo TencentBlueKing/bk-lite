@@ -58,7 +58,7 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
 
       const validation = validateChartData(data, chartType);
       setDataValidation(validation);
-    } catch (err: any) {
+    } catch (err) {
       console.error('获取数据失败:', err);
       setRawData(null);
       setDataValidation({
@@ -71,8 +71,7 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
   };
 
   // 提取数据校验逻辑
-  const validateChartData = (data: any, type?: string) => {
-
+  const validateChartData = (data: unknown, type?: string) => {
     const isDataEmpty = () => {
       if (!data) return true;
       if (Array.isArray(data) && data.length === 0) return true;

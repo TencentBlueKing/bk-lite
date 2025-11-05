@@ -11,7 +11,10 @@ import { useTranslation } from '@/utils/i18n';
 import { ComponentSelectorProps } from '@/app/ops-analysis/types/dashBoard';
 import { useDataSourceApi } from '@/app/ops-analysis/api/dataSource';
 import { useOpsAnalysis } from '@/app/ops-analysis/context/common';
-import type { DatasourceItem } from '@/app/ops-analysis/types/dataSource';
+import type {
+  DatasourceItem,
+  ChartType,
+} from '@/app/ops-analysis/types/dataSource';
 
 const ComponentSelector: React.FC<ComponentSelectorProps> = ({
   visible,
@@ -29,7 +32,7 @@ const ComponentSelector: React.FC<ComponentSelectorProps> = ({
   const { tagList, tagsLoading, fetchTags } = useOpsAnalysis();
   const { getDataSourceList } = useDataSourceApi();
 
-  const getChartIcon = (chartTypes: any[]) => {
+  const getChartIcon = (chartTypes: ChartType[]) => {
     const iconClass = 'text-[16px] text-[var(--color-primary)]';
 
     const iconMap = {
