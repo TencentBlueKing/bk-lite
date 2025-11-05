@@ -41,7 +41,7 @@
         {
           "title": "自定义菜单",
           "icon": "zidingyi",
-          "name": "custom_menu",
+          "name": "data_permission",
           "url": "/system-manager/application/manage/menu",
           "children": [
             {

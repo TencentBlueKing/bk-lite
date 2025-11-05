@@ -155,17 +155,8 @@ export const useMenuConfig = (
       // 从 selectedKeys 中移除这些页面
       setSelectedKeys(prev => prev.filter(key => !pageNamesInGroup.includes(key)));
       
-      // 删除目录
-      if (group.children.length > 0) {
-        const pageItems: MixedItem[] = group.children.map(page => ({
-          type: 'page',
-          id: page.name,
-          data: page
-        }));
-        setMixedItems(prev => [...prev.filter(i => i.id !== groupId), ...pageItems]);
-      } else {
-        setMixedItems(prev => prev.filter(i => i.id !== groupId));
-      }
+      // 直接删除目录（不保留子页面）
+      setMixedItems(prev => prev.filter(i => i.id !== groupId));
     }
   };
 
@@ -182,26 +173,18 @@ export const useMenuConfig = (
   };
 
   const handleRemovePageFromGroup = (groupId: string, pageName: string) => {
+    // 从 selectedKeys 中移除该页面
+    setSelectedKeys(prev => prev.filter(k => k !== pageName));
+    
+    // 从目录中移除该页面（不再添加到列表末尾）
     setMixedItems(prev => prev.map(item => {
       if (item.type === 'group' && item.id === groupId) {
         const group = item.data as MenuGroup;
-        const removedPage = group.children.find(c => c.name === pageName);
-        if (removedPage) {
-          const newGroup = {
-            ...group,
-            children: group.children.filter(c => c.name !== pageName)
-          };
-          
-          setTimeout(() => {
-            setMixedItems(current => [...current, {
-              type: 'page',
-              id: removedPage.name,
-              data: removedPage
-            }]);
-          }, 0);
-          
-          return { ...item, data: newGroup };
-        }
+        const newGroup = {
+          ...group,
+          children: group.children.filter(c => c.name !== pageName)
+        };
+        return { ...item, data: newGroup };
       }
       return item;
     }));

@@ -7,6 +7,7 @@ import { PlusOutlined, MoreOutlined } from '@ant-design/icons';
 import { useTranslation } from '@/utils/i18n';
 import { useRoleApi } from '@/app/system-manager/api/application';
 import { CustomMenu, CustomMenuListParams } from '@/app/system-manager/types/menu';
+import { useMenus } from '@/context/menus';
 import PermissionWrapper from '@/components/permission';
 import OperateModal from '@/components/operate-modal';
 import DynamicForm from '@/components/dynamic-form';
@@ -20,6 +21,7 @@ const CustomMenuPage = () => {
   const router = useRouter();
   const searchParams = useSearchParams();
   const clientId = searchParams.get('clientId') || '';
+  const { configMenus } = useMenus();
   
   const {
     getCustomMenus,
@@ -115,12 +117,41 @@ const CustomMenuPage = () => {
     
     setActionLoading(prev => ({ ...prev, [loadingKey]: true }));
     try {
-      await copyCustomMenu({
+      const copyData: any = {
         id: record.id,
         app: clientId,
         display_name: `${record.display_name}_copy`,
         description: record.description,
-      });
+      };
+
+      // 如果是内置菜单，添加 menus 字段（从源菜单树获取）
+      if (record.is_build_in) {
+        const appMenus = configMenus.filter(menu => {
+          if (!menu.url || !clientId) return false;
+          const urlParts = menu.url.split('/').filter(Boolean);
+          const appName = urlParts[0];
+          return appName === clientId;
+        });
+
+        const menus = appMenus
+          .filter(menu => menu.url && menu.children && menu.children.length > 0)
+          .map(menu => ({
+            name: menu.name,
+            title: menu.title,
+            url: menu.url,
+            icon: menu.icon,
+            children: menu.children?.map(child => ({
+              name: child.name,
+              title: child.title,
+              url: child.url,
+              icon: child.icon,
+            })) || []
+          }));
+
+        copyData.menus = menus;
+      }
+
+      await copyCustomMenu(copyData);
       message.success(t('common.success'));
       loadMenus(pagination.current, searchTerm);
     } catch (error) {
