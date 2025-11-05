@@ -1,0 +1,9 @@
+# 自定义菜单成功消息
+batch_create: 批量创建成功
+update_order: 排序更新成功
+batch_update_order: 成功更新菜单排序
+menu_enabled: 菜单已启用
+menu_disabled: 菜单已禁用
+
+menu_group_enabled: 菜单组已启用
+menu_group_disabled: 菜单组已禁用

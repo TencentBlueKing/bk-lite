@@ -11,7 +11,7 @@ cannot_delete_builtin_app: Cannot delete built-in application
 
 # Role management related errors
 cannot_delete_admin_normal_roles: Admin and normal roles cannot be deleted
-role_used_by_users: Role is already used by the following users: {users}!
+role_used_by_users: Role is already used by the following users!
 group_role_ids_required: Group ID list and role ID list cannot be empty
 group_ids_role_id_required: Group ID list and role ID cannot be empty
 some_groups_not_exist: Some groups do not exist
@@ -43,3 +43,14 @@ app_not_found: APP not found
 
 # Task related messages
 sync_task_initiated: Sync task has been initiated.
+# Custom menu related errors
+cannot_delete_menu_with_children: Cannot delete menu with children
+order_required: Order value cannot be empty
+invalid_order: Order value must be an integer
+invalid_format: Request format error, list required
+root_menu_cannot_toggle: Root menu does not support enable/disable
+ids_required: Menu ID list cannot be empty
+is_enabled_required: Enabled status cannot be empty
+cannot_delete_menu_group_with_menus: Cannot delete menu group with menus
+cannot_modify_builtin_menu_group: Cannot modify builtin menu group
+cannot_delete_builtin_menu_group: Cannot delete builtin menu group
