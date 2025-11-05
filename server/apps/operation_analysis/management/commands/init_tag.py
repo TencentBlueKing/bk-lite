@@ -3,8 +3,8 @@
 # @Time: 2025/9/3 15:27
 # @Author: windyzhao
 from django.core.management import BaseCommand
-from apps.operation_analysis.init_constants import INIT_TAG_DATA
-from apps.operation_analysis.models import DataSourceTag
+from apps.operation_analysis.constants.init_constants import INIT_TAG_DATA
+from apps.operation_analysis.models.datasource_models import DataSourceTag
 from apps.core.logger import operation_analysis_logger as logger
 
 

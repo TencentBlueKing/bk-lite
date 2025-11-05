@@ -3,21 +3,8 @@
 # @Time: 2025/7/18 10:59
 # @Author: windyzhao
 from rest_framework import serializers
-from apps.operation_analysis.models import DataSourceAPIModel, Dashboard, Directory, Topology, NameSpace, DataSourceTag, Architecture
-
-
-class BaseFormatTimeSerializer(serializers.ModelSerializer):
-    # 格式化时间字段
-    created_at = serializers.DateTimeField(format="%Y-%m-%d %H:%M:%S", read_only=True)
-    updated_at = serializers.DateTimeField(format="%Y-%m-%d %H:%M:%S", read_only=True)
-
-
-class DataSourceAPIModelSerializer(BaseFormatTimeSerializer):
-    class Meta:
-        model = DataSourceAPIModel
-        fields = "__all__"
-        extra_kwargs = {
-        }
+from apps.operation_analysis.serializers.base_serializers import BaseFormatTimeSerializer
+from apps.operation_analysis.models.models import Dashboard, Directory, Topology, Architecture
 
 
 class DirectoryModelSerializer(BaseFormatTimeSerializer):
@@ -72,18 +59,3 @@ class ArchitectureModelSerializer(BaseFormatTimeSerializer):
         if 'directory' not in validated_data:
             raise serializers.ValidationError({"directory": ["directory is required for creation."]})
         return super().create(validated_data)
-
-
-class NameSpaceModelSerializer(BaseFormatTimeSerializer):
-    class Meta:
-        model = NameSpace
-        fields = "__all__"
-        extra_kwargs = {
-            "password": {"write_only": True},
-        }
-
-
-class DataSourceTagModelSerializer(BaseFormatTimeSerializer):
-    class Meta:
-        model = DataSourceTag
-        fields = "__all__"

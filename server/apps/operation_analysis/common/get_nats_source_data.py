@@ -2,7 +2,7 @@
 # @File: get_nats_source_data.py
 # @Time: 2025/7/22 18:24
 # @Author: windyzhao
-from apps.operation_analysis.nats import DefaultNastClient
+from apps.operation_analysis.nats.nats_client import DefaultNastClient
 from apps.rpc.alerts import AlertOperationAnaRpc
 from apps.rpc.monitor import MonitorOperationAnaRpc
 from apps.rpc.log import LogOperationAnaRpc
