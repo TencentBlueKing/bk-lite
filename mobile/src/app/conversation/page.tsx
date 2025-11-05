@@ -3,7 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import { Flex, type GetProp } from 'antd';
 import { Avatar, Toast } from 'antd-mobile';
-import { LeftOutline } from 'antd-mobile-icons';
+import { LeftOutline, MoreOutline } from 'antd-mobile-icons';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { Bubble, Sender, useXAgent, useXChat, Actions } from '@ant-design/x';
 import { UserOutlined, CopyOutlined, RedoOutlined } from '@ant-design/icons';
@@ -27,7 +27,7 @@ const actionItems = [
   },
 ];
 
-const roles: GetProp<typeof Bubble.List, 'roles'> = {
+const getRoles = (chatInfo: ChatInfo | null, router: any): GetProp<typeof Bubble.List, 'roles'> => ({
   ai: {
     placement: 'start',
     avatar: {
@@ -35,6 +35,12 @@ const roles: GetProp<typeof Bubble.List, 'roles'> = {
       style: {
         background: '#fde3cf',
         color: '#f56a00',
+        cursor: 'pointer',
+      },
+      onClick: () => {
+        if (chatInfo?.id) {
+          router.push(`/workbench/detail?id=${chatInfo.id}`);
+        }
       },
     },
     typing: { step: 5, interval: 20 },
@@ -57,7 +63,7 @@ const roles: GetProp<typeof Bubble.List, 'roles'> = {
       marginLeft: 'auto',
     },
   },
-};
+});
 
 export default function ConversationDetail() {
   const router = useRouter();
@@ -185,7 +191,7 @@ export default function ConversationDetail() {
         >
           <LeftOutline fontSize={24} className="text-[var(--color-text-1)]" />
         </button>
-        <div className="flex items-center">
+        <div className="flex items-center" onClick={() => router.push(`/workbench/detail?id=${chatInfo.id}`)}>
           <Avatar
             src={chatInfo.avatar}
             style={{ '--size': '36px' }}
@@ -195,6 +201,12 @@ export default function ConversationDetail() {
             {chatInfo.name}
           </div>
         </div>
+        <button
+          onClick={() => router.push(`/workbench/detail?id=${chatInfo.id}`)}
+          className="absolute right-4"
+        >
+          <MoreOutline className="text-[var(--color-text-1)] text-3xl" />
+        </button>
       </div>
 
       {/* 聊天内容区域 */}
@@ -210,7 +222,7 @@ export default function ConversationDetail() {
             className="custom-scrollbar"
           >
             <Bubble.List
-              roles={roles}
+              roles={getRoles(chatInfo, router)}
               style={{
                 width: '100%',
               }}

@@ -80,8 +80,8 @@ export default function ConversationList() {
                 />
               }
               description={
-                <div className="flex items-center justify-between mt-1">
-                  <span className="text-sm text-[var(--color-text-3)] flex-1 truncate">
+                <div className="mt-1">
+                  <span className="text-sm text-[var(--color-text-3)] line-clamp-1">
                     {chat.lastMessage}
                   </span>
                 </div>

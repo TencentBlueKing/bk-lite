@@ -104,12 +104,7 @@ export default function WorkbenchPage() {
                     </div>
 
                     {/* 描述文本 */}
-                    <p className="text-xs text-[var(--color-text-2)] mb-3 leading-relaxed overflow-hidden"
-                        style={{
-                            whiteSpace: 'nowrap',
-                            overflow: 'hidden',
-                            textOverflow: 'ellipsis'
-                        }}>
+                    <p className="text-xs text-[var(--color-text-2)] mb-3 leading-relaxed truncate">
                         {item.introduction || '暂无简介'}
                     </p>
 
