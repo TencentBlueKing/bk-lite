@@ -27,6 +27,7 @@ export default function ConversationList() {
     fetchChatList();
   }, []);
 
+
   return (
     <div className="flex flex-col h-full bg-[var(--color-background-body)]">
       {/* 顶部导航栏 */}
@@ -73,8 +74,8 @@ export default function ConversationList() {
                 />
               }
               description={
-                <div className="flex items-center justify-between mt-1">
-                  <span className="text-sm text-[var(--color-text-3)] flex-1 truncate">
+                <div className="mt-1">
+                  <span className="text-sm text-[var(--color-text-3)] line-clamp-1">
                     {chat.lastMessage}
                   </span>
                 </div>
