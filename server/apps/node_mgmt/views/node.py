@@ -5,9 +5,9 @@ from rest_framework.viewsets import GenericViewSet
 
 from apps.core.utils.permission_utils import get_permission_rules, permission_filter
 from apps.core.utils.web_utils import WebUtils
+from apps.node_mgmt.constants.collector import CollectorConstants
 from apps.node_mgmt.constants.controller import ControllerConstants
 from apps.node_mgmt.constants.node import NodeConstants
-from apps.node_mgmt.filters.node import NodeFilter
 from apps.node_mgmt.models.sidecar import Node
 from config.drf.pagination import CustomPageNumberPagination
 from apps.node_mgmt.serializers.node import NodeSerializer, BatchBindingNodeConfigurationSerializer, \
@@ -16,10 +16,8 @@ from apps.node_mgmt.services.node import NodeService
 
 
 class NodeViewSet(mixins.DestroyModelMixin,
-                  mixins.ListModelMixin,
                   GenericViewSet):
     queryset = Node.objects.all().prefetch_related('nodeorganization_set').order_by("-created_at")
-    filterset_class = NodeFilter
     pagination_class = CustomPageNumberPagination
     serializer_class = NodeSerializer
     search_fields = ["id", "name", "ip"]
@@ -32,8 +30,60 @@ class NodeViewSet(mixins.DestroyModelMixin,
             else:
                 node_info["permission"] = NodeConstants.DEFAULT_PERMISSION
 
+    @staticmethod
+    def format_params(params: dict):
+        """
+        格式化查询参数，支持灵活的 lookup_expr
 
-    def list(self, request, *args, **kwargs):
+        输入格式:
+        {
+            'name': [
+                {'lookup_expr': 'exact', 'value': 'xx'},
+                {'lookup_expr': 'icontains', 'value': 'xxx'}
+            ],
+            'ip': [
+                {'lookup_expr': 'exact', 'value': '10.10.10.11'}
+            ]
+        }
+
+        返回: Q 对象用于过滤 queryset
+
+        注意：所有条件之间都是 AND 逻辑关系
+        """
+        from django.db.models import Q
+
+        if not params:
+            return Q()
+
+        # 最终的 Q 对象，使用 AND 逻辑组合所有条件
+        final_q = Q()
+
+        for field_name, conditions in params.items():
+            if not conditions or not isinstance(conditions, list):
+                continue
+
+            # 同一字段的多个条件也使用 AND 逻辑
+            for condition in conditions:
+                if not isinstance(condition, dict):
+                    continue
+
+                lookup_expr = condition.get('lookup_expr', 'exact')
+                value = condition.get('value')
+
+                if value is None or value == '':
+                    continue
+
+                # 构建查询键，例如: name__exact, name__icontains
+                lookup_key = f"{field_name}__{lookup_expr}"
+
+                # 使用 AND 逻辑组合所有条件
+                final_q &= Q(**{lookup_key: value})
+
+        return final_q
+
+
+    @action(methods=["post"], detail=False, url_path=r"search")
+    def search(self, request, *args, **kwargs):
         # 获取权限规则
         permission = get_permission_rules(
             request.user,
@@ -44,7 +94,13 @@ class NodeViewSet(mixins.DestroyModelMixin,
 
         # 应用权限过滤
         queryset = permission_filter(Node, permission, team_key="nodeorganization__organization__in", id_key="id__in")
-        queryset = self.filter_queryset(queryset)
+
+        # 应用自定义查询参数格式化
+        custom_filters = request.data.get('filters')
+        if custom_filters:
+            q_filters = self.format_params(custom_filters)
+            if q_filters:
+                queryset = queryset.filter(q_filters)
 
         # 根据组织筛选
         organization_ids = request.query_params.get('organization_ids')
@@ -82,6 +138,7 @@ class NodeViewSet(mixins.DestroyModelMixin,
         enum_data = dict(
             sidecar_status=ControllerConstants.SIDECAR_STATUS_ENUM,
             install_method=ControllerConstants.INSTALL_METHOD_ENUM,
+            tag=CollectorConstants.TAG_ENUM,
         )
         return WebUtils.response_success(enum_data)
 

@@ -73,6 +73,7 @@ class Collector(TimeInfo, MaintainerInfo):
     enabled_default_config = models.BooleanField(default=False, verbose_name="是否启用默认初始化的配置")
     default_config = JSONField(default=dict, verbose_name="默认初始化的配置")
     tags = JSONField(default=list, verbose_name="标签")
+    package_name = models.CharField(max_length=100, blank=True, default="", verbose_name="包名称")
 
     class Meta:
         verbose_name = "采集器信息"
