@@ -1,6 +1,6 @@
 # -- coding: utf-8 --
-# @File: nats.py
-# @Time: 2025/9/4 11:36
+# @File: nats_client.py
+# @Time: 2025/11/5 15:40
 # @Author: windyzhao
 from apps.rpc.base import BaseOperationAnaRpc
 

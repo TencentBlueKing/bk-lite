@@ -13,7 +13,6 @@ from django.contrib.postgres.indexes import GinIndex, BTreeIndex
 from django.db.models import JSONField
 from django.utils import timezone
 
-from apps.alerts.common.aggregation.enum import WindowCalculator
 from apps.core.models.maintainer_info import MaintainerInfo
 from apps.core.models.time_info import TimeInfo
 from apps.alerts.constants import AlertsSourceTypes, AlertAccessType, EventStatus, AlertOperate, \
