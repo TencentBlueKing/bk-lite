@@ -9,3 +9,13 @@ class CollectorConstants:
         NodeConstants.LINUX_OS: "/opt/fusion-collectors/bin",
         NodeConstants.WINDOWS_OS: "C:\\gse\\fusion-collectors\\bin",
     }
+
+    TAG_ENUM = {
+        "linux": "Linux",
+        "windows": "Windows",
+        "monitor": "Monitor",
+        "log": "Log",
+        "cmdb": "CMDB",
+        "jmx": "JMX",
+        "exporter": "Exporter",
+    }
