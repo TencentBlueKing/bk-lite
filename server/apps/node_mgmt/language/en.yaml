@@ -1,0 +1,12 @@
+cloud_region:
+  default:
+    description: Default Cloud Region
+    name: Default
+os:
+  linux: Linux
+  windows: Windows
+collector:
+  jmx_activemq_linux:
+    description: Collect ActiveMQ metrics via JMX to monitor the performance and health
+      of message queues
+    name: JMX ActiveMQ (Linux)

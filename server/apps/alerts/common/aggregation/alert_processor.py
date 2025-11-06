@@ -11,15 +11,66 @@ from typing import List, Dict, Any, Tuple
 from django.db import transaction, IntegrityError
 from django.utils import timezone
 
+from apps.alerts.common.aggregation import DuckDBEngine
+from apps.alerts.common.aggregation.util import WindowCalculator
 from apps.alerts.common.assignment import execute_auto_assignment_for_alerts
-from apps.alerts.common.rules.db_rule_manager import DatabaseRuleManager
-from apps.alerts.common.rules.rule_manager import get_rule_manager
-from apps.alerts.common.rules.alert_rules import format_alert_message
+from apps.alerts.common.rules.rule_adapter import create_rule_adapter
 from apps.alerts.constants import AlertStatus, LevelType, EventStatus
-from apps.alerts.common.aggregation.window_types import WindowType, WindowConfig, WindowCalculator
+from apps.alerts.common.aggregation.enum import WindowType, WindowConfig, DEFAULT_TITLE, \
+    DEFAULT_CONTENT
 from apps.alerts.models import Event, Alert, Level, AggregationRules, CorrelationRules, SessionWindow
 from apps.alerts.utils.util import generate_instance_fingerprint
 from apps.core.logger import alert_logger as logger
+
+
+def format_template_string(template: str, data: Dict[str, Any]) -> str:
+    """格式化模板字符串中的变量
+
+    Args:
+        template: 包含${变量名}格式的模板字符串
+        data: 包含变量名和对应值的字典
+
+    Returns:
+        格式化后的字符串
+    """
+    if not template:
+        return ""
+
+    result = template
+    # 替换所有${var}格式的变量
+    for key, value in data.items():
+        placeholder = "${" + key + "}"
+        if not value:
+            value = ""
+        result = result.replace(placeholder, str(value))
+
+    return result
+
+
+def format_alert_message(rule: dict, event_data: Dict[str, Any]) -> Tuple[str, str]:
+    """格式化告警标题和内容
+
+    Args:
+        rule: 告警规则配置
+        event_data: 触发事件的数据
+
+    Returns:
+        包含格式化后标题和内容的字典
+    """
+    title = rule.get("title", None)
+    content = rule.get("content", None)
+
+    # 如果规则中没有设置标题或内容，使用默认格式
+    if not title:
+        title = DEFAULT_TITLE
+    if not content:
+        content = DEFAULT_CONTENT
+
+    # 格式化标题和内容
+    formatted_title = format_template_string(title, event_data)
+    formatted_content = format_template_string(content, event_data)
+
+    return formatted_title, formatted_content
 
 
 class AlertProcessor:
@@ -34,28 +85,25 @@ class AlertProcessor:
         self.default_window_size = window_size
         self.default_window_type = WindowType(window_type)
 
-        # 获取支持数据库规则的规则管理器
-        self.rule_manager = get_rule_manager(window_size=self.default_window_size)
-
         self.event_fields = [
             "event_id", "external_id", "item", "received_at", "status", "level", "source__name",
             "source_id", "title", "rule_id", "description", "resource_id", "resource_type", "resource_name", "value"
         ]
         self.now = timezone.now()
         # 定义级别优先级映射（数字越大优先级越高）
-        self.level_priority = self._get_event_level_list()
+        self.level_priority = []
+        self.level_priority_map = {}
+
+        self.set_level()
 
         # 新增：支持只处理特定规则，避免重复加载
         self._target_correlation_rules = None
         self._rule_manager_initialized = False
 
-    @staticmethod
-    def _get_event_level_list():
-        """获取事件级别映射"""
-        instance = list(
-            Level.objects.filter(level_type=LevelType.EVENT, level_id__lt=3).order_by("level_id").values_list(
-                "level_id", flat=True))
-        return instance
+    def set_level(self):
+        instances = Level.objects.filter(level_type=LevelType.EVENT, level_id__lt=3).order_by("level_id")
+        self.level_priority = list(instances.values_list("level_id", flat=True))
+        self.level_priority_map = {level.level_name: level.level_id for level in instances}
 
     def get_events_for_correlation_rule(self, correlation_rule: CorrelationRules) -> pd.DataFrame:
         """根据关联规则的窗口配置获取事件数据"""
@@ -84,7 +132,31 @@ class AlertProcessor:
             source__is_active=True
         ).exclude(status=EventStatus.SHIELD, alert__status__in=AlertStatus.ACTIVATE_STATUS).values(*self.event_fields)
 
-        return pd.DataFrame(list(instances))
+        event_df = pd.DataFrame(list(instances))
+
+        return self.format_event_df(event_df)
+
+    @staticmethod
+    def format_event_df(event_df: pd.DataFrame) -> pd.DataFrame:
+        """格式化事件数据，添加指纹等字段"""
+        if event_df.empty:
+            return event_df
+
+        event_df['alert_source'] = event_df['source__name']
+
+        # 添加指纹字段
+        event_df['fingerprint'] = event_df.apply(
+            lambda row: generate_instance_fingerprint({
+                "resource_id": row["resource_id"],
+                "item": row["item"],
+                "source_id": row["source_id"],
+                "rule_id": row["rule_id"]
+            }), axis=1
+        )
+
+        event_df["level"] = event_df["level"].apply(lambda x: int(x))
+
+        return event_df
 
     def get_events(self, rule_config: WindowConfig = None) -> pd.DataFrame:
         """向后兼容的事件获取方法"""
@@ -114,7 +186,8 @@ class AlertProcessor:
             logger.info("使用传统滑动窗口处理模式")
             return self._process_legacy_sliding_window()
 
-    def _should_use_multi_window_processing(self) -> bool:
+    @staticmethod
+    def _should_use_multi_window_processing() -> bool:
         """判断是否需要使用多窗口类型处理
         
         检查是否有非滑动窗口类型的关联规则
@@ -355,85 +428,6 @@ class AlertProcessor:
                     import traceback
                     logger.error(f"Error updating alert {fingerprint}: {traceback.format_exc()}")
 
-    def get_rule_statistics(self) -> Dict[str, Any]:
-        """获取规则统计信息"""
-        return self.rule_manager.get_rule_statistics()
-
-    def reload_rules(self):
-        """重新加载规则"""
-        self.rule_manager.reload_rules()
-
-    def reload_database_rules(self):
-        """重新加载数据库规则"""
-        try:
-            if self._target_correlation_rules:
-                # 只加载目标关联规则
-                self._load_specific_correlation_rules(self._target_correlation_rules)
-            else:
-                # 加载所有规则
-                self.rule_manager.reload_rules_from_database()
-
-            self._rule_manager_initialized = True
-            logger.info("告警处理器成功重新加载数据库规则")
-        except Exception as e:
-            logger.error(f"告警处理器重新加载数据库规则失败: {str(e)}")
-
-    def set_target_correlation_rules(self, correlation_rules: List[CorrelationRules]):
-        """
-        设置目标关联规则，只处理这些规则
-        
-        Args:
-            correlation_rules: 要处理的关联规则列表
-        """
-        self._target_correlation_rules = correlation_rules
-        self._rule_manager_initialized = False
-
-    def _load_specific_correlation_rules(self, correlation_rules: List[CorrelationRules]):
-        """
-        只加载特定的关联规则到规则管理器
-        
-        Args:
-            correlation_rules: 要加载的关联规则列表
-        """
-        try:
-            logger.info(f"开始加载特定的关联规则，数量: {len(correlation_rules)}")
-
-            # 创建专门的数据库规则管理器来处理特定规则
-            db_rule_manager = DatabaseRuleManager(window_size=self.default_window_size)
-
-            # 直接获取窗口配置对象
-            window_config = db_rule_manager.load_specific_correlation_rules(correlation_rules)
-
-            if window_config:
-                # 更新规则管理器的配置
-                self.rule_manager.window_config = window_config
-                self.rule_manager._init_engine()
-
-                total_rules = len(window_config.rules) if window_config.rules else 0
-                logger.info(f"成功加载 {total_rules} 条特定规则，窗口类型: {window_config.window_type}")
-            else:
-                logger.warning("加载的特定规则为空")
-
-        except Exception as e:
-            logger.error(f"加载特定关联规则失败: {str(e)}")
-            raise
-
-    def _ensure_rule_manager_initialized(self):
-        """确保规则管理器已初始化"""
-        if not self._rule_manager_initialized:
-            self.reload_database_rules()
-
-    @staticmethod
-    def alert_auto_assign(alert_id_list) -> None:
-        """
-        自动分配告警处理人
-        """
-        try:
-            execute_auto_assignment_for_alerts(alert_id_list)
-        except Exception as err:
-            import traceback
-            logger.error(f"Error in auto assignment for alerts {alert_id_list}: {traceback.format_exc()}")
-
     def process_with_window_type(self) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]]]:
         """根据关联规则的窗口类型进行分组处理"""
         format_alert_list = []
@@ -528,32 +522,87 @@ class AlertProcessor:
 
         return format_alert_list, update_alert_list
 
-    def _create_window_config(self, correlation_rule: CorrelationRules) -> WindowConfig:
-        """根据关联规则创建窗口配置"""
-        from apps.alerts.common.aggregation.window_types import WindowConfig, WindowType
+    @staticmethod
+    def bulk_exec_rules_sql(events_df: pd.DataFrame, agg_rules: List[AggregationRules]) -> dict:
+        """执行SQL并返回结果"""
+        result = {}
+        for agg_rule in agg_rules:
+            adapter = create_rule_adapter()
+            format_sql = adapter.generate_rule_sql(agg_rule)
+            if not format_sql:
+                logger.info("rule format sql error: rule_id={}, name={}".format(agg_rule.rule_id, agg_rule.name))
+                continue
+            try:
+                with DuckDBEngine() as engine:
+                    # 这里需要先加载测试数据
+                    engine.load_dataframe(events_df, 'alerts_event')
+                    # 执行查询
+                    alert_df = engine.execute_query_to_df(format_sql)
+                    if alert_df.empty:
+                        continue
+                    result[agg_rule.rule_id] = alert_df.to_dict('records')
+            except Exception as e:
+                import traceback
+                print(traceback.format_exc())
+                logger.error(f"执行SQL失败: {agg_rule.name} - {str(e)}")
+                continue
 
-        return WindowConfig(
-            window_type=WindowType(correlation_rule.window_type),
-            window_size=correlation_rule.window_size,
-            slide_interval=correlation_rule.slide_interval,
-            alignment=correlation_rule.alignment,
-            session_timeout=correlation_rule.session_timeout,
-            session_key_fields=correlation_rule.session_key_fields or ['item', 'resource_id', 'resource_type',
-                                                                       'alert_source', 'rule_id'],
-            max_window_size=correlation_rule.max_window_size or "1h"
-        )
+        return result
 
-    def main(self):
-        """主流程方法"""
-        add_alert_list, update_alert_list = self.process()
-        logger.info("==add_alert_list data={}==".format([i.get("event_ids") for i in add_alert_list]))
-        logger.info("==update_alert_list data={}==".format([i.get("event_ids") for i in update_alert_list]))
-        if add_alert_list:
-            self.bulk_create_alerts(alerts=add_alert_list)
-            self.alert_auto_assign(alert_id_list=[alert['alert_id'] for alert in add_alert_list])
+    @staticmethod
+    def check_instance_alert_status(instance_fingerprint: str, rule: AggregationRules) -> List:
+        """
+        检查实例是否已有活跃告警
 
-        if update_alert_list:
-            self.update_alerts(alerts=update_alert_list)
+        Args:
+            instance_fingerprint: 实例指纹
+            rule: 告警规则
+
+        Returns:
+            (是否需要创建新告警, 相关告警列表, 操作类型)
+        """
+        # 查询该实例是否已有活跃告警
+        query_conditions = {
+            # 'rule_name': rule.name,
+            'status__in': AlertStatus.ACTIVATE_STATUS,
+            'fingerprint': instance_fingerprint,  # 使用实例指纹查询
+            'rule_id': rule.rule_id,  # 使用规则ID查询
+        }
+
+        window_size = rule.window_config["window_size"]
+        if window_size:
+            window_delta = datetime.timedelta(minutes=window_size)
+            # 添加时间窗口限制
+            query_conditions['created_at__gte'] = timezone.now() - window_delta
+
+        related_alerts = list(Alert.objects.filter(**query_conditions).values())
+
+        return related_alerts
+
+    def format_agg_result(self, aggregation_rule, agg_results, events_dict):
+
+        """格式化聚合结果"""
+        result = {}
+
+        for agg_result in agg_results:
+            fingerprint = agg_result['fingerprint']
+            if fingerprint not in result:
+                result[fingerprint] = {
+                    "source_name": agg_result["alert_source"],
+                    "event_ids": [],
+                    "event_data": [],
+                    "related_alerts": []
+                }
+            event_ids = agg_result['event_ids']
+            for event_id in event_ids.split(','):
+                result[fingerprint]["event_ids"].append(event_id)
+                result[fingerprint]["event_data"].append(events_dict[event_id])
+
+        for fingerprint, value_dict in result.items():
+            related_alerts = self.check_instance_alert_status(fingerprint, aggregation_rule)
+            value_dict["related_alerts"] = related_alerts
+
+        return result
 
     def _process_events_with_aggregation_rules(self, events: pd.DataFrame,
                                                aggregation_rules: List[AggregationRules]) -> Tuple[
@@ -572,55 +621,43 @@ class AlertProcessor:
         update_alert_list = []
 
         try:
-
-            # 使用规则管理器执行规则检测
-            rule_results = self.rule_manager.execute_rules(events)
-
+            aggregation_rule_map = {i.rule_id: i for i in aggregation_rules}
+            # 执行规则SQL
+            rule_results = self.bulk_exec_rules_sql(events, aggregation_rules)
+            #
+            events_dict = {event["event_id"]: event for event in events.to_dict('records')}
             # 处理规则执行结果
             for rule_id, rule_result in rule_results.items():
-                if rule_result.triggered:
-                    # 检查规则是否在要处理的聚合规则列表中
-                    matching_rule = None
-                    for agg_rule in aggregation_rules:
-                        if agg_rule.rule_id == rule_id:
-                            matching_rule = agg_rule
-                            break
+                aggregation_rule = aggregation_rule_map[rule_id]
+                group_dict = self.format_agg_result(aggregation_rule, rule_result, events_dict)
+                rule_config = {}
+                for fingerprint, _event_dict in group_dict.items():
+                    source_name = _event_dict["source_name"]
+                    event_ids = _event_dict["event_ids"]
+                    event_data = _event_dict["event_data"]
+                    related_alerts = _event_dict["related_alerts"]
 
-                    if not matching_rule:
-                        continue
+                    alert = {
+                        "rule_name": rule_id,
+                        "description": aggregation_rule.description,
+                        "severity": aggregation_rule.severity,
+                        "event_data": event_data,
+                        "event_ids": event_ids,
+                        "created_at": self.now,
+                        "rule": rule_config,
+                        "source_name": source_name,
+                        "fingerprint": fingerprint,
+                        "related_alerts": related_alerts,
+                        "rule_id": rule_id
+                    }
 
-                    rule_config = self.rule_manager.get_rule_by_id(rule_id)
-                    if not rule_config:
-                        logger.warning(f"Rule config not found for: {rule_id}")
-                        continue
-
-                    # 根据event_id拿出event的原始数据
-                    for fingerprint, _event_dict in rule_result.instances.items():
-                        event_ids = _event_dict['event_ids']
-                        event_data = events[events['event_id'].isin(event_ids)].to_dict('records')
-                        related_alerts = _event_dict.get("related_alerts", [])
-
-                        alert = {
-                            "rule_name": rule_id,
-                            "description": rule_result.description,
-                            "severity": rule_result.severity,
-                            "event_data": event_data,
-                            "event_ids": event_ids,
-                            "created_at": self.now,
-                            "rule": rule_config,
-                            "source_name": rule_result.source_name,
-                            "fingerprint": fingerprint,
-                            "related_alerts": related_alerts,
-                            "rule_id": rule_id
-                        }
-
-                        if related_alerts:
-                            # 更新告警
-                            update_alert_list.append(alert)
-                        else:
-                            # 保存告警数据
-                            format_alert = self.format_event_to_alert(alert)
-                            format_alert_list.append(format_alert)
+                    if related_alerts:
+                        # 更新告警
+                        update_alert_list.append(alert)
+                    else:
+                        # 保存告警数据
+                        format_alert = self.format_event_to_alert(alert)
+                        format_alert_list.append(format_alert)
 
         except Exception as e:
             logger.error(f"处理聚合规则失败: {str(e)}")
@@ -636,30 +673,28 @@ class AlertProcessor:
         for correlation_rule in correlation_rules:
             try:
                 # 获取该关联规则的聚合规则
-                aggregation_rules = correlation_rule.aggregation_rules.filter(is_active=True)
-                if not aggregation_rules.exists():
+                aggregation_rules = list(correlation_rule.aggregation_rules.filter(is_active=True))
+                if not aggregation_rules:
                     continue
 
                 # 获取事件数据
-                events = self.get_events_for_correlation_rule(correlation_rule)
-                if events.empty:
+                window_events = self.get_events_for_correlation_rule(correlation_rule)
+                if window_events.empty:
                     continue
 
                 # 检查是否需要处理会话关闭逻辑
                 if correlation_rule.is_session_rule:
-                    self._check_and_close_sessions_for_correlation_rule(correlation_rule, events)
+                    self._check_and_close_sessions_for_correlation_rule(correlation_rule, window_events)
 
-                window_events = events
+                # if not window_events.empty:
+                window_alerts, window_updates = self._process_events_with_aggregation_rules(
+                    window_events, aggregation_rules
+                )
+                format_alert_list.extend(window_alerts)
+                update_alert_list.extend(window_updates)
 
-                if not window_events.empty:
-                    window_alerts, window_updates = self._process_events_with_aggregation_rules(
-                        window_events, list(aggregation_rules)
-                    )
-                    format_alert_list.extend(window_alerts)
-                    update_alert_list.extend(window_updates)
-
-                    logger.info(
-                        f"关联规则 {correlation_rule.name} 产生告警: {len(window_alerts)} 个新告警, {len(window_updates)} 个更新")
+                logger.info(
+                    f"关联规则 {correlation_rule.name} 产生告警: {len(window_alerts)} 个新告警, {len(window_updates)} 个更新")
 
             except Exception as e:
                 logger.error(f"批量处理关联规则失败: {window_type} - {str(e)}")
@@ -667,6 +702,17 @@ class AlertProcessor:
                 CorrelationRules.objects.filter(id=correlation_rule.id).update(exec_time=timezone.now())
 
         return format_alert_list, update_alert_list
+
+    @staticmethod
+    def alert_auto_assign(alert_id_list) -> None:
+        """
+        自动分配告警处理人
+        """
+        try:
+            execute_auto_assignment_for_alerts(alert_id_list)
+        except Exception as err:
+            import traceback
+            logger.error(f"Error in auto assignment for alerts {alert_id_list}: {traceback.format_exc()}")
 
     def _check_and_close_sessions_for_correlation_rule(self, correlation_rule: CorrelationRules, events: pd.DataFrame):
         """
@@ -696,14 +742,10 @@ class AlertProcessor:
             # 获取聚合规则配置，用于检查会话关闭条件
             aggregation_rules = correlation_rule.aggregation_rules.filter(is_active=True)
 
-            aggregation_key = self.rule_manager.get_aggregation_key(correlation_rule.rule_id_str)
+            # aggregation_key = self.rule_manager.get_aggregation_key(correlation_rule.rule_id_str)
 
-            events['alert_source'] = events['source__name']
             # 生成实例指纹
-            events['instance_fingerprint'] = events.apply(
-                lambda row: generate_instance_fingerprint(row.to_dict(), aggregation_key),
-                axis=1
-            )
+            events['instance_fingerprint'] = events["fingerprint"]
             event_fingerprints = events.to_dict('records')
             event_fingerprints = {i["instance_fingerprint"]: i for i in event_fingerprints if i["value"] == 1}
 
@@ -812,7 +854,8 @@ class AlertProcessor:
             logger.error(f"检查关闭条件匹配失败: {str(e)}")
             return False
 
-    def _compare_values(self, event_value, target_value, operator: str) -> bool:
+    @staticmethod
+    def _compare_values(event_value, target_value, operator: str) -> bool:
         """
         比较事件值和目标值
 
@@ -845,7 +888,8 @@ class AlertProcessor:
             logger.error(f"比较值失败: {str(e)}")
             return False
 
-    def _close_session_with_reason(self, session: 'SessionWindow', reason: str, close_time):
+    @staticmethod
+    def _close_session_with_reason(session: 'SessionWindow', reason: str, close_time):
         """
         关闭会话并记录原因
 
@@ -871,3 +915,15 @@ class AlertProcessor:
         except Exception as e:
             logger.error(f"关闭会话 {session.session_id} 失败: {str(e)}")
             raise
+
+    def main(self):
+        """主流程方法"""
+        add_alert_list, update_alert_list = self.process()
+        logger.info("==add_alert_list data={}==".format([i.get("event_ids") for i in add_alert_list]))
+        logger.info("==update_alert_list data={}==".format([i.get("event_ids") for i in update_alert_list]))
+        if add_alert_list:
+            self.bulk_create_alerts(alerts=add_alert_list)
+            self.alert_auto_assign(alert_id_list=[alert['alert_id'] for alert in add_alert_list])
+
+        if update_alert_list:
+            self.update_alerts(alerts=update_alert_list)

@@ -8,9 +8,9 @@ from urllib.parse import urlparse
 from django.core.management import BaseCommand
 from django.conf import settings
 
-from apps.operation_analysis.models import NameSpace
+from apps.operation_analysis.models.datasource_models import NameSpace
 from apps.core.logger import operation_analysis_logger as logger
-from apps.operation_analysis.init_constants import INIT_NAMESPACE_DATA
+from apps.operation_analysis.constants.init_constants import INIT_NAMESPACE_DATA
 
 
 class Command(BaseCommand):

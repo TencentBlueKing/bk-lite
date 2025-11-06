@@ -10,7 +10,9 @@
     "execute_parameters": "--kafka.server $KAFKA_SERVER --kafka.version $KAFKA_VERSION --sasl.enabled --web.listen-address 127.0.0.1:$LISTEN_PORT",
     "validation_parameters": "",
     "default_template": "",
-    "introduction": "Kafka Exporter is a monitoring tool that collects and exports Kafka metrics, providing insights into message broker performance and health."
+    "introduction": "Kafka Exporter is a monitoring tool that collects and exports Kafka metrics, providing insights into message broker performance and health.",
+    "tags": ["linux", "exporter", "monitor"],
+    "package_name": "kafka_exporter"
   }
 ]
 

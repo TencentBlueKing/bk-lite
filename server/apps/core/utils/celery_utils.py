@@ -1,8 +1,4 @@
 import json
-import time
-from contextlib import contextmanager
-
-from django.core.cache import cache
 from django_celery_beat.models import CrontabSchedule, IntervalSchedule, PeriodicTask
 from apps.core.logger import opspilot_logger as logger
 
@@ -159,77 +155,3 @@ class CeleryUtils:
             return task.enabled
         except PeriodicTask.DoesNotExist:
             return None
-
-@contextmanager
-def task_lock(lock_key, timeout=3600, blocking_timeout=0):
-    """
-    分布式任务锁上下文管理器，确保同一个任务同时只能有一个实例在执行
-
-    使用Redis的SET NX操作实现分布式锁，避免同一任务并发执行。
-
-    Args:
-        lock_key: 锁的唯一标识（建议格式：task_lock:{task_name}:{unique_id}）
-        timeout: 锁的过期时间（秒），防止死锁，默认3600秒（1小时）
-        blocking_timeout: 等待获取锁的超时时间（秒），0表示不等待，直接失败
-
-    Yields:
-        bool: True表示成功获取锁，False表示未获取到锁
-
-    Examples:
-        # 方式1：不等待，立即返回
-        with task_lock(f"task_lock:scan_policy:{policy_id}") as acquired:
-            if not acquired:
-                logger.warning(f"Policy {policy_id} is already running, skip")
-                return
-            # 执行任务逻辑
-            do_something()
-
-        # 方式2：等待最多10秒获取锁
-        with task_lock(f"task_lock:scan_policy:{policy_id}", blocking_timeout=10) as acquired:
-            if not acquired:
-                logger.warning(f"Failed to acquire lock for policy {policy_id}")
-                return
-            do_something()
-    """
-    acquired = False
-    lock_value = f"{time.time()}"  # 使用时间戳作为锁值，便于调试
-
-    try:
-        # 尝试获取锁
-        start_time = time.time()
-        while True:
-            # cache.add() 相当于 Redis 的 SET NX，只有键不存在时才设置成功
-            acquired = cache.add(lock_key, lock_value, timeout)
-
-            if acquired:
-                logger.info(f"成功获取任务锁: {lock_key}")
-                break
-
-            # 检查是否超过等待时间
-            if blocking_timeout == 0:
-                logger.warning(f"任务锁已被占用，跳过执行: {lock_key}")
-                break
-
-            elapsed = time.time() - start_time
-            if elapsed >= blocking_timeout:
-                logger.warning(f"等待任务锁超时 ({blocking_timeout}s)，跳过执行: {lock_key}")
-                break
-
-            # 短暂休眠后重试
-            time.sleep(0.1)
-
-        yield acquired
-
-    finally:
-        # 只有成功获取锁的进程才负责释放锁
-        if acquired:
-            try:
-                # 验证锁值，确保只释放自己持有的锁
-                current_value = cache.get(lock_key)
-                if current_value == lock_value:
-                    cache.delete(lock_key)
-                    logger.info(f"成功释放任务锁: {lock_key}")
-                else:
-                    logger.warning(f"锁已被其他进程持有或已过期，跳过释放: {lock_key}")
-            except Exception as e:
-                logger.error(f"释放任务锁失败: {lock_key}, 错误: {str(e)}")

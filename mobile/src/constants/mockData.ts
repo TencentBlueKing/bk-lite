@@ -167,3 +167,18 @@ export const mockWorkbenchData = {
     ],
   },
 };
+
+// 使用固定的日期
+const now = new Date('2025-10-30T14:00:00');
+
+// Mock 账户信息数据
+export const mockAccountInfo = {
+  username: 'admin',
+  displayName: '张三',
+  email: 'zhangsan@example.com',
+  timezone: 'Asia/Shanghai',
+  language: 'zh',
+  organizations: ['运维部', '开发组', '测试团队'],
+  roles: ['系统管理员', '运维工程师', '项目负责人', '技术支持', '数据分析师', '产品经理', '架构师', '安全审计员', '运维专家'],
+  userType: '普通用户',
+};

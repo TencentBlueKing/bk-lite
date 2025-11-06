@@ -15,14 +15,14 @@ export default function BottomTabBar() {
   const { t } = useTranslation();
   const router = useRouter();
   const pathname = usePathname();
-  const ICON_SIZE = 30;
+  const ICON_SIZE = 25;
 
   const tabs = [
     {
       key: '/conversations',
       title: t('navigation.conversations'),
-      icon: <MessageOutline style={{ fontSize: ICON_SIZE }} />,
-      activeIcon: <MessageFill style={{ fontSize: ICON_SIZE }} />,
+      icon: <MessageOutline style={{ fontSize: 27 }} />,
+      activeIcon: <MessageFill style={{ fontSize: 27 }} />,
     },
     {
       key: '/workbench',
@@ -34,7 +34,7 @@ export default function BottomTabBar() {
       key: '/profile',
       title: t('navigation.profile'),
       icon: <UserOutline style={{ fontSize: ICON_SIZE }} />,
-      activeIcon: <UserSetOutline style={{ fontSize: ICON_SIZE }} />,
+      activeIcon: <UserOutline style={{ fontSize: ICON_SIZE }} />,
     },
   ];
 

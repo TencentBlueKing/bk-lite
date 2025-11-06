@@ -20,7 +20,7 @@ __pycache__
 .pytest_cache
 *.hypothesis
 /models/
-
+.env
 .lh
 support-files/dev/conf/nats/certs/
 agents/fusion-collector/agent/nats-executor

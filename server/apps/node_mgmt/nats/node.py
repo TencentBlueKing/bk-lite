@@ -6,7 +6,6 @@ from apps.node_mgmt.constants.database import DatabaseConstants, EnvVariableCons
 from apps.node_mgmt.management.services.node_init.collector_init import import_collector
 from apps.node_mgmt.models import CloudRegion, SidecarEnv
 from apps.node_mgmt.services.node import NodeService
-# from apps.core.logger import node_logger as logger
 
 from apps.core.exceptions.base_app_exception import BaseAppException
 from apps.node_mgmt.models import CollectorConfiguration, ChildConfig, Collector, Node, NodeCollectorConfiguration
@@ -67,9 +66,19 @@ class NatsService:
 
         return merged_config
 
-    def batch_create_configs(self, configs: list):
+    @transaction.atomic
+    def batch_create_configs_and_child_configs(self, configs: list, child_configs: list):
         """
-        批量创建配置
+        批量创建配置及其子配置（带事务保护）
+        :param configs: 配置列表
+        :param child_configs: 子配置列表
+        """
+        self._batch_create_configs_internal(configs)
+        self._batch_create_child_configs_internal(child_configs)
+    
+    def _batch_create_configs_internal(self, configs: list):
+        """
+        批量创建配置（内部方法，不带事务装饰器，由调用方控制事务）
         :param configs: 配置列表，每个配置包含以下字段：
             - id: 配置ID
             - name: 配置名称
@@ -111,16 +120,22 @@ class NatsService:
                 )
             )
 
-        # 事务保护：确保两个表同时创建成功
-        with transaction.atomic():
-            if conf_objs:
-                CollectorConfiguration.objects.bulk_create(conf_objs, batch_size=DatabaseConstants.BULK_CREATE_BATCH_SIZE)
-            if node_config_assos:
-                NodeCollectorConfiguration.objects.bulk_create(node_config_assos, batch_size=DatabaseConstants.BULK_CREATE_BATCH_SIZE, ignore_conflicts=True)
+        if conf_objs:
+            CollectorConfiguration.objects.bulk_create(conf_objs, batch_size=DatabaseConstants.BULK_CREATE_BATCH_SIZE)
+        if node_config_assos:
+            NodeCollectorConfiguration.objects.bulk_create(node_config_assos, batch_size=DatabaseConstants.BULK_CREATE_BATCH_SIZE, ignore_conflicts=True)
 
-    def batch_create_child_configs(self, configs: list):
+    @transaction.atomic
+    def batch_create_configs(self, configs: list):
         """
-        批量创建子配置
+        批量创建配置（公共接口，带事务保护）
+        :param configs: 配置列表
+        """
+        self._batch_create_configs_internal(configs)
+
+    def _batch_create_child_configs_internal(self, configs: list):
+        """
+        批量创建子配置（内部方法，不带事务装饰器，由调用方控制事务）
         :param configs: 配置列表，每个配置包含以下字段：
             - id: 子配置ID
             - collect_type: 采集类型
@@ -154,10 +169,16 @@ class NatsService:
                 sort_order=config.get("sort_order", 0),
             ))
 
-        # 事务保护：确保所有子配置同时创建成功
-        with transaction.atomic():
-            if node_objs:
-                ChildConfig.objects.bulk_create(node_objs, batch_size=DatabaseConstants.BULK_CREATE_BATCH_SIZE)
+        if node_objs:
+            ChildConfig.objects.bulk_create(node_objs, batch_size=DatabaseConstants.BULK_CREATE_BATCH_SIZE)
+
+    @transaction.atomic
+    def batch_create_child_configs(self, configs: list):
+        """
+        批量创建子配置（公共接口，带事务保护）
+        :param configs: 配置列表
+        """
+        self._batch_create_child_configs_internal(configs)
 
     def get_child_configs_by_ids(self, ids: list):
         """根据子配置ID列表获取子配置对象"""
@@ -305,6 +326,12 @@ def import_collectors(collectors: list):
     """导入采集器"""
     # logger.info(f"import_collectors: {collectors}")
     return import_collector(collectors)
+
+
+@nats_client.register
+def batch_create_configs_and_child_configs(configs: list, child_configs: list):
+    """批量创建配置和子配置（原子性操作）"""
+    NatsService().batch_create_configs_and_child_configs(configs, child_configs)
 
 
 @nats_client.register

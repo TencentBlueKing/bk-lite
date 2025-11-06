@@ -1,10 +1,11 @@
 import { Dayjs } from 'dayjs';
+import { InterfaceTableItem } from './view';
 
 export interface ColumnItem {
   title: string;
   dataIndex: string;
   key: string;
-  render?: (_: unknown, record: any) => JSX.Element;
+  render?: (_: unknown, record: TableDataItem) => JSX.Element;
   [key: string]: unknown;
 }
 
@@ -19,10 +20,11 @@ export interface ListItem {
 
 export interface ModalConfig {
   type: string;
-  form: any;
+  form: Record<string, any>;
   subTitle?: string;
   title: string;
   [key: string]: any;
+  onSuccess?: () => void;
 }
 
 export interface ModalRef {
@@ -70,6 +72,20 @@ export interface OriginSubGroupItem {
   subGroupCount: number;
   subGroups: Array<OriginSubGroupItem>;
 }
+
+export interface OrganizationNode {
+  id: string;
+  name: string;
+  subGroups?: OrganizationNode[];
+}
+
+export interface UnitItem {
+  label: string;
+  value?: string;
+  unit?: string;
+  children?: UnitItem[];
+}
+
 export interface OriginOrganization {
   id: string;
   name: string;
@@ -88,7 +104,10 @@ export interface ChartData {
   time: number;
   value1?: number;
   value2?: number;
-  details?: Record<string, any>;
+  details?: Record<
+    string,
+    Array<{ name: string; label: string; value: string }>
+  >;
   [key: string]: unknown;
 }
 
@@ -176,6 +195,12 @@ export interface IntegrationItem {
   [key: string]: unknown;
 }
 
+export interface Dimension {
+  name: string;
+  description?: string;
+  [key: string]: unknown;
+}
+
 export interface ChartProps {
   instance_id?: string;
   showInstName?: boolean;
@@ -183,7 +208,7 @@ export interface ChartProps {
   instance_id_values: string[];
   instance_name: string;
   title: string;
-  dimensions: any[];
+  dimensions: Dimension[];
   [key: string]: unknown;
 }
 
@@ -196,12 +221,12 @@ export interface MetricItem {
   display_name?: string;
   display_description?: string;
   instance_id_keys?: string[];
-  dimensions: any[];
+  dimensions: Dimension[];
   query?: string;
   unit?: string;
   displayType?: string;
   description?: string;
-  viewData?: any[];
+  viewData?: ChartData[] | InterfaceTableItem[];
   style?: {
     width: string;
     height: string;

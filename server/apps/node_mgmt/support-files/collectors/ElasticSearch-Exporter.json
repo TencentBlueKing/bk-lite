@@ -10,7 +10,9 @@
     "execute_parameters": "--es.uri $ES_URI --web.listen-address 127.0.0.1:$LISTEN_PORT",
     "validation_parameters": "",
     "default_template": "",
-    "introduction": "Elasticsearch Exporter is a monitoring tool that collects and exports Elasticsearch metrics, providing insights into search engine performance and health."
+    "introduction": "Elasticsearch Exporter is a monitoring tool that collects and exports Elasticsearch metrics, providing insights into search engine performance and health.",
+    "tags": ["linux", "exporter", "monitor"],
+    "package_name": "elasticsearch_exporter"
   }
 ]
 

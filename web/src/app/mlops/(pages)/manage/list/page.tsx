@@ -31,20 +31,26 @@ const DatasetManagePage = () => {
     getLogClusteringList,
     getTimeSeriesPredictList,
     getClassificationDatasetsList,
+    getImageClassificationDatasetsList,
+    getObjectDetectionDatasetsList,
     deleteLogClustering,
     deleteTimeSeriesPredict,
     deleteClassificationDataset,
+    deleteImageClassificationDataset,
+    deleteObjectDetectionDataset
   } = useMlopsManageApi();
   const [datasets, setDatasets] = useState<DataSet[]>([]);
   const [loading, setLoading] = useState<boolean>(false);
   const [selectedKeys, setSelectedKeys] = useState<string[]>([]);
   const modalRef = useRef<ModalRef>(null);
   const datasetTypes = [
-    { key: 'anomaly', value: 'anomaly', label: t('datasets.anomaly') },
+    { key: 'anomaly_detection', value: 'anomaly', label: t('datasets.anomaly') },
     { key: 'rasa', value: 'rasa', label: t('datasets.rasa') },
     { key: 'log_clustering', value: 'log_clustering', label: t('datasets.logClustering') },
     { key: 'timeseries_predict', value: 'timeseries_predict', label: t('datasets.timeseriesPredict') },
-    { key: 'classification', value: 'classification', label: t('datasets.classification') }
+    { key: 'classification', value: 'classification', label: t('datasets.classification') },
+    { key: 'image_classification', value: 'image_classification', label: t('datasets.imageClassification') },
+    { key: 'object_detection', value: 'object_detection', label: t('datasets.objectDetection') }
   ];
 
   const treeData: TreeDataNode[] = [
@@ -55,7 +61,7 @@ const DatasetManagePage = () => {
       children: [
         {
           title: t(`datasets.anomaly`),
-          key: 'anomaly',
+          key: 'anomaly_detection',
         },
         {
           title: t(`datasets.rasa`),
@@ -70,15 +76,23 @@ const DatasetManagePage = () => {
           key: 'log_clustering',
         },
         {
-          title: '分类任务',
+          title: t('datasets.classification'),
           key: 'classification'
+        },
+        {
+          title: t('datasets.imageClassification'),
+          key: 'image_classification'
+        },
+        {
+          title: t('datasets.objectDetection'),
+          key: 'object_detection'
         }
       ]
     },
   ];
 
   useEffect(() => {
-    setSelectedKeys(['anomaly']);
+    setSelectedKeys(['anomaly_detection']);
   }, []);
 
   useEffect(() => {
@@ -86,19 +100,23 @@ const DatasetManagePage = () => {
   }, [selectedKeys]);
 
   const handleGetDatasetsMap: Record<string, any> = {
-    'anomaly': getAnomalyDatasetsList,
+    'anomaly_detection': getAnomalyDatasetsList,
     'rasa': getRasaDatasetsList,
     'log_clustering': getLogClusteringList,
     'timeseries_predict': getTimeSeriesPredictList,
-    'classification': getClassificationDatasetsList
+    'classification': getClassificationDatasetsList,
+    'image_classification': getImageClassificationDatasetsList,
+    'object_detection': getObjectDetectionDatasetsList
   };
 
   const handleDelDatasetsMap: Record<string, any> = {
-    'anomaly': deleteAnomalyDatasets,
+    'anomaly_detection': deleteAnomalyDatasets,
     'rasa': deleteRasaDatasets,
     'log_clustering': deleteLogClustering,
     'timeseries_predict': deleteTimeSeriesPredict,
-    'classification': deleteClassificationDataset
+    'classification': deleteClassificationDataset,
+    'image_classification': deleteImageClassificationDataset,
+    'object_detection': deleteObjectDetectionDataset
   };
 
 

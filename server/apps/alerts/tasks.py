@@ -23,23 +23,17 @@ def event_aggregation_alert():
 
     try:
         # 移动导入到函数内部避免循环导入
-        from apps.alerts.common.aggregation.smart_scheduler import create_smart_scheduler
+        from apps.alerts.common.rules.rule_manager import create_smart_scheduler
         from apps.alerts.common.aggregation.agg_window import WindowProcessorFactory
+
+        processing_stats = {}
 
         # 1. 创建智能调度器，判断当前时间应该执行哪些规则
         scheduler = create_smart_scheduler()
         executable_rules = scheduler.get_executable_rules()
 
-        # 2. 检查是否有可执行的规则
-        total_executable_rules = sum(len(rules) for rules in executable_rules.values())
-        if total_executable_rules == 0:
-            logger.info("当前时间无需执行任何聚合规则")
-            return
-
-        # 3. 按窗口类型优先级顺序处理（滑动、固定、会话）
         window_order = ['sliding', 'fixed', 'session']
         # window_order = ['session']
-        processing_stats = {}
 
         for window_type in window_order:
             rules_to_execute = executable_rules.get(window_type, [])
@@ -49,13 +43,10 @@ def event_aggregation_alert():
             logger.info(f"开始处理 {window_type} 窗口类型，规则数量: {len(rules_to_execute)}")
 
             try:
-                # 使用窗口处理器工厂创建处理器并执行
-                # 不再传递固定的window_size，让处理器内部处理每个规则的window_size
                 alerts_created, alerts_updated = WindowProcessorFactory.process_window_type_rules(
                     window_type=window_type,
                     rules=rules_to_execute
                 )
-
                 processing_stats[window_type] = {
                     'rules_count': len(rules_to_execute),
                     'alerts_created': alerts_created,
@@ -170,7 +161,8 @@ def sync_notify(params):
         object_id = param.get("object_id", "")
         notify_action_object = param.get("notify_action_object", "alert")
         logger.info(
-            "=== 开始执行通知任务 time={} username_list={}, channel={} ===".format(send_time, username_list, channel_type))
+            "=== 开始执行通知任务 time={} username_list={}, channel={} ===".format(send_time, username_list,
+                                                                                   channel_type))
         notify = Notify(username_list=username_list, channel_id=channel_id, title=title, content=content)
         result = notify.notify()
         result_list.append(result)

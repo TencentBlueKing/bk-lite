@@ -43,21 +43,17 @@ export default function AppDetailPage() {
 
     const handleNotificationChange = (checked: boolean) => {
         setReceiveNotification(checked);
-        Toast.show({
-            content: checked ? '已开启消息通知' : '已关闭消息通知',
-            icon: checked ? 'success' : 'fail',
-        });
     };
 
     return (
-        <div className="flex flex-col h-screen bg-gray-50">
+        <div className="flex flex-col h-screen bg-[var(--color-background-body)]">
             {/* 顶部导航栏 */}
-            <div className="bg-white border-b border-gray-200">
+            <div className="bg-[var(--color-bg)]">
                 <div className="flex items-center justify-center relative px-4 py-3">
                     <button onClick={() => router.back()} className="absolute left-4">
                         <LeftOutline fontSize={24} className="text-[var(--color-text-1)]" />
                     </button>
-                    <h1 className="text-lg font-medium text-gray-900">应用简介</h1>
+                    <h1 className="text-lg font-medium text-[var(--color-text-1)]">应用简介</h1>
                 </div>
             </div>
 
@@ -78,7 +74,7 @@ export default function AppDetailPage() {
                         </div>
 
                         {/* 应用名称 */}
-                        <h2 className="text-xl font-semibold text-gray-900 mb-2">
+                        <h2 className="text-xl font-semibold text-[var(--color-text-1)] mb-2">
                             {botData.name}
                         </h2>
 
@@ -92,7 +88,7 @@ export default function AppDetailPage() {
                             </span>
                         </div>
 
-                        <p className="text-sm text-gray-600 text-center">
+                        <p className="text-sm text-[var(--color-text-2)] text-center">
                             {botData.introduction || '暂无简介'}
                         </p>
 

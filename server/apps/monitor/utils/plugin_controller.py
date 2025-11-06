@@ -83,13 +83,13 @@ class Controller:
         创建采集配置的控制器方法
 
         优化点：
-        1. 移除内层独立事务，由外层事务统一管理
-        2. 简化错误处理，依赖外层事务自动回滚
+        1. 使用 batch_create_configs_and_child_configs 原子性创建配置和子配置
+        2. 移除手动回滚逻辑，依赖外层事务自动回滚
+        3. 简化错误处理
         """
         base_dir = PluginConstants.DIRECTORY
         configs = self.format_configs()
         node_configs, node_child_configs, collect_configs = [], [], []
-        collect_config_ids, child_config_ids = [], []
 
         # 步骤1：准备所有配置数据（渲染模板）
         for config_info in configs:
@@ -101,7 +101,6 @@ class Controller:
                 is_child = template["config_type"] == "child"
                 collector_name = "Telegraf" if is_child else config_info["collector"]
                 config_id = str(uuid.uuid4().hex)
-                collect_config_ids.append(config_id)
 
                 template_config = self.render_template(
                     template_dir,
@@ -120,7 +119,6 @@ class Controller:
                         collector_name=collector_name,
                         env_config=child_env_config,
                     ))
-                    child_config_ids.append(config_id)
                 else:
                     node_configs.append(dict(
                         id=config_id,
@@ -145,26 +143,9 @@ class Controller:
         CollectConfig.objects.bulk_create(collect_configs, batch_size=DatabaseConstants.COLLECT_CONFIG_BATCH_SIZE)
         logger.info(f"创建 CollectConfig 成功，数量={len(collect_configs)}")
 
-        # 步骤3：创建 child_config（RPC调用，底层有事务保护）
-        if node_child_configs:
-            NodeMgmt().batch_add_node_child_config(node_child_configs)
-            logger.info(f"创建 child_config 成功，数量={len(node_child_configs)}")
+        # 步骤3：原子性创建配置和子配置（RPC调用，底层有事务保护，失败会抛异常）
+        if node_configs or node_child_configs:
+            NodeMgmt().batch_create_configs_and_child_configs(node_configs, node_child_configs)
+            logger.info(f"创建配置成功，node_config={len(node_configs)}个，child_config={len(node_child_configs)}个")
 
-        # 步骤4：创建 node_config（RPC调用，底层有事务保护）
-        if node_configs:
-            try:
-                NodeMgmt().batch_add_node_config(node_configs)
-                logger.info(f"创建 node_config 成功，数量={len(node_configs)}")
-            except Exception as e:
-                logger.error(f"创建 node_config 失败: {e}，开始回滚 child_config", exc_info=True)
-                # 步骤4失败，需要回滚步骤3
-                if node_child_configs:
-                    try:
-                        NodeMgmt().delete_child_configs(child_config_ids)
-                        logger.info("回滚 child_config 成功")
-                    except Exception as cleanup_error:
-                        logger.error(f"回滚 child_config 失败: {cleanup_error}", exc_info=True)
-                # 抛出异常，让外层事务回滚本地数据（CollectConfig）
-                raise BaseAppException(f"创建 node_config 失败: {e}")
-
-        logger.info(f"创建采集配置成功，共{len(collect_config_ids)}个配置")
+        logger.info(f"创建采集配置成功，共{len(collect_configs)}个配置")
