@@ -41,8 +41,7 @@ const LOADING_ANIMATION_INTERVAL = 300; // 加载动画间隔时间（ms）
 export const useGraphOperations = (
   containerRef: React.RefObject<HTMLDivElement>,
   state: ReturnType<typeof import('./useTopologyState').useTopologyState>,
-  minimapContainerRef?: React.RefObject<HTMLDivElement>,
-  minimapVisible?: boolean
+  minimapContainerRef?: React.RefObject<HTMLDivElement>
 ) => {
   const { t } = useTranslation();
   const { getSourceDataByApiId } = useDataSourceApi();
@@ -212,7 +211,7 @@ export const useGraphOperations = (
   }, [graphInstance, setIsEditMode]);
 
   const initMiniMap = useCallback((graph: X6Graph) => {
-    if (minimapContainerRef?.current && minimapVisible) {
+    if (minimapContainerRef?.current) {
       graph.disposePlugins(['minimap']);
       graph.use(
         new MiniMap({
@@ -235,20 +234,7 @@ export const useGraphOperations = (
         })
       );
     }
-  }, [minimapContainerRef, minimapVisible]);
-
-  // 监听缩略图可见性变化，重新初始化缩略图
-  useEffect(() => {
-    if (graphInstance) {
-      if (minimapVisible) {
-        setTimeout(() => {
-          initMiniMap(graphInstance);
-        }, 100);
-      } else {
-        graphInstance.disposePlugins(['minimap']);
-      }
-    }
-  }, [graphInstance, minimapVisible, initMiniMap]);
+  }, [minimapContainerRef]);
 
   const dataOperations = useGraphData(graphInstance, updateSingleNodeData, startLoadingAnimation, handleSave);
 
@@ -368,6 +354,9 @@ export const useGraphOperations = (
       graphInstance.off('node:moved', handleNodeMoved);
       graphInstance.off('edge:change:vertices', handleEdgeVerticesStart);
       graphInstance.off('edge:change:vertices', handleEdgeVerticesChanged);
+
+      nodePositions.clear();
+      edgeVertices.clear();
     };
   }, [graphInstance, recordOperation]);
 
@@ -425,6 +414,8 @@ export const useGraphOperations = (
       if (containerRef.current) {
         containerRef.current.removeEventListener('wheel', handleWheel);
       }
+
+      nodeOriginalSizes.clear();
     };
 
     graph.on('node:contextmenu', ({ e, node }) => {
@@ -784,6 +775,9 @@ export const useGraphOperations = (
         rotating: false,
       })
     );
+
+    // 初始化 minimap
+    initMiniMap(graph);
 
     const cleanup = bindGraphEvents(graph);
     setGraphInstance(graph);

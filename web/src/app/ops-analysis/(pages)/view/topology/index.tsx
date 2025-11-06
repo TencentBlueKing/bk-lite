@@ -78,12 +78,7 @@ const Topology = forwardRef<TopologyRef, TopologyProps>(
       finishInitialization,
       clearOperationHistory,
       refreshAllSingleValueNodes,
-    } = useGraphOperations(
-      containerRef,
-      state,
-      minimapContainerRef,
-      minimapVisible
-    );
+    } = useGraphOperations(containerRef, state, minimapContainerRef);
 
     const { handleEdgeConfigConfirm, closeEdgeConfig, handleMenuClick } =
       useContextMenuAndModal(containerRef, state);
@@ -403,23 +398,24 @@ const Topology = forwardRef<TopologyRef, TopologyProps>(
               tabIndex={-1}
             />
 
-            {minimapVisible && (
-              <div className={styles.minimapContainer}>
-                <div className={styles.minimapHeader}>
-                  <button
-                    onClick={() => setMinimapVisible(false)}
-                    className={styles.minimapCloseBtn}
-                    title={t('topology.minimapCollapse')}
-                  >
-                    <CloseOutlined />
-                  </button>
-                </div>
-                <div
-                  ref={minimapContainerRef}
-                  className={styles.minimapContent}
-                />
+            <div
+              className={styles.minimapContainer}
+              style={{ display: minimapVisible ? 'block' : 'none' }}
+            >
+              <div className={styles.minimapHeader}>
+                <button
+                  onClick={() => setMinimapVisible(false)}
+                  className={styles.minimapCloseBtn}
+                  title={t('topology.minimapCollapse')}
+                >
+                  <CloseOutlined />
+                </button>
               </div>
-            )}
+              <div
+                ref={minimapContainerRef}
+                className={styles.minimapContent}
+              />
+            </div>
             {!minimapVisible && (
               <button
                 onClick={() => setMinimapVisible(true)}

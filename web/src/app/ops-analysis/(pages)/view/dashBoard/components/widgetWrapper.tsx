@@ -3,6 +3,7 @@ import { Spin } from 'antd';
 import { ExclamationCircleOutlined } from '@ant-design/icons';
 import { useTranslation } from '@/utils/i18n';
 import { BaseWidgetProps } from '@/app/ops-analysis/types/dashBoard';
+import { DatasourceItem } from '@/app/ops-analysis/types/dataSource';
 import { fetchWidgetData } from '../../../../utils/widgetDataTransform';
 import { useDataSourceApi } from '@/app/ops-analysis/api/dataSource';
 import { ChartDataTransformer } from '@/app/ops-analysis/utils/chartDataTransform';
@@ -18,7 +19,7 @@ const componentMap: Record<string, React.ComponentType<any>> = {
 
 interface WidgetWrapperProps extends BaseWidgetProps {
   chartType?: string;
-  dataSource?: any;
+  dataSource?: DatasourceItem;
 }
 
 const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
