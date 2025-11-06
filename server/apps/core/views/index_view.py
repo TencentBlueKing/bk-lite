@@ -10,6 +10,8 @@ from rest_framework.decorators import api_view
 from apps.core.utils.exempt import api_exempt
 from apps.rpc.base import RpcClient
 from apps.rpc.system_mgmt import SystemMgmt
+from apps.system_mgmt.models import UserLoginLog
+from apps.system_mgmt.utils.login_log_utils import log_user_login_from_request
 
 logger = logging.getLogger(__name__)
 
@@ -78,24 +80,50 @@ def login(request):
         c_url = data.get("redirect_url", "").strip()  # 获取回调URL
 
         if not username or not password:
+            # 记录登录失败日志 - 用户名或密码为空
+            log_user_login_from_request(
+                request,
+                username or "unknown",
+                UserLoginLog.STATUS_FAILED,
+                domain or "domain.com",
+                failure_reason=_("Username or password cannot be empty"),
+            )
             return JsonResponse({"result": False, "message": _("Username or password cannot be empty")})
+
         if domain == "domain.com":
             client = SystemMgmt()
             res = client.login(username, password)
         else:
             res = bk_lite_login(username, password, domain)
+
         if not res.get("result"):
+            # 记录登录失败日志
             logger.warning(f"Login failed for user: {username}")
+            failure_reason = res.get("message", "Login failed")
+            log_user_login_from_request(request, username, UserLoginLog.STATUS_FAILED, domain or "domain.com", failure_reason=str(failure_reason))
         else:
+            # 记录登录成功日志
+            logger.info(f"Login successful for user: {username}")
+            log_user_login_from_request(request, username, UserLoginLog.STATUS_SUCCESS, domain or "domain.com")
+
             # 登录成功时，如果有c_url参数，添加到响应中
             if c_url:
                 if "data" not in res:
                     res["data"] = {}
                 res["data"]["redirect_url"] = c_url
                 logger.info(f"Login successful for user: {username}, redirect to: {c_url}")
+
         return JsonResponse(res)
     except Exception as e:
         logger.error(f"Login error: {e}")
+        # 记录系统错误导致的登录失败
+        log_user_login_from_request(
+            request,
+            username if "username" in locals() else "unknown",
+            UserLoginLog.STATUS_FAILED,
+            domain if "domain" in locals() else "domain.com",
+            failure_reason=f"System error: {str(e)}",
+        )
         return JsonResponse({"result": False, "message": _("System error occurred")})
 
 
@@ -107,6 +135,10 @@ def wechat_user_register(request):
         nick_name = data.get("nick_name", "").strip()
 
         if not user_id:
+            # 记录微信注册失败日志 - user_id 为空
+            log_user_login_from_request(
+                request, user_id or "unknown", UserLoginLog.STATUS_FAILED, "domain.com", failure_reason=_("user_id cannot be empty")
+            )
             return JsonResponse({"result": False, "message": _("user_id cannot be empty")})
 
         client = _create_system_mgmt_client()
@@ -114,10 +146,25 @@ def wechat_user_register(request):
 
         if not res.get("result"):
             logger.warning(f"WeChat registration failed for user_id: {user_id}")
+            # 记录微信注册失败日志
+            failure_reason = res.get("message", "WeChat registration failed")
+            log_user_login_from_request(request, user_id, UserLoginLog.STATUS_FAILED, "domain.com", failure_reason=str(failure_reason))
+        else:
+            # 记录微信注册成功日志
+            logger.info(f"WeChat registration successful for user_id: {user_id}")
+            log_user_login_from_request(request, user_id, UserLoginLog.STATUS_SUCCESS, "domain.com")
 
         return JsonResponse(res)
     except Exception as e:
         logger.error(f"WeChat registration error: {e}")
+        # 记录系统错误导致的微信注册失败
+        log_user_login_from_request(
+            request,
+            user_id if "user_id" in locals() else "unknown",
+            UserLoginLog.STATUS_FAILED,
+            "domain.com",
+            failure_reason=f"System error: {str(e)}",
+        )
         return JsonResponse({"result": False, "message": _("System error occurred")})
 
 

@@ -32,6 +32,10 @@ spec:
             - name: sys
               mountPath: /host/sys
               readOnly: true
+            - name: nats-ca-cert
+              mountPath: /etc/nats_ca.crt
+              subPath: ca.crt
+              readOnly: true
           env:
             - name: VECTOR_CONFIG
               value: /etc/vector/vector.yaml
@@ -67,6 +71,12 @@ spec:
         - name: sys
           hostPath:
             path: /sys
+        - name: nats-ca-cert
+          secret:
+            secretName: bk-lite-monitor-config-secret
+            items:
+              - key: ca.crt
+                path: ca.crt
 ---
 apiVersion: v1
 kind: ServiceAccount
@@ -199,6 +209,9 @@ data:
         subject: vector
         # 从环境变量NATS_URL读取
         url: ${NATS_URL}
+        tls:
+          enabled: true
+          ca_file: /etc/nats_ca.crt
         auth:
           strategy: user_password
           user_password:

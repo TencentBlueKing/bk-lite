@@ -10,7 +10,9 @@
     "execute_parameters": "--web.listen-address 127.0.0.1:$LISTEN_PORT",
     "validation_parameters": "",
     "default_template": "",
-    "introduction": "Apache Exporter is a monitoring tool that collects and exports Apache HTTP server metrics, providing insights into web server performance and health."
+    "introduction": "Apache Exporter is a monitoring tool that collects and exports Apache HTTP server metrics, providing insights into web server performance and health.",
+    "tags": ["linux", "exporter", "monitor"],
+    "package_name": "apache_exporter"
   }
 ]
 

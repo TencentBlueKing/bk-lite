@@ -10,7 +10,9 @@
         "execute_parameters": "-jar /opt/fusion-collectors/bin/jmx_tongweb7.jar $LISTEN_HOST %s",
         "validation_parameters": "",
         "default_template": "",
-        "introduction": "JMX-TongWeb7 is a Java Management Extensions (JMX) monitoring tool that collects and monitors TongWeb7 server metrics, providing real-time performance insights."
+        "introduction": "JMX-TongWeb7 is a Java Management Extensions (JMX) monitoring tool that collects and monitors TongWeb7 server metrics, providing real-time performance insights.",
+        "tags": ["linux", "jmx", "monitor"],
+        "package_name": "jmx_tongweb7"
     }
 ]
 

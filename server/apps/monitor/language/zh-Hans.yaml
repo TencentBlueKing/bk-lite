@@ -31,7 +31,7 @@ monitor_object_metric:
       desc: 统计指定服务器网络接口过去5分钟内,每秒传输数据时出现的错误数量，用于排查网络传输故障，提高网络通信可靠性。
       name: 传输错误率（每秒）
     minio_node_drive_writes_kb_per_sec_gauge:
-      name: 驱动器上每秒写入的兆字节数
+      name: 驱动器上每秒写入的千字节数
       desc: 统计指定驱动器每秒写入的数据量（以千字节为单位），反映驱动器的写入带宽，有助于优化数据写入效率。
     minio_cluster_capacity_usable_free_bytes_gauge:
       name: 集群可使用容量
@@ -49,7 +49,7 @@ monitor_object_metric:
       name: 存储桶正在运行的 S3 请求总数
       desc: 统计指定存储桶正在处理的 S3 请求数量，用于监控请求处理进度，优化系统性能。
     minio_node_drive_reads_kb_per_sec_gauge:
-      name: 驱动器每秒读取兆字节数
+      name: 驱动器每秒读取千字节数
       desc: 统计指定驱动器每秒读取的数据量（以千字节为单位），直观反映驱动器的读取带宽，帮助优化数据读取策略。
     minio_bucket_usage_total_bytes_gauge:
       desc: 统计指定存储桶所占用的存储空间大小，用于监控存储资源消耗，规划存储容量。
@@ -439,14 +439,14 @@ monitor_object_metric:
       desc: 该指标表示设备自上次启动以来的运行时间，单位为天。通过监测设备的运行时间，网络管理员可以了解到设备的稳定性及可靠性，识别潜在的重启或故障问题。
       name: 系统运行时间
     ipmi_voltage_volts:
-      name: 电压功率
-      desc: 电压功率指标以伏特 (volts) 为单位，监测设备内部不同电源轨的电压情况。稳定的电压供应对于设备的可靠性至关重要。通过该指标可以快速识别电气问题，保障正常运行。
+      name: 电压
+      desc: 电压指标以伏特 (volts) 为单位，监测设备内部不同电源轨的电压情况。稳定的电压供应对于设备的可靠性至关重要。通过该指标可以快速识别电气问题，保障正常运行。
     ipmi_power_watts:
       desc: 功率指标以瓦特 (watts) 为单位，反映设备当前功耗。通过此指标可以评估设备能效和功耗趋势。便于设置节能政策和资源优化。
       name: 功率
     ifHighSpeed:
       name: 接口带宽
-      desc: 该指标表示网络接口支持的最高数据传输速度，单位通常为KB每秒。了解接口的最高速度能够帮助管理员优化流量和利用网络资源。
+      desc: 该指标表示网络接口支持的最高数据传输速度，单位通常为MB每秒。了解接口的最高速度能够帮助管理员优化流量和利用网络资源。
     ifOutDiscards:
       name: 每秒发送丢包数
       desc: 本指标计算过去5分钟内发送的丢弃包的平均速率，单位为每秒。关注发送丢包情况能够帮助识别网络传输问题和配置不当的情况。
@@ -856,8 +856,8 @@ monitor_object_metric:
       name: 每秒发送单播数据包数
       desc: 此指标计算过去5分钟内发送的单播包的平均速率，单位为每秒。通过监测单播包的数量，管理员可以评估接口的传输性能以及流量的使用情况。
     ipmi_voltage_volts:
-      desc: 电压功率指标以伏特 (volts) 为单位，监测设备内部不同电源轨的电压情况。稳定的电压供应对于设备的可靠性至关重要。通过该指标可以快速识别电气问题，保障正常运行。
-      name: 电压功率
+      desc: 电压指标以伏特 (volts) 为单位，监测设备内部不同电源轨的电压情况。稳定的电压供应对于设备的可靠性至关重要。通过该指标可以快速识别电气问题，保障正常运行。
+      name: 电压
     ipmi_chassis_power_state:
       desc: 电源状态指标，用于监测设备是否处于开机状态。其值可以表示电源开启或关闭状态。主要用于远程管理和监控设备的电源情况。
       name: 电源状态
@@ -1143,7 +1143,7 @@ monitor_object_metric:
       desc: 当前连接到ActiveMQ代理的总连接数。监控此指标有助于检测代理的负载和连接管理效率。
       name: 连接总数
     jmx_scrape_error_gauge:
-      name: JMX抓取失败的监控指标
+      name: JMX抓取状态
       desc: 值为0时表示监控指标抓取成功，值为1时表示抓取失败。
     activemq_topic_expired_count_value:
       name: 已过期的消息数量
@@ -1158,13 +1158,13 @@ monitor_object_metric:
       name: 内存使用率
       desc: 当前系统使用的内存限制百分比。监控此指标有助管理和优化内存使用。
     activemq_enqueue_total_counter:
-      name: 发送到代理的消息数量
+      name: 入队消息总数
       desc: 总共发送到代理的消息数量，反映系统的负载和通信频繁程度。
     jvm_memory_heap_usage_max_value:
       desc: JVM 堆内存的最大值，用于评估堆内存的上限，防止内存溢出。
       name: 堆内存最大值
     activemq_message_total_rate:
-      name: 未确认消息消息增长速率
+      name: 未确认消息增长速率
       desc: 5分钟内未确认消息数量的增长速率，用于监控消息积压情况。如果增长速率持续较高，可能表示系统存在处理瓶颈或消息积压问题
     activemq_topic_enqueue_count_value:
       name: 发送到目标的消息数量
@@ -1173,7 +1173,7 @@ monitor_object_metric:
       desc: 还未消费的消息总量，通过监控此指标可以确定代理的工作负载和处理能力。
       name: 队列大小
     activemq_dequeue_total_counter:
-      name: 确认的消息总数
+      name: 出队消息总数
       desc: 代理上确认处理的消息总数。通过此指标可以了解整体的处理情况和效率。
     activemq_message_total_counter:
       name: 未确认消息总数
@@ -1313,7 +1313,7 @@ monitor_object_metric:
       desc: 该指标表示设备自上次启动以来的运行时间，单位为天。通过监测设备的运行时间，网络管理员可以了解到设备的稳定性及可靠性，识别潜在的重启或故障问题。
     ifInOctets:
       name: 接口每秒接收流量
-      desc: 此指标表示过去5分钟内接收到的字节数的平均速率，转换为兆字节（MB）单位。监测字节流量有助于评估接口的负载及带宽使用情况。
+      desc: 此指标表示过去5分钟内接收到的字节数的平均速率，转换为兆字节每秒（MB/s）单位。监测字节流量有助于评估接口的负载及带宽使用情况。
     ifAdminStatus:
       name: 接口管理状态
       desc: 此指标表示网络交换机接口的管理状态。它用于指示接口是否被管理人员启用（up）或禁用（down），以及其他状态如测试或已删除等。这个信息对网络管理和故障排查非常重要。
@@ -1321,13 +1321,13 @@ monitor_object_metric:
       desc: 此指标反映网络交换机接口的实际运行状态，表明接口是否正在工作。与管理状态不同，运行状态指示接口是否能够成功接收和发送流量。这对监测网络健康至关重要。
       name: 接口操作状态
     ifInErrors:
-      desc: 此指标计算过去5分钟内接收到的错误包的平均速率，单位为每秒。通过监测接收错误，管理员可以及时发现潜在的问题，例如物理连接故障或配置错误。
+      desc: 此指标计算过去5分钟内接收到的错误包的平均速率，单位为数据包每秒。通过监测接收错误，管理员可以及时发现潜在的问题，例如物理连接故障或配置错误。
       name: 每秒接收错误数据包数
     ifInUcastPkts:
-      desc: 该指标表示过去5分钟内接收到的单播包的平均速率，单位为每秒。单播包的监测对于评估接口的使用情况及流量负载非常重要。
+      desc: 该指标表示过去5分钟内接收到的单播包的平均速率，单位为数据包每秒。单播包的监测对于评估接口的使用情况及流量负载非常重要。
       name: 每秒接收单播数据包数
     ifOutOctets:
-      desc: 该指标计算过去5分钟内发送的字节数的平均速率，单位为兆字节（MB）。监测发送流量对于确保数据传输质量和优化网络性能非常重要。
+      desc: 该指标计算过去5分钟内发送的字节数的平均速率，单位为兆字节每秒（MB/s）。监测发送流量对于确保数据传输质量和优化网络性能非常重要。
       name: 接口每秒发送流量
     ifOutUcastPkts:
       desc: 此指标计算过去5分钟内发送的单播包的平均速率，单位为每秒。通过监测单播包的数量，管理员可以评估接口的传输性能以及流量的使用情况。
@@ -1337,13 +1337,13 @@ monitor_object_metric:
       desc: 此指标表示整个设备在过去5分钟内接收到的总字节流量的平均速率，单位为兆字节每秒（MB/s）。通过对多个接口的接收字节进行汇总计算，帮助管理员获取整个设备的接收流量情况，从而支持总体流量监控以及容量规划。
     ifOutDiscards:
       name: 每秒发送丢包数
-      desc: 本指标计算过去5分钟内发送的丢弃包的平均速率，单位为每秒。关注发送丢包情况能够帮助识别网络传输问题和配置不当的情况。
+      desc: 本指标计算过去5分钟内发送的丢弃包的平均速率，单位为数据包每秒。关注发送丢包情况能够帮助识别网络传输问题和配置不当的情况。
     ifOutErrors:
       name: 每秒发送错误数据包数
-      desc: 该指标计算过去5分钟内发送错误包的平均速率，单位为每秒。监测发送错误对于识别传输问题和确保数据完整性至关重要。
+      desc: 该指标计算过去5分钟内发送错误包的平均速率，单位为数据包每秒。监测发送错误对于识别传输问题和确保数据完整性至关重要。
     ifHighSpeed:
       name: 接口带宽
-      desc: 该指标表示网络接口支持的最高数据传输速度，单位通常为KB每秒。了解接口的最高速度能够帮助管理员优化流量和利用网络资源。
+      desc: 该指标表示网络接口支持的最高数据传输速度，单位通常为千比特每秒。了解接口的最高速度能够帮助管理员优化流量和利用网络资源。
   Switch:
     ifInOctets:
       name: 接口每秒接收流量
@@ -1551,15 +1551,15 @@ monitor_object_metric:
       desc: 磁盘已使用容量占总容量的百分比(所有磁盘)
     cvm_WanInpkg:
       name: 外网入包量
-      desc: 外网网卡网卡的平均每秒入包量
+      desc: 外网网卡的平均每秒入包量
     cvm_MemUsage:
-      desc: 用户实际内存使用率，不包括缓冲区与系统缓存占用的内存，除去缓存、buffer 和剩余，用户实际使用内存与总内存之比
+      desc: 用户实际内存使用率，不包括缓冲区与系统缓存占用的内存，该指标表示除去缓存、缓冲区和空闲内存后，用户实际使用内存与总内存之比
       name: 内存利用率
     cvm_WanOuttraffic:
       name: 外网出带宽
-      desc: 外网平均每秒出流量速率，最小粒度数据为10秒总流量/10秒计算得出，该数据为 EIP+CLB+CVM 的外网出/入带宽总和
+      desc: 外网平均每秒出流量速率，最小粒度数据为10秒总流量/10秒计算得出，该数据为 EIP+CLB+CVM 的外网出带宽总和
     cvm_LanInpkg:
-      desc: 内网网卡网卡的平均每秒入包量
+      desc: 内网网卡的平均每秒入包量
       name: 内网入包量
     cvm_MemUsed:
       name: 内存使用量
@@ -1570,15 +1570,15 @@ monitor_object_metric:
       name: 内网出带宽
     cvm_WanIntraffic:
       name: 外网入带宽
-      desc: 外网平均每秒入流量速率，最小粒度数据为10秒总流量/10秒计算得出，该数据为 EIP+CLB+CVM 的外网出/入带宽总和
+      desc: 外网平均每秒入流量速率，最小粒度数据为10秒总流量/10秒计算得出，该数据为 EIP+CLB+CVM 的外网入带宽总和
     cvm_WanOutpkg:
-      desc: 外网网卡网卡的平均每秒出包量
+      desc: 外网网卡的平均每秒出包量
       name: 外网出包量
     cvm_CPU_Usage:
-      desc: 机器运行期间实时占用的 CPU 百分比
+      desc: 系统运行期间的实时 CPU 占用率
       name: CPU 利用率
     cvm_LanOutpkg:
-      desc: 内网网卡网卡的平均每秒出包量
+      desc: 内网网卡的平均每秒出包量
       name: 内网出包量
   ESXI:
     esxi_cpu_usage_average_gauge:
@@ -1614,16 +1614,16 @@ monitor_object_metric:
   Cluster:
     cluster_node_count:
       desc: 用于统计当前 Kubernetes 集群中节点的总数。该指标返回集群中可用节点的数量，帮助用户了解集群的规模和资源。
-      name: Node Count
+      name: 节点数量
     cluster_pod_count:
       desc: 用于统计当前 Kubernetes 集群中 Pods 的总数。该指标会返回集群中运行的 Pod 的数量，包括所有命名空间中的 Pod。
-      name: Pod Count
+      name: Pod数量
     cluster_cpu_utilization:
       desc: 表示集群中 CPU 的当前利用率，通常以百分比形式表示。
-      name: CPU Utilization
+      name: CPU利用率
     cluster_memory_utilization:
       desc: 显示集群内存的当前利用率，以百分比形式展示。
-      name: Memory Utilization
+      name: 内存利用率
   Apache:
     apache_cpu_user:
       desc: 该指标表示Apache服务器在用户进程层面的CPU使用率。
@@ -1638,7 +1638,7 @@ monitor_object_metric:
       desc: 该指标表示Apache每秒传输的字节数，反映了网络流量的情况。
       name: 每秒字节数
     apache_cpu_load:
-      desc: 该指标表示Apache服务器的CPU负载情况，反映系统的总体负载状态。
+      desc: 该指标表示Apache服务器的CPU负载情况，反映系统总体 CPU 负载压力。
       name: CPU负载
     apache_idle_workers:
       desc: 该指标表示Apache服务器中当前处于空闲状态的工作进程数，反映了服务器的资源利用情况。
@@ -2116,7 +2116,7 @@ monitor_object_plugin:
     name: Nginx
   Loadbalance SNMP General:
     desc: SNMP 通用插件用于通过 SNMP 监控和管理负载均衡的监控情况。管理员可以获取有关设备的关键信息，例如 接口流量、错误统计和状态信息等，从而优化网络性能和提高管理效率。
-    name: 负载均衡通用（SNMP）
+    name: 负载均衡设备通用（SNMP）
   Bastion Host SNMP General:
     desc: SNMP 通用插件用于通过 SNMP 监控和管理堡垒机的监控情况。管理员可以获取有关设备的关键信息，例如 接口流量、错误统计和状态信息等，从而优化网络性能和提高管理效率。
     name: 堡垒机通用（SNMP）
@@ -2160,7 +2160,7 @@ monitor_object_plugin:
     name: Mysql
     desc: 用于收集和监控MySQL数据库健康状况及性能的关键指标。
   Minio:
-    name: Minio
+    name: MinIO
     desc: 用于采集MinIO对象存储系统的运行状态、存储容量、使用情况、复制、节点间通信和S3请求等关键指标，帮助用户实时监控对象存储健康状态、优化性能及定位异常问题。
   vCenter:
     desc: vCenter是VMware的虚拟化管理中枢，用于监控资源（CPU/内存/存储/网络）、分析性能并优化配置。帮助识别虚拟机/主机异常，提升环境效率。
@@ -2207,10 +2207,10 @@ monitor_object:
   WebLogic: WebLogic
   Jetty: Jetty
   Host: 主机
-  TCP: 云平台
+  TCP: 腾讯云
   JVM: JVM
   Redis: Redis
-  ESXI: ESXI
+  ESXI: ESXi
   Tomcat: Tomcat
   Oracle: Oracle
   Nginx: Nginx
@@ -2224,8 +2224,8 @@ monitor_object:
   Storage: 存储设备
   Docker Container: Docker容器
   ActiveMQ: ActiveMQ
-  CVM: 云服务器
-  ElasticSearch: ElasticSearch
+  CVM: 腾讯云服务器
+  ElasticSearch: Elasticsearch
   MongoDB: MongoDB
   DataStorage: 数据存储
   Bastion Host: 堡垒机
@@ -2234,7 +2234,7 @@ monitor_object:
   Pod: Pod
   Router: 路由器
   Loadbalance: 负载均衡
-  Mysql: Mysql
+  Mysql: MySQL
   Website: 网站
 monitor_object_type:
   VMware: VMware

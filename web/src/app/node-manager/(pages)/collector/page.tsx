@@ -1,6 +1,6 @@
 'use client';
 import React, { useEffect, useState, useRef, useCallback } from 'react';
-import { Menu, Input, Button, message, Modal, Tag } from 'antd';
+import { Menu, Input, Button, message, Modal, Tag, Segmented } from 'antd';
 import useApiClient from '@/utils/request';
 import useNodeManagerApi from '@/app/node-manager/api';
 import EntityList from '@/components/entity-list/index';
@@ -10,7 +10,6 @@ import type { CardItem } from '@/app/node-manager/types';
 import CollectorModal from '@/app/node-manager/components/sidecar/collectorModal';
 import { ModalRef } from '@/app/node-manager/types';
 import PermissionWrapper from '@/components/permission';
-import { COLLECTOR_LABEL } from '@/app/node-manager/constants/collector';
 import { useCollectorMenuItem } from '@/app/node-manager/hooks/collector';
 const { Search } = Input;
 const { confirm } = Modal;
@@ -19,63 +18,78 @@ const Collector = () => {
   const router = useRouter();
   const { t } = useTranslation();
   const { isLoading } = useApiClient();
-  const { getCollectorlist, deleteCollector } = useNodeManagerApi();
+  const { getCollectorlist, deleteCollector, getNodeStateEnum } =
+    useNodeManagerApi();
   const menuItem = useCollectorMenuItem();
   const modalRef = useRef<ModalRef>(null);
-  const [allCollectorData, setAllCollectorData] = useState<CardItem[]>([]);
   const [collectorCards, setCollectorCards] = useState<CardItem[]>([]);
   const [search, setSearch] = useState<string>('');
-  const [loading, setLoading] = useState<boolean>(false);
-  const [allTags, setAllTags] = useState<string[]>([]);
-  const [selectedTags, setSelectedTags] = useState<string[]>([]);
+  const [loading, setLoading] = useState<boolean>(true);
+  const [appTags, setAppTags] = useState<any[]>([]);
+  const [systemTags, setSystemTags] = useState<any[]>([]);
+  const [selectedAppTag, setSelectedAppTag] = useState<string>('');
+  const [selectedSystemTags, setSelectedSystemTags] = useState<string[]>([]);
+  const [tagEnum, setTagEnum] = useState<Record<string, any>>({});
 
   useEffect(() => {
     if (!isLoading) {
-      fetchCollectorlist('');
+      initData();
     }
   }, [isLoading]);
+
+  const initData = () => {
+    setLoading(true);
+    getTags()
+      .then((data) => {
+        const { apps, tagEnum: newTagEnum } = data;
+        const defaultAppTag = apps && apps.length > 0 ? apps[0].value : '';
+        setSelectedAppTag(defaultAppTag);
+        fetchCollectorlist({
+          searchValue: '',
+          appTag: defaultAppTag,
+          sysTags: [],
+          tagEnum: newTagEnum,
+        });
+      })
+      .catch(() => {
+        setLoading(false);
+      });
+  };
 
   const navigateToCollectorDetail = (item: CardItem) => {
     router.push(`
       /node-manager/collector/detail?id=${item.id}&name=${item.name}&introduction=${item.description}&system=${item.tagList[0]}&icon=${item.icon}`);
   };
 
-  const filterBySelected = (data: any[], selectedTags: string[]) => {
-    if (!selectedTags?.length) return data;
-    return data.filter((item) =>
-      selectedTags.every((tag: string) => item.tagList.includes(tag))
-    );
-  };
-
-  const filterBySearch = (data: any[], searchTerm: string) => {
-    if (!searchTerm) return data;
-    return data.filter(
-      (item) =>
-        item.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        item.description.toLowerCase().includes(searchTerm.toLowerCase())
-    );
-  };
-
-  const getCollectorLabelKey = (value: string) => {
-    for (const key in COLLECTOR_LABEL) {
-      if (COLLECTOR_LABEL[key].includes(value)) {
-        return key;
-      }
+  const getTags = async () => {
+    const res = await getNodeStateEnum();
+    if (res?.tag) {
+      const tagData = res.tag;
+      const apps: any[] = [];
+      const systems: any[] = [];
+      Object.keys(tagData).forEach((key) => {
+        const item = tagData[key];
+        if (item.is_app) {
+          apps.push({ label: item.name, value: key });
+        } else {
+          systems.push({ label: item.name, value: key });
+        }
+      });
+      setAppTags(apps);
+      setSystemTags(systems);
+      setTagEnum(tagData);
+      return { apps, tagEnum: tagData };
     }
+    return { apps: [], tagEnum: {} };
   };
 
-  const handleResult = (res: any, currentSearch?: string) => {
-    const tagSet = new Set<string>();
+  const handleResult = (res: any, enumMap?: Record<string, any>) => {
+    const currentTagEnum = enumMap || tagEnum;
     const filter = res.filter((item: any) => !item.controller_default_run);
     const tempdata = filter.map((item: any) => {
-      const system = item.node_operating_system || item.os;
-      const tagList = [system];
-      const label = getCollectorLabelKey(item.name);
-      if (label) tagList.push(label);
-      tagList.forEach((tag) => {
-        if (tag) {
-          tagSet.add(tag);
-        }
+      const tagList = item.tags || [];
+      const displayTags = tagList.map((tag: string) => {
+        return currentTagEnum[tag]?.name || tag;
       });
       return {
         id: item.id,
@@ -85,37 +99,37 @@ const Collector = () => {
         execute_parameters: item.execute_parameters,
         description: item.introduction || '--',
         icon: item.icon || 'caijiqizongshu',
-        tagList,
+        tagList: displayTags,
+        originalTags: tagList,
       };
     });
-    const sortedTags = Array.from(tagSet).sort((a, b) => {
-      const priority = ['linux', 'windows'];
-      const aIndex = priority.indexOf(a.toLowerCase());
-      const bIndex = priority.indexOf(b.toLowerCase());
-      if (aIndex !== -1 && bIndex !== -1) {
-        return aIndex - bIndex;
-      }
-      if (aIndex !== -1) return -1;
-      if (bIndex !== -1) return 1;
-      return a.localeCompare(b);
-    });
-    setAllTags(sortedTags);
-    setAllCollectorData(tempdata);
-    let filteredData = tempdata;
-    const searchTerm = currentSearch !== undefined ? currentSearch : search;
-    filteredData = filterBySearch(filteredData, searchTerm);
-    filteredData = filterBySelected(filteredData, selectedTags);
-    setCollectorCards(filteredData);
+    setCollectorCards(tempdata);
   };
 
-  const fetchCollectorlist = async (searchValue?: string) => {
-    const params = { name: searchValue };
+  const fetchCollectorlist = async (params: {
+    searchValue?: string;
+    appTag?: string;
+    sysTags?: string[];
+    tagEnum?: Record<string, any>;
+  }) => {
+    const { searchValue, appTag, sysTags, tagEnum: enumMap } = params;
+    const requestParams: any = { name: searchValue };
+    const tagsArray: string[] = [];
+    const currentAppTag = appTag !== undefined ? appTag : selectedAppTag;
+    const currentSysTags = sysTags !== undefined ? sysTags : selectedSystemTags;
+    if (currentAppTag) {
+      tagsArray.push(currentAppTag);
+    }
+    if (currentSysTags.length > 0) {
+      tagsArray.push(...currentSysTags);
+    }
+    if (tagsArray.length > 0) {
+      requestParams.tags = tagsArray.join(',');
+    }
     try {
       setLoading(true);
-      const res = await getCollectorlist(params);
-      handleResult(res, searchValue);
-    } catch (error) {
-      console.error('Failed to fetch collector list:', error);
+      const res = await getCollectorlist(requestParams);
+      handleResult(res, enumMap);
     } finally {
       setLoading(false);
     }
@@ -132,7 +146,7 @@ const Collector = () => {
 
   const handleSubmit = (type?: string) => {
     if (type === 'upload') return;
-    fetchCollectorlist(search);
+    fetchCollectorlist({ searchValue: search });
   };
 
   const handleDelete = (id: string) => {
@@ -147,7 +161,7 @@ const Collector = () => {
           try {
             await deleteCollector({ id });
             message.success(t('common.successfullyDeleted'));
-            fetchCollectorlist(search);
+            fetchCollectorlist({ searchValue: search });
           } finally {
             return resolve(true);
           }
@@ -196,15 +210,26 @@ const Collector = () => {
     [menuItem]
   );
 
-  const handleTagClick = (tag: string) => {
-    const newSelectedTags = selectedTags.includes(tag)
-      ? selectedTags.filter((t) => t !== tag)
-      : [...selectedTags, tag];
-    setSelectedTags(newSelectedTags);
-    let filteredData = allCollectorData;
-    filteredData = filterBySearch(filteredData, search);
-    filteredData = filterBySelected(filteredData, newSelectedTags);
-    setCollectorCards(filteredData);
+  const handleSystemTagClick = (tag: string) => {
+    const newSelectedTags = selectedSystemTags.includes(tag)
+      ? selectedSystemTags.filter((t: string) => t !== tag)
+      : [...selectedSystemTags, tag];
+    setSelectedSystemTags(newSelectedTags);
+    fetchCollectorlist({
+      searchValue: search,
+      appTag: selectedAppTag,
+      sysTags: newSelectedTags,
+    });
+  };
+
+  const handleAppTagChange = (value: string | number) => {
+    const newAppTag = value as string;
+    setSelectedAppTag(newAppTag);
+    fetchCollectorlist({
+      searchValue: search,
+      appTag: newAppTag,
+      sysTags: selectedSystemTags,
+    });
   };
 
   const ifOpenAddModal = () => {
@@ -220,7 +245,7 @@ const Collector = () => {
 
   const onSearch = (searchValue: string) => {
     setSearch(searchValue);
-    fetchCollectorlist(searchValue);
+    fetchCollectorlist({ searchValue });
   };
 
   return (
@@ -232,28 +257,42 @@ const Collector = () => {
         filter={false}
         search={false}
         operateSection={
-          <div className="flex items-center w-full">
-            <div className="flex items-center flex-1 mr-[10px] overflow-x-auto">
-              {(allTags || []).map((tag) => (
-                <Tag
-                  key={tag}
-                  color={selectedTags.includes(tag) ? 'blue' : 'default'}
-                  className="cursor-pointer transition-all duration-200 hover:scale-105 select-none"
-                  onClick={() => handleTagClick(tag)}
-                >
-                  {tag}
-                </Tag>
-              ))}
+          <div className="w-full">
+            {appTags.length > 0 && (
+              <Segmented
+                options={appTags}
+                value={selectedAppTag}
+                onChange={handleAppTagChange}
+                className="custom-tabs"
+              />
+            )}
+            <div className="flex items-center w-full">
+              <div className="flex items-center flex-1 mr-[10px] overflow-x-auto">
+                {(systemTags || []).map((tag: any) => (
+                  <Tag
+                    key={tag.value}
+                    color={
+                      selectedSystemTags.includes(tag.value)
+                        ? 'blue'
+                        : 'default'
+                    }
+                    className="cursor-pointer transition-all duration-200 hover:scale-105 select-none"
+                    onClick={() => handleSystemTagClick(tag.value)}
+                  >
+                    {tag.label}
+                  </Tag>
+                ))}
+              </div>
+              <Search
+                allowClear
+                enterButton
+                placeholder={`${t('common.search')}...`}
+                className="w-60 flex justify-end"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                onSearch={onSearch}
+              />
             </div>
-            <Search
-              allowClear
-              enterButton
-              placeholder={`${t('common.search')}...`}
-              className="w-60 flex justify-end"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              onSearch={onSearch}
-            />
           </div>
         }
         {...ifOpenAddModal()}

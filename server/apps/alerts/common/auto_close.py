@@ -5,7 +5,7 @@
 from django.db import transaction
 from django.utils import timezone
 
-from apps.alerts.common.aggregation.window_types import WindowCalculator
+from apps.alerts.common.aggregation.util import WindowCalculator
 from apps.alerts.constants import AlertStatus, LogAction, LogTargetType, AlertOperate
 from apps.alerts.models import Alert, CorrelationRules, OperatorLog
 from apps.alerts.utils.util import split_list

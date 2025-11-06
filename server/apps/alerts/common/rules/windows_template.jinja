@@ -1,0 +1,124 @@
+{#
+简化的动态窗口告警检测SQL模板 - DuckDB兼容版本
+
+参数说明：
+- table: 事件表名
+- time_column: 时间字段名（默认 received_at）
+- window_size: 窗口大小（分钟）
+- resource_filters: 资源过滤条件列表
+- threshold_conditions: 阈值检测条件列表
+- group_by_fields: 分组字段列表
+- aggregation_rules: 聚合规则配置
+
+可用字段：
+- event_id: 事件唯一ID
+- external_id: 外部事件ID
+- item: 事件指标
+- received_at: 接收时间
+- status: 事件状态
+- level: 级别（整数类型，0=致命最高级别，数值越小级别越高）
+- alert_source: 告警源名称
+- source_id: 告警源ID
+- title: 事件标题
+- rule_id: 规则ID
+- description: 事件描述
+- resource_id: 资源唯一ID
+- resource_type: 资源类型
+- resource_name: 资源名称
+- value: 事件值
+- fingerprint: 事件指纹
+
+注意：时间过滤和窗口计算由应用层负责，SQL只负责数据聚合和阈值检测
+#}
+
+WITH aggregated_events AS (
+    -- 按分组条件聚合事件数据
+    SELECT 
+        CONCAT('AGG-', strftime(MIN({{ time_column }}), '%Y%m%d%H%M'), '-', 
+               SUBSTRING(fingerprint, 1, 10)) as window_id,
+        {%- for field in group_by_fields %}
+        {{ field | field_validate }},
+        {%- endfor %}
+        {%- if not group_by_fields %}
+        fingerprint,
+        {%- endif %}
+        -- 聚合所有可用字段
+        ANY_VALUE(external_id) as external_id,
+        ANY_VALUE(item) as item,
+        ANY_VALUE(status) as status,
+        ANY_VALUE(alert_source) as alert_source,
+        ANY_VALUE(source_id) as source_id,
+        ANY_VALUE(rule_id) as rule_id,
+        ANY_VALUE(resource_id) as resource_id,
+        ANY_VALUE(resource_type) as resource_type,
+        ANY_VALUE(resource_name) as resource_name,
+        ANY_VALUE(value) as value,
+        COUNT(*) as event_count,
+        string_agg(event_id, ',' ORDER BY {{ time_column }}) as event_ids,
+        string_agg(title, '|' ORDER BY {{ time_column }}) as event_titles,
+        (array_agg(description ORDER BY {{ time_column }}))[1] as first_description,
+        (array_agg(description ORDER BY {{ time_column }} DESC))[1] as last_description,
+        MIN({{ time_column }}) as first_event_time,
+        MAX({{ time_column }}) as last_event_time,
+        MIN(level) as level,
+        COUNT(*) / {{ window_size }}.0 as events_per_minute
+    FROM {{ table }}
+    WHERE status = 'received'
+      {%- if resource_filters %}
+      {%- for filter in resource_filters %}
+      AND {{ filter.field | field_validate }} {{ filter.operator }} {% if filter.operator in ['IN', 'NOT IN'] %}({{ filter.value | join(', ') }}){% else %}{{ filter.value }}{% endif %}
+      {%- endfor %}
+      {%- endif %}
+    GROUP BY 
+        {%- for field in group_by_fields %}
+        {%- if loop.first %}
+        {{ field | field_validate }}
+        {%- else %}
+        , {{ field | field_validate }}
+        {%- endif %}
+        {%- endfor %}
+        {%- if not group_by_fields %}
+        fingerprint
+        {%- endif %}
+    HAVING COUNT(*) >= {{ aggregation_rules.min_event_count | default(1) }}
+)
+
+-- 主查询：返回满足阈值条件的聚合结果
+SELECT 
+    window_id,
+    {%- for field in group_by_fields %}
+    {{ field | field_validate }},
+    {%- endfor %}
+    {%- if not group_by_fields %}
+    fingerprint,
+    {%- endif %}
+    -- 所有可用字段
+    external_id,
+    item,
+    status,
+    alert_source,
+    source_id,
+    rule_id,
+    resource_id,
+    resource_type,
+    resource_name,
+    value,
+    event_count,
+    event_ids,
+    event_titles,
+    first_description,
+    last_description,
+    first_event_time,
+    last_event_time,
+    level,
+    events_per_minute,
+    {{ window_size }} as window_size_minutes
+FROM aggregated_events
+WHERE 1=1
+{%- if threshold_conditions %}
+{%- for condition in threshold_conditions %}
+  AND {{ condition.field | field_validate }} {{ condition.operator }} {% if condition.operator in ['IN', 'NOT IN'] %}({{ condition.value | join(', ') }}){% else %}{{ condition.value }}{% endif %}
+{%- endfor %}
+{%- endif %}
+
+ORDER BY event_count DESC, first_event_time DESC

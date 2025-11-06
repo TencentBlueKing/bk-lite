@@ -75,7 +75,7 @@ class NatsService:
         """
         self._batch_create_configs_internal(configs)
         self._batch_create_child_configs_internal(child_configs)
-
+    
     def _batch_create_configs_internal(self, configs: list):
         """
         批量创建配置（内部方法，不带事务装饰器，由调用方控制事务）

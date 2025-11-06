@@ -2,9 +2,10 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { Switch, Toast, List } from 'antd-mobile';
+import { Switch, List, ImageViewer } from 'antd-mobile';
 import { LeftOutline } from 'antd-mobile-icons';
 import Image from 'next/image';
+import { mockChatData } from '@/constants/mockData';
 
 export default function AppDetailPage() {
     const router = useRouter();
@@ -14,15 +15,21 @@ export default function AppDetailPage() {
     // 从 sessionStorage 获取真实的 bot 数据
     const [botData, setBotData] = useState<any>(null);
     const [receiveNotification, setReceiveNotification] = useState(true);
+    const [avatarVisible, setAvatarVisible] = useState(false);
 
     useEffect(() => {
-        const storedBot = sessionStorage.getItem('currentBot');
-        if (storedBot) {
-            try {
-                const bot = JSON.parse(storedBot);
-                setBotData(bot);
-            } catch (error) {
-                console.error('解析 bot 数据失败:', error);
+        const foundBot = mockChatData.find((bot) => bot.id === id);
+        if (foundBot) {
+            setBotData(foundBot);
+        } else {
+            const storedBotString = sessionStorage.getItem('currentBot');
+            if (storedBotString) {
+                try {
+                    const bot = JSON.parse(storedBotString);
+                    setBotData(bot);
+                } catch (error) {
+                    console.error('解析 bot 数据失败:', error);
+                }
             }
         }
     }, [id]);
@@ -53,7 +60,7 @@ export default function AppDetailPage() {
                     <button onClick={() => router.back()} className="absolute left-4">
                         <LeftOutline fontSize={24} className="text-[var(--color-text-1)]" />
                     </button>
-                    <h1 className="text-lg font-medium text-[var(--color-text-1)]">应用简介</h1>
+                    <h1 className="text-lg font-medium text-[var(--color-text-1)]">{botData.lastMessage ? '对话设置' : '应用简介'}</h1>
                 </div>
             </div>
 
@@ -63,15 +70,25 @@ export default function AppDetailPage() {
                 <div className="px-4 py-6">
                     <div className="flex flex-col items-center">
                         {/* 应用图标 */}
-                        <div className="w-24 h-24 bg-gradient-to-br from-blue-400 to-blue-600 rounded-2xl overflow-hidden mb-4 shadow-lg">
+                        <div
+                            className="w-24 h-24 mb-4 cursor-pointer"
+                            onClick={() => setAvatarVisible(true)}
+                        >
                             <Image
-                                src="/avatars/04.svg"
+                                src={botData.avatar || '/avatars/04.svg'}
                                 alt={botData.name}
                                 width={96}
                                 height={96}
                                 className="w-full h-full object-cover"
                             />
                         </div>
+
+                        {/* 头像查看器 */}
+                        <ImageViewer
+                            image={botData.avatar || '/avatars/04.svg'}
+                            visible={avatarVisible}
+                            onClose={() => setAvatarVisible(false)}
+                        />
 
                         {/* 应用名称 */}
                         <h2 className="text-xl font-semibold text-[var(--color-text-1)] mb-2">
@@ -97,6 +114,19 @@ export default function AppDetailPage() {
 
                 {/* 设置选项 */}
                 <div className="mt-2">
+                    {botData.lastMessage && (
+                        <div className="mx-4 mb-4 bg-[var(--color-bg)] rounded-3xl shadow-sm overflow-hidden">
+                            <List>
+                                <List.Item prefix={<span className="iconfont icon-duihualishi text-2xl"></span>}
+                                    onClick={() => {
+                                        router.push(`/search?type=ChatHistory&id=${botData.id}`);
+                                    }}>
+                                    查找聊天记录
+                                </List.Item>
+                            </List>
+                        </div>
+                    )}
+
                     {/* 接收通知 */}
                     <div className="mx-4 mb-4 bg-[var(--color-bg)] rounded-3xl shadow-sm overflow-hidden">
                         <List>
@@ -117,7 +147,7 @@ export default function AppDetailPage() {
                                 onClick={() => {
                                     router.push(`/conversation?id=${botData.id}`);
                                 }}>
-                                快速发起对话
+                                {botData.lastMessage ? '继续对话' : '快速发起对话'}
                             </List.Item>
                         </List>
                     </div>

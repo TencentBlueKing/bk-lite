@@ -1,18 +1,19 @@
 'use client';
 
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useMemo } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { SearchBar, Avatar, List } from 'antd-mobile';
-import { LeftOutline } from 'antd-mobile-icons';
-import { mockChatData, mockWorkbenchData } from '@/constants/mockData';
+import { LeftOutline, FrownOutline, SearchOutline } from 'antd-mobile-icons';
+import { mockChatData, mockWorkbenchData, mockChatMessages, ChatMessageRecord, ChatItem } from '@/constants/mockData';
 import Image from 'next/image';
 
-type SearchType = 'ConversationList' | 'WorkbenchPage';
+type SearchType = 'ConversationList' | 'WorkbenchPage' | 'ChatHistory';
 
 export default function SearchPage() {
     const router = useRouter();
     const searchParams = useSearchParams();
     const searchType = (searchParams?.get('type') || 'ConversationList') as SearchType;
+    const botId = searchParams?.get('id') || '';
 
     const [searchValue, setSearchValue] = useState('');
 
@@ -34,6 +35,14 @@ export default function SearchPage() {
                 (bot) =>
                     bot.name.toLowerCase().includes(keyword)
             );
+        } else if (searchType === 'ChatHistory') {
+            // 搜索聊天记录
+            const filtered = mockChatMessages.filter((message) => message.chatId === botId)?.filter(
+                (message) =>
+                    message.content.toLowerCase().includes(keyword)
+            );
+            // 按时间倒序排序（最新的在前面）
+            return filtered.sort((a, b) => b.timestamp - a.timestamp);
         }
 
         return [];
@@ -46,53 +55,66 @@ export default function SearchPage() {
         3: 'Chatflow',
     };
 
-    // 渲染对话列表项
-    const renderConversationItem = (chat: any) => (
-        <List.Item
-            key={chat.id}
-            arrowIcon={false}
-            prefix={
-                <Avatar
-                    src={chat.avatar}
-                    style={{ '--size': '48px' }}
-                    className="ml-1 mr-1"
-                />
-            }
-            description={
-                <div className="flex items-center justify-between mt-1">
-                    <span className="text-sm text-[var(--color-text-3)] flex-1 truncate">
-                        {chat.lastMessage}
+    // 通用渲染函数 - 对话列表项和聊天记录项
+    const renderListItem = (item: ChatItem | ChatMessageRecord, type: 'conversation' | 'message') => {
+        const isConversation = type === 'conversation';
+        const chatItem = item as ChatItem;
+        const messageItem = item as ChatMessageRecord;
+
+        return (
+            <List.Item
+                key={isConversation ? chatItem.id : messageItem.messageId}
+                arrowIcon={false}
+                prefix={
+                    <Avatar
+                        src={isConversation ? chatItem.avatar : messageItem.chatAvatar}
+                        style={{ '--size': '48px' }}
+                        className="ml-1 mr-1"
+                    />
+                }
+                description={
+                    <div className="mt-1">
+                        <span className="text-sm text-[var(--color-text-3)] line-clamp-1">
+                            {isConversation ? chatItem.lastMessage : messageItem.content}
+                        </span>
+                    </div>
+                }
+                extra={
+                    <div className="flex flex-col items-end space-y-1">
+                        <span className="text-xs text-[var(--color-text-4)]">
+                            {isConversation ? chatItem.time : formatMessageTime(messageItem.timestamp)}
+                        </span>
+                        {isConversation && chatItem.unread && chatItem.unread > 0 && (
+                            <span className="flex items-center justify-center min-w-[18px] h-[18px] px-1.5 bg-red-500 text-white text-xs rounded-full">
+                                {chatItem.unread}
+                            </span>
+                        )}
+                    </div>
+                }
+                onClick={() => {
+                    if (isConversation) {
+                        router.push(`/conversation?id=${chatItem.id}`);
+                    } else {
+                        router.push(`/conversation?id=${messageItem.chatId}`);
+                    }
+                }}
+            >
+                <div className="flex items-center justify-between">
+                    <span className="text-base font-medium text-[var(--color-text-1)]">
+                        {isConversation ? chatItem.name : messageItem.chatName}
                     </span>
-                </div>
-            }
-            extra={
-                <div className="flex flex-col items-end space-y-1">
-                    <span className="text-xs text-[var(--color-text-4)]">
-                        {chat.time}
-                    </span>
-                    {chat.unread && chat.unread > 0 && (
-                        <span className="flex items-center justify-center min-w-[18px] h-[18px] px-1.5 bg-red-500 text-white text-xs rounded-full">
-                            {chat.unread}
+                    {isConversation && chatItem.website && (
+                        <span className="text-xs text-[var(--color-text-4)] ml-2">
+                            {chatItem.website}
                         </span>
                     )}
                 </div>
-            }
-            onClick={() => {
-                router.push(`/conversation?id=${chat.id}`);
-            }}
-        >
-            <div className="flex items-center justify-between">
-                <span className="text-base font-medium text-[var(--color-text-1)]">
-                    {chat.name}
-                </span>
-                {chat.website && (
-                    <span className="text-xs text-[var(--color-text-4)] ml-2">
-                        {chat.website}
-                    </span>
-                )}
-            </div>
-        </List.Item>
-    );
+            </List.Item>
+        );
+    };
+
+    // 渲染对话列表项
+    const renderConversationItem = (chat: any) => renderListItem(chat, 'conversation');
 
     // 渲染工作台列表项
     const renderWorkbenchItem = (item: any) => (
@@ -140,12 +162,7 @@ export default function SearchPage() {
                     </div>
 
                     {/* 描述文本 */}
-                    <p className="text-xs text-[var(--color-text-2)] mb-3 leading-relaxed overflow-hidden"
-                        style={{
-                            whiteSpace: 'nowrap',
-                            overflow: 'hidden',
-                            textOverflow: 'ellipsis'
-                        }}
+                    <p className="text-xs text-[var(--color-text-2)] mb-3 leading-relaxed overflow-hidden truncate"
                     >
                         {item.introduction || '暂无简介'}
                     </p>
@@ -161,6 +178,42 @@ export default function SearchPage() {
         </div>
     );
 
+    // 格式化时间戳
+    const formatMessageTime = (timestamp: number) => {
+        const date = new Date(timestamp);
+        const now = new Date();
+        const diff = now.getTime() - timestamp;
+
+        // 今天
+        if (date.toDateString() === now.toDateString()) {
+            return date.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' });
+        }
+
+        // 昨天
+        const yesterday = new Date(now);
+        yesterday.setDate(yesterday.getDate() - 1);
+        if (date.toDateString() === yesterday.toDateString()) {
+            return '昨天';
+        }
+
+        // 一周内
+        if (diff < 7 * 24 * 60 * 60 * 1000) {
+            const days = ['日', '一', '二', '三', '四', '五', '六'];
+            return `周${days[date.getDay()]}`;
+        }
+
+        // 今年
+        if (date.getFullYear() === now.getFullYear()) {
+            return `${date.getMonth() + 1}月${date.getDate()}日`;
+        }
+
+        // 更早
+        return `${date.getFullYear()}年${date.getMonth() + 1}月${date.getDate()}日`;
+    };
+
+    // 渲染聊天记录项
+    const renderChatMessageItem = (message: ChatMessageRecord) => renderListItem(message, 'message');
+
 
     // 获取占位符文本
     const getPlaceholder = () => {
@@ -169,6 +222,8 @@ export default function SearchPage() {
                 return '搜索对话名称';
             case 'WorkbenchPage':
                 return '搜索应用名称';
+            case 'ChatHistory':
+                return '搜索聊天记录';
             default:
                 return '请输入搜索关键词';
         }
@@ -206,37 +261,13 @@ export default function SearchPage() {
                 {!searchValue.trim() ? (
                     // 空状态 - 未输入搜索词
                     <div className="h-full flex flex-col items-center justify-center h-64 text-[var(--color-text-3)]">
-                        <svg
-                            className="w-16 h-16 mb-4 opacity-40"
-                            fill="none"
-                            stroke="currentColor"
-                            viewBox="0 0 24 24"
-                        >
-                            <path
-                                strokeLinecap="round"
-                                strokeLinejoin="round"
-                                strokeWidth={2}
-                                d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
-                            />
-                        </svg>
+                        <SearchOutline className='text-7xl mb-4' />
                         <p className="text-sm">请输入关键词进行搜索</p>
                     </div>
                 ) : searchResults.length === 0 ? (
                     // 空状态 - 无搜索结果
                     <div className="h-full flex flex-col items-center justify-center h-64 text-[var(--color-text-3)]">
-                        <svg
-                            className="w-16 h-16 mb-4 opacity-40"
-                            fill="none"
-                            stroke="currentColor"
-                            viewBox="0 0 24 24"
-                        >
-                            <path
-                                strokeLinecap="round"
-                                strokeLinejoin="round"
-                                strokeWidth={2}
-                                d="M9.172 16.172a4 4 0 015.656 0M9 10h.01M15 10h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
-                            />
-                        </svg>
+                        <FrownOutline className='text-7xl mb-4' />
                         <p className="text-sm">未找到相关结果</p>
                         <p className="text-xs mt-1">试试其他关键词</p>
                     </div>
@@ -248,14 +279,28 @@ export default function SearchPage() {
                                 <style
                                     dangerouslySetInnerHTML={{
                                         __html: `
-                      .adm-list-item-content-extra {
-                        position: absolute;
-                        right: 5px;
-                      }
-                    `,
+                                            .adm-list-item-content-extra {
+                                            position: absolute;
+                                            right: 5px;
+                                        }
+                                        `,
                                     }}
                                 />
                                 {searchResults.map((item) => renderConversationItem(item))}
+                            </List>
+                        ) : searchType === 'ChatHistory' ? (
+                            <List>
+                                <style
+                                    dangerouslySetInnerHTML={{
+                                        __html: `
+                                            .adm-list-item-content-extra {
+                                            position: absolute;
+                                            right: 5px;
+                                        }
+                                        `,
+                                    }}
+                                />
+                                {searchResults.map((item) => renderChatMessageItem(item as ChatMessageRecord))}
                             </List>
                         ) : (
                             searchResults.map((item) => renderWorkbenchItem(item))
