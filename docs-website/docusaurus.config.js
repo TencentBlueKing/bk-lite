@@ -27,6 +27,7 @@ const config = {
   headTags: [
     {
       tagName: 'script',
+      attributes: {},
       innerHTML: `
         var _hmt = _hmt || [];
         (function() {
