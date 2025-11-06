@@ -7,16 +7,20 @@ from django.db.models import JSONField
 
 from apps.core.models.maintainer_info import MaintainerInfo
 from apps.core.models.time_info import TimeInfo
-from apps.core.models.group_info import Groupo
+from apps.core.models.group_info import Groups
 from apps.core.utils.crypto.password_crypto import PasswordCrypto
 from apps.operation_analysis.constants.constants import SECRET_KEY
 
 
-class NameSpace(MaintainerInfo, TimeInfo, Groupo):
+class NameSpace(MaintainerInfo, TimeInfo):
     name = models.CharField(max_length=128, verbose_name="命名空间名称", unique=True)
+    namespace = models.CharField(max_length=64, verbose_name="NATS命名空间", default="bklite",
+                                  help_text="NATS服务端的命名空间,用于消息主题前缀")
     account = models.CharField(max_length=64, verbose_name="账号")
     password = models.CharField(max_length=128, verbose_name="密码")
     domain = models.CharField(max_length=255, verbose_name="域名")
+    enable_tls = models.BooleanField(default=False, verbose_name="启用TLS", 
+                                      help_text="是否使用TLS安全连接(tls://)")
     desc = models.TextField(verbose_name="描述", blank=True, null=True)
     is_active = models.BooleanField(default=True, verbose_name="是否启用")
 
@@ -63,8 +67,30 @@ class NameSpace(MaintainerInfo, TimeInfo, Groupo):
         """
         self.password = self.encrypt_password(raw_password)
 
+    def _is_password_encrypted(self):
+        """
+        判断密码是否已经加密
+        加密后的密码特征:
+        1. 长度 >= 44 (AES加密后base64编码的最小长度)
+        2. 能够成功解密
+        
+        :return: True 表示已加密，False 表示明文
+        """
+        if not self.password:
+            return False
+        
+        # 尝试解密，如果成功说明已加密
+        try:
+            crypto = PasswordCrypto(SECRET_KEY)
+            crypto.decrypt(self.password)
+            return True
+        except Exception:
+            # 解密失败，说明是明文密码
+            return False
+
     def save(self, *args, **kwargs):
-        if self.password:
+        # 只有在密码未加密时才进行加密
+        if self.password and not self._is_password_encrypted():
             self.password = self.encrypt_password(self.password)
         super().save(*args, **kwargs)
 
@@ -83,7 +109,7 @@ class DataSourceTag(MaintainerInfo, TimeInfo):
         return f"{self.name}({self.tag_id})"
 
 
-class DataSourceAPIModel(MaintainerInfo, TimeInfo, Groupo):
+class DataSourceAPIModel(MaintainerInfo, TimeInfo, Groups):
     name = models.CharField(max_length=255, verbose_name="数据源名称")
     rest_api = models.CharField(max_length=255, verbose_name="REST API URL")
     desc = models.TextField(verbose_name="描述", blank=True, null=True)
