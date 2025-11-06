@@ -30,7 +30,7 @@
         "installCollector": "安装采集器",
         "node": "节点",
         "sidecarVersionDes": "请选择远程安装的控制器版本。",
-        "ruleinputinfo": "请输入你的IP地址!",
+        "ruleinputinfo": "请输入你的IP地址",
         "collectorDetails": "采集器详情",
         "installed": "已安装",
         "toInstall": "安装",
