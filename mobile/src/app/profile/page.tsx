@@ -9,9 +9,6 @@ import { useTheme } from '@/context/theme';
 import { useTranslation } from '@/utils/i18n';
 import { List, Avatar, Switch, Toast, Dialog, ActionSheet, ImageViewer } from 'antd-mobile';
 import {
-  RightOutline,
-  SetOutline,
-  QuestionCircleOutline,
   CameraOutline,
   PictureOutline,
 } from 'antd-mobile-icons';

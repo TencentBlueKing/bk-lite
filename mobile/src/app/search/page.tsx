@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useMemo } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { SearchBar, Avatar, List } from 'antd-mobile';
 import { LeftOutline } from 'antd-mobile-icons';
