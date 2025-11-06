@@ -81,7 +81,6 @@ class NodeViewSet(mixins.DestroyModelMixin,
 
         return final_q
 
-
     @action(methods=["post"], detail=False, url_path=r"search")
     def search(self, request, *args, **kwargs):
         # 获取权限规则
