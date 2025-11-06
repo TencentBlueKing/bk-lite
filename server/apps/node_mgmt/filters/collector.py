@@ -14,9 +14,9 @@ class CollectorFilter(filters.FilterSet):
 
     def filter_tags(self, queryset, name, value):
         """
-        支持按标签过滤（精确匹配）
+        支持按标签过滤（精确匹配，AND 逻辑）
         - 单个标签: ?tags=tag1
-        - 多个标签(逗号分隔，任意匹配): ?tags=tag1,tag2
+        - 多个标签(逗号分隔，全部匹配): ?tags=tag1,tag2
 
         注意：使用精确匹配，避免 "aabb" 匹配到 "aabbc"
         性能优化：只查询 id 和 tags 字段，减少内存占用
@@ -35,8 +35,8 @@ class CollectorFilter(filters.FilterSet):
         for collector_id, collector_tags in queryset.values_list('id', 'tags'):
             if collector_tags is None:
                 collector_tags = []
-            # 检查是否有任意一个查询标签在采集器的标签列表中（精确匹配）
-            if any(tag in collector_tags for tag in tags_list):
+            # 检查是否所有查询标签都在采集器的标签列表中（精确匹配，AND 逻辑）
+            if all(tag in collector_tags for tag in tags_list):
                 matching_ids.append(collector_id)
 
         # 如果没有匹配，返回空查询集
