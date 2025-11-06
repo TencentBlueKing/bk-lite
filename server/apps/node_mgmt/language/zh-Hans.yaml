@@ -2,10 +2,103 @@ cloud_region:
   default:
     description: 默认云区域
     name: 默认
+
 os:
   linux: Linux
   windows: Windows
+
 collector:
   jmx_activemq_linux:
-    description: 通过JMX收集ActiveMQ指标以监控消息队列性能和健康状况
-    name: JMX ActiveMQ（Linux）
+    description:
+    name:
+  exporter_apache_linux:
+    description:
+    name:
+  Auditbeat_linux:
+    description:
+    name:
+  exporter_elasticsearch_linux:
+    description:
+    name:
+  Filebeat_linux:
+    description:
+    name:
+  jmx_jboss_linux:
+    description:
+    name:
+  jmx_jetty_linux:
+    description:
+    name:
+  jmx_jvm_linux:
+    description:
+    name:
+  exporter_kafka_linux:
+    description:
+    name:
+  Metricbeat_linux:
+    description:
+    name:
+  exporter_mongodb_linux:
+    description:
+    name:
+  exporter_mssql_linux:
+    description:
+    name:
+  exporter_mysql_linux:
+    description:
+    name:
+  natsexecutor_linux:
+    description:
+    name:
+  natsexecutor_windows:
+    description:
+    name:
+  exporter_nginx_linux:
+    description:
+    name:
+  exporter_oracle_linux:
+    description:
+    name:
+  Packetbeat_linux:
+    description:
+    name:
+  exporter_postgres_linux:
+    description:
+    name:
+  exporter_rabbitmq_linux:
+    description:
+    name:
+  telegraf_linux:
+    description:
+    name:
+  telegraf_windows:
+    description:
+    name:
+  jmx_tomcat_linux:
+    description:
+    name:
+  jmx_tongweb6_linux:
+    description:
+    name:
+  jmx_tongweb7_linux:
+    description:
+    name:
+  Vector_linux:
+    description:
+    name:
+  jmx_weblogic_linux:
+    description:
+    name:
+  exporter_zookeeper_linux:
+    description:
+    name:
+
+collector_tag:
+  monitor: 监控
+  log: 日志
+  cmdb: CMDB
+  linux: Linux
+  windows: Windows
+  jmx: JMX
+  exporter: Exporter
+  beat: Beat
