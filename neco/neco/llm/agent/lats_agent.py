@@ -79,19 +79,17 @@ class MultiDimensionalReflection(BaseModel):
     
     def as_message(self) -> HumanMessage:
         """转换为消息格式用于上下文传递"""
-        reflection_text = f"""
-        **评估结果** (置信度: {self.confidence:.2f})
-        - 准确性: {self.accuracy}/10 | 完整性: {self.completeness}/10
-        - 相关性: {self.relevance}/10 | 清晰度: {self.clarity}/10
-        - 创新性: {self.creativity}/10 | 实用性: {self.actionability}/10
-        
-        **综合评分**: {self.overall_score}/10
-        
-        **优点**: {'; '.join(self.strengths)}
-        **不足**: {'; '.join(self.weaknesses)}
-        **建议**: {'; '.join(self.suggestions)}
-        """
-        return HumanMessage(content=reflection_text.strip())
+        reflection_text = f"""**评估结果** (置信度: {self.confidence:.2f})
+- 准确性: {self.accuracy}/10 | 完整性: {self.completeness}/10
+- 相关性: {self.relevance}/10 | 清晰度: {self.clarity}/10
+- 创新性: {self.creativity}/10 | 实用性: {self.actionability}/10
+
+**综合评分**: {self.overall_score}/10
+
+**优点**: {'; '.join(self.strengths)}
+**不足**: {'; '.join(self.weaknesses)}
+**建议**: {'; '.join(self.suggestions)}"""
+        return HumanMessage(content=reflection_text)
     
     @property
     def normalized_score(self) -> float:
@@ -457,45 +455,39 @@ class LatsAgentNode(ToolsNodes):
         progress_messages = config.setdefault('progress_messages', [])
         
         # 显示评估开始信息
-        eval_start_msg = f"\n\n📊 **评估 {len(candidates)} 个候选方案**\n\n"
-        progress_messages.append(AIMessage(content=eval_start_msg))
+        progress_messages.append(AIMessage(content=f"\n\n📊 **评估 {len(candidates)} 个候选方案**\n\n"))
 
         # 串行评估所有候选方案
         valid_reflections = []
         
         for i, messages in enumerate(candidate_message_lists):
-            eval_progress_msg = f"\n\n📊 **评估候选 {i+1}/{len(candidate_message_lists)}**\n\n"
-            progress_messages.append(AIMessage(content=eval_progress_msg))
+            progress_messages.append(AIMessage(content=f"\n\n📊 **评估候选 {i+1}/{len(candidate_message_lists)}**\n\n"))
             
             try:
                 reflection = await self._evaluate_candidate(
                     user_message, messages, config, search_config
                 )
                 valid_reflections.append(reflection)
-                
-                eval_result_msg = f"\n\n✅ 候选 {i+1}: **{reflection.overall_score:.1f}/10**\n\n"
-                progress_messages.append(AIMessage(content=eval_result_msg))
+                progress_messages.append(AIMessage(content=f"\n\n✅ 候选 {i+1}: **{reflection.overall_score:.1f}/10**\n\n"))
                 
             except Exception as e:
                 logger.warning(f"候选 {i+1} 评估失败: {e}")
                 fallback_reflection = MultiDimensionalReflection.create_default(4.0)
                 valid_reflections.append(fallback_reflection)
-                
-                eval_result_msg = f"\n\n⚠️ 候选 {i+1}: **{fallback_reflection.overall_score:.1f}/10** (降级评估)\n\n"
-                progress_messages.append(AIMessage(content=eval_result_msg))
+                progress_messages.append(AIMessage(content=f"\n\n⚠️ 候选 {i+1}: **{fallback_reflection.overall_score:.1f}/10** (降级评估)\n\n"))
 
         # 记录评估摘要
         if valid_reflections:
             scores = [r.overall_score for r in valid_reflections]
             confidences = [r.confidence for r in valid_reflections]
             solved_count = sum(1 for r in valid_reflections if r.found_solution)
+            avg_score = sum(scores) / len(scores)
+            avg_confidence = sum(confidences) / len(confidences)
             
             logger.info(
-                f"📊 多维度评估完成 | "
-                f"候选数: {len(valid_reflections)} | "
-                f"质量分布: 最高{max(scores):.1f} 平均{sum(scores)/len(scores):.1f} 最低{min(scores):.1f} | "
-                f"平均置信度: {sum(confidences)/len(confidences):.2f} | "
-                f"解决方案: {solved_count}个"
+                f"📊 评估完成: {len(valid_reflections)}候选 | "
+                f"质量分布: 最高{max(scores):.1f} 平均{avg_score:.1f} 最低{min(scores):.1f} | "
+                f"置信度: {avg_confidence:.2f} | 解决方案: {solved_count}个"
             )
 
         # 应用早停策略
@@ -527,8 +519,7 @@ class LatsAgentNode(ToolsNodes):
         progress_messages = []
         
         for i in range(max_candidates):
-            progress_msg = f"\n\n🔍 **生成候选方案 {i+1}/{max_candidates}**\n\n"
-            progress_messages.append(AIMessage(content=progress_msg))
+            progress_messages.append(AIMessage(content=f"\n\n🔍 **生成候选方案 {i+1}/{max_candidates}**\n\n"))
             
             logger.debug(f"使用 ReAct 模式生成第 {i+1}/{max_candidates} 个候选方案")
             candidate = await self.invoke_react_for_candidate(user_message, messages, config, system_message)
@@ -572,8 +563,8 @@ class LatsAgentNode(ToolsNodes):
         best_candidate.children.extend(child_nodes)
 
         best_score = max((r.overall_score for r in reflections), default=0)
-        eval_summary_msg = f"\n\n🎯 **最佳评分: {best_score:.1f}/10** {'✨' if best_score >= 8.0 else '🔍 继续优化...'}\n\n"
-        progress_messages.append(AIMessage(content=eval_summary_msg))
+        status_icon = '✨' if best_score >= 8.0 else '🔍 继续优化...'
+        progress_messages.append(AIMessage(content=f"\n\n🎯 **最佳评分: {best_score:.1f}/10** {status_icon}\n\n"))
         
         # 检查解决方案 - 使用更严格的标准
         solution_nodes = [node for node, r in zip(child_nodes, reflections) 
@@ -720,13 +711,12 @@ class LatsAgentNode(ToolsNodes):
                                    reflection.confidence >= 0.8)
         
         if is_high_quality_solution:
-            eval_result_msg = AIMessage(content=f"\n\n✅ **初始评分: {reflection.overall_score:.1f}/10** 🎉\n\n")
-            messages_to_add = [progress_start_msg, eval_progress_msg, eval_result_msg, initial_candidate]
-            # 标记为已解决
+            eval_result_msg = f"\n\n✅ **初始评分: {reflection.overall_score:.1f}/10** 🎉\n\n"
+            messages_to_add = [progress_start_msg, eval_progress_msg, AIMessage(content=eval_result_msg), initial_candidate]
             root._is_solved = True
         else:
-            eval_result_msg = AIMessage(content=f"\n\n✅ **初始评分: {reflection.overall_score:.1f}/10** \n\n🔍 寻找更优方案...\n\n")
-            messages_to_add = [progress_start_msg, eval_progress_msg, initial_candidate, eval_result_msg]
+            eval_result_msg = f"\n\n✅ **初始评分: {reflection.overall_score:.1f}/10** \n\n🔍 寻找更优方案...\n\n"
+            messages_to_add = [progress_start_msg, eval_progress_msg, initial_candidate, AIMessage(content=eval_result_msg)]
         
         return {
             **state,

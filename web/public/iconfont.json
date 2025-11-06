@@ -6,6 +6,34 @@
   "description": "opspolit",
   "glyphs": [
     {
+      "icon_id": "13364769",
+      "name": "team",
+      "font_class": "team",
+      "unicode": "e767",
+      "unicode_decimal": 59239
+    },
+    {
+      "icon_id": "29382649",
+      "name": "govZuZhijg",
+      "font_class": "govZuZhijg",
+      "unicode": "e6fc",
+      "unicode_decimal": 59132
+    },
+    {
+      "icon_id": "11910542",
+      "name": "Winlogbeat",
+      "font_class": "Winlogbeat",
+      "unicode": "e6fd",
+      "unicode_decimal": 59133
+    },
+    {
+      "icon_id": "7677018",
+      "name": "拓扑图",
+      "font_class": "tuoputu",
+      "unicode": "e6f3",
+      "unicode_decimal": 59123
+    },
+    {
       "icon_id": "6458551",
       "name": "RESTful API",
       "font_class": "RESTfulAPI",
@@ -1859,6 +1887,13 @@
       "font_class": "caijiqizongshu",
       "unicode": "e682",
       "unicode_decimal": 59010
+    },
+    {
+      "icon_id": "9601075",
+      "name": "Vector",
+      "font_class": "Vector",
+      "unicode": "e6600",
+      "unicode_decimal": 943616
     },
     {
       "icon_id": "32048577",

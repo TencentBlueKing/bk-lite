@@ -212,7 +212,7 @@ const Alert: React.FC = () => {
               okText={t('common.confirm')}
               cancelText={t('common.cancel')}
               okButtonProps={{ loading: confirmLoading }}
-              onConfirm={() => alertCloseConfirm(record.id)}
+              onConfirm={() => alertCloseConfirm(record.id as number)}
             >
               <Button type="link" disabled={record.status !== 'new'}>
                 {t('common.close')}
@@ -330,7 +330,7 @@ const Alert: React.FC = () => {
     ];
   };
 
-  const alertCloseConfirm = async (id: string | number) => {
+  const alertCloseConfirm = async (id: React.Key) => {
     setConfirmLoading(true);
     try {
       await patchMonitorAlert(id, {
@@ -671,7 +671,7 @@ const Alert: React.FC = () => {
       </Spin>
       <AlertDetail
         ref={detailRef}
-        objectId={objectId}
+        objectId={objectId === 'all' ? '' : objectId}
         objects={objects}
         userList={userList}
         onSuccess={() => getAssetInsts('refresh')}

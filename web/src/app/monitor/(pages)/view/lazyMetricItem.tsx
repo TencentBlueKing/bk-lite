@@ -4,7 +4,7 @@ import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { Spin, Tooltip } from 'antd';
 import { BellOutlined, SearchOutlined } from '@ant-design/icons';
 import LineChart from '@/app/monitor/components/charts/lineChart';
-import { TableDataItem, MetricItem } from '@/app/monitor/types';
+import { TableDataItem, MetricItem, ChartData } from '@/app/monitor/types';
 import { useTranslation } from '@/utils/i18n';
 import { findUnitNameById } from '@/app/monitor/utils/common';
 import { Dayjs } from 'dayjs';
@@ -152,7 +152,11 @@ const LazyMetricItem: React.FC<LazyMetricItemProps> = ({
           <>
             <LineChart
               metric={item}
-              data={isInViewport && isLoaded ? item.viewData || [] : []}
+              data={
+                isInViewport && isLoaded
+                  ? (item.viewData as ChartData[]) || []
+                  : []
+              }
               unit={item.unit}
               onXRangeChange={onXRangeChange}
             />

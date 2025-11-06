@@ -60,7 +60,7 @@ const SelectInstance = forwardRef<ModalRef, ModalConfig>(
         objects.find((item: ObjectItem) => item.id === monitorObject) || {};
       return [
         ...getBaseInstanceColumn({
-          objects,
+          objects: objects as ObjectItem[],
           row,
           t,
         }),
@@ -82,12 +82,12 @@ const SelectInstance = forwardRef<ModalRef, ModalConfig>(
         setTableData([]);
         setGroupVisible(true);
         setTitle(title);
-        setSelectedRowKeys(list);
+        setSelectedRowKeys((list as React.Key[]) || []);
         fetchData();
       },
     }));
 
-    const onSelectChange = (selectedKeys: any) => {
+    const onSelectChange = (selectedKeys: React.Key[]) => {
       setSelectedRowKeys(selectedKeys);
     };
 
@@ -109,7 +109,7 @@ const SelectInstance = forwardRef<ModalRef, ModalConfig>(
           page_size: pagination.pageSize,
           name: type === 'clear' ? '' : searchText,
         };
-        const data = await getInstanceList(monitorObject, params);
+        const data = await getInstanceList(monitorObject as React.Key, params);
         setTableData(data?.results || []);
         setPagination((prev: Pagination) => ({
           ...prev,
@@ -228,5 +228,5 @@ const SelectInstance = forwardRef<ModalRef, ModalConfig>(
   }
 );
 
-SelectInstance.displayName = 'slectInstance';
+SelectInstance.displayName = 'SelectInstance';
 export default SelectInstance;

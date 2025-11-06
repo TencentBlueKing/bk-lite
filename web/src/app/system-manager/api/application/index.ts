@@ -70,6 +70,27 @@ export const useRoleApi = () => {
   const deleteRoleGroups = async (params: any) => {
     return await post('/system_mgmt/role/revoke_group_roles/', params);
   }
+  const getCustomMenus = async (params: any) => {
+    return await get('/system_mgmt/custom_menu_group/', params);
+  }
+  const getCustomMenuDetail = async (params: any) => {
+    return await get(`/system_mgmt/custom_menu_group/${params.id}/`);
+  }
+  const addCustomMenu = async (params: any) => {
+    return await post('/system_mgmt/custom_menu_group/', params);
+  }
+  const updateCustomMenu = async (params: any) => {
+    return await put(`/system_mgmt/custom_menu_group/${params.id}/`, params);
+  }
+  const deleteCustomMenu = async (params: any) => {
+    return await del(`/system_mgmt/custom_menu_group/${params.id}/`);
+  }
+  const toggleCustomMenuStatus = async (params: any) => {
+    return await post(`/system_mgmt/custom_menu_group/${params.id}/change_enable/`, { is_enabled: params.is_enabled });
+  }
+  const copyCustomMenu = async (params: any) => {
+    return await post(`/system_mgmt/custom_menu_group/${params.id}/copy/`, params);
+  }
   return {
     getRoles,
     addRole,
@@ -91,9 +112,16 @@ export const useRoleApi = () => {
     addApplication,
     updateApplication,
     deleteApplication,
-    // 新增的组织授权API
     getRoleGroups,
     addRoleGroups,
-    deleteRoleGroups
+    deleteRoleGroups,
+    // 新增的菜单管理API
+    getCustomMenus,
+    getCustomMenuDetail,
+    addCustomMenu,
+    updateCustomMenu,
+    deleteCustomMenu,
+    toggleCustomMenuStatus,
+    copyCustomMenu
   };
 };

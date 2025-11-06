@@ -170,8 +170,6 @@ const RuleModal = forwardRef<ModalRef, ModalProps>(
         message.success(msg);
         handleCancel();
         onSuccess();
-      } catch (error) {
-        console.log(error);
       } finally {
         setConfirmLoading(false);
       }
@@ -405,7 +403,7 @@ const RuleModal = forwardRef<ModalRef, ModalProps>(
               name="organizations"
               rules={[{ required: true, message: t('common.required') }]}
             >
-              <GroupTreeSelector />
+              <GroupTreeSelector placeholder={t('common.selectMsg')} />
             </Form.Item>
           </Form>
         </OperateModal>

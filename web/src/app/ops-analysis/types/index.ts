@@ -20,3 +20,15 @@ export interface SidebarRef {
   clearSelection: () => void;
   setSelectedKeys: (keys: React.Key[]) => void;
 }
+
+export interface FormValues {
+  name: string;
+  desc?: string;
+}
+
+export interface ItemData {
+  name: string;
+  desc?: string;
+  directory?: number;
+  parent_id?: number;
+}

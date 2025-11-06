@@ -1,12 +1,47 @@
 import { TopologyNodeData } from './topology';
+import type { Dayjs } from 'dayjs';
+
 export type FilterType = 'selector' | 'fixed';
+
+export interface TimeConfig {
+  selectValue: number;
+  rangePickerVaule: [Dayjs, Dayjs] | null;
+}
+
+export interface OtherConfig {
+  timeSelector?: TimeConfig;
+  [key: string]: unknown;
+}
+
+export interface TimeRangeData {
+  start: number;
+  end: number;
+  selectValue: number;
+  rangePickerVaule: [Dayjs, Dayjs] | null;
+}
+
+export interface LayoutChangeItem {
+  i: string;
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+}
+
+export interface AddComponentConfig {
+  name?: string;
+  description?: string;
+  dataSource?: string | number;
+  chartType?: string;
+  dataSourceParams?: DataSourceParam[];
+}
 
 export interface DataSourceParam {
   name: string;
   type: string;
   value: any;
-  alias_name: string;
-  filterType: 'params' | 'fixed' | 'filter';
+  alias_name?: string;
+  filterType?: 'params' | 'fixed' | 'filter';
 }
 
 export interface WidgetConfig {

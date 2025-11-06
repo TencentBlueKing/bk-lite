@@ -48,7 +48,7 @@ const ApplyModal = forwardRef<ModalRef, ModalSuccess>(({ onSuccess }, ref) => {
     message.success(t('common.operationSuccessful'));
     onSuccess();
     getApplyData({
-      name: searchText,
+      ip: searchText,
       operating_system: configForm?.operating_system,
       id: configForm?.key,
     });
@@ -63,7 +63,7 @@ const ApplyModal = forwardRef<ModalRef, ModalSuccess>(({ onSuccess }, ref) => {
       setType(type);
       setConfigForm(form);
       getApplyData({
-        name: searchText,
+        ip: searchText,
         operating_system: form?.operating_system,
         id: form?.key,
       });
@@ -74,6 +74,7 @@ const ApplyModal = forwardRef<ModalRef, ModalSuccess>(({ onSuccess }, ref) => {
   const handleCancel = () => {
     setConfigVisible(false);
     setLoading(false);
+    setSearchText('');
     setApplyData([]);
   };
 
@@ -81,7 +82,7 @@ const ApplyModal = forwardRef<ModalRef, ModalSuccess>(({ onSuccess }, ref) => {
     setSearchText(value);
     getApplyData({
       operating_system: configForm?.operating_system,
-      name: value,
+      ip: value,
       id: configForm?.key,
     });
   };
@@ -90,10 +91,26 @@ const ApplyModal = forwardRef<ModalRef, ModalSuccess>(({ onSuccess }, ref) => {
   const getApplyData = async (params: TableDataItem) => {
     try {
       setLoading(true);
+      const filters: any = {};
+      if (params.ip) {
+        filters.ip = [
+          {
+            lookup_expr: 'icontains',
+            value: params.ip,
+          },
+        ];
+      }
+      if (params.operating_system) {
+        filters.operating_system = [
+          {
+            lookup_expr: 'in',
+            value: [params.operating_system],
+          },
+        ];
+      }
       const getNodeData = getNodeList({
         cloud_region_id: cloudId,
-        name: params.name,
-        operating_system: params.operating_system,
+        filters: Object.keys(filters).length > 0 ? filters : undefined,
       });
       const getAssoConfig = getAssoNodes({
         cloud_region_id: cloudId,
@@ -138,7 +155,7 @@ const ApplyModal = forwardRef<ModalRef, ModalSuccess>(({ onSuccess }, ref) => {
         <div className="sticky top-0 z-10">
           <Search
             className="w-64 mr-[8px] h-[40px]"
-            placeholder={t('common.search')}
+            placeholder={t('node-manager.cloudregion.node.ruleinputinfo')}
             enterButton
             onSearch={onSearch}
           />
