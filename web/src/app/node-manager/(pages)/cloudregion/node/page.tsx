@@ -13,7 +13,7 @@ import nodeStyle from './index.module.scss';
 import CollectorModal from './collectorModal';
 import { useTranslation } from '@/utils/i18n';
 import { ModalRef, TableDataItem } from '@/app/node-manager/types';
-import { SearchValue } from '@/app/node-manager/types/node';
+import { SearchFilters } from '@/app/node-manager/types/node';
 import CustomTable from '@/components/custom-table';
 import SearchCombination from './searchCombination';
 import {
@@ -22,6 +22,7 @@ import {
   useSidecarItems,
   useCollectorItems,
   useInstallMethodMap,
+  useFieldConfigs,
 } from '@/app/node-manager/hooks/node';
 import MainLayout from '../mainlayout/layout';
 import useApiClient from '@/utils/request';
@@ -52,6 +53,7 @@ const Node = () => {
   const collectorItems = useCollectorItems();
   const statusMap = useTelegrafMap();
   const installMethodMap = useInstallMethodMap();
+  const fieldConfigs = useFieldConfigs();
   const name = searchParams.get('name') || '';
   const collectorRef = useRef<ModalRef>(null);
   const controllerRef = useRef<ModalRef>(null);
@@ -60,10 +62,6 @@ const Node = () => {
   const [selectedRowKeys, setSelectedRowKeys] = useState<React.Key[]>([]);
   const [loading, setLoading] = useState<boolean>(false);
   const [showNodeTable, setShowNodeTable] = useState<boolean>(true);
-  const [searchValue, setSearchValue] = useState<SearchValue>({
-    field: 'name',
-    value: '',
-  });
   const [taskId, setTaskId] = useState<string>('');
   const [tableType, setTableType] = useState<string>('');
   const [showInstallController, setShowInstallController] =
@@ -71,6 +69,7 @@ const Node = () => {
   const [showInstallCollectorTable, setShowInstallCollectorTable] =
     useState<boolean>(false);
   const [activeColumns, setActiveColumns] = useState<ColumnItem[]>([]);
+  const [searchFilters, setSearchFilters] = useState<SearchFilters>({});
 
   const columns = useColumns({
     checkConfig: (row: TableDataItem) => {
@@ -88,7 +87,7 @@ const Node = () => {
         setLoading(true);
         await delNode(row.id as string);
         message.success(t('common.successfullyDeleted'));
-        getNodes();
+        getNodes(searchFilters);
       } catch {
         setLoading(false);
       }
@@ -146,7 +145,7 @@ const Node = () => {
   useEffect(() => {
     if (!isLoading) {
       getCollectors();
-      getNodes();
+      getNodes(searchFilters);
     }
   }, [isLoading]);
 
@@ -171,7 +170,7 @@ const Node = () => {
           try {
             await del(`/monitor/api/monitor_policy/${params}/`);
             message.success(t('common.operationSuccessful'));
-            getNodes();
+            getNodes(searchFilters);
           } finally {
             resolve(true);
           }
@@ -214,36 +213,23 @@ const Node = () => {
     getCheckboxProps: getCheckboxProps,
   };
 
-  const handleSearchChange = (value: SearchValue) => {
-    setSearchValue(value);
-    const params = getParams();
-    if (value.field === 'name') {
-      params.name = value.value;
-      params.operating_system = '';
-    } else if (value.field === 'operating_system') {
-      params.operating_system = value.value;
-      params.name = '';
-    }
-    getNodes(params);
+  const handleSearchChange = (filters: SearchFilters) => {
+    setSearchFilters(filters);
+    getNodes(filters);
   };
 
-  const getParams = () => {
-    return {
-      name: searchValue.field === 'name' ? searchValue.value : '',
-      operating_system:
-        searchValue.field === 'operating_system' ? searchValue.value : '',
-      cloud_region_id: cloudId,
-    };
-  };
-
-  const getNodes = async (params?: {
-    name?: string;
-    operating_system?: string;
-    cloud_region_id?: number;
-  }) => {
+  const getNodes = async (filters?: SearchFilters) => {
     setLoading(true);
     try {
-      const res = await getNodeList(params || getParams());
+      const params: any = {
+        cloud_region_id: cloudId,
+      };
+
+      if (filters && Object.keys(filters).length > 0) {
+        params.filters = filters;
+      }
+
+      const res = await getNodeList(params);
       const data = (res || []).map((item: TableDataItem) => ({
         ...item,
         key: item.id,
@@ -315,7 +301,7 @@ const Node = () => {
         }),
         render: (_: any, record: TableDataItem) => {
           const installMethod = record.install_method;
-          if ([0, 1].includes(installMethod)) {
+          if (['auto', 'manual'].includes(installMethod)) {
             const methodInfo = installMethodMap[installMethod];
             return <>{methodInfo.text}</>;
           }
@@ -419,7 +405,7 @@ const Node = () => {
   };
 
   const handleCollector = (config = { type: '', taskId: '' }) => {
-    getNodes();
+    getNodes(searchFilters);
     if (['installCollector', 'uninstallController'].includes(config.type)) {
       setTaskId(config.taskId);
       setTableType(config.type);
@@ -435,7 +421,7 @@ const Node = () => {
           <div className="overflow-hidden">
             <div className="flex justify-end mb-4">
               <SearchCombination
-                defaultValue={searchValue}
+                fieldConfigs={fieldConfigs}
                 onChange={handleSearchChange}
                 className="mr-[8px]"
               />
@@ -474,7 +460,7 @@ const Node = () => {
                   </Space>
                 </Button>
               </Dropdown>
-              <ReloadOutlined onClick={() => getNodes()} />
+              <ReloadOutlined onClick={() => getNodes(searchFilters)} />
             </div>
             <CustomTable
               className={nodeStyle.table}
@@ -502,7 +488,7 @@ const Node = () => {
             />
             <CollectorDetailDrawer
               ref={collectorDetailRef}
-              onSuccess={() => getNodes()}
+              onSuccess={() => getNodes(searchFilters)}
             />
           </div>
         </div>

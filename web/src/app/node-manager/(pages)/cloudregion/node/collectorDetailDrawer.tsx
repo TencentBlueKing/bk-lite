@@ -97,9 +97,7 @@ const CollectorDetailDrawer = forwardRef<ModalRef, ModalSuccess>(({}, ref) => {
             }}
           >
             {t('node-manager.cloudregion.node.lastReportTime')}：
-            {form.last_report_time
-              ? convertToLocalizedTime(form.last_report_time)
-              : '--'}
+            {form.updated_at ? convertToLocalizedTime(form.updated_at) : '--'}
           </div>
         }
         open={visible}

@@ -30,7 +30,7 @@
         "installCollector": "Install Collector",
         "node": "Node",
         "sidecarVersionDes": "Please select the Controller version for remote installation.",
-        "ruleinputinfo": "Please input your IP address!",
+        "ruleinputinfo": "Please input your IP address",
         "collectorDetails": "Collector Details",
         "installed": "Installed",
         "toInstall": "Install",
