@@ -1,8 +1,0 @@
-# Custom menu success messages
-batch_create: Batch creation successful
-update_order: Order updated successfully
-batch_update_order: Successfully updated menu orders
-menu_enabled: Menu enabled
-menu_disabled: Menu disabled
-menu_group_enabled: Menu group enabled
-menu_group_disabled: Menu group disabled

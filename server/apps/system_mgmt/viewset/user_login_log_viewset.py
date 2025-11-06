@@ -5,7 +5,7 @@ from rest_framework.response import Response
 
 from apps.core.utils.viewset_utils import LanguageViewSet
 from apps.system_mgmt.models import UserLoginLog
-from apps.system_mgmt.serializers.user_login_log_serializer import UserLoginLogListSerializer, UserLoginLogSerializer
+from apps.system_mgmt.serializers.user_login_log_serializer import UserLoginLogSerializer
 
 
 class UserLoginLogFilter(filters.FilterSet):
@@ -24,6 +24,15 @@ class UserLoginLogFilter(filters.FilterSet):
     # 源IP筛选
     source_ip = filters.CharFilter(field_name="source_ip", lookup_expr="icontains")
 
+    # 地理位置筛选
+    location = filters.CharFilter(field_name="location", lookup_expr="icontains")
+
+    # 操作系统筛选
+    os_info = filters.CharFilter(field_name="os_info", lookup_expr="icontains")
+
+    # 浏览器筛选
+    browser_info = filters.CharFilter(field_name="browser_info", lookup_expr="icontains")
+
     class Meta:
         model = UserLoginLog
         fields = [
@@ -32,6 +41,9 @@ class UserLoginLogFilter(filters.FilterSet):
             "login_time_start",
             "login_time_end",
             "source_ip",
+            "location",
+            "os_info",
+            "browser_info",
         ]
 
 
@@ -50,12 +62,6 @@ class UserLoginLogViewSet(LanguageViewSet):
 
     # 只允许查询操作，不允许创建、修改、删除
     http_method_names = ["get", "head", "options"]
-
-    def get_serializer_class(self):
-        """根据操作类型选择序列化器"""
-        if self.action == "list":
-            return UserLoginLogListSerializer
-        return UserLoginLogSerializer
 
     @action(detail=False, methods=["get"])
     def statistics(self, request):
