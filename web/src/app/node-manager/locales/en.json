@@ -30,7 +30,7 @@
         "installCollector": "Install Collector",
         "node": "Node",
         "sidecarVersionDes": "Please select the Controller version for remote installation.",
-        "ruleinputinfo": "Please input your IP address",
+        "ruleinputinfo": "Please input your IP address!",
         "collectorDetails": "Collector Details",
         "installed": "Installed",
         "toInstall": "Install",
@@ -110,10 +110,10 @@
         "stop": "Stop",
         "defaultNode": "Default Node",
         "active": "Active",
-        "installMethod": "Install Method",
-        "auto": "Auto",
         "manual": "Manual",
-        "lastReportTime": "Last Report Time"
+        "lastReportTime": "Last Report Time",
+        "installMethod": "Install Method",
+        "auto": "Auto"
       },
       "editform": {
         "Introduction": "Introduction",
