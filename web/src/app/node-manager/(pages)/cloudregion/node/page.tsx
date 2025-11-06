@@ -419,48 +419,50 @@ const Node = () => {
       {showNodeTable && (
         <div className={`${nodeStyle.node} w-full h-full`}>
           <div className="overflow-hidden">
-            <div className="flex justify-end mb-4">
+            <div className="flex items-center justify-between mb-4">
               <SearchCombination
                 fieldConfigs={fieldConfigs}
                 onChange={handleSearchChange}
                 className="mr-[8px]"
               />
-              <PermissionWrapper requiredPermissions={['InstallController']}>
-                <Button
-                  type="primary"
+              <div className="flex">
+                <PermissionWrapper requiredPermissions={['InstallController']}>
+                  <Button
+                    type="primary"
+                    className="mr-[8px]"
+                    onClick={handleInstallController}
+                  >
+                    {t('node-manager.cloudregion.node.installController')}
+                  </Button>
+                </PermissionWrapper>
+                <Dropdown
                   className="mr-[8px]"
-                  onClick={handleInstallController}
+                  overlayClassName="customMenu"
+                  menu={SidecarmenuProps}
+                  disabled={enableOperateController}
                 >
-                  {t('node-manager.cloudregion.node.installController')}
-                </Button>
-              </PermissionWrapper>
-              <Dropdown
-                className="mr-[8px]"
-                overlayClassName="customMenu"
-                menu={SidecarmenuProps}
-                disabled={enableOperateController}
-              >
-                <Button>
-                  <Space>
-                    {t('node-manager.cloudregion.node.sidecar')}
-                    <DownOutlined />
-                  </Space>
-                </Button>
-              </Dropdown>
-              <Dropdown
-                className="mr-[8px]"
-                overlayClassName="customMenu"
-                menu={CollectormenuProps}
-                disabled={enableOperateCollecter}
-              >
-                <Button>
-                  <Space>
-                    {t('node-manager.cloudregion.node.collector')}
-                    <DownOutlined />
-                  </Space>
-                </Button>
-              </Dropdown>
-              <ReloadOutlined onClick={() => getNodes(searchFilters)} />
+                  <Button>
+                    <Space>
+                      {t('node-manager.cloudregion.node.sidecar')}
+                      <DownOutlined />
+                    </Space>
+                  </Button>
+                </Dropdown>
+                <Dropdown
+                  className="mr-[8px]"
+                  overlayClassName="customMenu"
+                  menu={CollectormenuProps}
+                  disabled={enableOperateCollecter}
+                >
+                  <Button>
+                    <Space>
+                      {t('node-manager.cloudregion.node.collector')}
+                      <DownOutlined />
+                    </Space>
+                  </Button>
+                </Dropdown>
+                <ReloadOutlined onClick={() => getNodes(searchFilters)} />
+              </div>
             </div>
             <CustomTable
               className={nodeStyle.table}
