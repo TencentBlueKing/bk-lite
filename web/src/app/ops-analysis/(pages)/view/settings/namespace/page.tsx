@@ -3,7 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import OperateModal from './operateModal';
 import CustomTable from '@/components/custom-table';
-import { Button, Input, Card, message, Modal } from 'antd';
+import { Button, Input, Card, message, Modal, Tag } from 'antd';
 import { useTranslation } from '@/utils/i18n';
 import { NamespaceItem } from '@/app/ops-analysis/types/namespace';
 import { useNamespaceApi } from '@/app/ops-analysis/api/namespace';
@@ -133,6 +133,23 @@ const Namespace: React.FC = () => {
       dataIndex: 'domain',
       key: 'domain',
       width: 150,
+    },
+    {
+      title: t('namespace.title'),
+      dataIndex: 'namespace',
+      key: 'namespace',
+      width: 150,
+    },
+    {
+      title: t('namespace.tls'),
+      dataIndex: 'enable_tls',
+      key: 'enable_tls',
+      width: 80,
+      render: (enable_tls: boolean) => (
+        <Tag color={enable_tls ? 'green' : 'default'}>
+          {enable_tls ? t('namespace.tlsEnabled') : t('namespace.tlsDisabled')}
+        </Tag>
+      ),
     },
     {
       title: t('namespace.describe'),

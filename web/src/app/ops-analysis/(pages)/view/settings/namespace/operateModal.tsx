@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useEffect } from 'react';
-import { Drawer, Form, Input, Button, message } from 'antd';
+import { Drawer, Form, Input, Button, message, Switch } from 'antd';
 import { useTranslation } from '@/utils/i18n';
 import { NamespaceOperateModalProps } from '@/app/ops-analysis/types/namespace';
 import { useNamespaceApi } from '@/app/ops-analysis/api/namespace';
@@ -36,6 +36,8 @@ const OperateModal: React.FC<NamespaceOperateModalProps> = ({
         account: values.account,
         password: values.password,
         domain: values.domain,
+        namespace: values.namespace,
+        enable_tls: values.enable_tls || false,
         desc: values.desc || '',
       };
 
@@ -84,7 +86,7 @@ const OperateModal: React.FC<NamespaceOperateModalProps> = ({
     >
       <Form
         form={form}
-        labelCol={{ span: 3 }}
+        labelCol={{ span: 4 }}
         layout="horizontal"
         onFinish={onFinish}
       >
@@ -121,6 +123,23 @@ const OperateModal: React.FC<NamespaceOperateModalProps> = ({
           rules={[{ required: true, message: t('common.inputMsg') }]}
         >
           <Input placeholder={t('common.inputMsg')} />
+        </Form.Item>
+
+        <Form.Item
+          name="namespace"
+          label={t('namespace.title')}
+          rules={[{ required: true, message: t('common.inputMsg') }]}
+        >
+          <Input placeholder={t('common.inputMsg')} />
+        </Form.Item>
+
+        <Form.Item
+          name="enable_tls"
+          label={t('namespace.tls')}
+          valuePropName="checked"
+          initialValue={false}
+        >
+          <Switch />
         </Form.Item>
 
         <Form.Item name="desc" label={t('namespace.describe')}>
