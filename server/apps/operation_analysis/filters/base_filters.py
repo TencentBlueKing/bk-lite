@@ -61,16 +61,19 @@ class GroupPermissionMixin:
         :param queryset: Django QuerySet
         :param current_team: 当前组织ID (None 表示超级用户，不过滤)
         :return: 过滤后的 QuerySet
+        
+        示例：
+        - groups 字段值: [1, 2, 3]
+        - current_team: 1
+        - 结果: 查询包含 1 的所有记录
         """
         if current_team is None:
             # 超级用户，返回所有数据
             return queryset
 
-        # 使用 PostgreSQL JSONB 查询过滤
-        return queryset.extra(
-            where=["EXISTS (SELECT 1 FROM jsonb_array_elements(groups) AS elem WHERE (elem->>'id')::int = %s)"],
-            params=[current_team]
-        )
+        # 使用 Django ORM 的 __contains 查询
+        # groups__contains 表示 groups 数组包含指定的值
+        return queryset.filter(groups__contains=current_team)
 
 
 class BaseGroupFilter(FilterSet):

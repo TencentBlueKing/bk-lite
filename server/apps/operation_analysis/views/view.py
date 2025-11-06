@@ -7,7 +7,7 @@ from rest_framework.response import Response
 
 from apps.operation_analysis.filters.filters import DashboardModelFilter, DirectoryModelFilter, \
     TopologyModelFilter, ArchitectureModelFilter
-from apps.operation_analysis.serializers.serializers import DashboardModelSerializer, \
+from apps.operation_analysis.serializers.directory_serializers import DashboardModelSerializer, \
     DirectoryModelSerializer, TopologyModelSerializer, ArchitectureModelSerializer
 from apps.operation_analysis.services.directory_service import DictDirectoryService
 from config.drf.pagination import CustomPageNumberPagination
