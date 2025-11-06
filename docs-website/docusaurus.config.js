@@ -1,4 +1,4 @@
-import {themes as prismThemes} from 'prism-react-renderer';
+import { themes as prismThemes } from 'prism-react-renderer';
 
 /** @type {import('@docusaurus/types').Config} */
 const config = {
@@ -7,7 +7,7 @@ const config = {
   favicon: 'img/logo-site.png',
 
   future: {
-    v4: true, 
+    v4: true,
   },
 
   url: 'https://bklite.ai',
@@ -23,6 +23,22 @@ const config = {
     defaultLocale: 'zh-Hans',
     locales: ['zh-Hans', 'en'],
   },
+
+  headTags: [
+    {
+      tagName: 'script',
+      attributes: {},
+      innerHTML: `
+        var _hmt = _hmt || [];
+        (function() {
+          var hm = document.createElement("script");
+          hm.src = "https://hm.baidu.com/hm.js?f5af2457fe2f6425e192e114ac119aff";
+          var s = document.getElementsByTagName("script")[0]; 
+          s.parentNode.insertBefore(hm, s);
+        })();
+      `,
+    },
+  ],
 
   presets: [
     [
@@ -71,28 +87,28 @@ const config = {
         },
         items: [
           {
-            "label":"部署指南",
-            "to":"/docs/deploy/docker-compose"
+            "label": "部署指南",
+            "to": "/docs/deploy/docker-compose"
           },
           {
-            "label":"产品文档",
-            "to":"/docs/products/opspilot/introduce"
+            "label": "产品文档",
+            "to": "/docs/products/opspilot/introduce"
           },
           {
-            "label":"运维手册",
-            "to":"#"
+            "label": "运维手册",
+            "to": "#"
           },
           {
-            "label":"开发指南",
-            "to":"#"
-          },          
-          {
-            "label":"资源下载",
-            "to":"#"
+            "label": "开发指南",
+            "to": "#"
           },
           {
-            "label":"FAQ",
-            "to":"#"
+            "label": "资源下载",
+            "to": "#"
+          },
+          {
+            "label": "FAQ",
+            "to": "#"
           },
           {
             label: '在线体验',

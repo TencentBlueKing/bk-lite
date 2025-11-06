@@ -1,6 +1,6 @@
 'use client';
 import React, { useEffect, useState, useCallback } from 'react';
-import { Table, Input, Spin, Drawer, Button, Pagination, Tag, Tooltip } from 'antd';
+import { Table, Input, Spin, Drawer, Button, Pagination, Tag, Tooltip, Timeline } from 'antd';
 import { ClockCircleOutlined, SyncOutlined } from '@ant-design/icons';
 import { useTranslation } from '@/utils/i18n';
 import { useSearchParams } from 'next/navigation';
@@ -28,6 +28,8 @@ const StudioLogsPage: React.FC = () => {
   const [drawerVisible, setDrawerVisible] = useState(false);
   const [selectedConversation, setSelectedConversation] = useState<LogRecord | null>(null);
   const [conversationLoading, setConversationLoading] = useState(false);
+  const [workflowDrawerVisible, setWorkflowDrawerVisible] = useState(false);
+  const [selectedWorkflow, setSelectedWorkflow] = useState<WorkflowTaskResult | null>(null);
   const [total, setTotal] = useState(0);
   const [pagination, setPagination] = useState({
     current: 1,
@@ -35,6 +37,7 @@ const StudioLogsPage: React.FC = () => {
   });
   const [selectedChannels, setSelectedChannels] = useState<string[]>([]);
   const [botType, setBotType] = useState<number | null>(null);
+  const [initialLoading, setInitialLoading] = useState(true);
   const searchParams = useSearchParams();
   const botId = searchParams ? searchParams.get('id') : null;
 
@@ -119,6 +122,7 @@ const StudioLogsPage: React.FC = () => {
   useEffect(() => {
     const initializeComponent = async () => {
       await fetchBotData();
+      setInitialLoading(false);
     };
     
     initializeComponent();
@@ -170,6 +174,61 @@ const StudioLogsPage: React.FC = () => {
     } finally {
       setConversationLoading(false);
     }
+  };
+
+  const handleWorkflowDetailClick = (record: WorkflowTaskResult) => {
+    setSelectedWorkflow(record);
+    setWorkflowDrawerVisible(true);
+  };
+
+  const renderJsonData = (data: any) => {
+    if (!data) return '-';
+    if (typeof data === 'object') {
+      return <pre className="bg-gray-50 p-2 rounded text-xs overflow-auto max-h-60">{JSON.stringify(data, null, 2)}</pre>;
+    }
+    return String(data);
+  };
+
+  const renderWorkflowTimeline = () => {
+    if (!selectedWorkflow?.output_data) return null;
+
+    const nodes = Object.entries(selectedWorkflow.output_data).map(([key, value]: [string, any]) => ({
+      id: key,
+      name: value.name || key,
+      type: value.type,
+      index: value.index || 0,
+      input_data: value.input_data,
+      output: value.output,
+    }));
+
+    // 按 index 排序
+    nodes.sort((a, b) => a.index - b.index);
+
+    return (
+      <Timeline
+        items={nodes.map((node, idx) => ({
+          color: idx === nodes.length - 1 ? 'green' : 'blue',
+          children: (
+            <div className="pb-4">
+              <div className="font-medium text-base mb-2">
+                {node.name}
+                <Tag className="ml-2" color="blue">{node.type}</Tag>
+              </div>
+              <div className="space-y-3">
+                <div>
+                  <div className="text-gray-500 text-sm mb-1">{t('studio.logs.inputData')}:</div>
+                  {renderJsonData(node.input_data)}
+                </div>
+                <div>
+                  <div className="text-gray-500 text-sm mb-1">{t('studio.logs.outputData')}:</div>
+                  {renderJsonData(node.output)}
+                </div>
+              </div>
+            </div>
+          ),
+        }))}
+      />
+    );
   };
 
   const handleTableChange = (page: number, pageSize?: number) => {
@@ -273,13 +332,13 @@ const StudioLogsPage: React.FC = () => {
   // Columns for workflow task results (bot_type === 3)
   const workflowColumns: ColumnType<WorkflowTaskResult>[] = [
     {
-      title: '时间',
+      title: t('studio.logs.table.runTime'),
       dataIndex: 'run_time',
       key: 'run_time',
       render: (text) => convertToLocalizedTime(text),
     },
     {
-      title: '触发方式',
+      title: t('studio.logs.table.executeType'),
       dataIndex: 'execute_type',
       key: 'execute_type',
       render: (text) => (
@@ -289,33 +348,42 @@ const StudioLogsPage: React.FC = () => {
       ),
     },
     {
-      title: '执行状态',
+      title: t('studio.logs.table.status'),
       dataIndex: 'status',
       key: 'status',
       render: (status) => (
         <Tag color={status === 'success' ? 'green' : status === 'failed' ? 'red' : 'orange'}>
-          {status === 'success' ? '成功' : status === 'failed' ? '失败' : '进行中'}
+          {status === 'success' ? t('studio.logs.table.statusSuccess') : status === 'failed' ? t('studio.logs.table.statusFailed') : t('studio.logs.table.statusRunning')}
         </Tag>
       ),
     },
     {
-      title: '执行耗时',
+      title: t('studio.logs.table.executionDuration'),
       dataIndex: 'execution_duration',
       key: 'execution_duration',
       render: (duration) => `${duration || 0}ms`,
     },
     {
-      title: '错误日志',
+      title: t('studio.logs.table.errorLog'),
       dataIndex: 'error_log',
       key: 'error_log',
       render: (errorLog) => (
         errorLog ? (
           <Tooltip title={errorLog}>
-            <Tag color="red">有错误</Tag>
+            <Tag color="red">{t('studio.logs.table.hasError')}</Tag>
           </Tooltip>
         ) : (
-          <Tag color="green">无错误</Tag>
+          <Tag color="green">{t('studio.logs.table.noError')}</Tag>
         )
+      ),
+    },
+    {
+      title: t('studio.logs.table.actions'),
+      key: 'actions',
+      render: (text: any, record: WorkflowTaskResult) => (
+        <Button type="link" onClick={() => handleWorkflowDetailClick(record)}>
+          {t('studio.logs.table.detail')}
+        </Button>
       ),
     },
   ];
@@ -345,7 +413,7 @@ const StudioLogsPage: React.FC = () => {
         </div>
       </div>
       <div className='flex-grow'>
-        {loading ? (
+        {initialLoading || loading ? (
           <div className='w-full flex items-center justify-center min-h-72'>
             <Spin size="large" />
           </div>
@@ -375,7 +443,7 @@ const StudioLogsPage: React.FC = () => {
         )}
       </div>
       <div className='fixed bottom-8 right-8'>
-        {!loading && total > 0 && (
+        {!initialLoading && !loading && total > 0 && (
           <Pagination
             total={total}
             showSizeChanger
@@ -409,6 +477,16 @@ const StudioLogsPage: React.FC = () => {
             />
           )
         )}
+      </Drawer>
+      <Drawer
+        title={t('studio.logs.workflowDetail')}
+        open={workflowDrawerVisible}
+        onClose={() => setWorkflowDrawerVisible(false)}
+        width={720}
+      >
+        <div>
+          {renderWorkflowTimeline()}
+        </div>
       </Drawer>
     </div>
   );

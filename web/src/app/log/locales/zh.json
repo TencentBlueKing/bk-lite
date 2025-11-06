@@ -209,7 +209,7 @@
       "dockerHosts": "连接地址",
       "paths": "文件路径",
       "ports": "端口列表",
-      "securityDes": "身份管理 + 权限提升",
+      "securityDes": "身份管理与权限提升",
       "flowsTimeout": "流量超时时间",
       "filePath": "文件路径",
       "k8sNote": "K8S仅支持主动上报，暂不支持在此处接入。",

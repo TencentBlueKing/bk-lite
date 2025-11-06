@@ -88,5 +88,5 @@ class LoginModuleViewSet(LanguageViewSet):
     def sync_data(self, request, *args, **kwargs):
         obj = self.get_object()
         sync_user_and_group_by_login_module.delay(obj.id)
-        message = self.loader.get("error.sync_task_initiated") if self.loader else "Sync task has been initiated."
+        message = self.loader.get("success.sync_task_initiated") if self.loader else "Sync task has been initiated."
         return JsonResponse({"result": True, "message": message})

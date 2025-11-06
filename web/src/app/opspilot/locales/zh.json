@@ -550,10 +550,25 @@
         "channel": "渠道",
         "count": "数量",
         "actions": "操作",
-        "detail": "详情"
+        "detail": "详情",
+        "runTime": "时间",
+        "executeType": "触发方式",
+        "status": "执行状态",
+        "executionDuration": "执行耗时",
+        "errorLog": "错误日志",
+        "statusSuccess": "成功",
+        "statusFailed": "失败",
+        "statusRunning": "进行中",
+        "hasError": "有错误",
+        "noError": "无错误"
       },
       "searchUser": "请输入用户名进行搜索...",
-      "records": "记录"
+      "records": "记录",
+      "workflowDetail": "工作流详情",
+      "nodeName": "节点名称",
+      "inputData": "输入信息",
+      "outputData": "输出信息",
+      "nodeIndex": "节点顺序"
     },
     "statistics": {
       "title": "统计",

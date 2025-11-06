@@ -110,10 +110,10 @@
         "stop": "停止",
         "defaultNode": "默认节点",
         "active": "活跃",
-        "installMethod": "安装方式",
-        "auto": "自动",
         "manual": "手动",
-        "lastReportTime": "最后上报时间"
+        "lastReportTime": "最后上报时间",
+        "installMethod": "安装方式",
+        "auto": "自动"
       },
       "editform": {
         "Introduction": "简介",

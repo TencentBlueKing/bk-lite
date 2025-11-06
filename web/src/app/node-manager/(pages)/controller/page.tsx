@@ -8,6 +8,7 @@ import { useRouter } from 'next/navigation';
 import { useTranslation } from '@/utils/i18n';
 import type { CardItem } from '@/app/node-manager/types';
 import { COLLECTOR_LABEL } from '@/app/node-manager/constants/collector';
+import { OPERATE_SYSTEMS } from '@/app/node-manager/constants/cloudregion';
 import CollectorModal from '@/app/node-manager/components/sidecar/collectorModal';
 import { ModalRef } from '@/app/node-manager/types';
 import PermissionWrapper from '@/components/permission';
@@ -63,12 +64,20 @@ const Controller = () => {
     }
   };
 
+  const getOSDisplayName = (osId: string) => {
+    const os = OPERATE_SYSTEMS.find(
+      (item) => item.value === osId.toLowerCase()
+    );
+    return os ? os.label : osId;
+  };
+
   const handleResult = (res: any, currentSearch?: string) => {
     const tagSet = new Set<string>();
     const filter = res.filter((item: any) => !item.controller_default_run);
     const tempdata = filter.map((item: any) => {
       const system = item.node_operating_system || item.os;
-      const tagList = [system];
+      const systemDisplayName = getOSDisplayName(system);
+      const tagList = [systemDisplayName];
       const label = getCollectorLabelKey(item.name);
       if (label) tagList.push(label);
       tagList.forEach((tag) => {

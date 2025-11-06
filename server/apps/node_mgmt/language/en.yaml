@@ -10,3 +10,93 @@ collector:
     description: Collect ActiveMQ metrics via JMX to monitor the performance and health
       of message queues
     name: JMX ActiveMQ (Linux)
+  telegraf_linux:
+    name: None
+    description: None
+  jmx_weblogic_linux:
+    description: None
+    name: None
+  exporter_elasticsearch_linux:
+    name: None
+    description: None
+  natsexecutor_linux:
+    description: None
+    name: None
+  exporter_apache_linux:
+    description: None
+    name: None
+  exporter_postgres_linux:
+    name: None
+    description: None
+  exporter_nginx_linux:
+    name: None
+    description: None
+  exporter_mysql_linux:
+    name: None
+    description: None
+  exporter_oracle_linux:
+    name: None
+    description: None
+  jmx_jetty_linux:
+    name: None
+    description: None
+  Vector_linux:
+    description: None
+    name: None
+  Auditbeat_linux:
+    name: None
+    description: None
+  exporter_kafka_linux:
+    description: None
+    name: None
+  telegraf_windows:
+    name: None
+    description: None
+  jmx_tomcat_linux:
+    name: None
+    description: None
+  jmx_jvm_linux:
+    name: None
+    description: None
+  Packetbeat_linux:
+    description: None
+    name: None
+  exporter_mongodb_linux:
+    description: None
+    name: None
+  exporter_mssql_linux:
+    description: None
+    name: None
+  Filebeat_linux:
+    name: None
+    description: None
+  jmx_jboss_linux:
+    description: None
+    name: None
+  exporter_rabbitmq_linux:
+    description: None
+    name: None
+  jmx_tongweb6_linux:
+    description: None
+    name: None
+  jmx_tongweb7_linux:
+    description: None
+    name: None
+  natsexecutor_windows:
+    description: None
+    name: None
+  exporter_zookeeper_linux:
+    name: None
+    description: None
+  Metricbeat_linux:
+    name: None
+    description: None
+collector_tag:
+  exporter: Exporter
+  log: Log
+  beat: Beat
+  monitor: Monitor
+  jmx: JMX
+  cmdb: CMDB
+  windows: Windows
+  linux: Linux
