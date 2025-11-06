@@ -31,18 +31,55 @@ pnpm dev:tauri
 
 ### Android APK
 
+#### 1. 首次构建 - 配置签名密钥
+
+> **说明**：签名密钥文件不会提交到 Git（已在 `.gitignore` 中）。
+> - **团队协作**：需要通过安全渠道共享密钥文件和密码
+> - **个人开发**：按以下步骤生成自己的密钥
+
+**生成签名密钥**：
+
+```bash
+# Windows (PowerShell)
+cd src-tauri/gen/android
+keytool -genkeypair -v -storetype PKCS12 -keystore ../../../bklite-mobile-release.keystore -alias bklite-mobile -keyalg RSA -keysize 2048 -validity 10000
+
+# 填写以下信息：
+# - 密钥库密码（storePassword）
+# - 密钥密码（keyPassword）
+# - 姓名、组织等信息
+```
+
+**创建配置文件** `src-tauri/gen/android/keystore.properties`：
+
+```properties
+storeFile=../../../../bklite-mobile-release.keystore
+storePassword=你的密钥库密码
+keyAlias=bklite-mobile
+keyPassword=你的密钥密码
+```
+
+> **重要**：
+> - 密钥文件和配置不会提交到版本控制，请妥善保管
+> - 团队成员需要获取相同的密钥文件才能构建兼容的签名 APK
+> - 丢失密钥将无法更新已发布的应用
+
+#### 2. 构建命令
+
 ```bash
 pnpm build:android-debug    # 调试版 APK（推荐用于测试）
-pnpm build:android          # 生产版 APK
+pnpm build:android          # 生产版 APK（已签名）
 pnpm build:android-all      # 所有架构 APK (aarch64, armv7, i686, x86_64)
 pnpm build:aab              # AAB 格式（Google Play 上架）
 ```
 
 **APK 输出路径：**
 - Debug: `src-tauri/gen/android/app/build/outputs/apk/universal/debug/app-universal-debug.apk`
-- Release: `src-tauri/gen/android/app/build/outputs/apk/universal/release/app-universal-release.apk`
+- Release: `src-tauri/gen/android/app/build/outputs/apk/universal/release/app-universal-release.apk` **(已签名)**
 
-> **注意**：构建命令已自动配置 Android NDK 路径，无需手动设置环境变量。
+> **注意**：
+> - 构建命令已自动配置 Android NDK 路径，无需手动设置环境变量
+> - Release APK 会自动使用 `keystore.properties` 中的签名配置
 
 ## 核心特性
 

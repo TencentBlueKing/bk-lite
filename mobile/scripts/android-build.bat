@@ -61,7 +61,20 @@ if exist "%CUSTOM_MAIN%" (
   echo ✅ MainActivity 已更新
 )
 
-REM 5. 构建 APK
+REM 5. 复制自定义 Android 图标
+set "CUSTOM_ICONS=src-tauri\icons\android\res"
+set "TARGET_RES=src-tauri\gen\android\app\src\main\res"
+
+if exist "%CUSTOM_ICONS%" (
+  echo.
+  echo 📱 更新 Android 应用图标...
+  xcopy /Y /E /I "%CUSTOM_ICONS%\*" "%TARGET_RES%\" >nul 2>&1
+  if errorlevel 0 (
+    echo ✅ Android 图标已更新
+  )
+)
+
+REM 6. 构建 APK
 if "%BUILD_AAB%"=="true" (
   call pnpm tauri android build --aab
 ) else if "%BUILD_TYPE%"=="release" (
@@ -88,7 +101,7 @@ if "%BUILD_AAB%"=="true" (
   echo 📦 APK 位置: src-tauri\gen\android\app\build\outputs\apk\
 )
 
-REM 6. 自动安装（如果指定了 --install 参数）
+REM 7. 自动安装（如果指定了 --install 参数）
 if "%AUTO_INSTALL%"=="true" (
   if not "%BUILD_AAB%"=="true" (
     echo.

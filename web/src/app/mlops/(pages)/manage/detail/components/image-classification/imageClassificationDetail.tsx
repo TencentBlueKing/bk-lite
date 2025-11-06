@@ -86,7 +86,7 @@ const ImageClassificationDetail = () => {
               className="mr-[10px]"
               onClick={() => toAnnotation(record)}
             >
-              {t('common.detail')}
+              {t('datasets.annotate')}
             </Button>
           </PermissionWrapper>
           <PermissionWrapper requiredPermissions={['File Edit']}>

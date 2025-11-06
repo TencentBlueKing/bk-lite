@@ -6,6 +6,7 @@ from apps.mlops.views.timeseries_predict import *
 from apps.mlops.views.log_clustering import *
 from apps.mlops.views.rasa import *
 from apps.mlops.views.classification import *
+from apps.mlops.views.object_detection import *
 
 router = routers.DefaultRouter()
 
@@ -32,6 +33,10 @@ router.register(r'classification_servings', ClassificationServingViewSet, basena
 # 图片分类任务
 router.register(r'image_classification_datasets', ImageClassificationDatasetViewSet, basename='image_classification_datasets')
 router.register(r'image_classification_traindata', ImageClassificationTrainDataViewSet, basename='image_classification_traindata')
+
+# 目标检测
+router.register(r'object_detection_datasets', ObjectDetectionDatasetViewSet, basename='object_detection_datasets')
+router.register(r'object_detection_traindata', ObjectDetectionTrainDataViewSet, basename='object_detection_traindata')
 
 # 日志聚类
 router.register(r'log_clustering_datasets', LogClusteringDatasetViewSet, basename='log_clustering_datasets')

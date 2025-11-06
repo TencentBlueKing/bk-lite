@@ -86,6 +86,17 @@ const useMlopsManageApi = () => {
     return await get(`/mlops/image_classification_datasets/?page=${page}&page_size=${page_size}`)
   };
 
+  // 获取目标检测任务数据集列表
+  const getObjectDetectionDatasetsList = async ({
+    page = 1,
+    page_size = -1,
+  }: {
+    page?: number;
+    page_size?: number;
+  }) => {
+    return await get(`/mlops/object_detection_datasets/?page=${page}&page_size=${page_size}`);
+  };
+
   // 获取Rasa意图列表
   const getRasaIntentFileList = async ({
     name = '',
@@ -233,7 +244,12 @@ const useMlopsManageApi = () => {
 
   // 获取指定图片分类数据集详情
   const getOneImageClassificationDataset = async (id: number) => {
-    return await get(`/mlops/image_classification_datasets/${id}/`)
+    return await get(`/mlops/image_classification_datasets/${id}/`);
+  };
+
+  // 获取指定目标检测数据集详情
+  const getOneObjectDetectionDataset = async (id: number) => {
+    return await get(`/mlops/object_detection_datasets/${id}`);
   };
 
   // 查询指定数据集下的样本列表
@@ -311,6 +327,20 @@ const useMlopsManageApi = () => {
     return await get(`/mlops/image_classification_traindata/?dataset=${dataset}&name=${name}&page=${page}&page_size=${page_size}`)
   };
 
+  // 查询指定目标检测任务数据集下的样本文件
+  const getObjectDetectionTrainData = async ({
+    name = '',
+    dataset,
+    page = 1,
+    page_size = -1
+  }: {
+    name?: string;
+    dataset?: string | number;
+    page?: number;
+    page_size?: number;
+  }) => {
+    return await get(`/mlops/object_detection_traindata/?dataset=${dataset}&name=${name}&page=${page}&page_size=${page_size}`)
+  };
 
   // 获取指定异常检测样本的详情
   const getAnomalyTrainDataInfo = async (id: number | string, include_train_data?: boolean, include_metadata?: boolean) => {
@@ -335,6 +365,11 @@ const useMlopsManageApi = () => {
   // 获取指定图片分类任务样本的详情
   const getImageClassificationTrainDataInfo = async (id: number | string, include_train_data?: boolean, include_metadata?: boolean) => {
     return await get(`/mlops/image_classification_traindata/${id}?include_train_data=${include_train_data}&include_metadata=${include_metadata}`)
+  };
+
+  // 获取指定目标检测任务样本的详情
+  const getObjectDetectionTrainDataInfo = async (id: number | string, include_train_data?: boolean, include_metadata?: boolean) => {
+    return await get(`/mlops/object_detection_traindata/${id}?include_train_data=${include_train_data}&include_metadata=${include_metadata}`)
   };
 
   // 新增异常检测数据集
@@ -383,6 +418,14 @@ const useMlopsManageApi = () => {
     description: string;
   }) => {
     return await post(`/mlops/image_classification_datasets`, params)
+  };
+
+  // 新增目标检测任务数据集
+  const addObjectDetectionDataset = async (params: {
+    name: string;
+    description: string;
+  }) => {
+    return await post(`/mlops/object_detection_datasets`, params);
   };
 
   // 新增rasa意图
@@ -497,6 +540,15 @@ const useMlopsManageApi = () => {
     });
   };
 
+  // 新增目标检测任务样本文件
+  const addObjectDetectionTrainData = async (params: FormData) => {
+    return await post(`/mlops/object_detection_traindata`, params, {
+      headers: {
+        'Content-Type': 'multipart/form-data'
+      }
+    })
+  };
+
   // 更新异常检测数据集
   const updateAnomalyDatasets = async (id: number, params: {
     name: string;
@@ -543,6 +595,14 @@ const useMlopsManageApi = () => {
     description: string;
   }) => {
     return await put(`/mlops/image_classification_datasets/${id}`, params);
+  };
+
+  // 更新目标检测任务数据集
+  const updateObjectDetectionDataset = async (id: number, params: {
+    name: string;
+    description: string;
+  }) => {
+    return await put(`/mlops/object_detection_datasets/${id}`, params);
   };
 
   // 更新Rasa意图文件
@@ -661,13 +721,32 @@ const useMlopsManageApi = () => {
   };
 
   // 更新图片分类任务数据集样本文件
-  const updateImageClassificationTrainData = async (id: string, params: {
+  const updateImageClassificationTrainData = async (
+    id: string, 
+    params: {
+      is_train_data?: boolean,
+      is_val_data?: boolean,
+      is_test_data?: boolean,
+      meta_data?: any
+    } | FormData
+  ) => {
+    return await patch(`/mlops/image_classification_traindata/${id}`, params,
+      {
+        headers: {
+          'Content-Type': 'multipart/form-data',
+        },
+      }
+    );
+  };
+
+  // 更新目标检测任务数据集样本文件
+  const updateObjectDetectionTrainData = async (id: string, params: {
     is_train_data?: boolean,
     is_val_data?: boolean,
     is_test_data?: boolean,
     meta_data?: any
   } | FormData) => {
-    return await patch(`/mlops/image_classification_traindata/${id}`, params,
+    return await patch(`/mlops/object_detection_traindata/${id}`, params,
       {
         headers: {
           'Content-Type': 'multipart/form-data',
@@ -704,6 +783,11 @@ const useMlopsManageApi = () => {
   // 删除图片分类任务数据集
   const deleteImageClassificationDataset = async (id: number) => {
     return await del(`/mlops/image_classification_datasets/${id}`);
+  };
+
+  // 删除目标检测任务数据集
+  const deleteObjectDetectionDataset = async (id: number) => {
+    return await del(`/mlops/object_detection_datasets/${id}`);
   };
 
   // 删除指定Rasa意图文件
@@ -771,6 +855,11 @@ const useMlopsManageApi = () => {
     return await del(`/mlops/image_classification_traindata/${id}/`);
   };
 
+  // 删除目标检测任务训练文件
+  const deleteObjectDetectionTrainData = async (id: number) => {
+    return await del(`/mlops/object_detection_traindata/${id}/`)
+  };
+
   return {
     getAnomalyDatasetsList,
     getRasaDatasetsList,
@@ -778,6 +867,7 @@ const useMlopsManageApi = () => {
     getLogClusteringList,
     getTimeSeriesPredictList,
     getImageClassificationDatasetsList,
+    getObjectDetectionDatasetsList,
     getOneAnomalyDataset,
     getAnomalyTrainData,
     getAnomalyTrainDataInfo,
@@ -794,18 +884,22 @@ const useMlopsManageApi = () => {
     getOneTimeSeriesPredict,
     getOneClassificationDataset,
     getOneImageClassificationDataset,
+    getOneObjectDetectionDataset,
     getLogClusteringTrainData,
     getTimeSeriesPredictTrainData,
     getClassificationTrainData,
+    getObjectDetectionTrainData,
     getLogClusteringTrainDataInfo,
     getTimeSeriesPredictTrainDataInfo,
     getClassificationTrainDataInfo,
     getImageClassificationTrainData,
     getImageClassificationTrainDataInfo,
+    getObjectDetectionTrainDataInfo,
     addAnomalyDatasets,
     addLogClusteringDatasets,
     addTimeSeriesPredictDatasets,
     addClassificationDatasets,
+    addObjectDetectionDataset,
     addRasaDatasets,
     addRasaIntentFile,
     addRasaResponseFile,
@@ -816,6 +910,7 @@ const useMlopsManageApi = () => {
     addTimeSeriesPredictTrainData,
     addClassificationTrainData,
     addImageClassificationDatasets,
+    addObjectDetectionTrainData,
     addRasaStoryFile,
     addRasaSlotFile,
     addRasaFormFile,
@@ -836,9 +931,11 @@ const useMlopsManageApi = () => {
     updateLogClusteringTrainData,
     updateTimeSeriesPredictTrainData,
     updateClassificationDataset,
+    updateObjectDetectionDataset,
     updateClassificationTrainData,
     updateImageClassificationDataset,
     updateImageClassificationTrainData,
+    updateObjectDetectionTrainData,
     labelingData,
     deleteAnomalyDatasets,
     deleteAnomalyTrainData,
@@ -858,7 +955,9 @@ const useMlopsManageApi = () => {
     deleteClassificationDataset,
     deleteClassificationTrainData,
     deleteImageClassificationDataset,
-    deleteImageClassificationTrainData
+    deleteImageClassificationTrainData,
+    deleteObjectDetectionDataset,
+    deleteObjectDetectionTrainData
   }
 };
 

@@ -288,8 +288,8 @@ export interface NodeConfigFormValues {
   fontWeight?: string;
   iconPadding?: number;
   renderEffect?: 'normal' | 'glass';
-  lineType?: string;
-  shapeType?: string;
+  lineType?: 'solid' | 'dashed' | 'dotted';
+  shapeType?: 'rectangle' | 'circle';
   nameColor?: string;
   nameFontSize?: number;
   unit?: string;

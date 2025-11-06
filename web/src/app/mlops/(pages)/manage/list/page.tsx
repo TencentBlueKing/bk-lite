@@ -32,10 +32,12 @@ const DatasetManagePage = () => {
     getTimeSeriesPredictList,
     getClassificationDatasetsList,
     getImageClassificationDatasetsList,
+    getObjectDetectionDatasetsList,
     deleteLogClustering,
     deleteTimeSeriesPredict,
     deleteClassificationDataset,
-    deleteImageClassificationDataset
+    deleteImageClassificationDataset,
+    deleteObjectDetectionDataset
   } = useMlopsManageApi();
   const [datasets, setDatasets] = useState<DataSet[]>([]);
   const [loading, setLoading] = useState<boolean>(false);
@@ -47,7 +49,8 @@ const DatasetManagePage = () => {
     { key: 'log_clustering', value: 'log_clustering', label: t('datasets.logClustering') },
     { key: 'timeseries_predict', value: 'timeseries_predict', label: t('datasets.timeseriesPredict') },
     { key: 'classification', value: 'classification', label: t('datasets.classification') },
-    { key: 'image_classification', value: 'image_classification', label: t('datasets.imageClassification') }
+    { key: 'image_classification', value: 'image_classification', label: t('datasets.imageClassification') },
+    { key: 'object_detection', value: 'object_detection', label: t('datasets.objectDetection') }
   ];
 
   const treeData: TreeDataNode[] = [
@@ -79,6 +82,10 @@ const DatasetManagePage = () => {
         {
           title: t('datasets.imageClassification'),
           key: 'image_classification'
+        },
+        {
+          title: t('datasets.objectDetection'),
+          key: 'object_detection'
         }
       ]
     },
@@ -98,7 +105,8 @@ const DatasetManagePage = () => {
     'log_clustering': getLogClusteringList,
     'timeseries_predict': getTimeSeriesPredictList,
     'classification': getClassificationDatasetsList,
-    'image_classification': getImageClassificationDatasetsList
+    'image_classification': getImageClassificationDatasetsList,
+    'object_detection': getObjectDetectionDatasetsList
   };
 
   const handleDelDatasetsMap: Record<string, any> = {
@@ -107,7 +115,8 @@ const DatasetManagePage = () => {
     'log_clustering': deleteLogClustering,
     'timeseries_predict': deleteTimeSeriesPredict,
     'classification': deleteClassificationDataset,
-    'image_classification': deleteImageClassificationDataset
+    'image_classification': deleteImageClassificationDataset,
+    'object_detection': deleteObjectDetectionDataset
   };
 
 
