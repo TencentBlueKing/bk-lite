@@ -88,6 +88,12 @@ interface FileReadResult {
   headers?: string[];
 }
 
+interface RasaMenus {
+  menu: string;
+  icon: string;
+  content: string;
+}
+
 export type {
   AsideProps,
   TrainingStatus,
@@ -99,5 +105,6 @@ export type {
   AnomalyDataSet,
   LabelData,
   AnnotationData,
-  FileReadResult
+  FileReadResult,
+  RasaMenus
 }
