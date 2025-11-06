@@ -548,10 +548,25 @@
         "channel": "CHANNEL",
         "count": "COUNT",
         "actions": "ACTIONS",
-        "detail": "DETAIL"
+        "detail": "DETAIL",
+        "runTime": "Time",
+        "executeType": "Trigger Method",
+        "status": "Execution Status",
+        "executionDuration": "Execution Duration",
+        "errorLog": "Error Log",
+        "statusSuccess": "Success",
+        "statusFailed": "Failed",
+        "statusRunning": "Running",
+        "hasError": "Has Error",
+        "noError": "No Error"
       },
       "searchUser": "Please enter the user name to search...",
-      "records": "Record(s)"
+      "records": "Record(s)",
+      "workflowDetail": "Workflow Detail",
+      "nodeName": "Node Name",
+      "inputData": "Input Data",
+      "outputData": "Output Data",
+      "nodeIndex": "Node Index"
     },
     "statistics": {
       "title": "Statistics",
