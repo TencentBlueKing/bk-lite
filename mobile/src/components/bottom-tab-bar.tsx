@@ -7,7 +7,6 @@ import {
   MessageOutline,
   MessageFill,
   UserOutline,
-  UserSetOutline,
   AppstoreOutline,
 } from 'antd-mobile-icons';
 

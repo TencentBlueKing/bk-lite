@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { Switch, Toast, List, ImageViewer } from 'antd-mobile';
+import { Switch, List, ImageViewer } from 'antd-mobile';
 import { LeftOutline } from 'antd-mobile-icons';
 import Image from 'next/image';
 import { mockChatData } from '@/constants/mockData';

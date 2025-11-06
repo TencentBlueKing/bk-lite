@@ -10,7 +10,6 @@ import BottomTabBar from '@/components/bottom-tab-bar';
 import { mockWorkbenchData } from '@/constants/mockData';
 
 export default function WorkbenchPage() {
-    const { t } = useTranslation();
     const router = useRouter();
     const [activeTab, setActiveTab] = useState('0');
     const swiperRef = useRef<any>(null);

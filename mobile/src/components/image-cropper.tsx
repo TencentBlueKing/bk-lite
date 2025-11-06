@@ -1,7 +1,7 @@
 'use client';
 import React, { useState, useCallback } from 'react';
 import Cropper, { Area } from 'react-easy-crop';
-import { Button, Slider, Toast } from 'antd-mobile';
+import { Slider, Toast } from 'antd-mobile';
 import { CloseOutline, CheckOutline, CloseCircleOutline, UndoOutline } from 'antd-mobile-icons';
 
 interface ImageCropperProps {
