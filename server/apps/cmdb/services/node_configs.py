@@ -438,6 +438,33 @@ class QCloudNodeParams(BaseNodeParams):
         return f"{self.instance.id}_{instance['inst_name']}"
 
 
+class AWSNodeParams(BaseNodeParams):
+    supported_model_id = "aws"
+    plugin_name = "aws_info"
+
+    interval_map = {plugin_name: 300}
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.PLUGIN_MAP.update({self.model_id: "aws_info"})
+
+    def set_credential(self, *args, **kwargs):
+        """
+        生成 AWS 的凭据
+        """
+        return {
+            "access_key_id": self.credential.get("access_key_id", ""),
+            "secret_access_key": self.credential.get("secret_access_key", ""),
+        }
+
+    def get_instance_id(self, instance):
+        """
+        获取实例 ID
+        """
+        return f"{self.instance.id}_{instance['inst_name']}"
+
+
+
 class EtcdNodeParams(SSHNodeParamsMixin, BaseNodeParams):
     supported_model_id = "etcd"
     plugin_name = "etcd_info"

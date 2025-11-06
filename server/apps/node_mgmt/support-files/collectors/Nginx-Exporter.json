@@ -11,7 +11,8 @@
         "validation_parameters": "",
         "default_template": "",
         "introduction": "Nginx Exporter is a monitoring tool that collects and exports Nginx server metrics, providing insights into web server performance and health.",
-        "tags": ["linux", "exporter", "monitor"]
+        "tags": ["linux", "exporter", "monitor"],
+        "package_name": "nginx_exporter"
     }
 ]
 

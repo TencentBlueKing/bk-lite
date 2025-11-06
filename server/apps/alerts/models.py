@@ -19,7 +19,7 @@ from apps.alerts.constants import AlertsSourceTypes, AlertAccessType, EventStatu
     AlertStatus, EventAction, LevelType, AlertAssignmentMatchType, AlertShieldMatchType, IncidentStatus, \
     IncidentOperate, CorrelationRulesScope, CorrelationRulesType, AggregationRuleType, NotifyResultStatus, \
     LogTargetType, LogAction, WindowType, Alignment
-from apps.alerts.utils.util import gen_app_secret
+from apps.alerts.utils.util import gen_app_secret, window_size_to_int
 
 
 # 只查询未被软删除的对象
@@ -312,6 +312,17 @@ class AggregationRules(MaintainerInfo, TimeInfo):
                 return self.condition[0].get("session_close", {})
         except Exception as err:
             return {}
+
+    @property
+    def window_config(self):
+        correlation_rule = self.correlation_rules.last()
+        result = {
+            'window_type': correlation_rule.window_type,
+            'window_size': window_size_to_int(
+                correlation_rule.window_size) if not correlation_rule.is_session_rule else 0,
+            'time_column': 'received_at'
+        }
+        return result
 
     class Meta:
         db_table = 'alerts_aggregation_rules'

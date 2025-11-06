@@ -17,7 +17,8 @@
             "kafka": "[global_tags]\n    agent_id=\"${node.ip}-${node.cloud_region}\"\n\n[agent]\n    interval = \"10s\"\n    round_interval = true\n    metric_batch_size = 1000\n    metric_buffer_limit = 10000\n    collection_jitter = \"0s\"\n    flush_interval = \"30s\"\n    flush_jitter = \"0s\"\n    precision = \"0s\"\n    hostname = \"${node.ip}\"\n    omit_hostname = false\n\n[[inputs.internal]]\n    tags = { \"instance_id\"=\"${node.ip}-${node.cloud_region}\",\"instance_type\"=\"internal\",\"instance_name\"=\"${node.name}\" }\n\n[[outputs.kafka]]\n    brokers = [\"${KAFKA_HOST}:${KAFKA_PORT}\"]\n    topic = \"${KAFKA_METRICS_TOPIC}\"\n    sasl_username = \"${KAFKA_USERNAME}\"\n    sasl_password = \"${KAFKA_PASSWORD}\"\n    sasl_mechanism = \"PLAIN\"\n    max_message_bytes = 10000000\n    compression_codec=1",
             "vm": "[global_tags]\n    agent_id=\"${node.ip}-${node.cloud_region}\"\n\n[agent]\n    interval = \"10s\"\n    round_interval = true\n    metric_batch_size = 1000\n    metric_buffer_limit = 10000\n    collection_jitter = \"0s\"\n    flush_interval = \"30s\"\n    flush_jitter = \"0s\"\n    precision = \"0s\"\n    hostname = \"${node.ip}\"\n    omit_hostname = false\n\n[[inputs.internal]]\n    tags = { \"instance_id\"=\"${node.ip}-${node.cloud_region}\",\"instance_type\"=\"internal\",\"instance_name\"=\"${node.name}\" }\n\n[[outputs.influxdb]]\n  urls = [\"${VM_SERVERS}\"]\n  database = \"victoriametrics\"\n  skip_database_creation = true\n  exclude_retention_policy_tag = true\n  content_encoding = \"gzip\""
         },
-        "tags": ["linux", "monitor", "cmdb"]
+        "tags": ["linux", "monitor", "cmdb"],
+        "package_name": "telegraf"
     },
     {
         "id": "telegraf_windows",
@@ -37,7 +38,8 @@
             "kafka": "[global_tags]\n    agent_id=\"${node.ip}-${node.cloud_region}\"\n\n[agent]\n    interval = \"10s\"\n    round_interval = true\n    metric_batch_size = 1000\n    metric_buffer_limit = 10000\n    collection_jitter = \"0s\"\n    flush_interval = \"30s\"\n    flush_jitter = \"0s\"\n    precision = \"0s\"\n    hostname = \"${node.ip}\"\n    omit_hostname = false\n\n[[inputs.internal]]\n    tags = { \"instance_id\"=\"${node.ip}-${node.cloud_region}\",\"instance_type\"=\"internal\",\"instance_name\"=\"${node.name}\" }\n\n[[outputs.kafka]]\n    brokers = [\"${KAFKA_HOST}:${KAFKA_PORT}\"]\n    topic = \"${KAFKA_METRICS_TOPIC}\"\n    sasl_username = \"${KAFKA_USERNAME}\"\n    sasl_password = \"${KAFKA_PASSWORD}\"\n    sasl_mechanism = \"PLAIN\"\n    max_message_bytes = 10000000\n    compression_codec=1",
             "vm": "[global_tags]\n    agent_id=\"${node.ip}-${node.cloud_region}\"\n\n[agent]\n    interval = \"10s\"\n    round_interval = true\n    metric_batch_size = 1000\n    metric_buffer_limit = 10000\n    collection_jitter = \"0s\"\n    flush_interval = \"30s\"\n    flush_jitter = \"0s\"\n    precision = \"0s\"\n    hostname = \"${node.ip}\"\n    omit_hostname = false\n\n[[inputs.internal]]\n    tags = { \"instance_id\"=\"${node.ip}-${node.cloud_region}\",\"instance_type\"=\"internal\",\"instance_name\"=\"${node.name}\" }\n\n[[outputs.influxdb]]\n  urls = [\"${VM_SERVERS}\"]\n  database = \"victoriametrics\"\n  skip_database_creation = true\n  exclude_retention_policy_tag = true\n  content_encoding = \"gzip\""
         },
-        "tags": ["linux", "monitor", "cmdb"]
+        "tags": ["linux", "monitor", "cmdb"],
+        "package_name": "telegraf"
     }
 ]
 
