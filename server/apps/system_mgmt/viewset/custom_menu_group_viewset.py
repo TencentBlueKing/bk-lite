@@ -168,7 +168,7 @@ class CustomMenuGroupViewSet(MaintainerViewSet):
 
         return JsonResponse({"result": True, "data": CustomMenuGroupSerializer(new_instance).data, "message": "菜单组复制成功"})
 
-    @action(detail=False, methods=["get"], url_path="menus")
+    @action(detail=False, methods=["get"])
     @HasPermission("custom_menu_group_list-View")
     def get_menus(self, request):
         """
@@ -177,7 +177,7 @@ class CustomMenuGroupViewSet(MaintainerViewSet):
         请求参数:
             app: 应用名称（必填）
 
-        返回第一个启用的菜单组的 menus 字段
+        返回第一个启用的菜单组的 menus 字段和是否内置标识
         """
         app = request.GET.get("app")
 
@@ -190,7 +190,7 @@ class CustomMenuGroupViewSet(MaintainerViewSet):
         if not menu_group:
             return JsonResponse({"result": False, "message": f"未找到应用 {app} 的启用菜单组"}, status=404)
 
-        # 直接返回 menus 字段，不做任何转换
+        # 直接返回 menus 字段和是否内置标识，不做任何转换
         menus = menu_group.menus if isinstance(menu_group.menus, list) else []
 
-        return JsonResponse({"result": True, "data": menus, "message": "success"})
+        return JsonResponse({"result": True, "data": {"is_build_in": menu_group.is_build_in, "menus": menus}, "message": "success"})

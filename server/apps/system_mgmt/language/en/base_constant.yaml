@@ -4,3 +4,8 @@
 # Basic constants
 # Currently system_mgmt mainly contains error messages, with fewer basic constants
 # New constants requiring translation can be added here as needed
+
+# User Login Log Status
+status:
+  success: "Success"
+  failed: "Failed"

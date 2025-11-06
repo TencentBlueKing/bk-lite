@@ -1,5 +1,4 @@
 from django.db import models
-from django.utils.translation import gettext_lazy as _
 
 from apps.core.models.time_info import TimeInfo
 
@@ -21,20 +20,20 @@ class UserLoginLog(TimeInfo):
     STATUS_FAILED = "failed"
 
     STATUS_CHOICES = [
-        (STATUS_SUCCESS, _("Success")),
-        (STATUS_FAILED, _("Failed")),
+        (STATUS_SUCCESS, "Success"),
+        (STATUS_FAILED, "Failed"),
     ]
 
-    username = models.CharField(_("Username"), max_length=100, db_index=True)
-    source_ip = models.GenericIPAddressField(_("Source IP"), db_index=True)
-    status = models.CharField(_("Login Status"), max_length=20, choices=STATUS_CHOICES, default=STATUS_SUCCESS, db_index=True)
-    domain = models.CharField(_("Domain"), max_length=100, default="domain.com", db_index=True)
-    failure_reason = models.CharField(_("Failure Reason"), max_length=255, blank=True, default="")
-    user_agent = models.CharField(_("User Agent"), max_length=500, blank=True, default="")
+    username = models.CharField("Username", max_length=100, db_index=True)
+    source_ip = models.GenericIPAddressField("Source IP", db_index=True)
+    status = models.CharField("Login Status", max_length=20, choices=STATUS_CHOICES, default=STATUS_SUCCESS, db_index=True)
+    domain = models.CharField("Domain", max_length=100, default="domain.com", db_index=True)
+    failure_reason = models.CharField("Failure Reason", max_length=255, blank=True, default="")
+    user_agent = models.CharField("User Agent", max_length=500, blank=True, default="")
 
     class Meta:
-        verbose_name = _("User Login Log")
-        verbose_name_plural = _("User Login Logs")
+        verbose_name = "User Login Log"
+        verbose_name_plural = "User Login Logs"
         ordering = ["-created_at"]
         indexes = [
             models.Index(fields=["-created_at", "status"]),
