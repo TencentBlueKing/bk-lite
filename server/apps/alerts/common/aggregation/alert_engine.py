@@ -6,8 +6,6 @@ import pandas as pd
 import numpy as np
 from typing import Dict, List, Callable, Tuple, Any
 from dataclasses import dataclass
-import hashlib
-import json
 
 from apps.alerts.constants import AlertStatus
 from apps.alerts.models import Alert
@@ -125,7 +123,7 @@ class RuleEngine:
                 description=rule_config.get('description', ''),
                 severity=rule_config.get('severity', 'medium'),
                 is_active=rule_config.get('is_active', True),
-                alert_sources=rule_config.get('alert_sources', None),
+                # alert_sources=rule_config.get('alert_sources', None),
                 # 新增聚合策略配置
                 aggregation_strategy=rule_config.get('aggregation_strategy', 'group_by'),
                 aggregation_window=rule_config.get('aggregation_window', '0'),

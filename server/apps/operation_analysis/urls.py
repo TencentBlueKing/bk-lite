@@ -5,8 +5,10 @@
 
 from rest_framework import routers
 
-from apps.operation_analysis.views.view import DataSourceAPIModelViewSet, DashboardModelViewSet, DirectoryModelViewSet, \
-    TopologyModelViewSet, NameSpaceModelViewSet, DataSourceTagModelViewSet, ArchitectureModelViewSet
+from apps.operation_analysis.views.view import DashboardModelViewSet, DirectoryModelViewSet, \
+    TopologyModelViewSet, ArchitectureModelViewSet
+from apps.operation_analysis.views.datasource_view import DataSourceAPIModelViewSet, DataSourceTagModelViewSet, \
+    NameSpaceModelViewSet
 
 router = routers.DefaultRouter()
 router.register(r"api/data_source", DataSourceAPIModelViewSet, basename="data_source")

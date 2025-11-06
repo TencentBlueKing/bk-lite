@@ -37,6 +37,19 @@
           "icon": "line-DataPermissions",
           "name": "data_permission",
           "url": "/system-manager/application/manage/data"
+        },
+        {
+          "title": "自定义菜单",
+          "icon": "zidingyi",
+          "name": "data_permission",
+          "url": "/system-manager/application/manage/menu",
+          "children": [
+            {
+              "title": "菜单配置",
+              "url": "/system-manager/application/manage/menu/config",
+              "isNotMenuItem": true
+            }
+          ]
         }
       ]
     },
@@ -99,6 +112,19 @@
           "icon": "line-DataPermissions",
           "name": "data_permission",
           "url": "/system-manager/application/manage/data"
+        },
+        {
+          "title": "Custom Menu",
+          "icon": "zidingyi",
+          "name": "custom_menu",
+          "url": "/system-manager/application/manage/menu",
+          "children": [
+            {
+              "title": "Menu Config",
+              "url": "/system-manager/application/manage/menu/config",
+              "isNotMenuItem": true
+            }
+          ]
         }
       ]
     },
