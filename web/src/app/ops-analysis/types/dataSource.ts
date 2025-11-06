@@ -18,6 +18,8 @@ export interface DatasourceItem {
   chart_type: ChartType[];
   namespaces: number[];
   tag: TagItem[];
+  groups?: number[];
+  hasAuth?: boolean;
 }
 
 export interface OperateModalProps {

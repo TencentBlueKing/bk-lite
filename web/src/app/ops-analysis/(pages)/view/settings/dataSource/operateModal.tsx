@@ -4,12 +4,14 @@ import React, { useEffect } from 'react';
 import dayjs, { Dayjs } from 'dayjs';
 import CustomTable from '@/components/custom-table';
 import TimeSelector from '@/components/time-selector';
+import GroupTreeSelect from '@/components/group-tree-select';
 import { v4 as uuidv4 } from 'uuid';
 import { getChartTypeList } from '@/app/ops-analysis/constants/common';
 import { PlusCircleOutlined, MinusCircleOutlined } from '@ant-design/icons';
 import { useDataSourceApi } from '@/app/ops-analysis/api/dataSource';
 import { useNamespaceApi } from '@/app/ops-analysis/api/namespace';
 import { useOpsAnalysis } from '@/app/ops-analysis/context/common';
+import { useUserInfoContext } from '@/context/userInfo';
 import { useTranslation } from '@/utils/i18n';
 import {
   OperateModalProps,
@@ -93,6 +95,7 @@ const OperateModal: React.FC<OperateModalProps> = ({
 }) => {
   const { t } = useTranslation();
   const [form] = Form.useForm();
+  const { selectedGroup } = useUserInfoContext();
   const [params, setParams] = React.useState<ParamItem[]>([]);
   const [loading, setLoading] = React.useState(false);
   const [duplicateNames, setDuplicateNames] = React.useState<string[]>([]);
@@ -154,12 +157,17 @@ const OperateModal: React.FC<OperateModalProps> = ({
 
     if (!currentRow) {
       setParams([]);
+      // 新增时，如果用户有选中的分组，则设置为默认值
+      if (selectedGroup) {
+        form.setFieldValue('groups', [selectedGroup.id]);
+      }
       return;
     }
 
     const formValues = {
       ...currentRow,
       namespaces: currentRow.namespaces || [],
+      groups: currentRow.groups || [],
     };
     form.setFieldsValue(formValues);
 
@@ -182,7 +190,7 @@ const OperateModal: React.FC<OperateModalProps> = ({
     } else {
       setParams([]);
     }
-  }, [open, currentRow, form]);
+  }, [open, currentRow, form, selectedGroup]);
 
   const checkDuplicateNames = (currentParams: ParamItem[]) => {
     const nameCount: { [key: string]: number } = {};
@@ -572,6 +580,7 @@ const OperateModal: React.FC<OperateModalProps> = ({
         namespaces: values.namespaces || [],
         tag: values.tag || [],
         chart_type: values.chart_type || [],
+        groups: values.groups || [],
         params: params
           .filter((param) => param.name && param.name.trim())
           .map((param) => ({
@@ -715,8 +724,27 @@ const OperateModal: React.FC<OperateModalProps> = ({
             }))}
           />
         </Form.Item>
+        <Form.Item
+          name="groups"
+          label={t('common.group')}
+          rules={[
+            {
+              required: true,
+              message: `${t('common.selectMsg')}${t('common.group')}`,
+            },
+          ]}
+        >
+          <GroupTreeSelect
+            placeholder={`${t('common.selectMsg')}${t('common.group')}`}
+            multiple={true}
+            mode="ownership"
+          />
+        </Form.Item>
         <Form.Item name="desc" label={t('dataSource.describe')}>
-          <Input.TextArea rows={3} placeholder={t('common.inputMsg')} />
+          <Input.TextArea
+            rows={3}
+            placeholder={`${t('common.inputMsg')} ${t('dataSource.describe')}`}
+          />
         </Form.Item>
         <div style={{ margin: '0 0 0 66px' }}>
           <div

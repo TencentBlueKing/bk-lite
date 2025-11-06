@@ -18,6 +18,7 @@ const componentMap: Record<string, React.ComponentType<any>> = {
 
 interface WidgetWrapperProps extends BaseWidgetProps {
   chartType?: string;
+  dataSource?: any;
 }
 
 const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
@@ -26,6 +27,7 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
   globalTimeRange,
   refreshKey,
   onReady,
+  dataSource,
   ...otherProps
 }) => {
   const { t } = useTranslation();
@@ -41,6 +43,17 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
     if (!config?.dataSource) {
       setLoading(false);
       setDataValidation(null);
+      return;
+    }
+
+    // 检查权限
+    if (dataSource?.hasAuth === false) {
+      setLoading(false);
+      setRawData(null);
+      setDataValidation({
+        isValid: false,
+        message: t('common.noAuth'),
+      });
       return;
     }
 
@@ -110,7 +123,7 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
     if (config?.dataSource) {
       fetchData();
     }
-  }, [config, globalTimeRange, refreshKey]);
+  }, [config, globalTimeRange, refreshKey, dataSource?.hasAuth]);
 
   const renderError = (message: string) => (
     <div className="h-full flex flex-col items-center justify-center">

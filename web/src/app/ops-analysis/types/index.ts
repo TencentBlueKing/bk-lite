@@ -9,6 +9,7 @@ export interface DirItem {
   type: DirectoryType;
   children?: DirItem[];
   desc?: string;
+  groups?: number[];
 }
 
 export interface SidebarProps {
@@ -24,6 +25,7 @@ export interface SidebarRef {
 export interface FormValues {
   name: string;
   desc?: string;
+  groups?: number[];
 }
 
 export interface ItemData {
@@ -31,6 +33,7 @@ export interface ItemData {
   desc?: string;
   directory?: number;
   parent_id?: number;
+  groups?: number[];
 }
 
 export interface IconWithSize {
