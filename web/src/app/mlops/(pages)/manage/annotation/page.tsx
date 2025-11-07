@@ -12,6 +12,12 @@ import sideMenuStyle from './aside/index.module.scss';
 import ChartContent from "./charContent";
 import TableContent from "./tableContent";
 import ImageContent from "./imageContent";
+import dynamic from 'next/dynamic';
+
+const ObjectDetection = dynamic(() => import('./objectDetection'), {
+  ssr: false,
+  loading: () => <div>Loading...</div>
+});
 
 const AnnotationPage = () => {
   const searchParams = useSearchParams();
@@ -20,7 +26,8 @@ const AnnotationPage = () => {
     getTimeSeriesPredictTrainData,
     getLogClusteringTrainData,
     getClassificationTrainData,
-    getImageClassificationTrainData
+    getImageClassificationTrainData,
+    getObjectDetectionTrainData
   } = useMlopsManageApi();
   const [menuItems, setMenuItems] = useState<AnomalyTrainData[]>([]);
   const [loadingState, setLoadingState] = useState({
@@ -39,7 +46,8 @@ const AnnotationPage = () => {
     'timeseries_predict': getTimeSeriesPredictTrainData,
     'log_clustering': getLogClusteringTrainData,
     'classification': getClassificationTrainData,
-    'image_classification': getImageClassificationTrainData
+    'image_classification': getImageClassificationTrainData,
+    'object_detection': getObjectDetectionTrainData
   };
 
   useEffect(() => {
@@ -111,6 +119,9 @@ const AnnotationPage = () => {
             }
             {imageList.includes(key) &&
               <ImageContent />
+            }
+            {key === 'object_detection' && 
+              <ObjectDetection />
             }
           </div>
         </section>
