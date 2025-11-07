@@ -14,7 +14,9 @@
     "enabled_default_config": true,
     "default_config": {
       "nats": "# ================================== General ===================================\nname: \"metricbeat-${node.ip}-${node.cloud_region}\"\ntags: [\"bk-lite\", \"logstash\", \"metrics\"]\n# ================================== Logging ===================================\nlogging.level: info\nlogging.to_files: true\nlogging.files:\n  path: /opt/fusion-collectors/log/metricbeat\n  name: metricbeat\n  keepfiles: 7\n  permissions: 0600\n# ================================== Outputs ===================================\noutput.logstash:\n  hosts: [\"localhost:15044\"]\n  worker: 1\n  bulk_max_size: 2048\n  timeout: 30s\n  max_retries: 3\n# ================================== Processors ===================================\nprocessors:\n  - add_host_metadata:\n      when.not.contains.tags: forwarded\n\n  - script:\n      lang: javascript\n      source: >\n        function process(event) {\n          var evt = event.Get();\n          \n          // 标准化时间戳\n          if (evt['@timestamp']) {\n            event.Put('timestamp', evt['@timestamp']);\n          }\n          \n          // 提取关键性能指标\n          if (evt.system) {\n            if (evt.system.load) {\n              event.Put('load_1m', evt.system.load['1']);\n              event.Put('load_5m', evt.system.load['5']);\n              event.Put('load_15m', evt.system.load['15']);\n            }\n          }\n          \n          return event;\n        }\n\n# ================================== Modules ===================================\nmetricbeat.modules:\n# ================================== 健康检查模式 - 最小数据量 ==================================\n- module: system\n  metricsets:\n    - uptime  # 改为监控系统运行时间，数据量更少且更稳定\n  enabled: true\n  period: 300s  # 进一步降低到5分钟\n\n  fields:\n    log_type: \"metricbeat\"\n    component: \"system\"\n    health_check_mode: true\n    node_ip: \"${node.ip}\"\n    cloud_region: \"${node.cloud_region}\"\n  fields_under_root: false\n"
-    }
+    },
+    "tags": ["linux", "beat", "log"],
+    "package_name": "metricbeat"
   }
 ]
 

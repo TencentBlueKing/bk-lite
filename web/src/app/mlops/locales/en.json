@@ -85,7 +85,7 @@
     "editform": "Edit Form",
     "editaction": "Edit Action",
     "action": "Action",
-    "actionTile": "Action manage",
+    "actionTitle": "Action manage",
     "actionName": "Action Name",
     "actionNode": "Action Node",
     "type": "Type",
@@ -111,6 +111,7 @@
     "saveError": "Save Error",
     "anomalyTitle": "Anomaly",
     "annotate": "Annotate",
+    "unlabeled": "Unlabeled",
     "upload": "Upload",
     "typeSelect": "Training file type selection",
     "uploadText": "Drag a file or folder here to upload",
@@ -128,7 +129,13 @@
     "selectEntityTip": "Tip: Select text in edit mode to add entity annotations",
     "checkpoint": "CheckPoint",
     "classification": "Classification",
-    "imageClassification": "Image Classification"
+    "imageClassification": "Image Classification",
+    "over2MB": "Over 2MB",
+    "selectLab": "Please select a tab on the right.",
+    "addImage": "Add image",
+    "tabBar": "Tab Bar",
+    "uploading": "Uploading...",
+    "objectDetection": "Object Detection"
   },
   "traintask": {
     "train": "Train",

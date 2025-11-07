@@ -28,7 +28,9 @@ const DatasetModal = forwardRef<ModalRef, DatasetModalProps>(({ onSuccess, activ
     addClassificationDatasets,
     updateClassificationDataset,
     addImageClassificationDatasets,
-    updateImageClassificationDataset
+    updateImageClassificationDataset,
+    addObjectDetectionDataset,
+    updateObjectDetectionDataset
   } = useMlopsManageApi();
   const [isModalOpen, setIsModalOpen] = useState<boolean>(false);
   const [type, setType] = useState<string>('edit');
@@ -76,6 +78,9 @@ const DatasetModal = forwardRef<ModalRef, DatasetModalProps>(({ onSuccess, activ
     },
     'image_classification': async (params: any) => {
       await addImageClassificationDatasets(params)
+    },
+    'object_detection': async (params: any) => {
+      await addObjectDetectionDataset(params);
     }
   };
 
@@ -97,6 +102,9 @@ const DatasetModal = forwardRef<ModalRef, DatasetModalProps>(({ onSuccess, activ
     },
     'image_classification': async (id: number, params: any) => {
       await updateImageClassificationDataset(id, params);
+    },
+    'object_detection': async (id: number, params: any) => {
+      await updateObjectDetectionDataset(id, params);
     }
   };
 

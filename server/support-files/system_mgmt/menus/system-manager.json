@@ -75,6 +75,16 @@
             "Add",
             "Delete"
           ]
+        },
+        {
+          "id": "custom_menu",
+          "name": "Custom Menu",
+          "operation": [
+            "View",
+            "Edit",
+            "Add",
+            "Delete"
+          ]
         }
       ]
     },

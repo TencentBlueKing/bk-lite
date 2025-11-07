@@ -8,6 +8,7 @@ import React, {
   useImperativeHandle,
 } from 'react';
 import Icon from '@/components/icon';
+import GroupTreeSelect from '@/components/group-tree-select';
 import EllipsisWithTooltip from '@/components/ellipsis-with-tooltip';
 import type { DataNode } from 'antd/lib/tree';
 import { Form } from 'antd';
@@ -15,12 +16,15 @@ import { useTranslation } from '@/utils/i18n';
 import { Input, Button, Modal, Dropdown, Menu, Tree, Empty, Spin } from 'antd';
 import { useSearchParams } from 'next/navigation';
 import { useDirectoryApi } from '@/app/ops-analysis/api/index';
+import { useUserInfoContext } from '@/context/userInfo';
 import {
   SidebarProps,
   SidebarRef,
   DirItem,
   ModalAction,
   DirectoryType,
+  FormValues,
+  ItemData,
 } from '@/app/ops-analysis/types';
 import {
   PlusOutlined,
@@ -36,6 +40,7 @@ const Sidebar = forwardRef<SidebarRef, SidebarProps>(
     const [form] = Form.useForm();
     const { t } = useTranslation();
     const searchParams = useSearchParams();
+    const { selectedGroup } = useUserInfoContext();
     const [dirs, setDirs] = useState<DirItem[]>([]);
     const [loading, setLoading] = useState(false);
     const [submitLoading, setSubmitLoading] = useState(false);
@@ -85,16 +90,26 @@ const Sidebar = forwardRef<SidebarRef, SidebarProps>(
     ) => {
       setModalAction(action);
       setModalTitle(title);
-      form.setFieldsValue({
+
+      const formData: any = {
         name: defaultValue,
         desc: action === 'edit' && dir ? dir.desc : '',
-      });
+        groups: action === 'edit' && dir ? dir.groups || [] : [],
+      };
+
+      form.setFieldsValue(formData);
+
+      // 如果是新增操作且没有默认 groups，则设置为当前用户选中的分组
+      if (action !== 'edit' && selectedGroup && !formData.groups?.length) {
+        form.setFieldValue('groups', [selectedGroup.id]);
+      }
+
       setCurrentDir(dir);
       setNewItemType(itemType);
       setModalVisible(true);
     };
 
-    const handleSubmit = async (values: any) => {
+    const handleSubmit = async (values: FormValues) => {
       setSubmitLoading(true);
       try {
         if (modalAction === 'edit') {
@@ -102,6 +117,7 @@ const Sidebar = forwardRef<SidebarRef, SidebarProps>(
           const updateData = {
             name: values.name,
             desc: values.desc,
+            groups: values.groups,
           };
           await updateItem(newItemType, currentDir.data_id, updateData);
           if (onDataUpdate) {
@@ -113,9 +129,10 @@ const Sidebar = forwardRef<SidebarRef, SidebarProps>(
             onDataUpdate(updatedItem);
           }
         } else {
-          const itemData: any = {
+          const itemData: ItemData = {
             name: values.name,
             desc: values.desc,
+            groups: values.groups,
           };
           if (modalAction === 'addChild' && currentDir?.data_id) {
             if (
@@ -536,7 +553,7 @@ const Sidebar = forwardRef<SidebarRef, SidebarProps>(
           onCancel={handleModalCancel}
           confirmLoading={submitLoading}
         >
-          <Form form={form} className="mt-5" labelCol={{ span: 3 }}>
+          <Form form={form} className="mt-5" labelCol={{ span: 5 }}>
             <Form.Item
               name="name"
               label={t('opsAnalysisSidebar.nameLabel')}
@@ -544,11 +561,27 @@ const Sidebar = forwardRef<SidebarRef, SidebarProps>(
             >
               <Input placeholder={t('opsAnalysisSidebar.inputPlaceholder')} />
             </Form.Item>
+            <Form.Item
+              name="groups"
+              label={t('common.group')}
+              rules={[
+                {
+                  required: true,
+                  message: `${t('common.selectMsg')}${t('common.group')}`,
+                },
+              ]}
+            >
+              <GroupTreeSelect
+                placeholder={`${t('common.selectMsg')}${t('common.group')}`}
+                multiple={true}
+                mode="ownership"
+              />
+            </Form.Item>
             {newItemType !== 'directory' && (
               <Form.Item name="desc" label={t('opsAnalysisSidebar.descLabel')}>
                 <Input.TextArea
                   autoSize={{ minRows: 3 }}
-                  placeholder={t('common.inputMsg')}
+                  placeholder={`${t('common.inputMsg')} ${t('opsAnalysisSidebar.descLabel')}`}
                 />
               </Form.Item>
             )}

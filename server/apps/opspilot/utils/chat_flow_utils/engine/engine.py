@@ -8,9 +8,10 @@ from graphlib import CycleError, TopologicalSorter
 from typing import Any, Callable, Dict, List, Optional, Set
 
 from apps.core.logger import opspilot_logger as logger
-from apps.opspilot.enum import WorkFlowTaskStatus, WorkFlowExecuteType
+from apps.opspilot.enum import WorkFlowExecuteType, WorkFlowTaskStatus
 from apps.opspilot.models import BotWorkFlow
 from apps.opspilot.models.bot_mgmt import WorkFlowTaskResult
+
 from .core.base_executor import BaseNodeExecutor
 from .core.enums import NodeStatus
 from .core.models import NodeExecutionContext
@@ -28,6 +29,7 @@ class ChatFlowEngine:
         # 验证流程
         validation_errors = self.validate_flow()
         if validation_errors:
+
             def err_gen():
                 yield f"data: {json.dumps({'result': False, 'error': '流程验证失败'})}\n\n"
                 yield "data: [DONE]\n\n"
@@ -86,6 +88,9 @@ class ChatFlowEngine:
         # 用于跟踪最后执行的节点输出
         self.last_message = None
 
+        # 用于跟踪节点执行顺序
+        self.execution_order = 0
+
         # 解析流程图
         self.nodes = self._parse_nodes(instance.flow_json)
         self.edges = self._parse_edges(instance.flow_json)
@@ -123,15 +128,14 @@ class ChatFlowEngine:
 
     def _record_execution_result(self, input_data: Dict[str, Any], result: Any, success: bool, start_node_type: str = None) -> None:
         """记录工作流执行结果
-        
+
         Args:
             input_data: 输入数据
-            result: 执行结果 
+            result: 执行结果
             success: 是否执行成功
             start_node_type: 启动节点类型
         """
         try:
-
             # 确定执行类型
             execute_type = WorkFlowExecuteType.OPENAI  # 默认值
             if start_node_type:
@@ -142,7 +146,18 @@ class ChatFlowEngine:
             output_data = {}
             for node_id, context in self.execution_contexts.items():
                 if context.output_data:
-                    output_data[node_id] = context.output_data
+                    # 从变量管理器获取节点的执行信息
+                    node_index = self.variable_manager.get_variable(f"node_{node_id}_index")
+                    node_type = self.variable_manager.get_variable(f"node_{node_id}_type")
+                    node_name = self.variable_manager.get_variable(f"node_{node_id}_name")
+
+                    output_data[node_id] = {
+                        "index": node_index,
+                        "name": node_name,
+                        "type": node_type,
+                        "input_data": context.input_data,
+                        "output": context.output_data,
+                    }
 
             # 确定状态
             status = WorkFlowTaskStatus.SUCCESS if success else WorkFlowTaskStatus.FAIL
@@ -166,7 +181,7 @@ class ChatFlowEngine:
                 input_data=input_data_str,
                 output_data=output_data,
                 last_output=last_output,
-                execute_type=execute_type
+                execute_type=execute_type,
             )
 
             logger.info(f"工作流执行结果已记录: flow_id={self.instance.id}, status={status}, execute_type={execute_type}")
@@ -436,8 +451,19 @@ class ChatFlowEngine:
 
             logger.info(f"节点 {node_id} 执行成功")
 
+            # 增加执行顺序计数
+            self.execution_order += 1
+
+            # 获取节点名称
+            node_name = node.get("data", {}).get("label", "") or node.get("data", {}).get("name", "") or node_id
+
             # 将节点结果保存到变量管理器（保持原有的节点结果存储机制）
             self.variable_manager.set_variable(f"node_{node_id}_result", result)
+
+            # 记录节点执行信息（顺序、类型、名称）
+            self.variable_manager.set_variable(f"node_{node_id}_index", self.execution_order)
+            self.variable_manager.set_variable(f"node_{node_id}_type", node_type)
+            self.variable_manager.set_variable(f"node_{node_id}_name", node_name)
 
             return {
                 "success": True,
@@ -538,6 +564,7 @@ class ChatFlowEngine:
             executor = self.custom_node_executors[node_type]
             # 如果是函数，需要包装成执行器类
             if callable(executor) and not hasattr(executor, "execute"):
+
                 class FunctionExecutor(BaseNodeExecutor):
                     def __init__(self, func, variable_manager):
                         super().__init__(variable_manager)

@@ -10,7 +10,9 @@
     "execute_parameters": "--web.listen-address 127.0.0.1:$LISTEN_PORT --collector.file %s",
     "validation_parameters": "",
     "default_template": "",
-    "introduction": "Mssql Exporter is a monitoring tool that collects and exports Microsoft SQL Server metrics, providing insights into database performance and health."
+    "introduction": "Mssql Exporter is a monitoring tool that collects and exports Microsoft SQL Server metrics, providing insights into database performance and health.",
+    "tags": ["linux", "exporter", "monitor"],
+    "package_name": "mssql_exporter"
   }
 ]
 

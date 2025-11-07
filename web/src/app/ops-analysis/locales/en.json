@@ -104,7 +104,10 @@
     "introMsg": "Define NATS for different namespaces, and specify the corresponding namespace data when setting up the data source.",
     "updateNamespaceSuccess": "Namespace updated successfully",
     "createNamespaceSuccess": "Namespace created successfully",
-    "operationFailed": "Operation failed"
+    "operationFailed": "Operation failed",
+    "tls": "TLS",
+    "tlsEnabled": "Enabled",
+    "tlsDisabled": "Disabled"
   },
   "topology": {
     "minimapCollapse": "Collapse Minimap",
@@ -117,9 +120,6 @@
     "saveTopologySuccess": "Topology saved successfully",
     "saveTopologyFailed": "Failed to save topology",
     "treeValueTitle": "Value",
-    "chartNodeLoadFailed": "Data load failed",
-    "chartNodeLoading": "Chart loading...",
-    "chartNodeUnknownType": "Unknown component type",
     "edgeView": "Edge View",
     "edgeSetting": "Edge Configuration",
     "lineType": "Line Type",

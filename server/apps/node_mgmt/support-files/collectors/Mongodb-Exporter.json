@@ -10,7 +10,9 @@
     "execute_parameters": "--mongodb.host $MONGODB_HOST --mongodb.port $MONGODB_PORT --web.listen-address 127.0.0.1:$LISTEN_PORT",
     "validation_parameters": "",
     "default_template": "",
-    "introduction": "Mongodb Exporter is a monitoring tool that collects and exports MongoDB metrics, providing insights into database performance and health."
+    "introduction": "Mongodb Exporter is a monitoring tool that collects and exports MongoDB metrics, providing insights into database performance and health.",
+    "tags": ["linux", "exporter", "monitor"],
+    "package_name": "mongodb_exporter"
   }
 ]
 

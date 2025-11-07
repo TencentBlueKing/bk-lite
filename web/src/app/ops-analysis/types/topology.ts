@@ -1,5 +1,5 @@
 import { DirItem } from './index';
-import { DataSourceParam } from './dashBoard';
+import type { ParamItem } from './dataSource';
 import type { Graph as X6Graph, Cell, Node, Edge } from '@antv/x6';
 
 // 基础几何类型
@@ -54,11 +54,12 @@ export interface TopologyNodeData {
   hasError?: boolean;
   rawData?: any;
   isPlaceholder?: boolean;
+  isNewNode?: boolean; 
   // 值配置 - 包含数据源相关配置
   valueConfig?: {
     chartType?: string;
     dataSource?: number;
-    dataSourceParams?: DataSourceParam[];
+    dataSourceParams?: ParamItem[];
     selectedFields?: string[];
   };
   // 样式配置
@@ -198,6 +199,38 @@ export interface ContextMenuProps {
   targetType?: 'node' | 'edge';
   onMenuClick: (e: { key: string }) => void;
 }
+
+// 边序列化数据结构
+export interface SerializedEdge {
+  id?: string;
+  source: string;
+  target: string;
+  sourcePort?: string;
+  targetPort?: string;
+  lineType?: string;
+  lineName?: string;
+  sourceInterface?: string;
+  targetInterface?: string;
+  arrowDirection?: 'none' | 'single' | 'double';
+  config?: unknown;
+  styleConfig?: {
+    lineColor?: string;
+    lineWidth?: number;
+    lineStyle?: 'line' | 'dotted' | 'point';
+    enableAnimation?: boolean;
+  };
+  vertices?: Array<{ x: number; y: number }>;
+}
+
+// 数据树节点结构
+export interface TreeNode {
+  title: string;
+  key: string;
+  value?: string;
+  isLeaf?: boolean;
+  children?: TreeNode[];
+}
+
 interface InterfaceConfig {
   type: 'existing' | 'custom';
   value: string;
@@ -211,7 +244,7 @@ export interface EdgeConfigPanelProps {
   onConfirm?: (values: any) => void;
 }
 
-export interface SidebarProps {
+export interface NodeSidebarProps {
   collapsed: boolean;
   isEditMode?: boolean;
   graphInstance?: X6Graph;
@@ -255,29 +288,22 @@ export interface ToolbarProps {
 export interface ViewConfigFormValues {
   name: string;
   description?: string;
-  chartType: string;
-  dataSource: number;
-  dataSourceParams?: Array<{
-    name: string;
-    value: string | number | boolean | object | null;
-    type: string;
-  }>;
+  chartType?: string;
+  dataSource?: number | string;
+  dataSourceParams?: ParamItem[];
 }
 
 // 节点配置表单值类型
 export interface NodeConfigFormValues {
   name?: string;
+  description?: string;
   logoType?: 'default' | 'custom';
   logoIcon?: string;
   logoUrl?: string;
   selectedFields?: string[];
   chartType?: string;
   dataSource?: number;
-  dataSourceParams?: Array<{
-    name: string;
-    value: string | number | boolean | object | null;
-    type: string;
-  }>;
+  dataSourceParams?: ParamItem[];
   width?: number;
   height?: number;
   backgroundColor?: string;
@@ -288,8 +314,8 @@ export interface NodeConfigFormValues {
   fontWeight?: string;
   iconPadding?: number;
   renderEffect?: 'normal' | 'glass';
-  lineType?: string;
-  shapeType?: string;
+  lineType?: 'solid' | 'dashed' | 'dotted';
+  shapeType?: 'rectangle' | 'circle';
   nameColor?: string;
   nameFontSize?: number;
   unit?: string;

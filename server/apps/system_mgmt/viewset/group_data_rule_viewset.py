@@ -74,12 +74,11 @@ class GroupDataRuleViewSet(LanguageViewSet):
             return JsonResponse({"result": False, "message": message})
         return_data = fun()
         for i in return_data:
-            translated_name = self.loader.get(f"base_constant.{i['display_name']}") if self.loader else None
+            translated_name = self.loader.get(i["display_name"]) if self.loader else None
             i["display_name"] = translated_name or i["display_name"]
             if "children" in i:
                 for child in i["children"]:
-                    translated_child_name = self.loader.get(
-                        f"base_constant.{child['display_name']}") if self.loader else None
+                    translated_child_name = self.loader.get(child["display_name"]) if self.loader else None
                     child["display_name"] = translated_child_name or child["display_name"]
         return JsonResponse({"result": True, "data": return_data})
 
