@@ -110,10 +110,10 @@
         "stop": "Stop",
         "defaultNode": "Default Node",
         "active": "Active",
-        "installMethod": "Install Method",
-        "auto": "Auto",
         "manual": "Manual",
-        "lastReportTime": "Last Report Time"
+        "lastReportTime": "Last Report Time",
+        "installMethod": "Install Method",
+        "auto": "Auto"
       },
       "editform": {
         "Introduction": "Introduction",

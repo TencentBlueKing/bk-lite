@@ -136,7 +136,7 @@ const GroupTree: React.FC<GroupTreeProps> = ({
     nodes.map((node) => {
       const currentIsVirtual = node.isVirtual === true;
       const childParentIsVirtual = currentIsVirtual || parentIsVirtual;
-      const iconType = currentIsVirtual ? 'govZuZhijg' : 'team';
+      const iconType = currentIsVirtual ? 'xunituandui' : 'zuzhiqunzu';
       
       return {
         ...node,

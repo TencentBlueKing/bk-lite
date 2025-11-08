@@ -6,18 +6,18 @@
   "description": "opspolit",
   "glyphs": [
     {
-      "icon_id": "13364769",
-      "name": "team",
-      "font_class": "team",
-      "unicode": "e767",
-      "unicode_decimal": 59239
+      "icon_id": "4521283",
+      "name": "组织群组",
+      "font_class": "zuzhiqunzu",
+      "unicode": "ebd8",
+      "unicode_decimal": 60376
     },
     {
-      "icon_id": "29382649",
-      "name": "govZuZhijg",
-      "font_class": "govZuZhijg",
-      "unicode": "e6fc",
-      "unicode_decimal": 59132
+      "icon_id": "39904197",
+      "name": "虚拟团队",
+      "font_class": "xunituandui",
+      "unicode": "e6ff",
+      "unicode_decimal": 59135
     },
     {
       "icon_id": "11910542",

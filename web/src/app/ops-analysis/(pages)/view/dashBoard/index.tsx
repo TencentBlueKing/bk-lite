@@ -22,6 +22,7 @@ import {
   TimeRangeData,
   LayoutChangeItem,
   AddComponentConfig,
+  WidgetConfig,
 } from '@/app/ops-analysis/types/dashBoard';
 import { DirItem } from '@/app/ops-analysis/types';
 import { useDataSourceManager } from '@/app/ops-analysis/hooks/useDataSource';
@@ -323,9 +324,7 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
       setConfigDrawerVisible(true);
     };
 
-    const handleConfigConfirm = (
-      values: AddComponentConfig & { name: string }
-    ) => {
+    const handleConfigConfirm = (values: WidgetConfig) => {
       if (isNewComponentConfig && currentConfigItem) {
         handleAddComponent(values);
       } else {

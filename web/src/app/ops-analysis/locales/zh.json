@@ -105,7 +105,10 @@
     "introMsg": "定义不同命名空间的NATS，在设置数据源的时候可以指定对应命名空间的数据。",
     "updateNamespaceSuccess": "更新命名空间成功",
     "createNamespaceSuccess": "创建命名空间成功",
-    "operationFailed": "操作失败"
+    "operationFailed": "操作失败",
+    "tls": "TLS",
+    "tlsEnabled": "已启用",
+    "tlsDisabled": "未启用"
   },
   "topology": {
     "minimapCollapse": "收起缩略图",
