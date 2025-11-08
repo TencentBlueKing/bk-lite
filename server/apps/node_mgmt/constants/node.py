@@ -8,6 +8,10 @@ class NodeConstants:
     LINUX_OS = "linux"
     WINDOWS_OS = "windows"
 
+    # 操作系统显示名称
+    LINUX_OS_DISPLAY = "Linux"
+    WINDOWS_OS_DISPLAY = "Windows"
+
     # 权限相关常量
     DEFAULT_PERMISSION = ["View", "Operate"]
     MODULE = "node"
