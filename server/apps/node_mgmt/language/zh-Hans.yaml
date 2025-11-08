@@ -7,6 +7,15 @@ os:
   linux: Linux
   windows: Windows
 
+controller_status:
+  normal: 正常
+  abnormal: 异常
+  not_installed: 未安装
+
+controller_install_method:
+  manual: 手动安装
+  auto: 自动安装
+
 collector:
   jmx_activemq_linux:
     description:
@@ -102,3 +111,11 @@ collector_tag:
   jmx: JMX
   exporter: Exporter
   beat: Beat
+
+controller:
+  linux:
+    name: 控制器
+    description:
+  windows:
+    name: 控制器
+    description:
