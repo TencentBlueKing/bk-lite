@@ -1,5 +1,6 @@
 from rest_framework import mixins
 from rest_framework.viewsets import GenericViewSet
+from rest_framework.response import Response
 
 from apps.core.utils.loader import LanguageLoader
 from apps.node_mgmt.constants.language import LanguageConstants
@@ -34,4 +35,4 @@ class ControllerViewSet(mixins.ListModelMixin,
         if page is not None:
             return self.get_paginated_response(page)
 
-        return self.get_paginated_response(results)
+        return Response(results)

@@ -1,5 +1,6 @@
 from rest_framework import mixins
 from rest_framework.viewsets import GenericViewSet
+from rest_framework.response import Response
 
 from apps.core.exceptions.base_app_exception import BaseAppException
 from apps.core.utils.loader import LanguageLoader
@@ -37,7 +38,7 @@ class CloudRegionViewSet(mixins.ListModelMixin,
         if page is not None:
             return self.get_paginated_response(page)
 
-        return self.get_paginated_response(results)
+        return Response(results)
 
     def partial_update(self, request, *args, **kwargs):
         self.serializer_class = CloudRegionUpdateSerializer

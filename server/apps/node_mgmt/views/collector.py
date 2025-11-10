@@ -35,7 +35,7 @@ class CollectorViewSet(ModelViewSet):
         if page is not None:
             return self.get_paginated_response(page)
 
-        return self.get_paginated_response(results)
+        return Response(results)
 
     def create(self, request, *args, **kwargs):
         serializer = self.get_serializer(data=request.data)
