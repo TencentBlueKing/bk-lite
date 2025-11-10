@@ -1,6 +1,7 @@
 from django.db.models import Q
 
 from apps.core.constants import DEFAULT_PERMISSION
+from apps.core.logger import nats_logger as logger
 from apps.rpc.system_mgmt import SystemMgmt
 
 
@@ -11,6 +12,8 @@ def get_permission_rules(user, current_team, app_name, permission_key, include_c
         permission_data = client.get_user_rules_by_app(int(current_team), user.username, app, module, child_module, user.domain, include_children)
         return permission_data
     except Exception:
+        import traceback
+        logger.error(traceback.format_exc())
         return {}
 
 
