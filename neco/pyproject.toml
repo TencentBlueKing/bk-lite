@@ -7,10 +7,11 @@ name = "neco"
 description = "Add your description here"
 readme = "README.md"
 requires-python = ">=3.12"
-version = "1.0.8"
+version = "1.0.9"
 
 dependencies = [
     "ag-ui-protocol>=0.1.10",
+    "fire>=0.7.1",
 ]
 
 [dependency-groups]
@@ -89,8 +90,6 @@ llm = [
 devops = [
     "python-jenkins==1.8.2",
     "kubernetes==32.0.1",
-    "ansible==11.5.0",
-    "ansible-runner==2.4.1",
 ]
 
 ocr =[

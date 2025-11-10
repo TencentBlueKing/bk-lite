@@ -171,20 +171,27 @@ class BasicGraph(ABC):
 
                 # 处理完整 AI 消息（非流式块）
                 elif isinstance(message, AIMessage) and not isinstance(message, AIMessageChunk):
-                    if message.content and current_message_id is None:
-                        current_message_id = f"msg_{run_id}_{int(time.time() * 1000)}"
+                    if message.content:
+                        # 为每个完整 AIMessage 创建独立的消息 ID
+                        complete_message_id = f"msg_{run_id}_{int(time.time() * 1000)}"
 
                         yield encoder.encode(TextMessageStartEvent(
                             type=EventType.TEXT_MESSAGE_START,
-                            message_id=current_message_id,
+                            message_id=complete_message_id,
                             role="assistant",
                             timestamp=int(time.time() * 1000)
                         ))
 
                         yield encoder.encode(TextMessageContentEvent(
                             type=EventType.TEXT_MESSAGE_CONTENT,
-                            message_id=current_message_id,
+                            message_id=complete_message_id,
                             delta=message.content,
+                            timestamp=int(time.time() * 1000)
+                        ))
+
+                        yield encoder.encode(TextMessageEndEvent(
+                            type=EventType.TEXT_MESSAGE_END,
+                            message_id=complete_message_id,
                             timestamp=int(time.time() * 1000)
                         ))
 
