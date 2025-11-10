@@ -10,8 +10,6 @@ requires-python = ">=3.12"
 version = "1.0.9"
 
 dependencies = [
-    "ag-ui-protocol>=0.1.10",
-    "fire>=0.7.1",
 ]
 
 [dependency-groups]
@@ -28,6 +26,7 @@ dev = [
 
 [project.optional-dependencies]
 core = [
+    "fire>=0.7.1",
     "loguru==0.7.3",
     "psycopg2-binary==2.9.9",
     "setuptools>=68",
@@ -73,6 +72,7 @@ mlops = [
 ]
 
 llm = [
+    "ag-ui-protocol>=0.1.10",
     "langchain==0.3.27",
     "langchain-community==0.3.27",
     "langchain-experimental==0.3.4",
