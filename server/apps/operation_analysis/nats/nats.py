@@ -19,7 +19,7 @@ def get_operation_analysis_module_data(module, child_module, page, page_size, gr
     :return: 模块数据
     """
 
-    result = DictDirectoryService.get_operation_analysis_module_data(module=child_module, page=page,
+    result = DictDirectoryService.get_operation_analysis_module_data(module=module, page=page,
                                                                      page_size=page_size, group_id=group_id)
     return result
 
