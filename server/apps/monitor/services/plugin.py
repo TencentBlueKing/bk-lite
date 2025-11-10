@@ -22,6 +22,8 @@ class MonitorPluginService:
         metrics = data.pop("metrics")
         plugin = data.pop("plugin")
         desc = data.pop("plugin_desc", "")
+        collector = data.pop("collector", "")
+        collect_type = data.pop("collect_type", "")
 
         # 处理type字段：确保MonitorObjectType存在
         type_value = data.get("type")
@@ -51,7 +53,12 @@ class MonitorPluginService:
         with transaction.atomic():
             plugin_obj, _ = MonitorPlugin.objects.update_or_create(
                 name=plugin,
-                defaults=dict(name=plugin, description=desc),
+                defaults=dict(
+                    name=plugin,
+                    description=desc,
+                    collector=collector,
+                    collect_type=collect_type
+                ),
             )
             plugin_obj.monitor_object.add(monitor_obj)
 
@@ -123,8 +130,16 @@ class MonitorPluginService:
         """导入复合监控对象"""
         base_object = {}
         derivative_objects = []
+        collector = data.get("collector", "")
+        collect_type = data.get("collect_type", "")
+
         for object_info in data.get("objects", []):
-            object_info.update(plugin=data["plugin"], plugin_desc=data["plugin_desc"])
+            object_info.update(
+                plugin=data["plugin"],
+                plugin_desc=data["plugin_desc"],
+                collector=collector,
+                collect_type=collect_type
+            )
             if object_info.get("level") == "base":
                 base_object = object_info
             else:
@@ -157,6 +172,8 @@ class MonitorPluginService:
         data = {
             "plugin": plugin_obj.name,
             "plugin_desc": plugin_obj.description,
+            "collector": plugin_obj.collector,
+            "collect_type": plugin_obj.collect_type,
             "name": monitor_obj.name,
             "type": monitor_obj.type_id if monitor_obj.type else None,  # 导出type的id值
             "description": monitor_obj.description,
@@ -179,10 +196,19 @@ class MonitorPluginService:
     @staticmethod
     def export_compound_monitor_object(plugin_obj, monitor_objs, metrics_map):
         """导出复合监控对象"""
-        data = {"plugin":plugin_obj.name, "plugin_desc":plugin_obj.description, "is_compound_object": True, "objects": []}
+        data = {
+            "plugin": plugin_obj.name,
+            "plugin_desc": plugin_obj.description,
+            "collector": plugin_obj.collector,
+            "collect_type": plugin_obj.collect_type,
+            "is_compound_object": True,
+            "objects": []
+        }
         for monitor_obj in monitor_objs:
             object_data = MonitorPluginService.export_basic_monitor_object(plugin_obj, monitor_obj, metrics_map[monitor_obj.id])
             object_data.pop("plugin")
             object_data.pop("plugin_desc")
+            object_data.pop("collector")
+            object_data.pop("collect_type")
             data["objects"].append(object_data)
         return data

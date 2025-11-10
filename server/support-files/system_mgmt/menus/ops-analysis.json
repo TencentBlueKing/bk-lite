@@ -11,27 +11,31 @@
   "description": "Integrate operation and maintenance data, analyze potential risks and optimization space from multiple dimensions through dashboards and canvases, provide data support for decision-making, and help improve operation and maintenance quality and business continuity",
   "menus": [
     {
-      "name": "Operations Analysis",
-      "children": [
+    "id": "ops_analysis",
+    "name": "OpsAnalysis",
+    "children": [
         {
-        "id": "data_source",
-        "name": "Data Source",
+        "id": "view",
+        "name": "View",
         "operation": [
             "View",
-            "Add",
-            "Edit",
-            "Delete"
+            "AddCatalogue",
+            "EditCatalogue",
+            "DeleteCatalogue",
+            "AddChart",
+            "EditChart",
+            "DeleteChart"
         ]
     },
-    {
-        "id": "namespace",
-        "name": "NameSpace",
-        "operation": [
-            "View",
-            "Add",
-            "Edit",
-            "Delete"
-        ]
+        {
+          "id": "data_source",
+          "name": "Data Source",
+          "operation": ["View", "Add", "Edit", "Delete"]
+        },
+        {
+          "id": "namespace",
+          "name": "NameSpace",
+          "operation": ["View", "Add", "Edit", "Delete"]
         }
       ]
     }
@@ -45,10 +49,11 @@
     {
       "name": "normal",
       "role_name": "node_normal",
-      "menus": [
+    "menus": [
+        "view-View",
         "data_source-View",
         "namespace-View"
-      ]
+    ]
     }
   ]
 }

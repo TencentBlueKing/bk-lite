@@ -20,10 +20,10 @@ class DictDirectoryService:
         """
         # 验证用户组织权限
         is_valid, current_team = GroupPermissionMixin.validate_group_permission(request)
-        
+
         if not is_valid:
             return []
-        
+
         # 构建基础查询集并应用组织过滤
         base_queryset = Directory.objects.filter(is_active=True)
         directories = GroupPermissionMixin.apply_group_filter(base_queryset, current_team).order_by("id")
@@ -76,27 +76,45 @@ class DictDirectoryService:
         return data
 
     @staticmethod
-    def get_operation_analysis_module_data(module, page, page_size, group_id):
+    def get_operation_analysis_module_data(module, child_module, page, page_size, group_id):
         if module == PERMISSION_DIRECTORY:
-            return DictDirectoryService.get_directory_modules_data(page, page_size, group_id)
+            return DictDirectoryService.get_directory_modules_data(child_module, page, page_size, group_id)
         elif module == PERMISSION_DATASOURCE:
             return DictDirectoryService.get_datasource_modules_data(page, page_size, group_id)
         else:
             return []
 
     @staticmethod
-    def get_directory_modules_data(page, page_size, group_id):
+    def get_directory_modules_data(child_module, page, page_size, group_id):
         """
         根据目录ID获取目录信息
+        :param child_module: 子模块名称
         :param page: 页码
         :param page_size: 每页大小
         :param group_id: 组ID
         :return: 目录信息列表
         """
-        queryset = Directory.objects.all()
-        directories = GroupPermissionMixin.apply_group_filter(queryset, group_id).values("id", "name")
-        result = directories[(page - 1) * page_size: page * page_size]
-        return {"count": directories.count(), "items": list(result)}
+        model_map = {
+            "dashboard": Dashboard,
+            "topology": Topology,
+            "architecture": Architecture
+        }
+        model_class = model_map.get(child_module)
+        if not model_class:
+            return {"count": 0, "items": []}
+
+        result = []
+        queryset = model_class.objects.all()
+        filter_queryset = GroupPermissionMixin.apply_group_filter(queryset, group_id)
+        queryset_count = filter_queryset.count()
+        instances = filter_queryset[(page - 1) * page_size: page * page_size]
+        for instance in instances:
+            result.append({
+                "id": instance.id,
+                "name": f"【{instance.directory.name}】{instance.name}" if instance.directory else instance.name
+            })
+
+        return {"count": queryset_count, "items": result}
 
     @staticmethod
     def get_datasource_modules_data(page, page_size, group_id):
