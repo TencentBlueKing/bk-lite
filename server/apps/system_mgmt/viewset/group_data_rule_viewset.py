@@ -11,6 +11,7 @@ from apps.rpc.monitor import Monitor
 from apps.rpc.node_mgmt import NodeMgmt
 from apps.rpc.opspilot import OpsPilot
 from apps.rpc.system_mgmt import SystemMgmt
+from apps.rpc.operation_analysis import OperationAnalysisRPC
 from apps.system_mgmt.models import GroupDataRule
 from apps.system_mgmt.serializers import GroupDataRuleSerializer
 
@@ -90,6 +91,7 @@ class GroupDataRuleViewSet(LanguageViewSet):
             "monitor": Monitor,
             "log": Log,
             "cmdb": CMDB,
+            "ops-analysis": OperationAnalysisRPC
         }
         app = params.pop("app")
         if app not in client_map.keys():

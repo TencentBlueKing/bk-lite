@@ -1,8 +1,10 @@
 from rest_framework import mixins
-from rest_framework.exceptions import ValidationError
 from rest_framework.viewsets import GenericViewSet
+from rest_framework.response import Response
 
 from apps.core.exceptions.base_app_exception import BaseAppException
+from apps.core.utils.loader import LanguageLoader
+from apps.node_mgmt.constants.language import LanguageConstants
 from apps.node_mgmt.filters.cloud_region import CloudRegionFilter
 from apps.node_mgmt.models import Node
 from apps.node_mgmt.serializers.cloud_region import CloudRegionSerializer, CloudRegionUpdateSerializer
@@ -20,7 +22,23 @@ class CloudRegionViewSet(mixins.ListModelMixin,
     search_fields = ['name', 'introduction']  # 搜索字段
 
     def list(self, request, *args, **kwargs):
-        return super().list(request, *args, **kwargs)
+        queryset = self.filter_queryset(self.get_queryset())
+        serializer = self.get_serializer(queryset, many=True)
+        results = serializer.data
+
+        lan = LanguageLoader(app=LanguageConstants.APP, default_lang=request.user.locale)
+
+        for result in results:
+            name_key = f"{LanguageConstants.CLOUD_REGION}.{result['name']}.name"
+            desc_key = f"{LanguageConstants.CLOUD_REGION}.{result['name']}.description"
+            result["display_name"] = lan.get(name_key) or result["name"]
+            result["display_introduction"] = lan.get(desc_key) or result["introduction"]
+
+        page = self.paginate_queryset(results)
+        if page is not None:
+            return self.get_paginated_response(page)
+
+        return Response(results)
 
     def partial_update(self, request, *args, **kwargs):
         self.serializer_class = CloudRegionUpdateSerializer

@@ -4,14 +4,9 @@ import ChartLegend from '../components/chartLegend';
 import { Spin, Empty } from 'antd';
 import { randomColorForLegend } from '@/app/log/utils/randomColorForChart';
 import { ChartDataTransformer } from '@/app/log/utils/chartDataTransform';
+import { DashboardBarChartProps } from '@/app/log/types';
 
-interface BarChartProps {
-  rawData: any;
-  loading?: boolean;
-  onReady?: (ready: boolean) => void;
-}
-
-const BarChart: React.FC<BarChartProps> = ({
+const BarChart: React.FC<DashboardBarChartProps> = ({
   rawData,
   loading = false,
   onReady,
