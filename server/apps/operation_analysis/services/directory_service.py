@@ -30,13 +30,17 @@ class DictDirectoryService:
 
         # 构建仪表盘、拓扑图、架构图的查询集并应用组织过滤
         dashboard_queryset = Dashboard.objects.filter(directory__in=directories)
-        dashboards = GroupPermissionMixin.apply_group_filter(dashboard_queryset, current_team).order_by("id")
+        dashboards = GroupPermissionMixin.apply_group_filter(dashboard_queryset, current_team, request.user,
+                                                             "directory.dashboard").order_by("id")
 
         topology_queryset = Topology.objects.filter(directory__in=directories)
-        topologies = GroupPermissionMixin.apply_group_filter(topology_queryset, current_team).order_by("id")
+        topologies = GroupPermissionMixin.apply_group_filter(topology_queryset, current_team, request.user,
+                                                             "directory.topology",
+                                                             ).order_by("id")
 
         architecture_queryset = Architecture.objects.filter(directory__in=directories)
-        architectures = GroupPermissionMixin.apply_group_filter(architecture_queryset, current_team).order_by("id")
+        architectures = GroupPermissionMixin.apply_group_filter(architecture_queryset, current_team, request.user,
+                                                                "directory.architecture").order_by("id")
 
         # 构建所有节点映射
         all_nodes = {}
