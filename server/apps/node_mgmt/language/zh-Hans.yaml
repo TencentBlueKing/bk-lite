@@ -1,7 +1,7 @@
 cloud_region:
   default:
-    description: 默认云区域
-    name: 默认
+    description: 直连区域用于接入与平台主控节点直接通讯的主机节点。
+    name: 直连区域
 os:
   linux: Linux
   windows: Windows

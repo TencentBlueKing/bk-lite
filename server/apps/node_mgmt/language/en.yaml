@@ -1,7 +1,8 @@
 cloud_region:
   default:
-    description: Default Cloud Region
-    name: Default
+    description: Used for connecting host nodes that directly communicate with the
+      platform’s master control node.
+    name: Direct Connection Zone
 os:
   linux: Linux
   windows: Windows
