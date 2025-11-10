@@ -4,7 +4,6 @@
 """
 import gzip
 import json
-from io import BytesIO
 from typing import Any, Optional
 
 from django.core.files.base import ContentFile
@@ -24,15 +23,15 @@ class S3JSONField(models.FileField):
     Example:
         class EventRawData(models.Model):
             event = models.ForeignKey(Event, on_delete=models.CASCADE)
-            raw_data = S3JSONField(
+            data = S3JSONField(
                 bucket_name='log-alert-raw-data',
                 compressed=True,
                 verbose_name='原始数据'
             )
 
         # 使用
-        obj.raw_data = [{'log': 'test'}, {...}]  # 自动上传到 S3
-        data = obj.raw_data  # 自动从 S3 读取并解压
+        obj.data = [{'log': 'test'}, {...}]  # 自动上传到 S3
+        data = obj.data  # 自动从 S3 读取并解压
     """
 
     description = "JSON data stored in S3/MinIO with optional compression"
@@ -49,8 +48,9 @@ class S3JSONField(models.FileField):
         self.bucket_name = bucket_name
         self.compressed = compressed
 
-        # 设置 storage 为 MinioBackend
-        kwargs['storage'] = MinioBackend(bucket_name=bucket_name)
+        # ✅ 关键修改：延迟创建 storage，不在 __init__ 时创建
+        # 这样可以避免在 Django 启动时就要求 MinIO bucket 存在
+        self._storage = None
 
         # 禁用 upload_to，我们自己控制路径
         kwargs.setdefault('upload_to', self._generate_upload_path)
@@ -58,7 +58,20 @@ class S3JSONField(models.FileField):
         # 设置 max_length
         kwargs.setdefault('max_length', 500)
 
+        # 不传递 storage 参数给父类，我们延迟初始化
         super().__init__(*args, **kwargs)
+
+    @property
+    def storage(self):
+        """延迟初始化 storage"""
+        if self._storage is None:
+            self._storage = MinioBackend(bucket_name=self.bucket_name)
+        return self._storage
+
+    @storage.setter
+    def storage(self, value):
+        """允许设置 storage"""
+        self._storage = value
 
     def _generate_upload_path(self, instance, filename):
         """
@@ -150,14 +163,12 @@ class S3JSONField(models.FileField):
         """
         try:
             # 使用 storage 读取文件
-            storage = self.storage
-
-            if not storage.exists(file_path):
+            if not self.storage.exists(file_path):
                 logger.warning(f"S3 file not found: {file_path}")
                 return None
 
             # 读取文件内容
-            with storage.open(file_path, 'rb') as f:
+            with self.storage.open(file_path, 'rb') as f:
                 content_bytes = f.read()
 
             # 解压（如果是压缩的）
