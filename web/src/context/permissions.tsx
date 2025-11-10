@@ -41,8 +41,7 @@ export const PermissionsProvider = ({ children }: { children: ReactNode }) => {
         accumulated[item.url] = item.operation;
       } else if (item.url && item.withParentPermission && parentMenu) {
         accumulated[item.url] = parentMenu.operation || [];
-      }
-      if (item.url && item.isNotMenuItem) {
+      } else if (item.url && item.isNotMenuItem) {
         accumulated[item.url] = ['View', ...(parentMenu?.operation || [])];
       }
       if (item.children) {
@@ -94,7 +93,7 @@ export const PermissionsProvider = ({ children }: { children: ReactNode }) => {
         );
         const hasPermission =
           permissionMap.hasOwnProperty(menu.name) ||
-          menu.isNotMenuItem ||
+          (menu.isNotMenuItem && parentMenu !== undefined) ||
           hasParentPermission ||
           hasChildPermission;
           

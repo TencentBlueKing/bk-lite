@@ -4,8 +4,8 @@ import React, { useState, useRef } from 'react';
 import Sidebar from '../../components/sidebar';
 import Dashboard, { DashboardRef } from './dashBoard/index';
 import Topology from './topology/index';
-import { TopologyRef } from '@/app/ops-analysis/types/topology';
 import Architecture, { ArchitectureRef } from './architecture/index';
+import { TopologyRef } from '@/app/ops-analysis/types/topology';
 import { useTranslation } from '@/utils/i18n';
 import { DirectoryType, SidebarRef } from '@/app/ops-analysis/types';
 import { LeftOutlined, RightOutlined } from '@ant-design/icons';
@@ -130,7 +130,7 @@ const ViewLayout: React.FC<ViewLayoutProps> = ({ children }) => {
       architecture: type === 'architecture' ? itemInfo || null : null,
     });
     if (type === 'settings') {
-      router.push('/ops-analysis/view/settings/dataSource');
+      router.push('/ops-analysis/view/settings');
     } else {
       const params = new URLSearchParams({
         type: itemInfo?.type || '',

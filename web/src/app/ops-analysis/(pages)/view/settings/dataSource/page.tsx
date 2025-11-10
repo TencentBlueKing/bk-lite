@@ -4,6 +4,7 @@ import React, { useState, useEffect } from 'react';
 import type { TablePaginationConfig } from 'antd/es/table';
 import OperateModal from './operateModal';
 import CustomTable from '@/components/custom-table';
+import PermissionWrapper from '@/components/permission';
 import { Button, Input, Card, message, Modal } from 'antd';
 import { useTranslation } from '@/utils/i18n';
 import { DatasourceItem } from '@/app/ops-analysis/types/dataSource';
@@ -144,16 +145,20 @@ const Datasource: React.FC = () => {
       width: 100,
       render: (_: unknown, row: DatasourceItem) => (
         <div className="space-x-4">
-          <Button
-            type="link"
-            size="small"
-            onClick={() => handleEdit('edit', row)}
-          >
-            {t('common.edit')}
-          </Button>
-          <Button type="link" size="small" onClick={() => handleDelete(row)}>
-            {t('common.delete')}
-          </Button>
+          <PermissionWrapper requiredPermissions={['Edit']}>
+            <Button
+              type="link"
+              size="small"
+              onClick={() => handleEdit('edit', row)}
+            >
+              {t('common.edit')}
+            </Button>
+          </PermissionWrapper>
+          <PermissionWrapper requiredPermissions={['Delete']}>
+            <Button type="link" size="small" onClick={() => handleDelete(row)}>
+              {t('common.delete')}
+            </Button>
+          </PermissionWrapper>
         </div>
       ),
     },
@@ -196,9 +201,11 @@ const Datasource: React.FC = () => {
               }}
             />
           </div>
-          <Button type="primary" onClick={() => handleEdit('add')}>
-            {t('common.addNew')}
-          </Button>
+          <PermissionWrapper requiredPermissions={['Add']}>
+            <Button type="primary" onClick={() => handleEdit('add')}>
+              {t('common.addNew')}
+            </Button>
+          </PermissionWrapper>
         </div>
         <CustomTable
           size="middle"

@@ -21,7 +21,6 @@
     "unsavedChangesWarning": "离开将导致未保存信息丢"
   },
   "dashboard": {
-    "addComponent": "添加视图",
     "viewConfig": "组件配置",
     "addView": "添加视图",
     "title": "选择组件",

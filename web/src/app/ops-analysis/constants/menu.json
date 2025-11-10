@@ -4,7 +4,7 @@
       "title": "运营分析",
       "icon": "ops-analysis",
       "url": "/ops-analysis/view",
-      "name": "analysis_view",
+      "name": "view",
       "isNotMenuItem": true,
       "children": [
         {
@@ -27,7 +27,7 @@
       "title": "Operations Analysis",
       "icon": "ops-analysis",
       "url": "/ops-analysis/view",
-      "name": "analysis_view",
+      "name": "view",
       "isNotMenuItem": true,
       "children": [
         {
