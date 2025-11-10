@@ -19,7 +19,7 @@ def get_operation_analysis_module_data(module, child_module, page, page_size, gr
     :return: 模块数据
     """
 
-    result = DictDirectoryService.get_operation_analysis_module_data(module=module, page=page,
+    result = DictDirectoryService.get_operation_analysis_module_data(module=module, child_module=child_module,page=page,
                                                                      page_size=page_size, group_id=group_id)
     return result
 
@@ -31,7 +31,11 @@ def get_operation_analysis_module_list():
     :return: 模块列表
     """
     result = [
-        {"name": PERMISSION_DIRECTORY, "display_name": "目录", "children": []},
+        {"name": PERMISSION_DIRECTORY, "display_name": "目录", "children":  [
+            {"name": "dashboard", "display_name": "仪表盘"},
+            {"name": "topology", "display_name": "拓扑图"},
+            {"name": "architecture", "display_name": "架构图"}
+        ]},
         {"name": PERMISSION_DATASOURCE, "display_name": "数据源", "children": []},
     ]
     return result
