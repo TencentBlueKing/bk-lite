@@ -20,7 +20,6 @@
     "unsavedChangesWarning": "You have unsaved changes. If you leave now, your changes will be lost."
   },
   "dashboard": {
-    "addComponent": "Add Component",
     "viewConfig": "Component Configuration",
     "addView": "Add View",
     "title": "Select Component",
