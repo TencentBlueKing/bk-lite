@@ -6,6 +6,8 @@ from apps.monitor.models import MonitorPlugin
 class MonitorPluginSerializer(serializers.ModelSerializer):
     # 这里定义 is_pre 但不给默认值，防止用户传递该字段
     is_pre = serializers.BooleanField(read_only=True)
+    collector = serializers.CharField(max_length=100, required=False, allow_blank=True, default="")
+    collect_type = serializers.CharField(max_length=50, required=False, allow_blank=True, default="")
 
     class Meta:
         model = MonitorPlugin
