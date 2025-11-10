@@ -99,3 +99,17 @@ collector_tag:
   cmdb: CMDB
   windows: Windows
   linux: Linux
+controller_status:
+  abnormal: 异常
+  not_installed: 未安装
+  normal: 正常
+controller:
+  linux:
+    name: 控制器
+    description: None
+  windows:
+    description: None
+    name: 控制器
+controller_install_method:
+  manual: 手动安装
+  auto: 自动安装

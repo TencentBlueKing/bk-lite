@@ -13,7 +13,7 @@ import { PlusOutlined, CloseOutlined } from '@ant-design/icons';
 import OperateModal from '@/components/operate-modal';
 import type { FormInstance } from 'antd';
 import useLogApi from '@/app/log/api/integration';
-import { ModalRef } from '@/app/log/types';
+import { ModalRef, ListItem, ModalProps } from '@/app/log/types';
 import { FilterItem, GroupInfo } from '@/app/log/types/integration';
 import { useTranslation } from '@/utils/i18n';
 import GroupTreeSelector from '@/components/group-tree-select';
@@ -24,13 +24,7 @@ import {
   useConditionList,
   useTermList,
 } from '@/app/log/hooks/integration/common/other';
-import { ListItem } from '@/app/log/types';
 import { v4 as uuidv4 } from 'uuid';
-
-interface ModalProps {
-  onSuccess: () => void;
-  fields: string[];
-}
 
 const EditInstance = forwardRef<ModalRef, ModalProps>(
   ({ onSuccess, fields }, ref) => {

@@ -40,6 +40,35 @@ def find_json_paths(root_dir: str, target_filename: str = None):
     return result
 
 
+def extract_plugin_path_info(file_path: str):
+    """
+    从插件文件路径中提取采集器和采集方式信息
+
+    路径格式: plugins/采集器/采集方式/具体插件/文件名
+    例如: apps/monitor/support-files/plugins/Telegraf/host/os/metrics.json
+
+    :param file_path: 插件文件完整路径
+    :return: (collector, collect_type) 元组
+    """
+    try:
+        # 规范化路径并分割
+        normalized_path = os.path.normpath(file_path)
+        parts = normalized_path.split(os.sep)
+
+        # 找到 plugins 目录的索引
+        if 'plugins' in parts:
+            plugins_idx = parts.index('plugins')
+            # plugins 后面的第一个目录是采集器，第二个是采集方式
+            if len(parts) > plugins_idx + 2:
+                collector = parts[plugins_idx + 1]
+                collect_type = parts[plugins_idx + 2]
+                return collector, collect_type
+    except Exception as e:
+        logger.warning(f'从路径 {file_path} 提取插件信息失败：{e}')
+
+    return "", ""
+
+
 def migrate_plugin():
     """迁移插件"""
     path_list = find_json_paths(PluginConstants.DIRECTORY, "metrics.json")
@@ -48,6 +77,10 @@ def migrate_plugin():
         try:
             with open(file_path, 'r', encoding='utf-8') as file:
                 plugin_data = json.load(file)
+                # 从文件路径提取采集器和采集方式信息
+                collector, collect_type = extract_plugin_path_info(file_path)
+                plugin_data['collector'] = collector
+                plugin_data['collect_type'] = collect_type
                 MonitorPluginService.import_monitor_plugin(plugin_data)
         except Exception as e:
             logger.error(f'导入插件 {file_path} 失败！原因：{e}')

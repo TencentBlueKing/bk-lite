@@ -237,9 +237,8 @@ export const formatNumericValue = (value: any): string | number => {
     }
     // 如果不是数字或无法转换，返回原值
     return value;
-  } catch (error) {
+  } catch {
     // 发生任何错误时，返回原值
-    console.warn('Error in formatNumericValue:', error);
     return value;
   }
 };

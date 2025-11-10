@@ -100,3 +100,17 @@ collector_tag:
   cmdb: CMDB
   windows: Windows
   linux: Linux
+controller_status:
+  abnormal: Abnormal
+  not_installed: Not Installed
+  normal: Normal
+controller:
+  linux:
+    name: Controller
+    description: None
+  windows:
+    description: None
+    name: Controller
+controller_install_method:
+  manual: Manual Installation
+  auto: Automatic Installation
