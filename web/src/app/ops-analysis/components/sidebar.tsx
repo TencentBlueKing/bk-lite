@@ -12,7 +12,6 @@ import GroupTreeSelect from '@/components/group-tree-select';
 import EllipsisWithTooltip from '@/components/ellipsis-with-tooltip';
 import PermissionWrapper from '@/components/permission';
 import useBtnPermissions from '@/hooks/usePermissions';
-import { usePermissions } from '@/context/permissions';
 import type { DataNode } from 'antd/lib/tree';
 import { Form } from 'antd';
 import { useTranslation } from '@/utils/i18n';
@@ -33,7 +32,6 @@ import {
   PlusOutlined,
   MoreOutlined,
   BarChartOutlined,
-  SettingOutlined,
   FolderOutlined,
   ApartmentOutlined,
 } from '@ant-design/icons';
@@ -45,7 +43,6 @@ const Sidebar = forwardRef<SidebarRef, SidebarProps>(
     const searchParams = useSearchParams();
     const { selectedGroup } = useUserInfoContext();
     const { hasPermission } = useBtnPermissions();
-    const { menus } = usePermissions();
     const [dirs, setDirs] = useState<DirItem[]>([]);
     const [loading, setLoading] = useState(false);
     const [submitLoading, setSubmitLoading] = useState(false);
@@ -59,11 +56,6 @@ const Sidebar = forwardRef<SidebarRef, SidebarProps>(
     const { getDirectoryTree, createItem, updateItem, deleteItem } =
       useDirectoryApi();
     const [currentDir, setCurrentDir] = useState<DirItem | null>(null);
-
-    const hasSettingsPermission = useMemo(() => {
-      const viewMenu = menus.find((menu) => menu.url === '/ops-analysis/view');
-      return viewMenu?.children && viewMenu.children.length > 0;
-    }, [menus]);
 
     useImperativeHandle(
       ref,
@@ -567,20 +559,6 @@ const Sidebar = forwardRef<SidebarRef, SidebarProps>(
             )}
           </Spin>
         </div>
-        {hasSettingsPermission && (
-          <div className="flex justify-center height-[32px]">
-            <Button
-              block
-              icon={<SettingOutlined />}
-              onClick={() => {
-                setSelectedKeys([]);
-                onSelect && onSelect('settings');
-              }}
-            >
-              设置
-            </Button>
-          </div>
-        )}
 
         <Modal
           title={modalTitle}
