@@ -73,7 +73,7 @@ class GroupPermissionMixin:
 
         # 使用 Django ORM 的 __contains 查询
         # groups__contains 表示 groups 数组包含指定的值
-        return queryset.filter(groups__contains=current_team)
+        return queryset.filter(groups__contains=int(current_team))
 
 
 class BaseGroupFilter(FilterSet):
