@@ -517,7 +517,7 @@ class ToolsNodes(BasicNode):
         react_wrapper_name = f"{composite_node_name}_wrapper"
 
         async def react_wrapper_node(state: Dict[str, Any], config: RunnableConfig) -> Dict[str, Any]:
-            """ReAct Agent 包装节点"""
+            """ReAct Agent 包装节点 - 返回完整消息列表以支持实时 SSE 流式输出"""
             graph_request = config["configurable"]["graph_request"]
 
             # 创建系统提示
@@ -540,54 +540,22 @@ class ToolsNodes(BasicNode):
 
             result = await react_agent.ainvoke({"messages": state["messages"]}, config=config)
 
-            # 处理结果
+            # 获取完整的消息列表
             final_messages = result.get("messages", [])
             if not final_messages:
-                return {"messages": AIMessage(content="ReAct Agent 未返回任何消息")}
+                return {"messages": [AIMessage(content="ReAct Agent 未返回任何消息")]}
 
-            # 收集执行的工具 - 从多个来源收集工具调用信息
-            executed_tools = []
-            for msg in final_messages:
-                if isinstance(msg, AIMessage) and hasattr(msg, 'tool_calls') and msg.tool_calls:
-                    for tool_call in msg.tool_calls:
-                        if hasattr(tool_call, 'name'):
-                            executed_tools.append(tool_call.name)
-                elif isinstance(msg, ToolMessage):
-                    # 从 ToolMessage 中提取工具名称
-                    tool_name = getattr(msg, 'name', None)
-                    if not tool_name and hasattr(msg, 'additional_kwargs'):
-                        tool_name = msg.additional_kwargs.get('name')
-                    if tool_name:
-                        executed_tools.append(tool_name)
+            # 过滤掉输入消息，只保留 ReAct Agent 新增的消息
+            # 找到状态消息的最后一条，之后的都是新消息
+            input_message_count = len(state.get("messages", []))
+            new_messages = final_messages[input_message_count:]
 
-            # 去重工具名称
-            executed_tools = list(dict.fromkeys(executed_tools))
+            if not new_messages:
+                return {"messages": [AIMessage(content="ReAct Agent 未产生新的响应")]}
 
-            # 找到最后一个 AI 消 Messages
-            last_ai_message = None
-            for msg in reversed(final_messages):
-                if isinstance(msg, AIMessage):
-                    last_ai_message = msg
-                    break
-
-            if not last_ai_message:
-                return {"messages": AIMessage(content="ReAct Agent 未产生有效的 AI 响应")}
-
-            # 增强内容
-            enhanced_content = last_ai_message.content
-            if executed_tools:
-                tools_info = "、".join(executed_tools)
-                enhanced_content = f"执行工具: [{tools_info}]\n\n" + \
-                    enhanced_content
-
-            enhanced_message = AIMessage(
-                content=enhanced_content,
-                response_metadata=last_ai_message.response_metadata,
-                tool_calls=getattr(last_ai_message, 'tool_calls', []),
-                usage_metadata=getattr(last_ai_message, 'usage_metadata', None)
-            )
-
-            return {"messages": enhanced_message}
+            # 直接返回新消息列表，让 agui_stream 逐个处理
+            # 这样可以实时发送：工具调用 -> 工具结果 -> 最终响应
+            return {"messages": new_messages}
 
         graph_builder.add_node(react_wrapper_name, react_wrapper_node)
         return react_wrapper_name
@@ -679,7 +647,7 @@ class ToolsNodes(BasicNode):
         deep_wrapper_name = f"{composite_node_name}_wrapper"
 
         async def deep_wrapper_node(state: Dict[str, Any], config: RunnableConfig) -> Dict[str, Any]:
-            """DeepAgent 包装节点"""
+            """DeepAgent 包装节点 - 返回完整消息列表以支持实时 SSE 流式输出"""
             graph_request = config["configurable"]["graph_request"]
 
             # 创建系统提示
@@ -711,58 +679,21 @@ class ToolsNodes(BasicNode):
                 config=deep_config
             )
 
-            # 处理结果
+            # 获取完整的消息列表
             final_messages = result.get("messages", [])
             if not final_messages:
-                return {"messages": AIMessage(content="DeepAgent 未返回任何消息")}
+                return {"messages": [AIMessage(content="DeepAgent 未返回任何消息")]}
 
-            # 找到最后一个 AI 消息
-            last_ai_message = None
-            for msg in reversed(final_messages):
-                if isinstance(msg, AIMessage):
-                    last_ai_message = msg
-                    break
+            # 过滤掉输入消息，只保留 DeepAgent 新增的消息
+            input_message_count = len(state.get("messages", []))
+            new_messages = final_messages[input_message_count:]
 
-            if not last_ai_message:
-                return {"messages": AIMessage(content="DeepAgent 未产生有效的 AI 响应")}
+            if not new_messages:
+                return {"messages": [AIMessage(content="DeepAgent 未产生新的响应")]}
 
-            # 收集已执行的工具调用信息
-            executed_tools = []
-            for msg in final_messages:
-                if isinstance(msg, AIMessage) and hasattr(msg, 'tool_calls') and msg.tool_calls:
-                    for tool_call in msg.tool_calls:
-                        if hasattr(tool_call, 'name'):
-                            executed_tools.append(tool_call.name)
-                elif isinstance(msg, ToolMessage):
-                    tool_name = getattr(msg, 'name', None)
-                    if not tool_name and hasattr(msg, 'additional_kwargs'):
-                        tool_name = msg.additional_kwargs.get('name')
-                    if tool_name:
-                        executed_tools.append(tool_name)
-
-            # 去重工具名称
-            executed_tools = list(dict.fromkeys(executed_tools))
-
-            # 增强内容 - 显示DeepAgent特性和工具使用
-            enhanced_content = last_ai_message.content
-
-            # 添加DeepAgent执行信息
-            agent_info_parts = ["[DeepAgent执行]"]
-            if executed_tools:
-                tools_info = "、".join(executed_tools)
-                agent_info_parts.append(f"工具: {tools_info}")
-
-            enhanced_content = " | ".join(
-                agent_info_parts) + "\n\n" + enhanced_content
-
-            enhanced_message = AIMessage(
-                content=enhanced_content,
-                response_metadata=last_ai_message.response_metadata,
-                tool_calls=getattr(last_ai_message, 'tool_calls', []),
-                usage_metadata=getattr(last_ai_message, 'usage_metadata', None)
-            )
-
-            return {"messages": enhanced_message}
+            # 直接返回新消息列表，让 agui_stream 逐个处理
+            # 这样可以实时发送：工具调用 -> 工具结果 -> 最终响应
+            return {"messages": new_messages}
 
         graph_builder.add_node(deep_wrapper_name, deep_wrapper_node)
         return deep_wrapper_name

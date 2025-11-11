@@ -171,10 +171,18 @@ class BasicGraph(ABC):
 
                 # 处理完整 AI 消息（非流式块）
                 elif isinstance(message, AIMessage) and not isinstance(message, AIMessageChunk):
-                    if message.content:
-                        # 为每个完整 AIMessage 创建独立的消息 ID
-                        complete_message_id = f"msg_{run_id}_{int(time.time() * 1000)}"
+                    # 为每个完整 AIMessage 创建独立的消息 ID
+                    complete_message_id = f"msg_{run_id}_{int(time.time() * 1000)}"
 
+                    # 处理工具调用（如果存在）
+                    if hasattr(message, 'tool_calls') and message.tool_calls:
+                        for event in self._handle_tool_calls_sync(
+                            message.tool_calls, encoder, complete_message_id, current_tool_calls
+                        ):
+                            yield event
+
+                    # 处理文本内容（如果存在）
+                    if message.content:
                         yield encoder.encode(TextMessageStartEvent(
                             type=EventType.TEXT_MESSAGE_START,
                             message_id=complete_message_id,
@@ -265,7 +273,51 @@ class BasicGraph(ABC):
         parent_message_id: str,
         current_tool_calls: Dict[str, Dict]
     ) -> AsyncGenerator[str, None]:
-        """处理工具调用事件"""
+        """处理工具调用事件（异步生成器版本，用于流式场景）"""
+        for tool_call in tool_calls:
+            tool_call_id = tool_call.get('id') or tool_call.get(
+                'tool_call_id', f"tool_{uuid.uuid4()}")
+            tool_name = tool_call.get('name', 'unknown')
+
+            # 如果是新的工具调用
+            if tool_call_id not in current_tool_calls:
+                current_tool_calls[tool_call_id] = {
+                    'name': tool_name, 'started': True}
+
+                # 发送 TOOL_CALL_START
+                yield encoder.encode(ToolCallStartEvent(
+                    type=EventType.TOOL_CALL_START,
+                    tool_call_id=tool_call_id,
+                    tool_call_name=tool_name,
+                    parent_message_id=parent_message_id,
+                    timestamp=int(time.time() * 1000)
+                ))
+
+                # 发送工具参数
+                if 'args' in tool_call:
+                    yield encoder.encode(ToolCallArgsEvent(
+                        type=EventType.TOOL_CALL_ARGS,
+                        tool_call_id=tool_call_id,
+                        delta=json.dumps(
+                            tool_call['args'], ensure_ascii=False),
+                        timestamp=int(time.time() * 1000)
+                    ))
+
+                # 发送 TOOL_CALL_END
+                yield encoder.encode(ToolCallEndEvent(
+                    type=EventType.TOOL_CALL_END,
+                    tool_call_id=tool_call_id,
+                    timestamp=int(time.time() * 1000)
+                ))
+
+    def _handle_tool_calls_sync(
+        self,
+        tool_calls: List[Dict],
+        encoder: EventEncoder,
+        parent_message_id: str,
+        current_tool_calls: Dict[str, Dict]
+    ):
+        """处理工具调用事件（同步生成器版本，用于完整消息）"""
         for tool_call in tool_calls:
             tool_call_id = tool_call.get('id') or tool_call.get(
                 'tool_call_id', f"tool_{uuid.uuid4()}")

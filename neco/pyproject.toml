@@ -10,21 +10,6 @@ requires-python = ">=3.12"
 version = "1.0.9"
 
 dependencies = [
-    "ag-ui-protocol==0.1.10",
-    "langchain==1.0.5",
-    "langgraph==1.0.3",
-    "langchain-openai==1.0.2",
-    "langchain-huggingface==1.0.1",
-    "graphiti-core==0.23.1",
-    "json-repair==0.53.0",
-    "duckduckgo-search==8.1.1",
-    "langchain-postgres==0.0.16",
-    "langgraph-checkpoint-postgres==3.0.1",
-    "langchain-mcp-adapters==0.1.12",
-    "langchain-community==0.4.1",
-    "langgraph-supervisor>=0.0.30",
-    "langchain-experimental==0.4.0",
-    "deepagent==0.2.5",
 ]
 
 [dependency-groups]
@@ -87,7 +72,21 @@ mlops = [
 ]
 
 llm = [
-    
+     "ag-ui-protocol==0.1.10",
+    "langchain==1.0.5",
+    "langgraph==1.0.3",
+    "langchain-openai==1.0.2",
+    "langchain-huggingface==1.0.1",
+    "graphiti-core==0.23.1",
+    "json-repair==0.53.0",
+    "duckduckgo-search==8.1.1",
+    "langchain-postgres==0.0.16",
+    "langgraph-checkpoint-postgres==3.0.1",
+    "langchain-mcp-adapters==0.1.12",
+    "langchain-community==0.4.1",
+    "langgraph-supervisor>=0.0.30",
+    "langchain-experimental==0.4.0",
+    "deepagents==0.2.5",
 ]
 
 devops = [

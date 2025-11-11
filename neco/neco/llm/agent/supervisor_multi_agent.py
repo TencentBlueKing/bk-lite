@@ -335,39 +335,73 @@ class SupervisorMultiAgentNode(ToolsNodes):
                 config=config
             )
 
-            # 提取 Agent 的响应
+            # 获取完整的响应消息列表
             result_messages = result.get("messages", [])
-            agent_response = None
+            if not result_messages:
+                logger.warning(f"⚠️  Agent [{agent_name}] 未返回任何消息")
+                return {
+                    "messages": [AIMessage(content=f"[Agent: {agent_name}]\n{agent_name} 未产生有效响应")],
+                    "active_agent": agent_name,
+                    "executed_agents": state.get("executed_agents", []) + [agent_name]
+                }
 
-            if isinstance(result_messages, list):
-                for msg in reversed(result_messages):
-                    if isinstance(msg, AIMessage):
-                        agent_response = msg
+            # 找出新增的消息（排除输入的上下文消息）
+            # 注意：result_messages 可能包含输入消息 + 新消息
+            new_messages = []
+
+            # 从结果中找出不在输入上下文中的消息
+            for msg in result_messages:
+                # 检查消息是否在输入上下文中（通过对象引用或内容）
+                is_input_msg = False
+                for ctx_msg in context_messages:
+                    if msg is ctx_msg:  # 同一个对象
+                        is_input_msg = True
                         break
-            elif isinstance(result_messages, AIMessage):
-                agent_response = result_messages
 
-            if not agent_response:
-                logger.warning(f"⚠️  Agent [{agent_name}] 未产生有效响应")
-                agent_response = AIMessage(content=f"{agent_name} 未产生有效响应")
-            else:
-                logger.info(f"✅ Agent [{agent_name}] 执行完成")
-                logger.debug(
-                    f"📤 响应内容: {agent_response.content[:200]}{'...' if len(agent_response.content) > 200 else ''}")
+                if not is_input_msg:
+                    new_messages.append(msg)
 
-            # 增强响应，标记来源
-            enhanced_content = f"[Agent: {agent_name}]\n{agent_response.content}"
-            enhanced_message = AIMessage(
-                content=enhanced_content,
-                response_metadata=agent_response.response_metadata if hasattr(
-                    agent_response, 'response_metadata') else {},
-                usage_metadata=getattr(agent_response, 'usage_metadata', None)
-            )
+            if not new_messages:
+                logger.warning(f"⚠️  Agent [{agent_name}] 未产生新的响应")
+                return {
+                    "messages": [AIMessage(content=f"[Agent: {agent_name}]\n{agent_name} 未产生新的响应")],
+                    "active_agent": agent_name,
+                    "executed_agents": state.get("executed_agents", []) + [agent_name]
+                }
+
+            logger.info(
+                f"✅ Agent [{agent_name}] 执行完成，产生 {len(new_messages)} 条新消息")
+
+            # 为最后一条 AIMessage 添加 Agent 来源标记
+            # 保持工具调用消息不变，这样可以实时看到工具执行过程
+            marked_messages = []
+            last_ai_msg_idx = None
+
+            # 找到最后一个 AIMessage 的索引
+            for i in range(len(new_messages) - 1, -1, -1):
+                if isinstance(new_messages[i], AIMessage):
+                    last_ai_msg_idx = i
+                    break
+
+            for i, msg in enumerate(new_messages):
+                if i == last_ai_msg_idx and isinstance(msg, AIMessage) and msg.content:
+                    # 只标记最后一个 AIMessage
+                    marked_content = f"[Agent: {agent_name}]\n{msg.content}"
+                    marked_messages.append(AIMessage(
+                        content=marked_content,
+                        response_metadata=getattr(
+                            msg, 'response_metadata', {}),
+                        tool_calls=getattr(msg, 'tool_calls', []),
+                        usage_metadata=getattr(msg, 'usage_metadata', None)
+                    ))
+                else:
+                    # 保留其他所有消息（工具调用、工具结果等）
+                    marked_messages.append(msg)
 
             logger.info("=" * 80)
 
             return {
-                "messages": [enhanced_message],
+                "messages": marked_messages,
                 "active_agent": agent_name,
                 "executed_agents": state.get("executed_agents", []) + [agent_name]
             }
