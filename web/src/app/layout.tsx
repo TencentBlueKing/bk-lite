@@ -41,10 +41,12 @@ const LayoutWithProviders = ({ children }: { children: React.ReactNode }) => {
   const authPaths = ['/auth/signin', '/auth/signout'];
   const excludedPaths = ['/no-permission', '/no-found', '/', ...authPaths];
  
-  const shouldRenderMenu = useMemo(
-    () => shouldRenderSecondLayerMenu(pathname, menus),
-    [pathname, menus]
-  );
+  const shouldRenderMenu = useMemo(() => {
+    if (pathname?.startsWith('/ops-console')) {
+      return false;
+    }
+    return shouldRenderSecondLayerMenu(pathname, menus);
+  }, [pathname, menus]);
 
   const isPathInMenu = useCallback((path: string, menus: MenuItem[]): boolean => {
     for (const menu of menus) {
