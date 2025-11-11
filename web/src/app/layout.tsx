@@ -40,7 +40,7 @@ const LayoutWithProviders = ({ children }: { children: React.ReactNode }) => {
   const isLoading = isAuthLoading || (isAuthenticated && (permissionsLoading || menusLoading));
   const authPaths = ['/auth/signin', '/auth/signout'];
   const excludedPaths = ['/no-permission', '/no-found', '/', ...authPaths];
-
+ 
   const shouldRenderMenu = useMemo(
     () => shouldRenderSecondLayerMenu(pathname, menus),
     [pathname, menus]
