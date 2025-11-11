@@ -129,7 +129,7 @@ const ViewPage: React.FC = () => {
 
   return (
     <div
-      className="flex w-full h-[calc(100vh-90px)] relative rounded-lg"
+      className="flex w-full h-full relative rounded-lg"
       style={{ minWidth: collapsed ? 0 : 280 }}
     >
       <div
