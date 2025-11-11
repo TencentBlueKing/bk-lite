@@ -244,7 +244,7 @@ const WithSideMenuLayout: React.FC<WithSideMenuLayoutProps> = ({
               </div>
             </>
           ) : (
-            <div className="flex-1 pt-4 rounded-md overflow-auto">
+            <div className="flex-1 rounded-md overflow-auto">
               {children}
             </div>
           )}
