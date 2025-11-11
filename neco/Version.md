@@ -7,3 +7,4 @@
 * 新增 Shell 工具
 * LangChain 工具链升级
 * 新增 DeepAgent
+* 新增 Supervisor Multi Agent
