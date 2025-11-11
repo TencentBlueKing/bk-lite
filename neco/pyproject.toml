@@ -10,6 +10,7 @@ requires-python = ">=3.12"
 version = "1.0.9"
 
 dependencies = [
+    
 ]
 
 [dependency-groups]
@@ -73,6 +74,7 @@ mlops = [
 
 llm = [
     "ag-ui-protocol>=0.1.10",
+    "langgraph-supervisor>=0.0.29",
     "langchain==0.3.27",
     "langchain-community==0.3.27",
     "langchain-experimental==0.3.4",

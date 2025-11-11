@@ -41,7 +41,8 @@ async def test_react_agent(prompt):
         ],
     )
     graph = ReActAgentGraph()
-    result = await graph.stream(request)
-    async for chunk in result:
-        content = await graph.filter_messages(chunk)
-        print(content, end='', flush=True)
+    result = graph.agui_stream(request)
+
+    # 打印所有 SSE 事件
+    async for sse_event in result:
+        print(sse_event, end='')
