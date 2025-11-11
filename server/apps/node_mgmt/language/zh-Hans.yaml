@@ -7,20 +7,20 @@ os:
   windows: Windows
 collector:
   jmx_activemq_linux:
-    description: 通过JMX收集ActiveMQ指标以监控消息队列性能和健康状况
-    name: JMX ActiveMQ（Linux）
+    description: ActiveMQ JMX（Linux）采集器基于Java管理扩展（JMX）采集ActiveMQ各类监控指标。
+    name: ActiveMQ JMX
   telegraf_linux:
-    name: None
-    description: None
+    name: Telegraf
+    description: Telegraf （Linux）是一款轻量高效的指标采集器，原生具备各类对象的监控采集能力。同时作为数据中转站将其他监控、CMDB采集器收集的数据存储到平台。
   jmx_weblogic_linux:
-    description: None
-    name: None
+    description: WebLogic JMX（Linux）采集器基于Java管理扩展（JMX）采集WebLogic服务器的各类监控指标。
+    name: WebLogic JMX
   exporter_elasticsearch_linux:
     name: None
     description: None
   natsexecutor_linux:
     description: None
-    name: None
+    name: Nats Executor
   exporter_apache_linux:
     description: None
     name: None
@@ -34,11 +34,11 @@ collector:
     name: None
     description: None
   exporter_oracle_linux:
-    name: None
-    description: None
+    name: Oracle Exporter
+    description: Oracle Exporter（Linux）采集器通过连接数据库采集Oracle各类监控指标。
   jmx_jetty_linux:
-    name: None
-    description: None
+    name: Jetty JMX
+    description: Jetty JMX（Linux）采集器基于Java管理扩展（JMX）采集Jetty各类监控指标。
   Vector_linux:
     description: None
     name: None
@@ -46,17 +46,17 @@ collector:
     name: None
     description: None
   exporter_kafka_linux:
-    description: None
-    name: None
+    description: Kafka Exporter（Linux）采集器通过连接Kafka采集各类监控指标。
+    name: Kafka Exporter
   telegraf_windows:
-    name: None
-    description: None
+    name: Telegraf
+    description: Telegraf （Windows）是一款轻量高效的指标采集器，原生具备各类对象的监控采集能力。同时作为数据中转站将其他监控、CMDB采集器收集的数据存储到平台。
   jmx_tomcat_linux:
     name: None
     description: None
   jmx_jvm_linux:
-    name: None
-    description: None
+    name: JVM JMX
+    description: JVM JMX（Linux）采集器基于Java管理扩展（JMX）采集Java虚拟机各类监控指标。
   Packetbeat_linux:
     description: None
     name: None
@@ -83,7 +83,7 @@ collector:
     name: None
   natsexecutor_windows:
     description: None
-    name: None
+    name: Nats Executor
   exporter_zookeeper_linux:
     name: None
     description: None

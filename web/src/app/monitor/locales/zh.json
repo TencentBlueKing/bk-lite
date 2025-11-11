@@ -304,7 +304,7 @@
       "mechanism": "运行机制",
       "privPassword": "加密密码",
       "libraryPath": "驱动程序的lib目录",
-      "note": "K8S的监控数据仅支持主动上报，暂不支持在此处接入。",
+      "note": "K8s的监控数据仅支持主动上报，暂不支持在此处接入。",
       "editMetric": "编辑指标",
       "installationMethod": "安装方法",
       "seviceName": "服务名称",

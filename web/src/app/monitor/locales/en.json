@@ -304,7 +304,7 @@
       "mechanism": "Operating Mechanism",
       "privPassword": "Privacy Password",
       "libraryPath": "Driver Library Path",
-      "note": "The monitoring data of K8S only supports active reporting, and is not supported to be accessed here for the time being.",
+      "note": "The monitoring data of K8s only supports active reporting, and is not supported to be accessed here for the time being.",
       "editMetric": "Edit Metric",
       "installationMethod": "Installation Method",
       "seviceName": "Service Name",
