@@ -24,16 +24,19 @@ class GenericViewSetFun(object):
     def get_has_permission(self, user, instance, current_team, is_list=False, is_check=False, include_children=False):
         """获取规则实例ID"""
         user_groups = [int(i["id"]) for i in user.group_list]
+        org_field = self.ORGANIZATION_FIELD
         if is_list:
             instance_id = list(instance.values_list("id", flat=True))
             for i in instance:
-                if hasattr(i, "team"):
+                if hasattr(i, org_field):
                     # 判断两个集合是否有交集
-                    if not set(i.team).intersection(set(user_groups)):
+                    org_value = getattr(i, org_field)
+                    if not set(org_value).intersection(set(user_groups)):
                         return False
         else:
-            if hasattr(instance, "team"):
-                if not set(instance.team).intersection(set(user_groups)):
+            if hasattr(instance, org_field):
+                org_value = getattr(instance, org_field)
+                if not set(org_value).intersection(set(user_groups)):
                     return False
             instance_id = [instance.id]
         try:
@@ -58,8 +61,9 @@ class GenericViewSetFun(object):
         current_team = request.COOKIES.get("current_team", "0")
         include_children = request.COOKIES.get("include_children", "0") == "1"
         fields = [i.name for i in queryset.model._meta.fields]
+        org_field = self.ORGANIZATION_FIELD
         if "created_by" in fields:
-            query = Q(team__contains=int(current_team), created_by=request.user.username, domain=request.user.domain)
+            query = Q(**{f"{org_field}__contains": int(current_team)}, created_by=request.user.username, domain=request.user.domain)
         else:
             query = Q()
         permission_key = permission_key or getattr(self, "permission_key", None)
@@ -71,7 +75,7 @@ class GenericViewSetFun(object):
             if instance_ids:
                 query |= Q(id__in=instance_ids)
             for i in team:
-                query |= Q(team__contains=int(i))
+                query |= Q(**{f"{org_field}__contains": int(i)})
             if not instance_ids and not team:
                 return queryset.filter(id=0)
         return queryset.filter(query)
@@ -145,6 +149,7 @@ class MaintainerViewSet(LanguageViewSet):
 class AuthViewSet(MaintainerViewSet):
     SUPERUSER_RULE_ID = ["0"]
     ORDERING_FIELD = "-id"
+    ORGANIZATION_FIELD = "team"  # 默认使用 team 字段,子类可覆盖为 groups 或其他字段名
 
     def filter_rules(self, rules):
         """根据规则过滤查询集"""
@@ -189,8 +194,9 @@ class AuthViewSet(MaintainerViewSet):
             if not current_team:
                 return query
             teams = [i.strip() for i in current_team.split(",") if i.strip()]
+            org_field = self.ORGANIZATION_FIELD
             for i in teams:
-                query |= Q(team__contains=int(i))
+                query |= Q(**{f"{org_field}__contains": int(i)})
             return query
 
         except Exception as e:
@@ -253,14 +259,17 @@ class AuthViewSet(MaintainerViewSet):
             partial = kwargs.pop("partial", False)
             data = request.data
             instance = self.get_object()
+            org_field = self.ORGANIZATION_FIELD
+            instance_org_value = getattr(instance, org_field, [])
+            
             if getattr(user, "is_superuser", False):
-                if "team" in data:
-                    delete_team = [i for i in instance.team if i not in data["team"]]
+                if org_field in data:
+                    delete_team = [i for i in instance_org_value if i not in data[org_field]]
                     self.delete_rules(instance.id, delete_team)
                 return super().update(request, *args, **kwargs)
 
             current_team = int(request.COOKIES.get("current_team", None))
-            if current_team not in instance.team:
+            if current_team not in instance_org_value:
                 message = self.loader.get("error.no_permission_update") if self.loader else "User does not have permission to update this instance"
                 return self.value_error(message)
             if hasattr(self, "permission_key"):
@@ -271,8 +280,8 @@ class AuthViewSet(MaintainerViewSet):
                         self.loader.get("error.no_permission_update") if self.loader else "User does not have permission to update this instance"
                     )
                     return self.value_error(message)
-            if "team" in data:
-                delete_team = [i for i in instance.team if i not in data["team"]]
+            if org_field in data:
+                delete_team = [i for i in instance_org_value if i not in data[org_field]]
                 self.delete_rules(instance.id, delete_team)
             serializer = self.get_serializer(instance, data=data, partial=partial)
             serializer.is_valid(raise_exception=True)
@@ -298,20 +307,21 @@ class AuthViewSet(MaintainerViewSet):
         except Exception as e:
             logger.error(e)
 
-    def _validate_name(self, name, group_list, team, exclude_id=None):
+    def _validate_name(self, name, group_list, org_value, exclude_id=None):
         """验证名称在团队中的唯一性"""
         try:
             if not name or not isinstance(name, str):
                 return ""
 
-            if not isinstance(group_list, list) or not isinstance(team, list):
+            if not isinstance(group_list, list) or not isinstance(org_value, list):
                 return ""
 
+            org_field = self.ORGANIZATION_FIELD
             queryset = self.queryset.filter(name=name)
             if exclude_id:
                 queryset = queryset.exclude(id=exclude_id)
 
-            team_list = list(queryset.values_list("team", flat=True))
+            team_list = list(queryset.values_list(org_field, flat=True))
             existing_teams = []
 
             for team_data in team_list:
@@ -323,7 +333,7 @@ class AuthViewSet(MaintainerViewSet):
                 if isinstance(group, dict) and "id" in group and "name" in group:
                     team_name_map[group["id"]] = group["name"]
 
-            for team_id in team:
+            for team_id in org_value:
                 if team_id in existing_teams:
                     conflict_team_name = team_name_map.get(team_id, f"Team-{team_id}")
                     return conflict_team_name

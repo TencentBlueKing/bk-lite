@@ -164,25 +164,26 @@ class BaseGroupFilter(FilterSet):
     def qs(self):
         """重写查询集,添加组织过滤"""
         queryset = super().qs
-        request = getattr(self, 'request', None)
-
-        not_check_permission, _ = GroupPermissionMixin.validate_all_groups_permission(request)
-        if not_check_permission:
-            return queryset
-
-        # if self.is_directory:
+        return queryset
+        # request = getattr(self, 'request', None)
+        #
+        # not_check_permission, _ = GroupPermissionMixin.validate_all_groups_permission(request)
+        # if not_check_permission:
         #     return queryset
-
-        # 验证权限
-        is_valid, current_team = GroupPermissionMixin.validate_group_permission(request)
-
-        if not is_valid:
-            return queryset.none()
-
-        current_team = request.COOKIES.get("current_team")
-        _permission_key = self.permission_key()
-
-        # 应用组织过滤
-        return GroupPermissionMixin.apply_group_filter(queryset=queryset, current_team=current_team,
-                                                       permission_key=_permission_key,
-                                                       user=request.user)
+        #
+        # # if self.is_directory:
+        # #     return queryset
+        #
+        # # 验证权限
+        # is_valid, current_team = GroupPermissionMixin.validate_group_permission(request)
+        #
+        # if not is_valid:
+        #     return queryset.none()
+        #
+        # current_team = request.COOKIES.get("current_team")
+        # _permission_key = self.permission_key()
+        #
+        # # 应用组织过滤
+        # return GroupPermissionMixin.apply_group_filter(queryset=queryset, current_team=current_team,
+        #                                                permission_key=_permission_key,
+        #                                                user=request.user)

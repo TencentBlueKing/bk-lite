@@ -49,7 +49,7 @@
     {
       "name": "normal",
       "role_name": "node_normal",
-      "menus": ["view-View", "data_source-View", "namespace-View"]
+      "menus": ["view-View","view-AddCatalogue","view-EditCatalogue","view-DeleteCatalogue","view-AddChart","view-EditChart","view-DeleteChart", "data_source-View", "namespace-View"]
     }
   ]
 }
