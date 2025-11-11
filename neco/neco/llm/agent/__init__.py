@@ -6,6 +6,14 @@ from neco.llm.agent.react_agent import (
     ReActAgentNode
 )
 
+from neco.llm.agent.deep_agent import (
+    DeepAgentGraph,
+    DeepAgentRequest,
+    DeepAgentResponse,
+    DeepAgentState,
+    DeepAgentNode
+)
+
 from neco.llm.agent.supervisor_multi_agent import (
     SupervisorMultiAgentGraph,
     SupervisorMultiAgentRequest,
@@ -22,6 +30,13 @@ __all__ = [
     "ReActAgentResponse",
     "ReActAgentState",
     "ReActAgentNode",
+
+    # DeepAgent
+    "DeepAgentGraph",
+    "DeepAgentRequest",
+    "DeepAgentResponse",
+    "DeepAgentState",
+    "DeepAgentNode",
 
     # Supervisor Multi-Agent
     "SupervisorMultiAgentGraph",

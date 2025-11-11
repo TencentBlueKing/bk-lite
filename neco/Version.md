@@ -5,3 +5,5 @@
 * 移除 Ansible 和 HTTP Request 工具模块
 * 新增 CLI 命令行工具： 导出当前支持的工具列表为 yaml 文件
 * 新增 Shell 工具
+* LangChain 工具链升级
+* 新增 DeepAgent
