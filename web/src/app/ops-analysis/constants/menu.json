@@ -7,10 +7,11 @@
       "name": "view"
     },
     {
-      "title": "系统设置",
-      "icon": "settings-fill",
+    "title": "管理",
+    "icon": "shujumoxingguanli",
       "url": "/ops-analysis/settings",
       "name": "settings",
+      "hasDetail": true,
       "children": [
         {
           "title": "数据源",
@@ -35,10 +36,11 @@
       "name": "view"
     },
     {
-      "title": "System Settings",
-      "icon": "settings-fill",
+      "title": "Management",
+      "icon": "shujumoxingguanli",
       "url": "/ops-analysis/settings",
       "name": "settings",
+      "hasDetail": true,
       "children": [
         {
           "title": "Data Source",
