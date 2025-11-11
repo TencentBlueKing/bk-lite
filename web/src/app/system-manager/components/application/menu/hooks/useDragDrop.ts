@@ -144,10 +144,17 @@ export const useDragDrop = (
           const updatedGroup = updatedGroupItem.data as MenuGroup;
 
           const newChildren = [...updatedGroup.children];
+          // 保留详情页模式相关属性
+          const pageToAdd = {
+            ...page,
+            isDetailMode: page.isDetailMode,
+            hiddenChildren: page.hiddenChildren
+          };
+          
           if (targetIndex !== undefined) {
-            newChildren.splice(targetIndex, 0, page);
+            newChildren.splice(targetIndex, 0, pageToAdd);
           } else {
-            newChildren.push(page);
+            newChildren.push(pageToAdd);
           }
 
           newItems[updatedGroupIndex] = {
@@ -161,7 +168,9 @@ export const useDragDrop = (
       else if (itemType === 'groupChild') {
         const { groupId: sourceGroupId, pageIndex: sourceIndex } = data;
         
-        if (sourceGroupId === targetGroupId && sourceIndex === targetIndex) return;
+        if (sourceGroupId === targetGroupId && sourceIndex === targetIndex) {
+          return;
+        }
 
         setMixedItems(prev => {
           const newItems = [...prev];
@@ -178,14 +187,24 @@ export const useDragDrop = (
           const [movedPage] = sourceGroup.children.splice(sourceIndex, 1);
 
           if (sourceGroupId === targetGroupId) {
-            const insertIndex = targetIndex !== undefined ? targetIndex : sourceGroup.children.length;
-            sourceGroup.children.splice(insertIndex, 0, movedPage);
-            newItems[sourceGroupIndex] = { ...sourceGroupItem, data: { ...sourceGroup } };
+            if (targetIndex === undefined) {
+              // 如果没有指定目标索引，放到末尾
+              sourceGroup.children.push(movedPage);
+            } else {
+              // 调整索引：如果目标位置在源位置之后，由于已经删除了源元素，索引需要减1
+              let adjustedIndex = targetIndex;
+              if (targetIndex > sourceIndex) {
+                adjustedIndex = targetIndex - 1;
+              }
+              sourceGroup.children.splice(adjustedIndex, 0, movedPage);
+            }
+            newItems[sourceGroupIndex] = { ...sourceGroupItem, data: { ...sourceGroup, children: [...sourceGroup.children] } };
           } else {
+            // 跨目录拖拽
             const insertIndex = targetIndex !== undefined ? targetIndex : targetGroup.children.length;
             targetGroup.children.splice(insertIndex, 0, movedPage);
-            newItems[sourceGroupIndex] = { ...sourceGroupItem, data: { ...sourceGroup } };
-            newItems[targetGroupIndex] = { ...targetGroupItem, data: { ...targetGroup } };
+            newItems[sourceGroupIndex] = { ...sourceGroupItem, data: { ...sourceGroup, children: [...sourceGroup.children] } };
+            newItems[targetGroupIndex] = { ...targetGroupItem, data: { ...targetGroup, children: [...targetGroup.children] } };
           }
 
           return newItems;

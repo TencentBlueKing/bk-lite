@@ -10,6 +10,8 @@ import React, {
 import Icon from '@/components/icon';
 import GroupTreeSelect from '@/components/group-tree-select';
 import EllipsisWithTooltip from '@/components/ellipsis-with-tooltip';
+import PermissionWrapper from '@/components/permission';
+import useBtnPermissions from '@/hooks/usePermissions';
 import type { DataNode } from 'antd/lib/tree';
 import { Form } from 'antd';
 import { useTranslation } from '@/utils/i18n';
@@ -30,7 +32,6 @@ import {
   PlusOutlined,
   MoreOutlined,
   BarChartOutlined,
-  SettingOutlined,
   FolderOutlined,
   ApartmentOutlined,
 } from '@ant-design/icons';
@@ -41,6 +42,7 @@ const Sidebar = forwardRef<SidebarRef, SidebarProps>(
     const { t } = useTranslation();
     const searchParams = useSearchParams();
     const { selectedGroup } = useUserInfoContext();
+    const { hasPermission } = useBtnPermissions();
     const [dirs, setDirs] = useState<DirItem[]>([]);
     const [loading, setLoading] = useState(false);
     const [submitLoading, setSubmitLoading] = useState(false);
@@ -228,6 +230,11 @@ const Sidebar = forwardRef<SidebarRef, SidebarProps>(
       const isGroup = item.type === 'directory';
       const canDelete = item.type !== 'directory' || !hasChildren(item);
 
+      // 根据 item.type 确定需要的权限
+      const isCatalogue = item.type === 'directory';
+      const editPermission = isCatalogue ? 'EditCatalogue' : 'EditChart';
+      const deletePermission = isCatalogue ? 'DeleteCatalogue' : 'DeleteChart';
+
       return (
         <Menu selectable={false}>
           {isGroup && (
@@ -235,6 +242,7 @@ const Sidebar = forwardRef<SidebarRef, SidebarProps>(
               <Menu.Item
                 key="addDashboard"
                 onClick={() => {
+                  if (!hasPermission(['AddChart'])) return;
                   setNewItemType('dashboard');
                   showModal(
                     'addChild',
@@ -245,11 +253,14 @@ const Sidebar = forwardRef<SidebarRef, SidebarProps>(
                   );
                 }}
               >
-                {t('opsAnalysisSidebar.addDash')}
+                <PermissionWrapper requiredPermissions={['AddChart']}>
+                  {t('opsAnalysisSidebar.addDash')}
+                </PermissionWrapper>
               </Menu.Item>
               <Menu.Item
                 key="addTopology"
                 onClick={() => {
+                  if (!hasPermission(['AddChart'])) return;
                   setNewItemType('topology');
                   showModal(
                     'addChild',
@@ -260,11 +271,14 @@ const Sidebar = forwardRef<SidebarRef, SidebarProps>(
                   );
                 }}
               >
-                {t('opsAnalysisSidebar.addTopo')}
+                <PermissionWrapper requiredPermissions={['AddChart']}>
+                  {t('opsAnalysisSidebar.addTopo')}
+                </PermissionWrapper>
               </Menu.Item>
               <Menu.Item
                 key="addArchitecture"
                 onClick={() => {
+                  if (!hasPermission(['AddChart'])) return;
                   setNewItemType('architecture');
                   showModal(
                     'addChild',
@@ -275,7 +289,9 @@ const Sidebar = forwardRef<SidebarRef, SidebarProps>(
                   );
                 }}
               >
-                {t('opsAnalysisSidebar.addArch')}
+                <PermissionWrapper requiredPermissions={['AddChart']}>
+                  {t('opsAnalysisSidebar.addArch')}
+                </PermissionWrapper>
               </Menu.Item>
             </>
           )}
@@ -283,6 +299,7 @@ const Sidebar = forwardRef<SidebarRef, SidebarProps>(
             <Menu.Item
               key="addGroup"
               onClick={() => {
+                if (!hasPermission(['AddCatalogue'])) return;
                 setNewItemType('directory');
                 showModal(
                   'addChild',
@@ -293,13 +310,16 @@ const Sidebar = forwardRef<SidebarRef, SidebarProps>(
                 );
               }}
             >
-              {t('opsAnalysisSidebar.addGroup')}
+              <PermissionWrapper requiredPermissions={['AddCatalogue']}>
+                {t('opsAnalysisSidebar.addGroup')}
+              </PermissionWrapper>
             </Menu.Item>
           )}
 
           <Menu.Item
             key="edit"
-            onClick={() =>
+            onClick={() => {
+              if (!hasPermission([editPermission])) return;
               showModal(
                 'edit',
                 item.type === 'directory'
@@ -312,18 +332,25 @@ const Sidebar = forwardRef<SidebarRef, SidebarProps>(
                 item.name,
                 item,
                 item.type
-              )
-            }
+              );
+            }}
           >
-            {t('common.edit')}
+            <PermissionWrapper requiredPermissions={[editPermission]}>
+              {t('common.edit')}
+            </PermissionWrapper>
           </Menu.Item>
 
           <Menu.Item
             key="delete"
             disabled={!canDelete}
-            onClick={() => handleDelete(item)}
+            onClick={() => {
+              if (!hasPermission([deletePermission])) return;
+              handleDelete(item);
+            }}
           >
-            {t('common.delete')}
+            <PermissionWrapper requiredPermissions={[deletePermission]}>
+              {t('common.delete')}
+            </PermissionWrapper>
           </Menu.Item>
         </Menu>
       );
@@ -492,12 +519,16 @@ const Sidebar = forwardRef<SidebarRef, SidebarProps>(
             className="flex-1"
             onSearch={handleSearch}
           />
-          <Button
-            type="primary"
-            icon={<PlusOutlined />}
-            className="ml-2"
-            onClick={() => showModal('addRoot', t('opsAnalysisSidebar.addDir'))}
-          />
+          <PermissionWrapper requiredPermissions={['AddCatalogue']}>
+            <Button
+              type="primary"
+              icon={<PlusOutlined />}
+              className="ml-2"
+              onClick={() =>
+                showModal('addRoot', t('opsAnalysisSidebar.addDir'))
+              }
+            />
+          </PermissionWrapper>
         </div>
 
         <div className="overflow-auto flex-1">
@@ -527,20 +558,6 @@ const Sidebar = forwardRef<SidebarRef, SidebarProps>(
               <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} />
             )}
           </Spin>
-        </div>
-        <div className="flex justify-center height-[32px]">
-          <Button
-            block
-            icon={<SettingOutlined />}
-            onClick={() => {
-              // 清空tree选中状态
-              setSelectedKeys([]);
-              // 调用父组件的onSelect
-              onSelect && onSelect('settings');
-            }}
-          >
-            设置
-          </Button>
         </div>
 
         <Modal

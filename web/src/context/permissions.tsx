@@ -120,6 +120,7 @@ export const PermissionsProvider = ({ children }: { children: ReactNode }) => {
           return {
             ...menu,
             operation: ['View'],
+            isDirectory: true,
             icon: firstChildWithUrl?.icon || menu.icon,
             url: firstChildWithUrl?.url || menu.url,
             children: filteredChildren
