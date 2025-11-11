@@ -91,6 +91,12 @@
           "icon": "denglurizhi",
           "name": "user_logs",
           "url": "/system-manager/security/logs"
+        },
+        {
+          "title": "操作日志",
+          "icon": "talk-line",
+          "name": "operation_logs",
+          "url": "/system-manager/security/operation-logs"
         }
       ]
     }
@@ -187,6 +193,12 @@
           "icon": "denglurizhi",
           "name": "user_logs",
           "url": "/system-manager/security/logs"
+        },
+        {
+          "title": "Operation Logs",
+          "icon": "talk-line",
+          "name": "operation_logs",
+          "url": "/system-manager/security/operation-logs"
         }
       ]
     }
