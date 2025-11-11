@@ -289,7 +289,20 @@
       "exportProgress": "导出进度",
       "exportSuccess": "导出成功",
       "exportFailed": "导出失败",
-      "pleaseSelectRows": "请至少选择一条记录"
+      "pleaseSelectRows": "请至少选择一条记录",
+      "operationLogs": "操作日志",
+      "operationTime": "时间",
+      "operator": "用户",
+      "operationType": "工作类型",
+      "operationModule": "应用",
+      "operationDetail": "摘要",
+      "operatorPlaceholder": "请输入操作人",
+      "operationTypePlaceholder": "请选择操作类型",
+      "operationModulePlaceholder": "请选择操作模块",
+      "actionTypeCreate": "创建",
+      "actionTypeUpdate": "更新",
+      "actionTypeDelete": "删除",
+      "actionTypeExecute": "执行"
     },
     "menu": {
       "title": "自定义菜单",

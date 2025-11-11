@@ -92,6 +92,23 @@ export const useSecurityApi = () => {
     return await get('/system_mgmt/user_login_log/', { params });
   }
 
+  /**
+   * Get operation logs
+   * @param params - Query parameters for filtering logs
+   * @returns Promise with operation logs data
+   */
+  async function getOperationLogs(params?: {
+    username?: string;
+    app?: string;
+    action_type?: string;
+    start_time?: string;
+    end_time?: string;
+    page?: number;
+    page_size?: number;
+  }): Promise<any> {
+    return await get('/system_mgmt/operation_log/', { params });
+  }
+
   return {
     getSystemSettings,
     updateOtpSettings,
@@ -99,6 +116,7 @@ export const useSecurityApi = () => {
     updateAuthSource,
     createAuthSource,
     syncAuthSource,
-    getUserLoginLogs
+    getUserLoginLogs,
+    getOperationLogs
   };
 };
