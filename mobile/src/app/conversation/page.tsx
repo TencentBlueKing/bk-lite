@@ -1,69 +1,15 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
-import { Flex, type GetProp } from 'antd';
-import { Avatar, Toast } from 'antd-mobile';
-import { LeftOutline, MoreOutline } from 'antd-mobile-icons';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
+import { Flex } from 'antd';
+import { Toast } from 'antd-mobile';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { Bubble, Sender, useXAgent, useXChat, Actions } from '@ant-design/x';
-import { UserOutlined, CopyOutlined, RedoOutlined } from '@ant-design/icons';
-import { mockChatData } from '@/constants/mockData';
-import { mockAIResponses, mockTextResponses } from '@/constants/mockResponses';
+import { mockChatData, mockChatHistory } from '@/constants/mockData';
 import { ChatInfo } from '@/types/conversation';
-
-const sleep = (ms: number = 1000) =>
-  new Promise((resolve) => setTimeout(resolve, ms));
-
-const actionItems = [
-  {
-    key: 'copy',
-    icon: <CopyOutlined />,
-    label: '复制',
-  },
-  {
-    key: 'regenerate',
-    icon: <RedoOutlined />,
-    label: '重新生成',
-  },
-];
-
-const getRoles = (chatInfo: ChatInfo | null, router: any): GetProp<typeof Bubble.List, 'roles'> => ({
-  ai: {
-    placement: 'start',
-    avatar: {
-      icon: <UserOutlined />,
-      style: {
-        background: '#fde3cf',
-        color: '#f56a00',
-        cursor: 'pointer',
-      },
-      onClick: () => {
-        if (chatInfo?.id) {
-          router.push(`/workbench/detail?id=${chatInfo.id}`);
-        }
-      },
-    },
-    typing: { step: 5, interval: 20 },
-    style: {
-      maxWidth: '90%',
-    },
-  },
-  local: {
-    placement: 'end',
-    avatar: {
-      style: {
-        background: '#1677ff',
-        color: '#ffffff',
-      },
-      children: '我',
-    },
-    style: {
-      maxWidth: '90%',
-      color: '#ffffff',
-      marginLeft: 'auto',
-    },
-  },
-});
+import MarkdownIt from 'markdown-it';
+import { ConversationHeader, MessageList, VoiceInput, MessageContent } from './components';
+import { useMessages } from './hooks';
+import { sleep, getRandomRecommendations, LAST_VISIT_KEY, conversationStyles } from './utils';
 
 export default function ConversationDetail() {
   const router = useRouter();
@@ -73,82 +19,281 @@ export default function ConversationDetail() {
   const [chatInfo, setChatInfo] = useState<ChatInfo | null>(null);
   const [loading, setLoading] = useState(true);
   const [content, setContent] = useState('');
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
+  const [recommendations, setRecommendations] = useState<string[]>(getRandomRecommendations());
+  const welcomeMessageAddedRef = useRef(false);
+  const welcomeCheckedRef = useRef(false);
+  const [isVoiceMode, setIsVoiceMode] = useState(false);
 
-  // 模拟智能AI回复逻辑
-  const getAIReply = (userMessage: string): string | React.ReactNode => {
-    const message = userMessage.toLowerCase();
+  // 使用消息管理 hook
+  const {
+    messages,
+    setMessages,
+    handleSendMessage: sendMessage,
+    triggerAIResponse,
+    setRenderMarkdown,
+    thinkingExpanded,
+    setThinkingExpanded,
+    thinkingTypingText,
+    messageMarkdownRef,
+    scrollToBottom,
+    isAIRunning,
+  } = useMessages(scrollContainerRef);
 
-    if (message.includes('表格') || message.includes('table')) {
-      return mockAIResponses.table();
-    } else if (message.includes('代码') || message.includes('code')) {
-      return mockAIResponses.code();
-    } else if (message.includes('卡片') || message.includes('card')) {
-      return mockAIResponses.card();
-    } else if (message.includes('列表') || message.includes('list')) {
-      return mockAIResponses.list();
-    } else if (message.includes('产品') || message.includes('功能')) {
-      return mockTextResponses.product;
-    } else if (message.includes('技术') || message.includes('支持')) {
-      return mockTextResponses.support;
-    } else if (message.includes('谢谢') || message.includes('感谢')) {
-      return mockTextResponses.thanks;
-    } else if (message.includes('帮助') || message.includes('help')) {
-      return mockTextResponses.help;
-    } else {
-      return mockTextResponses.default[
-        Math.floor(Math.random() * mockTextResponses.default.length)
-      ];
+  // 初始化 markdown-it
+  const md = useMemo(() => {
+    return new MarkdownIt({
+      html: true,
+      linkify: true,
+      typographer: true,
+      breaks: true,
+    });
+  }, []);
+
+  // Markdown 渲染函数
+  const renderMarkdown = (text: string) => {
+    const html = md.render(text);
+    return <div dangerouslySetInnerHTML={{ __html: html }} className="markdown-body" />;
+  };
+
+  // 包装发送消息函数
+  const handleSendMessage = (message: string | MessageContent) => {
+    // 如果是字符串，直接发送文本
+    if (typeof message === 'string') {
+      sendMessage(message, renderMarkdown);
+      return;
+    }
+
+    // 如果是文件消息
+    if (message.type === 'files') {
+      const { files, fileType, text } = message;
+
+      // 创建文件预览组件
+      let filePreview: React.ReactNode;
+      let textDescription = '';
+
+      if (fileType === 'image') {
+        // 图片类型：直接创建图片预览组件
+        filePreview = (
+          <div className="flex flex-col gap-2">
+            {files.map((file, index) => {
+              const url = URL.createObjectURL(file);
+              return (
+                <div key={index} className="max-w-xs">
+                  <img
+                    src={url}
+                    alt={file.name}
+                    className="w-full h-auto rounded-lg"
+                    style={{ maxHeight: '300px', objectFit: 'contain' }}
+                  />
+                </div>
+              );
+            })}
+          </div>
+        );
+        textDescription = text ? `${text} [附带 ${files.length} 张图片]` : `[发送了 ${files.length} 张图片]`;
+
+      } else {
+        // 文件类型：创建文件列表组件
+        filePreview = (
+          <div className="flex flex-col gap-1">
+            {files.map((file, index) => {
+              const size = (file.size / 1024).toFixed(2);
+              return (
+                <div key={index} className="flex items-center gap-2 text-sm">
+                  <span>📎</span>
+                  <span className="text-[var(--color-text-1)]">{file.name}</span>
+                  <span className="text-[var(--color-text-3)] text-xs">({size} KB)</span>
+                </div>
+              );
+            })}
+          </div>
+        );
+        const fileNames = files.map(f => f.name).join(', ');
+        textDescription = text ? `${text} [附带 ${files.length} 个文件: ${fileNames}]` : `[发送了 ${files.length} 个文件: ${fileNames}]`;
+      }
+
+      // 组合消息：如果有文字，先显示文字，再显示文件
+      const userMessage = text ? (
+        <div className="flex flex-col gap-2">
+          <div className="text-[var(--color-text-1)]">{text}</div>
+          {filePreview}
+        </div>
+      ) : filePreview;
+
+      // 添加用户文件消息
+      const timestamp = Date.now();
+      const userMsgId = `user-file-${timestamp}`;
+
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: userMsgId,
+          message: userMessage,
+          status: 'local' as const,
+          timestamp: timestamp,
+        }
+      ]);
+
+      // 使用 triggerAIResponse 只触发 AI 响应，不再添加用户消息
+      // 将文件描述作为用户输入传递给 AI
+      triggerAIResponse(textDescription, renderMarkdown);
     }
   };
 
-  const [agent] = useXAgent<
-    string | React.ReactNode,
-    { message: string },
-    string | React.ReactNode
-  >({
-    request: async ({ message }, { onSuccess, onError }) => {
-      await sleep(1500);
-      try {
-        const aiReply = getAIReply(message);
-        onSuccess([aiReply as any]);
-      } catch {
-        onError(new Error('AI 回复失败，请稍后重试'));
-      }
-    },
-  });
+  // 重新生成推荐内容
+  const handleRegenerateRecommendations = () => {
+    const newRecommendations = getRandomRecommendations();
+    setRecommendations(newRecommendations);
 
-  const { onRequest, messages } = useXChat({
-    agent,
-    requestPlaceholder: '正在思考中...',
-    requestFallback: 'AI 暂时无法回复，请稍后重试。',
-  });
+    setMessages((prev) =>
+      prev.map((msg) => {
+        if (msg.id === 'welcome-message' && msg.isWelcome) {
+          return {
+            ...msg,
+            message: {
+              ...(msg.message as any),
+              suggestions: newRecommendations,
+            },
+          };
+        }
+        return msg;
+      })
+    );
+  };
+
+  // 点击推荐内容
+  const handleRecommendationClick = (text: string) => {
+    handleSendMessage(text);
+  };
+
+  // 语音相关处理函数
+  const toggleVoiceMode = () => {
+    setIsVoiceMode(!isVoiceMode);
+    setContent('');
+  };
 
   const handleActionClick = (
     key: string,
-    message: string | React.ReactNode
+    message: string | React.ReactNode,
+    messageId?: string
   ) => {
     switch (key) {
       case 'copy':
-        const textContent =
-          typeof message === 'string'
-            ? message
-            : '内容包含富文本，无法直接复制';
+        let textContent = '';
+        if (messageId && messageMarkdownRef.current.has(messageId)) {
+          textContent = messageMarkdownRef.current.get(messageId) || '';
+        } else if (typeof message === 'string') {
+          textContent = message;
+        } else {
+          textContent = '内容包含富文本，无法直接复制';
+        }
+
         navigator.clipboard.writeText(textContent);
         Toast.show({ content: '已复制到剪贴板', icon: 'success' });
         break;
       case 'regenerate':
-        Toast.show({ content: '正在重新生成...', icon: 'loading' });
+        if (messageId === 'welcome-recommendations') {
+          handleRegenerateRecommendations();
+        } else {
+          Toast.show({ content: '正在重新生成...', icon: 'loading' });
+        }
         break;
     }
   };
 
+  // 检查是否需要显示欢迎消息
+  useEffect(() => {
+    if (loading) return;
+    if (welcomeCheckedRef.current) return;
+    welcomeCheckedRef.current = true;
+
+    const checkAndAddWelcomeMessage = () => {
+      const lastVisitTime = localStorage.getItem(LAST_VISIT_KEY);
+      const currentTime = Date.now();
+      let shouldShow = false;
+
+      if (!lastVisitTime) {
+        shouldShow = true;
+        localStorage.setItem(LAST_VISIT_KEY, currentTime.toString());
+      } else {
+        const timeDiff = currentTime - parseInt(lastVisitTime);
+        const hours24 = 24 * 60 * 60 * 1000;
+
+        if (timeDiff >= hours24) {
+          shouldShow = true;
+          localStorage.setItem(LAST_VISIT_KEY, currentTime.toString());
+        }
+      }
+
+      if (shouldShow && !welcomeMessageAddedRef.current) {
+        welcomeMessageAddedRef.current = true;
+
+        setTimeout(() => {
+          const welcomeTimestamp = Date.now();
+
+          const welcomeMessage = {
+            id: 'welcome-message',
+            message: {
+              text: '您好，请问有什么可以帮助您的吗？可以点击或下面的问题进行快速提问。',
+              suggestions: recommendations,
+            },
+            status: 'ai' as const,
+            timestamp: welcomeTimestamp,
+            isWelcome: true,
+          };
+
+          setMessages((prev) => {
+            if (prev.length > 0) {
+              return [...prev, welcomeMessage];
+            } else {
+              return [welcomeMessage];
+            }
+          });
+        }, 100);
+      }
+    };
+
+    checkAndAddWelcomeMessage();
+  }, [loading, setMessages, recommendations]);
+
+  // 加载历史聊天记录
+  useEffect(() => {
+    if (chatId === '1' && messages.length === 0 && !welcomeMessageAddedRef.current) {
+      const history =
+        mockChatHistory.find((item) => item.id === 1)?.chatHistory.map((msg: any) => {
+          // AG-UI 协议：历史消息不需要打字效果，直接显示
+
+          if (typeof msg.content === 'string') {
+            messageMarkdownRef.current.set(msg.id, msg.content);
+          }
+
+          return {
+            id: msg.id,
+            message:
+              typeof msg.content === 'string' ? renderMarkdown(msg.content) : msg.content,
+            status: msg.role,
+            timestamp: msg.timestamp,
+            thinking: msg.thinking,
+          };
+        }) || [];
+
+      if (history.length > 0) {
+        setMessages(history);
+        setTimeout(() => {
+          scrollToBottom();
+        }, 100);
+      }
+    }
+  }, [chatId, messages.length, setMessages]);
+
+  // 加载聊天信息
   useEffect(() => {
     if (!chatId) {
       router.replace('/chats');
       return;
     }
 
-    // 模拟获取聊天信息
     const fetchChatData = async () => {
       setLoading(true);
       try {
@@ -167,6 +312,9 @@ export default function ConversationDetail() {
         Toast.show('加载聊天数据失败');
       } finally {
         setLoading(false);
+        setTimeout(() => {
+          scrollToBottom();
+        }, 150);
       }
     };
 
@@ -183,36 +331,12 @@ export default function ConversationDetail() {
 
   return (
     <div className="flex flex-col h-full bg-[var(--color-bg)]">
-      {/* 顶部导航栏 */}
-      <div className="flex items-center justify-center px-2 py-3 bg-[var(--color-bg)] border-b border-[var(--color-border)]">
-        <button
-          onClick={() => router.push('/conversations')}
-          className="flex items-center justify-center w-6 h-8 absolute left-4"
-        >
-          <LeftOutline fontSize={24} className="text-[var(--color-text-1)]" />
-        </button>
-        <div className="flex items-center" onClick={() => router.push(`/workbench/detail?id=${chatInfo.id}`)}>
-          <Avatar
-            src={chatInfo.avatar}
-            style={{ '--size': '36px' }}
-            className="mr-2 flex-shrink-0"
-          />
-          <div className="text-base font-medium text-[var(--color-text-1)]">
-            {chatInfo.name}
-          </div>
-        </div>
-        <button
-          onClick={() => router.push(`/workbench/detail?id=${chatInfo.id}`)}
-          className="absolute right-4"
-        >
-          <MoreOutline className="text-[var(--color-text-1)] text-3xl" />
-        </button>
-      </div>
+      <ConversationHeader chatInfo={chatInfo} />
 
-      {/* 聊天内容区域 */}
       <div className="flex-1 bg-[var(--color-background-body)] overflow-hidden">
         <Flex vertical style={{ height: '100%', padding: '16px 0 16px 8px' }}>
           <div
+            ref={scrollContainerRef}
             style={{
               flex: 1,
               overflow: 'auto',
@@ -221,71 +345,30 @@ export default function ConversationDetail() {
             }}
             className="custom-scrollbar"
           >
-            <Bubble.List
-              roles={getRoles(chatInfo, router)}
-              style={{
-                width: '100%',
-              }}
-              className="w-full"
-              items={messages.map(({ id, message, status }) => {
-                const isAIMessage = status !== 'local' && status !== 'loading';
-                return {
-                  key: id,
-                  loading: status === 'loading',
-                  role: status === 'local' ? 'local' : 'ai',
-                  content: message,
-                  ...(isAIMessage && {
-                    footer: (
-                      <Actions
-                        items={actionItems}
-                        onClick={({ keyPath }) =>
-                          handleActionClick(keyPath[0], message)
-                        }
-                      />
-                    ),
-                  }),
-                };
-              })}
+            <style dangerouslySetInnerHTML={{ __html: conversationStyles }} />
+
+            <MessageList
+              messages={messages}
+              chatInfo={chatInfo}
+              router={router}
+              thinkingExpanded={thinkingExpanded}
+              setThinkingExpanded={setThinkingExpanded}
+              thinkingTypingText={thinkingTypingText}
+              renderMarkdown={renderMarkdown}
+              onActionClick={handleActionClick}
+              onRecommendationClick={handleRecommendationClick}
+              onRegenerateRecommendations={handleRegenerateRecommendations}
             />
           </div>
 
-          {/* 发送器 */}
-          <div
-            className="mt-4 mr-2 bg-[var(--color-bg)] rounded-2xl sender-container"
-            style={{ boxShadow: '0 2px 8px rgba(0, 0, 0, 0.08)' }}
-          >
-            <style
-              dangerouslySetInnerHTML={{
-                __html: `
-                  .sender-container .ant-sender-input{
-                    font-size: 16px !important;
-                  }
-                  .ant-bubble-footer {
-                    margin-top: 0 !important;
-                  }
-                  .ant-bubble-content {
-                    font-size: 16px !important;
-                  }
-                `,
-              }}
-            />
-            <Sender
-              loading={agent.isRequesting()}
-              value={content}
-              onChange={setContent}
-              onSubmit={(nextContent) => {
-                onRequest(nextContent);
-                setContent('');
-              }}
-              placeholder="输入消息..."
-              style={{
-                border: 'none',
-                borderRadius: '20px',
-                backgroundColor: 'transparent',
-                width: '100%',
-              }}
-            />
-          </div>
+          <VoiceInput
+            content={content}
+            setContent={setContent}
+            isVoiceMode={isVoiceMode}
+            onSend={handleSendMessage}
+            onToggleVoiceMode={() => toggleVoiceMode()}
+            isAIRunning={isAIRunning}
+          />
         </Flex>
       </div>
     </div>

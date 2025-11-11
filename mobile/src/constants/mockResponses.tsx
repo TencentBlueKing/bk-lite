@@ -1,322 +1,229 @@
-import React from 'react';
-
-// AI 回复的富文本模板
+// 思考过程模板
+export const thinkingTemplates = {
+  table: `正在分析您的需求...\n\n1. **识别关键词**："表格"相关请求\n2. **检索数据源**：查询服务器状态数据\n3. **格式化输出**：生成 Markdown 表格格式\n4. **添加分析**：补充状态说明和建议`,
+  code: `正在准备代码示例...\n\n1. **确定语言**：Python 示例\n2. **选择场景**：Hello World 和函数示例\n3. **添加注释**：增加代码说明\n4. **语法高亮**：使用代码块格式`,
+  card: `正在生成卡片内容...\n\n1. **设计布局**：系统监控报告样式\n2. **收集数据**：CPU、内存等指标\n3. **美化展示**：添加图标和分隔线\n4. **提供操作**：添加详情链接`,
+  list: `正在生成卡片内容...\n\n1. **设计布局**：系统监控报告样式\n2. **收集数据**：CPU、内存等指标\n3. **美化展示**：添加图标和分隔线\n4. **提供操作**：添加详情链接`,
+  default: `正在理解您的问题...\n\n1. **语义分析**：解析问题意图\n2. **检索知识库**：查找相关信息\n3. **组织答案**：结构化回复内容\n4. **优化表达**：使用清晰的语言`
+};
+// AI 回复的 Markdown 模板
 export const mockAIResponses = {
   // 表格响应
-  table: () => (
-    <div>
-      <p style={{ marginBottom: '8px' }}>这是一个服务器状态对比表格：</p>
-      <table
-        style={{
-          width: '100%',
-          borderCollapse: 'collapse',
-          fontSize: '11px',
-          backgroundColor: '#fff',
-          borderRadius: '4px',
-          overflow: 'hidden',
-        }}
-      >
-        <thead>
-          <tr style={{ backgroundColor: '#f5f5f5' }}>
-            <th
-              style={{
-                padding: '6px 4px',
-                border: '1px solid #e0e0e0',
-                textAlign: 'left',
-              }}
-            >
-              服务器
-            </th>
-            <th
-              style={{
-                padding: '6px 4px',
-                border: '1px solid #e0e0e0',
-                textAlign: 'center',
-              }}
-            >
-              状态
-            </th>
-            <th
-              style={{
-                padding: '6px 4px',
-                border: '1px solid #e0e0e0',
-                textAlign: 'center',
-              }}
-            >
-              CPU
-            </th>
-            <th
-              style={{
-                padding: '6px 4px',
-                border: '1px solid #e0e0e0',
-                textAlign: 'center',
-              }}
-            >
-              内存
-            </th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr>
-            <td style={{ padding: '6px 4px', border: '1px solid #e0e0e0' }}>
-              Server-01
-            </td>
-            <td
-              style={{
-                padding: '6px 4px',
-                border: '1px solid #e0e0e0',
-                textAlign: 'center',
-              }}
-            >
-              <span style={{ color: '#52c41a' }}>● 正常</span>
-            </td>
-            <td
-              style={{
-                padding: '6px 4px',
-                border: '1px solid #e0e0e0',
-                textAlign: 'center',
-              }}
-            >
-              45%
-            </td>
-            <td
-              style={{
-                padding: '6px 4px',
-                border: '1px solid #e0e0e0',
-                textAlign: 'center',
-              }}
-            >
-              62%
-            </td>
-          </tr>
-          <tr>
-            <td style={{ padding: '6px 4px', border: '1px solid #e0e0e0' }}>
-              Server-02
-            </td>
-            <td
-              style={{
-                padding: '6px 4px',
-                border: '1px solid #e0e0e0',
-                textAlign: 'center',
-              }}
-            >
-              <span style={{ color: '#ff4d4f' }}>● 异常</span>
-            </td>
-            <td
-              style={{
-                padding: '6px 4px',
-                border: '1px solid #e0e0e0',
-                textAlign: 'center',
-              }}
-            >
-              89%
-            </td>
-            <td
-              style={{
-                padding: '6px 4px',
-                border: '1px solid #e0e0e0',
-                textAlign: 'center',
-              }}
-            >
-              95%
-            </td>
-          </tr>
-          <tr>
-            <td style={{ padding: '6px 4px', border: '1px solid #e0e0e0' }}>
-              Server-03
-            </td>
-            <td
-              style={{
-                padding: '6px 4px',
-                border: '1px solid #e0e0e0',
-                textAlign: 'center',
-              }}
-            >
-              <span style={{ color: '#52c41a' }}>● 正常</span>
-            </td>
-            <td
-              style={{
-                padding: '6px 4px',
-                border: '1px solid #e0e0e0',
-                textAlign: 'center',
-              }}
-            >
-              32%
-            </td>
-            <td
-              style={{
-                padding: '6px 4px',
-                border: '1px solid #e0e0e0',
-                textAlign: 'center',
-              }}
-            >
-              58%
-            </td>
-          </tr>
-        </tbody>
-      </table>
-    </div>
-  ),
+  table: () => `## 服务器状态对比表格
+
+这是一个服务器状态对比表格：
+
+| 服务器 | 状态 | CPU | 内存 |
+|--------|------|-----|------|
+| Server-01 | ✅ 正常 | 45% | 62% |
+| Server-02 | ❌ 异常 | 89% | 95% |
+| Server-03 | ✅ 正常 | 32% | 58% |
+
+### 分析说明
+
+- **Server-01**: 运行正常，资源使用率在合理范围内
+- **Server-02**: ⚠️ **需要关注**，CPU 和内存使用率过高，建议立即检查
+- **Server-03**: 运行正常，负载较低
+
+> 💡 提示：Server-02 的高负载可能影响系统稳定性，建议尽快处理。`,
 
   // 代码响应
-  code: () => (
-    <div>
-      <p style={{ marginBottom: '8px' }}>这是一个 Python 示例代码：</p>
-      <pre
-        style={{
-          backgroundColor: '#1e1e1e',
-          color: '#d4d4d4',
-          padding: '12px',
-          borderRadius: '6px',
-          overflow: 'auto',
-          fontSize: '12px',
-          fontFamily: 'Monaco, Consolas, monospace',
-        }}
-      >
-        {`def hello_world():
+  code: () => `## Python 示例代码
+
+这是一个 Python 示例代码：
+
+\`\`\`python
+def hello_world():
     """打印 Hello World"""
     print("Hello, World!")
     return True
 
+def calculate_sum(a, b):
+    """计算两个数的和"""
+    return a + b
+
 # 调用函数
 if __name__ == "__main__":
-    hello_world()`}
-      </pre>
-    </div>
-  ),
+    hello_world()
+    result = calculate_sum(10, 20)
+    print(f"计算结果: {result}")
+\`\`\`
+
+### 代码说明
+
+1. \`hello_world()\` - 基础的 Hello World 函数
+2. \`calculate_sum(a, b)\` - 计算两个数字的和
+3. 主程序入口使用 \`if __name__ == "__main__":\` 来执行代码
+
+**运行结果：**
+\`\`\`
+Hello, World!
+计算结果: 30
+\`\`\``,
 
   // 卡片响应
-  card: () => (
-    <div>
-      <div
-        style={{
-          backgroundColor: '#fff',
-          border: '1px solid #e0e0e0',
-          borderRadius: '8px',
-          padding: '12px',
-          marginBottom: '8px',
-        }}
-      >
-        <div
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            marginBottom: '8px',
-          }}
-        >
-          <div
-            style={{
-              width: '40px',
-              height: '40px',
-              borderRadius: '50%',
-              backgroundColor: '#1677ff',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              color: '#fff',
-              fontSize: '20px',
-              marginRight: '10px',
-            }}
-          >
-            📊
-          </div>
-          <div>
-            <div style={{ fontWeight: 'bold', fontSize: '14px' }}>
-              系统监控报告
-            </div>
-            <div style={{ fontSize: '12px', color: '#999' }}>
-              2025-01-16 10:30
-            </div>
-          </div>
-        </div>
-        <div style={{ fontSize: '13px', color: '#666', lineHeight: '1.6' }}>
-          系统运行正常，CPU 使用率 45%，内存使用率 62%。
-        </div>
-        <div
-          style={{
-            marginTop: '10px',
-            paddingTop: '10px',
-            borderTop: '1px solid #f0f0f0',
-            display: 'flex',
-            justifyContent: 'space-between',
-            fontSize: '12px',
-          }}
-        >
-          <span style={{ color: '#52c41a' }}>✓ 所有服务正常</span>
-          <span style={{ color: '#1677ff' }}>查看详情 →</span>
-        </div>
-      </div>
-    </div>
-  ),
+  card: () => `## 📊 系统监控报告
+
+### 基本信息
+- **报告时间**: 2025-01-16 10:30
+- **监控系统**: Production Environment
+- **报告类型**: 实时状态
+
+---
+
+### 📈 运行状态
+
+✅ **系统运行正常**
+
+**资源使用情况：**
+- CPU 使用率: \`45%\`
+- 内存使用率: \`62%\`
+- 磁盘使用率: \`58%\`
+- 网络流量: \`正常\`
+
+### 服务状态
+- ✓ Web 服务正常
+- ✓ 数据库服务正常
+- ✓ 缓存服务正常
+- ✓ 消息队列正常
+
+---
+
+> 💡 **建议**: 所有服务运行正常，无需特别关注。下次检查时间：2025-01-16 11:30
+
+[查看详细报告 →](#)`,
 
   // 列表响应
-  list: () => (
-    <div>
-      <p style={{ marginBottom: '8px', fontWeight: 'bold' }}>📋 任务清单</p>
-      <div
-        style={{
-          backgroundColor: '#fff',
-          border: '1px solid #e0e0e0',
-          borderRadius: '6px',
-          overflow: 'hidden',
-        }}
-      >
-        {[
-          { text: '完成系统部署', status: 'done' },
-          { text: '配置监控告警', status: 'done' },
-          { text: '性能优化测试', status: 'progress' },
-          { text: '编写技术文档', status: 'pending' },
-        ].map((item, index) => (
-          <div
-            key={index}
-            style={{
-              padding: '10px 12px',
-              borderBottom: index < 3 ? '1px solid #f0f0f0' : 'none',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '8px',
-            }}
-          >
-            <span style={{ fontSize: '16px' }}>
-              {item.status === 'done'
-                ? '✅'
-                : item.status === 'progress'
-                ? '🔄'
-                : '⭕'}
-            </span>
-            <span
-              style={{
-                fontSize: '13px',
-                color: item.status === 'done' ? '#999' : '#333',
-                textDecoration:
-                  item.status === 'done' ? 'line-through' : 'none',
-              }}
-            >
-              {item.text}
-            </span>
-          </div>
-        ))}
-      </div>
-    </div>
-  ),
+  list: () => `## 📋 任务清单
+
+### 今日待办事项
+
+#### ✅ 已完成
+1. ✅ **完成系统部署** - 已于 09:00 完成
+   - 部署环境：生产环境
+   - 版本号：v2.3.1
+   
+2. ✅ **配置监控告警** - 已于 09:30 完成
+   - 配置项：CPU、内存、磁盘告警
+   - 告警阈值：已设置
+
+#### 🔄 进行中
+3. 🔄 **性能优化测试** - 进度 60%
+   - 负责人：张三
+   - 预计完成：今日 15:00
+   - 当前状态：数据库查询优化中
+
+#### ⭕ 待开始
+4. ⭕ **编写技术文档**
+   - 负责人：李四
+   - 预计开始：今日 14:00
+   - 文档类型：API 接口文档
+
+---
+
+### 统计信息
+- **总任务数**: 4
+- **已完成**: 2 (50%)
+- **进行中**: 1 (25%)
+- **待开始**: 1 (25%)
+
+> 📌 **提醒**: 请确保所有任务在今日 18:00 前完成进度更新。`,
 };
 
-// 文本响应模板
+// 文本响应模板（Markdown 格式）
 export const mockTextResponses = {
-  product:
-    '我们的产品具有以下核心功能：\n\n• 🚀 智能运维自动化\n• 📊 实时监控告警\n• 🔧 故障快速定位\n• 💡 AI 智能分析\n\n您想了解哪个功能的详细信息？试试发送"表格"、"代码"、"卡片"或"列表"查看更多展示效果！',
+  product: `## 我们的产品核心功能
 
-  support:
-    '我很乐意为您提供技术支持！请告诉我您遇到的具体问题：\n\n• 🔍 系统配置问题\n• 🐛 故障排查\n• 📋 使用指南\n• 🔗 集成对接\n\n我会尽快为您解答。',
+我们的产品具有以下核心功能：
 
-  thanks: '不客气！😊 很高兴能帮助到您。如果还有其他问题,随时可以问我！',
+- 🚀 **智能运维自动化** - 通过 AI 技术实现运维流程自动化
+- 📊 **实时监控告警** - 7x24小时监控系统状态，异常秒级告警
+- 🔧 **故障快速定位** - 智能分析日志，快速定位问题根因
+- 💡 **AI 智能分析** - 基于机器学习的性能优化建议
 
-  help: '我是您的AI助手，可以帮您：\n\n🔹 产品功能咨询\n🔹 技术问题解答\n🔹 使用指导\n🔹 故障排查\n\n💡 试试这些命令：\n• 发送"表格" - 查看表格展示\n• 发送"代码" - 查看代码高亮\n• 发送"卡片" - 查看卡片样式\n• 发送"列表" - 查看任务列表',
+> 您想了解哪个功能的详细信息？
+
+试试发送这些关键词查看更多展示效果：
+- \`表格\` - 查看表格展示
+- \`代码\` - 查看代码高亮
+- \`卡片\` - 查看卡片样式
+- \`列表\` - 查看任务列表`,
+
+  support: `## 技术支持服务
+
+我很乐意为您提供技术支持！请告诉我您遇到的具体问题：
+
+### 支持类型
+1. 🔍 **系统配置问题** - 环境配置、参数调优
+2. 🐛 **故障排查** - 问题诊断、错误分析
+3. 📋 **使用指南** - 功能说明、操作教程
+4. 🔗 **集成对接** - API 接口、第三方集成
+
+---
+
+📎 **相关链接**: [点击这里访问系统](https://bklite.canway.net/auth/signin)
+
+我会尽快为您解答！`,
+
+  thanks: `不客气！😊 
+
+很高兴能帮助到您。如果还有其他问题，**随时可以问我**！
+
+---
+*您可以继续提问或使用关键词体验更多功能*`,
+
+  help: `# AI 助手功能指南
+
+我是您的 **AI 助手**，可以帮您：
+
+## 服务范围
+- 🔹 产品功能咨询
+- 🔹 技术问题解答
+- 🔹 使用指导
+- 🔹 故障排查
+
+## 💡 快速体验
+
+试试这些命令：
+
+| 命令 | 说明 |
+|------|------|
+| \`表格\` | 查看表格展示 |
+| \`代码\` | 查看代码高亮 |
+| \`卡片\` | 查看卡片样式 |
+| \`列表\` | 查看任务列表 |
+
+---
+**提示**：您也可以直接描述问题，我会尽力为您解答！`,
 
   default: [
-    '我理解您的问题，让我为您详细解答...',
-    '这是一个很好的问题！根据我的了解...',
-    '关于这个问题，我建议您...',
-    '我来帮您分析一下这个情况...',
+    `我理解您的问题，让我为您**详细解答**...
+
+这个问题涉及到多个方面，我会逐一为您分析。`,
+
+    `这是一个很好的问题！根据我的了解：
+
+- 首先需要确认当前的系统环境
+- 其次要检查相关配置是否正确
+- 最后可以通过日志来定位具体问题
+
+让我为您详细说明...`,
+
+    `关于这个问题，我**建议**您：
+
+1. 先检查系统日志
+2. 确认配置文件的参数设置
+3. 必要时可以重启相关服务
+
+> 如果问题依然存在，请提供更多详细信息，我会继续协助您。`,
+
+    `让我来帮您**分析**一下这个情况...
+
+根据经验来看，可能有以下几种原因：
+- 配置不正确
+- 权限问题
+- 网络连接异常
+
+我们可以逐一排查。`,
   ],
 };
