@@ -2,7 +2,7 @@ from neco.llm.embed.embed_manager import EmbedManager
 import os
 
 
-def test_embed():
+def test_remote_embed():
     rs = EmbedManager().get_embed(
         protocol="openai",
         model_api_key=os.getenv('TEST_LLM_API_KEY'),

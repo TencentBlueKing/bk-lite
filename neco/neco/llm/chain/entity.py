@@ -42,8 +42,8 @@ class BasicLLMRequest(BaseModel):
 
     chat_history: List[ChatHistory] = []
 
-    user_id: Optional[str] = Field(default_factory=lambda: str(uuid.uuid4()))
-    thread_id: Optional[str] = Field(default_factory=lambda: str(uuid.uuid4()))
+    user_id: Optional[str] = ''
+    thread_id: Optional[str] = ''
 
     naive_rag_request: List[DocumentRetrieverRequest] = []
 

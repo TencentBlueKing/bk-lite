@@ -9,6 +9,7 @@ import useModelExperience from '@/app/playground/hooks/useModelExperience';
 import { usePermissions } from '@/context/permissions';
 import { useClientData } from '@/context/client';
 import { useUserInfoContext } from '@/context/userInfo';
+import { findMatchedMenuPath } from '@/utils/menuHelpers';
 import styles from './index.module.scss';
 import type { TourProps } from 'antd';
 import { TourItem, MenuItem, ClientData } from '@/types/index';
@@ -260,7 +261,9 @@ const TopMenu = () => {
           {menuItems
             .filter((item: MenuItem) => item.url && !item.isNotMenuItem)
             .map((item: MenuItem) => {
-              const isActive = item.url === '/' ? pathname === '/' : pathname?.startsWith(item.url);
+              // Find the matched menu path to determine active state
+              const matchedPath = pathname ? findMatchedMenuPath(menuItems, pathname) : null;
+              const isActive = matchedPath && matchedPath.length > 0 && matchedPath[0].url === item.url;
 
               if (isOtherMode && item.name === 'experience') {
 

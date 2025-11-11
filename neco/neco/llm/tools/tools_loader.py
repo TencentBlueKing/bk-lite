@@ -11,6 +11,7 @@ from neco.llm.tools import jenkins
 from neco.llm.tools import kubernetes
 from neco.llm.tools import python
 from neco.llm.tools import search
+from neco.llm.tools import shell
 
 
 class ToolsLoader:
@@ -41,6 +42,7 @@ class ToolsLoader:
         'jenkins': (jenkins, False),
         'kubernetes': (kubernetes, False),
         'python': (python, False),
+        'shell': (shell, False),
     }
 
     @staticmethod

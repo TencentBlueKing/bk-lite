@@ -28,6 +28,7 @@ const MenuConfigPage = () => {
   const [tempMenuName, setTempMenuName] = useState('');
   const [saveLoading, setSaveLoading] = useState(false);
   const [detailLoading, setDetailLoading] = useState(false);
+  const [dragOverPageIndex, setDragOverPageIndex] = useState<{ groupId: string; pageIndex: number } | null>(null);
 
   const {
     sourceMenus,
@@ -80,7 +81,41 @@ const MenuConfigPage = () => {
             return undefined;
           };
 
+          // 检查菜单是否为详情页模式
+          const findSourceMenu = (menuName: string) => {
+            return sourceMenus.find(m => m.name === menuName);
+          };
+
           const loadedMixedItems = detail.menus.map((menu: any, index: number) => {
+            // 检查是否为详情页模式
+            const sourceMenu = findSourceMenu(menu.name);
+            const isDetail = sourceMenu?.isDetailMode;
+            
+            // 如果是详情页模式且有子菜单，不展示，只保存父级
+            if (isDetail && menu.children && Array.isArray(menu.children)) {
+              return {
+                type: 'page' as const,
+                id: menu.name,
+                data: {
+                  name: menu.name,
+                  display_name: menu.title || menu.name,
+                  url: menu.url,
+                  icon: menu.icon,
+                  type: 'page' as const,
+                  originName: menu.title || menu.name,
+                  isDetailMode: true,
+                  hiddenChildren: menu.children.map((child: any) => ({
+                    name: child.name,
+                    display_name: child.title || child.name,
+                    url: child.url,
+                    icon: child.icon,
+                    type: 'page' as const,
+                  })), // 使用保存的子菜单数据
+                }
+              };
+            }
+            
+            // 普通目录模式
             if (menu.children && Array.isArray(menu.children)) {
               return {
                 type: 'group' as const,
@@ -89,14 +124,39 @@ const MenuConfigPage = () => {
                   id: `group-${index}`,
                   name: menu.title || menu.name,
                   icon: menu.icon,
-                  children: menu.children.map((child: any) => ({
-                    name: child.name,
-                    display_name: child.title || child.name,
-                    url: child.url,
-                    icon: child.icon,
-                    type: 'page' as const,
-                    originName: findOriginName(child.name),
-                  }))
+                  children: menu.children.map((child: any) => {
+                    // 检查子页面是否也是详情页模式
+                    const childSourceMenu = findSourceMenu(child.name);
+                    const isChildDetail = childSourceMenu?.isDetailMode;
+                    
+                    if (isChildDetail && child.children && Array.isArray(child.children)) {
+                      return {
+                        name: child.name,
+                        display_name: child.title || child.name,
+                        url: child.url,
+                        icon: child.icon,
+                        type: 'page' as const,
+                        originName: findOriginName(child.name),
+                        isDetailMode: true,
+                        hiddenChildren: child.children.map((hidden: any) => ({
+                          name: hidden.name,
+                          display_name: hidden.title || hidden.name,
+                          url: hidden.url,
+                          icon: hidden.icon,
+                          type: 'page' as const,
+                        })),
+                      };
+                    }
+                    
+                    return {
+                      name: child.name,
+                      display_name: child.title || child.name,
+                      url: child.url,
+                      icon: child.icon,
+                      type: 'page' as const,
+                      originName: findOriginName(child.name),
+                    };
+                  })
                 }
               };
             } else {
@@ -119,14 +179,25 @@ const MenuConfigPage = () => {
           
           const allPageNames: string[] = [];
           detail.menus.forEach((menu: any) => {
-            if (menu.children && Array.isArray(menu.children)) {
-              menu.children.forEach((child: any) => {
-                if (child.name) {
-                  allPageNames.push(child.name);
-                }
-              });
-            } else if (menu.name) {
-              allPageNames.push(menu.name);
+            const sourceMenu = findSourceMenu(menu.name);
+            const isDetail = sourceMenu?.isDetailMode;
+            
+            // 如果是详情页模式，只选中父级
+            if (isDetail) {
+              if (menu.name) {
+                allPageNames.push(menu.name);
+              }
+            } else {
+              // 普通模式，选中所有子菜单
+              if (menu.children && Array.isArray(menu.children)) {
+                menu.children.forEach((child: any) => {
+                  if (child.name) {
+                    allPageNames.push(child.name);
+                  }
+                });
+              } else if (menu.name) {
+                allPageNames.push(menu.name);
+              }
             }
           });
           
@@ -180,20 +251,61 @@ const MenuConfigPage = () => {
           title: group.name,
           name: group.name,
           icon: group.icon,
-          children: group.children.map(child => ({
-            title: child.display_name,
-            name: child.name,
-            url: child.url,
-            icon: child.icon,
-          }))
+          children: group.children.map(child => {
+            // 如果是详情页模式，需要展开保存隐藏的子菜单
+            if (child.isDetailMode && child.hiddenChildren) {
+              return {
+                title: child.display_name,
+                name: child.name,
+                url: child.url,
+                icon: child.icon,
+                ...(child.tour && { tour: child.tour }),
+                hasDetail: true,
+                children: child.hiddenChildren.map(hidden => ({
+                  title: hidden.display_name,
+                  name: hidden.name,
+                  url: hidden.url,
+                  icon: hidden.icon,
+                  ...(hidden.tour && { tour: hidden.tour }),
+                }))
+              };
+            }
+            return {
+              title: child.display_name,
+              name: child.name,
+              url: child.url,
+              icon: child.icon,
+              ...(child.tour && { tour: child.tour }),
+            };
+          })
         };
       } else {
         const page = item.data as FunctionMenuItem;
+        
+        // 如果是详情页模式，保存时需要包含隐藏的子菜单
+        if (page.isDetailMode && page.hiddenChildren) {
+          return {
+            title: page.display_name,
+            name: page.name,
+            url: page.url,
+            icon: page.icon,
+            ...(page.tour && { tour: page.tour }),
+            hasDetail: true,
+            children: page.hiddenChildren.map(child => ({
+              title: child.display_name,
+              name: child.name,
+              url: child.url,
+              icon: child.icon,
+              ...(child.tour && { tour: child.tour }),
+            }))
+          };
+        }
         return {
           title: page.display_name,
           name: page.name,
           url: page.url,
           icon: page.icon,
+          ...(page.tour && { tour: page.tour }),
         };
       }
     });
@@ -327,17 +439,36 @@ const MenuConfigPage = () => {
                         group={item.data as MenuGroup}
                         isEditing={editingGroupId === item.id}
                         onDragStart={(e) => handleDragStart(e, 'group', item.data)}
-                        onDragEnd={handleDragEnd}
+                        onDragEnd={() => {
+                          handleDragEnd();
+                          setDragOverPageIndex(null);
+                        }}
                         onRename={(name) => handleRenameGroup(item.id, name)}
                         onEdit={() => setEditingGroupId(item.id)}
                         onDelete={() => handleDeleteGroup(item.id)}
                         onCancelEdit={() => setEditingGroupId(null)}
-                        onDropToGroup={(e) => handleDropToGroup(e, item.id)}
+                        onDropToGroup={(e) => {
+                          handleDropToGroup(e, item.id);
+                          setDragOverPageIndex(null);
+                        }}
                         onRemovePage={(pageName) => handleRemovePageFromGroup(item.id, pageName)}
                         onRenamePage={(pageName, newName) => handleRenamePageInGroup(item.id, pageName, newName)}
                         onPageDragStart={(e, pageIndex, page) => handleDragStart(e, 'groupChild', { groupId: item.id, pageIndex, ...page })}
-                        onPageDragOver={(e) => { e.preventDefault(); e.stopPropagation(); }}
-                        onPageDrop={(e, pageIndex) => handleDropToGroup(e, item.id, pageIndex)}
+                        onPageDragOver={(e, pageIndex) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          console.log('页面 DragOver:', pageIndex);
+                          setDragOverPageIndex({ groupId: item.id, pageIndex });
+                        }}
+                        onPageDrop={(e, pageIndex) => {
+                          console.log('页面 Drop 事件触发, pageIndex:', pageIndex, 'groupId:', item.id);
+                          e.preventDefault();
+                          e.stopPropagation();
+                          handleDropToGroup(e, item.id, pageIndex);
+                          setDragOverPageIndex(null);
+                        }}
+                        isDragging={isDragging}
+                        dragOverPageIndex={dragOverPageIndex?.groupId === item.id ? dragOverPageIndex.pageIndex : null}
                       />
                     ) : (
                       <MenuPageCard
