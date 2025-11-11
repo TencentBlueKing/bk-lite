@@ -2,11 +2,14 @@
 # @File: datasource_serializers.py
 # @Time: 2025/11/3 16:05
 # @Author: windyzhao
+from apps.core.utils.serializers import AuthSerializer
 from apps.operation_analysis.serializers.base_serializers import BaseFormatTimeSerializer
 from apps.operation_analysis.models.datasource_models import DataSourceAPIModel, NameSpace, DataSourceTag
 
 
-class DataSourceAPIModelSerializer(BaseFormatTimeSerializer):
+class DataSourceAPIModelSerializer(BaseFormatTimeSerializer, AuthSerializer):
+    permission_key = "datasource"
+
     class Meta:
         model = DataSourceAPIModel
         fields = "__all__"

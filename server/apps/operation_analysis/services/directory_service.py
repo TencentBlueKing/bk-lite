@@ -19,10 +19,7 @@ class DictDirectoryService:
         获取目录树形结构,目录和仪表盘统一作为树节点
         """
         # 验证用户组织权限
-        is_valid, current_team = GroupPermissionMixin.validate_group_permission(request)
-
-        if not is_valid:
-            return []
+        current_team = int(request.COOKIES.get("current_team"))
 
         # 构建基础查询集并应用组织过滤
         base_queryset = Directory.objects.filter(is_active=True)
