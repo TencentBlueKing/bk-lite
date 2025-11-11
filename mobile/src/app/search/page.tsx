@@ -131,7 +131,7 @@ export default function SearchPage() {
                 <div className="flex-shrink-0 relative">
                     <div className="w-16 h-16 bg-gradient-to-br from-blue-400 to-blue-600 rounded-full overflow-hidden">
                         <Image
-                            src="/avatars/04.svg"
+                            src="/avatars/04.png"
                             alt={item.name}
                             width={64}
                             height={64}

@@ -75,7 +75,7 @@ export default function AppDetailPage() {
                             onClick={() => setAvatarVisible(true)}
                         >
                             <Image
-                                src={botData.avatar || '/avatars/04.svg'}
+                                src={botData.avatar || '/avatars/04.png'}
                                 alt={botData.name}
                                 width={96}
                                 height={96}
@@ -85,7 +85,7 @@ export default function AppDetailPage() {
 
                         {/* 头像查看器 */}
                         <ImageViewer
-                            image={botData.avatar || '/avatars/04.svg'}
+                            image={botData.avatar || '/avatars/04.png'}
                             visible={avatarVisible}
                             onClose={() => setAvatarVisible(false)}
                         />
