@@ -823,16 +823,15 @@ monitor_object_metric:
       name: 接口每秒发送流量
       desc: 该指标计算过去5分钟内发送的字节数的平均速率，单位为兆字节（MB）。监测发送流量对于确保数据传输质量和优化网络性能非常重要。
   DataStorage:
-    data_storage_disk_used_average:
+    data_storage_disk_used_average_gauge:
       desc: 磁盘使用率，表示磁盘空间的使用情况，是衡量磁盘存储利用率的指标。
       name: 磁盘使用率
-    data_storage_disk_free_average:
+    data_storage_disk_free_average_gauge:
       desc: 磁盘剩余量，表示磁盘中未使用的空间量，是评估磁盘容量的关键指标。
       name: 磁盘剩余量
-    data_storage_base:
-      store_accessible:
-        desc: 存储连接状态，表示存储设备的可连接性，是评估存储系统健康状态的指标。
-        name: 存储连接状态
+    data_storage_store_accessible_gauge:
+      desc: 存储连接状态，表示存储设备的可连接性，是评估存储系统健康状态的指标。
+      name: 存储连接状态
   Storage:
     ipmi_power_watts:
       name: 功率
@@ -1659,39 +1658,73 @@ monitor_object_metric:
       name: 每个请求的处理时长
       desc: 该指标表示每个请求的平均处理时长，帮助评估服务器处理请求的效率。
   Node:
-    node_cpu_load1:
-      name: 1 分钟平均负载
-      desc: 1 分钟平均负载表示过去1分钟内系统的平均负载情况。该指标有助于即时了解系统的负载水平。
-    node_io_write:
-      desc: 磁盘读速率表示节点在特定时间段内进行的读取操作的速率。此指标有助于评估应用程序的数据读取性能和存储负载。
-      name: 磁盘读速率
-    node_cpu_load15:
-      desc: 15 分钟平均负载表示过去15分钟内系统的平均负载情况。监控该指标可帮助管理员理解系统的长期负载状态。
-      name: 15 分钟平均负载
-    node_network_receive:
-      desc: 网卡入流量是指通过网络接口接收到的数据流量。监控此指标可帮助分析网络带宽是否足够以及网络性能情况。
-      name: 网卡入流量
+
     node_status_condition:
       desc: Node状态用于指示节点的当前运行状态，比如“运行中”或“已停止”。它有助于管理员监控和管理Kubernetes集群中的节点。
       name: Node状态
-    node_io_read:
-      desc: 磁盘写速率表示节点在特定时间段内进行的写入操作的速率。此指标对于监控应用程序的磁盘写入性能至关重要。
-      name: 磁盘写速率
-    node_memory_utilization:
-      desc: 应用内存使用率是指应用程序已使用的内存量与其配置的内存限制之比。通过监控此指标，用户可以判断是否需要调整内存限制。
-      name: 应用内存使用率
-    node_cpu_load5:
-      desc: 5 分钟平均负载表示过去5分钟内系统的平均负载情况。此指标有助于识别负载趋势及其对系统性能的影响。
-      name: 5 分钟平均负载
-    node_network_transmit:
-      name: 网卡出流量
-      desc: 网卡出流量是指通过网络接口发送的数据流量。此指标有助于了解节点的网络出口需求和潜在的瓶颈。
-    node_memory_usage:
-      name: 应用内存使用量
-      desc: 应用内存使用量表示在节点中运行的应用程序占用的内存总量。此指标有助于了解应用程序的内存需求及其对系统性能的影响。
     node_cpu_utilization:
       name: CPU使用率
       desc: CPU使用率表示当前节点CPU的实际使用水平，相对于其总可用CPU资源。监控此指标有助于识别CPU瓶颈和优化资源分配。
+    node_cpu_summary:
+      idle:
+        name: CPU空闲时间百分比
+        desc: CPU空闲时间百分比表示节点CPU在空闲状态下所占的时间比例。该指标有助于评估节点的负载情况和资源利用率。
+      iowait:
+        name: CPU等待I/O时间百分比
+        desc: CPU等待I/O时间百分比表示节点CPU在等待I/O操作完成时所占的时间比例。监控此指标有助于识别I/O瓶颈。
+      system:
+        name: CPU系统时间百分比
+        desc: CPU系统时间百分比表示节点CPU在内核模式下执行系统任务所占的时间比例。该指标有助于评估系统级任务对CPU资源的影响。
+      user:
+        name: CPU用户时间百分比
+        desc: CPU用户时间百分比表示节点CPU在用户模式下执行应用程序所占的时间比例。监控此指标有助于了解应用程序对CPU资源的使用情况。
+    node_memory_usage:
+      name: 应用内存使用量
+      desc: 应用内存使用量表示在节点中运行的应用程序占用的内存总量。此指标有助于了解应用程序的内存需求及其对系统性能的影响。
+    node_memory_utilization:
+      desc: 应用内存使用率是指应用程序已使用的内存量与其配置的内存限制之比。通过监控此指标，用户可以判断是否需要调整内存限制。
+      name: 应用内存使用率
+    node_disk:
+      is_use:
+        name: 磁盘是否使用
+        desc: 磁盘是否使用指标用于指示节点磁盘的使用状态，帮助管理员了解磁盘资源的分配和利用情况。
+      used:
+        name: 磁盘已使用空间
+        desc: 磁盘已使用空间表示节点磁盘上已被占用的存储容量。监控此指标有助于防止磁盘空间不足的问题。
+
+    node_diskio_writes:
+      name: 磁盘写入速率
+      desc: 磁盘写入速率表示节点在特定时间段内进行的写入操作的速率。此指标对于监控应用程序的磁盘写入性能至关重要。
+    node_diskio_write_bytes:
+      desc: 磁盘写入字节数表示节点在特定时间段内写入的数据总量。监控此指标有助于评估磁盘的写入负载和性能。
+      name: 磁盘写入字节数
+    node_diskio_write_time:
+      name: 磁盘写入时间
+      desc: 磁盘写入时间表示节点在特定时间段内进行写入操作所花费的总时间。该指标有助于评估磁盘写入性能和响应时间。
+    node_diskio_reads:
+      desc: 磁盘读取速率表示节点在特定时间段内进行的读取操作的速率。此指标有助于评估应用程序的数据读取性能和存储负载。
+      name: 磁盘读取速率
+    node_diskio_read_bytes:
+      name: 磁盘读取字节数
+      desc: 磁盘读取字节数表示节点在特定时间段内读取的数据总量。监控此指标有助于评估磁盘的读取负载和性能。
+    node_diskio_read_time:
+      desc: 磁盘读取时间表示节点在特定时间段内进行读取操作所花费的总时间。该指标有助于评估磁盘读取性能和响应时间。
+      name: 磁盘读取时间
+    node_network_receive:
+      desc: 网卡入流量是指通过网络接口接收到的数据流量。监控此指标可帮助分析网络带宽是否足够以及网络性能情况。
+      name: 网卡入流量
+    node_network_transmit:
+      name: 网卡出流量
+      desc: 网卡出流量是指通过网络接口发送的数据流量。此指标有助于了解节点的网络出口需求和潜在的瓶颈。
+    node_cpu_load1:
+      name: 1 分钟平均负载
+      desc: 1 分钟平均负载表示过去1分钟内系统的平均负载情况。该指标有助于即时了解系统的负载水平。
+    node_cpu_load5:
+      desc: 5 分钟平均负载表示过去5分钟内系统的平均负载情况。此指标有助于识别负载趋势及其对系统性能的影响。
+      name: 5 分钟平均负载
+    node_cpu_load15:
+      desc: 15 分钟平均负载表示过去15分钟内系统的平均负载情况。监控该指标可帮助管理员理解系统的长期负载状态。
+      name: 15 分钟平均负载
   ElasticSearch:
     elasticsearch_indices_docs_deleted:
       desc: 被标记删除的文档总数，可用于评估段合并工作量。
@@ -2162,9 +2195,9 @@ monitor_object_plugin:
   Minio:
     name: MinIO（Telegraf）
     desc: 通过Telegraf采集器定期调用MinIO指标接口收集包括对象存储系统的运行状态、存储容量、使用情况、复制、节点间通信和S3请求等关键指标。
-  vCenter:
+  VMWare:
     desc: 通过Telegraf采集器利用Stargazer能力定期收集VMware中vCenter、ESXi、虚拟机、数据存储的关键指标。
-    name: vCenter
+    name: VMWare
   Hardware Server SNMP General:
     name: 硬件服务器SNMP通用（Telegraf）
     desc: 通过Telegraf采集器利用SNMP协议定期收集硬件服务器各接口的流量、丢包数、错包数等IF-MIB关键指标。
