@@ -19,6 +19,13 @@ status:
   success: "Success"
   failed: "Failed"
 
+# Action types
+action_type:
+  create: "Create"
+  update: "Update"
+  delete: "Delete"
+  execute: "Execute"
+
 # Error messages
 error:
   # Basic permission and authentication errors

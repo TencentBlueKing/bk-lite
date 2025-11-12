@@ -13,6 +13,7 @@ from apps.rpc.opspilot import OpsPilot
 from apps.rpc.system_mgmt import SystemMgmt
 from apps.system_mgmt.models import GroupDataRule
 from apps.system_mgmt.serializers import GroupDataRuleSerializer
+from apps.system_mgmt.utils.operation_log_utils import log_operation
 
 
 class GroupDataRuleFilter(FilterSet):
@@ -28,15 +29,38 @@ class GroupDataRuleViewSet(LanguageViewSet):
 
     @HasPermission("data_permission-Delete")
     def destroy(self, request, *args, **kwargs):
-        return super().destroy(request, *args, **kwargs)
+        obj = self.get_object()
+        rule_name = obj.name
+
+        response = super().destroy(request, *args, **kwargs)
+
+        # 记录操作日志
+        if response.status_code == 204:
+            log_operation(request, "delete", "data_rule", f"删除数据权限: {rule_name}")
+
+        return response
 
     @HasPermission("data_permission-Add")
     def create(self, request, *args, **kwargs):
-        return super().create(request, *args, **kwargs)
+        response = super().create(request, *args, **kwargs)
+
+        # 记录操作日志
+        if response.status_code == 201:
+            rule_name = response.data.get("name", "")
+            log_operation(request, "create", "data_rule", f"新增数据权限: {rule_name}")
+
+        return response
 
     @HasPermission("data_permission-Edit")
     def update(self, request, *args, **kwargs):
-        return super().update(request, *args, **kwargs)
+        response = super().update(request, *args, **kwargs)
+
+        # 记录操作日志
+        if response.status_code == 200:
+            rule_name = response.data.get("name", "")
+            log_operation(request, "update", "data_rule", f"编辑数据权限: {rule_name}")
+
+        return response
 
     @HasPermission("data_permission-View")
     def list(self, request, *args, **kwargs):
