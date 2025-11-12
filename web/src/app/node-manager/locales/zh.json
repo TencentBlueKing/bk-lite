@@ -30,7 +30,7 @@
         "installCollector": "安装采集器",
         "node": "节点",
         "sidecarVersionDes": "请选择远程安装的控制器版本。",
-        "ruleinputinfo": "请输入你的IP地址",
+        "ruleinputinfo": "请输入你的IP地址!",
         "collectorDetails": "采集器详情",
         "installed": "已安装",
         "toInstall": "安装",
@@ -110,10 +110,10 @@
         "stop": "停止",
         "defaultNode": "默认节点",
         "active": "活跃",
-        "installMethod": "安装方式",
-        "auto": "自动",
         "manual": "手动",
-        "lastReportTime": "最后上报时间"
+        "lastReportTime": "最后上报时间",
+        "installMethod": "安装方式",
+        "auto": "自动"
       },
       "editform": {
         "Introduction": "简介",

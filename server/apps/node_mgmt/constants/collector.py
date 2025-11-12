@@ -11,11 +11,14 @@ class CollectorConstants:
     }
 
     TAG_ENUM = {
-        "linux": {"is_app": False, "name": "Linux"},
-        "windows": {"is_app": False, "name": "Windows"},
         "monitor": {"is_app": True, "name": "Monitor"},
         "log": {"is_app": True, "name": "Log"},
         "cmdb": {"is_app": True, "name": "CMDB"},
+
+        "linux": {"is_app": False, "name": "Linux"},
+        "windows": {"is_app": False, "name": "Windows"},
+
         "jmx": {"is_app": False, "name": "JMX"},
         "exporter": {"is_app": False, "name": "Exporter"},
+        "beat": {"is_app": False, "name": "Beat"},
     }

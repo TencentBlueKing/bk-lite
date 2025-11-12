@@ -2,11 +2,120 @@ cloud_region:
   default:
     description: Default Cloud Region
     name: Default
+
 os:
   linux: Linux
   windows: Windows
+
+controller_status:
+  normal: Normal
+  abnormal: Abnormal
+  not_installed: Not Installed
+
+controller_install_method:
+  manual: Manual Installation
+  auto: Automatic Installation
+
 collector:
   jmx_activemq_linux:
-    description: Collect ActiveMQ metrics via JMX to monitor the performance and health
-      of message queues
-    name: JMX ActiveMQ (Linux)
+    description:
+    name:
+  exporter_apache_linux:
+    description:
+    name:
+  Auditbeat_linux:
+    description:
+    name:
+  exporter_elasticsearch_linux:
+    description:
+    name:
+  Filebeat_linux:
+    description:
+    name:
+  jmx_jboss_linux:
+    description:
+    name:
+  jmx_jetty_linux:
+    description:
+    name:
+  jmx_jvm_linux:
+    description:
+    name:
+  exporter_kafka_linux:
+    description:
+    name:
+  Metricbeat_linux:
+    description:
+    name:
+  exporter_mongodb_linux:
+    description:
+    name:
+  exporter_mssql_linux:
+    description:
+    name:
+  exporter_mysql_linux:
+    description:
+    name:
+  natsexecutor_linux:
+    description:
+    name:
+  natsexecutor_windows:
+    description:
+    name:
+  exporter_nginx_linux:
+    description:
+    name:
+  exporter_oracle_linux:
+    description:
+    name:
+  Packetbeat_linux:
+    description:
+    name:
+  exporter_postgres_linux:
+    description:
+    name:
+  exporter_rabbitmq_linux:
+    description:
+    name:
+  telegraf_linux:
+    description:
+    name:
+  telegraf_windows:
+    description:
+    name:
+  jmx_tomcat_linux:
+    description:
+    name:
+  jmx_tongweb6_linux:
+    description:
+    name:
+  jmx_tongweb7_linux:
+    description:
+    name:
+  Vector_linux:
+    description:
+    name:
+  jmx_weblogic_linux:
+    description:
+    name:
+  exporter_zookeeper_linux:
+    description:
+    name:
+
+collector_tag:
+  monitor: Monitor
+  log: Log
+  cmdb: CMDB
+  linux: Linux
+  windows: Windows
+  jmx: JMX
+  exporter: Exporter
+  beat: Beat
+
+controller:
+  linux:
+    name: Controller
+    description:
+  windows:
+    name: Controller
+    description:

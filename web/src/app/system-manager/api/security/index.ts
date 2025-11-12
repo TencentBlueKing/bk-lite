@@ -72,12 +72,33 @@ export const useSecurityApi = () => {
     return await patch(`/system_mgmt/login_module/${id}/sync_data/`);
   }
 
+  /**
+   * Get user login logs
+   * @param params - Query parameters for filtering logs
+   * @returns Promise with user login logs data
+   */
+  async function getUserLoginLogs(params?: {
+    status?: 'success' | 'failed';
+    username?: string;
+    username__icontains?: string;
+    source_ip?: string;
+    source_ip__icontains?: string;
+    domain?: string;
+    login_time_start?: string;
+    login_time_end?: string;
+    page?: number;
+    page_size?: number;
+  }): Promise<any> {
+    return await get('/system_mgmt/user_login_log/', { params });
+  }
+
   return {
     getSystemSettings,
     updateOtpSettings,
     getAuthSources,
     updateAuthSource,
     createAuthSource,
-    syncAuthSource
+    syncAuthSource,
+    getUserLoginLogs
   };
 };

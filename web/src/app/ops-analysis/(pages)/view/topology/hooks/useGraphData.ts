@@ -5,18 +5,19 @@
  */
 
 import { useCallback, useState } from 'react';
-import type { Graph as X6Graph } from '@antv/x6';
+import type { Graph as X6Graph, Node, Edge } from '@antv/x6';
 import { message } from 'antd';
 import { fetchWidgetData } from '@/app/ops-analysis/utils/widgetDataTransform';
 import { useTranslation } from '@/utils/i18n';
 import { useTopologyApi } from '@/app/ops-analysis/api/topology';
 import { useDataSourceApi } from '@/app/ops-analysis/api/dataSource';
-import { TopologyNodeData } from '@/app/ops-analysis/types/topology';
+import { TopologyNodeData, SerializedEdge } from '@/app/ops-analysis/types/topology';
+import type { ValueConfig } from '@/app/ops-analysis/types/dashBoard';
 import { DirItem } from '@/app/ops-analysis/types';
 import { getEdgeStyleWithLabel } from '../utils/topologyUtils';
 import { createNodeByType } from '../utils/registerNode';
 
-const serializeNodeConfig = (nodeData: any, nodeType: string) => {
+const serializeNodeConfig = (nodeData: TopologyNodeData, nodeType: string): Record<string, unknown> | undefined => {
   const styleConfigMapping: Record<string, string[]> = {
     'single-value': ['textColor', 'fontSize', 'backgroundColor', 'borderColor', 'nameColor', 'nameFontSize', 'thresholdColors'],
     'basic-shape': ['width', 'height', 'backgroundColor', 'borderColor', 'borderWidth', 'lineType', 'shapeType', 'renderEffect'],
@@ -26,11 +27,12 @@ const serializeNodeConfig = (nodeData: any, nodeType: string) => {
   };
 
   const fields = styleConfigMapping[nodeType] || [];
-  const styleConfig: any = {};
+  const styleConfig: Record<string, unknown> = {};
 
   fields.forEach((field) => {
-    if (nodeData.styleConfig?.[field] !== undefined) {
-      styleConfig[field] = nodeData.styleConfig[field];
+    const styleConfigData = nodeData.styleConfig as Record<string, unknown> | undefined;
+    if (styleConfigData?.[field] !== undefined) {
+      styleConfig[field] = styleConfigData[field];
     }
   });
 
@@ -40,7 +42,7 @@ const serializeNodeConfig = (nodeData: any, nodeType: string) => {
 export const useGraphData = (
   graphInstance: X6Graph | null,
   updateSingleNodeData: (nodeConfig: TopologyNodeData) => void,
-  startLoadingAnimation: (node: any) => void,
+  startLoadingAnimation: (node: Node) => void,
   handleSaveCallback?: () => void
 ) => {
   const { t } = useTranslation();
@@ -48,10 +50,10 @@ export const useGraphData = (
   const { saveTopology, getTopologyDetail } = useTopologyApi();
   const { getSourceDataByApiId } = useDataSourceApi();
 
-  const serializeTopologyData = useCallback(() => {
+  const serializeTopologyData = useCallback((): { nodes: TopologyNodeData[]; edges: SerializedEdge[] } => {
     if (!graphInstance) return { nodes: [], edges: [] };
 
-    const nodes = graphInstance.getNodes().map((node: any) => {
+    const nodes = graphInstance.getNodes().map((node: Node) => {
       const nodeData = node.getData();
       const position = node.getPosition();
       const zIndex = node.getZIndex();
@@ -76,7 +78,7 @@ export const useGraphData = (
       return serializedNode;
     });
 
-    const edges = graphInstance.getEdges().map((edge: any) => {
+    const edges = graphInstance.getEdges().map((edge: Edge): SerializedEdge => {
       const edgeData = edge.getData();
       const vertices = edge.getVertices();
 
@@ -130,7 +132,7 @@ export const useGraphData = (
     }
   }, [serializeTopologyData, saveTopology, handleSaveCallback]);
 
-  const loadChartNodeData = useCallback(async (nodeId: string, valueConfig: any) => {
+  const loadChartNodeData = useCallback(async (nodeId: string, valueConfig: ValueConfig) => {
     if (!graphInstance || !valueConfig.dataSource) return;
 
     const node = graphInstance.getCellById(nodeId);
@@ -162,14 +164,14 @@ export const useGraphData = (
     }
   }, [graphInstance, getSourceDataByApiId]);
 
-  const loadTopologyData = useCallback((data: { nodes: any[], edges: any[] }) => {
+  const loadTopologyData = useCallback((data: { nodes: TopologyNodeData[]; edges: SerializedEdge[] }) => {
     if (!graphInstance) return;
 
     graphInstance.clearCells();
-    const chartNodesToLoad: Array<{ nodeId: string; valueConfig: any }> = [];
+    const chartNodesToLoad: Array<{ nodeId: string; valueConfig: ValueConfig }> = [];
 
     data.nodes?.forEach((nodeConfig) => {
-      let nodeData: any;
+      let nodeData: ReturnType<typeof createNodeByType>;
       const valueConfig = nodeConfig.valueConfig || {};
 
       if (nodeConfig.type === 'chart') {
@@ -181,22 +183,22 @@ export const useGraphData = (
         };
 
         nodeData = createNodeByType(chartNodeConfig);
-        if (valueConfig?.dataSource) {
+        if (valueConfig?.dataSource && nodeConfig.id && chartNodeConfig.valueConfig) {
           chartNodesToLoad.push({
             nodeId: nodeConfig.id,
-            valueConfig: chartNodeConfig.valueConfig,
+            valueConfig: chartNodeConfig.valueConfig as ValueConfig,
           });
         }
       } else {
         nodeData = createNodeByType(nodeConfig);
       }
 
-      graphInstance.addNode(nodeData);
+      graphInstance.addNode(nodeData as any);
 
-      if (nodeConfig.type === 'single-value' && valueConfig?.dataSource && valueConfig?.selectedFields?.length) {
+      if (nodeConfig.type === 'single-value' && valueConfig?.dataSource && valueConfig?.selectedFields?.length && nodeConfig.id) {
         const addedNode = graphInstance.getCellById(nodeConfig.id);
-        if (addedNode) {
-          startLoadingAnimation(addedNode);
+        if (addedNode && addedNode.isNode()) {
+          startLoadingAnimation(addedNode as Node);
           updateSingleNodeData(nodeConfig);
         }
       }

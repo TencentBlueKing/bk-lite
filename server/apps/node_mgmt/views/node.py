@@ -3,10 +3,12 @@ from rest_framework import mixins
 from rest_framework.decorators import action
 from rest_framework.viewsets import GenericViewSet
 
+from apps.core.utils.loader import LanguageLoader
 from apps.core.utils.permission_utils import get_permission_rules, permission_filter
 from apps.core.utils.web_utils import WebUtils
 from apps.node_mgmt.constants.collector import CollectorConstants
 from apps.node_mgmt.constants.controller import ControllerConstants
+from apps.node_mgmt.constants.language import LanguageConstants
 from apps.node_mgmt.constants.node import NodeConstants
 from apps.node_mgmt.models.sidecar import Node
 from config.drf.pagination import CustomPageNumberPagination
@@ -81,7 +83,6 @@ class NodeViewSet(mixins.DestroyModelMixin,
 
         return final_q
 
-
     @action(methods=["post"], detail=False, url_path=r"search")
     def search(self, request, *args, **kwargs):
         # 获取权限规则
@@ -135,10 +136,40 @@ class NodeViewSet(mixins.DestroyModelMixin,
 
     @action(methods=["get"], detail=False, url_path=r"enum", filter_backends=[])
     def enum(self, request, *args, **kwargs):
+        lan = LanguageLoader(app=LanguageConstants.APP, default_lang=request.user.locale)
+
+        # 翻译标签枚举
+        translated_tags = {}
+        for tag_key, tag_value in CollectorConstants.TAG_ENUM.items():
+            name_key = f"{LanguageConstants.COLLECTOR_TAG}.{tag_key}"
+            translated_tags[tag_key] = {
+                "is_app": tag_value["is_app"],
+                "name": lan.get(name_key) or tag_value["name"]
+            }
+
+        # 翻译控制器状态枚举
+        translated_sidecar_status = {}
+        for status_key, status_value in ControllerConstants.SIDECAR_STATUS_ENUM.items():
+            status_name_key = f"{LanguageConstants.CONTROLLER_STATUS}.{status_key}"
+            translated_sidecar_status[status_key] = lan.get(status_name_key) or status_value
+
+        # 翻译控制器安装方式枚举
+        translated_install_method = {}
+        for method_key, method_value in ControllerConstants.INSTALL_METHOD_ENUM.items():
+            method_name_key = f"{LanguageConstants.CONTROLLER_INSTALL_METHOD}.{method_key}"
+            translated_install_method[method_key] = lan.get(method_name_key) or method_value
+
+        # 翻译操作系统枚举
+        translated_os = {
+            NodeConstants.LINUX_OS: lan.get(f"{LanguageConstants.OS}.{NodeConstants.LINUX_OS}") or NodeConstants.LINUX_OS_DISPLAY,
+            NodeConstants.WINDOWS_OS: lan.get(f"{LanguageConstants.OS}.{NodeConstants.WINDOWS_OS}") or NodeConstants.WINDOWS_OS_DISPLAY,
+        }
+
         enum_data = dict(
-            sidecar_status=ControllerConstants.SIDECAR_STATUS_ENUM,
-            install_method=ControllerConstants.INSTALL_METHOD_ENUM,
-            tag=CollectorConstants.TAG_ENUM,
+            sidecar_status=translated_sidecar_status,
+            install_method=translated_install_method,
+            tag=translated_tags,
+            os=translated_os,
         )
         return WebUtils.response_success(enum_data)
 

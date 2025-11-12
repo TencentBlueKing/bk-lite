@@ -7,7 +7,7 @@ from django.db.models import JSONField
 from django.utils.translation import gettext_lazy as _
 
 
-class Groupo(models.Model):
+class Groups(models.Model):
     """
     Add time fields to another models.
     """

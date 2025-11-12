@@ -5,7 +5,7 @@ export interface PackageParams {
   os: string;
   type: string;
   name: string;
-  version: string;
+  version?: string;
   object: string;
   file: File;
 }

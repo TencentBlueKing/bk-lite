@@ -3,7 +3,6 @@ import React, { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { List, Input, Button, Toast, Picker } from 'antd-mobile';
 import { LeftOutline } from 'antd-mobile-icons';
-import { useAuth } from '@/context/auth';
 import { mockAccountInfo } from '@/constants/mockData';
 
 // 时区选项
@@ -28,7 +27,6 @@ const languageOptions = [
 
 export default function AccountDetailsPage() {
     const router = useRouter();
-    const { userInfo } = useAuth();
 
     // 可编辑字段
     const [displayName, setDisplayName] = useState('');

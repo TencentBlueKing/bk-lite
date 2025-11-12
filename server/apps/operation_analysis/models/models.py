@@ -8,10 +8,10 @@ from rest_framework.exceptions import ValidationError
 
 from apps.core.models.maintainer_info import MaintainerInfo
 from apps.core.models.time_info import TimeInfo
-from apps.core.models.group_info import Groupo
+from apps.core.models.group_info import Groups
 
 
-class Directory(MaintainerInfo, TimeInfo, Groupo):
+class Directory(MaintainerInfo, TimeInfo, Groups):
     name = models.CharField(max_length=128, verbose_name="目录名称")
     parent = models.ForeignKey(
         'self', on_delete=models.CASCADE, related_name="sub_directories", null=True, blank=True, verbose_name="父目录"
@@ -53,7 +53,7 @@ class Directory(MaintainerInfo, TimeInfo, Groupo):
         return self.name
 
 
-class Dashboard(MaintainerInfo, TimeInfo, Groupo):
+class Dashboard(MaintainerInfo, TimeInfo, Groups):
     name = models.CharField(max_length=128, verbose_name="仪表盘名称", unique=True)
     desc = models.TextField(verbose_name="描述", blank=True, null=True)
     directory = models.ForeignKey(
@@ -71,7 +71,7 @@ class Dashboard(MaintainerInfo, TimeInfo, Groupo):
         return self.name
 
 
-class Topology(MaintainerInfo, TimeInfo, Groupo):
+class Topology(MaintainerInfo, TimeInfo, Groups):
     name = models.CharField(max_length=128, verbose_name="拓扑图名称", unique=True)
     desc = models.TextField(verbose_name="描述", blank=True, null=True)
     directory = models.ForeignKey(
@@ -91,7 +91,7 @@ class Topology(MaintainerInfo, TimeInfo, Groupo):
         return self.directory is not None
 
 
-class Architecture(MaintainerInfo, TimeInfo, Groupo):
+class Architecture(MaintainerInfo, TimeInfo, Groups):
     name = models.CharField(max_length=128, verbose_name="架构图名称", unique=True)
     desc = models.TextField(verbose_name="描述", blank=True, null=True)
     directory = models.ForeignKey(
