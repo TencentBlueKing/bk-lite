@@ -52,6 +52,8 @@ const CustomTable = <T extends object>({
 }: CustomTableProps<T>) => {
   const { t } = useTranslation();
   const fieldRef = useRef<FieldRef>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
+  const [containerHeight, setContainerHeight] = useState<number | undefined>(undefined);
   const [tableHeight, setTableHeight] = useState<number | undefined>(undefined);
   const [draggedIndex, setDraggedIndex] = useState<number | null>(null);
   const [hoveredIndex, setHoveredIndex] = useState<number | null>(null);
@@ -60,18 +62,54 @@ const CustomTable = <T extends object>({
   const [extra, setExtra] = useState<TableCurrentDataSource<T>>();
   const [columns, setColumns] = useState<any[]>([]);
 
+  // 监听父容器高度变化
   useEffect(() => {
+    const container = containerRef.current;
+    if (!container) return;
+
     const updateTableHeight = () => {
+      const parentElement = container.parentElement;
+      if (!parentElement) return;
+
+      // 如果已经设置了 scroll.y，优先使用设置的值
       if (scroll?.y) {
-        setTableHeight(parseCalcY(scroll.y as string));
+        const parsedHeight = parseCalcY(scroll.y as string);
+        setTableHeight(parsedHeight);
+        // 容器高度 = 表格滚动高度 + 表头高度 + 分页高度
+        const TABLE_HEADER_HEIGHT = size === 'small' ? 47 : size === 'middle' ? 55 : 63;
+        const PAGINATION_HEIGHT = pagination ? 56 : 0;
+        setContainerHeight(parsedHeight + TABLE_HEADER_HEIGHT + PAGINATION_HEIGHT);
+        return;
       }
+
+      // 否则根据父容器高度自动计算
+      const parentHeight = parentElement.clientHeight;
+      const TABLE_HEADER_HEIGHT = size === 'small' ? 47 : size === 'middle' ? 55 : 63;
+      const PAGINATION_HEIGHT = pagination ? 56 : 0;
+      const calculatedHeight = parentHeight - TABLE_HEADER_HEIGHT - PAGINATION_HEIGHT;
+      
+      setTableHeight(calculatedHeight > 0 ? calculatedHeight : undefined);
+      setContainerHeight(parentHeight);
     };
+
     updateTableHeight();
+
+    const resizeObserver = new ResizeObserver(() => {
+      updateTableHeight();
+    });
+
+    if (container.parentElement) {
+      resizeObserver.observe(container.parentElement);
+    }
+
+    // 监听窗口大小变化
     window.addEventListener('resize', updateTableHeight);
+
     return () => {
+      resizeObserver.disconnect();
       window.removeEventListener('resize', updateTableHeight);
     };
-  }, [scroll]);
+  }, [scroll, pagination, size]);
 
   useEffect(() => {
     const initialColumns = renderColumns();
@@ -122,7 +160,6 @@ const CustomTable = <T extends object>({
   }, [TableProps.columns, rowDraggable]);
 
   const parseCalcY = (value: string): number => {
-    if (!pagination) return 0;
     const vh = window.innerHeight;
     let total = 0;
 
@@ -149,9 +186,7 @@ const CustomTable = <T extends object>({
       }
     }
 
-    const PAGE_HEIGHT = 50;
-    const TABLE_HEADER_HEIGHT = 55;
-    return total + PAGE_HEIGHT + TABLE_HEADER_HEIGHT;
+    return total;
   };
 
   const showFieldSetting = () => {
@@ -234,12 +269,13 @@ const CustomTable = <T extends object>({
 
   return (
     <div
+      ref={containerRef}
       className={`relative ${customTableStyle.customTable}`}
-      style={{ height: tableHeight ? `${tableHeight}px` : 'auto' }}>
+      style={{ height: containerHeight ? `${containerHeight}px` : 'auto' }}>
       <Table
         size={size}
         bordered={bordered}
-        scroll={scroll}
+        scroll={tableHeight ? { ...scroll, y: tableHeight } : scroll}
         loading={loading}
         pagination={false}
         rowClassName={(record, index) =>

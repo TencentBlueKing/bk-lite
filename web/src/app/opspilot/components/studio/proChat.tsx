@@ -47,7 +47,7 @@ const ProChatComponentWrapper: React.FC<ChatComponentProps> = ({ initialChats, c
     } finally {
       setLoading(false);
     }
-  }, [loading, hasMore, page, conversationId, count]);
+  }, [loading, hasMore, page, conversationId, count, get, post]);
 
   const handleScroll = useCallback(throttle(() => {
     const scrollElement = proChatContainerRef.current?.querySelector('.chat-content-wrapper') as HTMLDivElement;
