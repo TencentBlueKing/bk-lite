@@ -13,5 +13,5 @@ description = "Metis"
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
-    "neco[core,llm,mlflow,sanic,doc_parser,devops,ocr]==1.0.8",
+    "neco[core,llm,mlflow,sanic,doc_parser,devops,ocr]==1.0.9",
 ]

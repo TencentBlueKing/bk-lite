@@ -15,8 +15,9 @@ MINIO_CONSISTENCY_CHECK_ON_START = False
 
 MINIO_PRIVATE_BUCKETS = [
     "rewind-private",
+    "munchkin-private",
     "log-alert-raw-data",  # 日志告警原始数据存储
     "monitor-alert-raw-data",  # 监控告警原始数据存储
 ]
-MINIO_PUBLIC_BUCKETS = ["rewind-public"]
+MINIO_PUBLIC_BUCKETS = ["rewind-public", "munchkin-public"]
 MINIO_POLICY_HOOKS: List[Tuple[str, dict]] = []
