@@ -657,7 +657,7 @@ const Alert: React.FC = () => {
               />
               <CustomTable
                 className="w-full"
-                scroll={{ y: 'calc(100vh - 630px)', x: 'calc(100vw - 320px)' }}
+                scroll={{ y: 'calc(100vh - 640px)', x: 'calc(100vw - 320px)' }}
                 columns={columns}
                 dataSource={tableData}
                 pagination={pagination}

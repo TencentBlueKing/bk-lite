@@ -544,7 +544,7 @@ const ViewList: React.FC<ViewListProps> = ({
       </div>
       <CustomTable
         scroll={{
-          y: `calc(100vh - ${showTab ? '320px' : '270px'})`,
+          y: `calc(100vh - ${showTab ? '330px' : '280px'})`,
           x: 'calc(100vw - 300px)',
         }}
         columns={tableColumn}
