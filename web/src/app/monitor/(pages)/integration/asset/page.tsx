@@ -594,7 +594,7 @@ const Asset = () => {
           </div>
         </div>
         <CustomTable
-          scroll={{ y: 'calc(100vh - 320px)' }}
+          scroll={{ y: 'calc(100vh - 330px)' }}
           columns={columns}
           dataSource={tableData}
           pagination={pagination}

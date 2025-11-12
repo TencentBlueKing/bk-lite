@@ -69,6 +69,7 @@
           "icon": "zichan-quanbushebei",
           "url": "/monitor/integration/list",
           "name": "integration_list",
+          "hasDetail": true,
           "children": [
             {
               "title": "配置",
