@@ -167,3 +167,131 @@ export const mockWorkbenchData = {
     ],
   },
 };
+
+// Mock 账户信息数据
+export const mockAccountInfo = {
+  username: 'admin',
+  displayName: '张三',
+  email: 'zhangsan@example.com',
+  timezone: 'Asia/Shanghai',
+  language: 'zh',
+  organizations: ['运维部', '开发组', '测试团队'],
+  roles: ['系统管理员', '运维工程师', '项目负责人', '技术支持', '数据分析师', '产品经理', '架构师', '安全审计员', '运维专家'],
+  userType: '普通用户',
+};
+
+// Mock 聊天记录数据（用于搜索）
+export interface ChatMessageRecord {
+  chatId: string;
+  chatName: string;
+  chatAvatar: string;
+  messageId: string;
+  content: string;
+  timestamp: number;
+}
+
+export const mockChatMessages: ChatMessageRecord[] = [
+  // Mary (英式口语搭子) 的消息
+  {
+    chatId: '1',
+    chatName: 'Mary (英式口语搭子)',
+    chatAvatar: '/avatars/01.svg',
+    messageId: 'm1-1',
+    content: '嗨，我是你的新朋友Mary！初次见面很开心，咱们可以聊聊天气、美食或者任何你感兴趣的话题。把啦啦啦啦啦啊啊啊',
+    timestamp: new Date('2025-10-30T14:56:00').getTime(),
+  },
+  {
+    chatId: '1',
+    chatName: 'Mary (英式口语搭子)',
+    chatAvatar: '/avatars/01.svg',
+    messageId: 'm1-2',
+    content: 'How do you think about British accent?',
+    timestamp: new Date('2025-10-30T10:30:00').getTime(),
+  },
+  {
+    chatId: '1',
+    chatName: 'Mary (英式口语搭子)',
+    chatAvatar: '/avatars/01.svg',
+    messageId: 'm1-3',
+    content: '我觉得英式发音听起来特别优雅',
+    timestamp: new Date('2025-10-30T10:31:00').getTime(),
+  },
+
+  // Mia (美式口语搭子) 的消息
+  {
+    chatId: '2',
+    chatName: 'Mia (美式口语搭子)',
+    chatAvatar: '/avatars/02.svg',
+    messageId: 'm2-1',
+    content: 'OMG, hi there! I\'m like, so stoked to chat with you! Let\'s talk about movies, music, or whatever!',
+    timestamp: new Date('2025-10-30T13:45:00').getTime(),
+  },
+  {
+    chatId: '2',
+    chatName: 'Mia (美式口语搭子)',
+    chatAvatar: '/avatars/02.svg',
+    messageId: 'm2-2',
+    content: 'Have you seen the latest Marvel movie?',
+    timestamp: new Date('2025-10-29T16:20:00').getTime(),
+  },
+  {
+    chatId: '2',
+    chatName: 'Mia (美式口语搭子)',
+    chatAvatar: '/avatars/02.svg',
+    messageId: 'm2-3',
+    content: '还没看呢，最近比较忙',
+    timestamp: new Date('2025-10-29T16:21:00').getTime(),
+  },
+
+  // Jake (美式口语搭子) 的消息
+  {
+    chatId: '3',
+    chatName: 'Jake (美式口语搭子)',
+    chatAvatar: '/avatars/05.svg',
+    messageId: 'm3-1',
+    content: 'Yo, Jake here! How\'s it going? Let\'s hang out and practice some casual American English!',
+    timestamp: new Date('2025-10-30T12:30:00').getTime(),
+  },
+  {
+    chatId: '3',
+    chatName: 'Jake (美式口语搭子)',
+    chatAvatar: '/avatars/05.svg',
+    messageId: 'm3-2',
+    content: 'What do you usually do on weekends?',
+    timestamp: new Date('2025-10-28T09:15:00').getTime(),
+  },
+  {
+    chatId: '3',
+    chatName: 'Jake (美式口语搭子)',
+    chatAvatar: '/avatars/05.svg',
+    messageId: 'm3-3',
+    content: '通常会去健身房或者看电影',
+    timestamp: new Date('2025-10-28T09:16:00').getTime(),
+  },
+
+  // 英语外教 Owen 的消息
+  {
+    chatId: '4',
+    chatName: '英语外教 Owen',
+    chatAvatar: '/avatars/04.svg',
+    messageId: 'm4-1',
+    content: 'Hey there! How\'s your day going? Ready for today\'s English lesson?',
+    timestamp: new Date('2025-10-30T11:20:00').getTime(),
+  },
+  {
+    chatId: '4',
+    chatName: '英语外教 Owen',
+    chatAvatar: '/avatars/04.svg',
+    messageId: 'm4-2',
+    content: 'Could you help me with grammar?',
+    timestamp: new Date('2025-10-27T14:30:00').getTime(),
+  },
+  {
+    chatId: '4',
+    chatName: '英语外教 Owen',
+    chatAvatar: '/avatars/04.svg',
+    messageId: 'm4-3',
+    content: 'Of course! What specific grammar points would you like to review?',
+    timestamp: new Date('2025-10-27T14:31:00').getTime(),
+  }
+]

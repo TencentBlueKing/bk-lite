@@ -1,0 +1,115 @@
+cloud_region:
+  default:
+    description: 直连区域用于接入和管理与平台主控节点直接通讯的节点。
+    name: 直连区域
+os:
+  linux: Linux
+  windows: Windows
+collector:
+  jmx_activemq_linux:
+    description: ActiveMQ JMX（Linux）采集器基于Java管理扩展（JMX）采集ActiveMQ各类监控指标。
+    name: ActiveMQ JMX
+  telegraf_linux:
+    name: Telegraf
+    description: Telegraf （Linux）是一款轻量高效的指标采集器，原生具备各类对象的监控采集能力。同时作为数据中转站将其他监控、CMDB采集器收集的数据存储到平台。
+  jmx_weblogic_linux:
+    description: WebLogic JMX（Linux）采集器基于Java管理扩展（JMX）采集WebLogic服务器的各类监控指标。
+    name: WebLogic JMX
+  exporter_elasticsearch_linux:
+    name: None
+    description: None
+  natsexecutor_linux:
+    description: None
+    name: Nats Executor
+  exporter_apache_linux:
+    description: None
+    name: None
+  exporter_postgres_linux:
+    name: None
+    description: None
+  exporter_nginx_linux:
+    name: None
+    description: None
+  exporter_mysql_linux:
+    name: None
+    description: None
+  exporter_oracle_linux:
+    name: Oracle Exporter
+    description: Oracle Exporter（Linux）采集器通过连接数据库采集Oracle各类监控指标。
+  jmx_jetty_linux:
+    name: Jetty JMX
+    description: Jetty JMX（Linux）采集器基于Java管理扩展（JMX）采集Jetty各类监控指标。
+  Vector_linux:
+    description: None
+    name: None
+  Auditbeat_linux:
+    name: None
+    description: None
+  exporter_kafka_linux:
+    description: Kafka Exporter（Linux）采集器通过连接Kafka采集各类监控指标。
+    name: Kafka Exporter
+  telegraf_windows:
+    name: Telegraf
+    description: Telegraf （Windows）是一款轻量高效的指标采集器，原生具备各类对象的监控采集能力。同时作为数据中转站将其他监控、CMDB采集器收集的数据存储到平台。
+  jmx_tomcat_linux:
+    name: None
+    description: None
+  jmx_jvm_linux:
+    name: JVM JMX
+    description: JVM JMX（Linux）采集器基于Java管理扩展（JMX）采集Java虚拟机各类监控指标。
+  Packetbeat_linux:
+    description: None
+    name: None
+  exporter_mongodb_linux:
+    description: None
+    name: None
+  exporter_mssql_linux:
+    description: None
+    name: None
+  Filebeat_linux:
+    name: None
+    description: None
+  jmx_jboss_linux:
+    description: None
+    name: None
+  exporter_rabbitmq_linux:
+    description: None
+    name: None
+  jmx_tongweb6_linux:
+    description: None
+    name: None
+  jmx_tongweb7_linux:
+    description: None
+    name: None
+  natsexecutor_windows:
+    description: None
+    name: Nats Executor
+  exporter_zookeeper_linux:
+    name: None
+    description: None
+  Metricbeat_linux:
+    name: None
+    description: None
+collector_tag:
+  exporter: Exporter
+  log: 日志
+  beat: Beat
+  monitor: 监控
+  jmx: JMX
+  cmdb: CMDB
+  windows: Windows
+  linux: Linux
+controller_status:
+  abnormal: 异常
+  not_installed: 未安装
+  normal: 正常
+controller:
+  linux:
+    name: Linux控制器
+    description: Linux控制器由 Sidecar 和 NATSExecutor组成，用于管理Linux节点和节点上的各类采集器，实现节点上的自动化部署、资源协调与任务执行。控制器默认集成了Telegraf和Vector采集器。
+  windows:
+    description: Windows控制器由 Sidecar 和 NATSExecutor组成，用于管理Windows节点和节点上的各类采集器，实现节点上的自动化部署、资源协调与任务执行。控制器默认集成了Telegraf和Vector采集器。
+    name: Windows控制器
+controller_install_method:
+  manual: 手动安装
+  auto: 自动安装

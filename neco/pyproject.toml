@@ -7,7 +7,7 @@ name = "neco"
 description = "Add your description here"
 readme = "README.md"
 requires-python = ">=3.12"
-version = "1.0.8"
+version = "1.0.9"
 
 dependencies = [
 ]
@@ -26,6 +26,7 @@ dev = [
 
 [project.optional-dependencies]
 core = [
+    "fire>=0.7.1",
     "loguru==0.7.3",
     "psycopg2-binary==2.9.9",
     "setuptools>=68",
@@ -71,25 +72,26 @@ mlops = [
 ]
 
 llm = [
-    "langchain==0.3.27",
-    "langchain-community==0.3.27",
-    "langchain-experimental==0.3.4",
-    "langchain-mcp-adapters==0.1.9",
-    "langgraph==0.6.2",
-    "langgraph-checkpoint-postgres==2.0.21",
-    "langchain-openai==0.3.28",
-    "langchain-huggingface==0.1.2",
-    "langchain-postgres==0.0.15",
-    "graphiti-core==0.20.4",
-    "json-repair==0.39.1",
-    "duckduckgo-search==7.2.1",
+     "ag-ui-protocol==0.1.10",
+    "langchain==1.0.5",
+    "langgraph==1.0.3",
+    "langchain-openai==1.0.2",
+    "langchain-huggingface==1.0.1",
+    "graphiti-core==0.23.1",
+    "json-repair==0.53.0",
+    "duckduckgo-search==8.1.1",
+    "langchain-postgres==0.0.16",
+    "langgraph-checkpoint-postgres==3.0.1",
+    "langchain-mcp-adapters==0.1.12",
+    "langchain-community==0.4.1",
+    "langgraph-supervisor>=0.0.30",
+    "langchain-experimental==0.4.0",
+    "deepagents==0.2.5",
 ]
 
 devops = [
     "python-jenkins==1.8.2",
     "kubernetes==32.0.1",
-    "ansible==11.5.0",
-    "ansible-runner==2.4.1",
 ]
 
 ocr =[

@@ -56,7 +56,7 @@ func renderEnvVars(s string) string {
 	}
 
 	// 匹配 ${VAR_NAME} 格式
-	re := regexp.MustCompile(`\$\{([A-Za-z_][A-Za-z0-9_]*)\}`)
+	re := regexp.MustCompile(`\$\{([A-Za-z_][A-Za-z0-9_]*)}`)
 	result := re.ReplaceAllStringFunc(s, func(match string) string {
 		// 提取变量名（去掉 ${ 和 }）
 		varName := match[2 : len(match)-1]

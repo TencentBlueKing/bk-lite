@@ -10,6 +10,8 @@
         "execute_parameters": "-jar /opt/fusion-collectors/bin/jmx_weblogic.jar $LISTEN_HOST %s",
         "validation_parameters": "",
         "default_template": "",
-        "introduction": "JMX-WebLogic is a Java Management Extensions (JMX) monitoring tool that collects and monitors WebLogic server metrics, providing real-time performance insights."
+        "introduction": "JMX-WebLogic is a Java Management Extensions (JMX) monitoring tool that collects and monitors WebLogic server metrics, providing real-time performance insights.",
+        "tags": ["linux", "jmx", "monitor"],
+        "package_name": "jmx_weblogic"
     }
 ]

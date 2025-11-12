@@ -5,161 +5,18 @@
 from rest_framework.decorators import action
 from rest_framework.response import Response
 
-from apps.operation_analysis.common.get_nats_source_data import GetNatsData
-from apps.operation_analysis.filters import DataSourceAPIModelFilter, DashboardModelFilter, DirectoryModelFilter, \
-    TopologyModelFilter, NameSpaceModelFilter, DataSourceTagModelFilter, ArchitectureModelFilter
-from apps.operation_analysis.serializers import DataSourceAPIModelSerializer, DashboardModelSerializer, \
-    DirectoryModelSerializer, TopologyModelSerializer, NameSpaceModelSerializer, DataSourceTagModelSerializer, ArchitectureModelSerializer
+from apps.core.decorators.api_permission import HasPermission
+from apps.core.utils.viewset_utils import AuthViewSet
+from apps.operation_analysis.filters.filters import DashboardModelFilter, DirectoryModelFilter, \
+    TopologyModelFilter, ArchitectureModelFilter
+from apps.operation_analysis.serializers.directory_serializers import DashboardModelSerializer, \
+    DirectoryModelSerializer, TopologyModelSerializer, ArchitectureModelSerializer
+from apps.operation_analysis.services.directory_service import DictDirectoryService
 from config.drf.pagination import CustomPageNumberPagination
-from config.drf.viewsets import ModelViewSet
-from apps.operation_analysis.models import DataSourceAPIModel, Dashboard, Directory, Topology, NameSpace, DataSourceTag, Architecture
-from apps.core.logger import operation_analysis_logger as logger
+from apps.operation_analysis.models.models import Dashboard, Directory, Topology, Architecture
 
 
-class TreeNodeBuilder:
-    """树节点构建器基类"""
-
-    @staticmethod
-    def get_directory_nodes(directories):
-        """构建目录节点"""
-        nodes = {}
-        parent_children_map = {}
-
-        for directory in directories:
-            node_key = f"directory_{directory.id}"
-            nodes[node_key] = {
-                "id": node_key,
-                "data_id": directory.id,
-                "desc": directory.desc,
-                "name": directory.name,
-                "type": "directory",
-                "children": []
-            }
-
-            # 构建父子关系映射
-            parent_key = f"directory_{directory.parent_id}" if directory.parent_id else None
-            if parent_key not in parent_children_map:
-                parent_children_map[parent_key] = []
-            parent_children_map[parent_key].append(node_key)
-
-        return nodes, parent_children_map
-
-    @staticmethod
-    def get_dashboard_nodes(dashboards, parent_children_map):
-        """构建仪表盘节点"""
-        nodes = {}
-
-        for dashboard in dashboards:
-            node_key = f"dashboard_{dashboard.id}"
-            nodes[node_key] = {
-                "id": node_key,
-                "data_id": dashboard.id,
-                "name": dashboard.name,
-                "desc": dashboard.desc,
-                "type": "dashboard",
-                "children": []
-            }
-
-            # 仪表盘属于目录的子节点
-            parent_key = f"directory_{dashboard.directory_id}"
-            if parent_key not in parent_children_map:
-                parent_children_map[parent_key] = []
-            parent_children_map[parent_key].append(node_key)
-
-        return nodes
-
-    @staticmethod
-    def get_topology_nodes(topologies, parent_children_map):
-        """构建拓扑图节点"""
-        nodes = {}
-        for topology in topologies:
-            node_key = f"topology_{topology.id}"
-            nodes[node_key] = {
-                "id": node_key,
-                "data_id": topology.id,
-                "name": topology.name,
-                "desc": topology.desc,
-                "type": "topology",
-                "children": []
-            }
-
-            parent_key = f"directory_{topology.directory_id}"
-            if parent_key not in parent_children_map:
-                parent_children_map[parent_key] = []
-            parent_children_map[parent_key].append(node_key)
-
-        return nodes
-
-    @staticmethod
-    def get_architecture_nodes(architectures, parent_children_map):
-        """构建架构图节点"""
-        nodes = {}
-        for architecture in architectures:
-            node_key = f"architecture_{architecture.id}"
-            nodes[node_key] = {
-                "id": node_key,
-                "data_id": architecture.id,
-                "name": architecture.name,
-                "desc": architecture.desc,
-                "type": "architecture",
-                "children": []
-            }
-
-            parent_key = f"directory_{architecture.directory_id}"
-            if parent_key not in parent_children_map:
-                parent_children_map[parent_key] = []
-            parent_children_map[parent_key].append(node_key)
-
-        return nodes
-
-
-class NameSpaceModelViewSet(ModelViewSet):
-    """
-    命名空间
-    """
-    queryset = NameSpace.objects.all()
-    serializer_class = NameSpaceModelSerializer
-    ordering_fields = ["id"]
-    ordering = ["id"]
-    filterset_class = NameSpaceModelFilter
-    pagination_class = CustomPageNumberPagination
-
-
-class DataSourceAPIModelViewSet(ModelViewSet):
-    """
-    数据源
-    """
-    queryset = DataSourceAPIModel.objects.all()
-    serializer_class = DataSourceAPIModelSerializer
-    ordering_fields = ["id"]
-    ordering = ["id"]
-    filterset_class = DataSourceAPIModelFilter
-    pagination_class = CustomPageNumberPagination
-
-    @action(detail=False, methods=["post"], url_path=r"get_source_data/(?P<pk>[^/.]+)")
-    def get_source_data(self, request, *args, **kwargs):
-        instance = self.get_object()
-        params = request.data
-        namespace_list = instance.namespaces.all()
-        if "/" not in instance.rest_api:
-            namespace = "default"
-            path = instance.rest_api
-        else:
-            namespace, path = instance.rest_api.split("/", 1)
-        client = GetNatsData(namespace=namespace, path=path, params=params, namespace_list=namespace_list,
-                             request=request)
-        result = []
-        try:
-            data = client.get_data()
-            for namespace_id, _data in data.items():
-                result.append({"namespace_id": namespace_id, "data": _data})
-        except Exception as e:
-            logger.error("获取数据源数据失败: {}".format(e))
-
-        return Response(result)
-
-
-class DirectoryModelViewSet(ModelViewSet):
+class DirectoryModelViewSet(AuthViewSet):
     """
     目录
     """
@@ -169,79 +26,40 @@ class DirectoryModelViewSet(ModelViewSet):
     ordering = ["id"]
     filterset_class = DirectoryModelFilter
     pagination_class = CustomPageNumberPagination
+    permission_key = "directory"
+    ORGANIZATION_FIELD = "groups"
 
+    @HasPermission("view-View")
+    def list(self, request, *args, **kwargs):
+        return super(DirectoryModelViewSet, self).list(request, *args, **kwargs)
+
+    @HasPermission("view-View")
+    def retrieve(self, request, *args, **kwargs):
+        return super(DirectoryModelViewSet, self).retrieve(request, *args, **kwargs)
+
+    @HasPermission("view-AddCatalogue")
     def create(self, request, *args, **kwargs):
         data = request.data
         Directory.objects.create(**data)
         return Response(data)
 
-
+    @HasPermission("view-EditCatalogue")
     def update(self, request, *args, **kwargs):
         Directory.objects.filter(id=kwargs["pk"]).update(**request.data)
         return Response(request.data)
 
+    @HasPermission("view-DeleteCatalogue")
+    def destroy(self, request, *args, **kwargs):
+        return super(DirectoryModelViewSet, self).destroy(request, *args, **kwargs)
+
+    # @HasPermission("view-View")
     @action(detail=False, methods=["get"], url_path="tree")
     def tree(self, request, *args, **kwargs):
-        """
-        获取目录树形结构，目录和仪表盘统一作为树节点
-        """
-        # 一次性获取所有激活的目录数据
-        directories = Directory.objects.filter(is_active=True).order_by("id")
-
-        # 一次性获取所有仪表盘数据
-        dashboards = Dashboard.objects.filter(
-            directory__in=directories
-        ).order_by("id")
-
-        # 增加拓扑图查询
-        topologies = Topology.objects.filter(
-            directory__in=directories
-        ).order_by("id")
-
-        # 增加架构图查询
-        architectures = Architecture.objects.filter(
-            directory__in=directories
-        ).order_by("id")
-
-        # 构建所有节点映射
-        all_nodes = {}
-
-        # 构建目录节点
-        directory_nodes, parent_children_map = TreeNodeBuilder.get_directory_nodes(directories)
-        all_nodes.update(directory_nodes)
-
-        # 构建仪表盘节点
-        dashboard_nodes = TreeNodeBuilder.get_dashboard_nodes(dashboards, parent_children_map)
-        all_nodes.update(dashboard_nodes)
-
-        # 拓扑图节点构建
-        topology_nodes = TreeNodeBuilder.get_topology_nodes(topologies, parent_children_map)
-        all_nodes.update(topology_nodes)
-
-        # 架构图节点构建
-        architecture_nodes = TreeNodeBuilder.get_architecture_nodes(architectures, parent_children_map)
-        all_nodes.update(architecture_nodes)
-
-        def build_tree_recursive(node_key):
-            """递归构建子树"""
-            node = all_nodes[node_key]
-            child_keys = parent_children_map.get(node_key, [])
-
-            if child_keys:
-                node["children"] = [build_tree_recursive(child_key) for child_key in child_keys]
-            else:
-                node["children"] = []
-
-            return node
-
-        # 构建根节点列表（顶级目录）
-        root_keys = parent_children_map.get(None, [])
-        data = [build_tree_recursive(root_key) for root_key in root_keys]
-
-        return Response(data)
+        result = DictDirectoryService.get_dict_trees(request)
+        return Response(result)
 
 
-class DashboardModelViewSet(ModelViewSet):
+class DashboardModelViewSet(AuthViewSet):
     """
     仪表盘
     """
@@ -251,9 +69,31 @@ class DashboardModelViewSet(ModelViewSet):
     ordering = ["id"]
     filterset_class = DashboardModelFilter
     pagination_class = CustomPageNumberPagination
+    permission_key = "directory.dashboard"
+    ORGANIZATION_FIELD = "groups"  # 使用 groups 字段作为组织字段
+
+    @HasPermission("view-View")
+    def retrieve(self, request, *args, **kwargs):
+        return super(DashboardModelViewSet, self).retrieve(request, *args, **kwargs)
+
+    @HasPermission("view-View")
+    def list(self, request, *args, **kwargs):
+        return super(DashboardModelViewSet, self).list(request, *args, **kwargs)
+
+    @HasPermission("view-AddChart")
+    def create(self, request, *args, **kwargs):
+        return super(DashboardModelViewSet, self).create(request, *args, **kwargs)
+
+    @HasPermission("view-EditChart")
+    def update(self, request, *args, **kwargs):
+        return super(DashboardModelViewSet, self).update(request, *args, **kwargs)
+
+    @HasPermission("view-DeleteChart")
+    def destroy(self, request, *args, **kwargs):
+        return super(DashboardModelViewSet, self).destroy(request, *args, **kwargs)
 
 
-class TopologyModelViewSet(ModelViewSet):
+class TopologyModelViewSet(AuthViewSet):
     """
     拓扑图
     """
@@ -263,9 +103,31 @@ class TopologyModelViewSet(ModelViewSet):
     ordering = ["id"]
     filterset_class = TopologyModelFilter
     pagination_class = CustomPageNumberPagination
+    permission_key = "directory.topology"
+    ORGANIZATION_FIELD = "groups"  # 使用 groups 字段作为组织字段
+
+    @HasPermission("view-View")
+    def retrieve(self, request, *args, **kwargs):
+        return super(TopologyModelViewSet, self).retrieve(request, *args, **kwargs)
+
+    @HasPermission("view-View")
+    def list(self, request, *args, **kwargs):
+        return super(TopologyModelViewSet, self).list(request, *args, **kwargs)
+
+    @HasPermission("view-AddChart")
+    def create(self, request, *args, **kwargs):
+        return super(TopologyModelViewSet, self).create(request, *args, **kwargs)
+
+    @HasPermission("view-EditChart")
+    def update(self, request, *args, **kwargs):
+        return super(TopologyModelViewSet, self).update(request, *args, **kwargs)
+
+    @HasPermission("view-DeleteChart")
+    def destroy(self, request, *args, **kwargs):
+        return super(TopologyModelViewSet, self).destroy(request, *args, **kwargs)
 
 
-class ArchitectureModelViewSet(ModelViewSet):
+class ArchitectureModelViewSet(AuthViewSet):
     """
     架构图
     """
@@ -275,15 +137,25 @@ class ArchitectureModelViewSet(ModelViewSet):
     ordering = ["id"]
     filterset_class = ArchitectureModelFilter
     pagination_class = CustomPageNumberPagination
+    permission_key = "directory.architecture"
+    ORGANIZATION_FIELD = "groups"  # 使用 groups 字段作为组织字段
 
+    @HasPermission("view-View")
+    def retrieve(self, request, *args, **kwargs):
+        return super(ArchitectureModelViewSet, self).retrieve(request, *args, **kwargs)
 
-class DataSourceTagModelViewSet(ModelViewSet):
-    """
-    数据源标签
-    """
-    queryset = DataSourceTag.objects.all()
-    serializer_class = DataSourceTagModelSerializer
-    ordering_fields = ["id"]
-    ordering = ["id"]
-    filterset_class = DataSourceTagModelFilter
-    pagination_class = CustomPageNumberPagination
+    @HasPermission("view-View")
+    def list(self, request, *args, **kwargs):
+        return super(ArchitectureModelViewSet, self).list(request, *args, **kwargs)
+
+    @HasPermission("view-AddChart")
+    def create(self, request, *args, **kwargs):
+        return super(ArchitectureModelViewSet, self).create(request, *args, **kwargs)
+
+    @HasPermission("view-EditChart")
+    def update(self, request, *args, **kwargs):
+        return super(ArchitectureModelViewSet, self).update(request, *args, **kwargs)
+
+    @HasPermission("view-DeleteChart")
+    def destroy(self, request, *args, **kwargs):
+        return super(ArchitectureModelViewSet, self).destroy(request, *args, **kwargs)

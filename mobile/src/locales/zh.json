@@ -28,7 +28,8 @@
         "switchedToLanguage": "已切换到",
         "switchLanguageFailed": "切换语言失败，请重试",
         "languageSelectionTitle": "选择语言",
-        "languageSelectionSubtitle": "Choose Language"
+        "languageSelectionSubtitle": "Choose Language",
+        "accountsAndSecurity": "账户与安全"
     },
     "navigation": {
         "conversations": "对话",

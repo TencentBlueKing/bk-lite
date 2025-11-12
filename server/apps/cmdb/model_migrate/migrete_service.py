@@ -7,9 +7,12 @@ from apps.cmdb.constants import (
     CLASSIFICATION,
     CREATE_CLASSIFICATION_CHECK_ATTR_MAP,
     CREATE_MODEL_CHECK_ATTR,
+    INSTANCE,
     MODEL,
     MODEL_ASSOCIATION,
-    SUBORDINATE_MODEL, INIT_MODEL_GROUP,
+    ORGANIZATION,
+    SUBORDINATE_MODEL,
+    INIT_MODEL_GROUP,
 )
 from apps.cmdb.graph.drivers.graph_client import GraphClient
 from apps.cmdb.utils.base import get_default_group_id
@@ -154,6 +157,13 @@ class ModelMigrate:
             import traceback
             logger.error(f"Error updating old models group: {traceback.format_exc()}")
 
+        try:
+            # 检查并修复旧实例的 organization 字段类型
+            self.check_and_update_old_instances_organization()
+        except Exception as err:  # noqa
+            import traceback
+            logger.error(f"Error updating old instances organization: {traceback.format_exc()}")
+
         return dict(
             classification=classification_resp,
             model=model_resp,
@@ -183,3 +193,32 @@ class ModelMigrate:
                     node_ids=models_without_group,
                     properties={INIT_MODEL_GROUP: self.default_group_id}
                 )
+
+    def check_and_update_old_instances_organization(self):
+        """检查并修复旧实例的 organization 字段类型
+        
+        将单个整数类型的 organization 转换为列表类型，以保持与模型定义一致
+        """
+        with GraphClient() as ag:
+            # 查询所有实例
+            all_instances, _ = ag.query_entity(INSTANCE, [])
+            
+            # 筛选出 organization 字段为整数类型的实例
+            instances_need_fix = []
+            for instance in all_instances:
+                # 如果 organization 字段存在且是整数类型，需要转换为列表
+                if ORGANIZATION in instance and isinstance(instance[ORGANIZATION], int):
+                    instances_need_fix.append(instance["_id"])
+                # 如果 organization 字段不存在或为空，设置为默认组织列表
+                elif ORGANIZATION not in instance or not instance[ORGANIZATION]:
+                    instances_need_fix.append(instance["_id"])
+            
+            # 批量更新需要修复的实例
+            if instances_need_fix:
+                logger.info(f"Found {len(instances_need_fix)} instances with incorrect organization field type")
+                ag.batch_update_node_properties(
+                    label=INSTANCE,
+                    node_ids=instances_need_fix,
+                    properties={ORGANIZATION: self.default_group_id}
+                )
+                logger.info(f"Successfully updated {len(instances_need_fix)} instances organization field to list type")

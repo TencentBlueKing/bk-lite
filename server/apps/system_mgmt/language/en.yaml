@@ -1,0 +1,98 @@
+# System Management Language File - English
+# This file contains all translations for the system_mgmt application
+
+# Application descriptions
+app:
+  opspilot: OpsPilot is an AI intelligence platform, based on cutting-edge artificial intelligence technology, integrating machine learning and large model capabilities, supporting diversified scenarios.
+  monitor: Real-time monitoring and management platform for system operation status, providing data visualization, alert notifications, performance analysis and other functions to help quickly identify problems and ensure business stability
+  cmdb: Platform for centralized management of all IT assets and resources of an enterprise, helping organizations effectively track asset lifecycle, optimize resource allocation and ensure system security
+  node: Used to centrally manage nodes under various cloud regions and install various probes on each node to collect monitoring data, configuration information, logs and other information
+  system-manager: Covering user and organizational role permission management, ensuring resource access security through fine-grained permission control while improving operational efficiency. Provides flexible configuration and management to meet different business needs
+  mlops: AI end-to-end lifecycle management tool, integrating dataset management and model task training functionalities, enhances the flexibility and efficiency of machine learning.
+  alarm: Gather multiple sources of alarm events from enterprises, intelligently reduce noise, explore deep fault causes, improve operation and maintenance response efficiency, and help quickly locate problems.
+  log: For centralized collection, storage, and analysis of log data, helping users achieve efficient log monitoring and troubleshooting.
+  playground: Users can experience relevant capabilities here, including AIOps model testing, intelligent agent usage, and more.
+  ops-analysis: Integrate operation and maintenance data, analyze potential risks and optimization space from multiple dimensions through dashboards and canvases, provide data support for decision-making, and help improve operation and maintenance quality and business continuity
+
+# Basic constants
+status:
+  success: "Success"
+  failed: "Failed"
+
+# Action types
+action_type:
+  create: "Create"
+  update: "Update"
+  delete: "Delete"
+  execute: "Execute"
+
+# Error messages
+error:
+  # Basic permission and authentication errors
+  insufficient_permissions: insufficient permissions
+  token_validation_failed: token validation failed
+  please_provide_token: please provide Token
+  update_failed: update failed
+  delete_failed: delete failed
+  not_authorized: Not Authorized
+
+  # Application management related errors
+  cannot_delete_builtin_app: Cannot delete built-in application
+
+  # Role management related errors
+  cannot_delete_admin_normal_roles: Admin and normal roles cannot be deleted
+  role_used_by_users: Role is already used by the following users!
+  group_role_ids_required: Group ID list and role ID list cannot be empty
+  group_ids_role_id_required: Group ID list and role ID cannot be empty
+  some_groups_not_exist: Some groups do not exist
+  some_roles_not_exist: Role does not exist
+  role_id_required: Role ID cannot be empty
+  group_id_required: Group ID cannot be empty
+  group_not_exist: Group does not exist
+
+  # Login module related errors
+  domain_required_for_login_module: Domain is required for creating a login module.
+  login_module_name_exists: Login module with this name and source type already exists.
+  login_module_domain_exists: Login module with this domain already exists.
+
+  # Group management related errors
+  no_permission_create_group: You do not have permission to create a group under this parent group.
+  cannot_create_under_virtual_group: Cannot create a group under a virtual group.
+  cannot_create_under_virtual_subgroup: Cannot create a group under a virtual subgroup. Virtual groups can only have two levels.
+  cannot_create_top_level_virtual_group: Cannot create top-level virtual group. Only the built-in virtual group is allowed.
+  parent_group_not_found: Parent group not found.
+  default_group_cannot_modify: Default group cannot be modified.
+  no_permission_edit_group: You do not have permission to edit this group.
+  default_group_cannot_delete: Default group cannot be deleted.
+  no_permission_delete_group: You do not have permission to delete this group.
+  group_has_users_remove_first: This group or sub groups has users, please remove the users first!
+
+  # Data rule related errors
+  module_not_found: Module not found
+  app_not_found: APP not found
+
+  # Custom menu related errors
+  cannot_delete_menu_with_children: Cannot delete menu with children
+  order_required: Order value cannot be empty
+  invalid_order: Order value must be an integer
+  invalid_format: Request format error, list required
+  root_menu_cannot_toggle: Root menu does not support enable/disable
+  ids_required: Menu ID list cannot be empty
+  is_enabled_required: Enabled status cannot be empty
+  cannot_delete_menu_group_with_menus: Cannot delete menu group with menus
+  cannot_modify_builtin_menu_group: Cannot modify builtin menu group
+  cannot_delete_builtin_menu_group: Cannot delete builtin menu group
+
+# Success messages
+success:
+  # Task related messages
+  sync_task_initiated: Sync task has been initiated.
+  
+  # Custom menu success messages
+  batch_create: Batch creation successful
+  update_order: Order updated successfully
+  batch_update_order: Successfully updated menu orders
+  menu_enabled: Menu enabled
+  menu_disabled: Menu disabled
+  menu_group_enabled: Menu group enabled
+  menu_group_disabled: Menu group disabled

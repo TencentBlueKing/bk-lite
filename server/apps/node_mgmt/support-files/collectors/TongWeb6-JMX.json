@@ -10,7 +10,9 @@
         "execute_parameters": "-jar /opt/fusion-collectors/bin/jmx_tongweb6.jar $LISTEN_HOST %s",
         "validation_parameters": "",
         "default_template": "",
-        "introduction": "JMX-TongWeb6 is a Java Management Extensions (JMX) monitoring tool that collects and monitors TongWeb6 server metrics, providing real-time performance insights."
+        "introduction": "JMX-TongWeb6 is a Java Management Extensions (JMX) monitoring tool that collects and monitors TongWeb6 server metrics, providing real-time performance insights.",
+        "tags": ["linux", "jmx", "monitor"],
+        "package_name": "jmx_tongweb6"
     }
 ]
 

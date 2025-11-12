@@ -1,0 +1,5 @@
+collect_type:
+  Auditbeat:
+    auditd:
+      description: 采集 Linux 审计框架日志，用于全面的系统安全监控与合规审计。
+      name: 审计日志采集

@@ -1,4 +1,4 @@
-import { Graph, Edge } from '@antv/x6';
+import { Graph, Edge, Node } from '@antv/x6';
 import { v4 as uuidv4 } from 'uuid';
 import { getEdgeStyleWithConfig, addEdgeTools, calculateOptimalPorts } from './topologyUtils';
 import type { EdgeData } from '@/app/ops-analysis/types/topology';
@@ -39,13 +39,13 @@ export const registerStandardEdge = () => {
 };
 
 // 创建边的通用函数
-export const createEdge = (graphInstance: any, config: EdgeCreationConfig): Edge | null => {
+export const createEdge = (graphInstance: Graph, config: EdgeCreationConfig): Edge | null => {
   if (!graphInstance) return null;
 
   const sourceNode = graphInstance.getCellById(config.sourceNodeId);
   const targetNode = graphInstance.getCellById(config.targetNodeId);
 
-  if (!sourceNode || !targetNode) return null;
+  if (!sourceNode?.isNode() || !targetNode?.isNode()) return null;
 
   // 计算最佳连接端口
   const { sourcePort, targetPort } = calculateOptimalPorts(sourceNode, targetNode);
@@ -99,13 +99,13 @@ export const createEdge = (graphInstance: any, config: EdgeCreationConfig): Edge
 };
 
 // 创建边数据对象
-const createEdgeData = (edge: Edge, sourceNode: any, targetNode: any): EdgeData => {
-  const getNodeName = (node: any): string => {
+const createEdgeData = (edge: Edge, sourceNode: Node, targetNode: Node): EdgeData => {
+  const getNodeName = (node: Node): string => {
     const nodeData = node.getData?.();
     if (nodeData?.name) return nodeData.name;
 
     const attrs = node.getAttrs?.();
-    if (attrs?.label?.text) return attrs.label.text;
+    if (attrs?.label?.text) return String(attrs.label.text);
 
     return node.id;
   };
@@ -145,7 +145,7 @@ export const registerEdges = () => {
 
 // 边创建工厂函数
 export const createEdgeByType = (
-  graphInstance: any,
+  graphInstance: Graph,
   sourceNodeId: string,
   targetNodeId: string,
   connectionType: 'none' | 'single' | 'double' = 'single'
@@ -164,6 +164,11 @@ export const createEdgeByType = (
 
   const sourceNode = graphInstance.getCellById(sourceNodeId);
   const targetNode = graphInstance.getCellById(targetNodeId);
+
+  if (!sourceNode?.isNode() || !targetNode?.isNode()) {
+    return { edge: null, edgeData: null };
+  }
+
   const edgeData = createEdgeData(edge, sourceNode, targetNode);
 
   return { edge, edgeData };

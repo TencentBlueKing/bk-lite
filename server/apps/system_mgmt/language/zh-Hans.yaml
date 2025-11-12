@@ -1,0 +1,98 @@
+# 系统管理语言文件 - 简体中文
+# 此文件包含 system_mgmt 应用的所有翻译
+
+# 应用描述
+app:
+  opspilot: OpsPilot 是AI智能平台，基于前沿人工智能技术，融合机器学习与大模型能力，支持多元化场景
+  monitor: 用于实时监测和管理系统运行状态的平台，提供数据可视化、告警通知、性能分析等功能，帮助快速定位问题，保障业务稳定
+  cmdb: 用于集中管理企业的所有IT资产和资源的平台，帮助组织有效地追踪资产生命周期、优化资源分配并确保系统安全
+  node: 用于集中管理各个云区域下的节点，为各个节点安装各类探针，以便进行监控数据、配置信息、日志等信息的采集
+  system-manager: 涵盖用户和组织角色权限管理，通过精细化权限控制，确保资源访问安全，同时提升操作效率。提供灵活的配置和管理，满足不同业务需求
+  mlops: AI模型全生命周期管理工具，集成数据集管理、模型任务训练等功能，提升机器学习的灵活性和效率。
+  alarm: 汇聚企业多源告警事件，智能降噪，挖掘深层故障原因，提升运维响应效率，帮助快速定位问题。
+  log: 用于集中收集、存储和分析日志数据，帮助用户实现高效的日志监控和故障排查。
+  playground: 用户可以在这里体验相关能力，包括 AIOps 模型测试、智能体使用等。
+  ops-analysis: 整合运维数据，通过仪表盘、画布方式多维度分析挖掘潜在风险与优化空间，为决策提供数据支撑，助力提升运维质量与业务连续性。
+
+# 基础常量
+status:
+  success: "成功"
+  failed: "失败"
+
+# 操作类型
+action_type:
+  create: "创建"
+  update: "更新"
+  delete: "删除"
+  execute: "执行"
+
+# 错误消息
+error:
+  # 基础权限和认证错误
+  insufficient_permissions: 权限不足
+  token_validation_failed: 令牌验证失败
+  please_provide_token: 请提供令牌
+  update_failed: 更新失败
+  delete_failed: 删除失败
+  not_authorized: 未授权
+
+  # 应用管理相关错误
+  cannot_delete_builtin_app: 无法删除内置应用
+
+  # 角色管理相关错误
+  cannot_delete_admin_normal_roles: admin和normal角色不允许删除
+  role_used_by_users: 角色已被用户使用！
+  group_role_ids_required: 组织ID列表和角色ID不能为空
+  group_ids_role_id_required: 组织ID列表和角色ID不能为空
+  some_groups_not_exist: 部分组织不存在
+  some_roles_not_exist: 角色不存在
+  role_id_required: 角色ID不能为空
+  group_id_required: 组织ID不能为空
+  group_not_exist: 组织不存在
+
+  # 登录模块相关错误
+  domain_required_for_login_module: 创建登录模块需要提供域名。
+  login_module_name_exists: 已存在同名且同类型的登录模块。
+  login_module_domain_exists: 该域名的登录模块已存在。
+
+  # 组管理相关错误
+  no_permission_create_group: 您没有权限在此父组下创建组。
+  cannot_create_under_virtual_group: 不能在虚拟组下创建子组。
+  cannot_create_under_virtual_subgroup: 不能在虚拟子组下创建组。虚拟组最多只能有两层。
+  cannot_create_top_level_virtual_group: 不能创建顶级虚拟组。只允许使用系统内置的虚拟组。
+  parent_group_not_found: 父组不存在。
+  default_group_cannot_modify: 默认组无法修改。
+  no_permission_edit_group: 您没有权限编辑此组。
+  default_group_cannot_delete: 默认组无法删除。
+  no_permission_delete_group: 您没有权限删除此组。
+  group_has_users_remove_first: 此组或子组中有用户，请先移除用户！
+
+  # 数据规则相关错误
+  module_not_found: 未找到模块
+  app_not_found: 未找到应用
+
+  # 自定义菜单相关错误
+  cannot_delete_menu_with_children: 无法删除包含子菜单的菜单
+  order_required: 排序值不能为空
+  invalid_order: 排序值必须是整数
+  invalid_format: 请求格式错误，需要列表
+  root_menu_cannot_toggle: 一级菜单不支持启停功能
+  ids_required: 菜单ID列表不能为空
+  is_enabled_required: 启用状态不能为空
+  cannot_delete_menu_group_with_menus: 无法删除包含菜单的菜单组
+  cannot_modify_builtin_menu_group: 内置菜单组不允许修改
+  cannot_delete_builtin_menu_group: 内置菜单组不允许删除
+
+# 成功消息
+success:
+  # 任务相关消息
+  sync_task_initiated: 同步任务已启动。
+  
+  # 自定义菜单成功消息
+  batch_create: 批量创建成功
+  update_order: 排序更新成功
+  batch_update_order: 成功更新菜单排序
+  menu_enabled: 菜单已启用
+  menu_disabled: 菜单已禁用
+  menu_group_enabled: 菜单组已启用
+  menu_group_disabled: 菜单组已禁用

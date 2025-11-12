@@ -87,7 +87,7 @@
 }
 
 /* Input 输入框 */
-.dark .adm-input {
+.dark .adm-input, .adm-input-element {
   color: var(--color-text-1) !important;
 }
 
@@ -172,3 +172,60 @@
   color: var(--color-text-2) !important;
 }
 
+/* Picker 选择器 */
+
+.dark .adm-picker-view {
+  background-color: var(--color-bg) !important;
+}
+
+.dark .adm-picker-view-column-item {
+  color: var(--color-text-3);
+}
+
+.dark .adm-picker-view-column-wheel .adm-picker-view-column-item-active {
+  color: var(--color-text-1) !important;
+}
+  
+.dark .adm-picker-view-mask .adm-picker-view-mask-top,
+.dark .adm-picker-view-mask .adm-picker-view-mask-bottom {
+  background-color: var(--color-bg) !important;
+}
+
+/* ========== Slider 滑块修复 ========== */
+/* 修复 Tailwind CSS 全局样式对 Slider 的影响 */
+
+.adm-slider {
+  box-sizing: content-box !important;
+}
+
+.adm-slider * {
+  box-sizing: content-box !important;
+}
+
+.adm-slider-track {
+  box-sizing: content-box !important;
+}
+
+.adm-slider-fill {
+  box-sizing: content-box !important;
+}
+
+.adm-slider-thumb-container {
+  box-sizing: content-box !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+}
+
+.adm-slider-thumb {
+  box-sizing: content-box !important;
+  position: relative !important;
+  top: auto !important;
+  left: auto !important;
+  transform: none !important;
+  margin: 0 !important;
+}
+
+.adm-slider-thumb-icon {
+  box-sizing: content-box !important;
+}

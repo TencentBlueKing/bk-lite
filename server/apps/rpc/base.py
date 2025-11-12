@@ -54,6 +54,9 @@ class BaseOperationAnaRpc(object):
     def __init__(self, *args, **kwargs):
         params = {}
         server = kwargs.get("server", None)
+        namespace = kwargs.get("namespace", None)
         if server:
             params["server"] = server
+        if namespace:
+            params["namespace"] = namespace
         self.client = OperationAnalysisRpc(**params)

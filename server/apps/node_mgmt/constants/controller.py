@@ -4,6 +4,19 @@ from apps.node_mgmt.constants.node import NodeConstants
 class ControllerConstants:
     """控制器相关常量"""
 
+    CONTROLLER = [
+        {
+            "os": "linux",
+            "name": "Controller",
+            "description": "The Controller is primarily used to manage various types of collectors, composed of Sidecarand NAS Executor, enabling automated deployment, resource coordination, and task execution on servers.",
+        },
+        {
+            "os": "windows",
+            "name": "Controller",
+            "description": "The Controller is primarily used to manage various types of collectors, composed of Sidecarand NAS Executor, enabling automated deployment, resource coordination, and task execution on servers.",
+        },
+    ]
+
     # 控制器状态
     NORMAL = "normal"
     ABNORMAL = "abnormal"
@@ -54,4 +67,18 @@ class ControllerConstants:
     CONTROLLER_DIR_DELETE_COMMAND = {
         NodeConstants.LINUX_OS: "rm -rf /opt/fusion-collectors",
         NodeConstants.WINDOWS_OS: "powershell -command \"Remove-Item -Path {} -Recurse\"",
+    }
+
+    # 标签字段
+    GROUP_TAG = "group"
+    CLOUD_TAG = "cloud"
+    INSTALL_METHOD_TAG = "install_method"
+
+    # 安装方式
+    MANUAL = "manual"
+    AUTO = "auto"
+
+    INSTALL_METHOD_ENUM = {
+        MANUAL: "手动安装",
+        AUTO: "自动安装",
     }

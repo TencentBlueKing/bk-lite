@@ -1,0 +1,134 @@
+cloud_region:
+  default:
+    description: The Direct Connection Zone is used to connect and manage nodes that
+      communicate directly with the platform’s main control node.
+    name: Direct Connection Zone
+os:
+  linux: Linux
+  windows: Windows
+collector:
+  jmx_activemq_linux:
+    description: The ActiveMQ JMX (Linux) collector acquires various monitoring metrics
+      from ActiveMQ using Java Management Extensions (JMX) technology.
+    name: ActiveMQ JMX
+  telegraf_linux:
+    name: Telegraf
+    description: Telegraf (Linux) is a lightweight and highly efficient metrics collector
+      with native monitoring capabilities for diverse objects. It also serves as a
+      data hub that stores information collected by other monitoring and CMDB collectors
+      into the platform.
+  jmx_weblogic_linux:
+    description: The WebLogic JMX (Linux) collector gathers various monitoring metrics
+      from WebLogic servers based on the Java Management Extensions (JMX) technology.
+    name: WebLogic JMX
+  exporter_elasticsearch_linux:
+    name: None
+    description: None
+  natsexecutor_linux:
+    description: None
+    name: Nats Executor
+  exporter_apache_linux:
+    description: None
+    name: None
+  exporter_postgres_linux:
+    name: None
+    description: None
+  exporter_nginx_linux:
+    name: None
+    description: None
+  exporter_mysql_linux:
+    name: None
+    description: None
+  exporter_oracle_linux:
+    name: Oracle Exporter
+    description: The Oracle Exporter (Linux) collector connects to the database to
+      collect various monitoring metrics from Oracle.
+  jmx_jetty_linux:
+    name: Jetty JMX
+    description: The Jetty JMX (Linux) collector acquires various monitoring metrics
+      from the Jetty server using Java Management Extensions (JMX) technology.
+  Vector_linux:
+    description: None
+    name: None
+  Auditbeat_linux:
+    name: None
+    description: None
+  exporter_kafka_linux:
+    description: The Kafka Exporter (Linux) collector connects to Kafka to gather
+      various monitoring metrics.
+    name: Kafka Exporter
+  telegraf_windows:
+    name: Telegraf
+    description: Telegraf (Windows) is a lightweight and highly efficient metrics
+      collector with native capabilities for monitoring various objects. It also functions
+      as a data transfer node, storing information collected by other monitoring and
+      CMDB collectors into the platform.
+  jmx_tomcat_linux:
+    name: None
+    description: None
+  jmx_jvm_linux:
+    name: JVM JMX
+    description: The JVM JMX (Linux) collector retrieves various monitoring metrics
+      from the Java Virtual Machine using Java Management Extensions (JMX) technology.
+  Packetbeat_linux:
+    description: None
+    name: None
+  exporter_mongodb_linux:
+    description: None
+    name: None
+  exporter_mssql_linux:
+    description: None
+    name: None
+  Filebeat_linux:
+    name: None
+    description: None
+  jmx_jboss_linux:
+    description: None
+    name: None
+  exporter_rabbitmq_linux:
+    description: None
+    name: None
+  jmx_tongweb6_linux:
+    description: None
+    name: None
+  jmx_tongweb7_linux:
+    description: None
+    name: None
+  natsexecutor_windows:
+    description: None
+    name: Nats Executor
+  exporter_zookeeper_linux:
+    name: None
+    description: None
+  Metricbeat_linux:
+    name: None
+    description: None
+collector_tag:
+  exporter: Exporter
+  log: Log
+  beat: Beat
+  monitor: Monitor
+  jmx: JMX
+  cmdb: CMDB
+  windows: Windows
+  linux: Linux
+controller_status:
+  abnormal: Abnormal
+  not_installed: Not Installed
+  normal: Normal
+controller:
+  linux:
+    name: Linux Controller
+    description: Linux Controller is composed of Sidecar and NATS Executor, used to
+      manage Linux nodes and various collectors on the nodes, enabling automated deployment,
+      resource coordination, and task execution on the nodes. By default, the controller
+      integrates Telegraf and Vector collectors.
+  windows:
+    description: Windows Controller is composed of Sidecar and NATS Executor, used
+      to manage Windows nodes and various collectors on the nodes, enabling automated
+      deployment, resource coordination, and task execution on the nodes. By default,
+      the controller integrates Telegraf and Vector collectors.
+    name: Windows Controller
+controller_install_method:
+  manual: Manual Installation
+  auto: Automatic Installation

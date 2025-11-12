@@ -1,7 +1,7 @@
 {
   "zh": [
     {
-      "title": "组织架构",
+      "title": "组织",
       "icon": "yonghu1",
       "name": "structure",
       "url": "/system-manager/user",
@@ -14,7 +14,7 @@
         },
         {
           "title": "超级管理员",
-          "icon": "yonghu1",
+          "icon": "chaojiguanliyuan",
           "name": "super_admin",
           "url": "/system-manager/user/adminstrator"
         }
@@ -25,6 +25,7 @@
       "icon": "guanli",
       "name": "application_list",
       "url": "/system-manager/application",
+      "hasDetail": true,
       "children": [
         {
           "title": "角色",
@@ -37,6 +38,19 @@
           "icon": "line-DataPermissions",
           "name": "data_permission",
           "url": "/system-manager/application/manage/data"
+        },
+        {
+          "title": "自定义菜单",
+          "icon": "zidingyi",
+          "name": "custom_menu",
+          "url": "/system-manager/application/manage/menu",
+          "children": [
+            {
+              "title": "菜单配置",
+              "url": "/system-manager/application/manage/menu/config",
+              "isNotMenuItem": true
+            }
+          ]
         }
       ]
     },
@@ -58,12 +72,38 @@
       "title": "安全管理",
       "icon": "shujumoxingguanli",
       "name": "security_management",
-      "url": "/system-manager/security"
+      "url": "/system-manager/security",
+      "children": [
+        {
+          "title": "登录设置",
+          "icon": "shezhi",
+          "name": "security_settings",
+          "url": "/system-manager/security/settings"
+        },
+        {
+          "title": "认证源",
+          "icon": "renzhengyuanguanli",
+          "name": "auth_sources",
+          "url": "/system-manager/security/auth-sources"
+        },
+        {
+          "title": "登录日志",
+          "icon": "denglurizhi",
+          "name": "user_logs",
+          "url": "/system-manager/security/logs"
+        },
+        {
+          "title": "操作日志",
+          "icon": "talk-line",
+          "name": "operation_logs",
+          "url": "/system-manager/security/operation-logs"
+        }
+      ]
     }
   ],
   "en": [
     {
-      "title": "Organization Structure",
+      "title": "Organization",
       "icon": "yonghu1",
       "name": "organization",
       "url": "/system-manager/user",
@@ -76,7 +116,7 @@
         },
         {
           "title": "Super Administrator",
-          "icon": "yonghu1",
+          "icon": "chaojiguanliyuan",
           "name": "user_group",
           "url": "/system-manager/user/adminstrator"
         }
@@ -87,6 +127,7 @@
       "icon": "guanli",
       "name": "application_list",
       "url": "/system-manager/application",
+      "hasDetail": true,
       "children": [
         {
           "title": "Role",
@@ -99,6 +140,19 @@
           "icon": "line-DataPermissions",
           "name": "data_permission",
           "url": "/system-manager/application/manage/data"
+        },
+        {
+          "title": "Custom Menu",
+          "icon": "zidingyi",
+          "name": "custom_menu",
+          "url": "/system-manager/application/manage/menu",
+          "children": [
+            {
+              "title": "Menu Config",
+              "url": "/system-manager/application/manage/menu/config",
+              "isNotMenuItem": true
+            }
+          ]
         }
       ]
     },
@@ -120,7 +174,33 @@
       "title": "Security Management",
       "icon": "shujumoxingguanli",
       "name": "security_management",
-      "url": "/system-manager/security"
+      "url": "/system-manager/security",
+      "children": [
+        {
+          "title": "Login Settings",
+          "icon": "shezhi",
+          "name": "security_settings",
+          "url": "/system-manager/security/settings"
+        },
+        {
+          "title": "Auth Sources",
+          "icon": "renzhengyuanguanli",
+          "name": "auth_sources",
+          "url": "/system-manager/security/auth-sources"
+        },
+        {
+          "title": "Login Logs",
+          "icon": "denglurizhi",
+          "name": "user_logs",
+          "url": "/system-manager/security/logs"
+        },
+        {
+          "title": "Operation Logs",
+          "icon": "talk-line",
+          "name": "operation_logs",
+          "url": "/system-manager/security/operation-logs"
+        }
+      ]
     }
   ]
 }

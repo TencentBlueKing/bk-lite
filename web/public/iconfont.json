@@ -6,18 +6,39 @@
   "description": "opspolit",
   "glyphs": [
     {
-      "icon_id": "13364769",
-      "name": "team",
-      "font_class": "team",
-      "unicode": "e767",
-      "unicode_decimal": 59239
-    },
-    {
-      "icon_id": "29382649",
-      "name": "govZuZhijg",
-      "font_class": "govZuZhijg",
+      "icon_id": "10250401",
+      "name": "06超级管理员",
+      "font_class": "chaojiguanliyuan",
       "unicode": "e6fc",
       "unicode_decimal": 59132
+    },
+    {
+      "icon_id": "40344085",
+      "name": "登录日志",
+      "font_class": "denglurizhi",
+      "unicode": "e700",
+      "unicode_decimal": 59136
+    },
+    {
+      "icon_id": "43964588",
+      "name": "认证源管理",
+      "font_class": "renzhengyuanguanli",
+      "unicode": "e849",
+      "unicode_decimal": 59465
+    },
+    {
+      "icon_id": "4521283",
+      "name": "组织群组",
+      "font_class": "zuzhiqunzu",
+      "unicode": "ebd8",
+      "unicode_decimal": 60376
+    },
+    {
+      "icon_id": "39904197",
+      "name": "虚拟团队",
+      "font_class": "xunituandui",
+      "unicode": "e6ff",
+      "unicode_decimal": 59135
     },
     {
       "icon_id": "11910542",

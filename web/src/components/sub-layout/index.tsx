@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import SideMenu from './side-menu';
 import sideMenuStyle from './index.module.scss';
 import { Segmented } from 'antd';
@@ -23,6 +23,7 @@ interface WithSideMenuLayoutProps {
   taskProgressComponent?: React.ReactNode;
   pagePathName?: string;
   customMenuItems?: MenuItem[];
+  menuLevel?: number;
 }
 
 const WithSideMenuLayout: React.FC<WithSideMenuLayoutProps> = ({
@@ -38,7 +39,8 @@ const WithSideMenuLayout: React.FC<WithSideMenuLayoutProps> = ({
   layoutType = 'sideMenu',
   taskProgressComponent,
   pagePathName,
-  customMenuItems
+  customMenuItems,
+  menuLevel // 可选参数
 }) => {
   const router = useRouter();
   const curRouterName = usePathname();
@@ -47,53 +49,151 @@ const WithSideMenuLayout: React.FC<WithSideMenuLayoutProps> = ({
   const [selectedKey, setSelectedKey] = useState<string>(pathname ?? '');
   const [menuItems, setMenuItems] = useState<MenuItem[]>([])
 
-  const getMenuItemsForPath = (menus: MenuItem[], currentPath: string): MenuItem[] => {
-    const matchedMenu = menus.find(menu => menu.url && menu.url !== currentPath && currentPath.startsWith(menu.url));
+  const getMenuItemsForPath = useCallback((menus: MenuItem[], currentPath: string, targetLevel?: number): MenuItem[] => {
+    if (!currentPath || menus.length === 0) return [];
 
-    if (matchedMenu) {
-      if (matchedMenu.children?.length) {
-        const validChildren = matchedMenu.children.filter(m => !m.isNotMenuItem);
+    // Auto mode: find the deepest matching menu layer and return its items
+    if (targetLevel === undefined) {
+      const findMatchedMenuPath = (items: MenuItem[], path: MenuItem[] = []): MenuItem[] | null => {
+        for (const item of items) {
+          const currentPath_inner = [...path, item];
+          
+          if (item.url) {
+            if (item.url === currentPath || currentPath.startsWith(item.url)) {
+              if (item.children?.length) {
+                const childMatch = findMatchedMenuPath(item.children, currentPath_inner);
+                if (childMatch) return childMatch;
+              }
+              return currentPath_inner;
+            }
+          }
 
-        if (validChildren.length > 0) {
-          const childResult = getMenuItemsForPath(validChildren, currentPath);
-          if (childResult.length > 0) {
-            return childResult;
+          if (item.children?.length) {
+            const found = findMatchedMenuPath(item.children, currentPath_inner);
+            if (found) return found;
+          }
+        }
+        return null;
+      };
+
+      const menuPath = findMatchedMenuPath(menus);
+      
+      console.log('Auto mode - Matched menu path:', menuPath?.map(m => m.name || m.title), 'for path:', currentPath);
+      
+      if (menuPath && menuPath.length > 0) {
+        const lastLayer = menuPath[menuPath.length - 1];
+        
+        if (lastLayer.children?.length) {
+          const result = lastLayer.children.filter(m => !m.isNotMenuItem && !m.isDirectory);
+          return result;
+        }
+        else if (menuPath.length >= 2) {
+          const secondLastLayer = menuPath[menuPath.length - 2];
+          if (secondLastLayer.children?.length) {
+            const result = secondLastLayer.children.filter(m => !m.isNotMenuItem && !m.isDirectory);
+            return result;
           }
         }
       }
 
-      return matchedMenu.children || [];
+      return [];
+    }
+
+    // Target level mode: return menus at specified layer (e.g., menuLevel=1 returns siblings of layer 1)
+    if (targetLevel === 1) {
+      const findMatchedMenuPath = (items: MenuItem[], path: MenuItem[] = []): MenuItem[] | null => {
+        for (const item of items) {
+          const currentPath_inner = [...path, item];
+          
+          if (item.url) {
+            if (item.url === currentPath || currentPath.startsWith(item.url)) {
+              if (item.children?.length) {
+                const childMatch = findMatchedMenuPath(item.children, currentPath_inner);
+                if (childMatch) return childMatch;
+              }
+              return currentPath_inner;
+            }
+          }
+
+          if (item.children?.length) {
+            const found = findMatchedMenuPath(item.children, currentPath_inner);
+            if (found) return found;
+          }
+        }
+        return null;
+      };
+
+      const menuPath = findMatchedMenuPath(menus);
+      
+      // Return siblings of layer 1 (children of layer 0)
+      if (menuPath && menuPath.length >= 2) {
+        const parentLayer = menuPath[0];
+        if (parentLayer.children?.length) {
+          const result = parentLayer.children.filter(m => !m.isNotMenuItem && !m.isDirectory);
+          return result;
+        }
+      }
+
+      return [];
     }
 
     return [];
-  };
+  }, []);
 
   const updateMenuItems = useMemo(() => {
     if (customMenuItems && customMenuItems.length > 0) {
       return customMenuItems;
     }
-    return getMenuItemsForPath(menus, pathname ?? '');
-  }, [pathname, menus, customMenuItems]);
+    const result = getMenuItemsForPath(menus, pathname ?? '', menuLevel);
+    return result;
+  }, [pathname, menus, customMenuItems, getMenuItemsForPath, menuLevel]);
 
   useEffect(() => {
-    setMenuItems(updateMenuItems?.filter(menu => !menu.isNotMenuItem));
-  }, [updateMenuItems]);
+    const filteredItems = updateMenuItems?.filter(menu => {
+      const shouldKeep = !menu?.isNotMenuItem;
+      return shouldKeep;
+    }) || [];
+    setMenuItems(filteredItems);
 
-  useEffect(() => {
-    let urlKey: string | undefined = curRouterName ?? undefined;
-    if (pagePathName) {
-      urlKey = menuItems.find(
-        (menu) => menu.url && curRouterName && curRouterName.startsWith(menu.url)
-      )?.url;
+    // Update selectedKey with improved matching logic
+    if (filteredItems.length > 0) {
+      let urlKey = filteredItems.find((menu) => menu.url === curRouterName)?.url;
+      
+      if (!urlKey) {
+        urlKey = filteredItems.find(
+          (menu) => menu.url && curRouterName && curRouterName.startsWith(menu.url)
+        )?.url;
+      }
+      
+      if (!urlKey && curRouterName) {
+        const pathSegments = curRouterName.split('/').filter(Boolean);
+        const lastSegment = pathSegments[pathSegments.length - 1];
+        urlKey = filteredItems.find((menu) => menu.name === lastSegment)?.url;
+      }
+      
+      setSelectedKey(urlKey || curRouterName || '');
+    } else {
+      setSelectedKey(curRouterName || '');
     }
-    setSelectedKey(urlKey as string);
-  }, [curRouterName, menuItems]);
+  }, [updateMenuItems, curRouterName, pagePathName]);
 
-
-  const handleSegmentChange = (key: string | number) => {
+  const handleSegmentChange = useCallback((key: string | number) => {
     router.push(key as string);
     setSelectedKey(key as string);
-  };
+  }, [router]);
+
+  const segmentedOptions = useMemo(() => {
+    return menuItems.map(item => ({
+      label: (
+        <div className="flex items-center justify-center">
+          {item.icon && (
+            <Icon type={item.icon} className="mr-2 text-sm" />
+          )} {item.title}
+        </div>
+      ),
+      value: item.url,
+    }));
+  }, [menuItems]);
 
   return (
     <div className={`flex w-full h-full text-sm ${sideMenuStyle.sideMenuLayout} ${(intro && topSection) ? 'grow' : 'flex-col'}`}>
@@ -135,16 +235,7 @@ const WithSideMenuLayout: React.FC<WithSideMenuLayoutProps> = ({
           {menuItems.length > 0 ? (
             <>
               <Segmented
-                options={menuItems.map(item => ({
-                  label: (
-                    <div className="flex items-center justify-center">
-                      {item.icon && (
-                        <Icon type={item.icon} className="mr-2 text-sm" />
-                      )} {item.title}
-                    </div>
-                  ),
-                  value: item.url,
-                }))}
+                options={segmentedOptions}
                 value={selectedKey}
                 onChange={handleSegmentChange}
               />
@@ -153,7 +244,7 @@ const WithSideMenuLayout: React.FC<WithSideMenuLayoutProps> = ({
               </div>
             </>
           ) : (
-            <div className="flex-1 pt-4 rounded-md overflow-auto">
+            <div className="flex-1 rounded-md overflow-auto">
               {children}
             </div>
           )}

@@ -6,6 +6,104 @@
   "description": "",
   "glyphs": [
     {
+      "icon_id": "12097452",
+      "name": "键盘",
+      "font_class": "jianpan",
+      "unicode": "e65b",
+      "unicode_decimal": 58971
+    },
+    {
+      "icon_id": "11856422",
+      "name": "删除",
+      "font_class": "delete",
+      "unicode": "e615",
+      "unicode_decimal": 58901
+    },
+    {
+      "icon_id": "11195046",
+      "name": "缩放",
+      "font_class": "suofang",
+      "unicode": "e660",
+      "unicode_decimal": 58976
+    },
+    {
+      "icon_id": "20753190",
+      "name": "right-turn",
+      "font_class": "right-turn",
+      "unicode": "e66b",
+      "unicode_decimal": 58987
+    },
+    {
+      "icon_id": "21740732",
+      "name": "旋转图片",
+      "font_class": "xuanzhuantupian",
+      "unicode": "e6ad",
+      "unicode_decimal": 59053
+    },
+    {
+      "icon_id": "774372",
+      "name": "工具",
+      "font_class": "gongju",
+      "unicode": "e614",
+      "unicode_decimal": 58900
+    },
+    {
+      "icon_id": "10907063",
+      "name": "展开",
+      "font_class": "zhankai",
+      "unicode": "e74c",
+      "unicode_decimal": 59212
+    },
+    {
+      "icon_id": "12990753",
+      "name": "加载-2-块",
+      "font_class": "jiazai--kuai",
+      "unicode": "e8b7",
+      "unicode_decimal": 59575
+    },
+    {
+      "icon_id": "27876599",
+      "name": "增加 添加 加号 多",
+      "font_class": "a-zengjiatianjiajiahaoduo",
+      "unicode": "e63e",
+      "unicode_decimal": 58942
+    },
+    {
+      "icon_id": "2019088",
+      "name": "语音-1",
+      "font_class": "yuyin-",
+      "unicode": "e7bd",
+      "unicode_decimal": 59325
+    },
+    {
+      "icon_id": "1638204",
+      "name": "相机",
+      "font_class": "xiangji",
+      "unicode": "e610",
+      "unicode_decimal": 58896
+    },
+    {
+      "icon_id": "34166802",
+      "name": "图片",
+      "font_class": "tupian",
+      "unicode": "e612",
+      "unicode_decimal": 58898
+    },
+    {
+      "icon_id": "45867319",
+      "name": "我的3-未选中",
+      "font_class": "wode3-weixuanzhong",
+      "unicode": "e61f",
+      "unicode_decimal": 58911
+    },
+    {
+      "icon_id": "45867320",
+      "name": "我的3-选中",
+      "font_class": "wode3-xuanzhong",
+      "unicode": "e620",
+      "unicode_decimal": 58912
+    },
+    {
       "icon_id": "36364592",
       "name": "账号与安全",
       "font_class": "zhanghaoyuanquan",

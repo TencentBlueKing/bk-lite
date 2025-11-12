@@ -3,11 +3,13 @@ from rest_framework import mixins
 from rest_framework.decorators import action
 from rest_framework.viewsets import GenericViewSet
 
+from apps.core.utils.loader import LanguageLoader
 from apps.core.utils.permission_utils import get_permission_rules, permission_filter
 from apps.core.utils.web_utils import WebUtils
+from apps.node_mgmt.constants.collector import CollectorConstants
 from apps.node_mgmt.constants.controller import ControllerConstants
+from apps.node_mgmt.constants.language import LanguageConstants
 from apps.node_mgmt.constants.node import NodeConstants
-from apps.node_mgmt.filters.node import NodeFilter
 from apps.node_mgmt.models.sidecar import Node
 from config.drf.pagination import CustomPageNumberPagination
 from apps.node_mgmt.serializers.node import NodeSerializer, BatchBindingNodeConfigurationSerializer, \
@@ -16,10 +18,8 @@ from apps.node_mgmt.services.node import NodeService
 
 
 class NodeViewSet(mixins.DestroyModelMixin,
-                  mixins.ListModelMixin,
                   GenericViewSet):
     queryset = Node.objects.all().prefetch_related('nodeorganization_set').order_by("-created_at")
-    filterset_class = NodeFilter
     pagination_class = CustomPageNumberPagination
     serializer_class = NodeSerializer
     search_fields = ["id", "name", "ip"]
@@ -32,8 +32,59 @@ class NodeViewSet(mixins.DestroyModelMixin,
             else:
                 node_info["permission"] = NodeConstants.DEFAULT_PERMISSION
 
+    @staticmethod
+    def format_params(params: dict):
+        """
+        格式化查询参数，支持灵活的 lookup_expr
 
-    def list(self, request, *args, **kwargs):
+        输入格式:
+        {
+            'name': [
+                {'lookup_expr': 'exact', 'value': 'xx'},
+                {'lookup_expr': 'icontains', 'value': 'xxx'}
+            ],
+            'ip': [
+                {'lookup_expr': 'exact', 'value': '10.10.10.11'}
+            ]
+        }
+
+        返回: Q 对象用于过滤 queryset
+
+        注意：所有条件之间都是 AND 逻辑关系
+        """
+        from django.db.models import Q
+
+        if not params:
+            return Q()
+
+        # 最终的 Q 对象，使用 AND 逻辑组合所有条件
+        final_q = Q()
+
+        for field_name, conditions in params.items():
+            if not conditions or not isinstance(conditions, list):
+                continue
+
+            # 同一字段的多个条件也使用 AND 逻辑
+            for condition in conditions:
+                if not isinstance(condition, dict):
+                    continue
+
+                lookup_expr = condition.get('lookup_expr', 'exact')
+                value = condition.get('value')
+
+                if value is None or value == '':
+                    continue
+
+                # 构建查询键，例如: name__exact, name__icontains
+                lookup_key = f"{field_name}__{lookup_expr}"
+
+                # 使用 AND 逻辑组合所有条件
+                final_q &= Q(**{lookup_key: value})
+
+        return final_q
+
+    @action(methods=["post"], detail=False, url_path=r"search")
+    def search(self, request, *args, **kwargs):
         # 获取权限规则
         permission = get_permission_rules(
             request.user,
@@ -44,7 +95,13 @@ class NodeViewSet(mixins.DestroyModelMixin,
 
         # 应用权限过滤
         queryset = permission_filter(Node, permission, team_key="nodeorganization__organization__in", id_key="id__in")
-        queryset = self.filter_queryset(queryset)
+
+        # 应用自定义查询参数格式化
+        custom_filters = request.data.get('filters')
+        if custom_filters:
+            q_filters = self.format_params(custom_filters)
+            if q_filters:
+                queryset = queryset.filter(q_filters)
 
         # 根据组织筛选
         organization_ids = request.query_params.get('organization_ids')
@@ -79,7 +136,42 @@ class NodeViewSet(mixins.DestroyModelMixin,
 
     @action(methods=["get"], detail=False, url_path=r"enum", filter_backends=[])
     def enum(self, request, *args, **kwargs):
-        return WebUtils.response_success(dict(sidecar_status=ControllerConstants.SIDECAR_STATUS_ENUM))
+        lan = LanguageLoader(app=LanguageConstants.APP, default_lang=request.user.locale)
+
+        # 翻译标签枚举
+        translated_tags = {}
+        for tag_key, tag_value in CollectorConstants.TAG_ENUM.items():
+            name_key = f"{LanguageConstants.COLLECTOR_TAG}.{tag_key}"
+            translated_tags[tag_key] = {
+                "is_app": tag_value["is_app"],
+                "name": lan.get(name_key) or tag_value["name"]
+            }
+
+        # 翻译控制器状态枚举
+        translated_sidecar_status = {}
+        for status_key, status_value in ControllerConstants.SIDECAR_STATUS_ENUM.items():
+            status_name_key = f"{LanguageConstants.CONTROLLER_STATUS}.{status_key}"
+            translated_sidecar_status[status_key] = lan.get(status_name_key) or status_value
+
+        # 翻译控制器安装方式枚举
+        translated_install_method = {}
+        for method_key, method_value in ControllerConstants.INSTALL_METHOD_ENUM.items():
+            method_name_key = f"{LanguageConstants.CONTROLLER_INSTALL_METHOD}.{method_key}"
+            translated_install_method[method_key] = lan.get(method_name_key) or method_value
+
+        # 翻译操作系统枚举
+        translated_os = {
+            NodeConstants.LINUX_OS: lan.get(f"{LanguageConstants.OS}.{NodeConstants.LINUX_OS}") or NodeConstants.LINUX_OS_DISPLAY,
+            NodeConstants.WINDOWS_OS: lan.get(f"{LanguageConstants.OS}.{NodeConstants.WINDOWS_OS}") or NodeConstants.WINDOWS_OS_DISPLAY,
+        }
+
+        enum_data = dict(
+            sidecar_status=translated_sidecar_status,
+            install_method=translated_install_method,
+            tag=translated_tags,
+            os=translated_os,
+        )
+        return WebUtils.response_success(enum_data)
 
     @action(detail=False, methods=["post"], url_path="batch_binding_configuration")
     def batch_binding_node_configuration(self, request):

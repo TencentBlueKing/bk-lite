@@ -8,6 +8,7 @@ init_system_mgmt() {
     uv run python manage.py init_realm_resource || true
     uv run python manage.py init_login_settings || true
     uv run python manage.py create_user admin password --email=admin@bklite.net --is_superuser || true
+    uv run python manage.py init_custom_menu || true
 }
 
 init_cmdb() {
@@ -40,7 +41,7 @@ init_alerts() {
 init_operation_analysis() {
     echo "运营分析系统资源初始化..."
     uv run python manage.py init_default_namespace || true
-    uv run python manage.py init_tag  || true
+    uv run python manage.py init_default_groups  || true
     uv run python manage.py init_source_api_data --update || true
 }
 

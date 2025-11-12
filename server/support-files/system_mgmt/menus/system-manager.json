@@ -75,6 +75,16 @@
             "Add",
             "Delete"
           ]
+        },
+        {
+          "id": "custom_menu",
+          "name": "Custom Menu",
+          "operation": [
+            "View",
+            "Edit",
+            "Add",
+            "Delete"
+          ]
         }
       ]
     },
@@ -107,13 +117,38 @@
       "name": "Security Management",
       "children": [
         {
-          "id": "security_management",
-          "name": "Security Management",
+          "id": "security_settings",
+          "name": "Security Settings",
           "operation": [
             "View",
             "Edit",
             "Add",
             "Delete"
+          ]
+        },
+        {
+          "id": "auth_sources",
+          "name": "Auth Sources",
+          "operation": [
+            "View",
+            "Edit",
+            "Add",
+            "Delete"
+          ]
+        },
+        {
+          "id": "user_logs",
+          "name": "Login Logs",
+          "operation": [
+            "View",
+            "Delete"
+          ]
+        },
+         {
+          "id": "operation_logs",
+          "name": "Operation Logs",
+          "operation": [
+            "View"
           ]
         }
       ]
