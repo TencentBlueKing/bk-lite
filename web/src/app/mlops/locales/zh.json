@@ -135,7 +135,11 @@
     "addImage": "添加图片",
     "tabBar": "标签栏",
     "uploading": "上传中...",
-    "objectDetection": "目标检测"
+    "objectDetection": "目标检测",
+    "generateTitle": "生成数据集",
+    "generateContent": "修改尚未保存, 确认生成数据集吗？",
+    "editImageType": "编辑当前图片所属类别",
+    "saveChanges": "保存变更"
   },
   "traintask": {
     "train": "训练",

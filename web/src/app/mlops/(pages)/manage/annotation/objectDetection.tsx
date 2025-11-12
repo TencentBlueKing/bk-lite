@@ -1,27 +1,40 @@
 'use client'
-import { CodeOutlined, SaveOutlined } from '@ant-design/icons';
+import { CodeOutlined, SaveOutlined, EditOutlined, CloudUploadOutlined, ReloadOutlined } from '@ant-design/icons';
 import type { AnnotatorRef, ImageSample } from '@labelu/image-annotator-react';
 import {
   Button,
   message,
   Modal,
   Spin,
-  Typography
+  Radio,
+  type CheckboxOptionType,
+  Typography,
+  Tooltip
 } from 'antd';
-import { useCallback, useEffect, useMemo, useState, useRef, forwardRef } from 'react';
+import { useCallback, useEffect, useMemo, useState, useRef, forwardRef, Dispatch, SetStateAction } from 'react';
 import { useSearchParams } from 'next/navigation';
 import useMlopsManageApi from '@/app/mlops/api/manage';
 import styles from './index.module.scss'
-// import dynamic from 'next/dynamic';
+import OperateModal from '@/components/operate-modal';
+import { useTranslation } from '@/utils/i18n';
+const { confirm } = Modal;
 
-// 使用动态导入并禁用SSR，避免Next.js的服务端渲染导致的状态问题
-// const ImageAnnotator = dynamic(
-//   () => import('@labelu/image-annotator-react').then(mod => mod.Annotator),
-//   { 
-//     ssr: false
-//   }
-// );
+interface ObjectDetectionTrainData {
+  width: number;
+  height: number;
+  image_url: string;
+  image_name: string;
+  image_size: number;
+  batch_index: number;
+  batch_total: number;
+  content_type: string;
+  type: string;
+}
 
+interface ImageLabel {
+  image_url: string;
+  label: any;
+}
 
 // 创建包装组件来正确转发ref
 const ImageAnnotatorWrapper = forwardRef<AnnotatorRef, any>((props, ref) => {
@@ -49,6 +62,8 @@ const ImageAnnotatorWrapper = forwardRef<AnnotatorRef, any>((props, ref) => {
 });
 
 ImageAnnotatorWrapper.displayName = 'ImageAnnotatorWrapper';
+
+const rectClassName = ['human', 'bicycle', 'traffic_sign', 'reactant', 'catalyst', 'product'];
 
 const defaultConfig = {
   width: 800,
@@ -106,16 +121,34 @@ const defaultConfig = {
   },
 };
 
-const ObjectDetection = () => {
+const ObjectDetection = ({
+  isChange,
+  setIsChange
+}: {
+  isChange: boolean;
+  setIsChange: Dispatch<SetStateAction<boolean>>
+}) => {
+  const { t } = useTranslation();
   const annotatorRef = useRef<AnnotatorRef>(null);
   const searchParams = useSearchParams();
-  const { getObjectDetectionTrainDataInfo, updateObjectDetectionTrainData } = useMlopsManageApi();
+  const { getObjectDetectionTrainDataInfo, updateObjectDetectionTrainData, generateYoloDataset } = useMlopsManageApi();
   const [config, setConfig] = useState<any>(null);
-  const [samples, setSamples] = useState<ImageSample[]>([]);
   const [currentSample, setCurrentSample] = useState<ImageSample | null>(null);
   const [result, setResult] = useState<any>({});
   const [loading, setLoading] = useState<boolean>(false)
   const [resultOpen, setResultOpen] = useState<boolean>(false);
+  const [tagOpen, setTagOpen] = useState<boolean>(false);
+  const [casualType, setCasualType] = useState<string>('');
+  const [trainData, setTrainData] = useState<ObjectDetectionTrainData[]>([]);
+  const [metaData, setMetadata] = useState<{
+    image_label: ImageLabel[];
+    yolo_dataset_url: string;
+    class_name: string[];
+  }>({
+    image_label: [],
+    yolo_dataset_url: '',
+    class_name: []
+  })
   const id = searchParams.get('id') || '';
 
   useEffect(() => {
@@ -128,22 +161,50 @@ const ObjectDetection = () => {
     }
   }, [id]);
 
+  useEffect(() => {
+    const trainType = trainData.find((item: ObjectDetectionTrainData) => item.image_url === currentSample?.url);
+    setCasualType(trainType?.type || '');
+  }, [currentSample])
+
+  const options: CheckboxOptionType[] = [
+    { label: t(`datasets.train`), value: 'train' },
+    { label: t(`datasets.validate`), value: 'val' },
+    { label: t(`datasets.test`), value: 'test' },
+  ];
+
+  const samples = useMemo(() => {
+    const label_data = metaData?.image_label || [];
+    const _images = trainData?.map((item: ObjectDetectionTrainData, index: number) => {
+      const label = label_data.find((lab: ImageLabel) => lab?.image_url === item.image_url);
+      return {
+        id: index,
+        name: item.image_name || '',
+        url: item.image_url || '',
+        data: label?.label || {},
+        type: item.type || ''
+      };
+    }) || [];
+
+    if (!currentSample) setCurrentSample(_images[0])
+    return _images;
+  }, [trainData, metaData, casualType]);
+
   // 发生变化时更新samples的标注数据
   const updateSamples = (labels: any, currentSample: ImageSample | null) => {
     const isNull = labels instanceof Object && Object.keys(labels).length > 0;
 
     if (!isNull) return;
     const image_url = currentSample?.url;
-    const newSamples = samples.map((item: any) => {
-      if (item.url === image_url) {
+    const newImageLabel = metaData.image_label.map((item: ImageLabel) => {
+      if (item.image_url === image_url) {
         return {
-          ...item,
-          data: labels
+          image_url: item.image_url || '',
+          label: labels
         }
       }
       return item;
     });
-    setSamples(newSamples);
+    setMetadata((prev) => ({ ...prev, image_label: newImageLabel }));
   };
 
   const onLoad = (engine: any) => {
@@ -155,7 +216,7 @@ const ObjectDetection = () => {
 
     const updateSampleData = (eventName: string) => {
       const current = annotatorRef.current?.getSample();
-
+      if (eventName !== 'imageChange') setIsChange(true);
       // 对于删除事件，需要延迟获取标注数据，等待状态更新完成
       if (eventName === 'delete') {
         setTimeout(() => {
@@ -167,6 +228,10 @@ const ObjectDetection = () => {
             updateSamples(labels, currentSample)
           }
         }, 0);
+      } else if (eventName === 'imageChange') {
+        if (current) {
+          setCurrentSample(current);
+        }
       } else {
         const labels = annotatorRef.current?.getAnnotations();
         if (current && (current?.url !== currentSample?.url)) {
@@ -178,24 +243,22 @@ const ObjectDetection = () => {
       }
     };
 
-
     // 绑定新的事件处理器
     const addHandler = () => updateSampleData('add');
     const deleteHandler = () => updateSampleData('delete');
     const changeHandler = () => updateSampleData('change');
     const mouseupHandler = () => updateSampleData('mouseup');
+    const backgroundImageLoadHandler = () => updateSampleData('imageChange');
 
     engine.on('add', addHandler);
     engine.on('delete', deleteHandler);
     engine.on('change', changeHandler);
     engine.on('mouseup', mouseupHandler);
-
+    engine.on('backgroundImageLoaded', backgroundImageLoadHandler);
   };
-
 
   const showResult = useCallback(() => {
     const labels = annotatorRef.current?.getAnnotations();
-    console.log(labels);
     setResult(() => ({
       ...labels
     }));
@@ -206,24 +269,45 @@ const ObjectDetection = () => {
   const saveResult = async () => {
     setLoading(true);
     try {
-      const image_label = samples.map((item: ImageSample) => {
-        return {
-          image_url: item.url,
-          label: item.data
-        }
-      });
-
-      await updateObjectDetectionTrainData(id, {
+      const params = {
+        train_data: JSON.stringify(trainData),
         meta_data: JSON.stringify({
-          image_label
+          ...metaData,
+          class_name: rectClassName
         })
-      });
+      }
+      await updateObjectDetectionTrainData(id, params);
+      setIsChange(false);
       getTrainDataInfo();
     } catch (e) {
       console.log(e);
     } finally {
       setLoading(false);
     }
+  };
+
+  const onSelectChange = (event: any) => {
+    setCasualType(event.target?.value || '');
+  };
+
+  const onSelectConfirm = () => {
+    const _trainData = trainData.map((item: ObjectDetectionTrainData) => {
+      if (item.image_url === currentSample?.url) {
+        return {
+          ...item,
+          type: casualType || 'train'
+        }
+      }
+      return item;
+    });
+    setTrainData((_trainData));
+    setTagOpen(false);
+  };
+
+  const onSelectCancel = () => {
+    setTagOpen(false);
+    const trainType = trainData.find((item: ObjectDetectionTrainData) => item.image_url === currentSample?.url);
+    setCasualType(trainType?.type || '');
   };
 
   const onError = useCallback((err: any) => {
@@ -243,38 +327,67 @@ const ObjectDetection = () => {
   const toolbarRight = useMemo(() => {
     return (
       <div className='flex items-center gap-2'>
-        <Button type='primary' icon={<CodeOutlined rev={undefined} />} onClick={showResult}>标注结果</Button>
-        <Button type='primary' icon={<SaveOutlined rev={undefined} />} onClick={saveResult} />
+        <Tooltip title={t('common.refresh')}>
+          <Button type='default' icon={<ReloadOutlined rev={undefined} />} onClick={() => getTrainDataInfo()} />
+        </Tooltip>
+        <Tooltip title={t('datasets.generateTitle')}>
+          <Button type='default' icon={<CloudUploadOutlined rev={undefined} />} onClick={() => generateDataset()} />
+        </Tooltip>
+        <Tooltip title={t('datasets.editImageType')}>
+          <Button type='default' icon={<EditOutlined rev={undefined} />} onClick={() => setTagOpen(true)} />
+        </Tooltip>
+        <Tooltip title="展示标注结果">
+          <Button type='default' icon={<CodeOutlined rev={undefined} />} onClick={showResult} />
+        </Tooltip>
+        <Tooltip title={t('datasets.saveChanges')}>
+          <Button type='default' icon={<SaveOutlined rev={undefined} />} onClick={saveResult} />
+        </Tooltip>
         {/* <Button type='primary' icon={<SettingOutlined rev={undefined} />} onClick={() => { }} /> */}
       </div>
     )
-  }, [showResult]);
+  }, [showResult, trainData]);
 
   const getTrainDataInfo = async () => {
     setLoading(true);
     try {
       const data = await getObjectDetectionTrainDataInfo(id, true, true);
-      const label_data = data.meta_data?.image_label || [];
-      const _images = data.train_data?.map((item: any, index: number) => {
-        const label = label_data.find((lab: any) => lab?.image_url === item.image_url);
-        return {
-          id: index,
-          name: item.image_name || '',
-          url: item.image_url || '',
-          data: label?.label || {},
-        };
-      }) || [];
-
-      setSamples(_images);
-      if (_images.length > 0) {
-        setCurrentSample(_images[0]);
-      }
+      setTrainData(data.train_data);
+      setMetadata(data.meta_data);
     } catch (e) {
       console.log(e);
     } finally {
       setLoading(false);
     }
   };
+
+  const generateDataset = async () => {
+    setLoading(true);
+    try {
+      if (isChange) {
+        confirm({
+          title: t('datasets.generateTitle'),
+          content: t('datasets.generateContent'),
+          okText: t('common.confirm'),
+          cancelText: t('common.cancel'),
+          centered: true,
+          onOk() {
+            return new Promise(async (resolve) => {
+              await generateYoloDataset(id);
+              resolve(true);
+            })
+          }
+        })
+      } else {
+        await generateYoloDataset(id);
+      }
+      message.success(t('common.success'));
+    } catch (e) {
+      console.log(e);
+      message.error(t('common.error'));
+    } finally {
+      setLoading(false);
+    }
+  }
 
   return (
     <div className={`${styles.container}`}>
@@ -297,12 +410,30 @@ const ObjectDetection = () => {
           )}
         </div>
       </Spin>
+      <OperateModal
+        open={tagOpen}
+        title={t(`common.edit`)}
+        onCancel={onSelectCancel}
+        footer={[
+          <Button key="submit" type="primary" onClick={onSelectConfirm}>
+            {t('common.confirm')}
+          </Button>,
+          <Button key="cancel" onClick={onSelectCancel}>
+            {t('common.cancel')}
+          </Button>,
+        ]}
+      >
+        <div className='h-[20px] leading-[20px]'>
+          <span className='mr-2'>{t(`datasets.fileType`) + ':'}</span>
+          <Radio.Group options={options} value={casualType} onChange={onSelectChange} />
+        </div>
+      </OperateModal>
       <Modal
         title="标注结果"
         open={resultOpen}
         onOk={onOk}
         width={800}
-        okText={"确定"}
+        okText={t('common.confirm')}
         onCancel={() => setResultOpen(false)}
       >
         <Typography>

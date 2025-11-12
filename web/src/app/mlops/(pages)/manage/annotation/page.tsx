@@ -121,7 +121,7 @@ const AnnotationPage = () => {
               <ImageContent />
             }
             {key === 'object_detection' && 
-              <ObjectDetection />
+              <ObjectDetection isChange={isChange} setIsChange={setIsChange} />
             }
           </div>
         </section>

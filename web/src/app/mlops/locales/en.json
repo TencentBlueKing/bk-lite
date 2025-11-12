@@ -135,7 +135,11 @@
     "addImage": "Add image",
     "tabBar": "Tab Bar",
     "uploading": "Uploading...",
-    "objectDetection": "Object Detection"
+    "objectDetection": "Object Detection",
+    "generateTitle": "Generate Datasets",
+    "generateContent": "Changes not saved. Confirm generating dataset?",
+    "editImageType": "Edit the category to which the current image belongs",
+    "saveChanges": "Save Changes"
   },
   "traintask": {
     "train": "Train",
