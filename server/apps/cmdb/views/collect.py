@@ -5,7 +5,7 @@
 from django.db.models import Q
 from django.http import JsonResponse
 
-from apps.cmdb.permissions.permission import InstanceTaskPermission
+from apps.cmdb.permissions.inst_task_permission import InstanceTaskPermission
 from apps.core.decorators.api_permission import HasPermission
 from apps.rpc.node_mgmt import NodeMgmt
 from config.drf.viewsets import ModelViewSet
