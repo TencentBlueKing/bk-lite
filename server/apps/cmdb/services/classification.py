@@ -1,4 +1,4 @@
-from apps.cmdb.constants import (
+from apps.cmdb.constants.constants import (
     CLASSIFICATION,
     CREATE_CLASSIFICATION_CHECK_ATTR_MAP,
     MODEL,
