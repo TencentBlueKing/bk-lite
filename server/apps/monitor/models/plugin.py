@@ -16,3 +16,25 @@ class MonitorPlugin(TimeInfo, MaintainerInfo):
     class Meta:
         verbose_name = '监控插件'
         verbose_name_plural = '监控插件'
+
+
+class MonitorPluginConfigTemplate(TimeInfo, MaintainerInfo):
+    plugin = models.ForeignKey(MonitorPlugin, on_delete=models.CASCADE, verbose_name='监控插件')
+    type = models.CharField(max_length=50, verbose_name='模板类型')
+    config_type = models.CharField(max_length=50, default="", verbose_name='配置类型')
+    file_type = models.CharField(max_length=50, default="", verbose_name='文件类型')
+    content = models.TextField(verbose_name='模板内容')
+
+    class Meta:
+        verbose_name = '监控插件配置模板'
+        verbose_name_plural = '监控插件配置模板'
+        unique_together = ('plugin', 'type', 'config_type', 'file_type')
+
+
+class MonitorPluginUITemplate(TimeInfo, MaintainerInfo):
+    plugin = models.ForeignKey(MonitorPlugin, on_delete=models.CASCADE, verbose_name='监控插件')
+    content = models.JSONField(default=dict, verbose_name='模版内容')
+
+    class Meta:
+        verbose_name = '监控插件UI模板'
+        verbose_name_plural = '监控插件UI模板'

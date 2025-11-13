@@ -5,4 +5,13 @@
   :global(img[src*="data:image"]) {
     max-width: unset !important;
   }
+
+  // 隐藏底部的视图切换器
+  :global {
+    .MuiCard-root.MuiPaper-elevation1 {
+      &:has(svg[data-testid="ChevronRightIcon"]) {
+        display: none !important;
+      }
+    }
+  }
 }
