@@ -42,7 +42,7 @@ class ModelTypeViewSet(LanguageViewSet, GenericViewSetFun):
     def update(self, request, *args, **kwargs):
         instance = self.get_object()
         if instance.is_build_in:
-            message = self.loader.get("builtin_model_types_no_modify") if self.loader else "Built-in model types cannot be modified"
+            message = self.loader.get("error.builtin_model_types_no_modify") if self.loader else "Built-in model types cannot be modified"
             return JsonResponse(
                 {
                     "result": False,
@@ -54,7 +54,7 @@ class ModelTypeViewSet(LanguageViewSet, GenericViewSetFun):
     def destroy(self, request, *args, **kwargs):
         instance = self.get_object()
         if instance.is_build_in:
-            message = self.loader.get("builtin_model_types_no_delete") if self.loader else "Built-in model types cannot be deleted"
+            message = self.loader.get("error.builtin_model_types_no_delete") if self.loader else "Built-in model types cannot be deleted"
             return JsonResponse(
                 {
                     "result": False,
