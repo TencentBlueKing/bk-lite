@@ -1,12 +1,9 @@
 import { useElasticSearchTelegraf } from '../../plugins/database/elasticSearchTelegraf';
-import { useElasticSearchExporter } from '../../plugins/database/elasticSearchExporter';
 
 export const useElasticSearchConfig = () => {
   const ElasticSearchTelegraf = useElasticSearchTelegraf();
-  const ElasticSearchExporter = useElasticSearchExporter();
   const plugins = {
     ElasticSearch: ElasticSearchTelegraf,
-    'ElasticSearch-Exporter': ElasticSearchExporter,
   };
 
   return {

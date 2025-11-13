@@ -84,6 +84,12 @@
           "icon": "_quota_management",
           "url": "/monitor/integration/asset",
           "name": "asset"
+        },
+        {
+          "title": "分组",
+          "icon": "zuzhiguanli",
+          "url": "/monitor/integration/group",
+          "name": "group"
         }
       ]
     }
@@ -173,6 +179,12 @@
           "icon": "_quota_management",
           "url": "/monitor/integration/asset",
           "name": "asset"
+        },
+        {
+          "title": "Group",
+          "icon": "zuzhiguanli",
+          "url": "/monitor/integration/group",
+          "name": "group"
         }
       ]
     }
