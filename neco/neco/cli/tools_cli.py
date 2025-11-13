@@ -3,15 +3,19 @@
 
 将 ToolsLoader 加载的所有工具导出为 YAML 格式，供其他系统导入使用。
 
-使用方法:
-    # 导出完整工具信息
-    uv run python -m neco.cli.tools_cli export --output=neco_tools.yml
+使用方法（推荐使用 uvx）:
+    # 使用 uvx（推荐，无需安装）
+    uvx --from . neco-tools export --output=neco_tools.yml
+    uvx --from . neco-tools summary --output=neco_tools_summary.yml
+    uvx --from . neco-tools export --stdout
     
-    # 导出工具集概览
+    # 或使用 uv run（需要项目环境）
+    uv run python -m neco.cli.tools_cli export --output=neco_tools.yml
     uv run python -m neco.cli.tools_cli summary --output=neco_tools_summary.yml
     
-    # 输出到标准输出
-    uv run python -m neco.cli.tools_cli export --stdout
+    # 或安装后直接使用命令
+    uv pip install -e .
+    neco-tools export --output=neco_tools.yml
 """
 
 import fire

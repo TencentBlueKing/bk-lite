@@ -24,7 +24,7 @@ class GenericViewSetFun(object):
     def get_has_permission(self, user, instance, current_team, is_list=False, is_check=False, include_children=False):
         """获取规则实例ID"""
         user_groups = [int(i["id"]) for i in user.group_list]
-        org_field = self.ORGANIZATION_FIELD
+        org_field = getattr(self, "ORGANIZATION_FIELD", "team")
         if is_list:
             instance_id = list(instance.values_list("id", flat=True))
             for i in instance:
@@ -61,7 +61,7 @@ class GenericViewSetFun(object):
         current_team = request.COOKIES.get("current_team", "0")
         include_children = request.COOKIES.get("include_children", "0") == "1"
         fields = [i.name for i in queryset.model._meta.fields]
-        org_field = self.ORGANIZATION_FIELD
+        org_field = getattr(self, "ORGANIZATION_FIELD", "team")
         if "created_by" in fields:
             query = Q(**{f"{org_field}__contains": int(current_team)}, created_by=request.user.username, domain=request.user.domain)
         else:
@@ -261,7 +261,7 @@ class AuthViewSet(MaintainerViewSet):
             instance = self.get_object()
             org_field = self.ORGANIZATION_FIELD
             instance_org_value = getattr(instance, org_field, [])
-            
+
             if getattr(user, "is_superuser", False):
                 if org_field in data:
                     delete_team = [i for i in instance_org_value if i not in data[org_field]]
