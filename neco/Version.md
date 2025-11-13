@@ -1,3 +1,7 @@
+# 1.0.11
+* 添加 agent_cli
+
+
 # 1.0.10
 * 修复升级后`"sentence-transformers==5.1.2",`缺失包的问题
 
