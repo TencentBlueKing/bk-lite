@@ -10,7 +10,7 @@ const Output: React.FC = () => {
   const fileName = collectType + collector;
 
   return (
-    <div className="p-4 overflow-y-auto h-[calc(100vh-230px)]">
+    <div className="p-4 overflow-y-auto h-[calc(100vh-270px)]">
       <MarkdownRenderer filePath="outputs" fileName={fileName} />
     </div>
   );

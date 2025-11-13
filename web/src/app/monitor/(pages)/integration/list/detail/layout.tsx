@@ -3,7 +3,7 @@
 import React from 'react';
 import { Tooltip } from 'antd';
 import WithSideMenuLayout from '@/components/sub-layout';
-import { useRouter, useSearchParams, usePathname } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import Icon from '@/components/icon';
 
 const IntegrationDetailLayout = ({
@@ -17,8 +17,6 @@ const IntegrationDetailLayout = ({
   const desc = searchParams.get('plugin_description');
   const objId = searchParams.get('id') || '';
   const icon = searchParams.get('icon');
-  const pathname = usePathname();
-  const isDetail = pathname.includes('/detail/');
 
   const handleBackButtonClick = () => {
     const params = new URLSearchParams({ objId });
@@ -40,10 +38,10 @@ const IntegrationDetailLayout = ({
 
   return (
     <WithSideMenuLayout
-      topSection={isDetail ? <TopSection /> : null}
-      showBackButton={isDetail}
+      topSection={<TopSection />}
+      showBackButton={true}
       onBackButtonClick={handleBackButtonClick}
-      layoutType={isDetail ? 'sideMenu' : 'segmented'}
+      layoutType="sideMenu"
     >
       {children}
     </WithSideMenuLayout>

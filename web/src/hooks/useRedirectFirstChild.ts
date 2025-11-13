@@ -54,7 +54,6 @@ export const useRedirectFirstChild = () => {
   }, [pathname, menus]);
 
   useEffect(() => {
-    console.log('~~~~~~~~~~~~~~~~~~~~~~======Current menu for path', pathname, ':', currentMenu);
     if (currentMenu?.children?.length) {
       const firstChildPath = currentMenu.children[0].url;
       const params = new URLSearchParams(searchParams || undefined);

@@ -10,7 +10,7 @@ from apps.core.utils.permission_utils import get_permission_rules, permission_fi
     check_instance_permission
 from apps.core.utils.web_utils import WebUtils
 from apps.monitor.constants.permission import PermissionConstants
-from apps.monitor.models import MonitorAlert, MonitorEvent, MonitorPolicy, MonitorEventRawData
+from apps.monitor.models import MonitorAlert, MonitorEvent, MonitorPolicy
 from apps.monitor.models.monitor_policy import MonitorAlertMetricSnapshot
 from apps.monitor.filters.monitor_alert import MonitorAlertFilter
 from apps.monitor.serializers.monitor_alert import MonitorAlertSerializer, MonitorAlertMetricSnapshotSerializer
@@ -205,14 +205,6 @@ class MonitorEventVieSet(viewsets.ViewSet):
         ]
         return WebUtils.response_success(dict(count=q_set.count(), results=result))
 
-    @action(methods=['get'], detail=False, url_path='raw_data/(?P<alert_id>[^/.]+)')
-    def get_raw_data(self, request, alert_id):
-        alert_obj = MonitorAlert.objects.get(id=alert_id)
-        event_obj = MonitorEvent.objects.filter(policy_id=alert_obj.policy_id, monitor_instance_id=alert_obj.monitor_instance_id).order_by("-created_at").first()
-        raw_data = MonitorEventRawData.objects.filter(event_id=event_obj.id).first()
-        return WebUtils.response_success(raw_data.data if raw_data else {})
-
-
 class MonitorAlertMetricSnapshotViewSet(viewsets.ViewSet):
     """告警指标快照视图集"""
 
@@ -266,3 +258,4 @@ class MonitorAlertMetricSnapshotViewSet(viewsets.ViewSet):
                 'status': alert_obj.status
             }
         })
+

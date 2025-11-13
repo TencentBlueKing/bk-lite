@@ -51,8 +51,6 @@ export const shouldRenderSecondLayerMenu = (
   // Check the first layer
   const firstLayer = menuPath[0];
   
-  console.log('First layer:', firstLayer.name || firstLayer.title, 'hasDetail:', firstLayer.hasDetail);
-
   // If first layer has hasDetail flag, do NOT render menu (detail mode)
   if (firstLayer.hasDetail) {
     return false;
