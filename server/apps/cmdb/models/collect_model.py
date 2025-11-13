@@ -7,7 +7,7 @@ from django.db import models
 from django.db.models import JSONField
 from apps.core.models.time_info import TimeInfo
 from apps.core.models.maintainer_info import MaintainerInfo
-from apps.cmdb.constants import CollectPluginTypes, CollectDriverTypes, CollectRunStatusType, CollectInputMethod
+from apps.cmdb.constants.constants import CollectPluginTypes, CollectDriverTypes, CollectRunStatusType, CollectInputMethod
 
 
 class CollectModels(MaintainerInfo, TimeInfo):

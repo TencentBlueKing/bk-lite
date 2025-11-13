@@ -2,9 +2,8 @@ import ast
 
 import openpyxl
 
-from apps.cmdb.constants import INSTANCE, NEED_CONVERSION_TYPE, ORGANIZATION, USER, ENUM, MODEL_ASSOCIATION, MODEL, \
-    INSTANCE_ASSOCIATION
-from apps.cmdb.constants import ModelConstraintKey
+from apps.cmdb.constants.constants import INSTANCE, NEED_CONVERSION_TYPE, ORGANIZATION, USER, ENUM, \
+    INSTANCE_ASSOCIATION, ModelConstraintKey
 from apps.cmdb.graph.drivers.graph_client import GraphClient
 from apps.cmdb.models import CREATE_INST_ASST
 from apps.cmdb.services.model import ModelManage
@@ -62,7 +61,7 @@ class Import:
             inst_name = ""
             row_has_data = False
             row_validation_errors_count = len(self.validation_errors)  # 记录处理该行前的错误数量
-            
+
             # 遍历每一列
             for i, cell in enumerate(row):
                 try:
@@ -72,7 +71,7 @@ class Import:
 
                 if not value:
                     continue
-                
+
                 row_has_data = True
 
                 if keys[i] == "inst_name":
@@ -112,12 +111,12 @@ class Import:
                                 enum_id.append(mapped_id)
                             else:
                                 invalid_values.append(val)
-                        
+
                         if invalid_values:
                             error_msg = f"第{row_index}行，字段'{attr_name_map.get(keys[i], keys[i])}'的值'{invalid_values}'无效"
                             self.validation_errors.append(error_msg)
                             logger.warning(error_msg)
-                        
+
                         # 只有当没有验证错误时才设置字段值
                         if enum_id and not invalid_values:
                             item[keys[i]] = enum_id
@@ -136,11 +135,11 @@ class Import:
 
             # 检查该行是否有验证错误
             row_has_validation_errors = len(self.validation_errors) > row_validation_errors_count
-            
+
             # 只有当行有数据且没有验证错误时才添加到结果列表
-            if row_has_data and len(item) > 1 and not row_has_validation_errors:  
+            if row_has_data and len(item) > 1 and not row_has_validation_errors:
                 result.append(item)
-                
+
         return result, asso_key_map
 
     def get_check_attr_map(self):
@@ -179,7 +178,7 @@ class Import:
     def import_inst_list_support_edit(self, file_stream: bytes):
         """将excel主机数据导入"""
         inst_list, asso_key_map = self.format_excel_data(file_stream)
-        
+
         # 如果存在验证错误，立即返回错误信息，不执行导入
         if self.validation_errors:
             logger.error(f"数据导入验证失败，共发现 {len(self.validation_errors)} 个错误")
@@ -187,7 +186,7 @@ class Import:
             for error in self.validation_errors:
                 error_result.append({"success": False, "data": {}, "message": error})
             return error_result, [], []
-        
+
         add_results, update_results = self.inst_list_update(inst_list)
         if not self.model_asso_map:
             logger.warning(f"模型 {self.model_id} 没有关联模型, 无需处理关联数据")
@@ -365,8 +364,9 @@ class Import:
             import traceback
             logger.error("校验关联约束失败: {}".format(traceback.format_exc()))
             return {"success": False,
-                    "message": "【{}】与【{}】的关联关系【{}】创建失败！校验关联约束失败! ".format(src_inst_name, dst_inst_name,
-                                                                                          model_asst_id)}
+                    "message": "【{}】与【{}】的关联关系【{}】创建失败！校验关联约束失败! ".format(src_inst_name,
+                                                                                            dst_inst_name,
+                                                                                            model_asst_id)}
 
         with GraphClient() as ag:
             try:

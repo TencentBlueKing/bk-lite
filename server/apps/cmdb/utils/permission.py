@@ -1,4 +1,4 @@
-from apps.cmdb.constants import ORGANIZATION
+from apps.cmdb.constants.constants import ORGANIZATION
 from apps.cmdb.graph.format_type import FORMAT_TYPE
 
 

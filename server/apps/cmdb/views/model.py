@@ -3,13 +3,13 @@ import copy
 from rest_framework import viewsets, status
 from rest_framework.decorators import action
 
-from apps.cmdb.constants import ASSOCIATION_TYPE, OPERATOR_MODEL, PERMISSION_MODEL, OPERATE, VIEW, APP_NAME
+from apps.cmdb.constants.constants import ASSOCIATION_TYPE, OPERATOR_MODEL, PERMISSION_MODEL, OPERATE, VIEW, APP_NAME
 from apps.cmdb.language.service import SettingLanguage
 from apps.cmdb.models import DELETE_INST, UPDATE_INST
 from apps.cmdb.services.model import ModelManage
 from apps.cmdb.utils.base import get_default_group_id, format_groups_params
 from apps.cmdb.utils.change_record import create_change_record
-from apps.cmdb.utils.permisssion_util import CmdbRulesFormatUtil
+from apps.cmdb.utils.permission_util import CmdbRulesFormatUtil
 from apps.core.decorators.api_permission import HasPermission
 from apps.core.utils.permission_utils import get_permission_rules, get_permissions_rules
 from apps.core.utils.web_utils import WebUtils
