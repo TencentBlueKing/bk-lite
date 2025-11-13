@@ -1,13 +1,10 @@
 import { useTomcatTelegraf } from '../../plugins/middleware/tomcatTelegraf';
-import { useTomcatJmx } from '../../plugins/middleware/tomcatJmx';
 
 export const useTomcatConfig = () => {
   const tomcatPlugin = useTomcatTelegraf();
-  const tomcatJmxPlugin = useTomcatJmx();
 
   const plugins = {
     Tomcat: tomcatPlugin,
-    'Tomcat-JMX': tomcatJmxPlugin,
   };
 
   return {
