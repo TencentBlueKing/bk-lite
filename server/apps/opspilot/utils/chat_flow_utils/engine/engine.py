@@ -7,10 +7,12 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from graphlib import CycleError, TopologicalSorter
 from typing import Any, Callable, Dict, List, Optional, Set
 
+from django.utils import timezone
+
 from apps.core.logger import opspilot_logger as logger
 from apps.opspilot.enum import WorkFlowExecuteType, WorkFlowTaskStatus
 from apps.opspilot.models import BotWorkFlow
-from apps.opspilot.models.bot_mgmt import WorkFlowTaskResult
+from apps.opspilot.models.bot_mgmt import WorkFlowConversationHistory, WorkFlowTaskResult
 
 from .core.base_executor import BaseNodeExecutor
 from .core.enums import NodeStatus
@@ -20,12 +22,34 @@ from .node_registry import node_registry
 
 
 class ChatFlowEngine:
-    def sse_execute(self, input_data: Dict[str, Any] = None, timeout: int = None):
+    def sse_execute(self, input_data: Dict[str, Any] = None, timeout: int = None):  # noqa: C901
         """流程流式执行，仅支持最后节点为agent且首节点为openai时"""
         if input_data is None:
             input_data = {}
         if timeout is None:
             timeout = self.execution_timeout
+
+        # 获取用户ID和输入消息
+        user_id = input_data.get("user_id", "")
+        input_message = input_data.get("last_message", "") or input_data.get("message", "")
+        # 获取入口类型，默认为 openai（SSE方式通常是openai类型）
+        entry_type = input_data.get("entry_type", "openai")
+
+        # 记录用户输入（排除celery定时触发）
+        if user_id and input_message and entry_type != "celery":
+            try:
+                user_conversation = WorkFlowConversationHistory.objects.create(
+                    bot_id=self.instance.bot_id,
+                    user_id=user_id,
+                    conversation_role="user",
+                    conversation_content=input_message,
+                    conversation_time=timezone.now(),
+                    entry_type=entry_type,
+                )
+                logger.info(f"[SSE] 记录用户输入对话历史: conversation_id={user_conversation.id}, entry_type={entry_type}")
+            except Exception as e:
+                logger.error(f"[SSE] 记录用户输入对话历史失败: {str(e)}")
+
         # 验证流程
         validation_errors = self.validate_flow()
         if validation_errors:
@@ -68,7 +92,56 @@ class ChatFlowEngine:
             # 最后一个节点走sse_execute
             executor = self._get_node_executor(last_node.get("type"))
             if hasattr(executor, "sse_execute"):
-                return executor.sse_execute(last_node.get("id"), last_node, final_input_data)
+                # 包装生成器以收集完整输出
+                def wrapped_generator():
+                    accumulated_output = []  # 累积完整输出内容
+
+                    try:
+                        for chunk in executor.sse_execute(last_node.get("id"), last_node, final_input_data):
+                            # 流式输出给客户端
+                            yield chunk
+
+                            # 收集输出内容（排除 [DONE] 标记）
+                            if chunk and not chunk.strip().endswith("[DONE]"):
+                                # 解析 SSE 数据格式: "data: {...}\n\n"
+                                if chunk.startswith("data: "):
+                                    try:
+                                        data_str = chunk[6:].strip()  # 去掉 "data: " 前缀
+                                        if data_str:
+                                            data_json = json.loads(data_str)
+                                            # 提取实际内容（根据不同的响应格式）
+                                            content = data_json.get("content") or data_json.get("message") or data_json.get("text", "")
+                                            if content:
+                                                accumulated_output.append(content)
+                                    except json.JSONDecodeError:
+                                        # 如果不是JSON格式，直接添加原始内容
+                                        accumulated_output.append(data_str)
+
+                        # 流式输出完成后，记录完整的系统输出（排除celery定时触发）
+                        if user_id and accumulated_output and entry_type != "celery":
+                            try:
+                                full_output = "".join(accumulated_output)
+                                bot_conversation = WorkFlowConversationHistory.objects.create(
+                                    bot_id=self.instance.bot_id,
+                                    user_id=user_id,
+                                    conversation_role="bot",
+                                    conversation_content=full_output,
+                                    conversation_time=timezone.now(),
+                                    entry_type=entry_type,
+                                )
+                                logger.info(
+                                    f"[SSE] 记录系统输出对话历史: conversation_id={bot_conversation.id}, "
+                                    f"output_length={len(full_output)}, entry_type={entry_type}"
+                                )
+                            except Exception as e:
+                                logger.error(f"[SSE] 记录系统输出对话历史失败: {str(e)}")
+
+                    except Exception as e:
+                        logger.error(f"[SSE] 流式执行过程中出错: {str(e)}")
+                        yield f"data: {json.dumps({'result': False, 'error': str(e)})}\n\n"
+                        yield "data: [DONE]\n\n"
+
+                return wrapped_generator()
 
         # 其他情况不支持流式，直接抛异常
         def err_gen():
@@ -243,6 +316,10 @@ class ChatFlowEngine:
         start_time = time.time()
         logger.info(f"开始执行流程 {self.instance.id}")
 
+        # 获取用户ID和输入消息
+        user_id = input_data.get("user_id", "")
+        input_message = input_data.get("last_message", "") or input_data.get("message", "")
+
         # 验证流程
         validation_errors = self.validate_flow()
         if validation_errors:
@@ -278,8 +355,25 @@ class ChatFlowEngine:
                 self._record_execution_result(input_data, error_result, False)
                 return error_result
 
-            # 获取起始节点类型
+            # 获取起始节点类型作为入口类型
             start_node_type = start_node.get("type", "")
+            # 使用起始节点类型作为 entry_type，如果不在支持的类型中则默认为 restful
+            entry_type = start_node_type if start_node_type in [choice[0] for choice in WorkFlowExecuteType.choices] else "restful"
+
+            # 记录用户输入（排除celery定时触发）
+            if user_id and input_message and entry_type != "celery":
+                try:
+                    user_conversation = WorkFlowConversationHistory.objects.create(
+                        bot_id=self.instance.bot_id,
+                        user_id=user_id,
+                        conversation_role="user",
+                        conversation_content=input_message,
+                        conversation_time=timezone.now(),
+                        entry_type=entry_type,
+                    )
+                    logger.info(f"记录用户输入对话历史: conversation_id={user_conversation.id}, entry_type={entry_type}")
+                except Exception as e:
+                    logger.error(f"记录用户输入对话历史失败: {str(e)}")
 
             # 从选择的起始节点开始执行
             self._execute_node_chain(chosen_start_node, input_data, timeout - (time.time() - start_time))
@@ -289,6 +383,29 @@ class ChatFlowEngine:
 
             # 获取最终的 last_message 作为主要输出结果
             final_last_message = self.variable_manager.get_variable("last_message")
+
+            # 记录系统输出（排除celery定时触发）
+            if user_id and final_last_message and entry_type != "celery":
+                try:
+                    # 将输出结果转换为字符串
+                    if isinstance(final_last_message, dict):
+                        output_content = json.dumps(final_last_message, ensure_ascii=False)
+                    elif isinstance(final_last_message, str):
+                        output_content = final_last_message
+                    else:
+                        output_content = str(final_last_message)
+
+                    bot_conversation = WorkFlowConversationHistory.objects.create(
+                        bot_id=self.instance.bot_id,
+                        user_id=user_id,
+                        conversation_role="bot",
+                        conversation_content=output_content,
+                        conversation_time=timezone.now(),
+                        entry_type=entry_type,
+                    )
+                    logger.info(f"记录系统输出对话历史: conversation_id={bot_conversation.id}, entry_type={entry_type}")
+                except Exception as e:
+                    logger.error(f"记录系统输出对话历史失败: {str(e)}")
 
             # 记录成功的执行结果
             self._record_execution_result(input_data, final_last_message, True, start_node_type)

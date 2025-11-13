@@ -1,6 +1,6 @@
 cloud_region:
   default:
-    description: 直连区域用于接入与平台主控节点直接通讯的主机节点。
+    description: 直连区域用于接入和管理与平台主控节点直接通讯的节点。
     name: 直连区域
 os:
   linux: Linux
@@ -105,11 +105,11 @@ controller_status:
   normal: 正常
 controller:
   linux:
-    name: 控制器
-    description: None
+    name: Linux控制器
+    description: Linux控制器由 Sidecar 和 NATS Executor组成，用于管理Linux节点和节点上的各类采集器，实现节点上的自动化部署、资源协调与任务执行。控制器默认集成了Telegraf和Vector采集器。
   windows:
-    description: None
-    name: 控制器
+    description: Windows控制器由 Sidecar 和 NATS Executor组成，用于管理Windows节点和节点上的各类采集器，实现节点上的自动化部署、资源协调与任务执行。控制器默认集成了Telegraf和Vector采集器。
+    name: Windows控制器
 controller_install_method:
   manual: 手动安装
   auto: 自动安装

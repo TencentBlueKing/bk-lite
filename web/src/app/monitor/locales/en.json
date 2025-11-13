@@ -251,6 +251,12 @@
       "protocolDes": "Indicates the use of the LAN+ protocol for access (commonly used in newer versions of IPMI).",
       "nameDes": "The SNMPv3 username used for authentication.",
       "rule": "Rule",
+      "ruleName": "Rule Name",
+      "objectType": "Object Type",
+      "ruleDescription": "Rule Description",
+      "exactMatch": "Exact match",
+      "rulesCount": "rule(s)",
+      "searchRuleName": "Search Rule Name",
       "dbNameDes": "The specific name of the database required for access",
       "configuration": "Configuration",
       "configureStep1": "Define collection targets",
@@ -371,7 +377,8 @@
       "originalValue": "Original Value",
       "metricTitle": "The following monitoring indicators are supported by this collector",
       "step1": "Step1",
-      "portDes": "Configured SNMP port number, typically using port 161 for communication with the device."
+      "portDes": "Configured SNMP port number, typically using port 161 for communication with the device.",
+      "access": "Access"
     },
     "instance": "Instance",
     "label": "Label",

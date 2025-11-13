@@ -28,7 +28,6 @@ import { useTranslation } from '@/utils/i18n';
 import GroupTreeSelector from '@/components/group-tree-select';
 import useMonitorApi from '@/app/monitor/api';
 import { useConditionList } from '@/app/monitor/hooks';
-import strategyStyle from './index.module.scss';
 import { cloneDeep } from 'lodash';
 const { Option } = Select;
 
@@ -96,7 +95,9 @@ const RuleModal = forwardRef<ModalRef, ModalProps>(
           setMetric(formData.rule.metric_id);
         }
         setGroupForm(formData);
-        getMetrics({ monitor_object_id: monitorObject });
+        const objectId =
+          type === 'edit' ? formData.monitor_object : monitorObject;
+        getMetrics({ monitor_object_id: objectId });
       },
     }));
 
@@ -182,9 +183,11 @@ const RuleModal = forwardRef<ModalRef, ModalProps>(
           metric_id: metric as number,
           filter: conditions,
         };
+        const objectId =
+          type === 'edit' ? groupForm.monitor_object : monitorObject;
         operateGroup({
           name: values.name,
-          monitor_object: monitorObject as number,
+          monitor_object: objectId as number,
           rule,
           organizations: values.organizations || [],
         });
@@ -208,9 +211,10 @@ const RuleModal = forwardRef<ModalRef, ModalProps>(
       setMetric(val);
       const target = metrics.find((item) => item.id === val);
       const labelKeys = (target?.dimensions || []).map((item) => item.name);
+      const objectId =
+        type === 'edit' ? groupForm.monitor_object : monitorObject;
       const instanceIdKeys =
-        objects.find((item) => item.id === monitorObject)?.instance_id_keys ||
-        [];
+        objects.find((item) => item.id === objectId)?.instance_id_keys || [];
       const keys = [
         ...new Set([...labelKeys, ...(instanceIdKeys as string[])]),
       ];
@@ -331,15 +335,13 @@ const RuleModal = forwardRef<ModalRef, ModalProps>(
               name="rule"
               rules={[{ required: true, validator: validateDimensions }]}
             >
-              <div className={strategyStyle.conditionItem}>
+              <div>
                 {conditions.length ? (
-                  <ul className={strategyStyle.conditions}>
+                  <ul className="flex flex-wrap -mb-[10px]">
                     {conditions.map((conditionItem, index) => (
-                      <li
-                        className={`${strategyStyle.itemOption} ${strategyStyle.filter}`}
-                        key={index}
-                      >
+                      <li className="flex mb-[10px] mr-[10px]" key={index}>
                         <Select
+                          className="[&_.ant-select-selector]:rounded-l-md [&_.ant-select-selector]:rounded-r-none"
                           style={{
                             width: '150px',
                           }}
@@ -355,6 +357,7 @@ const RuleModal = forwardRef<ModalRef, ModalProps>(
                           ))}
                         </Select>
                         <Select
+                          className="[&_.ant-select-selector]:rounded-none"
                           style={{
                             width: '90px',
                           }}
@@ -369,20 +372,23 @@ const RuleModal = forwardRef<ModalRef, ModalProps>(
                           ))}
                         </Select>
                         <Input
+                          className="rounded-none"
                           style={{
                             width: '100px',
                           }}
                           placeholder={t('monitor.value')}
                           value={conditionItem.value}
                           onChange={(e) => handleValueChange(e, index)}
-                        ></Input>
+                        />
                         {!!index && (
                           <Button
+                            className="ml-[10px]"
                             icon={<CloseOutlined />}
                             onClick={() => deleteConditionItem(index)}
                           />
                         )}
                         <Button
+                          className="ml-[10px]"
                           icon={<PlusOutlined />}
                           onClick={addConditionItem}
                         />

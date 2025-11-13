@@ -134,6 +134,22 @@ export const useStudioApi = () => {
     return get('/system_mgmt/user/user_id_all/');
   };
 
+  /**
+   * Fetches workflow conversation logs for bot type 3.
+   * @param params - Query parameters including bot_id, entry_type, start_time, end_time, search, page, page_size.
+   */
+  const fetchWorkflowLogs = async (params: any): Promise<any> => {
+    return get('/opspilot/bot_mgmt/bot/search_workflow_log/', { params });
+  };
+
+  /**
+   * Fetches workflow log detail.
+   * @param params - Query parameters including ids, page, page_size.
+   */
+  const fetchWorkflowLogDetail = async (params: any): Promise<any> => {
+    return post('/opspilot/bot_mgmt/bot/get_workflow_log_detail/', params);
+  };
+
   return {
     fetchLogs,
     fetchWorkflowTaskResult,
@@ -150,5 +166,7 @@ export const useStudioApi = () => {
     fetchActiveUsers,
     executeWorkflow,
     getAllUsers,
+    fetchWorkflowLogs,
+    fetchWorkflowLogDetail,
   };
 };

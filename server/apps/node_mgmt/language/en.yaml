@@ -1,7 +1,7 @@
 cloud_region:
   default:
-    description: Used for connecting host nodes that directly communicate with the
-      platform’s master control node.
+    description: The Direct Connection Zone is used to connect and manage nodes that
+      communicate directly with the platform’s main control node.
     name: Direct Connection Zone
 os:
   linux: Linux
@@ -118,11 +118,17 @@ controller_status:
   normal: Normal
 controller:
   linux:
-    name: Controller
-    description: None
+    name: Linux Controller
+    description: Linux Controller is composed of Sidecar and NATS Executor, used to
+      manage Linux nodes and various collectors on the nodes, enabling automated deployment,
+      resource coordination, and task execution on the nodes. By default, the controller
+      integrates Telegraf and Vector collectors.
   windows:
-    description: None
-    name: Controller
+    description: Windows Controller is composed of Sidecar and NATS Executor, used
+      to manage Windows nodes and various collectors on the nodes, enabling automated
+      deployment, resource coordination, and task execution on the nodes. By default,
+      the controller integrates Telegraf and Vector collectors.
+    name: Windows Controller
 controller_install_method:
   manual: Manual Installation
   auto: Automatic Installation
