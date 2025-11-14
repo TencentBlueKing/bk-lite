@@ -1,0 +1,173 @@
+{
+  "object_name": "Hardware Server",
+  "instance_type": "hardware_server",
+  "collect_type": "snmp",
+  "config_type": ["hardware_server"],
+  "collector": "Telegraf",
+  "instance_id": "${cloud_region}_hardware_server_snmp_${ip}",
+  "form_fields": [
+    {
+      "name": "monitor_ip",
+      "label": "IP",
+      "type": "input",
+      "required": true,
+      "disabled_in_edit": true,
+      "placeholder": "",
+      "description": "IP地址说明",
+      "locale_key": "monitor.integrations.ipDes"
+    },
+    {
+      "name": "port",
+      "label": "端口",
+      "type": "inputNumber",
+      "required": true,
+      "min": 1,
+      "precision": 0,
+      "default": 161,
+      "disabled_in_edit": true,
+      "locale_key": "monitor.integrations.port"
+    },
+    {
+      "name": "version",
+      "label": "SNMP版本",
+      "type": "select",
+      "required": true,
+      "default": 2,
+      "disabled_in_edit": true,
+      "options": [
+        { "label": "v2c", "value": 2 },
+        { "label": "v3", "value": 3 }
+      ],
+      "locale_key": "monitor.integrations.snmpVersion"
+    },
+    {
+      "name": "community",
+      "label": "Community",
+      "type": "input",
+      "required": true,
+      "dependency": {
+        "field": "version",
+        "value": 2
+      },
+      "locale_key": "monitor.integrations.community"
+    },
+    {
+      "name": "sec_name",
+      "label": "Sec Name",
+      "type": "input",
+      "required": true,
+      "dependency": {
+        "field": "version",
+        "value": 3
+      },
+      "locale_key": "monitor.integrations.secName"
+    },
+    {
+      "name": "sec_level",
+      "label": "Sec Level",
+      "type": "input",
+      "required": true,
+      "dependency": {
+        "field": "version",
+        "value": 3
+      },
+      "locale_key": "monitor.integrations.secLevel"
+    },
+    {
+      "name": "auth_protocol",
+      "label": "Auth Protocol",
+      "type": "input",
+      "required": false,
+      "dependency": {
+        "field": "version",
+        "value": 3
+      },
+      "locale_key": "monitor.integrations.authProtocol"
+    },
+    {
+      "name": "auth_password",
+      "label": "Auth Password",
+      "type": "password",
+      "required": false,
+      "disabled_in_edit": true,
+      "dependency": {
+        "field": "version",
+        "value": 3
+      },
+      "locale_key": "monitor.integrations.authPassword"
+    },
+    {
+      "name": "priv_protocol",
+      "label": "Priv Protocol",
+      "type": "input",
+      "required": false,
+      "dependency": {
+        "field": "version",
+        "value": 3
+      },
+      "locale_key": "monitor.integrations.privProtocol"
+    },
+    {
+      "name": "priv_password",
+      "label": "Priv Password",
+      "type": "password",
+      "required": false,
+      "disabled_in_edit": true,
+      "dependency": {
+        "field": "version",
+        "value": 3
+      },
+      "locale_key": "monitor.integrations.privPassword"
+    },
+    {
+      "name": "timeout",
+      "label": "超时时间",
+      "type": "inputNumber",
+      "required": true,
+      "min": 1,
+      "precision": 0,
+      "default": 10,
+      "locale_key": "monitor.integrations.timeout"
+    }
+  ],
+  "table_columns": [
+    {
+      "name": "node_ids",
+      "label": "节点",
+      "type": "node_selector",
+      "required": true,
+      "locale_key": "monitor.integrations.nodes"
+    },
+    {
+      "name": "ip",
+      "label": "IP",
+      "type": "input",
+      "required": true,
+      "change_handler": {
+        "type": "simple",
+        "target": "instance_name"
+      }
+    },
+    {
+      "name": "instance_name",
+      "label": "实例名称",
+      "type": "input",
+      "required": true,
+      "locale_key": "monitor.integrations.instanceName"
+    },
+    {
+      "name": "group_ids",
+      "label": "分组",
+      "type": "group_selector",
+      "required": false,
+      "locale_key": "monitor.integrations.groups"
+    }
+  ],
+  "extra_fields": {
+    "default_form": {
+      "port": 161,
+      "version": 2,
+      "timeout": 10
+    }
+  }
+}

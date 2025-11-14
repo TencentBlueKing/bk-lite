@@ -1,0 +1,97 @@
+{
+  "object_name": "Zookeeper",
+  "instance_type": "zookeeper",
+  "collect_type": "middleware",
+  "config_type": ["zookeeper"],
+  "collector": "Telegraf",
+  "instance_id": "{{cloud_region}}_{{url}}",
+  "form_fields": [
+    {
+      "name": "monitor_url",
+      "label": "服务器地址",
+      "type": "input",
+      "required": true,
+      "visible_in": "edit",
+      "editable": false,
+      "description": "监控对象的服务器地址",
+      "widget_props": {
+        "placeholder": "127.0.0.1:2181"
+      },
+      "data_transform": {
+        "origin_path": "child.content.config.servers[0]"
+      }
+    },
+    {
+      "name": "timeout",
+      "label": "超时时间",
+      "type": "inputNumber",
+      "required": true,
+      "default_value": 10,
+      "description": "从设备请求数据的超时时间，超过配置时间（例如 10 秒）的请求将被视为失败。",
+      "widget_props": {
+        "min": 1,
+        "precision": 0,
+        "placeholder": "超时时间",
+        "addonAfter": "s"
+      },
+      "data_transform": {
+        "origin_path": "child.content.config.timeout",
+        "to_form": {
+          "regex": "^(\\d+)s$"
+        },
+        "to_api": {
+          "suffix": "s"
+        }
+      }
+    }
+  ],
+  "table_columns": [
+    {
+      "name": "node_ids",
+      "label": "节点",
+      "type": "select",
+      "required": true,
+      "default_value": "",
+      "widget_props": {
+        "placeholder": "请选择节点"
+      },
+      "enable_row_filter": true
+    },
+    {
+      "name": "url",
+      "label": "服务器地址",
+      "type": "input",
+      "required": true,
+      "default_value": "",
+      "widget_props": {
+        "placeholder": "127.0.0.1:2181"
+      },
+      "change_handler": {
+        "type": "simple",
+        "source_fields": ["url"],
+        "target_field": "instance_name"
+      }
+    },
+    {
+      "name": "instance_name",
+      "label": "实例名称",
+      "type": "input",
+      "required": true,
+      "default_value": "",
+      "widget_props": {
+        "placeholder": "实例名称",
+        "disabled": false
+      }
+    },
+    {
+      "name": "group_ids",
+      "label": "组",
+      "type": "group_select",
+      "required": false,
+      "default_value": [],
+      "widget_props": {
+        "placeholder": "请选择组"
+      }
+    }
+  ]
+}
