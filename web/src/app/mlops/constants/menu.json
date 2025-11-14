@@ -5,6 +5,7 @@
       "icon": "Gc_103_face-Data",
       "url": "/mlops/manage",
       "name": "Datasets",
+      "hasDetail": true,
       "children": [
         {
           "title": "异常检测",
@@ -29,6 +30,7 @@
       "icon": "renwu",
       "url": "/mlops/task",
       "name": "Train Tasks",
+      "hasDetail": true,
       "children": [
         {
           "title": "任务列表",
@@ -43,6 +45,7 @@
       "icon": "nenglifabuguanli",
       "url": "/mlops/model-release",
       "name": "Model Release",
+      "hasDetail": true,
       "children": [
         {
           "title": "发布列表",
@@ -59,6 +62,7 @@
       "icon": "Gc_103_face-Data",
       "url": "/mlops/manage",
       "name": "Datasets",
+      "hasDetail": true,
       "children": [
         {
           "title": "AnomalyDetection",
@@ -83,6 +87,7 @@
       "icon": "xunlianrenwu",
       "url": "/mlops/task",
       "name": "Train Tasks",
+      "hasDetail": true,
       "children": [
         {
           "title": "TaskList",
@@ -96,6 +101,7 @@
       "icon": "nenglifabuguanli",
       "url": "/mlops/model-release",
       "name": "Model Release",
+      "hasDetail": true,
       "children": [
         {
           "title": "Publication list",

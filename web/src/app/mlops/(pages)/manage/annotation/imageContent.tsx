@@ -1,12 +1,12 @@
 import { useTranslation } from "@/utils/i18n";
-import { Spin, message, Image, Button, Input, Upload, type UploadProps, type UploadFile, } from "antd";
-import { useEffect, useState, useMemo, useRef } from "react";
+import { Spin, message, Image, Button, Input, Upload, type UploadProps, type UploadFile, Tag, } from "antd";
+import React, { useEffect, useState, useMemo, useRef } from "react";
 import useMlopsManageApi from "@/app/mlops/api/manage";
 import { useSearchParams } from "next/navigation";
-import { LeftOutlined, RightOutlined, PlusOutlined, SearchOutlined } from "@ant-design/icons";
+import { LeftOutlined, RightOutlined, PlusOutlined, SearchOutlined, MinusCircleOutlined } from "@ant-design/icons";
 import PermissionWrapper from '@/components/permission';
 import styles from './index.module.scss';
-
+import { generateUniqueRandomColor } from "@/app/mlops/utils/common";
 
 interface TrainDataItem {
   image_name: string;
@@ -16,7 +16,7 @@ interface TrainDataItem {
 }
 
 interface LabelItem {
-  id: string;
+  id: number;
   name: string;
 }
 
@@ -26,27 +26,29 @@ const ImageContent = () => {
   const { getImageClassificationTrainDataInfo, updateImageClassificationTrainData } = useMlopsManageApi();
   const [trainData, setTrainData] = useState<TrainDataItem[]>([]);
   // const [fileList, setFileList] = useState<UploadFile<any>[]>([]);
-  const [labels] = useState<LabelItem[]>([
-    { id: '1', name: 'fruit' },
-    { id: '2', name: 'War' },
-    { id: '3', name: 'Musical' },
-    { id: '4', name: 'Family' },
-    { id: '5', name: 'Sport' },
-    { id: '6', name: 'Thriller' },
-    { id: '7', name: 'Music' },
-    { id: '8', name: 'Romance' },
-    { id: '9', name: 'Drama' },
-    { id: '10', name: 'Fantasy' },
+  const [labels, setLabels] = useState<LabelItem[]>([
+    { id: 1, name: 'fruit' },
+    { id: 2, name: 'War' },
+    { id: 3, name: 'Musical' },
+    { id: 4, name: 'Family' },
+    { id: 5, name: 'Sport' },
+    { id: 6, name: 'Thriller' },
+    { id: 7, name: 'Music' },
+    { id: 8, name: 'Romance' },
+    { id: 9, name: 'Drama' },
+    { id: 10, name: 'Fantasy' },
   ]);
   const [currentIndex, setCurrentIndex] = useState(0);
   // const [activeTab, setActiveTab] = useState('unlabeled');
   const [searchValue, setSearchValue] = useState('');
   const [loadingState, setLoadingState] = useState<{
     imageLoading: boolean,
-    saveLoading: boolean
+    saveLoading: boolean,
+    showAddLabel: boolean,
   }>({
     imageLoading: false,
-    saveLoading: false
+    saveLoading: false,
+    showAddLabel: false
   });
   const thumbnailContainerRef = useRef<HTMLDivElement>(null);
 
@@ -70,7 +72,7 @@ const ImageContent = () => {
     showUploadList: false,
     onChange: ({ file }) => {
       console.log(file.status);
-      if( file.status === 'uploading') {
+      if (file.status === 'uploading') {
         message.info(t('datasets.uploading'))
       }
       if (file.status === 'done') {
@@ -96,6 +98,19 @@ const ImageContent = () => {
   useEffect(() => {
     getTrainDataInfo()
   }, [searchParams]);
+
+  useEffect(() => {
+    const container = thumbnailContainerRef.current;
+    if(!container) return;
+
+    const handleWheel = (e: WheelEvent) => {
+      e.preventDefault();
+      container.scrollLeft += e.deltaY;
+    };
+
+    container.addEventListener('wheel', handleWheel, {passive: false});
+    return () => container.removeEventListener('wheel', handleWheel);
+  }, [])
 
   const getTrainDataInfo = async () => {
     setLoadingState((prev) => ({ ...prev, imageLoading: true }));
@@ -152,9 +167,22 @@ const ImageContent = () => {
   };
 
   // 添加标签
-  const handleAddLabel = () => {
-    // TODO: 调用添加标签接口
-    // message.info('添加标签功能待实现');
+  const handleAddLabel = (event: React.KeyboardEvent<HTMLInputElement>) => {
+    const value = event.currentTarget.value.trim();
+
+    if(!value) {
+      return;
+    }
+
+    if (labels.some(label => label.name === value)) {
+      return;
+    }
+
+    setLabels(prev => [...prev,{
+      id: prev.length > 0 ? Math.max(...prev.map(l => l.id)) + 1 : 1,
+      name: value
+    }]);
+    setLoadingState(prev => ({ ...prev, showAddLabel: false }));
   };
 
   // 标注图片
@@ -202,6 +230,20 @@ const ImageContent = () => {
       label.name.toLowerCase().includes(searchValue.toLowerCase())
     );
   }, [labels, searchValue]);
+
+  const deleteLabels = (event: React.MouseEvent, id: number) => {
+    event.stopPropagation();
+
+    const labelItem = labels.find(l => l.id === id);
+    const hasUsed = trainData.some(item => item.label === labelItem?.name);
+    
+    if(hasUsed) {
+      message.warning('该标签已被使用');
+      return;
+    }
+
+    setLabels(prev => prev.filter(item => item.id !== id));
+  }
 
   // 添加图片
   const addNewImage = async (file: UploadFile) => {
@@ -254,7 +296,7 @@ const ImageContent = () => {
       <Spin spinning={loadingState.imageLoading}>
         <div className="h-full flex gap-4">
           {/* 左侧主要区域 */}
-          <div className="flex-1 flex flex-col gap-4" style={{ height: '100%' }}>
+          <div className="max-w-[80%] flex-1 flex flex-col gap-4" style={{ height: '100%' }}>
             {/* 主图展示区域 */}
             <div className="flex-1 flex gap-4" style={{ minHeight: 0 }}>
               {/* 图片轮播 */}
@@ -268,13 +310,18 @@ const ImageContent = () => {
                       shape="circle"
                       size="large"
                     />
-                    <div className="w-full h-full flex items-center justify-center p-8">
+                    <div className="w-full h-full relative flex items-center justify-center p-8">
                       <Image
                         alt={trainData[currentIndex]?.image_name || ''}
                         src={trainData[currentIndex]?.image_url || ''}
                         style={{ maxHeight: '100%', maxWidth: '100%', objectFit: 'contain' }}
                       // preview={false}
                       />
+                      <div className="absolute top-6 right-8">
+                        {trainData[currentIndex]?.label &&
+                          <Tag color={generateUniqueRandomColor()}>{trainData[currentIndex]?.label}</Tag>
+                        }
+                      </div>
                     </div>
                     <Button
                       icon={<RightOutlined />}
@@ -290,7 +337,7 @@ const ImageContent = () => {
               </div>
 
               {/* 识别结果 */}
-              <div className="w-[20%] bg-white p-2 border border-gray-200 rounded flex-shrink-0">
+              <div className="w-[15%] bg-white p-2 border border-gray-200 rounded flex-shrink-0">
                 <div className="font-medium mb-2">{t('datasets.labelResult')}</div>
                 <div className="text-sm text-gray-500">
                   {rendenrLabelResult}
@@ -299,7 +346,7 @@ const ImageContent = () => {
             </div>
 
             {/* 底部缩略图列表 */}
-            <div className="h-[96px] bg-white border border-gray-200 rounded p-2 flex-shrink-0">
+            <div className="h-[108px] bg-white border border-gray-200 rounded px-3 pt-3 flex-shrink-0">
               <div
                 ref={thumbnailContainerRef}
                 className="flex gap-2 overflow-x-auto"
@@ -351,11 +398,10 @@ const ImageContent = () => {
 
           {/* 右侧标签栏 */}
           <div className="w-[20%] bg-white border border-gray-200 rounded p-4 flex flex-col">
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="font-medium text-lg">{t('datasets.tabBar')}</h3>
+            <div className="flex items-center justify-between mb-2">
+              <h3 className="font-medium text-sm">{t('datasets.tabBar')}</h3>
             </div>
-
-            <div className="flex justify-center items-center mb-4 gap-1 py-1">
+            <div className="flex flex-col justify-center items-start mb-2 gap-1 py-1">
               {/* 搜索框 */}
               <Input
                 placeholder={t('common.inputMsg')}
@@ -363,13 +409,12 @@ const ImageContent = () => {
                 value={searchValue}
                 onChange={(e) => setSearchValue(e.target.value)}
               />
-
-              {/* 添加标签按钮 */}
-              <Button
-                type="primary"
-                icon={<PlusOutlined />}
-                onClick={handleAddLabel}
-              />
+              <div>
+                <a className="ml-1 text-blue-600 text-xs" onClick={() => { setLoadingState((prev) => ({ ...prev, showAddLabel: true })) }}>添加标签</a>
+                {loadingState.showAddLabel &&
+                  <Input className="text-xs" placeholder="按下回车添加" onPressEnter={(event) => handleAddLabel(event)} />
+                }
+              </div>
             </div>
 
             {/* 标签列表 */}
@@ -379,16 +424,17 @@ const ImageContent = () => {
                   <div
                     key={label.id}
                     onClick={() => handleLabelImage(label.name)}
-                    className="px-4 py-3 border text-sm border-gray-200 rounded cursor-pointer hover:bg-blue-50 hover:border-blue-400 transition-all"
+                    className="flex justify-between items-center px-2 py-1 border text-xs content-center border-gray-200 rounded cursor-pointer hover:bg-blue-50 hover:border-blue-400 transition-all"
                   >
                     {label.name}
+                    <MinusCircleOutlined className="text-red-600" onClick={(e) => deleteLabels(e, label.id)} />
                   </div>
                 ))}
               </div>
             </div>
 
             <div className="flex justify-end gap-2 mt-4">
-              <Button className="mr-4" onClick={handleCancel}>{t('common.cancel')}</Button>
+              <Button className="mr-2" onClick={handleCancel}>{t('common.cancel')}</Button>
               <PermissionWrapper requiredPermissions={['File Edit']}>
                 <Button type="primary" loading={loadingState.saveLoading} onClick={handleSave}>{t('common.save')}</Button>
               </PermissionWrapper>

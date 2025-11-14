@@ -187,24 +187,41 @@ const ObjectDetection = ({
 
     if (!currentSample) setCurrentSample(_images[0])
     return _images;
-  }, [trainData, metaData, casualType]);
+  }, [trainData, metaData]);
 
   // 发生变化时更新samples的标注数据
   const updateSamples = (labels: any, currentSample: ImageSample | null) => {
     const isNull = labels instanceof Object && Object.keys(labels).length > 0;
 
     if (!isNull) return;
-    const image_url = currentSample?.url;
-    const newImageLabel = metaData.image_label.map((item: ImageLabel) => {
-      if (item.image_url === image_url) {
-        return {
-          image_url: item.image_url || '',
-          label: labels
+    const image_url = currentSample?.url || '';
+    const hasLabel = metaData.image_label.findIndex((item: ImageLabel) => item.image_url === image_url);
+    let newImageLabel = [];
+    if (hasLabel < 0) {
+      newImageLabel = metaData.image_label.concat({
+        image_url,
+        label: labels
+      })
+    } else {
+      newImageLabel = metaData.image_label.map((item: ImageLabel) => {
+        if (item.image_url === image_url) {
+          return {
+            image_url: item.image_url || '',
+            label: labels
+          }
         }
-      }
-      return item;
-    });
+        return item;
+      });
+    }
+
     setMetadata((prev) => ({ ...prev, image_label: newImageLabel }));
+  };
+
+  const getCurrentAnnotations = () => {
+    return {
+      current: annotatorRef.current?.getSample(),
+      labels: annotatorRef.current?.getAnnotations()
+    }
   };
 
   const onLoad = (engine: any) => {
@@ -213,9 +230,9 @@ const ObjectDetection = ({
       div.remove();
     });
 
-
     const updateSampleData = (eventName: string) => {
-      const current = annotatorRef.current?.getSample();
+      const { current, labels } = getCurrentAnnotations()
+      // const current = annotatorRef.current?.getSample();
       if (eventName !== 'imageChange') setIsChange(true);
       // 对于删除事件，需要延迟获取标注数据，等待状态更新完成
       if (eventName === 'delete') {
@@ -229,17 +246,19 @@ const ObjectDetection = ({
           }
         }, 0);
       } else if (eventName === 'imageChange') {
-        if (current) {
-          setCurrentSample(current);
-        }
+        if (current) setCurrentSample(current);
       } else {
-        const labels = annotatorRef.current?.getAnnotations();
-        if (current && (current?.url !== currentSample?.url)) {
-          setCurrentSample(current);
-          updateSamples(labels, current);
-        } else {
-          updateSamples(labels, currentSample)
-        }
+        // const labels = annotatorRef.current?.getAnnotations();
+        updateSamplesData(current, labels);
+      }
+    };
+
+    const updateSamplesData = (current: any, labels: any) => {
+      if (current && current.url !== currentSample?.url) {
+        setCurrentSample(current);
+        updateSamples(labels, current);
+      } else {
+        updateSamples(labels, currentSample);
       }
     };
 
@@ -326,21 +345,21 @@ const ObjectDetection = ({
 
   const toolbarRight = useMemo(() => {
     return (
-      <div className='flex items-center gap-2'>
+      <div className='flex items-center'>
         <Tooltip title={t('common.refresh')}>
-          <Button type='default' icon={<ReloadOutlined rev={undefined} />} onClick={() => getTrainDataInfo()} />
+          <Button type='default' className='rounded-none' icon={<ReloadOutlined rev={undefined} />} onClick={() => getTrainDataInfo()} />
         </Tooltip>
         <Tooltip title={t('datasets.generateTitle')}>
-          <Button type='default' icon={<CloudUploadOutlined rev={undefined} />} onClick={() => generateDataset()} />
+          <Button type='default' className='rounded-none' icon={<CloudUploadOutlined rev={undefined} />} onClick={() => generateDataset()} />
         </Tooltip>
         <Tooltip title={t('datasets.editImageType')}>
-          <Button type='default' icon={<EditOutlined rev={undefined} />} onClick={() => setTagOpen(true)} />
+          <Button type='default' className='rounded-none' icon={<EditOutlined rev={undefined} />} onClick={() => setTagOpen(true)} />
         </Tooltip>
         <Tooltip title="展示标注结果">
-          <Button type='default' icon={<CodeOutlined rev={undefined} />} onClick={showResult} />
+          <Button type='default' className='rounded-none' icon={<CodeOutlined rev={undefined} />} onClick={showResult} />
         </Tooltip>
         <Tooltip title={t('datasets.saveChanges')}>
-          <Button type='default' icon={<SaveOutlined rev={undefined} />} onClick={saveResult} />
+          <Button type='default' className='rounded-none' icon={<SaveOutlined rev={undefined} />} onClick={saveResult} />
         </Tooltip>
         {/* <Button type='primary' icon={<SettingOutlined rev={undefined} />} onClick={() => { }} /> */}
       </div>
@@ -362,6 +381,7 @@ const ObjectDetection = ({
 
   const generateDataset = async () => {
     setLoading(true);
+    message.info('等待生成数据集中');
     try {
       if (isChange) {
         confirm({
@@ -373,14 +393,16 @@ const ObjectDetection = ({
           onOk() {
             return new Promise(async (resolve) => {
               await generateYoloDataset(id);
+              message.success(t('common.success'));
               resolve(true);
             })
           }
         })
       } else {
         await generateYoloDataset(id);
+        message.success(t('common.success'));
       }
-      message.success(t('common.success'));
+      
     } catch (e) {
       console.log(e);
       message.error(t('common.error'));
@@ -424,7 +446,7 @@ const ObjectDetection = ({
         ]}
       >
         <div className='h-[20px] leading-[20px]'>
-          <span className='mr-2'>{t(`datasets.fileType`) + ':'}</span>
+          <span className='mr-2'>{t(`datasets.folder`) + ':'}</span>
           <Radio.Group options={options} value={casualType} onChange={onSelectChange} />
         </div>
       </OperateModal>
@@ -434,6 +456,7 @@ const ObjectDetection = ({
         onOk={onOk}
         width={800}
         okText={t('common.confirm')}
+        cancelText={t('common.cancel')}
         onCancel={() => setResultOpen(false)}
       >
         <Typography>
