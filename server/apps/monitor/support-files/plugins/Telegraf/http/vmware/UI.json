@@ -1,0 +1,72 @@
+{
+  "object_name": "vCenter",
+  "instance_type": "vmware",
+  "collect_type": "http",
+  "config_type": ["vmware"],
+  "collector": "Telegraf",
+  "instance_id": "${cloud_region}_vmware_${host}",
+  "form_fields": [
+    {
+      "name": "host",
+      "label": "主机",
+      "type": "input",
+      "required": true,
+      "disabled_in_edit": true,
+      "placeholder": "",
+      "description": "主机地址",
+      "locale_key": "monitor.integrations.host",
+      "description_locale_key": "monitor.integrations.commonHostDes"
+    },
+    {
+      "name": "username",
+      "label": "用户名",
+      "type": "input",
+      "required": false,
+      "disabled_in_edit": true,
+      "locale_key": "monitor.integrations.username"
+    },
+    {
+      "name": "password",
+      "label": "密码",
+      "type": "password",
+      "required": false,
+      "disabled_in_edit": true,
+      "locale_key": "monitor.integrations.password"
+    }
+  ],
+  "table_columns": [
+    {
+      "name": "node_ids",
+      "label": "节点",
+      "type": "node_selector",
+      "required": true,
+      "locale_key": "monitor.integrations.nodes"
+    },
+    {
+      "name": "host",
+      "label": "主机",
+      "type": "input",
+      "required": true,
+      "locale_key": "monitor.integrations.host",
+      "change_handler": {
+        "type": "simple",
+        "target": "instance_name"
+      }
+    },
+    {
+      "name": "instance_name",
+      "label": "实例名称",
+      "type": "input",
+      "required": true,
+      "locale_key": "monitor.integrations.instanceName"
+    },
+    {
+      "name": "group_ids",
+      "label": "分组",
+      "type": "group_selector",
+      "required": false,
+      "locale_key": "monitor.integrations.groups"
+    }
+  ],
+  "extra_fields": {}
+}
