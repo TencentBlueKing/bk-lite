@@ -11,9 +11,8 @@ from apps.core.utils.permission_utils import get_permission_rules, permission_fi
 from apps.core.utils.web_utils import WebUtils
 from apps.monitor.constants.permission import PermissionConstants
 from apps.monitor.models import MonitorAlert, MonitorEvent, MonitorPolicy, MonitorEventRawData
-from apps.monitor.models.monitor_policy import MonitorAlertMetricSnapshot
 from apps.monitor.filters.monitor_alert import MonitorAlertFilter
-from apps.monitor.serializers.monitor_alert import MonitorAlertSerializer, MonitorAlertMetricSnapshotSerializer
+from apps.monitor.serializers.monitor_alert import MonitorAlertSerializer
 from apps.monitor.serializers.monitor_policy import MonitorPolicySerializer
 from config.drf.pagination import CustomPageNumberPagination
 
@@ -225,44 +224,31 @@ class MonitorAlertMetricSnapshotViewSet(viewsets.ViewSet):
         except MonitorAlert.DoesNotExist:
             return WebUtils.response_error("告警不存在", status_code=404)
 
-        # 2. 构建查询条件 - 根据告警ID以及告警的开始结束时间
-        snapshot_query = {
-            'alert_id': alert_obj.id,
-            'snapshot_time__gte': alert_obj.start_event_time,
-        }
+        # 2. 查询该告警的快照记录
+        try:
+            snapshot_obj = MonitorAlertMetricSnapshot.objects.get(alert_id=alert_obj.id)
+        except MonitorAlertMetricSnapshot.DoesNotExist:
+            return WebUtils.response_success({
+                'alert_info': {
+                    'id': alert_obj.id,
+                    'policy_id': alert_obj.policy_id,
+                    'monitor_instance_id': alert_obj.monitor_instance_id,
+                    'status': alert_obj.status,
+                    'start_event_time': alert_obj.start_event_time,
+                    'end_event_time': alert_obj.end_event_time,
+                },
+                'snapshots': []
+            })
 
-        # 如果告警已结束，添加结束时间过滤条件
-        if alert_obj.end_event_time:
-            snapshot_query['snapshot_time__lte'] = alert_obj.end_event_time
-
-        # 3. 查询指标快照数据
-        queryset = MonitorAlertMetricSnapshot.objects.filter(**snapshot_query).order_by('snapshot_time')
-
-        # 4. 分页处理
-        page = int(request.GET.get('page', 1))
-        page_size = int(request.GET.get('page_size', 10))
-
-        if page_size == -1:
-            # 返回所有数据
-            snapshots = queryset
-        else:
-            # 分页返回
-            start = (page - 1) * page_size
-            end = start + page_size
-            snapshots = queryset[start:end]
-
-        # 5. 序列化数据
-        serializer = MonitorAlertMetricSnapshotSerializer(snapshots, many=True)
-
+        # 3. 返回快照数据
         return WebUtils.response_success({
-            'count': queryset.count(),
-            'results': serializer.data,
             'alert_info': {
                 'id': alert_obj.id,
                 'policy_id': alert_obj.policy_id,
                 'monitor_instance_id': alert_obj.monitor_instance_id,
+                'status': alert_obj.status,
                 'start_event_time': alert_obj.start_event_time,
                 'end_event_time': alert_obj.end_event_time,
-                'status': alert_obj.status
-            }
+            },
+            'snapshots': snapshot_obj.snapshots,
         })

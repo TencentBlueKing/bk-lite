@@ -2,6 +2,7 @@ from django.db import models
 
 from apps.core.models.maintainer_info import MaintainerInfo
 from apps.core.models.time_info import TimeInfo
+from apps.core.fields.s3_json_field import S3JSONField
 from apps.monitor.models import MonitorPlugin
 from apps.monitor.models.monitor_object import MonitorObject
 
@@ -87,27 +88,39 @@ class MonitorEvent(models.Model):
 
 class MonitorEventRawData(models.Model):
     event = models.ForeignKey(MonitorEvent, on_delete=models.CASCADE, verbose_name='事件')
-    data = models.JSONField(default=dict, verbose_name='原始数据')
+    data = S3JSONField(
+        bucket_name='monitor-event-raw-data',
+        compressed=True,
+        default=dict,
+        verbose_name='原始数据'
+    )
 
 
 class MonitorAlertMetricSnapshot(TimeInfo):
     """告警指标快照表 - 记录告警全生命周期内的原始指标数据"""
 
-    alert = models.ForeignKey('MonitorAlert', on_delete=models.CASCADE, verbose_name='关联告警', db_index=True)
-    event = models.ForeignKey(MonitorEvent, on_delete=models.CASCADE, verbose_name='关联事件',
-                             blank=True, null=True, db_index=True)  # 允许为空，因为正常状态可能没有事件记录
+    alert = models.ForeignKey('MonitorAlert', on_delete=models.CASCADE, verbose_name='关联告警', db_index=True, unique=True)
     policy_id = models.IntegerField(db_index=True, verbose_name='监控策略ID')
     monitor_instance_id = models.CharField(db_index=True, max_length=100, verbose_name='监控对象实例ID')
 
-    # 快照数据 - 保持简洁，只存储核心数据
-    snapshot_time = models.DateTimeField(db_index=True, verbose_name='快照时间')
-    raw_data = models.JSONField(default=list, verbose_name='原始指标数据')
+    # 快照数据 - 使用 S3JSONField 存储到 S3/MinIO，节省数据库空间
+    # 格式: [
+    #   {"type": "pre_alert", "snapshot_time": "xxx", "raw_data": {...}},
+    #   {"type": "event", "event_id": "xxx", "event_time": "xxx", "snapshot_time": "xxx", "raw_data": {...}},
+    #   ...
+    # ]
+    snapshots = S3JSONField(
+        bucket_name='monitor-alert-snapshots',
+        compressed=True,
+        default=list,
+        verbose_name='快照数据集合'
+    )
 
     class Meta:
         verbose_name = '告警指标快照'
         verbose_name_plural = '告警指标快照'
         indexes = [
-            models.Index(fields=['alert', 'snapshot_time']),
+            models.Index(fields=['alert', 'policy_id']),
         ]
 
 
