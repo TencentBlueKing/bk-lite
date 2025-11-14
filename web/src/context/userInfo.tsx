@@ -34,10 +34,6 @@ export const UserInfoProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   const [isFirstLogin, setIsFirstLogin] = useState<boolean>(true);
 
   useEffect(() => {
-    console.log('Session:', session);
-    console.log('Status:', status);
-    console.log('IsCheckingAuth:', isCheckingAuth);
-    
     // 如果还在检查认证状态，不要进行API调用
     if (isCheckingAuth) {
       return;
@@ -47,7 +43,6 @@ export const UserInfoProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       const fetchLoginInfo = async () => {
         setLoading(true);
         try {
-          console.log('Fetching login info for user:', session.user?.id);
           const data = await get('/core/api/login_info/');
           if (!data) {
             console.error('Failed to fetch login info: No data received');
@@ -92,7 +87,7 @@ export const UserInfoProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
       fetchLoginInfo();
     }
-  }, [status, isCheckingAuth]); // 添加 isCheckingAuth 到依赖
+  }, [status, isCheckingAuth]);
 
   const setSelectedGroup = (group: Group) => {
     setSelectedGroupState(group);

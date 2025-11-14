@@ -566,7 +566,9 @@
       "nodeName": "Node Name",
       "inputData": "Input Data",
       "outputData": "Output Data",
-      "nodeIndex": "Node Index"
+      "nodeIndex": "Node Index",
+      "triggerLogs": "Trigger Logs",
+      "conversationLogs": "Conversation Logs"
     },
     "statistics": {
       "title": "Statistics",

@@ -568,7 +568,9 @@
       "nodeName": "节点名称",
       "inputData": "输入信息",
       "outputData": "输出信息",
-      "nodeIndex": "节点顺序"
+      "nodeIndex": "节点顺序",
+      "triggerLogs": "触发日志",
+      "conversationLogs": "对话日志"
     },
     "statistics": {
       "title": "统计",

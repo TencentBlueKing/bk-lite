@@ -1,10 +1,5 @@
-import { useBastionHostSnmpPlugin } from '../../plugins/hardwareDevice/bastionHostSnmp';
-
 export const useBastionHostConfig = () => {
-  const bastionHost = useBastionHostSnmpPlugin();
-  const plugins = {
-    'Bastion Host SNMP General': bastionHost,
-  };
+  const plugins = {};
 
   return {
     instance_type: 'bastion_host',

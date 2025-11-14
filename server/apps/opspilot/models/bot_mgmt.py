@@ -11,7 +11,7 @@ from django_yaml_field import YAMLField
 
 from apps.core.mixinx import EncryptMixin
 from apps.core.models.maintainer_info import MaintainerInfo
-from apps.opspilot.enum import BotTypeChoice, ChannelChoices
+from apps.opspilot.enum import BotTypeChoice, ChannelChoices, WorkFlowExecuteType
 
 BOT_CONVERSATION_ROLE_CHOICES = [("user", "用户"), ("bot", "机器人")]
 
@@ -286,3 +286,58 @@ class WorkFlowTaskResult(models.Model):
     output_data = models.JSONField(verbose_name="输出数据", default=dict)
     last_output = models.TextField(verbose_name="最后输出", blank=True, null=True)
     execute_type = models.CharField(max_length=50, default="restful")
+
+
+class WorkFlowConversationHistory(models.Model):
+    """
+    WorkFlow 对话历史记录表
+
+    记录每次调用 chatflow 的对话详情
+    一次完整对话包含两条记录：
+    1. 用户输入（conversation_role='user'）
+    2. 系统最终输出（conversation_role='bot'）
+
+    注意：定时触发的对话不记录到此表
+    """
+
+    bot_id = models.IntegerField(verbose_name="机器人ID", db_index=True)
+    user_id = models.CharField(max_length=100, verbose_name="用户ID", db_index=True)
+    conversation_role = models.CharField(
+        max_length=10, verbose_name="对话角色", choices=BOT_CONVERSATION_ROLE_CHOICES, db_index=True, help_text="user: 用户输入, bot: 系统最终输出"
+    )
+    conversation_content = models.TextField(verbose_name="对话内容")
+    conversation_time = models.DateTimeField(verbose_name="对话时间", db_index=True)
+    entry_type = models.CharField(
+        max_length=50,
+        verbose_name="入口类型",
+        choices=WorkFlowExecuteType.choices,
+        default=WorkFlowExecuteType.RESTFUL,
+        db_index=True,
+        help_text="对话入口类型：openai/restful/enterprise_wechat/wechat_official/dingtalk，celery定时触发不记录",
+    )
+
+    class Meta:
+        verbose_name = "WorkFlow对话历史"
+        verbose_name_plural = "WorkFlow对话历史"
+        db_table = "bot_mgmt_workflowconversationhistory"
+        ordering = ["-conversation_time"]
+        indexes = [
+            models.Index(fields=["bot_id", "-conversation_time"]),
+            models.Index(fields=["user_id", "-conversation_time"]),
+            models.Index(fields=["entry_type", "-conversation_time"]),
+        ]
+
+    def __str__(self):
+        return f"{self.get_conversation_role_display()} - {self.conversation_time}"
+
+    @staticmethod
+    def display_fields():
+        return [
+            "id",
+            "bot_id",
+            "user_id",
+            "conversation_role",
+            "conversation_content",
+            "conversation_time",
+            "entry_type",
+        ]

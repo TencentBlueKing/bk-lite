@@ -1278,20 +1278,6 @@ monitor_object_metric:
       desc: This metric calculates the average rate of bytes sent over the past 5
         minutes, measured in megabytes (MB). Monitoring outgoing traffic is crucial
         for ensuring data transmission quality and optimizing network performance.
-  DataStorage:
-    data_storage_disk_used_average_gauge:
-      desc: The disk utilization rate indicates the usage situation of disk space
-        and is an indicator for measuring the utilization rate of disk storage.
-      name: Disk Utilization
-    data_storage_disk_free_average_gauge:
-      desc: The remaining disk space represents the amount of unused space in the
-        disk and is a key indicator for evaluating the disk capacity.
-      name: Available Disk Space
-    data_storage_store_accessible_gauge:
-      desc: The storage connection status indicates the connectability of the storage
-        device and is an indicator for evaluating the health status of the storage
-        system.
-      name: Storage Connection Status
   Storage:
     ipmi_power_watts:
       name: Power Consumption
@@ -2558,108 +2544,105 @@ monitor_object_metric:
       desc: This metric represents the average duration per request, helping to evaluate
         the efficiency of request handling by the server.
   Node:
-
-    node_status_condition:
-      desc: Node Status indicates the current operational state of the node, such
-        as 'Running' or 'Stopped.' It helps administrators monitor and manage nodes
-        within the Kubernetes cluster.
-      name: Node Status
-    node_cpu_utilization:
-      name: CPU Utilization
-      desc: CPU Utilization indicates the current usage level of the node's CPU relative
-        to its total available CPU resources. Monitoring this metric helps identify
-        CPU bottlenecks and optimize resource allocation.
-    node_cpu_summary:
-      idle:
-        name: CPU Idle Time
-        desc: CPU Idle Time represents the percentage of time the CPU spends in an
-          idle state, indicating available processing capacity.
-      iowait:
-        name: CPU I/O Wait Time
-        desc: CPU I/O Wait Time indicates the percentage of time the CPU spends waiting
-          for I/O operations to complete, which can impact overall performance.
-      system:
-        name: CPU System Time
-        desc: CPU System Time reflects the percentage of time the CPU spends executing
-          system-level processes and kernel operations.
-      user:
-        name: CPU User Time
-        desc: CPU User Time represents the percentage of time the CPU spends executing
-          user-level processes and applications.
-    node_memory_usage:
-      name: Application Memory Usage
-      desc: Application Memory Usage represents the total amount of memory utilized
-        by applications running on the node. This metric helps understand the memory
-        demands of applications and their impact on system performance.
-    node_memory_utilization:
-      desc: Application Memory Utilization Rate is the ratio of memory used by the
-        application to its configured memory limits. By monitoring this metric, users
-        can determine if adjustments to memory limits are needed.
-      name: Application Memory Utilization Rate
-    node_disk:
-      is_use:
-        desc: Disk Used Space indicates the percentage of disk space currently utilized
-          on the node. Monitoring this metric helps manage storage resources effectively.
-        name: Disk Used Space Rate
-      used:
-        name: Disk Used Space
-        desc: Disk Used Space indicates the total amount of disk space currently
-          utilized on the node. Monitoring this metric helps manage storage resources
-          effectively.
-
-    node_diskio_writes:
-      desc: Disk Write Rate indicates the rate of write operations performed by the
-          node over a specified period. This metric is crucial for monitoring the disk
-          write performance of applications.
-      name: Disk Write Rate
-    node_diskio_write_bytes:
-      name: Disk Write Throughput
-      desc: Disk Write Throughput indicates the amount of data written to the disk
-          per second. Monitoring this metric helps assess the data writing performance
-          of applications.
-    node_diskio_write_time:
-      desc: Disk Write Time indicates the total time spent on write operations to
-          the disk. This metric helps evaluate the efficiency of disk write processes.
-      name: Disk Write Time
-    node_diskio_reads:
-      name: Disk Read Rate
-      desc: Disk Read Rate indicates the rate of read operations performed by the
-          node over a specified period. This metric helps assess the data reading performance
-          of applications and storage load.
-    node_diskio_read_bytes:
-      desc: Disk Read Throughput indicates the amount of data read from the disk
-          per second. Monitoring this metric helps evaluate the data reading performance
-          of applications.
-      name: Disk Read Throughput
-    node_diskio_read_time:
-      name: Disk Read Time
-      desc: Disk Read Time indicates the total time spent on read operations from
-          the disk. This metric helps evaluate the efficiency of disk read processes.
-    node_network_receive:
-      desc: Network In refers to the volume of data traffic received through the network
-        interface. Monitoring this metric helps analyze if network bandwidth is sufficient
-        and the overall network performance.
-      name: Incoming Network Traffic
-    node_network_transmit:
-      name: Outgoing Network Traffic
-      desc: Network Out refers to the volume of data traffic sent through the network
-        interface. This metric helps understand the node's network egress demands
-        and potential bottlenecks.
     node_cpu_load1:
       name: 1 Minute Average Load
       desc: 1 Minute Average Load indicates the average load on the system over the
         last minute. This metric helps provide a real-time understanding of the system’s
         load level.
-    node_cpu_load5:
-      desc: 5 Minute Average Load indicates the average load on the system over the
-        last 5 minutes. This metric helps identify load trends and their impact on
-        system performance.
-      name: 5 Minute Average Load
     node_cpu_load15:
       desc: 15 Minute Average Load indicates the average load on the system over the
         last 15 minutes. Monitoring this metric helps administrators understand the
         long-term load state of the system.
       name: 15 Minute Average Load
+    node_network_receive:
+      desc: Network In refers to the volume of data traffic received through the network
+        interface. Monitoring this metric helps analyze if network bandwidth is sufficient
+        and the overall network performance.
+      name: Incoming Network Traffic
+    node_status_condition:
+      desc: Node Status indicates the current operational state of the node, such
+        as 'Running' or 'Stopped.' It helps administrators monitor and manage nodes
+        within the Kubernetes cluster.
+      name: Node Status
+    node_memory_utilization:
+      desc: Application Memory Utilization Rate is the ratio of memory used by the
+        application to its configured memory limits. By monitoring this metric, users
+        can determine if adjustments to memory limits are needed.
+      name: Application Memory Utilization Rate
+    node_cpu_load5:
+      desc: 5 Minute Average Load indicates the average load on the system over the
+        last 5 minutes. This metric helps identify load trends and their impact on
+        system performance.
+      name: 5 Minute Average Load
+    node_network_transmit:
+      name: Outgoing Network Traffic
+      desc: Network Out refers to the volume of data traffic sent through the network
+        interface. This metric helps understand the node's network egress demands
+        and potential bottlenecks.
+    node_memory_usage:
+      name: Application Memory Usage
+      desc: Application Memory Usage represents the total amount of memory utilized
+        by applications running on the node. This metric helps understand the memory
+        demands of applications and their impact on system performance.
+    node_cpu_utilization:
+      name: CPU Utilization
+      desc: CPU Utilization indicates the current usage level of the node's CPU relative
+        to its total available CPU resources. Monitoring this metric helps identify
+        CPU bottlenecks and optimize resource allocation.
+    node_disk:
+      is_use:
+        name: Disk Used Space Rate
+        desc: Disk Used Space indicates the percentage of disk space currently utilized
+          on the node. Monitoring this metric helps manage storage resources effectively.
+      used:
+        desc: Disk Used Space indicates the total amount of disk space currently utilized
+          on the node. Monitoring this metric helps manage storage resources effectively.
+        name: Disk Used Space
+    node_diskio_write_time:
+      name: Disk Write Time
+      desc: Disk Write Time indicates the total time spent on write operations to
+        the disk. This metric helps evaluate the efficiency of disk write processes.
+    node_diskio_reads:
+      name: Disk Read Rate
+      desc: Disk Read Rate indicates the rate of read operations performed by the
+        node over a specified period. This metric helps assess the data reading performance
+        of applications and storage load.
+    node_cpu_summary:
+      user:
+        desc: CPU User Time represents the percentage of time the CPU spends executing
+          user-level processes and applications.
+        name: CPU User Time
+      idle:
+        desc: CPU Idle Time represents the percentage of time the CPU spends in an
+          idle state, indicating available processing capacity.
+        name: CPU Idle Time
+      system:
+        name: CPU System Time
+        desc: CPU System Time reflects the percentage of time the CPU spends executing
+          system-level processes and kernel operations.
+      iowait:
+        desc: CPU I/O Wait Time indicates the percentage of time the CPU spends waiting
+          for I/O operations to complete, which can impact overall performance.
+        name: CPU I/O Wait Time
+    node_diskio_read_bytes:
+      desc: Disk Read Throughput indicates the amount of data read from the disk per
+        second. Monitoring this metric helps evaluate the data reading performance
+        of applications.
+      name: Disk Read Throughput
+    node_diskio_read_time:
+      desc: Disk Read Time indicates the total time spent on read operations from
+        the disk. This metric helps evaluate the efficiency of disk read processes.
+      name: Disk Read Time
+    node_diskio_write_bytes:
+      desc: Disk Write Throughput indicates the amount of data written to the disk
+        per second. Monitoring this metric helps assess the data writing performance
+        of applications.
+      name: Disk Write Throughput
+    node_diskio_writes:
+      desc: Disk Write Rate indicates the rate of write operations performed by the
+        node over a specified period. This metric is crucial for monitoring the disk
+        write performance of applications.
+      name: Disk Write Rate
   ElasticSearch:
     elasticsearch_indices_docs_deleted:
       desc: Total number of deleted documents in Elasticsearch.
@@ -2797,6 +2780,20 @@ monitor_object_metric:
       desc: This metric counts the number of ESXi hosts in the VMware environment,
         helping administrators understand the current physical host resources.
       name: Number of ESXi
+  DataStorage:
+    data_storage_disk_used_average_gauge:
+      desc: The disk utilization rate indicates the usage situation of disk space
+        and is an indicator for measuring the utilization rate of disk storage.
+      name: Disk Utilization
+    data_storage_disk_free_average_gauge:
+      desc: The remaining disk space represents the amount of unused space in the
+        disk and is a key indicator for evaluating the disk capacity.
+      name: Available Disk Space
+    data_storage_store_accessible_gauge:
+      name: Storage Connection Status
+      desc: The storage connection status indicates the connectability of the storage
+        device and is an indicator for evaluating the health status of the storage
+        system.
 monitor_object_metric_group:
   Detection Device:
     Status: Status
@@ -3209,10 +3206,6 @@ monitor_object_plugin:
       collect key indicators including the operational status, storage capacity, utilization,
       replication, internode communication, and S3 requests of the object storage
       system.
-  VMWare:
-    desc: Through the Telegraf collector, utilize Stargazer's capability to regularly
-      gather key metrics from VMware vCenter, ESXi, virtual machines, and datastores.
-    name: VMWare
   Hardware Server SNMP General:
     name: Physical Server SNMP General(Telegraf)
     desc: Through the Telegraf collector, utilize the SNMP protocol to regularly collect
@@ -3257,6 +3250,10 @@ monitor_object_plugin:
     name: Docker(Telegraf)
     desc: Through the Telegraf collector, regularly collect Docker container status,
       resource utilization (CPU, memory, network, I/O), and performance metrics.
+  VMWare:
+    desc: Through the Telegraf collector, utilize Stargazer's capability to regularly
+      gather key metrics from VMware vCenter, ESXi, virtual machines, and datastores.
+    name: VMWare
 monitor_object:
   Apache: Apache
   Firewall: Firewall

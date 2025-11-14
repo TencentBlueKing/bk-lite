@@ -1,13 +1,10 @@
 import { useNginxTelegraf } from '../../plugins/middleware/nginxTelegraf';
-import { useNginxExporter } from '../../plugins/middleware/nginxExporter';
 
 export const useNginxConfig = () => {
   const nginxTelegraf = useNginxTelegraf();
-  const nginxExporter = useNginxExporter();
 
   const plugins = {
     Nginx: nginxTelegraf,
-    'Nginx-Exporter': nginxExporter,
   };
 
   return {

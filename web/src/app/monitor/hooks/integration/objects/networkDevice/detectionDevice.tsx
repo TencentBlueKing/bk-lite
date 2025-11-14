@@ -1,12 +1,6 @@
-import { useDetectionDeviceSnmpPlugin } from '../../plugins/networkDevice/detectionDeviceSnmp';
-
 export const useDetectionDeviceConfig = () => {
-  const snmpPlugin = useDetectionDeviceSnmpPlugin();
-
   // 所有插件配置
-  const plugins = {
-    'Detection Device SNMP General': snmpPlugin,
-  };
+  const plugins = {};
 
   return {
     instance_type: 'detection_device',
