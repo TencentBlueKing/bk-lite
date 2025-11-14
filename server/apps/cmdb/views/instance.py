@@ -2,11 +2,10 @@ from django.http import HttpResponse, JsonResponse
 from rest_framework import viewsets, status
 from rest_framework.decorators import action
 
-from apps.cmdb.constants import PERMISSION_INSTANCES, OPERATE, VIEW, APP_NAME
+from apps.cmdb.constants.constants import PERMISSION_INSTANCES, OPERATE, VIEW, APP_NAME
 from apps.cmdb.services.instance import InstanceManage
-from apps.cmdb.services.model import ModelManage
-from apps.cmdb.utils.base import format_group_params, get_cmdb_rules, format_groups_params
-from apps.cmdb.utils.permisssion_util import CmdbRulesFormatUtil
+from apps.cmdb.utils.base import format_group_params, format_groups_params
+from apps.cmdb.utils.permission_util import CmdbRulesFormatUtil
 from apps.core.decorators.api_permission import HasPermission
 from apps.core.logger import cmdb_logger as logger
 from apps.core.utils.permission_utils import get_permission_rules, get_permissions_rules

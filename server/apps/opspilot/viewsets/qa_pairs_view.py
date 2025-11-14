@@ -36,7 +36,7 @@ class QAPairsViewSet(MaintainerViewSet):
     def destroy(self, request, *args, **kwargs):
         obj = self.get_object()
         if obj.status == "generating" or obj.status == "pending":
-            message = self.loader.get("qa_pairs_generating") if self.loader else "QA pairs is generating, cannot delete"
+            message = self.loader.get("error.qa_pairs_generating") if self.loader else "QA pairs is generating, cannot delete"
             return JsonResponse({"result": False, "message": message})
         return super().destroy(request, *args, **kwargs)
 
@@ -54,7 +54,7 @@ class QAPairsViewSet(MaintainerViewSet):
             include_children = request.COOKIES.get("include_children", "0") == "1"
             has_permission = self.get_has_permission(request.user, knowledge_base, current_team, include_children=include_children)
             if not has_permission:
-                message = self.loader.get("no_update_permission") if self.loader else "You do not have permission to update this instance"
+                message = self.loader.get("error.no_update_permission") if self.loader else "You do not have permission to update this instance"
                 return JsonResponse(
                     {
                         "result": False,
@@ -89,7 +89,7 @@ class QAPairsViewSet(MaintainerViewSet):
             }
             res = client.generate_question(kwargs)
             if not res["result"]:
-                message = self.loader.get("generate_question_failed") if self.loader else "generate question failed"
+                message = self.loader.get("error.generate_question_failed") if self.loader else "generate question failed"
                 return JsonResponse({"result": False, "message": message})
             return_data.extend([dict(x, **{"content": i["content"]}) for x in res["data"]])
         return JsonResponse({"result": True, "data": return_data})
@@ -115,7 +115,7 @@ class QAPairsViewSet(MaintainerViewSet):
             }
             res = ChunkHelper.generate_answer(kwargs)
             if not res["result"]:
-                message = self.loader.get("generate_answer_failed") if self.loader else "generate answer failed"
+                message = self.loader.get("error.generate_answer_failed") if self.loader else "generate answer failed"
                 return JsonResponse({"result": False, "message": message})
             return_data.append(res["data"])
         return JsonResponse({"result": True, "data": return_data})
@@ -162,7 +162,7 @@ class QAPairsViewSet(MaintainerViewSet):
     def generate_answer_to_es(self, request):
         qa_paris_id = request.data.get("qa_pairs_id")
         if not qa_paris_id:
-            message = self.loader.get("qa_pairs_id_required") if self.loader else "QA pairs ID is required."
+            message = self.loader.get("error.qa_pairs_id_required") if self.loader else "QA pairs ID is required."
             return JsonResponse({"result": False, "message": message})
         generate_answer.delay(qa_paris_id)
         return JsonResponse(
@@ -287,7 +287,7 @@ class QAPairsViewSet(MaintainerViewSet):
         answer = params["answer"]
         result = ChunkHelper.update_qa_pairs(chunk_id, question, answer)
         if not result:
-            message = self.loader.get("qa_pair_update_failed") if self.loader else "Failed to update QA pair."
+            message = self.loader.get("error.qa_pair_update_failed") if self.loader else "Failed to update QA pair."
             return JsonResponse({"result": False, "message": message})
         return JsonResponse({"result": True})
 
@@ -316,7 +316,7 @@ class QAPairsViewSet(MaintainerViewSet):
         chunk_id = params["id"]
         result = ChunkHelper.delete_es_content(chunk_id, True)
         if not result:
-            message = self.loader.get("qa_pair_delete_failed") if self.loader else "Failed to delete QA pair."
+            message = self.loader.get("error.qa_pair_delete_failed") if self.loader else "Failed to delete QA pair."
             return JsonResponse({"result": False, "message": message})
         # if params["base_chunk_id"]:
         #     ChunkHelper.update_document_qa_pairs_count(index_name, -1, params["base_chunk_id"])
@@ -416,7 +416,7 @@ class QAPairsViewSet(MaintainerViewSet):
             include_children = request.COOKIES.get("include_children", "0") == "1"
             has_permission = self.get_has_permission(request.user, instance.knowledge_base, current_team, include_children=include_children)
             if not has_permission:
-                message = self.loader.get("no_update_permission") if self.loader else "You do not have permission to update this instance"
+                message = self.loader.get("error.no_update_permission") if self.loader else "You do not have permission to update this instance"
                 return JsonResponse(
                     {
                         "result": False,

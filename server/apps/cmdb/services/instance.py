@@ -1,4 +1,4 @@
-from apps.cmdb.constants import INSTANCE, INSTANCE_ASSOCIATION, OPERATOR_INSTANCE
+from apps.cmdb.constants.constants import INSTANCE, INSTANCE_ASSOCIATION, OPERATOR_INSTANCE
 from apps.cmdb.graph.drivers.graph_client import GraphClient
 from apps.cmdb.models.change_record import CREATE_INST, CREATE_INST_ASST, DELETE_INST, DELETE_INST_ASST, UPDATE_INST
 from apps.cmdb.models.show_field import ShowField
@@ -6,7 +6,7 @@ from apps.cmdb.services.model import ModelManage
 from apps.cmdb.utils.change_record import batch_create_change_record, create_change_record, create_change_record_by_asso
 from apps.cmdb.utils.export import Export
 from apps.cmdb.utils.Import import Import
-from apps.cmdb.utils.permission import PermissionManage
+from apps.cmdb.permissions.instance_permission import PermissionManage
 from apps.core.exceptions.base_app_exception import BaseAppException
 from apps.core.logger import cmdb_logger as logger
 
