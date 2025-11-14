@@ -378,7 +378,8 @@
       "metricTitle": "The following monitoring indicators are supported by this collector",
       "step1": "Step1",
       "portDes": "Configured SNMP port number, typically using port 161 for communication with the device.",
-      "access": "Access"
+      "access": "Access",
+      "noConfigData": "No configuration data available, please check plugin settings"
     },
     "instance": "Instance",
     "label": "Label",
