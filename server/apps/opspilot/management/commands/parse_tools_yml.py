@@ -142,13 +142,12 @@ class Command(BaseCommand):
             # 检查是否已存在
             skill_tool, created = SkillTools.objects.update_or_create(
                 name=toolkit_id,
+                is_build_in=True,
                 defaults={
                     "description": toolkit_description,
                     "params": params_data,
                     "tools": tools,
                     "tags": [toolkit_id],
-                    "is_build_in": True,
-                    "team": [],
                 },
             )
 
