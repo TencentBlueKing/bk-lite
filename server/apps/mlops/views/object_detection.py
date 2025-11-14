@@ -1,5 +1,3 @@
-from re import S
-import scipy as sp
 from config.drf.viewsets import ModelViewSet
 from config.drf.pagination import CustomPageNumberPagination
 
