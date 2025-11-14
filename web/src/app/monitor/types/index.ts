@@ -180,6 +180,8 @@ export interface ObjectItem {
   display_description?: string;
   description: string;
   display_name?: string;
+  collector?: string;
+  collect_type?: string;
   display_type?: string;
   options?: ObjectItem[];
   label?: string;
