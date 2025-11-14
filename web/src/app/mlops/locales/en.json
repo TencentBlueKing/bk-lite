@@ -135,7 +135,12 @@
     "addImage": "Add image",
     "tabBar": "Tab Bar",
     "uploading": "Uploading...",
-    "objectDetection": "Object Detection"
+    "objectDetection": "Object Detection",
+    "generateTitle": "Generate YOLO format datasets for object detection training tasks.",
+    "generateContent": "Changes not saved. Confirm generating dataset?",
+    "editImageType": "Specify the folder location for generating YOLO datasets from designated images.",
+    "saveChanges": "Save Changes",
+    "folder": "Folder"
   },
   "traintask": {
     "train": "Train",

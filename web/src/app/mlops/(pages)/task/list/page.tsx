@@ -72,7 +72,9 @@ const TrainTask = () => {
     'rasa': () => getRasaDatasetsList({}),
     'log_clustering': () => getLogClusteringList({}),
     'timeseries_predict': () => getTimeSeriesPredictList({}),
-    'classification': () => getClassificationDatasetsList({})
+    'classification': () => getClassificationDatasetsList({}),
+    'image_classification': () => Promise.resolve([]),
+    'object_detection': () => Promise.resolve([])
   };
 
   // 任务获取映射
@@ -81,7 +83,9 @@ const TrainTask = () => {
     'rasa': () => getRasaPipelines({}),
     'log_clustering': (params) => getLogClusteringTaskList(params),
     'timeseries_predict': (params) => getTimeSeriesTaskList(params),
-    'classification': (params) => getClassificationTaskList(params)
+    'classification': (params) => getClassificationTaskList(params),
+    'image_classification': () => Promise.resolve([]),
+    'object_detection': () => Promise.resolve([])
   };
 
   // 训练开始操作映射
@@ -89,7 +93,9 @@ const TrainTask = () => {
     'anomaly': startAnomalyTrainTask,
     'log_clustering': startLogClusteringTrainTask,
     'timeseries_predict': startTimeSeriesTrainTask,
-    'classification': startClassificationTrainTask
+    'classification': startClassificationTrainTask,
+    'image_classification': () => Promise.resolve(),
+    'object_detection': () => Promise.resolve()
   };
 
   // 删除操作映射
@@ -98,7 +104,9 @@ const TrainTask = () => {
     'rasa': deleteRasaPipelines,
     'log_clustering': deleteLogClusteringTrainTask,
     'timeseries_predict': deleteTimeSeriesTrainTask,
-    'classification': deleteClassificationTrainTask
+    'classification': deleteClassificationTrainTask,
+    'image_classification': () => Promise.resolve(),
+    'object_detection': () => Promise.resolve()
   };
 
   // 抽屉操作映射
@@ -107,7 +115,9 @@ const TrainTask = () => {
     'rasa': false,
     'log_clustering': false,
     'timeseries_predict': false,
-    'classification': true
+    'classification': true,
+    'image_classification': false,
+    'object_detection': false
   };
 
   // 数据处理映射
@@ -129,7 +139,9 @@ const TrainTask = () => {
     },
     'log_clustering': (data) => processAnomalyLikeData(data, 'log_clustering'),
     'timeseries_predict': (data) => processAnomalyLikeData(data, 'timeseries_predict'),
-    'classification': (data) => processAnomalyLikeData(data, 'classification')
+    'classification': (data) => processAnomalyLikeData(data, 'classification'),
+    'image_classification': (data) => processAnomalyLikeData(data, 'image_classification'),
+    'object_detection': (data) => processAnomalyLikeData(data, 'object_detection')
   };
 
   const treeData: TreeDataNode[] = [
@@ -157,6 +169,14 @@ const TrainTask = () => {
         {
           title: t(`datasets.classification`),
           key: 'classification'
+        },
+        {
+          title: t(`datasets.imageClassification`),
+          key: 'image_classification'
+        },
+        {
+          title: t('datasets.objectDetection'),
+          key: 'object_detection'
         }
       ]
     }
