@@ -10,7 +10,8 @@ from apps.core.utils.permission_utils import get_permission_rules, permission_fi
     check_instance_permission
 from apps.core.utils.web_utils import WebUtils
 from apps.monitor.constants.permission import PermissionConstants
-from apps.monitor.models import MonitorAlert, MonitorEvent, MonitorPolicy, MonitorEventRawData
+from apps.monitor.models import MonitorAlert, MonitorEvent, MonitorPolicy, MonitorEventRawData, \
+    MonitorAlertMetricSnapshot
 from apps.monitor.filters.monitor_alert import MonitorAlertFilter
 from apps.monitor.serializers.monitor_alert import MonitorAlertSerializer
 from apps.monitor.serializers.monitor_policy import MonitorPolicySerializer
@@ -204,12 +205,35 @@ class MonitorEventVieSet(viewsets.ViewSet):
         ]
         return WebUtils.response_success(dict(count=q_set.count(), results=result))
 
-    @action(methods=['get'], detail=False, url_path='raw_data/(?P<alert_id>[^/.]+)')
-    def get_raw_data(self, request, alert_id):
-        alert_obj = MonitorAlert.objects.get(id=alert_id)
-        event_obj = MonitorEvent.objects.filter(policy_id=alert_obj.policy_id, monitor_instance_id=alert_obj.monitor_instance_id).order_by("-created_at").first()
-        raw_data = MonitorEventRawData.objects.filter(event_id=event_obj.id).first()
-        return WebUtils.response_success(raw_data.data if raw_data else {})
+    @action(methods=['get'], detail=False, url_path='raw_data/(?P<event_id>[^/.]+)')
+    def get_raw_data(self, request, event_id):
+        """根据事件ID获取事件的原始指标数据（从 S3 加载）"""
+        try:
+            # 1. 根据事件ID获取事件对象
+            event_obj = MonitorEvent.objects.get(id=event_id)
+        except MonitorEvent.DoesNotExist:
+            return WebUtils.response_error("事件不存在", status_code=404)
+
+        # 2. 查询该事件的原始数据
+        raw_data_obj = MonitorEventRawData.objects.filter(event_id=event_obj.id).first()
+
+        if not raw_data_obj:
+            return WebUtils.response_success({})
+
+        # 3. 从 S3 加载原始数据（S3JSONField 自动处理）
+        try:
+            raw_data = raw_data_obj.data  # 自动从 S3 下载并解析
+            # 如果 S3 加载失败返回 None，使用空字典
+            if raw_data is None:
+                raw_data = {}
+        except Exception as e:
+            # S3 读取异常时记录日志并返回空字典
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.error(f"Failed to load raw data from S3 for event {event_id}: {e}")
+            raw_data = {}
+
+        return WebUtils.response_success(raw_data)
 
 
 class MonitorAlertMetricSnapshotViewSet(viewsets.ViewSet):
@@ -240,7 +264,20 @@ class MonitorAlertMetricSnapshotViewSet(viewsets.ViewSet):
                 'snapshots': []
             })
 
-        # 3. 返回快照数据
+        # 3. 从 S3 加载快照数据（S3JSONField 自动处理）
+        try:
+            snapshots_data = snapshot_obj.snapshots  # 自动从 S3 下载并解析
+            # 如果 S3 加载失败返回 None，使用空列表
+            if snapshots_data is None:
+                snapshots_data = []
+        except Exception as e:
+            # S3 读取异常时记录日志并返回空列表
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.error(f"Failed to load snapshots from S3 for alert {alert_id}: {e}")
+            snapshots_data = []
+
+        # 4. 返回快照数据
         return WebUtils.response_success({
             'alert_info': {
                 'id': alert_obj.id,
@@ -250,5 +287,5 @@ class MonitorAlertMetricSnapshotViewSet(viewsets.ViewSet):
                 'start_event_time': alert_obj.start_event_time,
                 'end_event_time': alert_obj.end_event_time,
             },
-            'snapshots': snapshot_obj.snapshots,
+            'snapshots': snapshots_data,
         })
