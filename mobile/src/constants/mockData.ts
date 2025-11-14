@@ -1,6 +1,5 @@
 import { UserInfo } from '@/types/user';
 import { ChatItem, ChatMessage } from '@/types/conversation';
-import { mockAIResponses } from './mockResponses';
 
 // 重新导出类型以保持向后兼容
 export type { ChatItem, ChatMessage, UserInfo };
@@ -25,7 +24,7 @@ export const mockChatData: ChatItem[] = [
   {
     id: '3',
     name: 'k8s服务支撑工程师',
-    avatar: '/avatars/05.png',
+    avatar: '/avatars/03.png',
     lastMessage: 'API 响应码 500 增加，可能是后端服务超时或依赖异常',
     time: '12:30',
     hasCall: true,
@@ -36,20 +35,6 @@ export const mockChatData: ChatItem[] = [
     avatar: '/avatars/04.png',
     lastMessage: '工单#1234：磁盘空间告警，/var 分区剩余 < 10%',
     time: '11:20',
-  },
-  {
-    id: '5',
-    name: 'itsm知识管理员',
-    avatar: '/avatars/05.png',
-    lastMessage: '知识库更新：部署回滚流程与故障排查步骤已新增',
-    time: '10:15',
-  },
-  {
-    id: '6',
-    name: 'itsm请求管理员',
-    avatar: '/avatars/01.png',
-    lastMessage: '请求#789：申请新增监控指标并配置告警策略',
-    time: '昨天',
   }
 ];
 
@@ -62,32 +47,36 @@ export const mockWorkbenchData = {
     count: 4,
     items: [
       {
-        id: 47,
+        id: 1,
         name: 'k8s平台监控工程师',
         introduction: '专注 K8s 集群智能监控，自动采集指标、分析性能瓶颈，实时预警故障并辅助排查，保障平台稳定高效运行。',
         online: false,
         bot_type: 3,
+        avatar: '/avatars/01.png',
       },
       {
-        id: 46,
-        name: '智能体K8s平台架构师',
+        id: 2,
+        name: 'K8s平台架构师',
         introduction: '智能体 K8s 平台架构师，负责集群架构设计与优化，推动智能化部署、资源调度及高可用方案，保障平台弹性与高效。',
         online: false,
         bot_type: 1,
+        avatar: '/avatars/02.png',
       },
       {
-        id: 40,
-        name: '智能体K8s服务支撑工程师',
+        id: 3,
+        name: 'K8s服务支撑工程师',
         introduction: '智能体 K8s 服务支撑工程师，提供集群部署运维、故障排查与技术支持，协同团队优化流程，保障云原生服务稳定高效响应需求。',
         online: false,
         bot_type: 1,
+        avatar: '/avatars/03.png',
       },
       {
-        id: 36,
-        name: '智能体ITSM事件管理员',
-        introduction: '智能体 ITSM 事件管理员，负责事件全生命周期智能管控，快速响应、分级处置、跟踪闭环，优化流程并保障 IT 服务稳定合规。',
+        id: 4,
+        name: 'ITSM服务台',
+        introduction: '智能体 ITSM服务台，负责事件全生命周期智能管控，快速响应、分级处置、跟踪闭环，优化流程并保障 IT 服务稳定合规。',
         online: true,
         bot_type: 3,
+        avatar: '/avatars/04.png',
       },
     ],
   },
@@ -224,7 +213,7 @@ export const mockChatMessages: ChatMessageRecord[] = [
   {
     chatId: '3',
     chatName: 'k8s服务支撑工程师',
-    chatAvatar: '/avatars/05.png',
+    chatAvatar: '/avatars/03.png',
     messageId: 'm3-1',
     content: '发现后端服务 svc-order 在 10:22 开始返回 500，可能为数据库连接池耗尽',
     timestamp: new Date('2025-10-30T12:30:00').getTime(),
@@ -232,7 +221,7 @@ export const mockChatMessages: ChatMessageRecord[] = [
   {
     chatId: '3',
     chatName: 'k8s服务支撑工程师',
-    chatAvatar: '/avatars/05.png',
+    chatAvatar: '/avatars/03.png',
     messageId: 'm3-2',
     content: '已排查日志，发现大量 DB 超时，建议检查慢查询和连接数配置',
     timestamp: new Date('2025-10-28T09:15:00').getTime(),
@@ -240,16 +229,16 @@ export const mockChatMessages: ChatMessageRecord[] = [
   {
     chatId: '3',
     chatName: 'k8s服务支撑工程师',
-    chatAvatar: '/avatars/05.png',
+    chatAvatar: '/avatars/03.png',
     messageId: 'm3-3',
     content: '临时扩大副本数并开启熔断策略，观察服务恢复情况',
     timestamp: new Date('2025-10-28T09:16:00').getTime(),
   },
 
-  // itsm事件管理员 的消息
+  // ITSM服务台 的消息
   {
     chatId: '4',
-    chatName: 'itsm事件管理员',
+    chatName: 'ITSM服务台',
     chatAvatar: '/avatars/04.png',
     messageId: 'm4-1',
     content: '工单通知：机房 3A 交换机端口异常，已生成工单等待运维响应',
@@ -257,7 +246,7 @@ export const mockChatMessages: ChatMessageRecord[] = [
   },
   {
     chatId: '4',
-    chatName: 'itsm事件管理员',
+    chatName: 'ITSM服务台',
     chatAvatar: '/avatars/04.png',
     messageId: 'm4-2',
     content: '告警确认：/var 分区使用率 92%，建议清理日志或扩容',
@@ -265,7 +254,7 @@ export const mockChatMessages: ChatMessageRecord[] = [
   },
   {
     chatId: '4',
-    chatName: 'itsm事件管理员',
+    chatName: 'ITSM服务台',
     chatAvatar: '/avatars/04.png',
     messageId: 'm4-3',
     content: '工单更新：已完成磁盘清理，告警恢复；请继续监控下一周期',

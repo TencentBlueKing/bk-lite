@@ -344,14 +344,14 @@ export const useMessages = (
             document.activeElement.blur();
         }
 
-        // 添加用户消息
+        // 添加用户消息（渲染 Markdown）
         const userMsgId = `user-${Date.now()}`;
         messageMarkdownRef.current.set(userMsgId, content);
         setMessages((prev) => [
             ...prev,
             {
                 id: userMsgId,
-                message: content,
+                message: renderMarkdown(content), // 渲染 Markdown
                 status: 'local',
                 timestamp: userMessageTimestamp,
             }

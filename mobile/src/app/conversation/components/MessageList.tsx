@@ -1,6 +1,5 @@
 import React from 'react';
 import { Bubble, Actions } from '@ant-design/x';
-import { RedoOutlined } from '@ant-design/icons';
 import { type GetProp } from 'antd';
 import { Message } from '../hooks/useMessages';
 import { formatMessageTime, shouldShowTime } from '../utils/timeUtils';
@@ -8,6 +7,7 @@ import { actionItems } from '../utils/constants';
 import { ChatInfo } from '@/types/conversation';
 import { ToolCallsDisplay } from './ToolCallsDisplay';
 import { ApplicationForm } from './ApplicationForm';
+import { InformationCard } from './InformationCard';
 
 interface MessageListProps {
     messages: Message[];
@@ -20,6 +20,7 @@ interface MessageListProps {
     onActionClick: (key: string, message: string | React.ReactNode, messageId?: string) => void;
     onRecommendationClick: (text: string) => void;
     onRegenerateRecommendations: () => void;
+    onFormSubmit?: (message: string) => void; // 用于表单提交发送消息
 }
 
 const getRoles: GetProp<typeof Bubble.List, 'roles'> = ({
@@ -51,8 +52,6 @@ const getRoles: GetProp<typeof Bubble.List, 'roles'> = ({
 
 export const MessageList: React.FC<MessageListProps> = ({
     messages,
-    chatInfo,
-    router,
     thinkingExpanded,
     setThinkingExpanded,
     thinkingTypingText,
@@ -60,6 +59,7 @@ export const MessageList: React.FC<MessageListProps> = ({
     onActionClick,
     onRecommendationClick,
     onRegenerateRecommendations,
+    onFormSubmit,
 }) => {
     return (
         <>
@@ -99,7 +99,7 @@ export const MessageList: React.FC<MessageListProps> = ({
                                     content: welcomeMsg.text,
                                 }]}
                             />
-                            <div className="flex flex-col items-start gap-2 ml-12 mt-2">
+                            <div className="flex flex-col items-start gap-2 ml-3 mt-2">
                                 {welcomeMsg.suggestions.map((item: string, idx: number) => (
                                     <div
                                         key={idx}
@@ -110,13 +110,13 @@ export const MessageList: React.FC<MessageListProps> = ({
                                     </div>
                                 ))}
                             </div>
-                            <div className="ml-12 mt-2 flex justify-start">
-                                <button
+                            <div className="ml-3 mt-2 flex justify-start">
+                                <div
                                     onClick={onRegenerateRecommendations}
-                                    className="flex items-center gap-1 px-2 py-1 text-sm text-[var(--color-text-3)]"
+                                    className="regenerate-button flex items-center justify-center"
                                 >
-                                    <RedoOutlined />
-                                </button>
+                                    <span className='iconfont icon-shuaxin text-sm font-bold' />
+                                </div>
                             </div>
                         </React.Fragment>
                     );
@@ -134,14 +134,37 @@ export const MessageList: React.FC<MessageListProps> = ({
                     : msg.message;
 
                 // 如果有自定义组件，将其添加到内容中
-                const contentWithCustomComponent = msg.customComponent && msg.customComponent.component === 'ApplicationForm' ? (
-                    <>
-                        {normalizedContent}
-                        <div className="mt-3">
-                            <ApplicationForm {...msg.customComponent.props} />
-                        </div>
-                    </>
-                ) : normalizedContent;
+                let contentWithCustomComponent = normalizedContent;
+
+                if (msg.customComponent) {
+                    if (msg.customComponent.component === 'ApplicationForm') {
+                        contentWithCustomComponent = (
+                            <>
+                                {normalizedContent}
+                                <div className="mt-3">
+                                    <ApplicationForm
+                                        {...msg.customComponent.props}
+                                        onFormSubmit={onFormSubmit}
+                                    />
+                                </div>
+                            </>
+                        );
+                    } else if (msg.customComponent.component === 'InformationCard') {
+                        contentWithCustomComponent = (
+                            <>
+                                {normalizedContent}
+                                <div className="mt-3">
+                                    <InformationCard
+                                        {...msg.customComponent.props}
+                                        onButtonClick={onFormSubmit}
+                                    />
+                                </div>
+                            </>
+                        );
+                    }
+                }
+
+
 
                 const currentActionItems = isLastAIMessage
                     ? actionItems

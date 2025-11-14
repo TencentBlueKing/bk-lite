@@ -25,7 +25,7 @@ export const ConversationHeader: React.FC<ConversationHeaderProps> = ({ chatInfo
             >
                 <Avatar
                     src={chatInfo.avatar}
-                    style={{ '--size': '36px' }}
+                    style={{ '--size': '36px', '--border-radius': '36px' }}
                     className="mr-2 flex-shrink-0"
                 />
                 <div className="text-base font-medium text-[var(--color-text-1)]">

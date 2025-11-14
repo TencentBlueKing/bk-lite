@@ -1,14 +1,17 @@
 import React from 'react';
-import { CopyOutlined, RedoOutlined } from '@ant-design/icons';
 
 export const actionItems = [
     {
         key: 'copy',
-        icon: React.createElement(CopyOutlined),
+        icon: React.createElement('span', {
+            className: 'iconfont icon-fuzhi text-sm font-bold',
+        }),
     },
     {
         key: 'regenerate',
-        icon: React.createElement(RedoOutlined),
+        icon: React.createElement('span', {
+            className: 'iconfont icon-shuaxin text-sm font-bold',
+        }),
     },
 ];
 

@@ -31,7 +31,6 @@ export default function ConversationDetail() {
     setMessages,
     handleSendMessage: sendMessage,
     triggerAIResponse,
-    setRenderMarkdown,
     thinkingExpanded,
     setThinkingExpanded,
     thinkingTypingText,
@@ -116,7 +115,7 @@ export default function ConversationDetail() {
       // 组合消息：如果有文字，先显示文字，再显示文件
       const userMessage = text ? (
         <div className="flex flex-col gap-2">
-          <div className="text-[var(--color-text-1)]">{text}</div>
+          <div>{text}</div>
           {filePreview}
         </div>
       ) : filePreview;
@@ -358,6 +357,7 @@ export default function ConversationDetail() {
               onActionClick={handleActionClick}
               onRecommendationClick={handleRecommendationClick}
               onRegenerateRecommendations={handleRegenerateRecommendations}
+              onFormSubmit={handleSendMessage}
             />
           </div>
 

@@ -2,15 +2,16 @@ import React, { useRef, useState } from 'react';
 import { Toast, Popover } from 'antd-mobile';
 import { Sender } from '@ant-design/x';
 import { AddOutline } from 'antd-mobile-icons';
+import { RobotOutlined, BarChartOutlined, RadarChartOutlined, BookOutlined, FileOutlined } from '@ant-design/icons';
 import { useSpeechRecognition } from '../hooks/useSpeechRecognition';
 import { useTheme } from '@/context/theme';
 
 const MOCK_TOOLS = [
-    { id: 'tool1', name: 'Linux 性能监控', icon: 'icon-gongju' },
-    { id: 'tool2', name: '抓包与网络分析', icon: 'icon-gongju' },
-    { id: 'tool3', name: '错误监控', icon: 'icon-gongju' },
-    { id: 'tool4', name: '日志服务', icon: 'icon-gongju' },
-    { id: 'tool5', name: '文件同步', icon: 'icon-gongju' }
+    { id: 'tool1', name: 'Linux 性能监控', icon: <RobotOutlined style={{ color: 'red' }} /> },
+    { id: 'tool2', name: '抓包与网络分析', icon: <BarChartOutlined style={{ color: 'blue' }} /> },
+    { id: 'tool3', name: '错误监控', icon: <RadarChartOutlined style={{ color: 'purple' }} /> },
+    { id: 'tool4', name: '日志服务', icon: <BookOutlined style={{ color: 'orange' }} /> },
+    { id: 'tool5', name: '文件同步', icon: <FileOutlined style={{ color: 'green' }} /> }
 ];
 
 // 消息类型定义
@@ -42,7 +43,6 @@ export const VoiceInput: React.FC<VoiceInputProps> = ({
     const touchStartYRef = useRef<number>(0);
     const isLongPressRef = useRef(false);
     const recordingStartTimeRef = useRef<number>(0);
-    const [selectedTools, setSelectedTools] = useState<string[]>([]);
     const senderContainerRef = useRef<HTMLDivElement>(null);
     const [showFileOptions, setShowFileOptions] = useState(false);
     const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
@@ -71,12 +71,26 @@ export const VoiceInput: React.FC<VoiceInputProps> = ({
     };
 
     const handleToolClick = (toolId: string) => {
-        setSelectedTools((prev) => {
-            if (prev.includes(toolId)) {
-                return prev.filter((id) => id !== toolId);
-            }
-            return [...prev, toolId];
-        });
+        if (isAIRunning) {
+            Toast.show({
+                content: 'AI 正在处理中，请稍候...',
+                icon: 'loading',
+                duration: 2000
+            });
+            return;
+        }
+        // 移动端触感反馈
+        if (navigator.vibrate) {
+            navigator.vibrate(10);
+        }
+
+        // 找到对应的工具
+        const tool = MOCK_TOOLS.find(t => t.id === toolId);
+        if (!tool) return;
+
+        // 发送用户消息：执行xxx工具
+        const message = `执行${tool.name}`;
+        onSend(message);
     };
 
     const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -359,7 +373,7 @@ export const VoiceInput: React.FC<VoiceInputProps> = ({
                                         onClick={() => handleRemoveFile(index)}
                                         className="absolute top-1 right-1 w-5 h-5 text-gray-500 text-base"
                                     >
-                                        <span className="iconfont icon-delete"></span>
+                                        <span className="iconfont icon-delete bg-white rounded-full"></span>
                                     </button>
                                 </div>
                             </div>
@@ -424,16 +438,13 @@ export const VoiceInput: React.FC<VoiceInputProps> = ({
                         <button
                             key={tool.id}
                             onClick={() => handleToolClick(tool.id)}
-                            className={`px-3 py-1 gap-1 flex items-center justify-center rounded-full ${selectedTools.includes(tool.id)
-                                ? 'text-blue-500 border-blue-500 border'
-                                : 'text-[var(--color-text-1)] border-gray-300 border '
-                                }`}
+                            className={'px-3 py-1 gap-1 flex items-center justify-center rounded-full border border-gray-300 '}
                             style={{
                                 flexShrink: 0,
                             }}
                         >
-                            <span className={`iconfont ${tool.icon} text-sm`}></span>
-                            <span className="text-xs">{tool.name}</span>
+                            {tool.icon}
+                            <span className="text-xs text-[var(--color-text-2)]">{tool.name}</span>
                         </button>
                     ))}
                 </div>
@@ -684,7 +695,7 @@ export const VoiceInput: React.FC<VoiceInputProps> = ({
                         <button
                             onClick={() => handleFileOptionClick('camera')}
                         >
-                            <div className="w-20 h-20 bg-[var(--color-background-body)] rounded-xl flex flex-col items-center gap-2 justify-center">
+                            <div className="w-22 h-22 bg-[var(--color-background-body)] rounded-xl flex flex-col items-center gap-2 justify-center">
                                 <span className="iconfont icon-xiangji text-2xl"></span>
                                 <span className="text-xs">相机</span>
                             </div>
@@ -692,7 +703,7 @@ export const VoiceInput: React.FC<VoiceInputProps> = ({
                         <button
                             onClick={() => handleFileOptionClick('photo')}
                         >
-                            <div className="w-20 h-20 bg-[var(--color-background-body)] rounded-xl flex flex-col items-center gap-2 justify-center">
+                            <div className="w-22 h-22 bg-[var(--color-background-body)] rounded-xl flex flex-col items-center gap-2 justify-center">
                                 <span className="iconfont icon-tupian1 text-2xl"></span>
                                 <span className="text-xs">相册</span>
                             </div>
@@ -700,7 +711,7 @@ export const VoiceInput: React.FC<VoiceInputProps> = ({
                         <button
                             onClick={() => handleFileOptionClick('file')}
                         >
-                            <div className="w-20 h-20 bg-[var(--color-background-body)] rounded-xl flex flex-col items-center gap-2 justify-center">
+                            <div className="w-22 h-22 bg-[var(--color-background-body)] rounded-xl flex flex-col items-center gap-2 justify-center">
                                 <span className="iconfont icon-a-wenjianjiawenjian text-xl"></span>
                                 <span className="text-xs">文件</span>
                             </div>

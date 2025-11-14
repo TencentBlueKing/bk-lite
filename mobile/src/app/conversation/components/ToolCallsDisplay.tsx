@@ -9,24 +9,11 @@ interface ToolCallsDisplayProps {
 }
 
 export const ToolCallsDisplay: React.FC<ToolCallsDisplayProps> = ({ toolCalls, isRunFinished = false }) => {
-    const [expandedTools, setExpandedTools] = useState<Set<string>>(new Set());
     const [showAll, setShowAll] = useState(false);
 
     if (!toolCalls || toolCalls.length === 0) {
         return null;
     }
-
-    const toggleToolExpand = (toolId: string) => {
-        setExpandedTools(prev => {
-            const newSet = new Set(prev);
-            if (newSet.has(toolId)) {
-                newSet.delete(toolId);
-            } else {
-                newSet.add(toolId);
-            }
-            return newSet;
-        });
-    };
 
     // 显示逻辑：
     // - 如果 AI 还在运行（isRunFinished 为 false），全部展开
@@ -44,7 +31,6 @@ export const ToolCallsDisplay: React.FC<ToolCallsDisplayProps> = ({ toolCalls, i
                 className={`flex flex-col gap-2 ${hasScrolling && shouldShowAll ? 'max-h-[400px] overflow-y-auto' : ''}`}
             >
                 {displayTools.map((tool) => {
-                    const isExpanded = expandedTools.has(tool.id);
                     const hasResult = tool.status === 'completed' && tool.result;
 
                     return (
@@ -56,7 +42,7 @@ export const ToolCallsDisplay: React.FC<ToolCallsDisplayProps> = ({ toolCalls, i
                             <div className="flex items-center justify-between">
                                 <div className="flex items-center gap-2">
                                     <span className="iconfont icon-gongju text-blue-500 text-base"></span>
-                                    <span className="text-sm text-[var(--color-text-1)] font-medium">
+                                    <span className="text-sm text-[var(--color-text-1)] font-bold">
                                         {tool.name}
                                     </span>
                                 </div>
@@ -76,19 +62,24 @@ export const ToolCallsDisplay: React.FC<ToolCallsDisplayProps> = ({ toolCalls, i
 
                             {/* 工具执行结果 */}
                             {hasResult && (
-                                <div className="mt-2">
-                                    <div
-                                        className="text-sm text-[var(--color-text-2)]"
-                                        onClick={() => toggleToolExpand(tool.id)}
-                                    >
-                                        <Ellipsis
-                                            direction="end"
-                                            rows={isExpanded ? 0 : 1}
-                                            content={tool.result}
-                                            expandText='展开'
-                                            collapseText='收起'
-                                        />
-                                    </div>
+                                <div
+                                    className="text-xs text-[var(--color-text-2)]"
+                                >
+                                    <Ellipsis
+                                        direction="end"
+                                        rows={1}
+                                        content={tool.result}
+                                        expandText={
+                                            <span className="m-1 inline-flex items-center">
+                                                <DownOutline />
+                                            </span>
+                                        }
+                                        collapseText={
+                                            <span className="m-1 inline-flex items-center">
+                                                <UpOutline />
+                                            </span>
+                                        }
+                                    />
                                 </div>
                             )}
                         </div>

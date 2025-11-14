@@ -86,11 +86,35 @@ export const conversationStyles = `
     font-size: 16px !important;
   }
   .ant-bubble-footer {
-    margin-top: 0 !important;
+    margin-top: 5px !important;
   }
   .ant-bubble-content {
     font-size: 16px !important;
   }
+  
+  .ant-actions-list-item {
+    color: rgba(29, 108, 221);
+    background-color: rgba(230, 237, 247);
+    border-radius: 6px;
+  }
+
+  .dark .ant-actions-list-item {
+    background-color: rgba(230, 237, 247, 0.1);
+  }
+
+  .regenerate-button {
+    width: 24px;
+    height: 24px;
+    padding: 4px;
+    color: rgba(29, 108, 221);
+    background-color: rgba(230, 237, 247);
+    border-radius: 6px;
+  }
+
+  .dark .regenerate-button {
+    background-color: rgba(230, 237, 247, 0.1);
+  }
+
   .action-icon {
     cursor: pointer;
     user-select: none;
