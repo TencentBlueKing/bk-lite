@@ -1,17 +1,25 @@
+from apps.core.utils.loader import LanguageLoader
+
+
 class SettingLanguage:
+    """
+    CMDB 语言服务，使用统一的 LanguageLoader 加载语言包
+    """
+
     def __init__(self, language: str):
-        self.language_dict = self.get_language_dict(language)
+        self.loader = LanguageLoader(app="cmdb", default_lang=language)
+        self.language_dict = self.loader.translations
 
     def get_language_dict(self, language: str):
-        if language == "zh-Hans":
-            from apps.cmdb.language.pack.zh import LANGUAGE_DICT
-        elif language == "en":
-            from apps.cmdb.language.pack.en import LANGUAGE_DICT
-        else:
-            raise Exception("Language not supported")
-        return LANGUAGE_DICT
+        """兼容旧方法，已废弃"""
+        return self.loader.translations
 
     def get_val(self, _type: str, key: str):
+        """
+        获取翻译值
+        _type: 类型，如 CLASSIFICATION, MODEL, ATTR, ASSOCIATION_TYPE, ChangeRecordType 等
+        key: 键值
+        """
         if _type == "ATTR":
-            return self.language_dict.get("ATTR", {}).get(key) or self.language_dict["DEFAULT_ATTR"]
-        return self.language_dict.get(_type, {}).get(key)
+            return self.loader.get(f"ATTR.{key}") or self.loader.get("DEFAULT_ATTR")
+        return self.loader.get(f"{_type}.{key}")
