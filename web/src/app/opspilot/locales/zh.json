@@ -463,7 +463,13 @@
     "addTool": "添加工具",
     "deleteConfirm": "你确定要删除此工具吗？",
     "text": "文本",
-    "password": "密码"
+    "password": "密码",
+    "fetchTools": "获取工具",
+    "availableTools": "工具能力",
+    "totalTools": "共{count}个工具",
+    "noToolsAvailable": "未找到可用工具",
+    "fetchToolsFailed": "获取工具列表失败",
+    "parameters": "参数"
   },
   "provider": {
     "menu": "供应商",
