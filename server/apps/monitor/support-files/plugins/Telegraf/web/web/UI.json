@@ -20,6 +20,29 @@
       "data_transform": {
         "origin_path": "child.content.config.urls[0]"
       }
+    },
+    {
+      "name": "interval",
+      "label": "采集间隔",
+      "type": "inputNumber",
+      "required": true,
+      "default_value": 10,
+      "description": "数据采集间隔时间(单位:秒)",
+      "widget_props": {
+        "min": 1,
+        "precision": 0,
+        "placeholder": "采集间隔",
+        "addonAfter": "s"
+      },
+      "data_transform": {
+        "origin_path": "child.content.config.interval",
+        "to_form": {
+          "regex": "^(\\d+)s$"
+        },
+        "to_api": {
+          "suffix": "s"
+        }
+      }
     }
   ],
   "table_columns": [
