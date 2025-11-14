@@ -523,8 +523,13 @@ const BaseTaskForm = forwardRef<BaseTaskRef, BaseTaskFormProps>(
                         placeholder={t('common.selectTip')}
                         value={ipRangeOrg}
                         onChange={(value) => {
-                          const orgArray = Array.isArray(value) ? value : (value ? [value] : []);
+                          const orgArray = Array.isArray(value)
+                            ? value
+                            : value
+                              ? [value]
+                              : [];
                           setIpRangeOrg(orgArray);
+                          form.setFieldValue('organization', orgArray);
                         }}
                         multiple={false}
                       />

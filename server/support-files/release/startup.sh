@@ -8,11 +8,13 @@ init_system_mgmt() {
     uv run python manage.py init_realm_resource || true
     uv run python manage.py init_login_settings || true
     uv run python manage.py create_user admin password --email=admin@bklite.net --is_superuser || true
+    uv run python manage.py init_custom_menu || true
 }
 
 init_cmdb() {
     echo "CMDB资源初始化..."
     uv run python manage.py model_init || true
+    uv run python manage.py init_oid || true
 }
 
 init_console_mgmt() {

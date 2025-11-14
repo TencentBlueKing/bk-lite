@@ -12,16 +12,11 @@ import { Button, Form, message, Input } from 'antd';
 import OperateModal from '@/components/operate-modal';
 import type { FormInstance } from 'antd';
 import useLogApi from '@/app/log/api/integration';
-import { ModalRef, Organization } from '@/app/log/types';
+import { ModalRef, ModalProps } from '@/app/log/types';
 import { InstanceInfo } from '@/app/log/types/integration';
 import { useTranslation } from '@/utils/i18n';
 import GroupTreeSelector from '@/components/group-tree-select';
 import { cloneDeep } from 'lodash';
-
-interface ModalProps {
-  onSuccess: () => void;
-  organizationList: Organization[];
-}
 
 const EditInstance = forwardRef<ModalRef, ModalProps>(({ onSuccess }, ref) => {
   const { updateMonitorInstance, setInstancesGroup } = useLogApi();

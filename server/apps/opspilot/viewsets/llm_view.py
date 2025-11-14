@@ -12,6 +12,7 @@ from apps.core.utils.async_utils import create_async_compatible_generator
 from apps.core.utils.viewset_utils import AuthViewSet, LanguageViewSet
 from apps.opspilot.models import KnowledgeBase, LLMModel, LLMSkill, SkillRequestLog, SkillTools
 from apps.opspilot.serializers.llm_serializer import LLMModelSerializer, LLMSerializer, SkillRequestLogSerializer, SkillToolsSerializer
+from apps.opspilot.utils.mcp_client import MCPClient
 from apps.opspilot.utils.quota_utils import get_quota_client
 from apps.opspilot.utils.sse_chat import stream_chat
 
@@ -57,11 +58,13 @@ class LLMViewSet(AuthViewSet):
             client = get_quota_client(request)
             skill_count, used_skill_count, __ = client.get_skill_quota()
             if skill_count != -1 and skill_count <= used_skill_count:
-                message = self.loader.get("skill_quota_exceeded") if self.loader else "Skill count exceeds quota limit."
+                message = self.loader.get("error.skill_quota_exceeded") if self.loader else "Skill count exceeds quota limit."
                 return JsonResponse({"result": False, "message": message})
         validate_msg = self._validate_name(params["name"], request.user.group_list, params["team"])
         if validate_msg:
-            message = self.loader.get("skill_name_exists") if self.loader else f"A skill with the same name already exists in group {validate_msg}."
+            message = (
+                self.loader.get("error.skill_name_exists") if self.loader else f"A skill with the same name already exists in group {validate_msg}."
+            )
             if self.loader:
                 message = message.format(validate_msg=validate_msg)
             return JsonResponse({"result": False, "message": message})
@@ -91,9 +94,9 @@ class LLMViewSet(AuthViewSet):
                 return JsonResponse(
                     {
                         "result": False,
-                        "message": self.loader.get("permission_update_denied")
-                        if self.loader
-                        else "You do not have permission to update this instance",
+                        "message": (
+                            self.loader.get("error.permission_update_denied") if self.loader else "You do not have permission to update this instance"
+                        ),
                     }
                 )
 
@@ -106,7 +109,9 @@ class LLMViewSet(AuthViewSet):
         )
         if validate_msg:
             message = (
-                self.loader.get("skill_name_exists_update") if self.loader else f"A skill with the same name already exists in group {validate_msg}."
+                self.loader.get("error.skill_name_exists_update")
+                if self.loader
+                else f"A skill with the same name already exists in group {validate_msg}."
             )
             if self.loader:
                 message = message.format(validate_msg=validate_msg)
@@ -194,7 +199,9 @@ class LLMViewSet(AuthViewSet):
                 include_children = request.COOKIES.get("include_children", "0") == "1"
                 has_permission = self.get_has_permission(request.user, skill_obj, current_team, is_check=True, include_children=include_children)
                 if not has_permission:
-                    message = self.loader.get("no_agent_update_permission") if self.loader else "You do not have permission to update this agent."
+                    message = (
+                        self.loader.get("error.no_agent_update_permission") if self.loader else "You do not have permission to update this agent."
+                    )
                     return self._create_error_stream_response(message)
 
             current_ip = request.META.get("HTTP_X_FORWARDED_FOR")
@@ -213,7 +220,7 @@ class LLMViewSet(AuthViewSet):
             # 调用stream_chat函数返回流式响应
             return stream_chat(params, skill_obj.name, {}, current_ip, params["user_message"])
         except LLMSkill.DoesNotExist:
-            message = self.loader.get("skill_not_found_detail") if self.loader else "Skill not found."
+            message = self.loader.get("error.skill_not_found_detail") if self.loader else "Skill not found."
             return self._create_error_stream_response(message)
         except Exception as e:
             logger.exception(e)
@@ -253,12 +260,14 @@ class LLMModelViewSet(AuthViewSet):
     def create(self, request, *args, **kwargs):
         params = request.data
         if not params.get("team"):
-            message = self.loader.get("team_empty") if self.loader else "The team is empty."
+            message = self.loader.get("error.team_empty") if self.loader else "The team is empty."
             return JsonResponse({"result": False, "message": message})
         validate_msg = self._validate_name(params["name"], request.user.group_list, params["team"])
         if validate_msg:
             message = (
-                self.loader.get("llm_model_name_exists") if self.loader else f"A LLM Model with the same name already exists in group {validate_msg}."
+                self.loader.get("error.llm_model_name_exists")
+                if self.loader
+                else f"A LLM Model with the same name already exists in group {validate_msg}."
             )
             if self.loader:
                 message = message.format(validate_msg=validate_msg)
@@ -286,7 +295,9 @@ class LLMModelViewSet(AuthViewSet):
         )
         if validate_msg:
             message = (
-                self.loader.get("llm_model_name_exists") if self.loader else f"A LLM Model with the same name already exists in group {validate_msg}."
+                self.loader.get("error.llm_model_name_exists")
+                if self.loader
+                else f"A LLM Model with the same name already exists in group {validate_msg}."
             )
             if self.loader:
                 message = message.format(validate_msg=validate_msg)
@@ -300,7 +311,7 @@ class LLMModelViewSet(AuthViewSet):
             return JsonResponse(
                 {
                     "result": False,
-                    "message": self.loader.get("builtin_model_delete_denied") if self.loader else "Built-in model is not allowed to be deleted",
+                    "message": self.loader.get("error.builtin_model_delete_denied") if self.loader else "Built-in model is not allowed to be deleted",
                 }
             )
         return super().destroy(request, *args, **kwargs)
@@ -322,7 +333,7 @@ class SkillRequestLogViewSet(LanguageViewSet):
     @HasPermission("skill_invocation_logs-View")
     def list(self, request, *args, **kwargs):
         if not request.GET.get("skill_id"):
-            message = self.loader.get("skill_not_found") if self.loader else "Skill id not found"
+            message = self.loader.get("error.skill_not_found") if self.loader else "Skill id not found"
             return JsonResponse({"result": False, "message": message})
         return super().list(request, *args, **kwargs)
 
@@ -352,3 +363,67 @@ class SkillToolsViewSet(AuthViewSet):
     @HasPermission("tool_list-Delete")
     def destroy(self, request, *args, **kwargs):
         return super().destroy(request, *args, **kwargs)
+
+    @action(methods=["POST"], detail=False)
+    @HasPermission("tool_list-View")
+    def get_mcp_tools(self, request):
+        """
+        根据 MCP server 地址获取子工具列表
+
+        MCP (Model Context Protocol) 标准握手流程:
+        1. initialize - 建立连接并获取 session ID
+        2. notifications/initialized - 通知服务器初始化完成
+        3. tools/list - 请求工具列表
+
+        请求参数:
+            server_url: MCP server 地址
+
+        返回格式:
+            {
+                "result": True,
+                "data": [
+                    {
+                        "name": "tool_name",
+                        "description": "tool description",
+                        "input_schema": {...}
+                    }
+                ]
+            }
+        """
+        server_url = request.data.get("server_url")
+        if not server_url:
+            message = self.loader.get("error.server_url_required") if self.loader else "MCP server URL is required"
+            return JsonResponse({"result": False, "message": message})
+
+        try:
+            with MCPClient(server_url) as mcp_client:
+                tools = mcp_client.get_tools()
+
+                # 转换格式：inputSchema -> parameters
+                formatted_tools = []
+                for tool in tools:
+                    formatted_tool = {"name": tool.get("name", ""), "description": tool.get("description", ""), "parameters": {}}
+
+                    # 提取 inputSchema 中的 properties 作为 parameters
+                    input_schema = tool.get("inputSchema", {})
+                    properties = input_schema.get("properties", {})
+                    required_fields = input_schema.get("required", [])
+
+                    # 转换每个参数
+                    for param_name, param_info in properties.items():
+                        formatted_tool["parameters"][param_name] = {
+                            "type": param_info.get("type", "string"),
+                            "required": param_name in required_fields,
+                            "description": param_info.get("description", ""),
+                        }
+                        # 保留默认值
+                        if "default" in param_info:
+                            formatted_tool["parameters"][param_name]["default"] = param_info["default"]
+
+                    formatted_tools.append(formatted_tool)
+
+                return JsonResponse({"result": True, "data": formatted_tools})
+        except Exception as e:
+            logger.exception(e)
+            message = self.loader.get("error.mcp_server_error") if self.loader else "Error occurred while fetching MCP tools"
+            return JsonResponse({"result": False, "message": f"{message}: {str(e)}"})

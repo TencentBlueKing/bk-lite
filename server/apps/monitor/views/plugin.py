@@ -5,7 +5,7 @@ from apps.core.utils.loader import LanguageLoader
 from apps.core.utils.web_utils import WebUtils
 from apps.monitor.constants.language import LanguageConstants
 from apps.monitor.filters.plugin import MonitorPluginFilter
-from apps.monitor.models import MonitorPlugin
+from apps.monitor.models import MonitorPlugin, MonitorPluginUITemplate
 from apps.monitor.serializers.pligin import MonitorPluginSerializer
 from apps.monitor.services.plugin import MonitorPluginService
 from config.drf.pagination import CustomPageNumberPagination
@@ -54,3 +54,19 @@ class MonitorPluginVieSet(viewsets.ModelViewSet):
     def export_monitor_object(self, request, pk):
         data = MonitorPluginService.export_monitor_plugin(pk)
         return WebUtils.response_success(data)
+
+    @action(methods=['get'], detail=True, url_path='ui_template')
+    def get_ui_template(self, request, pk=None):
+        """
+        获取插件的 UI 模板。
+
+        :param pk: 插件 ID
+        :return: UI 模板内容（JSON 格式）
+        """
+        plugin = self.get_object()
+
+        try:
+            ui_template = MonitorPluginUITemplate.objects.get(plugin=plugin)
+            return WebUtils.response_success(ui_template.content)
+        except MonitorPluginUITemplate.DoesNotExist:
+            return WebUtils.response_success({})

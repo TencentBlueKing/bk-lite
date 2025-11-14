@@ -11,14 +11,10 @@ import { Button, Form, message, Input } from 'antd';
 import OperateModal from '@/components/operate-modal';
 import type { FormInstance } from 'antd';
 import useLogApi from '@/app/log/api/search';
-import { ModalRef } from '@/app/log/types';
+import { ModalRef, ModalProps } from '@/app/log/types';
 import { StoreConditions } from '@/app/log/types/search';
 import { useTranslation } from '@/utils/i18n';
 import { cloneDeep } from 'lodash';
-
-interface ModalProps {
-  onSuccess?: () => void;
-}
 
 const AddConditions = forwardRef<ModalRef, ModalProps>(({ onSuccess }, ref) => {
   const { saveLogCondition } = useLogApi();

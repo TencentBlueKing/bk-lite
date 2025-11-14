@@ -1,5 +1,3 @@
-'use client';
-
 import React, {
   useState,
   useEffect,
@@ -22,6 +20,7 @@ import {
   TimeRangeData,
   LayoutChangeItem,
   AddComponentConfig,
+  WidgetConfig,
 } from '@/app/ops-analysis/types/dashBoard';
 import { DirItem } from '@/app/ops-analysis/types';
 import { useDataSourceManager } from '@/app/ops-analysis/hooks/useDataSource';
@@ -29,6 +28,7 @@ import { SaveOutlined, PlusOutlined, MoreOutlined } from '@ant-design/icons';
 import { useDashBoardApi } from '@/app/ops-analysis/api/dashBoard';
 import type { DatasourceItem } from '@/app/ops-analysis/types/dataSource';
 import WidgetWrapper from './components/widgetWrapper';
+import PermissionWrapper from '@/components/permission';
 import 'react-grid-layout/css/styles.css';
 import 'react-resizable/css/styles.css';
 
@@ -323,9 +323,7 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
       setConfigDrawerVisible(true);
     };
 
-    const handleConfigConfirm = (
-      values: AddComponentConfig & { name: string }
-    ) => {
+    const handleConfigConfirm = (values: WidgetConfig) => {
       if (isNewComponentConfig && currentConfigItem) {
         handleAddComponent(values);
       } else {
@@ -400,22 +398,26 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
                 />
               </div>
             }
-            <Button
-              icon={<SaveOutlined />}
-              loading={saving}
-              disabled={!selectedDashboard?.data_id}
-              onClick={handleSave}
-            >
-              {t('common.save')}
-            </Button>
-            <Button
-              type="dashed"
-              icon={<PlusOutlined />}
-              onClick={openAddModal}
-              style={{ borderColor: '#1677ff', color: '#1677ff' }}
-            >
-              {t('dashboard.addComponent')}
-            </Button>
+            <PermissionWrapper requiredPermissions={['EditChart']}>
+              <Button
+                icon={<SaveOutlined />}
+                loading={saving}
+                disabled={!selectedDashboard?.data_id}
+                onClick={handleSave}
+              >
+                {t('common.save')}
+              </Button>
+            </PermissionWrapper>
+            <PermissionWrapper requiredPermissions={['EditChart']}>
+              <Button
+                type="dashed"
+                icon={<PlusOutlined />}
+                onClick={openAddModal}
+                style={{ borderColor: '#1677ff', color: '#1677ff' }}
+              >
+                {t('dashboard.addView')}
+              </Button>
+            </PermissionWrapper>
           </div>
         </div>
 
@@ -440,13 +442,15 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
                       </span>
                     }
                   >
-                    <Button
-                      type="primary"
-                      icon={<PlusOutlined />}
-                      onClick={openAddModal}
-                    >
-                      {t('dashboard.addView')}
-                    </Button>
+                    <PermissionWrapper requiredPermissions={['EditChart']}>
+                      <Button
+                        type="primary"
+                        icon={<PlusOutlined />}
+                        onClick={openAddModal}
+                      >
+                        {t('dashboard.addView')}
+                      </Button>
+                    </PermissionWrapper>
                   </Empty>
                 </div>
               );

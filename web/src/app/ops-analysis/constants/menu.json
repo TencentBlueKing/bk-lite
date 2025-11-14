@@ -4,19 +4,25 @@
       "title": "运营分析",
       "icon": "ops-analysis",
       "url": "/ops-analysis/view",
-      "name": "analysis_view",
-      "isNotMenuItem": true,
+      "name": "view"
+    },
+    {
+    "title": "管理",
+    "icon": "shujumoxingguanli",
+      "url": "/ops-analysis/settings",
+      "name": "settings",
+      "hasDetail": true,
       "children": [
         {
           "title": "数据源",
           "icon": "ops-analysis",
-          "url": "/ops-analysis/view/settings/dataSource",
+          "url": "/ops-analysis/settings/dataSource",
           "name": "data_source"
         },
         {
           "title": "命名空间",
           "icon": "ops-analysis",
-          "url": "/ops-analysis/view/settings/namespace",
+          "url": "/ops-analysis/settings/namespace",
           "name": "namespace"
         }
       ]
@@ -27,19 +33,25 @@
       "title": "Operations Analysis",
       "icon": "ops-analysis",
       "url": "/ops-analysis/view",
-      "name": "analysis_view",
-      "isNotMenuItem": true,
+      "name": "view"
+    },
+    {
+      "title": "Management",
+      "icon": "shujumoxingguanli",
+      "url": "/ops-analysis/settings",
+      "name": "settings",
+      "hasDetail": true,
       "children": [
         {
           "title": "Data Source",
           "icon": "ops-analysis",
-          "url": "/ops-analysis/view/settings/dataSource",
+          "url": "/ops-analysis/settings/dataSource",
           "name": "data_source"
         },
         {
           "title": "Namespace",
           "icon": "ops-analysis",
-          "url": "/ops-analysis/view/settings/namespace",
+          "url": "/ops-analysis/settings/namespace",
           "name": "namespace"
         }
       ]

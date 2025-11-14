@@ -4,6 +4,19 @@ from apps.node_mgmt.constants.node import NodeConstants
 class ControllerConstants:
     """控制器相关常量"""
 
+    CONTROLLER = [
+        {
+            "os": "linux",
+            "name": "Controller",
+            "description": "The Controller is primarily used to manage various types of collectors, composed of Sidecarand NAS Executor, enabling automated deployment, resource coordination, and task execution on servers.",
+        },
+        {
+            "os": "windows",
+            "name": "Controller",
+            "description": "The Controller is primarily used to manage various types of collectors, composed of Sidecarand NAS Executor, enabling automated deployment, resource coordination, and task execution on servers.",
+        },
+    ]
+
     # 控制器状态
     NORMAL = "normal"
     ABNORMAL = "abnormal"

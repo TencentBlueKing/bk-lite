@@ -1,7 +1,7 @@
 import React, { useEffect } from 'react';
 import Icon from '@/components/icon';
 import { useTranslation } from '@/utils/i18n';
-import { SidebarProps, NodeType } from '@/app/ops-analysis/types/topology';
+import { NodeSidebarProps, NodeType } from '@/app/ops-analysis/types/topology';
 import { Button } from 'antd';
 import {
   RightOutlined,
@@ -12,7 +12,7 @@ import {
   FontSizeOutlined,
 } from '@ant-design/icons';
 
-const Sidebar: React.FC<SidebarProps> = ({
+const Sidebar: React.FC<NodeSidebarProps> = ({
   collapsed,
   isEditMode = false,
   graphInstance,

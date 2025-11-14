@@ -23,6 +23,7 @@ import {
   NodeConfigFormValues,
   TopologyProps,
   TopologyRef,
+  TopologyNodeData,
 } from '@/app/ops-analysis/types/topology';
 import type { DatasourceItem } from '@/app/ops-analysis/types/dataSource';
 import TopologyToolbar from './components/toolbar';
@@ -77,12 +78,7 @@ const Topology = forwardRef<TopologyRef, TopologyProps>(
       finishInitialization,
       clearOperationHistory,
       refreshAllSingleValueNodes,
-    } = useGraphOperations(
-      containerRef,
-      state,
-      minimapContainerRef,
-      minimapVisible
-    );
+    } = useGraphOperations(containerRef, state, minimapContainerRef);
 
     const { handleEdgeConfigConfirm, closeEdgeConfig, handleMenuClick } =
       useContextMenuAndModal(containerRef, state);
@@ -164,7 +160,8 @@ const Topology = forwardRef<TopologyRef, TopologyProps>(
 
     const handleChartSelectorConfirm = (item: DatasourceItem) => {
       if (chartDropPosition) {
-        const chartNodeData = {
+        const chartNodeData: TopologyNodeData = {
+          type: 'chart',
           name: item.name,
           description: item.desc,
           position: chartDropPosition,
@@ -401,23 +398,24 @@ const Topology = forwardRef<TopologyRef, TopologyProps>(
               tabIndex={-1}
             />
 
-            {minimapVisible && (
-              <div className={styles.minimapContainer}>
-                <div className={styles.minimapHeader}>
-                  <button
-                    onClick={() => setMinimapVisible(false)}
-                    className={styles.minimapCloseBtn}
-                    title={t('topology.minimapCollapse')}
-                  >
-                    <CloseOutlined />
-                  </button>
-                </div>
-                <div
-                  ref={minimapContainerRef}
-                  className={styles.minimapContent}
-                />
+            <div
+              className={styles.minimapContainer}
+              style={{ display: minimapVisible ? 'block' : 'none' }}
+            >
+              <div className={styles.minimapHeader}>
+                <button
+                  onClick={() => setMinimapVisible(false)}
+                  className={styles.minimapCloseBtn}
+                  title={t('topology.minimapCollapse')}
+                >
+                  <CloseOutlined />
+                </button>
               </div>
-            )}
+              <div
+                ref={minimapContainerRef}
+                className={styles.minimapContent}
+              />
+            </div>
             {!minimapVisible && (
               <button
                 onClick={() => setMinimapVisible(true)}

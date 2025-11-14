@@ -5,16 +5,13 @@ from loguru import logger
 from neco.core.utils.template_loader import TemplateLoader
 
 # 静态导入所有工具模块
-from neco.llm.tools import (
-    ansible_tools_plus,
-    current_time_tools,
-    duckduckgo_tools,
-    github_tools,
-    http_request_tools_plus,
-    jenkins_tools,
-    kubernetes_tools,
-    python_tools,
-)
+from neco.llm.tools import date
+from neco.llm.tools import github
+from neco.llm.tools import jenkins
+from neco.llm.tools import kubernetes
+from neco.llm.tools import python
+from neco.llm.tools import search
+from neco.llm.tools import shell
 
 
 class ToolsLoader:
@@ -36,17 +33,16 @@ class ToolsLoader:
     TOOLS_SUFFIX = "_tools"
     TOOLS_PLUS_SUFFIX = "_tools_plus"
     STRUCTURED_TOOL_CLASS = "StructuredTool"
-    
+
     # 静态定义所有工具模块映射
     TOOL_MODULES = {
-        'ansible': (ansible_tools_plus, True),
-        'current_time': (current_time_tools, False),
-        'duckduckgo': (duckduckgo_tools, False),
-        'github': (github_tools, False),
-        'http_request': (http_request_tools_plus, True),
-        'jenkins': (jenkins_tools, False),
-        'kubernetes': (kubernetes_tools, False),
-        'python': (python_tools, False),
+        'current_time': (date, False),
+        'duckduckgo': (search, False),
+        'github': (github, False),
+        'jenkins': (jenkins, False),
+        'kubernetes': (kubernetes, False),
+        'python': (python, False),
+        'shell': (shell, False),
     }
 
     @staticmethod
@@ -58,11 +54,11 @@ class ToolsLoader:
             dict: 工具映射字典，格式为 {tool_category: [tool_info_list]}
         """
         tools_map = {}
-        
+
         for tool_category, (module, enable_extra_prompt) in ToolsLoader.TOOL_MODULES.items():
             tool_functions = ToolsLoader._extract_tools_from_module(
                 module, enable_extra_prompt)
-            
+
             if tool_functions:
                 tools_map[tool_category] = tool_functions
                 logger.info(
@@ -75,11 +71,11 @@ class ToolsLoader:
     def _extract_tools_from_module(module, enable_extra_prompt):
         """
         从已导入的模块中提取工具函数
-        
+
         Args:
             module: 已导入的模块对象
             enable_extra_prompt: 是否启用额外提示
-            
+
         Returns:
             list: 工具函数列表
         """
@@ -96,7 +92,7 @@ class ToolsLoader:
         return tool_functions
 
     @staticmethod
-    def load_tools(tool_server_url:str, extra_tools_prompt:str="", extra_param_prompt:dict={}):
+    def load_tools(tool_server_url: str, extra_tools_prompt: str = "", extra_param_prompt: dict = {}):
         """
         根据 tool_server_url 配置按需加载对应的工具
 
@@ -125,21 +121,23 @@ class ToolsLoader:
 
         tools = []
         for tool_info in tool_functions:
-            processed_tool = ToolsLoader._process_tool(tool_info, extra_tools_prompt, extra_param_prompt)
+            processed_tool = ToolsLoader._process_tool(
+                tool_info, extra_tools_prompt, extra_param_prompt)
             if processed_tool:
                 tools.append(processed_tool)
 
         return tools
 
     @staticmethod
-    def _process_tool(tool_info, extra_tools_prompt:str,extra_param_prompt:dict):
+    def _process_tool(tool_info, extra_tools_prompt: str, extra_param_prompt: dict):
         """处理单个工具，应用额外提示"""
         try:
             func = copy.deepcopy(tool_info['func'])
             enable_extra_prompt = tool_info['enable_extra_prompt']
 
             if enable_extra_prompt:
-                ToolsLoader._apply_extra_prompts(func, extra_tools_prompt,extra_param_prompt)
+                ToolsLoader._apply_extra_prompts(
+                    func, extra_tools_prompt, extra_param_prompt)
 
             return func
 
@@ -148,7 +146,7 @@ class ToolsLoader:
             return None
 
     @staticmethod
-    def _apply_extra_prompts(func, extra_tools_prompt:str,extra_param_prompt:dict):
+    def _apply_extra_prompts(func, extra_tools_prompt: str, extra_param_prompt: dict):
         """为工具函数应用额外提示"""
         if extra_tools_prompt:
             func.description += f"\n{extra_tools_prompt}"
@@ -178,15 +176,15 @@ class ToolsLoader:
         if tool_category not in ToolsLoader.TOOL_MODULES:
             logger.warning(f"未找到工具类别 '{tool_category}'")
             return []
-        
+
         module, enable_extra_prompt = ToolsLoader.TOOL_MODULES[tool_category]
         tool_functions = ToolsLoader._extract_tools_from_module(
             module, enable_extra_prompt)
-        
+
         if tool_functions:
             logger.info(
                 f"从 {tool_category} 加载了 {len(tool_functions)} 个工具")
-        
+
         return tool_functions
 
     @staticmethod

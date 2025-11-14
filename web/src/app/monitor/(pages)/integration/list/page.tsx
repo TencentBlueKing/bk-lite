@@ -5,7 +5,7 @@ import useApiClient from '@/utils/request';
 import useMonitorApi from '@/app/monitor/api';
 import useIntegrationApi from '@/app/monitor/api/integration';
 import integrationStyle from './index.module.scss';
-import { SettingOutlined } from '@ant-design/icons';
+import { PlusOutlined } from '@ant-design/icons';
 import { useTranslation } from '@/utils/i18n';
 import Icon from '@/components/icon';
 import { getIconByObjectName } from '@/app/monitor/utils/common';
@@ -317,7 +317,7 @@ const Integration = () => {
                       className="w-full"
                     >
                       <Button
-                        icon={<SettingOutlined />}
+                        icon={<PlusOutlined />}
                         type="primary"
                         className="w-full rounded-md transition-opacity duration-300"
                         onClick={(e) => {
@@ -325,7 +325,7 @@ const Integration = () => {
                           linkToDetial(app);
                         }}
                       >
-                        {t('common.setting')}
+                        {t('monitor.integrations.access')}
                       </Button>
                     </Permission>
                   </div>

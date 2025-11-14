@@ -194,6 +194,7 @@ class SkillTools(MaintainerInfo, TimeInfo):
     tags = models.JSONField(default=list)
     icon = models.CharField(max_length=100, default="")
     is_build_in = models.BooleanField(default=False)
+    tools = models.JSONField(default=list)
 
     class Meta:
         db_table = "model_provider_mgmt_skilltools"

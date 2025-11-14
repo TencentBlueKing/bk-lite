@@ -14,14 +14,17 @@ from neco.llm.rag.naive_rag.pgvector.pgvector_rag import PgvectorRag
 from neco.llm.tools.tools_loader import ToolsLoader
 from pydantic import BaseModel
 from langchain_mcp_adapters.client import MultiServerMCPClient
-from langgraph.prebuilt import ToolNode, create_react_agent
+from langgraph.prebuilt import ToolNode
+from langchain.agents import create_agent
 from langgraph.graph import StateGraph
 from langgraph.constants import END
 from langchain_core.messages import AIMessage, BaseMessage, ToolMessage, SystemMessage
-from sympy import true
+from sqlalchemy import true
+from deepagents import create_deep_agent
+
 
 class BasicNode:
-        
+
     def log(self, config: RunnableConfig, message: str):
         trace_id = config["configurable"]['trace_id']
         logger.debug(f"[{trace_id}] {message}")
@@ -93,7 +96,7 @@ class BasicNode:
                 logger.debug(
                     f"智能知识路由判断:[{rag_search_request.index_name}]不适合当前问题,跳过检索")
                 continue
-            
+
             rag = PgvectorRag(config["configurable"]["naive_rag_db_url"])
             naive_rag_search_result = rag.search(rag_search_request)
 
@@ -107,7 +110,7 @@ class BasicNode:
 
             # 执行图谱 RAG 检索
             if rag_search_request.enable_graph_rag:
-                graph_results = await self._execute_graph_rag(rag_search_request,config)
+                graph_results = await self._execute_graph_rag(rag_search_request, config)
                 rag_result.extend(graph_results)
 
         # 准备模板数据
@@ -437,7 +440,7 @@ class ToolsNodes(BasicNode):
                 tools_info += f"{tool.name}: {tool.description}\n"
             return tools_info
         return ""
-    
+
     async def call_with_structured_output(self, llm, user_message: str, pydantic_model):
         """
         通用结构化输出调用方法
@@ -458,7 +461,7 @@ class ToolsNodes(BasicNode):
         # 初始化LLM客户端和结构化输出解析器
         self.llm = self.get_llm_client(request)
         self.structured_output_parser = StructuredOutputParser(self.llm)
-        
+
         # 初始化MCP客户端配置
         for server in request.tools_servers:
             if server.url.startswith("langchain:"):
@@ -484,7 +487,8 @@ class ToolsNodes(BasicNode):
         # 初始化LangChain工具
         for server in request.tools_servers:
             if server.url.startswith("langchain:"):
-                langchain_tools = ToolsLoader.load_tools(server.url, server.extra_tools_prompt, server.extra_param_prompt)
+                langchain_tools = ToolsLoader.load_tools(
+                    server.url, server.extra_tools_prompt, server.extra_param_prompt)
                 self.tools.extend(langchain_tools)
 
     async def build_tools_node(self) -> ToolNode:
@@ -504,105 +508,74 @@ class ToolsNodes(BasicNode):
     # ========== 使用 LangGraph 标准 ReAct Agent 实现 ==========
 
     async def build_react_nodes(self,
-                          graph_builder: StateGraph,
-                          composite_node_name: str = "react_agent",
-                          additional_system_prompt: Optional[str] = None,
-                          next_node: str = END,
-                          tools_node: Optional[ToolNode] = None) -> str:
+                                graph_builder: StateGraph,
+                                composite_node_name: str = "react_agent",
+                                additional_system_prompt: Optional[str] = None,
+                                next_node: str = END,
+                                tools_node: Optional[ToolNode] = None) -> str:
         """构建ReAct Agent节点"""
         react_wrapper_name = f"{composite_node_name}_wrapper"
-        
+
         async def react_wrapper_node(state: Dict[str, Any], config: RunnableConfig) -> Dict[str, Any]:
-            """ReAct Agent 包装节点"""
+            """ReAct Agent 包装节点 - 返回完整消息列表以支持实时 SSE 流式输出"""
             graph_request = config["configurable"]["graph_request"]
-            
+
             # 创建系统提示
             final_system_prompt = TemplateLoader.render_template(
                 'prompts/graph/react_agent_system_message', {
-                "user_system_message": graph_request.system_message_prompt,
-                "additional_system_prompt": additional_system_prompt or ""
-            })
-            
+                    "user_system_message": graph_request.system_message_prompt,
+                    "additional_system_prompt": additional_system_prompt or ""
+                })
+
             llm = self.get_llm_client(graph_request)
-            
+
             # 创建并调用 ReAct Agent
-            react_agent = create_react_agent(
+            react_agent = create_agent(
                 model=llm,
                 tools=self.tools,
-                prompt=SystemMessage(content=final_system_prompt),
+                system_prompt=final_system_prompt,
                 checkpointer=None,
                 debug=False
             )
-            
+
             result = await react_agent.ainvoke({"messages": state["messages"]}, config=config)
-            
-            # 处理结果
+
+            # 获取完整的消息列表
             final_messages = result.get("messages", [])
             if not final_messages:
-                return {"messages": AIMessage(content="ReAct Agent 未返回任何消息")}
-            
-            # 收集执行的工具 - 从多个来源收集工具调用信息
-            executed_tools = []
-            for msg in final_messages:
-                if isinstance(msg, AIMessage) and hasattr(msg, 'tool_calls') and msg.tool_calls:
-                    for tool_call in msg.tool_calls:
-                        if hasattr(tool_call, 'name'):
-                            executed_tools.append(tool_call.name)
-                elif isinstance(msg, ToolMessage):
-                    # 从 ToolMessage 中提取工具名称
-                    tool_name = getattr(msg, 'name', None)
-                    if not tool_name and hasattr(msg, 'additional_kwargs'):
-                        tool_name = msg.additional_kwargs.get('name')
-                    if tool_name:
-                        executed_tools.append(tool_name)
-            
-            # 去重工具名称
-            executed_tools = list(dict.fromkeys(executed_tools))
-            
-            # 找到最后一个 AI 消 Messages
-            last_ai_message = None
-            for msg in reversed(final_messages):
-                if isinstance(msg, AIMessage):
-                    last_ai_message = msg
-                    break
-            
-            if not last_ai_message:
-                return {"messages": AIMessage(content="ReAct Agent 未产生有效的 AI 响应")}
-            
-            # 增强内容
-            enhanced_content = last_ai_message.content
-            if executed_tools:
-                tools_info = "、".join(executed_tools)
-                enhanced_content = f"执行工具: [{tools_info}]\n\n" + enhanced_content
-            
-            enhanced_message = AIMessage(
-                content=enhanced_content,
-                response_metadata=last_ai_message.response_metadata,
-                tool_calls=getattr(last_ai_message, 'tool_calls', []),
-                usage_metadata=getattr(last_ai_message, 'usage_metadata', None)
-            )
-            
-            return {"messages": enhanced_message}
-        
+                return {"messages": [AIMessage(content="ReAct Agent 未返回任何消息")]}
+
+            # 过滤掉输入消息，只保留 ReAct Agent 新增的消息
+            # 找到状态消息的最后一条，之后的都是新消息
+            input_message_count = len(state.get("messages", []))
+            new_messages = final_messages[input_message_count:]
+
+            if not new_messages:
+                return {"messages": [AIMessage(content="ReAct Agent 未产生新的响应")]}
+
+            # 直接返回新消息列表，让 agui_stream 逐个处理
+            # 这样可以实时发送：工具调用 -> 工具结果 -> 最终响应
+            return {"messages": new_messages}
+
         graph_builder.add_node(react_wrapper_name, react_wrapper_node)
         return react_wrapper_name
-    
+
     async def invoke_react_for_candidate(self, user_message: str, messages: List[BaseMessage], config: RunnableConfig, system_prompt: str) -> AIMessage:
         """通用的 ReAct 候选生成方法
-        
+
         Args:
             user_message: 用户消息
             messages: 上下文消息列表
             config: 运行配置
             system_prompt: 系统提示词
-            
+
         Returns:
             生成的 AI 消息
         """
         try:
             # 创建临时状态图来使用可复用的 ReAct 节点组合
             temp_graph_builder = StateGraph(dict)
-            
+
             # 使用可复用的 ReAct 节点组合构建图
             react_entry_node = await self.build_react_nodes(
                 graph_builder=temp_graph_builder,
@@ -610,20 +583,20 @@ class ToolsNodes(BasicNode):
                 additional_system_prompt=system_prompt,
                 next_node=END
             )
-            
+
             # 设置起始节点
             temp_graph_builder.set_entry_point(react_entry_node)
             temp_graph_builder.add_edge(react_entry_node, END)
-            
+
             # 编译临时图
             temp_graph = temp_graph_builder.compile()
-            
+
             # 调用 ReAct 节点
             result = await temp_graph.ainvoke(
                 {"messages": messages[-3:] if len(messages) > 3 else messages},
                 config=config
             )
-            
+
             # 提取最后的 AI 消息
             result_messages = result.get("messages", [])
             if isinstance(result_messages, list):
@@ -632,10 +605,10 @@ class ToolsNodes(BasicNode):
                         return msg
             elif isinstance(result_messages, AIMessage):
                 return result_messages
-            
+
             # 如果没有找到 AI 消息，返回默认响应
             return AIMessage(content=f"正在分析问题: {user_message}")
-            
+
         except Exception as e:
             logger.warning(f"ReAct 调用失败: {e}，使用降级方案")
             return AIMessage(
@@ -648,3 +621,79 @@ class ToolsNodes(BasicNode):
         if tools_node and hasattr(tools_node, 'tools'):
             return tools_node.tools
         return self.tools
+
+    # ========== 使用 DeepAgent 实现 ==========
+
+    async def build_deepagent_nodes(self,
+                                    graph_builder: StateGraph,
+                                    composite_node_name: str = "deep_agent",
+                                    additional_system_prompt: Optional[str] = None,
+                                    next_node: str = END,
+                                    tools_node: Optional[ToolNode] = None) -> str:
+        """构建DeepAgent节点
+
+        DeepAgent 自动提供规划、文件系统工具和子代理能力
+
+        Args:
+            graph_builder: StateGraph实例
+            composite_node_name: 组合节点名称前缀
+            additional_system_prompt: 附加系统提示词
+            next_node: 下一个节点名称
+            tools_node: 可选的工具节点
+
+        Returns:
+            DeepAgent包装节点名称
+        """
+        deep_wrapper_name = f"{composite_node_name}_wrapper"
+
+        async def deep_wrapper_node(state: Dict[str, Any], config: RunnableConfig) -> Dict[str, Any]:
+            """DeepAgent 包装节点 - 返回完整消息列表以支持实时 SSE 流式输出"""
+            graph_request = config["configurable"]["graph_request"]
+
+            # 创建系统提示
+            final_system_prompt = TemplateLoader.render_template(
+                'prompts/graph/deepagent_system_message', {
+                    "user_system_message": graph_request.system_message_prompt,
+                    "additional_system_prompt": additional_system_prompt or ""
+                })
+
+            llm = self.get_llm_client(graph_request)
+
+            # 创建 DeepAgent (自动包含规划、文件系统工具和子代理能力)
+            deep_agent = create_deep_agent(
+                model=llm,
+                tools=self.tools,
+                system_prompt=final_system_prompt,
+                debug=True
+            )
+
+            # DeepAgent返回的是CompiledStateGraph,需要调用它
+            # 增加递归限制以允许复杂任务完成
+            deep_config = {
+                **config,
+                "recursion_limit": 100  # DeepAgent 需要更高的递归限制
+            }
+
+            result = await deep_agent.ainvoke(
+                {"messages": state["messages"]},
+                config=deep_config
+            )
+
+            # 获取完整的消息列表
+            final_messages = result.get("messages", [])
+            if not final_messages:
+                return {"messages": [AIMessage(content="DeepAgent 未返回任何消息")]}
+
+            # 过滤掉输入消息，只保留 DeepAgent 新增的消息
+            input_message_count = len(state.get("messages", []))
+            new_messages = final_messages[input_message_count:]
+
+            if not new_messages:
+                return {"messages": [AIMessage(content="DeepAgent 未产生新的响应")]}
+
+            # 直接返回新消息列表，让 agui_stream 逐个处理
+            # 这样可以实时发送：工具调用 -> 工具结果 -> 最终响应
+            return {"messages": new_messages}
+
+        graph_builder.add_node(deep_wrapper_name, deep_wrapper_node)
+        return deep_wrapper_name

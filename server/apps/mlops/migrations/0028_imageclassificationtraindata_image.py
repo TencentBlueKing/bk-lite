@@ -14,6 +14,7 @@ class Migration(migrations.Migration):
         migrations.AddField(
             model_name='imageclassificationtraindata',
             name='image',
-            field=models.ImageField(blank=True, help_text='上传到MinIO的图片', null=True, storage=django_minio_backend.models.MinioBackend(bucket_name='munchkin-public'), upload_to=django_minio_backend.models.iso_date_prefix, verbose_name='训练图片'),
+            field=models.ImageField(blank=True, help_text='上传到MinIO的图片', null=True, storage=django_minio_backend.models.MinioBackend(
+                bucket_name='munchkin-public'), upload_to=django_minio_backend.models.iso_date_prefix, verbose_name='训练图片'),
         ),
     ]
