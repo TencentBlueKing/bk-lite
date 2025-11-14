@@ -7,7 +7,7 @@ from django_filters import CharFilter, FilterSet
 
 from apps.cmdb.models.collect_model import CollectModels, OidMapping
 from apps.cmdb.utils.base import get_cmdb_rules
-from apps.cmdb.utils.permission import InstancePermissionManage
+from apps.cmdb.permissions.instance_permission import InstancePermissionManage
 
 
 class CollectModelFilter(FilterSet):

@@ -6,7 +6,7 @@ from apps.cmdb.services.model import ModelManage
 from apps.cmdb.utils.change_record import batch_create_change_record, create_change_record, create_change_record_by_asso
 from apps.cmdb.utils.export import Export
 from apps.cmdb.utils.Import import Import
-from apps.cmdb.utils.permission import PermissionManage
+from apps.cmdb.permissions.instance_permission import PermissionManage
 from apps.core.exceptions.base_app_exception import BaseAppException
 from apps.core.logger import cmdb_logger as logger
 

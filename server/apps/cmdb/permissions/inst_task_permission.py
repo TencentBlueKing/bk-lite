@@ -1,5 +1,5 @@
 # -- coding: utf-8 --
-# @File: permission.py
+# @File: inst_task_permission.py
 # @Time: 2025/7/16 15:17
 # @Author: windyzhao
 from rest_framework.permissions import BasePermission
