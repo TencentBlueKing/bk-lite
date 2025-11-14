@@ -242,3 +242,13 @@ error:
   url_request_failed: URL 请求失败
 
   no_support_chunk_type: 不支持的类型
+
+  # MCP Server 相关错误
+  server_url_required: MCP server 地址为必填项
+  mcp_server_init_failed: 初始化 MCP server 失败
+  mcp_tools_fetch_failed: 从 MCP server 获取工具列表失败
+  mcp_server_timeout: MCP server 请求超时
+  mcp_server_connection_failed: 无法连接到 MCP server
+  mcp_server_error: 获取 MCP 工具时发生错误
+  mcp_server_invalid_url: 无效的 MCP server URL。该地址返回的是 HTML 网页而非 JSON API 响应
+  mcp_server_invalid_response: MCP server 返回了无效的 JSON 响应

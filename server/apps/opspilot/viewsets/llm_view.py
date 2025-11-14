@@ -12,6 +12,7 @@ from apps.core.utils.async_utils import create_async_compatible_generator
 from apps.core.utils.viewset_utils import AuthViewSet, LanguageViewSet
 from apps.opspilot.models import KnowledgeBase, LLMModel, LLMSkill, SkillRequestLog, SkillTools
 from apps.opspilot.serializers.llm_serializer import LLMModelSerializer, LLMSerializer, SkillRequestLogSerializer, SkillToolsSerializer
+from apps.opspilot.utils.mcp_client import MCPClient
 from apps.opspilot.utils.quota_utils import get_quota_client
 from apps.opspilot.utils.sse_chat import stream_chat
 
@@ -93,9 +94,9 @@ class LLMViewSet(AuthViewSet):
                 return JsonResponse(
                     {
                         "result": False,
-                        "message": self.loader.get("error.permission_update_denied")
-                        if self.loader
-                        else "You do not have permission to update this instance",
+                        "message": (
+                            self.loader.get("error.permission_update_denied") if self.loader else "You do not have permission to update this instance"
+                        ),
                     }
                 )
 
@@ -362,3 +363,67 @@ class SkillToolsViewSet(AuthViewSet):
     @HasPermission("tool_list-Delete")
     def destroy(self, request, *args, **kwargs):
         return super().destroy(request, *args, **kwargs)
+
+    @action(methods=["POST"], detail=False)
+    @HasPermission("tool_list-View")
+    def get_mcp_tools(self, request):
+        """
+        根据 MCP server 地址获取子工具列表
+
+        MCP (Model Context Protocol) 标准握手流程:
+        1. initialize - 建立连接并获取 session ID
+        2. notifications/initialized - 通知服务器初始化完成
+        3. tools/list - 请求工具列表
+
+        请求参数:
+            server_url: MCP server 地址
+
+        返回格式:
+            {
+                "result": True,
+                "data": [
+                    {
+                        "name": "tool_name",
+                        "description": "tool description",
+                        "input_schema": {...}
+                    }
+                ]
+            }
+        """
+        server_url = request.data.get("server_url")
+        if not server_url:
+            message = self.loader.get("error.server_url_required") if self.loader else "MCP server URL is required"
+            return JsonResponse({"result": False, "message": message})
+
+        try:
+            with MCPClient(server_url) as mcp_client:
+                tools = mcp_client.get_tools()
+
+                # 转换格式：inputSchema -> parameters
+                formatted_tools = []
+                for tool in tools:
+                    formatted_tool = {"name": tool.get("name", ""), "description": tool.get("description", ""), "parameters": {}}
+
+                    # 提取 inputSchema 中的 properties 作为 parameters
+                    input_schema = tool.get("inputSchema", {})
+                    properties = input_schema.get("properties", {})
+                    required_fields = input_schema.get("required", [])
+
+                    # 转换每个参数
+                    for param_name, param_info in properties.items():
+                        formatted_tool["parameters"][param_name] = {
+                            "type": param_info.get("type", "string"),
+                            "required": param_name in required_fields,
+                            "description": param_info.get("description", ""),
+                        }
+                        # 保留默认值
+                        if "default" in param_info:
+                            formatted_tool["parameters"][param_name]["default"] = param_info["default"]
+
+                    formatted_tools.append(formatted_tool)
+
+                return JsonResponse({"result": True, "data": formatted_tools})
+        except Exception as e:
+            logger.exception(e)
+            message = self.loader.get("error.mcp_server_error") if self.loader else "Error occurred while fetching MCP tools"
+            return JsonResponse({"result": False, "message": f"{message}: {str(e)}"})

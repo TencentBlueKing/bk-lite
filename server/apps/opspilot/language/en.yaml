@@ -246,3 +246,13 @@ error:
   url_request_failed: URL request failed
 
   no_support_chunk_type: Unsupported type
+
+  # MCP Server Related Errors
+  server_url_required: MCP server URL is required
+  mcp_server_init_failed: Failed to initialize MCP server
+  mcp_tools_fetch_failed: Failed to fetch tools from MCP server
+  mcp_server_timeout: MCP server request timeout
+  mcp_server_connection_failed: Failed to connect to MCP server
+  mcp_server_error: Error occurred while fetching MCP tools
+  mcp_server_invalid_url: Invalid MCP server URL. The URL returns HTML instead of JSON API response
+  mcp_server_invalid_response: MCP server returned invalid JSON response
