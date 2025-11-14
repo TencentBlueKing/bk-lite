@@ -63,7 +63,7 @@ class Controller:
         :raises ValueError: 当 instance_id 格式不正确时
         """
         _context = {**context}
-        
+
         # 安全处理 instance_id 解析
         instance_id = _context.get("instance_id")
         if instance_id:
@@ -86,7 +86,7 @@ class Controller:
     def format_configs(self):
         """
         格式化配置数据，将实例和配置合并成最终的配置列表。
-        
+
         :return: 格式化后的配置列表
         :raises KeyError: 当必需的字段缺失时
         """
@@ -105,23 +105,23 @@ class Controller:
             # 创建副本，避免修改原始数据
             instance_copy = {**instance}
             node_ids = instance_copy.pop("node_ids", [])
-            
+
             if not node_ids:
                 logger.warning(f"实例 {instance_copy.get('instance_id', 'unknown')} 没有关联节点")
                 continue
-                
+
             for node_id in node_ids:
                 node_info = {"node_id": node_id}
                 for config in configs_template:
                     _config = {
-                        "collector": collector, 
-                        "collect_type": collect_type, 
-                        **node_info, 
-                        **config, 
+                        "collector": collector,
+                        "collect_type": collect_type,
+                        **node_info,
+                        **config,
                         **instance_copy
                     }
                     configs.append(_config)
-        
+
         return configs
 
     def controller(self):
@@ -137,13 +137,13 @@ class Controller:
         6. 复用 Jinja2 Environment 对象
         7. 避免修改原始数据
         8. 增强输入验证和错误处理
-        
+
         :raises ValueError: 当输入数据不合法时
         """
         # 输入验证
         if not self.data:
             raise ValueError("输入数据不能为空")
-        
+
         try:
             collector = self.data["collector"]
             collect_type = self.data["collect_type"]
@@ -156,11 +156,11 @@ class Controller:
 
         # 优化：直接从 self.data 获取采集器和采集类型，然后一次性查询所有模板
         templates_by_type = self.get_templates_by_collector(collector, collect_type)
-        
+
         if not templates_by_type:
             logger.error(f"未找到任何模板：collector={collector}, collect_type={collect_type}")
             return
-        
+
         if not configs:
             logger.warning(f"没有需要创建的配置：collector={collector}, collect_type={collect_type}")
             return
@@ -171,9 +171,9 @@ class Controller:
             if not type_name:
                 logger.warning(f"配置缺少 type 字段，跳过: {config_info}")
                 continue
-                
+
             templates = templates_by_type.get(type_name)
-            
+
             if not templates:
                 logger.warning(f"未找到模板：collector={collector}, "
                              f"collect_type={collect_type}, "

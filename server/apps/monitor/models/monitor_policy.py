@@ -85,6 +85,11 @@ class MonitorEvent(models.Model):
         indexes = [models.Index(fields=["policy_id", "monitor_instance_id", "created_at"])]
 
 
+class MonitorEventRawData(models.Model):
+    event = models.ForeignKey(MonitorEvent, on_delete=models.CASCADE, verbose_name='事件')
+    data = models.JSONField(default=dict, verbose_name='原始数据')
+
+
 class MonitorAlertMetricSnapshot(TimeInfo):
     """告警指标快照表 - 记录告警全生命周期内的原始指标数据"""
 
