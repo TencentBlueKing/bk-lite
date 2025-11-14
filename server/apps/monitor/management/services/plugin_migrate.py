@@ -105,204 +105,47 @@ def extract_plugin_path_info(file_path: str) -> Tuple[str, str]:
     return "", ""
 
 
-def migrate_config_templates():
-    """
-    迁移配置模板到数据库。
-
-    扫描所有 .j2 模板文件，解析文件名和路径信息，导入到 MonitorPluginConfigTemplate 表中。
-
-    优化点：
-    1. 预加载所有插件到内存，避免循环中重复查询数据库
-    2. 批量创建/更新，提升性能
-    3. 使用 Path 对象简化路径操作
-    """
-    from django.db import transaction
-    from apps.monitor.models import MonitorPlugin, MonitorPluginConfigTemplate
-
-    # 查找所有模板文件
-    template_files = find_files_by_pattern(PluginConstants.DIRECTORY, extension='.j2')
-    logger.info(f'找到 {len(template_files)} 个模板文件')
-
-    if not template_files:
-        logger.warning('未找到任何模板文件')
-        return
-
-    # 优化：预加载所有插件到内存，建立索引
-    plugins_dict = {}
-    for plugin in MonitorPlugin.objects.all():
-        key = (plugin.collector, plugin.collect_type)
-        plugins_dict[key] = plugin
-
-    logger.info(f'加载了 {len(plugins_dict)} 个插件到内存')
-
-    success_count = 0
-    skip_count = 0
-    error_count = 0
-    templates_to_process = []
-
-    # 第一步：解析所有文件，准备数据
-    for file_path in template_files:
-        try:
-            # 提取路径信息
-            collector, collect_type = extract_plugin_path_info(file_path)
-            if not collector or not collect_type:
-                logger.warning(f'无法从路径提取信息，跳过: {file_path}')
-                skip_count += 1
-                continue
-
-            # 解析文件名
-            filename = Path(file_path).name
-            type_name, config_type, file_type = parse_template_filename(filename)
-            if not type_name or not config_type or not file_type:
-                logger.warning(f'无法解析文件名，跳过: {filename}')
-                skip_count += 1
-                continue
-
-            # 从内存中查找插件
-            plugin_key = (collector, collect_type)
-            plugin = plugins_dict.get(plugin_key)
-            if not plugin:
-                logger.warning(f'插件不存在: collector={collector}, collect_type={collect_type}, 跳过: {file_path}')
-                skip_count += 1
-                continue
-
-            # 读取模板内容
-            try:
-                content = Path(file_path).read_text(encoding='utf-8')
-            except Exception as e:
-                logger.error(f'读取文件失败: {file_path}, 错误: {e}')
-                error_count += 1
-                continue
-
-            # 准备模板数据
-            templates_to_process.append({
-                'plugin': plugin,
-                'type': type_name,
-                'config_type': config_type,
-                'file_type': file_type,
-                'content': content,
-                'file_path': file_path
-            })
-
-        except Exception as e:
-            logger.error(f'处理模板文件失败: {file_path}, 错误: {e}')
-            error_count += 1
-
-    # 第二步：批量处理数据库操作
-    with transaction.atomic():
-        for template_data in templates_to_process:
-            try:
-                plugin = template_data['plugin']
-                type_name = template_data['type']
-                config_type = template_data['config_type']
-                file_type = template_data['file_type']
-                content = template_data['content']
-
-                # 使用 update_or_create 确保幂等性
-                template, created = MonitorPluginConfigTemplate.objects.update_or_create(
-                    plugin=plugin,
-                    type=type_name,
-                    config_type=config_type,
-                    file_type=file_type,
-                    defaults={'content': content}
-                )
-
-                action = '创建' if created else '更新'
-                logger.info(f'{action}模板: {plugin.collector}/{plugin.collect_type}/{type_name}.{config_type}.{file_type}')
-                success_count += 1
-
-            except Exception as e:
-                logger.error(f'保存模板失败: {template_data["file_path"]}, 错误: {e}')
-                error_count += 1
-
-    logger.info(f'模板导入完成: 成功={success_count}, 跳过={skip_count}, 失败={error_count}')
-
-
-def migrate_ui_templates():
-    """
-    迁移 UI 模板到数据库。
-
-    扫描所有 UI.json 文件，导入到 MonitorPluginUITemplate 表中。
-
-    优化：使用统一的文件查找函数和预加载插件
-    """
-    from django.db import transaction
-    from apps.monitor.models import MonitorPlugin, MonitorPluginUITemplate
-
-    path_list = find_files_by_pattern(PluginConstants.DIRECTORY, filename_pattern="UI.json")
-    logger.info(f'找到 {len(path_list)} 个 UI 模板配置文件')
-
-    if not path_list:
-        logger.warning('未找到任何 UI 模板文件')
-        return
-
-    # 优化：预加载所有插件到内存
-    plugins_dict = {}
-    for plugin in MonitorPlugin.objects.all():
-        key = (plugin.collector, plugin.collect_type)
-        plugins_dict[key] = plugin
-
-    logger.info(f'加载了 {len(plugins_dict)} 个插件到内存')
-
-    success_count = 0
-    skip_count = 0
-    error_count = 0
-
-    with transaction.atomic():
-        for file_path in path_list:
-            try:
-                # 读取 UI 模板内容
-                ui_data = json.loads(Path(file_path).read_text(encoding='utf-8'))
-
-                # 从文件路径提取采集器和采集方式信息
-                collector, collect_type = extract_plugin_path_info(file_path)
-                if not collector or not collect_type:
-                    logger.warning(f'无法从路径提取信息，跳过: {file_path}')
-                    skip_count += 1
-                    continue
-
-                # 从内存中查找插件
-                plugin_key = (collector, collect_type)
-                plugin = plugins_dict.get(plugin_key)
-                if not plugin:
-                    logger.warning(f'插件不存在: collector={collector}, collect_type={collect_type}, 跳过: {file_path}')
-                    skip_count += 1
-                    continue
-
-                # 创建或更新 UI 模板
-                ui_template, created = MonitorPluginUITemplate.objects.update_or_create(
-                    plugin=plugin,
-                    defaults={'content': ui_data}
-                )
-
-                action = '创建' if created else '更新'
-                logger.info(f'{action} UI 模板: {collector}/{collect_type}')
-                success_count += 1
-
-            except json.JSONDecodeError as e:
-                logger.error(f'JSON 解析失败: {file_path}, 错误: {e}')
-                error_count += 1
-            except Exception as e:
-                logger.error(f'导入 UI 模板失败: {file_path}, 错误: {e}')
-                error_count += 1
-
-    logger.info(f'UI 模板导入完成: 成功={success_count}, 跳过={skip_count}, 失败={error_count}')
-
-
 def migrate_plugin():
     """
-    迁移插件。
+    迁移插件及其配置模板和 UI 模板。
 
-    优化：使用统一的文件查找函数
+    设计思路：
+    1. 扫描所有 metrics.json 文件
+    2. 导入插件信息
+    3. 同时导入该插件的配置模板（.j2 文件）
+    4. 同时导入该插件的 UI 模板（UI.json 文件）
+    5. 清理数据库中已不存在的模板
+
+    性能优化：
+    1. 预加载所有插件到内存，避免重复查询
+    2. 按插件分组批量处理模板
+    3. 使用 bulk_create 和 bulk_update 减少数据库交互
+    4. 合并事务，减少事务开销
     """
+    from django.db import transaction
+    from apps.monitor.models import MonitorPlugin, MonitorPluginConfigTemplate, MonitorPluginUITemplate
+
     path_list = find_files_by_pattern(PluginConstants.DIRECTORY, filename_pattern="metrics.json")
-    logger.info(f'找到 {len(path_list)} 个插件配置文件')
+    logger.info(f'找到 {len(path_list)} 个插件配置文件，开始同步插件及模板')
 
     success_count = 0
     error_count = 0
 
+    total_config_create = 0
+    total_config_update = 0
+    total_config_delete = 0
+
+    total_ui_create = 0
+    total_ui_update = 0
+    total_ui_delete = 0
+
+    # ========== 性能优化：预加载所有插件到内存 ==========
+    plugins_dict = {}  # {plugin_name: plugin_obj}
+
+    # ========== 第一阶段：导入所有插件基础信息 ==========
     for file_path in path_list:
         try:
+            # 读取插件配置
             plugin_data = json.loads(Path(file_path).read_text(encoding='utf-8'))
 
             # 从文件路径提取采集器和采集方式信息
@@ -310,15 +153,229 @@ def migrate_plugin():
             plugin_data['collector'] = collector
             plugin_data['collect_type'] = collect_type
 
+            # 重要：在调用 import_monitor_plugin 之前保存 plugin_name
+            # 因为 import_monitor_plugin 内部会 pop('plugin')，导致键被移除
+            plugin_name = plugin_data.get('plugin')
+
+            # 导入插件基础信息
             MonitorPluginService.import_monitor_plugin(plugin_data)
-            logger.info(f'导入插件成功: {collector}/{collect_type}')
+            logger.info(f'导入插件成功: {plugin_name} ({collector}/{collect_type})')
             success_count += 1
 
         except Exception as e:
             logger.error(f'导入插件失败: {file_path}, 错误: {e}')
+            import traceback
+            logger.error(traceback.format_exc())
             error_count += 1
 
+    # 一次性加载所有插件到内存
+    for plugin in MonitorPlugin.objects.all():
+        plugins_dict[plugin.name] = plugin
+
+    logger.info(f'已加载 {len(plugins_dict)} 个插件到内存')
+
+    # ========== 性能优化：预加载所有模板到内存 ==========
+    # 按插件 ID 分组的配置模板
+    all_config_templates = {}  # {plugin_id: {(type, config_type, file_type): template_obj}}
+    for tpl in MonitorPluginConfigTemplate.objects.select_related('plugin').all():
+        if tpl.plugin_id not in all_config_templates:
+            all_config_templates[tpl.plugin_id] = {}
+        key = (tpl.type, tpl.config_type, tpl.file_type)
+        all_config_templates[tpl.plugin_id][key] = tpl
+
+    # 按插件 ID 分组的 UI 模板
+    all_ui_templates = {}  # {plugin_id: template_obj}
+    for tpl in MonitorPluginUITemplate.objects.select_related('plugin').all():
+        all_ui_templates[tpl.plugin_id] = tpl
+
+    logger.info(f'已加载配置模板和 UI 模板到内存')
+
+    # ========== 第二阶段：批量处理模板 ==========
+    # 收集所有需要批量操作的数据
+    config_templates_to_create = []
+    config_templates_to_update = []
+    config_templates_to_delete = []
+
+    ui_templates_to_create = []
+    ui_templates_to_update = []
+    ui_templates_to_delete = []
+
+    for file_path in path_list:
+        try:
+            # 读取插件配置
+            plugin_data = json.loads(Path(file_path).read_text(encoding='utf-8'))
+            plugin_name = plugin_data.get('plugin')
+
+            # 从内存中获取插件对象
+            plugin_obj = plugins_dict.get(plugin_name)
+            if not plugin_obj:
+                logger.warning(f'插件对象未找到: {plugin_name}，跳过模板导入')
+                continue
+
+            # 获取插件目录
+            plugin_dir = Path(file_path).parent
+
+            # ========== 处理配置模板 ==========
+            # 收集该插件目录下的 .j2 模板文件
+            file_templates = {}
+
+            for j2_file in plugin_dir.glob('*.j2'):
+                if not j2_file.is_file():
+                    continue
+
+                try:
+                    # 解析文件名
+                    type_name, config_type, file_type = parse_template_filename(j2_file.name)
+                    if not type_name or not config_type or not file_type:
+                        continue
+
+                    # 读取模板内容
+                    content = j2_file.read_text(encoding='utf-8')
+                    template_key = (type_name, config_type, file_type)
+                    file_templates[template_key] = content
+
+                except Exception as e:
+                    logger.error(f'读取模板文件失败: {j2_file}, 错误: {e}')
+
+            # 获取数据库中该插件的所有配置模板
+            db_templates = all_config_templates.get(plugin_obj.id, {})
+
+            # 对比并收集需要操作的模板
+            for template_key, content in file_templates.items():
+                type_name, config_type, file_type = template_key
+
+                if template_key in db_templates:
+                    # 已存在，检查是否需要更新
+                    db_template = db_templates[template_key]
+                    if db_template.content != content:
+                        db_template.content = content
+                        config_templates_to_update.append(db_template)
+                else:
+                    # 不存在，需要创建
+                    config_templates_to_create.append(
+                        MonitorPluginConfigTemplate(
+                            plugin=plugin_obj,
+                            type=type_name,
+                            config_type=config_type,
+                            file_type=file_type,
+                            content=content
+                        )
+                    )
+
+            # 找出需要删除的模板
+            for template_key, db_template in db_templates.items():
+                if template_key not in file_templates:
+                    config_templates_to_delete.append(db_template)
+
+            # ========== 处理 UI 模板 ==========
+            ui_file = plugin_dir / 'UI.json'
+            db_ui_template = all_ui_templates.get(plugin_obj.id)
+
+            if ui_file.exists() and ui_file.is_file():
+                try:
+                    ui_data = json.loads(ui_file.read_text(encoding='utf-8'))
+
+                    if db_ui_template:
+                        # 已存在，检查是否需要更新
+                        if db_ui_template.content != ui_data:
+                            db_ui_template.content = ui_data
+                            ui_templates_to_update.append(db_ui_template)
+                    else:
+                        # 不存在，需要创建
+                        ui_templates_to_create.append(
+                            MonitorPluginUITemplate(
+                                plugin=plugin_obj,
+                                content=ui_data
+                            )
+                        )
+
+                except (json.JSONDecodeError, Exception) as e:
+                    logger.error(f'处理 UI 文件失败: {ui_file}, 错误: {e}')
+            else:
+                # UI.json 文件不存在
+                if db_ui_template:
+                    ui_templates_to_delete.append(db_ui_template)
+
+        except Exception as e:
+            logger.error(f'处理插件模板失败: {file_path}, 错误: {e}')
+            import traceback
+            logger.error(traceback.format_exc())
+
+    # ========== 第三阶段：批量执行数据库操作 ==========
+    with transaction.atomic():
+        # 批量创建配置模板
+        if config_templates_to_create:
+            MonitorPluginConfigTemplate.objects.bulk_create(
+                config_templates_to_create,
+                batch_size=DatabaseConstants.MONITOR_OBJECT_BATCH_SIZE
+            )
+            total_config_create = len(config_templates_to_create)
+            logger.info(f'批量创建配置模板: {total_config_create} 个')
+
+        # 批量更新配置模板
+        if config_templates_to_update:
+            MonitorPluginConfigTemplate.objects.bulk_update(
+                config_templates_to_update,
+                ['content'],
+                batch_size=DatabaseConstants.MONITOR_OBJECT_BATCH_SIZE
+            )
+            total_config_update = len(config_templates_to_update)
+            logger.info(f'批量更新配置模板: {total_config_update} 个')
+
+        # 批量删除配置模板
+        if config_templates_to_delete:
+            template_ids = [tpl.id for tpl in config_templates_to_delete]
+            deleted_count = MonitorPluginConfigTemplate.objects.filter(id__in=template_ids).delete()[0]
+            total_config_delete = deleted_count
+            logger.info(f'批量删除配置模板: {total_config_delete} 个')
+
+        # 批量创建 UI 模板
+        if ui_templates_to_create:
+            MonitorPluginUITemplate.objects.bulk_create(
+                ui_templates_to_create,
+                batch_size=DatabaseConstants.MONITOR_OBJECT_BATCH_SIZE
+            )
+            total_ui_create = len(ui_templates_to_create)
+            logger.info(f'批量创建 UI 模板: {total_ui_create} 个')
+
+        # 批量更新 UI 模板
+        if ui_templates_to_update:
+            MonitorPluginUITemplate.objects.bulk_update(
+                ui_templates_to_update,
+                ['content'],
+                batch_size=DatabaseConstants.MONITOR_OBJECT_BATCH_SIZE
+            )
+            total_ui_update = len(ui_templates_to_update)
+            logger.info(f'批量更新 UI 模板: {total_ui_update} 个')
+
+        # 批量删除 UI 模板
+        if ui_templates_to_delete:
+            template_ids = [tpl.id for tpl in ui_templates_to_delete]
+            deleted_count = MonitorPluginUITemplate.objects.filter(id__in=template_ids).delete()[0]
+            total_ui_delete = deleted_count
+            logger.info(f'批量删除 UI 模板: {total_ui_delete} 个')
+
     logger.info(f'插件导入完成: 成功={success_count}, 失败={error_count}')
+    logger.info(
+        f'配置模板统计: 创建={total_config_create}, 更新={total_config_update}, 删除={total_config_delete}'
+    )
+    logger.info(
+        f'UI 模板统计: 创建={total_ui_create}, 更新={total_ui_update}, 删除={total_ui_delete}'
+    )
+
+
+def migrate_config_templates():
+    """
+    已合并到 migrate_plugin 中，保留此函数以兼容旧代码。
+    """
+    logger.warning('migrate_config_templates 已合并到 migrate_plugin 中，此调用将被忽略')
+
+
+def migrate_ui_templates():
+    """
+    已合并到 migrate_plugin 中，保留此函数以兼容旧代码。
+    """
+    logger.warning('migrate_ui_templates 已合并到 migrate_plugin 中，此调用将被忽略')
 
 
 def migrate_policy():

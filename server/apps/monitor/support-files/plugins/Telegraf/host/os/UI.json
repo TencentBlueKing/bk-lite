@@ -1,0 +1,157 @@
+{
+  "object_name": "Host",
+  "instance_type": "os",
+  "collect_type": "host",
+  "config_type": [
+    "cpu",
+    "disk",
+    "diskio",
+    "mem",
+    "net",
+    "processes",
+    "system",
+    "gpu"
+  ],
+  "collector": "Telegraf",
+  "config_type_field": "metric_type",
+  "instance_id": "{{cloud_region}}_{{instance_type}}_{{ip}}",
+  "form_fields": [
+    {
+      "name": "metric_type",
+      "label": "指标类型",
+      "type": "checkbox_group",
+      "required": true,
+      "editable": false,
+      "default_value": [
+        "cpu",
+        "disk",
+        "diskio",
+        "mem",
+        "net",
+        "processes",
+        "system"
+      ],
+      "tooltip": "CPU: 监控CPU使用情况、包括利用率和各分的使用时间的占比。\nDisk: 监控磁盘使用情况、包括磁盘空间、读/写速度以及其他相关指标。\nDisk IO: 监控磁盘输入/输出操作的性能和吞吐情况。\nMemory: 监控内存使用情况、包括内存利用率和存存。\nNet: 监控网络性能、包括网络流量、带宽使用和连接数。\nProcesses: 监控运行进程的信息、包括进程数量、CPU使用率和内存消耗。\nSystem: 监控整体系统性能和运行状况、包括系统运行时间、平均负载以及一般系统动态等指标。\nNvidia-GPU: 监控Nvidia-GPU使用情况、包括利用率和各分比。显卡使用和显卡温度等指标。",
+      "options": [
+        {
+          "label": "CPU",
+          "value": "cpu",
+          "description": "监控CPU使用情况，包括利用率和各分的使用时间的占比"
+        },
+        {
+          "label": "Disk",
+          "value": "disk",
+          "description": "监控磁盘使用情况，包括磁盘空间、读/写速度以及其他相关指标"
+        },
+        {
+          "label": "Disk IO",
+          "value": "diskio",
+          "description": "监控磁盘输入/输出操作的性能和吞吐情况"
+        },
+        {
+          "label": "Memory",
+          "value": "mem",
+          "description": "监控内存使用情况，包括内存利用率和内存"
+        },
+        {
+          "label": "Net",
+          "value": "net",
+          "description": "监控网络性能，包括网络流量、带宽使用和连接数"
+        },
+        {
+          "label": "Processes",
+          "value": "processes",
+          "description": "监控运行进程的信息，包括进程数量、CPU使用率和内存消耗"
+        },
+        {
+          "label": "System",
+          "value": "system",
+          "description": "监控整体系统性能和运行状况，包括系统运行时间、平均负载以及一般系统动态等指标"
+        },
+        {
+          "label": "Nvidia-GPU",
+          "value": "gpu",
+          "description": "监控Nvidia-GPU使用情况，包括利用率和各分比、显卡使用和显卡温度等指标"
+        }
+      ],
+      "widget_props": {},
+      "data_transform": {
+        "origin_path": "child.content.config.tags.config_type",
+        "to_form": {
+          "array": true
+        }
+      }
+    },
+    {
+      "name": "ip",
+      "label": "IP",
+      "type": "input",
+      "required": true,
+      "visible_in": "edit",
+      "editable": false,
+      "description": "监控的目标主机的 IP 地址，用于标识被采集数据的来源",
+      "widget_props": {
+        "placeholder": "1_os_172.18.0.17"
+      },
+      "data_transform": {
+        "origin_path": "child.content.instance.instance_id"
+      }
+    },
+    {
+      "name": "interval",
+      "label": "采集间隔",
+      "type": "inputNumber",
+      "required": true,
+      "default_value": 10,
+      "description": "数据采集间隔时间(单位:秒)",
+      "widget_props": {
+        "min": 1,
+        "precision": 0,
+        "placeholder": "采集间隔",
+        "addonAfter": "s"
+      },
+      "data_transform": {
+        "origin_path": "child.content.config.interval",
+        "to_form": {
+          "regex": "^(\\d+)s$"
+        },
+        "to_api": {
+          "suffix": "s"
+        }
+      }
+    }
+  ],
+  "table_columns": [
+    {
+      "name": "node_ids",
+      "label": "节点",
+      "type": "select",
+      "required": true,
+      "default_value": "",
+      "widget_props": {
+        "placeholder": "请选择节点"
+      },
+      "enable_row_filter": true
+    },
+    {
+      "name": "instance_name",
+      "label": "实例名称",
+      "type": "input",
+      "required": true,
+      "default_value": "",
+      "widget_props": {
+        "placeholder": "实例名称"
+      }
+    },
+    {
+      "name": "group_ids",
+      "label": "组",
+      "type": "group_select",
+      "required": false,
+      "default_value": [],
+      "widget_props": {
+        "placeholder": "请选择组"
+      }
+    }
+  ]
+}
