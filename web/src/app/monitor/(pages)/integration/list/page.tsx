@@ -9,7 +9,6 @@ import { PlusOutlined } from '@ant-design/icons';
 import { useTranslation } from '@/utils/i18n';
 import Icon from '@/components/icon';
 import { getIconByObjectName } from '@/app/monitor/utils/common';
-import { useObjectConfigInfo } from '@/app/monitor/hooks/integration/common/getObjectConfig';
 import { useRouter } from 'next/navigation';
 import {
   ModalRef,
@@ -38,8 +37,6 @@ const Integration = () => {
   const token = authContext?.token || null;
   const tokenRef = useRef(token);
   const searchParams = useSearchParams();
-  const { getCollectType } = useObjectConfigInfo();
-  const objId = searchParams.get('objId') || '';
   const [pageLoading, setPageLoading] = useState<boolean>(false);
   const [searchText, setSearchText] = useState<string>('');
   const [exportDisabled, setExportDisabled] = useState<boolean>(true);
@@ -50,12 +47,16 @@ const Integration = () => {
   const [pluginList, setPluginList] = useState<ObjectItem[]>([]);
   const [treeLoading, setTreeLoading] = useState<boolean>(false);
   const [objectId, setObjectId] = useState<React.Key>('');
-  const [defaultSelectObj, setDefaultSelectObj] = useState<React.Key>('');
 
   useEffect(() => {
     if (isLoading) return;
     getObjects();
   }, [isLoading]);
+
+  useEffect(() => {
+    if (isLoading) return;
+    getPluginList({ monitor_object_id: objectId });
+  }, [objectId, isLoading]);
 
   const handleNodeDrag = async (data: TreeSortData[]) => {
     try {
@@ -69,10 +70,7 @@ const Integration = () => {
   };
 
   const handleObjectChange = async (id: string) => {
-    setObjectId(id);
-    getPluginList({
-      monitor_object_id: id,
-    });
+    setObjectId(id === 'all' ? '' : id);
   };
 
   const getObjectInfo = (): Record<string, string> => {
@@ -102,8 +100,6 @@ const Integration = () => {
       const _treeData = getTreeData(cloneDeep(data));
       setTreeData(_treeData);
       setObjects(data);
-      const defaultId = +objId || data[0]?.id;
-      setDefaultSelectObj(defaultId);
     } finally {
       setTreeLoading(false);
     }
@@ -138,7 +134,14 @@ const Integration = () => {
       }
       return acc;
     }, {} as Record<string, TreeItem>);
-    return Object.values(groupedData);
+    return [
+      {
+        title: t('common.all'),
+        key: 'all',
+        children: [],
+      },
+      ...Object.values(groupedData),
+    ];
   };
 
   const exportMetric = async () => {
@@ -180,7 +183,7 @@ const Integration = () => {
 
   const onTxtPressEnter = () => {
     const params = {
-      monitor_object_id: objectId,
+      monitor_object_id: objectId === 'all' ? '' : objectId,
       name: searchText,
     };
     getPluginList(params);
@@ -189,7 +192,7 @@ const Integration = () => {
   const onTxtClear = () => {
     setSearchText('');
     getPluginList({
-      monitor_object_id: objectId,
+      monitor_object_id: objectId === 'all' ? '' : objectId,
       name: '',
     });
   };
@@ -227,8 +230,9 @@ const Integration = () => {
     <div className={integrationStyle.integration}>
       <div className={integrationStyle.tree}>
         <TreeSelector
+          showAllMenu
           data={treeData}
-          defaultSelectedKey={defaultSelectObj as string}
+          defaultSelectedKey={searchParams.get('objId') || 'all'}
           loading={treeLoading}
           draggable
           onNodeSelect={handleObjectChange}
@@ -300,9 +304,7 @@ const Integration = () => {
                       >
                         {app.display_name || '--'}
                       </h2>
-                      <Tag className="mt-[4px]">
-                        {getCollectType(getObjectInfo().name, app.name)}
-                      </Tag>
+                      <Tag className="mt-[4px]">{app.collect_type || '--'}</Tag>
                     </div>
                   </div>
                   <p

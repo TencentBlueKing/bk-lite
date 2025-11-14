@@ -378,7 +378,8 @@
       "metricTitle": "此收集器支持以下监控指标",
       "step1": "步骤1",
       "portDes": "配置SNMP端口号，通常使用161端口与设备进行通信。",
-      "access": "接入"
+      "access": "接入",
+      "noConfigData": "暂无配置数据，请检查插件配置"
     },
     "instance": "实例",
     "label": "标签",
