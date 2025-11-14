@@ -19,5 +19,15 @@ export const useToolApi = () => {
     return await del(`/opspilot/model_provider_mgmt/skill_tools/${id}/`);
   };
 
-  return { fetchTools, createTool, updateTool, deleteTool };
+  const fetchAvailableTools = async (url: string) => {
+    return await post('/opspilot/model_provider_mgmt/skill_tools/get_mcp_tools/', { server_url: url });
+  };
+
+  return { 
+    fetchTools, 
+    createTool, 
+    updateTool, 
+    deleteTool, 
+    fetchAvailableTools 
+  };
 };

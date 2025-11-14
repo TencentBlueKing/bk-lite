@@ -3,7 +3,7 @@ import json
 
 import pandas as pd
 
-from apps.cmdb.constants import (
+from apps.cmdb.constants.constants import (
     CLASSIFICATION,
     CREATE_CLASSIFICATION_CHECK_ATTR_MAP,
     CREATE_MODEL_CHECK_ATTR,

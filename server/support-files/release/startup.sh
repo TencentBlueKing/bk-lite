@@ -14,6 +14,7 @@ init_system_mgmt() {
 init_cmdb() {
     echo "CMDB资源初始化..."
     uv run python manage.py model_init || true
+    uv run python manage.py init_oid || true
 }
 
 init_console_mgmt() {
