@@ -1,0 +1,56 @@
+{
+  "object_name": "Docker",
+  "instance_type": "docker",
+  "collect_type": "docker",
+  "config_type": ["docker"],
+  "collector": "Telegraf",
+  "instance_id": "${cloud_region}_docker_${endpoint}",
+  "form_fields": [
+    {
+      "name": "endpoint",
+      "label": "Endpoint",
+      "type": "input",
+      "required": true,
+      "disabled_in_edit": true,
+      "placeholder": "",
+      "description": "Endpoint说明",
+      "locale_key": "monitor.integrations.endpoint",
+      "description_locale_key": "monitor.integrations.endpointDes"
+    }
+  ],
+  "table_columns": [
+    {
+      "name": "node_ids",
+      "label": "节点",
+      "type": "node_selector",
+      "required": true,
+      "locale_key": "monitor.integrations.nodes"
+    },
+    {
+      "name": "endpoint",
+      "label": "Endpoint",
+      "type": "input",
+      "required": true,
+      "locale_key": "monitor.integrations.endpoint",
+      "change_handler": {
+        "type": "simple",
+        "target": "instance_name"
+      }
+    },
+    {
+      "name": "instance_name",
+      "label": "实例名称",
+      "type": "input",
+      "required": true,
+      "locale_key": "monitor.integrations.instanceName"
+    },
+    {
+      "name": "group_ids",
+      "label": "分组",
+      "type": "group_selector",
+      "required": false,
+      "locale_key": "monitor.integrations.groups"
+    }
+  ],
+  "extra_fields": {}
+}

@@ -1,8 +1,8 @@
 {
-  "object_name": "Switch",
-  "instance_type": "switch",
+  "object_name": "Loadbalance",
+  "instance_type": "loadbalance",
   "collect_type": "snmp",
-  "config_type": ["switch"],
+  "config_type": ["loadbalance"],
   "collector": "Telegraf",
   "instance_id": "{{cloud_region}}_{{instance_type}}_snmp_{{ip}}",
   "form_fields": [

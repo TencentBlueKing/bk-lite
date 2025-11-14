@@ -1,0 +1,74 @@
+{
+  "object_name": "Ping",
+  "instance_type": "ping",
+  "collect_type": "ping",
+  "config_type": ["ping"],
+  "collector": "Telegraf",
+  "instance_id": "{{instance_type}}_{{url}}",
+  "form_fields": [
+    {
+      "name": "monitor_url",
+      "label": "URL",
+      "type": "input",
+      "required": true,
+      "visible_in": "edit",
+      "editable": false,
+      "description": "监控的目标网址链接，以检测其可用性和性能。",
+      "widget_props": {
+        "placeholder": "example.com"
+      },
+      "data_transform": {
+        "origin_path": "child.content.config.urls[0]"
+      }
+    }
+  ],
+  "table_columns": [
+    {
+      "name": "node_ids",
+      "label": "节点",
+      "type": "select",
+      "required": true,
+      "default_value": "",
+      "widget_props": {
+        "placeholder": "请选择节点"
+      },
+      "enable_row_filter": true
+    },
+    {
+      "name": "url",
+      "label": "URL",
+      "type": "input",
+      "required": true,
+      "default_value": "",
+      "widget_props": {
+        "placeholder": "example.com"
+      },
+      "change_handler": {
+        "type": "simple",
+        "source_fields": ["url"],
+        "target_field": "instance_name"
+      }
+    },
+    {
+      "name": "instance_name",
+      "label": "实例名称",
+      "type": "input",
+      "required": true,
+      "default_value": "",
+      "widget_props": {
+        "placeholder": "实例名称",
+        "disabled": false
+      }
+    },
+    {
+      "name": "group_ids",
+      "label": "组",
+      "type": "group_select",
+      "required": false,
+      "default_value": [],
+      "widget_props": {
+        "placeholder": "请选择组"
+      }
+    }
+  ]
+}
