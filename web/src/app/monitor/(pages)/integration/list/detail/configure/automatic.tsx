@@ -140,6 +140,12 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
         node_ids_option: nodeList,
       })
     );
+
+    // 检查是否有 enable_row_filter 为 true 的列
+    const hasRowFilter = currentConfig.table_columns.some(
+      (col: any) => col.enable_row_filter === true
+    );
+
     const actionColumn = {
       title: t('common.action'),
       key: 'action',
@@ -155,7 +161,7 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
           >
             {t('common.add')}
           </Button>
-          {!['host', 'trap'].includes(collectType) && (
+          {!['host', 'trap'].includes(collectType) && !hasRowFilter && (
             <Button
               type="link"
               className="mr-[10px]"
