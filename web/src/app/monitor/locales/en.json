@@ -379,7 +379,10 @@
       "step1": "Step1",
       "portDes": "Configured SNMP port number, typically using port 161 for communication with the device.",
       "access": "Access",
-      "noConfigData": "No configuration data available, please check plugin settings"
+      "noConfigData": "No configuration data available, please check plugin settings",
+      "batchOperation": "Batch Operation",
+      "batchDeleteConfirm": "Are you sure you want to delete the selected items?",
+      "batchEditEmptyWarning": "The submitted form cannot be empty"
     },
     "instance": "Instance",
     "label": "Label",
@@ -481,6 +484,8 @@
     "delConfirm": "Do you want to delete the selected item(s)?",
     "import": "Import",
     "batchDelete": "Batch Delete",
+    "deleteSuccess": "Deleted successfully",
+    "editSuccess": "Edited successfully",
     "inputRequired": "Please Input, it is required",
     "confirm": "Confirm",
     "unit": "Unit",
