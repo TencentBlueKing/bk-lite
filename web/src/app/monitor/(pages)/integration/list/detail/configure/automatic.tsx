@@ -1,5 +1,7 @@
 import React, { useState, useRef, useEffect, useMemo } from 'react';
-import { Form, Button, message, Spin, Empty } from 'antd';
+import { Form, Button, message, Spin, Empty, Dropdown, Modal } from 'antd';
+import type { MenuProps } from 'antd';
+import { DownOutlined } from '@ant-design/icons';
 import { useTranslation } from '@/utils/i18n';
 import CustomTable from '@/components/custom-table';
 import { v4 as uuidv4 } from 'uuid';
@@ -16,6 +18,8 @@ import Permission from '@/components/permission';
 import { cloneDeep } from 'lodash';
 import { usePluginFromJson } from '@/app/monitor/hooks/integration/usePluginFromJson';
 import { useConfigRenderer } from '@/app/monitor/hooks/integration/useConfigRenderer';
+import BatchEditModal from './batchEditModal';
+const { confirm } = Modal;
 
 const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
   const [form] = Form.useForm();
@@ -42,6 +46,8 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
   const [isTableInitialized, setIsTableInitialized] = useState<boolean>(false);
   const [currentConfig, setCurrentConfig] = useState<any>(null);
   const [configLoading, setConfigLoading] = useState<boolean>(false);
+  const [selectedRowKeys, setSelectedRowKeys] = useState<React.Key[]>([]);
+  const batchEditModalRef = useRef<any>(null);
 
   const onTableDataChange = (data: IntegrationMonitoredObject[]) => {
     setDataSource(data);
@@ -134,6 +140,12 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
         node_ids_option: nodeList,
       })
     );
+
+    // 检查是否有 enable_row_filter 为 true 的列
+    const hasRowFilter = currentConfig.table_columns.some(
+      (col: any) => col.enable_row_filter === true
+    );
+
     const actionColumn = {
       title: t('common.action'),
       key: 'action',
@@ -149,7 +161,7 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
           >
             {t('common.add')}
           </Button>
-          {!['host', 'trap'].includes(collectType) && (
+          {!['host', 'trap'].includes(collectType) && !hasRowFilter && (
             <Button
               type="link"
               className="mr-[10px]"
@@ -228,6 +240,80 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
   const handleDelete = (key: string) => {
     const updatedData = dataSource.filter((item) => item.key !== key);
     setDataSource(updatedData);
+  };
+
+  const handleBatchDelete = () => {
+    confirm({
+      title: t('common.prompt'),
+      content: t('monitor.integrations.batchDeleteConfirm'),
+      centered: true,
+      onOk() {
+        const updatedData = dataSource.filter(
+          (item) => !selectedRowKeys.includes(item.key as string)
+        );
+        // 如果删除后为空，保留一条空行
+        if (updatedData.length === 0) {
+          const newData = {
+            ...initTableItems,
+            key: uuidv4(),
+          };
+          setDataSource([newData]);
+        } else {
+          setDataSource(updatedData);
+        }
+        setSelectedRowKeys([]);
+      },
+    });
+  };
+
+  const handleBatchEdit = () => {
+    const selectedRows = dataSource.filter((item) =>
+      selectedRowKeys.includes(item.key as string)
+    );
+    batchEditModalRef.current?.showModal({
+      columns: currentConfig?.table_columns || [],
+      selectedRows,
+      nodeList,
+    });
+  };
+
+  const handleBatchEditSuccess = (editedFields: any) => {
+    const updatedData = dataSource.map((item) => {
+      if (selectedRowKeys.includes(item.key as string)) {
+        return {
+          ...item,
+          ...editedFields,
+        };
+      }
+      return item;
+    });
+    setDataSource(updatedData);
+  };
+
+  const batchMenuItems: MenuProps['items'] = [
+    {
+      key: 'batchEdit',
+      label: t('common.batchEdit'),
+    },
+    {
+      key: 'batchDelete',
+      label: t('common.batchDelete'),
+    },
+  ];
+
+  const handleBatchMenuClick: MenuProps['onClick'] = (e) => {
+    if (e.key === 'batchEdit') {
+      handleBatchEdit();
+    } else if (e.key === 'batchDelete') {
+      handleBatchDelete();
+    }
+  };
+
+  const rowSelection = {
+    selectedRowKeys,
+    onChange: (newSelectedRowKeys: React.Key[]) => {
+      setSelectedRowKeys(newSelectedRowKeys);
+    },
   };
 
   const initData = () => {
@@ -309,8 +395,30 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
             <b className="text-[14px] flex mb-[10px] ml-[-10px]">
               {t('monitor.integrations.basicInformation')}
             </b>
+            <div className="flex items-center justify-between mb-[10px]">
+              <span className="text-[14px]">
+                {t('monitor.integrations.MonitoredObject')}
+                <span
+                  className="text-[#ff4d4f] align-middle text-[14px] ml-[4px]"
+                  style={{ fontFamily: 'SimSun, sans-serif' }}
+                >
+                  *
+                </span>
+              </span>
+              <Dropdown
+                menu={{
+                  items: batchMenuItems,
+                  onClick: handleBatchMenuClick,
+                }}
+                disabled={selectedRowKeys.length === 0}
+              >
+                <Button>
+                  {t('monitor.integrations.batchOperation')}
+                  <DownOutlined className="ml-[4px]" />
+                </Button>
+              </Dropdown>
+            </div>
             <Form.Item
-              label={t('monitor.integrations.MonitoredObject')}
               name="nodes"
               rules={[
                 {
@@ -337,6 +445,7 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
                 columns={columns}
                 rowKey="key"
                 pagination={false}
+                rowSelection={rowSelection}
               />
             </Form.Item>
             <Form.Item>
@@ -353,6 +462,10 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
           </Form>
         )}
       </div>
+      <BatchEditModal
+        ref={batchEditModalRef}
+        onSuccess={handleBatchEditSuccess}
+      />
     </Spin>
   );
 };
