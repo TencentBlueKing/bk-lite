@@ -298,6 +298,7 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
     {
       key: 'batchDelete',
       label: t('common.batchDelete'),
+      disabled: selectedRowKeys.length === 1 && dataSource.length === 1,
     },
   ];
 
@@ -410,7 +411,7 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
                   items: batchMenuItems,
                   onClick: handleBatchMenuClick,
                 }}
-                disabled={selectedRowKeys.length === 0}
+                disabled={!selectedRowKeys.length}
               >
                 <Button>
                   {t('monitor.integrations.batchOperation')}
