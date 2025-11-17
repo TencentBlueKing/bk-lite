@@ -58,6 +58,7 @@ export const VoiceInput: React.FC<VoiceInputProps> = ({
         setRecognizedText,
         startSpeechRecognition,
         stopSpeechRecognition,
+        checkMicrophonePermissionSilent,
     } = useSpeechRecognition(isLongPressRef, isRecordingRef);
 
     // 让输入框失焦的函数
@@ -201,7 +202,7 @@ export const VoiceInput: React.FC<VoiceInputProps> = ({
         }
     };
 
-    const handleVoiceTouchStart = (e: React.TouchEvent | React.MouseEvent) => {
+    const handleVoiceTouchStart = async (e: React.TouchEvent | React.MouseEvent) => {
         if (!('touches' in e)) {
             e.preventDefault();
         }
@@ -216,6 +217,28 @@ export const VoiceInput: React.FC<VoiceInputProps> = ({
         setRecordingCancelled(false);
         setRecognizedText('');
 
+        // 先静默检查权限状态
+        const hasPermission = await checkMicrophonePermissionSilent();
+
+        // 如果权限未授予，触发权限请求但不启动 UI 和语音识别
+        if (!hasPermission) {
+            console.log('权限未授予，触发权限请求...');
+            try {
+                // 触发权限请求
+                const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                stream.getTracks().forEach(track => track.stop());
+            } catch (error) {
+                console.error('权限请求失败:', error);
+                Toast.show({
+                    content: '无法获取麦克风权限',
+                    icon: 'fail',
+                    duration: 2000
+                });
+            }
+            return; // 不继续执行后续逻辑
+        }
+
+        // 权限已授予，正常启动录音
         longPressTimerRef.current = setTimeout(() => {
             isLongPressRef.current = true;
             setIsRecording(true);

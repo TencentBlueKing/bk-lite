@@ -47,7 +47,7 @@ export const mockWorkbenchData = {
     count: 4,
     items: [
       {
-        id: 1,
+        id: 5,
         name: 'k8s平台监控工程师',
         introduction: '专注 K8s 集群智能监控，自动采集指标、分析性能瓶颈，实时预警故障并辅助排查，保障平台稳定高效运行。',
         online: false,
@@ -55,7 +55,7 @@ export const mockWorkbenchData = {
         avatar: '/avatars/01.png',
       },
       {
-        id: 2,
+        id: 6,
         name: 'K8s平台架构师',
         introduction: '智能体 K8s 平台架构师，负责集群架构设计与优化，推动智能化部署、资源调度及高可用方案，保障平台弹性与高效。',
         online: false,
@@ -63,7 +63,7 @@ export const mockWorkbenchData = {
         avatar: '/avatars/02.png',
       },
       {
-        id: 3,
+        id: 7,
         name: 'K8s服务支撑工程师',
         introduction: '智能体 K8s 服务支撑工程师，提供集群部署运维、故障排查与技术支持，协同团队优化流程，保障云原生服务稳定高效响应需求。',
         online: false,
@@ -71,11 +71,11 @@ export const mockWorkbenchData = {
         avatar: '/avatars/03.png',
       },
       {
-        id: 4,
+        id: 8,
         name: 'ITSM服务台',
         introduction: '智能体 ITSM服务台，负责事件全生命周期智能管控，快速响应、分级处置、跟踪闭环，优化流程并保障 IT 服务稳定合规。',
         online: true,
-        bot_type: 3,
+        bot_type: 2,
         avatar: '/avatars/04.png',
       },
     ],

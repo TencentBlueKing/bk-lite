@@ -1,5 +1,6 @@
 import { useRef, useState } from 'react';
 import { Toast } from 'antd-mobile';
+import { invoke } from '@tauri-apps/api/core';
 
 interface UseSpeechRecognitionReturn {
     recognizedText: string;
@@ -7,6 +8,7 @@ interface UseSpeechRecognitionReturn {
     initSpeechRecognition: () => void;
     startSpeechRecognition: () => Promise<void>;
     stopSpeechRecognition: () => void;
+    checkMicrophonePermissionSilent: () => Promise<boolean>;
 }
 
 export const useSpeechRecognition = (
@@ -88,8 +90,20 @@ export const useSpeechRecognition = (
         }
     };
 
-    // 检查麦克风权限
-    const checkMicrophonePermission = async (): Promise<boolean> => {
+    // 检查麦克风权限 (Tauri 环境)
+    const checkMicrophonePermissionTauri = async (): Promise<boolean> => {
+        try {
+            const result = await invoke('check_microphone_permission');
+            console.log('Tauri 麦克风权限检查结果:', result);
+            return true; // Tauri 环境下由原生层处理
+        } catch (error) {
+            console.error('Tauri 权限检查失败:', error);
+            return false;
+        }
+    };
+
+    // 检查麦克风权限 (Web 环境)
+    const checkMicrophonePermissionWeb = async (): Promise<boolean> => {
         try {
             if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
                 console.log('浏览器不支持 MediaDevices API');
@@ -101,6 +115,73 @@ export const useSpeechRecognition = (
             return true;
         } catch (error) {
             console.error('麦克风权限检查失败:', error);
+            return false;
+        }
+    };
+
+    // 检查麦克风权限
+    const checkMicrophonePermission = async (): Promise<boolean> => {
+        // 检测是否在 Tauri 环境中
+        const isTauri = '__TAURI__' in window;
+
+        if (isTauri) {
+            return await checkMicrophonePermissionTauri();
+        } else {
+            return await checkMicrophonePermissionWeb();
+        }
+    };
+
+    // 静默检查麦克风权限状态(不会触发权限弹窗)
+    const checkMicrophonePermissionSilent = async (): Promise<boolean> => {
+        try {
+            // 检测是否在 Tauri 环境中
+            const isTauri = '__TAURI__' in window;
+
+            if (isTauri) {
+                // Tauri 环境下直接返回 true，由原生层处理
+                return true;
+            }
+
+            // Web 环境：尝试多种方式检测权限
+
+            // 方法1: 使用 Permissions API 查询权限状态(不会触发弹窗)
+            if (navigator.permissions && navigator.permissions.query) {
+                try {
+                    const result = await navigator.permissions.query({ name: 'microphone' as PermissionName });
+                    console.log('Permissions API 查询结果:', result.state);
+                    if (result.state === 'granted') {
+                        return true;
+                    }
+                    if (result.state === 'denied') {
+                        return false;
+                    }
+                    // state === 'prompt' 时继续检测
+                } catch (err) {
+                    console.log(err, 'Permissions API 不支持 microphone 查询');
+                }
+            }
+
+            // 方法2: 尝试枚举设备（已授权时不会触发弹窗）
+            if (navigator.mediaDevices && navigator.mediaDevices.enumerateDevices) {
+                try {
+                    const devices = await navigator.mediaDevices.enumerateDevices();
+                    const audioInputs = devices.filter(device => device.kind === 'audioinput');
+                    // 如果能获取到设备标签，说明已有权限
+                    const hasLabels = audioInputs.some(device => device.label !== '');
+                    if (hasLabels) {
+                        console.log('通过设备枚举检测到已授权');
+                        return true;
+                    }
+                } catch (err) {
+                    console.log('设备枚举失败:', err);
+                }
+            }
+
+            // 如果所有检测都不确定，返回 false，让用户主动触发权限
+            console.log('无法确定权限状态，需要用户主动触发');
+            return false;
+        } catch (error) {
+            console.error('静默权限检查失败:', error);
             return false;
         }
     };
@@ -129,6 +210,7 @@ export const useSpeechRecognition = (
         }
 
         const hasPermission = await checkMicrophonePermission();
+        console.log('麦克风权限:', hasPermission);
         if (!hasPermission) {
             Toast.show({
                 content: '无法访问麦克风，请检查权限设置',
@@ -177,5 +259,6 @@ export const useSpeechRecognition = (
         initSpeechRecognition,
         startSpeechRecognition,
         stopSpeechRecognition,
+        checkMicrophonePermissionSilent,
     };
 };
