@@ -7,6 +7,7 @@ from apps.core.decorators.api_permission import HasPermission
 from apps.core.utils.viewset_utils import MaintainerViewSet
 from apps.system_mgmt.models import CustomMenuGroup
 from apps.system_mgmt.serializers.custom_menu_group_serializer import CustomMenuGroupListSerializer, CustomMenuGroupSerializer
+from apps.system_mgmt.utils.operation_log_utils import log_operation
 
 
 class CustomMenuGroupFilter(FilterSet):
@@ -48,7 +49,14 @@ class CustomMenuGroupViewSet(MaintainerViewSet):
     @HasPermission("custom_menu_group_list-Add")
     def create(self, request, *args, **kwargs):
         """创建自定义菜单组"""
-        return super().create(request, *args, **kwargs)
+        response = super().create(request, *args, **kwargs)
+
+        # 记录操作日志
+        if response.status_code == 201:
+            menu_name = response.data.get("display_name", "")
+            log_operation(request, "create", "menu", f"新增菜单: {menu_name}")
+
+        return response
 
     @HasPermission("custom_menu_group_list-Edit")
     def update(self, request, *args, **kwargs):
@@ -59,7 +67,14 @@ class CustomMenuGroupViewSet(MaintainerViewSet):
         if instance.is_build_in:
             return JsonResponse({"result": False, "message": self.loader.get("error.cannot_modify_builtin_menu_group")}, status=403)
 
-        return super().update(request, *args, **kwargs)
+        response = super().update(request, *args, **kwargs)
+
+        # 记录操作日志
+        if response.status_code == 200:
+            menu_name = response.data.get("display_name", "")
+            log_operation(request, "update", "menu", f"编辑菜单: {menu_name}")
+
+        return response
 
     @HasPermission("custom_menu_group_list-Edit")
     def partial_update(self, request, *args, **kwargs):
@@ -81,7 +96,14 @@ class CustomMenuGroupViewSet(MaintainerViewSet):
         if instance.is_build_in:
             return JsonResponse({"result": False, "message": self.loader.get("error.cannot_delete_builtin_menu_group")}, status=403)
 
-        return super().destroy(request, *args, **kwargs)
+        menu_name = instance.display_name
+        response = super().destroy(request, *args, **kwargs)
+
+        # 记录操作日志
+        if response.status_code == 204:
+            log_operation(request, "delete", "menu", f"删除菜单: {menu_name}")
+
+        return response
 
     @HasPermission("custom_menu_group_list-View")
     def list(self, request, *args, **kwargs):
@@ -115,6 +137,9 @@ class CustomMenuGroupViewSet(MaintainerViewSet):
             instance.is_enabled = True
             instance.save()
             message = self.loader.get("success.menu_group_enabled")
+
+            # 记录操作日志
+            log_operation(request, "execute", "menu", f"启用菜单: {instance.display_name}")
         else:
             # 禁用当前菜单组
             instance.is_enabled = False
@@ -165,6 +190,9 @@ class CustomMenuGroupViewSet(MaintainerViewSet):
             created_by=request.user.username if hasattr(request.user, "username") else "",
             updated_by=request.user.username if hasattr(request.user, "username") else "",
         )
+
+        # 记录操作日志
+        log_operation(request, "create", "menu", f"复制菜单: {instance.display_name} -> {new_display_name}")
 
         return JsonResponse({"result": True, "data": CustomMenuGroupSerializer(new_instance).data, "message": "菜单组复制成功"})
 

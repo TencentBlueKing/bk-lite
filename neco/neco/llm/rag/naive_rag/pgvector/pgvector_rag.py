@@ -34,7 +34,7 @@ class PgvectorRag():
     _MMR_SCORE_MAX = 1.0  # MMR最大分数
     _MMR_SCORE_STEP = 0.1  # MMR分数衰减步长
 
-    def __init__(self,db_url: str):
+    def __init__(self, db_url: str):
         self.db_url = db_url
         self._db_manager = DatabaseManager(db_url)
 
@@ -528,7 +528,7 @@ class PgvectorRag():
         vector_store = PGVector(
             embeddings=embedding,
             collection_name=req.index_name,
-            connection=self.db_uri,
+            connection=self.db_url,
             use_jsonb=True,
         )
 

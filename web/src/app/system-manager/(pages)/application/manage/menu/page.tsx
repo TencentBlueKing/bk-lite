@@ -261,6 +261,7 @@ const CustomMenuPage = () => {
               router.push(`/system-manager/application/manage/menu/config?clientId=${clientId}&menuId=${record.id}`);
             },
             permission: 'Edit',
+            disabled: record.is_build_in,
           },
           {
             key: 'delete',
@@ -268,6 +269,7 @@ const CustomMenuPage = () => {
             onClick: () => handleDeleteMenu(record),
             permission: 'Delete',
             danger: true,
+            disabled: record.is_build_in,
           },
         ];
 
@@ -286,6 +288,7 @@ const CustomMenuPage = () => {
                   type="link"
                   onClick={op.onClick}
                   loading={actionLoading[`${op.key}-${record.id}`]}
+                  disabled={op.disabled}
                 >
                   {op.label}
                 </Button>
@@ -300,6 +303,7 @@ const CustomMenuPage = () => {
                       key: op.key,
                       label: op.label,
                       danger: op.danger,
+                      disabled: op.disabled,
                     })),
                     onClick: ({ key }) => {
                       const op = dropdownOps.find(o => o.key === key);

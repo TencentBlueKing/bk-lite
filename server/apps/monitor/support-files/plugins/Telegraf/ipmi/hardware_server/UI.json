@@ -1,0 +1,83 @@
+{
+  "object_name": "Hardware Server",
+  "instance_type": "hardware_server",
+  "collect_type": "ipmi",
+  "config_type": ["hardware_server"],
+  "collector": "Telegraf",
+  "instance_id": "${cloud_region}_hardware_server_ipmi_${ip}",
+  "form_fields": [
+    {
+      "name": "monitor_ip",
+      "label": "IP",
+      "type": "input",
+      "required": true,
+      "disabled_in_edit": true,
+      "placeholder": "",
+      "description": "IP地址说明",
+      "locale_key": "monitor.integrations.ipDes"
+    },
+    {
+      "name": "username",
+      "label": "用户名",
+      "type": "input",
+      "required": false,
+      "disabled_in_edit": true,
+      "locale_key": "monitor.integrations.username"
+    },
+    {
+      "name": "password",
+      "label": "密码",
+      "type": "password",
+      "required": false,
+      "disabled_in_edit": true,
+      "locale_key": "monitor.integrations.password"
+    },
+    {
+      "name": "protocol",
+      "label": "协议",
+      "type": "input",
+      "required": false,
+      "disabled_in_edit": true,
+      "default": "lanplus",
+      "locale_key": "monitor.integrations.protocol"
+    }
+  ],
+  "table_columns": [
+    {
+      "name": "node_ids",
+      "label": "节点",
+      "type": "node_selector",
+      "required": true,
+      "locale_key": "monitor.integrations.nodes"
+    },
+    {
+      "name": "ip",
+      "label": "IP",
+      "type": "input",
+      "required": true,
+      "change_handler": {
+        "type": "simple",
+        "target": "instance_name"
+      }
+    },
+    {
+      "name": "instance_name",
+      "label": "实例名称",
+      "type": "input",
+      "required": true,
+      "locale_key": "monitor.integrations.instanceName"
+    },
+    {
+      "name": "group_ids",
+      "label": "分组",
+      "type": "group_selector",
+      "required": false,
+      "locale_key": "monitor.integrations.groups"
+    }
+  ],
+  "extra_fields": {
+    "default_form": {
+      "protocol": "lanplus"
+    }
+  }
+}

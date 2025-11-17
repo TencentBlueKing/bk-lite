@@ -461,7 +461,13 @@
     "addTool": "Add Tool",
     "deleteConfirm": "Are you sure you want to delete this tool?",
     "text": "Text",
-    "password": "Password"
+    "password": "Password",
+    "fetchTools": "Fetch Tools",
+    "availableTools": "Available Tools",
+    "totalTools": "Total {count} tools",
+    "noToolsAvailable": "No tools available",
+    "fetchToolsFailed": "Failed to fetch tools",
+    "parameters": "Parameters"
   },
   "provider": {
     "menu": "Provider",
@@ -566,7 +572,9 @@
       "nodeName": "Node Name",
       "inputData": "Input Data",
       "outputData": "Output Data",
-      "nodeIndex": "Node Index"
+      "nodeIndex": "Node Index",
+      "triggerLogs": "Trigger Logs",
+      "conversationLogs": "Conversation Logs"
     },
     "statistics": {
       "title": "Statistics",

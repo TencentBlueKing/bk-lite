@@ -1,0 +1,102 @@
+{
+  "object_name": "ActiveMQ",
+  "instance_type": "activemq",
+  "collect_type": "middleware",
+  "config_type": ["activemq"],
+  "collector": "Telegraf",
+  "instance_id": "{{cloud_region}}_{{url}}",
+  "form_fields": [
+    {
+      "name": "monitor_url",
+      "label": "URL",
+      "type": "input",
+      "required": true,
+      "visible_in": "edit",
+      "editable": false,
+      "description": "监控的目标网址链接，以检测其可用性和性能。",
+      "widget_props": {
+        "placeholder": "http://example.com:8161"
+      },
+      "data_transform": {
+        "origin_path": "child.content.config.url"
+      }
+    },
+    {
+      "name": "username",
+      "label": "用户名",
+      "type": "input",
+      "required": true,
+      "editable": false,
+      "description": "用于访问接口的用户名。",
+      "widget_props": {
+        "placeholder": "用户名"
+      },
+      "data_transform": {
+        "origin_path": "child.content.config.username"
+      }
+    },
+    {
+      "name": "ENV_PASSWORD",
+      "label": "密码",
+      "type": "password",
+      "required": true,
+      "editable": false,
+      "description": "对应的登录密码。",
+      "widget_props": {
+        "placeholder": "密码"
+      },
+      "data_transform": {
+        "origin_path": "child.env_config.PASSWORD__{{config_id}}"
+      }
+    }
+  ],
+  "table_columns": [
+    {
+      "name": "node_ids",
+      "label": "节点",
+      "type": "select",
+      "required": true,
+      "default_value": "",
+      "widget_props": {
+        "placeholder": "请选择节点"
+      },
+      "enable_row_filter": true
+    },
+    {
+      "name": "url",
+      "label": "URL",
+      "type": "input",
+      "required": true,
+      "default_value": "",
+      "widget_props": {
+        "placeholder": "http://example.com:8161"
+      },
+      "change_handler": {
+        "type": "simple",
+        "source_fields": ["url"],
+        "target_field": "instance_name"
+      }
+    },
+    {
+      "name": "instance_name",
+      "label": "实例名称",
+      "type": "input",
+      "required": true,
+      "default_value": "",
+      "widget_props": {
+        "placeholder": "实例名称",
+        "disabled": false
+      }
+    },
+    {
+      "name": "group_ids",
+      "label": "组",
+      "type": "group_select",
+      "required": false,
+      "default_value": [],
+      "widget_props": {
+        "placeholder": "请选择组"
+      }
+    }
+  ]
+}

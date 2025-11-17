@@ -6,6 +6,7 @@ from apps.core.utils.viewset_utils import LanguageViewSet
 from apps.system_mgmt.models import Group, User
 from apps.system_mgmt.serializers.group_serializer import GroupSerializer
 from apps.system_mgmt.utils.group_utils import GroupUtils
+from apps.system_mgmt.utils.operation_log_utils import log_operation
 from apps.system_mgmt.utils.viewset_utils import ViewSetUtils
 
 
@@ -59,6 +60,9 @@ class GroupViewSet(LanguageViewSet, ViewSetUtils):
 
         # 创建组
         group = Group.objects.create(parent_id=parent_id, name=group_name, is_virtual=is_virtual)
+
+        # 记录操作日志
+        log_operation(request, "create", "group", f"新增组织: {group_name}")
 
         # 返回结果
         return JsonResponse(
@@ -161,6 +165,9 @@ class GroupViewSet(LanguageViewSet, ViewSetUtils):
         if isinstance(role_ids, list):
             obj.roles.set(role_ids)
 
+        # 记录操作日志
+        log_operation(request, "update", "group", f"编辑组织: {request.data.get('group_name')}")
+
         return JsonResponse({"result": True})
 
     @action(detail=False, methods=["POST"])
@@ -212,4 +219,7 @@ class GroupViewSet(LanguageViewSet, ViewSetUtils):
 
         # 删除所有收集到的组
         Group.objects.filter(id__in=groups_to_delete).delete()
+
+        # 记录操作日志
+        log_operation(request, "delete", "group", f"删除组织: {obj.name} (包含{len(groups_to_delete)}个子组)")
         return JsonResponse({"result": True})

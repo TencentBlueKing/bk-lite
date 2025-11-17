@@ -11,6 +11,7 @@
         "target": "bot_list",
         "order": 4
       },
+      "hasDetail": true,
       "children": [
         {
           "title": "设置",
@@ -55,6 +56,7 @@
         "target": "skill_list",
         "order": 3
       },
+      "hasDetail": true,
       "children": [
         {
           "title": "设置",
@@ -94,6 +96,7 @@
         "target": "knowledge_list",
         "order": 2
       },
+      "hasDetail": true,
       "children": [
         {
           "title": "文档",
@@ -209,6 +212,7 @@
         "target": "bot_list",
         "order": 4
       },
+      "hasDetail": true,
       "children": [
         {
           "title": "Settings",
@@ -247,6 +251,7 @@
         "target": "skill_list",
         "order": 3
       },
+      "hasDetail": true,
       "children": [
         {
           "title": "Setting",
@@ -286,6 +291,7 @@
         "target": "knowledge_list",
         "order": 2
       },
+      "hasDetail": true,
       "children": [
         {
           "title": "Documents",

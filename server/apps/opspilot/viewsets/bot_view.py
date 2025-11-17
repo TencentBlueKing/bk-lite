@@ -1,3 +1,7 @@
+from django.contrib.postgres.aggregates import ArrayAgg
+from django.core.paginator import Paginator
+from django.db.models import Count, Max, Min, OuterRef, Subquery
+from django.db.models.functions import TruncDay
 from django.http import JsonResponse
 from django_filters import filters
 from django_filters.rest_framework import FilterSet
@@ -6,9 +10,11 @@ from rest_framework.decorators import action
 from apps.core.decorators.api_permission import HasPermission
 from apps.core.logger import opspilot_logger as logger
 from apps.core.utils.viewset_utils import AuthViewSet
-from apps.opspilot.enum import BotTypeChoice, ChannelChoices
+from apps.opspilot.enum import BotTypeChoice, ChannelChoices, WorkFlowExecuteType
 from apps.opspilot.models import Bot, BotChannel, BotWorkFlow, Channel, LLMSkill
+from apps.opspilot.models.bot_mgmt import WorkFlowConversationHistory
 from apps.opspilot.serializers import BotSerializer
+from apps.opspilot.utils.bot_utils import set_time_range
 from apps.opspilot.utils.pilot_client import PilotClient
 from apps.opspilot.utils.quota_utils import get_quota_client
 
@@ -38,7 +44,7 @@ class BotViewSet(AuthViewSet):
             client = get_quota_client(request)
             bot_count, used_bot_count, __ = client.get_bot_quota()
             if bot_count != -1 and bot_count <= used_bot_count:
-                message = self.loader.get("bot_quota_exceeded") if self.loader else "Bot count exceeds quota limit."
+                message = self.loader.get("error.bot_quota_exceeded") if self.loader else "Bot count exceeds quota limit."
                 return JsonResponse({"result": False, "message": message})
         current_team = data.get("team", []) or [int(request.COOKIES.get("current_team"))]
         bot_obj = Bot.objects.create(
@@ -79,7 +85,9 @@ class BotViewSet(AuthViewSet):
                 return JsonResponse(
                     {
                         "result": False,
-                        "message": self.loader.get("no_bot_update_permission") if self.loader else "You do not have permission to update this bot.",
+                        "message": self.loader.get("error.no_bot_update_permission")
+                        if self.loader
+                        else "You do not have permission to update this bot.",
                     }
                 )
         data = request.data
@@ -121,7 +129,7 @@ class BotViewSet(AuthViewSet):
                     return JsonResponse(
                         {
                             "result": False,
-                            "message": self.loader.get("pilot_start_failed") if self.loader else "Pilot start failed.",
+                            "message": self.loader.get("error.pilot_start_failed") if self.loader else "Pilot start failed.",
                         }
                     )
             else:
@@ -161,7 +169,7 @@ class BotViewSet(AuthViewSet):
             include_children = request.COOKIES.get("include_children", "0") == "1"
             has_permission = self.get_has_permission(request.user, channel.bot, current_team, include_children=include_children)
             if not has_permission:
-                message = self.loader.get("no_bot_update_permission") if self.loader else "You do not have permission to update this bot."
+                message = self.loader.get("error.no_bot_update_permission") if self.loader else "You do not have permission to update this bot."
                 return JsonResponse(
                     {
                         "result": False,
@@ -195,7 +203,7 @@ class BotViewSet(AuthViewSet):
             include_children = request.COOKIES.get("include_children", "0") == "1"
             has_permission = self.get_has_permission(request.user, bots, current_team, is_list=True, include_children=include_children)
             if not has_permission:
-                message = self.loader.get("no_bot_start_permission") if self.loader else "You do not have permission to start this bot."
+                message = self.loader.get("error.no_bot_start_permission") if self.loader else "You do not have permission to start this bot."
                 return JsonResponse(
                     {
                         "result": False,
@@ -227,7 +235,7 @@ class BotViewSet(AuthViewSet):
             include_children = request.COOKIES.get("include_children", "0") == "1"
             has_permission = self.get_has_permission(request.user, bots, current_team, is_list=True, include_children=include_children)
             if not has_permission:
-                message = self.loader.get("no_bot_stop_permission") if self.loader else "You do not have permission to stop this bot"
+                message = self.loader.get("error.no_bot_stop_permission") if self.loader else "You do not have permission to stop this bot"
                 return JsonResponse(
                     {
                         "result": False,
@@ -245,3 +253,141 @@ class BotViewSet(AuthViewSet):
             bot.online = False
             bot.save()
         return JsonResponse({"result": True})
+
+    @action(methods=["GET"], detail=False)
+    @HasPermission("bot_conversation_log-View")
+    def search_workflow_log(self, request):
+        """
+        ChatFlow 对话历史列表
+        根据 entry_type、bot_id、user_id 聚合一天内的历史记录
+        """
+        (
+            bot_id,
+            entry_type,
+            end_time,
+            page,
+            page_size,
+            search,
+            start_time,
+        ) = self._set_workflow_log_params(request)
+
+        # 子查询：获取每天最早的对话内容作为标题
+        earliest_conversation_subquery = (
+            WorkFlowConversationHistory.objects.filter(
+                bot_id=OuterRef("bot_id"),
+                user_id=OuterRef("user_id"),
+                conversation_time__date=OuterRef("day"),
+            )
+            .order_by("conversation_time")
+            .values("conversation_content")[:1]
+        )
+
+        # 聚合查询：按天、bot_id、user_id、entry_type 分组
+        aggregated_data = (
+            WorkFlowConversationHistory.objects.filter(
+                conversation_time__range=(start_time, end_time),
+                bot_id=bot_id,
+                entry_type__in=entry_type,
+                user_id__icontains=search,
+            )
+            .annotate(day=TruncDay("conversation_time"))
+            .values("day", "bot_id", "user_id", "entry_type")
+            .annotate(
+                count=Count("id"),
+                ids=ArrayAgg("id"),
+                earliest_created_at=Min("conversation_time"),
+                last_updated_at=Max("conversation_time"),
+                title=Subquery(earliest_conversation_subquery),
+            )
+            .order_by("-earliest_created_at")
+        )
+
+        paginator, result = self._get_workflow_log_by_page(aggregated_data, page, page_size)
+        return JsonResponse({"result": True, "data": {"items": result, "count": paginator.count}})
+
+    @action(methods=["POST"], detail=False)
+    @HasPermission("bot_conversation_log-View")
+    def get_workflow_log_detail(self, request):
+        """
+        获取单次对话详情
+        根据 ids 获取具体的对话记录
+        """
+        ids = request.data.get("ids")
+        page_size = int(request.data.get("page_size", 10))
+        page = int(request.data.get("page", 1))
+
+        history_list = (
+            WorkFlowConversationHistory.objects.filter(id__in=ids)
+            .values("id", "conversation_role", "conversation_content", "conversation_time", "entry_type")
+            .order_by("conversation_time")
+        )
+
+        paginator = Paginator(history_list, page_size)
+        try:
+            page_data = paginator.page(page)
+        except Exception:
+            page_data = []
+
+        return_data = []
+        for i in page_data:
+            return_data.append(
+                {
+                    "id": i["id"],
+                    "role": i["conversation_role"],
+                    "content": i["conversation_content"],
+                    "conversation_time": i["conversation_time"].strftime("%Y-%m-%dT%H:%M:%S.%fZ"),
+                    "entry_type": dict(WorkFlowExecuteType.choices).get(
+                        i["entry_type"],
+                        i["entry_type"],
+                    ),
+                }
+            )
+        return JsonResponse({"result": True, "data": return_data})
+
+    @staticmethod
+    def _set_workflow_log_params(request):
+        """设置 ChatFlow 对话历史查询参数"""
+        start_time_str = request.GET.get("start_time")
+        end_time_str = request.GET.get("end_time")
+        page_size = int(request.GET.get("page_size", 10))
+        page = int(request.GET.get("page", 1))
+        bot_id = request.GET.get("bot_id")
+        search = request.GET.get("search", "")
+        entry_type = request.GET.get("entry_type", "")
+
+        # 处理 entry_type，如果为空则使用所有类型（排除 celery）
+        if not entry_type:
+            entry_type = [choice[0] for choice in WorkFlowExecuteType.choices if choice[0] != "celery"]
+        else:
+            entry_type = entry_type.split(",")
+
+        end_time, start_time = set_time_range(end_time_str, start_time_str)
+        return bot_id, entry_type, end_time, page, page_size, search, start_time
+
+    @staticmethod
+    def _get_workflow_log_by_page(aggregated_data, page, page_size):
+        """分页处理 ChatFlow 对话历史"""
+        paginator = Paginator(aggregated_data, page_size)
+        result = []
+        try:
+            page_data = paginator.page(page)
+        except Exception:
+            page_data = paginator.page(1)
+
+        for entry in page_data:
+            result.append(
+                {
+                    "bot_id": entry["bot_id"],
+                    "user_id": entry["user_id"],
+                    "entry_type": dict(WorkFlowExecuteType.choices).get(
+                        entry["entry_type"],
+                        entry["entry_type"],
+                    ),
+                    "count": entry["count"],
+                    "ids": entry["ids"],
+                    "created_at": entry["earliest_created_at"].strftime("%Y-%m-%dT%H:%M:%S.%fZ"),
+                    "updated_at": entry["last_updated_at"].strftime("%Y-%m-%dT%H:%M:%S.%fZ"),
+                    "title": entry["title"][:100] if entry["title"] else "",  # 限制标题长度
+                }
+            )
+        return paginator, result

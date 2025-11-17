@@ -3,6 +3,7 @@
 
 提供登录日志记录功能
 """
+
 import logging
 import re
 
@@ -192,7 +193,7 @@ def log_user_login(
         os_info, browser_info = parse_user_agent(user_agent)
 
         # 查询 IP 地理位置
-        location = get_ip_location(source_ip)
+        # location = get_ip_location(source_ip)
 
         log_entry = UserLoginLog.objects.create(
             username=username,
@@ -203,12 +204,12 @@ def log_user_login(
             user_agent=user_agent,
             os_info=os_info,
             browser_info=browser_info,
-            location=location,
+            # location=location,
         )
-        logger.info(
-            f"Login log recorded: username={username}, status={status}, "
-            f"ip={source_ip}, location={location}, os={os_info}, browser={browser_info}, domain={domain}"
-        )
+        # logger.info(
+        #     f"Login log recorded: username={username}, status={status}, "
+        #     f"ip={source_ip}, location={location}, os={os_info}, browser={browser_info}, domain={domain}"
+        # )
         return log_entry
     except Exception as e:
         logger.error(f"Failed to record login log: {e}", exc_info=True)

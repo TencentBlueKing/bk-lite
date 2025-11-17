@@ -44,6 +44,15 @@ export interface SourceMenuNode {
   url: string;
   icon?: string;
   type: 'menu' | 'page';
+  tour?: {
+    title: string;
+    description: string;
+    cover?: string;
+    target: string;
+    order: number;
+  };
+  isDetailMode?: boolean; // 是否为详情页模式
+  hiddenChildren?: SourceMenuNode[]; // 详情页模式下隐藏的子菜单
   children?: SourceMenuNode[];
 }
 
@@ -55,6 +64,15 @@ export interface FunctionMenuItem {
   url: string;
   icon?: string;
   type: 'menu' | 'page';
+  tour?: {
+    title: string;
+    description: string;
+    cover?: string;
+    target: string;
+    order: number;
+  };
   isExisting?: boolean;
   originName?: string;
+  isDetailMode?: boolean; // 是否为详情页模式
+  hiddenChildren?: SourceMenuNode[]; // 详情页模式下隐藏的子菜单
 }

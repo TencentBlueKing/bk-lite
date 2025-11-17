@@ -1,13 +1,10 @@
 import { useRabbitMQTelegraf } from '../../plugins/middleware/rabbitMQTelegraf';
-import { useRabbitMQExporter } from '../../plugins/middleware/rabbitMQExporter';
 
 export const useRabbitMQConfig = () => {
   const rabbitMQPlugin = useRabbitMQTelegraf();
-  const rabbitMQExporter = useRabbitMQExporter();
 
   const plugins = {
     RabbitMQ: rabbitMQPlugin,
-    'RabbitMQ-Exporter': rabbitMQExporter,
   };
 
   return {

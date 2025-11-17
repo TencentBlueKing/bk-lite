@@ -25,24 +25,38 @@ const SourceMenuTree: React.FC<SourceMenuTreeProps> = ({
 }) => {
   const { t } = useTranslation();
 
-  const treeData: DataNode[] = sourceMenus.map(menu => ({
-    key: menu.name,
-    title: menu.display_name,
-    icon: menu.icon ? <Icon className="!h-full flex items-center" type={menu.icon} /> : <FolderOutlined />,
-    checkable: true,
-    children: menu.children?.map(child => ({
-      key: child.name,
-      title: child.display_name,
-      icon: child.icon ? <Icon className="!h-full flex items-center" type={child.icon} /> : <FileOutlined />,
-      checkable: true,
-      isLeaf: true,
-      data: child,
-    }))
-  }));
+  const treeData: DataNode[] = sourceMenus.map(menu => {
+    if (menu.isDetailMode) {
+      return {
+        key: menu.name,
+        title: menu.display_name,
+        icon: menu.icon ? <Icon className="!h-full flex items-center" type={menu.icon} /> : <FolderOutlined />,
+        checkable: true,
+        selectable: false,
+        isLeaf: true, 
+      };
+    }
+    
+    return {
+      key: menu.name,
+      title: menu.display_name,
+      icon: menu.icon ? <Icon className="!h-full flex items-center" type={menu.icon} /> : <FolderOutlined />,
+      checkable: false,
+      children: menu.children?.map(child => ({
+        key: child.name,
+        title: child.display_name,
+        icon: child.icon ? <Icon className="!h-full flex items-center" type={child.icon} /> : <FileOutlined />,
+        checkable: true,
+        isLeaf: true,
+        data: child,
+      }))
+    };
+  });
 
-  // 获取所有父节点的 key，用于展开
   const expandedKeys = useMemo(() => {
-    return sourceMenus.map(menu => menu.name);
+    return sourceMenus
+      .filter(menu => !menu.isDetailMode)
+      .map(menu => menu.name);
   }, [sourceMenus]);
 
   return (

@@ -55,4 +55,4 @@ PERMISSION_DIRECTORY = "directory"  # 目录
 PERMISSION_DATASOURCE = "datasource"  # 数据源
 OPERATE = "Operate"
 VIEW = "View"
-APP_NAME = "operation_analysis"
+APP_NAME = "ops-analysis"

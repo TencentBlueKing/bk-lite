@@ -17,6 +17,5 @@ RUN uv sync --all-extras
 ADD ./support-files/service.conf /etc/supervisor/conf.d/service.conf
 
 ENV TIKTOKEN_CACHE_DIR=/app/models
-RUN uv run sanic server:bootstrap exec download_models
 
 ENTRYPOINT ["/bin/bash","/app/support-files/startup.sh"]

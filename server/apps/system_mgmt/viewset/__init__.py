@@ -4,6 +4,7 @@ from .custom_menu_group_viewset import CustomMenuGroupViewSet  # noqa
 from .group_data_rule_viewset import GroupDataRuleViewSet  # noqa
 from .group_viewset import GroupViewSet  # noqa
 from .login_module_viewset import LoginModuleViewSet  # noqa
+from .operation_log_viewset import OperationLogViewSet  # noqa
 from .role_viewset import RoleViewSet  # noqa
 from .system_settings_viewset import SystemSettingsViewSet  # noqa
 from .user_login_log_viewset import UserLoginLogViewSet  # noqa

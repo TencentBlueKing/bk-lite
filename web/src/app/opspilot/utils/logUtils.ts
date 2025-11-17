@@ -1,7 +1,7 @@
 import { CustomChatMessage, Annotation } from '@/app/opspilot/types/global';
 
 export const fetchLogDetails = async (post: any, conversationId: number[], page = 1, pageSize = 20) => {
-  return await post('/opspilot/bot_mgmt/history/get_log_detail/', {
+  return await post('/opspilot/bot_mgmt/bot/get_workflow_log_detail/', {
     ids: conversationId,
     page: page,
     page_size: pageSize,
@@ -36,6 +36,8 @@ export const createConversation = async (data: any[], get: any): Promise<CustomC
       id: item.id,
       role: item.role,
       content: item.content,
+      createAt: item.conversation_time ? new Date(item.conversation_time).toISOString() : undefined,
+      updateAt: item.conversation_time ? new Date(item.conversation_time).toISOString() : undefined,
       annotation: annotation,
       knowledgeBase: item.citing_knowledge,
     } as CustomChatMessage;

@@ -84,6 +84,9 @@ const SearchCombination: React.FC<SearchCombinationProps> = ({
     setSelectedField(value);
     setShowEnumOptions(false);
     setTempEnumValues([]);
+    setTimeout(() => {
+      selectRef.current?.focus();
+    }, 0);
   }, []);
 
   const handleTagsChange = useCallback(

@@ -19,6 +19,13 @@ status:
   success: "成功"
   failed: "失败"
 
+# 操作类型
+action_type:
+  create: "创建"
+  update: "更新"
+  delete: "删除"
+  execute: "执行"
+
 # 错误消息
 error:
   # 基础权限和认证错误

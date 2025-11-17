@@ -564,7 +564,7 @@ class EventRawDataViewSet(viewsets.ReadOnlyModelViewSet):
     def rawdata_list_by_event_id(self, request):
         """
         根据事件ID获取原始数据
-        
+
         由于每个事件只对应一条原始数据记录，所以直接返回对应的数据，无需分页
 
         URL: /api/event-raw-data/by_event_id/?event_id=xxx

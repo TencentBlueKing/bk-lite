@@ -576,9 +576,11 @@ class LogPolicyScan:
             # 批量创建事件记录
             event_objs = Event.objects.bulk_create(create_events, batch_size=DatabaseConstants.DEFAULT_BATCH_SIZE)
 
-            # 批量创建原始数据记录
+            # 逐个保存原始数据记录以确保 S3JSONField 能正确上传数据
             if create_raw_data:
-                EventRawData.objects.bulk_create(create_raw_data, batch_size=DatabaseConstants.DEFAULT_BATCH_SIZE)
+                for raw_data_obj in create_raw_data:
+                    raw_data_obj.save()
+                logger.debug(f"Created {len(create_raw_data)} raw data records for policy {self.policy.id}")
 
             logger.info(f"Created {len(event_objs)} events for policy {self.policy.id}")
             return event_objs

@@ -6,7 +6,7 @@ from apps.core.utils.web_utils import WebUtils
 from apps.monitor.constants.database import DatabaseConstants
 from apps.monitor.constants.language import LanguageConstants
 from apps.monitor.filters.monitor_metrics import MetricGroupFilter, MetricFilter
-from apps.monitor.models import MonitorObject
+from apps.monitor.models.plugin import MonitorPlugin
 from apps.monitor.serializers.monitor_metrics import MetricGroupSerializer, MetricSerializer
 from apps.monitor.models.monitor_metrics import MetricGroup, Metric
 from config.drf.pagination import CustomPageNumberPagination
@@ -23,21 +23,22 @@ class MetricGroupVieSet(viewsets.ModelViewSet):
         serializer = self.get_serializer(queryset, many=True)
         results = serializer.data
 
-        # 获取监控对象ID与名称的映射
-        object_map = dict(
-            MonitorObject.objects.filter(id__in=[i["monitor_object"] for i in results])
-            .values_list("id", "name")
-        )
+        # 获取监控插件ID与名称的映射
+        plugin_ids = [i["monitor_plugin"] for i in results if i.get("monitor_plugin")]
+        plugin_map = dict(
+            MonitorPlugin.objects.filter(id__in=plugin_ids).values_list("id", "name")
+        ) if plugin_ids else {}
 
         lan = LanguageLoader(app=LanguageConstants.APP, default_lang=request.user.locale)
         for result in results:
-            if not result.get("monitor_object"):
+            plugin_id = result.get("monitor_plugin")
+            if not plugin_id:
                 continue
-            object_name = object_map.get(result["monitor_object"])
-            if not object_name:
+            plugin_name = plugin_map.get(plugin_id)
+            if not plugin_name:
                 continue
-            # 组装语言配置Key
-            lan_key = f"{LanguageConstants.MONITOR_OBJECT_METRIC_GROUP}.{object_name}.{result['name']}"
+            # 组装语言配置Key（基于插件名称）
+            lan_key = f"{LanguageConstants.MONITOR_OBJECT_METRIC_GROUP}.{plugin_name}.{result['name']}"
             # 获取语言配置值
             result["display_name"] = lan.get(lan_key) or result["name"]
 
@@ -82,20 +83,22 @@ class MetricVieSet(viewsets.ModelViewSet):
         serializer = self.get_serializer(queryset, many=True)
         results = serializer.data
 
-        # 获取监控对象ID与名称的映射
-        object_map = dict(
-            MonitorObject.objects.filter(id__in=[i["monitor_object"] for i in results])
-            .values_list("id", "name")
-        )
+        # 获取监控插件ID与名称的映射
+        plugin_ids = [i["monitor_plugin"] for i in results if i.get("monitor_plugin")]
+        plugin_map = dict(
+            MonitorPlugin.objects.filter(id__in=plugin_ids).values_list("id", "name")
+        ) if plugin_ids else {}
+
         lan = LanguageLoader(app=LanguageConstants.APP, default_lang=request.user.locale)
         for result in results:
-            if not result.get("monitor_object"):
+            plugin_id = result.get("monitor_plugin")
+            if not plugin_id:
                 continue
-            object_name = object_map.get(result["monitor_object"])
-            if not object_name:
+            plugin_name = plugin_map.get(plugin_id)
+            if not plugin_name:
                 continue
-            # 组装语言配置Key
-            lan_key = f"{LanguageConstants.MONITOR_OBJECT_METRIC}.{object_name}.{result['name']}"
+            # 组装语言配置Key（基于插件名称）
+            lan_key = f"{LanguageConstants.MONITOR_OBJECT_METRIC}.{plugin_name}.{result['name']}"
             # 获取语言配置值
             result["display_name"] = lan.get(f"{lan_key}.name") or result["display_name"]
             result["display_description"] = lan.get(f"{lan_key}.desc") or result["description"]

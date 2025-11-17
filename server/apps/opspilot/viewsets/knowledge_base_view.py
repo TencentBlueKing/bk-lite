@@ -48,12 +48,12 @@ class KnowledgeBaseViewSet(AuthViewSet):
     def create(self, request, *args, **kwargs):
         params = request.data
         if not params.get("team"):
-            message = self.loader.get("team_required") if self.loader else "The team field is required."
+            message = self.loader.get("error.team_required") if self.loader else "The team field is required."
             return JsonResponse({"result": False, "message": message})
         if "embed_model" not in params:
             params["embed_model"] = EmbedProvider.objects.get(name="FastEmbed(BAAI/bge-small-zh-v1.5)").id
         if KnowledgeBase.objects.filter(name=params["name"]).exists():
-            message = self.loader.get("knowledge_base_name_exists") if self.loader else "The knowledge base name already exists."
+            message = self.loader.get("error.knowledge_base_name_exists") if self.loader else "The knowledge base name already exists."
             return JsonResponse(
                 {
                     "result": False,
@@ -83,7 +83,7 @@ class KnowledgeBaseViewSet(AuthViewSet):
                 return JsonResponse(
                     {
                         "result": False,
-                        "message": self.loader.get("knowledge_base_training")
+                        "message": self.loader.get("error.knowledge_base_training")
                         if self.loader
                         else "The knowledge base is training and cannot be modified.",
                     }
@@ -104,7 +104,7 @@ class KnowledgeBaseViewSet(AuthViewSet):
                 return JsonResponse(
                     {
                         "result": False,
-                        "message": self.loader.get("permission_update_denied")
+                        "message": self.loader.get("error.permission_update_denied")
                         if self.loader
                         else "You do not have permission to update this instance",
                     }
@@ -116,7 +116,7 @@ class KnowledgeBaseViewSet(AuthViewSet):
                 return JsonResponse(
                     {
                         "result": False,
-                        "message": self.loader.get("knowledge_base_name_exists") if self.loader else "The knowledge base name already exists.",
+                        "message": self.loader.get("error.knowledge_base_name_exists") if self.loader else "The knowledge base name already exists.",
                     }
                 )
             instance.name = kwargs["name"]
@@ -147,7 +147,9 @@ class KnowledgeBaseViewSet(AuthViewSet):
     def destroy(self, request, *args, **kwargs):
         if KnowledgeDocument.objects.filter(knowledge_base_id=kwargs["pk"]).exists():
             message = (
-                self.loader.get("knowledge_base_has_documents") if self.loader else "This knowledge base contains documents and cannot be deleted."
+                self.loader.get("error.knowledge_base_has_documents")
+                if self.loader
+                else "This knowledge base contains documents and cannot be deleted."
             )
             return JsonResponse(
                 {
@@ -157,7 +159,9 @@ class KnowledgeBaseViewSet(AuthViewSet):
             )
         elif QAPairs.objects.filter(knowledge_base_id=kwargs["pk"]).exists():
             message = (
-                self.loader.get("knowledge_base_has_qa_pairs") if self.loader else "This knowledge base contains Q&A pairs and cannot be deleted."
+                self.loader.get("error.knowledge_base_has_qa_pairs")
+                if self.loader
+                else "This knowledge base contains Q&A pairs and cannot be deleted."
             )
             return JsonResponse(
                 {

@@ -1278,21 +1278,6 @@ monitor_object_metric:
       desc: This metric calculates the average rate of bytes sent over the past 5
         minutes, measured in megabytes (MB). Monitoring outgoing traffic is crucial
         for ensuring data transmission quality and optimizing network performance.
-  DataStorage:
-    data_storage_disk_used_average:
-      desc: The disk utilization rate indicates the usage situation of disk space
-        and is an indicator for measuring the utilization rate of disk storage.
-      name: Disk Utilization
-    data_storage_disk_free_average:
-      desc: The remaining disk space represents the amount of unused space in the
-        disk and is a key indicator for evaluating the disk capacity.
-      name: Available Disk Space
-    data_storage_base:
-      store_accessible:
-        desc: The storage connection status indicates the connectability of the storage
-          device and is an indicator for evaluating the health status of the storage
-          system.
-        name: Storage Connection Status
   Storage:
     ipmi_power_watts:
       name: Power Consumption
@@ -2564,11 +2549,6 @@ monitor_object_metric:
       desc: 1 Minute Average Load indicates the average load on the system over the
         last minute. This metric helps provide a real-time understanding of the system’s
         load level.
-    node_io_write:
-      desc: Disk Read Rate indicates the rate of read operations performed by the
-        node over a specified period. This metric helps assess the data reading performance
-        of applications and storage load.
-      name: Disk Read Rate
     node_cpu_load15:
       desc: 15 Minute Average Load indicates the average load on the system over the
         last 15 minutes. Monitoring this metric helps administrators understand the
@@ -2584,11 +2564,6 @@ monitor_object_metric:
         as 'Running' or 'Stopped.' It helps administrators monitor and manage nodes
         within the Kubernetes cluster.
       name: Node Status
-    node_io_read:
-      desc: Disk Write Rate indicates the rate of write operations performed by the
-        node over a specified period. This metric is crucial for monitoring the disk
-        write performance of applications.
-      name: Disk Write Rate
     node_memory_utilization:
       desc: Application Memory Utilization Rate is the ratio of memory used by the
         application to its configured memory limits. By monitoring this metric, users
@@ -2614,6 +2589,60 @@ monitor_object_metric:
       desc: CPU Utilization indicates the current usage level of the node's CPU relative
         to its total available CPU resources. Monitoring this metric helps identify
         CPU bottlenecks and optimize resource allocation.
+    node_disk:
+      is_use:
+        name: Disk Used Space Rate
+        desc: Disk Used Space indicates the percentage of disk space currently utilized
+          on the node. Monitoring this metric helps manage storage resources effectively.
+      used:
+        desc: Disk Used Space indicates the total amount of disk space currently utilized
+          on the node. Monitoring this metric helps manage storage resources effectively.
+        name: Disk Used Space
+    node_diskio_write_time:
+      name: Disk Write Time
+      desc: Disk Write Time indicates the total time spent on write operations to
+        the disk. This metric helps evaluate the efficiency of disk write processes.
+    node_diskio_reads:
+      name: Disk Read Rate
+      desc: Disk Read Rate indicates the rate of read operations performed by the
+        node over a specified period. This metric helps assess the data reading performance
+        of applications and storage load.
+    node_cpu_summary:
+      user:
+        desc: CPU User Time represents the percentage of time the CPU spends executing
+          user-level processes and applications.
+        name: CPU User Time
+      idle:
+        desc: CPU Idle Time represents the percentage of time the CPU spends in an
+          idle state, indicating available processing capacity.
+        name: CPU Idle Time
+      system:
+        name: CPU System Time
+        desc: CPU System Time reflects the percentage of time the CPU spends executing
+          system-level processes and kernel operations.
+      iowait:
+        desc: CPU I/O Wait Time indicates the percentage of time the CPU spends waiting
+          for I/O operations to complete, which can impact overall performance.
+        name: CPU I/O Wait Time
+    node_diskio_read_bytes:
+      desc: Disk Read Throughput indicates the amount of data read from the disk per
+        second. Monitoring this metric helps evaluate the data reading performance
+        of applications.
+      name: Disk Read Throughput
+    node_diskio_read_time:
+      desc: Disk Read Time indicates the total time spent on read operations from
+        the disk. This metric helps evaluate the efficiency of disk read processes.
+      name: Disk Read Time
+    node_diskio_write_bytes:
+      desc: Disk Write Throughput indicates the amount of data written to the disk
+        per second. Monitoring this metric helps assess the data writing performance
+        of applications.
+      name: Disk Write Throughput
+    node_diskio_writes:
+      desc: Disk Write Rate indicates the rate of write operations performed by the
+        node over a specified period. This metric is crucial for monitoring the disk
+        write performance of applications.
+      name: Disk Write Rate
   ElasticSearch:
     elasticsearch_indices_docs_deleted:
       desc: Total number of deleted documents in Elasticsearch.
@@ -2751,6 +2780,20 @@ monitor_object_metric:
       desc: This metric counts the number of ESXi hosts in the VMware environment,
         helping administrators understand the current physical host resources.
       name: Number of ESXi
+  DataStorage:
+    data_storage_disk_used_average_gauge:
+      desc: The disk utilization rate indicates the usage situation of disk space
+        and is an indicator for measuring the utilization rate of disk storage.
+      name: Disk Utilization
+    data_storage_disk_free_average_gauge:
+      desc: The remaining disk space represents the amount of unused space in the
+        disk and is a key indicator for evaluating the disk capacity.
+      name: Available Disk Space
+    data_storage_store_accessible_gauge:
+      name: Storage Connection Status
+      desc: The storage connection status indicates the connectability of the storage
+        device and is an indicator for evaluating the health status of the storage
+        system.
 monitor_object_metric_group:
   Detection Device:
     Status: Status
@@ -2829,7 +2872,7 @@ monitor_object_metric_group:
     SGA: SGA
     Wait: Wait
     Process: Process
-    selfMonitor: selfMonitor
+    selfMonitor: SelfMonitor
     Tablespace: Tablespace
     RAC: RAC
   Host:
@@ -3017,210 +3060,200 @@ monitor_object_metric_group:
     Check: Check
   Ping:
     Ping: Ping
-  SNMP Trap: ''
+  SNMP Trap: None
   Website:
     HTTP: HTTP
 monitor_object_plugin:
   Detection Device SNMP General:
     name: Detection Device General (SNMP)
-    desc: The SNMP General plugin is used to monitor and manage the status of detection
-      devices via SNMP. Administrators can obtain key information about the device,
-      such as interface traffic, error statistics, and status information, to optimize
-      network performance and improve management efficiency.
+    desc: The SNMP universal plugin is used to monitor and manage detected devices
+      via SNMP. Administrators can retrieve critical device information such as interface
+      traffic, error statistics, and status information, thereby optimizing network
+      performance and enhancing management efficiency.
   Storage IPMI:
-    desc: The IPMI monitoring plugin communicates with hardware to provide real-time
-      monitoring of system health status, hardware sensor data, and power management.
-    name: Storage Device General (IPMI)
+    desc: Through the Telegraf collector, utilize the IPMI protocol to regularly collect
+      key metrics from storage devices, including power status, fan speed, and temperature.
+    name: Storage IPMI General (Telegraf)
   Tencent Cloud:
     name: Tencent Cloud
-    desc: Collects various Tencent Cloud monitoring metrics in real time, covering
-      dimensions such as compute, network, and storage. Helps users gain deep insight
-      into resource status, accurately locate anomalies, and optimize operations and
-      costs.
+    desc: Real-time collection of Tencent Cloud monitoring metrics spans dimensions
+      such as computing resources, network performance, and storage usage. This empowers
+      users to gain deep insights into resource status, precisely pinpoint anomalies,
+      and efficiently accomplish operational management and cost optimization.
   Tomcat-JMX:
-    desc: Collects Tomcat key performance metrics via JMX, including thread pools,
-      HTTP connections, JVM memory, and request latency, to monitor operational status
-      and resource efficiency for performance optimization and fault detection.
+    desc: Collect key performance metrics from Tomcat, such as thread pools, HTTP
+      connections, JVM memory, and request latency via JMX to monitor operational
+      status and resource efficiency, facilitating performance optimization and troubleshooting.
     name: Tomcat-JMX
   Postgres:
-    name: Postgres
-    desc: Collects PostgreSQL's session management, transaction metrics, and I/O performance
-      data helps monitor resource usage, access behavior, operational efficiency,
-      and identify potential issues within the database.
+    name: Postgres(Telegraf)
+    desc: Through the Telegraf collector, regularly collect session management data,
+      transaction metrics, and I/O performance data from PostgreSQL.
   ActiveMQ:
-    desc: Used for collecting ActiveMQ topic-related metrics, enabling real-time monitoring
-      of consumer count, enqueue/dequeue rates, and topic message backlog to ensure
-      stable message queue operation.
-    name: ActiveMQ
+    desc: Through the Telegraf collector, regularly collect topic-related metrics
+      from ActiveMQ, including real-time monitoring of consumer count, enqueue/dequeue
+      rates, and topic message backlog.
+    name: ActiveMQ(Telegraf)
   Redis:
-    name: Redis
-    desc: Used to collect key metrics of Redis performance and resource utilization,
-      helping improve system efficiency and stability.
+    name: Redis(Telegraf)
+    desc: Through the Telegraf collector, regularly collect key metrics regarding
+      Redis performance and resource utilization.
   Switch SNMP General:
-    name: Switch General (SNMP)
-    desc: The SNMP General plugin is used to monitor and manage the status of switches
-      via SNMP. Administrators can obtain key information about the device, such as
-      interface traffic, error statistics, and status information, to optimize network
-      performance and improve management efficiency.
+    name: Switch General(Telegraf)
+    desc: Through the Telegraf collector, utilize the SNMP protocol to regularly collect
+      key IF-MIB metrics from switch interfaces, including traffic volume, packet
+      loss, and error counts.
   WebLogic-JMX:
-    name: WebLogic-JMX
-    desc: This plugin uses JMX to collect WebLogic's key metrics, including thread
-      pools, connection pools, memory, EJB, Servlet, JMS performance, and Web service
-      response times. It enables real-time monitoring, performance optimization, and
-      risk early warning to ensure system stability.
+    name: WebLogic(JMX)
+    desc: Through the WebLogic-JMX collector, regularly collect key WebLogic metrics,
+      including thread pool, connection pool, memory, EJB, Servlet, JMS performance,
+      and web service response times.
   K8S:
-    name: K8S
-    desc: The K8S monitoring plugin is used to monitor the status and health of Kubernetes
-      clusters, including performance metrics of nodes, containers, and pods.
+    name: K8s
+    desc: Leveraging Kubernetes' active monitoring data reporting capability, collect
+      the status and health of the Kubernetes cluster, including performance metrics
+      for nodes, containers, and pods.
   Consul:
-    name: Consul
-    desc: Used for real-time monitoring of Consul service health, collecting status
-      check results, analyzing passing, warning, and critical metrics to help users
-      promptly identify issues and ensure service availability.
+    name: Consul(Telegraf)
+    desc: Through the Telegraf collector, regularly collect Consul service health
+      status by gathering status check results and analyzing pass, warning, and critical
+      metrics.
   Website:
-    desc: The website monitoring plugin periodically checks the availability and performance
-      of HTTP/HTTPS connections for websites.
-    name: Website Monitoring
+    desc: Through the Telegraf collector, regularly perform active checks on the availability
+      and performance of HTTP/HTTPS connections.
+    name: HTTP(Telegraf)
   Nginx:
-    desc: By collecting metrics such as Nginx requests, connection status, and processing
-      efficiency, this helps monitor and optimize the website's performance and stability.
-    name: Nginx
+    desc: Through the Telegraf collector, regularly collect metrics from Nginx such
+      as requests, connection status, and processing efficiency, to aid in monitoring
+      and optimizing website performance and stability.
+    name: Nginx(Telegraf)
   Loadbalance SNMP General:
-    desc: The SNMP General plugin is used to monitor and manage the status of load
-      balancers via SNMP. Administrators can obtain key information about the device,
-      such as interface traffic, error statistics, and status information, to optimize
-      network performance and improve management efficiency.
-    name: Load Balancer General (SNMP)
+    desc: Through the Telegraf collector, utilize the SNMP protocol to regularly collect
+      key IF-MIB metrics from load balancer interfaces, including traffic volume,
+      packet loss, and error counts.
+    name: Load Balancer General (Telegraf)
   Bastion Host SNMP General:
-    desc: The SNMP General plugin is used to monitor and manage the status of bastion
-      hosts via SNMP. Administrators can obtain key information about the device,
-      such as interface traffic, error statistics, and status information, to optimize
-      network performance and improve management efficiency.
+    desc: The SNMP universal plugin is designed to monitor and manage bastion hosts
+      via SNMP. It enables administrators to retrieve critical device information
+      such as interface traffic, error statistics, and status data, thereby optimizing
+      network performance and improving operational efficiency.
     name: Bastion Host General (SNMP)
   Jetty-JMX:
-    desc: Collects key performance metrics of Jetty task processing, thread pools,
-      network connections, HTTP configurations, and JMX self-monitoring to track server
-      resource usage, task handling capabilities, and connection status—enabling optimized
-      system performance and improved service stability.
-    name: Jetty-JMX
+    desc: Through the Jetty JMX collector, regularly collect key performance metrics
+      from Jetty, including task processing, thread pools, network connections, HTTP
+      configuration, and JMX self-monitoring data.
+    name: Jetty(JMX)
   ElasticSearch:
-    desc: By collecting Elasticsearch file system metrics, HTTP requests, IO statistics,
-      document statistics, query cache, and circuit breaker metrics, this plugin helps
-      users monitor the health and performance of their cluster.
-    name: ElasticSearch
+    desc: Through the Telegraf collector, regularly collect metrics from Elasticsearch
+      related to the filesystem, HTTP requests, I/O statistics, document statistics,
+      query cache, and index flush operations, helping users monitor cluster health
+      and performance.
+    name: ElasticSearch(Telegraf)
   Zookeeper:
-    name: Zookeeper
-    desc: By collecting runtime performance data and stability metrics of Zookeeper,
-      such as uptime, average latency, and read-write ratios, users can monitor the
-      cluster status in real-time and optimize performance.
+    name: Zookeeper(Telegraf)
+    desc: Through the Telegraf collector, regularly collect runtime performance data
+      and stability metrics of Zookeeper, such as uptime, average latency, read/write
+      ratio, etc.
   Firewall SNMP General:
-    desc: The SNMP General plugin is used to monitor and manage the status of firewalls
-      via SNMP. Administrators can obtain key information about the device, such as
-      interface traffic, error statistics, and status information, to optimize network
-      performance and improve management efficiency.
-    name: Firewall General (SNMP)
+    desc: Through the Telegraf collector, utilize the SNMP protocol to regularly collect
+      key IF-MIB metrics from firewall interfaces, including traffic volume, packet
+      loss, and error counts.
+    name: Firewall General (Telegraf)
   SNMP Trap:
-    desc: The SNMP Trap monitoring plugin is used to receive and process alarms or
-      status notifications (Trap messages) actively pushed by network devices, enabling
-      real-time monitoring and fault alerts.
+    desc: The SNMP Trap monitoring plugin is designed to receive and process alerts
+      or status notifications (Trap messages) actively pushed by network devices,
+      enabling real-time monitoring and fault alerting.
     name: SNMP Trap
   Router SNMP General:
-    desc: The SNMP General plugin is used to monitor and manage the status of routers
-      via SNMP. Administrators can obtain key information about the device, such as
-      interface traffic, error statistics, and status information, to optimize network
-      performance and improve management efficiency.
-    name: Router General (SNMP)
+    desc: Through the Telegraf collector, utilize the SNMP protocol to regularly collect
+      key IF-MIB metrics from router interfaces, including traffic volume, packet
+      loss, and error counts.
+    name: Router General(Telegraf)
   ActiveMQ-JMX:
     name: ActiveMQ-JMX
-    desc: This ActiveMQ plugin uses JMX for collection, obtaining key performance
-      metrics like message queues, connection pools, and message throughput. It monitors
-      message processing efficiency and resource usage in real-time, optimizing system
-      performance and ensuring service stability.
+    desc: The ActiveMQ plugin, based on JMX collection, acquires key performance metrics
+      such as message queues, connection pools, and message throughput. It enables
+      real-time monitoring of message processing efficiency and resource utilization,
+      helping optimize system performance and ensure service stability.
   Tomcat:
-    name: Tomcat
-    desc: Collects key performance metrics of Tomcat connectors and JVM memory to
-      monitor server resource usage, request processing efficiency, and errors, optimizing
-      system performance.
+    name: Tomcat(Telegraf)
+    desc: Through the Telegraf collector, regularly collect key performance metrics
+      from Tomcat's connectors and JVM memory.
   RabbitMQ:
-    name: RabbitMQ
-    desc: Used for monitoring RabbitMQ's runtime status, resource usage, message flow,
-      and queue health.
+    name: RabbitMQ(Telegraf)
+    desc: Through the Telegraf collector, regularly collect operational status, resource
+      utilization, message flow, and queue health metrics from RabbitMQ.
   ClickHouse:
-    desc: Collect runtime metrics of ClickHouse instances, such as memory, disk, query
-      events, etc., for performance monitoring, resource tracking, and fault diagnosis,
-      ensuring stable database operation.
+    desc: Collect runtime metrics from ClickHouse instances, such as memory, disk,
+      and query events, for performance monitoring, resource tracking, and fault diagnosis
+      to ensure stable database operation.
     name: ClickHouse
   Apache:
-    name: Apache
-    desc: Real-time collection of Apache runtime data, resource utilization, request
-      processing efficiency, and bandwidth statistics, helping users optimize performance,
-      diagnose issues, and achieve efficient operations management.
+    name: Apache(Telegraf)
+    desc: Through the Telegraf collector, regularly collect Apache metrics including
+      uptime, resource utilization, request processing efficiency, and bandwidth usage.
   Hardware Server IPMI:
-    name: Hardware Server General (IPMI)
-    desc: The IPMI monitoring plugin communicates with hardware to provide real-time
-      monitoring of system health status, hardware sensor data, and power management.
+    name: Physical Server IPMI General(Telegraf)
+    desc: Through the Telegraf collector, utilize the IPMI protocol to regularly collect
+      key metrics from hardware servers, including power status, fan speed, and temperature.
   Mysql:
-    name: Mysql
-    desc: Used to collect and monitor key metrics for MySQL database health and performance.
+    name: Mysql(Telegraf)
+    desc: Through the Telegraf collector, regularly collect key metrics regarding
+      the health status and performance of MySQL databases.
   Minio:
-    name: MinIO
-    desc: 'Collects key metrics of the MinIO object storage system, including runtime
-      status, storage capacity, usage, replication, inter-node communication, and
-      S3 requests, enabling real-time monitoring of storage health, performance optimization,
-      and anomaly detection. '
-  vCenter:
-    desc: vCenter is VMware's virtualization management center for monitoring resources
-      (CPU/memory/storage/network), analyzing performance, and optimizing configurations.
-      It helps identify VM/host anomalies and improves environment efficiency.
-    name: vCenter
+    name: MinIO(Telegraf)
+    desc: Through the Telegraf collector, regularly invoke the MinIO metrics API to
+      collect key indicators including the operational status, storage capacity, utilization,
+      replication, internode communication, and S3 requests of the object storage
+      system.
   Hardware Server SNMP General:
-    name: Hardware Server General (SNMP)
-    desc: The SNMP General plugin is used to monitor and manage the status of hardware
-      servers via SNMP. Administrators can obtain key information about the device,
-      such as interface traffic, error statistics, and status information, to optimize
-      network performance and improve management efficiency.
+    name: Physical Server SNMP General(Telegraf)
+    desc: Through the Telegraf collector, utilize the SNMP protocol to regularly collect
+      key IF-MIB metrics from hardware server interfaces, including traffic volume,
+      packet loss, and error counts.
   Host:
-    desc: The host monitoring plugin collects and analyzes host performance data,
-      including CPU, memory, disk, and network usage.
-    name: Host
+    desc: Through the Telegraf collector, gather and analyze host performance data,
+      including CPU, memory, disk, and network utilization.
+    name: Host(Telegraf)
   Ping:
-    desc: Ping is used to check the connectivity and response time of a target host
-      or network device by sending ICMP Echo requests.
-    name: Ping
+    desc: Through the Telegraf collector, regularly send ICMP Echo Requests (ECHO_REQUEST)
+      to check the connectivity and response time of target hosts or network devices.
+    name: Ping(Telegraf)
   MongoDB:
-    name: MongoDB
-    desc: By collecting metrics on MongoDB read and write activities, command execution,
-      connection counts, latency, memory usage, and network traffic, this helps optimize
-      performance and ensure efficient and stable database operations.
+    name: MongoDB(Telegraf)
+    desc: Through the Telegraf collector, regularly collect MongoDB metrics including
+      read/write activities, command execution, connection counts, latency, memory
+      usage, and network traffic to help optimize performance and ensure efficient
+      and stable database operation.
   JVM:
-    name: JVM
-    desc: Used for collecting and analyzing the runtime status, memory usage (heap,
-      non-heap, buffer pool), thread activity, garbage collection, and system resource
-      metrics (CPU, physical memory, swap space) of the JVM (Java Virtual Machine),
-      helping to identify performance bottlenecks, detect memory leaks, and optimize
-      Java application performance.
+    name: JVM(JMX)
+    desc: Through the JVM JMX collector, regularly collect performance metrics from
+      the JVM (Java Virtual Machine), including runtime status, memory usage, thread
+      activity, garbage collection statistics, and system resource utilization.
   Storage SNMP General:
-    desc: The SNMP General plugin is used to monitor and manage the status of storage
-      devices via SNMP. Administrators can obtain key information about the device,
-      such as interface traffic, error statistics, and status information, to optimize
-      network performance and improve management efficiency.
-    name: Storage Device General (SNMP)
+    desc: Through the Telegraf collector, utilize the SNMP protocol to regularly collect
+      key IF-MIB metrics from storage device interfaces, including traffic volume,
+      packet loss, and error counts.
+    name: Storage SNMP General (Telegraf)
   Oracle-Exporter:
-    desc: It is used to collect metrics on Oracle's uptime, operation counts, transaction
-      commits/rollbacks, and various wait times in real-time via the exporter method,
-      assisting users in health checks and performance tuning.
-    name: Oracle-Exporter
+    desc: The Oracle Exporter collector regularly gathers metrics from Oracle, including
+      uptime, operation counts, transaction commits and rollbacks, as well as various
+      wait times.
+    name: Oracle(Exporter)
   Scanning Device SNMP General:
     name: Scanning Device General (SNMP)
-    desc: The SNMP General plugin is used to monitor and manage the status of scanning
-      devices via SNMP. Administrators can obtain key information about the device,
-      such as interface traffic, error statistics, and status information, to optimize
-      network performance and improve management efficiency.
+    desc: The SNMP universal plugin is used to monitor and manage scanned devices
+      via SNMP. Administrators can retrieve critical device information such as interface
+      traffic, error statistics, and status information, thereby optimizing network
+      performance and enhancing management efficiency.
   Docker:
-    name: Docker
-    desc: Used for collecting and analyzing the status, resource usage (CPU, memory,
-      network, IO), and performance metrics of Docker containers, helping to identify
-      anomalies and optimize container operational efficiency.
+    name: Docker(Telegraf)
+    desc: Through the Telegraf collector, regularly collect Docker container status,
+      resource utilization (CPU, memory, network, I/O), and performance metrics.
+  VMWare:
+    desc: Through the Telegraf collector, utilize Stargazer's capability to regularly
+      gather key metrics from VMware vCenter, ESXi, virtual machines, and datastores.
+    name: VMWare
 monitor_object:
   Apache: Apache
   Firewall: Firewall
@@ -3265,14 +3298,14 @@ monitor_object:
   Mysql: MySQL
   Website: Website
 monitor_object_type:
-  VMware: VMware
+  VMware: VMware(Telegraf)
   Middleware: Middleware
   Web: Web
   OS: OS
   Container Management: Container Management
-  Hardware Device: Hardware Server
+  Hardware Device: Hardware Device
   Database: Database
   Other: Other
   Tencent Cloud: Tencent Cloud
   Network Device: Network Equipment
-  K8S: K8S
+  K8S: K8s

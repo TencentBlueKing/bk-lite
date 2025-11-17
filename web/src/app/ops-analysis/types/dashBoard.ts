@@ -1,7 +1,20 @@
 import { TopologyNodeData } from './topology';
+import type { ParamItem, DatasourceItem } from './dataSource';
 import type { Dayjs } from 'dayjs';
 
 export type FilterType = 'selector' | 'fixed';
+
+export interface EChartsInstance {
+  dispatchAction: (action: {
+    type: string;
+    name?: string;
+    [key: string]: unknown;
+  }) => void;
+  setOption: (option: unknown) => void;
+  resize: () => void;
+  dispose: () => void;
+  [key: string]: unknown;
+}
 
 export interface TimeConfig {
   selectValue: number;
@@ -33,23 +46,19 @@ export interface AddComponentConfig {
   description?: string;
   dataSource?: string | number;
   chartType?: string;
-  dataSourceParams?: DataSourceParam[];
+  dataSourceParams?: ParamItem[];
 }
 
-export interface DataSourceParam {
-  name: string;
-  type: string;
-  value: any;
-  alias_name?: string;
-  filterType?: 'params' | 'fixed' | 'filter';
-}
-
-export interface WidgetConfig {
-  name?: string;
+export interface ValueConfig {
   chartType?: string;
   dataSource?: string | number;
-  params?: { [key: string]: any };
-  dataSourceParams?: any[];
+  params?: Record<string, string | number | boolean | [number, number] | null>;
+  dataSourceParams?: ParamItem[];
+}
+
+export interface WidgetConfig extends ValueConfig {
+  name: string;
+  description?: string;
 }
 
 export interface LayoutItem {
@@ -60,7 +69,7 @@ export interface LayoutItem {
   h: number;
   name: string;
   description?: string;
-  valueConfig?: WidgetConfig;
+  valueConfig?: ValueConfig;
 }
 
 export type ViewConfigItem = LayoutItem | TopologyNodeData;
@@ -68,21 +77,21 @@ export type ViewConfigItem = LayoutItem | TopologyNodeData;
 export interface ViewConfigProps {
   open: boolean;
   item: ViewConfigItem;
-  onConfirm?: (values: any) => void;
+  onConfirm?: (values: WidgetConfig) => void;
   onClose?: () => void;
 }
 
 export interface ComponentSelectorProps {
   visible: boolean;
   onCancel: () => void;
-  onOpenConfig?: (item: any) => void;
+  onOpenConfig?: (item: DatasourceItem) => void;
 }
 
 export interface BaseWidgetProps {
-  config?: any;
-  globalTimeRange?: any;
+  config?: ValueConfig;
+  globalTimeRange?: TimeRangeData;
   refreshKey?: number;
-  onDataChange?: (data: any) => void;
+  onDataChange?: (data: unknown) => void;
   onReady?: (hasData?: boolean) => void;
 }
 

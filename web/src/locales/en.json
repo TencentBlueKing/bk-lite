@@ -82,6 +82,7 @@
     "notFound": "We can't seem to find the page you're looking for.",
     "backToHome": "Back to Home",
     "noPermission": "You don't have permission to access this page",
+    "noAuth": "No Permission",
     "preview": "Preview",
     "download": "Download",
     "officialDocument": "Official Document",

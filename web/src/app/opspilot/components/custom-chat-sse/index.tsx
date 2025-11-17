@@ -240,16 +240,22 @@ const CustomChatSSE: React.FC<CustomChatSSEProps> = ({
     // Execute sending logic asynchronously
     try {
       if (handleSendMessage) {
+        console.log('[DEBUG] Calling handleSendMessage with content:', content);
         const result = await handleSendMessage(content, currentMessages);
+        console.log('[DEBUG] handleSendMessage result:', result);
         
         if (result === null) {
+          console.log('[DEBUG] handleSendMessage returned null, canceling');
           updateMessages(currentMessages);
           setLoading(false);
           return;
         }
         
         const { url, payload } = result;
+        console.log('[DEBUG] Starting SSE stream to:', url, 'with payload:', payload);
         await handleSSEStream(url, payload, botLoadingMessage);
+      } else {
+        console.warn('[DEBUG] handleSendMessage is not provided');
       }
     } catch (error: any) {
       console.error(`${t('chat.sendFailed')}:`, error);
@@ -415,6 +421,7 @@ const CustomChatSSE: React.FC<CustomChatSSEProps> = ({
 
   // Handle SSE streaming response
   const handleSSEStream = useCallback(async (url: string, payload: any, botMessage: CustomChatMessage) => {
+    console.log('[DEBUG] handleSSEStream called with url:', url);
     const abortController = new AbortController();
     abortControllerRef.current = abortController;
 
@@ -429,6 +436,7 @@ const CustomChatSSE: React.FC<CustomChatSSEProps> = ({
         headers['Authorization'] = `Bearer ${token}`;
       }
 
+      console.log('[DEBUG] Fetching SSE with headers:', headers);
       const response = await fetch(url, {
         method: 'POST',
         headers,
@@ -437,6 +445,7 @@ const CustomChatSSE: React.FC<CustomChatSSEProps> = ({
         signal: abortController.signal,
       });
 
+      console.log('[DEBUG] SSE response status:', response.status, response.statusText);
       if (!response.ok) {
         console.error(`HTTP ${response.status}: ${response.statusText}`);
         throw new Error(`HTTP error! status: ${response.status}`);
@@ -543,7 +552,11 @@ const CustomChatSSE: React.FC<CustomChatSSEProps> = ({
   }, [token, updateMessages]);
 
   const handleSend = useCallback(async (msg: string) => {
+    console.log('[DEBUG handleSend] Called with message:', msg);
+    console.log('[DEBUG handleSend] loading:', loading, 'token:', !!token);
+    
     if (msg.trim() && !loading && token) {
+      console.log('[DEBUG handleSend] Conditions passed, starting to send');
       setLoading(true);
       
       // Create user message
@@ -572,11 +585,14 @@ const CustomChatSSE: React.FC<CustomChatSSEProps> = ({
 
       try {
         if (handleSendMessage) {
+          console.log('[DEBUG handleSend] handleSendMessage exists, calling it');
           // Pass messages currently displayed in the dialog as history
           const result = await handleSendMessage(msg, currentDisplayedMessages);
+          console.log('[DEBUG handleSend] handleSendMessage result:', result);
           
           // If handleSendMessage returns null, form validation failed, prevent sending
           if (result === null) {
+            console.log('[DEBUG handleSend] Result is null, canceling');
             // Remove added messages
             updateMessages(currentDisplayedMessages);
             setLoading(false);
@@ -584,7 +600,10 @@ const CustomChatSSE: React.FC<CustomChatSSEProps> = ({
           }
           
           const { url, payload } = result;
+          console.log('[DEBUG handleSend] Starting SSE stream to:', url);
           await handleSSEStream(url, payload, botLoadingMessage);
+        } else {
+          console.warn('[DEBUG handleSend] handleSendMessage is not provided');
         }
       } catch (error: any) {
         console.error(`${t('chat.sendFailed')}:`, error);

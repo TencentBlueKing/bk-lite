@@ -32,7 +32,7 @@ class PackageMgmtView(
     def create(self, request, *args, **kwargs):
         uploaded_file = request.FILES.get('file')
         if not uploaded_file:
-            return WebUtils.response_error("请上传文件")
+            return WebUtils.response_error(error_message="请上传文件")
 
         package_type = request.data.get('type')  # collector 或 controller
         os_type = request.data.get('os')  # linux 或 windows
@@ -40,7 +40,7 @@ class PackageMgmtView(
 
         # 校验必填参数
         if not all([package_type, os_type, object_name]):
-            return WebUtils.response_error("请填写完整的包类型、操作系统和对象名称")
+            return WebUtils.response_error(error_message="请填写完整的包类型、操作系统和对象名称")
 
         # 校验包并自动识别版本
         is_valid, error_message, parsed_info = PackageService.validate_package(
@@ -51,7 +51,7 @@ class PackageMgmtView(
         )
 
         if not is_valid:
-            return WebUtils.response_error(error_message)
+            return WebUtils.response_error(error_message=error_message)
 
         # 使用自动识别的版本号和去掉版本号的文件名
         data = dict(

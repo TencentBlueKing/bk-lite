@@ -2,6 +2,7 @@ from django.db import models
 from apps.core.models.maintainer_info import MaintainerInfo
 from apps.core.models.time_info import TimeInfo
 from apps.log.models import CollectType
+from apps.core.fields import S3JSONField
 
 
 class Policy(TimeInfo, MaintainerInfo):
@@ -89,8 +90,17 @@ class Event(TimeInfo):
 
 
 class EventRawData(models.Model):
+    """
+    事件原始数据
+    使用 S3JSONField 自动存储到 MinIO，支持自动压缩
+    """
     event = models.ForeignKey(Event, on_delete=models.CASCADE, verbose_name='事件')
-    data = models.JSONField(default=list, verbose_name='原始数据')
+    data = S3JSONField(
+        bucket_name='log-alert-raw-data',
+        compressed=True,
+        verbose_name='原始数据',
+        help_text='自动压缩并存储到 MinIO/S3'
+    )
 
     class Meta:
         verbose_name = "事件原始数据"

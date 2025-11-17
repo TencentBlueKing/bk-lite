@@ -1,8 +1,8 @@
 /**
  * 拓扑图操作管理核心 Hook，负责图形的初始化、事件处理、节点操作和用户交互
  */
-import { useCallback, useEffect, useState, useRef } from 'react';
-import type { Graph as X6Graph, Node, Edge, Cell } from '@antv/x6';
+import { useCallback, useEffect } from 'react';
+import type { Graph as X6Graph, Node, Edge } from '@antv/x6';
 import { v4 as uuidv4 } from 'uuid';
 import { formatTimeRange } from '@/app/ops-analysis/utils/widgetDataTransform';
 import { Graph } from '@antv/x6';
@@ -12,11 +12,16 @@ import { MiniMap } from '@antv/x6-plugin-minimap';
 import { COLORS } from '../constants/nodeDefaults';
 import { useDataSourceApi } from '@/app/ops-analysis/api/dataSource';
 import { TopologyNodeData } from '@/app/ops-analysis/types/topology';
-import { DataSourceParam } from '@/app/ops-analysis/types/dashBoard';
+import type { ParamItem } from '@/app/ops-analysis/types/dataSource';
 import { updateNodeAttributes, registerNodes, createNodeByType } from '../utils/registerNode';
 import { useTranslation } from '@/utils/i18n';
 import { registerEdges } from '../utils/registerEdge';
 import { useGraphData } from './useGraphData';
+import { useGraphHistory } from './useGraphHistory';
+import type {
+  NodeConfigFormValues,
+  ViewConfigFormValues
+} from '@/app/ops-analysis/types/topology';
 import {
   getEdgeStyleWithConfig,
   hideAllPorts,
@@ -31,84 +36,15 @@ import {
 } from '../utils/topologyUtils';
 import { getColorByThreshold } from '../utils/thresholdUtils';
 
-const OPERATION_HISTORY_LIMIT = 50; // 操作历史记录最大数量
 const LOADING_ANIMATION_INTERVAL = 300; // 加载动画间隔时间（ms）
-const UNDO_REDO_DEBOUNCE = 50; // 撤销/重做防抖时间（ms）
 
 export const useGraphOperations = (
   containerRef: React.RefObject<HTMLDivElement>,
   state: ReturnType<typeof import('./useTopologyState').useTopologyState>,
-  minimapContainerRef?: React.RefObject<HTMLDivElement>,
-  minimapVisible?: boolean
+  minimapContainerRef?: React.RefObject<HTMLDivElement>
 ) => {
   const { t } = useTranslation();
   const { getSourceDataByApiId } = useDataSourceApi();
-
-  const isPerformingUndoRedo = useRef(false);
-  const isInitializing = useRef(true);
-
-  const resetAllStyles = useCallback((graph: X6Graph) => {
-    graph.getNodes().forEach((node: Node) => {
-      const nodeData = node.getData();
-      let borderColor;
-      if (nodeData?.type === 'single-value') {
-        borderColor = nodeData.styleConfig?.borderColor || 'transparent';
-      } else if (nodeData?.type === 'text') {
-        borderColor = 'transparent';
-      } else {
-        borderColor = nodeData.styleConfig?.borderColor || COLORS.BORDER.DEFAULT;
-      }
-      node.setAttrByPath('body/stroke', borderColor);
-      node.setAttrByPath('body/strokeWidth', 1);
-    });
-
-    graph.getEdges().forEach((edge: Edge) => {
-      const edgeData = edge.getData();
-      const customColor = edgeData?.styleConfig?.lineColor;
-
-      edge.setAttrs({
-        line: {
-          ...edge.getAttrs().line,
-          stroke: customColor || COLORS.EDGE.DEFAULT,
-        },
-      });
-    });
-  }, []);
-
-  const highlightCell = useCallback((cell: Cell) => {
-    if (cell.isNode()) {
-      cell.setAttrByPath('body/stroke', '#1890ff');
-      cell.setAttrByPath('body/strokeWidth', 2);
-    } else if (cell.isEdge()) {
-      cell.setAttrs({
-        line: {
-          ...cell.getAttrs().line,
-          stroke: COLORS.EDGE.SELECTED,
-          strokeWidth: 1,
-        },
-      });
-      addEdgeTools(cell);
-    }
-  }, []);
-
-  const highlightNode = useCallback((node: Node) => {
-    node.setAttrByPath('body/stroke', '#1890ff');
-    node.setAttrByPath('body/strokeWidth', 2);
-  }, []);
-
-  const resetNodeStyle = useCallback((node: Node) => {
-    const nodeData = node.getData();
-    let borderColor;
-    if (nodeData?.type === 'single-value') {
-      borderColor = nodeData.styleConfig?.borderColor || 'transparent';
-    } else if (nodeData?.type === 'text') {
-      borderColor = 'transparent'; 
-    } else {
-      borderColor = nodeData.styleConfig?.borderColor || COLORS.BORDER.DEFAULT;
-    }
-    node.setAttrByPath('body/stroke', borderColor);
-    node.setAttrByPath('body/strokeWidth', 1);
-  }, []);
 
   const {
     graphInstance,
@@ -126,174 +62,22 @@ export const useGraphOperations = (
     setCurrentEdgeData,
   } = state;
 
-  // 撤销/恢复相关函数 - 基于操作记录
-  interface OperationRecord {
-    action: 'add' | 'delete' | 'update' | 'move';
-    data: {
-      before?: Record<string, unknown>;
-      after?: Record<string, unknown>;
-    };
-    cellType: 'node' | 'edge';
-    cellId: string;
-  }
-
-  const [operationHistory, setOperationHistory] = useState<OperationRecord[]>([]);
-  const [operationIndex, setOperationIndex] = useState(-1);
-
-  const recordOperation = useCallback((operation: OperationRecord) => {
-    if (isPerformingUndoRedo.current || isInitializing.current) return;
-
-    setOperationHistory(prev => {
-      const newHistory = [...prev.slice(0, operationIndex + 1), operation];
-      if (newHistory.length > OPERATION_HISTORY_LIMIT) {
-        const trimmedHistory = newHistory.slice(-OPERATION_HISTORY_LIMIT);
-        setOperationIndex(trimmedHistory.length - 1);
-        return trimmedHistory;
-      }
-      setOperationIndex(newHistory.length - 1);
-      return newHistory;
-    });
-  }, [operationIndex]);
-
-  const undo = useCallback(() => {
-    if (!graphInstance || operationIndex < 0 || isPerformingUndoRedo.current) return;
-
-    const operation = operationHistory[operationIndex];
-    if (!operation) return;
-
-    try {
-      isPerformingUndoRedo.current = true;
-
-      switch (operation.action) {
-        case 'add':
-          // 撤销添加：删除节点/边
-          const addedCell = graphInstance.getCellById(operation.cellId);
-          if (addedCell) {
-            graphInstance.removeCell(addedCell);
-          }
-          break;
-
-        case 'delete':
-          // 撤销删除：重新添加节点/边
-          if (operation.data.before) {
-            if (operation.cellType === 'node') {
-              graphInstance.addNode(operation.data.before);
-            } else {
-              graphInstance.addEdge(operation.data.before);
-            }
-          }
-          break;
-
-        case 'move':
-          // 撤销移动：恢复到之前的位置
-          const movedCell = graphInstance.getCellById(operation.cellId);
-          if (movedCell && operation.data.before) {
-            if (operation.cellType === 'node' && movedCell.isNode()) {
-              (movedCell as Node).setPosition(operation.data.before.position as { x: number; y: number });
-            } else if (operation.cellType === 'edge' && movedCell.isEdge() && operation.data.before.vertices) {
-              (movedCell as Edge).setVertices(operation.data.before.vertices as { x: number; y: number }[]);
-            }
-          }
-          break;
-
-        case 'update':
-          // 撤销更新：恢复到之前的状态
-          const updatedCell = graphInstance.getCellById(operation.cellId);
-          if (updatedCell && operation.data.before) {
-            // 根据操作类型恢复不同的属性
-            if (operation.data.before.attrs) {
-              updatedCell.setAttrs(operation.data.before.attrs as any);
-            }
-            if (operation.data.before.data) {
-              updatedCell.setData(operation.data.before.data);
-            }
-            if (operation.data.before.size && operation.cellType === 'node' && updatedCell.isNode()) {
-              (updatedCell as Node).setSize(operation.data.before.size as { width: number; height: number });
-            }
-          }
-          break;
-      }
-
-      setOperationIndex(prev => prev - 1);
-      setTimeout(() => {
-        isPerformingUndoRedo.current = false;
-      }, UNDO_REDO_DEBOUNCE);
-    } catch (error) {
-      console.error('撤销失败:', error);
-      isPerformingUndoRedo.current = false;
-    }
-  }, [graphInstance, operationHistory, operationIndex]);
-
-  const redo = useCallback(() => {
-    if (!graphInstance || operationIndex >= operationHistory.length - 1 || isPerformingUndoRedo.current) return;
-
-    const operation = operationHistory[operationIndex + 1];
-    if (!operation) return;
-
-    try {
-      isPerformingUndoRedo.current = true;
-
-      switch (operation.action) {
-        case 'add':
-          // 重做添加：添加节点/边
-          if (operation.data.after) {
-            if (operation.cellType === 'node') {
-              graphInstance.addNode(operation.data.after);
-            } else {
-              graphInstance.addEdge(operation.data.after);
-            }
-          }
-          break;
-
-        case 'delete':
-          // 重做删除：删除节点/边
-          const cellToDelete = graphInstance.getCellById(operation.cellId);
-          if (cellToDelete) {
-            graphInstance.removeCell(cellToDelete);
-          }
-          break;
-
-        case 'move':
-          // 重做移动：移动到新位置
-          const cellToMove = graphInstance.getCellById(operation.cellId);
-          if (cellToMove && operation.data.after) {
-            if (operation.cellType === 'node' && cellToMove.isNode()) {
-              (cellToMove as Node).setPosition(operation.data.after.position as { x: number; y: number });
-            } else if (operation.cellType === 'edge' && cellToMove.isEdge() && operation.data.after.vertices) {
-              (cellToMove as Edge).setVertices(operation.data.after.vertices as { x: number; y: number }[]);
-            }
-          }
-          break;
-
-        case 'update':
-          // 重做更新：应用新的状态
-          const cellToUpdate = graphInstance.getCellById(operation.cellId);
-          if (cellToUpdate && operation.data.after) {
-            if (operation.data.after.attrs) {
-              cellToUpdate.setAttrs(operation.data.after.attrs as any);
-            }
-            if (operation.data.after.data) {
-              cellToUpdate.setData(operation.data.after.data);
-            }
-            if (operation.data.after.size && operation.cellType === 'node' && cellToUpdate.isNode()) {
-              (cellToUpdate as Node).setSize(operation.data.after.size as { width: number; height: number });
-            }
-          }
-          break;
-      }
-
-      setOperationIndex(prev => prev + 1);
-      setTimeout(() => {
-        isPerformingUndoRedo.current = false;
-      }, UNDO_REDO_DEBOUNCE);
-    } catch (error) {
-      console.error('重做失败:', error);
-      isPerformingUndoRedo.current = false;
-    }
-  }, [graphInstance, operationHistory, operationIndex]);
-
-  const canUndo = operationIndex >= 0 && operationIndex < operationHistory.length;
-  const canRedo = operationIndex >= -1 && operationIndex < operationHistory.length - 1;
+  // 使用历史记录管理 hook
+  const history = useGraphHistory(graphInstance);
+  const {
+    resetAllStyles,
+    highlightCell,
+    highlightNode,
+    resetNodeStyle,
+    recordOperation,
+    undo,
+    redo,
+    canUndo,
+    canRedo,
+    clearOperationHistory,
+    startInitialization,
+    finishInitialization,
+  } = history;
 
   const updateSingleNodeData = useCallback(async (nodeConfig: TopologyNodeData) => {
     if (!nodeConfig || !graphInstance || !nodeConfig.id) return;
@@ -316,7 +100,7 @@ export const useGraphOperations = (
       let requestParams = {};
 
       if (valueConfig.dataSourceParams && Array.isArray(valueConfig.dataSourceParams)) {
-        requestParams = valueConfig.dataSourceParams.reduce((acc: Record<string, unknown>, param: DataSourceParam) => {
+        requestParams = valueConfig.dataSourceParams.reduce((acc: Record<string, unknown>, param: ParamItem) => {
           if (param.value !== undefined) {
             acc[param.name] = (param.type === 'timeRange')
               ? formatTimeRange(param.value)
@@ -352,7 +136,8 @@ export const useGraphOperations = (
         // 根据阈值配置计算文本颜色
         let textColor = nodeConfig.styleConfig?.textColor;
         if (nodeConfig.styleConfig?.thresholdColors?.length) {
-          textColor = getColorByThreshold(value, nodeConfig.styleConfig.thresholdColors, nodeConfig.styleConfig.textColor);
+          const numValue = typeof value === 'string' ? parseFloat(value) : (typeof value === 'number' ? value : null);
+          textColor = getColorByThreshold(numValue, nodeConfig.styleConfig.thresholdColors, nodeConfig.styleConfig.textColor);
         }
 
         const currentNodeData = node.getData();
@@ -365,7 +150,9 @@ export const useGraphOperations = (
         node.setAttrByPath('label/text', displayValue);
         node.setAttrByPath('label/fill', textColor);
 
-        adjustSingleValueNodeSize(node, displayValue);
+        if (node.isNode()) {
+          adjustSingleValueNodeSize(node, displayValue);
+        }
       } else {
         throw new Error(t('topology.noData'));
       }
@@ -379,7 +166,9 @@ export const useGraphOperations = (
       };
       node.setData(updatedData);
       node.setAttrByPath('label/text', '--');
-      adjustSingleValueNodeSize(node, '--');
+      if (node.isNode()) {
+        adjustSingleValueNodeSize(node, '--');
+      }
     }
   }, [graphInstance, getSourceDataByApiId]);
 
@@ -422,7 +211,7 @@ export const useGraphOperations = (
   }, [graphInstance, setIsEditMode]);
 
   const initMiniMap = useCallback((graph: X6Graph) => {
-    if (minimapContainerRef?.current && minimapVisible) {
+    if (minimapContainerRef?.current) {
       graph.disposePlugins(['minimap']);
       graph.use(
         new MiniMap({
@@ -445,20 +234,7 @@ export const useGraphOperations = (
         })
       );
     }
-  }, [minimapContainerRef, minimapVisible]);
-
-  // 监听缩略图可见性变化，重新初始化缩略图
-  useEffect(() => {
-    if (graphInstance) {
-      if (minimapVisible) {
-        setTimeout(() => {
-          initMiniMap(graphInstance);
-        }, 100);
-      } else {
-        graphInstance.disposePlugins(['minimap']);
-      }
-    }
-  }, [graphInstance, minimapVisible, initMiniMap]);
+  }, [minimapContainerRef]);
 
   const dataOperations = useGraphData(graphInstance, updateSingleNodeData, startLoadingAnimation, handleSave);
 
@@ -488,7 +264,7 @@ export const useGraphOperations = (
       });
     };
 
-    const handleEdgeAdded = ({ edge }: any) => {
+    const handleEdgeAdded = ({ edge }: { edge: Edge }) => {
       recordOperation({
         action: 'add',
         cellType: 'edge',
@@ -499,7 +275,7 @@ export const useGraphOperations = (
       });
     };
 
-    const handleEdgeRemoved = ({ edge }: any) => {
+    const handleEdgeRemoved = ({ edge }: { edge: Edge }) => {
       recordOperation({
         action: 'delete',
         cellType: 'edge',
@@ -514,11 +290,11 @@ export const useGraphOperations = (
     const nodePositions = new Map<string, any>();
     const edgeVertices = new Map<string, any>();
 
-    const handleNodeMoveStart = ({ node }: any) => {
+    const handleNodeMoveStart = ({ node }: { node: Node }) => {
       nodePositions.set(node.id, node.getPosition());
     };
 
-    const handleNodeMoved = ({ node }: any) => {
+    const handleNodeMoved = ({ node }: { node: Node }) => {
       const oldPosition = nodePositions.get(node.id);
       if (oldPosition) {
         const newPosition = node.getPosition();
@@ -537,11 +313,11 @@ export const useGraphOperations = (
       }
     };
 
-    const handleEdgeVerticesStart = ({ edge }: any) => {
+    const handleEdgeVerticesStart = ({ edge }: { edge: Edge }) => {
       edgeVertices.set(edge.id, edge.getVertices());
     };
 
-    const handleEdgeVerticesChanged = ({ edge }: any) => {
+    const handleEdgeVerticesChanged = ({ edge }: { edge: Edge }) => {
       const oldVertices = edgeVertices.get(edge.id);
       if (oldVertices) {
         const newVertices = edge.getVertices();
@@ -578,6 +354,9 @@ export const useGraphOperations = (
       graphInstance.off('node:moved', handleNodeMoved);
       graphInstance.off('edge:change:vertices', handleEdgeVerticesStart);
       graphInstance.off('edge:change:vertices', handleEdgeVerticesChanged);
+
+      nodePositions.clear();
+      edgeVertices.clear();
     };
   }, [graphInstance, recordOperation]);
 
@@ -635,6 +414,8 @@ export const useGraphOperations = (
       if (containerRef.current) {
         containerRef.current.removeEventListener('wheel', handleWheel);
       }
+
+      nodeOriginalSizes.clear();
     };
 
     graph.on('node:contextmenu', ({ e, node }) => {
@@ -995,6 +776,9 @@ export const useGraphOperations = (
       })
     );
 
+    // 初始化 minimap
+    initMiniMap(graph);
+
     const cleanup = bindGraphEvents(graph);
     setGraphInstance(graph);
 
@@ -1055,7 +839,7 @@ export const useGraphOperations = (
     return addedNode.id;
   }, [graphInstance, updateSingleNodeData, startLoadingAnimation]);
 
-  function getUpdatedNodeConfig(editingNode: any, values: any) {
+  function getUpdatedNodeConfig(editingNode: TopologyNodeData, values: NodeConfigFormValues): TopologyNodeData {
     const { valueConfig, styleConfig } = editingNode || {};
     return {
       id: editingNode.id,
@@ -1090,18 +874,18 @@ export const useGraphOperations = (
         shapeType: values.shapeType !== undefined ? values.shapeType : styleConfig?.shapeType,
         nameColor: values.nameColor !== undefined ? values.nameColor : styleConfig?.nameColor,
         nameFontSize: values.nameFontSize !== undefined ? values.nameFontSize : styleConfig?.nameFontSize,
-        textDirection: values.textDirection !== undefined ? values.textDirection : styleConfig?.textDirection,
         thresholdColors: values.thresholdColors !== undefined ? values.thresholdColors : styleConfig?.thresholdColors,
       },
-    };
+    } as TopologyNodeData;
   }
 
-  const handleNodeUpdate = useCallback(async (values: any) => {
+  const handleNodeUpdate = useCallback(async (values: NodeConfigFormValues) => {
     if (!values) return;
     const editingNode = state.editingNodeData;
     if (!editingNode || !graphInstance) return;
     try {
       const updatedConfig = getUpdatedNodeConfig(editingNode, values);
+      if (!updatedConfig.id) return;
       const node = graphInstance.getCellById(updatedConfig.id);
       if (!node || !node.isNode()) return;
       updateNodeAttributes(node as Node, updatedConfig);
@@ -1121,7 +905,7 @@ export const useGraphOperations = (
     }
   }, [graphInstance, updateSingleNodeData, state]);
 
-  const handleViewConfigConfirm = useCallback((values: any) => {
+  const handleViewConfigConfirm = useCallback((values: ViewConfigFormValues) => {
     if (state.editingNodeData && graphInstance) {
       const node = graphInstance.getCellById(
         state.editingNodeData.id
@@ -1149,11 +933,11 @@ export const useGraphOperations = (
   }, [graphInstance, state, dataOperations]);
 
 
-  const handleAddChartNode = useCallback(async (values: any) => {
+  const handleAddChartNode = useCallback(async (values: ViewConfigFormValues) => {
     if (!graphInstance) {
       return null;
     }
-    const nodeConfig = {
+    const nodeConfig: TopologyNodeData = {
       id: `node_${uuidv4()}`,
       type: 'chart',
       name: values.name,
@@ -1162,7 +946,7 @@ export const useGraphOperations = (
       styleConfig: {},
       valueConfig: {
         chartType: values.chartType,
-        dataSource: values.dataSource,
+        dataSource: typeof values.dataSource === 'string' ? parseInt(values.dataSource, 10) : values.dataSource,
         dataSourceParams: values.dataSourceParams,
       },
     };
@@ -1202,21 +986,6 @@ export const useGraphOperations = (
     state.setNodeEditVisible(false);
     state.setEditingNodeData(null);
   }, [state]);
-
-  // 手动完成初始化，启用操作记录
-  const finishInitialization = useCallback(() => {
-    isInitializing.current = false;
-  }, []);
-
-  // 重新开始初始化，禁用操作记录
-  const startInitialization = useCallback(() => {
-    isInitializing.current = true;
-  }, []);
-
-  const clearOperationHistory = useCallback(() => {
-    setOperationHistory([]);
-    setOperationIndex(-1);
-  }, []);
 
   // 刷新所有单值节点
   const refreshAllSingleValueNodes = useCallback(() => {

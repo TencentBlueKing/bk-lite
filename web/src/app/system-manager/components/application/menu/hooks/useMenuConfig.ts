@@ -15,6 +15,13 @@ export interface MixedItem {
   data: MenuGroup | FunctionMenuItem;
 }
 
+/**
+ * Check if menu is in detail page mode (hides children but preserves them in data)
+ */
+const isDetailPageMode = (menu: MenuItem): boolean => {
+  return menu.hasDetail === true;
+};
+
 export const useMenuConfig = (
   configMenus: MenuItem[],
   clientId: string,
@@ -29,11 +36,8 @@ export const useMenuConfig = (
   useEffect(() => {
     if (configMenus.length > 0) {
       loadSourceMenusFromConfig();
-      if (menuId) {
-        loadExistingMenuItems();
-      }
     }
-  }, [configMenus, clientId, menuId]);
+  }, [configMenus, clientId]);
 
   const loadSourceMenusFromConfig = () => {
     const appMenus = configMenus.filter(menu => {
@@ -46,31 +50,58 @@ export const useMenuConfig = (
     const convertToSourceMenu = (menuItems: MenuItem[]): SourceMenuNode[] => {
       return menuItems
         .filter(menu => menu.url && menu.children && menu.children.length > 0)
-        .map(menu => ({
-          name: menu.name,
-          display_name: menu.display_name || menu.title || menu.name,
-          url: menu.url,
-          icon: menu.icon,
-          type: 'menu' as const,
-          children: menu.children
-            ?.filter((child: MenuItem) => !child.isNotMenuItem && child.url)
-            .map((child: MenuItem) => ({
-              name: child.name,
-              display_name: child.display_name || child.title || child.name,
-              url: child.url,
-              icon: child.icon,
-              type: 'page' as const,
-            }))
-        }))
-        .filter(menu => menu.children && menu.children.length > 0);
+        .map(menu => {
+          const isDetail = isDetailPageMode(menu);
+          
+          // Detail mode: hide children in UI but preserve them in hiddenChildren for save
+          if (isDetail) {
+            return {
+              name: menu.name,
+              display_name: menu.display_name || menu.title || menu.name,
+              url: menu.url,
+              icon: menu.icon,
+              type: 'menu' as const,
+              tour: menu.tour,
+              isDetailMode: true,
+              hiddenChildren: menu.children
+                ?.filter((child: MenuItem) => !child.isNotMenuItem && child.url)
+                .map((child: MenuItem) => ({
+                  name: child.name,
+                  display_name: child.display_name || child.title || child.name,
+                  url: child.url,
+                  icon: child.icon,
+                  type: 'page' as const,
+                  tour: child.tour,
+                })),
+              children: []
+            };
+          }
+          
+          return {
+            name: menu.name,
+            display_name: menu.display_name || menu.title || menu.name,
+            url: menu.url,
+            icon: menu.icon,
+            type: 'menu' as const,
+            tour: menu.tour,
+            isDetailMode: false,
+            children: menu.children
+              ?.filter((child: MenuItem) => !child.isNotMenuItem && child.url)
+              .map((child: MenuItem) => ({
+                name: child.name,
+                display_name: child.display_name || child.title || child.name,
+                url: child.url,
+                icon: child.icon,
+                type: 'page' as const,
+                tour: child.tour,
+              }))
+          };
+        })
+        .filter(menu => menu.isDetailMode || (menu.children && menu.children.length > 0));
     };
 
     const sourceMenuData = convertToSourceMenu(appMenus);
     setSourceMenus(sourceMenuData);
-  };
-
-  const loadExistingMenuItems = async () => {
-    console.log('Loading existing menu items for menuId:', menuId);
   };
 
   const handleCheck = (checkedKeys: any) => {
@@ -83,30 +114,59 @@ export const useMenuConfig = (
       const newPages: FunctionMenuItem[] = [];
       
       sourceMenus.forEach(menu => {
-        menu.children?.forEach(child => {
-          if (addedKeys.includes(child.name)) {
-            const exists = mixedItems.some(item => {
-              if (item.type === 'page') {
-                return (item.data as FunctionMenuItem).name === child.name;
-              } else if (item.type === 'group') {
-                return (item.data as MenuGroup).children.some(c => c.name === child.name);
-              }
-              return false;
-            });
-            
-            if (!exists) {
-              newPages.push({
-                name: child.name,
-                display_name: child.display_name,
-                url: child.url,
-                icon: child.icon,
-                type: child.type,
-                isExisting: false,
-                originName: `${menu.display_name}/${child.display_name}`,
-              });
+        if (menu.isDetailMode && addedKeys.includes(menu.name)) {
+          const exists = mixedItems.some(item => {
+            if (item.type === 'page') {
+              return (item.data as FunctionMenuItem).name === menu.name;
+            } else if (item.type === 'group') {
+              return (item.data as MenuGroup).children.some(c => c.name === menu.name);
             }
+            return false;
+          });
+          
+          if (!exists) {
+            newPages.push({
+              name: menu.name,
+              display_name: menu.display_name,
+              url: menu.url,
+              icon: menu.icon,
+              type: 'page',
+              isExisting: false,
+              originName: menu.display_name,
+              tour: menu.tour,
+              isDetailMode: true,
+              hiddenChildren: menu.hiddenChildren,
+            });
           }
-        });
+        }
+        
+        if (!menu.isDetailMode) {
+          menu.children?.forEach(child => {
+            if (addedKeys.includes(child.name)) {
+              const exists = mixedItems.some(item => {
+                if (item.type === 'page') {
+                  return (item.data as FunctionMenuItem).name === child.name;
+                } else if (item.type === 'group') {
+                  return (item.data as MenuGroup).children.some(c => c.name === child.name);
+                }
+                return false;
+              });
+              
+              if (!exists) {
+                newPages.push({
+                  name: child.name,
+                  display_name: child.display_name,
+                  url: child.url,
+                  icon: child.icon,
+                  type: child.type,
+                  isExisting: false,
+                  originName: `${menu.display_name}/${child.display_name}`,
+                  tour: child.tour,
+                });
+              }
+            }
+          });
+        }
       });
 
       if (newPages.length > 0) {
@@ -121,12 +181,26 @@ export const useMenuConfig = (
 
     const removedKeys = selectedKeys.filter(key => !newCheckedKeys.includes(key));
     if (removedKeys.length > 0) {
-      setMixedItems(prev => prev.filter(item => {
-        if (item.type === 'page') {
-          return !removedKeys.includes((item.data as FunctionMenuItem).name);
-        }
-        return true;
-      }));
+      setMixedItems(prev => {
+        return prev
+          .map(item => {
+            if (item.type === 'group') {
+              const group = item.data as MenuGroup;
+              const newChildren = group.children.filter(child => !removedKeys.includes(child.name));
+              return {
+                ...item,
+                data: { ...group, children: newChildren }
+              };
+            }
+            return item;
+          })
+          .filter(item => {
+            if (item.type === 'page') {
+              return !removedKeys.includes((item.data as FunctionMenuItem).name);
+            }
+            return true;
+          });
+      });
     }
   };
 
@@ -148,14 +222,9 @@ export const useMenuConfig = (
     const item = mixedItems.find(i => i.id === groupId);
     if (item && item.type === 'group') {
       const group = item.data as MenuGroup;
-      
-      // 收集目录内所有页面的 name
       const pageNamesInGroup = group.children.map(page => page.name);
       
-      // 从 selectedKeys 中移除这些页面
       setSelectedKeys(prev => prev.filter(key => !pageNamesInGroup.includes(key)));
-      
-      // 直接删除目录（不保留子页面）
       setMixedItems(prev => prev.filter(i => i.id !== groupId));
     }
   };
@@ -173,10 +242,8 @@ export const useMenuConfig = (
   };
 
   const handleRemovePageFromGroup = (groupId: string, pageName: string) => {
-    // 从 selectedKeys 中移除该页面
     setSelectedKeys(prev => prev.filter(k => k !== pageName));
     
-    // 从目录中移除该页面（不再添加到列表末尾）
     setMixedItems(prev => prev.map(item => {
       if (item.type === 'group' && item.id === groupId) {
         const group = item.data as MenuGroup;

@@ -1,6 +1,6 @@
 from dotenv import load_dotenv
 
-from apps.cmdb.constants import INSTANCE, INSTANCE_ASSOCIATION
+from apps.cmdb.constants.constants import INSTANCE, INSTANCE_ASSOCIATION
 from apps.cmdb.graph.drivers.graph_client import GraphClient
 from apps.cmdb.services.model import ModelManage
 

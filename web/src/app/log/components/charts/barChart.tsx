@@ -14,15 +14,9 @@ import CustomTooltip from './customTooltips';
 import { useFormatTime } from '@/app/log/hooks';
 import barChartStyle from './index.module.scss';
 import dayjs, { Dayjs } from 'dayjs';
-import { ChartData } from '@/app/log/types';
+import { BasicBarChartProps } from '@/app/log/types';
 
-interface BarChartProps {
-  data: ChartData[];
-  className?: string;
-  onXRangeChange?: (arr: [Dayjs, Dayjs]) => void;
-}
-
-const CustomBarChart: React.FC<BarChartProps> = ({
+const CustomBarChart: React.FC<BasicBarChartProps> = ({
   data,
   className = '',
   onXRangeChange,

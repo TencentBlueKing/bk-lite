@@ -5,6 +5,7 @@
       "icon": "cloud-full",
       "url": "/node-manager/cloudregion",
       "name": "cloud_region_list",
+      "hasDetail": true,
       "children": [
         {
           "title": "节点",
@@ -31,6 +32,7 @@
       "icon": "caijiqi",
       "url": "/node-manager/collector",
       "name": "collector_list",
+      "hasDetail": true,
       "children": [
         {
           "title": "包管理",
@@ -45,6 +47,7 @@
       "icon": "nenglifabuguanli",
       "url": "/node-manager/controller",
       "name": "controller_list",
+      "hasDetail": true,
       "children": [
         {
           "title": "包管理",
@@ -61,6 +64,7 @@
       "icon": "yunchang-yunquyu",
       "url": "/node-manager/cloudregion",
       "name": "cloud_region_list",
+      "hasDetail": true,
       "children": [
         {
           "title": "Node",
@@ -87,6 +91,7 @@
       "icon": "xiaocaijiqi",
       "url": "/node-manager/collector",
       "name": "collector_list",
+      "hasDetail": true,
       "children": [
         {
           "title": "Package Management",
@@ -101,6 +106,7 @@
       "icon": "nenglifabuguanli",
       "url": "/node-manager/controller",
       "name": "controller_list",
+      "hasDetail": true,
       "children": [
         {
           "title": "Package Management",

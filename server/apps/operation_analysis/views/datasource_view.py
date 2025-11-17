@@ -5,12 +5,13 @@
 from rest_framework.decorators import action
 from rest_framework.response import Response
 
+from apps.core.decorators.api_permission import HasPermission
+from apps.core.utils.viewset_utils import AuthViewSet
 from apps.operation_analysis.common.get_nats_source_data import GetNatsData
 from apps.operation_analysis.filters.datasource_filters import DataSourceAPIModelFilter, NameSpaceModelFilter, \
     DataSourceTagModelFilter
 from apps.operation_analysis.serializers.datasource_serializers import DataSourceAPIModelSerializer, \
-    NameSpaceModelSerializer, \
-    DataSourceTagModelSerializer
+    NameSpaceModelSerializer, DataSourceTagModelSerializer
 from config.drf.pagination import CustomPageNumberPagination
 from config.drf.viewsets import ModelViewSet
 from apps.operation_analysis.models.datasource_models import DataSourceAPIModel, NameSpace, DataSourceTag
@@ -40,8 +41,28 @@ class NameSpaceModelViewSet(ModelViewSet):
     filterset_class = NameSpaceModelFilter
     pagination_class = CustomPageNumberPagination
 
+    @HasPermission("namespace-View")
+    def retrieve(self, request, *args, **kwargs):
+        return super(NameSpaceModelViewSet, self).retrieve(request, *args, **kwargs)
 
-class DataSourceAPIModelViewSet(ModelViewSet):
+    @HasPermission("namespace-View")
+    def list(self, request, *args, **kwargs):
+        return super(NameSpaceModelViewSet, self).list(request, *args, **kwargs)
+
+    @HasPermission("namespace-Add")
+    def create(self, request, *args, **kwargs):
+        return super(NameSpaceModelViewSet, self).create(request, *args, **kwargs)
+
+    @HasPermission("namespace-Edit")
+    def update(self, request, *args, **kwargs):
+        return super(NameSpaceModelViewSet, self).update(request, *args, **kwargs)
+
+    @HasPermission("namespace-Delete")
+    def destroy(self, request, *args, **kwargs):
+        return super(NameSpaceModelViewSet, self).destroy(request, *args, **kwargs)
+
+
+class DataSourceAPIModelViewSet(AuthViewSet):
     """
     数据源
     """
@@ -51,6 +72,8 @@ class DataSourceAPIModelViewSet(ModelViewSet):
     ordering = ["id"]
     filterset_class = DataSourceAPIModelFilter
     pagination_class = CustomPageNumberPagination
+    permission_key = "datasource"
+    ORGANIZATION_FIELD = "groups"  # 使用 groups 字段作为组织字段
 
     @action(detail=False, methods=["post"], url_path=r"get_source_data/(?P<pk>[^/.]+)")
     def get_source_data(self, request, *args, **kwargs):
@@ -73,3 +96,23 @@ class DataSourceAPIModelViewSet(ModelViewSet):
             logger.error("获取数据源数据失败: {}".format(e))
 
         return Response(result)
+
+    @HasPermission("data_source-View")
+    def retrieve(self, request, *args, **kwargs):
+        return super(DataSourceAPIModelViewSet, self).retrieve(request, *args, **kwargs)
+
+    @HasPermission("data_source-View")
+    def list(self, request, *args, **kwargs):
+        return super(DataSourceAPIModelViewSet, self).list(request, *args, **kwargs)
+
+    @HasPermission("data_source-Add")
+    def create(self, request, *args, **kwargs):
+        return super(DataSourceAPIModelViewSet, self).create(request, *args, **kwargs)
+
+    @HasPermission("data_source-Edit")
+    def update(self, request, *args, **kwargs):
+        return super(DataSourceAPIModelViewSet, self).update(request, *args, **kwargs)
+
+    @HasPermission("data_source-Delete")
+    def destroy(self, request, *args, **kwargs):
+        return super(DataSourceAPIModelViewSet, self).destroy(request, *args, **kwargs)

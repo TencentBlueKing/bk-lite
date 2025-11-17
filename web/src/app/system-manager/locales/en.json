@@ -288,7 +288,20 @@
       "exportProgress": "Export Progress",
       "exportSuccess": "Export successful",
       "exportFailed": "Export failed",
-      "pleaseSelectRows": "Please select at least one record"
+      "pleaseSelectRows": "Please select at least one record",
+      "operationLogs": "Operation Logs",
+      "operationTime": "Time",
+      "operator": "User",
+      "operationType": "Action Type",
+      "operationModule": "Application",
+      "operationDetail": "Summary",
+      "operatorPlaceholder": "Please enter operator",
+      "operationTypePlaceholder": "Please select operation type",
+      "operationModulePlaceholder": "Please select operation module",
+      "actionTypeCreate": "Create",
+      "actionTypeUpdate": "Update",
+      "actionTypeDelete": "Delete",
+      "actionTypeExecute": "Execute"
     },
     "menu": {
       "title": "Custom Menu",

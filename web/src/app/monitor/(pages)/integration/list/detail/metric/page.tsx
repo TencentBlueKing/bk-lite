@@ -438,8 +438,8 @@ const Configure = () => {
           className={metricStyle.metricTable}
           style={{
             height: NEED_TAGS_ENTRY_OBJECTS.includes(groupName)
-              ? 'calc(100vh - 366px)'
-              : 'calc(100vh - 316px)',
+              ? 'calc(100vh - 396px)'
+              : 'calc(100vh - 346px)',
           }}
         >
           {!!metricData.length ? (

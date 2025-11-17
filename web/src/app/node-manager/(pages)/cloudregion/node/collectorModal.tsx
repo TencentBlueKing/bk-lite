@@ -7,7 +7,7 @@ import React, {
   useMemo,
   useEffect,
 } from 'react';
-import { Form, Select, message, Button, Popconfirm } from 'antd';
+import { Form, Select, message, Button, Popconfirm, Radio, Spin } from 'antd';
 import OperateModal from '@/components/operate-modal';
 import type { FormInstance } from 'antd';
 import { useTranslation } from '@/utils/i18n';
@@ -34,6 +34,7 @@ const CollectorModal = forwardRef<ModalRef, ModalSuccess>(
       batchOperationCollector,
       getConfiglist,
       applyConfig,
+      getNodeStateEnum,
     } = useNodeManagerApi();
     const cloudId = useCloudId();
     const collectorFormRef = useRef<FormInstance>(null);
@@ -49,8 +50,11 @@ const CollectorModal = forwardRef<ModalRef, ModalSuccess>(
     const [configListLoading, setConfigListLoading] = useState<boolean>(false);
     const [confirmLoading, setConfirmLoading] = useState<boolean>(false);
     const [collector, setCollector] = useState<string | null>(null);
+    const [pageLoading, setPageLoading] = useState<boolean>(false);
     const [system, setSystem] = useState<string>('');
     const [options, setOptions] = useState<Option[]>([]);
+    const [typeOptions, setTypeOptions] = useState<any[]>([]);
+    const [selectedType, setSelectedType] = useState<string>('');
 
     useImperativeHandle(ref, () => ({
       showModal: ({ type, ids, selectedsystem }) => {
@@ -58,7 +62,7 @@ const CollectorModal = forwardRef<ModalRef, ModalSuccess>(
         setType(type);
         setSystem(selectedsystem as string);
         setNodeIds(ids || []);
-        initPage(selectedsystem || '');
+        initTypeOptions(selectedsystem || '');
         type === 'startCollector' && getConfigData();
       },
     }));
@@ -71,12 +75,46 @@ const CollectorModal = forwardRef<ModalRef, ModalSuccess>(
       return configList.filter((item) => item.collector_id === collector);
     }, [collector]);
 
-    const initPage = async (selectedsystem: string) => {
-      setCollectorLoading(true);
+    const initTypeOptions = async (selectedsystem: string) => {
+      setPageLoading(true);
       try {
-        const data = await getCollectorlist({
+        const res = await getNodeStateEnum();
+        if (res?.tag) {
+          const tagData = res.tag;
+          const apps: any[] = [];
+          Object.keys(tagData).forEach((key) => {
+            const item = tagData[key];
+            if (item.is_app) {
+              apps.push({ label: item.name, value: key });
+            }
+          });
+          setTypeOptions(apps);
+          // 默认选中第一项
+          const defaultType = apps.length > 0 ? apps[0].value : '';
+          setSelectedType(defaultType);
+          collectorFormRef.current?.setFieldsValue({
+            type: defaultType,
+          });
+          if (defaultType) {
+            getCollectors(selectedsystem, defaultType);
+          }
+        }
+      } finally {
+        setPageLoading(false);
+      }
+    };
+
+    const getCollectors = async (selectedsystem: string, typeTag?: string) => {
+      setCollectorLoading(true);
+      const currentType = typeTag || selectedType;
+      try {
+        const params: any = {
           node_operating_system: selectedsystem,
-        });
+        };
+        if (currentType) {
+          params.tags = currentType;
+        }
+        const data = await getCollectorlist(params);
         const natsexecutorId =
           selectedsystem === 'linux'
             ? 'natsexecutor_linux'
@@ -139,6 +177,11 @@ const CollectorModal = forwardRef<ModalRef, ModalSuccess>(
       setVersionLoading(false);
       setCollectorLoading(false);
       setCollector(null);
+      setSelectedType('');
+      setTypeOptions([]);
+      setOptions([]);
+      setCollectorlist([]);
+      collectorFormRef.current?.resetFields();
     };
 
     //点击确定按钮的相关逻辑处理
@@ -240,7 +283,6 @@ const CollectorModal = forwardRef<ModalRef, ModalSuccess>(
     };
 
     const handleCollectorChange = async (option: string) => {
-      console.log(option);
       const id = option;
       setCollector(id);
       setPackageList([]);
@@ -260,6 +302,21 @@ const CollectorModal = forwardRef<ModalRef, ModalSuccess>(
           setVersionLoading(false);
         }
       }
+    };
+
+    // 处理类型改变
+    const handleTypeChange = (value: string) => {
+      setSelectedType(value);
+      setCollector(null);
+      setOptions([]);
+      setCollectorlist([]);
+      setPackageList([]);
+      collectorFormRef.current?.setFieldsValue({
+        collector: null,
+        version: null,
+        configuration: null,
+      });
+      getCollectors(system, value);
     };
 
     return (
@@ -297,11 +354,11 @@ const CollectorModal = forwardRef<ModalRef, ModalSuccess>(
           </>
         }
       >
-        <Form ref={collectorFormRef} layout="vertical" colon={false}>
-          <Form.Item noStyle>
+        <Spin spinning={pageLoading}>
+          <Form ref={collectorFormRef} layout="vertical" colon={false}>
             <Form.Item
-              name="Collector"
-              label={t('node-manager.cloudregion.node.collector')}
+              name="type"
+              label={t('common.type')}
               rules={[
                 {
                   required: true,
@@ -309,73 +366,93 @@ const CollectorModal = forwardRef<ModalRef, ModalSuccess>(
                 },
               ]}
             >
-              <Select
-                showSearch
-                allowClear
-                loading={collectorLoading}
-                options={options}
-                onChange={handleCollectorChange}
-              ></Select>
+              <Radio.Group onChange={(e) => handleTypeChange(e.target.value)}>
+                {typeOptions.map((option) => (
+                  <Radio key={option.value} value={option.value}>
+                    {option.label}
+                  </Radio>
+                ))}
+              </Radio.Group>
             </Form.Item>
-            {type === 'startCollector' && collector?.includes('telegraf') && (
-              <div className="text-[12px] text-[var(--color-text-2)]">
-                {t('node-manager.cloudregion.node.telegrafConfigTips')}
-              </div>
+            <Form.Item noStyle>
+              <Form.Item
+                name="collector"
+                label={t('node-manager.cloudregion.node.collector')}
+                rules={[
+                  {
+                    required: true,
+                    message: t('common.required'),
+                  },
+                ]}
+              >
+                <Select
+                  showSearch
+                  allowClear
+                  loading={collectorLoading}
+                  options={options}
+                  onChange={handleCollectorChange}
+                ></Select>
+              </Form.Item>
+              {type === 'startCollector' && collector?.includes('telegraf') && (
+                <div className="text-[12px] text-[var(--color-text-2)]">
+                  {t('node-manager.cloudregion.node.telegrafConfigTips')}
+                </div>
+              )}
+            </Form.Item>
+            {type === 'startCollector' &&
+              collector &&
+              !collector.includes('telegraf') && (
+              <Form.Item
+                name="configuration"
+                label={t('node-manager.cloudregion.node.configuration')}
+              >
+                <Select
+                  showSearch
+                  allowClear
+                  loading={configListLoading}
+                  placeholder={t('common.selectMsg')}
+                  filterOption={(input, option) =>
+                    (option?.label || '')
+                      .toLowerCase()
+                      .includes(input.toLowerCase())
+                  }
+                  options={configs.map((item) => ({
+                    value: item.id,
+                    label: item.name,
+                  }))}
+                />
+              </Form.Item>
             )}
-          </Form.Item>
-          {type === 'startCollector' &&
-            collector &&
-            !collector.includes('telegraf') && (
-            <Form.Item
-              name="configuration"
-              label={t('node-manager.cloudregion.node.configuration')}
-            >
-              <Select
-                showSearch
-                allowClear
-                loading={configListLoading}
-                placeholder={t('common.selectMsg')}
-                filterOption={(input, option) =>
-                  (option?.label || '')
-                    .toLowerCase()
-                    .includes(input.toLowerCase())
-                }
-                options={configs.map((item) => ({
-                  value: item.id,
-                  label: item.name,
-                }))}
-              />
-            </Form.Item>
-          )}
-          {type === 'installCollector' && (
-            <Form.Item
-              name="version"
-              label={t('node-manager.cloudregion.node.version')}
-              rules={[
-                {
-                  required: true,
-                  message: t('common.required'),
-                },
-              ]}
-            >
-              <Select
-                showSearch
-                allowClear
-                loading={versionLoading}
-                placeholder={t('common.selectMsg')}
-                options={packageList.map((item) => ({
-                  value: item.id,
-                  label: item.version,
-                }))}
-                filterOption={(input, option) =>
-                  (option?.label || '')
-                    .toLowerCase()
-                    .includes(input.toLowerCase())
-                }
-              />
-            </Form.Item>
-          )}
-        </Form>
+            {type === 'installCollector' && (
+              <Form.Item
+                name="version"
+                label={t('node-manager.cloudregion.node.version')}
+                rules={[
+                  {
+                    required: true,
+                    message: t('common.required'),
+                  },
+                ]}
+              >
+                <Select
+                  showSearch
+                  allowClear
+                  loading={versionLoading}
+                  placeholder={t('common.selectMsg')}
+                  options={packageList.map((item) => ({
+                    value: item.id,
+                    label: item.version,
+                  }))}
+                  filterOption={(input, option) =>
+                    (option?.label || '')
+                      .toLowerCase()
+                      .includes(input.toLowerCase())
+                  }
+                />
+              </Form.Item>
+            )}
+          </Form>
+        </Spin>
       </OperateModal>
     );
   }

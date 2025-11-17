@@ -55,7 +55,7 @@ class UserLoginLog(TimeInfo):
             "id",
             "username",
             "source_ip",
-            "location",
+            # "location",
             "os_info",
             "browser_info",
             "status",

@@ -3,11 +3,15 @@
 # @Time: 2025/7/18 10:59
 # @Author: windyzhao
 from rest_framework import serializers
+
+from apps.core.utils.serializers import AuthSerializer
 from apps.operation_analysis.serializers.base_serializers import BaseFormatTimeSerializer
 from apps.operation_analysis.models.models import Dashboard, Directory, Topology, Architecture
 
 
-class DirectoryModelSerializer(BaseFormatTimeSerializer):
+class DirectoryModelSerializer(BaseFormatTimeSerializer, AuthSerializer):
+    permission_key = "directory"
+
     class Meta:
         model = Directory
         fields = "__all__"
@@ -15,7 +19,9 @@ class DirectoryModelSerializer(BaseFormatTimeSerializer):
         }
 
 
-class DashboardModelSerializer(BaseFormatTimeSerializer):
+class DashboardModelSerializer(BaseFormatTimeSerializer, AuthSerializer):
+    permission_key = "directory.dashboard"
+
     class Meta:
         model = Dashboard
         fields = "__all__"
@@ -31,7 +37,9 @@ class DashboardModelSerializer(BaseFormatTimeSerializer):
         return super().create(validated_data)
 
 
-class TopologyModelSerializer(BaseFormatTimeSerializer):
+class TopologyModelSerializer(BaseFormatTimeSerializer, AuthSerializer):
+    permission_key = "directory.topology"
+
     class Meta:
         model = Topology
         fields = "__all__"
@@ -46,7 +54,9 @@ class TopologyModelSerializer(BaseFormatTimeSerializer):
         return super().create(validated_data)
 
 
-class ArchitectureModelSerializer(BaseFormatTimeSerializer):
+class ArchitectureModelSerializer(BaseFormatTimeSerializer, AuthSerializer):
+    permission_key = "directory.architecture"
+
     class Meta:
         model = Architecture
         fields = "__all__"

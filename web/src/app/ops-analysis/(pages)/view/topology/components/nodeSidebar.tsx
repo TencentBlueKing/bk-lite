@@ -1,7 +1,7 @@
 import React, { useEffect } from 'react';
 import Icon from '@/components/icon';
 import { useTranslation } from '@/utils/i18n';
-import { SidebarProps, NodeType } from '@/app/ops-analysis/types/topology';
+import { NodeSidebarProps, NodeType } from '@/app/ops-analysis/types/topology';
 import { Button } from 'antd';
 import {
   RightOutlined,
@@ -12,7 +12,7 @@ import {
   FontSizeOutlined,
 } from '@ant-design/icons';
 
-const Sidebar: React.FC<SidebarProps> = ({
+const Sidebar: React.FC<NodeSidebarProps> = ({
   collapsed,
   isEditMode = false,
   graphInstance,
@@ -175,7 +175,8 @@ const Sidebar: React.FC<SidebarProps> = ({
           type="text"
           icon={collapsed ? <RightOutlined /> : <LeftOutlined />}
           onClick={handleToggleCollapsed}
-          className="absolute top-5 bg-[var(--color-bg-1)] rounded-full shadow-sm border border-[var(--color-border-1)] hover:border-blue-300 !p-0"
+          disabled={!isEditMode}
+          className="absolute top-5 bg-[var(--color-bg-1)] rounded-full shadow-sm border border-[var(--color-border-1)] hover:!bg-[var(--color-fill-2)] hover:shadow-md disabled:!opacity-50"
           style={{
             width: '24px',
             height: '24px',
@@ -199,7 +200,7 @@ const Sidebar: React.FC<SidebarProps> = ({
                     className={`px-2 py-1.5 rounded-lg transition-all duration-200 bg-[var(--color-bg-1)] ${
                       isEditMode
                         ? 'cursor-grab active:cursor-grabbing'
-                        : 'cursor-not-allowed'
+                        : 'cursor-not-allowed opacity-60'
                     }`}
                     draggable={isEditMode}
                     onDragStart={(e) => handleDragStart(e, nodeType)}

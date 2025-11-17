@@ -4,6 +4,7 @@ from rest_framework.decorators import action
 
 from apps.system_mgmt.models.system_settings import SystemSettings
 from apps.system_mgmt.serializers.system_settings_serializer import SystemSettingsSerializer
+from apps.system_mgmt.utils.operation_log_utils import log_operation
 
 
 class SystemSettingsViewSet(viewsets.ModelViewSet):
@@ -22,4 +23,9 @@ class SystemSettingsViewSet(viewsets.ModelViewSet):
         for i in sys_set:
             i.value = kwargs.get(i.key, i.value)
         SystemSettings.objects.bulk_update(sys_set, ["value"])
+
+        # 记录操作日志
+        updated_keys = [i.key for i in sys_set]
+        log_operation(request, "update", "system_settings", f"编辑登录设置: {', '.join(updated_keys)}")
+
         return JsonResponse({"result": True})
