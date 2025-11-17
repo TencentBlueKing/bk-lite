@@ -52,6 +52,7 @@ init_opspilot() {
     uv run python manage.py init_channel || true
     uv run python manage.py init_llm || true
     uv run python manage.py init_provider_model  || true
+    uv run python manage.py parse_tools_yml  || true
 }
 
 init_playground() {
