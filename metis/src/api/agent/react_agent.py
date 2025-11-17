@@ -46,3 +46,19 @@ async def invoke_react_agent_sse(request, body: ReActAgentRequest):
         content_type="text/event-stream; charset=utf-8",
         headers={"Cache-Control": "no-cache", "Connection": "keep-alive"}
     )
+
+
+@react_agent_api_router.post("/invoke_react_agent_agui")
+@auth.login_required
+@validate(json=ReActAgentRequest)
+async def invoke_react_agent_agui(request, body: ReActAgentRequest):
+    """执行 ReAct Agent（AG-UI 协议流式响应）"""
+    workflow = _prepare_workflow(body)
+
+    return ResponseStream(
+        lambda res: BaseAgent.agui_stream_response_handler(
+            workflow, body, res
+        ),
+        content_type="text/event-stream; charset=utf-8",
+        headers={"Cache-Control": "no-cache", "Connection": "keep-alive"}
+    )
