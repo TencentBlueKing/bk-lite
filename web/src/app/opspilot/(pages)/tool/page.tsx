@@ -66,25 +66,25 @@ const ToolListPage: React.FC = () => {
     return tools.map((tool: any, index: number) => (
       <div 
         key={index}
-        className="p-3 bg-gradient-to-br from-slate-50 to-blue-50 rounded-lg hover:shadow-md transition-all duration-200"
+        className="p-3 bg-gradient-to-br from-[var(--color-fill-1)] to-[var(--color-primary-bg-active)] rounded-lg hover:shadow-md transition-all duration-200"
       >
         <div className="flex items-start gap-3">
           <div className="flex-shrink-0 w-8 h-8 bg-white rounded-lg flex items-center justify-center shadow-sm">
             <Icon type={getRandomIcon()} className="text-blue-500 text-2xl" />
           </div>
           <div className="flex-1 min-w-0">
-            <div className="font-medium text-gray-800 mb-1 truncate">
+            <div className="font-medium text-[var(--text-color-2)] mb-1 truncate">
               {tool.name}
             </div>
-            <div className="text-xs text-gray-600 leading-relaxed line-clamp-2">
-              {tool.description || '暂无描述'}
+            <div className="text-xs text-[var(--text-color-3)] leading-relaxed line-clamp-2">
+              {tool.description || t('common.noData')}
             </div>
             {tool.parameters && Object.keys(tool.parameters).length > 0 && (
               <div className="mt-2 flex flex-wrap gap-1">
                 {Object.keys(tool.parameters).map((param: string) => (
                   <span 
                     key={param}
-                    className="inline-block text-xs bg-white text-blue-600 px-2 py-0.5 rounded border border-blue-200"
+                    className="inline-block text-xs bg-[var(--color-bg)] text-blue-600 px-2 py-0.5 rounded border border-blue-200"
                   >
                     {param}
                   </span>
@@ -227,7 +227,7 @@ const ToolListPage: React.FC = () => {
               url: values.url,
               kwargs
             },
-            tools: availableTools, // 添加获取到的工具列表
+            tools: availableTools,
           };
           if (!selectedTool?.id) {
             await createTool(queryParams);
@@ -361,27 +361,37 @@ const ToolListPage: React.FC = () => {
               initialValues={{ team: selectedTool?.team || [] }}
             />
           </div>
-          <div className="w-96 border-l pl-4">
+          <div className="w-96 border-l border-[var(--color-border)] pl-4">
             <div className="mb-3 flex items-center justify-between">
               <span className="font-semibold text-base">{t('tool.availableTools')}</span>
               {availableTools.length > 0 && (
-                <span className="text-xs text-gray-500 bg-gray-100 px-2 py-1 rounded">
-                  共 {availableTools.length} 个
+                <span className="text-xs text-gray-500 bg-[var(--color-fill-1)] px-2 py-1 rounded">
+                  {t('tool.total')} {availableTools.length} {t('tool.items')}
                 </span>
               )}
             </div>
             <div className="max-h-[500px] overflow-y-auto space-y-3">
               {fetchingTools ? (
-                <div className="flex items-center justify-center h-40 text-gray-400">
-                  <span>加载中...</span>
-                </div>
+                <>
+                  {[1, 2, 3].map((i) => (
+                    <div key={i} className="p-3 bg-[var(--color-fill-1)] border border-[var(--color-border)] rounded-lg animate-pulse">
+                      <div className="flex items-start gap-3">
+                        <div className="flex-shrink-0 w-8 h-8 bg-[var(--color-fill-3)] rounded-lg"></div>
+                        <div className="flex-1 space-y-2">
+                          <div className="h-4 bg-[var(--color-fill-3)] rounded w-3/4"></div>
+                          <div className="h-3 bg-[var(--color-fill-3)] rounded w-full"></div>
+                          <div className="h-3 bg-[var(--color-fill-3)] rounded w-5/6"></div>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </>
               ) : availableTools.length > 0 ? (
                 renderToolsList(availableTools)
               ) : (
                 <div className="flex flex-col items-center justify-center h-40 text-gray-400">
                   <Icon type="gongjuxiang" className="text-4xl mb-2 opacity-50" />
-                  <span className="text-sm">暂无工具</span>
-                  <span className="text-xs mt-1">请先获取工具列表</span>
+                  <span className="text-sm">{t('tool.noToolsAvailable')}</span>
                 </div>
               )}
             </div>
@@ -397,21 +407,19 @@ const ToolListPage: React.FC = () => {
       >
         {selectedToolForDetail && (
           <div className="space-y-4">
-            {/* 描述部分 */}
             <div>
-              <h3 className="text-sm font-semibold text-gray-700 mb-2">{t('tool.description')}</h3>
-              <div className="text-sm text-gray-600 p-3 rounded leading-relaxed whitespace-pre-wrap">
-                {selectedToolForDetail.description || '暂无描述'}
+              <h3 className="text-sm font-semibold text-[var(--text-color-1)] mb-2">{t('tool.description')}</h3>
+              <div className="text-sm text-[var(--text-color-3)] p-3 rounded leading-relaxed whitespace-pre-wrap">
+                {selectedToolForDetail.description || t('common.noData')}
               </div>
             </div>
             
-            {/* 工具列表部分 */}
             {selectedToolForDetail.tools && selectedToolForDetail.tools.length > 0 && (
               <div>
                 <div className="mb-3 flex items-center justify-between">
-                  <h3 className="text-sm font-semibold text-gray-700">{t('tool.availableTools')}</h3>
-                  <span className="text-xs text-gray-500 bg-gray-100 px-2 py-1 rounded">
-                    共 {selectedToolForDetail.tools.length} 个
+                  <h3 className="text-sm font-semibold text-[var(--text-color-1)]">{t('tool.availableTools')}</h3>
+                  <span className="text-xs text-gray-500 bg-[var(--color-fill-1)] px-2 py-1 rounded">
+                    {t('tool.total')} {selectedToolForDetail.tools.length} {t('tool.items')}
                   </span>
                 </div>
                 <div className="space-y-3">

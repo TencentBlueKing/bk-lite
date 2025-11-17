@@ -119,6 +119,8 @@
     "execute": "Execute",
     "copy": "Copy",
     "reset": "Reset",
-    "inputPassword": "Please input the password"
+    "inputPassword": "Please input the password",
+    "builtin": "Built-in",
+    "mcp": "MCP"
   }
 }

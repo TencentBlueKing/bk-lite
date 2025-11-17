@@ -151,7 +151,7 @@ const OperationLogsPage: React.FC = () => {
   return (
     <div className="w-full h-full bg-[var(--color-bg)] p-4">
       {/* Filter Section */}
-      <div className="mb-4 bg-white p-4 rounded">
+      <div className="mb-4 p-4 rounded">
         <div className="flex items-center justify-end gap-3">
           <Search
             placeholder={t('system.security.operatorPlaceholder')}
