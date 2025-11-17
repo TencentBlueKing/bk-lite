@@ -12,7 +12,6 @@ from src.core_settings import core_settings
 from neco.sanic.auth.api_auth import auth
 from neco.sanic.utils.config import YamlConfig
 from neco.core.utils.crypto import PasswordCrypto
-from neco.ocr.pp_ocr import PPOcr
 from neco.llm.common.tracing import setup_llm_tracing
 import os
 
@@ -103,3 +102,4 @@ def bootstrap() -> Sanic:
             await rag.setup_graph()
         else:
             logger.info("未配置 知识图谱 地址，跳过知识图谱能力的启动......")
+    return app
