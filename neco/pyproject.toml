@@ -7,7 +7,7 @@ name = "neco"
 description = "Add your description here"
 readme = "README.md"
 requires-python = ">=3.12"
-version = "1.0.11"
+version = "1.0.12"
 
 dependencies = [
 ]
@@ -76,12 +76,10 @@ mlops = [
 ]
 
 llm = [
-    "sentence-transformers==5.1.2",
     "ag-ui-protocol==0.1.10",
     "langchain==1.0.5",
     "langgraph==1.0.3",
     "langchain-openai==1.0.2",
-    "langchain-huggingface==1.0.1",
     "graphiti-core==0.23.1",
     "json-repair==0.53.0",
     "duckduckgo-search==8.1.1",
@@ -100,9 +98,6 @@ devops = [
 ]
 
 ocr =[
-    "paddlepaddle==3.0.0",
-    "paddleocr==2.10.0",
-    "paddleclas==2.5.2",
     "azure-cognitiveservices-vision-computervision==0.9.0",
 ]
 

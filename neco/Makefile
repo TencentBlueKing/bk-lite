@@ -1,4 +1,4 @@
-build:
+release:
 	rm -Rf ./dist
 	uv build
 	

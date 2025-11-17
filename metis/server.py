@@ -7,8 +7,6 @@ from loguru import logger
 from sanic.logging.default import LOGGING_CONFIG_DEFAULTS
 import logging
 
-from neco.llm.embed.embed_manager import EmbedManager
-from neco.llm.rerank.rerank_manager import ReRankManager
 from src.api import api
 from src.core_settings import core_settings
 from neco.sanic.auth.api_auth import auth
@@ -105,23 +103,3 @@ def bootstrap() -> Sanic:
             await rag.setup_graph()
         else:
             logger.info("未配置 知识图谱 地址，跳过知识图谱能力的启动......")
-
-    @app.command
-    async def download_models():
-        logger.info("download HuggingFace Embed Models")
-        EmbedManager().get_embed('local:huggingface_embedding:BAAI/bge-small-zh-v1.5')
-        EmbedManager().get_embed('local:huggingface_embedding:maidalun1020/bce-embedding-base_v1')
-
-        logger.info("download BCE ReRank Models")
-        ReRankManager.get_local_rerank_instance(
-            'local:bce:maidalun1020/bce-reranker-base_v1')
-
-        logger.info("download PaddleOCR")
-        PPOcr()
-
-        logger.info('download tiktoken')
-        import tiktoken
-        encoding = tiktoken.get_encoding("cl100k_base")
-        encoding = tiktoken.get_encoding("o200k_base")
-        encoding.encode('Metis')
-    return app

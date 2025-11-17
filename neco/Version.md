@@ -1,3 +1,6 @@
+# 1.0.12
+* 移除 PPOCR 支持
+* 移除 Torch 相关依赖
 # 1.0.11
 * 添加 agent_cli
 * 修复 pgvector 连接问题
