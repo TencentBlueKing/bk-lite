@@ -8,7 +8,7 @@ const FileViewer = dynamic(() => import("react-file-viewer"), {
   ssr: false,
 });
 import * as docx from "docx-preview";
-import * as XLSX from "xlsx";
+import ExcelJS from "exceljs";
 
 const PreviewPage: React.FC = () => {
   const searchParams = useSearchParams();
@@ -70,13 +70,19 @@ const PreviewPage: React.FC = () => {
         try {
           const response = await fetch(fileUrl);
           const arrayBuffer = await response.arrayBuffer();
-          const workbook = XLSX.read(arrayBuffer, { type: "array" });
-
-          const worksheet = workbook.Sheets[workbook.SheetNames[0]];
-          const htmlStr = XLSX.utils.sheet_to_html(worksheet, {
-            editable: false,
-            header: "",
-          });
+          const workbook = new ExcelJS.Workbook();
+          await workbook.xlsx.load(arrayBuffer);
+          const worksheet = workbook.worksheets[0];
+          let htmlStr = '<table>';
+          worksheet.eachRow((row, rowNumber) => {
+            htmlStr += '<tr>';
+            row.eachCell({ includeEmpty: true }, (cell) => {
+              const cellValue = cell.value?.toString() || '';
+              htmlStr += rowNumber === 1 ? `<th>${cellValue}</th>` : `<td>${cellValue}</td>`;
+            });
+            htmlStr += '</tr>';
+          })
+          htmlStr += '</table>';
 
           if (xlsxContainerRef?.current) {
             xlsxContainerRef.current.innerHTML = htmlStr;
