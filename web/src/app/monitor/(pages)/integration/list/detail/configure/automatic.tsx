@@ -204,20 +204,23 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
   }, [isLoading]);
 
   useEffect(() => {
-    if (configLoading || !formConfig.initTableItems || isTableInitialized) {
-      return;
+    if (
+      !configLoading &&
+      Object.keys(formConfig.initTableItems).length &&
+      !isTableInitialized
+    ) {
+      const initItems = {
+        ...formConfig.initTableItems,
+        node_ids: null,
+        instance_name: null,
+        group_ids: formConfig.initTableItems.group_ids || groupId,
+        key: uuidv4(),
+      };
+      setInitTableItems(initItems);
+      setDataSource([initItems]);
+      setIsTableInitialized(true); // 避免无限初始化
     }
-    const initItems = {
-      ...formConfig.initTableItems,
-      node_ids: null,
-      instance_name: null,
-      group_ids: groupId,
-      key: uuidv4(),
-    };
-    setInitTableItems(initItems);
-    setDataSource([initItems]);
-    setIsTableInitialized(true);
-  }, [configLoading, formConfig.initTableItems, groupId, isTableInitialized]);
+  }, [configLoading, formConfig.initTableItems, groupId]);
 
   const handleAdd = (key: string) => {
     const index = dataSource.findIndex((item) => item.key === key);
@@ -426,7 +429,11 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
                 </span>
               </span>
               <div className="flex gap-[8px]">
-                <Button icon={<UploadOutlined />} onClick={handleImport}>
+                <Button
+                  icon={<UploadOutlined />}
+                  type="primary"
+                  onClick={handleImport}
+                >
                   {t('common.import')}
                 </Button>
                 <Dropdown
