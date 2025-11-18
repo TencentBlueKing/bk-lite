@@ -344,7 +344,7 @@ class ToolsFilter(FilterSet):
 
 class SkillToolsViewSet(AuthViewSet):
     serializer_class = SkillToolsSerializer
-    queryset = SkillTools.objects.all()
+    queryset = SkillTools.objects.all().order_by("-id")
     filterset_class = ToolsFilter
     permission_key = "tools"
 

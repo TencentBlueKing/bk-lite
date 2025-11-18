@@ -44,7 +44,7 @@ class Command(BaseCommand):
             print(f"create {app_obj['client_id']} resource success")
             create_default_roles(app_inst, app_obj["roles"])
             print(f"create {app_obj['client_id']} roles success")
-        Group.objects.get_or_create(name="Default", parent_id=0, defaults={"description": "Default group"})
+        Group.objects.update_or_create(name="Default", parent_id=0, defaults={"description": "Default group", "id": 1})
         Group.objects.get_or_create(name="Guest", parent_id=0, defaults={"description": "Guest group"})
 
 
