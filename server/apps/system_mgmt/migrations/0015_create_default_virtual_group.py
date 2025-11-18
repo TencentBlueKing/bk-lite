@@ -6,7 +6,8 @@ from django.db import migrations
 def create_default_virtual_group(apps, schema_editor):
     """创建默认的顶级虚拟组"""
     Group = apps.get_model("system_mgmt", "Group")
-
+    Group.objects.update_or_create(name="Default", parent_id=0, defaults={"id": 1})
+    Group.objects.update_or_create(name="Guest", parent_id=0)
     # 检查是否已存在名为"虚拟组"的顶级组
     if not Group.objects.filter(name="虚拟团队", parent_id=0).exists():
         Group.objects.create(
