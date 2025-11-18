@@ -96,7 +96,6 @@ class Command(BaseCommand):
         """
         created_count = 0
         updated_count = 0
-
         for toolkit in toolkits:
             toolkit_id = toolkit.get("id", "")
             toolkit_name = toolkit.get("name", "")
@@ -147,9 +146,12 @@ class Command(BaseCommand):
                     "description": toolkit_description,
                     "params": params_data,
                     "tools": tools,
-                    "tags": [toolkit_id],
+                    "tags": ["other"],
                 },
             )
+            if not skill_tool.team:
+                skill_tool.team = [1]
+                skill_tool.save()
 
             if created:
                 created_count += 1
