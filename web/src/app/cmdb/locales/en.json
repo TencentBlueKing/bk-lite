@@ -122,6 +122,8 @@
         "inputTaskPlaceholder": "Please enter task name",
         "addTaskTitle": "Add Task",
         "editTaskTitle": "Edit Task",
+        "viewDoc": "View Documentation",
+        "pluginDoc": "Plugin Documentation",
         "baseSetting": "Base Setting",
         "taskNameLabel": "Task Name",
         "cycle": "Cycle",
