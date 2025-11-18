@@ -744,7 +744,8 @@ const useMlopsManageApi = () => {
     is_train_data?: boolean,
     is_val_data?: boolean,
     is_test_data?: boolean,
-    meta_data?: any
+    meta_data?: any,
+    train_data?: any
   } | FormData) => {
     return await patch(`/mlops/object_detection_traindata/${id}`, params,
       {
@@ -860,6 +861,11 @@ const useMlopsManageApi = () => {
     return await del(`/mlops/object_detection_traindata/${id}/`)
   };
 
+  // 生成yolo数据集
+  const generateYoloDataset = async (id: string) => {
+    return await post(`/mlops/object_detection_traindata/${id}/generate_dataset/`);
+  };
+
   return {
     getAnomalyDatasetsList,
     getRasaDatasetsList,
@@ -957,7 +963,8 @@ const useMlopsManageApi = () => {
     deleteImageClassificationDataset,
     deleteImageClassificationTrainData,
     deleteObjectDetectionDataset,
-    deleteObjectDetectionTrainData
+    deleteObjectDetectionTrainData,
+    generateYoloDataset
   }
 };
 
