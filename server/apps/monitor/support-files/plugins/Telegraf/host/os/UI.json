@@ -35,42 +35,42 @@
         {
           "label": "CPU",
           "value": "cpu",
-          "description": "监控CPU使用情况，包括利用率和各分的使用时间的占比"
+          "description": "监控CPU使用情况，包括利用率百分比、平均负载以及系统时间与用户时间的占比"
         },
         {
           "label": "Disk",
           "value": "disk",
-          "description": "监控磁盘使用情况，包括磁盘空间、读/写速度以及其他相关指标"
+          "description": "监控磁盘使用情况，包括磁盘空间、读/写速率以及其他相关指标"
         },
         {
           "label": "Disk IO",
           "value": "diskio",
-          "description": "监控磁盘输入/输出操作的性能和吞吐情况"
+          "description": "监控磁盘输入/输出操作的性能和活动情况"
         },
         {
           "label": "Memory",
           "value": "mem",
-          "description": "监控内存使用情况，包括内存利用率和内存"
+          "description": "监控内存使用情况，包括内存利用率和可用内存"
         },
         {
           "label": "Net",
           "value": "net",
-          "description": "监控网络性能，包括网络流量、带宽使用和连接数"
+          "description": "监控网络性能，包括网络流量、带宽使用率和延迟"
         },
         {
           "label": "Processes",
           "value": "processes",
-          "description": "监控运行进程的信息，包括进程数量、CPU使用率和内存消耗"
+          "description": "监控运行进程的信息，包括进程数量、CPU 使用率和内存消耗"
         },
         {
           "label": "System",
           "value": "system",
-          "description": "监控整体系统性能和运行状况，包括系统运行时间、平均负载以及一般系统动态等指标"
+          "description": "监控整体系统性能和运行状况，包括系统运行时间、平均负载以及一般活动水平等指标"
         },
         {
           "label": "Nvidia-GPU",
           "value": "gpu",
-          "description": "监控Nvidia-GPU使用情况，包括利用率和各分比、显卡使用和显卡温度等指标"
+          "description": "监控Nvidia-GPU使用情况，包括利用率百分比、显存使用和温度等指标"
         }
       ],
       "widget_props": {},
@@ -98,15 +98,15 @@
     },
     {
       "name": "interval",
-      "label": "采集间隔",
+      "label": "间隔",
       "type": "inputNumber",
       "required": true,
       "default_value": 10,
-      "description": "数据采集间隔时间(单位:秒)",
+      "description": "监控数据的采集时间间隔（单位：秒）",
       "widget_props": {
         "min": 1,
         "precision": 0,
-        "placeholder": "采集间隔",
+        "placeholder": "间隔",
         "addonAfter": "s"
       },
       "data_transform": {
@@ -126,7 +126,6 @@
       "label": "节点",
       "type": "select",
       "required": true,
-      "default_value": "",
       "widget_props": {
         "placeholder": "请选择节点"
       },
@@ -137,7 +136,6 @@
       "label": "实例名称",
       "type": "input",
       "required": true,
-      "default_value": "",
       "widget_props": {
         "placeholder": "实例名称"
       }
@@ -147,7 +145,6 @@
       "label": "组",
       "type": "group_select",
       "required": false,
-      "default_value": [],
       "widget_props": {
         "placeholder": "请选择组"
       }
