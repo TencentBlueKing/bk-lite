@@ -4,14 +4,13 @@ from django.core.management import BaseCommand
 
 from apps.core.logger import opspilot_logger as logger
 from apps.opspilot.models import EmbedProvider, LLMModel, ModelType, OCRProvider, RerankProvider
-from apps.system_mgmt.models import Group
 
 
 class Command(BaseCommand):
     help = "初始化模型数据"
 
     def handle(self, *args, **options):
-        group_id = Group.objects.get_or_create(name="Default", parent_id=0)[0].id
+        group_id = 1
         try:
             self.create_or_update_model_type()
             model_type_map = dict(ModelType.objects.all().values_list("name", "id"))

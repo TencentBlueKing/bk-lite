@@ -83,6 +83,16 @@ error:
   cannot_modify_builtin_menu_group: Cannot modify builtin menu group
   cannot_delete_builtin_menu_group: Cannot delete builtin menu group
 
+  # Error log related errors
+  time_range_required: Time range is required
+  invalid_time_format: Invalid time format, please use ISO 8601 format
+  invalid_time_range: Start time cannot be greater than end time
+  time_range_too_large: Time range cannot exceed 90 days
+  detail_not_supported: Detail view is not supported
+  create_not_supported: Manual creation is not supported
+  update_not_supported: Update is not supported
+  delete_not_supported: Delete is not supported
+
 # Success messages
 success:
   # Task related messages

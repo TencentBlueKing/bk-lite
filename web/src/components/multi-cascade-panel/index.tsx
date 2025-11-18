@@ -143,7 +143,6 @@ const MultiCascadePanel: React.FC<MultiCascadePanelProps> = ({
     let newValue: number[] = [...selectedValue];
 
     if (single) {
-      // 单选模式：直接替换为当前节点
       newValue = [node.value];
     } else if (cascade) {
       const childrenValues = getAllChildrenValues(node);
@@ -249,7 +248,6 @@ const MultiCascadePanel: React.FC<MultiCascadePanelProps> = ({
     }));
   }, [columns, searchText, filterNodes]);
 
-  // 渲染单个节点
   const renderNode = useCallback((node: CascadeNode, level: number) => {
     const isChecked = isNodeChecked(node);
     const isIndeterminate = cascade && isNodeIndeterminate(node);
@@ -302,7 +300,6 @@ const MultiCascadePanel: React.FC<MultiCascadePanelProps> = ({
     handleCheckboxChange
   ]);
 
-  // 渲染单列
   const renderColumn = useCallback((column: ColumnItem) => {
     return (
       <div
@@ -342,7 +339,7 @@ const MultiCascadePanel: React.FC<MultiCascadePanelProps> = ({
       )}
 
       <div
-        className="flex overflow-x-auto border border-[var(--color-border)] rounded"
+        className="flex overflow-x-auto border border-[var(--color-border)] rounded bg-[var(--color-bg)]"
         style={{ height }}
       >
         {filteredColumns.map((column) => renderColumn(column))}

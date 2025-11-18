@@ -1,6 +1,15 @@
+# 1.0.14
+* 修复 AG-UI 异步返回的缺陷
+
+# 1.0.13
+* 添加缺失的依赖包: pycryptodome、networkx
+# 1.0.12
+* 移除 PPOCR 支持
+* 移除 Torch 相关依赖
+
 # 1.0.11
 * 添加 agent_cli
-
+* 修复 pgvector 连接问题
 
 # 1.0.10
 * 修复升级后`"sentence-transformers==5.1.2",`缺失包的问题

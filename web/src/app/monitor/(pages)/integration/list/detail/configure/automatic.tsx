@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { Form, Button, message, Spin, Empty, Dropdown, Modal } from 'antd';
 import type { MenuProps } from 'antd';
-import { DownOutlined } from '@ant-design/icons';
+import { DownOutlined, UploadOutlined } from '@ant-design/icons';
 import { useTranslation } from '@/utils/i18n';
 import CustomTable from '@/components/custom-table';
 import { v4 as uuidv4 } from 'uuid';
@@ -19,6 +19,7 @@ import { cloneDeep } from 'lodash';
 import { usePluginFromJson } from '@/app/monitor/hooks/integration/usePluginFromJson';
 import { useConfigRenderer } from '@/app/monitor/hooks/integration/useConfigRenderer';
 import BatchEditModal from './batchEditModal';
+import ExcelImportModal from './excelImportModal';
 const { confirm } = Modal;
 
 const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
@@ -35,6 +36,7 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
   const groupId = [currentGroup?.current?.id || ''];
   const pluginId = searchParams.get('plugin_id') || '';
   const objectId = searchParams.get('id') || '';
+  const pluginDisplayName = searchParams.get('plugin_display_name') || '';
   const [dataSource, setDataSource] = useState<IntegrationMonitoredObject[]>(
     []
   );
@@ -48,6 +50,7 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
   const [configLoading, setConfigLoading] = useState<boolean>(false);
   const [selectedRowKeys, setSelectedRowKeys] = useState<React.Key[]>([]);
   const batchEditModalRef = useRef<any>(null);
+  const excelImportModalRef = useRef<any>(null);
 
   const onTableDataChange = (data: IntegrationMonitoredObject[]) => {
     setDataSource(data);
@@ -140,12 +143,10 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
         node_ids_option: nodeList,
       })
     );
-
     // 检查是否有 enable_row_filter 为 true 的列
     const hasRowFilter = currentConfig.table_columns.some(
       (col: any) => col.enable_row_filter === true
     );
-
     const actionColumn = {
       title: t('common.action'),
       key: 'action',
@@ -290,6 +291,24 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
     setDataSource(updatedData);
   };
 
+  const handleImport = () => {
+    excelImportModalRef.current?.showModal({
+      title: t('monitor.integrations.importData'),
+      columns: currentConfig?.table_columns || [],
+      nodeList,
+      pluginName: pluginDisplayName,
+    });
+  };
+
+  const handleImportSuccess = (importedData: any[]) => {
+    const newRows = importedData.map((row) => ({
+      ...row,
+      key: uuidv4(),
+      group_ids: row.group_ids || groupId,
+    }));
+    setDataSource([...dataSource, ...newRows]);
+  };
+
   const batchMenuItems: MenuProps['items'] = [
     {
       key: 'batchEdit',
@@ -406,18 +425,23 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
                   *
                 </span>
               </span>
-              <Dropdown
-                menu={{
-                  items: batchMenuItems,
-                  onClick: handleBatchMenuClick,
-                }}
-                disabled={!selectedRowKeys.length}
-              >
-                <Button>
-                  {t('monitor.integrations.batchOperation')}
-                  <DownOutlined className="ml-[4px]" />
+              <div className="flex gap-[8px]">
+                <Button icon={<UploadOutlined />} onClick={handleImport}>
+                  {t('common.import')}
                 </Button>
-              </Dropdown>
+                <Dropdown
+                  menu={{
+                    items: batchMenuItems,
+                    onClick: handleBatchMenuClick,
+                  }}
+                  disabled={!selectedRowKeys.length}
+                >
+                  <Button>
+                    {t('monitor.integrations.batchOperation')}
+                    <DownOutlined className="ml-[4px]" />
+                  </Button>
+                </Dropdown>
+              </div>
             </div>
             <Form.Item
               name="nodes"
@@ -466,6 +490,10 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
       <BatchEditModal
         ref={batchEditModalRef}
         onSuccess={handleBatchEditSuccess}
+      />
+      <ExcelImportModal
+        ref={excelImportModalRef}
+        onSuccess={handleImportSuccess}
       />
     </Spin>
   );

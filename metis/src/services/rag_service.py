@@ -98,7 +98,7 @@ class RagService:
 
         try:
             start_time = time.time()
-            rag = PgvectorRag()
+            rag = PgvectorRag(core_settings.db_uri)
             rag.ingest(pgvector_store_request)
             elapsed_time = time.time() - start_time
 

@@ -467,7 +467,9 @@
     "totalTools": "Total {count} tools",
     "noToolsAvailable": "No tools available",
     "fetchToolsFailed": "Failed to fetch tools",
-    "parameters": "Parameters"
+    "parameters": "Parameters",
+    "total": "Total",
+    "items": "items"
   },
   "provider": {
     "menu": "Provider",
