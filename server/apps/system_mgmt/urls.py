@@ -4,6 +4,7 @@ from apps.system_mgmt.viewset import (
     AppViewSet,
     ChannelViewSet,
     CustomMenuGroupViewSet,
+    ErrorLogViewSet,
     GroupDataRuleViewSet,
     GroupViewSet,
     LoginModuleViewSet,
@@ -26,4 +27,5 @@ router.register(r"login_module", LoginModuleViewSet)
 router.register(r"custom_menu_group", CustomMenuGroupViewSet)
 router.register(r"user_login_log", UserLoginLogViewSet)
 router.register(r"operation_log", OperationLogViewSet)
+router.register(r"error_log", ErrorLogViewSet)
 urlpatterns = router.urls

@@ -41,7 +41,7 @@ class Command(BaseCommand):
                 display_name=display_name,
                 # 根据您的User模型设置其他字段
             )
-            default_group, _ = Group.objects.get_or_create(name="Default", parent_id=0)
+            default_group, _ = Group.objects.update_or_create(name="Default", parent_id=0, defaults={"id": 1})
             user.group_list.append(default_group.id)
             if is_superuser:
                 role, _ = Role.objects.get_or_create(name="admin", app="")

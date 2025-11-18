@@ -83,6 +83,16 @@ error:
   cannot_modify_builtin_menu_group: 内置菜单组不允许修改
   cannot_delete_builtin_menu_group: 内置菜单组不允许删除
 
+  # 错误日志相关错误
+  time_range_required: 时间范围是必填项
+  invalid_time_format: 时间格式无效，请使用ISO 8601格式
+  invalid_time_range: 开始时间不能大于结束时间
+  time_range_too_large: 时间跨度不能超过90天
+  detail_not_supported: 不支持详情查询
+  create_not_supported: 不支持手动创建
+  update_not_supported: 不支持修改
+  delete_not_supported: 不支持删除
+
 # 成功消息
 success:
   # 任务相关消息
