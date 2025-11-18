@@ -211,8 +211,6 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
     ) {
       const initItems = {
         ...formConfig.initTableItems,
-        node_ids: null,
-        instance_name: null,
         group_ids: formConfig.initTableItems.group_ids || groupId,
         key: uuidv4(),
       };

@@ -117,9 +117,7 @@ export const usePluginFromJson = () => {
             ) || [],
           initTableItems:
             config.table_columns?.reduce((acc: any, column: any) => {
-              if ('default_value' in column) {
-                acc[column.name] = column.default_value;
-              }
+              acc[column.name] = column.default_value || null;
               return acc;
             }, {}) || {},
           defaultForm:
