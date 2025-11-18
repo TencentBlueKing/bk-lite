@@ -12,7 +12,7 @@ import OperateModal from '@/components/operate-modal';
 import type { ColumnsType } from 'antd/es/table';
 import type { TableRowSelection } from 'antd/es/table/interface';
 import dayjs from 'dayjs';
-import * as XLSX from 'xlsx';
+import ExcelJS from 'exceljs';
 
 const UserLoginLogs: React.FC = () => {
   const { t } = useTranslation();
@@ -146,11 +146,33 @@ const UserLoginLogs: React.FC = () => {
       setExportProgress(30);
 
       if (exportFormats.includes('excel')) {
-        const ws = XLSX.utils.json_to_sheet(exportData);
-        const wb = XLSX.utils.book_new();
-        XLSX.utils.book_append_sheet(wb, ws, 'Login Logs');
+        const workbook = new ExcelJS.Workbook();
+        const worksheet = workbook.addWorksheet('Login Logs');
+        const headers = Object.keys(exportData[0]);
+        worksheet.addRow(headers);
+        worksheet.getRow(1).font = { bold: true };
+        worksheet.getRow(1).fill = {
+          type: 'pattern',
+          pattern: 'solid',
+          fgColor: { argb: 'FFE0E0E0' },
+        };
+        exportData.forEach((row) => {
+          const values = headers.map((header) => row[header] || '');
+          worksheet.addRow(values);
+        });
+        headers.forEach((header, index) => {
+          worksheet.getColumn(index + 1).width = 20;
+        });
         setExportProgress(60);
-        XLSX.writeFile(wb, `login_logs_${dayjs().format('YYYYMMDD_HHmmss')}.xlsx`);
+        const buffer = await workbook.xlsx.writeBuffer();
+        const blob = new Blob([buffer], {
+          type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        });
+        const link = document.createElement('a');
+        link.href = URL.createObjectURL(blob);
+        link.download = `login_logs_${dayjs().format('YYYYMMDD_HHmmss')}.xlsx`;
+        link.click();
+        URL.revokeObjectURL(link.href);
       }
 
       setExportProgress(80);
