@@ -379,7 +379,10 @@
       "step1": "步骤1",
       "portDes": "配置SNMP端口号，通常使用161端口与设备进行通信。",
       "access": "接入",
-      "noConfigData": "暂无配置数据，请检查插件配置"
+      "noConfigData": "暂无配置数据，请检查插件配置",
+      "batchOperation": "批量操作",
+      "batchDeleteConfirm": "确定删除选中项吗？",
+      "batchEditEmptyWarning": "提交的表单不能为空"
     },
     "instance": "实例",
     "label": "标签",
@@ -481,6 +484,8 @@
     "delConfirm": "您确定要删除所选项目吗？",
     "import": "导入",
     "batchDelete": "批量删除",
+    "deleteSuccess": "删除成功",
+    "editSuccess": "编辑成功",
     "inputRequired": "请输入，此项为必填项",
     "confirm": "确认",
     "unit": "单位",
