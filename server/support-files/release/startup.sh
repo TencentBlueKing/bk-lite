@@ -9,6 +9,7 @@ init_system_mgmt() {
     uv run python manage.py init_login_settings || true
     uv run python manage.py create_user admin password --email=admin@bklite.net --is_superuser || true
     uv run python manage.py init_custom_menu || true
+    uv run python manage.py clean_group_data || true
 }
 
 init_cmdb() {
