@@ -9,6 +9,15 @@ export interface ToolCall {
     status: 'executing' | 'completed';
 }
 
+export interface ContentPart {
+    type: 'text' | 'component';
+    content?: string | React.ReactNode;
+    component?: {
+        name: string;
+        props: any;
+    }; // 组件配置
+}
+
 export interface Message {
     id: string;
     message: string | React.ReactNode | null | { text: string; suggestions: string[] };
@@ -18,11 +27,12 @@ export interface Message {
     userInput?: string;
     isWelcome?: boolean;
     toolCalls?: ToolCall[];
-    isRunFinished?: boolean; // AI 是否已运行完成
+    isRunFinished?: boolean;
     customComponent?: {
         component: string;
         props: any;
     }; // 自定义组件配置
+    contentParts?: ContentPart[]; // 按顺序的内容片段(文本和组件)
 }
 
 interface UseMessagesReturn {
@@ -239,16 +249,40 @@ export const useMessages = (
                         messageMarkdownRef.current.set(aiMsgId, messageAccumulated);
 
                         // 实时渲染累积的 Markdown 文本
+                        const renderedContent = renderMarkdown(messageAccumulated);
+
                         setMessages((prev) =>
-                            prev.map((msg) =>
-                                msg.id === aiMsgId
-                                    ? {
-                                        ...msg,
-                                        message: renderMarkdown(messageAccumulated),
-                                        status: 'success',
+                            prev.map((msg) => {
+                                if (msg.id === aiMsgId) {
+                                    const parts = msg.contentParts || [];
+                                    // 如果最后一个片段不是文本,或者不存在,添加新的文本片段
+                                    if (parts.length === 0 || parts[parts.length - 1].type !== 'text') {
+                                        return {
+                                            ...msg,
+                                            message: renderedContent,
+                                            status: 'success',
+                                            contentParts: [...parts, {
+                                                type: 'text',
+                                                content: renderedContent
+                                            }]
+                                        };
+                                    } else {
+                                        // 更新最后一个文本片段
+                                        const updatedParts = [...parts];
+                                        updatedParts[updatedParts.length - 1] = {
+                                            type: 'text',
+                                            content: renderedContent
+                                        };
+                                        return {
+                                            ...msg,
+                                            message: renderedContent,
+                                            status: 'success',
+                                            contentParts: updatedParts
+                                        };
                                     }
-                                    : msg
-                            )
+                                }
+                                return msg;
+                            })
                         );
 
                         // 定期滚动到底部
@@ -259,19 +293,8 @@ export const useMessages = (
                         break;
 
                     case 'TEXT_MESSAGE_END':
-                        // 消息结束，最终渲染
-                        messageMarkdownRef.current.set(aiMsgId, messageAccumulated);
-                        setMessages((prev) =>
-                            prev.map((msg) =>
-                                msg.id === aiMsgId
-                                    ? {
-                                        ...msg,
-                                        message: renderMarkdown(messageAccumulated),
-                                        status: 'success',
-                                    }
-                                    : msg
-                            )
-                        );
+                        // 文本段结束,重置累积器,准备下一段文本
+                        messageAccumulated = '';
                         scrollToBottom();
                         break;
 
@@ -279,17 +302,26 @@ export const useMessages = (
                         // 自定义事件，用于渲染特殊组件
                         if (event.name === 'render_component') {
                             setMessages((prev) =>
-                                prev.map((msg) =>
-                                    msg.id === aiMsgId
-                                        ? {
+                                prev.map((msg) => {
+                                    if (msg.id === aiMsgId) {
+                                        const parts = msg.contentParts || [];
+                                        return {
                                             ...msg,
                                             customComponent: {
                                                 component: event.value.component,
                                                 props: event.value.props,
                                             },
-                                        }
-                                        : msg
-                                )
+                                            contentParts: [...parts, {
+                                                type: 'component',
+                                                component: {
+                                                    name: event.value.component,
+                                                    props: event.value.props
+                                                }
+                                            }]
+                                        };
+                                    }
+                                    return msg;
+                                })
                             );
                             // 滚动到底部显示自定义组件
                             requestAnimationFrame(() => {
@@ -317,7 +349,6 @@ export const useMessages = (
             }
         } catch (error) {
             console.error('AG-UI 事件流处理错误:', error);
-            // 错误处理：恢复输入状态
             setIsAIRunning(false);
             // 显示错误消息
             setMessages((prev) =>

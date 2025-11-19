@@ -8,6 +8,7 @@ import { ChatInfo } from '@/types/conversation';
 import { ToolCallsDisplay } from './ToolCallsDisplay';
 import { ApplicationForm } from './ApplicationForm';
 import { InformationCard } from './InformationCard';
+import { SelectionButtons } from './SelectionButtons';
 
 interface MessageListProps {
     messages: Message[];
@@ -133,10 +134,58 @@ export const MessageList: React.FC<MessageListProps> = ({
                     )
                     : msg.message;
 
-                // 如果有自定义组件，将其添加到内容中
+                // 如果有 contentParts,使用新的渲染逻辑
                 let contentWithCustomComponent = normalizedContent;
 
-                if (msg.customComponent) {
+                if (msg.contentParts && msg.contentParts.length > 0) {
+                    // 使用 contentParts 渲染(支持文本和组件交替)
+                    contentWithCustomComponent = (
+                        <>
+                            {msg.contentParts.map((part, idx) => {
+                                if (part.type === 'text') {
+                                    // 检查文本内容是否为空，避免渲染空白
+                                    if (!part.content) {
+                                        console.log('MessageList: Skipping empty text part at index', idx);
+                                        return null;
+                                    }
+                                    return <React.Fragment key={`text-${idx}`}>{part.content}</React.Fragment>;
+                                } else if (part.type === 'component' && part.component) {
+                                    const ComponentName = part.component.name;
+                                    if (ComponentName === 'ApplicationForm') {
+                                        return (
+                                            <div key={`comp-${idx}`} className="mt-3">
+                                                <ApplicationForm
+                                                    {...part.component.props}
+                                                    onFormSubmit={onFormSubmit}
+                                                />
+                                            </div>
+                                        );
+                                    } else if (ComponentName === 'InformationCard') {
+                                        return (
+                                            <div key={`comp-${idx}`} className="mt-3">
+                                                <InformationCard
+                                                    {...part.component.props}
+                                                    onButtonClick={onFormSubmit}
+                                                />
+                                            </div>
+                                        );
+                                    } else if (ComponentName === 'SelectionButtons') {
+                                        return (
+                                            <div key={`comp-${idx}`} className="mt-3">
+                                                <SelectionButtons
+                                                    {...part.component.props}
+                                                    onButtonClick={onFormSubmit}
+                                                />
+                                            </div>
+                                        );
+                                    }
+                                }
+                                return null;
+                            })}
+                        </>
+                    );
+                } else if (msg.customComponent) {
+                    // 兼容旧的 customComponent 逻辑
                     if (msg.customComponent.component === 'ApplicationForm') {
                         contentWithCustomComponent = (
                             <>
@@ -155,6 +204,18 @@ export const MessageList: React.FC<MessageListProps> = ({
                                 {normalizedContent}
                                 <div className="mt-3">
                                     <InformationCard
+                                        {...msg.customComponent.props}
+                                        onButtonClick={onFormSubmit}
+                                    />
+                                </div>
+                            </>
+                        );
+                    } else if (msg.customComponent.component === 'SelectionButtons') {
+                        contentWithCustomComponent = (
+                            <>
+                                {normalizedContent}
+                                <div className="mt-3">
+                                    <SelectionButtons
                                         {...msg.customComponent.props}
                                         onButtonClick={onFormSubmit}
                                     />

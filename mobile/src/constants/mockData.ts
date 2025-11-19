@@ -23,7 +23,7 @@ export const mockChatData: ChatItem[] = [
   },
   {
     id: '3',
-    name: 'k8s服务支撑工程师',
+    name: 'k8s运维工程师',
     avatar: '/avatars/03.png',
     lastMessage: 'API 响应码 500 增加，可能是后端服务超时或依赖异常',
     time: '12:30',
@@ -31,7 +31,7 @@ export const mockChatData: ChatItem[] = [
   },
   {
     id: '4',
-    name: 'itsm事件管理员',
+    name: 'ITSM服务台',
     avatar: '/avatars/04.png',
     lastMessage: '工单#1234：磁盘空间告警，/var 分区剩余 < 10%',
     time: '11:20',
@@ -64,8 +64,8 @@ export const mockWorkbenchData = {
       },
       {
         id: 7,
-        name: 'K8s服务支撑工程师',
-        introduction: '智能体 K8s 服务支撑工程师，提供集群部署运维、故障排查与技术支持，协同团队优化流程，保障云原生服务稳定高效响应需求。',
+        name: 'k8s运维工程师',
+        introduction: '智能体 K8s 运维工程师，提供集群部署运维、故障排查与技术支持，协同团队优化流程，保障云原生服务稳定高效响应需求。',
         online: false,
         bot_type: 1,
         avatar: '/avatars/03.png',

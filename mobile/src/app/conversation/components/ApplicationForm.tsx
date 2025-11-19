@@ -154,9 +154,9 @@ const ApplicationFormComponent: React.FC<ApplicationFormProps> = ({
         const dateValue = type === 'datetime' || type === 'date' || type === 'time' ? (value ? new Date(value) : undefined) : undefined;
 
         return (
-            <div key={name} className="mb-3 flex items-center gap-3">
-                <div className="flex items-center min-w-[70px]">
-                    <span className="text-sm text-[var(--color-text-1)]">
+            <div key={name} className="mb-4">
+                <div className="flex items-center mb-2">
+                    <span className="text-sm text-[var(--color-text-1)] font-medium">
                         {label}
                     </span>
                     {required && (
@@ -164,7 +164,7 @@ const ApplicationFormComponent: React.FC<ApplicationFormProps> = ({
                     )}
                 </div>
 
-                <div className="flex-1">
+                <div>
                     {/* 文本输入框 */}
                     {type === 'text' && (
                         <Input
