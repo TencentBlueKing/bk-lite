@@ -20,6 +20,7 @@ from apps.system_mgmt.services.role_manage import RoleManage
 from apps.system_mgmt.utils.bk_user_utils import get_bk_user_info
 from apps.system_mgmt.utils.channel_utils import send_by_bot, send_email
 from apps.system_mgmt.utils.group_utils import GroupUtils
+from apps.system_mgmt.utils.password_validator import PasswordValidator
 
 
 def get_user_all_roles(user):
@@ -574,9 +575,20 @@ def login(username, password):
 
 @nats_client.register
 def reset_pwd(username, password):
+    """
+    重置用户密码（NATS接口）
+
+    会进行密码复杂度校验
+    """
     user = User.objects.filter(username=username).first()
     if not user:
         return {"result": False, "message": "Username not exists"}
+
+    # 校验密码复杂度
+    is_valid, error_message = PasswordValidator.validate_password(password)
+    if not is_valid:
+        return {"result": False, "message": error_message}
+
     user.password = make_password(password)
     user.temporary_pwd = False
     user.save()

@@ -11,6 +11,7 @@ from apps.system_mgmt.models import Group, Role, User, UserRule
 from apps.system_mgmt.serializers.user_serializer import UserSerializer
 from apps.system_mgmt.services.role_manage import RoleManage
 from apps.system_mgmt.utils.operation_log_utils import log_operation
+from apps.system_mgmt.utils.password_validator import PasswordValidator
 from apps.system_mgmt.utils.viewset_utils import ViewSetUtils
 
 
@@ -143,12 +144,24 @@ class UserViewSet(ViewSetUtils):
             password = request.data.get("password")
             temporary_pwd = request.data.get("temporary", False)
             user_id = request.data.get("id")
+
+            # 校验密码是否为空
+            if not password:
+                return JsonResponse({"result": False, "message": "密码不能为空"})
+
+            # 校验密码复杂度
+            is_valid, error_message = PasswordValidator.validate_password(password)
+            if not is_valid:
+                return JsonResponse({"result": False, "message": error_message})
+
             user = User.objects.get(id=user_id)
             User.objects.filter(id=user_id).update(password=make_password(password), temporary_pwd=temporary_pwd)
 
             # 记录操作日志
             log_operation(request, "update", "user", f"重置用户密码: {user.username}")
             return JsonResponse({"result": True})
+        except User.DoesNotExist:
+            return JsonResponse({"result": False, "message": "用户不存在"})
         except Exception as e:
             logger.exception(e)
             return JsonResponse({"result": False, "message": str(e)})
@@ -159,10 +172,21 @@ class UserViewSet(ViewSetUtils):
         user_ids = request.data.get("user_ids")
         users = User.objects.filter(id__in=user_ids)
         usernames = list(users.values_list("username", flat=True))
+
+        # 收集需要删除的用户信息（username和domain）
+        user_info_list = list(users.values("username", "domain"))
+
         keys = []
         for i in users:
             keys.extend(RoleManage.get_cache_keys(i.username))
+
         cache.delete_many(keys)
+
+        # 删除用户相关的UserRule（根据username和domain）
+        for user_info in user_info_list:
+            UserRule.objects.filter(username=user_info["username"], domain=user_info["domain"]).delete()
+
+        # 删除用户
         users.delete()
 
         # 记录操作日志
