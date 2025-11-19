@@ -1099,6 +1099,72 @@ class MonitorPolicyScan:
 
         return event_objs, new_alerts
 
+    def _create_alerts_from_events(self, events):
+        """从事件数据创建告警（不依赖事件对象）
+
+        Args:
+            events: 事件数据列表（字典格式）
+
+        Returns:
+            list: 创建的告警对象列表
+        """
+        if not events:
+            return []
+
+        create_alerts = []
+
+        for event in events:
+            # 根据事件类型确定告警属性
+            if event["level"] != "no_data":
+                alert_type = "alert"
+                level = event["level"]
+                value = event["value"]
+                content = event["content"]
+            else:
+                alert_type = "no_data"
+                level = self.policy.no_data_level
+                value = None
+                content = "no data"
+
+            create_alerts.append(
+                MonitorAlert(
+                    policy_id=self.policy.id,
+                    monitor_instance_id=event["instance_id"],
+                    monitor_instance_name=self.instances_map.get(
+                        event["instance_id"],
+                        event["instance_id"]
+                    ),
+                    alert_type=alert_type,
+                    level=level,
+                    value=value,
+                    content=content,
+                    status="new",
+                    start_event_time=self.policy.last_run_time,
+                    operator="",
+                )
+            )
+
+        # 批量创建告警
+        new_alerts = MonitorAlert.objects.bulk_create(
+            create_alerts,
+            batch_size=DatabaseConstants.BULK_CREATE_BATCH_SIZE
+        )
+
+        # 兼容性处理: 某些数据库的 bulk_create 不返回带 ID 的对象
+        if not new_alerts or not hasattr(new_alerts[0], 'id'):
+            instance_ids = [event["instance_id"] for event in events]
+            new_alerts = list(
+                MonitorAlert.objects.filter(
+                    policy_id=self.policy.id,
+                    monitor_instance_id__in=instance_ids,
+                    start_event_time=self.policy.last_run_time,
+                    status="new"
+                ).order_by('id')
+            )
+
+        logger.info(f"Created {len(new_alerts)} new alerts for policy {self.policy.id}")
+        return new_alerts
+
     def _update_existing_alerts_from_events(self, event_data_list):
         """更新已有告警的等级和内容（如果新事件级别更高）
 
