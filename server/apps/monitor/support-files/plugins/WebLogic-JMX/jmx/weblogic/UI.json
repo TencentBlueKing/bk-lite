@@ -4,7 +4,7 @@
   "collect_type": "jmx",
   "config_type": ["weblogic"],
   "collector": "WebLogic-JMX",
-  "instance_id": "${cloud_region}_${jmx_url}",
+  "instance_id": "{{cloud_region}}_{{jmx_url}}",
   "form_fields": [
     {
       "name": "username",
@@ -111,7 +111,7 @@
       "change_handler": {
         "type": "simple",
         "source_fields": ["jmx_url"],
-        "target": "instance_name"
+        "target_field": "instance_name"
       }
     },
     {
