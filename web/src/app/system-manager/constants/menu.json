@@ -97,6 +97,12 @@
           "icon": "talk-line",
           "name": "operation_logs",
           "url": "/system-manager/security/operation-logs"
+        },
+        {
+          "title": "错误日志",
+          "icon": "wannengbiaodan",
+          "name": "error_logs",
+          "url": "/system-manager/security/error-logs"
         }
       ]
     }
@@ -199,6 +205,12 @@
           "icon": "talk-line",
           "name": "operation_logs",
           "url": "/system-manager/security/operation-logs"
+        },
+        {
+          "title": "Error Logs",
+          "icon": "wannengbiaodan",
+          "name": "error_logs",
+          "url": "/system-manager/security/error-logs"
         }
       ]
     }
