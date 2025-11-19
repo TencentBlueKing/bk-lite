@@ -73,6 +73,17 @@ class PolicyOrganization(TimeInfo, MaintainerInfo):
 class MonitorEvent(models.Model):
     LEVEL_CHOICES = [("no_data", "No Data"), ('info', 'Info'), ('warning', 'Warning'), ('error', 'Error'), ('critical', 'Critical')]
     id = models.CharField(primary_key=True, max_length=50, verbose_name='事件ID')
+
+    alert = models.ForeignKey(
+        'MonitorAlert',
+        on_delete=models.CASCADE,
+        null=True,
+        blank=True,
+        db_index=True,
+        related_name='events',
+        verbose_name='关联告警'
+    )
+
     policy_id = models.IntegerField(db_index=True, verbose_name='监控策略ID')
     monitor_instance_id = models.CharField(db_index=True, max_length=100, verbose_name='监控对象实例ID')
     created_at = models.DateTimeField(db_index=True, auto_now_add=True, verbose_name="事件生成时间" )
@@ -82,8 +93,12 @@ class MonitorEvent(models.Model):
     level = models.CharField(max_length=20, choices=LEVEL_CHOICES, verbose_name='事件级别')
     content = models.TextField(blank=True, verbose_name='事件内容')
     notice_result = models.JSONField(default=list, verbose_name='通知结果')
+
     class Meta:
-        indexes = [models.Index(fields=["policy_id", "monitor_instance_id", "created_at"])]
+        indexes = [
+            models.Index(fields=["policy_id", "monitor_instance_id", "created_at"]),
+            models.Index(fields=["alert", "created_at"]),  # ✅ 新增索引，优化查询性能
+        ]
 
 
 class MonitorEventRawData(models.Model):
