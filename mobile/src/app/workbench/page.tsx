@@ -43,6 +43,12 @@ export default function WorkbenchPage() {
         3: 'Chatflow',
     };
 
+    const botTypeColors: { [key: number]: { bg: string; text: string } } = {
+        1: { bg: '#FFE5E5', text: '#FF6B9D' },
+        2: { bg: '#E5F4FF', text: '#4A9EFF' },
+        3: { bg: '#FFF4E5', text: '#FFB84D' },
+    };
+
     const handleTabChange = (key: string) => {
         setActiveTab(key);
     };
@@ -59,19 +65,28 @@ export default function WorkbenchPage() {
     const renderListItem = (item: any) => (
         <div
             key={item.id}
-            className="bg-[var(--color-bg)] mx-3 mt-3 rounded-lg shadow-sm border border-[var(--color-border)] p-4 active:bg-[var(--color-bg-hover)] cursor-pointer"
+            className="bg-[var(--color-bg)] mx-3 mt-3 rounded-lg shadow-sm border border-[var(--color-border)] p-4 active:bg-[var(--color-bg-hover)] cursor-pointer relative overflow-hidden"
             onClick={() => {
                 // 将应用信息存储到 sessionStorage，供详情页使用
                 sessionStorage.setItem('currentBot', JSON.stringify(item));
                 router.push(`/workbench/detail?id=${item.id}`);
             }}
         >
+            {/* 右上角状态 */}
+            <div
+                className="absolute top-0 right-0 w-6 h-6"
+                style={{
+                    clipPath: 'polygon(100% 0, 100% 100%, 0 0)',
+                    backgroundColor: item.online ? '#52C41A' : '#D9D9D9',
+                }}
+            ></div>
+
             <div className="flex items-start space-x-3">
                 {/* 缩略图 */}
                 <div className="flex-shrink-0 relative">
                     <div className="w-16 h-16 bg-gradient-to-br from-blue-400 to-blue-600 rounded-full overflow-hidden">
                         <Image
-                            src="/avatars/04.svg"
+                            src={item.avatar}
                             alt={item.name}
                             width={64}
                             height={64}
@@ -82,23 +97,11 @@ export default function WorkbenchPage() {
 
                 {/* 内容区域 */}
                 <div className="flex-1 min-w-0">
-                    {/* 名称和状态 */}
+                    {/* 名称 */}
                     <div className="flex items-center justify-between mb-1.5">
                         <h3 className="text-base font-medium text-[var(--color-text-1)]">
                             {item.name}
                         </h3>
-                        <div className="flex items-center space-x-1.5">
-                            <div
-                                className={`w-2 h-2 rounded-full ${item.online ? 'bg-blue-500' : 'bg-gray-400'
-                                    }`}
-                            ></div>
-                            <span
-                                className={`text-xs ${item.online ? 'text-blue-500' : 'text-gray-400'
-                                    }`}
-                            >
-                                {item.online ? '在线' : '下线'}
-                            </span>
-                        </div>
                     </div>
 
                     {/* 描述文本 */}
@@ -109,7 +112,11 @@ export default function WorkbenchPage() {
                     {/* 标签按钮 */}
                     {item.bot_type && (
                         <span
-                            className=" float-right px-3 py-1 text-xs font-medium text-gray-800 bg-gray-200 rounded"
+                            className="float-right px-3 py-1 text-xs font-medium rounded"
+                            style={{
+                                backgroundColor: botTypeColors[item.bot_type]?.bg || '#F0F0F0',
+                                color: botTypeColors[item.bot_type]?.text || '#666666',
+                            }}
                         >
                             {botTypeMap[item.bot_type] || '未知类型'}
                         </span>

@@ -25,7 +25,7 @@ export default function ProfilePage() {
   const [imageToCrop, setImageToCrop] = useState<string | null>(null);
   const [croppingImage, setCroppingImage] = useState(false);
 
-  const avatarSrc = '/avatars/01.svg'; // TODO: 从 userInfo 获取头像
+  const avatarSrc = '/avatars/01.png'; // TODO: 从 userInfo 获取头像
 
   // 点击头像
   const handleAvatarClick = () => {
