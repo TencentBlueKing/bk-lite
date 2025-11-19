@@ -7,7 +7,7 @@
   "instance_id": "{{cloud_region}}_{{ENV_HOST}}_{{ENV_PORT}}",
   "form_fields": [
     {
-      "name": "USER",
+      "name": "ENV_USER",
       "label": "用户名",
       "type": "input",
       "required": true,
@@ -20,7 +20,7 @@
       }
     },
     {
-      "name": "PASSWORD",
+      "name": "ENV_PASSWORD",
       "label": "密码",
       "type": "password",
       "required": true,
@@ -33,7 +33,7 @@
       }
     },
     {
-      "name": "SERVICE_NAME",
+      "name": "ENV_SERVICE_NAME",
       "label": "服务名称",
       "type": "input",
       "required": true,
@@ -46,7 +46,7 @@
       }
     },
     {
-      "name": "LISTEN_PORT",
+      "name": "ENV_LISTEN_PORT",
       "label": "监听端口",
       "type": "inputNumber",
       "required": true,
@@ -62,7 +62,7 @@
       }
     },
     {
-      "name": "HOST",
+      "name": "ENV_HOST",
       "label": "主机",
       "type": "input",
       "required": true,
@@ -76,7 +76,7 @@
       }
     },
     {
-      "name": "PORT",
+      "name": "ENV_PORT",
       "label": "端口",
       "type": "inputNumber",
       "required": true,

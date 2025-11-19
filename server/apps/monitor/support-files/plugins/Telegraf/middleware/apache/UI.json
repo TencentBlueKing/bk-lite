@@ -13,12 +13,35 @@
       "required": true,
       "visible_in": "edit",
       "editable": false,
-      "description": "监控的目标网址链接，以检测其可用性和性能。",
+      "description": "监控的目标网址链接，以检测其可用性和性能",
       "widget_props": {
         "placeholder": "http://localhost/server-status?auto"
       },
       "data_transform": {
         "origin_path": "child.content.config.urls[0]"
+      }
+    },
+    {
+      "name": "interval",
+      "label": "间隔",
+      "type": "inputNumber",
+      "required": true,
+      "default_value": 10,
+      "description": "监控数据的采集时间间隔（单位：秒）",
+      "widget_props": {
+        "min": 1,
+        "precision": 0,
+        "placeholder": "间隔",
+        "addonAfter": "s"
+      },
+      "data_transform": {
+        "origin_path": "child.content.config.interval",
+        "to_form": {
+          "regex": "^(\\d+)s$"
+        },
+        "to_api": {
+          "suffix": "s"
+        }
       }
     }
   ],
@@ -28,7 +51,6 @@
       "label": "节点",
       "type": "select",
       "required": true,
-      "default_value": "",
       "widget_props": {
         "placeholder": "请选择节点"
       },
@@ -39,7 +61,6 @@
       "label": "URL",
       "type": "input",
       "required": true,
-      "default_value": "",
       "widget_props": {
         "placeholder": "http://localhost/server-status?auto"
       },
@@ -54,7 +75,6 @@
       "label": "实例名称",
       "type": "input",
       "required": true,
-      "default_value": "",
       "widget_props": {
         "placeholder": "实例名称",
         "disabled": false
@@ -65,7 +85,6 @@
       "label": "组",
       "type": "group_select",
       "required": false,
-      "default_value": [],
       "widget_props": {
         "placeholder": "请选择组"
       }
