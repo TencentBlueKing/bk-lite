@@ -96,6 +96,28 @@ class MonitorEventRawData(models.Model):
     )
 
 
+class MonitorAlert(TimeInfo):
+    STATUS_CHOICES = [('new', 'New'), ('closed', 'Closed'), ('recovered', 'Recovered')]
+    ALERT_TYPE_CHOICES = [('alert', 'Alert'), ('no_data', 'No Data')]
+
+    policy_id = models.IntegerField(db_index=True, default=0, verbose_name='监控策略ID')
+    monitor_instance_id = models.CharField(db_index=True, default="", max_length=100, verbose_name='监控对象实例ID')
+    monitor_instance_name = models.CharField(default="", max_length=100, verbose_name='监控对象实例名称')
+    alert_type = models.CharField(db_index=True, default="alert", choices=ALERT_TYPE_CHOICES, max_length=50, verbose_name='告警类型')
+    level = models.CharField(db_index=True, default="", max_length=20, verbose_name='最高告警级别')
+    value = models.FloatField(blank=True, null=True, verbose_name='最高告警值')
+    content = models.TextField(blank=True, verbose_name='告警内容')
+    status = models.CharField(db_index=True, max_length=20, default="new", choices=STATUS_CHOICES, verbose_name='告警状态')
+    start_event_time = models.DateTimeField(blank=True, null=True, verbose_name='开始事件时间')
+    end_event_time = models.DateTimeField(blank=True, null=True, verbose_name='结束事件时间')
+    operator = models.CharField(blank=True, null=True, max_length=50, verbose_name='告警处理人')
+    info_event_count = models.IntegerField(default=0, verbose_name='信息事件数量')
+
+    class Meta:
+        verbose_name = '监控告警'
+        verbose_name_plural = '监控告警'
+
+
 class MonitorAlertMetricSnapshot(TimeInfo):
     """告警指标快照表 - 记录告警全生命周期内的原始指标数据"""
 
@@ -122,25 +144,3 @@ class MonitorAlertMetricSnapshot(TimeInfo):
         indexes = [
             models.Index(fields=['alert', 'policy_id']),
         ]
-
-
-class MonitorAlert(TimeInfo):
-    STATUS_CHOICES = [('new', 'New'), ('closed', 'Closed'), ('recovered', 'Recovered')]
-    ALERT_TYPE_CHOICES = [('alert', 'Alert'), ('no_data', 'No Data')]
-
-    policy_id = models.IntegerField(db_index=True, default=0, verbose_name='监控策略ID')
-    monitor_instance_id = models.CharField(db_index=True, default="", max_length=100, verbose_name='监控对象实例ID')
-    monitor_instance_name = models.CharField(default="", max_length=100, verbose_name='监控对象实例名称')
-    alert_type = models.CharField(db_index=True, default="alert", choices=ALERT_TYPE_CHOICES, max_length=50, verbose_name='告警类型')
-    level = models.CharField(db_index=True, default="", max_length=20, verbose_name='最高告警级别')
-    value = models.FloatField(blank=True, null=True, verbose_name='最高告警值')
-    content = models.TextField(blank=True, verbose_name='告警内容')
-    status = models.CharField(db_index=True, max_length=20, default="new", choices=STATUS_CHOICES, verbose_name='告警状态')
-    start_event_time = models.DateTimeField(blank=True, null=True, verbose_name='开始事件时间')
-    end_event_time = models.DateTimeField(blank=True, null=True, verbose_name='结束事件时间')
-    operator = models.CharField(blank=True, null=True, max_length=50, verbose_name='告警处理人')
-    info_event_count = models.IntegerField(default=0, verbose_name='信息事件数量')
-
-    class Meta:
-        verbose_name = '监控告警'
-        verbose_name_plural = '监控告警'

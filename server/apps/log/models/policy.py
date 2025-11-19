@@ -105,3 +105,39 @@ class EventRawData(models.Model):
     class Meta:
         verbose_name = "事件原始数据"
         verbose_name_plural = "事件原始数据"
+
+
+class AlertSnapshot(TimeInfo):
+    """
+    告警快照表 - 记录告警全生命周期内的所有事件数据
+    累积存储告警下的所有事件原始数据到 S3
+    """
+    alert = models.OneToOneField(
+        Alert,
+        on_delete=models.CASCADE,
+        verbose_name='关联告警',
+        db_index=True,
+        related_name='snapshot'
+    )
+    policy = models.ForeignKey(Policy, on_delete=models.CASCADE, verbose_name='关联策略')
+    source_id = models.CharField(max_length=100, db_index=True, verbose_name='资源ID')
+
+    # 快照数据 - 使用 S3JSONField 存储到 S3/MinIO，节省数据库空间
+    # 格式: [
+    #   {"type": "event", "event_id": "xxx", "event_time": "xxx", "snapshot_time": "xxx", "raw_data": {...}},
+    #   ...
+    # ]
+    snapshots = S3JSONField(
+        bucket_name='log-alert-snapshots',
+        compressed=True,
+        default=list,
+        verbose_name='快照数据集合',
+        help_text='累积存储告警下所有事件的原始数据'
+    )
+
+    class Meta:
+        verbose_name = "告警快照"
+        verbose_name_plural = "告警快照"
+        indexes = [
+            models.Index(fields=['policy', 'source_id']),
+        ]
