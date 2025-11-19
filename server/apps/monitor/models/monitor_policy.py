@@ -89,7 +89,7 @@ class MonitorEvent(models.Model):
 class MonitorEventRawData(models.Model):
     event = models.ForeignKey(MonitorEvent, on_delete=models.CASCADE, verbose_name='事件')
     data = S3JSONField(
-        bucket_name='monitor-event-raw-data',
+        bucket_name='monitor-alert-raw-data',
         compressed=True,
         default=dict,
         verbose_name='原始数据'
@@ -132,7 +132,7 @@ class MonitorAlertMetricSnapshot(TimeInfo):
     #   ...
     # ]
     snapshots = S3JSONField(
-        bucket_name='monitor-alert-snapshots',
+        bucket_name='monitor-alert-raw-data',
         compressed=True,
         default=list,
         verbose_name='快照数据集合'

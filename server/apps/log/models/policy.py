@@ -128,7 +128,7 @@ class AlertSnapshot(TimeInfo):
     #   ...
     # ]
     snapshots = S3JSONField(
-        bucket_name='log-alert-snapshots',
+        bucket_name='log-alert-raw-data',
         compressed=True,
         default=list,
         verbose_name='快照数据集合',
