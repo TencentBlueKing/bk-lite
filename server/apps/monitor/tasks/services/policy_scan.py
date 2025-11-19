@@ -390,7 +390,7 @@ class MonitorPolicyScan:
         )
 
     def create_events(self, events):
-        """创建事件"""
+        """创建事件 - 支持关联告警外键"""
         if not events:
             return []
 
@@ -399,9 +399,14 @@ class MonitorPolicyScan:
 
         for event in events:
             event_id = uuid.uuid4().hex
+
+            # ✅ 获取 alert_id（如果有）
+            alert_id = event.get("alert_id")
+
             create_events.append(
                 MonitorEvent(
                     id=event_id,
+                    alert_id=alert_id,  # ✅ 关联告警外键
                     policy_id=self.policy.id,
                     monitor_instance_id=event["instance_id"],
                     value=event["value"],
@@ -411,12 +416,11 @@ class MonitorPolicyScan:
                     event_time=self.policy.last_run_time,
                 )
             )
-            # 如果有原始数据，保存事件信息以便后续处理
+            # 如果有原始数据，保存事件ID和原始数据的映射关系
             if event.get("raw_data"):
                 events_with_raw_data.append({
-                    "original_id": event_id,
+                    "event_id": event_id,
                     "raw_data": event["raw_data"],
-                    "instance_id": event["instance_id"]
                 })
 
         # 使用 bulk_create 创建事件
@@ -431,20 +435,27 @@ class MonitorPolicyScan:
             ).order_by('-created_at')[:len(create_events)])
 
         # 创建原始数据 - 逐个保存以触发 S3JSONField 的上传逻辑
-        if events_with_raw_data and event_objs:
-            # 建立实例ID到事件对象的映射
-            event_obj_map = {obj.monitor_instance_id: obj for obj in event_objs}
+        if events_with_raw_data:
+            # 建立事件ID到事件对象的映射（用于兼容性处理）
+            event_obj_map = {obj.id: obj for obj in event_objs}
 
+            raw_data_objects = []
             for event_info in events_with_raw_data:
-                # 根据实例ID找到对应的事件对象
-                event_obj = event_obj_map.get(event_info["instance_id"])
-                if event_obj:
-                    # 逐个创建并保存，触发 S3JSONField 的 pre_save 钩子
-                    raw_data_obj = MonitorEventRawData(
-                        event_id=event_obj.id,
-                        data=event_info["raw_data"],  # S3JSONField 会在 save() 时自动上传
+                event_id = event_info["event_id"]
+                # 验证事件是否成功创建
+                if event_id in event_obj_map or MonitorEvent.objects.filter(id=event_id).exists():
+                    raw_data_objects.append(
+                        MonitorEventRawData(
+                            event_id=event_id,
+                            data=event_info["raw_data"],  # S3JSONField 会在 save() 时自动上传
+                        )
                     )
-                    raw_data_obj.save()
+
+            # 批量创建原始数据记录
+            if raw_data_objects:
+                for raw_data_obj in raw_data_objects:
+                    raw_data_obj.save()  # 逐个保存以触发 S3JSONField 的上传逻辑
+                logger.info(f"Created {len(raw_data_objects)} raw data records for policy {self.policy.id}")
 
         return event_objs
 
@@ -833,11 +844,16 @@ class MonitorPolicyScan:
             }
         )
 
+        # 标记是否有新增快照数据
+        has_new_snapshot = False
+
         # 如果是新告警且是首次创建快照记录，需要先添加告警前快照
         if is_new_alert and created:
             pre_alert_snapshot = self._build_pre_alert_snapshot(alert.monitor_instance_id, snapshot_time)
             if pre_alert_snapshot:
                 snapshot_obj.snapshots.append(pre_alert_snapshot)
+                has_new_snapshot = True
+                logger.info(f"Added pre-alert snapshot for alert {alert.id}, instance {alert.monitor_instance_id}")
 
         # 如果有事件数据，添加到snapshots列表末尾
         if event_objs:
@@ -857,9 +873,15 @@ class MonitorPolicyScan:
                 ]
                 if event_obj.id not in existing_event_ids:
                     snapshot_obj.snapshots.append(event_snapshot)
+                    has_new_snapshot = True
+                    logger.debug(f"Added event snapshot for alert {alert.id}, event {event_obj.id}")
 
-        # 保存更新
-        snapshot_obj.save(update_fields=['snapshots', 'updated_at'])
+        # 只有在真正添加了新快照数据时才保存
+        if has_new_snapshot:
+            snapshot_obj.save(update_fields=['snapshots', 'updated_at'])
+            logger.info(f"Saved snapshot for alert {alert.id}, total snapshots: {len(snapshot_obj.snapshots)}")
+        else:
+            logger.debug(f"No new snapshot data for alert {alert.id}, skipping save")
 
     def _build_pre_alert_snapshot(self, instance_id, current_snapshot_time):
         """构建告警前快照数据
@@ -869,7 +891,7 @@ class MonitorPolicyScan:
             current_snapshot_time: 当前快照时间
 
         Returns:
-            dict: 告警前快照数据，如果查询失败则返回None
+            dict: 告警前快照数据，如果查询失败或无数据则返回None
         """
         # 计算前一个周期的时间点
         period_seconds = period_to_seconds(self.policy.period)
@@ -922,7 +944,16 @@ class MonitorPolicyScan:
                 raw_data = metric_info
                 break
 
+        # 只有在查询到有效数据时才返回快照
+        if not raw_data:
+            logger.warning(
+                f"No pre-alert data found for policy {self.policy.id}, instance {instance_id} "
+                f"at time {pre_alert_time.isoformat()}"
+            )
+            return None
+
         # 构建告警前快照数据
+        logger.info(f"Built pre-alert snapshot for policy {self.policy.id}, instance {instance_id}")
         return {
             'type': 'pre_alert',
             'snapshot_time': pre_alert_time.isoformat(),
@@ -943,7 +974,7 @@ class MonitorPolicyScan:
         pass
 
     def _execute_step(self, step_name, func, *args, critical=False, **kwargs):
-        """执行流程步骤，统一错误处理
+        """执行流程步骤，统一��误处理
 
         Args:
             step_name: 步骤名称，用于日志记录
@@ -981,19 +1012,203 @@ class MonitorPolicyScan:
         return no_data_events
 
     def _create_events_and_alerts(self, events):
-        """创建事件和告警
+        """创建事件和告警 - 优化版：先创建告警再创建事件以支持外键关联
 
         Args:
-            events: 事件列表
+            events: 事件列表（只包含异常事件，不包含 info 事件）
 
         Returns:
             tuple: (事件对象列表, 新告警列表)
         """
-        event_objs = self.create_events(events)
+        if not events:
+            return [], []
+
+        # 步骤1: 分类事件（新告警 vs 已有告警）
+        new_alert_events = []      # 需要创建新告警的异常事件
+        existing_alert_events = [] # 对应已有告警的异常事件
+
+        # 构建活跃告警的实例ID到告警对象的映射（注意：映射到对象，不只是ID）
+        active_alerts_map = {
+            alert.monitor_instance_id: alert
+            for alert in self.active_alerts
+        }
+
+        for event in events:
+            instance_id = event["instance_id"]
+
+            if instance_id in active_alerts_map:
+                # 异常事件 + 已有告警：关联现有告警
+                alert = active_alerts_map[instance_id]
+                event["alert_id"] = alert.id
+                event["_alert_obj"] = alert  # ✅ 保存告警对象，用于后续更新
+                existing_alert_events.append(event)
+            else:
+                # 异常事件 + 无告警：需要创建新告警
+                new_alert_events.append(event)
+
+        # 步骤2: 先创建新告警（在创建事件之前）
         new_alerts = []
-        if event_objs:
-            new_alerts = self.handle_alert_events(event_objs)
+        if new_alert_events:
+            new_alerts = self._create_alerts_from_events(new_alert_events)
+
+            # ✅ 验证告警创建数量
+            if len(new_alerts) != len(new_alert_events):
+                logger.error(
+                    f"Alert creation mismatch: expected {len(new_alert_events)}, "
+                    f"got {len(new_alerts)} for policy {self.policy.id}"
+                )
+
+            # 建立映射，将告警ID回填到事件数据中
+            alert_map = {alert.monitor_instance_id: alert for alert in new_alerts}
+            for event in new_alert_events:
+                alert = alert_map.get(event["instance_id"])
+                if alert:
+                    event["alert_id"] = alert.id
+                    event["_alert_obj"] = alert  # ✅ 保存告警对象
+                else:
+                    # ✅ 严格检查：如果没有找到对应告警，记录错误
+                    logger.error(
+                        f"Failed to get alert for event instance {event['instance_id']} "
+                        f"in policy {self.policy.id}"
+                    )
+                    # 设置为 None，后续会跳过
+                    event["alert_id"] = None
+
+        # 步骤3: 创建所有异常事件（现在都应该有 alert_id）
+        # ✅ 过滤掉没有 alert_id 的事件（异常情况）
+        valid_events = [e for e in (new_alert_events + existing_alert_events) if e.get("alert_id")]
+
+        if len(valid_events) != len(new_alert_events) + len(existing_alert_events):
+            logger.warning(
+                f"Filtered out {len(new_alert_events) + len(existing_alert_events) - len(valid_events)} "
+                f"events without alert_id for policy {self.policy.id}"
+            )
+
+        event_objs = self.create_events(valid_events)
+
+        # 步骤4: 更新已有告警的等级和内容（如果新事件级别更高）
+        if existing_alert_events:
+            self._update_existing_alerts_from_events(existing_alert_events)
+
+        logger.info(
+            f"Created events and alerts: "
+            f"{len(new_alert_events)} new alerts, "
+            f"{len(existing_alert_events)} existing alerts, "
+            f"{len(event_objs)} events created"
+        )
+
         return event_objs, new_alerts
+
+    def _create_alerts_from_events(self, events):
+        """从事件数据创建告警（不依赖事件对象）
+
+        Args:
+            events: 事件数据列表（字典格式）
+
+        Returns:
+            list: 创建的告警对象列表
+        """
+        if not events:
+            return []
+
+        create_alerts = []
+
+        for event in events:
+            # 根据事件类型确定告警属性
+            if event["level"] != "no_data":
+                alert_type = "alert"
+                level = event["level"]
+                value = event["value"]
+                content = event["content"]
+            else:
+                alert_type = "no_data"
+                level = self.policy.no_data_level
+                value = None
+                content = "no data"
+
+            create_alerts.append(
+                MonitorAlert(
+                    policy_id=self.policy.id,
+                    monitor_instance_id=event["instance_id"],
+                    monitor_instance_name=self.instances_map.get(
+                        event["instance_id"],
+                        event["instance_id"]
+                    ),
+                    alert_type=alert_type,
+                    level=level,
+                    value=value,
+                    content=content,
+                    status="new",
+                    start_event_time=self.policy.last_run_time,
+                    operator="",
+                )
+            )
+
+        # 批量创建告警
+        new_alerts = MonitorAlert.objects.bulk_create(
+            create_alerts,
+            batch_size=DatabaseConstants.BULK_CREATE_BATCH_SIZE
+        )
+
+        # 兼容性处理: 某些数据库的 bulk_create 不返回带 ID 的对象
+        if not new_alerts or not hasattr(new_alerts[0], 'id'):
+            instance_ids = [event["instance_id"] for event in events]
+            new_alerts = list(
+                MonitorAlert.objects.filter(
+                    policy_id=self.policy.id,
+                    monitor_instance_id__in=instance_ids,
+                    start_event_time=self.policy.last_run_time,
+                    status="new"
+                ).order_by('id')
+            )
+
+        logger.info(f"Created {len(new_alerts)} new alerts for policy {self.policy.id}")
+        return new_alerts
+
+    def _update_existing_alerts_from_events(self, event_data_list):
+        """更新已有告警的等级和内容（如果新事件级别更高）
+
+        Args:
+            event_data_list: 事件数据列表（包含 _alert_obj 字段）
+        """
+        if not event_data_list:
+            return
+
+        alert_level_updates = []
+
+        # ✅ 直接从事件数据中获取告警对象和事件信息
+        for event_data in event_data_list:
+            alert = event_data.get("_alert_obj")
+            if not alert:
+                logger.warning(f"Event data missing _alert_obj: {event_data.get('instance_id')}")
+                continue
+
+            # 跳过无数据事件（无数据事件不更新告警级别）
+            if event_data.get("level") == "no_data":
+                continue
+
+            # 检查是否需要升级告警等级
+            event_level = event_data.get("level")
+            current_weight = AlertConstants.LEVEL_WEIGHT.get(event_level, 0)
+            alert_weight = AlertConstants.LEVEL_WEIGHT.get(alert.level, 0)
+
+            if current_weight > alert_weight:
+                alert.level = event_level
+                alert.value = event_data.get("value")
+                alert.content = event_data.get("content")
+                alert_level_updates.append(alert)
+                logger.debug(
+                    f"Upgrading alert {alert.id} level from {alert.level} to {event_level}"
+                )
+
+        # 批量更新告警
+        if alert_level_updates:
+            MonitorAlert.objects.bulk_update(
+                alert_level_updates,
+                ["level", "value", "content"],
+                batch_size=DatabaseConstants.BULK_UPDATE_BATCH_SIZE
+            )
+            logger.info(f"Updated {len(alert_level_updates)} alerts with higher severity levels")
 
     def run(self):
         """执行监控策略扫描主流程

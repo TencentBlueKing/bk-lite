@@ -502,6 +502,8 @@ class LogPolicyScan:
             alerts_to_create = []
             create_events = []
             create_raw_data = []
+            # 建立 event_id 到原始数据的映射，用于后续快照创建
+            event_id_to_raw_data = {}
 
             for event in events:
                 event_id = uuid.uuid4().hex
@@ -534,14 +536,9 @@ class LogPolicyScan:
                     # 更新映射表，供后续事件关联使用
                     existing_alerts[source_id] = alert_obj
 
-                # 准备原始数据记录
+                # 保存原始数据到映射表（用于快照创建）
                 if event.get("raw_data"):
-                    create_raw_data.append(
-                        EventRawData(
-                            event_id=event_id,
-                            data=event["raw_data"],
-                        )
-                    )
+                    event_id_to_raw_data[event_id] = event["raw_data"]
 
                 # 准备事件记录（使用映射表中的alert_obj）
                 create_events.append(
@@ -576,14 +573,25 @@ class LogPolicyScan:
             # 批量创建事件记录
             event_objs = Event.objects.bulk_create(create_events, batch_size=DatabaseConstants.DEFAULT_BATCH_SIZE)
 
-            # 逐个保存原始数据记录以确保 S3JSONField 能正确上传数据
-            if create_raw_data:
+            # 批量创建事件原始数据记录（关联到已创建的事件对象）
+            if event_id_to_raw_data:
+                create_raw_data = []
+                for event_obj in event_objs:
+                    if event_obj.id in event_id_to_raw_data:
+                        create_raw_data.append(
+                            EventRawData(
+                                event=event_obj,  # 使用 event 字段，而不是 event_id
+                                data=event_id_to_raw_data[event_obj.id],
+                            )
+                        )
+
+                # 逐个保存原始数据记录以确保 S3JSONField 能正确上传数据
                 for raw_data_obj in create_raw_data:
                     raw_data_obj.save()
                 logger.debug(f"Created {len(create_raw_data)} raw data records for policy {self.policy.id}")
 
-            # 为告警创建或更新快照
-            self._create_snapshots_for_alerts(event_objs, alerts_to_create, events)
+            # 为告警创建或更新快照（传递原始数据映射）
+            self._create_snapshots_for_alerts(event_objs, alerts_to_create, events, event_id_to_raw_data)
 
             logger.info(f"Created {len(event_objs)} events for policy {self.policy.id}")
             return event_objs
@@ -592,30 +600,36 @@ class LogPolicyScan:
             logger.error(f"create events failed for policy {self.policy.id}: {e}")
             return []
 
-    def _create_snapshots_for_alerts(self, event_objs, new_alerts, raw_events):
+    def _create_snapshots_for_alerts(self, event_objs, new_alerts, raw_events, event_id_to_raw_data=None):
         """为告警创建或更新快照数据
-
+        
         Args:
             event_objs: 创建的事件对象列表
             new_alerts: 新创建的告警对象列表
             raw_events: 原始事件数据列表（包含raw_data）
+            event_id_to_raw_data: event_id 到原始数据的映射（优先使用此映射）
         """
         if not event_objs:
             return
 
         try:
-            # 优化：建立 source_id 到原始数据的映射（避免嵌套循环）
-            source_raw_data_map = {
-                event["source_id"]: event.get("raw_data", {})
-                for event in raw_events
-                if event.get("raw_data")
-            }
-
-            # 建立事件ID到原始数据的映射
-            event_raw_data_map = {
-                event_obj.id: source_raw_data_map.get(event_obj.source_id, {})
-                for event_obj in event_objs
-            }
+            # 优先使用传入的映射，如果没有则从 raw_events 构建
+            if event_id_to_raw_data:
+                # 使用传入的映射
+                event_raw_data_map = event_id_to_raw_data
+            else:
+                # 从 raw_events 构建映射（兼容旧逻辑）
+                source_raw_data_map = {
+                    event["source_id"]: event.get("raw_data", {})
+                    for event in raw_events
+                    if event.get("raw_data")
+                }
+                
+                # 建立事件ID到原始数据的映射
+                event_raw_data_map = {
+                    event_obj.id: source_raw_data_map.get(event_obj.source_id, {})
+                    for event_obj in event_objs
+                }
 
             # 建立告警ID到事件对象的映射（使用 defaultdict 优化）
             from collections import defaultdict
@@ -627,7 +641,7 @@ class LogPolicyScan:
             for alert_id, related_events in alert_events_map.items():
                 # 获取第一个事件对象用于获取告警信息
                 first_event = related_events[0]
-
+                
                 # 更新告警快照
                 self._update_alert_snapshot(
                     alert_id=alert_id,
