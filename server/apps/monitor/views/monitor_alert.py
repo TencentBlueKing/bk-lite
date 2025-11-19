@@ -10,10 +10,10 @@ from apps.core.utils.permission_utils import get_permission_rules, permission_fi
     check_instance_permission
 from apps.core.utils.web_utils import WebUtils
 from apps.monitor.constants.permission import PermissionConstants
-from apps.monitor.models import MonitorAlert, MonitorEvent, MonitorPolicy
-from apps.monitor.models.monitor_policy import MonitorAlertMetricSnapshot
+from apps.monitor.models import MonitorAlert, MonitorEvent, MonitorPolicy, MonitorEventRawData, \
+    MonitorAlertMetricSnapshot
 from apps.monitor.filters.monitor_alert import MonitorAlertFilter
-from apps.monitor.serializers.monitor_alert import MonitorAlertSerializer, MonitorAlertMetricSnapshotSerializer
+from apps.monitor.serializers.monitor_alert import MonitorAlertSerializer
 from apps.monitor.serializers.monitor_policy import MonitorPolicySerializer
 from config.drf.pagination import CustomPageNumberPagination
 
@@ -149,7 +149,6 @@ class MonitorAlertVieSet(
         # 返回成功响应
         return WebUtils.response_success(dict(count=queryset.count(), results=results))
 
-
     def update(self, request, *args, **kwargs):
         partial = kwargs.pop('partial', False)
         instance = self.get_object()
@@ -169,6 +168,57 @@ class MonitorAlertVieSet(
             instance._prefetched_objects_cache = {}
 
         return Response(serializer.data)
+
+    @action(methods=['get'], detail=False, url_path='snapshots/(?P<alert_id>[^/.]+)')
+    def get_snapshots(self, request, alert_id):
+        """根据告警ID查询指标快照数据"""
+        try:
+            # 1. 根据告警ID获取告警对象
+            alert_obj = MonitorAlert.objects.get(id=alert_id)
+        except MonitorAlert.DoesNotExist:
+            return WebUtils.response_error("告警不存在", status_code=404)
+
+        # 2. 查询该告警的快照记录
+        try:
+            snapshot_obj = MonitorAlertMetricSnapshot.objects.get(alert_id=alert_obj.id)
+        except MonitorAlertMetricSnapshot.DoesNotExist:
+            return WebUtils.response_success({
+                'alert_info': {
+                    'id': alert_obj.id,
+                    'policy_id': alert_obj.policy_id,
+                    'monitor_instance_id': alert_obj.monitor_instance_id,
+                    'status': alert_obj.status,
+                    'start_event_time': alert_obj.start_event_time,
+                    'end_event_time': alert_obj.end_event_time,
+                },
+                'snapshots': []
+            })
+
+        # 3. 从 S3 加载快照数据（S3JSONField 自动处理）
+        try:
+            snapshots_data = snapshot_obj.snapshots  # 自动从 S3 下载并解析
+            # 如果 S3 加载失败返回 None，使用空列表
+            if snapshots_data is None:
+                snapshots_data = []
+        except Exception as e:
+            # S3 读取异常时记录日志并返回空列表
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.error(f"Failed to load snapshots from S3 for alert {alert_id}: {e}")
+            snapshots_data = []
+
+        # 4. 返回快照数据
+        return WebUtils.response_success({
+            'alert_info': {
+                'id': alert_obj.id,
+                'policy_id': alert_obj.policy_id,
+                'monitor_instance_id': alert_obj.monitor_instance_id,
+                'status': alert_obj.status,
+                'start_event_time': alert_obj.start_event_time,
+                'end_event_time': alert_obj.end_event_time,
+            },
+            'snapshots': snapshots_data,
+        })
 
 
 class MonitorEventVieSet(viewsets.ViewSet):
@@ -205,57 +255,32 @@ class MonitorEventVieSet(viewsets.ViewSet):
         ]
         return WebUtils.response_success(dict(count=q_set.count(), results=result))
 
-class MonitorAlertMetricSnapshotViewSet(viewsets.ViewSet):
-    """告警指标快照视图集"""
-
-    @action(methods=['get'], detail=False, url_path='query/(?P<alert_id>[^/.]+)')
-    def get_snapshots(self, request, alert_id):
-        """根据告警ID查询指标快照数据"""
+    @action(methods=['get'], detail=False, url_path='raw_data/(?P<event_id>[^/.]+)')
+    def get_raw_data(self, request, event_id):
+        """根据事件ID获取事件的原始指标数据（从 S3 加载）"""
         try:
-            # 1. 根据告警ID获取告警对象
-            alert_obj = MonitorAlert.objects.get(id=alert_id)
-        except MonitorAlert.DoesNotExist:
-            return WebUtils.response_error("告警不存在", status_code=404)
+            # 1. 根据事件ID获取事件对象
+            event_obj = MonitorEvent.objects.get(id=event_id)
+        except MonitorEvent.DoesNotExist:
+            return WebUtils.response_error("事件不存在", status_code=404)
 
-        # 2. 构建查询条件 - 根据告警ID以及告警的开始结束时间
-        snapshot_query = {
-            'alert_id': alert_obj.id,
-            'snapshot_time__gte': alert_obj.start_event_time,
-        }
+        # 2. 查询该事件的原始数据
+        raw_data_obj = MonitorEventRawData.objects.filter(event_id=event_obj.id).first()
 
-        # 如果告警已结束，添加结束时间过滤条件
-        if alert_obj.end_event_time:
-            snapshot_query['snapshot_time__lte'] = alert_obj.end_event_time
+        if not raw_data_obj:
+            return WebUtils.response_success({})
 
-        # 3. 查询指标快照数据
-        queryset = MonitorAlertMetricSnapshot.objects.filter(**snapshot_query).order_by('snapshot_time')
+        # 3. 从 S3 加载原始数据（S3JSONField 自动处理）
+        try:
+            raw_data = raw_data_obj.data  # 自动从 S3 下载并解析
+            # 如果 S3 加载失败返回 None，使用空字典
+            if raw_data is None:
+                raw_data = {}
+        except Exception as e:
+            # S3 读取异常时记录日志并返回空字典
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.error(f"Failed to load raw data from S3 for event {event_id}: {e}")
+            raw_data = {}
 
-        # 4. 分页处理
-        page = int(request.GET.get('page', 1))
-        page_size = int(request.GET.get('page_size', 10))
-
-        if page_size == -1:
-            # 返回所有数据
-            snapshots = queryset
-        else:
-            # 分页返回
-            start = (page - 1) * page_size
-            end = start + page_size
-            snapshots = queryset[start:end]
-
-        # 5. 序列化数据
-        serializer = MonitorAlertMetricSnapshotSerializer(snapshots, many=True)
-
-        return WebUtils.response_success({
-            'count': queryset.count(),
-            'results': serializer.data,
-            'alert_info': {
-                'id': alert_obj.id,
-                'policy_id': alert_obj.policy_id,
-                'monitor_instance_id': alert_obj.monitor_instance_id,
-                'start_event_time': alert_obj.start_event_time,
-                'end_event_time': alert_obj.end_event_time,
-                'status': alert_obj.status
-            }
-        })
-
+        return WebUtils.response_success(raw_data)
