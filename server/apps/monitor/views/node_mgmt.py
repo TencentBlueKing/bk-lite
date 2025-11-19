@@ -27,6 +27,8 @@ class NodeMgmtView(ViewSet):
             page=request.data.get("page", 1),
             page_size=request.data.get("page_size", 10),
             is_active=request.data.get("is_active"),
+            is_manual=request.data.get("is_manual"),
+            is_container=request.data.get("is_container"),
             permission_data={
                 "username": request.user.username,
                 "domain": request.user.domain,
