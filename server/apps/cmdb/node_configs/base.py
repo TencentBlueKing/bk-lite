@@ -4,8 +4,11 @@
 # @Author: windyzhao
 
 import ipaddress
+import os
 from abc import abstractmethod, ABCMeta
+from pathlib import Path
 
+from django.conf import settings
 from jinja2 import Environment, FileSystemLoader, DebugUndefined
 
 
@@ -162,7 +165,7 @@ class BaseNodeParams(metaclass=ABCMeta):
         :return: 渲染后的配置字符串
         """
         file_name = "base.child.toml.j2"
-        template_dir = "/apps/cmdb/support-files"
+        template_dir = os.path.join(settings.BASE_DIR, "apps/cmdb/support-files")
         env = Environment(loader=FileSystemLoader(template_dir), undefined=DebugUndefined)
         env.filters['to_toml'] = self.to_toml_dict
         template = env.get_template(file_name)
