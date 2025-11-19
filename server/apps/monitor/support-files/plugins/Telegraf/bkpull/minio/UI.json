@@ -4,7 +4,7 @@
   "collect_type": "bkpull",
   "config_type": ["minio"],
   "collector": "Telegraf",
-  "instance_id": "${cloud_region}_${host}_${port}",
+  "instance_id": "{{cloud_region}}_{{host}}_{{port}}",
   "form_fields": [
     {
       "name": "host",
@@ -81,8 +81,8 @@
       },
       "change_handler": {
         "type": "combine",
-        "target": "instance_name",
-        "fields": ["host", "port"],
+        "source_fields": ["host", "port"],
+        "target_field": "instance_name",
         "separator": ":"
       }
     },
@@ -98,8 +98,8 @@
       },
       "change_handler": {
         "type": "combine",
-        "target": "instance_name",
-        "fields": ["host", "port"],
+        "source_fields": ["host", "port"],
+        "target_field": "instance_name",
         "separator": ":"
       }
     },
@@ -114,8 +114,8 @@
     },
     {
       "name": "group_ids",
-      "label": "分组",
-      "type": "group_selector",
+      "label": "组",
+      "type": "group_select",
       "required": false,
       "widget_props": {
         "placeholder": "请选择组"

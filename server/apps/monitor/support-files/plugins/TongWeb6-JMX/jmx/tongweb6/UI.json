@@ -4,7 +4,7 @@
   "collect_type": "jmx",
   "config_type": ["tongweb6"],
   "collector": "TongWeb6-JMX",
-  "instance_id": "${jmx_url}",
+  "instance_id": "{{jmx_url}}",
   "form_fields": [
     {
       "name": "username",

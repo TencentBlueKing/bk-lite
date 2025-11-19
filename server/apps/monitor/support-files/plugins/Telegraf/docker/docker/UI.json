@@ -4,7 +4,7 @@
   "collect_type": "docker",
   "config_type": ["docker"],
   "collector": "Telegraf",
-  "instance_id": "${cloud_region}_docker_${endpoint}",
+  "instance_id": "{{cloud_region}}_docker_{{endpoint}}",
   "form_fields": [
     {
       "name": "endpoint",
