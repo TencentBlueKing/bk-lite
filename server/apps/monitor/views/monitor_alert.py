@@ -149,7 +149,6 @@ class MonitorAlertVieSet(
         # 返回成功响应
         return WebUtils.response_success(dict(count=queryset.count(), results=results))
 
-
     def update(self, request, *args, **kwargs):
         partial = kwargs.pop('partial', False)
         instance = self.get_object()
@@ -169,6 +168,57 @@ class MonitorAlertVieSet(
             instance._prefetched_objects_cache = {}
 
         return Response(serializer.data)
+
+    @action(methods=['get'], detail=False, url_path='snapshots/(?P<alert_id>[^/.]+)')
+    def get_snapshots(self, request, alert_id):
+        """根据告警ID查询指标快照数据"""
+        try:
+            # 1. 根据告警ID获取告警对象
+            alert_obj = MonitorAlert.objects.get(id=alert_id)
+        except MonitorAlert.DoesNotExist:
+            return WebUtils.response_error("告警不存在", status_code=404)
+
+        # 2. 查询该告警的快照记录
+        try:
+            snapshot_obj = MonitorAlertMetricSnapshot.objects.get(alert_id=alert_obj.id)
+        except MonitorAlertMetricSnapshot.DoesNotExist:
+            return WebUtils.response_success({
+                'alert_info': {
+                    'id': alert_obj.id,
+                    'policy_id': alert_obj.policy_id,
+                    'monitor_instance_id': alert_obj.monitor_instance_id,
+                    'status': alert_obj.status,
+                    'start_event_time': alert_obj.start_event_time,
+                    'end_event_time': alert_obj.end_event_time,
+                },
+                'snapshots': []
+            })
+
+        # 3. 从 S3 加载快照数据（S3JSONField 自动处理）
+        try:
+            snapshots_data = snapshot_obj.snapshots  # 自动从 S3 下载并解析
+            # 如果 S3 加载失败返回 None，使用空列表
+            if snapshots_data is None:
+                snapshots_data = []
+        except Exception as e:
+            # S3 读取异常时记录日志并返回空列表
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.error(f"Failed to load snapshots from S3 for alert {alert_id}: {e}")
+            snapshots_data = []
+
+        # 4. 返回快照数据
+        return WebUtils.response_success({
+            'alert_info': {
+                'id': alert_obj.id,
+                'policy_id': alert_obj.policy_id,
+                'monitor_instance_id': alert_obj.monitor_instance_id,
+                'status': alert_obj.status,
+                'start_event_time': alert_obj.start_event_time,
+                'end_event_time': alert_obj.end_event_time,
+            },
+            'snapshots': snapshots_data,
+        })
 
 
 class MonitorEventVieSet(viewsets.ViewSet):
@@ -234,58 +284,3 @@ class MonitorEventVieSet(viewsets.ViewSet):
             raw_data = {}
 
         return WebUtils.response_success(raw_data)
-
-
-class MonitorAlertMetricSnapshotViewSet(viewsets.ViewSet):
-    """告警指标快照视图集"""
-
-    @action(methods=['get'], detail=False, url_path='query/(?P<alert_id>[^/.]+)')
-    def get_snapshots(self, request, alert_id):
-        """根据告警ID查询指标快照数据"""
-        try:
-            # 1. 根据告警ID获取告警对象
-            alert_obj = MonitorAlert.objects.get(id=alert_id)
-        except MonitorAlert.DoesNotExist:
-            return WebUtils.response_error("告警不存在", status_code=404)
-
-        # 2. 查询该告警的快照记录
-        try:
-            snapshot_obj = MonitorAlertMetricSnapshot.objects.get(alert_id=alert_obj.id)
-        except MonitorAlertMetricSnapshot.DoesNotExist:
-            return WebUtils.response_success({
-                'alert_info': {
-                    'id': alert_obj.id,
-                    'policy_id': alert_obj.policy_id,
-                    'monitor_instance_id': alert_obj.monitor_instance_id,
-                    'status': alert_obj.status,
-                    'start_event_time': alert_obj.start_event_time,
-                    'end_event_time': alert_obj.end_event_time,
-                },
-                'snapshots': []
-            })
-
-        # 3. 从 S3 加载快照数据（S3JSONField 自动处理）
-        try:
-            snapshots_data = snapshot_obj.snapshots  # 自动从 S3 下载并解析
-            # 如果 S3 加载失败返回 None，使用空列表
-            if snapshots_data is None:
-                snapshots_data = []
-        except Exception as e:
-            # S3 读取异常时记录日志并返回空列表
-            import logging
-            logger = logging.getLogger(__name__)
-            logger.error(f"Failed to load snapshots from S3 for alert {alert_id}: {e}")
-            snapshots_data = []
-
-        # 4. 返回快照数据
-        return WebUtils.response_success({
-            'alert_info': {
-                'id': alert_obj.id,
-                'policy_id': alert_obj.policy_id,
-                'monitor_instance_id': alert_obj.monitor_instance_id,
-                'status': alert_obj.status,
-                'start_event_time': alert_obj.start_event_time,
-                'end_event_time': alert_obj.end_event_time,
-            },
-            'snapshots': snapshots_data,
-        })
