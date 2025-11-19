@@ -225,21 +225,34 @@ class MonitorEventVieSet(viewsets.ViewSet):
 
     @action(methods=['get'], detail=False, url_path='query/(?P<alert_id>[^/.]+)')
     def get_events(self, request, alert_id):
+        """查询告警的事件列表 - 优化版：使用外键直接查询"""
         page = int(request.GET.get('page', 1))
         page_size = int(request.GET.get('page_size', 10))
-        alert_obj = MonitorAlert.objects.get(id=alert_id)
-        event_query = dict(
-            policy_id=alert_obj.policy_id,
-            monitor_instance_id=alert_obj.monitor_instance_id,
-            created_at__gte=alert_obj.start_event_time,
-        )
-        if alert_obj.end_event_time:
-            event_query["created_at__lte"] = alert_obj.end_event_time
-        q_set = MonitorEvent.objects.filter(**event_query).order_by("-created_at")
+
+        try:
+            alert_obj = MonitorAlert.objects.get(id=alert_id)
+        except MonitorAlert.DoesNotExist:
+            return WebUtils.response_error("告警不存在", status_code=404)
+
+        # ✅ 优化：直接通过 alert_id 外键查询，性能更优
+        q_set = MonitorEvent.objects.filter(alert_id=alert_id).order_by("-created_at")
+
+        # 如果没有通过外键查询到数据，降级到组合条件查询（兼容历史数据）
+        if not q_set.exists():
+            event_query = dict(
+                policy_id=alert_obj.policy_id,
+                monitor_instance_id=alert_obj.monitor_instance_id,
+                created_at__gte=alert_obj.start_event_time,
+            )
+            if alert_obj.end_event_time:
+                event_query["created_at__lte"] = alert_obj.end_event_time
+            q_set = MonitorEvent.objects.filter(**event_query).order_by("-created_at")
+
         if page_size == -1:
             events = q_set
         else:
             events = q_set[(page - 1) * page_size: page * page_size]
+
         result = [
             {
                 "id": i.id,
