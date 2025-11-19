@@ -4,7 +4,7 @@
   "collect_type": "jmx",
   "config_type": ["jboss"],
   "collector": "JBoss-JMX",
-  "instance_id": "${jmx_url}",
+  "instance_id": "{{jmx_url}}",
   "form_fields": [
     {
       "name": "username",
