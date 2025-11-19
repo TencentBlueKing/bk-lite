@@ -467,9 +467,11 @@
     "fetchTools": "获取工具",
     "availableTools": "工具能力",
     "totalTools": "共{count}个工具",
-    "noToolsAvailable": "未找到可用工具",
+    "noToolsAvailable": "暂无工具",
     "fetchToolsFailed": "获取工具列表失败",
-    "parameters": "参数"
+    "parameters": "参数",
+    "total": "共",
+    "items": "个"
   },
   "provider": {
     "menu": "供应商",

@@ -26,7 +26,7 @@ class ModelMigrate:
 
     def get_model_config(self):
         # 读取 Excel 文件
-        file_path = "apps/cmdb/model_migrate/model_config.xlsx"
+        file_path = "apps/cmdb/support-files/model_config.xlsx"
 
         # 指定第二行（索引1）作为表头，并读取所有 sheet 页
         sheets_dict = pd.read_excel(file_path, sheet_name=None, header=1)

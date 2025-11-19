@@ -60,6 +60,14 @@ const ModelRelease = () => {
         {
           title: t(`datasets.classification`),
           key: 'classification'
+        },
+        {
+          title: t(`datasets.imageClassification`),
+          key: 'image_classification'
+        },
+        {
+          title: t(`datasets.objectDetection`),
+          key: 'object_detection'
         }
       ]
     }
@@ -115,7 +123,9 @@ const ModelRelease = () => {
     'rasa': null, // RASA 类型留空
     'log_clustering': getLogClusteringServingsList,
     'timeseries_predict': getTimeSeriesPredictServingsList,
-    'classification': getClassificationServingsList
+    'classification': getClassificationServingsList,
+    'image_classification': () => {},
+    'object_detection': () => {}
   };
 
   const getTaskMap: Record<string, any> = {
@@ -123,7 +133,9 @@ const ModelRelease = () => {
     'rasa': null, // RASA 类型留空
     'log_clustering': getLogClusteringTaskList,
     'timeseries_predict': getTimeSeriesTaskList,
-    'classification': getClassificationTaskList
+    'classification': getClassificationTaskList,
+    'image_classification': () => {},
+    'object_detection': () => {}
   };
 
   // 删除操作映射
@@ -132,7 +144,9 @@ const ModelRelease = () => {
     'rasa': null, // RASA 类型留空
     'log_clustering': deleteLogClusteringServing,
     'timeseries_predict': deleteTimeSeriesPredictServing,
-    'classification': deleteClassificationServing
+    'classification': deleteClassificationServing,
+    'image_classification': null,
+    'object_detection': null
   };
 
   // 更新操作映射
@@ -141,7 +155,9 @@ const ModelRelease = () => {
     'rasa': null, // RASA 类型留空
     'log_clustering': updateLogClusteringServings,
     'timeseries_predict': updateTimeSeriesPredictServings,
-    'classification': updateClassificationServings
+    'classification': updateClassificationServings,
+    'image_classification': null,
+    'object_detection': null
   };
 
   const topSection = (

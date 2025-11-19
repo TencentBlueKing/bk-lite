@@ -4,7 +4,7 @@
   "collect_type": "snmp",
   "config_type": ["hardware_server"],
   "collector": "Telegraf",
-  "instance_id": "${cloud_region}_hardware_server_snmp_${ip}",
+  "instance_id": "{{cloud_region}}_hardware_server_snmp_{{ip}}",
   "form_fields": [
     {
       "name": "monitor_ip",

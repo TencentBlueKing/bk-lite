@@ -7,11 +7,11 @@
   "instance_id": "{{cloud_region}}_{{ENV_HOST}}_{{ENV_PORT}}",
   "form_fields": [
     {
-      "name": "USER",
+      "name": "ENV_USER",
       "label": "用户名",
       "type": "input",
       "required": true,
-      "description": "用于访问接口的用户名。",
+      "description": "用于访问接口的用户名",
       "widget_props": {
         "placeholder": "用户名"
       },
@@ -20,11 +20,11 @@
       }
     },
     {
-      "name": "PASSWORD",
+      "name": "ENV_PASSWORD",
       "label": "密码",
       "type": "password",
       "required": true,
-      "description": "对应的登录密码。",
+      "description": "对应的登录密码",
       "widget_props": {
         "placeholder": "密码"
       },
@@ -33,11 +33,11 @@
       }
     },
     {
-      "name": "SERVICE_NAME",
+      "name": "ENV_SERVICE_NAME",
       "label": "服务名称",
       "type": "input",
       "required": true,
-      "description": "要监控的服务名称，确保其与实际运行的服务一致。",
+      "description": "要监控的服务名称，确保其与实际运行的服务一致",
       "widget_props": {
         "placeholder": "服务名称"
       },
@@ -46,11 +46,12 @@
       }
     },
     {
-      "name": "LISTEN_PORT",
+      "name": "ENV_LISTEN_PORT",
       "label": "监听端口",
       "type": "inputNumber",
       "required": true,
-      "description": "指定程序运行时应监听的端口号，用于接受外部请求和连接。",
+      "visible_in": "edit",
+      "description": "指定程序运行时应监听的端口号，用于接受外部请求和连接",
       "widget_props": {
         "min": 1,
         "precision": 0,
@@ -61,10 +62,11 @@
       }
     },
     {
-      "name": "HOST",
+      "name": "ENV_HOST",
       "label": "主机",
       "type": "input",
       "required": true,
+      "visible_in": "edit",
       "description": "与设备进行通信的主机",
       "widget_props": {
         "placeholder": "主机地址"
@@ -74,20 +76,42 @@
       }
     },
     {
-      "name": "PORT",
+      "name": "ENV_PORT",
       "label": "端口",
       "type": "inputNumber",
       "required": true,
-      "default_value": 1521,
+      "visible_in": "edit",
       "description": "与设备进行通信的端口",
       "widget_props": {
         "min": 1,
-        "max": 65535,
         "precision": 0,
         "placeholder": "端口"
       },
       "data_transform": {
         "origin_path": "base.env_config.PORT"
+      }
+    },
+    {
+      "name": "interval",
+      "label": "间隔",
+      "type": "inputNumber",
+      "required": true,
+      "default_value": 10,
+      "description": "监控数据的采集时间间隔（单位：秒）",
+      "widget_props": {
+        "min": 1,
+        "precision": 0,
+        "placeholder": "间隔",
+        "addonAfter": "s"
+      },
+      "data_transform": {
+        "origin_path": "child.content.config.interval",
+        "to_form": {
+          "regex": "^(\\d+)s$"
+        },
+        "to_api": {
+          "suffix": "s"
+        }
       }
     }
   ],
@@ -97,7 +121,6 @@
       "label": "节点",
       "type": "select",
       "required": true,
-      "default_value": "",
       "widget_props": {
         "placeholder": "请选择节点"
       },
@@ -108,7 +131,6 @@
       "label": "监听端口",
       "type": "inputNumber",
       "required": true,
-      "default_value": null,
       "widget_props": {
         "min": 1,
         "precision": 0,
@@ -120,7 +142,6 @@
       "label": "主机",
       "type": "input",
       "required": true,
-      "default_value": "",
       "widget_props": {
         "placeholder": "主机地址"
       },
@@ -136,7 +157,6 @@
       "label": "端口",
       "type": "inputNumber",
       "required": true,
-      "default_value": 1521,
       "widget_props": {
         "min": 1,
         "precision": 0,
@@ -154,7 +174,6 @@
       "label": "实例名称",
       "type": "input",
       "required": true,
-      "default_value": "",
       "widget_props": {
         "placeholder": "实例名称",
         "disabled": false
@@ -165,7 +184,6 @@
       "label": "组",
       "type": "group_select",
       "required": false,
-      "default_value": [],
       "widget_props": {
         "placeholder": "请选择组"
       }

@@ -124,7 +124,7 @@ const GroupTreeSelect: React.FC<GroupTreeSelectProps> = ({
 
   const dropdownContent = (
     <div
-      className="bg-white rounded shadow-lg"
+      className="rounded shadow-lg"
       onClick={(e) => e.stopPropagation()}
     >
       <MultiCascadePanel
@@ -181,7 +181,7 @@ const GroupTreeSelect: React.FC<GroupTreeSelectProps> = ({
           className={`
             px-3 py-1 border rounded min-h-8
             flex items-center justify-between w-full
-            ${disabled ? 'cursor-not-allowed bg-gray-100' : 'cursor-pointer bg-white'}
+            ${disabled ? 'cursor-not-allowed bg-gray-100' : 'cursor-pointer bg-[var(--color-bg)]'}
           `}
           style={{ borderColor: 'var(--color-border)' }}
         >

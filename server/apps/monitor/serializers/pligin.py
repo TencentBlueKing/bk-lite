@@ -8,10 +8,25 @@ class MonitorPluginSerializer(serializers.ModelSerializer):
     is_pre = serializers.BooleanField(read_only=True)
     collector = serializers.CharField(max_length=100, required=False, allow_blank=True, default="")
     collect_type = serializers.CharField(max_length=50, required=False, allow_blank=True, default="")
+    parent_monitor_object = serializers.SerializerMethodField(read_only=True)
 
     class Meta:
         model = MonitorPlugin
         fields = '__all__'
+
+    def get_parent_monitor_object(self, obj):
+        """
+        获取唯一的父监控对象ID（过滤掉子对象）
+        """
+        # 获取所有关联的监控对象中的父对象（parent 为 None 的对象）
+        parent_objects = obj.monitor_object.filter(parent__isnull=True)
+        
+        # 如果存在父对象，返回第一个父对象的 ID
+        if parent_objects.exists():
+            return parent_objects.first().id
+        
+        # 如果没有父对象，返回 None
+        return None
 
     def create(self, validated_data):
         """

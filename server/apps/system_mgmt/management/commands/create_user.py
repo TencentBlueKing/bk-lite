@@ -23,7 +23,7 @@ class Command(BaseCommand):
     def handle(self, *args, **options):
         username = options["username"]
         password = options["password"]
-        email = options.get("email", "")
+        email = options.get("email", "test@domain.com")
         display_name = options.get("display_name") or username
         is_superuser = options.get("is_superuser", False)
 
@@ -41,6 +41,7 @@ class Command(BaseCommand):
                 display_name=display_name,
                 # 根据您的User模型设置其他字段
             )
+
             default_group, _ = Group.objects.get_or_create(name="Default", parent_id=0)
             user.group_list.append(default_group.id)
             if is_superuser:
