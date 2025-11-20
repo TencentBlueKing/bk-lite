@@ -155,7 +155,9 @@ class UserViewSet(ViewSetUtils):
                 return JsonResponse({"result": False, "message": error_message})
 
             user = User.objects.get(id=user_id)
-            User.objects.filter(id=user_id).update(password=make_password(password), temporary_pwd=temporary_pwd)
+            user.password = make_password(password)
+            user.temporary_pwd = temporary_pwd
+            user.save()  # 使用save方法自动更新password_last_modified
 
             # 记录操作日志
             log_operation(request, "update", "user", f"重置用户密码: {user.username}")

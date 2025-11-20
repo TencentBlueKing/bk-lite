@@ -93,6 +93,14 @@ error:
   update_not_supported: Update is not supported
   delete_not_supported: Delete is not supported
 
+# Login related messages
+login:
+  account_locked: Account is locked. Please try again after {minutes} minutes.
+  account_locked_too_many_attempts: Account locked due to too many failed attempts. Please try again after {minutes} minutes.
+  incorrect_password_with_attempts: Username or password is incorrect. {attempts} attempts remaining.
+  password_expiring_soon: Your password will expire in {days} day(s). Please change it soon.
+  password_expired: Your password has expired. Please change it immediately.
+
 # Success messages
 success:
   # Task related messages

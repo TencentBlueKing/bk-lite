@@ -495,8 +495,8 @@ def execute_chat_flow(request, bot_id, node_id):
         logger.info(f"开始执行ChatFlow流程，bot_id: {bot_id}, node_id: {node_id}, user: {user.username}, node_type: {node_type}")
         result = engine.execute(input_data)
 
-        # 仅区分 openai 类型，其余类型统一走原有逻辑
-        if node_type == "openai":
+        # 区分 openai 和 agui 类型的流式响应，其余类型统一走原有逻辑
+        if node_type in ["openai", "agui"]:
 
             def sse_generator():
                 yield f"data: {result}\n\n"

@@ -34,14 +34,16 @@ def send_email(channel_obj: Channel, title, content, user_list):
     channel_config = channel_obj.config
     channel_obj.decrypt_field("smtp_pwd", channel_config)
     receivers = list(user_list.values_list("email", flat=True).distinct())
+    return send_email_to_user(channel_config, content, receivers, title)
+
+
+def send_email_to_user(channel_config, content, receiver, title):
     try:
         msg = MIMEMultipart()
         msg["From"] = channel_config["mail_sender"]
-        msg["To"] = ",".join(receivers)
+        msg["To"] = receiver
         msg["Subject"] = title
-
         msg.attach(MIMEText(content, "html", "utf-8"))
-
         # 根据配置决定使用 SSL 还是普通连接
         if channel_config.get("smtp_usessl", False):
             server = smtplib.SMTP_SSL(channel_config["smtp_server"], channel_config["port"])
