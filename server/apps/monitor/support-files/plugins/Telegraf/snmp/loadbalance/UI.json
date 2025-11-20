@@ -13,7 +13,7 @@
       "required": true,
       "visible_in": "edit",
       "editable": false,
-      "description": "监控的目标主机的 IP 地址，用于标识数据收集的来源。",
+      "description": "监控的目标主机的 IP 地址，用于标识数据收集的来源",
       "widget_props": {
         "placeholder": "目标主机 IP"
       },
@@ -31,10 +31,9 @@
       "required": true,
       "editable": false,
       "default_value": 161,
-      "description": "配置SNMP端口号，通常使用161端口与设备进行通信。",
+      "description": "配置SNMP端口号，通常使用161端口与设备进行通信",
       "widget_props": {
         "min": 1,
-        "max": 65535,
         "placeholder": "SNMP 端口",
         "addonAfter": ""
       },
@@ -52,7 +51,7 @@
       "required": true,
       "editable": false,
       "default_value": 2,
-      "description": "指定要使用的 SNMP 协议版本，例如 v2c 或 v3，定义通信机制和安全级别。",
+      "description": "指定要使用的 SNMP 协议版本，例如 v2c 或 v3，定义通信机制和安全级别",
       "options": [
         { "label": "v2c", "value": 2 },
         { "label": "v3", "value": 3 }
@@ -70,7 +69,7 @@
       "type": "input",
       "required": true,
       "default_value": "public",
-      "description": "用于 SNMPv2c 的认证字符串，类似于密码，允许访问设备的 SNMP 数据。",
+      "description": "用于 SNMPv2c 的认证字符串，类似于密码，允许访问设备的 SNMP 数据",
       "widget_props": {
         "placeholder": "SNMP Community 字符串"
       },
@@ -88,7 +87,7 @@
       "label": "名称",
       "type": "input",
       "required": true,
-      "description": "用于 SNMPv3 认证的用户名。",
+      "description": "用于 SNMPv3 认证的用户名",
       "widget_props": {
         "placeholder": "安全名称"
       },
@@ -107,7 +106,7 @@
       "type": "select",
       "required": true,
       "default_value": "authPriv",
-      "description": "安全级别设置，例如 authPriv 表示同时使用认证和隐私（加密）。",
+      "description": "安全级别设置，例如 authPriv 表示同时使用认证和隐私（加密）",
       "options": [
         { "label": "noAuthNoPriv", "value": "noAuthNoPriv" },
         { "label": "authNoPriv", "value": "authNoPriv" },
@@ -131,7 +130,7 @@
       "type": "input",
       "required": false,
       "default_value": "SHA",
-      "description": "用于保护认证过程的认证协议。",
+      "description": "用于保护认证过程的认证协议",
       "widget_props": {
         "placeholder": "认证协议 (MD5/SHA)"
       },
@@ -149,7 +148,7 @@
       "label": "认证密码",
       "type": "password",
       "required": false,
-      "description": "用于认证的密码，与选择的认证协议对应。",
+      "description": "用于认证的密码，与选择的认证协议对应",
       "widget_props": {
         "placeholder": "认证密码"
       },
@@ -168,7 +167,7 @@
       "type": "input",
       "required": false,
       "default_value": "AES",
-      "description": "用于保护传输数据的加密协议。",
+      "description": "用于保护传输数据的加密协议",
       "widget_props": {
         "placeholder": "加密协议 (DES/AES)"
       },
@@ -186,7 +185,7 @@
       "label": "加密密码",
       "type": "password",
       "required": false,
-      "description": "用于加密的密码，与选择的加密协议对应。",
+      "description": "用于加密的密码，与选择的加密协议对应",
       "widget_props": {
         "placeholder": "加密密码"
       },
@@ -205,10 +204,9 @@
       "type": "inputNumber",
       "required": true,
       "default_value": 10,
-      "description": "从设备请求数据的超时时间，超过配置时间（例如 10 秒）的请求将被视为失败。",
+      "description": "从设备请求数据的超时时间，超过配置时间（例如 10 秒）的请求将被视为失败",
       "widget_props": {
         "min": 1,
-        "max": 300,
         "placeholder": "超时时间（秒）",
         "addonAfter": "s"
       },
@@ -228,7 +226,7 @@
       "type": "inputNumber",
       "required": true,
       "default_value": 10,
-      "description": "监控数据的采集时间间隔（单位：秒）。",
+      "description": "监控数据的采集时间间隔（单位：秒）",
       "widget_props": {
         "min": 1,
         "precision": 0,
@@ -252,7 +250,6 @@
       "label": "节点",
       "type": "select",
       "required": true,
-      "default_value": [],
       "widget_props": {
         "placeholder": "请选择节点"
       },
@@ -263,8 +260,6 @@
       "name": "ip",
       "label": "IP",
       "type": "input",
-      "required": true,
-      "default_value": "",
       "widget_props": {
         "placeholder": "请输入 IP 地址"
       },
@@ -279,7 +274,6 @@
       "label": "实例名称",
       "type": "input",
       "required": true,
-      "default_value": "",
       "widget_props": {
         "placeholder": "实例名称",
         "disabled": false
@@ -290,7 +284,6 @@
       "label": "组",
       "type": "group_select",
       "required": true,
-      "default_value": [],
       "widget_props": {
         "placeholder": "请选择组"
       }
