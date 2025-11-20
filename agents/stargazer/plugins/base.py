@@ -4,7 +4,8 @@
 # @Author：bennie
 from abc import ABC, abstractmethod
 import json
-from core.nast_request import NATSClient
+from core.nats import NATSConfig
+from nats.aio.client import Client as NATS
 from plugins.base_utils import convert_to_prometheus_format
 from sanic.log import logger
 
@@ -29,15 +30,6 @@ class BaseSSHPlugin(BasePlugin):
         self.time_out = int(params.get("execute_timeout", 60))
         self.command = params.get("command", self.script)
         self.port = int(params.get("port", 22))
-        self.nats_client = NATSClient()
-
-    async def connect_nats(self):
-        """异步连接 NATS"""
-        await self.nats_client.connect()
-
-    async def close_nats(self):
-        """异步关闭 NATS"""
-        await self.nats_client.close()
 
     def get_script_path(self):
         assert self.default_script_path is not None, "default_script_path is not defined"
@@ -88,17 +80,40 @@ class BaseSSHPlugin(BasePlugin):
             "kwargs": {}
         }
         subject = f"{self.nast_id}.{self.node_id}"
-        # 使用 await 调用异步方法
-        response = await self.nats_client.request(subject=subject, params=exec_params)
-        return json.loads(response["result"])
+
+        # 直接使用 NATS 客户端
+        config = NATSConfig.from_env()
+        nc = NATS()
+
+        try:
+            await nc.connect(**config.to_connect_options())
+            payload = json.dumps(exec_params).encode()
+
+            # 使用较短的超时时间，避免长时间卡住
+            response_msg = await nc.request(subject, payload=payload, timeout=30.0)
+            response = json.loads(response_msg.data.decode())
+
+            # 移除 nats-executor 返回的 instance_id，使用 Telegraf 配置中的 instance_id
+            if isinstance(response, dict) and 'instance_id' in response:
+                del response['instance_id']
+
+            return response
+        except Exception as e:
+            logger.error(f"NATS request failed: {type(e).__name__}: {e}")
+            raise
+        finally:
+            try:
+                if not nc.is_closed:
+                    await nc.drain()
+            except Exception as e:
+                logger.error(f"Error closing NATS connection: {e}")
 
     async def list_all_resources(self):
         """
         Convert collected data to a standard format.
         """
         try:
-            await self.connect_nats()  # 异步连接 NATS
-            data = await self.exec_script()  # 使用 await 获取执行结果
+            data = await self.exec_script()
             prometheus_data = convert_to_prometheus_format(
                 {self.plugin_type: [data]})
             return prometheus_data
@@ -106,6 +121,4 @@ class BaseSSHPlugin(BasePlugin):
             import traceback
             logger.error(
                 f"{self.__class__.__name__} main error! {traceback.format_exc()}")
-        finally:
-            await self.close_nats()
         return None
