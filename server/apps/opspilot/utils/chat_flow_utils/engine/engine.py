@@ -23,7 +23,7 @@ from .node_registry import node_registry
 
 class ChatFlowEngine:
     def sse_execute(self, input_data: Dict[str, Any] = None, timeout: int = None):  # noqa: C901
-        """流程流式执行，仅支持最后节点为agent且首节点为openai时"""
+        """流程流式执行，支持SSE和AGUI协议"""
         if input_data is None:
             input_data = {}
         if timeout is None:
@@ -32,7 +32,7 @@ class ChatFlowEngine:
         # 获取用户ID和输入消息
         user_id = input_data.get("user_id", "")
         input_message = input_data.get("last_message", "") or input_data.get("message", "")
-        # 获取入口类型，默认为 openai（SSE方式通常是openai类型）
+        # 获取入口类型，默认为 openai（SSE方式）或 agui
         entry_type = input_data.get("entry_type", "openai")
 
         # 记录用户输入（排除celery定时触发）
@@ -60,8 +60,13 @@ class ChatFlowEngine:
 
             return err_gen()
 
-        # 获取最后节点
+        # 获取第一个节点和最后节点
+        first_node = self.nodes[0] if self.nodes else None
         last_node = self.nodes[-1] if self.nodes else None
+
+        # 判断是否是AGUI协议（首节点为agui）
+        is_agui_protocol = first_node and first_node.get("type") == "agui"
+
         if last_node.get("type") == "agents":
             # 先执行前置所有节点（非流式）
             if len(self.nodes) > 1:
@@ -89,59 +94,85 @@ class ChatFlowEngine:
             else:
                 final_input_data = input_data
 
-            # 最后一个节点走sse_execute
+            # 最后一个节点根据协议类型选择执行方法
             executor = self._get_node_executor(last_node.get("type"))
-            if hasattr(executor, "sse_execute"):
-                # 包装生成器以收集完整输出
-                def wrapped_generator():
-                    accumulated_output = []  # 累积完整输出内容
 
-                    try:
-                        for chunk in executor.sse_execute(last_node.get("id"), last_node, final_input_data):
-                            # 流式输出给客户端
-                            yield chunk
+            # 根据入口节点类型选择执行方法
+            if is_agui_protocol and hasattr(executor, "agui_execute"):
+                # AGUI协议流式执行
+                execute_method = executor.agui_execute
+                logger.info(f"使用AGUI协议执行最后节点: {last_node.get('id')}")
+            elif hasattr(executor, "sse_execute"):
+                # SSE协议流式执行
+                execute_method = executor.sse_execute
+                logger.info(f"使用SSE协议执行最后节点: {last_node.get('id')}")
+            else:
+                # 不支持流式执行
+                def err_gen():
+                    yield f"data: {json.dumps({'result': False, 'error': '节点不支持流式执行'})}\n\n"
+                    yield "data: [DONE]\n\n"
 
-                            # 收集输出内容（排除 [DONE] 标记）
-                            if chunk and not chunk.strip().endswith("[DONE]"):
-                                # 解析 SSE 数据格式: "data: {...}\n\n"
-                                if chunk.startswith("data: "):
-                                    try:
-                                        data_str = chunk[6:].strip()  # 去掉 "data: " 前缀
-                                        if data_str:
-                                            data_json = json.loads(data_str)
-                                            # 提取实际内容（根据不同的响应格式）
+                return err_gen()
+
+            # 包装生成器以收集完整输出
+            def wrapped_generator():
+                accumulated_output = []  # 累积完整输出内容
+
+                try:
+                    for chunk in execute_method(last_node.get("id"), last_node, final_input_data):
+                        # 流式输出给客户端
+                        yield chunk
+
+                        # 收集输出内容（排除 [DONE] 标记）
+                        if chunk and not chunk.strip().endswith("[DONE]"):
+                            # 解析数据格式
+                            if chunk.startswith("data: "):
+                                try:
+                                    data_str = chunk[6:].strip()  # 去掉 "data: " 前缀
+                                    if data_str:
+                                        data_json = json.loads(data_str)
+
+                                        # AGUI协议格式：提取delta或content
+                                        if is_agui_protocol:
+                                            # AGUI格式: {"type":"TEXT_MESSAGE_CONTENT","delta":"..."}
+                                            if data_json.get("type") == "TEXT_MESSAGE_CONTENT":
+                                                delta = data_json.get("delta", "")
+                                                if delta:
+                                                    accumulated_output.append(delta)
+                                        else:
+                                            # SSE格式：提取content、message或text
                                             content = data_json.get("content") or data_json.get("message") or data_json.get("text", "")
                                             if content:
                                                 accumulated_output.append(content)
-                                    except json.JSONDecodeError:
-                                        # 如果不是JSON格式，直接添加原始内容
-                                        accumulated_output.append(data_str)
+                                except json.JSONDecodeError:
+                                    # 如果不是JSON格式，直接添加原始内容
+                                    accumulated_output.append(data_str)
 
-                        # 流式输出完成后，记录完整的系统输出（排除celery定时触发）
-                        if user_id and accumulated_output and entry_type != "celery":
-                            try:
-                                full_output = "".join(accumulated_output)
-                                bot_conversation = WorkFlowConversationHistory.objects.create(
-                                    bot_id=self.instance.bot_id,
-                                    user_id=user_id,
-                                    conversation_role="bot",
-                                    conversation_content=full_output,
-                                    conversation_time=timezone.now(),
-                                    entry_type=entry_type,
-                                )
-                                logger.info(
-                                    f"[SSE] 记录系统输出对话历史: conversation_id={bot_conversation.id}, "
-                                    f"output_length={len(full_output)}, entry_type={entry_type}"
-                                )
-                            except Exception as e:
-                                logger.error(f"[SSE] 记录系统输出对话历史失败: {str(e)}")
+                    # 流式输出完成后，记录完整的系统输出（排除celery定时触发）
+                    if user_id and accumulated_output and entry_type != "celery":
+                        try:
+                            full_output = "".join(accumulated_output)
+                            bot_conversation = WorkFlowConversationHistory.objects.create(
+                                bot_id=self.instance.bot_id,
+                                user_id=user_id,
+                                conversation_role="bot",
+                                conversation_content=full_output,
+                                conversation_time=timezone.now(),
+                                entry_type=entry_type,
+                            )
+                            logger.info(
+                                f"[SSE] 记录系统输出对话历史: conversation_id={bot_conversation.id}, "
+                                f"output_length={len(full_output)}, entry_type={entry_type}, protocol={'AGUI' if is_agui_protocol else 'SSE'}"
+                            )
+                        except Exception as e:
+                            logger.error(f"[SSE] 记录系统输出对话历史失败: {str(e)}")
 
-                    except Exception as e:
-                        logger.error(f"[SSE] 流式执行过程中出错: {str(e)}")
-                        yield f"data: {json.dumps({'result': False, 'error': str(e)})}\n\n"
-                        yield "data: [DONE]\n\n"
+                except Exception as e:
+                    logger.error(f"[SSE] 流式执行过程中出错: {str(e)}")
+                    yield f"data: {json.dumps({'result': False, 'error': str(e)})}\n\n"
+                    yield "data: [DONE]\n\n"
 
-                return wrapped_generator()
+            return wrapped_generator()
 
         # 其他情况不支持流式，直接抛异常
         def err_gen():

@@ -197,7 +197,6 @@ class CustomMenuGroupViewSet(MaintainerViewSet):
         return JsonResponse({"result": True, "data": CustomMenuGroupSerializer(new_instance).data, "message": "菜单组复制成功"})
 
     @action(detail=False, methods=["get"])
-    @HasPermission("custom_menu_group_list-View")
     def get_menus(self, request):
         """
         获取指定应用的启用菜单组的菜单树

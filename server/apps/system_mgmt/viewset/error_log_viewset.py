@@ -5,6 +5,7 @@ from rest_framework import permissions
 from apps.core.utils.viewset_utils import LanguageViewSet
 from apps.system_mgmt.models import ErrorLog
 from apps.system_mgmt.serializers.error_log_serializer import ErrorLogSerializer
+from apps.system_mgmt.utils.group_filter_mixin import GroupFilterMixin
 
 
 class ErrorLogFilter(filters.FilterSet):
@@ -38,7 +39,7 @@ class ErrorLogFilter(filters.FilterSet):
         return queryset
 
 
-class ErrorLogViewSet(LanguageViewSet):
+class ErrorLogViewSet(GroupFilterMixin, LanguageViewSet):
     """
     错误日志视图集
 
@@ -47,6 +48,8 @@ class ErrorLogViewSet(LanguageViewSet):
     2. 多维度筛选（用户、应用、模块）
     3. 自动分页，按时间倒序
     4. 只读接口，不支持创建、修改、删除
+
+    继承GroupFilterMixin实现基于current_team的组过滤
     """
 
     queryset = ErrorLog.objects.all().order_by("-created_at")

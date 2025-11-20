@@ -12,6 +12,7 @@ from apps.core.utils.async_utils import create_async_compatible_generator
 from apps.core.utils.viewset_utils import AuthViewSet, LanguageViewSet
 from apps.opspilot.models import KnowledgeBase, LLMModel, LLMSkill, SkillRequestLog, SkillTools
 from apps.opspilot.serializers.llm_serializer import LLMModelSerializer, LLMSerializer, SkillRequestLogSerializer, SkillToolsSerializer
+from apps.opspilot.utils.agui_chat import stream_agui_chat
 from apps.opspilot.utils.mcp_client import MCPClient
 from apps.opspilot.utils.quota_utils import get_quota_client
 from apps.opspilot.utils.sse_chat import stream_chat
@@ -219,6 +220,70 @@ class LLMViewSet(AuthViewSet):
             params["enable_query_rewrite"] = params["enable_query_rewrite"] if params.get("enable_query_rewrite") else skill_obj.enable_query_rewrite
             # 调用stream_chat函数返回流式响应
             return stream_chat(params, skill_obj.name, {}, current_ip, params["user_message"])
+        except LLMSkill.DoesNotExist:
+            message = self.loader.get("error.skill_not_found_detail") if self.loader else "Skill not found."
+            return self._create_error_stream_response(message)
+        except Exception as e:
+            logger.exception(e)
+            return self._create_error_stream_response(str(e))
+
+    @action(methods=["POST"], detail=False)
+    @HasPermission("skill_setting-View")
+    def execute_agui(self, request):
+        """
+        AGUI协议的execute接口
+
+        遵循AGUI协议规范，调用metis的/api/agent/invoke_chatbot_workflow_agui接口
+
+        请求参数与execute相同:
+        {
+            "user_message": "你好",
+            "llm_model": 1,
+            "skill_prompt": "abc",
+            "enable_rag": True,
+            "enable_rag_knowledge_source": True,
+            "rag_score_threshold": [{"knowledge_base": 1, "score": 0.7}],
+            "chat_history": "abc",
+            "conversation_window_size": 10,
+            "show_think": True,
+            "group": 1,
+            "enable_rag_strict_mode": False,
+            "skill_name": "test"
+        }
+
+        返回AGUI协议格式的流式响应
+        """
+        params = request.data
+        params["username"] = request.user.username
+        params["user_id"] = request.user.id
+        try:
+            skill_obj = LLMSkill.objects.get(id=int(params["skill_id"]))
+            if not request.user.is_superuser:
+                current_team = request.COOKIES.get("current_team", "0")
+                include_children = request.COOKIES.get("include_children", "0") == "1"
+                has_permission = self.get_has_permission(request.user, skill_obj, current_team, is_check=True, include_children=include_children)
+                if not has_permission:
+                    message = (
+                        self.loader.get("error.no_agent_update_permission") if self.loader else "You do not have permission to update this agent."
+                    )
+                    return self._create_error_stream_response(message)
+
+            current_ip = request.META.get("HTTP_X_FORWARDED_FOR")
+            if current_ip:
+                current_ip = current_ip.split(",")[0].strip()
+            else:
+                current_ip = request.META.get("REMOTE_ADDR", "")
+
+            params["skill_type"] = skill_obj.skill_type
+            params["tools"] = params.get("tools", [])
+            params["group"] = params["group"] if params.get("group") else skill_obj.team[0]
+            params["enable_km_route"] = params["enable_km_route"] if params.get("enable_km_route") else skill_obj.enable_km_route
+            params["km_llm_model"] = params["km_llm_model"] if params.get("km_llm_model") else skill_obj.km_llm_model
+            params["enable_suggest"] = params["enable_suggest"] if params.get("enable_suggest") else skill_obj.enable_suggest
+            params["enable_query_rewrite"] = params["enable_query_rewrite"] if params.get("enable_query_rewrite") else skill_obj.enable_query_rewrite
+
+            # 调用AGUI协议的流式响应
+            return stream_agui_chat(params, skill_obj.name, {}, current_ip, params["user_message"])
         except LLMSkill.DoesNotExist:
             message = self.loader.get("error.skill_not_found_detail") if self.loader else "Skill not found."
             return self._create_error_stream_response(message)
