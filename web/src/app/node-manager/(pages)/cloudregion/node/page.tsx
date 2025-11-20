@@ -12,7 +12,7 @@ import type { MenuProps, TableProps } from 'antd';
 import nodeStyle from './index.module.scss';
 import CollectorModal from './collectorModal';
 import { useTranslation } from '@/utils/i18n';
-import { ModalRef, TableDataItem } from '@/app/node-manager/types';
+import { ModalRef, TableDataItem, Pagination } from '@/app/node-manager/types';
 import { SearchFilters } from '@/app/node-manager/types/node';
 import CustomTable from '@/components/custom-table';
 import SearchCombination from './searchCombination';
@@ -70,6 +70,11 @@ const Node = () => {
     useState<boolean>(false);
   const [activeColumns, setActiveColumns] = useState<ColumnItem[]>([]);
   const [searchFilters, setSearchFilters] = useState<SearchFilters>({});
+  const [pagination, setPagination] = useState<Pagination>({
+    current: 1,
+    total: 0,
+    pageSize: 20,
+  });
 
   const columns = useColumns({
     checkConfig: (row: TableDataItem) => {
@@ -149,6 +154,10 @@ const Node = () => {
     }
   }, [isLoading]);
 
+  useEffect(() => {
+    if (!isLoading) getNodes(searchFilters);
+  }, [pagination.current, pagination.pageSize]);
+
   const handleSidecarMenuClick: MenuProps['onClick'] = (e) => {
     if (e.key === 'uninstallSidecar') {
       const list = (nodeList || []).filter((item) =>
@@ -223,6 +232,8 @@ const Node = () => {
     try {
       const params: any = {
         cloud_region_id: cloudId,
+        page: pagination.current,
+        page_size: pagination.pageSize,
       };
 
       if (filters && Object.keys(filters).length > 0) {
@@ -230,9 +241,13 @@ const Node = () => {
       }
 
       const res = await getNodeList(params);
-      const data = (res || []).map((item: TableDataItem) => ({
+      const data = (res?.items || []).map((item: TableDataItem) => ({
         ...item,
         key: item.id,
+      }));
+      setPagination((prev: Pagination) => ({
+        ...prev,
+        total: res?.count || 0,
       }));
       setNodeList(data);
     } finally {
@@ -414,6 +429,10 @@ const Node = () => {
     }
   };
 
+  const handleTableChange = (pagination: any) => {
+    setPagination(pagination);
+  };
+
   return (
     <MainLayout>
       {showNodeTable && (
@@ -469,8 +488,10 @@ const Node = () => {
               columns={tableColumns}
               loading={loading}
               dataSource={nodeList}
-              scroll={{ y: 'calc(100vh - 326px)', x: 'max-content' }}
+              scroll={{ y: 'calc(100vh - 380px)', x: 'max-content' }}
               rowSelection={rowSelection}
+              pagination={pagination}
+              onChange={handleTableChange}
             />
             <CollectorModal
               ref={collectorRef}
