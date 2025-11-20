@@ -24,3 +24,15 @@ class SidecarEnv(models.Model):
         verbose_name = "Sidecar环境变量"
         verbose_name_plural = "Sidecar环境变量"
         unique_together = ('key', 'cloud_region')
+
+
+class CloudRegionService(models.Model):
+    cloud_region = models.ForeignKey(CloudRegion, on_delete=models.CASCADE, verbose_name="云区域")
+    name = models.CharField(max_length=100, verbose_name="服务名称")
+    status = models.CharField(max_length=50, verbose_name="服务状态")
+    description = models.TextField(blank=True, verbose_name="服务描述")
+
+    class Meta:
+        verbose_name = "云区域服务"
+        verbose_name_plural = "云区域服务"
+        unique_together = ('cloud_region', 'name')
