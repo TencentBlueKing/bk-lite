@@ -87,11 +87,21 @@ class BaseSSHPlugin(BasePlugin):
             "kwargs": {}
         }
         subject = f"{self.nast_id}.{self.node_id}"
-        logger.info("subject={}, params={}".format(subject, exec_params))
 
-        # 使用全局 NATS 实例发送请求
-        response = await self.nats_client.request(subject=subject, data=exec_params)
-        if isinstance(response["result"], str):
+        try:
+            response = await self.nats_client.request(subject=subject, data=exec_params, timeout=60.0)
+        except Exception as e:
+            logger.error(
+                f"Remote execution request failed: {type(e).__name__}: {e}")
+            raise
+
+        # 检查执行是否成功
+        if not response.get("success", True):
+            error_msg = response.get("error", "Unknown error")
+            logger.error(f"Remote execution failed: {error_msg}")
+            raise Exception(f"Remote execution failed: {error_msg}")
+
+        if isinstance(response.get("result"), str):
             response["result"] = response["result"].replace(
                 "{{bk_host_innerip}}", self.host)
         try:
@@ -108,7 +118,15 @@ class BaseSSHPlugin(BasePlugin):
         Convert collected data to a standard format.
         """
         try:
-            data = await self.exec_script()  # 使用 await 获取执行结果
+            data = await self.exec_script()
+
+            # 为数据添加必要的标识字段,用于CMDB自动发现
+            if isinstance(data, dict):
+                data['instance_id'] = f"{self.node_id}_{self.host}"
+                data['host'] = self.host
+                if 'inst_name' not in data:
+                    data['inst_name'] = self.host
+
             prometheus_data = convert_to_prometheus_format(
                 {self.plugin_type: [data]})
             return prometheus_data
@@ -116,4 +134,4 @@ class BaseSSHPlugin(BasePlugin):
             import traceback
             logger.error(
                 f"{self.__class__.__name__} main error! {traceback.format_exc()}")
-        return None
+            return None
