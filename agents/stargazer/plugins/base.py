@@ -4,7 +4,7 @@
 # @Author：bennie
 from abc import ABC, abstractmethod
 import json
-from core.nast_request import NATSClient
+from core.nats import get_nats
 from plugins.base_utils import convert_to_prometheus_format
 from sanic.log import logger
 
@@ -18,6 +18,7 @@ class BasePlugin(ABC):
 
 class BaseSSHPlugin(BasePlugin):
     default_script_path = None
+
     def __init__(self, params: dict):
         self.node_id = params["node_id"]
         self.host = params.get("host", "")
@@ -26,15 +27,16 @@ class BaseSSHPlugin(BasePlugin):
         self.time_out = int(params.get("execute_timeout", 60))
         self.command = params.get("command", self.script)
         self.port = int(params.get("port", 22))
-        self.nats_client = NATSClient()
+        # 使用全局 NATS 实例而不是创建新的客户端
+        self.nats_client = get_nats()
 
     async def connect_nats(self):
-        """异步连接 NATS"""
-        await self.nats_client.connect()
+        """异步连接 NATS - 已废弃，使用全局实例"""
+        pass
 
     async def close_nats(self):
-        """异步关闭 NATS"""
-        await self.nats_client.close()
+        """异步关闭 NATS - 已废弃，使用全局实例"""
+        pass
 
     def get_script_path(self):
         assert self.default_script_path is not None, "default_script_path is not defined"
@@ -57,7 +59,6 @@ class BaseSSHPlugin(BasePlugin):
     def script(self):
         with open(self.get_script_path(), "r", encoding="utf-8") as f:
             return f.read()
-
 
     def format_params(self):
         """
@@ -87,14 +88,18 @@ class BaseSSHPlugin(BasePlugin):
         }
         subject = f"{self.nast_id}.{self.node_id}"
         logger.info("subject={}, params={}".format(subject, exec_params))
-        response = await self.nats_client.request(subject=subject, params=exec_params)  # 使用 await 调用异步方法
+
+        # 使用全局 NATS 实例发送请求
+        response = await self.nats_client.request(subject=subject, data=exec_params)
         if isinstance(response["result"], str):
-            response["result"] = response["result"].replace("{{bk_host_innerip}}", self.host)
+            response["result"] = response["result"].replace(
+                "{{bk_host_innerip}}", self.host)
         try:
-            resp =  json.loads(response["result"])
-        except Exception: # noqa
+            resp = json.loads(response["result"])
+        except Exception:  # noqa
             import traceback
-            logger.error(f"exec_script json.loads error: {traceback.format_exc()}, response: {response}")
+            logger.error(
+                f"exec_script json.loads error: {traceback.format_exc()}, response: {response}")
             resp = {}
         return resp
 
@@ -103,13 +108,12 @@ class BaseSSHPlugin(BasePlugin):
         Convert collected data to a standard format.
         """
         try:
-            await self.connect_nats()  # 异步连接 NATS
             data = await self.exec_script()  # 使用 await 获取执行结果
-            prometheus_data = convert_to_prometheus_format({self.plugin_type: [data]})
+            prometheus_data = convert_to_prometheus_format(
+                {self.plugin_type: [data]})
             return prometheus_data
         except Exception as err:
             import traceback
-            logger.error(f"{self.__class__.__name__} main error! {traceback.format_exc()}")
-        finally:
-            await self.close_nats()
+            logger.error(
+                f"{self.__class__.__name__} main error! {traceback.format_exc()}")
         return None
