@@ -63,6 +63,8 @@ const ProfessionalCollection: React.FC = () => {
   const [executingTaskIds, setExecutingTaskIds] = useState<number[]>([]);
   const [docDrawerVisible, setDocDrawerVisible] = useState(false);
   const [taskDocDrawerVisible, setTaskDocDrawerVisible] = useState(false);
+  const [pluginDoc, setPluginDoc] = useState<string>('');
+  const [docLoading, setDocLoading] = useState(false);
   const tableCountRef = useRef<number>(0);
   const timerRef = useRef<NodeJS.Timeout | null>(null);
   const stateRef = useRef({
@@ -243,6 +245,9 @@ const ProfessionalCollection: React.FC = () => {
       stateRef.current.currentExecStatus = undefined;
       setPaginationUI((prev) => ({ ...prev, current: 1 }));
 
+      setPluginDoc('');
+      setDocLoading(false);
+
       if (node?.tabItems?.length) {
         setActiveTab(node.tabItems[0].id);
         stateRef.current.activeTab = node.tabItems[0].id;
@@ -272,7 +277,24 @@ const ProfessionalCollection: React.FC = () => {
     setDrawerVisible(true);
   };
 
+  const fetchPluginDoc = async (pluginId: string) => {
+    try {
+      setDocLoading(true);
+      const data = await collectApi.getCollectModelDoc(pluginId);
+      setPluginDoc(data || '');
+    } catch (error) {
+      console.error('Failed to fetch plugin doc:', error);
+      setPluginDoc('');
+      message.error('获取插件文档失败');
+    } finally {
+      setDocLoading(false);
+    }
+  };
+
   const handleViewDoc = () => {
+    if (activeTab && !pluginDoc) {
+      fetchPluginDoc(activeTab);
+    }
     setDocDrawerVisible(true);
   };
 
@@ -593,21 +615,16 @@ const ProfessionalCollection: React.FC = () => {
       current: 1,
     }));
 
-    fetchData(true, newActiveTab);
-  };
+    setPluginDoc('');
+    setDocLoading(false);
 
-  const getPluginKeywords = (pluginName: string) => {
-    const keywordsMap: Record<string, string[]> = {
-      Mysql: ['API', 'Agentless'],
-      Redis: ['API', 'Agentless', 'Real-time'],
-      Default: ['API', 'Agentless'],
-    };
-    return keywordsMap[pluginName] || keywordsMap.Default;
+    fetchData(true, newActiveTab);
   };
 
   const PluginCard = ({ tab }: { tab: any }) => {
     const isActive = activeTab === tab.id;
-    const keywords = getPluginKeywords(tab.name);
+    const tags = tab.tag || [];
+    const description = tab.desc || '';
 
     return (
       <Card
@@ -618,7 +635,7 @@ const ProfessionalCollection: React.FC = () => {
             ? 'border-blue-500 shadow-md bg-blue-50'
             : 'border-gray-200 hover:border-blue-300'
         }`}
-        bodyStyle={{ padding: '16px' }}
+        bodyStyle={{ padding: '14px' }}
         onClick={() => handleTabChange(tab.id)}
       >
         <div className="flex items-start gap-3 mb-2">
@@ -638,30 +655,29 @@ const ProfessionalCollection: React.FC = () => {
               {tab.name}
             </div>
             <div className="text-xs text-gray-500 line-clamp-2">
-              采集与发现{tab.name}核心的对象
+              {description}
             </div>
           </div>
         </div>
-        <div
-          className={`pt-2 border-t flex flex-wrap items-center gap-1.5 text-xs ${
-            isActive
-              ? 'border-blue-200 text-blue-600'
-              : 'border-gray-100 text-gray-600'
-          }`}
-        >
-          {keywords.map((keyword, index) => (
-            <React.Fragment key={keyword}>
-              {index > 0 && (
-                <span
-                  className={`inline-block w-1 h-1 rounded-full ${
-                    isActive ? 'bg-blue-500' : 'bg-gray-400'
-                  }`}
-                />
-              )}
-              <span className="whitespace-nowrap">{keyword}</span>
-            </React.Fragment>
-          ))}
-        </div>
+        {tags.length > 0 && (
+          <div className="pt-2 mt-2 border-t border-gray-200 flex flex-wrap gap-1.5">
+            {tags.map((tag: string) => (
+              <Tag
+                key={tag}
+                color="blue"
+                style={{
+                  fontSize: '10px',
+                  padding: '0 4px',
+                  lineHeight: '16px',
+                  margin: 0,
+                  borderRadius: '2px',
+                }}
+              >
+                {tag}
+              </Tag>
+            ))}
+          </div>
+        )}
       </Card>
     );
   };
@@ -685,57 +701,58 @@ const ProfessionalCollection: React.FC = () => {
         )}
       </div>
 
-      <div className="flex flex-1 overflow-hidden pt-4 gap-4">
-        <Spin spinning={treeLoading}>
-          <div className="w-52 pl-2 flex-shrink-0 space-y-3">
-            {selectedRef.current.node?.tabItems?.map((tab) => (
-              <PluginCard key={tab.id} tab={tab} />
-            ))}
-          </div>
-        </Spin>
+      <div className="flex flex-1 overflow-hidden pt-4">
+        <div className="w-56 flex-shrink-0 h-full">
+          {treeLoading ? (
+            <div className="flex items-center justify-center py-4">
+              <Spin size="small" />
+            </div>
+          ) : (
+            <div className="space-y-3 px-2 py-1 overflow-auto h-full">
+              {selectedRef.current.node?.tabItems?.map((tab) => (
+                <PluginCard key={tab.id} tab={tab} />
+              ))}
+            </div>
+          )}
+        </div>
 
-        <div className="w-px bg-gray-200 flex-shrink-0"></div>
+        <div className="w-px bg-gray-200 flex-shrink-0 mr-2"></div>
 
         <div className="flex-1 flex flex-col overflow-hidden">
-          <div className="bg-white rounded shadow-sm border border-gray-200 flex flex-col flex-1 overflow-hidden">
-            <div className="px-5 py-4 border-b border-gray-100">
-              <div className="flex items-center gap-2">
-                <span className="text-base font-semibold text-gray-900">
-                  {currentPlugin?.name || ''}
-                </span>
-                <span className="text-gray-400 text-sm">
-                  {currentPlugin?.name &&
-                    `采集插件与发现${currentPlugin.name}核心的对象`}
-                </span>
-                <Button
-                  type="link"
-                  size="small"
-                  className="ml-2"
-                  onClick={handleViewDoc}
-                >
-                  {t('Collection.viewDoc')}
-                </Button>
-              </div>
+          <div className="flex flex-col flex-1 overflow-hidden bg-white rounded shadow-sm border border-gray-200">
+            <div className="px-5 py-4 border-b border-gray-100 flex items-center gap-2">
+              <span className="text-base font-semibold text-gray-900">
+                {currentPlugin?.name || ''}
+              </span>
+              <span className="text-sm text-gray-400">
+                {currentPlugin?.desc || ''}
+              </span>
+              <Button
+                type="link"
+                size="small"
+                className="ml-2"
+                onClick={handleViewDoc}
+              >
+                {t('Collection.viewDoc')}
+              </Button>
             </div>
 
-            <div className="px-5 py-4 border-b border-gray-100">
-              <div className="flex justify-between items-center">
-                <Input
-                  placeholder={t('Collection.inputTaskPlaceholder')}
-                  prefix={<SearchOutlined className="text-gray-400" />}
-                  className="w-80"
-                  allowClear
-                  value={searchTextUI}
-                  onChange={handleSearchChange}
-                  onPressEnter={handleEnterSearch}
-                  onClear={handleClearSearch}
-                />
-                <PermissionWrapper requiredPermissions={['Add']}>
-                  <Button type="primary" onClick={handleCreate}>
-                    {t('Collection.addTaskTitle')}
-                  </Button>
-                </PermissionWrapper>
-              </div>
+            <div className="px-5 py-4 border-b border-gray-100 flex justify-between items-center">
+              <Input
+                placeholder={t('Collection.inputTaskPlaceholder')}
+                prefix={<SearchOutlined className="text-gray-400" />}
+                className="w-80"
+                allowClear
+                value={searchTextUI}
+                onChange={handleSearchChange}
+                onPressEnter={handleEnterSearch}
+                onClear={handleClearSearch}
+              />
+              <PermissionWrapper requiredPermissions={['Add']}>
+                <Button type="primary" onClick={handleCreate}>
+                  {t('Collection.addTaskTitle')}
+                </Button>
+              </PermissionWrapper>
             </div>
 
             <div className="flex-1 overflow-hidden p-5">
@@ -781,9 +798,16 @@ const ProfessionalCollection: React.FC = () => {
             <Button
               type="link"
               size="small"
-              onClick={() => setTaskDocDrawerVisible(true)}
+              onClick={() => {
+                if (!taskDocDrawerVisible && activeTab && !pluginDoc) {
+                  fetchPluginDoc(activeTab);
+                }
+                setTaskDocDrawerVisible(!taskDocDrawerVisible);
+              }}
             >
-              {t('Collection.viewDoc')}
+              {taskDocDrawerVisible
+                ? t('Collection.closeDoc')
+                : t('Collection.viewDoc')}
             </Button>
           </div>
         }
@@ -844,11 +868,12 @@ const ProfessionalCollection: React.FC = () => {
           </div>
         }
       >
-        {(docDrawerVisible || taskDocDrawerVisible) && (
-          <MarkdownRenderer
-            filePath="plugin_docs"
-            fileName={currentPlugin?.name || 'default'}
-          />
+        {docLoading ? (
+          <div className="flex items-center justify-center py-6">
+            <Spin />
+          </div>
+        ) : (
+          <MarkdownRenderer content={pluginDoc} />
         )}
       </Drawer>
 

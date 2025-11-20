@@ -123,6 +123,7 @@
         "addTaskTitle": "新增任务",
         "editTaskTitle": "编辑任务",
         "viewDoc": "查看说明",
+        "closeDoc": "关闭说明",
         "pluginDoc": "插件说明",
         "baseSetting": "基本配置",
         "taskNameLabel": "任务名称",

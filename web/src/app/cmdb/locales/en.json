@@ -123,6 +123,7 @@
         "addTaskTitle": "Add Task",
         "editTaskTitle": "Edit Task",
         "viewDoc": "View Documentation",
+        "closeDoc": "Close Documentation",
         "pluginDoc": "Plugin Documentation",
         "baseSetting": "Base Setting",
         "taskNameLabel": "Task Name",
