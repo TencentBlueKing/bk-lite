@@ -87,7 +87,11 @@
 }
 
 /* Input 输入框 */
-.dark .adm-input, .adm-input-element {
+.dark .adm-input.login-input .adm-input-element {
+  color: #111827 !important;
+}
+
+.dark .adm-input, .dark .adm-input-element {
   color: var(--color-text-1) !important;
 }
 

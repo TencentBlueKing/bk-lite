@@ -8,6 +8,7 @@ export interface CustomChatSSEProps {
   initialMessages?: CustomChatMessage[];
   mode?: 'chat' | 'display';
   guide?: string;
+  useAGUIProtocol?: boolean;
 }
 
 export type ActionRender = (
@@ -31,6 +32,17 @@ export interface SSEChunk {
   id: string;
   object: string;
   created: number;
+}
+
+// AG-UI Protocol Message Types
+export interface AGUIMessage {
+  type: 'RUN_STARTED' | 'TEXT_MESSAGE_START' | 'TEXT_MESSAGE_CONTENT' | 'TEXT_MESSAGE_END' | 'RUN_FINISHED';
+  timestamp: number;
+  threadId?: string;
+  runId?: string;
+  messageId?: string;
+  role?: string;
+  delta?: string;
 }
 
 export interface ReferenceModalState {
