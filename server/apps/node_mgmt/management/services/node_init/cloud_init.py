@@ -1,8 +1,9 @@
 import os
 
 from apps.core.utils.crypto.aes_crypto import AESCryptor
+from apps.node_mgmt.constants.cloudregion_service import CloudRegionServiceConstants
 from apps.node_mgmt.constants.database import CloudRegionConstants, EnvVariableConstants
-from apps.node_mgmt.models.cloud_region import CloudRegion, SidecarEnv
+from apps.node_mgmt.models.cloud_region import CloudRegion, SidecarEnv, CloudRegionService
 
 
 def cloud_init():
@@ -17,6 +18,18 @@ def cloud_init():
             "introduction": CloudRegionConstants.DEFAULT_CLOUD_REGION_INTRODUCTION
         }
     )
+
+    # 初始化云区域下的服务
+    for service_name in CloudRegionServiceConstants.SERVICES:
+        CloudRegionService.objects.get_or_create(
+            cloud_region_id=CloudRegionConstants.DEFAULT_CLOUD_REGION_ID,
+            name=service_name,
+            defaults={
+                "status": CloudRegionServiceConstants.UNINSTALLED,
+                "description": f"Service {service_name} for default cloud region"
+            }
+        )
+
     aes_obj = AESCryptor()
     for key, value in os.environ.items():
         if key.startswith(EnvVariableConstants.DEFAULT_ZONE_ENV_PREFIX):
