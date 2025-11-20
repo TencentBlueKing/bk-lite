@@ -163,12 +163,11 @@ export type AlertType = 'info' | 'warning' | 'error';
 export interface TabConfig {
   count: number;
   label: string;
-  message: string;
   alertType: AlertType;
   columns: {
     title: string;
     dataIndex: string;
-      width?: number;
+    width?: number;
   }[];
 }
 interface ValidationContext {
@@ -367,8 +366,6 @@ export const CREATE_TASK_DETAIL_CONFIG = (t: (key: string) => string) => ({
   add: {
     count: 0,
     label: t('Collection.execStatus.add'),
-    message:
-      '注：针对资产新增进行审批，审批通过后，资产的相关信息会同步更新至资产记录。',
     alertType: 'warning',
     columns: [
       { title: '对象类型', dataIndex: 'model_id', width: 160 },
@@ -378,7 +375,6 @@ export const CREATE_TASK_DETAIL_CONFIG = (t: (key: string) => string) => ({
   update: {
     count: 4,
     label: t('Collection.execStatus.update'),
-    message: '注：展示任务执行后资产更新情况，自动更新至在资产记录。',
     alertType: 'warning',
     columns: [
       { title: '对象类型', dataIndex: 'model_id', width: 160 },
@@ -388,7 +384,6 @@ export const CREATE_TASK_DETAIL_CONFIG = (t: (key: string) => string) => ({
   relation: {
     count: 0,
     label: t('Collection.execStatus.association'),
-    message: '注：展示任务执行后，新创建的资产关联情况，自动更新至在资产记录。',
     alertType: 'warning',
     columns: [
       { title: '源对象类型', dataIndex: 'src_model_id', width: 180 },
@@ -401,8 +396,6 @@ export const CREATE_TASK_DETAIL_CONFIG = (t: (key: string) => string) => ({
   delete: {
     count: 3,
     label: t('Collection.execStatus.delete'),
-    message:
-      '注：展示任务执行后，采集到已下架的资产，需要手动操作“下架”，方可在资产记录更新。',
     alertType: 'warning',
     columns: [
       { title: '对象类型', dataIndex: 'model_id', width: 160 },
