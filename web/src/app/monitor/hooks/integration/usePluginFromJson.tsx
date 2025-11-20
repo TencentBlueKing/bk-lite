@@ -117,14 +117,12 @@ export const usePluginFromJson = () => {
             ) || [],
           initTableItems:
             config.table_columns?.reduce((acc: any, column: any) => {
-              if (column.default_value !== undefined) {
-                acc[column.name] = column.default_value;
-              }
+              acc[column.name] = column.default_value || null;
               return acc;
             }, {}) || {},
           defaultForm:
             formFields?.reduce((acc: any, field: any) => {
-              if (field.default_value !== undefined) {
+              if ('default_value' in field) {
                 acc[field.name] = field.default_value;
               }
               return acc;

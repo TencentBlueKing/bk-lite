@@ -1,0 +1,21 @@
+[
+  {
+    "id": "Snmptrapd_linux",
+    "name": "Snmptrapd",
+    "controller_default_run": false,
+    "icon": "",
+    "node_operating_system": "linux",
+    "service_type": "exec",
+    "executable_path": "snmptrapd",
+    "execute_parameters": "-f -Lo -C -c %s",
+    "validation_parameters": "",
+    "default_template": "",
+    "introduction": "",
+    "enabled_default_config": true,
+    "default_config": {
+      "nats": "# ====================================\n# SNMP Trap Daemon 配置\n# 通过 traphandle 将 trap 发送到 Vector Unix Socket\n# ====================================\n\n# 接受所有来源的 trap\nauthCommunity log,execute,net public\n\n# 使用 traphandle 将所有 trap 转发到 Vector\n# 通过 Unix socket 发送，比 UDP 更高效\ntraphandle default /usr/bin/logger -t snmptrapd -u /var/run/vector/snmp_trap.sock\n\n# 监听 UDP 162 端口\nsnmpTrapdAddr udp:162\n\n# 前台运行（由 sidecar 管理）\ndoNotFork yes\n\n# 详细日志\noutputOption s"
+    },
+    "tags": ["linux", "log"],
+    "package_name": "snmptrapd"
+  }
+]

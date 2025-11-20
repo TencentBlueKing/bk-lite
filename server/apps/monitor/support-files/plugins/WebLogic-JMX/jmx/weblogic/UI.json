@@ -4,51 +4,87 @@
   "collect_type": "jmx",
   "config_type": ["weblogic"],
   "collector": "WebLogic-JMX",
-  "instance_id": "${cloud_region}_${jmx_url}",
+  "instance_id": "{{cloud_region}}_{{jmx_url}}",
   "form_fields": [
     {
       "name": "username",
       "label": "用户名",
       "type": "input",
-      "required": false,
-      "disabled_in_edit": true,
-      "locale_key": "monitor.integrations.username"
+      "required": true,
+      "editable": false,
+      "description": "用于访问接口的用户名",
+      "widget_props": {
+        "placeholder": "用户名"
+      },
+      "data_transform": {
+        "origin_path": "child.content.config.username"
+      }
     },
     {
       "name": "password",
       "label": "密码",
       "type": "password",
-      "required": false,
-      "disabled_in_edit": true,
-      "locale_key": "monitor.integrations.password"
+      "required": true,
+      "editable": false,
+      "description": "对应的登录密码",
+      "widget_props": {
+        "placeholder": "密码"
+      },
+      "data_transform": {
+        "origin_path": "child.env_config.PASSWORD__{{config_id}}"
+      }
     },
     {
       "name": "monitor_url",
       "label": "JmxUrl",
       "type": "input",
       "required": true,
-      "disabled_in_edit": true,
-      "placeholder": "",
-      "description": "监控地址说明",
-      "locale_key": "monitor.integrations.urlDes"
+      "visible_in": "edit",
+      "editable": false,
+      "description": "监控的目标网址链接，以检测其可用性和性能",
+      "widget_props": {
+        "placeholder": "http://example.com:8000"
+      },
+      "data_transform": {
+        "origin_path": "child.content.config.url"
+      }
     },
     {
       "name": "LISTEN_PORT",
       "label": "监听端口",
       "type": "inputNumber",
       "required": false,
-      "min": 1,
-      "precision": 0,
-      "description": "监听端口说明",
-      "locale_key": "monitor.integrations.listeningPort",
-      "description_locale_key": "monitor.integrations.listeningPortDes",
+      "visible_in": "edit",
+      "description": "指定程序运行时应监听的端口号，用于接受外部请求和连接",
+      "widget_props": {
+        "min": 1,
+        "precision": 0,
+        "placeholder": "监听端口"
+      },
       "data_transform": {
-        "origin_path": "base.env_config.LISTEN_PORT",
+        "origin_path": "base.env_config.LISTEN_PORT"
+      }
+    },
+    {
+      "name": "interval",
+      "label": "间隔",
+      "type": "inputNumber",
+      "required": true,
+      "default_value": 10,
+      "description": "监控数据的采集时间间隔（单位：秒）",
+      "widget_props": {
+        "min": 1,
+        "precision": 0,
+        "placeholder": "间隔",
+        "addonAfter": "s"
+      },
+      "data_transform": {
+        "origin_path": "child.content.config.interval",
         "to_form": {
-          "type": "number"
+          "regex": "^(\\d+)s$"
         },
         "to_api": {
-          "type": "string"
+          "suffix": "s"
         }
       }
     }
@@ -57,43 +93,56 @@
     {
       "name": "node_ids",
       "label": "节点",
-      "type": "node_selector",
+      "type": "select",
       "required": true,
-      "locale_key": "monitor.integrations.nodes"
+      "widget_props": {
+        "placeholder": "请选择节点"
+      },
+      "enable_row_filter": true
     },
     {
       "name": "jmx_url",
       "label": "URL",
       "type": "input",
       "required": true,
-      "locale_key": "monitor.integrations.url",
+      "widget_props": {
+        "placeholder": "http://example.com:8000"
+      },
       "change_handler": {
         "type": "simple",
-        "target": "instance_name"
+        "source_fields": ["jmx_url"],
+        "target_field": "instance_name"
       }
     },
     {
       "name": "ENV_LISTEN_PORT",
       "label": "监听端口",
       "type": "inputNumber",
-      "required": false,
-      "min": 1,
-      "precision": 0,
-      "locale_key": "monitor.integrations.listeningPort"
+      "required": true,
+      "widget_props": {
+        "placeholder": "监听端口",
+        "min": 1,
+        "precision": 0
+      }
     },
     {
       "name": "instance_name",
       "label": "实例名称",
       "type": "input",
       "required": true,
-      "locale_key": "monitor.integrations.instanceName"
+      "widget_props": {
+        "placeholder": "实例名称",
+        "disabled": false
+      }
     },
     {
       "name": "group_ids",
-      "label": "分组",
-      "type": "group_selector",
+      "label": "组",
+      "type": "group_select",
       "required": false,
-      "locale_key": "monitor.integrations.groups"
+      "widget_props": {
+        "placeholder": "请选择组"
+      }
     }
   ],
   "extra_fields": {}

@@ -1,6 +1,5 @@
 from typing import List, Optional
 import time
-import threading
 
 import requests
 from langchain_core.documents import Document
@@ -10,36 +9,10 @@ from neco.llm.rerank.rerank_config import ReRankConfig
 
 
 class ReRankManager:
-    _rerank_instance = {}
-    _instance_lock = threading.Lock()
-
     # 配置常量
     DEFAULT_REMOTE_TIMEOUT = 10  # 远程调用超时时间（秒）
     MAX_RETRY_ATTEMPTS = 3  # 最大重试次数
     RETRY_DELAY_BASE = 1  # 重试延迟基数（秒）
-
-    @classmethod
-    def get_local_rerank_instance(cls, protocol: str):
-        """
-            local:bce:maidalun1020/bce-reranker-base_v1
-        """
-        if cls._rerank_instance.get(protocol, None) is None:
-            with cls._instance_lock:
-                # 双重检查锁定模式
-                if cls._rerank_instance.get(protocol, None) is None:
-                    model_type = protocol.split(':')[1]
-                    model_name = protocol.split(':')[2]
-
-                    if model_type == 'bce':
-                        from neco.llm.rerank.bce_rerank import BCEReRank
-                        cls._rerank_instance[protocol] = BCEReRank(
-                            model_name_or_path=model_name)
-                        logger.info(f"成功初始化本地重排序模型: {protocol}")
-                    else:
-                        logger.error(f"不支持的本地重排序模型类型: {model_type}")
-                        return None
-
-        return cls._rerank_instance[protocol]
 
     @staticmethod
     def rerank_documents(
@@ -92,16 +65,10 @@ class ReRankManager:
         if not search_result:
             return search_result
 
-        # 执行重排序
-        reranked_docs = []
-        if config.model_base_url.startswith('local:'):
-            logger.info(f"使用本地ReRank模型进行重排序: {config.model_base_url}")
-            reranked_docs = ReRankManager._handle_local_rerank(
-                config, search_result)
-        else:
-            logger.info(f"使用远程ReRank模型进行重排序: {config.model_base_url}")
-            reranked_docs = ReRankManager._handle_remote_rerank(
-                config, search_result)
+        # 执行远程重排序
+        logger.info(f"使用远程ReRank模型进行重排序: {config.model_base_url}")
+        reranked_docs = ReRankManager._handle_remote_rerank(
+            config, search_result)
 
         # 应用阈值过滤（如果提供了阈值）
         if config.threshold is not None and config.threshold > 0:
@@ -137,53 +104,6 @@ class ReRankManager:
         logger.info(
             f"阈值过滤: 原始文档数={len(docs)}, 过滤后文档数={len(filtered_docs)}, 阈值={normalized_threshold}")
         return filtered_docs
-
-    @staticmethod
-    def _handle_local_rerank(
-            config: ReRankConfig,
-            search_result: List[Document]
-    ) -> List[Document]:
-        """处理本地重排序模型"""
-        try:
-            # 提取文档内容
-            passages = [doc.page_content for doc in search_result]
-
-            # 获取重排序实例并执行重排序
-            rerank_instance = ReRankManager.get_local_rerank_instance(
-                config.model_base_url)
-            if rerank_instance is None:
-                logger.error(f"无法获取本地重排序实例: {config.model_base_url}")
-                return search_result
-
-            local_rerank_result = rerank_instance.rerank(
-                config.query, passages)
-            logger.info(
-                f"本地重排序完成: 处理文档数={len(passages)}, 查询='{config.query[:50]}...' if len(config.query) > 50 else config.query")
-
-            top_k_search_result = []
-            top_rerank_ids = local_rerank_result['rerank_ids'][:config.top_k]
-            rerank_scores = local_rerank_result['rerank_scores']
-
-            for i in top_rerank_ids:
-                if 0 <= i < len(search_result):
-                    doc = search_result[i]
-                    if hasattr(doc, 'metadata'):
-                        # 设置相关性分数
-                        if 0 <= i < len(rerank_scores):
-                            doc.metadata['relevance_score'] = rerank_scores[i]
-                        else:
-                            doc.metadata['relevance_score'] = 0.0
-                    top_k_search_result.append(doc)
-                else:
-                    logger.warning(f"无效的重排序索引 {i}，跳过")
-
-            logger.info(
-                f"本地重排序结果: 原始文档数={len(search_result)}, 重排序后文档数={len(top_k_search_result)}")
-            return top_k_search_result
-
-        except Exception as e:
-            logger.error(f"本地重排序处理失败: {e}, 模型协议={config.model_base_url}")
-            return search_result
 
     @staticmethod
     def _handle_remote_rerank(

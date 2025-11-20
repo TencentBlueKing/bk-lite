@@ -150,9 +150,10 @@ class BasicGraph(ABC):
 
                 # 处理 AI 消息块
                 if isinstance(message, AIMessageChunk):
-                    await self._handle_ai_message_chunk(
+                    async for event in self._handle_ai_message_chunk(
                         message, encoder, run_id, current_message_id, current_tool_calls
-                    )
+                    ):
+                        yield event
                     # 更新 current_message_id（如果是首次创建）
                     if message.content and current_message_id is None:
                         current_message_id = f"msg_{run_id}_{int(time.time() * 1000)}"

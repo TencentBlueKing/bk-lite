@@ -127,7 +127,9 @@ const FieldMoadal = forwardRef<FieldModalRef, FieldModalProps>(
         const forms = deepClone(formInfo);
         if (type === 'add') {
           Object.assign(forms, {
-            organization: selectedGroup?.id ? [Number(selectedGroup.id)] : [],
+            organization: selectedGroup?.id
+              ? Number(selectedGroup.id)
+              : undefined,
           });
         } else {
           for (const key in forms) {
@@ -136,9 +138,13 @@ const FieldMoadal = forwardRef<FieldModalRef, FieldModalProps>(
               forms[key] = dayjs(forms[key], 'YYYY-MM-DD HH:mm:ss');
             } else if (target?.attr_type === 'organization' && forms[key]) {
               if (Array.isArray(forms[key])) {
-                forms[key] = forms[key]
+                const validNum = forms[key]
                   .map((item: any) => Number(item))
-                  .filter((num: number) => !isNaN(num));
+                  .filter((num: number) => !isNaN(num))[0];
+                forms[key] = validNum;
+              } else {
+                const num = Number(forms[key]);
+                forms[key] = !isNaN(num) ? num : undefined;
               }
             }
           }
@@ -309,6 +315,13 @@ const FieldMoadal = forwardRef<FieldModalRef, FieldModalProps>(
           const target = formItems.find((item) => item.attr_id === key);
           if (target?.attr_type === 'time' && values[key]) {
             values[key] = values[key].format('YYYY-MM-DD HH:mm:ss');
+          } else if (
+            target?.attr_type === 'organization' &&
+            values[key] != null
+          ) {
+            values[key] = Array.isArray(values[key])
+              ? values[key]
+              : [values[key]];
           }
         }
         operateAttr(values, confirmType);

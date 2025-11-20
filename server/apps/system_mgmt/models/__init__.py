@@ -1,6 +1,7 @@
 from .app import *  # noqa
 from .channel import *  # noqa
 from .custom_menu_group import *  # noqa
+from .error_log import *  # noqa
 from .group_data_rule import *  # noqa
 from .login_module import *  # noqa
 from .menu import *  # noqa

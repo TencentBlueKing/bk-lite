@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, forwardRef, useImperativeHandle } from 'react';
-import { Button, Tag, Empty } from 'antd';
+import { Tag, Empty } from 'antd';
 import { RightOutlined, GlobalOutlined } from '@ant-design/icons';
 import OperateDrawer from '@/app/node-manager/components/operate-drawer';
 import { useTranslation } from '@/utils/i18n';
@@ -104,11 +104,6 @@ const CollectorDetailDrawer = forwardRef<ModalRef, ModalSuccess>(({}, ref) => {
         width={600}
         destroyOnClose
         onClose={handleCancel}
-        footer={
-          <div className="flex justify-end">
-            <Button onClick={handleCancel}>{t('common.cancel')}</Button>
-          </div>
-        }
       >
         <div className="flex h-full">
           <div className="w-1/2 pr-4 border-r border-gray-200">

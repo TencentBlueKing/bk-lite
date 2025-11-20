@@ -4,7 +4,7 @@
   "collect_type": "http",
   "config_type": ["vmware"],
   "collector": "Telegraf",
-  "instance_id": "${cloud_region}_vmware_${host}",
+  "instance_id": "{{cloud_region}_vmware_{{host}}",
   "form_fields": [
     {
       "name": "host",

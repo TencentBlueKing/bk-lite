@@ -40,7 +40,9 @@ const OperateDrawer: React.FC<CustomDrawerProps> = ({
         </div>
       }
       footer={
-        <div className={customDrawerStyle.customDrawerFooter}>{footer}</div>
+        footer ? (
+          <div className={customDrawerStyle.customDrawerFooter}>{footer}</div>
+        ) : undefined
       }
       {...drawerProps}
     />

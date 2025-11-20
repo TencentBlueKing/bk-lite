@@ -37,15 +37,17 @@ export default function ConversationList() {
           {t('navigation.conversations')}
         </h1>
         <div className="flex items-center space-x-3 absolute right-4">
-          <SearchOutline
-            fontSize={24}
-            className="text-[var(--color-text-2)]"
-            onClick={() => router.push('/search?type=ConversationList')}
-          />
           <AddCircleOutline
             fontSize={24}
             className="text-[var(--color-primary)]"
           />
+        </div>
+      </div>
+
+      <div className="px-4 py-3 bg-[var(--color-background-body)]">
+        <div className='py-2 bg-[var(--color-bg)] rounded-xl flex gap-2 items-center justify-center text-[var(--color-text-2)] text-sm' onClick={() => router.push('/search?type=ConversationList')}>
+          <SearchOutline />
+          <span>搜索</span>
         </div>
       </div>
 
@@ -57,7 +59,7 @@ export default function ConversationList() {
               __html: `
                 .adm-list-item-content-extra {
                 position: absolute;
-                right: 5px;
+                right: 9px;
                 }
               `,
             }}
@@ -69,13 +71,13 @@ export default function ConversationList() {
               prefix={
                 <Avatar
                   src={chat.avatar}
-                  style={{ '--size': '48px' }}
+                  style={{ '--size': '48px', '--border-radius': '48px' }}
                   className="ml-1 mr-1"
                 />
               }
               description={
                 <div className="mt-1">
-                  <span className="text-sm text-[var(--color-text-3)] line-clamp-1">
+                  <span className="text-xs text-[var(--color-text-3)] line-clamp-1">
                     {chat.lastMessage}
                   </span>
                 </div>

@@ -23,6 +23,7 @@ import {
   CustomChatSSEProps,
   ActionRender,
   SSEChunk,
+  AGUIMessage,
   ReferenceModalState,
   DrawerContentState,
   GuideParseResult
@@ -45,7 +46,8 @@ const CustomChatSSE: React.FC<CustomChatSSEProps> = ({
   showMarkOnly = false, 
   initialMessages = [], 
   mode = 'chat',
-  guide
+  guide,
+  useAGUIProtocol = false
 }) => {
   const { t } = useTranslation();
   
@@ -240,22 +242,16 @@ const CustomChatSSE: React.FC<CustomChatSSEProps> = ({
     // Execute sending logic asynchronously
     try {
       if (handleSendMessage) {
-        console.log('[DEBUG] Calling handleSendMessage with content:', content);
         const result = await handleSendMessage(content, currentMessages);
-        console.log('[DEBUG] handleSendMessage result:', result);
         
         if (result === null) {
-          console.log('[DEBUG] handleSendMessage returned null, canceling');
           updateMessages(currentMessages);
           setLoading(false);
           return;
         }
         
         const { url, payload } = result;
-        console.log('[DEBUG] Starting SSE stream to:', url, 'with payload:', payload);
         await handleSSEStream(url, payload, botLoadingMessage);
-      } else {
-        console.warn('[DEBUG] handleSendMessage is not provided');
       }
     } catch (error: any) {
       console.error(`${t('chat.sendFailed')}:`, error);
@@ -421,7 +417,6 @@ const CustomChatSSE: React.FC<CustomChatSSEProps> = ({
 
   // Handle SSE streaming response
   const handleSSEStream = useCallback(async (url: string, payload: any, botMessage: CustomChatMessage) => {
-    console.log('[DEBUG] handleSSEStream called with url:', url);
     const abortController = new AbortController();
     abortControllerRef.current = abortController;
 
@@ -436,7 +431,6 @@ const CustomChatSSE: React.FC<CustomChatSSEProps> = ({
         headers['Authorization'] = `Bearer ${token}`;
       }
 
-      console.log('[DEBUG] Fetching SSE with headers:', headers);
       const response = await fetch(url, {
         method: 'POST',
         headers,
@@ -445,9 +439,7 @@ const CustomChatSSE: React.FC<CustomChatSSEProps> = ({
         signal: abortController.signal,
       });
 
-      console.log('[DEBUG] SSE response status:', response.status, response.statusText);
       if (!response.ok) {
-        console.error(`HTTP ${response.status}: ${response.statusText}`);
         throw new Error(`HTTP error! status: ${response.status}`);
       }
 
@@ -485,41 +477,85 @@ const CustomChatSSE: React.FC<CustomChatSSEProps> = ({
             
             // Check for end marker
             if (dataStr === '[DONE]') {
-              console.log('SSE stream completed with [DONE]');
               setLoading(false);
               return;
             }
 
             try {
-              const sseData: SSEChunk = JSON.parse(dataStr);
+              const parsedData: any = JSON.parse(dataStr);
               
-              // Process streaming content
-              if (sseData.choices && sseData.choices.length > 0) {
-                const choice = sseData.choices[0];
+              // Check if it's AG-UI protocol format
+              if (useAGUIProtocol && parsedData.type) {
+                const aguiData: AGUIMessage = parsedData;
                 
-                // Check if completed
-                if (choice.finish_reason === 'stop') {
-                  console.log('SSE stream completed with finish_reason: stop');
-                  setLoading(false);
-                  return;
-                }
-
-                // Accumulate content
-                if (choice.delta && choice.delta.content) {
-                  accumulatedContent += choice.delta.content;
+                // Handle different AG-UI message types
+                switch (aguiData.type) {
+                  case 'RUN_STARTED':
+                    break;
                   
-                  // Update message content in real-time with auto scroll
-                  updateMessages(prevMessages => 
-                    prevMessages.map(msgItem => 
-                      msgItem.id === botMessage.id 
-                        ? { 
-                          ...msgItem, 
-                          content: accumulatedContent,
-                          updateAt: new Date().toISOString()
-                        }
-                        : msgItem
-                    )
-                  );
+                  case 'TEXT_MESSAGE_START':
+                    break;
+                  
+                  case 'TEXT_MESSAGE_CONTENT':
+                    if (aguiData.delta) {
+                      accumulatedContent += aguiData.delta;
+                      
+                      // Update message content in real-time with auto scroll
+                      updateMessages(prevMessages => 
+                        prevMessages.map(msgItem => 
+                          msgItem.id === botMessage.id 
+                            ? { 
+                              ...msgItem, 
+                              content: accumulatedContent,
+                              updateAt: new Date().toISOString()
+                            }
+                            : msgItem
+                        )
+                      );
+                    }
+                    break;
+                  
+                  case 'TEXT_MESSAGE_END':
+                    break;
+                  
+                  case 'RUN_FINISHED':
+                    setLoading(false);
+                    return;
+                  
+                  default:
+                    console.warn('[AG-UI] Unknown message type:', aguiData.type);
+                }
+              } else {
+                // Use old format (OpenAI SSE)
+                const sseData: SSEChunk = parsedData;
+                
+                // Process streaming content (old format)
+                if (sseData.choices && sseData.choices.length > 0) {
+                  const choice = sseData.choices[0];
+                  
+                  // Check if completed
+                  if (choice.finish_reason === 'stop') {
+                    setLoading(false);
+                    return;
+                  }
+
+                  // Accumulate content
+                  if (choice.delta && choice.delta.content) {
+                    accumulatedContent += choice.delta.content;
+                    
+                    // Update message content in real-time with auto scroll
+                    updateMessages(prevMessages => 
+                      prevMessages.map(msgItem => 
+                        msgItem.id === botMessage.id 
+                          ? { 
+                            ...msgItem, 
+                            content: accumulatedContent,
+                            updateAt: new Date().toISOString()
+                          }
+                          : msgItem
+                      )
+                    );
+                  }
                 }
               }
             } catch (parseError) {
@@ -531,7 +567,6 @@ const CustomChatSSE: React.FC<CustomChatSSEProps> = ({
       }
     } catch (error: any) {
       if (error.name === 'AbortError') {
-        console.log('SSE connection aborted');
         return;
       }
       
@@ -549,14 +584,10 @@ const CustomChatSSE: React.FC<CustomChatSSEProps> = ({
       setLoading(false);
       abortControllerRef.current = null;
     }
-  }, [token, updateMessages]);
+  }, [token, updateMessages, useAGUIProtocol]);
 
   const handleSend = useCallback(async (msg: string) => {
-    console.log('[DEBUG handleSend] Called with message:', msg);
-    console.log('[DEBUG handleSend] loading:', loading, 'token:', !!token);
-    
     if (msg.trim() && !loading && token) {
-      console.log('[DEBUG handleSend] Conditions passed, starting to send');
       setLoading(true);
       
       // Create user message
@@ -585,14 +616,11 @@ const CustomChatSSE: React.FC<CustomChatSSEProps> = ({
 
       try {
         if (handleSendMessage) {
-          console.log('[DEBUG handleSend] handleSendMessage exists, calling it');
           // Pass messages currently displayed in the dialog as history
           const result = await handleSendMessage(msg, currentDisplayedMessages);
-          console.log('[DEBUG handleSend] handleSendMessage result:', result);
           
           // If handleSendMessage returns null, form validation failed, prevent sending
           if (result === null) {
-            console.log('[DEBUG handleSend] Result is null, canceling');
             // Remove added messages
             updateMessages(currentDisplayedMessages);
             setLoading(false);
@@ -600,10 +628,7 @@ const CustomChatSSE: React.FC<CustomChatSSEProps> = ({
           }
           
           const { url, payload } = result;
-          console.log('[DEBUG handleSend] Starting SSE stream to:', url);
           await handleSSEStream(url, payload, botLoadingMessage);
-        } else {
-          console.warn('[DEBUG handleSend] handleSendMessage is not provided');
         }
       } catch (error: any) {
         console.error(`${t('chat.sendFailed')}:`, error);

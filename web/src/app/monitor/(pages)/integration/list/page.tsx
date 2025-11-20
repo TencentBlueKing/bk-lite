@@ -73,15 +73,8 @@ const Integration = () => {
     setObjectId(id === 'all' ? '' : id);
   };
 
-  const getObjectInfo = (): Record<string, string> => {
-    const target: any = objects.find((item) => item.id === objectId);
-    if (target) {
-      target.icon = target.icon || OBJECT_DEFAULT_ICON;
-    }
-    return target || {};
-  };
-
   const getPluginList = async (params = {}) => {
+    setPluginList([]);
     setSelectedApp(null);
     setExportDisabled(true);
     setPageLoading(true);
@@ -206,11 +199,17 @@ const Integration = () => {
   };
 
   const linkToDetial = (app: ObjectItem) => {
-    const { id, icon, name } = getObjectInfo();
+    const parentObject: any = objects.find(
+      (item) => item.id === app.parent_monitor_object
+    );
+    const objectInfo = parentObject || {};
+    if (objectInfo.id) {
+      objectInfo.icon = objectInfo.icon || OBJECT_DEFAULT_ICON;
+    }
     const row: TableDataItem = {
-      id,
-      icon,
-      name,
+      id: objectInfo.id || '',
+      icon: objectInfo.icon || OBJECT_DEFAULT_ICON,
+      name: objectInfo.name || '',
       plugin_name: app?.name,
       plugin_id: app?.id,
       plugin_display_name: app?.display_name,
@@ -232,7 +231,11 @@ const Integration = () => {
         <TreeSelector
           showAllMenu
           data={treeData}
-          defaultSelectedKey={searchParams.get('objId') || 'all'}
+          defaultSelectedKey={
+            searchParams.get('objId')
+              ? Number(searchParams.get('objId'))
+              : 'all'
+          }
           loading={treeLoading}
           draggable
           onNodeSelect={handleObjectChange}
@@ -269,71 +272,73 @@ const Integration = () => {
         </div>
         <Spin spinning={pageLoading}>
           <div
-            className={`flex flex-wrap w-full ${integrationStyle.integrationList}`}
+            className={`grid gap-4 w-full ${integrationStyle.integrationList}`}
+            style={{
+              gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))',
+            }}
           >
-            {pluginList.map((app) => (
-              <div
-                key={app.id}
-                className="w-full sm:w-1/4 p-2 min-w-[400px]"
-                onClick={() => onAppClick(app)}
-              >
-                {/* <div
-                  className={`bg-[var(--color-bg-1)] shadow-sm hover:shadow-md transition-shadow duration-300 ease-in-out rounded-lg p-4 relative cursor-pointer group ${
-                    selectedApp?.id === app.id
-                      ? 'border-2 border-blue-300'
-                      : 'border'
-                  }`}
-                > */}
-                <div className="bg-[var(--color-bg-1)] shadow-sm hover:shadow-md transition-shadow duration-300 ease-in-out rounded-lg p-4 relative cursor-pointer group border">
-                  <div className="flex items-center space-x-4 my-2">
-                    <Icon
-                      type={getIconByObjectName(
-                        getObjectInfo().name || '',
-                        objects
-                      )}
-                      className="text-[48px] min-w-[48px]"
-                    />
-                    <div
-                      style={{
-                        width: 'calc(100% - 60px)',
-                      }}
-                    >
-                      <h2
-                        title={app.display_name}
-                        className="text-xl font-bold m-0 hide-text"
-                      >
-                        {app.display_name || '--'}
-                      </h2>
-                      <Tag className="mt-[4px]">{app.collect_type || '--'}</Tag>
-                    </div>
-                  </div>
-                  <p
-                    className={`mb-[15px] text-[var(--color-text-3)] text-[13px] ${integrationStyle.lineClamp3}`}
-                    title={app.display_description || '--'}
-                  >
-                    {app.display_description || '--'}
-                  </p>
-                  <div className="w-full h-[32px] flex justify-center items-end">
-                    <Permission
-                      requiredPermissions={['Setting']}
-                      className="w-full"
-                    >
-                      <Button
-                        icon={<PlusOutlined />}
-                        type="primary"
-                        className="w-full rounded-md transition-opacity duration-300"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          linkToDetial(app);
+            {pluginList.map((app) => {
+              const parentObject: any = objects.find(
+                (item) => item.id === app.parent_monitor_object
+              );
+              const objectName = parentObject?.name || '';
+
+              return (
+                <div
+                  key={app.id}
+                  className="p-2"
+                  onClick={() => onAppClick(app)}
+                >
+                  <div className="bg-[var(--color-bg-1)] shadow-sm hover:shadow-md transition-shadow duration-300 ease-in-out rounded-lg p-4 relative cursor-pointer group border">
+                    <div className="flex items-center space-x-4 my-2">
+                      <Icon
+                        type={getIconByObjectName(objectName, objects)}
+                        className="text-[48px] min-w-[48px]"
+                      />
+                      <div
+                        style={{
+                          width: 'calc(100% - 60px)',
                         }}
                       >
-                        {t('monitor.integrations.access')}
-                      </Button>
-                    </Permission>
+                        <h2
+                          title={app.display_name}
+                          className="text-xl font-bold m-0 hide-text"
+                        >
+                          {app.display_name || '--'}
+                        </h2>
+                        <Tag className="mt-[4px]">
+                          {app.collect_type || '--'}
+                        </Tag>
+                      </div>
+                    </div>
+                    <p
+                      className={`mb-[15px] text-[var(--color-text-3)] text-[13px] ${integrationStyle.lineClamp3}`}
+                      title={app.display_description || '--'}
+                    >
+                      {app.display_description || '--'}
+                    </p>
+                    <div className="w-full h-[32px] flex justify-center items-end">
+                      <Permission
+                        requiredPermissions={['Setting']}
+                        className="w-full"
+                      >
+                        <Button
+                          icon={<PlusOutlined />}
+                          type="primary"
+                          className="w-full rounded-md transition-opacity duration-300"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            linkToDetial(app);
+                          }}
+                        >
+                          {t('monitor.integrations.access')}
+                        </Button>
+                      </Permission>
+                    </div>
                   </div>
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         </Spin>
       </div>

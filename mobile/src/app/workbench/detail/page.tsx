@@ -75,7 +75,7 @@ export default function AppDetailPage() {
                             onClick={() => setAvatarVisible(true)}
                         >
                             <Image
-                                src={botData.avatar || '/avatars/04.svg'}
+                                src={botData.avatar || '/avatars/04.png'}
                                 alt={botData.name}
                                 width={96}
                                 height={96}
@@ -85,7 +85,7 @@ export default function AppDetailPage() {
 
                         {/* 头像查看器 */}
                         <ImageViewer
-                            image={botData.avatar || '/avatars/04.svg'}
+                            image={botData.avatar || '/avatars/04.png'}
                             visible={avatarVisible}
                             onClose={() => setAvatarVisible(false)}
                         />
@@ -98,14 +98,14 @@ export default function AppDetailPage() {
                         {/* 在线状态 */}
                         <div className="flex items-center space-x-1.5 mb-3">
                             <div
-                                className={`w-2 h-2 rounded-full ${botData.online ? 'bg-blue-500' : 'bg-gray-400'}`}
+                                className={`w-2 h-2 rounded-full ${botData.online ? 'bg-green-500' : 'bg-gray-400'}`}
                             ></div>
-                            <span className={`text-sm ${botData.online ? 'text-blue-500' : 'text-gray-400'}`}>
+                            <span className={`text-sm ${botData.online ? 'text-green-500' : 'text-gray-400'}`}>
                                 {botData.online ? '在线' : '下线'}
                             </span>
                         </div>
 
-                        <p className="text-sm text-[var(--color-text-2)] text-center">
+                        <p className="text-sm text-[var(--color-text-4)] text-center">
                             {botData.introduction || '暂无简介'}
                         </p>
 

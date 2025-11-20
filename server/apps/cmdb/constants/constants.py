@@ -258,7 +258,7 @@ COLLECT_OBJ_TREE = [
         "name": "K8S",
         "children": [
             {"id": "k8s_cluster", "model_id": "k8s_cluster", "name": "K8S", "task_type": CollectPluginTypes.K8S,
-             "type": CollectDriverTypes.PROTOCOL}
+             "type": CollectDriverTypes.PROTOCOL,"tag": ["apiserver"], "desc": "采集k8s集群核心对象node节点、命名空间、工作负载、pod"}
         ],
     },
     {
@@ -266,7 +266,7 @@ COLLECT_OBJ_TREE = [
         "name": "VMware",
         "children": [
             {"id": "vmware_vc", "model_id": "vmware_vc", "name": "vCenter", "task_type": CollectPluginTypes.VM,
-             "type": CollectDriverTypes.PROTOCOL}
+             "type": CollectDriverTypes.PROTOCOL,"tag": ["vSphere API","SDK"], "desc": "通过采集vCenter内ESXi与虚拟机清单及其属性信息"}
         ],
     },
     {
@@ -274,7 +274,7 @@ COLLECT_OBJ_TREE = [
         "name": "NetWork",
         "children": [
             {"id": "network", "model_id": "network", "name": "NetWork", "task_type": CollectPluginTypes.SNMP,
-             "type": CollectDriverTypes.PROTOCOL}
+             "type": CollectDriverTypes.PROTOCOL,"tag": ["SNMP","Interfaces"], "desc": "通过SNMP协议发现网络设备及其基本信息"}
         ],
     },
     {
@@ -282,7 +282,7 @@ COLLECT_OBJ_TREE = [
         "name": "网络拓扑",
         "children": [
             {"id": "network_topo", "model_id": "network_topo", "name": "网络拓扑", "task_type": CollectPluginTypes.SNMP,
-             "type": CollectDriverTypes.PROTOCOL}
+             "type": CollectDriverTypes.PROTOCOL,"tag": ["SNMP","IFTable","ARP"], "desc": "采集网络设备连接关系"}
         ],
     },
     {
@@ -290,13 +290,14 @@ COLLECT_OBJ_TREE = [
         "name": "数据库",
         "children": [
             {"id": "mysql", "model_id": "mysql", "name": "Mysql", "task_type": CollectPluginTypes.PROTOCOL,
-             "type": CollectDriverTypes.PROTOCOL},
+             "type": CollectDriverTypes.PROTOCOL,"tag": ["Agentless","TCP"], "desc": "采集MySQL关键配置信息"},
             {
                 "id": "redis",
                 "model_id": "redis",
                 "name": "Redis",
                 "task_type": CollectPluginTypes.DB,
                 "type": CollectDriverTypes.JOB,
+                "tag": ["Agent","JOB"], "desc": "采集Redis关键配置信息"
             }
         ],
     },
@@ -305,10 +306,10 @@ COLLECT_OBJ_TREE = [
         "name": "云平台",
         "children": [
             {"id": "aliyun", "model_id": "aliyun_account", "name": "阿里云", "task_type": CollectPluginTypes.CLOUD,
-             "type": CollectDriverTypes.PROTOCOL},
+             "type": CollectDriverTypes.PROTOCOL,"tag": ["SDK"], "desc": "采集阿里云账户下ECS、VPC、RDS等资产清单"},
             {
                 "id": "qcloud", "model_id": "qcloud", "name": "腾讯云", "task_type": CollectPluginTypes.CLOUD,
-                "type": CollectDriverTypes.PROTOCOL
+                "type": CollectDriverTypes.PROTOCOL,"tag": ["SDK"], "desc": "采集腾讯云账户下CVM、VPC、云数据库等资产清单"
             },
         ],
     },
@@ -317,7 +318,7 @@ COLLECT_OBJ_TREE = [
         "name": "主机管理",
         "children": [
             {"id": "host", "model_id": "host", "name": "主机", "task_type": CollectPluginTypes.HOST,
-             "type": CollectDriverTypes.JOB}
+             "type": CollectDriverTypes.JOB,"tag": ["JOB"], "desc": "采集主机基础信息.CPU内存等"}
         ],
     },
     {
@@ -325,18 +326,18 @@ COLLECT_OBJ_TREE = [
         "name": "中间件",
         "children": [
             {"id": "nginx", "model_id": "nginx", "name": "Nginx", "task_type": CollectPluginTypes.MIDDLEWARE,
-             "type": CollectDriverTypes.JOB},
+             "type": CollectDriverTypes.JOB,"tag": ["JOB"], "desc": "发现与采集Nginx基础配置信息"},
             {"id": "zookeeper", "model_id": "zookeeper", "name": "Zookeeper",
              "task_type": CollectPluginTypes.MIDDLEWARE,
-             "type": CollectDriverTypes.JOB},
+             "type": CollectDriverTypes.JOB,"tag": ["JOB"], "desc": "发现与采集ZK基础配置信息"},
             {"id": "kafka", "model_id": "kafka", "name": "Kafka", "task_type": CollectPluginTypes.MIDDLEWARE,
-             "type": CollectDriverTypes.JOB},
+             "type": CollectDriverTypes.JOB,"tag": ["JOB"], "desc": "发现与采集Kafka基础配置信息"},
             {"id": "etcd", "model_id": "etcd", "name": "Etcd", "task_type": CollectPluginTypes.MIDDLEWARE,
-             "type": CollectDriverTypes.JOB},
+             "type": CollectDriverTypes.JOB,"tag": ["JOB"], "desc": "发现与采集Etcd基础配置信息"},
             {"id": "rabbitmq", "model_id": "rabbitmq", "name": "RabbitMQ", "task_type": CollectPluginTypes.MIDDLEWARE,
-             "type": CollectDriverTypes.JOB},
+             "type": CollectDriverTypes.JOB,"tag": ["JOB"], "desc": "发现与采集Rabbitmq基础配置信息"},
             {"id": "tomcat", "model_id": "tomcat", "name": "Tomcat", "task_type": CollectPluginTypes.MIDDLEWARE,
-             "type": CollectDriverTypes.JOB},
+             "type": CollectDriverTypes.JOB,"tag": ["JOB"], "desc": "发现与采集Tomcat基础配置信息"},
         ],
     }
 

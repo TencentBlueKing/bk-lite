@@ -73,6 +73,7 @@ class ControllerConstants:
     GROUP_TAG = "group"
     CLOUD_TAG = "cloud"
     INSTALL_METHOD_TAG = "install_method"
+    NODE_TYPE_TAG = "node_type"  # 节点类型标签（用于标识容器节点、K8s节点等）
 
     # 安装方式
     MANUAL = "manual"
@@ -82,3 +83,6 @@ class ControllerConstants:
         MANUAL: "手动安装",
         AUTO: "自动安装",
     }
+
+    # 节点类型
+    NODE_TYPE_CONTAINER = "container"  # 容器节点

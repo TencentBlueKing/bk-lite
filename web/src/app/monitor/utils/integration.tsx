@@ -64,10 +64,10 @@ export const extractMssqlUrl = (url: string) => {
     return {};
   }
   return {
-    username: matches[1],
-    password: matches[2],
-    host: matches[3],
-    port: matches[4],
+    host: matches[1],
+    port: matches[2],
+    username: matches[3],
+    password: matches[4],
   };
 };
 
