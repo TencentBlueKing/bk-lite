@@ -2,6 +2,8 @@
 # @File: host.py
 # @Time: 2025/11/12 14:06
 # @Author: windyzhao
+import codecs
+import json
 import re
 
 from apps.cmdb.collection.collect_plugin.base import CollectBase
@@ -129,10 +131,23 @@ class HostCollectMetrics(CollectBase):
                 else:
                     self.timestamp_gt = True
 
+            # 解析result字段中的JSON数据
+            # VictoriaMetrics返回的JSON字符串包含转义字符（如\n），需要先反转义再解析
+            result_json = index_data["metric"].get("result", "{}")
+            result_data = {}
+            if result_json and result_json != "{}":
+                try:
+                    unescaped_json = codecs.decode(
+                        result_json, 'unicode_escape')
+                    result_data = json.loads(unescaped_json)
+                except Exception:
+                    result_data = {}
+
             index_dict = dict(
                 index_key=metric_name,
                 index_value=value,
                 **index_data["metric"],
+                **result_data,  # 将解析后的JSON数据合并到index_dict中
             )
 
             self.collection_metrics_dict[metric_name].append(index_dict)

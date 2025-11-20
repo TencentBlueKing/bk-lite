@@ -17,8 +17,8 @@ class Collection:
         self.url = f"{VICTORIAMETRICS_HOST}/prometheus/api/v1/query"
 
     def query(self, sql, timeout=60):
-        """查询数据 - 查询最近24小时内的最新数据"""
-        query_with_time = f"last_over_time({sql}[24h])"
+        """查询数据 - 查询最近1小时内的最新数据"""
+        query_with_time = f"last_over_time({sql}[1h])"
         params = {"query": query_with_time}
         resp = requests.post(self.url, data=params, timeout=timeout)
         if resp.status_code != 200:
