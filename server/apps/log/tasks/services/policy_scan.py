@@ -749,11 +749,18 @@ class LogPolicyScan:
             result = SystemMgmtUtils.send_msg_with_channel(
                 self.policy.notice_type_id, title, content, self.policy.notice_users
             )
-            return True, result
+            # 检查发送结果
+            if result.get("result") is False:
+                msg = f"send notice failed for policy {self.policy.id}: {result.get('message', 'Unknown error')}"
+                logger.error(msg)
+                return False, result
+            else:
+                logger.info(f"send notice success for policy {self.policy.id}: {result}")
+                return True, result
         except Exception as e:
-            msg = f"send notice failed for policy {self.policy.id}: {e}"
-            logger.error(msg)
-            result = [{"error": msg}]
+            msg = f"send notice exception for policy {self.policy.id}: {e}"
+            logger.error(msg, exc_info=True)
+            result = {"result": False, "message": msg}
             return False, result
 
     def notice(self, event_objs):
