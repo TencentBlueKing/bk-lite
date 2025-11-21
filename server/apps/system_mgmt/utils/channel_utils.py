@@ -37,11 +37,11 @@ def send_email(channel_obj: Channel, title, content, user_list):
     return send_email_to_user(channel_config, content, receivers, title)
 
 
-def send_email_to_user(channel_config, content, receiver, title):
+def send_email_to_user(channel_config, content, receivers, title):
     try:
         msg = MIMEMultipart()
         msg["From"] = channel_config["mail_sender"]
-        msg["To"] = receiver
+        msg["To"] = ",".join(receivers)
         msg["Subject"] = title
         msg.attach(MIMEText(content, "html", "utf-8"))
         # 根据配置决定使用 SSL 还是普通连接

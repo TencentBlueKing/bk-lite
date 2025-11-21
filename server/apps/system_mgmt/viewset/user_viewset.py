@@ -6,7 +6,6 @@ from rest_framework.decorators import action
 
 from apps.core.backends import cache
 from apps.core.decorators.api_permission import HasPermission
-from apps.core.logger import system_mgmt_logger as logger
 from apps.system_mgmt.models import Group, Role, User, UserRule
 from apps.system_mgmt.serializers.user_serializer import UserSerializer
 from apps.system_mgmt.services.role_manage import RoleManage
@@ -113,60 +112,50 @@ class UserViewSet(ViewSetUtils):
     def create_user(self, request):
         kwargs = request.data
         rules = kwargs.pop("rules", [])
-        try:
-            with transaction.atomic():
-                User.objects.create(
-                    username=kwargs["username"],
-                    display_name=kwargs["lastName"],
-                    email=kwargs["email"],
-                    disabled=False,
-                    locale=kwargs["locale"],
-                    timezone=kwargs["timezone"],
-                    group_list=kwargs["groups"],
-                    role_list=kwargs["roles"],
-                    temporary_pwd=kwargs.get("temporary_pwd", False),
-                )
-                if rules:
-                    add_rule = [UserRule(username=kwargs["username"], group_rule_id=i) for i in rules]
-                    UserRule.objects.bulk_create(add_rule, batch_size=100)
+        with transaction.atomic():
+            User.objects.create(
+                username=kwargs["username"],
+                display_name=kwargs["lastName"],
+                email=kwargs["email"],
+                disabled=False,
+                locale=kwargs["locale"],
+                timezone=kwargs["timezone"],
+                group_list=kwargs["groups"],
+                role_list=kwargs["roles"],
+                temporary_pwd=kwargs.get("temporary_pwd", False),
+            )
+            if rules:
+                add_rule = [UserRule(username=kwargs["username"], group_rule_id=i) for i in rules]
+                UserRule.objects.bulk_create(add_rule, batch_size=100)
 
-                # 记录操作日志
-                log_operation(request, "create", "user", f"新增用户: {kwargs['username']} ({kwargs['lastName']})")
-            return JsonResponse({"result": True})
-        except Exception as e:
-            logger.exception(e)
-            return JsonResponse({"result": False, "message": str(e)})
+            # 记录操作日志
+            log_operation(request, "create", "user", f"新增用户: {kwargs['username']} ({kwargs['lastName']})")
+        return JsonResponse({"result": True})
 
     @action(detail=False, methods=["POST"])
     @HasPermission("user_group-Edit User")
     def reset_password(self, request):
-        try:
-            password = request.data.get("password")
-            temporary_pwd = request.data.get("temporary", False)
-            user_id = request.data.get("id")
+        password = request.data.get("password")
+        temporary_pwd = request.data.get("temporary", False)
+        user_id = request.data.get("id")
 
-            # 校验密码是否为空
-            if not password:
-                return JsonResponse({"result": False, "message": "密码不能为空"})
+        # 校验密码是否为空
+        if not password:
+            raise ValueError("密码不能为空")
 
-            # 校验密码复杂度
-            is_valid, error_message = PasswordValidator.validate_password(password)
-            if not is_valid:
-                return JsonResponse({"result": False, "message": error_message})
+        # 校验密码复杂度
+        is_valid, error_message = PasswordValidator.validate_password(password)
+        if not is_valid:
+            raise ValueError(error_message)
 
-            user = User.objects.get(id=user_id)
-            user.password = make_password(password)
-            user.temporary_pwd = temporary_pwd
-            user.save()  # 使用save方法自动更新password_last_modified
+        user = User.objects.get(id=user_id)
+        user.password = make_password(password)
+        user.temporary_pwd = temporary_pwd
+        user.save()  # 使用save方法自动更新password_last_modified
 
-            # 记录操作日志
-            log_operation(request, "update", "user", f"重置用户密码: {user.username}")
-            return JsonResponse({"result": True})
-        except User.DoesNotExist:
-            return JsonResponse({"result": False, "message": "用户不存在"})
-        except Exception as e:
-            logger.exception(e)
-            return JsonResponse({"result": False, "message": str(e)})
+        # 记录操作日志
+        log_operation(request, "update", "user", f"重置用户密码: {user.username}")
+        return JsonResponse({"result": True})
 
     @action(detail=False, methods=["POST"])
     @HasPermission("user_group-Delete User")

@@ -4,7 +4,6 @@ from rest_framework.decorators import action
 
 from apps.core.backends import cache
 from apps.core.decorators.api_permission import HasPermission
-from apps.core.logger import system_mgmt_logger as logger
 from apps.core.utils.viewset_utils import LanguageViewSet
 from apps.system_mgmt.models import Group, Menu, Role, User
 from apps.system_mgmt.serializers.role_serializer import RoleSerializer
@@ -196,37 +195,32 @@ class RoleViewSet(LanguageViewSet, ViewSetUtils):
         """
         批量为组织分配角色
         """
+        group_ids = request.data.get("group_ids", [])
+        role_id = request.data.get("role_id")
+
+        if not group_ids or not role_id:
+            return JsonResponse({"result": False, "message": self.loader.get("error.group_ids_role_id_required")})
+
+        # 验证组织是否存在
+        groups = Group.objects.filter(id__in=group_ids)
+        if len(groups) != len(group_ids):
+            return JsonResponse({"result": False, "message": self.loader.get("error.some_groups_not_exist")})
+
+        # 验证角色是否存在
         try:
-            group_ids = request.data.get("group_ids", [])
-            role_id = request.data.get("role_id")
+            role = Role.objects.get(id=role_id)
+        except Role.DoesNotExist:
+            return JsonResponse({"result": False, "message": self.loader.get("error.some_roles_not_exist")})
 
-            if not group_ids or not role_id:
-                return JsonResponse({"result": False, "message": self.loader.get("error.group_ids_role_id_required")})
+        # 使用ManyToMany关系批量分配角色
+        for group in groups:
+            group.roles.add(role)
 
-            # 验证组织是否存在
-            groups = Group.objects.filter(id__in=group_ids)
-            if len(groups) != len(group_ids):
-                return JsonResponse({"result": False, "message": self.loader.get("error.some_groups_not_exist")})
+        # 记录操作日志
+        group_names = [g.name for g in groups]
+        log_operation(request, "create", "role", f"添加组织到角色 {role.name}: {', '.join(group_names)}")
 
-            # 验证角色是否存在
-            try:
-                role = Role.objects.get(id=role_id)
-            except Role.DoesNotExist:
-                return JsonResponse({"result": False, "message": self.loader.get("error.some_roles_not_exist")})
-
-            # 使用ManyToMany关系批量分配角色
-            for group in groups:
-                group.roles.add(role)
-
-            # 记录操作日志
-            group_names = [g.name for g in groups]
-            log_operation(request, "create", "role", f"添加组织到角色 {role.name}: {', '.join(group_names)}")
-
-            return JsonResponse({"result": True})
-
-        except Exception as e:
-            logger.exception(f"批量分配组织角色失败: {e}")
-            return JsonResponse({"result": False, "message": str(e)})
+        return JsonResponse({"result": True})
 
     @action(detail=False, methods=["POST"])
     @HasPermission("application_role-Edit")
@@ -234,37 +228,32 @@ class RoleViewSet(LanguageViewSet, ViewSetUtils):
         """
         回收组织的角色
         """
+        group_ids = request.data.get("group_ids", [])
+        role_id = request.data.get("role_id")
+
+        if not group_ids or not role_id:
+            return JsonResponse({"result": False, "message": self.loader.get("error.group_ids_role_id_required")})
+
+        # 验证组织是否存在
+        groups = Group.objects.filter(id__in=group_ids)
+        if len(groups) != len(group_ids):
+            return JsonResponse({"result": False, "message": self.loader.get("error.some_groups_not_exist")})
+
+        # 验证角色是否存在
         try:
-            group_ids = request.data.get("group_ids", [])
-            role_id = request.data.get("role_id")
+            role = Role.objects.get(id=role_id)
+        except Role.DoesNotExist:
+            return JsonResponse({"result": False, "message": self.loader.get("error.some_roles_not_exist")})
 
-            if not group_ids or not role_id:
-                return JsonResponse({"result": False, "message": self.loader.get("error.group_ids_role_id_required")})
+        # 使用ManyToMany关系回收角色
+        for group in groups:
+            group.roles.remove(role)
 
-            # 验证组织是否存在
-            groups = Group.objects.filter(id__in=group_ids)
-            if len(groups) != len(group_ids):
-                return JsonResponse({"result": False, "message": self.loader.get("error.some_groups_not_exist")})
+        # 记录操作日志
+        group_names = [g.name for g in groups]
+        log_operation(request, "delete", "role", f"从角色 {role.name} 移除组织: {', '.join(group_names)}")
 
-            # 验证角色是否存在
-            try:
-                role = Role.objects.get(id=role_id)
-            except Role.DoesNotExist:
-                return JsonResponse({"result": False, "message": self.loader.get("error.some_roles_not_exist")})
-
-            # 使用ManyToMany关系回收角色
-            for group in groups:
-                group.roles.remove(role)
-
-            # 记录操作日志
-            group_names = [g.name for g in groups]
-            log_operation(request, "delete", "role", f"从角色 {role.name} 移除组织: {', '.join(group_names)}")
-
-            return JsonResponse({"result": True})
-
-        except Exception as e:
-            logger.exception(f"回收组织角色失败: {e}")
-            return JsonResponse({"result": False, "message": str(e)})
+        return JsonResponse({"result": True})
 
     @action(detail=False, methods=["GET"])
     @HasPermission("user_group-View")
@@ -272,32 +261,27 @@ class RoleViewSet(LanguageViewSet, ViewSetUtils):
         """
         查询指定角色下的组织列表，支持分页和组名筛选
         """
+        role_id = request.GET.get("role_id")
+        search = request.GET.get("search", "")
+        if not role_id:
+            return JsonResponse({"result": False, "message": self.loader.get("error.role_id_required")})
+
+        # 验证角色是否存在
         try:
-            role_id = request.GET.get("role_id")
-            search = request.GET.get("search", "")
-            if not role_id:
-                return JsonResponse({"result": False, "message": self.loader.get("error.role_id_required")})
+            role = Role.objects.get(id=role_id)
+        except Role.DoesNotExist:
+            return JsonResponse({"result": False, "message": self.loader.get("error.some_roles_not_exist")})
+        # 获取拥有该角色的组织，支持按组名筛选
+        queryset = role.group_set.all()
+        if search:
+            queryset = queryset.filter(Q(name__icontains=search) | Q(display_name__icontains=search))
 
-            # 验证角色是否存在
-            try:
-                role = Role.objects.get(id=role_id)
-            except Role.DoesNotExist:
-                return JsonResponse({"result": False, "message": self.loader.get("error.some_roles_not_exist")})
-            # 获取拥有该角色的组织，支持按组名筛选
-            queryset = role.group_set.all()
-            if search:
-                queryset = queryset.filter(Q(name__icontains=search) | Q(display_name__icontains=search))
+        queryset = queryset.order_by("-id")
 
-            queryset = queryset.order_by("-id")
+        # 使用分页功能
+        data, total = self.search_by_page(queryset, request, ["id", "name", "parent_id"])
 
-            # 使用分页功能
-            data, total = self.search_by_page(queryset, request, ["id", "name", "parent_id"])
-
-            return JsonResponse({"result": True, "data": {"items": data, "count": total}})
-
-        except Exception as e:
-            logger.exception(f"查询角色组织失败: {e}")
-            return JsonResponse({"result": False, "message": str(e)})
+        return JsonResponse({"result": True, "data": {"items": data, "count": total}})
 
     @action(detail=False, methods=["POST"])
     @HasPermission("user_group-Edit User")
@@ -305,20 +289,15 @@ class RoleViewSet(LanguageViewSet, ViewSetUtils):
         """
         查询一批组织的角色列表（去重）
         """
-        try:
-            group_ids = request.data.get("group_ids", [])
+        group_ids = request.data.get("group_ids", [])
 
-            if not isinstance(group_ids, list):
-                return JsonResponse({"result": False, "message": "group_ids must be a list"})
+        if not isinstance(group_ids, list):
+            return JsonResponse({"result": False, "message": "group_ids must be a list"})
 
-            if not group_ids:
-                return JsonResponse({"result": True, "data": []})
+        if not group_ids:
+            return JsonResponse({"result": True, "data": []})
 
-            # 查询这批组织的所有角色，去重
-            roles = Role.objects.filter(group__id__in=group_ids).distinct().values("id", "name", "app").order_by("id")
+        # 查询这批组织的所有角色,去重
+        roles = Role.objects.filter(group__id__in=group_ids).distinct().values("id", "name", "app").order_by("id")
 
-            return JsonResponse({"result": True, "data": list(roles)})
-
-        except Exception as e:
-            logger.exception(f"查询组织角色列表失败: {e}")
-            return JsonResponse({"result": False, "message": str(e)})
+        return JsonResponse({"result": True, "data": list(roles)})

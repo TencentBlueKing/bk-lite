@@ -192,13 +192,14 @@ def reset_pwd(request):
     try:
         data = _parse_request_data(request)
         username = data.get("username", "").strip()
+        domain = data.get("domain", "").strip()
         password = data.get("password", "")
 
         if not username or not password:
             return JsonResponse({"result": False, "message": _("Username or password cannot be empty")})
 
         client = _create_system_mgmt_client()
-        res = client.reset_pwd(username, password)
+        res = client.reset_pwd(username, domain, password)
 
         if not res.get("result"):
             logger.warning(f"Password reset failed for user: {username}")

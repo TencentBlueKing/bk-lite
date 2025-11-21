@@ -6,6 +6,7 @@
 import re
 import traceback
 
+from django.http import JsonResponse
 from django.utils.deprecation import MiddlewareMixin
 
 from apps.core.logger import system_mgmt_logger
@@ -49,46 +50,42 @@ class ErrorLogMiddleware(MiddlewareMixin):
             exception: 异常对象
 
         Returns:
-            None - 不干预原有异常处理流程
+            JsonResponse - 返回错误信息给前端
         """
-        try:
-            # 只处理 API 请求
-            if not request.path.startswith("/api/"):
-                return None
+        # 只处理 API 请求
+        if not request.path.startswith("/api/"):
+            return None
 
+        try:
             # 解析请求路径
             app, module = self._parse_path(request.path)
-            if not app:
-                return None
+            if app:
+                # 检查是否在白名单中（为空则记录所有）
+                if not self.ALLOWED_APPS or app in self.ALLOWED_APPS:
+                    # 获取用户信息
+                    username = self._get_username(request)
 
-            # 检查是否在白名单中（为空则记录所有）
-            if self.ALLOWED_APPS and app not in self.ALLOWED_APPS:
-                return None
+                    # 获取域名
+                    domain = request.get_host()
 
-            # 获取用户信息
-            username = self._get_username(request)
+                    # 构建错误信息
+                    error_message = self._build_error_message(request, exception)
 
-            # 获取域名
-            domain = request.get_host()
-
-            # 构建错误信息
-            error_message = self._build_error_message(request, exception)
-
-            # 记录错误日志
-            ErrorLog.objects.create(
-                username=username,
-                app=app,
-                module=module,
-                error_message=error_message,
-                domain=domain,
-            )
+                    # 记录错误日志
+                    ErrorLog.objects.create(
+                        username=username,
+                        app=app,
+                        module=module,
+                        error_message=error_message,
+                        domain=domain,
+                    )
 
         except Exception as e:
             # 记录错误日志失败不应影响原有流程
             system_mgmt_logger.error(f"Failed to log error via middleware: {str(e)}")
-
-        # 返回 None，让 Django 继续原有的异常处理流程
-        return None
+        system_mgmt_logger.debug(f"发生错误，错误如下： {str(exception)}")
+        # 返回统一的错误响应给前端
+        return JsonResponse({"result": False, "message": str(exception)}, status=500)
 
     def _parse_path(self, path):
         """
