@@ -3,6 +3,7 @@ export const nodeConfig = {
   restful: { icon: 'RESTfulAPI', color: 'purple' as const },
   openai: { icon: 'icon-test2', color: 'blue' as const },
   agents: { icon: 'zhinengti', color: 'orange' as const },
+  agui: { icon: 'zhinengti', color: 'teal' as const },
   condition: { icon: 'tiaojianfenzhi', color: 'yellow' as const },
   http: { icon: 'HTTP', color: 'cyan' as const },
   notification: { icon: 'alarm', color: 'pink' as const },
@@ -11,13 +12,14 @@ export const nodeConfig = {
   wechat_official: { icon: 'weixingongzhonghao', color: 'green' as const },
 } as const;
 
-export const TRIGGER_NODE_TYPES = ['celery', 'restful', 'openai', 'enterprise_wechat', 'dingtalk', 'wechat_official'] as const;
+export const TRIGGER_NODE_TYPES = ['celery', 'restful', 'openai', 'agui', 'enterprise_wechat', 'dingtalk', 'wechat_official'] as const;
 
 export const handleColorClasses = {
   green: '!bg-green-500',
   purple: '!bg-purple-500',
   blue: '!bg-blue-500',
   orange: '!bg-orange-500',
+  teal: '!bg-teal-500',
   yellow: '!bg-yellow-500',
   cyan: '!bg-cyan-500',
   pink: '!bg-pink-500',
@@ -55,6 +57,12 @@ export const getDefaultConfig = (nodeType: string) => {
         agentName: '',
         prompt: '',
         uploadedFiles: []
+      };
+    case 'agui':
+      return {
+        name: 'AG-UI',
+        inputParams: 'last_message',
+        outputParams: 'last_message'
       };
     case 'condition':
       return {
