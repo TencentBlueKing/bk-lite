@@ -4,7 +4,7 @@
 # @Author：bennie
 import json
 from sanic.log import logger
-from core.nast_request import NATSClient
+from core.nats import NATSClient
 from plugins.base_utils import convert_to_prometheus_format
 
 

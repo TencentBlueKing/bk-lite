@@ -17,8 +17,23 @@ const useNodeApi = () => {
   const getNodeList = async (params: {
     cloud_region_id?: number;
     filters?: SearchFilters;
+    page?: number;
+    page_size?: number;
   }) => {
-    return await post('/node_mgmt/api/node/search/', params);
+    const { page, page_size, ...bodyParams } = params;
+    // 构建 URL 查询参数
+    const queryParams = new URLSearchParams();
+    if (page !== undefined) {
+      queryParams.append('page', page.toString());
+    }
+    if (page_size !== undefined) {
+      queryParams.append('page_size', page_size.toString());
+    }
+    const queryString = queryParams.toString();
+    const url = queryString
+      ? `/node_mgmt/api/node/search/?${queryString}`
+      : '/node_mgmt/api/node/search/';
+    return await post(url, bodyParams);
   };
 
   // 删除节点

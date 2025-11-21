@@ -23,13 +23,15 @@ from apps.cmdb.tasks.celery_tasks import sync_collect_task
 
 
 class CollectModelService(object):
-    TASK = "apps.cmdb.celery_tasks.sync_collect_task"
+    TASK = "apps.cmdb.tasks.celery_tasks.sync_collect_task"
     NAME = "sync_collect_task"
 
     @staticmethod
     def format_params(data):
-        is_interval, scan_cycle = crontab_format(data["scan_cycle"]["value_type"], data["scan_cycle"]["value"])
-        not_required = ["access_point", "ip_range", "instances", "credential", "plugin_id", "params"]
+        is_interval, scan_cycle = crontab_format(
+            data["scan_cycle"]["value_type"], data["scan_cycle"]["value"])
+        not_required = ["access_point", "ip_range",
+                        "instances", "credential", "plugin_id", "params"]
         params = {
             "name": data["name"],
             "task_type": data["task_type"],
@@ -100,7 +102,8 @@ class CollectModelService(object):
                     cls.push_butch_node_params(instance)
             except Exception as e:
                 # 外部操作失败，记录详细错误日志并抛出异常，触发事务回滚
-                logger.error(f"创建采集任务时外部操作失败，事务将回滚: task_name={instance.name}, error={str(e)}")
+                logger.error(
+                    f"创建采集任务时外部操作失败，事务将回滚: task_name={instance.name}, error={str(e)}")
                 # 重新抛出异常，让事务回滚
                 raise BaseAppException(f"创建采集任务失败：{str(e)}")
 
@@ -121,7 +124,8 @@ class CollectModelService(object):
 
         # 使用数据库事务保证原子性
         with transaction.atomic():
-            serializer = view_self.get_serializer(instance, data=update_data, partial=True)
+            serializer = view_self.get_serializer(
+                instance, data=update_data, partial=True)
             serializer.is_valid(raise_exception=True)
             view_self.perform_update(serializer)
 
@@ -141,7 +145,8 @@ class CollectModelService(object):
                     cls.push_butch_node_params(instance)
             except Exception as e:
                 # 外部操作失败，记录错误并抛出异常，触发事务回滚
-                logger.error(f"更新采集任务时外部操作失败，事务将回滚: task_name={instance.name}, error={str(e)}")
+                logger.error(
+                    f"更新采集任务时外部操作失败，事务将回滚: task_name={instance.name}, error={str(e)}")
                 raise BaseAppException(f"更新采集任务失败：{str(e)}")
 
             # 只有所有操作都成功，才创建变更记录
@@ -176,7 +181,8 @@ class CollectModelService(object):
                     cls.delete_butch_node_params(instance_copy)
             except Exception as e:
                 # 外部资源清理失败，记录错误并抛出异常，触发事务回滚
-                logger.error(f"删除采集任务时外部资源清理失败，事务将回滚: task_name={instance_name}, error={str(e)}")
+                logger.error(
+                    f"删除采集任务时外部资源清理失败，事务将回滚: task_name={instance_name}, error={str(e)}")
                 raise BaseAppException(f"删除采集任务失败：{str(e)}")
 
             # 外部资源清理成功后，再删除数据库记录
@@ -198,7 +204,8 @@ class CollectModelService(object):
             instance.exec_status = CollectRunStatusType.SUCCESS
         except Exception as err:
             import traceback
-            logger.error("==任务审批采集失败== task_id={}, error={}".format(instance.id, traceback.format_exc()))
+            logger.error("==任务审批采集失败== task_id={}, error={}".format(
+                instance.id, traceback.format_exc()))
             result = {}
             format_data = {}
             instance.exec_status = CollectRunStatusType.ERROR

@@ -104,10 +104,7 @@ export const extractBkpullUrl = (url: string) => {
 
 export const extractVmvareUrl = (obj: any) => {
   try {
-    return {
-      ...obj.http_headers,
-      host: obj.tags.instance_id.replace('vc-', ''),
-    };
+    return obj.http_headers;
   } catch {
     return {};
   }

@@ -85,13 +85,21 @@ error:
 
   # 错误日志相关错误
   time_range_required: 时间范围是必填项
-  invalid_time_format: 时间格式无效，请使用ISO 8601格式
+  invalid_time_format: 时间格式无效,请使用ISO 8601格式
   invalid_time_range: 开始时间不能大于结束时间
   time_range_too_large: 时间跨度不能超过90天
   detail_not_supported: 不支持详情查询
   create_not_supported: 不支持手动创建
   update_not_supported: 不支持修改
   delete_not_supported: 不支持删除
+
+# 登录相关消息
+login:
+  account_locked: 账号已被锁定,请在 {minutes} 分钟后重试。
+  account_locked_too_many_attempts: 由于登录失败次数过多,账号已被锁定。请在 {minutes} 分钟后重试。
+  incorrect_password_with_attempts: 用户名或密码错误。剩余尝试次数:{attempts} 次。
+  password_expiring_soon: 您的密码将在 {days} 天后过期,请尽快修改密码。
+  password_expired: 您的密码已过期,请立即修改密码。
 
 # 成功消息
 success:

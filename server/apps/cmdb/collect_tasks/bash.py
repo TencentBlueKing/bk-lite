@@ -16,18 +16,21 @@ class BaseCollect(object):
 
     def format_params(self):
         if not self.task.instances:
-            return self.task.model_id, None, None, self.get_organization, None
+            # IP范围采集模式
+            organization = self.task.params.get("organization")
+            if organization is not None and not isinstance(organization, list):
+                organization = [organization]
+            return self.task.model_id, None, organization, None, not self.task.is_host
 
         instance = self.task.instances[0]
         model_id = instance["model_id"]
         inst_name = instance["inst_name"]
-        organization = instance["organization"]
+        organization = self.task.params.get(
+            "organization") or instance.get("organization")
+        if organization is not None and not isinstance(organization, list):
+            organization = [organization]
         inst_id = instance["_id"]
         return model_id, inst_name, organization, inst_id, not self.task.is_host
-
-    @property
-    def get_organization(self):
-        return self.task.params["organization"]
 
     @property
     def task_id(self):
@@ -50,16 +53,18 @@ class BaseCollect(object):
         return metrics_cannula.collect_data, format_data
 
     def format_collect_data(self, result):
-        format_data = {"add": [], "update": [], "delete": [], "association": []}
+        format_data = {"add": [], "update": [],
+                       "delete": [], "association": []}
         for value in result.values():
             for operator, datas in value.items():
                 for status, data in datas.items():
                     for i in data:
-
                         assos_result = i.pop("assos_result", {})
-                        format_assos_result = self.format_assos_result(assos_result)
+                        format_assos_result = self.format_assos_result(
+                            assos_result)
                         if format_assos_result:
-                            format_data["association"].extend(format_assos_result)
+                            format_data["association"].extend(
+                                format_assos_result)
 
                         _data = {"_status": status}
                         if status == "failed":

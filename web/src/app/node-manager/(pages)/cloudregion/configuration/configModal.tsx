@@ -43,7 +43,7 @@ const ConfigModal = forwardRef<ModalRef, ModalSuccess>(
     const configFormRef = useRef<FormInstance>(null);
     const [configVisible, setConfigVisible] = useState<boolean>(false);
     const [tableLoading, setTableLoading] = useState<boolean>(false);
-    const [configForm, setConfigForm] = useState<TableDataItem>();
+    const [configForm, setConfigForm] = useState<TableDataItem>({});
     const [editConfigId, setEditConfigId] = useState<string>('');
     const [type, setType] = useState<string>('add');
     const [varDataSource, setvarDataSource] = useState<VarSourceItem[]>([]);
@@ -52,10 +52,14 @@ const ConfigModal = forwardRef<ModalRef, ModalSuccess>(
     useImperativeHandle(ref, () => ({
       showModal: ({ type, form }) => {
         const _form = cloneDeep(form) as TableDataItem;
+        const formdata = {
+          ..._form,
+          configInfo: _form.content || _form.configInfo || '',
+        };
         setConfigVisible(true);
         setType(type);
         setEditConfigId(_form?.key);
-        setConfigForm(_form);
+        setConfigForm(formdata);
         initializeVarForm();
       },
     }));
@@ -328,7 +332,7 @@ const ConfigModal = forwardRef<ModalRef, ModalSuccess>(
               <ConfigEditorWithParams
                 varDataSource={varDataSource}
                 columns={columns}
-                value={''}
+                value={configForm.configInfo || ''}
                 onChange={undefined}
               ></ConfigEditorWithParams>
             }

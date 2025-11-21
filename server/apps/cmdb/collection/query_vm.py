@@ -11,13 +11,16 @@ from apps.cmdb.constants.constants import VICTORIAMETRICS_HOST
 VM查询的封装
 """
 
+
 class Collection:
     def __init__(self):
         self.url = f"{VICTORIAMETRICS_HOST}/prometheus/api/v1/query"
 
     def query(self, sql, timeout=60):
-        """查询数据"""
-        resp = requests.post(self.url, data={"query": sql}, timeout=timeout)
+        """查询数据 - 查询最近1小时内的最新数据"""
+        query_with_time = f"last_over_time({sql}[1h])"
+        params = {"query": query_with_time}
+        resp = requests.post(self.url, data=params, timeout=timeout)
         if resp.status_code != 200:
-            raise Exception(f"request error！{resp.text}")
+            raise Exception(f"request error!{resp.text}")
         return resp.json()

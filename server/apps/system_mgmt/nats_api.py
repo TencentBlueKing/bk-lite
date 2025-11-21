@@ -2,6 +2,7 @@ import base64
 import io
 import os
 import time
+from datetime import timedelta
 
 import jwt
 import pyotp
@@ -13,13 +14,15 @@ from django.utils import timezone
 import nats_client
 from apps.core.backends import cache
 from apps.core.logger import system_mgmt_logger as logger
+from apps.core.utils.loader import LanguageLoader
 from apps.system_mgmt.guest_menus import CMDB_MENUS, MONITOR_MENUS, OPSPILOT_GUEST_MENUS
 from apps.system_mgmt.models import App, Channel, ChannelChoices, Group, GroupDataRule, LoginModule, Menu, Role, User, UserRule
 from apps.system_mgmt.models.system_settings import SystemSettings
 from apps.system_mgmt.services.role_manage import RoleManage
 from apps.system_mgmt.utils.bk_user_utils import get_bk_user_info
-from apps.system_mgmt.utils.channel_utils import send_by_bot, send_email
+from apps.system_mgmt.utils.channel_utils import send_by_bot, send_email, send_email_to_user
 from apps.system_mgmt.utils.group_utils import GroupUtils
+from apps.system_mgmt.utils.password_validator import PasswordValidator
 
 
 def get_user_all_roles(user):
@@ -330,6 +333,14 @@ def send_msg_with_channel(channel_id, title, content, receivers):
 
 
 @nats_client.register
+def send_email_to_receiver(title, content, receiver):
+    channel_obj = Channel.objects.filter(channel_type=ChannelChoices.EMAIL).first()
+    channel_config = channel_obj.config
+    channel_obj.decrypt_field("smtp_pwd", channel_config)
+    return send_email_to_user(channel_config, content, [receiver], title)
+
+
+@nats_client.register
 def get_user_rules(group_id, username):
     rules = UserRule.objects.filter(username=username).filter(Q(group_rule__group_id=group_id) | Q(group_rule__group_name="OpsPilotGuest"))
     if not rules:
@@ -566,17 +577,102 @@ def login(username, password):
     if not user:
         return {"result": False, "message": "Username or password is incorrect"}
 
+    # 初始化语言加载器，使用用户的locale
+    loader = LanguageLoader(app="system_mgmt", default_lang=user.locale or "en")
+
+    # 检查账号是否被锁定
+    now = timezone.now()
+    if user.account_locked_until and user.account_locked_until > now:
+        # 计算剩余锁定时间（分钟）
+        remaining_minutes = int((user.account_locked_until - now).total_seconds() / 60) + 1
+        return {
+            "result": False,
+            "message": loader.get("login.account_locked", "Account is locked. Please try again after {minutes} minutes.").format(
+                minutes=remaining_minutes
+            ),
+        }
+
     # 使用 check_password 验证密码是否匹配
     if not check_password(password, user.password):
-        return {"result": False, "message": "Username or password is incorrect"}
-    return get_user_login_token(user, username)
+        # 密码错误，递增错误次数
+        user.password_error_count += 1
+
+        # 获取系统设置的最大重试次数和锁定时长
+        max_retry_setting = SystemSettings.objects.filter(key="pwd_set_max_retry_count").first()
+        max_retry_count = int(max_retry_setting.value) if max_retry_setting else 5
+
+        lock_duration_setting = SystemSettings.objects.filter(key="pwd_set_lock_duration").first()
+        lock_duration_minutes = int(lock_duration_setting.value) if lock_duration_setting else 30
+
+        # 如果错误次数达到或超过最大重试次数，锁定账号
+        if user.password_error_count >= max_retry_count:
+            user.account_locked_until = now + timedelta(minutes=lock_duration_minutes)
+            user.save()
+            return {
+                "result": False,
+                "message": loader.get(
+                    "login.account_locked_too_many_attempts",
+                    "Account locked due to too many failed attempts. Please try again after {minutes} minutes.",
+                ).format(minutes=lock_duration_minutes),
+            }
+
+        user.save()
+        remaining_attempts = max_retry_count - user.password_error_count
+        return {
+            "result": False,
+            "message": loader.get(
+                "login.incorrect_password_with_attempts", "Username or password is incorrect. {attempts} attempts remaining."
+            ).format(attempts=remaining_attempts),
+        }
+
+    # 密码正确，重置错误次数和锁定状态
+    user.password_error_count = 0
+    user.account_locked_until = None
+    user.save()
+
+    # 检查密码过期提醒
+    password_expiry_reminder = ""
+    if user.password_last_modified:
+        # 获取密码有效期和提醒提前天数
+        validity_period_setting = SystemSettings.objects.filter(key="pwd_set_validity_period").first()
+        validity_period_days = int(validity_period_setting.value) if validity_period_setting else 90
+
+        reminder_days_setting = SystemSettings.objects.filter(key="pwd_set_expiry_reminder_days").first()
+        reminder_days = int(reminder_days_setting.value) if reminder_days_setting else 7
+
+        password_expire_date = user.password_last_modified + timedelta(days=validity_period_days)
+        days_until_expire = (password_expire_date - now).days
+
+        # 如果在提醒期内且未过期，生成提醒消息
+        if 0 < days_until_expire <= reminder_days:
+            password_expiry_reminder = loader.get(
+                "login.password_expiring_soon", "Your password will expire in {days} day(s). Please change it soon."
+            ).format(days=days_until_expire)
+        elif days_until_expire <= 0:
+            password_expiry_reminder = loader.get("login.password_expired", "Your password has expired. Please change it immediately.")
+
+    result = get_user_login_token(user, username)
+    if result.get("result"):
+        result["data"]["password_expiry_reminder"] = password_expiry_reminder
+    return result
 
 
 @nats_client.register
-def reset_pwd(username, password):
+def reset_pwd(username, domain, password):
+    """
+    重置用户密码（NATS接口）
+
+    会进行密码复杂度校验
+    """
     user = User.objects.filter(username=username).first()
     if not user:
         return {"result": False, "message": "Username not exists"}
+
+    # 校验密码复杂度
+    is_valid, error_message = PasswordValidator.validate_password(password)
+    if not is_valid:
+        return {"result": False, "message": error_message}
+
     user.password = make_password(password)
     user.temporary_pwd = False
     user.save()

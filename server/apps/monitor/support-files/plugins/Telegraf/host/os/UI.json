@@ -74,7 +74,7 @@
         }
       ],
       "widget_props": {},
-      "data_transform": {
+      "transform_on_edit": {
         "origin_path": "child.content.config.tags.config_type",
         "to_form": {
           "array": true
@@ -92,7 +92,7 @@
       "widget_props": {
         "placeholder": "1_os_172.18.0.17"
       },
-      "data_transform": {
+      "transform_on_edit": {
         "origin_path": "child.content.instance.instance_id"
       }
     },
@@ -109,7 +109,7 @@
         "placeholder": "间隔",
         "addonAfter": "s"
       },
-      "data_transform": {
+      "transform_on_edit": {
         "origin_path": "child.content.config.interval",
         "to_form": {
           "regex": "^(\\d+)s$"

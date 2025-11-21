@@ -4,11 +4,14 @@
 from typing import Any, Dict
 
 import jinja2
+from django.conf import settings
 
 from apps.core.logger import opspilot_logger as logger
 from apps.opspilot.models import LLMSkill
 from apps.opspilot.services.llm_service import llm_service
+from apps.opspilot.utils.agui_chat import _generate_agui_stream
 from apps.opspilot.utils.chat_flow_utils.engine.core.base_executor import BaseNodeExecutor
+from apps.opspilot.utils.chat_server_helper import ChatServerHelper
 from apps.opspilot.utils.sse_chat import stream_chat
 
 
@@ -22,8 +25,37 @@ class AgentNode(BaseNodeExecutor):
         config = node_config["data"].get("config", {})
         input_key = config.get("inputParams", "last_message")
         skill_id = config.get("agent")
+
         llm_params, skill_name = self.set_llm_params(node_id, config, input_data)
         return stream_chat(llm_params, skill_name, {}, None, input_data.get(input_key), skill_id)
+
+    def agui_execute(self, node_id: str, node_config: Dict[str, Any], input_data: Dict[str, Any]):
+        """AGUI协议流式执行agent节点，yield AGUI格式数据"""
+        config = node_config["data"].get("config", {})
+        llm_params, skill_name = self.set_llm_params(node_id, config, input_data)
+
+        # 获取LLM模型并构建请求参数
+        from apps.opspilot.models import LLMModel, SkillTypeChoices
+
+        llm_model = LLMModel.objects.get(id=llm_params["llm_model"])
+        show_think = llm_params.pop("show_think", True)
+        llm_params.pop("group", None)
+
+        chat_kwargs, doc_map, title_map = llm_service.format_chat_server_kwargs(llm_params, llm_model)
+
+        # 根据技能类型选择不同的AGUI接口
+        url = f"{settings.METIS_SERVER_URL}/api/agent/invoke_chatbot_workflow_agui"
+        if llm_params.get("skill_type") == SkillTypeChoices.BASIC_TOOL:
+            url = f"{settings.METIS_SERVER_URL}/api/agent/invoke_react_agent_agui"
+        elif llm_params.get("skill_type") == SkillTypeChoices.PLAN_EXECUTE:
+            url = f"{settings.METIS_SERVER_URL}/api/agent/invoke_plan_and_execute_agent_agui"
+        elif llm_params.get("skill_type") == SkillTypeChoices.LATS:
+            url = f"{settings.METIS_SERVER_URL}/api/agent/invoke_lats_agent_agui"
+
+        headers = ChatServerHelper.get_chat_server_header()
+
+        # 直接使用内部生成器函数，避免双重包装
+        return _generate_agui_stream(url, headers, chat_kwargs, skill_name, show_think)
 
     def set_llm_params(self, node_id, config, input_data):
         input_key = config.get("inputParams", "last_message")
@@ -51,10 +83,8 @@ class AgentNode(BaseNodeExecutor):
             file_contents = []
             for file_info in uploaded_files:
                 if isinstance(file_info, dict) and "name" in file_info and "content" in file_info:
-                    file_name = file_info["name"]
                     file_content = file_info["content"]
                     file_contents.append(file_content)
-                    logger.info(f"智能体节点 {node_id}: 加载文件 {file_name}")
 
             if file_contents:
                 contents = "\n".join(file_contents)
@@ -82,8 +112,6 @@ class AgentNode(BaseNodeExecutor):
 
                 # 将组合后的 prompt 追加到技能的 prompt 后面
                 final_message = f"{combined_prompt}\n{message}"
-
-                logger.info(f"智能体节点 {node_id}: 追加了自定义prompt和{len(uploaded_files)}个文件内容")
 
             except Exception as e:
                 logger.error(f"智能体节点 {node_id} prompt渲染失败: {str(e)}")
@@ -121,7 +149,6 @@ class AgentNode(BaseNodeExecutor):
         data, _, _ = llm_service.invoke_chat(llm_params)
         result = data["message"]
 
-        logger.info(f"智能体节点 {node_id} 执行完成，输出长度: {len(result)}")
         return {output_key: result}
 
 

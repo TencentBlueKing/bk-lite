@@ -108,7 +108,7 @@ class GroupUtils(object):
         """
         将组字典组装成树结构
         :param group_dict: 组字典
-        :return: 根节点列表
+        :return: 根节点列表（按ID正序排序）
         """
         root_groups = []
 
@@ -119,6 +119,18 @@ class GroupUtils(object):
                 group_dict[parent_id]["subGroupCount"] += 1
             else:
                 root_groups.append(group_data)
+
+        # 对根节点按ID正序排序
+        root_groups.sort(key=lambda x: x["id"])
+
+        # 递归对所有子节点按ID正序排序
+        def sort_subgroups(groups):
+            for group in groups:
+                if group["subGroups"]:
+                    group["subGroups"].sort(key=lambda x: x["id"])
+                    sort_subgroups(group["subGroups"])
+
+        sort_subgroups(root_groups)
 
         return root_groups
 
@@ -157,3 +169,45 @@ class GroupUtils(object):
 
         # 使用统一的树组装方法
         return GroupUtils._assemble_tree(filtered_dict)
+
+    @staticmethod
+    def build_group_paths(groups, user_groups):
+        """
+        构建用户组的父级路径格式
+        例如：用户在 tree1 组，父级链为 Default -> tree1，则返回 "Default/tree1"
+
+        :param groups: 组查询集（需包含用户所在组及其所有父级组）
+        :param user_groups: 用户所属的组ID列表
+        :return: 组路径字符串列表，例如 ["Default/tree1", "Default/tree2"]
+        """
+        # 构建组字典，便于查找
+        group_dict = {}
+        for group in groups:
+            group_dict[group.id] = {
+                "id": group.id,
+                "name": group.name,
+                "parent_id": getattr(group, "parent_id", None),
+            }
+
+        # 递归获取从根到当前组的完整路径
+        def get_path_from_root(group_id):
+            """获取从根组织到当前组织的完整路径"""
+            path_parts = []
+            current_id = group_id
+
+            while current_id and current_id in group_dict:
+                current_group = group_dict[current_id]
+                path_parts.insert(0, current_group["name"])  # 插入到开头，保持从根到叶的顺序
+                current_id = current_group["parent_id"]
+
+            return "/".join(path_parts)
+
+        # 为用户所在的每个组构建路径信息
+        group_paths = []
+        for group_id in user_groups:
+            if group_id in group_dict:
+                path = get_path_from_root(group_id)
+                group_paths.append(path)
+
+        logger.info(f"构建组路径完成，用户组数量: {len(user_groups)}, 路径数量: {len(group_paths)}")
+        return group_paths

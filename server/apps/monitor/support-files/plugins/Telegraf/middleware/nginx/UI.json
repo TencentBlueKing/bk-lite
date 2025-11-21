@@ -17,7 +17,7 @@
       "widget_props": {
         "placeholder": "http://example.com/status"
       },
-      "data_transform": {
+      "transform_on_edit": {
         "origin_path": "child.content.config.url"
       }
     },
@@ -34,7 +34,7 @@
         "placeholder": "间隔",
         "addonAfter": "s"
       },
-      "data_transform": {
+      "transform_on_edit": {
         "origin_path": "child.content.config.interval",
         "to_form": {
           "regex": "^(\\d+)s$"

@@ -1,3 +1,5 @@
+import uuid
+
 from django.db import models
 from django.utils.functional import cached_property
 
@@ -176,9 +178,16 @@ class LLMSkill(MaintainerInfo):
     guide = models.TextField(default="", verbose_name="技能引导", blank=True, null=True)
     enable_suggest = models.BooleanField(default=False, verbose_name="启用建议")
     enable_query_rewrite = models.BooleanField(default=False, verbose_name="问题优化")
+    instance_id = models.CharField(max_length=36, blank=True, null=True, verbose_name="实例ID", db_index=True)
 
     def __str__(self):
         return self.name
+
+    def save(self, *args, **kwargs):
+        # 如果instance_id为空，自动生成UUID
+        if not self.instance_id:
+            self.instance_id = str(uuid.uuid4())
+        super().save(*args, **kwargs)
 
     class Meta:
         verbose_name = "LLM技能管理"

@@ -37,12 +37,13 @@ class SystemMgmt(object):
         return_data = self.client.run("generate_qr_code", username=username)
         return return_data
 
-    def reset_pwd(self, username, password):
+    def reset_pwd(self, username, domain, password):
         """
         :param username: 用户名
+        :param domain: 用户名
         :param password: 密码
         """
-        return_data = self.client.run("reset_pwd", username=username, password=password)
+        return_data = self.client.run("reset_pwd", username=username, domain=domain, password=password)
         return return_data
 
     def get_client(self, client_id, username="", domain="domain.com"):
@@ -118,6 +119,15 @@ class SystemMgmt(object):
         :param receivers: [1,2,3,4] 用户的ID列表
         """
         return_data = self.client.run("send_msg_with_channel", channel_id=channel_id, title=title, content=content, receivers=receivers)
+        return return_data
+
+    def send_email_to_receiver(self, title, content, receiver):
+        """
+        :param title: 邮件主题  企微传空字符串即可
+        :param content: 正文
+        :param receiver: [1,2,3,4] 用户的ID列表
+        """
+        return_data = self.client.run("send_email_to_receiver", title=title, content=content, receiver=receiver)
         return return_data
 
     def init_user_default_attributes(self, user_id, group_name, default_group_id):

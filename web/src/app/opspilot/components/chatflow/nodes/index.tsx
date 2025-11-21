@@ -14,6 +14,10 @@ export const OpenAIApiNode = (props: any) => (
   <BaseNode {...props} icon={nodeConfig.openai.icon} color={nodeConfig.openai.color} hasOutput={true} />
 );
 
+export const AgUiNode = (props: any) => (
+  <BaseNode {...props} icon={nodeConfig.agui.icon} color={nodeConfig.agui.color} hasOutput={true} />
+);
+
 export const AgentsNode = (props: any) => (
   <BaseNode {...props} icon={nodeConfig.agents.icon} color={nodeConfig.agents.color} hasInput={true} hasOutput={true} />
 );

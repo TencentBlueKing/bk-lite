@@ -5,11 +5,12 @@
   "scripts": {
     "preinstall": "npx -y only-allow pnpm",
     "generate-workspace": "node scripts/generate-workspace.js",
-    "dev": "next dev",
+    "dev": "next dev --hostname=0.0.0.0",
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
     "clean": "rm -rf .next",
+    "clean:all": "rm -rf .next node_modules/.cache",
     "type-check": "tsc -p tsconfig.lint.json --noEmit",
     "precommit": "node -r dotenv/config scripts/generate-tsconfig.js dotenv_config_path=.env.local",
     "prepare": "husky install",
