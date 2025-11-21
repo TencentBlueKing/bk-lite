@@ -4,37 +4,64 @@
   "collect_type": "docker",
   "config_type": ["docker"],
   "collector": "Telegraf",
-  "instance_id": "${cloud_region}_docker_${endpoint}",
+  "instance_id": "{{cloud_region}}_docker_{{endpoint}}",
   "form_fields": [
     {
       "name": "endpoint",
-      "label": "Endpoint",
+      "label": "端点",
       "type": "input",
       "required": true,
-      "disabled_in_edit": true,
-      "placeholder": "",
-      "description": "Endpoint说明",
-      "locale_key": "monitor.integrations.endpoint",
-      "description_locale_key": "monitor.integrations.endpointDes"
+      "visible_in": "edit",
+      "editable": false,
+      "description": "监控的Docker容器所在主机的网络地址，用于准确定位和采集性能数据",
+      "widget_props": {
+        "placeholder": "端点"
+      }
+    },
+    {
+      "name": "interval",
+      "label": "间隔",
+      "type": "inputNumber",
+      "required": true,
+      "default_value": 10,
+      "description": "监控数据的采集时间间隔（单位：秒）",
+      "widget_props": {
+        "min": 1,
+        "precision": 0,
+        "placeholder": "间隔",
+        "addonAfter": "s"
+      },
+      "transform_on_edit": {
+        "origin_path": "child.content.config.interval",
+        "to_form": {
+          "regex": "^(\\d+)s$"
+        },
+        "to_api": {
+          "suffix": "s"
+        }
+      }
     }
   ],
   "table_columns": [
     {
       "name": "node_ids",
       "label": "节点",
-      "type": "node_selector",
+      "type": "select",
       "required": true,
-      "locale_key": "monitor.integrations.nodes"
+      "widget_props": {
+        "placeholder": "请选择节点"
+      },
+      "enable_row_filter": true
     },
     {
       "name": "endpoint",
-      "label": "Endpoint",
+      "label": "端点",
       "type": "input",
       "required": true,
-      "locale_key": "monitor.integrations.endpoint",
       "change_handler": {
         "type": "simple",
-        "target": "instance_name"
+        "source_fields": ["endpoint"],
+        "target_field": "instance_name"
       }
     },
     {
@@ -42,15 +69,20 @@
       "label": "实例名称",
       "type": "input",
       "required": true,
-      "locale_key": "monitor.integrations.instanceName"
+      "widget_props": {
+        "placeholder": "实例名称",
+        "disabled": false
+      }
     },
     {
       "name": "group_ids",
-      "label": "分组",
-      "type": "group_selector",
+      "label": "组",
+      "type": "group_select",
       "required": false,
-      "locale_key": "monitor.integrations.groups"
+      "widget_props": {
+        "placeholder": "请选择组"
+      }
     }
   ],
-  "extra_fields": {}
+  "extra_edit_fields": {}
 }

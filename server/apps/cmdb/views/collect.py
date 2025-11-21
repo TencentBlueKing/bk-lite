@@ -19,7 +19,8 @@ from apps.cmdb.models.collect_model import CollectModels, OidMapping
 from apps.cmdb.serializers.collect_serializer import CollectModelSerializer, CollectModelLIstSerializer, \
     OidModelSerializer
 from apps.cmdb.services.collect_service import CollectModelService
-
+import os
+from django.conf import settings
 
 class CollectModelViewSet(ModelViewSet):
     queryset = CollectModels.objects.all()
@@ -34,6 +35,21 @@ class CollectModelViewSet(ModelViewSet):
     @action(methods=["get"], detail=False, url_path="collect_model_tree")
     def tree(self, request, *args, **kwargs):
         data = COLLECT_OBJ_TREE
+        return WebUtils.response_success(data)
+    
+    @HasPermission("auto_collection-View")
+    @action(methods=["get"], detail=False, url_path="collect_model_doc")
+    def modeldoc(self, request, *args, **kwargs):
+        model_id = request.GET.get("id")
+        file_name = str(model_id) + ".md"
+        template_dir = os.path.join(settings.BASE_DIR, "apps/cmdb/support-files/plugins_doc")
+        file_path = os.path.join(template_dir, file_name)
+        data = ""
+        try:
+            with open(file_path, "r", encoding="utf-8") as f:
+                data = f.read()
+        except Exception as e:
+            data = "未找到对应的文档！"
         return WebUtils.response_success(data)
 
     @HasPermission("auto_collection-View")

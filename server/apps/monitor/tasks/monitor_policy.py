@@ -30,10 +30,10 @@ def scan_policy_task(policy_id):
             raise BaseAppException(f"未找到ID为 {policy_id} 的监控策略")
 
         # 检查策略是否启用
-        if not policy_obj.enable:
-            duration = time.time() - start_time
-            logger.info(f"监控策略 [{policy_id}] 未启用，跳过执行，耗时: {duration:.2f}s")
-            return {"success": True, "duration": duration, "message": "策略未启用"}
+        # if not policy_obj.enable:
+        #     duration = time.time() - start_time
+        #     logger.info(f"监控策略 [{policy_id}] 未启用，跳过执行，耗时: {duration:.2f}s")
+        #     return {"success": True, "duration": duration, "message": "策略未启用"}
 
         # 更新最后执行时间
         current_time = datetime.now(timezone.utc)

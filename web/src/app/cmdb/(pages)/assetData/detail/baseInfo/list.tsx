@@ -54,9 +54,15 @@ const InfoList: React.FC<AssetDataFieldProps> = ({
     type: string;
   }) => {
     const fieldKey = config.id;
-    const fieldVaule = config.values[fieldKey];
+    let fieldValue = config.values[fieldKey];
+
+    const fieldAttr = attrList.find((item) => item.attr_id === fieldKey);
+    if (fieldAttr?.attr_type === 'organization' && fieldValue != null) {
+      fieldValue = Array.isArray(fieldValue) ? fieldValue : [fieldValue];
+    }
+
     const params: any = {};
-    params[fieldKey] = fieldVaule;
+    params[fieldKey] = fieldValue;
     await updateInstance(instId, params);
     message.success(t('successfullyModified'));
     const list = deepClone(attrList);
@@ -71,7 +77,7 @@ const InfoList: React.FC<AssetDataFieldProps> = ({
       (config.type === 'fail' && !target?.is_required)
     ) {
       list[index].isEdit = false;
-      list[index].value = fieldVaule;
+      list[index].value = fieldValue;
       setAttrList(list);
     }
     onsuccessEdit();

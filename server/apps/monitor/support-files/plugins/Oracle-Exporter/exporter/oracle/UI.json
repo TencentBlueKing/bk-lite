@@ -7,7 +7,7 @@
   "instance_id": "{{cloud_region}}_{{ENV_HOST}}_{{ENV_PORT}}",
   "form_fields": [
     {
-      "name": "USER",
+      "name": "ENV_USER",
       "label": "用户名",
       "type": "input",
       "required": true,
@@ -15,12 +15,12 @@
       "widget_props": {
         "placeholder": "用户名"
       },
-      "data_transform": {
+      "transform_on_edit": {
         "origin_path": "base.env_config.USER"
       }
     },
     {
-      "name": "PASSWORD",
+      "name": "ENV_PASSWORD",
       "label": "密码",
       "type": "password",
       "required": true,
@@ -28,12 +28,12 @@
       "widget_props": {
         "placeholder": "密码"
       },
-      "data_transform": {
+      "transform_on_edit": {
         "origin_path": "base.env_config.PASSWORD"
       }
     },
     {
-      "name": "SERVICE_NAME",
+      "name": "ENV_SERVICE_NAME",
       "label": "服务名称",
       "type": "input",
       "required": true,
@@ -41,12 +41,12 @@
       "widget_props": {
         "placeholder": "服务名称"
       },
-      "data_transform": {
+      "transform_on_edit": {
         "origin_path": "base.env_config.SERVICE_NAME"
       }
     },
     {
-      "name": "LISTEN_PORT",
+      "name": "ENV_LISTEN_PORT",
       "label": "监听端口",
       "type": "inputNumber",
       "required": true,
@@ -57,12 +57,12 @@
         "precision": 0,
         "placeholder": "监听端口"
       },
-      "data_transform": {
+      "transform_on_edit": {
         "origin_path": "base.env_config.LISTEN_PORT"
       }
     },
     {
-      "name": "HOST",
+      "name": "ENV_HOST",
       "label": "主机",
       "type": "input",
       "required": true,
@@ -71,12 +71,12 @@
       "widget_props": {
         "placeholder": "主机地址"
       },
-      "data_transform": {
+      "transform_on_edit": {
         "origin_path": "base.env_config.HOST"
       }
     },
     {
-      "name": "PORT",
+      "name": "ENV_PORT",
       "label": "端口",
       "type": "inputNumber",
       "required": true,
@@ -87,7 +87,7 @@
         "precision": 0,
         "placeholder": "端口"
       },
-      "data_transform": {
+      "transform_on_edit": {
         "origin_path": "base.env_config.PORT"
       }
     },
@@ -104,7 +104,7 @@
         "placeholder": "间隔",
         "addonAfter": "s"
       },
-      "data_transform": {
+      "transform_on_edit": {
         "origin_path": "child.content.config.interval",
         "to_form": {
           "regex": "^(\\d+)s$"

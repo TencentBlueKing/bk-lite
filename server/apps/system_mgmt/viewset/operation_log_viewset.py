@@ -11,6 +11,7 @@ from rest_framework.response import Response
 from apps.core.utils.viewset_utils import LanguageViewSet
 from apps.system_mgmt.models import OperationLog
 from apps.system_mgmt.serializers.operation_log_serializer import OperationLogSerializer
+from apps.system_mgmt.utils.group_filter_mixin import GroupFilterMixin
 
 
 class OperationLogFilter(filters.FilterSet):
@@ -54,12 +55,14 @@ class OperationLogFilter(filters.FilterSet):
         return queryset
 
 
-class OperationLogViewSet(LanguageViewSet):
+class OperationLogViewSet(GroupFilterMixin, LanguageViewSet):
     """
     操作日志视图集
 
     提供操作日志的查询和筛选功能，不支持创建、修改、删除操作
     操作日志由系统自动记录
+
+    继承GroupFilterMixin实现基于current_team的组过滤
     """
 
     queryset = OperationLog.objects.all().order_by("-created_at")

@@ -4,7 +4,7 @@
   "collect_type": "jmx",
   "config_type": ["jboss"],
   "collector": "JBoss-JMX",
-  "instance_id": "${jmx_url}",
+  "instance_id": "{{jmx_url}}",
   "form_fields": [
     {
       "name": "username",
@@ -42,7 +42,7 @@
       "description": "监听端口说明",
       "locale_key": "monitor.integrations.listeningPort",
       "description_locale_key": "monitor.integrations.listeningPortDes",
-      "data_transform": {
+      "transform_on_edit": {
         "origin_path": "base.env_config.LISTEN_PORT",
         "to_form": {
           "type": "number"
@@ -96,5 +96,5 @@
       "locale_key": "monitor.integrations.groups"
     }
   ],
-  "extra_fields": {}
+  "extra_edit_fields": {}
 }

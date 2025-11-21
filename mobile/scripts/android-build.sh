@@ -36,22 +36,19 @@ done
 echo "📱 构建 Android APK ($BUILD_TYPE)"
 echo ""
 
-# 1. 构建 Next.js
-pnpm run build
-
-# 2. 加载环境变量（仅在 Unix 系统）
+# 1. 加载环境变量（仅在 Unix 系统）
 if [ -f ".android-env.sh" ]; then
   source .android-env.sh
 fi
 
-# 3. 初始化 Android 项目（如果不存在）
+# 2. 初始化 Android 项目（如果不存在）
 if [ ! -d "src-tauri/gen/android" ]; then
   echo ""
   echo "⚙️  初始化 Android 项目..."
   pnpm tauri android init
 fi
 
-# 4. 复制自定义 MainActivity（核心修复）
+# 3. 复制自定义 MainActivity（核心修复）
 CUSTOM_MAIN="src-tauri/android/app/src/main/java/org/bklite/mobile/MainActivity.kt"
 TARGET_MAIN="src-tauri/gen/android/app/src/main/java/org/bklite/mobile/MainActivity.kt"
 
@@ -61,7 +58,7 @@ if [ -f "$CUSTOM_MAIN" ]; then
   echo "✅ MainActivity 已更新"
 fi
 
-# 5. 构建 APK
+# 4. 构建 APK
 if [ "$BUILD_AAB" == "true" ]; then
   # 构建 AAB
   pnpm tauri android build --aab
@@ -88,7 +85,7 @@ else
   echo "📦 APK 位置: src-tauri/gen/android/app/build/outputs/apk/"
 fi
 
-# 6. 自动安装（如果指定了 --install 参数）
+# 5. 自动安装（如果指定了 --install 参数）
 if [ "$AUTO_INSTALL" == "true" ] && [ "$BUILD_AAB" != "true" ]; then
   echo ""
   echo "📲 开始安装到设备..."

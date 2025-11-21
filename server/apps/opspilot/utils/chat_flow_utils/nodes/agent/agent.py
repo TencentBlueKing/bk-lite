@@ -8,6 +8,7 @@ import jinja2
 from apps.core.logger import opspilot_logger as logger
 from apps.opspilot.models import LLMSkill
 from apps.opspilot.services.llm_service import llm_service
+from apps.opspilot.utils.agui_chat import stream_agui_chat
 from apps.opspilot.utils.chat_flow_utils.engine.core.base_executor import BaseNodeExecutor
 from apps.opspilot.utils.sse_chat import stream_chat
 
@@ -24,6 +25,14 @@ class AgentNode(BaseNodeExecutor):
         skill_id = config.get("agent")
         llm_params, skill_name = self.set_llm_params(node_id, config, input_data)
         return stream_chat(llm_params, skill_name, {}, None, input_data.get(input_key), skill_id)
+
+    def agui_execute(self, node_id: str, node_config: Dict[str, Any], input_data: Dict[str, Any]):
+        """AGUI协议流式执行agent节点，yield AGUI格式数据"""
+        config = node_config["data"].get("config", {})
+        input_key = config.get("inputParams", "last_message")
+        skill_id = config.get("agent")
+        llm_params, skill_name = self.set_llm_params(node_id, config, input_data)
+        return stream_agui_chat(llm_params, skill_name, {}, None, input_data.get(input_key), skill_id)
 
     def set_llm_params(self, node_id, config, input_data):
         input_key = config.get("inputParams", "last_message")

@@ -64,10 +64,10 @@ export const extractMssqlUrl = (url: string) => {
     return {};
   }
   return {
-    username: matches[1],
-    password: matches[2],
-    host: matches[3],
-    port: matches[4],
+    host: matches[1],
+    port: matches[2],
+    username: matches[3],
+    password: matches[4],
   };
 };
 
@@ -104,10 +104,7 @@ export const extractBkpullUrl = (url: string) => {
 
 export const extractVmvareUrl = (obj: any) => {
   try {
-    return {
-      ...obj.http_headers,
-      host: obj.tags.instance_id.replace('vc-', ''),
-    };
+    return obj.http_headers;
   } catch {
     return {};
   }

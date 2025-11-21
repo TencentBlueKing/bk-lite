@@ -4,53 +4,101 @@
   "collect_type": "http",
   "config_type": ["vmware"],
   "collector": "Telegraf",
-  "instance_id": "${cloud_region}_vmware_${host}",
+  "instance_id": "{{cloud_region}_vmware_{{host}}",
   "form_fields": [
     {
       "name": "host",
       "label": "主机",
       "type": "input",
       "required": true,
-      "disabled_in_edit": true,
-      "placeholder": "",
-      "description": "主机地址",
-      "locale_key": "monitor.integrations.host",
-      "description_locale_key": "monitor.integrations.commonHostDes"
+      "visible_in": "edit",
+      "editable": false,
+      "description": "与设备进行通信的主机",
+      "widget_props": {
+        "placeholder": "主机"
+      }
     },
     {
       "name": "username",
       "label": "用户名",
       "type": "input",
-      "required": false,
-      "disabled_in_edit": true,
-      "locale_key": "monitor.integrations.username"
+      "required": true,
+      "editable": false,
+      "description": "用于访问接口的用户名",
+      "widget_props": {
+        "placeholder": "用户名"
+      },
+      "transform_on_create": {
+        "target_path": "custom_headers.username"
+      },
+      "transform_on_edit": {
+        "origin_path": "child.content.config.custom_headers.username"
+      }
     },
     {
       "name": "password",
       "label": "密码",
       "type": "password",
-      "required": false,
-      "disabled_in_edit": true,
-      "locale_key": "monitor.integrations.password"
+      "required": true,
+      "editable": false,
+      "description": "对应的登录密码",
+      "widget_props": {
+        "placeholder": "密码"
+      },
+      "transform_on_create": {
+        "target_path": "custom_headers.password"
+      },
+      "transform_on_edit": {
+        "origin_path": "child.content.config.custom_headers.password"
+      }
+    },
+    {
+      "name": "interval",
+      "label": "间隔",
+      "type": "inputNumber",
+      "required": true,
+      "default_value": 10,
+      "description": "监控数据的采集时间间隔（单位：秒）",
+      "widget_props": {
+        "min": 1,
+        "precision": 0,
+        "placeholder": "间隔",
+        "addonAfter": "s"
+      },
+      "transform_on_edit": {
+        "origin_path": "child.content.config.interval",
+        "to_form": {
+          "regex": "^(\\d+)s$"
+        },
+        "to_api": {
+          "suffix": "s"
+        }
+      }
     }
   ],
   "table_columns": [
     {
       "name": "node_ids",
       "label": "节点",
-      "type": "node_selector",
+      "type": "select",
       "required": true,
-      "locale_key": "monitor.integrations.nodes"
+      "widget_props": {
+        "placeholder": "请选择节点"
+      },
+      "enable_row_filter": true
     },
     {
       "name": "host",
       "label": "主机",
       "type": "input",
       "required": true,
-      "locale_key": "monitor.integrations.host",
+      "widget_props": {
+        "placeholder": "主机"
+      },
       "change_handler": {
         "type": "simple",
-        "target": "instance_name"
+        "source_fields": ["host"],
+        "target_field": "instance_name"
       }
     },
     {
@@ -58,15 +106,20 @@
       "label": "实例名称",
       "type": "input",
       "required": true,
-      "locale_key": "monitor.integrations.instanceName"
+      "widget_props": {
+        "placeholder": "实例名称",
+        "disabled": false
+      }
     },
     {
       "name": "group_ids",
-      "label": "分组",
-      "type": "group_selector",
+      "label": "组",
+      "type": "group_select",
       "required": false,
-      "locale_key": "monitor.integrations.groups"
+      "widget_props": {
+        "placeholder": "请选择组"
+      }
     }
   ],
-  "extra_fields": {}
+  "extra_edit_fields": {}
 }

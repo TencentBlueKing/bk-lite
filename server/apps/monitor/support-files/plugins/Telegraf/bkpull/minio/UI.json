@@ -4,50 +4,85 @@
   "collect_type": "bkpull",
   "config_type": ["minio"],
   "collector": "Telegraf",
-  "instance_id": "${cloud_region}_${host}_${port}",
+  "instance_id": "{{cloud_region}}_{{host}}_{{port}}",
   "form_fields": [
     {
       "name": "host",
       "label": "主机",
       "type": "input",
       "required": true,
-      "disabled_in_edit": true,
-      "placeholder": "",
-      "description": "主机地址",
-      "locale_key": "monitor.integrations.host",
-      "description_locale_key": "monitor.integrations.commonHostDes"
+      "visible_in": "edit",
+      "description": "与设备进行通信的主机",
+      "widget_props": {
+        "placeholder": "主机地址"
+      },
+      "transform_on_edit": {
+        "origin_path": "base.env_config.host"
+      }
     },
     {
       "name": "port",
       "label": "端口",
       "type": "inputNumber",
       "required": true,
-      "min": 1,
-      "precision": 0,
-      "disabled_in_edit": true,
-      "description": "端口说明",
-      "locale_key": "monitor.integrations.port",
-      "description_locale_key": "monitor.integrations.commonPortDes"
+      "visible_in": "edit",
+      "description": "与设备进行通信的端口",
+      "widget_props": {
+        "min": 1,
+        "precision": 0,
+        "placeholder": "端口"
+      },
+      "transform_on_edit": {
+        "origin_path": "base.env_config.port"
+      }
+    },
+    {
+      "name": "interval",
+      "label": "间隔",
+      "type": "inputNumber",
+      "required": true,
+      "default_value": 10,
+      "description": "监控数据的采集时间间隔（单位：秒）",
+      "widget_props": {
+        "min": 1,
+        "precision": 0,
+        "placeholder": "间隔",
+        "addonAfter": "s"
+      },
+      "transform_on_edit": {
+        "origin_path": "child.content.config.interval",
+        "to_form": {
+          "regex": "^(\\d+)s$"
+        },
+        "to_api": {
+          "suffix": "s"
+        }
+      }
     }
   ],
   "table_columns": [
     {
       "name": "node_ids",
       "label": "节点",
-      "type": "node_selector",
+      "type": "select",
       "required": true,
-      "locale_key": "monitor.integrations.nodes"
+      "widget_props": {
+        "placeholder": "请选择节点"
+      },
+      "enable_row_filter": true
     },
     {
       "name": "host",
       "label": "主机",
       "type": "input",
       "required": true,
-      "locale_key": "monitor.integrations.host",
+      "widget_props": {
+        "placeholder": "主机"
+      },
       "change_handler": {
         "type": "combine",
-        "target": "instance_name",
-        "fields": ["host", "port"],
+        "source_fields": ["host", "port"],
+        "target_field": "instance_name",
         "separator": ":"
       }
     },
@@ -56,13 +91,15 @@
       "label": "端口",
       "type": "inputNumber",
       "required": true,
-      "min": 1,
-      "precision": 0,
-      "locale_key": "monitor.integrations.port",
+      "widget_props": {
+        "min": 1,
+        "precision": 0,
+        "placeholder": "端口"
+      },
       "change_handler": {
         "type": "combine",
-        "target": "instance_name",
-        "fields": ["host", "port"],
+        "source_fields": ["host", "port"],
+        "target_field": "instance_name",
         "separator": ":"
       }
     },
@@ -71,15 +108,19 @@
       "label": "实例名称",
       "type": "input",
       "required": true,
-      "locale_key": "monitor.integrations.instanceName"
+      "widget_props": {
+        "placeholder": "实例名称"
+      }
     },
     {
       "name": "group_ids",
-      "label": "分组",
-      "type": "group_selector",
+      "label": "组",
+      "type": "group_select",
       "required": false,
-      "locale_key": "monitor.integrations.groups"
+      "widget_props": {
+        "placeholder": "请选择组"
+      }
     }
   ],
-  "extra_fields": {}
+  "extra_edit_fields": {}
 }

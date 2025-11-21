@@ -170,6 +170,7 @@ func main() {
 	local.SubscribeLocalExecutor(nc, &cfg.NATSInstanceID)
 	local.SubscribeDownloadToLocal(nc, &cfg.NATSInstanceID)
 	local.SubscribeUnzipToLocal(nc, &cfg.NATSInstanceID)
+	local.SubscribeHealthCheck(nc, &cfg.NATSInstanceID)
 
 	ssh.SubscribeSSHExecutor(nc, &cfg.NATSInstanceID)
 	ssh.SubscribeDownloadToRemote(nc, &cfg.NATSInstanceID)
