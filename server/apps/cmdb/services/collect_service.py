@@ -58,10 +58,10 @@ class CollectModelService(object):
         """
         node = NodeParamsFactory.get_node_params(instance)
         node_params = node.main()
-        logger.info(f"推送节点参数: {node_params}")
+        logger.debug(f"推送节点参数: {node_params}")
         node_mgmt = NodeMgmt()
         result = node_mgmt.batch_add_node_child_config(node_params)
-        logger.info(f"推送节点参数结果: {result}")
+        logger.debug(f"推送节点参数结果: {result}")
 
     @staticmethod
     def delete_butch_node_params(instance):
@@ -70,10 +70,10 @@ class CollectModelService(object):
         """
         node = NodeParamsFactory.get_node_params(instance)
         node_params = node.main(operator="delete")
-        logger.info(f"删除节点参数: {node_params}")
+        logger.debug(f"删除节点参数: {node_params}")
         node_mgmt = NodeMgmt()
         result = node_mgmt.delete_child_configs(node_params)
-        logger.info(f"删除节点参数结果: {result}")
+        logger.debug(f"删除节点参数结果: {result}")
 
     @classmethod
     def create(cls, request, view_self):
