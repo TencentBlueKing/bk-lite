@@ -184,11 +184,10 @@ class SupervisorMultiAgentNode(ToolsNodes):
 
         logger.info("=" * 80)
 
-        # 不将 Supervisor 的内部决策消息加入到消息流
-        # 避免在 agui_stream 中输出不必要的中间过程
         return {
             "next_action": next_action,
-            "iterations": current_iteration
+            "iterations": current_iteration,
+            "messages": [response]  # 保留 Supervisor 的思考过程
         }
 
     def _build_supervisor_prompt(self, request: SupervisorMultiAgentRequest, state: SupervisorMultiAgentState) -> str:
