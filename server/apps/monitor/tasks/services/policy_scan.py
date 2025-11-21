@@ -475,9 +475,13 @@ class MonitorPolicyScan:
             send_result = SystemMgmtUtils.send_msg_with_channel(
                 self.policy.notice_type_id, title, content, self.policy.notice_users
             )
-            logger.info(f"send notice success: {send_result}")
+            # 检查发送结果
+            if send_result.get("result") is False:
+                logger.error(f"send notice failed for policy {self.policy.name}: {send_result.get('message', 'Unknown error')}")
+            else:
+                logger.info(f"send notice success for policy {self.policy.name}: {send_result}")
         except Exception as e:
-            logger.error(f"send notice failed: {e}")
+            logger.error(f"send notice exception for policy {self.policy.name}: {e}", exc_info=True)
 
         return []
 
