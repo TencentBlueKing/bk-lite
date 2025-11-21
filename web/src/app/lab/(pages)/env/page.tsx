@@ -1,6 +1,6 @@
 "use client";
 import { Menu, Button, message } from 'antd';
-import { PlayCircleOutlined, PauseCircleOutlined, ToolOutlined } from '@ant-design/icons';
+import { PlayCircleOutlined, PauseCircleOutlined } from '@ant-design/icons';
 import stlyes from '@/app/lab/styles/index.module.scss';
 import { useState, useEffect, useRef } from 'react';
 import EntityList from '@/components/entity-list';
@@ -18,7 +18,7 @@ const EnvManage = () => {
     startEnv,
     stopEnv,
     restartEnv,
-    generateComposeYaml
+    // generateComposeYaml
   } = useLabEnv();
 
   const [tableData, setTableData] = useState<any[]>([]);
@@ -65,20 +65,20 @@ const EnvManage = () => {
     }
   };
 
-  // 生成配置
-  const handleSetup = async (id: string | number, e: React.MouseEvent) => {
-    e.stopPropagation();
-    setLoading(true);
-    try {
-      await generateComposeYaml(id);
-      message.success('生成成功')
-    } catch (e) {
-      console.log(e);
-      message.error('生成失败')
-    } finally {
-      setLoading(false);
-    }
-  };
+  // // 生成配置
+  // const handleSetup = async (id: string | number, e: React.MouseEvent) => {
+  //   e.stopPropagation();
+  //   setLoading(true);
+  //   try {
+  //     await generateComposeYaml(id);
+  //     message.success('生成成功')
+  //   } catch (e) {
+  //     console.log(e);
+  //     message.error('生成失败')
+  //   } finally {
+  //     setLoading(false);
+  //   }
+  // };
 
   // 重启环境
   const handleRestart = async (id: string | number) => {
@@ -159,17 +159,6 @@ const EnvManage = () => {
           {`creator: ${item.created_by || '--'}`}
         </p>
         <div className="flex gap-1">
-          <Button
-            // type="link"
-            color="blue" variant="link"
-            size="small"
-            icon={<ToolOutlined />}
-            onClick={(e) => handleSetup(item.id, e)}
-            loading={isStarting}
-            className="text-blue-600 hover:text-blue-700"
-          >
-            配置生成
-          </Button>
           {!isRunning && !isStarting && (
             <Button
               // type="link"

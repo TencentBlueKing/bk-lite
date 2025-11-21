@@ -3,6 +3,8 @@
 Lab 环境序列化器
 """
 
+import os
+import requests
 from rest_framework import serializers
 from apps.core.utils.serializers import AuthSerializer
 from apps.lab.models import LabEnv, LabImage, InfraInstance
@@ -59,7 +61,7 @@ class LabEnvSerializer(AuthSerializer):
         return obj.infra_instances.count()
     
     def create(self, validated_data):
-        """创建环境时，根据镜像ID自动创建实例"""
+        """创建环境时，根据镜像ID自动创建实例并生成 docker-compose 配置"""
         infra_images = validated_data.pop('infra_images', [])
         lab_env = super().create(validated_data)
         
@@ -67,16 +69,21 @@ class LabEnvSerializer(AuthSerializer):
         if infra_images:
             self._create_infra_instances_from_images(lab_env, infra_images)
         
+        # 生成并发送 docker-compose 配置
+        self._setup_docker_compose(lab_env)
+        
         return lab_env
     
     def update(self, instance, validated_data):
-        """更新环境时，如果提供了镜像列表，则更新实例"""
+        """更新环境时，如果提供了镜像列表，则更新实例并重新生成配置"""
         infra_images = validated_data.pop('infra_images', None)
         lab_env = super().update(instance, validated_data)
         
         # 如果提供了镜像列表，更新实例
         if infra_images is not None:
             self._update_infra_instances_from_images(lab_env, infra_images)
+            # 重新生成 docker-compose 配置
+            self._setup_docker_compose(lab_env)
         
         return lab_env
     
@@ -164,3 +171,59 @@ class LabEnvSerializer(AuthSerializer):
         
         # 根据新的镜像列表创建实例
         self._create_infra_instances_from_images(lab_env, image_ids)
+    
+    def _setup_docker_compose(self, lab_env):
+        """
+        生成并发送 docker-compose 配置到 webhook
+        
+        Args:
+            lab_env: Lab环境对象
+        """
+        from apps.lab.utils.compose_generator import ComposeGenerator
+        from apps.core.logger import opspilot_logger as logger
+        
+        try:
+            # 生成 docker-compose 配置
+            compose_config = ComposeGenerator.generate(lab_env)
+            
+            # 获取 webhook 基础 URL
+            webhook_base_url = os.getenv('WEBHOOK', 'http://localhost:8080/compose/')
+            if not webhook_base_url.endswith('/'):
+                webhook_base_url += '/'
+            
+            setup_url = f"{webhook_base_url}setup"
+            
+            # 准备请求数据
+            payload = {
+                "id": f"lab-env-{lab_env.id}",
+                "compose": compose_config
+            }
+            
+            logger.info(f"正在为环境 {lab_env.name} (ID: {lab_env.id}) 生成 docker-compose 配置")
+            logger.debug(f"Docker Compose 配置:\n{compose_config}")
+            
+            # 发送请求到 webhook
+            response = requests.post(
+                setup_url,
+                json=payload,
+                timeout=30,
+                headers={'Content-Type': 'application/json'}
+            )
+            
+            # 检查响应
+            if response.status_code == 200:
+                result = response.json()
+                if result.get('status') == 'success':
+                    logger.info(f"环境 {lab_env.name} 的 docker-compose 配置已成功发送")
+                else:
+                    error_msg = result.get('error', result.get('message', '未知错误'))
+                    logger.error(f"环境 {lab_env.name} 配置失败: {error_msg}")
+            else:
+                logger.error(f"Webhook 请求失败: HTTP {response.status_code}")
+                
+        except requests.exceptions.Timeout:
+            logger.error(f"Webhook 请求超时")
+        except requests.exceptions.RequestException as e:
+            logger.error(f"Webhook 请求异常: {e}")
+        except Exception as e:
+            logger.exception(f"生成配置时发生异常: {e}")

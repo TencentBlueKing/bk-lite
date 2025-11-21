@@ -52,7 +52,14 @@ services:
 {%- endif %}
 {%- endif %}
 {%- if ide_service.command %}
-    command: {{ ide_service.command | tojson }}
+    command:
+{%- if ide_service.command is string %}
+      - {{ ide_service.command }}
+{%- else %}
+{%- for cmd in ide_service.command %}
+      - {{ cmd }}
+{%- endfor %}
+{%- endif %}
 {%- endif %}
 {%- if ide_service.labels %}
     labels:
@@ -97,7 +104,14 @@ services:
 {%- endif %}
 {%- endif %}
 {%- if service.command %}
-    command: {{ service.command | tojson }}
+    command:
+{%- if service.command is string %}
+      - {{ service.command }}
+{%- else %}
+{%- for cmd in service.command %}
+      - {{ cmd }}
+{%- endfor %}
+{%- endif %}
 {%- endif %}
 {%- if service.labels %}
     labels:
