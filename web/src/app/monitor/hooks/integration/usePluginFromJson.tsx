@@ -140,6 +140,7 @@ export const usePluginFromJson = () => {
                 nodeList: tableConfig.nodeList,
                 instance_id: config.instance_id,
                 config_type_field: config.config_type_field,
+                formFields: formFields,
               }
             );
           },
@@ -163,12 +164,11 @@ export const usePluginFromJson = () => {
           getDefaultForm: (apiData: any) => {
             const formValues: any = {};
             formFields?.forEach((field: any) => {
-              const { name, data_transform } = field;
-
-              if (data_transform) {
+              const { name, transform_on_edit } = field;
+              if (transform_on_edit) {
                 formValues[name] = DataMapper.transformValue(
                   null,
-                  data_transform,
+                  transform_on_edit,
                   'toForm',
                   apiData
                 );
@@ -190,15 +190,15 @@ export const usePluginFromJson = () => {
               },
             };
             formFields?.forEach((field: any) => {
-              const { name, data_transform } = field;
+              const { name, transform_on_edit } = field;
               const formValue = formData[name];
               if (formValue === undefined) {
                 return;
               }
-              if (data_transform) {
+              if (transform_on_edit) {
                 const transformedValue = DataMapper.transformValue(
                   formValue,
-                  data_transform,
+                  transform_on_edit,
                   'toApi',
                   undefined,
                   formData
@@ -206,10 +206,17 @@ export const usePluginFromJson = () => {
                 if (transformedValue === undefined) {
                   return;
                 }
-                const targetPath =
-                  typeof data_transform === 'string'
-                    ? data_transform
-                    : data_transform.origin_path || data_transform.originPath;
+                // 获取目标路径
+                let targetPath;
+                if (typeof transform_on_edit === 'string') {
+                  // 兼容旧格式：字符串直接作为路径
+                  targetPath = transform_on_edit;
+                } else {
+                  // 优先使用 origin_path（完整路径），这是 edit 模式的标准方式
+                  targetPath =
+                    transform_on_edit.origin_path ||
+                    transform_on_edit.originPath;
+                }
 
                 if (targetPath) {
                   DataMapper.setNestedValue(
@@ -220,20 +227,21 @@ export const usePluginFromJson = () => {
                 }
               }
             });
-            if (config.extra_fields) {
-              Object.entries(config.extra_fields).forEach(
-                ([fieldName, fieldConfig]: [string, any]) => {
+            // 处理额外字段（extra_edit_fields）
+            if (config.extra_edit_fields) {
+              Object.entries(config.extra_edit_fields).forEach(
+                ([fieldName, transformConfig]: [string, any]) => {
                   console.log(fieldName);
-                  const { data_transform } = fieldConfig;
-                  if (data_transform) {
+                  // transformConfig 直接是转换配置，不再有嵌套的 transform_on_edit
+                  if (transformConfig) {
                     const transformedValue = DataMapper.transformValue(
                       null,
-                      data_transform,
+                      transformConfig,
                       'toApi',
                       undefined,
                       formData
                     );
-                    const targetPath = data_transform.origin_path;
+                    const targetPath = transformConfig.origin_path;
                     if (targetPath && transformedValue !== undefined) {
                       DataMapper.setNestedValue(
                         result,
