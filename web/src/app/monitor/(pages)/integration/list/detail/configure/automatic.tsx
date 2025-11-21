@@ -470,7 +470,7 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
               ]}
             >
               <CustomTable
-                scroll={{ y: 'calc(100vh - 490px)', x: 'calc(100vw - 320px)' }}
+                scroll={{ x: 'calc(100vw - 320px)' }}
                 dataSource={dataSource}
                 columns={columns}
                 rowKey="key"
