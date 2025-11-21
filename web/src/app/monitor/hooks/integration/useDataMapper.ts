@@ -25,7 +25,7 @@ export class DataMapper {
         ? this.getNestedValue(apiData, dataTransform)
         : value;
     }
-    // 新格式：{ origin_path, to_form, to_api }
+    // 新格式 transform_on_edit：{ origin_path, to_form, to_api }
     const { origin_path, to_form, to_api } = dataTransform;
     let processedValue = value;
     // 回显到表单
@@ -123,6 +123,7 @@ export class DataMapper {
       nodeList?: any[];
       instance_id?: string;
       config_type_field?: string; // 从表单字段获取config_type的字段名(如主机的metric_type)
+      formFields?: any[]; // 表单字段配置数组，用于处理 transform_on_create
     }
   ) {
     // 获取config_type数组
@@ -140,9 +141,42 @@ export class DataMapper {
         ? context.config_type
         : [context.config_type];
     }
+
+    // 处理表单字段的 transform_on_create（auto 模式专用的字段转换配置）
+    const processedFormData: any = {};
+    const fieldsToDelete: string[] = []; // 记录已转换到嵌套路径的字段名，避免重复出现在顶层
+    if (context.formFields) {
+      context.formFields.forEach((field: any) => {
+        const { name, transform_on_create } = field;
+        const fieldValue = formData[name];
+        if (fieldValue !== undefined && transform_on_create?.target_path) {
+          // 如果字段有 transform_on_create.target_path 配置，设置到指定路径
+          // 例如：username -> custom_headers.username
+          this.setNestedValue(
+            processedFormData,
+            transform_on_create.target_path,
+            fieldValue
+          );
+          // 标记该字段已处理，后续不再复制到顶层
+          fieldsToDelete.push(name);
+        } else if (fieldValue !== undefined) {
+          // 普通字段直接复制到顶层
+          processedFormData[name] = fieldValue;
+        }
+      });
+      // 复制其他未在配置中的字段（排除已转换的字段）
+      Object.keys(formData).forEach((key) => {
+        if (!processedFormData[key] && !fieldsToDelete.includes(key)) {
+          processedFormData[key] = formData[key];
+        }
+      });
+    } else {
+      // 没有 formFields 配置时，直接使用原始 formData
+      Object.assign(processedFormData, formData);
+    }
     // 构建configs数组：每个config_type生成一个config
     const configs = configTypes.map((type: string) => ({
-      ...formData,
+      ...processedFormData,
       type, // config的type字段
     }));
     // 转换 instances 部分

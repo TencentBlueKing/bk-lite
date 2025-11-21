@@ -41,7 +41,7 @@
 | `instance_id` | string | 否 | 实例ID生成模板（仅 auto 模式使用） |
 | `form_fields` | array | 是 | 表单字段配置（auto 和 edit 模式共用） |
 | `table_columns` | array | 否 | 表格列配置（仅 auto 模式使用） |
-| `extra_fields` | object | 否 | 额外字段配置（仅 edit 模式使用） |
+| `extra_edit_fields` | object | 否 | 额外字段配置（仅 edit 模式使用） |
 
 **重要变化：**
 - 移除了 `auto` 和 `edit` 层级，所有配置平铺在顶层
@@ -49,7 +49,7 @@
 - 使用 `editable` 控制字段是否可编辑（edit 模式下禁用）
 - 使用 `visible_in` 控制字段可见性（'auto', 'edit', 'both'）
 - `table_columns` 仅在 auto 模式下使用
-- `extra_fields` 仅在 edit 模式下使用
+- `extra_edit_fields` 仅在 edit 模式下使用
 
 ---
 
@@ -570,7 +570,7 @@ auto 模式下可选择，edit 模式下仅显示（不可编辑）：
 // "region2_switch_snmp_192.168.1.102"
 ```
 
-### 2.5 extra_fields（额外字段）
+### 2.5 extra_edit_fields（额外字段）
 
 **位于顶层**，仅 edit 模式使用，用于生成不在表单中显示，但需要提交到 API 的字段。
 
@@ -583,14 +583,12 @@ auto 模式下可选择，edit 模式下仅显示（不可编辑）：
 
 ```json
 {
-  "extra_fields": {
+  "extra_edit_fields": {
     "agents": {
-      "data_transform": {
-        "origin_path": "child.content.config.agents",
-        "to_api": {
-          "template": "udp://{{ip}}:{{port}}",
-          "array": true
-        }
+      "origin_path": "child.content.config.agents",
+      "to_api": {
+        "template": "udp://{{ip}}:{{port}}",
+        "array": true
       }
     }
   }
@@ -610,8 +608,8 @@ auto 模式下可选择，edit 模式下仅显示（不可编辑）：
 **仅在 edit 模式有效**，用于定义字段在 **API 数据** 和 **表单数据** 之间的转换规则。
 
 可以在以下两个地方配置：
-1. `form_fields[].mode_config.edit.data_transform` - 表单字段的数据转换
-2. `extra_fields.{field_name}.data_transform` - 额外字段的数据转换
+1. `form_fields[].transform_on_edit` - 表单字段的数据转换
+2. `extra_edit_fields.{field_name}` - 额外字段的数据转换（直接配置转换规则，无需嵌套）
 
 ### 3.1 完整结构
 
@@ -795,17 +793,15 @@ auto 模式下可选择，edit 模式下仅显示（不可编辑）：
 }
 ```
 
-**示例4：extra_fields（额外字段）**
+**示例4：extra_edit_fields（额外字段）**
 ```json
 {
-  "extra_fields": {
+  "extra_edit_fields": {
     "agents": {
-      "data_transform": {
-        "origin_path": "child.content.config.agents",
-        "to_api": {
-          "template": "udp://{{ip}}:{{port}}",
-          "array": true
-        }
+      "origin_path": "child.content.config.agents",
+      "to_api": {
+        "template": "udp://{{ip}}:{{port}}",
+        "array": true
       }
     }
   }
@@ -934,7 +930,7 @@ auto 模式下可选择，edit 模式下仅显示（不可编辑）：
 }
 ```
 
-### 3.4 extra_fields（额外字段）
+### 3.4 extra_edit_fields（额外字段）
 
 用于生成不在表单中显示，但需要提交到 API 的字段。
 
@@ -946,14 +942,12 @@ auto 模式下可选择，edit 模式下仅显示（不可编辑）：
 #### 示例
 
 ```json
-"extra_fields": {
+"extra_edit_fields": {
   "agents": {
-    "data_transform": {
-      "origin_path": "child.content.config.agents",
-      "to_api": {
-        "template": "udp://{{ip}}:{{port}}",
-        "array": true
-      }
+    "origin_path": "child.content.config.agents",
+    "to_api": {
+      "template": "udp://{{ip}}:{{port}}",
+      "array": true
     }
   }
 }
@@ -1275,50 +1269,35 @@ extra_fields 生成
   "form_fields": [
     {
       "name": "ip",
-      "mode_config": {
-        "auto": { "visible": false },
-        "edit": {
-          "visible": true,
-          "widget_props": { "disabled": true },
-          "data_transform": {
-            "origin_path": "child.content.config.agents[0]",
-            "to_form": { "regex": "://([^:]+):" }
-          }
-        }
+      "visible_in": "edit",
+      "editable": false,
+      "transform_on_edit": {
+        "origin_path": "child.content.config.agents[0]",
+        "to_form": { "regex": "://([^:]+):" }
       }
     },
     {
       "name": "version",
-      "mode_config": {
-        "edit": {
-          "widget_props": { "disabled": true },
-          "data_transform": {
-            "origin_path": "child.content.config.version"
-          }
-        }
+      "editable": false,
+      "transform_on_edit": {
+        "origin_path": "child.content.config.version"
       }
     },
     {
       "name": "community",
       "dependency": { "field": "version", "value": 2 },
-      "mode_config": {
-        "edit": {
-          "data_transform": {
-            "origin_path": "child.content.config.community",
-            "to_api": {}
-          }
-        }
+      "transform_on_edit": {
+        "origin_path": "child.content.config.community",
+        "to_api": {}
       }
     }
   ],
-  "extra_fields": {
+  "extra_edit_fields": {
     "agents": {
-      "data_transform": {
-        "origin_path": "child.content.config.agents",
-        "to_api": {
-          "template": "udp://{{ip}}:{{port}}",
-          "array": true
-        }
+      "origin_path": "child.content.config.agents",
+      "to_api": {
+        "template": "udp://{{ip}}:{{port}}",
+        "array": true
       }
     }
   }
