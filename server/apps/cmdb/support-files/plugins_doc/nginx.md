@@ -1,34 +1,21 @@
 ## 说明
-
-基于 **TCP 协议**（TCP 传输，支持 SSL 加密），自动化采集 MySQL 实例数据并同步至 CMDB，支撑资源盘点、权限审计与故障排查。
-
+基于脚本方式采集版本与主配置信息，同步至 CMDB。
 
 ## 前置要求
-
-### 1. 账号权限
-
-*   创建专用账号（如cmdb\_collector），授予最小权限：SELECT（系统库）、SHOW系列、PROCESS、SHOW STATUS，及mysql.user/mysql.db的查询权限。
-
-*   限制访问 IP（如@'192.168.1.%'）。
-
-### 2. 凭据准备
-
-*   核心：实例 IP、端口（默认 3306）、账号、密码。
-*   可选：SSL 证书路径（ca.pem等）、字符集（推荐utf8mb4）。
-
-### 3. 环境检查
-*   网络：开放 3306 端口，用telnet/nc验证连通性。
-*   依赖：JDBC 驱动（mysql-connector-java 8.0.30+）。
-*   数据库：max\_connections预留 5 个连接，skip\_networking=OFF。
+1. 主机已安装Agent（下发安装agent请访问：节点管理）
+2. nginx已启动
 
 ## 采集内容
-
-### 1. 实例基础信息
-
-| Key 名称                     | 含义                          |
-| :------------------------- | :-------------------------- |
-| mysql.instance.ip          | 实例 IP（如 192.168.1.200）      |
-| mysql.instance.port        | 端口（默认 3306）                 |
-| mysql.instance.version     | 版本（如 8.0.32）                |
-| mysql.instance.status      | 状态（Running/Down）            |
-| mysql.instance.start\_time | 启动时间（YYYY-MM-DD HH\:MM\:SS） |
+| Key 名称 | 含义 |
+| :----------- | :--- |
+| inst_name | 实例展示名：`{内网IP}-nginx-{端口}` |
+| bk_obj_id | 固定对象标识：nginx |
+| ip_addr | 主机内网 IP（hostname -I 第一个） |
+| port | 该进程监听端口集合（去重排序 & 拼接） |
+| version | Nginx 版本（nginx -v） |
+| bin_path | 可执行文件绝对路径（/proc/<pid>/exe 解析） |
+| conf_path | 主配置文件绝对路径（-c 指定或默认 $install_path/conf/nginx.conf） |
+| log_path | error_log 指令配置的日志文件绝对路径 |
+| server_name | server_name 指令提取的域名（空则为 unknown） |
+| include | include 指令引用的配置路径（绝对路径） |
+| ssl_version | 系统 OpenSSL 版本（openssl version） |
