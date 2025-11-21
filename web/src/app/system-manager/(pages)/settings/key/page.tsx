@@ -4,7 +4,7 @@ import { Button, Table, Space, Popconfirm, message, Tooltip, Spin } from 'antd';
 import { CopyOutlined, DeleteOutlined, PlusOutlined } from '@ant-design/icons';
 import TopSection from '@/components/top-section';
 import PermissionWrapper from '@/components/permission';
-import { useSettingsApi } from '@/app/opspilot/api/settings';
+import { useSettingsApi } from '@/app/system-manager/api/settings';
 import { useTranslation } from '@/utils/i18n';
 import { useLocalizedTime } from '@/hooks/useLocalizedTime';
 import Cookies from 'js-cookie';
