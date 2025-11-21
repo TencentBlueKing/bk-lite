@@ -149,7 +149,6 @@ class OCRProvider(models.Model, EncryptMixin):
 
 
 class LLMSkill(MaintainerInfo):
-    instance_id = models.UUIDField(null=True, blank=True, editable=False, db_index=True, verbose_name="实例ID")
     name = models.CharField(max_length=255, verbose_name="名称")
     llm_model = models.ForeignKey("LLMModel", on_delete=models.CASCADE, verbose_name="LLM模型", blank=True, null=True)
     skill_id = models.CharField(max_length=255, verbose_name="技能ID", blank=True, null=True)
