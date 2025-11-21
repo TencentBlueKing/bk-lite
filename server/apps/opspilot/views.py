@@ -131,13 +131,32 @@ def validate_header_token(token, bot_id):
 
 
 def get_skill_and_params(kwargs, team, bot_id=None):
-    """Get skill object and prepare parameters for LLM invocation"""
+    """Get skill object and prepare parameters for LLM invocation
+
+    支持通过 name 或 instance_id 查询 skill
+    """
     loader = LanguageLoader(app="opspilot", default_lang="en")
     skill_id = kwargs.get("model")
+
+    # 尝试通过 name 或 instance_id 查询
     if not bot_id:
+        # 先尝试按 name 查询
         skill_obj = LLMSkill.objects.filter(name=skill_id, team__contains=int(team)).first()
+        # 如果未找到，尝试按 instance_id 查询
+        if not skill_obj:
+            try:
+                skill_obj = LLMSkill.objects.filter(instance_id=skill_id, team__contains=int(team)).first()
+            except Exception:
+                pass
     else:
+        # 先尝试按 name 查询
         skill_obj = LLMSkill.objects.filter(name=skill_id, bot=bot_id).first()
+        # 如果未找到，尝试按 instance_id 查询
+        if not skill_obj:
+            try:
+                skill_obj = LLMSkill.objects.filter(instance_id=skill_id, bot=bot_id).first()
+            except Exception:
+                pass
 
     if not skill_obj:
         return (
@@ -493,22 +512,24 @@ def execute_chat_flow(request, bot_id, node_id):
         input_data = {"last_message": message, "user_id": user.username, "bot_id": bot_id, "node_id": node_id}
 
         logger.info(f"开始执行ChatFlow流程，bot_id: {bot_id}, node_id: {node_id}, user: {user.username}, node_type: {node_type}")
-        result = engine.execute(input_data)
 
         # 区分 openai 和 agui 类型的流式响应，其余类型统一走原有逻辑
         if node_type in ["openai", "agui"]:
+            # 使用引擎的流式执行方法，设置入口类型
+            input_data["entry_type"] = node_type
+            stream_generator = engine.sse_execute(input_data)
 
-            def sse_generator():
-                yield f"data: {result}\n\n"
-                yield "data: [DONE]\n\n"
-
-            async_generator = create_async_compatible_generator(sse_generator())
+            # 直接返回流式响应
+            async_generator = create_async_compatible_generator(stream_generator)
             response = StreamingHttpResponse(async_generator, content_type="text/event-stream")
             response["Cache-Control"] = "no-cache, no-store, must-revalidate"
             response["X-Accel-Buffering"] = "no"
             response["Access-Control-Allow-Origin"] = "*"
             response["Access-Control-Allow-Headers"] = "Cache-Control"
             return response
+
+        # 非流式节点，使用普通执行
+        result = engine.execute(input_data)
         logger.info(f"ChatFlow流程执行完成，bot_id: {bot_id}, 最终输出: {result}")
         return JsonResponse({"result": True, "data": {"content": result, "execution_time": time.time()}})
 
