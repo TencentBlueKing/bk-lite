@@ -174,11 +174,13 @@ EOF
 
             # 执行采集命令
             print(f"正在执行采集命令...")
-            result = ssh.execute_command(self.collect_script, self.command_timeout)
+            result = ssh.execute_command(
+                self.collect_script, self.command_timeout)
             print(f"命令执行完成，退出状态: {result.exit_status}")
 
             # 解析结果
-            host_info = self._parse_result(result.stdout, time.time() - start_time)
+            host_info = self._parse_result(
+                result.stdout, time.time() - start_time)
             print(f"成功采集并解析来自 {host} 的信息")
             return host_info
 
@@ -211,7 +213,8 @@ EOF
 
             # 测试1: 简单echo命令
             print("\n测试1: 执行简单echo命令")
-            result1 = ssh.execute_command('echo "Hello World"', self.command_timeout)
+            result1 = ssh.execute_command(
+                'echo "Hello World"', self.command_timeout)
             print(f"退出状态: {result1.exit_status}")
             print(f"标准输出: [{result1.stdout}]")
             print(f"标准错误: [{result1.stderr}]")

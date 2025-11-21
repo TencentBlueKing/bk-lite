@@ -4,14 +4,17 @@
 # @Author：bennie
 from abc import ABC, abstractmethod
 import json
-from core.nats import get_nats
+from core.nats import NATSConfig
+from nats.aio.client import Client as NATS
 from plugins.base_utils import convert_to_prometheus_format
 from sanic.log import logger
 
 
 class BasePlugin(ABC):
 
-    @abstractmethod
+    def exec_script(self):
+        raise NotImplementedError("exec_script is not implemented")
+
     def list_all_resources(self):
         raise NotImplementedError("list_all_resources is not implemented")
 
@@ -27,16 +30,6 @@ class BaseSSHPlugin(BasePlugin):
         self.time_out = int(params.get("execute_timeout", 60))
         self.command = params.get("command", self.script)
         self.port = int(params.get("port", 22))
-        # 使用全局 NATS 实例而不是创建新的客户端
-        self.nats_client = get_nats()
-
-    async def connect_nats(self):
-        """异步连接 NATS - 已废弃，使用全局实例"""
-        pass
-
-    async def close_nats(self):
-        """异步关闭 NATS - 已废弃，使用全局实例"""
-        pass
 
     def get_script_path(self):
         assert self.default_script_path is not None, "default_script_path is not defined"
@@ -88,30 +81,32 @@ class BaseSSHPlugin(BasePlugin):
         }
         subject = f"{self.nast_id}.{self.node_id}"
 
+        # 直接使用 NATS 客户端
+        config = NATSConfig.from_env()
+        nc = NATS()
+
         try:
-            response = await self.nats_client.request(subject=subject, data=exec_params, timeout=60.0)
+            await nc.connect(**config.to_connect_options())
+            payload = json.dumps(exec_params).encode()
+
+            # 使用较短的超时时间，避免长时间卡住
+            response_msg = await nc.request(subject, payload=payload, timeout=30.0)
+            response = json.loads(response_msg.data.decode())
+
+            # 移除 nats-executor 返回的 instance_id，使用 Telegraf 配置中的 instance_id
+            if isinstance(response, dict) and 'instance_id' in response:
+                del response['instance_id']
+
+            return response
         except Exception as e:
-            logger.error(
-                f"Remote execution request failed: {type(e).__name__}: {e}")
+            logger.error(f"NATS request failed: {type(e).__name__}: {e}")
             raise
-
-        # 检查执行是否成功
-        if not response.get("success", True):
-            error_msg = response.get("error", "Unknown error")
-            logger.error(f"Remote execution failed: {error_msg}")
-            raise Exception(f"Remote execution failed: {error_msg}")
-
-        if isinstance(response.get("result"), str):
-            response["result"] = response["result"].replace(
-                "{{bk_host_innerip}}", self.host)
-        try:
-            resp = json.loads(response["result"])
-        except Exception:  # noqa
-            import traceback
-            logger.error(
-                f"exec_script json.loads error: {traceback.format_exc()}, response: {response}")
-            resp = {}
-        return resp
+        finally:
+            try:
+                if not nc.is_closed:
+                    await nc.drain()
+            except Exception as e:
+                logger.error(f"Error closing NATS connection: {e}")
 
     async def list_all_resources(self):
         """
@@ -119,14 +114,6 @@ class BaseSSHPlugin(BasePlugin):
         """
         try:
             data = await self.exec_script()
-
-            # 为数据添加必要的标识字段,用于CMDB自动发现
-            if isinstance(data, dict):
-                data['instance_id'] = f"{self.node_id}_{self.host}"
-                data['host'] = self.host
-                if 'inst_name' not in data:
-                    data['inst_name'] = self.host
-
             prometheus_data = convert_to_prometheus_format(
                 {self.plugin_type: [data]})
             return prometheus_data
@@ -134,4 +121,4 @@ class BaseSSHPlugin(BasePlugin):
             import traceback
             logger.error(
                 f"{self.__class__.__name__} main error! {traceback.format_exc()}")
-            return None
+        return None

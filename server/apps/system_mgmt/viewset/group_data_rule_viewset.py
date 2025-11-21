@@ -9,9 +9,9 @@ from apps.rpc.cmdb import CMDB
 from apps.rpc.log import Log
 from apps.rpc.monitor import Monitor
 from apps.rpc.node_mgmt import NodeMgmt
+from apps.rpc.operation_analysis import OperationAnalysisRPC
 from apps.rpc.opspilot import OpsPilot
 from apps.rpc.system_mgmt import SystemMgmt
-from apps.rpc.operation_analysis import OperationAnalysisRPC
 from apps.system_mgmt.models import GroupDataRule
 from apps.system_mgmt.serializers import GroupDataRuleSerializer
 from apps.system_mgmt.utils.operation_log_utils import log_operation
@@ -71,14 +71,11 @@ class GroupDataRuleViewSet(LanguageViewSet):
     @HasPermission("data_permission-View")
     def get_app_data(self, request):
         params = request.GET.dict()
-        try:
-            client = self.get_client(params)
-        except Exception as e:
-            return JsonResponse({"result": False, "message": str(e)})
+        client = self.get_client(params)
         fun = getattr(client, "get_module_data", None)
         if fun is None:
             message = self.loader.get("error.module_not_found") if self.loader else "Module not found"
-            return JsonResponse({"result": False, "message": message})
+            raise AttributeError(message)
         params["page"] = int(params.get("page", "1"))
         params["page_size"] = int(params.get("page_size", "10"))
         return_data = fun(**params)
@@ -88,14 +85,11 @@ class GroupDataRuleViewSet(LanguageViewSet):
     @HasPermission("data_permission-View")
     def get_app_module(self, request):
         params = request.GET.dict()
-        try:
-            client = self.get_client(params)
-        except Exception as e:
-            return JsonResponse({"result": False, "message": str(e)})
+        client = self.get_client(params)
         fun = getattr(client, "get_module_list", None)
         if fun is None:
             message = self.loader.get("error.module_not_found") if self.loader else "Module not found"
-            return JsonResponse({"result": False, "message": message})
+            raise AttributeError(message)
         return_data = fun()
         for i in return_data:
             translated_name = self.loader.get(i["display_name"]) if self.loader else None
@@ -115,7 +109,7 @@ class GroupDataRuleViewSet(LanguageViewSet):
             "monitor": Monitor,
             "log": Log,
             "cmdb": CMDB,
-            "ops-analysis": OperationAnalysisRPC
+            "ops-analysis": OperationAnalysisRPC,
         }
         app = params.pop("app")
         if app not in client_map.keys():

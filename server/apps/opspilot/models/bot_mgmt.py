@@ -1,6 +1,7 @@
 import binascii
 import json
 import os
+import uuid
 
 from django.db import models
 from django.utils import timezone
@@ -33,9 +34,16 @@ class Bot(MaintainerInfo):
     api_token = models.CharField(max_length=64, default="", blank=True, null=True, verbose_name="API Token")
     replica_count = models.IntegerField(verbose_name="副本数量", default=1)
     bot_type = models.IntegerField(default=BotTypeChoice.PILOT, verbose_name="类型", choices=BotTypeChoice.choices)
+    instance_id = models.CharField(max_length=36, blank=True, null=True, verbose_name="实例ID", db_index=True)
 
     def __str__(self):
         return self.name
+
+    def save(self, *args, **kwargs):
+        # 如果instance_id为空，自动生成UUID
+        if not self.instance_id:
+            self.instance_id = str(uuid.uuid4())
+        super().save(*args, **kwargs)
 
     class Meta:
         verbose_name = "机器人"

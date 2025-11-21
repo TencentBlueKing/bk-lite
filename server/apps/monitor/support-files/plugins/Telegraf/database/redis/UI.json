@@ -16,7 +16,7 @@
       "widget_props": {
         "placeholder": "用户名"
       },
-      "data_transform": {
+      "transform_on_edit": {
         "origin_path": "child.content.config.username"
       }
     },
@@ -30,7 +30,7 @@
       "widget_props": {
         "placeholder": "密码"
       },
-      "data_transform": {
+      "transform_on_edit": {
         "origin_path": "child.env_config.PASSWORD__{{config_id}}"
       }
     },
@@ -45,7 +45,7 @@
       "widget_props": {
         "placeholder": "主机地址"
       },
-      "data_transform": {
+      "transform_on_edit": {
         "origin_path": "child.content.config.servers[0]",
         "to_form": {
           "regex": "://([^:]+):"
@@ -65,7 +65,7 @@
         "precision": 0,
         "placeholder": "端口"
       },
-      "data_transform": {
+      "transform_on_edit": {
         "origin_path": "child.content.config.servers[0]",
         "to_form": {
           "regex": ":(\\d+)$"
@@ -85,7 +85,7 @@
         "placeholder": "间隔",
         "addonAfter": "s"
       },
-      "data_transform": {
+      "transform_on_edit": {
         "origin_path": "child.content.config.interval",
         "to_form": {
           "regex": "^(\\d+)s$"
