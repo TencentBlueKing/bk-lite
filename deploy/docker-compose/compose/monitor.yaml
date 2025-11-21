@@ -36,6 +36,8 @@ services:
       - ../conf/certs:/opt/fusion-collectors/certs:ro
     networks:
       - prod
+    ports:
+      - "162:162"
     restart: always
     depends_on:
       server:
