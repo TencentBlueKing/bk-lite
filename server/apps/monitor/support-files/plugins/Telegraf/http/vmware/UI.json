@@ -27,6 +27,12 @@
       "description": "用于访问接口的用户名",
       "widget_props": {
         "placeholder": "用户名"
+      },
+      "transform_on_create": {
+        "target_path": "custom_headers.username"
+      },
+      "transform_on_edit": {
+        "origin_path": "child.content.config.custom_headers.username"
       }
     },
     {
@@ -38,6 +44,12 @@
       "description": "对应的登录密码",
       "widget_props": {
         "placeholder": "密码"
+      },
+      "transform_on_create": {
+        "target_path": "custom_headers.password"
+      },
+      "transform_on_edit": {
+        "origin_path": "child.content.config.custom_headers.password"
       }
     },
     {
@@ -53,7 +65,7 @@
         "placeholder": "间隔",
         "addonAfter": "s"
       },
-      "data_transform": {
+      "transform_on_edit": {
         "origin_path": "child.content.config.interval",
         "to_form": {
           "regex": "^(\\d+)s$"
@@ -109,5 +121,5 @@
       }
     }
   ],
-  "extra_fields": {}
+  "extra_edit_fields": {}
 }

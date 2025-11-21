@@ -16,7 +16,7 @@
       "widget_props": {
         "placeholder": "主机地址"
       },
-      "data_transform": {
+      "transform_on_edit": {
         "origin_path": "base.env_config.host"
       }
     },
@@ -32,7 +32,7 @@
         "precision": 0,
         "placeholder": "端口"
       },
-      "data_transform": {
+      "transform_on_edit": {
         "origin_path": "base.env_config.port"
       }
     },
@@ -49,7 +49,7 @@
         "placeholder": "间隔",
         "addonAfter": "s"
       },
-      "data_transform": {
+      "transform_on_edit": {
         "origin_path": "child.content.config.interval",
         "to_form": {
           "regex": "^(\\d+)s$"
@@ -122,5 +122,5 @@
       }
     }
   ],
-  "extra_fields": {}
+  "extra_edit_fields": {}
 }
