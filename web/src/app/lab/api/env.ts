@@ -113,6 +113,11 @@ const useLabEnv = () => {
   //   return await get(`/lab/infra-instances/running/`);
   // };
 
+  // 生成环境的docker compose 配置
+  const generateComposeYaml = async (id: number | string) => {
+    return await post(`/lab/environments/${id}/setup/`);
+  };
+
   return {
     // Lab 环境接口
     getEnvList,
@@ -138,6 +143,7 @@ const useLabEnv = () => {
     // getInstanceLogs,
     // syncInstanceStatus,
     // getRunningInstances,
+    generateComposeYaml
   };
 };
 

@@ -3,20 +3,26 @@
 Lab 环境视图
 """
 
+import os
+import requests
+import yaml
 from rest_framework import viewsets, status
+from config.drf.viewsets import ModelViewSet
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from django_filters.rest_framework import DjangoFilterBackend
 from rest_framework.filters import SearchFilter, OrderingFilter
+from apps.core.logger import opspilot_logger as logger
 
 from apps.lab.models import LabEnv
 from apps.lab.serializers import (
     LabEnvSerializer,
 )
 from apps.lab.utils.lab_utils import LabUtils
+from apps.lab.utils.compose_generator import ComposeGenerator
 
 
-class LabEnvViewSet(viewsets.ModelViewSet):
+class LabEnvViewSet(ModelViewSet):
     """
     Lab 环境视图集
     
@@ -93,3 +99,89 @@ class LabEnvViewSet(viewsets.ModelViewSet):
         status_data = LabUtils.get_lab_status(lab_env.id)
         
         return Response(status_data)
+    
+    @action(detail=True, methods=['post'])
+    def setup(self, request, pk=None):
+        """
+        配置 Lab 环境的 Docker Compose
+        生成 docker-compose 配置并通过 webhook 发送到 compose 服务
+        """
+        lab_env = self.get_object()
+        
+        try:
+            # 使用 ComposeGenerator 生成 docker-compose 配置
+            compose_config = ComposeGenerator.generate(lab_env)
+            
+            # 获取 webhook 基础 URL
+            webhook_base_url = os.getenv('WEBHOOK', 'http://localhost:8080/compose/')
+            if not webhook_base_url.endswith('/'):
+                webhook_base_url += '/'
+            
+            setup_url = f"{webhook_base_url}setup"
+            
+            # 准备请求数据
+            payload = {
+                "id": f"lab-env-{lab_env.id}",
+                "compose": compose_config
+            }
+            
+            logger.info(f"正在配置 Lab 环境 {lab_env.name} (ID: {lab_env.id})")
+            logger.debug(f"Docker Compose 配置:\n{compose_config}")
+            
+            # 发送请求到 webhook
+            response = requests.post(
+                setup_url,
+                json=payload,
+                timeout=30,
+                headers={'Content-Type': 'application/json'}
+            )
+            
+            # 检查响应
+            if response.status_code == 200:
+                result = response.json()
+                
+                if result.get('status') == 'success':
+                    logger.info(f"Lab 环境 {lab_env.name} 配置成功")
+                    return Response({
+                        'status': 'success',
+                        'message': '环境配置成功',
+                        'detail': result.get('message', ''),
+                        'file': result.get('file', ''),
+                        'compose_id': payload['id']
+                    })
+                else:
+                    error_msg = result.get('error', result.get('message', '未知错误'))
+                    logger.error(f"Lab 环境 {lab_env.name} 配置失败: {error_msg}")
+                    return Response({
+                        'status': 'error',
+                        'message': '环境配置失败',
+                        'error': error_msg
+                    }, status=status.HTTP_400_BAD_REQUEST)
+            else:
+                logger.error(f"Webhook 请求失败: HTTP {response.status_code}")
+                return Response({
+                    'status': 'error',
+                    'message': f'Webhook 请求失败: HTTP {response.status_code}',
+                    'error': response.text
+                }, status=status.HTTP_502_BAD_GATEWAY)
+                
+        except requests.exceptions.Timeout:
+            logger.error(f"Webhook 请求超时")
+            return Response({
+                'status': 'error',
+                'message': 'Webhook 请求超时'
+            }, status=status.HTTP_504_GATEWAY_TIMEOUT)
+            
+        except requests.exceptions.RequestException as e:
+            logger.exception(f"Webhook 请求异常: {e}")
+            return Response({
+                'status': 'error',
+                'message': f'Webhook 请求失败: {str(e)}'
+            }, status=status.HTTP_502_BAD_GATEWAY)
+            
+        except Exception as e:
+            logger.exception(f"生成配置时发生异常: {e}")
+            return Response({
+                'status': 'error',
+                'message': f'生成配置失败: {str(e)}'
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)

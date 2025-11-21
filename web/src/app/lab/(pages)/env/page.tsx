@@ -1,6 +1,6 @@
 "use client";
 import { Menu, Button, message } from 'antd';
-import { PlayCircleOutlined, PauseCircleOutlined } from '@ant-design/icons';
+import { PlayCircleOutlined, PauseCircleOutlined, ToolOutlined } from '@ant-design/icons';
 import stlyes from '@/app/lab/styles/index.module.scss';
 import { useState, useEffect, useRef } from 'react';
 import EntityList from '@/components/entity-list';
@@ -17,7 +17,8 @@ const EnvManage = () => {
     deleteEnv,
     startEnv,
     stopEnv,
-    restartEnv
+    restartEnv,
+    generateComposeYaml
   } = useLabEnv();
 
   const [tableData, setTableData] = useState<any[]>([]);
@@ -34,7 +35,7 @@ const EnvManage = () => {
           icon: 'tucengshuju',
           creator: item?.created_by || '--',
         }
-      })
+      });
       setTableData(_res || []);
     } catch (e) {
       console.log(e);
@@ -59,6 +60,21 @@ const EnvManage = () => {
     } catch (error) {
       console.error('启动环境失败:', error);
       message.error('启动环境失败');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // 生成配置
+  const handleSetup = async (id: string | number, e: React.MouseEvent) => {
+    e.stopPropagation();
+    setLoading(true);
+    try {
+      await generateComposeYaml(id);
+      message.success('生成成功')
+    } catch (e) {
+      console.log(e);
+      message.error('生成失败')
     } finally {
       setLoading(false);
     }
@@ -143,6 +159,17 @@ const EnvManage = () => {
           {`creator: ${item.created_by || '--'}`}
         </p>
         <div className="flex gap-1">
+          <Button
+            // type="link"
+            color="blue" variant="link"
+            size="small"
+            icon={<ToolOutlined />}
+            onClick={(e) => handleSetup(item.id, e)}
+            loading={isStarting}
+            className="text-blue-600 hover:text-blue-700"
+          >
+            配置生成
+          </Button>
           {!isRunning && !isStarting && (
             <Button
               // type="link"
@@ -156,7 +183,7 @@ const EnvManage = () => {
               启动
             </Button>
           )}
-          {/* {(isRunning || isStarting) && (
+          {(isRunning || isStarting) && (
             <Button
               type="text"
               size="small"
@@ -167,8 +194,8 @@ const EnvManage = () => {
             >
               停止
             </Button>
-          )} */}
-          <Button
+          )}
+          {/* <Button
             // type="link"
             size="small"
             color="danger" variant="link"
@@ -178,7 +205,7 @@ const EnvManage = () => {
             className="text-red-600 hover:text-red-700"
           >
             停止
-          </Button>
+          </Button> */}
         </div>
       </div>
     );

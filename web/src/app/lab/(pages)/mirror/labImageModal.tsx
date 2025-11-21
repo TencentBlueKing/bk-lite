@@ -22,7 +22,7 @@ const { TextArea } = Input;
 const { Option } = Select;
 
 interface LabImageProps {
-  activeTap: string;
+  activeTap: ("ide" | "infra");
   onSuccess?: () => void;
 }
 
@@ -60,6 +60,7 @@ const LabImageModal = forwardRef<ModalRef, LabImageProps>(({ activeTap, onSucces
       setOpen(true);
       if (data) {
         // 编辑模式，填充表单数据
+        console.log(data);
         form.setFieldsValue({
           ...data,
           default_env_pairs: Object.entries(data.default_env || {}).map(([key, value]) => ({ key, value })),
@@ -141,9 +142,9 @@ const LabImageModal = forwardRef<ModalRef, LabImageProps>(({ activeTap, onSucces
       const formData: LabImageFormData = {
         name: values.name,
         version: values.version,
-        image_type: values.image_type,
+        image_type: editData?.image_type || activeTap,
         description: values.description,
-        image: values.image,
+        image: values.image || "null",
         default_port: values.default_port,
         default_env,
         default_command,
@@ -233,7 +234,7 @@ const LabImageModal = forwardRef<ModalRef, LabImageProps>(({ activeTap, onSucces
           </Col>
         </Row>
 
-        <Row gutter={16}>
+        {/* <Row gutter={16}>
           <Col span={12}>
             <Form.Item
               name="image_type"
@@ -260,18 +261,18 @@ const LabImageModal = forwardRef<ModalRef, LabImageProps>(({ activeTap, onSucces
               />
             </Form.Item>
           </Col>
-        </Row>
+        </Row> */}
 
-        <Form.Item
+        {/* <Form.Item
           name="image"
           label={t(`lab.manage.imageUrl`)}
-          rules={[
-            { required: true, message: t(`lab.manage.urlMsg`) },
-            { max: 200, message: t(`lab.manage.urlCharMsg`) }
-          ]}
+          // rules={[
+          //   { required: true, message: t(`lab.manage.urlMsg`) },
+          //   { max: 200, message: t(`lab.manage.urlCharMsg`) }
+          // ]}
         >
           <Input placeholder={t(`lab.manage.urlExample`)} />
-        </Form.Item>
+        </Form.Item> */}
 
         <Form.Item
           name="description"

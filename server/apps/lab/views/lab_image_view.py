@@ -3,15 +3,14 @@
 Lab 镜像视图
 """
 
-from rest_framework import viewsets
+# from rest_framework import viewsets
+from config.drf.viewsets import ModelViewSet
 from django_filters.rest_framework import DjangoFilterBackend
 from rest_framework.filters import SearchFilter, OrderingFilter
-
 from apps.lab.models import LabImage
 from apps.lab.serializers import LabImageSerializer
 
-
-class LabImageViewSet(viewsets.ModelViewSet):
+class LabImageViewSet(ModelViewSet):
     """
     Lab 镜像视图集
     
