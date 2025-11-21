@@ -114,7 +114,6 @@ class HostCollectMetrics(CollectBase):
         """格式化数据"""
         if not isinstance(data, dict) or "result" not in data:
             return
-
         for index_data in data.get("result", []):
             metric_name = index_data["metric"]["__name__"]
 
@@ -142,7 +141,8 @@ class HostCollectMetrics(CollectBase):
                     result_data = json.loads(unescaped_json)
                 except Exception:
                     result_data = {}
-
+            if isinstance(result_data, dict) and not result_data:
+                continue
             index_dict = dict(
                 index_key=metric_name,
                 index_value=value,
