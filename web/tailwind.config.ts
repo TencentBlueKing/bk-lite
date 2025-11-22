@@ -5,6 +5,7 @@ export default {
     "./src/pages/**/*.{ts,tsx,mdx}",
     "./src/components/**/*.{ts,tsx,mdx}",
     "./src/app/**/*.{ts,tsx,mdx}",
+    "!./node_modules/**",
   ],
   theme: {
     extend: {

@@ -1,4 +1,5 @@
 import base64
+import uuid
 
 from django.core.validators import FileExtensionValidator
 from django.db import models
@@ -99,12 +100,19 @@ class KnowledgeDocument(MaintainerInfo, TimeInfo):
     mode = models.CharField(max_length=30, verbose_name=_("mode"), default="full")
     chunk_type = models.CharField(max_length=30, verbose_name=_("chunk type"), default="fixed_size")
     knowledge_source_type = models.CharField(max_length=20, verbose_name=_("source type"), default="file")
+    instance_id = models.CharField(max_length=36, blank=True, null=True, verbose_name=_("Instance ID"), db_index=True)
 
     def __str__(self):
         return self.name
 
     def knowledge_index_name(self):
         return self.knowledge_base.knowledge_index_name()
+
+    def save(self, *args, **kwargs):
+        # 如果instance_id为空，自动生成UUID
+        if not self.instance_id:
+            self.instance_id = str(uuid.uuid4())
+        super().save(*args, **kwargs)
 
     def delete(self, *args, **kwargs):
         from apps.opspilot.services.knowledge_search_service import KnowledgeSearchService

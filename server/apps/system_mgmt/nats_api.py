@@ -335,7 +335,9 @@ def send_msg_with_channel(channel_id, title, content, receivers):
 @nats_client.register
 def send_email_to_receiver(title, content, receiver):
     channel_obj = Channel.objects.filter(channel_type=ChannelChoices.EMAIL).first()
-    return send_email_to_user(channel_obj.config, content, receiver, title)
+    channel_config = channel_obj.config
+    channel_obj.decrypt_field("smtp_pwd", channel_config)
+    return send_email_to_user(channel_config, content, [receiver], title)
 
 
 @nats_client.register
@@ -656,7 +658,7 @@ def login(username, password):
 
 
 @nats_client.register
-def reset_pwd(username, password):
+def reset_pwd(username, domain, password):
     """
     重置用户密码（NATS接口）
 

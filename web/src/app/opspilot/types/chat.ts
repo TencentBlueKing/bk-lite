@@ -36,13 +36,20 @@ export interface SSEChunk {
 
 // AG-UI Protocol Message Types
 export interface AGUIMessage {
-  type: 'RUN_STARTED' | 'TEXT_MESSAGE_START' | 'TEXT_MESSAGE_CONTENT' | 'TEXT_MESSAGE_END' | 'RUN_FINISHED';
+  type: 'RUN_STARTED' | 'TEXT_MESSAGE_START' | 'TEXT_MESSAGE_CONTENT' | 'TEXT_MESSAGE_END' | 'RUN_FINISHED' | 'TOOL_CALL_START' | 'TOOL_CALL_ARGS' | 'TOOL_CALL_END' | 'TOOL_CALL_RESULT' | 'ERROR' | 'RUN_ERROR';
   timestamp: number;
   threadId?: string;
   runId?: string;
   messageId?: string;
   role?: string;
   delta?: string;
+  toolCallId?: string;
+  toolCallName?: string;
+  parentMessageId?: string;
+  content?: string;
+  error?: string;
+  message?: string;
+  code?: string;
 }
 
 export interface ReferenceModalState {
