@@ -16,6 +16,7 @@ interface LoginSettingsProps {
   lockDuration: string;
   reminderDays: string;
   loading: boolean;
+  disabled?: boolean;
   onOtpChange: (checked: boolean) => void;
   onLoginExpiredTimeChange: (value: string) => void;
   onPasswordExpirationChange: (value: string) => void;
@@ -39,6 +40,7 @@ const LoginSettings: React.FC<LoginSettingsProps> = ({
   lockDuration,
   reminderDays,
   loading,
+  disabled = false,
   onOtpChange,
   onLoginExpiredTimeChange,
   onPasswordExpirationChange,
@@ -62,6 +64,7 @@ const LoginSettings: React.FC<LoginSettingsProps> = ({
           checked={otpEnabled} 
           onChange={onOtpChange}
           loading={loading}
+          disabled={disabled}
         />
       </div>
       <div className="flex items-center mb-4">
@@ -70,7 +73,7 @@ const LoginSettings: React.FC<LoginSettingsProps> = ({
           min="1"
           value={loginExpiredTime}
           onChange={(value) => onLoginExpiredTimeChange(value?.toString() || '24')}
-          disabled={loading}
+          disabled={disabled || loading}
           addonAfter={t('system.security.hours')}
           style={{ width: '180px' }}                           
         />
@@ -86,7 +89,7 @@ const LoginSettings: React.FC<LoginSettingsProps> = ({
               <Select
                 value={minimumLength}
                 onChange={onMinimumLengthChange}
-                disabled={loading}
+                disabled={disabled || loading}
                 style={{ width: '80px' }}
                 options={[
                   { value: '8', label: '8' },
@@ -98,7 +101,7 @@ const LoginSettings: React.FC<LoginSettingsProps> = ({
               <Select
                 value={maximumLength}
                 onChange={onMaximumLengthChange}
-                disabled={loading}
+                disabled={disabled || loading}
                 style={{ width: '80px' }}
                 options={[
                   { value: '16', label: '16' },
@@ -115,7 +118,7 @@ const LoginSettings: React.FC<LoginSettingsProps> = ({
             <Checkbox.Group
               value={passwordComplexity}
               onChange={onPasswordComplexityChange}
-              disabled={loading}
+              disabled={disabled || loading}
             >
               <div className="flex flex-col gap-2">
                 <Checkbox value="uppercase">{t('system.security.requireUppercase')}</Checkbox>
@@ -130,7 +133,7 @@ const LoginSettings: React.FC<LoginSettingsProps> = ({
             <Select
               value={passwordExpiration}
               onChange={onPasswordExpirationChange}
-              disabled={loading}
+              disabled={disabled || loading}
               style={{ width: '180px' }}
               options={[
                 { value: '30', label: t('system.security.oneMonth') },
@@ -146,7 +149,7 @@ const LoginSettings: React.FC<LoginSettingsProps> = ({
             <Select
               value={loginAttempts}
               onChange={onLoginAttemptsChange}
-              disabled={loading}
+              disabled={disabled || loading}
               style={{ width: '180px' }}
               options={[
                 { value: '3', label: t('system.security.threeTimes') },
@@ -164,7 +167,7 @@ const LoginSettings: React.FC<LoginSettingsProps> = ({
               min="60"
               value={lockDuration}
               onChange={(value) => onLockDurationChange(value?.toString() || '180')}
-              disabled={loading}
+              disabled={disabled || loading}
               addonAfter={t('system.security.seconds')}
               style={{ width: '180px' }}
             />
@@ -176,7 +179,7 @@ const LoginSettings: React.FC<LoginSettingsProps> = ({
               max="30"
               value={reminderDays}
               onChange={(value) => onReminderDaysChange(value?.toString() || '7')}
-              disabled={loading}
+              disabled={disabled || loading}
               addonAfter={t('system.security.days')}
               style={{ width: '180px' }}
             />
