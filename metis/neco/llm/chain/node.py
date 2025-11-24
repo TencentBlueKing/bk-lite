@@ -9,6 +9,7 @@ from neco.core.utils.template_loader import TemplateLoader
 from loguru import logger
 from neco.llm.chain.entity import BasicLLMRequest
 from neco.llm.common.structured_output_parser import StructuredOutputParser
+from neco.llm.common.llm_client_factory import LLMClientFactory
 from neco.llm.rag.graph_rag.graphiti.graphiti_rag import GraphitiRAG
 from neco.llm.rag.naive_rag.pgvector.pgvector_rag import PgvectorRag
 from neco.llm.tools.tools_loader import ToolsLoader
@@ -29,7 +30,15 @@ class BasicNode:
         trace_id = config["configurable"]['trace_id']
         logger.debug(f"[{trace_id}] {message}")
 
-    def get_llm_client(self, request: BasicLLMRequest, disable_stream=False) -> ChatOpenAI:
+    def get_llm_client(self, request: BasicLLMRequest, disable_stream=False, isolated=False) -> ChatOpenAI:
+        """
+        获取LLM客户端
+
+        Args:
+            request: LLM请求对象
+            disable_stream: 是否禁用流式输出
+            isolated: 是否创建独立客户端(不被LangGraph跟踪),用于内部调用如问题改写
+        """
         llm = ChatOpenAI(model=request.model, base_url=request.openai_api_base,
                          disable_streaming=disable_stream,
                          timeout=3000,
@@ -39,6 +48,11 @@ class BasicNode:
 
         if disable_stream and 'qwen' in request.model.lower():
             llm.extra_body["enable_thinking"] = False
+
+        # 如果需要隔离,则禁用callbacks以避免被LangGraph捕获
+        if isolated:
+            llm.callbacks = None
+
         return llm
 
     def prompt_message_node(self, state: Dict[str, Any], config: RunnableConfig) -> Dict[str, Any]:
@@ -127,10 +141,17 @@ class BasicNode:
     def _select_knowledge_ids(self, config: RunnableConfig) -> list:
         """智能知识路由选择"""
         km_info = config["configurable"]["km_info"]
-        llm = ChatOpenAI(model=config["configurable"]['km_route_llm_model'],
-                         base_url=config["configurable"]['km_route_llm_api_base'],
-                         api_key=config["configurable"]['km_route_llm_api_key'],
-                         temperature=0.01)
+        request = config["configurable"]["graph_request"]
+
+        # 创建临时请求对象用于知识路由
+        from neco.llm.chain.entity import BasicLLMRequest
+        km_request = BasicLLMRequest(
+            model=config["configurable"]['km_route_llm_model'],
+            openai_api_base=config["configurable"]['km_route_llm_api_base'],
+            openai_api_key=config["configurable"]['km_route_llm_api_key'],
+            temperature=0.01,
+            user_message=""
+        )
 
         # 使用模板生成知识路由选择prompt
         template_data = {
@@ -143,8 +164,12 @@ class BasicNode:
         )
 
         logger.debug(f"知识路由选择Prompt: {selected_knowledge_prompt}")
-        selected_km_response = llm.invoke(selected_knowledge_prompt)
-        return json_repair.loads(selected_km_response.content)
+        # 使用原生OpenAI客户端调用,完全绕过LangGraph追踪
+        response_content = LLMClientFactory.invoke_isolated(
+            km_request,
+            [{"role": "user", "content": selected_knowledge_prompt}]
+        )
+        return json_repair.loads(response_content)
 
     async def _execute_graph_rag(self, rag_search_request, config: RunnableConfig) -> list:
         """执行图谱RAG检索并处理结果"""
@@ -381,12 +406,12 @@ class BasicNode:
             rewrite_prompt = TemplateLoader.render_template(
                 'prompts/graph/query_rewrite_prompt', template_data)
 
-            # 获取LLM客户端
-            llm = self.get_llm_client(request, disable_stream=True)
-
-            # 执行问题改写
-            response = llm.invoke([HumanMessage(content=rewrite_prompt)])
-            rewritten_query = response.content.strip()
+            # 使用原生OpenAI客户端调用,完全绕过LangGraph追踪
+            response_content = LLMClientFactory.invoke_isolated(
+                request,
+                [HumanMessage(content=rewrite_prompt)]
+            )
+            rewritten_query = response_content.strip()
             return rewritten_query
 
         except Exception as e:
