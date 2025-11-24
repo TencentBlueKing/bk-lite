@@ -8,6 +8,8 @@ import requests
 from rest_framework import serializers
 from apps.core.utils.serializers import AuthSerializer
 from apps.lab.models import LabEnv, LabImage, InfraInstance
+from apps.lab.models import LabImage, InfraInstance
+from apps.core.logger import opspilot_logger as logger
 
 
 class LabEnvSerializer(AuthSerializer):
@@ -19,17 +21,16 @@ class LabEnvSerializer(AuthSerializer):
     ide_image_name = serializers.CharField(source='ide_image.name', read_only=True)
     ide_image_version = serializers.CharField(source='ide_image.version', read_only=True)
     
-    # 关联的基础设施实例信息
+    # 关联的基础设施实例信息和实例数量，通过命名约定关联到对应的方法
     infra_instances_info = serializers.SerializerMethodField()
-    # 基础设施实例数量（用于列表视图）
     infra_instances_count = serializers.SerializerMethodField()
     
-    # 新增：接收前端传递的镜像ID列表，系统会自动创建对应实例
+    # 接收前端传递的镜像ID列表，系统会自动创建对应实例
     infra_images = serializers.ListField(
         child=serializers.IntegerField(),
         write_only=True,
         required=False,
-        help_text="基础设施镜像ID列表，系统会自动创建对应实例"
+        help_text="基础设施镜像ID列表,系统会自动创建对应实例"
     )
     
     class Meta:
@@ -39,6 +40,7 @@ class LabEnvSerializer(AuthSerializer):
                            'ide_image_name', 'ide_image_version',
                            'infra_instances_info', 'infra_instances_count']
         
+    # 关联到字段infra_instances_info的方法
     def get_infra_instances_info(self, obj):
         """获取关联的基础设施实例信息"""
         instances = obj.infra_instances.all()
@@ -55,13 +57,14 @@ class LabEnvSerializer(AuthSerializer):
             }
             for instance in instances
         ]
-        
+    
+    # 关联到字段infra_instances_count的方法
     def get_infra_instances_count(self, obj):
         """获取关联的基础设施实例数量"""
         return obj.infra_instances.count()
     
     def create(self, validated_data):
-        """创建环境时，根据镜像ID自动创建实例并生成 docker-compose 配置"""
+        """创建环境时,根据镜像ID自动创建实例并生成 docker-compose 配置"""
         infra_images = validated_data.pop('infra_images', [])
         lab_env = super().create(validated_data)
         
@@ -95,8 +98,7 @@ class LabEnvSerializer(AuthSerializer):
             lab_env: Lab环境对象
             image_ids: 镜像ID列表
         """
-        from apps.lab.models import LabImage, InfraInstance
-        from apps.core.logger import opspilot_logger as logger
+        
         
         instances = []
         for image_id in image_ids:
@@ -105,7 +107,6 @@ class LabEnvSerializer(AuthSerializer):
                 image = LabImage.objects.get(id=image_id, image_type='infra')
                 
                 # 自动生成实例名称（环境名_镜像名_镜像ID）
-                # 使用镜像ID确保唯一性，避免过长的时间戳
                 instance_name = f"{lab_env.name}_{image.name}_{image.id}"
                 
                 # 创建实例（使用镜像的默认配置）
