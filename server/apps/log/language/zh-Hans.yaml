@@ -4,53 +4,51 @@ collect_type:
       description: 采集 Linux 审计框架日志，用于全面的系统安全监控与合规审计。
       name: 审计日志采集
     file_integrity:
-      description: 监控文件系统变化，检测未经授权的修改，确保数据完整性。
       name: 文件完整性监控
-  Filebeat:
-    filestream:
-      description: 从各种来源采集和转发日志数据，用于集中式日志记录和分析。
-      name: 文件流采集
-  Metricbeat:
-    system:
-      description: 收集系统级指标，如 CPU、内存和磁盘使用情况，用于性能监控和资源管理。
-      name: 系统指标
+      description: 监控文件系统变化，检测未经授权的修改，确保数据完整性。
+  Vector:
+    syslog:
+      name: 系统日志
+      description: 采集 syslog 消息，用于集中式日志记录和监控。
+    kubernetes:
+      name: Kubernetes 集群
+      description: 从 Kubernetes 集群采集日志和指标，用于监控和分析。
+    exec:
+      name: 命令执行
+      description: 执行命令从各种来源采集日志数据，用于处理和分析。
     docker:
-      description: 从 Docker 容器收集指标，监控容器性能和资源利用率。
-      name: Docker 容器
-
+      description: 从 Docker 容器采集和处理日志，用于集中式日志记录和分析。
+      name: Docker 日志
+    file:
+      description: 从文件采集日志数据，用于集中式日志记录和分析。
+      name: 文件采集
   Packetbeat:
+    Snmptrapd:
+      name: SNMP Trap
+      description: 采集 SNMP trap 消息，用于网络设备监控和告警。
+    http:
+      description: 监控 HTTP 流量，分析 Web 应用程序性能并检测异常。
+      name: HTTP 协议
     dhcp:
-      description: 采集 DHCP 流量，监控 IP 地址分配和网络配置。
       name: DHCP 协议
+      description: 采集 DHCP 流量，监控 IP 地址分配和网络配置。
     dns:
-      description: 捕获 DNS 查询和响应数据，用于网络故障排查和安全分析。
       name: DNS 协议
+      description: 捕获 DNS 查询和响应数据，用于网络故障排查和安全分析。
     flows:
       description: 分析网络流量数据，监控流量模式并检测潜在的安全威胁。
       name: 网络流量
     icmp:
-      description: 监控 ICMP 流量，用于网络诊断和性能分析。
       name: ICMP 协议
-    http:
-      description: 监控 HTTP 流量，分析 Web 应用程序性能并检测异常。
-      name: HTTP 协议
-    Snmptrapd:
-      description: 采集 SNMP trap 消息，用于网络设备监控和告警。
-      name: SNMP Trap
-
-  Vector:
+      description: 监控 ICMP 流量，用于网络诊断和性能分析。
+  Metricbeat:
     docker:
-      description: 从 Docker 容器采集和处理日志，用于集中式日志记录和分析。
-      name: Docker 日志
-    exec:
-      description: 执行命令从各种来源采集日志数据，用于处理和分析。
-      name: 命令执行
-    file:
-      description: 从文件采集日志数据，用于集中式日志记录和分析。
-      name: 文件采集
-    kubernetes:
-      description: 从 Kubernetes 集群采集日志和指标，用于监控和分析。
-      name: Kubernetes 集群
-    syslog:
-      description: 采集 syslog 消息，用于集中式日志记录和监控。
-      name: 系统日志
+      description: 从 Docker 容器收集指标，监控容器性能和资源利用率。
+      name: Docker 容器
+    system:
+      name: 系统指标
+      description: 收集系统级指标，如 CPU、内存和磁盘使用情况，用于性能监控和资源管理。
+  Filebeat:
+    filestream:
+      name: 文件流采集
+      description: 从各种来源采集和转发日志数据，用于集中式日志记录和分析。

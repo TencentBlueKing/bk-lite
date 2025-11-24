@@ -1,25 +1,17 @@
-# 控制台管理语言文件 - 简体中文
-# 此文件包含 console_mgmt 应用的所有翻译
-
-# 错误消息
 error:
-  email_required: 邮箱地址不能为空
   verification_code_empty: 验证码不能为空
-  verification_code_incorrect: 验证码错误
+  email_required: 邮箱地址不能为空
   email_send_failed: 发送邮件失败
-  user_not_found: 用户不存在
+  verification_code_incorrect: 验证码错误
   user_id_required: 用户ID不能为空
+  user_not_found: 用户不存在
   password_required: 密码不能为空
-
-# 成功消息
+email:
+  verification_code_validity: 验证码有效期为10分钟,请及时使用。
+  verification_code_body: 您的验证码是
+  verification_code_ignore: 如果这不是您的操作,请忽略此邮件。
+  verification_code_title: 邮箱验证码
 success:
   verification_code_sent: 验证码已发送
-  verification_success: 验证成功
   update_success: 更新成功
-
-# 邮件模板
-email:
-  verification_code_title: 邮箱验证码
-  verification_code_body: 您的验证码是
-  verification_code_validity: 验证码有效期为10分钟,请及时使用。
-  verification_code_ignore: 如果这不是您的操作,请忽略此邮件。
+  verification_success: 验证成功
