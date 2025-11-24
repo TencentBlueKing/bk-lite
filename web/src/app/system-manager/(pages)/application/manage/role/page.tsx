@@ -10,11 +10,20 @@ import { Role, User, Menu } from '@/app/system-manager/types/application';
 import PermissionTable from './permissionTable';
 import PermissionWrapper from "@/components/permission";
 import RoleList from './roleList';
+import GroupTreeSelect from '@/components/group-tree-select';
 
 const { Search } = Input;
 const { TabPane } = Tabs;
 const { Option } = Select;
 const { confirm } = Modal;
+
+// 组织数据类型定义
+interface Group {
+  id: number;
+  name: string;
+  parent_id: number;
+  description?: string;
+}
 
 const RoleManagement: React.FC = () => {
   const { t } = useTranslation();
@@ -23,22 +32,29 @@ const RoleManagement: React.FC = () => {
 
   const [roleForm] = Form.useForm();
   const [addUserForm] = Form.useForm();
+  const [addGroupForm] = Form.useForm();
 
   const [roleList, setRoleList] = useState<Role[]>([]);
   const [allUserList, setAllUserList] = useState<User[]>([]);
   const [tableData, setTableData] = useState<User[]>([]);
+  const [groupTableData, setGroupTableData] = useState<Group[]>([]);
   const [selectedRole, setSelectedRole] = useState<Role | null>(null);
   const [loading, setLoading] = useState(false);
   const [allUserLoading, setAllUserLoading] = useState(false);
   const [modalLoading, setModalLoading] = useState(false);
   const [roleModalOpen, setRoleModalOpen] = useState(false);
   const [addUserModalOpen, setAddUserModalOpen] = useState(false);
+  const [addGroupModalOpen, setAddGroupModalOpen] = useState(false);
   const [selectedUserKeys, setSelectedUserKeys] = useState<React.Key[]>([]);
+  const [selectedGroupKeys, setSelectedGroupKeys] = useState<React.Key[]>([]);
   const [permissionsCheckedKeys, setPermissionsCheckedKeys] = useState<{ [key: string]: string[] }>({});
   const [isEditingRole, setIsEditingRole] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
   const [total, setTotal] = useState(0);
+  const [groupCurrentPage, setGroupCurrentPage] = useState(1);
+  const [groupPageSize, setGroupPageSize] = useState(10);
+  const [groupTotal, setGroupTotal] = useState(0);
   const [loadingRoles, setLoadingRoles] = useState(true);
   const [deleteLoading, setDeleteLoading] = useState(false);
   const [activeTab, setActiveTab] = useState('1');
@@ -55,7 +71,10 @@ const RoleManagement: React.FC = () => {
     deleteRole,
     deleteUser,
     setRoleMenus,
-    getAllMenus
+    getAllMenus,
+    getRoleGroups,
+    addRoleGroups,
+    deleteRoleGroups
   } = useRoleApi();
 
   useEffect(() => {
@@ -102,10 +121,36 @@ const RoleManagement: React.FC = () => {
     }
   };
 
+  const fetchRoleGroups = async (role: Role, page: number, size: number, search?: string) => {
+    setLoading(true);
+    try {
+      const data = await getRoleGroups({
+        params: {
+          role_id: role.id,
+          search,
+          page: page,
+          page_size: size
+        },
+      });
+      setGroupTableData(data.items || []);
+      setGroupTotal(data.count);
+      setGroupCurrentPage(page);
+      setGroupPageSize(size);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const handleTableChange = (page: number, size?: number) => {
     if (!selectedRole) return;
     const newPageSize = size || pageSize;
     fetchUsersByRole(selectedRole, page, newPageSize);
+  };
+
+  const handleGroupTableChange = (page: number, size?: number) => {
+    if (!selectedRole) return;
+    const newPageSize = size || groupPageSize;
+    fetchRoleGroups(selectedRole, page, newPageSize);
   };
 
   const fetchAllUsers = async () => {
@@ -219,6 +264,30 @@ const RoleManagement: React.FC = () => {
     },
   ];
 
+  const groupColumns = [
+    {
+      title: t('system.role.organizationName'),
+      dataIndex: 'name',
+      key: 'name',
+    },
+    {
+      title: t('common.actions'),
+      key: 'actions',
+      render: (_: any, record: Group) => (
+        <PermissionWrapper requiredPermissions={['Remove group']}>
+          <Popconfirm
+            title={t('common.delConfirm')}
+            okText={t('common.confirm')}
+            cancelText={t('common.cancel')}
+            onConfirm={() => handleDeleteGroup(record)}
+          >
+            <Button type="link">{t('common.delete')}</Button>
+          </Popconfirm>
+        </PermissionWrapper>
+      ),
+    },
+  ];
+
   const handleBatchDeleteUsers = async () => {
     if (!selectedRole || selectedUserKeys.length === 0) return;
 
@@ -249,6 +318,35 @@ const RoleManagement: React.FC = () => {
     });
   };
 
+  const handleBatchDeleteGroups = async () => {
+    if (!selectedRole || selectedGroupKeys.length === 0) return;
+
+    confirm({
+      title: t('common.delConfirm'),
+      content: t('common.delConfirmCxt'),
+      centered: true,
+      okText: t('common.confirm'),
+      cancelText: t('common.cancel'),
+      async onOk() {
+        try {
+          setDeleteLoading(true);
+          await deleteRoleGroups({
+            role_id: selectedRole.id.toString(),
+            group_ids: selectedGroupKeys.map(key => key.toString())
+          });
+          message.success(t('common.delSuccess'));
+          fetchRoleGroups(selectedRole, groupCurrentPage, groupPageSize);
+          setSelectedGroupKeys([]);
+        } catch (error) {
+          console.error('Failed to delete groups in batch:', error);
+          message.error(t('common.delFailed'));
+        } finally {
+          setDeleteLoading(false);
+        }
+      },
+    });
+  };
+
   const handleDeleteUser = async (record: User) => {
     if (!selectedRole) return;
     try {
@@ -258,6 +356,21 @@ const RoleManagement: React.FC = () => {
       });
       message.success(t('common.delSuccess'));
       fetchUsersByRole(selectedRole, currentPage, pageSize);
+    } catch (error) {
+      console.error('Failed:', error);
+      message.error(t('common.delFail'));
+    }
+  };
+
+  const handleDeleteGroup = async (record: Group) => {
+    if (!selectedRole) return;
+    try {
+      await deleteRoleGroups({
+        role_id: selectedRole.id.toString(),
+        group_ids: [record.id.toString()]
+      });
+      message.success(t('common.delSuccess'));
+      fetchRoleGroups(selectedRole, groupCurrentPage, groupPageSize);
     } catch (error) {
       console.error('Failed:', error);
       message.error(t('common.delFail'));
@@ -275,6 +388,8 @@ const RoleManagement: React.FC = () => {
       fetchUsersByRole(role, 1, pageSize);
     } else if (activeTab === '2') {
       fetchRolePermissions(role);
+    } else if (activeTab === '3') {
+      fetchRoleGroups(role, 1, groupPageSize);
     }
   };
 
@@ -304,10 +419,19 @@ const RoleManagement: React.FC = () => {
     fetchUsersByRole(selectedRole!, 1, pageSize, value);
   };
 
+  const handleGroupSearch = (value: string) => {
+    fetchRoleGroups(selectedRole!, 1, groupPageSize, value);
+  };
+
   const openUserModal = () => {
     if (!allUserList.length) fetchAllUsers();
     addUserForm.resetFields();
     setAddUserModalOpen(true);
+  };
+
+  const openGroupModal = () => {
+    addGroupForm.resetFields();
+    setAddGroupModalOpen(true);
   };
 
   const handleAddUser = async () => {
@@ -329,6 +453,25 @@ const RoleManagement: React.FC = () => {
     }
   };
 
+  const handleAddGroups = async () => {
+    setModalLoading(true);
+    try {
+      const values = await addGroupForm.validateFields();
+      await addRoleGroups({
+        role_id: selectedRole?.id.toString(),
+        group_ids: values.groups.map((id: any) => id.toString())
+      });
+      message.success(t('common.addSuccess'));
+      fetchRoleGroups(selectedRole!, groupCurrentPage, groupPageSize);
+      setAddGroupModalOpen(false);
+    } catch (error) {
+      console.error('Failed:', error);
+      message.error(t('common.saveFailed'));
+    } finally {
+      setModalLoading(false);
+    }
+  };
+
   const handleTabChange = (key: string) => {
     setActiveTab(key);
     if (selectedRole) {
@@ -336,6 +479,8 @@ const RoleManagement: React.FC = () => {
         fetchUsersByRole(selectedRole, 1, pageSize);
       } else if (key === '2') {
         fetchRolePermissions(selectedRole);
+      } else if (key === '3') {
+        fetchRoleGroups(selectedRole, 1, groupPageSize);
       }
     }
   };
@@ -372,7 +517,7 @@ const RoleManagement: React.FC = () => {
                     +{t('common.add')}
                   </Button>
                 </PermissionWrapper>
-                <PermissionWrapper requiredPermissions={['Delete']}>
+                <PermissionWrapper requiredPermissions={['Remove user']}>
                   <Button
                     loading={deleteLoading}
                     onClick={handleBatchDeleteUsers}
@@ -417,6 +562,53 @@ const RoleManagement: React.FC = () => {
                 />
               </TabPane>
             )}
+            <TabPane tab={t('system.role.organizations')} key="3">
+              <div className="flex justify-end mb-4">
+                <Search
+                  allowClear
+                  enterButton
+                  className='w-60 mr-[8px]'
+                  onSearch={handleGroupSearch}
+                  placeholder={`${t('common.search')}`}
+                />
+                <PermissionWrapper requiredPermissions={['Add group']}>
+                  <Button
+                    className="mr-[8px]"
+                    type="primary"
+                    onClick={openGroupModal}
+                  >
+                    +{t('common.add')}
+                  </Button>
+                </PermissionWrapper>
+                <PermissionWrapper requiredPermissions={['Remove group']}>
+                  <Button
+                    loading={deleteLoading}
+                    onClick={handleBatchDeleteGroups}
+                    disabled={selectedGroupKeys.length === 0 || deleteLoading}
+                  >
+                    {t('system.common.modifydelete')}
+                  </Button>
+                </PermissionWrapper>
+              </div>
+              <Spin spinning={loading}>
+                <CustomTable
+                  scroll={{ y: 'calc(100vh - 435px)' }}
+                  rowSelection={{
+                    selectedRowKeys: selectedGroupKeys,
+                    onChange: (selectedRowKeys) => setSelectedGroupKeys(selectedRowKeys as React.Key[]),
+                  }}
+                  columns={groupColumns}
+                  dataSource={groupTableData}
+                  rowKey={(record) => record.id}
+                  pagination={{
+                    current: groupCurrentPage,
+                    pageSize: groupPageSize,
+                    total: groupTotal,
+                    onChange: handleGroupTableChange,
+                  }}
+                />
+              </Spin>
+            </TabPane>
           </Tabs>
         </div>
       </div>
@@ -475,6 +667,36 @@ const RoleManagement: React.FC = () => {
                 </Option>
               ))}
             </Select>
+          </Form.Item>
+        </Form>
+      </OperateModal>
+
+      <OperateModal
+        title={t('system.role.addOrganization')}
+        closable={false}
+        okText={t('common.confirm')}
+        cancelText={t('common.cancel')}
+        okButtonProps={{ loading: modalLoading }}
+        cancelButtonProps={{ disabled: modalLoading }}
+        open={addGroupModalOpen}
+        onOk={handleAddGroups}
+        onCancel={() => setAddGroupModalOpen(false)}
+      >
+        <div className="mb-4 p-3 bg-blue-50 rounded-md border border-blue-200">
+          <div className="text-blue-800 text-sm">
+            {t('system.role.organizationTip')}
+          </div>
+        </div>
+        <Form form={addGroupForm}>
+          <Form.Item
+            name="groups"
+            label={t('system.role.organizations')}
+            rules={[{ required: true, message: t('common.inputRequired') }]}
+          >
+            <GroupTreeSelect
+              placeholder={`${t('common.select')}${t('system.role.organizations')}`}
+              multiple={true}
+            />
           </Form.Item>
         </Form>
       </OperateModal>

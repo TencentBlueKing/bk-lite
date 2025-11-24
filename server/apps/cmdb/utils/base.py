@@ -3,7 +3,7 @@
 # @Time: 2025/7/21 14:00
 # @Author: windyzhao
 from apps.core.logger import cmdb_logger as logger
-from apps.cmdb.constants import PERMISSION_TASK
+from apps.cmdb.constants.constants import PERMISSION_TASK
 
 
 def get_cmdb_rules(request, permission_key=PERMISSION_TASK) -> dict:

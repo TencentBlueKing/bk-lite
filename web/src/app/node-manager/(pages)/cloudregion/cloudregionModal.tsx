@@ -13,12 +13,12 @@ import {
   TableDataItem,
 } from '@/app/node-manager/types';
 import OperateModal from '@/components/operate-modal';
-import useApiCloudRegion from '@/app/node-manager/api/cloudRegion';
+import useNodeManagerApi from '@/app/node-manager/api';
 
 const CloudRegionModal = forwardRef<ModalRef, ModalSuccess>(
   ({ onSuccess }, ref) => {
     const { t } = useTranslation();
-    const { updateCloudIntro, createCloudRegion } = useApiCloudRegion();
+    const { updateCloudIntro, createCloudRegion } = useNodeManagerApi();
     const cloudRegionFormRef = useRef<FormInstance>(null);
     const [openEditCloudRegion, setOpenEditCloudRegion] = useState(false);
     const [confirmLoading, setConfirmLoading] = useState<boolean>(false);
@@ -26,7 +26,7 @@ const CloudRegionModal = forwardRef<ModalRef, ModalSuccess>(
     const [type, setType] = useState<string>('edit');
     const [formData, setFormData] = useState<TableDataItem>({
       name: '',
-      introduction: ''
+      introduction: '',
     });
 
     useImperativeHandle(ref, () => ({
@@ -37,7 +37,7 @@ const CloudRegionModal = forwardRef<ModalRef, ModalSuccess>(
         if (['edit', 'delete'].includes(type)) {
           setFormData(form as TableDataItem);
         }
-      }
+      },
     }));
 
     useEffect(() => {
@@ -63,7 +63,7 @@ const CloudRegionModal = forwardRef<ModalRef, ModalSuccess>(
           const { name, introduction } = cloudRegion;
           await createCloudRegion({
             name,
-            introduction
+            introduction,
           });
           message.success(t('common.addSuccess'));
         }
@@ -71,7 +71,7 @@ const CloudRegionModal = forwardRef<ModalRef, ModalSuccess>(
         setOpenEditCloudRegion(false);
         setFormData({
           name: '',
-          introduction: ''
+          introduction: '',
         });
       } finally {
         setConfirmLoading(false);
@@ -114,26 +114,30 @@ const CloudRegionModal = forwardRef<ModalRef, ModalSuccess>(
             <Form.Item
               name={['cloudRegion', 'name']}
               label={t('common.name')}
-              rules={[
-                { required: true, message: t('common.inputRequired') },
-              ]}
+              rules={[{ required: true, message: t('common.inputRequired') }]}
             >
-              <Input disabled={formData?.name === 'default' || type === 'delete'} placeholder={t('common.inputMsg')} />
+              <Input
+                disabled={formData?.name === 'default' || type === 'delete'}
+                placeholder={t('common.inputMsg')}
+              />
             </Form.Item>
             <Form.Item
               name={['cloudRegion', 'introduction']}
               label={t('node-manager.cloudregion.editform.Introduction')}
-              rules={[
-                { required: true, message: t('common.inputRequired') },
-              ]}
+              rules={[{ required: true, message: t('common.inputRequired') }]}
             >
-              <Input.TextArea disabled={formData?.name === 'default' || type === 'delete'} rows={5} placeholder={t('common.inputMsg')} />
+              <Input.TextArea
+                disabled={formData?.name === 'default' || type === 'delete'}
+                rows={5}
+                placeholder={t('common.inputMsg')}
+              />
             </Form.Item>
           </Form>
         </OperateModal>
       </div>
-    )
-  });
+    );
+  }
+);
 
 CloudRegionModal.displayName = 'CloudRegionModal';
 export default CloudRegionModal;

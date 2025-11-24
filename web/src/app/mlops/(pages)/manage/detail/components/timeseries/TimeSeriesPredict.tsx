@@ -281,6 +281,7 @@ const TimeSeriesPredict = () => {
       <OperateModal
         open={modalOpen}
         title={t(`common.edit`)}
+        onCancel={handleCancel}
         footer={[
           <Button key="submit" loading={confirmLoading} type="primary" onClick={handleSubmit}>
             {t('common.confirm')}

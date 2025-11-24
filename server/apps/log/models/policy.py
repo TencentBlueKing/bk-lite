@@ -2,6 +2,7 @@ from django.db import models
 from apps.core.models.maintainer_info import MaintainerInfo
 from apps.core.models.time_info import TimeInfo
 from apps.log.models import CollectType
+from apps.core.fields import S3JSONField
 
 
 class Policy(TimeInfo, MaintainerInfo):
@@ -89,9 +90,54 @@ class Event(TimeInfo):
 
 
 class EventRawData(models.Model):
+    """
+    事件原始数据
+    使用 S3JSONField 自动存储到 MinIO，支持自动压缩
+    """
     event = models.ForeignKey(Event, on_delete=models.CASCADE, verbose_name='事件')
-    data = models.JSONField(default=list, verbose_name='原始数据')
+    data = S3JSONField(
+        bucket_name='log-alert-raw-data',
+        compressed=True,
+        verbose_name='原始数据',
+        help_text='自动压缩并存储到 MinIO/S3'
+    )
 
     class Meta:
         verbose_name = "事件原始数据"
         verbose_name_plural = "事件原始数据"
+
+
+class AlertSnapshot(TimeInfo):
+    """
+    告警快照表 - 记录告警全生命周期内的所有事件数据
+    累积存储告警下的所有事件原始数据到 S3
+    """
+    alert = models.OneToOneField(
+        Alert,
+        on_delete=models.CASCADE,
+        verbose_name='关联告警',
+        db_index=True,
+        related_name='snapshot'
+    )
+    policy = models.ForeignKey(Policy, on_delete=models.CASCADE, verbose_name='关联策略')
+    source_id = models.CharField(max_length=100, db_index=True, verbose_name='资源ID')
+
+    # 快照数据 - 使用 S3JSONField 存储到 S3/MinIO，节省数据库空间
+    # 格式: [
+    #   {"type": "event", "event_id": "xxx", "event_time": "xxx", "snapshot_time": "xxx", "raw_data": {...}},
+    #   ...
+    # ]
+    snapshots = S3JSONField(
+        bucket_name='log-alert-raw-data',
+        compressed=True,
+        default=list,
+        verbose_name='快照数据集合',
+        help_text='累积存储告警下所有事件的原始数据'
+    )
+
+    class Meta:
+        verbose_name = "告警快照"
+        verbose_name_plural = "告警快照"
+        indexes = [
+            models.Index(fields=['policy', 'source_id']),
+        ]

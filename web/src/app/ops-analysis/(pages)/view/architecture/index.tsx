@@ -232,7 +232,7 @@ const Architecture = forwardRef<ArchitectureRef, ArchitectureProps>(
     };
 
     const handleModelUpdated = useCallback(
-      (model: any) => {
+      (model: DiagramData) => {
         if (isUpdatingRef.current) {
           return;
         }
@@ -314,6 +314,12 @@ const Architecture = forwardRef<ArchitectureRef, ArchitectureProps>(
         <div
           className={`flex-1 relative architecture-canvas ${styles.architectureCanvas}`}
           style={{ minHeight: '500px' }}
+          onContextMenu={(e) => {
+            if (!isEditMode) {
+              e.preventDefault();
+              e.stopPropagation();
+            }
+          }}
         >
           {loading && (
             <div className="absolute inset-0 bg-white bg-opacity-80 flex items-center justify-center z-50">

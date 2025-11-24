@@ -5,7 +5,7 @@ from openpyxl.styles import PatternFill
 from openpyxl.utils import get_column_letter
 from openpyxl.worksheet.datavalidation import DataValidation
 
-from apps.cmdb.constants import ENUM, ORGANIZATION, USER, ASSOCIATION_TYPE, ATTR_TYPE_MAP
+from apps.cmdb.constants.constants import ENUM, ORGANIZATION, USER, ASSOCIATION_TYPE, ATTR_TYPE_MAP
 from apps.cmdb.services.model import ModelManage
 
 

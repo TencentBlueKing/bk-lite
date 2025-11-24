@@ -46,7 +46,7 @@ const ViewModal = forwardRef<ModalRef, ViewModalProps>(
         // 开启弹窗的交互
         setGroupVisible(true);
         setTitle(title);
-        setViewConfig(form);
+        setViewConfig(form as ChartProps);
       },
     }));
 

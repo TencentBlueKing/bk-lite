@@ -18,6 +18,7 @@ interface Capability {
     name?: string;
   } | number;
   is_active?: boolean;
+  config?: any
 }
 
 interface ProcessedCapability {
@@ -113,7 +114,6 @@ const useModelExperience = (shouldLoad: boolean = true) => {
     if (!categoryList.length || !capabilityList.length) {
       return [];
     }
-
     return categoryList.map((category: Category) => ({
       category,
       capabilities: capabilityList
@@ -128,7 +128,7 @@ const useModelExperience = (shouldLoad: boolean = true) => {
           id: item.id,
           name: item?.name || 'Unnamed',
           description: item?.description || '',
-          url: `${item?.url}?page=anomaly-detection&id=${item?.id}&name=${encodeURIComponent(item?.name || '')}&description=${encodeURIComponent(item?.description || '')}`,
+          url: `${item?.url}?page=${item.config?.categoryType}&id=${item?.id}&name=${encodeURIComponent(item?.name || '')}&description=${encodeURIComponent(item?.description || '')}`,
         }))
     })).filter(({ capabilities }) => capabilities.length > 0);
   }, [categoryList, capabilityList]);

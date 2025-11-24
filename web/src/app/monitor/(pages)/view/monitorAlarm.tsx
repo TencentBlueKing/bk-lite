@@ -177,7 +177,6 @@ const Alert: React.FC<ViewModalProps> = ({
   };
 
   const changeTab = (val: string) => {
-    console.log(form);
     setActiveTab(val);
   };
 

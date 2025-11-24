@@ -9,6 +9,7 @@ export interface DirItem {
   type: DirectoryType;
   children?: DirItem[];
   desc?: string;
+  groups?: number[];
 }
 
 export interface SidebarProps {
@@ -19,4 +20,24 @@ export interface SidebarProps {
 export interface SidebarRef {
   clearSelection: () => void;
   setSelectedKeys: (keys: React.Key[]) => void;
+}
+
+export interface FormValues {
+  name: string;
+  desc?: string;
+  groups?: number[];
+}
+
+export interface ItemData {
+  name: string;
+  desc?: string;
+  directory?: number;
+  parent_id?: number;
+  groups?: number[];
+}
+
+export interface IconWithSize {
+  width?: number;
+  height?: number;
+  size?: number;
 }

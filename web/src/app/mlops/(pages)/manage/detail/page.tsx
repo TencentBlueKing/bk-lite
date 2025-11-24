@@ -1,5 +1,5 @@
 'use client'
-import React, { useMemo } from 'react';
+import React, { useCallback, useMemo } from 'react';
 import {
   useSearchParams,
 } from 'next/navigation';
@@ -10,9 +10,13 @@ import RasaDetail from './components/rasa/RasaDetail';
 import LogDetail from './components/log/LogDetail';
 import TimeSeriesPredict from './components/timeseries/TimeSeriesPredict';
 import ClassificationDetail from './components/classification/classificationDetail';
+import ImageClassificationDetail from './components/image-classification/imageClassificationDetail';
+import ObjectDetectionDetail from './components/object-detection/objectDetection';
 import Sublayout from '@/components/sub-layout';
 import TopSection from '@/components/top-section';
 import { MenuItem } from '@/types';
+import { RasaMenus } from '@/app/mlops/types/manage';
+import { RASA_MENUS } from '@/app/mlops/constants'
 
 
 const Detail = () => {
@@ -36,97 +40,33 @@ const Detail = () => {
   const datasetInfo = `folder_id=${folder_id}&folder_name=${folder_name}&description=${description}&activeTap=${activeTap}`;
 
   const RasaContent = (menu: string) => {
-    switch (menu) {
-      case 'intent':
-        return '用来描述对话流程的关键部分，他相当于对话机器人的"训练样本"，帮助模型学习如何在不同的用户输入下选择正确的动作或回复';
-      case 'response':
-        return '用来描述对话流程的关键部分，他相当于对话机器人的"训练样本"，帮助模型学习如何在不同的用户输入下选择正确的动作或回复';
-      case 'rule':
-        return '用来描述对话流程的关键部分，他相当于对话机器人的"训练样本"，帮助模型学习如何在不同的用户输入下选择正确的动作或回复';
-      case 'story':
-        return '用来描述对话流程的关键部分，他相当于对话机器人的"训练样本"，帮助模型学习如何在不同的用户输入下选择正确的动作或回复';
-      case 'entity':
-        return '用来描述对话流程的关键部分，他相当于对话机器人的"训练样本"，帮助模型学习如何在不同的用户输入下选择正确的动作或回复';
-      case 'slot':
-        return '用来描述对话流程的关键部分，他相当于对话机器人的"训练样本"，帮助模型学习如何在不同的用户输入下选择正确的动作或回复';
-      case 'form':
-        return '用来描述对话流程的关键部分，他相当于对话机器人的"训练样本"，帮助模型学习如何在不同的用户输入下选择正确的动作或回复';
-      case 'action':
-        return '用来描述对话流程的关键部分，他相当于对话机器人的"训练样本"，帮助模型学习如何在不同的用户输入下选择正确的动作或回复';
-      default:
-        return '';
-    }
+    const result =  RASA_MENUS.find((item: RasaMenus) => item.menu === menu);
+    if(result) return result.content;
+    return '';
   };
 
-  const rasaMenus: MenuItem[] = [
-    {
-      name: 'intent',
-      title: t(`datasets.intentTitle`),
-      url: `/mlops/manage/detail?${datasetInfo}&menu=intent`,
-      icon: 'suanwangyitu',
+  const renderMenus = useCallback((menus: RasaMenus[]): MenuItem[] => {
+    return menus.map(({ menu, icon }) => ({
+      name: menu,
+      title: t(`datasets.${menu}Title`),
+      icon: icon,
+      url: `/mlops/manage/detail?${datasetInfo}&menu=${menu}`,
       operation: []
-    },
-    {
-      name: 'entity',
-      title: t(`datasets.entityTitle`),
-      url: `/mlops/manage/detail?${datasetInfo}&menu=entity`,
-      icon: 'shitishu',
-      operation: []
-    },
-    {
-      name: 'action',
-      title: '动作管理',
-      url: `/mlops/manage/detail?${datasetInfo}&menu=action`,
-      icon: 'dongzuozu',
-      operation: []
-    },
-    {
-      name: 'response',
-      title: t(`datasets.responseTitle`),
-      url: `/mlops/manage/detail?${datasetInfo}&menu=response`,
-      icon: 'huifu',
-      operation: []
-    },
-    {
-      name: 'slot',
-      title: t(`datasets.slotTitle`),
-      url: `/mlops/manage/detail?${datasetInfo}&menu=slot`,
-      icon: 'bianliang-xin',
-      operation: []
-    },
-    {
-      name: 'form',
-      title: t(`datasets.formTitle`),
-      url: `/mlops/manage/detail?${datasetInfo}&menu=form`,
-      icon: 'wannengbiaodan',
-      operation: []
-    },
-    {
-      name: 'rule',
-      title: t(`datasets.ruleTitle`),
-      url: `/mlops/manage/detail?${datasetInfo}&menu=rule`,
-      icon: 'guizepeizhi',
-      operation: []
-    },
-    {
-      name: 'story',
-      title: t(`datasets.storyTitle`),
-      url: `/mlops/manage/detail?${datasetInfo}&menu=story`,
-      icon: 'wodegushi',
-      operation: []
-    },
-  ];
+    }));
+  }, [datasetInfo]);
 
   const showSideMenu = useMemo(() => {
     return activeTap !== 'rasa' ? false : true;
   }, [activeTap]);
 
   const renderPage: Record<string, React.ReactNode> = useMemo(() => ({
-    anomaly: <AnomalyDetail />,
+    anomaly_detection: <AnomalyDetail />,
     rasa: <RasaDetail />,
     log_clustering: <LogDetail />,
     timeseries_predict: <TimeSeriesPredict />,
-    classification: <ClassificationDetail />
+    classification: <ClassificationDetail />,
+    image_classification: <ImageClassificationDetail />,
+    object_detection: <ObjectDetectionDetail />
   }), [activeTap]);
 
   const Intro = useMemo(() => (
@@ -153,7 +93,7 @@ const Detail = () => {
           showSideMenu={showSideMenu}
           activeKeyword
           keywordName='menu'
-          customMenuItems={activeTap === 'rasa' ? rasaMenus : []}
+          customMenuItems={activeTap === 'rasa' ? renderMenus(RASA_MENUS) : []}
           onBackButtonClick={backToList}
         >
           <div className='w-full h-full relative'>

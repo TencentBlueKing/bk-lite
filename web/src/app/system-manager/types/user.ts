@@ -10,6 +10,7 @@ interface UserDataType {
   team?: string;
   role?: string;
   roles: Array<{ id: string; name: string }>;
+  group_role_list?: string[];
   groups: Array<any>;
   last_login?: string;
 }
@@ -22,7 +23,6 @@ interface Access {
   manage: boolean;
 }
 
-// 定义 BruteForceStatus 接口
 interface BruteForceStatus {
   numFailures: number;
   disabled: boolean;
@@ -30,7 +30,6 @@ interface BruteForceStatus {
   lastFailure: number;
 }
 
-// 定义 传输User 接口
 interface TransmitUserData {
   id: string;
   createdTimestamp: number;

@@ -119,6 +119,10 @@ const useIntegrationApi = () => {
     );
   };
 
+  const getUiTemplate = async (data: { id: React.Key }) => {
+    return await get(`/monitor/api/monitor_plugin/${data.id}/ui_template`);
+  };
+
   return {
     getInstanceGroupRule,
     getInstanceChildConfig,
@@ -136,6 +140,7 @@ const useIntegrationApi = () => {
     getConfigContent,
     updateMonitorInstance,
     setInstancesGroup,
+    getUiTemplate,
   };
 };
 

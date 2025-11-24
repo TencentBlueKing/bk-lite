@@ -337,7 +337,8 @@ const AnomalyDetection = () => {
 
       const params = {
         serving_id: serving.serving_id,
-        model_name: `RandomForest_${serving.serving_id}`,
+        // model_name: `RandomForest_${serving.serving_id}`,
+        model_name: `AnomalyDetection_RandomForest_${serving.serving_id}`,
         algorithm: "RandomForest",
         model_version: serving.model_version,
         anomaly_threshold: serving.anomaly_threshold,

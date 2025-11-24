@@ -34,6 +34,41 @@ export const handleFileRead = (text: string) => {
   return data;
 };
 
+export const handleClassFile = (text: string) => {
+  // 统一换行符为 \n
+  const lines = text.replace(/\r\n|\r|\n/g, '\n')?.split('\n').filter(line => line.trim() !== '');
+  if (!lines.length) return {
+    train_data: [],
+    headers: []
+  };
+
+  const headers = lines[0].split(',');
+
+  const data = lines.slice(1).map((line) => {
+    const values = line.split(',');
+
+    return headers.reduce((obj: Record<string, any>, key, idx) => {
+      const value = values[idx];
+
+      if (key === 'timestamp') {
+        const timestamp = new Date(value).getTime();
+        obj[key] = timestamp / 1000;
+      } else {
+        const numValue = Number(value);
+        obj[key] = isNaN(numValue) ? value : numValue;
+      }
+
+
+      return obj;
+    }, {});
+  });
+
+  return {
+    train_data: data,
+    headers
+  };
+}
+
 // 柱形图或者折线图单条线时，获取其最大值、最小值、平均值和最新值、和
 export const calculateMetrics = (data: any[], key = 'value1') => {
   if (!data || data.length === 0) return {};

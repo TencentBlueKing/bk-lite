@@ -2,10 +2,7 @@
 # @File: get_nats_source_data.py
 # @Time: 2025/7/22 18:24
 # @Author: windyzhao
-from apps.operation_analysis.nats import DefaultNastClient
-from apps.rpc.alerts import AlertOperationAnaRpc
-from apps.rpc.monitor import MonitorOperationAnaRpc
-from apps.rpc.log import LogOperationAnaRpc
+from apps.operation_analysis.nats.nats_client import DefaultNastClient
 from apps.core.logger import operation_analysis_logger as logger
 
 
@@ -14,15 +11,14 @@ class GetNatsData:
     获取NATS数据源数据
     """
 
-    def __init__(self, namespace: str, path: str, namespace_list: list, params: dict = {}, request=None):
+    def __init__(self, namespace: str, path: str, namespace_list: list, params: dict = None, request=None):
         self.request = request
         self.path = path
-        self.params = params or {}
+        self.params = params if params is not None else {}
         self.update_request_params()
         self.namespace = namespace
         self.namespace_list = namespace_list
         self.namespace_server_map = self.set_namespace_servers()
-        self.namespace_map = self.set_namespace_map()
 
     @property
     def default_nats_client(self):
@@ -49,26 +45,28 @@ class GetNatsData:
         }
 
     def set_namespace_servers(self):
+        """
+        构建NATS服务器连接URL
+        根据enable_tls字段决定使用nats://或tls://协议
+        """
         result = {}
         for namespace in self.namespace_list:
+            # 根据enable_tls字段确定协议
+            protocol = "tls" if namespace.enable_tls else "nats"
+
+            # 构建完整的服务器URL
             if ':' not in namespace.domain:
-                server_url = f"nats://{namespace.account}:{namespace.decrypt_password}@{namespace.domain}:4222"
+                # 域名不包含端口,使用默认端口4222
+                server_url = f"{protocol}://{namespace.account}:{namespace.decrypt_password}@{namespace.domain}:4222"
             else:
-                server_url = f"nats://{namespace.account}:{namespace.decrypt_password}@{namespace.domain}"
+                # 域名已包含端口,直接使用
+                server_url = f"{protocol}://{namespace.account}:{namespace.decrypt_password}@{namespace.domain}"
+
             result[namespace.id] = server_url
         return result
 
-    @staticmethod
-    def set_namespace_map():
-        result = {"alert": AlertOperationAnaRpc, "monitor": MonitorOperationAnaRpc, "log": LogOperationAnaRpc}
-        return result
-
-    def _get_client(self, server):
-        if self.namespace not in self.namespace_map.keys():
-            logger.info("==NATS命名空间未配置，使用默认命名空间==: namespace={}".format(self.namespace))
-            client = self.default_nats_client(server=server, func_name=self.path)
-        else:
-            client = self.namespace_map[self.namespace](server=server)
+    def _get_client(self, server, namespace):
+        client = self.default_nats_client(server=server, func_name=self.path, namespace=namespace)
 
         return client
 
@@ -81,7 +79,8 @@ class GetNatsData:
         result = {}
         for namespace in self.namespace_list:
             server_url = self.namespace_server_map[namespace.id]
-            nats_client = self._get_client(server=server_url)
+            nats_namespace = getattr(namespace, 'namespace', 'bk_lite')
+            nats_client = self._get_client(server=server_url, namespace=nats_namespace)
             try:
                 if hasattr(nats_client, "DEFAULT_NATS"):
                     fun = getattr(nats_client, "get_customization_nast_data", None)

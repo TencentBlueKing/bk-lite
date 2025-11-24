@@ -7,6 +7,7 @@
     "lint": "next lint"
   },
   "dependencies": {
+    "@ag-ui/core": "^0.0.41",
     "@ant-design/charts": "^2.2.3",
     "@ant-design/x": "1.0.0-alpha.12",
     "@antv/g6": "^4.8.25",
@@ -14,8 +15,7 @@
     "docx-preview": "^0.3.4",
     "highlight.js": "^11.11.0",
     "markdown-it": "^14.1.0",
-    "react-file-viewer": "^1.2.1",
-    "xlsx": "^0.18.5"
+    "react-file-viewer": "^1.2.1"
   },
   "devDependencies": {
     "@types/markdown-it": "^14.1.2"

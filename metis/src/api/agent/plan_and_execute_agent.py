@@ -31,7 +31,8 @@ async def invoke_plan_and_execute_agent(request, body: PlanAndExecuteAgentReques
         return json(result.model_dump())
 
     except Exception as e:
-        logger.error(f"同步 Plan and Execute Agent 失败，问题: {body.user_message}, 错误: {e}")
+        logger.error(
+            f"同步 Plan and Execute Agent 失败，问题: {body.user_message}, 错误: {e}")
         raise
 
 
@@ -45,7 +46,23 @@ async def invoke_plan_and_execute_agent_sse(request, body: PlanAndExecuteAgentRe
 
     return ResponseStream(
         lambda res: BaseAgent.stream_response_handler(
-            workflow, body, res, 
+            workflow, body, res,
+        ),
+        content_type="text/event-stream; charset=utf-8",
+        headers={"Cache-Control": "no-cache", "Connection": "keep-alive"}
+    )
+
+
+@plan_and_execute_agent_router.post("/invoke_plan_and_execute_agent_agui")
+@auth.login_required
+@validate(json=PlanAndExecuteAgentRequest)
+async def invoke_plan_and_execute_agent_agui(request, body: PlanAndExecuteAgentRequest):
+    """执行 Plan and Execute Agent（AG-UI 协议流式响应）"""
+    workflow = _prepare_workflow(body)
+
+    return ResponseStream(
+        lambda res: BaseAgent.agui_stream_response_handler(
+            workflow, body, res
         ),
         content_type="text/event-stream; charset=utf-8",
         headers={"Cache-Control": "no-cache", "Connection": "keep-alive"}

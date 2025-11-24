@@ -1,0 +1,244 @@
+# Neco Agent 配置文件示例
+# 
+# 设计理念：参数透传
+#   - 配置文件中的参数会直接透传到对应的 Request 对象
+#   - 支持所有 Request 对象支持的参数（当前和未来）
+#   - agent 配置优先级高于 global 配置
+#
+# 使用方法:
+#   1. 复制此文件为 agents.yml
+#   2. 修改 global 配置（或使用环境变量）
+#   3. 根据需要配置 agents，所有 Request 支持的参数都可以在这里配置
+#   4. 运行（推荐使用 uvx）:
+#      uvx --from . neco-agent run --config=agents.yml --agent=research_agent --message="你的问题"
+#
+# 环境变量支持:
+#   配置文件支持 ${VAR_NAME} 和 ${VAR_NAME:default_value} 格式的环境变量替换
+#   例如: ${OPENAI_API_KEY} 或 ${OPENAI_API_KEY:sk-default}
+#   
+#   使用环境变量示例:
+#   export OPENAI_API_KEY="sk-xxx"
+#   export OPENAI_MODEL="gpt-4o"
+#   uvx --from . neco-agent run --config=agents.yml --agent=research_agent --message="..."
+
+version: "1.0"
+
+# 执行后端：local（本地执行）
+backend: local
+
+# 全局配置（所有 Agent 的默认值）
+# 这里的配置会被 agent 中的同名配置覆盖
+global:
+  # LLM 基础配置
+  openai_api_base: "${OPENAI_API_BASE:https://api.openai.com}"
+  openai_api_key: "${OPENAI_API_KEY:sk-your-api-key-here}"
+  model: "${OPENAI_MODEL:gpt-4o}"
+  temperature: 0.7
+  
+  # 其他可选配置（BasicLLMRequest 支持的所有参数）
+  # enable_suggest: false
+  # enable_query_rewrite: false
+  # user_id: ""
+  # thread_id: ""
+  # extra_config: {}
+
+# Agent 配置列表
+# 注意：除了 name、type、description 是元数据外，
+#      其他所有参数都会透传到对应的 Request 对象
+agents:
+  # ========================================
+  # 1. ReAct Agent 示例
+  # ========================================
+  - name: "research_agent"
+    type: "react"
+    description: "研究型 Agent，擅长搜索和分析信息"
+    
+    # 以下参数直接透传到 ReActAgentRequest
+    system_message_prompt: |
+      你是一个专业的研究助手，擅长搜索和分析信息。
+      你会使用搜索工具查找相关信息，并给出准确、详细的回答。
+    
+    temperature: 0.5
+    
+    # 工具配置（直接透传到 ToolsServer）
+    tools_servers:
+      - name: "search"
+        url: "mcp:duckduckgo"
+      - name: "github"
+        url: "mcp:github"
+    
+    # 可以添加 ReActAgentRequest 支持的任何其他参数
+    # enable_suggest: true
+    # enable_query_rewrite: true
+
+  # ========================================
+  # 2. Deep Agent 示例
+  # ========================================
+  - name: "thinking_agent"
+    type: "deep"
+    description: "深度思考型 Agent，适合复杂问题分析"
+    
+    # 以下参数直接透传到 DeepAgentRequest
+    system_message_prompt: |
+      你是一个深度思考型助手，擅长分析复杂问题。
+      你会进行多轮思考，逐步推导出准确的答案。
+    
+    temperature: 0.7
+    
+    tools_servers:
+      - name: "search"
+        url: "mcp:duckduckgo"
+
+  # ========================================
+  # 3. Chatbot Workflow 示例
+  # ========================================
+  - name: "simple_chatbot"
+    type: "chatbot"
+    description: "简单对话机器人"
+    
+    # 以下参数直接透传到 ChatBotWorkflowRequest
+    system_message_prompt: |
+      你是一个友好的对话助手。
+      请用简洁、清晰的语言回答用户的问题。
+    
+    temperature: 0.8
+    tools_servers: []
+
+  # ========================================
+  # 4. Supervisor Multi-Agent 示例
+  # ========================================
+  - name: "dev_team"
+    type: "supervisor"
+    description: "开发团队协作系统，包含多个专业 Agent"
+    
+    # 以下参数直接透传到 SupervisorMultiAgentRequest
+    supervisor_system_prompt: |
+      你是一个软件开发团队的主管，负责协调多个专业 Agent 完成任务。
+      
+      你需要分析用户的需求，选择合适的 Agent 执行任务：
+      - 如果需要编写代码，委派给 coder
+      - 如果需要搜索信息，委派给 searcher
+      - 如果需要操作 GitHub，委派给 github_ops
+      
+      你可以让多个 Agent 依次执行，以完成复杂任务。
+      当任务完成时，请返回 FINISH。
+    
+    max_iterations: 10
+    output_mode: "last_message"  # last_message | full_history
+    
+    # 上下文窗口配置（SupervisorMultiAgentRequest 参数）
+    default_context_window_size: 20
+    supervisor_context_window_size: 30
+    supervisor_model: null  # 不指定则使用 global.model
+    
+    # 子 Agent 配置（直接透传到 AgentConfig）
+    sub_agents:
+      - name: "coder"
+        description: "编程专家，擅长编写和分析代码"
+        system_message_prompt: |
+          你是一个专业的编程助手。
+          你擅长 Python、JavaScript 等多种编程语言。
+          请编写清晰、高效、可维护的代码。
+        temperature: 0.3
+        context_window_size: 15
+        tools_servers:
+          - name: "python"
+            url: "mcp:python"
+      
+      - name: "searcher"
+        description: "信息搜索专家，擅长查找和整理信息"
+        system_message_prompt: |
+          你是一个信息搜索专家。
+          你会使用搜索工具查找准确的信息，并整理成易于理解的格式。
+        temperature: 0.5
+        tools_servers:
+          - name: "search"
+            url: "mcp:duckduckgo"
+      
+      - name: "github_ops"
+        description: "GitHub 操作专家，擅长管理代码仓库"
+        system_message_prompt: |
+          你是一个 GitHub 操作专家。
+          你可以帮助用户搜索仓库、查看问题、管理项目等。
+        temperature: 0.4
+        tools_servers:
+          - name: "github"
+            url: "mcp:github"
+
+  # ========================================
+  # 5. 复杂配置示例 - 展示参数透传能力
+  # ========================================
+  - name: "advanced_agent"
+    type: "react"
+    description: "展示所有可配置参数的示例"
+    
+    # BasicLLMRequest 的所有参数都可以配置
+    openai_api_base: "${CUSTOM_API_BASE:https://api.openai.com}"
+    openai_api_key: "${CUSTOM_API_KEY}"
+    model: "gpt-4o-mini"
+    system_message_prompt: "你是高级助手"
+    temperature: 0.6
+    enable_suggest: true
+    enable_query_rewrite: true
+    user_id: "user_123"
+    thread_id: "thread_456"
+    
+    # 工具配置支持 ToolsServer 的所有参数
+    tools_servers:
+      - name: "kubernetes"
+        url: "mcp:kubernetes"
+        command: "get_pods"
+        args: ["namespace", "name"]
+        extra_param_prompt:
+          cluster: "生产环境集群"
+          region: "us-west-2"
+        extra_tools_prompt: "注意：操作前请确认环境"
+      
+      - name: "jenkins"
+        url: "mcp:jenkins"
+        command: "trigger_build"
+        args: ["job_name", "parameters"]
+    
+    # 未来如果 Request 新增参数，直接在这里添加即可
+    # new_feature_param: "value"
+    
+    # 自定义配置（通过 extra_config 透传）
+    extra_config:
+      custom_key: "custom_value"
+      another_setting: 123
+
+# ========================================
+# 配置说明
+# ========================================
+#
+# 参数透传规则:
+#   1. 元数据字段（不透传）：name, type, description
+#   2. global 中的配置作为默认值
+#   3. agent 中的配置覆盖 global 中的同名配置
+#   4. 除元数据外的所有字段都会透传到 Request 对象
+#   5. 支持当前和未来 Request 对象的所有参数
+#
+# Agent 类型:
+#   - react: ReActAgent → ReActAgentRequest
+#   - deep: DeepAgent → DeepAgentRequest
+#   - chatbot: ChatbotWorkflow → ChatBotWorkflowRequest
+#   - supervisor: SupervisorMultiAgent → SupervisorMultiAgentRequest
+#
+# 工具配置 (tools_servers):
+#   直接透传到 ToolsServer 对象，支持所有参数：
+#   - name: 工具名称
+#   - url: 工具 URL（格式：mcp:<tool_name>）
+#   - command: 工具命令（可选）
+#   - args: 命令参数（可选）
+#   - extra_param_prompt: 额外参数提示（可选）
+#   - extra_tools_prompt: 额外工具提示（可选）
+#
+# Supervisor sub_agents:
+#   直接透传到 AgentConfig 对象，支持所有参数：
+#   - name: Agent 名称
+#   - description: Agent 描述
+#   - system_message_prompt: 系统提示词
+#   - tools_servers: 工具配置
+#   - temperature: 温度参数
+#   - context_window_size: 上下文窗口大小
+#   - 以及 AgentConfig 支持的任何其他参数

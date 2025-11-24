@@ -96,18 +96,23 @@ const MetricModal = forwardRef<ModalRef, ModalProps>(
             setEnumList([INIT_UNIT_ITEM]);
           } else {
             setDimensions(
-              formData.dimensions?.length ? formData.dimensions : [{ name: '' }]
+              (formData.dimensions as DimensionItem[])?.length
+                ? (formData.dimensions as DimensionItem[])
+                : [{ name: '' }]
             );
             setInstanceIdKeys(
-              formData.instance_id_keys?.length
-                ? formData.instance_id_keys
+              (formData.instance_id_keys as (string | null)[])?.length
+                ? (formData.instance_id_keys as (string | null)[])
                 : [null]
             );
             if (formData.data_type === 'Number') {
-              formData.unit = findCascaderPath(unitList.current, formData.unit);
+              formData.unit = findCascaderPath(
+                unitList.current,
+                formData.unit as string
+              );
             } else {
               formData.data_type = 'Enum';
-              const _enumList = JSON.parse(formData.unit).map(
+              const _enumList = JSON.parse(formData.unit as string).map(
                 (item: EnumItem) =>
                   Object.assign({ name: null, id: null, color: null }, item)
               );
@@ -146,8 +151,6 @@ const MetricModal = forwardRef<ModalRef, ModalProps>(
         message.success(msg);
         handleCancel();
         onSuccess();
-      } catch (error) {
-        console.log(error);
       } finally {
         setConfirmLoading(false);
       }

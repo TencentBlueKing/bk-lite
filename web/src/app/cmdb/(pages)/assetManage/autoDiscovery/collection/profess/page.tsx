@@ -19,7 +19,7 @@ import type { ColumnType } from 'antd/es/table';
 import { Modal } from 'antd';
 import { SearchOutlined } from '@ant-design/icons';
 import { useTranslation } from '@/utils/i18n';
-import { Input, Button, Spin, Tag, Tree, Drawer, message, Tabs } from 'antd';
+import { Input, Button, Spin, Tag, Drawer, message, Tabs, Card } from 'antd';
 import {
   createExecStatusMap,
   ExecStatusKey,
@@ -34,6 +34,7 @@ import {
   CollectTaskMessage,
   ModelItem,
 } from '@/app/cmdb/types/autoDiscovery';
+import MarkdownRenderer from '@/components/markdown';
 
 type ExtendedColumnItem = ColumnType<CollectTask> & {
   key: string;
@@ -51,7 +52,6 @@ const ProfessionalCollection: React.FC = () => {
   const [currentTask, setCurrentTask] = useState<CollectTask | null>(null);
   const [activeTab, setActiveTab] = useState<string>('');
   const [tableData, setTableData] = useState<CollectTask[]>([]);
-  const [expandedKeys, setExpandedKeys] = useState<string[]>([]);
   const [displayFieldKeys, setDisplayFieldKeys] = useState<string[]>([]);
   const [allColumns, setAllColumns] = useState<ExtendedColumnItem[]>([]);
   const [currentColumns, setCurrentColumns] = useState<ExtendedColumnItem[]>(
@@ -61,6 +61,10 @@ const ProfessionalCollection: React.FC = () => {
   const [tableLoading, setTableLoading] = useState(false);
   const [editingId, setEditingId] = useState<number | null>(null);
   const [executingTaskIds, setExecutingTaskIds] = useState<number[]>([]);
+  const [docDrawerVisible, setDocDrawerVisible] = useState(false);
+  const [taskDocDrawerVisible, setTaskDocDrawerVisible] = useState(false);
+  const [pluginDoc, setPluginDoc] = useState<string>('');
+  const [docLoading, setDocLoading] = useState(false);
   const tableCountRef = useRef<number>(0);
   const timerRef = useRef<NodeJS.Timeout | null>(null);
   const stateRef = useRef({
@@ -84,16 +88,11 @@ const ProfessionalCollection: React.FC = () => {
     total: 0,
   });
 
-  const getAllKeys = (nodes: TreeNode[]): string[] => {
-    let keys: string[] = [];
-    nodes.forEach((node) => {
-      keys.push(node.id);
-      if (node.children) {
-        keys = keys.concat(getAllKeys(node.children));
-      }
-    });
-    return keys;
-  };
+  const currentPlugin = React.useMemo(() => {
+    return selectedRef.current.node?.tabItems?.find(
+      (item) => item.id === activeTab
+    );
+  }, [activeTab]);
 
   const getParams = (tabId?: string) => {
     const modelId = tabId || stateRef.current.activeTab;
@@ -162,7 +161,6 @@ const ProfessionalCollection: React.FC = () => {
         return node;
       });
       setTreeData(treeData);
-      setExpandedKeys(getAllKeys(data));
       if (!data.length) return;
 
       const firstItem = data[0];
@@ -247,6 +245,9 @@ const ProfessionalCollection: React.FC = () => {
       stateRef.current.currentExecStatus = undefined;
       setPaginationUI((prev) => ({ ...prev, current: 1 }));
 
+      setPluginDoc('');
+      setDocLoading(false);
+
       if (node?.tabItems?.length) {
         setActiveTab(node.tabItems[0].id);
         stateRef.current.activeTab = node.tabItems[0].id;
@@ -274,6 +275,27 @@ const ProfessionalCollection: React.FC = () => {
   const handleCreate = () => {
     setEditingId(null);
     setDrawerVisible(true);
+  };
+
+  const fetchPluginDoc = async (pluginId: string) => {
+    try {
+      setDocLoading(true);
+      const data = await collectApi.getCollectModelDoc(pluginId);
+      setPluginDoc(data || '');
+    } catch (error) {
+      console.error('Failed to fetch plugin doc:', error);
+      setPluginDoc('');
+      message.error('获取插件文档失败');
+    } finally {
+      setDocLoading(false);
+    }
+  };
+
+  const handleViewDoc = () => {
+    if (activeTab && !pluginDoc) {
+      fetchPluginDoc(activeTab);
+    }
+    setDocDrawerVisible(true);
   };
 
   const handleEdit = (record: CollectTask) => {
@@ -304,7 +326,7 @@ const ProfessionalCollection: React.FC = () => {
         } catch (error) {
           console.error('Failed to delete task:', error);
         }
-      }
+      },
     });
   };
 
@@ -330,19 +352,16 @@ const ProfessionalCollection: React.FC = () => {
   const closeDrawer = () => {
     setEditingId(null);
     setDrawerVisible(false);
+    setTaskDocDrawerVisible(false);
   };
 
   const getTaskContent = () => {
-    if (!selectedRef.current.node) return null;
-    const modelItem = selectedRef.current.node.tabItems?.find(
-      (item) => item.id === activeTab
-    );
-    if (!modelItem) return null;
+    if (!selectedRef.current.node || !currentPlugin) return null;
     const props = {
       onClose: closeDrawer,
       onSuccess: fetchData,
       selectedNode: selectedRef.current.node,
-      modelItem: modelItem as ModelItem,
+      modelItem: currentPlugin as ModelItem,
       editId: editingId,
     };
     const taskMap: Record<string, React.ComponentType<any>> = {
@@ -577,9 +596,6 @@ const ProfessionalCollection: React.FC = () => {
     setCurrentColumns(newColumns);
   }, [executingTaskIds]);
 
-  const hasMultipleTabs =
-    (selectedRef.current?.node?.tabItems?.length ?? 0) > 1;
-
   const handleTabChange = (newActiveTab: string) => {
     setActiveTab(newActiveTab);
     stateRef.current.activeTab = newActiveTab;
@@ -599,100 +615,266 @@ const ProfessionalCollection: React.FC = () => {
       current: 1,
     }));
 
+    setPluginDoc('');
+    setDocLoading(false);
+
     fetchData(true, newActiveTab);
   };
 
+  const PluginCard = ({ tab }: { tab: any }) => {
+    const isActive = activeTab === tab.id;
+    const tags = tab.tag || [];
+    const description = tab.desc || '';
+
+    return (
+      <Card
+        key={tab.id}
+        hoverable
+        className={`cursor-pointer transition-all ${
+          isActive
+            ? 'border-blue-500 shadow-md bg-blue-50'
+            : 'border-gray-200 hover:border-blue-300'
+        }`}
+        bodyStyle={{ padding: '14px' }}
+        onClick={() => handleTabChange(tab.id)}
+      >
+        <div className="flex items-start gap-3 mb-2">
+          <div
+            className={`w-12 h-12 rounded flex items-center justify-center text-xl font-semibold flex-shrink-0 ${
+              isActive ? 'bg-blue-500 text-white' : 'bg-blue-100 text-blue-600'
+            }`}
+          >
+            {tab.name?.charAt(0) || 'A'}
+          </div>
+          <div className="flex-1 min-w-0">
+            <div
+              className={`text-sm font-medium mb-1 ${
+                isActive ? 'text-blue-600' : 'text-gray-800'
+              }`}
+            >
+              {tab.name}
+            </div>
+            <div className="text-xs text-gray-500 line-clamp-2">
+              {description}
+            </div>
+          </div>
+        </div>
+        {tags.length > 0 && (
+          <div className="pt-2 mt-2 border-t border-gray-200 flex flex-wrap gap-1.5">
+            {tags.map((tag: string) => (
+              <Tag
+                key={tag}
+                color="blue"
+                style={{
+                  fontSize: '10px',
+                  padding: '0 4px',
+                  lineHeight: '16px',
+                  margin: 0,
+                  borderRadius: '2px',
+                }}
+              >
+                {tag}
+              </Tag>
+            ))}
+          </div>
+        )}
+      </Card>
+    );
+  };
+
   return (
-    <div className="flex flex-1 overflow-hidden">
-      <div className="w-56 flex-shrink-0 border-r border-[var(--color-border-2)] pr-4 py-2 overflow-auto">
-        <Spin spinning={treeLoading}>
-          <Tree
-            blockNode
-            treeData={treeData}
-            fieldNames={{ title: 'name', key: 'id', children: 'children' }}
-            expandedKeys={expandedKeys}
-            selectedKeys={[selectedRef.current.nodeId]}
-            style={{ minHeight: '100px' }}
-            onSelect={onTreeSelect}
-          />
-        </Spin>
-      </div>
-      <div className="flex-1 pt-1 pl-5 flex flex-col overflow-hidden">
-        {hasMultipleTabs && (
+    <div className="flex flex-col flex-1 overflow-hidden">
+      <div className="bg-white border-b border-gray-200 ml-2">
+        {treeLoading ? (
+          <div className="flex items-center justify-center py-2">
+            <Spin size="small" />
+          </div>
+        ) : (
           <Tabs
-            activeKey={activeTab}
-            items={selectedRef.current.node?.tabItems?.map((tab) => ({
-              key: tab.id,
-              label: tab.name,
+            activeKey={selectedRef.current.nodeId}
+            onChange={(key) => onTreeSelect([key])}
+            items={treeData.map((category) => ({
+              key: category.id,
+              label: category.name,
             }))}
-            onChange={handleTabChange}
           />
         )}
-        <div className="mb-4 flex justify-between items-center flex-shrink-0">
-          <Input
-            placeholder={t('Collection.inputTaskPlaceholder')}
-            prefix={<SearchOutlined className="text-gray-400" />}
-            className={'w-72'}
-            allowClear
-            value={searchTextUI}
-            onChange={handleSearchChange}
-            onPressEnter={handleEnterSearch}
-            onClear={handleClearSearch}
-          />
-          <PermissionWrapper requiredPermissions={['Add']}>
-            <Button
-              type="primary"
-              className="!rounded-button whitespace-nowrap"
-              onClick={handleCreate}
-            >
-              {t('Collection.addTaskTitle')}
-            </Button>
-          </PermissionWrapper>
+      </div>
+
+      <div className="flex flex-1 overflow-hidden pt-4">
+        <div className="w-56 flex-shrink-0 h-full">
+          {treeLoading ? (
+            <div className="flex items-center justify-center py-4">
+              <Spin size="small" />
+            </div>
+          ) : (
+            <div className="space-y-3 px-2 py-1 overflow-auto h-full">
+              {selectedRef.current.node?.tabItems?.map((tab) => (
+                <PluginCard key={tab.id} tab={tab} />
+              ))}
+            </div>
+          )}
         </div>
-        <div className="rounded-lg shadow-sm flex-1 overflow-auto">
-          <CustomTable
-            loading={tableLoading}
-            key={selectedRef.current.nodeId}
-            size="middle"
-            rowKey="id"
-            columns={currentColumns}
-            dataSource={tableData}
-            scroll={{
-              y: hasMultipleTabs
-                ? 'calc(100vh - 510px)'
-                : 'calc(100vh - 450px)',
-            }}
-            onSelectFields={onSelectFields}
-            onChange={handleTableChange}
-            pagination={{
-              ...paginationUI,
-              showSizeChanger: true,
-              showTotal: (total) => `共 ${total} 条`,
-            }}
-            fieldSetting={{
-              showSetting: true,
-              displayFieldKeys,
-              choosableFields: allColumns.filter(
-                (item): item is ColumnItem =>
-                  item.key !== 'action' && 'dataIndex' in item
-              ),
-            }}
-          />
+
+        <div className="w-px bg-gray-200 flex-shrink-0 mr-2"></div>
+
+        <div className="flex-1 flex flex-col overflow-hidden">
+          <div className="flex flex-col flex-1 overflow-hidden bg-white rounded shadow-sm border border-gray-200">
+            <div className="px-5 py-4 border-b border-gray-100 flex items-center gap-2">
+              <span className="text-base font-semibold text-gray-900">
+                {currentPlugin?.name || ''}
+              </span>
+              <span className="text-sm text-gray-400">
+                {currentPlugin?.desc || ''}
+              </span>
+              <Button
+                type="link"
+                size="small"
+                className="ml-2"
+                onClick={handleViewDoc}
+              >
+                {t('Collection.viewDoc')}
+              </Button>
+            </div>
+
+            <div className="px-5 py-4 border-b border-gray-100 flex justify-between items-center">
+              <Input
+                placeholder={t('Collection.inputTaskPlaceholder')}
+                prefix={<SearchOutlined className="text-gray-400" />}
+                className="w-80"
+                allowClear
+                value={searchTextUI}
+                onChange={handleSearchChange}
+                onPressEnter={handleEnterSearch}
+                onClear={handleClearSearch}
+              />
+              <PermissionWrapper requiredPermissions={['Add']}>
+                <Button type="primary" onClick={handleCreate}>
+                  {t('Collection.addTaskTitle')}
+                </Button>
+              </PermissionWrapper>
+            </div>
+
+            <div className="flex-1 overflow-hidden p-5">
+              <CustomTable
+                loading={tableLoading}
+                key={selectedRef.current.nodeId}
+                size="middle"
+                rowKey="id"
+                columns={currentColumns}
+                dataSource={tableData}
+                scroll={{
+                  y: 'calc(100vh - 620px)',
+                }}
+                onSelectFields={onSelectFields}
+                onChange={handleTableChange}
+                pagination={{
+                  ...paginationUI,
+                  showSizeChanger: true,
+                  showTotal: (total) => `共 ${total} 条`,
+                }}
+                fieldSetting={{
+                  showSetting: true,
+                  displayFieldKeys,
+                  choosableFields: allColumns.filter(
+                    (item): item is ColumnItem =>
+                      item.key !== 'action' && 'dataIndex' in item
+                  ),
+                }}
+              />
+            </div>
+          </div>
         </div>
       </div>
 
       <Drawer
         title={
-          editingId
-            ? t('Collection.editTaskTitle')
-            : t('Collection.addTaskTitle')
+          <div className="flex items-center justify-between">
+            <span>
+              {editingId
+                ? t('Collection.editTaskTitle')
+                : t('Collection.addTaskTitle')}
+            </span>
+            <Button
+              type="link"
+              size="small"
+              onClick={() => {
+                if (!taskDocDrawerVisible && activeTab && !pluginDoc) {
+                  fetchPluginDoc(activeTab);
+                }
+                setTaskDocDrawerVisible(!taskDocDrawerVisible);
+              }}
+            >
+              {taskDocDrawerVisible
+                ? t('Collection.closeDoc')
+                : t('Collection.viewDoc')}
+            </Button>
+          </div>
         }
         placement="right"
         width={640}
         onClose={closeDrawer}
         open={drawerVisible}
+        getContainer={false}
+        style={{ position: 'absolute' }}
       >
         {drawerVisible && getTaskContent()}
+      </Drawer>
+
+      <Drawer
+        title={t('Collection.pluginDoc')}
+        placement="right"
+        width={600}
+        onClose={() => {
+          setTaskDocDrawerVisible(false);
+          setDocDrawerVisible(false);
+        }}
+        open={docDrawerVisible || (taskDocDrawerVisible && drawerVisible)}
+        getContainer={taskDocDrawerVisible && drawerVisible ? false : undefined}
+        styles={{
+          wrapper: {
+            boxShadow:
+              taskDocDrawerVisible && drawerVisible ? 'none' : undefined,
+            borderRight:
+              taskDocDrawerVisible && drawerVisible
+                ? '1px solid var(--color-border-1)'
+                : undefined,
+          },
+        }}
+        style={
+          taskDocDrawerVisible && drawerVisible
+            ? { position: 'absolute' }
+            : undefined
+        }
+        mask={taskDocDrawerVisible && drawerVisible ? false : true}
+        rootStyle={
+          taskDocDrawerVisible && drawerVisible
+            ? {
+              left: 'auto',
+              right: '640px',
+            }
+            : undefined
+        }
+        footer={
+          <div className="flex justify-start">
+            <Button
+              onClick={() => {
+                setTaskDocDrawerVisible(false);
+                setDocDrawerVisible(false);
+              }}
+            >
+              {t('common.close')}
+            </Button>
+          </div>
+        }
+      >
+        {docLoading ? (
+          <div className="flex items-center justify-center py-6">
+            <Spin />
+          </div>
+        ) : (
+          <MarkdownRenderer content={pluginDoc} />
+        )}
       </Drawer>
 
       <Drawer

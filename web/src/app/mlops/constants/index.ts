@@ -432,6 +432,66 @@ const POLICIES_OPTIONS: Option[] = [
   { label: 'RulePolicy', value: 'RulePolicy' },
 ];
 
+const TRAINJOB_MAP: Record<string, string> = {
+  'anomaly': 'anomaly_detection_train_jobs',
+  'classification': 'classification_train_jobs',
+  'timeseries_predict': 'timeseries_predict_train_jobs',
+  'log_clustering': 'log_clustering_train_jobs',
+  'rasa': 'rasa_pipelines'
+};
+
+const TYPE_FILE_MAP: Record<string, any> = {
+  'anomaly_detection': 'csv',
+  'log_clustering': 'txt',
+  'timeseries_predict': 'csv',
+  'classification': 'csv',
+  'image_classification': 'image',
+  'object_detection': 'image'
+};
+
+const RASA_MENUS = [
+  {
+    menu: 'intent',
+    icon: 'suanwangyitu',
+    content: '用来描述对话流程的关键部分，他相当于对话机器人的"训练样本"，帮助模型学习如何在不同的用户输入下选择正确的动作或回复'
+  },
+  {
+    menu: 'entity',
+    icon: 'shitishu',
+    content: '用来描述对话流程的关键部分，他相当于对话机器人的"训练样本"，帮助模型学习如何在不同的用户输入下选择正确的动作或回复'
+  },
+  {
+    menu: 'action',
+    icon: 'dongzuozu',
+    content: '用来描述对话流程的关键部分，他相当于对话机器人的"训练样本"，帮助模型学习如何在不同的用户输入下选择正确的动作或回复'
+  },
+  {
+    menu: 'response',
+    icon: 'huifu',
+    content: '用来描述对话流程的关键部分，他相当于对话机器人的"训练样本"，帮助模型学习如何在不同的用户输入下选择正确的动作或回复'
+  },
+  {
+    menu: 'slot',
+    icon: 'bianliang-xin',
+    content: '用来描述对话流程的关键部分，他相当于对话机器人的"训练样本"，帮助模型学习如何在不同的用户输入下选择正确的动作或回复'
+  },
+  {
+    menu: 'form',
+    icon: 'wodegushi',
+    content: '用来描述对话流程的关键部分，他相当于对话机器人的"训练样本"，帮助模型学习如何在不同的用户输入下选择正确的动作或回复'
+  },
+  {
+    menu: 'rule',
+    icon: 'guizepeizhi',
+    content: '用来描述对话流程的关键部分，他相当于对话机器人的"训练样本"，帮助模型学习如何在不同的用户输入下选择正确的动作或回复'
+  },
+  {
+    menu: 'story',
+    icon: 'wodegushi',
+    content: '用来描述对话流程的关键部分，他相当于对话机器人的"训练样本"，帮助模型学习如何在不同的用户输入下选择正确的动作或回复'
+  },
+];
+
 
 export {
   LEVEL_MAP,
@@ -443,10 +503,13 @@ export {
   type TRAIN_STATUS,
   TYPE_COLOR,
   RASA_CONFIG,
+  RASA_MENUS,
   PIPELINE_OPTIONS,
   POLICIES_OPTIONS,
   PIPELINE_TYPE_OPTIONS,
   ANOMALY_ALGORITHMS_PARAMS,
   LOG_CLUSTERING_ALGORITHMS_PARAMS,
-  TIMESERIES_PREDICT_ALGORITHMS_PARAMS
+  TIMESERIES_PREDICT_ALGORITHMS_PARAMS,
+  TRAINJOB_MAP,
+  TYPE_FILE_MAP
 }

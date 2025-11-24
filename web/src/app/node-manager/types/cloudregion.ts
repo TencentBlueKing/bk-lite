@@ -2,9 +2,19 @@ import type { TableDataItem } from '@/app/node-manager/types/index';
 import { ListItem } from '@/types';
 import { ColumnFilterItem } from 'antd/es/table/interface';
 
+//通用基础实体接口
+interface BaseEntity {
+  id: string;
+  name: string;
+}
+
+//带描述的基础实体
+interface BaseEntityWithDescription extends BaseEntity {
+  description: string;
+}
+
 //配置页面的table的列定义
 interface ConfigHookParams {
-  configurationClick: (key: string) => void;
   openSub: (key: string, item?: any) => void;
   nodeClick: () => void;
   modifyDeleteconfirm: (key: string) => void;
@@ -14,7 +24,7 @@ interface ConfigHookParams {
 // 子配置页面table的列定义
 interface SubConfigHookParams {
   edit: (item: ConfigListProps) => void;
-  nodeData: ConfigDate;
+  nodeData: ConfigData;
 }
 interface VariableProps {
   openUerModal: (type: string, form: TableDataItem) => void;
@@ -22,17 +32,39 @@ interface VariableProps {
   delConfirm: (key: string, text: any) => void;
 }
 
-//api返回的配置文件列表的类型
-interface ConfigListProps {
-  id: string;
-  name: string;
-  collector_name: string;
+//基础配置项接口
+interface BaseConfigItem extends BaseEntity {
   collector_id?: string;
+  collector_name?: string;
   operating_system: string;
-  node_count: string;
+  node_count: string | number;
   config_template?: string;
-  collector?: string;
   nodes?: string[];
+}
+
+//API返回的配置文件列表的类型
+interface ConfigListProps extends BaseConfigItem {
+  collector?: string;
+}
+
+//页面展示用的配置数据类型（将API数据转换为页面需要的格式）
+interface ConfigData
+  extends Omit<
+    BaseConfigItem,
+    | 'id'
+    | 'operating_system'
+    | 'node_count'
+    | 'config_template'
+    | 'collector_name'
+  > {
+  key: string;
+  collector?: string;
+  operatingSystem: string;
+  nodeCount: number;
+  configInfo: string;
+  nodesList?: ListItem;
+  operating_system?: string;
+  collector_name?: string;
 }
 
 //后端返回的采集器列表
@@ -61,36 +93,35 @@ interface UpdateConfigReq {
   collector_configuration_id: string;
 }
 
-//节点模块返回的数据
-interface NodeItemRes {
-  id: string;
+//节点基础信息
+interface BaseNodeInfo extends BaseEntity {
   ip: string;
   operating_system: string;
+}
+
+//节点模块API返回的数据
+interface NodeItemRes extends BaseNodeInfo {
   status: {
     status: string | number;
   };
   [key: string]: any;
 }
 
-//节点处理后的数据格式
-interface MappedNodeItem {
+//节点页面展示用的数据格式
+interface MappedNodeItem extends Omit<BaseNodeInfo, 'id' | 'operating_system'> {
   key: string;
-  ip: string;
   operatingSystem: string;
   sidecar: string;
 }
 
-interface ConfigDate {
-  key: string;
-  name: string;
-  collector?: string;
-  collector_id?: string;
-  operatingSystem: string;
-  nodeCount: number;
-  configInfo: string;
-  nodes: string[];
-  nodesList?: ListItem;
-  operating_system?: string;
+//控制器安装时的节点数据
+interface NodeItem extends Pick<BaseNodeInfo, 'ip'> {
+  id?: string;
+  os: string;
+  organizations?: string[];
+  username?: string;
+  password?: string;
+  port?: number;
 }
 
 interface SubRef {
@@ -100,45 +131,28 @@ interface SubRef {
 interface SubProps {
   cancel: () => void;
   edit: (item: ConfigListProps) => void;
-  nodeData: ConfigDate;
+  nodeData: ConfigData;
   collectors: TableDataItem[];
 }
 
-interface CloudRegionItem {
-  id: string;
-  name: string;
-  description: string;
+interface CloudRegionItem extends BaseEntityWithDescription {
   icon: string;
 }
 
-interface VarSourceItem {
+interface VarSourceItem extends Omit<BaseEntityWithDescription, 'id'> {
   key: string;
-  name: string;
-  description: string;
 }
 
-interface VarResItem {
-  id: string;
+interface VarResItem extends BaseEntity {
   key: string;
   value: string;
   description: string;
 }
 
-interface CloudRegionCardProps {
+interface CloudRegionCardProps extends Omit<BaseEntity, 'id'> {
   id: number;
-  name: string;
   introduction: string;
   [key: string]: any;
-}
-
-interface NodeItem {
-  id?: string;
-  os: string;
-  ip: string;
-  organizations?: string[];
-  username?: string;
-  password?: string;
-  port?: number;
 }
 
 interface ControllerInstallFields {
@@ -171,6 +185,10 @@ interface ConfigListParams {
 }
 
 export type {
+  BaseEntity,
+  BaseEntityWithDescription,
+  BaseConfigItem,
+  BaseNodeInfo,
   ConfigHookParams,
   VariableProps,
   ConfigListProps,
@@ -179,7 +197,7 @@ export type {
   UpdateConfigReq,
   NodeItemRes,
   MappedNodeItem,
-  ConfigDate,
+  ConfigData,
   SubRef,
   SubProps,
   CloudRegionItem,

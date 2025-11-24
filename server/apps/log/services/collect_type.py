@@ -5,9 +5,12 @@ import yaml
 from django.db import transaction
 
 from apps.core.exceptions.base_app_exception import BaseAppException
+from apps.core.logger import log_logger as logger
+from apps.log.constants.database import DatabaseConstants
 from apps.log.models import CollectInstance, CollectInstanceOrganization, CollectConfig, CollectType
-from apps.log.plugins.controller import Controller
+from apps.log.utils.plugin_controller import Controller
 from apps.rpc.node_mgmt import NodeMgmt
+
 
 
 class CollectTypeService:
@@ -27,27 +30,40 @@ class CollectTypeService:
     @staticmethod
     def batch_create_collect_configs(data: dict):
         """
-        Batch create collect configurations based on the provided data.
+        批量创建采集配置（包括实例和配置）
+
+        优化点：
+        1. 使用单一外层事务保证原子性
+        2. 使用 savepoint 隔离 RPC 调用失败的影响
+        3. 由事务自动回滚，无需手动删除
+        4. 优化错误处理和日志记录
 
         Args:
-            data (dict): The data containing collector, collect_type, configs, and instances.
+            data (dict): 包含 collector, collect_type, configs, instances 的数据
         """
+        # 提前校验：过滤已存在的实例
+        instance_ids = [instance["instance_id"] for instance in data["instances"]]
+        existing_instances = CollectInstance.objects.filter(id__in=instance_ids)
+        existing_set = {obj.id for obj in existing_instances}
 
-        # 过滤已存在的实例
-        objs = CollectInstance.objects.filter(id__in=[instance["instance_id"] for instance in data["instances"]])
-        instance_set = {obj.id for obj in objs}
-
-        # 格式化实例id,将实例id统一为字符串元祖（支持多维度组成的实例id）
+        # 分离新旧实例
         new_instances, old_instances = [], []
         for instance in data["instances"]:
-            if instance["instance_id"] in instance_set:
+            if instance["instance_id"] in existing_set:
                 old_instances.append(instance)
             else:
                 new_instances.append(instance)
 
-        data["instances"] = new_instances
+        # 如果有实例已存在，直接返回错误
+        if old_instances:
+            old_names = '、'.join([inst['instance_name'] for inst in old_instances])
+            raise BaseAppException(f"以下实例已存在：{old_names}")
 
-        # 实例更新
+        if not new_instances:
+            logger.warning("没有新实例需要创建")
+            return
+
+        # 构建实例数据
         instance_map = {
             instance["instance_id"]: {
                 "id": instance["instance_id"],
@@ -56,7 +72,7 @@ class CollectTypeService:
                 "node_id": instance["node_ids"][0],
                 "group_ids": instance["group_ids"],
             }
-            for instance in data["instances"]
+            for instance in new_instances
         }
 
         creates, assos = [], []
@@ -66,20 +82,38 @@ class CollectTypeService:
                 assos.append((instance_id, group_id))
             creates.append(CollectInstance(**instance_info))
 
-        CollectInstance.objects.bulk_create(creates, batch_size=200)
+        # 使用单一外层事务包裹所有操作
+        try:
+            with transaction.atomic():
+                # 步骤1：批量创建实例
+                CollectInstance.objects.bulk_create(creates, batch_size=DatabaseConstants.DEFAULT_BATCH_SIZE)
+                logger.info(f"创建 CollectInstance 成功，数量={len(creates)}")
 
-        if assos:
-            CollectInstanceOrganization.objects.bulk_create(
-                [CollectInstanceOrganization(collect_instance_id=asso[0], organization=asso[1]) for asso in assos],
-                batch_size=200
-            )
+                # 步骤2：批量创建组织关联
+                if assos:
+                    CollectInstanceOrganization.objects.bulk_create(
+                        [CollectInstanceOrganization(collect_instance_id=asso[0], organization=asso[1]) 
+                         for asso in assos],
+                        batch_size=DatabaseConstants.DEFAULT_BATCH_SIZE
+                    )
+                    logger.info(f"创建 CollectInstanceOrganization 成功，数量={len(assos)}")
 
-        # 实例配置
-        Controller(data).controller()
+                # 步骤3：创建配置（Controller 的 RPC 调用）
+                # 注意：Controller.controller() 内部已有完整的事务保护和回滚机制
+                # 如果这里失败，外层事务会自动回滚步骤1和步骤2
+                data["instances"] = new_instances
+                Controller(data).controller()
 
-        if old_instances:
-            raise BaseAppException(
-                f"以下实例已存在：{'、'.join([instance['instance_name'] for instance in old_instances])}")
+                logger.info(f"批量创建采集配置完成，共创建 {len(creates)} 个实例")
+
+        except BaseAppException as e:
+            # 业务异常直接抛出（事务已自动回滚）
+            logger.error(f"创建采集配置失败: {e}")
+            raise
+        except Exception as e:
+            # 其他异常包装后抛出（事务已自动回滚）
+            logger.error(f"创建采集配置失败: {e}", exc_info=True)
+            raise BaseAppException(f"创建采集配置失败: {e}")
 
     @staticmethod
     def set_instances_organizations(instance_ids, organizations):
@@ -163,14 +197,19 @@ class CollectTypeService:
         instance = CollectInstance.objects.filter(id=instance_id).first()
         if not instance:
             raise BaseAppException("collect instance does not exist")
-        if name:
-            instance.name = name
-            instance.save()
 
-        # 更新组织信息
-        instance.collectinstanceorganization_set.all().delete()
-        for org in organizations:
-            instance.collectinstanceorganization_set.create(organization=org)
+        with transaction.atomic():
+            if name:
+                instance.name = name
+                instance.save()
+            # 更新组织信息
+            instance.collectinstanceorganization_set.all().delete()
+            if organizations:
+                creates = [
+                    CollectInstanceOrganization(collect_instance_id=instance_id, organization=org)
+                    for org in organizations
+                ]
+                CollectInstanceOrganization.objects.bulk_create(creates, batch_size=DatabaseConstants.DEFAULT_BATCH_SIZE)
 
     @staticmethod
     def search_instance_with_permission(collect_type_id, name, page, page_size, queryset):

@@ -8,11 +8,14 @@ init_system_mgmt() {
     uv run python manage.py init_realm_resource || true
     uv run python manage.py init_login_settings || true
     uv run python manage.py create_user admin password --email=admin@bklite.net --is_superuser || true
+    uv run python manage.py init_custom_menu || true
+    uv run python manage.py clean_group_data || true
 }
 
 init_cmdb() {
     echo "CMDB资源初始化..."
     uv run python manage.py model_init || true
+    uv run python manage.py init_oid || true
 }
 
 init_console_mgmt() {
@@ -40,7 +43,7 @@ init_alerts() {
 init_operation_analysis() {
     echo "运营分析系统资源初始化..."
     uv run python manage.py init_default_namespace || true
-    uv run python manage.py init_tag  || true
+    uv run python manage.py init_default_groups  || true
     uv run python manage.py init_source_api_data --update || true
 }
 
@@ -50,6 +53,7 @@ init_opspilot() {
     uv run python manage.py init_channel || true
     uv run python manage.py init_llm || true
     uv run python manage.py init_provider_model  || true
+    uv run python manage.py parse_tools_yml  || true
 }
 
 init_playground() {

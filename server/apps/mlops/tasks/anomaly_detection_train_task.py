@@ -72,7 +72,7 @@ def start_anomaly_detection_train(train_job_id: int) -> dict:
             raise ValueError(f"不支持的算法类型: {train_job.algorithm}")
 
         # 启动训练
-        experiment_name = f"{train_job.id}_{train_job.name}"
+        experiment_name = f"AnomalyDetection_{train_job.id}_{train_job.name}"
         logger.info(f"实验名称: {experiment_name}")
         # 准备训练数据并添加异常标签
         train_df = pd.DataFrame(train_job.train_data_id.train_data)
@@ -96,7 +96,7 @@ def start_anomaly_detection_train(train_job_id: int) -> dict:
         logger.info(f"测试数据形状: {test_df.shape}, 异常点数量: {sum(test_df['label'])}")
 
         # 调用统一的训练接口，符合用户测试用例的预期
-        model_name = f"{train_job.id}_{train_job.name}"
+        model_name = f"AnomalyDetection_{train_job.algorithm}_{train_job.id}"
         result = detector.train(
             model_name=model_name,
             train_dataframe=train_df,

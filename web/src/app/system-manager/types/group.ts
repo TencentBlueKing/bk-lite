@@ -1,4 +1,3 @@
-
 //接口
 interface DataType {
     key: string;
@@ -44,6 +43,8 @@ interface OriginalGroup {
   name: string;
   path: string;
   hasAuth: boolean;
+  is_virtual?: boolean;
+  role_ids?: number[];
   subGroups: OriginalGroup[];
   access: {
     manage: boolean;
@@ -61,4 +62,21 @@ interface ConvertedGroup {
   children?: ConvertedGroup[];
 }
 
-export type { DataType, RowProps, Access, SubGroup, Group ,OriginalGroup,ConvertedGroup};
+// 组织角色相关接口
+interface GroupRole {
+  id: number;
+  name: string;
+  description?: string;
+}
+
+interface GroupRoleResponse {
+  items: GroupRole[];
+  count: number;
+}
+
+interface SetGroupRolesParams {
+  group_id: string | number;
+  role_ids: number[];
+}
+
+export type { DataType, RowProps, Access, SubGroup, Group, OriginalGroup, ConvertedGroup, GroupRole, GroupRoleResponse, SetGroupRolesParams };

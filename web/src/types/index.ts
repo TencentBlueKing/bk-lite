@@ -84,7 +84,9 @@ export interface MenuItem {
   title: string;
   operation: string[];
   tour?: TourItem;
+  isDirectory?: boolean;
   isNotMenuItem?: boolean;
+  hasDetail?: boolean;
   children?: MenuItem[];
   withParentPermission?: boolean;
 }

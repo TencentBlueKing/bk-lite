@@ -61,6 +61,36 @@ export const useRoleApi = () => {
   const deleteApplication = async (params: any) => {
     return await del(`/system_mgmt/app/${params.id}/`);
   }
+  const getRoleGroups = async (params: any) => {
+    return await get('/system_mgmt/role/get_role_groups/', params);
+  }
+  const addRoleGroups = async (params: any) => {
+    return await post('/system_mgmt/role/batch_assign_group_roles/', params);
+  }
+  const deleteRoleGroups = async (params: any) => {
+    return await post('/system_mgmt/role/revoke_group_roles/', params);
+  }
+  const getCustomMenus = async (params: any) => {
+    return await get('/system_mgmt/custom_menu_group/', params);
+  }
+  const getCustomMenuDetail = async (params: any) => {
+    return await get(`/system_mgmt/custom_menu_group/${params.id}/`);
+  }
+  const addCustomMenu = async (params: any) => {
+    return await post('/system_mgmt/custom_menu_group/', params);
+  }
+  const updateCustomMenu = async (params: any) => {
+    return await put(`/system_mgmt/custom_menu_group/${params.id}/`, params);
+  }
+  const deleteCustomMenu = async (params: any) => {
+    return await del(`/system_mgmt/custom_menu_group/${params.id}/`);
+  }
+  const toggleCustomMenuStatus = async (params: any) => {
+    return await post(`/system_mgmt/custom_menu_group/${params.id}/change_enable/`, { is_enabled: params.is_enabled });
+  }
+  const copyCustomMenu = async (params: any) => {
+    return await post(`/system_mgmt/custom_menu_group/${params.id}/copy/`, params);
+  }
   return {
     getRoles,
     addRole,
@@ -81,6 +111,17 @@ export const useRoleApi = () => {
     getAppModules,
     addApplication,
     updateApplication,
-    deleteApplication
+    deleteApplication,
+    getRoleGroups,
+    addRoleGroups,
+    deleteRoleGroups,
+    // 新增的菜单管理API
+    getCustomMenus,
+    getCustomMenuDetail,
+    addCustomMenu,
+    updateCustomMenu,
+    deleteCustomMenu,
+    toggleCustomMenuStatus,
+    copyCustomMenu
   };
 };

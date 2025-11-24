@@ -3,7 +3,6 @@ from loguru import logger
 
 from neco.ocr.azure_ocr import AzureOCR
 from neco.ocr.olm_ocr import OlmOcr
-from neco.ocr.pp_ocr import PPOcr
 
 
 class OcrManager:
@@ -14,10 +13,6 @@ class OcrManager:
                  api_key: Optional[str] = None):
         ocr = None
         logger.debug(f"加载OCR服务，类型: {ocr_type}")
-
-        if ocr_type == 'pp_ocr':
-            logger.debug("初始化PP-OCR服务")
-            ocr = PPOcr()
 
         if ocr_type == 'olm_ocr':
             logger.debug(f"初始化OLM-OCR服务，模型: {model}")

@@ -5,7 +5,8 @@ import {
   GraphState,
   ContextMenuState,
   EdgeConfigState,
-  NodeEditState
+  NodeEditState,
+  TopologyNodeData,
 } from '@/app/ops-analysis/types/topology';
 
 export const useTopologyState = () => {
@@ -147,7 +148,7 @@ export const useTopologyState = () => {
     nodeEditVisible: nodeEditState.visible,
     setNodeEditVisible: (visible: boolean) => updateNodeEditState({ visible }),
     editingNodeData: nodeEditState.data,
-    setEditingNodeData: (data: any) => updateNodeEditState({ data }),
+    setEditingNodeData: (data: TopologyNodeData | null) => updateNodeEditState({ data }),
 
     // 视图配置状态
     viewConfigVisible,
