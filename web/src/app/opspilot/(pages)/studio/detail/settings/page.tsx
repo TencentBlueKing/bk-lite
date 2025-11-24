@@ -350,13 +350,6 @@ const StudioSettingsPage: React.FC = () => {
     try {
       const values = await form.validateFields();
 
-      console.log('handleChatflowSave: Preparing to save workflow data', {
-        nodesLength: workflowData.nodes.length,
-        edgesLength: workflowData.edges.length,
-        workflowData: workflowData,
-        isPublish
-      });
-
       const payload = {
         name: values.name,
         introduction: values.introduction,
@@ -364,8 +357,6 @@ const StudioSettingsPage: React.FC = () => {
         workflow_data: workflowData,
         is_publish: isPublish
       };
-
-      console.log('handleChatflowSave: Complete payload being sent to backend', payload);
 
       await saveBotConfig(botId, payload);
       
@@ -382,7 +373,7 @@ const StudioSettingsPage: React.FC = () => {
         setOnline(true);
       }
     } catch (error) {
-      console.error('handleChatflowSave: Save failed', error);
+      console.error('Save failed', error);
       message.error(t('common.saveFailed'));
     } finally {
       setSaveLoading(false);

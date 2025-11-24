@@ -107,6 +107,16 @@
             "Edit",
             "Delete"
           ]
+        },
+        {
+          "id": "group",
+          "name": "Group",
+          "operation": [
+            "View",
+            "Add",
+            "Edit",
+            "Delete"
+          ]
         }
       ]
     }

@@ -32,14 +32,16 @@ export const createUserTableColumns = ({
       render: (text: string) => {
         const color = getRandomColor();
         return (
-          <div className="flex" style={{ height: '17px', lineHeight: '17px' }}>
+          <div className="flex items-center" style={{ height: '17px' }}>
             <span
-              className="h-5 w-5 rounded-[10px] text-center mr-1"
-              style={{ color: '#ffffff', backgroundColor: color }}
+              className="h-5 w-5 rounded-[10px] text-center mr-1 flex-shrink-0"
+              style={{ color: '#ffffff', backgroundColor: color, lineHeight: '20px' }}
             >
               {text?.substring(0, 1)}
             </span>
-            <span>{text}</span>
+            <Tooltip title={text} placement="topLeft">
+              <span className="truncate">{text}</span>
+            </Tooltip>
           </div>
         );
       },
@@ -64,8 +66,23 @@ export const createUserTableColumns = ({
       title: t('system.user.table.role'),
       dataIndex: 'roles',
       width: 200,
-      render: (roles: string[]) => {
-        const groupedRoles = (roles || []).reduce((acc: Record<string, string[]>, role: string) => {
+      render: (_: string[], record: UserDataType) => {
+        const personalRoles = (record.roles || []).reduce((acc: Record<string, string[]>, role: any) => {
+          const roleName = typeof role === 'string' ? role : role.name;
+          const parts = roleName.split('@@');
+          if (parts.length >= 2) {
+            const appName = parts.slice(0, -1).join('@@');
+            const roleNamePart = parts[parts.length - 1];
+            if (!acc[appName]) acc[appName] = [];
+            acc[appName].push(roleNamePart);
+          } else {
+            if (!acc['default']) acc['default'] = [];
+            acc['default'].push(roleName);
+          }
+          return acc;
+        }, {});
+
+        const groupRoles = (record.group_role_list || []).reduce((acc: Record<string, string[]>, role: string) => {
           const parts = role.split('@@');
           if (parts.length >= 2) {
             const appName = parts.slice(0, -1).join('@@');
@@ -79,13 +96,19 @@ export const createUserTableColumns = ({
           return acc;
         }, {});
 
-        const appEntries = Object.entries(groupedRoles);
+        const allApps = new Set([...Object.keys(personalRoles), ...Object.keys(groupRoles)]);
+        const appEntries = Array.from(allApps).map(appName => ({
+          appName,
+          personalRoles: personalRoles[appName] || [],
+          groupRoles: groupRoles[appName] || [],
+        }));
+
         const visibleApps = appEntries.slice(0, 2);
         const hiddenApps = appEntries.slice(2);
 
         return (
           <div className="flex flex-wrap gap-2">
-            {visibleApps.map(([appName, roleNames]) => (
+            {visibleApps.map(({ appName, personalRoles: pRoles, groupRoles: gRoles }) => (
               <div key={appName} className="flex items-center gap-1 rounded-xl border px-2 py-1">
                 {appIconMap.get(appName) && (
                   <Tooltip title={appName} placement="top">
@@ -94,14 +117,22 @@ export const createUserTableColumns = ({
                     </div>
                   </Tooltip>
                 )}
-                <span className="text-xs text-[var(--color-text-3)]">{roleNames.join(', ')}</span>
+                <span className="text-xs">
+                  {gRoles.length > 0 && (
+                    <span className="text-green-600">{gRoles.join(', ')}</span>
+                  )}
+                  {gRoles.length > 0 && pRoles.length > 0 && <span>, </span>}
+                  {pRoles.length > 0 && (
+                    <span className="text-blue-600">{pRoles.join(', ')}</span>
+                  )}
+                </span>
               </div>
             ))}
             {hiddenApps.length > 0 && (
               <Dropdown
                 overlay={
                   <Menu>
-                    {hiddenApps.map(([appName, roleNames]) => (
+                    {hiddenApps.map(({ appName, personalRoles: pRoles, groupRoles: gRoles }) => (
                       <Menu.Item key={appName}>
                         <div className="flex items-center gap-1">
                           {appIconMap.get(appName) && (
@@ -111,7 +142,15 @@ export const createUserTableColumns = ({
                               </div>
                             </Tooltip>
                           )}
-                          <span>{roleNames.join(', ')}</span>
+                          <span>
+                            {gRoles.length > 0 && (
+                              <span className="text-green-600">{gRoles.join(', ')}</span>
+                            )}
+                            {gRoles.length > 0 && pRoles.length > 0 && <span>, </span>}
+                            {pRoles.length > 0 && (
+                              <span className="text-blue-600">{pRoles.join(', ')}</span>
+                            )}
+                          </span>
                         </div>
                       </Menu.Item>
                     ))}

@@ -107,6 +107,21 @@ urlpatterns += [
         name="execute_chat_flow",
     ),
     path(
+        r"bot_mgmt/execute_chat_flow_wechat/<int:bot_id>/",
+        views.execute_chat_flow_wechat,
+        name="execute_chat_flow_wechat",
+    ),
+    path(
+        r"bot_mgmt/execute_chat_flow_wechat_official/<int:bot_id>/",
+        views.execute_chat_flow_wechat_official,
+        name="execute_chat_flow_wechat_official",
+    ),
+    path(
+        r"bot_mgmt/execute_chat_flow_dingtalk/<int:bot_id>/",
+        views.execute_chat_flow_dingtalk,
+        name="execute_chat_flow_dingtalk",
+    ),
+    path(
         r"test/",
         views.test,
         name="test",

@@ -1,11 +1,12 @@
 from django.core.cache import cache
+from django.db import transaction
+from prompt_toolkit.layout import is_container
 
 import nats_client
-from apps.node_mgmt.constants.database import DatabaseConstants
+from apps.node_mgmt.constants.database import DatabaseConstants, EnvVariableConstants
 from apps.node_mgmt.management.services.node_init.collector_init import import_collector
 from apps.node_mgmt.models import CloudRegion, SidecarEnv
 from apps.node_mgmt.services.node import NodeService
-# from apps.core.logger import node_logger as logger
 
 from apps.core.exceptions.base_app_exception import BaseAppException
 from apps.node_mgmt.models import CollectorConfiguration, ChildConfig, Collector, Node, NodeCollectorConfiguration
@@ -23,7 +24,7 @@ class NatsService:
         aes_obj = AESCryptor()
         
         for key, value in env_config.items():
-            if 'password' in key.lower() and value:
+            if EnvVariableConstants.SENSITIVE_FIELD_KEYWORD in key.lower() and value:
                 # 对包含password的key进行加密
                 encrypted_config[key] = aes_obj.encode(str(value))
             else:
@@ -50,7 +51,7 @@ class NatsService:
 
         for key, value in new_env_config.items():
             # 如果不是密码字段，直接使用新值
-            if 'password' not in key.lower() or not value:
+            if EnvVariableConstants.SENSITIVE_FIELD_KEYWORD not in key.lower() or not value:
                 merged_config[key] = value
                 continue
 
@@ -66,9 +67,19 @@ class NatsService:
 
         return merged_config
 
-    def batch_create_configs(self, configs: list):
+    @transaction.atomic
+    def batch_create_configs_and_child_configs(self, configs: list, child_configs: list):
         """
-        批量创建配置
+        批量创建配置及其子配置（带事务保护）
+        :param configs: 配置列表
+        :param child_configs: 子配置列表
+        """
+        self._batch_create_configs_internal(configs)
+        self._batch_create_child_configs_internal(child_configs)
+    
+    def _batch_create_configs_internal(self, configs: list):
+        """
+        批量创建配置（内部方法，不带事务装饰器，由调用方控制事务）
         :param configs: 配置列表，每个配置包含以下字段：
             - id: 配置ID
             - name: 配置名称
@@ -109,14 +120,23 @@ class NatsService:
                     collector_config_id=config["id"]
                 )
             )
+
         if conf_objs:
             CollectorConfiguration.objects.bulk_create(conf_objs, batch_size=DatabaseConstants.BULK_CREATE_BATCH_SIZE)
         if node_config_assos:
             NodeCollectorConfiguration.objects.bulk_create(node_config_assos, batch_size=DatabaseConstants.BULK_CREATE_BATCH_SIZE, ignore_conflicts=True)
 
-    def batch_create_child_configs(self, configs: list):
+    @transaction.atomic
+    def batch_create_configs(self, configs: list):
         """
-        批量创建子配置
+        批量创建配置（公共接口，带事务保护）
+        :param configs: 配置列表
+        """
+        self._batch_create_configs_internal(configs)
+
+    def _batch_create_child_configs_internal(self, configs: list):
+        """
+        批量创建子配置（内部方法，不带事务装饰器，由调用方控制事务）
         :param configs: 配置列表，每个配置包含以下字段：
             - id: 子配置ID
             - collect_type: 采集类型
@@ -149,8 +169,17 @@ class NatsService:
                 env_config=encrypted_env_config,
                 sort_order=config.get("sort_order", 0),
             ))
+
         if node_objs:
             ChildConfig.objects.bulk_create(node_objs, batch_size=DatabaseConstants.BULK_CREATE_BATCH_SIZE)
+
+    @transaction.atomic
+    def batch_create_child_configs(self, configs: list):
+        """
+        批量创建子配置（公共接口，带事务保护）
+        :param configs: 配置列表
+        """
+        self._batch_create_child_configs_internal(configs)
 
     def get_child_configs_by_ids(self, ids: list):
         """根据子配置ID列表获取子配置对象"""
@@ -284,8 +313,11 @@ def node_list(query_data: dict):
     page = query_data.get('page', 1)
     page_size = query_data.get('page_size', 10)
     is_active = query_data.get('is_active')
+    is_manual = query_data.get('is_manual')
+    is_container = query_data.get('is_container')
     permission_data = query_data.get('permission_data', {})
-    return NodeService.get_node_list(organization_ids, cloud_region_id, name, ip, os, page, page_size, is_active, permission_data)
+    return NodeService.get_node_list(
+        organization_ids, cloud_region_id, name, ip, os, page, page_size, is_active, is_manual, is_container, permission_data)
 
 
 @nats_client.register
@@ -298,6 +330,12 @@ def import_collectors(collectors: list):
     """导入采集器"""
     # logger.info(f"import_collectors: {collectors}")
     return import_collector(collectors)
+
+
+@nats_client.register
+def batch_create_configs_and_child_configs(configs: list, child_configs: list):
+    """批量创建配置和子配置（原子性操作）"""
+    NatsService().batch_create_configs_and_child_configs(configs, child_configs)
 
 
 @nats_client.register

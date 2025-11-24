@@ -1,3 +1,4 @@
+from operator import index
 from config.drf.viewsets import ModelViewSet
 from apps.mlops.filters.anomaly_detection import *
 from rest_framework import viewsets
@@ -87,7 +88,7 @@ class AnomalyDetectionTrainJobViewSet(ModelViewSet):
             mlflow.set_tracking_uri(MLFLOW_TRACKER_URL)
 
             # 构造实验名称（与训练时保持一致）
-            experiment_name = f"{train_job.id}_{train_job.name}"
+            experiment_name = f"AnomalyDetection_{train_job.id}_{train_job.name}"
 
             # 查找实验
             experiments = mlflow.search_experiments(filter_string=f"name = '{experiment_name}'")
@@ -226,6 +227,56 @@ class AnomalyDetectionTrainJobViewSet(ModelViewSet):
     @HasPermission("train_tasks-Add,anomaly_detection_datasets_detail-File View,anomaly_detection_datasets-View")
     def create(self, request, *args, **kwargs):
         return super().create(request, *args, **kwargs)
+    
+    @action(detail=True, methods=['get'], url_path='get_file')
+    @HasPermission("train_tasks-View,anomaly_detection_datasets_detail-File View,anomaly_detection_datasets-View")
+    def get_file(self, request, *args, **kwargs):
+        try:
+            train_job = self.get_object()
+            train_obj = train_job.train_data_id
+            val_obj = train_job.val_data_id
+            test_obj = train_job.test_data_id
+
+            def mergePoints(data_obj, filename):
+                train_data = list(data_obj.train_data) if hasattr(data_obj, 'train_data') else []
+                anomlay_indices = (
+                    data_obj.metadata.get('anomaly_point', [])
+                    if hasattr(data_obj, 'metadata') and isinstance(data_obj.metadata, dict)
+                    else []
+                )
+
+                columns = ['timestamp', 'value']
+
+                if anomlay_indices and isinstance(anomlay_indices, list):
+                    for idx, item in enumerate(train_data):
+                        item['label'] = 1 if idx in anomlay_indices else 0
+                    columns.append('label')
+
+                return {
+                    "data": train_data,
+                    "columns": columns,
+                    "filename": filename
+                }
+
+            return Response(
+                [
+                    mergePoints(train_obj, 'train_file.csv'),
+                    mergePoints(val_obj, 'val_file.csv'),
+                    mergePoints(test_obj, 'test_file.csv'),
+                    {
+                        "data": train_job.hyperopt_config,
+                        "columns": [],
+                        "filename": "hyperopt_config.json"
+                    }
+                ]
+            )
+        
+        except Exception as e:
+            logger.error(f"获取训练文件失败 - TrainJobID: {kwargs.get('pk')} - {str(e)}")
+            return Response(
+                {'error': f'获取文件信息失败: {str(e)}'},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
 
     @HasPermission("train_tasks-Delete")
     def destroy(self, request, *args, **kwargs):
@@ -310,6 +361,7 @@ class AnomalyDetectionServingViewSet(ModelViewSet):
             data = request.data
             serving_id = data.get('serving_id')
             time_series_data = data.get('data')
+            mlflow.set_tracking_uri(MLFLOW_TRACKER_URL)
 
             # 验证必需参数
             if not serving_id:
@@ -350,7 +402,8 @@ class AnomalyDetectionServingViewSet(ModelViewSet):
                 )
 
             # 从服务配置和训练任务获取模型信息
-            model_name = f"{train_job.algorithm}_{train_job.id}"  # 基于训练任务ID生成模型名称
+            # model_name = f"{train_job.algorithm}_{train_job.id}"  # 基于训练任务ID生成模型名称
+            model_name = f"AnomalyDetection_{train_job.algorithm}_{train_job.id}" 
             model_version = serving.model_version
             anomaly_threshold = serving.anomaly_threshold
             algorithm = train_job.algorithm

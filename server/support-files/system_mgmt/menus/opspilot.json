@@ -215,15 +215,6 @@
           "operation": [
             "View"
           ]
-        },
-        {
-          "id": "api_secret_key",
-          "name": "API Secret Key",
-          "operation": [
-            "View",
-            "Add",
-            "Delete"
-          ]
         }
       ]
     }

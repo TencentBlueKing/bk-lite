@@ -9,10 +9,12 @@ from apps.rpc.cmdb import CMDB
 from apps.rpc.log import Log
 from apps.rpc.monitor import Monitor
 from apps.rpc.node_mgmt import NodeMgmt
+from apps.rpc.operation_analysis import OperationAnalysisRPC
 from apps.rpc.opspilot import OpsPilot
 from apps.rpc.system_mgmt import SystemMgmt
 from apps.system_mgmt.models import GroupDataRule
 from apps.system_mgmt.serializers import GroupDataRuleSerializer
+from apps.system_mgmt.utils.operation_log_utils import log_operation
 
 
 class GroupDataRuleFilter(FilterSet):
@@ -28,15 +30,38 @@ class GroupDataRuleViewSet(LanguageViewSet):
 
     @HasPermission("data_permission-Delete")
     def destroy(self, request, *args, **kwargs):
-        return super().destroy(request, *args, **kwargs)
+        obj = self.get_object()
+        rule_name = obj.name
+
+        response = super().destroy(request, *args, **kwargs)
+
+        # 记录操作日志
+        if response.status_code == 204:
+            log_operation(request, "delete", "data_rule", f"删除数据权限: {rule_name}")
+
+        return response
 
     @HasPermission("data_permission-Add")
     def create(self, request, *args, **kwargs):
-        return super().create(request, *args, **kwargs)
+        response = super().create(request, *args, **kwargs)
+
+        # 记录操作日志
+        if response.status_code == 201:
+            rule_name = response.data.get("name", "")
+            log_operation(request, "create", "data_rule", f"新增数据权限: {rule_name}")
+
+        return response
 
     @HasPermission("data_permission-Edit")
     def update(self, request, *args, **kwargs):
-        return super().update(request, *args, **kwargs)
+        response = super().update(request, *args, **kwargs)
+
+        # 记录操作日志
+        if response.status_code == 200:
+            rule_name = response.data.get("name", "")
+            log_operation(request, "update", "data_rule", f"编辑数据权限: {rule_name}")
+
+        return response
 
     @HasPermission("data_permission-View")
     def list(self, request, *args, **kwargs):
@@ -46,14 +71,11 @@ class GroupDataRuleViewSet(LanguageViewSet):
     @HasPermission("data_permission-View")
     def get_app_data(self, request):
         params = request.GET.dict()
-        try:
-            client = self.get_client(params)
-        except Exception as e:
-            return JsonResponse({"result": False, "message": str(e)})
+        client = self.get_client(params)
         fun = getattr(client, "get_module_data", None)
         if fun is None:
             message = self.loader.get("error.module_not_found") if self.loader else "Module not found"
-            return JsonResponse({"result": False, "message": message})
+            raise AttributeError(message)
         params["page"] = int(params.get("page", "1"))
         params["page_size"] = int(params.get("page_size", "10"))
         return_data = fun(**params)
@@ -63,21 +85,18 @@ class GroupDataRuleViewSet(LanguageViewSet):
     @HasPermission("data_permission-View")
     def get_app_module(self, request):
         params = request.GET.dict()
-        try:
-            client = self.get_client(params)
-        except Exception as e:
-            return JsonResponse({"result": False, "message": str(e)})
+        client = self.get_client(params)
         fun = getattr(client, "get_module_list", None)
         if fun is None:
             message = self.loader.get("error.module_not_found") if self.loader else "Module not found"
-            return JsonResponse({"result": False, "message": message})
+            raise AttributeError(message)
         return_data = fun()
         for i in return_data:
-            translated_name = self.loader.get(f"base_constant.{i['display_name']}") if self.loader else None
+            translated_name = self.loader.get(i["display_name"]) if self.loader else None
             i["display_name"] = translated_name or i["display_name"]
             if "children" in i:
                 for child in i["children"]:
-                    translated_child_name = self.loader.get(f"base_constant.{child['display_name']}") if self.loader else None
+                    translated_child_name = self.loader.get(child["display_name"]) if self.loader else None
                     child["display_name"] = translated_child_name or child["display_name"]
         return JsonResponse({"result": True, "data": return_data})
 
@@ -90,6 +109,7 @@ class GroupDataRuleViewSet(LanguageViewSet):
             "monitor": Monitor,
             "log": Log,
             "cmdb": CMDB,
+            "ops-analysis": OperationAnalysisRPC,
         }
         app = params.pop("app")
         if app not in client_map.keys():

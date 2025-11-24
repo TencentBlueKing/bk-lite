@@ -6,10 +6,11 @@ from rest_framework.decorators import action
 
 from apps.core.backends import cache
 from apps.core.decorators.api_permission import HasPermission
-from apps.core.logger import system_mgmt_logger as logger
 from apps.system_mgmt.models import Group, Role, User, UserRule
 from apps.system_mgmt.serializers.user_serializer import UserSerializer
 from apps.system_mgmt.services.role_manage import RoleManage
+from apps.system_mgmt.utils.operation_log_utils import log_operation
+from apps.system_mgmt.utils.password_validator import PasswordValidator
 from apps.system_mgmt.utils.viewset_utils import ViewSetUtils
 
 
@@ -23,18 +24,44 @@ class UserViewSet(ViewSetUtils):
         # 获取请求参数
         search = request.GET.get("search", "")
         group_id = request.GET.get("group_id", "")
+        page = int(request.GET.get("page", 1))
+        page_size = int(request.GET.get("page_size", 10))
+        is_superuser = request.GET.get("is_superuser", "0") == "1"
+
         # 过滤用户数据
         queryset = User.objects.filter(Q(username__icontains=search) | Q(display_name__icontains=search) | Q(email__icontains=search))
+
+        # 如果筛选超级用户，则过滤包含超管角色的用户
+        if is_superuser:
+            super_role_id = Role.objects.get(app="", name="admin").id
+            queryset = queryset.filter(role_list__contains=super_role_id)
+
         # 如果指定了用户组ID，则过滤该组内的用户
         if group_id:
             queryset = queryset.filter(group_list__contains=int(group_id))
+
+        # 排序
+        queryset = queryset.order_by("-id")
+
+        # 分页
+        total = queryset.count()
+        start = (page - 1) * page_size
+        end = page * page_size
+        users = queryset[start:end]
+
+        # 使用 UserSerializer 序列化数据（自动包含 group_role_list）
+        serializer = UserSerializer(users, many=True)
+        data = serializer.data
+
+        # 添加角色信息（保持原有逻辑）
         roles = Role.objects.all().values("id", "name", "app")
         role_map = {}
         for i in roles:
             role_map[i["id"]] = f"{i['app']}@@{i['name']}"
-        data, total = self.search_by_page(queryset.order_by("-id"), request, User.display_fields())
-        for i in data:
-            i["roles"] = [role_map.get(role_id, "") for role_id in i["role_list"]]
+
+        for user_data in data:
+            user_data["roles"] = [role_map.get(role_id, "") for role_id in user_data.get("role_list", [])]
+
         return JsonResponse({"result": True, "data": {"count": total, "users": data}})
 
     @action(detail=False, methods=["GET"])
@@ -54,7 +81,16 @@ class UserViewSet(ViewSetUtils):
     def get_user_detail(self, request):
         pk = request.data.get("user_id")
         user = User.objects.get(id=pk)
+
+        # 使用 UserSerializer 序列化用户数据（自动包含 group_role_list 和 is_superuser）
+        serializer = UserSerializer(user)
+        data = serializer.data
+
+        # 添加角色详情
         roles = Role.objects.filter(id__in=user.role_list).values(role_id=F("id"), role_name=F("name"), display_name=F("name"))
+        data["roles"] = list(roles)
+
+        # 添加用户组详情及规则
         groups = list(Group.objects.filter(id__in=user.group_list).values("id", "name"))
         group_rule_map = {}
         rules = UserRule.objects.filter(username=user.username).values("group_rule__group_id", "group_rule_id", "group_rule__app")
@@ -62,17 +98,8 @@ class UserViewSet(ViewSetUtils):
             group_rule_map.setdefault(rule["group_rule__group_id"], {}).setdefault(rule["group_rule__app"], []).append(rule["group_rule_id"])
         for i in groups:
             i["rules"] = group_rule_map.get(i["id"], {})
-        data = {
-            "id": user.id,
-            "username": user.username,
-            "display_name": user.display_name,
-            "email": user.email,
-            "disabled": user.disabled,
-            "locale": user.locale,
-            "timezone": user.timezone,
-            "roles": list(roles),
-            "groups": groups,
-        }
+        data["groups"] = groups
+
         return JsonResponse({"result": True, "data": data})
 
     # @action(detail=False, methods=["GET"])
@@ -85,49 +112,76 @@ class UserViewSet(ViewSetUtils):
     def create_user(self, request):
         kwargs = request.data
         rules = kwargs.pop("rules", [])
-        try:
-            with transaction.atomic():
-                User.objects.create(
-                    username=kwargs["username"],
-                    display_name=kwargs["lastName"],
-                    email=kwargs["email"],
-                    disabled=False,
-                    locale=kwargs["locale"],
-                    timezone=kwargs["timezone"],
-                    group_list=kwargs["groups"],
-                    role_list=kwargs["roles"],
-                    temporary_pwd=kwargs.get("temporary_pwd", False),
-                )
-                if rules:
-                    add_rule = [UserRule(username=kwargs["username"], group_rule_id=i) for i in rules]
-                    UserRule.objects.bulk_create(add_rule, batch_size=100)
-            return JsonResponse({"result": True})
-        except Exception as e:
-            logger.exception(e)
-            return JsonResponse({"result": False, "message": str(e)})
+        with transaction.atomic():
+            User.objects.create(
+                username=kwargs["username"],
+                display_name=kwargs["lastName"],
+                email=kwargs["email"],
+                disabled=False,
+                locale=kwargs["locale"],
+                timezone=kwargs["timezone"],
+                group_list=kwargs["groups"],
+                role_list=kwargs["roles"],
+                temporary_pwd=kwargs.get("temporary_pwd", False),
+            )
+            if rules:
+                add_rule = [UserRule(username=kwargs["username"], group_rule_id=i) for i in rules]
+                UserRule.objects.bulk_create(add_rule, batch_size=100)
+
+            # 记录操作日志
+            log_operation(request, "create", "user", f"新增用户: {kwargs['username']} ({kwargs['lastName']})")
+        return JsonResponse({"result": True})
 
     @action(detail=False, methods=["POST"])
     @HasPermission("user_group-Edit User")
     def reset_password(self, request):
-        try:
-            password = request.data.get("password")
-            temporary_pwd = request.data.get("temporary", False)
-            User.objects.filter(id=request.data.get("id")).update(password=make_password(password), temporary_pwd=temporary_pwd)
-            return JsonResponse({"result": True})
-        except Exception as e:
-            logger.exception(e)
-            return JsonResponse({"result": False, "message": str(e)})
+        password = request.data.get("password")
+        temporary_pwd = request.data.get("temporary", False)
+        user_id = request.data.get("id")
+
+        # 校验密码是否为空
+        if not password:
+            raise ValueError("密码不能为空")
+
+        # 校验密码复杂度
+        is_valid, error_message = PasswordValidator.validate_password(password)
+        if not is_valid:
+            raise ValueError(error_message)
+
+        user = User.objects.get(id=user_id)
+        user.password = make_password(password)
+        user.temporary_pwd = temporary_pwd
+        user.save()  # 使用save方法自动更新password_last_modified
+
+        # 记录操作日志
+        log_operation(request, "update", "user", f"重置用户密码: {user.username}")
+        return JsonResponse({"result": True})
 
     @action(detail=False, methods=["POST"])
     @HasPermission("user_group-Delete User")
     def delete_user(self, request):
         user_ids = request.data.get("user_ids")
         users = User.objects.filter(id__in=user_ids)
+        usernames = list(users.values_list("username", flat=True))
+
+        # 收集需要删除的用户信息（username和domain）
+        user_info_list = list(users.values("username", "domain"))
+
         keys = []
         for i in users:
             keys.extend(RoleManage.get_cache_keys(i.username))
+
         cache.delete_many(keys)
+
+        # 删除用户相关的UserRule（根据username和domain）
+        for user_info in user_info_list:
+            UserRule.objects.filter(username=user_info["username"], domain=user_info["domain"]).delete()
+
+        # 删除用户
         users.delete()
+
+        # 记录操作日志
+        log_operation(request, "delete", "user", f"批量删除用户: {', '.join(usernames)} (共{len(usernames)}个)")
         return JsonResponse({"result": True})
 
     @action(detail=False, methods=["POST"])
@@ -137,6 +191,9 @@ class UserViewSet(ViewSetUtils):
         pk = params.pop("user_id")
         rules = params.pop("rules", [])
         keys = RoleManage.get_cache_keys(params["username"])
+        is_superuser = params.pop("is_superuser", False)
+        if is_superuser:
+            params["roles"] = [Role.objects.get(name="admin", app="").id]
         with transaction.atomic():
             # 删除旧的规则
             UserRule.objects.filter(username=params["username"]).delete()
@@ -153,6 +210,9 @@ class UserViewSet(ViewSetUtils):
                 role_list=params.get("roles"),
             )
             cache.delete_many(keys)
+
+            # 记录操作日志
+            log_operation(request, "update", "user", f"编辑用户: {params['username']}")
         return JsonResponse({"result": True})
 
     @action(detail=True, methods=["POST"])

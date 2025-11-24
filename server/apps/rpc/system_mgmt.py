@@ -37,12 +37,13 @@ class SystemMgmt(object):
         return_data = self.client.run("generate_qr_code", username=username)
         return return_data
 
-    def reset_pwd(self, username, password):
+    def reset_pwd(self, username, domain, password):
         """
         :param username: 用户名
+        :param domain: 用户名
         :param password: 密码
         """
-        return_data = self.client.run("reset_pwd", username=username, password=password)
+        return_data = self.client.run("reset_pwd", username=username, domain=domain, password=password)
         return return_data
 
     def get_client(self, client_id, username="", domain="domain.com"):
@@ -120,6 +121,15 @@ class SystemMgmt(object):
         return_data = self.client.run("send_msg_with_channel", channel_id=channel_id, title=title, content=content, receivers=receivers)
         return return_data
 
+    def send_email_to_receiver(self, title, content, receiver):
+        """
+        :param title: 邮件主题  企微传空字符串即可
+        :param content: 正文
+        :param receiver: [1,2,3,4] 用户的ID列表
+        """
+        return_data = self.client.run("send_email_to_receiver", title=title, content=content, receiver=receiver)
+        return return_data
+
     def init_user_default_attributes(self, user_id, group_name, default_group_id):
         """
         :param user_id: 用户id
@@ -169,18 +179,11 @@ class SystemMgmt(object):
     def get_login_module_domain_list(self):
         return self.client.run("get_login_module_domain_list")
 
-    def get_user_rules_by_app(self, group_id, username, app, module, child_module="", domain="domain.com"):
-        return self.client.run("get_user_rules_by_app", group_id, username, domain, app, module, child_module)
+    def get_user_rules_by_app(self, group_id, username, app, module, child_module="", domain="domain.com", include_children=False):
+        return self.client.run("get_user_rules_by_app", group_id, username, domain, app, module, child_module, include_children)
 
-    def get_user_rules_by_module(self, group_id, username, app, module, domain="domain.com"):
-        return self.client.run(
-            "get_user_rules_by_module",
-            group_id,
-            username,
-            domain,
-            app,
-            module,
-        )
+    def get_user_rules_by_module(self, group_id, username, app, module, domain="domain.com", include_children=False):
+        return self.client.run("get_user_rules_by_module", group_id, username, domain, app, module, include_children)
 
     def get_pilot_permission_by_token(self, token, bot_id, group_list):
         return self.client.run("get_pilot_permission_by_token", token, bot_id, group_list)

@@ -32,7 +32,8 @@ async def invoke_chatbot_workflow(request, body: ChatBotWorkflowRequest):
         result = await workflow.execute(body)
         return json(result.model_dump())
     except Exception as e:
-        logger.error(f"同步 ChatBot Workflow 失败，问题: {body.user_message}, 错误: {e}")
+        logger.error(
+            f"同步 ChatBot Workflow 失败，问题: {body.user_message}, 错误: {e}")
         raise
 
 
@@ -46,6 +47,22 @@ async def invoke_chatbot_workflow_sse(request, body: ChatBotWorkflowRequest):
     return ResponseStream(
         lambda res: BaseAgent.stream_response_handler(
             workflow, body, res,
+        ),
+        content_type="text/event-stream; charset=utf-8",
+        headers={"Cache-Control": "no-cache", "Connection": "keep-alive"}
+    )
+
+
+@chatbot_workflow_api_router.post("/invoke_chatbot_workflow_agui")
+@auth.login_required
+@validate(json=ChatBotWorkflowRequest)
+async def invoke_chatbot_workflow_agui(request, body: ChatBotWorkflowRequest):
+    """执行 ChatBot Workflow（AG-UI 协议流式响应）"""
+    workflow = _prepare_workflow(body)
+
+    return ResponseStream(
+        lambda res: BaseAgent.agui_stream_response_handler(
+            workflow, body, res
         ),
         content_type="text/event-stream; charset=utf-8",
         headers={"Cache-Control": "no-cache", "Connection": "keep-alive"}

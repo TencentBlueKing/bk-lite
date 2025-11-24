@@ -14,6 +14,8 @@ import {
   MetricItem,
   ChartDataItem,
   NodeWorkload,
+  OrganizationNode,
+  UnitItem,
 } from '@/app/monitor/types';
 import { Group } from '@/types';
 import {
@@ -80,10 +82,10 @@ export const findCascaderPath = (
 // 组织改造成联级数据
 export const convertArray = (
   arr: Array<OriginOrganization | OriginSubGroupItem>
-) => {
-  const result: any = [];
+): CascaderItem[] => {
+  const result: CascaderItem[] = [];
   arr.forEach((item) => {
-    const newItem = {
+    const newItem: CascaderItem = {
       value: item.id,
       label: item.name,
       children: [],
@@ -98,17 +100,21 @@ export const convertArray = (
 };
 
 // 用于查节点及其所有父级节点
-export const findNodeWithParents: any = (
-  nodes: any[],
+export const findNodeWithParents = (
+  nodes: OrganizationNode[],
   id: string,
-  parent: any = null
-) => {
+  parent: OrganizationNode | null = null
+): OrganizationNode[] | null => {
   for (const node of nodes) {
     if (node.id === id) {
-      return parent ? [node, ...findNodeWithParents(nodes, parent.id)] : [node];
+      if (parent) {
+        const parentNodes = findNodeWithParents(nodes, parent.id);
+        return parentNodes ? [node, ...parentNodes] : [node];
+      }
+      return [node];
     }
     if (node.subGroups && node.subGroups.length > 0) {
-      const result: any = findNodeWithParents(node.subGroups, id, node);
+      const result = findNodeWithParents(node.subGroups, id, node);
       if (result) {
         return result;
       }
@@ -118,9 +124,12 @@ export const findNodeWithParents: any = (
 };
 
 // 过滤出所有给定ID的节点及其所有父级节点
-export const filterNodesWithAllParents = (nodes: any, ids: any[]) => {
-  const result: any[] = [];
-  const uniqueIds: any = new Set(ids);
+export const filterNodesWithAllParents = (
+  nodes: OrganizationNode[],
+  ids: string[]
+): OrganizationNode[] => {
+  const result: OrganizationNode[] = [];
+  const uniqueIds = new Set(ids);
   for (const id of uniqueIds) {
     const nodeWithParents = findNodeWithParents(nodes, id);
     if (nodeWithParents) {
@@ -135,13 +144,16 @@ export const filterNodesWithAllParents = (nodes: any, ids: any[]) => {
 };
 
 // 根据分组id找出分组名称(单个id展示)
-export const findGroupNameById = (arr: Array<SubGroupItem>, value: unknown) => {
+export const findGroupNameById = (
+  arr: Array<SubGroupItem>,
+  value: unknown
+): string | null => {
   for (let i = 0; i < arr.length; i++) {
     if (arr[i].value === value) {
-      return arr[i].label;
+      return arr[i].label || null;
     }
     if (arr[i].children && arr[i].children?.length) {
-      const label: unknown = findGroupNameById(arr[i]?.children || [], value);
+      const label = findGroupNameById(arr[i]?.children || [], value);
       if (label) {
         return label;
       }
@@ -156,7 +168,7 @@ export const showGroupName = (
   organizationList: Array<SubGroupItem>
 ) => {
   if (!groupIds?.length) return '--';
-  const groupNames: any[] = [];
+  const groupNames: (string | null)[] = [];
   groupIds.forEach((el) => {
     groupNames.push(findGroupNameById(organizationList, Number(el)));
   });
@@ -193,14 +205,14 @@ export const useFormatTime = () => {
 // 根据id找到单位名称（单个id展示）
 export const findUnitNameById = (
   value: unknown,
-  arr: Array<any> = UNIT_LIST
-) => {
+  arr: UnitItem[] = UNIT_LIST
+): string => {
   for (let i = 0; i < arr.length; i++) {
     if (arr[i].value === value) {
-      return arr[i].unit;
+      return arr[i].unit || '';
     }
     if (arr[i].children && arr[i].children?.length) {
-      const label: unknown = findUnitNameById(value, arr[i]?.children || []);
+      const label = findUnitNameById(value, arr[i]?.children || []);
       if (label) {
         return label;
       }
@@ -210,9 +222,16 @@ export const findUnitNameById = (
 };
 
 // 柱形图或者折线图单条线时，获取其最大值、最小值、平均值和最新值
-export const calculateMetrics = (data: any[], key = 'value1') => {
+export const calculateMetrics = (
+  data: Record<string, number>[],
+  key = 'value1'
+) => {
   if (!data || data.length === 0) return {};
-  const values = data.map((item) => item[key]);
+  const values = data
+    .map((item) => item[key])
+    .filter((val): val is number => typeof val === 'number');
+  if (values.length === 0) return {};
+
   const maxValue = Math.max(...values);
   const minValue = Math.min(...values);
   const sumValue = values.reduce((sum, value) => sum + value, 0);
@@ -228,10 +247,10 @@ export const calculateMetrics = (data: any[], key = 'value1') => {
 };
 
 // 树形组件根据id查其title
-export const findLabelById = (data: any[], key: string): string | null => {
+export const findLabelById = (data: TreeItem[], key: string): string | null => {
   for (const node of data) {
     if (node.key === key) {
-      return node.label;
+      return node.label || null;
     }
     if (node.children) {
       const result = findLabelById(node.children, key);
@@ -340,7 +359,7 @@ export const renderChart = (
   data: ChartDataItem[],
   config: ChartProps[]
 ): ChartData[] => {
-  const result: any[] = [];
+  const result: ChartData[] = [];
   const target = config[0]?.dimensions || [];
   data.forEach((item, index) => {
     item.values.forEach(([timestamp, value]) => {
@@ -370,6 +389,9 @@ export const renderChart = (
       }
       if (existing) {
         existing[`value${index + 1}`] = parseFloat(value);
+        if (!existing.details) {
+          existing.details = {};
+        }
         if (!existing.details[`value${index + 1}`]) {
           existing.details[`value${index + 1}`] = [];
         }

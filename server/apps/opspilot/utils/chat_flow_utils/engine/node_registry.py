@@ -28,7 +28,11 @@ class NodeRegistry:
         """注册内置节点类型"""
         # 基础节点
         self.register_node_class("restful", EntryNode)
+        self.register_node_class("enterprise_wechat", EntryNode)
+        self.register_node_class("dingtalk", EntryNode)
+        self.register_node_class("wechat_official", EntryNode)
         self.register_node_class("openai", EntryNode)
+        self.register_node_class("agui", EntryNode)  # AGUI入口节点
         self.register_node_class("exit", ExitNode)
         self.register_node_class("celery", EntryNode)
 
@@ -47,8 +51,6 @@ class NodeRegistry:
         self.register_node_class("end", ExitNode)
         self.register_node_class("condition", BranchNode)
 
-        logger.info("内置节点类型注册完成")
-
     def register_node_class(self, node_type: str, node_class: Type[BaseNodeExecutor]):
         """注册节点类
 
@@ -60,7 +62,6 @@ class NodeRegistry:
             raise ValueError(f"节点类 {node_class.__name__} 必须继承自 BaseNodeExecutor")
 
         self._node_classes[node_type] = node_class
-        logger.info(f"注册节点类: {node_type} -> {node_class.__name__}")
 
     def register_node_factory(self, node_type: str, factory: Callable):
         """注册节点工厂函数
@@ -158,7 +159,6 @@ class NodeRegistry:
             module = importlib.import_module(module_path)
             node_class = getattr(module, class_name)
             self.register_node_class(node_type, node_class)
-            logger.info(f"从模块 {module_path} 加载节点类 {class_name} 成功")
         except (ImportError, AttributeError) as e:
             logger.error(f"从模块 {module_path} 加载节点类 {class_name} 失败: {str(e)}")
             raise

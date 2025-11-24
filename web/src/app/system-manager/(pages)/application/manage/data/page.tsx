@@ -8,6 +8,7 @@ import { useUserInfoContext } from '@/context/userInfo';
 import { buildModulesMap } from '@/app/system-manager/constants/application';
 import { useRoleApi } from '@/app/system-manager/api/application';
 import CustomTable from '@/components/custom-table';
+import GroupTreeSelect from '@/components/group-tree-select';
 import OperateModal from '@/components/operate-modal';
 import DynamicForm from '@/components/dynamic-form';
 import PermissionWrapper from "@/components/permission";
@@ -501,25 +502,32 @@ const DataManagement: React.FC = () => {
       },
       {
         name: 'groupId',
-        type: 'select',
+        type: 'custom',
         label: t('system.data.group'),
-        placeholder: `${t('common.inputMsg')}${t('system.data.group')}`,
         rules: [{ required: true, message: `${t('common.inputMsg')}${t('system.data.group')}` }],
-        options: groups.map(group => ({ value: group.id, label: group.name })),
-        onChange: (value: string) => {
-          setCurrentGroupId(value);
-          setSelectChanged(true);
+        component: (
+          <GroupTreeSelect
+            multiple={false}
+            placeholder={`${t('common.inputMsg')}${t('system.data.group')}`}
+            onChange={(value: number | number[] | undefined) => {
+              const groupId = Array.isArray(value) ? value[0] : value;
+              if (groupId) {
+                setCurrentGroupId(groupId.toString());
+                setSelectChanged(true);
 
-          const currentPermissions = dataForm.getFieldValue('permissionRule');
-          if (currentPermissions) {
-            dataForm.setFieldsValue({
-              permissionRule: {
-                ...currentPermissions,
-                _timestamp: Date.now()
+                const currentPermissions = dataForm.getFieldValue('permissionRule');
+                if (currentPermissions) {
+                  dataForm.setFieldsValue({
+                    permissionRule: {
+                      ...currentPermissions,
+                      _timestamp: Date.now()
+                    }
+                  });
+                }
               }
-            });
-          }
-        }
+            }}
+          />
+        )
       },
       {
         name: 'permissionRule',

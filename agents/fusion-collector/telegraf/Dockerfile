@@ -3,10 +3,10 @@ FROM telegraf:1.32 as builder
 FROM ubuntu:24.04
 
 RUN apt-get update && \
-    apt-get install -y ca-certificates ipmitool vim snmp supervisor zip iputils-ping && \
+    apt-get install -y snmptrapd ca-certificates ipmitool vim snmp supervisor zip iputils-ping && \
     update-ca-certificates && \
     rm -rf /var/lib/apt/lists/*
-    
+
 ADD ./mibs /usr/share/snmp/mibs
 
 WORKDIR /apps

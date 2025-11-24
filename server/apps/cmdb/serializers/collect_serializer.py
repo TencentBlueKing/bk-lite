@@ -5,7 +5,7 @@
 from rest_framework import serializers
 from rest_framework.fields import empty
 
-from apps.cmdb.constants import VIEW, OPERATE
+from apps.cmdb.constants.constants import VIEW, OPERATE
 from apps.cmdb.models.collect_model import CollectModels, OidMapping
 from apps.cmdb.utils.base import get_cmdb_rules
 from apps.core.logger import cmdb_logger as logger

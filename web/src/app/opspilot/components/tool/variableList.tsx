@@ -6,9 +6,10 @@ import { PlusOutlined, MinusOutlined } from '@ant-design/icons';
 interface VariableListProps {
   value?: { key: string; type: string; isRequired: boolean }[];
   onChange?: (value: { key: string; type: string; isRequired: boolean }[]) => void;
+  disabled?: boolean;
 }
 
-const VariableList: React.FC<VariableListProps> = ({ value = [], onChange }) => {
+const VariableList: React.FC<VariableListProps> = ({ value = [], onChange, disabled = false }) => {
   const { t } = useTranslation();
   const variables = value.length > 0 ? value : [{ key: '', type: 'text', isRequired: false }];
 
@@ -38,6 +39,7 @@ const VariableList: React.FC<VariableListProps> = ({ value = [], onChange }) => 
               value={variable.type}
               onChange={(value) => handleChange('type', value, index)}
               style={{ width: '100%' }}
+              disabled={disabled}
               options={[
                 { value: 'text', label: t('tool.text') },
                 { value: 'password', label: t('tool.password') },
@@ -50,12 +52,14 @@ const VariableList: React.FC<VariableListProps> = ({ value = [], onChange }) => 
               onChange={(e) => handleChange('key', e.target.value, index)}
               placeholder={t('tool.variables')}
               style={{ width: '100%' }}
+              disabled={disabled}
             />
           </Col>
           <Col span={5}>
             <Checkbox
               checked={variable.isRequired}
               onChange={(e) => handleChange('isRequired', e.target.checked, index)}
+              disabled={disabled}
             >
               {t('common.required')}
             </Checkbox>
@@ -67,6 +71,7 @@ const VariableList: React.FC<VariableListProps> = ({ value = [], onChange }) => 
               shape="circle"
               icon={<PlusOutlined />}
               onClick={handleAdd}
+              disabled={disabled}
             />
             <Button
               size="small"
@@ -74,7 +79,7 @@ const VariableList: React.FC<VariableListProps> = ({ value = [], onChange }) => 
               shape="circle"
               icon={<MinusOutlined />}
               onClick={() => handleDelete(index)}
-              disabled={index === 0}
+              disabled={disabled || index === 0}
               className="ml-1"
             />
           </Col>

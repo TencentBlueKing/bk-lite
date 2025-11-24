@@ -46,6 +46,7 @@ const PlaygroundManage = () => {
   const [treeLoading, setTreeLoading] = useState<boolean>(false);
   const [confirmLoading, setConfirmLoading] = useState<boolean>(false);
   const [selectCapability, setSelectCapability] = useState<number[]>([]);
+  const [selectType, setSelectType] = useState<string>('');
   const [tableData, setTableData] = useState<TableData[]>([]);
   const [pagination, setPagination] = useState<Pagination>({
     current: 1,
@@ -165,7 +166,7 @@ const PlaygroundManage = () => {
     });
     return filterData.map((item: any) => ({
       key: item?.id,
-      title: renderCapabilityTitle({...item, categoryType}),
+      title: renderCapabilityTitle({ ...item, categoryType }),
       ...item
     }));
   };
@@ -191,8 +192,8 @@ const PlaygroundManage = () => {
               key: 'anomaly_detection',
               name: 'anomaly_detection',
               selectable: false,
-              title: renderTitle({ name: t(`manage.anomalyDetection`), categoryID: findIDByName('异常检测', categoryData), categoryType: 'anomaly' }),
-              children: renderCapabilityNode(findIDByName('异常检测', categoryData), capabilityData, 'anomaly')
+              title: renderTitle({ name: t(`manage.anomalyDetection`), categoryID: findIDByName('异常检测', categoryData), categoryType: 'anomaly_detection' }),
+              children: renderCapabilityNode(findIDByName('异常检测', categoryData), capabilityData, 'anomaly_detection')
             },
             {
               key: 'timeseries_predict',
@@ -355,8 +356,17 @@ const PlaygroundManage = () => {
     sampleModalRef.current?.showModal(data);
   };
 
-  const onSelect = (keys: any[]) => {
-    if (keys.length) setSelectCapability(keys);
+  const onSelect = (keys: any[], info: any) => {
+
+    try {
+      const { categoryType } = info.node.config;
+      if (keys.length) setSelectCapability(keys);
+      if(!categoryType) setSelectType('');
+      setSelectType(categoryType);
+      
+    } catch (e) {
+      console.log(e);
+    }
   };
 
   const handleSampleActiveChange = async (id: number, checked: boolean) => {
@@ -448,7 +458,7 @@ const PlaygroundManage = () => {
             type='primary'
             disabled={selectCapability.length === 0}
             icon={<PlusOutlined />}
-            onClick={() => openSampleModal({ type: 'add', title: 'add', form: { capability: selectCapability } })}>
+            onClick={() => openSampleModal({ type: 'add', title: 'add', form: { capability: selectCapability, categoryType: selectType } })}>
             {t(`common.add`)}
           </Button>
         </PermissionWrapper>

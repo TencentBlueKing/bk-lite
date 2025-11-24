@@ -1,0 +1,1142 @@
+version: '1.0'
+description: Neco工具集合
+toolkits:
+- id: current_time
+  name: 时间工具
+  description: 时间工具集合
+  tools:
+  - name: get_current_time
+    description: 这个工具可以用于获取当前时间
+    parameters: {}
+- id: duckduckgo
+  name: 搜索工具
+  description: 搜索工具集合
+  tools:
+  - name: duckduckgo_search
+    description: 'Perform a search using DuckDuckGo and return the results.
+
+      :param query: search query
+
+      :param max_results: default is 5
+
+      :return:'
+    parameters:
+      query:
+        type: string
+        description: ''
+        required: true
+      max_results:
+        type: string
+        description: ''
+        required: true
+- id: github
+  name: GitHub工具
+  description: GitHub工具集合
+  tools:
+  - name: get_github_commits
+    description: "获取指定GitHub仓库在指定时间范围内的commits记录，并按用户分组处理。请根据用户指定的时间进行查询，不要猜测\n\n\
+      Args:\n    owner (str): GitHub仓库所有者用户名或组织名\n    repo (str): GitHub仓库名称\n   \
+      \ since (str): 开始时间，ISO 8601格式，如: 2025-09-08T00:00:00Z\n    until (str): 结束时间，ISO\
+      \ 8601格式，如: 2025-09-15T00:00:00Z  \n    token (str, optional): GitHub Personal\
+      \ Access Token，用于提高API限制和访问私有仓库\n\nReturns:\n    str: 按用户分组的commits数据JSON字符串，格式为:\n\
+      \        {\n            \"用户名\": [\n                {\n                    \"\
+      message\": \"commit消息\",\n                    \"date\": \"提交日期\"\n         \
+      \       }\n            ]\n        }\n\nRaises:\n    ValueError: 当参数无效或请求失败时抛出"
+    parameters:
+      owner:
+        type: string
+        description: ''
+        required: true
+      repo:
+        type: string
+        description: ''
+        required: true
+      since:
+        type: string
+        description: ''
+        required: true
+      until:
+        type: string
+        description: ''
+        required: true
+      token:
+        type: string
+        description: ''
+        required: false
+  - name: get_github_commits_with_pagination
+    description: "获取指定GitHub仓库在指定时间范围内的commits记录（支持分页），并按用户分组处理。\n\n当commits数量较多时，GitHub\
+      \ API会分页返回结果。此工具可以自动处理分页，获取完整的commits数据。\n\nArgs:\n    owner (str): GitHub仓库所有者用户名或组织名\n\
+      \    repo (str): GitHub仓库名称\n    since (str): 开始时间，ISO 8601格式，如: 2025-09-08T00:00:00Z\n\
+      \    until (str): 结束时间，ISO 8601格式，如: 2025-09-15T00:00:00Z\n    token (str, optional):\
+      \ GitHub Personal Access Token，用于提高API限制和访问私有仓库\n    max_pages (int): 最大获取页数，默认10页，避免请求过多数据\n\
+      \nReturns:\n    str: 按用户分组的commits数据JSON字符串，格式为:\n        {\n            \"\
+      用户名\": [\n                {\n                    \"message\": \"commit消息\",\
+      \ \n                    \"date\": \"提交日期\"\n                }\n            ]\n\
+      \        }\n\nRaises:\n    ValueError: 当参数无效或请求失败时抛出"
+    parameters:
+      owner:
+        type: string
+        description: ''
+        required: true
+      repo:
+        type: string
+        description: ''
+        required: true
+      since:
+        type: string
+        description: ''
+        required: true
+      until:
+        type: string
+        description: ''
+        required: true
+      token:
+        type: string
+        description: ''
+        required: false
+      max_pages:
+        type: integer
+        description: ''
+        required: false
+- id: jenkins
+  name: Jenkins工具
+  description: Jenkins工具集合
+  tools:
+  - name: list_jenkins_jobs
+    description: '列出Jenkins构建任务，这个工具用户帮助用户获取Jenkins构建任务列表，当用户构建目标不明确的时候，
+
+      直接使用此工具给用户提出建议'
+    parameters: {}
+  - name: trigger_jenkins_build
+    description: "这个工具用于触发Jenkins构建任务.\n    要求:\n        1. 当构建目标不明确的时候，不要执行任务，告诉与这个任务名字相似的任务\n\
+      \        2. 不允许构建已禁用的任务"
+    parameters:
+      job_name:
+        type: string
+        description: Name of the job to build
+        required: true
+      parameters:
+        type: string
+        description: 'Optional build parameters as a dictionary (e.g. {"param1": "value1"})'
+        required: true
+- id: kubernetes
+  name: Kubernetes工具
+  description: Kubernetes工具集合
+  tools:
+  - name: analyze_deployment_configurations
+    description: "分析 Deployment 配置的合理性\n\n检查每个 Deployment 的资源配置、探针设置、副本策略等，\n评估配置是否合理并识别潜在问题。\n\
+      \nArgs:\n    namespace (str, optional): 要分析的命名空间\n    config (RunnableConfig):\
+      \ 工具配置\n\nReturns:\n    str: JSON格式的分析结果，包含每个Deployment的配置评估"
+    parameters:
+      namespace:
+        type: string
+        description: ''
+        required: false
+  - name: analyze_pod_restart_pattern
+    description: "深度分析Pod重启模式，定位根本原因\n\n**何时使用此工具：**\n- 分析Pod重启的根本原因和触发模式\n- 区分不同退出码对应的故障类型（OOM、信号终止、异常退出等）\n\
+      - 识别重启的时间规律和集中性特征\n- 评估重启对服务稳定性的影响范围\n\n**工具能力：**\n- 分析容器退出码含义（137=OOMKilled、143=SIGTERM、1=Error等）\n\
+      - 识别CrashLoopBackOff重启模式\n- 关联最近的事件（BackOff、Killing、Unhealthy）\n- 区分OOM、应用错误、健康检查失败等不同原因\n\
+      - 提供针对性修复建议（增加内存、检查启动命令、调整探针等）\n- 按重启次数排序，优先展示最严重的问题\n\n**与get_high_restart_kubernetes_pods的区别：**\n\
+      - get_high_restart_pods: 只列出重启次数高的Pod\n- analyze_pod_restart_pattern: 深度分析每个容器的重启原因和退出码\n\
+      \nArgs:\n    namespace (str, optional): 命名空间，None=所有命名空间\n        - None: 全局扫描，发现所有问题Pod\n\
+      \        - \"prod\": 只检查生产环境\n    min_restarts (int, optional): 最小重启阈值，默认3\n\
+      \        - 3: 找出所有有重启迹象的Pod（推荐）\n        - 5: 只关注重启较多的Pod\n        - 10: 只看严重频繁重启的Pod\n\
+      \    config (RunnableConfig): 工具配置（自动传递）\n\nReturns:\n    JSON格式，包含：\n    -\
+      \ analysis[]: 每个问题容器的详细分析\n      - restart_count: 重启次数\n      - restart_reasons[]:\
+      \ 推断的原因列表\n      - last_state: 上次终止状态（exit_code、reason、message）\n      - current_state:\
+      \ 当前状态\n      - severity: critical/high/medium\n      - recommendations[]: 修复建议\n\
+      \      - recent_events[]: 最近相关事件\n    - total_problematic_containers: 问题容器总数\n\
+      \n**配合其他工具使用：**\n- 发现OOM原因 → 使用 check_oom_events 获取集群级OOM概况\n- 查看完整时间线 → 使用\
+      \ get_resource_events_timeline\n- 查看容器日志 → 使用 get_kubernetes_pod_logs\n- 需要重启Pod\
+      \ → 使用 restart_pod"
+    parameters:
+      namespace:
+        type: string
+        description: ''
+        required: false
+      min_restarts:
+        type: string
+        description: ''
+        required: false
+  - name: batch_restart_pods
+    description: "批量重启Pod，提升运维效率\n\n**何时使用此工具：**\n- 用户要求\"重启所有app=nginx的Pod\"、\"重启这几个Pod\"\
+      \n- 配置更新后需要批量重启生效\n- 批量清理异常Pod\n- 滚动重启应用（逐个重启避免服务中断）\n\n**工具能力：**\n- 支持按label\
+      \ selector批量选择Pod\n- 支持指定Pod名称列表\n- 自动检查Pod是否有控制器（避免误删孤立Pod）\n- 支持等待所有Pod就绪（可选）\n\
+      - 记录每个Pod的重启结果\n- 记录审计日志\n\nArgs:\n    namespace (str): 命名空间（必填）\n    label_selector\
+      \ (str, optional): 标签选择器，如 \"app=nginx,env=prod\"\n    pod_names (list, optional):\
+      \ Pod名称列表\n        注意：label_selector 和 pod_names 至少提供一个\n    wait_for_ready\
+      \ (bool, optional): 是否等待所有Pod就绪，默认False\n        - False: 异步重启，立即返回（推荐批量操作）\n\
+      \        - True: 等待所有Pod就绪再返回（耗时长）\n    config (RunnableConfig): 工具配置（自动传递）\n\
+      \nReturns:\n    JSON格式，包含：\n    - namespace: 命名空间\n    - total_pods: 找到的Pod总数\n\
+      \    - restarted_pods[]: 成功重启的Pod列表\n    - failed_pods[]: 重启失败的Pod列表\n     \
+      \ - pod_name: Pod名称\n      - error: 失败原因\n    - skipped_pods[]: 跳过的Pod列表（如孤立Pod）\n\
+      \    - wait_for_ready: 是否等待就绪\n    - all_ready: 所有Pod是否就绪（如果wait_for_ready=True）\n\
+      \n**配合其他工具使用：**\n- 重启前检查Pod状态 → 使用 list_kubernetes_pods\n- 重启后验证 → 使用 check_pod_distribution\n\
+      \n**注意事项：**\n- ⚠️ 批量重启会导致服务短暂不可用\n- 建议逐步重启，避免一次重启太多Pod\n- 对于关键服务，建议设置PodDisruptionBudget\n\
+      - 重启会丢失emptyDir中的临时数据\n\n**最佳实践：**\n- 生产环境：分批重启，每批重启后观察服务状态\n- 使用label精确匹配，避免误重启其他Pod\n\
+      - 对于大规模重启，建议wait_for_ready=False，然后单独验证\n\n**示例场景：**\n```\n场景1：重启所有nginx Pod\n\
+      → batch_restart_pods(namespace=\"prod\", label_selector=\"app=nginx\")\n\n场景2：重启指定的3个Pod\n\
+      → batch_restart_pods(namespace=\"prod\", pod_names=[\"pod-1\", \"pod-2\", \"\
+      pod-3\"])\n```"
+    parameters:
+      namespace:
+        type: string
+        description: ''
+        required: true
+      label_selector:
+        type: string
+        description: ''
+        required: false
+      pod_names:
+        type: string
+        description: ''
+        required: false
+      wait_for_ready:
+        type: string
+        description: ''
+        required: false
+  - name: check_kubernetes_daemonsets
+    description: "检查DaemonSet状态\n\nArgs:\n    namespace (str, optional): 要检查的命名空间\n\
+      \    config (RunnableConfig): 工具配置"
+    parameters:
+      namespace:
+        type: string
+        description: ''
+        required: false
+  - name: check_kubernetes_endpoints
+    description: "检查Service的Endpoints状态，帮助诊断服务发现问题\n\nArgs:\n    namespace (str, optional):\
+      \ 要检查的命名空间\n    config (RunnableConfig): 工具配置"
+    parameters:
+      namespace:
+        type: string
+        description: ''
+        required: false
+  - name: check_kubernetes_hpa_status
+    description: "检查 HPA (Horizontal Pod Autoscaler) 状态\n\nArgs:\n    namespace (str,\
+      \ optional): 要检查的命名空间\n    config (RunnableConfig): 工具配置\n\nReturns:\n    str:\
+      \ JSON格式的HPA状态信息"
+    parameters:
+      namespace:
+        type: string
+        description: ''
+        required: false
+  - name: check_kubernetes_ingress
+    description: "检查Ingress配置和状态\n\nArgs:\n    namespace (str, optional): 要检查的命名空间\n\
+      \    config (RunnableConfig): 工具配置"
+    parameters:
+      namespace:
+        type: string
+        description: ''
+        required: false
+  - name: check_kubernetes_jobs
+    description: "检查Job和CronJob状态\n\nArgs:\n    namespace (str, optional): 要检查的命名空间\n\
+      \    config (RunnableConfig): 工具配置"
+    parameters:
+      namespace:
+        type: string
+        description: ''
+        required: false
+  - name: check_kubernetes_network_policies
+    description: "检查网络策略配置\n\nArgs:\n    namespace (str, optional): 要检查的命名空间\n   \
+      \ config (RunnableConfig): 工具配置\n\nReturns:\n    str: JSON格式的网络策略信息"
+    parameters:
+      namespace:
+        type: string
+        description: ''
+        required: false
+  - name: check_kubernetes_persistent_volumes
+    description: "检查持久化卷状态和使用情况\n\nReturns:\n    str: JSON格式的PV信息，包括状态、容量、回收策略等"
+    parameters: {}
+  - name: check_kubernetes_resource_quotas
+    description: "检查资源配额使用情况\n\nArgs:\n    namespace (str, optional): 要检查的命名空间，如果为None则检查所有命名空间\n\
+      \    config (RunnableConfig): 工具配置\n\nReturns:\n    str: JSON格式的资源配额信息，包括配额限制和当前使用量"
+    parameters:
+      namespace:
+        type: string
+        description: ''
+        required: false
+  - name: check_kubernetes_statefulsets
+    description: "检查StatefulSet状态\n\nArgs:\n    namespace (str, optional): 要检查的命名空间\n\
+      \    config (RunnableConfig): 工具配置"
+    parameters:
+      namespace:
+        type: string
+        description: ''
+        required: false
+  - name: check_network_policies_blocking
+    description: "检查NetworkPolicy是否阻断流量\n\n**何时使用此工具：**\n- 排查服务间网络连通性问题\n- Service和Pod配置正常但仍无法访问时\n\
+      - 诊断跨命名空间通信失败的原因\n- 验证网络策略配置的正确性\n\n**工具能力：**\n- 检查源命名空间的Egress策略（出站规则）\n- 检查目标命名空间的Ingress策略（入站规则）\n\
+      - 分析Pod标签是否匹配NetworkPolicy选择器\n- 识别是否有默认deny规则\n- 提供网络策略配置建议\n\nArgs:\n    source_namespace\
+      \ (str): 源命名空间（必填）\n    source_pod (str, optional): 源Pod名称，用于精确匹配Pod标签\n   \
+      \ target_namespace (str, optional): 目标命名空间\n    target_service (str, optional):\
+      \ 目标Service名称\n    config (RunnableConfig): 工具配置（自动传递）\n\nReturns:\n    JSON格式，包含：\n\
+      \    - source_policies[]: 源命名空间的NetworkPolicy列表\n    - target_policies[]: 目标命名空间的NetworkPolicy列表\n\
+      \    - egress_blocked: 出站是否被阻断（bool）\n    - ingress_blocked: 入站是否被阻断（bool）\n\
+      \    - blocking_policies[]: 阻断流量的策略列表\n    - recommendations[]: 配置建议\n    -\
+      \ diagnosis_summary: 诊断结论\n\n**配合其他工具使用：**\n- 先用 trace_service_chain 确认Service/Pod配置正常\n\
+      - 再用此工具检查网络策略\n- 如果DNS问题，需要检查CoreDNS状态（超出此工具范围）\n\n**注意事项：**\n- 如果集群未使用NetworkPolicy，此工具返回无阻断\n\
+      - NetworkPolicy默认是白名单模式（存在策略后默认deny）\n- 跨命名空间通信需要Egress和Ingress双向放行"
+    parameters:
+      source_namespace:
+        type: string
+        description: ''
+        required: true
+      source_pod:
+        type: string
+        description: ''
+        required: false
+      target_namespace:
+        type: string
+        description: ''
+        required: false
+      target_service:
+        type: string
+        description: ''
+        required: false
+  - name: check_oom_events
+    description: "检查OOM（Out of Memory）事件，识别内存配置问题\n\n**何时使用此工具：**\n- 诊断容器因内存不足被终止的问题\n\
+      - 评估内存配置（requests/limits）的合理性\n- 分析内存使用模式和泄漏风险\n- 识别OOM事件的发生频率和规律\n\n**工具能力：**\n\
+      - 检测所有OOM相关事件（OOMKilling、FailedKillPod）\n- 列出当前有OOM历史的Pod\n- 展示每个Pod的内存limits和requests配置\n\
+      - 统计OOM事件发生频率和时间\n- 提供内存优化建议（增加limits、检查泄漏、使用VPA等）\n\nArgs:\n    namespace (str,\
+      \ optional): 命名空间，None=所有命名空间\n        - None: 全局扫描，发现所有OOM问题\n        - \"\
+      prod\": 只检查生产环境的OOM\n    hours (int, optional): 查询时间范围（小时），默认24\n        - 24:\
+      \ 查看最近一天的OOM（常规检查）\n        - 1: 只看最近一小时（快速定位刚发生的OOM）\n        - 168: 查看一周内的OOM（分析长期趋势）\n\
+      \    config (RunnableConfig): 工具配置（自动传递）\n\nReturns:\n    JSON格式，包含：\n    -\
+      \ oom_events[]: OOM事件列表（按时间倒序）\n      - timestamp: 发生时间\n      - pod_name: Pod名称\n\
+      \      - namespace: 命名空间\n      - reason: 事件原因\n      - count: 发生次数\n    - oom_pods[]:\
+      \ 有OOM历史的Pod\n      - memory_limit: 内存限制\n      - memory_request: 内存请求\n   \
+      \   - restart_count: 重启次数\n      - last_oom_time: 最后OOM时间\n    - recommendations[]:\
+      \ 优化建议\n    - total_oom_events: OOM事件总数\n    - total_oom_pods: OOM Pod总数\n\n\
+      **配合其他工具使用：**\n- 分析具体Pod的重启原因 → 使用 analyze_pod_restart_pattern\n- 查看Pod资源使用详情\
+      \ → 使用 diagnose_kubernetes_pod_issues\n- 查看容器日志分析内存泄漏 → 使用 get_kubernetes_pod_logs\n\
+      \n**注意事项：**\n- OOM通常表示内存配置不足，但也可能是应用内存泄漏\n- 建议结合日志分析，排查是否真实需要这么多内存"
+    parameters:
+      namespace:
+        type: string
+        description: ''
+        required: false
+      hours:
+        type: string
+        description: ''
+        required: false
+  - name: check_pod_distribution
+    description: "检查Pod分布情况，评估高可用性和单点故障风险\n\n**何时使用此工具：**\n- 评估应用的高可用性和容灾能力\n- 识别单点故障风险和分布不均问题\n\
+      - 扩容后验证Pod分布的合理性\n- 分析Pod在节点和可用区的分布模式\n\n**工具能力：**\n- 分析Pod在节点上的分布情况\n- 识别单点故障风险（所有Pod在一个节点）\n\
+      - 检查可用区（Zone）分布，评估区域容灾能力\n- 计算分布均匀性（最多vs最少Pod数差异）\n- 提供Pod反亲和性配置建议\n\nArgs:\n\
+      \    deployment_name (str): Deployment或StatefulSet名称（必填）\n    namespace (str):\
+      \ 命名空间（必填）\n    config (RunnableConfig): 工具配置（自动传递）\n\nReturns:\n    JSON格式，包含：\n\
+      \    - node_distribution: 每个节点上的Pod列表\n      - pod_count: 节点上的Pod数量\n      -\
+      \ pods[]: Pod详情（name、status）\n    - zone_distribution: 每个可用区的Pod数量\n    - total_pods:\
+      \ Pod总数\n    - running_pods: Running状态的Pod数\n    - issues[]: 发现的问题\n      -\
+      \ severity: high/medium/low\n      - message: 问题描述\n    - recommendations[]:\
+      \ 改进建议\n    - distribution_score: \"good\" 或 \"needs_improvement\"\n\n**配合其他工具使用：**\n\
+      - 扩容前检查容量 → 使用 check_scaling_capacity\n- 扩容后检查分布 → 使用此工具验证\n- 发现配置问题 → 根据 recommendations\
+      \ 调整 Pod 配置\n\n**高可用评分标准：**\n- 单节点部署：high severity（单点故障）\n- 分布不均（差异>2）：medium\
+      \ severity\n- 单可用区：medium severity（无区域容灾）\n- 分布均匀 + 多可用区：good\n\n**注意事项：**\n\
+      - 如果未配置Pod反亲和性，Kubernetes默认可能将Pod调度到同一节点\n- 单副本应用无需关注分布问题\n- StatefulSet的Pod分布受Volume\
+      \ Zone影响"
+    parameters:
+      deployment_name:
+        type: string
+        description: ''
+        required: true
+      namespace:
+        type: string
+        description: ''
+        required: true
+  - name: check_pvc_capacity
+    description: "检查PVC（持久化存储）使用率，识别磁盘满风险\n\n**何时使用此工具：**\n- 排查存储容量不足导致的应用问题\n- Pod因存储问题无法正常启动时\n\
+      - 进行存储容量规划和预警\n- 分析存储资源的使用情况和风险\n\n**工具能力：**\n- 列出所有PVC及其容量配置\n- 识别未绑定（Pending）的PVC\n\
+      - 计算PVC使用率（需要Pod挂载信息）\n- 预警接近满的PVC（默认>80%）\n- 识别可扩容的StorageClass\n- 提供扩容和清理建议\n\
+      \nArgs:\n    namespace (str, optional): 命名空间，None=所有命名空间\n    threshold_percent\
+      \ (int, optional): 使用率预警阈值，默认80\n        - 80: 标准预警阈值\n        - 90: 高风险阈值\n\
+      \        - 50: 提前规划容量\n    config (RunnableConfig): 工具配置（自动传递）\n\nReturns:\n\
+      \    JSON格式，包含：\n    - pvc_list[]: PVC列表\n      - name: PVC名称\n      - namespace:\
+      \ 命名空间\n      - status: Bound/Pending/Lost\n      - capacity: 容量大小\n      -\
+      \ storage_class: 存储类\n      - access_modes: 访问模式\n      - mounted_by[]: 挂载此PVC的Pod列表\n\
+      \    - pending_pvcs[]: 未绑定的PVC\n    - high_usage_pvcs[]: 使用率高的PVC\n    - recommendations[]:\
+      \ 优化建议\n    - total_capacity: 总容量\n\n**配合其他工具使用：**\n- 如果Pod因PVC Pending → 使用\
+      \ diagnose_pending_pod_issues\n- 如果需要扩容 → 根据建议手动扩容PVC或添加PV\n\n**注意事项：**\n- 使用率计算依赖于Pod的volumeMounts信息\n\
+      - 某些存储类不支持自动扩容（需要手动操作）\n- emptyDir类型的临时存储不在此工具检查范围\n- 建议结合监控系统获取更准确的使用率数据\n\n\
+      **常见存储问题：**\n1. PVC Pending：没有符合条件的PV\n2. PVC满：使用率100%，Pod无法写入\n3. 日志占用：容器日志未rotate，占满磁盘\n\
+      4. emptyDir满：超过节点磁盘限制"
+    parameters:
+      namespace:
+        type: string
+        description: ''
+        required: false
+      threshold_percent:
+        type: string
+        description: ''
+        required: false
+  - name: check_scaling_capacity
+    description: "扩容前的容量校验，避免资源不足导致Pending\n\n**何时使用此工具：**\n- 执行扩容操作前的容量预检查\n- 评估集群是否有足够资源满足扩容需求\n\
+      - 排查扩容后Pod持续Pending的原因\n- 进行容量规划和资源使用率评估\n\n**工具能力：**\n- 检查所有Ready节点的可用资源（CPU/Memory/Pod数）\n\
+      - 计算是否满足扩容需求\n- 预警资源紧张情况（利用率>80%）\n- 考虑节点分布和调度约束\n- 提供详细的每节点资源使用情况\n\nArgs:\n\
+      \    namespace (str): 命名空间（必填）\n    replicas (int): 目标副本数（必填）\n    resource_requirements\
+      \ (dict, optional): 单个Pod资源需求\n        格式: {\"cpu\": \"100m\", \"memory\": \"\
+      128Mi\"}\n        - 如果提供：精确计算CPU和内存是否满足\n        - 如果不提供：只检查Pod数量容量，强烈建议补充\n\
+      \    config (RunnableConfig): 工具配置（自动传递）\n\nReturns:\n    JSON格式，包含：\n    -\
+      \ can_scale (bool): 是否可以扩容（关键字段）\n    - node_capacity[]: 每个节点的详细容量信息\n     \
+      \ - allocatable: 节点总资源\n      - available: 当前可用资源\n      - utilization: 资源利用率百分比\n\
+      \    - total_nodes: Ready节点总数\n    - recommendations[]: 建议列表\n      - 资源不足时会说明缺口（缺多少CPU/内存）\n\
+      \      - 资源紧张时会预警利用率\n\n**配合其他工具使用：**\n- 扩容前必须调用此工具 → 然后 scale_deployment\n\
+      - 如果 can_scale=false → 考虑添加节点或优化资源配置\n- 扩容后验证分布 → 使用 check_pod_distribution\n\
+      \n**最佳实践：**\n- 扩容前务必调用此工具，避免创建大量Pending Pod\n- 建议提供 resource_requirements，获得更准确的评估\n\
+      - 如果资源利用率>80%，考虑先添加节点\n\n**注意事项：**\n- 只检查Ready状态的节点\n- 不考虑节点亲和性、污点等高级调度策略\n\
+      - 实际调度结果可能因调度器策略而异"
+    parameters:
+      namespace:
+        type: string
+        description: ''
+        required: true
+      replicas:
+        type: string
+        description: ''
+        required: true
+      resource_requirements:
+        type: string
+        description: ''
+        required: false
+  - name: cleanup_failed_pods
+    description: "批量清理失败的Pod，释放资源\n\n**何时使用此工具：**\n- 用户要求\"清理失败的Pod\"、\"删除Evicted\
+      \ Pod\"\n- 集群中积累了大量Failed/Evicted Pod\n- 释放资源配额（Failed Pod仍占用配额）\n- 清理测试遗留的Pod\n\
+      \n**工具能力：**\n- 自动识别Failed状态的Pod\n- 可选清理Evicted Pod（节点资源不足被驱逐）\n- 可选清理Completed状态的Job\
+      \ Pod\n- 记录清理的Pod列表\n- 记录审计日志\n\nArgs:\n    namespace (str, optional): 命名空间，None=所有命名空间\n\
+      \    include_evicted (bool, optional): 是否清理Evicted Pod，默认True\n    config (RunnableConfig):\
+      \ 工具配置（自动传递）\n\nReturns:\n    JSON格式，包含：\n    - namespace: 命名空间\n    - cleaned_pods[]:\
+      \ 已清理的Pod列表\n      - pod_name: Pod名称\n      - namespace: 命名空间\n      - status:\
+      \ Failed/Evicted/Completed\n      - reason: 失败原因\n    - failed_cleanups[]: 清理失败的Pod\n\
+      \    - total_cleaned: 清理总数\n    - total_failed: 清理失败数\n\n**配合其他工具使用：**\n- 清理前查看失败Pod\
+      \ → 使用 get_failed_kubernetes_pods\n- 清理前分析失败原因 → 使用 diagnose_kubernetes_pod_issues\n\
+      \n**Pod状态说明：**\n- Failed: Pod中所有容器都已终止，至少一个容器非0退出\n- Evicted: 节点资源不足，Pod被驱逐\n\
+      - Completed: Job Pod成功完成（exitCode=0）\n\n**注意事项：**\n- ⚠️ 清理操作不可逆，请谨慎使用\n- Failed\
+      \ Pod可能包含重要的故障信息（日志、退出码）\n- 建议清理前先用 get_kubernetes_pod_logs 保存日志\n- Evicted\
+      \ Pod通常是资源不足导致，清理后要解决根本问题\n\n**最佳实践：**\n- 生产环境：清理前先分析失败原因，保存日志\n- 测试环境：可以直接清理\n\
+      - 定期清理：避免Failed Pod积累过多\n\n**典型使用场景：**\n```\n场景1：清理所有Failed Pod\n→ cleanup_failed_pods(namespace=\"\
+      prod\", include_evicted=True)\n\n场景2：清理前先查看\n→ get_failed_kubernetes_pods()\n\
+      → 确认无重要信息后\n→ cleanup_failed_pods()\n```"
+    parameters:
+      namespace:
+        type: string
+        description: ''
+        required: false
+      include_evicted:
+        type: string
+        description: ''
+        required: false
+  - name: compare_deployment_revisions
+    description: "对比Deployment版本差异，理解变更内容\n\n**何时使用此工具：**\n- 分析不同版本之间的配置差异\n- 回滚前确认目标版本的具体变更\n\
+      - 排查变更与故障之间的因果关系\n- 理解版本演进过程中的配置变化\n\n**工具能力：**\n- 对比两个revision的Pod模板\n- 识别镜像变更（版本升级）\n\
+      - 识别环境变量变更（新增/删除/修改）\n- 识别副本数变更\n- 识别资源配置变更（requests/limits）\n- 展示每个revision的基本信息（创建时间、ReplicaSet）\n\
+      \nArgs:\n    deployment_name (str): Deployment名称（必填）\n    namespace (str): 命名空间（必填）\n\
+      \    revision1 (int): 第一个版本号（必填）\n    revision2 (int): 第二个版本号（必填）\n        提示：使用\
+      \ get_deployment_revision_history 查看可用版本\n    config (RunnableConfig): 工具配置（自动传递）\n\
+      \nReturns:\n    JSON格式，包含：\n    - comparison: 两个版本的基本信息\n      - revision1/revision2:\
+      \ 版本号、ReplicaSet名称、创建时间\n    - differences[]: 差异列表\n      - field: 变更字段（container_images、env、replicas等）\n\
+      \      - revision1_value: 版本1的值\n      - revision2_value: 版本2的值\n      - change_type:\
+      \ modified/added/removed\n      - added_vars/removed_vars/modified_vars: 环境变量变更详情\n\
+      \    - differences_count: 差异总数\n    - has_changes: 是否有变更（bool）\n\n**配合其他工具使用：**\n\
+      - 先查看历史 → 使用 get_deployment_revision_history\n- 对比后决定回滚 → 使用 rollback_deployment\n\
+      \n**注意事项：**\n- 如果版本号不存在，会返回错误\n- 只对比Pod模板，不对比Deployment级别的配置\n- 只显示主要差异，不包含所有字段\n\
+      \n**典型使用场景：**\n```\n场景：用户说\"新版本有问题，看看改了什么\"\n步骤1: get_deployment_revision_history\
+      \ 查看历史（发现当前是rev3，上一个是rev2）\n步骤2: compare_deployment_revisions(rev2, rev3) 对比差异\n\
+      步骤3: 发现镜像从v1.0升级到v1.1，环境变量新增了DEBUG=true\n步骤4: 建议回滚到rev2\n```"
+    parameters:
+      deployment_name:
+        type: string
+        description: ''
+        required: true
+      namespace:
+        type: string
+        description: ''
+        required: true
+      revision1:
+        type: string
+        description: ''
+        required: true
+      revision2:
+        type: string
+        description: ''
+        required: true
+  - name: delete_kubernetes_resource
+    description: "删除Kubernetes资源，支持优雅终止\n\n**何时使用此工具：**\n- 用户要求\"删除这个资源\"、\"清理Pod\"\
+      \n- 清理测试资源或临时资源\n- 删除失败的Pod（Failed/Evicted）\n- 清理不再使用的ConfigMap/Secret\n\n**支持的资源类型：**\n\
+      - pod: 删除Pod（会触发控制器重建）\n- deployment: 删除Deployment及其管理的所有Pod\n- service: 删除Service（不影响Pod）\n\
+      - configmap: 删除ConfigMap\n- secret: 删除Secret\n\nArgs:\n    resource_type (str):\
+      \ 资源类型（必填），支持pod/deployment/service/configmap/secret\n    resource_name (str):\
+      \ 资源名称（必填）\n    namespace (str): 命名空间（必填）\n    grace_period (int, optional):\
+      \ 优雅删除等待时间（秒），默认30\n        - 30: 给Pod足够时间清理资源（推荐）\n        - 0: 立即强制删除（谨慎使用）\n\
+      \        - 60: 对于需要长时间清理的应用\n    config (RunnableConfig): 工具配置（自动传递）\n\nReturns:\n\
+      \    JSON格式，包含：\n    - success (bool): 是否成功\n    - resource_type: 资源类型\n   \
+      \ - resource_name: 资源名称\n    - grace_period_seconds: 优雅删除时长\n    - delete_time:\
+      \ 删除时间戳\n\n**注意事项：**\n- ⚠️ 删除操作不可逆，请谨慎使用\n- 删除Pod：如果有控制器，会自动重建\n- 删除Deployment：会删除所有关联的ReplicaSet和Pod\n\
+      - 删除Service：不会删除后端Pod\n- 删除ConfigMap/Secret：不会影响已挂载的Pod（直到Pod重启）\n- grace_period=0会强制删除，可能导致数据丢失\n\
+      \n**配合其他工具使用：**\n- 批量删除 → 使用 cleanup_failed_pods\n- 删除前检查依赖 → 使用 find_configmap_consumers"
+    parameters:
+      resource_type:
+        type: string
+        description: ''
+        required: true
+      resource_name:
+        type: string
+        description: ''
+        required: true
+      namespace:
+        type: string
+        description: ''
+        required: true
+      grace_period:
+        type: string
+        description: ''
+        required: false
+  - name: describe_kubernetes_resource
+    description: "描述指定的Kubernetes资源\n\n获取资源的详细信息，类似于 kubectl describe\n\nArgs:\n \
+      \   resource_type (str): 资源类型 (pod, deployment, service等)\n    resource_name\
+      \ (str): 资源名称\n    namespace (str, optional): 命名空间，某些资源类型需要\n    config (RunnableConfig):\
+      \ 工具配置\n\nReturns:\n    str: JSON格式的资源详细描述"
+    parameters:
+      resource_type:
+        type: string
+        description: ''
+        required: true
+      resource_name:
+        type: string
+        description: ''
+        required: true
+      namespace:
+        type: string
+        description: ''
+        required: false
+  - name: diagnose_kubernetes_pod_issues
+    description: "深度诊断单个Pod的所有问题 - 一站式故障排查\n\n**何时使用此工具：**\n- 用户说\"这个Pod有问题，帮我看看\"\
+      \n- 已知具体Pod名称，需要全面分析\n- 从 get_failed_pods 或 get_pending_pods 发现问题Pod后\n- 需要详细的诊断报告（状态+事件+资源+卷）\n\
+      \n**工具能力（最全面的Pod诊断）：**\n- Pod所有Conditions（Ready、Initialized、ContainersReady等）\n\
+      - 容器状态详情（waiting/running/terminated，含退出码）\n- Init容器状态（初始化失败诊断）\n- 资源requests和limits配置\n\
+      - 挂载卷配置（PVC/ConfigMap/Secret/HostPath）\n- 最近10个相关事件（时间排序）\n- 重启策略和节点信息\n\n**诊断维度：**\n\
+      1. 容器健康：状态、退出码、重启次数\n2. 资源配置：CPU/内存requests和limits\n3. 依赖检查：ConfigMap、Secret、PVC是否存在\n\
+      4. 事件分析：Warning/Error事件的原因和消息\n5. 节点信息：调度到哪个节点，节点是否健康\n\nArgs:\n    namespace\
+      \ (str): Pod所在命名空间（必填）\n    pod_name (str): Pod名称（必填）\n    config (RunnableConfig):\
+      \ 工具配置（自动传递）\n\nReturns:\n    JSON格式，包含完整的诊断信息：\n    - phase: Pod状态（Running/Pending/Failed）\n\
+      \    - conditions[]: 所有Condition详情\n    - containers[]: 容器状态（state、restart_count、image）\n\
+      \    - init_containers[]: Init容器状态\n    - resource_requests: 资源请求配置\n    - resource_limits:\
+      \ 资源限制配置\n    - volumes[]: 卷挂载信息\n    - recent_events[]: 最近事件（按时间排序）\n    -\
+      \ node: 所在节点\n    - restart_policy: 重启策略\n\n**配合其他工具使用：**\n- 查看日志定位错误 → 使用 get_kubernetes_pod_logs\n\
+      - 检查镜像拉取问题 → 查看events中的ImagePull相关错误\n- 资源不足 → 使用 get_kubernetes_node_capacity\
+      \ 检查节点容量\n- 需要重启恢复 → 使用 restart_pod\n- 卷挂载问题 → 使用 check_kubernetes_persistent_volumes"
+    parameters:
+      namespace:
+        type: string
+        description: ''
+        required: true
+      pod_name:
+        type: string
+        description: ''
+        required: true
+  - name: diagnose_pending_pod_issues
+    description: "诊断Pod Pending调度失败的根本原因\n\n**何时使用此工具：**\n- 排查Pod长时间处于Pending状态的原因\n\
+      - 诊断扩容后新Pod无法成功调度的问题\n- 分析调度失败是由资源、亲和性、污点还是其他因素导致\n- 为调度问题提供具体的根因和解决方案\n\n**工具能力：**\n\
+      - 检查节点资源是否充足（CPU/Memory/Pod数）\n- 检查节点亲和性（NodeAffinity）是否过于严格\n- 检查污点（Taint）与容忍度（Toleration）是否匹配\n\
+      - 检查PVC绑定状态（PersistentVolume是否可用）\n- 检查镜像拉取状态（ImagePullBackOff、ErrImagePull）\n\
+      - 分析调度器事件，识别具体失败原因\n- 提供针对性解决方案\n\nArgs:\n    pod_name (str): Pod名称（必填）\n  \
+      \  namespace (str): 命名空间（必填）\n    config (RunnableConfig): 工具配置（自动传递）\n\nReturns:\n\
+      \    JSON格式，包含：\n    - pod_name: Pod名称\n    - phase: Pod当前状态\n    - pending_reason:\
+      \ Pending的主要原因\n    - issues[]: 发现的问题列表\n      - category: 问题类别（resource/affinity/taint/pvc/image）\n\
+      \      - severity: critical/high/medium\n      - message: 问题描述\n      - details:\
+      \ 详细信息\n    - node_candidates: 符合条件的候选节点信息\n    - recommendations[]: 解决建议\n\
+      \    - diagnosis_summary: 一句话诊断结论\n\n**配合其他工具使用：**\n- 如果是资源不足 → 使用 check_scaling_capacity\
+      \ 查看集群容量\n- 如果是PVC问题 → 使用 check_pvc_capacity 检查存储\n- 如果需要查看详细事件 → 使用 get_resource_events_timeline\n\
+      \n**常见Pending原因：**\n1. 资源不足：没有节点有足够的CPU/内存\n2. 节点亲和性：NodeSelector或NodeAffinity过于严格\n\
+      3. 污点容忍：节点有Taint但Pod没有Toleration\n4. PVC未绑定：PersistentVolumeClaim等待PV\n5. 镜像拉取失败：ImagePullBackOff\n\
+      6. 端口冲突：hostPort已被占用\n\n**注意事项：**\n- 此工具只诊断Pending Pod，对于Running/Failed Pod请使用其他工具\n\
+      - 诊断结果基于当前集群状态，添加节点后可能变化"
+    parameters:
+      pod_name:
+        type: string
+        description: ''
+        required: true
+      namespace:
+        type: string
+        description: ''
+        required: true
+  - name: explain_kubernetes_resource
+    description: "解释Kubernetes资源类型\n\n提供指定资源类型的详细说明，类似于 kubectl explain\n\nArgs:\n\
+      \    resource_type (str): 资源类型，如 'pod', 'deployment', 'service'\n    config\
+      \ (RunnableConfig): 工具配置\n\nReturns:\n    str: 资源类型的详细说明"
+    parameters:
+      resource_type:
+        type: string
+        description: ''
+        required: true
+  - name: find_configmap_consumers
+    description: "查找ConfigMap的消费者，评估变更影响范围\n\n**何时使用此工具：**\n- 用户询问\"这个ConfigMap被哪些Pod用了\"\
+      、\"改这个配置影响谁\"\n- 更新ConfigMap前，评估影响范围\n- 删除ConfigMap前，确认是否还在使用\n- 排查配置未生效问题\n\
+      \n**工具能力：**\n- 列出所有挂载此ConfigMap的Pod\n- 区分挂载方式（volume挂载 vs 环境变量引用）\n- 检测是否使用subPath（subPath不会自动更新）\n\
+      - 统计影响的Deployment/StatefulSet\n- 提供重启建议（哪些Pod需要重启）\n\nArgs:\n    configmap_name\
+      \ (str): ConfigMap名称（必填）\n    namespace (str): 命名空间（必填）\n    config (RunnableConfig):\
+      \ 工具配置（自动传递）\n\nReturns:\n    JSON格式，包含：\n    - configmap_name: ConfigMap名称\n\
+      \    - namespace: 命名空间\n    - configmap_exists: ConfigMap是否存在\n    - consumers[]:\
+      \ 消费者Pod列表\n      - pod_name: Pod名称\n      - mount_type: \"volume\" 或 \"env\"\
+      \n      - uses_subpath: 是否使用subPath（bool）\n      - controller: 所属控制器（Deployment/StatefulSet）\n\
+      \      - needs_restart: 是否需要重启生效（bool）\n    - affected_controllers[]: 受影响的控制器列表\n\
+      \    - total_consumers: 消费者总数\n    - recommendations[]: 建议\n\n**配合其他工具使用：**\n\
+      - 发现需要重启的Pod → 使用 batch_restart_pods 批量重启\n- 查看控制器详情 → 使用 describe_kubernetes_resource\n\
+      \n**ConfigMap更新机制：**\n1. Volume挂载：自动更新（几秒到几分钟延迟）\n2. Volume + subPath：不会自动更新，必须重启Pod\n\
+      3. 环境变量：不会自动更新，必须重启Pod\n\n**注意事项：**\n- 只检查当前命名空间的Pod\n- 不检查其他命名空间的ConfigMap引用\n\
+      - 不检查Secret的消费者（需要单独工具）\n\n**典型使用场景：**\n```\n场景：用户要更新nginx-config ConfigMap\n\
+      步骤1: find_configmap_consumers(\"nginx-config\", \"prod\")\n步骤2: 查看结果，发现3个Pod使用，其中2个用了subPath\n\
+      步骤3: 提醒用户：修改ConfigMap后，需要重启使用subPath的Pod\n步骤4: 用户确认后，调用 batch_restart_pods 重启\n\
+      ```"
+    parameters:
+      configmap_name:
+        type: string
+        description: ''
+        required: true
+      namespace:
+        type: string
+        description: ''
+        required: true
+  - name: get_deployment_revision_history
+    description: "获取Deployment的版本历史，用于回滚决策\n\n**何时使用此工具：**\n- 新版本发布出现问题需要回滚时\n- 查看Deployment的版本演进历史\n\
+      - 确定可回滚的目标版本\n- 为版本对比分析提供基础数据\n\n**工具能力：**\n- 列出所有历史版本（revision）\n- 展示每个版本的ReplicaSet、镜像、创建时间\n\
+      - 标识当前运行的版本\n- 按版本号倒序排列（最新版本在前）\n- 提供版本选择建议，支持回滚决策\n\nArgs:\n    deployment_name\
+      \ (str): Deployment名称（必填）\n    namespace (str): 命名空间（必填）\n    config (RunnableConfig):\
+      \ 工具配置（自动传递）\n\nReturns:\n    JSON格式，包含：\n    - current_revision: 当前版本号\n  \
+      \  - revisions[]: 历史版本列表\n      - revision: 版本号\n      - replica_set_name: ReplicaSet名称\n\
+      \      - creation_time: 创建时间\n      - image: 容器镜像\n      - is_current: 是否当前版本\n\
+      \    - total_revisions: 版本总数\n    - rollback_limit: 保留的历史版本数\n\n**配合其他工具使用：**\n\
+      - 对比版本差异 → 使用 compare_deployment_revisions\n- 确定回滚目标 → 使用此工具查看历史，然后 rollback_deployment\n\
+      \n**注意事项：**\n- 历史版本数由 spec.revisionHistoryLimit 控制（默认10）\n- 过旧的版本会被自动清理\n- revision\
+      \ 编号是递增的，不会重复使用"
+    parameters:
+      deployment_name:
+        type: string
+        description: ''
+        required: true
+      namespace:
+        type: string
+        description: ''
+        required: true
+  - name: get_failed_kubernetes_pods
+    description: "发现集群中所有失败或异常的Pod\n\n**何时使用此工具：**\n- 用户反馈\"有Pod起不来\"、\"服务异常\"、\"\
+      应用崩溃\"\n- 需要快速定位集群中所有问题Pod\n- 排查大面积故障时的第一步\n- 检查是否有镜像拉取、权限、资源等问题\n\n**工具能力：**\n\
+      - 扫描所有命名空间的Pod状态\n- 识别Failed、CrashLoopBackOff、ImagePullBackOff等异常状态\n- 提供容器级别的详细状态（退出码、重启次数、错误原因）\n\
+      - 自动过滤已完成的Job Pod（Succeeded状态）\n\n**典型问题类型：**\n- CrashLoopBackOff: 应用启动后立即崩溃\n\
+      - ImagePullBackOff: 镜像拉取失败（地址错误/无权限/网络问题）\n- Failed: Pod运行失败终止\n- Unknown: 节点失联或状态未知\n\
+      \nArgs:\n    config (RunnableConfig): 工具配置（自动传递）\n\nReturns:\n    JSON格式，包含失败Pod列表，每个Pod包含：\n\
+      \    - name: Pod名称\n    - namespace: 命名空间\n    - phase: 当前状态\n    - container_statuses[]:\
+      \ 容器状态详情\n      - state: 状态（waiting/terminated/running）\n      - reason: 失败原因（如CrashLoopBackOff）\n\
+      \      - exit_code: 退出码（137=OOMKilled, 1=Error）\n      - restart_count: 重启次数\n\
+      \    - node: 所在节点\n\n**配合其他工具使用：**\n- 发现失败Pod后 → 使用 diagnose_kubernetes_pod_issues\
+      \ 深入诊断\n- 查看具体错误信息 → 使用 get_kubernetes_pod_logs 获取日志\n- 分析镜像问题 → 检查imageRegistry配置和Secret\n\
+      - 需要恢复服务 → 使用 restart_pod 或 delete_kubernetes_resource"
+    parameters: {}
+  - name: get_high_restart_kubernetes_pods
+    description: "发现频繁重启的不稳定Pod\n\n**何时使用此工具：**\n- 用户反馈\"服务不稳定\"、\"时好时坏\"、\"经常掉线\"\
+      \n- 怀疑有应用程序bug或配置问题\n- 检查是否有内存泄漏或资源配置不当\n- 监控集群稳定性的日常巡检\n\n**工具能力：**\n- 快速列出重启次数超过阈值的Pod\n\
+      - 显示每个容器的具体重启次数\n- 提供容器镜像信息，便于定位版本问题\n- 展示Ready状态，判断当前是否正常\n\n**与analyze_pod_restart_pattern的区别：**\n\
+      - 本工具：快速列表，找出\"哪些Pod在重启\"\n- analyze_pod_restart_pattern：深度分析\"为什么重启\"（退出码、OOM、事件）\n\
+      \n**常见重启原因：**\n- OOM（内存不足）→ 退出码137\n- 健康检查失败 → livenessProbe配置不当\n- 应用程序bug\
+      \ → 退出码1\n- 配置错误 → 启动命令或环境变量问题\n\nArgs:\n    restart_threshold (int, optional):\
+      \ 重启次数阈值，默认5\n        - 5: 标准阈值，找出明显不稳定的Pod\n        - 3: 更敏感，发现轻微重启问题\n   \
+      \     - 10: 只关注严重频繁重启的Pod\n    config (RunnableConfig): 工具配置（自动传递）\n\nReturns:\n\
+      \    JSON格式，包含高重启Pod列表，每个Pod包含：\n    - name: Pod名称\n    - namespace: 命名空间\n\
+      \    - node: 所在节点\n    - containers[]: 容器列表\n      - name: 容器名称\n      - restart_count:\
+      \ 重启次数\n      - ready: 是否就绪\n      - image: 容器镜像\n\n**配合其他工具使用：**\n- 深入分析重启原因\
+      \ → 使用 analyze_pod_restart_pattern\n- 检查是否OOM → 使用 check_oom_events\n- 查看完整事件历史\
+      \ → 使用 get_resource_events_timeline\n- 查看容器日志 → 使用 get_kubernetes_pod_logs"
+    parameters:
+      restart_threshold:
+        type: string
+        description: ''
+        required: false
+  - name: get_kubernetes_contexts
+    description: "获取kubectl上下文信息\n\n显示当前可用的上下文和当前活动的上下文\n\nArgs:\n    config (RunnableConfig):\
+      \ 工具配置\n\nReturns:\n    str: JSON格式的上下文信息"
+    parameters: {}
+  - name: get_kubernetes_namespaces
+    description: "列出集群中的所有命名空间\n\n**何时使用此工具：**\n- 用户问\"有哪些命名空间\"、\"项目空间列表\"\n- 需要了解集群的租户/项目划分\n\
+      - 作为其他查询的前置步骤（先选择namespace）\n- 检查命名空间是否存在或状态异常\n\n**工具能力：**\n- 列出所有命名空间及其状态\n\
+      - 显示标签和注解（用于分类和管理）\n- 识别Terminating状态的命名空间（删除中）\n- 提供创建时间\n\nArgs:\n    config\
+      \ (RunnableConfig): 工具配置（自动传递）\n\nReturns:\n    JSON格式，包含命名空间列表：\n    - name:\
+      \ 命名空间名称\n    - status: 状态（Active/Terminating）\n    - creation_time: 创建时间\n\
+      \    - labels: 标签\n    - annotations: 注解\n\n**配合其他工具使用：**\n- 获取namespace后 →\
+      \ 使用 list_kubernetes_pods 查看该空间的Pod\n- 检查资源配额 → 使用 check_kubernetes_resource_quotas"
+    parameters: {}
+  - name: get_kubernetes_node_capacity
+    description: "查看集群节点资源容量和使用情况\n\n**何时使用此工具：**\n- 用户反馈\"Pod调度失败\"、\"资源不足\"\n- 规划扩容或缩容决策\n\
+      - 评估集群整体负载水平\n- 检查资源碎片化问题（单个节点资源不足）\n- 日常容量管理和监控\n\n**工具能力：**\n- 统计所有节点的资源分配情况\n\
+      - 计算CPU/内存的requests占用率（非实际使用率）\n- 显示Pod数量使用情况\n- 检查节点健康状态（Conditions）\n- 识别资源紧张的节点\n\
+      \n**重要说明：**\n- 本工具统计的是资源**requests**（预留），不是实际使用量\n- 如需实际使用率，需要Metrics Server（超出纯SDK范围）\n\
+      - 高requests占用不等于高实际使用，但会影响调度\n\n**资源占用率解读：**\n- <60%: 资源充足\n- 60-80%: 资源适中，建议监控\n\
+      - 80-90%: 资源紧张，可能影响调度\n- >90%: 资源严重不足，建议扩容\n\nArgs:\n    config (RunnableConfig):\
+      \ 工具配置（自动传递）\n\nReturns:\n    JSON格式，包含所有节点的容量信息：\n    - name: 节点名称\n    - pods:\
+      \ Pod容量\n      - used: 已运行Pod数\n      - capacity: 最大Pod数\n      - percent_used:\
+      \ 使用率\n    - cpu: CPU容量\n      - requested: 已分配CPU核心数\n      - allocatable:\
+      \ 可分配CPU核心数\n      - percent_used: 占用率\n    - memory: 内存容量\n      - requested:\
+      \ 已分配内存\n      - allocatable: 可分配内存\n      - percent_used: 占用率\n    - conditions:\
+      \ 节点状态（Ready/DiskPressure等）\n\n**配合其他工具使用：**\n- 发现节点问题 → 使用 diagnose_node_issues\
+      \ 深入诊断\n- Pod调度失败 → 使用 get_pending_kubernetes_pods 查看具体Pod\n- 资源不足需扩容 → 建议添加新节点或优化Pod资源配置\n\
+      - 检查资源碎片化 → 使用 check_pod_distribution"
+    parameters: {}
+  - name: get_kubernetes_orphaned_resources
+    description: "发现孤立资源（无控制器管理）- 资源清理和审计\n\n**何时使用此工具：**\n- 用户说\"清理无用资源\"、\"删除孤立对象\"\
+      \n- 资源审计，找出不受控制器管理的资源\n- 成本优化，识别可能被遗忘的资源\n- 排查资源泄漏问题\n- 清理测试环境的临时资源\n\n**工具能力：**\n\
+      - 识别没有OwnerReference的资源（无控制器管理）\n- 扫描Pod、Service、ConfigMap、Secret、PVC\n- 自动过滤系统资源（kube-system等）\n\
+      - 显示创建时间，识别长期存在的孤立资源\n\n**什么是孤立资源：**\n- 没有Deployment/StatefulSet等控制器管理的Pod\n\
+      - 手动创建未删除的Service\n- 测试时创建的临时ConfigMap/Secret\n- 删除Deployment后残留的PVC\n\n**注意事项：**\n\
+      - 并非所有孤立资源都应删除（有些是故意手动创建的）\n- 删除前请确认资源用途\n- Service通常是手动创建的，较多孤立是正常的\n- 建议先核实再清理\n\
+      \nArgs:\n    config (RunnableConfig): 工具配置（自动传递）\n\nReturns:\n    JSON格式，包含各类孤立资源：\n\
+      \    - pods[]: 孤立的Pod列表\n    - services[]: 孤立的Service列表\n    - persistent_volume_claims[]:\
+      \ 孤立的PVC列表\n    - config_maps[]: 孤立的ConfigMap列表\n    - secrets[]: 孤立的Secret列表\n\
+      \n    每个资源包含：\n    - name: 资源名称\n    - namespace: 命名空间\n    - creation_time:\
+      \ 创建时间\n\n**配合其他工具使用：**\n- 确认资源可删除 → 检查是否被其他资源引用\n- 删除孤立资源 → 使用 delete_kubernetes_resource\n\
+      - 批量清理Pod → 使用 cleanup_failed_pods\n- 查找ConfigMap使用者 → 使用 find_configmap_consumers"
+    parameters: {}
+  - name: get_kubernetes_pod_logs
+    description: "获取Pod容器日志 - 定位应用程序错误\n\n**何时使用此工具：**\n- 用户说\"查看日志\"、\"看看报什么错\"\n\
+      - Pod启动失败需要查看启动日志\n- 应用程序行为异常需要查看运行日志\n- 从 diagnose_pod_issues 发现问题后查看详细错误\n\
+      - 分析应用崩溃、异常退出的具体原因\n\n**工具能力：**\n- 获取容器的标准输出日志（stdout/stderr）\n- 支持多容器Pod（可指定容器名）\n\
+      - 可获取最近N行或开头N行\n- 自动处理单容器Pod（无需指定容器名）\n\n**日志分析场景：**\n- CrashLoopBackOff → 查看最后100行，找panic/error\n\
+      - ImagePullBackOff → 日志为空，检查镜像地址\n- OOMKilled → 查看崩溃前日志，分析内存占用\n- 应用错误 → 搜索Exception、Error、Failed关键词\n\
+      \n**重要提示：**\n- 本工具只能获取当前运行容器的日志\n- 如果容器已重启，无法获取上一次的日志（需要--previous参数，暂不支持）\n\
+      - 日志默认最多1MB，超大日志会被截断\n\nArgs:\n    namespace (str): Pod所在命名空间（必填）\n    pod_name\
+      \ (str): Pod名称（必填）\n    container (str, optional): 容器名称，多容器Pod必须指定\n       \
+      \ - None: 自动选择第一个容器（仅适用于单容器Pod）\n        - \"app\": 指定名为app的容器\n    lines (int,\
+      \ optional): 日志行数，默认100\n        - 100: 适合快速查看最近日志\n        - 500: 查看更多上下文\n\
+      \        - 50: 只看最关键的错误\n    tail (bool, optional): True=最后N行，False=开头N行，默认True\n\
+      \        - True: 查看最新日志（推荐）\n        - False: 查看启动初期日志\n    config (RunnableConfig):\
+      \ 工具配置（自动传递）\n\nReturns:\n    日志文本内容，或错误信息：\n    - 成功: 容器的实际日志输出\n    - 失败:\
+      \ 错误原因（Pod不存在、容器不存在、容器创建中等）\n\n**配合其他工具使用：**\n- 发现Pod问题 → 使用 diagnose_kubernetes_pod_issues\
+      \ 确定需要查看哪个Pod\n- 日志显示OOM → 使用 check_oom_events 分析内存配置\n- 日志显示网络错误 → 使用 trace_service_chain\
+      \ 检查服务链路\n- 需要重启恢复 → 使用 restart_pod"
+    parameters:
+      namespace:
+        type: string
+        description: ''
+        required: true
+      pod_name:
+        type: string
+        description: ''
+        required: true
+      container:
+        type: string
+        description: ''
+        required: false
+      lines:
+        type: string
+        description: ''
+        required: false
+      tail:
+        type: string
+        description: ''
+        required: false
+  - name: get_kubernetes_resource_yaml
+    description: "Retrieves the YAML configuration for a specified Kubernetes resource.\n\
+      \nFetches the complete configuration of a resource, which can be useful for\n\
+      debugging, documentation, or backup purposes.\n\nArgs:\n    namespace (str):\
+      \ The Kubernetes namespace containing the resource.\n    resource_type (str):\
+      \ The type of resource to retrieve.\n        Supported types: 'pod', 'deployment',\
+      \ 'service', 'configmap',\n        'secret', 'job'\n    resource_name (str):\
+      \ The name of the specific resource to retrieve.\n    config (RunnableConfig):\
+      \ Configuration for the tool.\n\nReturns:\n    str: YAML string representation\
+      \ of the resource configuration.\n\nRaises:\n    ApiException: If there is an\
+      \ error communicating with the Kubernetes API\n    ValueError: If an unsupported\
+      \ resource type is specified"
+    parameters:
+      namespace:
+        type: string
+        description: ''
+        required: true
+      resource_type:
+        type: string
+        description: ''
+        required: true
+      resource_name:
+        type: string
+        description: ''
+        required: true
+  - name: get_pending_kubernetes_pods
+    description: "发现无法调度或启动的Pending状态Pod\n\n**何时使用此工具：**\n- 用户反馈\"Pod一直Pending\"、\"\
+      服务启动不了\"、\"调度失败\"\n- 新部署的应用长时间未就绪\n- 扩容后新Pod无法启动\n- 检查集群资源是否充足\n\n**工具能力：**\n\
+      - 列出所有Pending状态的Pod\n- 分析无法调度的具体原因（资源不足/节点亲和性/Taint/PVC等）\n- 区分调度失败和初始化失败\n\
+      - 提供创建时间，识别长期Pending的Pod\n\n**常见Pending原因：**\n- Insufficient cpu/memory: 集群资源不足\n\
+      - No nodes available: 没有符合条件的节点\n- PersistentVolumeClaim not bound: 存储卷未绑定\n\
+      - Node affinity/selector: 节点选择器不匹配\n- Taints: 节点污点阻止调度\n\nArgs:\n    config\
+      \ (RunnableConfig): 工具配置（自动传递）\n\nReturns:\n    JSON格式，包含Pending Pod列表，每个Pod包含：\n\
+      \    - name: Pod名称\n    - namespace: 命名空间\n    - node: 分配的节点（如果已调度）\n    - reason:\
+      \ Pending原因（如SchedulingFailed）\n    - message: 详细错误信息\n    - creation_time:\
+      \ 创建时间\n\n**配合其他工具使用：**\n- 发现资源不足 → 使用 get_kubernetes_node_capacity 检查集群容量\n\
+      - 调度问题深入分析 → 使用 diagnose_pending_pod_issues\n- 检查节点状态 → 使用 diagnose_node_issues\n\
+      - 存储问题 → 使用 check_kubernetes_persistent_volumes"
+    parameters: {}
+  - name: get_resource_events_timeline
+    description: "获取资源的事件时间线，追溯问题演变过程\n\n**何时使用此工具：**\n- 回溯资源的历史状态变化和事件序列\n- 分析间歇性或周期性发生的故障模式\n\
+      - 确定问题首次出现的时间点和触发条件\n- 为根因分析提供时间维度的事件上下文\n\n**工具能力：**\n- 按时间顺序展示所有Kubernetes事件\n\
+      - 过滤指定时间范围内的事件（默认24小时）\n- 区分事件类型（Normal/Warning/Error）\n- 统计事件发生次数和频率\n- 显示事件的首次和最后发生时间\n\
+      \nArgs:\n    resource_type (str): 资源类型（必填），如 Pod、Deployment、Service、Node\n \
+      \   resource_name (str): 资源名称（必填）\n    namespace (str): 命名空间（必填）\n    hours\
+      \ (int, optional): 查询时间范围（小时），默认24\n        - 24: 查看最近一天的事件（常规故障）\n        -\
+      \ 1: 只看最近一小时（快速定位刚发生的问题）\n        - 168: 查看一周内的事件（分析长期趋势）\n    config (RunnableConfig):\
+      \ 工具配置（自动传递）\n\nReturns:\n    JSON格式，包含：\n    - timeline[]: 事件列表，按时间排序\n   \
+      \   - timestamp: 事件时间\n      - type: Normal/Warning/Error\n      - reason: 事件原因\n\
+      \      - message: 详细消息\n      - count: 发生次数\n    - event_summary: 各类型事件的统计\n\
+      \    - total_events: 事件总数\n\n**配合其他工具使用：**\n- 发现大量重启事件 → 使用 analyze_pod_restart_pattern\
+      \ 分析原因\n- 发现OOM事件 → 使用 check_oom_events 专项检查\n- 发现调度失败 → 使用 diagnose_pending_pod_issues\
+      \ 诊断"
+    parameters:
+      resource_type:
+        type: string
+        description: ''
+        required: true
+      resource_name:
+        type: string
+        description: ''
+        required: true
+      namespace:
+        type: string
+        description: ''
+        required: true
+      hours:
+        type: string
+        description: ''
+        required: false
+  - name: kubectl_get_all_resources
+    description: "查看命名空间的所有主要资源 - 全景视图\n\n**何时使用此工具：**\n- 用户说\"查看所有资源\"、\"给我看看整体情况\"\
+      \n- 新接手一个命名空间，需要了解全貌\n- 快速评估命名空间的资源规模\n- 排查问题前的整体扫描\n\n**工具能力：**\n- 一次性获取8种主要资源类型\n\
+      - 统计每种资源的数量\n- 类似 kubectl get all 的效果\n- 提供资源概览和数量统计\n\n**查询的资源类型：**\n1. pods\
+      \ - 运行的应用实例\n2. services - 服务暴露\n3. deployments - 无状态应用\n4. replicasets - 副本集（Deployment管理）\n\
+      5. daemonsets - 节点守护进程\n6. statefulsets - 有状态应用\n7. configmaps - 配置数据\n8. secrets\
+      \ - 敏感信息（数量，不显示内容）\n\n**与kubectl get all的区别：**\n- kubectl get all: 不包括ConfigMap和Secret\n\
+      - 本工具: 额外包含ConfigMap和Secret统计\n\nArgs:\n    namespace (str, optional): 命名空间，None=所有命名空间\n\
+      \        - None: 查看整个集群的资源（数据量大）\n        - \"default\": 只看default命名空间\n   \
+      \     - \"prod\": 只看生产环境\n    config (RunnableConfig): 工具配置（自动传递）\n\nReturns:\n\
+      \    JSON格式，包含所有资源分类：\n    - namespace: 查询的命名空间\n    - timestamp: 查询时间\n   \
+      \ - resources: 各类型资源\n      - pods: {count: N, items: [...]}\n      - services:\
+      \ {count: N, items: [...]}\n      - deployments: {count: N, items: [...]}\n\
+      \      - ... （其他类型）\n\n**配合其他工具使用：**\n- 发现问题资源 → 使用对应的诊断工具（diagnose_pod_issues等）\n\
+      - 查看具体资源详情 → 使用 kubectl_get_resources 精确查询\n- 清理无用资源 → 使用 get_kubernetes_orphaned_resources\n\
+      \n**注意事项：**\n- 查询所有命名空间时数据量可能很大\n- 建议先查询单个命名空间\n- 此工具适合快速概览，不适合深度分析"
+    parameters:
+      namespace:
+        type: string
+        description: ''
+        required: false
+  - name: kubectl_get_resources
+    description: "高级资源查询 - 类似kubectl get的灵活过滤\n\n**何时使用此工具：**\n- 用户说\"查看带有标签app=nginx的Pod\"\
+      （需要label selector）\n- \"查看Running状态的Pod\"（需要field selector）\n- 需要精确过滤资源，不是简单列表\n\
+      - 查询多种资源类型（支持别名，如po、svc、deploy）\n\n**工具能力：**\n- 支持20+资源类型（pods、services、deployments、nodes等）\n\
+      - Label Selector过滤（如app=nginx,env=prod）\n- Field Selector过滤（如status.phase=Running）\n\
+      - 支持kubectl别名（po→pods, svc→services, deploy→deployments）\n- 多种输出格式（json/table/yaml）\n\
+      \n**典型使用场景：**\n1. 按标签过滤：查找特定应用的所有Pod\n   - label_selector=\"app=nginx\"\n2.\
+      \ 按状态过滤：只看Running的Pod\n   - field_selector=\"status.phase=Running\"\n3. 组合过滤：特定应用的Running\
+      \ Pod\n   - label_selector=\"app=nginx\" + field_selector=\"status.phase=Running\"\
+      \n\n**支持的资源类型：**\n- 工作负载: pods, deployments, replicasets, statefulsets, daemonsets,\
+      \ jobs\n- 网络: services, ingresses, endpoints\n- 配置: configmaps, secrets\n- 存储:\
+      \ persistentvolumes, persistentvolumeclaims\n- 集群: nodes, namespaces, events\n\
+      \nArgs:\n    resource_type (str): 资源类型（必填），支持完整名称和别名\n        - \"pods\" 或 \"\
+      po\": Pod列表\n        - \"deployments\" 或 \"deploy\": Deployment列表\n        -\
+      \ \"services\" 或 \"svc\": Service列表\n        - \"nodes\" 或 \"no\": Node列表\n\
+      \    namespace (str, optional): 命名空间，集群级资源（如nodes）可不填\n    label_selector (str,\
+      \ optional): 标签选择器\n        - \"app=nginx\": 单个标签\n        - \"app=nginx,version=v1\"\
+      : 多个标签（AND关系）\n        - \"app!=nginx\": 排除标签\n    field_selector (str, optional):\
+      \ 字段选择器\n        - \"status.phase=Running\": Pod状态过滤\n        - \"spec.nodeName=node1\"\
+      : 特定节点的Pod\n    output_format (str): 输出格式，默认json\n        - \"json\": 结构化数据（推荐，便于LLM解析）\n\
+      \        - \"table\": 表格格式（人类可读）\n        - \"yaml\": YAML格式\n    config (RunnableConfig):\
+      \ 工具配置（自动传递）\n\nReturns:\n    根据output_format返回：\n    - json: {\"items\": [...],\
+      \ \"total\": N}\n    - table: 格式化的表格文本\n    - yaml: YAML格式文本\n\n**配合其他工具使用：**\n\
+      - 过滤后发现问题Pod → 使用 diagnose_kubernetes_pod_issues\n- 需要更新label → 使用kubectl命令行（超出SDK范围）\n\
+      - 按label批量操作 → 结合label_selector和相应操作工具\n\n**注意事项：**\n- label_selector和field_selector不是所有资源都支持\n\
+      - field_selector支持的字段有限（主要是status.phase、spec.nodeName等）\n- 复杂查询建议分步进行"
+    parameters:
+      resource_type:
+        type: string
+        description: ''
+        required: true
+      namespace:
+        type: string
+        description: ''
+        required: false
+      label_selector:
+        type: string
+        description: ''
+        required: false
+      field_selector:
+        type: string
+        description: ''
+        required: false
+      output_format:
+        type: string
+        description: ''
+        required: false
+  - name: kubernetes_troubleshooting_guide
+    description: "Kubernetes故障排查指导\n\n基于关键词提供系统化的故障排查指导流程\n\nArgs:\n    keyword (str):\
+      \ 故障关键词，如 'pod', 'network', 'storage', 'performance'\n    namespace (str, optional):\
+      \ 相关的命名空间\n    config (RunnableConfig): 工具配置\n\nReturns:\n    str: JSON格式的故障排查指导"
+    parameters:
+      keyword:
+        type: string
+        description: ''
+        required: true
+      namespace:
+        type: string
+        description: ''
+        required: false
+  - name: list_kubernetes_api_resources
+    description: "列出Kubernetes API资源\n\n显示集群中可用的API资源类型，类似于 kubectl api-resources\n\
+      \nArgs:\n    api_group (str, optional): 特定的API组，如果为None则显示所有\n    config (RunnableConfig):\
+      \ 工具配置\n\nReturns:\n    str: JSON格式的API资源列表"
+    parameters:
+      api_group:
+        type: string
+        description: ''
+        required: false
+  - name: list_kubernetes_deployments
+    description: "List deployments with optional namespace filter\n\nArgs:\n    namespaces\
+      \ (list, optional): A list of namespace names to filter pods by.\n        If\
+      \ None, pods from all namespaces will be returned. Defaults to None."
+    parameters:
+      namespace:
+        type: string
+        description: ''
+        required: false
+  - name: list_kubernetes_events
+    description: "List events with optional namespace filter\n\nArgs:\n    namespace\
+      \ (str, optional): The namespace to filter events by.\n        If None, events\
+      \ from all namespaces will be returned. Defaults to None.\n    config (RunnableConfig):\
+      \ Configuration for the tool.\n\nReturns:\n    str: JSON string containing an\
+      \ array of event objects with fields:\n        - type (str): Type of event (Normal,\
+      \ Warning)\n        - reason (str): Short reason for the event\n        - message\
+      \ (str): Detailed message about the event\n        - object (str): Object involved\
+      \ in the event\n        - namespace (str): Namespace where the event occurred\n\
+      \        - count (int): Number of times this event has occurred\n        - first_time\
+      \ (str): Timestamp when event first occurred\n        - last_time (str): Timestamp\
+      \ when event last occurred"
+    parameters:
+      namespace:
+        type: string
+        description: ''
+        required: false
+  - name: list_kubernetes_nodes
+    description: List all nodes and their status
+    parameters: {}
+  - name: list_kubernetes_pods
+    description: "查看Pod列表和基本状态\n\n**何时使用此工具：**\n- 用户问\"有哪些Pod\"、\"查看运行的应用\"\n- 获取特定命名空间的所有Pod概览\n\
+      - 查看Pod分布在哪些节点\n- 作为问题诊断的起点（先列表再深入）\n\n**工具能力：**\n- 列出指定命名空间或所有命名空间的Pod\n- 显示Pod状态、IP、所在节点\n\
+      - 展示容器列表和就绪状态\n- 提供标签和重启策略信息\n\n**与其他工具的区别：**\n- 本工具：基础列表，显示概览信息\n- get_failed_pods：只看失败的Pod\n\
+      - diagnose_pod_issues：深度诊断单个Pod\n\nArgs:\n    namespace (str, optional): 命名空间，None=所有命名空间\n\
+      \        - None: 查看整个集群的Pod\n        - \"default\": 只看default命名空间\n        -\
+      \ \"prod\": 只看生产环境\n    config (RunnableConfig): 工具配置（自动传递）\n\nReturns:\n  \
+      \  JSON格式，包含Pod列表：\n    - name: Pod名称\n    - namespace: 命名空间\n    - phase: 状态（Running/Pending/Failed/Succeeded/Unknown）\n\
+      \    - ip: Pod IP地址\n    - node: 所在节点\n    - containers[]: 容器列表\n      - name:\
+      \ 容器名\n      - ready: 是否就绪\n      - restart_count: 重启次数\n      - image: 镜像\n\
+      \    - creation_time: 创建时间\n    - labels: 标签\n\n**配合其他工具使用：**\n- 发现异常Pod → 使用\
+      \ diagnose_kubernetes_pod_issues 诊断\n- 查看Pod日志 → 使用 get_kubernetes_pod_logs\n\
+      - 检查资源使用 → 使用 get_kubernetes_node_capacity"
+    parameters:
+      namespace:
+        type: string
+        description: ''
+        required: false
+  - name: list_kubernetes_services
+    description: "List services with optional namespace filter\n\nArgs:\n    namespace\
+      \ (str, optional): The namespace to filter services by.\n        If None, services\
+      \ from all namespaces will be returned. Defaults to None.\n    config (RunnableConfig):\
+      \ Configuration for the tool.\n\nReturns:\n    str: JSON string containing an\
+      \ array of service objects with fields:\n        - name (str): Name of the service\n\
+      \        - namespace (str): Namespace where the service is running\n       \
+      \ - type (str): Type of the service (ClusterIP, NodePort, LoadBalancer)\n  \
+      \      - cluster_ip (str): The cluster IP address assigned to the service\n\
+      \        - external_ip (str): External IP address, if available\n        - ports\
+      \ (list): List of ports exposed by the service\n        - selector (dict): Label\
+      \ selector used by the service\n        - creation_time (str): Timestamp when\
+      \ service was created"
+    parameters:
+      namespace:
+        type: string
+        description: ''
+        required: false
+  - name: restart_pod
+    description: "重启Pod，用于故障恢复或重新加载配置\n\n**何时使用此工具：**\n- 需要强制恢复处于异常状态的Pod\n- 配置更新后需要重新加载生效\n\
+      - 应用出现僵死、泄漏等需要通过重启恢复\n- 排查时需要重新触发Pod的初始化流程\n\n**工具能力：**\n- 删除当前Pod，由控制器自动重建\n\
+      - 记录旧Pod的UID，便于追踪\n- 可选等待新Pod就绪（避免操作不生效）\n- 返回新旧Pod的对比信息\n- 审计日志记录，可追溯操作\n\n\
+      Args:\n    pod_name (str): Pod名称（必填）\n    namespace (str): 命名空间（必填）\n    wait_for_ready\
+      \ (bool, optional): 是否等待新Pod就绪，默认True\n        - True: 等待新Pod Running且容器Ready（推荐）\n\
+      \        - False: 仅删除Pod，不等待重建\n    timeout (int, optional): 等待超时时间（秒），默认60\n\
+      \        - 仅在wait_for_ready=True时生效\n        - 超时不代表失败，只是不再等待\n    config (RunnableConfig):\
+      \ 工具配置（自动传递）\n\nReturns:\n    JSON格式，包含：\n    - success (bool): 是否成功\n    -\
+      \ old_pod_uid: 旧Pod的UID\n    - owner_controller: Pod的控制器信息\n    - new_pod_status:\
+      \ \"ready\" 或 \"not_ready\"（wait_for_ready=True时）\n    - new_pod_uid: 新Pod的UID（就绪后）\n\
+      \    - wait_time_seconds: 等待耗时\n    - restart_time: 重启时间戳\n\n**配合其他工具使用：**\n\
+      - 重启后检查日志 → 使用 get_pod_logs 查看启动日志\n- 批量重启 → 多次调用此工具（建议逐个重启）\n- 重启失败诊断 → 使用\
+      \ diagnose_kubernetes_pod_issues\n\n**注意事项：**\n- 重启会短暂中断服务（除非配置了多副本）\n- 无状态Pod可安全重启，有状态Pod需谨慎\n\
+      - 如果控制器不存在（孤儿Pod），删除后不会重建\n- 新Pod会被调度到可能不同的节点\n\n**最佳实践：**\n- 生产环境建议逐个重启，避免服务完全中断\n\
+      - 重启前确认是由控制器管理的Pod\n- 建议使用wait_for_ready=True，确保新Pod启动成功"
+    parameters:
+      pod_name:
+        type: string
+        description: ''
+        required: true
+      namespace:
+        type: string
+        description: ''
+        required: true
+      wait_for_ready:
+        type: string
+        description: ''
+        required: false
+      timeout:
+        type: string
+        description: ''
+        required: false
+  - name: rollback_deployment
+    description: "回滚Deployment到指定版本，快速恢复服务\n\n**何时使用此工具：**\n- 用户反馈\"新版本有问题，回滚\"、\"\
+      恢复到上个版本\"\n- 发布后出现严重bug或性能问题\n- 需要紧急恢复到稳定版本\n- 灰度发布失败，需要回退\n\n**工具能力：**\n- 支持回滚到上一个版本（revision=None）\n\
+      - 支持回滚到任意历史版本（指定revision）\n- 自动复制目标版本的Pod模板\n- 添加回滚注解，记录变更原因\n- 触发滚动更新，逐步替换Pod\n\
+      - 记录审计日志\n\nArgs:\n    deployment_name (str): Deployment名称（必填）\n    namespace\
+      \ (str): 命名空间（必填）\n    revision (int, optional): 目标版本号，None=回滚到上一个版本\n     \
+      \   - None: 自动回滚到前一个版本（最常用）\n        - 2: 回滚到revision 2\n        - 使用 get_deployment_revision_history\
+      \ 查看可用版本\n    config (RunnableConfig): 工具配置（自动传递）\n\nReturns:\n    JSON格式，包含：\n\
+      \    - success (bool): 是否成功\n    - previous_revision: 回滚前的版本号\n    - target_revision:\
+      \ 目标版本号\n    - target_image: 目标版本的镜像\n    - rollback_time: 回滚时间戳\n\n**配合其他工具使用：**\n\
+      - 回滚前查看历史 → 使用 get_deployment_revision_history\n- 回滚前对比差异 → 使用 compare_deployment_revisions\n\
+      - 回滚后验证Pod → 使用 wait_for_pod_ready 或 check_pod_distribution\n\n**注意事项：**\n-\
+      \ 回滚是滚动更新，会逐步替换Pod（不是瞬时完成）\n- 回滚不会恢复ConfigMap/Secret等配置资源\n- 如果目标revision已被清理，回滚会失败\n\
+      - 回滚操作本身也会生成新的revision\n\n**最佳实践：**\n- 回滚前先用 get_deployment_revision_history\
+      \ 确认目标版本存在\n- 生产环境回滚建议先在测试环境验证\n- 回滚后观察服务状态，确认问题已解决"
+    parameters:
+      deployment_name:
+        type: string
+        description: ''
+        required: true
+      namespace:
+        type: string
+        description: ''
+        required: true
+      revision:
+        type: string
+        description: ''
+        required: false
+  - name: scale_deployment
+    description: "扩缩容Deployment或StatefulSet - 应对流量变化\n\n**何时使用此工具：**\n- 根据流量变化动态调整应用容量\n\
+      - 通过缩容降低资源消耗或成本\n- 快速恢复服务（如缩容到0再扩容触发重建）\n- 匹配业务需求调整服务规模\n\n**工具能力：**\n- 支持Deployment和StatefulSet两种资源类型\n\
+      - 自动识别资源类型（无需指定）\n- 记录操作前后的副本数变化\n- 记录审计日志，包含操作者和时间\n- 区分扩容（scale_up）和缩容（scale_down）操作\n\
+      \nArgs:\n    deployment_name (str): Deployment或StatefulSet名称（必填）\n    namespace\
+      \ (str): 命名空间（必填）\n    replicas (int): 目标副本数（必填）\n        - >当前副本数: 扩容操作\n \
+      \       - <当前副本数: 缩容操作\n        - 0: 完全停止服务（谨慎使用）\n    config (RunnableConfig):\
+      \ 工具配置（自动传递）\n\nReturns:\n    JSON格式，包含：\n    - success (bool): 是否成功\n    -\
+      \ resource_type: \"Deployment\" 或 \"StatefulSet\"\n    - previous_replicas:\
+      \ 操作前的副本数\n    - target_replicas: 目标副本数\n    - operation: \"scale_up\" 或 \"\
+      scale_down\"\n    - scale_time: 操作时间戳\n\n**配合其他工具使用：**\n- 扩容前检查容量 → 使用 check_scaling_capacity\
+      \ 确保有足够资源\n- 扩容后等待就绪 → 使用 wait_for_pod_ready 验证新Pod\n- 扩容后检查分布 → 使用 check_pod_distribution\
+      \ 验证高可用\n\n**注意事项：**\n- 扩容前建议先检查集群资源是否充足\n- 缩容会删除Pod，可能导致服务短暂不可用\n- 对于StatefulSet，缩容会从高序号Pod开始删除\n\
+      - 如果配置了HPA，手动扩缩容可能被HPA覆盖\n\n**最佳实践：**\n- 扩容：先调用 check_scaling_capacity 确认资源充足\n\
+      - 缩容：建议逐步缩容，观察服务影响\n- 生产环境：谨慎缩容到0副本（会导致服务完全下线）"
+    parameters:
+      deployment_name:
+        type: string
+        description: ''
+        required: true
+      namespace:
+        type: string
+        description: ''
+        required: true
+      replicas:
+        type: string
+        description: ''
+        required: true
+  - name: trace_service_chain
+    description: "追踪Service调用链，从Service → Endpoint → Pod，定位流量异常\n\n**何时使用此工具：**\n\
+      - 排查应用访问异常和流量路由问题时\n- 验证Service与后端Pod的关联关系\n- 诊断服务发现或负载均衡层面的故障\n- 分析Endpoint健康状态和流量分发逻辑\n\
+      \n**工具能力：**\n- 检查Service配置（type、ClusterIP、selector、ports）\n- 验证Endpoints是否有就绪的后端Pod\n\
+      - 检查Pod健康状态（Running、Ready、容器状态）\n- 发现Ingress规则配置（如果有）\n- 识别链路中的断点和配置错误\n- 输出每一跳的健康状态和问题原因\n\
+      \nArgs:\n    service_name (str): Service名称（必填）\n    namespace (str): 命名空间（必填）\n\
+      \    config (RunnableConfig): 工具配置（自动传递）\n\nReturns:\n    JSON格式，包含以下关键字段：\n\
+      \    - chain: {service, endpoints, pods, ingress}各组件的详细状态\n    - issues: 发现的问题列表，包含severity（critical/high/medium）\n\
+      \    - recommendations: 针对性的修复建议\n    - health_status: 整体健康状态（healthy/degraded/critical）\n\
+      \    - summary: 一句话诊断结论\n\n**配合其他工具使用：**\n- 如果发现Pod问题 → 使用 diagnose_kubernetes_pod_issues\
+      \ 深入诊断\n- 如果需要查看Pod日志 → 使用 get_kubernetes_pod_logs 获取日志\n- 如果需要重启Pod → 使用 restart_pod\
+      \ 执行重启操作\n\n**注意事项：**\n- 此工具只检查配置和状态，不检查网络策略和DNS\n- 如需网络诊断，配合 check_network_policies_blocking\
+      \ 使用"
+    parameters:
+      service_name:
+        type: string
+        description: ''
+        required: true
+      namespace:
+        type: string
+        description: ''
+        required: true
+  - name: validate_probe_configuration
+    description: "验证健康检查探针配置，确保服务可靠性\n\n**何时使用此工具：**\n- 评估健康检查探针的配置合理性和完整性\n- 排查因探针配置不当导致的频繁重启问题\n\
+      - 诊断Pod一直无法达到Ready状态的原因\n- 检查探针参数设置是否符合最佳实践\n\n**工具能力：**\n- 检查Liveness探针配置（存活探针）\n\
+      - 检查Readiness探针配置（就绪探针）\n- 检查Startup探针配置（启动探针，K8S 1.16+）\n- 验证探针参数合理性（超时、延迟、阈值）\n\
+      - 识别常见配置错误（延迟为0、超时太短等）\n- 计算探针覆盖率评分\n\n**探针类型说明：**\n- Liveness: 检测容器是否存活，失败会重启容器\n\
+      - Readiness: 检测容器是否就绪，失败会从Service移除\n- Startup: 检测容器是否启动完成，用于慢启动应用\n\nArgs:\n\
+      \    deployment_name (str): Deployment名称（必填）\n    namespace (str): 命名空间（必填）\n\
+      \    config (RunnableConfig): 工具配置（自动传递）\n\nReturns:\n    JSON格式，包含：\n    -\
+      \ containers_analysis[]: 每个容器的探针分析\n      - liveness_probe: 存活探针配置（type、delay、timeout等）\n\
+      \      - readiness_probe: 就绪探针配置\n      - startup_probe: 启动探针配置\n      - issues[]:\
+      \ 发现的配置问题\n      - recommendations[]: 改进建议\n    - probe_score: 探针配置评分（如\"4/6\"\
+      表示3个容器中2个配置完整）\n    - probe_coverage_percent: 探针覆盖率百分比\n    - overall_status:\
+      \ \"good\" 或 \"needs_improvement\"\n\n**配合其他工具使用：**\n- 如果发现探针问题导致重启 → 使用 analyze_pod_restart_pattern\n\
+      - 如果需要修改探针配置 → 建议用户更新Deployment YAML\n\n**常见问题识别：**\n- initialDelaySeconds=0:\
+      \ 容器启动时就开始检查，可能过早失败\n- timeoutSeconds<1: 超时太短，网络抖动就会失败\n- 未配置Readiness: 容器未就绪也会接收流量\n\
+      - 未配置Liveness: 容器僵死无法自动恢复\n\n**最佳实践建议：**\n- 必须配置Readiness探针，避免未就绪Pod接收流量\n-\
+      \ Liveness探针建议配置，但要谨慎设置（避免误杀）\n- initialDelaySeconds应大于应用启动时间\n- 对于慢启动应用（如Java），建议配置Startup探针"
+    parameters:
+      deployment_name:
+        type: string
+        description: ''
+        required: true
+      namespace:
+        type: string
+        description: ''
+        required: true
+  - name: verify_kubernetes_connection
+    description: "验证K8s集群连接和权限 - 故障排查第一步\n\n**何时使用此工具：**\n- 用户说\"连不上集群\"、\"kubectl不工作\"\
+      \n- 开始诊断前验证环境可用性\n- 检查当前kubeconfig是否正确\n- 排查权限问题（403/401错误）\n- 验证API Server是否可访问\n\
+      \n**工具能力：**\n- 测试与API Server的连接\n- 获取集群版本信息\n- 验证基本读取权限（list namespaces）\n-\
+      \ 识别常见连接和权限问题\n\n**典型问题识别：**\n- 连接失败 → 网络问题或kubeconfig错误\n- 权限受限 → RBAC配置不足\n\
+      - 版本信息获取失败 → API Server不可用\n\nArgs:\n    config (RunnableConfig): 工具配置（自动传递）\n\
+      \nReturns:\n    JSON格式，包含：\n    - connection_status: 连接状态（成功/失败）\n    - kubernetes_version:\
+      \ 集群版本\n    - api_server: API Server状态\n    - permissions: 权限检查结果\n    - error:\
+      \ 错误信息（失败时）\n    - suggestion: 修复建议\n\n**配合其他工具使用：**\n- 连接成功后 → 可以正常使用其他诊断工具\n\
+      - 连接失败 → 检查kubeconfig文件和网络配置\n- 权限不足 → 联系集群管理员分配权限"
+    parameters: {}
+  - name: wait_for_pod_ready
+    description: "等待Pod就绪，验证操作成功\n\n**何时使用此工具：**\n- 重启/扩容后，等待新Pod就绪\n- 发布后，验证Pod是否成功启动\n\
+      - 确认操作生效，避免过早返回\n\n**工具能力：**\n- 轮询检查Pod状态（每2秒检查一次）\n- 验证Pod phase为Running\n\
+      - 验证所有容器Ready\n- 检测Pod失败状态（Failed/Unknown）\n- 返回Pod IP和节点信息\n\nArgs:\n    pod_name\
+      \ (str): Pod名称（必填）\n    namespace (str): 命名空间（必填）\n    timeout (int, optional):\
+      \ 超时时间（秒），默认60\n        - 60: 适用于大部分应用\n        - 120: 对于启动慢的应用（如Java）\n   \
+      \     - 30: 对于快速启动的应用\n    config (RunnableConfig): 工具配置（自动传递）\n\nReturns:\n\
+      \    JSON格式，包含：\n    - success (bool): 是否就绪\n    - status: \"ready\"、\"timeout\"\
+      、\"failed\"\n    - pod_ip: Pod IP地址（就绪时）\n    - node: 所在节点（就绪时）\n    - wait_time_seconds:\
+      \ 等待耗时\n    - error: 错误信息（失败时）\n\n**配合其他工具使用：**\n- 通常在 restart_pod、scale_deployment\
+      \ 之后自动调用\n- 如果超时，使用 diagnose_kubernetes_pod_issues 诊断\n\n**注意事项：**\n- 如果Pod不存在，会返回错误\n\
+      - 如果Pod处于Failed状态，会立即返回失败\n- 超时不代表Pod永远不会就绪，只是超过等待时间"
+    parameters:
+      pod_name:
+        type: string
+        description: ''
+        required: true
+      namespace:
+        type: string
+        description: ''
+        required: true
+      timeout:
+        type: string
+        description: ''
+        required: false
+- id: python
+  name: Python工具
+  description: Python工具集合
+  tools:
+  - name: python_execute_direct
+    description: 直接执行Python代码的工具,不允许执行高危的、恶意的代码，不允许执行系统命令,不允许查看涉密信息。
+    parameters:
+      code:
+        type: string
+        description: 被执行的python代码
+        required: true

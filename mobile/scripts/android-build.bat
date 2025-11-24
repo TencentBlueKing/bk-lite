@@ -22,11 +22,7 @@ goto parse_args
 echo 📱 构建 Android APK (%BUILD_TYPE%)
 echo.
 
-REM 1. 构建 Next.js
-call pnpm run build
-if errorlevel 1 exit /b 1
-
-REM 2. 加载环境变量（从 .android-env.sh 解析）
+REM 1. 加载环境变量（从 .android-env.sh 解析）
 if exist ".android-env.sh" (
   for /f "usebackq tokens=1,2 delims== " %%a in (".android-env.sh") do (
     set line=%%a
@@ -41,7 +37,7 @@ if exist ".android-env.sh" (
   )
 )
 
-REM 3. 初始化 Android 项目（如果不存在）
+REM 2. 初始化 Android 项目（如果不存在）
 if not exist "src-tauri\gen\android" (
   echo.
   echo ⚙️  初始化 Android 项目...
@@ -49,7 +45,7 @@ if not exist "src-tauri\gen\android" (
   if errorlevel 1 exit /b 1
 )
 
-REM 4. 复制自定义 MainActivity（核心修复）
+REM 3. 复制自定义 MainActivity（核心修复）
 set "CUSTOM_MAIN=src-tauri\android\app\src\main\java\org\bklite\mobile\MainActivity.kt"
 set "TARGET_MAIN=src-tauri\gen\android\app\src\main\java\org\bklite\mobile\MainActivity.kt"
 
@@ -59,6 +55,19 @@ if exist "%CUSTOM_MAIN%" (
   )
   copy /Y "%CUSTOM_MAIN%" "%TARGET_MAIN%" >nul
   echo ✅ MainActivity 已更新
+)
+
+REM 4. 复制自定义 Android 图标
+set "CUSTOM_ICONS=src-tauri\icons\android\res"
+set "TARGET_RES=src-tauri\gen\android\app\src\main\res"
+
+if exist "%CUSTOM_ICONS%" (
+  echo.
+  echo 📱 更新 Android 应用图标...
+  xcopy /Y /E /I "%CUSTOM_ICONS%\*" "%TARGET_RES%\" >nul 2>&1
+  if errorlevel 0 (
+    echo ✅ Android 图标已更新
+  )
 )
 
 REM 5. 构建 APK

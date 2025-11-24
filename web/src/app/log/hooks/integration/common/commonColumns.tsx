@@ -163,7 +163,7 @@ const useCommonColumns = () => {
           render: (_: unknown, record: TableDataItem, index: number) => (
             <GroupTreeSelector
               value={record.group_ids}
-              onChange={(val) => handleGroupChange(val, index)}
+              onChange={(val) => handleGroupChange(val as number[], index)}
             />
           ),
         },

@@ -16,7 +16,7 @@ import {
   ModalRef,
 } from '@/app/node-manager/types';
 import { useTranslation } from '@/utils/i18n';
-import useApiCloudRegion from '@/app/node-manager/api/cloudRegion';
+import useNodeManagerApi from '@/app/node-manager/api';
 import {
   VarSourceItem,
   VarResItem,
@@ -34,16 +34,16 @@ const ConfigModal = forwardRef<ModalRef, ModalSuccess>(
     const {
       updateCollector,
       createConfig,
-      getVariableList,
       updateChildConfig,
-    } = useApiCloudRegion();
+      getVariableList,
+    } = useNodeManagerApi();
     const cloudId = useCloudId();
     const { t } = useTranslation();
     const columns = useConfigModalColumns();
     const configFormRef = useRef<FormInstance>(null);
     const [configVisible, setConfigVisible] = useState<boolean>(false);
     const [tableLoading, setTableLoading] = useState<boolean>(false);
-    const [configForm, setConfigForm] = useState<TableDataItem>();
+    const [configForm, setConfigForm] = useState<TableDataItem>({});
     const [editConfigId, setEditConfigId] = useState<string>('');
     const [type, setType] = useState<string>('add');
     const [varDataSource, setvarDataSource] = useState<VarSourceItem[]>([]);
@@ -52,10 +52,14 @@ const ConfigModal = forwardRef<ModalRef, ModalSuccess>(
     useImperativeHandle(ref, () => ({
       showModal: ({ type, form }) => {
         const _form = cloneDeep(form) as TableDataItem;
+        const formdata = {
+          ..._form,
+          configInfo: _form.content || _form.configInfo || '',
+        };
         setConfigVisible(true);
         setType(type);
         setEditConfigId(_form?.key);
-        setConfigForm(_form);
+        setConfigForm(formdata);
         initializeVarForm();
       },
     }));
@@ -93,7 +97,7 @@ const ConfigModal = forwardRef<ModalRef, ModalSuccess>(
     };
 
     const handleSuccess = () => {
-      onSuccess();
+      onSuccess(type);
       setConfirmLoading(false);
       setConfigVisible(false);
     };
@@ -328,7 +332,7 @@ const ConfigModal = forwardRef<ModalRef, ModalSuccess>(
               <ConfigEditorWithParams
                 varDataSource={varDataSource}
                 columns={columns}
-                value={''}
+                value={configForm.configInfo || ''}
                 onChange={undefined}
               ></ConfigEditorWithParams>
             }
@@ -343,6 +347,7 @@ const ConfigModal = forwardRef<ModalRef, ModalSuccess>(
         open={configVisible}
         onCancel={handleCancel}
         width={800}
+        zIndex={999999}
         footer={
           <div>
             <Button
@@ -363,5 +368,5 @@ const ConfigModal = forwardRef<ModalRef, ModalSuccess>(
   }
 );
 
-ConfigModal.displayName = 'configModal';
+ConfigModal.displayName = 'ConfigModal';
 export default ConfigModal;

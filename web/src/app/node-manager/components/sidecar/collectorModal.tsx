@@ -16,8 +16,7 @@ import type { UploadProps } from 'antd';
 import { FormInstance } from 'antd/lib';
 import { useTranslation } from '@/utils/i18n';
 import OperateModal from '@/components/operate-modal';
-import useApiCollector from '@/app/node-manager/api/collector';
-import useApiNode from '@/app/node-manager/api';
+import useNodeManagerApi from '@/app/node-manager/api';
 import { cloneDeep } from 'lodash';
 const { TextArea } = Input;
 const { Dragger } = Upload;
@@ -33,8 +32,7 @@ const initData = {
 const CollectorModal = forwardRef<ModalRef, ModalSuccess>(
   ({ onSuccess }, ref) => {
     const { t } = useTranslation();
-    const { addCollector, editCollecttor } = useApiCollector();
-    const { uploadPackage } = useApiNode();
+    const { addCollector, editCollecttor, uploadPackage } = useNodeManagerApi();
     const formRef = useRef<FormInstance>(null);
     const [form] = Form.useForm();
     const [title, setTitle] = useState<string>('editCollector');
@@ -116,7 +114,7 @@ const CollectorModal = forwardRef<ModalRef, ModalSuccess>(
               })
               .catch(errorCatch);
           } else {
-            handleUpload(values);
+            handleUpload();
           }
         })
         .catch(() => {
@@ -128,7 +126,7 @@ const CollectorModal = forwardRef<ModalRef, ModalSuccess>(
       setFileList(fileList);
     };
 
-    const handleUpload = async (values: any) => {
+    const handleUpload = async () => {
       const file = fileList.length ? fileList[0] : '';
       if (!file) return;
       const fd = new FormData();
@@ -136,19 +134,21 @@ const CollectorModal = forwardRef<ModalRef, ModalSuccess>(
         name: file.name,
         os: formData.system,
         type: key,
-        version: values.version,
         object: formData.name,
         file: file.originFileObj,
       };
       Object.entries(params).forEach(([k, v]) => {
         fd.append(k, v);
       });
-      uploadPackage(params).then(() => {
-        setConfirmLoading(false);
-        message.success(t('node-manager.packetManage.uploadSuccess'));
-        onSuccess('upload');
-        setVisible(false);
-      });
+      uploadPackage(params)
+        .then(() => {
+          message.success(t('node-manager.packetManage.uploadSuccess'));
+          onSuccess('upload');
+          setVisible(false);
+        })
+        .finally(() => {
+          setConfirmLoading(false);
+        });
     };
 
     const props: UploadProps = {
@@ -263,15 +263,6 @@ const CollectorModal = forwardRef<ModalRef, ModalSuccess>(
             )}
             {type === 'upload' && (
               <>
-                <Form.Item
-                  label={t('node-manager.packetManage.version')}
-                  name="version"
-                  rules={[
-                    { required: true, message: t('common.inputRequired') },
-                  ]}
-                >
-                  <Input placeholder={t('common.inputMsg')} />
-                </Form.Item>
                 <Form.Item
                   label={t('node-manager.packetManage.importFile')}
                   name="upload"

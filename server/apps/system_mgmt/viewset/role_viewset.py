@@ -4,13 +4,15 @@ from rest_framework.decorators import action
 
 from apps.core.backends import cache
 from apps.core.decorators.api_permission import HasPermission
-from apps.system_mgmt.models import Menu, Role, User
+from apps.core.utils.viewset_utils import LanguageViewSet
+from apps.system_mgmt.models import Group, Menu, Role, User
 from apps.system_mgmt.serializers.role_serializer import RoleSerializer
 from apps.system_mgmt.services.role_manage import RoleManage
+from apps.system_mgmt.utils.operation_log_utils import log_operation
 from apps.system_mgmt.utils.viewset_utils import ViewSetUtils
 
 
-class RoleViewSet(ViewSetUtils):
+class RoleViewSet(LanguageViewSet, ViewSetUtils):
     queryset = Role.objects.exclude(app="")
     serializer_class = RoleSerializer
 
@@ -79,6 +81,10 @@ class RoleViewSet(ViewSetUtils):
             app=request.data.get("client_id"),
             name=request.data["name"],
         )
+
+        # 记录操作日志
+        log_operation(request, "create", "role", f"新增角色: {request.data['name']} (应用: {request.data.get('client_id')})")
+
         return_data = {"id": role_obj.id, "name": role_obj.name}
         return JsonResponse({"result": True, "data": return_data})
 
@@ -88,42 +94,79 @@ class RoleViewSet(ViewSetUtils):
         role_id = request.data.get("role_id")
         role_name = request.data.get("role_name")
         if role_name in ["admin", "normal"]:
-            return JsonResponse({"result": False, "message": "admin和normal角色不允许删除"})
+            return JsonResponse({"result": False, "message": self.loader.get("error.cannot_delete_admin_normal_roles")})
         users = User.objects.filter(role_list__contains=int(role_id)).values_list("username", flat=True)
         if users:
             msg = "、".join([i["username"] for i in list(users)])
-            return JsonResponse({"result": False, "message": f"角色已被下列用户使用：{msg}！"})
+            return JsonResponse({"result": False, "message": self.loader.get("error.role_used_by_users").format(users=msg)})
         Role.objects.filter(id=role_id).delete()
+
+        # 记录操作日志
+        log_operation(request, "delete", "role", f"删除角色: {role_name}")
         return JsonResponse({"result": True})
 
     @action(detail=False, methods=["POST"])
     @HasPermission("application_role-Edit")
     def update_role(self, request):
-        Role.objects.filter(id=request.data.get("role_id")).update(name=request.data.get("role_name"))
+        role_name = request.data.get("role_name")
+        Role.objects.filter(id=request.data.get("role_id")).update(name=role_name)
+
+        # 记录操作日志
+        log_operation(request, "update", "role", f"更新角色名称: {role_name}")
         return JsonResponse({"result": True})
 
     @action(detail=False, methods=["POST"])
     @HasPermission("application_role-Add user")
     def add_user(self, request):
-        pk = request.data.get("role_id")
+        role_id = request.data.get("role_id")
         user_ids = request.data.get("user_ids")
+        is_superuser = request.data.get("is_superuser") or False
+        if is_superuser:
+            role_id = Role.objects.get(name="admin", app="").id
+            role_name = "超级管理员"
+        else:
+            role_name = Role.objects.get(id=role_id).name
+
         user_list = User.objects.filter(id__in=user_ids)
+        usernames = []
         for i in user_list:
-            if pk not in i.role_list:
-                i.role_list.append(int(pk))
+            if role_id not in i.role_list:
+                i.role_list.append(int(role_id))
+                usernames.append(i.username)
         User.objects.bulk_update(user_list, ["role_list"], batch_size=100)
+
+        # 记录操作日志
+        if is_superuser:
+            log_operation(request, "create", "role", f"新增超级管理员: {', '.join(usernames)}")
+        else:
+            log_operation(request, "create", "role", f"添加用户到角色 {role_name}: {', '.join(usernames)}")
         return JsonResponse({"result": True})
 
     @action(detail=False, methods=["POST"])
     @HasPermission("application_role-Remove user")
     def delete_user(self, request):
-        pk = int(request.data.get("role_id"))
+        pk = int(request.data.get("role_id") or 0)
         user_ids = request.data.get("user_ids")
+        is_superuser = request.data.get("is_superuser") or False
+        if is_superuser:
+            pk = Role.objects.get(name="admin", app="").id
+            role_name = "超级管理员"
+        else:
+            role_name = Role.objects.get(id=pk).name
+
         user_list = User.objects.filter(id__in=user_ids)
+        usernames = []
         for i in user_list:
             if pk in i.role_list:
                 i.role_list.remove(pk)
+                usernames.append(i.username)
         User.objects.bulk_update(user_list, ["role_list"], batch_size=100)
+
+        # 记录操作日志
+        if is_superuser:
+            log_operation(request, "delete", "role", f"删除超级管理员: {', '.join(usernames)}")
+        else:
+            log_operation(request, "delete", "role", f"从角色 {role_name} 移除用户: {', '.join(usernames)}")
         return JsonResponse({"result": True})
 
     @action(detail=False, methods=["POST"])
@@ -141,4 +184,120 @@ class RoleViewSet(ViewSetUtils):
         user_menu_cache = "menus-user:"
         keys.extend(RoleManage.get_cache_keys(user_menu_cache))
         cache.delete_many(keys)
+
+        # 记录操作日志
+        log_operation(request, "update", "role", f"设置角色权限: {role_obj.name} (共{len(menus)}个菜单)")
         return JsonResponse({"result": True})
+
+    @action(detail=False, methods=["POST"])
+    @HasPermission("application_role-Edit")
+    def batch_assign_group_roles(self, request):
+        """
+        批量为组织分配角色
+        """
+        group_ids = request.data.get("group_ids", [])
+        role_id = request.data.get("role_id")
+
+        if not group_ids or not role_id:
+            return JsonResponse({"result": False, "message": self.loader.get("error.group_ids_role_id_required")})
+
+        # 验证组织是否存在
+        groups = Group.objects.filter(id__in=group_ids)
+        if len(groups) != len(group_ids):
+            return JsonResponse({"result": False, "message": self.loader.get("error.some_groups_not_exist")})
+
+        # 验证角色是否存在
+        try:
+            role = Role.objects.get(id=role_id)
+        except Role.DoesNotExist:
+            return JsonResponse({"result": False, "message": self.loader.get("error.some_roles_not_exist")})
+
+        # 使用ManyToMany关系批量分配角色
+        for group in groups:
+            group.roles.add(role)
+
+        # 记录操作日志
+        group_names = [g.name for g in groups]
+        log_operation(request, "create", "role", f"添加组织到角色 {role.name}: {', '.join(group_names)}")
+
+        return JsonResponse({"result": True})
+
+    @action(detail=False, methods=["POST"])
+    @HasPermission("application_role-Edit")
+    def revoke_group_roles(self, request):
+        """
+        回收组织的角色
+        """
+        group_ids = request.data.get("group_ids", [])
+        role_id = request.data.get("role_id")
+
+        if not group_ids or not role_id:
+            return JsonResponse({"result": False, "message": self.loader.get("error.group_ids_role_id_required")})
+
+        # 验证组织是否存在
+        groups = Group.objects.filter(id__in=group_ids)
+        if len(groups) != len(group_ids):
+            return JsonResponse({"result": False, "message": self.loader.get("error.some_groups_not_exist")})
+
+        # 验证角色是否存在
+        try:
+            role = Role.objects.get(id=role_id)
+        except Role.DoesNotExist:
+            return JsonResponse({"result": False, "message": self.loader.get("error.some_roles_not_exist")})
+
+        # 使用ManyToMany关系回收角色
+        for group in groups:
+            group.roles.remove(role)
+
+        # 记录操作日志
+        group_names = [g.name for g in groups]
+        log_operation(request, "delete", "role", f"从角色 {role.name} 移除组织: {', '.join(group_names)}")
+
+        return JsonResponse({"result": True})
+
+    @action(detail=False, methods=["GET"])
+    @HasPermission("user_group-View")
+    def get_role_groups(self, request):
+        """
+        查询指定角色下的组织列表，支持分页和组名筛选
+        """
+        role_id = request.GET.get("role_id")
+        search = request.GET.get("search", "")
+        if not role_id:
+            return JsonResponse({"result": False, "message": self.loader.get("error.role_id_required")})
+
+        # 验证角色是否存在
+        try:
+            role = Role.objects.get(id=role_id)
+        except Role.DoesNotExist:
+            return JsonResponse({"result": False, "message": self.loader.get("error.some_roles_not_exist")})
+        # 获取拥有该角色的组织，支持按组名筛选
+        queryset = role.group_set.all()
+        if search:
+            queryset = queryset.filter(Q(name__icontains=search) | Q(display_name__icontains=search))
+
+        queryset = queryset.order_by("-id")
+
+        # 使用分页功能
+        data, total = self.search_by_page(queryset, request, ["id", "name", "parent_id"])
+
+        return JsonResponse({"result": True, "data": {"items": data, "count": total}})
+
+    @action(detail=False, methods=["POST"])
+    @HasPermission("user_group-Edit User")
+    def get_groups_roles(self, request):
+        """
+        查询一批组织的角色列表（去重）
+        """
+        group_ids = request.data.get("group_ids", [])
+
+        if not isinstance(group_ids, list):
+            return JsonResponse({"result": False, "message": "group_ids must be a list"})
+
+        if not group_ids:
+            return JsonResponse({"result": True, "data": []})
+
+        # 查询这批组织的所有角色,去重
+        roles = Role.objects.filter(group__id__in=group_ids).distinct().values("id", "name", "app").order_by("id")
+
+        return JsonResponse({"result": True, "data": list(roles)})

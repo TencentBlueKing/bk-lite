@@ -1,3 +1,7 @@
+import type { TagItem } from './namespace';
+
+export type ChartType = 'line' | 'bar' | 'pie' | 'single';
+
 export interface DatasourceItem {
   id: number;
   created_at: string;
@@ -11,9 +15,11 @@ export interface DatasourceItem {
   desc: string;
   is_active: boolean;
   params: ParamItem[];
-  chart_type: any[];
+  chart_type: ChartType[];
   namespaces: number[];
-  tag: any[];
+  tag: TagItem[];
+  groups?: number[];
+  hasAuth?: boolean;
 }
 
 export interface OperateModalProps {
@@ -26,11 +32,11 @@ export interface OperateModalProps {
 export interface ParamItem {
   id?: string;
   name: string;
-  value: any;
+  value: string | number | boolean | [number, number] | null;
   alias_name: string;
   type?: string;
   filterType?: string;
   desc?: string;
   required?: boolean;
-  options?: any[];
+  options?: Array<{ label: string; value: string | number }>;
 }

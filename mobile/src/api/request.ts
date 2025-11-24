@@ -55,7 +55,13 @@ export async function apiRequest<T = any>(
     // 返回文本响应
     return await response.text() as any;
 
-  } catch (error) {
+  } catch (error: any) {
+    // If the request was aborted, don't log a noisy error in the console.
+    // Let callers handle AbortError as needed.
+    if (error && (error.name === 'AbortError')) {
+      throw error;
+    }
+
     console.error('[API] Request failed:', url, error);
     throw error;
   }
@@ -66,9 +72,22 @@ export async function apiRequest<T = any>(
  */
 export async function apiGet<T = any>(
   endpoint: string,
+  params?: Record<string, any>,
   options?: RequestInit
 ): Promise<T> {
-  return apiRequest<T>(endpoint, {
+  // 构建查询字符串
+  let url = endpoint;
+  if (params) {
+    const queryString = Object.entries(params)
+      .filter(([_, value]) => value !== undefined && value !== null && value !== '')
+      .map(([key, value]) => `${encodeURIComponent(key)}=${encodeURIComponent(value)}`)
+      .join('&');
+    if (queryString) {
+      url = `${endpoint}?${queryString}`;
+    }
+  }
+  
+  return apiRequest<T>(url, {
     ...options,
     method: 'GET',
   });

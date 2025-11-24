@@ -1,6 +1,6 @@
 import json
 
-from apps.cmdb.constants import (
+from apps.cmdb.constants.constants import (
     CLASSIFICATION,
     CREATE_MODEL_CHECK_ATTR,
     INST_NAME_INFOS,
@@ -138,7 +138,7 @@ class ModelManage(object):
         """
         from apps.cmdb.utils.base import get_default_group_id
         from apps.core.utils.permission_utils import get_permission_rules
-        from apps.cmdb.utils.permisssion_util import CmdbRulesFormatUtil
+        from apps.cmdb.utils.permission_util import CmdbRulesFormatUtil
         from apps.cmdb.constants import PERMISSION_MODEL
         
         if not models:

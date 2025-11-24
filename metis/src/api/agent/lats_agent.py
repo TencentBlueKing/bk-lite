@@ -46,3 +46,19 @@ async def invoke_lats_agent_sse(request, body: LatsAgentRequest):
         content_type="text/event-stream; charset=utf-8",
         headers={"Cache-Control": "no-cache", "Connection": "keep-alive"}
     )
+
+
+@lats_agent_router.post("/invoke_lats_agent_agui")
+@auth.login_required
+@validate(json=LatsAgentRequest)
+async def invoke_lats_agent_agui(request, body: LatsAgentRequest):
+    """执行 LATS Agent（AG-UI 协议流式响应）"""
+    workflow = _prepare_workflow(body)
+
+    return ResponseStream(
+        lambda res: BaseAgent.agui_stream_response_handler(
+            workflow, body, res
+        ),
+        content_type="text/event-stream; charset=utf-8",
+        headers={"Cache-Control": "no-cache", "Connection": "keep-alive"}
+    )

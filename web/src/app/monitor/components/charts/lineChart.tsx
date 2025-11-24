@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo, useCallback, memo } from 'react';
-import { Empty, Tooltip as Tip } from 'antd';
+import { Empty } from 'antd';
 import {
   XAxis,
   YAxis,
@@ -12,6 +12,7 @@ import {
   ReferenceLine,
 } from 'recharts';
 import CustomTooltip from './customTooltips';
+import EventBar from './eventBar';
 import {
   generateUniqueRandomColor,
   useFormatTime,
@@ -29,7 +30,6 @@ import {
   ThresholdField,
 } from '@/app/monitor/types';
 import { LEVEL_MAP } from '@/app/monitor/constants';
-import { isNumber } from 'lodash';
 
 interface LineChartProps {
   data: ChartData[];
@@ -82,7 +82,6 @@ const LineChart: React.FC<LineChartProps> = memo(
     const [hoveredThreshold, setHoveredThreshold] =
       useState<ThresholdField | null>(null);
     const [mousePosition, setMousePosition] = useState({ x: 0, y: 0 });
-    const [boxItems, setBoxItems] = useState<TableDataItem[]>([]);
 
     const chartAreaKeys = useMemo(() => getChartAreaKeys(data), [data]);
 
@@ -111,78 +110,6 @@ const LineChart: React.FC<LineChartProps> = memo(
       }
       setVisibleAreas(chartAreaKeys);
     }, [chartAreaKeys, colors.length]);
-
-    const timeToSecond = useCallback((time: string) => {
-      return Math.floor(new Date(time).getTime() / 1000);
-    }, []);
-
-    const cutArray = useCallback(
-      (array: TableDataItem[], subLength: number) => {
-        let index = 0;
-        const newArr = [];
-        while (index < array.length) {
-          newArr.push(array.slice(index, (index += subLength)));
-        }
-        return newArr;
-      },
-      []
-    );
-
-    // 对分割的列表进行数据处理
-    const handleCutArray = useCallback(
-      (array: TableDataItem[]) => {
-        if (!array) return [];
-        const test = array.map((item) => {
-          return item
-            .sort((prev: TableDataItem, next: TableDataItem) => {
-              let flag = null;
-              if (prev.value > next.value) {
-                flag = 1;
-              } else if (prev.value < next.value) {
-                flag = -1;
-              } else {
-                flag =
-                  timeToSecond(prev.created_at) > timeToSecond(next.created_at)
-                    ? 1
-                    : -1;
-              }
-              return flag;
-            })
-            .pop();
-        });
-        return test;
-      },
-      [timeToSecond]
-    );
-
-    const processEventData = useCallback(() => {
-      if (!eventData.length) {
-        setBoxItems([]);
-        return;
-      }
-
-      const time_intervals: TableDataItem[] =
-        maxTime === minTime // 折线图只存在一条数据时返回所有事件
-          ? eventData
-          : eventData.filter((item: any) => {
-            const times = timeToSecond(item.created_at);
-            if (times >= minTime && times <= maxTime) {
-              return true;
-            }
-            return false;
-          });
-      const intervals =
-        maxTime === minTime ? 120 : Math.ceil((maxTime - minTime) / 60);
-      const lengths = intervals >= 120 ? 24 : Math.ceil(intervals / 5);
-      const step = Math.ceil(eventData.length / lengths);
-      setBoxItems(handleCutArray(cutArray(time_intervals.reverse(), step)));
-    }, [eventData, maxTime, minTime, timeToSecond, handleCutArray, cutArray]);
-
-    useEffect(() => {
-      if (eventData.length > 0) {
-        processEventData();
-      }
-    }, [eventData, minTime, maxTime, processEventData]);
 
     useEffect(() => {
       if (!allowSelect) return;
@@ -372,33 +299,13 @@ const LineChart: React.FC<LineChartProps> = memo(
                 )}
               </AreaChart>
             </ResponsiveContainer>
-            {eventData?.length > 0 && (
-              <div className="flex w-[100%] pl-14 pr-[15px] justify-between">
-                {boxItems?.map((item, index) => {
-                  return (
-                    <Tip
-                      key={index}
-                      title={`${formatTime(
-                        Date.parse(item.created_at) / 1000,
-                        minTime,
-                        maxTime
-                      )} ${
-                        isNumber(item.value)
-                          ? item.value.toFixed(2)
-                          : item.value
-                      }`}
-                    >
-                      <span
-                        className="flex-1 mr-1 h-2"
-                        style={{
-                          backgroundColor: LEVEL_MAP[item.level] as string,
-                        }}
-                      ></span>
-                    </Tip>
-                  );
-                })}
-              </div>
-            )}
+
+            <EventBar
+              eventData={eventData}
+              minTime={minTime}
+              maxTime={maxTime}
+            />
+
             {showDimensionFilter && hasDimension && (
               <DimensionFilter
                 data={data}

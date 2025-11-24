@@ -3,7 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import BottomTabBar from '@/components/bottom-tab-bar';
 import { useRouter } from 'next/navigation';
-import { SearchBar, Avatar, List } from 'antd-mobile';
+import { Avatar, List } from 'antd-mobile';
 import { ChatItem, mockChatData } from '@/constants/mockData';
 import { useTranslation } from '@/utils/i18n';
 import {
@@ -15,7 +15,6 @@ import {
 export default function ConversationList() {
   const { t } = useTranslation();
   const router = useRouter();
-  const [searchValue, setSearchValue] = useState('');
   const [chatList, setChatList] = useState<ChatItem[]>([]);
 
   useEffect(() => {
@@ -28,22 +27,16 @@ export default function ConversationList() {
     fetchChatList();
   }, []);
 
-  const filteredChats = chatList.filter(
-    (chat) =>
-      chat.name.toLowerCase().includes(searchValue.toLowerCase()) ||
-      chat.lastMessage.toLowerCase().includes(searchValue.toLowerCase())
-  );
 
   return (
     <div className="flex flex-col h-full bg-[var(--color-background-body)]">
       {/* 顶部导航栏 */}
-      <div className="flex items-center justify-between px-4 py-3 bg-[var(--color-bg)]">
-        <ScanningOutline fontSize={24} className="text-[var(--color-text-2)]" />
+      <div className="flex items-center justify-center px-4 py-3 bg-[var(--color-bg)]">
+        <ScanningOutline fontSize={24} className="absolute left-4 text-[var(--color-text-2)]" />
         <h1 className="text-lg font-medium text-[var(--color-text-1)]">
           {t('navigation.conversations')}
         </h1>
-        <div className="flex items-center space-x-3">
-          <SearchOutline fontSize={24} className="text-[var(--color-text-2)]" />
+        <div className="flex items-center space-x-3 absolute right-4">
           <AddCircleOutline
             fontSize={24}
             className="text-[var(--color-primary)]"
@@ -51,21 +44,11 @@ export default function ConversationList() {
         </div>
       </div>
 
-      {/* 搜索框 */}
-      <div className="px-4 py-3 bg-[var(--color-bg)]">
-        <SearchBar
-          placeholder={t('common.search')}
-          value={searchValue}
-          onChange={setSearchValue}
-          style={
-            {
-              '--background': 'var(--color-fill-2)',
-              '--border-radius': '8px',
-              '--height': '38px',
-              '--font-size': '15px',
-            } as React.CSSProperties
-          }
-        />
+      <div className="px-4 py-3 bg-[var(--color-background-body)]">
+        <div className='py-2 bg-[var(--color-bg)] rounded-xl flex gap-2 items-center justify-center text-[var(--color-text-2)] text-sm' onClick={() => router.push('/search?type=ConversationList')}>
+          <SearchOutline />
+          <span>搜索</span>
+        </div>
       </div>
 
       {/* 聊天列表 */}
@@ -76,25 +59,25 @@ export default function ConversationList() {
               __html: `
                 .adm-list-item-content-extra {
                 position: absolute;
-                right: 5px;
+                right: 9px;
                 }
               `,
             }}
           />
-          {filteredChats.map((chat) => (
+          {chatList.map((chat) => (
             <List.Item
               key={chat.id}
               arrowIcon={false}
               prefix={
                 <Avatar
                   src={chat.avatar}
-                  style={{ '--size': '48px' }}
+                  style={{ '--size': '48px', '--border-radius': '48px' }}
                   className="ml-1 mr-1"
                 />
               }
               description={
-                <div className="flex items-center justify-between mt-1">
-                  <span className="text-sm text-[var(--color-text-3)] flex-1 truncate">
+                <div className="mt-1">
+                  <span className="text-xs text-[var(--color-text-3)] line-clamp-1">
                     {chat.lastMessage}
                   </span>
                 </div>

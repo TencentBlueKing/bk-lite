@@ -8,7 +8,7 @@ from sanic.response import ResponseStream
 
 
 class BaseAgent:
-    
+
     @staticmethod
     def _create_sse_message(chat_id: str, model: str, created: int,
                             delta_content: str = None, finish_reason: str = None) -> dict:
@@ -37,10 +37,10 @@ class BaseAgent:
         await response.write(content.encode('utf-8'))
 
     @staticmethod
-    async def stream_response_handler(workflow, body, response: ResponseStream, 
-                                    content_processor: Optional[Callable[[str, dict], str]] = None):
+    async def stream_response_handler(workflow, body, response: ResponseStream,
+                                      content_processor: Optional[Callable[[str, dict], str]] = None):
         """通用流式响应处理器
-        
+
         Args:
             workflow: Agent workflow 实例
             body: 请求体
@@ -63,10 +63,10 @@ class BaseAgent:
             async for chunk in result:
                 # 使用新的 filter_messages 方法处理消息
                 content = await workflow.filter_messages(chunk)
-                
+
                 if not content:
                     continue
-                    
+
                 # 如果有自定义内容处理器，则使用它
                 if content_processor:
                     context = {
@@ -78,19 +78,19 @@ class BaseAgent:
                     content = content_processor(content, context)
                     if not content:  # 处理器可能返回空内容
                         continue
-                
+
                 # 发送内容
                 await BaseAgent._write_sse(
                     response,
                     BaseAgent._create_sse_message(chat_id, body.model, created,
-                                                delta_content=content)
+                                                  delta_content=content)
                 )
 
             # 发送结束标记
             await BaseAgent._write_sse(
                 response,
                 BaseAgent._create_sse_message(chat_id, body.model, created,
-                                            finish_reason="stop")
+                                              finish_reason="stop")
             )
             await response.write("data: [DONE]\n\n".encode('utf-8'))
 
@@ -98,4 +98,26 @@ class BaseAgent:
 
         except Exception as e:
             logger.error(f"流式响应失败，问题: {body.user_message}, 错误: {e}")
+            raise
+
+    @staticmethod
+    async def agui_stream_response_handler(workflow, body, response: ResponseStream):
+        """AG-UI 协议流式响应处理器
+
+        Args:
+            workflow: Agent workflow 实例（必须支持 agui_stream 方法）
+            body: 请求体
+            response: ResponseStream 实例
+        """
+        try:
+            # 直接使用 workflow 的 agui_stream 方法
+            result = workflow.agui_stream(body)
+            async for sse_event in result:
+                # agui_stream 已经返回格式化的 SSE 字符串
+                await response.write(sse_event.encode('utf-8'))
+
+            logger.info(f"AG-UI 流式响应完成，问题: {body.user_message}")
+
+        except Exception as e:
+            logger.error(f"AG-UI 流式响应失败，问题: {body.user_message}, 错误: {e}")
             raise

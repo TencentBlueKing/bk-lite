@@ -326,7 +326,7 @@ const BaseTaskForm = forwardRef<BaseTaskRef, BaseTaskFormProps>(
         setAccessPointLoading(true);
         const res = await collectApi.getCollectNodes({
           page: 1,
-          page_size: 10,
+          page_size: 10000,
           name: '',
         });
         setAccessPoints(
@@ -522,7 +522,15 @@ const BaseTaskForm = forwardRef<BaseTaskRef, BaseTaskFormProps>(
                       <GroupTreeSelector
                         placeholder={t('common.selectTip')}
                         value={ipRangeOrg}
-                        onChange={(value) => setIpRangeOrg(value)}
+                        onChange={(value) => {
+                          const orgArray = Array.isArray(value)
+                            ? value
+                            : value
+                              ? [value]
+                              : [];
+                          setIpRangeOrg(orgArray);
+                          form.setFieldValue('organization', orgArray);
+                        }}
                         multiple={false}
                       />
                     </Form.Item>

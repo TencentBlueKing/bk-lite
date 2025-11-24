@@ -381,9 +381,9 @@ const ProviderPage: React.FC = () => {
         className="mb-4"
       />
       
-      <div className="flex gap-4 h-full">
+      <div className="flex gap-4" style={{ height: 'calc(100% - 55px)' }}>
         {/* Left sidebar - Model groups tree */}
-        <div className="w-60 flex-shrink-0 overflow-auto" style={{ height: 'calc(100vh - 150px)' }}>
+        <div className="w-60 h-full flex-shrink-0 overflow-auto">
           <ModelTree
             filterType={tabConfig.find((tab) => tab.key === activeTab)?.type || ''}
             groups={modelGroups}
@@ -398,7 +398,7 @@ const ProviderPage: React.FC = () => {
         </div>
         
         {/* Right content area */}
-        <div className="flex-1 flex flex-col min-w-0 bg-[var(--color-bg-1)] rounded-md p-4 overflow-auto" style={{ height: 'calc(100vh - 150px)' }}>
+        <div className="flex-1 flex flex-col min-w-0 bg-[var(--color-bg-1)] rounded-md p-4 h-full overflow-auto">
           <div className="flex justify-between items-center mb-4">
             <h2 className="font-semibold">{getCurrentGroupName()}</h2>
             <div className="flex items-center gap-2">

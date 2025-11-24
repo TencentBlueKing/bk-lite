@@ -4,16 +4,17 @@ import { useTranslation } from '@/utils/i18n';
 import { message, Button } from 'antd';
 import CustomTable from '@/components/custom-table';
 import { useDetailColumns } from '@/app/node-manager/hooks';
-import useApiNode from '@/app/node-manager/api';
+import useNodeManagerApi from '@/app/node-manager/api';
 import useApiClient from '@/utils/request';
 import type { Pagination, TableDataItem } from '@/app/node-manager/types';
 import CollectorModal from '@/app/node-manager/components/sidecar/collectorModal';
 import { ModalRef } from '@/app/node-manager/types';
 import PermissionWrapper from '@/components/permission';
+import { OPERATE_SYSTEMS } from '@/app/node-manager/constants/cloudregion';
 
 const Collectordetail = () => {
   const { t } = useTranslation();
-  const { getPackageList, deletePackage } = useApiNode();
+  const { getPackageList, deletePackage } = useNodeManagerApi();
   const { isLoading } = useApiClient();
   const modalRef = useRef<ModalRef>(null);
   const [pagination, setPagination] = useState<Pagination>({
@@ -59,7 +60,9 @@ const Collectordetail = () => {
       setTableLoading(true);
       const param = {
         object: info.name,
-        os: info.system[0],
+        os:
+          OPERATE_SYSTEMS.find((item) => item.label === info.system[0])
+            ?.value || '',
         page: pagination.current,
         page_size: pagination.pageSize,
       };

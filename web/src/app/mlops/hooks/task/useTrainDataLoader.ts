@@ -47,8 +47,8 @@ const useTrainDataLoader = () => {
   }, [getAnomalyTrainData]);
 
   const getDatasetByTrainId = useCallback(async (trianDataId: number, key: string) => {
-    const { dataset } = await getTrainDataInfo[key](trianDataId, false, false);
-    return dataset;
+    const { dataset, metadata } = await getTrainDataInfo[key](trianDataId, false, true);
+    return { dataset, metadata };
   }, [getAnomalyTrainDataInfo]);
 
   return { loadTrainOptions, getDatasetByTrainId }
