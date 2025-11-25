@@ -25,7 +25,7 @@ DEPLOY_FUNC = {
 
 
 @shared_task
-def deployed_cloud_server(data: dict):
+def deployed_cloud_services(data: dict):
     """
     云服务器部署任务
     开始部署时将部署状态改为“部署中”
@@ -35,29 +35,28 @@ def deployed_cloud_server(data: dict):
     port = data["port"]
     username = data["username"]
     password = data["password"]
-    service_name = data["service_name"]
     cloud_region_id = data["cloud_region_id"]
 
-    deploy_func = DEPLOY_FUNC.get(service_name)
+    services = CloudRegionService.objects.filter(id=cloud_region_id)
+    for service in services:
+        service_name = service.name
+        deploy_func = DEPLOY_FUNC.get(service_name)
 
-    if deploy_func:
-        try:
-            # 开始部署，更新状态为“部署中”
-            CloudRegionService.objects.filter(cloud_region_id=cloud_region_id, name=service_name).update(
-                deployed_status=CloudRegionServiceConstants.NOT_DEPLOYED_STATUS
-            )
+        if deploy_func:
+            try:
+                # 开始部署，更新状态为“部署中”
+                service.deployed_status=CloudRegionServiceConstants.DEPLOYING
+                service.save()
 
-            # 执行部署任务
-            deploy_func(ip, port, username, password)
+                # 执行部署任务
+                deploy_func(ip, port, username, password)
 
-            # 部署成功，更新状态为“已部署”
-            # 具体实现省略
-            CloudRegionService.objects.filter(cloud_region_id=cloud_region_id, name=service_name).update(
-                deployed_status=CloudRegionServiceConstants.DEPLOYING
-            )
+                # 部署成功，更新状态为“已部署”
+                # 具体实现省略
+                service.deployed_status=CloudRegionServiceConstants.DEPLOYED
+                service.save()
 
-        except Exception as e:
-            CloudRegionService.objects.filter(cloud_region_id=cloud_region_id, name=service_name).update(
-                deployed_status=CloudRegionServiceConstants.ERROR,
-                deploy_message=str(e)
-            )
+            except Exception as e:
+                service.deployed_status=CloudRegionServiceConstants.ERROR
+                service.deploy_message=str(e)
+                service.save()
