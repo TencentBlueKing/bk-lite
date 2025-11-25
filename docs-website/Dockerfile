@@ -4,8 +4,20 @@ FROM node:18-alpine as builder
 # 设置工作目录
 WORKDIR /app
 
+ARG NEXUS_NODEJS_REPOSITY
+
+# 如果提供了 NEXUS_NODEJS_REPOSITY，则切换 npm 源
+RUN if [ -n "$NEXUS_NODEJS_REPOSITY" ]; then \
+    npm config set registry "$NEXUS_NODEJS_REPOSITY"; \
+    fi
+
 # 安装 pnpm
 RUN npm install -g pnpm
+
+# 如果提供了 NEXUS_NODEJS_REPOSITY，则切换 pnpm 源
+RUN if [ -n "$NEXUS_NODEJS_REPOSITY" ]; then \
+    pnpm config set registry "$NEXUS_NODEJS_REPOSITY"; \
+    fi
 
 # 复制 package.json 和 pnpm-lock.yaml
 COPY package.json pnpm-lock.yaml ./
