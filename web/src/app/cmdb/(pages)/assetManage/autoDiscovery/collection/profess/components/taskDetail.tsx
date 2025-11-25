@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { Alert, Tabs, Button, message, Modal, Spin } from 'antd';
+import { Tabs, Button, message, Modal, Spin } from 'antd';
 import CustomTable from '@/components/custom-table';
 import type { CollectTask } from '@/app/cmdb/types/autoDiscovery';
 import { CREATE_TASK_DETAIL_CONFIG } from '@/app/cmdb/constants/professCollection';
@@ -133,7 +133,7 @@ const TaskTable: React.FC<TaskTableProps> = ({
           showTotal: (total) => `共 ${total} 条`,
         }}
         onChange={handleTableChange}
-        scroll={{ y: 'calc(100vh - 350px)' }}
+        scroll={{ y: 'calc(100vh - 290px)' }}
         rowKey={(record) => record.id || record.inst_name || record.name}
         rowSelection={isApprove ? rowSelection : undefined}
       />
@@ -141,7 +141,7 @@ const TaskTable: React.FC<TaskTableProps> = ({
         {isApprove ? (
           <>
             <Button type="primary" onClick={handleApprove}>
-              {t('Collection.execStatus.approval')}
+              {t('Collection.syncStatus.approval')}
             </Button>
             <Button onClick={onClose}>{t('common.cancel')}</Button>
           </>
@@ -216,12 +216,12 @@ const TaskDetail: React.FC<TaskDetailProps> = ({
       if (status === 'success') {
         return (
           <span className="text-green-500">
-            {t('Collection.execStatus.success')}
+            {t('Collection.syncStatus.success')}
           </span>
         );
       }
       return (
-        <span className="text-red-500">{t('Collection.execStatus.error')}</span>
+        <span className="text-red-500">{t('Collection.syncStatus.error')}</span>
       );
     },
   };
@@ -254,12 +254,6 @@ const TaskDetail: React.FC<TaskDetailProps> = ({
         label: `${config.label} (${count})`,
         children: (
           <div className="flex flex-col h-full">
-            <Alert
-              message={config.message}
-              type={config.alertType as any}
-              showIcon
-              className="mb-4"
-            />
             <Spin spinning={loading}>
               <TaskTable
                 type={key}

@@ -9,7 +9,7 @@ from typing import List, Union
 from dotenv import load_dotenv
 from falkordb import falkordb
 
-from apps.cmdb.constants import INSTANCE, ModelConstraintKey
+from apps.cmdb.constants.constants import INSTANCE, ModelConstraintKey
 from apps.cmdb.graph.falkordb_format import FormatDBResult
 from apps.cmdb.graph.format_type import FORMAT_TYPE
 from apps.core.exceptions.base_app_exception import BaseAppException
@@ -812,7 +812,7 @@ class FalkorDBClient:
     def get_topo_config() -> dict:
         try:
             base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-            topo_config_path = os.path.join(base_dir, "cmdb_config", "instance", "topo_config.json")
+            topo_config_path = os.path.join(base_dir, "support-files", "topo_config.json")
 
             if not os.path.isfile(topo_config_path):
                 logger.warning("Topo config file not found: %s", topo_config_path)

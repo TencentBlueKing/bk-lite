@@ -27,6 +27,8 @@ class NodeMgmtView(ViewSet):
             page=request.data.get("page", 1),
             page_size=request.data.get("page_size", 10),
             is_active=request.data.get("is_active"),
+            is_manual=request.data.get("is_manual"),
+            is_container=request.data.get("is_container"),
             permission_data={
                 "username": request.user.username,
                 "domain": request.user.domain,
@@ -37,7 +39,7 @@ class NodeMgmtView(ViewSet):
 
     @action(methods=['post'], detail=False, url_path='batch_setting_node_child_config')
     def batch_setting_node_child_config(self, request):
-        logger.info(f"batch_setting_node_child_config: {request.data}")
+        logger.debug(f"batch_setting_node_child_config: {request.data}")
 
         InstanceConfigService.create_monitor_instance_by_node_mgmt(request.data)
 

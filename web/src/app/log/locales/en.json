@@ -213,7 +213,15 @@
       "flowsTimeout": "Timeout period",
       "filePath": "File Path",
       "k8sNote": "K8S only supports active reporting, and is not supported to be accessed here for the time being.",
-      "maxLines": "Max Lines"
+      "maxLines": "Max Lines",
+      "snmpTrapTargetIp": "Target IP",
+      "snmpTrapStep1Des": "Configure the following target address on the device to send Trap messages",
+      "snmpTrapStep2": "Configure MIB Files",
+      "snmpTrapStep2Des": "Obtain the MIB files from the device vendor and place them in the following directory on the node",
+      "snmpTrapStep1": "Configure Trap Target Address",
+      "snmpTrapAccessGuide": "Access Guide",
+      "snmpTrapTargetPort": "Target Port",
+      "snmpTrapNodeDes": "Please select the node that has been hosting the snmptrapd program"
     },
     "search": {
       "enableScrolling": "Enable Auto-scrolling",

@@ -1,5 +1,6 @@
 from django.core.cache import cache
 from django.db import transaction
+from prompt_toolkit.layout import is_container
 
 import nats_client
 from apps.node_mgmt.constants.database import DatabaseConstants, EnvVariableConstants
@@ -312,8 +313,11 @@ def node_list(query_data: dict):
     page = query_data.get('page', 1)
     page_size = query_data.get('page_size', 10)
     is_active = query_data.get('is_active')
+    is_manual = query_data.get('is_manual')
+    is_container = query_data.get('is_container')
     permission_data = query_data.get('permission_data', {})
-    return NodeService.get_node_list(organization_ids, cloud_region_id, name, ip, os, page, page_size, is_active, permission_data)
+    return NodeService.get_node_list(
+        organization_ids, cloud_region_id, name, ip, os, page, page_size, is_active, is_manual, is_container, permission_data)
 
 
 @nats_client.register

@@ -1,12 +1,9 @@
 import { useMongoDBTelegraf } from '../../plugins/database/mongoDBTelegraf';
-import { useMongoDBExporter } from '../../plugins/database/mongoDBExporter';
 
 export const useMongoDBConfig = () => {
   const mongoDB = useMongoDBTelegraf();
-  const mongoDBExporter = useMongoDBExporter();
   const plugins = {
     MongoDB: mongoDB,
-    'MongoDB-Exporter': mongoDBExporter,
   };
 
   return {

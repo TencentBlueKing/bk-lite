@@ -150,21 +150,31 @@ class Sidecar:
         node = Node.objects.filter(id=node_id).first()
 
         # 处理标签数据
-        allowed_prefixes = [ControllerConstants.GROUP_TAG, ControllerConstants.CLOUD_TAG, ControllerConstants.INSTALL_METHOD_TAG]
+        allowed_prefixes = [
+            ControllerConstants.GROUP_TAG,
+            ControllerConstants.CLOUD_TAG,
+            ControllerConstants.INSTALL_METHOD_TAG,
+            ControllerConstants.NODE_TYPE_TAG,
+        ]
         tags_data = format_tags_dynamic(request_data.get("tags", []), allowed_prefixes)
 
+        # 补充云区域关联
+        clouds = tags_data.get(ControllerConstants.CLOUD_TAG, [])
+        if clouds:
+            request_data.update(cloud_region_id=int(clouds[0]))
+
+        # 补充安装方法
+        install_methods = tags_data.get(ControllerConstants.INSTALL_METHOD_TAG, [])
+        if install_methods:
+            if install_methods[0] in [ControllerConstants.AUTO, ControllerConstants.MANUAL]:
+                request_data.update(install_method=install_methods[0])
+
+        # 补充节点类型
+        node_types = tags_data.get(ControllerConstants.NODE_TYPE_TAG, [])
+        if node_types:
+            request_data.update(node_type=node_types[0])
+
         if not node:
-
-            # 补充云区域关联
-            clouds = tags_data.get(ControllerConstants.CLOUD_TAG, [])
-            if clouds:
-                request_data.update(cloud_region_id=int(clouds[0]))
-
-            # 补充安装方法
-            install_methods = tags_data.get(ControllerConstants.INSTALL_METHOD_TAG, [])
-            if install_methods:
-                if install_methods[0] in [ControllerConstants.AUTO, ControllerConstants.MANUAL]:
-                    request_data.update(install_method=install_methods[0])
 
             # 创建节点
             node = Node.objects.create(**request_data)
@@ -173,7 +183,7 @@ class Sidecar:
             Sidecar.asso_groups(node_id, tags_data.get(ControllerConstants.GROUP_TAG, []))
 
             # 创建默认的配置
-            Sidecar.create_default_config(node)
+            Sidecar.create_default_config(node, node_types)
 
         else:
             # 更新时间
@@ -392,12 +402,14 @@ class Sidecar:
         return template.safe_substitute(variables)
 
     @staticmethod
-    def create_default_config(node):
+    def create_default_config(node, node_types):
 
         collector_objs = Collector.objects.filter(enabled_default_config=True,
                                                   node_operating_system=node.operating_system)
         variables = Sidecar.get_cloud_region_envconfig(node)
         default_sidecar_mode = variables.get("SIDECAR_INPUT_MODE", "nats")
+
+        is_container_node = ControllerConstants.NODE_TYPE_CONTAINER in node_types
 
         for collector_obj in collector_objs:
             try:
@@ -410,6 +422,14 @@ class Sidecar:
                 if not config_template:
                     continue
 
+                # 如果是容器节点，从 default_config 中获取附加配置并追加到模板后面
+                if is_container_node:
+                    add_config = collector_obj.default_config.get("add_config", "")
+                    if add_config:
+                        config_template = config_template + "\n" + add_config
+                        logger.info(f"Node {node.id} is a container node, appending add_config for {collector_obj.name}")
+
+                # 渲染模板
                 tpl = JinjaTemplate(config_template)
                 _config_template = tpl.render(variables)
 

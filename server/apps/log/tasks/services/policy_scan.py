@@ -5,7 +5,7 @@ from apps.log.constants.alert_policy import AlertConstants
 from apps.log.constants.database import DatabaseConstants
 from apps.log.constants.web import  WebConstants
 
-from apps.log.models.policy import Alert, Event, EventRawData
+from apps.log.models.policy import Alert, Event, EventRawData, AlertSnapshot
 from apps.log.tasks.utils.policy import period_to_seconds
 from apps.log.utils.query_log import VictoriaMetricsAPI
 from apps.log.utils.log_group import LogGroupQueryBuilder
@@ -502,6 +502,8 @@ class LogPolicyScan:
             alerts_to_create = []
             create_events = []
             create_raw_data = []
+            # 建立 event_id 到原始数据的映射，用于后续快照创建
+            event_id_to_raw_data = {}
 
             for event in events:
                 event_id = uuid.uuid4().hex
@@ -534,14 +536,9 @@ class LogPolicyScan:
                     # 更新映射表，供后续事件关联使用
                     existing_alerts[source_id] = alert_obj
 
-                # 准备原始数据记录
+                # 保存原始数据到映射表（用于快照创建）
                 if event.get("raw_data"):
-                    create_raw_data.append(
-                        EventRawData(
-                            event_id=event_id,
-                            data=event["raw_data"],
-                        )
-                    )
+                    event_id_to_raw_data[event_id] = event["raw_data"]
 
                 # 准备事件记录（使用映射表中的alert_obj）
                 create_events.append(
@@ -576,9 +573,25 @@ class LogPolicyScan:
             # 批量创建事件记录
             event_objs = Event.objects.bulk_create(create_events, batch_size=DatabaseConstants.DEFAULT_BATCH_SIZE)
 
-            # 批量创建原始数据记录
-            if create_raw_data:
-                EventRawData.objects.bulk_create(create_raw_data, batch_size=DatabaseConstants.DEFAULT_BATCH_SIZE)
+            # 批量创建事件原始数据记录（关联到已创建的事件对象）
+            if event_id_to_raw_data:
+                create_raw_data = []
+                for event_obj in event_objs:
+                    if event_obj.id in event_id_to_raw_data:
+                        create_raw_data.append(
+                            EventRawData(
+                                event=event_obj,  # 使用 event 字段，而不是 event_id
+                                data=event_id_to_raw_data[event_obj.id],
+                            )
+                        )
+
+                # 逐个保存原始数据记录以确保 S3JSONField 能正确上传数据
+                for raw_data_obj in create_raw_data:
+                    raw_data_obj.save()
+                logger.debug(f"Created {len(create_raw_data)} raw data records for policy {self.policy.id}")
+
+            # 为告警创建或更新快照（传递原始数据映射）
+            self._create_snapshots_for_alerts(event_objs, alerts_to_create, events, event_id_to_raw_data)
 
             logger.info(f"Created {len(event_objs)} events for policy {self.policy.id}")
             return event_objs
@@ -586,6 +599,121 @@ class LogPolicyScan:
         except Exception as e:
             logger.error(f"create events failed for policy {self.policy.id}: {e}")
             return []
+
+    def _create_snapshots_for_alerts(self, event_objs, new_alerts, raw_events, event_id_to_raw_data=None):
+        """为告警创建或更新快照数据
+        
+        Args:
+            event_objs: 创建的事件对象列表
+            new_alerts: 新创建的告警对象列表
+            raw_events: 原始事件数据列表（包含raw_data）
+            event_id_to_raw_data: event_id 到原始数据的映射（优先使用此映射）
+        """
+        if not event_objs:
+            return
+
+        try:
+            # 优先使用传入的映射，如果没有则从 raw_events 构建
+            if event_id_to_raw_data:
+                # 使用传入的映射
+                event_raw_data_map = event_id_to_raw_data
+            else:
+                # 从 raw_events 构建映射（兼容旧逻辑）
+                source_raw_data_map = {
+                    event["source_id"]: event.get("raw_data", {})
+                    for event in raw_events
+                    if event.get("raw_data")
+                }
+                
+                # 建立事件ID到原始数据的映射
+                event_raw_data_map = {
+                    event_obj.id: source_raw_data_map.get(event_obj.source_id, {})
+                    for event_obj in event_objs
+                }
+
+            # 建立告警ID到事件对象的映射（使用 defaultdict 优化）
+            from collections import defaultdict
+            alert_events_map = defaultdict(list)
+            for event_obj in event_objs:
+                alert_events_map[event_obj.alert_id].append(event_obj)
+
+            # 为每个告警更新快照
+            for alert_id, related_events in alert_events_map.items():
+                # 获取第一个事件对象用于获取告警信息
+                first_event = related_events[0]
+                
+                # 更新告警快照
+                self._update_alert_snapshot(
+                    alert_id=alert_id,
+                    policy_id=self.policy.id,
+                    source_id=first_event.source_id,
+                    event_objs=related_events,
+                    event_raw_data_map=event_raw_data_map,
+                    snapshot_time=self.policy.last_run_time
+                )
+
+            logger.debug(f"Updated snapshots for {len(alert_events_map)} alerts")
+
+        except Exception as e:
+            logger.error(f"Failed to create snapshots for alerts: {e}")
+
+    def _update_alert_snapshot(self, alert_id, policy_id, source_id, event_objs, event_raw_data_map, snapshot_time):
+        """更新告警的快照数据
+
+        Args:
+            alert_id: 告警ID
+            policy_id: 策略ID
+            source_id: 资源ID
+            event_objs: 事件对象列表
+            event_raw_data_map: 事件ID到原始数据的映射
+            snapshot_time: 快照时间
+        """
+        try:
+            # 获取或创建快照记录
+            snapshot_obj, created = AlertSnapshot.objects.get_or_create(
+                alert_id=alert_id,
+                defaults={
+                    'policy_id': policy_id,
+                    'source_id': source_id,
+                    'snapshots': [],
+                }
+            )
+
+            # 如果有事件数据，添加到snapshots列表末尾
+            if event_objs:
+                # 优化：获取已存在的事件ID集合，避免重复查询
+                existing_event_ids = {
+                    s.get('event_id') for s in snapshot_obj.snapshots
+                    if s.get('type') == 'event' and s.get('event_id')
+                }
+
+                # 批量构建快照数据
+                new_snapshots = []
+                for event_obj in event_objs:
+                    # 跳过已存在的事件
+                    if event_obj.id in existing_event_ids:
+                        continue
+
+                    # 获取事件的原始数据
+                    raw_data = event_raw_data_map.get(event_obj.id, {})
+
+                    event_snapshot = {
+                        'type': 'event',
+                        'event_id': event_obj.id,
+                        'event_time': event_obj.event_time.isoformat() if event_obj.event_time else None,
+                        'snapshot_time': snapshot_time.isoformat(),
+                        'raw_data': raw_data,
+                    }
+                    new_snapshots.append(event_snapshot)
+
+                # 批量添加新快照
+                if new_snapshots:
+                    snapshot_obj.snapshots.extend(new_snapshots)
+                    # 保存更新
+                    snapshot_obj.save(update_fields=['snapshots', 'updated_at'])
+
+        except Exception as e:
+            logger.error(f"Failed to update alert snapshot for alert {alert_id}: {e}")
 
     def _format_notice_content(self, event_obj):
         """格式化通知内容
@@ -621,11 +749,18 @@ class LogPolicyScan:
             result = SystemMgmtUtils.send_msg_with_channel(
                 self.policy.notice_type_id, title, content, self.policy.notice_users
             )
-            return True, result
+            # 检查发送结果
+            if result.get("result") is False:
+                msg = f"send notice failed for policy {self.policy.id}: {result.get('message', 'Unknown error')}"
+                logger.error(msg)
+                return False, result
+            else:
+                logger.info(f"send notice success for policy {self.policy.id}: {result}")
+                return True, result
         except Exception as e:
-            msg = f"send notice failed for policy {self.policy.id}: {e}"
-            logger.error(msg)
-            result = [{"error": msg}]
+            msg = f"send notice exception for policy {self.policy.id}: {e}"
+            logger.error(msg, exc_info=True)
+            result = {"result": False, "message": msg}
             return False, result
 
     def notice(self, event_objs):

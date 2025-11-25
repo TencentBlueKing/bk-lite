@@ -1,6 +1,7 @@
 from datetime import timezone
 
 from apps.core.utils.permission_utils import get_permission_rules
+from apps.node_mgmt.constants.controller import ControllerConstants
 from apps.node_mgmt.constants.node import NodeConstants
 from apps.node_mgmt.models import NodeCollectorInstallStatus
 from apps.node_mgmt.models.sidecar import Node, Collector, CollectorConfiguration, Action
@@ -113,7 +114,7 @@ class NodeService:
             action.save()
 
     @staticmethod
-    def get_node_list(organization_ids, cloud_region_id, name, ip, os, page, page_size, is_active, permission_data={}):
+    def get_node_list(organization_ids, cloud_region_id, name, ip, os, page, page_size, is_active, is_manual, is_container, permission_data={}):
         """获取节点列表"""
         if permission_data:
             user_obj = User(username=permission_data["username"], domain=permission_data["domain"])
@@ -140,6 +141,20 @@ class NodeService:
             qs = qs.filter(ip__icontains=ip)
         if os:
             qs = qs.filter(operating_system__icontains=os)
+
+        # 根据 tags 判断是否自动安装节点
+        if is_manual is not None:
+            if is_manual is True:
+                qs = qs.filter(install_method=ControllerConstants.MANUAL)
+            else:
+                qs = qs.exclude(install_method=ControllerConstants.MANUAL)
+
+        # 根据 tags 判断是否容器节点
+        if is_container is not None:
+            if is_container:
+                qs = qs.filter(node_type=ControllerConstants.NODE_TYPE_CONTAINER)
+            else:
+                qs = qs.exclude(node_type=ControllerConstants.NODE_TYPE_CONTAINER)
 
         # 获取当前时间前一分钟的utc时间
         now = datetime.now(timezone.utc)

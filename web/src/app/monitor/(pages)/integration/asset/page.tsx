@@ -1,16 +1,6 @@
 'use client';
 import React, { useEffect, useState, useRef, useMemo } from 'react';
-import {
-  Spin,
-  Input,
-  Button,
-  message,
-  Tooltip,
-  Dropdown,
-  Tag,
-  Popconfirm,
-  Space,
-} from 'antd';
+import { Input, Button, message, Dropdown, Tag, Popconfirm, Space } from 'antd';
 import useApiClient from '@/utils/request';
 import useMonitorApi from '@/app/monitor/api';
 import useIntegrationApi from '@/app/monitor/api/integration';
@@ -25,12 +15,10 @@ import {
   TableDataItem,
   ObjectItem,
 } from '@/app/monitor/types';
-import { RuleInfo, ObjectInstItem } from '@/app/monitor/types/integration';
+import { ObjectInstItem } from '@/app/monitor/types/integration';
 import CustomTable from '@/components/custom-table';
 import TimeSelector from '@/components/time-selector';
-import { PlusOutlined, DownOutlined } from '@ant-design/icons';
-import Icon from '@/components/icon';
-import RuleModal from './ruleModal';
+import { DownOutlined } from '@ant-design/icons';
 import { useCommon } from '@/app/monitor/context/common';
 import { useAssetMenuItems } from '@/app/monitor/hooks/integration/common/assetMenuItems';
 import {
@@ -42,7 +30,6 @@ import { useLocalizedTime } from '@/hooks/useLocalizedTime';
 import TreeSelector from '@/app/monitor/components/treeSelector';
 import EditConfig from './updateConfig';
 import EditInstance from './editInstance';
-import DeleteRule from './deleteRuleModal';
 import { OBJECT_DEFAULT_ICON } from '@/app/monitor/constants';
 import { NODE_STATUS_MAP } from '@/app/monitor/constants/integration';
 import Permission from '@/components/permission';
@@ -56,11 +43,7 @@ type TableRowSelection<T extends object = object> =
 const Asset = () => {
   const { isLoading } = useApiClient();
   const { getInstanceList, getMonitorObject } = useMonitorApi();
-  const {
-    getInstanceGroupRule,
-    getInstanceChildConfig,
-    deleteMonitorInstance,
-  } = useIntegrationApi();
+  const { getInstanceChildConfig, deleteMonitorInstance } = useIntegrationApi();
   const { t } = useTranslation();
   const commonContext = useCommon();
   const { convertToLocalizedTime } = useLocalizedTime();
@@ -68,10 +51,8 @@ const Asset = () => {
   const authList = useRef(commonContext?.authOrganizations || []);
   const organizationList: Organization[] = authList.current;
   const timerRef = useRef<NodeJS.Timeout | null>(null);
-  const ruleRef = useRef<ModalRef>(null);
   const configRef = useRef<ModalRef>(null);
   const instanceRef = useRef<ModalRef>(null);
-  const deleteModalRef = useRef<ModalRef>(null);
   const assetMenuItems = useAssetMenuItems();
   const [pagination, setPagination] = useState<Pagination>({
     current: 1,
@@ -79,10 +60,8 @@ const Asset = () => {
     pageSize: 20,
   });
   const [tableLoading, setTableLoading] = useState<boolean>(false);
-  const [ruleLoading, setRuleLoading] = useState<boolean>(false);
   const [treeLoading, setTreeLoading] = useState<boolean>(false);
   const [treeData, setTreeData] = useState<TreeItem[]>([]);
-  const [ruleList, setRuleList] = useState<RuleInfo[]>([]);
   const [tableData, setTableData] = useState<TableDataItem[]>([]);
   const [searchText, setSearchText] = useState<string>('');
   const [objects, setObjects] = useState<ObjectItem[]>([]);
@@ -272,7 +251,6 @@ const Asset = () => {
   useEffect(() => {
     if (objectId) {
       getAssetInsts(objectId);
-      getRuleList(objectId);
     }
   }, [objectId]);
 
@@ -290,7 +268,6 @@ const Asset = () => {
     timerRef.current = setInterval(() => {
       getObjects('timer');
       getAssetInsts(objectId, 'timer');
-      getRuleList(objectId, 'timer');
     }, frequence);
     return () => {
       clearTimer();
@@ -306,7 +283,6 @@ const Asset = () => {
   const onRefresh = () => {
     getObjects();
     getAssetInsts(objectId);
-    getRuleList(objectId);
   };
 
   const clearTimer = () => {
@@ -320,7 +296,6 @@ const Asset = () => {
 
   const handleObjectChange = (id: string) => {
     setTableData([]);
-    setRuleList([]);
     setObjectId(id);
   };
 
@@ -329,19 +304,6 @@ const Asset = () => {
       return `${row.collect_type}(${row.config_type})`;
     }
     return row.collect_type || '--';
-  };
-
-  const openRuleModal = (type: string, row = {}) => {
-    const title: string = t(
-      type === 'add'
-        ? 'monitor.integrations.addRule'
-        : 'monitor.integrations.editRule'
-    );
-    ruleRef.current?.showModal({
-      title,
-      type,
-      form: row,
-    });
   };
 
   const openConfigModal = (row = {}) => {
@@ -405,19 +367,6 @@ const Asset = () => {
     }
   };
 
-  const getRuleList = async (objectId: React.Key, type?: string) => {
-    try {
-      setRuleLoading(type !== 'timer');
-      const params = {
-        monitor_object_id: objectId,
-      };
-      const data = await getInstanceGroupRule(params);
-      setRuleList(data || []);
-    } finally {
-      setRuleLoading(false);
-    }
-  };
-
   const getObjects = async (type?: string) => {
     try {
       setTreeLoading(type !== 'timer');
@@ -455,18 +404,6 @@ const Asset = () => {
       return acc;
     }, {} as Record<string, TreeItem>);
     return Object.values(groupedData);
-  };
-
-  const operateRule = () => {
-    getRuleList(objectId);
-  };
-
-  const showDeleteConfirm = (row: RuleInfo) => {
-    deleteModalRef.current?.showModal({
-      title: t('common.prompt'),
-      form: row as Record<string, unknown>,
-      type: 'delete',
-    });
   };
 
   const deleteInstConfirm = async (row: any) => {
@@ -622,109 +559,7 @@ const Asset = () => {
           rowSelection={rowSelection}
         ></CustomTable>
       </div>
-      <Spin spinning={ruleLoading}>
-        <div className={assetStyle.rule}>
-          <div className={`${assetStyle.ruleTips} relative`}>
-            {t('monitor.integrations.rule')}
-            <Tooltip placement="top" title={t('monitor.integrations.ruleTips')}>
-              <div
-                className="absolute cursor-pointer"
-                style={{
-                  top: '-3px',
-                  right: '4px',
-                }}
-              >
-                <Icon
-                  type="a-shuoming2"
-                  className="text-[14px] text-[var(--color-text-3)]"
-                />
-              </div>
-            </Tooltip>
-          </div>
-          <ul className={assetStyle.ruleList}>
-            <li onClick={() => openRuleModal('add')}>
-              <Permission
-                requiredPermissions={['Edit']}
-                className={`${assetStyle.ruleItem} ${assetStyle.add} shadow-sm rounded-sm`}
-              >
-                <PlusOutlined />
-              </Permission>
-            </li>
-            {ruleList.map((item) => (
-              <li
-                key={item.id}
-                className={`${assetStyle.ruleItem} shadow-sm rounded-sm`}
-              >
-                <div className={assetStyle.editItem}>
-                  <Icon
-                    className={assetStyle.icon}
-                    type={
-                      item.type === 'condition' ? 'shaixuantiaojian' : 'xuanze'
-                    }
-                  />
-                  <span title={item.name} className={assetStyle.ruleName}>
-                    {item.name}
-                  </span>
-                  <div className={assetStyle.operate}>
-                    <Dropdown
-                      menu={{
-                        items: [
-                          {
-                            key: 'edit',
-                            label: (
-                              <Permission requiredPermissions={['Edit']}>
-                                <a
-                                  className="text-[12px]"
-                                  target="_blank"
-                                  rel="noopener noreferrer"
-                                  onClick={() => openRuleModal('edit', item)}
-                                >
-                                  {t('common.edit')}
-                                </a>
-                              </Permission>
-                            ),
-                          },
-                          {
-                            key: 'delete',
-                            label: (
-                              <Permission requiredPermissions={['Delete']}>
-                                <a
-                                  className="text-[12px]"
-                                  target="_blank"
-                                  rel="noopener noreferrer"
-                                  onClick={() => showDeleteConfirm(item)}
-                                >
-                                  {t('common.delete')}
-                                </a>
-                              </Permission>
-                            ),
-                          },
-                        ],
-                      }}
-                    >
-                      <div>
-                        <Icon
-                          className={assetStyle.moreIcon}
-                          type="sangedian-copy"
-                        />
-                      </div>
-                    </Dropdown>
-                  </div>
-                </div>
-              </li>
-            ))}
-          </ul>
-        </div>
-      </Spin>
-      <RuleModal
-        ref={ruleRef}
-        monitorObject={objectId}
-        groupList={organizationList}
-        objects={objects}
-        onSuccess={operateRule}
-      />
       <EditConfig ref={configRef} onSuccess={() => getAssetInsts(objectId)} />
-      <DeleteRule ref={deleteModalRef} onSuccess={operateRule} />
       <EditInstance
         ref={instanceRef}
         organizationList={organizationList}

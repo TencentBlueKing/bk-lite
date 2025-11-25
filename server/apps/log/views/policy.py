@@ -540,6 +540,123 @@ class AlertViewSet(viewsets.ModelViewSet):
 
         return result, time_range
 
+    @action(methods=['get'], detail=False, url_path='snapshots/(?P<alert_id>[^/.]+)')
+    def get_snapshots(self, request, alert_id):
+        """根据告警ID查询快照数据
+
+        Args:
+            alert_id: 告警ID
+
+        Returns:
+            {
+                "alert_info": {
+                    "id": "xxx",
+                    "policy_id": 123,
+                    "source_id": "policy_123",
+                    "status": "new",
+                    "level": "error",
+                    "start_event_time": "2025-11-19T...",
+                    "end_event_time": "2025-11-19T...",
+                },
+                "snapshots": [
+                    {
+                        "type": "event",
+                        "event_id": "xxx",
+                        "event_time": "2025-11-19T...",
+                        "snapshot_time": "2025-11-19T...",
+                        "raw_data": {...}
+                    },
+                    ...
+                ]
+            }
+        """
+        from apps.log.models.policy import AlertSnapshot
+        from apps.core.logger import logger
+
+        try:
+            # 1. 根据告警ID获取告警对象
+            alert_obj = Alert.objects.select_related('policy', 'collect_type').get(id=alert_id)
+        except Alert.DoesNotExist:
+            return WebUtils.response_error("告警不存在", status_code=404)
+
+        # 2. 权限校验 - 验证用户是否有权限访问该告警所属的策略
+        try:
+            collect_type_id = str(alert_obj.collect_type_id)
+            permission = get_permission_rules(
+                request.user,
+                request.COOKIES.get("current_team"),
+                "log",
+                f"{PermissionConstants.POLICY_MODULE}.{collect_type_id}",
+            )
+
+            # 检查是否有权限访问该策略
+            policy_qs = permission_filter(
+                Policy,
+                permission,
+                team_key="policyorganization__organization__in",
+                id_key="id__in"
+            )
+
+            if not policy_qs.filter(id=alert_obj.policy_id).exists():
+                return WebUtils.response_error("无权限访问该告警", status_code=403)
+
+        except Exception as e:
+            logger.error(f"Permission check failed for alert {alert_id}: {e}")
+            return WebUtils.response_error("权限校验失败", status_code=403)
+
+        # 3. 查询该告警的快照记录
+        try:
+            snapshot_obj = AlertSnapshot.objects.get(alert_id=alert_obj.id)
+        except AlertSnapshot.DoesNotExist:
+            # 快照不存在，返回空快照列表
+            return WebUtils.response_success({
+                'alert_info': {
+                    'id': alert_obj.id,
+                    'policy_id': alert_obj.policy_id,
+                    'source_id': alert_obj.source_id,
+                    'status': alert_obj.status,
+                    'level': alert_obj.level,
+                    'content': alert_obj.content,
+                    'start_event_time': alert_obj.start_event_time,
+                    'end_event_time': alert_obj.end_event_time,
+                },
+                'snapshots': []
+            })
+
+        # 4. 从 S3 加载快照数据（S3JSONField 自动处理）
+        try:
+            snapshots_data = snapshot_obj.snapshots  # 自动从 S3 下载并解析
+            # 如果 S3 加载失败返回 None，使用空列表
+            if snapshots_data is None:
+                snapshots_data = []
+        except Exception as e:
+            # S3 读取异常时记录日志并返回空列表
+            logger.error(f"Failed to load snapshots from S3 for alert {alert_id}: {e}")
+            snapshots_data = []
+
+        # 5. 返回快照数据
+        return WebUtils.response_success({
+            'alert_info': {
+                'id': alert_obj.id,
+                'policy_id': alert_obj.policy_id,
+                'source_id': alert_obj.source_id,
+                'status': alert_obj.status,
+                'level': alert_obj.level,
+                'content': alert_obj.content,
+                'value': alert_obj.value,
+                'start_event_time': alert_obj.start_event_time,
+                'end_event_time': alert_obj.end_event_time,
+                'created_at': alert_obj.created_at,
+                'updated_at': alert_obj.updated_at,
+            },
+            'snapshot_info': {
+                'snapshot_count': len(snapshots_data),
+                'created_at': snapshot_obj.created_at,
+                'updated_at': snapshot_obj.updated_at,
+            },
+            'snapshots': snapshots_data,
+        })
+
 
 class EventViewSet(viewsets.ReadOnlyModelViewSet):
     queryset = Event.objects.all()
@@ -564,7 +681,7 @@ class EventRawDataViewSet(viewsets.ReadOnlyModelViewSet):
     def rawdata_list_by_event_id(self, request):
         """
         根据事件ID获取原始数据
-        
+
         由于每个事件只对应一条原始数据记录，所以直接返回对应的数据，无需分页
 
         URL: /api/event-raw-data/by_event_id/?event_id=xxx

@@ -11,3 +11,9 @@ type ExecuteResponse struct {
 	Success    bool   `json:"success"`
 	Error      string `json:"error,omitempty"` // 添加错误字段，omitempty表示为空时不序列化
 }
+
+type HealthCheckResponse struct {
+	Status     string `json:"status"` // "ok"
+	InstanceId string `json:"instance_id"`
+	Timestamp  string `json:"timestamp"`
+}

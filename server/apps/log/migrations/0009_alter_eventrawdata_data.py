@@ -15,10 +15,10 @@ class Migration(migrations.Migration):
             model_name='eventrawdata',
             name='data',
             field=apps.core.fields.s3_json_field.S3JSONField(
-                bucket_name='log-alert-raw-data',
-                compressed=True,
-                help_text='自动压缩并存储到 MinIO/S3',
-                max_length=500,
+                bucket_name='log-alert-raw-data', 
+                compressed=True, 
+                help_text='自动压缩并存储到 MinIO/S3', 
+                max_length=500, 
                 upload_to=apps.core.fields.s3_json_field.s3_json_upload_path,  # 修复：使用全局函数
                 verbose_name='原始数据'
             ),

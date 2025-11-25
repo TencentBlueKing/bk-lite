@@ -19,9 +19,7 @@ import { useMinioBkpullConfig } from './objects/middleware/minio';
 import { useJettyJmxConfig } from './objects/middleware/jetty';
 import { useRabbitMQConfig } from './objects/middleware/rabbitMQ';
 import { useRouterConfig } from './objects/networkDevice/router';
-import { useScanningDeviceConfig } from './objects/networkDevice/scanningDevice';
 import { useLoadbalanceConfig } from './objects/networkDevice/loadbalance';
-import { useDetectionDeviceConfig } from './objects/networkDevice/detectionDevice';
 import { useSwitchConfig } from './objects/networkDevice/switch';
 import { useFirewallConfig } from './objects/networkDevice/firewall';
 import { useVCenterConfig } from './objects/vmWare/vCenter';
@@ -29,7 +27,6 @@ import { useDataStorageConfig } from './objects/vmWare/dataStorage';
 import { useEsxiConfig } from './objects/vmWare/esxi';
 import { useVmConfig } from './objects/vmWare/vm';
 import { useDockerConfig } from './objects/containerManagement/docker';
-import { useBastionHostConfig } from './objects/hardwareDevice/bastionHost';
 import { useStorageConfig } from './objects/hardwareDevice/storage';
 import { useHostConfig } from './objects/os/host';
 import { useWebsiteConfig } from './objects/web/website';
@@ -74,9 +71,7 @@ export const useMonitorConfig = () => {
   const jettyJmxConfig = useJettyJmxConfig();
   const rabbitMQConfig = useRabbitMQConfig();
   const routerConfig = useRouterConfig();
-  const scanningDeviceConfig = useScanningDeviceConfig();
   const loadbalanceConfig = useLoadbalanceConfig();
-  const detectionDeviceConfig = useDetectionDeviceConfig();
   const switchConfig = useSwitchConfig();
   const firewallConfig = useFirewallConfig();
   const dataStorageConfig = useDataStorageConfig();
@@ -84,7 +79,6 @@ export const useMonitorConfig = () => {
   const esxiConfig = useEsxiConfig();
   const vmConfig = useVmConfig();
   const dockerConfig = useDockerConfig();
-  const bastionHostConfig = useBastionHostConfig();
   const storageConfig = useStorageConfig();
   const hostConfig = useHostConfig();
   const websiteConfig = useWebsiteConfig();
@@ -130,14 +124,11 @@ export const useMonitorConfig = () => {
       Jetty: jettyJmxConfig,
       RabbitMQ: rabbitMQConfig,
       Router: routerConfig,
-      'Scanning Device': scanningDeviceConfig,
       Loadbalance: loadbalanceConfig,
-      'Detection Device': detectionDeviceConfig,
       Switch: switchConfig,
       Firewall: firewallConfig,
       vCenter: vCenterConfig,
       Docker: dockerConfig,
-      'Bastion Host': bastionHostConfig,
       Storage: storageConfig,
       Host: hostConfig,
       Website: websiteConfig,

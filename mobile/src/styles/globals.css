@@ -66,6 +66,18 @@ body {
   scrollbar-color: var(--color-fill-4) transparent;
 }
 
+/* 隐藏滚动条但保持滚动功能 */
+.scrollbar-hide {
+  -ms-overflow-style: none !important;
+  scrollbar-width: none !important;
+}
+
+.scrollbar-hide::-webkit-scrollbar {
+  display: none !important;
+  width: 0 !important;
+  height: 0 !important;
+}
+
 /* ========== 全局 body 样式 ========== */
 
 html,

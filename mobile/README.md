@@ -73,13 +73,23 @@ pnpm build:android-all      # 所有架构 APK (aarch64, armv7, i686, x86_64)
 pnpm build:aab              # AAB 格式（Google Play 上架）
 ```
 
+> **说明**：
+> - 构建脚本会自动执行 `pnpm build` 来构建 Next.js（通过 `tauri.conf.json` 的 `beforeBuildCommand`）
+> - 无需手动先运行 `pnpm build`
+> - 构建命令已自动配置 Android NDK 路径，无需手动设置环境变量
+
 **APK 输出路径：**
 - Debug: `src-tauri/gen/android/app/build/outputs/apk/universal/debug/app-universal-debug.apk`
 - Release: `src-tauri/gen/android/app/build/outputs/apk/universal/release/app-universal-release.apk` **(已签名)**
 
+> **重要提示**：
+> - 如果遇到 "无法连接" 错误，请确保没有其他开发服务器在运行
+> - 构建过程中 Tauri 会自动处理 Next.js 的构建，请勿手动干预
+
 > **注意**：
-> - 构建命令已自动配置 Android NDK 路径，无需手动设置环境变量
 > - Release APK 会自动使用 `keystore.properties` 中的签名配置
+> - 构建前确保已关闭所有开发服务器（`pnpm dev` 等）
+> - Tauri 会通过 `tauri.conf.json` 的 `beforeBuildCommand` 自动构建 Next.js
 
 ## 核心特性
 

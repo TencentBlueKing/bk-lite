@@ -10,6 +10,7 @@ import type { Pagination, TableDataItem } from '@/app/node-manager/types';
 import CollectorModal from '@/app/node-manager/components/sidecar/collectorModal';
 import { ModalRef } from '@/app/node-manager/types';
 import PermissionWrapper from '@/components/permission';
+import { OPERATE_SYSTEMS } from '@/app/node-manager/constants/cloudregion';
 
 const Collectordetail = () => {
   const { t } = useTranslation();
@@ -59,7 +60,9 @@ const Collectordetail = () => {
       setTableLoading(true);
       const param = {
         object: info.name,
-        os: info.system[0],
+        os:
+          OPERATE_SYSTEMS.find((item) => item.label === info.system[0])
+            ?.value || '',
         page: pagination.current,
         page_size: pagination.pageSize,
       };

@@ -1,5 +1,5 @@
 import React, { useState, useCallback, useMemo, useEffect } from 'react';
-import { Dropdown, Space, Avatar, Menu, MenuProps, message, Checkbox, Tree } from 'antd';
+import { Dropdown, Space, Avatar, MenuProps, message, Checkbox, Tree } from 'antd';
 import type { DataNode } from 'antd/lib/tree';
 import { usePathname, useRouter } from 'next/navigation';
 import { useSession, signOut } from 'next-auth/react';
@@ -11,6 +11,7 @@ import { useUserInfoContext } from '@/context/userInfo';
 import { clearAuthToken } from '@/utils/crossDomainAuth';
 import Cookies from 'js-cookie';
 import type { Group } from '@/types/index';
+import UserInformation from './userInformation'
 
 // 将 Group 转换为 Tree DataNode
 const convertGroupsToTreeData = (groups: Group[], selectedGroupId: string | undefined): DataNode[] => {
@@ -32,6 +33,7 @@ const UserInfo: React.FC = () => {
   const { groupTree, selectedGroup, setSelectedGroup, displayName, isSuperUser } = useUserInfoContext();
 
   const [versionVisible, setVersionVisible] = useState<boolean>(false);
+  const [userInfoVisible, setUserInfoVisible] = useState<boolean>(false);
   const [dropdownVisible, setDropdownVisible] = useState<boolean>(false);
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [includeChildren, setIncludeChildren] = useState<boolean>(false);
@@ -202,6 +204,11 @@ const UserInfo: React.FC = () => {
       },
       { type: 'divider' },
       {
+        key: 'userInfo',
+        label: t('common.userInfo')
+      },
+      { type: 'divider' },
+      {
         key: 'logout',
         label: t('common.logout'),
         disabled: isLoading,
@@ -213,28 +220,25 @@ const UserInfo: React.FC = () => {
 
   const handleMenuClick = ({ key }: any) => {
     if (key === 'version') setVersionVisible(true);
+    if (key === 'userInfo') setUserInfoVisible(true);
     if (key === 'logout') federatedLogout();
     setDropdownVisible(false);
   };
-
-  const userMenu = (
-    <Menu
-      className="min-w-[180px]"
-      onClick={handleMenuClick}
-      items={dropdownItems}
-      subMenuOpenDelay={0.1}
-      subMenuCloseDelay={0.1}
-    />
-  );
 
   return (
     <div className='flex items-center'>
       {username && (
         <Dropdown
-          overlay={userMenu}
+          menu={{
+            className: "min-w-[180px]",
+            onClick: handleMenuClick,
+            items: dropdownItems,
+            subMenuOpenDelay: 0.1,
+            subMenuCloseDelay: 0.1,
+          }}
           trigger={['click']}
-          visible={dropdownVisible}
-          onVisibleChange={setDropdownVisible}
+          open={dropdownVisible}
+          onOpenChange={setDropdownVisible}
         >
           <a className='cursor-pointer' onClick={(e) => e.preventDefault()}>
             <Space className='text-sm'>
@@ -248,6 +252,7 @@ const UserInfo: React.FC = () => {
         </Dropdown>
       )}
       <VersionModal visible={versionVisible} onClose={() => setVersionVisible(false)} />
+      <UserInformation visible={userInfoVisible} onClose={() => setUserInfoVisible(false)} />
     </div>
   );
 };

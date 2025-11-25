@@ -22,11 +22,7 @@ goto parse_args
 echo 📱 构建 Android APK (%BUILD_TYPE%)
 echo.
 
-REM 1. 构建 Next.js
-call pnpm run build
-if errorlevel 1 exit /b 1
-
-REM 2. 加载环境变量（从 .android-env.sh 解析）
+REM 1. 加载环境变量（从 .android-env.sh 解析）
 if exist ".android-env.sh" (
   for /f "usebackq tokens=1,2 delims== " %%a in (".android-env.sh") do (
     set line=%%a
@@ -41,7 +37,7 @@ if exist ".android-env.sh" (
   )
 )
 
-REM 3. 初始化 Android 项目（如果不存在）
+REM 2. 初始化 Android 项目（如果不存在）
 if not exist "src-tauri\gen\android" (
   echo.
   echo ⚙️  初始化 Android 项目...
@@ -49,7 +45,7 @@ if not exist "src-tauri\gen\android" (
   if errorlevel 1 exit /b 1
 )
 
-REM 4. 复制自定义 MainActivity（核心修复）
+REM 3. 复制自定义 MainActivity（核心修复）
 set "CUSTOM_MAIN=src-tauri\android\app\src\main\java\org\bklite\mobile\MainActivity.kt"
 set "TARGET_MAIN=src-tauri\gen\android\app\src\main\java\org\bklite\mobile\MainActivity.kt"
 
@@ -61,7 +57,7 @@ if exist "%CUSTOM_MAIN%" (
   echo ✅ MainActivity 已更新
 )
 
-REM 5. 复制自定义 Android 图标
+REM 4. 复制自定义 Android 图标
 set "CUSTOM_ICONS=src-tauri\icons\android\res"
 set "TARGET_RES=src-tauri\gen\android\app\src\main\res"
 
@@ -74,7 +70,7 @@ if exist "%CUSTOM_ICONS%" (
   )
 )
 
-REM 6. 构建 APK
+REM 5. 构建 APK
 if "%BUILD_AAB%"=="true" (
   call pnpm tauri android build --aab
 ) else if "%BUILD_TYPE%"=="release" (
@@ -101,7 +97,7 @@ if "%BUILD_AAB%"=="true" (
   echo 📦 APK 位置: src-tauri\gen\android\app\build\outputs\apk\
 )
 
-REM 7. 自动安装（如果指定了 --install 参数）
+REM 6. 自动安装（如果指定了 --install 参数）
 if "%AUTO_INSTALL%"=="true" (
   if not "%BUILD_AAB%"=="true" (
     echo.

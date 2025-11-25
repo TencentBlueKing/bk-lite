@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useCallback } from 'react';
-import { Input, Spin, Dropdown, Tag, Button, Empty, Select, Space } from 'antd';
+import { Input, Spin, Dropdown, Tag, Button, Empty, Select, Space, Tooltip } from 'antd';
 import { useTranslation } from '@/utils/i18n';
 import Icon from '@/components/icon';
 import styles from './index.module.scss';
@@ -74,7 +74,7 @@ const EntityList = <T,>({
   }, [openModal, t]);
 
   const renderCard = useCallback((item: T) => {
-    const { id, description, icon, tagList } = item as any;
+    const { id, description, icon, tagList, is_build_in } = item as any;
     const name = (item as any)[nameField];
     const singleButtonAction = singleAction ? singleAction(item) : null;
     const isSingleButtonAction = singleButtonAction && singleActionType === 'button';
@@ -126,14 +126,31 @@ const EntityList = <T,>({
             {descSlot(item)}
           </div>
         )}
-        {(tagList && tagList.length > 0) || infoText ? (
+        {(tagList && tagList.length > 0) || infoText || is_build_in !== undefined ? (
           <div className="mt-2 flex justify-between items-end">
-            <div>
-              {tagList && tagList.length > 0 && tagList.map((t: any, idx: number) => (
-                <Tag key={idx} className="mr-1 font-mini">
-                  {t}
+            <div className="flex flex-wrap gap-1">
+              {tagList && tagList.length > 0 && tagList.map((t: any, idx: number) => {
+                // 支持带color的tag和提示
+                if (typeof t === 'object' && t.name) {
+                  return (
+                    <Tooltip key={idx} title={t.tooltip}>
+                      <Tag color={t.color} className="mr-1 font-mini">
+                        {t.name}
+                      </Tag>
+                    </Tooltip>
+                  );
+                }
+                return (
+                  <Tag key={idx} className="mr-1 font-mini">
+                    {t}
+                  </Tag>
+                );
+              })}
+              {is_build_in !== undefined && (
+                <Tag color={is_build_in ? 'blue' : 'green'} className="mr-1 font-mini">
+                  {is_build_in ? t('common.builtin') : t('common.mcp')}
                 </Tag>
-              ))}
+              )}
             </div>
             {infoText && <span className='text-[var(--color-text-4)] font-mini'>{infoText}</span>}
           </div>

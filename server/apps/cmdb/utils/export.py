@@ -5,7 +5,7 @@ from openpyxl.styles import PatternFill
 from openpyxl.utils import get_column_letter
 from openpyxl.worksheet.datavalidation import DataValidation
 
-from apps.cmdb.constants import ENUM, ORGANIZATION, USER, ASSOCIATION_TYPE, ATTR_TYPE_MAP
+from apps.cmdb.constants.constants import ENUM, ORGANIZATION, USER, ASSOCIATION_TYPE, ATTR_TYPE_MAP
 from apps.cmdb.services.model import ModelManage
 
 
@@ -105,7 +105,7 @@ class Export:
         col = get_column_letter(index)
         last_row = len(filed_sheet["A"])
         dv = DataValidation(type="list", formula1=f"='{filed_sheet.title}'!$A$1:$A{last_row}")
-        dv.sqref = f"{col}3:{col}999"
+        dv.sqref = f"{col}4:{col}999"
 
         return dv
 

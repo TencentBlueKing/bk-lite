@@ -20,82 +20,8 @@
         }
     }
 
-    .rule {
-        width: 210px;
-        min-width: 210px;
-        height: calc(100vh - 146px);
-        padding: 20px;
-        background: var(--color-bg-1);
-        margin-left: 10px;
-
-        .ruleTips {
-            width: 50px;
-            position: relative;
-            font-size: 14px;
-        }
-
-        .ruleList {
-            font-size: 12px;
-
-            .ruleItem {
-                width: 100%;
-                height: 80px;
-                border: 1px solid var(--color-border-1);
-                margin-top: 20px;
-
-                .editItem {
-                    position: relative;
-                    display: flex;
-                    height: 100%;
-                    align-items: center;
-                    padding: 20px;
-
-                    .icon {
-                        min-width: 36px;
-                        font-size: 36px;
-                        margin-right: 10px;
-                    }
-
-                    .ruleName {
-                        margin-right: 10px;
-                        display: -webkit-box;
-                        -webkit-box-orient: vertical;
-                        -webkit-line-clamp: 3;
-                        overflow: hidden;
-                        text-overflow: ellipsis;
-                    }
-
-                    .operate {
-                        position: absolute;
-                        top: 10px;
-                        right: 10px;
-
-                        .moreIcon {
-                            font-size: 18px;
-                            cursor: pointer;
-                        }
-
-                        :global {
-                            .ant-btn-icon-only {
-                                width: auto;
-                                transform: scale(0.8);
-                            }
-                        }
-                    }
-                }
-            }
-
-            .add {
-                display: flex !important;
-                align-items: center;
-                justify-content: center;
-                cursor: pointer;
-            }
-        }
-    }
-
     .table {
-        width: calc(100vw - 470px);
+        width: calc(100vw - 250px);
         background: var(--color-bg-1);
         height: calc(100vh - 146px);
         padding: 20px;

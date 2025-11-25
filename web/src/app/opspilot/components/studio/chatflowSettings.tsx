@@ -19,6 +19,7 @@ const nodeCategories = [
       { type: 'celery', icon: 'a-icon-dingshichufa1x', labelKey: 'chatflow.celery' },
       { type: 'restful', icon: 'RESTfulAPI', labelKey: 'chatflow.restful' },
       { type: 'openai', icon: 'icon-test2', labelKey: 'chatflow.openai' },
+      { type: 'agui', icon: 'huifu-copy', labelKey: 'chatflow.agui' },
       { type: 'enterprise_wechat', icon: 'qiwei2', labelKey: 'chatflow.enterpriseWechat' },
       { type: 'dingtalk', icon: 'dingding', labelKey: 'chatflow.dingtalk' },
       { type: 'wechat_official', icon: 'weixingongzhonghao', labelKey: 'chatflow.wechatOfficial' },

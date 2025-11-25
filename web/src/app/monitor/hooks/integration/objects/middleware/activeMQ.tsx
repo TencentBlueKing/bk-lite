@@ -1,13 +1,10 @@
 import { useActiveMQTelegraf } from '../../plugins/middleware/activeMQTelegraf';
-import { useActiveMQJmx } from '../../plugins/middleware/activeMQJmx';
 
 export const useActiveMQConfig = () => {
   const activeMQPlugin = useActiveMQTelegraf();
-  const activeMQJmxPlugin = useActiveMQJmx();
 
   const plugins = {
     ActiveMQ: activeMQPlugin,
-    'ActiveMQ-JMX': activeMQJmxPlugin,
   };
 
   return {

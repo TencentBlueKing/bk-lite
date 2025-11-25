@@ -7,7 +7,7 @@ class NodeSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Node
-        fields = ['id', 'name', 'ip', 'operating_system', 'status', 'cloud_region', 'updated_at', 'organization', 'install_method']
+        fields = ['id', 'name', 'ip', 'operating_system', 'status', 'cloud_region', 'updated_at', 'organization', 'install_method', 'node_type']
 
     def get_organization(self, obj):
         return [rel.organization for rel in obj.nodeorganization_set.all()]
