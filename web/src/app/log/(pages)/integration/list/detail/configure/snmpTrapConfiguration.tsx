@@ -30,7 +30,7 @@ const SnmpTrapConfiguration: React.FC = () => {
         cloud_region_id: 0,
         page: 1,
         page_size: -1,
-        is_container: false,
+        is_container: true,
         is_active: true,
       });
       const nodes = data.nodes || [];
