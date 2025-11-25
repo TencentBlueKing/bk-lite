@@ -27,12 +27,12 @@ RUN if [ -n "$NEXUS_NODEJS_REPOSITY" ]; then \
 
 ADD . .
 
-RUN cat > pnpm-workspace.yaml <<EOF
+RUN cat > pnpm-workspace.yaml <<'EOF'
 packages:
   - 'src/app/*'
 EOF
 
-RUN cat > .env.local <<EOF
+RUN cat > .env.local <<'EOF'
 NEXTAPI_URL="http://bklite-server:8000"
 EOF
 
