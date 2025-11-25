@@ -135,8 +135,21 @@ interface SubProps {
   collectors: TableDataItem[];
 }
 
+interface ServiceItem {
+  id: number;
+  name: string;
+  status: 'uninstall' | 'normal' | 'error';
+  description: string;
+}
+
 interface CloudRegionItem extends BaseEntityWithDescription {
   icon: string;
+  services?: ServiceItem[];
+  tagList?: Array<{
+    name: string;
+    color: string;
+    tooltip: string;
+  }>;
 }
 
 interface VarSourceItem extends Omit<BaseEntityWithDescription, 'id'> {
@@ -184,6 +197,14 @@ interface ConfigListParams {
   ids?: string[];
 }
 
+interface DeployCloudRegionParams {
+  ip: string;
+  port: number;
+  username: string;
+  password: string;
+  cloud_region_id: number;
+}
+
 export type {
   BaseEntity,
   BaseEntityWithDescription,
@@ -200,6 +221,7 @@ export type {
   ConfigData,
   SubRef,
   SubProps,
+  ServiceItem,
   CloudRegionItem,
   VarSourceItem,
   VarResItem,
@@ -210,4 +232,5 @@ export type {
   SubConfigHookParams,
   ConfigParams,
   ConfigListParams,
+  DeployCloudRegionParams,
 };
