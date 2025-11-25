@@ -14,19 +14,19 @@ export const createExecStatusMap = (
 ): ExecStatusMapType => ({
   add: {
     color: 'success',
-    text: t('Collection.execStatus.add'),
+    text: t('Collection.syncStatus.add'),
   },
   update: {
     color: 'processing',
-    text: t('Collection.execStatus.update'),
+    text: t('Collection.syncStatus.update'),
   },
   association: {
     color: 'processing',
-    text: t('Collection.execStatus.association'),
+    text: t('Collection.syncStatus.association'),
   },
   delete: {
     color: 'error',
-    text: t('Collection.execStatus.delete'),
+    text: t('Collection.syncStatus.delete'),
   },
 });
 
@@ -45,35 +45,35 @@ export type ExecStatusType = (typeof EXEC_STATUS)[keyof typeof EXEC_STATUS];
 
 export const getExecStatusConfig = (t: (key: string) => string) => ({
   [EXEC_STATUS.UNEXECUTED]: {
-    text: t('Collection.execStatus.unexecuted'),
+    text: t('Collection.syncStatus.unexecuted'),
     color: 'var(--color-text-3)',
   },
   [EXEC_STATUS.COLLECTING]: {
-    text: t('Collection.execStatus.collecting'),
+    text: t('Collection.syncStatus.collecting'),
     color: 'var(--color-primary)',
   },
   [EXEC_STATUS.SUCCESS]: {
-    text: t('Collection.execStatus.success'),
+    text: t('Collection.syncStatus.success'),
     color: '#4ACF88',
   },
   [EXEC_STATUS.ERROR]: {
-    text: t('Collection.execStatus.error'),
+    text: t('Collection.syncStatus.error'),
     color: '#FF6A57',
   },
   [EXEC_STATUS.TIMEOUT]: {
-    text: t('Collection.execStatus.timeout'),
+    text: t('Collection.syncStatus.timeout'),
     color: '#FF6A57',
   },
   [EXEC_STATUS.WRITING]: {
-    text: t('Collection.execStatus.writing'),
+    text: t('Collection.syncStatus.writing'),
     color: 'var(--color-primary)',
   },
   [EXEC_STATUS.FORCE_STOP]: {
-    text: t('Collection.execStatus.forceStop'),
+    text: t('Collection.syncStatus.forceStop'),
     color: '#FF6A57',
   },
   [EXEC_STATUS.PENDING_APPROVAL]: {
-    text: t('Collection.execStatus.pendingApproval'),
+    text: t('Collection.syncStatus.pendingApproval'),
     color: '#F7BA1E',
   },
 });
@@ -365,7 +365,7 @@ export const createTaskValidationRules = (context: ValidationContext) => {
 export const CREATE_TASK_DETAIL_CONFIG = (t: (key: string) => string) => ({
   add: {
     count: 0,
-    label: t('Collection.execStatus.add'),
+    label: t('Collection.syncStatus.add'),
     alertType: 'warning',
     columns: [
       { title: '对象类型', dataIndex: 'model_id', width: 160 },
@@ -374,7 +374,7 @@ export const CREATE_TASK_DETAIL_CONFIG = (t: (key: string) => string) => ({
   },
   update: {
     count: 4,
-    label: t('Collection.execStatus.update'),
+    label: t('Collection.syncStatus.update'),
     alertType: 'warning',
     columns: [
       { title: '对象类型', dataIndex: 'model_id', width: 160 },
@@ -383,7 +383,7 @@ export const CREATE_TASK_DETAIL_CONFIG = (t: (key: string) => string) => ({
   },
   relation: {
     count: 0,
-    label: t('Collection.execStatus.association'),
+    label: t('Collection.syncStatus.association'),
     alertType: 'warning',
     columns: [
       { title: '源对象类型', dataIndex: 'src_model_id', width: 180 },
@@ -395,7 +395,7 @@ export const CREATE_TASK_DETAIL_CONFIG = (t: (key: string) => string) => ({
   },
   delete: {
     count: 3,
-    label: t('Collection.execStatus.delete'),
+    label: t('Collection.syncStatus.delete'),
     alertType: 'warning',
     columns: [
       { title: '对象类型', dataIndex: 'model_id', width: 160 },

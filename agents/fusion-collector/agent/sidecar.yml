@@ -22,3 +22,4 @@ tags:
 collector_binaries_accesslist:
   - "/opt/fusion-collectors/bin/*"
   - "/opt/fusion-collectors/bin/*/*"
+  - "/usr/sbin/snmptrapd"
