@@ -149,16 +149,15 @@
         "confirm": "Confirm",
         "cancel": "Cancel",
         "accessPoint": "Proxy",
-        "executing": "Executing",
-        "executeSuccess": "Execute Successfully!",
-        "executeFailed": "Execute Failed",
+        "syncSuccess": "Sync Successfully!",
+        "syncFailed": "Sync Failed",
         "ipRange": "IP Range",
         "chooseIp": "Choose IP",
         "chooseAsset": "Choose Asset",
         "everyMinute": "Every",
         "executeOnce": "Execute once",
         "port": "Port",
-        "execStatus": {
+        "syncStatus": {
             "add": "Add",
             "update": "Update",
             "association": "Associate",
@@ -206,15 +205,16 @@
         },
         "table": {
             "taskName": "Task Name",
-            "execStatus": "Execution Status",
+            "syncStatus": "Sync Status",
             "collectSummary": "Collection Summary",
             "creator": "Creator",
-            "execTime": "Execution Time",
+            "syncTime": "Sync Time",
             "actions": "Actions",
             "detail": "Detail",
-            "executeNow": "Execute Now",
+            "sync": "Sync",
             "modify": "Modify",
-            "delete": "Delete"
+            "delete": "Delete",
+            "syncing": "Syncing"
         },
         "taskDetail": {
             "title": "Task Detail",

@@ -141,7 +141,7 @@ const TaskTable: React.FC<TaskTableProps> = ({
         {isApprove ? (
           <>
             <Button type="primary" onClick={handleApprove}>
-              {t('Collection.execStatus.approval')}
+              {t('Collection.syncStatus.approval')}
             </Button>
             <Button onClick={onClose}>{t('common.cancel')}</Button>
           </>
@@ -216,12 +216,12 @@ const TaskDetail: React.FC<TaskDetailProps> = ({
       if (status === 'success') {
         return (
           <span className="text-green-500">
-            {t('Collection.execStatus.success')}
+            {t('Collection.syncStatus.success')}
           </span>
         );
       }
       return (
-        <span className="text-red-500">{t('Collection.execStatus.error')}</span>
+        <span className="text-red-500">{t('Collection.syncStatus.error')}</span>
       );
     },
   };
