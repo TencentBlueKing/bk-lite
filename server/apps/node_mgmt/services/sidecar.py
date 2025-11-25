@@ -158,23 +158,23 @@ class Sidecar:
         ]
         tags_data = format_tags_dynamic(request_data.get("tags", []), allowed_prefixes)
 
+        # 补充云区域关联
+        clouds = tags_data.get(ControllerConstants.CLOUD_TAG, [])
+        if clouds:
+            request_data.update(cloud_region_id=int(clouds[0]))
+
+        # 补充安装方法
+        install_methods = tags_data.get(ControllerConstants.INSTALL_METHOD_TAG, [])
+        if install_methods:
+            if install_methods[0] in [ControllerConstants.AUTO, ControllerConstants.MANUAL]:
+                request_data.update(install_method=install_methods[0])
+
+        # 补充节点类型
+        node_types = tags_data.get(ControllerConstants.NODE_TYPE_TAG, [])
+        if node_types:
+            request_data.update(node_type=node_types[0])
+
         if not node:
-
-            # 补充云区域关联
-            clouds = tags_data.get(ControllerConstants.CLOUD_TAG, [])
-            if clouds:
-                request_data.update(cloud_region_id=int(clouds[0]))
-
-            # 补充安装方法
-            install_methods = tags_data.get(ControllerConstants.INSTALL_METHOD_TAG, [])
-            if install_methods:
-                if install_methods[0] in [ControllerConstants.AUTO, ControllerConstants.MANUAL]:
-                    request_data.update(install_method=install_methods[0])
-
-            # 补充节点类型
-            node_types = tags_data.get(ControllerConstants.NODE_TYPE_TAG, [])
-            if node_types:
-                request_data.update(node_type=node_types[0])
 
             # 创建节点
             node = Node.objects.create(**request_data)
