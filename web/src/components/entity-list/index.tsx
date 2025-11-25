@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useCallback } from 'react';
-import { Input, Spin, Dropdown, Tag, Button, Empty, Select, Space } from 'antd';
+import { Input, Spin, Dropdown, Tag, Button, Empty, Select, Space, Tooltip } from 'antd';
 import { useTranslation } from '@/utils/i18n';
 import Icon from '@/components/icon';
 import styles from './index.module.scss';
@@ -129,11 +129,23 @@ const EntityList = <T,>({
         {(tagList && tagList.length > 0) || infoText || is_build_in !== undefined ? (
           <div className="mt-2 flex justify-between items-end">
             <div className="flex flex-wrap gap-1">
-              {tagList && tagList.length > 0 && tagList.map((t: any, idx: number) => (
-                <Tag key={idx} className="mr-1 font-mini">
-                  {t}
-                </Tag>
-              ))}
+              {tagList && tagList.length > 0 && tagList.map((t: any, idx: number) => {
+                // 支持带color的tag和提示
+                if (typeof t === 'object' && t.name) {
+                  return (
+                    <Tooltip key={idx} title={t.tooltip}>
+                      <Tag color={t.color} className="mr-1 font-mini">
+                        {t.name}
+                      </Tag>
+                    </Tooltip>
+                  );
+                }
+                return (
+                  <Tag key={idx} className="mr-1 font-mini">
+                    {t}
+                  </Tag>
+                );
+              })}
               {is_build_in !== undefined && (
                 <Tag color={is_build_in ? 'blue' : 'green'} className="mr-1 font-mini">
                   {is_build_in ? t('common.builtin') : t('common.mcp')}
