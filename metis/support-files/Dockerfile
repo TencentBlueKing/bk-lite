@@ -19,6 +19,11 @@ ADD . .
 RUN if [ -n "$NEXUS_PYTHON_REPOSITY" ]; then \
     echo "Setting pip index to: $NEXUS_PYTHON_REPOSITY"; \
     pip config set global.index-url "$NEXUS_PYTHON_REPOSITY"; \
+    if echo "$NEXUS_PYTHON_REPOSITY" | grep -q "^http://"; then \
+    TRUSTED_HOST=$(echo "$NEXUS_PYTHON_REPOSITY" | sed -E 's|^http://([^/:]+).*|\1|'); \
+    echo "Adding trusted host: $TRUSTED_HOST"; \
+    pip config set global.trusted-host "$TRUSTED_HOST"; \
+    fi; \
     else \
     echo "Using default pip index"; \
     fi
@@ -28,6 +33,11 @@ RUN pip install uv
 RUN if [ -n "$NEXUS_PYTHON_REPOSITY" ]; then \
     echo "Setting uv index to: $NEXUS_PYTHON_REPOSITY"; \
     uv pip config set global.index-url "$NEXUS_PYTHON_REPOSITY"; \
+    if echo "$NEXUS_PYTHON_REPOSITY" | grep -q "^http://"; then \
+    TRUSTED_HOST=$(echo "$NEXUS_PYTHON_REPOSITY" | sed -E 's|^http://([^/:]+).*|\1|'); \
+    echo "Adding uv trusted host: $TRUSTED_HOST"; \
+    uv pip config set global.trusted-host "$TRUSTED_HOST"; \
+    fi; \
     else \
     echo "Using default uv index"; \
     fi
