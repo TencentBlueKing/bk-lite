@@ -144,15 +144,6 @@ def get_department_hierarchy(department_id, department_list):
     return result[::-1]
 
 
-def get_client_ip(request):
-    x_forwarded_for = request.META.get("HTTP_X_FORWARDED_FOR")
-    if x_forwarded_for:
-        ip = x_forwarded_for.split(",")[-1].strip()
-    else:
-        ip = request.META.get("REMOTE_ADDR")
-    return ip
-
-
 def insert_skill_log(current_ip, skill_id, response_detail, request_detail, state=True, user_message=""):
     if skill_id is None:
         return

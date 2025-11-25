@@ -67,11 +67,8 @@ class KnowledgeBase(MaintainerInfo, TimeInfo):
     def knowledge_index_name(self):
         return f"knowledge_base_{self.id}"
 
-    def delete(self, *args, **kwargs):
-        from apps.opspilot.services.knowledge_search_service import KnowledgeSearchService
-
-        KnowledgeSearchService.delete_es_index(self.knowledge_index_name())
-        super().delete(*args, **kwargs)
+    # delete 方法已移除，使用 post_delete signal 处理 ES 索引清理
+    # 见 apps.opspilot.signals.knowledge_signals.cleanup_knowledge_base_es_index
 
 
 class KnowledgeDocument(MaintainerInfo, TimeInfo):
@@ -114,12 +111,8 @@ class KnowledgeDocument(MaintainerInfo, TimeInfo):
             self.instance_id = str(uuid.uuid4())
         super().save(*args, **kwargs)
 
-    def delete(self, *args, **kwargs):
-        from apps.opspilot.services.knowledge_search_service import KnowledgeSearchService
-
-        index_name = self.knowledge_base.knowledge_index_name()
-        KnowledgeSearchService.delete_es_content(index_name, self.id, self.name)
-        return super().delete(*args, **kwargs)  # 调用父类的delete方法来执行实际的删除操作
+    # delete 方法已移除，使用 post_delete signal 处理 ES 内容清理
+    # 见 apps.opspilot.signals.knowledge_signals.cleanup_knowledge_document_es_content
 
     class Meta:
         verbose_name = _("Knowledge Document")
@@ -251,11 +244,8 @@ class QAPairs(MaintainerInfo, TimeInfo):
     question_prompt = models.TextField(blank=True, null=True, verbose_name="问题提示词", default="")
     answer_prompt = models.TextField(blank=True, null=True, verbose_name="答案提示词", default="")
 
-    def delete(self, *args, **kwargs):
-        from apps.opspilot.utils.chunk_helper import ChunkHelper
-
-        ChunkHelper.delete_es_content(self.id)
-        return super().delete(*args, **kwargs)  # 调用父类的delete方法来执行实际的删除操作
+    # delete 方法已移除，使用 post_delete signal 处理 ES 内容清理
+    # 见 apps.opspilot.signals.knowledge_signals.cleanup_qa_pairs_es_content
 
 
 class KnowledgeGraph(MaintainerInfo, TimeInfo):

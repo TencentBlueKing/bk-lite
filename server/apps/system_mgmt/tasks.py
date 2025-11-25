@@ -2,7 +2,42 @@ from celery import shared_task
 
 from apps.core.logger import system_mgmt_logger as logger
 from apps.rpc.base import RpcClient
-from apps.system_mgmt.models import Group, LoginModule, User
+from apps.system_mgmt.models import ErrorLog, Group, LoginModule, User
+
+
+@shared_task(bind=True, max_retries=3, default_retry_delay=60)
+def write_error_log_async(self, username, app, module, error_message, domain):
+    """
+    异步写入错误日志到数据库
+
+    Args:
+        username: 用户名
+        app: 应用名称
+        module: 模块名称
+        error_message: 错误信息
+        domain: 域名
+
+    Returns:
+        dict: 执行结果
+    """
+    try:
+        ErrorLog.objects.create(
+            username=username,
+            app=app,
+            module=module,
+            error_message=error_message,
+            domain=domain,
+        )
+        logger.debug(f"Successfully logged error for {username}@{domain} in {app}/{module}")
+        return {"result": True, "message": "Error log written successfully"}
+    except Exception as exc:
+        logger.error(f"Failed to write error log: {str(exc)}")
+        # 重试机制：最多重试3次
+        try:
+            raise self.retry(exc=exc)
+        except self.MaxRetriesExceededError:
+            logger.error(f"Max retries exceeded for writing error log: {username}@{domain}")
+            return {"result": False, "message": "Failed to write error log after retries"}
 
 
 @shared_task
@@ -60,9 +95,7 @@ def _sync_groups(group_list, parent_group, parent_group_id):
     current_external_ids = set(children.keys())
 
     # 处理需要删除的组
-    delete_groups = [
-        group.id for group in existing_groups if group.external_id and group.external_id not in current_external_ids
-    ]
+    delete_groups = [group.id for group in existing_groups if group.external_id and group.external_id not in current_external_ids]
     if delete_groups:
         Group.objects.filter(id__in=delete_groups).delete()
         logger.info(f"Deleted {len(delete_groups)} groups under parent {parent_group.name}")
@@ -174,9 +207,7 @@ def _sync_users(user_list, group_id_mapping, domain, default_role):
 
     for identifier, user_data in user_data_map.items():
         username = user_data["username"]
-        local_group_ids = [
-            group_id_mapping[dept_id] for dept_id in user_data.get("departments", []) if dept_id in group_id_mapping
-        ]
+        local_group_ids = [group_id_mapping[dept_id] for dept_id in user_data.get("departments", []) if dept_id in group_id_mapping]
 
         if identifier in existing_user_identifiers:
             # 更新已存在的用户

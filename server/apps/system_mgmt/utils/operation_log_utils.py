@@ -1,8 +1,9 @@
 """
 操作日志工具函数
 """
+from ipware import get_client_ip
+
 from apps.system_mgmt.models.operation_log import OperationLog
-from apps.system_mgmt.utils.login_log_utils import get_client_ip
 
 
 def log_operation(request, action_type, app, summary):
@@ -19,9 +20,10 @@ def log_operation(request, action_type, app, summary):
         OperationLog 实例
     """
     try:
+        client_ip, _ = get_client_ip(request)
         operation_log = OperationLog.objects.create(
             username=request.user.username,
-            source_ip=get_client_ip(request),
+            source_ip=client_ip or "unknown",
             app=app,
             action_type=action_type,
             summary=summary,

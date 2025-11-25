@@ -4,6 +4,7 @@ from django.conf import settings
 from django.contrib import auth
 from django.utils.deprecation import MiddlewareMixin
 from django.utils.translation import gettext as _
+from ipware import get_client_ip
 from rest_framework import status
 
 from apps.core.utils.web_utils import WebUtils
@@ -35,17 +36,7 @@ class APISecretMiddleware(MiddlewareMixin):
 
         except Exception as e:
             logger.error("API令牌验证异常: %s", str(e))
-            return WebUtils.response_error(
-                error_message=_(self.TOKEN_MISSING_MSG), status_code=status.HTTP_500_INTERNAL_SERVER_ERROR
-            )
-
-    @staticmethod
-    def _get_client_ip(request):
-        """获取客户端IP地址"""
-        x_forwarded_for = request.META.get("HTTP_X_FORWARDED_FOR")
-        if x_forwarded_for:
-            return x_forwarded_for.split(",")[0].strip()
-        return request.META.get("REMOTE_ADDR", "unknown")
+            return WebUtils.response_error(error_message=_(self.TOKEN_MISSING_MSG), status_code=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
     def _get_api_token(self, request):
         """从请求头中获取API令牌"""
@@ -69,7 +60,7 @@ class APISecretMiddleware(MiddlewareMixin):
 
     def _handle_failed_auth(self, request):
         """处理认证失败的情况"""
-        client_ip = self._get_client_ip(request)
-        logger.warning("API令牌验证失败 - IP: %s, 路径: %s", client_ip, request.path)
+        client_ip, _ = get_client_ip(request)
+        logger.warning("API令牌验证失败 - IP: %s, 路径: %s", client_ip or "unknown", request.path)
 
         return WebUtils.response_error(error_message=_(self.TOKEN_MISSING_MSG), status_code=status.HTTP_403_FORBIDDEN)
