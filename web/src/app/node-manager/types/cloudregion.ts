@@ -138,7 +138,7 @@ interface SubProps {
 interface ServiceItem {
   id: number;
   name: string;
-  status: 'uninstall' | 'normal' | 'error';
+  status: 'not_deployed' | 'normal' | 'error';
   description: string;
 }
 
