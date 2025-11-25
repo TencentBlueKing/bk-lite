@@ -1,5 +1,9 @@
 FROM python:3.12
 
+ARG NEXUS_PYTHON_REPOSITY
+
+RUN sed -i 's/deb.debian.org/repo.huaweicloud.com/g' /etc/apt/sources.list.d/debian.sources
+
 RUN apt-get update && \
     apt-get install -y libhdf5-dev vim  unzip curl pkg-config libssl-dev libffi-dev supervisor \
     libnss3 libnspr4 libdbus-1-3 libatk1.0-0 libatk-bridge2.0-0 libcups2 libxcomposite1 openjdk-21-jdk libxdamage1 libxfixes3 libpq-dev\ 
@@ -11,7 +15,22 @@ WORKDIR /app
 
 ADD . .
 
+# 如果提供了 NEXUS_PYTHON_REPOSITY,则切换 pip 和 uv 源
+RUN if [ -n "$NEXUS_PYTHON_REPOSITY" ]; then \
+    echo "Setting pip index to: $NEXUS_PYTHON_REPOSITY"; \
+    pip config set global.index-url "$NEXUS_PYTHON_REPOSITY"; \
+    else \
+    echo "Using default pip index"; \
+    fi
+
 RUN pip install uv
+
+RUN if [ -n "$NEXUS_PYTHON_REPOSITY" ]; then \
+    echo "Setting uv index to: $NEXUS_PYTHON_REPOSITY"; \
+    uv pip config set global.index-url "$NEXUS_PYTHON_REPOSITY"; \
+    else \
+    echo "Using default uv index"; \
+    fi
 RUN uv sync --all-groups
 RUN uv sync --all-extras
 ADD ./support-files/service.conf /etc/supervisor/conf.d/service.conf
