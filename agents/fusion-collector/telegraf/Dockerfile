@@ -1,7 +1,7 @@
 FROM telegraf:1.32 as builder
 
 FROM ubuntu:24.04
-RUN sed -i "s@http://.*ports.ubuntu.com@http://repo.huaweicloud.com@g" /etc/apt/sources.list.d/ubuntu.sources 
+RUN sed -i "s@http://.*.ubuntu.com@http://repo.huaweicloud.com@g" /etc/apt/sources.list.d/ubuntu.sources 
 RUN apt-get update && \
     apt-get install -y snmptrapd ca-certificates ipmitool vim snmp supervisor zip iputils-ping && \
     update-ca-certificates && \
