@@ -135,6 +135,25 @@
       },
       "addform": {
         "title": "新增云区域"
+      },
+      "deploy": {
+        "title": "部署云区域",
+        "containerDeploy": "容器部署",
+        "k8sDeploy": "K8s部署",
+        "containerTips": "请连接云区域中选择一台能够与平台主控节点直接通讯的主机，用于部署 Nats Executor 和 Stargazer 容器组件，从而作为云区域与平台主控节点的桥梁。",
+        "ipAddress": "IP地址",
+        "ipPlaceholder": "请输入IP地址，例如：192.168.1.100",
+        "ipFormatError": "请输入正确的IP地址格式",
+        "sshPort": "SSH端口",
+        "loginAccount": "登录账号",
+        "usernamePlaceholder": "请输入登录账号，例如：root",
+        "loginPassword": "登录密码",
+        "sshServiceTips": "云区域在部署过程中需要使用 SSH 服务，部署完成后可即可关闭,提升安全性。",
+        "deploy": "部署",
+        "deploySuccess": "部署成功",
+        "upgradeTitle": "升级企业版解锁更多功能",
+        "upgradeDescription": "社区版云区域仅支持容器部署，K8s部署方式请升级企业版。",
+        "upgradeButton": "了解企业版"
       }
     },
     "packetManage": {
