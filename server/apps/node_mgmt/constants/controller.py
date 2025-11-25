@@ -71,7 +71,7 @@ class ControllerConstants:
 
     # 标签字段
     GROUP_TAG = "group"
-    CLOUD_TAG = "cloud"
+    CLOUD_TAG = "zone"
     INSTALL_METHOD_TAG = "install_method"
     NODE_TYPE_TAG = "node_type"  # 节点类型标签（用于标识容器节点、K8s节点等）
 
