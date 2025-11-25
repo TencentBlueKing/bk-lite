@@ -101,7 +101,7 @@ const ExcelImportModal = forwardRef<ExcelImportModalRef, ExcelImportModalProps>(
         message.error(t('monitor.integrations.noImportData'));
         return;
       }
-      // 校验唱一性
+      // 校验唯一性
       const uniqueCheckResult = validateUniqueness(parsedData);
       if (!uniqueCheckResult.isValid) {
         const errorMsg = t('monitor.integrations.duplicateFieldError')
@@ -193,11 +193,11 @@ const ExcelImportModal = forwardRef<ExcelImportModalRef, ExcelImportModalProps>(
       reader.readAsArrayBuffer(file);
     };
 
-    // 校验唱一性
+    // 校验唯一性
     const validateUniqueness = (
       data: any[]
     ): { isValid: boolean; field?: string; value?: string } => {
-      // 查找所有需要校验唱一性的字段
+      // 查找所有需要校验唯一性的字段
       const uniqueFields = columns.filter((col) => col.is_only === true);
       for (const field of uniqueFields) {
         const fieldName = field.name;
