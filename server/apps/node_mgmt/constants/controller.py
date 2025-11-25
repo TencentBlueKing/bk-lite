@@ -86,3 +86,9 @@ class ControllerConstants:
 
     # 节点类型
     NODE_TYPE_CONTAINER = "container"  # 容器节点
+    NODE_TYPE_HOST = "host"  # 主机节点
+
+    NODE_TYPE_ENUM = {
+        NODE_TYPE_CONTAINER: "容器节点",
+        NODE_TYPE_HOST: "主机节点",
+    }

@@ -169,6 +169,7 @@ class NodeViewSet(mixins.DestroyModelMixin,
         enum_data = dict(
             sidecar_status=translated_sidecar_status,
             install_method=translated_install_method,
+            node_type=ControllerConstants.NODE_TYPE_ENUM,
             tag=translated_tags,
             os=translated_os,
             cloud_server_status=CloudRegionServiceConstants.STATUS_ENUM,
