@@ -14,6 +14,11 @@ def check_all_region_services():
 
     for region in regions:
         for service in region.cloudregionservice_set.all():
+
+            # 如果没有部署则无需检查
+            if not service.is_deployed:
+                continue
+
             # 根据服务名称查找对应的健康检查函数
             health_check_func = SERVICES_FUNC.get(service.name)
             if health_check_func:
