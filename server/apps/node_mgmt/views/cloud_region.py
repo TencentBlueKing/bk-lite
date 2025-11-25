@@ -1,16 +1,19 @@
 from rest_framework import mixins
+from rest_framework.decorators import action
 from rest_framework.viewsets import GenericViewSet
 from rest_framework.response import Response
 from rest_framework import status
 
 from apps.core.exceptions.base_app_exception import BaseAppException
 from apps.core.utils.loader import LanguageLoader
+from apps.core.utils.web_utils import WebUtils
 from apps.node_mgmt.constants.language import LanguageConstants
 from apps.node_mgmt.constants.cloudregion_service import CloudRegionServiceConstants
 from apps.node_mgmt.filters.cloud_region import CloudRegionFilter
 from apps.node_mgmt.models import Node
 from apps.node_mgmt.serializers.cloud_region import CloudRegionSerializer, CloudRegionUpdateSerializer
 from apps.node_mgmt.models.cloud_region import CloudRegion, CloudRegionService
+from apps.node_mgmt.tasks.cloud_server_deployed import deployed_cloud_server
 
 
 class CloudRegionViewSet(mixins.ListModelMixin,
@@ -70,7 +73,7 @@ class CloudRegionViewSet(mixins.ListModelMixin,
                     cloud_region_id=cloud_region_id,
                     name=service_name,
                     defaults={
-                        "status": CloudRegionServiceConstants.UNINSTALLED,
+                        "status": CloudRegionServiceConstants.NOT_DEPLOYED,
                         "description": f"{service_name} 服务"
                     }
                 )
@@ -83,3 +86,9 @@ class CloudRegionViewSet(mixins.ListModelMixin,
         if Node.objects.filter(cloud_region_id=cloud_region_id).exists():
             raise BaseAppException("该云区域下存在节点，无法删除")
         return super().destroy(request, *args, **kwargs)
+
+    @action(methods=["post"], detail=True, url_path="deploy_server")
+    def deploy_services(self, request, *args, **kwargs):
+        """部署云区域服务的接口，具体实现省略"""
+        deployed_cloud_server.delay(request.data)
+        return WebUtils.response_success()

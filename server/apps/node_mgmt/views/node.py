@@ -172,6 +172,7 @@ class NodeViewSet(mixins.DestroyModelMixin,
             tag=translated_tags,
             os=translated_os,
             cloud_server_status=CloudRegionServiceConstants.STATUS_ENUM,
+            cloud_deployed_status=CloudRegionServiceConstants.DEPLOY_STATUS_ENUM,
         )
         return WebUtils.response_success(enum_data)
 
