@@ -105,7 +105,7 @@ class Export:
         col = get_column_letter(index)
         last_row = len(filed_sheet["A"])
         dv = DataValidation(type="list", formula1=f"='{filed_sheet.title}'!$A$1:$A{last_row}")
-        dv.sqref = f"{col}3:{col}999"
+        dv.sqref = f"{col}4:{col}999"
 
         return dv
 

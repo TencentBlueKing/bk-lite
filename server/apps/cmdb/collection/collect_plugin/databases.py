@@ -5,7 +5,7 @@
 from apps.cmdb.collection.collect_plugin.base import CollectBase
 from apps.cmdb.collection.collect_util import timestamp_gt_one_day_ago
 from apps.cmdb.collection.constants import DB_COLLECT_METRIC_MAP
-
+import codecs
 
 class DBCollectCollectMetrics(CollectBase):
     """数据库 采集指标"""
@@ -25,7 +25,19 @@ class DBCollectCollectMetrics(CollectBase):
                     break
                 else:
                     self.timestamp_gt = True
-
+            # 解析result字段中的JSON数据
+            # VictoriaMetrics返回的JSON字符串包含转义字符（如\n），需要先反转义再解析
+            result_json = index_data["metric"].get("result", "{}")
+            result_data = {}
+            if result_json and result_json != "{}":
+                try:
+                    unescaped_json = codecs.decode(
+                        result_json, 'unicode_escape')
+                    result_data = json.loads(unescaped_json)
+                except Exception:
+                    result_data = {}
+            if isinstance(result_data, dict) and not result_data:
+                continue
             index_dict = dict(
                 index_key=metric_name,
                 index_value=value,
