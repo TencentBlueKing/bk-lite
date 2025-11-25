@@ -35,7 +35,7 @@ class ChatFlowEngine:
         # 获取入口类型，默认为 openai（SSE方式）或 agui
         entry_type = input_data.get("entry_type", "openai")
 
-        logger.info(f"[SSE-Engine] sse_execute 开始 - user_id: {user_id}, entry_type: {entry_type}, input_message长度: {len(input_message)}")
+        logger.info(f"[SSE-Engine] sse_execute 开始 - user_id: {user_id}, entry_type: {entry_type}")
         logger.info(f"[SSE-Engine] 流程信息 - flow_id: {self.instance.id}, 节点数: {len(self.nodes)}")
         node_types_info = [f"{node.get('id')}({node.get('type')})" for node in self.nodes]
         logger.info(f"[SSE-Engine] 所有节点类型: {node_types_info}")
@@ -48,7 +48,7 @@ class ChatFlowEngine:
         # 记录用户输入（排除celery定时触发）
         if user_id and input_message and entry_type != "celery":
             try:
-                user_conversation = WorkFlowConversationHistory.objects.create(
+                WorkFlowConversationHistory.objects.create(
                     bot_id=self.instance.bot_id,
                     user_id=user_id,
                     conversation_role="user",
@@ -56,7 +56,7 @@ class ChatFlowEngine:
                     conversation_time=timezone.now(),
                     entry_type=entry_type,
                 )
-                logger.info(f"[SSE] 记录用户输入对话历史: conversation_id={user_conversation.id}, entry_type={entry_type}")
+                logger.info(f"[SSE] 记录用户输入对话历史: entry_type={entry_type}")
             except Exception as e:
                 logger.error(f"[SSE] 记录用户输入对话历史失败: {str(e)}")
 
@@ -227,9 +227,8 @@ class ChatFlowEngine:
                         # chunk 可能是 str 或 bytes，需要统一处理
                         chunk_str = chunk.decode("utf-8") if isinstance(chunk, bytes) else str(chunk)
 
-                        # 如果是统计信息行，记录但不发送给客户端
+                        # 如果是统计信息行，不发送给客户端
                         if chunk_str.startswith("# STATS:"):
-                            logger.info(f"[SSE-Engine] 收到统计信息: {chunk_str}")
                             continue
 
                         # 流式输出给客户端
@@ -259,23 +258,17 @@ class ChatFlowEngine:
                                     # 如果不是JSON格式，直接添加原始内容
                                     accumulated_output.append(data_str)
 
-                    logger.info(f"[SSE-Engine] 流式输出完成 - 总共输出 {chunk_count} 个chunk, 累积输出长度: {len(''.join(accumulated_output))}")
-
                     # 流式输出完成后，记录完整的系统输出（排除celery定时触发）
                     if user_id and accumulated_output and entry_type != "celery":
                         try:
                             full_output = "".join(accumulated_output)
-                            bot_conversation = WorkFlowConversationHistory.objects.create(
+                            WorkFlowConversationHistory.objects.create(
                                 bot_id=self.instance.bot_id,
                                 user_id=user_id,
                                 conversation_role="bot",
                                 conversation_content=full_output,
                                 conversation_time=timezone.now(),
                                 entry_type=entry_type,
-                            )
-                            logger.info(
-                                f"[SSE] 记录系统输出对话历史: conversation_id={bot_conversation.id}, "
-                                f"output_length={len(full_output)}, entry_type={entry_type}, protocol={'AGUI' if is_agui_protocol else 'SSE'}"
                             )
                         except Exception as e:
                             logger.error(f"[SSE] 记录系统输出对话历史失败: {str(e)}")
@@ -405,7 +398,7 @@ class ChatFlowEngine:
                 execute_type=execute_type,
             )
 
-            logger.info(f"工作流执行结果已记录: flow_id={self.instance.id}, status={status}, execute_type={execute_type}")
+            logger.info(f"工作流执行结果已记录: flow_id={self.instance.id}, status={status}")
 
         except Exception as e:
             logger.error(f"记录工作流执行结果失败: {str(e)}")
@@ -511,7 +504,7 @@ class ChatFlowEngine:
             # 记录用户输入（排除celery定时触发）
             if user_id and input_message and entry_type != "celery":
                 try:
-                    user_conversation = WorkFlowConversationHistory.objects.create(
+                    WorkFlowConversationHistory.objects.create(
                         bot_id=self.instance.bot_id,
                         user_id=user_id,
                         conversation_role="user",
@@ -519,7 +512,7 @@ class ChatFlowEngine:
                         conversation_time=timezone.now(),
                         entry_type=entry_type,
                     )
-                    logger.info(f"记录用户输入对话历史: conversation_id={user_conversation.id}, entry_type={entry_type}")
+                    logger.info(f"记录用户输入对话历史: entry_type={entry_type}")
                 except Exception as e:
                     logger.error(f"记录用户输入对话历史失败: {str(e)}")
 
@@ -543,7 +536,7 @@ class ChatFlowEngine:
                     else:
                         output_content = str(final_last_message)
 
-                    bot_conversation = WorkFlowConversationHistory.objects.create(
+                    WorkFlowConversationHistory.objects.create(
                         bot_id=self.instance.bot_id,
                         user_id=user_id,
                         conversation_role="bot",
@@ -551,7 +544,7 @@ class ChatFlowEngine:
                         conversation_time=timezone.now(),
                         entry_type=entry_type,
                     )
-                    logger.info(f"记录系统输出对话历史: conversation_id={bot_conversation.id}, entry_type={entry_type}")
+                    logger.info(f"记录系统输出对话历史: entry_type={entry_type}")
                 except Exception as e:
                     logger.error(f"记录系统输出对话历史失败: {str(e)}")
 

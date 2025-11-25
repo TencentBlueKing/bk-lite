@@ -49,6 +49,8 @@ error:
   role_id_required: 角色ID不能为空
   group_id_required: 组织ID不能为空
   group_not_exist: 组织不存在
+  invalid_group_ids: "组织ID不存在: {ids}"
+  invalid_role_ids: "角色ID不存在: {ids}"
 
   # 登录模块相关错误
   domain_required_for_login_module: 创建登录模块需要提供域名。
