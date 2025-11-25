@@ -87,7 +87,7 @@ class CloudRegionViewSet(mixins.ListModelMixin,
             raise BaseAppException("该云区域下存在节点，无法删除")
         return super().destroy(request, *args, **kwargs)
 
-    @action(methods=["post"], detail=True, url_path="deploy_services")
+    @action(methods=["post"], detail=False, url_path="deploy_services")
     def deploy_services(self, request, *args, **kwargs):
         """部署云区域服务的接口，具体实现省略"""
         deployed_cloud_services.delay(request.data)

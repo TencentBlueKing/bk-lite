@@ -46,7 +46,7 @@ const CloudRegion = () => {
               color = 'green';
             } else if (service.status === 'error') {
               color = 'red';
-            } else if (service.status === 'uninstall') {
+            } else if (service.status === 'not_deployed') {
               color = 'default';
             }
             return {
@@ -72,7 +72,7 @@ const CloudRegion = () => {
 
   const navigateToNode = (item: CloudRegionItem) => {
     if (
-      (item.services || []).find((service) => service.status === 'uninstall')
+      (item.services || []).find((service) => service.status === 'not_deployed')
     ) {
       deployModalRef.current?.showModal(item as any);
       return;
