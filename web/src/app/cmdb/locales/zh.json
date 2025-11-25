@@ -146,9 +146,8 @@
         "test": "测试",
         "confirm": "确认",
         "cancel": "取消",
-        "executing": "执行中",
-        "executeSuccess": "执行成功!",
-        "executeFailed": "执行失败",
+        "syncSuccess": "同步成功!",
+        "syncFailed": "同步失败",
         "accessPoint": "接入点",
         "ipRange": "IP范围",
         "chooseIp": "选择IP",
@@ -156,7 +155,7 @@
         "everyMinute": "每",
         "executeOnce": "执行一次",
         "port": "端口",
-        "execStatus": {
+        "syncStatus": {
             "add": "新增资产",
             "update": "更新资产",
             "association": "关联资产",
@@ -204,15 +203,16 @@
         },
         "table": {
             "taskName": "任务名称",
-            "execStatus": "执行状态",
+            "syncStatus": "同步状态",
             "collectSummary": "采集摘要",
             "creator": "创建者",
-            "execTime": "执行时间",
+            "syncTime": "同步时间",
             "actions": "操作",
             "detail": "详情",
-            "executeNow": "立即执行",
+            "sync": "同步",
             "modify": "编辑",
-            "delete": "删除"
+            "delete": "删除",
+            "syncing": "同步中"
         },
         "taskDetail": {
             "title": "任务详情",
