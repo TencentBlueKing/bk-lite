@@ -30,17 +30,6 @@ RUN if [ -n "$NEXUS_PYTHON_REPOSITY" ]; then \
 
 RUN pip install uv
 
-RUN if [ -n "$NEXUS_PYTHON_REPOSITY" ]; then \
-    echo "Setting uv index to: $NEXUS_PYTHON_REPOSITY"; \
-    uv pip config set global.index-url "$NEXUS_PYTHON_REPOSITY"; \
-    if echo "$NEXUS_PYTHON_REPOSITY" | grep -q "^http://"; then \
-    TRUSTED_HOST=$(echo "$NEXUS_PYTHON_REPOSITY" | sed -E 's|^http://([^/:]+).*|\1|'); \
-    echo "Adding uv trusted host: $TRUSTED_HOST"; \
-    uv pip config set global.trusted-host "$TRUSTED_HOST"; \
-    fi; \
-    else \
-    echo "Using default uv index"; \
-    fi
 RUN uv sync --all-groups
 RUN uv sync --all-extras
 ADD ./support-files/service.conf /etc/supervisor/conf.d/service.conf
