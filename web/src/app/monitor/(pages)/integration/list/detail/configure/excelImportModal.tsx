@@ -101,6 +101,15 @@ const ExcelImportModal = forwardRef<ExcelImportModalRef, ExcelImportModalProps>(
         message.error(t('monitor.integrations.noImportData'));
         return;
       }
+      // 校验唱一性
+      const uniqueCheckResult = validateUniqueness(parsedData);
+      if (!uniqueCheckResult.isValid) {
+        const errorMsg = t('monitor.integrations.duplicateFieldError')
+          .replace('{{field}}', uniqueCheckResult.field || '')
+          .replace('{{value}}', uniqueCheckResult.value || '');
+        message.error(errorMsg);
+        return;
+      }
       setConfirmLoading(true);
       try {
         onSuccess(parsedData);
@@ -182,6 +191,36 @@ const ExcelImportModal = forwardRef<ExcelImportModalRef, ExcelImportModalProps>(
         }
       };
       reader.readAsArrayBuffer(file);
+    };
+
+    // 校验唱一性
+    const validateUniqueness = (
+      data: any[]
+    ): { isValid: boolean; field?: string; value?: string } => {
+      // 查找所有需要校验唱一性的字段
+      const uniqueFields = columns.filter((col) => col.is_only === true);
+      for (const field of uniqueFields) {
+        const fieldName = field.name;
+        const fieldLabel = field.label;
+        const valueSet = new Set<string>();
+        for (const row of data) {
+          const value = row[fieldName];
+          // 跳过空值
+          if (value === null || value === undefined || value === '') {
+            continue;
+          }
+          const valueStr = String(value);
+          if (valueSet.has(valueStr)) {
+            return {
+              isValid: false,
+              field: fieldLabel,
+              value: valueStr,
+            };
+          }
+          valueSet.add(valueStr);
+        }
+      }
+      return { isValid: true };
     };
 
     // 转换单元格值
@@ -355,7 +394,50 @@ const ExcelImportModal = forwardRef<ExcelImportModalRef, ExcelImportModalProps>(
           };
         }
       });
-
+      // 为 is_only 字段添加条件格式，高亮显示重复值
+      columns.forEach((col, index) => {
+        if (col.is_only === true) {
+          const columnLetter = String.fromCharCode(65 + index); // A, B, C...
+          const range = `${columnLetter}2:${columnLetter}1001`;
+          // 添加条件格式：检测重复值
+          mainSheet.addConditionalFormatting({
+            ref: range,
+            rules: [
+              {
+                type: 'expression',
+                priority: 1,
+                formulae: [
+                  `COUNTIF($${columnLetter}$2:$${columnLetter}$1001,${columnLetter}2)>1`,
+                ],
+                style: {
+                  fill: {
+                    type: 'pattern',
+                    pattern: 'solid',
+                    bgColor: { argb: 'FFFFC7CE' }, // 浅红色背景
+                  },
+                  font: {
+                    color: { argb: 'FF9C0006' }, // 深红色文字
+                  },
+                },
+              },
+            ],
+          });
+          // 为表头添加注释提示
+          const headerCell = mainSheet.getCell(`${columnLetter}1`);
+          headerCell.note = {
+            texts: [
+              {
+                font: { size: 10, name: 'Arial' },
+                text: t('monitor.integrations.uniqueFieldTip'),
+              },
+            ],
+            margins: {
+              insetmode: 'auto',
+              inset: [0.13, 0.13, 0.25, 0.25],
+            },
+          };
+        }
+      });
       // 生成文件并下载
       const buffer = await workbook.xlsx.writeBuffer();
       const blob = new Blob([buffer], {
