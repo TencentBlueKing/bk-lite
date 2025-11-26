@@ -57,20 +57,6 @@ const useColumns = ({
         ),
       },
       {
-        title: t('node-manager.cloudregion.node.system'),
-        dataIndex: 'operating_system',
-        key: 'operating_system',
-        width: 120,
-        render: (value: string) => {
-          return (
-            <>
-              {OPERATE_SYSTEMS.find((item) => item.value === value)?.label ||
-                '--'}
-            </>
-          );
-        },
-      },
-      {
         title: t('common.actions'),
         key: 'action',
         dataIndex: 'action',
