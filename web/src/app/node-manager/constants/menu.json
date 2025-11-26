@@ -14,12 +14,6 @@
           "name": "cloud_region_node"
         },
         {
-          "title": "配置",
-          "url": "/node-manager/cloudregion/configuration",
-          "icon": "settings-fill",
-          "name": "cloud_region_configuration"
-        },
-        {
           "title": "变量",
           "url": "/node-manager/cloudregion/variable",
           "icon": "bianliang",
@@ -71,12 +65,6 @@
           "url": "/node-manager/cloudregion/node",
           "icon": "jiedianguanli",
           "name": "cloud_region_node"
-        },
-        {
-          "title": "Configuration",
-          "url": "/node-manager/cloudregion/configuration",
-          "icon": "settings-fill",
-          "name": "cloud_region_configuration"
         },
         {
           "title": "Variable",

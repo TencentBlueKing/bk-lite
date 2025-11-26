@@ -10,6 +10,7 @@ import {
   WarningOutlined,
 } from '@ant-design/icons';
 import type { TableColumnsType } from 'antd';
+import { useLocalizedTime } from '@/hooks/useLocalizedTime';
 import { TableDataItem, SegmentedItem } from '@/app/node-manager/types';
 import { FieldConfig } from '@/app/node-manager/types/node';
 import { useUserInfoContext } from '@/context/userInfo';
@@ -30,6 +31,7 @@ const useColumns = ({
   editNode,
 }: HookParams): TableColumnsType<TableDataItem> => {
   const { showGroupNames } = useGroupNames();
+  const { convertToLocalizedTime } = useLocalizedTime();
   const { t } = useTranslation();
 
   const columns = useMemo(
@@ -59,6 +61,15 @@ const useColumns = ({
         ),
       },
       {
+        title: t('node-manager.cloudregion.node.lastReportTime'),
+        dataIndex: 'updated_at',
+        key: 'updated_at',
+        width: 160,
+        render: (text: string) => {
+          return text ? convertToLocalizedTime(text) : '--';
+        },
+      },
+      {
         title: t('common.actions'),
         key: 'action',
         dataIndex: 'action',
@@ -68,7 +79,7 @@ const useColumns = ({
           <>
             <Permission requiredPermissions={['View']}>
               <Button type="link" onClick={() => checkConfig(item)}>
-                {t('node-manager.cloudregion.node.checkConfig')}
+                {t('common.detail')}
               </Button>
             </Permission>
             <Permission className="ml-[10px]" requiredPermissions={['Edit']}>
