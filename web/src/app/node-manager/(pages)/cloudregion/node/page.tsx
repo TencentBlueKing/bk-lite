@@ -45,6 +45,7 @@ import PermissionWrapper from '@/components/permission';
 import { cloneDeep } from 'lodash';
 import { ColumnItem } from '@/types';
 import CollectorDetailDrawer from './collectorDetailDrawer';
+import EditNode from './editNode';
 import { useCommon } from '@/app/node-manager/context/common';
 const { confirm } = Modal;
 
@@ -68,6 +69,7 @@ const Node = () => {
   const collectorRef = useRef<ModalRef>(null);
   const controllerRef = useRef<ModalRef>(null);
   const collectorDetailRef = useRef<any>(null);
+  const editNodeRef = useRef<ModalRef>(null);
   const [nodeList, setNodeList] = useState<TableDataItem[]>();
   const [selectedRowKeys, setSelectedRowKeys] = useState<React.Key[]>([]);
   const [loading, setLoading] = useState<boolean>(false);
@@ -96,6 +98,12 @@ const Node = () => {
       const params = new URLSearchParams(data);
       const targetUrl = `/node-manager/cloudregion/configuration?${params.toString()}`;
       router.push(targetUrl);
+    },
+    editNode: (row: TableDataItem) => {
+      editNodeRef.current?.showModal({
+        type: 'edit',
+        form: row,
+      });
     },
     deleteNode: async (row: TableDataItem) => {
       try {
@@ -565,6 +573,10 @@ const Node = () => {
             />
             <CollectorDetailDrawer
               ref={collectorDetailRef}
+              onSuccess={() => getNodes(searchFilters)}
+            />
+            <EditNode
+              ref={editNodeRef}
               onSuccess={() => getNodes(searchFilters)}
             />
           </div>

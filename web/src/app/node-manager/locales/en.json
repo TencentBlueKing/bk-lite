@@ -199,6 +199,7 @@
     "prompt": "Prompt",
     "updatedAt": "Updated At",
     "deleteSuccess": "Deleted successfully!",
+    "successfullyModified": "Modified successfully!",
     "actions": "Actions",
     "modifydelete": "Batch Delete",
     "node": "Node",

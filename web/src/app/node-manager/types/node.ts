@@ -1,3 +1,5 @@
+import React from 'react';
+
 interface SearchValue {
   field: string;
   value: string;
@@ -33,10 +35,18 @@ interface SearchTag {
   options?: Array<{ id: string; name: string }>;
 }
 
+interface NodeParams {
+  id?: React.Key;
+  name?: string;
+  organization?: Array<React.Key>;
+  organizations?: Array<React.Key>;
+}
+
 export type {
   SearchValue,
   SearchCombinationProps,
   SearchTag,
   FieldConfig,
   SearchFilters,
+  NodeParams,
 };

@@ -199,6 +199,7 @@
     "prompt": "提示",
     "updatedAt": "更新时间",
     "deleteSuccess": "删除成功！",
+    "successfullyModified": "修改成功！",
     "actions": "操作",
     "modifydelete": "批量删除",
     "node": "节点",

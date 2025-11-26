@@ -29,6 +29,7 @@
           "operation": [
             "View",
             "Delete",
+            "Edit",
             "InstallController",
             "UninstallController",
             "OperateCollector"
