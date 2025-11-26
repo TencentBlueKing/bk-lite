@@ -14,6 +14,7 @@ import styles from './index.module.scss';
 import type { TourProps } from 'antd';
 import { TourItem, MenuItem, ClientData } from '@/types/index';
 import UserInfo from '../user-info';
+import Notifications from '../notifications';
 import Icon from '@/components/icon';
 
 const TOUR_VIEWED_KEY_PREFIX = 'tour_viewed';
@@ -240,7 +241,8 @@ const TopMenu = () => {
             </div>
           </Popover>
         </div>
-        <div className="flex items-center flex-shrink-0 space-x-2">
+        <div className="flex items-center flex-shrink-0 space-x-4">
+          <Notifications />
           {hasViewedTour && (
             <div
               className="text-xs flex items-center mr-2 text-[var(--color-text-3)] cursor-pointer hover:text-[var(--color-primary)]"

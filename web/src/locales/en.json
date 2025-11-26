@@ -122,7 +122,16 @@
     "reset": "Reset",
     "inputPassword": "Please input the password",
     "builtin": "Built-in",
-    "mcp": "MCP"
+    "mcp": "MCP",
+    "unreadNotifications": "Unread Notifications",
+    "allNotifications": "All Notifications",
+    "noMore": "No more",
+    "setAsRead": "Set as Read",
+    "notification": "Notification",
+    "markAllAsRead": "Mark All as Read",
+    "markAllAsReadConfirm": "Are you sure you want to mark all notifications as read?",
+    "markAllAsReadCxt": "Once marked, all unread notifications will be set to read and this action cannot be undone.",
+    "noUnreadNotifications": "No unread notifications"
   },
   "userInfo": {
     "basicInfo": "Basic Information",
