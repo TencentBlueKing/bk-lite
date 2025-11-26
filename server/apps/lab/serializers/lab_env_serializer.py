@@ -86,7 +86,7 @@ class LabEnvSerializer(AuthSerializer):
         if infra_images is not None:
             self._update_infra_instances_from_images(lab_env, infra_images)
             # 重新生成 docker-compose 配置
-            # self._setup_docker_compose(lab_env)
+            self._setup_docker_compose(lab_env)
         
         return lab_env
     
@@ -214,15 +214,23 @@ class LabEnvSerializer(AuthSerializer):
         
         try:
             # 生成 docker-compose 配置
-            compose_config = ComposeGenerator.generate(lab_env)
+            compose_config = ComposeGenerator.generate(lab_env)     
+            webhook_base_url = os.getenv('WEBHOOK', None)
+            lab_runtime = os.getenv("LAB_RUNTIME", "kubernetes")
+
+            if not webhook_base_url:
+                return None
             
-            # 获取 webhook 基础 URL
-            webhook_base_url = os.getenv('WEBHOOK', 'http://localhost:8080/compose/')
             if not webhook_base_url.endswith('/'):
                 webhook_base_url += '/'
-            
+
+            if lab_runtime == "docker":
+                webhook_base_url += 'compose/'
+            elif lab_runtime == "kubernetes":
+                webhook_base_url += 'kubernetes/'
+
             setup_url = f"{webhook_base_url}setup"
-            
+
             # 准备请求数据
             payload = {
                 "id": f"lab-env-{lab_env.id}",

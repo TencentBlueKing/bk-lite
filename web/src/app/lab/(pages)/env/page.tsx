@@ -1,5 +1,5 @@
 "use client";
-import { Menu, Button, message, Tooltip } from 'antd';
+import { Menu, Button, message, Tooltip, Tag } from 'antd';
 import { PlayCircleOutlined, PauseCircleOutlined, RedoOutlined } from '@ant-design/icons';
 import stlyes from '@/app/lab/styles/index.module.scss';
 import { useState, useEffect, useRef } from 'react';
@@ -20,7 +20,6 @@ const EnvManage = () => {
     restartEnv,
     getEnvStatus,
     getEnvStatusList
-    // generateComposeYaml
   } = useLabEnv();
 
   const [tableData, setTableData] = useState<any[]>([]);
@@ -32,13 +31,16 @@ const EnvManage = () => {
     try {
       // const res = await getEnvList();
       const [res, status] = await Promise.all([getEnvList(), getEnvStatusList()]);
+      const statuData = status.data || [];
       const _res = res?.map((item: any) => {
         return {
           ...item,
           icon: 'tucengshuju',
           creator: item?.created_by || '--',
+          status: statuData.find((status: any) => status.id === `lab-env-${item.id}`)
         }
       });
+      console.log(_res);
       console.log(status);
       setTableData(_res || []);
     } catch (e) {
@@ -56,7 +58,8 @@ const EnvManage = () => {
   // 启动环境
   const handleStart = async (id: string | number, e: React.MouseEvent) => {
     e.stopPropagation(); // 阻止卡片点击事件
-    setLoading(true);
+    // setLoading(true);
+    message.info('环境启动中')
     try {
       await startEnv(id);
       message.success('环境启动成功');
@@ -65,28 +68,14 @@ const EnvManage = () => {
       console.error('启动环境失败:', error);
       message.error('启动环境失败');
     } finally {
-      setLoading(false);
+      // setLoading(false);
     }
   };
 
-  // // 生成配置
-  // const handleSetup = async (id: string | number, e: React.MouseEvent) => {
-  //   e.stopPropagation();
-  //   setLoading(true);
-  //   try {
-  //     await generateComposeYaml(id);
-  //     message.success('生成成功')
-  //   } catch (e) {
-  //     console.log(e);
-  //     message.error('生成失败')
-  //   } finally {
-  //     setLoading(false);
-  //   }
-  // };
-
   // 重启环境
   const handleRestart = async (id: string | number) => {
-    setLoading(true);
+    // setLoading(true);
+    message.info("环境重启中")
     try {
       await restartEnv(id);
       message.success('环境重启成功');
@@ -95,14 +84,15 @@ const EnvManage = () => {
       console.log(e);
       message.error('重启环境失败')
     } finally {
-      setLoading(false);
+      // setLoading(false);
     }
   };
 
   // 停止环境
   const handleStop = async (id: string | number, e: React.MouseEvent) => {
     e.stopPropagation(); // 阻止卡片点击事件
-    setLoading(true);
+    // setLoading(true);
+    message.info("停止环境中")
     try {
       await stopEnv(id);
       message.success('环境停止成功');
@@ -111,7 +101,7 @@ const EnvManage = () => {
       console.error('停止环境失败:', error);
       message.error('停止环境失败');
     } finally {
-      setLoading(false);
+      // setLoading(false);
     }
   };
 
@@ -137,7 +127,7 @@ const EnvManage = () => {
         {item?.name !== "default" && (
           <Menu.Item className="!p-0" onClick={() => handleDel(item.id)}>
             {/* <PermissionWrapper requiredPermissions={['Delete']} className="!block" > */}
-            <Button type="text" className="w-full" disabled={['stopped', 'error'].includes(item?.state) ? false : true }>
+            <Button type="text" className="w-full" disabled={['stopped', 'error'].includes(item?.state) ? false : true}>
               {t(`common.delete`)}
             </Button>
             {/* </PermissionWrapper> */}
@@ -147,68 +137,74 @@ const EnvManage = () => {
     )
   };
 
-  // 描述区域 - 左右布局，左侧显示creator，右侧显示启动/停止按钮
   const descSlot = (item: any) => {
     const isRunning = item.state === 'running';
     const isStarting = item.state === 'starting';
     const isStopping = item.state === 'stopping';
-    const isError = item.state === 'error';
+
+
+    // 状态标签颜色映射
+    const getStateTagColor = (state: string): 'success' | 'processing' | 'error' | 'warning' | 'default' => {
+      const colorMap: Record<string, 'success' | 'processing' | 'error' | 'warning' | 'default'> = {
+        'running': 'success',
+        'stopped': 'default',
+        'starting': 'processing',
+        'stopping': 'warning',
+        'error': 'error'
+      };
+      return colorMap[state] || 'default';
+    };
 
     return (
-      <div className="flex justify-between items-center w-full">
-        <p className="font-mini text-[var(--color-text-3)] m-0">
-          {`creator: ${item.created_by || '--'}`}
-        </p>
-        <div className="flex gap-1">
-          {isError && (
-            <Tooltip>
-              <span></span>
-            </Tooltip>
-          )}
+      <div className="flex justify-between items-center w-full gap-3">
+        <div className="flex items-center gap-2 flex-1 min-w-0 ">
+          <span className='font-mini'>State: </span>
+          <Tag color={getStateTagColor(item.state)} className="!m-0 font-mini">
+            {item.state}
+          </Tag>
+        </div>
+        <div className="flex gap-1.5 flex-shrink-0">
           <Tooltip title="重启">
             <Button
-              color='blue' variant='link'
-              size='small'
-              disabled={isStopping ? true : false}
+              type="text"
+              size="small"
+              disabled={item.state === 'stopped'}
               icon={<RedoOutlined />}
-              onClick={() => handleRestart(item.id)}
+              onClick={(e) => {
+                e.stopPropagation();
+                handleRestart(item.id);
+              }}
+              className={
+                item.state === 'stopped' ?
+                  "" :
+                  "!text-blue-500 hover:!bg-blue-50 hover:!text-blue-600 transition-colors"
+              }
             />
           </Tooltip>
           {!isRunning && !isStarting && (
             <Tooltip title="启动">
               <Button
-                color="green" variant="link"
+                type="text"
                 size="small"
                 icon={<PlayCircleOutlined />}
                 onClick={(e) => handleStart(item.id, e)}
                 loading={isStarting}
-                className="text-green-600 hover:text-green-800"
+                className="!text-green-500 hover:!bg-green-50 hover:!text-green-600 transition-colors"
               />
             </Tooltip>
           )}
           {(isRunning || isStarting) && (
             <Tooltip title="停止">
               <Button
-                color="red" variant="link"
+                type="text"
                 size="small"
                 icon={<PauseCircleOutlined />}
                 onClick={(e) => handleStop(item.id, e)}
                 loading={isStopping}
-                className="text-red-600 hover:text-red-800"
+                className="!text-red-500 hover:!bg-red-50 hover:!text-red-600 transition-colors"
               />
             </Tooltip>
           )}
-          {/* <Button
-            // type="link"
-            size="small"
-            color="danger" variant="link"
-            icon={<PauseCircleOutlined />}
-            onClick={(e) => handleStop(item.id, e)}
-            loading={isStopping}
-            className="text-red-600 hover:text-red-700"
-          >
-            停止
-          </Button> */}
         </div>
       </div>
     );

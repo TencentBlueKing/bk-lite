@@ -41,6 +41,7 @@ class LabEnvViewSet(ModelViewSet):
     def start(self, request, pk=None):
         """启动 Lab 环境"""
         lab_env = self.get_object()
+        compose_id = f"lab-env-{lab_env.id}"
         
         if lab_env.state == 'running':
             return Response(
@@ -51,6 +52,46 @@ class LabEnvViewSet(ModelViewSet):
         # 使用 LabUtils 启动环境
         # result = LabUtils.start_lab(lab_env.id)
         try:
+            # 1. 生成最新的 compose 配置
+            compose_config = ComposeGenerator.generate(lab_env)
+            
+            # 2. Setup - 更新配置文件
+            setup_url = self.get_webhook_url('setup')
+            if not setup_url:
+                return Response(
+                    {'error': '服务器错误，缺少 webhook 配置'},
+                    status=status.HTTP_500_INTERNAL_SERVER_ERROR
+                )
+            
+            setup_payload = {
+                'id': compose_id,
+                'compose': compose_config
+            }
+            
+            logger.info(f"正在更新环境 {lab_env.name} 的配置")
+            setup_response = requests.post(
+                setup_url,
+                json=setup_payload,
+                timeout=30,
+                headers={'Content-Type': 'application/json'}
+            )
+            
+            if setup_response.status_code != 200:
+                error_detail = setup_response.text
+                logger.error(f"配置更新失败: {error_detail}")
+                return Response({
+                    'status': 'error',
+                    'message': '配置更新失败',
+                    'error': error_detail
+                }, status=status.HTTP_502_BAD_GATEWAY)
+            
+            setup_result = setup_response.json()
+            if setup_result.get('status') != 'success':
+                logger.error(f"配置验证失败: {setup_result.get('error', '未知错误')}")
+                return Response(setup_result, status=status.HTTP_400_BAD_REQUEST)
+            
+            logger.info(f"环境 {lab_env.name} 配置更新成功")
+
             # 通过requests请求webhook接口将已经生成的compose配置启动
             webhook_url = self.get_webhook_url('start')
             if not webhook_url:
@@ -208,7 +249,6 @@ class LabEnvViewSet(ModelViewSet):
         """更新并重启 Lab 环境（使用 setup + stop + start 组合实现）"""
         lab_env = self.get_object()
         compose_id = f"lab-env-{lab_env.id}"
-        
         try:
             # 1. 生成最新的 compose 配置
             compose_config = ComposeGenerator.generate(lab_env)
@@ -361,7 +401,6 @@ class LabEnvViewSet(ModelViewSet):
             
             # 单个查询
             payload = {'id': f"lab-env-{lab_env.id}"}
-            logger.info(f"查询环境 {lab_env.name} (ID: {lab_env.id}) 的状态")
             
             # 发送请求到 webhook
             response = requests.post(
@@ -380,11 +419,6 @@ class LabEnvViewSet(ModelViewSet):
                     'error': error_detail
                 }, status=status.HTTP_502_BAD_GATEWAY)
             
-            # 记录响应信息用于调试
-            logger.info(f"response status: {response.status_code}, content-type: {response.headers.get('content-type')}")
-            logger.info(f"response length: {len(response.text)} bytes")
-            logger.info(f"response first 200 chars: {response.text[:200]}")
-            logger.info(f"response last 200 chars: {response.text[-200:]}")
             
             # 解析 JSON
             try:
@@ -396,7 +430,9 @@ class LabEnvViewSet(ModelViewSet):
             # 单个查询：更新单个环境状态
             if result.get('status') == 'success':
                 containers = result.get('containers', [])
-                if containers and all(c.get('State') == 'running' for c in containers):
+                if not containers:
+                    lab_env.state = 'stopped'
+                elif all(c.get('State') == 'running' for c in containers):
                     lab_env.state = 'running'
                 elif any(c.get('State') in ['exited', 'dead'] for c in containers):
                     lab_env.state = 'stopped'
@@ -439,7 +475,6 @@ class LabEnvViewSet(ModelViewSet):
                 })
             
             payload = {'ids': env_ids}
-            logger.info(f"批量查询 {len(env_ids)} 个环境的状态")
             
             # 发送请求到 webhook
             response = requests.post(
@@ -477,14 +512,16 @@ class LabEnvViewSet(ModelViewSet):
                         
                         if env and item.get('status') == 'success':
                             containers = item.get('containers', [])
-                            if containers and all(c.get('State') == 'running' for c in containers):
+                            if not containers:
+                                env.state = 'stopped'
+                            elif all(c.get('State') == 'running' for c in containers):
                                 env.state = 'running'
                             elif any(c.get('State') in ['exited', 'dead'] for c in containers):
                                 env.state = 'stopped'
                             else:
                                 env.state = 'error'
                             env.save(update_fields=['state', 'updated_at'])
-            
+        
             return Response(result)
 
         except Exception as e:
@@ -571,11 +608,17 @@ class LabEnvViewSet(ModelViewSet):
         
     def get_webhook_url(self, name):
         webhook_base_url = os.getenv('WEBHOOK', None)
+        lab_runtime = os.getenv("LAB_RUNTIME", "kubernetes")
 
         if not webhook_base_url:
             return None
         
         if not webhook_base_url.endswith('/'):
             webhook_base_url += '/'
+
+        if lab_runtime == "docker":
+            webhook_base_url += 'compose/'
+        elif lab_runtime == "kubernetes":
+            webhook_base_url += 'kubernetes/'
         
         return f"{webhook_base_url}{name}"

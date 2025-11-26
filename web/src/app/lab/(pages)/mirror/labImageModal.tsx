@@ -1,5 +1,5 @@
 import { ModalRef } from "@/app/lab/types";
-import { forwardRef, useImperativeHandle, useState } from "react";
+import { forwardRef, useImperativeHandle, useState, memo } from "react";
 import {
   Form,
   Input,
@@ -58,10 +58,10 @@ const LabImageModal = forwardRef<ModalRef, LabImageProps>(({ activeTap, onSucces
       const data = config?.form as LabImageFormData;
       setEditData(data || null);
       setOpen(true);
+
+      // 直接计算表单值,不依赖 useMemo (因为状态更新是异步的)
       if (data) {
-        // 编辑模式，填充表单数据
-        console.log(data);
-        form.setFieldsValue({
+        const formValues = {
           ...data,
           default_env_pairs: Object.entries(data.default_env || {}).map(([key, value]) => ({ key, value })),
           default_command_pairs: (data.default_command || []).map((cmd: string) => ({ command: cmd })),
@@ -72,18 +72,19 @@ const LabImageModal = forwardRef<ModalRef, LabImageProps>(({ activeTap, onSucces
             host_path: mount.host_path,
             read_only: mount.read_only
           }))
+        };
+        // 延迟表单赋值,让Modal先渲染
+        requestAnimationFrame(() => {
+          form.setFieldsValue(formValues);
         });
       } else {
-        // 新建模式，重置表单
-        form.resetFields();
-        form.setFieldsValue({
-          default_port: 8888,
-          image_type: activeTap,
-          default_env_pairs: [],
-          default_command_pairs: [],
-          default_args_pairs: [],
-          expose_ports_pairs: [],
-          volume_mount_pairs: []
+        // 新建模式
+        requestAnimationFrame(() => {
+          form.resetFields();
+          form.setFieldsValue({
+            default_port: 8888,
+            image_type: activeTap
+          });
         });
       }
     }
@@ -290,49 +291,7 @@ const LabImageModal = forwardRef<ModalRef, LabImageProps>(({ activeTap, onSucces
 
         {/* 默认环境变量 */}
         <Card title={t(`lab.manage.configVar`)} size="small" style={{ marginBottom: 16 }}>
-          <Form.List name="default_env_pairs">
-            {(fields, { add, remove }) => (
-              <>
-                {fields.map(({ key, name, ...restField }) => (
-                  <Row key={key} gutter={8} align="top" className="mb-2">
-                    <Col span={10}>
-                      <Form.Item
-                        className="mb-2"
-                        name={[name, 'key']}
-                        rules={[{ required: true, message: t(`lab.manage.varNameMsg`) }]}
-                        {...restField}
-                      >
-                        <Input placeholder={t(`lab.manage.varName`)} />
-                      </Form.Item>
-                    </Col>
-                    <Col span={12}>
-                      <Form.Item
-                        className="mb-2"
-                        name={[name, 'value']}
-                        rules={[{ required: true, message: t(`lab.manage.varValueMsg`) }]}
-                        {...restField}
-                      >
-                        <Input placeholder={t(`lab.manage.varValue`)} />
-                      </Form.Item>
-                    </Col>
-                    <Col span={2}>
-                      <MinusCircleOutlined className="mt-[10px]" onClick={() => remove(name)} />
-                    </Col>
-                  </Row>
-                ))}
-                <Form.Item>
-                  <Button
-                    type="dashed"
-                    onClick={() => add()}
-                    block
-                    icon={<PlusOutlined />}
-                  >
-                    {t(`lab.manage.addConfigVar`)}
-                  </Button>
-                </Form.Item>
-              </>
-            )}
-          </Form.List>
+          <EnvVariablesSection t={t} />
         </Card>
 
         {/* 启动命令 */}
@@ -348,40 +307,7 @@ const LabImageModal = forwardRef<ModalRef, LabImageProps>(({ activeTap, onSucces
           size="small"
           style={{ marginBottom: 16 }}
         >
-          <Form.List name="default_command_pairs">
-            {(fields, { add, remove }) => (
-              <>
-                {fields.map(({ key, name, ...restField }) => (
-                  <Row key={key} gutter={8} align="top" className="mb-2">
-                    <Col span={20}>
-                      <Form.Item
-                        className="mb-2"
-                        name={[name, 'command']}
-                        rules={[{ required: true, message: t(`lab.manage.commandMsg`) }]}
-                        {...restField}
-                      >
-                        <Input placeholder={t(`lab.manage.commandExample`)} />
-                      </Form.Item>
-                    </Col>
-                    <Col span={4}>
-                      <MinusCircleOutlined className="mt-[10px]" onClick={() => remove(name)} />
-                    </Col>
-                  </Row>
-                ))}
-                <Form.Item>
-                  <Button
-                    type="dashed"
-                    onClick={() => add()}
-                    block
-                    icon={<PlusOutlined />}
-                    size="small"
-                  >
-                    {t(`lab.manage.addCommand`)}
-                  </Button>
-                </Form.Item>
-              </>
-            )}
-          </Form.List>
+          <CommandSection t={t} />
         </Card>
 
         {/* 启动参数 */}
@@ -397,40 +323,7 @@ const LabImageModal = forwardRef<ModalRef, LabImageProps>(({ activeTap, onSucces
           size="small"
           style={{ marginBottom: 16 }}
         >
-          <Form.List name="default_args_pairs">
-            {(fields, { add, remove }) => (
-              <>
-                {fields.map(({ key, name, ...restField }) => (
-                  <Row key={key} gutter={8} align="top" className="mb-2">
-                    <Col span={20}>
-                      <Form.Item
-                        className="mb-2"
-                        name={[name, 'arg']}
-                        rules={[{ required: true, message: t(`lab.manage.paramsMsg`) }]}
-                        {...restField}
-                      >
-                        <Input placeholder={t(`lab.manage.paramsExample`)} />
-                      </Form.Item>
-                    </Col>
-                    <Col span={4}>
-                      <MinusCircleOutlined className="mt-[10px]" onClick={() => remove(name)} />
-                    </Col>
-                  </Row>
-                ))}
-                <Form.Item>
-                  <Button
-                    type="dashed"
-                    onClick={() => add()}
-                    block
-                    icon={<PlusOutlined />}
-                    size="small"
-                  >
-                    {t(`lab.manage.addParams`)}
-                  </Button>
-                </Form.Item>
-              </>
-            )}
-          </Form.List>
+          <ArgsSection t={t} />
         </Card>
 
         {/* 暴露端口 */}
@@ -446,110 +339,228 @@ const LabImageModal = forwardRef<ModalRef, LabImageProps>(({ activeTap, onSucces
           size="small"
           style={{ marginBottom: 16 }}
         >
-          <Form.List name="expose_ports_pairs">
-            {(fields, { add, remove }) => (
-              <>
-                {fields.map(({ key, name, ...restField }) => (
-                  <Row key={key} gutter={8} align="top" className="mb-2">
-                    <Col span={20}>
-                      <Form.Item
-                        className="mb-2"
-                        name={[name, 'port']}
-                        rules={[
-                          { required: true, message: t(`lab.manage.portMsg`) },
-                          { pattern: /^[1-9]\d{0,4}$/, message: t(`lab.manage.portCharMsg`) }
-                        ]}
-                        {...restField}
-                      >
-                        <InputNumber
-                          placeholder={t(`lab.manage.portExample`)}
-                          min={1}
-                          max={65535}
-                          style={{ width: '100%' }}
-                        />
-                      </Form.Item>
-                    </Col>
-                    <Col span={4}>
-                      <MinusCircleOutlined className="mt-[10px]" onClick={() => remove(name)} />
-                    </Col>
-                  </Row>
-                ))}
-                <Form.Item>
-                  <Button
-                    type="dashed"
-                    onClick={() => add()}
-                    block
-                    icon={<PlusOutlined />}
-                  >
-                    {t(`lab.manage.addPort`)}
-                  </Button>
-                </Form.Item>
-              </>
-            )}
-          </Form.List>
+          <PortsSection t={t} />
         </Card>
 
         {/* 卷挂载配置 */}
         <Card title={t(`lab.manage.volumeContent`)} size="small" className="mb-2">
-          <Form.List name="volume_mount_pairs">
-            {(fields, { add, remove }) => (
-              <>
-                {fields.map(({ key, name, ...restField }) => (
-                  <Row key={key} gutter={8} align="top" className="mb-2">
-                    <Col span={8}>
-                      <Form.Item
-                        className="mb-2"
-                        name={[name, 'container_path']}
-                        rules={[{ required: true, message: t(`lab.manage.containterPath`) }]}
-                        {...restField}
-                      >
-                        <Input placeholder={t(`lab.manage.containterMsg`)} />
-                      </Form.Item>
-                    </Col>
-                    <Col span={8}>
-                      <Form.Item
-                        className="mb-2"
-                        name={[name, 'host_path']}
-                        {...restField}
-                      >
-                        <Input placeholder={t(`lab.manage.hostPathMsg`)} />
-                      </Form.Item>
-                    </Col>
-                    <Col span={6}>
-                      <Form.Item
-                        className="mb-2"
-                        name={[name, 'read_only']}
-                        {...restField}
-                      >
-                        <Select placeholder="读写权限" style={{ width: '100%' }}>
-                          <Option value={false}>{t(`lab.manage.write`)}</Option>
-                          <Option value={true}>{t(`lab.manage.read`)}</Option>
-                        </Select>
-                      </Form.Item>
-                    </Col>
-                    <Col span={2}>
-                      <MinusCircleOutlined className="mt-[10px]" onClick={() => remove(name)} />
-                    </Col>
-                  </Row>
-                ))}
-                <Form.Item>
-                  <Button
-                    type="dashed"
-                    onClick={() => add()}
-                    block
-                    icon={<PlusOutlined />}
-                  >
-                    {t(`lab.manage.addVolume`)}
-                  </Button>
-                </Form.Item>
-              </>
-            )}
-          </Form.List>
+          <VolumesSection t={t} />
         </Card>
       </Form>
     </OperateModal>
   );
 });
+
+// 使用 memo 优化各个表单区块组件
+const EnvVariablesSection = memo(({ t }: { t: any }) => (
+  <Form.List name="default_env_pairs">
+    {(fields, { add, remove }) => (
+      <>
+        {fields.map(({ key, name, ...restField }) => (
+          <div key={key} style={{ display: 'flex', gap: '8px', marginBottom: '8px', alignItems: 'flex-start' }}>
+            <Form.Item
+              style={{ flex: '0 0 40%', marginBottom: 0 }}
+              name={[name, 'key']}
+              rules={[{ required: true, message: t(`lab.manage.varNameMsg`) }]}
+              {...restField}
+            >
+              <Input placeholder={t(`lab.manage.varName`)} />
+            </Form.Item>
+            <Form.Item
+              style={{ flex: '1', marginBottom: 0 }}
+              name={[name, 'value']}
+              rules={[{ required: true, message: t(`lab.manage.varValueMsg`) }]}
+              {...restField}
+            >
+              <Input placeholder={t(`lab.manage.varValue`)} />
+            </Form.Item>
+            <MinusCircleOutlined
+              style={{ fontSize: '14px', marginTop: '9px', cursor: 'pointer' }}
+              onClick={() => remove(name)}
+            />
+          </div>
+        ))}
+        <Button
+          type="dashed"
+          onClick={() => add()}
+          block
+          icon={<PlusOutlined />}
+          style={{ marginTop: '8px' }}
+        >
+          {t(`lab.manage.addConfigVar`)}
+        </Button>
+      </>
+    )}
+  </Form.List>
+));
+EnvVariablesSection.displayName = 'EnvVariablesSection';
+
+const CommandSection = memo(({ t }: { t: any }) => (
+  <Form.List name="default_command_pairs">
+    {(fields, { add, remove }) => (
+      <>
+        {fields.map(({ key, name, ...restField }) => (
+          <div key={key} style={{ display: 'flex', gap: '8px', marginBottom: '8px', alignItems: 'flex-start' }}>
+            <Form.Item
+              style={{ flex: '1', marginBottom: 0 }}
+              name={[name, 'command']}
+              rules={[{ required: true, message: t(`lab.manage.commandMsg`) }]}
+              {...restField}
+            >
+              <Input placeholder={t(`lab.manage.commandExample`)} />
+            </Form.Item>
+            <MinusCircleOutlined
+              style={{ fontSize: '14px', marginTop: '9px', cursor: 'pointer' }}
+              onClick={() => remove(name)}
+            />
+          </div>
+        ))}
+        <Button
+          type="dashed"
+          onClick={() => add()}
+          block
+          icon={<PlusOutlined />}
+          size="small"
+          style={{ marginTop: '8px' }}
+        >
+          {t(`lab.manage.addCommand`)}
+        </Button>
+      </>
+    )}
+  </Form.List>
+));
+CommandSection.displayName = 'CommandSection';
+
+const ArgsSection = memo(({ t }: { t: any }) => (
+  <Form.List name="default_args_pairs">
+    {(fields, { add, remove }) => (
+      <>
+        {fields.map(({ key, name, ...restField }) => (
+          <div key={key} style={{ display: 'flex', gap: '8px', marginBottom: '8px', alignItems: 'flex-start' }}>
+            <Form.Item
+              style={{ flex: '1', marginBottom: 0 }}
+              name={[name, 'arg']}
+              rules={[{ required: true, message: t(`lab.manage.paramsMsg`) }]}
+              {...restField}
+            >
+              <Input placeholder={t(`lab.manage.paramsExample`)} />
+            </Form.Item>
+            <MinusCircleOutlined
+              style={{ fontSize: '14px', marginTop: '9px', cursor: 'pointer' }}
+              onClick={() => remove(name)}
+            />
+          </div>
+        ))}
+        <Button
+          type="dashed"
+          onClick={() => add()}
+          block
+          icon={<PlusOutlined />}
+          size="small"
+          style={{ marginTop: '8px' }}
+        >
+          {t(`lab.manage.addParams`)}
+        </Button>
+      </>
+    )}
+  </Form.List>
+));
+ArgsSection.displayName = 'ArgsSection';
+
+const PortsSection = memo(({ t }: { t: any }) => (
+  <Form.List name="expose_ports_pairs">
+    {(fields, { add, remove }) => (
+      <>
+        {fields.map(({ key, name, ...restField }) => (
+          <div key={key} style={{ display: 'flex', gap: '8px', marginBottom: '8px', alignItems: 'flex-start' }}>
+            <Form.Item
+              style={{ flex: '1', marginBottom: 0 }}
+              name={[name, 'port']}
+              rules={[
+                { required: true, message: t(`lab.manage.portMsg`) },
+                { pattern: /^[1-9]\d{0,4}$/, message: t(`lab.manage.portCharMsg`) }
+              ]}
+              {...restField}
+            >
+              <InputNumber
+                placeholder={t(`lab.manage.portExample`)}
+                min={1}
+                max={65535}
+                style={{ width: '100%' }}
+              />
+            </Form.Item>
+            <MinusCircleOutlined
+              style={{ fontSize: '14px', marginTop: '9px', cursor: 'pointer' }}
+              onClick={() => remove(name)}
+            />
+          </div>
+        ))}
+        <Button
+          type="dashed"
+          onClick={() => add()}
+          block
+          icon={<PlusOutlined />}
+          style={{ marginTop: '8px' }}
+        >
+          {t(`lab.manage.addPort`)}
+        </Button>
+      </>
+    )}
+  </Form.List>
+));
+PortsSection.displayName = 'PortsSection';
+
+const VolumesSection = memo(({ t }: { t: any }) => (
+  <Form.List name="volume_mount_pairs">
+    {(fields, { add, remove }) => (
+      <>
+        {fields.map(({ key, name, ...restField }) => (
+          <div key={key} style={{ display: 'flex', gap: '8px', marginBottom: '8px', alignItems: 'flex-start' }}>
+            <Form.Item
+              style={{ flex: '1', marginBottom: 0 }}
+              name={[name, 'container_path']}
+              rules={[{ required: true, message: t(`lab.manage.containterPath`) }]}
+              {...restField}
+            >
+              <Input placeholder={t(`lab.manage.containterMsg`)} />
+            </Form.Item>
+            <Form.Item
+              style={{ flex: '1', marginBottom: 0 }}
+              name={[name, 'host_path']}
+              {...restField}
+            >
+              <Input placeholder={t(`lab.manage.hostPathMsg`)} />
+            </Form.Item>
+            <Form.Item
+              style={{ flex: '0 0 120px', marginBottom: 0 }}
+              name={[name, 'read_only']}
+              {...restField}
+            >
+              <Select placeholder="读写权限" style={{ width: '100%' }}>
+                <Option value={false}>{t(`lab.manage.write`)}</Option>
+                <Option value={true}>{t(`lab.manage.read`)}</Option>
+              </Select>
+            </Form.Item>
+            <MinusCircleOutlined
+              style={{ fontSize: '14px', marginTop: '9px', cursor: 'pointer' }}
+              onClick={() => remove(name)}
+            />
+          </div>
+        ))}
+        <Button
+          type="dashed"
+          onClick={() => add()}
+          block
+          icon={<PlusOutlined />}
+          style={{ marginTop: '8px' }}
+        >
+          {t(`lab.manage.addVolume`)}
+        </Button>
+      </>
+    )}
+  </Form.List>
+));
+VolumesSection.displayName = 'VolumesSection';
 
 LabImageModal.displayName = 'LabImageModal';
 export default LabImageModal;

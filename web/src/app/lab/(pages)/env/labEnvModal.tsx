@@ -161,12 +161,12 @@ const LabEnvModal = forwardRef<ModalRef, LabEnvProps>(({ onSuccess }, ref) => {
       setLoading(true);
       const values = await form.validateFields();
       console.log(values);
+      const image_name = imagesList.find(item => item.id === values?.ide_image)?.name || '';
       const formData: LabEnvFormData = {
         name: values.name,
-        description: values.description,
+        description: values.descriptions || image_name,
         ide_image: values.ide_image,
         infra_images: values.infra_images || [],
-        // 注意：不再传递 infra_instances，后端会根据 infra_images 自动创建实例
         cpu: values.cpu,
         memory: values.memory,
         gpu: values.gpu,
