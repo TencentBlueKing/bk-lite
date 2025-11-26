@@ -1,0 +1,67 @@
+networks:
+  prod:
+
+services:
+  bce-embedding:
+    image: ${DOCKER_IMAGE_VLLM}
+    container_name: bce-embedding
+    environment:
+      MODEL_NAME: ${VLLM_BCE_EMBEDDING_MODEL_NAME}
+    networks:
+      - prod
+    restart: always
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+  
+  olmocr:
+    image: ${DOCKER_IMAGE_VLLM}
+    container_name: olmocr
+    environment:
+      MODEL_NAME: ${VLLM_OLMOCR_MODEL_NAME}
+    networks:
+      - prod
+    restart: always
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+  
+  bce-rerank:
+    image: ${DOCKER_IMAGE_VLLM}
+    container_name: bce-rerank
+    environment:
+      MODEL_NAME: ${VLLM_BCE_RERANK_MODEL_NAME}
+    networks:
+      - prod
+    restart: always
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+
+  bge-embedding:
+    image: ${DOCKER_IMAGE_VLLM}
+    container_name: bge-embedding
+    environment:
+      MODEL_NAME: ${VLLM_BGE_EMBEDDING_MODEL_NAME}
+    networks:
+      - prod
+    restart: always
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]

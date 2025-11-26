@@ -136,6 +136,7 @@
       "label": "实例名称",
       "type": "input",
       "required": true,
+      "is_only": true,
       "widget_props": {
         "placeholder": "实例名称"
       }

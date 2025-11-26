@@ -6,6 +6,7 @@ from rest_framework.viewsets import GenericViewSet
 from apps.core.utils.loader import LanguageLoader
 from apps.core.utils.permission_utils import get_permission_rules, permission_filter
 from apps.core.utils.web_utils import WebUtils
+from apps.node_mgmt.constants.cloudregion_service import CloudRegionServiceConstants
 from apps.node_mgmt.constants.collector import CollectorConstants
 from apps.node_mgmt.constants.controller import ControllerConstants
 from apps.node_mgmt.constants.language import LanguageConstants
@@ -168,8 +169,11 @@ class NodeViewSet(mixins.DestroyModelMixin,
         enum_data = dict(
             sidecar_status=translated_sidecar_status,
             install_method=translated_install_method,
+            node_type=ControllerConstants.NODE_TYPE_ENUM,
             tag=translated_tags,
             os=translated_os,
+            cloud_server_status=CloudRegionServiceConstants.STATUS_ENUM,
+            cloud_deployed_status=CloudRegionServiceConstants.DEPLOY_STATUS_ENUM,
         )
         return WebUtils.response_success(enum_data)
 

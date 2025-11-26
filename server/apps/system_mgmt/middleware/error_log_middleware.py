@@ -2,6 +2,7 @@
 错误日志中间件
 
 全局捕获 API 异常并自动记录到错误日志
+优化：使用 Celery 异步任务写入日志，避免阻塞主线程
 """
 import re
 import traceback
@@ -10,7 +11,8 @@ from django.http import JsonResponse
 from django.utils.deprecation import MiddlewareMixin
 
 from apps.core.logger import system_mgmt_logger
-from apps.system_mgmt.models import ErrorLog
+from apps.core.utils.loader import LanguageLoader
+from apps.system_mgmt.tasks import write_error_log_async
 
 
 class ErrorLogMiddleware(MiddlewareMixin):
@@ -62,17 +64,19 @@ class ErrorLogMiddleware(MiddlewareMixin):
             if app:
                 # 检查是否在白名单中（为空则记录所有）
                 if not self.ALLOWED_APPS or app in self.ALLOWED_APPS:
-                    # 获取用户信息
-                    username = self._get_username(request)
-
-                    # 获取域名
-                    domain = request.get_host()
+                    # 获取用户信息和域名
+                    username = "anonymous"
+                    domain = "domain.com"
+                    if hasattr(request, "user") and request.user.is_authenticated:
+                        username = request.user.username
+                        if hasattr(request.user, "domain"):
+                            domain = request.user.domain
 
                     # 构建错误信息
                     error_message = self._build_error_message(request, exception)
 
-                    # 记录错误日志
-                    ErrorLog.objects.create(
+                    # 异步记录错误日志（避免阻塞主线程）
+                    write_error_log_async.delay(
                         username=username,
                         app=app,
                         module=module,
@@ -83,9 +87,19 @@ class ErrorLogMiddleware(MiddlewareMixin):
         except Exception as e:
             # 记录错误日志失败不应影响原有流程
             system_mgmt_logger.error(f"Failed to log error via middleware: {str(e)}")
+
+        # 记录详细错误信息到日志（仅后端可见）
         system_mgmt_logger.debug(f"发生错误，错误如下： {str(exception)}")
-        # 返回统一的错误响应给前端
-        return JsonResponse({"result": False, "message": str(exception)}, status=500)
+
+        # 获取用户语言设置
+        locale = "en"
+        if hasattr(request, "user") and hasattr(request.user, "locale"):
+            locale = request.user.locale
+        loader = LanguageLoader(app="system_mgmt", default_lang=locale)
+
+        # 返回统一的通用错误信息给前端（不暴露敏感信息）
+        error_message = loader.get("error.system_error", "System error, please contact administrator")
+        return JsonResponse({"result": False, "message": error_message}, status=500)
 
     def _parse_path(self, path):
         """

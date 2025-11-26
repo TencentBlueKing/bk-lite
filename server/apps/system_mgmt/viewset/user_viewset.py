@@ -6,6 +6,7 @@ from rest_framework.decorators import action
 
 from apps.core.backends import cache
 from apps.core.decorators.api_permission import HasPermission
+from apps.core.utils.loader import LanguageLoader
 from apps.system_mgmt.models import Group, Role, User, UserRule
 from apps.system_mgmt.serializers.user_serializer import UserSerializer
 from apps.system_mgmt.services.role_manage import RoleManage
@@ -112,6 +113,29 @@ class UserViewSet(ViewSetUtils):
     def create_user(self, request):
         kwargs = request.data
         rules = kwargs.pop("rules", [])
+
+        # 获取用户语言设置
+        locale = getattr(request.user, "locale", "en") if hasattr(request, "user") else "en"
+        loader = LanguageLoader(app="system_mgmt", default_lang=locale)
+
+        # 校验 groups ID 是否真实存在
+        groups = kwargs.get("groups", [])
+        if groups:
+            valid_group_ids = set(Group.objects.filter(id__in=groups).values_list("id", flat=True))
+            invalid_group_ids = set(groups) - valid_group_ids
+            if invalid_group_ids:
+                message = loader.get("error.invalid_group_ids", "Invalid group IDs: {ids}").format(ids=list(invalid_group_ids))
+                return JsonResponse({"result": False, "message": message})
+
+        # 校验 roles ID 是否真实存在
+        roles = kwargs.get("roles", [])
+        if roles:
+            valid_role_ids = set(Role.objects.filter(id__in=roles).values_list("id", flat=True))
+            invalid_role_ids = set(roles) - valid_role_ids
+            if invalid_role_ids:
+                message = loader.get("error.invalid_role_ids", "Invalid role IDs: {ids}").format(ids=list(invalid_role_ids))
+                return JsonResponse({"result": False, "message": message})
+
         with transaction.atomic():
             User.objects.create(
                 username=kwargs["username"],
@@ -120,8 +144,8 @@ class UserViewSet(ViewSetUtils):
                 disabled=False,
                 locale=kwargs["locale"],
                 timezone=kwargs["timezone"],
-                group_list=kwargs["groups"],
-                role_list=kwargs["roles"],
+                group_list=groups,
+                role_list=roles,
                 temporary_pwd=kwargs.get("temporary_pwd", False),
             )
             if rules:

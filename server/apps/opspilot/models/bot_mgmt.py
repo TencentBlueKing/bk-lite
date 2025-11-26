@@ -1,6 +1,5 @@
-import binascii
 import json
-import os
+import secrets
 import uuid
 
 from django.db import models
@@ -52,7 +51,16 @@ class Bot(MaintainerInfo):
 
     @staticmethod
     def get_api_token():
-        return binascii.hexlify(os.urandom(32)).decode()
+        """
+        生成安全的 API Token
+
+        使用 secrets 模块生成密码学安全的随机 token，
+        适用于密码、账户认证、安全令牌等场景。
+
+        Returns:
+            str: 64 位的十六进制字符串 token
+        """
+        return secrets.token_hex(32)
 
 
 class BotChannel(models.Model, EncryptMixin):
@@ -62,75 +70,90 @@ class BotChannel(models.Model, EncryptMixin):
     channel_config = YAMLField(verbose_name=_("channel config"), blank=True, null=True)
     enabled = models.BooleanField(default=False, verbose_name=_("enabled"))
 
+    # 渠道加密字段配置映射（符合开闭原则）
+    CHANNEL_ENCRYPT_CONFIG = {
+        ChannelChoices.GITLAB: {
+            "key": "channels.gitlab_review_channel.GitlabReviewChannel",
+            "fields": ["secret_token"],
+        },
+        ChannelChoices.DING_TALK: {
+            "key": "channels.dingtalk_channel.DingTalkChannel",
+            "fields": ["client_secret"],
+        },
+        ChannelChoices.ENTERPRISE_WECHAT: {
+            "key": "channels.enterprise_wechat_channel.EnterpriseWechatChannel",
+            "fields": ["secret_token", "aes_key", "secret", "token"],
+        },
+        ChannelChoices.WECHAT_OFFICIAL_ACCOUNT: {
+            "key": "channels.wechat_official_account_channel.WechatOfficialAccountChannel",
+            "fields": ["aes_key", "secret", "token"],
+        },
+        ChannelChoices.ENTERPRISE_WECHAT_BOT: {
+            "key": "channels.enterprise_wechat_bot_channel.EnterpriseWechatBotChannel",
+            "fields": ["secret_token"],
+        },
+    }
+
     class Meta:
         db_table = "bot_mgmt_botchannel"
 
+    def _process_channel_encryption(self, encrypt=True):
+        """
+        处理渠道配置的加密/解密
+
+        Args:
+            encrypt: True 表示加密，False 表示解密
+        """
+        if self.channel_config is None:
+            return
+
+        config = self.CHANNEL_ENCRYPT_CONFIG.get(self.channel_type)
+        if not config:
+            return
+
+        channel_key = config["key"]
+        fields = config["fields"]
+        channel_data = self.channel_config.get(channel_key)
+
+        if not channel_data:
+            return
+
+        process_func = self.encrypt_field if encrypt else self.decrypt_field
+
+        for field in fields:
+            process_func(field, channel_data)
+
     def save(self, *args, **kwargs):
         if self.channel_config is None:
-            super(BotChannel, self).save()
-        if self.channel_type == ChannelChoices.GITLAB:
-            self.decrypt_field("secret_token", self.channel_config["channels.gitlab_review_channel.GitlabReviewChannel"])
+            super().save(*args, **kwargs)
+            return
 
-            self.encrypt_field("secret_token", self.channel_config["channels.gitlab_review_channel.GitlabReviewChannel"])
-
-        elif self.channel_type == ChannelChoices.DING_TALK:
-            self.decrypt_field("client_secret", self.channel_config["channels.dingtalk_channel.DingTalkChannel"])
-            self.encrypt_field("client_secret", self.channel_config["channels.dingtalk_channel.DingTalkChannel"])
-
-        elif self.channel_type == ChannelChoices.ENTERPRISE_WECHAT:
-            key = "channels.enterprise_wechat_channel.EnterpriseWechatChannel"
-            self.decrypt_field("secret_token", self.channel_config[key])
-            self.decrypt_field("aes_key", self.channel_config[key])
-            self.decrypt_field("secret", self.channel_config[key])
-            self.decrypt_field("token", self.channel_config[key])
-            self.encrypt_field("secret_token", self.channel_config[key])
-            self.encrypt_field("aes_key", self.channel_config[key])
-            self.encrypt_field("secret", self.channel_config[key])
-            self.encrypt_field("token", self.channel_config[key])
-        elif self.channel_type == ChannelChoices.WECHAT_OFFICIAL_ACCOUNT:
-            key = "channels.wechat_official_account_channel.WechatOfficialAccountChannel"
-            self.decrypt_field("aes_key", self.channel_config[key])
-            self.decrypt_field("secret", self.channel_config[key])
-            self.decrypt_field("token", self.channel_config[key])
-            self.encrypt_field("aes_key", self.channel_config[key])
-            self.encrypt_field("secret", self.channel_config[key])
-            self.encrypt_field("token", self.channel_config[key])
-        elif self.channel_type == ChannelChoices.ENTERPRISE_WECHAT_BOT:
-            self.decrypt_field(
-                "secret_token",
-                self.channel_config["channels.enterprise_wechat_bot_channel.EnterpriseWechatBotChannel"],
-            )
-            self.encrypt_field(
-                "secret_token",
-                self.channel_config["channels.enterprise_wechat_bot_channel.EnterpriseWechatBotChannel"],
-            )
+        # 先解密（避免重复加密）
+        self._process_channel_encryption(encrypt=False)
+        # 再加密
+        self._process_channel_encryption(encrypt=True)
 
         super().save(*args, **kwargs)
 
     @cached_property
     def decrypted_channel_config(self):
+        """获取解密后的渠道配置"""
+        if self.channel_config is None:
+            return None
+
         decrypted_config = self.channel_config.copy()
-        if self.channel_type == ChannelChoices.GITLAB:
-            self.decrypt_field("secret_token", decrypted_config["channels.gitlab_review_channel.GitlabReviewChannel"])
+        config = self.CHANNEL_ENCRYPT_CONFIG.get(self.channel_type)
 
-        if self.channel_type == ChannelChoices.DING_TALK:
-            self.decrypt_field("client_secret", decrypted_config["channels.dingtalk_channel.DingTalkChannel"])
+        if not config:
+            return decrypted_config
 
-        elif self.channel_type == ChannelChoices.ENTERPRISE_WECHAT:
-            key = "channels.enterprise_wechat_channel.EnterpriseWechatChannel"
+        channel_key = config["key"]
+        fields = config["fields"]
+        channel_data = decrypted_config.get(channel_key)
 
-            self.decrypt_field("secret_token", decrypted_config[key])
-            self.decrypt_field("aes_key", decrypted_config[key])
-            self.decrypt_field("secret", decrypted_config[key])
-            self.decrypt_field("token", decrypted_config[key])
-
-        elif self.channel_type == ChannelChoices.ENTERPRISE_WECHAT_BOT:
-            self.decrypt_field("secret_token", decrypted_config["channels.enterprise_wechat_bot_channel.EnterpriseWechatBotChannel"])
-        elif self.channel_type == ChannelChoices.WECHAT_OFFICIAL_ACCOUNT:
-            key = "channels.wechat_official_account_channel.WechatOfficialAccountChannel"
-            self.decrypt_field("secret", decrypted_config[key])
-            self.decrypt_field("token", decrypted_config[key])
-            self.decrypt_field("aes_key", decrypted_config[key])
+        if channel_data:
+            for field in fields:
+                self.decrypt_field(field, channel_data)
 
         return decrypted_config
 

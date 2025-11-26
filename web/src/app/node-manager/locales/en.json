@@ -113,7 +113,10 @@
         "manual": "Manual",
         "lastReportTime": "Last Report Time",
         "installMethod": "Install Method",
-        "auto": "Remote"
+        "auto": "Remote",
+        "nodeType": "Node Type",
+        "nodeProperties": "Node Properties",
+        "hostedProgram": "Hosted Program"
       },
       "editform": {
         "Introduction": "Introduction",
@@ -135,6 +138,25 @@
       },
       "addform": {
         "title": "Add Cloud Region"
+      },
+      "deploy": {
+        "title": "Deploy Cloud Region",
+        "containerDeploy": "Container Deploy",
+        "k8sDeploy": "K8s Deploy",
+        "containerTips": "Please connect to the cloud region and select a host that can communicate directly with the platform master node to deploy Nats Executor and Stargazer container components, thereby acting as a bridge between the cloud region and the platform master node.",
+        "ipAddress": "IP Address",
+        "ipPlaceholder": "Please enter IP address, e.g.: 192.168.1.100",
+        "ipFormatError": "Please enter a valid IP address format",
+        "sshPort": "SSH Port",
+        "loginAccount": "Login Account",
+        "usernamePlaceholder": "Please enter login account, e.g.: root",
+        "loginPassword": "Login Password",
+        "sshServiceTips": "The cloud region needs to use SSH service during deployment, and can be closed after deployment is complete to improve security.",
+        "deploy": "Deploy",
+        "deploySuccess": "Deployment successful",
+        "upgradeTitle": "Upgrade to Enterprise Edition for More Features",
+        "upgradeDescription": "The community edition cloud region only supports container deployment, K8s deployment method please upgrade to enterprise edition.",
+        "upgradeButton": "Learn About Enterprise"
       }
     },
     "packetManage": {
