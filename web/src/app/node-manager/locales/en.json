@@ -113,7 +113,10 @@
         "manual": "Manual",
         "lastReportTime": "Last Report Time",
         "installMethod": "Install Method",
-        "auto": "Remote"
+        "auto": "Remote",
+        "nodeType": "Node Type",
+        "nodeProperties": "Node Properties",
+        "hostedProgram": "Hosted Program"
       },
       "editform": {
         "Introduction": "Introduction",

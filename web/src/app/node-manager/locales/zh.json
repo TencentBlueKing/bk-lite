@@ -113,7 +113,10 @@
         "manual": "手动",
         "lastReportTime": "最后上报时间",
         "installMethod": "安装方式",
-        "auto": "远程"
+        "auto": "远程",
+        "nodeType": "节点类型",
+        "nodeProperties": "节点属性",
+        "hostedProgram": "托管程序"
       },
       "editform": {
         "Introduction": "简介",
