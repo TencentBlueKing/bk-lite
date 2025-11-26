@@ -21,11 +21,13 @@ import type { MenuProps } from 'antd';
 interface HookParams {
   checkConfig: (row: TableDataItem) => void;
   deleteNode: (row: TableDataItem) => void;
+  editNode: (row: TableDataItem) => void;
 }
 
 const useColumns = ({
   checkConfig,
   deleteNode,
+  editNode,
 }: HookParams): TableColumnsType<TableDataItem> => {
   const { showGroupNames } = useGroupNames();
   const { t } = useTranslation();
@@ -69,6 +71,11 @@ const useColumns = ({
                 {t('node-manager.cloudregion.node.checkConfig')}
               </Button>
             </Permission>
+            <Permission className="ml-[10px]" requiredPermissions={['Edit']}>
+              <Button type="link" onClick={() => editNode(item)}>
+                {t('common.edit')}
+              </Button>
+            </Permission>
             <Permission requiredPermissions={['Delete']}>
               <Popconfirm
                 className="ml-[10px]"
@@ -89,7 +96,7 @@ const useColumns = ({
         ),
       },
     ],
-    [checkConfig, deleteNode, t]
+    [checkConfig, deleteNode, editNode, t]
   );
   return columns;
 };
