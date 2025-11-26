@@ -86,7 +86,7 @@ class LabEnvSerializer(AuthSerializer):
         if infra_images is not None:
             self._update_infra_instances_from_images(lab_env, infra_images)
             # 重新生成 docker-compose 配置
-            self._setup_docker_compose(lab_env)
+            # self._setup_docker_compose(lab_env)
         
         return lab_env
     
@@ -140,7 +140,9 @@ class LabEnvSerializer(AuthSerializer):
     def _update_infra_instances_from_images(self, lab_env, image_ids):
         """
         更新环境的基础设施实例
-        策略：只有在镜像列表真正改变时才重新创建实例
+        策略：
+        1. 镜像ID列表变化 -> 删除旧实例，创建新实例
+        2. 镜像ID列表不变 -> 同步更新现有实例的配置（从镜像默认配置）
         
         Args:
             lab_env: Lab环境对象
@@ -153,11 +155,38 @@ class LabEnvSerializer(AuthSerializer):
         current_image_ids = set(instance.image.id for instance in current_instances)
         new_image_ids = set(image_ids)
         
-        # 比较镜像ID列表，判断是否有变化
+        # 情况1: 镜像ID列表相同，更新现有实例配置
         if current_image_ids == new_image_ids:
-            logger.info(f"环境 {lab_env.name} 的镜像配置未变化，跳过实例更新")
+            logger.info(f"环境 {lab_env.name} 的镜像列表未变化，检查并同步镜像配置到实例")
+            
+            for instance in current_instances:
+                image = instance.image
+                updated_fields = []
+                
+                # 同步环境变量（如果实例的配置为空或与镜像默认配置不一致）
+                if image.default_env and instance.env_vars != image.default_env:
+                    instance.env_vars = image.default_env
+                    updated_fields.append('env_vars')
+                
+                # 同步命令和参数
+                if image.default_command and instance.command != image.default_command:
+                    instance.command = image.default_command
+                    updated_fields.append('command')
+                
+                if image.default_args and instance.args != image.default_args:
+                    instance.args = image.default_args
+                    updated_fields.append('args')
+                
+                # 如果有字段更新，保存实例
+                if updated_fields:
+                    instance.save()
+                    logger.info(f"实例 {instance.name} 已同步镜像配置，更新字段: {', '.join(updated_fields)}")
+                else:
+                    logger.debug(f"实例 {instance.name} 配置已是最新")
+            
             return
         
+        # 情况2: 镜像ID列表变化，删除旧实例并创建新实例
         logger.info(f"环境 {lab_env.name} 的镜像配置已变化，从 {current_image_ids} 更新为 {new_image_ids}")
         
         # 清空旧的关联关系

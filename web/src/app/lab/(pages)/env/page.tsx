@@ -1,6 +1,6 @@
 "use client";
-import { Menu, Button, message } from 'antd';
-import { PlayCircleOutlined, PauseCircleOutlined } from '@ant-design/icons';
+import { Menu, Button, message, Tooltip } from 'antd';
+import { PlayCircleOutlined, PauseCircleOutlined, RedoOutlined } from '@ant-design/icons';
 import stlyes from '@/app/lab/styles/index.module.scss';
 import { useState, useEffect, useRef } from 'react';
 import EntityList from '@/components/entity-list';
@@ -18,6 +18,8 @@ const EnvManage = () => {
     startEnv,
     stopEnv,
     restartEnv,
+    getEnvStatus,
+    getEnvStatusList
     // generateComposeYaml
   } = useLabEnv();
 
@@ -28,7 +30,8 @@ const EnvManage = () => {
   const fetchEnvs = async () => {
     setLoading(true);
     try {
-      const res = await getEnvList();
+      // const res = await getEnvList();
+      const [res, status] = await Promise.all([getEnvList(), getEnvStatusList()]);
       const _res = res?.map((item: any) => {
         return {
           ...item,
@@ -36,6 +39,7 @@ const EnvManage = () => {
           creator: item?.created_by || '--',
         }
       });
+      console.log(status);
       setTableData(_res || []);
     } catch (e) {
       console.log(e);
@@ -125,19 +129,15 @@ const EnvManage = () => {
           {/* </PermissionWrapper> */}
         </Menu.Item>
         <Menu.Item
-          className="!p-0"
-          onClick={() => handleRestart(item.id)}
+          className='!p-0'
+          onClick={() => getContainerStatus(item)}
         >
-          {/* <PermissionWrapper requiredPermissions={['Edit']} className="!block" > */}
-          <Button type="text" className="w-full">
-            {t(`lab.manage.restart`)}
-          </Button>
-          {/* </PermissionWrapper> */}
+          <Button type='text' className='w-full'>刷新</Button>
         </Menu.Item>
         {item?.name !== "default" && (
           <Menu.Item className="!p-0" onClick={() => handleDel(item.id)}>
             {/* <PermissionWrapper requiredPermissions={['Delete']} className="!block" > */}
-            <Button type="text" className="w-full">
+            <Button type="text" className="w-full" disabled={['stopped', 'error'].includes(item?.state) ? false : true }>
               {t(`common.delete`)}
             </Button>
             {/* </PermissionWrapper> */}
@@ -152,6 +152,7 @@ const EnvManage = () => {
     const isRunning = item.state === 'running';
     const isStarting = item.state === 'starting';
     const isStopping = item.state === 'stopping';
+    const isError = item.state === 'error';
 
     return (
       <div className="flex justify-between items-center w-full">
@@ -159,30 +160,43 @@ const EnvManage = () => {
           {`creator: ${item.created_by || '--'}`}
         </p>
         <div className="flex gap-1">
-          {!isRunning && !isStarting && (
+          {isError && (
+            <Tooltip>
+              <span></span>
+            </Tooltip>
+          )}
+          <Tooltip title="重启">
             <Button
-              // type="link"
-              color="green" variant="link"
-              size="small"
-              icon={<PlayCircleOutlined />}
-              onClick={(e) => handleStart(item.id, e)}
-              loading={isStarting}
-              className="text-green-600 hover:text-green-700"
-            >
-              启动
-            </Button>
+              color='blue' variant='link'
+              size='small'
+              disabled={isStopping ? true : false}
+              icon={<RedoOutlined />}
+              onClick={() => handleRestart(item.id)}
+            />
+          </Tooltip>
+          {!isRunning && !isStarting && (
+            <Tooltip title="启动">
+              <Button
+                color="green" variant="link"
+                size="small"
+                icon={<PlayCircleOutlined />}
+                onClick={(e) => handleStart(item.id, e)}
+                loading={isStarting}
+                className="text-green-600 hover:text-green-800"
+              />
+            </Tooltip>
           )}
           {(isRunning || isStarting) && (
-            <Button
-              type="text"
-              size="small"
-              icon={<PauseCircleOutlined />}
-              onClick={(e) => handleStop(item.id, e)}
-              loading={isStopping}
-              className="text-red-600 hover:text-red-700"
-            >
-              停止
-            </Button>
+            <Tooltip title="停止">
+              <Button
+                color="red" variant="link"
+                size="small"
+                icon={<PauseCircleOutlined />}
+                onClick={(e) => handleStop(item.id, e)}
+                loading={isStopping}
+                className="text-red-600 hover:text-red-800"
+              />
+            </Tooltip>
           )}
           {/* <Button
             // type="link"
@@ -215,6 +229,16 @@ const EnvManage = () => {
   // 编辑
   const handleEdit = (data: any) => {
     modalRef.current?.showModal(data)
+  };
+
+  // 容器状态
+  const getContainerStatus = async (item: any) => {
+    try {
+      const data = await getEnvStatus(item.id);
+      console.log(data);
+    } catch (e) {
+      console.log(e)
+    }
   };
 
   // 删除

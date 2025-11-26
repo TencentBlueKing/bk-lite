@@ -45,6 +45,11 @@ const useLabEnv = () => {
     return await post(`/lab/environments/${id}/restart/`);
   };
 
+  // 获取所有环境状态
+  const getEnvStatusList = async () => {
+    return await get(`/lab/environments/status`);
+  };
+
   // 获取环境状态
   const getEnvStatus = async (id: number | string) => {
     return await get(`/lab/environments/${id}/status/`);
@@ -129,6 +134,7 @@ const useLabEnv = () => {
     stopEnv,
     restartEnv,
     getEnvStatus,
+    getEnvStatusList,
     getRunningEnvs,
     getEnvSummary,
     
