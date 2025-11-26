@@ -11,6 +11,7 @@ import CollectorModal from '@/app/node-manager/components/sidecar/collectorModal
 import { ModalRef } from '@/app/node-manager/types';
 import PermissionWrapper from '@/components/permission';
 import { useCollectorMenuItem } from '@/app/node-manager/hooks/collector';
+import { useCommon } from '@/app/node-manager/context/common';
 const { Search } = Input;
 const { confirm } = Modal;
 
@@ -18,8 +19,9 @@ const Collector = () => {
   const router = useRouter();
   const { t } = useTranslation();
   const { isLoading } = useApiClient();
-  const { getCollectorlist, deleteCollector, getNodeStateEnum } =
-    useNodeManagerApi();
+  const { getCollectorlist, deleteCollector } = useNodeManagerApi();
+  const commonContext = useCommon();
+  const nodeStateEnum = commonContext?.nodeStateEnum || {};
   const menuItem = useCollectorMenuItem();
   const modalRef = useRef<ModalRef>(null);
   const [collectorCards, setCollectorCards] = useState<CardItem[]>([]);
@@ -39,21 +41,15 @@ const Collector = () => {
 
   const initData = () => {
     setLoading(true);
-    getTags()
-      .then((data) => {
-        const { apps, tagEnum: newTagEnum } = data;
-        const defaultAppTag = apps && apps.length > 0 ? apps[0].value : '';
-        setSelectedAppTag(defaultAppTag);
-        fetchCollectorlist({
-          searchValue: '',
-          appTag: defaultAppTag,
-          sysTags: [],
-          tagEnum: newTagEnum,
-        });
-      })
-      .catch(() => {
-        setLoading(false);
-      });
+    const { apps, tagEnum: newTagEnum } = getTags();
+    const defaultAppTag = apps && apps.length > 0 ? apps[0].value : '';
+    setSelectedAppTag(defaultAppTag);
+    fetchCollectorlist({
+      searchValue: '',
+      appTag: defaultAppTag,
+      sysTags: [],
+      tagEnum: newTagEnum,
+    });
   };
 
   const navigateToCollectorDetail = (item: CardItem) => {
@@ -61,10 +57,9 @@ const Collector = () => {
       /node-manager/collector/detail?id=${item.id}&name=${item.name}&introduction=${item.description}&system=${item.tagList[0]}&icon=${item.icon}`);
   };
 
-  const getTags = async () => {
-    const res = await getNodeStateEnum();
-    if (res?.tag) {
-      const tagData = res.tag;
+  const getTags = () => {
+    if (nodeStateEnum?.tag) {
+      const tagData = nodeStateEnum.tag;
       const apps: any[] = [];
       const systems: any[] = [];
       Object.keys(tagData).forEach((key) => {
