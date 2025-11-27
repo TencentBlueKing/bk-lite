@@ -10,12 +10,10 @@ import { Button, message, Space, Modal, Tooltip, Tag, Dropdown } from 'antd';
 import {
   DownOutlined,
   ReloadOutlined,
-  AppleFilled,
-  WindowsFilled,
-  HddFilled,
-  ContainerFilled,
-  CloudServerOutlined,
-  ThunderboltFilled,
+  HddTwoTone,
+  ContainerTwoTone,
+  ThunderboltTwoTone,
+  CloudTwoTone,
 } from '@ant-design/icons';
 import type { MenuProps, TableProps } from 'antd';
 import nodeStyle from './index.module.scss';
@@ -36,15 +34,15 @@ import MainLayout from '../mainlayout/layout';
 import useApiClient from '@/utils/request';
 import useNodeManagerApi from '@/app/node-manager/api';
 import useCloudId from '@/app/node-manager/hooks/useCloudRegionId';
-import { SafeStorage } from '@/app/node-manager/utils/safeStorage';
 import ControllerInstall from './controllerInstall';
 import ControllerUninstall from './controllerUninstall';
 import CollectorInstallTable from './controllerTable';
-import { useRouter, useSearchParams } from 'next/navigation';
+import { useSearchParams } from 'next/navigation';
 import PermissionWrapper from '@/components/permission';
 import { cloneDeep } from 'lodash';
 import { ColumnItem } from '@/types';
 import CollectorDetailDrawer from './collectorDetailDrawer';
+import EditNode from './editNode';
 import { useCommon } from '@/app/node-manager/context/common';
 const { confirm } = Modal;
 
@@ -53,7 +51,6 @@ type TableRowSelection<T extends object = object> =
 
 const Node = () => {
   const { t } = useTranslation();
-  const router = useRouter();
   const cloudId = useCloudId();
   const searchParams = useSearchParams();
   const { isLoading, del } = useApiClient();
@@ -68,6 +65,7 @@ const Node = () => {
   const collectorRef = useRef<ModalRef>(null);
   const controllerRef = useRef<ModalRef>(null);
   const collectorDetailRef = useRef<any>(null);
+  const editNodeRef = useRef<ModalRef>(null);
   const [nodeList, setNodeList] = useState<TableDataItem[]>();
   const [selectedRowKeys, setSelectedRowKeys] = useState<React.Key[]>([]);
   const [loading, setLoading] = useState<boolean>(false);
@@ -88,14 +86,14 @@ const Node = () => {
 
   const columns = useColumns({
     checkConfig: (row: TableDataItem) => {
-      const data = {
-        cloud_region_id: cloudId.toString(),
-        name,
-      };
-      SafeStorage.setSessionItem('cloudRegionInfo', { id: row.id });
-      const params = new URLSearchParams(data);
-      const targetUrl = `/node-manager/cloudregion/configuration?${params.toString()}`;
-      router.push(targetUrl);
+      const allCollectors = getNodeCollectors(row);
+      handleCollectorTagClick(row, allCollectors);
+    },
+    editNode: (row: TableDataItem) => {
+      editNodeRef.current?.showModal({
+        type: 'edit',
+        form: row,
+      });
     },
     deleteNode: async (row: TableDataItem) => {
       try {
@@ -158,6 +156,18 @@ const Node = () => {
     );
     return selectedNodes[0]?.operating_system || 'linux';
   }, [nodeList, selectedRowKeys]);
+
+  // 获取节点的所有采集器（排除 NATS-Executor）
+  const getNodeCollectors = (record: TableDataItem) => {
+    const natsexecutorId =
+      record.operating_system === 'linux'
+        ? 'natsexecutor_linux'
+        : 'natsexecutor_windows';
+    return [
+      ...(record.status?.collectors || []),
+      ...(record.status?.collectors_install || []),
+    ].filter((collector: any) => collector.collector_id !== natsexecutorId);
+  };
 
   useEffect(() => {
     if (!isLoading) {
@@ -289,32 +299,38 @@ const Node = () => {
           const osLabel = nodeStateEnum?.os?.[osValue] || osValue;
           const OSIcon =
             osValue === 'linux'
-              ? AppleFilled
+              ? HddTwoTone
               : osValue === 'windows'
-                ? WindowsFilled
-                : HddFilled;
+                ? HddTwoTone
+                : HddTwoTone;
           // 获取安装方式映射
           const installMethodValue = record.install_method;
           const installMethodLabel =
             nodeStateEnum?.install_method?.[installMethodValue] ||
             installMethodValue;
           const InstallIcon =
-            installMethodValue === 'auto'
-              ? ThunderboltFilled
-              : CloudServerOutlined;
+            installMethodValue === 'auto' ? ThunderboltTwoTone : CloudTwoTone;
           // 获取节点类型映射
           const nodeTypeValue = record.node_type;
           const nodeTypeLabel =
             nodeStateEnum?.node_type?.[nodeTypeValue] || nodeTypeValue;
           const NodeTypeIcon =
-            nodeTypeValue === 'container' ? ContainerFilled : HddFilled;
+            nodeTypeValue === 'container' ? ContainerTwoTone : HddTwoTone;
+          // 容器节点tooltip内容
+          const nodeTypeTooltip =
+            nodeTypeValue === 'container' ? (
+              <div>
+                <div>{`${t(
+                  'node-manager.cloudregion.node.nodeType'
+                )}: ${nodeTypeLabel}`}</div>
+                <div>{t('node-manager.cloudregion.node.containerNodeTip')}</div>
+              </div>
+            ) : (
+              `${t('node-manager.cloudregion.node.nodeType')}: ${nodeTypeLabel}`
+            );
           return (
             <div className="flex gap-2">
-              <Tooltip
-                title={`${t(
-                  'node-manager.cloudregion.node.nodeType'
-                )}: ${nodeTypeLabel}`}
-              >
+              <Tooltip title={nodeTypeTooltip}>
                 <NodeTypeIcon style={{ fontSize: '16px', cursor: 'pointer' }} />
               </Tooltip>
               <Tooltip
@@ -387,18 +403,7 @@ const Node = () => {
           },
         }),
         render: (_: any, record: TableDataItem) => {
-          // 获取所有采集器（排除 NATS-Executor）
-          const natsexecutorId =
-            record.operating_system === 'linux'
-              ? 'natsexecutor_linux'
-              : 'natsexecutor_windows';
-
-          const allCollectors = [
-            ...(record.status?.collectors || []),
-            ...(record.status?.collectors_install || []),
-          ].filter(
-            (collector: any) => collector.collector_id !== natsexecutorId
-          );
+          const allCollectors = getNodeCollectors(record);
           // 按状态分组
           const statusGroups = allCollectors.reduce(
             (groups: any, collector: any) => {
@@ -529,7 +534,7 @@ const Node = () => {
                 >
                   <Button>
                     <Space>
-                      {t('node-manager.cloudregion.node.collector')}
+                      {t('node-manager.cloudregion.node.hostedProgram')}
                       <DownOutlined />
                     </Space>
                   </Button>
@@ -565,6 +570,11 @@ const Node = () => {
             />
             <CollectorDetailDrawer
               ref={collectorDetailRef}
+              nodeStateEnum={nodeStateEnum}
+              onSuccess={() => getNodes(searchFilters)}
+            />
+            <EditNode
+              ref={editNodeRef}
               onSuccess={() => getNodes(searchFilters)}
             />
           </div>
