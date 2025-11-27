@@ -76,7 +76,7 @@ INIT_IMAGES = [
       "--host", 
       "0.0.0.0", 
       "--port", 
-      '"15000"', 
+      "15000", 
       "--backend-store-uri",
       f"postgresql+psycopg2://postgres:{POSTGRES_PASSWORD}@postgres:5432/mlflow",
       "--artifacts-destination",
@@ -142,7 +142,7 @@ INIT_IMAGES = [
     "version": "latest",
     "image_type": "ide",
     "image": "null",
-    "default_port": 8080,
+    "default_port": 8081,
     "default_command": [],
     "default_args": [],
     "default_env": {
@@ -150,7 +150,7 @@ INIT_IMAGES = [
       "SUDO_PASSWORD": CODE_SERVER_PASSWORD,
       "DEFAULT_WORKSPACE": "/home/coder/project"
     },
-    "expose_ports": [8080],
+    "expose_ports": [8081],
     "volume_mounts": [
       {
         "container_path": "/home/coder/project"
@@ -184,7 +184,7 @@ INIT_IMAGES = [
     "version": "latest",
     "image_type": "ide",
     "image": "null",
-    "default_port": 8888,
+    "default_port": 8889,
     "default_command": ["start-notebook.sh"],
     "default_args": [],
     "default_env": {
@@ -192,7 +192,7 @@ INIT_IMAGES = [
       "JUPYTER_TOKEN": JUPYTER_TOKEN,
       "GRANT_SUDO": "yes"
     },
-    "expose_ports": [8888],
+    "expose_ports": [8889],
     "volume_mounts": [
       {
         "container_path": "/home/jovyan/work"

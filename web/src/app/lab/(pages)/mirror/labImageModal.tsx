@@ -37,6 +37,7 @@ interface LabImageFormData {
   default_env: Record<string, string>;
   default_command: string[];
   default_args: string[];
+  default_user?: string;
   expose_ports: number[];
   volume_mounts: Array<{
     container_path: string;
@@ -150,6 +151,7 @@ const LabImageModal = forwardRef<ModalRef, LabImageProps>(({ activeTap, onSucces
         default_env,
         default_command,
         default_args,
+        default_user: values.default_user,
         expose_ports,
         volume_mounts
       };
@@ -343,8 +345,28 @@ const LabImageModal = forwardRef<ModalRef, LabImageProps>(({ activeTap, onSucces
         </Card>
 
         {/* 卷挂载配置 */}
-        <Card title={t(`lab.manage.volumeContent`)} size="small" className="mb-2">
+        <Card title={t(`lab.manage.volumeContent`)} size="small" style={{ marginBottom: 16 }}>
           <VolumesSection t={t} />
+        </Card>
+
+        {/* 运行用户 */}
+        <Card
+          title={
+            <span>
+              {t(`lab.manage.defaultUser`)}
+              <Tooltip title="容器运行用户，格式: uid:gid (如 1000:1000) 或 username (如 jovyan)">
+                <QuestionCircleOutlined style={{ marginLeft: 6, color: '#8c8c8c', fontSize: '14px' }} />
+              </Tooltip>
+            </span>
+          }
+          size="small"
+        >
+          <Form.Item
+            name="default_user"
+            style={{ marginBottom: 0 }}
+          >
+            <Input placeholder="例如: 1000:1000 或 jovyan" />
+          </Form.Item>
         </Card>
       </Form>
     </OperateModal>

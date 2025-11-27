@@ -19,6 +19,7 @@ from apps.lab.serializers import (
 )
 from apps.lab.utils.lab_utils import LabUtils
 from apps.lab.utils.compose_generator import ComposeGenerator
+from apps.lab.utils.webhook_client import WebhookClient
 
 
 class LabEnvViewSet(ModelViewSet):
@@ -37,15 +38,85 @@ class LabEnvViewSet(ModelViewSet):
     ordering_fields = ['created_at', 'updated_at', 'name']
     ordering = ['-created_at']
     
+    # 统一的超时配置
+    WEBHOOK_TIMEOUT_SETUP = 60  # setup操作超时时间(秒)
+    WEBHOOK_TIMEOUT_OPERATION = 180  # start/stop/restart操作超时时间(秒)
+    WEBHOOK_TIMEOUT_STATUS = 30  # 状态查询超时时间(秒)
+    
+    def list(self, request, *args, **kwargs):
+        """
+        重写 list 方法,支持 with_status 参数一次性返回环境列表和状态
+        
+        GET /api/v1/lab/environments/?with_status=true
+        """
+        # 获取查询参数
+        with_status = request.query_params.get('with_status', 'false').lower() == 'true'
+        
+        # 调用父类方法获取环境列表
+        response = super().list(request, *args, **kwargs)
+        
+        # 如果不需要状态信息,直接返回
+        if not with_status or response.status_code != 200:
+            return response
+        
+        try:
+            # 获取环境列表数据
+            env_list = response.data.get('results', response.data) if isinstance(response.data, dict) else response.data
+            
+            if not env_list:
+                return response
+            
+            # 构建环境ID列表
+            env_ids = [f"lab-env-{env['id']}" for env in env_list]
+            
+            # 批量查询状态
+            webhook_url = WebhookClient.build_url('status')
+            if webhook_url:
+                status_response = requests.post(
+                    webhook_url,
+                    json={'ids': env_ids},
+                    timeout=self.WEBHOOK_TIMEOUT_STATUS,
+                    headers={'Content-Type': 'application/json'}
+                )
+                
+                if status_response.status_code == 200:
+                    status_result = status_response.json()
+                    
+                    if status_result.get('status') == 'success' and status_result.get('data'):
+                        # 创建状态映射
+                        status_map = {item['id']: item for item in status_result['data']}
+                        
+                        # 将状态信息合并到环境列表
+                        for env in env_list:
+                            env_id = f"lab-env-{env['id']}"
+                            env['container_status'] = status_map.get(env_id, {})
+                else:
+                    logger.warning(f"获取状态失败: HTTP {status_response.status_code}")
+            else:
+                logger.warning("Webhook URL 未配置,跳过状态查询")
+                
+        except Exception as e:
+            logger.exception(f"合并状态信息时出错: {e}")
+            # 出错时不影响环境列表返回
+        
+        return response
+    
     @action(detail=True, methods=['post'])
     def start(self, request, pk=None):
         """启动 Lab 环境"""
         lab_env = self.get_object()
         compose_id = f"lab-env-{lab_env.id}"
         
+        # 使用状态转移方法检查和更新状态
         if lab_env.state == 'running':
             return Response(
                 {'detail': 'Lab 环境已经在运行中'}, 
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        if lab_env.state == 'starting':
+            return Response(
+                {'detail': 'Lab 环境正在启动中,请勿重复操作'}, 
                 status=status.HTTP_400_BAD_REQUEST
             )
         
@@ -56,7 +127,7 @@ class LabEnvViewSet(ModelViewSet):
             compose_config = ComposeGenerator.generate(lab_env)
             
             # 2. Setup - 更新配置文件
-            setup_url = self.get_webhook_url('setup')
+            setup_url = WebhookClient.build_url('setup')
             if not setup_url:
                 return Response(
                     {'error': '服务器错误，缺少 webhook 配置'},
@@ -68,17 +139,15 @@ class LabEnvViewSet(ModelViewSet):
                 'compose': compose_config
             }
             
-            logger.info(f"正在更新环境 {lab_env.name} 的配置")
             setup_response = requests.post(
                 setup_url,
                 json=setup_payload,
-                timeout=30,
+                timeout=self.WEBHOOK_TIMEOUT_SETUP,
                 headers={'Content-Type': 'application/json'}
             )
             
             if setup_response.status_code != 200:
                 error_detail = setup_response.text
-                logger.error(f"配置更新失败: {error_detail}")
                 return Response({
                     'status': 'error',
                     'message': '配置更新失败',
@@ -87,13 +156,12 @@ class LabEnvViewSet(ModelViewSet):
             
             setup_result = setup_response.json()
             if setup_result.get('status') != 'success':
-                logger.error(f"配置验证失败: {setup_result.get('error', '未知错误')}")
                 return Response(setup_result, status=status.HTTP_400_BAD_REQUEST)
             
             logger.info(f"环境 {lab_env.name} 配置更新成功")
 
             # 通过requests请求webhook接口将已经生成的compose配置启动
-            webhook_url = self.get_webhook_url('start')
+            webhook_url = WebhookClient.build_url('start')
             if not webhook_url:
                 return Response(
                     {'error': '服务器错误, 缺少对应启动接口'},
@@ -104,30 +172,78 @@ class LabEnvViewSet(ModelViewSet):
                 "id": f"lab-env-{lab_env.id}"
             }
 
-            lab_env.state = 'starting'
-            lab_env.save(update_fields=['state', 'updated_at'])
+            # 使用安全的状态转移方法
+            try:
+                # 重新从数据库刷新状态,防止在setup期间被stop操作改变
+                lab_env.refresh_from_db()
+                
+                # 如果已经不是stopped状态(可能被stop了),则放弃启动
+                if lab_env.state not in ['stopped', 'error']:
+                    logger.warning(f"环境 {lab_env.name} 状态已变为 {lab_env.state},放弃启动")
+                    return Response(
+                        {'detail': f'环境状态已变更为 {lab_env.state},启动已取消'}, 
+                        status=status.HTTP_400_BAD_REQUEST
+                    )
+                
+                lab_env.safe_start()
+            except Exception as e:
+                logger.error(f"状态转移失败: {e}")
+                return Response(
+                    {'error': f'无法启动环境: {str(e)}'}, 
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            
             response = requests.post(
                 url=webhook_url,
                 json=payload,
-                timeout=120,  # 增加超时时间到 120 秒，容器启动可能需要较长时间
+                timeout=self.WEBHOOK_TIMEOUT_OPERATION,
                 headers={'Content-Type': 'application/json'}
             )
 
             # 检查响应
             if response.status_code == 200:
                 result = response.json()
+                logger.info(f"启动请求响应成功,{response.text}")
                 if result.get('status') == 'success':
-                    lab_env.state = 'running'
-                    lab_env.save(update_fields=['state', 'updated_at'])
+                    # 在标记为running前,再次检查状态是否仍为starting
+                    try:
+                        lab_env.refresh_from_db()
+                        if lab_env.state != 'starting':
+                            # 状态已被改变(可能被stop操作),放弃标记为running
+                            logger.warning(f"环境 {lab_env.name} 状态已变为 {lab_env.state},虽然启动成功但不标记为running")
+                            return Response({
+                                'status': 'cancelled',
+                                'message': f'启动操作已被取消,当前状态: {lab_env.state}'
+                            }, status=status.HTTP_200_OK)
+                        lab_env.mark_running()
+                    except Exception as e:
+                        logger.error(f"标记running状态失败: {e}")
+                        return Response({
+                            'status': 'error',
+                            'message': '启动成功但状态更新失败',
+                            'error': str(e)
+                        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
                     return Response(result)
                 else:
-                    lab_env.state = 'error'
-                    lab_env.save(update_fields=['state', 'updated_at'])
+                    # 启动失败,回滚到stopped状态
+                    try:
+                        lab_env.refresh_from_db()
+                        if lab_env.state == 'starting':
+                            lab_env.mark_stopped()
+                    except Exception as rollback_err:
+                        logger.error(f"状态回滚失败: {rollback_err}")
                     return Response(result, status=status.HTTP_400_BAD_REQUEST)
             else:
                 # 详细记录响应信息
                 error_detail = response.text if response.text else f"HTTP {response.status_code}"
-                logger.error(f"Webhook 请求失败: HTTP {response.status_code}, 详情: {error_detail}")
+                logger.error(f"启动请求响应失败: HTTP {response.status_code}, 详情: {error_detail}")
+                # webhook请求失败,回滚到stopped状态
+                try:
+                    lab_env.refresh_from_db()
+                    if lab_env.state == 'starting':
+                        lab_env.mark_stopped()
+                except Exception as rollback_err:
+                    logger.error(f"状态回滚失败: {rollback_err}")
                 return Response({
                     'status': 'error',
                     'message': f'Webhook 请求失败: HTTP {response.status_code}',
@@ -135,15 +251,29 @@ class LabEnvViewSet(ModelViewSet):
                 }, status=status.HTTP_502_BAD_GATEWAY)
         
         except requests.exceptions.Timeout:
-            logger.error(f"Lab 环境 {lab_env.name} 启动超时: webhook 请求超过 120 秒")
+            logger.error(f"Lab 环境 {lab_env.name} 启动超时: webhook 请求超过 {self.WEBHOOK_TIMEOUT_OPERATION} 秒")
+            # 超时回滚状态
+            try:
+                lab_env.refresh_from_db()
+                if lab_env.state == 'starting':
+                    lab_env.mark_stopped()
+            except Exception as rollback_err:
+                logger.error(f"状态回滚失败: {rollback_err}")
             return Response({
                 'status': 'error',
-                'message': '启动请求超时，容器可能仍在后台启动中',
+                'message': '启动请求超时,容器可能仍在后台启动中',
                 'error': '请求超时'
             }, status=status.HTTP_504_GATEWAY_TIMEOUT)
         
         except requests.exceptions.RequestException as e:
             logger.exception(f"Lab 环境 {lab_env.name} 启动时 webhook 请求异常: {e}")
+            # 请求异常回滚状态
+            try:
+                lab_env.refresh_from_db()
+                if lab_env.state == 'starting':
+                    lab_env.mark_stopped()
+            except Exception as rollback_err:
+                logger.error(f"状态回滚失败: {rollback_err}")
             return Response({
                 'status': 'error',
                 'message': '启动请求失败',
@@ -152,6 +282,13 @@ class LabEnvViewSet(ModelViewSet):
         
         except Exception as e:
             logger.exception(f"启动环境时发生异常: {e}")
+            # 其他异常回滚状态
+            try:
+                lab_env.refresh_from_db()
+                if lab_env.state == 'starting':
+                    lab_env.mark_stopped()
+            except Exception as rollback_err:
+                logger.error(f"状态回滚失败: {rollback_err}")
             return Response({
                 'status': 'error',
                 'message': '启动失败',
@@ -171,11 +308,19 @@ class LabEnvViewSet(ModelViewSet):
                     status=status.HTTP_400_BAD_REQUEST
                 )
             
+            # 允许stopping状态下重复调用(幂等性),直接返回成功
+            if lab_env.state == 'stopping':
+                logger.info(f"环境 {lab_env.name} 已在停止中,直接返回成功")
+                return Response(
+                    {'status': 'success', 'message': 'Lab 环境正在停止中'}, 
+                    status=status.HTTP_200_OK
+                )
+            
             # 使用 LabUtils 停止环境
             # result = LabUtils.stop_lab(lab_env.id)
 
             # 获取webhook url
-            webhook_url = self.get_webhook_url('stop')
+            webhook_url = WebhookClient.build_url('stop')
             payload = {
                 'id': f'lab-env-{lab_env.id}'
             }
@@ -186,12 +331,20 @@ class LabEnvViewSet(ModelViewSet):
                     status=status.HTTP_500_INTERNAL_SERVER_ERROR
                 )
             
-            lab_env.state = 'stopping'
-            lab_env.save(update_fields=['state', 'updated_at'])
+            # 使用安全的状态转移方法
+            try:
+                lab_env.safe_stop()
+            except Exception as e:
+                logger.error(f"状态转移失败: {e}")
+                return Response(
+                    {'error': f'无法停止环境: {str(e)}'}, 
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            
             response = requests.post(
                 webhook_url,
                 json=payload,
-                timeout=120,
+                timeout=self.WEBHOOK_TIMEOUT_OPERATION,
                 headers={'Content-Type': 'application/json'}
             )
 
@@ -200,12 +353,10 @@ class LabEnvViewSet(ModelViewSet):
                 result = response.json()
 
                 if result.get('status') == 'success':
-                    lab_env.state = 'stopped'
-                    lab_env.save(update_fields=['state', 'updated_at'])
+                    lab_env.mark_stopped()
                     return Response(result)
                 else:
-                    lab_env.state = 'error'
-                    lab_env.save(update_fields=['state', 'updated_at'])
+                    lab_env.mark_error()
                     return Response(
                         result,
                         status=status.HTTP_400_BAD_REQUEST
@@ -221,15 +372,16 @@ class LabEnvViewSet(ModelViewSet):
                 }, status=status.HTTP_502_BAD_GATEWAY)
             
         except requests.exceptions.Timeout:
-            logger.error(f"Lab 环境 {lab_env.name} 启动超时: webhook 请求超过 120 秒")
+            logger.error(f"Lab 环境 {lab_env.name} 停止超时: webhook 请求超过 {self.WEBHOOK_TIMEOUT_OPERATION} 秒")
+            lab_env.mark_error()
             return Response({
                 'status': 'error',
-                'message': '启动请求超时，容器可能仍在后台启动中',
+                'message': f'停止请求超时(超过{self.WEBHOOK_TIMEOUT_OPERATION}秒)，请检查容器状态或重试',
                 'error': '请求超时'
             }, status=status.HTTP_504_GATEWAY_TIMEOUT)
         
         except requests.exceptions.RequestException as e:
-            logger.exception(f"Lab 环境 {lab_env.name} 启动时 webhook 请求异常: {e}")
+            logger.exception(f"Lab 环境 {lab_env.name} 停止时 webhook 请求异常: {e}")
             return Response({
                 'status': 'error',
                 'message': '启动请求失败',
@@ -254,7 +406,7 @@ class LabEnvViewSet(ModelViewSet):
             compose_config = ComposeGenerator.generate(lab_env)
             
             # 2. Setup - 更新配置文件
-            setup_url = self.get_webhook_url('setup')
+            setup_url = WebhookClient.build_url('setup')
             if not setup_url:
                 return Response(
                     {'error': '服务器错误，缺少 webhook 配置'},
@@ -270,7 +422,7 @@ class LabEnvViewSet(ModelViewSet):
             setup_response = requests.post(
                 setup_url,
                 json=setup_payload,
-                timeout=30,
+                timeout=self.WEBHOOK_TIMEOUT_SETUP,
                 headers={'Content-Type': 'application/json'}
             )
             
@@ -291,14 +443,14 @@ class LabEnvViewSet(ModelViewSet):
             logger.info(f"环境 {lab_env.name} 配置更新成功")
             
             # 3. Stop - 停止现有容器
-            stop_url = self.get_webhook_url('stop')
+            stop_url = WebhookClient.build_url('stop')
             stop_payload = {'id': compose_id}
             
             logger.info(f"正在停止环境 {lab_env.name}")
             stop_response = requests.post(
                 stop_url,
                 json=stop_payload,
-                timeout=60,
+                timeout=self.WEBHOOK_TIMEOUT_OPERATION,
                 headers={'Content-Type': 'application/json'}
             )
             
@@ -313,22 +465,26 @@ class LabEnvViewSet(ModelViewSet):
                 logger.warning(f"停止操作失败（可能容器不存在）: {stop_response.text}")
             
             # 4. Start - 启动容器
-            start_url = self.get_webhook_url('start')
+            start_url = WebhookClient.build_url('start')
             start_payload = {'id': compose_id}
             
             logger.info(f"正在启动环境 {lab_env.name}")
             start_response = requests.post(
                 start_url,
                 json=start_payload,
-                timeout=120,
+                timeout=self.WEBHOOK_TIMEOUT_OPERATION,
                 headers={'Content-Type': 'application/json'}
             )
             
             if start_response.status_code != 200:
                 error_detail = start_response.text
                 logger.error(f"启动失败: {error_detail}")
-                lab_env.state = 'error'
-                lab_env.save(update_fields=['state', 'updated_at'])
+                try:
+                    lab_env.refresh_from_db()
+                    if lab_env.state not in ['error', 'stopped']:
+                        lab_env.mark_error()
+                except Exception as rollback_err:
+                    logger.error(f"状态更新失败: {rollback_err}")
                 return Response({
                     'status': 'error',
                     'message': '启动失败',
@@ -338,8 +494,16 @@ class LabEnvViewSet(ModelViewSet):
             start_result = start_response.json()
             if start_result.get('status') == 'success':
                 logger.info(f"环境 {lab_env.name} 重启成功")
-                lab_env.state = 'running'
-                lab_env.save(update_fields=['state', 'updated_at'])
+                # 在标记为running前,检查当前状态
+                try:
+                    lab_env.refresh_from_db()
+                    if lab_env.state != 'running':
+                        lab_env.mark_running()
+                    else:
+                        logger.info(f"环境 {lab_env.name} 已经是running状态,跳过状态更新")
+                except Exception as e:
+                    logger.error(f"更新状态失败: {e}")
+                    # 即使状态更新失败,重启操作本身已成功,返回成功
                 return Response({
                     'status': 'success',
                     'message': '环境已成功重启',
@@ -350,23 +514,35 @@ class LabEnvViewSet(ModelViewSet):
                 })
             else:
                 logger.error(f"启动失败: {start_result.get('error', '未知错误')}")
-                lab_env.state = 'error'
-                lab_env.save(update_fields=['state', 'updated_at'])
+                try:
+                    lab_env.refresh_from_db()
+                    if lab_env.state not in ['error', 'stopped']:
+                        lab_env.mark_error()
+                except Exception as rollback_err:
+                    logger.error(f"状态更新失败: {rollback_err}")
                 return Response(start_result, status=status.HTTP_400_BAD_REQUEST)
         
         except requests.exceptions.Timeout:
-            logger.error(f"环境 {lab_env.name} 重启超时")
-            lab_env.state = 'error'
-            lab_env.save(update_fields=['state', 'updated_at'])
+            logger.error(f"环境 {lab_env.name} 重启超时: 请求超过 {self.WEBHOOK_TIMEOUT_OPERATION} 秒")
+            try:
+                lab_env.refresh_from_db()
+                if lab_env.state not in ['error', 'stopped']:
+                    lab_env.mark_error()
+            except Exception as rollback_err:
+                logger.error(f"状态更新失败: {rollback_err}")
             return Response({
                 'status': 'error',
-                'message': '重启请求超时'
+                'message': f'重启请求超时(超过{self.WEBHOOK_TIMEOUT_OPERATION}秒)，请检查容器状态或重试'
             }, status=status.HTTP_504_GATEWAY_TIMEOUT)
         
         except requests.exceptions.RequestException as e:
             logger.exception(f"环境 {lab_env.name} 重启时网络异常: {e}")
-            lab_env.state = 'error'
-            lab_env.save(update_fields=['state', 'updated_at'])
+            try:
+                lab_env.refresh_from_db()
+                if lab_env.state not in ['error', 'stopped']:
+                    lab_env.mark_error()
+            except Exception as rollback_err:
+                logger.error(f"状态更新失败: {rollback_err}")
             return Response({
                 'status': 'error',
                 'message': '重启请求失败',
@@ -375,8 +551,12 @@ class LabEnvViewSet(ModelViewSet):
         
         except Exception as e:
             logger.exception(f"重启 Lab 环境异常: {e}")
-            lab_env.state = 'error'
-            lab_env.save(update_fields=['state', 'updated_at'])
+            try:
+                lab_env.refresh_from_db()
+                if lab_env.state not in ['error', 'stopped']:
+                    lab_env.mark_error()
+            except Exception as rollback_err:
+                logger.error(f"状态更新失败: {rollback_err}")
             return Response({
                 'status': 'error',
                 'message': '重启失败',
@@ -393,7 +573,7 @@ class LabEnvViewSet(ModelViewSet):
         try:
             lab_env = self.get_object()
             
-            webhook_url = self.get_webhook_url('status')
+            webhook_url = WebhookClient.build_url('status')
             if not webhook_url:
                 return Response({
                     'error': '服务器错误，缺少 webhook 配置'
@@ -406,7 +586,7 @@ class LabEnvViewSet(ModelViewSet):
             response = requests.post(
                 webhook_url,
                 json=payload,
-                timeout=30,
+                timeout=self.WEBHOOK_TIMEOUT_STATUS,
                 headers={'Content-Type': 'application/json'}
             )
 
@@ -431,12 +611,16 @@ class LabEnvViewSet(ModelViewSet):
             if result.get('status') == 'success':
                 containers = result.get('containers', [])
                 if not containers:
+                    logger.info(f"stop")
                     lab_env.state = 'stopped'
                 elif all(c.get('State') == 'running' for c in containers):
+                    logger.info(f"run")
                     lab_env.state = 'running'
                 elif any(c.get('State') in ['exited', 'dead'] for c in containers):
+                    logger.info('exit')
                     lab_env.state = 'stopped'
                 else:
+                    logger.info(f"error")
                     lab_env.state = 'error'
                 lab_env.save(update_fields=['state', 'updated_at'])
             
@@ -457,7 +641,7 @@ class LabEnvViewSet(ModelViewSet):
         GET /api/v1/lab/environments/status/ - 获取所有环境状态
         """
         try:
-            webhook_url = self.get_webhook_url('status')
+            webhook_url = WebhookClient.build_url('status')
             if not webhook_url:
                 return Response({
                     'error': '服务器错误，缺少 webhook 配置'
@@ -480,7 +664,7 @@ class LabEnvViewSet(ModelViewSet):
             response = requests.post(
                 webhook_url,
                 json=payload,
-                timeout=30,
+                timeout=self.WEBHOOK_TIMEOUT_STATUS,
                 headers={'Content-Type': 'application/json'}
             )
 
@@ -545,7 +729,7 @@ class LabEnvViewSet(ModelViewSet):
             compose_config = ComposeGenerator.generate(lab_env)
             
             # 获取 webhook URL
-            webhook_url = self.get_webhook_url('setup')
+            webhook_url = WebhookClient.build_url('setup')
             if not webhook_url:
                 return Response(
                     {'error': '服务器错误, 缺少对应启动接口'},
@@ -565,7 +749,7 @@ class LabEnvViewSet(ModelViewSet):
             response = requests.post(
                 webhook_url,
                 json=payload,
-                timeout=30,
+                timeout=self.WEBHOOK_TIMEOUT_SETUP,
                 headers={'Content-Type': 'application/json'}
             )
             
@@ -605,20 +789,3 @@ class LabEnvViewSet(ModelViewSet):
                 'status': 'error',
                 'message': f'生成配置失败: {str(e)}'
             }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-        
-    def get_webhook_url(self, name):
-        webhook_base_url = os.getenv('WEBHOOK', None)
-        lab_runtime = os.getenv("LAB_RUNTIME", "kubernetes")
-
-        if not webhook_base_url:
-            return None
-        
-        if not webhook_base_url.endswith('/'):
-            webhook_base_url += '/'
-
-        if lab_runtime == "docker":
-            webhook_base_url += 'compose/'
-        elif lab_runtime == "kubernetes":
-            webhook_base_url += 'kubernetes/'
-        
-        return f"{webhook_base_url}{name}"

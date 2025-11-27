@@ -117,7 +117,8 @@
       "endpoint": "访问端点",
       "endpointMaxLength": "访问端点不能超过200个字符",
       "enterEndpoint": "请输入访问端点（可选）",
-      "restart": "重启"
+      "restart": "重启",
+      "defaultUser": "运行用户"
     }
   }
 }

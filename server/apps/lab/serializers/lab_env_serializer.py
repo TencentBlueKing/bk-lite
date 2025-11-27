@@ -10,6 +10,7 @@ from apps.core.utils.serializers import AuthSerializer
 from apps.lab.models import LabEnv, LabImage, InfraInstance
 from apps.lab.models import LabImage, InfraInstance
 from apps.core.logger import opspilot_logger as logger
+from apps.lab.utils.webhook_client import WebhookClient
 
 
 class LabEnvSerializer(AuthSerializer):
@@ -113,9 +114,11 @@ class LabEnvSerializer(AuthSerializer):
                 instance = InfraInstance.objects.create(
                     name=instance_name,
                     image=image,
+                    user=image.default_user or '',
                     env_vars=image.default_env or {},
                     command=image.default_command or [],
                     args=image.default_args or [],
+                    volume_mounts=image.volume_mounts or [],
                     status='stopped',
                     created_by=lab_env.created_by,
                     updated_by=lab_env.updated_by,
@@ -163,6 +166,11 @@ class LabEnvSerializer(AuthSerializer):
                 image = instance.image
                 updated_fields = []
                 
+                # 同步运行用户
+                if image.default_user and instance.user != image.default_user:
+                    instance.user = image.default_user
+                    updated_fields.append('user')
+                
                 # 同步环境变量（如果实例的配置为空或与镜像默认配置不一致）
                 if image.default_env and instance.env_vars != image.default_env:
                     instance.env_vars = image.default_env
@@ -176,6 +184,11 @@ class LabEnvSerializer(AuthSerializer):
                 if image.default_args and instance.args != image.default_args:
                     instance.args = image.default_args
                     updated_fields.append('args')
+                
+                # 同步卷挂载配置
+                if image.volume_mounts and instance.volume_mounts != image.volume_mounts:
+                    instance.volume_mounts = image.volume_mounts
+                    updated_fields.append('volume_mounts')
                 
                 # 如果有字段更新，保存实例
                 if updated_fields:
@@ -215,21 +228,12 @@ class LabEnvSerializer(AuthSerializer):
         try:
             # 生成 docker-compose 配置
             compose_config = ComposeGenerator.generate(lab_env)     
-            webhook_base_url = os.getenv('WEBHOOK', None)
-            lab_runtime = os.getenv("LAB_RUNTIME", "kubernetes")
-
-            if not webhook_base_url:
-                return None
             
-            if not webhook_base_url.endswith('/'):
-                webhook_base_url += '/'
-
-            if lab_runtime == "docker":
-                webhook_base_url += 'compose/'
-            elif lab_runtime == "kubernetes":
-                webhook_base_url += 'kubernetes/'
-
-            setup_url = f"{webhook_base_url}setup"
+            # 使用 WebhookClient 构建 URL
+            setup_url = WebhookClient.build_url('setup')
+            if not setup_url:
+                logger.error("Webhook URL 配置缺失")
+                return None
 
             # 准备请求数据
             payload = {

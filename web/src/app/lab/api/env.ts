@@ -10,6 +10,11 @@ const useLabEnv = () => {
     return await get(`/lab/environments/`, params);
   };
 
+  // 获取环境列表(包含状态)
+  const getEnvListWithStatus = async (params?: any) => {
+    return await get(`/lab/environments/`, { params: { ...params, with_status: 'true' } });
+  };
+
   // 新增环境
   const addEnv = async (data: any) => {
     return await post(`/lab/environments/`, data);
@@ -126,6 +131,7 @@ const useLabEnv = () => {
   return {
     // Lab 环境接口
     getEnvList,
+    getEnvListWithStatus,
     addEnv,
     getEnvDetail,
     updateEnv,

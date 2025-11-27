@@ -117,7 +117,8 @@
       "endpoint": "Endpoint",
       "endpointMaxLength": "Endpoint cannot exceed 200 characters",
       "enterEndpoint": "Please enter endpoint (optional)",
-      "restart": "restart"
+      "restart": "restart",
+      "defaultUser": "Operating User"
     }
   }
 }

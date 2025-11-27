@@ -83,6 +83,10 @@ class ComposeGenerator:
             'container_name': f"lab-{lab_env.id}-ide",
         }
         
+        # 运行用户
+        if lab_env.ide_image.default_user:
+            ide_service['user'] = lab_env.ide_image.default_user
+        
         # 环境变量
         if lab_env.ide_image.default_env:
             ide_service['environment'] = lab_env.ide_image.default_env
@@ -154,6 +158,11 @@ class ComposeGenerator:
                 'image': image_address,
             }
             
+            # 运行用户(优先使用实例配置,其次使用镜像默认值)
+            user = instance.user or instance.image.default_user
+            if user:
+                service['user'] = user
+            
             # 环境变量
             if instance.env_vars:
                 service['environment'] = instance.env_vars
@@ -166,17 +175,27 @@ class ComposeGenerator:
             # 卷挂载
             volumes = []
             
-            # 自定义卷挂载
+            # 实例的卷挂载配置
             if instance.volume_mounts:
                 for mount in instance.volume_mounts:
                     host_path = mount.get('host_path')
                     container_path = mount.get('container_path')
                     read_only = mount.get('read_only', False)
                     
-                    mount_str = f"{host_path}:{container_path}"
-                    if read_only:
-                        mount_str += ":ro"
-                    volumes.append(mount_str)
+                    # 绑定挂载(host_path 有效且不为 None/空)
+                    if host_path and str(host_path).lower() != 'none':
+                        mount_str = f"{host_path}:{container_path}"
+                        if read_only:
+                            mount_str += ":ro"
+                        volumes.append(mount_str)
+                    # 命名卷(没有 host_path 或为 None)
+                    elif container_path:
+                        volume_name = mount.get('volume_name') or service_name
+                        mount_str = f"{volume_name}:{container_path}"
+                        if read_only:
+                            mount_str += ":ro"
+                        volumes.append(mount_str)
+                        volumes_set.add(volume_name)
             
             # 持久化目录（命名卷）
             if instance.persistent_dirs:
