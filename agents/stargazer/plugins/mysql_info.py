@@ -10,7 +10,7 @@ A standalone script to gather information about MySQL servers.
 from decimal import Decimal
 import pymysql
 from pymysql.constants import CLIENT
-
+import json
 from plugins.base_utils import convert_to_prometheus_format
 from sanic.log import logger
 
@@ -40,7 +40,7 @@ class MysqlInfo:
         self.connection = None
         self.cursor = None
 
-        self._connect()
+        # self._connect()
 
     def _connect(self):
         """Establish MySQL connection."""
@@ -183,25 +183,43 @@ class MysqlInfo:
         Convert collected data to a standard format.
         """
         try:
-            self._collect()
-            model_data = {
-                "ip_addr": self.host,
-                "port": self.port,
-                "version": self.info['version']['version'],
-                "enable_binlog": self.info["settings"]["log_bin"],
-                "sync_binlog": self.info["settings"]["sync_binlog"],
-                "max_conn": self.info["settings"]["max_connections"],
-                "max_mem": self.info["settings"]["max_allowed_packet"],
-                "basedir": self.info["settings"]["basedir"],
-                "datadir": self.info["settings"]["datadir"],
-                "socket": self.info["settings"]["socket"],
-                "bind_address": self.info["settings"]["bind_address"],
-                "slow_query_log": self.info["settings"]["slow_query_log"],
-                "slow_query_log_file": self.info["settings"]["slow_query_log_file"],
-                "log_error": self.info["settings"]["log_error"],
-                "wait_timeout": self.info["settings"]["wait_timeout"],
-            }
-            result = convert_to_prometheus_format({"mysql": [model_data]})
+            excute_res = True
+            message = ''
+            try:
+                self._connect()
+                self._collect()
+            except Exception as err:
+                excute_res = False
+                message = str(err)
+            if excute_res:
+                model_data = {
+                    "ip_addr": self.host,
+                    "port": self.port,
+                    "version": self.info['version']['version'],
+                    "enable_binlog": self.info["settings"]["log_bin"],
+                    "sync_binlog": self.info["settings"]["sync_binlog"],
+                    "max_conn": self.info["settings"]["max_connections"],
+                    "max_mem": self.info["settings"]["max_allowed_packet"],
+                    "basedir": self.info["settings"]["basedir"],
+                    "datadir": self.info["settings"]["datadir"],
+                    "socket": self.info["settings"]["socket"],
+                    "bind_address": self.info["settings"]["bind_address"],
+                    "slow_query_log": self.info["settings"]["slow_query_log"],
+                    "slow_query_log_file": self.info["settings"]["slow_query_log_file"],
+                    "log_error": self.info["settings"]["log_error"],
+                    "wait_timeout": self.info["settings"]["wait_timeout"],
+                }
+                inst_data = {
+                    "result": json.dumps(model_data),
+                    "success": excute_res,
+                }
+                result = convert_to_prometheus_format({"mysql": [inst_data]})
+            else:
+                inst_data = {
+                    "result": message,
+                    "success": excute_res,
+                }
+                result = convert_to_prometheus_format({"mysql": [inst_data]})
             return result
         except Exception as err:
             import traceback

@@ -19,6 +19,7 @@ class MetricsCannula:
         self.filter_collect_task = filter_collect_task
         self.collect_data = {}  # 采集后的原始数据
         self.collect_params = {}
+        self.raw_data = []
         self.collection_metrics = default_metrics or self.get_collection_metrics()
         self.now_time = datetime.now(timezone.utc).isoformat()
         self.add_list = []
@@ -31,6 +32,9 @@ class MetricsCannula:
         new_metrics = self.collect_plugin(self.inst_name, self.inst_id, self.task_id)
         result = new_metrics.run()
         self.collect_data = new_metrics.result
+        for i in new_metrics.raw_data:
+            if i.get('metric'):
+                self.raw_data.append(i['metric'])
         return result
 
     @staticmethod
@@ -77,8 +81,7 @@ class MetricsCannula:
                     collect_result = management.update()
                 else:
                     collect_result = management.controller()
-
                 result[model_id] = collect_result
-
+        result['__raw_data__'] = self.raw_data
         return result
 
