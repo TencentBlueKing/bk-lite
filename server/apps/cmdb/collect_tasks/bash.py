@@ -46,13 +46,15 @@ class BaseCollect(object):
                                          task_id=self.task_id, collect_plugin=self.COLLECT_PLUGIN,
                                          manual=bool(self.task.input_method), default_metrics=self.default_metrics,
                                          filter_collect_task=self.filter_collect_task)
-
         result = metrics_cannula.collect_controller()
         format_data = self.format_collect_data(result)
-
         return metrics_cannula.collect_data, format_data
 
     def format_collect_data(self, result):
+        # 强加了一个原始数据，如果原始数据存在则删除，保留原有逻辑
+        raw_data = []
+        if result.get("__raw_data__", False) or result.get("__raw_data__", False) == []:
+            raw_data = result.pop("__raw_data__")
         format_data = {"add": [], "update": [],
                        "delete": [], "association": []}
         for value in result.values():
@@ -69,13 +71,15 @@ class BaseCollect(object):
                         _data = {"_status": status}
                         if status == "failed":
                             update_data = i.get("instance_info")
+                            update_data['_error'] = i.get("error", "")
                         else:
                             update_data = i.get("inst_info")
                         if not update_data:
                             continue
                         _data.update(update_data)
                         format_data[operator].append(_data)
-
+        if raw_data:
+            format_data["__raw_data__"] = raw_data
         return format_data
 
     @staticmethod
