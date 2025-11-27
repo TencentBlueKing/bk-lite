@@ -28,6 +28,9 @@
     "date": "Date",
     "freeApply": "Free Apply",
     "assetManagement": "Asset",
-    "group": "Group Name"
+    "group": "Group Name",
+    "customSettings": "Custom Settings",
+    "added": "Added",
+    "availableApps": "Available Apps"
   }
 }

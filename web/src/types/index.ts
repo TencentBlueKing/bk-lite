@@ -67,6 +67,10 @@ export interface ClientData {
   tags?: string[];
 }
 
+export interface AppConfigItem extends ClientData {
+  index: number;
+}
+
 export interface TourItem {
   title: string;
   description: string;
