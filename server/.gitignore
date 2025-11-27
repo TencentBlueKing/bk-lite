@@ -25,4 +25,3 @@ report.html
 mlruns
 uv.lock
 docs/api/*.md
-*/init_canway_login_settings.py
