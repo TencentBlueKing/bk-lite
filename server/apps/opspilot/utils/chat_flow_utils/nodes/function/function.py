@@ -8,42 +8,52 @@ from apps.opspilot.utils.chat_flow_utils.engine.core.base_executor import BaseNo
 
 
 class FunctionNode(BaseNodeExecutor):
-    """函数节点 - 用于执行自定义函数逻辑"""
+    """函数节点 - 支持基本字符串处理函数"""
+
+    # 支持的内置函数
+    BUILTIN_FUNCTIONS = {
+        "echo": lambda args, default: args.get("message", default),
+        "upper": lambda args, default: str(args.get("text", default)).upper(),
+        "lower": lambda args, default: str(args.get("text", default)).lower(),
+    }
+
+    def _execute_function(self, function_name: str, function_args: Dict[str, Any], default_input: str) -> str:
+        """执行函数
+
+        Args:
+            function_name: 函数名
+            function_args: 函数参数
+            default_input: 默认输入值
+
+        Returns:
+            执行结果
+
+        Raises:
+            ValueError: 不支持的函数
+        """
+        func = self.BUILTIN_FUNCTIONS.get(function_name)
+        if not func:
+            raise ValueError(f"未知的函数: {function_name}")
+
+        return func(function_args, default_input)
 
     def execute(self, node_id: str, node_config: Dict[str, Any], input_data: Dict[str, Any]) -> Dict[str, Any]:
+        """执行函数节点"""
         config = node_config["data"].get("config", {})
         input_key = config.get("inputParams", "last_message")
         output_key = config.get("outputParams", "last_message")
-
-        # 从input_data根据input_key获取输入内容
         input_message = input_data.get(input_key, "")
 
-        # 获取函数参数，优先从config中获取，兼容旧版params
+        # 获取函数参数
         params = config.get("params", input_data.get("params", {}))
-
-        # 获取函数名称和参数
         function_name = params.get("function_name", "")
         function_args = params.get("function_args", {})
 
         if not function_name:
-            # 如果没有指定函数，返回输入数据
-            logger.info(f"函数节点 {node_id} 无指定函数，返回输入: {input_message}")
+            logger.info(f"函数节点 {node_id} 无指定函数，返回输入")
             return {output_key: input_message}
 
-        # 这里可以扩展为动态函数调用
         logger.info(f"函数节点 {node_id} 执行函数: {function_name}")
-
-        # 示例函数执行逻辑（可以扩展）
-        result = None
-        if function_name == "echo":
-            result = function_args.get("message", input_message)
-        elif function_name == "upper":
-            text = function_args.get("text", input_message)
-            result = str(text).upper()
-        elif function_name == "lower":
-            text = function_args.get("text", input_message)
-            result = str(text).lower()
-        else:
-            raise ValueError(f"未知的函数: {function_name}")
+        result = self._execute_function(function_name, function_args, input_message)
 
         return {output_key: result}
