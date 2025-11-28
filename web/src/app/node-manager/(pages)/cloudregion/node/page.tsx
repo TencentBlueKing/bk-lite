@@ -7,14 +7,8 @@ import React, {
   useCallback,
 } from 'react';
 import { Button, message, Space, Modal, Tooltip, Tag, Dropdown } from 'antd';
-import {
-  DownOutlined,
-  ReloadOutlined,
-  HddTwoTone,
-  ContainerTwoTone,
-  ThunderboltTwoTone,
-  CloudTwoTone,
-} from '@ant-design/icons';
+import { DownOutlined, ReloadOutlined } from '@ant-design/icons';
+import Icon from '@/components/icon';
 import type { MenuProps, TableProps } from 'antd';
 import nodeStyle from './index.module.scss';
 import CollectorModal from './collectorModal';
@@ -297,25 +291,18 @@ const Node = () => {
           // 获取操作系统映射
           const osValue = record.operating_system;
           const osLabel = nodeStateEnum?.os?.[osValue] || osValue;
-          const OSIcon =
-            osValue === 'linux'
-              ? HddTwoTone
-              : osValue === 'windows'
-                ? HddTwoTone
-                : HddTwoTone;
+
           // 获取安装方式映射
           const installMethodValue = record.install_method;
           const installMethodLabel =
             nodeStateEnum?.install_method?.[installMethodValue] ||
             installMethodValue;
-          const InstallIcon =
-            installMethodValue === 'auto' ? ThunderboltTwoTone : CloudTwoTone;
+
           // 获取节点类型映射
           const nodeTypeValue = record.node_type;
           const nodeTypeLabel =
             nodeStateEnum?.node_type?.[nodeTypeValue] || nodeTypeValue;
-          const NodeTypeIcon =
-            nodeTypeValue === 'container' ? ContainerTwoTone : HddTwoTone;
+
           // 容器节点tooltip内容
           const nodeTypeTooltip =
             nodeTypeValue === 'container' ? (
@@ -331,21 +318,44 @@ const Node = () => {
           return (
             <div className="flex gap-2">
               <Tooltip title={nodeTypeTooltip}>
-                <NodeTypeIcon style={{ fontSize: '16px', cursor: 'pointer' }} />
+                <div>
+                  <Icon
+                    type={
+                      nodeTypeValue === 'container'
+                        ? 'rongqifuwuContainerServi'
+                        : 'zhuji'
+                    }
+                    style={{ fontSize: '16px', cursor: 'pointer' }}
+                  />
+                </div>
               </Tooltip>
               <Tooltip
                 title={`${t(
                   'node-manager.cloudregion.node.system'
                 )}: ${osLabel}`}
               >
-                <OSIcon style={{ fontSize: '16px', cursor: 'pointer' }} />
+                <div>
+                  <Icon
+                    type={osValue === 'linux' ? 'Linux' : 'Window-Windows'}
+                    style={{ fontSize: '16px', cursor: 'pointer' }}
+                  />
+                </div>
               </Tooltip>
               <Tooltip
                 title={`${t(
                   'node-manager.cloudregion.node.installMethod'
                 )}: ${installMethodLabel}`}
               >
-                <InstallIcon style={{ fontSize: '16px', cursor: 'pointer' }} />
+                <div>
+                  <Icon
+                    type={
+                      installMethodValue === 'auto'
+                        ? 'daohang_007'
+                        : 'ArtboardCopy'
+                    }
+                    style={{ fontSize: '16px', cursor: 'pointer' }}
+                  />
+                </div>
               </Tooltip>
             </div>
           );
