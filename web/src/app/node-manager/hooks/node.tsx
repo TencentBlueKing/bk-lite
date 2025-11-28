@@ -10,6 +10,7 @@ import {
   WarningOutlined,
 } from '@ant-design/icons';
 import type { TableColumnsType } from 'antd';
+import { useLocalizedTime } from '@/hooks/useLocalizedTime';
 import { TableDataItem, SegmentedItem } from '@/app/node-manager/types';
 import { FieldConfig } from '@/app/node-manager/types/node';
 import { useUserInfoContext } from '@/context/userInfo';
@@ -21,13 +22,16 @@ import type { MenuProps } from 'antd';
 interface HookParams {
   checkConfig: (row: TableDataItem) => void;
   deleteNode: (row: TableDataItem) => void;
+  editNode: (row: TableDataItem) => void;
 }
 
 const useColumns = ({
   checkConfig,
   deleteNode,
+  editNode,
 }: HookParams): TableColumnsType<TableDataItem> => {
   const { showGroupNames } = useGroupNames();
+  const { convertToLocalizedTime } = useLocalizedTime();
   const { t } = useTranslation();
 
   const columns = useMemo(
@@ -57,17 +61,12 @@ const useColumns = ({
         ),
       },
       {
-        title: t('node-manager.cloudregion.node.system'),
-        dataIndex: 'operating_system',
-        key: 'operating_system',
-        width: 120,
-        render: (value: string) => {
-          return (
-            <>
-              {OPERATE_SYSTEMS.find((item) => item.value === value)?.label ||
-                '--'}
-            </>
-          );
+        title: t('node-manager.cloudregion.node.lastReportTime'),
+        dataIndex: 'updated_at',
+        key: 'updated_at',
+        width: 160,
+        render: (text: string) => {
+          return text ? convertToLocalizedTime(text) : '--';
         },
       },
       {
@@ -80,7 +79,12 @@ const useColumns = ({
           <>
             <Permission requiredPermissions={['View']}>
               <Button type="link" onClick={() => checkConfig(item)}>
-                {t('node-manager.cloudregion.node.checkConfig')}
+                {t('common.detail')}
+              </Button>
+            </Permission>
+            <Permission className="ml-[10px]" requiredPermissions={['Edit']}>
+              <Button type="link" onClick={() => editNode(item)}>
+                {t('common.edit')}
               </Button>
             </Permission>
             <Permission requiredPermissions={['Delete']}>
@@ -103,7 +107,7 @@ const useColumns = ({
         ),
       },
     ],
-    [checkConfig, deleteNode, t]
+    [checkConfig, deleteNode, editNode, t]
   );
   return columns;
 };

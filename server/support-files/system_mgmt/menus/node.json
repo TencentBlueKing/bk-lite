@@ -29,6 +29,9 @@
           "operation": [
             "View",
             "Delete",
+            "Edit",
+            "EditMainConfiguration",
+            "EditSubConfiguration",
             "InstallController",
             "UninstallController",
             "OperateCollector"

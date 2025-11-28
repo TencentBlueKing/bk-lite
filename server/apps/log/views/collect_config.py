@@ -3,8 +3,10 @@ import yaml
 from rest_framework.decorators import action
 from rest_framework.viewsets import ModelViewSet, ViewSet
 
+from apps.core.utils.loader import LanguageLoader
 from apps.core.utils.permission_utils import get_permissions_rules, check_instance_permission, get_permission_rules, permission_filter, filter_instances_with_permissions
 from apps.core.utils.web_utils import WebUtils
+from apps.log.constants.language import LanguageConstants
 from apps.log.constants.permission import PermissionConstants
 from apps.log.models import CollectType, CollectInstance, CollectConfig
 from apps.log.models.policy import Policy
@@ -33,6 +35,20 @@ class CollectTypeViewSet(ModelViewSet):
         queryset = self.filter_queryset(self.get_queryset())
         serializer = self.get_serializer(queryset, many=True)
         results = serializer.data
+
+        # 加载语言包
+        lan = LanguageLoader(app=LanguageConstants.APP, default_lang=request.user.locale)
+
+        # 为每个采集类型添加翻译后的名称和描述
+        for result in results:
+            collector = result.get('collector')
+            name = result.get('name')
+            if collector and name:
+                # 组装语言配置Key: collect_type.{collector}.{name}
+                lan_key = f"{LanguageConstants.COLLECT_TYPE}.{collector}.{name}"
+                # 获取翻译后的名称和描述
+                result["display_name"] = lan.get(f"{lan_key}.name") or result.get("name", "")
+                result["display_description"] = lan.get(f"{lan_key}.description") or result.get("description", "")
 
         # 检查是否需要添加策略数量统计（带权限控制）
         if request.GET.get("add_policy_count") in ["true", "True"]:

@@ -29,6 +29,8 @@ class SidecarEnv(models.Model):
 class CloudRegionService(models.Model):
     cloud_region = models.ForeignKey(CloudRegion, on_delete=models.CASCADE, verbose_name="云区域")
     name = models.CharField(max_length=100, verbose_name="服务名称")
+    deployed_status = models.SmallIntegerField(default=0, verbose_name="部署状态")
+    deployed_message = models.TextField(blank=True, verbose_name="部署信息")
     status = models.CharField(max_length=50, verbose_name="服务状态")
     description = models.TextField(blank=True, verbose_name="服务描述")
 

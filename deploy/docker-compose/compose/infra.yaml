@@ -198,7 +198,7 @@ services:
       - REDIS_ARGS=--requirepass ${FALKORDB_PASSWORD}
       - FALKORDB_ARGS=THREAD_COUNT 4
     ports:
-      - "6479:6479"      
+      - "6479:6379"      
     networks:
       - prod
     healthcheck:

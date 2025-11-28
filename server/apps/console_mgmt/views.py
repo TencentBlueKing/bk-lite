@@ -22,32 +22,50 @@ def get_user_group_paths(user_group_list):
     if not user_group_list:
         return []
 
-    # 需要获取用户所在组及其所有父级组
+    # 一次性获取所有组数据（包含所有可能的父级组）
+    all_groups = Group.objects.all().prefetch_related("roles")
+
+    # 构建组ID到组对象的映射
+    group_map = {group.id: group for group in all_groups}
+
+    # 收集用户所在组及其所有父级组ID
     all_group_ids = set(user_group_list)
 
-    # 递归获取所有父级组ID
-    def get_all_parent_ids(group_ids):
+    # 非递归方式获取所有父级组ID
+    current_ids = set(user_group_list)
+    while current_ids:
         parent_ids = set()
-        groups = Group.objects.filter(id__in=group_ids)
-        for group in groups:
-            if hasattr(group, "parent_id") and group.parent_id:
+        for group_id in current_ids:
+            group = group_map.get(group_id)
+            if group and hasattr(group, "parent_id") and group.parent_id:
                 parent_ids.add(group.parent_id)
 
-        if parent_ids:
-            parent_ids.update(get_all_parent_ids(parent_ids))
+        # 过滤出尚未处理的父级组ID
+        new_parent_ids = parent_ids - all_group_ids
+        if not new_parent_ids:
+            break
 
-        return parent_ids
+        all_group_ids.update(new_parent_ids)
+        current_ids = new_parent_ids
 
-    all_parent_ids = get_all_parent_ids(user_group_list)
-    all_group_ids.update(all_parent_ids)
+    # 获取所有相关组对象
+    related_groups = [group_map[gid] for gid in all_group_ids if gid in group_map]
 
-    # 获取所有相关组（包括父级）
-    groups = Group.objects.filter(id__in=all_group_ids).prefetch_related("roles")
-    return GroupUtils.build_group_paths(groups, user_group_list)
+    return GroupUtils.build_group_paths(related_groups, user_group_list)
 
 
 def init_user_set(request):
-    kwargs = json.loads(request.body)
+    # 获取用户语言设置
+    locale = getattr(request.user, "locale", "en") if hasattr(request, "user") else "en"
+    loader = LanguageLoader(app="console_mgmt", default_lang=locale)
+
+    try:
+        kwargs = json.loads(request.body)
+    except (json.JSONDecodeError, ValueError):
+        return JsonResponse({"result": False, "message": loader.get("error.invalid_json_format", "Invalid JSON format")})
+    except Exception:
+        return JsonResponse({"result": False, "message": loader.get("error.parse_request_failed", "Failed to parse request body")})
+
     client = SystemMgmt()
     res = client.init_user_default_attributes(kwargs["user_id"], kwargs["group_name"], request.user.group_list[0]["id"])
     if not res["result"]:

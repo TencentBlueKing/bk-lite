@@ -4,3 +4,63 @@ collect_type:
       description: Collects Linux audit framework logs for comprehensive system security
         monitoring and compliance.
       name: Auditd
+    file_integrity:
+      name: File Integrity
+      description: Monitors file system changes to detect unauthorized modifications
+        and ensure data integrity.
+  Vector:
+    syslog:
+      name: Syslog
+      description: Collects syslog messages for centralized logging and monitoring
+    kubernetes:
+      name: Kubernetes
+      description: Collects logs and metrics from Kubernetes clusters for monitoring
+        and analysis.
+    exec:
+      name: Exec
+      description: Executes commands to collect log data from various sources for
+        processing and analysis.
+    docker:
+      description: Collects and processes logs from Docker containers for centralized
+        logging and analysis.
+      name: Docker
+    file:
+      description: Collects log data from files for centralized logging and analysis.
+      name: File
+  Packetbeat:
+    Snmptrapd:
+      name: SNMP Trap
+      description: Collects SNMP trap messages for network device monitoring and alerting.
+    http:
+      description: Monitors HTTP traffic to analyze web application performance and
+        detect anomalies.
+      name: HTTP
+    dhcp:
+      name: DHCP
+      description: Collects DHCP traffic to monitor IP address allocation and network
+        configuration.
+    dns:
+      name: DNS
+      description: Captures DNS query and response data for network troubleshooting
+        and security analysis.
+    flows:
+      description: Analyzes network flow data to monitor traffic patterns and detect
+        potential security threats.
+      name: Flows
+    icmp:
+      name: ICMP
+      description: Monitors ICMP traffic for network diagnostics and performance analysis.
+  Metricbeat:
+    docker:
+      description: Collects metrics from Docker containers to monitor container performance
+        and resource utilization.
+      name: Docker
+    system:
+      name: System
+      description: Gathers system-level metrics such as CPU, memory, and disk usage
+        for performance monitoring and resource management.
+  Filebeat:
+    filestream:
+      name: Filestream
+      description: Collects and forwards log data from various sources for centralized
+        logging and analysis.

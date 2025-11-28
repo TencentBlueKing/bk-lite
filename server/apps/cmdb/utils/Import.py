@@ -52,7 +52,13 @@ class Import:
 
         # 获取键
         keys = [cell.value for cell in sheet1[3]]  # 3
-        asso_key_map = {i: {} for i in keys if self.model_id in i}
+        # 中文键值
+        seckeys = [cell.value for cell in sheet1[2]]  # 3
+        asso_key_map = {}
+        # asso_key_map = {i: {} for i in keys if self.model_id in i}
+        for idx, key in enumerate(keys):
+            if idx < len(seckeys) and seckeys[idx] == "关联" and self.model_id in key:
+                asso_key_map[key] = {}
         result = []
         # 从第4行第1列开始遍历
         for row_index, row in enumerate(sheet1.iter_rows(min_row=4, min_col=1), start=4):
@@ -139,7 +145,6 @@ class Import:
             # 只有当行有数据且没有验证错误时才添加到结果列表
             if row_has_data and len(item) > 1 and not row_has_validation_errors:
                 result.append(item)
-
         return result, asso_key_map
 
     def get_check_attr_map(self):

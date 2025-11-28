@@ -14,6 +14,7 @@ import styles from './index.module.scss';
 import type { TourProps } from 'antd';
 import { TourItem, MenuItem, ClientData } from '@/types/index';
 import UserInfo from '../user-info';
+import Notifications from '../notifications';
 import Icon from '@/components/icon';
 
 const TOUR_VIEWED_KEY_PREFIX = 'tour_viewed';
@@ -28,7 +29,7 @@ const TopMenu = () => {
     error: modelExpError,
     reload,
     isDataReady } = useModelExperience(pathname?.startsWith('/playground'));
-  const { clientData, loading } = useClientData();
+  const { clientData, appConfigList, loading, appConfigLoading } = useClientData();
   const { userId } = useUserInfoContext();
   const [tourOpen, setTourOpen] = useState(false);
   const [tourStep, setTourStep] = useState<TourProps['steps']>([]);
@@ -140,7 +141,7 @@ const TopMenu = () => {
     if (modelExpLoading) {
       return (
         <div className='w-[600px] max-w-[80vw] h-32 bg-white rounded-lg shadow-lg border border-gray-200 flex items-center justify-center'>
-          <Spin tip="加载中..." />
+          <Spin />
         </div>
       );
     }
@@ -205,13 +206,13 @@ const TopMenu = () => {
     );
   }, [modelExpLoading, modelExpError, isDataReady, renderMenu, reload]);
 
-  const renderContent = loading ? (
+  const renderContent = (loading || appConfigLoading) ? (
     <div className="flex justify-center items-center h-32">
-      <Spin tip="Loading..." />
+      <Spin />
     </div>
   ) : (
     <div className="grid grid-cols-4 gap-4 max-h-[420px] overflow-auto">
-      {clientData.map((app: ClientData) => (
+      {(appConfigList.length > 0 ? appConfigList : clientData).map((app: ClientData) => (
         <div
           key={app.name}
           className={`group flex flex-col items-center p-4 rounded-sm cursor-pointer ${styles.navApp}`}
@@ -240,7 +241,8 @@ const TopMenu = () => {
             </div>
           </Popover>
         </div>
-        <div className="flex items-center flex-shrink-0 space-x-2">
+        <div className="flex items-center flex-shrink-0 space-x-4">
+          <Notifications />
           {hasViewedTour && (
             <div
               className="text-xs flex items-center mr-2 text-[var(--color-text-3)] cursor-pointer hover:text-[var(--color-primary)]"

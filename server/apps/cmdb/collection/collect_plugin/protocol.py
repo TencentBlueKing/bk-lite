@@ -5,7 +5,8 @@
 from apps.cmdb.collection.collect_plugin.base import CollectBase
 from apps.cmdb.collection.collect_util import timestamp_gt_one_day_ago
 from apps.cmdb.collection.constants import PROTOCOL_METRIC_MAP
-
+import json
+import codecs
 
 class ProtocolCollectMetrics(CollectBase):
     def __init__(self, inst_name, inst_id, task_id, *args, **kwargs):
@@ -84,13 +85,25 @@ class ProtocolCollectMetrics(CollectBase):
                     break
                 else:
                     self.timestamp_gt = True
-
+            # 原始版本没有result，2025.11.27修改stargazer格式，将采集数据放到result中
+            result_data = {}
+            if index_data["metric"].get("result", False) or index_data["metric"].get("success", False):
+                result_json = index_data["metric"].get("result", "{}")
+                if result_json and result_json != "{}":
+                    try:
+                        unescaped_json = codecs.decode(
+                            result_json, 'unicode_escape')
+                        result_data = json.loads(unescaped_json)
+                    except Exception:
+                        result_data = {}
+                if isinstance(result_data, dict) and not result_data:
+                    continue
             index_dict = dict(
                 index_key=metric_name,
                 index_value=value,
                 **index_data["metric"],
+                **result_data, # 将解析后的JSON数据合并到index_dict中
             )
-
             self.collection_metrics_dict[metric_name].append(index_dict)
 
     def format_metrics(self):

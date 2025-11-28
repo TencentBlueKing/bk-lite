@@ -1,21 +1,35 @@
 FROM node:18-alpine AS builder
 
+ARG NEXUS_NODEJS_REPOSITY
+
 WORKDIR /app
 
 # 设置Node.js最大堆内存为4GB
 ENV NODE_OPTIONS="--max-old-space-size=8192"
 
+# 如果提供了 NEXUS_NODEJS_REPOSITY，则切换 npm 源
+RUN if [ -n "$NEXUS_NODEJS_REPOSITY" ]; then \
+  echo "Setting npm registry to: $NEXUS_NODEJS_REPOSITY"; \
+  npm config set registry "$NEXUS_NODEJS_REPOSITY"; \
+  else \
+  echo "Using default npm registry"; \
+  fi
+
 RUN npm install -g pnpm
+
+# 如果提供了 NEXUS_NODEJS_REPOSITY，则切换 pnpm 源
+RUN if [ -n "$NEXUS_NODEJS_REPOSITY" ]; then \
+  echo "Setting pnpm registry to: $NEXUS_NODEJS_REPOSITY"; \
+  pnpm config set registry "$NEXUS_NODEJS_REPOSITY"; \
+  else \
+  echo "Using default pnpm registry"; \
+  fi
+
 ADD . .
 
-RUN cat > pnpm-workspace.yaml <<EOF
-packages:
-  - 'src/app/*'
-EOF
+RUN printf 'packages:\n  - "src/app/*"\n' > pnpm-workspace.yaml
 
-RUN cat > .env.local <<EOF
-NEXTAPI_URL="http://bklite-server:8000"
-EOF
+RUN echo 'NEXTAPI_URL="http://bklite-server:8000"' > .env.local
 
 RUN pnpm install
 RUN pnpm run build

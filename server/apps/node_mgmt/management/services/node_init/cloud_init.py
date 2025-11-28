@@ -25,7 +25,7 @@ def cloud_init():
             cloud_region_id=CloudRegionConstants.DEFAULT_CLOUD_REGION_ID,
             name=service_name,
             defaults={
-                "status": CloudRegionServiceConstants.UNINSTALLED,
+                "status": CloudRegionServiceConstants.NOT_DEPLOYED,
                 "description": f"Service {service_name} for default cloud region"
             }
         )
