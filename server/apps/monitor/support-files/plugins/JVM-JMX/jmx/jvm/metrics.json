@@ -1,6 +1,7 @@
 {
   "plugin": "JVM",
   "plugin_desc": "The JMX-JVM collection plugin is a tool used for gathering Java Virtual Machine (JVM) performance data, including memory usage, garbage collection, thread counts, and CPU usage. It helps monitor the health and performance of Java applications.",
+  "status_query": "any({instance_type='jvm', collect_type='jmx'}) by (instance_id)",
   "name": "JVM",
   "type": "Other",
   "description": "",

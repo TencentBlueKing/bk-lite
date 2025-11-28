@@ -16,7 +16,9 @@ const apiClient = axios.create({
 const handleResponse = (response: AxiosResponse, onError?: () => void) => {
   const { result, message: msg, data } = response.data;
   if (!result) {
-    message.error(msg);
+    if (msg) {
+      message.error(msg);
+    }
     if (onError) {
       onError();
     }

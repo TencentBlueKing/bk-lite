@@ -114,7 +114,7 @@ def verify_token(token):
     role_list = Role.objects.filter(id__in=all_role_ids)
     role_names = [f"{role.app}--{role.name}" if role.app else role.name for role in role_list]
     is_superuser = "admin" in role_names or "system-manager--admin" in role_names
-    group_list = Group.objects.all()
+    group_list = Group.objects.all().order_by("id")
     if not is_superuser:
         group_list = group_list.filter(id__in=user.group_list)
     # groups = GroupUtils.build_group_tree(group_list)
@@ -335,7 +335,9 @@ def send_msg_with_channel(channel_id, title, content, receivers):
 @nats_client.register
 def send_email_to_receiver(title, content, receiver):
     channel_obj = Channel.objects.filter(channel_type=ChannelChoices.EMAIL).first()
-    return send_email_to_user(channel_obj.config, content, receiver, title)
+    channel_config = channel_obj.config
+    channel_obj.decrypt_field("smtp_pwd", channel_config)
+    return send_email_to_user(channel_config, content, [receiver], title)
 
 
 @nats_client.register
@@ -656,7 +658,7 @@ def login(username, password):
 
 
 @nats_client.register
-def reset_pwd(username, password):
+def reset_pwd(username, domain, password):
     """
     重置用户密码（NATS接口）
 

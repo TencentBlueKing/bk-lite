@@ -8,6 +8,7 @@ import logging
 import re
 
 import httpx
+from ipware import get_client_ip
 
 from apps.system_mgmt.models import UserLoginLog
 
@@ -147,20 +148,6 @@ def get_ip_location(ip_address):
     return ""
 
 
-def get_client_ip(request):
-    """
-    从请求中获取客户端IP地址
-
-    优先从 X-Forwarded-For 或 X-Real-IP 头获取，如果没有则从 REMOTE_ADDR 获取
-    """
-    x_forwarded_for = request.META.get("HTTP_X_FORWARDED_FOR")
-    if x_forwarded_for:
-        ip = x_forwarded_for.split(",")[0].strip()
-    else:
-        ip = request.META.get("HTTP_X_REAL_IP") or request.META.get("REMOTE_ADDR", "0.0.0.0")
-    return ip
-
-
 def get_user_agent(request):
     """从请求中获取 User-Agent"""
     return request.META.get("HTTP_USER_AGENT", "")[:500]
@@ -232,12 +219,12 @@ def log_user_login_from_request(request, username, status, domain="domain.com", 
     返回:
         UserLoginLog 实例，如果记录失败则返回 None
     """
-    source_ip = get_client_ip(request)
+    source_ip, _ = get_client_ip(request)
     user_agent = get_user_agent(request)
 
     return log_user_login(
         username=username,
-        source_ip=source_ip,
+        source_ip=source_ip or "0.0.0.0",
         status=status,
         domain=domain,
         failure_reason=failure_reason,

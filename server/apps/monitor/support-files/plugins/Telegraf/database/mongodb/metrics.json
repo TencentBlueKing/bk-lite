@@ -1,6 +1,7 @@
 {
   "plugin": "MongoDB",
   "plugin_desc": "By collecting metrics on MongoDB read and write activities, command execution, connection counts, latency, memory usage, and network traffic, this helps optimize performance and ensure efficient and stable database operations.",
+  "status_query": "any({instance_type='mongodb', collect_type='database'}) by (instance_id)",
   "name": "MongoDB",
   "icon": "mongodb",
   "type": "Database",

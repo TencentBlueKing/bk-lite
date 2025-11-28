@@ -37,6 +37,7 @@ class Node(TimeInfo, MaintainerInfo):
     log_file_list = JSONField(default=list, verbose_name="日志文件列表")
     cloud_region = models.ForeignKey(CloudRegion, default=1, on_delete=models.CASCADE, verbose_name="云区域")
     install_method = models.CharField(max_length=50, default=ControllerConstants.AUTO, verbose_name="安装方式")
+    node_type = models.CharField(max_length=50, default=ControllerConstants.NODE_TYPE_HOST, verbose_name="节点类型")
 
     class Meta:
         verbose_name = "节点信息"

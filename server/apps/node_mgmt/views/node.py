@@ -6,11 +6,12 @@ from rest_framework.viewsets import GenericViewSet
 from apps.core.utils.loader import LanguageLoader
 from apps.core.utils.permission_utils import get_permission_rules, permission_filter
 from apps.core.utils.web_utils import WebUtils
+from apps.node_mgmt.constants.cloudregion_service import CloudRegionServiceConstants
 from apps.node_mgmt.constants.collector import CollectorConstants
 from apps.node_mgmt.constants.controller import ControllerConstants
 from apps.node_mgmt.constants.language import LanguageConstants
 from apps.node_mgmt.constants.node import NodeConstants
-from apps.node_mgmt.models.sidecar import Node
+from apps.node_mgmt.models.sidecar import Node, NodeOrganization
 from config.drf.pagination import CustomPageNumberPagination
 from apps.node_mgmt.serializers.node import NodeSerializer, BatchBindingNodeConfigurationSerializer, \
     BatchOperateNodeCollectorSerializer
@@ -134,6 +135,32 @@ class NodeViewSet(mixins.DestroyModelMixin,
         self.perform_destroy(instance)
         return WebUtils.response_success()
 
+    @action(methods=["patch"], detail=True, url_path="update")
+    def update_node(self, request, pk=None):
+        node = self.get_object()
+
+        name = request.data.get("name")
+        organizations = request.data.get("organizations")
+
+        # 更新节点名称
+        if name is not None:
+            node.name = name
+            node.save()
+
+        # 如果 organizations 字段有传递（即使是空数组也进）
+        if organizations is not None:
+            # ① 删除原有组织关联
+            NodeOrganization.objects.filter(node=node).delete()
+
+            # ② 批量创建新的组织关联（允许空列表 → 自动清空）
+            new_relations = [
+                NodeOrganization(node=node, organization=org_id)
+                for org_id in organizations
+            ]
+            NodeOrganization.objects.bulk_create(new_relations)
+
+        return WebUtils.response_success()
+
     @action(methods=["get"], detail=False, url_path=r"enum", filter_backends=[])
     def enum(self, request, *args, **kwargs):
         lan = LanguageLoader(app=LanguageConstants.APP, default_lang=request.user.locale)
@@ -168,8 +195,11 @@ class NodeViewSet(mixins.DestroyModelMixin,
         enum_data = dict(
             sidecar_status=translated_sidecar_status,
             install_method=translated_install_method,
+            node_type=ControllerConstants.NODE_TYPE_ENUM,
             tag=translated_tags,
             os=translated_os,
+            cloud_server_status=CloudRegionServiceConstants.STATUS_ENUM,
+            cloud_deployed_status=CloudRegionServiceConstants.DEPLOY_STATUS_ENUM,
         )
         return WebUtils.response_success(enum_data)
 

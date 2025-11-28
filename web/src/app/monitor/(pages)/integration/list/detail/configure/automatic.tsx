@@ -464,13 +464,45 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
                     ) {
                       return Promise.reject(new Error(t('common.required')));
                     }
+                    // 校验值得唯一性
+                    if (currentConfig?.table_columns) {
+                      const uniqueFields = currentConfig.table_columns.filter(
+                        (col: any) => col.is_only === true
+                      );
+                      for (const field of uniqueFields) {
+                        const fieldName = field.name;
+                        const fieldLabel = field.label;
+                        const valueSet = new Set<string>();
+                        for (const row of dataSource) {
+                          const value = row[fieldName];
+                          // 跳过空值
+                          if (
+                            value === null ||
+                            value === undefined ||
+                            value === ''
+                          ) {
+                            continue;
+                          }
+                          const valueStr = String(value);
+                          if (valueSet.has(valueStr)) {
+                            const errorMsg = t(
+                              'monitor.integrations.duplicateFieldError'
+                            )
+                              .replace('{{field}}', fieldLabel)
+                              .replace('{{value}}', valueStr);
+                            return Promise.reject(new Error(errorMsg));
+                          }
+                          valueSet.add(valueStr);
+                        }
+                      }
+                    }
                     return Promise.resolve();
                   },
                 },
               ]}
             >
               <CustomTable
-                scroll={{ y: 'calc(100vh - 490px)', x: 'calc(100vw - 320px)' }}
+                scroll={{ x: 'calc(100vw - 320px)' }}
                 dataSource={dataSource}
                 columns={columns}
                 rowKey="key"

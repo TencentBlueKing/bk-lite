@@ -97,12 +97,8 @@ NATS_PASSWORD=your-nats-password
 从 BK-Lite 平台获取 NATS 服务的 CA 证书文件：
 
 ```bash
-# 如果是本地部署，可以从以下路径获取
 cp /opt/bk-lite/conf/cert/ca.crt .
 ```
-
-如果是远程部署，请联系 BK-Lite 平台管理员获取 `ca.crt` 文件。
-
 ### 步骤 4：创建 Namespace 和 Secret
 
 **方式一：使用环境文件创建（推荐）**

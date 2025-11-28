@@ -8,7 +8,7 @@ BLUE='\033[0;34m'
 NC='\033[0m' # No Color
 
 # 读取环境变量 MIRROR，如果未设置则为空
-MIRROR=${MIRROR:-""}
+MIRROR=${MIRROR:-"bk-lite.tencentcloudcr.com/bklite"}
 
 # Function to log messages with colored output
 log() {
@@ -142,6 +142,24 @@ validate_env_var() {
         log "ERROR" "Environment variable $var_name is not set."
         exit 1
     fi
+}
+
+# Function to check if NVIDIA GPU is available
+check_nvidia_gpu() {
+    if ! command -v nvidia-smi >/dev/null 2>&1; then
+        return 1
+    fi
+    
+    if ! nvidia-smi >/dev/null 2>&1; then
+        return 1
+    fi
+    
+    local gpu_count=$(nvidia-smi --query-gpu=name --format=csv,noheader 2>/dev/null | wc -l)
+    if [ "$gpu_count" -eq 0 ]; then
+        return 1
+    fi
+    
+    return 0
 }
 
 # Function to add mirror prefix to docker image if MIRROR is set
@@ -386,6 +404,34 @@ generate_common_env() {
     if [ -f "$COMMON_ENV_FILE" ]; then
         log "SUCCESS" "发现 $COMMON_ENV_FILE 配置文件，加载已保存的环境变量..."
         source $COMMON_ENV_FILE
+        
+        # 定义需要检查的环境变量及其默认值
+        local vars_to_check=(
+            "OPSPILOT_ENABLED:false"
+            "VLLM_ENABLED:false"
+            "OFFLINE:false"
+            "OFFLINE_IMAGES_PATH:./images"
+            "VLLM_BCE_EMBEDDING_MODEL_NAME:maidalun/bce-embedding-base_v1"
+            "VLLM_OLMOCR_MODEL_NAME:allenai/OlmOCR-7B-0725"
+            "VLLM_BCE_RERANK_MODEL_NAME:maidalun/bce-reranker-base_v1"
+            "VLLM_BGE_EMBEDDING_MODEL_NAME:AI-ModelScope/bge-large-zh-v1.5"
+        )
+
+        for item in "${vars_to_check[@]}"; do
+            local var_name="${item%%:*}"
+            local default_value="${item#*:}"
+            
+            # 如果变量未设置（既不在文件中也不在当前环境中），设置默认值
+            if [ -z "${!var_name:-}" ]; then
+                export "$var_name"="$default_value"
+            fi
+            
+            # 检查是否在文件中，如果不在则追加
+            if ! grep -q "^export $var_name=" "$COMMON_ENV_FILE"; then
+                log "INFO" "将缺失的环境变量 $var_name 添加到 $COMMON_ENV_FILE"
+                echo "export $var_name=${!var_name}" >> "$COMMON_ENV_FILE"
+            fi
+        done
     else
         log "INFO" "未发现 $COMMON_ENV_FILE 配置文件，生成随机环境变量..."
         # 生成随机密码
@@ -403,6 +449,12 @@ generate_common_env() {
         export MIRROR=${MIRROR:-""}
         export OFFLINE=${OFFLINE:-"false"}
         export OFFLINE_IMAGES_PATH=${OFFLINE_IMAGES_PATH:-"./images"}
+        export OPSPILOT_ENABLED=${OPSPILOT_ENABLED:-false}
+        export VLLM_ENABLED=${VLLM_ENABLED:-false}
+        export VLLM_BCE_EMBEDDING_MODEL_NAME="maidalun/bce-embedding-base_v1"
+        export VLLM_OLMOCR_MODEL_NAME="allenai/OlmOCR-7B-0725"
+        export VLLM_BCE_RERANK_MODEL_NAME="maidalun/bce-reranker-base_v1"
+        export VLLM_BGE_EMBEDDING_MODEL_NAME="AI-ModelScope/bge-large-zh-v1.5"
 
         # 保存到common.env文件
         cat > $COMMON_ENV_FILE <<EOF
@@ -422,6 +474,12 @@ export FALKORDB_PASSWORD=$FALKORDB_PASSWORD
 export MIRROR=$MIRROR
 export OFFLINE=$OFFLINE
 export OFFLINE_IMAGES_PATH=$OFFLINE_IMAGES_PATH
+export OPSPILOT_ENABLED=$OPSPILOT_ENABLED
+export VLLM_ENABLED=$VLLM_ENABLED
+export VLLM_BCE_EMBEDDING_MODEL_NAME=$VLLM_BCE_EMBEDDING_MODEL_NAME
+export VLLM_OLMOCR_MODEL_NAME=$VLLM_OLMOCR_MODEL_NAME
+export VLLM_BCE_RERANK_MODEL_NAME=$VLLM_BCE_RERANK_MODEL_NAME
+export VLLM_BGE_EMBEDDING_MODEL_NAME=$VLLM_BGE_EMBEDDING_MODEL_NAME
 EOF
         log "SUCCESS" "环境变量已生成并保存到 $COMMON_ENV_FILE 文件"
     fi
@@ -470,6 +528,9 @@ init_docker_images() {
     
     # OPENSSL image for generating TLS certificates
     export DOCKER_IMAGE_OPENSSL=$(add_mirror_prefix "alpine/openssl:3.5.4")
+
+    # VLLM image
+    export DOCKER_IMAGE_VLLM=$(add_mirror_prefix "bklite/vllm:latest")
     
     # Fixed configuration variables
     export DOCKER_NETWORK=prod
@@ -503,6 +564,7 @@ generate_collector_packages() {
     
     case "${cpu_arch}" in
         x86_64)
+            log "INFO" "当前CPU架构为x86_64，生成控制器和采集器包...，耗时较长请耐心等待"
             # Clean and create directories
             [ -d "${output_dir}" ] && rm -rf "${output_dir}"
             mkdir -p "${output_dir}/controller/certs"
@@ -547,34 +609,80 @@ install() {
     # 在 OFFLINE 模式下，强制禁用 MIRROR 以确保镜像名称一致性
     if [[ "${OFFLINE}" == "true" ]]; then
         if [ -n "$MIRROR" ]; then
-            log "WARNING" "检测到 OFFLINE=true，已自动禁用 MIRROR 配置以确保镜像名称匹配"
+            log "WARNING" "OFFLINE=true，已自动禁用 MIRROR 配置以确保镜像名称匹配"
         fi
         export MIRROR=""
     fi
     
-    # 检查是否添加--opspilot参数
-    if [[ "$@" == *"--opspilot"* ]]; then
-        export OPSPILOT_ENABLED=true
-        log "INFO" "检测到 --opspilot 参数，启用 OpsPilot 功能"
-    else
-        export OPSPILOT_ENABLED=false
-        log "INFO" "未检测到 --opspilot 参数，禁用 OpsPilot 功能"
+    # 先加载 common.env（如果存在），获取上次保存的参数
+    COMMON_ENV_FILE="common.env"
+    if [ -f "$COMMON_ENV_FILE" ]; then
+        log "SUCCESS" "发现 $COMMON_ENV_FILE 配置文件，加载已保存的配置..."
+        source $COMMON_ENV_FILE
+    fi
+    
+    # 从配置文件中读取默认值（如果配置文件中有的话）
+    export OPSPILOT_ENABLED=${OPSPILOT_ENABLED:-false}
+    export VLLM_ENABLED=${VLLM_ENABLED:-false}
+    
+    # 解析命令行参数（命令行参数优先级更高，会覆盖配置文件中的值）
+    local has_cli_args=false
+    for arg in "$@"; do
+        case "$arg" in
+            --opspilot)
+                export OPSPILOT_ENABLED=true
+                has_cli_args=true
+                log "INFO" "命令行指定 --opspilot，启用 OpsPilot 特性"
+                ;;
+            --vllm)
+                if check_nvidia_gpu; then
+                    export VLLM_ENABLED=true
+                    has_cli_args=true
+                    log "INFO" "启用 vLLM （GPU 可用）"
+                else
+                    log "ERROR" "未检测到 NVIDIA GPU，请安装 nvidia-container-toolkit"
+                    export VLLM_ENABLED=false
+                    has_cli_args=true
+                fi
+                ;;
+        esac
+    done
+    
+    # 如果没有命令行参数，显示从配置文件加载的值
+    if [[ $has_cli_args == false ]]; then
+        if [[ $OPSPILOT_ENABLED == "true" ]]; then
+            log "INFO" "OpsPilot 已启用"
+        fi
+        if [[ $VLLM_ENABLED == "true" ]]; then
+            if check_nvidia_gpu; then
+                log "INFO" "vLLM 已启用（GPU 可用）"
+            else
+                log "WARNING" "vLLM 配置已启用但未检测到 GPU，自动禁用"
+                export VLLM_ENABLED=false
+            fi
+        fi
     fi
 
     INSTALL_APPS="system_mgmt,cmdb,monitor,node_mgmt,console_mgmt,alerts,log,mlops,operation_analysis"
     
-
+    # 根据参数配置安装应用
     if [[ $OPSPILOT_ENABLED == "true" ]]; then
         export INSTALL_APPS="${INSTALL_APPS},opspilot"
         log "INFO" "启用 OpsPilot 功能，安装应用列表: ${INSTALL_APPS}"
-        # 使用 compose/ops_pilot.yaml 文件
-        export COMPOSE_CMD="${DOCKER_COMPOSE_CMD} -f compose/infra.yaml -f compose/monitor.yaml -f compose/server.yaml -f compose/web.yaml -f compose/ops_pilot.yaml -f compose/log.yaml config --no-interpolate"
-    else
-        log "INFO" "禁用 OpsPilot 功能，安装应用列表: ${INSTALL_APPS}"
-        export COMPOSE_CMD="${DOCKER_COMPOSE_CMD} -f compose/infra.yaml -f compose/monitor.yaml -f compose/server.yaml -f compose/web.yaml -f compose/log.yaml config --no-interpolate"
     fi
-
-
+    
+    # 构建 compose 命令
+    export COMPOSE_CMD="${DOCKER_COMPOSE_CMD} -f compose/infra.yaml -f compose/monitor.yaml -f compose/server.yaml -f compose/web.yaml"
+    
+    if [[ $OPSPILOT_ENABLED == "true" ]]; then
+        export COMPOSE_CMD="${COMPOSE_CMD} -f compose/ops_pilot.yaml"
+    fi
+    
+    if [[ $VLLM_ENABLED == "true" ]]; then
+        export COMPOSE_CMD="${COMPOSE_CMD} -f compose/vllm.yaml"
+    fi
+    
+    export COMPOSE_CMD="${COMPOSE_CMD} -f compose/log.yaml config --no-interpolate"
 
     # 检查是否从本地加载镜像（使用环境变量 OFFLINE）
     if [[ "${OFFLINE}" == "true" ]]; then
@@ -585,9 +693,28 @@ install() {
         log "INFO" "OFFLINE=${OFFLINE}，将从远程仓库拉取镜像"
     fi
 
+    # 现在调用这些函数来生成必要的配置文件和环境变量
     init_docker_images
     generate_ports_env
     generate_common_env
+    
+    # 更新 common.env 文件中的 OPSPILOT_ENABLED 和 VLLM_ENABLED 值
+    if [ -f "$COMMON_ENV_FILE" ]; then
+        # 更新或添加 OPSPILOT_ENABLED
+        if grep -q "^export OPSPILOT_ENABLED=" "$COMMON_ENV_FILE"; then
+            sed -i.bak "s/^export OPSPILOT_ENABLED=.*/export OPSPILOT_ENABLED=$OPSPILOT_ENABLED/" "$COMMON_ENV_FILE" && rm -f "${COMMON_ENV_FILE}.bak"
+        else
+            echo "export OPSPILOT_ENABLED=$OPSPILOT_ENABLED" >> "$COMMON_ENV_FILE"
+        fi
+        
+        # 更新或添加 VLLM_ENABLED
+        if grep -q "^export VLLM_ENABLED=" "$COMMON_ENV_FILE"; then
+            sed -i.bak "s/^export VLLM_ENABLED=.*/export VLLM_ENABLED=$VLLM_ENABLED/" "$COMMON_ENV_FILE" && rm -f "${COMMON_ENV_FILE}.bak"
+        else
+            echo "export VLLM_ENABLED=$VLLM_ENABLED" >> "$COMMON_ENV_FILE"
+        fi
+        log "SUCCESS" "已保存参数配置到 $COMMON_ENV_FILE: OPSPILOT_ENABLED=$OPSPILOT_ENABLED, VLLM_ENABLED=$VLLM_ENABLED"
+    fi
 
     # 生成合成的docker-compose.yaml文件
     log "INFO" "生成合成的 docker-compose.yaml 文件..."
@@ -704,7 +831,11 @@ DOCKER_IMAGE_NATS_EXECUTOR=${DOCKER_IMAGE_NATS_EXECUTOR}
 DOCKER_IMAGE_FALKORDB=${DOCKER_IMAGE_FALKORDB}
 DOCKER_IMAGE_PGVECTOR=${DOCKER_IMAGE_PGVECTOR}
 DOCKER_IMAGE_VECTOR=${DOCKER_IMAGE_VECTOR}
-
+DOCKER_IMAGE_VLLM=${DOCKER_IMAGE_VLLM}
+VLLM_BCE_EMBEDDING_MODEL_NAME=${VLLM_BCE_EMBEDDING_MODEL_NAME}
+VLLM_OLMOCR_MODEL_NAME=${VLLM_OLMOCR_MODEL_NAME}
+VLLM_BGE_EMBEDDING_MODEL_NAME=${VLLM_BGE_EMBEDDING_MODEL_NAME}
+VLLM_BCE_RERANK_MODEL_NAME=${VLLM_BCE_RERANK_MODEL_NAME}
 INSTALL_APPS="${INSTALL_APPS}"
 EOF
 
@@ -732,15 +863,15 @@ EOF
 
     log "INFO" "开始初始化内置插件"
     $DOCKER_COMPOSE_CMD exec -T server /bin/bash -s <<EOF
-uv run manage.py controller_package_init --pk_version latest --file_path /apps/pkgs/controller/fusion-collectors.zip
-uv run manage.py collector_package_init --os linux --object Telegraf --pk_version latest --file_path /apps/pkgs/collector/telegraf
-uv run manage.py collector_package_init --os linux --object Vector --pk_version latest --file_path /apps/pkgs/collector/vector
-uv run manage.py collector_package_init --os linux --object Nats-Executor --pk_version latest --file_path /apps/pkgs/collector/nats-executor
+python manage.py controller_package_init --pk_version latest --file_path /apps/pkgs/controller/fusion-collectors.zip
+python manage.py collector_package_init --os linux --object Telegraf --pk_version latest --file_path /apps/pkgs/collector/telegraf
+python manage.py collector_package_init --os linux --object Vector --pk_version latest --file_path /apps/pkgs/collector/vector
+python manage.py collector_package_init --os linux --object Nats-Executor --pk_version latest --file_path /apps/pkgs/collector/nats-executor
 EOF
 
     if [ -z "${SIDECAR_NODE_ID:-}" ]; then
         log "WARNING" "重新初始化 Sidecar Node ID 和 Token，可能会导致已注册的 Sidecar 失效"
-        mapfile -t ARR < <($DOCKER_COMPOSE_CMD exec -T server /bin/bash -c 'uv run manage.py node_token_init --ip default' 2>&1| grep -oP 'node_id: \K[0-9a-f]+|token: \K\S+')
+        mapfile -t ARR < <($DOCKER_COMPOSE_CMD exec -T server /bin/bash -c 'python manage.py node_token_init --ip default' 2>&1| grep -oP 'node_id: \K[0-9a-f]+|token: \K\S+')
         SIDECAR_NODE_ID=${ARR[0]}
         SIDECAR_INIT_TOKEN=${ARR[1]}
         log "SUCCESS" "Sidecar Node ID: $SIDECAR_NODE_ID, Token: $SIDECAR_INIT_TOKEN"
@@ -766,13 +897,29 @@ EOF
 }
 
 package() {
-    # 检查是否添加--opspilot参数
+    # 解析命令行参数
     local skip_opspilot_images=true
-    if [[ "$@" == *"--opspilot"* ]]; then
-        skip_opspilot_images=false
-        log "INFO" "检测到 --opspilot 参数，将下载所有镜像（包括 OpsPilot 相关）"
-    else
+    local skip_vllm_images=true
+    
+    for arg in "$@"; do
+        case "$arg" in
+            --opspilot)
+                skip_opspilot_images=false
+                log "INFO" "检测到 --opspilot 参数，将下载 OpsPilot 相关镜像（Metis）"
+                ;;
+            --vllm)
+                skip_vllm_images=false
+                log "INFO" "检测到 --vllm 参数，将下载 vLLM 相关镜像"
+                ;;
+        esac
+    done
+    
+    if [ "$skip_opspilot_images" = true ]; then
         log "INFO" "未检测到 --opspilot 参数，将跳过 OpsPilot 相关镜像（Metis）"
+    fi
+    
+    if [ "$skip_vllm_images" = true ]; then
+        log "INFO" "未检测到 --vllm 参数，将跳过 vLLM 相关镜像"
     fi
     
     log "INFO" "开始下载所有必要的 Docker 镜像..."
@@ -800,9 +947,16 @@ package() {
     local skipped_count=0
     # 遍历所有镜像变量
     for image_var in $(compgen -v | grep '^DOCKER_IMAGE_'); do
-        # 如果跳过 OpsPilot 镜像，且当前是 Metis 或 MLFlow，则跳过
+        # 如果跳过 OpsPilot 镜像，且当前是 Metis，则跳过
         if [ "$skip_opspilot_images" = true ] && [[ "$image_var" =~ (METIS) ]]; then
             log "INFO" "跳过 OpsPilot 镜像: ${image_var}"
+            skipped_count=$((skipped_count + 1))
+            continue
+        fi
+        
+        # 如果跳过 vLLM 镜像，且当前是 VLLM，则跳过
+        if [ "$skip_vllm_images" = true ] && [[ "$image_var" =~ (VLLM) ]]; then
+            log "INFO" "跳过 vLLM 镜像: ${image_var}"
             skipped_count=$((skipped_count + 1))
             continue
         fi
@@ -836,7 +990,19 @@ package() {
     log "SUCCESS" "所有镜像已打包完成！"
     log "SUCCESS" "总计: $image_count 个镜像已下载"
     if [ $skipped_count -gt 0 ]; then
-        log "INFO" "跳过: $skipped_count 个 OpsPilot 镜像（使用 --opspilot 参数可下载）"
+        local skip_info=""
+        if [ "$skip_opspilot_images" = true ]; then
+            skip_info="OpsPilot"
+        fi
+        if [ "$skip_vllm_images" = true ]; then
+            if [ -n "$skip_info" ]; then
+                skip_info="${skip_info} 和 vLLM"
+            else
+                skip_info="vLLM"
+            fi
+        fi
+        log "INFO" "跳过: $skipped_count 个镜像（使用 --opspilot 和/或 --vllm 参数可下载）"
+        log "INFO" "跳过的类型: ${skip_info}"
     fi
     PKG_NAME="bklite-offline.tar.gz"
     tar -czf /opt/$PKG_NAME .

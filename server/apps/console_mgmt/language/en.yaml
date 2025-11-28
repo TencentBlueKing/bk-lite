@@ -1,0 +1,18 @@
+error:
+  verification_code_empty: Verification code cannot be empty
+  email_required: Email address cannot be empty
+  email_send_failed: Failed to send email
+  verification_code_incorrect: Verification code is incorrect
+  user_id_required: User ID cannot be empty
+  user_not_found: User not found
+  password_required: Password cannot be empty
+email:
+  verification_code_validity: The verification code is valid for 10 minutes, please
+    use it in time.
+  verification_code_body: Your verification code is
+  verification_code_ignore: If this is not your operation, please ignore this email.
+  verification_code_title: Email Verification Code
+success:
+  verification_code_sent: Verification code has been sent
+  update_success: Update successful
+  verification_success: Verification successful

@@ -6,14 +6,14 @@
     "icon": "",
     "node_operating_system": "linux",
     "service_type": "exec",
-    "executable_path": "snmptrapd",
+    "executable_path": "/usr/sbin/snmptrapd",
     "execute_parameters": "-f -Lo -C -c %s",
     "validation_parameters": "",
     "default_template": "",
     "introduction": "",
     "enabled_default_config": true,
     "default_config": {
-      "nats": "# ====================================\n# SNMP Trap Daemon 配置\n# 通过 traphandle 将 trap 发送到 Vector Unix Socket\n# ====================================\n\n# 接受所有来源的 trap\nauthCommunity log,execute,net public\n\n# 使用 traphandle 将所有 trap 转发到 Vector\n# 通过 Unix socket 发送，比 UDP 更高效\ntraphandle default /usr/bin/logger -t snmptrapd -u /var/run/vector/snmp_trap.sock\n\n# 监听 UDP 162 端口\nsnmpTrapdAddr udp:162\n\n# 前台运行（由 sidecar 管理）\ndoNotFork yes\n\n# 详细日志\noutputOption s"
+      "nats": "# ====================================\n# SNMP Trap Daemon 配置\n# 通过 traphandle 将 trap 发送到 Vector Unix Socket\n# ====================================\n\n# 接受所有来源的 trap\nauthCommunity log,execute,net public\n\n# 不使用 format execute，改用 print 指令简单输出\n# 让 snmptrapd 输出默认格式，然后在 Vector 中解析\n\n# 使用 logger 通过 Unix socket 发送数据\ntraphandle default /usr/bin/logger -t snmptrapd -u /tmp/snmp_trap.sock\n\n# 监听 UDP 162 端口\nsnmpTrapdAddr udp:162\n\n# 前台运行（由 sidecar 管理）\ndoNotFork yes\n\n# 输出选项：s=符号格式（MIB翻译），同时保留数字\n# 使用换行符分隔多个变量，便于解析\noutputOption s"
     },
     "tags": ["linux", "log"],
     "package_name": "snmptrapd"
