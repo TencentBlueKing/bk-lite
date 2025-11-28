@@ -218,9 +218,10 @@
         },
         "taskDetail": {
             "title": "Task Detail",
-            "approval": "Approval Detail",
-            "approvalConfirm": "Approval Confirm",
-            "approvalSuccess": "Approval Success"
+            "status": "Status",
+            "errorInfo": "Error Info",
+            "rawData": "Raw Data",
+            "noRawData": "No raw data available"
         }
     },
     "OidLibrary": {
