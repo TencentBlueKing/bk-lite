@@ -13,6 +13,7 @@ type ExecuteResponse struct {
 }
 
 type HealthCheckResponse struct {
+	Success    bool   `json:"success"`
 	Status     string `json:"status"` // "ok"
 	InstanceId string `json:"instance_id"`
 	Timestamp  string `json:"timestamp"`
