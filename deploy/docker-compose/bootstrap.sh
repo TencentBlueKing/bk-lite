@@ -8,7 +8,7 @@ BLUE='\033[0;34m'
 NC='\033[0m' # No Color
 
 # 读取环境变量 MIRROR，如果未设置则为空
-MIRROR=${MIRROR:-""}
+MIRROR=${MIRROR:-"bk-lite.tencentcloudcr.com/bklite"}
 
 # Function to log messages with colored output
 log() {
