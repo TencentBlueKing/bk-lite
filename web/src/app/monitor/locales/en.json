@@ -382,6 +382,8 @@
       "collectionPeriod": "Collection Period",
       "seconds": "Seconds",
       "manualAccessTip": "When manually integrating, please manage the relevant integration configurations yourself.",
+      "autoAccess": "Automatic Access",
+      "manualAccess": "Manual Access",
       "noTemplateData": "No template data available",
       "collectionTemplate": "Integration Template",
       "batchOperation": "Batch Operation",

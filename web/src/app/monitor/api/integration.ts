@@ -22,6 +22,8 @@ const useIntegrationApi = () => {
   const getInstanceChildConfig = async (data: {
     instance_id?: string | number;
     instance_type?: string;
+    collect_type?: string;
+    collector?: string;
   }) => {
     return await post(`/monitor/api/node_mgmt/get_instance_asso_config/`, data);
   };
@@ -120,7 +122,19 @@ const useIntegrationApi = () => {
   };
 
   const getUiTemplate = async (data: { id: React.Key }) => {
-    return await get(`/monitor/api/monitor_plugin/${data.id}/ui_template`);
+    return await get(`/monitor/api/monitor_plugin/${data.id}/ui_template/`);
+  };
+
+  const getInstanceListByPrimaryObject = async (
+    params: {
+      id?: React.Key;
+    } = {}
+  ) => {
+    const { id, ...rest } = params;
+    return await post(
+      `/monitor/api/monitor_instance/${id}/list_by_primary_object/`,
+      rest
+    );
   };
 
   return {
@@ -141,6 +155,7 @@ const useIntegrationApi = () => {
     updateMonitorInstance,
     setInstancesGroup,
     getUiTemplate,
+    getInstanceListByPrimaryObject,
   };
 };
 

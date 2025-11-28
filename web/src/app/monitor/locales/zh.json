@@ -382,6 +382,8 @@
       "collectionPeriod": "采集周期",
       "seconds": "秒",
       "manualAccessTip": "手动接入时，请行自行管理相关集成配置。",
+      "autoAccess": "自动接入",
+      "manualAccess": "手动接入",
       "noTemplateData": "暂无模版数据",
       "collectionTemplate": "集成模板",
       "batchOperation": "批量操作",
