@@ -89,6 +89,9 @@ async def request(
 
         raise exc
 
+    if "result" not in parsed:
+        return parsed
+
     return parsed["result"]
 
 
