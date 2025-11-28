@@ -332,6 +332,7 @@ class WorkFlowConversationHistory(models.Model):
     """
 
     bot_id = models.IntegerField(verbose_name="机器人ID", db_index=True)
+    node_id = models.CharField(max_length=100, verbose_name="节点ID", default="", db_index=True, help_text="WorkFlow节点入口ID")
     user_id = models.CharField(max_length=100, verbose_name="用户ID", db_index=True)
     conversation_role = models.CharField(
         max_length=10, verbose_name="对话角色", choices=BOT_CONVERSATION_ROLE_CHOICES, db_index=True, help_text="user: 用户输入, bot: 系统最终输出"
@@ -354,6 +355,7 @@ class WorkFlowConversationHistory(models.Model):
         ordering = ["-conversation_time"]
         indexes = [
             models.Index(fields=["bot_id", "-conversation_time"]),
+            models.Index(fields=["node_id", "-conversation_time"]),
             models.Index(fields=["user_id", "-conversation_time"]),
             models.Index(fields=["entry_type", "-conversation_time"]),
         ]
@@ -366,6 +368,7 @@ class WorkFlowConversationHistory(models.Model):
         return [
             "id",
             "bot_id",
+            "node_id",
             "user_id",
             "conversation_role",
             "conversation_content",

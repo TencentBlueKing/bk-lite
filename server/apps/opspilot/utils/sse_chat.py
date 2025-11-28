@@ -314,7 +314,8 @@ def _log_and_update_tokens_sync(final_stats, skill_name, skill_id, current_ip, k
         if history_log:
             history_log.conversation = final_content
             history_log.save()
-        insert_skill_log(current_ip, skill_id, log_data, kwargs, user_message=user_message)
+        if current_ip:
+            insert_skill_log(current_ip, skill_id, log_data, kwargs, user_message=user_message)
 
     except Exception as e:
         logger.error(f"Log update error: {e}")
