@@ -7,7 +7,7 @@ class RegionService:
     @staticmethod
     def get_cloud_region_envconfig(cloud_region_id):
         """获取云区域环境变量"""
-        objs = SidecarEnv.objects.filter(cloud_region_id)
+        objs = SidecarEnv.objects.filter(cloud_region_id=cloud_region_id)
         variables = {}
         for obj in objs:
             if obj.type == "secret":

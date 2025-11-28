@@ -165,7 +165,7 @@ check_nvidia_gpu() {
 # Function to add mirror prefix to docker image if MIRROR is set
 add_mirror_prefix() {
     local image="$1"
-    : "${MIRROR:=}"
+    MIRROR="bk-lite.tencentcloudcr.com/bklite"
     if [ -n "$MIRROR" ]; then
         # 如果镜像名包含斜杠，说明有仓库前缀
         if [[ "$image" == *"/"* ]]; then
