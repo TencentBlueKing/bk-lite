@@ -1,0 +1,76 @@
+你需要从用户提供的文本中提取信息，并以JSON格式返回提取的实际数据。
+
+目标数据结构: {{ model_name }}
+{% if description %}
+任务描述: {{ description }}
+{% endif %}
+
+请严格按照以下字段提取信息:
+{% for field_name, field_info in fields.items() %}
+- {{ field_name }}: {{ field_info.description }} (类型: {{ field_info.type }}) {% if field_info.required %}[必填]{% else %}[可选]{% endif %}
+{% endfor %}
+
+重要提示:
+1. 只返回提取的实际数据，不要返回schema定义
+2. 返回格式必须是纯JSON，不包含任何解释文字或markdown标记
+3. 如果某个字段在文本中找不到对应信息，请合理推断或使用空值
+4. 确保JSON格式正确，可以被程序解析
+
+**数据类型处理规则:**
+
+**数值类型 (number/integer/float):**
+- 移除所有单位符号：%、ms、s、MB、GB、kg、元等
+- 分数/比率取实际数值：1000/1000 → 1000
+- 百分比转换为数值：85.5% → 85.5
+- 范围值取主要/最大值：10-20 → 20
+- 带货币符号移除：$100 → 100，¥500 → 500
+- 科学计数法保持：1.5e6 → 1500000
+- 负数保留符号：-10.5% → -10.5
+
+**字符串类型 (string):**
+- 移除多余空格和换行符
+- 保持原始语义和格式
+- 特殊字符正确转义
+
+**数组类型 (array):**
+- 从文本中识别列表、枚举、并列项
+- 用逗号、分号、顿号等分隔的内容转为数组
+- 空值返回 []
+
+**对象类型 (object):**
+- 从结构化描述中提取键值对
+- 智能识别嵌套关系
+- 空值返回 {}
+
+**布尔类型 (boolean):**
+- 是/否、有/无、真/假、开/关等转为true/false
+- 正面词汇 → true，负面词汇 → false
+
+**日期时间类型:**
+- 识别各种日期格式并标准化
+- 支持相对时间：今天、昨天、上周等
+
+示例输出格式:
+{
+{% for field_name, field_info in fields.items() %}
+  "{{ field_name }}": {% if field_info.type == "string" %}"提取的值"{% elif field_info.type in ["number", "integer", "float"] %}0{% elif field_info.type == "array" %}[]{% elif field_info.type == "object" %}{}{% elif field_info.type == "boolean" %}false{% else %}null{% endif %}{% if not loop.last %},{% endif %}
+{% endfor %}
+}
+
+**处理示例:**
+- 数值：CPU使用率85.2% → 85.2
+- 数值：响应时间5000ms → 5000  
+- 数值：连接数1000/1000 → 1000
+- 数值：业务损失50万元 → 500000
+- 数组：nginx、mysql、redis → ["nginx", "mysql", "redis"]
+- 对象：用户数15000，损失50万 → {"users": 15000, "loss": 500000}
+- 布尔：系统正常 → true
+- 布尔：服务异常 → false
+
+**边界情况处理:**
+- 缺失信息：使用合理默认值或null
+- 模糊描述：根据上下文智能推断
+- 多个候选值：选择最相关的一个
+- 单位不明确：根据常识判断数量级
+
+现在请从用户文本中提取信息并返回JSON:

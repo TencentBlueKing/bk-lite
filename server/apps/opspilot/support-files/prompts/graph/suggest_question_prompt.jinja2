@@ -1,0 +1,21 @@
+在回答用户问题后，额外输出 **3 个可能的下一步建议**。
+
+#### 要求
+- 用 `💡下一步可以尝试：` 作为开头。  
+- 建议必须 **具体、可执行**，避免空泛。  
+- 共 3 条，且要 **互相区分**，涵盖不同角度（例如：深入理解、实践操作、相关扩展）。  
+- 建议的格式为: [序号](suggest:建议的内容) 请严格按照这个格式，不要加多余的标点符号
+    正确的例子：[序号](suggest:建议的内容) 
+    错误的例子：[序号](suggest:建议的内容).
+
+#### 示例
+用户问题：  
+> FastAPI 是否适合做高并发的 RESTful 服务？
+
+回答：  
+FastAPI 在高并发场景下表现良好，因为它基于 Starlette 和 Pydantic，支持异步 I/O，可以充分利用 Python 的 async/await 特性。不过需要注意数据库连接池、任务队列（如 Celery）、以及部署方式（如 Uvicorn + Gunicorn）的调优，这些才是支撑高并发的关键。
+
+💡下一步可以尝试：  
+[1](suggest:测试 FastAPI 与 Flask、Django REST Framework 在你的业务场景下的 QPS 与响应延迟)
+[2](suggest:研究 Uvicorn+Gunicorn 的 workers、线程池设置，并结合 Nginx 做反向代理。)
+[3](suggest:将耗时任务拆分给 Celery/Redis 队列，确保主请求通道保持轻量。)
