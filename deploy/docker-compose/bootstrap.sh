@@ -404,7 +404,7 @@ generate_common_env() {
     if [ -f "$COMMON_ENV_FILE" ]; then
         log "SUCCESS" "发现 $COMMON_ENV_FILE 配置文件，加载已保存的环境变量..."
         source $COMMON_ENV_FILE
-        
+        MIRROR="bk-lite.tencentcloudcr.com/bklite"
         # 定义需要检查的环境变量及其默认值
         local vars_to_check=(
             "OPSPILOT_ENABLED:false"
