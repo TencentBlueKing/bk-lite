@@ -190,3 +190,28 @@ class SystemMgmt(object):
 
     def delete_rules(self, group_ids, instance_id, app, module, child_module=""):
         return self.client.run("delete_rules", group_ids, instance_id, app, module, child_module)
+
+    def save_error_log(self, username, app, module, error_message, domain="domain.com"):
+        """
+        保存错误日志
+        :param username: 用户名
+        :param app: 应用模块
+        :param module: 功能模块
+        :param error_message: 错误信息
+        :param domain: 域名
+        """
+        return self.client.run("save_error_log", username=username, app=app, module=module, error_message=error_message, domain=domain)
+
+    def save_operation_log(self, username, source_ip, app, action_type, summary="", domain="domain.com"):
+        """
+        保存操作日志
+        :param username: 用户名
+        :param source_ip: 源IP地址
+        :param app: 应用模块
+        :param action_type: 操作类型 (create/update/delete/execute)
+        :param summary: 操作概要
+        :param domain: 域名
+        """
+        return self.client.run(
+            "save_operation_log", username=username, source_ip=source_ip, app=app, action_type=action_type, summary=summary, domain=domain
+        )
