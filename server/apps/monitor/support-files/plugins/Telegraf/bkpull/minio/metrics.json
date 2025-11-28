@@ -1,6 +1,7 @@
 {
   "plugin": "Minio",
   "plugin_desc": "Collects key metrics of the Minio object storage system, including runtime status, storage capacity, usage, replication, inter-node communication, and S3 requests, enabling real-time monitoring of storage health, performance optimization, and anomaly detection.",
+  "status_query": "any({instance_type='minio', collect_type='bkpull'}) by (instance_id)",
   "name": "Minio",
   "icon": "minio",
   "type": "Middleware",

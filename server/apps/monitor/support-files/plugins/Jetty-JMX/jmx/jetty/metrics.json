@@ -1,6 +1,7 @@
 {
   "plugin": "Jetty-JMX",
   "plugin_desc": "Collects key performance metrics of Jetty task processing, thread pools, network connections, HTTP configurations, and JMX self-monitoring to track server resource usage, task handling capabilities, and connection status—enabling optimized system performance and improved service stability.",
+  "status_query": "any({instance_type='jetty', collect_type='jmx'}) by (instance_id)",
   "name": "Jetty",
   "icon": "jetty",
   "type": "Middleware",
