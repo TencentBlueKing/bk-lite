@@ -11,11 +11,11 @@ import { useLocalizedTime } from '@/hooks/useLocalizedTime';
 import Icon from '@/components/icon';
 
 interface Notification {
-    id: number;
-    notification_time: string;
-    app_module: string;
-    content: string;
-    is_read: boolean;
+  id: number;
+  notification_time: string;
+  app_module: string;
+  content: string;
+  is_read: boolean;
 }
 
 const Notifications = () => {
@@ -183,14 +183,6 @@ const Notifications = () => {
           onChange={handleTabChange}
           items={[
             {
-              key: 'all',
-              label: (
-                <span>
-                  {t('common.allNotifications')}
-                </span>
-              )
-            },
-            {
               key: 'unread',
               label: (
                 <Badge size="small" count={unreadCount}>
@@ -199,6 +191,14 @@ const Notifications = () => {
                   </span>
                 </Badge>
 
+              )
+            },
+            {
+              key: 'all',
+              label: (
+                <span>
+                  {t('common.allNotifications')}
+                </span>
               )
             }
           ]}
