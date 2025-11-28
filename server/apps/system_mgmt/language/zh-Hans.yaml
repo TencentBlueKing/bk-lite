@@ -16,6 +16,8 @@ error:
   time_range_required: 时间范围是必填项
   cannot_delete_admin_normal_roles: admin和normal角色不允许删除
   group_id_required: 组织ID不能为空
+  invalid_group_ids: "组织ID不存在: {ids}"
+  invalid_role_ids: "角色ID不存在: {ids}"
   group_has_users_remove_first: 此组或子组中有用户，请先移除用户！
   update_failed: 更新失败
   role_used_by_users: 角色已被用户使用！

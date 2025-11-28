@@ -10,8 +10,6 @@ import {
   Modal,
   Select,
   Avatar,
-  Tag,
-  Tooltip,
   Divider,
   Space,
   Spin
@@ -34,15 +32,9 @@ import PasswordModal from './passwordModal';
 import Icon from '@/components/icon';
 
 interface UserInformationProps {
-    visible: boolean;
-    onClose: () => void;
+  visible: boolean;
+  onClose: () => void;
 }
-
-// 预定义的标签颜色
-const TAG_COLORS = [
-  'magenta', 'red', 'volcano', 'orange', 'gold',
-  'lime', 'green', 'cyan', 'blue', 'geekblue', 'purple'
-];
 
 const UserInformation: React.FC<UserInformationProps> = ({ visible, onClose }) => {
   const { t } = useTranslation();
@@ -202,11 +194,6 @@ const UserInformation: React.FC<UserInformationProps> = ({ visible, onClose }) =
     setVerifyCodeAttempts(0);
   }
 
-  // 获取随机标签颜色
-  const getTagColor = (index: number) => {
-    return TAG_COLORS[index % TAG_COLORS.length];
-  };
-
   return (
     <>
       <Drawer
@@ -230,9 +217,12 @@ const UserInformation: React.FC<UserInformationProps> = ({ visible, onClose }) =
         <Spin spinning={loading}>
           <div className="space-y-6">
             {/* 基础信息 */}
-            <div>
-              <h3 className="text-base font-medium mb-4">{t('userInfo.basicInfo')}</h3>
-              <div className={'flex gap-6 p-4 rounded-md bg-[var(--color-fill-1)]'}>
+            <div className="border rounded-xl px-4 pt-4 shadow-lg">
+              <h3
+                className="text-base font-medium relative pl-3 before:content-[''] before:absolute before:left-0 before:top-1/2 before:-translate-y-1/2 before:w-1 before:h-4 before:bg-blue-500 before:rounded-full">
+                {t('userInfo.basicInfo')}
+              </h3>
+              <div className="flex gap-6 p-4">
                 <div className="flex-1">
                   <Form form={form} labelAlign='left' colon={false} requiredMark={false}>
                     <Form.Item
@@ -321,12 +311,12 @@ const UserInformation: React.FC<UserInformationProps> = ({ visible, onClose }) =
               </div>
             </div>
 
-            <Divider />
-
             {/* 时区与语言 */}
-            <div>
-              <h3 className="text-base font-medium mb-4">{t('userInfo.timezoneAndLanguage')}</h3>
-              <div className={'p-4 rounded-md bg-[var(--color-fill-1)]'}>
+            <div className="border rounded-xl px-4 pt-4 shadow-lg">
+              <h3 className="text-base font-medium relative pl-3 before:content-[''] before:absolute before:left-0 before:top-1/2 before:-translate-y-1/2 before:w-1 before:h-4 before:bg-blue-500 before:rounded-full">
+                {t('userInfo.timezoneAndLanguage')}
+              </h3>
+              <div className="p-4">
                 <Form form={form} labelAlign='left' colon={false}>
                   <Form.Item
                     label={
@@ -367,59 +357,142 @@ const UserInformation: React.FC<UserInformationProps> = ({ visible, onClose }) =
               </div>
             </div>
 
-            <Divider />
-
             {/* 组织架构 */}
-            <div>
-              <h3 className="text-base font-medium mb-4">{t('userInfo.organization')}</h3>
-              <div className={'space-y-4 p-4 rounded-md bg-[var(--color-fill-1)]'}>
-                <div>
-                  <div className="flex gap-1 mb-2">
-                    <ApartmentOutlined />
-                    {t('userInfo.currentGroup')}
-                  </div>
-                  <div className="flex flex-wrap gap-2">
-                    {userInfo.group_list && userInfo.group_list.length > 0 ? (
-                      userInfo.group_list.map((group: string, index: number) => (
-                        <Tag
-                          key={index}
-                          color={getTagColor(index)}
-                          className="px-3 py-1"
-                        >
-                          {group}
-                        </Tag>
-                      ))
-                    ) : (
-                      <span className="text-gray-400">{t('common.noData')}</span>
-                    )}
-                  </div>
+            <div className="border rounded-xl p-4 shadow-lg">
+              <h3 className="text-base font-medium relative pl-3 before:content-[''] before:absolute before:left-0 before:top-1/2 before:-translate-y-1/2 before:w-1 before:h-4 before:bg-blue-500 before:rounded-full">
+                {t('userInfo.organization')}
+              </h3>
+              <Divider />
+              <div className="p-4 pt-0">
+                <div className="flex gap-1 mb-3">
+                  <ApartmentOutlined />{t('userInfo.currentGroup')}
                 </div>
+                <div className="flex flex-wrap gap-4">
+                  {userInfo.group_list && userInfo.group_list.length > 0 ? (
+                    userInfo.group_list.map((group: string, index: number) => (
+                      <div
+                        key={index}
+                        className="px-3 py-1.5 rounded-md bg-[var(--color-fill-1)]"
+                        style={{
+                          border: '1px solid var(--color-border)',
+                          borderLeft: '3px solid var(--color-primary)'
+                        }}
+                      >
+                        {group}
+                      </div>
+                    ))
+                  ) : (
+                    <span className="text-gray-400">{t('common.noData')}</span>
+                  )}
+                </div>
+              </div>
+            </div>
 
-                <div>
-                  <div className="flex gap-1 mb-2">
-                    <TeamOutlined />
-                    {t('userInfo.roles')}
-                  </div>
-                  <div className="flex flex-wrap gap-2">
-                    {userInfo.role_list && userInfo.role_list.length > 0 ? (
-                      userInfo.role_list.map((role: any, index: number) => (
-                        <div key={index} className="flex items-center justify-center gap-1 rounded-xl border px-3 py-1">
-                          {appIconMap.get(role.app) && (
-                            <Tooltip title={role.app} placement="top">
-                              <div>
-                                <Icon type={appIconMap.get(role.app) || role.app} className="w-4 h-4" />
+            {/* 角色权限 */}
+            <div className="border rounded-xl px-4 pt-4 shadow-lg">
+              <h3 className="text-base font-medium relative pl-3 before:content-[''] before:absolute before:left-0 before:top-1/2 before:-translate-y-1/2 before:w-1 before:h-4 before:bg-blue-500 before:rounded-full">
+                {t('userInfo.roles')}
+              </h3>
+              <Divider />
+              <div className="p-4 pt-0">
+                <div className="flex gap-1 mb-3">
+                  <TeamOutlined />
+                  {t('userInfo.appPermissions')}
+                </div>
+                <div className="flex flex-wrap gap-4">
+                  {userInfo.role_list && userInfo.role_list.length > 0 ? (
+                    (() => {
+                      const superAdmin = userInfo.role_list.find((role: any) => !role.app && role.name === 'admin');
+
+                      // 过滤掉超级管理员，其他角色按应用分组
+                      const normalRoles = userInfo.role_list.filter((role: any) => !((!role.app) && role.name === 'admin'));
+                      const groupedRoles = normalRoles.reduce((acc: any, role: any) => {
+                        const appName = role.app || 'other';
+                        if (!acc[appName]) {
+                          acc[appName] = [];
+                        }
+                        acc[appName].push(role);
+                        return acc;
+                      }, {});
+
+                      // 为每个应用分配颜色
+                      const appColors: { [key: string]: string } = {};
+                      const colorList = ['blue', 'green', 'orange', 'purple', 'cyan'];
+                      Object.keys(groupedRoles).forEach((app, index) => {
+                        appColors[app] = colorList[index % colorList.length];
+                      });
+
+                      return (
+                        <>
+                          {/* 超级管理员特殊展示 */}
+                          {superAdmin && (
+                            <div className="rounded-lg p-3 min-w-[180px]"
+                              style={{
+                                border: '1px solid var(--color-border)',
+                                borderLeft: '3px solid red'
+                              }}>
+                              <div className="font-medium text-sm">{t('userInfo.superAdmin')}</div>
+                              <hr className='mt-1 mb-2 border-t border-[var(--color-border)]' />
+                              <div className="flex flex-wrap gap-2">
+                                <span className="px-2 py-0.5 rounded text-xs bg-red-50 text-red-600">
+                                  {t('userInfo.fullPermissions')}
+                                </span>
                               </div>
-                            </Tooltip>
+                            </div>
                           )}
-                          <span className="text-xs text-blue-600">
-                            {role.name}
-                          </span>
-                        </div>
-                      ))
-                    ) : (
-                      <span className="text-gray-400">{t('common.noData')}</span>
-                    )}
-                  </div>
+                          {/* 普通应用角色 */}
+                          {Object.entries(groupedRoles).map(([app, roles]: [string, any]) => {
+                            const color = appColors[app];
+                            const borderColor = {
+                              blue: '#60a5fa',
+                              green: '#22c55e',
+                              orange: '#fb923c',
+                              purple: '#a78bfa',
+                              cyan: '#22d3ee'
+                            }[color] || 'var(--color-border)';
+                            const tagBgClass = {
+                              blue: 'bg-blue-50 text-blue-600',
+                              green: 'bg-green-50 text-green-600',
+                              orange: 'bg-orange-50 text-orange-600',
+                              purple: 'bg-purple-50 text-purple-600',
+                              cyan: 'bg-cyan-50 text-cyan-600'
+                            }[color] || 'bg-gray-50 text-gray-600';
+
+                            return (
+                              <div
+                                key={app}
+                                className="rounded-lg p-3 min-w-[180px]"
+                                style={{
+                                  border: '1px solid var(--color-border)',
+                                  borderLeft: `3px solid ${borderColor}`
+                                }}
+                              >
+                                <div className="flex items-center gap-2">
+                                  {appIconMap.get(app) && (
+                                    <Icon type={appIconMap.get(app) || app} className="text-base" />
+                                  )}
+                                  <span className="font-medium text-sm">{app}</span>
+                                </div>
+                                <hr className='mt-1 mb-2 border-t border-[var(--color-border)]' />
+                                <div className="flex flex-wrap gap-2">
+                                  {roles.map((role: any, idx: number) => (
+                                    <span
+                                      key={idx}
+                                      className={`px-2 py-0.5 rounded text-xs ${tagBgClass}`}
+                                    >
+                                      {role.name}
+                                    </span>
+                                  ))}
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </>
+                      );
+                    })()
+                  ) : (
+                    <span className="text-gray-400">{t('common.noData')}</span>
+                  )}
                 </div>
               </div>
             </div>

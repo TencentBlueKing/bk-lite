@@ -8,6 +8,7 @@ from django.db.models import Count
 from django.db.models.functions import TruncDate
 from django.http import FileResponse, HttpResponse, JsonResponse, StreamingHttpResponse
 from django_minio_backend import MinioBackend
+from ipware import get_client_ip
 from wechatpy.enterprise import WeChatCrypto
 
 from apps.base.models import UserAPISecret
@@ -18,7 +19,7 @@ from apps.core.utils.loader import LanguageLoader
 from apps.opspilot.models import Bot, BotChannel, BotConversationHistory, BotWorkFlow, LLMSkill
 from apps.opspilot.services.llm_service import llm_service
 from apps.opspilot.services.skill_excute_service import SkillExecuteService
-from apps.opspilot.utils.bot_utils import get_client_ip, insert_skill_log, set_time_range
+from apps.opspilot.utils.bot_utils import insert_skill_log, set_time_range
 from apps.opspilot.utils.chat_flow_utils.engine.factory import create_chat_flow_engine
 from apps.opspilot.utils.dingtalk_chat_flow_utils import DingTalkChatFlowUtils, start_dingtalk_stream_client
 from apps.opspilot.utils.sse_chat import generate_stream_error, stream_chat
@@ -240,7 +241,7 @@ def get_chat_msg(current_ip, kwargs, params, skill_obj, user_message, history_lo
 def openai_completions(request):
     """Main entry point for OpenAI completions"""
     kwargs = json.loads(request.body)
-    current_ip = get_client_ip(request)
+    current_ip, _ = get_client_ip(request)
 
     stream_mode = kwargs.get("stream", False)
     token = request.META.get("HTTP_AUTHORIZATION") or request.META.get(settings.API_TOKEN_HEADER_NAME)
@@ -281,7 +282,7 @@ def openai_completions(request):
 @api_exempt
 def lobe_skill_execute(request):
     kwargs = json.loads(request.body)
-    current_ip = get_client_ip(request)
+    current_ip, _ = get_client_ip(request)
 
     stream_mode = kwargs.get("stream", False)
     # stream_mode = False
@@ -378,7 +379,7 @@ def get_skill_execute_result(bot_id, channel, chat_history, kwargs, request, sen
         logger.exception(e)
         result = {"content": str(e)}
     if getattr(request, "api_pass", False):
-        current_ip = get_client_ip(request)
+        current_ip, _ = get_client_ip(request)
         insert_skill_log(
             current_ip,
             bot.llm_skills.first().id,
@@ -674,7 +675,8 @@ def execute_chat_flow_dingtalk(request, bot_id):
 
 @api_exempt
 def test(request):
+    ip, is_routable = get_client_ip(request)
     kwargs = request.GET.dict()
     data = json.loads(request.body) if request.body else {}
     kwargs.update(data)
-    return JsonResponse({"result": True, "data": kwargs})
+    return JsonResponse({"result": True, "data": {"ip": ip, "is_routable": is_routable, "kwargs": kwargs}})

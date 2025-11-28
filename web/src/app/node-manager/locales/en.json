@@ -87,6 +87,7 @@
         "deleteNodeTips": "For nodes that are automatically installed, it is recommended to uninstall the controller for deletion. After manually deleting the node, if the node's side car reports normally in the future, it will be automatically updated in the list.",
         "running": "Running",
         "status": "Status",
+        "runningStatus": "Running Status",
         "stopsuccess": "Collector stopped successfully",
         "downloadTemplate": "Download Template",
         "btntext2": "here",
@@ -113,7 +114,12 @@
         "manual": "Manual",
         "lastReportTime": "Last Report Time",
         "installMethod": "Install Method",
-        "auto": "Remote"
+        "auto": "Remote",
+        "nodeType": "Node Type",
+        "nodeProperties": "Node Properties",
+        "hostedProgram": "Hosted Program",
+        "containerNodeTip": "Container nodes are built-in nodes of the cloud region and do not support uninstallation and deletion",
+        "hostedProgramList": "Hosted Program List"
       },
       "editform": {
         "Introduction": "Introduction",
@@ -196,6 +202,7 @@
     "prompt": "Prompt",
     "updatedAt": "Updated At",
     "deleteSuccess": "Deleted successfully!",
+    "successfullyModified": "Modified successfully!",
     "actions": "Actions",
     "modifydelete": "Batch Delete",
     "node": "Node",

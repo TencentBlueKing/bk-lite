@@ -1,0 +1,22 @@
+.dragIndicator {
+  position: relative;
+}
+
+.dragIndicator.activeLeft::after,
+.dragIndicator.activeRight::after {
+  position: absolute;
+  display: block;
+  content: "";
+  width: 2px;
+  height: 100%;
+  top: 0;
+  background-color: var(--color-primary);
+}
+
+.dragIndicator.activeLeft::after {
+  left: -6px;
+}
+
+.dragIndicator.activeRight::after {
+  right: -6px;
+}

@@ -114,7 +114,7 @@ def verify_token(token):
     role_list = Role.objects.filter(id__in=all_role_ids)
     role_names = [f"{role.app}--{role.name}" if role.app else role.name for role in role_list]
     is_superuser = "admin" in role_names or "system-manager--admin" in role_names
-    group_list = Group.objects.all()
+    group_list = Group.objects.all().order_by("id")
     if not is_superuser:
         group_list = group_list.filter(id__in=user.group_list)
     # groups = GroupUtils.build_group_tree(group_list)
