@@ -143,6 +143,12 @@ const TemplateConfigDrawer = forwardRef<TemplateDrawerRef, ModalSuccess>(
     };
 
     const handlePluginClick = (plugin: PluginItem) => {
+      if (
+        selectedPlugin?.name === plugin.name &&
+        selectedPlugin?.collect_type === plugin.collect_type
+      ) {
+        return;
+      }
       setSelectedPlugin(plugin);
       setConfigList([]);
     };
