@@ -316,16 +316,16 @@ const Node = () => {
               `${t('node-manager.cloudregion.node.nodeType')}: ${nodeTypeLabel}`
             );
           return (
-            <div className="flex gap-2">
+            <div className="flex gap-2 items-center ">
               <Tooltip title={nodeTypeTooltip}>
-                <div>
+                <div className="flex items-center">
                   <Icon
                     type={
                       nodeTypeValue === 'container'
                         ? 'rongqifuwuContainerServi'
                         : 'zhuji'
                     }
-                    style={{ fontSize: '16px', cursor: 'pointer' }}
+                    style={{ fontSize: '24px', cursor: 'pointer' }}
                   />
                 </div>
               </Tooltip>
@@ -334,10 +334,10 @@ const Node = () => {
                   'node-manager.cloudregion.node.system'
                 )}: ${osLabel}`}
               >
-                <div>
+                <div className="flex items-center">
                   <Icon
                     type={osValue === 'linux' ? 'Linux' : 'Window-Windows'}
-                    style={{ fontSize: '16px', cursor: 'pointer' }}
+                    style={{ fontSize: '24px', cursor: 'pointer' }}
                   />
                 </div>
               </Tooltip>
@@ -346,14 +346,14 @@ const Node = () => {
                   'node-manager.cloudregion.node.installMethod'
                 )}: ${installMethodLabel}`}
               >
-                <div>
+                <div className="flex items-center">
                   <Icon
                     type={
                       installMethodValue === 'auto'
                         ? 'daohang_007'
                         : 'ArtboardCopy'
                     }
-                    style={{ fontSize: '16px', cursor: 'pointer' }}
+                    style={{ fontSize: '24px', cursor: 'pointer' }}
                   />
                 </div>
               </Tooltip>
@@ -390,12 +390,12 @@ const Node = () => {
             <>
               <Tooltip
                 title={`${record.status?.message}`}
-                className="py-1 pr-1"
+                className="py-1 px-2"
               >
                 <Tag color={record.active ? 'success' : 'warning'}>Sidecar</Tag>
               </Tooltip>
               <Tooltip title={title}>
-                <Tag color={tagColor} className="py-1 pr-1">
+                <Tag color={tagColor} className="py-1 px-2">
                   NATS-Executor
                 </Tag>
               </Tooltip>
@@ -438,7 +438,7 @@ const Node = () => {
                 <Tag
                   key={status}
                   color={statusInfo.tagColor}
-                  className="cursor-pointer mr-1 mb-1"
+                  className="cursor-pointer mr-1 mb-1 py-1 px-2"
                   onClick={() => handleCollectorTagClick(record, allCollectors)}
                 >
                   {statusInfo.text}: {collectors.length}
