@@ -1,5 +1,7 @@
 networks:
   lab-network-{{ env_id }}:
+  bklite-prod:
+    external: true
 {%- if volumes %}
 volumes:
 {%- for volume_name in volumes %}
@@ -14,6 +16,7 @@ services:
     restart: always
     networks:
       - lab-network-{{ env_id }}
+      - bklite-prod
 {%- if ide_service.user %}
     user: {{ ide_service.user }}
 {%- endif %}

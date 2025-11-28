@@ -37,7 +37,6 @@ const EnvManage = () => {
           ...item,
           icon: 'tucengshuju',
           creator: item?.created_by || '--',
-          status: item?.container_status || {}
         }
       });
       console.log(_res);
@@ -146,6 +145,7 @@ const EnvManage = () => {
     const isRunning = item.state === 'running';
     const isStarting = item.state === 'starting';
     const isStopping = item.state === 'stopping';
+    const containers: any[] = item.container_status?.containers || [];
 
 
     // 状态标签颜色映射
@@ -160,6 +160,14 @@ const EnvManage = () => {
       return colorMap[state] || 'default';
     };
 
+    const getContainerToolTip = () => {
+      let tooltip = '';
+      containers.forEach((item: any) => {
+        tooltip += `${item.State} / `
+      });
+      return tooltip;
+    };
+
     return (
       <div className="flex justify-between items-center w-full gap-3">
         <div className="flex items-center gap-2 flex-1 min-w-0 ">
@@ -167,6 +175,13 @@ const EnvManage = () => {
           <Tag color={getStateTagColor(item.state)} className="!m-0 font-mini">
             {item.state}
           </Tag>
+          {item.state === 'running' && (
+            <Tooltip title={getContainerToolTip}>
+              <Tag color="blue" className="!m-0 font-mini">
+                Containers: {containers.length}
+              </Tag>
+            </Tooltip>
+          )}
         </div>
         <div className="flex gap-1.5 flex-shrink-0">
           <Tooltip title="重启">
@@ -222,10 +237,10 @@ const EnvManage = () => {
   };
 
   // 卡片点击
-  const handleCardClick = (item: any) => {
-    console.log(item);
-    // 可跳转详情或弹窗
-  };
+  // const handleCardClick = (item: any) => {
+  //   console.log(item);
+  //   // 可跳转详情或弹窗
+  // };
 
   // 新增
   const handleAdd = () => {
@@ -277,7 +292,7 @@ const EnvManage = () => {
             data={tableData}
             menuActions={menuActions}
             loading={loading}
-            onCardClick={handleCardClick}
+            // onCardClick={handleCardClick}
             openModal={handleAdd}
             onSearch={handleSearch}
             descSlot={descSlot}

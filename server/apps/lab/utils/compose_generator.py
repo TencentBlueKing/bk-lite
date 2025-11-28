@@ -70,6 +70,7 @@ class ComposeGenerator:
         """准备 IDE 服务配置"""
         # 拼接 IDE 镜像地址
         ide_image_address = f"{lab_env.ide_image.name}:{lab_env.ide_image.version or ''}"
+        image_name = lab_env.ide_image.name.lower()
         
         # 优化服务名
         if '/' in lab_env.ide_image.name:
@@ -130,8 +131,16 @@ class ComposeGenerator:
             lab_env.ide_image.default_command,
             lab_env.ide_image.default_args
         )
+
         if command:
+            if 'jupyter' in image_name:
+                command.append(f'--ServerApp.base_url=/lab-{lab_env.id}')
+            elif 'code-server' in image_name:
+                command.append(f'--abs-proxy-base-path=/lab-{lab_env.id}/')
+
+            logger.info(command)
             ide_service['command'] = command
+        
         
         # Traefik labels
         labels = cls._get_traefik_labels_for_ide(lab_env, ide_service['container_name'])
@@ -319,14 +328,27 @@ class ComposeGenerator:
             return None
         
         path_prefix = f"/lab-{lab_env.id}"
+        image_name = lab_env.ide_image.name.lower()
         
+        # 基础 labels 配置
         labels = {
             'traefik.enable': 'true',
             f'traefik.http.routers.{container_name}.rule': f'Host(`{endpoint}`) && PathPrefix(`{path_prefix}`)',
             f'traefik.http.routers.{container_name}.entrypoints': 'websecure',
-            # f'traefik.http.middlewares.{container_name}-strip.stripprefix.prefixes': path_prefix,
-            f'traefik.http.routers.{container_name}.middlewares': f'{container_name}-strip'
         }
+        
+        # 根据镜像类型决定是否使用 StripPrefix
+        if 'jupyter' in image_name:
+            # JupyterLab: 不使用 StripPrefix，直接处理完整路径
+            pass
+        elif 'code-server' in image_name:
+            # code-server: 使用 StripPrefix，处理根路径
+            labels[f'traefik.http.middlewares.{container_name}-strip.stripprefix.prefixes'] = path_prefix
+            labels[f'traefik.http.routers.{container_name}.middlewares'] = f'{container_name}-strip'
+        else:
+            # 其他 IDE: 默认使用 StripPrefix
+            labels[f'traefik.http.middlewares.{container_name}-strip.stripprefix.prefixes'] = path_prefix
+            labels[f'traefik.http.routers.{container_name}.middlewares'] = f'{container_name}-strip'
         
         # 只在配置了 expose_ports 时才指定端口
         if lab_env.ide_image.expose_ports:
