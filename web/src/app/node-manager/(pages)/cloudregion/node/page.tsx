@@ -552,16 +552,17 @@ const Node = () => {
                 <ReloadOutlined onClick={() => getNodes(searchFilters)} />
               </div>
             </div>
-            <CustomTable
-              className={nodeStyle.table}
-              columns={tableColumns}
-              loading={loading}
-              dataSource={nodeList}
-              scroll={{ y: 'calc(100vh - 380px)', x: 'max-content' }}
-              rowSelection={rowSelection}
-              pagination={pagination}
-              onChange={handleTableChange}
-            />
+            <div className={nodeStyle.table}>
+              <CustomTable
+                columns={tableColumns}
+                loading={loading}
+                dataSource={nodeList}
+                scroll={{ y: 'calc(100vh - 380px)', x: 'max-content' }}
+                rowSelection={rowSelection}
+                pagination={pagination}
+                onChange={handleTableChange}
+              />
+            </div>
             <CollectorModal
               ref={collectorRef}
               onSuccess={(config) => {
