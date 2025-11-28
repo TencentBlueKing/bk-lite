@@ -310,6 +310,7 @@ func SubscribeHealthCheck(nc *nats.Conn, instanceId *string) {
 
 	_, err := nc.Subscribe(subject, func(msg *nats.Msg) {
 		response := HealthCheckResponse{
+			Success:    true,
 			Status:     "ok",
 			InstanceId: *instanceId,
 			Timestamp:  time.Now().UTC().Format(time.RFC3339),
