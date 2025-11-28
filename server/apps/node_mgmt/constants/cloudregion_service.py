@@ -7,11 +7,11 @@ class CloudRegionServiceConstants:
     # 节点状态枚举
     NORMAL = "normal"  # 正常
     NOT_DEPLOYED = "not_deployed"  # 未部署
-    ERROR = "error"  # 异常
+    N_ERROR = "error"  # 异常
     STATUS_ENUM = {
         NORMAL: "正常",
         NOT_DEPLOYED: "未部署",
-        ERROR: "异常",
+        N_ERROR: "异常",
     }
 
     # 部署状态枚举
