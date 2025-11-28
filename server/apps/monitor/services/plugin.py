@@ -22,6 +22,7 @@ class MonitorPluginService:
         metrics = data.pop("metrics")
         plugin = data.pop("plugin")
         desc = data.pop("plugin_desc", "")
+        status_query = data.pop("status_query", "")
         collector = data.pop("collector", "")
         collect_type = data.pop("collect_type", "")
 
@@ -56,6 +57,7 @@ class MonitorPluginService:
                 defaults=dict(
                     name=plugin,
                     description=desc,
+                    status_query=status_query,
                     collector=collector,
                     collect_type=collect_type
                 ),
@@ -137,6 +139,7 @@ class MonitorPluginService:
             object_info.update(
                 plugin=data["plugin"],
                 plugin_desc=data["plugin_desc"],
+                status_query=data["status_query"],
                 collector=collector,
                 collect_type=collect_type
             )
