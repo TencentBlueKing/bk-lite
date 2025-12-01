@@ -6,8 +6,6 @@
 # -*- coding: utf-8 -*-
 
 from plugins.base import BaseSSHPlugin
-from plugins.base_utils import convert_to_prometheus_format
-from sanic.log import logger
 
 
 class HostInfo(BaseSSHPlugin):
