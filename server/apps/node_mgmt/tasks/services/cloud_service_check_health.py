@@ -22,7 +22,7 @@ def check_stargazer_health(cloud_region):
 
         if not env_obj:
             logger.warning(f"云区域 {cloud_region.name} 未配置 STARGAZER_URL")
-            return CloudRegionServiceConstants.ERROR
+            return CloudRegionServiceConstants.N_ERROR
 
         url = f"{env_obj.value}/api/health"
 
@@ -37,23 +37,23 @@ def check_stargazer_health(cloud_region):
                     f"Stargazer 健康检查失败，云区域: {cloud_region.name}, "
                     f"返回结果: {result}"
                 )
-                return CloudRegionServiceConstants.ERROR
+                return CloudRegionServiceConstants.N_ERROR
         else:
             logger.warning(
                 f"Stargazer 健康检查失败，云区域: {cloud_region.name}, "
                 f"状态码: {response.status_code}"
             )
-            return CloudRegionServiceConstants.ERROR
+            return CloudRegionServiceConstants.N_ERROR
 
     except requests.exceptions.Timeout:
         logger.error(f"Stargazer 健康检查超时，云区域: {cloud_region.name}")
-        return CloudRegionServiceConstants.ERROR
+        return CloudRegionServiceConstants.N_ERROR
     except Exception as e:
         logger.error(
             f"Stargazer 健康检查异常，云区域: {cloud_region.name}, "
             f"错误: {str(e)}"
         )
-        return CloudRegionServiceConstants.ERROR
+        return CloudRegionServiceConstants.N_ERROR
 
 
 def check_nats_executor_health(cloud_region):
@@ -76,14 +76,14 @@ def check_nats_executor_health(cloud_region):
                 f"NATS Executor 健康检查失败，云区域: {cloud_region.name}, "
                 f"返回结果: {result}"
             )
-            return CloudRegionServiceConstants.ERROR
+            return CloudRegionServiceConstants.N_ERROR
 
     except Exception as e:
         logger.error(
             f"NATS Executor 健康检查异常，云区域: {cloud_region.name}, "
             f"错误: {str(e)}"
         )
-        return CloudRegionServiceConstants.ERROR
+        return CloudRegionServiceConstants.N_ERROR
 
 
 SERVICES_FUNC = {

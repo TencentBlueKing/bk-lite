@@ -68,6 +68,10 @@ const DeployModal = forwardRef<ModalRef, ModalSuccess>(({ onSuccess }, ref) => {
     setConfirmLoading(false);
   };
 
+  const linkToBklite = () => {
+    window.open('https://bklite.ai/');
+  };
+
   const containerDeployContent = (
     <div className="py-2">
       <div className="mb-[15px] text-[var(--color-text-3)]">
@@ -149,8 +153,8 @@ const DeployModal = forwardRef<ModalRef, ModalSuccess>(({ onSuccess }, ref) => {
         <Button
           type="primary"
           size="large"
-          disabled
           className="min-w-[140px] h-10 text-[15px] rounded-lg"
+          onClick={linkToBklite}
         >
           {t('node-manager.cloudregion.deploy.upgradeButton')}
         </Button>

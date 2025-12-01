@@ -444,31 +444,37 @@ const CollectorDetailDrawer = forwardRef<ModalRef, CollectorDetailDrawerProps>(
                       </Tag>
                     </div>
                     <div
-                      className="flex items-center text-xs"
+                      className="text-xs"
                       style={{
                         color: getStatusInfo(selectedCollector.status).color,
                       }}
                     >
-                      <span
-                        style={{
-                          color: getStatusInfo(selectedCollector.status).color,
-                          fontSize: '16px',
-                          marginRight: '4px',
-                        }}
-                      >
-                        {React.cloneElement(
-                          getStatusInfo(selectedCollector.status).icon.props
-                            .children,
-                          {
-                            style: {
-                              ...getStatusInfo(selectedCollector.status).icon
-                                .props.children.props.style,
-                              fontSize: '14px',
-                            },
-                          }
-                        )}
+                      <span className="flex items-center text-xs">
+                        <span
+                          style={{
+                            color: getStatusInfo(selectedCollector.status)
+                              .color,
+                            fontSize: '16px',
+                            marginRight: '4px',
+                          }}
+                        >
+                          {React.cloneElement(
+                            getStatusInfo(selectedCollector.status).icon.props
+                              .children,
+                            {
+                              style: {
+                                ...getStatusInfo(selectedCollector.status).icon
+                                  .props.children.props.style,
+                                fontSize: '14px',
+                              },
+                            }
+                          )}
+                        </span>
+                        {selectedCollector.message || '--'}
                       </span>
-                      {selectedCollector.message || '--'}
+                      <p className="mt-[4px]">
+                        {selectedCollector.verbose_message || ''}
+                      </p>
                     </div>
                   </div>
 
