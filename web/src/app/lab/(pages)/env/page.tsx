@@ -1,6 +1,6 @@
 "use client";
 import { Menu, Button, message, Tooltip, Tag } from 'antd';
-import { PlayCircleOutlined, PauseCircleOutlined, RedoOutlined, ReloadOutlined } from '@ant-design/icons';
+import { PlayCircleOutlined, PauseCircleOutlined, RedoOutlined, ReloadOutlined, CodeOutlined } from '@ant-design/icons';
 import stlyes from '@/app/lab/styles/index.module.scss';
 import { useState, useEffect, useRef } from 'react';
 import EntityList from '@/components/entity-list';
@@ -26,6 +26,10 @@ const EnvManage = () => {
   const [tableData, setTableData] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
 
+  useEffect(() => {
+    fetchEnvs();
+  }, []);
+
   // 请求环境列表
   const fetchEnvs = async () => {
     setLoading(true);
@@ -49,9 +53,7 @@ const EnvManage = () => {
     }
   };
 
-  useEffect(() => {
-    fetchEnvs();
-  }, []);
+
 
   const changeState = (id: string | number, state: ContarinerState) => {
     const _env = tableData.map((item: any) => {
@@ -69,14 +71,14 @@ const EnvManage = () => {
   // 启动环境
   const handleStart = async (id: string | number, e: React.MouseEvent) => {
     e.stopPropagation();
-    message.info('环境启动中');
+    message.info(t(`lab.env.staringEnv`));
     changeState(id, 'starting');
     try {
       await startEnv(id);
-      message.success('环境启动成功');
+      message.success(t(`lab.env.envStartUpSuccess`));
     } catch (error) {
-      console.error('启动环境失败:', error);
-      message.error('启动环境失败');
+      console.error(t(`lab.env.envStartUpFailed`), error);
+      message.error(t(`lab.env.envStartUpFailed`));
     } finally {
       fetchEnvs();
     }
@@ -84,15 +86,15 @@ const EnvManage = () => {
 
   // 重启环境
   const handleRestart = async (id: string | number) => {
-    message.info("环境重启中");
+    message.info(t(`lab.env.envReStart`));
     changeState(id, 'starting');
     try {
       await restartEnv(id);
-      message.success('环境重启成功');
+      message.success(t(`lab.env.envReStartSucess`));
 
     } catch (e) {
       console.log(e);
-      message.error('重启环境失败')
+      message.error(t(`lab.env.envReStartFailed`))
     } finally {
       fetchEnvs();
     }
@@ -101,17 +103,39 @@ const EnvManage = () => {
   // 停止环境
   const handleStop = async (id: string | number, e: React.MouseEvent) => {
     e.stopPropagation();
-    message.info("停止环境中");
+    message.info(t(`lab.env.stopEnv`));
     changeState(id, 'stopping');
     try {
       await stopEnv(id);
-      message.success('环境停止成功');
+      message.success(t(`lab.env.envStopSucess`));
 
     } catch (error) {
-      console.error('停止环境失败:', error);
-      message.error('停止环境失败');
+      console.error(t(`lab.env.envStopFailed`), error);
+      message.error(t(`lab.env.envStopFailed`));
     } finally {
       fetchEnvs();
+    }
+  };
+
+  // 获取代码编辑器链接
+  const getCodeEditorLink = (item: any) => {
+    const image_name = item.ide_image_name?.toLocaleLowerCase();
+    let url = `${item.endpoint}/lab-${item.id}`;
+
+    if (!item.endpoint) return '#';
+
+    // 处理不同编辑器链接差别
+    if (image_name?.includes('code-server')) {
+      url = url + '/';
+    }
+
+    // 处理用户访问端点是否有http开头
+    if (item.endpoint?.startsWith('https://')) {
+      return url;
+    } else if (item.endpoint?.startsWith('http://')) {
+      return url?.replace('http://', 'https://');
+    } else {
+      return `https://${url}`;
     }
   };
 
@@ -183,8 +207,23 @@ const EnvManage = () => {
             </Tooltip>
           )}
         </div>
-        <div className="flex gap-1.5 flex-shrink-0">
-          <Tooltip title="重启">
+        <div className="flex gap-0.5 flex-shrink-0">
+          <Tooltip title={t(`lab.env.editor`)}>
+            <Button
+              type="text"
+              size="small"
+              target='_blank'
+              disabled={item.state !== 'running'}
+              icon={<CodeOutlined />}
+              href={getCodeEditorLink(item)}
+              className={
+                ['starting', 'stopping', 'stopped'].includes(item.state) ?
+                  "" :
+                  "!text-blue-500 hover:!bg-blue-50 hover:!text-blue-600 transition-colors"
+              }
+            />
+          </Tooltip>
+          <Tooltip title={t(`lab.manage.restart`)}>
             <Button
               type="text"
               size="small"
@@ -202,7 +241,7 @@ const EnvManage = () => {
             />
           </Tooltip>
           {!isRunning && !isStarting && (
-            <Tooltip title="启动">
+            <Tooltip title={t(`lab.env.start`)}>
               <Button
                 type="text"
                 size="small"
@@ -217,7 +256,7 @@ const EnvManage = () => {
             </Tooltip>
           )}
           {(isRunning || isStarting) && (
-            <Tooltip title="停止">
+            <Tooltip title={t(`lab.env.stop`)}>
               <Button
                 type="text"
                 size="small"
@@ -236,12 +275,6 @@ const EnvManage = () => {
     );
   };
 
-  // 卡片点击
-  // const handleCardClick = (item: any) => {
-  //   console.log(item);
-  //   // 可跳转详情或弹窗
-  // };
-
   // 新增
   const handleAdd = () => {
     // 新增逻辑
@@ -253,26 +286,16 @@ const EnvManage = () => {
     modalRef.current?.showModal(data);
   };
 
-  // 容器状态
-  // const getContainerStatus = async (item: any) => {
-  //   try {
-  //     const data = await getEnvStatus(item.id);
-  //     console.log(data);
-  //   } catch (e) {
-  //     console.log(e)
-  //   }
-  // };
-
   // 删除
   const handleDel = async (id: string | number) => {
     setLoading(true);
     try {
       await deleteEnv(id);
-      message.success('环境删除成功');
+      message.success(t(`lab.env.deleteEnvSuccess`));
       fetchEnvs(); // 刷新列表
     } catch (e) {
-      console.error('删除环境失败:', e);
-      message.error('删除环境失败');
+      console.error(t(`lab.env.deleteEnvFailed`), e);
+      message.error(t(`lab.env.deleteEnvFailed`));
     } finally {
       setLoading(false);
     }
@@ -286,13 +309,11 @@ const EnvManage = () => {
   return (
     <>
       <div className={`w-full h-full ${stlyes.segmented}`}>
-        {/* <Segmented options={tabOptions} value={activeTab} onChange={(value) => setActiveTab(value)} /> */}
         <div className='flex h-full w-full mt-4'>
           <EntityList
             data={tableData}
             menuActions={menuActions}
             loading={loading}
-            // onCardClick={handleCardClick}
             openModal={handleAdd}
             onSearch={handleSearch}
             descSlot={descSlot}

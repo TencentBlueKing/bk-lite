@@ -423,7 +423,7 @@ const LabEnvModal = forwardRef<ModalRef, LabEnvProps>(({ onSuccess }, ref) => {
         >
           <Select
             mode="multiple"
-            placeholder="请选择基础设施镜像模板"
+            placeholder={t(`lab.env.infraTemplate`)}
             loading={loadingOptions}
             showSearch
             filterOption={(input, option) => {
