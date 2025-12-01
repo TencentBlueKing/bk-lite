@@ -116,3 +116,39 @@ export interface InstNameConfig {
   field: string;
   dataIndex?: string;
 }
+
+export interface PluginItem {
+  name: string;
+  collector: string;
+  collect_type: string;
+  status: string;
+  collect_mode: string;
+  time: string;
+  config_ids?: string[];
+}
+
+export interface ConfigItem {
+  id: number;
+  collect_type: string;
+  config_type?: string;
+  agent_id: string;
+  status: string;
+  time: number;
+  config_content?: any;
+  config_id: string;
+  config_ids?: string[];
+}
+
+export interface ShowModalParams {
+  instanceName: string;
+  instanceId: number;
+  instanceType: string;
+  selectedConfigId?: string;
+  objName: string;
+  plugins?: PluginItem[];
+  showTemplateList?: boolean;
+}
+
+export interface TemplateDrawerRef {
+  showModal: (params: ShowModalParams) => void;
+}

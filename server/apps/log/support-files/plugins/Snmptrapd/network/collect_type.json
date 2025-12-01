@@ -3,25 +3,15 @@
   "collector": "Snmptrapd",
   "icon": "network",
   "description": "Collects SNMP Trap messages from network devices",
-  "default_query": "collect_type: snmp_trap | last 1 by (_time) partition by (instance_id, source)",
+  "default_query": "collect_type: snmp_trap | last 1 by (_time) partition by (node_ip)",
   "attrs": [
     "collect_type",
     "collector",
-    "instance_id",
-    "cloud_region_id",
-    "source",
-    "source_ip",
-    "trap_oid",
-    "trap_type",
-    "severity",
     "event_type",
-    "message",
-    "varbinds",
-    "varbind_count",
-    "sys_uptime",
-    "if_index",
-    "if_descr",
+    "node_ip",
     "timestamp",
-    "raw_data"
+    "received_at",
+    "trap_message",
+    "raw_message"
   ]
 }

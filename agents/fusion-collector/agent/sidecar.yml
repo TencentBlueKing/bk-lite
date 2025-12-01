@@ -17,7 +17,9 @@ collector_configuration_directory: "/opt/fusion-collectors/generated"
 tags:
   - "group:__SIDECAR__GROUP__"
   - "zone:__SIDECAR__ZONE__"
-
+  - "install_method:manual"
+  - "node_type:container"
 collector_binaries_accesslist:
   - "/opt/fusion-collectors/bin/*"
   - "/opt/fusion-collectors/bin/*/*"
+  - "/usr/sbin/snmptrapd"

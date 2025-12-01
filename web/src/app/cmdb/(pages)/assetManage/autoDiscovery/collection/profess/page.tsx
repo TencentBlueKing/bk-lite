@@ -13,6 +13,7 @@ import TaskDetail from './components/taskDetail';
 import { useCollectApi } from '@/app/cmdb/api';
 import CustomTable from '@/components/custom-table';
 import PermissionWrapper from '@/components/permission';
+import EllipsisWithTooltip from '@/components/ellipsis-with-tooltip';
 import type { TableColumnType } from 'antd';
 import type { ColumnItem } from '@/app/cmdb/types/assetManage';
 import type { ColumnType } from 'antd/es/table';
@@ -45,7 +46,7 @@ const ProfessionalCollection: React.FC = () => {
   const { t } = useTranslation();
   const collectApi = useCollectApi();
   const ExecStatusMap = React.useMemo(() => createExecStatusMap(t), [t]);
-  const execStatusConfig = React.useMemo(() => getExecStatusConfig(t), [t]);
+  const syncStatusConfig = React.useMemo(() => getExecStatusConfig(t), [t]);
   const [drawerVisible, setDrawerVisible] = useState(false);
   const [treeData, setTreeData] = useState<TreeNode[]>([]);
   const [detailVisible, setDetailVisible] = useState(false);
@@ -109,6 +110,9 @@ const ProfessionalCollection: React.FC = () => {
   };
 
   const fetchData = async (showLoading = true, tabId?: string) => {
+    if (timerRef.current) {
+      clearTimeout(timerRef.current);
+    }
     try {
       if (!selectedRef.current.nodeId) return;
       if (showLoading) {
@@ -385,7 +389,7 @@ const ProfessionalCollection: React.FC = () => {
 
   const statusFilters = React.useMemo(() => {
     return Object.entries(EXEC_STATUS).map(([key, value]) => ({
-      text: t(`Collection.execStatus.${toCamelCase(key)}`),
+      text: t(`Collection.syncStatus.${toCamelCase(key)}`),
       value,
     }));
   }, [t]);
@@ -427,7 +431,7 @@ const ProfessionalCollection: React.FC = () => {
                 loading={loadingExec}
                 onClick={() => handleApproval(record)}
               >
-                {t('Collection.execStatus.approval')}
+                {t('Collection.syncStatus.approval')}
               </Button>
             </PermissionWrapper>
           ) : (
@@ -452,8 +456,8 @@ const ProfessionalCollection: React.FC = () => {
               onClick={() => handleExecuteNow(record)}
             >
               {loadingExec
-                ? t('Collection.executing')
-                : t('Collection.table.executeNow')}
+                ? t('Collection.table.syncing')
+                : t('Collection.table.sync')}
             </Button>
           </PermissionWrapper>
           <PermissionWrapper
@@ -499,14 +503,14 @@ const ProfessionalCollection: React.FC = () => {
         render: (text: any) => <span>{text || '--'}</span>,
       },
       {
-        title: t('Collection.table.execStatus'),
+        title: t('Collection.table.syncStatus'),
         dataIndex: 'exec_status',
         key: 'exec_status',
         width: 160,
         filters: statusFilters,
         filterMultiple: false,
         render: (status: ExecStatusType) => {
-          const config = execStatusConfig[status];
+          const config = syncStatusConfig[status];
           return (
             <div className={styles.statusText}>
               <span
@@ -548,7 +552,7 @@ const ProfessionalCollection: React.FC = () => {
         render: (text: any) => <span>{text || '--'}</span>,
       },
       {
-        title: t('Collection.table.execTime'),
+        title: t('Collection.table.syncTime'),
         dataIndex: 'exec_time',
         key: 'exec_time',
         width: 220,
@@ -640,11 +644,11 @@ const ProfessionalCollection: React.FC = () => {
       >
         <div className="flex items-start gap-3 mb-2">
           <div
-            className={`w-12 h-12 rounded flex items-center justify-center text-xl font-semibold flex-shrink-0 ${
+            className={`w-10 h-10 rounded flex items-center justify-center text-lg font-semibold flex-shrink-0 ${
               isActive ? 'bg-blue-500 text-white' : 'bg-blue-100 text-blue-600'
             }`}
           >
-            {tab.name?.charAt(0) || 'A'}
+            {tab.name?.charAt(0)}
           </div>
           <div className="flex-1 min-w-0">
             <div
@@ -654,8 +658,11 @@ const ProfessionalCollection: React.FC = () => {
             >
               {tab.name}
             </div>
-            <div className="text-xs text-gray-500 line-clamp-2">
-              {description}
+            <div className="text-xs text-gray-500">
+              <EllipsisWithTooltip
+                text={description}
+                className="line-clamp-3"
+              />
             </div>
           </div>
         </div>
@@ -720,7 +727,7 @@ const ProfessionalCollection: React.FC = () => {
 
         <div className="flex-1 flex flex-col overflow-hidden">
           <div className="flex flex-col flex-1 overflow-hidden bg-white rounded shadow-sm border border-gray-200">
-            <div className="px-5 py-4 border-b border-gray-100 flex items-center gap-2">
+            <div className="px-4 py-3 border-b border-gray-100 flex items-center gap-2">
               <span className="text-base font-semibold text-gray-900">
                 {currentPlugin?.name || ''}
               </span>
@@ -737,7 +744,7 @@ const ProfessionalCollection: React.FC = () => {
               </Button>
             </div>
 
-            <div className="px-5 py-4 border-b border-gray-100 flex justify-between items-center">
+            <div className="px-4 py-4 flex justify-between items-center">
               <Input
                 placeholder={t('Collection.inputTaskPlaceholder')}
                 prefix={<SearchOutlined className="text-gray-400" />}
@@ -755,7 +762,7 @@ const ProfessionalCollection: React.FC = () => {
               </PermissionWrapper>
             </div>
 
-            <div className="flex-1 overflow-hidden p-5">
+            <div className="flex-1 overflow-hidden p-4 pt-1">
               <CustomTable
                 loading={tableLoading}
                 key={selectedRef.current.nodeId}
@@ -764,7 +771,7 @@ const ProfessionalCollection: React.FC = () => {
                 columns={currentColumns}
                 dataSource={tableData}
                 scroll={{
-                  y: 'calc(100vh - 620px)',
+                  y: 'calc(100vh - 600px)',
                 }}
                 onSelectFields={onSelectFields}
                 onChange={handleTableChange}

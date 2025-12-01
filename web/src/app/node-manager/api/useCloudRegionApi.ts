@@ -1,4 +1,5 @@
 import useApiClient from '@/utils/request';
+import type { DeployCloudRegionParams } from '@/app/node-manager/types/cloudregion';
 
 /**
  * 云区域管理API Hook
@@ -36,11 +37,17 @@ const useCloudRegionApi = () => {
     return await patch(`/node_mgmt/api/cloud_region/${id}/`, data);
   };
 
+  // 部署云区域服务
+  const deployCloudRegion = async (data: DeployCloudRegionParams) => {
+    return await post('/node_mgmt/api/cloud_region/deploy_services/', data);
+  };
+
   return {
     getCloudList,
     createCloudRegion,
     deleteCloudRegion,
     updateCloudIntro,
+    deployCloudRegion,
   };
 };
 

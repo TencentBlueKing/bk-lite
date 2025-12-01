@@ -22,161 +22,241 @@ from .node_registry import node_registry
 
 
 class ChatFlowEngine:
-    def sse_execute(self, input_data: Dict[str, Any] = None, timeout: int = None):  # noqa: C901
+    def _initialize_variables(self, input_data: Dict[str, Any]):
+        """初始化变量管理器
+
+        Args:
+            input_data: 输入数据
+        """
+        self.variable_manager.set_variable("flow_id", str(self.instance.id))
+        self.variable_manager.set_variable("last_message", input_data.get("last_message", ""))
+        self.variable_manager.set_variable("flow_input", input_data)
+
+    def _get_start_node(self) -> Optional[Dict[str, Any]]:
+        """获取起始节点
+
+        Returns:
+            起始节点字典，如果没有则返回none
+        """
+        if self.start_node_id:
+            return self._get_node_by_id(self.start_node_id)
+        return self.nodes[0] if self.nodes else None
+
+    def _determine_entry_type(self, start_node: Optional[Dict[str, Any]]) -> str:
+        """确定入口类型
+
+        Args:
+            start_node: 起始节点
+
+        Returns:
+            入口类型字符串
+        """
+        if not start_node:
+            return "restful"
+        start_node_type = start_node.get("type", "")
+        return start_node_type if start_node_type in [choice[0] for choice in WorkFlowExecuteType.choices] else "restful"
+
+    def sse_execute(self, input_data: Dict[str, Any] = None):
         """流程流式执行，支持SSE和AGUI协议"""
         if input_data is None:
             input_data = {}
-        if timeout is None:
-            timeout = self.execution_timeout
 
-        # 获取用户ID和输入消息
+        # 提取执行上下文
         user_id = input_data.get("user_id", "")
         input_message = input_data.get("last_message", "") or input_data.get("message", "")
-        # 获取入口类型，默认为 openai（SSE方式）或 agui
         entry_type = input_data.get("entry_type", "openai")
 
-        # 记录用户输入（排除celery定时触发）
-        if user_id and input_message and entry_type != "celery":
-            try:
-                user_conversation = WorkFlowConversationHistory.objects.create(
-                    bot_id=self.instance.bot_id,
-                    user_id=user_id,
-                    conversation_role="user",
-                    conversation_content=input_message,
-                    conversation_time=timezone.now(),
-                    entry_type=entry_type,
-                )
-                logger.info(f"[SSE] 记录用户输入对话历史: conversation_id={user_conversation.id}, entry_type={entry_type}")
-            except Exception as e:
-                logger.error(f"[SSE] 记录用户输入对话历史失败: {str(e)}")
+        logger.info(f"[SSE-Engine] 开始执行 - flow_id: {self.instance.id}, user_id: {user_id}, entry_type: {entry_type}, 节点数: {len(self.nodes)}")
+
+        # 初始化变量管理器
+        self._initialize_variables(input_data)
+
+        # 记录用户输入对话历史
+        self._record_conversation_history(user_id, input_message, "user", entry_type)
 
         # 验证流程
         validation_errors = self.validate_flow()
         if validation_errors:
+            return self._create_error_generator("流程验证失败")
 
-            def err_gen():
-                yield f"data: {json.dumps({'result': False, 'error': '流程验证失败'})}\n\n"
-                yield "data: [DONE]\n\n"
-
-            return err_gen()
-
-        # 获取第一个节点和最后节点
-        first_node = self.nodes[0] if self.nodes else None
+        # 获取起始节点和最后节点
+        start_node = self._get_start_node()
         last_node = self.nodes[-1] if self.nodes else None
 
-        # 判断是否是AGUI协议（首节点为agui）
-        is_agui_protocol = first_node and first_node.get("type") == "agui"
+        # 判断协议类型
+        is_agui_protocol = start_node and start_node.get("type") == "agui"
+        is_openai_protocol = start_node and start_node.get("type") == "openai"
 
-        if last_node.get("type") == "agents":
-            # 先执行前置所有节点（非流式）
-            if len(self.nodes) > 1:
-                # 执行除最后一个节点外的所有节点
-                previous_nodes = self.nodes[:-1]
-                temp_engine_data = input_data.copy()
+        # 检查是否需要流式执行
+        needs_streaming = (is_agui_protocol or is_openai_protocol) or (last_node and last_node.get("type") == "agents")
+        if not needs_streaming:
+            return self._create_error_generator("当前流程不支持SSE")
 
-                # 按顺序执行前置节点
-                for i, node in enumerate(previous_nodes):
-                    node_id = node.get("id")
-                    executor = self._get_node_executor(node.get("type"))
+        # 查找目标agents节点及前置节点
+        target_agent_node, nodes_to_execute_before = self._find_target_agent_node(start_node, last_node, is_agui_protocol, is_openai_protocol)
+        if not target_agent_node:
+            return self._create_error_generator("未找到可执行的agents节点")
 
-                    logger.info(f"执行前置节点 {node_id} (类型: {node.get('type')})")
-                    result = executor.execute(node_id, node, temp_engine_data)
+        # 执行前置节点
+        final_input_data = self._execute_prerequisite_nodes(nodes_to_execute_before, input_data)
 
-                    # 更新变量管理器和输入数据
-                    self.variable_manager.set_variable(f"node_{node_id}_output", result)
+        # 根据协议类型选择执行方法
+        executor = self._get_node_executor(target_agent_node.get("type"))
+        execute_method = None
+        protocol_type = None
 
-                    # 将结果传递给下一个节点（使用最后输出的key作为下一个节点的输入）
-                    if isinstance(result, dict):
-                        temp_engine_data.update(result)
+        if is_agui_protocol and hasattr(executor, "agui_execute"):
+            execute_method = executor.agui_execute
+            protocol_type = "AGUI"
+        elif hasattr(executor, "sse_execute"):
+            execute_method = executor.sse_execute
+            protocol_type = "SSE"
 
-                # 用前置节点的执行结果作为最后节点的输入
-                final_input_data = temp_engine_data
-            else:
-                final_input_data = input_data
+        if execute_method:
+            logger.info(f"[SSE-Engine] 使用{protocol_type}协议执行agents节点: {target_agent_node.get('id')}")
+        else:
+            logger.error(f"[SSE-Engine] agents节点不支持流式执行: {target_agent_node.get('id')}")
 
-            # 最后一个节点根据协议类型选择执行方法
-            executor = self._get_node_executor(last_node.get("type"))
+        if not execute_method:
+            return self._create_error_generator("agents节点不支持流式执行")
 
-            # 根据入口节点类型选择执行方法
-            if is_agui_protocol and hasattr(executor, "agui_execute"):
-                # AGUI协议流式执行
-                execute_method = executor.agui_execute
-                logger.info(f"使用AGUI协议执行最后节点: {last_node.get('id')}")
-            elif hasattr(executor, "sse_execute"):
-                # SSE协议流式执行
-                execute_method = executor.sse_execute
-                logger.info(f"使用SSE协议执行最后节点: {last_node.get('id')}")
-            else:
-                # 不支持流式执行
-                def err_gen():
-                    yield f"data: {json.dumps({'result': False, 'error': '节点不支持流式执行'})}\n\n"
-                    yield "data: [DONE]\n\n"
+        return self._create_streaming_generator(execute_method, target_agent_node, final_input_data, user_id, entry_type, is_agui_protocol)
 
-                return err_gen()
+    def _find_target_agent_node(self, start_node, last_node, is_agui_protocol: bool, is_openai_protocol: bool):
+        """查找目标agents节点及前置节点"""
+        if is_agui_protocol or is_openai_protocol:
+            return self._find_agent_node_via_bfs(start_node)
+        else:
+            # 最后节点就是agents
+            target_agent_node = last_node
+            nodes_to_execute_before = self.nodes[:-1] if len(self.nodes) > 1 else []
+            return target_agent_node, nodes_to_execute_before
 
-            # 包装生成器以收集完整输出
-            def wrapped_generator():
-                accumulated_output = []  # 累积完整输出内容
+    def _find_agent_node_via_bfs(self, start_node):
+        """使用BFS查找从起始节点可达的第一个agents节点"""
+        from collections import deque
 
+        queue = deque([start_node.get("id")])
+        visited = {start_node.get("id")}
+        path_nodes = []
+
+        while queue:
+            current_node_id = queue.popleft()
+            next_node_ids = [edge.get("target") for edge in self.edges if edge.get("source") == current_node_id]
+
+            for next_node_id in next_node_ids:
+                if next_node_id in visited:
+                    continue
+                visited.add(next_node_id)
+
+                next_node = self._get_node_by_id(next_node_id)
+                if not next_node:
+                    continue
+
+                if next_node.get("type") == "agents":
+                    return next_node, path_nodes
+
+                path_nodes.append(next_node)
+                queue.append(next_node_id)
+
+        logger.error(f"[SSE-Engine] 起始节点是 {start_node.get('type')}，但未找到后续的 agents 节点")
+        return None, []
+
+    def _execute_prerequisite_nodes(self, nodes_to_execute_before, input_data: Dict[str, Any]):
+        """执行前置节点（非流式）"""
+        if not nodes_to_execute_before:
+            return input_data
+
+        logger.info(f"[SSE-Engine] 执行 {len(nodes_to_execute_before)} 个前置节点")
+        temp_engine_data = input_data.copy()
+
+        for i, node in enumerate(nodes_to_execute_before):
+            node_id = node.get("id")
+            node_type = node.get("type")
+            executor = self._get_node_executor(node_type)
+
+            result = executor.execute(node_id, node, temp_engine_data)
+
+            self.variable_manager.set_variable(f"node_{node_id}_output", result)
+            if isinstance(result, dict):
+                temp_engine_data.update(result)
+
+        return temp_engine_data
+
+    def _create_streaming_generator(
+        self, execute_method, target_agent_node, final_input_data: Dict[str, Any], user_id: str, entry_type: str, is_agui_protocol: bool
+    ):
+        """创建流式输出生成器"""
+
+        def wrapped_generator():
+            accumulated_output = []
+
+            try:
+                for chunk in execute_method(target_agent_node.get("id"), target_agent_node, final_input_data):
+                    chunk_str = chunk.decode("utf-8") if isinstance(chunk, bytes) else str(chunk)
+
+                    # 过滤统计信息
+                    if chunk_str.startswith("# STATS:"):
+                        continue
+
+                    yield chunk
+
+                    # 收集输出内容
+                    self._accumulate_output(chunk_str, accumulated_output, is_agui_protocol)
+
+                # 记录完整输出
+                self._record_bot_output(user_id, accumulated_output, entry_type)
+
+            except Exception as e:
+                logger.error(f"[SSE-Engine] 流式执行过程中出错: {str(e)}")
+                logger.exception(e)
+                yield f"data: {json.dumps({'result': False, 'error': str(e)})}\n\n"
+                yield "data: [DONE]\n\n"
+
+        return wrapped_generator()
+
+    def _accumulate_output(self, chunk_str: str, accumulated_output: List[str], is_agui_protocol: bool):
+        """累积输出内容"""
+        if chunk_str and not chunk_str.strip().endswith("[DONE]"):
+            if chunk_str.startswith("data: "):
+                data_str = chunk_str[6:].strip()
                 try:
-                    for chunk in execute_method(last_node.get("id"), last_node, final_input_data):
-                        # 流式输出给客户端
-                        yield chunk
+                    if data_str:
+                        data_json = json.loads(data_str)
+                        if is_agui_protocol:
+                            if data_json.get("type") == "TEXT_MESSAGE_CONTENT":
+                                delta = data_json.get("delta", "")
+                                if delta:
+                                    accumulated_output.append(delta)
+                        else:
+                            content = data_json.get("content") or data_json.get("message") or data_json.get("text", "")
+                            if content:
+                                accumulated_output.append(content)
+                except json.JSONDecodeError:
+                    accumulated_output.append(data_str)
 
-                        # 收集输出内容（排除 [DONE] 标记）
-                        if chunk and not chunk.strip().endswith("[DONE]"):
-                            # 解析数据格式
-                            if chunk.startswith("data: "):
-                                try:
-                                    data_str = chunk[6:].strip()  # 去掉 "data: " 前缀
-                                    if data_str:
-                                        data_json = json.loads(data_str)
+    def _record_bot_output(self, user_id: str, accumulated_output: List[str], entry_type: str):
+        """记录机器人输出对话历史"""
+        if user_id and accumulated_output and entry_type != "celery":
+            try:
+                full_output = "".join(accumulated_output)
+                WorkFlowConversationHistory.objects.create(
+                    bot_id=self.instance.bot_id,
+                    user_id=user_id,
+                    conversation_role="bot",
+                    conversation_content=full_output,
+                    conversation_time=timezone.now(),
+                    entry_type=entry_type,
+                )
+            except Exception as e:
+                logger.error(f"[SSE] 记录系统输出对话历史失败: {str(e)}")
 
-                                        # AGUI协议格式：提取delta或content
-                                        if is_agui_protocol:
-                                            # AGUI格式: {"type":"TEXT_MESSAGE_CONTENT","delta":"..."}
-                                            if data_json.get("type") == "TEXT_MESSAGE_CONTENT":
-                                                delta = data_json.get("delta", "")
-                                                if delta:
-                                                    accumulated_output.append(delta)
-                                        else:
-                                            # SSE格式：提取content、message或text
-                                            content = data_json.get("content") or data_json.get("message") or data_json.get("text", "")
-                                            if content:
-                                                accumulated_output.append(content)
-                                except json.JSONDecodeError:
-                                    # 如果不是JSON格式，直接添加原始内容
-                                    accumulated_output.append(data_str)
+    def _create_error_generator(self, error_message: str):
+        """创建错误生成器"""
+        logger.error(f"[SSE-Engine] {error_message}")
 
-                    # 流式输出完成后，记录完整的系统输出（排除celery定时触发）
-                    if user_id and accumulated_output and entry_type != "celery":
-                        try:
-                            full_output = "".join(accumulated_output)
-                            bot_conversation = WorkFlowConversationHistory.objects.create(
-                                bot_id=self.instance.bot_id,
-                                user_id=user_id,
-                                conversation_role="bot",
-                                conversation_content=full_output,
-                                conversation_time=timezone.now(),
-                                entry_type=entry_type,
-                            )
-                            logger.info(
-                                f"[SSE] 记录系统输出对话历史: conversation_id={bot_conversation.id}, "
-                                f"output_length={len(full_output)}, entry_type={entry_type}, protocol={'AGUI' if is_agui_protocol else 'SSE'}"
-                            )
-                        except Exception as e:
-                            logger.error(f"[SSE] 记录系统输出对话历史失败: {str(e)}")
-
-                except Exception as e:
-                    logger.error(f"[SSE] 流式执行过程中出错: {str(e)}")
-                    yield f"data: {json.dumps({'result': False, 'error': str(e)})}\n\n"
-                    yield "data: [DONE]\n\n"
-
-            return wrapped_generator()
-
-        # 其他情况不支持流式，直接抛异常
         def err_gen():
-            yield f"data: {json.dumps({'result': False, 'error': '当前流程不支持SSE'})}\n\n"
+            yield f"data: {json.dumps({'result': False, 'error': error_message})}\n\n"
             yield "data: [DONE]\n\n"
 
         return err_gen()
@@ -288,7 +368,7 @@ class ChatFlowEngine:
                 execute_type=execute_type,
             )
 
-            logger.info(f"工作流执行结果已记录: flow_id={self.instance.id}, status={status}, execute_type={execute_type}")
+            logger.info(f"工作流执行结果已记录: flow_id={self.instance.id}, status={status}")
 
         except Exception as e:
             logger.error(f"记录工作流执行结果失败: {str(e)}")
@@ -340,16 +420,14 @@ class ChatFlowEngine:
         """
         if input_data is None:
             input_data = {}
-
         if timeout is None:
             timeout = self.execution_timeout
 
         start_time = time.time()
-        logger.info(f"开始执行流程 {self.instance.id}")
-
-        # 获取用户ID和输入消息
         user_id = input_data.get("user_id", "")
         input_message = input_data.get("last_message", "") or input_data.get("message", "")
+
+        logger.info(f"开始执行流程: flow_id={self.instance.id}, user_id={user_id}")
 
         # 验证流程
         validation_errors = self.validate_flow()
@@ -357,95 +435,41 @@ class ChatFlowEngine:
             return {"success": False, "error": f"流程验证失败: {'; '.join(validation_errors)}", "execution_time": 0}
 
         try:
-            # 初始化变量管理器 - 根据新的设计简化全局变量
-            self.variable_manager.set_variable("flow_id", str(self.instance.id))
+            # 初始化变量管理器
+            self._initialize_variables(input_data)
 
-            # 初始化 last_message 为输入的 message 值
-            initial_message = input_data.get("last_message", "")
-            self.variable_manager.set_variable("last_message", initial_message)
-
-            # 存储完整的输入数据供特殊需要时使用
-            self.variable_manager.set_variable("flow_input", input_data)
-
-            # 确定起始节点
-            if self.start_node_id:
-                # 如果指定了起始节点，直接使用
-                chosen_start_node = self.start_node_id
-            elif self.entry_nodes:
-                # 如果没有指定起始节点但有入口节点，选择第一个
-                chosen_start_node = self.entry_nodes[0]
-            else:
-                error_result = {"success": False, "error": "没有找到起始节点", "execution_time": time.time() - start_time}
+            # 获取并验证起始节点
+            start_node = self._get_start_node()
+            chosen_start_node = self.start_node_id or (self.entry_nodes[0] if self.entry_nodes else None)
+            if not chosen_start_node or not start_node:
+                error_msg = "没有找到起始节点" if not chosen_start_node else f"指定的起始节点不存在: {chosen_start_node}"
+                error_result = {"success": False, "error": error_msg, "execution_time": time.time() - start_time}
                 self._record_execution_result(input_data, error_result, False)
                 return error_result
 
-            # 验证选择的起始节点是否存在
-            start_node = self._get_node_by_id(chosen_start_node)
-            if not start_node:
-                error_result = {"success": False, "error": f"指定的起始节点不存在: {chosen_start_node}", "execution_time": time.time() - start_time}
-                self._record_execution_result(input_data, error_result, False)
-                return error_result
+            # 确定入口类型并记录用户输入
+            entry_type = self._determine_entry_type(start_node)
+            self._record_conversation_history(user_id, input_message, "user", entry_type)
 
-            # 获取起始节点类型作为入口类型
-            start_node_type = start_node.get("type", "")
-            # 使用起始节点类型作为 entry_type，如果不在支持的类型中则默认为 restful
-            entry_type = start_node_type if start_node_type in [choice[0] for choice in WorkFlowExecuteType.choices] else "restful"
-
-            # 记录用户输入（排除celery定时触发）
-            if user_id and input_message and entry_type != "celery":
-                try:
-                    user_conversation = WorkFlowConversationHistory.objects.create(
-                        bot_id=self.instance.bot_id,
-                        user_id=user_id,
-                        conversation_role="user",
-                        conversation_content=input_message,
-                        conversation_time=timezone.now(),
-                        entry_type=entry_type,
-                    )
-                    logger.info(f"记录用户输入对话历史: conversation_id={user_conversation.id}, entry_type={entry_type}")
-                except Exception as e:
-                    logger.error(f"记录用户输入对话历史失败: {str(e)}")
-
-            # 从选择的起始节点开始执行
+            # 执行节点链
             self._execute_node_chain(chosen_start_node, input_data, timeout - (time.time() - start_time))
 
+            # 获取执行结果并记录
             execution_time = time.time() - start_time
-            logger.info(f"流程执行完成，耗时 {execution_time:.2f} 秒")
-
-            # 获取最终的 last_message 作为主要输出结果
             final_last_message = self.variable_manager.get_variable("last_message")
 
-            # 记录系统输出（排除celery定时触发）
-            if user_id and final_last_message and entry_type != "celery":
-                try:
-                    # 将输出结果转换为字符串
-                    if isinstance(final_last_message, dict):
-                        output_content = json.dumps(final_last_message, ensure_ascii=False)
-                    elif isinstance(final_last_message, str):
-                        output_content = final_last_message
-                    else:
-                        output_content = str(final_last_message)
+            logger.info(f"流程执行完成: flow_id={self.instance.id}, 耗时={execution_time:.2f}秒")
 
-                    bot_conversation = WorkFlowConversationHistory.objects.create(
-                        bot_id=self.instance.bot_id,
-                        user_id=user_id,
-                        conversation_role="bot",
-                        conversation_content=output_content,
-                        conversation_time=timezone.now(),
-                        entry_type=entry_type,
-                    )
-                    logger.info(f"记录系统输出对话历史: conversation_id={bot_conversation.id}, entry_type={entry_type}")
-                except Exception as e:
-                    logger.error(f"记录系统输出对话历史失败: {str(e)}")
-
-            # 记录成功的执行结果
-            self._record_execution_result(input_data, final_last_message, True, start_node_type)
+            # 记录系统输出
+            self._record_conversation_history(user_id, final_last_message, "bot", entry_type)
+            self._record_execution_result(input_data, final_last_message, True, start_node.get("type", ""))
 
             return final_last_message
 
         except Exception as e:
             execution_time = time.time() - start_time
-            logger.error(f"流程执行失败: {str(e)}")
+            logger.error(f"流程执行失败: flow_id={self.instance.id}, error={str(e)}")
+
             error_result = {
                 "success": False,
                 "error": str(e),
@@ -454,7 +478,7 @@ class ChatFlowEngine:
                 "execution_time": execution_time,
             }
 
-            # 记录失败的执行结果
+            # 记录失败结果
             start_node_type = None
             if self.entry_nodes:
                 start_node = self._get_node_by_id(self.entry_nodes[0])
@@ -463,6 +487,38 @@ class ChatFlowEngine:
             self._record_execution_result(input_data, error_result, False, start_node_type)
 
             return error_result
+
+    def _record_conversation_history(self, user_id: str, message: Any, role: str, entry_type: str):
+        """记录对话历史
+
+        Args:
+            user_id: 用户ID
+            message: 消息内容
+            role: 角色 (user/bot)
+            entry_type: 入口类型
+        """
+        if not user_id or not message or entry_type == "celery":
+            return
+
+        try:
+            # 转换消息为字符串
+            if isinstance(message, dict):
+                content = json.dumps(message, ensure_ascii=False)
+            elif isinstance(message, str):
+                content = message
+            else:
+                content = str(message)
+
+            WorkFlowConversationHistory.objects.create(
+                bot_id=self.instance.bot_id,
+                user_id=user_id,
+                conversation_role=role,
+                conversation_content=content,
+                conversation_time=timezone.now(),
+                entry_type=entry_type,
+            )
+        except Exception as e:
+            logger.error(f"记录{role}对话历史失败: {str(e)}")
 
     def _execute_node_chain(self, node_id: str, input_data: Dict[str, Any], remaining_timeout: float) -> Dict[str, Any]:
         """执行节点链

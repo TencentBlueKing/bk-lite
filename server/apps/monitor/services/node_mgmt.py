@@ -8,49 +8,51 @@ from apps.monitor.constants.database import DatabaseConstants
 from apps.monitor.models import MonitorInstance, MonitorInstanceOrganization, CollectConfig, MonitorObject, \
     MonitorObjectOrganizationRule, Metric
 from apps.monitor.utils.config_format import ConfigFormat
-from apps.monitor.utils.instance import calculation_status
 from apps.monitor.utils.plugin_controller import Controller
-from apps.monitor.utils.victoriametrics_api import VictoriaMetricsAPI
 from apps.rpc.node_mgmt import NodeMgmt
 
 
 class InstanceConfigService:
+
     @staticmethod
-    def get_instance_configs(collect_instance_id, instance_type):
-        """获取实例配置"""
-        # 获取实例配置
-        _collect_instance_id = ast.literal_eval(collect_instance_id)[0]
-        pmq = f'any({{instance_id="{_collect_instance_id}", instance_type="{instance_type}"}}) by (instance_id, collect_type, config_type)'
+    def get_config_content(ids):
+        result = {}
+        config_objs = CollectConfig.objects.filter(id__in=ids)
+        if not config_objs:
+            return result
 
-        metrics = VictoriaMetricsAPI().query(pmq, "10m")
-        instance_config_map = {}
-        for metric_info in metrics.get("data", {}).get("result", []):
-            instance_id = metric_info.get("metric", {}).get("instance_id")
-            if not instance_id:
-                continue
-            instance_id = str(tuple([instance_id]))
-            agent_id = metric_info.get("metric", {}).get("agent_id")
-            collect_type = metric_info.get("metric", {}).get("collect_type")
-            config_type = metric_info.get("metric", {}).get("config_type")
-            _time = metric_info["value"][0]
-            config_info = {
-                "agent_id": agent_id,
-                "time": _time,
-            }
-            if config_info["time"] == 0:
-                config_info["status"] = ""
+        for config_obj in config_objs:
+            content_key = "content" if config_obj.is_child else "config_template"
+            if config_obj.is_child:
+                configs = NodeMgmt().get_child_configs_by_ids([config_obj.id])
             else:
-                config_info["status"] = calculation_status(config_info["time"])
-            instance_config_map[(instance_id, collect_type, config_type)] = config_info
+                configs = NodeMgmt().get_configs_by_ids([config_obj.id])
+            config = configs[0]
+            if config_obj.file_type == "toml":
+                config["content"] = ConfigFormat.toml_to_dict(config[content_key])
+            elif config_obj.file_type == "yaml":
+                config["content"] = ConfigFormat.yaml_to_dict(config[content_key])
+            else:
+                raise BaseAppException("file_type must be toml or yaml")
+            if config_obj.is_child:
+                result["child"] = config
+            else:
+                result["base"] = config
+        return result
 
-        config_objs = CollectConfig.objects.filter(monitor_instance_id=collect_instance_id)
+    @staticmethod
+    def get_instance_configs(collect_instance_id, collector, collect_type):
+        """获取实例配置"""
+
+        config_objs = CollectConfig.objects.filter(
+            monitor_instance_id=collect_instance_id,
+            collector=collector,
+            collect_type=collect_type,
+        )
 
         configs = []
 
         for config_obj in config_objs:
-            config_info = instance_config_map.get(
-                (config_obj.monitor_instance_id, config_obj.collect_type, config_obj.config_type), {}
-            )
             configs.append({
                 "config_id": config_obj.id,
                 "collector": config_obj.collector,
@@ -58,9 +60,6 @@ class InstanceConfigService:
                 "config_type": config_obj.config_type,
                 "instance_id": collect_instance_id,
                 "is_child": config_obj.is_child,
-                "agent_id": config_info.get("agent_id"),
-                "time": config_info.get("time"),
-                "status": config_info.get("status"),
             })
 
         result = {}
@@ -71,15 +70,17 @@ class InstanceConfigService:
                     "instance_id": config["instance_id"],
                     "collect_type": config["collect_type"],
                     "config_type": config["config_type"],
-                    "agent_id": config["agent_id"],
-                    "time": config["time"],
-                    "status": config["status"],
                     "config_ids": [config["config_id"]],
                 }
             else:
                 result[key]["config_ids"].append(config["config_id"])
 
-        return list(result.values())
+        items = list(result.values())
+        for item in items:
+            config_content = InstanceConfigService.get_config_content(item["config_ids"])
+            item.update(config_content=config_content)
+
+        return items
 
     @staticmethod
     def create_default_rule(monitor_object_id, monitor_instance_id, group_ids):

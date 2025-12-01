@@ -64,6 +64,7 @@ dependencies = [
     "setuptools==80.9.0",
     "attrs==25.3.0",
     "loguru==0.7.3",
+    "django-ipware==7.0.1",
 ]
 
 [project.optional-dependencies]

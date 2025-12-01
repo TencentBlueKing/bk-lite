@@ -8,3 +8,4 @@ class OpspilotConfig(AppConfig):
 
     def ready(self):
         import apps.opspilot.nats_api  # noqa
+        import apps.opspilot.signals  # noqa: 注册信号处理器

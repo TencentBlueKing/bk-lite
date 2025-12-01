@@ -80,10 +80,12 @@ def _generate_agui_stream(url, headers, chat_kwargs, skill_name, show_think=True
                 # 其他行（如空行）也转发
                 yield f"{line}\n"
 
-        # 流结束，返回统计信息用于日志记录
+        # 流结束，返回统计信息用于日志记录（作为注释，不发送给客户端）
         if full_response or total_tokens:
-            stats = {"response": full_response, "total_tokens": total_tokens, "completion_tokens": 0, "prompt_tokens": 0}  # AGUI协议可能不区分，如果有再补充
-            yield ("STATS", json.dumps(stats, ensure_ascii=False))
+            stats = {"response": full_response, "total_tokens": total_tokens, "completion_tokens": 0, "prompt_tokens": 0}
+            # 以特殊格式返回统计信息，不是标准SSE格式，仅供内部日志使用
+            stats_line = f"# STATS: {json.dumps(stats, ensure_ascii=False)}"
+            yield stats_line
 
     except requests.exceptions.HTTPError as e:
         logger.error(f"HTTP error in AGUI stream: {e}")

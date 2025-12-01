@@ -257,7 +257,7 @@ export const NodeConfigForm: React.FC<any> = ({
         </>
       )}
 
-      {(nodeType === 'restful' || nodeType === 'openai') && (
+      {(nodeType === 'restful' || nodeType === 'openai' || nodeType === 'agui') && (
         <div className="p-4 bg-blue-50 border border-blue-200 rounded-md text-xs leading-5">
           <p className="text-gray-500 mb-2">{t(`chatflow.nodeConfig.${nodeType}ApiInfo`)}</p>
           <div className="mt-2 mb-2 relative">

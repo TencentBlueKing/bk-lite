@@ -135,7 +135,7 @@ class MonitorPolicyScan:
         query = query.replace("__$labels__", vm_filter_str or "")
         return query
 
-    def query_aggregration_metrics(self, period, points=1):
+    def query_aggregation_metrics(self, period, points=1):
         """查询聚合指标数据
 
         Args:
@@ -231,7 +231,7 @@ class MonitorPolicyScan:
             tuple: (告警事件列表, 正常事件列表)
         """
         # 查询并转换指标数据
-        vm_data = self.query_aggregration_metrics(self.policy.period)
+        vm_data = self.query_aggregation_metrics(self.policy.period)
         df = vm_to_dataframe(
             vm_data.get("data", {}).get("result", []),
             self.instance_id_keys
@@ -293,7 +293,7 @@ class MonitorPolicyScan:
             return []
 
         # 查询并格式化指标数据
-        aggregation_metrics = self.query_aggregration_metrics(self.policy.no_data_period)
+        aggregation_metrics = self.query_aggregation_metrics(self.policy.no_data_period)
         aggregation_result = self.format_aggregration_metrics(aggregation_metrics)
 
         # 找出没有数据的实例
@@ -369,7 +369,7 @@ class MonitorPolicyScan:
             return
 
         # 查询恢复周期内的数据
-        aggregation_metrics = self.query_aggregration_metrics(
+        aggregation_metrics = self.query_aggregation_metrics(
             self.policy.no_data_recovery_period
         )
         aggregation_result = self.format_aggregration_metrics(aggregation_metrics)
@@ -475,9 +475,13 @@ class MonitorPolicyScan:
             send_result = SystemMgmtUtils.send_msg_with_channel(
                 self.policy.notice_type_id, title, content, self.policy.notice_users
             )
-            logger.info(f"send notice success: {send_result}")
+            # 检查发送结果
+            if send_result.get("result") is False:
+                logger.error(f"send notice failed for policy {self.policy.name}: {send_result.get('message', 'Unknown error')}")
+            else:
+                logger.info(f"send notice success for policy {self.policy.name}: {send_result}")
         except Exception as e:
-            logger.error(f"send notice failed: {e}")
+            logger.error(f"send notice exception for policy {self.policy.name}: {e}", exc_info=True)
 
         return []
 
@@ -514,124 +518,6 @@ class MonitorPolicyScan:
                 batch_size=DatabaseConstants.BULK_UPDATE_BATCH_SIZE
             )
 
-    def handle_alert_events(self, event_objs):
-        """处理告警事件,区分新告警和已存在的告警
-
-        Args:
-            event_objs: 事件对象列表
-
-        Returns:
-            list: 新创建的告警列表
-        """
-        new_alert_events = []
-        old_alert_events = []
-
-        # 构建活跃告警的实例ID集合
-        active_instance_ids = {
-            alert.monitor_instance_id for alert in self.active_alerts
-        }
-
-        # 分类事件
-        for event_obj in event_objs:
-            if event_obj.monitor_instance_id in active_instance_ids:
-                old_alert_events.append(event_obj)
-            else:
-                new_alert_events.append(event_obj)
-
-        # 更新已存在的告警
-        self.update_alert(old_alert_events)
-
-        # 创建新告警
-        new_alerts = self.create_alert(new_alert_events)
-
-        return new_alerts
-
-    def update_alert(self, event_objs):
-        """更新已存在的告警(支持告警等级升级)
-
-        Args:
-            event_objs: 事件对象列表
-        """
-        if not event_objs:
-            return
-
-        # 建立实例ID到事件的映射
-        event_map = {event.monitor_instance_id: event for event in event_objs}
-        alert_level_updates = []
-
-        for alert in self.active_alerts:
-            event_obj = event_map.get(alert.monitor_instance_id)
-
-            # 跳过无对应事件或无数据事件
-            if not event_obj or event_obj.level == "no_data":
-                continue
-
-            # 检查是否需要升级告警等级
-            current_weight = AlertConstants.LEVEL_WEIGHT.get(event_obj.level, 0)
-            alert_weight = AlertConstants.LEVEL_WEIGHT.get(alert.level, 0)
-
-            if current_weight > alert_weight:
-                alert.level = event_obj.level
-                alert.value = event_obj.value
-                alert.content = event_obj.content
-                alert_level_updates.append(alert)
-
-        # 批量更新告警
-        if alert_level_updates:
-            MonitorAlert.objects.bulk_update(
-                alert_level_updates,
-                ["level", "value", "content"],
-                batch_size=DatabaseConstants.BULK_UPDATE_BATCH_SIZE
-            )
-
-    def create_alert(self, event_objs):
-        """基于事件创建新告警
-
-        Args:
-            event_objs: 事件对象列表
-
-        Returns:
-            list: 创建的告警对象列表
-        """
-        if not event_objs:
-            return []
-
-        create_alerts = []
-
-        for event_obj in event_objs:
-            # 根据事件类型确定告警属性
-            alert_params = self._build_alert_params(event_obj)
-
-            create_alerts.append(
-                MonitorAlert(
-                    policy_id=self.policy.id,
-                    monitor_instance_id=event_obj.monitor_instance_id,
-                    monitor_instance_name=self.instances_map.get(
-                        event_obj.monitor_instance_id,
-                        event_obj.monitor_instance_id
-                    ),
-                    alert_type=alert_params["alert_type"],
-                    level=alert_params["level"],
-                    value=alert_params["value"],
-                    content=alert_params["content"],
-                    status="new",
-                    start_event_time=event_obj.event_time,
-                    operator="",
-                )
-            )
-
-        # 批量创建告警
-        new_alerts = MonitorAlert.objects.bulk_create(
-            create_alerts,
-            batch_size=DatabaseConstants.BULK_CREATE_BATCH_SIZE
-        )
-
-        # 兼容性处理: 某些数据库的bulk_create不返回对象
-        if not new_alerts or not hasattr(new_alerts[0], 'id'):
-            new_alerts = self._query_created_alerts(event_objs)
-
-        return new_alerts
-
     def _build_alert_params(self, event_obj):
         """构建告警参数
 
@@ -655,25 +541,6 @@ class MonitorPolicyScan:
             "value": None,
             "content": "no data",
         }
-
-    def _query_created_alerts(self, event_objs):
-        """查询刚创建的告警对象
-
-        Args:
-            event_objs: 事件对象列表
-
-        Returns:
-            list: 告警对象列表
-        """
-        instance_ids = [event_obj.monitor_instance_id for event_obj in event_objs]
-        return list(
-            MonitorAlert.objects.filter(
-                policy_id=self.policy.id,
-                monitor_instance_id__in=instance_ids,
-                start_event_time=self.policy.last_run_time,
-                status="new"
-            ).order_by('id')
-        )
 
     def count_events(self, alert_events, info_events):
         """统计告警和正常事件,更新告警计数器
@@ -959,19 +826,6 @@ class MonitorPolicyScan:
             'snapshot_time': pre_alert_time.isoformat(),
             'raw_data': raw_data,
         }
-
-    def create_pre_alert_snapshots(self, new_alerts):
-        """为新产生的告警创建告警前的快照数据
-
-        注意：此方法已废弃，告警前快照现在在 _update_alert_snapshot 中统一处理
-        保留此方法仅为了兼容性，实际不会执行任何操作
-
-        Args:
-            new_alerts: 新创建的告警列表
-        """
-        # 告警前快照现在在 create_metric_snapshots_for_active_alerts 中统一处理
-        # 此方法保留仅为了不破坏调用接口
-        pass
 
     def _execute_step(self, step_name, func, *args, critical=False, **kwargs):
         """执行流程步骤，统一��误处理
