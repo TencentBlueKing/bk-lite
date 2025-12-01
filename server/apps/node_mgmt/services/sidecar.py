@@ -274,9 +274,6 @@ class Sidecar:
 
         variables = Sidecar.get_variables(node)
 
-        # 不在变量中渲染NATS_PASSWORD，走环境变量渲染
-        variables.pop("NATS_PASSWORD", None)
-
         # 如果配置中有 env_config，则合并到变量中
         if configuration_data.get('env_config'):
             variables.update(configuration_data['env_config'])
@@ -387,9 +384,11 @@ class Sidecar:
         :param variables: 字典，包含变量名和对应值
         :return: 渲染后的字符串
         """
+        # 排除password相关的变量渲染，走env_config渲染
+        _variables = {k:v for k, v in variables.items() if 'password' not in k.lower()}
         template_str = template_str.replace('node.', 'node__')
         template = Template(template_str)
-        return template.safe_substitute(variables)
+        return template.safe_substitute(_variables)
 
     @staticmethod
     def create_default_config(node, node_types):
