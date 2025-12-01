@@ -70,7 +70,7 @@ const UserInformation: React.FC<UserInformationProps> = ({ visible, onClose }) =
   const appIconMap = new Map(
     clientData
       .filter(item => item.icon)
-      .map((item) => [item.name, item.icon as string])
+      .map((item) => [item.display_name, item.icon as string])
   );
   const fetchUserInfo = async () => {
     try {
@@ -372,11 +372,7 @@ const UserInformation: React.FC<UserInformationProps> = ({ visible, onClose }) =
                     userInfo.group_list.map((group: string, index: number) => (
                       <div
                         key={index}
-                        className="px-3 py-1.5 rounded-md bg-[var(--color-fill-1)]"
-                        style={{
-                          border: '1px solid var(--color-border)',
-                          borderLeft: '3px solid var(--color-primary)'
-                        }}
+                        className="px-3 py-1.5 border rounded-md bg-[var(--color-fill-1)]"
                       >
                         {group}
                       </div>
@@ -407,7 +403,7 @@ const UserInformation: React.FC<UserInformationProps> = ({ visible, onClose }) =
                       // 过滤掉超级管理员，其他角色按应用分组
                       const normalRoles = userInfo.role_list.filter((role: any) => !((!role.app) && role.name === 'admin'));
                       const groupedRoles = normalRoles.reduce((acc: any, role: any) => {
-                        const appName = role.app || 'other';
+                        const appName = role.app_display_name || 'other';
                         if (!acc[appName]) {
                           acc[appName] = [];
                         }

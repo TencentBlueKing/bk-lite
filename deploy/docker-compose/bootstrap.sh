@@ -165,7 +165,7 @@ check_nvidia_gpu() {
 # Function to add mirror prefix to docker image if MIRROR is set
 add_mirror_prefix() {
     local image="$1"
-    : "${MIRROR:=}"
+    MIRROR="bk-lite.tencentcloudcr.com/bklite"
     if [ -n "$MIRROR" ]; then
         # 如果镜像名包含斜杠，说明有仓库前缀
         if [[ "$image" == *"/"* ]]; then
@@ -404,7 +404,7 @@ generate_common_env() {
     if [ -f "$COMMON_ENV_FILE" ]; then
         log "SUCCESS" "发现 $COMMON_ENV_FILE 配置文件，加载已保存的环境变量..."
         source $COMMON_ENV_FILE
-        
+        MIRROR="bk-lite.tencentcloudcr.com/bklite"
         # 定义需要检查的环境变量及其默认值
         local vars_to_check=(
             "OPSPILOT_ENABLED:false"

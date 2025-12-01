@@ -278,19 +278,22 @@ const TemplateConfigDrawer = forwardRef<TemplateDrawerRef, ModalSuccess>(
       ];
     };
 
+    // 判断是否显示左侧模板列表
+    const showLeftPanel = showTemplateList && plugins.length > 1;
+
     return (
       <div>
         <EditConfig ref={configRef} onSuccess={onSuccess} />
         <OperateDrawer
           title={instanceName || '--'}
           open={visible}
-          width={800}
+          width={showLeftPanel ? 800 : 600}
           destroyOnClose
           onClose={handleCancel}
         >
           <div className="flex h-full">
             {/* 左侧：模板列表 */}
-            {showTemplateList && plugins.length > 0 && (
+            {showLeftPanel && (
               <div className="w-1/3 pr-4 border-r border-[var(--color-border-1)]">
                 <div className="flex items-center mb-2">
                   <b className="mr-2">
@@ -377,11 +380,7 @@ const TemplateConfigDrawer = forwardRef<TemplateDrawerRef, ModalSuccess>(
             )}
 
             {/* 右侧：模板详情 */}
-            <div
-              className={
-                showTemplateList && plugins.length > 0 ? 'w-2/3 pl-4' : 'w-full'
-              }
-            >
+            <div className={showLeftPanel ? 'w-2/3 pl-4' : 'w-full'}>
               {selectedPlugin && (
                 <div className="space-y-4">
                   {/* 标题和标签 */}
