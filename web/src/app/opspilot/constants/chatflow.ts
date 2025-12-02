@@ -6,7 +6,7 @@ export const nodeConfig = {
   agui: { icon: 'zhinengti', color: 'teal' as const },
   embedded_chat: { icon: 'wendaduihua', color: 'purple' as const },
   web_chat: { icon: 'WebSphereMQ', color: 'cyan' as const },
-  mobile: { icon: 'ArtboardCopy', color: 'indigo' as const },
+  mobile: { icon: 'zhuji', color: 'indigo' as const },
   condition: { icon: 'tiaojianfenzhi', color: 'yellow' as const },
   http: { icon: 'HTTP', color: 'cyan' as const },
   notification: { icon: 'alarm', color: 'pink' as const },
@@ -40,7 +40,7 @@ export const getDefaultConfig = (nodeType: string) => {
       return {
         ...baseConfig,
         frequency: 'daily',
-        time: null,
+        time: '00:00',
         message: ''
       };
     case 'http':

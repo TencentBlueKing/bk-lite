@@ -22,7 +22,7 @@ const nodeCategories = [
       { type: 'agui', icon: 'huifu-copy', labelKey: 'chatflow.agui' },
       { type: 'embedded_chat', icon: 'wendaduihua', labelKey: 'chatflow.embeddedChat' },
       { type: 'web_chat', icon: 'WebSphereMQ', labelKey: 'chatflow.webChat' },
-      { type: 'mobile', icon: 'ArtboardCopy', labelKey: 'chatflow.mobile' },
+      { type: 'mobile', icon: 'zhuji', labelKey: 'chatflow.mobile' },
       { type: 'enterprise_wechat', icon: 'qiwei2', labelKey: 'chatflow.enterpriseWechat' },
       { type: 'dingtalk', icon: 'dingding', labelKey: 'chatflow.dingtalk' },
       { type: 'wechat_official', icon: 'weixingongzhonghao', labelKey: 'chatflow.wechatOfficial' },
