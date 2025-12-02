@@ -75,6 +75,42 @@ export const formatConfigInfo = (data: ChatflowNodeData, t: any) => {
       }
       return t('chatflow.notConfigured');
 
+    case 'dingtalk':
+      if (config.client_id && config.client_secret) {
+        return `已配置: Client ID, Client Secret`;
+      }
+      return t('chatflow.notConfigured');
+
+    case 'wechat_official':
+      if (config.token && config.appid) {
+        const configuredParams = [];
+        if (config.token) configuredParams.push('Token');
+        if (config.appid) configuredParams.push('AppID');
+        if (config.secret) configuredParams.push('Secret');
+        if (config.aes_key) configuredParams.push('AES Key');
+        return `已配置: ${configuredParams.join(', ')}`;
+      }
+      return t('chatflow.notConfigured');
+
+    case 'web_chat':
+      if (config.appName) {
+        return config.appName;
+      }
+      return t('chatflow.notConfigured');
+
+    case 'mobile':
+      if (config.appName) {
+        const tags = config.appTags && config.appTags.length > 0 
+          ? ` (${config.appTags.length}个标签)` 
+          : '';
+        return `${config.appName}${tags}`;
+      }
+      return t('chatflow.notConfigured');
+
+    case 'agui':
+    case 'embedded_chat':
+      return t('chatflow.apiInterface');
+
     default:
       return t('chatflow.notConfigured');
   }
