@@ -40,7 +40,7 @@ export const getDefaultConfig = (nodeType: string) => {
       return {
         ...baseConfig,
         frequency: 'daily',
-        time: null,
+        time: '00:00',
         message: ''
       };
     case 'http':
