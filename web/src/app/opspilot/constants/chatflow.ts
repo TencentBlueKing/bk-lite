@@ -4,6 +4,9 @@ export const nodeConfig = {
   openai: { icon: 'icon-test2', color: 'blue' as const },
   agents: { icon: 'zhinengti', color: 'orange' as const },
   agui: { icon: 'zhinengti', color: 'teal' as const },
+  embedded_chat: { icon: 'wendaduihua', color: 'purple' as const },
+  web_chat: { icon: 'WebSphereMQ', color: 'cyan' as const },
+  mobile: { icon: 'ArtboardCopy', color: 'indigo' as const },
   condition: { icon: 'tiaojianfenzhi', color: 'yellow' as const },
   http: { icon: 'HTTP', color: 'cyan' as const },
   notification: { icon: 'alarm', color: 'pink' as const },
@@ -12,7 +15,7 @@ export const nodeConfig = {
   wechat_official: { icon: 'weixingongzhonghao', color: 'green' as const },
 } as const;
 
-export const TRIGGER_NODE_TYPES = ['celery', 'restful', 'openai', 'agui', 'enterprise_wechat', 'dingtalk', 'wechat_official'] as const;
+export const TRIGGER_NODE_TYPES = ['celery', 'restful', 'openai', 'agui', 'embedded_chat', 'web_chat', 'mobile', 'enterprise_wechat', 'dingtalk', 'wechat_official'] as const;
 
 export const handleColorClasses = {
   green: '!bg-green-500',
@@ -20,6 +23,7 @@ export const handleColorClasses = {
   blue: '!bg-blue-500',
   orange: '!bg-orange-500',
   teal: '!bg-teal-500',
+  indigo: '!bg-indigo-500',
   yellow: '!bg-yellow-500',
   cyan: '!bg-cyan-500',
   pink: '!bg-pink-500',
@@ -64,6 +68,12 @@ export const getDefaultConfig = (nodeType: string) => {
         inputParams: 'last_message',
         outputParams: 'last_message'
       };
+    case 'embedded_chat':
+      return {
+        name: '嵌入式对话',
+        inputParams: 'last_message',
+        outputParams: 'last_message'
+      };
     case 'condition':
       return {
         ...baseConfig,
@@ -79,6 +89,19 @@ export const getDefaultConfig = (nodeType: string) => {
         aes_key: '',
         corp_id: '',
         agent_id: ''
+      };
+    case 'web_chat':
+      return {
+        ...baseConfig,
+        appName: '',
+        appDescription: ''
+      };
+    case 'mobile':
+      return {
+        ...baseConfig,
+        appName: '',
+        appTags: [],
+        appDescription: ''
       };
     case 'restful':
     case 'openai':
