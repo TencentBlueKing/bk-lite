@@ -171,89 +171,84 @@ export const Chat = React.forwardRef<any, ChatProps>((props, ref) => {
       case 'TEXT_MESSAGE_START':
         const startEvent = event as any;
         const startMessageId = startEvent.messageId || generateId();
+        const startRole = startEvent.role || startEvent.sender;
         
-        // 使用 ref 来同步检查（避免闭包和异步问题）
-        const messagesSnapshot = sessionManagerRef.current?.getSession()?.messages || [];
-        const existingMessage = messagesSnapshot.find((m: Message) => m.id === startMessageId);
+        console.log('📝 TEXT_MESSAGE_START - messageId:', startMessageId, 'role:', startRole);
         
-        if (existingMessage) {
-          console.warn('⚠️ Duplicate TEXT_MESSAGE_START for:', startMessageId);
+        // 如果是用户消息，跳过（用户消息已经在发送时添加了）
+        if (startRole === 'user') {
+          console.log('⏭️ Skipping user message (already added)');
           break;
         }
         
-        // 立即清空上一轮的所有状态（同步执行）
+        // 清空上一轮状态
         streamingContentRef.current = '';
-        currentMessageIdRef.current = startMessageId;
-        setCurrentMessageId(startMessageId);
         setToolCalls([]);
         setIsThinking(false);
         setIsLoading(true);
         
-        // 创建新消息
-        const newBotMsg: Message = {
-          id: startMessageId,
+        // 立即创建一个新的助手消息（空内容）
+        const newAssistantMsg: Message = {
+          id: generateId(), // 使用前端生成的 ID，不依赖后端
           type: 'text',
           content: '',
           sender: 'bot',
           timestamp: Date.now(),
         };
         
-        // 更新 session 和消息列表
-        sessionManagerRef.current?.addMessage(newBotMsg);
-        onMessageReceived?.(newBotMsg);
-        setMessages((prev) => [...prev, newBotMsg]);
+        currentMessageIdRef.current = newAssistantMsg.id;
+        setCurrentMessageId(newAssistantMsg.id);
+        
+        // 添加到消息列表
+        setMessages((prev) => [...prev, newAssistantMsg]);
+        sessionManagerRef.current?.addMessage(newAssistantMsg);
+        onMessageReceived?.(newAssistantMsg);
+        
+        console.log('✨ Created new assistant message:', newAssistantMsg.id);
         break;
 
       case 'TEXT_MESSAGE_CONTENT':  // 流式内容输出
         const chunkEvent = event as any;
         const delta = chunkEvent.delta || chunkEvent.content || '';
-        const contentMessageId = chunkEvent.messageId;
+        const contentRole = chunkEvent.role || chunkEvent.sender;
         
-        // 如果 CONTENT 的 messageId 和 START 的不一样，更新 ref（后端 bug）
-        if (contentMessageId && contentMessageId !== currentMessageIdRef.current) {
-          currentMessageIdRef.current = contentMessageId;
-          setCurrentMessageId(contentMessageId);
-          
-          // 检查是否需要创建新消息
-          setMessages((prev) => {
-            const exists = prev.find(m => m.id === contentMessageId);
-            if (!exists) {
-              return [...prev, {
-                id: contentMessageId,
-                type: 'text' as const,
-                content: '',
-                sender: 'bot' as const,
-                timestamp: Date.now(),
-              }];
-            }
-            return prev;
-          });
+        console.log('💬 TEXT_MESSAGE_CONTENT - delta:', delta, 'role:', contentRole);
+        
+        // 如果是用户消息，跳过
+        if (contentRole === 'user') {
+          console.log('⏭️ Skipping user message content');
+          break;
         }
         
-        // 累加内容
-        streamingContentRef.current += delta;
+        // 如果没有当前消息 ID，说明没有收到 START 事件，忽略
+        if (!currentMessageIdRef.current) {
+          console.warn('⚠️ Received CONTENT without START, ignoring');
+          break;
+        }
         
-        // 实时更新已存在的消息
-        if (currentMessageIdRef.current) {
-          setMessages((prev) => {
-            const updated = prev.map(msg =>
-              msg.id === currentMessageIdRef.current
-                ? { ...msg, content: streamingContentRef.current }  // 创建新对象！
-                : msg
-            );
-            
-            // 同步更新 session（内存中）
-            const session = sessionManagerRef.current?.getSession();
-            if (session) {
-              const msgIndex = session.messages.findIndex((m: Message) => m.id === currentMessageIdRef.current);
-              if (msgIndex !== -1) {
-                session.messages[msgIndex] = { ...session.messages[msgIndex], content: streamingContentRef.current };
-                // 不在这里保存 localStorage，等 TEXT_MESSAGE_END 时一次性保存
-              }
-            }
-            
-            return updated;
-          });
+        // 累加内容到 ref
+        streamingContentRef.current += delta;
+        console.log('📝 Accumulated content length:', streamingContentRef.current.length);
+        
+        // 更新消息内容
+        setMessages((prev) => {
+          return prev.map(msg =>
+            msg.id === currentMessageIdRef.current
+              ? { ...msg, content: streamingContentRef.current }
+              : msg
+          );
+        });
+        
+        // 同步更新 session（内存中，不保存到 localStorage）
+        const session = sessionManagerRef.current?.getSession();
+        if (session) {
+          const msgIndex = session.messages.findIndex((m: Message) => m.id === currentMessageIdRef.current);
+          if (msgIndex !== -1) {
+            session.messages[msgIndex] = { 
+              ...session.messages[msgIndex], 
+              content: streamingContentRef.current 
+            };
+          }
         }
         break;
 
@@ -331,7 +326,14 @@ export const Chat = React.forwardRef<any, ChatProps>((props, ref) => {
 
   // Add message to state and session
   const addMessage = useCallback((message: Message) => {
-    setMessages((prev) => [...prev, message]);
+    setMessages((prev) => {
+      // 防止重复添加：检查是否已存在相同 id 的消息
+      if (prev.some(msg => msg.id === message.id)) {
+        console.warn('⚠️ Duplicate message detected, skipping:', message.id);
+        return prev;
+      }
+      return [...prev, message];
+    });
     sessionManagerRef.current?.addMessage(message);
     onMessageReceived?.(message);
   }, [onMessageReceived]);
