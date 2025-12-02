@@ -351,7 +351,7 @@ const Node = () => {
                     type={
                       installMethodValue === 'auto'
                         ? 'daohang_007'
-                        : 'ArtboardCopy'
+                        : 'rengongganyu'
                     }
                     style={{ fontSize: '24px', cursor: 'pointer' }}
                   />
