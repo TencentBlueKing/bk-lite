@@ -11,7 +11,7 @@ class CloudRegionServiceSerializer(serializers.ModelSerializer):
 
 class CloudRegionSerializer(serializers.ModelSerializer):
     services = CloudRegionServiceSerializer(source='cloudregionservice_set', many=True, read_only=True)
-
+    
     class Meta:
         model = CloudRegion
         fields = ['id', 'name', 'introduction', 'services']

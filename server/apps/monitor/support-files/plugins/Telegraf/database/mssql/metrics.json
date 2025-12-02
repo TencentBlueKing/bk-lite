@@ -9,5 +9,237 @@
   "default_metric": "any({instance_type='mssql'}) by (instance_id)",
   "instance_id_keys": ["instance_id"],
   "supplementary_indicators": [],
-  "metrics": []
+  "metrics": [
+    {
+      "metric_group": "Base",
+      "name": "online_databases",
+      "display_name": "Online Databases",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "short",
+      "dimensions": ["instance"],
+      "description": "Number of online databases.",
+      "query": "sqlserver_server_properties_db_online{__$labels__}"
+    },
+    {
+      "metric_group": "Base",
+      "name": "sqlserver_uptime",
+      "display_name": "SQL Server Uptime",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "h",
+      "dimensions": ["instance"],
+      "description": "SQL Server instance uptime in hours.",
+      "query": "sqlserver_server_properties_uptime{__$labels__} / 3600"
+    },
+    {
+      "metric_group": "Disk",
+      "name": "volume_space_usage",
+      "display_name": "Disk Usage",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "%",
+      "dimensions": ["instance", "volume"],
+      "description": "Percentage of disk space used on SQL Server data volumes.",
+      "query": "sqlserver_volume_space_used_space_bytes{__$labels__} / sqlserver_volume_space_total_space_bytes{__$labels__} * 100"
+    },
+    {
+      "metric_group": "Disk",
+      "name": "volume_available_gb",
+      "display_name": "Disk Available Space",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "gibibytes",
+      "dimensions": ["instance", "volume"],
+      "description": "Available disk space on SQL Server data volumes in GB.",
+      "query": "sqlserver_volume_space_available_space_bytes{__$labels__} / 1073741824"
+    },
+    {
+      "metric_group": "Memory",
+      "name": "memory_usage",
+      "display_name": "Memory Usage",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "%",
+      "dimensions": ["instance"],
+      "description": "Memory pressure percentage for SQL Server process.",
+      "query": "(sqlserver_server_properties_server_memory{__$labels__} - sqlserver_server_properties_available_server_memory{__$labels__}) / sqlserver_server_properties_server_memory{__$labels__} * 100"
+    },
+    {
+      "metric_group": "Memory",
+      "name": "available_memory_mb",
+      "display_name": "Available Memory",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "mebibytes",
+      "dimensions": ["instance"],
+      "description": "Available physical memory for SQL Server in MB.",
+      "query": "sqlserver_server_properties_available_server_memory{__$labels__} / 1024"
+    },
+    {
+      "metric_group": "IO",
+      "name": "read_throughput_mbps",
+      "display_name": "Read Throughput",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "MBs",
+      "dimensions": ["instance", "database"],
+      "description": "Database read operation throughput.",
+      "query": "rate(sqlserver_database_io_read_bytes{__$labels__}[5m]) / 1048576"
+    },
+    {
+      "metric_group": "IO",
+      "name": "write_throughput_mbps",
+      "display_name": "Write Throughput",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "MBs",
+      "dimensions": ["instance", "database"],
+      "description": "Database write operation throughput.",
+      "query": "rate(sqlserver_database_io_write_bytes{__$labels__}[5m]) / 1048576"
+    },
+    {
+      "metric_group": "IO",
+      "name": "total_io_throughput",
+      "display_name": "Total IO Throughput",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "MBs",
+      "dimensions": ["instance", "database"],
+      "description": "Total database I/O throughput.",
+      "query": "(rate(sqlserver_database_io_read_bytes{__$labels__}[5m]) + rate(sqlserver_database_io_write_bytes{__$labels__}[5m])) / 1048576"
+    },
+    {
+      "metric_group": "IO",
+      "name": "avg_read_latency",
+      "display_name": "Average Read Latency",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "ms",
+      "dimensions": ["instance", "database"],
+      "description": "Average latency per read operation.",
+      "query": "rate(sqlserver_database_io_read_latency_ms{__$labels__}[5m]) / rate(sqlserver_database_io_reads{__$labels__}[5m])"
+    },
+    {
+      "metric_group": "IO",
+      "name": "avg_write_latency",
+      "display_name": "Average Write Latency",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "ms",
+      "dimensions": ["instance", "database"],
+      "description": "Average latency per write operation.",
+      "query": "rate(sqlserver_database_io_write_latency_ms{__$labels__}[5m]) / rate(sqlserver_database_io_writes{__$labels__}[5m])"
+    },
+    {
+      "metric_group": "Wait",
+      "name": "resource_wait_ratio",
+      "display_name": "Resource Wait Ratio",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "%",
+      "dimensions": ["instance", "wait_type"],
+      "description": "Percentage of total wait time spent on resource waits.",
+      "query": "rate(sqlserver_waitstats_resource_wait_ms{__$labels__}[5m]) / rate(sqlserver_waitstats_wait_time_ms{__$labels__}[5m]) * 100"
+    },
+    {
+      "metric_group": "Wait",
+      "name": "signal_wait_ratio",
+      "display_name": "Signal Wait Ratio",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "%",
+      "dimensions": ["instance", "wait_type"],
+      "description": "Percentage of total wait time spent on signal waits.",
+      "query": "rate(sqlserver_waitstats_signal_wait_time_ms{__$labels__}[5m]) / rate(sqlserver_waitstats_wait_time_ms{__$labels__}[5m]) * 100"
+    },
+    {
+      "metric_group": "Wait",
+      "name": "avg_wait_time",
+      "display_name": "Average Wait Time",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "ms",
+      "dimensions": ["instance", "wait_type"],
+      "description": "Average wait time per waiting task.",
+      "query": "rate(sqlserver_waitstats_wait_time_ms{__$labels__}[5m]) / rate(sqlserver_waitstats_waiting_tasks_count{__$labels__}[5m])"
+    },
+    {
+      "metric_group": "Wait",
+      "name": "waiting_tasks_rate",
+      "display_name": "Waiting Tasks Rate",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "cps",
+      "dimensions": ["instance", "wait_type"],
+      "description": "Rate of new waiting tasks per second.",
+      "query": "rate(sqlserver_waitstats_waiting_tasks_count{__$labels__}[5m])"
+    },
+    {
+      "metric_group": "Connection",
+      "name": "active_connections",
+      "display_name": "Active Connections",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "short",
+      "dimensions": ["instance"],
+      "description": "Number of active database connections.",
+      "query": "count by (instance) (sqlserver_requests_session_id{__$labels__} > 0)"
+    },
+    {
+      "metric_group": "Connection",
+      "name": "avg_request_time",
+      "display_name": "Average Request Time",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "ms",
+      "dimensions": ["instance"],
+      "description": "Average request execution time per active connection.",
+      "query": "rate(sqlserver_requests_total_elapsed_time_ms{__$labels__}[5m]) / count by (instance) (sqlserver_requests_session_id{__$labels__} > 0)"
+    },
+    {
+      "metric_group": "Connection",
+      "name": "logical_reads_rate",
+      "display_name": "Logical Reads Rate",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "cps",
+      "dimensions": ["instance", "session"],
+      "description": "Rate of logical read operations per second.",
+      "query": "rate(sqlserver_requests_logical_reads{__$labels__}[5m])"
+    },
+    {
+      "metric_group": "Scheduler",
+      "name": "runnable_tasks",
+      "display_name": "Runnable Tasks",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "short",
+      "dimensions": ["instance", "scheduler"],
+      "description": "Number of tasks waiting in runnable queue, indicates CPU pressure.",
+      "query": "sqlserver_schedulers_runnable_tasks_count{__$labels__}"
+    },
+    {
+      "metric_group": "Scheduler",
+      "name": "current_workers",
+      "display_name": "Current Workers",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "short",
+      "dimensions": ["instance", "scheduler"],
+      "description": "Number of active worker threads.",
+      "query": "sqlserver_schedulers_current_workers_count{__$labels__}"
+    },
+    {
+      "metric_group": "Scheduler",
+      "name": "context_switches_rate",
+      "display_name": "Context Switches Rate",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "cps",
+      "dimensions": ["instance", "scheduler"],
+      "description": "Number of context switches per second.",
+      "query": "rate(sqlserver_schedulers_context_switches_count{__$labels__}[5m])"
+    }
+  ]
 }

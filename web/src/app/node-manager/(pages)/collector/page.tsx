@@ -136,6 +136,7 @@ const Collector = () => {
       type: config?.type,
       form: config?.form,
       key: config?.key,
+      appTag: selectedAppTag,
     });
   };
 
