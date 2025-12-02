@@ -10,7 +10,6 @@ import type { Pagination, TableDataItem } from '@/app/node-manager/types';
 import CollectorModal from '@/app/node-manager/components/sidecar/collectorModal';
 import { ModalRef } from '@/app/node-manager/types';
 import PermissionWrapper from '@/components/permission';
-import { OPERATE_SYSTEMS } from '@/app/node-manager/constants/cloudregion';
 
 const Collectordetail = () => {
   const { t } = useTranslation();
@@ -31,7 +30,7 @@ const Collectordetail = () => {
       id: searchParams.get('id') || '',
       name: searchParams.get('name') || '',
       introduction: searchParams.get('introduction') || '',
-      system: searchParams.get('system') || '',
+      system: searchParams.get('system') || 'linux',
       icon: searchParams.get('icon') || 'caijiqizongshu',
     };
   };
@@ -52,17 +51,11 @@ const Collectordetail = () => {
 
   const getTableData = async () => {
     const urlParams = getUrlParams();
-    const info = {
-      name: urlParams.name,
-      system: [urlParams.system],
-    };
     try {
       setTableLoading(true);
       const param = {
-        object: info.name,
-        os:
-          OPERATE_SYSTEMS.find((item) => item.label === info.system[0])
-            ?.value || '',
+        object: urlParams.name,
+        os: urlParams.system,
         page: pagination.current,
         page_size: pagination.pageSize,
       };
@@ -102,7 +95,8 @@ const Collectordetail = () => {
       id: urlParams.id,
       name: urlParams.name,
       description: urlParams.introduction,
-      tagList: [urlParams.system],
+      originalTags: [urlParams.system],
+      os: urlParams.system,
       icon: urlParams.icon,
       executable_path: '',
       execute_parameters: '',

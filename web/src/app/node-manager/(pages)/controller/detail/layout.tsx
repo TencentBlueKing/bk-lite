@@ -13,7 +13,6 @@ const ControllerLayout = ({ children }: { children: React.ReactNode }) => {
   const [detaildata, setDetaildata] = useState<ControllerCardProps>({
     id: '',
     name: '',
-    system: [],
     introduction: '',
     icon: '',
   });
@@ -23,7 +22,6 @@ const ControllerLayout = ({ children }: { children: React.ReactNode }) => {
     const info = {
       id: searchParams.get('id') || '',
       name: searchParams.get('name') || '',
-      system: [searchParams.get('system') || ''],
       introduction: searchParams.get('introduction') || '',
       icon: searchParams.get('icon') || 'caijiqizongshu',
     };

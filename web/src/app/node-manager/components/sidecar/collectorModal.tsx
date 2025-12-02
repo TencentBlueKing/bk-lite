@@ -61,10 +61,7 @@ const CollectorModal = forwardRef<ModalRef, ModalSuccess>(
         setTitle(title as string);
         setVisible(true);
         info.name = name || null;
-        info.system =
-          originalTags.find((item: string) =>
-            ['linux', 'windows'].includes(item)
-          ) || 'linux';
+        info.system = info.os || 'linux';
         info.description = description || null;
         info.executable_path = executable_path || null;
         info.execute_parameters = execute_parameters || null;
