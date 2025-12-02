@@ -7,7 +7,6 @@ import EntityList from '@/components/entity-list/index';
 import { useRouter } from 'next/navigation';
 import { useTranslation } from '@/utils/i18n';
 import type { CardItem } from '@/app/node-manager/types';
-import { COLLECTOR_LABEL } from '@/app/node-manager/constants/collector';
 import { OPERATE_SYSTEMS } from '@/app/node-manager/constants/cloudregion';
 import CollectorModal from '@/app/node-manager/components/sidecar/collectorModal';
 import { ModalRef } from '@/app/node-manager/types';
@@ -37,7 +36,7 @@ const Controller = () => {
 
   const navigateToCollectorDetail = (item: CardItem) => {
     router.push(`
-      /node-manager/controller/detail?id=${item.id}&name=${item.name}&introduction=${item.description}&system=${item.tagList[0]}`);
+      /node-manager/controller/detail?id=${item.id}&name=${item.name}&introduction=${item.description}&system=${item.os}`);
   };
 
   const filterBySelected = (data: any[], selectedTags: string[]) => {
@@ -56,14 +55,6 @@ const Controller = () => {
     );
   };
 
-  const getCollectorLabelKey = (value: string) => {
-    for (const key in COLLECTOR_LABEL) {
-      if (COLLECTOR_LABEL[key].includes(value)) {
-        return key;
-      }
-    }
-  };
-
   const getOSDisplayName = (osId: string) => {
     const os = OPERATE_SYSTEMS.find(
       (item) => item.value === osId.toLowerCase()
@@ -75,11 +66,9 @@ const Controller = () => {
     const tagSet = new Set<string>();
     const filter = res.filter((item: any) => !item.controller_default_run);
     const tempdata = filter.map((item: any) => {
-      const system = item.node_operating_system || item.os;
+      const system = item.node_operating_system || item.os || 'linux';
       const systemDisplayName = getOSDisplayName(system);
       const tagList = [systemDisplayName];
-      const label = getCollectorLabelKey(item.name);
-      if (label) tagList.push(label);
       tagList.forEach((tag) => {
         if (tag) {
           tagSet.add(tag);
@@ -94,6 +83,8 @@ const Controller = () => {
         description: item.description || '--',
         icon: 'caijiqizongshu',
         tagList,
+        os: system,
+        originalTags: [system],
       };
     });
     setAllTags(Array.from(tagSet));
