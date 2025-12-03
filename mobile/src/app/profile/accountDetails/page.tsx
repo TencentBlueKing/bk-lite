@@ -5,6 +5,7 @@ import { Form, Input, Button, Toast, Picker, SpinLoading } from 'antd-mobile';
 import { LeftOutline } from 'antd-mobile-icons';
 import { useTranslation } from '@/utils/i18n';
 import { useAuth } from '@/context/auth';
+import { useLocale } from '@/context/locale';
 import { timezoneOptions, languageOptions } from '@/constants/userPicker';
 import { getUserInfo, updateUserInfo } from '@/api/user';
 
@@ -13,6 +14,7 @@ import { getUserInfo, updateUserInfo } from '@/api/user';
 export default function AccountDetailsPage() {
     const { t } = useTranslation();
     const { updateUserInfo: updateStoredUserInfo } = useAuth();
+    const { setLocale } = useLocale();
     const router = useRouter();
     const [form] = Form.useForm();
     const [loading, setLoading] = useState(false);
@@ -83,11 +85,14 @@ export default function AccountDetailsPage() {
                 ...prev,
                 ...saveData,
             }));
+            if (saveData.display_name !== originalData.display_name) {
+                await updateStoredUserInfo({ display_name: saveData.display_name });
+            }
 
-            await updateStoredUserInfo({
-                display_name: saveData.display_name,
-                locale: saveData.locale,
-            });
+            if (saveData.locale !== originalData.locale) {
+                await updateStoredUserInfo({ locale: saveData.locale });
+                setLocale(saveData.locale);
+            }
 
             Toast.show({
                 content: t('account.saveSuccess'),

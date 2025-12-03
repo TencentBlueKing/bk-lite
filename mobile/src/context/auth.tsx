@@ -4,6 +4,7 @@ import { useRouter, usePathname } from 'next/navigation';
 import { SpinLoading } from 'antd-mobile';
 import { AuthContextType } from '@/types/auth';
 import { LoginUserInfo } from '@/types/user';
+import { useLocale } from '@/context/locale';
 import {
   initSecureStorage,
   saveToken,
@@ -31,6 +32,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
   const [userInfo, setUserInfo] = useState<LoginUserInfo | null>(null);
   const router = useRouter();
   const pathname = usePathname();
+  const { setLocale } = useLocale();
 
   // 定义公共路径，这些路径不需要认证
   const publicPaths = ['/login', '/register', '/forgot-password'];
@@ -97,6 +99,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
     await saveToken(newToken);
     await saveUserInfo(newUserInfo);
 
+    // 同步用户的语言设置
+    if (newUserInfo.locale) {
+      setLocale(newUserInfo.locale);
+    }
+
     router.push('/conversation?id=1');
   };
 
@@ -109,7 +116,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
 
     // 同步更新安全存储
     await saveUserInfo(updatedUserInfo);
-    console.log('用户信息已更新:', updates);
   };
 
   const logout = async () => {
