@@ -115,7 +115,7 @@ class GraphUtils(ChunkHelper):
             rag = GraphitiRAG()
             res = asyncio.run(rag.ingest(request))
 
-            if not res or not res.get("mapping"):
+            if not res or "mapping" not in res:
                 loader = LanguageLoader(app="opspilot", default_lang="en")
                 message = loader.get("error.graph_create_failed") or "Failed to create graph. Please check the server logs."
                 return {"result": False, "message": message}
