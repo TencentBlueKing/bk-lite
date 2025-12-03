@@ -3,11 +3,6 @@
     username = "{{ username }}"
     password = "${PASSWORD__{{ config_id }}}"
     interval = "{{ interval }}s"
-    {% if collect_federation_links is defined and collect_federation_links %}
-    collect_federation_links = {{ collect_federation_links | bool | lower }}
-    {% else %}
-    collect_federation_links = false
-    {% endif %}
     [inputs.rabbitmq.tags]
         instance_id = "{{ instance_id }}"
         instance_type = "{{ instance_type }}"
