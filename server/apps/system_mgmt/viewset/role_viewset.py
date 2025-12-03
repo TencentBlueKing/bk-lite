@@ -28,7 +28,7 @@ class RoleViewSet(LanguageViewSet, ViewSetUtils):
     @action(detail=False, methods=["POST"])
     @HasPermission("application_role-View")
     def get_role_tree(self, request):
-        client_list = request.data.get("client_list", [])
+        client_list = [i for i in request.data.get("client_list", []) if i.get("is_build_in")]
         return_data = []
         client_ids = [i["name"] for i in client_list]
         roles = Role.objects.filter(app__in=client_ids).values("id", "name", "app").order_by("id")
