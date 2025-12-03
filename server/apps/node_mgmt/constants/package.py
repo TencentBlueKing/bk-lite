@@ -32,7 +32,7 @@ class PackageConstants:
     VERSION_PATTERN = r'^(.+?)[-_]v?(\d+\.\d+\.\d+(?:\.\d+)?)(?:[-_].*)?$'
 
     # 错误提示信息
-    ERROR_MSG_VERSION_NOT_FOUND = "上传失败，无法从文件名中识别版本号。文件名应包含版本号，格式如: xx-1.28.0.tar.gz"
+    ERROR_MSG_VERSION_NOT_FOUND = "上传失败，无法从文件名中识别版本号。文件名应包含版本号，格式如: xx-1.28.0.zip"
     ERROR_MSG_TYPE_MISMATCH = "上传失败，上传文件与{type_name}类型不符。期望: {expected}，实际: {actual}"
     ERROR_MSG_VERSION_EXISTS = "上传失败，上传文件版本 {version} 已存在"
 

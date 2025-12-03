@@ -2,10 +2,12 @@ import hashlib
 import json
 from datetime import datetime, timezone
 from string import Template
+from urllib.parse import quote
 from django.core.cache import cache
 from django.http import HttpResponse
 from django.core.serializers.json import DjangoJSONEncoder
 
+from apps.node_mgmt.constants.collector import CollectorConstants
 from apps.node_mgmt.constants.controller import ControllerConstants
 from apps.node_mgmt.constants.database import DatabaseConstants
 from apps.node_mgmt.services.cloudregion import RegionService
@@ -297,9 +299,12 @@ class Sidecar:
             return EncryptedJsonResponse(status=404, data={"error": "Node not found"}, request=request)
 
         # 查询配置，并预取关联的子配置
+        need_url_encoding = False
         obj = CollectorConfiguration.objects.filter(id=configuration_id).prefetch_related('childconfig_set').first()
         if not obj:
             return EncryptedJsonResponse(status=404, data={"error": "Configuration not found"}, request=request)
+        if obj.collector_id in CollectorConstants.URL_ENCODE_PASSWORD_COLLECTORS:
+            need_url_encoding = True
 
         # 获取云区域环境变量（仅获取 NATS_PASSWORD）
         nats_pwd_obj = SidecarEnv.objects.filter(key="NATS_PASSWORD", cloud_region=node.cloud_region_id).first()
@@ -331,11 +336,20 @@ class Sidecar:
             if 'password' in key.lower() and value:
                 try:
                     # 对包含password的key进行解密
-                    decrypted_env_config[key] = aes_obj.decode(str(value))
+                    decrypted_value = aes_obj.decode(str(value))
+                    # 如果需要URL编码，对解密后的密码进行URL编码
+                    if need_url_encoding:
+                        decrypted_env_config[key] = quote(decrypted_value, safe='')
+                        logger.debug(f"URL encoded password field {key} for configuration {configuration_id}")
+                    else:
+                        decrypted_env_config[key] = decrypted_value
                 except Exception as e:
                     logger.warning(f"Failed to decrypt password field {key}: {e}")
                     # 如果解密失败，可能是明文存储的，直接使用原值
-                    decrypted_env_config[key] = str(value)
+                    if need_url_encoding:
+                        decrypted_env_config[key] = quote(str(value), safe='')
+                    else:
+                        decrypted_env_config[key] = str(value)
             else:
                 decrypted_env_config[key] = str(value)
 
