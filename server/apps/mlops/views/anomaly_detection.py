@@ -15,7 +15,6 @@ from django.http import Http404
 import pandas as pd
 import numpy as np
 from rest_framework.decorators import action
-from neco.mlops.anomaly_detection.random_forest_detector import RandomForestAnomalyDetector
 
 
 class AnomalyDetectionDatasetViewSet(ModelViewSet):
@@ -416,7 +415,7 @@ class AnomalyDetectionServingViewSet(ModelViewSet):
                 df['timestamp'] = [item.get('timestamp', f'index_{i}') for i, item in enumerate(time_series_data)]
             # 根据算法类型选择对应的检测器
             if algorithm == 'RandomForest':
-                detector = RandomForestAnomalyDetector()
+                detector = None
             else:
                 return Response(
                     {'error': f'不支持的算法类型: {algorithm}'},
