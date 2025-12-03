@@ -468,7 +468,11 @@ class ChatFlowEngine:
             execution_time = time.time() - start_time
             final_last_message = self.variable_manager.get_variable("last_message")
 
-            logger.info(f"流程执行完成: flow_id={self.instance.id}, 耗时={execution_time:.2f}秒")
+            logger.info("===== 流程执行完成 =====")
+            logger.info(f"flow_id={self.instance.id}, 耗时={execution_time:.2f}秒")
+            logger.info(f"最终 last_message 值: {final_last_message}")
+            logger.info(f"所有变量: {self.variable_manager.get_all_variables()}")
+            logger.info("========================")
 
             # 记录系统输出
             self._record_conversation_history(user_id, final_last_message, "bot", entry_type, node_id)
@@ -646,18 +650,23 @@ class ChatFlowEngine:
             # 执行节点
             result = executor.execute(node_id, node, node_input_data)
 
+            logger.info(f"节点 {node_id} 执行结果: result={result}, output_key={output_key}")
+
             # 处理输出数据到全局变量
             if result and isinstance(result, dict):
                 # 获取节点的实际输出值
                 output_value = result.get(output_key)
+                logger.info(f"节点 {node_id} 输出值: output_key={output_key}, output_value={output_value}")
                 if output_value is not None:
                     # 更新全局变量
                     if output_key == "last_message":
                         # 特殊处理：condition节点的last_message不更新全局变量
                         if node_type not in ["condition", "branch"]:
+                            logger.info(f"更新全局变量 last_message={output_value}")
                             self.variable_manager.set_variable("last_message", output_value)
                     else:
                         # 非last_message的输出直接设置到全局变量
+                        logger.info(f"设置全局变量 {output_key}={output_value}")
                         self.variable_manager.set_variable(output_key, output_value)
 
             # 更新上下文

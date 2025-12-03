@@ -67,6 +67,15 @@ export const useNodeDrop = ({
             if (nodeType === 'wechat_official') {
               return t('chatflow.wechatOfficial');
             }
+            if (nodeType === 'embedded_chat') {
+              return t('chatflow.embeddedChat');
+            }
+            if (nodeType === 'web_chat') {
+              return t('chatflow.webChat');
+            }
+            if (nodeType === 'mobile') {
+              return t('chatflow.mobile');
+            }
             return t(`chatflow.${nodeType}`);
           } catch {
             return nodeType;

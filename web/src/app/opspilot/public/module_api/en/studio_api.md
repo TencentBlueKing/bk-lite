@@ -1,6 +1,6 @@
 # OpsPilot ChatFlow Integration Documentation
 
-Trigger methods are the "switches" that start a Chatflow (chat workflow). Choosing different trigger methods determines how the workflow starts, who initiates it, and what scenarios it applies to. **Scheduled triggers, RESTful API, and OpenAI API** - these three methods complement each other, enabling Chatflow to adapt to various needs from simple automation to complex system integration.
+Trigger methods are the "switches" that start a Chatflow (chat workflow). Choosing different trigger methods determines how the workflow starts, who initiates it, and what scenarios it applies to. **Scheduled triggers, RESTful API, OpenAI API, AG-UI, and Embedded Chat** - these methods complement each other, enabling Chatflow to adapt to various needs from simple automation to complex system integration.
 
 ## Trigger Method 1: Scheduled Trigger
 
@@ -29,3 +29,77 @@ Body parameters: {"user_message": "Help me check the server status"}
 OpenAI API request URL: <http://bklite.canwya.net/api/v1/opspilot/bot_mgmt/execute_chat_flow/?bot_id=1&node_id=abcdef>
 
 (The request URL for the trigger node can be viewed in the corresponding node after saving the canvas)
+
+## Trigger Method 4: AG-UI
+
+AG-UI (Agent User Interface) trigger method is a triggering mechanism specifically designed for intelligent agent conversation interfaces. It seamlessly integrates Chatflow into the **AG-UI conversation system**, enabling users to interact with workflows through natural language via a unified agent interface. Simply put, it creates a **dedicated conversation entry point** for the Chatflow. When users initiate a conversation in the AG-UI interface, the system automatically routes to the corresponding Chatflow for processing. The core advantage of the AG-UI trigger method lies in providing a consistent user experience and intelligent interaction approach, allowing users to complete complex business operations through natural conversation without worrying about the underlying workflow logic. This trigger method is particularly suitable for scenarios that require frequent human-machine interaction and high user experience requirements. AG-UI trigger is not just a technical interface, but an important bridge for enterprises to build intelligent service experiences. It encapsulates complex workflows into simple conversational interactions, allowing every employee to easily use the enterprise's automation capabilities as if chatting with colleagues, truly achieving AI-driven digital transformation.
+
+Example:
+
+Body parameters: {"user_message": "Help me check the server status"}
+
+AG-UI request URL: <http://bklite.canwya.net/api/v1/opspilot/bot_mgmt/execute_chat_flow/?bot_id=1&node_id=abcdef>
+
+(The request URL for the trigger node can be viewed in the corresponding node after saving the canvas)
+
+## Trigger Method 5: Embedded Chat
+
+Embedded Chat trigger method is a web-embedded conversation window based on the **AG-UI protocol**. It allows you to embed Chatflow directly into any web page as a **conversation component**, providing instant intelligent conversation services to website visitors. Through simple JavaScript code snippets, you can display a conversation window at any position on the web page or as a floating button. Users can interact with the Chatflow in real-time after clicking. This trigger method is particularly suitable for scenarios that require real-time customer support or intelligent assistant services, such as corporate websites, product pages, online documentation, and internal systems. Embedded Chat not only lowers the integration barrier but also provides flexible style customization and data transmission capabilities, allowing enterprises to provide a smooth conversation experience while maintaining brand consistency. Embedded Chat trigger is the front-end entry point for enterprises to build an intelligent user service system. It presents powerful workflow capabilities to end users in the most user-friendly way, truly achieving a "what you see is what you get" intelligent service experience.
+
+### Embed Code Example
+
+Add the following code to your web page HTML (recommended to place before the `</body>` tag):
+
+```html
+<script>
+  !(function () {
+    let e = document.createElement("link"),
+      s = document.createElement("script"),
+      t = document.head || document.getElementsByTagName("head")[0];
+    
+    // Load styles
+    (e.rel = "stylesheet"),
+    (e.href = "https://cdn.example.com/webchat/dist/browser/style.css"),
+    t.appendChild(e);
+    
+    // Load script
+    (s.src = "https://cdn.example.com/webchat/dist/browser/webchat.js"),
+    (s.async = !0),
+    (s.onload = () => {
+      if (window.WebChat && window.WebChat.default) {
+        window.WebChat.default(
+          {
+            sseUrl: "http://bklite.canwya.net/api/v1/opspilot/bot_mgmt/execute_chat_flow/?bot_id=1&node_id=abcdef",
+            title: "Smart Assistant",
+            theme: "light",  // Options: light / dark
+            customData: { page: document.title }
+          },
+          null  // null = floating button mode, or pass DOM element for inline embedding
+        );
+      }
+    }),
+    (s.onerror = () => {
+      console.error("Failed to load WebChat");
+    }),
+    t.appendChild(s);
+  })();
+</script>
+```
+
+### Configuration Parameters
+
+- **sseUrl**: SSE streaming request URL for Chatflow (The request URL for the trigger node can be viewed in the corresponding node after saving the canvas)
+- **title**: Conversation window title
+- **theme**: Theme style, supports `light` or `dark`
+- **customData**: Custom data that will be sent to Chatflow with the request
+- **Second parameter**: 
+  - `null` - Display as a floating button in the bottom right corner of the page
+  - DOM element - Inline embed the conversation window into the specified HTML element
+
+### Use Cases
+
+- Online customer service for corporate websites
+- Intelligent Q&A assistant for product documentation
+- Operation guidance for internal systems
+- Shopping consultation for e-commerce websites
+- User support for SaaS products

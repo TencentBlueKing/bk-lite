@@ -746,7 +746,22 @@
       "dingtalkParams": "DingTalk Parameters",
       "pleaseEnterOutputParams": "Please enter output parameters",
       "equals": "Equals",
-      "apiUrl": "URL"
+      "apiUrl": "URL",
+      "appTags": "App Tags",
+      "appDescription": "App Description",
+      "pleaseEnterAppDescription": "Please enter app description",
+      "enterAppName": "Enter app name",
+      "appTagProductivity": "Productivity",
+      "appTagSocial": "Social",
+      "pleaseEnterAppName": "Please enter app name",
+      "appTagWork": "Work",
+      "appTagEntertainment": "Entertainment",
+      "appTagEducation": "Education",
+      "selectAppTags": "Select app tags",
+      "appTagBusiness": "Business",
+      "enterAppDescription": "Enter app description",
+      "appName": "App Name",
+      "pleaseSelectAppTags": "Please select app tags"
     },
     "collapseSidebar": "Collapse Sidebar",
     "messages": {
@@ -901,7 +916,10 @@
     "validate": "Validate",
     "notConfigured": "Not Configured",
     "pleaseEnterNotificationContent": "Please enter notification content",
-    "restful": "RESTful API"
+    "restful": "RESTful API",
+    "mobile": "Mobile Terminal",
+    "webChat": "Web Chat",
+    "embeddedChat": "Embedded Chat"
   },
   "provider": {
     "form": {

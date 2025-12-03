@@ -217,7 +217,7 @@ class MysqlInfo:
                     "log_error": self.info["settings"]["log_error"],
                     "wait_timeout": self.info["settings"]["wait_timeout"],
                 }
-                inst_data = {"result": model_data, "success": execute_result}
+                inst_data = {"result": json.dumps(model_data), "success": execute_result}
 
             else:
                 inst_data = {"result": message, "success": execute_result}

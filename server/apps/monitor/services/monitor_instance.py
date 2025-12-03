@@ -19,7 +19,7 @@ class InstanceSearch:
     @staticmethod
     def get_parent_instance_ids(query):
         """获取父对象实例ID列表"""
-        metrics = VictoriaMetricsAPI().query(query)
+        metrics = VictoriaMetricsAPI().query(query, step="10m")
         instance_ids = [metric_info["metric"].get("instance_id") for metric_info in
                     metrics.get("data", {}).get("result", [])]
         return instance_ids
@@ -230,8 +230,8 @@ class InstanceSearch:
 
         return dict(count=count, results=[{"instance_id":obj.id, "instance_name":obj.name} for obj in results])
 
-    def get_plugin_normal_status_map(self, instance_id_keys, query, step="10m"):
-        resp = VictoriaMetricsAPI().query(query, step=step)
+    def get_plugin_normal_status_map(self, instance_id_keys, query):
+        resp = VictoriaMetricsAPI().query(query, step="20m")
         metrics = resp.get("data", {}).get("result", [])
         status_map = {}
         for metric in metrics:
@@ -249,7 +249,7 @@ class InstanceSearch:
                 query = query.replace("}", f",{params_str}}}")
             else:
                 query = f"{query}{{{params_str}}}"
-        metrics = VictoriaMetricsAPI().query(query)
+        metrics = VictoriaMetricsAPI().query(query, step="20m")
         return metrics.get("data", {}).get("result", [])
 
     def add_other_metrics(self, items):
@@ -269,7 +269,7 @@ class InstanceSearch:
 
             query = metric_obj.query
             query = query.replace("__$labels__", f"{', '.join(query_parts)}")
-            metrics = VictoriaMetricsAPI().query(query)
+            metrics = VictoriaMetricsAPI().query(query, step="10m")
             _metric_map = {}
             for metric in metrics.get("data", {}).get("result", []):
                 instance_id = str(tuple([metric["metric"].get(i) for i in metric_obj.instance_id_keys]))

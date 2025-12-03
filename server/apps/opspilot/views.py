@@ -17,7 +17,7 @@ from apps.core.utils.async_utils import create_async_compatible_generator
 from apps.core.utils.exempt import api_exempt
 from apps.core.utils.loader import LanguageLoader
 from apps.opspilot.models import Bot, BotChannel, BotConversationHistory, BotWorkFlow, LLMSkill
-from apps.opspilot.services.llm_service import llm_service
+from apps.opspilot.services.chat_service import ChatService
 from apps.opspilot.services.skill_excute_service import SkillExecuteService
 from apps.opspilot.utils.bot_utils import insert_skill_log, set_time_range
 from apps.opspilot.utils.chat_flow_utils.engine.factory import create_chat_flow_engine
@@ -203,7 +203,9 @@ def format_knowledge_sources(content, skill_obj, doc_map=None, title_map=None):
 
 
 def get_chat_msg(current_ip, kwargs, params, skill_obj, user_message, history_log=None):
-    data, doc_map, title_map = llm_service.invoke_chat(params)
+    # 使用同步版本的 invoke_chat
+    data, doc_map, title_map = ChatService.invoke_chat(params)
+
     content = format_knowledge_sources(data["message"], skill_obj, doc_map, title_map)
     return_data = {
         "id": skill_obj.name,
@@ -531,7 +533,6 @@ def execute_chat_flow(request, bot_id, node_id):
 
         # 非流式节点，使用普通执行
         result = engine.execute(input_data)
-        logger.info(f"ChatFlow流程执行完成，bot_id: {bot_id}, 最终输出: {result}")
         return JsonResponse({"result": True, "data": {"content": result, "execution_time": time.time()}})
 
     except Exception as e:

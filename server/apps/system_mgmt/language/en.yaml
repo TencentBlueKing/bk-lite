@@ -16,9 +16,8 @@ error:
   time_range_required: Time range is required
   cannot_delete_admin_normal_roles: Admin and normal roles cannot be deleted
   group_id_required: Group ID cannot be empty
-  invalid_group_ids: "Invalid group IDs: {ids}"
-  invalid_role_ids: "Invalid role IDs: {ids}"
-  group_has_users_remove_first: This group or sub groups has users, please remove the users first!
+  group_has_users_remove_first: This group or sub groups has users, please remove
+    the users first!
   update_failed: update failed
   role_used_by_users: Role is already used by the following users!
   parent_group_not_found: Parent group not found.
@@ -53,6 +52,8 @@ error:
   cannot_create_under_virtual_subgroup: Cannot create a group under a virtual subgroup.
     Virtual groups can only have two levels.
   invalid_order: Order value must be an integer
+  invalid_role_ids: 'Invalid role IDs: {ids}'
+  invalid_group_ids: 'Invalid group IDs: {ids}'
 success:
   menu_group_disabled: Menu group disabled
   batch_create: Batch creation successful

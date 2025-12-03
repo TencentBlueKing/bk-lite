@@ -43,16 +43,17 @@ const CollectorModal = forwardRef<ModalRef, ModalSuccess>(
     const [confirmLoading, setConfirmLoading] = useState<boolean>(false);
     const [formData, setFormData] = useState<TableDataItem>(initData);
     const [fileList, setFileList] = useState<any>([]);
+    const [tags, setTags] = useState<string[]>([]); //编辑时的tags
 
     useImperativeHandle(ref, () => ({
-      showModal: ({ type, form, title, key }) => {
+      showModal: ({ type, form, title, key, appTag }) => {
         const info = cloneDeep(form) as TableDataItem;
         const {
           name,
-          tagList,
           description,
           executable_path,
           execute_parameters,
+          originalTags = [],
         } = form as TableDataItem;
         setKey(key as string);
         setId(form?.id as string);
@@ -60,11 +61,13 @@ const CollectorModal = forwardRef<ModalRef, ModalSuccess>(
         setTitle(title as string);
         setVisible(true);
         info.name = name || null;
-        info.system = tagList?.[0] || 'windows';
+        info.system = info.os || 'linux';
         info.description = description || null;
         info.executable_path = executable_path || null;
         info.execute_parameters = execute_parameters || null;
+        info.appTag = appTag;
         setFormData(info);
+        setTags(originalTags);
       },
     }));
 
@@ -101,8 +104,11 @@ const CollectorModal = forwardRef<ModalRef, ModalSuccess>(
             introduction: values.description,
             executable_path: values.executable_path || '',
             execute_parameters: values.execute_parameters || '',
+            tags,
           };
-
+          if (type === 'add') {
+            param.tags = [values.system, formData.appTag];
+          }
           if (type !== 'upload') {
             handleObject[type](param)
               .then(() => {

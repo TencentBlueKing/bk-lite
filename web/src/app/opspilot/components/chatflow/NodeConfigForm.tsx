@@ -257,9 +257,9 @@ export const NodeConfigForm: React.FC<any> = ({
         </>
       )}
 
-      {(nodeType === 'restful' || nodeType === 'openai' || nodeType === 'agui') && (
+      {['restful', 'openai', 'agui', 'embedded_chat'].includes(nodeType) && (
         <div className="p-4 bg-blue-50 border border-blue-200 rounded-md text-xs leading-5">
-          <p className="text-gray-500 mb-2">{t(`chatflow.nodeConfig.${nodeType}ApiInfo`)}</p>
+          <p className="text-gray-500 mb-2">{t(`chatflow.nodeConfig.${nodeType === 'embedded_chat' ? 'agui' : nodeType}ApiInfo`)}</p>
           <div className="mt-2 mb-2 relative">
             <Input.TextArea
               readOnly
@@ -274,6 +274,89 @@ export const NodeConfigForm: React.FC<any> = ({
             {t('chatflow.nodeConfig.viewApiDocs')}
           </Link>
         </div>
+      )}
+
+      {nodeType === 'web_chat' && (
+        <>
+          <Form.Item 
+            name="appName" 
+            label={t('chatflow.nodeConfig.appName')} 
+            rules={[{ 
+              required: true, 
+              message: t('chatflow.nodeConfig.pleaseEnterAppName'),
+              whitespace: true
+            }]}
+          >
+            <Input placeholder={t('chatflow.nodeConfig.enterAppName')} />
+          </Form.Item>
+          <Form.Item 
+            name="appDescription" 
+            label={t('chatflow.nodeConfig.appDescription')} 
+            rules={[{ 
+              required: true, 
+              message: t('chatflow.nodeConfig.pleaseEnterAppDescription'),
+              whitespace: true
+            }]}
+          >
+            <TextArea 
+              rows={4} 
+              placeholder={t('chatflow.nodeConfig.enterAppDescription')} 
+            />
+          </Form.Item>
+        </>
+      )}
+
+      {nodeType === 'mobile' && (
+        <>
+          <Form.Item 
+            name="appName" 
+            label={t('chatflow.nodeConfig.appName')} 
+            rules={[{ 
+              required: true, 
+              message: t('chatflow.nodeConfig.pleaseEnterAppName'),
+              whitespace: true
+            }]}
+          >
+            <Input placeholder={t('chatflow.nodeConfig.enterAppName')} />
+          </Form.Item>
+          <Form.Item 
+            name="appTags" 
+            label={t('chatflow.nodeConfig.appTags')} 
+            rules={[{ 
+              required: true, 
+              message: t('chatflow.nodeConfig.pleaseSelectAppTags'),
+              type: 'array',
+              min: 1
+            }]}
+          >
+            <Select 
+              mode="multiple" 
+              placeholder={t('chatflow.nodeConfig.selectAppTags')}
+              options={[
+                { label: t('chatflow.nodeConfig.appTagWork'), value: 'work' },
+                { label: t('chatflow.nodeConfig.appTagBusiness'), value: 'business' },
+                { label: t('chatflow.nodeConfig.appTagEntertainment'), value: 'entertainment' },
+                { label: t('chatflow.nodeConfig.appTagEducation'), value: 'education' },
+                { label: t('chatflow.nodeConfig.appTagProductivity'), value: 'productivity' },
+                { label: t('chatflow.nodeConfig.appTagSocial'), value: 'social' },
+              ]}
+            />
+          </Form.Item>
+          <Form.Item 
+            name="appDescription" 
+            label={t('chatflow.nodeConfig.appDescription')} 
+            rules={[{ 
+              required: true, 
+              message: t('chatflow.nodeConfig.pleaseEnterAppDescription'),
+              whitespace: true
+            }]}
+          >
+            <TextArea 
+              rows={4} 
+              placeholder={t('chatflow.nodeConfig.enterAppDescription')} 
+            />
+          </Form.Item>
+        </>
       )}
 
       {nodeType === 'condition' && (

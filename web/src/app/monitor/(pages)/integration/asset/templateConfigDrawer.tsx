@@ -45,6 +45,40 @@ const TemplateConfigDrawer = forwardRef<TemplateDrawerRef, ModalSuccess>(
     const [instanceName, setInstanceName] = useState<string>('');
     const [objName, setObjName] = useState<string>('');
     const [showTemplateList, setShowTemplateList] = useState<boolean>(true);
+    const [instanceId, setInstanceId] = useState<number | string>('');
+    const [instanceType, setInstanceType] = useState<string>('');
+
+    const fetchConfigList = async (params?: {
+      plugin?: PluginItem;
+      instanceId?: number | string;
+      instanceType?: string;
+    }) => {
+      const targetPlugin = params?.plugin || selectedPlugin;
+      const targetInstanceId = params?.instanceId || instanceId;
+      const targetInstanceType = params?.instanceType || instanceType;
+      if (!targetPlugin || targetPlugin.collect_mode === 'manual') {
+        setConfigList([]);
+        return;
+      }
+      setLoading(true);
+      try {
+        const templateData = await getInstanceChildConfig({
+          instance_id: targetInstanceId,
+          instance_type: targetInstanceType,
+          collect_type: targetPlugin?.collect_type,
+          collector: targetPlugin?.collector,
+        });
+        const dataWithId = (templateData || []).map(
+          (item: any, index: number) => ({
+            ...item,
+            id: index,
+          })
+        );
+        setConfigList(dataWithId);
+      } finally {
+        setLoading(false);
+      }
+    };
 
     useImperativeHandle(ref, () => ({
       showModal: async ({
@@ -58,6 +92,8 @@ const TemplateConfigDrawer = forwardRef<TemplateDrawerRef, ModalSuccess>(
       }: ShowModalParams) => {
         setVisible(true);
         setInstanceName(instanceName);
+        setInstanceId(instanceId);
+        setInstanceType(instanceType);
         setObjName(objName || '');
         setShowTemplateList(shouldShowList);
         // 设置外层传入的plugins
@@ -105,29 +141,12 @@ const TemplateConfigDrawer = forwardRef<TemplateDrawerRef, ModalSuccess>(
             }
           }
           setSelectedPlugin(selectedTemp);
-          // 如果选中的是手动模板，不需要调用接口
-          if (selectedTemp && selectedTemp.collect_mode === 'manual') {
-            setConfigList([]);
-            return;
-          }
-        }
-        setLoading(true);
-        try {
-          const templateData = await getInstanceChildConfig({
-            instance_id: instanceId,
-            instance_type: instanceType,
-            collect_type: selectedTemp?.collect_type,
-            collector: selectedTemp?.collector,
+          // 使用 fetchConfigList 获取配置列表
+          await fetchConfigList({
+            plugin: selectedTemp,
+            instanceId,
+            instanceType,
           });
-          const dataWithId = (templateData || []).map(
-            (item: any, index: number) => ({
-              ...item,
-              id: index,
-            })
-          );
-          setConfigList(dataWithId);
-        } finally {
-          setLoading(false);
         }
       },
     }));
@@ -138,6 +157,8 @@ const TemplateConfigDrawer = forwardRef<TemplateDrawerRef, ModalSuccess>(
       setConfigList([]);
       setSelectedPlugin(null);
       setInstanceName('');
+      setInstanceId('');
+      setInstanceType('');
       setObjName('');
       setShowTemplateList(true);
     };
@@ -158,6 +179,11 @@ const TemplateConfigDrawer = forwardRef<TemplateDrawerRef, ModalSuccess>(
         return `${row.collect_type}(${row.config_type})`;
       }
       return row.collect_type || '--';
+    };
+
+    const handleConfigSuccess = () => {
+      fetchConfigList();
+      onSuccess?.();
     };
 
     const openConfigModal = (row: ConfigItem) => {
@@ -283,7 +309,7 @@ const TemplateConfigDrawer = forwardRef<TemplateDrawerRef, ModalSuccess>(
 
     return (
       <div>
-        <EditConfig ref={configRef} onSuccess={onSuccess} />
+        <EditConfig ref={configRef} onSuccess={handleConfigSuccess} />
         <OperateDrawer
           title={instanceName || '--'}
           open={visible}
