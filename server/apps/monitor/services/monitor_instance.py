@@ -6,6 +6,7 @@ from apps.monitor.constants.plugin import PluginConstants
 from apps.monitor.models import Metric, MonitorObject, CollectConfig, MonitorPlugin, MonitorInstanceOrganization
 from apps.monitor.services.monitor_object import MonitorObjectService
 from apps.monitor.utils.victoriametrics_api import VictoriaMetricsAPI
+from datetime import datetime, timezone
 
 
 class InstanceSearch:
@@ -235,7 +236,8 @@ class InstanceSearch:
         status_map = {}
         for metric in metrics:
             instance_id = str(tuple([metric["metric"].get(i) for i in instance_id_keys]))
-            status_map[instance_id] = metric["value"][0]
+            iso_time = datetime.fromtimestamp(metric["value"][0], tz=timezone.utc).isoformat()
+            status_map[instance_id] = iso_time
         return status_map
 
     def get_vm_metrics(self):

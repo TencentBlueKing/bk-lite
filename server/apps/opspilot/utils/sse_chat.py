@@ -1,20 +1,22 @@
 import json
-import os
 import re
 import threading
 import time
 
-import requests
-from django.conf import settings
 from django.http import StreamingHttpResponse
+from langchain_core.messages import AIMessageChunk
 
 from apps.core.logger import opspilot_logger as logger
 from apps.core.utils.async_utils import create_async_compatible_generator
-from apps.opspilot.enum import SkillTypeChoices
 from apps.opspilot.models import LLMModel
 from apps.opspilot.services.llm_service import llm_service
+from apps.opspilot.utils.agent_factory import (
+    create_agent_instance,
+    create_sse_response_headers,
+    normalize_llm_error_message,
+    run_async_generator_in_loop,
+)
 from apps.opspilot.utils.bot_utils import insert_skill_log
-from apps.opspilot.utils.chat_server_helper import ChatServerHelper
 
 
 def generate_stream_error(message):
@@ -124,170 +126,78 @@ def _create_error_chunk(error_message, skill_name):
     }
 
 
-def _process_sse_line(
-    line,
-    accumulated_content,
-    think_buffer,
-    in_think_block,
-    is_first_content,
-    show_think,
-    has_think_tags,
-):
-    """处理单行SSE数据"""
-    if not line or not line.strip() or not line.startswith("data: "):
-        return (
-            accumulated_content,
-            think_buffer,
-            in_think_block,
-            is_first_content,
-            None,
-            has_think_tags,
-        )
-
-    data_str = line[6:]  # 移除 "data: " 前缀
-
-    # 检查是否为结束标志
-    if data_str.strip() == "[DONE]":
-        return (
-            accumulated_content,
-            think_buffer,
-            in_think_block,
-            is_first_content,
-            "DONE",
-            has_think_tags,
-        )
-
-    try:
-        data = json.loads(data_str)
-        output_content = ""
-
-        # 检查是否有choices数组并且不为空
-        if "choices" in data and data["choices"]:
-            choice = data["choices"][0]
-
-            # 检查是否结束
-            if choice.get("finish_reason") == "stop":
-                return (
-                    accumulated_content,
-                    think_buffer,
-                    in_think_block,
-                    is_first_content,
-                    "DONE",
-                    has_think_tags,
-                )
-
-            # 处理内容增量
-            if "delta" in choice and "content" in choice["delta"]:
-                content_chunk = choice["delta"]["content"]
-                if content_chunk:  # 只有非空内容才处理
-                    accumulated_content += content_chunk
-
-                    (
-                        output_content,
-                        think_buffer,
-                        in_think_block,
-                        is_first_content,
-                        has_think_tags,
-                    ) = _process_think_content(
-                        content_chunk,
-                        think_buffer,
-                        in_think_block,
-                        is_first_content,
-                        show_think,
-                        has_think_tags,
-                    )
-
-        return (
-            accumulated_content,
-            think_buffer,
-            in_think_block,
-            is_first_content,
-            output_content,
-            has_think_tags,
-        )
-
-    except json.JSONDecodeError:
-        # 忽略无效的JSON数据
-        return (
-            accumulated_content,
-            think_buffer,
-            in_think_block,
-            is_first_content,
-            None,
-            has_think_tags,
-        )
-
-
-def _generate_sse_stream(url, headers, chat_kwargs, skill_name, show_think):
-    """生成SSE流式数据"""
+def _generate_agent_stream(graph, request, skill_name, show_think):
+    """生成 Agent 流式数据（使用 asyncio 运行异步方法）"""
     accumulated_content = ""
     think_buffer = ""
     in_think_block = False
     is_first_content = True
     has_think_tags = True
-    sse_headers = {
-        **headers,
-        "Accept": "text/event-stream",
-        "Cache-Control": "no-cache",
-        "Connection": "keep-alive",
-    }
 
-    # SSL验证配置 - 从环境变量读取
-    ssl_verify = os.getenv("METIS_SSL_VERIFY", "false").lower() == "true"
+    async def run_stream():
+        """异步运行流式处理"""
+        nonlocal accumulated_content, think_buffer, in_think_block, is_first_content, has_think_tags
 
-    try:
-        res = requests.post(
-            url,
-            headers=sse_headers,
-            json=chat_kwargs,
-            timeout=300,
-            verify=ssl_verify,
-            stream=True,
-        )
-        res.raise_for_status()
+        try:
+            # 获取消息流
+            message_stream = await graph.stream(request)
 
-        for line in res.iter_lines(decode_unicode=True):
-            result = _process_sse_line(
-                line,
-                accumulated_content,
-                think_buffer,
-                in_think_block,
-                is_first_content,
-                show_think,
-                has_think_tags,
-            )
-            (
-                accumulated_content,
-                think_buffer,
-                in_think_block,
-                is_first_content,
-                output,
-                has_think_tags,
-            ) = result
+            # 处理流式消息
+            async for chunk in message_stream:
+                if not chunk:
+                    continue
 
-            if output == "DONE":
-                break
-            elif output:
-                stream_chunk = _create_stream_chunk(output, skill_name)
+                message = chunk[0] if isinstance(chunk, (list, tuple)) else chunk
+
+                # 只处理 AIMessageChunk
+                if isinstance(message, AIMessageChunk):
+                    content_chunk = message.content
+                    if content_chunk:
+                        accumulated_content += content_chunk
+
+                        (
+                            output_content,
+                            think_buffer,
+                            in_think_block,
+                            is_first_content,
+                            has_think_tags,
+                        ) = _process_think_content(
+                            content_chunk,
+                            think_buffer,
+                            in_think_block,
+                            is_first_content,
+                            show_think,
+                            has_think_tags,
+                        )
+
+                        if output_content:
+                            stream_chunk = _create_stream_chunk(output_content, skill_name)
+                            yield f"data: {json.dumps(stream_chunk)}\n\n"
+
+            # 处理剩余缓冲区内容
+            if not show_think and not in_think_block and think_buffer:
+                stream_chunk = _create_stream_chunk(think_buffer, skill_name)
                 yield f"data: {json.dumps(stream_chunk)}\n\n"
 
-        # 处理剩余缓冲区内容
-        if not show_think and not in_think_block and think_buffer:
-            stream_chunk = _create_stream_chunk(think_buffer, skill_name)
-            yield f"data: {json.dumps(stream_chunk)}\n\n"
+            # 发送完成标志
+            final_chunk = _create_stream_chunk("", skill_name, "stop")
+            yield f"data: {json.dumps(final_chunk)}\n\n"
 
-        # 发送完成标志
-        final_chunk = _create_stream_chunk("", skill_name, "stop")
-        yield f"data: {json.dumps(final_chunk)}\n\n"
+            # 返回统计信息
+            yield ("STATS", accumulated_content)
 
-        # 使用特殊标识返回统计信息
-        yield ("STATS", accumulated_content)
+        except Exception as e:
+            logger.error(f"Agent stream error: {e}", exc_info=True)
 
-    except Exception as e:
-        logger.error(f"SSE stream error: {e}")
-        error_chunk = _create_error_chunk(f"流式处理错误: {str(e)}", skill_name)
-        yield f"data: {json.dumps(error_chunk)}\n\n"
-        yield ("STATS", "")
+            # 使用公共方法提取友好的错误信息
+            error_msg = normalize_llm_error_message(str(e))
+
+            error_chunk = _create_error_chunk(error_msg, skill_name)
+            yield f"data: {json.dumps(error_chunk, ensure_ascii=False)}\n\n"
+            yield ("STATS", "")
+
+    # 使用公共的异步事件循环运行器
+    yield from run_async_generator_in_loop(run_stream)
 
 
 def _log_and_update_tokens_sync(final_stats, skill_name, skill_id, current_ip, kwargs, user_message, show_think, history_log=None):
@@ -314,42 +224,37 @@ def _log_and_update_tokens_sync(final_stats, skill_name, skill_id, current_ip, k
         if history_log:
             history_log.conversation = final_content
             history_log.save()
-        insert_skill_log(current_ip, skill_id, log_data, kwargs, user_message=user_message)
+        if current_ip:
+            insert_skill_log(current_ip, skill_id, log_data, kwargs, user_message=user_message)
 
     except Exception as e:
         logger.error(f"Log update error: {e}")
 
 
 def stream_chat(params, skill_name, kwargs, current_ip, user_message, skill_id=None, history_log=None):
+    """流式聊天接口"""
     llm_model = LLMModel.objects.get(id=params["llm_model"])
     show_think = params.pop("show_think", True)
+    skill_type = params.get("skill_type")
     params.pop("group", 0)
 
     chat_kwargs, doc_map, title_map = llm_service.format_chat_server_kwargs(params, llm_model)
-
-    url = f"{settings.METIS_SERVER_URL}/api/agent/invoke_chatbot_workflow_sse"
-    if params.get("skill_type") == SkillTypeChoices.BASIC_TOOL:
-        url = f"{settings.METIS_SERVER_URL}/api/agent/invoke_react_agent_sse"
-    elif params.get("skill_type") == SkillTypeChoices.PLAN_EXECUTE:
-        url = f"{settings.METIS_SERVER_URL}/api/agent/invoke_plan_and_execute_agent_sse"
-    elif params.get("skill_type") == SkillTypeChoices.LATS:
-        url = f"{settings.METIS_SERVER_URL}/api/agent/invoke_lats_agent_sse"
 
     # 用于存储最终统计信息的共享变量
     final_stats = {"content": ""}
 
     def generate_stream():
         try:
-            headers = ChatServerHelper.get_chat_server_header()
-            stream_gen = _generate_sse_stream(url, headers, chat_kwargs, skill_name, show_think)
+            # 创建对应的 Agent 实例和请求对象
+            graph, request = create_agent_instance(skill_type, chat_kwargs)
+
+            # 使用直接调用 agent 方法生成流
+            stream_gen = _generate_agent_stream(graph, request, skill_name, show_think)
 
             for chunk in stream_gen:
                 if isinstance(chunk, tuple) and chunk[0] == "STATS":
                     # 收集统计信息
-                    (
-                        _,
-                        final_stats["content"],
-                    ) = chunk
+                    _, final_stats["content"] = chunk
 
                     # 在流结束时同步处理日志记录
                     if final_stats["content"]:
@@ -363,16 +268,16 @@ def stream_chat(params, skill_name, kwargs, current_ip, user_message, skill_id=N
                     yield chunk
 
         except Exception as e:
-            logger.error(f"Stream chat error: {e}")
+            logger.error(f"Stream chat error: {e}", exc_info=True)
             error_chunk = _create_error_chunk(f"聊天错误: {str(e)}", skill_name)
             yield f"data: {json.dumps(error_chunk)}\n\n"
 
     # 使用异步兼容的生成器来解决 ASGI 环境下的问题
     async_generator = create_async_compatible_generator(generate_stream())
     response = StreamingHttpResponse(async_generator, content_type="text/event-stream")
-    response["Cache-Control"] = "no-cache, no-store, must-revalidate"
-    response["X-Accel-Buffering"] = "no"  # Nginx
-    response["Access-Control-Allow-Origin"] = "*"
-    response["Access-Control-Allow-Headers"] = "Cache-Control"
+
+    # 使用公共的 SSE 响应头
+    for key, value in create_sse_response_headers().items():
+        response[key] = value
 
     return response

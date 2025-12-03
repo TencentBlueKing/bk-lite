@@ -5,11 +5,9 @@
 """
 
 # 导入所有工具函数，保持向后兼容性
-from neco.llm.tools.python.executor import (
-    python_execute_direct,
-)
+from apps.opspilot.metis.llm.tools.python.executor import python_execute_direct
 
 __all__ = [
     # Python执行工具
-    'python_execute_direct',
+    "python_execute_direct",
 ]

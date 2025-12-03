@@ -148,8 +148,7 @@ def validate_email_code(request):
         # 使用check_password验证
         if check_password(input_code, hashed_code):
             return JsonResponse({"result": True, "message": loader.get("success.verification_success", "Verification successful")})
-        else:
-            return JsonResponse({"result": False, "message": loader.get("error.verification_code_incorrect", "Verification code is incorrect")})
+        return JsonResponse({"result": False, "message": loader.get("error.verification_code_incorrect", "Verification code is incorrect")})
     except Exception as e:
         return JsonResponse({"result": False, "message": str(e)})
 
@@ -265,10 +264,6 @@ def get_user_info(request):
             "password_last_modified": user.password_last_modified.isoformat() if user.password_last_modified else None,
             "temporary_pwd": user.temporary_pwd,
         }
-
-        # 记录操作日志
-        log_operation(request, "execute", "console_mgmt", f"查询用户信息: {user.username}")
-
         return JsonResponse({"result": True, "data": user_info})
     except User.DoesNotExist:
         return JsonResponse({"result": False, "message": loader.get("error.user_not_found", "User not found")})

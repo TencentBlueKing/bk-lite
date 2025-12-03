@@ -8,6 +8,7 @@ from django.core.serializers.json import DjangoJSONEncoder
 
 from apps.node_mgmt.constants.controller import ControllerConstants
 from apps.node_mgmt.constants.database import DatabaseConstants
+from apps.node_mgmt.services.cloudregion import RegionService
 from apps.node_mgmt.utils.crypto_helper import EncryptedJsonResponse
 from apps.node_mgmt.models.cloud_region import SidecarEnv
 from apps.node_mgmt.models.sidecar import Node, Collector, CollectorConfiguration, NodeOrganization
@@ -359,18 +360,7 @@ class Sidecar:
     @staticmethod
     def get_cloud_region_envconfig(node_obj):
         """获取云区域环境变量"""
-        objs = SidecarEnv.objects.filter(cloud_region=node_obj.cloud_region_id)
-        variables = {}
-        for obj in objs:
-            if obj.type == "secret":
-                # 如果是密文，解密后使用
-                aes_obj = AESCryptor()
-                value = aes_obj.decode(obj.value)
-                variables[obj.key] = value
-            else:
-                # 如果是普通变量，直接使用
-                variables[obj.key] = obj.value
-        return variables
+        return RegionService.get_cloud_region_envconfig(node_obj.cloud_region_id)
 
     @staticmethod
     def get_variables(node_obj):

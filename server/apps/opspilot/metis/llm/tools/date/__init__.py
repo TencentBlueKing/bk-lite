@@ -5,11 +5,9 @@
 """
 
 # 导入所有工具函数，保持向后兼容性
-from neco.llm.tools.date.current_time import (
-    get_current_time,
-)
+from apps.opspilot.metis.llm.tools.date.current_time import get_current_time
 
 __all__ = [
     # 时间查询工具
-    'get_current_time',
+    "get_current_time",
 ]
