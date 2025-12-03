@@ -113,7 +113,7 @@ class GraphUtils(ChunkHelper):
 
         try:
             rag = GraphitiRAG()
-            res = cls._run_async(rag.ingest(request))
+            res = asyncio.run(rag.ingest(request))
 
             if not res or not res.get("mapping"):
                 loader = LanguageLoader(app="opspilot", default_lang="en")
