@@ -1,119 +1,103 @@
 'use client';
 import React, { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { List, Input, Button, Toast, Picker } from 'antd-mobile';
+import { Form, Input, Button, Toast, Picker, SpinLoading } from 'antd-mobile';
 import { LeftOutline } from 'antd-mobile-icons';
-import { mockAccountInfo } from '@/constants/mockData';
+import { useTranslation } from '@/utils/i18n';
+import { useAuth } from '@/context/auth';
+import { timezoneOptions, languageOptions } from '@/constants/userPicker';
+import { getUserInfo, updateUserInfo } from '@/api/user';
 
-// 时区选项
-const timezoneOptions = [
-    [
-        { label: '亚洲/上海 (UTC+08:00)', value: 'Asia/Shanghai' },
-        { label: '亚洲/东京 (UTC+09:00)', value: 'Asia/Tokyo' },
-        { label: '美国/纽约 (UTC-05:00)', value: 'America/New_York' },
-        { label: '美国/洛杉矶 (UTC-08:00)', value: 'America/Los_Angeles' },
-        { label: '欧洲/伦敦 (UTC+00:00)', value: 'Europe/London' },
-        { label: '欧洲/巴黎 (UTC+01:00)', value: 'Europe/Paris' },
-    ],
-];
 
-// 语言选项
-const languageOptions = [
-    [
-        { label: '中文(简体)', value: 'zh' },
-        { label: 'English', value: 'en' },
-    ],
-];
 
 export default function AccountDetailsPage() {
+    const { t } = useTranslation();
+    const { updateUserInfo: updateStoredUserInfo } = useAuth();
     const router = useRouter();
-
-    // 可编辑字段
-    const [displayName, setDisplayName] = useState('');
-    const [email, setEmail] = useState('');
-    const [timezone, setTimezone] = useState('Asia/Shanghai');
-    const [language, setLanguage] = useState('zh');
-
-    // 原始值用于比较
-    const [originalData, setOriginalData] = useState({
-        displayName: '',
-        email: '',
-        timezone: 'Asia/Shanghai',
-        language: 'zh',
-    });
-
-    const [timezonePickerVisible, setTimezonePickerVisible] = useState(false);
-    const [languagePickerVisible, setLanguagePickerVisible] = useState(false);
+    const [form] = Form.useForm();
+    const [loading, setLoading] = useState(false);
+    const [originalData, setOriginalData] = useState<Record<string, any>>({});
+    const [currentTimezone, setCurrentTimezone] = useState('Asia/Shanghai');
+    const [currentLocale, setCurrentLocale] = useState('zh-Hans');
     const [isModified, setIsModified] = useState(false);
     const [isSaving, setIsSaving] = useState(false);
 
-    // 初始化数据
     useEffect(() => {
-        // 使用 mock 数据初始化
-        const initialData = {
-            displayName: mockAccountInfo.displayName,
-            email: mockAccountInfo.email,
-            timezone: mockAccountInfo.timezone,
-            language: mockAccountInfo.language,
-        };
-        setDisplayName(initialData.displayName);
-        setEmail(initialData.email);
-        setTimezone(initialData.timezone);
-        setLanguage(initialData.language);
-        setOriginalData(initialData);
+        fetchUserInfo();
     }, []);
 
-    // 检查是否有修改
-    useEffect(() => {
-        const hasChanges =
-            displayName !== originalData.displayName ||
-            email !== originalData.email ||
-            timezone !== originalData.timezone ||
-            language !== originalData.language;
-        setIsModified(hasChanges);
-    }, [displayName, email, timezone, language, originalData]);
-
-    // 获取时区显示文本
-    const getTimezoneLabel = (value: string) => {
-        const option = timezoneOptions[0].find((opt) => opt.value === value);
-        return option ? option.label : value;
-    };
-
-    // 获取语言显示文本
-    const getLanguageLabel = (value: string) => {
-        const option = languageOptions[0].find((opt) => opt.value === value);
-        return option ? option.label : value;
-    };
-
-    // 保存修改
-    const handleSave = async () => {
-        setIsSaving(true);
+    const fetchUserInfo = async () => {
+        setLoading(true);
         try {
-            // TODO: 调用 API 保存修改
-            console.log('保存账户信息数据:', {
-                displayName,
-                email,
-                timezone,
-                language,
+            const response = await getUserInfo();
+            if (!response.result) {
+                const errorMessage = response.message || t('login.systemError');
+                Toast.show({ content: errorMessage, icon: 'fail' });
+                return;
+            }
+            const data = response.data;
+            setOriginalData(data);
+            form.setFieldsValue({
+                display_name: data.display_name,
+                email: data.email,
             });
-            // 更新原始数据
-            setOriginalData({
-                displayName,
-                email,
-                timezone,
-                language,
+            setCurrentTimezone(data.timezone);
+            setCurrentLocale(data.locale);
+        } catch (error) {
+            console.error('Failed to fetch user info:', error);
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    const handleValuesChange = (newTimezone?: string, newLocale?: string) => {
+        const currentValues = form.getFieldsValue();
+        const tz = newTimezone ?? currentTimezone;
+        const locale = newLocale ?? currentLocale;
+        const hasChanges =
+            currentValues.display_name !== originalData.display_name ||
+            currentValues.email !== originalData.email ||
+            tz !== originalData.timezone ||
+            locale !== originalData.locale;
+        setIsModified(hasChanges);
+    };
+
+    const handleSave = async () => {
+        try {
+            await form.validateFields();
+            setIsSaving(true);
+            const formValues = form.getFieldsValue();
+            const saveData = {
+                display_name: formValues.display_name,
+                email: formValues.email,
+                timezone: currentTimezone,
+                locale: currentLocale,
+            };
+            const response = await updateUserInfo(saveData);
+            if (!response.result) {
+                const errorMessage = response.message || t('account.saveFailed');
+                Toast.show({ content: errorMessage, icon: 'fail' });
+                return;
+            }
+            setOriginalData(prev => ({
+                ...prev,
+                ...saveData,
+            }));
+
+            await updateStoredUserInfo({
+                display_name: saveData.display_name,
+                locale: saveData.locale,
             });
 
             Toast.show({
-                content: '保存成功',
+                content: t('account.saveSuccess'),
                 icon: 'success',
             });
-
             setIsModified(false);
         } catch (error) {
             console.error('保存失败:', error);
             Toast.show({
-                content: '保存失败',
+                content: t('account.saveFailed'),
                 icon: 'fail',
             });
         } finally {
@@ -123,13 +107,12 @@ export default function AccountDetailsPage() {
 
     return (
         <div className="flex flex-col h-full bg-[var(--color-background-body)]">
-            {/* 顶部导航栏 */}
             <div className="flex items-center justify-center px-4 py-3 bg-[var(--color-bg)]">
                 <button onClick={() => router.back()} className="absolute left-4">
                     <LeftOutline fontSize={24} className="text-[var(--color-text-1)]" />
                 </button>
                 <h1 className="text-lg font-medium text-[var(--color-text-1)]">
-                    账号与安全
+                    {t('account.title')}
                 </h1>
                 <span className='absolute right-4'>
                     <Button
@@ -140,184 +123,230 @@ export default function AccountDetailsPage() {
                         size="mini"
                         className='rounded-lg'
                     >
-                        保存
+                        {t('common.save')}
                     </Button>
                 </span>
             </div>
-
-            {/* 内容区域 */}
-            <div className="flex-1 overflow-y-auto">
+            {loading ? (
+                <div className="flex-1 flex items-center justify-center">
+                    <SpinLoading color="primary" style={{ '--size': '32px' }} />
+                </div>
+            ) : <div className="flex-1 overflow-y-auto px-4 pt-4">
                 {/* 基本信息卡片 */}
-                <div className="mx-4 mt-4 mb-4 bg-[var(--color-bg)] rounded-2xl shadow-sm overflow-hidden">
-                    <List>
+                <div className="mb-4 bg-[var(--color-bg)] rounded-2xl shadow-sm">
+                    <Form
+                        form={form}
+                        onValuesChange={handleValuesChange}
+                        mode='card'
+                        layout='horizontal'
+                        style={{
+                            '--adm-form-item-feedback-font-size': '12px',
+                        } as React.CSSProperties}
+                        className="[&_.adm-form-item-feedback-error]:text-right"
+                    >
                         {/* 用户名 - 不可编辑 */}
-                        <List.Item
-                            prefix={
-                                <div className="flex items-center justify-center w-6 h-6">
-                                    <span className="iconfont icon-yonghuming text-[var(--color-text-1)] text-2xl"></span>
+                        <Form.Item
+                            label={
+                                <div className="flex items-center">
+                                    <span className="iconfont icon-yonghuming text-[var(--color-text-1)] text-xl mr-2"></span>
+                                    <span className="text-[var(--color-text-1)] text-base">{t('account.username')}</span>
                                 </div>
                             }
-                            extra={
-                                <span className="text-[var(--color-text-3)] text-sm">
-                                    {mockAccountInfo.username}
-                                </span>
-                            }
                         >
-                            <span className="text-[var(--color-text-1)] text-base">用户名</span>
-                        </List.Item>
+                            <div className="text-[var(--color-text-3)] text-sm text-right">{originalData.username as string}</div>
+                        </Form.Item>
 
-                        {/* 姓名 - 可编辑 */}
-                        <List.Item
-                            prefix={
-                                <div className="flex items-center justify-center w-6 h-6">
-                                    <span className="iconfont icon-xingming text-[var(--color-text-1)] text-xl"></span>
+                        {/* 姓名 - 可编辑必填 */}
+                        <Form.Item
+                            name="display_name"
+                            label={
+                                <div className="flex items-center whitespace-nowrap">
+                                    <span className="iconfont icon-xingming text-[var(--color-text-1)] text-lg mr-2"></span>
+                                    <span className="text-[var(--color-text-1)] text-base">{t('account.displayName')}</span>
                                 </div>
                             }
+                            rules={[{ required: true, message: t('account.enterName') }]}
+                            style={{ '--prefix-width': '9em' } as React.CSSProperties}
                         >
-                            <div className="flex items-center justify-between w-full">
-                                <span className="text-[var(--color-text-1)] text-base mr-4">姓名</span>
-                                <Input
-                                    value={displayName}
-                                    onChange={setDisplayName}
-                                    placeholder="请输入姓名"
-                                    className="flex-1 text-right"
-                                    style={{
-                                        '--font-size': '14px',
-                                        '--text-align': 'right',
-                                    }}
-                                />
-                            </div>
-                        </List.Item>
+                            <Input
+                                placeholder={t('account.enterName')}
+                                style={{
+                                    '--font-size': '14px',
+                                    '--text-align': 'right',
+                                }}
+                            />
+                        </Form.Item>
 
-                        {/* 邮箱 - 可编辑 */}
-                        <List.Item
-                            prefix={
-                                <div className="flex items-center justify-center w-6 h-6">
-                                    <span className="iconfont icon-youxiang text-[var(--color-text-1)] text-xl"></span>
+                        {/* 邮箱 - 可编辑必填 */}
+                        <Form.Item
+                            name="email"
+                            label={
+                                <div className="flex items-center">
+                                    <span className="iconfont icon-youxiang text-[var(--color-text-1)] text-lg mr-2"></span>
+                                    <span className="text-[var(--color-text-1)] text-base">{t('account.email')}</span>
                                 </div>
                             }
+                            rules={[
+                                { required: true, message: t('account.enterEmail') },
+                                { type: 'email', message: t('account.enterValidEmail') },
+                            ]}
                         >
-                            <div className="flex items-center justify-between w-full">
-                                <span className="text-[var(--color-text-1)] text-base mr-4">邮箱</span>
-                                <Input
-                                    value={email}
-                                    onChange={setEmail}
-                                    placeholder="请输入邮箱"
-                                    type="email"
-                                    className="flex-1 text-right"
-                                    style={{
-                                        '--font-size': '14px',
-                                        '--text-align': 'right',
-                                    }}
-                                />
-                            </div>
-                        </List.Item>
+                            <Input
+                                placeholder={t('account.enterEmail')}
+                                type="email"
+                                style={{
+                                    '--font-size': '14px',
+                                    '--text-align': 'right',
+                                }}
+                            />
+                        </Form.Item>
 
                         {/* 时区 - 下拉选择 */}
-                        <List.Item
-                            prefix={
-                                <div className="flex items-center justify-center w-6 h-6">
-                                    <span className="iconfont icon-shiqu text-[var(--color-text-1)] text-xl"></span>
+                        <Form.Item
+                            label={
+                                <div className="flex items-center">
+                                    <span className="iconfont icon-shiqu text-[var(--color-text-1)] text-lg mr-2"></span>
+                                    <span className="text-[var(--color-text-1)] text-base">{t('account.timezone')}</span>
                                 </div>
                             }
-                            onClick={() => setTimezonePickerVisible(true)}
-                            clickable
                         >
-                            <div className="flex items-center justify-between w-full">
-                                <span className="text-[var(--color-text-1)] text-base">时区</span>
-                                <span className="text-[var(--color-text-1)] text-sm">
-                                    {getTimezoneLabel(timezone)}
-                                </span>
-                            </div>
-                        </List.Item>
+                            <Picker
+                                columns={[timezoneOptions.map(opt => ({ label: t(opt.label), value: opt.value }))]}
+                                value={[currentTimezone]}
+                                onConfirm={(value) => {
+                                    const newValue = value[0] as string;
+                                    setCurrentTimezone(newValue);
+                                    handleValuesChange(newValue, undefined);
+                                }}
+                            >
+                                {(items, actions) => (
+                                    <div onClick={() => actions.open()} className="text-[var(--color-text-1)] text-sm cursor-pointer text-right">
+                                        {timezoneOptions.find(o => o.value === currentTimezone)
+                                            ? t(timezoneOptions.find(o => o.value === currentTimezone)!.label)
+                                            : ''}
+                                    </div>
+                                )}
+                            </Picker>
+                        </Form.Item>
 
                         {/* 语言 - 下拉选择 */}
-                        <List.Item
-                            prefix={
-                                <div className="flex items-center justify-center w-6 h-6">
-                                    <span className="iconfont icon-yuyan text-[var(--color-text-1)] text-2xl"></span>
+                        <Form.Item
+                            label={
+                                <div className="flex items-center">
+                                    <span className="iconfont icon-yuyan text-[var(--color-text-1)] text-xl mr-2"></span>
+                                    <span className="text-[var(--color-text-1)] text-base">{t('account.language')}</span>
                                 </div>
                             }
-                            onClick={() => setLanguagePickerVisible(true)}
-                            clickable
                         >
-                            <div className="flex items-center justify-between w-full">
-                                <span className="text-[var(--color-text-1)] text-base">语言</span>
-                                <span className="text-[var(--color-text-1)] text-sm">
-                                    {getLanguageLabel(language)}
-                                </span>
-                            </div>
-                        </List.Item>
-                    </List>
+                            <Picker
+                                columns={[languageOptions.map(opt => ({ label: t(opt.label), value: opt.value }))]}
+                                value={[currentLocale]}
+                                onConfirm={(value) => {
+                                    const newValue = value[0] as string;
+                                    setCurrentLocale(newValue);
+                                    handleValuesChange(undefined, newValue);
+                                }}
+                            >
+                                {(items, actions) => (
+                                    <div onClick={() => actions.open()} className="text-[var(--color-text-1)] text-sm cursor-pointer text-right">
+                                        {languageOptions.find(o => o.value === currentLocale)
+                                            ? t(languageOptions.find(o => o.value === currentLocale)!.label)
+                                            : ''}
+                                    </div>
+                                )}
+                            </Picker>
+                        </Form.Item>
+                    </Form>
                 </div>
 
                 {/* 组织信息卡片 */}
-                <div className="mx-4 mb-4 bg-[var(--color-bg)] rounded-2xl shadow-sm overflow-hidden">
-                    <List header={<span className='text-[var(--color-text-1)]'><span className='iconfont icon-zuzhijigou text-xl'></span><span className="text-base px-4">组织</span></span>}>
-                        <List.Item>
-                            <div className="flex flex-wrap gap-2">
-                                {mockAccountInfo.organizations.map((org, index) => (
-                                    <div
-                                        key={index}
-                                        className="px-3 py-1 bg-[var(--color-fill-2)] rounded text-[var(--color-text-3)] text-sm"
-                                    >
-                                        {org}
-                                    </div>
-                                ))}
-                            </div>
-                        </List.Item>
-                    </List>
+                <div className="mb-4 bg-[var(--color-bg)] rounded-2xl shadow-sm overflow-hidden p-4">
+                    <div className="flex items-center mb-3">
+                        <span className="iconfont icon-zuzhijigou text-[var(--color-text-1)] text-xl mr-2"></span>
+                        <span className="text-[var(--color-text-1)] text-base">{t('account.organization')}</span>
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+
+                        {originalData.group_list && originalData.group_list.length > 0 ? (
+                            originalData.group_list.map((group: string, index: number) => (
+                                <div
+                                    key={index}
+                                    className="px-3 py-1 bg-[var(--color-fill-2)] rounded text-[var(--color-text-3)] text-sm"
+                                >
+                                    {group}
+                                </div>
+                            ))
+                        ) : (
+                            <span className="text-gray-400">{t('common.noData')}</span>
+                        )}
+                    </div>
                 </div>
 
                 {/* 角色信息卡片 */}
-                <div className="mx-4 mb-4 bg-[var(--color-bg)] rounded-2xl shadow-sm overflow-hidden">
-                    <List header={
-                        <div className="flex items-center justify-between">
-                            <span className='text-[var(--color-text-1)]'>
-                                <span className="iconfont icon-jiaoseguanli text-3xl"></span>
-                                <span className="text-base px-3">角色</span>
-                            </span>
-                            <span className="text-[var(--color-text-3)] text-sm">{mockAccountInfo.userType}</span>
+                <div className="mb-4 bg-[var(--color-bg)] rounded-2xl shadow-sm overflow-hidden p-4">
+                    <div className="flex items-center justify-between mb-3">
+                        <div className="flex items-center">
+                            <span className="iconfont icon-jiaoseguanli text-[var(--color-text-1)] text-3xl mr-2"></span>
+                            <span className="text-[var(--color-text-1)] text-base">{t('account.role')}</span>
                         </div>
-                    }>
-                        <List.Item>
-                            <div className="flex flex-wrap gap-2">
-                                {mockAccountInfo.roles.map((role, index) => (
-                                    <div
-                                        key={index}
-                                        className="px-3 py-1 bg-[var(--color-fill-2)] rounded text-[var(--color-text-3)] text-sm"
-                                    >
-                                        {role}
-                                    </div>
-                                ))}
-                            </div>
-                        </List.Item>
-                    </List>
+                        <span className="text-[var(--color-text-3)] text-sm">
+                            {originalData.role_list?.some((role: any) => !role.app && role.name === 'admin')
+                                ? t('account.superAdmin')
+                                : t('account.normalUser')}
+                        </span>
+                    </div>
+                    <hr className="border-[var(--color-border)] mb-3" />
+                    <div className="flex flex-wrap gap-3">
+                        {originalData.role_list && originalData.role_list.length > 0 ? (
+                            (() => {
+                                const superAdmin = originalData.role_list.find((role: any) => !role.app && role.name === 'admin');
+                                const normalRoles = originalData.role_list.filter((role: any) => !((!role.app) && role.name === 'admin'));
+                                const groupedRoles = normalRoles.reduce((acc: any, role: any) => {
+                                    const appName = role.app_display_name || t('account.otherApp');
+                                    if (!acc[appName]) {
+                                        acc[appName] = [];
+                                    }
+                                    acc[appName].push(role);
+                                    return acc;
+                                }, {});
+
+                                return (
+                                    <>
+                                        {/* 超级管理员 */}
+                                        {superAdmin && (
+                                            <div className="flex flex-wrap gap-2">
+                                                <div className="px-3 py-1 bg-[var(--color-fill-2)] rounded text-[var(--color-text-3)] text-sm">
+                                                    {t('account.superAdmin')}
+                                                </div>
+                                            </div>
+                                        )}
+                                        {/* 按应用分组的角色 */}
+                                        {Object.entries(groupedRoles).map(([app, roles]: [string, any]) => (
+                                            <div key={app}>
+                                                <div className="text-[var(--color-text-3)] text-xs mb-2 relative pl-2 before:content-[''] before:absolute before:left-0 before:top-1/2 before:-translate-y-1/2 before:w-1 before:h-full before:bg-blue-500 before:rounded-full">
+                                                    {app}
+                                                </div>
+                                                <div className="flex flex-wrap gap-2">
+                                                    {roles.map((role: any, idx: number) => (
+                                                        <div
+                                                            key={idx}
+                                                            className="px-3 py-1 bg-[var(--color-fill-2)] rounded text-[var(--color-text-3)] text-sm"
+                                                        >
+                                                            {role.name}
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                            </div>
+                                        ))}
+                                    </>
+                                );
+                            })()
+                        ) : (
+                            <span className="text-gray-400">{t('common.noData')}</span>
+                        )}
+                    </div>
                 </div>
-            </div>
-
-            {/* 时区选择器 */}
-            <Picker
-                columns={timezoneOptions}
-                visible={timezonePickerVisible}
-                onClose={() => setTimezonePickerVisible(false)}
-                value={[timezone]}
-                onConfirm={(value) => {
-                    setTimezone(value[0] as string);
-                }}
-            />
-
-            {/* 语言选择器 */}
-            <Picker
-                className='bg-[var(--color-bg)]'
-                columns={languageOptions}
-                visible={languagePickerVisible}
-                onClose={() => setLanguagePickerVisible(false)}
-                value={[language]}
-                onConfirm={(value) => {
-                    setLanguage(value[0] as string);
-                }}
-            />
-        </div>
+            </div>}
+        </div >
     );
 }

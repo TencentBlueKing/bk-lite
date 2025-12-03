@@ -4,6 +4,14 @@ import { useRouter, usePathname } from 'next/navigation';
 import { SpinLoading } from 'antd-mobile';
 import { AuthContextType } from '@/types/auth';
 import { LoginUserInfo } from '@/types/user';
+import {
+  initSecureStorage,
+  saveToken,
+  saveUserInfo,
+  getToken,
+  getUserInfoFromStorage,
+  clearAuthData,
+} from '@/utils/secureStorage';
 
 const AuthContext = createContext<AuthContextType | null>(null);
 
@@ -34,24 +42,19 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
       setIsInitializing(true);
 
       try {
-        const localToken =
-          typeof window !== 'undefined' ? localStorage.getItem('token') : null;
-        const localUserInfo =
-          typeof window !== 'undefined'
-            ? localStorage.getItem('userInfo')
-            : null;
+        // 初始化安全存储并加载数据到内存缓存
+        await initSecureStorage();
+
+        // 从安全存储获取 token 和用户信息
+        const localToken = await getToken();
+        const localUserInfo = await getUserInfoFromStorage();
 
         setToken(localToken);
         setIsAuthenticated(!!localToken);
 
         // 恢复用户信息
         if (localUserInfo) {
-          try {
-            const parsedUserInfo = JSON.parse(localUserInfo);
-            setUserInfo(parsedUserInfo);
-          } catch (error) {
-            console.error('解析用户信息失败:', error);
-          }
+          setUserInfo(localUserInfo);
         }
 
         // 如果是初始化阶段，等待一小段时间确保路由稳定
@@ -85,18 +88,37 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
     initializeAuth();
   }, [pathname, router, isPublicPath]);
 
-  const login = (newToken: string, newUserInfo: LoginUserInfo) => {
+  const login = async (newToken: string, newUserInfo: LoginUserInfo) => {
     setToken(newToken);
     setIsAuthenticated(true);
     setUserInfo(newUserInfo);
-    localStorage.setItem('token', newToken);
-    localStorage.setItem('userInfo', JSON.stringify(newUserInfo));
+
+    // 使用安全存储保存认证数据
+    await saveToken(newToken);
+    await saveUserInfo(newUserInfo);
+
     router.push('/conversation?id=1');
+  };
+
+  // 更新用户信息
+  const updateUserInfo = async (updates: Partial<LoginUserInfo>) => {
+    if (!userInfo) return;
+
+    const updatedUserInfo = { ...userInfo, ...updates };
+    setUserInfo(updatedUserInfo);
+
+    // 同步更新安全存储
+    await saveUserInfo(updatedUserInfo);
+    console.log('用户信息已更新:', updates);
   };
 
   const logout = async () => {
     setIsLoading(true);
     try {
+      // 使用安全存储清除认证数据
+      await clearAuthData();
+
+      // 同时清理可能残留的 localStorage 和 sessionStorage
       if (typeof window !== 'undefined') {
         localStorage.removeItem('token');
         localStorage.removeItem('user');
@@ -159,6 +181,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
         userInfo,
         login,
         logout,
+        updateUserInfo,
       }}
     >
       {children}

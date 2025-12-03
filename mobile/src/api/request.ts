@@ -4,6 +4,7 @@
  */
 
 import { tauriFetch, getApiBaseUrl } from '../utils/tauriFetch';
+import { getTokenSync } from '../utils/secureStorage';
 
 const API_BASE_URL = getApiBaseUrl();
 
@@ -16,8 +17,8 @@ export async function apiRequest<T = any>(
 ): Promise<T> {
   const url = `${API_BASE_URL}${endpoint}`;
 
-  // 从 localStorage 获取 token
-  const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
+  // 从安全存储的内存缓存获取 token（同步方法）
+  const token = getTokenSync();
 
   // 合并默认配置
   const config: RequestInit = {
@@ -86,7 +87,7 @@ export async function apiGet<T = any>(
       url = `${endpoint}?${queryString}`;
     }
   }
-  
+
   return apiRequest<T>(url, {
     ...options,
     method: 'GET',

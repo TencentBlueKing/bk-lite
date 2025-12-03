@@ -29,7 +29,8 @@
         "switchLanguageFailed": "Failed to switch language, please try again",
         "languageSelectionTitle": "Select Language",
         "languageSelectionSubtitle": "Choose Language",
-        "accountsAndSecurity": "Accounts & Security"
+        "accountsAndSecurity": "Accounts & Security",
+        "noData": "No data"
     },
     "navigation": {
         "conversations": "Chat",
@@ -104,9 +105,13 @@
         "role": "Role",
         "enterName": "Enter name",
         "enterEmail": "Enter email",
+        "enterValidEmail": "Enter a valid email address",
         "saveSuccess": "Saved successfully",
         "saveFailed": "Failed to save",
-        "user": "User"
+        "user": "User",
+        "superAdmin": "Super Admin",
+        "normalUser": "Normal User",
+        "otherApp": "Other"
     },
     "avatar": {
         "viewAvatar": "View Avatar",

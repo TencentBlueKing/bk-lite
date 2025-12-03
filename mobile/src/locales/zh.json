@@ -29,7 +29,8 @@
         "switchLanguageFailed": "切换语言失败，请重试",
         "languageSelectionTitle": "选择语言",
         "languageSelectionSubtitle": "Choose Language",
-        "accountsAndSecurity": "账户与安全"
+        "accountsAndSecurity": "账户与安全",
+        "noData": "暂无数据"
     },
     "navigation": {
         "conversations": "对话",
@@ -104,9 +105,13 @@
         "role": "角色",
         "enterName": "请输入姓名",
         "enterEmail": "请输入邮箱",
+        "enterValidEmail": "请输入有效的邮箱地址",
         "saveSuccess": "保存成功",
         "saveFailed": "保存失败",
-        "user": "用户"
+        "user": "用户",
+        "superAdmin": "超级管理员",
+        "normalUser": "普通用户",
+        "otherApp": "其他应用"
     },
     "avatar": {
         "viewAvatar": "查看头像",

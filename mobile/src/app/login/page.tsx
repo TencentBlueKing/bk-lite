@@ -87,7 +87,7 @@ export default function LoginPage() {
       }
 
       if (userData.token) {
-        login(userData.token, userData);
+        await login(userData.token, userData);
       }
 
       if (userData.redirect_url) {
