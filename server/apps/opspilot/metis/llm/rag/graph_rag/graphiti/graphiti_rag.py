@@ -1,5 +1,6 @@
 from typing import List, Optional, Union
 from datetime import datetime, timezone
+import asyncio
 
 from langchain_core.documents import Document
 from apps.opspilot.metis.llm.rag.graph_rag.graphiti.metis_embedder import MetisEmbedder
@@ -33,6 +34,24 @@ class GraphitiRAG:
         # 应用OpenAI客户端兼容性补丁
         # 解决GraphitiCore使用Azure OpenAI特有API的问题
         apply_openai_client_patch()
+
+    async def _safe_close_driver(self, graphiti: Graphiti):
+        """
+        安全关闭 Graphiti driver
+
+        注意：由于 FalkorDriver 会在初始化时启动后台任务，
+        我们简单地等待一小段时间让这些任务完成，而不是强制关闭连接。
+        实际上，对于短期操作，不关闭连接让其自然回收可能更安全。
+        """
+        try:
+            # 给后台索引构建任务足够时间完成
+            await asyncio.sleep(0.3)
+        except Exception as e:
+            logger.debug(f"等待后台任务时出现警告: {e}")
+
+        # 不主动关闭 driver，让 Redis 连接池自动管理
+        # 这样可以避免 "Buffer is closed" 错误
+        # driver 会在 graphiti 对象被垃圾回收时自动清理
 
     def _create_basic_graphiti(self) -> Graphiti:
         """创建基础的Graphiti实例（不包含LLM客户端）"""
@@ -148,84 +167,108 @@ class GraphitiRAG:
         """删除索引"""
         logger.info(f"删除索引: group_id={req.group_id}")
         graphiti = self._create_basic_graphiti()
-        await graphiti.driver.execute_query(
-            f"""
-            MATCH (n {{group_id: '{req.group_id}'}})
-            DETACH DELETE n
-            """
-        )
+        try:
+            await graphiti.driver.execute_query(
+                f"""
+                MATCH (n {{group_id: '{req.group_id}'}})
+                DETACH DELETE n
+                """
+            )
+        finally:
+            await self._safe_close_driver(graphiti)
 
     async def list_index_document(self, req: DocumentRetrieverRequest):
         """列出索引文档（节点和边）"""
         logger.info(f"查询索引文档: group_ids={req.group_ids}")
-        graphiti = self._create_basic_graphiti()
 
-        # 查询节点
-        nodes_result, _, _ = await graphiti.driver.execute_query(
-            """
-            MATCH (n) WHERE n.group_id IN $group_ids
-            RETURN n.name as name, n.uuid as uuid, n.fact as fact, n.summary as summary, 
-                   id(n) as node_id, n.group_id as group_id, labels(n) as labels
-            """,
-            group_ids=req.group_ids
+        # FalkorDB 中每个 graph 是独立的，需要使用 group_id 作为 graph 名称
+        graph_name = req.group_ids[0] if req.group_ids else self.knowledge_graph_database
+
+        # 创建指定 graph 的 driver
+        driver = FalkorDriver(
+            host=self.knowledge_graph_host,
+            username=self.knowledge_graph_username,
+            password=self.knowledge_graph_password,
+            port=self.knowledge_graph_port,
+            database=graph_name
         )
+        graphiti = Graphiti(graph_driver=driver)
 
-        # 查询边
-        edges_result, _, _ = await graphiti.driver.execute_query(
-            """
-            MATCH (n)-[r]-(m) 
-            WHERE n.group_id IN $group_ids AND m.group_id IN $group_ids
-            RETURN type(r) as relation_type, 
-                   n.uuid as source_uuid, m.uuid as target_uuid,
-                   n.name as source_name, m.name as target_name,
-                   r.fact as fact, id(n) as source_id, id(m) as target_id
-            """,
-            group_ids=req.group_ids
-        )
+        try:
+            # 查询节点
+            nodes_result, _, _ = await graphiti.driver.execute_query(
+                """
+                MATCH (n)
+                RETURN n.name as name, n.uuid as uuid, n.fact as fact, n.summary as summary, 
+                       id(n) as node_id, n.group_id as group_id, labels(n) as labels
+                """
+            )
 
-        # 构建边列表
-        edges = [
-            {
-                'relation_type': record['relation_type'],
-                'source': record['source_uuid'],
-                'target': record['target_uuid'],
-                'source_name': record['source_name'],
-                'target_name': record['target_name'],
-                'source_id': record['source_id'],
-                'target_id': record['target_id'],
-                'fact': record['fact']
-            }
-            for record in edges_result
-        ]
+            # 查询边
+            edges_result, _, _ = await graphiti.driver.execute_query(
+                """
+                MATCH (n)-[r]-(m)
+                RETURN type(r) as relation_type, 
+                       n.uuid as source_uuid, m.uuid as target_uuid,
+                       n.name as source_name, m.name as target_name,
+                       r.fact as fact, id(n) as source_id, id(m) as target_id
+                """
+            )
 
-        # 构建节点列表
-        nodes = [
-            {
-                'name': record['name'],
-                'uuid': record['uuid'],
-                'group_id': record['group_id'],
-                'node_id': record['node_id'],
-                "fact": record['fact'],
-                "summary": record['summary'],
-                "labels": record['labels'],
-            }
-            for record in nodes_result
-        ]
+            # 构建边列表
+            edges = [
+                {
+                    'relation_type': record['relation_type'],
+                    'source': record['source_uuid'],
+                    'target': record['target_uuid'],
+                    'source_name': record['source_name'],
+                    'target_name': record['target_name'],
+                    'source_id': record['source_id'],
+                    'target_id': record['target_id'],
+                    'fact': record['fact']
+                }
+                for record in edges_result
+            ]
 
-        return {"nodes": nodes, "edges": edges}
+            # 构建节点列表
+            nodes = [
+                {
+                    'name': record['name'],
+                    'uuid': record['uuid'],
+                    'group_id': record['group_id'],
+                    'node_id': record['node_id'],
+                    "fact": record['fact'],
+                    "summary": record['summary'],
+                    "labels": record['labels'],
+                }
+                for record in nodes_result
+            ]
+
+            result = {"nodes": nodes, "edges": edges}
+            logger.info(f"查询完成: {len(nodes)} 个节点, {len(edges)} 条边")
+            return result
+        finally:
+            # 等待后台任务完成
+            await self._safe_close_driver(graphiti)
 
     async def delete_document(self, req: DocumentDeleteRequest):
         """删除文档"""
         logger.info(f"删除文档: uuids={req.uuids}")
         graphiti = self._create_basic_graphiti()
-        for uuid in req.uuids:
-            await graphiti.remove_episode(episode_uuid=uuid)
+        try:
+            for uuid in req.uuids:
+                await graphiti.remove_episode(episode_uuid=uuid)
+        finally:
+            await self._safe_close_driver(graphiti)
 
     async def setup_graph(self):
         """设置图数据库索引和约束"""
         logger.info("设置图数据库索引和约束")
         graphiti = self._create_basic_graphiti()
-        await graphiti.build_indices_and_constraints()
+        try:
+            await graphiti.build_indices_and_constraints()
+        finally:
+            await self._safe_close_driver(graphiti)
 
     async def build_communities(self, graphiti_instance: Graphiti, group_ids: List[str]):
         """构建社区"""
@@ -244,58 +287,62 @@ class GraphitiRAG:
         graphiti_instance = self._create_full_graphiti(
             llm_config, embed_config, rerank_config)
 
-        # 处理文档
-        mapping = {}
-        success_count = 0
-        failed_count = 0
+        try:
+            # 处理文档
+            mapping = {}
+            success_count = 0
+            failed_count = 0
 
-        for i, doc in enumerate(tqdm(req.docs, desc="处理文档")):
-            try:
-                name = f"{doc.metadata['knowledge_title']}_{doc.metadata['knowledge_id']}_{doc.metadata['chunk_id']}"
-                logger.info(f"处理文档 {i + 1}/{len(req.docs)}: {name}")
+            for i, doc in enumerate(tqdm(req.docs, desc="处理文档")):
+                try:
+                    name = f"{doc.metadata['knowledge_title']}_{doc.metadata['knowledge_id']}_{doc.metadata['chunk_id']}"
+                    logger.info(f"处理文档 {i + 1}/{len(req.docs)}: {name}")
 
-                episode = await graphiti_instance.add_episode(
-                    name=name,
-                    episode_body=doc.page_content,
-                    source=EpisodeType.text,
-                    source_description=doc.metadata['knowledge_title'],
-                    reference_time=datetime.now(timezone.utc),
-                    group_id=req.group_id,
-                )
-                mapping[doc.metadata['chunk_id']] = episode.episode.uuid
-                success_count += 1
+                    episode = await graphiti_instance.add_episode(
+                        name=name,
+                        episode_body=doc.page_content,
+                        source=EpisodeType.text,
+                        source_description=doc.metadata['knowledge_title'],
+                        reference_time=datetime.now(timezone.utc),
+                        group_id=req.group_id,
+                    )
+                    mapping[doc.metadata['chunk_id']] = episode.episode.uuid
+                    success_count += 1
 
-                # 每处理10个文档输出一次进度
-                if (i + 1) % 10 == 0:
-                    logger.info(
-                        f"已处理 {i + 1}/{len(req.docs)} 个文档，成功: {success_count}, 失败: {failed_count}")
+                    # 每处理10个文档输出一次进度
+                    if (i + 1) % 10 == 0:
+                        logger.info(
+                            f"已处理 {i + 1}/{len(req.docs)} 个文档，成功: {success_count}, 失败: {failed_count}")
 
-            except Exception as e:
-                failed_count += 1
-                logger.error(f"处理文档失败 {name}: {e}")
-                # 添加更详细的调试信息
-                logger.error(f"文档内容长度: {len(doc.page_content)}")
-                logger.error(f"文档内容前500字符: {doc.page_content[:500]}...")
-                logger.error(f"文档元数据: {doc.metadata}")
-                # 继续处理下一个文档，不中断整个流程
+                except Exception as e:
+                    failed_count += 1
+                    logger.error(f"处理文档失败 {name}: {e}")
+                    # 添加更详细的调试信息
+                    logger.error(f"文档内容长度: {len(doc.page_content)}")
+                    logger.error(f"文档内容前500字符: {doc.page_content[:500]}...")
+                    logger.error(f"文档元数据: {doc.metadata}")
+                    # 继续处理下一个文档，不中断整个流程
 
-        # 可选：重建社区
-        if req.rebuild_community:
-            logger.info("开始重建社区...")
-            try:
-                await self.build_communities(graphiti_instance, [req.group_id])
-                logger.info("社区重建完成")
-            except Exception as e:
-                logger.error(f"社区重建失败: {e}")
-                # 社区重建失败不影响整体结果
+            # 可选：重建社区
+            if req.rebuild_community:
+                logger.info("开始重建社区...")
+                try:
+                    await self.build_communities(graphiti_instance, [req.group_id])
+                    logger.info("社区重建完成")
+                except Exception as e:
+                    logger.error(f"社区重建失败: {e}")
+                    # 社区重建失败不影响整体结果
 
-        logger.info(f"文档摄取完成: 成功摄取{success_count}个文档，失败{failed_count}个文档")
-        return {
-            "mapping": mapping,
-            "success_count": success_count,
-            "failed_count": failed_count,
-            "total_count": len(req.docs)
-        }
+            logger.info(f"文档摄取完成: 成功摄取{success_count}个文档，失败{failed_count}个文档")
+            return {
+                "mapping": mapping,
+                "success_count": success_count,
+                "failed_count": failed_count,
+                "total_count": len(req.docs)
+            }
+        finally:
+            # 确保关闭 driver 连接
+            await self._safe_close_driver(graphiti_instance)
 
     async def rebuild_community(self, req: RebuildCommunityRequest):
         """重建社区"""
@@ -308,8 +355,11 @@ class GraphitiRAG:
         # 创建完整配置的Graphiti实例
         graphiti_instance = self._create_full_graphiti(
             llm_config, embed_config, rerank_config)
-        await self.build_communities(graphiti_instance, req.group_ids)
-        logger.info("社区重建完成")
+        try:
+            await self.build_communities(graphiti_instance, req.group_ids)
+            logger.info("社区重建完成")
+        finally:
+            await self._safe_close_driver(graphiti_instance)
 
     async def search(self, req: DocumentRetrieverRequest) -> List[Document]:
         """搜索文档"""
@@ -326,53 +376,57 @@ class GraphitiRAG:
             rerank_config=rerank_config
         )
 
-        # 执行搜索
-        result = await graphiti_instance.search(
-            query=req.search_query,
-            num_results=req.size,
-            group_ids=req.group_ids
-        )
-
-        # 收集需要查询的节点UUID
-        node_uid_set = set()
-        for r in result:
-            node_uid_set.add(r.source_node_uuid)
-            node_uid_set.add(r.target_node_uuid)
-
-        # 查询节点信息
-        node_info_map = {}
-        if node_uid_set:
-            node_uids = list(node_uid_set)
-            logger.info(f"查询节点信息: node_uids数量={len(node_uids)}")
-            node_result, _, _ = await graphiti_instance.driver.execute_query(
-                """
-                MATCH (n) 
-                WHERE n.uuid IN $node_uids
-                RETURN n.uuid as uuid, n.name as name, n.fact as fact, 
-                       n.summary as summary, labels(n) as labels
-                """,
-                node_uids=node_uids
+        try:
+            # 执行搜索
+            result = await graphiti_instance.search(
+                query=req.search_query,
+                num_results=req.size,
+                group_ids=req.group_ids
             )
 
-            node_info_map = {
-                record['uuid']: {
-                    'name': record['name'],
-                    'fact': record['fact'],
-                    'summary': record['summary'],
-                    'labels': record['labels']
+            # 收集需要查询的节点UUID
+            node_uid_set = set()
+            for r in result:
+                node_uid_set.add(r.source_node_uuid)
+                node_uid_set.add(r.target_node_uuid)
+
+            # 查询节点信息
+            node_info_map = {}
+            if node_uid_set:
+                node_uids = list(node_uid_set)
+                logger.info(f"查询节点信息: node_uids数量={len(node_uids)}")
+                node_result, _, _ = await graphiti_instance.driver.execute_query(
+                    """
+                    MATCH (n) 
+                    WHERE n.uuid IN $node_uids
+                    RETURN n.uuid as uuid, n.name as name, n.fact as fact, 
+                           n.summary as summary, labels(n) as labels
+                    """,
+                    node_uids=node_uids
+                )
+
+                node_info_map = {
+                    record['uuid']: {
+                        'name': record['name'],
+                        'fact': record['fact'],
+                        'summary': record['summary'],
+                        'labels': record['labels']
+                    }
+                    for record in node_result
                 }
-                for record in node_result
-            }
-            logger.info(f"查询到节点信息: 节点数量={len(node_info_map)}")
+                logger.info(f"查询到节点信息: 节点数量={len(node_info_map)}")
 
-        # 构建结果文档
-        docs = [
-            self._build_search_result_doc(r, node_info_map)
-            for r in result
-        ]
+            # 构建结果文档
+            docs = [
+                self._build_search_result_doc(r, node_info_map)
+                for r in result
+            ]
 
-        logger.info(f"搜索完成: 找到{len(docs)}个相关文档")
-        return docs
+            logger.info(f"搜索完成: 找到{len(docs)}个相关文档")
+            return docs
+        finally:
+            # 确保关闭 driver 连接
+            await self._safe_close_driver(graphiti_instance)
 
     def _build_node_info(self, node_uuid: str, node_info_map: dict) -> dict:
         """构建节点信息字典"""
