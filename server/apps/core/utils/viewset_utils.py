@@ -52,6 +52,42 @@ class GenericViewSetFun(object):
             logger.error(f"Error getting rule instances: {e}")
             return False
 
+    @staticmethod
+    def extract_child_group_ids(group_tree, current_team_id):
+        """
+        从 group_tree 中递归提取指定组及其所有子组的 ID
+
+        Args:
+            group_tree: 组树结构列表
+            current_team_id: 当前团队 ID
+
+        Returns:
+            包含当前组及其所有子组 ID 的列表
+        """
+        group_ids = []
+
+        def extract_ids(groups, target_id, found=False):
+            for group in groups:
+                if group.get("id") == target_id:
+                    group_ids.append(target_id)
+                    # 递归提取所有子组
+                    if group.get("subGroups"):
+                        extract_subgroups(group["subGroups"])
+                    return True
+                elif group.get("subGroups"):
+                    if extract_ids(group["subGroups"], target_id, found):
+                        return True
+            return False
+
+        def extract_subgroups(subgroups):
+            for subgroup in subgroups:
+                group_ids.append(subgroup.get("id"))
+                if subgroup.get("subGroups"):
+                    extract_subgroups(subgroup["subGroups"])
+
+        extract_ids(group_tree, current_team_id)
+        return group_ids
+
     def get_queryset_by_permission(self, request, queryset, permission_key=None):
         user = getattr(request, "user", None)
         if not user:
@@ -63,7 +99,23 @@ class GenericViewSetFun(object):
         fields = [i.name for i in queryset.model._meta.fields]
         org_field = getattr(self, "ORGANIZATION_FIELD", "team")
         if "created_by" in fields:
-            query = Q(**{f"{org_field}__contains": int(current_team)}, created_by=request.user.username, domain=request.user.domain)
+            if include_children:
+                # 提取当前组及其所有子组的 ID
+                group_tree = getattr(user, "group_tree", [])
+                team_ids = self.extract_child_group_ids(group_tree, int(current_team))
+
+                if team_ids:
+                    # 查询组织 ID 在子组列表中，且创建者和域名是当前用户的数据
+                    team_query = Q()
+                    for team_id in team_ids:
+                        team_query |= Q(**{f"{org_field}__contains": team_id})
+                    query = Q(team_query, created_by=request.user.username, domain=request.user.domain)
+                else:
+                    # 没有找到子组，使用当前组
+                    query = Q(**{f"{org_field}__contains": int(current_team)}, created_by=request.user.username, domain=request.user.domain)
+            else:
+                # 不包含子组，使用原逻辑
+                query = Q(**{f"{org_field}__contains": int(current_team)}, created_by=request.user.username, domain=request.user.domain)
         else:
             query = Q()
         permission_key = permission_key or getattr(self, "permission_key", None)

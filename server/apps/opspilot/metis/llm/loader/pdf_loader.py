@@ -7,16 +7,15 @@ from typing import List
 import fitz
 import pandas as pd
 from langchain_core.documents import Document
+from loguru import logger
 from tabula.io import read_pdf
 from tqdm import tqdm
-from loguru import logger
 
-from neco.ocr.base_ocr import BaseOCR
+from apps.opspilot.metis.ocr.base_ocr import BaseOCR
 
 
 class PDFLoader:
-
-    def __init__(self, file_path, ocr: BaseOCR, load_mode: str = 'full'):
+    def __init__(self, file_path, ocr: BaseOCR, load_mode: str = "full"):
         """
         初始化PDF加载器
 
@@ -30,7 +29,7 @@ class PDFLoader:
         self.load_mode = load_mode
 
     def remove_unicode_chars(self, text):
-        return re.sub(r'\\u[fF]{1}[0-9a-fA-F]{3}', '', text)
+        return re.sub(r"\\u[fF]{1}[0-9a-fA-F]{3}", "", text)
 
     def _get_table_areas(self, pdf):
         """获取所有页面的表格区域"""
@@ -55,7 +54,7 @@ class PDFLoader:
                     if x0 < tx1 and x1 > tx0 and y0 < ty1 and y1 > ty0:
                         return True
             return False
-        except Exception as e:
+        except Exception:
             return False
 
     def _extract_page_text(self, page, table_areas):
@@ -93,16 +92,13 @@ class PDFLoader:
                     base_image = pdf.extract_image(xref_value)
                     image_bytes = base_image["image"]
 
-                    image_base64 = base64.b64encode(
-                        image_bytes).decode('utf-8')
+                    image_base64 = base64.b64encode(image_bytes).decode("utf-8")
 
                     with tempfile.NamedTemporaryFile(delete=True, suffix=".png") as tmp_file:
                         tmp_file.write(image_bytes)
                         predict_result = self.ocr.predict(tmp_file.name)
-                        metadata = {
-                            "format": "image", "page": page_number, "image_base64": image_base64}
-                        docs.append(
-                            Document(predict_result, metadata=metadata))
+                        metadata = {"format": "image", "page": page_number, "image_base64": image_base64}
+                        docs.append(Document(predict_result, metadata=metadata))
                 except Exception as e:
                     logger.error(f"解析图片失败: {e}")
 
@@ -112,17 +108,13 @@ class PDFLoader:
         """解析PDF中的表格"""
         docs = []
         try:
-            with BytesIO(open(self.file_path, 'rb').read()) as pdf_file:
-                tables = read_pdf(pdf_file, pages='all')
-                page_numbers = read_pdf(
-                    pdf_file, pages='all', output_format='json')
+            with BytesIO(open(self.file_path, "rb").read()) as pdf_file:
+                tables = read_pdf(pdf_file, pages="all")
+                page_numbers = read_pdf(pdf_file, pages="all", output_format="json")
 
                 for i, (table, page_info) in enumerate(zip(tables, page_numbers)):
-                    page_num = page_info.get('page_number', i + 1)
-                    table_docs = Document(
-                        pd.DataFrame(table).to_markdown(index=False),
-                        metadata={"format": "table", "page": page_num}
-                    )
+                    page_num = page_info.get("page_number", i + 1)
+                    table_docs = Document(pd.DataFrame(table).to_markdown(index=False), metadata={"format": "table", "page": page_num})
                     docs.append(table_docs)
         except Exception as e:
             logger.error(f"解析PDF表格失败: {e}", exc_info=True)
@@ -142,7 +134,7 @@ class PDFLoader:
 
             # 解析文本，根据模式处理
             try:
-                if self.load_mode == 'full':
+                if self.load_mode == "full":
                     # 整个文档作为一个Document
                     full_text = ""
                     for page in tqdm(pdf, desc=f"解析PDF文本[{self.file_path}]"):
@@ -153,21 +145,17 @@ class PDFLoader:
                     if full_text.strip():
                         docs.append(Document(full_text.strip()))
 
-                elif self.load_mode == 'page':
+                elif self.load_mode == "page":
                     # 每页一个Document
                     for page_number, page in enumerate(tqdm(pdf, desc=f"按页解析PDF文本[{self.file_path}]"), 1):
                         page_text = self._extract_page_text(page, table_areas)
                         if page_text:
-                            docs.append(Document(
-                                page_text,
-                                metadata={"format": "text",
-                                          "page": page_number}
-                            ))
+                            docs.append(Document(page_text, metadata={"format": "text", "page": page_number}))
             except Exception as e:
                 logger.error(f"解析PDF文本失败: {e}", exc_info=True)
 
             # 解析表格
             docs.extend(self._parse_tables())
 
-            logger.info(f'成功解析PDF文件：{self.file_path}，共提取 {len(docs)} 个文档片段')
+            logger.info(f"成功解析PDF文件：{self.file_path}，共提取 {len(docs)} 个文档片段")
             return docs

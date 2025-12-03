@@ -5,11 +5,9 @@
 """
 
 # 导入所有工具函数，保持向后兼容性
-from neco.llm.tools.search.duckduckgo import (
-    duckduckgo_search,
-)
+from apps.opspilot.metis.llm.tools.search.duckduckgo import duckduckgo_search
 
 __all__ = [
     # 搜索工具
-    'duckduckgo_search',
+    "duckduckgo_search",
 ]

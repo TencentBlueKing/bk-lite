@@ -5,13 +5,10 @@
 """
 
 # 导入所有工具函数，保持向后兼容性
-from neco.llm.tools.github.commits import (
-    get_github_commits,
-    get_github_commits_with_pagination,
-)
+from apps.opspilot.metis.llm.tools.github.commits import get_github_commits, get_github_commits_with_pagination
 
 __all__ = [
     # Commits查询工具
-    'get_github_commits',
-    'get_github_commits_with_pagination',
+    "get_github_commits",
+    "get_github_commits_with_pagination",
 ]

@@ -5,13 +5,10 @@
 """
 
 # 导入所有工具函数，保持向后兼容性
-from neco.llm.tools.jenkins.build import (
-    list_jenkins_jobs,
-    trigger_jenkins_build,
-)
+from apps.opspilot.metis.llm.tools.jenkins.build import list_jenkins_jobs, trigger_jenkins_build
 
 __all__ = [
     # Jenkins构建工具
-    'list_jenkins_jobs',
-    'trigger_jenkins_build',
+    "list_jenkins_jobs",
+    "trigger_jenkins_build",
 ]

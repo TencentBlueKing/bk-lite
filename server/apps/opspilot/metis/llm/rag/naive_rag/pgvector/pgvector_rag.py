@@ -1,15 +1,29 @@
 import copy
 import json
 import os
+import time
+import uuid
+from datetime import datetime
 from typing import Any, Dict, List, Optional, Union
 
 from langchain_core.documents import Document
 from langchain_postgres import PGVector
 from loguru import logger
 
+from apps.opspilot.metis.llm.chunk.fixed_size_chunk import FixedSizeChunk
+from apps.opspilot.metis.llm.chunk.full_chunk import FullChunk
+from apps.opspilot.metis.llm.chunk.recursive_chunk import RecursiveChunk
+from apps.opspilot.metis.llm.chunk.semantic_chunk import SemanticChunk
 from apps.opspilot.metis.llm.embed.embed_manager import EmbedManager
-
-# 导入分离的类
+from apps.opspilot.metis.llm.loader.doc_loader import DocLoader
+from apps.opspilot.metis.llm.loader.excel_loader import ExcelLoader
+from apps.opspilot.metis.llm.loader.image_loader import ImageLoader
+from apps.opspilot.metis.llm.loader.markdown_loader import MarkdownLoader
+from apps.opspilot.metis.llm.loader.pdf_loader import PDFLoader
+from apps.opspilot.metis.llm.loader.ppt_loader import PPTLoader
+from apps.opspilot.metis.llm.loader.raw_loader import RawLoader
+from apps.opspilot.metis.llm.loader.text_loader import TextLoader
+from apps.opspilot.metis.llm.loader.website_loader import WebSiteLoader
 from apps.opspilot.metis.llm.rag.naive_rag.pgvector.database_manager import DatabaseManager
 from apps.opspilot.metis.llm.rag.naive_rag.pgvector.query_builder import QueryBuilder
 from apps.opspilot.metis.llm.rag.naive_rag.recall_strategies.recall_strategy_factory import RecallStrategyFactory
@@ -23,6 +37,7 @@ from apps.opspilot.metis.llm.rag.naive_rag_entity import (
     IndexDeleteRequest,
 )
 from apps.opspilot.metis.llm.rerank.rerank_manager import ReRankManager
+from apps.opspilot.metis.ocr.ocr_manager import OcrManager
 
 
 class PgvectorRag:
@@ -573,94 +588,339 @@ class PgvectorRag:
             logger.debug(f"默认召回处理完成 - 输入: {len(results)}, 输出: {len(processed_results)}")
             return processed_results
 
-    #
-    #
-    # def custom_content_ingest(self, req):
-    #     """自定义内容摄取接口"""
-    #     content = request.form.get('content')
-    #     params = _parse_common_ingest_params(request)
-    #
-    #     # 加载自定义内容
-    #     loader = RawLoader(content)
-    #     docs = loader.load()
-    #
-    #     # 对于自定义内容，如果不是预览模式，需要手动处理分块
-    #     if not params['is_preview']:
-    #         # 处理文档元数据
-    #         docs = RagService.prepare_documents_metadata(
-    #             docs,
-    #             is_preview=params['is_preview'],
-    #             title="自定义内容",
-    #             knowledge_id=params['knowledge_id']
-    #         )
-    #
-    #         # 执行文档分块
-    #         chunker = RagService.get_chunker(params['chunk_mode'], request)
-    #         chunked_docs = chunker.chunk(docs)
-    #
-    #         # 执行文档存储
-    #         logger.debug(
-    #             f"开始存储{len(chunked_docs)}个文档分块，将自动添加created_time字段以支持时间排序")
-    #         RagService.store_documents_to_pg(
-    #             chunked_docs=chunked_docs,
-    #             knowledge_base_id=params['knowledge_base_id'],
-    #             embed_model_base_url=params['embed_model_base_url'],
-    #             embed_model_api_key=params['embed_model_api_key'],
-    #             embed_model_name=params['embed_model_name'],
-    #             metadata=params['metadata']
-    #         )
-    #         return json({"status": "success", "message": "", "chunks_size": len(chunked_docs)})
-    #     else:
-    #         # 预览模式使用统一流水线
-    #         return _process_documents_pipeline(docs, "自定义内容", params, "自定义内容", request)
-    #
-    #
-    # @naive_rag_api_router.post("/website_ingest")
-    # @auth.login_required
-    # async def website_ingest(request):
-    #     """网站内容摄取接口"""
-    #     url = request.form.get('url')
-    #     max_depth = int(request.form.get('max_depth', 1))
-    #     params = _parse_common_ingest_params(request)
-    #
-    #     # 加载网站内容
-    #     loader = WebSiteLoader(url, max_depth)
-    #     docs = loader.load()
-    #
-    #     # 使用统一的文档处理流水线
-    #     return _process_documents_pipeline(docs, url, params, "网站内容", request)
-    #
-    #
-    # @naive_rag_api_router.post("/file_ingest")
-    # @auth.login_required
-    # async def file_ingest(request):
-    #     """文件内容摄取接口"""
-    #     file = request.files.get('file')
-    #     params = _parse_common_ingest_params(request)
-    #
-    #     # 文件类型验证
-    #     allowed_types = ['docx', 'pptx', 'ppt', 'doc', 'txt',
-    #                      'jpg', 'png', 'jpeg', 'pdf', 'csv', 'xlsx', 'xls', 'md']
-    #
-    #     file_extension = file.name.split(
-    #         '.')[-1].lower() if '.' in file.name else ''
-    #     if file_extension not in allowed_types:
-    #         return json({
-    #             "status": "error",
-    #             "message": f"不支持的文件类型。支持的类型: {', '.join(allowed_types)}"
-    #         })
-    #
-    #     load_mode = request.form.get('load_mode', 'full')
-    #
-    #     with tempfile.NamedTemporaryFile(delete=True, suffix=f'.{file_extension}') as temp_file:
-    #         temp_file.write(file.body)
-    #         temp_file.flush()
-    #         temp_path = temp_file.name
-    #
-    #         # 加载文件内容
-    #         loader = RagService.get_file_loader(
-    #             temp_path, file_extension, load_mode, request)
-    #         docs = loader.load()
-    #
-    #         # 使用统一的文档处理流水线
-    #         return _process_documents_pipeline(docs, file.name, params, "文件内容", request)
+    # ==================== 文档处理辅助方法 ====================
+
+    @classmethod
+    def store_documents_to_pg(cls, chunked_docs, knowledge_base_id, embed_model_base_url, embed_model_api_key, embed_model_name, metadata=None):
+        """将文档存储到PgVector
+
+        Args:
+            chunked_docs: 分块后的文档
+            knowledge_base_id: 知识库ID
+            embed_model_base_url: 嵌入模型基础URL
+            embed_model_api_key: 嵌入模型API密钥
+            embed_model_name: 嵌入模型名称
+            metadata: 额外的元数据
+        """
+        if metadata is None:
+            metadata = {}
+
+        logger.debug(f"存储文档到PgVector, 知识库ID: {knowledge_base_id}, 模型名称: {embed_model_name}, 分块数: {len(chunked_docs)}")
+
+        # 自动添加创建时间
+        created_time = datetime.now().isoformat()
+        logger.debug(f"为文档添加创建时间: {created_time}")
+
+        for doc in chunked_docs:
+            # 添加创建时间到每个文档的元数据中
+            doc.metadata["created_time"] = created_time
+
+        # 应用额外的元数据
+        if metadata:
+            logger.debug(f"应用额外元数据: {metadata}")
+            for doc in chunked_docs:
+                doc.metadata.update(metadata)
+
+        pg_store_request = DocumentIngestRequest(
+            index_name=knowledge_base_id,
+            docs=chunked_docs,
+            embed_model_base_url=embed_model_base_url,
+            embed_model_api_key=embed_model_api_key,
+            embed_model_name=embed_model_name,
+        )
+
+        try:
+            start_time = time.time()
+            rag = PgvectorRag()
+            rag.ingest(pg_store_request)
+            elapsed_time = time.time() - start_time
+            logger.debug(f"PgVector存储完成, 耗时: {elapsed_time:.2f}秒")
+        except Exception as e:
+            elapsed_time = time.time() - start_time
+            logger.error(f"PgVector存储失败, 耗时: {elapsed_time:.2f}秒, 错误: {e}")
+            raise
+
+    @classmethod
+    def perform_chunking(cls, docs, chunk_mode, request_params, is_preview, content_type):
+        """执行文档分块并记录相关日志
+
+        Args:
+            docs: 文档列表
+            chunk_mode: 分块模式
+            request_params: 请求参数字典
+            is_preview: 是否为预览模式
+            content_type: 内容类型
+
+        Returns:
+            分块后的文档列表
+        """
+        mode = "预览" if is_preview else "正式处理"
+        logger.debug(f"{content_type}分块 [{mode}], 模式: {chunk_mode}, 文档数: {len(docs)}")
+
+        chunker = cls.get_chunker(chunk_mode, request_params)
+        chunked_docs = chunker.chunk(docs)
+        logger.debug(f"{content_type}分块完成, 输入文档: {len(docs)}, 输出分块: {len(chunked_docs)}")
+        return chunked_docs
+
+    @classmethod
+    def prepare_documents_metadata(cls, docs, is_preview, title, knowledge_id=None):
+        """准备文档的元数据
+
+        Args:
+            docs: 文档列表
+            is_preview: 是否为预览模式
+            title: 文档标题
+            knowledge_id: 知识库ID，预览模式下不需要
+
+        Returns:
+            处理后的文档列表
+        """
+        mode = "预览" if is_preview else "正式处理"
+        logger.debug(f"准备文档元数据 [{mode}], 标题: {title}, 知识ID: {knowledge_id}, 文档数: {len(docs)}")
+        if is_preview:
+            return cls.process_documents(docs, title)
+        else:
+            return cls.process_documents(docs, title, knowledge_id)
+
+    @classmethod
+    def serialize_documents(cls, docs):
+        """将文档序列化为JSON格式"""
+        logger.debug(f"序列化 {len(docs)} 个文档")
+        serialized_docs = []
+        for doc in docs:
+            serialized_docs.append({"page_content": doc.page_content, "metadata": doc.metadata})
+        return serialized_docs
+
+    @classmethod
+    def process_documents(cls, docs, knowledge_title, knowledge_id=None):
+        """处理文档，添加元数据"""
+        logger.debug(f"处理文档元数据，标题: {knowledge_title}, ID: {knowledge_id}, 文档数量: {len(docs)}")
+        for index, doc in enumerate(docs):
+            doc.metadata["knowledge_title"] = knowledge_title
+            if knowledge_id:
+                doc.metadata["knowledge_id"] = knowledge_id
+            doc.metadata["segment_id"] = str(uuid.uuid4())
+            doc.metadata["segment_number"] = str(index)
+        return docs
+
+    @classmethod
+    def get_chunker(cls, chunk_mode, request_params):
+        """根据分块模式返回相应的分块器
+
+        Args:
+            chunk_mode: 分块模式
+            request_params: 请求参数字典
+        """
+        logger.debug(f"初始化分块器，模式: {chunk_mode}")
+        if chunk_mode == "fixed_size":
+            chunk_size = int(request_params.get("chunk_size", 256))
+            logger.debug(f"使用固定大小分块，大小: {chunk_size}")
+            return FixedSizeChunk(chunk_size=chunk_size)
+
+        elif chunk_mode == "full":
+            logger.debug("使用全文分块")
+            return FullChunk()
+
+        elif chunk_mode == "recursive":
+            chunk_size = int(request_params.get("chunk_size", 256))
+            chunk_overlap = int(request_params.get("chunk_overlap", 128))
+            logger.debug(f"使用递归分块，大小: {chunk_size}, 重叠: {chunk_overlap}")
+            return RecursiveChunk(chunk_size=chunk_size, chunk_overlap=chunk_overlap)
+
+        elif chunk_mode == "semantic":
+            semantic_chunk_model = request_params.get("semantic_chunk_model")
+            semantic_chunk_model_base_url = request_params.get("semantic_chunk_model_base_url")
+            logger.debug(f"使用语义分块，模型: {semantic_chunk_model}, URL: {semantic_chunk_model_base_url}")
+            semantic_chunk_model_api_key = request_params.get("semantic_chunk_model_api_key")
+            embeddings = EmbedManager().get_embed(
+                protocol=semantic_chunk_model_base_url,
+                model_name=semantic_chunk_model,
+                model_api_key=semantic_chunk_model_api_key,
+                model_base_url=semantic_chunk_model_base_url,
+            )
+            return SemanticChunk(embeddings)
+        else:
+            error_msg = f"不支持的分块模式: {chunk_mode}"
+            logger.error(error_msg)
+            raise ValueError(error_msg)
+
+    @classmethod
+    def get_file_loader(cls, file_path, file_extension, load_mode, request_params):
+        """根据文件类型选择适当的加载器
+
+        Args:
+            file_path: 文件路径
+            file_extension: 文件扩展名
+            load_mode: 加载模式
+            request_params: 请求参数字典
+        """
+        logger.debug(f"为文件 {file_path} (类型: {file_extension}) 初始化加载器")
+
+        ocr_type = request_params.get("ocr_type")
+        base_url = request_params.get("olm_base_url") or request_params.get("azure_endpoint")
+        model = request_params.get("olm_model")
+        api_key = request_params.get("olm_api_key") or request_params.get("azure_api_key")
+
+        ocr = OcrManager.load_ocr(ocr_type=ocr_type, model=model, base_url=base_url, api_key=api_key)
+
+        if file_extension in ["docx", "doc"]:
+            return DocLoader(file_path, ocr, load_mode)
+        elif file_extension in ["pptx", "ppt"]:
+            return PPTLoader(file_path, load_mode)
+        elif file_extension == "txt":
+            return TextLoader(file_path, load_mode)
+        elif file_extension in ["jpg", "png", "jpeg"]:
+            return ImageLoader(file_path, ocr, load_mode)
+        elif file_extension == "pdf":
+            return PDFLoader(file_path, ocr, load_mode)
+        elif file_extension in ["xlsx", "xls", "csv"]:
+            return ExcelLoader(file_path, load_mode)
+        elif file_extension in ["md"]:
+            return MarkdownLoader(file_path, load_mode)
+        else:
+            raise ValueError(f"不支持的文件类型: {file_extension}")
+
+    # ==================== 文档摄取接口 ====================
+
+    def custom_content_ingest(self, content: str, params: Dict[str, Any]) -> Dict[str, Any]:
+        """自定义内容摄取接口
+
+        Args:
+            content: 自定义内容文本
+            params: 包含以下参数的字典:
+                - is_preview: 是否为预览模式
+                - chunk_mode: 分块模式
+                - metadata: 元数据字典
+                - knowledge_base_id: 知识库ID
+                - embed_model_base_url: 嵌入模型URL
+                - embed_model_api_key: 嵌入模型API密钥
+                - embed_model_name: 嵌入模型名称
+                - knowledge_id: 知识ID
+
+        Returns:
+            包含状态和结果信息的字典
+        """
+        logger.info(f"自定义内容摄取开始 - 预览模式: {params['is_preview']}")
+
+        # 加载自定义内容
+        loader = RawLoader(content)
+        docs = loader.load()
+
+        # 对于自定义内容，如果不是预览模式，需要手动处理分块
+        if not params["is_preview"]:
+            # 处理文档元数据
+            docs = self.prepare_documents_metadata(docs, is_preview=params["is_preview"], title="自定义内容", knowledge_id=params["knowledge_id"])
+
+            # 执行文档分块
+            chunker = self.get_chunker(params["chunk_mode"], params)
+            chunked_docs = chunker.chunk(docs)
+
+            # 执行文档存储
+            logger.debug(f"开始存储{len(chunked_docs)}个文档分块")
+            self.store_documents_to_pg(
+                chunked_docs=chunked_docs,
+                knowledge_base_id=params["knowledge_base_id"],
+                embed_model_base_url=params["embed_model_base_url"],
+                embed_model_api_key=params["embed_model_api_key"],
+                embed_model_name=params["embed_model_name"],
+                metadata=params["metadata"],
+            )
+            logger.info(f"自定义内容摄取成功 - 分块数: {len(chunked_docs)}")
+            return {"status": "success", "message": "", "chunks_size": len(chunked_docs)}
+        else:
+            # 预览模式使用统一流水线
+            return self._process_documents_pipeline(docs, "自定义内容", params, "自定义内容")
+
+    def website_ingest(self, url: str, max_depth: int, params: Dict[str, Any]) -> Dict[str, Any]:
+        """网站内容摄取接口
+
+        Args:
+            url: 网站URL
+            max_depth: 爬取最大深度
+            params: 参数字典（同custom_content_ingest）
+
+        Returns:
+            包含状态和结果信息的字典
+        """
+        logger.info(f"网站内容摄取开始 - URL: {url}, 最大深度: {max_depth}, 预览模式: {params['is_preview']}")
+
+        # 加载网站内容
+        loader = WebSiteLoader(url, max_depth)
+        docs = loader.load()
+
+        # 使用统一的文档处理流水线
+        result = self._process_documents_pipeline(docs, url, params, "网站内容")
+        logger.info(f"网站内容摄取完成 - URL: {url}, 分块数: {result.get('chunks_size', 0)}")
+        return result
+
+    def file_ingest(self, file_path: str, file_name: str, params: Dict[str, Any]) -> Dict[str, Any]:
+        """文件内容摄取接口
+
+        Args:
+            file_path: 文件路径（临时文件）
+            file_name: 原始文件名
+            params: 参数字典（同custom_content_ingest，额外包含 load_mode）
+
+        Returns:
+            包含状态和结果信息的字典
+        """
+        # 文件类型验证
+        allowed_types = ["docx", "pptx", "ppt", "doc", "txt", "jpg", "png", "jpeg", "pdf", "csv", "xlsx", "xls", "md"]
+
+        file_extension = file_name.split(".")[-1].lower() if "." in file_name else ""
+        if file_extension not in allowed_types:
+            error_msg = f"不支持的文件类型。支持的类型: {', '.join(allowed_types)}"
+            logger.error(f"文件摄取失败 - {error_msg}")
+            return {"status": "error", "message": error_msg}
+
+        load_mode = params.get("load_mode", "full")
+        logger.info(f"文件内容摄取开始 - 文件: {file_name}, 类型: {file_extension}, 预览模式: {params['is_preview']}")
+
+        try:
+            # 加载文件内容
+            loader = self.get_file_loader(file_path, file_extension, load_mode, params)
+            docs = loader.load()
+
+            # 使用统一的文档处理流水线
+            result = self._process_documents_pipeline(docs, file_name, params, "文件内容")
+            logger.info(f"文件内容摄取完成 - 文件: {file_name}, 分块数: {result.get('chunks_size', 0)}")
+            return result
+        except Exception as e:
+            logger.error(f"文件内容摄取失败 - 文件: {file_name}, 错误: {e}")
+            raise
+
+    def _process_documents_pipeline(self, docs, title: str, params: Dict[str, Any], content_type: str) -> Dict[str, Any]:
+        """
+        统一的文档处理流水线
+
+        Args:
+            docs: 原始文档列表
+            title: 文档标题
+            params: 参数字典
+            content_type: 内容类型描述（用于日志）
+
+        Returns:
+            包含状态和结果信息的字典
+        """
+        # 处理文档元数据
+        docs = self.prepare_documents_metadata(docs, is_preview=params["is_preview"], title=title, knowledge_id=params["knowledge_id"])
+
+        # 执行文档分块并记录日志
+        chunked_docs = self.perform_chunking(docs, params["chunk_mode"], params, params["is_preview"], content_type)
+
+        # 处理预览模式
+        if params["is_preview"]:
+            return {"status": "success", "message": "", "documents": self.serialize_documents(chunked_docs), "chunks_size": len(chunked_docs)}
+
+        # 执行文档存储
+        logger.debug(f"开始存储{content_type}{len(chunked_docs)}个文档分块")
+        self.store_documents_to_pg(
+            chunked_docs=chunked_docs,
+            knowledge_base_id=params["knowledge_base_id"],
+            embed_model_base_url=params["embed_model_base_url"],
+            embed_model_api_key=params["embed_model_api_key"],
+            embed_model_name=params["embed_model_name"],
+            metadata=params["metadata"],
+        )
+
+        return {"status": "success", "message": "", "chunks_size": len(chunked_docs)}
