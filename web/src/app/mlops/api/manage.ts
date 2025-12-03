@@ -522,8 +522,12 @@ const useMlopsManageApi = () => {
   };
 
   // 新增时序预测样本文件
-  const addTimeSeriesPredictTrainData = async (params: TrainDataBrochure) => {
-    return await post(`/mlops/timeseries_predict_train_data`, params);
+  const addTimeSeriesPredictTrainData = async (params: FormData) => {
+    return await post(`/mlops/timeseries_predict_train_data`, params, {
+      headers: {
+        "Content-Type": 'multipart/form-data'
+      }
+    });
   };
 
   // 新增分类任务样本文件
