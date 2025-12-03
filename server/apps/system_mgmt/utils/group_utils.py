@@ -4,11 +4,12 @@ from apps.system_mgmt.models import Group
 
 class GroupUtils(object):
     @staticmethod
-    def get_all_child_groups(group_id, include_self=True):
+    def get_all_child_groups(group_id, include_self=True, group_list=None):
         """
-        递归获取指定组织的所有子组织ID
+        递归获取指定组织的所有子组织ID（仅限用户有权限的组织）
         :param group_id: 父组织ID
         :param include_self: 是否包含自身
+        :param group_list: 用户有权限的组织ID列表，如果为None则不过滤
         :return: 组织ID列表
         """
         group_ids = set()
@@ -18,9 +19,13 @@ class GroupUtils(object):
         # 获取直接子组织
         child_groups = Group.objects.filter(parent_id=group_id).values_list("id", flat=True)
 
+        # 如果提供了 group_list，只保留用户有权限的子组织
+        if group_list is not None:
+            child_groups = [cid for cid in child_groups if cid in group_list]
+
         # 递归获取子组织的子组织
         for child_id in child_groups:
-            group_ids.update(GroupUtils.get_all_child_groups(child_id, include_self=True))
+            group_ids.update(GroupUtils.get_all_child_groups(child_id, include_self=True, group_list=group_list))
 
         return list(group_ids)
 
@@ -41,11 +46,11 @@ class GroupUtils(object):
         if not include_children:
             return [target_group_id]
 
-        # 包含子组织：获取所有子组织
-        all_child_groups = GroupUtils.get_all_child_groups(target_group_id, include_self=True)
+        # 包含子组织：获取所有子组织（仅限用户有权限的）
+        all_child_groups = GroupUtils.get_all_child_groups(target_group_id, include_self=True, group_list=user_group_list)
 
-        # 过滤出用户有权限的子组织（交集）
-        authorized_groups = list(set(all_child_groups) & set(user_group_list))
+        # 返回用户有权限的子组织
+        authorized_groups = all_child_groups
 
         logger.info(f"用户组织列表: {user_group_list}, 目标组织: {target_group_id}, " f"包含子组织: {include_children}, 最终查询组织: {authorized_groups}")
 

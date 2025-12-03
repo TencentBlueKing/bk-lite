@@ -11,14 +11,10 @@ from apps.mlops.models.classification import *
 from apps.mlops.serializers.classification import *
 from apps.mlops.filters.classification import *
 from config.drf.pagination import CustomPageNumberPagination
-from apps.mlops.tasks.classification_train_task import start_classification_train
-from neco.mlops.classification.random_forest_classifier import RandomForestClassifier
 import mlflow
 import pandas as pd
 import numpy as np
 from config.components.mlflow import MLFLOW_TRACKER_URL
-
-
 
 
 class ClassificationDatasetViewSet(ModelViewSet):
@@ -48,7 +44,8 @@ class ClassificationDatasetViewSet(ModelViewSet):
     @HasPermission("classification_datasets-Edit")
     def update(self, request, *args, **kwargs):
         return super().update(request, *args, **kwargs)
-    
+
+
 class ClassificationServingViewSet(ModelViewSet):
     queryset = ClassificationServing.objects.all()
     serializer_class = ClassificationServingSerializer
@@ -76,7 +73,7 @@ class ClassificationServingViewSet(ModelViewSet):
     @HasPermission("classification_servings-Edit")
     def update(self, request, *args, **kwargs):
         return super().update(request, *args, **kwargs)
-    
+
     @HasPermission("classification_servings-View")
     @action(detail=False, methods=['post'], url_path='predict')
     def predirect(self, request):
@@ -92,39 +89,39 @@ class ClassificationServingViewSet(ModelViewSet):
                     {'error': 'serving_id参数是必需的'},
                     status=status.HTTP_400_BAD_REQUEST
                 )
-            
+
             if not time_series:
                 return Response(
                     {'error': 'data参数是必需的'},
                     status.HTTP_400_BAD_REQUEST
                 )
-            
+
             # 获取分类服务配置
             try:
                 serving = ClassificationServing.objects.select_related(
                     'classification_train_job'
-                ).get(id = serving_id)
+                ).get(id=serving_id)
             except ClassificationServing.DoesNotExist:
                 return Response(
                     {'error': f'分类任务服务不存在: {serving_id}'},
                     status=status.HTTP_404_NOT_FOUND
                 )
-            
+
             # 检查服务是否启用
             if serving.status != 'active':
-                 return Response(
-                     {'error': f'分类任务服务未启用，当前状态: {serving.status}'},
-                     status=status.HTTP_400_BAD_REQUEST
-                 )
-            
+                return Response(
+                    {'error': f'分类任务服务未启用，当前状态: {serving.status}'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+
             # 检查服务关联任务状态
             train_job = serving.classification_train_job
-            if(train_job.status != 'completed'):
+            if (train_job.status != 'completed'):
                 return Response(
                     {'error': f'关联的训练任务未完成，当前状态: {train_job.status}'},
                     status=status.HTTP_400_BAD_REQUEST
                 )
-            
+
             # 从服务配置中获取模型信息
             model_name = f"Classification_{train_job.algorithm}_{train_job.id}"
             model_version = serving.model_version
@@ -135,14 +132,14 @@ class ClassificationServingViewSet(ModelViewSet):
             df = pd.DataFrame(time_series)
             # 根据算法类型选择对应的检测器
             if algorithm == 'RandomForest':
-                detector = RandomForestClassifier()
+                detector = None
             else:
                 return Response(
                     {'error': f'不支持的算法类型: {algorithm}'},
                     status=status.HTTP_400_BAD_REQUEST
                 )
-            result_df = detector.predict(df,model_name,model_version)
-            
+            result_df = detector.predict(df, model_name, model_version)
+
             return Response({
                 'success': True,
                 'serving_id': serving_id,
@@ -161,7 +158,8 @@ class ClassificationServingViewSet(ModelViewSet):
                 {'error': f'推理失败: {str(e)}'},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
-    
+
+
 class ClassificationTrainDataViewSet(ModelViewSet):
     queryset = ClassificationTrainData.objects.all()
     serializer_class = ClassificationTrainDataSerializer
@@ -189,7 +187,8 @@ class ClassificationTrainDataViewSet(ModelViewSet):
     @HasPermission("classification_train_data-Edit")
     def update(self, request, *args, **kwargs):
         return super().update(request, *args, **kwargs)
-    
+
+
 class ClassificationTrainHistoryViewSet(ModelViewSet):
     queryset = ClassificationTrainHistory.objects.all()
     serializer_class = ClassificationTrainHistorySerializer
@@ -217,7 +216,8 @@ class ClassificationTrainHistoryViewSet(ModelViewSet):
     @HasPermission("classification_train_history-Edit")
     def update(self, request, *args, **kwargs):
         return super().update(request, *args, **kwargs)
-    
+
+
 class ClassificationTrainJobViewSet(ModelViewSet):
     queryset = ClassificationTrainJob.objects.all()
     serializer_class = ClassificationTrainJobSerializer
@@ -245,7 +245,6 @@ class ClassificationTrainJobViewSet(ModelViewSet):
     @HasPermission("classification_train_jobs-Edit")
     def update(self, request, *args, **kwargs):
         return super().update(request, *args, **kwargs)
-    
 
     @action(detail=True, methods=['get'], url_path='get_file')
     @HasPermission("classification_train_jobs-View,classification_train_data-View,classification_datasets-View")
@@ -283,14 +282,14 @@ class ClassificationTrainJobViewSet(ModelViewSet):
                     }
                 ]
             )
-        
+
         except Exception as e:
             logger.error(f"获取训练文件失败 - TrainJobID: {kwargs.get('pk')} - {str(e)}")
             return Response(
                 {'error': f'获取文件信息失败: {str(e)}'},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
-        
+
     @action(detail=True, methods=['post'], url_path='train')
     @HasPermission("train_tasks-Train")
     def train(self, request, pk=None):
@@ -312,7 +311,7 @@ class ClassificationTrainJobViewSet(ModelViewSet):
                 {'error': f'训练启动失败: {str(e)}'},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
-        
+
     @action(detail=True, methods=['get'], url_path='runs_data_list')
     @HasPermission("train_tasks-View")
     def get_run_data_list(self, request, pk=None):
@@ -389,7 +388,7 @@ class ClassificationTrainJobViewSet(ModelViewSet):
                     "run_name": str(run_name)
                 }
                 run_datas.append(run_data)
-            
+
             logger.info(len(run_datas))
 
             return Response(
