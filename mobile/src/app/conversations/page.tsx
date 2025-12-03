@@ -47,7 +47,7 @@ export default function ConversationList() {
       <div className="px-4 py-3 bg-[var(--color-background-body)]">
         <div className='py-2 bg-[var(--color-bg)] rounded-xl flex gap-2 items-center justify-center text-[var(--color-text-2)] text-sm' onClick={() => router.push('/search?type=ConversationList')}>
           <SearchOutline />
-          <span>搜索</span>
+          <span>{t('common.search')}</span>
         </div>
       </div>
 

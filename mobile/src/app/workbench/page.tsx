@@ -7,8 +7,10 @@ import { useRouter } from 'next/navigation';
 import Image from 'next/image';
 import BottomTabBar from '@/components/bottom-tab-bar';
 import { mockWorkbenchData } from '@/constants/mockData';
+import { useTranslation } from '@/utils/i18n';
 
 export default function WorkbenchPage() {
+    const { t } = useTranslation();
     const router = useRouter();
     const [activeTab, setActiveTab] = useState('0');
     const swiperRef = useRef<any>(null);
@@ -30,7 +32,7 @@ export default function WorkbenchPage() {
     }, [activeTab, allBots]);
 
     const tabItems = [
-        { key: '0', title: '全部' },
+        { key: '0', title: t('workbench.all') },
         { key: '1', title: 'Pilot' },
         { key: '2', title: 'LobeChat' },
         { key: '3', title: 'Chatflow' },
@@ -106,7 +108,7 @@ export default function WorkbenchPage() {
 
                     {/* 描述文本 */}
                     <p className="text-xs text-[var(--color-text-2)] mb-3 leading-relaxed truncate">
-                        {item.introduction || '暂无简介'}
+                        {item.introduction || t('workbench.noIntroduction')}
                     </p>
 
                     {/* 标签按钮 */}
@@ -118,7 +120,7 @@ export default function WorkbenchPage() {
                                 color: botTypeColors[item.bot_type]?.text || '#666666',
                             }}
                         >
-                            {botTypeMap[item.bot_type] || '未知类型'}
+                            {botTypeMap[item.bot_type] || t('workbench.unknownType')}
                         </span>
                     )}
                 </div>

@@ -6,6 +6,7 @@ import { useAuth } from '@/context/auth';
 import { Input, Button, SpinLoading, Mask, Toast } from 'antd-mobile';
 import { AuthStep } from '@/types/auth';
 import { getDomainList, authLogin } from '@/api/auth';
+import { useTranslation } from '@/utils/i18n';
 import {
   EyeInvisibleOutline,
   EyeOutline,
@@ -15,6 +16,7 @@ import {
 } from 'antd-mobile-icons';
 
 export default function LoginPage() {
+  const { t } = useTranslation();
   const { login } = useAuth();
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
@@ -63,7 +65,7 @@ export default function LoginPage() {
       });
 
       if (!responseData.result) {
-        const errorMessage = responseData.message || 'Login failed';
+        const errorMessage = responseData.message || t('auth.loginFailed');
         Toast.show({ content: errorMessage, icon: 'fail' });
         setUsername('');
         setPassword('');
@@ -93,8 +95,7 @@ export default function LoginPage() {
       }
     } catch (error) {
       console.error('Login error:', error);
-      const errorMessage = 'System error';
-      Toast.show({ content: errorMessage, icon: 'fail' });
+      Toast.show({ content: t('login.systemError'), icon: 'fail' });
       setIsLoading(false);
     }
   };
@@ -105,10 +106,10 @@ export default function LoginPage() {
         <LockOutline fontSize={36} className="text-orange-600" />
       </div>
       <h3 className="text-lg font-semibold text-gray-900">
-        Password Reset Required
+        {t('login.passwordResetRequired')}
       </h3>
       <p className="text-base text-gray-600">
-        Please visit the desktop site to complete the password reset process
+        {t('login.passwordResetHint')}
       </p>
       <Button
         color="primary"
@@ -117,7 +118,7 @@ export default function LoginPage() {
         className="w-full h-11"
         style={{ fontSize: '16px' }}
       >
-        Back to Login
+        {t('login.backToLogin')}
       </Button>
     </div>
   );
@@ -128,10 +129,10 @@ export default function LoginPage() {
         <LockOutline fontSize={36} className="text-blue-600" />
       </div>
       <h3 className="text-lg font-semibold text-gray-900">
-        Two-Factor Authentication
+        {t('login.twoFactorAuth')}
       </h3>
       <p className="text-base text-gray-600">
-        Please complete two-factor authentication on the desktop site
+        {t('login.twoFactorHint')}
       </p>
       <Button
         color="primary"
@@ -140,7 +141,7 @@ export default function LoginPage() {
         className="w-full h-11"
         style={{ fontSize: '16px' }}
       >
-        Back to Login
+        {t('login.backToLogin')}
       </Button>
     </div>
   );
@@ -160,17 +161,10 @@ export default function LoginPage() {
             />
           </div>
           <h1 className="text-2xl font-bold text-gray-900 mb-1">
-            {authStep === 'login' && 'Sign In'}
-            {authStep === 'reset-password' && 'Reset Password'}
-            {authStep === 'otp-verification' && 'Verify Identity'}
+            {authStep === 'login' && t('login.signIn')}
+            {authStep === 'reset-password' && t('login.resetPassword')}
+            {authStep === 'otp-verification' && t('login.verifyIdentity')}
           </h1>
-          <p className="text-gray-600 text-base">
-            {authStep === 'login' && 'Enter your credentials to continue'}
-            {authStep === 'reset-password' &&
-              'Create a new password to secure your account'}
-            {authStep === 'otp-verification' &&
-              'Complete the verification process'}
-          </p>
         </div>
 
         {/* 表单容器 */}
@@ -181,13 +175,13 @@ export default function LoginPage() {
               {/* 域选择 */}
               <div className="space-y-1.5">
                 <label className="text-base font-medium text-gray-500">
-                  Domain
+                  {t('login.domain')}
                 </label>
                 {loadingDomains ? (
                   <div className="flex items-center justify-center h-11 bg-gray-50 rounded-lg border border-gray-200">
                     <SpinLoading color="primary" />
                     <span className="ml-2 text-gray-600 text-base">
-                      Loading domains...
+                      {t('login.loadingDomains')}
                     </span>
                   </div>
                 ) : (
@@ -198,7 +192,7 @@ export default function LoginPage() {
                     <div className="flex items-center space-x-2.5">
                       <GlobalOutline className="text-gray-400 text-base" />
                       <span className="text-gray-900 text-base">
-                        {domain || 'Select a domain'}
+                        {domain || t('login.selectDomain')}
                       </span>
                     </div>
                     <div className="text-gray-400 text-lg">›</div>
@@ -206,7 +200,7 @@ export default function LoginPage() {
                 )}
                 {!loadingDomains && domainList.length === 0 && (
                   <div className="text-amber-600 text-sm bg-amber-50 border border-amber-200 px-2.5 py-1.5 rounded-lg">
-                    ⚠ No domains available
+                    ⚠ {t('login.noDomainsAvailable')}
                   </div>
                 )}
               </div>
@@ -214,13 +208,13 @@ export default function LoginPage() {
               {/* 用户名输入 */}
               <div className="space-y-1.5">
                 <label className="text-base font-medium text-gray-500">
-                  Username
+                  {t('auth.username')}
                 </label>
                 <div className="relative">
                   <UserOutline className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 z-10 text-base" />
                   <Input
                     className='login-input'
-                    placeholder="Enter your username"
+                    placeholder={t('login.enterUsername')}
                     value={username}
                     onChange={setUsername}
                     disabled={isLoading}
@@ -241,13 +235,13 @@ export default function LoginPage() {
               {/* 密码输入 */}
               <div className="space-y-1.5">
                 <label className="text-base font-medium text-gray-500">
-                  Password
+                  {t('auth.password')}
                 </label>
                 <div className="relative">
                   <LockOutline className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 z-10 text-base" />
                   <Input
                     className='login-input'
-                    placeholder="Enter your password"
+                    placeholder={t('login.enterPassword')}
                     type={showPassword ? 'text' : 'password'}
                     value={password}
                     onChange={setPassword}
@@ -293,7 +287,7 @@ export default function LoginPage() {
                   fontWeight: '500',
                 }}
               >
-                {isLoading ? 'Signing in...' : 'Sign In'}
+                {isLoading ? t('login.signingIn') : t('login.signIn')}
               </Button>
             </form>
           )}
@@ -312,14 +306,14 @@ export default function LoginPage() {
           <div className="p-6">
             <div className="text-center mb-4">
               <h3 className="text-lg font-semibold text-gray-900">
-                Select Domain
+                {t('login.selectDomain')}
               </h3>
             </div>
             <div className="space-y-2 max-h-60 overflow-y-auto">
               {domainList.map((d) => (
                 <div
                   key={d}
-                  className={`flex items-center justify-between p-3 rounded-lg cursor-pointer transition-colors ${domain === d
+                  className={`flex items-center justify-between p-3 rounded-lg cursor-pointer transition-colors mb-4 ${domain === d
                     ? 'bg-blue-50 border-2 border-blue-200'
                     : 'bg-gray-50 hover:bg-gray-100 border border-gray-200'
                     }`}
@@ -344,11 +338,11 @@ export default function LoginPage() {
             </div>
             <Button
               fill="outline"
-              className="w-full mt-4 h-11"
+              className="w-full h-11"
               onClick={() => setShowDomainSelector(false)}
               style={{ fontSize: '16px' }}
             >
-              Cancel
+              {t('common.cancel')}
             </Button>
           </div>
         </div>

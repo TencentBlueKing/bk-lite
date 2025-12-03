@@ -75,7 +75,7 @@ export default function ProfilePage() {
     } catch (error) {
       console.error('相机调用失败:', error);
       Toast.show({
-        content: '无法打开相机',
+        content: t('avatar.cameraFailed'),
         icon: 'fail',
       });
     }
@@ -87,7 +87,7 @@ export default function ProfilePage() {
     setImageToCrop(null);
 
     Toast.show({
-      content: '图片处理成功',
+      content: t('avatar.imageProcessSuccess'),
       icon: 'success',
     });
 
@@ -118,7 +118,7 @@ export default function ProfilePage() {
           // 验证文件大小（限制 5MB）
           if (file.size > 5 * 1024 * 1024) {
             Toast.show({
-              content: '图片大小不能超过 5MB',
+              content: t('avatar.imageSizeLimit'),
               icon: 'fail',
             });
             return;
@@ -127,7 +127,7 @@ export default function ProfilePage() {
           // 验证文件类型
           if (!file.type.startsWith('image/')) {
             Toast.show({
-              content: '请选择图片文件',
+              content: t('avatar.selectImageFile'),
               icon: 'fail',
             });
             return;
@@ -150,7 +150,7 @@ export default function ProfilePage() {
     } catch (error) {
       console.error('相册打开失败:', error);
       Toast.show({
-        content: '无法打开相册',
+        content: t('avatar.galleryFailed'),
         icon: 'fail',
       });
     }
@@ -195,10 +195,10 @@ export default function ProfilePage() {
           />
           <div className="flex-1 min-w-0">
             <h2 className="text-lg font-semibold text-[var(--color-text-1)] mb-1 truncate">
-              {userInfo?.display_name || userInfo?.username || '用户'}
+              {userInfo?.display_name || userInfo?.username || t('account.user')}
             </h2>
             <span className="text-[var(--color-text-3)] text-xs font-medium truncate block">
-              用户名:{userInfo?.username}
+              {t('account.username')}:{userInfo?.username}
             </span>
           </div>
           {userInfo?.domain && (
@@ -290,12 +290,12 @@ export default function ProfilePage() {
         onClose={() => setAvatarActionVisible(false)}
         actions={[
           {
-            text: <span className="text-[var(--color-text-1)]">查看头像</span>,
+            text: <span className="text-[var(--color-text-1)]">{t('avatar.viewAvatar')}</span>,
             key: 'view',
             onClick: handleViewAvatar,
           },
           {
-            text: <span className="text-[var(--color-text-1)]">更改头像</span>,
+            text: <span className="text-[var(--color-text-1)]">{t('avatar.changeAvatar')}</span>,
             key: 'change',
             onClick: handleChangeAvatar,
           },
@@ -316,7 +316,7 @@ export default function ProfilePage() {
               <div className="w-16 h-16 flex items-center justify-center bg-[var(--color-primary-bg)] rounded-full mb-2">
                 <CameraOutline fontSize={60} className="text-[var(--color-text-1)]" />
               </div>
-              <span className="text-sm text-[var(--color-text-1)]">相机</span>
+              <span className="text-sm text-[var(--color-text-1)]">{t('avatar.camera')}</span>
             </div>
             <div
               className="flex flex-col items-center cursor-pointer active:opacity-70"
@@ -325,7 +325,7 @@ export default function ProfilePage() {
               <div className="w-16 h-16 flex items-center justify-center bg-[var(--color-primary-bg)] rounded-full mb-2">
                 <PictureOutline fontSize={60} className="text-[var(--color-text-1)]" />
               </div>
-              <span className="text-sm text-[var(--color-text-1)]">相册</span>
+              <span className="text-sm text-[var(--color-text-1)]">{t('avatar.gallery')}</span>
             </div>
           </div>
         }

@@ -6,10 +6,12 @@ import { SearchBar, Avatar, List } from 'antd-mobile';
 import { LeftOutline, FrownOutline, SearchOutline } from 'antd-mobile-icons';
 import { mockChatData, mockWorkbenchData, mockChatMessages, ChatMessageRecord, ChatItem } from '@/constants/mockData';
 import Image from 'next/image';
+import { useTranslation } from '@/utils/i18n';
 
 type SearchType = 'ConversationList' | 'WorkbenchPage' | 'ChatHistory';
 
 export default function SearchPage() {
+    const { t } = useTranslation();
     const router = useRouter();
     const searchParams = useSearchParams();
     const searchType = (searchParams?.get('type') || 'ConversationList') as SearchType;
@@ -156,7 +158,7 @@ export default function SearchPage() {
                                 className={`text-xs ${item.online ? 'text-blue-500' : 'text-gray-400'
                                     }`}
                             >
-                                {item.online ? '在线' : '下线'}
+                                {item.online ? t('common.online') : t('common.offline')}
                             </span>
                         </div>
                     </div>
@@ -164,13 +166,13 @@ export default function SearchPage() {
                     {/* 描述文本 */}
                     <p className="text-xs text-[var(--color-text-2)] mb-3 leading-relaxed overflow-hidden truncate"
                     >
-                        {item.introduction || '暂无简介'}
+                        {item.introduction || t('workbench.noIntroduction')}
                     </p>
 
                     {/* 标签按钮 */}
                     {item.bot_type && (
                         <span className="float-right px-3 py-1 text-xs font-medium text-gray-800 bg-gray-200 rounded">
-                            {botTypeMap[item.bot_type] || '未知类型'}
+                            {botTypeMap[item.bot_type] || t('workbench.unknownType')}
                         </span>
                     )}
                 </div>
@@ -193,7 +195,7 @@ export default function SearchPage() {
         const yesterday = new Date(now);
         yesterday.setDate(yesterday.getDate() - 1);
         if (date.toDateString() === yesterday.toDateString()) {
-            return '昨天';
+            return t('search.yesterday');
         }
 
         // 一周内
@@ -219,13 +221,13 @@ export default function SearchPage() {
     const getPlaceholder = () => {
         switch (searchType) {
             case 'ConversationList':
-                return '搜索对话名称';
+                return t('search.searchConversation');
             case 'WorkbenchPage':
-                return '搜索应用名称';
+                return t('search.searchApp');
             case 'ChatHistory':
-                return '搜索聊天记录';
+                return t('search.searchChatHistory');
             default:
-                return '请输入搜索关键词';
+                return t('search.enterKeyword');
         }
     };
 
@@ -262,14 +264,14 @@ export default function SearchPage() {
                     // 空状态 - 未输入搜索词
                     <div className="h-full flex flex-col items-center justify-center h-64 text-[var(--color-text-3)]">
                         <SearchOutline className='text-7xl mb-4' />
-                        <p className="text-sm">请输入关键词进行搜索</p>
+                        <p className="text-sm">{t('search.searchHint')}</p>
                     </div>
                 ) : searchResults.length === 0 ? (
                     // 空状态 - 无搜索结果
                     <div className="h-full flex flex-col items-center justify-center h-64 text-[var(--color-text-3)]">
                         <FrownOutline className='text-7xl mb-4' />
-                        <p className="text-sm">未找到相关结果</p>
-                        <p className="text-xs mt-1">试试其他关键词</p>
+                        <p className="text-sm">{t('search.noResults')}</p>
+                        <p className="text-xs mt-1">{t('search.tryOtherKeywords')}</p>
                     </div>
                 ) : (
                     // 渲染搜索结果

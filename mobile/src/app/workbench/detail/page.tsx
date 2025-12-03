@@ -6,8 +6,10 @@ import { Switch, List, ImageViewer } from 'antd-mobile';
 import { LeftOutline } from 'antd-mobile-icons';
 import Image from 'next/image';
 import { mockChatData } from '@/constants/mockData';
+import { useTranslation } from '@/utils/i18n';
 
 export default function AppDetailPage() {
+    const { t } = useTranslation();
     const router = useRouter();
     const searchParams = useSearchParams();
     const id = searchParams.get('id') || '';
@@ -37,12 +39,12 @@ export default function AppDetailPage() {
     if (!botData) {
         return (
             <div className="flex flex-col items-center justify-center h-screen bg-gray-50">
-                <div className="text-gray-400 text-lg">应用不存在</div>
+                <div className="text-gray-400 text-lg">{t('workbench.appNotExist')}</div>
                 <button
                     onClick={() => router.back()}
                     className="mt-4 px-6 py-2 bg-blue-500 text-white rounded-lg"
                 >
-                    返回
+                    {t('common.back')}
                 </button>
             </div>
         );
@@ -60,7 +62,7 @@ export default function AppDetailPage() {
                     <button onClick={() => router.back()} className="absolute left-4">
                         <LeftOutline fontSize={24} className="text-[var(--color-text-1)]" />
                     </button>
-                    <h1 className="text-lg font-medium text-[var(--color-text-1)]">{botData.lastMessage ? '对话设置' : '应用简介'}</h1>
+                    <h1 className="text-lg font-medium text-[var(--color-text-1)]">{botData.lastMessage ? t('workbench.conversationSettings') : t('workbench.appIntroduction')}</h1>
                 </div>
             </div>
 
@@ -101,12 +103,12 @@ export default function AppDetailPage() {
                                 className={`w-2 h-2 rounded-full ${botData.online ? 'bg-green-500' : 'bg-gray-400'}`}
                             ></div>
                             <span className={`text-sm ${botData.online ? 'text-green-500' : 'text-gray-400'}`}>
-                                {botData.online ? '在线' : '下线'}
+                                {botData.online ? t('common.online') : t('common.offline')}
                             </span>
                         </div>
 
                         <p className="text-sm text-[var(--color-text-4)] text-center">
-                            {botData.introduction || '暂无简介'}
+                            {botData.introduction || t('workbench.noIntroduction')}
                         </p>
 
                     </div>
@@ -121,7 +123,7 @@ export default function AppDetailPage() {
                                     onClick={() => {
                                         router.push(`/search?type=ChatHistory&id=${botData.id}`);
                                     }}>
-                                    查找聊天记录
+                                    {t('workbench.searchChatHistory')}
                                 </List.Item>
                             </List>
                         </div>
@@ -136,7 +138,7 @@ export default function AppDetailPage() {
                                     style={{
                                         '--checked-color': '#1677ff',
                                     }} />}>
-                                接收通知
+                                {t('workbench.receiveNotification')}
                             </List.Item>
                         </List>
                     </div>
@@ -147,7 +149,7 @@ export default function AppDetailPage() {
                                 onClick={() => {
                                     router.push(`/conversation?id=${botData.id}`);
                                 }}>
-                                {botData.lastMessage ? '继续对话' : '快速发起对话'}
+                                {botData.lastMessage ? t('workbench.continueConversation') : t('workbench.startConversation')}
                             </List.Item>
                         </List>
                     </div>
