@@ -17,8 +17,8 @@ class VmwareManage(object):
         self.host = params.get("hostname")
         self.port = params.get("port", 443)
         self.ssl = params.get("ssl", "false") == "true"
-        self.si = self.connect_vc()
-        self.content = self.si.RetrieveContent()
+        self.si = None
+        self.content = None
 
     def test_connection(self):
         """
@@ -26,8 +26,7 @@ class VmwareManage(object):
         :return:
         """
         try:
-            self.si = self.connect_vc()
-            self.content = self.si.RetrieveContent()
+            self.connect_vc()
             return True
         except Exception as err:
             logger.error(f"test_connection error! {err}")
@@ -42,14 +41,21 @@ class VmwareManage(object):
 
     def connect_vc(self):
         try:
-            params = dict(host=self.host, port=int(self.port), user=self.user, pwd=self.password)
+            params = dict(host=self.host, port=int(self.port), user=self.user, pwd=self.password, httpConnectionTimeout = 10, connectionPoolTimeout = 10)
             if not self.ssl:
                 params['disableSslCertValidation'] = True
+            import time
+            a = time.time()
             si = SmartConnect(**params)
-            return si
+            self.si = si
+            logger.error(f"SmartConnect time cost: {time.time() - a}")
+            if not si:
+                raise RuntimeError("Unable to establish a pyVmomi connection. Could you please double-check the address, username, or password?")
+            self.content = si.RetrieveContent()
+            logger.error(f"RetrieveContent time cost: {time.time() - a}")
         except Exception as err:
-            logger.error(f"connect vcenter error! {err}")
-            return
+            logger.error(f"connect_vc error! {err}")
+            raise RuntimeError("Connect vcenter error!" + str(err))
 
     def get_hosts(self):
         result = []
@@ -232,16 +238,29 @@ class VmwareManage(object):
         Disconnect(self.si)
 
     def list_all_resources(self):
+        import time
+        message = ''
+        execute_result = True
+        a = time.time()
         try:
-            result = self.service()
+            self.connect_vc()
         except Exception as err:
-            logger.error(f"vmware_info main error! {err}")
-            result = []
+            execute_result = False
+            message = str(err)
 
+        if execute_result:
+            try:
+                result = self.service()
+            except Exception as err:
+                execute_result = False
+                message = str(err)
+        logger.error(f"connect time {time.time() - a}")
+        if execute_result:
+            lines = convert_to_prometheus_format(result)
+        else:
+            lines = convert_to_prometheus_format({"vmware_vc": [{"result": message, "success": execute_result}]})
         try:
             self.disconnect_vc()
         except:
             pass
-
-        lines = convert_to_prometheus_format(result)
         return lines
