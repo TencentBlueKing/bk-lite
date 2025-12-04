@@ -11,7 +11,7 @@ from apps.node_mgmt.constants.collector import CollectorConstants
 from apps.node_mgmt.constants.controller import ControllerConstants
 from apps.node_mgmt.constants.language import LanguageConstants
 from apps.node_mgmt.constants.node import NodeConstants
-from apps.node_mgmt.models.sidecar import Node
+from apps.node_mgmt.models.sidecar import Node, NodeOrganization
 from config.drf.pagination import CustomPageNumberPagination
 from apps.node_mgmt.serializers.node import NodeSerializer, BatchBindingNodeConfigurationSerializer, \
     BatchOperateNodeCollectorSerializer
@@ -23,7 +23,7 @@ class NodeViewSet(mixins.DestroyModelMixin,
     queryset = Node.objects.all().prefetch_related('nodeorganization_set').order_by("-created_at")
     pagination_class = CustomPageNumberPagination
     serializer_class = NodeSerializer
-    search_fields = ["id", "name", "ip"]
+    search_fields = ["id", "name", "ip", "cloud_region_id", "install_method"]
 
     def add_permission(self, permission, items):
         node_permission_map = {i["id"]: i["permission"] for i in permission.get("instance", [])}
@@ -133,6 +133,32 @@ class NodeViewSet(mixins.DestroyModelMixin,
     def destroy(self, request, *args, **kwargs):
         instance = self.get_object()
         self.perform_destroy(instance)
+        return WebUtils.response_success()
+
+    @action(methods=["patch"], detail=True, url_path="update")
+    def update_node(self, request, pk=None):
+        node = self.get_object()
+
+        name = request.data.get("name")
+        organizations = request.data.get("organizations")
+
+        # 更新节点名称
+        if name is not None:
+            node.name = name
+            node.save()
+
+        # 如果 organizations 字段有传递（即使是空数组也进）
+        if organizations is not None:
+            # ① 删除原有组织关联
+            NodeOrganization.objects.filter(node=node).delete()
+
+            # ② 批量创建新的组织关联（允许空列表 → 自动清空）
+            new_relations = [
+                NodeOrganization(node=node, organization=org_id)
+                for org_id in organizations
+            ]
+            NodeOrganization.objects.bulk_create(new_relations)
+
         return WebUtils.response_success()
 
     @action(methods=["get"], detail=False, url_path=r"enum", filter_backends=[])

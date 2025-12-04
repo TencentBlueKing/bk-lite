@@ -1,6 +1,7 @@
 {
   "plugin": "WebLogic-JMX",
   "plugin_desc": "This plugin uses JMX to collect WebLogic's key metrics, including thread pools, connection pools, memory, EJB, Servlet, JMS performance, and Web service response times. It enables real-time monitoring, performance optimization, and risk early warning to ensure system stability.",
+  "status_query": "any({instance_type='weblogic', collect_type='jmx'}) by (instance_id)",
   "name": "WebLogic",
   "icon": "weblogic",
   "type": "Middleware",

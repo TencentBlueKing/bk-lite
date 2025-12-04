@@ -19,9 +19,17 @@ const useIntegrationApi = () => {
     });
   };
 
+  const getCloudRegionList = async (params = {}) => {
+    return await get(`/monitor/api/manual_collect/cloud_region_list/`, {
+      params,
+    });
+  };
+
   const getInstanceChildConfig = async (data: {
     instance_id?: string | number;
     instance_type?: string;
+    collect_type?: string;
+    collector?: string;
   }) => {
     return await post(`/monitor/api/node_mgmt/get_instance_asso_config/`, data);
   };
@@ -120,7 +128,58 @@ const useIntegrationApi = () => {
   };
 
   const getUiTemplate = async (data: { id: React.Key }) => {
-    return await get(`/monitor/api/monitor_plugin/${data.id}/ui_template`);
+    return await get(`/monitor/api/monitor_plugin/${data.id}/ui_template/`);
+  };
+
+  const getInstanceListByPrimaryObject = async (
+    params: {
+      id?: React.Key;
+    } = {}
+  ) => {
+    const { id, ...rest } = params;
+    return await post(
+      `/monitor/api/monitor_instance/${id}/list_by_primary_object/`,
+      rest
+    );
+  };
+
+  const createK8sInstance = async (
+    params: {
+      organizations?: React.Key[];
+      id?: string;
+      name?: string;
+      monitor_object_id?: React.Key;
+    } = {}
+  ) => {
+    return await post(
+      `/monitor/api/manual_collect/create_manual_instance/`,
+      params
+    );
+  };
+
+  const getK8sCommand = async (
+    params: {
+      instance_id?: string;
+      cloud_region_id?: React.Key;
+      interval?: number;
+    } = {}
+  ) => {
+    return await post(
+      `/monitor/api/manual_collect/generate_install_command`,
+      params
+    );
+  };
+
+  const checkCollectStatus = async (
+    params: {
+      instance_id?: string;
+      monitor_object_id?: React.Key;
+    } = {}
+  ) => {
+    return await post(
+      `/monitor/api/manual_collect/check_collect_status/`,
+      params
+    );
   };
 
   return {
@@ -141,6 +200,11 @@ const useIntegrationApi = () => {
     updateMonitorInstance,
     setInstancesGroup,
     getUiTemplate,
+    getInstanceListByPrimaryObject,
+    getCloudRegionList,
+    createK8sInstance,
+    getK8sCommand,
+    checkCollectStatus,
   };
 };
 

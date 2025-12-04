@@ -3,6 +3,7 @@ import React, { useState, useMemo } from 'react';
 import { Spin, Segmented } from 'antd';
 import AutomaticConfiguration from './automatic';
 import SnmpTrapConfiguration from './snmpTrapConfiguration';
+import SyslogConfiguration from './syslogConfiguration';
 import { useTranslation } from '@/utils/i18n';
 import configureStyle from './index.module.scss';
 import { useSearchParams } from 'next/navigation';
@@ -16,6 +17,7 @@ const Configure: React.FC = () => {
 
   const isK8s = useMemo(() => pluginName === 'kubernetes', [pluginName]);
   const isSnmpTrap = useMemo(() => pluginName === 'snmp_trap', [pluginName]);
+  const isSyslog = useMemo(() => pluginName === 'syslog', [pluginName]);
 
   const onTabChange = (val: string) => {
     setPageLoading(false);
@@ -28,6 +30,8 @@ const Configure: React.FC = () => {
         t('log.integration.k8sNote')
       ) : isSnmpTrap ? (
         <SnmpTrapConfiguration />
+      ) : isSyslog ? (
+        <SyslogConfiguration />
       ) : (
         <>
           <Segmented

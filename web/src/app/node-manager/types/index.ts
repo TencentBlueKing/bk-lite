@@ -60,6 +60,7 @@ export interface CardItem {
   name: string;
   description: string;
   icon: string;
+  os: string;
   tagList: string[];
 }
 

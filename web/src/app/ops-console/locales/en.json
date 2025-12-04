@@ -29,8 +29,8 @@
     "freeApply": "Free Apply",
     "assetManagement": "Asset",
     "group": "Group Name",
-    "customSettings": "Custom Settings",
     "added": "Added",
-    "availableApps": "Available Apps"
+    "availableApps": "Available Apps",
+    "customSettings": "Custom Settings"
   }
 }

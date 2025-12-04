@@ -49,7 +49,7 @@ class CollectNetworkMetrics(CollectBase):
 
     @staticmethod
     def get_oid_map():
-        result = OidMapping.objects.all().values()
+        result = OidMapping.objects.all().values("model","oid","brand","device_type","built_in")
         return {i["oid"]: i for i in result}
 
     @staticmethod

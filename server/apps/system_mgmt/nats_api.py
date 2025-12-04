@@ -16,7 +16,20 @@ from apps.core.backends import cache
 from apps.core.logger import system_mgmt_logger as logger
 from apps.core.utils.loader import LanguageLoader
 from apps.system_mgmt.guest_menus import CMDB_MENUS, MONITOR_MENUS, OPSPILOT_GUEST_MENUS
-from apps.system_mgmt.models import App, Channel, ChannelChoices, Group, GroupDataRule, LoginModule, Menu, Role, User, UserRule
+from apps.system_mgmt.models import (
+    App,
+    Channel,
+    ChannelChoices,
+    ErrorLog,
+    Group,
+    GroupDataRule,
+    LoginModule,
+    Menu,
+    OperationLog,
+    Role,
+    User,
+    UserRule,
+)
 from apps.system_mgmt.models.system_settings import SystemSettings
 from apps.system_mgmt.services.role_manage import RoleManage
 from apps.system_mgmt.utils.bk_user_utils import get_bk_user_info
@@ -183,7 +196,7 @@ def get_client(client_id="", username="", domain="domain.com"):
         app_name_list = list(Role.objects.filter(id__in=all_role_ids).values_list("app", flat=True).distinct())
         if "" not in app_name_list:
             app_list = app_list.filter(name__in=app_name_list)
-    return_data = list(app_list.order_by("name").values())
+    return_data = list(app_list.order_by("id").values())
     return {"result": True, "data": return_data}
 
 
@@ -378,7 +391,8 @@ def _prepare_user_rules_query(group_id, username, domain, app, include_children=
 
     # 获取查询的组ID列表（包含子组）
     if include_children:
-        query_group_ids = GroupUtils.get_all_child_groups(int(group_id), include_self=True)
+        # 提取用户的组织ID列表
+        query_group_ids = GroupUtils.get_all_child_groups(int(group_id), include_self=True, group_list=user_obj.group_list)
     else:
         query_group_ids = [int(group_id)]
 
@@ -936,3 +950,45 @@ def verify_bk_token(bk_token):
             "url": bk_config.get("bk_url"),
         },
     }
+
+
+@nats_client.register
+def save_error_log(username, app, module, error_message, domain="domain.com"):
+    """
+    保存错误日志
+    :param username: 用户名
+    :param app: 应用模块
+    :param module: 功能模块
+    :param error_message: 错误信息
+    :param domain: 域名
+    """
+    try:
+        ErrorLog.objects.create(username=username, app=app, module=module, error_message=error_message, domain=domain)
+        return {"result": True, "message": "Error log saved successfully"}
+    except Exception as e:
+        logger.exception(f"Failed to save error log: {e}")
+        return {"result": False, "message": str(e)}
+
+
+@nats_client.register
+def save_operation_log(username, source_ip, app, action_type, summary="", domain="domain.com"):
+    """
+    保存操作日志
+    :param username: 用户名
+    :param source_ip: 源IP地址
+    :param app: 应用模块
+    :param action_type: 操作类型 (create/update/delete/execute)
+    :param summary: 操作概要
+    :param domain: 域名
+    """
+    try:
+        # 验证 action_type 是否合法
+        valid_actions = [OperationLog.ACTION_CREATE, OperationLog.ACTION_UPDATE, OperationLog.ACTION_DELETE, OperationLog.ACTION_EXECUTE]
+        if action_type not in valid_actions:
+            return {"result": False, "message": f"Invalid action_type. Must be one of: {', '.join(valid_actions)}"}
+
+        OperationLog.objects.create(username=username, source_ip=source_ip, app=app, action_type=action_type, summary=summary, domain=domain)
+        return {"result": True, "message": "Operation log saved successfully"}
+    except Exception as e:
+        logger.exception(f"Failed to save operation log: {e}")
+        return {"result": False, "message": str(e)}

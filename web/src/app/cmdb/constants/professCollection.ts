@@ -1,4 +1,4 @@
-export type ExecStatusKey = 'add' | 'update' | 'association' | 'delete';
+export type ExecStatusKey = 'add' | 'update' | 'delete';
 
 export interface ExecStatus {
   color: string;
@@ -19,10 +19,6 @@ export const createExecStatusMap = (
   update: {
     color: 'processing',
     text: t('Collection.syncStatus.update'),
-  },
-  association: {
-    color: 'processing',
-    text: t('Collection.syncStatus.association'),
   },
   delete: {
     color: 'error',
@@ -368,8 +364,8 @@ export const CREATE_TASK_DETAIL_CONFIG = (t: (key: string) => string) => ({
     label: t('Collection.syncStatus.add'),
     alertType: 'warning',
     columns: [
-      { title: '对象类型', dataIndex: 'model_id', width: 160 },
-      { title: '实例名', dataIndex: 'inst_name', width: 260 },
+      { title: '对象类型', dataIndex: 'model_id', width: 140 },
+      { title: '实例名', dataIndex: 'inst_name', width: 250 },
     ],
   },
   update: {
@@ -377,20 +373,8 @@ export const CREATE_TASK_DETAIL_CONFIG = (t: (key: string) => string) => ({
     label: t('Collection.syncStatus.update'),
     alertType: 'warning',
     columns: [
-      { title: '对象类型', dataIndex: 'model_id', width: 160 },
-      { title: '实例名', dataIndex: 'inst_name', width: 260 },
-    ],
-  },
-  relation: {
-    count: 0,
-    label: t('Collection.syncStatus.association'),
-    alertType: 'warning',
-    columns: [
-      { title: '源对象类型', dataIndex: 'src_model_id', width: 180 },
-      { title: '源实例', dataIndex: 'src_inst_name', width: 260 },
-      { title: '关联关系', dataIndex: 'asst_id', width: 120 },
-      { title: '目标对象类型', dataIndex: 'dst_model_id', width: 180 },
-      { title: '目标实例', dataIndex: 'dst_inst_name', width: 260 },
+      { title: '对象类型', dataIndex: 'model_id', width: 140 },
+      { title: '实例名', dataIndex: 'inst_name', width: 250 },
     ],
   },
   delete: {
@@ -398,8 +382,8 @@ export const CREATE_TASK_DETAIL_CONFIG = (t: (key: string) => string) => ({
     label: t('Collection.syncStatus.delete'),
     alertType: 'warning',
     columns: [
-      { title: '对象类型', dataIndex: 'model_id', width: 160 },
-      { title: '实例名', dataIndex: 'inst_name', width: 260 },
+      { title: '对象类型', dataIndex: 'model_id', width: 140 },
+      { title: '实例名', dataIndex: 'inst_name', width: 250 },
     ],
   },
 });

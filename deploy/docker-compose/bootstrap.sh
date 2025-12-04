@@ -8,7 +8,7 @@ BLUE='\033[0;34m'
 NC='\033[0m' # No Color
 
 # 读取环境变量 MIRROR，如果未设置则为空
-MIRROR=${MIRROR:-""}
+MIRROR=${MIRROR:-"bk-lite.tencentcloudcr.com/bklite"}
 
 # Function to log messages with colored output
 log() {
@@ -165,7 +165,7 @@ check_nvidia_gpu() {
 # Function to add mirror prefix to docker image if MIRROR is set
 add_mirror_prefix() {
     local image="$1"
-    : "${MIRROR:=}"
+    MIRROR="bk-lite.tencentcloudcr.com/bklite"
     if [ -n "$MIRROR" ]; then
         # 如果镜像名包含斜杠，说明有仓库前缀
         if [[ "$image" == *"/"* ]]; then
@@ -404,26 +404,34 @@ generate_common_env() {
     if [ -f "$COMMON_ENV_FILE" ]; then
         log "SUCCESS" "发现 $COMMON_ENV_FILE 配置文件，加载已保存的环境变量..."
         source $COMMON_ENV_FILE
-        
-        # 如果配置文件中已有 OPSPILOT_ENABLED 或 VLLM_ENABLED 的新值，需要更新配置文件
-        local need_update=false
-        local current_opspilot=${OPSPILOT_ENABLED:-false}
-        local current_vllm=${VLLM_ENABLED:-false}
-        
-        # 检查配置文件中是否存在这两个变量
-        if ! grep -q "^export OPSPILOT_ENABLED=" "$COMMON_ENV_FILE" || ! grep -q "^export VLLM_ENABLED=" "$COMMON_ENV_FILE"; then
-            need_update=true
-        fi
-        
-        # 如果需要更新，追加或更新这两个变量
-        if [ "$need_update" = true ]; then
-            if ! grep -q "^export OPSPILOT_ENABLED=" "$COMMON_ENV_FILE"; then
-                echo "export OPSPILOT_ENABLED=$current_opspilot" >> "$COMMON_ENV_FILE"
+        MIRROR="bk-lite.tencentcloudcr.com/bklite"
+        # 定义需要检查的环境变量及其默认值
+        local vars_to_check=(
+            "OPSPILOT_ENABLED:false"
+            "VLLM_ENABLED:false"
+            "OFFLINE:false"
+            "OFFLINE_IMAGES_PATH:./images"
+            "VLLM_BCE_EMBEDDING_MODEL_NAME:maidalun/bce-embedding-base_v1"
+            "VLLM_OLMOCR_MODEL_NAME:allenai/OlmOCR-7B-0725"
+            "VLLM_BCE_RERANK_MODEL_NAME:maidalun/bce-reranker-base_v1"
+            "VLLM_BGE_EMBEDDING_MODEL_NAME:AI-ModelScope/bge-large-zh-v1.5"
+        )
+
+        for item in "${vars_to_check[@]}"; do
+            local var_name="${item%%:*}"
+            local default_value="${item#*:}"
+            
+            # 如果变量未设置（既不在文件中也不在当前环境中），设置默认值
+            if [ -z "${!var_name:-}" ]; then
+                export "$var_name"="$default_value"
             fi
-            if ! grep -q "^export VLLM_ENABLED=" "$COMMON_ENV_FILE"; then
-                echo "export VLLM_ENABLED=$current_vllm" >> "$COMMON_ENV_FILE"
+            
+            # 检查是否在文件中，如果不在则追加
+            if ! grep -q "^export $var_name=" "$COMMON_ENV_FILE"; then
+                log "INFO" "将缺失的环境变量 $var_name 添加到 $COMMON_ENV_FILE"
+                echo "export $var_name=${!var_name}" >> "$COMMON_ENV_FILE"
             fi
-        fi
+        done
     else
         log "INFO" "未发现 $COMMON_ENV_FILE 配置文件，生成随机环境变量..."
         # 生成随机密码

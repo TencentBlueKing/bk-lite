@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WebChat 示例</title>
+    
+    <!-- 引入 WebChat (已包含 React) -->
+    <link rel="stylesheet" href="./packages/webchat-ui/dist/browser/style.css">
+    <script src="./packages/webchat-ui/dist/browser/webchat.js"></script>
+    
+    <style>
+        body {
+            margin: 0;
+            padding: 20px;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
+        }
+        h1 {
+            color: #333;
+        }
+    </style>
+</head>
+<body>
+    <h1>WebChat 浮动按钮示例</h1>
+    <p>页面加载后会自动出现右下角的聊天按钮，点击即可开始聊天。</p>
+
+    <script>
+        // 最简单的方式：一行代码初始化
+        window.WebChat.default({
+            sseUrl: 'http://10.10.40.117:8000/api/v1/opspilot/bot_mgmt/execute_chat_flow/32/agui-1763629487486/',
+            title: '智能助手',
+            botAvatarUrl: 'https://api.dicebear.com/7.x/bottts/svg?seed=bot',
+            userAvatarUrl: 'https://api.dicebear.com/7.x/avataaars/svg?seed=user',
+            customData: { type: 'agui' },
+            showFullscreenButton: true,
+            showClearButton: true
+        });
+    </script>
+</body>
+</html>

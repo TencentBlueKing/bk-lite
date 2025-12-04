@@ -22,3 +22,7 @@ class CollectorConstants:
         "exporter": {"is_app": False, "name": "Exporter"},
         "beat": {"is_app": False, "name": "Beat"},
     }
+
+    # 需要对密码进行URL编码的采集器ID集合
+    # 这些采集器的密码会在URL中使用，因此需要进行URL编码以确保特殊字符正确传递
+    URL_ENCODE_PASSWORD_COLLECTORS = {"telegraf_linux", "telegraf_windows"}

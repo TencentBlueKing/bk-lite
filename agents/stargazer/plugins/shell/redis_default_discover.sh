@@ -19,7 +19,8 @@ _procs() {
 
         # 修改正则表达式以匹配 IP 和端口
         # local ipport=$(echo $cmdline | grep -oP '([0-9]+.[0-9]+.[0-9]+.[0-9]+|*):[0-9]+')
-        local ipport=$(echo "$cmdline" | grep -oP '(?:[0-9]{1,3}.){3}[0-9]{1,3}(?::[0-9]+)?')
+        #local ipport=$(echo "$cmdline" | grep -oP '(?:[0-9]{1,3}.){3}[0-9]{1,3}(?::[0-9]+)?')
+        local ipport=$(echo $cmdline | grep -oP '([\d.]+|\*):\d+')
 
         if [ -n "$ipport" ]; then
             local redis_ip=$(echo $ipport | cut -d: -f1)

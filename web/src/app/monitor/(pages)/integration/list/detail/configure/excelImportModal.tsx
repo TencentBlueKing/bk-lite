@@ -101,6 +101,14 @@ const ExcelImportModal = forwardRef<ExcelImportModalRef, ExcelImportModalProps>(
         message.error(t('monitor.integrations.noImportData'));
         return;
       }
+      // 校验字段规则
+      const fieldValidationResult = validateFields(parsedData);
+      if (!fieldValidationResult.isValid) {
+        message.error(
+          fieldValidationResult.errorMsg || t('common.fieldRequired')
+        );
+        return;
+      }
       // 校验唯一性
       const uniqueCheckResult = validateUniqueness(parsedData);
       if (!uniqueCheckResult.isValid) {
@@ -191,6 +199,55 @@ const ExcelImportModal = forwardRef<ExcelImportModalRef, ExcelImportModalProps>(
         }
       };
       reader.readAsArrayBuffer(file);
+    };
+
+    // 校验字段规则
+    const validateFields = (
+      data: any[]
+    ): { isValid: boolean; errorMsg?: string } => {
+      for (let rowIndex = 0; rowIndex < data.length; rowIndex++) {
+        const row = data[rowIndex];
+        for (const column of columns) {
+          const { name, label, required = false, rules = [] } = column;
+          const value = row[name];
+          // 必填验证
+          if (required) {
+            if (
+              value === undefined ||
+              value === null ||
+              value === '' ||
+              (Array.isArray(value) && value.length === 0)
+            ) {
+              return {
+                isValid: false,
+                errorMsg: `${t('common.row')} ${rowIndex + 1}: ${label} ${t(
+                  'common.required'
+                )}`,
+              };
+            }
+          }
+          // 正则验证（只在有值时验证）
+          if (rules.length > 0) {
+            for (const rule of rules) {
+              if (rule.type === 'pattern') {
+                if (value !== undefined && value !== null && value !== '') {
+                  const stringValue = String(value?.text || '').trim();
+                  const regex = new RegExp(rule.pattern);
+                  if (!regex.test(stringValue)) {
+                    return {
+                      isValid: false,
+                      errorMsg: `${t('common.row')} ${rowIndex + 1}: ${label} ${
+                        rule.message || t('common.required')
+                      }`,
+                    };
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+      return { isValid: true };
     };
 
     // 校验唯一性
@@ -362,36 +419,127 @@ const ExcelImportModal = forwardRef<ExcelImportModalRef, ExcelImportModalProps>(
           });
         }
       });
-      // 为主工作表的数据列添加数据验证(仅单选列)
-      columnValidations.forEach((validation, colIndex) => {
-        const column = columns[colIndex];
-        const isMultiple =
-          column.widget_props?.mode === 'multiple' ||
-          column.type === 'group_select';
-
-        // 多选列不添加数据验证，允许自由输入逗号分隔的值
-        if (isMultiple) {
-          return;
-        }
-
-        // 单选列添加下拉数据验证
+      // 为主工作表的数据列添加数据验证
+      columns.forEach((column, colIndex) => {
         const columnLetter = String.fromCharCode(65 + colIndex); // A, B, C...
-        const optionsCount = validation.options.length;
-
+        const validation = columnValidations.get(colIndex);
         // 为第2行到第1001行添加数据验证
         for (let row = 2; row <= 1001; row++) {
           const cell = mainSheet.getCell(`${columnLetter}${row}`);
-          // 添加数据验证 - 引用选项工作表
-          cell.dataValidation = {
-            type: 'list',
-            allowBlank: true,
-            formulae: [`'${validation.sheetName}'!$A$1:$A$${optionsCount}`],
-            showErrorMessage: true,
-            errorTitle: t('monitor.integrations.inputError'),
-            error: t('monitor.integrations.selectFromDropdown'),
-            promptTitle: column.label,
-            showInputMessage: true,
-          };
+          // 1. 必填验证（优先级最高，文本长度检查）
+          if (
+            column.required &&
+            !validation &&
+            column.type !== 'inputNumber' &&
+            !column.rules?.length
+          ) {
+            cell.dataValidation = {
+              type: 'textLength',
+              operator: 'greaterThan',
+              allowBlank: false,
+              formulae: [0],
+              showErrorMessage: true,
+              errorTitle: t('monitor.integrations.inputError'),
+              error: t('common.required'),
+              promptTitle: column.label,
+              showInputMessage: true,
+            };
+            continue;
+          }
+          // 2. 下拉列表验证（单选/多选）
+          if (validation) {
+            const isMultiple =
+              column.widget_props?.mode === 'multiple' ||
+              column.type === 'group_select';
+            if (!isMultiple) {
+              // 单选：使用标准下拉列表验证
+              cell.dataValidation = {
+                type: 'list',
+                allowBlank: !column.required,
+                formulae: [
+                  `'${validation.sheetName}'!$A$1:$A$${validation.options.length}`,
+                ],
+                showErrorMessage: true,
+                errorTitle: t('monitor.integrations.inputError'),
+                error: t('monitor.integrations.selectFromDropdown'),
+                promptTitle: column.label,
+                showInputMessage: true,
+              };
+            } else {
+              // 多选：使用自定义公式验证逗号分隔的值
+              // 验证逻辑：将输入值按逗号分隔，检查每个值是否都在选项列表中
+              const optionsList = validation.options
+                .map((opt) => `"${opt}"`)
+                .join(',');
+              // 构建验证公式：检查单元格中每个逗号分隔的值是否在选项列表中
+              const formula = `OR(LEN(${columnLetter}${row})=0,AND(LEN(${columnLetter}${row})>0,SUMPRODUCT(--ISNUMBER(MATCH(TRIM(MID(SUBSTITUTE(${columnLetter}${row},",",REPT(" ",100)),ROW(INDIRECT("1:"&LEN(${columnLetter}${row})-LEN(SUBSTITUTE(${columnLetter}${row},",",""))+1))*100-99,100)),{${optionsList}},0)))=LEN(${columnLetter}${row})-LEN(SUBSTITUTE(${columnLetter}${row},",",""))+1))`;
+              cell.dataValidation = {
+                type: 'custom',
+                allowBlank: !column.required,
+                formulae: [formula],
+                showErrorMessage: true,
+                errorTitle: t('monitor.integrations.inputError'),
+                error: t(
+                  'monitor.integrations.multipleValidationError'
+                ).replace('{{options}}', validation.options.join(', ')),
+                promptTitle: column.label,
+                showInputMessage: true,
+              };
+            }
+            continue;
+          }
+          // 3. 数字类型验证
+          if (column.type === 'inputNumber') {
+            const min = column.widget_props?.min ?? 0;
+            const max = column.widget_props?.max ?? 999999999;
+            cell.dataValidation = {
+              type: 'whole',
+              operator: 'between',
+              allowBlank: !column.required,
+              formulae: [min, max],
+              showErrorMessage: true,
+              errorTitle: t('monitor.integrations.inputError'),
+              error: t('monitor.integrations.numberRangeError')
+                .replace('{{min}}', min.toString())
+                .replace('{{max}}', max.toString()),
+              promptTitle: column.label,
+              showInputMessage: true,
+              prompt: t('monitor.integrations.numberRangeError')
+                .replace('{{min}}', min.toString())
+                .replace('{{max}}', max.toString()),
+            };
+            continue;
+          }
+          // 4. 正则表达式验证（使用JSON中配置的Excel公式）
+          if (column.rules && column.rules.length > 0) {
+            const patternRule = column.rules.find(
+              (r: any) => r.type === 'pattern'
+            );
+            if (patternRule && patternRule.excel_formula) {
+              // 使用配置中的excel_formula，替换CELL占位符
+              let excelFormula = patternRule.excel_formula.replace(
+                /\{\{CELL\}\}/g,
+                `${columnLetter}${row}`
+              );
+              // 如果是必填，需要加上非空判断
+              if (column.required) {
+                excelFormula = `AND(LEN(${columnLetter}${row})>0,${excelFormula})`;
+              } else {
+                excelFormula = `OR(LEN(${columnLetter}${row})=0,${excelFormula})`;
+              }
+              cell.dataValidation = {
+                type: 'custom',
+                allowBlank: !column.required,
+                formulae: [excelFormula],
+                showErrorMessage: true,
+                errorTitle: t('monitor.integrations.inputError'),
+                error: patternRule.message || t('common.required'),
+                promptTitle: column.label,
+                showInputMessage: true,
+              };
+              continue;
+            }
+          }
         }
       });
       // 为 is_only 字段添加条件格式，高亮显示重复值

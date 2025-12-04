@@ -26,6 +26,7 @@ class CollectBase(metaclass=ABCMeta):
         self.timestamp_gt = False
         self.asso = "assos"
         self.result = {}
+        self.raw_data = []
 
     @property
     @abstractmethod
@@ -69,6 +70,7 @@ class CollectBase(metaclass=ABCMeta):
     def run(self):
         """执行"""
         data = self.query_data()
+        self.raw_data = data.get("result", [])
         self.format_data(data)
         self.format_metrics()
         return self.result

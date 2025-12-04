@@ -67,15 +67,43 @@ const CollectorDetailDrawer = forwardRef<ModalRef, CollectorDetailDrawerProps>(
     useImperativeHandle(ref, () => ({
       showModal: ({ collectors, row }) => {
         setVisible(true);
-        setCollectors(collectors);
+        // 过滤采集器列表:如果同一个collector_id同时存在于collectors和collectors_install中,只保留collectors中的
+        const collectorsFromStatus = row.status?.collectors || [];
+        const collectorsInstallFromStatus =
+          row.status?.collectors_install || [];
+        const collectorIds = new Set(
+          collectorsFromStatus.map((c: any) => c.collector_id)
+        );
+        const filteredCollectors = [
+          ...collectors.filter((c: any) =>
+            collectorsFromStatus.some(
+              (sc: any) => sc.collector_id === c.collector_id
+            )
+          ),
+          ...collectors.filter(
+            (c: any) =>
+              collectorsInstallFromStatus.some(
+                (sc: any) => sc.collector_id === c.collector_id
+              ) && !collectorIds.has(c.collector_id)
+          ),
+        ];
+        setCollectors(filteredCollectors);
         setForm(row);
-        if (collectors.length > 0) {
-          const sortedCollectors = [...collectors].sort((a, b) => {
+        if (filteredCollectors.length > 0) {
+          const sortedCollectors = [...filteredCollectors].sort((a, b) => {
             const priorityA = STATUS_CODE_PRIORITY[a.status] || 999;
             const priorityB = STATUS_CODE_PRIORITY[b.status] || 999;
             return priorityA - priorityB;
           });
           const firstCollector = sortedCollectors[0];
+          // 处理message为对象的情况
+          if (
+            firstCollector.message &&
+            typeof firstCollector.message === 'object'
+          ) {
+            firstCollector.message =
+              firstCollector.message?.final_message || '';
+          }
           setSelectedCollector(firstCollector);
           setMainConfig({
             key: '',
@@ -220,6 +248,15 @@ const CollectorDetailDrawer = forwardRef<ModalRef, CollectorDetailDrawerProps>(
     };
 
     const handleCollectorClick = (collector: TableDataItem) => {
+      setSubConfigs([]);
+      setSubConfigPagination((pre) => ({
+        ...pre,
+        count: 0,
+        current: 1,
+      }));
+      if (collector.message && typeof collector.message === 'object') {
+        collector.message = collector.message?.final_message || '';
+      }
       setSelectedCollector(collector);
       if (collector.collector_id) {
         filterMainConfigByCollectorId(collector.collector_id as string);
@@ -422,7 +459,7 @@ const CollectorDetailDrawer = forwardRef<ModalRef, CollectorDetailDrawerProps>(
                 })}
               </div>
             </div>
-            <div className="w-2/3 pl-4 flex flex-col overflow-hidden">
+            <div className="w-2/3 pl-4 flex flex-col overflow-y-auto">
               {selectedCollector ? (
                 <div className="space-y-4 flex flex-col h-full">
                   {/* 采集器名称 */}
@@ -444,31 +481,37 @@ const CollectorDetailDrawer = forwardRef<ModalRef, CollectorDetailDrawerProps>(
                       </Tag>
                     </div>
                     <div
-                      className="flex items-center text-xs"
+                      className="text-xs"
                       style={{
                         color: getStatusInfo(selectedCollector.status).color,
                       }}
                     >
-                      <span
-                        style={{
-                          color: getStatusInfo(selectedCollector.status).color,
-                          fontSize: '16px',
-                          marginRight: '4px',
-                        }}
-                      >
-                        {React.cloneElement(
-                          getStatusInfo(selectedCollector.status).icon.props
-                            .children,
-                          {
-                            style: {
-                              ...getStatusInfo(selectedCollector.status).icon
-                                .props.children.props.style,
-                              fontSize: '14px',
-                            },
-                          }
-                        )}
+                      <span className="flex items-center text-xs">
+                        <span
+                          style={{
+                            color: getStatusInfo(selectedCollector.status)
+                              .color,
+                            fontSize: '16px',
+                            marginRight: '4px',
+                          }}
+                        >
+                          {React.cloneElement(
+                            getStatusInfo(selectedCollector.status).icon.props
+                              .children,
+                            {
+                              style: {
+                                ...getStatusInfo(selectedCollector.status).icon
+                                  .props.children.props.style,
+                                fontSize: '14px',
+                              },
+                            }
+                          )}
+                        </span>
+                        {selectedCollector.message || '--'}
                       </span>
-                      {selectedCollector.message || '--'}
+                      <p className="mt-[4px]">
+                        {selectedCollector.verbose_message || ''}
+                      </p>
                     </div>
                   </div>
 
@@ -498,7 +541,7 @@ const CollectorDetailDrawer = forwardRef<ModalRef, CollectorDetailDrawerProps>(
                     </div>
                     {/* 子配置 */}
                     {mainConfig && (
-                      <div className="flex-1 flex flex-col overflow-hidden">
+                      <div className="flex-1 flex flex-col">
                         <div className="bg-[var(--color-fill-2)] rounded-t flex items-center justify-between p-[10px] flex-shrink-0">
                           <span className="text-sm font-bold">
                             {t(
@@ -510,10 +553,12 @@ const CollectorDetailDrawer = forwardRef<ModalRef, CollectorDetailDrawerProps>(
                             {t('common.items')}
                           </span>
                         </div>
-                        <div className="flex-1 overflow-hidden">
+                        <div className="flex-1">
                           <CustomTable
                             scroll={{
-                              y: 'calc(100vh - 460px)',
+                              y: !subConfigs?.length
+                                ? 'auto'
+                                : 'calc(100vh - 470px)',
                               x: 'max-content',
                             }}
                             columns={subConfigColumns}

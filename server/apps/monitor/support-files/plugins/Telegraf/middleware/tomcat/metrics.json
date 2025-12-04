@@ -1,6 +1,7 @@
 {
   "plugin": "Tomcat",
   "plugin_desc": "Collects key performance metrics of Tomcat connectors and JVM memory to monitor server resource usage, request processing efficiency, and errors, optimizing system performance.",
+  "status_query": "any({instance_type='tomcat', collect_type='middleware'}) by (instance_id)",
   "name": "Tomcat",
   "icon": "Tomcat",
   "type": "Middleware",

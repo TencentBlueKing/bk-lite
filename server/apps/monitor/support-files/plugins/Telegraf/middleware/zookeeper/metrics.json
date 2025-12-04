@@ -1,6 +1,7 @@
 {
   "plugin": "Zookeeper",
   "plugin_desc": "By collecting runtime performance data and stability metrics of Zookeeper, such as uptime, average latency, and read-write ratios, users can monitor the cluster status in real-time and optimize performance.",
+  "status_query": "any({instance_type='zookeeper', collect_type='middleware'}) by (instance_id)",
   "name": "Zookeeper",
   "icon": "Zookeeper",
   "type": "Middleware",
@@ -51,7 +52,7 @@
       "unit": "percent",
       "dimensions": [],
       "description": "This metric represents the ratio of snapshot generation frequency to commit request frequency in Zookeeper, helping to monitor the relationship between persistence operations and transaction commits.",
-      "query": "sum(rate(zookeeper_snap_count{__$labels__}[5m])by (instance_id)  / sum(rate(zookeeper_commit_count{__$labels__}[5m])) by (instance_id)"
+      "query": "sum(rate(zookeeper_snap_count{__$labels__}[5m])) by (instance_id) / sum(rate(zookeeper_commit_count{__$labels__}[5m])) by (instance_id)"
     },
     {
       "metric_group": "Connection",
