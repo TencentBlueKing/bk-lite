@@ -1,4 +1,5 @@
-from apps.monitor.models import MonitorInstance, MonitorInstanceOrganization
+from apps.core.exceptions.base_app_exception import BaseAppException
+from apps.monitor.models import MonitorInstance, MonitorInstanceOrganization, MonitorObject
 from apps.monitor.services.node_mgmt import InstanceConfigService
 from apps.monitor.utils.victoriametrics_api import VictoriaMetricsAPI
 
@@ -6,10 +7,18 @@ from apps.monitor.utils.victoriametrics_api import VictoriaMetricsAPI
 class ManualCollectService:
 
     @staticmethod
-    def check_collect_status(query: str) -> bool:
+    def check_collect_status(object_id, instance_id) -> bool:
         """
         检查手动采集是否已经上报数据
         """
+        monitor_object = MonitorObject.objects.filter(id=object_id).first()
+        if not monitor_object:
+            raise BaseAppException("监控对象不存在")
+        query = monitor_object.default_metric
+        if "}" not in query:
+            raise BaseAppException("查询语句格式不正确")
+        params_str = f"instance_id={instance_id}"
+        query = query.replace("}", f",{params_str}}}")
         resp = VictoriaMetricsAPI().query(query)
         result = resp.get("data", {}).get("result", [])
         if result:
@@ -57,3 +66,18 @@ class ManualCollectService:
             instance_obj.id,
             organizations,
         )
+
+    @staticmethod
+    def generate_install_command(instance_id: str, cloud_region_id) -> str:
+        """
+        生成手动采集安装命令
+        """
+        install_command = (
+            f"curl -sSO https://example.com/monitor-agent/install.sh && "
+            f"bash install.sh --instance-id {instance_id}"
+        )
+        return install_command
+
+    @staticmethod
+    def get_install_config(data: dict) -> str:
+        return ""
