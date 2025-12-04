@@ -1,13 +1,12 @@
 'use client';
 import React, { useMemo } from 'react';
 import AutomaticConfiguration from './automatic';
-import { useTranslation } from '@/utils/i18n';
 import { useSearchParams } from 'next/navigation';
 import configureStyle from './index.module.scss';
 import { useObjectConfigInfo } from '@/app/monitor/hooks/integration/common/getObjectConfig';
+import K8sConfiguration from './k8s/k8sConfiguration';
 
 const Configure: React.FC = () => {
-  const { t } = useTranslation();
   const searchParams = useSearchParams();
   const { getCollectType } = useObjectConfigInfo();
   const pluginName = searchParams.get('plugin_name') || '';
@@ -24,7 +23,9 @@ const Configure: React.FC = () => {
           <AutomaticConfiguration />
         </div>
       ) : (
-        t('monitor.integrations.note')
+        <div className={configureStyle.configure}>
+          <K8sConfiguration />
+        </div>
       )}
     </>
   );
