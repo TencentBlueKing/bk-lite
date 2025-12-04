@@ -747,6 +747,8 @@
       "pleaseEnterOutputParams": "Please enter output parameters",
       "equals": "Equals",
       "apiUrl": "URL",
+      "appIcon": "App Icon",
+      "pleaseSelectAppIcon": "Please select app icon",
       "appTags": "App Tags",
       "appDescription": "App Description",
       "pleaseEnterAppDescription": "Please enter app description",
@@ -761,7 +763,13 @@
       "appTagBusiness": "Business",
       "enterAppDescription": "Enter app description",
       "appName": "App Name",
-      "pleaseSelectAppTags": "Please select app tags"
+      "pleaseSelectAppTags": "Please select app tags",
+      "appTagRoutineOps": "Routine Ops",
+      "appTagMonitorAlarm": "Monitor & Alarm",
+      "appTagAutomation": "Automation",
+      "appTagSecurityAudit": "Security Audit",
+      "appTagPerformanceAnalysis": "Performance Analysis",
+      "appTagOpsPlanning": "Ops Planning"
     },
     "collapseSidebar": "Collapse Sidebar",
     "messages": {
