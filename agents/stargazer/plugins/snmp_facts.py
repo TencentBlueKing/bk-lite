@@ -6,10 +6,10 @@
 import socket
 from pysnmp.entity.rfc3413.oneliner import cmdgen
 from pysnmp.hlapi import usmHMACSHAAuthProtocol, usmHMACMD5AuthProtocol, usmAesCfb128Protocol, usmDESPrivProtocol
-
+from sanic.log import logger
 from plugins.base_utils import convert_to_prometheus_format
 from plugins.snmp_topo import SnmpTopoClient
-
+import json
 
 class DefineOid:
     """
@@ -228,16 +228,33 @@ class SnmpFacts:
         """
         将采集到的 SNMP 数据转换为标准格式。
         """
-        snmp_data = self.collect()
-        system_data = snmp_data.get('system', {})
-        interfaces_data = snmp_data.get('interfaces', [])
-        model_data = {
-            "network_system": [system_data],
-            "network_interfaces": interfaces_data
-        }
+        execute_result = True
+        message = ""
+        model_data = {}
+        try:
+            snmp_data = self.collect()
+            system_data = snmp_data.get('system', {})
+            interfaces_data = snmp_data.get('interfaces', [])
+            model_data = {
+                "network_system": [system_data],
+                "network_interfaces": interfaces_data
+            }
+        except Exception as collect_err:
+            execute_result = False
+            message = str(collect_err)
+        
         if self.topo:
-            topo_client = SnmpTopoClient(self.kwargs)
+            try:
+                topo_client = SnmpTopoClient(self.kwargs)
+            except Exception as collect_err:
+                execute_result = False
+                message = str(collect_err)
             model_data['network_topo'] = topo_client.bulkCmd()
-
-        result = convert_to_prometheus_format(model_data)
+        if execute_result:
+            inst_data = model_data
+        else:
+            logger.error(f"snmp_facts collect error! {message}")
+            inst_data = {"network_system": [{"result": message, "success": False}]}
+        result = convert_to_prometheus_format(inst_data)
+        logger.error(f"snmp_facts collect result: {result}")
         return result
