@@ -27,5 +27,5 @@ class ManualCollect(viewsets.ViewSet):
     # 检查手动采集状态
     @action(methods=['post'], detail=False, url_path='check_collect_status')
     def check_collect_status(self, request):
-        data = ManualCollectService.check_collect_status(request.data["monitor_object_id"], request.data["instance_id"])
-        return WebUtils.response_success(data)
+        success = ManualCollectService.check_collect_status(request.data["monitor_object_id"], request.data["instance_id"])
+        return WebUtils.response_success(dict(success=success))
