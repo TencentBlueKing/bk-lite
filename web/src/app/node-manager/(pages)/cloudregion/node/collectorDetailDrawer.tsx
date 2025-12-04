@@ -67,15 +67,43 @@ const CollectorDetailDrawer = forwardRef<ModalRef, CollectorDetailDrawerProps>(
     useImperativeHandle(ref, () => ({
       showModal: ({ collectors, row }) => {
         setVisible(true);
-        setCollectors(collectors);
+        // 过滤采集器列表:如果同一个collector_id同时存在于collectors和collectors_install中,只保留collectors中的
+        const collectorsFromStatus = row.status?.collectors || [];
+        const collectorsInstallFromStatus =
+          row.status?.collectors_install || [];
+        const collectorIds = new Set(
+          collectorsFromStatus.map((c: any) => c.collector_id)
+        );
+        const filteredCollectors = [
+          ...collectors.filter((c: any) =>
+            collectorsFromStatus.some(
+              (sc: any) => sc.collector_id === c.collector_id
+            )
+          ),
+          ...collectors.filter(
+            (c: any) =>
+              collectorsInstallFromStatus.some(
+                (sc: any) => sc.collector_id === c.collector_id
+              ) && !collectorIds.has(c.collector_id)
+          ),
+        ];
+        setCollectors(filteredCollectors);
         setForm(row);
-        if (collectors.length > 0) {
-          const sortedCollectors = [...collectors].sort((a, b) => {
+        if (filteredCollectors.length > 0) {
+          const sortedCollectors = [...filteredCollectors].sort((a, b) => {
             const priorityA = STATUS_CODE_PRIORITY[a.status] || 999;
             const priorityB = STATUS_CODE_PRIORITY[b.status] || 999;
             return priorityA - priorityB;
           });
           const firstCollector = sortedCollectors[0];
+          // 处理message为对象的情况
+          if (
+            firstCollector.message &&
+            typeof firstCollector.message === 'object'
+          ) {
+            firstCollector.message =
+              firstCollector.message?.final_message || '';
+          }
           setSelectedCollector(firstCollector);
           setMainConfig({
             key: '',
@@ -226,6 +254,9 @@ const CollectorDetailDrawer = forwardRef<ModalRef, CollectorDetailDrawerProps>(
         count: 0,
         current: 1,
       }));
+      if (collector.message && typeof collector.message === 'object') {
+        collector.message = collector.message?.final_message || '';
+      }
       setSelectedCollector(collector);
       if (collector.collector_id) {
         filterMainConfigByCollectorId(collector.collector_id as string);
