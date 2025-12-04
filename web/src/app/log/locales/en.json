@@ -222,13 +222,13 @@
       "snmpTrapAccessGuide": "Access Guide",
       "snmpTrapTargetPort": "Target Port",
       "snmpTrapNodeDes": "Please select the node that has been hosting the snmptrapd program",
-      "syslogNodeDes": "Please select the container node that has been hosting the Telegraf collector",
       "syslogAccessGuide": "Access Guide",
-      "syslogStep1": "Configure Syslog Target Address on Device",
       "syslogStep1Des": "Please configure the following Syslog server address in your device or application to send log messages to this receiver",
+      "syslogProtocol": "Transport Protocol",
       "syslogTargetIp": "Target IP",
+      "syslogNodeDes": "Please select the container node that has been hosting the Telegraf collector",
       "syslogTargetPort": "Target Port",
-      "syslogProtocol": "Transport Protocol"
+      "syslogStep1": "Configure Syslog Target Address on Device"
     },
     "search": {
       "enableScrolling": "Enable Auto-scrolling",

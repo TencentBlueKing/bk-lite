@@ -1,0 +1,330 @@
+/* MegaMenu 容器 */
+.megaMenuWrapper {
+  position: relative;
+  display: inline-block;
+}
+
+/* 触发按钮样式 - 与导航栏其他链接保持一致 */
+.megaMenuTrigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: var(--ifm-navbar-item-padding-vertical)
+    var(--ifm-navbar-item-padding-horizontal);
+  background: transparent;
+  border: none;
+  font-size: inherit;
+  font-weight: 600;
+  font-family: inherit;
+  color: var(--ifm-navbar-link-color);
+  cursor: pointer;
+  transition: color var(--ifm-transition-fast)
+    var(--ifm-transition-timing-default);
+  position: relative;
+  white-space: nowrap;
+  line-height: inherit;
+  height: 100%;
+}
+
+.megaMenuTrigger:hover {
+  color: var(--ifm-navbar-link-hover-color);
+  text-decoration: none;
+}
+
+.megaMenuTrigger.active {
+  color: var(--ifm-navbar-link-hover-color);
+  text-decoration: none;
+}
+
+/* 箭头图标 */
+.megaMenuArrow {
+  transition: transform 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+  opacity: 0.5;
+  margin-left: -2px;
+}
+
+.megaMenuArrow.open {
+  transform: rotate(180deg);
+}
+
+/* 下拉菜单容器 - 使用 fixed 定位确保位置正确 */
+.megaMenuDropdown {
+  position: fixed;
+  transform: translateX(0);
+  background: rgba(255, 255, 255, 0.98);
+  border-radius: 16px;
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.03), 0 24px 48px rgba(0, 0, 0, 0.12),
+    0 12px 24px rgba(0, 0, 0, 0.08);
+  z-index: 9999;
+  min-width: 800px;
+  max-width: 1000px;
+  animation: megaMenuFadeIn 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+  backdrop-filter: blur(20px) saturate(180%);
+  border: 1px solid rgba(0, 0, 0, 0.04);
+  overflow: hidden;
+}
+
+@keyframes megaMenuFadeIn {
+  from {
+    opacity: 0;
+    transform: translateX(0) translateY(-12px) scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0) translateY(0) scale(1);
+  }
+}
+
+/* 菜单内容容器 */
+.megaMenuContainer {
+  padding: 40px 48px;
+  background: linear-gradient(
+    to bottom,
+    rgba(255, 255, 255, 0) 0%,
+    rgba(249, 250, 251, 0.5) 100%
+  );
+}
+
+/* 分组容器 - 竖向排列 */
+.megaMenuGroups {
+  display: flex;
+  flex-direction: column;
+  gap: 32px;
+}
+
+/* 单个产品分组 */
+.productGroup {
+  position: relative;
+}
+
+/* 分组之间的分割线 */
+.productGroup:not(:last-child) {
+  padding-bottom: 32px;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.04);
+}
+
+/* 分组标题 */
+.groupTitle {
+  font-size: 11px;
+  font-weight: 700;
+  color: rgba(0, 0, 0, 0.4);
+  margin-bottom: 20px;
+  text-transform: uppercase;
+  letter-spacing: 1.2px;
+  position: relative;
+  padding-left: 12px;
+}
+
+.groupTitle::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 3px;
+  height: 12px;
+  background: linear-gradient(135deg, #2563eb 0%, #3b82f6 100%);
+  border-radius: 2px;
+}
+
+/* 分组内的产品列表 - 横向排列 */
+.groupProducts {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 10px;
+}
+
+/* 单个产品项 - 简洁文字布局 */
+.megaMenuItem {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 12px 16px;
+  border-radius: 10px;
+  text-decoration: none;
+  color: inherit;
+  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+  cursor: pointer;
+  background: linear-gradient(
+    135deg,
+    rgba(255, 255, 255, 0.8) 0%,
+    rgba(249, 250, 251, 0.6) 100%
+  );
+  border: 1px solid rgba(0, 0, 0, 0.04);
+  position: relative;
+  overflow: hidden;
+}
+
+.megaMenuItem::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: linear-gradient(
+    135deg,
+    rgba(59, 130, 246, 0.1) 0%,
+    rgba(147, 197, 253, 0.06) 100%
+  );
+  opacity: 0;
+  transition: opacity 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.megaMenuItem:hover {
+  background: linear-gradient(
+    135deg,
+    rgba(255, 255, 255, 0.98) 0%,
+    rgba(249, 250, 251, 0.95) 100%
+  );
+  border-color: rgba(37, 99, 235, 0.2);
+  text-decoration: none;
+  color: inherit;
+  transform: translateY(-2px);
+  box-shadow: 0 8px 16px rgba(37, 99, 235, 0.08), 0 4px 8px rgba(0, 0, 0, 0.04);
+}
+
+.megaMenuItem:hover::before {
+  opacity: 1;
+}
+
+/* 产品内容 */
+.itemName {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--ifm-color-content);
+  line-height: 1.3;
+  letter-spacing: -0.01em;
+  position: relative;
+  z-index: 1;
+}
+
+.itemDescription {
+  font-size: 12px;
+  color: rgba(0, 0, 0, 0.5);
+  line-height: 1.5;
+  font-weight: 400;
+  position: relative;
+  z-index: 1;
+}
+
+/* 底部链接 */
+.megaMenuFooter {
+  padding-top: 16px;
+  margin-top: 12px;
+  border-top: 1px solid rgba(0, 0, 0, 0.06);
+  text-align: center;
+}
+
+.footerLink {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 16px;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--ifm-color-primary);
+  text-decoration: none;
+  border-radius: 7px;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  background: rgba(var(--ifm-color-primary-rgb), 0.05);
+}
+
+.footerLink:hover {
+  background: rgba(var(--ifm-color-primary-rgb), 0.12);
+  text-decoration: none;
+  color: var(--ifm-color-primary);
+  transform: translateY(-1px);
+}
+
+/* 响应式布局 */
+@media (max-width: 1100px) {
+  .megaMenuGroups {
+    flex-wrap: wrap;
+  }
+
+  .productGroup {
+    flex-basis: calc(50% - 16px);
+  }
+
+  .productGroup:nth-child(2n)::after {
+    display: none;
+  }
+
+  .groupProducts {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+@media (max-width: 768px) {
+  .megaMenuContainer {
+    padding: 16px;
+  }
+
+  .megaMenuGroups {
+    flex-direction: column;
+    gap: 20px;
+  }
+
+  .productGroup::after {
+    display: none;
+  }
+
+  .productGroup:not(:last-child) {
+    padding-bottom: 16px;
+    border-bottom: 1px solid rgba(0, 0, 0, 0.06);
+  }
+
+  .groupProducts {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* 暗色模式支持 */
+[data-theme='dark'] .megaMenuDropdown {
+  background: #1e1e1e;
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.08),
+    0 20px 40px rgba(0, 0, 0, 0.5), 0 8px 16px rgba(0, 0, 0, 0.4);
+  border-color: rgba(255, 255, 255, 0.08);
+}
+
+[data-theme='dark'] .megaMenuTrigger:hover {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+[data-theme='dark'] .megaMenuTrigger.active {
+  background: rgba(255, 255, 255, 0.12);
+}
+
+[data-theme='dark'] .productGroup:not(:last-child)::after {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+[data-theme='dark'] .groupTitle {
+  color: rgba(255, 255, 255, 0.75);
+  border-bottom-color: rgba(255, 255, 255, 0.08);
+}
+
+[data-theme='dark'] .megaMenuItem:hover {
+  background: rgba(255, 255, 255, 0.06);
+}
+
+[data-theme='dark'] .itemName {
+  color: rgba(255, 255, 255, 0.9);
+}
+
+[data-theme='dark'] .itemDescription {
+  color: rgba(255, 255, 255, 0.5);
+}
+
+[data-theme='dark'] .megaMenuFooter {
+  border-top-color: rgba(255, 255, 255, 0.08);
+}
+
+[data-theme='dark'] .footerLink {
+  background: rgba(var(--ifm-color-primary-rgb), 0.12);
+}
+
+[data-theme='dark'] .footerLink:hover {
+  background: rgba(var(--ifm-color-primary-rgb), 0.2);
+}
