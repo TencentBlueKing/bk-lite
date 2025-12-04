@@ -90,13 +90,33 @@
           "title": "登录日志",
           "icon": "denglurizhi",
           "name": "user_logs",
-          "url": "/system-manager/security/logs"
+          "url": "/system-manager/security/login-logs"
         },
         {
           "title": "操作日志",
           "icon": "talk-line",
           "name": "operation_logs",
           "url": "/system-manager/security/operation-logs"
+        },
+        {
+          "title": "错误日志",
+          "icon": "wannengbiaodan",
+          "name": "error_logs",
+          "url": "/system-manager/security/error-logs"
+        }
+      ]
+    },
+    {
+      "title": "设置",
+      "icon": "settings-fill",
+      "url": "/system-manager/settings",
+      "name": "Setting",
+      "children": [
+        {
+          "title": "密钥",
+          "url": "/system-manager/settings/key",
+          "icon": "key",
+          "name": "api_secret_key"
         }
       ]
     }
@@ -192,13 +212,33 @@
           "title": "Login Logs",
           "icon": "denglurizhi",
           "name": "user_logs",
-          "url": "/system-manager/security/logs"
+          "url": "/system-manager/security/login-logs"
         },
         {
           "title": "Operation Logs",
           "icon": "talk-line",
           "name": "operation_logs",
           "url": "/system-manager/security/operation-logs"
+        },
+        {
+          "title": "Error Logs",
+          "icon": "wannengbiaodan",
+          "name": "error_logs",
+          "url": "/system-manager/security/error-logs"
+        }
+      ]
+    },
+    {
+      "title": "Settings",
+      "icon": "settings-fill",
+      "url": "/system-manager/settings",
+      "name": "Setting",
+      "children": [
+        {
+          "title": "API Secret Keys",
+          "url": "/system-manager/settings/key",
+          "icon": "key",
+          "name": "api_secret_key"
         }
       ]
     }

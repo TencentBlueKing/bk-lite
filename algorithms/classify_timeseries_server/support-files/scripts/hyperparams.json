@@ -1,0 +1,11 @@
+{
+  "order": [1, 1, 1],
+  "seasonal_order": [1, 1, 1, 12],
+  "trend": "c",
+  "comments": {
+    "order": "ARIMA(p,d,q) 参数: [p=自回归项, d=差分阶数, q=移动平均项]",
+    "seasonal_order": "季节性 SARIMA(P,D,Q,s) 参数: [P=季节性自回归, D=季节性差分, Q=季节性移动平均, s=季节周期]",
+    "trend": "趋势项: 'n'=无, 'c'=常数, 't'=线性, 'ct'=常数+线性"
+  }
+}
+

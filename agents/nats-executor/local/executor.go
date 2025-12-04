@@ -188,7 +188,7 @@ func SubscribeDownloadToLocal(nc *nats.Conn, instanceId *string) {
 	subject := fmt.Sprintf("download.local.%s", *instanceId)
 	//log.Printf("Subscribing to subject: %s", subject)
 
-	nc.Subscribe(subject, func(msg *nats.Msg) {
+	_, err := nc.Subscribe(subject, func(msg *nats.Msg) {
 		var incoming struct {
 			Args   []json.RawMessage      `json:"args"`
 			Kwargs map[string]interface{} `json:"kwargs"`
@@ -237,6 +237,10 @@ func SubscribeDownloadToLocal(nc *nats.Conn, instanceId *string) {
 			log.Printf("Error responding to download request: %v", err)
 		}
 	})
+
+	if err != nil {
+		log.Printf("[Download Local Subscribe] Instance: %s, Failed to subscribe: %v", *instanceId, err)
+	}
 }
 
 func SubscribeUnzipToLocal(nc *nats.Conn, instanceId *string) {
@@ -297,5 +301,25 @@ func SubscribeUnzipToLocal(nc *nats.Conn, instanceId *string) {
 
 	if err != nil {
 		log.Printf("[Unzip Local Subscribe] Instance: %s, Failed to subscribe: %v", *instanceId, err)
+	}
+}
+
+func SubscribeHealthCheck(nc *nats.Conn, instanceId *string) {
+	subject := fmt.Sprintf("health.check.%s", *instanceId)
+	log.Printf("[Health Check Subscribe] Instance: %s, Subscribing to subject: %s", *instanceId, subject)
+
+	_, err := nc.Subscribe(subject, func(msg *nats.Msg) {
+		response := HealthCheckResponse{
+			Success:    true,
+			Status:     "ok",
+			InstanceId: *instanceId,
+			Timestamp:  time.Now().UTC().Format(time.RFC3339),
+		}
+		responseContent, _ := json.Marshal(response)
+		msg.Respond(responseContent)
+	})
+
+	if err != nil {
+		log.Printf("[Health Check Subscribe] Instance: %s, Failed to subscribe: %v", *instanceId, err)
 	}
 }

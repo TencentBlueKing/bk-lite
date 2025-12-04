@@ -5,9 +5,8 @@ import React, {
   forwardRef,
   useImperativeHandle,
   useMemo,
-  useEffect,
 } from 'react';
-import { Form, Select, message, Button, Popconfirm, Radio, Spin } from 'antd';
+import { Form, Select, message, Button, Popconfirm, Radio } from 'antd';
 import OperateModal from '@/components/operate-modal';
 import type { FormInstance } from 'antd';
 import { useTranslation } from '@/utils/i18n';
@@ -16,6 +15,7 @@ import useNodeManagerApi from '@/app/node-manager/api';
 import type { TableDataItem } from '@/app/node-manager/types';
 import useCloudId from '@/app/node-manager/hooks/useCloudRegionId';
 import { COLLECTOR_LABEL } from '@/app/node-manager/constants/collector';
+import { useCommon } from '@/app/node-manager/context/common';
 const { Option } = Select;
 
 interface Option {
@@ -34,8 +34,9 @@ const CollectorModal = forwardRef<ModalRef, ModalSuccess>(
       batchOperationCollector,
       getConfiglist,
       applyConfig,
-      getNodeStateEnum,
     } = useNodeManagerApi();
+    const commonContext = useCommon();
+    const nodeStateEnum = commonContext?.nodeStateEnum || {};
     const cloudId = useCloudId();
     const collectorFormRef = useRef<FormInstance>(null);
     const popcConfirmArr = ['restartCollector'];
@@ -50,7 +51,6 @@ const CollectorModal = forwardRef<ModalRef, ModalSuccess>(
     const [configListLoading, setConfigListLoading] = useState<boolean>(false);
     const [confirmLoading, setConfirmLoading] = useState<boolean>(false);
     const [collector, setCollector] = useState<string | null>(null);
-    const [pageLoading, setPageLoading] = useState<boolean>(false);
     const [system, setSystem] = useState<string>('');
     const [options, setOptions] = useState<Option[]>([]);
     const [typeOptions, setTypeOptions] = useState<any[]>([]);
@@ -67,40 +67,27 @@ const CollectorModal = forwardRef<ModalRef, ModalSuccess>(
       },
     }));
 
-    useEffect(() => {
-      collectorFormRef.current?.resetFields();
-    }, [collectorFormRef]);
-
     const configs = useMemo(() => {
       return configList.filter((item) => item.collector_id === collector);
     }, [collector]);
 
-    const initTypeOptions = async (selectedsystem: string) => {
-      setPageLoading(true);
-      try {
-        const res = await getNodeStateEnum();
-        if (res?.tag) {
-          const tagData = res.tag;
-          const apps: any[] = [];
-          Object.keys(tagData).forEach((key) => {
-            const item = tagData[key];
-            if (item.is_app) {
-              apps.push({ label: item.name, value: key });
-            }
-          });
-          setTypeOptions(apps);
-          // 默认选中第一项
-          const defaultType = apps.length > 0 ? apps[0].value : '';
-          setSelectedType(defaultType);
-          collectorFormRef.current?.setFieldsValue({
-            type: defaultType,
-          });
-          if (defaultType) {
-            getCollectors(selectedsystem, defaultType);
+    const initTypeOptions = (selectedsystem: string) => {
+      if (nodeStateEnum?.tag) {
+        const tagData = nodeStateEnum.tag;
+        const apps: any[] = [];
+        Object.keys(tagData).forEach((key) => {
+          const item = tagData[key];
+          if (item.is_app) {
+            apps.push({ label: item.name, value: key });
           }
+        });
+        setTypeOptions(apps);
+        // 默认选中第一项
+        const defaultType = apps.length > 0 ? apps[0].value : '';
+        setSelectedType(defaultType);
+        if (defaultType) {
+          getCollectors(selectedsystem, defaultType);
         }
-      } finally {
-        setPageLoading(false);
       }
     };
 
@@ -354,11 +341,34 @@ const CollectorModal = forwardRef<ModalRef, ModalSuccess>(
           </>
         }
       >
-        <Spin spinning={pageLoading}>
-          <Form ref={collectorFormRef} layout="vertical" colon={false}>
+        <Form
+          ref={collectorFormRef}
+          layout="vertical"
+          colon={false}
+          initialValues={{ type: selectedType }}
+        >
+          <Form.Item
+            name="type"
+            label={t('common.type')}
+            rules={[
+              {
+                required: true,
+                message: t('common.required'),
+              },
+            ]}
+          >
+            <Radio.Group onChange={(e) => handleTypeChange(e.target.value)}>
+              {typeOptions.map((option) => (
+                <Radio key={option.value} value={option.value}>
+                  {option.label}
+                </Radio>
+              ))}
+            </Radio.Group>
+          </Form.Item>
+          <Form.Item noStyle>
             <Form.Item
-              name="type"
-              label={t('common.type')}
+              name="collector"
+              label={t('node-manager.cloudregion.node.collector')}
               rules={[
                 {
                   required: true,
@@ -366,93 +376,73 @@ const CollectorModal = forwardRef<ModalRef, ModalSuccess>(
                 },
               ]}
             >
-              <Radio.Group onChange={(e) => handleTypeChange(e.target.value)}>
-                {typeOptions.map((option) => (
-                  <Radio key={option.value} value={option.value}>
-                    {option.label}
-                  </Radio>
-                ))}
-              </Radio.Group>
+              <Select
+                showSearch
+                allowClear
+                loading={collectorLoading}
+                options={options}
+                onChange={handleCollectorChange}
+              ></Select>
             </Form.Item>
-            <Form.Item noStyle>
-              <Form.Item
-                name="collector"
-                label={t('node-manager.cloudregion.node.collector')}
-                rules={[
-                  {
-                    required: true,
-                    message: t('common.required'),
-                  },
-                ]}
-              >
-                <Select
-                  showSearch
-                  allowClear
-                  loading={collectorLoading}
-                  options={options}
-                  onChange={handleCollectorChange}
-                ></Select>
-              </Form.Item>
-              {type === 'startCollector' && collector?.includes('telegraf') && (
-                <div className="text-[12px] text-[var(--color-text-2)]">
-                  {t('node-manager.cloudregion.node.telegrafConfigTips')}
-                </div>
-              )}
+            {type === 'startCollector' && collector?.includes('telegraf') && (
+              <div className="text-[12px] text-[var(--color-text-2)]">
+                {t('node-manager.cloudregion.node.telegrafConfigTips')}
+              </div>
+            )}
+          </Form.Item>
+          {type === 'startCollector' &&
+            collector &&
+            !collector.includes('telegraf') && (
+            <Form.Item
+              name="configuration"
+              label={t('node-manager.cloudregion.node.configuration')}
+            >
+              <Select
+                showSearch
+                allowClear
+                loading={configListLoading}
+                placeholder={t('common.selectMsg')}
+                filterOption={(input, option) =>
+                  (option?.label || '')
+                    .toLowerCase()
+                    .includes(input.toLowerCase())
+                }
+                options={configs.map((item) => ({
+                  value: item.id,
+                  label: item.name,
+                }))}
+              />
             </Form.Item>
-            {type === 'startCollector' &&
-              collector &&
-              !collector.includes('telegraf') && (
-              <Form.Item
-                name="configuration"
-                label={t('node-manager.cloudregion.node.configuration')}
-              >
-                <Select
-                  showSearch
-                  allowClear
-                  loading={configListLoading}
-                  placeholder={t('common.selectMsg')}
-                  filterOption={(input, option) =>
-                    (option?.label || '')
-                      .toLowerCase()
-                      .includes(input.toLowerCase())
-                  }
-                  options={configs.map((item) => ({
-                    value: item.id,
-                    label: item.name,
-                  }))}
-                />
-              </Form.Item>
-            )}
-            {type === 'installCollector' && (
-              <Form.Item
-                name="version"
-                label={t('node-manager.cloudregion.node.version')}
-                rules={[
-                  {
-                    required: true,
-                    message: t('common.required'),
-                  },
-                ]}
-              >
-                <Select
-                  showSearch
-                  allowClear
-                  loading={versionLoading}
-                  placeholder={t('common.selectMsg')}
-                  options={packageList.map((item) => ({
-                    value: item.id,
-                    label: item.version,
-                  }))}
-                  filterOption={(input, option) =>
-                    (option?.label || '')
-                      .toLowerCase()
-                      .includes(input.toLowerCase())
-                  }
-                />
-              </Form.Item>
-            )}
-          </Form>
-        </Spin>
+          )}
+          {type === 'installCollector' && (
+            <Form.Item
+              name="version"
+              label={t('node-manager.cloudregion.node.version')}
+              rules={[
+                {
+                  required: true,
+                  message: t('common.required'),
+                },
+              ]}
+            >
+              <Select
+                showSearch
+                allowClear
+                loading={versionLoading}
+                placeholder={t('common.selectMsg')}
+                options={packageList.map((item) => ({
+                  value: item.id,
+                  label: item.version,
+                }))}
+                filterOption={(input, option) =>
+                  (option?.label || '')
+                    .toLowerCase()
+                    .includes(input.toLowerCase())
+                }
+              />
+            </Form.Item>
+          )}
+        </Form>
       </OperateModal>
     );
   }

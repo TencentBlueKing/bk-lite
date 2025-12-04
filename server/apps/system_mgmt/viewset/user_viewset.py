@@ -6,11 +6,12 @@ from rest_framework.decorators import action
 
 from apps.core.backends import cache
 from apps.core.decorators.api_permission import HasPermission
-from apps.core.logger import system_mgmt_logger as logger
+from apps.core.utils.loader import LanguageLoader
 from apps.system_mgmt.models import Group, Role, User, UserRule
 from apps.system_mgmt.serializers.user_serializer import UserSerializer
 from apps.system_mgmt.services.role_manage import RoleManage
 from apps.system_mgmt.utils.operation_log_utils import log_operation
+from apps.system_mgmt.utils.password_validator import PasswordValidator
 from apps.system_mgmt.utils.viewset_utils import ViewSetUtils
 
 
@@ -112,46 +113,73 @@ class UserViewSet(ViewSetUtils):
     def create_user(self, request):
         kwargs = request.data
         rules = kwargs.pop("rules", [])
-        try:
-            with transaction.atomic():
-                User.objects.create(
-                    username=kwargs["username"],
-                    display_name=kwargs["lastName"],
-                    email=kwargs["email"],
-                    disabled=False,
-                    locale=kwargs["locale"],
-                    timezone=kwargs["timezone"],
-                    group_list=kwargs["groups"],
-                    role_list=kwargs["roles"],
-                    temporary_pwd=kwargs.get("temporary_pwd", False),
-                )
-                if rules:
-                    add_rule = [UserRule(username=kwargs["username"], group_rule_id=i) for i in rules]
-                    UserRule.objects.bulk_create(add_rule, batch_size=100)
 
-                # 记录操作日志
-                log_operation(request, "create", "user", f"新增用户: {kwargs['username']} ({kwargs['lastName']})")
-            return JsonResponse({"result": True})
-        except Exception as e:
-            logger.exception(e)
-            return JsonResponse({"result": False, "message": str(e)})
+        # 获取用户语言设置
+        locale = getattr(request.user, "locale", "en") if hasattr(request, "user") else "en"
+        loader = LanguageLoader(app="system_mgmt", default_lang=locale)
+
+        # 校验 groups ID 是否真实存在
+        groups = kwargs.get("groups", [])
+        if groups:
+            valid_group_ids = set(Group.objects.filter(id__in=groups).values_list("id", flat=True))
+            invalid_group_ids = set(groups) - valid_group_ids
+            if invalid_group_ids:
+                message = loader.get("error.invalid_group_ids", "Invalid group IDs: {ids}").format(ids=list(invalid_group_ids))
+                return JsonResponse({"result": False, "message": message})
+
+        # 校验 roles ID 是否真实存在
+        roles = kwargs.get("roles", [])
+        if roles:
+            valid_role_ids = set(Role.objects.filter(id__in=roles).values_list("id", flat=True))
+            invalid_role_ids = set(roles) - valid_role_ids
+            if invalid_role_ids:
+                message = loader.get("error.invalid_role_ids", "Invalid role IDs: {ids}").format(ids=list(invalid_role_ids))
+                return JsonResponse({"result": False, "message": message})
+
+        with transaction.atomic():
+            User.objects.create(
+                username=kwargs["username"],
+                display_name=kwargs["lastName"],
+                email=kwargs["email"],
+                disabled=False,
+                locale=kwargs["locale"],
+                timezone=kwargs["timezone"],
+                group_list=groups,
+                role_list=roles,
+                temporary_pwd=kwargs.get("temporary_pwd", False),
+            )
+            if rules:
+                add_rule = [UserRule(username=kwargs["username"], group_rule_id=i) for i in rules]
+                UserRule.objects.bulk_create(add_rule, batch_size=100)
+
+            # 记录操作日志
+            log_operation(request, "create", "user", f"新增用户: {kwargs['username']} ({kwargs['lastName']})")
+        return JsonResponse({"result": True})
 
     @action(detail=False, methods=["POST"])
     @HasPermission("user_group-Edit User")
     def reset_password(self, request):
-        try:
-            password = request.data.get("password")
-            temporary_pwd = request.data.get("temporary", False)
-            user_id = request.data.get("id")
-            user = User.objects.get(id=user_id)
-            User.objects.filter(id=user_id).update(password=make_password(password), temporary_pwd=temporary_pwd)
+        password = request.data.get("password")
+        temporary_pwd = request.data.get("temporary", False)
+        user_id = request.data.get("id")
 
-            # 记录操作日志
-            log_operation(request, "update", "user", f"重置用户密码: {user.username}")
-            return JsonResponse({"result": True})
-        except Exception as e:
-            logger.exception(e)
-            return JsonResponse({"result": False, "message": str(e)})
+        # 校验密码是否为空
+        if not password:
+            raise ValueError("密码不能为空")
+
+        # 校验密码复杂度
+        is_valid, error_message = PasswordValidator.validate_password(password)
+        if not is_valid:
+            raise ValueError(error_message)
+
+        user = User.objects.get(id=user_id)
+        user.password = make_password(password)
+        user.temporary_pwd = temporary_pwd
+        user.save()  # 使用save方法自动更新password_last_modified
+
+        # 记录操作日志
+        log_operation(request, "update", "user", f"重置用户密码: {user.username}")
+        return JsonResponse({"result": True})
 
     @action(detail=False, methods=["POST"])
     @HasPermission("user_group-Delete User")
@@ -159,10 +187,21 @@ class UserViewSet(ViewSetUtils):
         user_ids = request.data.get("user_ids")
         users = User.objects.filter(id__in=user_ids)
         usernames = list(users.values_list("username", flat=True))
+
+        # 收集需要删除的用户信息（username和domain）
+        user_info_list = list(users.values("username", "domain"))
+
         keys = []
         for i in users:
             keys.extend(RoleManage.get_cache_keys(i.username))
+
         cache.delete_many(keys)
+
+        # 删除用户相关的UserRule（根据username和domain）
+        for user_info in user_info_list:
+            UserRule.objects.filter(username=user_info["username"], domain=user_info["domain"]).delete()
+
+        # 删除用户
         users.delete()
 
         # 记录操作日志

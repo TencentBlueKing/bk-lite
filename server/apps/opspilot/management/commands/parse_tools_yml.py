@@ -67,21 +67,9 @@ class Command(BaseCommand):
 
             # 收集该工具集所有工具的参数
             all_params = {}
-            tool_list = []
 
-            for tool in toolkit_tools:
-                tool_name = tool.get("name", "")
-                tool_description = tool.get("description", "")
+            for tool in toolkit_tools[:]:
                 parameters = tool.get("parameters", {})
-
-                # 添加工具基本信息
-                tool_list.append(
-                    {
-                        "name": tool_name,
-                        "description": tool_description,
-                    }
-                )
-
                 # 合并参数（去重）
                 for param_name, param_config in parameters.items():
                     if param_name not in all_params:
@@ -91,7 +79,7 @@ class Command(BaseCommand):
                 "id": toolkit_id,
                 "name": toolkit_name,
                 "description": toolkit_description,
-                "tools": tool_list,
+                "tools": toolkit_tools,
                 "params": all_params,  # 所有参数合并到外层
             }
 
@@ -108,7 +96,6 @@ class Command(BaseCommand):
         """
         created_count = 0
         updated_count = 0
-
         for toolkit in toolkits:
             toolkit_id = toolkit.get("id", "")
             toolkit_name = toolkit.get("name", "")
@@ -150,20 +137,21 @@ class Command(BaseCommand):
             }
 
             # 构造 tools 列表（只保留工具名称）
-            tools_list = [tool["name"] for tool in tools]
 
             # 检查是否已存在
             skill_tool, created = SkillTools.objects.update_or_create(
                 name=toolkit_id,
+                is_build_in=True,
                 defaults={
                     "description": toolkit_description,
                     "params": params_data,
-                    "tools": tools_list,
-                    "tags": [toolkit_id],
-                    "is_build_in": True,
-                    "team": [],
+                    "tools": tools,
+                    "tags": ["other"],
                 },
             )
+            if not skill_tool.team:
+                skill_tool.team = [1]
+                skill_tool.save()
 
             if created:
                 created_count += 1

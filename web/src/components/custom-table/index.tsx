@@ -83,13 +83,16 @@ const CustomTable = <T extends object>({
       }
 
       // 否则根据父容器高度自动计算
-      const parentHeight = parentElement.clientHeight;
-      const TABLE_HEADER_HEIGHT = size === 'small' ? 47 : size === 'middle' ? 55 : 63;
-      const PAGINATION_HEIGHT = pagination ? 56 : 0;
-      const calculatedHeight = parentHeight - TABLE_HEADER_HEIGHT - PAGINATION_HEIGHT;
-      
-      setTableHeight(calculatedHeight > 0 ? calculatedHeight : undefined);
-      setContainerHeight(parentHeight);
+      if (pagination) {
+        const parentHeight = parentElement.clientHeight;
+        const TABLE_HEADER_HEIGHT =
+          size === 'small' ? 47 : size === 'middle' ? 55 : 63;
+        const PAGINATION_HEIGHT = pagination ? 56 : 0;
+        const calculatedHeight =
+          parentHeight - TABLE_HEADER_HEIGHT - PAGINATION_HEIGHT;
+        setTableHeight(calculatedHeight > 0 ? calculatedHeight : undefined);
+        setContainerHeight(parentHeight);
+      }
     };
 
     updateTableHeight();
@@ -271,7 +274,10 @@ const CustomTable = <T extends object>({
     <div
       ref={containerRef}
       className={`relative ${customTableStyle.customTable}`}
-      style={{ height: containerHeight ? `${containerHeight}px` : 'auto' }}>
+      style={{
+        height: containerHeight && pagination ? `${containerHeight}px` : 'auto',
+      }}
+    >
       <Table
         size={size}
         bordered={bordered}

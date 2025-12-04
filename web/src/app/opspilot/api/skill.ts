@@ -79,15 +79,6 @@ export const useSkillApi = () => {
   const saveSkillDetail = async (id: string | null, payload: any): Promise<void> => {
     await put(`/opspilot/model_provider_mgmt/llm/${id}/`, payload);
   };
-
-  /**
-   * Executes the LLM with the given payload.
-   * @param payload - Data to be sent in the request.
-   */
-  const executeLlm = async (payload: any): Promise<any> => {
-    return post('/opspilot/model_provider_mgmt/llm/execute/', payload);
-  };
-
   /**
    * Fetches the list of skill tools.
    */
@@ -122,7 +113,6 @@ export const useSkillApi = () => {
     deleteRule,
     fetchLlmModels,
     saveSkillDetail,
-    executeLlm,
     fetchSkillTools,
     fetchSkillTemplates,
     createSkill,

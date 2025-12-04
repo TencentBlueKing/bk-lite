@@ -190,12 +190,6 @@
           "url": "/opspilot/settings/quota",
           "icon": "quota",
           "name": "my_quota"
-        },
-        {
-          "title": "密钥",
-          "url": "/opspilot/settings/key",
-          "icon": "key",
-          "name": "api_secret_key"
         }
       ]
     }
@@ -391,12 +385,6 @@
           "url": "/opspilot/settings/quota",
           "icon": "quota",
           "name": "my_quota"
-        },
-        {
-          "title": "API Secret Keys",
-          "url": "/opspilot/settings/key",
-          "icon": "key",
-          "name": "api_secret_key"
         }
       ]
     }

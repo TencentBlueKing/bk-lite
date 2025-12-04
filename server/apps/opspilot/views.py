@@ -8,6 +8,7 @@ from django.db.models import Count
 from django.db.models.functions import TruncDate
 from django.http import FileResponse, HttpResponse, JsonResponse, StreamingHttpResponse
 from django_minio_backend import MinioBackend
+from ipware import get_client_ip
 from wechatpy.enterprise import WeChatCrypto
 
 from apps.base.models import UserAPISecret
@@ -18,7 +19,7 @@ from apps.core.utils.loader import LanguageLoader
 from apps.opspilot.models import Bot, BotChannel, BotConversationHistory, BotWorkFlow, LLMSkill
 from apps.opspilot.services.llm_service import llm_service
 from apps.opspilot.services.skill_excute_service import SkillExecuteService
-from apps.opspilot.utils.bot_utils import get_client_ip, insert_skill_log, set_time_range
+from apps.opspilot.utils.bot_utils import insert_skill_log, set_time_range
 from apps.opspilot.utils.chat_flow_utils.engine.factory import create_chat_flow_engine
 from apps.opspilot.utils.dingtalk_chat_flow_utils import DingTalkChatFlowUtils, start_dingtalk_stream_client
 from apps.opspilot.utils.sse_chat import generate_stream_error, stream_chat
@@ -131,13 +132,32 @@ def validate_header_token(token, bot_id):
 
 
 def get_skill_and_params(kwargs, team, bot_id=None):
-    """Get skill object and prepare parameters for LLM invocation"""
+    """Get skill object and prepare parameters for LLM invocation
+
+    支持通过 name 或 instance_id 查询 skill
+    """
     loader = LanguageLoader(app="opspilot", default_lang="en")
     skill_id = kwargs.get("model")
+
+    # 尝试通过 name 或 instance_id 查询
     if not bot_id:
+        # 先尝试按 name 查询
         skill_obj = LLMSkill.objects.filter(name=skill_id, team__contains=int(team)).first()
+        # 如果未找到，尝试按 instance_id 查询
+        if not skill_obj:
+            try:
+                skill_obj = LLMSkill.objects.filter(instance_id=skill_id, team__contains=int(team)).first()
+            except Exception:
+                pass
     else:
+        # 先尝试按 name 查询
         skill_obj = LLMSkill.objects.filter(name=skill_id, bot=bot_id).first()
+        # 如果未找到，尝试按 instance_id 查询
+        if not skill_obj:
+            try:
+                skill_obj = LLMSkill.objects.filter(instance_id=skill_id, bot=bot_id).first()
+            except Exception:
+                pass
 
     if not skill_obj:
         return (
@@ -221,7 +241,7 @@ def get_chat_msg(current_ip, kwargs, params, skill_obj, user_message, history_lo
 def openai_completions(request):
     """Main entry point for OpenAI completions"""
     kwargs = json.loads(request.body)
-    current_ip = get_client_ip(request)
+    current_ip, _ = get_client_ip(request)
 
     stream_mode = kwargs.get("stream", False)
     token = request.META.get("HTTP_AUTHORIZATION") or request.META.get(settings.API_TOKEN_HEADER_NAME)
@@ -262,7 +282,7 @@ def openai_completions(request):
 @api_exempt
 def lobe_skill_execute(request):
     kwargs = json.loads(request.body)
-    current_ip = get_client_ip(request)
+    current_ip, _ = get_client_ip(request)
 
     stream_mode = kwargs.get("stream", False)
     # stream_mode = False
@@ -359,7 +379,7 @@ def get_skill_execute_result(bot_id, channel, chat_history, kwargs, request, sen
         logger.exception(e)
         result = {"content": str(e)}
     if getattr(request, "api_pass", False):
-        current_ip = get_client_ip(request)
+        current_ip, _ = get_client_ip(request)
         insert_skill_log(
             current_ip,
             bot.llm_skills.first().id,
@@ -493,22 +513,24 @@ def execute_chat_flow(request, bot_id, node_id):
         input_data = {"last_message": message, "user_id": user.username, "bot_id": bot_id, "node_id": node_id}
 
         logger.info(f"开始执行ChatFlow流程，bot_id: {bot_id}, node_id: {node_id}, user: {user.username}, node_type: {node_type}")
-        result = engine.execute(input_data)
 
-        # 仅区分 openai 类型，其余类型统一走原有逻辑
-        if node_type == "openai":
+        # 区分 openai 和 agui 类型的流式响应，其余类型统一走原有逻辑
+        if node_type in ["openai", "agui"]:
+            # 使用引擎的流式执行方法，设置入口类型
+            input_data["entry_type"] = node_type
+            stream_generator = engine.sse_execute(input_data)
 
-            def sse_generator():
-                yield f"data: {result}\n\n"
-                yield "data: [DONE]\n\n"
-
-            async_generator = create_async_compatible_generator(sse_generator())
+            # 直接返回流式响应
+            async_generator = create_async_compatible_generator(stream_generator)
             response = StreamingHttpResponse(async_generator, content_type="text/event-stream")
             response["Cache-Control"] = "no-cache, no-store, must-revalidate"
             response["X-Accel-Buffering"] = "no"
             response["Access-Control-Allow-Origin"] = "*"
             response["Access-Control-Allow-Headers"] = "Cache-Control"
             return response
+
+        # 非流式节点，使用普通执行
+        result = engine.execute(input_data)
         logger.info(f"ChatFlow流程执行完成，bot_id: {bot_id}, 最终输出: {result}")
         return JsonResponse({"result": True, "data": {"content": result, "execution_time": time.time()}})
 
@@ -653,7 +675,8 @@ def execute_chat_flow_dingtalk(request, bot_id):
 
 @api_exempt
 def test(request):
+    ip, is_routable = get_client_ip(request)
     kwargs = request.GET.dict()
     data = json.loads(request.body) if request.body else {}
     kwargs.update(data)
-    return JsonResponse({"result": True, "data": kwargs})
+    return JsonResponse({"result": True, "data": {"ip": ip, "is_routable": is_routable, "kwargs": kwargs}})

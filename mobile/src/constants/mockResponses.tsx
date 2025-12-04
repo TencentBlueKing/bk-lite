@@ -1,322 +1,315 @@
-import React from 'react';
-
-// AI 回复的富文本模板
+// 思考过程模板
+export const thinkingTemplates = {
+  table: `正在分析您的需求...\n\n1. **识别关键词**："表格"相关请求\n2. **检索数据源**：查询服务器状态数据\n3. **格式化输出**：生成 Markdown 表格格式\n4. **添加分析**：补充状态说明和建议`,
+  code: `正在准备代码示例...\n\n1. **确定语言**：Python 示例\n2. **选择场景**：Hello World 和函数示例\n3. **添加注释**：增加代码说明\n4. **语法高亮**：使用代码块格式`,
+  card: `正在生成卡片内容...\n\n1. **设计布局**：系统监控报告样式\n2. **收集数据**：CPU、内存等指标\n3. **美化展示**：添加图标和分隔线\n4. **提供操作**：添加详情链接`,
+  list: `正在生成卡片内容...\n\n1. **设计布局**：系统监控报告样式\n2. **收集数据**：CPU、内存等指标\n3. **美化展示**：添加图标和分隔线\n4. **提供操作**：添加详情链接`,
+  serverRepair: `正在制定维修方案...\n\n1. **问题诊断**：分析服务器故障原因\n2. **制定步骤**：列出具体维修步骤\n3. **时间安排**：规划维修时间节点\n4. **风险评估**：预估可能影响\n5. **补充**：用户反馈 “公司办公系统突然无法登录，输入账号密码后提示 “服务器连接超时”，全部门同事都遇到”，先通过分类工具标注为 “系统故障 - 高优先级”，再用检索引擎查 “OA 系统无法打开” 的预案）：收到反馈！正在检索知识库中 “OA 系统访问故障” 的处置方案～ 已匹配到相关排查步骤，还需要您补充：1. 故障开始时间；2. 是否尝试过清除浏览器缓存重新登录？`,
+  serverRepairFormSubmission: `正在处理服务器维修表单提交...\n\n1. **验证信息**：检查故障开始时间和其他必填字段\n2. **确认步骤**：确保维修步骤完整\n3. **提交申请**：将表单数据发送至维修系统\n4. **反馈结果**：返回提交状态和后续操作建议`,
+  submitWorkOrder: `正在提交工单...\n\n1. **收集信息**：确认故障开始时间和已采取的措施\n2. **填写工单**：将信息录入工单系统\n3. **审核提交**：检查工单内容完整性\n4. **发送工单**：提交至 ITSM 系统并获取工单编号`,
+  k8sInspection: `正在执行 K8s 集群巡检...\n\n1. **启动巡检任务**：初始化集群健康检查\n2. **收集数据**：获取节点、Pod、服务状态\n3. **分析问题**：识别异常和潜在风险\n4. **生成报告**：汇总巡检结果`,
+  k8sNode07Analysis: `正在分析 node07 节点...\n\n1. **收集监控数据**：获取 CPU、内存、磁盘使用情况\n2. **Pod 资源分析**：检查运行在该节点的 Pod 资源占用\n3. **识别热点服务**：定位高负载进程\n4. **生成诊断建议**：提供优化方案`,
+  k8sFullDiagnosis: `正在执行完整诊断...\n\n1. **日志分析**：检索最近的错误和警告日志\n2. **事件分析**：查看 K8s 事件记录\n3. **异常检测**：识别异常模式和趋势\n4. **生成诊断报告**：汇总问题根因和解决方案`,
+  k8sHpaExecution: `正在执行 HPA 自动扩容...\n\n1. **验证配置**：检查 HPA 策略参数\n2. **应用配置**：部署 HPA 到目标服务\n3. **监控扩容**：观察 Pod 副本数变化\n4. **验证效果**：确认 CPU 使用率下降`,
+  k8sLaterContinue: `正在保存当前进度...\n\n1. **记录处理状态**：保存已完成的操作\n2. **标记待处理项**：记录未处理的问题\n3. **生成摘要**：整理本次会话的关键信息\n4. **等待下次操作**：准备继续后续任务`,
+  xvisionPrepare: `正在准备 x-vision 环境...\n\n1. **环境识别**：检测 x-vision 项目配置需求\n2. **资源评估**：分析所需的 K8s 资源配额\n3. **权限规划**：确定开发权限级别\n4. **生成表单**：创建环境配置选项表单`,
+  xvisionFormSubmit: `正在创建 x-vision 环境...\n\n1. **验证配置**：检查环境类型和资源配额选择\n2. **创建 Namespace**：初始化 x-vision-pre 命名空间\n3. **配置资源**：应用 ResourceQuota 和权限绑定\n4. **生成模板**：准备 Helm 部署模板`,
+  xvisionNoNeed: `正在记录用户选择...\n\n1. **保存进度**：记录环境已创建状态\n2. **标记待办**：Helm 部署模板已生成待部署\n3. **整理信息**：汇总本次操作结果\n4. **等待指令**：准备下一步操作`,
+  alertTrigger: `正在分析告警信息...\n\n1. **告警识别**：检测 order-service 异常\n2. **问题定位**：分析 Redis 队列积压\n3. **影响评估**：评估服务延迟影响范围\n4. **生成建议**：提供隔离和优化方案`,
+  alertDetail: `正在查询详细信息...\n\n1. **指标查询**：获取服务响应时间和队列长度\n2. **实例分析**：定位受影响的 Pod 实例\n3. **根因分析**：分析延迟升高原因\n4. **生成方案**：制定优化操作建议`,
+  alertExecute: `正在执行优化操作...\n\n1. **隔离连接池**：分离 Redis 连接资源\n2. **调整优先级**：提升 order-service 优先级\n3. **降低请求量**：限制非关键服务请求\n4. **验证效果**：监控优化后的指标变化`,
+  dailyReport: `正在生成运维日报...\n\n1. **数据收集**：汇总今日故障处理和优化记录\n2. **趋势分析**：生成集群健康指标趋势图\n3. **风险评估**：识别潜在风险点\n4. **格式化输出**：生成 PDF 格式日报`,
+  dailyReportSend: `正在发送日报...\n\n1. **文件准备**：确认 PDF 文件完整性\n2. **发送消息**：推送日报到团队群\n3. **确认送达**：验证消息发送成功\n4. **记录操作**：日志记录发送时间`,
+  default: `正在理解您的问题...\n\n1. **语义分析**：解析问题意图\n2. **检索知识库**：查找相关信息\n3. **组织答案**：结构化回复内容\n4. **优化表达**：使用清晰的语言`
+};
+// AI 回复的 Markdown 模板
 export const mockAIResponses = {
   // 表格响应
-  table: () => (
-    <div>
-      <p style={{ marginBottom: '8px' }}>这是一个服务器状态对比表格：</p>
-      <table
-        style={{
-          width: '100%',
-          borderCollapse: 'collapse',
-          fontSize: '11px',
-          backgroundColor: '#fff',
-          borderRadius: '4px',
-          overflow: 'hidden',
-        }}
-      >
-        <thead>
-          <tr style={{ backgroundColor: '#f5f5f5' }}>
-            <th
-              style={{
-                padding: '6px 4px',
-                border: '1px solid #e0e0e0',
-                textAlign: 'left',
-              }}
-            >
-              服务器
-            </th>
-            <th
-              style={{
-                padding: '6px 4px',
-                border: '1px solid #e0e0e0',
-                textAlign: 'center',
-              }}
-            >
-              状态
-            </th>
-            <th
-              style={{
-                padding: '6px 4px',
-                border: '1px solid #e0e0e0',
-                textAlign: 'center',
-              }}
-            >
-              CPU
-            </th>
-            <th
-              style={{
-                padding: '6px 4px',
-                border: '1px solid #e0e0e0',
-                textAlign: 'center',
-              }}
-            >
-              内存
-            </th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr>
-            <td style={{ padding: '6px 4px', border: '1px solid #e0e0e0' }}>
-              Server-01
-            </td>
-            <td
-              style={{
-                padding: '6px 4px',
-                border: '1px solid #e0e0e0',
-                textAlign: 'center',
-              }}
-            >
-              <span style={{ color: '#52c41a' }}>● 正常</span>
-            </td>
-            <td
-              style={{
-                padding: '6px 4px',
-                border: '1px solid #e0e0e0',
-                textAlign: 'center',
-              }}
-            >
-              45%
-            </td>
-            <td
-              style={{
-                padding: '6px 4px',
-                border: '1px solid #e0e0e0',
-                textAlign: 'center',
-              }}
-            >
-              62%
-            </td>
-          </tr>
-          <tr>
-            <td style={{ padding: '6px 4px', border: '1px solid #e0e0e0' }}>
-              Server-02
-            </td>
-            <td
-              style={{
-                padding: '6px 4px',
-                border: '1px solid #e0e0e0',
-                textAlign: 'center',
-              }}
-            >
-              <span style={{ color: '#ff4d4f' }}>● 异常</span>
-            </td>
-            <td
-              style={{
-                padding: '6px 4px',
-                border: '1px solid #e0e0e0',
-                textAlign: 'center',
-              }}
-            >
-              89%
-            </td>
-            <td
-              style={{
-                padding: '6px 4px',
-                border: '1px solid #e0e0e0',
-                textAlign: 'center',
-              }}
-            >
-              95%
-            </td>
-          </tr>
-          <tr>
-            <td style={{ padding: '6px 4px', border: '1px solid #e0e0e0' }}>
-              Server-03
-            </td>
-            <td
-              style={{
-                padding: '6px 4px',
-                border: '1px solid #e0e0e0',
-                textAlign: 'center',
-              }}
-            >
-              <span style={{ color: '#52c41a' }}>● 正常</span>
-            </td>
-            <td
-              style={{
-                padding: '6px 4px',
-                border: '1px solid #e0e0e0',
-                textAlign: 'center',
-              }}
-            >
-              32%
-            </td>
-            <td
-              style={{
-                padding: '6px 4px',
-                border: '1px solid #e0e0e0',
-                textAlign: 'center',
-              }}
-            >
-              58%
-            </td>
-          </tr>
-        </tbody>
-      </table>
-    </div>
-  ),
+  table: () => `## 服务器状态对比表格
+
+这是一个服务器状态对比表格：
+
+| 服务器 | 状态 | CPU | 内存 |
+|--------|------|-----|------|
+| Server-01 | ✅ 正常 | 45% | 62% |
+| Server-02 | ❌ 异常 | 89% | 95% |
+| Server-03 | ✅ 正常 | 32% | 58% |
+
+### 分析说明
+
+- **Server-01**: 运行正常，资源使用率在合理范围内
+- **Server-02**: ⚠️ **需要关注**，CPU 和内存使用率过高，建议立即检查
+- **Server-03**: 运行正常，负载较低
+
+> 💡 提示：Server-02 的高负载可能影响系统稳定性，建议尽快处理。`,
 
   // 代码响应
-  code: () => (
-    <div>
-      <p style={{ marginBottom: '8px' }}>这是一个 Python 示例代码：</p>
-      <pre
-        style={{
-          backgroundColor: '#1e1e1e',
-          color: '#d4d4d4',
-          padding: '12px',
-          borderRadius: '6px',
-          overflow: 'auto',
-          fontSize: '12px',
-          fontFamily: 'Monaco, Consolas, monospace',
-        }}
-      >
-        {`def hello_world():
+  code: () => `## Python 示例代码
+
+这是一个 Python 示例代码：
+
+\`\`\`python
+def hello_world():
     """打印 Hello World"""
     print("Hello, World!")
     return True
 
+def calculate_sum(a, b):
+    """计算两个数的和"""
+    return a + b
+
 # 调用函数
 if __name__ == "__main__":
-    hello_world()`}
-      </pre>
-    </div>
-  ),
+    hello_world()
+    result = calculate_sum(10, 20)
+    print(f"计算结果: {result}")
+\`\`\`
+
+### 代码说明
+
+1. \`hello_world()\` - 基础的 Hello World 函数
+2. \`calculate_sum(a, b)\` - 计算两个数字的和
+3. 主程序入口使用 \`if __name__ == "__main__":\` 来执行代码
+
+**运行结果：**
+\`\`\`
+Hello, World!
+计算结果: 30
+\`\`\``,
 
   // 卡片响应
-  card: () => (
-    <div>
-      <div
-        style={{
-          backgroundColor: '#fff',
-          border: '1px solid #e0e0e0',
-          borderRadius: '8px',
-          padding: '12px',
-          marginBottom: '8px',
-        }}
-      >
-        <div
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            marginBottom: '8px',
-          }}
-        >
-          <div
-            style={{
-              width: '40px',
-              height: '40px',
-              borderRadius: '50%',
-              backgroundColor: '#1677ff',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              color: '#fff',
-              fontSize: '20px',
-              marginRight: '10px',
-            }}
-          >
-            📊
-          </div>
-          <div>
-            <div style={{ fontWeight: 'bold', fontSize: '14px' }}>
-              系统监控报告
-            </div>
-            <div style={{ fontSize: '12px', color: '#999' }}>
-              2025-01-16 10:30
-            </div>
-          </div>
-        </div>
-        <div style={{ fontSize: '13px', color: '#666', lineHeight: '1.6' }}>
-          系统运行正常，CPU 使用率 45%，内存使用率 62%。
-        </div>
-        <div
-          style={{
-            marginTop: '10px',
-            paddingTop: '10px',
-            borderTop: '1px solid #f0f0f0',
-            display: 'flex',
-            justifyContent: 'space-between',
-            fontSize: '12px',
-          }}
-        >
-          <span style={{ color: '#52c41a' }}>✓ 所有服务正常</span>
-          <span style={{ color: '#1677ff' }}>查看详情 →</span>
-        </div>
-      </div>
-    </div>
-  ),
+  card: () => `## 📊 系统监控报告
+
+### 基本信息
+- **报告时间**: 2025-01-16 10:30
+- **监控系统**: Production Environment
+- **报告类型**: 实时状态
+
+---
+
+### 📈 运行状态
+
+✅ **系统运行正常**
+
+**资源使用情况：**
+- CPU 使用率: \`45%\`
+- 内存使用率: \`62%\`
+- 磁盘使用率: \`58%\`
+- 网络流量: \`正常\`
+
+### 服务状态
+- ✓ Web 服务正常
+- ✓ 数据库服务正常
+- ✓ 缓存服务正常
+- ✓ 消息队列正常
+
+---
+
+> 💡 **建议**: 所有服务运行正常，无需特别关注。下次检查时间：2025-01-16 11:30
+
+[查看详细报告 →](#)`,
 
   // 列表响应
-  list: () => (
-    <div>
-      <p style={{ marginBottom: '8px', fontWeight: 'bold' }}>📋 任务清单</p>
-      <div
-        style={{
-          backgroundColor: '#fff',
-          border: '1px solid #e0e0e0',
-          borderRadius: '6px',
-          overflow: 'hidden',
-        }}
-      >
-        {[
-          { text: '完成系统部署', status: 'done' },
-          { text: '配置监控告警', status: 'done' },
-          { text: '性能优化测试', status: 'progress' },
-          { text: '编写技术文档', status: 'pending' },
-        ].map((item, index) => (
-          <div
-            key={index}
-            style={{
-              padding: '10px 12px',
-              borderBottom: index < 3 ? '1px solid #f0f0f0' : 'none',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '8px',
-            }}
-          >
-            <span style={{ fontSize: '16px' }}>
-              {item.status === 'done'
-                ? '✅'
-                : item.status === 'progress'
-                ? '🔄'
-                : '⭕'}
-            </span>
-            <span
-              style={{
-                fontSize: '13px',
-                color: item.status === 'done' ? '#999' : '#333',
-                textDecoration:
-                  item.status === 'done' ? 'line-through' : 'none',
-              }}
-            >
-              {item.text}
-            </span>
-          </div>
-        ))}
-      </div>
-    </div>
-  ),
+  list: () => `## 📋 任务清单
+
+### 今日待办事项
+
+#### ✅ 已完成
+1. ✅ **完成系统部署** - 已于 09:00 完成
+   - 部署环境：生产环境
+   - 版本号：v2.3.1
+   
+2. ✅ **配置监控告警** - 已于 09:30 完成
+   - 配置项：CPU、内存、磁盘告警
+   - 告警阈值：已设置
+
+#### 🔄 进行中
+3. 🔄 **性能优化测试** - 进度 60%
+   - 负责人：张三
+   - 预计完成：今日 15:00
+   - 当前状态：数据库查询优化中
+
+#### ⭕ 待开始
+4. ⭕ **编写技术文档**
+   - 负责人：李四
+   - 预计开始：今日 14:00
+   - 文档类型：API 接口文档
+
+---
+
+### 统计信息
+- **总任务数**: 4
+- **已完成**: 2 (50%)
+- **进行中**: 1 (25%)
+- **待开始**: 1 (25%)
+
+> 📌 **提醒**: 请确保所有任务在今日 18:00 前完成进度更新。`,
 };
 
-// 文本响应模板
+// 文本响应模板（Markdown 格式）
 export const mockTextResponses = {
-  product:
-    '我们的产品具有以下核心功能：\n\n• 🚀 智能运维自动化\n• 📊 实时监控告警\n• 🔧 故障快速定位\n• 💡 AI 智能分析\n\n您想了解哪个功能的详细信息？试试发送"表格"、"代码"、"卡片"或"列表"查看更多展示效果！',
+  product: `## 我们的产品核心功能
 
-  support:
-    '我很乐意为您提供技术支持！请告诉我您遇到的具体问题：\n\n• 🔍 系统配置问题\n• 🐛 故障排查\n• 📋 使用指南\n• 🔗 集成对接\n\n我会尽快为您解答。',
+我们的产品具有以下核心功能：
 
-  thanks: '不客气！😊 很高兴能帮助到您。如果还有其他问题,随时可以问我！',
+- 🚀 **智能运维自动化** - 通过 AI 技术实现运维流程自动化
+- 📊 **实时监控告警** - 7x24小时监控系统状态，异常秒级告警
+- 🔧 **故障快速定位** - 智能分析日志，快速定位问题根因
+- 💡 **AI 智能分析** - 基于机器学习的性能优化建议
 
-  help: '我是您的AI助手，可以帮您：\n\n🔹 产品功能咨询\n🔹 技术问题解答\n🔹 使用指导\n🔹 故障排查\n\n💡 试试这些命令：\n• 发送"表格" - 查看表格展示\n• 发送"代码" - 查看代码高亮\n• 发送"卡片" - 查看卡片样式\n• 发送"列表" - 查看任务列表',
+> 您想了解哪个功能的详细信息？
 
+试试发送这些关键词查看更多展示效果：
+- \`表格\` - 查看表格展示
+- \`代码\` - 查看代码高亮
+- \`卡片\` - 查看卡片样式
+- \`列表\` - 查看任务列表`,
+
+  support: `## 技术支持服务
+
+我很乐意为您提供技术支持！请告诉我您遇到的具体问题：
+
+### 支持类型
+1. 🔍 **系统配置问题** - 环境配置、参数调优
+2. 🐛 **故障排查** - 问题诊断、错误分析
+3. 📋 **使用指南** - 功能说明、操作教程
+4. 🔗 **集成对接** - API 接口、第三方集成
+
+---
+
+📎 **相关链接**: [点击这里访问系统](https://bklite.canway.net/auth/signin)
+
+我会尽快为您解答！`,
+
+  thanks: `不客气！😊 
+
+很高兴能帮助到您。如果还有其他问题，**随时可以问我**！
+
+---
+*您可以继续提问或使用关键词体验更多功能*`,
+
+  help: `# AI 助手功能指南
+
+我是您的 **AI 助手**，可以帮您：
+
+## 服务范围
+- 🔹 产品功能咨询
+- 🔹 技术问题解答
+- 🔹 使用指导
+- 🔹 故障排查
+
+## 💡 快速体验
+
+试试这些命令：
+
+| 命令 | 说明 |
+|------|------|
+| \`表格\` | 查看表格展示 |
+| \`代码\` | 查看代码高亮 |
+| \`卡片\` | 查看卡片样式 |
+| \`列表\` | 查看任务列表 |
+
+---
+**提示**：您也可以直接描述问题，我会尽力为您解答！`,
+  serverRepair: `**收到反馈！正在检索 ITSM 知识库中同类故障信息～**
+
+**✅ 已匹配到预案**
+- **预案名称**： 办公系统登录超时
+
+**请补充以下关键信息：**
+1.  故障开始时间
+2.  是否尝试过清除浏览器缓存重新登录？`,
+  serverRepairFormSubmission: '信息收集完毕！已为你自动生成 ITSM 事件工单，工单详情如下：',
+  submitWorkOrder: '工单已提交成功！已自动分派至运维应急小组，当前状态为 "处理中"。工单编号为 #123456。请留意后续的处理进展通知！',
+  k8sInspection: `巡检完成，共发现 **5 个问题**：
+
+1. **node07** CPU 持续 92%，疑似热点节点
+2. **payment-service** 在夜间重启 14 次
+3. **inventory-service** 出现 2 个 Pending Pod（无可用存储）
+4. **3 个 PVC** 使用率 > 85%
+5. **Ingress 网关**响应偶尔超过 1 秒
+
+我可以逐项帮你分析，也可以按优先级自动处理。要从哪一个开始？`,
+  k8sNode07Analysis: `node07 上 **image-service** CPU 使用偏高。
+
+**建议下一步：**
+- 查看完整诊断（日志/事件/指标）
+- 直接执行扩容
+
+选择你的操作：`,
+  k8sFullDiagnosis: `**诊断结果如下：**
+
+📊 **问题分析**
+- 最近 20 分钟新建了 **310 个 image resize 任务**
+- Pod 内部 CPU limit 太低，导致频繁 **CPU Throttling**
+- 服务没有使用 HPA，无法自动扩容
+
+💡 **建议方案：**
+1. **HPA**：CPU 60% 阈值，副本 3→10
+2. **Pod CPU limit** 从 300m 调整到 800m`,
+  k8sHpaExecution: `✅ 已完成扩容到 **10 个副本**。node07 CPU 已降到 **61%**。
+
+接下来继续处理 payment-service 吗？`,
+  k8sLaterContinue: `好的，后续您可以回到该对话继续执行后续操作。`,
+  xvisionPrepare: `好的，我来帮你准备 x-vision 的环境。`,
+  xvisionFormSubmit: `已创建：`,
+  xvisionAfterCard: `我还为你生成了初始化 Helm 部署模板，需要现在部署吗？`,
+  xvisionNoNeed: `好的，Helm 部署模板已保存，后续您可以随时部署。
+
+有其他需要帮助的吗？`,
+  alertTrigger: `**【异常通知】**
+
+order-service 延迟升高，当前请求队列积压在 Redis 上。建议隔离 Redis 连接池并提升订单服务优先级。`,
+  alertDetailText: `已分析当前延迟情况：`,
+  alertDetailSuggestion: `建议执行以下操作以缓解：
+
+- 隔离 Redis 连接池（减少不同服务共享连接）
+- 提高 order-service 的 Redis 请求优先级
+- 暂时降低非关键服务 Redis 请求量
+
+你希望我直接执行还是生成操作脚本供运维确认？`,
+  alertExecuteText: `优化操作已完成 ✅
+
+当前状态：`,
+  alertExecuteEnd: `系统继续监控中，如果延迟再次升高，将自动告警。`,
+  dailyReport: `日报已生成，包括：
+
+- 故障处理 3 项
+- 主动优化 5 项
+- 风险评估 1 项
+- 集群健康指标趋势图
+- 自动建议清单
+
+已帮你格式化成 PDF，你要我发到团队群吗？`,
+  dailyReportSend: `已发送，祝你下班愉快。`,
   default: [
-    '我理解您的问题，让我为您详细解答...',
-    '这是一个很好的问题！根据我的了解...',
-    '关于这个问题，我建议您...',
-    '我来帮您分析一下这个情况...',
+    `我理解您的问题，让我为您**详细解答**...
+
+这个问题涉及到多个方面，我会逐一为您分析。`,
+
+    `这是一个很好的问题！根据我的了解：
+
+- 首先需要确认当前的系统环境
+- 其次要检查相关配置是否正确
+- 最后可以通过日志来定位具体问题
+
+让我为您详细说明...`,
+
+    `关于这个问题，我**建议**您：
+
+1. 先检查系统日志
+2. 确认配置文件的参数设置
+3. 必要时可以重启相关服务
+
+> 如果问题依然存在，请提供更多详细信息，我会继续协助您。`,
+
+    `让我来帮您**分析**一下这个情况...
+
+根据经验来看，可能有以下几种原因：
+- 配置不正确
+- 权限问题
+- 网络连接异常
+
+我们可以逐一排查。`,
   ],
 };

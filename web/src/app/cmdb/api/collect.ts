@@ -51,6 +51,10 @@ export const useCollectApi = () => {
   const getCollectRegions = (params: any) =>
     post('/cmdb/api/collect/list_regions', params);
 
+  // 获取插件文档
+  const getCollectModelDoc = (id: string) =>
+    get('/cmdb/api/collect/collect_model_doc', { params: { id } });
+
   return {
     getCollectList,
     getCollectDetail,
@@ -64,5 +68,6 @@ export const useCollectApi = () => {
     getCollectModelInstances,
     getCollectNodes,
     getCollectRegions,
+    getCollectModelDoc,
   };
 };

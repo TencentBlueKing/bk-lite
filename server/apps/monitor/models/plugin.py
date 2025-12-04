@@ -12,6 +12,7 @@ class MonitorPlugin(TimeInfo, MaintainerInfo):
     collector = models.CharField(max_length=100, default="", verbose_name='采集器名称')
     collect_type = models.CharField(max_length=50, default="", verbose_name='采集类型')
     description = models.TextField(blank=True, verbose_name='插件描述')
+    status_query = models.TextField(blank=True, verbose_name='状态查询语句(PromQL)')
 
     class Meta:
         verbose_name = '监控插件'

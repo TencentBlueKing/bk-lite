@@ -224,7 +224,7 @@ const SkillSettingsPage: React.FC = () => {
       };
 
       return {
-        url: '/api/proxy/opspilot/model_provider_mgmt/llm/execute/?stream=1',
+        url: '/api/proxy/opspilot/model_provider_mgmt/llm/execute_agui/',
         payload
       };
     } catch (error) {
@@ -483,6 +483,7 @@ const SkillSettingsPage: React.FC = () => {
             <CustomChatSSE 
               handleSendMessage={handleSendMessage} 
               guide={guideValue}
+              useAGUIProtocol={true}
             />
           </div>
         </div>

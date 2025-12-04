@@ -8,11 +8,12 @@ import React, {
 } from 'react';
 import { Button, message, Space, Modal, Tooltip, Tag, Dropdown } from 'antd';
 import { DownOutlined, ReloadOutlined } from '@ant-design/icons';
+import Icon from '@/components/icon';
 import type { MenuProps, TableProps } from 'antd';
 import nodeStyle from './index.module.scss';
 import CollectorModal from './collectorModal';
 import { useTranslation } from '@/utils/i18n';
-import { ModalRef, TableDataItem } from '@/app/node-manager/types';
+import { ModalRef, TableDataItem, Pagination } from '@/app/node-manager/types';
 import { SearchFilters } from '@/app/node-manager/types/node';
 import CustomTable from '@/components/custom-table';
 import SearchCombination from './searchCombination';
@@ -21,22 +22,22 @@ import {
   useTelegrafMap,
   useSidecarItems,
   useCollectorItems,
-  useInstallMethodMap,
   useFieldConfigs,
 } from '@/app/node-manager/hooks/node';
 import MainLayout from '../mainlayout/layout';
 import useApiClient from '@/utils/request';
 import useNodeManagerApi from '@/app/node-manager/api';
 import useCloudId from '@/app/node-manager/hooks/useCloudRegionId';
-import { SafeStorage } from '@/app/node-manager/utils/safeStorage';
 import ControllerInstall from './controllerInstall';
 import ControllerUninstall from './controllerUninstall';
 import CollectorInstallTable from './controllerTable';
-import { useRouter, useSearchParams } from 'next/navigation';
+import { useSearchParams } from 'next/navigation';
 import PermissionWrapper from '@/components/permission';
 import { cloneDeep } from 'lodash';
 import { ColumnItem } from '@/types';
 import CollectorDetailDrawer from './collectorDetailDrawer';
+import EditNode from './editNode';
+import { useCommon } from '@/app/node-manager/context/common';
 const { confirm } = Modal;
 
 type TableRowSelection<T extends object = object> =
@@ -44,7 +45,6 @@ type TableRowSelection<T extends object = object> =
 
 const Node = () => {
   const { t } = useTranslation();
-  const router = useRouter();
   const cloudId = useCloudId();
   const searchParams = useSearchParams();
   const { isLoading, del } = useApiClient();
@@ -52,12 +52,14 @@ const Node = () => {
   const sidecarItems = useSidecarItems();
   const collectorItems = useCollectorItems();
   const statusMap = useTelegrafMap();
-  const installMethodMap = useInstallMethodMap();
   const fieldConfigs = useFieldConfigs();
+  const commonContext = useCommon();
+  const nodeStateEnum = commonContext?.nodeStateEnum || {};
   const name = searchParams.get('name') || '';
   const collectorRef = useRef<ModalRef>(null);
   const controllerRef = useRef<ModalRef>(null);
   const collectorDetailRef = useRef<any>(null);
+  const editNodeRef = useRef<ModalRef>(null);
   const [nodeList, setNodeList] = useState<TableDataItem[]>();
   const [selectedRowKeys, setSelectedRowKeys] = useState<React.Key[]>([]);
   const [loading, setLoading] = useState<boolean>(false);
@@ -70,17 +72,22 @@ const Node = () => {
     useState<boolean>(false);
   const [activeColumns, setActiveColumns] = useState<ColumnItem[]>([]);
   const [searchFilters, setSearchFilters] = useState<SearchFilters>({});
+  const [pagination, setPagination] = useState<Pagination>({
+    current: 1,
+    total: 0,
+    pageSize: 20,
+  });
 
   const columns = useColumns({
     checkConfig: (row: TableDataItem) => {
-      const data = {
-        cloud_region_id: cloudId.toString(),
-        name,
-      };
-      SafeStorage.setSessionItem('cloudRegionInfo', { id: row.id });
-      const params = new URLSearchParams(data);
-      const targetUrl = `/node-manager/cloudregion/configuration?${params.toString()}`;
-      router.push(targetUrl);
+      const allCollectors = getNodeCollectors(row);
+      handleCollectorTagClick(row, allCollectors);
+    },
+    editNode: (row: TableDataItem) => {
+      editNodeRef.current?.showModal({
+        type: 'edit',
+        form: row,
+      });
     },
     deleteNode: async (row: TableDataItem) => {
       try {
@@ -107,7 +114,9 @@ const Node = () => {
   const tableColumns = useMemo(() => {
     if (!activeColumns?.length) return columns;
     const _columns = cloneDeep(columns);
-    _columns.splice(4, 0, ...activeColumns);
+    const [first, ...remain] = activeColumns;
+    _columns.splice(2, 0, first);
+    _columns.splice(4, 0, ...remain);
     return _columns;
   }, [columns, nodeList, statusMap, activeColumns]);
 
@@ -142,12 +151,28 @@ const Node = () => {
     return selectedNodes[0]?.operating_system || 'linux';
   }, [nodeList, selectedRowKeys]);
 
+  // 获取节点的所有采集器（排除 NATS-Executor）
+  const getNodeCollectors = (record: TableDataItem) => {
+    const natsexecutorId =
+      record.operating_system === 'linux'
+        ? 'natsexecutor_linux'
+        : 'natsexecutor_windows';
+    return [
+      ...(record.status?.collectors || []),
+      ...(record.status?.collectors_install || []),
+    ].filter((collector: any) => collector.collector_id !== natsexecutorId);
+  };
+
   useEffect(() => {
     if (!isLoading) {
       getCollectors();
       getNodes(searchFilters);
     }
   }, [isLoading]);
+
+  useEffect(() => {
+    if (!isLoading) getNodes(searchFilters);
+  }, [pagination.current, pagination.pageSize]);
 
   const handleSidecarMenuClick: MenuProps['onClick'] = (e) => {
     if (e.key === 'uninstallSidecar') {
@@ -223,6 +248,8 @@ const Node = () => {
     try {
       const params: any = {
         cloud_region_id: cloudId,
+        page: pagination.current,
+        page_size: pagination.pageSize,
       };
 
       if (filters && Object.keys(filters).length > 0) {
@@ -230,9 +257,13 @@ const Node = () => {
       }
 
       const res = await getNodeList(params);
-      const data = (res || []).map((item: TableDataItem) => ({
+      const data = (res?.items || []).map((item: TableDataItem) => ({
         ...item,
         key: item.id,
+      }));
+      setPagination((prev: Pagination) => ({
+        ...prev,
+        total: res?.count || 0,
       }));
       setNodeList(data);
     } finally {
@@ -247,6 +278,89 @@ const Node = () => {
 
   const getCollectors = async () => {
     setActiveColumns([
+      {
+        title: t('node-manager.cloudregion.node.nodeProperties'),
+        dataIndex: 'node_properties',
+        key: 'node_properties',
+        onCell: () => ({
+          style: {
+            minWidth: 80,
+          },
+        }),
+        render: (_: any, record: TableDataItem) => {
+          // 获取操作系统映射
+          const osValue = record.operating_system;
+          const osLabel = nodeStateEnum?.os?.[osValue] || osValue;
+
+          // 获取安装方式映射
+          const installMethodValue = record.install_method;
+          const installMethodLabel =
+            nodeStateEnum?.install_method?.[installMethodValue] ||
+            installMethodValue;
+
+          // 获取节点类型映射
+          const nodeTypeValue = record.node_type;
+          const nodeTypeLabel =
+            nodeStateEnum?.node_type?.[nodeTypeValue] || nodeTypeValue;
+
+          // 容器节点tooltip内容
+          const nodeTypeTooltip =
+            nodeTypeValue === 'container' ? (
+              <div>
+                <div>{`${t(
+                  'node-manager.cloudregion.node.nodeType'
+                )}: ${nodeTypeLabel}`}</div>
+                <div>{t('node-manager.cloudregion.node.containerNodeTip')}</div>
+              </div>
+            ) : (
+              `${t('node-manager.cloudregion.node.nodeType')}: ${nodeTypeLabel}`
+            );
+          return (
+            <div className="flex gap-2 items-center ">
+              <Tooltip title={nodeTypeTooltip}>
+                <div className="flex items-center">
+                  <Icon
+                    type={
+                      nodeTypeValue === 'container'
+                        ? 'rongqifuwuContainerServi'
+                        : 'zhuji'
+                    }
+                    style={{ fontSize: '24px', cursor: 'pointer' }}
+                  />
+                </div>
+              </Tooltip>
+              <Tooltip
+                title={`${t(
+                  'node-manager.cloudregion.node.system'
+                )}: ${osLabel}`}
+              >
+                <div className="flex items-center">
+                  <Icon
+                    type={osValue === 'linux' ? 'Linux' : 'Window-Windows'}
+                    style={{ fontSize: '24px', cursor: 'pointer' }}
+                  />
+                </div>
+              </Tooltip>
+              <Tooltip
+                title={`${t(
+                  'node-manager.cloudregion.node.installMethod'
+                )}: ${installMethodLabel}`}
+              >
+                <div className="flex items-center">
+                  <Icon
+                    type={
+                      installMethodValue === 'auto'
+                        ? 'daohang_007'
+                        : 'ArtboardCopy'
+                    }
+                    style={{ fontSize: '24px', cursor: 'pointer' }}
+                  />
+                </div>
+              </Tooltip>
+            </div>
+          );
+        },
+      },
       {
         title: t('node-manager.controller.controller'),
         dataIndex: 'controller',
@@ -276,12 +390,12 @@ const Node = () => {
             <>
               <Tooltip
                 title={`${record.status?.message}`}
-                className="py-1 pr-1"
+                className="py-1 px-2"
               >
                 <Tag color={record.active ? 'success' : 'warning'}>Sidecar</Tag>
               </Tooltip>
               <Tooltip title={title}>
-                <Tag color={tagColor} className="py-1 pr-1">
+                <Tag color={tagColor} className="py-1 px-2">
                   NATS-Executor
                 </Tag>
               </Tooltip>
@@ -290,26 +404,7 @@ const Node = () => {
         },
       },
       {
-        title: t('node-manager.cloudregion.node.installMethod'),
-        dataIndex: 'install_method',
-        key: 'install_method',
-        width: 100,
-        onCell: () => ({
-          style: {
-            minWidth: 80,
-          },
-        }),
-        render: (_: any, record: TableDataItem) => {
-          const installMethod = record.install_method;
-          if (['auto', 'manual'].includes(installMethod)) {
-            const methodInfo = installMethodMap[installMethod];
-            return <>{methodInfo.text}</>;
-          }
-          return <>--</>;
-        },
-      },
-      {
-        title: t('node-manager.cloudregion.node.collector'),
+        title: t('node-manager.cloudregion.node.hostedProgram'),
         dataIndex: 'collectors',
         key: 'collectors',
         onCell: () => ({
@@ -318,18 +413,7 @@ const Node = () => {
           },
         }),
         render: (_: any, record: TableDataItem) => {
-          // 获取所有采集器（排除 NATS-Executor）
-          const natsexecutorId =
-            record.operating_system === 'linux'
-              ? 'natsexecutor_linux'
-              : 'natsexecutor_windows';
-
-          const allCollectors = [
-            ...(record.status?.collectors || []),
-            ...(record.status?.collectors_install || []),
-          ].filter(
-            (collector: any) => collector.collector_id !== natsexecutorId
-          );
+          const allCollectors = getNodeCollectors(record);
           // 按状态分组
           const statusGroups = allCollectors.reduce(
             (groups: any, collector: any) => {
@@ -354,7 +438,7 @@ const Node = () => {
                 <Tag
                   key={status}
                   color={statusInfo.tagColor}
-                  className="cursor-pointer mr-1 mb-1"
+                  className="cursor-pointer mr-1 mb-1 py-1 px-2"
                   onClick={() => handleCollectorTagClick(record, allCollectors)}
                 >
                   {statusInfo.text}: {collectors.length}
@@ -414,6 +498,10 @@ const Node = () => {
     }
   };
 
+  const handleTableChange = (pagination: any) => {
+    setPagination(pagination);
+  };
+
   return (
     <MainLayout>
       {showNodeTable && (
@@ -456,7 +544,7 @@ const Node = () => {
                 >
                   <Button>
                     <Space>
-                      {t('node-manager.cloudregion.node.collector')}
+                      {t('node-manager.cloudregion.node.hostedProgram')}
                       <DownOutlined />
                     </Space>
                   </Button>
@@ -464,14 +552,17 @@ const Node = () => {
                 <ReloadOutlined onClick={() => getNodes(searchFilters)} />
               </div>
             </div>
-            <CustomTable
-              className={nodeStyle.table}
-              columns={tableColumns}
-              loading={loading}
-              dataSource={nodeList}
-              scroll={{ y: 'calc(100vh - 326px)', x: 'max-content' }}
-              rowSelection={rowSelection}
-            />
+            <div className={nodeStyle.table}>
+              <CustomTable
+                columns={tableColumns}
+                loading={loading}
+                dataSource={nodeList}
+                scroll={{ y: 'calc(100vh - 380px)', x: 'max-content' }}
+                rowSelection={rowSelection}
+                pagination={pagination}
+                onChange={handleTableChange}
+              />
+            </div>
             <CollectorModal
               ref={collectorRef}
               onSuccess={(config) => {
@@ -490,6 +581,11 @@ const Node = () => {
             />
             <CollectorDetailDrawer
               ref={collectorDetailRef}
+              nodeStateEnum={nodeStateEnum}
+              onSuccess={() => getNodes(searchFilters)}
+            />
+            <EditNode
+              ref={editNodeRef}
               onSuccess={() => getNodes(searchFilters)}
             />
           </div>

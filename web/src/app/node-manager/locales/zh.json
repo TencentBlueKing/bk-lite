@@ -84,9 +84,10 @@
         "failUninstall": "卸载失败",
         "log": "日志",
         "ip": "IP",
-        "deleteNodeTips": "自动安装的节点，建议通过卸载控制器进行删除，手动删除节点后，若后续该节点sidecar正常上报，则会自动更新在该列表中。",
+        "deleteNodeTips": "远程自动安装的节点，建议通过卸载控制器进行删除，手动删除节点后，若后续该节点sidecar正常上报，则会自动更新在该列表中。",
         "running": "运行中",
         "status": "状态",
+        "runningStatus": "运行状态",
         "stopsuccess": "停止采集器成功",
         "downloadTemplate": "下载模板",
         "btntext2": "这里",
@@ -95,7 +96,7 @@
         "successInstall": "安装成功",
         "ipaddress": "IP地址",
         "loginPassword": "登录密码",
-        "desc": "节点是控制器和采集器运行的环境，可以是一个操作系统或容器。平台依托节点上的控制器，对节点进行管理，并统一调控采集器的运行。",
+        "desc": "节点是控制器和采集器运行的环境，可以是一个主机或容器。平台依托节点上的控制器，对节点进行管理，并统一调控采集器的运行。",
         "sidecarVersion": "控制器版本",
         "inactive": "不活跃",
         "bindaditinfo": "绑定配置文件后，对应的采集器会自动启动。",
@@ -113,7 +114,12 @@
         "manual": "手动",
         "lastReportTime": "最后上报时间",
         "installMethod": "安装方式",
-        "auto": "自动"
+        "auto": "远程",
+        "nodeType": "节点类型",
+        "nodeProperties": "节点属性",
+        "hostedProgram": "托管程序",
+        "containerNodeTip": "容器节点是云区域自带的节点，不支持卸载和删除",
+        "hostedProgramList": "托管程序列表"
       },
       "editform": {
         "Introduction": "简介",
@@ -135,6 +141,25 @@
       },
       "addform": {
         "title": "新增云区域"
+      },
+      "deploy": {
+        "title": "部署云区域",
+        "containerDeploy": "容器部署",
+        "k8sDeploy": "K8s部署",
+        "containerTips": "请连接云区域中选择一台能够与平台主控节点直接通讯的主机，用于部署 Nats Executor 和 Stargazer 容器组件，从而作为云区域与平台主控节点的桥梁。",
+        "ipAddress": "IP地址",
+        "ipPlaceholder": "请输入IP地址，例如：192.168.1.100",
+        "ipFormatError": "请输入正确的IP地址格式",
+        "sshPort": "SSH端口",
+        "loginAccount": "登录账号",
+        "usernamePlaceholder": "请输入登录账号，例如：root",
+        "loginPassword": "登录密码",
+        "sshServiceTips": "云区域在部署过程中需要使用 SSH 服务，部署完成后可即可关闭,提升安全性。",
+        "deploy": "部署",
+        "deploySuccess": "部署成功",
+        "upgradeTitle": "升级企业版解锁更多功能",
+        "upgradeDescription": "社区版云区域仅支持容器部署，K8s部署方式请升级企业版。",
+        "upgradeButton": "了解企业版"
       }
     },
     "packetManage": {
@@ -177,6 +202,7 @@
     "prompt": "提示",
     "updatedAt": "更新时间",
     "deleteSuccess": "删除成功！",
+    "successfullyModified": "修改成功！",
     "actions": "操作",
     "modifydelete": "批量删除",
     "node": "节点",
@@ -184,7 +210,7 @@
     "apply": "应用",
     "quesuccess": "查询成功",
     "refSuccess": "刷新成功",
-    "topdes": "节点是控制器和采集器运行的环境，可以是一个操作系统或容器。平台依托节点上的控制器，对节点进行管理，并统一调控采集器的运行。",
+    "topdes": "节点是控制器和采集器运行的环境，可以是一个主机或容器。平台依托节点上的控制器，对节点进行管理，并统一调控采集器的运行。",
     "download": "下载",
     "deleteTips": "您确定要修改此项吗？",
     "search": "搜索...",

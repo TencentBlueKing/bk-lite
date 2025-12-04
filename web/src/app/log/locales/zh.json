@@ -213,7 +213,15 @@
       "flowsTimeout": "流量超时时间",
       "filePath": "文件路径",
       "k8sNote": "K8S仅支持主动上报，暂不支持在此处接入。",
-      "maxLines": "最大行数"
+      "maxLines": "最大行数",
+      "snmpTrapTargetIp": "目标IP",
+      "snmpTrapStep1Des": "在设备上配置以下目标地址发送 Trap 消息",
+      "snmpTrapStep2": "配置 MIB 文件",
+      "snmpTrapStep2Des": "从设备官方获取 MIB 文件，放至节点以下目录",
+      "snmpTrapStep1": "配置 Trap 目标地址",
+      "snmpTrapAccessGuide": "接入指引",
+      "snmpTrapTargetPort": "目标端口",
+      "snmpTrapNodeDes": "请选择已托管 snmptrapd 程序的节点"
     },
     "search": {
       "enableScrolling": "开启自动滚动",

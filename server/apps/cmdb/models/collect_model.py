@@ -7,7 +7,7 @@ from django.db import models
 from django.db.models import JSONField
 from apps.core.models.time_info import TimeInfo
 from apps.core.models.maintainer_info import MaintainerInfo
-from apps.cmdb.constants import CollectPluginTypes, CollectDriverTypes, CollectRunStatusType, CollectInputMethod
+from apps.cmdb.constants.constants import CollectPluginTypes, CollectDriverTypes, CollectRunStatusType, CollectInputMethod
 
 
 class CollectModels(MaintainerInfo, TimeInfo):
@@ -66,12 +66,14 @@ class CollectModels(MaintainerInfo, TimeInfo):
         update_data = self.format_data.get("update", [])
         delete_data = self.format_data.get("delete", [])
         relation_data = self.format_data.get("association", [])
+        raw_data = self.format_data.get("__raw_data__", [])
 
         return {
             "add": {"data": add_data, "count": len(add_data)},
             "update": {"data": update_data, "count": len(update_data)},
             "delete": {"data": delete_data, "count": len(delete_data)},
             "relation": {"data": relation_data, "count": len(relation_data)},
+            "raw_data": {"data": raw_data, "count": len(raw_data)},
         }
 
     @property

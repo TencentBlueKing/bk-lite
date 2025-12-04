@@ -219,6 +219,7 @@ export default function LoginPage() {
                 <div className="relative">
                   <UserOutline className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 z-10 text-base" />
                   <Input
+                    className='login-input'
                     placeholder="Enter your username"
                     value={username}
                     onChange={setUsername}
@@ -245,6 +246,7 @@ export default function LoginPage() {
                 <div className="relative">
                   <LockOutline className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 z-10 text-base" />
                   <Input
+                    className='login-input'
                     placeholder="Enter your password"
                     type={showPassword ? 'text' : 'password'}
                     value={password}

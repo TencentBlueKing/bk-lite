@@ -25,7 +25,6 @@ class LanguageLoader:
         try:
             with open(file_path, "r", encoding="utf-8") as f:
                 self.translations = yaml.safe_load(f) or {}
-            logger.info(f"Successfully loaded language file: {file_path}")
         except Exception as e:
             # 如果读取或解析失败，也设置为空字典
             logger.error(f"Failed to load language file: {file_path}, error: {e}")

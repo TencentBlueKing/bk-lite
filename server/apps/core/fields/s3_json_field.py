@@ -39,9 +39,12 @@ def s3_json_upload_path(instance, filename):
     return f"{now.year}/{now.month:02d}/{now.day:02d}/{model_name}_{pk}_{unique_id}.json.gz"
 
 
-class S3JSONField(models.FileField):
+class S3JSONField(models.CharField):
     """
     S3 JSON 字段 - 完全透明替代 JSONField
+
+    不继承 FileField（避免 Django 的默认 storage 系统干扰），而是继承 CharField
+    在数据库中存储 S3 文件路径，实际数据存储在 MinIO/S3 中
 
     使用示例（替换 JSONField）：
         # 原来的代码
@@ -65,37 +68,44 @@ class S3JSONField(models.FileField):
 
     description = "JSON data stored in S3/MinIO with optional compression (transparent JSONField replacement)"
 
-    def __init__(self, bucket_name='default', compressed=True, *args, **kwargs):
+    def __init__(self, bucket_name='default', compressed=True, upload_to=None, *args, **kwargs):
         """
         初始化 S3JSONField
 
         Args:
             bucket_name: MinIO bucket 名称
             compressed: 是否使用 gzip 压缩（默认 True，节省存储空间）
-            *args, **kwargs: 传递给 FileField 的其他参数
+            upload_to: 上传路径生成函数（可选）
+            *args, **kwargs: 传递给 CharField 的其他参数
         """
         self.bucket_name = bucket_name
         self.compressed = compressed
+        self.upload_to = upload_to or s3_json_upload_path
 
-        # 延迟创建 storage，避免在 Django 启动时就要求 MinIO 可用
-        self._storage = None
+        # 标记 storage 是否已经初始化
+        self._minio_storage = None
 
-        # 使用全局函数作为 upload_to，确保 migrations 兼容性
-        kwargs.setdefault('upload_to', s3_json_upload_path)
+        # 设置 CharField 的 max_length（存储 S3 路径）
         kwargs.setdefault('max_length', 500)
 
         super().__init__(*args, **kwargs)
 
+    def contribute_to_class(self, cls, name, **kwargs):
+        """
+        当字段被添加到模型类时调用
+        我们需要重写这个方法来确保使用自定义的描述符
+        """
+        super().contribute_to_class(cls, name, **kwargs)
+
+        # 使用自定义描述符来拦截字段访问
+        setattr(cls, name, S3JSONFieldDescriptor(self))
+
     @property
     def storage(self):
-        """延迟初始化 storage"""
-        if self._storage is None:
-            self._storage = MinioBackend(bucket_name=self.bucket_name)
-        return self._storage
-
-    @storage.setter
-    def storage(self, value):
-        self._storage = value
+        """延迟初始化 storage - 只在实际使用时创建 MinioBackend"""
+        if self._minio_storage is None:
+            self._minio_storage = MinioBackend(bucket_name=self.bucket_name)
+        return self._minio_storage
 
     def pre_save(self, model_instance, add):
         """
@@ -161,8 +171,11 @@ class S3JSONField(models.FileField):
             content_bytes = json_bytes
             content_type = 'application/json'
 
-        # 生成文件名
-        filename = self.generate_filename(instance, "data.json.gz")
+        # 生成文件名 - 直接调用 upload_to 函数，避免使用 generate_filename（它会触发 Django 的 default storage 查找）
+        if callable(self.upload_to):
+            filename = self.upload_to(instance, "data.json.gz")
+        else:
+            filename = s3_json_upload_path(instance, "data.json.gz")
 
         # 创建文件内容
         content = ContentFile(content_bytes, name=filename)
@@ -219,18 +232,26 @@ class S3JSONField(models.FileField):
         Returns:
             Python 对象（list 或 dict）
         """
+        logger.info(f"[S3JSONField] Loading from S3: {file_path}")
+
         if not file_path:
+            logger.warning(f"[S3JSONField] Empty file_path, returning None")
             return None
 
         try:
             # 检查文件是否存在
-            if not self.storage.exists(file_path):
+            exists = self.storage.exists(file_path)
+            logger.info(f"[S3JSONField] File exists check for {file_path}: {exists}")
+
+            if not exists:
                 logger.warning(f"S3 file not found: {file_path}")
                 return None
 
             # 读取文件内容
             with self.storage.open(file_path, 'rb') as f:
                 content_bytes = f.read()
+
+            logger.info(f"[S3JSONField] Read {len(content_bytes)} bytes from S3")
 
             if not content_bytes:
                 logger.warning(f"S3 file is empty: {file_path}")
@@ -240,15 +261,17 @@ class S3JSONField(models.FileField):
             try:
                 # 尝试解压
                 json_bytes = gzip.decompress(content_bytes)
+                logger.info(f"[S3JSONField] Decompressed {len(content_bytes)} -> {len(json_bytes)} bytes")
             except gzip.BadGzipFile:
                 # 不是 gzip 文件，使用原始内容
                 json_bytes = content_bytes
+                logger.info(f"[S3JSONField] Not gzipped, using raw content")
 
             # 解析 JSON
             json_str = json_bytes.decode('utf-8')
             data = json.loads(json_str)
 
-            logger.debug(f"Loaded from S3: {file_path}")
+            logger.info(f"[S3JSONField] Successfully loaded from S3: {file_path}, type: {type(data)}, items: {len(data) if isinstance(data, (list, dict)) else 'N/A'}")
             return data
 
         except json.JSONDecodeError as e:
@@ -281,7 +304,7 @@ class S3JSONField(models.FileField):
 
     def get_internal_type(self):
         """返回内部字段类型"""
-        return 'FileField'
+        return 'CharField'
 
     def deconstruct(self):
         """
@@ -332,3 +355,51 @@ class S3JSONField(models.FileField):
         defaults.update(kwargs)
 
         return super().formfield(**defaults)
+
+
+class S3JSONFieldDescriptor:
+    """
+    自定义描述符：用于拦截 S3JSONField 的字段访问
+
+    确保在访问字段时，自动从 S3 加载数据
+    """
+
+    def __init__(self, field: S3JSONField):
+        self.field = field
+
+    def __get__(self, instance, owner):
+        """
+        获取字段值时调用
+
+        确保从 S3 加载数据
+        """
+        if instance is None:
+            return self
+
+        # 先从实例中获取原始值
+        value = instance.__dict__.get(self.field.attname)
+
+        # 如果是文件路径，尝试从 S3 加载
+        if isinstance(value, str):
+            loaded_value = self.field._load_from_s3(value)
+
+            # 更新实例中的值（避免重复加载）
+            instance.__dict__[self.field.attname] = loaded_value
+
+            return loaded_value
+
+        return value
+
+    def __set__(self, instance, value):
+        """
+        设置字段值时调用
+
+        直接设置实例的属性，绕过模型的 save() 方法
+        """
+        if isinstance(value, (list, dict)):
+            # 如果是可序列化的对象，先上传到 S3
+            value = self.field._upload_to_s3(instance, value)
+
+        # 设置实例的属性
+        instance.__dict__[self.field.attname] = value
+

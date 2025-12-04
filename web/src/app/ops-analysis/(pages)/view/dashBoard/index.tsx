@@ -11,7 +11,16 @@ import ViewConfig from './components/viewConfig';
 import TimeSelector from '@/components/time-selector';
 // @ts-expect-error missing type declarations for react-grid-layout
 import GridLayout, { WidthProvider } from 'react-grid-layout';
-import { Button, Empty, Dropdown, Menu, Modal, message, Spin } from 'antd';
+import {
+  Button,
+  Empty,
+  Dropdown,
+  Menu,
+  Modal,
+  message,
+  Spin,
+  Tooltip,
+} from 'antd';
 import { useTranslation } from '@/utils/i18n';
 import {
   LayoutItem,
@@ -24,7 +33,7 @@ import {
 } from '@/app/ops-analysis/types/dashBoard';
 import { DirItem } from '@/app/ops-analysis/types';
 import { useDataSourceManager } from '@/app/ops-analysis/hooks/useDataSource';
-import { SaveOutlined, PlusOutlined, MoreOutlined } from '@ant-design/icons';
+import { PlusOutlined, MoreOutlined, EditOutlined } from '@ant-design/icons';
 import { useDashBoardApi } from '@/app/ops-analysis/api/dashBoard';
 import type { DatasourceItem } from '@/app/ops-analysis/types/dataSource';
 import WidgetWrapper from './components/widgetWrapper';
@@ -47,6 +56,7 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
     const { t } = useTranslation();
     const { getDashboardDetail, saveDashboard } = useDashBoardApi();
     const dataSourceManager = useDataSourceManager();
+    const [isEditMode, setIsEditMode] = useState(false);
     const [addModalVisible, setAddModalVisible] = useState(false);
     const [layout, setLayout] = useState<LayoutItem[]>([]);
     const [originalLayout, setOriginalLayout] = useState<LayoutItem[]>([]);
@@ -166,6 +176,7 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
 
     // 监听 selectedDashboard 的变化，重置状态
     useEffect(() => {
+      setIsEditMode(false);
       setAddModalVisible(false);
       setConfigDrawerVisible(false);
       setCurrentConfigItem(undefined);
@@ -284,12 +295,17 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
         await saveDashboard(selectedDashboard.data_id, saveData);
         setOriginalLayout([...layout]);
         setOriginalOtherConfig({ ...otherConfig });
+        setIsEditMode(false);
         message.success(t('common.saveSuccess'));
       } catch (error) {
         console.error('保存仪表盘失败:', error);
       } finally {
         setSaving(false);
       }
+    };
+
+    const toggleEditMode = () => {
+      setIsEditMode(!isEditMode);
     };
 
     const removeWidget = (id: string) => {
@@ -376,48 +392,68 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
     return (
       <div className="h-full flex-1 p-4 pb-0 overflow-auto flex flex-col bg-[var(--color-bg-1)]">
         <div className="w-full mb-2 flex items-center justify-between rounded-lg shadow-sm bg-[var(--color-bg-1)] p-3 border border-[var(--color-border-2)]">
-          {selectedDashboard && (
-            <div className="p-1 pt-0">
-              <h2 className="text-lg font-semibold mb-1 text-[var(--color-text-1)]">
-                {selectedDashboard.name}
-              </h2>
-              <p className="text-sm text-[var(--color-text-2)]">
-                {selectedDashboard.desc}
-              </p>
-            </div>
-          )}
-          <div className="flex items-center space-x-4 justify-between">
-            {
-              <div className="flex items-center space-x-2 py-2">
-                <TimeSelector
-                  key={`time-selector-${selectedDashboard?.data_id || 'default'}`}
-                  onlyRefresh={!needGlobalTimeSelector}
-                  defaultValue={otherConfig.timeSelector || timeDefaultValue}
-                  onChange={handleTimeChange}
-                  onRefresh={handleRefresh}
-                />
+          <div className="flex-1 mr-8">
+            {selectedDashboard && (
+              <div className="p-1 pt-0">
+                <h2 className="text-lg font-semibold mb-1 text-[var(--color-text-1)]">
+                  {selectedDashboard.name}
+                </h2>
+                <p className="text-sm text-[var(--color-text-2)]">
+                  {selectedDashboard.desc}
+                </p>
               </div>
-            }
-            <PermissionWrapper requiredPermissions={['EditChart']}>
-              <Button
-                icon={<SaveOutlined />}
-                loading={saving}
-                disabled={!selectedDashboard?.data_id}
-                onClick={handleSave}
-              >
-                {t('common.save')}
-              </Button>
-            </PermissionWrapper>
-            <PermissionWrapper requiredPermissions={['EditChart']}>
-              <Button
-                type="dashed"
-                icon={<PlusOutlined />}
-                onClick={openAddModal}
-                style={{ borderColor: '#1677ff', color: '#1677ff' }}
-              >
-                {t('dashboard.addView')}
-              </Button>
-            </PermissionWrapper>
+            )}
+          </div>
+          {/* 右侧：工具栏 */}
+          <div className="flex items-center space-x-1 rounded-lg p-2">
+            {/* 刷新控件 */}
+            <div className="mr-2">
+              <TimeSelector
+                key={`time-selector-${selectedDashboard?.data_id || 'default'}`}
+                onlyRefresh={!needGlobalTimeSelector}
+                defaultValue={otherConfig.timeSelector || timeDefaultValue}
+                onChange={handleTimeChange}
+                onRefresh={handleRefresh}
+              />
+            </div>
+
+            {isEditMode && (
+              <PermissionWrapper requiredPermissions={['EditChart']}>
+                <Button
+                  type="dashed"
+                  icon={<PlusOutlined />}
+                  onClick={openAddModal}
+                  style={{ borderColor: '#1677ff', color: '#1677ff' }}
+                >
+                  {t('dashboard.addView')}
+                </Button>
+              </PermissionWrapper>
+            )}
+
+            <div>
+              <PermissionWrapper requiredPermissions={['EditChart']}>
+                {!isEditMode ? (
+                  <Tooltip title={t('common.edit')}>
+                    <Button
+                      type="text"
+                      icon={<EditOutlined style={{ fontSize: 16 }} />}
+                      disabled={!selectedDashboard?.data_id}
+                      onClick={toggleEditMode}
+                    />
+                  </Tooltip>
+                ) : (
+                  <Button
+                    type="primary"
+                    loading={saving}
+                    disabled={!selectedDashboard?.data_id}
+                    onClick={handleSave}
+                    className="!ml-[20px]"
+                  >
+                    {t('common.save')}
+                  </Button>
+                )}
+              </PermissionWrapper>
+            </div>
           </div>
         </div>
 
@@ -465,6 +501,8 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
                 margin={[12, 12]}
                 containerPadding={[12, 12]}
                 draggableCancel=".no-drag, .widget-body"
+                isDraggable={isEditMode}
+                isResizable={isEditMode}
               >
                 {layout.map((item) => {
                   const menu = (
@@ -497,11 +535,13 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
                             </p>
                           }
                         </div>
-                        <Dropdown overlay={menu} trigger={['click']}>
-                          <button className="no-drag text-[var(--color-text-2)] hover:text-[var(--color-text-1)] transition-colors">
-                            <MoreOutlined style={{ fontSize: '20px' }} />
-                          </button>
-                        </Dropdown>
+                        {isEditMode && (
+                          <Dropdown overlay={menu} trigger={['click']}>
+                            <button className="no-drag text-[var(--color-text-2)] hover:text-[var(--color-text-1)] transition-colors">
+                              <MoreOutlined style={{ fontSize: '20px' }} />
+                            </button>
+                          </Dropdown>
+                        )}
                       </div>
                       <div className="widget-body flex-1 h-full rounded-b overflow-hidden">
                         <WidgetWrapper

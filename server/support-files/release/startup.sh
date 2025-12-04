@@ -1,19 +1,21 @@
-uv run python manage.py migrate || true
-uv run python manage.py createcachetable django_cache
-uv run python manage.py collectstatic --noinput
+python3 manage.py migrate || true
+python3 manage.py createcachetable django_cache
+python3 manage.py collectstatic --noinput
 
 # 初始化函数定义
 init_system_mgmt() {
     echo "系统管理资源初始化..."
-    uv run python manage.py init_realm_resource || true
-    uv run python manage.py init_login_settings || true
-    uv run python manage.py create_user admin password --email=admin@bklite.net --is_superuser || true
-    uv run python manage.py init_custom_menu || true
+    python3 manage.py init_realm_resource || true
+    python3 manage.py init_login_settings || true
+    python3 manage.py create_user admin password --email=admin@bklite.net --is_superuser || true
+    python3 manage.py init_custom_menu || true
+    python3 manage.py clean_group_data || true
 }
 
 init_cmdb() {
     echo "CMDB资源初始化..."
-    uv run python manage.py model_init || true
+    python3 manage.py model_init || true
+    python3 manage.py init_oid || true
 }
 
 init_console_mgmt() {
@@ -23,46 +25,47 @@ init_console_mgmt() {
 
 init_monitor() {
     echo "初始化监控资源..."
-    uv run python manage.py plugin_init || true
+    python3 manage.py plugin_init || true
 }
 
 init_node_mgmt() {
     echo "初始化节点管理..."
-    uv run python manage.py node_init || true
+    python3 manage.py node_init || true
 }
 
 init_alerts() {
     echo "告警系统资源初始化..."
-    uv run python manage.py init_alert_sources || true
-    uv run python manage.py init_alert_levels || true
-    uv run python manage.py create_builtin_rules --update || true
+    python3 manage.py init_alert_sources || true
+    python3 manage.py init_alert_levels || true
+    python3 manage.py create_builtin_rules --update || true
 }
 
 init_operation_analysis() {
     echo "运营分析系统资源初始化..."
-    uv run python manage.py init_default_namespace || true
-    uv run python manage.py init_default_groups  || true
-    uv run python manage.py init_source_api_data --update || true
+    python3 manage.py init_default_namespace || true
+    python3 manage.py init_default_groups  || true
+    python3 manage.py init_source_api_data --update || true
 }
 
 init_opspilot() {
     echo "OpsPilot资源初始化..."
-    uv run python manage.py init_bot || true
-    uv run python manage.py init_channel || true
-    uv run python manage.py init_llm || true
-    uv run python manage.py init_provider_model  || true
+    python3 manage.py init_bot || true
+    python3 manage.py init_channel || true
+    python3 manage.py init_llm || true
+    python3 manage.py init_provider_model  || true
+    python3 manage.py parse_tools_yml  || true
 }
 
 init_playground() {
     echo "playground资源初始化..."
-    uv run python manage.py category_init || true
+    python3 manage.py category_init || true
 }
 
 
 
 init_log(){
     echo "日志模块初始化..."
-    uv run python manage.py log_init || true
+    python3 manage.py log_init || true
 }
 
 # 读取 INSTALL_APPS 环境变量

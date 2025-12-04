@@ -87,6 +87,7 @@
         "deleteNodeTips": "For nodes that are automatically installed, it is recommended to uninstall the controller for deletion. After manually deleting the node, if the node's side car reports normally in the future, it will be automatically updated in the list.",
         "running": "Running",
         "status": "Status",
+        "runningStatus": "Running Status",
         "stopsuccess": "Collector stopped successfully",
         "downloadTemplate": "Download Template",
         "btntext2": "here",
@@ -95,7 +96,7 @@
         "successInstall": "Installed successfully",
         "ipaddress": "IP Address",
         "loginPassword": "Login Password",
-        "desc": "Node is the environment where controllers and collectors run, which can be an operating system or a container. The platform relies on the controller within each node to manage the node itself and to coordinate the operation of collectors in a unified way.",
+        "desc": "Node is the environment in which controllers and collectors operate, which can be a host or a container. The platform leverages the controllers on the nodes to manage the nodes and uniformly regulate the operation of the collectors.",
         "sidecarVersion": "Controller Version",
         "inactive": "Inactive",
         "bindaditinfo": "After binding the configuration file, the corresponding collector will start automatically.",
@@ -113,7 +114,12 @@
         "manual": "Manual",
         "lastReportTime": "Last Report Time",
         "installMethod": "Install Method",
-        "auto": "Auto"
+        "auto": "Remote",
+        "nodeType": "Node Type",
+        "nodeProperties": "Node Properties",
+        "hostedProgram": "Hosted Program",
+        "containerNodeTip": "Container nodes are built-in nodes of the cloud region and do not support uninstallation and deletion",
+        "hostedProgramList": "Hosted Program List"
       },
       "editform": {
         "Introduction": "Introduction",
@@ -135,6 +141,25 @@
       },
       "addform": {
         "title": "Add Cloud Region"
+      },
+      "deploy": {
+        "title": "Deploy Cloud Region",
+        "containerDeploy": "Container Deploy",
+        "k8sDeploy": "K8s Deploy",
+        "containerTips": "Please connect to the cloud region and select a host that can communicate directly with the platform master node to deploy Nats Executor and Stargazer container components, thereby acting as a bridge between the cloud region and the platform master node.",
+        "ipAddress": "IP Address",
+        "ipPlaceholder": "Please enter IP address, e.g.: 192.168.1.100",
+        "ipFormatError": "Please enter a valid IP address format",
+        "sshPort": "SSH Port",
+        "loginAccount": "Login Account",
+        "usernamePlaceholder": "Please enter login account, e.g.: root",
+        "loginPassword": "Login Password",
+        "sshServiceTips": "The cloud region needs to use SSH service during deployment, and can be closed after deployment is complete to improve security.",
+        "deploy": "Deploy",
+        "deploySuccess": "Deployment successful",
+        "upgradeTitle": "Upgrade to Enterprise Edition for More Features",
+        "upgradeDescription": "The community edition cloud region only supports container deployment, K8s deployment method please upgrade to enterprise edition.",
+        "upgradeButton": "Learn About Enterprise"
       }
     },
     "packetManage": {
@@ -177,6 +202,7 @@
     "prompt": "Prompt",
     "updatedAt": "Updated At",
     "deleteSuccess": "Deleted successfully!",
+    "successfullyModified": "Modified successfully!",
     "actions": "Actions",
     "modifydelete": "Batch Delete",
     "node": "Node",
@@ -184,7 +210,7 @@
     "apply": "Apply",
     "quesuccess": "Query successful!",
     "refSuccess": "Refresh successful",
-    "topdes": "Node is the environment where controllers and collectors run, which can be an operating system or a container. The platform relies on the controller within each node to manage the node itself and to coordinate the operation of collectors in a unified way.",
+    "topdes": "Node is the environment in which controllers and collectors operate, which can be a host or a container. The platform leverages the controllers on the nodes to manage the nodes and uniformly regulate the operation of the collectors.",
     "download": "Download",
     "deleteTips": "Are you sure you want to modify this item?",
     "search": "Search...",

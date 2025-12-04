@@ -2,9 +2,11 @@ import ast
 
 from apps.core.exceptions.base_app_exception import BaseAppException
 from apps.monitor.constants.monitor_object import MonitorObjConstants
-from apps.monitor.models import Metric, MonitorObject
+from apps.monitor.constants.plugin import PluginConstants
+from apps.monitor.models import Metric, MonitorObject, CollectConfig, MonitorPlugin, MonitorInstanceOrganization
 from apps.monitor.services.monitor_object import MonitorObjectService
 from apps.monitor.utils.victoriametrics_api import VictoriaMetricsAPI
+from datetime import datetime, timezone
 
 
 class InstanceSearch:
@@ -60,7 +62,6 @@ class InstanceSearch:
             return InstanceSearch.get_parent_instance_ids(query)
 
     def get_obj_metric_map(self):
-
         monitor_objs = MonitorObject.objects.all().values(*MonitorObjConstants.OBJ_KEYS)
         obj_metric_map = {i["name"]: i for i in monitor_objs}
         obj_metric_map = obj_metric_map.get(self.monitor_obj.name)
@@ -69,6 +70,7 @@ class InstanceSearch:
         return obj_metric_map
 
     def search(self):
+        """特殊搜索接口，特殊对象不通用的查询条件"""
         objs_map = self.get_objs()
         if not objs_map:
             return dict(count=0, results=[])
@@ -109,6 +111,92 @@ class InstanceSearch:
 
         return dict(count=count, results=results)
 
+    def search_by_primary_object(self):
+        data = self.get_objs_v2()
+        if data["count"] == 0:
+            return data
+
+        # 获取实例的插件采集状态
+        confs = CollectConfig.objects.filter(
+            monitor_instance_id__in=[i["instance_id"] for i in data["results"]],
+        )
+        confs_map = {}
+        for conf in confs:
+            if conf.monitor_instance_id not in confs_map:
+                confs_map[conf.monitor_instance_id] = set()
+            confs_map[conf.monitor_instance_id].add((self.monitor_obj.id, conf.collector, conf.collect_type))
+
+        plugin_map, plugin_status_map = {}, {}
+        plugins = MonitorPlugin.objects.filter(monitor_object=self.monitor_obj)
+
+        instance_id_keys = self.obj_metric_map.get("instance_id_keys")
+
+        for plugin in plugins:
+            plugin_key = (self.monitor_obj.id, plugin.collector, plugin.collect_type)
+            plugin_map[plugin_key] = dict(name=plugin.name, collector=plugin.collector,
+                                          collect_type=plugin.collect_type)
+            plugin_status_map[plugin_key] = self.get_plugin_normal_status_map(instance_id_keys, plugin.status_query)
+
+        # 反转插件状态映射，方便后续查询
+        instance_plugin_status_map = {}
+        instance_plugin_time_map = {}
+
+        for c_tuple, instance_map in plugin_status_map.items():
+            for instance_id, _time in instance_map.items():
+                if instance_id not in instance_plugin_status_map:
+                    instance_plugin_status_map[instance_id] = set()
+                instance_plugin_status_map[instance_id].add(c_tuple)
+                instance_plugin_time_map[(instance_id, c_tuple)] = _time
+
+        # 组织映射
+        org_objs = MonitorInstanceOrganization.objects.filter(
+            monitor_instance_id__in=[i["instance_id"] for i in data["results"]])
+        org_map = {}
+        for org in org_objs:
+            if org.monitor_instance_id not in org_map:
+                org_map[org.monitor_instance_id] = set()
+            org_map[org.monitor_instance_id].add(org.organization)
+
+        for item in data["results"]:
+
+            # 添加组织信息
+            item["organization"] = list(org_map.get(item["instance_id"], []))
+            item["plugins"] = []
+
+            db_confs = confs_map.get(item["instance_id"], set())
+            vm_confs = instance_plugin_status_map.get(item["instance_id"], set())
+
+            # 计算插件配置的四种状态类别
+            categories = [
+                # 自动正常
+                (db_confs & vm_confs, PluginConstants.STATUS_NORMAL, PluginConstants.COLLECT_MODE_AUTO),
+                # 自动失联
+                (db_confs - vm_confs, PluginConstants.STATUS_OFFLINE, PluginConstants.COLLECT_MODE_AUTO),
+                # 手动正常
+                (vm_confs - db_confs, PluginConstants.STATUS_NORMAL, PluginConstants.COLLECT_MODE_MANUAL),
+                # 手动失联理应不存在，如果你想加也可以放这里
+                # (set(), PluginConstants.STATUS_OFFLINE, PluginConstants.COLLECT_MODE_MANUAL),
+            ]
+
+            # 统一处理插件信息
+            for conf_set, status, collect_mode in categories:
+                for c_tuple in conf_set:
+                    plugin_info = plugin_map.get(c_tuple)
+                    if not plugin_info:
+                        continue
+                    # 补充时间信息
+                    plugin_time = instance_plugin_time_map.get((item["instance_id"], c_tuple))
+                    if plugin_time:
+                        plugin_info = dict(plugin_info)
+                        plugin_info["time"] = plugin_time
+
+                    # 为了避免修改原对象，复制一份
+                    info = dict(plugin_info)
+                    info.update(status=status, collect_mode=collect_mode)
+                    item["plugins"].append(info)
+
+        return data
+
     def get_objs(self):
         qs = self.qs.filter(monitor_object_id=self.monitor_obj.id, is_deleted=False)
         name = self.query_data.get("name")
@@ -120,6 +208,37 @@ class InstanceSearch:
 
         objs_map = {i.id: i for i in qs}
         return objs_map
+
+    def get_objs_v2(self):
+        qs = self.qs.filter(monitor_object_id=self.monitor_obj.id, is_deleted=False)
+        name = self.query_data.get("name")
+        if name:
+            qs = qs.filter(name__icontains=name)
+
+        # 去除重复
+        qs = qs.distinct("id")
+
+        count = qs.count()
+        if count == 0:
+            return dict(count=0, results=[])
+
+        page = self.query_data.get("page", 1)
+        page_size = self.query_data.get("page_size", 10)
+        start = (page - 1) * page_size
+        end = start + page_size
+        results = qs[start:end]
+
+        return dict(count=count, results=[{"instance_id":obj.id, "instance_name":obj.name} for obj in results])
+
+    def get_plugin_normal_status_map(self, instance_id_keys, query, step="10m"):
+        resp = VictoriaMetricsAPI().query(query, step=step)
+        metrics = resp.get("data", {}).get("result", [])
+        status_map = {}
+        for metric in metrics:
+            instance_id = str(tuple([metric["metric"].get(i) for i in instance_id_keys]))
+            iso_time = datetime.fromtimestamp(metric["value"][0], tz=timezone.utc).isoformat()
+            status_map[instance_id] = iso_time
+        return status_map
 
     def get_vm_metrics(self):
         query = self.obj_metric_map.get("default_metric")

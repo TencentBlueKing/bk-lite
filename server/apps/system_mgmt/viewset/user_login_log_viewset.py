@@ -11,6 +11,7 @@ from rest_framework.response import Response
 from apps.core.utils.viewset_utils import LanguageViewSet
 from apps.system_mgmt.models import UserLoginLog
 from apps.system_mgmt.serializers.user_login_log_serializer import UserLoginLogSerializer
+from apps.system_mgmt.utils.group_filter_mixin import GroupFilterMixin
 
 
 class UserLoginLogFilter(filters.FilterSet):
@@ -52,12 +53,14 @@ class UserLoginLogFilter(filters.FilterSet):
         ]
 
 
-class UserLoginLogViewSet(LanguageViewSet):
+class UserLoginLogViewSet(GroupFilterMixin, LanguageViewSet):
     """
     用户登录日志视图集
 
     提供登录日志的查询和筛选功能，不支持创建、修改、删除操作
     登录日志由系统自动记录
+
+    继承GroupFilterMixin实现基于current_team的组过滤
     """
 
     queryset = UserLoginLog.objects.all().order_by("-created_at")

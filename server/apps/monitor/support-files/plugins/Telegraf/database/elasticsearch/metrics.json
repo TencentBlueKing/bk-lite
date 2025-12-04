@@ -1,6 +1,7 @@
 {
   "plugin": "ElasticSearch",
   "plugin_desc": "By collecting Elasticsearch file system metrics, HTTP requests, IO statistics, document statistics, query cache, and circuit breaker metrics, this plugin helps users monitor the health and performance of their cluster.",
+  "status_query": "any({instance_type='elasticsearch', collect_type='database'}) by (instance_id)",
   "name": "ElasticSearch",
   "icon": "elasticsearch-Elasticsearch",
   "type": "Database",

@@ -78,8 +78,6 @@ const WithSideMenuLayout: React.FC<WithSideMenuLayoutProps> = ({
 
       const menuPath = findMatchedMenuPath(menus);
       
-      console.log('Auto mode - Matched menu path:', menuPath?.map(m => m.name || m.title), 'for path:', currentPath);
-      
       if (menuPath && menuPath.length > 0) {
         const lastLayer = menuPath[menuPath.length - 1];
         

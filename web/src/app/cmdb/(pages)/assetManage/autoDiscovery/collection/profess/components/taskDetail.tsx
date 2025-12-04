@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { Alert, Tabs, Button, message, Modal, Spin } from 'antd';
+import { Tabs, Button, Spin, Descriptions, Empty } from 'antd';
 import CustomTable from '@/components/custom-table';
 import type { CollectTask } from '@/app/cmdb/types/autoDiscovery';
 import { CREATE_TASK_DETAIL_CONFIG } from '@/app/cmdb/constants/professCollection';
@@ -26,31 +26,20 @@ interface TaskDetailData {
   update: TaskData;
   delete: TaskData;
   relation: TaskData;
+  raw_data?: TaskData;
 }
 
 interface TaskTableProps {
   type: string;
   taskId: number;
-  isApprove: boolean;
   columns: any[];
   onClose?: () => void;
   onSuccess?: () => void;
   data: any[];
 }
 
-const TaskTable: React.FC<TaskTableProps> = ({
-  taskId,
-  columns,
-  isApprove,
-  onClose,
-  onSuccess,
-  data,
-}) => {
-  const collectApi = useCollectApi();
-  const { t } = useTranslation();
+const TaskTable: React.FC<TaskTableProps> = ({ columns, data }) => {
   const [displayData, setDisplayData] = useState<any[]>([]);
-  const [selectedRowKeys, setSelectedRowKeys] = useState<React.Key[]>([]);
-  const [selectedRows, setSelectedRows] = useState<any[]>([]);
   const [pagination, setPagination] = useState({
     current: 1,
     pageSize: 20,
@@ -86,70 +75,20 @@ const TaskTable: React.FC<TaskTableProps> = ({
     );
   };
 
-  const handleApprove = async () => {
-    if (!selectedRowKeys.length) {
-      message.warning('请选择需要审批的数据');
-      return;
-    }
-
-    Modal.confirm({
-      title: t('Collection.taskDetail.approvalConfirm'),
-      content: `确定审批选中的 ${selectedRowKeys.length} 条数据吗？`,
-      okText: t('common.confirm'),
-      cancelText: t('common.cancel'),
-      centered: true,
-      onOk: async () => {
-        try {
-          await collectApi.approveCollect(taskId.toString(), {
-            instances: selectedRows,
-          });
-          message.success(t('Collection.taskDetail.approvalSuccess'));
-          onClose?.();
-          onSuccess?.();
-        } catch (error) {
-          console.error('Failed to approve:', error);
-        }
-      },
-    });
-  };
-
-  const rowSelection = {
-    selectedRowKeys,
-    onChange: (keys: React.Key[], rows: any[]) => {
-      setSelectedRowKeys(keys);
-      setSelectedRows(rows);
-    },
-  };
-
   return (
-    <>
-      <CustomTable
-        size="middle"
-        columns={columns}
-        dataSource={displayData}
-        pagination={{
-          ...pagination,
-          showSizeChanger: true,
-          showTotal: (total) => `共 ${total} 条`,
-        }}
-        onChange={handleTableChange}
-        scroll={{ y: 'calc(100vh - 350px)' }}
-        rowKey={(record) => record.id || record.inst_name || record.name}
-        rowSelection={isApprove ? rowSelection : undefined}
-      />
-      <div className="flex justify-start space-x-4">
-        {isApprove ? (
-          <>
-            <Button type="primary" onClick={handleApprove}>
-              {t('Collection.execStatus.approval')}
-            </Button>
-            <Button onClick={onClose}>{t('common.cancel')}</Button>
-          </>
-        ) : (
-          <Button onClick={onClose}>{t('common.close')}</Button>
-        )}
-      </div>
-    </>
+    <CustomTable
+      size="middle"
+      columns={columns}
+      dataSource={displayData}
+      pagination={{
+        ...pagination,
+        showSizeChanger: true,
+        showTotal: (total) => `共 ${total} 条`,
+      }}
+      onChange={handleTableChange}
+      scroll={{ y: 'calc(100vh - 316px)' }}
+      rowKey={(record) => record.id || record.inst_name || record.name}
+    />
   );
 };
 
@@ -171,6 +110,7 @@ const TaskDetail: React.FC<TaskDetailProps> = ({
     update: { data: [], count: 0 },
     delete: { data: [], count: 0 },
     relation: { data: [], count: 0 },
+    raw_data: { data: [], count: 0 },
   });
 
   useEffect(() => {
@@ -209,24 +149,31 @@ const TaskDetail: React.FC<TaskDetailProps> = ({
   }, []);
 
   const statusColumn = {
-    title: '状态',
+    title: t('Collection.taskDetail.status'),
     dataIndex: '_status',
-    width: 100,
+    width: 90,
     render: (status: string) => {
       if (status === 'success') {
         return (
           <span className="text-green-500">
-            {t('Collection.execStatus.success')}
+            {t('Collection.syncStatus.success')}
           </span>
         );
       }
       return (
-        <span className="text-red-500">{t('Collection.execStatus.error')}</span>
+        <span className="text-red-500">{t('Collection.syncStatus.error')}</span>
       );
     },
   };
 
-  const isApprove = task.input_method === 1 && !task.examine;
+  const errorColumn = {
+    title: t('Collection.taskDetail.errorInfo'),
+    dataIndex: '_error',
+    width: 200,
+    render: (error: string) => (
+      <span className="text-red-500">{error || '--'}</span>
+    ),
+  };
 
   const processColumns = (columns: any[]) => {
     return columns.map((col) => ({
@@ -240,35 +187,77 @@ const TaskDetail: React.FC<TaskDetailProps> = ({
     }));
   };
 
+  const renderRawDataTab = () => {
+    const rawData = detailData.raw_data?.data || [];
+    const hasData = rawData.length > 0;
+
+    return (
+      <div
+        className="overflow-y-auto"
+        style={{ height: 'calc(100vh - 206px)' }}
+      >
+        <div className="p-4">
+          {hasData ? (
+            rawData.map((item: any, index: number) => (
+              <div key={index} className="mb-6">
+                <Descriptions
+                  bordered
+                  size="small"
+                  column={1}
+                  labelStyle={{ width: 120 }}
+                >
+                  {Object.entries(item).map(([key, value]: [string, any]) => (
+                    <Descriptions.Item key={key} label={key}>
+                      {typeof value === 'object' && value !== null
+                        ? JSON.stringify(value)
+                        : String(value || '--')}
+                    </Descriptions.Item>
+                  ))}
+                </Descriptions>
+              </div>
+            ))
+          ) : (
+            <Empty
+              image={Empty.PRESENTED_IMAGE_SIMPLE}
+              description={t('Collection.taskDetail.noRawData')}
+            />
+          )}
+        </div>
+      </div>
+    );
+  };
+
   const tabItems = Object.entries(CREATE_TASK_DETAIL_CONFIG(t))
     .filter(([key]) => !(modelId === 'k8s' && key === 'relation'))
     .map(([key, config]) => {
-      const count = detailData[key as keyof TaskDetailData]?.count || 0;
-      const typeData =
-        key === 'offline'
-          ? detailData.delete
-          : detailData[key as keyof TaskDetailData];
+      const typeData = detailData[key as keyof TaskDetailData];
+      const count =
+        typeData && typeof typeData === 'object' && 'count' in typeData
+          ? typeData.count
+          : 0;
+      const data = key === 'offline' ? detailData.delete : typeData;
 
       return {
         key,
         label: `${config.label} (${count})`,
         children: (
           <div className="flex flex-col h-full">
-            <Alert
-              message={config.message}
-              type={config.alertType as any}
-              showIcon
-              className="mb-4"
-            />
             <Spin spinning={loading}>
               <TaskTable
                 type={key}
                 taskId={task.id}
-                isApprove={isApprove}
-                columns={[...processColumns(config.columns), statusColumn]}
+                columns={[
+                  ...processColumns(config.columns),
+                  statusColumn,
+                  errorColumn,
+                ]}
                 onClose={onClose}
                 onSuccess={onSuccess}
-                data={typeData?.data || []}
+                data={
+                  data && typeof data === 'object' && 'data' in data
+                    ? data.data
+                    : []
+                }
               />
             </Spin>
           </div>
@@ -276,9 +265,23 @@ const TaskDetail: React.FC<TaskDetailProps> = ({
       };
     });
 
+  // 添加原始数据 tab
+  tabItems.push({
+    key: 'raw_data',
+    label: `${t('Collection.taskDetail.rawData')} (${detailData.raw_data?.count || 0})`,
+    children: (
+      <div className="flex flex-col h-full">
+        <Spin spinning={loading}>{renderRawDataTab()}</Spin>
+      </div>
+    ),
+  });
+
   return (
     <div className={`flex flex-col h-full rounded-lg ${styles.taskDetail}`}>
       <Tabs defaultActiveKey="add" items={tabItems} className="flex-1" />
+      <div className="flex justify-start space-x-4 mt-4 px-4 pb-4">
+        <Button onClick={onClose}>{t('common.close')}</Button>
+      </div>
     </div>
   );
 };

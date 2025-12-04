@@ -44,7 +44,7 @@ class BotViewSet(AuthViewSet):
             client = get_quota_client(request)
             bot_count, used_bot_count, __ = client.get_bot_quota()
             if bot_count != -1 and bot_count <= used_bot_count:
-                message = self.loader.get("bot_quota_exceeded") if self.loader else "Bot count exceeds quota limit."
+                message = self.loader.get("error.bot_quota_exceeded") if self.loader else "Bot count exceeds quota limit."
                 return JsonResponse({"result": False, "message": message})
         current_team = data.get("team", []) or [int(request.COOKIES.get("current_team"))]
         bot_obj = Bot.objects.create(
@@ -85,7 +85,9 @@ class BotViewSet(AuthViewSet):
                 return JsonResponse(
                     {
                         "result": False,
-                        "message": self.loader.get("no_bot_update_permission") if self.loader else "You do not have permission to update this bot.",
+                        "message": self.loader.get("error.no_bot_update_permission")
+                        if self.loader
+                        else "You do not have permission to update this bot.",
                     }
                 )
         data = request.data
@@ -127,7 +129,7 @@ class BotViewSet(AuthViewSet):
                     return JsonResponse(
                         {
                             "result": False,
-                            "message": self.loader.get("pilot_start_failed") if self.loader else "Pilot start failed.",
+                            "message": self.loader.get("error.pilot_start_failed") if self.loader else "Pilot start failed.",
                         }
                     )
             else:
@@ -167,7 +169,7 @@ class BotViewSet(AuthViewSet):
             include_children = request.COOKIES.get("include_children", "0") == "1"
             has_permission = self.get_has_permission(request.user, channel.bot, current_team, include_children=include_children)
             if not has_permission:
-                message = self.loader.get("no_bot_update_permission") if self.loader else "You do not have permission to update this bot."
+                message = self.loader.get("error.no_bot_update_permission") if self.loader else "You do not have permission to update this bot."
                 return JsonResponse(
                     {
                         "result": False,
@@ -201,7 +203,7 @@ class BotViewSet(AuthViewSet):
             include_children = request.COOKIES.get("include_children", "0") == "1"
             has_permission = self.get_has_permission(request.user, bots, current_team, is_list=True, include_children=include_children)
             if not has_permission:
-                message = self.loader.get("no_bot_start_permission") if self.loader else "You do not have permission to start this bot."
+                message = self.loader.get("error.no_bot_start_permission") if self.loader else "You do not have permission to start this bot."
                 return JsonResponse(
                     {
                         "result": False,
@@ -233,7 +235,7 @@ class BotViewSet(AuthViewSet):
             include_children = request.COOKIES.get("include_children", "0") == "1"
             has_permission = self.get_has_permission(request.user, bots, current_team, is_list=True, include_children=include_children)
             if not has_permission:
-                message = self.loader.get("no_bot_stop_permission") if self.loader else "You do not have permission to stop this bot"
+                message = self.loader.get("error.no_bot_stop_permission") if self.loader else "You do not have permission to stop this bot"
                 return JsonResponse(
                     {
                         "result": False,

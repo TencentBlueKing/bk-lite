@@ -4,21 +4,36 @@ import type {
   NodeItem,
   UpdateConfigReq,
 } from '../types/cloudregion';
-import { SearchFilters } from '../types/node';
+import { NodeParams, SearchFilters } from '../types/node';
 
 /**
  * 节点管理API Hook
  * 职责：处理节点相关的所有操作，包括节点管理、控制器和采集器安装等
  */
 const useNodeApi = () => {
-  const { get, post, del } = useApiClient();
+  const { get, post, del, patch } = useApiClient();
 
   // 获取节点列表
   const getNodeList = async (params: {
     cloud_region_id?: number;
     filters?: SearchFilters;
+    page?: number;
+    page_size?: number;
   }) => {
-    return await post('/node_mgmt/api/node/search/', params);
+    const { page, page_size, ...bodyParams } = params;
+    // 构建 URL 查询参数
+    const queryParams = new URLSearchParams();
+    if (page !== undefined) {
+      queryParams.append('page', page.toString());
+    }
+    if (page_size !== undefined) {
+      queryParams.append('page_size', page_size.toString());
+    }
+    const queryString = queryParams.toString();
+    const url = queryString
+      ? `/node_mgmt/api/node/search/?${queryString}`
+      : '/node_mgmt/api/node/search/';
+    return await post(url, bodyParams);
   };
 
   // 删除节点
@@ -90,6 +105,12 @@ const useNodeApi = () => {
     return await post('/node_mgmt/api/node/batch_binding_configuration/', data);
   };
 
+  // 更新节点名称和组织
+  const updateNode = async (data: NodeParams) => {
+    const { id, ...remain } = data;
+    return await patch(`/node_mgmt/api/node/${id}/update/`, remain);
+  };
+
   // 批量操作节点的采集器（启动、停止、重启）
   const batchOperationCollector = async (data: {
     node_ids?: string[];
@@ -112,6 +133,7 @@ const useNodeApi = () => {
     getCollectorNodes,
     batchBindCollector,
     batchOperationCollector,
+    updateNode,
   };
 };
 

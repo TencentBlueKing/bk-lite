@@ -4,8 +4,6 @@ from apps.core.logger import monitor_logger as logger
 from apps.monitor.management.services.plugin_migrate import (
     migrate_plugin,
     migrate_policy,
-    migrate_config_templates,
-    migrate_ui_templates,
     migrate_default_order,
 )
 
@@ -15,9 +13,7 @@ class Command(BaseCommand):
 
     def handle(self, *args, **options):
         logger.info("初始化监控插件开始！")
-        migrate_plugin()
+        migrate_plugin()  # 已包含配置模板和 UI 模板的导入
         migrate_policy()
-        migrate_config_templates()
-        migrate_ui_templates()
         migrate_default_order()
         logger.info("初始化监控插件完成！")

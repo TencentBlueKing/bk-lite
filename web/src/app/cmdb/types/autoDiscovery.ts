@@ -26,6 +26,9 @@ export interface TreeNode {
     key: string;
     name: string;
     type?: string;
+    task_type?: string;
+    tag?: string[];
+    desc?: string;
     children?: TreeNode[];
     tabItems?: TreeNode[];
 }
@@ -36,6 +39,8 @@ export interface ModelItem {
     key: string;
     name: string;
     task_type?: string;
+    tag?: string[];
+    desc?: string;
     tabItems?: TreeNode[];
 };
 
