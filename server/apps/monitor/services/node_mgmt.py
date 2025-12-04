@@ -102,7 +102,7 @@ class InstanceConfigService:
                 continue
 
             rules.append(MonitorObjectOrganizationRule(
-                name=f"{child_obj.name}-{monitor_instance_id}",
+                name=f"{child_obj.name}-{_monitor_instance_id}",
                 monitor_object_id=child_obj.id,
                 rule={
                     "type": "metric",

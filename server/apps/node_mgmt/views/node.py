@@ -23,7 +23,7 @@ class NodeViewSet(mixins.DestroyModelMixin,
     queryset = Node.objects.all().prefetch_related('nodeorganization_set').order_by("-created_at")
     pagination_class = CustomPageNumberPagination
     serializer_class = NodeSerializer
-    search_fields = ["id", "name", "ip"]
+    search_fields = ["id", "name", "ip", "cloud_region_id", "install_method"]
 
     def add_permission(self, permission, items):
         node_permission_map = {i["id"]: i["permission"] for i in permission.get("instance", [])}
