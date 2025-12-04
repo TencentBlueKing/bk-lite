@@ -183,15 +183,23 @@ class MysqlInfo:
         Convert collected data to a standard format.
         """
         try:
-            excute_res = True
             message = ''
+            execute_result = True
+
             try:
                 self._connect()
-                self._collect()
-            except Exception as err:
-                excute_res = False
-                message = str(err)
-            if excute_res:
+            except Exception as conn_err:
+                execute_result = False
+                message = str(conn_err)
+
+            if execute_result:
+                try:
+                    self._collect()
+                except Exception as collect_err:
+                    execute_result = False
+                    message = str(collect_err)
+
+            if execute_result:
                 model_data = {
                     "ip_addr": self.host,
                     "port": self.port,
@@ -209,21 +217,18 @@ class MysqlInfo:
                     "log_error": self.info["settings"]["log_error"],
                     "wait_timeout": self.info["settings"]["wait_timeout"],
                 }
-                inst_data = {
-                    "result": json.dumps(model_data),
-                    "success": excute_res,
-                }
-                result = convert_to_prometheus_format({"mysql": [inst_data]})
+                inst_data = {"result": json.dumps(model_data), "success": execute_result}
+
             else:
-                inst_data = {
-                    "result": message,
-                    "success": excute_res,
-                }
-                result = convert_to_prometheus_format({"mysql": [inst_data]})
+                logger.error(f"mysql_info collect error! {message}")
+                inst_data = {"result": message, "success": execute_result}
+
+            result = convert_to_prometheus_format({"mysql": [inst_data]})
             return result
-        except Exception as err:
+        except Exception as err:  # noqa
             import traceback
             logger.error(f"mysql_info main error! {traceback.format_exc()}")
+
         finally:
             self.close()
 

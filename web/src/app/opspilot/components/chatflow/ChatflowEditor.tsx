@@ -27,12 +27,15 @@ import {
   OpenAIApiNode,
   AgentsNode,
   AgUiNode,
+  EmbeddedChatNode,
   HttpRequestNode,
   IfConditionNode,
   NotificationNode,
   EnterpriseWechatNode,
   DingtalkNode,
   WechatOfficialNode,
+  WebChatNode,
+  MobileNode,
 } from './nodes';
 import { useNodeExecution } from './hooks/useNodeExecution';
 import { useNodeDeletion } from './hooks/useNodeDeletion';
@@ -136,6 +139,9 @@ const ChatflowEditor = forwardRef<ChatflowEditorRef, ChatflowEditorProps>(({ onS
       openai: createNodeComponent(OpenAIApiNode),
       agents: createNodeComponent(AgentsNode),
       agui: createNodeComponent(AgUiNode),
+      embedded_chat: createNodeComponent(EmbeddedChatNode),
+      web_chat: createNodeComponent(WebChatNode),
+      mobile: createNodeComponent(MobileNode),
       condition: createNodeComponent(IfConditionNode),
       http: createNodeComponent(HttpRequestNode),
       notification: createNodeComponent(NotificationNode),

@@ -18,6 +18,10 @@ export const AgUiNode = (props: any) => (
   <BaseNode {...props} icon={nodeConfig.agui.icon} color={nodeConfig.agui.color} hasOutput={true} />
 );
 
+export const EmbeddedChatNode = (props: any) => (
+  <BaseNode {...props} icon={nodeConfig.embedded_chat.icon} color={nodeConfig.embedded_chat.color} hasOutput={true} />
+);
+
 export const AgentsNode = (props: any) => (
   <BaseNode {...props} icon={nodeConfig.agents.icon} color={nodeConfig.agents.color} hasInput={true} hasOutput={true} />
 );
@@ -51,4 +55,12 @@ export const DingtalkNode = (props: any) => (
 
 export const WechatOfficialNode = (props: any) => (
   <BaseNode {...props} icon={nodeConfig.wechat_official.icon} color={nodeConfig.wechat_official.color} hasOutput={true} />
+);
+
+export const WebChatNode = (props: any) => (
+  <BaseNode {...props} icon={nodeConfig.web_chat.icon} color={nodeConfig.web_chat.color} hasOutput={true} />
+);
+
+export const MobileNode = (props: any) => (
+  <BaseNode {...props} icon={nodeConfig.mobile.icon} color={nodeConfig.mobile.color} hasOutput={true} />
 );

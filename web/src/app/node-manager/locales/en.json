@@ -87,7 +87,6 @@
         "deleteNodeTips": "For nodes that are automatically installed, it is recommended to uninstall the controller for deletion. After manually deleting the node, if the node's side car reports normally in the future, it will be automatically updated in the list.",
         "running": "Running",
         "status": "Status",
-        "runningStatus": "Running Status",
         "stopsuccess": "Collector stopped successfully",
         "downloadTemplate": "Download Template",
         "btntext2": "here",
@@ -115,11 +114,12 @@
         "lastReportTime": "Last Report Time",
         "installMethod": "Install Method",
         "auto": "Remote",
-        "nodeType": "Node Type",
+        "runningStatus": "Running Status",
         "nodeProperties": "Node Properties",
         "hostedProgram": "Hosted Program",
         "containerNodeTip": "Container nodes are built-in nodes of the cloud region and do not support uninstallation and deletion",
-        "hostedProgramList": "Hosted Program List"
+        "hostedProgramList": "Hosted Program List",
+        "nodeType": "Node Type"
       },
       "editform": {
         "Introduction": "Introduction",
@@ -143,23 +143,23 @@
         "title": "Add Cloud Region"
       },
       "deploy": {
-        "title": "Deploy Cloud Region",
-        "containerDeploy": "Container Deploy",
-        "k8sDeploy": "K8s Deploy",
-        "containerTips": "Please connect to the cloud region and select a host that can communicate directly with the platform master node to deploy Nats Executor and Stargazer container components, thereby acting as a bridge between the cloud region and the platform master node.",
-        "ipAddress": "IP Address",
-        "ipPlaceholder": "Please enter IP address, e.g.: 192.168.1.100",
-        "ipFormatError": "Please enter a valid IP address format",
-        "sshPort": "SSH Port",
-        "loginAccount": "Login Account",
-        "usernamePlaceholder": "Please enter login account, e.g.: root",
-        "loginPassword": "Login Password",
-        "sshServiceTips": "The cloud region needs to use SSH service during deployment, and can be closed after deployment is complete to improve security.",
-        "deploy": "Deploy",
-        "deploySuccess": "Deployment successful",
         "upgradeTitle": "Upgrade to Enterprise Edition for More Features",
         "upgradeDescription": "The community edition cloud region only supports container deployment, K8s deployment method please upgrade to enterprise edition.",
-        "upgradeButton": "Learn About Enterprise"
+        "usernamePlaceholder": "Please enter login account, e.g.: root",
+        "deploySuccess": "Deployment successful",
+        "loginPassword": "Login Password",
+        "deploy": "Deploy",
+        "containerDeploy": "Container Deploy",
+        "sshPort": "SSH Port",
+        "ipPlaceholder": "Please enter IP address, e.g.: 192.168.1.100",
+        "upgradeButton": "Learn About Enterprise",
+        "title": "Deploy Cloud Region",
+        "loginAccount": "Login Account",
+        "sshServiceTips": "The cloud region needs to use SSH service during deployment, and can be closed after deployment is complete to improve security.",
+        "ipFormatError": "Please enter a valid IP address format",
+        "ipAddress": "IP Address",
+        "containerTips": "Please connect to the cloud region and select a host that can communicate directly with the platform master node to deploy Nats Executor and Stargazer container components, thereby acting as a bridge between the cloud region and the platform master node.",
+        "k8sDeploy": "K8s Deploy"
       }
     },
     "packetManage": {
@@ -202,7 +202,6 @@
     "prompt": "Prompt",
     "updatedAt": "Updated At",
     "deleteSuccess": "Deleted successfully!",
-    "successfullyModified": "Modified successfully!",
     "actions": "Actions",
     "modifydelete": "Batch Delete",
     "node": "Node",
@@ -218,6 +217,7 @@
     "pleaseSelect": "Please Select",
     "batchbindSuccess": "Bound successfully",
     "successfulDownloaded": "Download successful !",
-    "configuration": "Configuration"
+    "configuration": "Configuration",
+    "successfullyModified": "Modified successfully!"
   }
 }

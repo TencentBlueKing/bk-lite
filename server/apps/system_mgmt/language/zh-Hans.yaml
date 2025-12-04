@@ -16,8 +16,6 @@ error:
   time_range_required: 时间范围是必填项
   cannot_delete_admin_normal_roles: admin和normal角色不允许删除
   group_id_required: 组织ID不能为空
-  invalid_group_ids: "组织ID不存在: {ids}"
-  invalid_role_ids: "角色ID不存在: {ids}"
   group_has_users_remove_first: 此组或子组中有用户，请先移除用户！
   update_failed: 更新失败
   role_used_by_users: 角色已被用户使用！
@@ -50,6 +48,8 @@ error:
   root_menu_cannot_toggle: 一级菜单不支持启停功能
   cannot_create_under_virtual_subgroup: 不能在虚拟子组下创建组。虚拟组最多只能有两层。
   invalid_order: 排序值必须是整数
+  invalid_role_ids: '角色ID不存在: {ids}'
+  invalid_group_ids: '组织ID不存在: {ids}'
 success:
   menu_group_disabled: 菜单组已禁用
   batch_create: 批量创建成功

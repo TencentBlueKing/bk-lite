@@ -15,8 +15,6 @@ from django.http import Http404
 import pandas as pd
 import numpy as np
 from rest_framework.decorators import action
-from neco.mlops.anomaly_detection.random_forest_detector import RandomForestAnomalyDetector
-from apps.mlops.tasks.anomaly_detection_train_task import start_anomaly_detection_train
 
 
 class AnomalyDetectionDatasetViewSet(ModelViewSet):
@@ -60,7 +58,7 @@ class AnomalyDetectionTrainJobViewSet(ModelViewSet):
     def train(self, request, pk=None):
         try:
             train_job = self.get_object()
-            start_anomaly_detection_train.delay(train_job.id)
+            # start_anomaly_detection_train.delay(train_job.id)
 
             return Response(
                 status=status.HTTP_200_OK
@@ -227,7 +225,7 @@ class AnomalyDetectionTrainJobViewSet(ModelViewSet):
     @HasPermission("train_tasks-Add,anomaly_detection_datasets_detail-File View,anomaly_detection_datasets-View")
     def create(self, request, *args, **kwargs):
         return super().create(request, *args, **kwargs)
-    
+
     @action(detail=True, methods=['get'], url_path='get_file')
     @HasPermission("train_tasks-View,anomaly_detection_datasets_detail-File View,anomaly_detection_datasets-View")
     def get_file(self, request, *args, **kwargs):
@@ -270,7 +268,7 @@ class AnomalyDetectionTrainJobViewSet(ModelViewSet):
                     }
                 ]
             )
-        
+
         except Exception as e:
             logger.error(f"获取训练文件失败 - TrainJobID: {kwargs.get('pk')} - {str(e)}")
             return Response(
@@ -403,7 +401,7 @@ class AnomalyDetectionServingViewSet(ModelViewSet):
 
             # 从服务配置和训练任务获取模型信息
             # model_name = f"{train_job.algorithm}_{train_job.id}"  # 基于训练任务ID生成模型名称
-            model_name = f"AnomalyDetection_{train_job.algorithm}_{train_job.id}" 
+            model_name = f"AnomalyDetection_{train_job.algorithm}_{train_job.id}"
             model_version = serving.model_version
             anomaly_threshold = serving.anomaly_threshold
             algorithm = train_job.algorithm
@@ -417,7 +415,7 @@ class AnomalyDetectionServingViewSet(ModelViewSet):
                 df['timestamp'] = [item.get('timestamp', f'index_{i}') for i, item in enumerate(time_series_data)]
             # 根据算法类型选择对应的检测器
             if algorithm == 'RandomForest':
-                detector = RandomForestAnomalyDetector()
+                detector = None
             else:
                 return Response(
                     {'error': f'不支持的算法类型: {algorithm}'},

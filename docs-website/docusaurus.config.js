@@ -92,7 +92,7 @@ const config = {
           },
           {
             "label": "产品文档",
-            "to": "/docs/products/opspilot/introduce"
+            "to": "/docs/opspilot/introduce"
           },
           {
             "label": "运维手册",
