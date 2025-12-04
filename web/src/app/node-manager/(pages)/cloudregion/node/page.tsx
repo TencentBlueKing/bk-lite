@@ -157,10 +157,18 @@ const Node = () => {
       record.operating_system === 'linux'
         ? 'natsexecutor_linux'
         : 'natsexecutor_windows';
-    return [
-      ...(record.status?.collectors || []),
-      ...(record.status?.collectors_install || []),
-    ].filter((collector: any) => collector.collector_id !== natsexecutorId);
+    const collectors = record.status?.collectors || [];
+    const collectorsInstall = record.status?.collectors_install || [];
+    // 获取已在 collectors 中的 collector_id 集合
+    const collectorIds = new Set(collectors.map((c: any) => c.collector_id));
+    // 过滤 collectors_install,排除已在 collectors 中的采集器
+    const filteredCollectorsInstall = collectorsInstall.filter(
+      (c: any) => !collectorIds.has(c.collector_id)
+    );
+    // 合并并排除 NATS-Executor
+    return [...collectors, ...filteredCollectorsInstall].filter(
+      (collector: any) => collector.collector_id !== natsexecutorId
+    );
   };
 
   useEffect(() => {
