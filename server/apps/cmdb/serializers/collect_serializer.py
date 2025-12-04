@@ -21,6 +21,10 @@ class CollectModelSerializer(serializers.ModelSerializer):
             # "task_type": {"required": True},
         }
 
+class CollectModelIdStatusSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = CollectModels
+        fields = ("model_id", "exec_status")
 
 class CollectModelLIstSerializer(UsernameSerializer):
     message = serializers.SerializerMethodField()

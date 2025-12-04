@@ -135,9 +135,7 @@
         "once": "Once",
         "cycleRequired": "Please select scan cycle",
         "enterType": "Enter Type",
-        "enterTypeTooltip": "Set the input method for New Asset. Automatic Input will automatically update to the Asset Record after the task is completed, and Approval Input will update to the Asset Record based on the approval result.",
         "automatic": "Automatic",
-        "approvalRequired": "Approval required",
         "password": "Password",
         "sslVerify": "SSL verify",
         "advanced": "Advanced",
@@ -160,7 +158,6 @@
         "syncStatus": {
             "add": "Add",
             "update": "Update",
-            "association": "Associate",
             "delete": "Delete",
             "unexecuted": "Not Executed",
             "collecting": "Collecting",
@@ -169,8 +166,7 @@
             "timeout": "Timeout",
             "writing": "Writing",
             "forceStop": "Force Stop",
-            "pendingApproval": "Pending Approval",
-            "approval": "Approval"
+            "pendingApproval": "Pending Approval"
         },
         "k8sTask": {
             "title": "Add Task",
@@ -206,7 +202,7 @@
         "table": {
             "taskName": "Task Name",
             "syncStatus": "Sync Status",
-            "collectSummary": "Collection Summary",
+            "latestOverview": "Latest Overview",
             "creator": "Creator",
             "syncTime": "Sync Time",
             "actions": "Actions",
@@ -218,11 +214,30 @@
         },
         "taskDetail": {
             "title": "Task Detail",
+            "instanceName": "Instance Name",
             "status": "Status",
             "errorInfo": "Error Info",
             "rawData": "Raw Data",
-            "noRawData": "No raw data available"
-        }
+            "noRawData": "No raw data available",
+            "totalDiscovered": "Total Discovered",
+            "addData": "Data to Add",
+            "updateData": "Data to Update",
+            "deleteData": "Data to Delete",
+            "writeFailed": "Failed to write to CMDB",
+            "failedCount": "items"
+        },
+        "statusLabel": {
+            "running": "Running",
+            "syncSuccess": "Sync Success",
+            "syncFailed": "Sync Failed"
+        },
+        "overviewLabel": {
+            "add": "Add",
+            "update": "Update",
+            "delete": "Delete",
+            "error": "Error"
+        },
+        "executeSuccess": "Execute successfully"
     },
     "OidLibrary": {
         "title": "SOID Library",

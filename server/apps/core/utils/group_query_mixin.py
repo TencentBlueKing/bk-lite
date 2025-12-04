@@ -81,7 +81,7 @@ class GroupQueryMixin:
 
         # 普通用户，从user.group_list获取
         if hasattr(request.user, "group_list"):
-            return request.user.group_list or []
+            return [i["id"] for i in request.user.group_list] or []
 
         logger.warning(f"无法获取用户 {request.user.username} 的组织列表")
         return []

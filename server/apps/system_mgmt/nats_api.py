@@ -391,7 +391,8 @@ def _prepare_user_rules_query(group_id, username, domain, app, include_children=
 
     # 获取查询的组ID列表（包含子组）
     if include_children:
-        query_group_ids = GroupUtils.get_all_child_groups(int(group_id), include_self=True)
+        # 提取用户的组织ID列表
+        query_group_ids = GroupUtils.get_all_child_groups(int(group_id), include_self=True, group_list=user_obj.group_list)
     else:
         query_group_ids = [int(group_id)]
 

@@ -53,8 +53,12 @@ class BaseCollect(object):
     def format_collect_data(self, result):
         # 强加了一个原始数据，如果原始数据存在则删除，保留原有逻辑
         raw_data = []
+        # 强加一个总数，这个总数是发现正常数据的总数，不是原始数据的总数
+        all_count = []
         if result.get("__raw_data__", False) or result.get("__raw_data__", False) == []:
             raw_data = result.pop("__raw_data__")
+        if result.get("all", False) or result.get("all", False) == 0:
+            all_count = result.pop("all")
         format_data = {"add": [], "update": [],
                        "delete": [], "association": []}
         for value in result.values():
@@ -80,6 +84,8 @@ class BaseCollect(object):
                         format_data[operator].append(_data)
         if raw_data:
             format_data["__raw_data__"] = raw_data
+        if raw_data:
+            format_data["all"] = all_count
         return format_data
 
     @staticmethod
