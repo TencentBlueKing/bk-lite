@@ -40,22 +40,26 @@ class CLI:
             
         Example:
             classify_timeseries_server train --dataset-path ./data/train.csv
-            classify_timeseries_server train --algorithm sarima --dataset-path ./data --hyperparams ./params.json --mlflow-tracking-uri http://127.0.0.1:15000
+            classify_timeseries_server train --dataset-path ./data --hyperparams ./params.json --mlflow-tracking-uri http://127.0.0.1:15000
         """
-        from ..training import load_dataset, TimeSeriesTrainer
-        from ..training.algorithms import SARIMAAlgorithm
+        from ..training import load_dataset
+        from ..training.sarima_trainer import SARIMATrainer
         
         # 确保参数类型正确
         test_size = float(test_size)
         algorithm = algorithm.lower()
+        
+        # 目前仅支持 SARIMA
+        if algorithm != "sarima":
+            logger.error(f"Unsupported algorithm: {algorithm}. Currently only 'sarima' is supported.")
+            return 1
         
         # 从环境变量获取 MLflow URI（如果未通过参数传递）
         if mlflow_tracking_uri is None:
             import os
             mlflow_tracking_uri = os.getenv("MLFLOW_TRACKING_URI")
         
-        logger.info(f"=== Starting {algorithm.upper()} Training ===")
-        logger.info(f"Algorithm: {algorithm}")
+        logger.info(f"=== Starting SARIMA Training ===")
         logger.info(f"Dataset path: {dataset_path}")
         logger.info(f"Experiment: {experiment_name}")
         logger.info(f"Test size: {test_size}")
@@ -76,27 +80,27 @@ class CLI:
                     params.pop('comments', None)
             else:
                 logger.info("Using default hyperparameters")
-                # SARIMA 默认参数
                 params = {
-                    'order': [1, 1, 1],
-                    'seasonal_order': [1, 1, 1, 12],
+                    'order': (1, 1, 1),
+                    'seasonal_order': (1, 1, 1, 12),
                     'trend': 'c',
                 }
             
             logger.info(f"Hyperparameters: {params}")
             
-            # 创建算法实例（目前仅支持 SARIMA）
-            if algorithm == "sarima":
-                algo = SARIMAAlgorithm()
-            else:
-                raise ValueError(f"Unsupported algorithm: {algorithm}. Currently only 'sarima' is supported.")
+            # 转换参数格式
+            order = tuple(params.get('order', (1, 1, 1)))
+            seasonal_order = tuple(params.get('seasonal_order', (1, 1, 1, 12)))
+            trend = params.get('trend', 'c')
             
             # 训练模型
-            trainer = TimeSeriesTrainer(algo)
+            trainer = SARIMATrainer()
             result = trainer.train(
-                model_name=model_name or f"{algorithm}_model",
+                model_name=model_name or "sarima_model",
                 train_dataframe=df,
-                train_config=params,
+                order=order,
+                seasonal_order=seasonal_order,
+                trend=trend,
                 experiment_name=experiment_name,
                 test_size=test_size,
                 mlflow_tracking_uri=mlflow_tracking_uri,
@@ -104,11 +108,10 @@ class CLI:
                 optimization_metric=optimization_metric,
             )
             
-            model = result["model"]
             metrics = result["test_metrics"]
             
             logger.info("=== Training completed successfully ===")
-            logger.info(f"Metrics: {metrics}")
+            logger.info(f"Metrics: RMSE={metrics['rmse']:.4f}, MAE={metrics['mae']:.4f}, MAPE={metrics['mape']:.2f}%")
             
             return 0
             
