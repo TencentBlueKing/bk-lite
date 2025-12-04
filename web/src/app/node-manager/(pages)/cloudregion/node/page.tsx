@@ -7,14 +7,8 @@ import React, {
   useCallback,
 } from 'react';
 import { Button, message, Space, Modal, Tooltip, Tag, Dropdown } from 'antd';
-import {
-  DownOutlined,
-  ReloadOutlined,
-  HddTwoTone,
-  ContainerTwoTone,
-  ThunderboltTwoTone,
-  CloudTwoTone,
-} from '@ant-design/icons';
+import { DownOutlined, ReloadOutlined } from '@ant-design/icons';
+import Icon from '@/components/icon';
 import type { MenuProps, TableProps } from 'antd';
 import nodeStyle from './index.module.scss';
 import CollectorModal from './collectorModal';
@@ -297,25 +291,18 @@ const Node = () => {
           // 获取操作系统映射
           const osValue = record.operating_system;
           const osLabel = nodeStateEnum?.os?.[osValue] || osValue;
-          const OSIcon =
-            osValue === 'linux'
-              ? HddTwoTone
-              : osValue === 'windows'
-                ? HddTwoTone
-                : HddTwoTone;
+
           // 获取安装方式映射
           const installMethodValue = record.install_method;
           const installMethodLabel =
             nodeStateEnum?.install_method?.[installMethodValue] ||
             installMethodValue;
-          const InstallIcon =
-            installMethodValue === 'auto' ? ThunderboltTwoTone : CloudTwoTone;
+
           // 获取节点类型映射
           const nodeTypeValue = record.node_type;
           const nodeTypeLabel =
             nodeStateEnum?.node_type?.[nodeTypeValue] || nodeTypeValue;
-          const NodeTypeIcon =
-            nodeTypeValue === 'container' ? ContainerTwoTone : HddTwoTone;
+
           // 容器节点tooltip内容
           const nodeTypeTooltip =
             nodeTypeValue === 'container' ? (
@@ -329,23 +316,46 @@ const Node = () => {
               `${t('node-manager.cloudregion.node.nodeType')}: ${nodeTypeLabel}`
             );
           return (
-            <div className="flex gap-2">
+            <div className="flex gap-2 items-center ">
               <Tooltip title={nodeTypeTooltip}>
-                <NodeTypeIcon style={{ fontSize: '16px', cursor: 'pointer' }} />
+                <div className="flex items-center">
+                  <Icon
+                    type={
+                      nodeTypeValue === 'container'
+                        ? 'rongqifuwuContainerServi'
+                        : 'zhuji'
+                    }
+                    style={{ fontSize: '24px', cursor: 'pointer' }}
+                  />
+                </div>
               </Tooltip>
               <Tooltip
                 title={`${t(
                   'node-manager.cloudregion.node.system'
                 )}: ${osLabel}`}
               >
-                <OSIcon style={{ fontSize: '16px', cursor: 'pointer' }} />
+                <div className="flex items-center">
+                  <Icon
+                    type={osValue === 'linux' ? 'Linux' : 'Window-Windows'}
+                    style={{ fontSize: '24px', cursor: 'pointer' }}
+                  />
+                </div>
               </Tooltip>
               <Tooltip
                 title={`${t(
                   'node-manager.cloudregion.node.installMethod'
                 )}: ${installMethodLabel}`}
               >
-                <InstallIcon style={{ fontSize: '16px', cursor: 'pointer' }} />
+                <div className="flex items-center">
+                  <Icon
+                    type={
+                      installMethodValue === 'auto'
+                        ? 'daohang_007'
+                        : 'rengongganyu'
+                    }
+                    style={{ fontSize: '24px', cursor: 'pointer' }}
+                  />
+                </div>
               </Tooltip>
             </div>
           );
@@ -380,12 +390,12 @@ const Node = () => {
             <>
               <Tooltip
                 title={`${record.status?.message}`}
-                className="py-1 pr-1"
+                className="py-1 px-2"
               >
                 <Tag color={record.active ? 'success' : 'warning'}>Sidecar</Tag>
               </Tooltip>
               <Tooltip title={title}>
-                <Tag color={tagColor} className="py-1 pr-1">
+                <Tag color={tagColor} className="py-1 px-2">
                   NATS-Executor
                 </Tag>
               </Tooltip>
@@ -428,7 +438,7 @@ const Node = () => {
                 <Tag
                   key={status}
                   color={statusInfo.tagColor}
-                  className="cursor-pointer mr-1 mb-1"
+                  className="cursor-pointer mr-1 mb-1 py-1 px-2"
                   onClick={() => handleCollectorTagClick(record, allCollectors)}
                 >
                   {statusInfo.text}: {collectors.length}
@@ -542,16 +552,17 @@ const Node = () => {
                 <ReloadOutlined onClick={() => getNodes(searchFilters)} />
               </div>
             </div>
-            <CustomTable
-              className={nodeStyle.table}
-              columns={tableColumns}
-              loading={loading}
-              dataSource={nodeList}
-              scroll={{ y: 'calc(100vh - 380px)', x: 'max-content' }}
-              rowSelection={rowSelection}
-              pagination={pagination}
-              onChange={handleTableChange}
-            />
+            <div className={nodeStyle.table}>
+              <CustomTable
+                columns={tableColumns}
+                loading={loading}
+                dataSource={nodeList}
+                scroll={{ y: 'calc(100vh - 380px)', x: 'max-content' }}
+                rowSelection={rowSelection}
+                pagination={pagination}
+                onChange={handleTableChange}
+              />
+            </div>
             <CollectorModal
               ref={collectorRef}
               onSuccess={(config) => {

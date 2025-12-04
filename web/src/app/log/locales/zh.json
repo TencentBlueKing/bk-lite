@@ -221,7 +221,14 @@
       "snmpTrapStep1": "配置 Trap 目标地址",
       "snmpTrapAccessGuide": "接入指引",
       "snmpTrapTargetPort": "目标端口",
-      "snmpTrapNodeDes": "请选择已托管 snmptrapd 程序的节点"
+      "snmpTrapNodeDes": "请选择已托管 snmptrapd 程序的节点",
+      "syslogAccessGuide": "接入指引",
+      "syslogStep1Des": "请在您的设备或应用程序中配置以下Syslog服务器地址，以便将日志消息发送到此接收器",
+      "syslogProtocol": "传输协议",
+      "syslogTargetIp": "目标 IP",
+      "syslogNodeDes": "请选择已托管 Telegraf 采集器的容器节点",
+      "syslogTargetPort": "目标端口",
+      "syslogStep1": "在设备上配置 Syslog 目标地址"
     },
     "search": {
       "enableScrolling": "开启自动滚动",

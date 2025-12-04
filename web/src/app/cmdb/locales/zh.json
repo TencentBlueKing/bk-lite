@@ -216,9 +216,10 @@
         },
         "taskDetail": {
             "title": "任务详情",
-            "approval": "审批详情",
-            "approvalConfirm": "审批确认",
-            "approvalSuccess": "审批成功"
+            "status": "状态",
+            "errorInfo": "异常信息",
+            "rawData": "原始数据",
+            "noRawData": "暂无原始数据"
         }
     },
     "OidLibrary": {

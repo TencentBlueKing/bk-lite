@@ -1,6 +1,7 @@
 {
   "plugin": "ActiveMQ",
   "plugin_desc": "Used for collecting ActiveMQ topic-related metrics, enabling real-time monitoring of consumer count, enqueue/dequeue rates, and topic message backlog to ensure stable message queue operation.",
+  "status_query": "any({instance_type='activemq', collect_type='middleware'}) by (instance_id)",
   "name": "ActiveMQ",
   "icon": "02_ActiveMQ",
   "type": "Middleware",

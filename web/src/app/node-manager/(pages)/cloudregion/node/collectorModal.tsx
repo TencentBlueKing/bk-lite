@@ -63,7 +63,7 @@ const CollectorModal = forwardRef<ModalRef, ModalSuccess>(
         setSystem(selectedsystem as string);
         setNodeIds(ids || []);
         initTypeOptions(selectedsystem || '');
-        type === 'startCollector' && getConfigData();
+        type === 'startCollectorr' && getConfigData(); //先不调这个接口，因为配置文件已隐藏
       },
     }));
 
@@ -394,6 +394,7 @@ const CollectorModal = forwardRef<ModalRef, ModalSuccess>(
             collector &&
             !collector.includes('telegraf') && (
             <Form.Item
+              hidden
               name="configuration"
               label={t('node-manager.cloudregion.node.configuration')}
             >

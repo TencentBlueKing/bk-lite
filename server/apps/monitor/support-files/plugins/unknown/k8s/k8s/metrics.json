@@ -1,6 +1,7 @@
 {
   "plugin": "K8S",
   "plugin_desc": "The K8S monitoring plugin is used to monitor the status and health of Kubernetes clusters, including the performance metrics of nodes, containers, and pods.",
+  "status_query": "any({instance_type='k8s'}) by (instance_id)",
   "is_compound_object": true,
   "objects": [
     {
@@ -9,7 +10,7 @@
       "type": "K8S",
       "level": "base",
       "description": "",
-      "default_metric": "any({instance_type='k8s'}) by (instance_id)",
+      "default_metric": "any({instance_type='k8s', collect_type='ksm'}) by (instance_id)",
       "instance_id_keys": ["instance_id"],
       "supplementary_indicators": ["cluster_pod_count", "cluster_node_count"],
       "metrics": [

@@ -54,7 +54,7 @@ const Collector = () => {
 
   const navigateToCollectorDetail = (item: CardItem) => {
     router.push(`
-      /node-manager/collector/detail?id=${item.id}&name=${item.name}&introduction=${item.description}&system=${item.tagList[0]}&icon=${item.icon}`);
+      /node-manager/collector/detail?id=${item.id}&name=${item.name}&introduction=${item.description}&system=${item.os}&icon=${item.icon}`);
   };
 
   const getTags = () => {
@@ -94,6 +94,9 @@ const Collector = () => {
         execute_parameters: item.execute_parameters,
         description: item.introduction || '--',
         icon: item.icon || 'caijiqizongshu',
+        os:
+          tagList.find((item: string) => ['linux', 'windows'].includes(item)) ||
+          'linux',
         tagList: displayTags,
         originalTags: tagList,
       };
@@ -136,6 +139,7 @@ const Collector = () => {
       type: config?.type,
       form: config?.form,
       key: config?.key,
+      appTag: selectedAppTag,
     });
   };
 

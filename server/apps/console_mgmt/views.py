@@ -9,6 +9,7 @@ from apps.core.utils.loader import LanguageLoader
 from apps.rpc.opspilot import OpsPilot
 from apps.rpc.system_mgmt import SystemMgmt
 from apps.system_mgmt.models import Group, Role, User
+from apps.system_mgmt.models.app import App
 from apps.system_mgmt.utils.group_utils import GroupUtils
 from apps.system_mgmt.utils.operation_log_utils import log_operation
 
@@ -147,8 +148,7 @@ def validate_email_code(request):
         # 使用check_password验证
         if check_password(input_code, hashed_code):
             return JsonResponse({"result": True, "message": loader.get("success.verification_success", "Verification successful")})
-        else:
-            return JsonResponse({"result": False, "message": loader.get("error.verification_code_incorrect", "Verification code is incorrect")})
+        return JsonResponse({"result": False, "message": loader.get("error.verification_code_incorrect", "Verification code is incorrect")})
     except Exception as e:
         return JsonResponse({"result": False, "message": str(e)})
 
@@ -229,11 +229,25 @@ def get_user_info(request):
         # 构建组织路径格式（获取用户所在组及其所有父级组）
         group_paths = get_user_group_paths(user.group_list)
 
-        # 将role_list中的ID转换为角色信息（包含app名称）
+        # 一次性获取所有app数据并构建映射
+        all_apps = App.objects.all()
+        app_map = {app.name: app.display_name for app in all_apps}
+
+        # 收集用户角色ID：包含用户直接角色和所属组的角色（去重）
+        role_ids = set(user.role_list) if user.role_list else set()
+        if user.group_list:
+            groups = Group.objects.filter(id__in=user.group_list).prefetch_related("roles")
+            for group in groups:
+                role_ids.update(group.roles.values_list("id", flat=True))
+
+        # 将role_list中的ID转换为角色信息（包含app显示名称）
         role_info = []
-        if user.role_list:
-            roles = Role.objects.filter(id__in=user.role_list)
-            role_info = [{"id": role.id, "name": role.name, "app": role.app or ""} for role in roles]
+        if role_ids:
+            roles = Role.objects.filter(id__in=list(role_ids))
+            role_info = [
+                {"id": role.id, "name": role.name, "app": role.app or "", "app_display_name": app_map.get(role.app, "") if role.app else ""}
+                for role in roles
+            ]
 
         user_info = {
             "id": user.id,
@@ -250,10 +264,6 @@ def get_user_info(request):
             "password_last_modified": user.password_last_modified.isoformat() if user.password_last_modified else None,
             "temporary_pwd": user.temporary_pwd,
         }
-
-        # 记录操作日志
-        log_operation(request, "execute", "console_mgmt", f"查询用户信息: {user.username}")
-
         return JsonResponse({"result": True, "data": user_info})
     except User.DoesNotExist:
         return JsonResponse({"result": False, "message": loader.get("error.user_not_found", "User not found")})

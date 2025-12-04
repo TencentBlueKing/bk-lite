@@ -1,0 +1,149 @@
+.main-container {
+  min-height: 100vh;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  padding: 40px 20px;
+  position: relative;
+  overflow: hidden;
+}
+
+.main-container::before {
+  content: '';
+  position: absolute;
+  top: -50%;
+  right: -50%;
+  width: 200%;
+  height: 200%;
+  background: radial-gradient(circle, rgba(255,255,255,0.1) 1px, transparent 1px);
+  background-size: 50px 50px;
+  pointer-events: none;
+}
+
+.demo-content {
+  max-width: 900px;
+  margin: 0 auto;
+  background: linear-gradient(180deg, #ffffff 0%, #f8f9ff 100%);
+  border-radius: 20px;
+  padding: 50px;
+  box-shadow: 
+    0 25px 80px rgba(0, 0, 0, 0.2),
+    0 0 1px rgba(0, 0, 0, 0.05);
+  position: relative;
+  z-index: 1;
+}
+
+.demo-header {
+  text-align: center;
+  margin-bottom: 50px;
+  padding-bottom: 30px;
+  border-bottom: 2px solid #e5e7eb;
+}
+
+.demo-header h1 {
+  margin: 0 0 12px 0;
+  font-size: 42px;
+  background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  font-weight: 800;
+  letter-spacing: -0.5px;
+}
+
+.demo-header p {
+  margin: 0;
+  font-size: 16px;
+  color: #6b7280;
+  font-weight: 500;
+}
+
+.demo-section {
+  margin-bottom: 45px;
+  padding-bottom: 30px;
+  border-bottom: 1px solid #e5e7eb;
+}
+
+.demo-section:last-child {
+  border-bottom: none;
+  margin-bottom: 0;
+  padding-bottom: 0;
+}
+
+.demo-section h2 {
+  margin: 0 0 20px 0;
+  font-size: 26px;
+  color: #1f2937;
+  font-weight: 700;
+  letter-spacing: -0.3px;
+}
+
+.demo-section ul,
+.demo-section ol {
+  margin: 0;
+  padding-left: 24px;
+  color: #4b5563;
+  line-height: 2;
+  font-size: 15px;
+}
+
+.demo-section li {
+  margin-bottom: 12px;
+  font-weight: 500;
+}
+
+.demo-section li::marker {
+  color: #6366f1;
+  font-weight: 700;
+}
+
+.demo-section code {
+  background: linear-gradient(135deg, #f3f4f6 0%, #eff6ff 100%);
+  padding: 4px 8px;
+  border-radius: 5px;
+  border-left: 3px solid #6366f1;
+  font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+  color: #7c3aed;
+  font-weight: 600;
+  font-size: 13px;
+}
+
+.demo-section pre {
+  background: linear-gradient(135deg, #1f2937 0%, #111827 100%);
+  color: #e5e7eb;
+  padding: 20px 24px;
+  border-radius: 12px;
+  overflow-x: auto;
+  font-size: 13px;
+  line-height: 1.6;
+  margin: 20px 0;
+  border: 1px solid #374151;
+  box-shadow: inset 0 2px 6px rgba(0, 0, 0, 0.3);
+}
+
+.demo-section pre code {
+  color: #e5e7eb;
+  background: none;
+  padding: 0;
+}
+
+@media (max-width: 600px) {
+  .demo-content {
+    padding: 20px;
+  }
+
+  .demo-header h1 {
+    font-size: 28px;
+  }
+
+  .demo-header p {
+    font-size: 14px;
+  }
+
+  .demo-section h2 {
+    font-size: 20px;
+  }
+
+  .demo-section pre {
+    font-size: 11px;
+    padding: 15px;
+  }
+}
