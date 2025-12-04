@@ -403,6 +403,7 @@ auto 模式下可选择，edit 模式下仅显示（不可编辑）：
 | `change_handler` | object | 否 | 值变化处理器 |
 | `options` | array | 否 | type为select时的下拉列表，目前有节点、组由前端接口获取，不用传options |
 | `enable_row_filter` | boolean | 否 | 是否启用行过滤（去重节点，比如第一行选了某个节点，第二行不能选这个节点） |
+| `rules` | array | 否 | 失焦验证规则，支持必填、正则、自定义验证 |
 
 #### change_handler（值变化处理，表格字段联动）
 
@@ -428,6 +429,93 @@ auto 模式下可选择，edit 模式下仅显示（不可编辑）：
 }
 ```
 - 将 `host` 和 `port` 用 `:` 拼接后赋值给 `instance_name`
+
+#### rules（验证规则）
+
+用于字段的失焦验证，支持多种验证类型。
+
+**基本结构：**
+```json
+"rules": [
+  {
+    "type": "required",
+    "message": "请输入URL"
+  },
+  {
+    "type": "pattern",
+    "pattern": "^https?://",
+    "message": "URL必须以http://或https://开头"
+  }
+]
+```
+
+**支持的验证类型：**
+
+**pattern（正则验证）**
+```json
+{
+  "type": "pattern",
+  "pattern": "^(\\d{1,3}\\.){3}\\d{1,3}$",
+  "message": "请输入正确的IP地址格式",
+  "excel_formula": "AND(LEN({{CELL}})-LEN(SUBSTITUTE({{CELL}},\".\",\"\"))=3,ISNUMBER(VALUE(LEFT({{CELL}},FIND(\".\",{{CELL}})-1))))",
+  "excel_vars": {
+    "CELL": "cell_ref"
+  }
+}
+```
+
+**字段说明：**
+- `type`: 固定为 "pattern"
+- `pattern`: 正则表达式（用于前端验证）
+- `message`: 错误提示信息
+- `excel_formula`: （可选）Excel公式字符串，用于Excel模板的数据验证。支持变量占位符：
+  - `{{CELL}}`: 会被替换为实际单元格引用（如A2）
+  - `{{ROW}}`: 会被替换为当前行号（如2）
+  - `{{COL}}`: 会被替换为当前列字母（如A）
+  - 自定义变量: 在excel_vars中定义的其他变量
+- `excel_vars`: （可选）自定义变量映射，key为变量名，value为计算逻辑
+
+**常用正则示例：**
+
+- **URL验证**：
+  - `"pattern": "^https?://.*"`
+  - `"excel_formula": "OR(LEFT({{CELL}},7)=\"http://\",LEFT({{CELL}},8)=\"https://\")"`
+  
+- **邮箱验证**：
+  - `"pattern": "^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$"`
+  - `"excel_formula": "AND(ISNUMBER(FIND(\"@\",{{CELL}})),ISNUMBER(FIND(\".\",{{CELL}},FIND(\"@\",{{CELL}}))))"`
+  
+- **IP地址验证**：
+  - `"pattern": "^(\\d{1,3}\\.){3}\\d{1,3}$"`
+  - `"excel_formula": "AND(LEN({{CELL}})-LEN(SUBSTITUTE({{CELL}},\".\",\"\"))=3,ISNUMBER(VALUE(LEFT({{CELL}},FIND(\".\",{{CELL}})-1))))"`
+  
+- **端口号验证**：
+  - `"pattern": "^([1-9]|[1-9]\\d{1,3}|[1-5]\\d{4}|6[0-4]\\d{3}|65[0-4]\\d{2}|655[0-2]\\d|6553[0-5])$"`
+  - `"excel_formula": "AND(ISNUMBER({{CELL}}),{{CELL}}>=1,{{CELL}}<=65535)"`
+
+**完整示例：**
+```json
+{
+  "name": "url",
+  "label": "URL地址",
+  "type": "input",
+  "required": true,
+  "rules": [
+    {
+      "type": "pattern",
+      "pattern": "^https://.*",
+      "message": "URL必须以https://开头"
+    }
+  ]
+}
+```
+
+**注意事项：**
+- 必填验证通过字段的 `required` 属性控制，不需要在 `rules` 中配置
+- 验证在字段onChange时实时触发
+- 多个规则按顺序执行，遇到第一个错误就停止
+- message 支持 i18n 翻译
+- pattern类型用于正则表达式验证，支持各种复杂格式校验
 
 #### enable_row_filter（行过滤）
 
