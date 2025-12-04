@@ -365,6 +365,13 @@ class LabEnvViewSet(ModelViewSet):
                 # 详细记录响应信息
                 error_detail = response.text if response.text else f"HTTP {response.status_code}"
                 logger.error(f"Webhook 请求失败: HTTP {response.status_code}, 详情: {error_detail}")
+                # webhook请求失败,标记为error状态
+                try:
+                    lab_env.refresh_from_db()
+                    if lab_env.state == 'stopping':
+                        lab_env.mark_error()
+                except Exception as rollback_err:
+                    logger.error(f"状态更新失败: {rollback_err}")
                 return Response({
                     'status': 'error',
                     'message': f'Webhook 请求失败: HTTP {response.status_code}',
@@ -382,18 +389,33 @@ class LabEnvViewSet(ModelViewSet):
         
         except requests.exceptions.RequestException as e:
             logger.exception(f"Lab 环境 {lab_env.name} 停止时 webhook 请求异常: {e}")
+            # 请求异常标记为error状态
+            try:
+                lab_env.refresh_from_db()
+                if lab_env.state == 'stopping':
+                    lab_env.mark_error()
+            except Exception as rollback_err:
+                logger.error(f"状态更新失败: {rollback_err}")
             return Response({
                 'status': 'error',
-                'message': '启动请求失败',
+                'message': '停止请求失败',
                 'error': str(e)
             }, status=status.HTTP_502_BAD_GATEWAY)
             
         except Exception as e:
-            logger.error(f"停止Lab 容器错误: {e}")
-            return Response(
-                {'error': f'停止lab-env-{lab_env.id}容器错误'},
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR
-            )
+            logger.exception(f"停止Lab 容器错误: {e}")
+            # 其他异常标记为error状态
+            try:
+                lab_env.refresh_from_db()
+                if lab_env.state == 'stopping':
+                    lab_env.mark_error()
+            except Exception as rollback_err:
+                logger.error(f"状态更新失败: {rollback_err}")
+            return Response({
+                'status': 'error',
+                'message': '停止失败',
+                'error': str(e)
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
         
         
     @action(detail=True, methods=['post'])

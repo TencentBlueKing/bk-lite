@@ -159,7 +159,11 @@ class ComposeGenerator:
                 logger.error(f"实例 {instance.name} 的镜像名称为空，跳过")
                 continue
             
-            service_name = instance.image.name.lower().replace('_', '-').replace(' ', '-')
+            # 处理服务名：移除 / 字符，只保留最后一部分，并替换特殊字符
+            image_name = instance.image.name
+            if '/' in image_name:
+                image_name = image_name.split('/')[-1]
+            service_name = image_name.lower().replace('_', '-').replace(' ', '-')
             image_address = f"{instance.image.name}:{instance.image.version or 'latest'}"
             
             service = {

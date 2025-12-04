@@ -17,7 +17,7 @@ INIT_IMAGES = [
     "default_command": ["redis-server"],
     "default_args": ["--requirepass", REDIS_PASSWORD],
     "default_env": {},
-    "expose_ports": [6379],
+    "expose_ports": [],
     "volume_mounts": [
       {
         "container_path": "/data"
@@ -38,7 +38,7 @@ INIT_IMAGES = [
       "POSTGRES_PASSWORD": POSTGRES_PASSWORD,
       "POSTGRES_USER": "postgres"
     },
-    "expose_ports": [5432],
+    "expose_ports": [],
     "volume_mounts": [
       {
         "container_path": "/data/postgres"
@@ -57,7 +57,7 @@ INIT_IMAGES = [
       "MINIO_ROOT_PASSWORD": MINIO_PASSWORD,
       "MINIO_ROOT_USER": "minio"
     },
-    "expose_ports": [9000,9001],
+    "expose_ports": [],
     "volume_mounts": [
       {
         "container_path": "/data"
@@ -90,7 +90,7 @@ INIT_IMAGES = [
       "AWS_DEFAULT_REGION": "us-east-1",
       "MLFLOW_S3_ENDPOINT_URL": "http://minio:9000"
     },
-    "expose_ports": [15000],
+    "expose_ports": [],
     "volume_mounts": [],
   },
   {
@@ -107,7 +107,7 @@ INIT_IMAGES = [
       "POSTGRES_DB": "vector_db",
       "PGDATA": "/var/lib/postgresql/data/pgdata"
     },
-    "expose_ports": [5432],
+    "expose_ports": [],
     "volume_mounts": [
       {
         "container_path": "/var/lib/postgresql/data"
@@ -130,7 +130,7 @@ INIT_IMAGES = [
       "xpack.security.transport.ssl.enabled": "false",
       "ES_JAVA_OPTS": "-Xms512m -Xmx512m"
     },
-    "expose_ports": [9200, 9300],
+    "expose_ports": [],
     "volume_mounts": [
       {
         "container_path": "/usr/share/elasticsearch/data"
@@ -150,7 +150,7 @@ INIT_IMAGES = [
       "SUDO_PASSWORD": CODE_SERVER_PASSWORD,
       "DEFAULT_WORKSPACE": "/home/coder/project"
     },
-    "expose_ports": [8081],
+    "expose_ports": [],
     "volume_mounts": [
       {
         "container_path": "/home/coder/project"
@@ -172,7 +172,7 @@ INIT_IMAGES = [
       "CHOWN_HOME": "yes",
       "CHOWN_HOME_OPTS": "-R"
     },
-    "expose_ports": [8888],
+    "expose_ports": [],
     "volume_mounts": [
       {
         "container_path": "/home/jovyan/work"
@@ -192,7 +192,7 @@ INIT_IMAGES = [
       "JUPYTER_TOKEN": JUPYTER_TOKEN,
       "GRANT_SUDO": "yes"
     },
-    "expose_ports": [8889],
+    "expose_ports": [],
     "volume_mounts": [
       {
         "container_path": "/home/jovyan/work"
