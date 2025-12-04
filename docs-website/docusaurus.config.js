@@ -111,6 +111,10 @@ const config = {
             "to": "#"
           },
           {
+            "label": "价格",
+            "to": "/pricing"
+          },
+          {
             label: '在线体验',
             href: 'https://bklite.canway.net/',
             position: 'right',

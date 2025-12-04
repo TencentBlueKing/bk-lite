@@ -57,7 +57,7 @@ export class AGUIMessageHandler {
    * 清除"正在思考"提示
    */
   private clearThinkingPrompt() {
-    if (this.accumulatedContent.includes('🤔 AI 助手正在思考...')) {
+    if (this.accumulatedContent.includes('thinking-loader')) {
       this.accumulatedContent = '';
     }
   }
@@ -66,7 +66,7 @@ export class AGUIMessageHandler {
    * 处理 RUN_STARTED 事件
    */
   handleRunStarted() {
-    this.accumulatedContent = '🤔 AI 助手正在思考...\n\n';
+    this.accumulatedContent = '<div class="thinking-loader" style="display: flex; align-items: center; gap: 8px; color: #999;"><span style="display: inline-flex; gap: 4px;"><span style="width: 8px; height: 8px; background: currentColor; border-radius: 50%; animation: thinking-dot 1.4s infinite ease-in-out both; animation-delay: -0.32s;"></span><span style="width: 8px; height: 8px; background: currentColor; border-radius: 50%; animation: thinking-dot 1.4s infinite ease-in-out both; animation-delay: -0.16s;"></span><span style="width: 8px; height: 8px; background: currentColor; border-radius: 50%; animation: thinking-dot 1.4s infinite ease-in-out both;"></span></span></div><style>@keyframes thinking-dot { 0%, 80%, 100% { transform: scale(0); opacity: 0.5; } 40% { transform: scale(1); opacity: 1; } }</style>\n\n';
     this.updateMessageContent(this.accumulatedContent);
   }
 
@@ -119,6 +119,7 @@ export class AGUIMessageHandler {
    * 处理 ERROR 事件
    */
   handleError(error: string) {
+    this.clearThinkingPrompt();
     const errorMessage = renderErrorMessage(error, 'error');
     this.updateMessageContent(this.accumulatedContent + `\n\n${errorMessage}`);
   }
@@ -127,6 +128,7 @@ export class AGUIMessageHandler {
    * 处理 RUN_ERROR 事件
    */
   handleRunError(message: string, code?: string) {
+    this.clearThinkingPrompt();
     const errorMessage = renderErrorMessage(message, 'run_error', code);
     this.updateMessageContent(this.accumulatedContent + `\n\n${errorMessage}`);
   }

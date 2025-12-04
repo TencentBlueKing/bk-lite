@@ -747,6 +747,8 @@
       "pleaseEnterOutputParams": "请输入输出参数",
       "equals": "等于",
       "apiUrl": "URL",
+      "appIcon": "应用图标",
+      "pleaseSelectAppIcon": "请选择应用图标",
       "appTags": "应用标签",
       "appDescription": "应用描述",
       "pleaseEnterAppDescription": "请输入应用描述",
@@ -761,7 +763,13 @@
       "appTagBusiness": "商务",
       "enterAppDescription": "输入应用描述",
       "appName": "应用名称",
-      "pleaseSelectAppTags": "请选择应用标签"
+      "pleaseSelectAppTags": "请选择应用标签",
+      "appTagRoutineOps": "日常运维",
+      "appTagMonitorAlarm": "监控告警",
+      "appTagAutomation": "自动化",
+      "appTagSecurityAudit": "安全审计",
+      "appTagPerformanceAnalysis": "性能分析",
+      "appTagOpsPlanning": "运维规划"
     },
     "collapseSidebar": "收缩侧边栏",
     "messages": {
