@@ -22,7 +22,7 @@ MLFLOW_EXPERIMENT_NAME="${MLFLOW_EXPERIMENT_NAME:-timeseries_sarima_test}"
 MODEL_NAME="${MODEL_NAME:-timeseries_sarima_model}"
 
 # 超参数优化配置
-MAX_EVALS="${MAX_EVALS:-0}"  # 0 = 不优化，>0 = 优化轮次
+MAX_EVALS="${MAX_EVALS:-10}"  # 0 = 不优化，>0 = 优化轮次
 OPTIMIZATION_METRIC="${OPTIMIZATION_METRIC:-rmse}"  # 优化目标指标
 
 # ==================== 函数定义 ====================

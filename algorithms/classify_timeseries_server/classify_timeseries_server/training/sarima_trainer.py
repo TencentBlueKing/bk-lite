@@ -124,8 +124,13 @@ class SARIMATrainer:
         Returns:
             训练好的 SARIMAX 模型
         """
+        import warnings
+        
+        # 转换为普通数值数组，避免频率警告
+        train_values = train_data.values if isinstance(train_data, pd.Series) else train_data
+        
         model = SARIMAX(
-            train_data,
+            train_values,
             order=order,
             seasonal_order=seasonal_order,
             trend=trend,
@@ -133,7 +138,12 @@ class SARIMATrainer:
             enforce_invertibility=False,
         )
         
-        return model.fit(disp=False)
+        # 抑制收敛警告（在超参数优化时很常见）
+        with warnings.catch_warnings():
+            warnings.filterwarnings('ignore', category=Warning)
+            fitted = model.fit(disp=False, maxiter=100)
+        
+        return fitted
     
     def predict(self, model, steps: int) -> np.ndarray:
         """使用模型进行预测
@@ -173,6 +183,32 @@ class SARIMATrainer:
             'mae': float(mae),
             'mape': float(mape),
         }
+    
+    def evaluate_model_quality(self, metrics: Dict[str, float]) -> str:
+        """评估模型质量等级
+        
+        Args:
+            metrics: 包含 MAPE 的指标字典
+            
+        Returns:
+            评估结果字符串
+        """
+        mape = metrics.get('mape', 100)
+        
+        if mape < 10:
+            level = "Excellent"
+            desc = "非常优秀，预测精度很高"
+        elif mape < 20:
+            level = "Good"
+            desc = "良好，预测结果可靠"
+        elif mape < 50:
+            level = "Acceptable"
+            desc = "可接受，预测有一定参考价值"
+        else:
+            level = "Poor"
+            desc = "较差，建议优化模型或检查数据质量"
+        
+        return f"{level} - {desc}"
     
     def save_prediction_plot(self, y_true: np.ndarray, y_pred: np.ndarray, rmse: float):
         """保存预测对比图表
@@ -252,8 +288,11 @@ class SARIMATrainer:
                 seasonal_order = (int(params['P']), int(params['D']), int(params['Q']), int(params['s']))
                 trend = params['trend']
                 
-                # 训练模型
-                model = self.fit_sarima(train_data, order, seasonal_order, trend)
+                # 训练模型（抑制警告）
+                import warnings
+                with warnings.catch_warnings():
+                    warnings.filterwarnings('ignore')
+                    model = self.fit_sarima(train_data, order, seasonal_order, trend)
                 
                 # 验证集预测
                 predictions = self.predict(model, len(val_data))
@@ -271,7 +310,7 @@ class SARIMATrainer:
                 return {'loss': float(score), 'status': STATUS_OK}
                 
             except Exception as e:
-                logger.debug(f"Hyperparameter evaluation failed: {e}")
+                # 静默失败，返回最差分数
                 return {'loss': float('inf'), 'status': STATUS_OK}
         
         # 运行优化
@@ -453,8 +492,12 @@ class SARIMATrainer:
             test_metrics['aic'] = float(fitted_model.aic)
             test_metrics['bic'] = float(fitted_model.bic)
             
+            # 评估模型质量
+            quality_assessment = self.evaluate_model_quality(test_metrics)
+            
             logger.info(f"Test metrics: RMSE={test_metrics['rmse']:.4f}, "
                        f"MAE={test_metrics['mae']:.4f}, MAPE={test_metrics['mape']:.2f}%")
+            logger.info(f"Model quality: {quality_assessment}")
             logger.info(f"Model selection: AIC={test_metrics['aic']:.2f}, BIC={test_metrics['bic']:.2f}")
             MLFlowUtils.log_metrics_batch(test_metrics, prefix="test_")
             
