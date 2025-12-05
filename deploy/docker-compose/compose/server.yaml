@@ -9,6 +9,7 @@ services:
       - SECRET_KEY=${SECRET_KEY}
       - JWT_ALGORITHM=HS256
       - NATS_SERVERS=tls://${NATS_ADMIN_USERNAME}:${NATS_ADMIN_PASSWORD}@nats:4222
+      - METIS_DB_URI=postgresql+psycopg://${POSTGRES_USERNAME}:${POSTGRES_PASSWORD}@pgvector:5432/metis
       - NATS_TLS_ENABLED=true
       - NATS_TLS_CA_FILE=/etc/nats/certs/ca.crt
       - NATS_NAMESPACE=bklite
@@ -18,7 +19,10 @@ services:
       - DB_HOST=postgres
       - DB_PASSWORD=${POSTGRES_PASSWORD}
       - DB_PORT=5432
-      - ADMIN_PASSWORD=password
+      - KNOWLEDGE_GRAPH_HOST=falkordb
+      - KNOWLEDGE_GRAPH_PASSWORD=${FALKORDB_PASSWORD}
+      - KNOWLEDGE_GRAPH_PORT=6379
+      - KNOWLEDGE_GRAPH_DATABASE=default
       - ENABLE_CELERY=true
       - CELERY_WORKER_CONCURRENCY=1
       - CELERY_BROKER_URL=redis://:${REDIS_PASSWORD}@redis:6379/3
@@ -37,9 +41,6 @@ services:
       - MINIO_USE_HTTPS=0
       - MINIO_ACCESS_KEY=${MINIO_ROOT_USER}
       - MINIO_SECRET_KEY=${MINIO_ROOT_PASSWORD}
-      - MUNCHKIN_BASE_URL=http://${HOST_IP}:${TRAEFIK_WEB_PORT}/api/v1/opspilot
-      - METIS_SERVER_URL=http://metis:18083
-      - PILOT_RUNTIME=docker
       - INSTALL_APPS=${INSTALL_APPS}
       - VICTORIALOGS_HOST=http://victoria-logs:9428
       - MLFLOW_TRACKER_URL=http://mlflow:15000
@@ -53,6 +54,8 @@ services:
       - FALKORDB_HOST=falkordb
       - FALKORDB_PORT=6379
       - UV_OFFLINE=True
+      - OPENAI_API_KEY=
+      - OPENAI_API_BASE=
     healthcheck:
       test: ["CMD", "curl", "-s", "-o", "/dev/null", "-w", "'%{http_code}'", "http://127.0.0.1:8000/"]
       interval: 10s
@@ -63,6 +66,8 @@ services:
       postgres:
         condition: service_healthy
       falkordb:
+        condition: service_healthy
+      pgvector:
         condition: service_healthy
     networks:
       - prod
