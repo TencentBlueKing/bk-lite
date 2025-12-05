@@ -4,10 +4,7 @@ import { Button } from 'antd';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useTranslation } from '@/utils/i18n';
 import Icon from '@/components/icon';
-
-interface AccessCompleteProps {
-  onReset: () => void;
-}
+import { AccessCompleteProps } from '@/app/monitor/types/integration';
 
 const AccessComplete: React.FC<AccessCompleteProps> = ({ onReset }) => {
   const { t } = useTranslation();

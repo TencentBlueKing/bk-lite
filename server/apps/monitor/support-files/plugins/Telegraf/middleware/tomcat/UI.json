@@ -25,7 +25,7 @@
       "name": "username",
       "label": "用户名",
       "type": "input",
-      "required": true,
+      "required": false,
       "editable": false,
       "description": "用于访问接口的用户名",
       "widget_props": {
@@ -39,7 +39,7 @@
       "name": "ENV_PASSWORD",
       "label": "密码",
       "type": "password",
-      "required": true,
+      "required": false,
       "editable": false,
       "description": "对应的登录密码",
       "widget_props": {

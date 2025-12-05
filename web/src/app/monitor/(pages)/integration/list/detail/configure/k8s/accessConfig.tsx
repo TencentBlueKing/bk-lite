@@ -10,12 +10,9 @@ import GroupTreeSelector from '@/components/group-tree-select';
 import useIntegrationApi from '@/app/monitor/api/integration';
 import useMonitorApi from '@/app/monitor/api';
 import { v4 as uuidv4 } from 'uuid';
+import { AccessConfigProps } from '@/app/monitor/types/integration';
 
-interface AccessConfigProps {
-  onNext: (data?: any) => void;
-}
-
-const AccessConfig: React.FC<AccessConfigProps> = ({ onNext }) => {
+const AccessConfig: React.FC<AccessConfigProps> = ({ onNext, commandData }) => {
   const { t } = useTranslation();
   const [form] = Form.useForm();
   const searchParams = useSearchParams();
@@ -43,11 +40,26 @@ const AccessConfig: React.FC<AccessConfigProps> = ({ onNext }) => {
     }
   }, [isLoading]);
 
+  // 当commandData存在时,回显数据
+  useEffect(() => {
+    if (commandData) {
+      form.setFieldsValue({
+        accessType: 'existing',
+        interval: commandData.interval,
+      });
+    }
+  }, [commandData, form]);
+
   const getCloudRegions = async () => {
     setCloudRegionLoading(true);
     try {
       const data = await getCloudRegionList({ page_size: -1 });
       setCloudRegionList(data || []);
+      if (commandData?.cloud_region_id) {
+        form.setFieldsValue({
+          cloud_region_id: commandData.cloud_region_id,
+        });
+      }
     } finally {
       setCloudRegionLoading(false);
     }
@@ -58,6 +70,11 @@ const AccessConfig: React.FC<AccessConfigProps> = ({ onNext }) => {
     try {
       const data = await getInstanceList(objectId, { page_size: -1 });
       setK8sClusterList(data?.results || []);
+      if (commandData?.instance_id) {
+        form.setFieldsValue({
+          k8sCluster: commandData.instance_id,
+        });
+      }
     } finally {
       setK8sClusterLoading(false);
     }
@@ -87,6 +104,7 @@ const AccessConfig: React.FC<AccessConfigProps> = ({ onNext }) => {
         });
         onNext({
           command: commandResult,
+          ...commandParams,
           monitor_object_id: objectId,
           instance_id: createResult?.instance_id,
         });
@@ -98,6 +116,7 @@ const AccessConfig: React.FC<AccessConfigProps> = ({ onNext }) => {
         });
         onNext({
           command: commandResult,
+          ...commandParams,
           monitor_object_id: objectId,
           instance_id: values.k8sCluster,
         });
