@@ -285,7 +285,12 @@ const ToolListPage: React.FC = () => {
   const showModal = (tool: Tool | null) => {
     setSelectedTool(tool);
     setIsModalVisible(true);
-    setAvailableTools([]);
+    // 编辑时直接用 tool.tools 展示，不再请求
+    if (tool && Array.isArray(tool.tools)) {
+      setAvailableTools(tool.tools);
+    } else {
+      setAvailableTools([]);
+    }
     Promise.resolve().then(() => {
       form.setFieldsValue({
         ...tool,
@@ -353,15 +358,15 @@ const ToolListPage: React.FC = () => {
         onCancel={handleCancel}
         width={1200}
       >
-        <div className="flex gap-4">
-          <div className="flex-1">
+        <div className="flex gap-4 h-[600px]">
+          <div className="flex-1 overflow-y-auto pr-2">
             <DynamicForm
               form={form}
               fields={formFields}
               initialValues={{ team: selectedTool?.team || [] }}
             />
           </div>
-          <div className="w-96 border-l border-[var(--color-border)] pl-4">
+          <div className="w-96 border-l border-[var(--color-border)] pl-4 flex flex-col h-full">
             <div className="mb-3 flex items-center justify-between">
               <span className="font-semibold text-base">{t('tool.availableTools')}</span>
               {availableTools.length > 0 && (
@@ -370,7 +375,7 @@ const ToolListPage: React.FC = () => {
                 </span>
               )}
             </div>
-            <div className="max-h-[500px] overflow-y-auto space-y-3">
+            <div className="flex-1 max-h-full overflow-y-auto space-y-3">
               {fetchingTools ? (
                 <>
                   {[1, 2, 3].map((i) => (
