@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
-import { Tabs, Button, Spin, Descriptions, Empty, Card, Input } from 'antd';
+import { Tabs, Spin, Descriptions, Empty, Card, Input } from 'antd';
 import { CREATE_TASK_DETAIL_CONFIG } from '@/app/cmdb/constants/professCollection';
 import { useCollectApi, useModelApi } from '@/app/cmdb/api';
 import { useTranslation } from '@/utils/i18n';
@@ -115,14 +115,14 @@ const TaskTable: React.FC<TaskTableProps> = ({ columns, data }) => {
           showTotal: (total) => `共 ${total} 条`,
         }}
         onChange={handleTableChange}
-        scroll={{ y: 'calc(100vh - 470px)' }}
+        scroll={{ y: 'calc(100vh - 440px)' }}
         rowKey={(record) => record.id || record.inst_name || record.name}
       />
     </div>
   );
 };
 
-const TaskDetail: React.FC<TaskDetailProps> = ({ task, modelId, onClose }) => {
+const TaskDetail: React.FC<TaskDetailProps> = ({ task, modelId }) => {
   const collectApi = useCollectApi();
   const modelApi = useModelApi();
   const { t } = useTranslation();
@@ -229,7 +229,7 @@ const TaskDetail: React.FC<TaskDetailProps> = ({ task, modelId, onClose }) => {
     return (
       <div
         className="overflow-y-auto"
-        style={{ height: 'calc(100vh - 310px)' }}
+        style={{ height: 'calc(100vh - 280px)' }}
       >
         <div className="pr-2">
           {hasData ? (
@@ -371,10 +371,6 @@ const TaskDetail: React.FC<TaskDetailProps> = ({ task, modelId, onClose }) => {
       </div>
 
       <Tabs defaultActiveKey="add" items={tabItems} className="flex-1" />
-
-      <div className="flex justify-start space-x-4 mt-4 px-4 pb-4">
-        <Button onClick={onClose}>{t('common.close')}</Button>
-      </div>
     </div>
   );
 };
