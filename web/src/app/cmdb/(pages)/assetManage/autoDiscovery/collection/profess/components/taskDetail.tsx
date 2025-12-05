@@ -334,7 +334,7 @@ const TaskDetail: React.FC<TaskDetailProps> = ({ task, modelId }) => {
       },
       {
         title: t('Collection.taskDetail.addData'),
-        value: message.add_success || 0,
+        value: message.add || 0,
         bgColor: 'bg-blue-50',
         borderColor: 'border-blue-200',
         valueColor: 'text-blue-600',
@@ -343,7 +343,7 @@ const TaskDetail: React.FC<TaskDetailProps> = ({ task, modelId }) => {
       },
       {
         title: t('Collection.taskDetail.updateData'),
-        value: message.update_success || 0,
+        value: message.update || 0,
         bgColor: 'bg-orange-50',
         borderColor: 'border-orange-300',
         valueColor: 'text-orange-600',
@@ -352,7 +352,7 @@ const TaskDetail: React.FC<TaskDetailProps> = ({ task, modelId }) => {
       },
       {
         title: t('Collection.taskDetail.deleteData'),
-        value: message.delete_success || 0,
+        value: message.delete || 0,
         bgColor: 'bg-red-50',
         borderColor: 'border-red-300',
         valueColor: 'text-red-600',
