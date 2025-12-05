@@ -10,7 +10,7 @@ import { mockChatData } from '@/constants/mockData';
 export default function AppDetailPage() {
     const router = useRouter();
     const searchParams = useSearchParams();
-    const id = searchParams.get('id') || '';
+    const id = searchParams?.get('id') || '';
 
     // 从 sessionStorage 获取真实的 bot 数据
     const [botData, setBotData] = useState<any>(null);
