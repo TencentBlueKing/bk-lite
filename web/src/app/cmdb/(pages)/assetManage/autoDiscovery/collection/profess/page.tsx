@@ -982,6 +982,13 @@ const ProfessionalCollection: React.FC = () => {
         width={750}
         onClose={() => setDetailVisible(false)}
         open={detailVisible}
+        footer={
+          <div className="flex justify-start">
+            <Button onClick={() => setDetailVisible(false)}>
+              {t('common.close')}
+            </Button>
+          </div>
+        }
       >
         {detailVisible && currentTask && (
           <TaskDetail
