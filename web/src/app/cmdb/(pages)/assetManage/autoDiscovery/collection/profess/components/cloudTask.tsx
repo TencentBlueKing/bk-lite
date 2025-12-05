@@ -98,6 +98,9 @@ const CloudTask: React.FC<cloudTaskFormProps> = ({
         driver_type: driverType,
         task_type: modelItem.task_type,
         accessPointId: values.access_point?.[0]?.id,
+        params: {
+          organization: values.organization || [],
+        },
         credential: {
           accessKey: values.accessKey,
           accessSecret: values.accessSecret,
