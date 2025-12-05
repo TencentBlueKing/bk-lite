@@ -256,5 +256,4 @@ class SnmpFacts:
             logger.error(f"snmp_facts collect error! {message}")
             inst_data = {"network_system": [{"result": message, "success": False}]}
         result = convert_to_prometheus_format(inst_data)
-        logger.error(f"snmp_facts collect result: {result}")
         return result
