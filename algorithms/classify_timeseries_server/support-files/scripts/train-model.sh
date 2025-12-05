@@ -14,15 +14,18 @@ DATASET_NAME="${2:-${DATASET_NAME:-timeseries_train_data.zip}}"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 DOWNLOAD_DIR="${DOWNLOAD_DIR:-${SCRIPT_DIR}/data/downloads}"
 EXTRACT_DIR="${EXTRACT_DIR:-${SCRIPT_DIR}/data/datasets}"
-HYPERPARAMS_FILE="${HYPERPARAMS_FILE:-${SCRIPT_DIR}/hyperparams.json}"
+CONFIG_FILE="${CONFIG_FILE:-${SCRIPT_DIR}/train.json}"
+
+# 训练配置
+ALGORITHM="${ALGORITHM:-sarima}"  # 模型算法: sarima, prophet, xgboost, lstm
 
 # MLflow 配置
 MLFLOW_TRACKING_URI="${MLFLOW_TRACKING_URI:-http://127.0.0.1:15000}"
-MLFLOW_EXPERIMENT_NAME="${MLFLOW_EXPERIMENT_NAME:-timeseries_sarima_test}"
-MODEL_NAME="${MODEL_NAME:-timeseries_sarima_model}"
+MLFLOW_EXPERIMENT_NAME="${MLFLOW_EXPERIMENT_NAME:-timeseries_${ALGORITHM}_test}"
+MODEL_NAME="${MODEL_NAME:-timeseries_${ALGORITHM}_model}"
 
 # 超参数优化配置
-MAX_EVALS="${MAX_EVALS:-10}"  # 0 = 不优化，>0 = 优化轮次
+MAX_EVALS="${MAX_EVALS:-50}"  # 0 = 不优化，>0 = 优化轮次
 OPTIMIZATION_METRIC="${OPTIMIZATION_METRIC:-rmse}"  # 优化目标指标
 
 # ==================== 函数定义 ====================
@@ -79,22 +82,53 @@ else
     exit 1
 fi
 
-# ==================== 准备超参数文件 ====================
-if [ ! -f "${HYPERPARAMS_FILE}" ]; then
-    log_info "未找到超参数文件，创建默认 SARIMA 配置: ${HYPERPARAMS_FILE}"
-    cat > "${HYPERPARAMS_FILE}" <<EOF
+# ==================== 准备训练配置文件 ====================
+if [ ! -f "${CONFIG_FILE}" ]; then
+    log_info "未找到配置文件，创建默认训练配置: ${CONFIG_FILE}"
+    cat > "${CONFIG_FILE}" <<EOF
 {
-    "order": [1, 1, 1],
-    "seasonal_order": [1, 1, 1, 12],
-    "trend": "c"
+    "model": {
+        "type": "${ALGORITHM}",
+        "name": "${MODEL_NAME}"
+    },
+    "hyperparams": {
+        "sarima": {
+            "order": [1, 1, 1],
+            "seasonal_order": [1, 1, 1, 12],
+            "trend": "c"
+        },
+        "search": {
+            "enabled": $([ "${MAX_EVALS}" -gt 0 ] && echo "true" || echo "false"),
+            "max_evals": ${MAX_EVALS},
+            "metric": "${OPTIMIZATION_METRIC}"
+        }
+    },
+    "training": {
+        "test_size": 0.2,
+        "random_state": 42
+    },
+    "preprocessing": {
+        "missing_handler": "interpolate",
+        "max_missing_ratio": 0.3
+    },
+    "mlflow": {
+        "tracking_uri": "${MLFLOW_TRACKING_URI}",
+        "experiment_name": "${MLFLOW_EXPERIMENT_NAME}",
+        "model_name": "${MODEL_NAME}"
+    }
 }
 EOF
+    log_info "配置文件创建成功"
 fi
 
 # ==================== 训练模型 ====================
-log_info "开始训练 SARIMA 模型..."
-log_info "数据集路径: ${EXTRACT_DIR}"
-log_info "超参数文件: ${HYPERPARAMS_FILE}"
+log_info "开始训练时间序列模型..."
+log_info "模型算法: ${ALGORITHM}"
+log_info "数据集目录: ${EXTRACT_DIR}"
+log_info "  - 训练集: ${EXTRACT_DIR}/train_data.csv"
+log_info "  - 验证集: ${EXTRACT_DIR}/val_data.csv"
+log_info "  - 测试集: ${EXTRACT_DIR}/test_data.csv"
+log_info "配置文件: ${CONFIG_FILE}"
 log_info "MLflow Tracking URI: ${MLFLOW_TRACKING_URI}"
 log_info "MLflow Experiment: ${MLFLOW_EXPERIMENT_NAME}"
 log_info "模型名称: ${MODEL_NAME}"
@@ -103,17 +137,41 @@ if [ "${MAX_EVALS}" -gt 0 ]; then
     log_info "优化目标指标: ${OPTIMIZATION_METRIC}"
 fi
 
+# 检查数据文件是否存在
+TRAIN_DATA="${EXTRACT_DIR}/train_data.csv"
+VAL_DATA="${EXTRACT_DIR}/val_data.csv"
+TEST_DATA="${EXTRACT_DIR}/test_data.csv"
+
+if [ ! -f "${TRAIN_DATA}" ]; then
+    log_error "训练数据文件不存在: ${TRAIN_DATA}"
+    exit 1
+fi
+
 export MLFLOW_TRACKING_URI="${MLFLOW_TRACKING_URI}"
 
 # 构建训练命令
 TRAIN_CMD="uv run classify_timeseries_server train \
-    --dataset-path \"${EXTRACT_DIR}\" \
-    --hyperparams \"${HYPERPARAMS_FILE}\" \
+    --dataset-path \"${TRAIN_DATA}\" \
+    --config \"${CONFIG_FILE}\" \
+    --algorithm \"${ALGORITHM}\" \
     --experiment-name \"${MLFLOW_EXPERIMENT_NAME}\" \
     --model-name \"${MODEL_NAME}\" \
     --test-size 0.2 \
     --max-evals ${MAX_EVALS} \
     --optimization-metric ${OPTIMIZATION_METRIC}"
+
+# 添加验证集和测试集参数（如果文件存在）
+if [ -f "${VAL_DATA}" ]; then
+    TRAIN_CMD="${TRAIN_CMD} \
+    --val-dataset-path \"${VAL_DATA}\""
+    log_info "已添加验证集"
+fi
+
+if [ -f "${TEST_DATA}" ]; then
+    TRAIN_CMD="${TRAIN_CMD} \
+    --test-dataset-path \"${TEST_DATA}\""
+    log_info "已添加测试集"
+fi
 
 # 执行训练
 if eval ${TRAIN_CMD}; then

@@ -13,113 +13,156 @@ class CLI:
     def train(
         self,
         dataset_path: str,
-        algorithm: str = "sarima",
-        hyperparams: str = None,
-        experiment_name: str = "timeseries_training",
+        config: str = None,
+        # 命令行参数（可覆盖配置文件）
+        algorithm: str = None,
+        experiment_name: str = None,
         run_name: str = None,
         model_name: str = None,
-        test_size: float = 0.2,
+        test_size: float = None,
         mlflow_tracking_uri: str = None,
-        max_evals: int = 0,
-        optimization_metric: str = "rmse",
+        max_evals: int = None,
+        optimization_metric: str = None,
+        val_dataset_path: str = None,
+        test_dataset_path: str = None,
     ):
         """
-        训练时间序列模型.
+        训练时间序列模型（支持多种模型）
         
         Args:
             dataset_path: 数据集文件或文件夹路径
-            algorithm: 算法名称，默认 sarima（未来支持 prophet、lstm 等）
-            hyperparams: 超参数 JSON 文件路径，支持固定值或搜索范围定义
+            config: train.json 配置文件路径（推荐使用）
+            algorithm: 算法名称（sarima, prophet, xgboost, lstm）
             experiment_name: MLflow 实验名称
             run_name: MLflow run 名称（可选）
             model_name: 注册到 MLflow 的模型名称（可选）
             test_size: 测试集比例，默认 0.2
-            mlflow_tracking_uri: MLflow tracking 服务地址，如 http://127.0.0.1:15000
-            max_evals: 超参数优化轮次 (0=不优化, >0=优化轮次)，默认 0
-            optimization_metric: 优化目标指标 (rmse/mae/mape)，默认 rmse
+            mlflow_tracking_uri: MLflow tracking 服务地址
+            max_evals: 超参数优化轮次 (0=不优化)
+            optimization_metric: 优化目标指标 (rmse/mae/mape)
+            val_dataset_path: 验证集路径（可选）
+            test_dataset_path: 测试集路径（可选）
             
         Example:
-            classify_timeseries_server train --dataset-path ./data/train.csv
-            classify_timeseries_server train --dataset-path ./data --hyperparams ./params.json --mlflow-tracking-uri http://127.0.0.1:15000
+            # 使用配置文件（推荐）
+            classify_timeseries_server train --dataset-path ./data.csv --config ./train.json
+            
+            # 使用命令行参数
+            classify_timeseries_server train --dataset-path ./data.csv --algorithm sarima --max-evals 50
         """
-        from ..training import load_dataset
-        from ..training.sarima_trainer import SARIMATrainer
-        
-        # 确保参数类型正确
-        test_size = float(test_size)
-        algorithm = algorithm.lower()
-        
-        # 目前仅支持 SARIMA
-        if algorithm != "sarima":
-            logger.error(f"Unsupported algorithm: {algorithm}. Currently only 'sarima' is supported.")
-            return 1
-        
-        # 从环境变量获取 MLflow URI（如果未通过参数传递）
-        if mlflow_tracking_uri is None:
-            import os
-            mlflow_tracking_uri = os.getenv("MLFLOW_TRACKING_URI")
-        
-        logger.info(f"=== Starting SARIMA Training ===")
-        logger.info(f"Dataset path: {dataset_path}")
-        logger.info(f"Experiment: {experiment_name}")
-        logger.info(f"Test size: {test_size}")
-        if mlflow_tracking_uri:
-            logger.info(f"MLflow Tracking URI: {mlflow_tracking_uri}")
+        from ..training import UniversalTrainer, TrainingConfig
+        import os
         
         try:
-            # 加载数据
-            logger.info("Loading dataset...")
-            df = load_dataset(dataset_path)
-            
-            # 加载超参数
-            if hyperparams and Path(hyperparams).exists():
-                logger.info(f"Loading hyperparameters from: {hyperparams}")
-                with open(hyperparams, 'r', encoding='utf-8') as f:
-                    params = json.load(f)
-                    # 移除注释字段
-                    params.pop('comments', None)
-            else:
-                logger.info("Using default hyperparameters")
-                params = {
-                    'order': (1, 1, 1),
-                    'seasonal_order': (1, 1, 1, 12),
-                    'trend': 'c',
-                }
-            
-            logger.info(f"Hyperparameters: {params}")
-            
-            # 转换参数格式
-            order = tuple(params.get('order', (1, 1, 1)))
-            seasonal_order = tuple(params.get('seasonal_order', (1, 1, 1, 12)))
-            trend = params.get('trend', 'c')
-            
-            # 训练模型
-            trainer = SARIMATrainer()
-            result = trainer.train(
-                model_name=model_name or "sarima_model",
-                train_dataframe=df,
-                order=order,
-                seasonal_order=seasonal_order,
-                trend=trend,
+            return self._train_with_config(
+                dataset_path=dataset_path,
+                config_path=config,
+                val_dataset_path=val_dataset_path,
+                test_dataset_path=test_dataset_path,
+                # 命令行参数覆盖
+                algorithm=algorithm,
+                model_name=model_name,
                 experiment_name=experiment_name,
+                run_name=run_name,
                 test_size=test_size,
                 mlflow_tracking_uri=mlflow_tracking_uri,
                 max_evals=max_evals,
                 optimization_metric=optimization_metric,
             )
-            
-            metrics = result["test_metrics"]
-            
-            logger.info("=== Training completed successfully ===")
-            logger.info(f"Metrics: RMSE={metrics['rmse']:.4f}, MAE={metrics['mae']:.4f}, MAPE={metrics['mape']:.2f}%")
-            
-            return 0
-            
+                
         except Exception as e:
-            logger.error(f"Training failed: {e}")
+            logger.error(f"训练失败: {e}")
             import traceback
             traceback.print_exc()
             return 1
+    
+    def _train_with_config(
+        self,
+        dataset_path: str,
+        config_path: str = None,
+        val_dataset_path: str = None,
+        test_dataset_path: str = None,
+        **override_params
+    ):
+        """使用新架构训练（配置文件驱动）
+        
+        Args:
+            dataset_path: 数据集路径
+            config_path: train.json 配置文件路径
+            val_dataset_path: 验证集路径
+            test_dataset_path: 测试集路径
+            **override_params: 命令行参数覆盖
+            
+        Returns:
+            0: 成功, 1: 失败
+        """
+        from ..training import UniversalTrainer, TrainingConfig
+        import os
+        
+        # 1. 加载配置
+        training_config = TrainingConfig(config_path)
+        logger.info(f"配置加载完成: {training_config}")
+        
+        # 2. 命令行参数覆盖配置文件
+        if override_params.get('algorithm'):
+            training_config.set("model", "type", value=override_params['algorithm'])
+        if override_params.get('model_name'):
+            training_config.set("model", "name", value=override_params['model_name'])
+        if override_params.get('experiment_name'):
+            training_config.set("mlflow", "experiment_name", value=override_params['experiment_name'])
+        if override_params.get('run_name'):
+            training_config.set("mlflow", "run_name", value=override_params['run_name'])
+        if override_params.get('test_size') is not None:
+            training_config.set("training", "test_size", value=float(override_params['test_size']))
+        if override_params.get('mlflow_tracking_uri'):
+            training_config.set("mlflow", "tracking_uri", value=override_params['mlflow_tracking_uri'])
+        elif os.getenv("MLFLOW_TRACKING_URI"):
+            training_config.set("mlflow", "tracking_uri", value=os.getenv("MLFLOW_TRACKING_URI"))
+        
+        # 超参数优化配置
+        if override_params.get('max_evals') is not None:
+            max_evals = int(override_params['max_evals'])
+            training_config.set("hyperparams", "search", "enabled", value=max_evals > 0)
+            if max_evals > 0:
+                training_config.set("hyperparams", "search", "max_evals", value=max_evals)
+        if override_params.get('optimization_metric'):
+            training_config.set("hyperparams", "search", "metric", value=override_params['optimization_metric'])
+        
+        # 3. 显示配置信息
+        logger.info("=" * 60)
+        logger.info(f"训练配置:")
+        logger.info(f"  模型类型: {training_config.model_type}")
+        logger.info(f"  模型名称: {training_config.model_name}")
+        logger.info(f"  数据集: {dataset_path}")
+        if val_dataset_path:
+            logger.info(f"  验证集: {val_dataset_path}")
+        if test_dataset_path:
+            logger.info(f"  测试集: {test_dataset_path}")
+        logger.info(f"  MLflow 实验: {training_config.mlflow_experiment_name}")
+        if training_config.is_hyperopt_enabled:
+            logger.info(f"  超参数优化: 启用 (max_evals={training_config.hyperopt_max_evals})")
+        logger.info("=" * 60)
+        
+        # 4. 创建训练器并训练
+        trainer = UniversalTrainer(training_config)
+        result = trainer.train(
+            dataset_path=dataset_path,
+            val_dataset_path=val_dataset_path,
+            test_dataset_path=test_dataset_path
+        )
+        
+        # 5. 输出结果
+        metrics = result["test_metrics"]
+        logger.info("=" * 60)
+        logger.info("训练完成!")
+        logger.info(f"测试集指标:")
+        logger.info(f"  RMSE: {metrics['rmse']:.4f}")
+        logger.info(f"  MAE: {metrics['mae']:.4f}")
+        logger.info(f"  MAPE: {metrics['mape']:.2f}%")
+        logger.info(f"MLflow Run ID: {result['run_id']}")
+        logger.info("=" * 60)
+        
+        return 0
 
     
 def main():
