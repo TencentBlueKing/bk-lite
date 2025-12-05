@@ -1,11 +1,7 @@
 'use client';
 import React, { useState, useRef } from 'react';
 import { Button, Alert, message } from 'antd';
-import {
-  ToolOutlined,
-  CheckCircleOutlined,
-  SearchOutlined,
-} from '@ant-design/icons';
+import { ToolOutlined, SearchOutlined } from '@ant-design/icons';
 import { useTranslation } from '@/utils/i18n';
 import Icon from '@/components/icon';
 import CodeEditor from '@/app/monitor/components/codeEditor';
@@ -84,7 +80,7 @@ const CollectorInstall: React.FC<CollectorInstallProps> = ({
       {/* 验证接入状态 */}
       <div className="mb-[10px]">
         <div className="flex items-center mb-3">
-          <CheckCircleOutlined className="text-lg mr-2 text-[var(--color-success)]" />
+          <Icon type="renzhengyuanguanli" className="text-lg mr-2" />
           <h3 className="text-base font-semibold">
             {t('monitor.integrations.k8s.verifyStatus')}
           </h3>
