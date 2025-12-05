@@ -72,7 +72,8 @@ class ChatFlowEngine:
         self._initialize_variables(input_data)
 
         # 记录用户输入对话历史
-        self._record_conversation_history(user_id, input_message, "user", entry_type)
+        node_id = input_data.get("node_id", "")
+        self._record_conversation_history(user_id, input_message, "user", entry_type, node_id)
 
         # 验证流程
         validation_errors = self.validate_flow()
@@ -120,7 +121,7 @@ class ChatFlowEngine:
         if not execute_method:
             return self._create_error_generator("agents节点不支持流式执行")
 
-        return self._create_streaming_generator(execute_method, target_agent_node, final_input_data, user_id, entry_type, is_agui_protocol)
+        return self._create_streaming_generator(execute_method, target_agent_node, final_input_data, user_id, entry_type, is_agui_protocol, node_id)
 
     def _find_target_agent_node(self, start_node, last_node, is_agui_protocol: bool, is_openai_protocol: bool):
         """查找目标agents节点及前置节点"""
@@ -184,7 +185,14 @@ class ChatFlowEngine:
         return temp_engine_data
 
     def _create_streaming_generator(
-        self, execute_method, target_agent_node, final_input_data: Dict[str, Any], user_id: str, entry_type: str, is_agui_protocol: bool
+        self,
+        execute_method,
+        target_agent_node,
+        final_input_data: Dict[str, Any],
+        user_id: str,
+        entry_type: str,
+        is_agui_protocol: bool,
+        node_id: str = "",
     ):
         """创建流式输出生成器"""
 
@@ -205,7 +213,7 @@ class ChatFlowEngine:
                     self._accumulate_output(chunk_str, accumulated_output, is_agui_protocol)
 
                 # 记录完整输出
-                self._record_bot_output(user_id, accumulated_output, entry_type)
+                self._record_bot_output(user_id, accumulated_output, entry_type, node_id)
 
             except Exception as e:
                 logger.error(f"[SSE-Engine] 流式执行过程中出错: {str(e)}")
@@ -235,13 +243,14 @@ class ChatFlowEngine:
                 except json.JSONDecodeError:
                     accumulated_output.append(data_str)
 
-    def _record_bot_output(self, user_id: str, accumulated_output: List[str], entry_type: str):
+    def _record_bot_output(self, user_id: str, accumulated_output: List[str], entry_type: str, node_id: str = ""):
         """记录机器人输出对话历史"""
         if user_id and accumulated_output and entry_type != "celery":
             try:
                 full_output = "".join(accumulated_output)
                 WorkFlowConversationHistory.objects.create(
                     bot_id=self.instance.bot_id,
+                    node_id=node_id,
                     user_id=user_id,
                     conversation_role="bot",
                     conversation_content=full_output,
@@ -449,7 +458,8 @@ class ChatFlowEngine:
 
             # 确定入口类型并记录用户输入
             entry_type = self._determine_entry_type(start_node)
-            self._record_conversation_history(user_id, input_message, "user", entry_type)
+            node_id = input_data.get("node_id", "")
+            self._record_conversation_history(user_id, input_message, "user", entry_type, node_id)
 
             # 执行节点链
             self._execute_node_chain(chosen_start_node, input_data, timeout - (time.time() - start_time))
@@ -458,10 +468,14 @@ class ChatFlowEngine:
             execution_time = time.time() - start_time
             final_last_message = self.variable_manager.get_variable("last_message")
 
-            logger.info(f"流程执行完成: flow_id={self.instance.id}, 耗时={execution_time:.2f}秒")
+            logger.info("===== 流程执行完成 =====")
+            logger.info(f"flow_id={self.instance.id}, 耗时={execution_time:.2f}秒")
+            logger.info(f"最终 last_message 值: {final_last_message}")
+            logger.info(f"所有变量: {self.variable_manager.get_all_variables()}")
+            logger.info("========================")
 
             # 记录系统输出
-            self._record_conversation_history(user_id, final_last_message, "bot", entry_type)
+            self._record_conversation_history(user_id, final_last_message, "bot", entry_type, node_id)
             self._record_execution_result(input_data, final_last_message, True, start_node.get("type", ""))
 
             return final_last_message
@@ -488,7 +502,7 @@ class ChatFlowEngine:
 
             return error_result
 
-    def _record_conversation_history(self, user_id: str, message: Any, role: str, entry_type: str):
+    def _record_conversation_history(self, user_id: str, message: Any, role: str, entry_type: str, node_id: str = ""):
         """记录对话历史
 
         Args:
@@ -496,6 +510,7 @@ class ChatFlowEngine:
             message: 消息内容
             role: 角色 (user/bot)
             entry_type: 入口类型
+            node_id: 节点ID
         """
         if not user_id or not message or entry_type == "celery":
             return
@@ -511,6 +526,7 @@ class ChatFlowEngine:
 
             WorkFlowConversationHistory.objects.create(
                 bot_id=self.instance.bot_id,
+                node_id=node_id,
                 user_id=user_id,
                 conversation_role=role,
                 conversation_content=content,
@@ -634,18 +650,23 @@ class ChatFlowEngine:
             # 执行节点
             result = executor.execute(node_id, node, node_input_data)
 
+            logger.info(f"节点 {node_id} 执行结果: result={result}, output_key={output_key}")
+
             # 处理输出数据到全局变量
             if result and isinstance(result, dict):
                 # 获取节点的实际输出值
                 output_value = result.get(output_key)
+                logger.info(f"节点 {node_id} 输出值: output_key={output_key}, output_value={output_value}")
                 if output_value is not None:
                     # 更新全局变量
                     if output_key == "last_message":
                         # 特殊处理：condition节点的last_message不更新全局变量
                         if node_type not in ["condition", "branch"]:
+                            logger.info(f"更新全局变量 last_message={output_value}")
                             self.variable_manager.set_variable("last_message", output_value)
                     else:
                         # 非last_message的输出直接设置到全局变量
+                        logger.info(f"设置全局变量 {output_key}={output_value}")
                         self.variable_manager.set_variable(output_key, output_value)
 
             # 更新上下文

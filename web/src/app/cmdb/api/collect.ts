@@ -27,9 +27,6 @@ export const useCollectApi = () => {
   const executeCollect = (collectId: string) =>
     post(`/cmdb/api/collect/${collectId}/exec_task/`);
 
-  // 审批收集任务
-  const approveCollect = (collectId: string, params: any) =>
-    post(`/cmdb/api/collect/${collectId}/approval/`, params);
 
   // 获取收集任务信息
   const getCollectInfo = (collectId: string) =>
@@ -55,6 +52,10 @@ export const useCollectApi = () => {
   const getCollectModelDoc = (id: string) =>
     get('/cmdb/api/collect/collect_model_doc', { params: { id } });
 
+  // 获取任务状态统计
+  const getTaskStatus = () =>
+    get('/cmdb/api/collect/task_status');
+
   return {
     getCollectList,
     getCollectDetail,
@@ -62,12 +63,12 @@ export const useCollectApi = () => {
     updateCollect,
     deleteCollect,
     executeCollect,
-    approveCollect,
     getCollectInfo,
     getCollectModelTree,
     getCollectModelInstances,
     getCollectNodes,
     getCollectRegions,
     getCollectModelDoc,
+    getTaskStatus,
   };
 };
