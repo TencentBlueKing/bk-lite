@@ -11,72 +11,11 @@ import time
 
 from django.http import StreamingHttpResponse
 
-from apps.core.utils.async_utils import create_async_compatible_generator
 from apps.opspilot.models import LLMModel, SkillRequestLog
 from apps.opspilot.services.llm_service import llm_service
-from apps.opspilot.utils.agent_factory import (
-    create_agent_instance,
-    create_sse_response_headers,
-    normalize_llm_error_message,
-    run_async_generator_in_loop,
-)
+from apps.opspilot.utils.agent_factory import create_agent_instance, create_sse_response_headers
 
 logger = logging.getLogger(__name__)
-
-
-def _generate_agui_stream(graph, request, skill_name, show_think=True):
-    """
-    生成AGUI协议的流式数据（使用 asyncio 运行异步方法）
-
-    直接调用 graph.agui_stream() 方法，该方法已经返回符合 AGUI 协议的 SSE 格式字符串
-    """
-    accumulated_content = ""
-
-    async def run_stream():
-        """异步运行流式处理"""
-        nonlocal accumulated_content
-
-        try:
-            # 调用 graph 的 agui_stream 方法，返回已格式化的 SSE 字符串
-            async for sse_line in graph.agui_stream(request):
-                # sse_line 已经是 "data: {...}\n\n" 格式
-
-                # 尝试提取内容用于日志记录
-                if sse_line.startswith("data: "):
-                    try:
-                        data_str = sse_line[6:].strip()
-                        data_json = json.loads(data_str)
-
-                        # 累积文本内容用于日志
-                        if data_json.get("type") == "TEXT_MESSAGE_CONTENT":
-                            delta = data_json.get("delta", "")
-                            accumulated_content += delta
-                    except (json.JSONDecodeError, ValueError):
-                        pass
-
-                # 直接转发 SSE 行
-                yield sse_line
-
-            # 返回统计信息
-            yield ("STATS", accumulated_content)
-
-        except Exception as e:
-            logger.error(f"AGUI Agent stream error: {e}", exc_info=True)
-
-            # 使用公共方法提取友好的错误信息
-            error_msg = normalize_llm_error_message(str(e))
-
-            error_data = {"type": "RUN_ERROR", "message": error_msg, "code": "EXECUTION_ERROR", "timestamp": int(time.time() * 1000)}
-            yield f"data: {json.dumps(error_data, ensure_ascii=False)}\n\n"
-            yield ("STATS", "")
-
-    # 使用公共的异步事件循环运行器
-    yield from run_async_generator_in_loop(run_stream)
-
-
-def _create_agui_error_chunk(error_message, skill_name):
-    """创建AGUI格式的错误消息"""
-    return {"event": "error", "data": {"error": error_message, "skill": skill_name}}
 
 
 def _log_and_update_tokens_agui(final_stats, skill_name, skill_id, current_ip, kwargs, user_message, show_think, history_log=None):
@@ -156,39 +95,61 @@ def stream_agui_chat(params, skill_name, kwargs, current_ip, user_message, skill
     # 用于存储最终统计信息的共享变量
     final_stats = {"content": ""}
 
-    def generate_stream():
+    async def generate_stream():
+        """
+        异步生成器：直接生成 AGUI 协议流式响应
+        """
         try:
+            logger.info(f"[AGUI Chat] 开始异步流处理 - skill_name: {skill_name}, skill_type: {skill_type}")
+
             # 创建 agent 实例
             graph, request = create_agent_instance(skill_type, chat_kwargs)
+            logger.debug(f"[AGUI Chat] Agent 实例创建完成 - graph: {type(graph).__name__}")
 
-            # 生成流式数据
-            stream_gen = _generate_agui_stream(graph, request, skill_name, show_think)
+            # 直接调用异步流式方法
+            chunk_index = 0
+            accumulated_content = ""
 
-            for chunk in stream_gen:
-                if isinstance(chunk, tuple) and chunk[0] == "STATS":
-                    # 收集统计信息
-                    _, final_stats["content"] = chunk
+            async for sse_line in graph.agui_stream(request):
+                chunk_index += 1
+                logger.debug(f"[AGUI Chat] 生成数据块 #{chunk_index} - 长度: {len(sse_line)}")
 
-                    # 在流结束时异步处理日志记录
-                    if final_stats["content"]:
+                # 尝试提取内容用于日志记录
+                if sse_line.startswith("data: "):
+                    try:
+                        data_str = sse_line[6:].strip()
+                        data_json = json.loads(data_str)
 
-                        def log_in_background():
-                            _log_and_update_tokens_agui(final_stats, skill_name, skill_id, current_ip, kwargs, user_message, show_think, history_log)
+                        # 累积文本内容用于日志
+                        if data_json.get("type") == "TEXT_MESSAGE_CONTENT":
+                            delta = data_json.get("delta", "")
+                            accumulated_content += delta
+                    except (json.JSONDecodeError, ValueError):
+                        pass
 
-                        threading.Thread(target=log_in_background, daemon=True).start()
-                else:
-                    # 发送流式数据
-                    yield chunk
+                yield sse_line
+
+            logger.info(f"[AGUI Chat] 流处理完成 - 生成 {chunk_index} 个chunk, 内容长度: {len(accumulated_content)}")
+
+            # 记录最终内容用于日志
+            final_stats["content"] = accumulated_content
+            logger.info(f"[AGUI Chat] 收到统计信息 - 内容长度: {len(final_stats['content'])}")
+
+            # 在流结束时异步处理日志记录
+            if final_stats["content"]:
+
+                def log_in_background():
+                    _log_and_update_tokens_agui(final_stats, skill_name, skill_id, current_ip, kwargs, user_message, show_think, history_log)
+
+                threading.Thread(target=log_in_background, daemon=True).start()
 
         except Exception as e:
-            logger.error(f"AGUI stream chat error: {e}", exc_info=True)
+            logger.error(f"[AGUI Chat] async stream error: {e}", exc_info=True)
             error_data = {"type": "ERROR", "error": f"聊天错误: {str(e)}", "timestamp": int(time.time() * 1000)}
             yield f"data: {json.dumps(error_data, ensure_ascii=False)}\n\n"
 
-    # 使用异步兼容的生成器来解决 ASGI 环境下的问题
-    async_generator = create_async_compatible_generator(generate_stream())
-
-    response = StreamingHttpResponse(async_generator, content_type="text/event-stream")
+    # 直接使用异步生成器
+    response = StreamingHttpResponse(generate_stream(), content_type="text/event-stream")
     # 使用公共的 SSE 响应头
     for key, value in create_sse_response_headers().items():
         response[key] = value

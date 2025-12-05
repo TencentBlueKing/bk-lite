@@ -13,7 +13,6 @@ from wechatpy.enterprise import WeChatCrypto
 
 from apps.base.models import UserAPISecret
 from apps.core.logger import opspilot_logger as logger
-from apps.core.utils.async_utils import create_async_compatible_generator
 from apps.core.utils.exempt import api_exempt
 from apps.core.utils.loader import LanguageLoader
 from apps.opspilot.models import Bot, BotChannel, BotConversationHistory, BotWorkFlow, LLMSkill
@@ -474,10 +473,12 @@ def set_channel_type_line(end_time, queryset, start_time):
 
 @api_exempt
 def execute_chat_flow(request, bot_id, node_id):
-    """执行ChatFlow流程"""
+    """执行ChatFlow流程（支持流式响应）"""
     loader = get_loader(request)
     if not bot_id or not node_id:
         return JsonResponse({"result": False, "message": loader.get("error.bot_node_id_required", "Bot ID and Node ID are required.")})
+
+    # 读取请求体
     kwargs = json.loads(request.body)
     message = kwargs.get("message", "") or kwargs.get("user_message", "")
     session_id = kwargs.get("session_id", "")
@@ -541,15 +542,19 @@ def execute_chat_flow(request, bot_id, node_id):
         if node_type in stream_node_types:
             # 使用引擎的流式执行方法，设置入口类型
             input_data["entry_type"] = node_type
-            stream_generator = engine.sse_execute(input_data)
 
-            # 直接返回流式响应
-            async_generator = create_async_compatible_generator(stream_generator)
-            response = StreamingHttpResponse(async_generator, content_type="text/event-stream")
+            # 所有协议统一使用异步生成器（已修复为原生异步）
+            stream_generator = engine.sse_execute(input_data)
+            response = StreamingHttpResponse(stream_generator, content_type="text/event-stream")
+
+            # 设置SSE响应头
             response["Cache-Control"] = "no-cache, no-store, must-revalidate"
             response["X-Accel-Buffering"] = "no"
+            response["Pragma"] = "no-cache"
+            response["Expires"] = "0"
             response["Access-Control-Allow-Origin"] = "*"
             response["Access-Control-Allow-Headers"] = "Cache-Control"
+            response["Transfer-Encoding"] = "chunked"
             return response
 
         # 非流式节点，使用普通执行
