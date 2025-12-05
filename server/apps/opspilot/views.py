@@ -6,7 +6,7 @@ import time
 from django.conf import settings
 from django.db.models import Count
 from django.db.models.functions import TruncDate
-from django.http import FileResponse, HttpResponse, JsonResponse, StreamingHttpResponse
+from django.http import FileResponse, HttpResponse, JsonResponse
 from django_minio_backend import MinioBackend
 from ipware import get_client_ip
 from wechatpy.enterprise import WeChatCrypto
@@ -543,19 +543,9 @@ def execute_chat_flow(request, bot_id, node_id):
             # 使用引擎的流式执行方法，设置入口类型
             input_data["entry_type"] = node_type
 
-            # 所有协议统一使用异步生成器（已修复为原生异步）
-            stream_generator = engine.sse_execute(input_data)
-            response = StreamingHttpResponse(stream_generator, content_type="text/event-stream")
-
-            # 设置SSE响应头
-            response["Cache-Control"] = "no-cache, no-store, must-revalidate"
-            response["X-Accel-Buffering"] = "no"
-            response["Pragma"] = "no-cache"
-            response["Expires"] = "0"
-            response["Access-Control-Allow-Origin"] = "*"
-            response["Access-Control-Allow-Headers"] = "Cache-Control"
-            response["Transfer-Encoding"] = "chunked"
-            return response
+            # 直接返回 engine.sse_execute 的 StreamingHttpResponse（与 execute_agui 保持一致）
+            logger.info(f"[ChatFlow] 调用流式执行 - bot_id: {bot_id}, node_id: {node_id}, node_type: {node_type}")
+            return engine.sse_execute(input_data)
 
         # 非流式节点，使用普通执行
         result = engine.execute(input_data)

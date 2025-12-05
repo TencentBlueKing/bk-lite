@@ -8,6 +8,8 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from graphlib import CycleError, TopologicalSorter
 from typing import Any, Callable, Dict, List, Optional, Set
 
+from asgiref.sync import sync_to_async
+from django.http import StreamingHttpResponse
 from django.utils import timezone
 
 from apps.core.logger import opspilot_logger as logger
@@ -58,7 +60,8 @@ class ChatFlowEngine:
         return start_node_type if start_node_type in [choice[0] for choice in WorkFlowExecuteType.choices] else "restful"
 
     def sse_execute(self, input_data: Dict[str, Any] = None):
-        """流程流式执行，支持SSE和AGUI协议"""
+        """流程流式执行，支持SSE和AGUI协议，返回 StreamingHttpResponse"""
+
         if input_data is None:
             input_data = {}
 
@@ -79,7 +82,7 @@ class ChatFlowEngine:
         # 验证流程
         validation_errors = self.validate_flow()
         if validation_errors:
-            return self._create_error_generator("流程验证失败")
+            return self._create_error_response("流程验证失败")
 
         # 获取起始节点和最后节点
         start_node = self._get_start_node()
@@ -92,12 +95,12 @@ class ChatFlowEngine:
         # 检查是否需要流式执行
         needs_streaming = (is_agui_protocol or is_openai_protocol) or (last_node and last_node.get("type") == "agents")
         if not needs_streaming:
-            return self._create_error_generator("当前流程不支持SSE")
+            return self._create_error_response("当前流程不支持SSE")
 
         # 查找目标agents节点及前置节点
         target_agent_node, nodes_to_execute_before = self._find_target_agent_node(start_node, last_node, is_agui_protocol, is_openai_protocol)
         if not target_agent_node:
-            return self._create_error_generator("未找到可执行的agents节点")
+            return self._create_error_response("未找到可执行的agents节点")
 
         # 执行前置节点
         final_input_data = self._execute_prerequisite_nodes(nodes_to_execute_before, input_data)
@@ -120,9 +123,50 @@ class ChatFlowEngine:
             logger.error(f"[SSE-Engine] agents节点不支持流式执行: {target_agent_node.get('id')}")
 
         if not execute_method:
-            return self._create_error_generator("agents节点不支持流式执行")
+            return self._create_error_response("agents节点不支持流式执行")
 
-        return self._create_streaming_generator(execute_method, target_agent_node, final_input_data, user_id, entry_type, is_agui_protocol, node_id)
+        # 定义一个嵌套的异步生成器函数 - 完全模仿 agui_chat.py 的工作模式
+        async def generate_stream():
+            """
+            嵌套的异步生成器：直接调用节点的 execute_method 获取流
+            """
+            try:
+                logger.info(f"[SSE-Engine] 开始流处理 - protocol: {protocol_type}, node: {node_id}")
+
+                # 同步调用 execute_method,它会返回一个异步生成器
+                async_execute = sync_to_async(execute_method, thread_sensitive=False)
+                stream_generator = await async_execute(target_agent_node.get("id"), target_agent_node, final_input_data)
+
+                logger.info(f"[SSE-Engine] 获得流生成器: {type(stream_generator)}")
+
+                chunk_index = 0
+                # 直接迭代异步生成器
+                async for chunk in stream_generator:
+                    chunk_index += 1
+                    logger.info(f"[SSE-Engine] Yielding chunk #{chunk_index}, length: {len(chunk)}")
+                    yield chunk
+
+                logger.info(f"[SSE-Engine] 流处理完成 - 共生成 {chunk_index} 个chunk")
+
+            except Exception as e:
+                logger.error(f"[SSE-Engine] Stream error: {e}", exc_info=True)
+                error_data = {"type": "ERROR", "error": f"流处理错误: {str(e)}", "timestamp": int(time.time() * 1000)}
+                yield f"data: {json.dumps(error_data, ensure_ascii=False)}\n\n"
+
+        # 直接使用嵌套的异步生成器创建 StreamingHttpResponse
+        response = StreamingHttpResponse(generate_stream(), content_type="text/event-stream")
+
+        # 设置 SSE 响应头
+        response["Cache-Control"] = "no-cache, no-store, must-revalidate"
+        response["X-Accel-Buffering"] = "no"
+        response["Pragma"] = "no-cache"
+        response["Expires"] = "0"
+        response["Access-Control-Allow-Origin"] = "*"
+        response["Access-Control-Allow-Headers"] = "Cache-Control"
+        response["Transfer-Encoding"] = "chunked"
+
+        logger.info(f"[SSE-Engine] 返回 StreamingHttpResponse - protocol: {protocol_type}")
+        return response
 
     def _find_target_agent_node(self, start_node, last_node, is_agui_protocol: bool, is_openai_protocol: bool):
         """查找目标agents节点及前置节点"""
@@ -195,13 +239,62 @@ class ChatFlowEngine:
         is_agui_protocol: bool,
         node_id: str = "",
     ):
-        """创建流式输出生成器"""
+        """创建流式输出生成器（支持异步）"""
 
-        def wrapped_generator():
+        async def wrapped_async_generator():
+            """异步包装生成器，用于AGUI协议"""
             accumulated_output = []
 
             try:
-                for chunk in execute_method(target_agent_node.get("id"), target_agent_node, final_input_data):
+                # 在异步上下文中调用同步的 execute_method，使用 sync_to_async
+                # 将同步方法包装为异步方法
+                async_execute = sync_to_async(execute_method, thread_sensitive=False)
+                async_gen = await async_execute(target_agent_node.get("id"), target_agent_node, final_input_data)
+
+                chunk_count = 0
+                async for chunk in async_gen:
+                    chunk_count += 1
+                    chunk_str = chunk.decode("utf-8") if isinstance(chunk, bytes) else str(chunk)
+
+                    # 过滤统计信息
+                    if chunk_str.startswith("# STATS:"):
+                        continue
+
+                    # 立即 yield,确保流式输出
+                    logger.debug(f"[SSE-Engine-AGUI] Yielding chunk #{chunk_count}, length: {len(chunk_str)}")
+                    yield chunk
+
+                    # 收集输出内容
+                    self._accumulate_output(chunk_str, accumulated_output, is_agui_protocol)
+
+                logger.info(f"[SSE-Engine-AGUI] 流式输出完成 - 总共 {chunk_count} 个chunk")
+
+                # 记录完整输出 - 在异步上下文中使用 sync_to_async
+                await sync_to_async(self._record_bot_output, thread_sensitive=False)(
+                    user_id, accumulated_output, entry_type, node_id, final_input_data["session_id"]
+                )
+
+            except Exception as e:
+                logger.error(f"[SSE-Engine] 流式执行过程中出错: {str(e)}")
+                logger.exception(e)
+                yield f"data: {json.dumps({'result': False, 'error': str(e)})}\n\n"
+                yield "data: [DONE]\n\n"
+
+        # AGUI协议返回异步生成器
+        if is_agui_protocol:
+            return wrapped_async_generator()
+
+        # 非AGUI协议也返回异步生成器（统一处理）
+        async def wrapped_sse_generator():
+            """异步包装生成器，用于SSE/OpenAI协议"""
+            accumulated_output = []
+
+            try:
+                # 在异步上下文中调用同步的 execute_method
+                async_execute = sync_to_async(execute_method, thread_sensitive=False)
+                async_gen = await async_execute(target_agent_node.get("id"), target_agent_node, final_input_data)
+
+                async for chunk in async_gen:
                     chunk_str = chunk.decode("utf-8") if isinstance(chunk, bytes) else str(chunk)
 
                     # 过滤统计信息
@@ -213,8 +306,10 @@ class ChatFlowEngine:
                     # 收集输出内容
                     self._accumulate_output(chunk_str, accumulated_output, is_agui_protocol)
 
-                # 记录完整输出
-                self._record_bot_output(user_id, accumulated_output, entry_type, node_id, final_input_data["session_id"])
+                # 记录完整输出 - 在异步上下文中使用 sync_to_async
+                await sync_to_async(self._record_bot_output, thread_sensitive=False)(
+                    user_id, accumulated_output, entry_type, node_id, final_input_data["session_id"]
+                )
 
             except Exception as e:
                 logger.error(f"[SSE-Engine] 流式执行过程中出错: {str(e)}")
@@ -222,7 +317,7 @@ class ChatFlowEngine:
                 yield f"data: {json.dumps({'result': False, 'error': str(e)})}\n\n"
                 yield "data: [DONE]\n\n"
 
-        return wrapped_generator()
+        return wrapped_sse_generator()
 
     def _accumulate_output(self, chunk_str: str, accumulated_output: List[str], is_agui_protocol: bool):
         """累积输出内容"""
@@ -271,6 +366,21 @@ class ChatFlowEngine:
             yield "data: [DONE]\n\n"
 
         return err_gen()
+
+    def _create_error_response(self, error_message: str):
+        """创建错误的 StreamingHttpResponse"""
+        from django.http import StreamingHttpResponse
+
+        logger.error(f"[SSE-Engine] {error_message}")
+
+        async def error_gen():
+            yield f"data: {json.dumps({'result': False, 'error': error_message})}\n\n"
+            yield "data: [DONE]\n\n"
+
+        response = StreamingHttpResponse(error_gen(), content_type="text/event-stream")
+        response["Cache-Control"] = "no-cache, no-store, must-revalidate"
+        response["X-Accel-Buffering"] = "no"
+        return response
 
     """聊天流程执行引擎"""
 
