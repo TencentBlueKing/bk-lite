@@ -58,7 +58,9 @@ const K8sTaskForm: React.FC<K8sTaskFormProps> = ({
         task_type: modelItem.task_type,
         input_method: 0,
         ip_range: '',
-        params: {},
+        params: {
+          organization: values.organization || [],
+        },
       };
     },
   });
@@ -67,7 +69,10 @@ const K8sTaskForm: React.FC<K8sTaskFormProps> = ({
     const initForm = async () => {
       if (editId) {
         const values = await fetchTaskDetail(editId);
-        form.setFieldsValue(values);
+        form.setFieldsValue({
+          ...values,
+          organization: values.params?.organization,
+        });
       } else {
         form.setFieldsValue(K8S_FORM_INITIAL_VALUES);
       }
