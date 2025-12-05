@@ -130,6 +130,7 @@ class ChatFlowEngine:
             """
             嵌套的异步生成器：直接调用节点的 execute_method 获取流
             """
+            accumulated_content = ""
             try:
                 logger.info(f"[SSE-Engine] 开始流处理 - protocol: {protocol_type}, node: {node_id}")
 
@@ -144,9 +145,42 @@ class ChatFlowEngine:
                 async for chunk in stream_generator:
                     chunk_index += 1
                     logger.info(f"[SSE-Engine] Yielding chunk #{chunk_index}, length: {len(chunk)}")
+
+                    # 累积内容用于记录对话历史
+                    if chunk.startswith("data: "):
+                        try:
+                            data_str = chunk[6:].strip()
+                            data_json = json.loads(data_str)
+
+                            if protocol_type == "AGUI":
+                                # AGUI 协议: TEXT_MESSAGE_CONTENT 类型
+                                if data_json.get("type") == "TEXT_MESSAGE_CONTENT":
+                                    accumulated_content += data_json.get("delta", "")
+                            else:
+                                # SSE/OpenAI 协议: 提取 content/message/text 字段
+                                content = data_json.get("content") or data_json.get("message") or data_json.get("text", "")
+                                if content:
+                                    accumulated_content += content
+                        except (json.JSONDecodeError, ValueError):
+                            pass
+
                     yield chunk
 
                 logger.info(f"[SSE-Engine] 流处理完成 - 共生成 {chunk_index} 个chunk")
+
+                # 记录系统输出到对话历史
+                if accumulated_content:
+
+                    def record_history_in_background():
+                        from asgiref.sync import async_to_sync
+
+                        async_to_sync(sync_to_async(self._record_conversation_history, thread_sensitive=False))(
+                            user_id, accumulated_content, "bot", entry_type, node_id, session_id
+                        )
+
+                    import threading
+
+                    threading.Thread(target=record_history_in_background, daemon=True).start()
 
             except Exception as e:
                 logger.error(f"[SSE-Engine] Stream error: {e}", exc_info=True)
