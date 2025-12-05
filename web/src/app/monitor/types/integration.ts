@@ -152,3 +152,26 @@ export interface ShowModalParams {
 export interface TemplateDrawerRef {
   showModal: (params: ShowModalParams) => void;
 }
+
+export interface K8sCommandData {
+  command?: string;
+  monitor_object_id?: number;
+  instance_id?: string;
+  cloud_region_id?: number;
+  interval?: number;
+}
+
+export interface AccessConfigProps {
+  onNext: (data?: any) => void;
+  commandData?: K8sCommandData;
+}
+
+export interface CollectorInstallProps {
+  onNext: () => void;
+  onPrev: () => void;
+  commandData?: K8sCommandData;
+}
+
+export interface AccessCompleteProps {
+  onReset: () => void;
+}

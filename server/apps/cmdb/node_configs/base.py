@@ -6,7 +6,6 @@
 import ipaddress
 import os
 from abc import abstractmethod, ABCMeta
-from pathlib import Path
 
 from django.conf import settings
 from jinja2 import Environment, FileSystemLoader, DebugUndefined

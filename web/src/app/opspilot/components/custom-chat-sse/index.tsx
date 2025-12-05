@@ -39,7 +39,9 @@ const CustomChatSSE: React.FC<CustomChatSSEProps> = ({
   initialMessages = [],
   mode = 'chat',
   guide,
-  useAGUIProtocol = false
+  useAGUIProtocol = false,
+  showHeader = true,
+  requirePermission = true
 }) => {
   const { t } = useTranslation();
 
@@ -272,49 +274,53 @@ const CustomChatSSE: React.FC<CustomChatSSEProps> = ({
   const renderSend = (props: ButtonProps & { ignoreLoading?: boolean; placeholder?: string } = {}) => {
     const { ignoreLoading, placeholder, ...btnProps } = props;
 
-    return (
-      <PermissionWrapper requiredPermissions={['Test']}>
-        <Sender
-          className={styles.sender}
-          value={value}
-          onChange={setValue}
-          loading={loading}
-          onSubmit={(msg: string) => {
-            setValue('');
-            handleSend(msg);
-          }}
-          placeholder={placeholder}
-          onCancel={stopSSEConnection}
-          actions={(
-            _: any,
-            info: {
-              components: {
-                SendButton: React.ComponentType<ButtonProps>;
-                LoadingButton: React.ComponentType<ButtonProps>;
-              };
-            }
-          ) => {
-            const { SendButton, LoadingButton } = info.components;
-            if (!ignoreLoading && loading) {
-              return (
-                <Tooltip title={t('chat.clickCancel')}>
-                  <LoadingButton />
-                </Tooltip>
-              );
-            }
-            let node: ReactNode = <SendButton {...btnProps} />;
-            if (!ignoreLoading) {
-              node = (
-                <Tooltip title={value ? `${t('chat.send')}\u21B5` : t('chat.inputMessage')}>
-                  {node}
-                </Tooltip>
-              );
-            }
-            return node;
-          }}
-        />
-      </PermissionWrapper>
+    const senderComponent = (
+      <Sender
+        className={styles.sender}
+        value={value}
+        onChange={setValue}
+        loading={loading}
+        onSubmit={(msg: string) => {
+          setValue('');
+          handleSend(msg);
+        }}
+        placeholder={placeholder}
+        onCancel={stopSSEConnection}
+        actions={(
+          _: any,
+          info: {
+            components: {
+              SendButton: React.ComponentType<ButtonProps>;
+              LoadingButton: React.ComponentType<ButtonProps>;
+            };
+          }
+        ) => {
+          const { SendButton, LoadingButton } = info.components;
+          if (!ignoreLoading && loading) {
+            return (
+              <Tooltip title={t('chat.clickCancel')}>
+                <LoadingButton />
+              </Tooltip>
+            );
+          }
+          let node: ReactNode = <SendButton {...btnProps} />;
+          if (!ignoreLoading) {
+            node = (
+              <Tooltip title={value ? `${t('chat.send')}\u21B5` : t('chat.inputMessage')}>
+                {node}
+              </Tooltip>
+            );
+          }
+          return node;
+        }}
+      />
     );
+
+    return requirePermission ? (
+      <PermissionWrapper requiredPermissions={['Test']}>
+        {senderComponent}
+      </PermissionWrapper>
+    ) : senderComponent;
   };
 
   const toggleAnnotationModal = (message: CustomChatMessage) => {
@@ -362,7 +368,7 @@ const CustomChatSSE: React.FC<CustomChatSSEProps> = ({
 
   return (
     <div className={`rounded-lg h-full ${isFullscreen ? styles.fullscreen : ''}`}>
-      {mode === 'chat' && (
+      {mode === 'chat' && showHeader && (
         <div className="flex justify-between items-center mb-3">
           <h2 className="text-base font-semibold">{t('chat.test')}</h2>
           <div>
@@ -375,7 +381,7 @@ const CustomChatSSE: React.FC<CustomChatSSEProps> = ({
       <div
         className={`flex flex-col rounded-lg p-4 h-full overflow-hidden ${styles.chatContainer}`}
         style={{
-          height: isFullscreen ? 'calc(100vh - 70px)' : mode === 'chat' ? 'calc(100% - 40px)' : '100%'
+          height: isFullscreen ? 'calc(100vh - 70px)' : mode === 'chat' ? (showHeader ? 'calc(100% - 40px)' : '100%') : '100%'
         }}
       >
         {guide && guideData.renderedHtml && (
