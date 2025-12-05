@@ -1,4 +1,89 @@
 monitor_object_metric:
+  MSSQL:
+    online_databases:
+      name: Number of Online Databases
+      desc: Displays the count of databases currently online, indicating the availability
+          of database services.
+    sqlserver_uptime:
+      desc: Shows the total uptime of the SQL Server instance since the last restart,
+          reflecting system stability.
+      name: SQL Server Uptime
+    volume_space_usage:
+      name: Volume Space Usage
+      desc: Indicates the percentage of used space on database volumes, helping monitor
+          storage capacity.
+    volume_available_gb:
+      desc: Displays the available space in gigabytes on database volumes, assisting
+          in storage management.
+      name: Volume Available Space (GB)
+    memory_usage:
+      name: Memory Usage
+      desc: Reflects the percentage of memory currently utilized by the SQL Server,
+          indicating resource consumption.
+    available_memory_mb:
+      desc: Shows the available memory in megabytes for the SQL Server instance,
+          aiding in performance tuning.
+      name: Available Memory (MB)
+    read_throughput_mbps:
+      name: Read Throughput (MBps)
+      desc: Indicates the rate of data read operations in megabytes per second,
+          reflecting I/O performance.
+    write_throughput_mbps:
+      desc: Displays the rate of data write operations in megabytes per second,
+          indicating I/O efficiency.
+      name: Write Throughput (MBps)
+    total_io_throughput:
+      name: Total I/O Throughput (MBps)
+      desc: Reflects the combined rate of read and write operations in megabytes
+          per second, providing an overall view of I/O performance.
+    avg_read_latency:
+      desc: Shows the average latency for read operations in milliseconds, helping
+          identify performance bottlenecks.
+      name: Average Read Latency (ms)
+    avg_write_latency:
+      name: Average Write Latency (ms)
+      desc: Indicates the average latency for write operations in milliseconds,
+          assisting in performance diagnostics.
+    resource_wait_ratio:
+      desc: Displays the ratio of time spent waiting for resources, reflecting system
+          efficiency.
+      name: Resource Wait Ratio
+    signal_wait_ratio:
+      name: Signal Wait Ratio
+      desc: Indicates the ratio of time spent waiting for signals, helping assess
+          system responsiveness.
+    avg_wait_time:
+      desc: Shows the average wait time in milliseconds for various operations,
+          aiding in performance analysis.
+      name: Average Wait Time (ms)
+    waiting_tasks_rate:
+      name: Waiting Tasks Rate
+      desc: Reflects the rate of tasks currently waiting for resources, indicating
+          system load.
+    active_connections:
+      desc: Displays the number of active connections to the SQL Server instance,
+          providing insight into usage patterns.
+      name: Active Connections
+    avg_request_time:
+      name: Average Request Time (ms)
+      desc: Indicates the average time taken to process requests in milliseconds,
+          helping evaluate performance.
+    logical_reads_rate:
+      desc: Shows the rate of logical read operations per second, reflecting database
+          efficiency.
+      name: Logical Reads Rate
+    runnable_tasks:
+      name: Runnable Tasks
+      desc: Displays the number of tasks that are ready to run but waiting for CPU
+          time, indicating system load.
+    current_workers:
+      desc: Indicates the current number of worker threads in use by the SQL Server,
+          reflecting resource utilization.
+      name: Current Workers
+    context_switches_rate:
+      name: Context Switches Rate
+      desc: Shows the rate of context switches per second, helping assess CPU scheduling
+          efficiency.
   Minio:
     minio_cluster_nodes_offline_total_gauge:
       desc: Counts offline nodes to address issues affecting performance and redundancy.
@@ -1648,39 +1733,48 @@ monitor_object_metric:
       desc: This metric represents the number of Select queries executed. Monitoring
         this metric helps understand the frequency of read operations and system load.
   Zookeeper:
-    zookeeper_snapshot_to_commit_ratio:
-      desc: This metric represents the ratio of snapshot generation frequency to commit
-        request frequency in Zookeeper, helping to monitor the relationship between
-        persistence operations and transaction commits.
-      name: Snapshot to Commit Ratio
-    zookeeper_packets_received:
-      name: Packets Received
-      desc: This metric shows the number of packets received by Zookeeper, helping
-        to monitor the network traffic.
-    zookeeper_connection_drop_count:
-      name: Connection Drop Count
-      desc: This metric represents the number of connection drops in Zookeeper, used
-        to monitor connection stability.
-    zookeeper_uptime:
-      name: Uptime
-      desc: This metric shows the uptime of the Zookeeper service, helping to monitor
-        if the system is running normally.
-    zookeeper_znode_count:
-      name: Znode Count
-      desc: This metric represents the number of znodes in Zookeeper, helping to monitor
-        changes in Zookeeper's data size.
-    zookeeper_connection_rejected:
-      name: Connection Rejected
-      desc: This metric represents the number of rejected connections in Zookeeper,
-        helping to monitor if connections are being correctly handled.
-    zookeeper_read_write_ratio:
-      name: Read/Write Ratio
-      desc: This metric represents the ratio of commits to snapshots in Zookeeper,
-        helping to assess the read/write load distribution.
-    zookeeper_avg_latency:
+    approximate_data_size:
+      desc: Approximate size of data stored in ZooKeeper
+      name: Approximate Data Size
+    avg_latency:
       name: Average Latency
-      desc: This metric represents the average latency of Zookeeper processing requests,
-        used to monitor system response capability.
+      desc: Average latency of ZooKeeper requests
+    max_latency:
+      name: Maximum Latency
+      desc: Maximum latency of ZooKeeper requests
+    min_latency:
+      name: Minimum Latency
+      desc: Minimum latency of ZooKeeper requests
+    num_alive_connections:
+      name: Active Connections
+      desc: Number of active client connections
+    ephemerals_count:
+      name: Ephemeral Nodes Count
+      desc: Number of ephemeral ZNodes
+    znode_count:
+      name: Total ZNode Count
+      desc: Total number of ZNodes
+    watch_count:
+      name: Watch Count
+      desc: Number of active watches
+    open_file_descriptor_count:
+      desc: Number of open file descriptors
+      name: Open File Descriptors
+    fd_usage_percentage:
+      name: File Descriptor Usage
+      desc: Percentage of file descriptors used
+    packets_receive_rate:
+      name: Packet Receive Rate
+      desc: Packets received per second
+    packets_send_rate:
+      desc: Packets sent per second
+      name: Packet Send Rate
+    outstanding_requests:
+      name: Outstanding Requests
+      desc: Number of requests queued for processing
+    fsync_threshold_exceed_count:
+      desc: Number of times fsync operations exceeded threshold
+      name: Fsync Threshold Exceeds
   ActiveMQ-JMX:
     activemq_topic_producer_flow_control_value:
       desc: Indicates whether flow control is enabled for producers on the specified
@@ -2795,6 +2889,14 @@ monitor_object_metric:
         device and is an indicator for evaluating the health status of the storage
         system.
 monitor_object_metric_group:
+  MSSQL:
+    Base: Base
+    Disk: Disk
+    Memory: Memory
+    IO: IO
+    Wait: Wait
+    Connection: Connection
+    Scheduler: Scheduler
   Detection Device:
     Status: Status
     Packet Loss: Packet Loss
@@ -3018,11 +3120,12 @@ monitor_object_metric_group:
     Memory: Memory
     JMXselfMonitor: JMX Self-Monitoring Information
   Zookeeper:
-    Uptime: Uptime
-    Connection: Connection
-    Znode: Znode
-    Traffic: Traffic
+    Data: Data
     Performance: Performance
+    Connection: Connection
+    Count: Count
+    Packet: Packet
+    Other: Other
   Docker Container:
     IO: IO
     CPU: CPU
@@ -3034,7 +3137,7 @@ monitor_object_metric_group:
     Request: Request
     Net: Net
     Threads: Threads
-    JMX: 'JMX '
+    JMX: JMX
   Docker:
     Docker Count: Docker Count
   Jetty-JMX:
@@ -3254,6 +3357,9 @@ monitor_object_plugin:
     desc: Through the Telegraf collector, utilize Stargazer's capability to regularly
       gather key metrics from VMware vCenter, ESXi, virtual machines, and datastores.
     name: VMWare
+  MSSQL:
+    name: MSSQL(Telegraf)
+    desc: Through the Telegraf collector regularly gathers key MSSQL metrics, including disk usage, memory, I/O, wait times, and more.
 monitor_object:
   Apache: Apache
   Firewall: Firewall
@@ -3296,6 +3402,7 @@ monitor_object:
   Router: Router
   Loadbalance: Load Balance
   Mysql: MySQL
+  MSSQL: MSSQL
   Website: Website
 monitor_object_type:
   VMware: VMware(Telegraf)
