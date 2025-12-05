@@ -10,17 +10,8 @@ const useTomcatFormItems = () => {
     getCommonFormItems: (disabledFormItems: Record<string, boolean> = {}) => {
       return (
         <>
-          <Form.Item label={t('monitor.integrations.username')} required>
-            <Form.Item
-              noStyle
-              name="username"
-              rules={[
-                {
-                  required: true,
-                  message: t('common.required'),
-                },
-              ]}
-            >
+          <Form.Item label={t('monitor.integrations.username')}>
+            <Form.Item noStyle name="username">
               <Input
                 className="w-[300px] mr-[10px]"
                 disabled={disabledFormItems.username}
@@ -30,17 +21,8 @@ const useTomcatFormItems = () => {
               {t('monitor.integrations.usernameDes')}
             </span>
           </Form.Item>
-          <Form.Item label={t('monitor.integrations.password')} required>
-            <Form.Item
-              noStyle
-              name="ENV_PASSWORD"
-              rules={[
-                {
-                  required: true,
-                  message: t('common.required'),
-                },
-              ]}
-            >
+          <Form.Item label={t('monitor.integrations.password')}>
+            <Form.Item noStyle name="ENV_PASSWORD">
               <Password
                 className="w-[300px] mr-[10px]"
                 disabled={disabledFormItems.password}

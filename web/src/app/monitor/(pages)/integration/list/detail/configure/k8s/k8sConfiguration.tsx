@@ -30,7 +30,7 @@ const K8sConfiguration: React.FC = () => {
   const steps = [
     {
       title: t('monitor.integrations.k8s.accessConfig'),
-      component: <AccessConfig onNext={handleNext} />,
+      component: <AccessConfig onNext={handleNext} commandData={commandData} />,
     },
     {
       title: t('monitor.integrations.k8s.collectorInstall'),

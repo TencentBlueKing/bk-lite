@@ -11,19 +11,11 @@ import Icon from '@/components/icon';
 import CodeEditor from '@/app/monitor/components/codeEditor';
 import CommonIssuesDrawer from './commonIssuesDrawer';
 import useIntegrationApi from '@/app/monitor/api/integration';
-
-interface CollectorInstallProps {
-  onNext: () => void;
-  onPrev?: () => void;
-  commandData?: {
-    command?: string;
-    monitor_object_id?: number;
-    instance_id?: string;
-  };
-}
+import { CollectorInstallProps } from '@/app/monitor/types/integration';
 
 const CollectorInstall: React.FC<CollectorInstallProps> = ({
   onNext,
+  onPrev,
   commandData,
 }) => {
   const { t } = useTranslation();
@@ -156,9 +148,9 @@ const CollectorInstall: React.FC<CollectorInstallProps> = ({
           showIcon
         />
       )}
-      {/* <div className="pt-[20px]">
+      <div className="pt-[20px]">
         <Button onClick={onPrev}>← {t('common.pre')}</Button>
-      </div> */}
+      </div>
       <CommonIssuesDrawer ref={drawerRef} />
     </div>
   );
