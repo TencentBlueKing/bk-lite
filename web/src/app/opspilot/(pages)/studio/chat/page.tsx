@@ -21,8 +21,9 @@ const StudioChatPage: React.FC = () => {
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [functionList, setFunctionList] = useState<any[]>([]);
   const [functionLoading, setFunctionLoading] = useState(false);
+  const [chatLoading, setChatLoading] = useState(false);
 
-  const { fetchApplication, fetchWebChatSessions, fetchSessionMessages } = useStudioApi();
+  const { fetchApplication, fetchWebChatSessions, fetchSessionMessages, fetchSkillGuide } = useStudioApi();
 
   useEffect(() => {
     async function fetchAgents() {
@@ -49,31 +50,38 @@ const StudioChatPage: React.FC = () => {
     fetchAgents();
   }, []);
 
-  // 监听 agent 变化，获取历史会话
+  // 监听 agent 变化，获取历史会话和引导语
   useEffect(() => {
-    async function fetchSessions() {
+    async function fetchSessionsAndGuide() {
       if (!currentAgent?.bot_id) {
         setFunctionList([]);
+        setGuide('');
         return;
       }
       setFunctionLoading(true);
       try {
         const sessions = await fetchWebChatSessions(currentAgent.bot_id);
-        // sessions: [{ session_id, title }]
         setFunctionList(
           (sessions || []).map((item: any) => ({
             id: item.session_id,
             title: item.title,
-            icon: 'jiqiren3', // 可根据需要调整
+            icon: 'jiqiren3',
           }))
         );
+        if (currentAgent?.bot_id && currentAgent?.node_id) {
+          const guideRes = await fetchSkillGuide(currentAgent.bot_id, currentAgent.node_id);
+          setGuide(guideRes?.guide || '');
+        } else {
+          setGuide('');
+        }
       } catch {
         setFunctionList([]);
+        setGuide('');
       } finally {
         setFunctionLoading(false);
       }
     }
-    fetchSessions();
+    fetchSessionsAndGuide();
   }, [currentAgent]);
 
   // 监听 functionList 变化，自动选中第一个历史会话并展示其消息
@@ -96,9 +104,11 @@ const StudioChatPage: React.FC = () => {
   }));
 
   const [initialMessages, setInitialMessages] = useState<any[]>([]);
+  const [guide, setGuide] = useState<string>('');
 
-  // 点击历史会话，获取消息列表
+  // 点击历史会话只获取消息，不再请求引导语
   const handleSelectSession = async (id: string) => {
+    setChatLoading(true);
     setSelectedItem(id);
     try {
       const data = await fetchSessionMessages(id);
@@ -111,10 +121,15 @@ const StudioChatPage: React.FC = () => {
       setInitialMessages(messages);
     } catch {
       setInitialMessages([]);
+    } finally {
+      setTimeout(() => {
+        setChatLoading(false);
+      }, 400);
     }
   };
 
   const handleNewChat = () => {
+    setChatLoading(true);
     setChatKey(k => k + 1);
     const newId = `session_${Date.now()}`;
     setFunctionList(list => [
@@ -127,6 +142,10 @@ const StudioChatPage: React.FC = () => {
     ]);
     setSessionId(newId);
     setSelectedItem(newId);
+    setInitialMessages([]);
+    setTimeout(() => {
+      setChatLoading(false);
+    }, 400); // 体验优化，防止闪烁，可根据实际调整
   };
 
   const handleSendMessage = async (message: string) => {
@@ -136,7 +155,7 @@ const StudioChatPage: React.FC = () => {
       const baseUrl = typeof window !== 'undefined' ? window.location.origin : '';
       const url = `${baseUrl}/api/proxy/opspilot/bot_mgmt/execute_chat_flow/${bot_id}/${node_id}/`;
       const payload = {
-        user_message: message,
+        message: message,
         session_id: sessionId,
       };
       return {
@@ -246,15 +265,47 @@ const StudioChatPage: React.FC = () => {
 
       {/* 右侧对话区域 */}
       <div className="flex-1 bg-gray-50 min-w-0 h-full">
-        <CustomChatSSE
-          key={chatKey}
-          handleSendMessage={handleSendMessage}
-          guide={''}
-          useAGUIProtocol={true}
-          showHeader={false}
-          requirePermission={false}
-          initialMessages={initialMessages}
-        />
+        {chatLoading ? (
+          <div className="w-full h-full flex flex-col pt-8">
+            <div className="flex gap-4 items-end mb-6 w-full px-8">
+              <div className="rounded-full bg-blue-100 w-12 h-12 flex items-center justify-center">
+                <Icon type="jiqiren3" className="text-2xl text-blue-500" />
+              </div>
+              <div className="flex-1">
+                <div className="h-4 bg-gray-200 rounded w-2/3 mb-2 animate-pulse" />
+                <div className="h-4 bg-gray-200 rounded w-1/2 animate-pulse" />
+              </div>
+            </div>
+            <div className="flex gap-4 items-end justify-end mb-6 w-full px-8">
+              <div className="flex-1 text-right">
+                <div className="h-4 bg-gray-200 rounded w-1/2 mb-2 animate-pulse inline-block" />
+                <div className="h-4 bg-gray-200 rounded w-2/3 animate-pulse inline-block" />
+              </div>
+              <div className="rounded-full bg-gray-100 w-12 h-12 flex items-center justify-center">
+                <Icon type="yonghu" className="text-2xl text-gray-500" />
+              </div>
+            </div>
+            <div className="flex gap-4 items-end mb-6 w-full px-8">
+              <div className="rounded-full bg-blue-100 w-12 h-12 flex items-center justify-center">
+                <Icon type="jiqiren3" className="text-2xl text-blue-500" />
+              </div>
+              <div className="flex-1">
+                <div className="h-4 bg-gray-200 rounded w-1/2 mb-2 animate-pulse" />
+                <div className="h-4 bg-gray-200 rounded w-1/3 animate-pulse" />
+              </div>
+            </div>
+          </div>
+        ) : (
+          <CustomChatSSE
+            key={chatKey}
+            handleSendMessage={handleSendMessage}
+            guide={guide}
+            useAGUIProtocol={true}
+            showHeader={false}
+            requirePermission={false}
+            initialMessages={initialMessages}
+          />
+        )}
       </div>
     </div>
   );

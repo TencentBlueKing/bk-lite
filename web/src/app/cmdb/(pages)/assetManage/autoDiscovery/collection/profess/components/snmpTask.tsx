@@ -89,16 +89,11 @@ const SNMPTask: React.FC<SNMPTaskFormProps> = ({
         driver_type: driverType,
         task_type: modelItem.task_type,
         accessPointId: values.access_point?.[0]?.id,
-        ...(collectType === 'ip' ? {
-          ip_range: ipRange.join('-'),
-          instances: [],
-          params: {
-            organization: [values.organization?.[0]],
-          },
-        } : { 
-          ip_range: '',
-          instances: instance || [] 
-        }),
+        ip_range: collectType === 'ip' ? ipRange.join('-') : '',
+        instances: collectType === 'ip' ? [] : instance || [],
+        params: {
+          organization: values.organization || [],
+        },
       };
     },
   });
