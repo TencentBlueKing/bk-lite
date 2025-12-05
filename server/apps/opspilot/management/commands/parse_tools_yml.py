@@ -51,6 +51,7 @@ class Command(BaseCommand):
             toolkit_description = toolkit.get("description", "")
             toolkit_tools = toolkit.get("tools", [])
             constructor_parameters = toolkit.get("constructor_parameters", [])
+            constructor = toolkit.get("constructor", "")  # 获取 constructor 路径
 
             # 只使用构造参数，不包含工具函数的参数
             all_params = {}
@@ -68,6 +69,7 @@ class Command(BaseCommand):
                 "id": toolkit_id,
                 "name": toolkit_name,
                 "description": toolkit_description,
+                "constructor": constructor,  # 保留 constructor
                 "tools": toolkit_tools,
                 "params": all_params,  # 只包含构造参数
                 "constructor_parameters": constructor_parameters,  # 保留构造参数信息
@@ -92,6 +94,7 @@ class Command(BaseCommand):
             toolkit_description = toolkit.get("description", "")
             tools = toolkit.get("tools", [])
             params = toolkit.get("params", {})
+            constructor = toolkit.get("constructor", "")
 
             # 转换 params 为目标格式
             kwargs = []
@@ -122,6 +125,7 @@ class Command(BaseCommand):
 
             # 构造 params 字段
             params_data = {
+                "url": f"langchain:{toolkit_id}",  # 内置协议格式
                 "name": toolkit_name,
                 "kwargs": kwargs,
             }
