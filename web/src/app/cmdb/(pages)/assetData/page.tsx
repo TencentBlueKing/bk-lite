@@ -26,6 +26,7 @@ import { useSearchParams } from 'next/navigation';
 import assetDataStyle from './index.module.scss';
 import FieldModal from './list/fieldModal';
 import { useTranslation } from '@/utils/i18n';
+import { useUserInfoContext } from '@/context/userInfo';
 const { confirm } = Modal;
 import { deepClone, getAssetColumns } from '@/app/cmdb/utils/common';
 import {
@@ -75,6 +76,7 @@ interface FieldConfig {
 
 const AssetDataContent = () => {
   const { t } = useTranslation();
+  const { selectedGroup } = useUserInfoContext();
   const { getModelAssociationTypes, getModelAttrList } = useModelApi();
   const { getClassificationList } = useClassificationApi();
   const {
@@ -750,6 +752,9 @@ const AssetDataContent = () => {
                 placeholder={t('common.selectTip')}
                 value={organization}
                 onChange={selectOrganization}
+                filterByRootId={
+                  selectedGroup?.id ? Number(selectedGroup.id) : undefined
+                }
               />
               <SearchFilter
                 key={modelId}
