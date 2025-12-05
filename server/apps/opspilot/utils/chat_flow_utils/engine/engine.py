@@ -1,6 +1,7 @@
 """
 聊天流程执行引擎 - ChatFlowEngine
 """
+
 import json
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -64,8 +65,8 @@ class ChatFlowEngine:
         # 提取执行上下文
         user_id = input_data.get("user_id", "")
         input_message = input_data.get("last_message", "") or input_data.get("message", "")
+        session_id = input_data.get("session_id", "")
         entry_type = input_data.get("entry_type", "openai")
-
         logger.info(f"[SSE-Engine] 开始执行 - flow_id: {self.instance.id}, user_id: {user_id}, entry_type: {entry_type}, 节点数: {len(self.nodes)}")
 
         # 初始化变量管理器
@@ -73,7 +74,7 @@ class ChatFlowEngine:
 
         # 记录用户输入对话历史
         node_id = input_data.get("node_id", "")
-        self._record_conversation_history(user_id, input_message, "user", entry_type, node_id)
+        self._record_conversation_history(user_id, input_message, "user", entry_type, node_id, session_id)
 
         # 验证流程
         validation_errors = self.validate_flow()
@@ -85,7 +86,7 @@ class ChatFlowEngine:
         last_node = self.nodes[-1] if self.nodes else None
 
         # 判断协议类型
-        is_agui_protocol = start_node and start_node.get("type") == "agui"
+        is_agui_protocol = start_node and start_node.get("type") in ["agui", "embedded_chat", "mobile", "web_chat"]
         is_openai_protocol = start_node and start_node.get("type") == "openai"
 
         # 检查是否需要流式执行
@@ -213,7 +214,7 @@ class ChatFlowEngine:
                     self._accumulate_output(chunk_str, accumulated_output, is_agui_protocol)
 
                 # 记录完整输出
-                self._record_bot_output(user_id, accumulated_output, entry_type, node_id)
+                self._record_bot_output(user_id, accumulated_output, entry_type, node_id, final_input_data["session_id"])
 
             except Exception as e:
                 logger.error(f"[SSE-Engine] 流式执行过程中出错: {str(e)}")
@@ -243,7 +244,7 @@ class ChatFlowEngine:
                 except json.JSONDecodeError:
                     accumulated_output.append(data_str)
 
-    def _record_bot_output(self, user_id: str, accumulated_output: List[str], entry_type: str, node_id: str = ""):
+    def _record_bot_output(self, user_id: str, accumulated_output: List[str], entry_type: str, node_id: str = "", session_id: str = ""):
         """记录机器人输出对话历史"""
         if user_id and accumulated_output and entry_type != "celery":
             try:
@@ -256,6 +257,7 @@ class ChatFlowEngine:
                     conversation_content=full_output,
                     conversation_time=timezone.now(),
                     entry_type=entry_type,
+                    session_id=session_id,
                 )
             except Exception as e:
                 logger.error(f"[SSE] 记录系统输出对话历史失败: {str(e)}")
@@ -375,6 +377,7 @@ class ChatFlowEngine:
                 output_data=output_data,
                 last_output=last_output,
                 execute_type=execute_type,
+                session_id=input_data.get("session_id", ""),
             )
 
             logger.info(f"工作流执行结果已记录: flow_id={self.instance.id}, status={status}")
@@ -459,7 +462,8 @@ class ChatFlowEngine:
             # 确定入口类型并记录用户输入
             entry_type = self._determine_entry_type(start_node)
             node_id = input_data.get("node_id", "")
-            self._record_conversation_history(user_id, input_message, "user", entry_type, node_id)
+            session_id = input_data.get("session_id", "")
+            self._record_conversation_history(user_id, input_message, "user", entry_type, node_id, session_id)
 
             # 执行节点链
             self._execute_node_chain(chosen_start_node, input_data, timeout - (time.time() - start_time))
@@ -475,7 +479,7 @@ class ChatFlowEngine:
             logger.info("========================")
 
             # 记录系统输出
-            self._record_conversation_history(user_id, final_last_message, "bot", entry_type, node_id)
+            self._record_conversation_history(user_id, final_last_message, "bot", entry_type, node_id, session_id)
             self._record_execution_result(input_data, final_last_message, True, start_node.get("type", ""))
 
             return final_last_message
@@ -502,7 +506,7 @@ class ChatFlowEngine:
 
             return error_result
 
-    def _record_conversation_history(self, user_id: str, message: Any, role: str, entry_type: str, node_id: str = ""):
+    def _record_conversation_history(self, user_id: str, message: Any, role: str, entry_type: str, node_id: str = "", session_id: str = ""):
         """记录对话历史
 
         Args:
@@ -532,6 +536,7 @@ class ChatFlowEngine:
                 conversation_content=content,
                 conversation_time=timezone.now(),
                 entry_type=entry_type,
+                session_id=session_id,
             )
         except Exception as e:
             logger.error(f"记录{role}对话历史失败: {str(e)}")
