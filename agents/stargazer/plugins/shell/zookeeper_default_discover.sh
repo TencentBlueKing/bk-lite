@@ -53,7 +53,7 @@ GetZookeeperVersion(){
         else
             lib_path="$2/../lib"
         fi
-        version=$(ls $lib_path | grep zookeeper | grep "\.jar" | awk -F '-' '{print $NF}' | awk -F '.jar' '{print $1}')
+        version=$(ls $lib_path | grep zookeeper | grep "\.jar" | awk -F '-' '{print $NF}' | awk -F '.jar' '{print $1}' | head -n 1)
         install_path=$2
     fi
 }
@@ -64,7 +64,7 @@ Get_Zookeeper_Config(){
     tick_time=$(grep -oPm1 "(?<=tickTime=)[^ ]+" $cfg_path)
     init_limit=$(grep -oPm1 "(?<=initLimit=)[^ ]+" $cfg_path)
     sync_limit=$(grep -oPm1 "(?<=syncLimit=)[^ ]+" $cfg_path)
-    cluster_servers=$(grep -oPm1 "(?<=server.[0-9]+=[^ ]+)" $cfg_path | tr '\n' ',')
+    cluster_servers=$(grep -E "^server\.[0-9]+=" $cfg_path | cut -d'=' -f2 | tr '\n' ',' | sed 's/,$//')
 }
 
 # 新增函数：解析 Zookeeper 配置文件中的 dataDir
