@@ -17,7 +17,7 @@ from apps.cmdb.constants.constants import COLLECT_OBJ_TREE, CollectRunStatusType
 from apps.cmdb.filters.collect_filters import CollectModelFilter, OidModelFilter
 from apps.cmdb.models.collect_model import CollectModels, OidMapping
 from apps.cmdb.serializers.collect_serializer import CollectModelSerializer, CollectModelLIstSerializer, \
-    OidModelSerializer
+    OidModelSerializer, CollectModelIdStatusSerializer
 from apps.cmdb.services.collect_service import CollectModelService
 import os
 from django.conf import settings
@@ -36,7 +36,25 @@ class CollectModelViewSet(ModelViewSet):
     def tree(self, request, *args, **kwargs):
         data = COLLECT_OBJ_TREE
         return WebUtils.response_success(data)
-    
+
+    @HasPermission("auto_collection-View")
+    @action(methods=["get"], detail=False, url_path="task_status")
+    def task_status(self, request, *args, **kwargs):
+        queryset = self.filter_queryset(self.get_queryset())
+        queryset = queryset.only("model_id", "exec_status")
+        serializer = CollectModelIdStatusSerializer(queryset, many=True, context={"request": request})
+        data = {}
+        for model_data in serializer.data:
+            if not data.get(model_data['model_id'], False):
+                data[model_data['model_id']] = {'success': 0, 'failed': 0, 'running': 0}
+            if model_data['exec_status'] == CollectRunStatusType.SUCCESS:
+                data[model_data['model_id']]['success'] += 1
+            elif model_data['exec_status'] == CollectRunStatusType.ERROR:
+                data[model_data['model_id']]['failed'] += 1
+            elif model_data['exec_status'] == CollectRunStatusType.RUNNING:
+                data[model_data['model_id']]['running'] += 1
+        return WebUtils.response_success(data)
+
     @HasPermission("auto_collection-View")
     @action(methods=["get"], detail=False, url_path="collect_model_doc")
     def modeldoc(self, request, *args, **kwargs):

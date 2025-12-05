@@ -23,6 +23,15 @@ import {
   NETWORK_DEVICE_OPTIONS,
   createTaskValidationRules,
 } from '@/app/cmdb/constants/professCollection';
+
+const IP_SELECTION_NODE_IDS = [
+  'network_topo',
+  'network',
+  'databases',
+  'host_manage',
+  'middleware',
+];
+
 import {
   CaretRightOutlined,
   QuestionCircleOutlined,
@@ -140,6 +149,7 @@ const BaseTaskForm = forwardRef<BaseTaskRef, BaseTaskFormProps>(
       'databases',
       'cloud',
       'host_manage',
+      'middleware',
     ].includes(nodeId as string);
 
     const instColumns = [
@@ -448,6 +458,33 @@ const BaseTaskForm = forwardRef<BaseTaskRef, BaseTaskFormProps>(
               </Radio.Group>
             </Form.Item>
 
+            {/* 组织 */}
+            <Form.Item
+              label={t('organization')}
+              name="organization"
+              rules={[
+                {
+                  required: true,
+                  message: t('common.inputMsg') + t('organization'),
+                },
+              ]}
+            >
+              <GroupTreeSelector
+                placeholder={t('common.selectTip')}
+                value={ipRangeOrg}
+                onChange={(value) => {
+                  const orgArray = Array.isArray(value)
+                    ? value
+                    : value
+                      ? [value]
+                      : [];
+                  setIpRangeOrg(orgArray);
+                  form.setFieldValue('organization', orgArray);
+                }}
+                multiple={true}
+              />
+            </Form.Item>
+
             {/* 实例选择 */}
             {['vmware', 'k8s', 'cloud'].includes(nodeId as string) && (
               <Form.Item label={instPlaceholder} required>
@@ -476,12 +513,9 @@ const BaseTaskForm = forwardRef<BaseTaskRef, BaseTaskFormProps>(
             )}
 
             {/* ip选择 */}
-            {nodeId &&
-              ['network_topo', 'network', 'databases', 'host_manage'].includes(
-                nodeId
-              ) && (
+            {nodeId && IP_SELECTION_NODE_IDS.includes(nodeId) && (
               <>
-                {(
+                {
                   <Radio.Group
                     value={collectionType}
                     className="ml-8 mb-6"
@@ -490,7 +524,7 @@ const BaseTaskForm = forwardRef<BaseTaskRef, BaseTaskFormProps>(
                     <Radio value="ip">{t('Collection.chooseIp')}</Radio>
                     <Radio value="asset">{t('Collection.chooseAsset')}</Radio>
                   </Radio.Group>
-                )}
+                }
 
                 {collectionType === 'ip' ? (
                   <>
@@ -502,41 +536,30 @@ const BaseTaskForm = forwardRef<BaseTaskRef, BaseTaskFormProps>(
                       rules={[
                         {
                           required: true,
-                          message:
-                              t('common.inputMsg') + t('Collection.ipRange'),
+                          validator: (_, value) => {
+                            const ipReg =
+                              /^((2[0-4]\d|25[0-5]|[01]?\d\d?)\.){3}(2[0-4]\d|25[0-5]|[01]?\d\d?)$/;
+                            if (
+                              !value?.length ||
+                              !ipReg.test(value[0]) ||
+                              !ipReg.test(value[1])
+                            ) {
+                              return Promise.reject(
+                                new Error(
+                                  t('common.inputMsg') + t('Collection.ipRange')
+                                )
+                              );
+                            }
+                            return Promise.resolve();
+                          },
                         },
                       ]}
                     >
                       <IpRangeInput value={ipRange} onChange={onIpChange} />
                     </Form.Item>
-                    <Form.Item
-                      label={t('organization')}
-                      name="organization"
-                      rules={[
-                        {
-                          required: true,
-                          message: t('common.inputMsg') + t('organization'),
-                        },
-                      ]}
-                    >
-                      <GroupTreeSelector
-                        placeholder={t('common.selectTip')}
-                        value={ipRangeOrg}
-                        onChange={(value) => {
-                          const orgArray = Array.isArray(value)
-                            ? value
-                            : value
-                              ? [value]
-                              : [];
-                          setIpRangeOrg(orgArray);
-                          form.setFieldValue('organization', orgArray);
-                        }}
-                        multiple={false}
-                      />
-                    </Form.Item>
                   </>
                 ) : (
-                /* 选择资产 */
+                  /* 选择资产 */
                   <Form.Item
                     name="assetInst"
                     label={instPlaceholder}

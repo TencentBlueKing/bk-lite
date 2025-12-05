@@ -7,6 +7,7 @@ import { useTranslation } from '@/utils/i18n';
 import Link from 'next/link';
 import { message } from 'antd';
 import type { UploadProps } from 'antd';
+import Icon from '@/components/icon';
 
 const { Option } = Select;
 const { TextArea } = Input;
@@ -290,6 +291,37 @@ export const NodeConfigForm: React.FC<any> = ({
             <Input placeholder={t('chatflow.nodeConfig.enterAppName')} />
           </Form.Item>
           <Form.Item 
+            name="appIcon" 
+            label={t('chatflow.nodeConfig.appIcon')} 
+            rules={[{ 
+              required: true, 
+              message: t('chatflow.nodeConfig.pleaseSelectAppIcon')
+            }]}
+          >
+            <Form.Item noStyle shouldUpdate={(prev, curr) => prev.appIcon !== curr.appIcon}>
+              {() => (
+                <div className="flex gap-3">
+                  {['duihuazhinengti', 'a-zhinengti', 'zhinengtitubiao', 'zhinengti1', 'zhinengti2'].map(iconType => (
+                    <div
+                      key={iconType}
+                      onClick={() => {
+                        form.setFieldValue('appIcon', iconType);
+                        form.validateFields(['appIcon']);
+                      }}
+                      className={`w-10 h-10 flex items-center justify-center rounded cursor-pointer transition-all ${
+                        form.getFieldValue('appIcon') === iconType 
+                          ? 'border-2 border-blue-500 bg-blue-50/50' 
+                          : 'border border-gray-200 hover:border-gray-300'
+                      }`}
+                    >
+                      <Icon type={iconType} className="text-2xl" />
+                    </div>
+                  ))}
+                </div>
+              )}
+            </Form.Item>
+          </Form.Item>
+          <Form.Item 
             name="appDescription" 
             label={t('chatflow.nodeConfig.appDescription')} 
             rules={[{ 
@@ -333,12 +365,12 @@ export const NodeConfigForm: React.FC<any> = ({
               mode="multiple" 
               placeholder={t('chatflow.nodeConfig.selectAppTags')}
               options={[
-                { label: t('chatflow.nodeConfig.appTagWork'), value: 'work' },
-                { label: t('chatflow.nodeConfig.appTagBusiness'), value: 'business' },
-                { label: t('chatflow.nodeConfig.appTagEntertainment'), value: 'entertainment' },
-                { label: t('chatflow.nodeConfig.appTagEducation'), value: 'education' },
-                { label: t('chatflow.nodeConfig.appTagProductivity'), value: 'productivity' },
-                { label: t('chatflow.nodeConfig.appTagSocial'), value: 'social' },
+                { label: t('chatflow.nodeConfig.appTagRoutineOps'), value: 'routine_ops' },
+                { label: t('chatflow.nodeConfig.appTagMonitorAlarm'), value: 'monitor_alarm' },
+                { label: t('chatflow.nodeConfig.appTagAutomation'), value: 'automation' },
+                { label: t('chatflow.nodeConfig.appTagSecurityAudit'), value: 'security_audit' },
+                { label: t('chatflow.nodeConfig.appTagPerformanceAnalysis'), value: 'performance_analysis' },
+                { label: t('chatflow.nodeConfig.appTagOpsPlanning'), value: 'ops_planning' },
               ]}
             />
           </Form.Item>

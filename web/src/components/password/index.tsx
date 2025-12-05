@@ -10,6 +10,7 @@ interface PasswordProps {
   placeholder?: string;
   value?: string;
   allowCopy?: boolean; // 是否显示复制图标
+  clickToEdit?: boolean; // 是否需要点击编辑图标才能编辑,默认true
   disabled?: boolean;
   onChange?: (value: string) => void;
   onCopy?: (value: string) => void;
@@ -22,6 +23,7 @@ const Password: React.FC<PasswordProps> = ({
   placeholder = '',
   value = '',
   allowCopy = false,
+  clickToEdit = true,
   disabled = false,
   onChange,
   onCopy,
@@ -63,19 +65,21 @@ const Password: React.FC<PasswordProps> = ({
       style={style}
       type="password"
       value={password}
-      disabled={!isEditing}
+      disabled={clickToEdit ? !isEditing : disabled}
       placeholder={placeholder || t('common.inputPassword')}
       suffix={
         <div className="flex items-center">
-          <Tooltip title={t('common.reset')}>
-            <Button
-              size="small"
-              type="link"
-              icon={<EditOutlined />}
-              disabled={disabled}
-              onClick={handleEdit}
-            />
-          </Tooltip>
+          {clickToEdit && (
+            <Tooltip title={t('common.reset')}>
+              <Button
+                size="small"
+                type="link"
+                icon={<EditOutlined />}
+                disabled={disabled}
+                onClick={handleEdit}
+              />
+            </Tooltip>
+          )}
           {allowCopy && (
             <Tooltip title={t('common.copy')}>
               <Button
