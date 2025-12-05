@@ -80,7 +80,7 @@ const CollectorInstall: React.FC<CollectorInstallProps> = ({
       {/* 验证接入状态 */}
       <div className="mb-[10px]">
         <div className="flex items-center mb-3">
-          <Icon type="renzhengyuanguanli" className="text-lg mr-2" />
+          <Icon type="renzhengyuanguanli" className="text-2xl mr-2" />
           <h3 className="text-base font-semibold">
             {t('monitor.integrations.k8s.verifyStatus')}
           </h3>
