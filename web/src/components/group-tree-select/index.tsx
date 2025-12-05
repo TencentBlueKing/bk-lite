@@ -18,6 +18,7 @@ const GroupTreeSelect: React.FC<GroupTreeSelectProps> = ({
   mode = 'ownership',
   height = 300,
   showSearch = false,
+  filterByRootId,
 }) => {
   const { groupTree } = useUserInfoContext();
   const [internalValue, setInternalValue] = useState<number[]>([]);
@@ -27,10 +28,31 @@ const GroupTreeSelect: React.FC<GroupTreeSelectProps> = ({
     return convertGroupTreeToTreeSelectData(groupTree);
   }, [groupTree]);
 
+  // 根据 filterByRootId 过滤树数据
+  const filteredTreeData = useMemo(() => {
+    if (!filterByRootId) return treeSelectData;
+
+    const findSubTree = (nodes: any[], targetId: number): any | null => {
+      for (const node of nodes) {
+        if (node.value === targetId) {
+          return node;
+        }
+        if (node.children) {
+          const found = findSubTree(node.children, targetId);
+          if (found) return found;
+        }
+      }
+      return null;
+    };
+
+    const targetNode = findSubTree(treeSelectData, filterByRootId);
+    return targetNode ? [targetNode] : [];
+  }, [treeSelectData, filterByRootId]);
+
   const processedTreeData = useMemo(() => {
     const strategy = createStrategy(mode);
-    return strategy.transformTreeData(treeSelectData);
-  }, [treeSelectData, mode]);
+    return strategy.transformTreeData(filteredTreeData);
+  }, [filteredTreeData, mode]);
 
   const cascadeData = useMemo((): CascadeNode[] => {
     const convertToCascadeNode = (nodes: any[]): CascadeNode[] => {
