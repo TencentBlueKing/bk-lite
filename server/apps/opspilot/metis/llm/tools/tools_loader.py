@@ -205,3 +205,100 @@ class ToolsLoader:
         """
         logger.info("开始加载所有工具类别")
         return ToolsLoader._discover_tools()
+
+    @staticmethod
+    def get_all_tools_metadata():
+        """
+        动态发现所有工具函数，返回工具元数据列表，用于 OpsPilot Agent 配置
+
+        返回格式适配原 YAML 配置，包含工具名称、构造函数、描述等信息。
+        对于包含多个工具的工具集(如 kubernetes)，会列出所有子工具。
+
+        Returns:
+            list: 工具元数据列表，格式为:
+                [
+                    {
+                        'name': 'tool_category_name',              # 工具或工具集名称
+                        'constructor': 'module.path',              # 模块路径
+                        'constructor_description': 'module desc',  # 构造函数(模块)描述
+                        'description': 'tool description',         # 工具描述
+                        'parameters': {...},                       # 工具参数Schema(可选)
+                        'tools': [                                 # 工具集包含的子工具(可选)
+                            {
+                                'name': 'sub_tool_name',
+                                'description': 'sub tool desc',
+                                'parameters': {...}                # 子工具参数Schema
+                            }
+                        ]
+                    }
+                ]
+        """
+        logger.info("开始提取所有工具的元数据")
+        metadata_list = []
+
+        for tool_category, (module, enable_extra_prompt) in ToolsLoader.TOOL_MODULES.items():
+            tool_functions = ToolsLoader._extract_tools_from_module(
+                module, enable_extra_prompt)
+
+            if not tool_functions:
+                continue
+
+            # 获取模块路径
+            module_path = module.__name__
+
+            # 提取工具集描述(从模块的 docstring)
+            category_description = module.__doc__.strip(
+            ) if module.__doc__ else f"{tool_category} 工具集"
+
+            # 提取构造参数(如果模块定义了 CONSTRUCTOR_PARAMS)
+            constructor_params = getattr(module, 'CONSTRUCTOR_PARAMS', None)
+
+            # 如果只有一个工具，作为单一工具处理
+            if len(tool_functions) == 1:
+                tool_func = tool_functions[0]['func']
+                tool_metadata = {
+                    'name': tool_category,
+                    'constructor': module_path,
+                    'constructor_description': category_description,
+                    'description': tool_func.description or category_description,
+                }
+                # 添加构造参数信息
+                if constructor_params:
+                    tool_metadata['constructor_parameters'] = constructor_params
+                # 添加工具参数信息
+                if hasattr(tool_func, 'args_schema') and tool_func.args_schema:
+                    tool_metadata['parameters'] = tool_func.args_schema.schema()
+
+                metadata_list.append(tool_metadata)
+            else:
+                # 多个工具，作为工具集处理
+                sub_tools = []
+                for tool_info in tool_functions:
+                    tool_func = tool_info['func']
+                    sub_tool_info = {
+                        'name': tool_func.name,
+                        'description': tool_func.description or ''
+                    }
+                    # 添加子工具参数信息
+                    if hasattr(tool_func, 'args_schema') and tool_func.args_schema:
+                        sub_tool_info['parameters'] = tool_func.args_schema.schema()
+
+                    sub_tools.append(sub_tool_info)
+
+                tool_set_metadata = {
+                    'name': tool_category,
+                    'constructor': module_path,
+                    'constructor_description': category_description,
+                    'description': category_description,
+                    'tools': sub_tools
+                }
+                # 添加构造参数信息
+                if constructor_params:
+                    tool_set_metadata['constructor_parameters'] = constructor_params
+
+                metadata_list.append(tool_set_metadata)
+
+            logger.info(f"提取工具类别 '{tool_category}': {len(tool_functions)} 个工具")
+
+        logger.info(f"总共提取 {len(metadata_list)} 个工具/工具集的元数据")
+        return metadata_list
