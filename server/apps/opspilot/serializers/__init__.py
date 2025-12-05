@@ -1,5 +1,6 @@
 from apps.opspilot.serializers.bot_serializer import BotSerializer  # noqa
 from apps.opspilot.serializers.channel_serializer import ChannelSerializer  # noqa
+from apps.opspilot.serializers.chat_application_serializer import ChatApplicationSerializer  # noqa
 from apps.opspilot.serializers.file_knowledge_serializers import FileKnowledgeSerializer  # noqa
 from apps.opspilot.serializers.history_serializer import HistorySerializer  # noqa
 from apps.opspilot.serializers.knowledge_base_serializers import KnowledgeBaseSerializer  # noqa
