@@ -79,18 +79,6 @@ const ToolListPage: React.FC = () => {
             <div className="text-xs text-[var(--text-color-3)] leading-relaxed line-clamp-2">
               {tool.description || t('common.noData')}
             </div>
-            {tool.parameters && Object.keys(tool.parameters).length > 0 && (
-              <div className="mt-2 flex flex-wrap gap-1">
-                {Object.keys(tool.parameters).map((param: string) => (
-                  <span 
-                    key={param}
-                    className="inline-block text-xs bg-[var(--color-bg)] text-blue-600 px-2 py-0.5 rounded border border-blue-200"
-                  >
-                    {param}
-                  </span>
-                ))}
-              </div>
-            )}
           </div>
         </div>
       </div>
@@ -140,7 +128,7 @@ const ToolListPage: React.FC = () => {
       ),
       rules: [{ required: true, message: `${t('common.inputMsg')}${t('tool.mcpUrl')}` }],
     },
-    {
+    ...(!isBuiltIn ? [{
       name: 'variables',
       type: 'custom',
       label: t('tool.variables'),
@@ -153,7 +141,7 @@ const ToolListPage: React.FC = () => {
           disabled={isBuiltIn}
         />
       ),
-    },
+    }] : []),
     {
       name: 'team',
       type: 'custom',
@@ -357,8 +345,9 @@ const ToolListPage: React.FC = () => {
         onOk={handleOk}
         onCancel={handleCancel}
         width={1200}
+        bodyStyle={{ height: '600px', overflow: 'hidden' }}
       >
-        <div className="flex gap-4 h-[600px]">
+        <div className="flex gap-4 h-full">
           <div className="flex-1 overflow-y-auto pr-2">
             <DynamicForm
               form={form}
