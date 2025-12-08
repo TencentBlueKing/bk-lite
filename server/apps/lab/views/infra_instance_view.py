@@ -5,6 +5,7 @@
 
 import logging
 from rest_framework import viewsets
+from config.drf.viewsets import ModelViewSet
 from django_filters.rest_framework import DjangoFilterBackend
 from rest_framework.filters import SearchFilter, OrderingFilter
 
@@ -14,7 +15,7 @@ from apps.lab.serializers import InfraInstanceSerializer
 logger = logging.getLogger(__name__)
 
 
-class InfraInstanceViewSet(viewsets.ModelViewSet):
+class InfraInstanceViewSet(ModelViewSet):
     """
     基础设施实例视图集 - 简化版本
     

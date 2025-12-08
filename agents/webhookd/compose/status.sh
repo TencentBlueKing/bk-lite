@@ -23,8 +23,22 @@ get_single_status() {
     local result=$?
     
     if [ $result -eq 0 ]; then
-        # 将容器数组包装成状态对象
-        echo "{\"id\":\"$id\",\"status\":\"success\",\"containers\":$containers}"
+        # docker-compose ps --format json 返回多行 JSON，需要转换为数组
+        # 移除空白字符后检查是否为空
+        local trimmed=$(echo "$containers" | tr -d '[:space:]')
+        if [ -z "$trimmed" ]; then
+            echo "{\"id\":\"$id\",\"status\":\"success\",\"containers\":[]}"
+        else
+            # 过滤掉冗长的字段(如 Labels),只保留关键信息,避免 webhookd 输出截断
+            local containers_array=$(echo "$containers" | jq -s '[.[] | {Name, State, Status, Service, Image, Ports, Size, ID: .ID[0:12]}]' 2>/dev/null)
+            # 检查 jq 是否成功执行
+            if [ $? -eq 0 ] && [ -n "$containers_array" ]; then
+                echo "{\"id\":\"$id\",\"status\":\"success\",\"containers\":$containers_array}"
+            else
+                # jq 失败时返回空数组
+                echo "{\"id\":\"$id\",\"status\":\"success\",\"containers\":[]}"
+            fi
+        fi
     else
         local error=$(echo "$containers" | sed 's/\\/\\\\/g' | sed 's/"/\\"/g' | tr '\n' ' ')
         echo "{\"id\":\"$id\",\"status\":\"error\",\"message\":\"Failed to get status\",\"error\":\"$error\"}"
@@ -74,7 +88,7 @@ fi
 if [ -n "$ID" ]; then
     COMPOSE_PATH="$COMPOSE_DIR/$ID"
     if [ ! -d "$COMPOSE_PATH" ]; then
-        json_error "$ID" "Compose directory not found"
+        echo "{\"id\":\"$ID\",\"status\":\"error\",\"message\":\"Compose directory not found\"}"
         exit 1
     fi
     
@@ -83,9 +97,25 @@ if [ -n "$ID" ]; then
     STATUS_RESULT=$?
     
     if [ $STATUS_RESULT -eq 0 ]; then
-        json_status "$ID" "$STATUS_OUTPUT"
+        # docker-compose ps --format json 返回多行 JSON，需要转换为数组
+        # 移除空白字符后检查是否为空
+        TRIMMED=$(echo "$STATUS_OUTPUT" | tr -d '[:space:]')
+        if [ -z "$TRIMMED" ]; then
+            echo "{\"id\":\"$ID\",\"status\":\"success\",\"containers\":[]}"
+        else
+            # 过滤掉冗长的字段(如 Labels),只保留关键信息,避免 webhookd 输出截断
+            CONTAINERS_ARRAY=$(echo "$STATUS_OUTPUT" | jq -s '[.[] | {Name, State, Status, Service, Image, Ports, Size, ID: .ID[0:12]}]' 2>/dev/null)
+            # 检查 jq 是否成功执行
+            if [ $? -eq 0 ] && [ -n "$CONTAINERS_ARRAY" ]; then
+                echo "{\"id\":\"$ID\",\"status\":\"success\",\"containers\":$CONTAINERS_ARRAY}"
+            else
+                # jq 失败时返回空数组
+                echo "{\"id\":\"$ID\",\"status\":\"success\",\"containers\":[]}"
+            fi
+        fi
     else
-        json_error "$ID" "Failed to get status" "$STATUS_OUTPUT"
+        ERROR=$(echo "$STATUS_OUTPUT" | sed 's/\\/\\\\/g' | sed 's/"/\\"/g' | tr '\n' ' ')
+        echo "{\"id\":\"$ID\",\"status\":\"error\",\"message\":\"Failed to get status\",\"error\":\"$ERROR\"}"
     fi
     exit 0
 fi
