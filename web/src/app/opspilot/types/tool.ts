@@ -10,6 +10,8 @@ export interface Tool {
   params: any;
   tools?: any[];
   permissions?: string[];
+  enable_auth?: boolean;
+  auth_token?: string;
 }
 
 export interface FormValues {
