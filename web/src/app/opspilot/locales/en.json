@@ -761,7 +761,15 @@
       "appTagBusiness": "Business",
       "enterAppDescription": "Enter app description",
       "appName": "App Name",
-      "pleaseSelectAppTags": "Please select app tags"
+      "pleaseSelectAppTags": "Please select app tags",
+      "appTagAutomation": "Automation",
+      "appTagSecurityAudit": "Security Audit",
+      "appTagOpsPlanning": "Ops Planning",
+      "pleaseSelectAppIcon": "Please select app icon",
+      "appTagMonitorAlarm": "Monitor & Alarm",
+      "appTagRoutineOps": "Routine Ops",
+      "appIcon": "App Icon",
+      "appTagPerformanceAnalysis": "Performance Analysis"
     },
     "collapseSidebar": "Collapse Sidebar",
     "messages": {

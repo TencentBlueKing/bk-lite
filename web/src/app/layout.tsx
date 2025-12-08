@@ -90,6 +90,10 @@ const LayoutWithProviders = ({ children }: { children: React.ReactNode }) => {
     checkPermission();
   }, [isLoading, pathname, isAuthenticated, status, session, router]);
 
+  const hideTopMenu = useMemo(() => {
+    return pathname?.startsWith('/opspilot/studio/chat');
+  }, [pathname]);
+
   if (isLoading || (isAuthenticated && !isAllowed && pathname && !excludedPaths.includes(pathname) && !isLoading)) {
     return <Loader />;
   }
@@ -98,7 +102,7 @@ const LayoutWithProviders = ({ children }: { children: React.ReactNode }) => {
     <div className="flex flex-col min-h-screen">
       {isAuthenticated && (
         <header className="sticky top-0 left-0 right-0 flex justify-between items-center header-bg">
-          <TopMenu />
+          <TopMenu hideMainMenu={hideTopMenu} />
         </header>
       )}
       <main className={`flex-1 p-4 flex text-sm ${!isAuthenticated ? 'h-screen' : ''}`}>

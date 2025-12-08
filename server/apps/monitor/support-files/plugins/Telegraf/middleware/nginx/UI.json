@@ -15,7 +15,7 @@
       "editable": false,
       "description": "监控的目标网址链接，以检测其可用性和性能",
       "widget_props": {
-        "placeholder": "http://example.com/status"
+        "placeholder": "http://example.com/stub_status"
       },
       "transform_on_edit": {
         "origin_path": "child.content.config.url"
@@ -62,7 +62,7 @@
       "type": "input",
       "required": true,
       "widget_props": {
-        "placeholder": "http://example.com/status"
+        "placeholder": "http://example.com/stub_status"
       },
       "change_handler": {
         "type": "simple",

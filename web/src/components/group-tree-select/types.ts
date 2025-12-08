@@ -75,6 +75,12 @@ export interface GroupTreeSelectProps {
    * @default false
    */
   showSearch?: boolean;
+
+  /**
+   * 根据指定的组织ID过滤树数据，只显示该组织及其子组织
+   * 如果不传或为空，则显示完整树
+   */
+  filterByRootId?: number;
 }
 
 /**

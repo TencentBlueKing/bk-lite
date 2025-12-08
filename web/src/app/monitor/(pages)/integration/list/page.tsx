@@ -54,9 +54,9 @@ const Integration = () => {
   }, [isLoading]);
 
   useEffect(() => {
-    if (isLoading) return;
+    if (isLoading || !objects?.length) return;
     getPluginList({ monitor_object_id: objectId });
-  }, [objectId, isLoading]);
+  }, [objectId, isLoading, objects]);
 
   const handleNodeDrag = async (data: TreeSortData[]) => {
     try {
@@ -80,7 +80,20 @@ const Integration = () => {
     setPageLoading(true);
     try {
       const data = await getMonitorPlugin(params);
-      setPluginList(data);
+      // 根据objects的顺序对插件列表进行排序
+      const sortedData = data.sort((a: ObjectItem, b: ObjectItem) => {
+        const indexA = objects.findIndex(
+          (obj) => obj.id === a.parent_monitor_object
+        );
+        const indexB = objects.findIndex(
+          (obj) => obj.id === b.parent_monitor_object
+        );
+        // 如果找不到对应的object,放在最后
+        if (indexA === -1) return 1;
+        if (indexB === -1) return -1;
+        return indexA - indexB;
+      });
+      setPluginList(sortedData);
     } finally {
       setPageLoading(false);
     }

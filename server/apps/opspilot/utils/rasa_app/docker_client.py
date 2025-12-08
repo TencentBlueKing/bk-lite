@@ -20,74 +20,6 @@ class DockerClient(object):
             logger.error(f"Docker客户端初始化失败: {e}")
             raise Exception("无法连接到Docker服务，请检查Docker是否正常运行。")
 
-    def start_lobe_chat(self, bot) -> bool:
-        """
-        启动LobeChat容器
-        :param bot: Bot模型实例
-        :return: 是否成功启动
-        """
-        container_name = f"lobe-chat-{bot.id}"
-        skill_list = [f"+{i.name}" for i in bot.llm_skills.all()]
-
-        # 构建环境变量
-        environment = {
-            "TZ": "Asia/Shanghai",
-            "OPENAI_API_KEY": bot.api_token,  # 使用bot的api_token作为OpenAI API Key
-            "OPENAI_PROXY_URL": settings.MUNCHKIN_BASE_URL.strip("/") + "/bot_mgmt/lobe_chat/v1/",  # 代理URL配置
-            "BK_LITE_APP_ID": bot.id,
-            "OPENAI_MODEL_LIST": ",".join(skill_list),
-            "NEXT_PUBLIC_ENABLE_NEXT_AUTH": "1",
-            "NEXT_AUTH_SECRET": bot.api_token,
-            "NEXT_AUTH_SSO_PROVIDERS": "bklite",
-            "AUTH_BKLITE_API_URL": settings.LOGIN_URL,
-        }
-
-        # 端口映射配置 - 修改为3000端口
-        ports = {}  # 默认随机分配主机端口
-        if bot.enable_node_port and bot.node_port:
-            ports["3210/tcp"] = bot.node_port
-
-        # 配置标签
-        labels = {"app": "lobe-chat", "bot-id": str(bot.id)}
-
-        # 如果存在bot_domain，添加Traefik相关标签
-        if bot.bot_domain:
-            labels.update(
-                {
-                    "traefik.enable": "true",
-                    f"traefik.http.routers.lobe-chat-{bot.id}.rule": f"Host(`{bot.bot_domain}`)",
-                    f"traefik.http.routers.lobe-chat-{bot.id}.entrypoints": "https",
-                    f"traefik.http.routers.lobe-chat-{bot.id}.tls": "true",
-                    f"traefik.http.services.lobe-chat-{bot.id}.loadbalancer.server.port": "3210",
-                }
-            )
-
-        try:
-            # 验证必要的配置参数
-            if not bot.api_token:
-                raise ValueError("Bot API token 不能为空")
-
-            # 检查是否已存在同名容器，如存在则先移除
-            self._remove_container_if_exists(container_name)
-
-            # 创建并启动容器 - 移除复杂的command，使用默认启动
-            container = self.client.containers.run(
-                image="bklite/lobe-chat:latest",
-                name=container_name,
-                detach=True,
-                environment=environment,
-                ports=ports,
-                labels=labels,
-                restart_policy={"Name": "always"},
-                network=settings.CONVERSATION_DOCKER_NETWORK,
-                # 移除command参数，使用镜像默认启动命令
-            )
-            logger.info(f"启动Pilot[{bot.id}]容器成功，容器ID: {container.id}")
-            return True
-        except Exception as e:
-            logger.error(f"启动LobeChat[{bot.id}]容器失败: {e}")
-            return False
-
     def start_pilot(self, bot) -> bool:
         """
         启动Pilot容器
@@ -158,19 +90,6 @@ class DockerClient(object):
 
         except Exception as e:
             logger.error(f"启动Pilot[{bot.id}]容器失败: {e}")
-            return False
-
-    def stop_lobe_chat(self, bot_id) -> bool:
-        """
-        停止并移除LobeChat容器
-        :param bot_id: Bot ID
-        :return: 是否成功停止
-        """
-        container_name = f"lobe-chat-{bot_id}"
-        try:
-            return self._remove_container_if_exists(container_name)
-        except Exception as e:
-            logger.error(f"停止LobeChat[{bot_id}]容器失败: {e}")
             return False
 
     def stop_pilot(self, bot_id) -> bool:

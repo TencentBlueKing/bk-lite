@@ -274,13 +274,7 @@ COLLECT_OBJ_TREE = [
         "name": "NetWork",
         "children": [
             {"id": "network", "model_id": "network", "name": "NetWork", "task_type": CollectPluginTypes.SNMP,
-             "type": CollectDriverTypes.PROTOCOL,"tag": ["SNMP","Interfaces"], "desc": "通过SNMP协议发现网络设备及其基本信息"}
-        ],
-    },
-    {
-        "id": "network_topo",
-        "name": "网络拓扑",
-        "children": [
+             "type": CollectDriverTypes.PROTOCOL,"tag": ["SNMP","Interfaces"], "desc": "通过SNMP协议发现网络设备及其基本信息"},
             {"id": "network_topo", "model_id": "network_topo", "name": "网络拓扑", "task_type": CollectPluginTypes.SNMP,
              "type": CollectDriverTypes.PROTOCOL,"tag": ["SNMP","IFTable","ARP"], "desc": "采集网络设备连接关系"}
         ],
@@ -318,7 +312,9 @@ COLLECT_OBJ_TREE = [
         "name": "主机管理",
         "children": [
             {"id": "host", "model_id": "host", "name": "主机", "task_type": CollectPluginTypes.HOST,
-             "type": CollectDriverTypes.JOB,"tag": ["JOB"], "desc": "采集主机基础信息.CPU内存等"}
+             "type": CollectDriverTypes.JOB,"tag": ["JOB"], "desc": "采集主机基础信息CPU内存等"},
+            {"id": "physcial_server", "model_id": "physcial_server", "name": "物理服务器", "task_type": CollectPluginTypes.HOST,
+             "type": CollectDriverTypes.JOB,"tag": ["JOB"], "desc": "采集主机基础信息CPU内存等"},
         ],
     },
     {

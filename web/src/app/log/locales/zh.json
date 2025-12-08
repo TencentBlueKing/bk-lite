@@ -227,7 +227,7 @@
       "syslogProtocol": "传输协议",
       "syslogTargetIp": "目标 IP",
       "syslogNodeDes": "请选择已托管 Telegraf 采集器的容器节点",
-      "syslogTargetPort": "目标端口",
+      "syslogTargetPort": "目标端口(协议)",
       "syslogStep1": "在设备上配置 Syslog 目标地址"
     },
     "search": {

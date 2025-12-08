@@ -84,8 +84,25 @@ class MonitorPluginService:
         metrics_to_create = []
         existing_metrics = {
             metric.name: metric
-            for metric in Metric.objects.filter(monitor_object=monitor_obj)
+            for metric in Metric.objects.filter(monitor_object=monitor_obj, monitor_plugin=plugin_obj)
         }
+
+        # 删除is_pre=True但不在新指标列表中的旧指标（按插件删除）
+        new_metric_names = {metric["name"] for metric in metrics}
+        old_pre_metrics_to_delete = [
+            metric_name for metric_name, metric in existing_metrics.items()
+            if metric.is_pre and metric_name not in new_metric_names
+        ]
+        if old_pre_metrics_to_delete:
+            Metric.objects.filter(
+                monitor_object=monitor_obj,
+                monitor_plugin=plugin_obj,
+                name__in=old_pre_metrics_to_delete,
+                is_pre=True
+            ).delete()
+            # 从existing_metrics中移除已删除的指标
+            for metric_name in old_pre_metrics_to_delete:
+                existing_metrics.pop(metric_name)
 
         for metric in metrics:
             if metric["name"] in existing_metrics:
@@ -203,7 +220,7 @@ class MonitorPluginService:
             "plugin": plugin_obj.name,
             "plugin_desc": plugin_obj.description,
             "collector": plugin_obj.collector,
-            "collect_type": plugin_obj.collect_type,
+            "collect_type": plugin_obj.collector,
             "is_compound_object": True,
             "objects": []
         }

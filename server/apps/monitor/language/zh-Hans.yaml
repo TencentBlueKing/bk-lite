@@ -1072,31 +1072,6 @@ monitor_object_metric:
     mysql_com_select:
       name: Select命令执行次数
       desc: 此指标表示Select查询的执行次数。监控此指标有助于了解读取操作的频率和系统负载。
-  Zookeeper:
-    zookeeper_snapshot_to_commit_ratio:
-      desc: 该指标表示Zookeeper生成快照的频率与提交请求的频率的比值，用于监测持久化操作与事务提交的关系。
-      name: 快照与提交比
-    zookeeper_packets_received:
-      name: 接收的包数量
-      desc: 该指标表示Zookeeper接收到的网络包数量，用于监测网络流量情况。
-    zookeeper_connection_drop_count:
-      name: 连接断开次数
-      desc: 该指标表示Zookeeper连接断开的次数，用于监测连接稳定性。
-    zookeeper_uptime:
-      name: 系统运行时间
-      desc: 该指标表示Zookeeper服务的运行时长，用于监测系统是否正常运行。
-    zookeeper_znode_count:
-      name: Znode数量
-      desc: 该指标表示Zookeeper中当前5分钟内每秒Znode的变化数量，有助于监测Zookeeper的数据量变化。
-    zookeeper_connection_rejected:
-      name: 拒绝连接次数
-      desc: 该指标表示Zookeeper拒绝的连接次数，用于监测连接是否被正确处理。
-    zookeeper_read_write_ratio:
-      name: 读写比
-      desc: 该指标表示Zookeeper提交和快照的比例，用于判断Zookeeper的读写负载分布。
-    zookeeper_avg_latency:
-      name: 平均延迟
-      desc: 该指标表示Zookeeper处理请求的平均延迟时间，用于监测系统的响应能力。
   ActiveMQ-JMX:
     activemq_topic_producer_flow_control_value:
       desc: 显示指定目标主题的生产者是否启用了流量控制，1 表示启用，0 表示未启用，用于防止生产者发送过多消息导致系统过载。
@@ -1836,6 +1811,113 @@ monitor_object_metric:
     data_storage_store_accessible_gauge:
       name: 存储连接状态
       desc: 存储连接状态，表示存储设备的可连接性，是评估存储系统健康状态的指标。
+  MSSQL:
+    volume_available_gb:
+      name: 磁盘可用空间
+      desc: SQL Server数据卷的可用磁盘空间（GB）
+    signal_wait_ratio:
+      desc: 信号等待时间占总等待时间的比例
+      name: 信号等待比例
+    memory_usage:
+      name: 内存使用率
+      desc: SQL Server进程的内存使用压力百分比
+    avg_request_time:
+      desc: 每个活动连接的平均请求执行时间
+      name: 平均请求时间
+    waiting_tasks_rate:
+      desc: 每秒新增的等待任务数量
+      name: 等待任务速率
+    logical_reads_rate:
+      name: 逻辑读取速率
+      desc: 每秒的逻辑读取操作次数
+    runnable_tasks:
+      desc: 等待在运行队列中的任务数量，反映CPU压力
+      name: 可运行任务数
+    resource_wait_ratio:
+      name: 资源等待比例
+      desc: 资源等待时间占总等待时间的比例
+    avg_write_latency:
+      desc: 每次写入操作的平均延迟时间
+      name: 平均写入延迟
+    volume_space_usage:
+      desc: SQL Server数据卷的磁盘空间使用百分比
+      name: 磁盘使用率
+    available_memory_mb:
+      desc: SQL Server可用的物理内存（MB）
+      name: 可用内存
+    sqlserver_uptime:
+      desc: SQL Server实例的运行时间（小时）
+      name: SQL Server运行时间
+    context_switches_rate:
+      desc: 每秒的上下文切换次数
+      name: 上下文切换速率
+    total_io_throughput:
+      name: 总IO吞吐量
+      desc: 数据库读写操作的总吞吐量
+    online_databases:
+      desc: 当前在线的数据库数量
+      name: 在线数据库数
+    active_connections:
+      name: 活动连接数
+      desc: 当前活动的数据库连接数量
+    current_workers:
+      name: 当前工作线程
+      desc: 当前活动的工作线程数量
+    avg_wait_time:
+      name: 平均等待时间
+      desc: 每个等待任务的平均等待时间
+    write_throughput_mbps:
+      desc: 数据库写入操作的吞吐量
+      name: 写入吞吐量
+    avg_read_latency:
+      desc: 每次读取操作的平均延迟时间
+      name: 平均读取延迟
+    read_throughput_mbps:
+      name: 读取吞吐量
+      desc: 数据库读取操作的吞吐量
+  Zookeeper:
+    max_latency:
+      desc: ZooKeeper请求的最大响应延迟
+      name: 最大延迟
+    packets_send_rate:
+      desc: 每秒发送的数据包数量
+      name: 数据包发送速率
+    fsync_threshold_exceed_count:
+      desc: Fsync操作超过阈值限制的次数
+      name: Fsync超限次数
+    fd_usage_percentage:
+      desc: 文件描述符使用百分比
+      name: 文件描述符使用率
+    avg_latency:
+      desc: ZooKeeper请求的平均响应延迟
+      name: 平均延迟
+    znode_count:
+      name: ZNode总数
+      desc: 总ZNode节点数量
+    watch_count:
+      name: 监视器数量
+      desc: 活动的监视器数量
+    num_alive_connections:
+      desc: 当前活动的客户端连接数量
+      name: 活动连接数
+    packets_receive_rate:
+      desc: 每秒接收的数据包数量
+      name: 数据包接收速率
+    min_latency:
+      desc: ZooKeeper请求的最小响应延迟
+      name: 最小延迟
+    ephemerals_count:
+      desc: 临时ZNode节点数量
+      name: 临时节点数
+    approximate_data_size:
+      name: 数据大小
+      desc: ZooKeeper存储的近似数据大小
+    open_file_descriptor_count:
+      name: 打开文件描述符数
+      desc: 当前打开的文件描述符数量
+    outstanding_requests:
+      desc: 排队等待处理的请求数量
+      name: 待处理请求数
 monitor_object_metric_group:
   Detection Device:
     Status: 状态
@@ -2059,12 +2141,6 @@ monitor_object_metric_group:
     Consumer: 消费者
     Memory: 内存
     JMXselfMonitor: JMX自监控信息
-  Zookeeper:
-    Uptime: 运行时间
-    Connection: 连接
-    Znode: Znode
-    Traffic: 流量
-    Performance: 性能
   Docker Container:
     IO: IO
     CPU: CPU
@@ -2095,6 +2171,13 @@ monitor_object_metric_group:
     Memory: 内存
     Status: 状态
   TCP: None
+  Zookeeper:
+    Connection: 连接
+    Performance: 性能
+    Data: 数据
+    Count: 统计
+    Packet: 数据包
+    Other: 其他
   Cluster:
     Counts: 数量
     Utilization: 使用率
@@ -2105,6 +2188,14 @@ monitor_object_metric_group:
   SNMP Trap: None
   Website:
     HTTP: HTTP
+  MSSQL:
+    Disk: 磁盘
+    Scheduler: 调度器
+    IO: IO
+    Memory: 内存
+    Connection: 连接
+    Base: 基础信息
+    Wait: 等待时间
 monitor_object_plugin:
   Detection Device SNMP General:
     name: 检测设备通用（SNMP）
@@ -2223,6 +2314,9 @@ monitor_object_plugin:
   VMWare:
     desc: 通过Telegraf采集器利用Stargazer能力定期收集VMware中vCenter、ESXi、虚拟机、数据存储的关键指标。
     name: VMWare
+  MSSQL:
+    desc: 通过Telegraf采集器定期收集MSSQL关键指标，包括磁盘、内存、IO、等待时间等。
+    name: MSSQL（Telegraf）
 monitor_object:
   Apache: Apache
   Firewall: 防火墙
@@ -2266,6 +2360,7 @@ monitor_object:
   Loadbalance: 负载均衡
   Mysql: MySQL
   Website: 网站
+  MSSQL: MSSQL
 monitor_object_type:
   VMware: VMware（Telegraf）
   Middleware: 中间件
