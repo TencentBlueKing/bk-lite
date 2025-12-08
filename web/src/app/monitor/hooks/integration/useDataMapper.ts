@@ -150,9 +150,9 @@ export class DataMapper {
       context.formFields.forEach((field: any) => {
         const { name, transform_on_create, encrypted } = field;
         let fieldValue = formData[name];
-        // 如果字段标记为加密，使用 hash 处理
+        // 如果字段标记为加密，使用 URL 编码
         if (encrypted && fieldValue) {
-          fieldValue = this.hashInstanceId(String(fieldValue));
+          fieldValue = encodeURIComponent(String(fieldValue));
         }
         if (fieldValue !== undefined && transform_on_create?.target_path) {
           // 如果字段有 transform_on_create.target_path 配置，设置到指定路径
@@ -217,7 +217,7 @@ export class DataMapper {
             (f: any) => f.name === fieldKey
           );
           if (fieldConfig?.encrypted && fieldValue) {
-            fieldValue = this.hashInstanceId(String(fieldValue));
+            fieldValue = encodeURIComponent(String(fieldValue));
           }
           acc[fieldKey] = fieldValue;
           return acc;
