@@ -29,6 +29,7 @@
       "type": "password",
       "required": true,
       "editable": false,
+      "encrypted": true,
       "description": "对应的登录密码",
       "widget_props": {
         "placeholder": "密码"

@@ -117,7 +117,25 @@
       "endpoint": "访问端点",
       "endpointMaxLength": "访问端点不能超过200个字符",
       "enterEndpoint": "请输入访问端点（可选）",
-      "restart": "重启"
+      "restart": "重启",
+      "defaultUser": "运行用户"
+    },
+    "env": {
+      "start": "启动",
+      "stop": "停止",
+      "editor": "编辑器",
+      "staringEnv": "环境启动中",
+      "envReStart": "环境重启中",
+      "stopEnv": "停止环境中",
+      "envStartUpSuccess": "环境启动成功",
+      "envStartUpFailed": "环境启动失败",
+      "envReStartSucess": "环境重启成功",
+      "envReStartFailed": "环境重启失败",
+      "envStopSucess": "环境停止成功",
+      "envStopFailed": "环境停止失败",
+      "deleteEnvSuccess": "环境删除成功",
+      "deleteEnvFailed": "环境删除失败",
+      "infraTemplate": "请选择基础设施镜像模板"
     }
   }
 }
