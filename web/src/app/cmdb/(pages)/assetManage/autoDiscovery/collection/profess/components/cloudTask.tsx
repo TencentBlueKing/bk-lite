@@ -98,9 +98,8 @@ const CloudTask: React.FC<cloudTaskFormProps> = ({
         driver_type: driverType,
         task_type: modelItem.task_type,
         accessPointId: values.access_point?.[0]?.id,
-        params: {
-          organization: values.organization || [],
-        },
+        team: values.organization || [],
+        params: {},
         credential: {
           accessKey: values.accessKey,
           accessSecret: values.accessSecret,
@@ -162,7 +161,7 @@ const CloudTask: React.FC<cloudTaskFormProps> = ({
           ...values,
           ...values.credential,
           regionId: regions?.resource_id,
-          organization: values.params?.organization,
+          organization: values.team || [],
           accessPointId: values.access_point?.[0]?.id,
         });
         handleRefreshRegions(false);
