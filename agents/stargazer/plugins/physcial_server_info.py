@@ -29,11 +29,13 @@ class PserverInfo(BaseSSHPlugin):
                 disk_info = parsed_data.pop('disk')
                 mem_info = parsed_data.pop('memory')
                 nic_info = parsed_data.pop('nic')
+                gpu_info = parsed_data.pop('gpu')
                 return_data = {
                     self.plugin_type: [{"success": True, "result": json.dumps(parsed_data)}],
                     "disk": [{"result": json.dumps({**i, "self_device": self_device}), "success": True} for i in disk_info],
                     "memory": [{"result": json.dumps({**i, "self_device": self_device}), "success": True} for i in mem_info],
                     "nic": [{"result": json.dumps({**i, "self_device": self_device}), "success": True} for i in nic_info],
+                    "gpu": [{"result": json.dumps({**i, "self_device": self_device}), "success": True} for i in gpu_info],
                 }
                 prometheus_data = convert_to_prometheus_format(return_data)
             else:
@@ -63,7 +65,7 @@ def parse_server_info(shell_output: str) -> Dict[str, Any]:
         "disk": [],
         "memory": [],
         "nic": [],
-        # "power_supplies": []
+        "gpu": []
     }
 
     lines = shell_output.strip().split('\n')
@@ -75,7 +77,7 @@ def parse_server_info(shell_output: str) -> Dict[str, Any]:
         'disk_info': 'disk',
         'mem_info': 'memory',
         'NIC info': 'nic',
-        # 'power_info': 'power_supplies'
+        'GPU info': 'gpu'
     }
 
     for line in lines:
@@ -140,7 +142,7 @@ def is_new_item_start(key: str, section: str) -> bool:
         'disk_info': 'disk_name',
         'mem_info': 'mem_locator',
         'NIC info': 'nic_pci_addr',
-        # 'power_info': 'power_name'
+        'GPU info': 'gpu'
     }
 
     return key == start_keys.get(section)

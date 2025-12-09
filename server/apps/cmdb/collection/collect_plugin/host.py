@@ -83,9 +83,6 @@ class HostCollectMetrics(CollectBase):
                 "cpu_core": (self.transform_int, "cpu_cores"),
                 "cpu_threads": (self.transform_int, "cpu_threads"),
                 "cpu_arch": self.set_serverarch_type,
-                "gpu_name": "gpu_name",
-                "gpu_type": "gpu_type",
-                "gpu_desc": "gpu_desc",
                 "board_vendor": "board_vendor",
                 "board_model": "board_model",
                 "board_serial": "board_serial",
@@ -98,6 +95,14 @@ class HostCollectMetrics(CollectBase):
                 "mem_type":"mem_type",
                 "mem_size":(self.transform_unit_int, "mem_size"),
                 "mem_sn":"mem_sn",
+                self.asso: self.set_asso_instances
+            },
+            "gpu": {
+                "inst_name": self.set_component_inst_name,
+                "self_device": "self_device",
+                "gpu_name": "gpu_name",
+                "gpu_type": "gpu_type",
+                "gpu_desc": "gpu_desc",
                 self.asso: self.set_asso_instances
             },
             "disk": {
@@ -161,6 +166,8 @@ class HostCollectMetrics(CollectBase):
             return f"{result_data.get('disk_name', '')}-{self_device}"
         elif data['model_id'] == 'memory' and self_device:
             return f"{result_data.get('mem_locator', '')}-{self_device}"
+        elif data['model_id'] == 'gpu' and self_device:
+            return f"{result_data.get('gpu_name', '')}-{self_device}"
         return ""
 
     @staticmethod
