@@ -50,7 +50,9 @@ const ToolListPage: React.FC = () => {
     
     setFetchingTools(true);
     try {
-      const tools = await fetchAvailableTools(url);
+      const enable_auth = form.getFieldValue('enable_auth') || false;
+      const auth_token = form.getFieldValue('auth_token') || '';
+      const tools = await fetchAvailableTools(url, enable_auth, auth_token);
       setAvailableTools(tools || []);
       if (!tools || tools.length === 0) {
         message.info(t('tool.noToolsAvailable'));

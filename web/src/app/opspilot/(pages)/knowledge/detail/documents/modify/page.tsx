@@ -384,7 +384,7 @@ const KnowledgeModifyPage = () => {
           onFormChange={handleValidationChange} 
           onFormDataChange={handleQAPairDataChange} 
         />
-        <div className="fixed bottom-10 right-10 z-50 flex space-x-2">
+        <div className="fixed bottom-5 right-10 z-50 flex space-x-2">
           <Button disabled={loading} onClick={() => router.back()}>
             {t('common.cancel')}
           </Button>
@@ -428,14 +428,14 @@ const KnowledgeModifyPage = () => {
 
   const renderCustomQAContent = () => {
     return (
-      <div className="px-7 py-5">
+      <div className="px-3 py-5">
         <CustomQAForm 
           ref={formRef}
           initialData={customQAData} 
           onFormChange={handleValidationChange} 
           onFormDataChange={handleCustomQADataChange} 
         />
-        <div className="fixed bottom-10 right-10 z-50 flex space-x-2">
+        <div className="fixed bottom-5 right-10 z-50 flex space-x-2">
           <Button disabled={loading} onClick={() => router.back()}>
             {t('common.cancel')}
           </Button>
@@ -589,7 +589,7 @@ const KnowledgeModifyPage = () => {
         <Breadcrumb.Item>{type && sourceTypeToDisplayText[type]}</Breadcrumb.Item>
         <Breadcrumb.Item>{isUpdate ? t('common.update') : t('common.create')}</Breadcrumb.Item>
       </Breadcrumb>
-      <div className="px-7 py-5">
+      <div className="px-3 py-5">
         {pageLoading ? (
           <div className="flex items-center justify-center h-full">
             <Spin />
@@ -606,7 +606,7 @@ const KnowledgeModifyPage = () => {
             </div>
           </div>
         )}
-        <div className="fixed bottom-10 right-10 z-50 flex space-x-2">
+        <div className="fixed bottom-5 right-10 z-50 flex space-x-2">
           {currentStep > 0 && currentStep < steps.length - 1 && (
             <Button onClick={handlePrevious} disabled={isUpdate && type === 'file' && currentStep === 1}>
               {t('common.pre')}
