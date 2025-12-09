@@ -19,8 +19,10 @@ class AWSNodeParams(BaseNodeParams):
         生成 AWS 的凭据
         """
         return {
-            "access_key_id": self.credential.get("access_key_id", ""),
-            "secret_access_key": self.credential.get("secret_access_key", ""),
+            # "access_key_id": self.credential.get("access_key_id", ""),
+            # "secret_access_key": self.credential.get("secret_access_key", ""),
+            "access_key_id": "${PASSWORD_access_key_id}",
+            "secret_access_key": "${PASSWORD_secret_access_key}",
         }
 
     def get_instance_id(self, instance):
@@ -28,3 +30,11 @@ class AWSNodeParams(BaseNodeParams):
         获取实例 ID
         """
         return f"{self.instance.id}_{instance['inst_name']}"
+
+    @property
+    def env_config(self, *args, **kwargs):
+        env_config = {
+            "$PASSWORD_access_key_id": self.credential.get("access_key_id", ""),
+            "$PASSWORD_secret_access_key": self.credential.get("secret_access_key", ""),
+        }
+        return env_config
