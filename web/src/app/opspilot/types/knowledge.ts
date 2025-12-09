@@ -122,7 +122,7 @@ export interface GraphData {
 export interface KnowledgeGraphViewProps {
   data: GraphData;
   loading?: boolean;
-  height?: number;
+  height?: number | string;
   onNodeClick?: (node: GraphNode) => void;
   onEdgeClick?: (edge: GraphEdge) => void;
   useMockData?: boolean;

@@ -256,10 +256,13 @@ const TestingPage: React.FC = () => {
 
     if (activeTab === 'graph_data') {
       return results.graph_data.length > 0 ? (
-        <KnowledgeGraphView 
-          data={transformGraphData(results.graph_data)} 
-          onNodeClick={handleNodeClick}
-        />
+        <div style={{ flex: 1 }}>
+          <KnowledgeGraphView 
+            data={transformGraphData(results.graph_data)} 
+            onNodeClick={handleNodeClick}
+            height={undefined}
+          />
+        </div>
       ) : (
         <Empty description={t('common.noData')} />
       );
@@ -270,8 +273,8 @@ const TestingPage: React.FC = () => {
 
   return (
     <Spin spinning={configLoading}>
-      <div className="flex">
-        <div className="w-1/2 pr-4">
+      <div className="flex" style={{ height: 'calc(100vh - 220px)', overflow: 'hidden' }}>
+        <div className="w-1/2 pr-4 overflow-y-auto" style={{ height: '100%' }}>
           <div className={`mb-4 border rounded-md ${styles.testingHeader}`}>
             <h2 className="font-semibold text-base">{t('knowledge.testing.text')}</h2>
             <div className="relative">
@@ -315,7 +318,7 @@ const TestingPage: React.FC = () => {
             </div>
           </div>
         </div>
-        <div className="w-1/2 pl-4">
+        <div className="w-1/2 pl-4 flex flex-col" style={{ height: '100%' }}>
           <div className="flex justify-between items-center mb-4">
             <h2 className="font-semibold text-base">{t('knowledge.results')}</h2>
             {(results.docs.length > 0 || results.qa_docs.length > 0 || results.graph_data.length > 0) && (
@@ -327,7 +330,7 @@ const TestingPage: React.FC = () => {
               />
             )}
           </div>
-          <div className="space-y-4">
+          <div className={activeTab === 'graph_data' ? 'flex-1' : 'overflow-y-auto space-y-4'} style={activeTab === 'graph_data' ? { minHeight: 0 } : undefined}>
             {renderResults()}
           </div>
         </div>
