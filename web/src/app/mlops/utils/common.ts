@@ -140,7 +140,6 @@ export const handleFileRead = (text: string, type: string, include_header = fals
         if(include_header) result.headers = headers;
       }
     }
-    console.log(result)
     return result;
   } catch (error) {
     console.log(error);

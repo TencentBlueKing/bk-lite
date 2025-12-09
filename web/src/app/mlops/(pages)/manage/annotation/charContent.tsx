@@ -24,6 +24,7 @@ import CustomTable from "@/components/custom-table";
 import PermissionWrapper from '@/components/permission';
 import { ColumnItem, TableDataItem, } from '@/app/mlops/types';
 import { AnnotationData } from '@/app/mlops/types/manage';
+import { handleFileRead } from "@/app/mlops/utils/common";
 
 const ChartContent = ({
   flag,
@@ -348,7 +349,27 @@ const ChartContent = ({
     try {
       if (!key) return;
       const data = await getTrainDataInfoMap[key](id as string, true, true);
-      handleLabelData(data?.train_data, data?.metadata?.anomaly_point);
+      if (key !== 'timeseries_predict') {
+        handleLabelData(data?.train_data, data?.metadata?.anomaly_point);
+      } else {
+        const { train_data, metadata } = data;
+        let ponints: number[] = [];
+        if (train_data) {
+          const response = await fetch(data.train_data);
+          if (!response.ok) throw new Error('获取文件数据失败');
+          const text = await (await response.blob()).text();
+          const _trainData = handleFileRead(text, key);
+          if (metadata) {
+            const response = await fetch(data.metadata);
+            if (!response.ok) throw new Error('获取Metadata失败');
+            const _metadata = await response.json();
+            ponints = _metadata?.anomaly_point || [];
+          }
+
+          handleLabelData(_trainData?.train_data, ponints);
+        }
+
+      }
     } catch (e) {
       console.log(e);
     } finally {

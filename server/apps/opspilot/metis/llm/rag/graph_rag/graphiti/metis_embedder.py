@@ -53,12 +53,19 @@ class MetisEmbedder(EmbedderClient):
         try:
             # 处理不同类型的输入数据
             if isinstance(input_data, str):
-                logger.debug(f"生成文本嵌入，长度: {len(input_data)}")
+                logger.debug(
+                    f"生成文本嵌入 - 文本: {input_data[:100]}..., 长度: {len(input_data)}")
                 result = self.embed.embed_documents([input_data])
+                logger.debug(
+                    f"嵌入向量生成成功 - 维度: {len(result[0]) if result and result[0] else 0}")
                 return result[0]
             elif isinstance(input_data, list) and all(isinstance(item, str) for item in input_data):
                 logger.debug(f"生成批量文本嵌入，数量: {len(input_data)}")
+                if input_data:
+                    logger.debug(f"第一个文本: {input_data[0][:100]}...")
                 result = self.embed.embed_documents(input_data)
+                logger.debug(
+                    f"批量嵌入向量生成成功 - 维度: {len(result[0]) if result and result[0] else 0}")
                 return result[0] if result else []
             else:
                 # 处理数值迭代器类型

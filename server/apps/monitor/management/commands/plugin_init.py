@@ -1,11 +1,9 @@
 from django.core.management import BaseCommand
 
 from apps.core.logger import monitor_logger as logger
-from apps.monitor.management.services.plugin_migrate import (
-    migrate_plugin,
-    migrate_policy,
-    migrate_default_order,
-)
+from apps.monitor.management.services.default_order_migrate import migrate_default_order
+from apps.monitor.management.services.plugin_migrate import migrate_plugin
+from apps.monitor.management.services.policy_migrate import migrate_policy
 
 
 class Command(BaseCommand):

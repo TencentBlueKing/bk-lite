@@ -1,6 +1,6 @@
 "use client";
-import { Menu, Button, message } from 'antd';
-import { PlayCircleOutlined, PauseCircleOutlined } from '@ant-design/icons';
+import { Menu, Button, message, Tooltip, Tag } from 'antd';
+import { PlayCircleOutlined, PauseCircleOutlined, RedoOutlined, ReloadOutlined, CodeOutlined } from '@ant-design/icons';
 import stlyes from '@/app/lab/styles/index.module.scss';
 import { useState, useEffect, useRef } from 'react';
 import EntityList from '@/components/entity-list';
@@ -8,33 +8,42 @@ import { ModalRef } from '@/app/lab/types';
 import { useTranslation } from '@/utils/i18n';
 import useLabEnv from '@/app/lab/api/env';
 import LabEnvModal from './labEnvModal';
+import PermissionWrapper from "@/components/permission"
+
+type ContarinerState = 'starting' | 'stopping' | 'running' | 'stopped' | 'error';
 
 const EnvManage = () => {
   const { t } = useTranslation();
   const modalRef = useRef<ModalRef>(null);
   const {
-    getEnvList,
+    getEnvListWithStatus,
     deleteEnv,
     startEnv,
     stopEnv,
-    restartEnv
+    restartEnv,
   } = useLabEnv();
 
   const [tableData, setTableData] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
 
+  useEffect(() => {
+    fetchEnvs();
+  }, []);
+
   // 请求环境列表
   const fetchEnvs = async () => {
     setLoading(true);
     try {
-      const res = await getEnvList();
+      // 使用新接口一次性获取环境列表和状态
+      const res = await getEnvListWithStatus();
       const _res = res?.map((item: any) => {
         return {
           ...item,
           icon: 'tucengshuju',
           creator: item?.created_by || '--',
         }
-      })
+      });
+      console.log(_res);
       setTableData(_res || []);
     } catch (e) {
       console.log(e);
@@ -44,54 +53,89 @@ const EnvManage = () => {
     }
   };
 
-  useEffect(() => {
-    fetchEnvs();
-  }, []);
+
+
+  const changeState = (id: string | number, state: ContarinerState) => {
+    const _env = tableData.map((item: any) => {
+      if (item.id === id) {
+        return {
+          ...item,
+          state
+        }
+      }
+      return item;
+    });
+    setTableData(_env);
+  }
 
   // 启动环境
   const handleStart = async (id: string | number, e: React.MouseEvent) => {
-    e.stopPropagation(); // 阻止卡片点击事件
-    setLoading(true);
+    e.stopPropagation();
+    message.info(t(`lab.env.staringEnv`));
+    changeState(id, 'starting');
     try {
       await startEnv(id);
-      message.success('环境启动成功');
-      fetchEnvs(); // 刷新列表
+      message.success(t(`lab.env.envStartUpSuccess`));
     } catch (error) {
-      console.error('启动环境失败:', error);
-      message.error('启动环境失败');
+      console.error(t(`lab.env.envStartUpFailed`), error);
+      message.error(t(`lab.env.envStartUpFailed`));
     } finally {
-      setLoading(false);
+      fetchEnvs();
     }
   };
 
   // 重启环境
   const handleRestart = async (id: string | number) => {
-    setLoading(true);
+    message.info(t(`lab.env.envReStart`));
+    changeState(id, 'starting');
     try {
       await restartEnv(id);
-      message.success('环境重启成功');
-      fetchEnvs();
+      message.success(t(`lab.env.envReStartSucess`));
+
     } catch (e) {
       console.log(e);
-      message.error('重启环境失败')
+      message.error(t(`lab.env.envReStartFailed`))
     } finally {
-      setLoading(false);
+      fetchEnvs();
     }
   };
 
   // 停止环境
   const handleStop = async (id: string | number, e: React.MouseEvent) => {
-    e.stopPropagation(); // 阻止卡片点击事件
-    setLoading(true);
+    e.stopPropagation();
+    message.info(t(`lab.env.stopEnv`));
+    changeState(id, 'stopping');
     try {
       await stopEnv(id);
-      message.success('环境停止成功');
-      fetchEnvs(); // 刷新列表
+      message.success(t(`lab.env.envStopSucess`));
+
     } catch (error) {
-      console.error('停止环境失败:', error);
-      message.error('停止环境失败');
+      console.error(t(`lab.env.envStopFailed`), error);
+      message.error(t(`lab.env.envStopFailed`));
     } finally {
-      setLoading(false);
+      fetchEnvs();
+    }
+  };
+
+  // 获取代码编辑器链接
+  const getCodeEditorLink = (item: any) => {
+    const image_name = item.ide_image_name?.toLocaleLowerCase();
+    let url = `${item.endpoint}/lab-${item.id}`;
+
+    if (!item.endpoint) return '#';
+
+    // 处理不同编辑器链接差别
+    if (image_name?.includes('code-server')) {
+      url = url + '/';
+    }
+
+    // 处理用户访问端点是否有http开头
+    if (item.endpoint?.startsWith('https://')) {
+      return url;
+    } else if (item.endpoint?.startsWith('http://')) {
+      return url?.replace('http://', 'https://');
+    } else {
+      return `https://${url}`;
     }
   };
 
@@ -102,92 +146,133 @@ const EnvManage = () => {
           className="!p-0"
           onClick={() => handleEdit({ type: 'edit', form: item })}
         >
-          {/* <PermissionWrapper requiredPermissions={['Edit']} className="!block" > */}
-          <Button type="text" className="w-full">
-            {t(`common.edit`)}
-          </Button>
-          {/* </PermissionWrapper> */}
-        </Menu.Item>
-        <Menu.Item
-          className="!p-0"
-          onClick={() => handleRestart(item.id)}
-        >
-          {/* <PermissionWrapper requiredPermissions={['Edit']} className="!block" > */}
-          <Button type="text" className="w-full">
-            {t(`lab.manage.restart`)}
-          </Button>
-          {/* </PermissionWrapper> */}
+          <PermissionWrapper requiredPermissions={['Edit']} className="!block" >
+            <Button type="text" className="w-full">
+              {t(`common.edit`)}
+            </Button>
+          </PermissionWrapper>
         </Menu.Item>
         {item?.name !== "default" && (
           <Menu.Item className="!p-0" onClick={() => handleDel(item.id)}>
-            {/* <PermissionWrapper requiredPermissions={['Delete']} className="!block" > */}
-            <Button type="text" className="w-full">
-              {t(`common.delete`)}
-            </Button>
-            {/* </PermissionWrapper> */}
+            <PermissionWrapper requiredPermissions={['Delete']} className="!block" >
+              <Button type="text" className="w-full" disabled={['stopped', 'error'].includes(item?.state) ? false : true}>
+                {t(`common.delete`)}
+              </Button>
+            </PermissionWrapper>
           </Menu.Item>
         )}
       </Menu>
     )
   };
 
-  // 描述区域 - 左右布局，左侧显示creator，右侧显示启动/停止按钮
   const descSlot = (item: any) => {
     const isRunning = item.state === 'running';
     const isStarting = item.state === 'starting';
     const isStopping = item.state === 'stopping';
+    const containers: any[] = item.container_status?.containers || [];
+
+
+    // 状态标签颜色映射
+    const getStateTagColor = (state: string): 'success' | 'processing' | 'error' | 'warning' | 'default' => {
+      const colorMap: Record<string, 'success' | 'processing' | 'error' | 'warning' | 'default'> = {
+        'running': 'success',
+        'stopped': 'default',
+        'starting': 'processing',
+        'stopping': 'warning',
+        'error': 'error'
+      };
+      return colorMap[state] || 'default';
+    };
+
+    const getContainerToolTip = () => {
+      let tooltip = '';
+      containers.forEach((item: any) => {
+        tooltip += `${item.State} / `
+      });
+      return tooltip;
+    };
 
     return (
-      <div className="flex justify-between items-center w-full">
-        <p className="font-mini text-[var(--color-text-3)] m-0">
-          {`creator: ${item.created_by || '--'}`}
-        </p>
-        <div className="flex gap-1">
-          {!isRunning && !isStarting && (
-            <Button
-              // type="link"
-              color="green" variant="link"
-              size="small"
-              icon={<PlayCircleOutlined />}
-              onClick={(e) => handleStart(item.id, e)}
-              loading={isStarting}
-              className="text-green-600 hover:text-green-700"
-            >
-              启动
-            </Button>
+      <div className="flex justify-between items-center w-full gap-3">
+        <div className="flex items-center gap-2 flex-1 min-w-0 ">
+          <span className='font-mini'>State: </span>
+          <Tag color={getStateTagColor(item.state)} className="!m-0 font-mini">
+            {item.state}
+          </Tag>
+          {item.state === 'running' && (
+            <Tooltip title={getContainerToolTip}>
+              <Tag color="blue" className="!m-0 font-mini">
+                Containers: {containers.length}
+              </Tag>
+            </Tooltip>
           )}
-          {/* {(isRunning || isStarting) && (
+        </div>
+        <div className="flex gap-0.5 flex-shrink-0">
+          <Tooltip title={t(`lab.env.editor`)}>
             <Button
               type="text"
               size="small"
-              icon={<PauseCircleOutlined />}
-              onClick={(e) => handleStop(item.id, e)}
-              loading={isStopping}
-              className="text-red-600 hover:text-red-700"
-            >
-              停止
-            </Button>
-          )} */}
-          <Button
-            // type="link"
-            size="small"
-            color="danger" variant="link"
-            icon={<PauseCircleOutlined />}
-            onClick={(e) => handleStop(item.id, e)}
-            loading={isStopping}
-            className="text-red-600 hover:text-red-700"
-          >
-            停止
-          </Button>
+              target='_blank'
+              disabled={item.state !== 'running'}
+              icon={<CodeOutlined />}
+              href={getCodeEditorLink(item)}
+              className={
+                ['starting', 'stopping', 'stopped'].includes(item.state) ?
+                  "" :
+                  "!text-blue-500 hover:!bg-blue-50 hover:!text-blue-600 transition-colors"
+              }
+            />
+          </Tooltip>
+          <Tooltip title={t(`lab.manage.restart`)}>
+            <Button
+              type="text"
+              size="small"
+              disabled={['starting', 'stopping', 'stopped'].includes(item.state)}
+              icon={<RedoOutlined />}
+              onClick={(e) => {
+                e.stopPropagation();
+                handleRestart(item.id);
+              }}
+              className={
+                ['starting', 'stopping', 'stopped'].includes(item.state) ?
+                  "" :
+                  "!text-blue-500 hover:!bg-blue-50 hover:!text-blue-600 transition-colors"
+              }
+            />
+          </Tooltip>
+          {!isRunning && !isStarting && (
+            <Tooltip title={t(`lab.env.start`)}>
+              <Button
+                type="text"
+                size="small"
+                disabled={['stopping'].includes(item.state)}
+                icon={<PlayCircleOutlined />}
+                onClick={(e) => handleStart(item.id, e)}
+                loading={isStarting}
+                className={
+                  !['stopping'].includes(item.state) ? "!text-green-500 hover:!bg-green-50 hover:!text-green-600 transition-colors" : ''
+                }
+              />
+            </Tooltip>
+          )}
+          {(isRunning || isStarting) && (
+            <Tooltip title={t(`lab.env.stop`)}>
+              <Button
+                type="text"
+                size="small"
+                icon={<PauseCircleOutlined />}
+                disabled={['starting'].includes(item.state)}
+                onClick={(e) => handleStop(item.id, e)}
+                loading={isStopping}
+                className={
+                  !['starting'].includes(item.state) ? "!text-red-500 hover:!bg-red-50 hover:!text-red-600 transition-colors" : ''
+                }
+              />
+            </Tooltip>
+          )}
         </div>
       </div>
     );
-  };
-
-  // 卡片点击
-  const handleCardClick = (item: any) => {
-    console.log(item);
-    // 可跳转详情或弹窗
   };
 
   // 新增
@@ -198,7 +283,7 @@ const EnvManage = () => {
 
   // 编辑
   const handleEdit = (data: any) => {
-    modalRef.current?.showModal(data)
+    modalRef.current?.showModal(data);
   };
 
   // 删除
@@ -206,11 +291,11 @@ const EnvManage = () => {
     setLoading(true);
     try {
       await deleteEnv(id);
-      message.success('环境删除成功');
+      message.success(t(`lab.env.deleteEnvSuccess`));
       fetchEnvs(); // 刷新列表
     } catch (e) {
-      console.error('删除环境失败:', e);
-      message.error('删除环境失败');
+      console.error(t(`lab.env.deleteEnvFailed`), e);
+      message.error(t(`lab.env.deleteEnvFailed`));
     } finally {
       setLoading(false);
     }
@@ -224,16 +309,17 @@ const EnvManage = () => {
   return (
     <>
       <div className={`w-full h-full ${stlyes.segmented}`}>
-        {/* <Segmented options={tabOptions} value={activeTab} onChange={(value) => setActiveTab(value)} /> */}
         <div className='flex h-full w-full mt-4'>
           <EntityList
             data={tableData}
             menuActions={menuActions}
             loading={loading}
-            onCardClick={handleCardClick}
             openModal={handleAdd}
             onSearch={handleSearch}
             descSlot={descSlot}
+            operateSection={
+              <Button icon={<ReloadOutlined />} color='default' variant='link' className='w-full' onClick={fetchEnvs} />
+            }
           />
         </div>
       </div>

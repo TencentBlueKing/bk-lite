@@ -2,6 +2,7 @@ from pydantic import BaseModel, Field
 from typing import List, Literal, Optional
 from langchain_core.documents import Document
 
+
 class DocumentRetrieverRequest(BaseModel):
     embed_model_base_url: str = ''
     embed_model_api_key: Optional[str] = ''
@@ -16,9 +17,12 @@ class DocumentRetrieverRequest(BaseModel):
 
     search_query: str = ''
 
+
 class DocumentDeleteRequest(BaseModel):
+    group_id: str = ''
     uuids: List[str] = []
-    
+
+
 class DocumentIngestRequest(BaseModel):
     openai_api_key: str = ''
     openai_model: str = ''
@@ -35,14 +39,17 @@ class DocumentIngestRequest(BaseModel):
     group_id: str = ''
     rebuild_community: bool = False
 
-    docs: List[Document]   
+    docs: List[Document]
+
 
 class DocumentListRequest(BaseModel):
     group_id: str
-     
+
+
 class IndexDeleteRequest(BaseModel):
     group_id: str
-     
+
+
 class RebuildCommunityRequest(BaseModel):
     group_ids: List[str] = []
     openai_api_key: str = ""
@@ -54,4 +61,3 @@ class RebuildCommunityRequest(BaseModel):
     rerank_model_base_url: str = ""
     rerank_model_name: str = ""
     rerank_model_api_key: str = ""
-     
