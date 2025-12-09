@@ -163,6 +163,21 @@ const UploadModal = forwardRef<ModalRef, UploadModalProps>(({ onSuccess }, ref) 
     ...selectTags
   });
 
+  // 构建FormData参数
+  const buildFormDataParams = (file: UploadFile<any>) => {
+    if (file.originFileObj) {
+      const params = new FormData();
+      params.append('dataset', formData?.dataset_id);
+      params.append('name', file.name);
+      params.append('train_data', file.originFileObj);
+      Object.entries(selectTags).forEach(([key, val]) => {
+        params.append(key, String(val));
+      });
+
+      return params;
+    }
+  };
+
   // 处理提交成功
   const handleSubmitSuccess = () => {
     setVisiable(false);
@@ -193,26 +208,36 @@ const UploadModal = forwardRef<ModalRef, UploadModalProps>(({ onSuccess }, ref) 
           throw new Error(`Unsupported upload type: ${formData?.activeTap}`);
         }
         // 3. 读取并处理文件内容
-        const text = await fileList[0].originFileObj!.text();
-        const incluede_header = formData?.activeTap === 'classification' ? true : false;
-        const rawData = handleFileRead(text, formData?.activeTap || '', incluede_header);
+        const file = fileList[0].originFileObj;
+        if (activeType !== 'timeseries_predict') {
+          const text = await file!.text();
+          const incluede_header = formData?.activeTap === 'classification' ? true : false;
+          const rawData = handleFileRead(text, formData?.activeTap || '', incluede_header);
 
-        // 根据类型决定传递的数据结构
-        let dataToProcess: ProcessedData;
-        if (formData?.activeTap === 'classification' && rawData.headers) {
-          dataToProcess = { headers: rawData.headers, train_data: rawData.train_data as TrainDataParams[] };
+          // 根据类型决定传递的数据结构
+          let dataToProcess: ProcessedData;
+          if (formData?.activeTap === 'classification' && rawData.headers) {
+            dataToProcess = { headers: rawData.headers, train_data: rawData.train_data as TrainDataParams[] };
+          } else {
+            dataToProcess = rawData.train_data;
+          }
+
+          const processedData = strategy.processData(dataToProcess);
+
+          // 4. 构建提交参数
+          const params = buildSubmitParams(fileList[0], processedData);
+          console.log(params);
+          // 5. 调用对应的API
+          await strategy.apiCall(params);
         } else {
-          dataToProcess = rawData.train_data;
+          const params = buildFormDataParams(fileList[0]);
+
+          if (params) {
+            await addTimeSeriesPredictTrainData(params)
+          }
         }
-
-        const processedData = strategy.processData(dataToProcess);
-
-        // 4. 构建提交参数
-        const params = buildSubmitParams(fileList[0], processedData);
-        console.log(params);
-        // 5. 调用对应的API
-        await strategy.apiCall(params);
       } else {
+        console.log('时序预测')
         // 图片上传处理
         const value = await formRef.current?.validateFields();
         const submitData = new FormData();

@@ -1,6 +1,8 @@
 """
 智能体节点
 """
+import json
+import time
 from typing import Any, Dict
 
 import jinja2
@@ -10,9 +12,7 @@ from apps.opspilot.models import LLMModel, LLMSkill
 from apps.opspilot.services.chat_service import ChatService
 from apps.opspilot.services.llm_service import llm_service
 from apps.opspilot.utils.agent_factory import create_agent_instance
-from apps.opspilot.utils.agui_chat import _generate_agui_stream
 from apps.opspilot.utils.chat_flow_utils.engine.core.base_executor import BaseNodeExecutor
-from apps.opspilot.utils.sse_chat import stream_chat
 
 
 class AgentNode(BaseNodeExecutor):
@@ -138,16 +138,21 @@ class AgentNode(BaseNodeExecutor):
         }
 
     def sse_execute(self, node_id: str, node_config: Dict[str, Any], input_data: Dict[str, Any]):
-        """流式执行agent节点，yield SSE格式数据"""
+        """流式执行agent节点，返回异步生成器"""
         config = node_config["data"].get("config", {})
         input_key = config.get("inputParams", "last_message")
         skill_id = config.get("agent")
 
         llm_params, skill_name = self.set_llm_params(node_id, config, input_data)
-        return stream_chat(llm_params, skill_name, {}, None, input_data.get(input_key), skill_id)
+
+        # 导入 create_stream_generator 而不是 stream_chat
+        from apps.opspilot.utils.sse_chat import create_stream_generator
+
+        # 返回异步生成器而不是 StreamingHttpResponse
+        return create_stream_generator(llm_params, skill_name, {}, None, input_data.get(input_key), skill_id)
 
     def agui_execute(self, node_id: str, node_config: Dict[str, Any], input_data: Dict[str, Any]):
-        """AGUI协议流式执行agent节点，yield AGUI格式数据"""
+        """AGUI协议流式执行agent节点，返回异步生成器"""
         config = node_config["data"].get("config", {})
 
         # 获取 LLM 参数
@@ -164,8 +169,37 @@ class AgentNode(BaseNodeExecutor):
         # 创建 agent 实例
         graph, request = create_agent_instance(skill_type, chat_kwargs)
 
-        # 调用内部生成器函数
-        return _generate_agui_stream(graph, request, skill_name, show_think)
+        # 直接返回异步生成器
+        async def generate_agui_stream():
+            """异步生成器：直接生成 AGUI 数据流"""
+            try:
+                logger.info(f"[AgentNode-AGUI] 开始流式处理 - skill_name: {skill_name}, node_id: {node_id}, show_think: {show_think}")
+
+                chunk_index = 0
+                async for sse_line in graph.agui_stream(request):
+                    # 如果 show_think=False，过滤掉工具调用相关事件
+                    if not show_think and sse_line.startswith("data: "):
+                        try:
+                            data_str = sse_line[6:].strip()
+                            data_json = json.loads(data_str)
+                            event_type = data_json.get("type", "")
+
+                            # 过滤工具调用相关事件
+                            if event_type in ["TOOL_CALL_START", "TOOL_CALL_ARGS", "TOOL_CALL_END", "TOOL_CALL_RESULT"]:
+                                continue
+                        except (json.JSONDecodeError, ValueError):
+                            pass
+
+                    chunk_index += 1
+                    yield sse_line
+
+                logger.info(f"[AgentNode-AGUI] 流式处理完成 - 生成 {chunk_index} 个chunk")
+            except Exception as e:
+                logger.error(f"[AgentNode-AGUI] stream error: {e}", exc_info=True)
+                error_data = {"type": "ERROR", "error": f"节点执行错误: {str(e)}", "timestamp": int(time.time() * 1000)}
+                yield f"data: {json.dumps(error_data, ensure_ascii=False)}\n\n"
+
+        return generate_agui_stream()
 
     def set_llm_params(self, node_id: str, config: Dict[str, Any], input_data: Dict[str, Any]):
         """设置LLM参数

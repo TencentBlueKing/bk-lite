@@ -5,6 +5,7 @@ from apps.opspilot import views
 from apps.opspilot.viewsets import (
     BotViewSet,
     ChannelViewSet,
+    ChatApplicationViewSet,
     EmbedProviderViewSet,
     FileKnowledgeViewSet,
     HistoryViewSet,
@@ -44,6 +45,7 @@ router.register(r"bot_mgmt/bot", BotViewSet)
 router.register(r"bot_mgmt/rasa_model", RasaModelViewSet, basename="rasa_model")
 router.register(r"bot_mgmt/history", HistoryViewSet)
 router.register(r"bot_mgmt/workflow_task_result", WorkFlowTaskResultViewSet)
+router.register(r"bot_mgmt/chat_application", ChatApplicationViewSet)
 
 # channel
 router.register(r"channel_mgmt/channel", ChannelViewSet)

@@ -116,7 +116,10 @@ class BotViewSet(AuthViewSet):
             obj.api_token = obj.get_api_token()
         if workflow_data:
             # 直接使用 workflow_data 作为 flow_json
-            BotWorkFlow.objects.filter(bot_id=obj.id).update(flow_json=workflow_data, web_json=workflow_data)
+            flow = BotWorkFlow.objects.get(bot_id=obj.id)
+            flow.flow_json = workflow_data
+            flow.web_json = workflow_data
+            flow.save()
         obj.updated_by = request.user.username
         obj.save()
         if is_publish:

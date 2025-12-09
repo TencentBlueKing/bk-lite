@@ -416,6 +416,7 @@ const ProfessionalCollection: React.FC = () => {
       databases: SQLTask,
       cloud: CloudTask,
       host_manage: HostTask,
+      middleware: HostTask,
     };
     const TaskComponent = taskMap[actualCategory.id] || K8sTask;
     return <TaskComponent {...props} />;
@@ -554,7 +555,13 @@ const ProfessionalCollection: React.FC = () => {
           const digest = (record.message || {}) as CollectTaskMessage;
 
           if (record.exec_status === EXEC_STATUS.ERROR && digest.message) {
-            return <span className="text-gray-500">{digest.message}</span>;
+            return (
+              <Tooltip title={digest.message}>
+                <div className={`${styles.ellipsis2Lines} text-gray-500`}>
+                  {digest.message}
+                </div>
+              </Tooltip>
+            );
           }
 
           const errorTotal =
@@ -975,6 +982,13 @@ const ProfessionalCollection: React.FC = () => {
         width={750}
         onClose={() => setDetailVisible(false)}
         open={detailVisible}
+        footer={
+          <div className="flex justify-start">
+            <Button onClick={() => setDetailVisible(false)}>
+              {t('common.close')}
+            </Button>
+          </div>
+        }
       >
         {detailVisible && currentTask && (
           <TaskDetail

@@ -33,6 +33,9 @@ class NodeRegistry:
         self.register_node_class("wechat_official", EntryNode)
         self.register_node_class("openai", EntryNode)
         self.register_node_class("agui", EntryNode)  # AGUI入口节点
+        self.register_node_class("embedded_chat", EntryNode)  # embedded_chat入口节点
+        self.register_node_class("mobile", EntryNode)  # mobile入口节点
+        self.register_node_class("web_chat", EntryNode)  # web_chat入口节点
         self.register_node_class("exit", ExitNode)
         self.register_node_class("celery", EntryNode)
 

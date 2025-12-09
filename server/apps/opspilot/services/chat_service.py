@@ -2,6 +2,7 @@ import asyncio
 import re
 from typing import Any, Dict, Tuple
 
+from apps.core.logger import opspilot_logger
 from apps.core.mixinx import EncryptMixin
 from apps.core.utils.loader import LanguageLoader
 from apps.opspilot.enum import SkillTypeChoices
@@ -76,6 +77,7 @@ class ChatService:
                 "total_tokens": response.total_tokens,
                 "prompt_tokens": response.prompt_tokens,
                 "completion_tokens": response.completion_tokens,
+                "thread_id": response.thread_id,
             }
 
             # 处理内容（可选隐藏思考过程）
@@ -86,6 +88,9 @@ class ChatService:
             return result, doc_map, title_map
 
         except Exception as e:
+            # 记录详细的异常信息以便排查问题
+            opspilot_logger.error(f"invoke_chat 执行失败: skill_type={skill_type}, error={str(e)}", exc_info=True)
+
             loader = LanguageLoader(app="opspilot", default_lang="en")
             message = loader.get("error.agent_execution_failed") or f"Agent execution failed: {str(e)}"
             return {"message": message}, doc_map, title_map
@@ -148,9 +153,21 @@ class ChatService:
                         EncryptMixin.decrypt_field("value", i)
             tool_map = {i["id"]: {u["key"]: u["value"] for u in i["kwargs"] if u["key"]} for i in kwargs.get("tools", [])}
 
-            tools = list(SkillTools.objects.filter(id__in=list(tool_map.keys())).values_list("params", flat=True))
-            for i in tools:
-                i.pop("kwargs", None)
+            # 查询工具对象，需要判断是否为内置工具
+            skill_tools_queryset = SkillTools.objects.filter(id__in=list(tool_map.keys()))
+            tools = []
+
+            for skill_tool in skill_tools_queryset:
+                tool_params = skill_tool.params.copy()
+                # 移除 kwargs 字段
+                tool_params.pop("kwargs", None)
+
+                # 如果是内置工具，添加 langchain 前缀的 URL
+                if skill_tool.is_build_in:
+                    tool_params["url"] = f"langchain:{skill_tool.name}"
+
+                tools.append(tool_params)
+
             for i in tool_map.values():
                 extra_config.update(i)
             chat_kwargs.update({"tools_servers": tools})

@@ -34,6 +34,7 @@ class LabImage(TimeInfo, MaintainerInfo):
     default_env = models.JSONField(_("默认环境变量"), default=dict, help_text=_("容器启动时的环境变量"))
     default_command = models.JSONField(_("默认启动命令"), default=list, help_text=_("覆盖镜像的 CMD"))
     default_args = models.JSONField(_("默认启动参数"), default=list, help_text=_("传递给启动命令的参数"))
+    default_user = models.CharField(_("运行用户"), max_length=50, blank=True, null=True, help_text=_("容器运行用户,格式: uid:gid 或 username"))
     
     # 额外配置
     expose_ports = models.JSONField(_("暴露端口列表"), default=list, help_text=_("需要暴露的端口号列表"))

@@ -496,7 +496,7 @@ EOF
 # All variables are exported for use in docker-compose and other scripts
 init_docker_images() {
     # Infrastructure images
-    export DOCKER_IMAGE_TRAEFIK=$(add_mirror_prefix "traefik:3.3.3")
+    export DOCKER_IMAGE_TRAEFIK=$(add_mirror_prefix "traefik:3.6.2")
     export DOCKER_IMAGE_REDIS=$(add_mirror_prefix "redis:5.0.14")
     export DOCKER_IMAGE_NATS=$(add_mirror_prefix "nats:2.10.25")
     export DOCKER_IMAGE_NATS_CLI=$(add_mirror_prefix "natsio/nats-box:latest")
@@ -673,10 +673,6 @@ install() {
     
     # 构建 compose 命令
     export COMPOSE_CMD="${DOCKER_COMPOSE_CMD} -f compose/infra.yaml -f compose/monitor.yaml -f compose/server.yaml -f compose/web.yaml"
-    
-    if [[ $OPSPILOT_ENABLED == "true" ]]; then
-        export COMPOSE_CMD="${COMPOSE_CMD} -f compose/ops_pilot.yaml"
-    fi
     
     if [[ $VLLM_ENABLED == "true" ]]; then
         export COMPOSE_CMD="${COMPOSE_CMD} -f compose/vllm.yaml"

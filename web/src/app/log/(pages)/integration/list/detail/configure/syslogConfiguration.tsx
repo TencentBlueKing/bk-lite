@@ -98,20 +98,12 @@ const SyslogConfiguration: React.FC = () => {
                   {selectedNodeIp}
                 </span>
               </div>
-              <div className="pb-[10px] mb-[10px] border-b border-[var(--color-border-1)]">
+              <div className="pb-[10px]">
                 <span className="text-[12px] text-[var(--color-text-3)]">
                   {t('log.integration.syslogTargetPort')}:
                 </span>
                 <span className="ml-[10px] text-[var(--color-primary)] font-mono font-semibold">
-                  514
-                </span>
-              </div>
-              <div>
-                <span className="text-[12px] text-[var(--color-text-3)]">
-                  {t('log.integration.syslogProtocol')}:
-                </span>
-                <span className="ml-[10px] text-[var(--color-primary)] font-mono font-semibold">
-                  UDP / TCP
+                  514(UDP) / 1514(TCP)
                 </span>
               </div>
             </div>
