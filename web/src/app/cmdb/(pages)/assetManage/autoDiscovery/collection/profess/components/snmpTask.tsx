@@ -91,9 +91,8 @@ const SNMPTask: React.FC<SNMPTaskFormProps> = ({
         accessPointId: values.access_point?.[0]?.id,
         ip_range: collectType === 'ip' ? ipRange.join('-') : '',
         instances: collectType === 'ip' ? [] : instance || [],
-        params: {
-          organization: values.organization || [],
-        },
+        team: values.organization || [],
+        params: {},
       };
     },
   });
@@ -119,7 +118,7 @@ const SNMPTask: React.FC<SNMPTaskFormProps> = ({
           ipRange,
           ...values,
           ...values.credential,
-          organization: values.params?.organization,
+          organization: values.team || [],
           accessPointId: values.access_point?.[0]?.id,
         });
       } else {

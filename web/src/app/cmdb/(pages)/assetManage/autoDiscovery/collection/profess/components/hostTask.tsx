@@ -70,15 +70,14 @@ const HostTask: React.FC<HostTaskFormProps> = ({
         task_type: modelItem.task_type,
         driver_type: driverType,
         accessPointId: values.access_point?.[0]?.id,
+        ip_range: collectType === 'ip' ? ipRange.join('-') : '',
+        instances: collectType === 'ip' ? [] : instance || [],
+        team: values.organization || [],
+        params: {},
         credential: {
           username: values.username,
           password: values.password,
           port: values.port,
-        },
-        ip_range: collectType === 'ip' ? ipRange.join('-') : '',
-        instances: collectType === 'ip' ? [] : instance || [],
-        params: {
-          organization: values.organization || [],
         },
       };
     },
@@ -97,7 +96,7 @@ const HostTask: React.FC<HostTaskFormProps> = ({
         form.setFieldsValue({
           ipRange,
           ...values,
-          organization: values.params?.organization,
+          organization: values.team || [],
           username: values.credential?.username,
           password: values.credential?.password,
           port: values.credential.port,
