@@ -38,7 +38,9 @@ class CollectorViewSet(ModelViewSet):
         return Response(results)
 
     def create(self, request, *args, **kwargs):
-        serializer = self.get_serializer(data=request.data)
+        data = request.data
+        data.update(is_pre=False)
+        serializer = self.get_serializer(data=data)
         serializer.is_valid(raise_exception=True)
         self.perform_create(serializer)
 
