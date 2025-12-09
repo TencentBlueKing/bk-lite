@@ -170,8 +170,17 @@ export const useStudioApi = () => {
    * 获取某个会话的消息列表
    * @param sessionId - 会话ID
    */
-  const fetchSessionMessages = async (sessionId: string): Promise<any[]> => {
+  const fetchSessionMessages = async (sessionId: string): Promise<any> => {
     return get('/opspilot/bot_mgmt/chat_application/session_messages/', { params: { session_id: sessionId } });
+  };
+
+  /**
+   * 查询技能引导语
+   * @param botId - 机器人ID
+   * @param nodeId - 节点ID
+   */
+  const fetchSkillGuide = async (botId: string, nodeId: string): Promise<any> => {
+    return get('/opspilot/bot_mgmt/chat_application/skill_guide/', { params: { bot_id: botId, node_id: nodeId } });
   };
 
   return {
@@ -195,5 +204,6 @@ export const useStudioApi = () => {
     fetchWebChatSessions,
     fetchApplication,
     fetchSessionMessages,
+    fetchSkillGuide,
   };
 };

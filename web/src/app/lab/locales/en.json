@@ -117,7 +117,25 @@
       "endpoint": "Endpoint",
       "endpointMaxLength": "Endpoint cannot exceed 200 characters",
       "enterEndpoint": "Please enter endpoint (optional)",
-      "restart": "restart"
+      "restart": "restart",
+      "defaultUser": "Operating User"
+    },
+    "env": {
+      "start": "Start",
+      "stop": "Stop",
+      "editor": "Editor",
+      "staringEnv": "Staring Env",
+      "envReStart": "Env Restart",
+      "stopEnv": "Stop",
+      "envStartUpSuccess": "Env start up success",
+      "envStartUpFailed": "Env start up ",
+      "envReStartSucess": "Env start up success",
+      "envReStartFailed": "Env start up failed",
+      "envStopSucess": "Env stop success",
+      "envStopFailed": "Env stop failed",
+      "deleteEnvSuccess": "Delete env success",
+      "deleteEnvFailed": "Delete env failed",
+      "infraTemplate": "Please select an infrastructure image template."
     }
   }
 }

@@ -45,6 +45,7 @@ class CollectService(object):
             "hbase_info": "HBaseInfo",
             "mssql_info": "MSSQLInfo",
             "aws_info": "AWSManager",
+            "physcial_server_info": "PserverInfo",
         }
 
     def import_plugin(self, plugin_name):

@@ -1,0 +1,44 @@
+[build-system]
+requires = ["setuptools>=68", "setuptools-scm"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "classify_timeseries_server"
+version = "0.1.0"
+description = ""
+readme = "README.md"
+requires-python = ">=3.12"
+
+dependencies = [
+    "fire>=0.7.1",
+    "loguru>=0.7.3",
+    "python-dotenv>=1.2.1",
+    "tqdm>=4.67.1",
+    "requests>=2.32.5",
+    "bentoml>=1.4.30",
+    "mlflow>=3.6.0",
+    "feature-engine>=1.9.3",
+    "scikit-learn>=1.7.2",
+    "statsmodels>=0.14.4",
+    "matplotlib>=3.9.0",
+    "pandas>=2.2.0",
+    "numpy>=1.26.0",
+    "hyperopt>=0.2.7",
+    "setuptools>=68.0.0"
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=8.4.2",
+    "pytest-asyncio>=1.2.0",
+    "pytest-dotenv-modern>=0.3.0",
+    "pytest-xdist>=3.8.0",
+]
+
+[tool.setuptools.packages.find]
+include = ["classify_timeseries_server*"]
+
+[project.scripts]
+classify_timeseries_server = "classify_timeseries_server.cli.bootstrap:main"
+
+

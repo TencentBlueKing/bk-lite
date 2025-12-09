@@ -236,7 +236,12 @@ const ExtractionStep: React.FC<{
       title: t('knowledge.documents.actions'),
       key: 'actions',
       render: (_: unknown, record: any, index: number) => (
-        <Button type="link" onClick={() => handleConfigure(record, index)}>
+        <Button 
+          type="link" 
+          onClick={() => handleConfigure(record, index)}
+          disabled={loadingOcrModels}
+          loading={loadingOcrModels}
+        >
           {t('knowledge.documents.config')}
         </Button>
       ),
@@ -245,7 +250,9 @@ const ExtractionStep: React.FC<{
 
   const handleConfigure = (record: { defaultMethod: keyof typeof extractionMethods; extension: string; [key: string]: any }, index: number) => {
     const documentConfig = knowledgeDocumentList[index];
-    const defaultModel = ocrModels.find((model) => model.name === 'PaddleOCR');
+    const paddleOCR = ocrModels.find((model) => model.name === 'PaddleOCR' && model.enabled);
+    const firstEnabledModel = ocrModels.find((model) => model.enabled);
+    const defaultModel = paddleOCR || firstEnabledModel;
     const availableMethods = getAvailableExtractionMethods(record.extension);
 
     setSelectedDocument({ ...record, index, availableMethods });

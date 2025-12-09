@@ -39,6 +39,7 @@ class InfraInstance(TimeInfo, MaintainerInfo):
     endpoint = models.CharField(_("访问端点"), max_length=200, blank=True, null=True)
     
     # 容器运行时配置
+    user = models.CharField(_("运行用户"), max_length=50, blank=True, null=True, help_text=_("容器运行用户,格式: uid:gid 或 username，为空则使用镜像默认值"))
     env_vars = models.JSONField(_("环境变量"), default=dict, help_text=_("容器运行时的环境变量，会覆盖镜像默认配置"))
     command = models.JSONField(_("启动命令"), default=list, blank=True, help_text=_("覆盖镜像的 CMD，为空则使用镜像默认值"))
     args = models.JSONField(_("启动参数"), default=list, blank=True, help_text=_("传递给启动命令的参数"))

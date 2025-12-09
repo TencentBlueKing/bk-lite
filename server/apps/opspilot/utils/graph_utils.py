@@ -92,7 +92,7 @@ class GraphUtils(ChunkHelper):
                       graph_id in graph_map_list.items() if chunk_id in delete_chunk]
         if graph_list:
             try:
-                cls.delete_graph_chunk(graph_list)
+                cls.delete_graph_chunk(graph_obj, graph_list)
             except Exception as e:
                 return {"result": False, "message": str(e)}
             GraphChunkMap.objects.filter(
@@ -228,9 +228,12 @@ class GraphUtils(ChunkHelper):
             raise Exception("Failed to Delete graph")
 
     @classmethod
-    def delete_graph_chunk(cls, chunk_ids):
+    def delete_graph_chunk(cls, graph_obj: KnowledgeGraph, chunk_ids):
         """删除图谱分块"""
-        request = DocumentDeleteRequest(uuids=chunk_ids)
+        request = DocumentDeleteRequest(
+            group_id=f"graph-{graph_obj.id}",
+            uuids=chunk_ids
+        )
 
         try:
             rag = GraphitiRAG()

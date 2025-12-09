@@ -1,6 +1,6 @@
 'use client';
 import React, { useState, useEffect } from 'react';
-import { Form, message, Button, Menu, Modal, Drawer } from 'antd';
+import { Form, message, Button, Menu, Modal, Drawer, Switch } from 'antd';
 import { Store } from 'antd/lib/form/interface';
 import { useTranslation } from '@/utils/i18n';
 import EntityList from '@/components/entity-list';
@@ -31,6 +31,7 @@ const ToolListPage: React.FC = () => {
   const [selectedToolForDetail, setSelectedToolForDetail] = useState<Tool | null>(null);
   const [availableTools, setAvailableTools] = useState<any[]>([]);
   const [fetchingTools, setFetchingTools] = useState<boolean>(false);
+  const [enableAuth, setEnableAuth] = useState<boolean>(false);
 
   const iconTypes = ['yinliugongju-biaotiyouhua', 'yinliugongju-biaotifenxi', 'yinliugongju-dijiayinliu', 'gongjuqu', 'gongjuxiang', 'gongju1'];
   
@@ -79,18 +80,6 @@ const ToolListPage: React.FC = () => {
             <div className="text-xs text-[var(--text-color-3)] leading-relaxed line-clamp-2">
               {tool.description || t('common.noData')}
             </div>
-            {tool.parameters && Object.keys(tool.parameters).length > 0 && (
-              <div className="mt-2 flex flex-wrap gap-1">
-                {Object.keys(tool.parameters).map((param: string) => (
-                  <span 
-                    key={param}
-                    className="inline-block text-xs bg-[var(--color-bg)] text-blue-600 px-2 py-0.5 rounded border border-blue-200"
-                  >
-                    {param}
-                  </span>
-                ))}
-              </div>
-            )}
           </div>
         </div>
       </div>
@@ -140,20 +129,52 @@ const ToolListPage: React.FC = () => {
       ),
       rules: [{ required: true, message: `${t('common.inputMsg')}${t('tool.mcpUrl')}` }],
     },
-    {
-      name: 'variables',
-      type: 'custom',
-      label: t('tool.variables'),
-      component: (
-        <VariableList
-          value={form.getFieldValue('variables') || []}
-          onChange={(newVal: any) => {
-            form.setFieldsValue({ variables: newVal });
-          }}
-          disabled={isBuiltIn}
-        />
-      ),
-    },
+    ...(!isBuiltIn ? [
+      {
+        name: 'enable_auth',
+        type: 'custom',
+        label: '',
+        className: '-mt-3',
+        component: (
+          <div className="flex items-center gap-2 -mb-6">
+            <Switch 
+              size="small"
+              checked={enableAuth}
+              onChange={(checked) => {
+                setEnableAuth(checked);
+                form.setFieldsValue({ enable_auth: checked });
+                if (!checked) {
+                  form.setFieldsValue({ auth_token: '' });
+                }
+              }}
+            />
+            <span className="text-sm">Basic Auth 认证</span>
+          </div>
+        ),
+      },
+      ...(enableAuth ? [{
+        name: 'auth_token',
+        type: 'inputPwd',
+        label: 'Token',
+        placeholder: `${t('common.inputMsg')}Token`,
+        rules: [{ required: true, message: `${t('common.inputMsg')}Token` }],
+      }] : []),
+    ] : []),
+    ...(!isBuiltIn ? [
+      {
+        name: 'variables',
+        type: 'custom',
+        label: '',
+        component: (
+          <VariableList
+            value={form.getFieldValue('variables') || []}
+            onChange={(newVal: any) => {
+              form.setFieldsValue({ variables: newVal });
+            }}
+            disabled={isBuiltIn}
+          />
+        ),
+      }] : []),
     {
       name: 'team',
       type: 'custom',
@@ -213,19 +234,28 @@ const ToolListPage: React.FC = () => {
     form
       .validateFields()
       .then(async (values: Store) => {
+        // 如果启用认证但未填写 token，手动提示错误
+        if (enableAuth && !values.auth_token) {
+          message.error(`${t('common.inputMsg')}Token`);
+          return;
+        }
+        
         try {
           setConfirmLoading(true);
           const kwargs = (values.variables || []).map((variable: { key: string; type: string; isRequired: boolean }) => ({
             ...variable,
             value: '',
           }));
+          const { enable_auth, auth_token, ...restValues } = values;
           const queryParams = {
-            ...values,
+            ...restValues,
             icon: 'gongjuji',
             params: {
               name: values.name,
               url: values.url,
-              kwargs
+              kwargs,
+              enable_auth: enable_auth || false,
+              auth_token: auth_token || '',
             },
             tools: availableTools,
           };
@@ -237,6 +267,7 @@ const ToolListPage: React.FC = () => {
           form.resetFields();
           setIsModalVisible(false);
           setAvailableTools([]);
+          setEnableAuth(false);
           fetchData();
           message.success(t('common.saveSuccess'));
         } catch (error: any) {
@@ -259,6 +290,7 @@ const ToolListPage: React.FC = () => {
     form.resetFields();
     setIsModalVisible(false);
     setAvailableTools([]);
+    setEnableAuth(false);
   };
 
   const menuActions = (tool: Tool) => {
@@ -285,13 +317,22 @@ const ToolListPage: React.FC = () => {
   const showModal = (tool: Tool | null) => {
     setSelectedTool(tool);
     setIsModalVisible(true);
-    setAvailableTools([]);
+    // 编辑时直接用 tool.tools 展示,不再请求
+    if (tool && Array.isArray(tool.tools)) {
+      setAvailableTools(tool.tools);
+    } else {
+      setAvailableTools([]);
+    }
     Promise.resolve().then(() => {
+      const enableAuthValue = tool?.params?.enable_auth || false;
+      setEnableAuth(enableAuthValue);
       form.setFieldsValue({
         ...tool,
         url: tool?.params?.url,
         team: tool ? tool.team : [selectedGroup?.id],
         variables: tool?.params?.kwargs,
+        enable_auth: enableAuthValue,
+        auth_token: tool?.params?.auth_token || '',
       });
     });
   };
@@ -352,16 +393,17 @@ const ToolListPage: React.FC = () => {
         onOk={handleOk}
         onCancel={handleCancel}
         width={1200}
+        bodyStyle={{ height: '600px', overflow: 'hidden' }}
       >
-        <div className="flex gap-4">
-          <div className="flex-1">
+        <div className="flex gap-4 h-full">
+          <div className="flex-1 overflow-y-auto pr-2">
             <DynamicForm
               form={form}
               fields={formFields}
               initialValues={{ team: selectedTool?.team || [] }}
             />
           </div>
-          <div className="w-96 border-l border-[var(--color-border)] pl-4">
+          <div className="w-96 border-l border-[var(--color-border)] pl-4 flex flex-col h-full">
             <div className="mb-3 flex items-center justify-between">
               <span className="font-semibold text-base">{t('tool.availableTools')}</span>
               {availableTools.length > 0 && (
@@ -370,7 +412,7 @@ const ToolListPage: React.FC = () => {
                 </span>
               )}
             </div>
-            <div className="max-h-[500px] overflow-y-auto space-y-3">
+            <div className="flex-1 max-h-full overflow-y-auto space-y-3">
               {fetchingTools ? (
                 <>
                   {[1, 2, 3].map((i) => (
@@ -407,10 +449,15 @@ const ToolListPage: React.FC = () => {
       >
         {selectedToolForDetail && (
           <div className="space-y-4">
+            {/* 描述部分 */}
             <div>
-              <h3 className="text-sm font-semibold text-[var(--text-color-1)] mb-2">{t('tool.description')}</h3>
-              <div className="text-sm text-[var(--text-color-3)] p-3 rounded leading-relaxed whitespace-pre-wrap">
-                {selectedToolForDetail.description || t('common.noData')}
+              <div className="mb-3 flex items-center justify-between">
+                <h3 className="text-sm font-semibold text-[var(--text-color-1)]">{t('tool.description')}</h3>
+              </div>
+              <div className="p-3 bg-gradient-to-br from-[var(--color-fill-1)] to-[var(--color-primary-bg-active)] rounded-lg">
+                <div className="text-sm text-[var(--text-color-3)] leading-relaxed whitespace-pre-wrap">
+                  {selectedToolForDetail.description || t('common.noData')}
+                </div>
               </div>
             </div>
             

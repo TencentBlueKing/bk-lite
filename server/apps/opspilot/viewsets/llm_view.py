@@ -8,7 +8,6 @@ from rest_framework.response import Response
 from apps.core.decorators.api_permission import HasPermission
 from apps.core.logger import opspilot_logger as logger
 from apps.core.mixinx import EncryptMixin
-from apps.core.utils.async_utils import create_async_compatible_generator
 from apps.core.utils.viewset_utils import AuthViewSet, LanguageViewSet
 from apps.opspilot.models import KnowledgeBase, LLMModel, LLMSkill, SkillRequestLog, SkillTools
 from apps.opspilot.serializers.llm_serializer import LLMModelSerializer, LLMSerializer, SkillRequestLogSerializer, SkillToolsSerializer
@@ -151,16 +150,13 @@ class LLMViewSet(AuthViewSet):
         """
         import json
 
-        def error_generator():
+        async def error_generator():
             error_data = {"result": False, "message": error_message, "error": True}
             yield f"data: {json.dumps(error_data, ensure_ascii=False)}\n\n"
             yield "data: [DONE]\n\n"
 
-        # 使用异步兼容的生成器包装器
-
-        async_generator = create_async_compatible_generator(error_generator())
-
-        response = StreamingHttpResponse(async_generator, content_type="text/event-stream")
+        # 直接使用异步生成器
+        response = StreamingHttpResponse(error_generator(), content_type="text/event-stream")
         response["Cache-Control"] = "no-cache, no-store, must-revalidate"
         response["X-Accel-Buffering"] = "no"  # Nginx
         # response["Pragma"] = "no-cache"

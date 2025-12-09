@@ -1,0 +1,131 @@
+networks:
+  lab-network-{{ env_id }}:
+  bklite-prod:
+    external: true
+{%- if volumes %}
+volumes:
+{%- for volume_name in volumes %}
+  {{ volume_name }}:
+{%- endfor %}
+{%- endif %}
+services:
+{%- if ide_service %}
+  {{ ide_service.name }}:
+    image: {{ ide_service.image }}
+    container_name: {{ ide_service.container_name }}
+    restart: always
+    networks:
+      - lab-network-{{ env_id }}
+      - bklite-prod
+{%- if ide_service.user %}
+    user: {{ ide_service.user }}
+{%- endif %}
+{%- if ide_service.environment %}
+    environment:
+{%- for key, value in ide_service.environment.items() %}
+      {{ key }}: {{ value }}
+{%- endfor %}
+{%- endif %}
+{%- if ide_service.ports %}
+    ports:
+{%- for port in ide_service.ports %}
+      - "{{ port }}"
+{%- endfor %}
+{%- endif %}
+{%- if ide_service.volumes %}
+    volumes:
+{%- for volume in ide_service.volumes %}
+      - {{ volume }}
+{%- endfor %}
+{%- endif %}
+{%- if ide_service.deploy %}
+    deploy:
+      resources:
+        limits:
+          cpus: "{{ ide_service.deploy.resources.limits.cpus }}"
+          memory: {{ ide_service.deploy.resources.limits.memory }}
+{%- if ide_service.deploy.resources.reservations %}
+        reservations:
+          devices:
+{%- for device in ide_service.deploy.resources.reservations.devices %}
+            - driver: {{ device.driver }}
+              count: {{ device.count }}
+              capabilities:
+{%- for cap in device.capabilities %}
+                - {{ cap }}
+{%- endfor %}
+{%- endfor %}
+{%- endif %}
+{%- endif %}
+{%- if ide_service.command %}
+    command:
+{%- if ide_service.command is string %}
+      - {{ ide_service.command }}
+{%- else %}
+{%- for cmd in ide_service.command %}
+      - {{ cmd }}
+{%- endfor %}
+{%- endif %}
+{%- endif %}
+{%- if ide_service.labels %}
+    labels:
+{%- for key, value in ide_service.labels.items() %}
+      {{ key }}: "{{ value }}"
+{%- endfor %}
+{%- endif %}
+{%- endif %}
+{%- for service in infra_services %}
+  {{ service.name }}:
+    image: {{ service.image }}
+    restart: always
+    networks:
+      - lab-network-{{ env_id }}
+{%- if service.user %}
+    user: {{ service.user }}
+{%- endif %}
+{%- if service.environment %}
+    environment:
+{%- for key, value in service.environment.items() %}
+      {{ key }}: {{ value }}
+{%- endfor %}
+{%- endif %}
+{%- if service.ports %}
+    ports:
+{%- for port in service.ports %}
+      - "{{ port }}"
+{%- endfor %}
+{%- endif %}
+{%- if service.volumes %}
+    volumes:
+{%- for volume in service.volumes %}
+      - {{ volume }}
+{%- endfor %}
+{%- endif %}
+{%- if service.deploy %}
+    deploy:
+      resources:
+        limits:
+{%- if service.deploy.resources.limits.cpus %}
+          cpus: "{{ service.deploy.resources.limits.cpus }}"
+{%- endif %}
+{%- if service.deploy.resources.limits.memory %}
+          memory: {{ service.deploy.resources.limits.memory }}
+{%- endif %}
+{%- endif %}
+{%- if service.command %}
+    command:
+{%- if service.command is string %}
+      - {{ service.command }}
+{%- else %}
+{%- for cmd in service.command %}
+      - {{ cmd }}
+{%- endfor %}
+{%- endif %}
+{%- endif %}
+{%- if service.labels %}
+    labels:
+{%- for key, value in service.labels.items() %}
+      {{ key }}: "{{ value }}"
+{%- endfor %}
+{%- endif %}
+{%- endfor %}
