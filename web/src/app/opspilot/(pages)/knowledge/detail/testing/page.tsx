@@ -220,13 +220,15 @@ const TestingPage: React.FC = () => {
             >
               <div className="space-y-3">
                 <div>
-                  <div className="flex items-center gap-2">
-                    <Icon type="question-circle-fill" className="text-lg flex-shrink-0" />
-                    <div className="flex-1">
+                  <div className="flex items-start gap-2">
+                    <Icon type="question-circle-fill" className="text-lg flex-shrink-0 mt-1" />
+                    <div className="flex-1 flex items-start justify-between gap-2">
                       <div className="text-xs text-[var(--color-text-1)] font-medium leading-6">
                         {qaPair.question}
-                        <Tag color="geekblue" className="font-mini">{t('knowledge.score')}:  {qaPair.score}</Tag>
                       </div>
+                      <Tag color="geekblue" className="font-mini flex-shrink-0">
+                        {t('knowledge.score')}: {qaPair.score}
+                      </Tag>
                     </div>
                   </div>
                 </div>
@@ -234,8 +236,8 @@ const TestingPage: React.FC = () => {
                 <Divider className="my-3" />
                 
                 <div>
-                  <div className="flex items-center gap-2">
-                    <Icon type="answer" className="text-lg flex-shrink-0" />
+                  <div className="flex items-start gap-2">
+                    <Icon type="answer" className="text-lg flex-shrink-0 mt-1" />
                     <div className="flex-1">
                       <div className="text-xs text-[var(--color-text-3)] leading-6">
                         {qaPair.answer}
