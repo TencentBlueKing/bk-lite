@@ -75,9 +75,8 @@ const SQLTask: React.FC<SQLTaskFormProps> = ({
         },
         ip_range: collectType === 'ip' ? ipRange.join('-') : '',
         instances: collectType === 'ip' ? [] : instance || [],
-        params: {
-          organization: values.organization || [],
-        },
+        team: values.organization || [],
+        params: {},
       };
     },
   });
@@ -96,7 +95,7 @@ const SQLTask: React.FC<SQLTaskFormProps> = ({
           ipRange,
           ...values,
           ...values.credential,
-          organization: values.params?.organization,
+          organization: values.team || [],
           accessPointId: values.access_point?.[0]?.id,
         });
       } else {

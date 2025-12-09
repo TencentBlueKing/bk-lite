@@ -70,9 +70,8 @@ const VMTask: React.FC<VMTaskFormProps> = ({
         model_id: modelId,
         driver_type: driverType,
         task_type: modelItem.task_type,
-        params: {
-          organization: values.organization || [],
-        },
+        team: values.organization || [],
+        params: {},
         credential: {
           username: values.username,
           password: values.password,
@@ -99,7 +98,7 @@ const VMTask: React.FC<VMTaskFormProps> = ({
               ? ENTER_TYPE.AUTOMATIC
               : ENTER_TYPE.APPROVAL,
           accessPointId: values.access_point?.[0]?.id,
-          organization: values.params?.organization,
+          organization: values.team || [],
           username: values.credential?.username,
           password: values.credential?.password,
           port: values.credential?.port,
