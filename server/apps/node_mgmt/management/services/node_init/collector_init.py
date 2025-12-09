@@ -43,7 +43,7 @@ def migrate_collector():
 
     # 收集所有内置采集器的ID
     builtin_collector_ids = set()
-
+    
     for file_path in collectors_path:
         # 打开并读取 JSON 文件
         try:
@@ -55,7 +55,7 @@ def migrate_collector():
                     builtin_collector_ids.add(collector['id'])
         except Exception as e:
             logger.error(f'导入采集器 {file_path} 失败！原因：{e}')
-
+    
     # 删除已移除的内置采集器（只删除 is_pre=True 的采集器）
     # 这样可以保护用户通过视图创建的采集器（is_pre=False）
     removed_builtin_collectors = Collector.objects.filter(
@@ -63,7 +63,7 @@ def migrate_collector():
     ).exclude(
         id__in=builtin_collector_ids
     )
-
+    
     if removed_builtin_collectors.exists():
         removed_count = removed_builtin_collectors.count()
         removed_ids = list(removed_builtin_collectors.values_list('id', flat=True))
