@@ -363,19 +363,64 @@ def migrate_plugin():
         f'UI 模板统计: 创建={total_ui_create}, 更新={total_ui_update}, 删除={total_ui_delete}'
     )
 
+    # ========== 第四阶段：删除已移除的内置插件 ==========
+    # 收集所有内置目录中的插件名称
+    builtin_plugin_names = set()
+    for file_path in path_list:
+        try:
+            plugin_data = json.loads(Path(file_path).read_text(encoding='utf-8'))
+            plugin_name = plugin_data.get('plugin')
+            if plugin_name:
+                builtin_plugin_names.add(plugin_name)
+        except Exception as e:
+            logger.error(f'读取插件名称失败: {file_path}, 错误: {e}')
 
-def migrate_config_templates():
-    """
-    已合并到 migrate_plugin 中，保留此函数以兼容旧代码。
-    """
-    logger.warning('migrate_config_templates 已合并到 migrate_plugin 中，此调用将被忽略')
+    # 删除已移除的内置插件（只删除 is_pre=True 的插件）
+    # 由于 MonitorPlugin 与 MonitorPluginConfigTemplate、MonitorPluginUITemplate 有外键关联
+    # 且设置了 on_delete=CASCADE，删除插件时会自动删除关联的模板
+    removed_builtin_plugins = MonitorPlugin.objects.filter(
+        is_pre=True
+    ).exclude(
+        name__in=builtin_plugin_names
+    )
 
+    if removed_builtin_plugins.exists():
+        removed_count = removed_builtin_plugins.count()
+        removed_names = list(removed_builtin_plugins.values_list('name', flat=True))
 
-def migrate_ui_templates():
-    """
-    已合并到 migrate_plugin 中，保留此函数以兼容旧代码。
-    """
-    logger.warning('migrate_ui_templates 已合并到 migrate_plugin 中，此调用将被忽略')
+        with transaction.atomic():
+            # 删除插件时，关联的 MonitorPluginConfigTemplate 和 MonitorPluginUITemplate 会自动级联删除
+            removed_builtin_plugins.delete()
+
+        logger.info(f'已删除 {removed_count} 个从内置目录中移除的插件: {removed_names}')
+        logger.info(f'关联的配置模板和 UI 模板已自动级联删除')
+
+    # ========== 第五阶段：删除没有关联插件的监控对象 ==========
+    from apps.monitor.models import MonitorObject
+
+    # 查找所有没有关联任何插件的监控对象
+    # 使用 annotate 统计每个监控对象关联的插件数量
+    from django.db.models import Count
+
+    orphan_objects = MonitorObject.objects.annotate(
+        plugin_count=Count('monitorplugin')
+    ).filter(
+        plugin_count=0
+    )
+
+    if orphan_objects.exists():
+        orphan_count = orphan_objects.count()
+        orphan_names = list(orphan_objects.values_list('name', flat=True))
+
+        with transaction.atomic():
+            # 删除监控对象时，会级联删除：
+            # - MetricGroup（外键关联，on_delete=CASCADE）
+            # - Metric（外键关联，on_delete=CASCADE）
+            # - MonitorInstance（外键关联，on_delete=CASCADE）
+            orphan_objects.delete()
+
+        logger.info(f'已删除 {orphan_count} 个没有关联插件的监控对象: {orphan_names}')
+        logger.info(f'关联的指标组、指标、监控实例已自动级联删除')
 
 
 def migrate_policy():
@@ -449,23 +494,28 @@ def migrate_default_order():
                             obj.order = name_idx
                             object_updates.append(obj)
 
-            # 批量更新
+            # 批量更新分类顺序
             if type_updates:
                 MonitorObjectType.objects.bulk_update(
                     type_updates,
                     ['order'],
                     batch_size=DatabaseConstants.MONITOR_OBJECT_BATCH_SIZE
                 )
-                logger.info(f'更新了 {len(type_updates)} 个分类的排序')
+                logger.info(f'批量更新分类顺序: {len(type_updates)} 个')
 
+            # 批量更新对象顺序
             if object_updates:
                 MonitorObject.objects.bulk_update(
                     object_updates,
                     ['order'],
                     batch_size=DatabaseConstants.MONITOR_OBJECT_BATCH_SIZE
                 )
-                logger.info(f'更新了 {len(object_updates)} 个对象的排序')
+                logger.info(f'批量更新对象顺序: {len(object_updates)} 个')
+
+        logger.info('默认顺序初始化完成')
 
     except Exception as e:
-        logger.error(f'初始化默认排序失败: {e}')
-        raise
+        logger.error(f'初始化默认顺序失败: {e}')
+        import traceback
+        logger.error(traceback.format_exc())
+
