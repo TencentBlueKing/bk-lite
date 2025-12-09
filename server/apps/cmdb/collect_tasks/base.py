@@ -1,5 +1,5 @@
 # -- coding: utf-8 --
-# @File: bash.py
+# @File: base.py
 # @Time: 2025/11/12 14:41
 # @Author: windyzhao
 from apps.cmdb.collection.metrics_cannula import MetricsCannula
@@ -17,16 +17,17 @@ class BaseCollect(object):
     def format_params(self):
         if not self.task.instances:
             # IP范围采集模式
-            organization = self.task.params.get("organization")
-            if organization is not None and not isinstance(organization, list):
-                organization = [organization]
+            organization = self.task.team
+            if not organization:
+                organization = self.task.params.get("organization")
+                if organization is not None and not isinstance(organization, list):
+                    organization = [organization]
             return self.task.model_id, None, organization, None, not self.task.is_host
 
         instance = self.task.instances[0]
         model_id = instance["model_id"]
         inst_name = instance["inst_name"]
-        organization = self.task.params.get(
-            "organization") or instance.get("organization")
+        organization = instance.get("organization") or self.task.team
         if organization is not None and not isinstance(organization, list):
             organization = [organization]
         inst_id = instance["_id"]

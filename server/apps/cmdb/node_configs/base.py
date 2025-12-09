@@ -2,9 +2,8 @@
 # @File: base.py
 # @Time: 2025/11/13 14:16
 # @Author: windyzhao
-
-import ipaddress
 import os
+import ipaddress
 from abc import abstractmethod, ABCMeta
 
 from django.conf import settings
@@ -95,6 +94,12 @@ class BaseNodeParams(metaclass=ABCMeta):
         """
         raise NotImplementedError
 
+    def env_config(self, *args, **kwargs):
+        """
+        生成环境变量配置
+        """
+        raise NotImplementedError
+
     def custom_headers(self, host):
         """
         格式化服务器的路径
@@ -137,7 +142,7 @@ class BaseNodeParams(metaclass=ABCMeta):
                 "timeout": self.timeout,
                 "response_timeout": self.response_timeout,
                 "headers": self.custom_headers(host=host),
-                "config_type": self.model_id
+                "config_type": self.model_id,
             }
             jinja_context = self.render_template(context=content)
             nodes.append({
@@ -147,7 +152,7 @@ class BaseNodeParams(metaclass=ABCMeta):
                 "content": jinja_context,
                 "node_id": node["id"],
                 "collector_name": "Telegraf",
-                "env_config": {}
+                "env_config": getattr(self, "env_config", {})
             })
         return nodes
 

@@ -16,6 +16,7 @@ init_cmdb() {
     echo "CMDB资源初始化..."
     python3 manage.py model_init || true
     python3 manage.py init_oid || true
+    python3 manage.py update_collect_task_data || true
 }
 
 init_console_mgmt() {

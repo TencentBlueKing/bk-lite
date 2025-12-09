@@ -54,6 +54,7 @@ class CollectModels(MaintainerInfo, TimeInfo):
     collect_data = JSONField(default=dict, help_text="采集原数据")
     collect_digest = JSONField(default=dict, help_text="采集摘要数据")
     format_data = JSONField(default=dict, help_text="采集返回的分类后的数据")
+    team = JSONField(default=list, help_text="关联组织") # 把params里的组织单独抽出来，方便权限控制
 
     class Meta:
         verbose_name = "采集任务"

@@ -17,8 +17,10 @@ class AliyunNodeParams(BaseNodeParams):
     def set_credential(self, *args, **kwargs):
         regions_id = self.credential["regions"]["resource_id"]
         credential_data = {
-            "access_key": self.credential.get("accessKey", ""),
-            "access_secret": self.credential.get("accessSecret", ""),
+            # "access_key": self.credential.get("accessKey", ""),
+            # "access_secret": self.credential.get("accessSecret", ""),
+            "access_key": "${PASSWORD_access_key}",
+            "access_secret": "${PASSWORD_access_secret}",
             "region_id": regions_id
         }
         return credential_data
@@ -31,3 +33,11 @@ class AliyunNodeParams(BaseNodeParams):
             return f"{self.instance.id}_{instance['inst_name']}"
         else:
             return f"{self.instance.id}_{instance}"
+
+    @property
+    def env_config(self):
+        env_config = {
+            "$PASSWORD_access_key": self.credential.get("accessKey", ""),
+            "$PASSWORD_access_secret": self.credential.get("accessSecret", ""),
+        }
+        return env_config

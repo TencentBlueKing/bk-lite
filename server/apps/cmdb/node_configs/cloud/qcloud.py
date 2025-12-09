@@ -19,8 +19,10 @@ class QCloudNodeParams(BaseNodeParams):
         生成 Tencent Cloud 的凭据
         """
         return {
-            "secret_id": self.credential.get("accessKey", ""),
-            "secret_key": self.credential.get("secretSecret", ""),
+            # "secret_id": self.credential.get("accessKey", ""),
+            # "secret_key": self.credential.get("secretSecret", ""),
+            "secret_id": "${PASSWORD_secret_id}",
+            "secret_key": "${PASSWORD_secret_key}",
         }
 
     def get_instance_id(self, instance):
@@ -28,3 +30,11 @@ class QCloudNodeParams(BaseNodeParams):
         获取实例 ID
         """
         return f"{self.instance.id}_{instance['inst_name']}"
+
+    @property
+    def env_config(self, *args, **kwargs):
+        env_config = {
+            "$PASSWORD_secret_id": self.credential.get("accessKey", ""),
+            "$PASSWORD_secret_key": self.credential.get("secretSecret", ""),
+        }
+        return env_config

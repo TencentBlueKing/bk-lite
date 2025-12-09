@@ -22,14 +22,13 @@ def get_cmdb_module_data(module, child_module, page, page_size, group_id):
         queryset = [{"id": str(i['id']), "name": f"{i['model_id']}_{i['name']}"} for i in instances]
     elif module == PERMISSION_INSTANCES:
         instances, count = InstanceManage.instance_list(
-            user_groups=[{'id': int(group_id)}],  # 改为列表
-            roles=[],  # 空列表
             model_id=child_module,  # 使用实际模型ID
-            params=[],  # 空查询条件（或按需添加）
+            params=[{"field": "organization", "type": "list[]", "value": [int(group_id)]}],  # 空查询条件（或按需添加）
             page=page,
             page_size=page_size,
             order="",
-            check_permission=True  # 关闭权限检查
+            creator="",
+            permission_map={}
         )
         queryset = []
         for instance in instances:
