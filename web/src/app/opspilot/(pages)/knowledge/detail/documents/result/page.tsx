@@ -58,8 +58,12 @@ const DocsResultPage: React.FC = () => {
 
   const tagColors = ['lime', 'green', 'blue', 'geekblue', 'purple'];
   
-  const getRandomColor = () => {
-    return tagColors[Math.floor(Math.random() * tagColors.length)];
+  const getColorByString = (str: string) => {
+    let hash = 0;
+    for (let i = 0; i < str.length; i++) {
+      hash = str.charCodeAt(i) + ((hash << 5) - hash);
+    }
+    return tagColors[Math.abs(hash) % tagColors.length];
   };
 
   const fetchData = async (page: number, pageSize: number, searchValue?: string) => {
@@ -305,10 +309,10 @@ const DocsResultPage: React.FC = () => {
                         {paragraph.content || '--'}
                       </p>
                       <div className="absolute bottom-0 right-0 flex gap-1">
-                        <Tag color={getRandomColor()} className="font-mini">
+                        <Tag color={getColorByString(paragraph.id + 'chars')} className="font-mini">
                           {paragraph.content ? `${paragraph.content.length} chars` : '0 chars'}
                         </Tag>
-                        <Tag color={getRandomColor()} className="font-mini">
+                        <Tag color={getColorByString(paragraph.id + 'qa')} className="font-mini">
                           {paragraph.qa_count || 0} Q&A
                         </Tag>
                       </div>
