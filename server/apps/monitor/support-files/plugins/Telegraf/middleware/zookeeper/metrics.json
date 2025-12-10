@@ -8,7 +8,7 @@
   "description": "",
   "default_metric": "any({instance_type='zookeeper'}) by (instance_id)",
   "instance_id_keys": ["instance_id"],
-  "supplementary_indicators": ["avg_latency", "num_alive_connections"],
+  "supplementary_indicators": ["avg_latency", "outstanding_requests", "approximate_data_size"],
   "metrics": [
     {
       "metric_group": "Data",

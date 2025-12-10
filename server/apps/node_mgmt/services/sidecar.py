@@ -6,6 +6,7 @@ from django.core.cache import cache
 from django.http import HttpResponse
 from django.core.serializers.json import DjangoJSONEncoder
 
+from apps.node_mgmt.constants.collector import CollectorConstants
 from apps.node_mgmt.constants.controller import ControllerConstants
 from apps.node_mgmt.constants.database import DatabaseConstants
 from apps.node_mgmt.services.cloudregion import RegionService
@@ -402,6 +403,9 @@ class Sidecar:
 
         for collector_obj in collector_objs:
             try:
+                if collector_obj.name in CollectorConstants.DEFAULT_CONTAINER_COLLECTOR_CONFIGS:
+                    if not is_container_node:
+                        continue
 
                 if not collector_obj.default_config:
                     continue
