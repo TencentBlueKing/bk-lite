@@ -436,12 +436,15 @@ class InstanceViewSet(viewsets.ViewSet):
 
         response = HttpResponse(content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
         response["Content-Disposition"] = f"attachment;filename={f'{model_id}_export.xlsx'}"
+        permissions_map = CmdbRulesFormatUtil.format_user_groups_permissions(request, model_id)
+
         response.write(InstanceManage.inst_export(
             model_id=model_id,
             ids=inst_ids,
-            permissions_map={},
+            permissions_map=permissions_map,
             attr_list=attr_list,
-            association_list=association_list
+            association_list=association_list,
+            creator=request.user.username
         ).read())
         return response
 
