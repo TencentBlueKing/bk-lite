@@ -12,7 +12,7 @@ interface UseSendMessageProps {
   messages: CustomChatMessage[];
   updateMessages: (updater: CustomChatMessage[] | ((prev: CustomChatMessage[]) => CustomChatMessage[])) => void;
   setLoading: (loading: boolean) => void;
-  handleSendMessage?: (message: string, currentMessages?: any[]) => Promise<{ url: string; payload: any } | null>;
+  handleSendMessage?: (message: string, currentMessages?: any[], userMessage?: CustomChatMessage) => Promise<{ url: string; payload: any } | null>;
   handleSSEStream: (url: string, payload: any, botMessage: CustomChatMessage) => Promise<void>;
   currentBotMessageRef: MutableRefObject<CustomChatMessage | null>;
   t: (key: string) => string;
@@ -31,8 +31,8 @@ export const useSendMessage = ({
 }: UseSendMessageProps) => {
   
   const sendMessage = useCallback(
-    async (content: string, currentMessages?: CustomChatMessage[]) => {
-      if (!content || loading || !token) {
+    async (content: string, currentMessages?: CustomChatMessage[], images?: any[]) => {
+      if ((!content && !images?.length) || loading || !token) {
         return;
       }
 
@@ -44,6 +44,7 @@ export const useSendMessage = ({
         role: 'user',
         createAt: new Date().toISOString(),
         updateAt: new Date().toISOString(),
+        ...(images && images.length > 0 && { images })
       };
 
       const botLoadingMessage: CustomChatMessage = {
@@ -63,7 +64,7 @@ export const useSendMessage = ({
 
       try {
         if (handleSendMessage) {
-          const result = await handleSendMessage(content, messagesToUse);
+          const result = await handleSendMessage(content, messagesToUse, newUserMessage);
 
           if (result === null) {
             updateMessages(messagesToUse);

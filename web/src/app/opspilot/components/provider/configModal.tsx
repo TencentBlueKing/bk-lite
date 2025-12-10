@@ -157,15 +157,13 @@ const ProviderModal: React.FC<ProviderModalProps> = ({
             <AntdInput placeholder={`${t('common.input')}${t('provider.form.name')}`} />
           </Form.Item>
 
-          {filterType !== 'ocr_provider' && (
-            <Form.Item
-              name="modelName"
-              label={t('provider.form.modelName')}
-              rules={[{ required: true, message: `${t('common.input')}${t('provider.form.modelName')}` }]}
-            >
-              <AntdInput placeholder={`${t('common.input')}${t('provider.form.modelName')}`} />
-            </Form.Item>
-          )}
+          <Form.Item
+            name="modelName"
+            label={t('provider.form.modelName')}
+            rules={[{ required: true, message: `${t('common.input')}${t('provider.form.modelName')}` }]}
+          >
+            <AntdInput placeholder={`${t('common.input')}${t('provider.form.modelName')}`} />
+          </Form.Item>
 
           <Form.Item
             name="model_type"

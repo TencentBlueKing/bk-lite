@@ -476,7 +476,10 @@
     "editAnnotation": "编辑标注",
     "knowledgeDetails": "知识详情",
     "clear": "清除对话",
-    "removeAnnotation": "删除标注"
+    "removeAnnotation": "删除标注",
+    "uploadImage": "上传图片",
+    "onlyImageAllowed": "只能上传图片文件",
+    "imageTooLarge": "图片大小不能超过 5MB"
   },
   "settings": {
     "secret": {
