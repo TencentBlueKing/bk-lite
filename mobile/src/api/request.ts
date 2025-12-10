@@ -1,4 +1,5 @@
 import { tauriFetch } from '../utils/tauriFetch';
+import { getTokenSync } from '../utils/secureStorage';
 
 const TARGET_SERVER = (process.env.NEXT_PUBLIC_API_URL || 'https://bklite.canway.net') + '/api/v1';
 
@@ -8,13 +9,9 @@ export async function apiRequest<T = any>(
 ): Promise<T> {
   let targetPath = endpoint.replace('/api/proxy', '');
 
-  if (!targetPath.endsWith('/')) {
-    targetPath += '/';
-  }
-
   const targetUrl = `${TARGET_SERVER}${targetPath}`;
-
-  const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
+  // 从安全存储的内存缓存获取 token（同步方法）
+  const token = getTokenSync();
 
   const config: RequestInit = {
     ...options,
@@ -80,7 +77,7 @@ export async function apiGet<T = any>(
       url = `${endpoint}?${queryString}`;
     }
   }
-  
+
   return apiRequest<T>(url, {
     ...options,
     method: 'GET',
