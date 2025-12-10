@@ -104,7 +104,25 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
       setLocale(newUserInfo.locale);
     }
 
-    router.push('/conversation?id=1');
+    // 尝试获取用户最后打开的对话页
+    let targetUrl = '/conversation'; // 默认跳转
+    try {
+      const LAST_CONVERSATION_KEY = 'bk_lite_last_conversation';
+      const lastConversationStr = localStorage.getItem(LAST_CONVERSATION_KEY);
+      if (lastConversationStr) {
+        const lastConversation = JSON.parse(lastConversationStr);
+        if (lastConversation.botId) {
+          targetUrl = `/conversation?bot_id=${lastConversation.botId}`;
+          if (lastConversation.sessionId) {
+            targetUrl += `&session_id=${lastConversation.sessionId}`;
+          }
+        }
+      }
+    } catch (e) {
+      console.warn('get last conversation failed:', e);
+    }
+
+    router.push(targetUrl);
   };
 
   // 更新用户信息

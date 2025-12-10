@@ -30,7 +30,9 @@
         "languageSelectionTitle": "选择语言",
         "languageSelectionSubtitle": "Choose Language",
         "accountsAndSecurity": "账户与安全",
-        "noData": "暂无数据"
+        "noData": "暂无数据",
+        "yesterday": "昨天",
+        "copiedToClipboard": "已复制到剪贴板"
     },
     "navigation": {
         "conversations": "对话",
@@ -45,7 +47,11 @@
         "messageReceived": "收到您的消息，我正在处理中...",
         "loadChatDataFailed": "加载聊天数据失败",
         "noMessages": "暂无消息",
-        "sendMessage": "发送消息"
+        "sendMessage": "发送消息",
+        "responseError": "响应异常，请稍后再试",
+        "executing": "执行中",
+        "executionFailed": "执行失败",
+        "executionSuccess": "执行成功"
     },
     "auth": {
         "loginTitle": "登录",
@@ -74,6 +80,12 @@
     "workbench": {
         "title": "工作台",
         "all": "全部",
+        "routineOps": "日常运维",
+        "monitorAlarm": "监控告警",
+        "automation": "自动化",
+        "securityAudit": "安全审计",
+        "performanceAnalysis": "性能分析",
+        "opsPlan": "运维规划",
         "noIntroduction": "暂无简介",
         "unknownType": "未知类型",
         "appNotExist": "应用不存在",

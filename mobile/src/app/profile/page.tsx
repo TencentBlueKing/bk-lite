@@ -240,9 +240,7 @@ export default function ProfilePage() {
             <List.Item
               prefix={
                 <div className="flex items-center justify-center w-7 h-7 bg-[var(--color-primary-bg-active)] rounded-lg mr-2.5">
-                  <span className="text-[var(--color-primary)] text-base">
-                    🌙
-                  </span>
+                  <span className="iconfont icon-yueliang text-yellow-500 text-lg"></span>
                 </div>
               }
               extra={

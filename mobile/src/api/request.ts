@@ -6,6 +6,9 @@
 import { tauriFetch, getApiBaseUrl } from '../utils/tauriFetch';
 import { getTokenSync } from '../utils/secureStorage';
 
+const TARGET_SERVER = 'http://10.10.40.117:8000/api/v1'
+
+
 const API_BASE_URL = getApiBaseUrl();
 
 /**
@@ -15,7 +18,11 @@ export async function apiRequest<T = any>(
   endpoint: string,
   options: RequestInit = {}
 ): Promise<T> {
-  const url = `${API_BASE_URL}${endpoint}`;
+
+  const targetPath = endpoint.replace('/api/proxy', '');
+
+  const targetUrl = `${TARGET_SERVER}${targetPath}`;
+
 
   // 从安全存储的内存缓存获取 token（同步方法）
   const token = getTokenSync();
@@ -34,7 +41,7 @@ export async function apiRequest<T = any>(
 
   try {
     // 统一使用 tauriFetch，自动选择最佳方式（Tauri Rust 代理 > 标准 fetch）
-    const response = await tauriFetch(url, config);
+    const response = await tauriFetch(targetUrl, config);
 
     // 检查响应状态
     if (!response.ok) {
@@ -63,7 +70,7 @@ export async function apiRequest<T = any>(
       throw error;
     }
 
-    console.error('[API] Request failed:', url, error);
+    console.error('[API] Request failed:', targetUrl, error);
     throw error;
   }
 }

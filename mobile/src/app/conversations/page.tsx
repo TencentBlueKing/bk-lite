@@ -3,29 +3,67 @@
 import React, { useState, useEffect } from 'react';
 import BottomTabBar from '@/components/bottom-tab-bar';
 import { useRouter } from 'next/navigation';
-import { Avatar, List } from 'antd-mobile';
-import { ChatItem, mockChatData } from '@/constants/mockData';
+import { List, SpinLoading } from 'antd-mobile';
 import { useTranslation } from '@/utils/i18n';
+import { sessionsItem } from '@/types/conversation';
 import {
   SearchOutline,
   ScanningOutline,
   AddCircleOutline,
 } from 'antd-mobile-icons';
+import { getSessions } from '@/api/bot';
 
 export default function ConversationList() {
   const { t } = useTranslation();
   const router = useRouter();
-  const [chatList, setChatList] = useState<ChatItem[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [sessions, setSessions] = useState<sessionsItem[]>([]);
 
   useEffect(() => {
     // 模拟API请求
     const fetchChatList = async () => {
-      await new Promise((resolve) => setTimeout(resolve, 500));
-      setChatList(mockChatData);
+      setLoading(true);
+      try {
+        const response = await getSessions();
+        if (!response.result) {
+          throw new Error(response.message || 'Failed to fetch sessions');
+        }
+        setSessions(response.data || []);
+      } catch (error) {
+        console.error('getSessions error:', error);
+      } finally {
+        setLoading(false);
+      }
     };
 
     fetchChatList();
   }, []);
+
+  const renderContent = () => {
+    if (loading) {
+      return (
+        <div className="h-full flex flex-col items-center justify-center">
+          <SpinLoading color="primary" />
+        </div>)
+    }
+    if (sessions.length > 0) {
+      return (
+        <List>
+          {sessions.map((chat) => (
+            <List.Item
+              key={chat.session_id}>
+              <div
+                className="flex items-center gap-3"
+                onClick={() => router.push(`/conversation?bot_id=${chat.bot_id}&session_id=${chat.session_id}`)}
+              >
+                {chat.title}
+              </div>
+            </List.Item>
+          ))}
+        </List>
+      );
+    }
+  }
 
 
   return (
@@ -53,64 +91,7 @@ export default function ConversationList() {
 
       {/* 聊天列表 */}
       <div className="flex-1 overflow-y-auto">
-        <List>
-          <style
-            dangerouslySetInnerHTML={{
-              __html: `
-                .adm-list-item-content-extra {
-                position: absolute;
-                right: 9px;
-                }
-              `,
-            }}
-          />
-          {chatList.map((chat) => (
-            <List.Item
-              key={chat.id}
-              arrowIcon={false}
-              prefix={
-                <Avatar
-                  src={chat.avatar}
-                  style={{ '--size': '48px', '--border-radius': '48px' }}
-                  className="ml-1 mr-1"
-                />
-              }
-              description={
-                <div className="mt-1">
-                  <span className="text-xs text-[var(--color-text-3)] line-clamp-1">
-                    {chat.lastMessage}
-                  </span>
-                </div>
-              }
-              extra={
-                <div className="flex flex-col items-end space-y-1">
-                  <span className="text-xs text-[var(--color-text-4)]">
-                    {chat.time}
-                  </span>
-                  {chat.unread && chat.unread > 0 && (
-                    <span className="flex items-center justify-center min-w-[18px] h-[18px] px-1.5 bg-red-500 text-white text-xs rounded-full">
-                      {chat.unread}
-                    </span>
-                  )}
-                </div>
-              }
-              onClick={() => {
-                router.push(`/conversation?id=${chat.id}`);
-              }}
-            >
-              <div className="flex items-center justify-between">
-                <span className="text-base font-medium text-[var(--color-text-1)]">
-                  {chat.name}
-                </span>
-                {chat.website && (
-                  <span className="text-xs text-[var(--color-text-4)] ml-2">
-                    {chat.website}
-                  </span>
-                )}
-              </div>
-            </List.Item>
-          ))}
-        </List>
+        {renderContent()}
       </div>
 
       {/* 底部导航 */}

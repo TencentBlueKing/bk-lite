@@ -30,7 +30,9 @@
         "languageSelectionTitle": "Select Language",
         "languageSelectionSubtitle": "Choose Language",
         "accountsAndSecurity": "Accounts & Security",
-        "noData": "No data"
+        "noData": "No data",
+        "yesterday": "Yesterday",
+        "copiedToClipboard": "Copied to clipboard"
     },
     "navigation": {
         "conversations": "Chat",
@@ -45,7 +47,11 @@
         "messageReceived": "Message received, processing...",
         "loadChatDataFailed": "Failed to load chat data",
         "noMessages": "No messages",
-        "sendMessage": "Send Message"
+        "sendMessage": "Send Message",
+        "responseError": "Response error, please try again later",
+        "executing": "Executing",
+        "executionFailed": "Execution failed",
+        "executionSuccess": "Execution succeeded"
     },
     "auth": {
         "loginTitle": "Login",
@@ -74,6 +80,12 @@
     "workbench": {
         "title": "Workbench",
         "all": "All",
+        "routineOps": "Routine Ops",
+        "monitorAlarm": "Monitor & Alarm",
+        "automation": "Automation",
+        "securityAudit": "Security Audit",
+        "performanceAnalysis": "Performance",
+        "opsPlan": "Ops Plan",
         "noIntroduction": "No introduction",
         "unknownType": "Unknown type",
         "appNotExist": "App does not exist",

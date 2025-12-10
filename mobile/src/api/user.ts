@@ -7,5 +7,5 @@ export const getUserInfo = () => {
 
 // 更新用户信息
 export const updateUserInfo = (data: any) => {
-    return apiPost<any>('/api/proxy/console_mgmt/update_user_base_info', data);
+    return apiPost<any>('/api/proxy/console_mgmt/update_user_base_info/', data);
 }
