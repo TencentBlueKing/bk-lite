@@ -144,8 +144,6 @@ class ChatFlowEngine:
                 # 直接迭代异步生成器
                 async for chunk in stream_generator:
                     chunk_index += 1
-                    logger.info(f"[SSE-Engine] Yielding chunk #{chunk_index}, length: {len(chunk)}")
-
                     # 累积内容用于记录对话历史
                     if chunk.startswith("data: "):
                         try:
@@ -615,12 +613,6 @@ class ChatFlowEngine:
             # 获取执行结果并记录
             execution_time = time.time() - start_time
             final_last_message = self.variable_manager.get_variable("last_message")
-
-            logger.info("===== 流程执行完成 =====")
-            logger.info(f"flow_id={self.instance.id}, 耗时={execution_time:.2f}秒")
-            logger.info(f"最终 last_message 值: {final_last_message}")
-            logger.info(f"所有变量: {self.variable_manager.get_all_variables()}")
-            logger.info("========================")
 
             # 记录系统输出
             self._record_conversation_history(user_id, final_last_message, "bot", entry_type, node_id, session_id)

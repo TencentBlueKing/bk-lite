@@ -25,6 +25,8 @@ class ToolsServer(BaseModel):
     args: list = []
     extra_param_prompt: dict = {}
     extra_tools_prompt: str = ""
+    enable_auth: bool = False
+    auth_token: str = ""
 
 
 class BasicLLMRequest(BaseModel):

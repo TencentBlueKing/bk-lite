@@ -2,7 +2,7 @@
 import os
 
 from enum import Enum
-
+from apps.cmdb.utils.time_util import parse_cmdb_time
 
 class BaseEnum(str, Enum):
     """
@@ -131,6 +131,7 @@ NEED_CONVERSION_TYPE = {
     "float": float,
     "str": str,
     "list": list,
+    "time": parse_cmdb_time,
 }
 
 EDGE_TYPE = 2
