@@ -8,6 +8,7 @@ export interface AuthContextType {
   isLoading: boolean;
   isInitializing: boolean;
   userInfo: LoginUserInfo | null;
-  login: (token: string, userInfo: LoginUserInfo) => void;
+  login: (token: string, userInfo: LoginUserInfo) => Promise<void>;
   logout: () => Promise<void>;
+  updateUserInfo: (updates: Partial<LoginUserInfo>) => Promise<void>;
 }

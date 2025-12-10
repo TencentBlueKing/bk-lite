@@ -2,30 +2,49 @@
 
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { Flex } from 'antd';
-import { Toast } from 'antd-mobile';
+import { Toast, SpinLoading } from 'antd-mobile';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { mockChatData, mockChatHistory } from '@/constants/mockData';
 import { ChatInfo } from '@/types/conversation';
 import MarkdownIt from 'markdown-it';
 import { ConversationHeader, MessageList, VoiceInput, MessageContent } from './components';
 import { useMessages } from './hooks';
-import { sleep, getRandomRecommendations, LAST_VISIT_KEY, conversationStyles } from './utils';
+import { conversationStyles } from './utils';
+import { useTranslation } from '@/utils/i18n';
+import { getApplication, getSessionMessages, getWelcomeMessage } from '@/api/bot';
+import { getAvatar } from '@/utils/avatar';
+
+// localStorage key 用于存储用户最后打开的对话页
+const LAST_CONVERSATION_KEY = 'bk_lite_last_conversation';
 
 export default function ConversationDetail() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const chatId = searchParams?.get('id');
+  const botId = searchParams?.get('bot_id');
+  const sessionId = searchParams?.get('session_id');
+  const { t } = useTranslation();
 
   const [chatInfo, setChatInfo] = useState<ChatInfo | null>(null);
   const [loading, setLoading] = useState(true);
   const [content, setContent] = useState('');
   const scrollContainerRef = useRef<HTMLDivElement>(null);
-  const [recommendations, setRecommendations] = useState<string[]>(getRandomRecommendations());
-  const welcomeMessageAddedRef = useRef(false);
-  const welcomeCheckedRef = useRef(false);
   const [isVoiceMode, setIsVoiceMode] = useState(false);
 
-  // 使用消息管理 hook
+  // 应用详情状态（包含 bot 和 node_id）
+  const [appDetail, setAppDetail] = useState<{ bot: number; nodeId: string } | null>(null);
+
+  // 生成或获取 sessionId
+  const currentSessionId = useMemo(() => {
+    if (sessionId) {
+      return sessionId;
+    }
+    // 如果 URL 没有 sessionId，使用时间戳生成一个
+    const now = new Date();
+    const dateStr = now.toISOString().slice(0, 10).replace(/-/g, '');
+    const timestamp = now.getTime();
+    return `session-${dateStr}-${timestamp}`;
+  }, [sessionId]);
+
+  // 使用消息管理 hook，传入国际化的错误消息和应用配置
   const {
     messages,
     setMessages,
@@ -37,7 +56,12 @@ export default function ConversationDetail() {
     messageMarkdownRef,
     scrollToBottom,
     isAIRunning,
-  } = useMessages(scrollContainerRef);
+  } = useMessages(scrollContainerRef, {
+    errorMessage: t('chat.responseError'),
+    bot: appDetail?.bot,
+    nodeId: appDetail?.nodeId,
+    sessionId: currentSessionId,
+  });
 
   // 初始化 markdown-it
   const md = useMemo(() => {
@@ -140,27 +164,6 @@ export default function ConversationDetail() {
     }
   };
 
-  // 重新生成推荐内容
-  const handleRegenerateRecommendations = () => {
-    const newRecommendations = getRandomRecommendations();
-    setRecommendations(newRecommendations);
-
-    setMessages((prev) =>
-      prev.map((msg) => {
-        if (msg.id === 'welcome-message' && msg.isWelcome) {
-          return {
-            ...msg,
-            message: {
-              ...(msg.message as any),
-              suggestions: newRecommendations,
-            },
-          };
-        }
-        return msg;
-      })
-    );
-  };
-
   // 点击推荐内容
   const handleRecommendationClick = (text: string) => {
     handleSendMessage(text);
@@ -182,148 +185,169 @@ export default function ConversationDetail() {
         let textContent = '';
         if (messageId && messageMarkdownRef.current.has(messageId)) {
           textContent = messageMarkdownRef.current.get(messageId) || '';
-        } else if (typeof message === 'string') {
-          textContent = message;
-        } else {
-          textContent = '内容包含富文本，无法直接复制';
         }
-
         navigator.clipboard.writeText(textContent);
-        Toast.show({ content: '已复制到剪贴板', icon: 'success' });
+        Toast.show({ content: t('common.copiedToClipboard'), icon: 'success' });
         break;
       case 'regenerate':
-        if (messageId === 'welcome-recommendations') {
-          handleRegenerateRecommendations();
-        } else {
-          Toast.show({ content: '正在重新生成...', icon: 'loading' });
+        // 找到对应的 AI 消息，获取 userInput
+        if (messageId) {
+          const targetMessage = messages.find(msg => msg.id === messageId);
+          if (targetMessage && targetMessage.userInput) {
+            triggerAIResponse(targetMessage.userInput, renderMarkdown);
+          }
         }
         break;
     }
   };
 
-  // 检查是否需要显示欢迎消息
-  useEffect(() => {
-    if (loading) return;
-    if (welcomeCheckedRef.current) return;
-    welcomeCheckedRef.current = true;
+  // 获取引导语
+  const fetchWelcomeMessage = async (bot_id: number, node_id: string) => {
+    try {
+      const response = await getWelcomeMessage(bot_id, node_id);
+      if (!response.result) {
+        throw new Error(response.message || 'getWelcomeMessage failed');
+      }
+      const guide = response.data.guide || '您好，请问有什么可以帮助您的吗？';
+      const [guideText, ...suggestions] = guide.split('\n');
+      const welcomeMessage = {
+        id: 'welcome-message',
+        message: {
+          text: guideText,
+          suggestions: suggestions.length > 0 ? suggestions.map((line: string) => {
+            if (line.startsWith('[') && line.endsWith(']')) {
+              return line.slice(1, -1);
+            }
+            return line;
+          }) : []
+        },
+        status: 'ai' as const,
+        timestamp: Date.now(),
+        isWelcome: true,
+      };
+      setMessages((prev) => {
+        if (prev.length > 0) {
+          return [...prev, welcomeMessage];
+        } else {
+          return [welcomeMessage];
+        }
+      });
 
-    const checkAndAddWelcomeMessage = () => {
-      const lastVisitTime = localStorage.getItem(LAST_VISIT_KEY);
-      const currentTime = Date.now();
-      let shouldShow = false;
+    } catch (error) {
+      console.error('getWelcomeMessage error:', error);
+    }
+  }
 
-      if (!lastVisitTime) {
-        shouldShow = true;
-        localStorage.setItem(LAST_VISIT_KEY, currentTime.toString());
-      } else {
-        const timeDiff = currentTime - parseInt(lastVisitTime);
+  // 加载历史对话
+  const loadHistoryMessages = async (sessionId: string, bot_id: number, node_id: string) => {
+    try {
+      const historyResponse = await getSessionMessages(sessionId);
+      if (historyResponse.result && historyResponse.data && historyResponse.data.length > 0) {
+        const historyMessages = historyResponse.data.map((msg: any) => {
+          const msgId = `history-${msg.id}`;
+          // 保存原始 Markdown 文本
+          if (msg.conversation_role === 'bot') {
+            messageMarkdownRef.current.set(msgId, msg.conversation_content);
+          }
+          return {
+            id: msgId,
+            message: msg.conversation_role === 'bot'
+              ? renderMarkdown(msg.conversation_content)
+              : msg.conversation_content,
+            status: msg.conversation_role === 'user' ? 'local' as const : 'history' as const,
+            timestamp: new Date(msg.conversation_time).getTime(),
+          };
+        });
+        setMessages(historyMessages);
+
+        // 检查最后一条消息的时间，如果超过24小时就获取引导语
+        const lastMessage = historyResponse.data[historyResponse.data.length - 1];
+        const lastMessageTime = new Date(lastMessage.conversation_time).getTime();
+        const currentTime = Date.now();
+        const timeDiff = currentTime - lastMessageTime;
         const hours24 = 24 * 60 * 60 * 1000;
-
         if (timeDiff >= hours24) {
-          shouldShow = true;
-          localStorage.setItem(LAST_VISIT_KEY, currentTime.toString());
+          // 超过24小时，获取引导语
+          await fetchWelcomeMessage(bot_id, node_id);
         }
       }
-
-      if (shouldShow && !welcomeMessageAddedRef.current) {
-        welcomeMessageAddedRef.current = true;
-
-        setTimeout(() => {
-          const welcomeTimestamp = Date.now();
-
-          const welcomeMessage = {
-            id: 'welcome-message',
-            message: {
-              text: '您好，请问有什么可以帮助您的吗？可以点击或下面的问题进行快速提问。',
-              suggestions: recommendations,
-            },
-            status: 'ai' as const,
-            timestamp: welcomeTimestamp,
-            isWelcome: true,
-          };
-
-          setMessages((prev) => {
-            if (prev.length > 0) {
-              return [...prev, welcomeMessage];
-            } else {
-              return [welcomeMessage];
-            }
-          });
-        }, 100);
-      }
-    };
-
-    checkAndAddWelcomeMessage();
-  }, [loading, setMessages, recommendations]);
-
-  // 加载历史聊天记录
-  useEffect(() => {
-    if (chatId === '1' && messages.length === 0 && !welcomeMessageAddedRef.current) {
-      const history =
-        mockChatHistory.find((item) => item.id === 1)?.chatHistory.map((msg: any) => {
-          // AG-UI 协议：历史消息不需要打字效果，直接显示
-
-          if (typeof msg.content === 'string') {
-            messageMarkdownRef.current.set(msg.id, msg.content);
-          }
-
-          return {
-            id: msg.id,
-            message:
-              typeof msg.content === 'string' ? renderMarkdown(msg.content) : msg.content,
-            status: msg.role,
-            timestamp: msg.timestamp,
-            thinking: msg.thinking,
-          };
-        }) || [];
-
-      if (history.length > 0) {
-        setMessages(history);
-        setTimeout(() => {
-          scrollToBottom();
-        }, 100);
-      }
+    } catch (Error) {
+      console.error('loadHistoryMessages error:', Error);
     }
-  }, [chatId, messages.length, setMessages]);
+  }
 
-  // 加载聊天信息
+  // 加载聊天信息和应用详情
   useEffect(() => {
-    if (!chatId) {
-      router.replace('/chats');
+    if (!botId) {
+      router.replace('/conversations');
       return;
     }
 
     const fetchChatData = async () => {
       setLoading(true);
       try {
-        await sleep(500);
-
-        const chat = mockChatData.find((c) => c.id === chatId);
-        if (chat) {
-          setChatInfo({
-            id: chatId,
-            name: chat.name,
-            avatar: chat.avatar,
-            status: 'online',
-          });
+        // 获取应用详情
+        const response = await getApplication({ bot: Number(botId) });
+        if (!response.result) {
+          throw new Error(t('chat.loadChatDataFailed'));
         }
-      } catch {
-        Toast.show('加载聊天数据失败');
+        const data = response.data[0];
+        setAppDetail({
+          bot: data.bot,
+          nodeId: data.node_id,
+        });
+        setChatInfo({
+          id: botId,
+          name: data.app_name,
+          avatar: getAvatar(data.id),
+        });
+
+        // 如果 URL 中有 sessionId，加载历史对话
+        if (sessionId) {
+          await loadHistoryMessages(sessionId, data.bot, data.node_id);
+        } else {
+          await fetchWelcomeMessage(data.bot, data.node_id);
+        }
+      } catch (error) {
+        console.error(error);
       } finally {
         setLoading(false);
-        setTimeout(() => {
-          scrollToBottom();
-        }, 150);
+        scrollToBottom();
       }
     };
 
     fetchChatData();
-  }, [chatId, router]);
+  }, [botId, router, sessionId]);
 
-  if (loading || !chatInfo) {
+  // 保存当前对话信息到 localStorage
+  useEffect(() => {
+    if (botId && currentSessionId) {
+      const lastConversation = {
+        botId,
+        sessionId: currentSessionId,
+      };
+      localStorage.setItem(LAST_CONVERSATION_KEY, JSON.stringify(lastConversation));
+    }
+  }, [botId, currentSessionId]);
+
+  if (loading) {
     return (
-      <div className="flex items-center justify-center h-full">
-        <div className="text-[var(--color-text-3)]">加载中...</div>
+      <div className="flex flex-col items-center justify-center h-screen bg-[var(--color-background-body)]">
+        <SpinLoading color="primary" />
+      </div>
+    );
+  }
+
+  if (!chatInfo) {
+    return (
+      <div className="flex flex-col items-center justify-center h-screen bg-[var(--color-background-body)]">
+        <div className="text-[var(--color-text-3)] text-lg">{t('chat.loadChatDataFailed')}</div>
+        <button
+          onClick={() => router.replace('/conversations')}
+          className="mt-4 px-6 py-2 bg-blue-500 text-white rounded-lg"
+        >
+          {t('common.back')}
+        </button>
       </div>
     );
   }
@@ -348,7 +372,6 @@ export default function ConversationDetail() {
 
             <MessageList
               messages={messages}
-              chatInfo={chatInfo}
               router={router}
               thinkingExpanded={thinkingExpanded}
               setThinkingExpanded={setThinkingExpanded}
@@ -356,7 +379,6 @@ export default function ConversationDetail() {
               renderMarkdown={renderMarkdown}
               onActionClick={handleActionClick}
               onRecommendationClick={handleRecommendationClick}
-              onRegenerateRecommendations={handleRegenerateRecommendations}
               onFormSubmit={handleSendMessage}
             />
           </div>

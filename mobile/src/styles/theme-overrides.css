@@ -233,3 +233,21 @@
 .adm-slider-thumb-icon {
   box-sizing: content-box !important;
 }
+
+/* ========== Toast 轻提示修复 ========== */
+/* 修复 Tailwind CSS 全局样式对 Toast 图标居中的影响 */
+
+.adm-toast-main {
+  box-sizing: content-box !important;
+}
+
+.adm-toast-main * {
+  box-sizing: content-box !important;
+}
+
+.adm-toast-icon {
+  box-sizing: content-box !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+}

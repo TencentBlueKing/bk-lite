@@ -6,6 +6,13 @@
   "description": "",
   "glyphs": [
     {
+      "icon_id": "29265290",
+      "name": "月亮",
+      "font_class": "yueliang",
+      "unicode": "e67b",
+      "unicode_decimal": 59003
+    },
+    {
       "icon_id": "11372711",
       "name": "图片",
       "font_class": "tupian1",
