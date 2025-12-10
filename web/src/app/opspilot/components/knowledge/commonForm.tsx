@@ -26,7 +26,6 @@ const CommonForm: React.FC<CommonFormProps> = ({ form, modelOptions, initialValu
   const { selectedGroup } = useUserInfoContext();
 
   const [selectedType, setSelectedType] = useState<number>(2);
-  const [selectedBotType, setSelectedBotType] = useState<number>(1);
 
   const typeOptions = [
     { 
@@ -61,18 +60,6 @@ const CommonForm: React.FC<CommonFormProps> = ({ form, modelOptions, initialValu
 
   const botTypeOptions = [
     {
-      key: 1,
-      title: t('studio.pilot'),
-      desc: t('studio.pilotDesc'),
-      icon: 'Copilot'
-    },
-    {
-      key: 2,
-      title: t('studio.lobeChat'),
-      desc: t('studio.lobeChatDesc'),
-      icon: 'icon-192x192'
-    },
-    {
       key: 3,
       title: t('studio.chatflow'),
       desc: t('studio.chatflowDesc'),
@@ -88,9 +75,6 @@ const CommonForm: React.FC<CommonFormProps> = ({ form, modelOptions, initialValu
       if (initialValues.skill_type !== undefined) {
         setSelectedType(initialValues.skill_type);
       }
-      if (initialValues.bot_type !== undefined) {
-        setSelectedBotType(Number(initialValues.bot_type));
-      }
     } else {
       form.resetFields();
       const defaultValues: any = {};
@@ -102,8 +86,7 @@ const CommonForm: React.FC<CommonFormProps> = ({ form, modelOptions, initialValu
         setSelectedType(typeOptions[0].key);
       }
       if (formType === 'studio') {
-        defaultValues.bot_type = botTypeOptions[0].key;
-        setSelectedBotType(botTypeOptions[0].key);
+        defaultValues.bot_type = 3;
       }
       form.setFieldsValue(defaultValues);
     }
@@ -112,11 +95,6 @@ const CommonForm: React.FC<CommonFormProps> = ({ form, modelOptions, initialValu
   const handleTypeSelection = (typeKey: number) => {
     setSelectedType(typeKey);
     form.setFieldsValue({ skill_type: typeKey });
-  };
-
-  const handleBotTypeSelection = (typeKey: number) => {
-    setSelectedBotType(typeKey);
-    form.setFieldsValue({ bot_type: typeKey });
   };
 
   const renderSelectedTypeDetails = () => {
@@ -148,27 +126,23 @@ const CommonForm: React.FC<CommonFormProps> = ({ form, modelOptions, initialValu
 
   const renderBotTypeSelector = () => {
     return (
-      <div className="grid grid-cols-3 gap-4">
+      <div className="w-full">
         {botTypeOptions.map((option) => (
           <div
             key={option.key}
-            className={`
-              relative cursor-pointer rounded-lg border-2 p-4 transition-all duration-200
-              ${selectedBotType === option.key ? 'border-blue-500 bg-blue-50' : 'border-[var(--color-border-2)] hover:border-[var(--color-border-1)]'}
-            `}
-            onClick={() => handleBotTypeSelection(option.key)}
+            className="relative rounded-lg border-2 border-blue-500 bg-blue-50 p-4 w-full"
           >
             <div className="flex flex-col items-center text-center">
               <div className="flex items-center gap-2 mb-3">
                 <Icon 
                   type={option.icon} 
-                  className={`text-4xl ${selectedBotType === option.key ? 'text-[var(--color-primary)]' : 'text-[var(--color-text-1)]'}`} 
+                  className="text-4xl text-[var(--color-primary)]" 
                 />
-                <h3 className={`font-semibold text-lg ${selectedBotType === option.key ? 'text-[var(--color-primary)]' : 'text-[var(--color-text-1)]'}`}>
+                <h3 className="font-semibold text-lg text-[var(--color-primary)]">
                   {option.title}
                 </h3>
               </div>
-              <p className={`text-xs ${selectedBotType === option.key ? 'text-[var(--color-primary)]' : 'text-[var(--color-text-3)]'}`}>
+              <p className="text-xs text-[var(--color-primary)]">
                 {option.desc}
               </p>
             </div>
