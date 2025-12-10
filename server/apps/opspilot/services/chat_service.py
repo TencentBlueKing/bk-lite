@@ -77,7 +77,6 @@ class ChatService:
                 "total_tokens": response.total_tokens,
                 "prompt_tokens": response.prompt_tokens,
                 "completion_tokens": response.completion_tokens,
-                "thread_id": response.thread_id,
             }
 
             # 处理内容（可选隐藏思考过程）
@@ -165,7 +164,6 @@ class ChatService:
                 # 如果是内置工具，添加 langchain 前缀的 URL
                 if skill_tool.is_build_in:
                     tool_params["url"] = f"langchain:{skill_tool.name}"
-
                 tools.append(tool_params)
 
             for i in tool_map.values():
