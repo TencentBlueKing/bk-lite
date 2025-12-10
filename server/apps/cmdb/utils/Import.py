@@ -142,7 +142,6 @@ class Import:
 
                 # 将键和值存入字典
                 item[keys[i]] = value
-            print(item)
             # 检查该行是否有验证错误
             row_has_validation_errors = len(self.validation_errors) > row_validation_errors_count
 
