@@ -156,7 +156,8 @@ export const useMessages = (
                                         contentParts: [...parts, {
                                             type: 'tool_call' as const,
                                             toolCall: newToolCall
-                                        }]
+                                        }],
+                                        status: 'success'
                                     };
                                 }
                                 return msg;

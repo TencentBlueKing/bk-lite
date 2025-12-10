@@ -6,7 +6,7 @@ import { Toast, SpinLoading } from 'antd-mobile';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { ChatInfo } from '@/types/conversation';
 import MarkdownIt from 'markdown-it';
-import { ConversationHeader, MessageList, VoiceInput, MessageContent } from './components';
+import { ConversationHeader, MessageList, CustomInput, MessageContent } from './components';
 import { useMessages } from './hooks';
 import { conversationStyles } from './utils';
 import { useTranslation } from '@/utils/i18n';
@@ -208,8 +208,8 @@ export default function ConversationDetail() {
       if (!response.result) {
         throw new Error(response.message || 'getWelcomeMessage failed');
       }
-      const guide = response.data.guide || '您好，请问有什么可以帮助您的吗？';
-      const [guideText, ...suggestions] = guide.split('\n');
+      const guide = response.data.guide || t('chat.welcomeMessage');
+      const [guideText, ...suggestions] = guide.split('\n').filter((line: string) => line.trim() !== '');
       const welcomeMessage = {
         id: 'welcome-message',
         message: {
@@ -383,7 +383,7 @@ export default function ConversationDetail() {
             />
           </div>
 
-          <VoiceInput
+          <CustomInput
             content={content}
             setContent={setContent}
             isVoiceMode={isVoiceMode}

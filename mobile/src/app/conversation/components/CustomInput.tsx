@@ -3,8 +3,9 @@ import { Toast, Popover } from 'antd-mobile';
 import { Sender } from '@ant-design/x';
 import { AddOutline } from 'antd-mobile-icons';
 import { RobotOutlined, BarChartOutlined, RadarChartOutlined, BookOutlined, FileOutlined } from '@ant-design/icons';
-import { useSpeechRecognition } from '../hooks/useSpeechRecognition';
 import { useTheme } from '@/context/theme';
+import { VoiceRecorder } from './VoiceRecorder';
+import { useTranslation } from '@/utils/i18n';
 
 const MOCK_TOOLS = [
     { id: 'tool1', name: 'Linux 性能监控', icon: <RobotOutlined style={{ color: 'red' }} /> },
@@ -19,7 +20,7 @@ export type MessageContent =
     | { type: 'text'; content: string }
     | { type: 'files'; files: File[]; fileType: 'image' | 'file'; text?: string }; // text 为可选，用于文字+文件组合
 
-interface VoiceInputProps {
+interface CustomInputProps {
     content: string;
     setContent: (content: string) => void;
     isVoiceMode: boolean;
@@ -28,7 +29,7 @@ interface VoiceInputProps {
     isAIRunning: boolean;
 }
 
-export const VoiceInput: React.FC<VoiceInputProps> = ({
+export const CustomInput: React.FC<CustomInputProps> = ({
     content,
     setContent,
     isVoiceMode,
@@ -36,13 +37,9 @@ export const VoiceInput: React.FC<VoiceInputProps> = ({
     onToggleVoiceMode,
     isAIRunning,
 }) => {
+    const { t } = useTranslation();
     const [isRecording, setIsRecording] = useState(false);
-    const isRecordingRef = useRef(false);
     const [recordingCancelled, setRecordingCancelled] = useState(false);
-    const longPressTimerRef = useRef<NodeJS.Timeout | null>(null);
-    const touchStartYRef = useRef<number>(0);
-    const isLongPressRef = useRef(false);
-    const recordingStartTimeRef = useRef<number>(0);
     const senderContainerRef = useRef<HTMLDivElement>(null);
     const [showFileOptions, setShowFileOptions] = useState(false);
     const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
@@ -53,13 +50,26 @@ export const VoiceInput: React.FC<VoiceInputProps> = ({
     const fileInputRef = useRef<HTMLInputElement>(null);
     const { theme } = useTheme();
 
-    const {
-        recognizedText,
-        setRecognizedText,
-        startSpeechRecognition,
-        stopSpeechRecognition,
-        checkMicrophonePermissionSilent,
-    } = useSpeechRecognition(isLongPressRef, isRecordingRef);
+    // 处理语音识别发送
+    const handleVoiceSend = (text: string) => {
+        // 检查是否有导入的文件或图片
+        if (selectedFiles.length > 0 && fileType) {
+            // 语音文本 + 文件组合发送
+            onSend({
+                type: 'files',
+                files: selectedFiles,
+                fileType: fileType,
+                text: text,
+            });
+            // 清空文件状态
+            setShowImageOptions(false);
+            setSelectedFiles([]);
+            setFileType(null);
+        } else {
+            // 只发送语音识别的文本
+            onSend(text);
+        }
+    };
 
     // 让输入框失焦的函数
     const blurInput = () => {
@@ -71,10 +81,41 @@ export const VoiceInput: React.FC<VoiceInputProps> = ({
         }
     };
 
+    // 统一的发送处理函数
+    const handleSendWithFiles = (text?: string) => {
+        if (isAIRunning) {
+            Toast.show({
+                content: t('chat.aiProcessing'),
+                icon: 'loading',
+                duration: 2000
+            });
+            return;
+        }
+
+        // 优先发送文件（如果有）
+        if (selectedFiles.length > 0 && fileType) {
+            onSend({
+                type: 'files',
+                files: selectedFiles,
+                fileType: fileType,
+                text: text?.trim() || undefined,
+            });
+            // 清空文件和输入框
+            setShowImageOptions(false);
+            setSelectedFiles([]);
+            setFileType(null);
+            setContent('');
+        } else if (text?.trim()) {
+            // 只有文字，正常发送
+            onSend(text);
+            setContent('');
+        }
+    };
+
     const handleToolClick = (toolId: string) => {
         if (isAIRunning) {
             Toast.show({
-                content: 'AI 正在处理中，请稍候...',
+                content: t('chat.aiProcessing'),
                 icon: 'loading',
                 duration: 2000
             });
@@ -106,7 +147,7 @@ export const VoiceInput: React.FC<VoiceInputProps> = ({
             // 如果已有文件，检查类型是否匹配
             if (fileType && fileType !== newFileType) {
                 Toast.show({
-                    content: '不支持同时添加图片和文件',
+                    content: t('chat.addLimit'),
                     icon: 'fail',
                     duration: 1000
                 });
@@ -120,7 +161,7 @@ export const VoiceInput: React.FC<VoiceInputProps> = ({
 
             if (oversizedFiles.length > 0) {
                 Toast.show({
-                    content: `部分文件超过 10MB 限制，已跳过`,
+                    content: t('chat.fileSizeLimitExceeded'),
                     icon: 'fail',
                     duration: 2000
                 });
@@ -199,142 +240,6 @@ export const VoiceInput: React.FC<VoiceInputProps> = ({
         } else if (fileType === 'image') {
             // 已有图片，弹出相机和相册选择
             setShowImageOptions(true);
-        }
-    };
-
-    const handleVoiceTouchStart = async (e: React.TouchEvent | React.MouseEvent) => {
-        if (!('touches' in e)) {
-            e.preventDefault();
-        }
-
-        if ('touches' in e) {
-            touchStartYRef.current = e.touches[0].clientY;
-        } else {
-            touchStartYRef.current = e.clientY;
-        }
-
-        isLongPressRef.current = false;
-        setRecordingCancelled(false);
-        setRecognizedText('');
-
-        // 先静默检查权限状态
-        const hasPermission = await checkMicrophonePermissionSilent();
-
-        // 如果权限未授予，触发权限请求但不启动 UI 和语音识别
-        if (!hasPermission) {
-            console.log('权限未授予，触发权限请求...');
-            try {
-                // 触发权限请求
-                const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-                stream.getTracks().forEach(track => track.stop());
-            } catch (error) {
-                console.error('权限请求失败:', error);
-                Toast.show({
-                    content: '无法获取麦克风权限',
-                    icon: 'fail',
-                    duration: 2000
-                });
-            }
-            return; // 不继续执行后续逻辑
-        }
-
-        // 权限已授予，正常启动录音
-        longPressTimerRef.current = setTimeout(() => {
-            isLongPressRef.current = true;
-            setIsRecording(true);
-            isRecordingRef.current = true;
-            recordingStartTimeRef.current = Date.now();
-
-            if (navigator.vibrate) {
-                navigator.vibrate(50);
-            }
-
-            startSpeechRecognition();
-        }, 300);
-    };
-
-    const handleVoiceTouchMove = (e: React.TouchEvent | React.MouseEvent) => {
-        if (isRecording) {
-            let currentY: number;
-
-            if ('touches' in e) {
-                currentY = e.touches[0].clientY;
-            } else {
-                currentY = e.clientY;
-            }
-
-            const deltaY = touchStartYRef.current - currentY;
-
-            if (deltaY > 50) {
-                setRecordingCancelled(true);
-            } else {
-                setRecordingCancelled(false);
-            }
-        }
-    };
-
-    const handleVoiceTouchEnd = () => {
-        if (longPressTimerRef.current) {
-            clearTimeout(longPressTimerRef.current);
-            longPressTimerRef.current = null;
-        }
-
-        if (isLongPressRef.current && isRecording) {
-            isLongPressRef.current = false;
-            isRecordingRef.current = false;
-
-            stopSpeechRecognition();
-
-            const recordingDuration = Date.now() - recordingStartTimeRef.current;
-
-            setIsRecording(false);
-
-            if (recordingCancelled) {
-                setRecognizedText('');
-                setRecordingCancelled(false);
-            } else {
-                if (recordingDuration < 500) {
-                    Toast.show({ content: '说话时间太短', icon: 'fail' });
-                } else {
-                    // 检查 AI 是否正在运行
-                    if (isAIRunning) {
-                        Toast.show({
-                            content: 'AI 正在处理中，请稍候...',
-                            icon: 'loading',
-                            duration: 2000
-                        });
-                        setRecognizedText('');
-                        return;
-                    }
-
-                    setTimeout(() => {
-                        if (recognizedText && recognizedText.trim()) {
-                            // 检查是否有导入的文件或图片
-                            if (selectedFiles.length > 0 && fileType) {
-                                // 语音文本 + 文件组合发送
-                                onSend({
-                                    type: 'files',
-                                    files: selectedFiles,
-                                    fileType: fileType,
-                                    text: recognizedText.trim(),
-                                });
-                                // 清空文件状态
-                                setShowImageOptions(false);
-                                setSelectedFiles([]);
-                                setFileType(null);
-                            } else {
-                                // 只发送语音识别的文本
-                                onSend(recognizedText);
-                            }
-                            setRecognizedText('');
-                        } else {
-                            Toast.show({ content: '未识别到内容，请重试', icon: 'fail' });
-                        }
-                    }, 500);
-                }
-            }
-
-            setRecordingCancelled(false);
         }
     };
 
@@ -423,7 +328,7 @@ export const VoiceInput: React.FC<VoiceInputProps> = ({
                                             className="flex items-center gap-1 text-[var(--color-text-1)]"
                                         >
                                             <span className="iconfont icon-xiangji text-xl"></span>
-                                            <span className="text-xs">相机</span>
+                                            <span className="text-xs">{t('common.camera')}</span>
                                         </button>
                                         <hr className="border-[var(--color-border)]" />
                                         <button
@@ -435,7 +340,7 @@ export const VoiceInput: React.FC<VoiceInputProps> = ({
                                             }}
                                             className="flex items-center gap-1 text-[var(--color-text-1)]">
                                             <span className="iconfont icon-tupian1 text-xl"></span>
-                                            <span className="text-xs">相册</span>
+                                            <span className="text-xs">{t('common.gallery')}</span>
                                         </button>
                                     </div>
                                 }
@@ -476,7 +381,7 @@ export const VoiceInput: React.FC<VoiceInputProps> = ({
             {isRecording && (
                 <div className="text-center">
                     <div className={`voice-tip-top ${recordingCancelled ? 'voice-tip-cancel' : ''}`}>
-                        {recordingCancelled ? '松开取消' : '松开发送,上滑取消'}
+                        {recordingCancelled ? t('chat.releaseToCancel') : t('chat.slideUpToCancel')}
                     </div>
                 </div>
             )}
@@ -495,70 +400,19 @@ export const VoiceInput: React.FC<VoiceInputProps> = ({
 
                 {isVoiceMode && !content.trim() ? (
                     <div className="flex items-center gap-2 p-3">
-                        <div
-                            className="voice-button flex-1"
-                            onTouchStart={handleVoiceTouchStart}
-                            onTouchMove={handleVoiceTouchMove}
-                            onTouchEnd={handleVoiceTouchEnd}
-                            onMouseDown={handleVoiceTouchStart}
-                            onMouseMove={handleVoiceTouchMove}
-                            onMouseUp={handleVoiceTouchEnd}
-                            onMouseLeave={handleVoiceTouchEnd}
-                        >
-                            按住说话
-                        </div>
-                        <div className="flex items-center gap-3">
-                            <span
-                                className="iconfont icon-jianpan text-3xl text-[var(--color-text-1)] action-icon"
-                                onMouseDown={(e) => e.preventDefault()}
-                                onClick={onToggleVoiceMode}
-                            ></span>
-                            {selectedFiles.length > 0 ? (
-                                <span
-                                    className={`iconfont icon-xiangshangjiantouquan text-3xl action-icon ${isAIRunning
-                                        ? 'text-gray-400 cursor-not-allowed opacity-50'
-                                        : 'text-blue-600'
-                                        }`}
-                                    onMouseDown={(e) => e.preventDefault()}
-                                    onClick={() => {
-                                        if (isAIRunning) {
-                                            Toast.show({
-                                                content: 'AI 正在处理中，请稍候...',
-                                                icon: 'loading',
-                                                duration: 2000
-                                            });
-                                            return;
-                                        }
-                                        // 发送文件（可能包含文字）
-                                        if (selectedFiles.length > 0 && fileType) {
-                                            onSend({
-                                                type: 'files',
-                                                files: selectedFiles,
-                                                fileType: fileType,
-                                                text: content.trim() || undefined, // 如果有输入文字，一起发送
-                                            });
-                                        }
-                                        // 发送后清空文件、文字和重置类型
-                                        setShowImageOptions(false);
-                                        setSelectedFiles([]);
-                                        setFileType(null);
-                                        setContent(''); // 清空输入框
-                                    }}
-                                ></span>
-                            ) : (
-                                <span
-                                    className="iconfont icon-a-zengjiatianjiajiahaoduo text-3xl text-[var(--color-text-1)] action-icon"
-                                    style={{
-                                        transform: showFileOptions ? 'rotate(45deg)' : 'rotate(0deg)',
-                                        transition: 'transform 0.3s ease',
-                                    }}
-                                    onMouseDown={(e) => e.preventDefault()}
-                                    onClick={() => {
-                                        setShowFileOptions(!showFileOptions);
-                                    }}
-                                ></span>
-                            )}
-                        </div>
+                        <VoiceRecorder
+                            isRecording={isRecording}
+                            setIsRecording={setIsRecording}
+                            onVoiceSend={handleVoiceSend}
+                            isAIRunning={isAIRunning}
+                            recordingCancelled={recordingCancelled}
+                            setRecordingCancelled={setRecordingCancelled}
+                            onToggleVoiceMode={onToggleVoiceMode}
+                            selectedFiles={selectedFiles}
+                            onSendFiles={() => handleSendWithFiles(content)}
+                            showFileOptions={showFileOptions}
+                            setShowFileOptions={setShowFileOptions}
+                        />
                     </div>
                 ) : (
                     <div className="flex items-center gap-2" ref={senderContainerRef}>
@@ -570,32 +424,15 @@ export const VoiceInput: React.FC<VoiceInputProps> = ({
                             onSubmit={(nextContent) => {
                                 if (isAIRunning) {
                                     Toast.show({
-                                        content: 'AI 正在处理中，请稍候...',
+                                        content: t('chat.aiProcessing'),
                                         icon: 'loading',
                                         duration: 2000
                                     });
                                     return;
                                 }
-                                // 检查是否有文件，如果有则发送组合消息
-                                if (selectedFiles.length > 0 && fileType) {
-                                    onSend({
-                                        type: 'files',
-                                        files: selectedFiles,
-                                        fileType: fileType,
-                                        text: nextContent.trim() || undefined,
-                                    });
-                                    // 清空文件和输入框
-                                    setShowImageOptions(false);
-                                    setSelectedFiles([]);
-                                    setFileType(null);
-                                    setContent('');
-                                } else {
-                                    // 只有文字，正常发送
-                                    onSend(nextContent);
-                                    setContent('');
-                                }
+                                handleSendWithFiles(nextContent);
                             }}
-                            placeholder={'输入消息...'}
+                            placeholder={t('chat.inputPlaceholder')}
                             style={{
                                 border: 'none',
                                 borderRadius: '20px',
@@ -609,34 +446,7 @@ export const VoiceInput: React.FC<VoiceInputProps> = ({
                                             ? 'text-gray-400 cursor-not-allowed opacity-50'
                                             : 'text-blue-600'
                                             }`}
-                                        onClick={() => {
-                                            if (isAIRunning) {
-                                                Toast.show({
-                                                    content: 'AI 正在处理中，请稍候...',
-                                                    icon: 'loading',
-                                                    duration: 2000
-                                                });
-                                                return;
-                                            }
-                                            // 优先发送文件（如果有）
-                                            if (selectedFiles.length > 0 && fileType) {
-                                                onSend({
-                                                    type: 'files',
-                                                    files: selectedFiles,
-                                                    fileType: fileType,
-                                                    text: content.trim() || undefined,
-                                                });
-                                                // 清空文件和输入框
-                                                setShowImageOptions(false);
-                                                setSelectedFiles([]);
-                                                setFileType(null);
-                                                setContent('');
-                                            } else if (content.trim()) {
-                                                // 只有文字，正常发送
-                                                onSend(content);
-                                                setContent('');
-                                            }
-                                        }}
+                                        onClick={() => handleSendWithFiles(content)}
                                     ></span>
                                 ) : (
                                     <div className="flex items-center gap-3">
@@ -657,31 +467,7 @@ export const VoiceInput: React.FC<VoiceInputProps> = ({
                                                 onMouseDown={(e) => e.preventDefault()}
                                                 onClick={() => {
                                                     blurInput();
-                                                    if (isAIRunning) {
-                                                        Toast.show({
-                                                            content: 'AI 正在处理中，请稍候...',
-                                                            icon: 'loading',
-                                                            duration: 2000
-                                                        });
-                                                        return;
-                                                    }
-                                                    if (selectedFiles.length > 0 && fileType) {
-                                                        onSend({
-                                                            type: 'files',
-                                                            files: selectedFiles,
-                                                            fileType: fileType,
-                                                            text: content.trim() || undefined,
-                                                        });
-                                                        // 清空文件和输入框
-                                                        setShowImageOptions(false);
-                                                        setSelectedFiles([]);
-                                                        setFileType(null);
-                                                        setContent('');
-                                                    } else if (content.trim()) {
-                                                        // 只有文字，正常发送
-                                                        onSend(content);
-                                                        setContent('');
-                                                    }
+                                                    handleSendWithFiles(content);
                                                 }}
                                             ></span>
                                         ) : <span
@@ -720,7 +506,7 @@ export const VoiceInput: React.FC<VoiceInputProps> = ({
                         >
                             <div className="w-22 h-22 bg-[var(--color-background-body)] rounded-xl flex flex-col items-center gap-2 justify-center">
                                 <span className="iconfont icon-xiangji text-2xl"></span>
-                                <span className="text-xs">相机</span>
+                                <span className="text-xs">{t('common.camera')}</span>
                             </div>
                         </button>
                         <button
@@ -728,7 +514,7 @@ export const VoiceInput: React.FC<VoiceInputProps> = ({
                         >
                             <div className="w-22 h-22 bg-[var(--color-background-body)] rounded-xl flex flex-col items-center gap-2 justify-center">
                                 <span className="iconfont icon-tupian1 text-2xl"></span>
-                                <span className="text-xs">相册</span>
+                                <span className="text-xs">{t('common.gallery')}</span>
                             </div>
                         </button>
                         <button
@@ -736,7 +522,7 @@ export const VoiceInput: React.FC<VoiceInputProps> = ({
                         >
                             <div className="w-22 h-22 bg-[var(--color-background-body)] rounded-xl flex flex-col items-center gap-2 justify-center">
                                 <span className="iconfont icon-a-wenjianjiawenjian text-xl"></span>
-                                <span className="text-xs">文件</span>
+                                <span className="text-xs">{t('common.file')}</span>
                             </div>
                         </button>
                     </div>
