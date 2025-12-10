@@ -19,7 +19,8 @@ class MysqlNodeParams(BaseNodeParams):
         credential_data = {
             "port": self.credential.get("port", 3306),
             "user": self.credential.get("user", ""),
-            "password": self.credential.get("password", ""),
+            # "password": self.credential.get("password", ""),
+            "password": "${PASSWORD_password}",
         }
         return credential_data
 
@@ -32,3 +33,8 @@ class MysqlNodeParams(BaseNodeParams):
         else:
             return f"{self.instance.id}_{instance}"
 
+    @property
+    def env_config(self, *args, **kwargs):
+        return {
+            "$PASSWORD_password": self.credential.get("password", ""),
+        }

@@ -51,6 +51,9 @@
 - `table_columns` 仅在 auto 模式下使用
 - `extra_edit_fields` 仅在 edit 模式下使用
 
+**新增功能：**
+- ✨ **字段加密支持**：在 `form_fields` 和 `table_columns` 中添加 `"encrypted": true` 即可自动加密敏感字段（如密码、API密钥）
+
 ---
 
 ## 二、配置字段说明
@@ -91,19 +94,25 @@
 | `options` | array | 否 | 下拉选项（type 为 select 时） |
 | `editable` | boolean | 否 | 是否可编辑，false 时 edit 模式下禁用（默认 true） |
 | `visible_in` | string | 否 | 可见性控制：'auto'、'edit'、'both'（默认 'both'） |
+| `encrypted` | boolean | 否 | 是否加密，true 时字段值使用 hash 加密后提交（默认 false） |
 | `data_transform` | object | 否 | 数据转换配置（edit 模式使用） |
 
 #### 支持的字段类型
 
-| 类型 | 说明 | 示例 |
-|------|------|------|
-| `input` | 文本输入框 | IP 地址、主机名 |
-| `inputNumber` | 数字输入框 | 端口号、超时时间 |
-| `select` | 下拉选择框 | SNMP 版本、安全级别 |
-| `password` | 密码输入框 | 认证密码、加密密码 |
-| `textarea` | 多行文本框 | 备注、描述 |
-| `checkbox` | 单个复选框 | 开关选项 |
-| `checkbox_group` | 复选框组 | 多选指标类型（如 CPU、内存、磁盘） |
+| 类型 | 说明 | 示例 | 加密支持 |
+|------|------|------|----------|
+| `input` | 文本输入框 | IP 地址、主机名 | ✅ 支持 |
+| `inputNumber` | 数字输入框 | 端口号、超时时间 | ✅ 支持 |
+| `select` | 下拉选择框 | SNMP 版本、安全级别 | ✅ 支持 |
+| `password` | 密码输入框 | 认证密码、加密密码 | ⭐ 推荐 |
+| `textarea` | 多行文本框 | 备注、描述 | ✅ 支持 |
+| `checkbox` | 单个复选框 | 开关选项 | ⚠️ 不推荐 |
+| `checkbox_group` | 复选框组 | 多选指标类型（如 CPU、内存、磁盘） | ⚠️ 不推荐 |
+
+**加密字段类型建议：**
+- ⭐ **强烈推荐**：`password` - 专为敏感信息设计
+- ✅ **适合使用**：`input`, `textarea` - 用于API密钥、Token等
+- ⚠️ **不推荐**：`checkbox`, `checkbox_group`, `select` - 不适合加密
 
 #### widget_props 配置
 
@@ -364,11 +373,30 @@ auto 模式下可选择，edit 模式下仅显示（不可编辑）：
 }
 ```
 
+**加密字段示例：**
+```json
+{
+  "name": "api_key",
+  "label": "API密钥",
+  "type": "password",
+  "required": true,
+  "encrypted": true,
+  "description": "用于身份验证的API密钥，提交时会自动加密",
+  "widget_props": {
+    "placeholder": "请输入API密钥"
+  },
+  "transform_on_edit": {
+    "origin_path": "child.content.config.api_key"
+  }
+}
+```
+
 **说明：**
 - `mode_config` 是可选的，如果字段在两种模式下行为完全一致，可以不配置
 - `data_transform` 仅在 edit 模式有效
 - `default_value` 仅在 auto 模式使用
 - `tooltip` 支持使用 `\n` 换行
+- `encrypted` 为 true 时，字段值在提交前会自动使用 hash 算法加密
 
 ### 2.2 table_columns（表格列配置）
 
@@ -403,6 +431,8 @@ auto 模式下可选择，edit 模式下仅显示（不可编辑）：
 | `change_handler` | object | 否 | 值变化处理器 |
 | `options` | array | 否 | type为select时的下拉列表，目前有节点、组由前端接口获取，不用传options |
 | `enable_row_filter` | boolean | 否 | 是否启用行过滤（去重节点，比如第一行选了某个节点，第二行不能选这个节点） |
+| `encrypted` | boolean | 否 | 是否加密，true 时字段值使用 hash 加密后提交（默认 false） |
+| `rules` | array | 否 | 失焦验证规则，支持必填、正则、自定义验证 |
 
 #### change_handler（值变化处理，表格字段联动）
 
@@ -428,6 +458,159 @@ auto 模式下可选择，edit 模式下仅显示（不可编辑）：
 }
 ```
 - 将 `host` 和 `port` 用 `:` 拼接后赋值给 `instance_name`
+
+#### rules（验证规则）
+
+用于字段的失焦验证，支持多种验证类型。
+
+**基本结构：**
+```json
+"rules": [
+  {
+    "type": "required",
+    "message": "请输入URL"
+  },
+  {
+    "type": "pattern",
+    "pattern": "^https?://",
+    "message": "URL必须以http://或https://开头"
+  }
+]
+```
+
+**支持的验证类型：**
+
+**pattern（正则验证）**
+```json
+{
+  "type": "pattern",
+  "pattern": "^(\\d{1,3}\\.){3}\\d{1,3}$",
+  "message": "请输入正确的IP地址格式",
+  "excel_formula": "AND(LEN({{CELL}})-LEN(SUBSTITUTE({{CELL}},\".\",\"\"))=3,ISNUMBER(VALUE(LEFT({{CELL}},FIND(\".\",{{CELL}})-1))))",
+  "excel_vars": {
+    "CELL": "cell_ref"
+  }
+}
+```
+
+**字段说明：**
+- `type`: 固定为 "pattern"
+- `pattern`: 正则表达式（用于前端验证）
+- `message`: 错误提示信息
+- `excel_formula`: （可选）Excel公式字符串，用于Excel模板的数据验证。支持变量占位符：
+  - `{{CELL}}`: 会被替换为实际单元格引用（如A2）
+  - `{{ROW}}`: 会被替换为当前行号（如2）
+  - `{{COL}}`: 会被替换为当前列字母（如A）
+  - 自定义变量: 在excel_vars中定义的其他变量
+- `excel_vars`: （可选）自定义变量映射，key为变量名，value为计算逻辑
+
+**常用正则示例：**
+
+- **URL验证**：
+  - `"pattern": "^https?://.*"`
+  - `"excel_formula": "OR(LEFT({{CELL}},7)=\"http://\",LEFT({{CELL}},8)=\"https://\")"`
+  
+- **邮箱验证**：
+  - `"pattern": "^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$"`
+  - `"excel_formula": "AND(ISNUMBER(FIND(\"@\",{{CELL}})),ISNUMBER(FIND(\".\",{{CELL}},FIND(\"@\",{{CELL}}))))"`
+  
+- **IP地址验证**：
+  - `"pattern": "^(\\d{1,3}\\.){3}\\d{1,3}$"`
+  - `"excel_formula": "AND(LEN({{CELL}})-LEN(SUBSTITUTE({{CELL}},\".\",\"\"))=3,ISNUMBER(VALUE(LEFT({{CELL}},FIND(\".\",{{CELL}})-1))))"`
+  
+- **端口号验证**：
+  - `"pattern": "^([1-9]|[1-9]\\d{1,3}|[1-5]\\d{4}|6[0-4]\\d{3}|65[0-4]\\d{2}|655[0-2]\\d|6553[0-5])$"`
+  - `"excel_formula": "AND(ISNUMBER({{CELL}}),{{CELL}}>=1,{{CELL}}<=65535)"`
+
+**完整示例：**
+```json
+{
+  "name": "url",
+  "label": "URL地址",
+  "type": "input",
+  "required": true,
+  "rules": [
+    {
+      "type": "pattern",
+      "pattern": "^https://.*",
+      "message": "URL必须以https://开头"
+    }
+  ]
+}
+```
+
+**注意事项：**
+- 必填验证通过字段的 `required` 属性控制，不需要在 `rules` 中配置
+- 验证在字段onChange时实时触发
+- 多个规则按顺序执行，遇到第一个错误就停止
+- message 支持 i18n 翻译
+- pattern类型用于正则表达式验证，支持各种复杂格式校验
+
+#### 表格字段加密示例
+
+当表格列包含敏感信息（如密码、密钥）时，可以使用 `encrypted` 属性：
+
+```json
+{
+  "name": "password",
+  "label": "密码",
+  "type": "password",
+  "required": true,
+  "encrypted": true,
+  "widget_props": {
+    "placeholder": "请输入密码"
+  }
+}
+```
+
+**更多加密字段示例：**
+```json
+{
+  "table_columns": [
+    {
+      "name": "node_ids",
+      "label": "节点",
+      "type": "select",
+      "required": true,
+      "enable_row_filter": true
+    },
+    {
+      "name": "username",
+      "label": "用户名",
+      "type": "input",
+      "required": true
+    },
+    {
+      "name": "password",
+      "label": "密码",
+      "type": "password",
+      "required": true,
+      "encrypted": true,
+      "widget_props": {
+        "placeholder": "请输入密码"
+      }
+    },
+    {
+      "name": "api_key",
+      "label": "API密钥",
+      "type": "input",
+      "required": false,
+      "encrypted": true,
+      "widget_props": {
+        "placeholder": "可选的API密钥"
+      }
+    }
+  ]
+}
+```
+
+**加密字段说明：**
+- `encrypted: true` 时，字段值在提交前会自动使用 hash 算法加密
+- 加密后生成固定长度（10位）的字符串
+- 相同输入总是生成相同的加密输出
+- 空字符串会生成固定值：`"MDAwMDAwMDA"`
+- 通常与 `type: "password"` 配合使用，但也支持 `input` 类型
+- 加密在数据提交时自动进行，无需前端额外处理
 
 #### enable_row_filter（行过滤）
 
@@ -1342,7 +1525,77 @@ extra_fields 生成
 - 上下文字段：`{{objectId}}`, `{{instance_type}}`
 - 节点字段：`{{cloud_region}}`, `{{name}}`, `{{id}}`
 
-### Q7: 如何从旧配置迁移到新结构？
+### Q7: encrypted 加密功能如何使用？
+
+**基本用法：**
+在任何 `form_fields` 或 `table_columns` 字段中添加 `"encrypted": true`，该字段值在提交前会自动加密。
+
+```json
+{
+  "name": "password",
+  "label": "密码",
+  "type": "password",
+  "required": true,
+  "encrypted": true
+}
+```
+
+**加密特性：**
+- 使用 hash 算法（简化的 SHA256 实现）
+- 生成固定长度（10位）的加密字符串
+- 相同输入总是生成相同输出（可用于验证）
+- 空字符串不会报错，生成固定值 `"MDAwMDAwMDA"`
+
+**适用场景：**
+- 密码字段：数据库密码、服务密码
+- API密钥：第三方服务的 API Key
+- Token：认证令牌、访问令牌
+- 证书密码：SSL 证书密码、私钥密码
+
+**完整示例：**
+```json
+{
+  "form_fields": [
+    {
+      "name": "username",
+      "label": "用户名",
+      "type": "input",
+      "required": true
+    },
+    {
+      "name": "ENV_PASSWORD",
+      "label": "密码",
+      "type": "password",
+      "required": true,
+      "encrypted": true,
+      "description": "登录密码，提交时自动加密",
+      "transform_on_edit": {
+        "origin_path": "child.env_config.PASSWORD__{{config_id}}"
+      }
+    }
+  ],
+  "table_columns": [
+    {
+      "name": "api_key",
+      "label": "API密钥",
+      "type": "password",
+      "required": false,
+      "encrypted": true,
+      "widget_props": {
+        "placeholder": "请输入API密钥"
+      }
+    }
+  ]
+}
+```
+
+**注意事项：**
+- 加密在提交前自动进行，无需前端额外处理
+- 建议配合 `required: true` 使用，避免提交空值
+- 加密是单向的，无法从加密值还原原始值
+- Auto 模式和 Edit 模式都支持字段加密
+
+### Q8: 如何从旧配置迁移到新结构？
 
 **迁移步骤：**
 
@@ -1437,10 +1690,92 @@ extra_fields 生成
 
 ---
 
-**版本：** v2.0  
-**更新日期：** 2025-11-13  
+## 附录 B：字段加密快速参考
+
+### 加密功能概览
+
+| 项目 | 说明 |
+|------|------|
+| **配置属性** | `"encrypted": true` |
+| **适用范围** | `form_fields` 和 `table_columns` |
+| **加密算法** | 简化的 hash 算法（基于字符串哈希） |
+| **输出长度** | 固定 10 位字符串 |
+| **空值处理** | 返回固定值 `"MDAwMDAwMDA"` |
+| **可逆性** | 单向加密，不可还原 |
+
+### 推荐字段类型
+
+| 字段类型 | 推荐度 | 使用场景 |
+|----------|--------|----------|
+| `password` | ⭐⭐⭐ | 密码、私钥密码 |
+| `input` | ⭐⭐ | API密钥、Token |
+| `textarea` | ⭐ | 长文本密钥、证书 |
+| `select` | ❌ | 不推荐 |
+| `checkbox` | ❌ | 不推荐 |
+
+### 常见使用模式
+
+**模式1：表单密码字段**
+```json
+{
+  "name": "password",
+  "label": "密码",
+  "type": "password",
+  "required": true,
+  "encrypted": true,
+  "description": "登录密码",
+  "transform_on_edit": {
+    "origin_path": "child.env_config.PASSWORD__{{config_id}}"
+  }
+}
+```
+
+**模式2：表格密码字段**
+```json
+{
+  "name": "password",
+  "label": "密码",
+  "type": "password",
+  "required": true,
+  "encrypted": true,
+  "widget_props": {
+    "placeholder": "请输入密码"
+  }
+}
+```
+
+**模式3：API密钥字段**
+```json
+{
+  "name": "api_key",
+  "label": "API密钥",
+  "type": "input",
+  "required": false,
+  "encrypted": true,
+  "description": "第三方服务的API密钥"
+}
+```
+
+### 注意事项
+
+✅ **建议做的：**
+- 配合 `required: true` 使用，避免空值
+- 用于 `password` 类型的密码字段
+- 用于敏感的 `input` 字段（API密钥、Token）
+- 在表单和表格中都可以使用
+
+❌ **不建议做的：**
+- 对非敏感字段使用加密
+- 对 `select`、`checkbox` 类型使用加密
+- 期望从加密值还原原始值
+- 在前端代码中手动调用加密函数
+
+---
+
+**版本：** v2.1  
+**更新日期：** 2025-12-08  
 **维护者：** 开发团队  
 **主要变化：** 
-- 移除 auto 和 edit 层级，配置扁平化
-- 新增 mode_config 机制统一管理模式差异
-- 简化配置结构，提高可维护性
+- v2.1: 新增字段加密功能（encrypted 属性）
+- v2.0: 移除 auto 和 edit 层级，配置扁平化
+- v2.0: 新增 mode_config 机制统一管理模式差异

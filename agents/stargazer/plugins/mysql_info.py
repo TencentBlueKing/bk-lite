@@ -220,10 +220,10 @@ class MysqlInfo:
                 inst_data = {"result": json.dumps(model_data), "success": execute_result}
 
             else:
+                logger.error(f"mysql_info collect error! {message}")
                 inst_data = {"result": message, "success": execute_result}
 
             result = convert_to_prometheus_format({"mysql": [inst_data]})
-
             return result
         except Exception as err:  # noqa
             import traceback

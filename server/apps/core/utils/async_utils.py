@@ -35,13 +35,16 @@ def create_async_compatible_generator(sync_generator):
                 except StopIteration:
                     return None
 
-            with ThreadPoolExecutor() as executor:
+            with ThreadPoolExecutor(max_workers=1) as executor:
                 while True:
                     # 在线程池中执行同步操作
                     item = await loop.run_in_executor(executor, get_next_item)
                     if item is None:
                         break
+                    # 立即 yield，不等待
                     yield item
+                    # 允许事件循环处理其他任务
+                    await asyncio.sleep(0)
 
         except Exception as e:
             logger.error(f"Async generator wrapper error: {e}")

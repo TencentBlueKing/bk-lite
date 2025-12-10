@@ -3,6 +3,7 @@
 # @Time: 2025/8/29 14:48
 # @Author: windyzhao
 import os
+import time
 import json
 from typing import List, Union
 
@@ -110,7 +111,6 @@ class FalkorDBClient:
         Returns:
             查询结果
         """
-        import time
         start_time = time.time()
 
         # 记录查询日志
@@ -404,200 +404,66 @@ class FalkorDBClient:
 
         return f"{search_params_str} AND {permission_params}"
 
-    def build_base_permission_filter(self,
-                                     teams: list = None,
-                                     inst_names: list = None,
-                                     creator: str = None,
-                                     model_id: str = None,
-                                     additional_params: list = None,
-                                     additional_param_type: str = "AND") -> str:
-        """
-        构建基础权限过滤条件
-
-        Args:
-            teams: 用户所在的团队列表
-            inst_names: 特殊授权的实例名称列表  
-            creator: 创建人用户名
-            model_id: 模型ID (可选，用于进一步限制范围)
-            additional_params: 额外的查询参数列表
-            additional_param_type: 额外参数的连接类型 ("AND" 或 "OR")
-
-        Returns:
-            str: 完整的WHERE条件字符串 (不包含WHERE关键字)
-
-        权限逻辑：
-        1. 当前用户所在组织的数据: n.organization CONTAINS team_id
-        2. 用户创建的在当前组织的数据: n._creator = 'username' 
-        3. 特殊授予的实例数据(可以在别的组织): n.inst_name IN [...]
-        """
-        permission_conditions = []
-
-        # 1. 组织权限：用户所在团队的数据
-        if teams:
-            team_conditions = []
-            for team in teams:
-                if team:  # 确保team不为空
-                    # 处理团队数据，支持字典格式（如 {'id': 3}）和简单值
-                    if isinstance(team, dict):
-                        team_id = team.get('id') or team.get('team_id')
-                        if team_id:
-                            team_conditions.append(f"{team_id} IN n.organization")
-                        else:
-                            logger.warning(f"Team dict missing id field: {team}")
-                    else:
-                        team_conditions.append(f"{team} IN n.organization")
-
-            if team_conditions:
-                team_condition_str = " OR ".join(team_conditions)
-                permission_conditions.append(f"({team_condition_str})")
-
-        # 2. 创建人权限：用户创建的实例
-        if creator:
-            permission_conditions.append(f"n._creator = '{creator}'")
-
-        # 3. 特殊实例权限：特殊授权的实例名称
-        if inst_names:
-            # 确保inst_names是有效的列表格式
-            inst_names_list = [name for name in inst_names if name]  # 过滤空值
-            if inst_names_list:
-                permission_conditions.append(f"n.inst_name IN {inst_names_list}")
-
-        # 组合权限条件 (使用OR，因为满足任一权限即可访问)
-        base_permission_str = ""
-        if permission_conditions:
-            base_permission_str = " OR ".join(permission_conditions)
-            base_permission_str = f"({base_permission_str})"
-
-        # 5. 处理额外的查询参数
-        additional_params_str = ""
-        if additional_params:
-            additional_params_str = self.format_search_params(additional_params, additional_param_type)
-
-        # 6. 组合所有条件：权限条件 + 额外参数 + 模型限制
-        conditions = []
-        if base_permission_str:
-            conditions.append(base_permission_str)
-        if additional_params_str:
-            conditions.append(additional_params_str)
-        # 模型限制作为强制条件，而不是权限条件的一部分
-        if model_id:
-            conditions.append(f"n.model_id = '{model_id}'")
-
-        final_condition = " AND ".join(conditions) if conditions else ""
-
-        return final_condition
-
-    def query_entity_with_permission(self,
-                                     label: str,
-                                     teams: list = None,
-                                     inst_names: list = None,
-                                     creator: str = None,
-                                     model_id: str = None,
-                                     search_params: list = None,
-                                     search_param_type: str = "AND",
-                                     page: dict = None,
-                                     order: str = None,
-                                     order_type: str = "ASC"):
-        """
-        带权限的实体查询 - 统一权限逻辑入口
-
-        Args:
-            label: 实体标签
-            teams: 用户所在的团队列表
-            inst_names: 特殊授权的实例名称列表
-            creator: 创建人用户名
-            model_id: 模型ID
-            search_params: 搜索参数列表
-            search_param_type: 搜索参数连接类型
-            page: 分页参数 {"skip": 0, "limit": 10}
-            order: 排序字段
-            order_type: 排序类型 ("ASC" 或 "DESC")
-
-        Returns:
-            tuple: (实体列表, 总数)
-        """
-        label_str = f":{label}" if label else ""
-
-        # 构建基础权限过滤条件
-        where_condition = self.build_base_permission_filter(
-            teams=teams,
-            inst_names=inst_names,
-            creator=creator,
-            model_id=model_id,
-            additional_params=search_params,
-            additional_param_type=search_param_type
-        )
-
-        # 构建完整的SQL
-        where_clause = f"WHERE {where_condition}" if where_condition else ""
-        sql_str = f"MATCH (n{label_str}) {where_clause} RETURN n"
-
-        # 排序
-        sql_str += f" ORDER BY n.{order} {order_type}" if order else f" ORDER BY ID(n) {order_type}"
-
-        # 分页查询
-        count = None
-        if page:
-            count_str = f"MATCH (n{label_str}) {where_clause} RETURN COUNT(n) AS count"
-            _result = self._execute_query(count_str)
-            result = FormatDBResult(_result).to_list_of_lists()
-            count = result[0] if result else 0
-            sql_str += f" SKIP {page['skip']} LIMIT {page['limit']}"
-
-        # 执行查询
-        objs = self._execute_query(sql_str)
-        return self.entity_to_list(objs), count
-
     def query_entity(
             self,
             label: str,
             params: list,
+            format_permission_dict: dict = {},
             page: dict = None,
             order: str = None,
             order_type: str = "ASC",
             param_type="AND",
-            permission_params: str = "",
-            permission_or_creator_filter: dict = None,
+            organization_field: str = "organization",
     ):
         """
         查询实体
+        params: 查询参数列表 固定
+        format_permission_dict：组织权限查询参数 dict
         """
         label_str = f":{label}" if label else ""
+        # 基础查询参数
+        base_params_str = self.format_search_params(params, param_type=param_type)
 
-        # 处理权限或创建人的OR条件
-        if permission_or_creator_filter:
-            inst_names = permission_or_creator_filter.get("inst_names", [])
-            creator = permission_or_creator_filter.get("creator")
+        # 构建权限参数 以权限为基准，在此基准下再做基础过滤
+        # 每个组织的权限条件之间是OR关系
+        permission_filters = []
+        for organization_id, query_list in format_permission_dict.items():
+            # 构建组织过滤条件: ANY(x IN [organization_id] WHERE x IN n.organization)
+            organization_query = [{"field": organization_field, "type": "list[]", "value": [organization_id]}]
+            org_base_permission_str = self.format_search_params(organization_query, param_type="AND")
 
-            # 构建OR条件：有权限的实例 OR 自己创建的实例
-            or_conditions = []
-            if inst_names:
-                or_conditions.append(f"n.inst_name IN {inst_names}")
-            if creator:
-                or_conditions.append(f"n._creator = '{creator}'")
-            # 结合权限参数
-            if permission_params:
-                or_conditions.append(permission_params)
+            # 构建该组织下的其他权限条件: (n._creator = 'admin' OR n.inst_name = "host1")
+            org_permission_str = self.format_search_params(query_list, param_type="OR")
 
-            or_condition_str = " OR ".join(or_conditions)
+            # 组合单个组织的权限条件: (组织条件 AND 组织内权限条件)
+            org_filters = []
+            if org_base_permission_str:
+                org_filters.append(org_base_permission_str)
+            if org_permission_str:
+                org_filters.append(f"({org_permission_str})")
 
-            # 将OR条件与其他条件结合
-            params_str = self.format_search_params(params, param_type=param_type)
-            if params_str:
-                params_str = f"({params_str}) AND ({or_condition_str})"
-            else:
-                params_str = f"({or_condition_str})"
+            if org_filters:
+                combined_filter = f"({' AND '.join(org_filters)})"
+                permission_filters.append(combined_filter)
 
-        else:
-            # 原有逻辑
-            params_str = self.format_final_params(params, search_param_type=param_type,
-                                                  permission_params=permission_params)
+        # 组合最终查询条件：((权限1 OR 权限2 OR 权限3) AND 基础过滤)
+        final_conditions = []
 
-        params_str = f"WHERE {params_str}" if params_str else params_str
+        # 先添加权限条件
+        if permission_filters:
+            permission_str = f"({' OR '.join(permission_filters)})"
+            final_conditions.append(permission_str)
+
+        # 再添加基础过滤条件
+        if base_params_str:
+            final_conditions.append(base_params_str)
+
+        # 用 AND 连接权限和基础过滤
+        final_params_str = ' AND '.join(final_conditions) if final_conditions else ""
+        params_str = f"WHERE {final_params_str}" if final_params_str else ""
 
         sql_str = f"MATCH (n{label_str}) {params_str} RETURN n"
 
-        # order by
         sql_str += f" ORDER BY n.{order} {order_type}" if order else f" ORDER BY ID(n) {order_type}"
 
         count_str = f"MATCH (n{label_str}) {params_str} RETURN COUNT(n) AS count"
@@ -973,65 +839,33 @@ class FalkorDBClient:
                 return entity
         return None
 
-    @staticmethod
-    def format_instance_permission_params(instance_permission_params: list, created: str = ""):
-        model_list = []
-        instance_conditions = []
-        for perm_param in instance_permission_params:
-            model_id = perm_param.get('model_id')
-            instance_names = perm_param.get('inst_names', [])
-            if model_id and instance_names:
-                # 对于有具体实例权限的模型，只统计指定的实例
-                condition = f"(n.model_id = '{model_id}' AND n.inst_name IN {instance_names})"
-                instance_conditions.append(condition)
-                model_list.append(model_id)
-
-        # 如果有模型ID但没有实例名称，则只统计该模型的所有实例
-        instance_condition_str = " OR ".join(instance_conditions) if instance_conditions else ""
-
-        # 只有在存在具体模型限制时才排除其他模型
-        if model_list and instance_conditions:
-            instance_condition_str += f" OR (NOT n.model_id IN {model_list})"
-
-        # 判断是否为全部权限：没有具体的实例限制条件
-        has_full_permission = not instance_conditions and not model_list
-
-        # 个人创建的过滤 - 只有在没有全部权限时才添加
-        if created and not has_full_permission:
-            if instance_condition_str:
-                instance_condition_str += f" OR (n._creator = '{created}')"
-            else:
-                instance_condition_str = f"n._creator = '{created}'"
-
-        return instance_condition_str
-
-    def entity_count(self, label: str, group_by_attr: str, params: list, permission_params: str = "",
-                     inst_name_params: str = "", created: str = ""):
+    def entity_count(self, label: str, group_by_attr: str, format_permission_dict: dict):
 
         label_str = f":{label}" if label else ""
 
-        or_filters = []
+        # 构建权限参数 这里的参数是在基础参数基础上做AND 查询的 每个for的数据之间的关系是OR的关系
+        permission_filters = []
+        for organization_id, query_list in format_permission_dict.items():
+            organization_query = [{"field": "organization", "type": "list[]", "value": [organization_id]}]
+            base_permission_str = self.format_search_params(organization_query, param_type="AND")
+            org_permission_str = self.format_search_params(query_list, param_type="OR")
+            if base_permission_str and org_permission_str:
+                combined_filter = f"({base_permission_str} AND ({org_permission_str}))"
+                permission_filters.append(combined_filter)
+            elif base_permission_str:
+                # 只有组织条件，没有其他权限条件
+                permission_filters.append(f"({base_permission_str})")
 
-        if permission_params:
-            or_filters.append(permission_params)
-        if inst_name_params:
-            or_filters.append(inst_name_params)
+        # 组合最终查询条件：基础参数 AND (权限条件1 OR 权限条件2 OR ...)
+        final_conditions = []
+        if permission_filters:
+            # 多个组织的权限条件用 OR 连接
+            permission_str = " OR ".join(permission_filters)
+            final_conditions.append(f"({permission_str})")
 
-        filter_str = "WHERE "
-
-        if or_filters:
-            or_condition = " OR ".join(or_filters)
-            filter_str += f"({or_condition})"
-
-        if created:
-            params.append({"field": "_creator", "type": "str=", "value": created})
-
-        if params:
-            params_str = self.format_search_params(params)
-            if or_filters:
-                filter_str += f" AND ({params_str})"
-            else:
-                filter_str += f" {params_str}"
+        filter_str = " AND ".join(final_conditions) if final_conditions else ""
+        if filter_str:
+            filter_str = f"WHERE {filter_str}"
 
         count_sql = f"MATCH (n{label_str}) {filter_str} RETURN n.{group_by_attr} AS {group_by_attr}, COUNT(n) AS count"
         data = self._graph.query(count_sql)
@@ -1150,158 +984,3 @@ class FalkorDBClient:
         add_results = self.batch_create_entity(label=label, properties_list=add_nodes, check_attr_map=check_attr_map,
                                                exist_items=exist_items, operator=operator)
         return add_results, update_results
-
-    def count_entity_with_permission(self,
-                                     label: str,
-                                     group_by_attr: str,
-                                     teams: list = None,
-                                     inst_names: list = None,
-                                     creator: str = None,
-                                     model_id: str = None,
-                                     search_params: list = None,
-                                     search_param_type: str = "AND"):
-        """
-        带权限的实体统计查询
-
-        Args:
-            label: 实体标签
-            group_by_attr: 分组统计的属性
-            teams: 用户所在的团队列表
-            inst_names: 特殊授权的实例名称列表
-            creator: 创建人用户名
-            model_id: 模型ID
-            search_params: 额外搜索参数
-            search_param_type: 搜索参数连接类型
-
-        Returns:
-            list: 统计结果 [{"attr_value": "value", "count": 10}, ...]
-        """
-        label_str = f":{label}" if label else ""
-
-        # 构建基础权限过滤条件
-        where_condition = self.build_base_permission_filter(
-            teams=teams,
-            inst_names=inst_names,
-            creator=creator,
-            model_id=model_id,
-            additional_params=search_params,
-            additional_param_type=search_param_type
-        )
-
-        where_clause = f"WHERE {where_condition}" if where_condition else ""
-        count_sql = f"MATCH (n{label_str}) {where_clause} RETURN n.{group_by_attr} AS {group_by_attr}, COUNT(n) AS count"
-
-        data = self._graph.query(count_sql)
-        result = FormatDBResult(data).to_result_of_count()
-        return result
-
-    def fulltext_search_with_permission(self,
-                                        search: str,
-                                        teams: list = None,
-                                        inst_names: list = None,
-                                        creator: str = None,
-                                        model_id: str = None,
-                                        search_params: list = None,
-                                        search_param_type: str = "AND"):
-        """
-        带权限的全文检索
-
-        Args:
-            search: 搜索关键词
-            teams: 用户所在的团队列表
-            inst_names: 特殊授权的实例名称列表
-            creator: 创建人用户名
-            model_id: 模型ID
-            search_params: 额外搜索参数
-            search_param_type: 搜索参数连接类型
-
-        Returns:
-            list: 搜索结果实体列表
-        """
-        # 构建基础权限过滤条件
-        permission_condition = self.build_base_permission_filter(
-            teams=teams,
-            inst_names=inst_names,
-            creator=creator,
-            model_id=model_id,
-            additional_params=search_params,
-            additional_param_type=search_param_type
-        )
-
-        # 构建全文检索条件
-        search_condition = f"ANY(key IN keys(n) WHERE key <> 'organization' AND n[key] IS NOT NULL AND toString(n[key]) CONTAINS '{search}')"
-
-        # 组合权限和搜索条件
-        where_conditions = []
-        if permission_condition:
-            where_conditions.append(f"({permission_condition})")
-        if search_condition:
-            where_conditions.append(f"({search_condition})")
-
-        where_clause = f"WHERE {' AND '.join(where_conditions)}" if where_conditions else ""
-        query = f"MATCH (n:{INSTANCE}) {where_clause} RETURN n"
-
-        try:
-            objs = self._graph.query(query)
-            return self.entity_to_list(objs)
-        except Exception as e:
-            logger.error(f"Full text search with permission failed: {e}")
-            # 降级到简单搜索
-            try:
-                fallback_condition = f"n.inst_name CONTAINS '{search}'"
-                if permission_condition:
-                    fallback_condition = f"({permission_condition}) AND ({fallback_condition})"
-
-                fallback_query = f"MATCH (n:{INSTANCE}) WHERE {fallback_condition} RETURN n"
-                objs = self._graph.query(fallback_query)
-                return self.entity_to_list(objs)
-            except Exception as fallback_e:
-                logger.error(f"Fallback search also failed: {fallback_e}")
-                return []
-
-    def export_entities_with_permission(self,
-                                        label: str,
-                                        teams: list = None,
-                                        inst_names: list = None,
-                                        creator: str = None,
-                                        model_id: str = None,
-                                        inst_ids: list = None,
-                                        search_params: list = None,
-                                        search_param_type: str = "AND"):
-        """
-        带权限的实体导出查询
-
-        Args:
-            label: 实体标签
-            teams: 用户所在的团队列表
-            inst_names: 特殊授权的实例名称列表
-            creator: 创建人用户名
-            model_id: 模型ID
-            inst_ids: 指定要导出的实例ID列表 (在权限范围内进行过滤)
-            search_params: 额外搜索参数
-            search_param_type: 搜索参数连接类型
-
-        Returns:
-            list: 符合权限和条件的实体列表
-        """
-        # 如果指定了实例ID，将其作为额外的搜索参数
-        final_search_params = search_params or []
-        if inst_ids:
-            final_search_params.append({
-                "field": "id",
-                "type": "id[]",
-                "value": inst_ids
-            })
-
-        # 使用统一的权限查询方法
-        entities, _ = self.query_entity_with_permission(
-            label=label,
-            teams=teams,
-            inst_names=inst_names,
-            creator=creator,
-            model_id=model_id,
-            search_params=final_search_params,
-            search_param_type=search_param_type
-        )
-
-        return entities

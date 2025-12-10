@@ -3,111 +3,19 @@ AGUI协议聊天流式处理模块
 
 实现AGUI(Agent UI)协议规范的流式聊天功能
 """
+
 import json
 import logging
 import threading
 import time
 
-import requests
-from django.conf import settings
 from django.http import StreamingHttpResponse
 
-from apps.core.utils.async_utils import create_async_compatible_generator
-from apps.opspilot.models import LLMModel, SkillRequestLog, SkillTypeChoices
+from apps.opspilot.models import LLMModel, SkillRequestLog
 from apps.opspilot.services.llm_service import llm_service
-from apps.opspilot.utils.chat_server_helper import ChatServerHelper
+from apps.opspilot.utils.agent_factory import create_agent_instance, create_sse_response_headers
 
 logger = logging.getLogger(__name__)
-
-
-def _generate_agui_stream(url, headers, chat_kwargs, skill_name, show_think=True):
-    """
-    生成AGUI协议的流式数据
-
-    直接转发后端返回的AGUI格式数据，格式：
-    data: {"type":"RUN_STARTED",...}
-    data: {"type":"TEXT_MESSAGE_START",...}
-    data: {"type":"TEXT_MESSAGE_CONTENT",...}
-    data: {"type":"TEXT_MESSAGE_END",...}
-    data: {"type":"RUN_FINISHED",...}
-    """
-    try:
-        logger.info(f"AGUI request to {url}, headers: {headers}, kwargs: {chat_kwargs}")
-        response = requests.post(url, json=chat_kwargs, headers=headers, timeout=300.0, stream=True)
-        response.raise_for_status()
-        logger.info(f"AGUI response status: {response.status_code}, headers: {dict(response.headers)}")
-
-        # 用于累积完整回复内容（用于日志记录）
-        full_response = ""
-        total_tokens = 0
-
-        # 逐行读取并转发
-        for line in response.iter_lines(decode_unicode=True):
-            if not line:
-                continue
-
-            logger.info(f"AGUI line received: {line}")
-
-            # 检查是否是 data: 开头的行
-            if line.startswith("data:"):
-                data_str = line[5:].strip()
-
-                try:
-                    data_json = json.loads(data_str)
-                    event_type = data_json.get("type")
-
-                    logger.info(f"AGUI event type: {event_type}, data: {data_json}")
-
-                    # 累积文本内容用于日志
-                    if event_type == "TEXT_MESSAGE_CONTENT":
-                        delta = data_json.get("delta", "")
-                        full_response += delta
-
-                    # 记录token信息
-                    if event_type == "RUN_FINISHED":
-                        # 如果有token统计信息，记录下来
-                        if "usage" in data_json:
-                            total_tokens = data_json["usage"].get("total_tokens", 0)
-
-                    # 直接转发原始数据行
-                    yield f"{line}\n"
-
-                except json.JSONDecodeError as e:
-                    logger.warning(f"Failed to parse AGUI data: {data_str}, error: {e}")
-                    # 即使解析失败也转发原始数据
-                    yield f"{line}\n"
-            else:
-                # 其他行（如空行）也转发
-                yield f"{line}\n"
-
-        # 流结束，返回统计信息用于日志记录（作为注释，不发送给客户端）
-        if full_response or total_tokens:
-            stats = {"response": full_response, "total_tokens": total_tokens, "completion_tokens": 0, "prompt_tokens": 0}
-            # 以特殊格式返回统计信息，不是标准SSE格式，仅供内部日志使用
-            stats_line = f"# STATS: {json.dumps(stats, ensure_ascii=False)}"
-            yield stats_line
-
-    except requests.exceptions.HTTPError as e:
-        logger.error(f"HTTP error in AGUI stream: {e}")
-        error_data = {
-            "type": "ERROR",
-            "error": f"HTTP错误: {e.response.status_code if e.response else 'Unknown'}",
-            "timestamp": int(time.time() * 1000),
-        }
-        yield f"data: {json.dumps(error_data, ensure_ascii=False)}\n"
-    except requests.exceptions.RequestException as e:
-        logger.error(f"Request error in AGUI stream: {e}")
-        error_data = {"type": "ERROR", "error": f"请求错误: {str(e)}", "timestamp": int(time.time() * 1000)}
-        yield f"data: {json.dumps(error_data, ensure_ascii=False)}\n"
-    except Exception as e:
-        logger.error(f"Error in AGUI stream: {e}")
-        error_data = {"type": "ERROR", "error": str(e), "timestamp": int(time.time() * 1000)}
-        yield f"data: {json.dumps(error_data, ensure_ascii=False)}\n"
-
-
-def _create_agui_error_chunk(error_message, skill_name):
-    """创建AGUI格式的错误消息"""
-    return {"event": "error", "data": {"error": error_message, "skill": skill_name}}
 
 
 def _log_and_update_tokens_agui(final_stats, skill_name, skill_id, current_ip, kwargs, user_message, show_think, history_log=None):
@@ -115,17 +23,16 @@ def _log_and_update_tokens_agui(final_stats, skill_name, skill_id, current_ip, k
     记录AGUI协议的请求日志并更新token统计
     """
     try:
-        if not final_stats.get("content"):
+        final_content = final_stats.get("content", "")
+        if not final_content:
             return
-
-        stats_data = json.loads(final_stats["content"])
 
         # 创建或更新日志
         if history_log:
-            history_log.completion_tokens = stats_data.get("completion_tokens", 0)
-            history_log.prompt_tokens = stats_data.get("prompt_tokens", 0)
-            history_log.total_tokens = stats_data.get("total_tokens", 0)
-            history_log.response = stats_data.get("response", "")
+            history_log.completion_tokens = 0
+            history_log.prompt_tokens = 0
+            history_log.total_tokens = 0
+            history_log.response = final_content
             history_log.save()
         else:
             # skill_id必须存在才能创建日志
@@ -135,10 +42,10 @@ def _log_and_update_tokens_agui(final_stats, skill_name, skill_id, current_ip, k
 
             # 构建response_detail，包含token统计和响应内容
             response_detail = {
-                "completion_tokens": stats_data.get("completion_tokens", 0),
-                "prompt_tokens": stats_data.get("prompt_tokens", 0),
-                "total_tokens": stats_data.get("total_tokens", 0),
-                "response": stats_data.get("response", ""),
+                "completion_tokens": 0,
+                "prompt_tokens": 0,
+                "total_tokens": 0,
+                "response": final_content,
             }
 
             # 构建request_detail，包含请求参数
@@ -180,57 +87,86 @@ def stream_agui_chat(params, skill_name, kwargs, current_ip, user_message, skill
     """
     llm_model = LLMModel.objects.get(id=params["llm_model"])
     show_think = params.pop("show_think", True)
+    skill_type = params.get("skill_type")
     params.pop("group", 0)
 
     chat_kwargs, doc_map, title_map = llm_service.format_chat_server_kwargs(params, llm_model)
 
-    # 使用AGUI协议的接口
-    url = f"{settings.METIS_SERVER_URL}/api/agent/invoke_chatbot_workflow_agui"
-
-    # # 根据技能类型选择不同的AGUI接口（如果有的话）
-    if params.get("skill_type") == SkillTypeChoices.BASIC_TOOL:
-        url = f"{settings.METIS_SERVER_URL}/api/agent/invoke_react_agent_agui"
-    elif params.get("skill_type") == SkillTypeChoices.PLAN_EXECUTE:
-        url = f"{settings.METIS_SERVER_URL}/api/agent/invoke_plan_and_execute_agent_agui"
-    elif params.get("skill_type") == SkillTypeChoices.LATS:
-        url = f"{settings.METIS_SERVER_URL}/api/agent/invoke_lats_agent_agui"
-
     # 用于存储最终统计信息的共享变量
     final_stats = {"content": ""}
 
-    def generate_stream():
+    async def generate_stream():
+        """
+        异步生成器：直接生成 AGUI 协议流式响应
+        """
         try:
-            headers = ChatServerHelper.get_chat_server_header()
-            stream_gen = _generate_agui_stream(url, headers, chat_kwargs, skill_name, show_think)
+            logger.info(f"[AGUI Chat] 开始异步流处理 - skill_name: {skill_name}, skill_type: {skill_type}, show_think: {show_think}")
 
-            for chunk in stream_gen:
-                if isinstance(chunk, tuple) and chunk[0] == "STATS":
-                    # 收集统计信息
-                    _, final_stats["content"] = chunk
+            # 创建 agent 实例
+            graph, request = create_agent_instance(skill_type, chat_kwargs)
 
-                    # 在流结束时异步处理日志记录
-                    if final_stats["content"]:
+            # 直接调用异步流式方法
+            chunk_index = 0
+            accumulated_content = ""
 
-                        def log_in_background():
-                            _log_and_update_tokens_agui(final_stats, skill_name, skill_id, current_ip, kwargs, user_message, show_think, history_log)
+            async for sse_line in graph.agui_stream(request):
+                # 如果 show_think=False，过滤掉工具调用相关事件
+                if not show_think and sse_line.startswith("data: "):
+                    try:
+                        data_str = sse_line[6:].strip()
+                        data_json = json.loads(data_str)
+                        event_type = data_json.get("type", "")
 
-                        threading.Thread(target=log_in_background, daemon=True).start()
+                        # 过滤工具调用相关事件
+                        if event_type in ["TOOL_CALL_START", "TOOL_CALL_ARGS", "TOOL_CALL_END", "TOOL_CALL_RESULT"]:
+                            continue
+
+                        # 累积文本内容用于日志
+                        if event_type == "TEXT_MESSAGE_CONTENT":
+                            delta = data_json.get("delta", "")
+                            accumulated_content += delta
+                    except (json.JSONDecodeError, ValueError):
+                        pass
                 else:
-                    # 发送流式数据
-                    yield chunk
+                    # show_think=True 时，也需要累积内容用于日志
+                    if sse_line.startswith("data: "):
+                        try:
+                            data_str = sse_line[6:].strip()
+                            data_json = json.loads(data_str)
+
+                            # 累积文本内容用于日志
+                            if data_json.get("type") == "TEXT_MESSAGE_CONTENT":
+                                delta = data_json.get("delta", "")
+                                accumulated_content += delta
+                        except (json.JSONDecodeError, ValueError):
+                            pass
+
+                chunk_index += 1
+                yield sse_line
+
+            logger.info(f"[AGUI Chat] 流处理完成 - 生成 {chunk_index} 个chunk, 内容长度: {len(accumulated_content)}")
+
+            # 记录最终内容用于日志
+            final_stats["content"] = accumulated_content
+            logger.info(f"[AGUI Chat] 收到统计信息 - 内容长度: {len(final_stats['content'])}")
+
+            # 在流结束时异步处理日志记录
+            if final_stats["content"]:
+
+                def log_in_background():
+                    _log_and_update_tokens_agui(final_stats, skill_name, skill_id, current_ip, kwargs, user_message, show_think, history_log)
+
+                threading.Thread(target=log_in_background, daemon=True).start()
 
         except Exception as e:
-            logger.error(f"AGUI stream chat error: {e}")
+            logger.error(f"[AGUI Chat] async stream error: {e}", exc_info=True)
             error_data = {"type": "ERROR", "error": f"聊天错误: {str(e)}", "timestamp": int(time.time() * 1000)}
-            yield f"data: {json.dumps(error_data, ensure_ascii=False)}\n"
+            yield f"data: {json.dumps(error_data, ensure_ascii=False)}\n\n"
 
-    # 使用异步兼容的生成器来解决 ASGI 环境下的问题
-    async_generator = create_async_compatible_generator(generate_stream())
-
-    response = StreamingHttpResponse(async_generator, content_type="text/event-stream")
-    response["Cache-Control"] = "no-cache, no-store, must-revalidate"
-    response["X-Accel-Buffering"] = "no"  # Nginx
-    response["Access-Control-Allow-Origin"] = "*"
-    response["Access-Control-Allow-Headers"] = "Cache-Control"
+    # 直接使用异步生成器
+    response = StreamingHttpResponse(generate_stream(), content_type="text/event-stream")
+    # 使用公共的 SSE 响应头
+    for key, value in create_sse_response_headers().items():
+        response[key] = value
 
     return response

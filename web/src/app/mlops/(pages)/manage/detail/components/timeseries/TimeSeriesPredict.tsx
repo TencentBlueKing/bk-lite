@@ -6,6 +6,7 @@ import CustomTable from "@/components/custom-table";
 import PermissionWrapper from '@/components/permission';
 import UploadModal from "../../uploadModal";
 import OperateModal from "@/components/operate-modal";
+import DatasetReleaseList from '../DatasetReleaseList';
 import {
   Input,
   Button,
@@ -79,6 +80,9 @@ const TimeSeriesPredict = () => {
       fixed: 'right',
       render: (_: unknown, record) => (
         <>
+          <PermissionWrapper requiredPermissions={['File View']}>
+            <DatasetReleaseList datasetType="timeseries_predict" />
+          </PermissionWrapper>
           <PermissionWrapper requiredPermissions={['File Edit']}>
             <Button
               type="link"
@@ -234,23 +238,22 @@ const TimeSeriesPredict = () => {
 
   return (
     <>
-      <div className="flex justify-between items-center mb-4 gap-2">
-        <div>
-          <Breadcrumb
-            separator=">"
-            items={[
-              {
-                title: <a href="#" onClick={() => router.push(`/mlops/manage/list`)}>{t(`datasets.datasets`)}</a>
-              },
-              {
-                title: t(`datasets.datasetsDetail`)
-              }
-            ]}
-          />
-        </div>
-        <div className='flex'>
+      <div className="flex justify-between items-center mb-4 gap-2 h-8">
+        <Breadcrumb
+          separator=">"
+          items={[
+            {
+              title: <a href="#" onClick={() => router.push(`/mlops/manage/list`)}>{t(`datasets.datasets`)}</a>
+            },
+            {
+              title: t(`datasets.datasetsDetail`)
+            }
+          ]}
+        />
+        <div className='flex gap-2'>
+          
           <Search
-            className="w-[240px] mr-1.5"
+            className="w-[240px]"
             placeholder={t('common.search')}
             enterButton
             onSearch={onSearch}
@@ -263,6 +266,7 @@ const TimeSeriesPredict = () => {
           </PermissionWrapper>
         </div>
       </div>
+      
       <div className="flex-1 relative">
         <div className='absolute w-full'>
           <CustomTable
@@ -277,6 +281,7 @@ const TimeSeriesPredict = () => {
           />
         </div>
       </div>
+      
       <UploadModal ref={modalRef} onSuccess={() => getDataset()} />
       <OperateModal
         open={modalOpen}

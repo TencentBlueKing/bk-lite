@@ -1,6 +1,7 @@
 import ast
 
 from django.db import transaction
+from django.db import models
 
 from apps.core.exceptions.base_app_exception import BaseAppException
 from apps.core.logger import monitor_logger as logger
@@ -102,7 +103,7 @@ class InstanceConfigService:
                 continue
 
             rules.append(MonitorObjectOrganizationRule(
-                name=f"{child_obj.name}-{monitor_instance_id}",
+                name=f"{child_obj.name}-{_monitor_instance_id}",
                 monitor_object_id=child_obj.id,
                 rule={
                     "type": "metric",
@@ -118,6 +119,71 @@ class InstanceConfigService:
                 rules,
                 batch_size=DatabaseConstants.BULK_CREATE_BATCH_SIZE
             )
+            return [rule.id for rule in created_rules]
+
+        return []
+
+    @staticmethod
+    def _batch_create_default_rules(instances, monitor_object_id):
+        """批量为多个实例创建默认分组规则
+
+        Args:
+            instances: 实例列表，每个实例包含 instance_id 和 group_ids
+            monitor_object_id: 监控对象ID
+
+        Returns:
+            list: 创建的规则ID列表
+        """
+        if not instances:
+            return []
+
+        # 一次性查询子对象和指标，避免重复查询
+        child_objs = MonitorObject.objects.filter(parent_id=monitor_object_id).prefetch_related(
+            models.Prefetch('metric_set', queryset=Metric.objects.all())
+        )
+
+        if not child_objs:
+            return []
+
+        # 构建子对象到指标的映射
+        child_metric_map = {}
+        for child_obj in child_objs:
+            metric_obj = child_obj.metric_set.first()
+            if metric_obj:
+                child_metric_map[child_obj.id] = (child_obj, metric_obj)
+            else:
+                logger.warning(f"子对象 {child_obj.id} 没有关联指标，跳过规则创建")
+
+        if not child_metric_map:
+            return []
+
+        # 批量构建所有规则
+        all_rules = []
+        for instance in instances:
+            instance_id = instance["instance_id"]
+            group_ids = instance["group_ids"]
+            _monitor_instance_id = ast.literal_eval(instance_id)[0]
+
+            for child_id, (child_obj, metric_obj) in child_metric_map.items():
+                all_rules.append(MonitorObjectOrganizationRule(
+                    name=f"{child_obj.name}-{_monitor_instance_id}",
+                    monitor_object_id=child_obj.id,
+                    rule={
+                        "type": "metric",
+                        "metric_id": metric_obj.id,
+                        "filter": [{"name": "instance_id", "method": "=", "value": _monitor_instance_id}]
+                    },
+                    organizations=group_ids,
+                    monitor_instance_id=instance_id,
+                ))
+
+        # 批量创建所有规则
+        if all_rules:
+            created_rules = MonitorObjectOrganizationRule.objects.bulk_create(
+                all_rules,
+                batch_size=DatabaseConstants.BULK_CREATE_BATCH_SIZE
+            )
+            logger.info(f"批量创建默认规则数量: {len(created_rules)}")
             return [rule.id for rule in created_rules]
 
         return []
@@ -243,12 +309,12 @@ class InstanceConfigService:
                         organization=group_id
                     )
 
-        # 创建新实例的默认分组规则
-        for instance in new_instances:
-            rule_ids = InstanceConfigService.create_default_rule(
-                monitor_object_id,
-                instance["instance_id"],
-                instance["group_ids"]
+        # 批量创建实例的默认分组规则（优化：一次性查询+批量创建）
+        instances_to_process = new_instances + existing_instances
+        if instances_to_process:
+            rule_ids = InstanceConfigService._batch_create_default_rules(
+                instances_to_process,
+                monitor_object_id
             )
             if rule_ids:
                 created_rule_ids.extend(rule_ids)

@@ -44,12 +44,13 @@ class CollectNetworkMetrics(CollectBase):
         return NETWORK_COLLECT
 
     def prom_sql(self):
-        sql = " or ".join(m for m in self._metrics)
+        sql = " or ".join(
+            "{}{{instance_id=~\"^{}_.+\"}}".format(m, self.task_id) for m in self._metrics)
         return sql
 
     @staticmethod
     def get_oid_map():
-        result = OidMapping.objects.all().values()
+        result = OidMapping.objects.all().values("model","oid","brand","device_type","built_in")
         return {i["oid"]: i for i in result}
 
     @staticmethod

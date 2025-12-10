@@ -1,5 +1,6 @@
 from apps.opspilot.viewsets.bot_view import BotViewSet  # noqa
 from apps.opspilot.viewsets.channel_view import ChannelViewSet  # noqa
+from apps.opspilot.viewsets.chat_application_view import ChatApplicationViewSet  # noqa
 from apps.opspilot.viewsets.embed_view import EmbedProviderViewSet  # noqa
 from apps.opspilot.viewsets.file_knowledge_view import FileKnowledgeViewSet  # noqa
 from apps.opspilot.viewsets.history_view import HistoryViewSet  # noqa

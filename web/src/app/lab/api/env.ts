@@ -10,6 +10,11 @@ const useLabEnv = () => {
     return await get(`/lab/environments/`, params);
   };
 
+  // 获取环境列表(包含状态)
+  const getEnvListWithStatus = async (params?: any) => {
+    return await get(`/lab/environments/`, { params: { ...params, with_status: 'true' } });
+  };
+
   // 新增环境
   const addEnv = async (data: any) => {
     return await post(`/lab/environments/`, data);
@@ -43,6 +48,11 @@ const useLabEnv = () => {
   // 重启环境
   const restartEnv = async (id: number | string) => {
     return await post(`/lab/environments/${id}/restart/`);
+  };
+
+  // 获取所有环境状态
+  const getEnvStatusList = async () => {
+    return await get(`/lab/environments/status`);
   };
 
   // 获取环境状态
@@ -113,9 +123,15 @@ const useLabEnv = () => {
   //   return await get(`/lab/infra-instances/running/`);
   // };
 
+  // 生成环境的docker compose 配置
+  const generateComposeYaml = async (id: number | string) => {
+    return await post(`/lab/environments/${id}/setup/`);
+  };
+
   return {
     // Lab 环境接口
     getEnvList,
+    getEnvListWithStatus,
     addEnv,
     getEnvDetail,
     updateEnv,
@@ -124,6 +140,7 @@ const useLabEnv = () => {
     stopEnv,
     restartEnv,
     getEnvStatus,
+    getEnvStatusList,
     getRunningEnvs,
     getEnvSummary,
     
@@ -138,6 +155,7 @@ const useLabEnv = () => {
     // getInstanceLogs,
     // syncInstanceStatus,
     // getRunningInstances,
+    generateComposeYaml
   };
 };
 

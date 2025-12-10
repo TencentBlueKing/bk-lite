@@ -128,7 +128,7 @@ const FieldMoadal = forwardRef<FieldModalRef, FieldModalProps>(
         if (type === 'add') {
           Object.assign(forms, {
             organization: selectedGroup?.id
-              ? Number(selectedGroup.id)
+              ? [Number(selectedGroup.id)]
               : undefined,
           });
         } else {
@@ -137,15 +137,9 @@ const FieldMoadal = forwardRef<FieldModalRef, FieldModalProps>(
             if (target?.attr_type === 'time' && forms[key]) {
               forms[key] = dayjs(forms[key], 'YYYY-MM-DD HH:mm:ss');
             } else if (target?.attr_type === 'organization' && forms[key]) {
-              if (Array.isArray(forms[key])) {
-                const validNum = forms[key]
-                  .map((item: any) => Number(item))
-                  .filter((num: number) => !isNaN(num))[0];
-                forms[key] = validNum;
-              } else {
-                const num = Number(forms[key]);
-                forms[key] = !isNaN(num) ? num : undefined;
-              }
+              forms[key] = forms[key]
+                .map((item: any) => Number(item))
+                .filter((num: number) => !isNaN(num));
             }
           }
         }
@@ -286,7 +280,7 @@ const FieldMoadal = forwardRef<FieldModalRef, FieldModalProps>(
             );
           case 'organization':
             return (
-              <GroupTreeSelector multiple={false} disabled={fieldDisabled} />
+              <GroupTreeSelector multiple={true} disabled={fieldDisabled} />
             );
           case 'int':
             return (
@@ -315,13 +309,6 @@ const FieldMoadal = forwardRef<FieldModalRef, FieldModalProps>(
           const target = formItems.find((item) => item.attr_id === key);
           if (target?.attr_type === 'time' && values[key]) {
             values[key] = values[key].format('YYYY-MM-DD HH:mm:ss');
-          } else if (
-            target?.attr_type === 'organization' &&
-            values[key] != null
-          ) {
-            values[key] = Array.isArray(values[key])
-              ? values[key]
-              : [values[key]];
           }
         }
         operateAttr(values, confirmType);

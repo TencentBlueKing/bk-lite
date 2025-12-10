@@ -11,6 +11,7 @@ import {
   Tooltip,
 } from 'antd';
 import useApiClient from '@/utils/request';
+import { useSearchParams } from 'next/navigation';
 import useMonitorApi from '@/app/monitor/api';
 import useIntegrationApi from '@/app/monitor/api/integration';
 import assetStyle from './index.module.scss';
@@ -44,6 +45,7 @@ import EditConfig from './updateConfig';
 import EditInstance from './editInstance';
 import TemplateConfigDrawer from './templateConfigDrawer';
 import { OBJECT_DEFAULT_ICON } from '@/app/monitor/constants';
+import { EXCLUDED_CHILD_OBJECTS } from '@/app/monitor/constants/integration';
 import Permission from '@/components/permission';
 import EllipsisWithTooltip from '@/components/ellipsis-with-tooltip';
 import type { TableProps, MenuProps } from 'antd';
@@ -61,6 +63,8 @@ const Asset = () => {
   const commonContext = useCommon();
   const { convertToLocalizedTime } = useLocalizedTime();
   const { getInstanceType } = useObjectConfigInfo();
+  const searchparams = useSearchParams();
+  const urlObjId = searchparams.get('objId');
   const authList = useRef(commonContext?.authOrganizations || []);
   const organizationList: Organization[] = authList.current;
   const timerRef = useRef<NodeJS.Timeout | null>(null);
@@ -79,7 +83,9 @@ const Asset = () => {
   const [tableData, setTableData] = useState<TableDataItem[]>([]);
   const [searchText, setSearchText] = useState<string>('');
   const [objects, setObjects] = useState<ObjectItem[]>([]);
-  const [defaultSelectObj, setDefaultSelectObj] = useState<React.Key>('');
+  const [defaultSelectObj, setDefaultSelectObj] = useState<React.Key>(
+    urlObjId ? Number(urlObjId) : ''
+  );
   const [objectId, setObjectId] = useState<React.Key>('');
   const [frequence, setFrequence] = useState<number>(0);
   const [confirmLoading, setConfirmLoading] = useState(false);
@@ -389,7 +395,7 @@ const Asset = () => {
       setObjects(data);
       const _treeData = getTreeData(cloneDeep(data));
       setTreeData(_treeData);
-      const defaultKey = data[0]?.id || defaultSelectObj || '';
+      const defaultKey = defaultSelectObj || data[0]?.id || '';
       if (defaultKey) {
         setDefaultSelectObj(defaultKey);
       }
@@ -407,11 +413,13 @@ const Asset = () => {
           children: [],
         };
       }
-      acc[item.type].children.push({
-        title: `${item.display_name || '--'}(${item.instance_count ?? 0})`,
-        key: item.id,
-        children: [],
-      });
+      if (!EXCLUDED_CHILD_OBJECTS.includes(item.name)) {
+        acc[item.type].children.push({
+          title: `${item.display_name || '--'}(${item.instance_count ?? 0})`,
+          key: item.id,
+          children: [],
+        });
+      }
       return acc;
     }, {} as Record<string, TreeItem>);
     return Object.values(groupedData);

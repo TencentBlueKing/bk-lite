@@ -1,15 +1,15 @@
+import asyncio
 import re
 from typing import Any, Dict, Tuple
 
-from django.conf import settings
-
+from apps.core.logger import opspilot_logger
 from apps.core.mixinx import EncryptMixin
 from apps.core.utils.loader import LanguageLoader
 from apps.opspilot.enum import SkillTypeChoices
 from apps.opspilot.models import LLMModel, SkillTools
 from apps.opspilot.services.history_service import history_service
 from apps.opspilot.services.rag_service import rag_service
-from apps.opspilot.utils.chat_server_helper import ChatServerHelper
+from apps.opspilot.utils.agent_factory import create_agent_instance
 
 
 class ChatService:
@@ -58,32 +58,42 @@ class ChatService:
         """
         llm_model = LLMModel.objects.get(id=kwargs["llm_model"])
         show_think = kwargs.pop("show_think", True)
+        skill_type = kwargs.get("skill_type")
         kwargs.pop("group", 0)
 
         # 处理用户消息和图片
         chat_kwargs, doc_map, title_map = ChatService.format_chat_server_kwargs(kwargs, llm_model)
 
-        # 调用聊天服务
-        url = f"{settings.METIS_SERVER_URL}/api/agent/invoke_chatbot_workflow"
-        if kwargs["skill_type"] == SkillTypeChoices.BASIC_TOOL:
-            url = f"{settings.METIS_SERVER_URL}/api/agent/invoke_react_agent"
-        elif kwargs["skill_type"] == SkillTypeChoices.PLAN_EXECUTE:
-            url = f"{settings.METIS_SERVER_URL}/api/agent/invoke_plan_and_execute_agent"
-        elif kwargs["skill_type"] == SkillTypeChoices.LATS:
-            url = f"{settings.METIS_SERVER_URL}/api/agent/invoke_lats_agent"
+        # 创建 agent 实例并直接执行
+        graph, request = create_agent_instance(skill_type, chat_kwargs)
 
-        result = ChatServerHelper.post_chat_server(chat_kwargs, url)
-        if not result:
+        try:
+            # 调用 agent 的 execute 方法（非流式同步执行）
+            response = asyncio.run(graph.execute(request))
+
+            # 构建返回结果
+            result = {
+                "message": response.message,
+                "total_tokens": response.total_tokens,
+                "prompt_tokens": response.prompt_tokens,
+                "completion_tokens": response.completion_tokens,
+                "thread_id": response.thread_id,
+            }
+
+            # 处理内容（可选隐藏思考过程）
+            if not show_think:
+                content = re.sub(r"<think>.*?</think>", "", result["message"], flags=re.DOTALL).strip()
+                result["message"] = content
+
+            return result, doc_map, title_map
+
+        except Exception as e:
+            # 记录详细的异常信息以便排查问题
+            opspilot_logger.error(f"invoke_chat 执行失败: skill_type={skill_type}, error={str(e)}", exc_info=True)
+
             loader = LanguageLoader(app="opspilot", default_lang="en")
-            message = loader.get("error.url_request_failed") or "URL request failed"
+            message = loader.get("error.agent_execution_failed") or f"Agent execution failed: {str(e)}"
             return {"message": message}, doc_map, title_map
-        data = result["message"]
-
-        # 处理内容（可选隐藏思考过程）
-        if not show_think:
-            content = re.sub(r"<think>.*?</think>", "", data, flags=re.DOTALL).strip()
-            result["message"] = content
-        return result, doc_map, title_map
 
     @staticmethod
     def format_chat_server_kwargs(kwargs, llm_model):
@@ -143,9 +153,21 @@ class ChatService:
                         EncryptMixin.decrypt_field("value", i)
             tool_map = {i["id"]: {u["key"]: u["value"] for u in i["kwargs"] if u["key"]} for i in kwargs.get("tools", [])}
 
-            tools = list(SkillTools.objects.filter(id__in=list(tool_map.keys())).values_list("params", flat=True))
-            for i in tools:
-                i.pop("kwargs", None)
+            # 查询工具对象，需要判断是否为内置工具
+            skill_tools_queryset = SkillTools.objects.filter(id__in=list(tool_map.keys()))
+            tools = []
+
+            for skill_tool in skill_tools_queryset:
+                tool_params = skill_tool.params.copy()
+                # 移除 kwargs 字段
+                tool_params.pop("kwargs", None)
+
+                # 如果是内置工具，添加 langchain 前缀的 URL
+                if skill_tool.is_build_in:
+                    tool_params["url"] = f"langchain:{skill_tool.name}"
+
+                tools.append(tool_params)
+
             for i in tool_map.values():
                 extra_config.update(i)
             chat_kwargs.update({"tools_servers": tools})
