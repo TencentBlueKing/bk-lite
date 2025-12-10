@@ -9,9 +9,10 @@ import { useTranslation } from '@/utils/i18n';
 import { useTaskForm } from '../hooks/useTaskForm';
 import { TreeNode, ModelItem } from '@/app/cmdb/types/autoDiscovery';
 import {
-  ENTER_TYPE,
   HOST_FORM_INITIAL_VALUES,
+  PASSWORD_PLACEHOLDER,
 } from '@/app/cmdb/constants/professCollection';
+import { formatTaskValues, buildCredential } from '../hooks/formatTaskValues';
 import { Form, Spin, Input, Collapse, InputNumber } from 'antd';
 
 interface HostTaskFormProps {
@@ -48,37 +49,43 @@ const HostTask: React.FC<HostTaskFormProps> = ({
     onSuccess,
     onClose,
     formatValues: (values) => {
+      const baseData = formatTaskValues({
+        values,
+        baseRef,
+        selectedNode,
+        modelItem,
+        modelId,
+        formatCycleValue,
+      });
+
       const collectType = baseRef.current?.collectionType;
       const ipRange = values.ipRange?.length ? values.ipRange : undefined;
-      const driverType = selectedNode.tabItems?.find(
-        (item) => item.model_id === modelId
-      )?.type;
+      const selectedData = baseRef.current?.selectedData;
 
-      const accessPoint = baseRef.current?.accessPoints.find(
-        (item: any) => item.value === values.accessPointId
-      );
-
-      const instance = baseRef.current?.selectedData;
+      let instanceData;
+      if (collectType === 'ip') {
+        instanceData = {
+          ip_range: ipRange.join('-'),
+          instances: [],
+        };
+      } else {
+        instanceData = {
+          ip_range: '',
+          instances: selectedData || [],
+        };
+      }
 
       return {
-        name: values.taskName,
-        input_method: values.enterType === ENTER_TYPE.APPROVAL ? 1 : 0,
-        timeout: values.timeout || 60,
-        scan_cycle: formatCycleValue(values),
-        access_point: accessPoint?.origin && [accessPoint.origin],
-        model_id: modelId,
-        task_type: modelItem.task_type,
-        driver_type: driverType,
-        accessPointId: values.access_point?.[0]?.id,
-        ip_range: collectType === 'ip' ? ipRange.join('-') : '',
-        instances: collectType === 'ip' ? [] : instance || [],
-        team: values.organization || [],
-        params: {},
-        credential: {
-          username: values.username,
-          password: values.password,
-          port: values.port,
-        },
+        ...baseData,
+        ...instanceData,
+        credential: buildCredential(
+          {
+            username: 'username',
+            password: 'password',
+            port: 'port',
+          },
+          values
+        ),
       };
     },
   });
@@ -98,7 +105,7 @@ const HostTask: React.FC<HostTaskFormProps> = ({
           ...values,
           organization: values.team || [],
           username: values.credential?.username,
-          password: values.credential?.password,
+          password: PASSWORD_PLACEHOLDER,
           port: values.credential.port,
           accessPointId: values.access_point?.[0]?.id,
         });
@@ -162,7 +169,23 @@ const HostTask: React.FC<HostTaskFormProps> = ({
                 name="password"
                 rules={[{ required: true, message: t('common.inputTip') }]}
               >
-                <Input.Password placeholder={t('common.inputTip')} />
+                <Input.Password
+                  placeholder={t('common.inputTip')}
+                  onFocus={(e) => {
+                    if (!editId) return;
+                    const value = e.target.value;
+                    if (value === PASSWORD_PLACEHOLDER) {
+                      form.setFieldValue('password', '');
+                    }
+                  }}
+                  onBlur={(e) => {
+                    if (!editId) return;
+                    const value = e.target.value;
+                    if (!value || value.trim() === '') {
+                      form.setFieldValue('password', PASSWORD_PLACEHOLDER);
+                    }
+                  }}
+                />
               </Form.Item>
 
               <Form.Item

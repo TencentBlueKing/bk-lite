@@ -9,10 +9,11 @@ import { useTranslation } from '@/utils/i18n';
 import { useTaskForm } from '../hooks/useTaskForm';
 import { TreeNode, ModelItem } from '@/app/cmdb/types/autoDiscovery';
 import {
-  ENTER_TYPE,
   SNMP_FORM_INITIAL_VALUES,
   createTaskValidationRules,
+  PASSWORD_PLACEHOLDER,
 } from '@/app/cmdb/constants/professCollection';
+import { formatTaskValues } from '../hooks/formatTaskValues';
 import { Form, Spin, Input, Select, Collapse, InputNumber } from 'antd';
 
 interface SNMPTaskFormProps {
@@ -51,48 +52,68 @@ const SNMPTask: React.FC<SNMPTaskFormProps> = ({
     onSuccess,
     onClose,
     formatValues: (values) => {
-      const instance = baseRef.current?.selectedData;
-      const collectType = baseRef.current?.collectionType;
-      const version = values.version;
-      const ipRange = values.ipRange?.length ? values.ipRange : undefined;
-      const driverType = selectedNode.tabItems?.find(
-        (item) => item.model_id === modelId
-      )?.type;
+      const baseData = formatTaskValues({
+        values,
+        baseRef,
+        selectedNode,
+        modelItem,
+        modelId,
+        formatCycleValue,
+      });
 
-      const accessPoint = baseRef.current?.accessPoints.find(
-        (item: any) => item.value === values.accessPointId
-      );
+      const collectType = baseRef.current?.collectionType;
+      const ipRange = values.ipRange?.length ? values.ipRange : undefined;
+      const selectedData = baseRef.current?.selectedData;
+
+      let instanceData;
+      if (collectType === 'ip') {
+        instanceData = {
+          ip_range: ipRange.join('-'),
+          instances: [],
+        };
+      } else {
+        instanceData = {
+          ip_range: '',
+          instances: selectedData || [],
+        };
+      }
+
+      const version = values.version;
 
       const credential: any = {
         version,
         snmp_port: values.snmp_port,
-        community: version !== 'v3' ? values.community : undefined,
       };
+
+      if (
+        version !== 'v3' &&
+        values.community &&
+        values.community !== PASSWORD_PLACEHOLDER
+      ) {
+        credential.community = values.community;
+      }
+
       if (version === 'v3') {
         credential.level = values.level;
         credential.username = values.username;
         credential.integrity = values.integrity;
-        credential.authkey = values.authkey;
+
+        if (values.authkey && values.authkey !== PASSWORD_PLACEHOLDER) {
+          credential.authkey = values.authkey;
+        }
+
         if (values.level === 'authPriv') {
           credential.privacy = values.privacy;
-          credential.privkey = values.privkey;
+          if (values.privkey && values.privkey !== PASSWORD_PLACEHOLDER) {
+            credential.privkey = values.privkey;
+          }
         }
       }
+
       return {
-        name: values.taskName,
+        ...baseData,
+        ...instanceData,
         credential,
-        input_method: values.enterType === ENTER_TYPE.APPROVAL ? 1 : 0,
-        access_point: accessPoint?.origin && [accessPoint.origin],
-        timeout: values.timeout || 600,
-        scan_cycle: formatCycleValue(values),
-        model_id: modelId,
-        driver_type: driverType,
-        task_type: modelItem.task_type,
-        accessPointId: values.access_point?.[0]?.id,
-        ip_range: collectType === 'ip' ? ipRange.join('-') : '',
-        instances: collectType === 'ip' ? [] : instance || [],
-        team: values.organization || [],
-        params: {},
       };
     },
   });
@@ -196,7 +217,23 @@ const SNMPTask: React.FC<SNMPTaskFormProps> = ({
                   rules={rules.communityString}
                   required
                 >
-                  <Input.Password placeholder={t('common.inputTip')} />
+                  <Input.Password
+                    placeholder={t('common.inputTip')}
+                    onFocus={(e) => {
+                      if (!editId) return;
+                      const value = e.target.value;
+                      if (value === PASSWORD_PLACEHOLDER) {
+                        form.setFieldValue('community', '');
+                      }
+                    }}
+                    onBlur={(e) => {
+                      if (!editId) return;
+                      const value = e.target.value;
+                      if (!value || value.trim() === '') {
+                        form.setFieldValue('community', PASSWORD_PLACEHOLDER);
+                      }
+                    }}
+                  />
                 </Form.Item>
               )}
 
@@ -229,7 +266,23 @@ const SNMPTask: React.FC<SNMPTaskFormProps> = ({
                     name="authkey"
                     rules={[{ required: true, message: t('common.inputTip') }]}
                   >
-                    <Input.Password placeholder={t('common.inputTip')} />
+                    <Input.Password
+                      placeholder={t('common.inputTip')}
+                      onFocus={(e) => {
+                        if (!editId) return;
+                        const value = e.target.value;
+                        if (value === PASSWORD_PLACEHOLDER) {
+                          form.setFieldValue('authkey', '');
+                        }
+                      }}
+                      onBlur={(e) => {
+                        if (!editId) return;
+                        const value = e.target.value;
+                        if (!value || value.trim() === '') {
+                          form.setFieldValue('authkey', PASSWORD_PLACEHOLDER);
+                        }
+                      }}
+                    />
                   </Form.Item>
 
                   <Form.Item
@@ -266,7 +319,26 @@ const SNMPTask: React.FC<SNMPTaskFormProps> = ({
                           { required: true, message: t('common.inputTip') },
                         ]}
                       >
-                        <Input.Password placeholder={t('common.inputTip')} />
+                        <Input.Password
+                          placeholder={t('common.inputTip')}
+                          onFocus={(e) => {
+                            if (!editId) return;
+                            const value = e.target.value;
+                            if (value === PASSWORD_PLACEHOLDER) {
+                              form.setFieldValue('privkey', '');
+                            }
+                          }}
+                          onBlur={(e) => {
+                            if (!editId) return;
+                            const value = e.target.value;
+                            if (!value || value.trim() === '') {
+                              form.setFieldValue(
+                                'privkey',
+                                PASSWORD_PLACEHOLDER
+                              );
+                            }
+                          }}
+                        />
                       </Form.Item>
                     </>
                   )}
