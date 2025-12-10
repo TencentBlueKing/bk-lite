@@ -647,6 +647,7 @@
     "deleteConfirm": "Are you sure you want to delete this skill?"
   },
   "chatflow": {
+    "applications": "Applications",
     "nodeConfig": {
       "paramName": "Parameter Name",
       "fileDeleted": "File deleted successfully",
@@ -764,6 +765,7 @@
       "pleaseSelectAppTags": "Please select app tags",
       "appTagAutomation": "Automation",
       "appTagSecurityAudit": "Security Audit",
+      "webAccessAddress": "Web Access Address",
       "appTagOpsPlanning": "Ops Planning",
       "pleaseSelectAppIcon": "Please select app icon",
       "appTagMonitorAlarm": "Monitor & Alarm",
@@ -820,7 +822,7 @@
     "condition": "If Condition",
     "httpMethod": "HTTP Method",
     "export": "Export",
-    "wechatOfficial": "WeChat Official Trigger",
+    "wechatOfficial": "WeChat Official",
     "email": "Email",
     "leaveWithoutSaving": "Leave Without Saving",
     "library": "Library",
@@ -839,7 +841,7 @@
     },
     "fetchNotificationChannelsFailed": "Failed to fetch notification channels",
     "zoom": "Zoom",
-    "dingtalk": "DingTalk Trigger",
+    "dingtalk": "DingTalk",
     "pleaseEnterNotificationTitle": "Please enter notification title",
     "version": "Version",
     "debug": "Debug",
@@ -853,7 +855,7 @@
     "agui": "AG-UI",
     "triggerConfigs": "Trigger Configs",
     "notificationRecipients": "Notification Recipients",
-    "enterpriseWechat": "WeChat Trigger",
+    "enterpriseWechat": "WeChat",
     "celery": "Time Trigger",
     "enterNotificationTitle": "Please enter notification title",
     "save": "Save Workflow",
