@@ -1,5 +1,5 @@
 [[inputs.prometheus]]
-    urls = ["http://127.0.0.1:${LISTEN_PORT}/metrics"]
+    urls = ["http://127.0.0.1:${LISTEN_PORT__{{ config_id }}}/metrics"]
     interval = "{{ interval }}s"
     timeout = "20s"
     response_timeout = "20s"

@@ -45,6 +45,7 @@ import EditConfig from './updateConfig';
 import EditInstance from './editInstance';
 import TemplateConfigDrawer from './templateConfigDrawer';
 import { OBJECT_DEFAULT_ICON } from '@/app/monitor/constants';
+import { EXCLUDED_CHILD_OBJECTS } from '@/app/monitor/constants/integration';
 import Permission from '@/components/permission';
 import EllipsisWithTooltip from '@/components/ellipsis-with-tooltip';
 import type { TableProps, MenuProps } from 'antd';
@@ -412,11 +413,13 @@ const Asset = () => {
           children: [],
         };
       }
-      acc[item.type].children.push({
-        title: `${item.display_name || '--'}(${item.instance_count ?? 0})`,
-        key: item.id,
-        children: [],
-      });
+      if (!EXCLUDED_CHILD_OBJECTS.includes(item.name)) {
+        acc[item.type].children.push({
+          title: `${item.display_name || '--'}(${item.instance_count ?? 0})`,
+          key: item.id,
+          children: [],
+        });
+      }
       return acc;
     }, {} as Record<string, TreeItem>);
     return Object.values(groupedData);

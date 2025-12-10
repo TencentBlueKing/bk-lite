@@ -471,6 +471,9 @@ const CustomChatSSE: React.FC<CustomChatSSEProps> = ({
         visible={drawerContent.visible}
         title={drawerContent.title}
         onClose={closeDrawer}
+        styles={{
+          body: drawerContent.chunkType === 'Graph' ? { padding: 0, height: '100%' } : undefined
+        }}
       >
         {referenceModal.loading ? (
           <div className="flex justify-center items-center h-32">
@@ -479,7 +482,12 @@ const CustomChatSSE: React.FC<CustomChatSSEProps> = ({
         ) : (
           <>
             {drawerContent.chunkType === 'Graph' ? (
-              <KnowledgeGraphView data={drawerContent.graphData || { nodes: [], edges: [] }} height={500} />
+              <div style={{ height: '100%', padding: '16px' }}>
+                <KnowledgeGraphView 
+                  data={drawerContent.graphData || { nodes: [], edges: [] }} 
+                  height="100%" 
+                />
+              </div>
             ) : (
               <div className="whitespace-pre-wrap leading-6">{drawerContent.content}</div>
             )}

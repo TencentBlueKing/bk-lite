@@ -8,7 +8,7 @@
   "description": "",
   "default_metric": "any({instance_type='mssql'}) by (instance_id)",
   "instance_id_keys": ["instance_id"],
-  "supplementary_indicators": [],
+  "supplementary_indicators": ["sqlserver_uptime", "volume_available_gb", "memory_usage"],
   "metrics": [
     {
       "metric_group": "Base",

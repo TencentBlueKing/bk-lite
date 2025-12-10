@@ -227,7 +227,7 @@
       "syslogProtocol": "Transport Protocol",
       "syslogTargetIp": "Target IP",
       "syslogNodeDes": "Please select the container node that has been hosting the Telegraf collector",
-      "syslogTargetPort": "Target Port(Agreement)",
+      "syslogTargetPort": "Target Port",
       "syslogStep1": "Configure Syslog Target Address on Device"
     },
     "search": {

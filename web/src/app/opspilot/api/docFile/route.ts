@@ -15,7 +15,7 @@ export const GET = async (req: NextRequest) => {
       headers['Authorization'] = authorizationHeader;
     }
 
-    const backendResponse = await fetch(`${process.env.NEXTAPI_URL}/api/v1/knowledge_mgmt/knowledge_document/${id}/get_file_link/`, {
+    const backendResponse = await fetch(`${process.env.NEXTAPI_URL}/api/v1/opspilot/knowledge_mgmt/knowledge_document/${id}/get_file_link/`, {
       method: 'GET',
       headers
     });
