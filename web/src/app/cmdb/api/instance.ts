@@ -71,12 +71,6 @@ export const useInstanceApi = () => {
   const importInstances = (modelId: string, formData: FormData, options?: any) =>
     post(`/cmdb/api/instance/${modelId}/inst_import/`, formData, options);
 
-  // 导出实例
-  const exportInstances = (modelId: string) => ({
-    url: `/api/proxy/cmdb/api/instance/${modelId}/inst_export/`,
-    method: 'GET'
-  });
-
   // 下载模板
   const downloadTemplate = (modelId: string) => ({
     url: `/api/proxy/cmdb/api/instance/${modelId}/download_template/`,
@@ -101,7 +95,6 @@ export const useInstanceApi = () => {
     createInstanceAssociation,
     deleteInstanceAssociation,
     importInstances,
-    exportInstances,
     downloadTemplate,
   };
 };

@@ -252,13 +252,18 @@ class CollectDriverTypes(object):
 
 
 # 采集对象树
+"""
+encrypted_fields: 需要加密的字段列表 新增采集对象后需要配置加密字段到encrypted_fields
+"""
 COLLECT_OBJ_TREE = [
     {
         "id": "k8s",
         "name": "K8S",
         "children": [
             {"id": "k8s_cluster", "model_id": "k8s_cluster", "name": "K8S", "task_type": CollectPluginTypes.K8S,
-             "type": CollectDriverTypes.PROTOCOL,"tag": ["apiserver"], "desc": "采集k8s集群核心对象node节点、命名空间、工作负载、pod"}
+             "type": CollectDriverTypes.PROTOCOL, "tag": ["apiserver"],
+             "desc": "采集k8s集群核心对象node节点、命名空间、工作负载、pod",
+             "encrypted_fields": []}
         ],
     },
     {
@@ -266,7 +271,9 @@ COLLECT_OBJ_TREE = [
         "name": "VMware",
         "children": [
             {"id": "vmware_vc", "model_id": "vmware_vc", "name": "vCenter", "task_type": CollectPluginTypes.VM,
-             "type": CollectDriverTypes.PROTOCOL,"tag": ["vSphere API","SDK"], "desc": "通过采集vCenter内ESXi与虚拟机清单及其属性信息"}
+             "type": CollectDriverTypes.PROTOCOL, "tag": ["vSphere API", "SDK"],
+             "desc": "通过采集vCenter内ESXi与虚拟机清单及其属性信息",
+             "encrypted_fields": ["password"]}
         ],
     },
     {
@@ -274,9 +281,13 @@ COLLECT_OBJ_TREE = [
         "name": "NetWork",
         "children": [
             {"id": "network", "model_id": "network", "name": "NetWork", "task_type": CollectPluginTypes.SNMP,
-             "type": CollectDriverTypes.PROTOCOL,"tag": ["SNMP","Interfaces"], "desc": "通过SNMP协议发现网络设备及其基本信息"},
+             "type": CollectDriverTypes.PROTOCOL, "tag": ["SNMP", "Interfaces"],
+             "desc": "通过SNMP协议发现网络设备及其基本信息",
+             "encrypted_fields": ["authkey", "privkey", "community"]
+             },
             {"id": "network_topo", "model_id": "network_topo", "name": "网络拓扑", "task_type": CollectPluginTypes.SNMP,
-             "type": CollectDriverTypes.PROTOCOL,"tag": ["SNMP","IFTable","ARP"], "desc": "采集网络设备连接关系"}
+             "type": CollectDriverTypes.PROTOCOL, "tag": ["SNMP", "IFTable", "ARP"], "desc": "采集网络设备连接关系",
+             "encrypted_fields": ["authkey", "privkey", "community"]}
         ],
     },
     {
@@ -284,14 +295,17 @@ COLLECT_OBJ_TREE = [
         "name": "数据库",
         "children": [
             {"id": "mysql", "model_id": "mysql", "name": "Mysql", "task_type": CollectPluginTypes.PROTOCOL,
-             "type": CollectDriverTypes.PROTOCOL,"tag": ["Agentless","TCP"], "desc": "采集MySQL关键配置信息"},
+             "type": CollectDriverTypes.PROTOCOL, "tag": ["Agentless", "TCP"], "desc": "采集MySQL关键配置信息",
+             "encrypted_fields": ["password"]
+             },
             {
                 "id": "redis",
                 "model_id": "redis",
                 "name": "Redis",
                 "task_type": CollectPluginTypes.DB,
                 "type": CollectDriverTypes.JOB,
-                "tag": ["Agent","JOB"], "desc": "采集Redis关键配置信息"
+                "tag": ["Agent", "JOB"], "desc": "采集Redis关键配置信息",
+                "encrypted_fields": ["password"]
             }
         ],
     },
@@ -300,11 +314,15 @@ COLLECT_OBJ_TREE = [
         "name": "云平台",
         "children": [
             {"id": "aliyun", "model_id": "aliyun_account", "name": "阿里云", "task_type": CollectPluginTypes.CLOUD,
-             "type": CollectDriverTypes.PROTOCOL,"tag": ["SDK"], "desc": "采集阿里云账户下ECS、VPC、RDS等资产清单"},
+             "type": CollectDriverTypes.PROTOCOL, "tag": ["SDK"], "desc": "采集阿里云账户下ECS、VPC、RDS等资产清单",
+             "encrypted_fields": ["accessKey", "accessSecret"]
+             },
             {
                 "id": "qcloud", "model_id": "qcloud", "name": "腾讯云", "task_type": CollectPluginTypes.CLOUD,
-                "type": CollectDriverTypes.PROTOCOL,"tag": ["SDK"], "desc": "采集腾讯云账户下CVM、VPC、云数据库等资产清单"
-            },
+                "type": CollectDriverTypes.PROTOCOL, "tag": ["SDK"],
+                "desc": "采集腾讯云账户下CVM、VPC、云数据库等资产清单",
+                "encrypted_fields": ["accessKey", "secretSecret"]
+            }
         ],
     },
     {
@@ -312,9 +330,12 @@ COLLECT_OBJ_TREE = [
         "name": "主机管理",
         "children": [
             {"id": "host", "model_id": "host", "name": "主机", "task_type": CollectPluginTypes.HOST,
-             "type": CollectDriverTypes.JOB,"tag": ["JOB"], "desc": "采集主机基础信息CPU内存等"},
-            {"id": "physcial_server", "model_id": "physcial_server", "name": "物理服务器", "task_type": CollectPluginTypes.HOST,
-             "type": CollectDriverTypes.JOB,"tag": ["JOB"], "desc": "采集主机基础信息CPU内存等"},
+             "type": CollectDriverTypes.JOB, "tag": ["JOB"], "desc": "采集主机基础信息CPU内存等",
+             "encrypted_fields": ["password"]},
+            {"id": "physcial_server", "model_id": "physcial_server", "name": "物理服务器",
+             "task_type": CollectPluginTypes.HOST,
+             "type": CollectDriverTypes.JOB, "tag": ["JOB"], "desc": "采集主机基础信息CPU内存等",
+             "encrypted_fields": ["password"]},
         ],
     },
     {
@@ -322,18 +343,24 @@ COLLECT_OBJ_TREE = [
         "name": "中间件",
         "children": [
             {"id": "nginx", "model_id": "nginx", "name": "Nginx", "task_type": CollectPluginTypes.MIDDLEWARE,
-             "type": CollectDriverTypes.JOB,"tag": ["JOB"], "desc": "发现与采集Nginx基础配置信息"},
+             "type": CollectDriverTypes.JOB, "tag": ["JOB"], "desc": "发现与采集Nginx基础配置信息",
+             "encrypted_fields": ["password"]},
             {"id": "zookeeper", "model_id": "zookeeper", "name": "Zookeeper",
              "task_type": CollectPluginTypes.MIDDLEWARE,
-             "type": CollectDriverTypes.JOB,"tag": ["JOB"], "desc": "发现与采集ZK基础配置信息"},
+             "type": CollectDriverTypes.JOB, "tag": ["JOB"], "desc": "发现与采集ZK基础配置信息",
+             "encrypted_fields": ["password"]},
             {"id": "kafka", "model_id": "kafka", "name": "Kafka", "task_type": CollectPluginTypes.MIDDLEWARE,
-             "type": CollectDriverTypes.JOB,"tag": ["JOB"], "desc": "发现与采集Kafka基础配置信息"},
+             "type": CollectDriverTypes.JOB, "tag": ["JOB"], "desc": "发现与采集Kafka基础配置信息",
+             "encrypted_fields": ["password"]},
             {"id": "etcd", "model_id": "etcd", "name": "Etcd", "task_type": CollectPluginTypes.MIDDLEWARE,
-             "type": CollectDriverTypes.JOB,"tag": ["JOB"], "desc": "发现与采集Etcd基础配置信息"},
+             "type": CollectDriverTypes.JOB, "tag": ["JOB"], "desc": "发现与采集Etcd基础配置信息",
+             "encrypted_fields": ["password"]},
             {"id": "rabbitmq", "model_id": "rabbitmq", "name": "RabbitMQ", "task_type": CollectPluginTypes.MIDDLEWARE,
-             "type": CollectDriverTypes.JOB,"tag": ["JOB"], "desc": "发现与采集Rabbitmq基础配置信息"},
+             "type": CollectDriverTypes.JOB, "tag": ["JOB"], "desc": "发现与采集Rabbitmq基础配置信息",
+             "encrypted_fields": ["password"]},
             {"id": "tomcat", "model_id": "tomcat", "name": "Tomcat", "task_type": CollectPluginTypes.MIDDLEWARE,
-             "type": CollectDriverTypes.JOB,"tag": ["JOB"], "desc": "发现与采集Tomcat基础配置信息"},
+             "type": CollectDriverTypes.JOB, "tag": ["JOB"], "desc": "发现与采集Tomcat基础配置信息",
+             "encrypted_fields": ["password"]},
         ],
     }
 
@@ -351,3 +378,6 @@ PERMISSION_MODEL = "model"  # 模型
 OPERATE = "Operate"
 VIEW = "View"
 APP_NAME = "cmdb"
+
+# ===========
+SECRET_KEY = os.getenv("SECRET_KEY", "cmdb_secret_key_2025_cb9c88c61e374c51a9a83f1b2b2c1b1d")

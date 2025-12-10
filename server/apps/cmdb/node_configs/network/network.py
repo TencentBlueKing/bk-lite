@@ -38,7 +38,8 @@ class NetworkNodeParams(BaseNodeParams):
 
         credential_data = {
             "snmp_port": self.credential.get("snmp_port", 161),
-            "community": self.credential.get("community", ""), # 团体字 仅v1/v2c使用
+            # "community": self.credential.get("community", ""), # 团体字 仅v1/v2c使用
+            "community": "${PASSWORD_community}", # 团体字 仅v1/v2c使用
             "version": self.credential.get("version", ""),
             "username": self.credential.get("username", ""),
             "level": self.credential.get("level", ""),
@@ -68,5 +69,6 @@ class NetworkNodeParams(BaseNodeParams):
         env_config = {
             "$PASSWORD_authkey": self.credential.get("authkey", ""),
             "$PASSWORD_privkey": self.credential.get("privkey", ""),
+            "$PASSWORD_community": self.credential.get("community", ""),
         }
         return env_config

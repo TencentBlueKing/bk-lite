@@ -11,9 +11,10 @@ import { useTaskForm } from '../hooks/useTaskForm';
 import { TreeNode, ModelItem } from '@/app/cmdb/types/autoDiscovery';
 import { Form, Spin, Input, Collapse, Select, message } from 'antd';
 import {
-  ENTER_TYPE,
   CLOUD_FORM_INITIAL_VALUES,
+  PASSWORD_PLACEHOLDER,
 } from '@/app/cmdb/constants/professCollection';
+import { formatTaskValues } from '../hooks/formatTaskValues';
 
 interface RegionItem {
   cloud_type: string;
@@ -72,39 +73,39 @@ const CloudTask: React.FC<cloudTaskFormProps> = ({
     onSuccess,
     onClose,
     formatValues: (values) => {
-      const instance = baseRef.current?.instOptions.find(
-        (item: any) => item.value === values.instId
-      );
-      const driverType = selectedNode.tabItems?.find(
-        (item) => item.model_id === modelId
-      )?.type;
-
-      const accessPoint = baseRef.current?.accessPoints.find(
-        (item: any) => item.value === values.accessPointId
-      );
-
       const regionItem = regions.find(
         (item: any) => item.resource_id === values.regionId
       );
 
+      const baseData = formatTaskValues({
+        values,
+        baseRef,
+        selectedNode,
+        modelItem,
+        modelId,
+        formatCycleValue,
+      });
+
+      const instance = baseRef.current?.instOptions?.find(
+        (item: any) => item.value === values.instId
+      );
+
+      const credential: any = {
+        regions: regionItem,
+      };
+
+      if (values.accessKey && values.accessKey !== PASSWORD_PLACEHOLDER) {
+        credential.accessKey = values.accessKey;
+      }
+
+      if (values.accessSecret && values.accessSecret !== PASSWORD_PLACEHOLDER) {
+        credential.accessSecret = values.accessSecret;
+      }
+
       return {
-        name: values.taskName,
+        ...baseData,
         instances: instance?.origin && [instance.origin],
-        input_method: values.enterType === ENTER_TYPE.APPROVAL ? 1 : 0,
-        access_point: accessPoint?.origin && [accessPoint.origin],
-        timeout: values.timeout || 600,
-        scan_cycle: formatCycleValue(values),
-        model_id: modelId,
-        driver_type: driverType,
-        task_type: modelItem.task_type,
-        accessPointId: values.access_point?.[0]?.id,
-        team: values.organization || [],
-        params: {},
-        credential: {
-          accessKey: values.accessKey,
-          accessSecret: values.accessSecret,
-          regions: regionItem,
-        },
+        credential,
       };
     },
   });
@@ -159,7 +160,8 @@ const CloudTask: React.FC<cloudTaskFormProps> = ({
         const regions = values.credential?.regions || [];
         form.setFieldsValue({
           ...values,
-          ...values.credential,
+          accessKey: PASSWORD_PLACEHOLDER,
+          accessSecret: PASSWORD_PLACEHOLDER,
           regionId: regions?.resource_id,
           organization: values.team || [],
           accessPointId: values.access_point?.[0]?.id,
@@ -244,6 +246,20 @@ const CloudTask: React.FC<cloudTaskFormProps> = ({
                 <Input
                   placeholder={t('common.inputTip')}
                   onChange={handleCredentialChange}
+                  onFocus={(e) => {
+                    if (!editId) return;
+                    const value = e.target.value;
+                    if (value === PASSWORD_PLACEHOLDER) {
+                      form.setFieldValue('accessKey', '');
+                    }
+                  }}
+                  onBlur={(e) => {
+                    if (!editId) return;
+                    const value = e.target.value;
+                    if (!value || value.trim() === '') {
+                      form.setFieldValue('accessKey', PASSWORD_PLACEHOLDER);
+                    }
+                  }}
                 />
               </Form.Item>
 
@@ -255,6 +271,20 @@ const CloudTask: React.FC<cloudTaskFormProps> = ({
                 <Input.Password
                   placeholder={t('common.inputTip')}
                   onChange={handleCredentialChange}
+                  onFocus={(e) => {
+                    if (!editId) return;
+                    const value = e.target.value;
+                    if (value === PASSWORD_PLACEHOLDER) {
+                      form.setFieldValue('accessSecret', '');
+                    }
+                  }}
+                  onBlur={(e) => {
+                    if (!editId) return;
+                    const value = e.target.value;
+                    if (!value || value.trim() === '') {
+                      form.setFieldValue('accessSecret', PASSWORD_PLACEHOLDER);
+                    }
+                  }}
                 />
               </Form.Item>
 

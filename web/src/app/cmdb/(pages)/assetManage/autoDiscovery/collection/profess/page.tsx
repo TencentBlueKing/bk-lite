@@ -919,7 +919,9 @@ const ProfessionalCollection: React.FC = () => {
         onClose={closeDrawer}
         open={drawerVisible}
         getContainer={false}
-        rootStyle={{ position: 'absolute' }}
+        rootStyle={{
+          position: 'fixed',
+        }}
       >
         {drawerVisible && getTaskContent()}
       </Drawer>

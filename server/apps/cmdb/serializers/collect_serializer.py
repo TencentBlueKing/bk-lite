@@ -6,6 +6,7 @@ from rest_framework import serializers
 
 from apps.cmdb.constants.constants import PERMISSION_TASK
 from apps.cmdb.models.collect_model import CollectModels, OidMapping
+from apps.cmdb.services.encrypt_collect_password import get_collect_model_passwords
 from apps.core.utils.serializers import UsernameSerializer, AuthSerializer
 
 
@@ -19,6 +20,18 @@ class CollectModelSerializer(AuthSerializer):
             # "name": {"required": True},
             # "task_type": {"required": True},
         }
+
+    def to_representation(self, instance):
+        """重写序列化输出"""
+        representation = super().to_representation(instance)
+        # 对返回的凭据中的密码字段进行脱敏处理
+        credential = instance.credential
+        encrypted_fields = get_collect_model_passwords(collect_model_id=instance.model_id)
+        for encrypted_field in encrypted_fields:
+            if encrypted_field in credential:
+                credential[encrypted_field] = "******"
+
+        return representation
 
 
 class CollectModelIdStatusSerializer(AuthSerializer):

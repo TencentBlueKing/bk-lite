@@ -6,21 +6,6 @@ from apps.core.utils.permission_utils import get_permission_rules
 class CmdbRulesFormatUtil:
 
     @staticmethod
-    def get_rules_classification_id_list(rules, classification_id=None):
-        permission_map = CmdbRulesFormatUtil.format_permission_map(rules, classification_id)
-        model_list = []
-        classification_id_list = []
-        for _classification_id, _permission_map in permission_map.items():
-            if _permission_map["select_all"]:
-                classification_id_list.append(_classification_id)
-            else:
-                for model_id, permission in _permission_map["permission_map"].items():
-                    if VIEW in permission:
-                        model_list.append(model_id)
-
-        return model_list, classification_id_list
-
-    @staticmethod
     def has_object_permission(obj_type, operator, model_id, permission_instances_map, instance, team_id=None,
                               default_group_id=None):
         """
@@ -69,39 +54,6 @@ class CmdbRulesFormatUtil:
                 return operator in permission
 
         return False
-
-    @staticmethod
-    def format_permission_map(rules, _classification_id=None, model_id=None):
-        rules = [i for i in rules if i.get("id") != "-1"]
-        permission_map = {}
-        for classification_id, permission_data in rules.items():
-            if _classification_id and classification_id != _classification_id:
-                continue
-            _map_data = {"select_all": False, "permission_map": {}}
-            if not model_id:
-                for data in permission_data:
-                    if data["id"] in ["0"]:
-                        _map_data["select_all"] = True
-                        _map_data["permission_map"] = data["permission"]
-                        permission_map[classification_id] = _map_data
-                        break
-                    _map_data["permission_map"][data["id"]] = data["permission"]
-                    permission_map[classification_id] = _map_data
-
-            else:
-                for _model_id, _permission_data in permission_data.items():
-                    if _model_id != model_id:
-                        continue
-                    _map_data = {"select_all": False, "permission_map": {}}
-                    for _model_data in _permission_data:
-                        if _model_data["id"] in ["0"]:
-                            _map_data["select_all"] = True
-                            _map_data["permission_map"] = _model_data["permission"]
-                            permission_map[model_id] = _map_data
-                            break
-                        _map_data["permission_map"][_model_data["id"]] = _model_data["permission"]
-                    permission_map[model_id] = _map_data
-        return permission_map
 
     @staticmethod
     def format_permission_instances_list(instances):
