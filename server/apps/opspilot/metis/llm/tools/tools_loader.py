@@ -9,6 +9,7 @@ from apps.opspilot.metis.llm.tools import date
 from apps.opspilot.metis.llm.tools import github
 from apps.opspilot.metis.llm.tools import jenkins
 from apps.opspilot.metis.llm.tools import kubernetes
+from apps.opspilot.metis.llm.tools import postgres
 from apps.opspilot.metis.llm.tools import python
 from apps.opspilot.metis.llm.tools import search
 from apps.opspilot.metis.llm.tools import shell
@@ -41,6 +42,7 @@ class ToolsLoader:
         'github': (github, False),
         'jenkins': (jenkins, False),
         'kubernetes': (kubernetes, False),
+        'postgres': (postgres, False),
         'python': (python, False),
         'shell': (shell, False),
     }
