@@ -2,8 +2,9 @@
 # @File: time_util.py
 # @Time: 2025/12/10 14:00
 # @Author: roger060353
-from datetime import datetime, date, time, timedelta, timezone
+from datetime import datetime, date, time, timedelta
 from typing import Any
+from django.utils import timezone
 
 try:
     # 只有安装了 python-dateutil 才能用，若项目已依赖可以解开注释做更智能的解析
@@ -94,11 +95,5 @@ def parse_cmdb_time(value: Any) -> str:
 
     else:
         raise ValueError(f"不支持的时间类型: {type(value)}")
-
-    # 规范化为 UTC（如有需要可根据实际时区调整）
-    if dt.tzinfo is None:
-        dt = dt.replace(tzinfo=timezone.utc)
-    else:
-        dt = dt.astimezone(timezone.utc)
     # 按要求输出格式: 2025-11-27T10:31:44.338913+00:00
     return dt.isoformat()
