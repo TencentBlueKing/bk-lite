@@ -229,10 +229,35 @@ const CustomChatSSE: React.FC<CustomChatSSEProps> = ({
   );
 
   const handleCopyMessage = (content: string) => {
-    navigator.clipboard.writeText(content).then(
-      () => console.log(t('chat.copied')),
-      err => console.error(`${t('chat.copyFailed')}:`, err)
-    );
+    // 移除 HTML 标签，保留纯文本
+    const tempDiv = document.createElement('div');
+    tempDiv.innerHTML = content;
+    const plainText = tempDiv.textContent || tempDiv.innerText || content;
+    
+    // 使用现代 API 或降级方案
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(plainText).then(
+        () => console.log(t('chat.copied')),
+        err => console.error(`${t('chat.copyFailed')}:`, err)
+      );
+    } else {
+      // 降级方案：使用 execCommand
+      const textArea = document.createElement('textarea');
+      textArea.value = plainText;
+      textArea.style.position = 'fixed';
+      textArea.style.left = '-999999px';
+      textArea.style.top = '-999999px';
+      document.body.appendChild(textArea);
+      textArea.focus();
+      textArea.select();
+      try {
+        document.execCommand('copy');
+        console.log(t('chat.copied'));
+      } catch (err) {
+        console.error(`${t('chat.copyFailed')}:`, err);
+      }
+      document.body.removeChild(textArea);
+    }
   };
 
   const handleDeleteMessage = (id: string) => {

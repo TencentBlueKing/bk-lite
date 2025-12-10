@@ -20,6 +20,12 @@ const nodeCategories = [
       { type: 'restful', icon: 'RESTfulAPI', labelKey: 'chatflow.restful' },
       { type: 'openai', icon: 'icon-test2', labelKey: 'chatflow.openai' },
       { type: 'agui', icon: 'huifu-copy', labelKey: 'chatflow.agui' },
+    ]
+  },
+  {
+    key: 'applications',
+    labelKey: 'chatflow.applications',
+    items: [
       { type: 'embedded_chat', icon: 'wendaduihua', labelKey: 'chatflow.embeddedChat' },
       { type: 'web_chat', icon: 'WebSphereMQ', labelKey: 'chatflow.webChat' },
       { type: 'mobile', icon: 'zhuji', labelKey: 'chatflow.mobile' },
@@ -207,7 +213,7 @@ const ChatflowSettings: React.FC<ChatflowSettingsProps> = ({
                 <Collapse
                   size="small"
                   ghost
-                  defaultActiveKey={['triggers', 'agents', 'logic', 'actions']}
+                  defaultActiveKey={['triggers', 'applications', 'agents', 'logic', 'actions']}
                   expandIcon={({ isActive }) => <CaretRightOutlined rotate={isActive ? 90 : 0} />}
                 >
                   {nodeCategories.map((category) => (

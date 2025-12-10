@@ -36,7 +36,6 @@ export const NodeConfigForm: React.FC<any> = ({
   const { t } = useTranslation();
   const nodeType = node.data.type;
 
-  // 复制 API URL
   const copyApiUrl = async () => {
     const currentOrigin = typeof window !== 'undefined' ? window.location.origin : '';
     const apiUrl = `${currentOrigin}/api/v1/opspilot/bot_mgmt/execute_chat_flow/${botId}/${node.id}`;
@@ -54,7 +53,6 @@ export const NodeConfigForm: React.FC<any> = ({
     }
   };
 
-  // 文件上传配置
   const uploadProps: UploadProps = {
     name: 'file',
     multiple: true,
@@ -100,7 +98,6 @@ export const NodeConfigForm: React.FC<any> = ({
     }
   };
 
-  // 渲染键值对编辑器
   const renderKeyValueEditor = (rows: any, label: string) => {
     const { rows: items, addRow, removeRow, updateRow } = rows;
     return (
@@ -335,6 +332,14 @@ export const NodeConfigForm: React.FC<any> = ({
               placeholder={t('chatflow.nodeConfig.enterAppDescription')} 
             />
           </Form.Item>
+          <div className="p-3 bg-blue-50 border border-blue-200 rounded-md text-xs">
+            <p className="text-gray-600 mb-1">
+              {t('chatflow.nodeConfig.webAccessAddress')}：
+            </p>
+            <div className="font-mono text-blue-600 break-all">
+              {typeof window !== 'undefined' ? window.location.origin : ''}/opspilot/studio/chat
+            </div>
+          </div>
         </>
       )}
 
