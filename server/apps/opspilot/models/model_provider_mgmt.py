@@ -7,7 +7,7 @@ from apps.core.encoders import PrettyJSONEncoder
 from apps.core.mixinx import EncryptMixin
 from apps.core.models.maintainer_info import MaintainerInfo
 from apps.core.models.time_info import TimeInfo
-from apps.opspilot.enum import ActionChoice, SkillTypeChoices
+from apps.opspilot.enum import SkillTypeChoices
 
 
 class LLMModel(models.Model, EncryptMixin):
@@ -207,19 +207,6 @@ class SkillTools(MaintainerInfo, TimeInfo):
 
     class Meta:
         db_table = "model_provider_mgmt_skilltools"
-
-
-class SkillRule(MaintainerInfo, TimeInfo):
-    skill = models.ForeignKey("LLMSkill", on_delete=models.CASCADE, verbose_name="技能")
-    name = models.CharField(max_length=255, verbose_name="规则名称")
-    description = models.TextField(blank=True, null=True, verbose_name="描述")
-    condition = models.JSONField(default=dict, verbose_name="条件")
-    action = models.IntegerField(default=0, verbose_name="动作", choices=ActionChoice.CHOICE)
-    action_set = models.JSONField(default=dict, verbose_name="动作设置")
-    is_enabled = models.BooleanField(default=True, verbose_name="是否启用")
-
-    class Meta:
-        db_table = "model_provider_mgmt_skillrule"
 
 
 class SkillRequestLog(models.Model):
