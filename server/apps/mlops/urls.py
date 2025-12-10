@@ -22,6 +22,7 @@ router.register(r'timeseries_predict_train_data', TimeSeriesPredictTrainDataView
 router.register(r'timeseries_predict_train_jobs', TimeSeriesPredictTrainJobViewSet, basename='timeseries_predict_train_jobs')
 router.register(r'timeseries_predict_train_history', TimeSeriesPredictTrainHistoryViewSet, basename='timeseries_predict_train_history')
 router.register(r'timeseries_predict_servings', TimeSeriesPredictServingViewSet, basename='timeseries_predict_servings')
+router.register(r'timeseries_predict_dataset_releases', TimeSeriesPredictDatasetReleaseViewSet, basename='timeseries_predict_dataset_releases')
 
 # 分类任务
 router.register(r'classification_datasets', ClassificationDatasetViewSet, basename='classification_datasets')

@@ -9,6 +9,8 @@ export interface CustomChatSSEProps {
   mode?: 'chat' | 'display';
   guide?: string;
   useAGUIProtocol?: boolean;
+  showHeader?: boolean;
+  requirePermission?: boolean;
 }
 
 export type ActionRender = (

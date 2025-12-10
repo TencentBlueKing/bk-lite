@@ -7,22 +7,16 @@ from django.http import StreamingHttpResponse
 from langchain_core.messages import AIMessageChunk
 
 from apps.core.logger import opspilot_logger as logger
-from apps.core.utils.async_utils import create_async_compatible_generator
 from apps.opspilot.models import LLMModel
 from apps.opspilot.services.llm_service import llm_service
-from apps.opspilot.utils.agent_factory import (
-    create_agent_instance,
-    create_sse_response_headers,
-    normalize_llm_error_message,
-    run_async_generator_in_loop,
-)
+from apps.opspilot.utils.agent_factory import create_agent_instance, create_sse_response_headers, normalize_llm_error_message
 from apps.opspilot.utils.bot_utils import insert_skill_log
 
 
 def generate_stream_error(message):
     """通用的流式错误生成函数"""
 
-    def generator():
+    async def generator():
         error_chunk = {
             "choices": [{"delta": {"content": message}, "index": 0, "finish_reason": "stop"}],
             "id": "error",
@@ -31,9 +25,8 @@ def generate_stream_error(message):
         }
         yield f"data: {json.dumps(error_chunk)}\n\n"
 
-    # 使用异步兼容的生成器来解决 ASGI 环境下的问题
-    async_generator = create_async_compatible_generator(generator())
-    response = StreamingHttpResponse(async_generator, content_type="text/event-stream")
+    # 直接使用异步生成器
+    response = StreamingHttpResponse(generator(), content_type="text/event-stream")
     # 添加必要的头信息以防止缓冲
     response["Cache-Control"] = "no-cache"
     response["X-Accel-Buffering"] = "no"
@@ -127,7 +120,7 @@ def _create_error_chunk(error_message, skill_name):
 
 
 def _generate_agent_stream(graph, request, skill_name, show_think):
-    """生成 Agent 流式数据（使用 asyncio 运行异步方法）"""
+    """生成 Agent 流式数据（异步生成器）"""
     accumulated_content = ""
     think_buffer = ""
     in_think_block = False
@@ -196,8 +189,8 @@ def _generate_agent_stream(graph, request, skill_name, show_think):
             yield f"data: {json.dumps(error_chunk, ensure_ascii=False)}\n\n"
             yield ("STATS", "")
 
-    # 使用公共的异步事件循环运行器
-    yield from run_async_generator_in_loop(run_stream)
+    # 直接返回异步生成器
+    return run_stream()
 
 
 def _log_and_update_tokens_sync(final_stats, skill_name, skill_id, current_ip, kwargs, user_message, show_think, history_log=None):
@@ -232,7 +225,21 @@ def _log_and_update_tokens_sync(final_stats, skill_name, skill_id, current_ip, k
 
 
 def stream_chat(params, skill_name, kwargs, current_ip, user_message, skill_id=None, history_log=None):
-    """流式聊天接口"""
+    """流式聊天接口 - 返回 StreamingHttpResponse"""
+    # 直接使用异步生成器，不需要额外包装
+    response = StreamingHttpResponse(
+        create_stream_generator(params, skill_name, kwargs, current_ip, user_message, skill_id, history_log), content_type="text/event-stream"
+    )
+
+    # 使用公共的 SSE 响应头
+    for key, value in create_sse_response_headers().items():
+        response[key] = value
+
+    return response
+
+
+def create_stream_generator(params, skill_name, kwargs, current_ip, user_message, skill_id=None, history_log=None):
+    """创建流式生成器 - 返回异步生成器供内部或外部使用"""
     llm_model = LLMModel.objects.get(id=params["llm_model"])
     show_think = params.pop("show_think", True)
     skill_type = params.get("skill_type")
@@ -243,7 +250,7 @@ def stream_chat(params, skill_name, kwargs, current_ip, user_message, skill_id=N
     # 用于存储最终统计信息的共享变量
     final_stats = {"content": ""}
 
-    def generate_stream():
+    async def generate_stream():
         try:
             # 创建对应的 Agent 实例和请求对象
             graph, request = create_agent_instance(skill_type, chat_kwargs)
@@ -251,7 +258,7 @@ def stream_chat(params, skill_name, kwargs, current_ip, user_message, skill_id=N
             # 使用直接调用 agent 方法生成流
             stream_gen = _generate_agent_stream(graph, request, skill_name, show_think)
 
-            for chunk in stream_gen:
+            async for chunk in stream_gen:
                 if isinstance(chunk, tuple) and chunk[0] == "STATS":
                     # 收集统计信息
                     _, final_stats["content"] = chunk
@@ -272,12 +279,4 @@ def stream_chat(params, skill_name, kwargs, current_ip, user_message, skill_id=N
             error_chunk = _create_error_chunk(f"聊天错误: {str(e)}", skill_name)
             yield f"data: {json.dumps(error_chunk)}\n\n"
 
-    # 使用异步兼容的生成器来解决 ASGI 环境下的问题
-    async_generator = create_async_compatible_generator(generate_stream())
-    response = StreamingHttpResponse(async_generator, content_type="text/event-stream")
-
-    # 使用公共的 SSE 响应头
-    for key, value in create_sse_response_headers().items():
-        response[key] = value
-
-    return response
+    return generate_stream()

@@ -27,11 +27,31 @@ class CollectModelService(object):
     NAME = "sync_collect_task"
 
     @staticmethod
+    def has_permission(request, instance, view_self):
+        """
+        检查用户是否有权限操作该实例
+        """
+
+        user = request.user
+        current_team = int(request.COOKIES.get("current_team", None))
+        include_children = request.COOKIES.get("include_children", "0") == "1"
+        has_permission = view_self.get_has_permission(user, instance, current_team, include_children=include_children)
+        if not has_permission:
+            raise BaseAppException("您没有操作该采集任务的权限！")
+
+    @staticmethod
+    def delete_team(instance_id, old_team, new_team, view_self):
+        """
+        删除权限规则中的组织
+        主要用于更新时删除组织权限
+        """
+        delete_team = [i for i in old_team if i not in new_team]
+        view_self.delete_rules(instance_id, delete_team)
+
+    @staticmethod
     def format_params(data):
-        is_interval, scan_cycle = crontab_format(
-            data["scan_cycle"]["value_type"], data["scan_cycle"]["value"])
-        not_required = ["access_point", "ip_range",
-                        "instances", "credential", "plugin_id", "params"]
+        not_required = ["access_point", "ip_range", "instances", "credential", "plugin_id", "params"]
+        is_interval, scan_cycle = crontab_format(data["scan_cycle"]["value_type"], data["scan_cycle"]["value"])
         params = {
             "name": data["name"],
             "task_type": data["task_type"],
@@ -42,6 +62,7 @@ class CollectModelService(object):
             "is_interval": is_interval,
             "cycle_value": data["scan_cycle"]["value"],
             "cycle_value_type": data["scan_cycle"]["value_type"],
+            "team": data["team"]  # 把组织单独抽出来，方便权限控制
         }
 
         for key in not_required:
@@ -116,11 +137,13 @@ class CollectModelService(object):
 
     @classmethod
     def update(cls, request, view_self):
-        update_data, is_interval, scan_cycle = cls.format_params(request.data)
 
         # 获取旧实例数据（在事务外）
         instance = view_self.get_object()
         old_instance = copy.deepcopy(instance)
+
+        cls.has_permission(request, instance, view_self)
+        update_data, is_interval, scan_cycle = cls.format_params(request.data)
 
         # 使用数据库事务保证原子性
         with transaction.atomic():
@@ -149,6 +172,7 @@ class CollectModelService(object):
                     f"更新采集任务时外部操作失败，事务将回滚: task_name={instance.name}, error={str(e)}")
                 raise BaseAppException(f"更新采集任务失败：{str(e)}")
 
+            cls.delete_team(instance.id, old_instance.team, request.data["team"], view_self)
             # 只有所有操作都成功，才创建变更记录
             create_change_record(operator=request.user.username, model_id=instance.model_id, label="采集任务",
                                  _type=UPDATE_INST, message=f"修改采集任务. 任务名称: {instance.name}",
@@ -159,6 +183,7 @@ class CollectModelService(object):
     @classmethod
     def destroy(cls, request, view_self):
         instance = view_self.get_object()
+        cls.has_permission(request, instance, view_self)
         instance_id = instance.id
         instance_name = instance.name
         model_id = instance.model_id
@@ -190,6 +215,8 @@ class CollectModelService(object):
             create_change_record(operator=request.user.username, model_id=model_id, label="采集任务",
                                  _type=DELETE_INST, message=f"删除采集任务. 任务名称: {instance_name}",
                                  inst_id=instance_id, model_object=OPERATOR_COLLECT_TASK)
+
+        cls.delete_team(instance_copy.id, instance_copy.team, [], view_self)
 
         return instance_id
 
@@ -236,11 +263,13 @@ class CollectModelService(object):
 
         return result
 
-    @staticmethod
-    def exec_task(instance, username):
+    @classmethod
+    def exec_task(cls, instance, request, view_self):
         """
         执行任务
         """
+        cls.has_permission(request=request, instance=instance, view_self=view_self)
+
         if instance.exec_status == CollectRunStatusType.RUNNING:
             return WebUtils.response_error(error_message="任务正在执行中!无法重复执行！", status_code=400)
 
@@ -255,7 +284,7 @@ class CollectModelService(object):
         else:
             sync_collect_task(instance.id)
 
-        create_change_record(operator=username, model_id=instance.model_id, label="采集任务",
+        create_change_record(operator=request.user.username, model_id=instance.model_id, label="采集任务",
                              _type=EXECUTE, message=f"执行采集任务. 任务名称: {instance.name}",
                              inst_id=instance.id, model_object=OPERATOR_COLLECT_TASK)
 

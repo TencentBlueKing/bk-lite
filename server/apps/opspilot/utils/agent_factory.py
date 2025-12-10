@@ -77,6 +77,8 @@ def run_async_generator_in_loop(async_gen_func):
     Yields:
         异步生成器产生的结果
     """
+    import time
+
     loop = asyncio.new_event_loop()
     asyncio.set_event_loop(loop)
     try:
@@ -85,10 +87,56 @@ def run_async_generator_in_loop(async_gen_func):
             try:
                 result = loop.run_until_complete(async_gen.__anext__())
                 yield result
+                # 添加延迟,确保有足够时间让服务器发送数据
+                # 增加到20ms,确保网络栈有足够时间刷新
+                time.sleep(0.02)  # 20毫秒延迟
             except StopAsyncIteration:
                 break
     finally:
         loop.close()
+
+
+async def create_async_wrapper_for_sync_generator(sync_generator):
+    """
+    将同步生成器包装为异步生成器,供 Django ASGI StreamingHttpResponse 使用
+    使用 sync_to_async 在线程中执行同步操作,避免数据库访问冲突
+
+    Args:
+        sync_generator: 同步生成器对象
+
+    Yields:
+        生成器产生的每个 chunk
+    """
+    import datetime
+
+    from asgiref.sync import sync_to_async
+
+    from apps.core.logger import opspilot_logger as logger
+
+    def get_next_chunk():
+        """同步函数:获取下一个chunk"""
+        try:
+            return next(sync_generator)
+        except StopIteration:
+            return None
+
+    # 将同步函数转为异步
+    async_get_next = sync_to_async(get_next_chunk, thread_sensitive=False)
+
+    chunk_index = 0
+    while True:
+        chunk = await async_get_next()
+        if chunk is None:
+            break
+        chunk_index += 1
+
+        # 如果不是第一个chunk,在发送前等待,让前一个chunk有时间被刷新
+        if chunk_index > 1:
+            await asyncio.sleep(0.01)  # 10毫秒延迟
+
+        now = datetime.datetime.now().strftime("%H:%M:%S.%f")[:-3]
+        logger.debug(f"[AsyncWrapper] 发送 chunk #{chunk_index} at {now}")
+        yield chunk
 
 
 def create_sse_response_headers():
@@ -100,7 +148,10 @@ def create_sse_response_headers():
     """
     return {
         "Cache-Control": "no-cache, no-store, must-revalidate",
-        "X-Accel-Buffering": "no",  # Nginx
+        "X-Accel-Buffering": "no",  # Nginx 禁用缓冲
+        "Pragma": "no-cache",  # HTTP/1.0 兼容
+        "Expires": "0",  # 立即过期
         "Access-Control-Allow-Origin": "*",
         "Access-Control-Allow-Headers": "Cache-Control",
+        "Transfer-Encoding": "chunked",  # 分块传输
     }

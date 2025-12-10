@@ -1,33 +1,18 @@
-/**
- * API 客户端工具
- * 所有请求统一通过 Tauri Rust 后端转发
- */
-
-import { tauriFetch, getApiBaseUrl } from '../utils/tauriFetch';
+import { tauriFetch } from '../utils/tauriFetch';
 import { getTokenSync } from '../utils/secureStorage';
 
-const TARGET_SERVER = 'http://10.10.40.117:8000/api/v1'
+const TARGET_SERVER = (process.env.NEXT_PUBLIC_API_URL || 'https://bklite.canway.net') + '/api/v1';
 
-
-const API_BASE_URL = getApiBaseUrl();
-
-/**
- * 创建带有默认配置的请求（统一使用 Tauri 转发）
- */
 export async function apiRequest<T = any>(
   endpoint: string,
   options: RequestInit = {}
 ): Promise<T> {
-
-  const targetPath = endpoint.replace('/api/proxy', '');
+  let targetPath = endpoint.replace('/api/proxy', '');
 
   const targetUrl = `${TARGET_SERVER}${targetPath}`;
-
-
   // 从安全存储的内存缓存获取 token（同步方法）
   const token = getTokenSync();
 
-  // 合并默认配置
   const config: RequestInit = {
     ...options,
     headers: {
@@ -64,8 +49,6 @@ export async function apiRequest<T = any>(
     return await response.text() as any;
 
   } catch (error: any) {
-    // If the request was aborted, don't log a noisy error in the console.
-    // Let callers handle AbortError as needed.
     if (error && (error.name === 'AbortError')) {
       throw error;
     }
@@ -158,6 +141,3 @@ export async function apiPatch<T = any>(
     body: data ? JSON.stringify(data) : undefined,
   });
 }
-
-// 导出 API 基础 URL 供其他模块使用
-export { API_BASE_URL, getApiBaseUrl };

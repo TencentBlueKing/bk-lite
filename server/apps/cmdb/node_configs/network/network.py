@@ -38,15 +38,18 @@ class NetworkNodeParams(BaseNodeParams):
 
         credential_data = {
             "snmp_port": self.credential.get("snmp_port", 161),
-            "community": self.credential.get("community", ""),
+            # "community": self.credential.get("community", ""), # 团体字 仅v1/v2c使用
+            "community": "${PASSWORD_community}", # 团体字 仅v1/v2c使用
             "version": self.credential.get("version", ""),
             "username": self.credential.get("username", ""),
             "level": self.credential.get("level", ""),
-            "integrity": self.credential.get("integrity", ""),
-            "privacy": self.credential.get("privacy", ""),
-            "authkey": self.credential.get("authkey", ""),
-            "privkey": self.credential.get("privkey", ""),
-            "timeout": self.credential.get("timeout", "1"),
+            "integrity": self.credential.get("integrity", ""), # 哈希算法
+            "privacy": self.credential.get("privacy", ""), #  加密算法
+            # "authkey": self.credential.get("authkey", ""), # 认证密钥
+            # "privkey": self.credential.get("privkey", ""), # 加密密钥
+            "authkey": "${PASSWORD_authkey}",
+            "privkey": "${PASSWORD_privkey}",
+            "timeout": self.credential.get("timeout", "1"), # 超时时间
         }
         if self.model_id == "network_topo":
             credential_data.update({"topo": "true"})
@@ -60,3 +63,12 @@ class NetworkNodeParams(BaseNodeParams):
             return f"{self.instance.id}_{instance['inst_name']}"
         else:
             return f"{self.instance.id}_{instance}"
+
+    @property
+    def env_config(self, *args, **kwargs):
+        env_config = {
+            "$PASSWORD_authkey": self.credential.get("authkey", ""),
+            "$PASSWORD_privkey": self.credential.get("privkey", ""),
+            "$PASSWORD_community": self.credential.get("community", ""),
+        }
+        return env_config

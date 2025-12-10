@@ -1,0 +1,112 @@
+{
+  "_comment": "时间序列训练配置文件 (用于 train-model.sh 脚本)",
+  "_usage": "根据环境变量动态生成，也可手动修改配置",
+  
+  "model": {
+    "type": "sarima",
+    "_type_options": ["sarima", "prophet", "xgboost", "lstm"],
+    "name": "sarima_model_v1",
+    "version": "1.0.0"
+  },
+  
+  "hyperparams": {
+    "search": {
+      "enabled": true,
+      "_comment": "启用后将进行超参数搜索，忽略 fixed 中的配置",
+      "max_evals": 50,
+      "metric": "rmse",
+      "_metric_options": ["rmse", "mae", "mape"],
+      "early_stopping": {
+        "enabled": true,
+        "_comment": "早停机制：当连续多次无改善时提前终止优化",
+        "min_evals": 20,
+        "_min_evals_desc": "最小评估次数，保证 TPE 算法充分探索",
+        "patience": 15,
+        "_patience_desc": "容忍的连续无改善次数",
+        "min_improvement_pct": 1.0,
+        "_min_improvement_pct_desc": "判定为改善的最小百分比阈值"
+      },
+      "search_space": {
+        "_comment": "仅当 enabled=true 时生效",
+        "order": {
+          "p": [0, 1, 2],
+          "d": [0, 1, 2],
+          "q": [0, 1, 2]
+        },
+        "seasonal_order": {
+          "P": [0, 1, 2],
+          "D": [0, 1],
+          "Q": [0, 1, 2],
+          "s": [12]
+        },
+        "trend": ["n", "c", "t", "ct"]
+      }
+    },
+    "fixed": {
+      "_comment": "固定超参数（当 search.enabled=false 时使用）",
+      "order": [1, 1, 1],
+      "_order_desc": "[p, d, q] - AR阶数, 差分阶数, MA阶数",
+      "seasonal_order": [1, 1, 1, 12],
+      "_seasonal_order_desc": "[P, D, Q, s] - 季节性AR, 季节性差分, 季节性MA, 季节周期",
+      "trend": "c",
+      "_trend_options": ["n=无趋势", "c=常数", "t=线性", "ct=常数+线性"]
+    }
+  },
+  
+  "training": {
+    "test_size": 0.2,
+    "_test_size_desc": "测试集比例 (0.0 - 1.0)",
+    "validation_size": 0.0,
+    "_validation_size_desc": "验证集比例，用于超参数优化",
+    "epochs": 100,
+    "_epochs_desc": "训练轮次（仅用于 ML/DL 模型）",
+    "batch_size": 32,
+    "_batch_size_desc": "批次大小（仅用于 DL 模型）",
+    "early_stopping": {
+      "enabled": false,
+      "patience": 10,
+      "min_delta": 0.001
+    }
+  },
+  
+  "preprocessing": {
+    "handle_missing": "interpolate",
+    "_handle_missing_options": ["interpolate", "ffill", "bfill", "drop", "median"],
+    "max_missing_ratio": 0.3,
+    "_max_missing_ratio_desc": "允许的最大缺失率，超过则报错",
+    "interpolation_limit": 3,
+    "_interpolation_limit_desc": "插值最多填充的连续缺失点数",
+    "detect_outliers": false,
+    "_detect_outliers_desc": "是否检测并标记异常值（SARIMA不需要）",
+    "normalize": false,
+    "_normalize_desc": "是否标准化（仅ML模型需要）"
+  },
+  
+  "feature_engineering": {
+    "enabled": false,
+    "_comment": "特征工程（仅用于 ML 模型，SARIMA 不需要）",
+    "lag_features": [1, 2, 3, 7, 14],
+    "_lag_features_desc": "滞后特征：使用过去N个时间点的值",
+    "rolling_features": {
+      "windows": [7, 14, 30],
+      "_windows_desc": "滚动窗口大小（天）",
+      "functions": ["mean", "std", "min", "max"],
+      "_functions_desc": "滚动窗口统计函数"
+    },
+    "time_features": ["hour", "day_of_week", "month"],
+    "_time_features_options": ["hour", "day_of_week", "day_of_month", "month", "quarter", "year"]
+  },
+  
+  "mlflow": {
+    "tracking_uri": null,
+    "_tracking_uri_desc": "MLflow 服务地址，如 http://127.0.0.1:15000，null 则使用本地文件",
+    "experiment_name": "timeseries_training",
+    "run_name": null,
+    "_run_name_desc": "运行名称，null 则自动生成",
+    "log_model": true,
+    "_log_model_desc": "是否记录模型到 MLflow",
+    "register_model": true,
+    "_register_model_desc": "是否注册模型到 MLflow Model Registry"
+  }
+}
+

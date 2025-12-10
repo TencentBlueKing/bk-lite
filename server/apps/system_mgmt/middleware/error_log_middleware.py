@@ -7,9 +7,10 @@
 import re
 import traceback
 
-from django.http import JsonResponse
+from django.http import JsonResponse, Http404
 from django.utils.deprecation import MiddlewareMixin
 
+from apps.core.exceptions.base_app_exception import BaseAppException
 from apps.core.logger import system_mgmt_logger
 from apps.core.utils.loader import LanguageLoader
 from apps.system_mgmt.tasks import write_error_log_async
@@ -91,14 +92,25 @@ class ErrorLogMiddleware(MiddlewareMixin):
         # 记录详细错误信息到日志（仅后端可见）
         system_mgmt_logger.debug(f"发生错误，错误如下： {str(exception)}")
 
-        # 获取用户语言设置
-        locale = "en"
-        if hasattr(request, "user") and hasattr(request.user, "locale"):
-            locale = request.user.locale
-        loader = LanguageLoader(app="system_mgmt", default_lang=locale)
-
-        # 返回统一的通用错误信息给前端（不暴露敏感信息）
-        error_message = loader.get("error.system_error", "System error, please contact administrator")
+        # 获取异常抛出的错误信息
+        exception_message = ""
+        if isinstance(exception, BaseAppException):
+            exception_message = getattr(exception,"message","")
+        
+        # 判断是否有自定义的错误信息
+        # 如果异常有明确的错误信息，直接使用；否则返回通用错误
+        if exception_message:
+            # 使用抛出的错误信息
+            error_message = exception_message
+        else:
+            # 获取用户语言设置
+            locale = "en"
+            if hasattr(request, "user") and hasattr(request.user, "locale"):
+                locale = request.user.locale
+            loader = LanguageLoader(app="system_mgmt", default_lang=locale)
+            # 没有自定义错误信息时，返回通用错误
+            error_message = loader.get("error.system_error", "System error, please contact administrator")
+        
         return JsonResponse({"result": False, "message": error_message}, status=500)
 
     def _parse_path(self, path):

@@ -1,21 +1,20 @@
 'use client';
 import React from 'react';
 import { Button } from 'antd';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { useTranslation } from '@/utils/i18n';
 import Icon from '@/components/icon';
-
-interface AccessCompleteProps {
-  onReset: () => void;
-}
+import { AccessCompleteProps } from '@/app/monitor/types/integration';
 
 const AccessComplete: React.FC<AccessCompleteProps> = ({ onReset }) => {
   const { t } = useTranslation();
   const router = useRouter();
+  const params = useSearchParams();
 
   const handleViewMetrics = () => {
     // 跳转到集群监控页面
-    router.push('/monitor/integration/list');
+    const objId = params.get('id');
+    router.push(`/monitor/integration/asset?objId=${objId}`);
   };
 
   const handleAddAnother = () => {

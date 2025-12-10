@@ -11,6 +11,7 @@ from apps.core.models.time_info import TimeInfo
 
 class UserAPISecret(TimeInfo):
     username = models.CharField(max_length=255)
+    domain = models.CharField(max_length=255, default="domain.com")
     api_secret = models.CharField(max_length=64)
     team = models.IntegerField(default=0)
 

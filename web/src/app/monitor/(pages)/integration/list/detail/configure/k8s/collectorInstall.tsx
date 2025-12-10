@@ -1,29 +1,17 @@
 'use client';
 import React, { useState, useRef } from 'react';
 import { Button, Alert, message } from 'antd';
-import {
-  ToolOutlined,
-  CheckCircleOutlined,
-  SearchOutlined,
-} from '@ant-design/icons';
+import { ToolOutlined, SearchOutlined } from '@ant-design/icons';
 import { useTranslation } from '@/utils/i18n';
 import Icon from '@/components/icon';
 import CodeEditor from '@/app/monitor/components/codeEditor';
 import CommonIssuesDrawer from './commonIssuesDrawer';
 import useIntegrationApi from '@/app/monitor/api/integration';
-
-interface CollectorInstallProps {
-  onNext: () => void;
-  onPrev?: () => void;
-  commandData?: {
-    command?: string;
-    monitor_object_id?: number;
-    instance_id?: string;
-  };
-}
+import { CollectorInstallProps } from '@/app/monitor/types/integration';
 
 const CollectorInstall: React.FC<CollectorInstallProps> = ({
   onNext,
+  onPrev,
   commandData,
 }) => {
   const { t } = useTranslation();
@@ -92,7 +80,7 @@ const CollectorInstall: React.FC<CollectorInstallProps> = ({
       {/* 验证接入状态 */}
       <div className="mb-[10px]">
         <div className="flex items-center mb-3">
-          <CheckCircleOutlined className="text-lg mr-2 text-[var(--color-success)]" />
+          <Icon type="renzhengyuanguanli" className="text-2xl mr-2" />
           <h3 className="text-base font-semibold">
             {t('monitor.integrations.k8s.verifyStatus')}
           </h3>
@@ -156,9 +144,9 @@ const CollectorInstall: React.FC<CollectorInstallProps> = ({
           showIcon
         />
       )}
-      {/* <div className="pt-[20px]">
+      <div className="pt-[20px]">
         <Button onClick={onPrev}>← {t('common.pre')}</Button>
-      </div> */}
+      </div>
       <CommonIssuesDrawer ref={drawerRef} />
     </div>
   );

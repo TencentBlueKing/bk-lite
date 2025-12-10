@@ -1,5 +1,3 @@
-import sys
-
 from django.apps import AppConfig
 
 
@@ -8,6 +6,4 @@ class CmdbConfig(AppConfig):
     name = "apps.cmdb"
 
     def ready(self):
-        is_running_migrations = 'makemigrations' in sys.argv or 'migrate' in sys.argv
-        if not is_running_migrations:
-            import apps.cmdb.nats  # noqa
+        import apps.cmdb.nats.nats  # noqa

@@ -39,7 +39,9 @@ const CustomChatSSE: React.FC<CustomChatSSEProps> = ({
   initialMessages = [],
   mode = 'chat',
   guide,
-  useAGUIProtocol = false
+  useAGUIProtocol = false,
+  showHeader = true,
+  requirePermission = true
 }) => {
   const { t } = useTranslation();
 
@@ -227,10 +229,35 @@ const CustomChatSSE: React.FC<CustomChatSSEProps> = ({
   );
 
   const handleCopyMessage = (content: string) => {
-    navigator.clipboard.writeText(content).then(
-      () => console.log(t('chat.copied')),
-      err => console.error(`${t('chat.copyFailed')}:`, err)
-    );
+    // 移除 HTML 标签，保留纯文本
+    const tempDiv = document.createElement('div');
+    tempDiv.innerHTML = content;
+    const plainText = tempDiv.textContent || tempDiv.innerText || content;
+    
+    // 使用现代 API 或降级方案
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(plainText).then(
+        () => console.log(t('chat.copied')),
+        err => console.error(`${t('chat.copyFailed')}:`, err)
+      );
+    } else {
+      // 降级方案：使用 execCommand
+      const textArea = document.createElement('textarea');
+      textArea.value = plainText;
+      textArea.style.position = 'fixed';
+      textArea.style.left = '-999999px';
+      textArea.style.top = '-999999px';
+      document.body.appendChild(textArea);
+      textArea.focus();
+      textArea.select();
+      try {
+        document.execCommand('copy');
+        console.log(t('chat.copied'));
+      } catch (err) {
+        console.error(`${t('chat.copyFailed')}:`, err);
+      }
+      document.body.removeChild(textArea);
+    }
   };
 
   const handleDeleteMessage = (id: string) => {
@@ -272,49 +299,53 @@ const CustomChatSSE: React.FC<CustomChatSSEProps> = ({
   const renderSend = (props: ButtonProps & { ignoreLoading?: boolean; placeholder?: string } = {}) => {
     const { ignoreLoading, placeholder, ...btnProps } = props;
 
-    return (
-      <PermissionWrapper requiredPermissions={['Test']}>
-        <Sender
-          className={styles.sender}
-          value={value}
-          onChange={setValue}
-          loading={loading}
-          onSubmit={(msg: string) => {
-            setValue('');
-            handleSend(msg);
-          }}
-          placeholder={placeholder}
-          onCancel={stopSSEConnection}
-          actions={(
-            _: any,
-            info: {
-              components: {
-                SendButton: React.ComponentType<ButtonProps>;
-                LoadingButton: React.ComponentType<ButtonProps>;
-              };
-            }
-          ) => {
-            const { SendButton, LoadingButton } = info.components;
-            if (!ignoreLoading && loading) {
-              return (
-                <Tooltip title={t('chat.clickCancel')}>
-                  <LoadingButton />
-                </Tooltip>
-              );
-            }
-            let node: ReactNode = <SendButton {...btnProps} />;
-            if (!ignoreLoading) {
-              node = (
-                <Tooltip title={value ? `${t('chat.send')}\u21B5` : t('chat.inputMessage')}>
-                  {node}
-                </Tooltip>
-              );
-            }
-            return node;
-          }}
-        />
-      </PermissionWrapper>
+    const senderComponent = (
+      <Sender
+        className={styles.sender}
+        value={value}
+        onChange={setValue}
+        loading={loading}
+        onSubmit={(msg: string) => {
+          setValue('');
+          handleSend(msg);
+        }}
+        placeholder={placeholder}
+        onCancel={stopSSEConnection}
+        actions={(
+          _: any,
+          info: {
+            components: {
+              SendButton: React.ComponentType<ButtonProps>;
+              LoadingButton: React.ComponentType<ButtonProps>;
+            };
+          }
+        ) => {
+          const { SendButton, LoadingButton } = info.components;
+          if (!ignoreLoading && loading) {
+            return (
+              <Tooltip title={t('chat.clickCancel')}>
+                <LoadingButton />
+              </Tooltip>
+            );
+          }
+          let node: ReactNode = <SendButton {...btnProps} />;
+          if (!ignoreLoading) {
+            node = (
+              <Tooltip title={value ? `${t('chat.send')}\u21B5` : t('chat.inputMessage')}>
+                {node}
+              </Tooltip>
+            );
+          }
+          return node;
+        }}
+      />
     );
+
+    return requirePermission ? (
+      <PermissionWrapper requiredPermissions={['Test']}>
+        {senderComponent}
+      </PermissionWrapper>
+    ) : senderComponent;
   };
 
   const toggleAnnotationModal = (message: CustomChatMessage) => {
@@ -362,7 +393,7 @@ const CustomChatSSE: React.FC<CustomChatSSEProps> = ({
 
   return (
     <div className={`rounded-lg h-full ${isFullscreen ? styles.fullscreen : ''}`}>
-      {mode === 'chat' && (
+      {mode === 'chat' && showHeader && (
         <div className="flex justify-between items-center mb-3">
           <h2 className="text-base font-semibold">{t('chat.test')}</h2>
           <div>
@@ -375,7 +406,7 @@ const CustomChatSSE: React.FC<CustomChatSSEProps> = ({
       <div
         className={`flex flex-col rounded-lg p-4 h-full overflow-hidden ${styles.chatContainer}`}
         style={{
-          height: isFullscreen ? 'calc(100vh - 70px)' : mode === 'chat' ? 'calc(100% - 40px)' : '100%'
+          height: isFullscreen ? 'calc(100vh - 70px)' : mode === 'chat' ? (showHeader ? 'calc(100% - 40px)' : '100%') : '100%'
         }}
       >
         {guide && guideData.renderedHtml && (
@@ -465,6 +496,9 @@ const CustomChatSSE: React.FC<CustomChatSSEProps> = ({
         visible={drawerContent.visible}
         title={drawerContent.title}
         onClose={closeDrawer}
+        styles={{
+          body: drawerContent.chunkType === 'Graph' ? { padding: 0, height: '100%' } : undefined
+        }}
       >
         {referenceModal.loading ? (
           <div className="flex justify-center items-center h-32">
@@ -473,7 +507,12 @@ const CustomChatSSE: React.FC<CustomChatSSEProps> = ({
         ) : (
           <>
             {drawerContent.chunkType === 'Graph' ? (
-              <KnowledgeGraphView data={drawerContent.graphData || { nodes: [], edges: [] }} height={500} />
+              <div style={{ height: '100%', padding: '16px' }}>
+                <KnowledgeGraphView 
+                  data={drawerContent.graphData || { nodes: [], edges: [] }} 
+                  height="100%" 
+                />
+              </div>
             ) : (
               <div className="whitespace-pre-wrap leading-6">{drawerContent.content}</div>
             )}

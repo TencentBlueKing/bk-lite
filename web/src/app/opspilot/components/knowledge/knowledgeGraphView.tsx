@@ -29,8 +29,25 @@ const KnowledgeGraphView: React.FC<KnowledgeGraphViewProps> = ({
   const graphRef = useRef<any>(null);
   const [initError, setInitError] = useState<string | null>(null);
   const [isInitializing, setIsInitializing] = useState(false);
+  const [containerHeight, setContainerHeight] = useState<number | string>(height);
 
   const graphData = useMockData || (!data.nodes.length && !loading) ? generateMockData() : data;
+
+  useEffect(() => {
+    if (height === '100%' && containerRef.current) {
+      const updateHeight = () => {
+        const parentHeight = containerRef.current?.parentElement?.clientHeight;
+        if (parentHeight) {
+          setContainerHeight(parentHeight);
+        }
+      };
+      updateHeight();
+      window.addEventListener('resize', updateHeight);
+      return () => window.removeEventListener('resize', updateHeight);
+    } else {
+      setContainerHeight(height);
+    }
+  }, [height]);
 
   /**
    * Get node style configuration based on label type
@@ -125,6 +142,8 @@ const KnowledgeGraphView: React.FC<KnowledgeGraphViewProps> = ({
         throw new Error('G6 Graph constructor not found');
       }
 
+      const actualHeight = container.offsetHeight;
+
       const truncateText = (text: string, maxLength: number = 3) => {
         if (!text) return '';
         return text.length > maxLength ? text.substring(0, maxLength) + '...' : text;
@@ -191,7 +210,7 @@ const KnowledgeGraphView: React.FC<KnowledgeGraphViewProps> = ({
       const graph = new G6.Graph({
         container: container,
         width,
-        height,
+        height: actualHeight,
         layout: {
           type: 'force',
           preventOverlap: true,
@@ -450,7 +469,7 @@ const KnowledgeGraphView: React.FC<KnowledgeGraphViewProps> = ({
 
       return () => clearTimeout(timer);
     }
-  }, [useMockData]);
+  }, [useMockData, containerHeight]);
 
   useEffect(() => {
     return () => {
@@ -470,7 +489,8 @@ const KnowledgeGraphView: React.FC<KnowledgeGraphViewProps> = ({
       if (graphRef.current && containerRef.current) {
         try {
           const newWidth = containerRef.current.offsetWidth;
-          graphRef.current.changeSize(newWidth, height);
+          const newHeight = typeof containerHeight === 'number' ? containerHeight : containerRef.current.offsetHeight || 500;
+          graphRef.current.changeSize(newWidth, newHeight);
         } catch (error) {
           console.warn('Error handling resize:', error);
         }
@@ -479,11 +499,11 @@ const KnowledgeGraphView: React.FC<KnowledgeGraphViewProps> = ({
 
     window.addEventListener('resize', handleResize);
     return () => window.removeEventListener('resize', handleResize);
-  }, [height]);
+  }, [containerHeight]);
 
   if (loading || isInitializing) {
     return (
-      <div className="flex items-center justify-center" style={{ height }}>
+      <div className="flex items-center justify-center" style={{ height: containerHeight }}>
         <Spin size="large" tip={t('knowledge.knowledgeGraph.loading')} />
       </div>
     );
@@ -491,7 +511,7 @@ const KnowledgeGraphView: React.FC<KnowledgeGraphViewProps> = ({
 
   if (initError) {
     return (
-      <div className="flex flex-col items-center justify-center text-gray-500" style={{ height }}>
+      <div className="flex flex-col items-center justify-center text-gray-500" style={{ height: containerHeight }}>
         <div className="text-red-500 mb-2">{t('common.initializeFailed')}</div>
         <div className="text-sm">{initError}</div>
         <button 
@@ -509,7 +529,7 @@ const KnowledgeGraphView: React.FC<KnowledgeGraphViewProps> = ({
 
   if (!graphData.nodes.length) {
     return (
-      <div className="flex items-center justify-center text-gray-500" style={{ height }}>
+      <div className="flex items-center justify-center text-gray-500" style={{ height: containerHeight }}>
         <Empty
           description={t('knowledge.knowledgeGraph.noGraphData')}
           image={Empty.PRESENTED_IMAGE_SIMPLE}
@@ -522,7 +542,7 @@ const KnowledgeGraphView: React.FC<KnowledgeGraphViewProps> = ({
     <div
       ref={containerRef}
       className="w-full border border-gray-200 rounded"
-      style={{ height, minHeight: height }}
+      style={{ height: '100%' }}
     />
   );
 };

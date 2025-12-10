@@ -124,6 +124,7 @@ export class DataMapper {
       instance_id?: string;
       config_type_field?: string; // 从表单字段获取config_type的字段名(如主机的metric_type)
       formFields?: any[]; // 表单字段配置数组，用于处理 transform_on_create
+      tableColumns?: any[]; // 表格列配置数组，用于处理表格字段加密
     }
   ) {
     // 获取config_type数组
@@ -147,8 +148,12 @@ export class DataMapper {
     const fieldsToDelete: string[] = []; // 记录已转换到嵌套路径的字段名，避免重复出现在顶层
     if (context.formFields) {
       context.formFields.forEach((field: any) => {
-        const { name, transform_on_create } = field;
-        const fieldValue = formData[name];
+        const { name, transform_on_create, encrypted } = field;
+        let fieldValue = formData[name];
+        // 如果字段标记为加密，使用 URL 编码
+        if (encrypted && fieldValue) {
+          fieldValue = encodeURIComponent(String(fieldValue));
+        }
         if (fieldValue !== undefined && transform_on_create?.target_path) {
           // 如果字段有 transform_on_create.target_path 配置，设置到指定路径
           // 例如：username -> custom_headers.username
@@ -193,16 +198,33 @@ export class DataMapper {
         // 单选模式，将字符串转为数组
         nodeIds = [row.node_ids];
       }
-      // 生成 instance_id（如果有模板）
+      // 生成 instance_id（如果有模板）,使用 SHA256 哈希编码
       let instance_id = row.instance_id;
       if (!instance_id && context.instance_id) {
-        instance_id = this.applyTemplate(context.instance_id, row, context);
+        instance_id = this.hashInstanceId(
+          this.applyTemplate(context.instance_id, row, context)
+        );
       }
-      // 复制 row 并删除 key 字段
-      const { key, ...instanceData } = row;
-      console.log(key);
+      // 过滤掉 key 字段和所有 _error 字段，并处理加密字段
+      const cleanedInstanceData = Object.keys(row)
+        .filter(
+          (fieldKey) => fieldKey !== 'key' && !fieldKey.endsWith('_error')
+        )
+        .reduce((acc, fieldKey) => {
+          let fieldValue = row[fieldKey];
+          // 检查该字段是否需要加密（从 tableColumns 中查找配置）
+          const fieldConfig = context.tableColumns?.find(
+            (f: any) => f.name === fieldKey
+          );
+          if (fieldConfig?.encrypted && fieldValue) {
+            fieldValue = encodeURIComponent(String(fieldValue));
+          }
+          acc[fieldKey] = fieldValue;
+          return acc;
+        }, {} as any);
+
       return {
-        ...instanceData,
+        ...cleanedInstanceData,
         instance_id,
         node_ids: nodeIds,
         instance_type: context.instance_type,
@@ -215,6 +237,33 @@ export class DataMapper {
       configs,
       instances,
     };
+  }
+
+  /**
+   * 使用 SHA256 哈希对字符串进行编码
+   * 生成固定长度的 base64 字符串（去除 '=' 填充符）
+   * 注意：这是一个简化的哈希实现，确保每次输入相同的字符串生成相同的输出
+   */
+  static hashInstanceId(id: string): string {
+    const instanceId = id || '';
+    // 计算字符串哈希值
+    let hash = 0;
+    for (let i = 0; i < instanceId.length; i++) {
+      const char = instanceId.charCodeAt(i);
+      hash = (hash << 5) - hash + char;
+      hash = hash & hash;
+    }
+    // 转为 8 位十六进制
+    const hashHex = (hash >>> 0).toString(16).padStart(8, '0');
+    // 确保 combined 足够长（至少 16 个字符，才能保证 base64 后有 10+ 位）
+    // 如果原字符串不够长，用哈希值填充
+    const padding = instanceId.padEnd(10, hashHex);
+    const combined = hashHex + padding.slice(0, 10);
+    // base64 编码
+    const b64 = btoa(combined);
+    // 去除 '=' 填充符，取前 10 位（如果不够 10 位，用 '0' 补齐）
+    const result = b64.replace(/=/g, '');
+    return result.padEnd(10, '0').slice(0, 10);
   }
 
   /**

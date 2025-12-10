@@ -30,6 +30,7 @@ export interface ChatProps extends WebChatConfig {
   agui?: AGUIConfig;
   showFullscreenButton?: boolean;
   showClearButton?: boolean;
+  apiKey?: string;
 }
 
 const defaultBotAvatar = 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMzIiIGhlaWdodD0iMzIiIHZpZXdCb3g9IjAgMCAzMiAzMiIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KICA8Y2lyY2xlIGN4PSIxNiIgY3k9IjE2IiByPSIxNiIgZmlsbD0iIzgxODVmZiIvPgogIDxjaXJjbGUgY3g9IjExIiBjeT0iMTIiIHI9IjIiIGZpbGw9IndoaXRlIi8+CiAgPGNpcmNsZSBjeD0iMjEiIGN5PSIxMiIgcj0iMiIgZmlsbD0id2hpdGUiLz4KICA8cGF0aCBkPSJNIDEwIDIwIFEgMTYgMjQgMjIgMjAiIHN0cm9rZT0id2hpdGUiIHN0cm9rZS13aWR0aD0iMiIgc3Ryb2tlLWxpbmVjYXA9InJvdW5kIiBmaWxsPSJub25lIi8+Cjwvc3ZnPg==';
@@ -59,6 +60,7 @@ export const Chat = React.forwardRef<any, ChatProps>((props, ref) => {
     agui,
     showFullscreenButton = true,
     showClearButton = false,
+    apiKey,
   } = props;
 
   // State
@@ -368,12 +370,18 @@ export const Chat = React.forwardRef<any, ChatProps>((props, ref) => {
         };
         
         // Use fetch with POST to send message and stream response
+        const headers: HeadersInit = {
+          'Content-Type': 'application/json',
+        };
+        
+        // Add Authorization header if apiKey is provided
+        if (apiKey) {
+          headers['Authorization'] = `Bearer ${apiKey}`;
+        }
+        
         const response = await fetch(sseUrl, {
           method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            "AUTHORIZATION": "Bearer c96a6f28add4ecf7f59a49cc7e7af2b1ebc7444b745319ccb60a9203421da405"
-          },
+          headers,
           body: JSON.stringify(requestBody),
         });
 

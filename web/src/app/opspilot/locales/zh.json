@@ -647,6 +647,7 @@
     "deleteConfirm": "你确定要删除选中的智能体吗？"
   },
   "chatflow": {
+    "applications": "应用",
     "nodeConfig": {
       "paramName": "参数名",
       "fileDeleted": "文件删除成功",
@@ -761,7 +762,16 @@
       "appTagBusiness": "商务",
       "enterAppDescription": "输入应用描述",
       "appName": "应用名称",
-      "pleaseSelectAppTags": "请选择应用标签"
+      "pleaseSelectAppTags": "请选择应用标签",
+      "appTagAutomation": "自动化",
+      "appTagSecurityAudit": "安全审计",
+      "webAccessAddress": "Web 访问地址",
+      "appTagOpsPlanning": "运维规划",
+      "pleaseSelectAppIcon": "请选择应用图标",
+      "appTagMonitorAlarm": "监控告警",
+      "appTagRoutineOps": "日常运维",
+      "appIcon": "应用图标",
+      "appTagPerformanceAnalysis": "性能分析"
     },
     "collapseSidebar": "收缩侧边栏",
     "messages": {
@@ -812,7 +822,7 @@
     "condition": "条件分支",
     "httpMethod": "HTTP方法",
     "export": "导出",
-    "wechatOfficial": "公众号触发",
+    "wechatOfficial": "公众号",
     "email": "邮件",
     "leaveWithoutSaving": "直接离开",
     "library": "库",
@@ -831,7 +841,7 @@
     },
     "fetchNotificationChannelsFailed": "获取通知渠道失败",
     "zoom": "缩放",
-    "dingtalk": "钉钉触发",
+    "dingtalk": "钉钉",
     "pleaseEnterNotificationTitle": "请输入通知标题",
     "version": "版本",
     "debug": "调试",
@@ -845,7 +855,7 @@
     "agui": "AG-UI",
     "triggerConfigs": "触发器配置",
     "notificationRecipients": "通知人",
-    "enterpriseWechat": "企微触发",
+    "enterpriseWechat": "企微",
     "celery": "定时触发",
     "enterNotificationTitle": "请输入通知标题",
     "save": "保存工作流",

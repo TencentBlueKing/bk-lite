@@ -141,6 +141,7 @@ export const usePluginFromJson = () => {
                 instance_id: config.instance_id,
                 config_type_field: config.config_type_field,
                 formFields: formFields,
+                tableColumns: config.table_columns,
               }
             );
           },

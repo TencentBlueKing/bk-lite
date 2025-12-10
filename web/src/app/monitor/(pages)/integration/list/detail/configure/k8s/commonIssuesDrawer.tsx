@@ -39,32 +39,7 @@ const CommonIssuesDrawer = forwardRef<DrawerRef, CommonIssuesDrawerProps>(
         id: 2,
         title: 'Pod 无法连接 NATS 服务',
         reason: '网络不通或认证证书错误',
-        solutions: [
-          '检查 NATS 服务地址是否正确',
-          '验证网络连通性：在 Pod 中执行 ping 或 telnet 测试',
-          '检查用户名和密码是否正确',
-          '查看 Pod 日志获取详细错误信息',
-        ],
-      },
-      {
-        id: 3,
-        title: 'CA 证书验证失败',
-        reason: 'CA 证书文件错误或过期',
-        solutions: [
-          '重新从 BK-Lite 平台获取最新的 CA 证书',
-          '确保证书文件格式正确（PEM 格式）',
-          '重新创建 Secret',
-        ],
-      },
-      {
-        id: 4,
-        title: '数据未在 BK-Lite 平台显示',
-        reason: '集群标识配置错误或数据传输失败',
-        solutions: [
-          '检查集群名称、云区域等配置是否正确',
-          '查看采集器 Pod 日志确认数据上报状态',
-          '验证 NATS 连接和认证是否成功',
-        ],
+        solutions: ['查看 Pod 日志获取详细错误信息'],
       },
     ];
 

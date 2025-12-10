@@ -19,7 +19,11 @@ import Icon from '@/components/icon';
 
 const TOUR_VIEWED_KEY_PREFIX = 'tour_viewed';
 
-const TopMenu = () => {
+interface TopMenuProps {
+  hideMainMenu?: boolean;
+}
+
+const TopMenu: React.FC<TopMenuProps> = ({ hideMainMenu }) => {
   const { t } = useTranslation();
   const { menus: menuItems } = usePermissions();
   const pathname = usePathname();
@@ -255,62 +259,64 @@ const TopMenu = () => {
           <UserInfo />
         </div>
       </div>
-      <div className="absolute left-1/2 top-1/2 transform -translate-x-1/2 -translate-y-1/2">
-        <div
-          className="flex items-center space-x-4 overflow-x-auto"
-          style={{ whiteSpace: 'nowrap' }}
-        >
-          {menuItems
-            .filter((item: MenuItem) => item.url && !item.isNotMenuItem)
-            .map((item: MenuItem) => {
-              // Find the matched menu path to determine active state
-              const matchedPath = pathname ? findMatchedMenuPath(menuItems, pathname) : null;
-              const isActive = matchedPath && matchedPath.length > 0 && matchedPath[0].url === item.url;
+      {!hideMainMenu && (
+        <div className="absolute left-1/2 top-1/2 transform -translate-x-1/2 -translate-y-1/2">
+          <div
+            className="flex items-center space-x-4 overflow-x-auto"
+            style={{ whiteSpace: 'nowrap' }}
+          >
+            {menuItems
+              .filter((item: MenuItem) => item.url && !item.isNotMenuItem)
+              .map((item: MenuItem) => {
+                // Find the matched menu path to determine active state
+                const matchedPath = pathname ? findMatchedMenuPath(menuItems, pathname) : null;
+                const isActive = matchedPath && matchedPath.length > 0 && matchedPath[0].url === item.url;
 
-              if (isOtherMode && item.name === 'experience') {
+                if (isOtherMode && item.name === 'experience') {
+
+                  return (
+                    <Popover
+                      key={item.url}
+                      content={renderSubMenuPanel}
+                      trigger="hover"
+                      placement="bottom"
+                      overlayClassName="top-menu-submenu-popover"
+                      className='z-40'
+                    >
+                      <div>
+                        <Link
+                          href={"#"}
+                          prefetch={false} legacyBehavior>
+                          <a
+                            ref={menuRefs.current[item.url] || null}
+                            id={item.name}
+                            className={`px-3 py-2 rounded-[10px] flex items-center ${styles.menuCol} ${isActive ? styles.active : ''}`}
+                          >
+                            <Icon type={item.icon} className="mr-2 w-4 h-4" />
+                            {item.title}
+                          </a>
+                        </Link>
+                      </div>
+                    </Popover>
+                  );
+                }
 
                 return (
-                  <Popover
-                    key={item.url}
-                    content={renderSubMenuPanel}
-                    trigger="hover"
-                    placement="bottom"
-                    overlayClassName="top-menu-submenu-popover"
-                    className='z-40'
-                  >
-                    <div>
-                      <Link
-                        href={"#"}
-                        prefetch={false} legacyBehavior>
-                        <a
-                          ref={menuRefs.current[item.url] || null}
-                          id={item.name}
-                          className={`px-3 py-2 rounded-[10px] flex items-center ${styles.menuCol} ${isActive ? styles.active : ''}`}
-                        >
-                          <Icon type={item.icon} className="mr-2 w-4 h-4" />
-                          {item.title}
-                        </a>
-                      </Link>
-                    </div>
-                  </Popover>
+                  <Link key={item.url} href={item.url} prefetch={false} legacyBehavior>
+                    <a
+                      ref={menuRefs.current[item.url] || null}
+                      id={item.name}
+                      className={`px-3 py-2 rounded-[10px] flex items-center ${styles.menuCol} ${isActive ? styles.active : ''}`}
+                    >
+                      <Icon type={item.icon} className="mr-2 w-4 h-4" />
+                      {item.title}
+                    </a>
+                  </Link>
                 );
-              }
-
-              return (
-                <Link key={item.url} href={item.url} prefetch={false} legacyBehavior>
-                  <a
-                    ref={menuRefs.current[item.url] || null}
-                    id={item.name}
-                    className={`px-3 py-2 rounded-[10px] flex items-center ${styles.menuCol} ${isActive ? styles.active : ''}`}
-                  >
-                    <Icon type={item.icon} className="mr-2 w-4 h-4" />
-                    {item.title}
-                  </a>
-                </Link>
-              );
-            })}
+              })}
+          </div>
         </div>
-      </div>
+      )}
       <Tour
         open={tourOpen}
         onClose={handleCloseTour}

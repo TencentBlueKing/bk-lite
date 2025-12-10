@@ -28,8 +28,9 @@ class VmwareNodeParams(BaseNodeParams):
         生成 vmware vc 的凭据
         """
         credential_data = {
+            # "password": self.credential.get("password"),
             "username": self.credential.get("username"),
-            "password": self.credential.get("password"),
+            "password": "${PASSWORD_password}",
             "port": self.credential.get("port", 443),
             "ssl": str(self.credential.get("ssl", False)).lower(),
         }
@@ -40,3 +41,11 @@ class VmwareNodeParams(BaseNodeParams):
         获取实例 id
         """
         return f"{self.instance.id}_{instance['inst_name']}"
+
+    @property
+    def env_config(self, *args, **kwargs):
+        env_config = {
+            "$PASSWORD_password": self.credential.get("password"),
+        }
+        return env_config
+
