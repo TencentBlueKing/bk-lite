@@ -181,7 +181,6 @@ class CollectModels(MaintainerInfo, TimeInfo):
                     continue
                 # 加密明文密码
                 self.credential[encrypted_field] = self.encrypt_password(password)
-        print(self.credential)
         super().save(*args, **kwargs)
 
 
