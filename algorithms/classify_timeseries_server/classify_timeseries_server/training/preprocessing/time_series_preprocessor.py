@@ -1,6 +1,7 @@
 """时间序列数据预处理器
 
 从 sarima_trainer.preprocess() 提取并增强的预处理逻辑。
+简化版本：只做数据清洗，不做数据缩放。
 """
 
 from typing import Optional, Tuple
@@ -10,7 +11,7 @@ from loguru import logger
 
 
 class TimeSeriesPreprocessor:
-    """时间序列专用预处理器
+    """时间序列数据预处理器（纯清洗，不缩放）
     
     核心功能：
     1. 时间列标准化和排序
@@ -20,8 +21,12 @@ class TimeSeriesPreprocessor:
     
     原则：
     - 最小干预：只处理必要的数据质量问题
-    - 保留异常：不削平极值（SARIMA 有鲁棒性）
+    - 保留异常：不削平极值
     - 尊重时间：使用前向填充，不用全局统计
+    - 无状态：每次调用独立处理，不记录历史
+    
+    注意：数据缩放（标准化/归一化）应该由模型内部决定，
+         不在预处理阶段进行。决策树模型（如 GBR）不需要缩放。
     """
     
     def __init__(self, 
@@ -49,27 +54,32 @@ class TimeSeriesPreprocessor:
             f"handle_missing={handle_missing}"
         )
     
-    def preprocess(
-        self, 
-        df: pd.DataFrame, 
-        frequency: Optional[str] = None
-    ) -> Tuple[pd.DataFrame, Optional[str]]:
-        """完整的数据预处理流程
+    def clean(self, 
+              df: pd.DataFrame, 
+              frequency: Optional[str] = None) -> Tuple[pd.Series, Optional[str]]:
+        """清洗时间序列数据（无状态，一步到位）
         
         Args:
             df: 原始数据框，必须包含 'date' 和 'value' 列
             frequency: 时间频率（'5min', 'H', 'D' 等），None 则自动推断
             
         Returns:
-            (处理后的DataFrame, 推断的频率)
+            (清洗后的Series, 推断的频率)
+            - Series: 带 DatetimeIndex 的 value 序列
+            - frequency: 推断的时间频率字符串，如 'D', 'H', '5min' 等
             
         Raises:
             ValueError: 数据格式不正确或质量不足
+            
+        示例:
+            >>> preprocessor = TimeSeriesPreprocessor()
+            >>> clean_series, freq = preprocessor.clean(raw_df)
+            >>> print(f"数据点: {len(clean_series)}, 频率: {freq}")
         """
         if df is None or df.empty:
             raise ValueError("输入数据为空")
         
-        logger.info("开始数据预处理...")
+        logger.info("开始数据清洗...")
         
         df = df.copy()
         
@@ -82,20 +92,24 @@ class TimeSeriesPreprocessor:
         # 3. 排序和去重
         df = self._sort_and_deduplicate(df)
         
-        # 4. 设置时间索引，推断频率
+        # 4. 设置时间索引
         df = df.set_index("date")
-        frequency = self._infer_frequency(df, frequency)
         
-        # 5. 缺失值处理
+        # 5. 推断频率
+        inferred_freq = self._infer_frequency(df, frequency)
+        
+        # 6. 缺失值处理
         df = self._handle_missing_values(df)
         
-        # 6. 重置索引（返回 date 列）
-        df = df.reset_index()
+        logger.info(
+            f"数据清洗完成 - 数据点: {len(df)}, "
+            f"频率: {inferred_freq or '未知'}"
+        )
         
-        logger.info(f"预处理完成 - 数据点: {len(df)}, 频率: {frequency or '未知'}")
-        
-        return df, frequency
+        return df['value'], inferred_freq
     
+    def _validate_columns(self, df: pd.DataFrame):
+        """验证必需的列"""
     def _validate_columns(self, df: pd.DataFrame):
         """验证必需的列"""
         if 'date' not in df.columns:

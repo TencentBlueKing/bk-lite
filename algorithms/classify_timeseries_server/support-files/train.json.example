@@ -4,42 +4,101 @@
   
   "model": {
     "type": "sarima",
-    "_type_options": ["sarima", "prophet", "xgboost", "lstm"],
+    "_type_options": ["sarima", "gradient_boosting", "prophet", "xgboost", "lstm"],
     "name": "sarima_model_v1",
     "version": "1.0.0"
   },
   
   "hyperparams": {
-    "search": {
-      "enabled": false,
-      "_comment": "启用后将进行超参数搜索，忽略 fixed 中的配置",
-      "max_evals": 50,
-      "metric": "rmse",
-      "_metric_options": ["rmse", "mae", "mape"],
-      "search_space": {
-        "_comment": "仅当 enabled=true 时生效",
-        "order": {
-          "p": [0, 1, 2],
-          "d": [0, 1, 2],
-          "q": [0, 1, 2]
+    "_comment": "超参数配置，按模型类型分别配置",
+    
+    "sarima": {
+      "search": {
+        "enabled": false,
+        "_comment": "启用后将进行超参数搜索，忽略 fixed 中的配置",
+        "max_evals": 50,
+        "metric": "rmse",
+        "_metric_options": ["rmse", "mae", "mape"],
+        "early_stopping": {
+          "enabled": false,
+          "patience": 15,
+          "_patience_desc": "多少次评估无改善后停止",
+          "loss_cap_multiplier": 5.0,
+          "_loss_cap_multiplier_desc": "异常loss上限 = std * multiplier"
         },
-        "seasonal_order": {
-          "P": [0, 1, 2],
-          "D": [0, 1],
-          "Q": [0, 1, 2],
-          "s": [12, 24, 7]
-        },
-        "trend": ["n", "c", "t", "ct"]
+        "search_space": {
+          "_comment": "仅当 enabled=true 时生效",
+          "order": {
+            "p": [0, 1, 2],
+            "d": [0, 1, 2],
+            "q": [0, 1, 2]
+          },
+          "seasonal_order": {
+            "P": [0, 1, 2],
+            "D": [0, 1],
+            "Q": [0, 1, 2],
+            "s": [12, 24, 7]
+          },
+          "trend": ["n", "c", "t", "ct"]
+        }
+      },
+      "fixed": {
+        "_comment": "固定超参数（当 search.enabled=false 时使用）",
+        "order": [1, 1, 1],
+        "_order_desc": "[p, d, q] - AR阶数, 差分阶数, MA阶数",
+        "seasonal_order": [1, 1, 1, 12],
+        "_seasonal_order_desc": "[P, D, Q, s] - 季节性AR, 季节性差分, 季节性MA, 季节周期",
+        "trend": "c",
+        "_trend_options": ["n=无趋势", "c=常数", "t=线性", "ct=常数+线性"]
       }
     },
-    "fixed": {
-      "_comment": "固定超参数（当 search.enabled=false 时使用）",
-      "order": [1, 1, 1],
-      "_order_desc": "[p, d, q] - AR阶数, 差分阶数, MA阶数",
-      "seasonal_order": [1, 1, 1, 12],
-      "_seasonal_order_desc": "[P, D, Q, s] - 季节性AR, 季节性差分, 季节性MA, 季节周期",
-      "trend": "c",
-      "_trend_options": ["n=无趋势", "c=常数", "t=线性", "ct=常数+线性"]
+    
+    "gradient_boosting": {
+      "search": {
+        "enabled": false,
+        "_comment": "启用后将进行超参数搜索，忽略 fixed 中的配置",
+        "max_evals": 50,
+        "metric": "rmse",
+        "_metric_options": ["rmse", "mae", "mape"],
+        "early_stopping": {
+          "enabled": false,
+          "patience": 15,
+          "_patience_desc": "多少次评估无改善后停止",
+          "loss_cap_multiplier": 5.0,
+          "_loss_cap_multiplier_desc": "异常loss上限 = std * multiplier"
+        },
+        "search_space": {
+          "_comment": "仅当 enabled=true 时生效",
+          "n_estimators": [50, 100, 200, 300],
+          "_n_estimators_desc": "树的数量，越多越容易过拟合",
+          "learning_rate": [0.01, 0.05, 0.1, 0.2],
+          "_learning_rate_desc": "学习率，与 n_estimators 需权衡",
+          "max_depth": [3, 5, 7, 10],
+          "_max_depth_desc": "树的最大深度，越深越容易过拟合",
+          "min_samples_split": [2, 5, 10],
+          "_min_samples_split_desc": "分裂所需最小样本数，防止过拟合",
+          "min_samples_leaf": [1, 2, 4],
+          "_min_samples_leaf_desc": "叶节点最小样本数，防止过拟合",
+          "subsample": [0.7, 0.8, 0.9, 1.0],
+          "_subsample_desc": "子采样比例，<1.0 可防止过拟合",
+          "lag_features": [6, 12, 18, 24],
+          "_lag_features_desc": "滞后特征数量，影响特征工程"
+        }
+      },
+      "fixed": {
+        "_comment": "固定超参数（当 search.enabled=false 时使用）",
+        "n_estimators": 100,
+        "learning_rate": 0.1,
+        "max_depth": 3,
+        "min_samples_split": 2,
+        "min_samples_leaf": 1,
+        "subsample": 1.0,
+        "lag_features": 12,
+        "random_state": 42,
+        "_random_state_desc": "随机种子，保证可复现性（不参与搜索）",
+        "use_feature_engineering": true,
+        "_use_feature_engineering_desc": "是否使用完整特征工程（不参与搜索）"
+      }
     }
   },
   

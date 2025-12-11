@@ -30,7 +30,7 @@ class ModelConfig(BaseModel):
 def get_model_config() -> ModelConfig:
     """从环境变量加载模型配置."""
     return ModelConfig(
-        source=os.getenv("MODEL_SOURCE", "dummy"),
+        source=os.getenv("MODEL_SOURCE", "mlflow"),
         model_path=os.getenv("MODEL_PATH"),
         mlflow_tracking_uri=os.getenv("MLFLOW_TRACKING_URI"),
         mlflow_model_uri=os.getenv("MLFLOW_MODEL_URI"),

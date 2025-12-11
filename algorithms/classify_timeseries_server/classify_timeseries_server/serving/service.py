@@ -2,6 +2,10 @@
 
 import bentoml
 from loguru import logger
+import mlflow
+import os
+
+import mlflow.sklearn
 
 from .config import get_model_config
 from .exceptions import ModelInferenceError
@@ -69,12 +73,19 @@ class MLService:
         logger.info("=== Cleanup completed ===")
 
     @bentoml.api
-    async def predict(self, request: PredictRequest) -> PredictResponse:
+    async def predict(
+        self,
+        model_name: str,
+        model_version: int,
+        steps: int
+    ) -> PredictResponse:
         """
         预测接口.
 
         Args:
-            request: 预测请求
+            model_name: 模型名称
+            model_version: 模型版本
+            steps: 预测步数
 
         Returns:
             预测响应
@@ -82,40 +93,84 @@ class MLService:
         Raises:
             ModelInferenceError: 模型推理失败
         """
-        logger.info(f"Received prediction request: {request.features}")
+        import time
+        import pandas as pd
+        
+        request_start = time.time()
+        logger.info(f"Received prediction request: model_name={model_name}, version={model_version}, steps={steps}")
 
         try:
-            with prediction_duration.labels(model_source=self.config.source).time():
-                # 调用模型预测
-                if hasattr(self.model, "predict"):
-                    # Dummy model or sklearn-like interface
-                    prediction = self.model.predict(request.features)
-                else:
-                    # MLflow pyfunc interface
-                    import pandas as pd
+            # 1. 加载配置
+            config_start = time.time()
+            config = get_model_config()
+            mlflow_tracking_uri = config.mlflow_tracking_uri
+            if not mlflow_tracking_uri:
+                # raise ModelInferenceError("MLFLOW_TRACKING_URI environment variable not set")
+                logger.debug("MLFLOW_TRACKING_URI environment variable not set")
+                mlflow_tracking_uri = "http://localhost:15000"
+            
+            mlflow.set_tracking_uri(mlflow_tracking_uri)
+            logger.info(f"⏱️  Config loaded in {time.time() - config_start:.3f}s")
+            
+            # 2. 加载模型
+            model_uri = f"models:/{model_name}/{model_version}"
+            logger.info(f"Loading model from: {model_uri}")
+            load_start = time.time()
+            model = mlflow.pyfunc.load_model(model_uri)
+            load_time = time.time() - load_start
+            logger.info(f"⏱️  Model loaded in {load_time:.3f}s")
 
-                    df = pd.DataFrame([request.features])
-                    prediction = self.model.predict(df)[0]
+            # 3. 执行预测
+            predict_start = time.time()
+            prediction = model.predict(pd.DataFrame({
+                'steps': [steps]
+            }))
+            predict_time = time.time() - predict_start
+            logger.info(f"⏱️  Prediction executed in {predict_time:.3f}s")
+            
+            # 4. 构造响应
+            response = PredictResponse(
+                prediction=prediction.tolist()  # 转换为列表
+            )
+            
+            # 总耗时统计
+            total_time = time.time() - request_start
+            logger.info(
+                f"⏱️  Total request time: {total_time:.3f}s "
+                f"(config: {time.time() - config_start:.3f}s, load: {load_time:.3f}s, predict: {predict_time:.3f}s)"
+            )
+            
+            # with prediction_duration.labels(model_source=self.config.source).time():
+            #     # 调用模型预测
+            #     if hasattr(self.model, "predict"):
+            #         # Dummy model or sklearn-like interface
+            #         prediction = self.model.predict(request.features)
+            #     else:
+            #         # MLflow pyfunc interface
+            #         import pandas as pd
 
-                # 构造响应
-                response = PredictResponse(
-                    prediction=float(prediction),
-                    model_version=getattr(self.model, "version", "unknown"),
-                    source=self.config.source,
-                )
+            #         df = pd.DataFrame([request.features])
+            #         prediction = self.model.predict(df)[0]
 
-            prediction_counter.labels(
-                model_source=self.config.source,
-                status="success",
-            ).inc()
-            logger.info(f"Prediction successful: {response.prediction}")
+            #     # 构造响应
+            #     response = PredictResponse(
+            #         prediction=float(prediction),
+            #         model_version=getattr(self.model, "version", "unknown"),
+            #         source=self.config.source,
+            #     )
+
+            # prediction_counter.labels(
+            #     model_source=self.config.source,
+            #     status="success",
+            # ).inc()
+            logger.info(f"Prediction successful: {response}")
             return response
 
         except Exception as e:
-            prediction_counter.labels(
-                model_source=self.config.source,
-                status="failure",
-            ).inc()
+            # prediction_counter.labels(
+            #     model_source=self.config.source,
+            #     status="failure",
+            # ).inc()
             logger.error(f"Prediction failed: {e}")
             raise ModelInferenceError(
                 f"Model inference failed: {str(e)}") from e

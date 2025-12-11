@@ -15,6 +15,17 @@ DEFAULT_CONFIG = {
             "enabled": False,
             "max_evals": 50,
             "metric": "rmse",
+            "auto_tune": True,
+            "early_stopping": {
+                "enabled": True,
+                "min_evals": 20,
+                "min_evals_ratio": 0.2,
+                "patience": 15,
+                "min_improvement_pct": 1.0,
+                "exploration_ratio": 0.3,
+                "exploration_boost": 1.5,
+                "loss_cap_multiplier": 5.0
+            },
             "search_space": {
                 "order": {
                     "p": [0, 1, 2],
@@ -25,7 +36,7 @@ DEFAULT_CONFIG = {
                     "P": [0, 1, 2],
                     "D": [0, 1],
                     "Q": [0, 1, 2],
-                    "s": [12, 24, 7]
+                    "s": [12]
                 },
                 "trend": ["n", "c", "t", "ct"]
             }

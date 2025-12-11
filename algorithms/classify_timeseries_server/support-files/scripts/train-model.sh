@@ -4,7 +4,8 @@
 # 
 # 用法: ./train-model.sh [BUCKET_NAME] [DATASET_NAME]
 # 示例: ./train-model.sh my-bucket timeseries_data.zip
-
+# exec > >(tee log_file.txt) 2>&1
+# set -x
 set -e  # 遇到错误立即退出
 
 # ==================== 配置参数 ====================
@@ -17,7 +18,7 @@ EXTRACT_DIR="${EXTRACT_DIR:-${SCRIPT_DIR}/data/datasets}"
 CONFIG_FILE="${CONFIG_FILE:-${SCRIPT_DIR}/train.json}"
 
 # 训练配置
-ALGORITHM="${ALGORITHM:-sarima}"  # 模型算法: sarima, prophet, xgboost, lstm
+ALGORITHM="${ALGORITHM:-sarima}"  # 模型算法: sarima, gradient_boosting, prophet, xgboost, lstm
 
 # MLflow 配置
 MLFLOW_TRACKING_URI="${MLFLOW_TRACKING_URI:-http://127.0.0.1:15000}"
@@ -25,7 +26,7 @@ MLFLOW_EXPERIMENT_NAME="${MLFLOW_EXPERIMENT_NAME:-timeseries_${ALGORITHM}_test}"
 MODEL_NAME="${MODEL_NAME:-timeseries_${ALGORITHM}_model}"
 
 # 超参数优化配置
-MAX_EVALS="${MAX_EVALS:-50}"  # 0 = 不优化，>0 = 优化轮次
+MAX_EVALS="${3:-${MAX_EVALS:-50}}"  # 0 = 不优化，>0 = 优化轮次
 OPTIMIZATION_METRIC="${OPTIMIZATION_METRIC:-rmse}"  # 优化目标指标
 
 # ==================== 函数定义 ====================
@@ -84,42 +85,12 @@ fi
 
 # ==================== 准备训练配置文件 ====================
 if [ ! -f "${CONFIG_FILE}" ]; then
-    log_info "未找到配置文件，创建默认训练配置: ${CONFIG_FILE}"
-    cat > "${CONFIG_FILE}" <<EOF
-{
-    "model": {
-        "type": "${ALGORITHM}",
-        "name": "${MODEL_NAME}"
-    },
-    "hyperparams": {
-        "sarima": {
-            "order": [1, 1, 1],
-            "seasonal_order": [1, 1, 1, 12],
-            "trend": "c"
-        },
-        "search": {
-            "enabled": $([ "${MAX_EVALS}" -gt 0 ] && echo "true" || echo "false"),
-            "max_evals": ${MAX_EVALS},
-            "metric": "${OPTIMIZATION_METRIC}"
-        }
-    },
-    "training": {
-        "test_size": 0.2,
-        "random_state": 42
-    },
-    "preprocessing": {
-        "missing_handler": "interpolate",
-        "max_missing_ratio": 0.3
-    },
-    "mlflow": {
-        "tracking_uri": "${MLFLOW_TRACKING_URI}",
-        "experiment_name": "${MLFLOW_EXPERIMENT_NAME}",
-        "model_name": "${MODEL_NAME}"
-    }
-}
-EOF
-    log_info "配置文件创建成功"
+    log_error "配置文件不存在: ${CONFIG_FILE}"
+    log_error "请确保 train.json 文件存在"
+    exit 1
 fi
+
+log_info "使用配置文件: ${CONFIG_FILE}"
 
 # ==================== 训练模型 ====================
 log_info "开始训练时间序列模型..."

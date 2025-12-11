@@ -45,7 +45,7 @@ def _load_from_mlflow(config: ModelConfig) -> Any:
         import mlflow
 
         if config.mlflow_tracking_uri:
-            mlflow.set_tracking_uri(config.mlflow_tracking_uri)
+            mlflow.set_tracking_uri(config.mlflow_tracksing_uri)
             logger.info(f"MLflow tracking URI: {config.mlflow_tracking_uri}")
 
         logger.info(f"Loading MLflow model: {config.mlflow_model_uri}")
