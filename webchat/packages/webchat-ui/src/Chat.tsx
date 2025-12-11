@@ -69,10 +69,9 @@ export const Chat = React.forwardRef<any, ChatProps>((props, ref) => {
   const [isLoading, setIsLoading] = useState(false);
   const [isThinking, setIsThinking] = useState(false);
   const [currentMessageId, setCurrentMessageId] = useState<string | null>(null);
-  const [streamingContent, setStreamingContent] = useState<string>('');
-  const [toolCalls, setToolCalls] = useState<ToolCall[]>([]);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [showClearConfirm, setShowClearConfirm] = useState(false);
+  const [uploadedImages, setUploadedImages] = useState<string[]>([]);
 
   // Refs
   const sessionManagerRef = useRef<SessionManager | null>(null);
@@ -119,11 +118,9 @@ export const Chat = React.forwardRef<any, ChatProps>((props, ref) => {
     const session = sessionManagerRef.current.initSession();
     if (session && session.messages.length > 0) {
       setMessages(session.messages);
-      console.log('📋 Loaded', session.messages.length, 'messages from session');
     }
 
     return () => {
-      console.log('🧹 Chat component unmounting - cleaning up');
       sseHandlerRef.current?.disconnect();
       // 注意：组件卸载时不清理 sessionManager，保留历史记录
     };
@@ -146,6 +143,12 @@ export const Chat = React.forwardRef<any, ChatProps>((props, ref) => {
       case 'RUN_STARTED':
         setIsThinking(true);
         stateMachineRef.current?.transition('chatting');
+        
+        streamingContentRef.current = '';
+        currentMessageIdRef.current = null;
+        setCurrentMessageId(null);
+        setIsLoading(true);
+        
         break;
 
       case 'THINKING_START':
@@ -160,53 +163,129 @@ export const Chat = React.forwardRef<any, ChatProps>((props, ref) => {
         setIsThinking(false);
         setIsLoading(false);
         const error = (event as any).error || 'Unknown error';
-        const errorMsg: Message = {
-          id: generateId(),
-          type: 'text',
-          content: `❌ **错误**\n\n${error}`,
-          sender: 'bot',
-          timestamp: Date.now(),
-        };
-        addMessage(errorMsg);
+        const errorContent = `\n\n❌ **错误**: ${error}`;
+        
+        // 如果有当前消息，追加错误信息到末尾
+        if (currentMessageIdRef.current) {
+          streamingContentRef.current += errorContent;
+          
+          setMessages((prev) => {
+            return prev.map(msg => {
+              if (msg.id === currentMessageIdRef.current) {
+                const chunks = msg.metadata?.contentChunks || [];
+                const lastChunk = chunks[chunks.length - 1];
+                
+                let newChunks;
+                if (lastChunk && lastChunk.type === 'text') {
+                  newChunks = [
+                    ...chunks.slice(0, -1),
+                    { type: 'text', content: streamingContentRef.current }
+                  ];
+                } else {
+                  newChunks = [
+                    ...chunks,
+                    { type: 'text', content: streamingContentRef.current }
+                  ];
+                }
+                
+                return {
+                  ...msg,
+                  content: streamingContentRef.current,
+                  metadata: {
+                    ...msg.metadata,
+                    contentChunks: newChunks
+                  }
+                };
+              }
+              return msg;
+            });
+          });
+          
+          // 同步更新 session 数据
+          const session = sessionManagerRef.current?.getSession();
+          if (session) {
+            const msgIndex = session.messages.findIndex((m: Message) => m.id === currentMessageIdRef.current);
+            if (msgIndex !== -1) {
+              const chunks = session.messages[msgIndex].metadata?.contentChunks || [];
+              const lastChunk = chunks[chunks.length - 1];
+              
+              let newChunks;
+              if (lastChunk && lastChunk.type === 'text') {
+                newChunks = [
+                  ...chunks.slice(0, -1),
+                  { type: 'text', content: streamingContentRef.current }
+                ];
+              } else {
+                newChunks = [
+                  ...chunks,
+                  { type: 'text', content: streamingContentRef.current }
+                ];
+              }
+              
+              session.messages[msgIndex] = { 
+                ...session.messages[msgIndex], 
+                content: streamingContentRef.current,
+                metadata: {
+                  ...session.messages[msgIndex].metadata,
+                  contentChunks: newChunks
+                }
+              };
+            }
+          }
+          
+          // 保存到 session
+          if (sessionManagerRef.current) {
+            sessionManagerRef.current.saveSession();
+          }
+        } else {
+          // 没有当前消息，创建新的错误消息
+          const errorMsg: Message = {
+            id: generateId(),
+            type: 'text',
+            content: `❌ **错误**\n\n${error}`,
+            sender: 'bot',
+            timestamp: Date.now(),
+          };
+          addMessage(errorMsg);
+        }
         break;
 
       case 'TEXT_MESSAGE_START':
         const startEvent = event as any;
-        const startMessageId = startEvent.messageId || generateId();
         const startRole = startEvent.role || startEvent.sender;
-        
-        console.log('📝 TEXT_MESSAGE_START - messageId:', startMessageId, 'role:', startRole);
         
         // 如果是用户消息，跳过（用户消息已经在发送时添加了）
         if (startRole === 'user') {
-          console.log('⏭️ Skipping user message (already added)');
           break;
         }
         
-        // 清空上一轮状态
+        // 如果还没有创建消息，现在创建
+        if (!currentMessageIdRef.current) {
+          const newAssistantMsg: Message = {
+            id: generateId(),
+            type: 'text',
+            content: '',
+            sender: 'bot',
+            timestamp: Date.now(),
+            metadata: {
+              contentChunks: []
+            },
+          };
+          
+          currentMessageIdRef.current = newAssistantMsg.id;
+          setCurrentMessageId(newAssistantMsg.id);
+          
+          setMessages((prev) => [...prev, newAssistantMsg]);
+          sessionManagerRef.current?.addMessage(newAssistantMsg);
+          onMessageReceived?.(newAssistantMsg);
+          
+        }
+        
+        // 重置当前文本内容累加器
         streamingContentRef.current = '';
-        setToolCalls([]);
         setIsThinking(false);
         setIsLoading(true);
         
-        // 立即创建一个新的助手消息（空内容）
-        const newAssistantMsg: Message = {
-          id: generateId(), // 使用前端生成的 ID，不依赖后端
-          type: 'text',
-          content: '',
-          sender: 'bot',
-          timestamp: Date.now(),
-        };
-        
-        currentMessageIdRef.current = newAssistantMsg.id;
-        setCurrentMessageId(newAssistantMsg.id);
-        
-        // 添加到消息列表
-        setMessages((prev) => [...prev, newAssistantMsg]);
-        sessionManagerRef.current?.addMessage(newAssistantMsg);
-        onMessageReceived?.(newAssistantMsg);
-        
-        console.log('✨ Created new assistant message:', newAssistantMsg.id);
         break;
 
       case 'TEXT_MESSAGE_CONTENT':  // 流式内容输出
@@ -214,11 +293,9 @@ export const Chat = React.forwardRef<any, ChatProps>((props, ref) => {
         const delta = chunkEvent.delta || chunkEvent.content || '';
         const contentRole = chunkEvent.role || chunkEvent.sender;
         
-        console.log('💬 TEXT_MESSAGE_CONTENT - delta:', delta, 'role:', contentRole);
         
         // 如果是用户消息，跳过
         if (contentRole === 'user') {
-          console.log('⏭️ Skipping user message content');
           break;
         }
         
@@ -228,17 +305,47 @@ export const Chat = React.forwardRef<any, ChatProps>((props, ref) => {
           break;
         }
         
+        // 收到第一个内容块时关闭 loading 状态
+        if (streamingContentRef.current === '' && delta) {
+          setIsLoading(false);
+        }
+        
         // 累加内容到 ref
         streamingContentRef.current += delta;
-        console.log('📝 Accumulated content length:', streamingContentRef.current.length);
         
-        // 更新消息内容
+        // 更新消息的 contentChunks，更新或添加最后一个文本 chunk
         setMessages((prev) => {
-          return prev.map(msg =>
-            msg.id === currentMessageIdRef.current
-              ? { ...msg, content: streamingContentRef.current }
-              : msg
-          );
+          return prev.map(msg => {
+            if (msg.id === currentMessageIdRef.current) {
+              const chunks = msg.metadata?.contentChunks || [];
+              const lastChunk = chunks[chunks.length - 1];
+              
+              let newChunks;
+              if (lastChunk && lastChunk.type === 'text') {
+                // 更新最后一个文本 chunk
+                newChunks = [
+                  ...chunks.slice(0, -1),
+                  { type: 'text', content: streamingContentRef.current }
+                ];
+              } else {
+                // 添加新的文本 chunk
+                newChunks = [
+                  ...chunks,
+                  { type: 'text', content: streamingContentRef.current }
+                ];
+              }
+              
+              return {
+                ...msg,
+                content: streamingContentRef.current, // 保留 content 用于复制等操作
+                metadata: {
+                  ...msg.metadata,
+                  contentChunks: newChunks
+                }
+              };
+            }
+            return msg;
+          });
         });
         
         // 同步更新 session（内存中，不保存到 localStorage）
@@ -246,9 +353,29 @@ export const Chat = React.forwardRef<any, ChatProps>((props, ref) => {
         if (session) {
           const msgIndex = session.messages.findIndex((m: Message) => m.id === currentMessageIdRef.current);
           if (msgIndex !== -1) {
+            const chunks = session.messages[msgIndex].metadata?.contentChunks || [];
+            const lastChunk = chunks[chunks.length - 1];
+            
+            let newChunks;
+            if (lastChunk && lastChunk.type === 'text') {
+              newChunks = [
+                ...chunks.slice(0, -1),
+                { type: 'text', content: streamingContentRef.current }
+              ];
+            } else {
+              newChunks = [
+                ...chunks,
+                { type: 'text', content: streamingContentRef.current }
+              ];
+            }
+            
             session.messages[msgIndex] = { 
               ...session.messages[msgIndex], 
-              content: streamingContentRef.current 
+              content: streamingContentRef.current,
+              metadata: {
+                ...session.messages[msgIndex].metadata,
+                contentChunks: newChunks
+              }
             };
           }
         }
@@ -263,43 +390,269 @@ export const Chat = React.forwardRef<any, ChatProps>((props, ref) => {
 
       case 'TOOL_CALL_START':
         const toolStartEvent = event as any;
-        setToolCalls(prev => [...prev, {
+        const newToolCall: ToolCall = {
           id: toolStartEvent.toolCallId,
           name: toolStartEvent.toolCallName || toolStartEvent.name || 'Unknown Tool',
           status: 'running' as const,
-        }]);
+        };
+        
+        // 如果还没有创建消息，现在创建
+        if (!currentMessageIdRef.current) {
+          const newAssistantMsg: Message = {
+            id: generateId(),
+            type: 'text',
+            content: '',
+            sender: 'bot',
+            timestamp: Date.now(),
+            metadata: {
+              contentChunks: []
+            },
+          };
+          
+          currentMessageIdRef.current = newAssistantMsg.id;
+          setCurrentMessageId(newAssistantMsg.id);
+          
+          setMessages((prev) => [...prev, newAssistantMsg]);
+          sessionManagerRef.current?.addMessage(newAssistantMsg);
+          onMessageReceived?.(newAssistantMsg);
+          
+        }
+        
+        // Add tool call as a new separate chunk
+        setMessages((prev) => {
+          return prev.map(msg => {
+            if (msg.id === currentMessageIdRef.current) {
+              const chunks = msg.metadata?.contentChunks || [];
+              
+              // Check if this tool already exists in any chunk to prevent duplicates
+              const toolExists = chunks.some((chunk: any) => 
+                chunk.type === 'toolCalls' && 
+                chunk.toolCalls.some((t: ToolCall) => t.id === newToolCall.id)
+              );
+              
+              if (toolExists) {
+                console.warn('⚠️ Tool call already exists:', newToolCall.id);
+                return msg;
+              }
+              
+              // Add as a new separate chunk for each tool call
+              const newChunks = [
+                ...chunks,
+                { type: 'toolCalls', toolCalls: [newToolCall] }
+              ];
+              
+              return { 
+                ...msg, 
+                metadata: { 
+                  ...msg.metadata, 
+                  contentChunks: newChunks
+                } 
+              };
+            }
+            return msg;
+          });
+        });
+        
+        // Also update session
+        const session1 = sessionManagerRef.current?.getSession();
+        if (session1) {
+          const msgIndex1 = session1.messages.findIndex((m: Message) => m.id === currentMessageIdRef.current);
+          if (msgIndex1 !== -1) {
+            const chunks = session1.messages[msgIndex1].metadata?.contentChunks || [];
+            
+            // Check if this tool already exists to prevent duplicates
+            const toolExists = chunks.some((chunk: any) => 
+              chunk.type === 'toolCalls' && 
+              chunk.toolCalls.some((t: ToolCall) => t.id === newToolCall.id)
+            );
+            
+            if (!toolExists) {
+              // Add as a new separate chunk
+              const newChunks = [
+                ...chunks,
+                { type: 'toolCalls', toolCalls: [newToolCall] }
+              ];
+              
+              session1.messages[msgIndex1].metadata = {
+                ...session1.messages[msgIndex1].metadata,
+                contentChunks: newChunks
+              };
+            }
+          }
+        }
         break;
 
       case 'TOOL_CALL_ARGS':
         const toolArgsEvent = event as any;
-        setToolCalls(prev => prev.map(tool =>
-          tool.id === toolArgsEvent.toolCallId
-            ? { ...tool, args: toolArgsEvent.delta || toolArgsEvent.arguments }
-            : tool
-        ));
+        setMessages((prev) => {
+          return prev.map(msg => {
+            if (msg.id === currentMessageIdRef.current && msg.metadata?.contentChunks) {
+              const chunks = msg.metadata.contentChunks;
+              const newChunks = chunks.map((chunk: any) => {
+                if (chunk.type === 'toolCalls') {
+                  return {
+                    ...chunk,
+                    toolCalls: chunk.toolCalls.map((tool: ToolCall) =>
+                      tool.id === toolArgsEvent.toolCallId
+                        ? { ...tool, args: toolArgsEvent.delta || toolArgsEvent.arguments }
+                        : tool
+                    )
+                  };
+                }
+                return chunk;
+              });
+              
+              return {
+                ...msg,
+                metadata: {
+                  ...msg.metadata,
+                  contentChunks: newChunks
+                }
+              };
+            }
+            return msg;
+          });
+        });
+        
+        // Also update session
+        const session2 = sessionManagerRef.current?.getSession();
+        if (session2) {
+          const msgIndex2 = session2.messages.findIndex((m: Message) => m.id === currentMessageIdRef.current);
+          if (msgIndex2 !== -1 && session2.messages[msgIndex2].metadata?.contentChunks) {
+            const chunks = session2.messages[msgIndex2].metadata.contentChunks;
+            session2.messages[msgIndex2].metadata.contentChunks = chunks.map((chunk: any) => {
+              if (chunk.type === 'toolCalls') {
+                return {
+                  ...chunk,
+                  toolCalls: chunk.toolCalls.map((tool: ToolCall) =>
+                    tool.id === toolArgsEvent.toolCallId
+                      ? { ...tool, args: toolArgsEvent.delta || toolArgsEvent.arguments }
+                      : tool
+                  )
+                };
+              }
+              return chunk;
+            });
+          }
+        }
         break;
 
       case 'TOOL_CALL_END':
         const toolEndEvent = event as any;
-        setToolCalls(prev => prev.map(tool =>
-          tool.id === toolEndEvent.toolCallId
-            ? { ...tool, status: 'completed' as const }
-            : tool
-        ));
+        setMessages((prev) => {
+          return prev.map(msg => {
+            if (msg.id === currentMessageIdRef.current && msg.metadata?.contentChunks) {
+              const chunks = msg.metadata.contentChunks;
+              const newChunks = chunks.map((chunk: any) => {
+                if (chunk.type === 'toolCalls') {
+                  return {
+                    ...chunk,
+                    toolCalls: chunk.toolCalls.map((tool: ToolCall) =>
+                      tool.id === toolEndEvent.toolCallId
+                        ? { ...tool, status: 'completed' as const }
+                        : tool
+                    )
+                  };
+                }
+                return chunk;
+              });
+              
+              return {
+                ...msg,
+                metadata: {
+                  ...msg.metadata,
+                  contentChunks: newChunks
+                }
+              };
+            }
+            return msg;
+          });
+        });
+        
+        // Also update session
+        const session3 = sessionManagerRef.current?.getSession();
+        if (session3) {
+          const msgIndex3 = session3.messages.findIndex((m: Message) => m.id === currentMessageIdRef.current);
+          if (msgIndex3 !== -1 && session3.messages[msgIndex3].metadata?.contentChunks) {
+            const chunks = session3.messages[msgIndex3].metadata.contentChunks;
+            session3.messages[msgIndex3].metadata.contentChunks = chunks.map((chunk: any) => {
+              if (chunk.type === 'toolCalls') {
+                return {
+                  ...chunk,
+                  toolCalls: chunk.toolCalls.map((tool: ToolCall) =>
+                    tool.id === toolEndEvent.toolCallId
+                      ? { ...tool, status: 'completed' as const }
+                      : tool
+                  )
+                };
+              }
+              return chunk;
+            });
+          }
+        }
         break;
 
       case 'TOOL_CALL_RESULT':
         const toolResultEvent = event as any;
-        setToolCalls(prev => prev.map(tool =>
-          tool.id === toolResultEvent.toolCallId
-            ? { ...tool, result: toolResultEvent.content }
-            : tool
-        ));
+        setMessages((prev) => {
+          return prev.map(msg => {
+            if (msg.id === currentMessageIdRef.current && msg.metadata?.contentChunks) {
+              const chunks = msg.metadata.contentChunks;
+              const newChunks = chunks.map((chunk: any) => {
+                if (chunk.type === 'toolCalls') {
+                  return {
+                    ...chunk,
+                    toolCalls: chunk.toolCalls.map((tool: ToolCall) =>
+                      tool.id === toolResultEvent.toolCallId
+                        ? { ...tool, result: toolResultEvent.content }
+                        : tool
+                    )
+                  };
+                }
+                return chunk;
+              });
+              
+              return {
+                ...msg,
+                metadata: {
+                  ...msg.metadata,
+                  contentChunks: newChunks
+                }
+              };
+            }
+            return msg;
+          });
+        });
+        
+        // Also update session
+        const session4 = sessionManagerRef.current?.getSession();
+        if (session4) {
+          const msgIndex4 = session4.messages.findIndex((m: Message) => m.id === currentMessageIdRef.current);
+          if (msgIndex4 !== -1 && session4.messages[msgIndex4].metadata?.contentChunks) {
+            const chunks = session4.messages[msgIndex4].metadata.contentChunks;
+            session4.messages[msgIndex4].metadata.contentChunks = chunks.map((chunk: any) => {
+              if (chunk.type === 'toolCalls') {
+                return {
+                  ...chunk,
+                  toolCalls: chunk.toolCalls.map((tool: ToolCall) =>
+                    tool.id === toolResultEvent.toolCallId
+                      ? { ...tool, result: toolResultEvent.content }
+                      : tool
+                  )
+                };
+              }
+              return chunk;
+            });
+          }
+        }
         break;
 
       case 'RUN_FINISHED':
-        // ⚠️ 不清空任何 ref！所有清理在下次 TEXT_MESSAGE_START 时统一处理
+        if (currentMessageIdRef.current && sessionManagerRef.current) {
+          sessionManagerRef.current.saveSession();
+        }
         setIsLoading(false);
+        setIsThinking(false);
         stateMachineRef.current?.transition('connected');
         break;
 
@@ -340,20 +693,110 @@ export const Chat = React.forwardRef<any, ChatProps>((props, ref) => {
     onMessageReceived?.(message);
   }, [onMessageReceived]);
 
+  // Handle image upload
+  const handleImageUpload = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files || files.length === 0) return;
+
+    const newImages: string[] = [];
+    const readers: Promise<string>[] = [];
+
+    for (let i = 0; i < files.length; i++) {
+      const file = files[i];
+      if (!file.type.startsWith('image/')) continue;
+
+      const reader = new FileReader();
+      const promise = new Promise<string>((resolve) => {
+        reader.onload = (event) => {
+          const base64 = event.target?.result as string;
+          resolve(base64);
+        };
+        reader.readAsDataURL(file);
+      });
+      readers.push(promise);
+    }
+
+    Promise.all(readers).then((results) => {
+      setUploadedImages((prev) => [...prev, ...results]);
+    });
+
+    // Reset input
+    e.target.value = '';
+  }, []);
+
+  // Remove uploaded image
+  const handleRemoveImage = useCallback((index: number) => {
+    setUploadedImages((prev) => prev.filter((_, i) => i !== index));
+  }, []);
+
+  // Handle paste event for images
+  const handlePaste = useCallback((e: React.ClipboardEvent) => {
+    const items = e.clipboardData?.items;
+    if (!items) return;
+
+    const imageFiles: File[] = [];
+    for (let i = 0; i < items.length; i++) {
+      const item = items[i];
+      if (item.type.startsWith('image/')) {
+        const file = item.getAsFile();
+        if (file) {
+          imageFiles.push(file);
+        }
+      }
+    }
+
+    if (imageFiles.length > 0) {
+      e.preventDefault(); // 阻止默认粘贴行为
+      
+      const readers: Promise<string>[] = imageFiles.map(file => {
+        return new Promise<string>((resolve) => {
+          const reader = new FileReader();
+          reader.onload = (event) => {
+            const base64 = event.target?.result as string;
+            resolve(base64);
+          };
+          reader.readAsDataURL(file);
+        });
+      });
+
+      Promise.all(readers).then((results) => {
+        setUploadedImages((prev) => [...prev, ...results]);
+      });
+    }
+  }, []);
+
   // Send message
   const handleSendMessage = useCallback(async (value: string) => {
-    if (!value.trim() || isLoading) return;
+    if ((!value.trim() && uploadedImages.length === 0) || isLoading) return;
+
+    // Build message content
+    let messageContent: string | any[];
+    let messageType: MessageType = 'text';
+
+    if (uploadedImages.length > 0) {
+      // Multimodal message with images and text
+      messageContent = [
+        ...uploadedImages.map(url => ({ type: 'image_url', image_url: url })),
+        ...(value.trim() ? [{ type: 'message', message: value.trim() }] : [])
+      ];
+      messageType = 'multimodal';
+    } else {
+      // Text only message
+      messageContent = value.trim();
+      messageType = 'text';
+    }
 
     const userMsg: Message = {
       id: generateId(),
-      type: 'text',
-      content: value.trim(),
+      type: messageType,
+      content: messageContent,
       sender: 'user',
       timestamp: Date.now(),
     };
 
     addMessage(userMsg);
     setInputValue('');
+    setUploadedImages([]);
     setIsLoading(true);
 
     try {
@@ -364,7 +807,7 @@ export const Chat = React.forwardRef<any, ChatProps>((props, ref) => {
         const currentSession = sessionManagerRef.current?.getSession();
         
         const requestBody = {
-          message: value.trim(),
+          message: messageType === 'multimodal' ? messageContent : value.trim(),
           sessionId: currentSession?.sessionId,
           ...customData,
         };
@@ -393,41 +836,50 @@ export const Chat = React.forwardRef<any, ChatProps>((props, ref) => {
         const reader = response.body.getReader();
         const decoder = new TextDecoder();
         
-        while (true) {
-          const { done, value: chunk } = await reader.read();
-          if (done) {
-            console.log('✅ Stream complete');
-            break;
-          }
+        try {
+          while (true) {
+            const { done, value: chunk } = await reader.read();
+            if (done) {
+              console.log('✅ Stream complete');
+              // Ensure loading state is reset when stream completes
+              setIsLoading(false);
+              setIsThinking(false);
+              break;
+            }
 
-          const text = decoder.decode(chunk, { stream: true });
-          // console.log('📦 Received chunk:', text.substring(0, 100));
-          const lines = text.split('\n');
+            const text = decoder.decode(chunk, { stream: true });
+            // console.log('📦 Received chunk:', text.substring(0, 100));
+            const lines = text.split('\n');
 
-          for (const line of lines) {
-            if (line.startsWith('data: ')) {
-              const dataStr = line.slice(6);
-              if (dataStr.trim()) {
-                try {
-                  const data = JSON.parse(dataStr);
-                  
-                  // Process through AG-UI handler
-                  if (aguiHandlerRef.current) {
-                    const result = aguiHandlerRef.current.processSSEData(data);
-                    // AG-UI events are handled via Observable stream
-                    // Only handle legacy messages here
-                    if (result.type === 'legacy-message' && result.message) {
-                      handleLegacyMessage(result.message);
+            for (const line of lines) {
+              if (line.startsWith('data: ')) {
+                const dataStr = line.slice(6);
+                if (dataStr.trim()) {
+                  try {
+                    const data = JSON.parse(dataStr);
+                    
+                    // Process through AG-UI handler
+                    if (aguiHandlerRef.current) {
+                      const result = aguiHandlerRef.current.processSSEData(data);
+                      // AG-UI events are handled via Observable stream
+                      // Only handle legacy messages here
+                      if (result.type === 'legacy-message' && result.message) {
+                        handleLegacyMessage(result.message);
+                      }
+                    } else {
+                      handleLegacyMessage(data);
                     }
-                  } else {
-                    handleLegacyMessage(data);
+                  } catch (e) {
+                    console.error('Error parsing SSE data:', e);
                   }
-                } catch (e) {
-                  console.error('Error parsing SSE data:', e);
                 }
               }
             }
           }
+        } catch (streamError) {
+          console.error('Error reading stream:', streamError);
+          setIsLoading(false);
+          setIsThinking(false);
         }
       } else {
         // Simulate response for demo
@@ -448,7 +900,7 @@ export const Chat = React.forwardRef<any, ChatProps>((props, ref) => {
       onError?.(error as Error);
       setIsLoading(false);
     }
-  }, [isLoading, sseUrl, customData, addMessage, onError, aguiHandlerRef]);
+  }, [isLoading, sseUrl, customData, addMessage, onError, aguiHandlerRef, uploadedImages]);
 
   // Clear messages
   const handleClear = useCallback(() => {
@@ -457,13 +909,11 @@ export const Chat = React.forwardRef<any, ChatProps>((props, ref) => {
     sessionManagerRef.current?.clearSession();
     const newSession = sessionManagerRef.current?.initSession();
     // Reset all streaming states
-    setStreamingContent('');
     streamingContentRef.current = '';
     setCurrentMessageId(null);
     currentMessageIdRef.current = null;
     setIsLoading(false);
     setIsThinking(false);
-    setToolCalls([]);
     // Reset state machine to initial state
     stateMachineRef.current?.transition('idle');
     // Close the confirmation dialog
@@ -486,7 +936,7 @@ export const Chat = React.forwardRef<any, ChatProps>((props, ref) => {
   // Scroll to bottom
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages, streamingContent]);
+  }, [messages]);
 
   return (
     <div 
@@ -573,42 +1023,10 @@ export const Chat = React.forwardRef<any, ChatProps>((props, ref) => {
           })
         )}
         
-        {toolCalls.length > 0 && (
-          <Bubble
-            content={<ToolCallDisplay toolCalls={toolCalls} />}
-            avatar={botAvatar}
-            placement="start"
-            variant="borderless"
-            styles={{
-              content: {
-                background: 'transparent',
-                padding: 0,
-                border: 'none',
-                boxShadow: 'none'
-              }
-            }}
-          />
-        )}
-        
-        {/* Show streaming content */}
-        {streamingContent && (
-          <Bubble
-            content={
-              <div className="prose prose-sm max-w-none prose-pre:bg-gray-100 prose-pre:text-gray-900 prose-hr:my-3 prose-h1:mt-3 prose-h1:mb-2 prose-h2:mt-3 prose-h2:mb-2 prose-h3:mt-2 prose-h3:mb-1 prose-h4:mt-2 prose-h4:mb-1 prose-p:my-1.5 prose-ul:my-1.5 prose-ol:my-1.5">
-                <ReactMarkdown remarkPlugins={[remarkGfm]}>
-                  {streamingContent}
-                </ReactMarkdown>
-              </div>
-            }
-            avatar={botAvatar}
-            placement="start"
-          />
-        )}
-        
         {/* Show loading/thinking state */}
-        {(isLoading || isThinking) && !streamingContent && (
+        {(isLoading || isThinking) && (
           <Bubble
-            content={isThinking ? "Thinking..." : "..."}
+            content={isThinking ? "思考中..." : "正在输入..."}
             avatar={botAvatar}
             placement="start"
             loading={true}
@@ -632,14 +1050,61 @@ export const Chat = React.forwardRef<any, ChatProps>((props, ref) => {
             </svg>
           </button>
         )}
-        <div className="p-2">
-          <Sender
-            value={inputValue}
-            onChange={setInputValue}
-            onSubmit={handleSendMessage}
-            placeholder={placeholder}
-            loading={isLoading}
-          />
+        
+        {/* Image preview area */}
+        {uploadedImages.length > 0 && (
+          <div className="px-4 pt-2 pb-1 flex flex-wrap gap-2">
+            {uploadedImages.map((img, index) => (
+              <div key={index} className="relative group">
+                <img 
+                  src={img} 
+                  alt={`Upload ${index + 1}`}
+                  className="w-16 h-16 object-cover rounded border border-gray-200"
+                />
+                <button
+                  onClick={() => handleRemoveImage(index)}
+                  className="absolute -top-1 -right-1 w-4 h-4 bg-red-500 text-white rounded-full flex items-center justify-center text-xs opacity-0 group-hover:opacity-100 transition-opacity"
+                >
+                  ×
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+        
+        <div className="p-2 relative">
+          <div className="relative">
+            {/* Image upload button positioned inside Sender */}
+            <label className="absolute left-3 top-1/2 -translate-y-1/2 z-10 cursor-pointer text-gray-400 hover:text-gray-600 transition-colors">
+              <input
+                type="file"
+                accept="image/*"
+                multiple
+                onChange={handleImageUpload}
+                className="hidden"
+              />
+              <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/>
+                <circle cx="8.5" cy="8.5" r="1.5"/>
+                <polyline points="21 15 16 10 5 21"/>
+              </svg>
+            </label>
+            
+            <div onPaste={handlePaste}>
+              <Sender
+                value={inputValue}
+                onChange={setInputValue}
+                onSubmit={handleSendMessage}
+                placeholder={placeholder}
+                loading={isLoading}
+                styles={{
+                  input: {
+                    paddingLeft: '40px',
+                  }
+                }}
+              />
+            </div>
+          </div>
         </div>
       </div>
 

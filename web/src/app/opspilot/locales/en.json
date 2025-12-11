@@ -476,7 +476,10 @@
     "editAnnotation": "Edit Annotation",
     "knowledgeDetails": "Knowledge Details",
     "clear": "Clear Conversation",
-    "removeAnnotation": "Remove Annotation"
+    "removeAnnotation": "Remove Annotation",
+    "uploadImage": "Upload Image",
+    "onlyImageAllowed": "Only image files are allowed",
+    "imageTooLarge": "Image size cannot exceed 5MB"
   },
   "settings": {
     "secret": {

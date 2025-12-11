@@ -1,6 +1,7 @@
 import React, { useState, useCallback, useRef, ReactNode, useEffect } from 'react';
-import { Popconfirm, Button, Tooltip, Flex, Spin, Drawer, ButtonProps } from 'antd';
-import { FullscreenOutlined, FullscreenExitOutlined, SendOutlined } from '@ant-design/icons';
+import { Popconfirm, Button, Tooltip, Flex, Spin, Drawer, ButtonProps, Upload, message as antMessage, Image } from 'antd';
+import { FullscreenOutlined, FullscreenExitOutlined, SendOutlined, PictureOutlined } from '@ant-design/icons';
+import type { UploadFile } from 'antd/es/upload/interface';
 import { Bubble, Sender } from '@ant-design/x';
 import Icon from '@/components/icon';
 import { useTranslation } from '@/utils/i18n';
@@ -59,6 +60,7 @@ const CustomChatSSE: React.FC<CustomChatSSEProps> = ({
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [value, setValue] = useState('');
   const [loading, setLoading] = useState(false);
+  const [imageList, setImageList] = useState<UploadFile[]>([]);
   const [messages, setMessages] = useState<CustomChatMessage[]>(
     initialMessages.length ? initialMessages : []
   );
@@ -219,13 +221,37 @@ const CustomChatSSE: React.FC<CustomChatSSEProps> = ({
   };
 
   const handleSend = useCallback(
-    async (msg: string) => {
-      if (msg.trim() && !loading && token) {
+    async (msg: string, images?: UploadFile[]) => {
+      if ((msg.trim() || (images && images.length > 0)) && !loading && token) {
         currentBotMessageRef.current = null;
-        await sendMessage(msg);
+        
+        // Convert images to base64
+        let imageData: any[] | undefined;
+        if (images && images.length > 0) {
+          imageData = await Promise.all(
+            images.map(async (file) => {
+              if (file.originFileObj) {
+                const base64 = await new Promise<string>((resolve) => {
+                  const reader = new FileReader();
+                  reader.onloadend = () => resolve(reader.result as string);
+                  reader.readAsDataURL(file.originFileObj as File);
+                });
+                return {
+                  id: file.uid,
+                  url: base64,
+                  name: file.name,
+                  status: 'done'
+                };
+              }
+              return null;
+            })
+          ).then(results => results.filter(Boolean));
+        }
+        
+        await sendMessage(msg, messages, imageData);
       }
     },
-    [loading, token, sendMessage]
+    [loading, token, sendMessage, messages]
   );
 
   const handleCopyMessage = (content: string) => {
@@ -275,12 +301,28 @@ const CustomChatSSE: React.FC<CustomChatSSEProps> = ({
   );
 
   const renderContent = (msg: CustomChatMessage) => {
-    const { content, knowledgeBase } = msg;
+    const { content, knowledgeBase, images } = msg;
     const parsedContent = parseReferenceLinks(content || '');
     const parsedSuggestionContent = parseSuggestionLinks(parsedContent);
 
     return (
       <>
+        {images && images.length > 0 && (
+          <div className="flex flex-wrap gap-2 mb-2">
+            <Image.PreviewGroup>
+              {images.map((img) => (
+                <Image
+                  key={img.id}
+                  src={img.url}
+                  alt={img.name || 'image'}
+                  width={120}
+                  height={120}
+                  className="rounded object-cover"
+                />
+              ))}
+            </Image.PreviewGroup>
+          </div>
+        )}
         <div
           dangerouslySetInnerHTML={{ __html: md.render(parsedSuggestionContent) }}
           className={styles.markdownBody}
@@ -299,46 +341,140 @@ const CustomChatSSE: React.FC<CustomChatSSEProps> = ({
   const renderSend = (props: ButtonProps & { ignoreLoading?: boolean; placeholder?: string } = {}) => {
     const { ignoreLoading, placeholder, ...btnProps } = props;
 
+    const uploadButton = (
+      <Upload
+        accept="image/*"
+        fileList={[]}
+        beforeUpload={(file) => {
+          const isImage = file.type.startsWith('image/');
+          if (!isImage) {
+            antMessage.error(t('chat.onlyImageAllowed') || '只能上传图片文件');
+            return Upload.LIST_IGNORE;
+          }
+          const isLt5M = file.size / 1024 / 1024 < 5;
+          if (!isLt5M) {
+            antMessage.error(t('chat.imageTooLarge') || '图片大小不能超过 5MB');
+            return Upload.LIST_IGNORE;
+          }
+          setImageList(prev => [...prev, {
+            uid: file.uid,
+            name: file.name,
+            status: 'done',
+            originFileObj: file
+          } as any]);
+          return Upload.LIST_IGNORE;
+        }}
+        showUploadList={false}
+      >
+        <Button
+          type="text"
+          icon={<PictureOutlined />}
+          disabled={loading}
+          title={t('chat.uploadImage') || '上传图片'}
+        />
+      </Upload>
+    );
+
     const senderComponent = (
-      <Sender
-        className={styles.sender}
-        value={value}
-        onChange={setValue}
-        loading={loading}
-        onSubmit={(msg: string) => {
-          setValue('');
-          handleSend(msg);
-        }}
-        placeholder={placeholder}
-        onCancel={stopSSEConnection}
-        actions={(
-          _: any,
-          info: {
-            components: {
-              SendButton: React.ComponentType<ButtonProps>;
-              LoadingButton: React.ComponentType<ButtonProps>;
-            };
-          }
-        ) => {
-          const { SendButton, LoadingButton } = info.components;
-          if (!ignoreLoading && loading) {
-            return (
-              <Tooltip title={t('chat.clickCancel')}>
-                <LoadingButton />
-              </Tooltip>
-            );
-          }
-          let node: ReactNode = <SendButton {...btnProps} />;
-          if (!ignoreLoading) {
-            node = (
-              <Tooltip title={value ? `${t('chat.send')}\u21B5` : t('chat.inputMessage')}>
-                {node}
-              </Tooltip>
-            );
-          }
-          return node;
-        }}
-      />
+      <div className="relative">
+        {imageList.length > 0 && (
+          <div className="flex flex-wrap gap-2 mb-2 p-2 bg-gray-50 rounded">
+            {imageList.map((file) => {
+              const previewUrl = file.originFileObj && typeof window !== 'undefined' 
+                ? URL.createObjectURL(file.originFileObj) 
+                : '';
+              
+              return (
+                <div key={file.uid} className="relative group">
+                  {previewUrl && (
+                    <img
+                      src={previewUrl}
+                      alt={file.name}
+                      className="w-16 h-16 object-cover rounded"
+                    />
+                  )}
+                  <Button
+                    type="text"
+                    danger
+                    size="small"
+                    className="absolute top-0 right-0 opacity-0 group-hover:opacity-100 transition-opacity"
+                    onClick={() => setImageList(imageList.filter(item => item.uid !== file.uid))}
+                  >
+                    ×
+                  </Button>
+                </div>
+              );
+            })}
+          </div>
+        )}
+        <Sender
+          className={styles.sender}
+          value={value}
+          onChange={setValue}
+          loading={loading}
+          onSubmit={(msg: string) => {
+            setValue('');
+            const currentImages = [...imageList];
+            setImageList([]);
+            handleSend(msg, currentImages);
+          }}
+          placeholder={placeholder}
+          onCancel={stopSSEConnection}
+          prefix={uploadButton}
+          onPaste={(event: React.ClipboardEvent) => {
+            const items = event.clipboardData?.items;
+            if (!items) return;
+
+            for (let i = 0; i < items.length; i++) {
+              const item = items[i];
+              if (item.type.startsWith('image/')) {
+                event.preventDefault();
+                const file = item.getAsFile();
+                if (file) {
+                  const isLt5M = file.size / 1024 / 1024 < 5;
+                  if (!isLt5M) {
+                    antMessage.error(t('chat.imageTooLarge') || '图片大小不能超过 5MB');
+                    continue;
+                  }
+                  setImageList(prev => [...prev, {
+                    uid: `paste-${Date.now()}-${i}`,
+                    name: file.name || `pasted-image-${Date.now()}.png`,
+                    status: 'done',
+                    originFileObj: file
+                  } as any]);
+                }
+              }
+            }
+          }}
+          actions={(
+            _: any,
+            info: {
+              components: {
+                SendButton: React.ComponentType<ButtonProps>;
+                LoadingButton: React.ComponentType<ButtonProps>;
+              };
+            }
+          ) => {
+            const { SendButton, LoadingButton } = info.components;
+            if (!ignoreLoading && loading) {
+              return (
+                <Tooltip title={t('chat.clickCancel')}>
+                  <LoadingButton />
+                </Tooltip>
+              );
+            }
+            let node: ReactNode = <SendButton {...btnProps} />;
+            if (!ignoreLoading) {
+              node = (
+                <Tooltip title={value || imageList.length > 0 ? `${t('chat.send')}\u21B5` : t('chat.inputMessage')}>
+                  {node}
+                </Tooltip>
+              );
+            }
+            return node;
+          }}
+        />
+      </div>
     );
 
     return requirePermission ? (
