@@ -152,7 +152,7 @@ class BaseNodeParams(metaclass=ABCMeta):
                 "content": jinja_context,
                 "node_id": node["id"],
                 "collector_name": "Telegraf",
-                "env_config": getattr(self, "env_config", {})
+                "env_config": self.env_config(host=host)
             })
         return nodes
 
