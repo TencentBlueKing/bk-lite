@@ -41,6 +41,7 @@ const Installing: React.FC<InstallingProps> = ({
   const [tableData, setTableData] = useState<TableDataItem[]>([]);
   const [currentViewingNode, setCurrentViewingNode] =
     useState<TableDataItem | null>(null);
+  const [copyingNodeIds, setCopyingNodeIds] = useState<number[]>([]);
 
   // 安装状态映射
   const installStatusMap = useMemo(
@@ -179,6 +180,7 @@ const Installing: React.FC<InstallingProps> = ({
               {isManualInstall ? (
                 <Button
                   type="link"
+                  loading={copyingNodeIds.includes(value as any)}
                   onClick={() => handleCopyInstallCommand(row)}
                 >
                   {t('node-manager.cloudregion.node.copyInstallCommand')}
@@ -206,7 +208,7 @@ const Installing: React.FC<InstallingProps> = ({
         },
       },
     ];
-  }, [installData?.installMethod]);
+  }, [installData?.installMethod, copyingNodeIds]);
 
   useEffect(() => {
     if (installData?.taskIds && !isLoading) {
@@ -320,18 +322,23 @@ const Installing: React.FC<InstallingProps> = ({
   };
 
   const handleCopyInstallCommand = async (row: any) => {
-    const result = await getInstallCommand(row);
-    const installCommand = result || '';
-    handleCopy({
-      value: installCommand,
-      showSuccessMessage: false,
-    });
-    notification.success({
-      message: t('node-manager.cloudregion.node.commandCopied'),
-      description: t('node-manager.cloudregion.node.commandCopiedDesc'),
-      icon: <CheckCircleFilled style={{ color: 'var(--color-success)' }} />,
-      placement: 'top',
-    });
+    try {
+      setCopyingNodeIds((prev) => [...prev, row.id]);
+      const result = await getInstallCommand(row);
+      const installCommand = result || '';
+      handleCopy({
+        value: installCommand,
+        showSuccessMessage: false,
+      });
+      notification.success({
+        message: t('node-manager.cloudregion.node.commandCopied'),
+        description: t('node-manager.cloudregion.node.commandCopiedDesc'),
+        icon: <CheckCircleFilled style={{ color: 'var(--color-success)' }} />,
+        placement: 'top',
+      });
+    } finally {
+      setCopyingNodeIds((prev) => prev.filter((id) => id !== row.id));
+    }
   };
 
   const handleRetry = (row: TableDataItem) => {

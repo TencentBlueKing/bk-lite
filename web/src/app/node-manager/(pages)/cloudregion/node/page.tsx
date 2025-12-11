@@ -104,12 +104,14 @@ const Node = () => {
   const cancelInstall = useCallback(() => {
     setShowNodeTable(true);
     setShowInstallController(false);
-  }, []);
+    getNodes(searchFilters);
+  }, [searchFilters]);
 
   const cancelWait = useCallback(() => {
     setShowNodeTable(true);
     setShowInstallCollectorTable(false);
-  }, []);
+    getNodes(searchFilters);
+  }, [searchFilters]);
 
   const tableColumns = useMemo(() => {
     if (!activeColumns?.length) return columns;
