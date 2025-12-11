@@ -63,6 +63,13 @@ class CollectVmwareMetrics(CollectBase):
             })
         return result
 
+    def get_vm_esxi_name(self, data, *args, **kwargs):
+        result = []
+        esxi_inst_name = self.model_resource_id_mapping["vmware_esxi"].get(data["vmware_esxi"], "")
+        if esxi_inst_name:
+            return esxi_inst_name
+
+        return result
     @staticmethod
     def set_inst_name(*args, **kwargs):
         """
@@ -72,25 +79,34 @@ class CollectVmwareMetrics(CollectBase):
         inst_name = f"{data['inst_name']}[{data['resource_id']}]"
         return inst_name
 
+    def set_vc_inst_name(*args, **kwargs):
+        data = args[1]
+        inst_id = data["instance_id"]
+        inst_name = "_".join(inst_id.split("_")[1:])
+        return inst_name
+
     @property
     def model_field_mapping(self):
         mapping = {
             "vmware_vc": {
                 "vc_version": "vc_version",
-                "inst_name": self.inst_name
+                "inst_name": self.set_vc_inst_name
             },
             "vmware_vm": {
                 "inst_name": "inst_name",
                 "ip_addr": "ip_addr",
+                "self_vc": self.set_vc_inst_name,
                 "resource_id": "resource_id",
                 "os_name": "os_name",
                 "vcpus": (int, "vcpus"),
                 "memory": (int, "memory"),
+                "self_esxi": self.get_vm_esxi_name,
                 self.asso: self.get_vm_asso
             },
             "vmware_esxi": {
                 "inst_name": "inst_name",
                 "ip_addr": "ip_addr",
+                "self_vc": self.set_vc_inst_name,
                 "resource_id": "resource_id",
                 "cpu_cores": (int, "cpu_cores"),
                 "vcpus": (int, "vcpus"),
@@ -101,10 +117,11 @@ class CollectVmwareMetrics(CollectBase):
             },
             "vmware_ds": {
                 "inst_name": "inst_name",
+                "self_vc": self.set_vc_inst_name,
                 "system_type": "system_type",
                 "resource_id": "resource_id",
                 "storage": (int, "storage"),
-                "url": "url",
+                "url": "ds_url",
                 # self.asso: self.get_ds_asso
             }
 
