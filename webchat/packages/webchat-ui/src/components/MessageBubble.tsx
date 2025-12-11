@@ -2,9 +2,12 @@ import React, { useState } from 'react';
 import { Bubble } from '@ant-design/x';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
+import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
+import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism';
 import { Message } from '@webchat/core';
 import { MessageActions } from './MessageActions';
 import { ConfirmDialog } from './ConfirmDialog';
+import { ImagePreview } from './ImagePreview';
 import { ToolCallDisplay, type ToolCall } from './ToolCallDisplay';
 
 interface MessageBubbleProps {
@@ -21,11 +24,39 @@ type ContentChunk =
   | { type: 'text'; content: string }
   | { type: 'toolCalls'; toolCalls: ToolCall[] };
 
+// Custom code block renderer with syntax highlighting
+const CodeBlock = ({ node, inline, className, children, ...props }: any) => {
+  const match = /language-(\w+)/.exec(className || '');
+  const language = match ? match[1] : '';
+  
+  return !inline && language ? (
+    <SyntaxHighlighter
+      style={vscDarkPlus}
+      language={language}
+      PreTag="div"
+      customStyle={{
+        margin: '0.5rem 0',
+        borderRadius: '0.375rem',
+        fontSize: '0.875rem',
+        lineHeight: '1.5'
+      }}
+      {...props}
+    >
+      {String(children).replace(/\n$/, '')}
+    </SyntaxHighlighter>
+  ) : (
+    <code className={className} {...props}>
+      {children}
+    </code>
+  );
+};
+
 export const MessageBubble: React.FC<MessageBubbleProps> = (
   ({ message, botAvatar, userAvatar, isLastBotMessage, onRegenerate, onCopy, onDelete }) => {
     const isBot = message.sender === 'bot';
     const [showActions, setShowActions] = useState(false);
     const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+    const [previewImage, setPreviewImage] = useState<{ src: string; alt: string } | null>(null);
     
     // Get content chunks from message metadata (ordered mix of text and tool calls)
     const contentChunks = (message.metadata?.contentChunks as ContentChunk[]) || [];
@@ -67,20 +98,35 @@ export const MessageBubble: React.FC<MessageBubbleProps> = (
                   <img 
                     src={item.image_url} 
                     alt={`Image ${index + 1}`}
-                    className="rounded border border-gray-200 w-full h-auto"
+                    className="rounded border border-gray-200 w-full h-auto cursor-pointer hover:opacity-90 transition-opacity"
+                    onClick={() => setPreviewImage({ src: item.image_url, alt: `Image ${index + 1}` })}
                   />
                 </div>
               );
             } else if (item.type === 'message' && item.message) {
               return (
                 <div key={`msg-${index}`} className="prose prose-sm max-w-none">
-                  <ReactMarkdown remarkPlugins={[remarkGfm]}>{item.message}</ReactMarkdown>
+                  <ReactMarkdown 
+                    remarkPlugins={[remarkGfm]}
+                    components={{
+                      code: CodeBlock
+                    }}
+                  >
+                    {item.message}
+                  </ReactMarkdown>
                 </div>
               );
             } else if (item.type === 'text' && item.text) {
               return (
                 <div key={`text-${index}`} className="prose prose-sm max-w-none">
-                  <ReactMarkdown remarkPlugins={[remarkGfm]}>{item.text}</ReactMarkdown>
+                  <ReactMarkdown 
+                    remarkPlugins={[remarkGfm]}
+                    components={{
+                      code: CodeBlock
+                    }}
+                  >
+                    {item.text}
+                  </ReactMarkdown>
                 </div>
               );
             }
@@ -97,8 +143,15 @@ export const MessageBubble: React.FC<MessageBubbleProps> = (
           groupedChunks.map((chunk, index) => {
             if (chunk.type === 'text') {
               return (
-                <div key={`text-${index}`} className="prose prose-sm max-w-none prose-pre:bg-gray-100 prose-pre:text-gray-900 prose-hr:my-3 prose-h1:mt-3 prose-h1:mb-2 prose-h2:mt-3 prose-h2:mb-2 prose-h3:mt-2 prose-h3:mb-1 prose-h4:mt-2 prose-h4:mb-1 prose-p:my-1.5 prose-ul:my-1.5 prose-ol:my-1.5">
-                  <ReactMarkdown remarkPlugins={[remarkGfm]}>{chunk.content}</ReactMarkdown>
+                <div key={`text-${index}`} className="prose prose-sm max-w-none prose-hr:my-3 prose-h1:mt-3 prose-h1:mb-2 prose-h2:mt-3 prose-h2:mb-2 prose-h3:mt-2 prose-h3:mb-1 prose-h4:mt-2 prose-h4:mb-1 prose-p:my-1.5 prose-ul:my-1.5 prose-ol:my-1.5">
+                  <ReactMarkdown 
+                    remarkPlugins={[remarkGfm]}
+                    components={{
+                      code: CodeBlock
+                    }}
+                  >
+                    {chunk.content}
+                  </ReactMarkdown>
                 </div>
               );
             } else if (chunk.type === 'toolCalls') {
@@ -112,8 +165,15 @@ export const MessageBubble: React.FC<MessageBubbleProps> = (
           })
         ) : hasContent ? (
           // Fallback to display content if no chunks (for backward compatibility)
-          <div className="prose prose-sm max-w-none prose-pre:bg-gray-100 prose-pre:text-gray-900 prose-hr:my-3 prose-h1:mt-3 prose-h1:mb-2 prose-h2:mt-3 prose-h2:mb-2 prose-h3:mt-2 prose-h3:mb-1 prose-h4:mt-2 prose-h4:mb-1 prose-p:my-1.5 prose-ul:my-1.5 prose-ol:my-1.5">
-            <ReactMarkdown remarkPlugins={[remarkGfm]}>{message.content as string}</ReactMarkdown>
+          <div className="prose prose-sm max-w-none prose-hr:my-3 prose-h1:mt-3 prose-h1:mb-2 prose-h2:mt-3 prose-h2:mb-2 prose-h3:mt-2 prose-h3:mb-1 prose-h4:mt-2 prose-h4:mb-1 prose-p:my-1.5 prose-ul:my-1.5 prose-ol:my-1.5">
+            <ReactMarkdown 
+              remarkPlugins={[remarkGfm]}
+              components={{
+                code: CodeBlock
+              }}
+            >
+              {message.content as string}
+            </ReactMarkdown>
           </div>
         ) : null}
       </div>
@@ -168,6 +228,13 @@ export const MessageBubble: React.FC<MessageBubbleProps> = (
           onConfirm={handleDelete}
           onCancel={() => setShowDeleteConfirm(false)}
         />
+        {previewImage && (
+          <ImagePreview
+            src={previewImage.src}
+            alt={previewImage.alt}
+            onClose={() => setPreviewImage(null)}
+          />
+        )}
       </>
     );
   }

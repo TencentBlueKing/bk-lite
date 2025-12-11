@@ -2,19 +2,17 @@
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Bubble, Sender } from '@ant-design/x';
-import ReactMarkdown from 'react-markdown';
-import remarkGfm from 'remark-gfm';
 import {
   SessionManager,
   StateMachine,
-  SSEHandler,
   WebChatConfig,
   ChatState,
   Message,
+  MessageType,
   generateId,
 } from '@webchat/core';
 import { AGUIHandler, AGUIConfig, AGUIEvent } from './agui';
-import { ToolCallDisplay, type ToolCall } from './components/ToolCallDisplay';
+import { type ToolCall } from './components/ToolCallDisplay';
 import { MessageBubble } from './components/MessageBubble';
 import { useMessageHandlers } from './hooks/useMessageHandlers';
 import { ConfirmDialog } from './components/ConfirmDialog';
@@ -68,7 +66,6 @@ export const Chat = React.forwardRef<any, ChatProps>((props, ref) => {
   const [inputValue, setInputValue] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [isThinking, setIsThinking] = useState(false);
-  const [currentMessageId, setCurrentMessageId] = useState<string | null>(null);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [showClearConfirm, setShowClearConfirm] = useState(false);
   const [uploadedImages, setUploadedImages] = useState<string[]>([]);
@@ -76,12 +73,10 @@ export const Chat = React.forwardRef<any, ChatProps>((props, ref) => {
   // Refs
   const sessionManagerRef = useRef<SessionManager | null>(null);
   const stateMachineRef = useRef<StateMachine | null>(null);
-  const sseHandlerRef = useRef<SSEHandler | null>(null);
   const aguiHandlerRef = useRef<AGUIHandler | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const streamingContentRef = useRef<string>('');
   const currentMessageIdRef = useRef<string | null>(null);
-  const streamingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   // Cache avatar elements to prevent re-fetching on every render
   const botAvatar = React.useMemo(
@@ -119,11 +114,6 @@ export const Chat = React.forwardRef<any, ChatProps>((props, ref) => {
     if (session && session.messages.length > 0) {
       setMessages(session.messages);
     }
-
-    return () => {
-      sseHandlerRef.current?.disconnect();
-      // 注意：组件卸载时不清理 sessionManager，保留历史记录
-    };
   }, []);
 
   // Setup AG-UI event handlers
@@ -146,7 +136,6 @@ export const Chat = React.forwardRef<any, ChatProps>((props, ref) => {
         
         streamingContentRef.current = '';
         currentMessageIdRef.current = null;
-        setCurrentMessageId(null);
         setIsLoading(true);
         
         break;
@@ -273,7 +262,6 @@ export const Chat = React.forwardRef<any, ChatProps>((props, ref) => {
           };
           
           currentMessageIdRef.current = newAssistantMsg.id;
-          setCurrentMessageId(newAssistantMsg.id);
           
           setMessages((prev) => [...prev, newAssistantMsg]);
           sessionManagerRef.current?.addMessage(newAssistantMsg);
@@ -410,7 +398,6 @@ export const Chat = React.forwardRef<any, ChatProps>((props, ref) => {
           };
           
           currentMessageIdRef.current = newAssistantMsg.id;
-          setCurrentMessageId(newAssistantMsg.id);
           
           setMessages((prev) => [...prev, newAssistantMsg]);
           sessionManagerRef.current?.addMessage(newAssistantMsg);
@@ -698,7 +685,6 @@ export const Chat = React.forwardRef<any, ChatProps>((props, ref) => {
     const files = e.target.files;
     if (!files || files.length === 0) return;
 
-    const newImages: string[] = [];
     const readers: Promise<string>[] = [];
 
     for (let i = 0; i < files.length; i++) {
@@ -907,10 +893,9 @@ export const Chat = React.forwardRef<any, ChatProps>((props, ref) => {
     setMessages([]);
     // Clear and reinitialize session
     sessionManagerRef.current?.clearSession();
-    const newSession = sessionManagerRef.current?.initSession();
+    sessionManagerRef.current?.initSession();
     // Reset all streaming states
     streamingContentRef.current = '';
-    setCurrentMessageId(null);
     currentMessageIdRef.current = null;
     setIsLoading(false);
     setIsThinking(false);
@@ -1099,7 +1084,7 @@ export const Chat = React.forwardRef<any, ChatProps>((props, ref) => {
                 loading={isLoading}
                 styles={{
                   input: {
-                    paddingLeft: '40px',
+                    paddingLeft: '25px',
                   }
                 }}
               />
