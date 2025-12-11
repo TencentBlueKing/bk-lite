@@ -26,7 +26,9 @@ class SSHNodeParamsMixin:
         return credential_data
 
     def get_instance_id(self, instance):
-        return f"{self.instance.id}_{instance['_id']}" if self.has_set_instances else f"{self.instance.id}_{instance}"
+        if self.has_set_instances:
+            return f"{self.instance.id}_{instance['_id']}"
+        return f"{self.instance.id}_{instance}".replace(".", "")
 
     def env_config(self, *args, **kwargs):
         host = kwargs["host"]
