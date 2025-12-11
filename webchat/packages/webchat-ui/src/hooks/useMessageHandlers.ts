@@ -53,7 +53,10 @@ export const useMessageHandlers = ({
         }
 
         // Resend the user message
-        setTimeout(() => handleSendMessage(userMessage.content), 100);
+        const contentToSend = typeof userMessage.content === 'string' 
+          ? userMessage.content 
+          : (userMessage.content.find((item: any) => item.type === 'text')?.text || '');
+        setTimeout(() => handleSendMessage(contentToSend), 100);
       }
     },
     [messages, handleSendMessage, setMessages, sessionManagerRef]
