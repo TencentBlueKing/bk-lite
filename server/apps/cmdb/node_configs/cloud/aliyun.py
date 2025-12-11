@@ -35,7 +35,7 @@ class AliyunNodeParams(BaseNodeParams):
         if self.has_set_instances:
             return f"{self.instance.id}_{instance['_id']}"
         else:
-            return f"{self.instance.id}_{instance}"
+            return f"{self.instance.id}_{instance}".replace(".", "")
 
     def env_config(self, *args, **kwargs):
         host = kwargs["host"]
