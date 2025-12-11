@@ -13,155 +13,7 @@ from sklearn.ensemble import GradientBoostingRegressor
 from sklearn.metrics import mean_squared_error, mean_absolute_error
 
 from .base import BaseTimeSeriesModel, ModelRegistry
-
-
-class GradientBoostingWrapper(mlflow.pyfunc.PythonModel):
-    """Gradient Boosting 模型的 MLflow 包装器
-    
-    支持两种预测模式：
-    1. 特征工程模式：使用完整的特征工程器进行预测
-    2. 简单模式：使用滞后窗口进行递归预测
-    """
-    
-    def __init__(
-        self,
-        model,
-        lag_features: int,
-        use_feature_engineering: bool,
-        feature_engineer,
-        last_train_data: pd.Series,
-        frequency: Optional[str],
-        feature_names: Optional[list] = None
-    ):
-        """初始化包装器
-        
-        Args:
-            model: 训练好的 GradientBoostingRegressor 模型
-            lag_features: 滞后特征数量
-            use_feature_engineering: 是否使用特征工程
-            feature_engineer: TimeSeriesFeatureEngineer 对象（或 None）
-            last_train_data: 完整训练数据（带 DatetimeIndex 的 Series）
-            frequency: 时间序列频率（如 'MS', 'D'）
-            feature_names: 特征名称列表（用于调试）
-        """
-        self.model = model
-        self.lag_features = lag_features
-        self.use_feature_engineering = use_feature_engineering
-        self.feature_engineer = feature_engineer
-        self.last_train_data = last_train_data
-        self.frequency = frequency
-        self.feature_names = feature_names
-    
-    def predict(self, context, model_input) -> np.ndarray:
-        """预测接口
-        
-        Args:
-            context: MLflow context
-            model_input: DataFrame with 'steps' column or int
-            
-        Returns:
-            预测结果数组
-        """
-        steps = self._parse_steps(model_input)
-        
-        if self.use_feature_engineering and self.feature_engineer:
-            return self._predict_with_feature_engineering(steps)
-        else:
-            return self._predict_simple(steps)
-    
-    def _parse_steps(self, model_input) -> int:
-        """解析预测步数
-        
-        Args:
-            model_input: DataFrame with 'steps' column or int
-            
-        Returns:
-            预测步数
-        """
-        if isinstance(model_input, pd.DataFrame):
-            return int(model_input['steps'].iloc[0]) if 'steps' in model_input.columns else len(model_input)
-        return int(model_input)
-    
-    def _predict_with_feature_engineering(self, steps: int) -> np.ndarray:
-        """使用特征工程的递归预测
-        
-        策略：维护完整的时间序列历史，每步预测后追加到历史，
-        重新调用 feature_engineer.transform() 提取特征。
-        
-        Args:
-            steps: 预测步数
-            
-        Returns:
-            预测结果数组
-        """
-        history = self.last_train_data.copy()
-        predictions = []
-        
-        for step in range(steps):
-            # 1. 从完整历史中提取特征
-            try:
-                X, _ = self.feature_engineer.transform(history)
-            except Exception as e:
-                logger.warning(f"特征提取失败（第{step+1}步）: {e}，回退到简单预测")
-                # 回退到简单预测
-                remaining = steps - step
-                simple_preds = self._predict_simple(remaining)
-                predictions.extend(simple_preds)
-                break
-            
-            if len(X) == 0:
-                logger.warning(f"第 {step+1} 步特征提取结果为空，停止预测")
-                break
-            
-            # 2. 使用最后一行特征进行预测
-            last_features = X.iloc[-1:].copy()
-            pred = self.model.predict(last_features)[0]
-            predictions.append(pred)
-            
-            # 3. 推断下一个时间步（基于频率）
-            last_timestamp = history.index[-1]
-            if isinstance(history.index, pd.DatetimeIndex):
-                # 尝试使用频率推断
-                if self.frequency:
-                    try:
-                        next_timestamp = last_timestamp + pd.tseries.frequencies.to_offset(self.frequency)
-                    except:
-                        # 频率解析失败，使用平均间隔
-                        avg_delta = (history.index[-1] - history.index[-2])
-                        next_timestamp = last_timestamp + avg_delta
-                else:
-                    # 无频率信息，使用平均间隔
-                    avg_delta = (history.index[-1] - history.index[-2])
-                    next_timestamp = last_timestamp + avg_delta
-            else:
-                # 非时间索引，简单递增
-                next_timestamp = last_timestamp + 1
-            
-            # 4. 将预测值追加到历史（构造新的 Series）
-            new_point = pd.Series([pred], index=[next_timestamp])
-            history = pd.concat([history, new_point])
-        
-        return np.array(predictions)
-    
-    def _predict_simple(self, steps: int) -> np.ndarray:
-        """简单滞后窗口预测
-        
-        Args:
-            steps: 预测步数
-            
-        Returns:
-            预测结果数组
-        """
-        predictions = []
-        current_window = self.last_train_data.values[-self.lag_features:].copy()
-        
-        for _ in range(steps):
-            X = current_window[-self.lag_features:].reshape(1, -1)
-            pred = self.model.predict(X)[0]
-            predictions.append(pred)
-            current_window = np.append(current_window[1:], pred)
-        
-        return np.array(predictions)
+from .gradient_boosting_wrapper import GradientBoostingWrapper
 
 
 @ModelRegistry.register("gradient_boosting")
@@ -1410,15 +1262,14 @@ class GradientBoostingModel(BaseTimeSeriesModel):
                 logger.error(f"详细错误:\n{traceback.format_exc()}")
                 raise RuntimeError(f"feature_engineer 不可序列化: {e}")
         
-        # 创建 Wrapper（包含完整特征工程信息）
+        # 创建 Wrapper（stateless 设计，只保存训练频率）
         logger.info("创建 GradientBoostingWrapper...")
         wrapped_model = GradientBoostingWrapper(
             model=self.model,
             lag_features=self.lag_features,
             use_feature_engineering=self.use_feature_engineering,
             feature_engineer=self.feature_engineer if self.use_feature_engineering else None,
-            last_train_data=self.last_train_data,
-            frequency=self.frequency,
+            training_frequency=self.frequency,
             feature_names=self.feature_names_
         )
         logger.info("✓ Wrapper 创建成功")
@@ -1441,10 +1292,7 @@ class GradientBoostingModel(BaseTimeSeriesModel):
             mlflow.pyfunc.log_model(
                 artifact_path=artifact_path,
                 python_model=wrapped_model,
-                signature=mlflow.models.infer_signature(
-                    model_input=pd.DataFrame({'steps': [1]}),
-                    model_output=np.array([0.0])
-                )
+                signature=None  # 设置为 None，支持灵活的字典输入
             )
             logger.info(f"✓ mlflow.pyfunc.log_model() 调用完成")
             

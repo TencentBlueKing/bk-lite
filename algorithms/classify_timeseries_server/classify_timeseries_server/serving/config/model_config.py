@@ -1,9 +1,12 @@
 """模型加载配置."""
-
+from loguru import logger
 import os
 from typing import Literal
+from dotenv import load_dotenv
 
 from pydantic import BaseModel, Field
+load_dotenv()
+logger.debug("Loaded environment variables from .env")
 
 
 class ModelConfig(BaseModel):
@@ -23,7 +26,7 @@ class ModelConfig(BaseModel):
     )
     mlflow_model_uri: str | None = Field(
         default=None,
-        description="MLflow 模型 URI, 例如: models:/my-model/production",
+        description="MLflow 模型 URI, 例如: models:/timeseries_gb_model/28",
     )
 
 

@@ -4,6 +4,7 @@ import bentoml
 from loguru import logger
 import mlflow
 import os
+import time
 
 import mlflow.sklearn
 
@@ -48,10 +49,14 @@ class MLService:
         logger.info(f"Config loaded: {self.config}")
 
         try:
+            load_start = time.time()
+            # 统一使用 loader.py 加载模型
             self.model = load_model(self.config)
+            load_time = time.time() - load_start
+            
             model_load_counter.labels(
                 source=self.config.source, status="success").inc()
-            logger.info("Model loaded successfully")
+            logger.info(f"⏱️  Model loaded successfully in {load_time:.3f}s: {self.config.mlflow_model_uri or 'local/dummy'}")
         except Exception as e:
             model_load_counter.labels(
                 source=self.config.source, status="failure").inc()
@@ -75,105 +80,147 @@ class MLService:
     @bentoml.api
     async def predict(
         self,
-        model_name: str,
-        model_version: int,
-        steps: int
+        data: list,
+        config: dict
     ) -> PredictResponse:
         """
         预测接口.
 
         Args:
-            model_name: 模型名称
-            model_version: 模型版本
-            steps: 预测步数
+            data: 历史时间序列数据点列表
+            config: 预测配置（包含 steps）
 
         Returns:
             预测响应
-
-        Raises:
-            ModelInferenceError: 模型推理失败
         """
         import time
         import pandas as pd
         
         request_start = time.time()
-        logger.info(f"Received prediction request: model_name={model_name}, version={model_version}, steps={steps}")
+        
+        # 构造 PredictRequest 对象进行验证
+        from .schemas import TimeSeriesPoint, PredictionConfig, ResponseMetadata, ErrorDetail
+        try:
+            data_points = [TimeSeriesPoint(**point) for point in data]
+            pred_config = PredictionConfig(**config)
+            request = PredictRequest(data=data_points, config=pred_config)
+        except Exception as e:
+            logger.error(f"Request validation failed: {e}")
+            # 返回验证失败响应
+            return PredictResponse(
+                success=False,
+                history=None,
+                prediction=None,
+                metadata=ResponseMetadata(
+                    model_uri=self.config.mlflow_model_uri,
+                    prediction_steps=0,
+                    input_data_points=len(data) if data else 0,
+                    input_frequency=None,
+                    execution_time_ms=(time.time() - request_start) * 1000
+                ),
+                error=ErrorDetail(
+                    code="E1000",
+                    message=f"请求格式验证失败: {str(e)}",
+                    details={"error_type": type(e).__name__}
+                )
+            )
+        
+        logger.info(f"Received prediction request: steps={request.config.steps}, data_points={len(request.data)}")
 
         try:
-            # 1. 加载配置
-            config_start = time.time()
-            config = get_model_config()
-            mlflow_tracking_uri = config.mlflow_tracking_uri
-            if not mlflow_tracking_uri:
-                # raise ModelInferenceError("MLFLOW_TRACKING_URI environment variable not set")
-                logger.debug("MLFLOW_TRACKING_URI environment variable not set")
-                mlflow_tracking_uri = "http://localhost:15000"
+            # 转换历史数据
+            history = request.to_series()
+            steps = request.config.steps
             
-            mlflow.set_tracking_uri(mlflow_tracking_uri)
-            logger.info(f"⏱️  Config loaded in {time.time() - config_start:.3f}s")
+            # 推断频率（严格验证）
+            inferred_freq = pd.infer_freq(history.index)
+            if inferred_freq is None:
+                raise ValueError("无法推断输入数据的时间频率，请检查时间戳是否规则")
             
-            # 2. 加载模型
-            model_uri = f"models:/{model_name}/{model_version}"
-            logger.info(f"Loading model from: {model_uri}")
-            load_start = time.time()
-            model = mlflow.pyfunc.load_model(model_uri)
-            load_time = time.time() - load_start
-            logger.info(f"⏱️  Model loaded in {load_time:.3f}s")
-
-            # 3. 执行预测
+            logger.info(f"Detected frequency: {inferred_freq}")
+            
+            # 执行预测
             predict_start = time.time()
-            prediction = model.predict(pd.DataFrame({
-                'steps': [steps]
-            }))
+            prediction_values = self.model.predict({
+                'history': history,
+                'steps': steps
+            })
             predict_time = time.time() - predict_start
             logger.info(f"⏱️  Prediction executed in {predict_time:.3f}s")
             
-            # 4. 构造响应
+            # 生成预测时间戳
+            last_timestamp = history.index[-1]
+            predicted_points = []
+            for i in range(1, steps + 1):
+                next_ts = last_timestamp + i * pd.tseries.frequencies.to_offset(inferred_freq)
+                predicted_points.append(TimeSeriesPoint(
+                    timestamp=next_ts.isoformat(),
+                    value=float(prediction_values[i-1])
+                ))
+            
+            # 构造成功响应
             response = PredictResponse(
-                prediction=prediction.tolist()  # 转换为列表
+                success=True,
+                history=request.data,
+                prediction=predicted_points,
+                metadata=ResponseMetadata(
+                    model_uri=self.config.mlflow_model_uri,
+                    prediction_steps=steps,
+                    input_data_points=len(request.data),
+                    input_frequency=inferred_freq,
+                    execution_time_ms=(time.time() - request_start) * 1000
+                ),
+                error=None
             )
             
-            # 总耗时统计
             total_time = time.time() - request_start
-            logger.info(
-                f"⏱️  Total request time: {total_time:.3f}s "
-                f"(config: {time.time() - config_start:.3f}s, load: {load_time:.3f}s, predict: {predict_time:.3f}s)"
+            logger.info(f"⏱️  Total request time: {total_time:.3f}s")
+            
+            return response
+            
+        except ValueError as e:
+            # 验证错误（频率推断失败等）
+            logger.error(f"Validation error: {e}")
+            return PredictResponse(
+                success=False,
+                history=None,
+                prediction=None,
+                metadata=ResponseMetadata(
+                    model_uri=self.config.mlflow_model_uri,
+                    prediction_steps=0,
+                    input_data_points=len(data) if data else 0,
+                    input_frequency=None,
+                    execution_time_ms=(time.time() - request_start) * 1000
+                ),
+                error=ErrorDetail(
+                    code="E1001",
+                    message=str(e),
+                    details={"error_type": "ValidationError"}
+                )
             )
             
-            # with prediction_duration.labels(model_source=self.config.source).time():
-            #     # 调用模型预测
-            #     if hasattr(self.model, "predict"):
-            #         # Dummy model or sklearn-like interface
-            #         prediction = self.model.predict(request.features)
-            #     else:
-            #         # MLflow pyfunc interface
-            #         import pandas as pd
-
-            #         df = pd.DataFrame([request.features])
-            #         prediction = self.model.predict(df)[0]
-
-            #     # 构造响应
-            #     response = PredictResponse(
-            #         prediction=float(prediction),
-            #         model_version=getattr(self.model, "version", "unknown"),
-            #         source=self.config.source,
-            #     )
-
-            # prediction_counter.labels(
-            #     model_source=self.config.source,
-            #     status="success",
-            # ).inc()
-            logger.info(f"Prediction successful: {response}")
-            return response
-
         except Exception as e:
-            # prediction_counter.labels(
-            #     model_source=self.config.source,
-            #     status="failure",
-            # ).inc()
+            # 其他错误（模型预测失败等）
             logger.error(f"Prediction failed: {e}")
-            raise ModelInferenceError(
-                f"Model inference failed: {str(e)}") from e
+            import traceback
+            logger.error(traceback.format_exc())
+            return PredictResponse(
+                success=False,
+                history=None,
+                prediction=None,
+                metadata=ResponseMetadata(
+                    model_uri=self.config.mlflow_model_uri,
+                    prediction_steps=0,
+                    input_data_points=len(data) if data else 0,
+                    input_frequency=None,
+                    execution_time_ms=(time.time() - request_start) * 1000
+                ),
+                error=ErrorDetail(
+                    code="E2002",
+                    message=f"模型预测失败: {str(e)}",
+                    details={"error_type": type(e).__name__}
+                )
+            )
 
     @bentoml.api
     async def health(self) -> dict:

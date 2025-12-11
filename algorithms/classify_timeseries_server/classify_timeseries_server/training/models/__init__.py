@@ -5,7 +5,8 @@
 
 from .base import BaseTimeSeriesModel, ModelRegistry
 from .sarima_model import SARIMAModel, SARIMAWrapper
-from .gradient_boosting_model import GradientBoostingModel, GradientBoostingWrapper
+from .gradient_boosting_model import GradientBoostingModel
+from .gradient_boosting_wrapper import GradientBoostingWrapper
 
 __all__ = [
     "BaseTimeSeriesModel",

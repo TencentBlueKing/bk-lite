@@ -38,17 +38,18 @@ def load_model(config: ModelConfig) -> Any:
 def _load_from_mlflow(config: ModelConfig) -> Any:
     """从 MLflow 加载模型."""
     if not config.mlflow_model_uri:
-        logger.warning("MLflow model URI not provided, falling back to dummy")
+        logger.warning("mlflow_model_uri not provided, falling back to dummy")
         return DummyModel()
 
     try:
         import mlflow
 
-        if config.mlflow_tracking_uri:
-            mlflow.set_tracking_uri(config.mlflow_tracksing_uri)
-            logger.info(f"MLflow tracking URI: {config.mlflow_tracking_uri}")
+        # 设置 tracking URI
+        tracking_uri = config.mlflow_tracking_uri or "http://localhost:15000"
+        mlflow.set_tracking_uri(tracking_uri)
+        logger.info(f"MLflow tracking URI: {tracking_uri}")
 
-        logger.info(f"Loading MLflow model: {config.mlflow_model_uri}")
+        logger.info(f"Loading MLflow model from: {config.mlflow_model_uri}")
         model = mlflow.pyfunc.load_model(config.mlflow_model_uri)
         logger.info("MLflow model loaded successfully")
         return model
