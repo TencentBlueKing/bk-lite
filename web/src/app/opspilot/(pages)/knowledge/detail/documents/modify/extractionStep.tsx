@@ -346,7 +346,7 @@ const ExtractionStep: React.FC<{
                 </Option>
               ))}
             </Select>
-            {selectedMethod === 'fullText' && (
+            {selectedMethod && ['chapter', 'fullText'].includes(selectedMethod) && (
               <div className={`rounded-md p-4 mb-6 ${styles.configItem}`}>
                 <div className="flex justify-between items-center mb-4">
                   <h3 className="text-sm font-semibold">{t('knowledge.documents.ocrEnhancement')}</h3>

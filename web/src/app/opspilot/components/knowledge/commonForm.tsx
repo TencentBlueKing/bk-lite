@@ -4,7 +4,6 @@ import type { StaticImageData } from 'next/image';
 import { useTranslation } from '@/utils/i18n';
 import { useUserInfoContext } from '@/context/userInfo';
 import GroupTreeSelect from '@/components/group-tree-select';
-import Icon from '@/components/icon';
 import LatsAgent from '@/app/opspilot/img/lats_agent.png';
 import PlanAgent from '@/app/opspilot/img/plan_agent.png';
 import RagAgent from '@/app/opspilot/img/rag_agent.png';
@@ -55,15 +54,6 @@ const CommonForm: React.FC<CommonFormProps> = ({ form, modelOptions, initialValu
       desc: t('skill.form.complexTypeDesc'), 
       scene: t('skill.form.complexTypeScene'),
       img: LatsAgent
-    }
-  ];
-
-  const botTypeOptions = [
-    {
-      key: 3,
-      title: t('studio.chatflow'),
-      desc: t('studio.chatflowDesc'),
-      icon: 'Chatflow'
     }
   ];
 
@@ -124,34 +114,6 @@ const CommonForm: React.FC<CommonFormProps> = ({ form, modelOptions, initialValu
     );
   };
 
-  const renderBotTypeSelector = () => {
-    return (
-      <div className="w-full">
-        {botTypeOptions.map((option) => (
-          <div
-            key={option.key}
-            className="relative rounded-lg border-2 border-blue-500 bg-blue-50 p-4 w-full"
-          >
-            <div className="flex flex-col items-center text-center">
-              <div className="flex items-center gap-2 mb-3">
-                <Icon 
-                  type={option.icon} 
-                  className="text-4xl text-[var(--color-primary)]" 
-                />
-                <h3 className="font-semibold text-lg text-[var(--color-primary)]">
-                  {option.title}
-                </h3>
-              </div>
-              <p className="text-xs text-[var(--color-primary)]">
-                {option.desc}
-              </p>
-            </div>
-          </div>
-        ))}
-      </div>
-    );
-  };
-
   return (
     <Form form={form} layout="vertical" name={`${formType}_form`}>
       {formType === 'skill' && (
@@ -178,13 +140,10 @@ const CommonForm: React.FC<CommonFormProps> = ({ form, modelOptions, initialValu
       {formType === 'studio' && (
         <Form.Item
           name="bot_type"
-          label={t('studio.form.type')}
-          initialValue={botTypeOptions[0].key}
-          rules={[{ required: true, message: `${t('common.selectMsg')}${t('studio.form.type')}!` }]}
+          hidden
+          initialValue={3}
         >
-          <div>
-            {renderBotTypeSelector()}
-          </div>
+          <Input type="hidden" />
         </Form.Item>
       )}
       
