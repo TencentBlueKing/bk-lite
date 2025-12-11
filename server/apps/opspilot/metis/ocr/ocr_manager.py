@@ -16,15 +16,11 @@ class OcrManager:
 
         if ocr_type == 'olm_ocr':
             # 解密 api_key
-            decrypted_config = {"api_key": api_key}
-            EncryptMixin.decrypt_field("api_key", decrypted_config)
             ocr = OlmOcr(base_url=base_url,
-                         api_key=decrypted_config["api_key"], model=model)
+                         api_key=api_key, model=model)
 
         if ocr_type == 'azure_ocr':
-            decrypted_config = {"api_key": api_key}
-            EncryptMixin.decrypt_field("api_key", decrypted_config)
             ocr = AzureOCR(
-                api_key=decrypted_config["api_key"], endpoint=base_url)
+                api_key=api_key, endpoint=base_url)
 
         return ocr
