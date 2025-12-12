@@ -8,13 +8,8 @@ import React, {
   useEffect,
 } from 'react';
 import { Tag, Empty, Button, Spin, Badge } from 'antd';
-import {
-  RightOutlined,
-  GlobalOutlined,
-  EditOutlined,
-  WindowsOutlined,
-  AppleOutlined,
-} from '@ant-design/icons';
+import { RightOutlined, GlobalOutlined, EditOutlined } from '@ant-design/icons';
+import Icon from '@/components/icon';
 import OperateDrawer from '@/app/node-manager/components/operate-drawer';
 import { useTranslation } from '@/utils/i18n';
 import { useTelegrafMap } from '@/app/node-manager/hooks/node';
@@ -345,13 +340,14 @@ const CollectorDetailDrawer = forwardRef<ModalRef, CollectorDetailDrawerProps>(
     };
 
     const getOSIcon = () => {
-      const os = form?.operating_system?.toLowerCase();
-      if (os?.includes('windows')) {
-        return <WindowsOutlined style={{ fontSize: '14px' }} />;
-      } else if (os?.includes('linux')) {
-        return <AppleOutlined style={{ fontSize: '14px' }} />;
-      }
-      return null;
+      const osValue = form?.operating_system;
+      return (
+        <Icon
+          className="mr-[8px] center-align"
+          type={osValue === 'linux' ? 'Linux' : 'Window-Windows'}
+          style={{ transform: 'scale(1.3)', display: 'inline-block' }}
+        />
+      );
     };
 
     const getOSLabel = () => {
@@ -365,11 +361,15 @@ const CollectorDetailDrawer = forwardRef<ModalRef, CollectorDetailDrawerProps>(
           title={form?.name || '--'}
           subTitle={
             <>
-              <Tag icon={<GlobalOutlined />} color="blue" className="text-xs">
+              <Tag
+                icon={<GlobalOutlined />}
+                color="blue"
+                className="text-[14px]"
+              >
                 {form?.ip || '--'}
               </Tag>
               {form?.operating_system && (
-                <Tag icon={getOSIcon()} color="green" className="text-xs">
+                <Tag color="green" icon={getOSIcon()} className="text-[14px]">
                   {getOSLabel()}
                 </Tag>
               )}
