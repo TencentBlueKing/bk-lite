@@ -119,6 +119,7 @@
         "loginPassword": "Login Password",
         "desc": "Node is the environment in which controllers and components operate, which can be a host or a container. The platform leverages the controllers on the nodes to manage the nodes and uniformly regulate the operation of the components.",
         "sidecarVersion": "Controller Version",
+        "controllerVersionTip": "Upgradeable to new version",
         "inactive": "Inactive",
         "bindaditinfo": "After binding the configuration file, the corresponding collector will start automatically.",
         "operateSystem": "Operating System",
