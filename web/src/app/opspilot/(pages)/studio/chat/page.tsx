@@ -4,6 +4,7 @@ import React, { useState, useEffect } from 'react';
 import { useStudioApi } from '@/app/opspilot/api/studio';
 import { List, Button, Dropdown, Skeleton } from 'antd';
 import CustomChatSSE from '@/app/opspilot/components/custom-chat-sse';
+import { processHistoryMessageContent } from '@/app/opspilot/components/custom-chat-sse/historyMessageProcessor';
 import Icon from '@/components/icon';
 import type { MenuProps } from 'antd';
 
@@ -110,12 +111,13 @@ const StudioChatPage: React.FC = () => {
   const handleSelectSession = async (id: string) => {
     setChatLoading(true);
     setSelectedItem(id);
+    setSessionId(id); // 设置当前会话 ID
     try {
       const data = await fetchSessionMessages(id);
       const messages = (data || []).map((item: any) => ({
         id: String(item.id),
         role: item.conversation_role === 'user' ? 'user' : 'bot',
-        content: item.conversation_content,
+        content: processHistoryMessageContent(item.conversation_content, item.conversation_role),
         createAt: item.conversation_time,
       }));
       setInitialMessages(messages);

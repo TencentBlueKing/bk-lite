@@ -69,6 +69,11 @@ const CustomChatSSE: React.FC<CustomChatSSEProps> = ({
   const currentBotMessageRef = useRef<CustomChatMessage | null>(null);
   const chatContentRef = useRef<HTMLDivElement>(null);
 
+  // 监听 initialMessages 变化
+  useEffect(() => {
+    setMessages(initialMessages.length ? initialMessages : []);
+  }, [initialMessages]);
+
   // Auto scroll
   const scrollToBottom = useCallback(() => {
     if (chatContentRef.current) {
