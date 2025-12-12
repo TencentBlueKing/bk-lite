@@ -2,6 +2,7 @@ import ast
 
 from apps.core.exceptions.base_app_exception import BaseAppException
 from apps.monitor.models import MonitorInstance, MonitorInstanceOrganization, MonitorObject
+from apps.monitor.services.infra import InfraService
 from apps.monitor.services.node_mgmt import InstanceConfigService
 from apps.monitor.utils.victoriametrics_api import VictoriaMetricsAPI
 
@@ -80,18 +81,35 @@ class ManualCollectService:
         return {"instance_id": instance_obj.id}
 
     @staticmethod
-    def generate_install_command(instance_id: str, cloud_region_id) -> str:
+    def generate_install_command(cluster_name: str, cloud_region_id: str) -> str:
         """
-        生成手动采集安装命令
+        生成 Kubernetes 安装命令
+
+        :param cluster_name: 集群名称
+        :param cloud_region_id: 云区域 ID
+        :return: kubectl apply 命令字符串
         """
-        # 实例ID格式转换
-        try:
-            _instance_id = ast.literal_eval(instance_id)[0]
-        except Exception:
-            _instance_id = instance_id
+        # 通过 RPC 获取云区域环境变量
+        from apps.rpc.node_mgmt import NodeMgmt
+
+        node_mgmt_rpc = NodeMgmt()
+        env_vars = node_mgmt_rpc.get_cloud_region_envconfig(cloud_region_id)
+
+        # 从云区域环境变量中获取服务器地址
+        server_url = env_vars.get('NODE_SERVER_URL')
+        if not server_url:
+            raise BaseAppException(f"Missing NODE_SERVER_URL in cloud region {cloud_region_id}")
+
+        # 调用 InfraService 生成限时令牌
+        token = InfraService.generate_install_token(cluster_name, cloud_region_id)
+
+        # 构造 curl 命令，使用令牌而不是直接传递参数
         install_command = (
-            f"curl -sSO https://example.com/monitor-agent/install.sh && "
-            f"bash install.sh --instance-id {_instance_id}"
+            f"curl -sSL -X POST "
+            f"-H 'Content-Type: application/json' "
+            f"{server_url}/infra/render/ "
+            f"-d '{{\"token\":\"{token}\"}}' "
+            f"| kubectl apply -f -"
         )
         return install_command
 

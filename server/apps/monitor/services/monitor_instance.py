@@ -25,6 +25,20 @@ class InstanceSearch:
         return instance_ids
 
     @staticmethod
+    def get_parent_instance_list(monitor_obj_name):
+        """获取父对象实例列表"""
+        objs = MonitorObject.objects.filter(name=monitor_obj_name).values("id", "name")
+
+        data = {}
+        for obj in objs:
+            try:
+                _instance_id = ast.literal_eval(obj["id"])[0]
+            except Exception:
+                _instance_id = obj["id"]
+            data[str(_instance_id)] = obj["name"]
+        return data
+
+    @staticmethod
     def get_query_params_enum(monitor_obj_name):
         """获取查询参数枚举"""
         if monitor_obj_name == "Pod":
@@ -58,8 +72,9 @@ class InstanceSearch:
             query = 'any({instance_type="qcloud"}) by (instance_id)'
             return InstanceSearch.get_parent_instance_ids(query)
         elif monitor_obj_name in {"Docker Container"}:
-            query = 'any({instance_type="docker"}) by (instance_id)'
-            return InstanceSearch.get_parent_instance_ids(query)
+            # query = 'any({instance_type="docker"}) by (instance_id)'
+            # return InstanceSearch.get_parent_instance_ids(query)
+            return InstanceSearch.get_parent_instance_list(monitor_obj_name)
 
     def get_obj_metric_map(self):
         monitor_objs = MonitorObject.objects.all().values(*MonitorObjConstants.OBJ_KEYS)

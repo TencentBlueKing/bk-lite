@@ -1,5 +1,6 @@
 from rest_framework import routers
 
+from apps.monitor.views.infra import InfraViewSet
 from apps.monitor.views.manual_collect import ManualCollect
 from apps.monitor.views.monitor_alert import MonitorAlertVieSet, MonitorEventVieSet
 from apps.monitor.views.monitor_instance import MonitorInstanceVieSet
@@ -29,4 +30,5 @@ router.register(r"api/system_mgmt", SystemMgmtView, basename="SystemMgmtView")
 router.register(r"api/node_mgmt", NodeMgmtView, basename="NodeMgmtView")
 
 router.register(r"api/manual_collect", ManualCollect, basename="ManualCollect")
+router.register(r"infra", InfraViewSet, basename="InfraViewSet")
 urlpatterns = router.urls
