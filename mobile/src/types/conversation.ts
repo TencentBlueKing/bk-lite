@@ -1,3 +1,21 @@
+export interface ChatItem {
+  id: string;
+  name: string;
+  avatar: string;
+  lastMessage?: string;
+  time?: string;
+  hasCall?: boolean;
+  website?: string;
+  unread?: number;
+}
+
+export interface ChatMessage {
+  id: string;
+  chatId: string;
+  sender: 'user' | 'bot';
+  content: string;
+  timestamp: number;
+}
 export interface sessionsItem {
   bot_id: number;
   session_id: string;
