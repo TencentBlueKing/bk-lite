@@ -27,8 +27,8 @@ from apps.opspilot.services.knowledge_search_service import KnowledgeSearchServi
 class RAGService:
     """处理RAG(检索增强生成)相关的服务"""
 
-    @staticmethod
-    def format_naive_rag_kwargs(kwargs: Dict[str, Any]) -> Tuple[List, Dict, Dict]:
+    @classmethod
+    def format_naive_rag_kwargs(cls, kwargs: Dict[str, Any]) -> Tuple[List, Dict, Dict]:
         """
         搜索相关文档以提供上下文
 
@@ -48,11 +48,11 @@ class RAGService:
             KnowledgeDocument.objects.filter(knowledge_base_id__in=base_ids).values("id", "knowledge_source_type", "name", "knowledge_base_id")
         )
         doc_map = {i["id"]: i for i in doc_list}
-        km_request = RAGService.set_km_request(knowledge_base_list, kwargs["enable_km_route"], kwargs["km_llm_model"])
+        km_request = cls.set_km_request(knowledge_base_list, kwargs["enable_km_route"], kwargs["km_llm_model"])
 
         # 为每个知识库搜索相关文档
         for knowledge_base in knowledge_base_list:
-            default_kwargs = RAGService.set_default_naive_rag_kwargs(knowledge_base, score_threshold_map)
+            default_kwargs = cls.set_default_naive_rag_kwargs(knowledge_base, score_threshold_map)
             if knowledge_base.enable_naive_rag:
                 params = dict(
                     default_kwargs,

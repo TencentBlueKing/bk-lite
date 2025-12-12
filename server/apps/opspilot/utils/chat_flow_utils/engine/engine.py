@@ -503,7 +503,6 @@ class ChatFlowEngine:
             input_data_str = json.dumps(input_data, ensure_ascii=False)
 
             # 准备最后输出
-            last_output = ""
             if isinstance(result, dict):
                 last_output = json.dumps(result, ensure_ascii=False)
             elif isinstance(result, str):
