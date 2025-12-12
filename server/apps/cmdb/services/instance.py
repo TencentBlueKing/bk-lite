@@ -532,7 +532,11 @@ class InstanceManage(object):
             query = dict(label=INSTANCE, params=query_list,
                          format_permission_dict=format_permission_dict)
             inst_list, _ = ag.query_entity(**query)
-        attrs = [i for i in attrs if i["attr_id"] in attr_list] if attr_list else attrs
+        if attr_list:
+            attr_map = {attr["attr_id"]: attr for attr in attrs}
+            attrs = [attr_map[attr_id] for attr_id in attr_list if attr_id in attr_map]
+        else:
+            attrs = attrs
         # 只有当用户明确选择了关联关系时才包含关联关系
         association = [i for i in association if
                        i["model_asst_id"] in association_list] if association_list else []
