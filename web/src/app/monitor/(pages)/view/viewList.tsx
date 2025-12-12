@@ -332,6 +332,7 @@ const ViewList: React.FC<ViewListProps> = ({
             objects,
             row: targetObject,
             t,
+            queryData: queryForm,
           }),
           ...columns,
         ]);
