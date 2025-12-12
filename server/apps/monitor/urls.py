@@ -30,5 +30,5 @@ router.register(r"api/system_mgmt", SystemMgmtView, basename="SystemMgmtView")
 router.register(r"api/node_mgmt", NodeMgmtView, basename="NodeMgmtView")
 
 router.register(r"api/manual_collect", ManualCollect, basename="ManualCollect")
-router.register(r"infra", InfraViewSet, basename="InfraViewSet")
+router.register(r"open_api/infra", InfraViewSet, basename="InfraViewSet")
 urlpatterns = router.urls
