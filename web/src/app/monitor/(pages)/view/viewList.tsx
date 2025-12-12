@@ -481,7 +481,7 @@ const ViewList: React.FC<ViewListProps> = ({
               >
                 {queryData.map((item) => (
                   <Option key={item.id} value={item.id}>
-                    {item.id || item.name}
+                    {item.name || item.id}
                   </Option>
                 ))}
               </Select>
