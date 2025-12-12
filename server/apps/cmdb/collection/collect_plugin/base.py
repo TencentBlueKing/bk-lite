@@ -21,6 +21,9 @@ class CollectBase(metaclass=ABCMeta):
         self.inst_id = inst_id
         self.task_id = task_id
         self.inst_name = inst_name
+        if not self.inst_name:
+            task_inst_data = self.get_collect_inst().instances
+            self.inst_name = task_inst_data[0]['inst_name']
         assert self.check_metrics(), "请定义_metrics"
         self.collection_metrics_dict = {i: [] for i in self._metrics}
         self.timestamp_gt = False
