@@ -5,14 +5,21 @@
 
 import { AGUIMessage } from '@/app/opspilot/types/chat';
 import { CustomChatMessage } from '@/app/opspilot/types/global';
-import { ToolCallInfo, renderAllToolCalls, renderErrorMessage } from './toolCallRenderer';
+import { ToolCallInfo, renderToolCallCard, renderErrorMessage, initToolCallTooltips } from './toolCallRenderer';
 
 export interface MessageUpdateFn {
   (updater: (prevMessages: CustomChatMessage[]) => CustomChatMessage[]): void;
 }
 
+// 内容块类型
+type ContentBlock = 
+  | { type: 'text'; content: string }
+  | { type: 'toolCall'; id: string }
+  | { type: 'thinking' };
+
 export class AGUIMessageHandler {
-  private accumulatedContent: string = '';
+  private contentBlocks: ContentBlock[] = [];
+  private currentTextBlock: string = '';
   private toolCallsRef: Map<string, ToolCallInfo>;
   private botMessage: CustomChatMessage;
   private updateMessages: MessageUpdateFn;
@@ -25,6 +32,11 @@ export class AGUIMessageHandler {
     this.botMessage = botMessage;
     this.updateMessages = updateMessages;
     this.toolCallsRef = toolCallsRef;
+    
+    // 初始化 tooltip 事件监听（只在浏览器环境执行一次）
+    if (typeof window !== 'undefined') {
+      initToolCallTooltips();
+    }
   }
 
   /**
@@ -45,20 +57,69 @@ export class AGUIMessageHandler {
   }
 
   /**
-   * 获取完整内容（工具调用 + 文本）
-   * 按后端返回顺序：先工具调用，后文本内容
+   * 获取完整内容 - 按照内容块的顺序渲染
    */
   private getFullContent(): string {
-    const toolCallsDisplay = renderAllToolCalls(this.toolCallsRef);
-    return (toolCallsDisplay ? `${toolCallsDisplay}\n\n` : '') + this.accumulatedContent;
+    const parts: string[] = [];
+    let lastBlockType: string | null = null;
+
+    for (const block of this.contentBlocks) {
+      let content = '';
+      
+      if (block.type === 'text') {
+        content = block.content;
+      } else if (block.type === 'toolCall') {
+        const toolInfo = this.toolCallsRef.get(block.id);
+        if (toolInfo) {
+          content = renderToolCallCard(block.id, toolInfo);
+        }
+      } else if (block.type === 'thinking') {
+        content = '<div class="thinking-loader" style="display: flex; align-items: center; gap: 8px; color: #999;"><span style="display: inline-flex; gap: 4px;"><span style="width: 8px; height: 8px; background: currentColor; border-radius: 50%; animation: thinking-dot 1.4s infinite ease-in-out both; animation-delay: -0.32s;"></span><span style="width: 8px; height: 8px; background: currentColor; border-radius: 50%; animation: thinking-dot 1.4s infinite ease-in-out both; animation-delay: -0.16s;"></span><span style="width: 8px; height: 8px; background: currentColor; border-radius: 50%; animation: thinking-dot 1.4s infinite ease-in-out both;"></span></span></div><style>@keyframes thinking-dot { 0%, 80%, 100% { transform: scale(0); opacity: 0.5; } 40% { transform: scale(1); opacity: 1; } }</style>';
+      }
+
+      if (content) {
+        // 工具调用之间不换行，其他情况换行
+        if (parts.length > 0) {
+          if (lastBlockType === 'toolCall' && block.type === 'toolCall') {
+            // 工具调用之间直接拼接，不加换行
+            parts.push(content);
+          } else {
+            // 其他情况加换行
+            parts.push('\n\n' + content);
+          }
+        } else {
+          parts.push(content);
+        }
+        lastBlockType = block.type;
+      }
+    }
+
+    // 添加当前正在累积的文本
+    if (this.currentTextBlock) {
+      if (parts.length > 0 && lastBlockType !== 'text') {
+        parts.push('\n\n' + this.currentTextBlock);
+      } else {
+        parts.push(this.currentTextBlock);
+      }
+    }
+
+    return parts.join('');
   }
 
   /**
    * 清除"正在思考"提示
    */
   private clearThinkingPrompt() {
-    if (this.accumulatedContent.includes('thinking-loader')) {
-      this.accumulatedContent = '';
+    this.contentBlocks = this.contentBlocks.filter(block => block.type !== 'thinking');
+  }
+
+  /**
+   * 提交当前文本块
+   */
+  private flushCurrentTextBlock() {
+    if (this.currentTextBlock) {
+      this.contentBlocks.push({ type: 'text', content: this.currentTextBlock });
+      this.currentTextBlock = '';
     }
   }
 
@@ -66,8 +127,8 @@ export class AGUIMessageHandler {
    * 处理 RUN_STARTED 事件
    */
   handleRunStarted() {
-    this.accumulatedContent = '<div class="thinking-loader" style="display: flex; align-items: center; gap: 8px; color: #999;"><span style="display: inline-flex; gap: 4px;"><span style="width: 8px; height: 8px; background: currentColor; border-radius: 50%; animation: thinking-dot 1.4s infinite ease-in-out both; animation-delay: -0.32s;"></span><span style="width: 8px; height: 8px; background: currentColor; border-radius: 50%; animation: thinking-dot 1.4s infinite ease-in-out both; animation-delay: -0.16s;"></span><span style="width: 8px; height: 8px; background: currentColor; border-radius: 50%; animation: thinking-dot 1.4s infinite ease-in-out both;"></span></span></div><style>@keyframes thinking-dot { 0%, 80%, 100% { transform: scale(0); opacity: 0.5; } 40% { transform: scale(1); opacity: 1; } }</style>\n\n';
-    this.updateMessageContent(this.accumulatedContent);
+    this.contentBlocks.push({ type: 'thinking' });
+    this.updateMessageContent(this.getFullContent());
   }
 
   /**
@@ -75,7 +136,7 @@ export class AGUIMessageHandler {
    */
   handleTextContent(delta: string) {
     this.clearThinkingPrompt();
-    this.accumulatedContent += delta;
+    this.currentTextBlock += delta;
     this.updateMessageContent(this.getFullContent());
   }
 
@@ -83,7 +144,12 @@ export class AGUIMessageHandler {
    * 处理 TOOL_CALL_START 事件
    */
   handleToolCallStart(toolCallId: string, toolCallName: string) {
-    // 不清除"正在思考"提示，保持 loading 状态
+    // 提交当前文本块
+    this.flushCurrentTextBlock();
+    
+    // 添加工具调用块
+    this.contentBlocks.push({ type: 'toolCall', id: toolCallId });
+    
     this.toolCallsRef.set(toolCallId, {
       name: toolCallName,
       args: '',
@@ -120,8 +186,10 @@ export class AGUIMessageHandler {
    */
   handleError(error: string) {
     this.clearThinkingPrompt();
+    this.flushCurrentTextBlock();
     const errorMessage = renderErrorMessage(error, 'error');
-    this.updateMessageContent(this.accumulatedContent + `\n\n${errorMessage}`);
+    this.contentBlocks.push({ type: 'text', content: errorMessage });
+    this.updateMessageContent(this.getFullContent());
   }
 
   /**
@@ -129,8 +197,10 @@ export class AGUIMessageHandler {
    */
   handleRunError(message: string, code?: string) {
     this.clearThinkingPrompt();
+    this.flushCurrentTextBlock();
     const errorMessage = renderErrorMessage(message, 'run_error', code);
-    this.updateMessageContent(this.accumulatedContent + `\n\n${errorMessage}`);
+    this.contentBlocks.push({ type: 'text', content: errorMessage });
+    this.updateMessageContent(this.getFullContent());
   }
 
   /**

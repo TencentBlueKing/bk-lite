@@ -18,23 +18,27 @@ class AWSNodeParams(BaseNodeParams):
         """
         生成 AWS 的凭据
         """
+        _instance_id = self.get_instance_id(instance=kwargs["host"])
+        _access_key_id = f"PASSWORD_access_key_id_{_instance_id}"
+        _secret_access_key = f"PASSWORD_secret_access_key_{_instance_id}"
         return {
             # "access_key_id": self.credential.get("access_key_id", ""),
             # "secret_access_key": self.credential.get("secret_access_key", ""),
-            "access_key_id": "${PASSWORD_access_key_id}",
-            "secret_access_key": "${PASSWORD_secret_access_key}",
+            "access_key_id": "${" + _access_key_id + "}",
+            "secret_access_key": "${" + _secret_access_key + "}",
         }
 
     def get_instance_id(self, instance):
         """
         获取实例 ID
         """
-        return f"{self.instance.id}_{instance['inst_name']}"
+        return f"{self.instance.id}_{instance['_id']}"
 
-    @property
     def env_config(self, *args, **kwargs):
+        host = kwargs["host"]
+        _instance_id = self.get_instance_id(instance=host)
         env_config = {
-            "$PASSWORD_access_key_id": self.credential.get("access_key_id", ""),
-            "$PASSWORD_secret_access_key": self.credential.get("secret_access_key", ""),
+            f"PASSWORD_access_key_id_{_instance_id}": self.credential.get("access_key_id", ""),
+            f"PASSWORD_secret_access_key_{_instance_id}": self.credential.get("secret_access_key", ""),
         }
         return env_config

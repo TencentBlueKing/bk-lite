@@ -123,7 +123,10 @@ ALIYUN_COLLECT_CLUSTER = [
     "aliyun_kafka_info_gauge", "aliyun_clb_info_gauge"
 ]
 
-HOST_COLLECT_METRIC = ["host_info_gauge"]
+HOST_COLLECT_METRIC = {
+    "host": ["host_info_gauge"],
+    "physcial_server": ["physcial_server_info_gauge","disk_info_gauge","memory_info_gauge","nic_info_gauge","gpu_info_gauge"],
+}
 
 DB_COLLECT_METRIC_MAP = {
     "es": ["es_info_gauge"],

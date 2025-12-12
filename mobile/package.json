@@ -23,6 +23,7 @@
     "@ant-design/icons": "^6.0.2",
     "@ant-design/x": "^1.6.1",
     "@tauri-apps/api": "^2.8.0",
+    "@tauri-apps/plugin-store": "^2.4.1",
     "@types/markdown-it": "^14.1.2",
     "antd": "^5.27.4",
     "antd-mobile": "^5.41.1",

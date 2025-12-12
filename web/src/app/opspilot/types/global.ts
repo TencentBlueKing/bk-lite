@@ -27,6 +27,12 @@ export interface CustomChatMessage {
   updateAt?: string;
   knowledgeBase?: KnowledgeBase | null;
   annotation?: Annotation | null;
+  images?: Array<{
+    id: string;
+    url: string;
+    name?: string;
+    status?: 'uploading' | 'done' | 'error';
+  }>;
 }
 
 export interface ResultItem {

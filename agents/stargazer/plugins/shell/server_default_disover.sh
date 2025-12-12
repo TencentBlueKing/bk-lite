@@ -2,14 +2,14 @@
 
 # ========== 判断是否为测试环境 IP ==========
 current_ip=$(hostname -I 2>/dev/null | awk '{print $1}')
-if [ "$current_ip" = "10.11.27.147" ]; then
+if [ "$current_ip" = "xxxxxxxx" ]; then
   echo "=== board_info ===
-board_manufacturer=Huawei
-board_product=BC82AMDQ
+board_vendor=Huawei
+board_model=BC82AMDQ
 board_serial=2106411443FSP9001051
 
 === system_sn ===
-system_sn=2102355RECP0PB100025
+serial_number=2102355RECP0PB100025
 
 === CPU_info ===
 cpu_arch=aarch64
@@ -25,7 +25,7 @@ cpu_mhz_max=2600.0000
 disk_name=/dev/sda
 disk_vendor=AVAGO
 disk_model=HW-SAS3408
-disk_size=446.1G
+disk=446.1G
 disk_tran=N/A
 disk_type=HDD
 disk_sn=008b516f487ec9a72d0060efe940d3c8
@@ -33,36 +33,36 @@ disk_sn=008b516f487ec9a72d0060efe940d3c8
 
 === mem_info ===
 mem_locator=DIMM000 J27
-mem_manufacturer=Samsung
+mem_vendor=Samsung
 mem_part_number=M393A4K40DB2-CVF    
 mem_type=DDR4
-mem_size=None
+mem_size=32 GB
 mem_sn=43EBF12C
 
 mem_locator=DIMM010 J25
-mem_manufacturer=Samsung
+mem_vendor=Samsung
 mem_part_number=M393A4K40DB2-CVF    
 mem_type=DDR4
-mem_size=None
+mem_size=32 GB
 mem_sn=43D5FC14
 
 mem_locator=DIMM100 J43
-mem_manufacturer=Samsung
+mem_vendor=Samsung
 mem_part_number=M393A4K40DB2-CVF    
 mem_type=DDR4
-mem_size=None
+mem_size=32 GB
 mem_sn=43EC5B00
 
 mem_locator=DIMM110 J41
-mem_manufacturer=Samsung
+mem_vendor=Samsung
 mem_part_number=M393A4K40DB2-CVF    
 mem_type=DDR4
-mem_size=None
+mem_size=32 GB
 mem_sn=43EC360C
 
 
 === GPU info ===
-gpu_pci_addr=06:00.0
+gpu_name=06:00.0
 gpu_type=VGA compatible controller
 gpu_desc=Huawei Technologies Co., Ltd. Hi171x Series [iBMC Intelligent Management system chip w/VGA support]
 
@@ -174,13 +174,13 @@ board_manufacturer=$(sudo dmidecode -t baseboard | awk -F: '/Manufacturer/ {gsub
 board_product=$(sudo dmidecode -t baseboard | awk -F: '/Product Name/ {gsub(/^[ \t]+/,"",$2); print $2; exit}')
 board_serial=$(sudo dmidecode -t baseboard | awk -F: '/Serial Number/ {gsub(/^[ \t]+/,"",$2); print $2; exit}')
 
-echo "board_manufacturer=${board_manufacturer:-N/A}"
-echo "board_product=${board_product:-N/A}"
+echo "board_vendor=${board_manufacturer:-N/A}"
+echo "board_model=${board_product:-N/A}"
 echo "board_serial=${board_serial:-N/A}"
 
 echo -e "\n=== system_sn ==="
 system_sn=$(sudo dmidecode -s system-serial-number)
-echo "system_sn=${system_sn:-N/A}"
+echo "serial_number=${system_sn:-N/A}"
 
 echo -e "\n=== CPU_info ==="
 
@@ -265,7 +265,7 @@ for disk in $(lsblk -d -n -o NAME,TYPE | awk '$2=="disk"{print $1}'); do
   echo "disk_name=$dev"
   echo "disk_vendor=$vendor"
   echo "disk_model=$model"
-  echo "disk_size=$size"
+  echo "disk=$size"
   echo "disk_tran=$tran"
   echo "disk_type=$media_type"
   echo "disk_sn=$serial"
@@ -279,7 +279,7 @@ if command -v dmidecode &>/dev/null; then
       # 新的 Memory Device 开始,先把上一个打印出来(如果有效)
       if (seen && size != "" && size !~ /No Module Installed/) {
         printf "mem_locator=%s\n", slot
-        printf "mem_manufacturer=%s\n", manu
+        printf "mem_vendor=%s\n", manu
         printf "mem_part_number=%s\n", part
         printf "mem_type=%s\n", type
         printf "mem_size=%s\n", size
@@ -293,7 +293,7 @@ if command -v dmidecode &>/dev/null; then
     seen {
       if ($0 ~ /Locator:/ && $0 !~ /Bank Locator/) {
         sub(/.*Locator:[ \t]*/, "", $0); slot=$0
-      } else if ($0 ~ /Size:/) {
+      } else if ($0 ~ /^[[:space:]]*Size:/) {
         sub(/.*Size:[ \t]*/, "", $0); size=$0
       } else if ($0 ~ /Type:/ && $0 !~ /Error/) {
         sub(/.*Type:[ \t]*/, "", $0); type=$0
@@ -309,7 +309,7 @@ if command -v dmidecode &>/dev/null; then
       # 打印最后一个有效的 Memory Device
       if (seen && size != "" && size !~ /No Module Installed/) {
         printf "mem_locator=%s\n", slot
-        printf "mem_manufacturer=%s\n", manu
+        printf "mem_vendor=%s\n", manu
         printf "mem_part_number=%s\n", part
         printf "mem_type=%s\n", type
         printf "mem_size=%s\n", size
@@ -325,10 +325,9 @@ echo -e "\n=== GPU info ==="
 # 判断是否安装了 NVIDIA 驱动
 if command -v nvidia-smi &> /dev/null; then
   nvidia-smi --query-gpu=index,name,serial,uuid --format=csv,noheader | while IFS=',' read -r index name serial uuid; do
-    echo "gpu_index=$(echo "$index" | xargs)"
-    echo "gpu_name=$(echo "$name" | xargs)"
-    echo "gpu_serial=$(echo "$serial" | xargs)"
-    echo "gpu_uuid=$(echo "$uuid" | xargs)"
+    echo "gpu_name=$(echo "$index" | xargs) - $(echo "$name" | xargs)"
+    echo "gpu_type=NVIDIA"
+    echo "gpu_desc=serial:$(echo "$serial" | xargs),uuid:$(echo "$uuid" | xargs)"
     echo ""
   done
 else
@@ -337,7 +336,7 @@ else
     type=$(echo "$line" | sed -E 's/^[^ ]+ +([^:]+):.*/\1/' | xargs)
     desc=$(echo "$line" | cut -d':' -f3- | sed 's/(rev.*)//' | xargs)
     
-    echo "gpu_pci_addr=$pci_addr"
+    echo "gpu_name=$pci_addr"
     echo "gpu_type=$type"
     echo "gpu_desc=$desc"
     echo ""

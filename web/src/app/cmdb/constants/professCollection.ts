@@ -85,6 +85,9 @@ export const ENTER_TYPE = {
   APPROVAL: 'approval',
 } as const;
 
+// 密码占位符，用于编辑时隐藏真实密码
+export const PASSWORD_PLACEHOLDER = '******';
+
 export const K8S_FORM_INITIAL_VALUES = {
   instId: undefined,
   cycle: CYCLE_OPTIONS.ONCE,

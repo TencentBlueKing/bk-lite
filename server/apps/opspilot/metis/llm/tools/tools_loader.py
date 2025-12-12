@@ -6,12 +6,15 @@ from apps.opspilot.metis.utils.template_loader import TemplateLoader
 
 # 静态导入所有工具模块
 from apps.opspilot.metis.llm.tools import date
+from apps.opspilot.metis.llm.tools import fetch
 from apps.opspilot.metis.llm.tools import github
 from apps.opspilot.metis.llm.tools import jenkins
 from apps.opspilot.metis.llm.tools import kubernetes
+from apps.opspilot.metis.llm.tools import postgres
 from apps.opspilot.metis.llm.tools import python
 from apps.opspilot.metis.llm.tools import search
 from apps.opspilot.metis.llm.tools import shell
+from apps.opspilot.metis.llm.tools import ssh
 
 
 class ToolsLoader:
@@ -38,11 +41,14 @@ class ToolsLoader:
     TOOL_MODULES = {
         'current_time': (date, False),
         'duckduckgo': (search, False),
+        'fetch': (fetch, False),
         'github': (github, False),
         'jenkins': (jenkins, False),
         'kubernetes': (kubernetes, False),
+        'postgres': (postgres, False),
         'python': (python, False),
         'shell': (shell, False),
+        'ssh': (ssh, False),
     }
 
     @staticmethod

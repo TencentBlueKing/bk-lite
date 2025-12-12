@@ -8,15 +8,11 @@ from django_filters.rest_framework import FilterSet
 from rest_framework.decorators import action
 
 from apps.core.decorators.api_permission import HasPermission
-from apps.core.logger import opspilot_logger as logger
 from apps.core.utils.viewset_utils import AuthViewSet
-from apps.opspilot.enum import BotTypeChoice, ChannelChoices, WorkFlowExecuteType
-from apps.opspilot.models import Bot, BotChannel, BotWorkFlow, Channel, LLMSkill
-from apps.opspilot.models.bot_mgmt import WorkFlowConversationHistory
+from apps.opspilot.enum import BotTypeChoice, WorkFlowExecuteType
+from apps.opspilot.models import Bot, BotChannel, BotWorkFlow, LLMSkill, WorkFlowConversationHistory
 from apps.opspilot.serializers import BotSerializer
 from apps.opspilot.utils.bot_utils import set_time_range
-from apps.opspilot.utils.pilot_client import PilotClient
-from apps.opspilot.utils.quota_utils import get_quota_client
 
 
 class BotFilter(FilterSet):
@@ -40,12 +36,6 @@ class BotViewSet(AuthViewSet):
     @HasPermission("bot_list-Add")
     def create(self, request, *args, **kwargs):
         data = request.data
-        if not request.user.is_superuser:
-            client = get_quota_client(request)
-            bot_count, used_bot_count, __ = client.get_bot_quota()
-            if bot_count != -1 and bot_count <= used_bot_count:
-                message = self.loader.get("error.bot_quota_exceeded") if self.loader else "Bot count exceeds quota limit."
-                return JsonResponse({"result": False, "message": message})
         current_team = data.get("team", []) or [int(request.COOKIES.get("current_team"))]
         bot_obj = Bot.objects.create(
             name=data.get("name"),
@@ -56,22 +46,7 @@ class BotViewSet(AuthViewSet):
             replica_count=data.get("replica_count") or 1,
             bot_type=data.get("bot_type", BotTypeChoice.PILOT),
         )
-        if data.get("bot_type", BotTypeChoice.PILOT) == BotTypeChoice.PILOT:
-            channel_list = Channel.objects.all()
-            BotChannel.objects.bulk_create(
-                [
-                    BotChannel(
-                        bot_id=bot_obj.id,
-                        name=i.name,
-                        channel_type=i.channel_type,
-                        channel_config=i.channel_config,
-                        enabled=i.channel_type == ChannelChoices.WEB,
-                    )
-                    for i in channel_list
-                ]
-            )
-        elif data.get("bot_type") == BotTypeChoice.CHAT_FLOW:
-            BotWorkFlow.objects.create(bot_id=bot_obj.id)
+        BotWorkFlow.objects.create(bot_id=bot_obj.id)
         return JsonResponse({"result": True})
 
     @HasPermission("bot_settings-Edit")
@@ -123,20 +98,8 @@ class BotViewSet(AuthViewSet):
         obj.updated_by = request.user.username
         obj.save()
         if is_publish:
-            if obj.bot_type != BotTypeChoice.CHAT_FLOW:
-                client = PilotClient()
-                try:
-                    client.start_pilot(obj)
-                except Exception as e:
-                    logger.exception(e)
-                    return JsonResponse(
-                        {
-                            "result": False,
-                            "message": self.loader.get("error.pilot_start_failed") if self.loader else "Pilot start failed.",
-                        }
-                    )
-            else:
-                BotWorkFlow.create_celery_task(obj.id, workflow_data)
+            # 只有 CHAT_FLOW 类型,创建 Celery 任务
+            BotWorkFlow.create_celery_task(obj.id, workflow_data)
             obj.online = is_publish
             obj.save()
 
@@ -189,11 +152,8 @@ class BotViewSet(AuthViewSet):
     @HasPermission("bot_list-Delete")
     def destroy(self, request, *args, **kwargs):
         obj = self.get_object()
-        if obj.online and obj.bot_type != BotTypeChoice.CHAT_FLOW:
-            client = PilotClient()
-            client.stop_pilot(obj)
-        else:
-            BotWorkFlow.delete_celery_task(obj.id)
+        # 只有 CHAT_FLOW 类型,删除 Celery 任务
+        BotWorkFlow.delete_celery_task(obj.id)
         return super().destroy(request, *args, **kwargs)
 
     @action(methods=["POST"], detail=False)
@@ -213,17 +173,14 @@ class BotViewSet(AuthViewSet):
                         "message": message,
                     }
                 )
-        client = PilotClient()
+        # 只有 CHAT_FLOW 类型
         for bot in bots:
             if not bot.api_token:
                 bot.api_token = bot.get_api_token()
             bot.save()
-            if bot.bot_type != BotTypeChoice.CHAT_FLOW:
-                client.start_pilot(bot)
-            else:
-                workflow_data = BotWorkFlow.objects.filter(bot_id=bot.id).first()
-                if workflow_data:
-                    BotWorkFlow.create_celery_task(bot.id, workflow_data.web_json)
+            workflow_data = BotWorkFlow.objects.filter(bot_id=bot.id).first()
+            if workflow_data:
+                BotWorkFlow.create_celery_task(bot.id, workflow_data.web_json)
             bot.online = True
             bot.save()
         return JsonResponse({"result": True})
@@ -246,12 +203,9 @@ class BotViewSet(AuthViewSet):
                     }
                 )
 
-        client = PilotClient()
+        # 只有 CHAT_FLOW 类型
         for bot in bots:
-            if bot.bot_type != BotTypeChoice.CHAT_FLOW:
-                client.stop_pilot(bot)
-            else:
-                BotWorkFlow.delete_celery_task(bot.id)
+            BotWorkFlow.delete_celery_task(bot.id)
             bot.api_token = ""
             bot.online = False
             bot.save()
