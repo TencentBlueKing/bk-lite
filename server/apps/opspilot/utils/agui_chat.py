@@ -93,7 +93,7 @@ def stream_agui_chat(params, skill_name, kwargs, current_ip, user_message, skill
     chat_kwargs, doc_map, title_map = llm_service.format_chat_server_kwargs(params, llm_model)
 
     # 用于存储最终统计信息的共享变量
-    final_stats = {"content": ""}
+    final_stats = {"content": []}
 
     async def generate_stream():
         """
@@ -107,8 +107,7 @@ def stream_agui_chat(params, skill_name, kwargs, current_ip, user_message, skill
 
             # 直接调用异步流式方法
             chunk_index = 0
-            accumulated_content = ""
-
+            accumulated_content = []
             async for sse_line in graph.agui_stream(request):
                 # 如果 show_think=False，过滤掉工具调用相关事件
                 if not show_think and sse_line.startswith("data: "):
@@ -122,9 +121,8 @@ def stream_agui_chat(params, skill_name, kwargs, current_ip, user_message, skill
                             continue
 
                         # 累积文本内容用于日志
-                        if event_type == "TEXT_MESSAGE_CONTENT":
-                            delta = data_json.get("delta", "")
-                            accumulated_content += delta
+
+                        accumulated_content.append(data_json)
                     except (json.JSONDecodeError, ValueError):
                         pass
                 else:
@@ -135,20 +133,15 @@ def stream_agui_chat(params, skill_name, kwargs, current_ip, user_message, skill
                             data_json = json.loads(data_str)
 
                             # 累积文本内容用于日志
-                            if data_json.get("type") == "TEXT_MESSAGE_CONTENT":
-                                delta = data_json.get("delta", "")
-                                accumulated_content += delta
+                            accumulated_content.append(data_json)
                         except (json.JSONDecodeError, ValueError):
                             pass
 
                 chunk_index += 1
                 yield sse_line
 
-            logger.info(f"[AGUI Chat] 流处理完成 - 生成 {chunk_index} 个chunk, 内容长度: {len(accumulated_content)}")
-
             # 记录最终内容用于日志
             final_stats["content"] = accumulated_content
-            logger.info(f"[AGUI Chat] 收到统计信息 - 内容长度: {len(final_stats['content'])}")
 
             # 在流结束时异步处理日志记录
             if final_stats["content"]:

@@ -1,3 +1,5 @@
+import json
+
 from django.db.models import Min
 from django_filters import filters
 from django_filters.rest_framework import FilterSet
@@ -158,8 +160,15 @@ class ChatApplicationViewSet(viewsets.ReadOnlyModelViewSet):
                 "id", "bot_id", "node_id", "user_id", "conversation_role", "conversation_content", "conversation_time", "entry_type", "session_id"
             )
         )
-
-        return Response(list(messages))
+        return_data = []
+        for i in messages:
+            obj = dict(i, **{})
+            try:
+                obj["conversation_content"] = json.loads(i["conversation_content"])
+            except Exception:
+                pass
+            return_data.append(obj)
+        return Response(return_data)
 
     @action(detail=False, methods=["get"])
     def skill_guide(self, request):
