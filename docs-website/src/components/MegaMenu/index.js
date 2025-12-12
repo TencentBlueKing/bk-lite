@@ -17,6 +17,7 @@ const productGroups = [
     {
         title: '平台底座',
         products: [
+            { name: '控制台', description: '平台介绍 · 应用导航 · 快速入门', link: '/docs/console' },
             { name: '系统管理', description: '租户管理 · 权限控制 · 审计日志', link: '/docs/system/feature' },
             { name: '节点管理', description: 'Agent 部署 · 插件管理 · 进程托管', link: '/docs/node/feature' },
         ]

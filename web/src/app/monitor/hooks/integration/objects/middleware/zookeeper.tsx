@@ -10,8 +10,9 @@ export const useZookeeperConfig = () => {
     instance_type: 'zookeeper',
     dashboardDisplay: [],
     tableDiaplay: [
-      { type: 'value', key: 'zookeeper_uptime' },
-      { type: 'value', key: 'zookeeper_avg_latency' },
+      { type: 'value', key: 'avg_latency' },
+      { type: 'value', key: 'outstanding_requests' },
+      { type: 'value', key: 'approximate_data_size' },
     ],
     groupIds: {},
     plugins,

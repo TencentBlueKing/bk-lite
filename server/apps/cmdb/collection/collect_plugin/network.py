@@ -44,7 +44,8 @@ class CollectNetworkMetrics(CollectBase):
         return NETWORK_COLLECT
 
     def prom_sql(self):
-        sql = " or ".join(m for m in self._metrics)
+        sql = " or ".join(
+            "{}{{instance_id=~\"^{}_.+\"}}".format(m, self.task_id) for m in self._metrics)
         return sql
 
     @staticmethod

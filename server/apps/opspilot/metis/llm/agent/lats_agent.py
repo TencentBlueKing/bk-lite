@@ -463,15 +463,7 @@ class LatsAgentNode(ToolsNodes):
         candidate_message_lists = [[candidate] for candidate in candidates]
         progress_messages = config.setdefault('progress_messages', [])
 
-        # 显示评估开始信息
-        progress_messages.append(
-            AIMessage(content=f"\n\n📊 **评估 {len(candidates)} 个候选方案**\n\n"))
-
-        # 准备评估进度消息
-        for i in range(len(candidate_message_lists)):
-            progress_messages.append(
-                AIMessage(content=f"\n\n📊 **评估候选 {i + 1}/{len(candidate_message_lists)}**\n\n"))
-
+        # 静默评估,不显示进度
         # 并行评估所有候选方案
         logger.debug(f"开始并行评估 {len(candidate_message_lists)} 个候选方案")
 
@@ -492,11 +484,7 @@ class LatsAgentNode(ToolsNodes):
 
         logger.debug(f"并行评估完成，获得 {len(valid_reflections)} 个评估结果")
 
-        # 添加评估结果消息
-        for i, reflection in enumerate(valid_reflections):
-            progress_messages.append(AIMessage(
-                content=f"\n\n✅ 候选 {i + 1}: **{reflection.overall_score:.1f}/10**\n\n"))
-
+        # 静默记录评估结果,不显示给用户
         # 记录评估摘要
         if valid_reflections:
             scores = [r.overall_score for r in valid_reflections]
@@ -538,18 +526,13 @@ class LatsAgentNode(ToolsNodes):
             }
         )
 
-        # 准备进度消息
-        progress_messages = [
-            AIMessage(content=f"\n\n🔍 **生成候选方案 {i + 1}/{max_candidates}**\n\n")
-            for i in range(max_candidates)
-        ]
-        config.setdefault('progress_messages', []).extend(progress_messages)
-
+        # 静默生成候选方案,不显示进度
         # 并行生成多个候选方案
         logger.debug(f"开始并行生成 {max_candidates} 个候选方案")
 
         tasks = [
-            self.invoke_react_for_candidate(user_message, messages, config, system_message)
+            self.invoke_react_for_candidate(
+                user_message, messages, config, system_message)
             for _ in range(max_candidates)
         ]
 
@@ -562,9 +545,6 @@ class LatsAgentNode(ToolsNodes):
         """扩展搜索树"""
         logger.info("🌳 开始扩展搜索树")
 
-        search_depth = state["root"].height if state["root"] else 0
-        search_start_msg = f"🔍 **第 {search_depth + 1} 轮优化搜索**"
-
         root = state["root"]
         if not root:
             logger.error("搜索树根节点未初始化")
@@ -574,7 +554,8 @@ class LatsAgentNode(ToolsNodes):
             root, state.get("search_config", LATSConfig()))
         messages = best_candidate.get_trajectory()
 
-        config['progress_messages'] = [AIMessage(content=search_start_msg)]
+        # 静默扩展,不显示进度
+        config['progress_messages'] = []
 
         user_message = config["configurable"]["graph_request"].user_message
         new_candidates = await self._generate_candidates(user_message, messages, config)
@@ -596,9 +577,7 @@ class LatsAgentNode(ToolsNodes):
         best_candidate.children.extend(child_nodes)
 
         best_score = max((r.overall_score for r in reflections), default=0)
-        status_icon = '✨' if best_score >= 8.0 else '🔍 继续优化...'
-        progress_messages.append(
-            AIMessage(content=f"\n\n🎯 **最佳评分: {best_score:.1f}/10** {status_icon}\n\n"))
+        # 静默记录最佳评分,不显示给用户
 
         # 检查解决方案 - 使用更严格的标准
         solution_nodes = [node for node, r in zip(child_nodes, reflections)
@@ -653,9 +632,11 @@ class LatsAgentNode(ToolsNodes):
                     solution_parts.append(content.strip())
 
         # 合并所有相关内容
-        final_solution_content = "\n\n".join(solution_parts) if solution_parts else "抱歉，无法生成满意的答案。"
+        final_solution_content = "\n\n".join(
+            solution_parts) if solution_parts else "抱歉，无法生成满意的答案。"
 
-        logger.debug(f"[generate_final_answer] 提取到的解决方案内容: {final_solution_content[:200]}")
+        logger.debug(
+            f"[generate_final_answer] 提取到的解决方案内容: {final_solution_content[:200]}")
 
         # 生成最终综合答案
         system_message = TemplateLoader.render_template(
@@ -741,8 +722,7 @@ class LatsAgentNode(ToolsNodes):
         state['search_start_time'] = time.time()
         state['current_phase'] = SearchPhase.INITIALIZATION
 
-        progress_start_msg = AIMessage(content="\n\n🧠 **智能分析中...**\n\n")
-
+        # 静默处理,不显示中间状态
         system_message = TemplateLoader.render_template(
             "prompts/lats_agent/initial_response")
 
@@ -752,8 +732,6 @@ class LatsAgentNode(ToolsNodes):
             config,
             system_message
         )
-
-        eval_progress_msg = AIMessage(content="\n\n📊 **评估答案质量**\n\n")
 
         search_config = state.get('search_config', LATSConfig())
         output_messages = [initial_candidate]
@@ -771,14 +749,13 @@ class LatsAgentNode(ToolsNodes):
                                     and reflection.confidence >= 0.8)
 
         if is_high_quality_solution:
-            eval_result_msg = f"\n\n✅ **初始评分: {reflection.overall_score:.1f}/10** 🎉\n\n"
-            messages_to_add = [progress_start_msg, eval_progress_msg, AIMessage(
-                content=eval_result_msg), initial_candidate]
+            # 高质量答案直接返回,不显示多余信息
+            messages_to_add = [initial_candidate]
             root._is_solved = True
         else:
-            eval_result_msg = f"\n\n✅ **初始评分: {reflection.overall_score:.1f}/10** \n\n🔍 寻找更优方案...\n\n"
-            messages_to_add = [progress_start_msg, eval_progress_msg,
-                               initial_candidate, AIMessage(content=eval_result_msg)]
+            # 低质量答案显示简洁的优化提示
+            optimization_msg = AIMessage(content="\n\n*正在优化答案...*\n\n")
+            messages_to_add = [initial_candidate, optimization_msg]
 
         return {
             **state,

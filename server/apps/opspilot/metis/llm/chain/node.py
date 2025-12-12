@@ -459,6 +459,8 @@ class ToolsNodes(BasicNode):
                 self.mcp_config[server.name] = {"command": server.command, "args": server.args, "transport": "stdio"}
             else:
                 self.mcp_config[server.name] = {"url": server.url, "transport": "sse"}
+            if server.enable_auth:
+                self.mcp_config[server.name]["headers"] = {"Authorization": server.auth_token}
 
         if self.mcp_config:
             self.mcp_client = MultiServerMCPClient(self.mcp_config)

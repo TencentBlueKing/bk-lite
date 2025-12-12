@@ -42,10 +42,10 @@ const LayoutContent: React.FC<KnowledgeDetailLayoutProps> = ({ children }) => {
     <OnelineEllipsisIntro name={name} desc={desc}></OnelineEllipsisIntro>
   );
 
-  // Show TaskProgress on documents page (source_files/qa_pairs tabs) and result pages
+  // Show TaskProgress on documents page (source_files/qa_pairs/knowledge_graph tabs), result pages
   const shouldShowTaskProgress = () => {
     if (pathname === '/opspilot/knowledge/detail/documents') {
-      return mainTabKey === 'source_files' || mainTabKey === 'qa_pairs';
+      return mainTabKey === 'source_files' || mainTabKey === 'qa_pairs' || mainTabKey === 'knowledge_graph';
     }
     
     if (pathname === '/opspilot/knowledge/detail/documents/result') {
@@ -60,16 +60,17 @@ const LayoutContent: React.FC<KnowledgeDetailLayoutProps> = ({ children }) => {
       return undefined;
     }
     
+    if (mainTabKey === 'knowledge_graph') return 'knowledge_graph';
     if (mainTabKey === 'qa_pairs') return 'qa_pairs';
     if (mainTabKey === 'source_files') return 'source_files';
     return undefined;
   };
 
-  const getTaskProgressPageType = (): 'documents' | 'result' => {
+  const getTaskProgressPageType = (): 'documents' | 'qa_pairs' | 'knowledge_graph' | 'result' => {
     if (pathname === '/opspilot/knowledge/detail/documents/result') {
       return 'result';
     }
-    return 'documents';
+    return (mainTabKey as 'documents' | 'qa_pairs' | 'knowledge_graph') || 'documents';
   };
 
   const getTopSectionContent = () => {
@@ -118,7 +119,7 @@ const LayoutContent: React.FC<KnowledgeDetailLayoutProps> = ({ children }) => {
       taskProgressComponent={
         shouldShowTaskProgress() ? (
           <TaskProgress 
-            activeTabKey={taskProgressActiveKey} 
+            activeTabKey={taskProgressActiveKey}
             pageType={taskProgressPageType}
           />
         ) : null

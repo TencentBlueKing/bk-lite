@@ -8,7 +8,7 @@ ENV SIDECAR_NODEID ""
 ENV SIDECAR_NODENAME "telegraf-proxy"
 
 RUN apt-get update && \
-    apt-get install -y ca-certificates ipmitool vim snmp supervisor zip iputils-ping snmptrapd && \
+    apt-get install -y ca-certificates ipmitool vim snmp supervisor zip iputils-ping snmptrapd openjdk-11-jdk && \
     update-ca-certificates && \
     rm -rf /var/lib/apt/lists/*
 

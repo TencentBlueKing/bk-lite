@@ -25,22 +25,27 @@ from apps.opspilot.services.knowledge_search_service import KnowledgeSearchServi
 from apps.opspilot.utils.chat_flow_utils.engine.factory import create_chat_flow_engine
 from apps.opspilot.utils.chunk_helper import ChunkHelper
 from apps.opspilot.utils.graph_utils import GraphUtils
+from apps.core.mixinx import EncryptMixin
 
 
 @shared_task
 def general_embed(knowledge_document_id_list, username, domain="domain.com", delete_qa_pairs=False):
     logger.info(f"general_embed: {knowledge_document_id_list}")
-    document_list = KnowledgeDocument.objects.filter(id__in=knowledge_document_id_list)
-    general_embed_by_document_list(document_list, username=username, domain=domain, delete_qa_pairs=delete_qa_pairs)
+    document_list = KnowledgeDocument.objects.filter(
+        id__in=knowledge_document_id_list)
+    general_embed_by_document_list(
+        document_list, username=username, domain=domain, delete_qa_pairs=delete_qa_pairs)
     logger.info(f"knowledge training finished: {knowledge_document_id_list}")
 
 
 @shared_task
 def retrain_all(knowledge_base_id, username, domain, delete_qa_pairs):
     logger.info("Start retraining")
-    document_list = KnowledgeDocument.objects.filter(knowledge_base_id=knowledge_base_id)
+    document_list = KnowledgeDocument.objects.filter(
+        knowledge_base_id=knowledge_base_id)
     document_list.update(train_status=DocumentStatus.CHUNKING)
-    general_embed_by_document_list(document_list, username=username, domain=domain, delete_qa_pairs=delete_qa_pairs)
+    general_embed_by_document_list(
+        document_list, username=username, domain=domain, delete_qa_pairs=delete_qa_pairs)
 
 
 def general_embed_by_document_list(document_list, is_show=False, username="", domain="", delete_qa_pairs=False):
@@ -63,7 +68,8 @@ def general_embed_by_document_list(document_list, is_show=False, username="", do
     train_progress = round(float(1 / len(task_obj.knowledge_ids)) * 100, 2)
     for index, document in tqdm(enumerate(document_list)):
         try:
-            invoke_document_to_es(document=document, delete_qa_pairs=delete_qa_pairs)
+            invoke_document_to_es(
+                document=document, delete_qa_pairs=delete_qa_pairs)
         except Exception as e:
             logger.exception(e)
         task_progress = task_obj.train_progress + train_progress
@@ -86,9 +92,11 @@ def invoke_document_to_es(document_id=0, document=None, delete_qa_pairs=False):
     document.train_status = DocumentStatus.CHUNKING
     document.chunk_size = 0
     document.save()
-    logger.info(f"document {document.name} progress: {document.train_progress}")
+    logger.info(
+        f"document {document.name} progress: {document.train_progress}")
     keep_qa = not delete_qa_pairs
-    KnowledgeSearchService.delete_es_content(document.knowledge_index_name(), document.id, document.name, keep_qa)
+    KnowledgeSearchService.delete_es_content(
+        document.knowledge_index_name(), document.id, document.name, keep_qa)
     res, knowledge_docs = invoke_one_document(document)
     if not res:
         document.train_status = DocumentStatus.ERROR
@@ -96,7 +104,8 @@ def invoke_document_to_es(document_id=0, document=None, delete_qa_pairs=False):
         return
     document.train_status = DocumentStatus.READY
     document.save()
-    logger.info(f"document {document.name} progress: {document.train_progress}")
+    logger.info(
+        f"document {document.name} progress: {document.train_progress}")
 
 
 def invoke_one_document(document, is_show=False):
@@ -147,32 +156,31 @@ def _prepare_ingest_params(document, is_preview=False):
 
     if document.knowledge_base.embed_model:
         embed_config = document.knowledge_base.embed_model.decrypted_embed_config
-        embed_config["model"] = embed_config.get("model", document.knowledge_base.embed_model.name)
+        embed_config["model"] = embed_config.get(
+            "model", document.knowledge_base.embed_model.name)
 
     if document.semantic_chunk_parse_embedding_model:
         semantic_embed_config = document.semantic_chunk_parse_embedding_model.decrypted_embed_config
         semantic_embed_model_name = document.semantic_chunk_parse_embedding_model.name
 
-    # OCR配置
+    # OCR配置：使用 EncryptMixin 解密存储的 api_key
     ocr_config = {}
-    if document.enable_ocr_parse:
-        if document.ocr_model.name == "AzureOCR":
-            ocr_config = {
-                "ocr_type": "azure_ocr",
-                "azure_api_key": document.ocr_model.ocr_config["api_key"] or " ",
-                "azure_endpoint": document.ocr_model.ocr_config["base_url"],
-            }
-        elif document.ocr_model.name == "OlmOCR":
-            ocr_config = {
-                "ocr_type": "olm_ocr",
-                "olm_base_url": document.ocr_model.ocr_config["base_url"],
-                "olm_api_key": document.ocr_model.ocr_config["api_key"] or " ",
-                "olm_model": document.ocr_model.name,
-            }
-        else:
-            ocr_config = {
-                "ocr_type": "pp_ocr",
-            }
+    if document.enable_ocr_parse and document.ocr_model and document.ocr_model.ocr_config:
+        # 复制一份配置以防止修改原始对象
+        ocr_config = document.ocr_model.ocr_config.copy()
+        # 尝试解密 api_key 字段（如果是明文则会被忽略）
+        try:
+            EncryptMixin.decrypt_field("api_key", ocr_config)
+        except Exception:
+            # 任何解密异常都不应阻塞摄取流程，记录在日志中
+            logger.exception("Failed to decrypt OCR api_key")
+
+        ocr_config = {
+            "ocr_type": ocr_config.get("type", "olm_ocr"),
+            "olm_base_url": ocr_config.get("base_url", ""),
+            "olm_api_key": ocr_config.get("api_key") or " ",
+            "olm_model": ocr_config.get("model", "olmOCR-7B-0225-preview"),
+        }
 
     params = {
         "is_preview": is_preview,
@@ -197,12 +205,14 @@ def _prepare_ingest_params(document, is_preview=False):
 
 def _handle_file_ingest(document, params, rag):
     """处理文件类型的文档摄取"""
-    knowledge = FileKnowledge.objects.filter(knowledge_document_id=document.id).first()
+    knowledge = FileKnowledge.objects.filter(
+        knowledge_document_id=document.id).first()
     if not knowledge:
         raise ValueError(f"找不到文件知识记录: document_id={document.id}")
 
     # 创建临时文件
-    file_extension = knowledge.file.name.split(".")[-1].lower() if "." in knowledge.file.name else ""
+    file_extension = knowledge.file.name.split(
+        ".")[-1].lower() if "." in knowledge.file.name else ""
     with tempfile.NamedTemporaryFile(delete=False, suffix=f".{file_extension}") as temp_file:
         # 写入文件内容
         for chunk in knowledge.file.chunks():
@@ -212,7 +222,8 @@ def _handle_file_ingest(document, params, rag):
 
     try:
         # 调用 RAG 的 file_ingest 方法
-        result = rag.file_ingest(file_path=temp_path, file_name=knowledge.file.name, params=params)
+        result = rag.file_ingest(
+            file_path=temp_path, file_name=knowledge.file.name, params=params)
         return result
     finally:
         # 清理临时文件
@@ -222,7 +233,8 @@ def _handle_file_ingest(document, params, rag):
 
 def _handle_manual_ingest(document, params, rag):
     """处理手动输入类型的文档摄取"""
-    knowledge = ManualKnowledge.objects.filter(knowledge_document_id=document.id).first()
+    knowledge = ManualKnowledge.objects.filter(
+        knowledge_document_id=document.id).first()
     if not knowledge:
         raise ValueError(f"找不到手动知识记录: document_id={document.id}")
 
@@ -236,12 +248,14 @@ def _handle_manual_ingest(document, params, rag):
 
 def _handle_webpage_ingest(document, params, rag):
     """处理网页类型的文档摄取"""
-    knowledge = WebPageKnowledge.objects.filter(knowledge_document_id=document.id).first()
+    knowledge = WebPageKnowledge.objects.filter(
+        knowledge_document_id=document.id).first()
     if not knowledge:
         raise ValueError(f"找不到网页知识记录: document_id={document.id}")
 
     # 调用 RAG 的 website_ingest 方法
-    result = rag.website_ingest(url=knowledge.url, max_depth=knowledge.max_depth, params=params)
+    result = rag.website_ingest(
+        url=knowledge.url, max_depth=knowledge.max_depth, params=params)
     return result
 
 
@@ -250,7 +264,8 @@ def sync_web_page_knowledge(web_page_knowledge_id):
     """
     Sync web page knowledge by ID.
     """
-    web_page = WebPageKnowledge.objects.filter(id=web_page_knowledge_id).first()
+    web_page = WebPageKnowledge.objects.filter(
+        id=web_page_knowledge_id).first()
     if not web_page:
         logger.error(f"Web page knowledge {web_page_knowledge_id} not found.")
         return
@@ -288,7 +303,8 @@ def create_qa_pairs(qa_pairs_id_list, only_question, delete_old_qa_pairs=False):
 
     es_index = knowledge_base.knowledge_index_name()
     embed_config = knowledge_base.embed_model.decrypted_embed_config
-    embed_config["model"] = embed_config.get("model", knowledge_base.embed_model.name)
+    embed_config["model"] = embed_config.get(
+        "model", knowledge_base.embed_model.name)
     llm_setting = {
         "question": {
             "openai_api_base": question_llm.decrypted_llm_config["openai_base_url"],
@@ -311,7 +327,8 @@ def create_qa_pairs(qa_pairs_id_list, only_question, delete_old_qa_pairs=False):
             task_obj.train_progress = 0
             qa_pairs_obj.status = "generating"
             qa_pairs_obj.save()
-            content_list = client.get_qa_content(qa_pairs_obj.document_id, es_index)
+            content_list = client.get_qa_content(
+                qa_pairs_obj.document_id, es_index)
             if delete_old_qa_pairs:
                 ChunkHelper.delete_es_content(qa_pairs_obj.id)
             task_obj.total_count = len(content_list) * qa_pairs_obj.qa_count
@@ -349,7 +366,8 @@ def get_chunk_and_question(client, index_name, qa_pairs):
     chunk_data = client.get_qa_content(qa_pairs.document_id, index_name)
     chunk_data_map = {i["chunk_id"]: i["content"] for i in chunk_data}
     metadata_filter = {"qa_pairs_id": str(qa_pairs.id)}
-    res = client.get_document_es_chunk(index_name, page_size=0, metadata_filter=metadata_filter, get_count=False)
+    res = client.get_document_es_chunk(
+        index_name, page_size=0, metadata_filter=metadata_filter, get_count=False)
     return_data = [
         {
             "question": i["page_content"],
@@ -370,7 +388,8 @@ def rebuild_graph_community_by_instance(instance_id):
     res = GraphUtils.rebuild_graph_community(graph_obj)
     if not res["result"]:
         logger.error("Failed to rebuild graph community")
-    logger.info("Graph community rebuild completed for instance ID: {}".format(instance_id))
+    logger.info(
+        "Graph community rebuild completed for instance ID: {}".format(instance_id))
     graph_obj.status = "completed"
     graph_obj.save()
 
@@ -424,11 +443,13 @@ def create_qa_pairs_by_json(file_data, knowledge_base_id, username, domain):
         return
 
     # 初始化任务和问答对对象
-    task_obj, qa_pairs_list = _initialize_qa_task(file_data, knowledge_base_id, username, domain)
+    task_obj, qa_pairs_list = _initialize_qa_task(
+        file_data, knowledge_base_id, username, domain)
 
     # 批量处理问答对
     try:
-        _process_qa_pairs_batch(qa_pairs_list, file_data, knowledge_base, task_obj)
+        _process_qa_pairs_batch(qa_pairs_list, file_data,
+                                knowledge_base, task_obj)
     except Exception as e:
         logger.exception(f"批量创建问答对失败: {str(e)}")
 
@@ -445,7 +466,8 @@ def _initialize_qa_task(file_data, knowledge_base_id, username, domain):
 
     # 创建问答对对象
     for qa_name in file_data.keys():
-        qa_pairs = create_qa_pairs_task(knowledge_base_id, qa_name, username, domain)
+        qa_pairs = create_qa_pairs_task(
+            knowledge_base_id, qa_name, username, domain)
         if qa_pairs.id not in qa_pairs_id_list:
             qa_pairs_list.append(qa_pairs)
             qa_pairs_id_list.append(qa_pairs.id)
@@ -475,7 +497,8 @@ def _process_qa_pairs_batch(qa_pairs_list, file_data, knowledge_base, task_obj):
         params = base_params.copy()
         params["knowledge_id"] = f"qa_pairs_id_{qa_pairs.id}"
 
-        success_count = _process_single_qa_pairs(qa_pairs, qa_json, params, rag, task_obj)
+        success_count = _process_single_qa_pairs(
+            qa_pairs, qa_json, params, rag, task_obj)
 
         # 更新问答对数量和任务进度
         qa_pairs.status = "completed"
@@ -483,7 +506,8 @@ def _process_qa_pairs_batch(qa_pairs_list, file_data, knowledge_base, task_obj):
         qa_pairs.generate_count += success_count
         qa_pairs.save()
 
-        logger.info(f"批量创建问答对完成: {qa_pairs.name}, 总数: {len(qa_json)}, 成功: {success_count}")
+        logger.info(
+            f"批量创建问答对完成: {qa_pairs.name}, 总数: {len(qa_json)}, 成功: {success_count}")
 
 
 def _prepare_qa_ingest_params(knowledge_base):
@@ -509,7 +533,8 @@ def _prepare_qa_ingest_params(knowledge_base):
 
 def _process_single_qa_pairs(qa_pairs, qa_json, params, rag, task_obj):
     """处理单个问答对集合"""
-    base_metadata = {"enabled": "true", "base_chunk_id": "", "qa_pairs_id": str(qa_pairs.id), "is_doc": "0"}
+    base_metadata = {"enabled": "true", "base_chunk_id": "",
+                     "qa_pairs_id": str(qa_pairs.id), "is_doc": "0"}
     qa_pairs.status = "generating"
     qa_pairs.save()
 
@@ -527,7 +552,8 @@ def _process_single_qa_pairs(qa_pairs, qa_json, params, rag, task_obj):
     task_progress = 0
 
     for index, qa_item in enumerate(tqdm(qa_json)):
-        result = _create_single_qa_item(qa_item, index, params, base_metadata, rag)
+        result = _create_single_qa_item(
+            qa_item, index, params, base_metadata, rag)
         if result is None:
             continue
         elif result:
@@ -537,7 +563,8 @@ def _process_single_qa_pairs(qa_pairs, qa_json, params, rag, task_obj):
 
         # 每10个记录输出一次进度日志
         if (index + 1) % 10 == 0:
-            logger.info(f"已处理 {index + 1}/{len(qa_json)} 个问答对，成功: {success_count}, 失败: {error_count}")
+            logger.info(
+                f"已处理 {index + 1}/{len(qa_json)} 个问答对，成功: {success_count}, 失败: {error_count}")
 
         task_progress += train_progress
         task_obj.train_progress = round(task_progress, 2)
@@ -555,7 +582,8 @@ def _create_single_qa_item(qa_item, index, base_params, base_metadata, rag):
 
     # 构建请求参数
     params = base_params.copy()
-    params["metadata"] = {**base_metadata, "qa_question": qa_item["instruction"], "qa_answer": qa_item["output"]}
+    params["metadata"] = {
+        **base_metadata, "qa_question": qa_item["instruction"], "qa_answer": qa_item["output"]}
 
     # 尝试创建问答对，带重试机制
     return _ingest_qa_with_retry(qa_item["instruction"], params, rag, index)
@@ -603,7 +631,8 @@ def create_qa_pairs_by_custom(qa_pairs_id, content_list):
     qa_pairs = QAPairs.objects.get(id=qa_pairs_id)
     es_index = qa_pairs.knowledge_base.knowledge_index_name()
     embed_config = qa_pairs.knowledge_base.embed_model.decrypted_embed_config
-    embed_config["model"] = embed_config.get("model", qa_pairs.knowledge_base.embed_model.name)
+    embed_config["model"] = embed_config.get(
+        "model", qa_pairs.knowledge_base.embed_model.name)
     chunk_obj = {}
     task_obj = KnowledgeTask.objects.create(
         created_by=qa_pairs.created_by,
@@ -616,7 +645,8 @@ def create_qa_pairs_by_custom(qa_pairs_id, content_list):
         total_count=len(content_list),
     )
     try:
-        success_count = ChunkHelper.create_qa_pairs(content_list, chunk_obj, es_index, embed_config, qa_pairs_id, task_obj)
+        success_count = ChunkHelper.create_qa_pairs(
+            content_list, chunk_obj, es_index, embed_config, qa_pairs_id, task_obj)
         qa_pairs.generate_count = success_count
         qa_pairs.status = "completed"
     except Exception as e:
@@ -650,7 +680,8 @@ def create_qa_pairs_by_chunk(qa_pairs_id, kwargs):
         for i in kwargs["chunk_list"]
     ]
     question_llm = LLMModel.objects.filter(id=kwargs["llm_model_id"]).first()
-    answer_llm = LLMModel.objects.filter(id=kwargs["answer_llm_model_id"]).first()
+    answer_llm = LLMModel.objects.filter(
+        id=kwargs["answer_llm_model_id"]).first()
     llm_setting = {
         "question": {
             "openai_api_base": question_llm.decrypted_llm_config["openai_base_url"],
@@ -665,7 +696,8 @@ def create_qa_pairs_by_chunk(qa_pairs_id, kwargs):
     }
     es_index = qa_pairs_obj.knowledge_base.knowledge_index_name()
     embed_config = qa_pairs_obj.knowledge_base.embed_model.decrypted_embed_config
-    embed_config["model"] = embed_config.get("model", qa_pairs_obj.knowledge_base.embed_model.name)
+    embed_config["model"] = embed_config.get(
+        "model", qa_pairs_obj.knowledge_base.embed_model.name)
     client = ChunkHelper()
     task_obj = KnowledgeTask.objects.create(
         created_by=qa_pairs_obj.created_by,
@@ -716,6 +748,8 @@ def chat_flow_celery_task(bot_id, node_id, message):
             "node_id": node_id,
         }
         result = engine.execute(input_data)
-        logger.info(f"ChatFlow周期任务执行完成: bot_id={bot_id}, node_id={node_id}, 执行结果为{result}")
+        logger.info(
+            f"ChatFlow周期任务执行完成: bot_id={bot_id}, node_id={node_id}, 执行结果为{result}")
     except Exception as e:
-        logger.error(f"ChatFlow周期任务执行失败: bot_id={bot_id}, node_id={node_id}, error={str(e)}")
+        logger.error(
+            f"ChatFlow周期任务执行失败: bot_id={bot_id}, node_id={node_id}, error={str(e)}")

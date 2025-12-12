@@ -136,10 +136,14 @@ class Export:
                     attr_id_value = inst_info.get(attr["attr_id"], '')
                     #  TODO 目前只支持单选组织和用户，所以导出返回str即可 若支持单选则返回[]
                     if isinstance(attr_id_value, list) and len(attr_id_value) > 0:
-                        attr_id_value = attr_id_value[0]
-                    sheet_data.append(
-                        str(enum_field_dict[attr["attr_id"]].get(attr_id_value))
-                    )
+                        name = ','.join([str(enum_field_dict[attr["attr_id"]].get(i)) for i in attr_id_value])
+                        sheet_data.append(
+                            name
+                        )
+                    else:
+                        sheet_data.append(
+                            str(enum_field_dict[attr["attr_id"]].get(attr_id_value))
+                        )
                     continue
 
                 _value = inst_info.get(attr["attr_id"])
