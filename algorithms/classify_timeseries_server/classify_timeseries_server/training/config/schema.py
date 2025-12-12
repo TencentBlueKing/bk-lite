@@ -5,9 +5,8 @@ from typing import List
 # 默认配置
 DEFAULT_CONFIG = {
     "model": {
-        "type": "sarima",
-        "name": "timeseries_model",
-        "version": "1.0.0"
+        "type": "gradient_boosting",
+        "name": "timeseries_model"
     },
     
     "hyperparams": {
@@ -48,18 +47,6 @@ DEFAULT_CONFIG = {
         }
     },
     
-    "training": {
-        "test_size": 0.2,
-        "validation_size": 0.0,
-        "epochs": 100,
-        "batch_size": 32,
-        "early_stopping": {
-            "enabled": False,
-            "patience": 10,
-            "min_delta": 0.001
-        }
-    },
-    
     "preprocessing": {
         "handle_missing": "interpolate",
         "max_missing_ratio": 0.3,
@@ -79,11 +66,7 @@ DEFAULT_CONFIG = {
     },
     
     "mlflow": {
-        "tracking_uri": None,
-        "experiment_name": "timeseries_training",
-        "run_name": None,
-        "log_model": True,
-        "register_model": True
+        "experiment_name": "timeseries_training"
     }
 }
 

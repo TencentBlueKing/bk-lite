@@ -1,54 +1,13 @@
 {
   "model": {
     "type": "gradient_boosting",
-    "name": "timeseries_gb_model",
-    "version": "1.0.0"
+    "name": "timeseries_gb_model"
   },
   "hyperparams": {
-    "sarima": {
-      "search": {
-        "enabled": true,
-        "max_evals": 50,
-        "metric": "rmse",
-        "early_stopping": {
-          "enabled": true,
-          "patience": 15,
-          "loss_cap_multiplier": 5.0
-        },
-        "search_space": {
-          "order": {
-            "p": [0, 1, 2],
-            "d": [0, 1, 2],
-            "q": [0, 1, 2]
-          },
-          "seasonal_order": {
-            "P": [0, 1, 2],
-            "D": [0, 1],
-            "Q": [0, 1, 2],
-            "s": [12]
-          },
-          "trend": ["n", "c", "t", "ct"]
-        }
-      },
-      "fixed": {
-        "order": [
-          1,
-          1,
-          1
-        ],
-        "seasonal_order": [
-          1,
-          1,
-          1,
-          12
-        ],
-        "trend": "c"
-      }
-    },
     "gradient_boosting": {
       "search": {
         "enabled": true,
-        "max_evals": 50,
+        "max_evals": 1,
         "metric": "rmse",
         "early_stopping": {
           "enabled": true,
@@ -77,12 +36,6 @@
         "use_feature_engineering": true
       }
     }
-  },
-  "training": {
-    "test_size": 0.2,
-    "validation_size": 0.0,
-    "epochs": 100,
-    "batch_size": 32
   },
   "preprocessing": {
     "handle_missing": "interpolate",
@@ -114,7 +67,6 @@
     "use_diff_features": false
   },
   "mlflow": {
-    "tracking_uri": null,
-    "experiment_name": "timeseries_training"
+    "experiment_name": "timeseries_gradient_boosting_test"
   }
 }

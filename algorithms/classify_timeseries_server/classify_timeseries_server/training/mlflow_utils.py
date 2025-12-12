@@ -236,14 +236,22 @@ class MLFlowUtils:
         
         plt.tight_layout()
         
-        # 保存图片
+        # 保存图片到本地临时文件
         img_path = f"{artifact_name}.png"
         plt.savefig(img_path, dpi=150, bbox_inches='tight')
         
-        # 上传到 MLflow
+        # 上传到 MLflow 后删除本地临时文件
         if mlflow.active_run():
             mlflow.log_artifact(img_path)
             logger.info(f"预测结果图已上传到 MLflow: {img_path}")
+            
+            # 清理本地临时文件（图片已上传到 MLflow artifact store）
+            try:
+                import os
+                os.remove(img_path)
+                logger.debug(f"本地临时文件已删除: {img_path}")
+            except Exception as e:
+                logger.warning(f"删除临时文件失败: {img_path}, 错误: {e}")
         
         plt.close()
         
@@ -299,14 +307,22 @@ class MLFlowUtils:
         fig.suptitle(title, fontsize=14, fontweight='bold', y=0.995)
         plt.tight_layout()
         
-        # 保存图片
+        # 保存图片到本地临时文件
         img_path = f"{artifact_name}.png"
         plt.savefig(img_path, dpi=150, bbox_inches='tight')
         
-        # 上传到 MLflow
+        # 上传到 MLflow 后删除本地临时文件
         if mlflow.active_run():
             mlflow.log_artifact(img_path)
             logger.info(f"残差分析图已上传到 MLflow: {img_path}")
+            
+            # 清理本地临时文件（图片已上传到 MLflow artifact store）
+            try:
+                import os
+                os.remove(img_path)
+                logger.debug(f"本地临时文件已删除: {img_path}")
+            except Exception as e:
+                logger.warning(f"删除临时文件失败: {img_path}, 错误: {e}")
         
         plt.close()
         
@@ -321,6 +337,8 @@ class MLFlowUtils:
     ) -> str:
         """
         绘制多个模型的预测结果对比图
+        
+        注意：此方法当前未被使用，保留用于未来多模型对比或ensemble场景。
         
         Args:
             actual_data: 真实数据
@@ -362,14 +380,22 @@ class MLFlowUtils:
         plt.grid(True, alpha=0.3, linestyle='--')
         plt.tight_layout()
         
-        # 保存图片
+        # 保存图片到本地临时文件
         img_path = f"{artifact_name}.png"
         plt.savefig(img_path, dpi=150, bbox_inches='tight')
         
-        # 上传到 MLflow
+        # 上传到 MLflow 后删除本地临时文件
         if mlflow.active_run():
             mlflow.log_artifact(img_path)
             logger.info(f"预测对比图已上传到 MLflow: {img_path}")
+            
+            # 清理本地临时文件（图片已上传到 MLflow artifact store）
+            try:
+                import os
+                os.remove(img_path)
+                logger.debug(f"本地临时文件已删除: {img_path}")
+            except Exception as e:
+                logger.warning(f"删除临时文件失败: {img_path}, 错误: {e}")
         
         plt.close()
         

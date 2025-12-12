@@ -51,16 +51,15 @@ class UniversalTrainer:
         
         logger.info(f"训练器初始化 - 模型类型: {config.model_type}")
     
-    def train(self, 
-              dataset_path: str,
-              val_dataset_path: Optional[str] = None,
-              test_dataset_path: Optional[str] = None) -> Dict[str, Any]:
+    def train(self, dataset_path: str) -> Dict[str, Any]:
         """执行完整训练流程
         
+        数据加载支持两种模式：
+        - 目录模式：dataset_path 为目录，自动查找 train_data.csv/val_data.csv/test_data.csv
+        - 文件模式：dataset_path 为单个CSV文件，自动按固定比例(0.2/0.1)划分
+        
         Args:
-            dataset_path: 训练数据集路径
-            val_dataset_path: 验证数据集路径（可选）
-            test_dataset_path: 测试数据集路径（可选）
+            dataset_path: 数据集路径（目录或单个文件）
             
         Returns:
             训练结果字典，包含：
@@ -79,11 +78,7 @@ class UniversalTrainer:
         self._setup_mlflow()
         
         # 2. 加载数据
-        train_df, val_df, test_df = self._load_data(
-            dataset_path, 
-            val_dataset_path, 
-            test_dataset_path
-        )
+        train_df, val_df, test_df = self._load_data(dataset_path)
         
         # 3. 数据预处理
         train_data, val_data, test_data = self._preprocess_data(
@@ -142,14 +137,11 @@ class UniversalTrainer:
                 )
                 mlflow.log_metrics({f"test_{k}": v for k, v in test_metrics.items()})
                 
-                # 10. 保存模型
-                model_uri = None
-                if self.config.get("mlflow", "log_model", default=True):
-                    model_uri = self._save_model_to_mlflow()
+                # 10. 保存模型到 MLflow
+                model_uri = self._save_model_to_mlflow()
                 
-                # 11. 注册模型（可选）
-                if self.config.get("mlflow", "register_model", default=True):
-                    self._register_model(model_uri)
+                # 11. 注册模型到 MLflow Model Registry
+                self._register_model(model_uri)
                 
                 result = {
                     'model': self.model,
@@ -185,50 +177,92 @@ class UniversalTrainer:
         if tracking_uri:
             logger.info(f"MLflow URI: {tracking_uri}")
     
-    def _load_data(self,
-                   train_path: str,
-                   val_path: Optional[str],
-                   test_path: Optional[str]) -> Tuple[pd.DataFrame, Optional[pd.DataFrame], Optional[pd.DataFrame]]:
-        """加载数据集
+    def _load_data(self, dataset_path: str) -> Tuple[pd.DataFrame, Optional[pd.DataFrame], Optional[pd.DataFrame]]:
+        """加载数据集（支持目录模式和文件模式）
+        
+        目录模式：
+            - 必须包含：train_data.csv
+            - 可选包含：val_data.csv, test_data.csv
+            - 宽松模式：如缺失验证集/测试集，后续自动划分
+        
+        文件模式：
+            - 加载单个CSV文件
+            - 返回 (df, None, None)，后续自动划分
         
         Args:
-            train_path: 训练集路径
-            val_path: 验证集路径
-            test_path: 测试集路径
+            dataset_path: 数据集路径（目录或文件）
             
         Returns:
             (训练集, 验证集, 测试集)
+            
+        Raises:
+            ValueError: 路径既不是文件也不是目录
+            FileNotFoundError: 目录模式下未找到 train_data.csv
         """
-        logger.info("加载数据...")
+        import os
         
-        # 加载训练集
-        train_df = load_dataset(train_path)
-        logger.info(f"训练集: {len(train_df)} 条记录")
+        if os.path.isdir(dataset_path):
+            # 目录模式
+            logger.info(f"📁 检测到目录模式: {dataset_path}")
+            
+            train_path = os.path.join(dataset_path, "train_data.csv")
+            if not os.path.exists(train_path):
+                raise FileNotFoundError(
+                    f"目录模式下未找到训练数据文件: {train_path}\n"
+                    f"目录中必须包含 train_data.csv"
+                )
+            
+            train_df = load_dataset(train_path)
+            logger.info(f"✓ 训练集: {len(train_df)} 条记录 (train_data.csv)")
+            
+            # 可选的验证集
+            val_df = None
+            val_path = os.path.join(dataset_path, "val_data.csv")
+            if os.path.exists(val_path):
+                val_df = load_dataset(val_path)
+                logger.info(f"✓ 验证集: {len(val_df)} 条记录 (val_data.csv)")
+            else:
+                logger.info("⚠ 未找到 val_data.csv，将从训练集自动划分")
+            
+            # 可选的测试集
+            test_df = None
+            test_path = os.path.join(dataset_path, "test_data.csv")
+            if os.path.exists(test_path):
+                test_df = load_dataset(test_path)
+                logger.info(f"✓ 测试集: {len(test_df)} 条记录 (test_data.csv)")
+            else:
+                logger.info("⚠ 未找到 test_data.csv，将从训练集自动划分")
+            
+            return train_df, val_df, test_df
         
-        # 加载验证集
-        val_df = None
-        if val_path:
-            val_df = load_dataset(val_path)
-            logger.info(f"验证集: {len(val_df)} 条记录")
+        elif os.path.isfile(dataset_path):
+            # 文件模式
+            logger.info(f"📄 检测到文件模式: {dataset_path}")
+            df = load_dataset(dataset_path)
+            logger.info(f"✓ 加载数据: {len(df)} 条记录")
+            logger.info("ℹ 将按固定比例自动划分（测试集 0.2，验证集 0.1）")
+            return df, None, None
         
-        # 加载测试集
-        test_df = None
-        if test_path:
-            test_df = load_dataset(test_path)
-            logger.info(f"测试集: {len(test_df)} 条记录")
-        
-        return train_df, val_df, test_df
+        else:
+            raise ValueError(
+                f"无效的数据集路径: {dataset_path}\n"
+                f"路径必须是以下之一：\n"
+                f"  1. 包含 train_data.csv 的目录\n"
+                f"  2. 单个 CSV 文件"
+            )
     
     def _preprocess_data(self,
                          train_df: pd.DataFrame,
                          val_df: Optional[pd.DataFrame],
                          test_df: Optional[pd.DataFrame]) -> Tuple[pd.Series, Optional[pd.Series], pd.Series]:
-        """数据预处理（仅清洗，不缩放）
+        """数据预处理（清洗 + 自动划分）
+        
+        如未提供测试集/验证集，从训练集按固定比例自动划分（测试集0.2，验证集0.1）。
         
         Args:
-            train_df: 训练数据框
-            val_df: 验证数据框
-            test_df: 测试数据框
+            train_df: 训练数据框（单文件模式时包含完整数据）
+            val_df: 验证数据框（可选）
+            test_df: 测试数据框（可选）
             
         Returns:
             (训练序列, 验证序列, 测试序列)
@@ -458,28 +492,14 @@ class UniversalTrainer:
     def _update_model_for_prediction(self, data: pd.Series):
         """更新模型的预测起点（不重新训练参数）
         
-        不同模型有不同的更新策略：
-        - SARIMA: 不更新，直接从训练集末尾预测（全局模型，已学到模式）
-        - GradientBoosting: 更新历史数据，确保有完整上下文提取特征
+        GradientBoosting: 更新历史数据，确保有完整上下文提取特征
         
         Args:
             data: 用作预测起点的历史数据（训练集+验证集的合并）
         """
         model_type = self.config.model_type
         
-        if model_type == "sarima":
-            # SARIMA: 不更新模型
-            # 理由：
-            # 1. SARIMA 是全局模型，已经学到了整体的自相关结构
-            # 2. statsmodels 的 append/extend 方法行为不稳定
-            # 3. 重新拟合会丢失原有训练结果，且超参数优化的结果被浪费
-            # 4. 直接从训练集末尾预测即可
-            from .models.sarima_model import SARIMAModel
-            if isinstance(self.model, SARIMAModel):
-                logger.info("SARIMA 模型不更新，直接从训练集末尾预测")
-                # 不做任何操作
-        
-        elif model_type == "gradient_boosting":
+        if model_type == "gradient_boosting":
             # GradientBoosting: 更新历史上下文
             # 理由：
             # 1. GB 使用递归预测，需要完整的历史序列
@@ -504,21 +524,25 @@ class UniversalTrainer:
     def _log_config(self):
         """记录配置到 MLflow"""
         # 记录模型配置
+        logger.info(f"记录到mlflow的模型配置: ")
         mlflow.log_param("model_type", self.config.model_type)
         mlflow.log_param("model_name", self.config.model_name)
-        mlflow.log_param("model_version", self.config.model_version)
+        logger.info(f"模型配置: model_type: {self.config.model_type} model_name: {self.config.model_name}")
         
         # 记录训练配置
         mlflow.log_param("test_size", self.config.test_size)
         mlflow.log_param("validation_size", self.config.validation_size)
+        logger.info(f"训练配置: test_size: {self.config.test_size} validation_size: {self.config.validation_size}")
         
         # 记录预处理配置
         preprocess_config = self.config.get("preprocessing", default={})
+        logger.info(f"预处理配置: {preprocess_config}")
         for key, value in preprocess_config.items():
             mlflow.log_param(f"preprocessing_{key}", value)
         
         # 记录模型参数
         model_params = self.model.get_params()
+        logger.info(f"模型参数: {model_params}")
         for key, value in model_params.items():
             mlflow.log_param(f"model_{key}", value)
     
@@ -532,19 +556,7 @@ class UniversalTrainer:
         
         model_type = self.config.model_type
         
-        # 对于 SARIMA，使用特殊的包装器
-        if model_type == "sarima":
-            from .models.sarima_model import SARIMAModel
-            if isinstance(self.model, SARIMAModel):
-                mlflow_wrapper = self.model.get_mlflow_wrapper()
-                mlflow.pyfunc.log_model(
-                    artifact_path="model",
-                    python_model=mlflow_wrapper
-                )
-                logger.info("SARIMA 模型已保存（使用 pyfunc 包装器）")
-            else:
-                logger.warning("模型类型不匹配，跳过保存")
-        elif model_type == "gradient_boosting":
+        if model_type == "gradient_boosting":
             from .models.gradient_boosting_model import GradientBoostingModel
             if isinstance(self.model, GradientBoostingModel):
                 self.model.save_mlflow(artifact_path="model")
