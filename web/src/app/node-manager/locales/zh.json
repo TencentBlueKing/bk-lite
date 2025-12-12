@@ -119,6 +119,7 @@
         "loginPassword": "登录密码",
         "desc": "节点是控制器和组件运行的环境，可以是一个主机或容器。平台依托节点上的控制器，对节点进行管理，并统一调控被托管组件的运行。",
         "sidecarVersion": "控制器版本",
+        "controllerVersionTip": "可升级新版本",
         "inactive": "不活跃",
         "bindaditinfo": "绑定配置文件后，对应的托管组件会自动启动。",
         "operateSystem": "操作系统",
