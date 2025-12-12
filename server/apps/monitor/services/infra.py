@@ -1,6 +1,6 @@
 import uuid
 
-import httpx
+import requests
 from django.core.cache import cache
 
 from apps.core.exceptions.base_app_exception import BaseAppException
@@ -139,32 +139,37 @@ class InfraService:
             raise BaseAppException("Webhook API URL is required")
 
         try:
-            # 使用 httpx 调用外部 API
-            with httpx.Client(timeout=InfraConstants.REQUEST_TIMEOUT, verify=False) as client:
-                response = client.post(
-                    api_url,
-                    json=params,
-                    headers={'Content-Type': 'application/json'}
+            # 使用 requests 调用外部 API
+            response = requests.post(
+                api_url,
+                json=params,
+                headers={'Content-Type': 'application/json'},
+                timeout=InfraConstants.REQUEST_TIMEOUT,
+                verify=False  # 跳过 SSL 证书验证
+            )
+
+            # 检查响应状态
+            if response.status_code != 200:
+                raise BaseAppException(
+                    f"Infra API returned status {response.status_code}: {response.text}"
                 )
 
-                # 检查响应状态
-                if response.status_code != 200:
-                    raise BaseAppException(
-                        f"Infra API returned status {response.status_code}: {response.text}"
-                    )
+            # 解析响应（假设返回的是 {"yaml": "..."} 格式）
+            response_data = response.json()
+            yaml_content = response_data.get('yaml')
 
-                # 解析响应（假设返回的是 {"yaml": "..."} 格式）
-                response_data = response.json()
-                yaml_content = response_data.get('yaml')
+            if not yaml_content:
+                raise BaseAppException("Invalid response from infra API: missing 'yaml' field")
 
-                if not yaml_content:
-                    raise BaseAppException("Invalid response from infra API: missing 'yaml' field")
+            return yaml_content
 
-                return yaml_content
-
-        except httpx.TimeoutException as e:
+        except requests.Timeout as e:
             raise BaseAppException(f"Infra API request timeout: {str(e)}")
-        except httpx.RequestError as e:
+        except requests.RequestException as e:
             raise BaseAppException(f"Infra API request failed: {str(e)}")
+        except ValueError as e:
+            raise BaseAppException(f"Failed to parse response from infra API: {str(e)}")
         except Exception as e:
-            raise BaseAppException(f"Failed to render config: {str(e)}")
+            import traceback
+            error_detail = traceback.format_exc()
+            raise BaseAppException(f"Failed to render config: {str(e)} | Detail: {error_detail}")

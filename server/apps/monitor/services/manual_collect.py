@@ -81,7 +81,7 @@ class ManualCollectService:
         return {"instance_id": instance_obj.id}
 
     @staticmethod
-    def generate_install_command(cluster_name: str, cloud_region_id: str) -> str:
+    def generate_install_command(instance_id: str, cloud_region_id: str) -> str:
         """
         生成 Kubernetes 安装命令
 
@@ -89,6 +89,12 @@ class ManualCollectService:
         :param cloud_region_id: 云区域 ID
         :return: kubectl apply 命令字符串
         """
+
+        try:
+            cluster_name = ast.literal_eval(instance_id)[0]
+        except Exception:
+            cluster_name = instance_id
+
         # 通过 RPC 获取云区域环境变量
         from apps.rpc.node_mgmt import NodeMgmt
 
