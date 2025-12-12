@@ -3,7 +3,8 @@ import ast
 from apps.core.exceptions.base_app_exception import BaseAppException
 from apps.monitor.constants.monitor_object import MonitorObjConstants
 from apps.monitor.constants.plugin import PluginConstants
-from apps.monitor.models import Metric, MonitorObject, CollectConfig, MonitorPlugin, MonitorInstanceOrganization
+from apps.monitor.models import Metric, MonitorObject, CollectConfig, MonitorPlugin, MonitorInstanceOrganization, \
+    MonitorInstance
 from apps.monitor.services.monitor_object import MonitorObjectService
 from apps.monitor.utils.victoriametrics_api import VictoriaMetricsAPI
 from datetime import datetime, timezone
@@ -25,21 +26,21 @@ class InstanceSearch:
         return instance_ids
 
     @staticmethod
-    def get_parent_instance_list(monitor_obj_name):
+    def get_parent_instance_list(monitor_object_id):
         """获取父对象实例列表"""
-        objs = MonitorObject.objects.filter(name=monitor_obj_name).values("id", "name")
+        objs = MonitorInstance.objects.filter(monitor_object_id=monitor_object_id).values("id", "name")
 
-        data = {}
+        data = []
         for obj in objs:
             try:
                 _instance_id = ast.literal_eval(obj["id"])[0]
             except Exception:
                 _instance_id = obj["id"]
-            data[str(_instance_id)] = obj["name"]
+            data.append({"id": str(_instance_id), "name": obj["name"]})
         return data
 
     @staticmethod
-    def get_query_params_enum(monitor_obj_name):
+    def get_query_params_enum(monitor_obj_name, monitor_object_id=None):
         """获取查询参数枚举"""
         if monitor_obj_name == "Pod":
             query = "count(prometheus_remote_write_kube_pod_info{}) by (instance_id, namespace, created_by_kind, created_by_name, node)"
@@ -74,7 +75,7 @@ class InstanceSearch:
         elif monitor_obj_name in {"Docker Container"}:
             # query = 'any({instance_type="docker"}) by (instance_id)'
             # return InstanceSearch.get_parent_instance_ids(query)
-            return InstanceSearch.get_parent_instance_list(monitor_obj_name)
+            return InstanceSearch.get_parent_instance_list(monitor_object_id)
 
     def get_obj_metric_map(self):
         monitor_objs = MonitorObject.objects.all().values(*MonitorObjConstants.OBJ_KEYS)
