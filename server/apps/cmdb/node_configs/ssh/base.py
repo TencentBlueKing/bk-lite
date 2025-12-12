@@ -20,9 +20,8 @@ class SSHNodeParamsMixin:
         if host_ip != node_ip:
             _password = "PASSWORD_password_{end_start}".format(end_start=self.get_instance_id(host))
             credential_data["password"] = "${" + _password + "}"
-            credential_data["username"] = self.credential.get("username", "")
+            credential_data["username"] = self.credential.get("username", self.credential.get("user", ""))
             credential_data["port"] = self.credential.get("port", 22)
-
         return credential_data
 
     def get_instance_id(self, instance):
