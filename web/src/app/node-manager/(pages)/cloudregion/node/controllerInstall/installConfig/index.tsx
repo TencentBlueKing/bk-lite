@@ -331,9 +331,6 @@ const InstallConfig: React.FC<InstallConfigProps> = ({ onNext, cancel }) => {
 
   const changeCollectType = (id: string) => {
     setInstallMethod(id);
-    form.setFieldsValue({
-      sidecar_package: null,
-    });
     setTableData([{ ...INFO_ITEM, key: uuidv4() }]);
     setSelectedRowKeys([]);
   };

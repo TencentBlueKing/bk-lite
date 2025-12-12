@@ -180,7 +180,7 @@ const Installing: React.FC<InstallingProps> = ({
               {isManualInstall ? (
                 <Button
                   type="link"
-                  loading={copyingNodeIds.includes(value as any)}
+                  loading={copyingNodeIds.includes(row.id as any)}
                   onClick={() => handleCopyInstallCommand(row)}
                 >
                   {t('node-manager.cloudregion.node.copyInstallCommand')}
