@@ -103,11 +103,15 @@ class ManualCollectService:
         # 调用 InfraService 生成限时令牌
         token = InfraService.generate_install_token(cluster_name, cloud_region_id)
 
+        # 构造完整的 API URL（使用 open_api 前缀，统一开放 API 路由风格）
+        api_url = f"{server_url.rstrip('/')}/api/v1/monitor/open_api/infra/render/"
+
         # 构造 curl 命令，使用令牌而不是直接传递参数
+        # 添加 -k 参数跳过 SSL 证书验证（针对自签名证书或内网环境）
         install_command = (
-            f"curl -sSL -X POST "
+            f"curl -sSLk -X POST "
             f"-H 'Content-Type: application/json' "
-            f"{server_url}/infra/render/ "
+            f"{api_url} "
             f"-d '{{\"token\":\"{token}\"}}' "
             f"| kubectl apply -f -"
         )
