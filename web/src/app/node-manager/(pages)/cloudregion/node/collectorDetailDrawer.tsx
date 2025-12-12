@@ -558,7 +558,7 @@ const CollectorDetailDrawer = forwardRef<ModalRef, CollectorDetailDrawerProps>(
                             scroll={{
                               y: !subConfigs?.length
                                 ? 'auto'
-                                : 'calc(100vh - 470px)',
+                                : 'calc(100vh - 474px)',
                               x: 'max-content',
                             }}
                             columns={subConfigColumns}
