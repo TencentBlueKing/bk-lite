@@ -303,6 +303,33 @@ def cloud_region_list():
 
 
 @nats_client.register
+def get_cloud_region_envconfig(cloud_region_id: str):
+    """
+    获取云区域的所有环境变量配置
+    :param cloud_region_id: 云区域 ID
+    :return: 环境变量字典
+    """
+    objs = SidecarEnv.objects.filter(cloud_region_id=cloud_region_id)
+    variables = {}
+    aes_obj = AESCryptor()
+
+    for obj in objs:
+        if obj.type == "secret":
+            # 如果是密文，解密后使用
+            try:
+                value = aes_obj.decode(obj.value)
+                variables[obj.key] = value
+            except Exception:
+                # 解密失败，使用原值
+                variables[obj.key] = obj.value
+        else:
+            # 如果是普通变量，直接使用
+            variables[obj.key] = obj.value
+
+    return variables
+
+
+@nats_client.register
 def node_list(query_data: dict):
     """获取节点列表"""
     organization_ids = query_data.get('organization_ids')
