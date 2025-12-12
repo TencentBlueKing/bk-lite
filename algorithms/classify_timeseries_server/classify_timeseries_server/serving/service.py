@@ -48,20 +48,95 @@ class MLService:
         self.config = get_model_config()
         logger.info(f"Config loaded: {self.config}")
 
+        # 启动时验证配置（快速失败）
+        self._validate_config()
+
+        # 尝试加载模型
         try:
             load_start = time.time()
-            # 统一使用 loader.py 加载模型
             self.model = load_model(self.config)
             load_time = time.time() - load_start
             
             model_load_counter.labels(
                 source=self.config.source, status="success").inc()
             logger.info(f"⏱️  Model loaded successfully in {load_time:.3f}s: {self.config.mlflow_model_uri or 'local/dummy'}")
+            
         except Exception as e:
             model_load_counter.labels(
                 source=self.config.source, status="failure").inc()
-            logger.error(f"Failed to load model: {e}")
-            raise
+            logger.error(f"❌ Failed to load model: {e}", exc_info=True)
+            
+            # 根据环境变量决定是否允许降级到 DummyModel
+            allow_fallback = os.getenv("ALLOW_DUMMY_FALLBACK", "false").lower() == "true"
+            
+            if allow_fallback:
+                from .models.dummy_model import DummyModel
+                logger.warning("⚠️  ALLOW_DUMMY_FALLBACK=true, using DummyModel as fallback")
+                self.model = DummyModel()
+                model_load_counter.labels(
+                    source="dummy_fallback", status="success").inc()
+            else:
+                logger.error(
+                    "Model loading failed and fallback is disabled. "
+                    "Set ALLOW_DUMMY_FALLBACK=true to enable DummyModel fallback."
+                )
+                raise RuntimeError(
+                    f"Failed to load model from source '{self.config.source}'. "
+                    "Service cannot start without a valid model. "
+                    "Enable fallback with ALLOW_DUMMY_FALLBACK=true for development/testing."
+                ) from e
+    
+    def _validate_config(self) -> None:
+        """验证模型配置（启动时快速检查）."""
+        from pathlib import Path
+        
+        logger.info("Validating model configuration...")
+        
+        if self.config.source == "local":
+            # 本地模式：检查路径和关键文件
+            if not self.config.model_path:
+                raise ValueError(
+                    "MODEL_SOURCE is 'local' but MODEL_PATH is not set. "
+                    "Please set MODEL_PATH environment variable to a valid MLflow model directory."
+                )
+            
+            model_path = Path(self.config.model_path)
+            
+            if not model_path.exists():
+                raise ValueError(
+                    f"MODEL_PATH does not exist: {model_path}. "
+                    "Ensure the path is correct and accessible."
+                )
+            
+            if not model_path.is_dir():
+                raise ValueError(
+                    f"MODEL_PATH must be a directory (MLflow model format), got: {model_path}. "
+                    "Example: /path/to/mlruns/1/<run_id>/artifacts/model/"
+                )
+            
+            if not (model_path / "MLmodel").exists():
+                raise ValueError(
+                    f"Invalid MLflow model at {model_path}: MLmodel file not found. "
+                    "Ensure the path points to a valid MLflow model directory containing MLmodel file."
+                )
+            
+            logger.info(f"✅ Local model config validated: {model_path}")
+        
+        elif self.config.source == "mlflow":
+            # MLflow Registry 模式：检查 URI
+            if not self.config.mlflow_model_uri:
+                raise ValueError(
+                    "MODEL_SOURCE is 'mlflow' but MLFLOW_MODEL_URI is not set. "
+                    "Example: models:/model_name/version or models:/model_name/Production"
+                )
+            
+            logger.info(f"✅ MLflow model config validated: {self.config.mlflow_model_uri}")
+        
+        elif self.config.source == "dummy":
+            logger.info("✅ Using dummy model (no validation needed)")
+        
+        else:
+            logger.warning(f"⚠️  Unknown model source: {self.config.source}, will attempt to load")
 
     @bentoml.on_shutdown
     def cleanup(self) -> None:
