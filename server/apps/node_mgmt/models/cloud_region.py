@@ -32,6 +32,7 @@ class CloudRegionService(models.Model):
     deployed_status = models.SmallIntegerField(default=0, verbose_name="部署状态")
     deployed_message = models.TextField(blank=True, verbose_name="部署信息")
     status = models.CharField(max_length=50, verbose_name="服务状态")
+    message = models.TextField(blank=True, verbose_name="服务信息")
     description = models.TextField(blank=True, verbose_name="服务描述")
 
     class Meta:
