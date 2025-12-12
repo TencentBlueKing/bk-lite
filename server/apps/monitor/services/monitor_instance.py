@@ -28,7 +28,9 @@ class InstanceSearch:
     @staticmethod
     def get_parent_instance_list(monitor_object_id):
         """获取父对象实例列表"""
-        objs = MonitorInstance.objects.filter(monitor_object_id=monitor_object_id).values("id", "name")
+        # 获取父对象实例ID
+        _obj = MonitorObject.objects.filter(id=monitor_object_id).first()
+        objs = MonitorInstance.objects.filter(monitor_object_id=_obj.parent_id).values("id", "name")
 
         data = []
         for obj in objs:
