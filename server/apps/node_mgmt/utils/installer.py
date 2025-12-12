@@ -18,6 +18,22 @@ def get_install_command(os, package_name, cloud_region_id, sidecar_token, server
     return unzip_run_command
 
 
+# 获取手动安装命令
+def get_manual_install_command(os, package_id, cloud_region_id, sidecar_token, server_url, groups, node_name, node_id):
+    """获取手动安装命令"""
+    manual_install_command = ControllerConstants.MANUAL_INSTALL_COMMAND.get(os)
+    manual_install_command = manual_install_command.format(
+        package_id=package_id,
+        server_url=server_url,
+        server_token=sidecar_token,
+        cloud=cloud_region_id,
+        group=groups,
+        node_name=node_name,
+        node_id=node_id,
+    )
+    return manual_install_command
+
+
 # 获取卸载命令
 def get_uninstall_command(os):
     """获取卸载命令"""
