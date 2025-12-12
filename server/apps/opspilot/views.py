@@ -486,7 +486,7 @@ def execute_chat_flow(request, bot_id, node_id):
 
     # 检测请求来源是否为移动端
     user_agent = request.META.get("HTTP_USER_AGENT", "")
-    is_mobile = any(keyword in user_agent.lower() for keyword in ["android", "iphone", "ipad", "mobile", "windows phone", "tauri-api-proxy"])
+    is_mobile = any(keyword in user_agent.lower() for keyword in ["android", "iphone", "ipad", "mobile", "windows phone", "tauri"])
 
     # 验证token
     token = request.META.get("HTTP_AUTHORIZATION") or request.META.get(settings.API_TOKEN_HEADER_NAME)
