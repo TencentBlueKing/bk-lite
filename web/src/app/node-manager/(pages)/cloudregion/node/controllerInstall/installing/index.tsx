@@ -215,7 +215,7 @@ const Installing: React.FC<InstallingProps> = ({
       getNodeList('refresh');
       timerRef.current = setInterval(() => {
         getNodeList('timer');
-      }, 100000);
+      }, 5000);
       return () => {
         clearTimer();
       };
