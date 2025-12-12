@@ -64,12 +64,12 @@ class CollectVmwareMetrics(CollectBase):
         return result
 
     def get_vm_esxi_name(self, data, *args, **kwargs):
-        result = []
         esxi_inst_name = self.model_resource_id_mapping["vmware_esxi"].get(data["vmware_esxi"], "")
         if esxi_inst_name:
             return esxi_inst_name
+        else:
+            return ""
 
-        return result
     @staticmethod
     def set_inst_name(*args, **kwargs):
         """
