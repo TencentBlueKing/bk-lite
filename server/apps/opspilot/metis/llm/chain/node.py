@@ -72,18 +72,25 @@ class BasicNode:
         return state
 
     def add_chat_history_node(self, state: Dict[str, Any], config: RunnableConfig) -> Dict[str, Any]:
+        """添加聊天历史到消息列表"""
         if config["configurable"]["graph_request"].chat_history:
             for chat in config["configurable"]["graph_request"].chat_history:
                 if chat.event == "user":
                     if chat.image_data:
-                        state["messages"].append(
-                            HumanMessage(
-                                content=[
-                                    {"type": "text", "text": "describe the weather in this image"},
-                                    {"type": "image_url", "image_url": {"url": chat.image_data}},
-                                ]
-                            )
-                        )
+                        # 构建多模态消息内容 (文本 + 多张图片)
+                        content = []
+
+                        # 添加文本部分
+                        if chat.message:
+                            content.append({"type": "text", "text": chat.message})
+                        else:
+                            content.append({"type": "text", "text": "describe the weather in this image"})
+
+                        # 添加图片列表 (chat.image_data 是列表)
+                        for image_url in chat.image_data:
+                            content.append({"type": "image_url", "image_url": {"url": image_url}})
+
+                        state["messages"].append(HumanMessage(content=content))
                     else:
                         state["messages"].append(HumanMessage(content=chat.message))
                 elif chat.event == "assistant":
