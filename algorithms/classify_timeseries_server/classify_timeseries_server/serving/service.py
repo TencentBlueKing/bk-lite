@@ -214,7 +214,15 @@ class MLService:
             
             logger.info(f"Detected frequency: {inferred_freq}")
             
-            # 执行预测
+            # 执行预测（添加模型来源信息）
+            model_info = f"source={self.config.source}, type={type(self.model).__name__}"
+            if self.config.source == "local":
+                model_info += f", path={self.config.model_path}"
+            elif self.config.source == "mlflow":
+                model_info += f", uri={self.config.mlflow_model_uri}"
+            
+            logger.info(f"🔮 Executing prediction with model [{model_info}]")
+            
             predict_start = time.time()
             prediction_values = self.model.predict({
                 'history': history,
