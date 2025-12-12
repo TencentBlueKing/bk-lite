@@ -1,12 +1,12 @@
 from django.http import HttpResponse
 from rest_framework.decorators import action
-from rest_framework.viewsets import ViewSet
 
 from apps.core.exceptions.base_app_exception import BaseAppException
+from apps.core.utils.open_base import OpenAPIViewSet
 from apps.monitor.services.infra import InfraService
 
 
-class InfraViewSet(ViewSet):
+class InfraViewSet(OpenAPIViewSet):
     """基础设施配置视图 - 代理外部 infra render API"""
 
     @action(methods=['post'], detail=False, url_path='render')
