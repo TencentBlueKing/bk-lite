@@ -39,6 +39,7 @@ class PserverInfo(BaseSSHPlugin):
                 }
                 prometheus_data = convert_to_prometheus_format(return_data)
             else:
+                data['cmdbhost'] = self.host
                 prometheus_data = convert_to_prometheus_format(
                     {self.plugin_type: [data]})
             return prometheus_data
