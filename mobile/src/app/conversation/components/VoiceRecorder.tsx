@@ -12,7 +12,6 @@ interface VoiceRecorderProps {
     setRecordingCancelled: (value: boolean) => void;
     onToggleVoiceMode: () => void;
     selectedFiles: File[];
-    onSendFiles: () => void;
     showFileOptions: boolean;
     setShowFileOptions: (value: boolean) => void;
 }
@@ -26,7 +25,6 @@ export const VoiceRecorder: React.FC<VoiceRecorderProps> = ({
     setRecordingCancelled,
     onToggleVoiceMode,
     selectedFiles,
-    onSendFiles,
     showFileOptions,
     setShowFileOptions,
 }) => {
@@ -185,26 +183,7 @@ export const VoiceRecorder: React.FC<VoiceRecorderProps> = ({
                     onMouseDown={(e) => e.preventDefault()}
                     onClick={onToggleVoiceMode}
                 ></span>
-                {selectedFiles.length > 0 ? (
-                    <span
-                        className={`iconfont icon-xiangshangjiantouquan text-3xl action-icon ${isAIRunning
-                            ? 'text-gray-400 cursor-not-allowed opacity-50'
-                            : 'text-blue-600'
-                            }`}
-                        onMouseDown={(e) => e.preventDefault()}
-                        onClick={() => {
-                            if (isAIRunning) {
-                                Toast.show({
-                                    content: 'AI 正在处理中，请稍候...',
-                                    icon: 'loading',
-                                    duration: 2000
-                                });
-                                return;
-                            }
-                            onSendFiles();
-                        }}
-                    ></span>
-                ) : (
+                {selectedFiles.length === 0 && (
                     <span
                         className="iconfont icon-a-zengjiatianjiajiahaoduo text-3xl text-[var(--color-text-1)] action-icon"
                         style={{

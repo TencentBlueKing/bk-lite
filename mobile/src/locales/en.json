@@ -58,10 +58,14 @@
         "aiProcessing": "AI is processing, please wait...",
         "addLimit": "Cannot add images and files at the same time",
         "fileSizeLimitExceeded": "Some files exceed the 10MB limit and have been skipped",
+        "uploading": "Uploading, please wait...",
+        "fileConversionFailed": "File conversion failed",
+        "fileConversionError": "Some files failed to convert, please retry or remove them",
         "holdToTalk": "Hold to talk",
         "releaseToCancel": "Release to cancel",
         "slideUpToCancel": "Release to send, slide up to cancel.",
-        "welcomeMessage": "Hello, how can I assist you today?"
+        "welcomeMessage": "Hello, how can I assist you today?",
+        "fileCountLimit": "You can add up to 9 files"
     },
     "auth": {
         "loginTitle": "Login",

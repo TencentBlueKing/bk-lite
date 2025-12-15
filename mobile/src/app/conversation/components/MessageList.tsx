@@ -14,7 +14,7 @@ interface MessageListProps {
     setThinkingExpanded: React.Dispatch<React.SetStateAction<Record<string, boolean>>>;
     thinkingTypingText: Record<string, string>;
     renderMarkdown: (text: string) => React.ReactNode;
-    onActionClick: (key: string, message: string | React.ReactNode, messageId?: string) => void;
+    onActionClick: (key: string, messageId?: string) => void;
     onRecommendationClick: (text: string) => void;
     onFormSubmit?: (message: string) => void; // 用于表单提交发送消息
 }
@@ -33,9 +33,8 @@ const getRoles: GetProp<typeof Bubble.List, 'roles'> = ({
         variant: 'filled',
         shape: 'corner',
         style: {
-            maxWidth: '90%',
-            marginRight: '10px',
-            marginLeft: 'auto',
+            margin: '0 10px',
+            maxWidth: '100%',
         },
         styles: {
             content: {
@@ -244,12 +243,23 @@ export const MessageList: React.FC<MessageListProps> = ({
                                     loading: shouldShowLoading,
                                     role: msg.status === 'local' ? 'local' : 'ai',
                                     content: contentWithCustomComponent,
+                                    // 如果是文件消息，覆盖样式：无背景、无边框
+                                    ...(msg.isFileMessage && {
+                                        styles: {
+                                            content: {
+                                                backgroundColor: 'transparent',
+                                                border: 'none',
+                                                boxShadow: 'none',
+                                                padding: 0,
+                                            }
+                                        }
+                                    }),
                                     ...(showActions && {
                                         footer: (
                                             <Actions
                                                 items={currentActionItems}
                                                 onClick={({ keyPath }) =>
-                                                    onActionClick(keyPath[0], msg.message as React.ReactNode, msg.id)
+                                                    onActionClick(keyPath[0], msg.id)
                                                 }
                                             />
                                         ),
