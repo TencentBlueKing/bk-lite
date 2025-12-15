@@ -18,7 +18,7 @@ from apps.core.models.time_info import TimeInfo
 from apps.alerts.constants import AlertsSourceTypes, AlertAccessType, EventStatus, AlertOperate, \
     AlertStatus, EventAction, LevelType, AlertAssignmentMatchType, AlertShieldMatchType, IncidentStatus, \
     IncidentOperate, CorrelationRulesScope, CorrelationRulesType, AggregationRuleType, NotifyResultStatus, \
-    LogTargetType, LogAction, WindowType, Alignment
+    LogTargetType, LogAction, WindowType, Alignment, AlertStrategyType
 from apps.alerts.utils.util import gen_app_secret, window_size_to_int
 
 
@@ -300,6 +300,26 @@ class AggregationRules(MaintainerInfo, TimeInfo):
     condition = JSONField(default=list, help_text="规则条件配置")  # [dict, ...]
     type = models.CharField(max_length=32, choices=AggregationRuleType.CHOICES, default=AggregationRuleType.ALERT,
                             help_text="聚合类型")
+    
+    # 新增策略类型字段
+    strategy_type = models.CharField(
+        max_length=32, 
+        choices=AlertStrategyType.CHOICES, 
+        default=AlertStrategyType.COMPOSITE,
+        help_text="告警策略类型：threshold(阈值)/mutation(突变)/composite(复合)/frequency(频率)/trend(趋势)/anomaly(异常)"
+    )
+    strategy_config = JSONField(
+        default=dict, 
+        help_text="策略特定参数配置。根据strategy_type存储不同配置：阈值策略存threshold_value等，频率策略存event_count_threshold等", 
+        blank=True, 
+        null=True
+    )
+    default_window_config = JSONField(
+        default=dict,
+        help_text="窗口类型配置，包含window_type、window_size、slide_interval、alignment、session_timeout等",
+        blank=True,
+        null=True
+    )
 
     # {"zh": "中文描述", "en": "English description"}
     description = JSONField(default=dict, help_text="规则描述", blank=True, null=True)
@@ -310,7 +330,7 @@ class AggregationRules(MaintainerInfo, TimeInfo):
             # 获取第一个条件的session_close配置
             if self.condition and isinstance(self.condition[0], dict):
                 return self.condition[0].get("session_close", {})
-        except Exception as err:
+        except Exception as err: # noqa
             return {}
 
     @property
@@ -371,6 +391,11 @@ class CorrelationRules(MaintainerInfo, TimeInfo):
     @property
     def is_session_rule(self):
         return self.window_type == WindowType.SESSION
+
+    @property
+    def strategy_type(self):
+        # TODO 优化n+1查询
+        return self.aggregation_rules.last().strategy_type
 
     def __str__(self):
         return self.name

@@ -109,6 +109,7 @@ class RuleProcessingAdapter:
 
             # 生成SQL
             sql = self.template_engine.render_windows_template(context)
+            print("生成SQL:{}".format(sql))
 
             logger.info(f"成功为规则 {aggregation_rule.rule_id} 生成SQL")
             return sql
