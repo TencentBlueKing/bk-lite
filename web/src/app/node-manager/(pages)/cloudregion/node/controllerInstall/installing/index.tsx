@@ -191,18 +191,19 @@ const Installing: React.FC<InstallingProps> = ({
                 <>
                   <Button
                     type="link"
-                    className="mr-[10px]"
                     onClick={() => checkDetail(installData?.installMethod, row)}
                   >
                     {t('node-manager.cloudregion.node.viewLog')}
                   </Button>
-                  <Button
-                    type="link"
-                    disabled={row.status === 'success'}
-                    onClick={() => handleRetry(row)}
-                  >
-                    {t('node-manager.cloudregion.node.retry')}
-                  </Button>
+                  {['error', 'timeout'].includes(row.status) && (
+                    <Button
+                      type="link"
+                      className="m1-[10px]"
+                      onClick={() => handleRetry(row)}
+                    >
+                      {t('node-manager.cloudregion.node.retry')}
+                    </Button>
+                  )}
                 </>
               )}
             </>
