@@ -5,9 +5,17 @@ import React, {
   forwardRef,
   useImperativeHandle,
   useRef,
-  useEffect,
 } from 'react';
-import { Tag, Empty, Button, Spin, Badge, Popconfirm, message } from 'antd';
+import {
+  Tag,
+  Empty,
+  Button,
+  Spin,
+  Badge,
+  Popconfirm,
+  message,
+  Input,
+} from 'antd';
 import { RightOutlined, GlobalOutlined, EditOutlined } from '@ant-design/icons';
 import Icon from '@/components/icon';
 import OperateDrawer from '@/app/node-manager/components/operate-drawer';
@@ -65,6 +73,8 @@ const CollectorDetailDrawer = forwardRef<ModalRef, CollectorDetailDrawerProps>(
       total: 0,
       pageSize: 10,
     });
+    const [searchKeyword, setSearchKeyword] = useState<string>('');
+    const [inputValue, setInputValue] = useState<string>('');
 
     useImperativeHandle(ref, () => ({
       showModal: ({ collectors, row }) => {
@@ -151,7 +161,7 @@ const CollectorDetailDrawer = forwardRef<ModalRef, CollectorDetailDrawerProps>(
         );
         if (targetConfig) {
           setMainConfig(targetConfig);
-          loadSubConfigs(targetConfig.key);
+          loadSubConfigs({ configId: targetConfig.key });
         } else {
           setMainConfig(null);
         }
@@ -169,7 +179,7 @@ const CollectorDetailDrawer = forwardRef<ModalRef, CollectorDetailDrawerProps>(
       );
       if (targetConfig) {
         setMainConfig(targetConfig);
-        loadSubConfigs(targetConfig.key);
+        loadSubConfigs({ configId: targetConfig.key, page: 1, configType: '' });
       } else {
         setMainConfig(null);
         setSubConfigs([]);
@@ -178,18 +188,24 @@ const CollectorDetailDrawer = forwardRef<ModalRef, CollectorDetailDrawerProps>(
     };
 
     // 加载子配置
-    const loadSubConfigs = async (
-      configId: string,
-      page?: number,
-      pageSize?: number
-    ) => {
+    const loadSubConfigs = async ({
+      configId,
+      page,
+      pageSize,
+      configType,
+    }: {
+      configId: string;
+      page?: number;
+      pageSize?: number;
+      configType?: string;
+    }) => {
       setSubConfigLoading(true);
       try {
         const params = {
           collector_config_id: configId,
-          search: '',
           page: page || subConfigPagination.current,
           page_size: pageSize || subConfigPagination.pageSize,
+          config_type: configType === undefined ? searchKeyword : configType,
         };
         const res = await getChildConfig(params);
         const data = res.items.map((item: any) => ({
@@ -209,17 +225,6 @@ const CollectorDetailDrawer = forwardRef<ModalRef, CollectorDetailDrawerProps>(
         setSubConfigLoading(false);
       }
     };
-
-    // 子配置分页变化
-    useEffect(() => {
-      if (mainConfig && visible) {
-        loadSubConfigs(
-          mainConfig.key,
-          subConfigPagination.current,
-          subConfigPagination.pageSize
-        );
-      }
-    }, [subConfigPagination.current, subConfigPagination.pageSize]);
 
     const getSortedGroupedCollectors = () => {
       const groupedCollectors = collectors.reduce((groups, collector) => {
@@ -247,6 +252,8 @@ const CollectorDetailDrawer = forwardRef<ModalRef, CollectorDetailDrawerProps>(
       setSubConfigPagination({ current: 1, total: 0, pageSize: 10 });
       setMainConfigLoading(false);
       setSubConfigLoading(false);
+      setSearchKeyword('');
+      setInputValue('');
     };
 
     const handleCollectorClick = (collector: TableDataItem) => {
@@ -256,6 +263,8 @@ const CollectorDetailDrawer = forwardRef<ModalRef, CollectorDetailDrawerProps>(
         count: 0,
         current: 1,
       }));
+      setSearchKeyword('');
+      setInputValue('');
       if (collector.message && typeof collector.message === 'object') {
         collector.message = collector.message?.final_message || '';
       }
@@ -287,7 +296,7 @@ const CollectorDetailDrawer = forwardRef<ModalRef, CollectorDetailDrawerProps>(
     const handleConfigModalSuccess = async (operateType: string) => {
       if (['add_child', 'edit_child'].includes(operateType)) {
         if (mainConfig) {
-          await loadSubConfigs(mainConfig.key);
+          await loadSubConfigs({ configId: mainConfig.key });
         }
         return;
       }
@@ -355,7 +364,7 @@ const CollectorDetailDrawer = forwardRef<ModalRef, CollectorDetailDrawerProps>(
       deleteSubConfig(id)
         .then(() => {
           message.success(t('common.delSuccess'));
-          loadSubConfigs(mainConfig?.key as string);
+          loadSubConfigs({ configId: mainConfig?.key as string });
         })
         .catch(() => {
           setSubConfigLoading(false);
@@ -364,6 +373,40 @@ const CollectorDetailDrawer = forwardRef<ModalRef, CollectorDetailDrawerProps>(
 
     const handleSubConfigTableChange = (pagination: any) => {
       setSubConfigPagination(pagination);
+      if (mainConfig) {
+        loadSubConfigs({
+          configId: mainConfig.key,
+          page: pagination.current,
+          pageSize: pagination.pageSize,
+        });
+      }
+    };
+
+    const handleSearch = (value: string) => {
+      setSearchKeyword(value);
+      setSubConfigPagination((prev) => ({ ...prev, current: 1 }));
+      if (mainConfig) {
+        loadSubConfigs({
+          configId: mainConfig.key,
+          page: 1,
+          pageSize: subConfigPagination.pageSize,
+          configType: value,
+        });
+      }
+    };
+
+    const handleClearSearch = () => {
+      setInputValue('');
+      setSearchKeyword('');
+      setSubConfigPagination((prev) => ({ ...prev, current: 1 }));
+      if (mainConfig) {
+        loadSubConfigs({
+          configId: mainConfig.key,
+          page: 1,
+          pageSize: subConfigPagination.pageSize,
+          configType: '',
+        });
+      }
     };
 
     const getStatusInfo = (status: number) => {
@@ -586,17 +629,24 @@ const CollectorDetailDrawer = forwardRef<ModalRef, CollectorDetailDrawerProps>(
                               'node-manager.cloudregion.Configuration.subconfiguration'
                             )}
                           </span>
-                          <span className="text-xs text-[var(--color-text-3)]">
-                            {subConfigPagination.total || 0}
-                            {t('common.items')}
-                          </span>
+                          <Input.Search
+                            placeholder={t(
+                              'node-manager.cloudregion.Configuration.searchPlaceholder'
+                            )}
+                            value={inputValue}
+                            onChange={(e) => setInputValue(e.target.value)}
+                            onSearch={handleSearch}
+                            onClear={handleClearSearch}
+                            allowClear
+                            style={{ width: 250 }}
+                          />
                         </div>
                         <div className="flex-1">
                           <CustomTable
                             scroll={{
                               y: !subConfigs?.length
                                 ? 'auto'
-                                : 'calc(100vh - 474px)',
+                                : 'calc(100vh - 482px)',
                               x: 'max-content',
                             }}
                             columns={subConfigColumns}

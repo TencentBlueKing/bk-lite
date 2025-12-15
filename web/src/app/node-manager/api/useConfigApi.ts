@@ -25,7 +25,7 @@ const useConfigApi = () => {
   // 获取子配置文件列表
   const getChildConfig = async (params: {
     collector_config_id: string;
-    search?: string;
+    config_type?: string;
     page?: number;
     page_size?: number;
   }) => {
