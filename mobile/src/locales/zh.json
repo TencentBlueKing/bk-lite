@@ -58,10 +58,14 @@
         "aiProcessing": "AI 正在处理中，请稍候...",
         "addLimit": "不支持同时添加图片和文件",
         "fileSizeLimitExceeded": "部分文件超过 10MB 限制，已跳过",
+        "uploading": "正在上传，请稍候...",
+        "fileConversionFailed": "文件转换失败",
+        "fileConversionError": "有文件转换失败，请重试或删除",
         "holdToTalk": "按住说话",
         "releaseToCancel": "松开取消",
         "slideUpToCancel": "松开发送,上滑取消",
-        "welcomeMessage": "您好，请问有什么可以帮助您的吗？"
+        "welcomeMessage": "您好，请问有什么可以帮助您的吗？",
+        "fileCountLimit": "最多只能添加9个文件"
     },
     "auth": {
         "loginTitle": "登录",

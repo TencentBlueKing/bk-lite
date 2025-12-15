@@ -21,6 +21,20 @@ export interface ApiError {
   status?: number;
 }
 
+export interface StreamChunk {
+  stream_id: string;
+  data: string;
+}
+
+export interface StreamEnd {
+  stream_id: string;
+}
+
+export interface StreamError {
+  stream_id: string;
+  error: string;
+}
+
 /**
  * 安全地调用 Tauri invoke
  * Tauri 2.x 使用 __TAURI_INTERNALS__ 作为主要标识
@@ -130,4 +144,136 @@ export async function tauriApiFetch(
     statusText: response.status >= 200 && response.status < 300 ? 'OK' : 'Error',
     headers: new Headers(response.headers),
   });
+}
+
+/**
+ * Tauri 流式请求（真正的流式体验）
+ * 返回一个异步生成器，通过 Tauri 事件系统实时接收数据
+ */
+export async function* tauriApiStream(
+  url: string,
+  options: RequestInit = {}
+): AsyncGenerator<string, void, unknown> {
+  const method = options.method || 'POST';
+  const headers: Record<string, string> = {};
+
+  // 转换 Headers 对象到普通对象
+  if (options.headers) {
+    if (options.headers instanceof Headers) {
+      options.headers.forEach((value, key) => {
+        headers[key] = value;
+      });
+    } else if (typeof options.headers === 'object') {
+      Object.assign(headers, options.headers);
+    }
+  }
+
+  // 处理请求体
+  let body: string | undefined;
+  if (options.body) {
+    if (typeof options.body === 'string') {
+      body = options.body;
+    } else {
+      body = JSON.stringify(options.body);
+    }
+  }
+
+  // 动态导入 Tauri API
+  const { invoke } = await import('@tauri-apps/api/core');
+  const { listen } = await import('@tauri-apps/api/event');
+
+  // 调用 Rust 流式命令，获取 stream_id
+  const streamId = await invoke<string>('api_stream_proxy', {
+    request: {
+      url,
+      method,
+      headers,
+      body,
+    },
+  });
+
+  // 创建 Promise 队列来缓存接收到的数据块
+  const queue: string[] = [];
+  let isStreamEnded = false;
+  let streamError: Error | null = null;
+  let resolveNext: ((value: IteratorResult<string>) => void) | null = null;
+
+  // 监听流数据块事件
+  const unlistenChunk = await listen<StreamChunk>('stream-chunk', (event) => {
+    if (event.payload.stream_id === streamId) {
+      const data = event.payload.data;
+
+      if (resolveNext) {
+        // 如果有等待的 Promise，直接解决它
+        resolveNext({ value: data, done: false });
+        resolveNext = null;
+      } else {
+        // 否则加入队列
+        queue.push(data);
+      }
+    }
+  });
+
+  // 监听流结束事件
+  const unlistenEnd = await listen<StreamEnd>('stream-end', (event) => {
+    if (event.payload.stream_id === streamId) {
+      isStreamEnded = true;
+
+      if (resolveNext) {
+        resolveNext({ value: undefined as any, done: true });
+        resolveNext = null;
+      }
+    }
+  });
+
+  // 监听流错误事件
+  const unlistenError = await listen<StreamError>('stream-error', (event) => {
+    console.error('[TauriStream] Stream error:', event.payload.error);
+    if (event.payload.stream_id === streamId) {
+      streamError = new Error(event.payload.error);
+      isStreamEnded = true;
+
+      if (resolveNext) {
+        resolveNext({ value: undefined as any, done: true });
+        resolveNext = null;
+      }
+    }
+  });
+
+  try {
+    // 异步生成器主循环
+    while (true) {
+      // 优先处理队列中的数据
+      while (queue.length > 0) {
+        const data = queue.shift()!;
+        yield data;
+      }
+
+      // 队列已空，检查流状态
+      if (streamError) {
+        throw streamError;
+      }
+
+      if (isStreamEnded) {
+        break;
+      }
+
+      const result = await new Promise<IteratorResult<string>>((resolve) => {
+        resolveNext = resolve;
+      });
+
+      // 如果有值，yield 它
+      if (!result.done && result.value) {
+        yield result.value;
+      }
+
+      // 如果 done 为 true，回到循环顶部检查队列和状态
+    }
+
+  } finally {
+    // 清理事件监听器
+    unlistenChunk();
+    unlistenEnd();
+    unlistenError();
+  }
 }

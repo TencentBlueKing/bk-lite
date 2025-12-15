@@ -1,8 +1,8 @@
 import React, { useRef, useState } from 'react';
-import { Toast, Popover } from 'antd-mobile';
+import { Toast, Popover, ImageViewer } from 'antd-mobile';
 import { Sender } from '@ant-design/x';
-import { AddOutline } from 'antd-mobile-icons';
-import { RobotOutlined, BarChartOutlined, RadarChartOutlined, BookOutlined, FileOutlined } from '@ant-design/icons';
+import { AddOutline, ExclamationCircleFill } from 'antd-mobile-icons';
+import { RobotOutlined, BarChartOutlined, RadarChartOutlined, BookOutlined, FileOutlined, FileExcelFilled, FileMarkdownFilled, FilePdfFilled, FilePptFilled, FileTextFilled, FileUnknownFilled, FileWordFilled, FileZipFilled } from '@ant-design/icons';
 import { useTheme } from '@/context/theme';
 import { VoiceRecorder } from './VoiceRecorder';
 import { useTranslation } from '@/utils/i18n';
@@ -18,7 +18,7 @@ const MOCK_TOOLS = [
 // 消息类型定义
 export type MessageContent =
     | { type: 'text'; content: string }
-    | { type: 'files'; files: File[]; fileType: 'image' | 'file'; text?: string }; // text 为可选，用于文字+文件组合
+    | { type: 'files'; files: File[]; fileType: 'image' | 'file'; text?: string; base64Data: string[] }; // text 为可选，base64Data 存储转换后的数据
 
 interface CustomInputProps {
     content: string;
@@ -49,25 +49,171 @@ export const CustomInput: React.FC<CustomInputProps> = ({
     const photoInputRef = useRef<HTMLInputElement>(null);
     const fileInputRef = useRef<HTMLInputElement>(null);
     const { theme } = useTheme();
+    const [fileConversionStatus, setFileConversionStatus] = useState<Record<number, boolean | 'error'>>({}); // 记录每个文件转换状态：true=完成, false=转换中, 'error'=失败
+    const [fileBase64Data, setFileBase64Data] = useState<Record<number, string>>({}); // 存储每个文件的base64数据
+    const [imageViewerVisible, setImageViewerVisible] = useState(false);
+    const [currentPreviewImage, setCurrentPreviewImage] = useState<string>('');
+
+    // 处理图片点击预览
+    const handleImagePreview = (file: File, e: React.MouseEvent) => {
+        e.stopPropagation();
+        const imageUrl = URL.createObjectURL(file);
+        setCurrentPreviewImage(imageUrl);
+        setImageViewerVisible(true);
+    };
+
+    // 获取文件扩展名
+    const getFileExtension = (fileName: string): string => {
+        const ext = fileName.split('.').pop()?.toUpperCase();
+        return ext || 'FILE';
+    };
+
+    // 获取文件名（不包含扩展名）
+    const getFileNameWithoutExtension = (fileName: string): string => {
+        const lastDotIndex = fileName.lastIndexOf('.');
+        if (lastDotIndex === -1) return fileName;
+        return fileName.substring(0, lastDotIndex);
+    };
+
+    // 格式化文件大小
+    const formatFileSize = (bytes: number): string => {
+        const mb = bytes / (1024 * 1024);
+        if (mb >= 1) {
+            return `${mb.toFixed(2)} MB`;
+        }
+        const kb = bytes / 1024;
+        return `${kb.toFixed(2)} KB`;
+    };
+
+    // 根据文件类型获取图标和颜色
+    const getFileIcon = (fileName: string) => {
+        const ext = fileName.split('.').pop()?.toLowerCase() || '';
+
+        // Excel 文件
+        if (['xls', 'xlsx', 'xlsm', 'xlsb', 'csv'].includes(ext)) {
+            return { icon: <FileExcelFilled />, color: '#107C41' };
+        }
+        // Word 文件
+        if (['doc', 'docx', 'docm', 'dot', 'dotx'].includes(ext)) {
+            return { icon: <FileWordFilled />, color: '#2B579A' };
+        }
+        // PowerPoint 文件
+        if (['ppt', 'pptx', 'pptm', 'pps', 'ppsx'].includes(ext)) {
+            return { icon: <FilePptFilled />, color: '#D24726' };
+        }
+        // PDF 文件
+        if (ext === 'pdf') {
+            return { icon: <FilePdfFilled />, color: '#F40F02' };
+        }
+        // 压缩文件
+        if (['zip', 'rar', '7z', 'tar', 'gz', 'bz2'].includes(ext)) {
+            return { icon: <FileZipFilled />, color: '#FFA500' };
+        }
+        // Markdown 文件
+        if (['md', 'markdown'].includes(ext)) {
+            return { icon: <FileMarkdownFilled />, color: '#000000' };
+        }
+        // 文本文件
+        if (['txt', 'log', 'json', 'xml', 'yml', 'yaml', 'ini', 'conf', 'cfg'].includes(ext)) {
+            return { icon: <FileTextFilled />, color: '#666666' };
+        }
+        // 默认未知文件
+        return { icon: <FileUnknownFilled />, color: '#999999' };
+    };
+
+    // 验证文件转换状态
+    const validateFileConversion = (): boolean => {
+        if (selectedFiles.length === 0) return true;
+
+        // 检查是否有转换失败的文件
+        const hasError = selectedFiles.some((_, index) => fileConversionStatus[index] === 'error');
+        if (hasError) {
+            Toast.show({
+                content: t('chat.fileConversionError'),
+                icon: 'fail',
+                duration: 2000
+            });
+            return false;
+        }
+
+        // 检查是否所有文件都已转换完成
+        const allConverted = selectedFiles.every((_, index) => fileConversionStatus[index] === true);
+        if (!allConverted) {
+            Toast.show({
+                content: t('chat.uploading'),
+                icon: 'loading',
+                duration: 2000
+            });
+            return false;
+        }
+
+        return true;
+    };
+
+    // 清空文件相关状态
+    const clearFileStates = () => {
+        setShowImageOptions(false);
+        setSelectedFiles([]);
+        setFileType(null);
+        setFileConversionStatus({});
+        setFileBase64Data({});
+    };
 
     // 处理语音识别发送
     const handleVoiceSend = (text: string) => {
-        // 检查是否有导入的文件或图片
+        // 检查文件转换状态
         if (selectedFiles.length > 0 && fileType) {
+            if (!validateFileConversion()) return;
+
+            // 收集所有文件的base64数据
+            const base64Array = selectedFiles.map((_, index) => fileBase64Data[index]);
+
             // 语音文本 + 文件组合发送
             onSend({
                 type: 'files',
                 files: selectedFiles,
                 fileType: fileType,
                 text: text,
+                base64Data: base64Array,
             });
-            // 清空文件状态
-            setShowImageOptions(false);
-            setSelectedFiles([]);
-            setFileType(null);
+            clearFileStates();
         } else {
             // 只发送语音识别的文本
             onSend(text);
+        }
+    };
+
+    // 将文件转换为base64
+    const convertFileToBase64 = (file: File, index: number): Promise<string> => {
+        return new Promise((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onload = () => {
+                const base64String = reader.result as string;
+                setFileBase64Data(prev => ({ ...prev, [index]: base64String }));
+                setFileConversionStatus(prev => ({ ...prev, [index]: true }));
+                resolve(base64String);
+            };
+            reader.onerror = () => {
+                // 使用特殊值 'error' 表示转换失败
+                setFileConversionStatus(prev => ({ ...prev, [index]: 'error' as any }));
+                reject(reader.error);
+            };
+            reader.readAsDataURL(file);
+        });
+    };
+
+    // 重试转换失败的文件
+    const retryConversion = async (file: File, index: number) => {
+        setFileConversionStatus(prev => ({ ...prev, [index]: false }));
+        try {
+            await convertFileToBase64(file, index);
+        } catch (error) {
+            console.error('File conversion failed.:', file.name, error);
+            Toast.show({
+                content: t('chat.fileConversionFailed'),
+                icon: 'fail',
+                duration: 2000
+            });
         }
     };
 
@@ -94,16 +240,20 @@ export const CustomInput: React.FC<CustomInputProps> = ({
 
         // 优先发送文件（如果有）
         if (selectedFiles.length > 0 && fileType) {
+            if (!validateFileConversion()) return;
+
+            // 收集所有文件的base64数据
+            const base64Array = selectedFiles.map((_, index) => fileBase64Data[index]);
+
             onSend({
                 type: 'files',
                 files: selectedFiles,
                 fileType: fileType,
                 text: text?.trim() || undefined,
+                base64Data: base64Array,
             });
             // 清空文件和输入框
-            setShowImageOptions(false);
-            setSelectedFiles([]);
-            setFileType(null);
+            clearFileStates();
             setContent('');
         } else if (text?.trim()) {
             // 只有文字，正常发送
@@ -121,10 +271,6 @@ export const CustomInput: React.FC<CustomInputProps> = ({
             });
             return;
         }
-        // 移动端触感反馈
-        if (navigator.vibrate) {
-            navigator.vibrate(10);
-        }
 
         // 找到对应的工具
         const tool = MOCK_TOOLS.find(t => t.id === toolId);
@@ -139,6 +285,17 @@ export const CustomInput: React.FC<CustomInputProps> = ({
         const files = event.target.files;
         if (files && files.length > 0) {
             const fileArray = Array.from(files);
+
+            // 检查总数是否超过9个
+            if (selectedFiles.length + fileArray.length > 9) {
+                Toast.show({
+                    content: t('chat.fileCountLimit') || '最多只能添加9个文件',
+                    icon: 'fail',
+                    duration: 2000
+                });
+                event.target.value = '';
+                return;
+            }
 
             // 判断新选择的文件类型
             const isImage = fileArray.every(f => f.type.startsWith('image/'));
@@ -175,14 +332,27 @@ export const CustomInput: React.FC<CustomInputProps> = ({
                     setFileType(newFileType);
                 }
 
+                const currentLength = selectedFiles.length;
                 setSelectedFiles((prev) => [...prev, ...validFiles]);
 
-                // 打印文件信息到控制台（用于调试）
-                console.log('选择的文件:', validFiles);
-                validFiles.forEach(file => {
-                    console.log('文件名:', file.name);
-                    console.log('文件类型:', file.type);
-                    console.log('文件大小:', (file.size / 1024).toFixed(2), 'KB');
+                // 开始转换新添加的文件为base64
+                validFiles.forEach(async (file, idx) => {
+                    const fileIndex = currentLength + idx;
+                    // 初始化转换状态为false（转换中）
+                    setFileConversionStatus(prev => ({ ...prev, [fileIndex]: false }));
+
+                    try {
+                        // 异步转换文件
+                        await convertFileToBase64(file, fileIndex);
+                        console.log(`文件 ${file.name} 转换完成`);
+                    } catch (error) {
+                        console.error('File conversion failed.:', file.name, error);
+                        Toast.show({
+                            content: t('chat.fileConversionFailed'),
+                            icon: 'fail',
+                            duration: 2000
+                        });
+                    }
                 });
             }
         }
@@ -192,11 +362,6 @@ export const CustomInput: React.FC<CustomInputProps> = ({
     };
 
     const handleFileOptionClick = (type: 'camera' | 'photo' | 'file') => {
-        // 移动端触感反馈
-        if (navigator.vibrate) {
-            navigator.vibrate(10);
-        }
-
         setShowFileOptions(false);
 
         // 延迟触发，确保面板收起动画流畅
@@ -212,13 +377,21 @@ export const CustomInput: React.FC<CustomInputProps> = ({
     };
 
     const handleRemoveFile = (index: number) => {
-        // 移动端触感反馈
-        if (navigator.vibrate) {
-            navigator.vibrate(10);
-        }
-
         const newFiles = selectedFiles.filter((_, i) => i !== index);
         setSelectedFiles(newFiles);
+
+        // 清理对应的转换状态和base64数据
+        const newConversionStatus: Record<number, boolean | 'error'> = {};
+        const newBase64Data: Record<number, string> = {};
+        newFiles.forEach((_, newIndex) => {
+            const oldIndex = newIndex >= index ? newIndex + 1 : newIndex;
+            newConversionStatus[newIndex] = fileConversionStatus[oldIndex];
+            if (fileBase64Data[oldIndex]) {
+                newBase64Data[newIndex] = fileBase64Data[oldIndex];
+            }
+        });
+        setFileConversionStatus(newConversionStatus);
+        setFileBase64Data(newBase64Data);
 
         // 如果删除后没有文件了，重置文件类型和 Popover 状态
         if (newFiles.length === 0) {
@@ -229,11 +402,6 @@ export const CustomInput: React.FC<CustomInputProps> = ({
 
     // 处理"添加更多"按钮点击
     const handleAddMoreFiles = () => {
-        // 移动端触感反馈
-        if (navigator.vibrate) {
-            navigator.vibrate(10);
-        }
-
         if (fileType === 'file') {
             // 已有文件（非图片），直接打开文件选择器
             fileInputRef.current?.click();
@@ -281,25 +449,77 @@ export const CustomInput: React.FC<CustomInputProps> = ({
                             <div
                                 key={index}
                                 className="relative flex-shrink-0"
-                                style={{ width: '80px' }}
+                                style={{
+                                    width: file.type.startsWith('image/') ? '80px' : '200px',
+                                    height: '80px'
+                                }}
                             >
-                                <div className="w-full relative bg-[var(--color-background-body)] rounded-lg overflow-hidden aspect-square">
+                                <div className="w-full h-full relative border border-[var(--color-border)] rounded-lg overflow-hidden">
                                     {file.type.startsWith('image/') ? (
                                         <img
                                             src={URL.createObjectURL(file)}
                                             alt={file.name}
-                                            className="w-full h-full object-cover"
+                                            className="w-full h-full object-cover cursor-pointer"
+                                            onClick={(e) => handleImagePreview(file, e)}
                                         />
                                     ) : (
-                                        <div className="w-full h-full flex items-center justify-center p-1">
-                                            <div className="text-[var(--color-text-1)] text-xs text-center line-clamp-3 overflow-hidden break-words">
-                                                {file.name}
+                                        <div className="w-full h-full flex items-center gap-2 p-2">
+                                            {(() => {
+                                                const { icon, color } = getFileIcon(file.name);
+                                                return (
+                                                    <div
+                                                        className="flex-shrink-0 w-10 h-10 rounded flex items-center justify-center text-4xl"
+                                                        style={{ color: color }}
+                                                    >
+                                                        {icon}
+                                                    </div>
+                                                );
+                                            })()}
+                                            <div className="flex-1 min-w-0 h-full flex flex-col justify-between py-0.5">
+                                                <div className="flex-1 flex items-center min-h-0">
+                                                    <div className="text-[var(--color-text-1)] text-xs font-medium line-clamp-2 break-all overflow-hidden">
+                                                        {getFileNameWithoutExtension(file.name)}
+                                                    </div>
+                                                </div>
+                                                <div className="text-[var(--color-text-3)] text-xs flex-shrink-0">
+                                                    {getFileExtension(file.name)} | {formatFileSize(file.size)}
+                                                </div>
                                             </div>
                                         </div>
                                     )}
+                                    {/* Loading遮罩 - 转换中 */}
+                                    {fileConversionStatus[index] === false && (
+                                        <div
+                                            className="absolute inset-0 flex items-center justify-center rounded-lg"
+                                            style={{ backgroundColor: 'rgba(0, 0, 0, 0.4)' }}
+                                        >
+                                            <div className="animate-spin rounded-full h-6 w-6 border-2 border-white border-t-transparent"></div>
+                                        </div>
+                                    )}
+                                    {/* 错误遮罩 - 转换失败 */}
+                                    {fileConversionStatus[index] === 'error' && (
+                                        <div
+                                            className="absolute inset-0 flex flex-col items-center justify-center gap-1 rounded-lg"
+                                            style={{ backgroundColor: 'rgba(0, 0, 0, 0.8)' }}
+                                        >
+                                            <ExclamationCircleFill className="text-red-500 text-2xl" />
+                                            <button
+                                                onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    retryConversion(file, index);
+                                                }}
+                                                className="text-white text-xs bg-black bg-opacity-50 px-2 py-1 rounded"
+                                            >
+                                                {t('common.retry')}
+                                            </button>
+                                        </div>
+                                    )}
                                     <button
-                                        onClick={() => handleRemoveFile(index)}
-                                        className="absolute top-1 right-1 w-5 h-5 text-gray-500 text-base"
+                                        onClick={(e) => {
+                                            e.stopPropagation();
+                                            handleRemoveFile(index);
+                                        }}
+                                        className="absolute top-[-3px] right-0 w-5 h-5 text-gray-500 text-base z-10"
                                     >
                                         <span className="iconfont icon-delete bg-white rounded-full"></span>
                                     </button>
@@ -307,54 +527,56 @@ export const CustomInput: React.FC<CustomInputProps> = ({
                             </div>
                         ))}
                         {/* 添加更多文件的按钮 */}
-                        <div
-                            className="relative flex-shrink-0"
-                            style={{ width: '80px' }}
-                        >
-                            <Popover
-                                visible={showImageOptions}
-                                onVisibleChange={setShowImageOptions}
-                                trigger="click"
-                                stopPropagation={['click']}
-                                content={
-                                    <div className="flex flex-col">
-                                        <button
-                                            onClick={() => {
-                                                setShowImageOptions(false);
-                                                setTimeout(() => {
-                                                    cameraInputRef.current?.click();
-                                                }, 100);
-                                            }}
-                                            className="flex items-center gap-1 text-[var(--color-text-1)]"
-                                        >
-                                            <span className="iconfont icon-xiangji text-xl"></span>
-                                            <span className="text-xs">{t('common.camera')}</span>
-                                        </button>
-                                        <hr className="border-[var(--color-border)]" />
-                                        <button
-                                            onClick={() => {
-                                                setShowImageOptions(false);
-                                                setTimeout(() => {
-                                                    photoInputRef.current?.click();
-                                                }, 100);
-                                            }}
-                                            className="flex items-center gap-1 text-[var(--color-text-1)]">
-                                            <span className="iconfont icon-tupian1 text-xl"></span>
-                                            <span className="text-xs">{t('common.gallery')}</span>
-                                        </button>
-                                    </div>
-                                }
-                                placement="top"
-                                mode={theme === 'dark' ? 'dark' : 'light'}
+                        {selectedFiles.length < 9 && (
+                            <div
+                                className="relative flex-shrink-0"
+                                style={{ width: '80px' }}
                             >
-                                <button
-                                    onClick={handleAddMoreFiles}
-                                    className="w-full bg-[var(--color-background-body)] rounded-lg aspect-square flex items-center justify-center text-4xl text-gray-400"
+                                <Popover
+                                    visible={showImageOptions}
+                                    onVisibleChange={setShowImageOptions}
+                                    trigger="click"
+                                    stopPropagation={['click']}
+                                    content={
+                                        <div className="flex flex-col">
+                                            <button
+                                                onClick={() => {
+                                                    setShowImageOptions(false);
+                                                    setTimeout(() => {
+                                                        cameraInputRef.current?.click();
+                                                    }, 100);
+                                                }}
+                                                className="flex items-center gap-1 text-[var(--color-text-1)]"
+                                            >
+                                                <span className="iconfont icon-xiangji text-xl"></span>
+                                                <span className="text-xs">{t('common.camera')}</span>
+                                            </button>
+                                            <hr className="border-[var(--color-border)]" />
+                                            <button
+                                                onClick={() => {
+                                                    setShowImageOptions(false);
+                                                    setTimeout(() => {
+                                                        photoInputRef.current?.click();
+                                                    }, 100);
+                                                }}
+                                                className="flex items-center gap-1 text-[var(--color-text-1)]">
+                                                <span className="iconfont icon-tupian1 text-xl"></span>
+                                                <span className="text-xs">{t('common.gallery')}</span>
+                                            </button>
+                                        </div>
+                                    }
+                                    placement="top"
+                                    mode={theme === 'dark' ? 'dark' : 'light'}
                                 >
-                                    <AddOutline />
-                                </button>
-                            </Popover>
-                        </div>
+                                    <button
+                                        onClick={handleAddMoreFiles}
+                                        className="w-full bg-[var(--color-background-body)] rounded-lg aspect-square flex items-center justify-center text-4xl text-gray-400"
+                                    >
+                                        <AddOutline />
+                                    </button>
+                                </Popover>
+                            </div>
+                        )}
                     </div>
                 </div>
             )}
@@ -409,7 +631,6 @@ export const CustomInput: React.FC<CustomInputProps> = ({
                             setRecordingCancelled={setRecordingCancelled}
                             onToggleVoiceMode={onToggleVoiceMode}
                             selectedFiles={selectedFiles}
-                            onSendFiles={() => handleSendWithFiles(content)}
                             showFileOptions={showFileOptions}
                             setShowFileOptions={setShowFileOptions}
                         />
@@ -446,7 +667,10 @@ export const CustomInput: React.FC<CustomInputProps> = ({
                                             ? 'text-gray-400 cursor-not-allowed opacity-50'
                                             : 'text-blue-600'
                                             }`}
-                                        onClick={() => handleSendWithFiles(content)}
+                                        onClick={() => {
+                                            blurInput();
+                                            handleSendWithFiles(content);
+                                        }}
                                     ></span>
                                 ) : (
                                     <div className="flex items-center gap-3">
@@ -460,14 +684,10 @@ export const CustomInput: React.FC<CustomInputProps> = ({
                                         ></span>
                                         {selectedFiles.length > 0 ? (
                                             <span
-                                                className={`iconfont icon-xiangshangjiantouquan text-3xl action-icon ${isAIRunning
-                                                    ? 'text-gray-400 cursor-not-allowed opacity-50'
-                                                    : 'text-blue-600'
-                                                    }`}
+                                                className="iconfont icon-xiangshangjiantouquan text-3xl action-icon text-gray-400 cursor-not-allowed opacity-50"
                                                 onMouseDown={(e) => e.preventDefault()}
                                                 onClick={() => {
                                                     blurInput();
-                                                    handleSendWithFiles(content);
                                                 }}
                                             ></span>
                                         ) : <span
@@ -528,6 +748,13 @@ export const CustomInput: React.FC<CustomInputProps> = ({
                     </div>
                 </div>
             </div>
+
+            {/* 图片查看器 */}
+            <ImageViewer
+                image={currentPreviewImage}
+                visible={imageViewerVisible}
+                onClose={() => setImageViewerVisible(false)}
+            />
         </div>
     );
 };
