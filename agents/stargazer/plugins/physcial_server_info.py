@@ -30,6 +30,7 @@ class PserverInfo(BaseSSHPlugin):
                 mem_info = parsed_data.pop('memory')
                 nic_info = parsed_data.pop('nic')
                 gpu_info = parsed_data.pop('gpu')
+                parsed_data['cmdbhost'] = self.host
                 return_data = {
                     self.plugin_type: [{"success": True, "result": json.dumps(parsed_data)}],
                     "disk": [{"result": json.dumps({**i, "self_device": self_device}), "success": True} for i in disk_info],
