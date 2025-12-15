@@ -3,25 +3,15 @@
 # @Time: 2025/9/16 16:21
 # @Author: windyzhao
 
-# -- coding: utf-8 --
-# @File: agg_rules.py
-# @Time: 2025/6/16 15:23
-# @Author: windyzhao
-
 """
 聚合规则配置模块
 定义不同窗口类型的聚合规则配置
 """
 from dataclasses import dataclass
 from typing import Dict, Any
-from enum import Enum
 
-
-class WindowType(str, Enum):
-    """窗口类型枚举"""
-    SLIDING = "sliding"  # 滑动窗口
-    FIXED = "fixed"  # 固定窗口
-    SESSION = "session"  # 会话窗口
+# 统一使用constants中的WindowType定义，避免重复
+from apps.alerts.constants import WindowType
 
 
 # 窗口类型处理优先级
@@ -61,9 +51,15 @@ DEFAULT_WINDOW_CONFIGS = {
 DEFAULT_TITLE = "【${resource_type}】${resource_name}发生${item} 异常"
 DEFAULT_CONTENT = "【${resource_type}】${resource_name}发生${item} 异常"
 
-
-def get_window_config(window_type: WindowType) -> Dict[str, Any]:
-    """获取窗口类型的默认配置"""
+def get_window_config(window_type: str) -> Dict[str, Any]:
+    """获取窗口类型的默认配置
+    
+    Args:
+        window_type: 窗口类型字符串 ('sliding', 'fixed', 'session')
+        
+    Returns:
+        窗口配置字典
+    """
     return DEFAULT_WINDOW_CONFIGS.get(window_type, {})
 
 
