@@ -24,7 +24,8 @@
         "collector": "组件",
         "collectorType": "组件类型",
         "parameterdes": "参数说明",
-        "subconfiguration": "子配置"
+        "subconfiguration": "子配置",
+        "deleteSubConfigWarning": "删除配置属于非常规操作，可能导致组件运行异常。请确认此操作确有必要，并知晓潜在影响。"
       },
       "node": {
         "installCollector": "安装组件",

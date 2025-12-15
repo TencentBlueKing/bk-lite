@@ -24,7 +24,8 @@
         "collector": "Components",
         "collectorType": "Component Type",
         "parameterdes": "Parameter description",
-        "subconfiguration": "Subconfiguration"
+        "subconfiguration": "Subconfiguration",
+        "deleteSubConfigWarning": "Deleting a configuration is an unconventional operation that may cause component malfunctions. Please confirm that this action is necessary and be aware of the potential impacts."
       },
       "node": {
         "installCollector": "Install Component",
