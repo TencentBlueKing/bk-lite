@@ -3,6 +3,7 @@ import type {
   ConfigParams,
   ConfigListParams,
 } from '@/app/node-manager/types/cloudregion';
+import React from 'react';
 
 /**
  * 配置管理API Hook
@@ -59,14 +60,19 @@ const useConfigApi = () => {
     return await patch(`/node_mgmt/api/child_config/${id}`, data);
   };
 
-  // 部分更新采集器
-  const updateCollector = async (id: string, data: ConfigParams) => {
+  // 部分更新配置
+  const updateConfig = async (id: string, data: ConfigParams) => {
     return await patch(`/node_mgmt/api/configuration/${id}/`, data);
   };
 
-  // 删除采集器配置
-  const deleteCollector = async (id: string) => {
+  // 删除配置
+  const deleteConfig = async (id: string) => {
     return await del(`/node_mgmt/api/configuration/${id}/`);
+  };
+
+  // 删除子配置
+  const deleteSubConfig = async (id: React.Key) => {
+    return await del(`/node_mgmt/api/child_config/${id}/`);
   };
 
   // 应用指定采集器配置文件到指定节点
@@ -105,11 +111,12 @@ const useConfigApi = () => {
     createConfig,
     createChildConfig,
     updateChildConfig,
-    updateCollector,
-    deleteCollector,
+    updateConfig,
+    deleteConfig,
     applyConfig,
     cancelApply,
     batchDeleteCollector,
+    deleteSubConfig,
   };
 };
 

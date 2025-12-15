@@ -44,8 +44,9 @@ const Installing: React.FC<InstallingProps> = ({
   const [copyingNodeIds, setCopyingNodeIds] = useState<number[]>([]);
 
   // 安装状态映射
-  const installStatusMap = useMemo(
-    () => ({
+  const installStatusMap = useMemo(() => {
+    const isManualInstall = installData?.installMethod === 'manualInstall';
+    return {
       success: {
         color: 'success',
         text: t('node-manager.cloudregion.node.installSuccess'),
@@ -68,7 +69,9 @@ const Installing: React.FC<InstallingProps> = ({
       },
       waiting: {
         color: 'processing',
-        text: t('node-manager.cloudregion.node.waitingManual'),
+        text: isManualInstall
+          ? t('node-manager.cloudregion.node.waitingManual')
+          : t('node-manager.cloudregion.node.remoteInstalling'),
         icon: <SyncOutlined spin />,
       },
       installing: {
@@ -76,9 +79,8 @@ const Installing: React.FC<InstallingProps> = ({
         text: t('node-manager.cloudregion.node.remoteInstalling'),
         icon: <SyncOutlined spin />,
       },
-    }),
-    [t]
-  );
+    };
+  }, [t, installData?.installMethod]);
 
   const columns: any = useMemo(() => {
     return [

@@ -7,7 +7,7 @@ import React, {
   useRef,
   useEffect,
 } from 'react';
-import { Tag, Empty, Button, Spin, Badge } from 'antd';
+import { Tag, Empty, Button, Spin, Badge, Popconfirm, message } from 'antd';
 import { RightOutlined, GlobalOutlined, EditOutlined } from '@ant-design/icons';
 import Icon from '@/components/icon';
 import OperateDrawer from '@/app/node-manager/components/operate-drawer';
@@ -30,6 +30,7 @@ import useCloudId from '@/app/node-manager/hooks/useCloudRegionId';
 import CustomTable from '@/components/custom-table';
 import ConfigModal from './configModal';
 import PermissionWrapper from '@/components/permission';
+import { useUserInfoContext } from '@/context/userInfo';
 
 interface CollectorDetailDrawerProps extends ModalSuccess {
   nodeStateEnum?: any;
@@ -41,7 +42,13 @@ const CollectorDetailDrawer = forwardRef<ModalRef, CollectorDetailDrawerProps>(
     const { convertToLocalizedTime } = useLocalizedTime();
     const statusMap = useTelegrafMap();
     const cloudId = useCloudId();
-    const { getConfiglist, getChildConfig } = useNodeManagerApi();
+    const { getConfiglist, getChildConfig, deleteSubConfig } =
+      useNodeManagerApi();
+    const commonContext = useUserInfoContext();
+    const adminRef = useRef(commonContext?.roles || []);
+    const isAdmin =
+      adminRef.current.includes('admin') ||
+      adminRef.current.includes('node--admin');
     const configModalRef = useRef<ModalRef>(null);
     const [visible, setVisible] = useState<boolean>(false);
     const [selectedCollector, setSelectedCollector] =
@@ -315,14 +322,45 @@ const CollectorDetailDrawer = forwardRef<ModalRef, CollectorDetailDrawerProps>(
         width: 100,
         fixed: 'right' as const,
         render: (_: any, record: any) => (
-          <PermissionWrapper requiredPermissions={['EditSubConfiguration']}>
-            <Button type="link" onClick={() => handleSubConfigEdit(record)}>
-              {t('common.edit')}
-            </Button>
-          </PermissionWrapper>
+          <>
+            <PermissionWrapper requiredPermissions={['EditSubConfiguration']}>
+              <Button type="link" onClick={() => handleSubConfigEdit(record)}>
+                {t('common.edit')}
+              </Button>
+            </PermissionWrapper>
+            {isAdmin && (
+              <Popconfirm
+                title={t(`common.prompt`)}
+                description={t(
+                  'node-manager.cloudregion.Configuration.deleteSubConfigWarning'
+                )}
+                okText={t('common.confirm')}
+                cancelText={t('common.cancel')}
+                onConfirm={() => {
+                  handleDelete(record.key);
+                }}
+              >
+                <Button type="link" danger className="ml-[10px]">
+                  {t('common.delete')}
+                </Button>
+              </Popconfirm>
+            )}
+          </>
         ),
       },
     ];
+
+    const handleDelete = (id: number) => {
+      setSubConfigLoading(true);
+      deleteSubConfig(id)
+        .then(() => {
+          message.success(t('common.delSuccess'));
+          loadSubConfigs(mainConfig?.key as string);
+        })
+        .catch(() => {
+          setSubConfigLoading(false);
+        });
+    };
 
     const handleSubConfigTableChange = (pagination: any) => {
       setSubConfigPagination(pagination);
