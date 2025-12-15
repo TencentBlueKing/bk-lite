@@ -2,21 +2,44 @@
 # 时间序列模型训练脚本
 # 功能：从 MinIO 下载训练数据集和配置文件，解压并训练时间序列模型，结果记录到 MLflow
 # 
-# 用法: ./train-model.sh [BUCKET_NAME] [DATASET_NAME] [CONFIG_NAME]
+# 用法1 (位置参数): ./train-model.sh [BUCKET_NAME] [DATASET_NAME] [CONFIG_NAME]
 # 示例: ./train-model.sh my-bucket timeseries_data.zip train.json
+#
+# 用法2 (JSON参数): ./train-model.sh '{"MINIO_BUCKET":"...","DATASET_NAME":"...","CONFIG_NAME":"..."}'
+# 示例: ./train-model.sh '{"MINIO_BUCKET":"my-bucket","DATASET_NAME":"data.zip","CONFIG_NAME":"train.json"}'
 # exec > >(tee log_file.txt) 2>&1
 # set -x
 set -e  # 遇到错误立即退出
 
 # ==================== 配置参数 ====================
 MINIO_ALIAS="${MINIO_ALIAS:-myminio}"
-MINIO_BUCKET="${1:-${MINIO_BUCKET:-datasets}}"
-DATASET_NAME="${2:-${DATASET_NAME:-timeseries_train_data.zip}}"
-CONFIG_NAME="$3"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 DOWNLOAD_DIR="${DOWNLOAD_DIR:-${SCRIPT_DIR}/data/downloads}"
 EXTRACT_DIR="${EXTRACT_DIR:-${SCRIPT_DIR}/data/datasets}"
 CONFIG_DIR="${CONFIG_DIR:-${SCRIPT_DIR}/data/configs}"
+
+# ==================== 参数解析（支持JSON和位置参数） ====================
+# 检测第一个参数是否为 JSON 格式
+if [[ "$1" =~ ^\{.*\}$ ]]; then
+    # JSON 参数模式
+    log_info "检测到 JSON 参数格式"
+    JSON_INPUT="$1"
+    
+    # 从 JSON 中提取参数（如果不存在则使用环境变量或默认值）
+    MINIO_BUCKET=$(echo "${JSON_INPUT}" | jq -r '.minio_bucket // empty')
+    DATASET_NAME=$(echo "${JSON_INPUT}" | jq -r '.dataset_name // empty')
+    CONFIG_NAME=$(echo "${JSON_INPUT}" | jq -r '.config_name // empty')
+    
+    # 应用默认值（如果 JSON 中未提供）
+    MINIO_BUCKET="${MINIO_BUCKET:-${MINIO_BUCKET:-datasets}}"
+    DATASET_NAME="${DATASET_NAME:-${DATASET_NAME:-timeseries_train_data.zip}}"
+    # CONFIG_NAME 保持为空或 JSON 提供的值
+else
+    # 传统位置参数模式
+    MINIO_BUCKET="${1:-${MINIO_BUCKET:-datasets}}"
+    DATASET_NAME="${2:-${DATASET_NAME:-timeseries_train_data.zip}}"
+    CONFIG_NAME="$3"
+fi
 
 # MLflow 配置
 MLFLOW_TRACKING_URI="${MLFLOW_TRACKING_URI:-http://127.0.0.1:15000}"
@@ -42,6 +65,7 @@ log_info "检查必要的命令是否存在..."
 check_command mc
 check_command uv
 check_command unzip
+check_command jq
 
 # 检查 mc 别名是否配置
 if ! mc alias list | grep -q "^${MINIO_ALIAS}"; then
