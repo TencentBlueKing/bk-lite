@@ -1,4 +1,8 @@
-declare module "next-auth" {
+// Global type augmentations for the project
+import 'next-auth';
+import 'next-auth/jwt';
+
+declare module 'next-auth' {
   interface Session {
     accessToken?: string;
     error?: string;
@@ -9,7 +13,22 @@ declare module "next-auth" {
     temporary_pwd?: boolean;
     enable_otp?: boolean;
     qrcode?: boolean;
-    user: User;
+    user: {
+      id: string;
+      name?: string | null;
+      email?: string | null;
+      image?: string | null;
+      username?: string;
+      locale?: string;
+      token?: string;
+      temporary_pwd?: boolean;
+      enable_otp?: boolean;
+      qrcode?: boolean;
+      wechatWorkId?: string;
+      provider?: string;
+      wechatOpenId?: string;
+      wechatUnionId?: string;
+    };
   }
 
   interface User {
@@ -30,7 +49,7 @@ declare module "next-auth" {
   }
 }
 
-declare module "next-auth/jwt" {
+declare module 'next-auth/jwt' {
   interface JWT {
     idToken?: string;
     accessToken?: string;

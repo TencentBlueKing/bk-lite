@@ -265,7 +265,7 @@ const ExtractionStep: React.FC<{
     if (extractionConfig && extractionConfig.knowledge_document_list) {
       const doc = extractionConfig.knowledge_document_list.find((d) => d.id === record.key);
       if (doc) {
-        setSelectedMethod(doc.parse_type as keyof typeof extractionMethods || availableMethods.default);
+        setSelectedMethod((doc.parse_type as any) || availableMethods.default);
         setOcrEnabled(doc.enable_ocr_parse);
         setSelectedOcrModel(doc.ocr_model);
       }

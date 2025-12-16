@@ -51,7 +51,7 @@ const TopMenu: React.FC<TopMenuProps> = ({ hideMainMenu }) => {
   useEffect(() => {
     menuItems.forEach((item: MenuItem) => {
       if (item.tour && !menuRefs.current[item.url]) {
-        menuRefs.current[item.url] = React.createRef();
+        menuRefs.current[item.url] = React.createRef() as any;
       }
     });
 

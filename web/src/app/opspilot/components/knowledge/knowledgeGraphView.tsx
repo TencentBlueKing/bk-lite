@@ -308,9 +308,6 @@ const KnowledgeGraphView: React.FC<KnowledgeGraphViewProps> = ({
       // 鼠标移入节点时，高亮相关节点和边 - 参考 v4 逻辑用 v5 API 实现
       let currentHoverNodeId: string | null = null;
 
-      // 尝试所有可能的事件名
-      const hoverEvents = ['node:pointerenter', 'node:mouseenter', 'node:mouseover', 'afterrender'];
-      
       console.log('=== Registering hover events ===');
       
       // 先注册 afterrender 来确保图渲染完成后再绑定事件
@@ -361,105 +358,105 @@ const KnowledgeGraphView: React.FC<KnowledgeGraphViewProps> = ({
           });
           
           console.log('✅ Related nodes:', relatedNodeIds.size, 'Related edges:', relatedEdgeIds.size);              // 批量更新所有节点的样式
-              const nodeUpdates = allNodes.map((node: any) => {
-                const isRelated = relatedNodeIds.has(node.id);
-                const nodeData = graph.getNodeData(node.id);
-                const data = nodeData?.data as any;
-                const nodeType = data?.labels && data.labels.length > 0 
-                  ? data.labels[0] 
-                  : 'default';
-                const originalStyle = getNodeStyle(nodeType);
+          const nodeUpdates = allNodes.map((node: any) => {
+            const isRelated = relatedNodeIds.has(node.id);
+            const nodeData = graph.getNodeData(node.id);
+            const data = nodeData?.data as any;
+            const nodeType = data?.labels && data.labels.length > 0 
+              ? data.labels[0] 
+              : 'default';
+            const originalStyle = getNodeStyle(nodeType);
                 
-                if (node.id === nodeId) {
-                  // 当前悬停的节点：添加阴影效果，保持原色
-                  console.log(`  🎯 Current node: ${node.id} - keeping original color`);
-                  return {
-                    id: node.id,
-                    data: {
-                      ...data,
-                      fill: originalStyle.fill,
-                      stroke: originalStyle.stroke,
-                      lineWidth: 3,
-                      shadowColor: '#000',
-                      shadowBlur: 10,
-                      opacity: 1,
-                    }
-                  };
-                } else if (isRelated) {
-                  // 相关节点：保持原色，增加边框
-                  console.log(`  ✅ Related node: ${node.id} - keeping original color`);
-                  return {
-                    id: node.id,
-                    data: {
-                      ...data,
-                      fill: originalStyle.fill,
-                      stroke: originalStyle.stroke,
-                      lineWidth: 3,
-                      opacity: 1,
-                      shadowColor: undefined,
-                      shadowBlur: undefined,
-                    }
-                  };
-                } else {
-                  // 无关节点：变成浅灰色半透明（像图2中框起来的效果）
-                  console.log(`  ⚪ Unrelated node: ${node.id} - making it gray and transparent`);
-                  return {
-                    id: node.id,
-                    data: {
-                      ...data,
-                      fill: '#e8e8e8',
-                      stroke: '#d0d0d0',
-                      lineWidth: 1,
-                      opacity: 0.4,
-                      shadowColor: undefined,
-                      shadowBlur: undefined,
-                    }
-                  };
+            if (node.id === nodeId) {
+              // 当前悬停的节点：添加阴影效果，保持原色
+              console.log(`  🎯 Current node: ${node.id} - keeping original color`);
+              return {
+                id: node.id,
+                data: {
+                  ...data,
+                  fill: originalStyle.fill,
+                  stroke: originalStyle.stroke,
+                  lineWidth: 3,
+                  shadowColor: '#000',
+                  shadowBlur: 10,
+                  opacity: 1,
                 }
-              });
+              };
+            } else if (isRelated) {
+              // 相关节点：保持原色，增加边框
+              console.log(`  ✅ Related node: ${node.id} - keeping original color`);
+              return {
+                id: node.id,
+                data: {
+                  ...data,
+                  fill: originalStyle.fill,
+                  stroke: originalStyle.stroke,
+                  lineWidth: 3,
+                  opacity: 1,
+                  shadowColor: undefined,
+                  shadowBlur: undefined,
+                }
+              };
+            } else {
+              // 无关节点：变成浅灰色半透明（像图2中框起来的效果）
+              console.log(`  ⚪ Unrelated node: ${node.id} - making it gray and transparent`);
+              return {
+                id: node.id,
+                data: {
+                  ...data,
+                  fill: '#e8e8e8',
+                  stroke: '#d0d0d0',
+                  lineWidth: 1,
+                  opacity: 0.4,
+                  shadowColor: undefined,
+                  shadowBlur: undefined,
+                }
+              };
+            }
+          });
               
-              console.log('🔄 Updating', nodeUpdates.length, 'nodes');
-              graph.updateNodeData(nodeUpdates);
-              // 强制重新渲染以应用样式变化
-              graph.draw();
+          console.log('🔄 Updating', nodeUpdates.length, 'nodes');
+          graph.updateNodeData(nodeUpdates);
+          // 强制重新渲染以应用样式变化
+          graph.draw();
               
-              // 批量更新所有边的样式
-              const edgeUpdates = allEdges.map((edge: any) => {
-                const isRelated = relatedEdgeIds.has(edge.id);
-                const edgeData = graph.getEdgeData(edge.id);
-                const data = edgeData?.data as any;
+          // 批量更新所有边的样式
+          const edgeUpdates = allEdges.map((edge: any) => {
+            const isRelated = relatedEdgeIds.has(edge.id);
+            const edgeData = graph.getEdgeData(edge.id);
+            const data = edgeData?.data as any;
                 
-                if (isRelated) {
-                  // 相关边：保持原色，增加粗细
-                  const edgeType = (data?.relation_type as string) || 'relation';
-                  const originalStyle = getEdgeStyle(edgeType, false);
-                  return {
-                    id: edge.id,
-                    data: {
-                      ...data,
-                      stroke: originalStyle.stroke,
-                      lineWidth: 3,
-                      opacity: 1,
-                    }
-                  };
-                } else {
-                  // 无关边：变灰暗
-                  return {
-                    id: edge.id,
-                    data: {
-                      ...data,
-                      stroke: '#d9d9d9',
-                      lineWidth: 1,
-                      opacity: 0.2,
-                    }
-                  };
+            if (isRelated) {
+              // 相关边：保持原色，增加粗细
+              const edgeType = (data?.relation_type as string) || 'relation';
+              const originalStyle = getEdgeStyle(edgeType, false);
+              return {
+                id: edge.id,
+                data: {
+                  ...data,
+                  stroke: originalStyle.stroke,
+                  lineWidth: 3,
+                  opacity: 1,
                 }
-              });
+              };
+            } else {
+              // 无关边：变灰暗
+              return {
+                id: edge.id,
+                data: {
+                  ...data,
+                  stroke: '#d9d9d9',
+                  lineWidth: 1,
+                  opacity: 0.2,
+                }
+              };
+            }
+          });
           
-              console.log('🔄 Updating', edgeUpdates.length, 'edges');
-              graph.updateEdgeData(edgeUpdates);
-              // 强制重新渲染以应用样式变化
-              graph.draw();
+          console.log('🔄 Updating', edgeUpdates.length, 'edges');
+          graph.updateEdgeData(edgeUpdates);
+          // 强制重新渲染以应用样式变化
+          graph.draw();
         } catch (error) {
           console.error('Error handling node pointerenter:', error);
         }

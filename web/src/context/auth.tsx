@@ -2,10 +2,24 @@
 
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import { useSession, signIn } from 'next-auth/react';
+import type { Session } from 'next-auth';
 import { useRouter, usePathname } from 'next/navigation';
 import { Spin } from 'antd';
 import { useLocale } from '@/context/locale';
 import { saveAuthToken } from '@/utils/crossDomainAuth';
+
+// Type assertion helper for session
+type ExtendedSession = Session & {
+  user: {
+    id: string;
+    username?: string;
+    token?: string;
+    locale?: string;
+    name?: string | null;
+    email?: string | null;
+    image?: string | null;
+  }
+};
 
 interface AuthContextType {
   token: string | null;
@@ -25,6 +39,7 @@ export const useAuth = () => {
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { data: session, status } = useSession();
+  const extendedSession = session as unknown as ExtendedSession | null;
   const [token, setToken] = useState<string | null>(null);
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false);
   const [isCheckingAuth, setIsCheckingAuth] = useState<boolean>(true);
@@ -36,7 +51,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const { setLocale } = useLocale();
 
   const authPaths = ['/auth/signin', '/auth/signout', '/auth/callback'];
-  const isSessionValid = session && session.user && (session.user.id || session.user.username);
+  const isSessionValid = extendedSession && extendedSession.user && (extendedSession.user.id || extendedSession.user.username);
 
   // Check existing authentication using get_bk_settings API
   const checkExistingAuthentication = async () => {
@@ -188,10 +203,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
 
     if (isSessionValid) {
-      setToken(session.user?.token || session.user?.id || null);
+      setToken(extendedSession.user?.token || extendedSession.user?.id || null);
       setIsAuthenticated(true);
       setIsCheckingAuth(false);
-      const userLocale = session.user?.locale || 'en';
+      const userLocale = extendedSession.user?.locale || 'en';
       const savedLocale = localStorage.getItem('locale') || 'en';
       if (userLocale !== savedLocale) {
         setLocale(userLocale);

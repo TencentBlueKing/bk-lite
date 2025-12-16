@@ -1,3 +1,4 @@
+import React from 'react';
 export interface GroupItem {
   classification_name: string;
   classification_id: string;
@@ -81,7 +82,7 @@ export interface ColumnItem {
   title: string;
   dataIndex: string;
   key: string;
-  render?: (_: unknown, record: any) => JSX.Element;
+  render?: (_: unknown, record: any) => React.ReactElement;
   [key: string]: any;
 }
 export interface UserItem {
@@ -152,7 +153,7 @@ export interface AssoInstItem {
   key: string;
   label: string;
   model_asst_id: string;
-  children: JSX.Element;
+  children: React.ReactElement;
   [key: string]: unknown;
 }
 
@@ -168,7 +169,7 @@ export interface AssoDetailItem {
 export interface CrentialsAssoInstItem {
   key: string;
   label: string;
-  children: JSX.Element;
+  children: React.ReactElement;
   inst_list: CrentialsAssoDetailItem[];
   [key: string]: unknown;
 }
