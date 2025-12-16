@@ -1,6 +1,6 @@
 'use client';
 import React, { useState, useEffect, useRef } from 'react';
-import { Button, Empty, message, Modal } from 'antd';
+import { Button, Empty, message, Modal, Input } from 'antd';
 import { SettingOutlined, ReloadOutlined, BuildOutlined, FrownOutlined } from '@ant-design/icons';
 import { useRouter } from 'next/navigation';
 import { useTranslation } from '@/utils/i18n';
