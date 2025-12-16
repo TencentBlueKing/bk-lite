@@ -153,6 +153,7 @@
       "variable": {
         "password": "Password",
         "string": "String",
+        "text": "Text",
         "deleteinfo": "Are you sure to delete this variable?",
         "valueType": "Type",
         "desc": "Description",
