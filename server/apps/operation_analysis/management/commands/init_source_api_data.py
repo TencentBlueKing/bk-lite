@@ -65,7 +65,6 @@ class Command(BaseCommand):
             self.init_tags()
 
             # 获取默认命名空间
-            # 获取默认命名空间
             namespace_id = self.get_default_namespace()
             if not namespace_id:
                 error_msg = "未找到默认命名空间，请先初始化默认命名空间"
