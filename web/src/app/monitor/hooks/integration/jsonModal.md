@@ -75,7 +75,7 @@
   "tooltip": "SNMP 服务监听端口，默认为 161",
   "widget_props": { ... },
   "dependency": { ... },
-  "data_transform": { ... }
+  "transform_on_edit": { ... }
 }
 ```
 
@@ -95,7 +95,7 @@
 | `editable` | boolean | 否 | 是否可编辑，false 时 edit 模式下禁用（默认 true） |
 | `visible_in` | string | 否 | 可见性控制：'auto'、'edit'、'both'（默认 'both'） |
 | `encrypted` | boolean | 否 | 是否加密，true 时字段值使用 hash 加密后提交（默认 false） |
-| `data_transform` | object | 否 | 数据转换配置（edit 模式使用） |
+| `transform_on_edit` | object | 否 | 数据转换配置（仅 edit 模式使用） |
 
 #### 支持的字段类型
 
@@ -193,9 +193,13 @@
   "label": "IP",
   "type": "input",
   "required": true,
-  "visible_in": "edit",  // 仅在编辑模式显示
-  "editable": false,      // 禁用状态（只读）
-  "data_transform": {
+  "visible_in": "edit",
+  "editable": false,
+  "description": "监控的目标主机的 IP 地址，用于标识数据收集的来源",
+  "widget_props": {
+    "placeholder": "目标主机 IP"
+  },
+  "transform_on_edit": {
     "origin_path": "child.content.config.agents[0]",
     "to_form": {
       "regex": "://([^:]+):"
@@ -204,28 +208,24 @@
 }
 ```
 
-**场景2：编辑模式下禁用字段**
+**场景2:编辑模式下禁用字段**
 
 auto 模式下可选择，edit 模式下仅显示（不可编辑）：
 
 ```json
 {
-  "name": "metric_type",
-  "label": "指标类型",
-  "type": "checkbox_group",
+  "name": "version",
+  "label": "版本",
+  "type": "select",
   "required": true,
-  "default_value": ["cpu", "disk", "mem"],
-  "editable": false,  // edit 模式下禁用
+  "default_value": 2,
+  "editable": false,
   "options": [
-    { "label": "CPU", "value": "cpu" },
-    { "label": "Disk", "value": "disk" },
-    { "label": "Memory", "value": "mem" }
+    { "label": "v2c", "value": 2 },
+    { "label": "v3", "value": 3 }
   ],
-  "data_transform": {
-    "origin_path": "child.content.config.tags.config_type",
-    "to_form": {
-      "array": true
-    }
+  "transform_on_edit": {
+    "origin_path": "child.content.config.version"
   }
 }
 ```
@@ -241,12 +241,12 @@ auto 模式下可选择，edit 模式下仅显示（不可编辑）：
   "type": "inputNumber",
   "required": true,
   "default_value": 161,
-  "editable": false,  // edit 模式禁用
+  "editable": false,
   "widget_props": {
     "min": 1,
     "max": 65535
   },
-  "data_transform": {
+  "transform_on_edit": {
     "origin_path": "child.content.config.agents[0]",
     "to_form": {
       "regex": ":(\\d+)$"
@@ -265,7 +265,7 @@ auto 模式下可选择，edit 模式下仅显示（不可编辑）：
   "type": "select",
   "required": true,
   "default_value": 2,
-  "editable": false,  // edit 模式禁用
+  "editable": false,
   "options": [
     { "label": "v2c", "value": 2 },
     { "label": "v3", "value": 3 }
@@ -273,10 +273,9 @@ auto 模式下可选择，edit 模式下仅显示（不可编辑）：
   "widget_props": {
     "placeholder": "选择 SNMP 版本"
   },
-  "data_transform": {
+  "transform_on_edit": {
     "origin_path": "child.content.config.version"
   }
-}
 }
 ```
 
@@ -295,13 +294,9 @@ auto 模式下可选择，edit 模式下仅显示（不可编辑）：
     "field": "version",
     "value": 2
   },
-  "mode_config": {
-    "edit": {
-      "data_transform": {
-        "origin_path": "child.content.config.community",
-        "to_api": {}  // 空对象表示原值提交
-      }
-    }
+  "transform_on_edit": {
+    "origin_path": "child.content.config.community",
+    "to_api": {}
   }
 }
 ```
@@ -321,53 +316,13 @@ auto 模式下可选择，edit 模式下仅显示（不可编辑）：
     "placeholder": "采集间隔",
     "addonAfter": "s"
   },
-  "mode_config": {
-    "edit": {
-      "data_transform": {
-        "origin_path": "child.content.config.interval",
-        "to_form": {
-          "regex": "^(\\d+)s$"  // "10s" → 10
-        },
-        "to_api": {
-          "suffix": "s"  // 10 → "10s"
-        }
-      }
-    }
-  }
-}
-```
-
-**复选框组（配合 config_type_field）：**
-```json
-{
-  "name": "metric_type",
-  "label": "指标类型",
-  "type": "checkbox_group",
-  "required": true,
-  "default_value": ["cpu", "disk", "mem"],
-  "tooltip": "CPU: 监控CPU使用情况\nDisk: 监控磁盘使用情况\nMemory: 监控内存使用情况",
-  "options": [
-    { "label": "CPU", "value": "cpu" },
-    { "label": "Disk", "value": "disk" },
-    { "label": "Memory", "value": "mem" }
-  ],
-  "widget_props": {},
-  "mode_config": {
-    "auto": {
-      "type": "checkbox_group"
+  "transform_on_edit": {
+    "origin_path": "child.content.config.interval",
+    "to_form": {
+      "regex": "^(\\d+)s$"
     },
-    "edit": {
-      "type": "select",
-      "widget_props": {
-        "mode": "multiple",
-        "disabled": true
-      },
-      "data_transform": {
-        "origin_path": "child.content.config.tags.config_type",
-        "to_form": {
-          "array": true
-        }
-      }
+    "to_api": {
+      "suffix": "s"
     }
   }
 }
@@ -392,8 +347,7 @@ auto 模式下可选择，edit 模式下仅显示（不可编辑）：
 ```
 
 **说明：**
-- `mode_config` 是可选的，如果字段在两种模式下行为完全一致，可以不配置
-- `data_transform` 仅在 edit 模式有效
+- `transform_on_edit` 仅在 edit 模式有效
 - `default_value` 仅在 auto 模式使用
 - `tooltip` 支持使用 `\n` 换行
 - `encrypted` 为 true 时，字段值在提交前会自动使用 hash 算法加密
@@ -786,7 +740,7 @@ auto 模式下可选择，edit 模式下仅显示（不可编辑）：
 
 ---
 
-## 三、data_transform（数据转换）
+## 三、transform_on_edit（数据转换）
 
 **仅在 edit 模式有效**，用于定义字段在 **API 数据** 和 **表单数据** 之间的转换规则。
 
@@ -797,7 +751,7 @@ auto 模式下可选择，edit 模式下仅显示（不可编辑）：
 ### 3.1 完整结构
 
 ```json
-"data_transform": {
+"transform_on_edit": {
   "origin_path": "child.content.config.agents[0]",  // 数据源路径
   "to_form": {                                       // API → 表单（回显）
     "regex": "://([^:]+):",
@@ -860,7 +814,7 @@ auto 模式下可选择，edit 模式下仅显示（不可编辑）：
 }
 ```
 
-### 3.3 to_api（提交转换）
+### 3.2 to_api（提交转换）
 
 将表单数据转换为 API 所需的格式。
 
@@ -905,7 +859,7 @@ auto 模式下可选择，edit 模式下仅显示（不可编辑）：
 "to_api": {}  // 表示该字段需要提交，但不做任何转换
 ```
 
-### 3.4 完整示例
+### 3.3 完整示例
 
 **示例1：提取 IP（只读字段）**
 ```json
@@ -913,23 +867,14 @@ auto 模式下可选择，edit 模式下仅显示（不可编辑）：
   "name": "ip",
   "label": "IP",
   "type": "input",
-  "mode_config": {
-    "auto": {
-      "visible": false
-    },
-    "edit": {
-      "visible": true,
-      "widget_props": {
-        "disabled": true
-      },
-      "data_transform": {
-        "origin_path": "child.content.config.agents[0]",
-        "to_form": {
-          "regex": "://([^:]+):"  // "udp://192.168.1.1:161" → "192.168.1.1"
-        }
-        // 没有 to_api，因为是只读字段
-      }
+  "visible_in": "edit",
+  "editable": false,
+  "transform_on_edit": {
+    "origin_path": "child.content.config.agents[0]",
+    "to_form": {
+      "regex": "://([^:]+):"  // "udp://192.168.1.1:161" → "192.168.1.1"
     }
+    // 没有 to_api，因为是只读字段
   }
 }
 ```
@@ -943,17 +888,13 @@ auto 模式下可选择，edit 模式下仅显示（不可编辑）：
   "widget_props": {
     "addonAfter": "s"
   },
-  "mode_config": {
-    "edit": {
-      "data_transform": {
-        "origin_path": "child.content.config.timeout",
-        "to_form": {
-          "regex": "^(\\d+)s$"    // "10s" → "10"
-        },
-        "to_api": {
-          "suffix": "s"           // 10 → "10s"
-        }
-      }
+  "transform_on_edit": {
+    "origin_path": "child.content.config.timeout",
+    "to_form": {
+      "regex": "^(\\d+)s$"    // "10s" → "10"
+    },
+    "to_api": {
+      "suffix": "s"           // 10 → "10s"
     }
   }
 }
@@ -965,31 +906,41 @@ auto 模式下可选择，edit 模式下仅显示（不可编辑）：
   "name": "community",
   "label": "Community",
   "type": "input",
-  "mode_config": {
-    "edit": {
-      "data_transform": {
-        "origin_path": "child.content.config.community",
-        "to_api": {}  // 空对象表示表单原值提交
-      }
+  "transform_on_edit": {
+    "origin_path": "child.content.config.community",
+    "to_api": {}  // 空对象表示表单原值提交，但需要有 to_api 才会提交
+  }
+}
+```
+
+### 3.4 extra_edit_fields（额外字段）
+
+用于生成不在表单中显示，但需要提交到 API 的字段。
+
+#### 使用场景
+
+- 从多个表单字段组合生成一个 API 字段
+- 自动计算的字段
+
+#### 示例
+
+```json
+"extra_edit_fields": {
+  "agents": {
+    "origin_path": "child.content.config.agents",
+    "to_api": {
+      "template": "udp://{{ip}}:{{port}}",
+      "array": true
     }
   }
 }
 ```
 
-**示例4：extra_edit_fields（额外字段）**
-```json
-{
-  "extra_edit_fields": {
-    "agents": {
-      "origin_path": "child.content.config.agents",
-      "to_api": {
-        "template": "udp://{{ip}}:{{port}}",
-        "array": true
-      }
-    }
-  }
-}
-```
+**工作流程：**
+1. 从表单中获取 `ip` 和 `port` 字段的值
+2. 使用模板 `udp://{{ip}}:{{port}}` 拼接
+3. 转为数组格式 `["udp://192.168.1.1:161"]`
+4. 以 `agents` 字段名提交到 API
 
 ---
 
@@ -1009,7 +960,7 @@ auto 模式下可选择，edit 模式下仅显示（不可编辑）：
    - 使用 `editable: false` 让字段在 edit 模式下禁用（如版本、端口、IP等）
    
 3. **数据转换**
-   - edit 模式需要从 API 回显数据时，使用 `data_transform`
+   - edit 模式需要从 API 回显数据时，使用 `transform_on_edit`
 
 ### 4.2 动态配置类型（config_type_field）
 
@@ -1353,7 +1304,7 @@ extra_fields 生成
         { "label": "Nvidia-GPU", "value": "gpu" }
       ],
       "widget_props": {},
-      "data_transform": {
+      "transform_on_edit": {
         "origin_path": "child.content.config.tags.config_type",
         "to_form": {
           "array": true
@@ -1371,7 +1322,7 @@ extra_fields 生成
       "widget_props": {
         "placeholder": "1_os_172.18.0.17"
       },
-      "data_transform": {
+      "transform_on_edit": {
         "origin_path": "child.content.instance.instance_id"
       }
     },
@@ -1388,7 +1339,7 @@ extra_fields 生成
         "placeholder": "采集间隔",
         "addonAfter": "s"
       },
-      "data_transform": {
+      "transform_on_edit": {
         "origin_path": "child.content.config.interval",
         "to_form": {
           "regex": "^(\\d+)s$"
@@ -1499,12 +1450,12 @@ extra_fields 生成
 
 使用 `dependency` 实现显示/隐藏，使用 `change_handler` 实现值联动。
 
-### Q3: 模式控制属性什么时候使用？
+### Q3: 字段在 auto 和 edit 模式下有不同行为怎么办？
 
-当字段在 auto 和 edit 模式下有不同行为时使用：
+使用顶层属性控制：
 - 仅在某个模式显示：使用 `visible_in`
 - edit 模式禁用字段：使用 `editable: false`
-- 需要数据转换：使用 `data_transform`（主要用于 edit 模式）
+- 需要数据转换：使用 `transform_on_edit`（主要用于 edit 模式）
 
 ### Q4: to_api 为空对象 `{}` 是什么意思？
 
@@ -1597,55 +1548,31 @@ extra_fields 生成
 
 ### Q8: 如何从旧配置迁移到新结构？
 
-**迁移步骤：**
+不需要迁移，当前版本的配置已经是扁平化结构：
 
-1. **移除 auto 和 edit 层级**
-   ```json
-   // 旧结构
-   {
-     "auto": {
-       "form_fields": [...],
-       "table_columns": [...],
-       "instance_id": "..."
-     },
-     "edit": {
-       "form_fields": [...],
-       "extra_fields": {...}
-     }
-   }
-   
-   // 新结构
-   {
-     "form_fields": [...],
-     "table_columns": [...],
-     "instance_id": "...",
-     "extra_fields": {...}
-   }
-   ```
+**当前正确结构：**
+```json
+{
+  "form_fields": [...],
+  "table_columns": [...],
+  "instance_id": "...",
+  "extra_edit_fields": {...}
+}
+```
 
-2. **合并 form_fields**
-   - 将 auto.form_fields 和 edit.form_fields 合并
-   - 相同字段使用模式控制属性区分差异
-   
-3. **添加模式控制属性**
-   - edit 特有字段：添加 `"visible_in": "edit"`
-   - auto 特有字段：添加 `"visible_in": "auto"`
-   - edit 模式禁用字段：添加 `"editable": false`
-   - edit 模式数据转换：添加 `data_transform` 到字段根级别
-   
-4. **移动顶层配置**
-   - `config_type_field`: 从 auto 移到顶层
-   - `instance_id`: 从 auto 移到顶层
-   - `table_columns`: 从 auto 移到顶层
-   - `extra_fields`: 从 edit 移到顶层
+**关键点：**
+- 所有配置平铺在顶层
+- 使用 `visible_in`、`editable` 控制不同模式
+- 使用 `transform_on_edit` 处理 edit 模式的数据转换
 
 ---
 
 ## 八、最佳实践
 
-1. **合理使用 mode_config**
-   - 仅在字段行为确实不同时使用
-   - 简单字段可以不配置 mode_config
+1. **使用顶层属性控制模式差异**
+   - 使用 `visible_in` 控制可见性
+   - 使用 `editable` 控制是否可编辑
+   - 避免过度复杂的配置
    
 2. **明确数据转换**
    - edit 模式中，明确哪些字段需要 `to_api`
@@ -1773,9 +1700,9 @@ extra_fields 生成
 ---
 
 **版本：** v2.1  
-**更新日期：** 2025-12-08  
+**更新日期：** 2025-12-16  
 **维护者：** 开发团队  
 **主要变化：** 
 - v2.1: 新增字段加密功能（encrypted 属性）
 - v2.0: 移除 auto 和 edit 层级，配置扁平化
-- v2.0: 新增 mode_config 机制统一管理模式差异
+- v2.0: 使用 visible_in 和 editable 控制模式差异
