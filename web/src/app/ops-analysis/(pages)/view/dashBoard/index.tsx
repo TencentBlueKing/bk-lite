@@ -9,7 +9,6 @@ import { v4 as uuidv4 } from 'uuid';
 import ViewSelector from './components/viewSelector';
 import ViewConfig from './components/viewConfig';
 import TimeSelector from '@/components/time-selector';
-// @ts-ignore missing type declarations for react-grid-layout
 import GridLayout, { WidthProvider } from 'react-grid-layout';
 import {
   Button,

@@ -8,7 +8,6 @@ import React, {
   useImperativeHandle,
 } from 'react';
 import TimeSelector from '@/components/time-selector';
-// @ts-expect-error missing type declarations for react-grid-layout
 import GridLayout, { WidthProvider } from 'react-grid-layout';
 import { Button, Dropdown, Menu, Modal, Spin, Select } from 'antd';
 import { useTranslation } from '@/utils/i18n';
@@ -87,7 +86,8 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
     }));
 
     const getTimeRange = () => {
-      return timeSelectorRef.current?.getValue() || [];
+      const value = timeSelectorRef.current?.getValue?.() as any;
+      return value || [];
     };
 
     const initData = async () => {
