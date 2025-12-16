@@ -156,26 +156,26 @@ const IntegrationDetail: FC = () => {
           />
         </Descriptions.Item>
         <Descriptions.Item label="CURL">
-          <span
-            dangerouslySetInnerHTML={{
-              __html: source?.config?.examples?.CURL || '',
-            }}
-          />
-          <CopyOutlined
-            className="ml-[10px]"
-            onClick={() => copySecret(source?.config?.examples?.CURL)}
-          />
+          <div className="relative">
+            <pre className="bg-[var(--color-bg-5)] p-2 pr-10 rounded border border-[var(--color-border-1)] text-[13px] font-mono leading-relaxed whitespace-pre-wrap break-all max-w-full">
+              <code>{source?.config?.examples?.CURL || ''}</code>
+            </pre>
+            <CopyOutlined
+              className="absolute top-3 right-3 cursor-pointer hover:text-blue-500"
+              onClick={() => copySecret(source?.config?.examples?.CURL)}
+            />
+          </div>
         </Descriptions.Item>
         <Descriptions.Item label="Python">
-          <span
-            dangerouslySetInnerHTML={{
-              __html: source?.config?.examples?.Python || '',
-            }}
-          />
-          <CopyOutlined
-            className="ml-[10px]"
-            onClick={() => copySecret(source?.config?.examples?.Python)}
-          />
+          <div className="relative">
+            <pre className="bg-[var(--color-bg-5)] p-2 pr-10 rounded border border-[var(--color-border-1)] text-[13px] font-mono leading-relaxed whitespace-pre-wrap break-all max-w-full">
+              <code>{source?.config?.examples?.Python || ''}</code>
+            </pre>
+            <CopyOutlined
+              className="absolute top-3 right-3 cursor-pointer hover:text-blue-500"
+              onClick={() => copySecret(source?.config?.examples?.Python)}
+            />
+          </div>
         </Descriptions.Item>
       </Descriptions>
       <h4 className="mt-6 mb-2 font-medium pl-2 border-l-4 border-blue-400 inline-block leading-tight">
