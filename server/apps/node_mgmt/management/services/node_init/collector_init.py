@@ -75,4 +75,7 @@ def collector_init():
     """
     初始化采集器
     """
-    migrate_collector()
+    try:
+        migrate_collector()
+    except Exception as e:
+        logger.exception(e)
