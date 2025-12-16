@@ -1,4 +1,5 @@
 import { getAuthOptions } from "@/constants/authOptions";
+// @ts-expect-error - next-auth v4 getServerSession exists but types may not be exported correctly
 import { getServerSession } from "next-auth";
 import { redirect } from "next/navigation";
 import SigninClient from "./SigninClient";

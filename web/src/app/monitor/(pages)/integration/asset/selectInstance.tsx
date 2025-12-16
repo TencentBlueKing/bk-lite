@@ -98,7 +98,7 @@ const SelectInstance = forwardRef<ModalRef, ModalConfig>(
 
     const handleSubmit = async () => {
       handleCancel();
-      onSuccess(selectedRowKeys);
+      onSuccess?.(selectedRowKeys);
     };
 
     const fetchData = async (type?: string) => {

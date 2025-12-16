@@ -271,7 +271,7 @@ const AlertDetail = forwardRef<ModalRef, ModalConfig>(
 
     const closeModal = () => {
       handleCancel();
-      onSuccess();
+      onSuccess?.();
     };
 
     return (

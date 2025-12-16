@@ -34,7 +34,7 @@ const LayoutWithProviders = ({ children }: { children: React.ReactNode }) => {
   const pathname = usePathname();
   const [isAllowed, setIsAllowed] = useState(false);
 
-  const isAuthenticated = status === 'authenticated' && !!session && !session.user?.temporary_pwd;
+  const isAuthenticated = status === 'authenticated' && !!session && !(session.user as any)?.temporary_pwd;
   const isAuthLoading = status === 'loading';
   
   const isLoading = isAuthLoading || (isAuthenticated && (permissionsLoading || menusLoading));
