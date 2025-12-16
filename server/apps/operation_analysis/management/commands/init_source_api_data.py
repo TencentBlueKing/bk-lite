@@ -89,15 +89,22 @@ class Command(BaseCommand):
                     }
                 )
 
+                tags = api_data.get("tag", [])
+                tag_instance = DataSourceTag.objects.filter(tag_id__in=tags)
+
                 if created:
                     obj.namespaces.set([namespace_id])
+                    obj.tag.set(tag_instance)
                     created_count += 1
                     logger.info(f"创建数据源: {api_data['name']}")
                 elif force_update:
                     # 只有在强制更新模式下才更新现有数据源的配置
                     for key, value in api_data.items():
-                        if key != "name":  # name作为唯一标识不更新
+                        if key not in ["name", "tag"]:  # name作为唯一标识不更新
                             setattr(obj, key, value)
+                        elif key == "tag":
+                            obj.tag.set(tag_instance)
+
                     obj.updated_by = "system"
                     obj.save()
                     updated_count += 1
