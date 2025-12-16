@@ -69,7 +69,7 @@ const TrainTask = () => {
 
   // 数据集获取映射
   const datasetApiMap: Record<string, () => Promise<DataSet[]>> = {
-    'anomaly': () => getAnomalyDatasetsList({}),
+    'anomaly_detection': () => getAnomalyDatasetsList({}),
     'rasa': () => getRasaDatasetsList({}),
     'log_clustering': () => getLogClusteringList({}),
     'timeseries_predict': () => getTimeSeriesPredictList({}),
@@ -80,7 +80,7 @@ const TrainTask = () => {
 
   // 任务获取映射
   const taskApiMap: Record<string, (params: any) => Promise<any>> = {
-    'anomaly': (params) => getAnomalyTaskList(params),
+    'anomaly_detection': (params) => getAnomalyTaskList(params),
     'rasa': () => getRasaPipelines({}),
     'log_clustering': (params) => getLogClusteringTaskList(params),
     'timeseries_predict': (params) => getTimeSeriesTaskList(params),
@@ -91,7 +91,7 @@ const TrainTask = () => {
 
   // 训练开始操作映射
   const trainStartApiMap: Record<string, (id: any) => Promise<void>> = {
-    'anomaly': startAnomalyTrainTask,
+    'anomaly_detection': startAnomalyTrainTask,
     'log_clustering': startLogClusteringTrainTask,
     'timeseries_predict': startTimeSeriesTrainTask,
     'classification': startClassificationTrainTask,
@@ -101,7 +101,7 @@ const TrainTask = () => {
 
   // 删除操作映射
   const deleteApiMap: Record<string, (id: string) => Promise<void>> = {
-    'anomaly': deleteAnomalyTrainTask,
+    'anomaly_detection': deleteAnomalyTrainTask,
     'rasa': deleteRasaPipelines,
     'log_clustering': deleteLogClusteringTrainTask,
     'timeseries_predict': deleteTimeSeriesTrainTask,
@@ -112,7 +112,7 @@ const TrainTask = () => {
 
   // 抽屉操作映射
   const drawerSupportMap: Record<string, boolean> = {
-    'anomaly': true,
+    'anomaly_detection': true,
     'rasa': false,
     'log_clustering': false,
     'timeseries_predict': false,
@@ -123,7 +123,7 @@ const TrainTask = () => {
 
   // 数据处理映射
   const dataProcessorMap: Record<string, (data: any) => { tableData: TrainJob[], total: number }> = {
-    'anomaly': (data) => processAnomalyLikeData(data, 'anomaly'),
+    'anomaly_detection': (data) => processAnomalyLikeData(data, 'anomaly'),
     'rasa': (data) => {
       const _data = data.map((item: any) => ({
         id: item.id,
@@ -153,7 +153,7 @@ const TrainTask = () => {
       children: [
         {
           title: t(`datasets.anomaly`),
-          key: 'anomaly',
+          key: 'anomaly_detection',
         },
         {
           title: t(`datasets.rasa`),
@@ -325,14 +325,14 @@ const TrainTask = () => {
         treeData={treeData}
         showLine
         selectedKeys={selectedKeys}
-        defaultExpandedKeys={['anomaly']}
+        defaultExpandedKeys={['anomaly_detection']}
         onSelect={(keys) => setSelectedKeys(keys as string[])}
       />
     </div>
   );
 
   useEffect(() => {
-    setSelectedKeys(['anomaly']);
+    setSelectedKeys(['anomaly_detection']);
   }, []);
 
   useEffect(() => {
@@ -349,9 +349,10 @@ const TrainTask = () => {
       const job = {
         id: item.id,
         name: item.name,
-        train_data_id: item.train_data_id,
-        val_data_id: item.val_data_id,
-        test_data_id: item.test_data_id,
+        dataset_version: item.dataset_version,
+        // train_data_id: item.train_data_id,
+        // val_data_id: item.val_data_id,
+        // test_data_id: item.test_data_id,
         created_at: item.created_at,
         creator: item?.created_by,
         status: item?.status,

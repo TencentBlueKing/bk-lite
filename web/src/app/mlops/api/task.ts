@@ -279,6 +279,11 @@ const useMlopsTaskApi = () => {
     return await get(`/mlops/timeseries_predict_dataset_releases/?${queryParams.toString()}`);
   };
 
+  // 获取指定数据集版本信息
+  const getDatasetReleaseByID = async (id: any) => {
+    return await get(`/mlops/timeseries_predict_dataset_releases/${id}/`)
+  };
+
   // 归档数据集版本
   const archiveDatasetRelease = async (id: string) => {
     return await post(`/mlops/timeseries_predict_dataset_releases/${id}/archive/`);
@@ -301,6 +306,7 @@ const useMlopsTaskApi = () => {
     getLogClusteringHistories,
     getTimeSeriesTaskList,
     getTimeSeriesHistories,
+    getDatasetReleaseByID,
     getOneLogClusteringTask,
     getOneRasaTask,
     getOneTimeSeriesTask,

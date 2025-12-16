@@ -65,7 +65,7 @@ log_info "检查必要的命令是否存在..."
 check_command mc
 check_command uv
 check_command unzip
-check_command jq
+# check_command jq
 
 # 检查 mc 别名是否配置
 if ! mc alias list | grep -q "^${MINIO_ALIAS}"; then

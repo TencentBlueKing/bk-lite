@@ -16,7 +16,7 @@ const useTaskForm = ({ datasetOptions, activeTag, onSuccess, formRef }: UseTaskF
   const rasaFormResult = useRasaForm({ datasetOptions, activeTag, onSuccess, formRef });
 
   switch (activeType) {
-    case 'anomaly':
+    case 'anomaly_detection':
       return anomalyFormResult;
     case 'rasa':
       return rasaFormResult;

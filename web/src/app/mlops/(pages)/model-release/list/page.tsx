@@ -43,7 +43,7 @@ const ModelRelease = () => {
       children: [
         {
           title: t(`datasets.anomaly`),
-          key: 'anomaly',
+          key: 'anomaly_detection',
         },
         {
           title: t(`datasets.rasa`),
@@ -119,7 +119,7 @@ const ModelRelease = () => {
   ];
 
   const getServingsMap: Record<string, any> = {
-    'anomaly': getAnomalyServingsList,
+    'anomaly_detection': getAnomalyServingsList,
     'rasa': null, // RASA 类型留空
     'log_clustering': getLogClusteringServingsList,
     'timeseries_predict': getTimeSeriesPredictServingsList,
@@ -129,7 +129,7 @@ const ModelRelease = () => {
   };
 
   const getTaskMap: Record<string, any> = {
-    'anomaly': getAnomalyTaskList,
+    'anomaly_detection': getAnomalyTaskList,
     'rasa': null, // RASA 类型留空
     'log_clustering': getLogClusteringTaskList,
     'timeseries_predict': getTimeSeriesTaskList,
@@ -140,7 +140,7 @@ const ModelRelease = () => {
 
   // 删除操作映射
   const deleteMap: Record<string, ((id: number) => Promise<void>) | null> = {
-    'anomaly': deleteAnomalyServing,
+    'anomaly_detection': deleteAnomalyServing,
     'rasa': null, // RASA 类型留空
     'log_clustering': deleteLogClusteringServing,
     'timeseries_predict': deleteTimeSeriesPredictServing,
@@ -151,7 +151,7 @@ const ModelRelease = () => {
 
   // 更新操作映射
   const updateMap: Record<string, ((id: number, params: any) => Promise<void>) | null> = {
-    'anomaly': updateAnomalyServings,
+    'anomaly_detection': updateAnomalyServings,
     'rasa': null, // RASA 类型留空
     'log_clustering': updateLogClusteringServings,
     'timeseries_predict': updateTimeSeriesPredictServings,
@@ -177,7 +177,7 @@ const ModelRelease = () => {
   );
 
   useEffect(() => {
-    setSelectedKeys(['anomaly']);
+    setSelectedKeys(['anomaly_detection']);
   }, []);
 
   useEffect(() => {
