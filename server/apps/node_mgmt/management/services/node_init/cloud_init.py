@@ -40,6 +40,8 @@ def cloud_init():
                 if EnvVariableConstants.SENSITIVE_FIELD_KEYWORD in new_key.lower():
                     stored_value = aes_obj.encode(stored_value)
                     _type = EnvVariableConstants.TYPE_SECRET
+                elif new_key in EnvVariableConstants.TEXT_KEYS:
+                    _type = EnvVariableConstants.TYPE_TEXT
                 SidecarEnv.objects.get_or_create(
                     key=new_key,
                     cloud_region_id=CloudRegionConstants.DEFAULT_CLOUD_REGION_ID,

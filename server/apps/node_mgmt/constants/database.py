@@ -29,7 +29,10 @@ class EnvVariableConstants:
 
     # 环境变量类型
     TYPE_SECRET = "secret"
-    TYPE_NORMAL = ""
+    TYPE_NORMAL = "str"
+    TYPE_TEXT = "text"
+
+    TEXT_KEYS = ["NATS_TLS_CA"]
 
     # 敏感信息掩码
     SECRET_MASK = "******"
