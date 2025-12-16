@@ -10,12 +10,12 @@ class MonitorPluginService:
     @staticmethod
     def get_ui_template_by_params(collector, collect_type, monitor_object_id):
         """获取插件的 UI 模板"""
-        obj =  MonitorPluginUITemplate.objects.filter(
-            plugin__monitor_object_id=monitor_object_id,
+        obj = MonitorPluginUITemplate.objects.filter(
+            plugin__monitor_object__id=monitor_object_id,
             plugin__collector=collector,
             plugin__collect_type=collect_type
         ).first()
-        return obj.content
+        return obj.content if obj else None
 
     @staticmethod
     def import_monitor_plugin(data: dict):
