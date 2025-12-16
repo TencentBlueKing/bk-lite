@@ -15,7 +15,6 @@
     "strictFunctionTypes": false,
     "strictPropertyInitialization": false,
     "noImplicitThis": false,
-    "suppressImplicitAnyIndexErrors": true,
     "esModuleInterop": true,
     "module": "esnext",
     "moduleResolution": "bundler",
