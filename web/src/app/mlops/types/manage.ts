@@ -46,6 +46,7 @@ interface TrainDataParams {
   value: number;
   label?: number;
   index?: number;
+  [key: string]: any
 }
 
 interface DataSet {
@@ -82,6 +83,17 @@ interface AnnotationData {
   [key: string]: unknown;
 }
 
+interface FileReadResult {
+  train_data: TrainDataParams[] | string[];
+  headers?: string[];
+}
+
+interface RasaMenus {
+  menu: string;
+  icon: string;
+  content: string;
+}
+
 export type {
   AsideProps,
   TrainingStatus,
@@ -92,5 +104,7 @@ export type {
   DataSet,
   AnomalyDataSet,
   LabelData,
-  AnnotationData
+  AnnotationData,
+  FileReadResult,
+  RasaMenus
 }

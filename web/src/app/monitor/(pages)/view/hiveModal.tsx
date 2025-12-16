@@ -52,9 +52,9 @@ const HiveModal = forwardRef<ModalRef, HiveModalProps>(({ onConfirm }, ref) => {
       // 开启弹窗的交互
       setVisible(true);
       setTitle(title);
-      setSelected(query);
+      setSelected(query as string);
       setHiveConfig(form);
-      setColorList(color);
+      setColorList(color as NodeThresholdColor[]);
     },
   }));
 

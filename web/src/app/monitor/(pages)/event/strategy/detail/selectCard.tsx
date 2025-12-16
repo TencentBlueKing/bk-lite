@@ -34,8 +34,8 @@ const SelectCards: React.FC<SelectCardsProps> = ({
           onClick={() => handleCardClick(item)}
           className={`w-[220px] bg-[var(--color-bg-1)] border-2 ${
             value.includes(item.value)
-              ? 'border-[var(--color-primary)] shadow-lg border-blue-300'
-              : ''
+              ? 'border-[var(--color-primary)] shadow-[0_8px_24px_rgba(0,112,243,0.2)]'
+              : 'border-transparent'
           } shadow-md transition-all duration-300 ease-in-out rounded-lg p-3 relative cursor-pointer group hover:shadow-lg`}
         >
           <div className="flex items-center space-x-4 my-1">

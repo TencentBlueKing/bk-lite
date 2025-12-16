@@ -138,5 +138,5 @@ const BatchEditModal = forwardRef<ModalRef, ModalProps>(
     );
   }
 );
-BatchEditModal.displayName = 'batchEditModal';
+BatchEditModal.displayName = 'BatchEditModal';
 export default BatchEditModal;

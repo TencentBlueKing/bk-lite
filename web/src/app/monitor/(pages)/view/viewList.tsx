@@ -412,10 +412,6 @@ const ViewList: React.FC<ViewListProps> = ({
     });
   };
 
-  const handleSelectFields = (fields: string[]) => {
-    console.log(fields);
-  };
-
   const handleColonyChange = (id: string) => {
     setColony(id);
     setNameSpace(null);
@@ -548,7 +544,7 @@ const ViewList: React.FC<ViewListProps> = ({
       </div>
       <CustomTable
         scroll={{
-          y: `calc(100vh - ${showTab ? '320px' : '270px'})`,
+          y: `calc(100vh - ${showTab ? '330px' : '280px'})`,
           x: 'calc(100vw - 300px)',
         }}
         columns={tableColumn}
@@ -577,7 +573,6 @@ const ViewList: React.FC<ViewListProps> = ({
           ],
         }}
         onChange={handleTableChange}
-        onSelectFields={handleSelectFields}
       ></CustomTable>
       <ViewModal
         ref={viewRef}

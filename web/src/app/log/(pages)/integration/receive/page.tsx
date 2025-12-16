@@ -419,7 +419,7 @@ const Asset = () => {
         </div>
         <CustomTable
           className="w-full"
-          scroll={{ y: 'calc(100vh - 336px)', x: 'calc(100vw- 280x)' }}
+          scroll={{ y: 'calc(100vh - 340px)', x: 'calc(100vw- 280x)' }}
           columns={columns}
           dataSource={tableData}
           pagination={pagination}

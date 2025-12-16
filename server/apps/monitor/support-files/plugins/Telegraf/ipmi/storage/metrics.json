@@ -1,10 +1,14 @@
 {
   "plugin": "Storage IPMI",
   "plugin_desc": "The IPMI collection plugin is a tool used for gathering hardware monitoring data from the device's IPMI, supporting remote monitoring of key metrics such as power status, temperature, fan speed, and voltage.",
+  "status_query": "any({instance_type='storage', collect_type='ipmi'}) by (instance_id)",
   "name": "Storage",
   "icon": "shebei-shebeixinxi",
   "type": "Hardware Device",
   "description": "",
+  "default_metric": "any({instance_type='storage'}) by (instance_id)",
+  "instance_id_keys": ["instance_id"],
+  "supplementary_indicators": [],
   "metrics": [
     {
       "metric_group": "Power",

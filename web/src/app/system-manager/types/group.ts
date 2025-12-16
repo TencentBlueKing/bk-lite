@@ -43,6 +43,7 @@ interface OriginalGroup {
   name: string;
   path: string;
   hasAuth: boolean;
+  is_virtual?: boolean;
   role_ids?: number[];
   subGroups: OriginalGroup[];
   access: {

@@ -4,7 +4,7 @@ import { useTranslation } from '@/utils/i18n';
 import { message, Button } from 'antd';
 import CustomTable from '@/components/custom-table';
 import { useDetailColumns } from '@/app/node-manager/hooks';
-import useApiNode from '@/app/node-manager/api';
+import useNodeManagerApi from '@/app/node-manager/api';
 import useApiClient from '@/utils/request';
 import type { Pagination, TableDataItem } from '@/app/node-manager/types';
 import CollectorModal from '@/app/node-manager/components/sidecar/collectorModal';
@@ -13,7 +13,7 @@ import PermissionWrapper from '@/components/permission';
 
 const Collectordetail = () => {
   const { t } = useTranslation();
-  const { getPackageList, deletePackage } = useApiNode();
+  const { getPackageList, deletePackage } = useNodeManagerApi();
   const { isLoading } = useApiClient();
   const modalRef = useRef<ModalRef>(null);
   const [pagination, setPagination] = useState<Pagination>({
@@ -30,7 +30,7 @@ const Collectordetail = () => {
       id: searchParams.get('id') || '',
       name: searchParams.get('name') || '',
       introduction: searchParams.get('introduction') || '',
-      system: searchParams.get('system') || '',
+      system: searchParams.get('system') || 'linux',
       icon: searchParams.get('icon') || 'caijiqizongshu',
     };
   };
@@ -51,15 +51,11 @@ const Collectordetail = () => {
 
   const getTableData = async () => {
     const urlParams = getUrlParams();
-    const info = {
-      name: urlParams.name,
-      system: [urlParams.system],
-    };
     try {
       setTableLoading(true);
       const param = {
-        object: info.name,
-        os: info.system[0],
+        object: urlParams.name,
+        os: urlParams.system,
         page: pagination.current,
         page_size: pagination.pageSize,
       };
@@ -99,7 +95,8 @@ const Collectordetail = () => {
       id: urlParams.id,
       name: urlParams.name,
       description: urlParams.introduction,
-      tagList: [urlParams.system],
+      originalTags: [urlParams.system],
+      os: urlParams.system,
       icon: urlParams.icon,
       executable_path: '',
       execute_parameters: '',

@@ -1,4 +1,4 @@
-from apps.cmdb.constants import OPERATOR_INSTANCE
+from apps.cmdb.constants.constants import OPERATOR_INSTANCE
 from apps.cmdb.models.change_record import CREATE_INST_ASST, ChangeRecord
 
 

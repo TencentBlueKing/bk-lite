@@ -122,10 +122,12 @@ const SelectAssets = forwardRef<ModalRef, ModalConfig>(
         },
       ];
       const row =
-        objects.find((item: ObjectItem) => item.id === +monitorObject) || {};
+        (objects as ObjectItem[])?.find(
+          (item: ObjectItem) => item.id === Number(monitorObject as React.Key)
+        ) || ({} as ObjectItem);
       return [
         ...getBaseInstanceColumn({
-          objects,
+          objects: objects as ObjectItem[],
           row,
           t,
         }),
@@ -179,15 +181,15 @@ const SelectAssets = forwardRef<ModalRef, ModalConfig>(
         setAllTableData([]);
         setGroupVisible(true);
         setTitle(title);
-        setRowId(id);
-        setActiveTab(type || 'instance');
+        setRowId(id as number);
+        setActiveTab((type as string) || 'instance');
         if (type === 'instance' || !type) {
           fetchData();
-          setInstanceSelectedKeys(values || []);
-          setSelectedRowKeys(values || []);
+          setInstanceSelectedKeys((values as string[]) || []);
+          setSelectedRowKeys((values as string[]) || []);
         } else {
-          setOrganizationSelectedKeys(values || []);
-          setSelectedTreeKeys(values || []);
+          setOrganizationSelectedKeys((values as string[]) || []);
+          setSelectedTreeKeys((values as string[]) || []);
         }
       },
     }));
@@ -239,7 +241,7 @@ const SelectAssets = forwardRef<ModalRef, ModalConfig>(
     const fetchData = async () => {
       try {
         setTableLoading(true);
-        const data = await getInstanceList(monitorObject, {
+        const data = await getInstanceList(monitorObject as React.Key, {
           page: 1,
           page_size: -1,
           name: '',
@@ -303,7 +305,9 @@ const SelectAssets = forwardRef<ModalRef, ModalConfig>(
 
     const getInstanceName = (row: TableDataItem) => {
       const objectItem =
-        objects.find((item: ObjectItem) => item.id === +monitorObject) || {};
+        (objects as ObjectItem[])?.find(
+          (item: ObjectItem) => item.id === Number(monitorObject as React.Key)
+        ) || ({} as ObjectItem);
       return showInstName(objectItem, row);
     };
 

@@ -1,0 +1,22 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  * {
+    @apply m-0 p-0 box-border;
+  }
+
+  html,
+  body {
+    @apply w-full h-full font-sans antialiased bg-gray-50;
+  }
+
+  body {
+    @apply overflow-x-hidden;
+  }
+
+  #__next {
+    @apply flex flex-col min-h-screen;
+  }
+}

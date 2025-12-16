@@ -45,10 +45,11 @@ cp secret.env.template secret.env
 CLUSTER_NAME=your-cluster-name
 
 # NATS 服务连接信息
-NATS_URL=nats://your-nats-server:4222
+NATS_URL=tls://your-nats-server:4222
 NATS_USERNAME=your-nats-username
 NATS_PASSWORD=your-nats-password
 ```
+确保你有 CA 证书文件 `ca.crt`，用于与 NATS 服务器建立安全连接，可以从/opt/bk-lite/conf/cert/ca.crt 获取自签名的ca文件。
 
 ### 步骤 2: 创建 namespace 和 secret
 
@@ -56,19 +57,30 @@ NATS_PASSWORD=your-nats-password
 # 创建命名空间
 kubectl create ns bk-lite-collector
 
-# 从环境文件创建 secret
+# 方式一：从环境文件创建 secret，然后添加 CA 证书
 kubectl create -n bk-lite-collector secret generic bk-lite-monitor-config-secret \
   --from-env-file=secret.env
+
+kubectl -n bk-lite-collector patch secret bk-lite-monitor-config-secret \
+  --type='json' \
+  -p="$(printf '[{"op":"add","path":"/data/ca.crt","value":"%s"}]' "$(base64 -w0 ca.crt)")"
 ```
 
-或者手动创建 secret：
+方式二：使用 YAML 文件手动创建 secret：
 
 ```bash
-kubectl create -n bk-lite-collector secret generic bk-lite-monitor-config-secret \
-  --from-literal=CLUSTER_NAME="your-cluster-name" \
-  --from-literal=NATS_URL="nats://your-nats-server:4222" \
-  --from-literal=NATS_USERNAME="your-username" \
-  --from-literal=NATS_PASSWORD="your-password"
+# 复制模板文件
+cp secret.yaml.template secret.yaml
+
+# 生成 base64 编码的配置值并填入 secret.yaml
+echo -n "your-cluster-name" | base64        # 填入 CLUSTER_NAME
+echo -n "tls://your-nats-server:4222" | base64  # 填入 NATS_URL
+echo -n "your-username" | base64            # 填入 NATS_USERNAME
+echo -n "your-password" | base64            # 填入 NATS_PASSWORD
+base64 -w0 ca.crt                           # 填入 ca.crt
+
+# 编辑 secret.yaml 填入上述 base64 编码的值后，应用配置
+kubectl apply -f secret.yaml
 ```
 
 ### 步骤 3: 部署采集器

@@ -1,0 +1,171 @@
+{
+  "object_name": "Kafka",
+  "instance_type": "kafka",
+  "collect_type": "exporter",
+  "config_type": ["kafka"],
+  "collector": "Kafka-Exporter",
+  "instance_id": "{{cloud_region}}_{{ENV_KAFKA_SERVER}}",
+  "form_fields": [
+    {
+      "name": "ENV_KAFKA_VERSION",
+      "label": "版本",
+      "type": "input",
+      "required": true,
+      "description": "指定当前程序的版本详情",
+      "widget_props": {
+        "placeholder": "2.0.0"
+      },
+      "transform_on_edit": {
+        "origin_path": "base.env_config.KAFKA_VERSION"
+      }
+    },
+    {
+      "name": "ENV_SASL_USERNAME",
+      "label": "用户名",
+      "type": "input",
+      "required": false,
+      "description": "用于访问接口的用户名",
+      "widget_props": {
+        "placeholder": "用户名"
+      },
+      "transform_on_edit": {
+        "origin_path": "base.env_config.SASL_USERNAME"
+      }
+    },
+    {
+      "name": "ENV_SASL_PASSWORD",
+      "label": "密码",
+      "type": "password",
+      "required": false,
+      "description": "对应的登录密码",
+      "widget_props": {
+        "placeholder": "密码"
+      },
+      "transform_on_edit": {
+        "origin_path": "base.env_config.SASL_PASSWORD"
+      }
+    },
+    {
+      "name": "ENV_SASL_MECHANISM",
+      "label": "运行机制",
+      "type": "input",
+      "required": false,
+      "description": "用于处理和响应通过发布端口接收的请求，包括请求的解析、处理和返回结果的完整流程",
+      "widget_props": {
+        "placeholder": "plain"
+      },
+      "transform_on_edit": {
+        "origin_path": "base.env_config.SASL_MECHANISM"
+      }
+    },
+    {
+      "name": "ENV_LISTEN_PORT",
+      "label": "监听端口",
+      "type": "inputNumber",
+      "required": true,
+      "visible_in": "edit",
+      "description": "指定程序运行时应监听的端口号，用于接受外部请求和连接",
+      "widget_props": {
+        "min": 1,
+        "precision": 0,
+        "placeholder": "监听端口"
+      },
+      "transform_on_edit": {
+        "origin_path": "base.env_config.LISTEN_PORT"
+      }
+    },
+    {
+      "name": "ENV_KAFKA_SERVER",
+      "label": "服务器地址",
+      "type": "input",
+      "required": true,
+      "visible_in": "edit",
+      "description": "监控对象的服务器地址",
+      "widget_props": {
+        "placeholder": "kafka:9092"
+      },
+      "transform_on_edit": {
+        "origin_path": "base.env_config.KAFKA_SERVER"
+      }
+    },
+    {
+      "name": "interval",
+      "label": "间隔",
+      "type": "inputNumber",
+      "required": true,
+      "default_value": 10,
+      "description": "监控数据的采集时间间隔（单位：秒）",
+      "widget_props": {
+        "min": 1,
+        "precision": 0,
+        "placeholder": "间隔",
+        "addonAfter": "s"
+      },
+      "transform_on_edit": {
+        "origin_path": "child.content.config.interval",
+        "to_form": {
+          "regex": "^(\\d+)s$"
+        },
+        "to_api": {
+          "suffix": "s"
+        }
+      }
+    }
+  ],
+  "table_columns": [
+    {
+      "name": "node_ids",
+      "label": "节点",
+      "type": "select",
+      "required": true,
+      "widget_props": {
+        "placeholder": "请选择节点"
+      },
+      "enable_row_filter": true
+    },
+    {
+      "name": "ENV_LISTEN_PORT",
+      "label": "监听端口",
+      "type": "inputNumber",
+      "required": true,
+      "widget_props": {
+        "min": 1,
+        "precision": 0,
+        "placeholder": "监听端口"
+      }
+    },
+    {
+      "name": "ENV_KAFKA_SERVER",
+      "label": "服务器地址",
+      "type": "input",
+      "required": true,
+      "widget_props": {
+        "placeholder": "kafka:9092"
+      },
+      "change_handler": {
+        "type": "simple",
+        "source_fields": ["ENV_KAFKA_SERVER"],
+        "target_field": "instance_name"
+      }
+    },
+    {
+      "name": "instance_name",
+      "label": "实例名称",
+      "type": "input",
+      "required": true,
+      "widget_props": {
+        "placeholder": "实例名称",
+        "disabled": false
+      }
+    },
+    {
+      "name": "group_ids",
+      "label": "组",
+      "type": "group_select",
+      "required": false,
+      "widget_props": {
+        "placeholder": "请选择组"
+      }
+    }
+  ]
+}

@@ -1,7 +1,7 @@
 {
   "client_id": "monitor",
   "name": "Monitor",
-  "url": "/monitor/search",
+  "url": "/monitor/view",
   "tags": [
     "多对象接入",
     "快速检索",
@@ -104,6 +104,16 @@
           "name": "Asset",
           "operation": [
             "View",
+            "Edit",
+            "Delete"
+          ]
+        },
+        {
+          "id": "group",
+          "name": "Group",
+          "operation": [
+            "View",
+            "Add",
             "Edit",
             "Delete"
           ]

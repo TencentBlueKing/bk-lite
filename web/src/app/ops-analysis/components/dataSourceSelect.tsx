@@ -1,15 +1,17 @@
-import React from 'react';
-import { Select } from 'antd';
+import React, { CSSProperties } from 'react';
+import { Select, Tag } from 'antd';
+import { LockOutlined } from '@ant-design/icons';
 import { DatasourceItem } from '@/app/ops-analysis/types/dataSource';
+import { useTranslation } from '@/utils/i18n';
 
 interface DataSourceSelectProps {
   loading?: boolean;
   placeholder?: string;
-  style?: any;
-  value?: any;
+  style?: CSSProperties;
+  value?: number;
   disabled?: boolean;
   dataSources?: DatasourceItem[];
-  onChange?: (value: any) => void;
+  onChange?: (value: number) => void;
   onDataSourceChange?: (dataSource: DatasourceItem | undefined) => void;
 }
 
@@ -23,17 +25,26 @@ const DataSourceSelect: React.FC<DataSourceSelectProps> = ({
   onChange,
   onDataSourceChange,
 }) => {
-    
+  const { t } = useTranslation();
+
   const formatOptions = (sources: DatasourceItem[]) => {
     return sources.map((item) => ({
-      label: `${item.name}（${item.rest_api}）`,
+      label: (
+        <div className="flex items-center justify-between w-full">
+          <span>{`${item.name}（${item.rest_api}）`}</span>
+          {item.hasAuth === false && (
+            <Tag icon={<LockOutlined />} color="warning" className="ml-2">
+              {t('common.noAuth')}
+            </Tag>
+          )}
+        </div>
+      ),
       value: item.id,
       title: item.desc,
     }));
   };
 
-
-  const handleChange = (val: any) => {
+  const handleChange = (val: number) => {
     onChange?.(val);
     const selectedSource = dataSources.find((item) => item.id === val);
     onDataSourceChange?.(selectedSource);

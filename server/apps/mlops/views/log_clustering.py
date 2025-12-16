@@ -1,6 +1,9 @@
 from config.drf.viewsets import ModelViewSet
 from apps.mlops.filters.log_clustering import *
 from rest_framework import viewsets
+from rest_framework.decorators import action
+from rest_framework import status
+from rest_framework.response import Response
 
 from apps.core.logger import opspilot_logger as logger
 from apps.core.decorators.api_permission import HasPermission
@@ -65,6 +68,44 @@ class LogClusteringTrainJobViewSet(ModelViewSet):
     @HasPermission("log_clustering_train_jobs-Edit")
     def update(self, request, *args, **kwargs):
         return super().update(request, *args, **kwargs)
+    
+    @action(detail=True, methods=['get'], url_path='get_file')
+    @HasPermission("log_clustering_train_jobs-View,log_clustering_train_data-View,log_clustering_datasets-View")
+    def get_file(self, request, *args, **kwargs):
+        try:
+            train_job = self.get_object()
+            train_obj = train_job.train_data_id
+            val_obj = train_job.val_data_id
+            test_obj = train_job.test_data_id
+
+            def mergePoints(data_obj, filename):
+                train_data = list(data_obj.train_data) if hasattr(data_obj, 'train_data') else []
+
+                return {
+                    "data": train_data,
+                    "columns": [],
+                    "filename": filename
+                }
+
+            return Response(
+                [
+                    mergePoints(train_obj, 'train_file.txt'),
+                    mergePoints(val_obj, 'val_file.txt'),
+                    mergePoints(test_obj, 'test_file.txt'),
+                    {
+                        "data": train_job.hyperopt_config,
+                        "columns": [],
+                        "filename": "hyperopt_config.json"
+                    }
+                ]
+            )
+        
+        except Exception as e:
+            logger.error(f"获取训练文件失败 - TrainJobID: {kwargs.get('pk')} - {str(e)}")
+            return Response(
+                {'error': f'获取文件信息失败: {str(e)}'},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
 
 
 class LogClusteringTrainHistoryViewSet(ModelViewSet):

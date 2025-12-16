@@ -1,6 +1,6 @@
 import json
 
-from apps.cmdb.constants import (
+from apps.cmdb.constants.constants import (
     CLASSIFICATION,
     CREATE_MODEL_CHECK_ATTR,
     INST_NAME_INFOS,
@@ -76,8 +76,8 @@ class ModelManage(object):
         return model[0]
 
     @staticmethod
-    def search_model(language: str = "en", order_type: str = "ASC", order: str = "id",
-                     classification_ids: list = [], model_list: list = [], group_list: list = []):
+    def search_model(language: str = "en", order_type: str = "ASC", order: str = "id", permissions_map: dict = {},
+                     classification_ids: list = None, creator: str = ""):
         """
         查询模型
         Args:
@@ -85,37 +85,30 @@ class ModelManage(object):
             order_type: 排序方式，asc升序/desc降序
             order: 排序字段，默认order_id
             classification_ids: 分类ID列表，可选，用于过滤特定分类下的模型
-            model_list: 模型ID列表，可选，用于过滤特定模型
-            group_list: 组织ID列表，可选，用于过滤特定组织下的模型
+            permissions_map: 权限过滤字典
+            creator: 创建人，可选，用于过滤特定创建人的模型
         """
 
-        query_conditions = []
+        format_permission_dict = {}
 
-        # 构造过滤条件 - classification_ids 和 model_list 是"或"关系
-        if classification_ids or model_list:
-            or_conditions = []
-
+        for organization_id, organization_permission_data in permissions_map.items():
+            _query_list = []
             if classification_ids:
-                for classification_id in classification_ids:
-                    or_conditions.append({"field": "classification_id", "type": "str=", "value": classification_id})
+                _query_list.append({"field": "classification_id", "type": "str[]", "value": classification_ids})
+            model_ids = organization_permission_data["inst_names"]
+            if model_ids:
+                _query_list.append({"field": "model_id", "type": "str[]", "value": model_ids})
+                if creator:
+                    # 只有创建人条件
+                    _query_list.append({"field": "_creator", "type": "str=", "value": creator})
 
-            if model_list:
-                for model_id in model_list:
-                    or_conditions.append({"field": "model_id", "type": "str=", "value": model_id})
-
-            query_conditions = or_conditions
-
-        # 如果有group_id，添加组织过滤条件
-        if group_list:
-            query_conditions.append({"field": "group", "type": "list[]", "value": group_list})
+            format_permission_dict[organization_id] = _query_list
 
         with GraphClient() as ag:
-            # 如果有过滤条件，使用OR查询，否则查询所有
-            if query_conditions:
-                models, _ = ag.query_entity(MODEL, query_conditions, order=order, order_type=order_type,
-                                            param_type="OR")
-            else:
-                models, _ = ag.query_entity(MODEL, [], order=order, order_type=order_type)
+            query = dict(label=MODEL, params=[], order=order, order_type=order_type,
+                         format_permission_dict=format_permission_dict,
+                         param_type="OR", organization_field="group")
+            models, _ = ag.query_entity(**query)
 
         lan = SettingLanguage(language)
 
@@ -126,68 +119,6 @@ class ModelManage(object):
                 model["order_id"] = 0
 
         return models
-
-    @staticmethod
-    def _filter_models_by_permission(models: list, user, current_team: str, app_name: str):
-        """
-        根据权限过滤模型列表
-        权限规则：
-        1. 模型所在组织为default，都可以查询
-        2. 用户所在组织和模型所在组织一样，可以查询和操作
-        3. 被单独授予实例权限的模型
-        """
-        from apps.cmdb.utils.base import get_default_group_id
-        from apps.core.utils.permission_utils import get_permission_rules
-        from apps.cmdb.utils.permisssion_util import CmdbRulesFormatUtil
-        from apps.cmdb.constants import PERMISSION_MODEL
-        
-        if not models:
-            return []
-            
-        # 获取默认组织ID
-        default_group_ids = get_default_group_id()
-        default_group_id = default_group_ids[0] if default_group_ids else None
-        current_team_id = int(current_team) if current_team else None
-        
-        # 获取用户的权限规则
-        _permission_rules = get_permission_rules(user=user,
-                                                 current_team=current_team, 
-                                                 app_name=app_name,
-                                                 permission_key=PERMISSION_MODEL)
-        rules = _permission_rules.get("instance", [])
-        permission_instances_map = CmdbRulesFormatUtil().format_permission_instances_list(rules=rules)
-        
-        # 从权限规则中获取有权限的模型ID列表
-        authorized_model_ids = set()
-        for model_id, permissions in permission_instances_map.items():
-            if permissions:  # 如果有任何权限
-                authorized_model_ids.add(model_id)
-        
-        filtered_models = []
-        
-        for model in models:
-            model_groups = model.get("group", [])
-            model_id = model.get("model_id")
-            
-            # 权限判断逻辑
-            has_permission = False
-            
-            # 1. 模型所在组织为default，都可以查询
-            if default_group_id and default_group_id in model_groups:
-                has_permission = True
-            
-            # 2. 用户所在组织和模型所在组织一样，可以查询和操作
-            elif current_team_id and current_team_id in model_groups:
-                has_permission = True
-            
-            # 3. 被单独授予实例权限的模型
-            elif model_id in authorized_model_ids:
-                has_permission = True
-            
-            if has_permission:
-                filtered_models.append(model)
-        
-        return filtered_models
 
     @staticmethod
     def parse_attrs(attrs: str):

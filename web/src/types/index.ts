@@ -67,6 +67,10 @@ export interface ClientData {
   tags?: string[];
 }
 
+export interface AppConfigItem extends ClientData {
+  index: number;
+}
+
 export interface TourItem {
   title: string;
   description: string;
@@ -84,7 +88,9 @@ export interface MenuItem {
   title: string;
   operation: string[];
   tour?: TourItem;
+  isDirectory?: boolean;
   isNotMenuItem?: boolean;
+  hasDetail?: boolean;
   children?: MenuItem[];
   withParentPermission?: boolean;
 }

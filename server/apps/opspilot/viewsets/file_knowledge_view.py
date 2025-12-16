@@ -30,7 +30,7 @@ class FileKnowledgeViewSet(LanguageViewSet):
                 return JsonResponse(
                     {
                         "result": False,
-                        "message": self.loader.get("file_size_exceeded") if self.loader else "File size exceeds quota limit.",
+                        "message": self.loader.get("error.file_size_exceeded") if self.loader else "File size exceeds quota limit.",
                     }
                 )
         result = self.import_file_knowledge(files, kwargs, request.user.username, request.user.domain)

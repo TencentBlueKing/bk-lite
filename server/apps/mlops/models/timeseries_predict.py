@@ -1,6 +1,8 @@
 
 from django.db import models
+from django_minio_backend import MinioBackend, iso_date_prefix
 
+from apps.core.fields import S3JSONField
 from apps.core.models.maintainer_info import MaintainerInfo
 from apps.core.models.time_info import TimeInfo
 from apps.mlops.models.data_points_features_info import DataPointFeaturesInfo
@@ -32,16 +34,22 @@ class TimeSeriesPredictTrainData(MaintainerInfo, TimeInfo):
         verbose_name="数据集",
     )
 
-    train_data = models.JSONField(
+    train_data = models.FileField(
         verbose_name="训练数据",
-        help_text="存储训练数据",
+        storage=MinioBackend(bucket_name="munchkin-public"),
+        upload_to=iso_date_prefix,
+        help_text="存储在MinIO中的CSV训练数据文件",
+        blank=True,
+        null=True,
     )
 
-    metadata = models.JSONField(
+    metadata = S3JSONField(
+        bucket_name="munchkin-public",
+        compressed=True,
         verbose_name="元数据",
         blank=True,
         null=True,
-        help_text="训练数据元信息",
+        help_text="存储在MinIO中的训练数据元信息文件路径",
     )
 
     is_train_data = models.BooleanField(
@@ -68,6 +76,78 @@ class TimeSeriesPredictTrainData(MaintainerInfo, TimeInfo):
 
     def __str__(self):
         return f"{self.name} - {self.dataset.name}"
+
+
+class TimeSeriesPredictDatasetRelease(MaintainerInfo, TimeInfo):
+    """时间序列预测数据集发布版本"""
+
+    name = models.CharField(
+        max_length=100,
+        verbose_name="发布版本名称",
+        help_text="数据集发布版本的名称"
+    )
+
+    description = models.TextField(
+        blank=True,
+        null=True,
+        verbose_name="版本描述",
+        help_text="发布版本的详细描述"
+    )
+
+    dataset = models.ForeignKey(
+        TimeSeriesPredictDataset,
+        on_delete=models.CASCADE,
+        related_name="releases",
+        verbose_name="数据集",
+        help_text="关联的数据集"
+    )
+
+    version = models.CharField(
+        max_length=50,
+        verbose_name="版本号",
+        help_text="数据集版本号，如 v1.0.0"
+    )
+
+    dataset_file = models.FileField(
+        verbose_name="数据集压缩包",
+        storage=MinioBackend(bucket_name="munchkin-public"),
+        upload_to=iso_date_prefix,
+        help_text="存储在MinIO中的数据集ZIP压缩包"
+    )
+
+    file_size = models.BigIntegerField(
+        verbose_name="文件大小",
+        help_text="压缩包文件大小（字节）",
+        default=0
+    )
+
+    status = models.CharField(
+        max_length=20,
+        choices=[
+            ("pending", "待发布"),
+            ("published", "已发布"),
+            ("failed", "发布失败"),
+        ],
+        default="pending",
+        verbose_name="发布状态",
+        help_text="数据集发布状态"
+    )
+
+    metadata = models.JSONField(
+        verbose_name="数据集元信息",
+        default=dict,
+        blank=True,
+        help_text="数据集的统计信息和质量指标，不包含训练配置"
+    )
+
+    class Meta:
+        verbose_name = "时间序列预测数据集发布版本"
+        verbose_name_plural = "时间序列预测数据集发布版本"
+        ordering = ["-created_at"]
+        unique_together = [["dataset", "version"]]
+
+    def __str__(self):
+        return f"{self.dataset.name} - {self.version}"
 
 
 class TimeSeriesPredictTrainJob(MaintainerInfo, TimeInfo):

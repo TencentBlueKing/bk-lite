@@ -122,6 +122,9 @@
         "inputTaskPlaceholder": "请输入任务名称",
         "addTaskTitle": "新增任务",
         "editTaskTitle": "编辑任务",
+        "viewDoc": "查看说明",
+        "closeDoc": "关闭说明",
+        "pluginDoc": "插件说明",
         "baseSetting": "基本配置",
         "taskNameLabel": "任务名称",
         "cycle": "扫描周期",
@@ -132,9 +135,7 @@
         "once": "一次",
         "cycleRequired": "请选择扫描周期",
         "enterType": "录入方式",
-        "enterTypeTooltip": "设置新资产的录入方式。自动录入将在任务完成后自动更新到资产记录，审批录入将根据审批结果更新到资产记录。",
         "automatic": "自动",
-        "approvalRequired": "需要审批",
         "advanced": "高级",
         "timeout": "超时时间",
         "timeoutTooltip": "该超时时间为单个对象的采集超时时间，超过该时长将跳过该对象的采集。",
@@ -143,9 +144,8 @@
         "test": "测试",
         "confirm": "确认",
         "cancel": "取消",
-        "executing": "执行中",
-        "executeSuccess": "执行成功!",
-        "executeFailed": "执行失败",
+        "syncSuccess": "同步成功!",
+        "syncFailed": "同步失败",
         "accessPoint": "接入点",
         "ipRange": "IP范围",
         "chooseIp": "选择IP",
@@ -153,11 +153,10 @@
         "everyMinute": "每",
         "executeOnce": "执行一次",
         "port": "端口",
-        "execStatus": {
-            "add": "新增资产",
-            "update": "更新资产",
-            "association": "关联资产",
-            "delete": "下架资产",
+        "syncStatus": {
+            "add": "新增",
+            "update": "更新",
+            "delete": "删除",
             "unexecuted": "未执行",
             "collecting": "正在采集",
             "success": "成功",
@@ -165,8 +164,7 @@
             "timeout": "超时",
             "writing": "正在写入",
             "forceStop": "强制终止",
-            "pendingApproval": "待审批",
-            "approval": "审批"
+            "pendingApproval": "待审批"
         },
         "k8sTask": {
             "title": "添加任务",
@@ -201,22 +199,43 @@
         },
         "table": {
             "taskName": "任务名称",
-            "execStatus": "执行状态",
-            "collectSummary": "采集摘要",
+            "syncStatus": "同步状态",
+            "latestOverview": "最新任务概览",
             "creator": "创建者",
-            "execTime": "执行时间",
+            "syncTime": "同步时间",
             "actions": "操作",
             "detail": "详情",
-            "executeNow": "立即执行",
+            "sync": "同步",
             "modify": "编辑",
-            "delete": "删除"
+            "delete": "删除",
+            "syncing": "同步中"
         },
         "taskDetail": {
             "title": "任务详情",
-            "approval": "审批详情",
-            "approvalConfirm": "审批确认",
-            "approvalSuccess": "审批成功"
-        }
+            "instanceName": "实例名称",
+            "status": "状态",
+            "errorInfo": "异常信息",
+            "rawData": "原始数据",
+            "noRawData": "暂无原始数据",
+            "totalDiscovered": "本次发现总数",
+            "addData": "需要新增数据",
+            "updateData": "需要更新数据",
+            "deleteData": "需要删除数据",
+            "writeFailed": "录入CMDB失败",
+            "failedCount": "条"
+        },
+        "statusLabel": {
+            "running": "进行中",
+            "syncSuccess": "同步成功",
+            "syncFailed": "同步失败"
+        },
+        "overviewLabel": {
+            "add": "新增",
+            "update": "更新",
+            "delete": "删除",
+            "error": "异常"
+        },
+        "executeSuccess": "执行成功"
     },
     "OidLibrary": {
         "title": "SOID库",

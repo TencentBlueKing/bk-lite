@@ -8,7 +8,10 @@ export interface Tool {
   tagList: string[];
   is_build_in: boolean;
   params: any;
+  tools?: any[];
   permissions?: string[];
+  enable_auth?: boolean;
+  auth_token?: string;
 }
 
 export interface FormValues {

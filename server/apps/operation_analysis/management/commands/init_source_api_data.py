@@ -5,14 +5,13 @@
 
 from django.core.management import BaseCommand
 
-from apps.operation_analysis.models import DataSourceAPIModel, NameSpace
+from apps.operation_analysis.models.datasource_models import DataSourceAPIModel, NameSpace, DataSourceTag
+from apps.operation_analysis.common.load_json_data import load_support_json
 from apps.core.logger import operation_analysis_logger as logger
-
-from apps.operation_analysis.init_constants import INIT_SOURCE_API_DATA
 
 
 class Command(BaseCommand):
-    help = "初始化源API数据"
+    help = "初始化数据源标签和源API数据"
 
     def add_arguments(self, parser):
         parser.add_argument(
@@ -33,12 +32,40 @@ class Command(BaseCommand):
             return instance.first().id
         return
 
+    def init_tags(self):
+        """
+        初始化数据源标签
+        """
+        logger.info("===开始初始化数据源标签===")
+        self.stdout.write(self.style.SUCCESS("开始初始化数据源标签"))
+
+        tags_data = load_support_json('tags.json')
+        created_count = 0
+
+        for data in tags_data:
+            tag_id = data["tag_id"]
+            if DataSourceTag.objects.filter(tag_id=tag_id).exists():
+                logger.info(f"标签 {tag_id} 已存在，跳过创建")
+                self.stdout.write(self.style.WARNING(f"标签 {tag_id} 已存在，跳过创建"))
+                continue
+
+            DataSourceTag.objects.create(**data)
+            created_count += 1
+            logger.info(f"标签 {tag_id} 创建成功")
+            self.stdout.write(self.style.SUCCESS(f"标签 {tag_id} 创建成功"))
+
+        logger.info(f"===数据源标签初始化完成 - 创建: {created_count}===")
+
     def handle(self, *args, **options):
-        logger.info("===开始初始化源API数据===")
+        logger.info("===开始初始化数据源标签和源API数据===")
         force_update = options['force_update']
 
         try:
+            # 先初始化标签
+            self.init_tags()
 
+            # 获取默认命名空间
+            # 获取默认命名空间
             namespace_id = self.get_default_namespace()
             if not namespace_id:
                 error_msg = "未找到默认命名空间，请先初始化默认命名空间"
@@ -46,10 +73,12 @@ class Command(BaseCommand):
                 self.stdout.write(self.style.ERROR(error_msg))
                 return
 
+            # 从JSON文件加载源API数据
+            source_api_data_list = load_support_json('source_api.json')
             created_count = 0
             updated_count = 0
 
-            for api_data in INIT_SOURCE_API_DATA:
+            for api_data in source_api_data_list:
                 obj, created = DataSourceAPIModel.objects.get_or_create(
                     name=api_data["name"],
                     rest_api=api_data["rest_api"],

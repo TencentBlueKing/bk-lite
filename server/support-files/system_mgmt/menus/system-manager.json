@@ -26,6 +26,15 @@
             "Edit Group",
             "Delete Group"
           ]
+        },
+        {
+          "id": "super_admin",
+          "name": "Super Administrator",
+          "operation": [
+            "View",
+            "Add",
+            "Delete"
+          ]
         }
       ]
     },
@@ -52,12 +61,24 @@
             "Add user",
             "Remove user",
             "Edit Permission",
+            "Add group",
+            "Remove group",
             "Delete"
           ]
         },
         {
           "id": "data_permission",
           "name": "Data permission",
+          "operation": [
+            "View",
+            "Edit",
+            "Add",
+            "Delete"
+          ]
+        },
+        {
+          "id": "custom_menu",
+          "name": "Custom Menu",
           "operation": [
             "View",
             "Edit",
@@ -96,11 +117,58 @@
       "name": "Security Management",
       "children": [
         {
-          "id": "security_management",
-          "name": "Security Management",
+          "id": "security_settings",
+          "name": "Security Settings",
           "operation": [
             "View",
             "Edit",
+            "Add",
+            "Delete"
+          ]
+        },
+        {
+          "id": "auth_sources",
+          "name": "Auth Sources",
+          "operation": [
+            "View",
+            "Edit",
+            "Add",
+            "Delete"
+          ]
+        },
+        {
+          "id": "user_logs",
+          "name": "Login Logs",
+          "operation": [
+            "View",
+            "Delete"
+          ]
+        },
+        {
+          "id": "operation_logs",
+          "name": "Operation Logs",
+          "operation": [
+            "View"
+          ]
+        },
+        {
+          "id": "error_logs",
+          "name": "Error Logs",
+          "operation": [
+            "View"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Setting",
+      "icon": "settings-fill",
+      "children": [
+        {
+          "id": "api_secret_key",
+          "name": "API Secret Key",
+          "operation": [
+            "View",
             "Add",
             "Delete"
           ]

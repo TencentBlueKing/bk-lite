@@ -2,7 +2,7 @@
 # @File: falkordb_format.py
 # @Time: 2025/8/29 16:25
 # @Author: windyzhao
-from typing import List, Dict, Any, Union
+from typing import List, Dict, Any
 import json
 
 

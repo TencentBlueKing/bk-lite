@@ -103,3 +103,24 @@ class TimeSeriesPredictServingFilter(FilterSet):
     class Meta:
         model = TimeSeriesPredictServing
         fields = ["name", "status", "model_version", "time_series_predict_train_job", "created_by"]
+
+
+class TimeSeriesPredictDatasetReleaseFilter(FilterSet):
+    """时间序列预测数据集发布版本过滤器"""
+
+    name = CharFilter(field_name="name", lookup_expr="icontains", label="发布版本名称")
+    version = CharFilter(field_name="version", lookup_expr="icontains", label="版本号")
+    status = ChoiceFilter(
+        field_name="status",
+        choices=TimeSeriesPredictDatasetRelease._meta.get_field('status').choices,
+        label="发布状态"
+    )
+    dataset__name = CharFilter(field_name="dataset__name", lookup_expr="icontains", label="数据集名称")
+    dataset = CharFilter(field_name="dataset", label="数据集ID")
+    created_by = CharFilter(field_name="created_by", lookup_expr="icontains", label="创建者")
+    created_at_start = DateTimeFilter(field_name="created_at", lookup_expr="gte", label="创建时间开始")
+    created_at_end = DateTimeFilter(field_name="created_at", lookup_expr="lte", label="创建时间结束")
+
+    class Meta:
+        model = TimeSeriesPredictDatasetRelease
+        fields = ["name", "version", "status", "dataset", "created_by"]

@@ -122,6 +122,9 @@
         "inputTaskPlaceholder": "Please enter task name",
         "addTaskTitle": "Add Task",
         "editTaskTitle": "Edit Task",
+        "viewDoc": "View Documentation",
+        "closeDoc": "Close Documentation",
+        "pluginDoc": "Plugin Documentation",
         "baseSetting": "Base Setting",
         "taskNameLabel": "Task Name",
         "cycle": "Cycle",
@@ -132,9 +135,7 @@
         "once": "Once",
         "cycleRequired": "Please select scan cycle",
         "enterType": "Enter Type",
-        "enterTypeTooltip": "Set the input method for New Asset. Automatic Input will automatically update to the Asset Record after the task is completed, and Approval Input will update to the Asset Record based on the approval result.",
         "automatic": "Automatic",
-        "approvalRequired": "Approval required",
         "password": "Password",
         "sslVerify": "SSL verify",
         "advanced": "Advanced",
@@ -146,19 +147,17 @@
         "confirm": "Confirm",
         "cancel": "Cancel",
         "accessPoint": "Proxy",
-        "executing": "Executing",
-        "executeSuccess": "Execute Successfully!",
-        "executeFailed": "Execute Failed",
+        "syncSuccess": "Sync Successfully!",
+        "syncFailed": "Sync Failed",
         "ipRange": "IP Range",
         "chooseIp": "Choose IP",
         "chooseAsset": "Choose Asset",
         "everyMinute": "Every",
         "executeOnce": "Execute once",
         "port": "Port",
-        "execStatus": {
+        "syncStatus": {
             "add": "Add",
             "update": "Update",
-            "association": "Associate",
             "delete": "Delete",
             "unexecuted": "Not Executed",
             "collecting": "Collecting",
@@ -167,8 +166,7 @@
             "timeout": "Timeout",
             "writing": "Writing",
             "forceStop": "Force Stop",
-            "pendingApproval": "Pending Approval",
-            "approval": "Approval"
+            "pendingApproval": "Pending Approval"
         },
         "k8sTask": {
             "title": "Add Task",
@@ -203,22 +201,43 @@
         },
         "table": {
             "taskName": "Task Name",
-            "execStatus": "Execution Status",
-            "collectSummary": "Collection Summary",
+            "syncStatus": "Sync Status",
+            "latestOverview": "Latest Overview",
             "creator": "Creator",
-            "execTime": "Execution Time",
+            "syncTime": "Sync Time",
             "actions": "Actions",
             "detail": "Detail",
-            "executeNow": "Execute Now",
+            "sync": "Sync",
             "modify": "Modify",
-            "delete": "Delete"
+            "delete": "Delete",
+            "syncing": "Syncing"
         },
         "taskDetail": {
             "title": "Task Detail",
-            "approval": "Approval Detail",
-            "approvalConfirm": "Approval Confirm",
-            "approvalSuccess": "Approval Success"
-        }
+            "instanceName": "Instance Name",
+            "status": "Status",
+            "errorInfo": "Error Info",
+            "rawData": "Raw Data",
+            "noRawData": "No raw data available",
+            "totalDiscovered": "Total Discovered",
+            "addData": "Data to Add",
+            "updateData": "Data to Update",
+            "deleteData": "Data to Delete",
+            "writeFailed": "Failed to write to CMDB",
+            "failedCount": "items"
+        },
+        "statusLabel": {
+            "running": "Running",
+            "syncSuccess": "Sync Success",
+            "syncFailed": "Sync Failed"
+        },
+        "overviewLabel": {
+            "add": "Add",
+            "update": "Update",
+            "delete": "Delete",
+            "error": "Error"
+        },
+        "executeSuccess": "Execute successfully"
     },
     "OidLibrary": {
         "title": "SOID Library",

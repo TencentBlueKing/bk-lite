@@ -6,6 +6,195 @@
   "description": "opspolit",
   "glyphs": [
     {
+      "icon_id": "39136567",
+      "name": "对话智能体",
+      "font_class": "duihuazhinengti",
+      "unicode": "e769",
+      "unicode_decimal": 59241
+    },
+    {
+      "icon_id": "42654345",
+      "name": "智能体.",
+      "font_class": "a-zhinengti",
+      "unicode": "e70f",
+      "unicode_decimal": 59151
+    },
+    {
+      "icon_id": "44049108",
+      "name": "智能体图标",
+      "font_class": "zhinengtitubiao",
+      "unicode": "e710",
+      "unicode_decimal": 59152
+    },
+    {
+      "icon_id": "44402555",
+      "name": "智能体",
+      "font_class": "zhinengti1",
+      "unicode": "e711",
+      "unicode_decimal": 59153
+    },
+    {
+      "icon_id": "45180935",
+      "name": "智能体",
+      "font_class": "zhinengti2",
+      "unicode": "e822",
+      "unicode_decimal": 59426
+    },
+    {
+      "icon_id": "40385174",
+      "name": "向右收缩",
+      "font_class": "xiangyoushousuo",
+      "unicode": "e708",
+      "unicode_decimal": 59144
+    },
+    {
+      "icon_id": "40385177",
+      "name": "向左收缩",
+      "font_class": "xiangzuoshousuo",
+      "unicode": "e70d",
+      "unicode_decimal": 59149
+    },
+    {
+      "icon_id": "45915879",
+      "name": "人工干预",
+      "font_class": "rengongganyu",
+      "unicode": "e713",
+      "unicode_decimal": 59155
+    },
+    {
+      "icon_id": "5583345",
+      "name": "容器服务 Container Servi",
+      "font_class": "rongqifuwuContainerServi",
+      "unicode": "e8a3",
+      "unicode_decimal": 59555
+    },
+    {
+      "icon_id": "17524050",
+      "name": "主机",
+      "font_class": "zhuji",
+      "unicode": "e70a",
+      "unicode_decimal": 59146
+    },
+    {
+      "icon_id": "25751746",
+      "name": "导航_007",
+      "font_class": "daohang_007",
+      "unicode": "e73f",
+      "unicode_decimal": 59199
+    },
+    {
+      "icon_id": "35826942",
+      "name": "Linux",
+      "font_class": "Linux",
+      "unicode": "e70b",
+      "unicode_decimal": 59147
+    },
+    {
+      "icon_id": "35826975",
+      "name": "Window",
+      "font_class": "Window-Windows",
+      "unicode": "e70c",
+      "unicode_decimal": 59148
+    },
+    {
+      "icon_id": "12592544",
+      "name": "对号",
+      "font_class": "duihao",
+      "unicode": "e707",
+      "unicode_decimal": 59143
+    },
+    {
+      "icon_id": "7900773",
+      "name": "引流工具-标题优化",
+      "font_class": "yinliugongju-biaotiyouhua",
+      "unicode": "e701",
+      "unicode_decimal": 59137
+    },
+    {
+      "icon_id": "7900775",
+      "name": "引流工具-标题分析",
+      "font_class": "yinliugongju-biaotifenxi",
+      "unicode": "e702",
+      "unicode_decimal": 59138
+    },
+    {
+      "icon_id": "7900786",
+      "name": "引流工具-低价引流",
+      "font_class": "yinliugongju-dijiayinliu",
+      "unicode": "e703",
+      "unicode_decimal": 59139
+    },
+    {
+      "icon_id": "17759548",
+      "name": "工具区",
+      "font_class": "gongjuqu",
+      "unicode": "e704",
+      "unicode_decimal": 59140
+    },
+    {
+      "icon_id": "17883965",
+      "name": "工具箱",
+      "font_class": "gongjuxiang",
+      "unicode": "e705",
+      "unicode_decimal": 59141
+    },
+    {
+      "icon_id": "17883968",
+      "name": "工具",
+      "font_class": "gongju1",
+      "unicode": "e706",
+      "unicode_decimal": 59142
+    },
+    {
+      "icon_id": "10250401",
+      "name": "06超级管理员",
+      "font_class": "chaojiguanliyuan",
+      "unicode": "e6fc",
+      "unicode_decimal": 59132
+    },
+    {
+      "icon_id": "40344085",
+      "name": "登录日志",
+      "font_class": "denglurizhi",
+      "unicode": "e700",
+      "unicode_decimal": 59136
+    },
+    {
+      "icon_id": "43964588",
+      "name": "认证源管理",
+      "font_class": "renzhengyuanguanli",
+      "unicode": "e849",
+      "unicode_decimal": 59465
+    },
+    {
+      "icon_id": "4521283",
+      "name": "组织群组",
+      "font_class": "zuzhiqunzu",
+      "unicode": "ebd8",
+      "unicode_decimal": 60376
+    },
+    {
+      "icon_id": "39904197",
+      "name": "虚拟团队",
+      "font_class": "xunituandui",
+      "unicode": "e6ff",
+      "unicode_decimal": 59135
+    },
+    {
+      "icon_id": "11910542",
+      "name": "Winlogbeat",
+      "font_class": "Winlogbeat",
+      "unicode": "e6fd",
+      "unicode_decimal": 59133
+    },
+    {
+      "icon_id": "7677018",
+      "name": "拓扑图",
+      "font_class": "tuoputu",
+      "unicode": "e6f3",
+      "unicode_decimal": 59123
+    },
+    {
       "icon_id": "6458551",
       "name": "RESTful API",
       "font_class": "RESTfulAPI",
@@ -1859,6 +2048,13 @@
       "font_class": "caijiqizongshu",
       "unicode": "e682",
       "unicode_decimal": 59010
+    },
+    {
+      "icon_id": "9601075",
+      "name": "Vector",
+      "font_class": "Vector",
+      "unicode": "e6600",
+      "unicode_decimal": 943616
     },
     {
       "icon_id": "32048577",

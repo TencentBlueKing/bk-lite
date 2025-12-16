@@ -1,6 +1,7 @@
 {
   "plugin": "Redis",
   "plugin_desc": "Used to collect key indicators of Redis performance and resource utilization, helping improve system efficiency and stability.",
+  "status_query": "any({instance_type='redis', collect_type='database'}) by (instance_id)",
   "name": "Redis",
   "icon": "Redis",
   "type": "Database",

@@ -32,14 +32,16 @@ export const createUserTableColumns = ({
       render: (text: string) => {
         const color = getRandomColor();
         return (
-          <div className="flex" style={{ height: '17px', lineHeight: '17px' }}>
+          <div className="flex items-center" style={{ height: '17px' }}>
             <span
-              className="h-5 w-5 rounded-[10px] text-center mr-1"
-              style={{ color: '#ffffff', backgroundColor: color }}
+              className="h-5 w-5 rounded-[10px] text-center mr-1 flex-shrink-0"
+              style={{ color: '#ffffff', backgroundColor: color, lineHeight: '20px' }}
             >
               {text?.substring(0, 1)}
             </span>
-            <span>{text}</span>
+            <Tooltip title={text} placement="topLeft">
+              <span className="truncate">{text}</span>
+            </Tooltip>
           </div>
         );
       },
@@ -65,7 +67,6 @@ export const createUserTableColumns = ({
       dataIndex: 'roles',
       width: 200,
       render: (_: string[], record: UserDataType) => {
-        // 处理个人角色（蓝色）
         const personalRoles = (record.roles || []).reduce((acc: Record<string, string[]>, role: any) => {
           const roleName = typeof role === 'string' ? role : role.name;
           const parts = roleName.split('@@');
@@ -81,7 +82,6 @@ export const createUserTableColumns = ({
           return acc;
         }, {});
 
-        // 处理组织角色（绿色）
         const groupRoles = (record.group_role_list || []).reduce((acc: Record<string, string[]>, role: string) => {
           const parts = role.split('@@');
           if (parts.length >= 2) {

@@ -68,6 +68,7 @@ const useIntegrationApi = () => {
     page?: number;
     page_size?: number;
     is_active?: boolean;
+    is_container?: boolean;
   }) => {
     return await post('/log/node_mgmt/nodes/', data);
   };

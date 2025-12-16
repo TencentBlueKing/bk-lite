@@ -17,7 +17,8 @@ const eslintConfig = [
             "out/**",
             "build/**",
             "next-env.d.ts",
-            "src-tauri/target/**"
+            "src-tauri/target/**",
+            "public/icon/font/**"
         ]
     },
 

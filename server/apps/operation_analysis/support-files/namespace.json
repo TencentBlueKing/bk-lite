@@ -1,0 +1,10 @@
+[
+  {
+    "name": "默认命名空间",
+    "desc": "系统初始化创建的默认命名空间",
+    "is_active": true,
+    "enable_tls": false,
+    "created_by": "system",
+    "updated_by": "system"
+  }
+]

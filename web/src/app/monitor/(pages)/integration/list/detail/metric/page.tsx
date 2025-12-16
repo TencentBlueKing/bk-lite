@@ -145,7 +145,7 @@ const Configure = () => {
               okText={t('common.confirm')}
               cancelText={t('common.cancel')}
               okButtonProps={{ loading: confirmLoading }}
-              onConfirm={() => handleDeleteConfirm(record)}
+              onConfirm={() => handleDeleteConfirm(record as MetricItem)}
             >
               <Button type="link" disabled={record.is_pre && !isSuperUser}>
                 {t('common.delete')}
@@ -438,8 +438,8 @@ const Configure = () => {
           className={metricStyle.metricTable}
           style={{
             height: NEED_TAGS_ENTRY_OBJECTS.includes(groupName)
-              ? 'calc(100vh - 366px)'
-              : 'calc(100vh - 316px)',
+              ? 'calc(100vh - 396px)'
+              : 'calc(100vh - 346px)',
           }}
         >
           {!!metricData.length ? (

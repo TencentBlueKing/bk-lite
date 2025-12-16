@@ -22,6 +22,9 @@ class MonitorPluginService:
         metrics = data.pop("metrics")
         plugin = data.pop("plugin")
         desc = data.pop("plugin_desc", "")
+        status_query = data.pop("status_query", "")
+        collector = data.pop("collector", "")
+        collect_type = data.pop("collect_type", "")
 
         # 处理type字段：确保MonitorObjectType存在
         type_value = data.get("type")
@@ -51,7 +54,13 @@ class MonitorPluginService:
         with transaction.atomic():
             plugin_obj, _ = MonitorPlugin.objects.update_or_create(
                 name=plugin,
-                defaults=dict(name=plugin, description=desc),
+                defaults=dict(
+                    name=plugin,
+                    description=desc,
+                    status_query=status_query,
+                    collector=collector,
+                    collect_type=collect_type
+                ),
             )
             plugin_obj.monitor_object.add(monitor_obj)
 
@@ -75,8 +84,25 @@ class MonitorPluginService:
         metrics_to_create = []
         existing_metrics = {
             metric.name: metric
-            for metric in Metric.objects.filter(monitor_object=monitor_obj)
+            for metric in Metric.objects.filter(monitor_object=monitor_obj, monitor_plugin=plugin_obj)
         }
+
+        # 删除is_pre=True但不在新指标列表中的旧指标（按插件删除）
+        new_metric_names = {metric["name"] for metric in metrics}
+        old_pre_metrics_to_delete = [
+            metric_name for metric_name, metric in existing_metrics.items()
+            if metric.is_pre and metric_name not in new_metric_names
+        ]
+        if old_pre_metrics_to_delete:
+            Metric.objects.filter(
+                monitor_object=monitor_obj,
+                monitor_plugin=plugin_obj,
+                name__in=old_pre_metrics_to_delete,
+                is_pre=True
+            ).delete()
+            # 从existing_metrics中移除已删除的指标
+            for metric_name in old_pre_metrics_to_delete:
+                existing_metrics.pop(metric_name)
 
         for metric in metrics:
             if metric["name"] in existing_metrics:
@@ -123,8 +149,17 @@ class MonitorPluginService:
         """导入复合监控对象"""
         base_object = {}
         derivative_objects = []
+        collector = data.get("collector", "")
+        collect_type = data.get("collect_type", "")
+
         for object_info in data.get("objects", []):
-            object_info.update(plugin=data["plugin"], plugin_desc=data["plugin_desc"])
+            object_info.update(
+                plugin=data["plugin"],
+                plugin_desc=data["plugin_desc"],
+                status_query=data["status_query"],
+                collector=collector,
+                collect_type=collect_type
+            )
             if object_info.get("level") == "base":
                 base_object = object_info
             else:
@@ -157,6 +192,8 @@ class MonitorPluginService:
         data = {
             "plugin": plugin_obj.name,
             "plugin_desc": plugin_obj.description,
+            "collector": plugin_obj.collector,
+            "collect_type": plugin_obj.collect_type,
             "name": monitor_obj.name,
             "type": monitor_obj.type_id if monitor_obj.type else None,  # 导出type的id值
             "description": monitor_obj.description,
@@ -179,10 +216,19 @@ class MonitorPluginService:
     @staticmethod
     def export_compound_monitor_object(plugin_obj, monitor_objs, metrics_map):
         """导出复合监控对象"""
-        data = {"plugin":plugin_obj.name, "plugin_desc":plugin_obj.description, "is_compound_object": True, "objects": []}
+        data = {
+            "plugin": plugin_obj.name,
+            "plugin_desc": plugin_obj.description,
+            "collector": plugin_obj.collector,
+            "collect_type": plugin_obj.collector,
+            "is_compound_object": True,
+            "objects": []
+        }
         for monitor_obj in monitor_objs:
             object_data = MonitorPluginService.export_basic_monitor_object(plugin_obj, monitor_obj, metrics_map[monitor_obj.id])
             object_data.pop("plugin")
             object_data.pop("plugin_desc")
+            object_data.pop("collector")
+            object_data.pop("collect_type")
             data["objects"].append(object_data)
         return data

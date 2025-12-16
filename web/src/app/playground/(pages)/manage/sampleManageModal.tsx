@@ -53,14 +53,23 @@ const SampleManageModal = forwardRef<ModalRef, UploadModalProps>(({ onSuccess },
     // 统一换行符为 \n
     const lines = text.replace(/\r\n|\r|\n/g, '\n')?.split('\n').filter(line => line.trim() !== '');
     if (!lines.length) return [];
-    const headers = ['timestamp', 'value', 'label'];
+    console.log(formData?.categoryType, formData)
+    const headers = formData?.categoryType !== 'classification' ? ['timestamp', 'value', 'label'] : lines[0].split(',');
+    console.log(headers);
     const data = lines.slice(1).map((line, index) => {
       const values = line.split(',');
       return headers.reduce((obj: Record<string, any>, key, idx) => {
-        obj[key] = key === 'timestamp'
-          ? new Date(values[idx]).getTime() / 1000
-          : Number(values[idx]);
-        obj['index'] = index;
+        const value = values[idx];
+        if (key === 'timestamp') {
+          const timestamp = new Date(value).getTime();
+          obj[key] = timestamp / 1000;
+        } else {
+          const numValue = Number(value);
+          obj[key] = isNaN(numValue) ? value : numValue;
+        }
+        if (formData?.categoryType === 'anomaly_detection') {
+          obj['index'] = index;
+        }
         return obj;
       }, {});
     });
@@ -78,7 +87,13 @@ const SampleManageModal = forwardRef<ModalRef, UploadModalProps>(({ onSuccess },
       const [capability] = formData?.capability;
       const text = await file?.originFileObj.text();
       const data: TrainDataParams[] = handleFileRead(text);
-      const train_data = data.map(item => ({ timestamp: item.timestamp, value: item.value }));
+      console.log(data);
+      const train_data = data.map(item => {
+        if (formData?.categoryType === 'anomaly_detection') {
+          return { timestamp: item.timestamp, value: item.value }
+        }
+        return item
+      });
       const params = {
         name: file.name,
         capability,

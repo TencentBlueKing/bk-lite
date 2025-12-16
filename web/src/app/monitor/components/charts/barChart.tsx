@@ -164,4 +164,6 @@ const CustomBarChart: React.FC<BarChartProps> = ({
   );
 };
 
+CustomBarChart.displayName = 'CustomBarChart';
+
 export default CustomBarChart;

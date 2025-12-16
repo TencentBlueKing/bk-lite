@@ -28,10 +28,12 @@
         "switchedToLanguage": "Switched to",
         "switchLanguageFailed": "Failed to switch language, please try again",
         "languageSelectionTitle": "Select Language",
-        "languageSelectionSubtitle": "Choose Language"
+        "languageSelectionSubtitle": "Choose Language",
+        "accountsAndSecurity": "Accounts & Security"
     },
     "navigation": {
         "conversations": "Chat",
+        "workbench": "Workbench",
         "profile": "Me"
     },
     "chat": {

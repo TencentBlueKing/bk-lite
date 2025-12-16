@@ -17,10 +17,37 @@ export const useSecurityApi = () => {
    * @param enableOtp - "1" to enable OTP, "0" to disable
    * @returns Promise with updated settings
    */
-  async function updateOtpSettings({ enableOtp, loginExpiredTime }: { enableOtp: string; loginExpiredTime: string }): Promise<any> {
+  async function updateOtpSettings({ 
+    enableOtp, 
+    loginExpiredTime,
+    pwdSetValidityPeriod,
+    pwdSetRequiredCharTypes,
+    pwdSetMinLength,
+    pwdSetMaxLength,
+    pwdSetMaxRetryCount,
+    pwdSetLockDuration,
+    pwdSetExpiryReminderDays,
+  }: { 
+    enableOtp: string; 
+    loginExpiredTime: string;
+    pwdSetValidityPeriod?: string;
+    pwdSetRequiredCharTypes?: string;
+    pwdSetMinLength?: string;
+    pwdSetMaxLength?: string;
+    pwdSetMaxRetryCount?: string;
+    pwdSetLockDuration?: string;
+    pwdSetExpiryReminderDays?: string;
+  }): Promise<any> {
     return await post('/system_mgmt/system_settings/update_sys_set/', {
       enable_otp: enableOtp,
-      login_expired_time: loginExpiredTime
+      login_expired_time: loginExpiredTime,
+      pwd_set_validity_period: pwdSetValidityPeriod,
+      pwd_set_required_char_types: pwdSetRequiredCharTypes,
+      pwd_set_min_length: pwdSetMinLength,
+      pwd_set_max_length: pwdSetMaxLength,
+      pwd_set_max_retry_count: pwdSetMaxRetryCount,
+      pwd_set_lock_duration: pwdSetLockDuration,
+      pwd_set_expiry_reminder_days: pwdSetExpiryReminderDays,
     });
   }
 
@@ -72,12 +99,69 @@ export const useSecurityApi = () => {
     return await patch(`/system_mgmt/login_module/${id}/sync_data/`);
   }
 
+  /**
+   * Get user login logs
+   * @param params - Query parameters for filtering logs
+   * @returns Promise with user login logs data
+   */
+  async function getUserLoginLogs(params?: {
+    status?: 'success' | 'failed';
+    username?: string;
+    username__icontains?: string;
+    source_ip?: string;
+    source_ip__icontains?: string;
+    domain?: string;
+    login_time_start?: string;
+    login_time_end?: string;
+    page?: number;
+    page_size?: number;
+  }): Promise<any> {
+    return await get('/system_mgmt/user_login_log/', { params });
+  }
+
+  /**
+   * Get operation logs
+   * @param params - Query parameters for filtering logs
+   * @returns Promise with operation logs data
+   */
+  async function getOperationLogs(params?: {
+    username?: string;
+    app?: string;
+    action_type?: string;
+    start_time?: string;
+    end_time?: string;
+    page?: number;
+    page_size?: number;
+  }): Promise<any> {
+    return await get('/system_mgmt/operation_log/', { params });
+  }
+
+  /**
+   * Get error logs
+   * @param params - Query parameters for filtering logs
+   * @returns Promise with error logs data
+   */
+  async function getErrorLogs(params?: {
+    time_start?: string;
+    time_end?: string;
+    username?: string;
+    app?: string;
+    module?: string;
+    page?: number;
+    page_size?: number;
+  }): Promise<any> {
+    return await get('/system_mgmt/error_log/', { params });
+  }
+
   return {
     getSystemSettings,
     updateOtpSettings,
     getAuthSources,
     updateAuthSource,
     createAuthSource,
-    syncAuthSource
+    syncAuthSource,
+    getUserLoginLogs,
+    getOperationLogs,
+    getErrorLogs
   };
 };

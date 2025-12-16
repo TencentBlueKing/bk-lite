@@ -12,77 +12,14 @@
         overflow-x: hidden;
         padding: 20px 10px;
         background-color: var(--color-bg-1);
-    }
 
-    .rule {
-        width: 210px;
-        min-width: 210px;
-        height: calc(100vh - 146px);
-        padding: 20px;
-        background: var(--color-bg-1);
-        margin-left: 10px;
-
-        .ruleTips {
-            width: 50px;
-            position: relative;
-            font-size: 14px;
-        }
-
-        .ruleList {
-            font-size: 12px;
-
-            .ruleItem {
-                width: 100%;
-                height: 80px;
-                border: 1px solid var(--color-border-1);
-                margin-top: 20px;
-
-                .editItem {
-                    position: relative;
-                    display: flex;
-                    height: 100%;
-                    align-items: center;
-                    padding: 20px;
-
-                    .icon {
-                        min-width: 36px;
-                        font-size: 36px;
-                        margin-right: 10px;
-                    }
-
-                    .ruleName {
-                        margin-right: 10px;
-                        display: -webkit-box;
-                        -webkit-box-orient: vertical;
-                        -webkit-line-clamp: 3;
-                        overflow: hidden;
-                        text-overflow: ellipsis;
-                    }
-
-                    .operate {
-                        position: absolute;
-                        top: 10px;
-                        right: 10px;
-
-                        .moreIcon {
-                            font-size: 18px;
-                            cursor: pointer;
-                        }
-                    }
-                }
-            }
-
-            .add {
-                display: flex !important;
-                align-items: center;
-                justify-content: center;
-                cursor: pointer;
-            }
+        :global(.ant-tree-list) {
+            width: 100%;
         }
     }
 
     .table {
-        width: calc(100vw - 470px);
+        width: calc(100vw - 250px);
         background: var(--color-bg-1);
         height: calc(100vh - 146px);
         padding: 20px;
@@ -97,20 +34,11 @@
     }
 }
 
-.asset .tree :global(.ant-tree-list) {
-    width: 100%;
-}
-
-.asset .rule .ruleList .ruleItem .editItem .operate :global(.ant-btn-icon-only) {
-    width: auto;
-    transform: scale(0.8);
-}
-
-.conditionItem :global(.ant-btn-default) {
-    min-width: 32px;
-}
-
 .conditionItem {
+    :global(.ant-btn-default) {
+        min-width: 32px;
+    }
+
     .itemLabel {
         font-weight: 600;
         font-size: 13px;
@@ -123,9 +51,15 @@
 
     .source {
         .sourceObjectType {
+            :global(.ant-select-selector) {
+                border-radius: 6px 0 0 6px;
+            }
         }
 
         .sourceObject {
+            :global(.ant-select-selector) {
+                border-radius: 0 6px 6px 0;
+            }
         }
     }
 
@@ -142,39 +76,31 @@
 
         .filter {
             margin-bottom: 10px;
+
+            :global(.ant-btn:nth-of-type(1)) {
+                border-radius: 0 6px 6px 0;
+                margin-right: 10px;
+            }
+
+            :global(.ant-btn:nth-of-type(2)) {
+                margin-right: 10px;
+            }
+
+            :global(.ant-btn) {
+                background: var(--color-fill-2);
+            }
+
+            :global(.ant-btn-icon) {
+                transform: scale(0.8);
+            }
+
+            :global(.ant-select-selector) {
+                border-radius: 0;
+            }
+
+            :global(.ant-input) {
+                border-radius: 0;
+            }
         }
     }
-}
-
-.conditionItem .source .sourceObjectType :global(.ant-select-selector) {
-    border-radius: 6px 0 0 6px;
-}
-
-.conditionItem .source .sourceObject :global(.ant-select-selector) {
-    border-radius: 0 6px 6px 0;
-}
-
-.conditionItem .conditions .filter :global(.ant-btn:nth-of-type(1)) {
-    border-radius: 0 6px 6px 0;
-    margin-right: 10px;
-}
-
-.conditionItem .conditions .filter :global(.ant-btn:nth-of-type(2)) {
-    margin-right: 10px;
-}
-
-.conditionItem .conditions .filter :global(.ant-btn) {
-    background: var(--color-fill-2);
-}
-
-.conditionItem .conditions .filter :global(.ant-btn-icon) {
-    transform: scale(0.8);
-}
-
-.conditionItem .conditions .filter :global(.ant-select-selector) {
-    border-radius: 0;
-}
-
-.conditionItem .conditions .filter :global(.ant-input) {
-    border-radius: 0;
 }
