@@ -131,9 +131,7 @@ class InfraService:
         :return: 渲染后的 YAML 字符串
         :raises BaseAppException: API 调用失败时抛出异常
         """
-        # 从 WEBHOOK_SERVER_URL 构造 infra API 地址
-        # 例如: http://10.10.41.149:8080 -> http://10.10.41.149:8080/infra/render
-        api_url = f"{base_url.rstrip('/')}/infra/render" if base_url else None
+        api_url = f"{base_url.rstrip('/')}/infra/kubernetes" if base_url else None
 
         if not api_url:
             raise BaseAppException("Webhook API URL is required")
