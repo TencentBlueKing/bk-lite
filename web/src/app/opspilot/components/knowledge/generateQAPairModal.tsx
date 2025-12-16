@@ -195,7 +195,6 @@ const GenerateQAPairModal = forwardRef<ModalRef, GenerateQAPairModalProps>(
         console.log('Debug - Request payload:', payload);
 
         await createQAPairsByChunk(payload);
-        message.success(t('knowledge.qaPairs.generateSuccess'));
         
         handleCancel();
         onSuccess?.();
@@ -208,7 +207,6 @@ const GenerateQAPairModal = forwardRef<ModalRef, GenerateQAPairModalProps>(
       }
     };
 
-    // 处理取消操作
     const handleCancel = () => {
       setVisible(false);
       setDocumentId('');

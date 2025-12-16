@@ -1,0 +1,101 @@
+{
+  "object_name": "Website",
+  "instance_type": "web",
+  "collect_type": "web",
+  "config_type": ["http_response"],
+  "collector": "Telegraf",
+  "instance_id": "{{instance_type}}_{{url}}",
+  "form_fields": [
+    {
+      "name": "monitor_url",
+      "label": "URL",
+      "type": "input",
+      "required": true,
+      "visible_in": "edit",
+      "editable": false,
+      "description": "监控的目标网址链接，以检测其可用性和性能。",
+      "widget_props": {
+        "placeholder": "https://example.com"
+      },
+      "transform_on_edit": {
+        "origin_path": "child.content.config.urls[0]"
+      }
+    },
+    {
+      "name": "interval",
+      "label": "间隔",
+      "type": "inputNumber",
+      "required": true,
+      "default_value": 10,
+      "description": "监控数据的采集时间间隔（单位：秒）",
+      "widget_props": {
+        "min": 1,
+        "precision": 0,
+        "placeholder": "间隔",
+        "addonAfter": "s"
+      },
+      "transform_on_edit": {
+        "origin_path": "child.content.config.interval",
+        "to_form": {
+          "regex": "^(\\d+)s$"
+        },
+        "to_api": {
+          "suffix": "s"
+        }
+      }
+    }
+  ],
+  "table_columns": [
+    {
+      "name": "node_ids",
+      "label": "节点",
+      "type": "select",
+      "required": true,
+      "widget_props": {
+        "placeholder": "请选择节点"
+      },
+      "enable_row_filter": true
+    },
+    {
+      "name": "url",
+      "label": "URL",
+      "type": "input",
+      "required": true,
+      "widget_props": {
+        "placeholder": "https://example.com"
+      },
+      "rules": [
+        {
+          "type": "pattern",
+          "pattern": "^(http|https)://.*",
+          "message": "URL必须以http://或https://开头",
+          "excel_formula": "OR(LEFT({{CELL}},7)=\"http://\",LEFT({{CELL}},8)=\"https://\")"
+        }
+      ],
+      "change_handler": {
+        "type": "simple",
+        "source_fields": ["url"],
+        "target_field": "instance_name"
+      }
+    },
+    {
+      "name": "instance_name",
+      "label": "实例名称",
+      "type": "input",
+      "required": true,
+      "widget_props": {
+        "placeholder": "实例名称",
+        "disabled": false
+      }
+    },
+    {
+      "name": "group_ids",
+      "label": "组",
+      "type": "group_select",
+      "required": false,
+      "widget_props": {
+        "placeholder": "请选择组"
+      }
+    }
+  ]
+}

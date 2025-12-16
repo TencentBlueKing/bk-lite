@@ -8,7 +8,16 @@ export default function Home() {
   const router = useRouter();
 
   useEffect(() => {
-    router.replace('/conversations');
+    // 检查是否已登录
+    const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
+
+    if (token) {
+      // 已登录，跳转到会话页
+      router.replace('/conversation?id=1');
+    } else {
+      // 未登录，跳转到登录页
+      router.replace('/login');
+    }
   }, [router]);
 
   return (

@@ -8,10 +8,11 @@ from rest_framework.response import Response
 from apps.core.decorators.api_permission import HasPermission
 from apps.core.logger import opspilot_logger as logger
 from apps.core.mixinx import EncryptMixin
-from apps.core.utils.async_utils import create_async_compatible_generator
 from apps.core.utils.viewset_utils import AuthViewSet, LanguageViewSet
 from apps.opspilot.models import KnowledgeBase, LLMModel, LLMSkill, SkillRequestLog, SkillTools
 from apps.opspilot.serializers.llm_serializer import LLMModelSerializer, LLMSerializer, SkillRequestLogSerializer, SkillToolsSerializer
+from apps.opspilot.utils.agui_chat import stream_agui_chat
+from apps.opspilot.utils.mcp_client import MCPClient
 from apps.opspilot.utils.quota_utils import get_quota_client
 from apps.opspilot.utils.sse_chat import stream_chat
 
@@ -57,11 +58,13 @@ class LLMViewSet(AuthViewSet):
             client = get_quota_client(request)
             skill_count, used_skill_count, __ = client.get_skill_quota()
             if skill_count != -1 and skill_count <= used_skill_count:
-                message = self.loader.get("skill_quota_exceeded") if self.loader else "Skill count exceeds quota limit."
+                message = self.loader.get("error.skill_quota_exceeded") if self.loader else "Skill count exceeds quota limit."
                 return JsonResponse({"result": False, "message": message})
         validate_msg = self._validate_name(params["name"], request.user.group_list, params["team"])
         if validate_msg:
-            message = self.loader.get("skill_name_exists") if self.loader else f"A skill with the same name already exists in group {validate_msg}."
+            message = (
+                self.loader.get("error.skill_name_exists") if self.loader else f"A skill with the same name already exists in group {validate_msg}."
+            )
             if self.loader:
                 message = message.format(validate_msg=validate_msg)
             return JsonResponse({"result": False, "message": message})
@@ -85,14 +88,15 @@ class LLMViewSet(AuthViewSet):
         instance: LLMSkill = self.get_object()
         if not request.user.is_superuser:
             current_team = request.COOKIES.get("current_team", "0")
-            has_permission = self.get_has_permission(request.user, instance, current_team)
+            include_children = request.COOKIES.get("include_children", "0") == "1"
+            has_permission = self.get_has_permission(request.user, instance, current_team, include_children=include_children)
             if not has_permission:
                 return JsonResponse(
                     {
                         "result": False,
-                        "message": self.loader.get("permission_update_denied")
-                        if self.loader
-                        else "You do not have permission to update this instance",
+                        "message": (
+                            self.loader.get("error.permission_update_denied") if self.loader else "You do not have permission to update this instance"
+                        ),
                     }
                 )
 
@@ -105,7 +109,9 @@ class LLMViewSet(AuthViewSet):
         )
         if validate_msg:
             message = (
-                self.loader.get("skill_name_exists_update") if self.loader else f"A skill with the same name already exists in group {validate_msg}."
+                self.loader.get("error.skill_name_exists_update")
+                if self.loader
+                else f"A skill with the same name already exists in group {validate_msg}."
             )
             if self.loader:
                 message = message.format(validate_msg=validate_msg)
@@ -144,16 +150,13 @@ class LLMViewSet(AuthViewSet):
         """
         import json
 
-        def error_generator():
+        async def error_generator():
             error_data = {"result": False, "message": error_message, "error": True}
             yield f"data: {json.dumps(error_data, ensure_ascii=False)}\n\n"
             yield "data: [DONE]\n\n"
 
-        # 使用异步兼容的生成器包装器
-
-        async_generator = create_async_compatible_generator(error_generator())
-
-        response = StreamingHttpResponse(async_generator, content_type="text/event-stream")
+        # 直接使用异步生成器
+        response = StreamingHttpResponse(error_generator(), content_type="text/event-stream")
         response["Cache-Control"] = "no-cache, no-store, must-revalidate"
         response["X-Accel-Buffering"] = "no"  # Nginx
         # response["Pragma"] = "no-cache"
@@ -190,9 +193,12 @@ class LLMViewSet(AuthViewSet):
             skill_obj = LLMSkill.objects.get(id=int(params["skill_id"]))
             if not request.user.is_superuser:
                 current_team = request.COOKIES.get("current_team", "0")
-                has_permission = self.get_has_permission(request.user, skill_obj, current_team, is_check=True)
+                include_children = request.COOKIES.get("include_children", "0") == "1"
+                has_permission = self.get_has_permission(request.user, skill_obj, current_team, is_check=True, include_children=include_children)
                 if not has_permission:
-                    message = self.loader.get("no_agent_update_permission") if self.loader else "You do not have permission to update this agent."
+                    message = (
+                        self.loader.get("error.no_agent_update_permission") if self.loader else "You do not have permission to update this agent."
+                    )
                     return self._create_error_stream_response(message)
 
             current_ip = request.META.get("HTTP_X_FORWARDED_FOR")
@@ -211,7 +217,71 @@ class LLMViewSet(AuthViewSet):
             # 调用stream_chat函数返回流式响应
             return stream_chat(params, skill_obj.name, {}, current_ip, params["user_message"])
         except LLMSkill.DoesNotExist:
-            message = self.loader.get("skill_not_found_detail") if self.loader else "Skill not found."
+            message = self.loader.get("error.skill_not_found_detail") if self.loader else "Skill not found."
+            return self._create_error_stream_response(message)
+        except Exception as e:
+            logger.exception(e)
+            return self._create_error_stream_response(str(e))
+
+    @action(methods=["POST"], detail=False)
+    @HasPermission("skill_setting-View")
+    def execute_agui(self, request):
+        """
+        AGUI协议的execute接口
+
+        遵循AGUI协议规范，调用metis的/api/agent/invoke_chatbot_workflow_agui接口
+
+        请求参数与execute相同:
+        {
+            "user_message": "你好",
+            "llm_model": 1,
+            "skill_prompt": "abc",
+            "enable_rag": True,
+            "enable_rag_knowledge_source": True,
+            "rag_score_threshold": [{"knowledge_base": 1, "score": 0.7}],
+            "chat_history": "abc",
+            "conversation_window_size": 10,
+            "show_think": True,
+            "group": 1,
+            "enable_rag_strict_mode": False,
+            "skill_name": "test"
+        }
+
+        返回AGUI协议格式的流式响应
+        """
+        params = request.data
+        params["username"] = request.user.username
+        params["user_id"] = request.user.id
+        try:
+            skill_obj = LLMSkill.objects.get(id=int(params["skill_id"]))
+            if not request.user.is_superuser:
+                current_team = request.COOKIES.get("current_team", "0")
+                include_children = request.COOKIES.get("include_children", "0") == "1"
+                has_permission = self.get_has_permission(request.user, skill_obj, current_team, is_check=True, include_children=include_children)
+                if not has_permission:
+                    message = (
+                        self.loader.get("error.no_agent_update_permission") if self.loader else "You do not have permission to update this agent."
+                    )
+                    return self._create_error_stream_response(message)
+
+            current_ip = request.META.get("HTTP_X_FORWARDED_FOR")
+            if current_ip:
+                current_ip = current_ip.split(",")[0].strip()
+            else:
+                current_ip = request.META.get("REMOTE_ADDR", "")
+
+            params["skill_type"] = skill_obj.skill_type
+            params["tools"] = params.get("tools", [])
+            params["group"] = params["group"] if params.get("group") else skill_obj.team[0]
+            params["enable_km_route"] = params["enable_km_route"] if params.get("enable_km_route") else skill_obj.enable_km_route
+            params["km_llm_model"] = params["km_llm_model"] if params.get("km_llm_model") else skill_obj.km_llm_model
+            params["enable_suggest"] = params["enable_suggest"] if params.get("enable_suggest") else skill_obj.enable_suggest
+            params["enable_query_rewrite"] = params["enable_query_rewrite"] if params.get("enable_query_rewrite") else skill_obj.enable_query_rewrite
+
+            # 调用AGUI协议的流式响应
+            return stream_agui_chat(params, skill_obj.name, {}, current_ip, params["user_message"])
+        except LLMSkill.DoesNotExist:
+            message = self.loader.get("error.skill_not_found_detail") if self.loader else "Skill not found."
             return self._create_error_stream_response(message)
         except Exception as e:
             logger.exception(e)
@@ -251,12 +321,14 @@ class LLMModelViewSet(AuthViewSet):
     def create(self, request, *args, **kwargs):
         params = request.data
         if not params.get("team"):
-            message = self.loader.get("team_empty") if self.loader else "The team is empty."
+            message = self.loader.get("error.team_empty") if self.loader else "The team is empty."
             return JsonResponse({"result": False, "message": message})
         validate_msg = self._validate_name(params["name"], request.user.group_list, params["team"])
         if validate_msg:
             message = (
-                self.loader.get("llm_model_name_exists") if self.loader else f"A LLM Model with the same name already exists in group {validate_msg}."
+                self.loader.get("error.llm_model_name_exists")
+                if self.loader
+                else f"A LLM Model with the same name already exists in group {validate_msg}."
             )
             if self.loader:
                 message = message.format(validate_msg=validate_msg)
@@ -284,7 +356,9 @@ class LLMModelViewSet(AuthViewSet):
         )
         if validate_msg:
             message = (
-                self.loader.get("llm_model_name_exists") if self.loader else f"A LLM Model with the same name already exists in group {validate_msg}."
+                self.loader.get("error.llm_model_name_exists")
+                if self.loader
+                else f"A LLM Model with the same name already exists in group {validate_msg}."
             )
             if self.loader:
                 message = message.format(validate_msg=validate_msg)
@@ -298,7 +372,7 @@ class LLMModelViewSet(AuthViewSet):
             return JsonResponse(
                 {
                     "result": False,
-                    "message": self.loader.get("builtin_model_delete_denied") if self.loader else "Built-in model is not allowed to be deleted",
+                    "message": self.loader.get("error.builtin_model_delete_denied") if self.loader else "Built-in model is not allowed to be deleted",
                 }
             )
         return super().destroy(request, *args, **kwargs)
@@ -320,7 +394,7 @@ class SkillRequestLogViewSet(LanguageViewSet):
     @HasPermission("skill_invocation_logs-View")
     def list(self, request, *args, **kwargs):
         if not request.GET.get("skill_id"):
-            message = self.loader.get("skill_not_found") if self.loader else "Skill id not found"
+            message = self.loader.get("error.skill_not_found") if self.loader else "Skill id not found"
             return JsonResponse({"result": False, "message": message})
         return super().list(request, *args, **kwargs)
 
@@ -331,7 +405,7 @@ class ToolsFilter(FilterSet):
 
 class SkillToolsViewSet(AuthViewSet):
     serializer_class = SkillToolsSerializer
-    queryset = SkillTools.objects.all()
+    queryset = SkillTools.objects.all().order_by("-id")
     filterset_class = ToolsFilter
     permission_key = "tools"
 
@@ -350,3 +424,67 @@ class SkillToolsViewSet(AuthViewSet):
     @HasPermission("tool_list-Delete")
     def destroy(self, request, *args, **kwargs):
         return super().destroy(request, *args, **kwargs)
+
+    @action(methods=["POST"], detail=False)
+    @HasPermission("tool_list-View")
+    def get_mcp_tools(self, request):
+        """
+        根据 MCP server 地址获取子工具列表
+
+        MCP (Model Context Protocol) 标准握手流程:
+        1. initialize - 建立连接并获取 session ID
+        2. notifications/initialized - 通知服务器初始化完成
+        3. tools/list - 请求工具列表
+
+        请求参数:
+            server_url: MCP server 地址
+
+        返回格式:
+            {
+                "result": True,
+                "data": [
+                    {
+                        "name": "tool_name",
+                        "description": "tool description",
+                        "input_schema": {...}
+                    }
+                ]
+            }
+        """
+        server_url = request.data.get("server_url")
+        if not server_url:
+            message = self.loader.get("error.server_url_required") if self.loader else "MCP server URL is required"
+            return JsonResponse({"result": False, "message": message})
+
+        try:
+            with MCPClient(server_url) as mcp_client:
+                tools = mcp_client.get_tools()
+
+                # 转换格式：inputSchema -> parameters
+                formatted_tools = []
+                for tool in tools:
+                    formatted_tool = {"name": tool.get("name", ""), "description": tool.get("description", ""), "parameters": {}}
+
+                    # 提取 inputSchema 中的 properties 作为 parameters
+                    input_schema = tool.get("inputSchema", {})
+                    properties = input_schema.get("properties", {})
+                    required_fields = input_schema.get("required", [])
+
+                    # 转换每个参数
+                    for param_name, param_info in properties.items():
+                        formatted_tool["parameters"][param_name] = {
+                            "type": param_info.get("type", "string"),
+                            "required": param_name in required_fields,
+                            "description": param_info.get("description", ""),
+                        }
+                        # 保留默认值
+                        if "default" in param_info:
+                            formatted_tool["parameters"][param_name]["default"] = param_info["default"]
+
+                    formatted_tools.append(formatted_tool)
+
+                return JsonResponse({"result": True, "data": formatted_tools})
+        except Exception as e:
+            logger.exception(e)
+            message = self.loader.get("error.mcp_server_error") if self.loader else "Error occurred while fetching MCP tools"
+            return JsonResponse({"result": False, "message": f"{message}: {str(e)}"})

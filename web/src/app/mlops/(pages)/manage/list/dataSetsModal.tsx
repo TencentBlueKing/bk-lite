@@ -26,7 +26,11 @@ const DatasetModal = forwardRef<ModalRef, DatasetModalProps>(({ onSuccess, activ
     updateLogClustering,
     updateTimeSeriesPredict,
     addClassificationDatasets,
-    updateClassificationDataset
+    updateClassificationDataset,
+    addImageClassificationDatasets,
+    updateImageClassificationDataset,
+    addObjectDetectionDataset,
+    updateObjectDetectionDataset
   } = useMlopsManageApi();
   const [isModalOpen, setIsModalOpen] = useState<boolean>(false);
   const [type, setType] = useState<string>('edit');
@@ -57,7 +61,7 @@ const DatasetModal = forwardRef<ModalRef, DatasetModalProps>(({ onSuccess, activ
   }, [formData, isModalOpen]);
 
   const handleAddMap: Record<string, (params: any) => Promise<void>> = {
-    'anomaly': async (params: any) => {
+    'anomaly_detection': async (params: any) => {
       await addAnomalyDatasets(params);
     },
     'rasa': async (params: any) => {
@@ -71,11 +75,17 @@ const DatasetModal = forwardRef<ModalRef, DatasetModalProps>(({ onSuccess, activ
     },
     'classification': async (params: any) => {
       await addClassificationDatasets(params)
+    },
+    'image_classification': async (params: any) => {
+      await addImageClassificationDatasets(params)
+    },
+    'object_detection': async (params: any) => {
+      await addObjectDetectionDataset(params);
     }
   };
 
   const handleUpdateMap: Record<string, (id: number, params: any) => Promise<void>> = {
-    'anomaly': async (id: number, params: any) => {
+    'anomaly_detection': async (id: number, params: any) => {
       await updateAnomalyDatasets(id, params);
     },
     'rasa': async (id: number, params: any) => {
@@ -89,6 +99,12 @@ const DatasetModal = forwardRef<ModalRef, DatasetModalProps>(({ onSuccess, activ
     },
     'classification': async (id: number, params: any) => {
       await updateClassificationDataset(id, params);
+    },
+    'image_classification': async (id: number, params: any) => {
+      await updateImageClassificationDataset(id, params);
+    },
+    'object_detection': async (id: number, params: any) => {
+      await updateObjectDetectionDataset(id, params);
     }
   };
 

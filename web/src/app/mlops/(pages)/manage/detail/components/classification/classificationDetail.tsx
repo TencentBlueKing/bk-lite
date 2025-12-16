@@ -35,7 +35,7 @@ const ClassificationDetail = () => {
   const [pagination, setPagination] = useState<Pagination>({
     current: 1,
     total: 0,
-    pageSize: 10,
+    pageSize: 20,
   });
 
   const {
@@ -144,6 +144,7 @@ const ClassificationDetail = () => {
         page: pagination.current,
         page_size: pagination.pageSize
       });
+      
       const _tableData = items?.map((item: any) => {
         return {
           id: item?.id,
@@ -274,6 +275,7 @@ const ClassificationDetail = () => {
       <OperateModal
         open={modalOpen}
         title={t(`common.edit`)}
+        onCancel={handleCancel}
         footer={[
           <Button key="submit" loading={confirmLoading} type="primary" onClick={handleSubmit}>
             {t('common.confirm')}

@@ -1,13 +1,10 @@
-import { useStorageSnmpPlugin } from '../../plugins/hardwareDevice/storageSnmp';
 import { useStorageIpmiPlugin } from '../../plugins/hardwareDevice/storageIpmi';
 
 export const useStorageConfig = () => {
-  const snmpPlugin = useStorageSnmpPlugin();
   const ipmiPlugin = useStorageIpmiPlugin();
 
   // 所有插件配置
   const plugins = {
-    'Storage SNMP General': snmpPlugin,
     'Storage IPMI': ipmiPlugin,
   };
 

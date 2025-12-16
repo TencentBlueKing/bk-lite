@@ -183,8 +183,7 @@ const SmartSearchInput: React.FC<SmartSearchInputProps> = React.memo(
 
           const values = await getFieldValues(params);
           return values?.values || [];
-        } catch (error) {
-          console.error('Failed to fetch field values:', error);
+        } catch {
           return [];
         } finally {
           setLoading(false);
@@ -214,8 +213,7 @@ const SmartSearchInput: React.FC<SmartSearchInputProps> = React.memo(
 
           const values = await getFieldValues(params);
           return values?.values || [];
-        } catch (error) {
-          console.error('Failed to fetch field values:', error);
+        } catch {
           return [];
         } finally {
           setLoading(false);

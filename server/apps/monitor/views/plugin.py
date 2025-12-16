@@ -1,10 +1,11 @@
 from rest_framework import viewsets
 from rest_framework.decorators import action
 
+from apps.core.utils.loader import LanguageLoader
 from apps.core.utils.web_utils import WebUtils
+from apps.monitor.constants.language import LanguageConstants
 from apps.monitor.filters.plugin import MonitorPluginFilter
-from apps.monitor.language.service import SettingLanguage
-from apps.monitor.models import MonitorPlugin
+from apps.monitor.models import MonitorPlugin, MonitorPluginUITemplate
 from apps.monitor.serializers.pligin import MonitorPluginSerializer
 from apps.monitor.services.plugin import MonitorPluginService
 from config.drf.pagination import CustomPageNumberPagination
@@ -20,13 +21,13 @@ class MonitorPluginVieSet(viewsets.ModelViewSet):
         queryset = self.filter_queryset(self.get_queryset())
         serializer = self.get_serializer(queryset, many=True)
         results = serializer.data
-        lan = SettingLanguage(request.user.locale)
+
+        lan = LanguageLoader(app=LanguageConstants.APP, default_lang=request.user.locale)
         for result in results:
-            plugin_map = lan.get_val("MONITOR_OBJECT_PLUGIN", result["name"])
-            if not plugin_map:
-                plugin_map = {}
-            result["display_name"] = plugin_map.get("name") or result["name"]
-            result["display_description"] = plugin_map.get("desc") or result["description"]
+            plugin_key = f"{LanguageConstants.MONITOR_OBJECT_PLUGIN}.{result['name']}"
+            result["display_name"] = lan.get(f"{plugin_key}.name") or result["name"]
+            result["display_description"] = lan.get(f"{plugin_key}.desc") or result["description"]
+
         return WebUtils.response_success(results)
 
     def create(self, request, *args, **kwargs):
@@ -53,3 +54,19 @@ class MonitorPluginVieSet(viewsets.ModelViewSet):
     def export_monitor_object(self, request, pk):
         data = MonitorPluginService.export_monitor_plugin(pk)
         return WebUtils.response_success(data)
+
+    @action(methods=['get'], detail=True, url_path='ui_template')
+    def get_ui_template(self, request, pk=None):
+        """
+        获取插件的 UI 模板。
+
+        :param pk: 插件 ID
+        :return: UI 模板内容（JSON 格式）
+        """
+        plugin = self.get_object()
+
+        try:
+            ui_template = MonitorPluginUITemplate.objects.get(plugin=plugin)
+            return WebUtils.response_success(ui_template.content)
+        except MonitorPluginUITemplate.DoesNotExist:
+            return WebUtils.response_success({})

@@ -122,3 +122,24 @@ def generate_instance_fingerprint(event_data: Dict[str, Any], fields: List = [])
     fingerprint = hashlib.md5(sorted_data.encode('utf-8')).hexdigest()
 
     return fingerprint
+
+
+def window_size_to_int(window_size: str) -> int:
+    """
+    将窗口大小字符串转换为整数分钟数
+
+    Args:
+        window_size: 窗口大小字符串，如 "5min", "1h", "30s"
+
+    Returns:
+        int: 窗口大小对应的分钟数
+    """
+    if window_size.endswith('min'):
+        return int(window_size[:-3])
+    elif window_size.endswith('h'):
+        return int(window_size[:-1]) * 60
+    elif window_size.endswith('s'):
+        seconds = int(window_size[:-1])
+        return max(1, seconds // 60)  # 秒转分钟，最少1分钟
+    else:
+        raise ValueError(f"无法解析窗口大小: {window_size}")

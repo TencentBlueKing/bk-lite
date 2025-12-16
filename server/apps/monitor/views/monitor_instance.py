@@ -20,6 +20,7 @@ class MonitorInstanceVieSet(viewsets.ViewSet):
 
     @action(methods=['get'], detail=False, url_path='(?P<monitor_object_id>[^/.]+)/list')
     def monitor_instance_list(self, request, monitor_object_id):
+        """非特殊对象的通用列表接口"""
         permission = get_permission_rules(
             request.user,
             request.COOKIES.get("current_team"),
@@ -48,6 +49,7 @@ class MonitorInstanceVieSet(viewsets.ViewSet):
 
     @action(methods=['post'], detail=False, url_path='(?P<monitor_object_id>[^/.]+)/search')
     def monitor_instance_search(self, request, monitor_object_id):
+        """特殊搜索接口，特殊对象不通用的查询条件"""
 
         monitor_obj = MonitorObject.objects.filter(id=monitor_object_id).first()
         if not monitor_obj:
@@ -67,6 +69,39 @@ class MonitorInstanceVieSet(viewsets.ViewSet):
             qs=qs,
         )
         data = search_obj.search()
+        # 如果有权限规则，则添加到数据中
+        inst_permission_map = {i["id"]: i["permission"] for i in permission.get("instance", [])}
+        for instance_info in data["results"]:
+            if instance_info["instance_id"] in inst_permission_map:
+                instance_info["permission"] = inst_permission_map[instance_info["instance_id"]]
+            else:
+                instance_info["permission"] = PermissionConstants.DEFAULT_PERMISSION
+        return WebUtils.response_success(data)
+
+    @action(methods=['post'], detail=False, url_path='(?P<monitor_object_id>[^/.]+)/list_by_primary_object')
+    def list_by_primary_object(self, request, monitor_object_id):
+
+        monitor_obj = MonitorObject.objects.filter(id=monitor_object_id).first()
+        if not monitor_obj:
+            raise BaseAppException("Monitor object does not exist")
+        if monitor_obj.parent_id:
+            raise BaseAppException("Only primary monitor objects support instance search")
+
+        permission = get_permission_rules(
+            request.user,
+            request.COOKIES.get("current_team"),
+            "monitor",
+            f"{PermissionConstants.INSTANCE_MODULE}.{monitor_object_id}",
+        )
+        qs = permission_filter(MonitorInstance, permission, team_key="monitorinstanceorganization__organization__in",
+                               id_key="id__in")
+
+        search_obj = InstanceSearch(
+            monitor_obj,
+            dict(**request.data),
+            qs=qs,
+        )
+        data = search_obj.search_by_primary_object()
         # 如果有权限规则，则添加到数据中
         inst_permission_map = {i["id"]: i["permission"] for i in permission.get("instance", [])}
         for instance_info in data["results"]:

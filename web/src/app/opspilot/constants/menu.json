@@ -11,6 +11,7 @@
         "target": "bot_list",
         "order": 4
       },
+      "hasDetail": true,
       "children": [
         {
           "title": "设置",
@@ -41,6 +42,12 @@
           "url": "/opspilot/studio/detail/api",
           "icon": "api",
           "name": "bot_api"
+        },
+        {
+          "title": "对话",
+          "url": "/opspilot/studio/chat",
+          "name": "studio_chat",
+          "isNotMenuItem": true
         }
       ]
     },
@@ -55,18 +62,13 @@
         "target": "skill_list",
         "order": 3
       },
+      "hasDetail": true,
       "children": [
         {
           "title": "设置",
           "url": "/opspilot/skill/detail/settings",
           "icon": "shezhi",
           "name": "skill_setting"
-        },
-        {
-          "title": "规则",
-          "url": "/opspilot/skill/detail/rules",
-          "icon": "guize",
-          "name": "skill_rule"
         },
         {
           "title": "调用日志",
@@ -94,6 +96,7 @@
         "target": "knowledge_list",
         "order": 2
       },
+      "hasDetail": true,
       "children": [
         {
           "title": "文档",
@@ -169,32 +172,6 @@
         "target": "provide_list",
         "order": 1
       }
-    },
-    {
-      "title": "设置",
-      "icon": "settings-fill",
-      "url": "/opspilot/settings",
-      "name": "Setting",
-      "children": [
-        {
-          "title": "管理配额",
-          "url": "/opspilot/settings/manage",
-          "icon": "_quota_management",
-          "name": "mange_quota"
-        },
-        {
-          "title": "我的配额",
-          "url": "/opspilot/settings/quota",
-          "icon": "quota",
-          "name": "my_quota"
-        },
-        {
-          "title": "密钥",
-          "url": "/opspilot/settings/key",
-          "icon": "key",
-          "name": "api_secret_key"
-        }
-      ]
     }
   ],
   "en": [
@@ -209,6 +186,7 @@
         "target": "bot_list",
         "order": 4
       },
+      "hasDetail": true,
       "children": [
         {
           "title": "Settings",
@@ -233,6 +211,12 @@
           "url": "/opspilot/studio/detail/statistics",
           "icon": "tongji",
           "name": "bot_statistics"
+        },
+        {
+          "title": "Chat",
+          "url": "/opspilot/studio/chat",
+          "name": "studio_chat",
+          "isNotMenuItem": true
         }
       ]
     },
@@ -247,18 +231,13 @@
         "target": "skill_list",
         "order": 3
       },
+      "hasDetail": true,
       "children": [
         {
           "title": "Setting",
           "url": "/opspilot/skill/detail/settings",
           "icon": "shezhi",
           "name": "skill_setting"
-        },
-        {
-          "title": "Rules",
-          "url": "/opspilot/skill/detail/rules",
-          "icon": "guize",
-          "name": "skill_rule"
         },
         {
           "title": "Invocation Logs",
@@ -286,6 +265,7 @@
         "target": "knowledge_list",
         "order": 2
       },
+      "hasDetail": true,
       "children": [
         {
           "title": "Documents",
@@ -367,32 +347,6 @@
         "target": "provide_list",
         "order": 1
       }
-    },
-    {
-      "title": "Settings",
-      "icon": "settings-fill",
-      "url": "/opspilot/settings",
-      "name": "Setting",
-      "children": [
-        {
-          "title": "Manage Quota",
-          "url": "/opspilot/settings/manage",
-          "icon": "_quota_management",
-          "name": "mange_quota"
-        },
-        {
-          "title": "My Quota",
-          "url": "/opspilot/settings/quota",
-          "icon": "quota",
-          "name": "my_quota"
-        },
-        {
-          "title": "API Secret Keys",
-          "url": "/opspilot/settings/key",
-          "icon": "key",
-          "name": "api_secret_key"
-        }
-      ]
     }
   ]
 }

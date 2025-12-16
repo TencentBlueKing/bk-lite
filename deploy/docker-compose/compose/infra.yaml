@@ -125,11 +125,6 @@ services:
       - -storageDataPath=/vlogs
       - -loggerFormat=json
       - -insert.maxLineSizeBytes=10000000
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://victoria-logs:9428/health"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
 
   minio:
     image: ${DOCKER_IMAGE_MINIO}
@@ -203,7 +198,7 @@ services:
       - REDIS_ARGS=--requirepass ${FALKORDB_PASSWORD}
       - FALKORDB_ARGS=THREAD_COUNT 4
     ports:
-      - "6479:6479"      
+      - "6479:6379"      
     networks:
       - prod
     healthcheck:
@@ -213,3 +208,20 @@ services:
       retries: 3
     volumes:
       - falkordb:/var/lib/falkordb/data
+
+  pgvector:
+    image: ${DOCKER_IMAGE_PGVECTOR}
+    restart: always
+    environment:
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+      POSTGRES_USER: ${POSTGRES_USERNAME}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: metis
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "${POSTGRES_USERNAME}"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+    networks:
+      - prod

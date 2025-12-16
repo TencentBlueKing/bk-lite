@@ -11,7 +11,7 @@ import { useTranslation } from '@/utils/i18n';
 const MirrorManage = () => {
   const { t } = useTranslation();
   const modalRef = useRef<ModalRef>(null);
-  const [activeTab, setActiveTab] = useState<string>('ide');
+  const [activeTab, setActiveTab] = useState<('ide' | 'infra')>('ide');
   const tabOptions = [
     { label: t(`lab.manage.ide`), value: 'ide' },
     { label: t(`lab.manage.infra`), value: 'infra' }
@@ -37,7 +37,8 @@ const MirrorManage = () => {
           icon: 'tucengshuju',
           creator: item?.created_by || '--',
         }
-      })
+      });
+      console.log(_res);
       setTableData(_res || []);
     } catch (e) {
       console.log(e);
@@ -120,7 +121,7 @@ const MirrorManage = () => {
   return (
     <>
       <div className={`w-full h-full ${stlyes.segmented}`}>
-        <Segmented options={tabOptions} value={activeTab} onChange={(value) => setActiveTab(value)} />
+        <Segmented options={tabOptions} value={activeTab} onChange={(value) => setActiveTab(value as ("ide" | "infra"))} />
         <div className='flex h-full w-full mt-4'>
           <EntityList
             data={tableData}

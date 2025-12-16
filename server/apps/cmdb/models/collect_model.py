@@ -5,9 +5,14 @@
 
 from django.db import models
 from django.db.models import JSONField
+
+from apps.cmdb.services.encrypt_collect_password import get_collect_model_passwords
 from apps.core.models.time_info import TimeInfo
 from apps.core.models.maintainer_info import MaintainerInfo
-from apps.cmdb.constants import CollectPluginTypes, CollectDriverTypes, CollectRunStatusType, CollectInputMethod
+from apps.cmdb.constants.constants import CollectPluginTypes, CollectDriverTypes, CollectRunStatusType, \
+    CollectInputMethod
+from apps.core.utils.crypto.password_crypto import PasswordCrypto
+from apps.cmdb.constants.constants import SECRET_KEY
 
 
 class CollectModels(MaintainerInfo, TimeInfo):
@@ -54,6 +59,7 @@ class CollectModels(MaintainerInfo, TimeInfo):
     collect_data = JSONField(default=dict, help_text="采集原数据")
     collect_digest = JSONField(default=dict, help_text="采集摘要数据")
     format_data = JSONField(default=dict, help_text="采集返回的分类后的数据")
+    team = JSONField(default=list, help_text="关联组织")  # 把params里的组织单独抽出来，方便权限控制
 
     class Meta:
         verbose_name = "采集任务"
@@ -66,12 +72,14 @@ class CollectModels(MaintainerInfo, TimeInfo):
         update_data = self.format_data.get("update", [])
         delete_data = self.format_data.get("delete", [])
         relation_data = self.format_data.get("association", [])
+        raw_data = self.format_data.get("__raw_data__", [])
 
         return {
             "add": {"data": add_data, "count": len(add_data)},
             "update": {"data": update_data, "count": len(update_data)},
             "delete": {"data": delete_data, "count": len(delete_data)},
             "relation": {"data": relation_data, "count": len(relation_data)},
+            "raw_data": {"data": raw_data, "count": len(raw_data)},
         }
 
     @property
@@ -97,6 +105,66 @@ class CollectModels(MaintainerInfo, TimeInfo):
     @property
     def is_db(self):
         return self.task_type == CollectPluginTypes.DB
+
+    @staticmethod
+    def encrypt_password(raw_password):
+        """
+        加密密码
+        :param raw_password: 明文密码
+        :return: 加密后的密码
+        """
+        if not raw_password:
+            return raw_password
+
+        crypto = PasswordCrypto(SECRET_KEY)
+        return crypto.encrypt(raw_password)
+
+    @staticmethod
+    def decrypt_password(password):
+        """
+        解密密码
+        :return: 明文密码
+        """
+
+        try:
+            crypto = PasswordCrypto(SECRET_KEY)
+            return crypto.decrypt(password)
+        except Exception:
+            # 如果解密失败，可能是明文密码，直接返回
+            return password
+
+    @property
+    def decrypt_credentials(self):
+        """
+        解密凭据中的密码字段
+        :return: 解密后的凭据列表
+        {"port": "22", "password": "password", "username": "admin"}
+        """
+        if not self.credential or not isinstance(self.credential, dict):
+            return self.credential
+
+        decrypted_credentials = {}
+        encrypted_fields = get_collect_model_passwords(collect_model_id=self.model_id)
+
+        for encrypted_field in encrypted_fields:
+            password = encrypted_field.get(encrypted_field)
+            if not password:
+                continue
+            decrypted_credentials[encrypted_field] = self.decrypt_password(password)
+
+        return decrypted_credentials
+
+    def save(self, *args, **kwargs):
+        # 只有在密码未加密时才进行加密
+        if self.credential and isinstance(self.credential, dict):
+            encrypted_fields = get_collect_model_passwords(collect_model_id=self.model_id)
+            for encrypted_field in encrypted_fields:
+                password = self.credential.get(encrypted_field)
+                if not password:
+                    continue
+                # 直接加密 因为每次前端修改的都是明文密码
+                self.credential[encrypted_field] = self.encrypt_password(password)
+        super().save(*args, **kwargs)
 
 
 class OidMapping(MaintainerInfo, TimeInfo):

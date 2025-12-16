@@ -42,7 +42,7 @@ const DynamicForm: React.FC<DynamicFormProps> = ({ form, fields, initialValues }
     <Form form={form} layout="vertical" initialValues={initialValues}>
       {fields.map((field) => {
         const Component = componentMap[field.type];
-        const { name, label, rules, initialValue, ...rest } = field;
+        const { name, label, rules, initialValue, className, ...rest } = field;
 
         return (
           <Form.Item
@@ -51,6 +51,7 @@ const DynamicForm: React.FC<DynamicFormProps> = ({ form, fields, initialValues }
             label={label}
             rules={rules}
             initialValue={initialValue}
+            className={className}
           >
             {/* 显式传递 value 和 onChange */}
             {Component ? (

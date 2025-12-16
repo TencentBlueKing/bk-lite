@@ -1,4 +1,5 @@
 import useApiClient from '@/utils/request';
+import { TRAINJOB_MAP } from '@/app/mlops/constants';
 
 interface TrainTaskParams {
   name: string;
@@ -127,8 +128,8 @@ const useMlopsTaskApi = () => {
   };
 
   // 获取训练状态数据
-  const getTrainTaskState = async (id: number) => {
-    return await get(`/mlops/anomaly_detection_train_jobs/${id}/runs_data_list/`)
+  const getTrainTaskState = async (id: number, activeTap: string) => {
+    return await get(`/mlops/${TRAINJOB_MAP[activeTap]}/${id}/runs_data_list/`)
   };
 
   // 获取日志聚类训练历史记录
@@ -140,15 +141,15 @@ const useMlopsTaskApi = () => {
   const getTimeSeriesHistories = async (id: number) => {
     return await get(`/mlops/timeseries_predict_train_history/${id}`);
   };
-  
+
   // 获取状态指标
-  const getTrainTaskMetrics = async (id: string) => {
-    return await get(`/mlops/anomaly_detection_train_jobs/runs_metrics_list/${id}`)
+  const getTrainTaskMetrics = async (id: string, activeTap: string) => {
+    return await get(`/mlops/${TRAINJOB_MAP[activeTap]}/runs_metrics_list/${id}`)
   };
 
   // 获取具体指标信息
-  const getTrainTaskMetricsDetail = async (id: string, metrics_name: string) => {
-    return await get(`/mlops/anomaly_detection_train_jobs/runs_metrics_history/${id}/${metrics_name}`);
+  const getTrainTaskMetricsDetail = async (id: string, metrics_name: string, activeTap: string) => {
+    return await get(`/mlops/${TRAINJOB_MAP[activeTap]}/runs_metrics_history/${id}/${metrics_name}`);
   };
 
   // 新建异常检测训练任务
@@ -246,7 +247,50 @@ const useMlopsTaskApi = () => {
     return await del(`/mlops/classification_train_jobs/${id}/`);
   };
 
+  // 获取训练所用的数据集数据
+  const getTrainTaskFile = async (id: string, tap: string) => {
+    return await get(`/mlops/${TRAINJOB_MAP[tap]}/${id}/get_file`);
+  };
+
+  // 数据集版本发布（从训练任务快速发布）
+  const datasetRelease = async (id: string, params: any) => {
+    return await post(`/mlops/timeseries_predict_train_jobs/${id}/release_dataset`, params);
+  };
+
+  // 创建数据集版本发布（标准方式，从数据集管理页面）
+  const createDatasetRelease = async (params: {
+    dataset: number;
+    version: string;
+    name?: string;
+    description?: string;
+    train_file_id: number;
+    val_file_id: number;
+    test_file_id: number;
+  }) => {
+    return await post('/mlops/timeseries_predict_dataset_releases/', params);
+  };
+
+  // 获取数据集版本列表
+  const getDatasetReleases = async (params?: { dataset?: number; page?: number; page_size?: number }) => {
+    const queryParams = new URLSearchParams();
+    if (params?.dataset) queryParams.append('dataset', params.dataset.toString());
+    if (params?.page) queryParams.append('page', params.page.toString());
+    if (params?.page_size) queryParams.append('page_size', params.page_size.toString());
+    return await get(`/mlops/timeseries_predict_dataset_releases/?${queryParams.toString()}`);
+  };
+
+  // 归档数据集版本
+  const archiveDatasetRelease = async (id: string) => {
+    return await post(`/mlops/timeseries_predict_dataset_releases/${id}/archive/`);
+  };
+
+  // 删除数据集版本
+  const deleteDatasetRelease = async (id: string) => {
+    return await del(`/mlops/timeseries_predict_dataset_releases/${id}/`);
+  };
+
   return {
+    getTrainTaskFile,
     getAnomalyTaskList,
     getOneAnomalyTask,
     getTrainTaskState,
@@ -280,7 +324,12 @@ const useMlopsTaskApi = () => {
     deleteRasaPipelines,
     deleteLogClusteringTrainTask,
     deleteTimeSeriesTrainTask,
-    deleteClassificationTrainTask
+    deleteClassificationTrainTask,
+    datasetRelease,
+    createDatasetRelease,
+    getDatasetReleases,
+    archiveDatasetRelease,
+    deleteDatasetRelease
   }
 
 };

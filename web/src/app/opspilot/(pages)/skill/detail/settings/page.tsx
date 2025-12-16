@@ -172,7 +172,7 @@ const SkillSettingsPage: React.FC = () => {
     }
   };
 
-  const handleSendMessage = async (userMessage: string, currentMessages: any[] = []): Promise<{ url: string; payload: any } | null> => {
+  const handleSendMessage = async (userMessage: string, currentMessages: any[] = [], userMessageObj?: any): Promise<{ url: string; payload: any } | null> => {
     try {
       const values = await form.validateFields();
       
@@ -200,8 +200,30 @@ const SkillSettingsPage: React.FC = () => {
         }))
         : [];
 
-      const payload = {
-        user_message: userMessage,
+      // Build user_message array with images and text
+      let userMessageArray: any[];
+      if (userMessageObj?.images && userMessageObj.images.length > 0) {
+        // Format: [{"type": "image_url", "image_url": "..."}, ..., {"type": "message", "message": "..."}]
+        userMessageArray = [
+          ...userMessageObj.images.map((img: any) => ({
+            type: 'image_url',
+            image_url: img.url
+          })),
+          {
+            type: 'message',
+            message: userMessage
+          }
+        ];
+      } else {
+        // No images, just text message
+        userMessageArray = [{
+          type: 'message',
+          message: userMessage
+        }];
+      }
+
+      const payload: any = {
+        user_message: userMessageArray,
         llm_model: values.llmModel,
         skill_prompt: values.prompt,
         enable_rag: ragEnabled,
@@ -224,7 +246,7 @@ const SkillSettingsPage: React.FC = () => {
       };
 
       return {
-        url: '/api/proxy/opspilot/model_provider_mgmt/llm/execute/?stream=1',
+        url: '/api/proxy/opspilot/model_provider_mgmt/llm/execute_agui/',
         payload
       };
     } catch (error) {
@@ -483,6 +505,7 @@ const SkillSettingsPage: React.FC = () => {
             <CustomChatSSE 
               handleSendMessage={handleSendMessage} 
               guide={guideValue}
+              useAGUIProtocol={true}
             />
           </div>
         </div>

@@ -1,0 +1,48 @@
+# 忽略 Python 缓存和编译文件
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# 虚拟环境
+.venv/
+venv/
+ENV/
+env/
+
+# 分发 / 打包
+dist/
+build/
+*.egg-info/
+.eggs/
+
+# 环境变量文件
+.env
+.env.local
+
+# IDE 配置
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# 日志文件
+*.log
+
+# 操作系统文件
+.DS_Store
+Thumbs.db
+
+# uv 相关
+uv.lock
+
+# 测试
+.pytest_cache/
+.coverage
+htmlcov/
+test_results/
+
+# 临时文件
+*.tmp
+*.bak

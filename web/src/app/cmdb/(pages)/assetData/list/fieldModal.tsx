@@ -127,7 +127,9 @@ const FieldMoadal = forwardRef<FieldModalRef, FieldModalProps>(
         const forms = deepClone(formInfo);
         if (type === 'add') {
           Object.assign(forms, {
-            organization: selectedGroup?.id ? [Number(selectedGroup.id)] : [],
+            organization: selectedGroup?.id
+              ? [Number(selectedGroup.id)]
+              : undefined,
           });
         } else {
           for (const key in forms) {
@@ -135,11 +137,9 @@ const FieldMoadal = forwardRef<FieldModalRef, FieldModalProps>(
             if (target?.attr_type === 'time' && forms[key]) {
               forms[key] = dayjs(forms[key], 'YYYY-MM-DD HH:mm:ss');
             } else if (target?.attr_type === 'organization' && forms[key]) {
-              if (Array.isArray(forms[key])) {
-                forms[key] = forms[key]
-                  .map((item: any) => Number(item))
-                  .filter((num: number) => !isNaN(num));
-              }
+              forms[key] = forms[key]
+                .map((item: any) => Number(item))
+                .filter((num: number) => !isNaN(num));
             }
           }
         }
@@ -280,7 +280,7 @@ const FieldMoadal = forwardRef<FieldModalRef, FieldModalProps>(
             );
           case 'organization':
             return (
-              <GroupTreeSelector multiple={false} disabled={fieldDisabled} />
+              <GroupTreeSelector multiple={true} disabled={fieldDisabled} />
             );
           case 'int':
             return (

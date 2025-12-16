@@ -90,7 +90,7 @@ const ProviderGrid: React.FC<ProviderGridProps> = ({ models, filterType, loading
         ...(selectedModel[configField as keyof Model] as ModelConfig),
         base_url: values.url,
         api_key: values.apiKey,
-        ...(filterType !== 'ocr_provider' && { model: values.modelName })
+        model: values.modelName
       };
     }
 

@@ -1,6 +1,7 @@
 {
   "plugin": "Nginx",
   "plugin_desc": "By collecting metrics such as Nginx requests, connection status, and processing efficiency, this helps monitor and optimize the website's performance and stability.",
+  "status_query": "any({instance_type='nginx', collect_type='middleware'}) by (instance_id)",
   "name": "Nginx",
   "icon": "nginx",
   "type": "Middleware",

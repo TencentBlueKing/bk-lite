@@ -23,15 +23,18 @@
     "@ant-design/icons": "^6.0.2",
     "@ant-design/x": "^1.6.1",
     "@tauri-apps/api": "^2.8.0",
+    "@types/markdown-it": "^14.1.2",
     "antd": "^5.27.4",
     "antd-mobile": "^5.41.1",
     "antd-mobile-icons": "^0.3.0",
     "axios": "^1.7.7",
     "intl-messageformat": "^10.7.18",
+    "markdown-it": "^14.1.0",
     "next": "15.5.3",
     "next-auth": "^4.24.10",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
+    "react-easy-crop": "^5.5.3",
     "react-intl": "^7.0.1"
   },
   "devDependencies": {

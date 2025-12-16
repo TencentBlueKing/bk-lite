@@ -11,6 +11,14 @@
   --safe-area-inset-right: env(safe-area-inset-right, 0px);
 }
 
+/* 禁用触摸缩放 */
+html,
+body {
+  touch-action: pan-x pan-y;
+  -ms-touch-action: pan-x pan-y;
+  overscroll-behavior: none;
+}
+
 * {
   scrollbar-width: thin;
   scrollbar-color: var(--color-fill-4) var(--color-bg-7);
@@ -56,6 +64,18 @@
 .custom-scrollbar {
   scrollbar-width: thin;
   scrollbar-color: var(--color-fill-4) transparent;
+}
+
+/* 隐藏滚动条但保持滚动功能 */
+.scrollbar-hide {
+  -ms-overflow-style: none !important;
+  scrollbar-width: none !important;
+}
+
+.scrollbar-hide::-webkit-scrollbar {
+  display: none !important;
+  width: 0 !important;
+  height: 0 !important;
 }
 
 /* ========== 全局 body 样式 ========== */

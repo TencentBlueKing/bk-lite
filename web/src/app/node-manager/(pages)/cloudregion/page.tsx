@@ -5,7 +5,7 @@ import { Menu, Button, Modal, message } from 'antd';
 import cloudRegionStyle from './index.module.scss';
 import { useRouter } from 'next/navigation';
 import { useTranslation } from '@/utils/i18n';
-import useApiCloudRegion from '@/app/node-manager/api/cloudRegion';
+import useNodeManagerApi from '@/app/node-manager/api';
 import EntityList from '@/components/entity-list';
 import PermissionWrapper from '@/components/permission';
 import type {
@@ -13,6 +13,7 @@ import type {
   CloudRegionCardProps,
 } from '@/app/node-manager/types/cloudregion';
 import CloudRegionModal from './cloudregionModal';
+import DeployModal from './deployModal';
 import { ModalRef } from '@/app/node-manager/types';
 import { useMenuItem } from '@/app/node-manager/hooks/node';
 const { confirm } = Modal;
@@ -20,9 +21,10 @@ const { confirm } = Modal;
 const CloudRegion = () => {
   const { t } = useTranslation();
   const { isLoading } = useApiClient();
-  const { getCloudList, deleteCloudRegion } = useApiCloudRegion();
+  const { getCloudList, deleteCloudRegion } = useNodeManagerApi();
   const router = useRouter();
   const modalRef = useRef<ModalRef>(null);
+  const deployModalRef = useRef<ModalRef>(null);
   const divRef = useRef(null);
   const [cloudItems, setCloudItems] = useState<CloudRegionItem[]>([]);
   const [loading, setLoading] = useState<boolean>(false);
@@ -36,6 +38,24 @@ const CloudRegion = () => {
       const regionData = (data || []).map((item: CloudRegionCardProps) => {
         item.description = item.introduction;
         item.icon = 'yunquyu';
+        // 处理 services 转换为 tagList
+        if (item.services?.length) {
+          item.tagList = item.services.map((service: any) => {
+            let color = 'default';
+            if (service.status === 'normal') {
+              color = 'green';
+            } else if (service.status === 'error') {
+              color = 'red';
+            } else if (service.status === 'not_deployed') {
+              color = 'default';
+            }
+            return {
+              name: service.name,
+              color: color,
+              tooltip: service.status === 'error' ? service.description : '',
+            };
+          });
+        }
         return item;
       });
       setCloudItems(regionData.sort((a: any, b: any) => a.id - b.id));
@@ -51,6 +71,12 @@ const CloudRegion = () => {
   }, [isLoading]);
 
   const navigateToNode = (item: CloudRegionItem) => {
+    if (
+      (item.services || []).find((service) => service.status === 'not_deployed')
+    ) {
+      deployModalRef.current?.showModal(item as any);
+      return;
+    }
     router.push(
       `/node-manager/cloudregion/node?cloud_region_id=${item.id}&name=${item.name}`
     );
@@ -139,9 +165,9 @@ const CloudRegion = () => {
         onCardClick={(item: CloudRegionItem) => {
           navigateToNode(item);
         }}
-      ></EntityList>
-      {/* 编辑默认云区域弹窗 */}
+      />
       <CloudRegionModal ref={modalRef} onSuccess={handleSubmit} />
+      <DeployModal ref={deployModalRef} onSuccess={handleSubmit} />
     </div>
   );
 };

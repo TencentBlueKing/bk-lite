@@ -1,0 +1,181 @@
+base_constant:
+  wechat_official_account: 微信公众号
+  string: 字符串
+  knowledge: 知识库
+  enable_general_parse: 启用通用解析
+  boolean: 布尔值
+  url: 网址
+  ding_talk: 钉钉
+  lats: Lats
+  general_tools: 通用工具
+  rerank_model: 重排模型
+  created_time: 创建时间
+  chunk_size: 块大小
+  general_parse_chunk_size: 通用解析块大小
+  celery: Celery
+  mode: 模式
+  ready: 就绪
+  wechat_open_platform: 微信开放平台
+  integer: 整数
+  web: 网页
+  enable_ocr_parse: 启用 OCR 解析
+  graph_size: 图大小
+  text_value_type_fields: 文本数值类型字段
+  excel_full_content_parse: Excel 全文解析
+  number_of_results: 结果数量
+  enable_semantic_chunk_parse: 启用语义块解析
+  training: 训练中
+  maintainer_fields: 维护者字段
+  enterprise_wechat_bot: 企业微信机器人
+  time_fields: 时间字段
+  gitlab: GitLab
+  score_threshold: 分数阈值
+  creator: 创建者
+  agent: 智能体
+  llm_model: LLM 模型
+  knowledge_document: 知识文档
+  enable_rerank: 启用重排
+  core_model: 核心模型
+  use_specified_knowledge_base: 使用指定的知识库
+  lobe_chat: LobeChat
+  general_parse_chunk_overlap: 通用解析块重叠
+  pilot: Pilot
+  web_page_knowledge: 网页知识
+  channel_type: 渠道类型
+  plan_execute: 计划执行
+  updater: 更新者
+  file: 文件
+  sync_enabled: 启用同步
+  file_knowledge: 文件知识
+  enabled: 启用
+  linux: ''
+  datetime: 日期时间
+  enterprise_wechat: 企业微信
+  search_type: 搜索类型
+  train_progress: 训练进度
+  chunk_type: 块类型
+  enable_excel_parse: 启用 Excel 解析
+  basic_tool: 基础工具
+  content: 内容
+  ocr_model: OCR 模型
+  error: 错误
+  model: 模型
+  embed_model: 嵌入模型
+  number_of_candidates: 候选数量
+  enable_text_search: 启用文本搜索
+  embedding_model: 嵌入模型
+  default: 默认
+  manual_knowledge: 手动知识
+  max_depth: 最大深度
+  text_search_mode: 文本搜索模式
+  success: 成功
+  studio: 工作台
+  restful: RESTful
+  name: 名称
+  rerank_top_k: 重排 Top K
+  search_tools: 检索工具
+  pending: 待处理
+  text_search_weight: 文本搜索权重
+  builtin_tools_desc: 内置场常用的工具，包括节假日查询、当前时间查询等，以便提供额外信息
+  date: 日期
+  chat_flow: ChatFlow
+  windows: ''
+  openai: OpenAI
+  chunking: 分块处理中
+  knowledge_tool: 知识工具
+  internet_search_desc: 能够通过互联网快速搜索和获取信息，以便获取实时数据
+  sync_time: 同步时间
+  tool: 工具
+  train_status: 训练状态
+  channel_config: 渠道配置
+  qa_size: QA 大小
+  enable_vector_search: 启用向量搜索
+  vector_search_weight: 向量搜索权重
+  type: 类型
+  channel: 渠道
+  updated_time: 更新时间
+  fail: 失败
+  excel_header_row_parse: Excel 表头解析
+  source_type: 来源类型
+  time: 时间
+  float: 浮点数
+  json: JSON
+error:
+  no_group_id: 无组 ID
+  no_view_permission: 你没有权限查看此实例
+  delete_failed: 删除失败
+  knowledge_graph_not_completed: 知识图谱未完成
+  llm_model_name_exists: 组 {validate_msg} 中已存在同名 LLM 模型。
+  chunk_id_required: chunk_id 为必填项
+  no_authorization: 没有授权
+  team_empty: 团队为空。
+  permission_update_denied: 你没有权限更新此实例
+  group_not_exists: 组不存在。
+  file_import_failed: 文件导入失败。
+  bot_quota_exceeded: 机器人数量超过配额限制。
+  bot_node_id_required: Bot ID 和 Node ID 为必填项。
+  update_failed: 更新失败
+  bot_not_online: 没有在线的机器人
+  knowledge_graph_training: 知识图谱正在训练，无法删除
+  knowledge_base_has_qa_pairs: 该知识库包含问答对，无法删除。
+  training_document_no_retrain: 训练文档不可重新训练
+  qa_pair_update_failed: 更新 QA 对失败。
+  skill_quota_exceeded: 技能数量超过配额限制。
+  pilot_start_failed: Pilot 启动失败。
+  no_delete_permission: 你没有权限删除此实例
+  generate_question_failed: 生成问题失败
+  mcp_server_connection_failed: 无法连接到 MCP server
+  chat_flow_config_empty: 聊天流程配置为空。
+  insufficient_permissions: 权限不足
+  no_bot_start_permission: 你没有权限启动此机器人。
+  no_chat_flow_configured: 此机器人未配置聊天流程。
+  missing_bot_id: 缺少 bot_id
+  graph_search_failed: 搜索图失败。请检查服务器日志。
+  invalid_file_format: 无效的文件格式。仅允许 .json 和 .csv 文件。
+  url_request_failed: URL 请求失败
+  qa_pair_delete_failed: 删除 QA 对失败。
+  training_document_no_delete: 训练文档不可删除
+  generate_answer_failed: 生成答案失败
+  skill_not_found_detail: 未找到技能。
+  graph_create_failed: 创建图失败。请检查服务器日志。
+  skill_name_exists: 组 {validate_msg} 中已存在同名技能。
+  qa_pairs_generating: QA 对正在生成中，无法删除
+  invalid_json_file: 无效的 JSON 文件
+  not_authorized: 未授权
+  builtin_model_no_delete: 不允许删除内置模型
+  no_update_permission: 你没有权限更新此实例
+  query_required: 查询内容为必填项
+  mcp_server_invalid_response: MCP server 返回了无效的 JSON 响应
+  skill_name_exists_update: 组 {validate_msg} 中已存在同名技能。
+  qa_pairs_id_required: QA 对 ID 为必填项。
+  file_size_exceeded: 文件大小超过配额限制。
+  no_support_chunk_type: 不支持的类型
+  knowledge_base_has_documents: 该知识库包含文档，无法删除。
+  builtin_model_types_no_modify: 内置模型类型无法修改
+  chunk_not_found: 未找到块
+  not_a_file: 不是文件
+  builtin_model_delete_denied: 不允许删除内置模型
+  mcp_server_init_failed: 初始化 MCP server 失败
+  url_required: 网址为必填项
+  skill_not_found: 未找到技能 ID
+  no_agent_update_permission: 你没有权限更新此智能体。
+  file_not_found: 未找到文件
+  mcp_server_timeout: MCP server 请求超时
+  bot_not_found: 未找到机器人
+  no_bot_update_permission: 你没有权限更新此机器人。
+  server_url_required: MCP server 地址为必填项
+  team_required: 需要提供团队字段。
+  builtin_model_types_no_delete: 内置模型类型无法删除
+  knowledge_base_id_required: knowledge_base_id 为必填项
+  mcp_server_invalid_url: 无效的 MCP server URL。该地址返回的是 HTML 网页而非 JSON API 响应
+  mcp_server_error: 获取 MCP 工具时发生错误
+  token_validation_failed: 令牌验证失败
+  knowledge_graph_not_found: 未找到知识图谱
+  token_required: 请提供令牌
+  user_api_secret_exists: 该用户已拥有 API 密钥
+  task_id_required: 任务 ID 为必填项。
+  knowledge_base_name_exists: 知识库名称已存在。
+  token_used_up: 令牌已用完
+  mcp_tools_fetch_failed: 从 MCP server 获取工具列表失败
+  no_bot_stop_permission: 你没有权限停止此机器人
+  knowledge_base_training: 知识库正在训练，无法修改。

@@ -74,6 +74,7 @@ MIDDLEWARE = (
     "apps.core.middlewares.drf_middleware.DisableCSRFMiddleware",
     "apps.core.middlewares.api_middleware.APISecretMiddleware",
     "apps.core.middlewares.auth_middleware.AuthMiddleware",
+    "apps.system_mgmt.middleware.error_log_middleware.ErrorLogMiddleware",
     "better_exceptions.integrations.django.BetterExceptionsMiddleware",
 )
 

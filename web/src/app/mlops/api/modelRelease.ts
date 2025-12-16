@@ -14,6 +14,13 @@ interface AnomalyDetectionReason {
   anomaly_threshold: number;
 }
 
+interface ClassificationReason {
+  model_name: string;
+  model_version: string;
+  algorithm: string;
+  data: any[];
+}
+
 const useMlopsModelReleaseApi = () => {
   const {
     get,
@@ -160,7 +167,7 @@ const useMlopsModelReleaseApi = () => {
   };
 
   // 分类任务推理
-  const classificationReason = async (params: AnomalyDetectionReason) => {
+  const classificationReason = async (params: ClassificationReason) => {
     return await post(`/mlops/classification_servings/predict/`, params);
   };
 

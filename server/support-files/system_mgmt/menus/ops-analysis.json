@@ -3,35 +3,39 @@
   "name": "OpsAnalysis",
   "url": "/ops-analysis/view",
   "icon": "ops-analysis",
-  "tags": [
-    "仪表盘",
-    "画布",
-    "数据整合"
-  ],
+  "tags": ["仪表盘", "画布", "数据整合"],
   "description": "Integrate operation and maintenance data, analyze potential risks and optimization space from multiple dimensions through dashboards and canvases, provide data support for decision-making, and help improve operation and maintenance quality and business continuity",
   "menus": [
     {
       "name": "Operations Analysis",
       "children": [
         {
-        "id": "data_source",
-        "name": "Data Source",
-        "operation": [
+          "id": "view",
+          "name": "View",
+          "operation": [
             "View",
-            "Add",
-            "Edit",
-            "Delete"
-        ]
+            "AddCatalogue",
+            "EditCatalogue",
+            "DeleteCatalogue",
+            "AddChart",
+            "EditChart",
+            "DeleteChart"
+          ]
+        }
+      ]
     },
     {
-        "id": "namespace",
-        "name": "NameSpace",
-        "operation": [
-            "View",
-            "Add",
-            "Edit",
-            "Delete"
-        ]
+      "name": "Settings",
+      "children": [
+        {
+          "id": "data_source",
+          "name": "Data Source",
+          "operation": ["View", "Add", "Edit", "Delete"]
+        },
+        {
+          "id": "namespace",
+          "name": "NameSpace",
+          "operation": ["View", "Add", "Edit", "Delete"]
         }
       ]
     }
@@ -45,10 +49,7 @@
     {
       "name": "normal",
       "role_name": "node_normal",
-      "menus": [
-        "data_source-View",
-        "namespace-View"
-      ]
+      "menus": ["view-View","view-AddCatalogue","view-EditCatalogue","view-DeleteCatalogue","view-AddChart","view-EditChart","view-DeleteChart", "data_source-View", "namespace-View"]
     }
   ]
 }

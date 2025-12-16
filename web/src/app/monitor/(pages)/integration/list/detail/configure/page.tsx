@@ -1,26 +1,16 @@
 'use client';
-import React, { useState, useMemo } from 'react';
-import { Spin, Segmented } from 'antd';
-import ManualConfiguration from './manual';
+import React, { useMemo } from 'react';
 import AutomaticConfiguration from './automatic';
-import { useTranslation } from '@/utils/i18n';
 import { useSearchParams } from 'next/navigation';
 import configureStyle from './index.module.scss';
 import { useObjectConfigInfo } from '@/app/monitor/hooks/integration/common/getObjectConfig';
+import K8sConfiguration from './k8s/k8sConfiguration';
 
 const Configure: React.FC = () => {
-  const { t } = useTranslation();
   const searchParams = useSearchParams();
   const { getCollectType } = useObjectConfigInfo();
   const pluginName = searchParams.get('plugin_name') || '';
   const objectName = searchParams.get('name') || '';
-  const [pageLoading, setPageLoading] = useState<boolean>(false);
-  const [activeTab, setActiveTab] = useState<string>('automatic');
-
-  const onTabChange = (val: string) => {
-    setPageLoading(false);
-    setActiveTab(val);
-  };
 
   const isK8s = useMemo(() => {
     return getCollectType(objectName, pluginName) === 'k8s';
@@ -30,28 +20,12 @@ const Configure: React.FC = () => {
     <>
       {!isK8s ? (
         <div className={configureStyle.configure}>
-          <Segmented
-            className="mb-[20px]"
-            value={activeTab}
-            options={[
-              {
-                label: t('monitor.integrations.automatic'),
-                value: 'automatic',
-              },
-              //   { label: t('monitor.integrations.manual'), value: 'manual' },
-            ]}
-            onChange={onTabChange}
-          />
-          <Spin spinning={pageLoading}>
-            {activeTab === 'manual' ? (
-              <ManualConfiguration />
-            ) : (
-              <AutomaticConfiguration />
-            )}
-          </Spin>
+          <AutomaticConfiguration />
         </div>
       ) : (
-        t('monitor.integrations.note')
+        <div className={configureStyle.configure}>
+          <K8sConfiguration />
+        </div>
       )}
     </>
   );

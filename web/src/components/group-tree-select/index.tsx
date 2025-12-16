@@ -18,6 +18,7 @@ const GroupTreeSelect: React.FC<GroupTreeSelectProps> = ({
   mode = 'ownership',
   height = 300,
   showSearch = false,
+  filterByRootId,
 }) => {
   const { groupTree } = useUserInfoContext();
   const [internalValue, setInternalValue] = useState<number[]>([]);
@@ -27,10 +28,31 @@ const GroupTreeSelect: React.FC<GroupTreeSelectProps> = ({
     return convertGroupTreeToTreeSelectData(groupTree);
   }, [groupTree]);
 
+  // 根据 filterByRootId 过滤树数据
+  const filteredTreeData = useMemo(() => {
+    if (!filterByRootId) return treeSelectData;
+
+    const findSubTree = (nodes: any[], targetId: number): any | null => {
+      for (const node of nodes) {
+        if (node.value === targetId) {
+          return node;
+        }
+        if (node.children) {
+          const found = findSubTree(node.children, targetId);
+          if (found) return found;
+        }
+      }
+      return null;
+    };
+
+    const targetNode = findSubTree(treeSelectData, filterByRootId);
+    return targetNode ? [targetNode] : [];
+  }, [treeSelectData, filterByRootId]);
+
   const processedTreeData = useMemo(() => {
     const strategy = createStrategy(mode);
-    return strategy.transformTreeData(treeSelectData);
-  }, [treeSelectData, mode]);
+    return strategy.transformTreeData(filteredTreeData);
+  }, [filteredTreeData, mode]);
 
   const cascadeData = useMemo((): CascadeNode[] => {
     const convertToCascadeNode = (nodes: any[]): CascadeNode[] => {
@@ -108,8 +130,13 @@ const GroupTreeSelect: React.FC<GroupTreeSelectProps> = ({
   // 处理 MultiCascadePanel 值变化
   const handlePanelChange = useCallback((newValue: number[]) => {
     setInternalValue(newValue);
-    onChange?.(newValue);
-  }, [onChange]);
+    if (multiple) {
+      onChange?.(newValue);
+    } else {
+      // 单选模式：传递单个值或第一个值
+      onChange?.(newValue.length > 0 ? newValue[0] : undefined);
+    }
+  }, [onChange, multiple]);
 
   const handleRemoveTag = useCallback((removedId: number) => {
     const newValue = internalValue.filter(id => id !== removedId);
@@ -119,7 +146,7 @@ const GroupTreeSelect: React.FC<GroupTreeSelectProps> = ({
 
   const dropdownContent = (
     <div
-      className="bg-white rounded shadow-lg"
+      className="rounded shadow-lg"
       onClick={(e) => e.stopPropagation()}
     >
       <MultiCascadePanel
@@ -132,6 +159,7 @@ const GroupTreeSelect: React.FC<GroupTreeSelectProps> = ({
         disabled={disabled}
         searchable={showSearch}
         searchPlaceholder={placeholder}
+        single={!multiple}
       />
     </div>
   );
@@ -175,7 +203,7 @@ const GroupTreeSelect: React.FC<GroupTreeSelectProps> = ({
           className={`
             px-3 py-1 border rounded min-h-8
             flex items-center justify-between w-full
-            ${disabled ? 'cursor-not-allowed bg-gray-100' : 'cursor-pointer bg-white'}
+            ${disabled ? 'cursor-not-allowed bg-gray-100' : 'cursor-pointer bg-[var(--color-bg)]'}
           `}
           style={{ borderColor: 'var(--color-border)' }}
         >

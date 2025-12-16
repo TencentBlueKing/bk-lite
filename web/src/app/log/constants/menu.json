@@ -56,6 +56,7 @@
           "icon": "yangbenkuguanli",
           "url": "/log/integration/list",
           "name": "integration_list",
+          "hasDetail": true,
           "children": [
             {
               "title": "配置",
@@ -137,6 +138,7 @@
           "icon": "yangbenkuguanli",
           "url": "/log/integration/list",
           "name": "integration_list",
+          "hasDetail": true,
           "children": [
             {
               "title": "Configure",

@@ -247,7 +247,7 @@ const EntityList = <T,>({
   return (
     <div className="w-full h-full">
       <div className="flex justify-end mb-4">
-        {(itemTypeSingle === 'skill' || itemTypeSingle === 'studio') ? (
+        {itemTypeSingle === 'skill' ? (
           <Space.Compact>
             <Select
               mode="multiple"

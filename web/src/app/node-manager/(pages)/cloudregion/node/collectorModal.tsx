@@ -5,19 +5,17 @@ import React, {
   forwardRef,
   useImperativeHandle,
   useMemo,
-  useEffect,
 } from 'react';
-import { Form, Select, message, Button, Popconfirm } from 'antd';
+import { Form, Select, message, Button, Popconfirm, Radio } from 'antd';
 import OperateModal from '@/components/operate-modal';
 import type { FormInstance } from 'antd';
 import { useTranslation } from '@/utils/i18n';
 import { ModalSuccess, ModalRef } from '@/app/node-manager/types';
-import useApiCollector from '@/app/node-manager/api/collector';
-import useApiNode from '@/app/node-manager/api';
-import useApiCloudRegion from '@/app/node-manager/api/cloudRegion';
+import useNodeManagerApi from '@/app/node-manager/api';
 import type { TableDataItem } from '@/app/node-manager/types';
 import useCloudId from '@/app/node-manager/hooks/useCloudRegionId';
 import { COLLECTOR_LABEL } from '@/app/node-manager/constants/collector';
+import { useCommon } from '@/app/node-manager/context/common';
 const { Option } = Select;
 
 interface Option {
@@ -29,17 +27,19 @@ interface Option {
 const CollectorModal = forwardRef<ModalRef, ModalSuccess>(
   ({ onSuccess }, ref) => {
     const { t } = useTranslation();
-    const { getCollectorlist } = useApiCollector();
-    const { getPackageList } = useApiNode();
     const {
+      getCollectorlist,
+      getPackageList,
       installCollector,
       batchOperationCollector,
       getConfiglist,
       applyConfig,
-    } = useApiCloudRegion();
+    } = useNodeManagerApi();
+    const commonContext = useCommon();
+    const nodeStateEnum = commonContext?.nodeStateEnum || {};
     const cloudId = useCloudId();
     const collectorFormRef = useRef<FormInstance>(null);
-    const popcConfirmArr = ['restartCollector', 'uninstallCollector'];
+    const popcConfirmArr = ['restartCollector'];
     const [type, setType] = useState<string>('installCollector');
     const [nodeIds, setNodeIds] = useState<string[]>(['']);
     const [collectorVisible, setCollectorVisible] = useState<boolean>(false);
@@ -53,6 +53,8 @@ const CollectorModal = forwardRef<ModalRef, ModalSuccess>(
     const [collector, setCollector] = useState<string | null>(null);
     const [system, setSystem] = useState<string>('');
     const [options, setOptions] = useState<Option[]>([]);
+    const [typeOptions, setTypeOptions] = useState<any[]>([]);
+    const [selectedType, setSelectedType] = useState<string>('');
 
     useImperativeHandle(ref, () => ({
       showModal: ({ type, ids, selectedsystem }) => {
@@ -60,25 +62,46 @@ const CollectorModal = forwardRef<ModalRef, ModalSuccess>(
         setType(type);
         setSystem(selectedsystem as string);
         setNodeIds(ids || []);
-        initPage(selectedsystem || '');
-        type === 'startCollector' && getConfigData();
+        initTypeOptions(selectedsystem || '');
+        type === 'startCollectorr' && getConfigData(); //先不调这个接口，因为配置文件已隐藏
       },
     }));
-
-    useEffect(() => {
-      collectorFormRef.current?.resetFields();
-    }, [collectorFormRef]);
 
     const configs = useMemo(() => {
       return configList.filter((item) => item.collector_id === collector);
     }, [collector]);
 
-    const initPage = async (selectedsystem: string) => {
-      setCollectorLoading(true);
-      try {
-        const data = await getCollectorlist({
-          node_operating_system: selectedsystem,
+    const initTypeOptions = (selectedsystem: string) => {
+      if (nodeStateEnum?.tag) {
+        const tagData = nodeStateEnum.tag;
+        const apps: any[] = [];
+        Object.keys(tagData).forEach((key) => {
+          const item = tagData[key];
+          if (item.is_app) {
+            apps.push({ label: item.name, value: key });
+          }
         });
+        setTypeOptions(apps);
+        // 默认选中第一项
+        const defaultType = apps.length > 0 ? apps[0].value : '';
+        setSelectedType(defaultType);
+        if (defaultType) {
+          getCollectors(selectedsystem, defaultType);
+        }
+      }
+    };
+
+    const getCollectors = async (selectedsystem: string, typeTag?: string) => {
+      setCollectorLoading(true);
+      const currentType = typeTag || selectedType;
+      try {
+        const params: any = {
+          node_operating_system: selectedsystem,
+        };
+        if (currentType) {
+          params.tags = currentType;
+        }
+        const data = await getCollectorlist(params);
         const natsexecutorId =
           selectedsystem === 'linux'
             ? 'natsexecutor_linux'
@@ -141,6 +164,11 @@ const CollectorModal = forwardRef<ModalRef, ModalSuccess>(
       setVersionLoading(false);
       setCollectorLoading(false);
       setCollector(null);
+      setSelectedType('');
+      setTypeOptions([]);
+      setOptions([]);
+      setCollectorlist([]);
+      collectorFormRef.current?.resetFields();
     };
 
     //点击确定按钮的相关逻辑处理
@@ -242,7 +270,6 @@ const CollectorModal = forwardRef<ModalRef, ModalSuccess>(
     };
 
     const handleCollectorChange = async (option: string) => {
-      console.log(option);
       const id = option;
       setCollector(id);
       setPackageList([]);
@@ -262,6 +289,21 @@ const CollectorModal = forwardRef<ModalRef, ModalSuccess>(
           setVersionLoading(false);
         }
       }
+    };
+
+    // 处理类型改变
+    const handleTypeChange = (value: string) => {
+      setSelectedType(value);
+      setCollector(null);
+      setOptions([]);
+      setCollectorlist([]);
+      setPackageList([]);
+      collectorFormRef.current?.setFieldsValue({
+        collector: null,
+        version: null,
+        configuration: null,
+      });
+      getCollectors(system, value);
     };
 
     return (
@@ -299,10 +341,33 @@ const CollectorModal = forwardRef<ModalRef, ModalSuccess>(
           </>
         }
       >
-        <Form ref={collectorFormRef} layout="vertical" colon={false}>
+        <Form
+          ref={collectorFormRef}
+          layout="vertical"
+          colon={false}
+          initialValues={{ type: selectedType }}
+        >
+          <Form.Item
+            name="type"
+            label={t('common.type')}
+            rules={[
+              {
+                required: true,
+                message: t('common.required'),
+              },
+            ]}
+          >
+            <Radio.Group onChange={(e) => handleTypeChange(e.target.value)}>
+              {typeOptions.map((option) => (
+                <Radio key={option.value} value={option.value}>
+                  {option.label}
+                </Radio>
+              ))}
+            </Radio.Group>
+          </Form.Item>
           <Form.Item noStyle>
             <Form.Item
-              name="Collector"
+              name="collector"
               label={t('node-manager.cloudregion.node.collector')}
               rules={[
                 {
@@ -329,6 +394,7 @@ const CollectorModal = forwardRef<ModalRef, ModalSuccess>(
             collector &&
             !collector.includes('telegraf') && (
             <Form.Item
+              hidden
               name="configuration"
               label={t('node-manager.cloudregion.node.configuration')}
             >
