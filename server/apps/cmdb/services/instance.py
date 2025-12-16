@@ -1,4 +1,4 @@
-from apps.cmdb.constants import INSTANCE, INSTANCE_ASSOCIATION, OPERATOR_INSTANCE
+from apps.cmdb.constants.constants import INSTANCE, INSTANCE_ASSOCIATION, OPERATOR_INSTANCE
 from apps.cmdb.graph.drivers.graph_client import GraphClient
 from apps.cmdb.models.change_record import CREATE_INST, CREATE_INST_ASST, DELETE_INST, DELETE_INST_ASST, UPDATE_INST
 from apps.cmdb.models.show_field import ShowField
@@ -6,7 +6,7 @@ from apps.cmdb.services.model import ModelManage
 from apps.cmdb.utils.change_record import batch_create_change_record, create_change_record, create_change_record_by_asso
 from apps.cmdb.utils.export import Export
 from apps.cmdb.utils.Import import Import
-from apps.cmdb.utils.permission import PermissionManage
+from apps.cmdb.permissions.instance_permission import PermissionManage
 from apps.core.exceptions.base_app_exception import BaseAppException
 from apps.core.logger import cmdb_logger as logger
 
@@ -33,14 +33,12 @@ class InstanceManage(object):
         return permission_params
 
     @staticmethod
-    def check_instances_permission(user_groups: list, roles: list, instances: list, model_id: str):
+    def check_instances_permission(instances: list, model_id: str):
         """实例权限校验，用于操作之前"""
-        permission_params = InstanceManage.get_permission_params(user_groups=user_groups, roles=roles)
         with GraphClient() as ag:
             inst_list, count = ag.query_entity(
-                INSTANCE,
-                [{"field": "model_id", "type": "str=", "value": model_id}],
-                permission_params=permission_params,
+                label=INSTANCE,
+                params=[{"field": "model_id", "type": "str=", "value": model_id}]
             )
 
         permission_map = {i["_id"]: i for i in inst_list}
@@ -54,37 +52,34 @@ class InstanceManage(object):
         raise BaseAppException(message)
 
     @staticmethod
-    def instance_list(user_groups: list, roles: list, model_id: str, params: list, page: int, page_size: int,
-                      order: str, inst_names: list = [], check_permission=True, creator: str = None):
+    def instance_list(model_id: str, params: list, page: int, page_size: int, order: str,
+                      permission_map: dict, creator: str = None):
         """实例列表"""
 
         params.append({"field": "model_id", "type": "str=", "value": model_id})
 
-        # 构建权限过滤条件：有权限的实例 OR 自己创建的实例
-        permission_or_creator_filter = None
-        if inst_names:
-            # 既有实例名称权限限制，又有创建人条件，构建OR条件
-            permission_or_creator_filter = {"inst_names": inst_names}
-        elif creator:
-            # 只有创建人条件
-            params.append({"field": "_creator", "type": "str=", "value": creator})
+        format_permission_dict = {}
+
+        for organization_id, organization_permission_data in permission_map.items():
+            _query_list = []
+            inst_names = organization_permission_data["inst_names"]
+            if inst_names:
+                _query_list.append({"field": "inst_name", "type": "str[]", "value": inst_names})
+                if creator:
+                    # 只有创建人条件
+                    _query_list.append({"field": "_creator", "type": "str=", "value": creator})
+
+            format_permission_dict[organization_id] = _query_list
 
         _page = dict(skip=(page - 1) * page_size, limit=page_size)
         if order and order.startswith("-"):
             order = f"{order.replace('-', '')} DESC"
-        if not check_permission:
-            permission_params = ""
-        else:
-            permission_params = InstanceManage.get_permission_params(user_groups, roles)
 
         with GraphClient() as ag:
+            query = dict(label=INSTANCE, params=params, page=_page, order=order,
+                         format_permission_dict=format_permission_dict)
             inst_list, count = ag.query_entity(
-                INSTANCE,
-                params,
-                page=_page,
-                order=order,
-                permission_params=permission_params,
-                permission_or_creator_filter=permission_or_creator_filter,
+                **query
             )
 
         return inst_list, count
@@ -127,7 +122,7 @@ class InstanceManage(object):
 
         model_info = ModelManage.search_model_info(inst_info["model_id"])
 
-        InstanceManage.check_instances_permission(user_groups, roles, [inst_info], inst_info["model_id"])
+        InstanceManage.check_instances_permission([inst_info], inst_info["model_id"])
 
         attrs = ModelManage.parse_attrs(model_info.get("attrs", "[]"))
         check_attr_map = dict(is_only={}, is_required={}, editable={})
@@ -172,7 +167,7 @@ class InstanceManage(object):
 
         model_info = ModelManage.search_model_info(inst_list[0]["model_id"])
 
-        InstanceManage.check_instances_permission(user_groups, roles, inst_list, model_info["model_id"])
+        InstanceManage.check_instances_permission(inst_list, model_info["model_id"])
 
         attrs = ModelManage.parse_attrs(model_info.get("attrs", "[]"))
         check_attr_map = dict(is_only={}, is_required={}, editable={})
@@ -224,7 +219,7 @@ class InstanceManage(object):
 
         model_info = ModelManage.search_model_info(inst_list[0]["model_id"])
 
-        InstanceManage.check_instances_permission(user_groups, roles, inst_list, inst_list[0]["model_id"])
+        InstanceManage.check_instances_permission(inst_list, inst_list[0]["model_id"])
 
         with GraphClient() as ag:
             ag.batch_delete_entity(INSTANCE, inst_ids)
@@ -504,7 +499,7 @@ class InstanceManage(object):
         return add_mgs
 
     @staticmethod
-    def inst_export(model_id: str, ids: list, user_groups: list, inst_names: list, created: str = "",
+    def inst_export(model_id: str, ids: list, permissions_map: dict = {}, created: str = "",
                     attr_list: list = [], association_list: list = []):
         """实例导出"""
         attrs = ModelManage.search_model_attr_v2(model_id)
@@ -513,25 +508,21 @@ class InstanceManage(object):
         # 添加调试日志
         logger.info(f"导出参数 - model_id: {model_id}, ids: {ids}, association_list: {association_list}")
         logger.info(f"查询到的所有关联关系: {len(association)} 个")
+        query_list = [{"field": "id", "type": "id[]", "value": ids},
+                      {"field": "model_id", "type": "str=", "value": model_id}]
 
         with GraphClient() as ag:
             # 使用新的基础权限过滤方法获取有权限的实例
-            inst_list = ag.export_entities_with_permission(
-                label=INSTANCE,
-                teams=user_groups,
-                inst_names=inst_names,
-                creator=created,
-                model_id=model_id,
-                inst_ids=ids  # 在权限范围内过滤指定的实例ID
-            )
-
+            query = dict(label=INSTANCE, params=query_list,
+                         format_permission_dict=permissions_map)
+            inst_list, _ = ag.query_entity(**query)
         attrs = [i for i in attrs if i["attr_id"] in attr_list] if attr_list else attrs
         # 只有当用户明确选择了关联关系时才包含关联关系
         association = [i for i in association if
                        i["model_asst_id"] in association_list] if association_list else []
-        
+
         logger.info(f"过滤后的关联关系: {len(association)} 个")
-        
+
         return Export(attrs, model_id=model_id, association=association).export_inst_list(inst_list)
 
     @staticmethod
@@ -600,27 +591,68 @@ class InstanceManage(object):
         return f"n.inst_name IN {inst_names}"
 
     @classmethod
-    def model_inst_count(cls, user_groups: list, inst_names: list, roles: list = [], created: str = ""):
-        permission_params = InstanceManage.get_permission_params(user_groups=user_groups, roles=roles)
-        inst_name_params = cls.add_inst_name_permission(inst_names)
+    def model_inst_count(cls, permissions_map: dict, creator: str = ""):
+        format_permission_dict = {}
+        for organization_id, organization_permission_data in permissions_map.items():
+            _query_list = []
+            inst_names = organization_permission_data["inst_names"]
+            if inst_names:
+                _query_list.append({"field": "inst_name", "type": "str[]", "value": inst_names})
+                if creator:
+                    # 只有创建人条件
+                    _query_list.append({"field": "_creator", "type": "str=", "value": creator})
+
+            format_permission_dict[organization_id] = _query_list
+
         with GraphClient() as ag:
             data = ag.entity_count(
                 label=INSTANCE,
                 group_by_attr="model_id",
-                params=[],
-                permission_params=permission_params,
-                inst_name_params=inst_name_params,
-                created=created
+                format_permission_dict=format_permission_dict,
             )
         return data
 
     @classmethod
-    def fulltext_search(cls, user_groups: list, roles: list, search: str, inst_names: list, created: str = ""):
-        """全文检索"""
-        permission_params = InstanceManage.get_permission_params(user_groups, roles)
-        inst_name_params = cls.add_inst_name_permission(inst_names)
+    def fulltext_search(cls, search: str, permission_map: dict, creator: str = ""):
+        """全文检索 - 使用与 instance_list 一致的权限逻辑"""
 
+        # 构建所有有权限模型的权限过滤条件（与 instance_list 一致）
+        format_permission_dict = {}
+
+        for organization_id, organization_permission_data in permission_map.items():
+            # 为每个组织构建查询条件（与 instance_list 保持一致）
+            _query_list = [{"field": "organization", "type": "list[]", "value": [organization_id]}]
+
+            inst_names = organization_permission_data["inst_names"]
+            if inst_names:
+                _query_list.append({"field": "inst_name", "type": "str[]", "value": inst_names})
+
+                if creator:
+                    _query_list.append({"field": "_creator", "type": "str=", "value": creator})
+
+            # 使用 organization_id 作为 key（多个模型可能共享同一组织）
+            if organization_id not in format_permission_dict:
+                format_permission_dict[organization_id] = _query_list
+
+        # 将 format_permission_dict 转换为 full_text 需要的参数格式
         with GraphClient() as ag:
-            data = ag.full_text(search=search, permission_params=permission_params,
-                                inst_name_params=inst_name_params, created=created)
+            # 构建权限过滤字符串（与 query_entity 的逻辑一致）
+            permission_filters = []
+            for query_list in format_permission_dict.values():
+                if not query_list:
+                    continue
+                org_permission_str = ag.format_search_params(query_list, param_type="OR")
+                if org_permission_str:
+                    permission_filters.append(org_permission_str)
+
+            # 多个组织的权限条件用 OR 连接
+            permission_params = " OR ".join(permission_filters) if permission_filters else ""
+
+            # 调用 full_text，保留全文搜索逻辑
+            data = ag.full_text(
+                search=search,
+                permission_params=permission_params,
+                inst_name_params="",  # 实例名称权限已包含在 permission_params 中
+                created=""  # 创建人权限已包含在 permission_params 中
+            )
         return data

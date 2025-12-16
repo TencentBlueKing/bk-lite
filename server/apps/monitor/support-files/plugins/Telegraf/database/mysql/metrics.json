@@ -1,6 +1,7 @@
 {
   "plugin": "Mysql",
   "plugin_desc": "Used to collect and monitor key metrics for MySQL database health and performance.",
+  "status_query": "any({instance_type='mysql', collect_type='database'}) by (instance_id)",
   "name": "Mysql",
   "icon": "mysql1",
   "type": "Database",

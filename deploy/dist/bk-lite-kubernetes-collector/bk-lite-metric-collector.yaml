@@ -110,10 +110,20 @@ spec:
             - name: telegraf-config-volume
               mountPath: /etc/telegraf/telegraf.conf
               subPath: telegraf.conf
+            - name: nats-ca-cert
+              mountPath: /etc/nats_ca.crt
+              subPath: ca.crt
       volumes:
         - name: telegraf-config-volume
           configMap:
             name: telegraf-daemonset-config
+        - name: nats-ca-cert
+          secret:
+            secretName: bk-lite-monitor-config-secret
+            items:
+              - key: ca.crt
+                path: ca.crt
+              
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -226,10 +236,19 @@ spec:
             - name: telegraf-config-volume
               mountPath: /etc/telegraf/telegraf.conf
               subPath: telegraf.conf
+            - name: nats-ca-cert
+              mountPath: /etc/nats_ca.crt
+              subPath: ca.crt
       volumes:
         - name: telegraf-config-volume
           configMap:
             name: telegraf-config
+        - name: nats-ca-cert
+          secret:
+            secretName: bk-lite-monitor-config-secret
+            items:
+              - key: ca.crt
+                path: ca.crt
 
 ---
 apiVersion: apps/v1
@@ -562,6 +581,9 @@ data:
       password = "${NATS_PASSWORD:-password}"
       subject = "metrics.cloud"
       data_format = "influx"
+      secure = true
+      insecure_skip_verify = false
+      tls_ca = "/etc/nats_ca.crt"
 
 ---
 apiVersion: v1

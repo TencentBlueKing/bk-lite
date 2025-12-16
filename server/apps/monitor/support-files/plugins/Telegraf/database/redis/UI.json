@@ -1,0 +1,162 @@
+{
+  "object_name": "Redis",
+  "instance_type": "redis",
+  "collect_type": "database",
+  "config_type": ["redis"],
+  "collector": "Telegraf",
+  "instance_id": "{{cloud_region}}_{{host}}_{{port}}",
+  "form_fields": [
+    {
+      "name": "username",
+      "label": "用户名",
+      "type": "input",
+      "required": false,
+      "editable": false,
+      "description": "用于访问接口的用户名",
+      "widget_props": {
+        "placeholder": "用户名"
+      },
+      "transform_on_edit": {
+        "origin_path": "child.content.config.username"
+      }
+    },
+    {
+      "name": "ENV_PASSWORD",
+      "label": "密码",
+      "type": "password",
+      "required": false,
+      "editable": false,
+      "description": "对应的登录密码",
+      "widget_props": {
+        "placeholder": "密码"
+      },
+      "transform_on_edit": {
+        "origin_path": "child.env_config.PASSWORD__{{config_id}}"
+      }
+    },
+    {
+      "name": "host",
+      "label": "主机",
+      "type": "input",
+      "required": true,
+      "visible_in": "edit",
+      "editable": false,
+      "description": "与设备进行通信的主机",
+      "widget_props": {
+        "placeholder": "主机地址"
+      },
+      "transform_on_edit": {
+        "origin_path": "child.content.config.servers[0]",
+        "to_form": {
+          "regex": "://([^:]+):"
+        }
+      }
+    },
+    {
+      "name": "port",
+      "label": "端口",
+      "type": "inputNumber",
+      "required": true,
+      "visible_in": "edit",
+      "editable": false,
+      "description": "与设备进行通信的端口",
+      "widget_props": {
+        "min": 1,
+        "precision": 0,
+        "placeholder": "端口"
+      },
+      "transform_on_edit": {
+        "origin_path": "child.content.config.servers[0]",
+        "to_form": {
+          "regex": ":(\\d+)$"
+        }
+      }
+    },
+    {
+      "name": "interval",
+      "label": "间隔",
+      "type": "inputNumber",
+      "required": true,
+      "default_value": 10,
+      "description": "监控数据的采集时间间隔（单位：秒）",
+      "widget_props": {
+        "min": 1,
+        "precision": 0,
+        "placeholder": "间隔",
+        "addonAfter": "s"
+      },
+      "transform_on_edit": {
+        "origin_path": "child.content.config.interval",
+        "to_form": {
+          "regex": "^(\\d+)s$"
+        },
+        "to_api": {
+          "suffix": "s"
+        }
+      }
+    }
+  ],
+  "table_columns": [
+    {
+      "name": "node_ids",
+      "label": "节点",
+      "type": "select",
+      "required": true,
+      "widget_props": {
+        "placeholder": "请选择节点"
+      },
+      "enable_row_filter": true
+    },
+    {
+      "name": "host",
+      "label": "主机",
+      "type": "input",
+      "required": true,
+      "widget_props": {
+        "placeholder": "主机地址"
+      },
+      "change_handler": {
+        "type": "combine",
+        "source_fields": ["host", "port"],
+        "target_field": "instance_name",
+        "separator": ":"
+      }
+    },
+    {
+      "name": "port",
+      "label": "端口",
+      "type": "inputNumber",
+      "required": true,
+      "widget_props": {
+        "min": 1,
+        "precision": 0,
+        "placeholder": "端口"
+      },
+      "change_handler": {
+        "type": "combine",
+        "source_fields": ["host", "port"],
+        "target_field": "instance_name",
+        "separator": ":"
+      }
+    },
+    {
+      "name": "instance_name",
+      "label": "实例名称",
+      "type": "input",
+      "required": true,
+      "widget_props": {
+        "placeholder": "实例名称",
+        "disabled": false
+      }
+    },
+    {
+      "name": "group_ids",
+      "label": "组",
+      "type": "group_select",
+      "required": false,
+      "widget_props": {
+        "placeholder": "请选择组"
+      }
+    }
+  ]
+}

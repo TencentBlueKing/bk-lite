@@ -1,0 +1,129 @@
+{
+  "object_name": "Hardware Server",
+  "instance_type": "hardware_server",
+  "collect_type": "ipmi",
+  "config_type": ["hardware_server"],
+  "collector": "Telegraf",
+  "instance_id": "{{cloud_region}}_hardware_server_ipmi_{{ip}}",
+  "form_fields": [
+    {
+      "name": "monitor_ip",
+      "label": "IP",
+      "type": "input",
+      "required": true,
+      "visible_in": "edit",
+      "editable": false,
+      "description": "监控的目标主机的 IP 地址，用于标识数据收集的来源",
+      "widget_props": {
+        "placeholder": "IP地址"
+      },
+      "transform_on_edit": {
+        "origin_path": "child.content.config.servers"
+      }
+    },
+    {
+      "name": "username",
+      "label": "用户名",
+      "type": "input",
+      "required": true,
+      "editable": false,
+      "description": "用于访问接口的用户名",
+      "widget_props": {
+        "placeholder": "用户名"
+      }
+    },
+    {
+      "name": "ENV_PASSWORD",
+      "label": "密码",
+      "type": "password",
+      "required": true,
+      "editable": false,
+      "encrypted": true,
+      "description": "对应的登录密码",
+      "widget_props": {
+        "placeholder": "密码"
+      }
+    },
+    {
+      "name": "protocol",
+      "label": "协议",
+      "type": "input",
+      "required": false,
+      "editable": false,
+      "default": "lanplus",
+      "description": "表示使用 LAN+ 协议进行访问（通常用于较新版本的 IPMI）",
+      "widget_props": {
+        "placeholder": "协议"
+      }
+    },
+    {
+      "name": "interval",
+      "label": "间隔",
+      "type": "inputNumber",
+      "required": true,
+      "default_value": 10,
+      "description": "监控数据的采集时间间隔（单位：秒）",
+      "widget_props": {
+        "min": 1,
+        "precision": 0,
+        "placeholder": "间隔",
+        "addonAfter": "s"
+      },
+      "transform_on_edit": {
+        "origin_path": "child.content.config.interval",
+        "to_form": {
+          "regex": "^(\\d+)s$"
+        },
+        "to_api": {
+          "suffix": "s"
+        }
+      }
+    }
+  ],
+  "table_columns": [
+    {
+      "name": "node_ids",
+      "label": "节点",
+      "type": "select",
+      "required": true,
+      "widget_props": {
+        "placeholder": "请选择节点"
+      },
+      "enable_row_filter": true
+    },
+    {
+      "name": "ip",
+      "label": "IP",
+      "type": "input",
+      "required": true,
+      "widget_props": {
+        "placeholder": "IP地址"
+      },
+      "change_handler": {
+        "type": "simple",
+        "source_fields": ["ip"],
+        "target_field": "instance_name"
+      }
+    },
+    {
+      "name": "instance_name",
+      "label": "实例名称",
+      "type": "input",
+      "required": true,
+      "widget_props": {
+        "placeholder": "实例名称",
+        "disabled": false
+      }
+    },
+    {
+      "name": "group_ids",
+      "label": "组",
+      "type": "group_select",
+      "required": false,
+      "widget_props": {
+        "placeholder": "请选择组"
+      }
+    }
+  ],
+  "extra_edit_fields": {}
+}

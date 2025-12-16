@@ -41,7 +41,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   // Check existing authentication using get_bk_settings API
   const checkExistingAuthentication = async () => {
     try {
-      console.log('Checking existing authentication...');
       setIsCheckingExistingAuth(true);
       
       const response = await fetch('/api/proxy/core/api/get_bk_settings/', {
@@ -62,8 +61,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         
         // Check if we have valid user information
         if (userData && (userData.username || userData.id)) {
-          console.log('Found existing authentication, auto-signing in...', userData);
-          
           setIsAutoSigningIn(true);
           
           const userDataForAuth = {
@@ -98,10 +95,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             userData: JSON.stringify(userDataForAuth),
           });
           
-          console.log('Auto SignIn result:', result);
-          
           if (result?.ok) {
-            console.log('Auto SignIn successful');
             setTimeout(() => {
               setIsAutoSigningIn(false);
             }, 1000);
@@ -135,7 +129,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         return;
       }
 
-      console.log('Performing initial auth check, status:', status);
       setHasCheckedExistingAuth(true);
       
       // Always check for existing authentication first, regardless of current session status
@@ -143,7 +136,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const hasExistingAuth = await checkExistingAuthentication();
       
       if (!hasExistingAuth) {
-        console.log('No existing auth found, checking current session status:', status);
         // Only stop checking if we're sure there's no existing auth AND session is loaded
         if (status !== 'loading') {
           setIsCheckingAuth(false);
@@ -190,7 +182,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       // 3. Have completed the initial auth check
       // 4. Not currently checking existing auth (新增条件)
       if (pathname && !authPaths.includes(pathname) && !isAutoSigningIn && hasCheckedExistingAuth && !isCheckingExistingAuth) {
-        console.log('No valid session, redirecting to signin');
         router.push('/auth/signin');
       }
       return;

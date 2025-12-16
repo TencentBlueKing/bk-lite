@@ -4,6 +4,7 @@ import React, { useState, forwardRef, useImperativeHandle } from 'react';
 import axios from 'axios';
 import OperateModal from '@/components/operate-modal';
 import { Checkbox, Button, Spin, message } from 'antd';
+import { HolderOutlined } from '@ant-design/icons';
 import { useTranslation } from '@/utils/i18n';
 import { useModelApi } from '@/app/cmdb/api';
 import { useSession } from 'next-auth/react';
@@ -42,6 +43,8 @@ const ExportModal = forwardRef<ExportModalRef, ExportModalProps>(
 
     const [availableColumns, setAvailableColumns] = useState<ColumnItem[]>([]);
     const [selectedAttrs, setSelectedAttrs] = useState<string[]>([]);
+    const [dragIndex, setDragIndex] = useState<number | null>(null);
+    const [dragOverIndex, setDragOverIndex] = useState<number | null>(null);
 
     const [relationList, setRelationList] = useState<RelationItem[]>([]);
     const [selectedRelations, setSelectedRelations] = useState<string[]>([]);
@@ -58,9 +61,27 @@ const ExportModal = forwardRef<ExportModalRef, ExportModalProps>(
         const filteredColumns = config.columns.filter(
           (col) => col.key !== 'action'
         );
-        setAvailableColumns(filteredColumns);
 
-        setSelectedAttrs(filteredColumns.map((col) => col.key as string));
+        // 获取表头显示的字段（如果有传displayFieldKeys）
+        const displayFieldKeys =
+          (config as any).displayFieldKeys ||
+          filteredColumns.map((col) => col.key as string);
+
+        // 按照表头顺序排列：已勾选的在前，未勾选的在后
+        const displayedCols = displayFieldKeys
+          .map((key: string) => filteredColumns.find((col) => col.key === key))
+          .filter(Boolean) as ColumnItem[];
+
+        const unDisplayedCols = filteredColumns.filter(
+          (col) => !displayFieldKeys.includes(col.key as string)
+        );
+
+        const orderedColumns = [...displayedCols, ...unDisplayedCols];
+
+        setAvailableColumns(orderedColumns);
+
+        // 默认只选中表头已勾选的字段
+        setSelectedAttrs(displayFieldKeys);
 
         fetchAssociations(config.modelId);
       },
@@ -131,6 +152,33 @@ const ExportModal = forwardRef<ExportModalRef, ExportModalProps>(
       setSelectedRelations(checkedValues);
     };
 
+    const handleDragStart = (index: number) => {
+      setDragIndex(index);
+    };
+
+    const handleDragOver = (e: React.DragEvent, index: number) => {
+      e.preventDefault();
+      if (dragIndex !== null && dragIndex !== index) {
+        setDragOverIndex(index);
+      }
+    };
+
+    const handleDragEnd = () => {
+      if (
+        dragIndex !== null &&
+        dragOverIndex !== null &&
+        dragIndex !== dragOverIndex
+      ) {
+        const newColumns = [...availableColumns];
+        const draggedItem = newColumns[dragIndex];
+        newColumns.splice(dragIndex, 1);
+        newColumns.splice(dragOverIndex, 0, draggedItem);
+        setAvailableColumns(newColumns);
+      }
+      setDragIndex(null);
+      setDragOverIndex(null);
+    };
+
     const handleExport = async () => {
       if (selectedAttrs.length === 0) {
         message.warning(t('Model.atLeastOneAttribute'));
@@ -153,9 +201,14 @@ const ExportModal = forwardRef<ExportModalRef, ExportModalProps>(
             break;
         }
 
+        // 按照拖拽后的顺序
+        const orderedAttrs = availableColumns
+          .filter((col) => selectedAttrs.includes(col.key as string))
+          .map((col) => col.key as string);
+
         const exportData = {
           inst_ids: instIds,
-          attr_list: selectedAttrs,
+          attr_list: orderedAttrs,
           association_list: selectedRelations,
         };
 
@@ -249,11 +302,32 @@ const ExportModal = forwardRef<ExportModalRef, ExportModalProps>(
                   className="w-full"
                 >
                   <div className="grid grid-cols-3 gap-3 w-full">
-                    {availableColumns.map((column) => (
+                    {availableColumns.map((column, index) => (
                       <div
                         key={column.key}
-                        className="flex items-center w-full min-w-0"
+                        className="flex items-center w-full min-w-0 cursor-move transition-all"
+                        draggable
+                        onDragStart={() => handleDragStart(index)}
+                        onDragOver={(e) => handleDragOver(e, index)}
+                        onDragEnd={handleDragEnd}
+                        style={{
+                          opacity: dragIndex === index ? 0.4 : 1,
+                          transform:
+                            dragOverIndex === index && dragIndex !== index
+                              ? 'scale(1.02)'
+                              : 'scale(1)',
+                          backgroundColor:
+                            dragOverIndex === index && dragIndex !== index
+                              ? '#e6f7ff'
+                              : 'transparent',
+                          borderRadius: '4px',
+                          padding: '2px',
+                        }}
                       >
+                        <HolderOutlined
+                          className="mr-1 text-gray-400"
+                          style={{ fontSize: '12px', cursor: 'grab' }}
+                        />
                         <Checkbox value={column.key} className="text-sm w-full">
                           <span className="text-sm text-gray-700 truncate block">
                             {column.title}

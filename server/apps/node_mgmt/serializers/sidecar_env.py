@@ -1,4 +1,5 @@
 from apps.core.utils.crypto.aes_crypto import AESCryptor
+from apps.node_mgmt.constants.database import EnvVariableConstants
 from apps.node_mgmt.models.cloud_region import CloudRegion
 from apps.node_mgmt.models.cloud_region import SidecarEnv
 from rest_framework import serializers
@@ -11,8 +12,8 @@ class SidecarEnvSerializer(serializers.ModelSerializer):
 
     def to_representation(self, instance):
         data = super().to_representation(instance)
-        if instance.type == 'secret':
-            data['value'] = '******'
+        if instance.type == EnvVariableConstants.TYPE_SECRET:
+            data['value'] = EnvVariableConstants.SECRET_MASK
         return data
 
     def create(self, validated_data):
@@ -27,7 +28,7 @@ class SidecarEnvSerializer(serializers.ModelSerializer):
         return super().update(instance, validated_data)
 
     def _encrypt_if_secret(self, value, type_):
-        if type_ == 'secret':
+        if type_ == EnvVariableConstants.TYPE_SECRET:
             aes_obj = AESCryptor()
             secret_value = aes_obj.encode(value)
             return secret_value

@@ -32,4 +32,11 @@ export interface AuthSourceTypeConfig {
 export interface SystemSettings {
   enable_otp: string;
   login_expired_time: string;
+  pwd_set_validity_period?: string;
+  pwd_set_required_char_types?: string;
+  pwd_set_min_length?: string;
+  pwd_set_max_length?: string;
+  pwd_set_max_retry_count?: string;
+  pwd_set_lock_duration?: string;
+  pwd_set_expiry_reminder_days?: string;
 }

@@ -104,7 +104,7 @@ const SearchView: React.FC = () => {
 
   const scrollHeight = useMemo(() => {
     // 根据expand状态和屏幕高度动态计算scroll高度
-    const fixedHeight = expand ? 480 : 400;
+    const fixedHeight = expand ? 490 : 410;
     return Math.max(200, windowHeight - fixedHeight);
   }, [windowHeight, expand]);
 

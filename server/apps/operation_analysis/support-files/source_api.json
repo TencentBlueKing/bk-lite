@@ -1,0 +1,142 @@
+[
+  {
+    "name": "日志命中数",
+    "desc": "",
+    "rest_api": "hits",
+    "params": [
+      {
+        "name": "query",
+        "type": "string",
+        "value": "",
+        "alias_name": "日志查询语句",
+        "filterType": "params"
+      },
+      {
+        "name": "time_range",
+        "type": "timeRange",
+        "value": 10080,
+        "alias_name": "时间范围",
+        "filterType": "params"
+      },
+      {
+        "name": "field",
+        "type": "string",
+        "value": "",
+        "alias_name": "要统计的字段",
+        "filterType": "params"
+      },
+      {
+        "name": "fields_limit",
+        "type": "number",
+        "value": 5,
+        "alias_name": "返回的字段值个数限制",
+        "filterType": "params"
+      },
+      {
+        "name": "step",
+        "type": "string",
+        "value": "5m",
+        "alias_name": "统计粒度",
+        "filterType": "params"
+      }
+    ]
+  },
+  {
+    "name": "告警趋势",
+    "desc": "查询告警趋势的数据",
+    "rest_api": "get_alert_trend_data",
+    "params": [
+      {
+        "name": "time",
+        "type": "timeRange",
+        "value": 10080,
+        "alias_name": "time",
+        "filterType": "filter"
+      },
+      {
+        "name": "group_by",
+        "type": "string",
+        "value": "day",
+        "alias_name": "group_by",
+        "filterType": "fixed"
+      }
+    ]
+  },
+  {
+    "name": "查询时间范围内的指标数据",
+    "desc": "",
+    "rest_api": "query_range",
+    "params": [
+      {
+        "name": "query",
+        "type": "string",
+        "value": "",
+        "alias_name": "query",
+        "filterType": "params"
+      },
+      {
+        "name": "time_range",
+        "type": "timeRange",
+        "value": 10080,
+        "alias_name": "time_range",
+        "filterType": "fixed"
+      },
+      {
+        "name": "step",
+        "type": "string",
+        "value": "5min",
+        "alias_name": "step",
+        "filterType": "params"
+      }
+    ]
+  },
+  {
+    "name": "告警趋势数据",
+    "desc": "",
+    "rest_api": "get_alert_trend_data",
+    "params": [
+      {
+        "name": "group_by",
+        "type": "string",
+        "value": "day",
+        "alias_name": "group_by",
+        "filterType": "fixed"
+      },
+      {
+        "name": "time",
+        "type": "timeRange",
+        "value": 10080,
+        "alias_name": "time",
+        "filterType": "fixed"
+      }
+    ]
+  },
+  {
+    "name": "日志搜索",
+    "desc": "",
+    "rest_api": "search",
+    "params": [
+      {
+        "name": "query",
+        "type": "string",
+        "value": "",
+        "alias_name": "查询语句",
+        "filterType": "params"
+      },
+      {
+        "name": "time_range",
+        "type": "timeRange",
+        "value": 10080,
+        "alias_name": "时间范围",
+        "filterType": "fixed"
+      },
+      {
+        "name": "limit",
+        "type": "string",
+        "value": "10",
+        "alias_name": "返回结果条数",
+        "filterType": "params"
+      }
+    ]
+  }
+]

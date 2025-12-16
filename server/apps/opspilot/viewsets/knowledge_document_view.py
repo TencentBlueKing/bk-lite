@@ -47,7 +47,7 @@ class KnowledgeDocumentViewSet(LanguageViewSet):
     def destroy(self, request, *args, **kwargs):
         instance: KnowledgeDocument = self.get_object()
         if instance.train_status == DocumentStatus.TRAINING:
-            message = self.loader.get("training_document_no_delete")
+            message = self.loader.get("error.training_document_no_delete")
             return JsonResponse({"result": False, "message": message})
         with transaction.atomic():
             ConversationTag.objects.filter(knowledge_document_id=instance.id).delete()
@@ -77,7 +77,7 @@ class KnowledgeDocumentViewSet(LanguageViewSet):
     def get_my_tasks(self, request):
         knowledge_base_id = request.GET.get("knowledge_base_id", 0)
         if not knowledge_base_id:
-            message = self.loader.get("knowledge_base_id_required")
+            message = self.loader.get("error.knowledge_base_id_required")
             return JsonResponse({"result": False, "message": message})
         task_list = list(
             KnowledgeTask.objects.filter(created_by=request.user.username, knowledge_base_id=knowledge_base_id)
@@ -195,7 +195,7 @@ class KnowledgeDocumentViewSet(LanguageViewSet):
         chunk_id = request.GET.get("chunk_id")
         chunk_type = request.GET.get("type", "document")
         if not chunk_id:
-            return JsonResponse({"result": True, "message": self.loader.get("chunk_id_required")})
+            return JsonResponse({"result": True, "message": self.loader.get("error.chunk_id_required")})
         if chunk_type == "QA":
             qa_paris_id = knowledge_id.split("qa_pairs_id_")[-1]
             index_name = QAPairs.objects.get(id=qa_paris_id).knowledge_base.knowledge_index_name()
@@ -206,7 +206,7 @@ class KnowledgeDocumentViewSet(LanguageViewSet):
             graph_id = knowledge_id.split("graph-")[-1]
             return self.get_graph_detail(graph_id, chunk_id)
         else:
-            return JsonResponse({"result": True, "message": self.loader.get("no_support_chunk_type")})
+            return JsonResponse({"result": True, "message": self.loader.get("error.no_support_chunk_type")})
         res = ChunkHelper.get_document_es_chunk(
             index_name,
             1,
@@ -230,12 +230,12 @@ class KnowledgeDocumentViewSet(LanguageViewSet):
                     "base_chunk_id": return_data["metadata"].get("base_chunk_id", ""),
                 }
             return JsonResponse({"result": True, "data": data})
-        return JsonResponse({"result": False, "message": self.loader.get("chunk_not_found")})
+        return JsonResponse({"result": False, "message": self.loader.get("error.chunk_not_found")})
 
     def get_graph_detail(self, graph_id, chunk_id):
         obj = KnowledgeGraph.objects.filter(id=graph_id).first()
         if not obj:
-            return JsonResponse({"result": True, "message": self.loader.get("knowledge_graph_not_found")})
+            return JsonResponse({"result": True, "message": self.loader.get("error.knowledge_graph_not_found")})
         res = GraphUtils.search_graph(obj, 10, chunk_id)
         return JsonResponse(res)
 
@@ -248,7 +248,7 @@ class KnowledgeDocumentViewSet(LanguageViewSet):
         for chunk_id in chunk_ids:
             result = ChunkHelper.delete_es_content(chunk_id, True, keep_qa)
             if not result:
-                message = self.loader.get("qa_pair_delete_failed")
+                message = self.loader.get("error.qa_pair_delete_failed")
                 return JsonResponse({"result": False, "message": message})
         return JsonResponse({"result": True})
 
@@ -262,7 +262,7 @@ class KnowledgeDocumentViewSet(LanguageViewSet):
             return JsonResponse(
                 {
                     "result": False,
-                    "message": self.loader.get("chunk_id_required"),
+                    "message": self.loader.get("error.chunk_id_required"),
                 }
             )
         try:
@@ -273,7 +273,7 @@ class KnowledgeDocumentViewSet(LanguageViewSet):
             return JsonResponse(
                 {
                     "result": False,
-                    "message": self.loader.get("update_failed"),
+                    "message": self.loader.get("error.update_failed"),
                 }
             )
 
@@ -292,7 +292,7 @@ class KnowledgeDocumentViewSet(LanguageViewSet):
             QAPairs.objects.filter(document_id__in=doc_ids).delete()
         except Exception as e:
             logger.exception(e)
-            return JsonResponse({"result": False, "message": self.loader.get("delete_failed")})
+            return JsonResponse({"result": False, "message": self.loader.get("error.delete_failed")})
         return JsonResponse({"result": True})
 
     @action(methods=["GET"], detail=True)
@@ -358,10 +358,10 @@ class KnowledgeDocumentViewSet(LanguageViewSet):
     def get_file_link(self, request, *args, **kwargs):
         instance: KnowledgeDocument = self.get_object()
         if instance.knowledge_source_type != "file":
-            return JsonResponse({"result": False, "message": self.loader.get("not_a_file")})
+            return JsonResponse({"result": False, "message": self.loader.get("error.not_a_file")})
         file_obj = FileKnowledge.objects.filter(knowledge_document_id=instance.id).first()
         if not file_obj:
-            return JsonResponse({"result": False, "message": self.loader.get("file_not_found")})
+            return JsonResponse({"result": False, "message": self.loader.get("error.file_not_found")})
         storage = MinioBackend(bucket_name="munchkin-private")
         file_data = storage.open(file_obj.file.name, "rb")
         # Calculate ETag

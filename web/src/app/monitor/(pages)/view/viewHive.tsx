@@ -320,8 +320,8 @@ const ViewHive: React.FC<ViewListProps> = ({ objects, objectId }) => {
         ...prev,
         total: res[0]?.count || 0,
       }));
-    } catch (error) {
-      console.log(error);
+    } catch {
+      setMertics([]);
     } finally {
       setTableLoading(false);
     }

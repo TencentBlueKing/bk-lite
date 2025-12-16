@@ -3,16 +3,16 @@
 # @Time: 2025/3/3 13:58
 # @Author: windyzhao
 from rest_framework import serializers
-from rest_framework.fields import empty
 
-from apps.cmdb.constants import VIEW, OPERATE
+from apps.cmdb.constants.constants import PERMISSION_TASK
 from apps.cmdb.models.collect_model import CollectModels, OidMapping
-from apps.cmdb.utils.base import get_cmdb_rules
-from apps.core.logger import cmdb_logger as logger
-from apps.core.utils.serializers import UsernameSerializer
+from apps.cmdb.services.encrypt_collect_password import get_collect_model_passwords
+from apps.core.utils.serializers import UsernameSerializer, AuthSerializer
 
 
-class CollectModelSerializer(serializers.ModelSerializer):
+class CollectModelSerializer(AuthSerializer):
+    permission_key = PERMISSION_TASK
+
     class Meta:
         model = CollectModels
         fields = "__all__"
@@ -21,39 +21,35 @@ class CollectModelSerializer(serializers.ModelSerializer):
             # "task_type": {"required": True},
         }
 
+    def to_representation(self, instance):
+        """重写序列化输出"""
+        representation = super().to_representation(instance)
+        # 对返回的凭据中的密码字段进行脱敏处理
+        credential = instance.credential
+        encrypted_fields = get_collect_model_passwords(collect_model_id=instance.model_id)
+        for encrypted_field in encrypted_fields:
+            if encrypted_field in credential:
+                credential[encrypted_field] = "******"
 
-class CollectModelLIstSerializer(UsernameSerializer):
+        return representation
+
+
+class CollectModelIdStatusSerializer(AuthSerializer):
+    permission_key = PERMISSION_TASK
+
+    class Meta:
+        model = CollectModels
+        fields = ("model_id", "exec_status")
+
+
+class CollectModelLIstSerializer(AuthSerializer):
+    permission_key = PERMISSION_TASK
     message = serializers.SerializerMethodField()
-    permission = serializers.SerializerMethodField()
-
-    def __init__(self, instance=None, data=empty, **kwargs):
-        super(CollectModelLIstSerializer, self).__init__(instance, data, **kwargs)
-        self.permission_map = {}
-        try:
-            self.set_permission_map(kwargs.get("context", {}).get("request"))
-        except Exception as err:
-            import traceback
-            logger.error("规则格式话权限失败: {}".format(traceback.format_exc()))
-
-    def set_permission_map(self, request):
-        rules = get_cmdb_rules(request)
-        for task_type, permission_data in rules.items():
-            _map_data = {
-                "select_all": False,
-                "permission_map": {}
-            }
-            for data in permission_data:
-                if data["id"] in ["0"]:
-                    _map_data["select_all"] = True
-                    _map_data["permission_map"] = data["permission"]
-                    break
-                _map_data["permission_map"][data["id"]] = data["permission"]
-            self.permission_map[task_type] = _map_data
 
     class Meta:
         model = CollectModels
         fields = ["id", "name", "task_type", "driver_type", "model_id", "exec_status", "updated_at", "message",
-                  "exec_time", "created_by", "input_method", "examine", "params", "permission"]
+                  "exec_time", "created_by", "input_method", "examine", "params", "team", "permissions"]
 
     @staticmethod
     def get_message(instance):
@@ -67,23 +63,6 @@ class CollectModelLIstSerializer(UsernameSerializer):
             "association": 0,
         }
         return data
-
-    def get_permission(self, obj):
-        try:
-            if obj.created_by == self.context["request"].user.username or not self.permission_map:
-                return [VIEW, OPERATE]
-            if obj.task_type not in self.permission_map:
-                return []
-            permission_data = self.permission_map[obj.task_type]
-            if not permission_data:
-                return []
-            if permission_data["select_all"]:
-                return permission_data["permission_map"]
-            return permission_data["permission_map"].get(str(obj.id), [])
-        except Exception as err:
-            import traceback
-            logger.error("配置采集任务补充权限失败: {}".format(traceback.format_exc()))
-            return []
 
 
 class OidModelSerializer(UsernameSerializer):

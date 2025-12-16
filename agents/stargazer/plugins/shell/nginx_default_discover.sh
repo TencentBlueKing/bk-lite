@@ -108,8 +108,10 @@ Cover_Nginx(){
         # Get Nginx installation path
         install_path=$(dirname $(dirname "$exe_path"))
         install_path=$(readlink -f "$install_path")
+        # Get command line arguments
+        cmdline=$(cat /proc/$pid/cmdline | tr '\0' ' ')
         # Get document root
-        nginx_conf=$(echo "$cmdline" | grep -oP '(?<=-c )($\\S+)')
+        nginx_conf=$(echo "$cmdline" | grep -oP '(?<=-c\s)\S+')
         if [ -n "$nginx_conf" ]; then
             if [[ "$nginx_conf" != /* ]]; then
                 nginx_conf="$install_path/$nginx_conf"
@@ -121,7 +123,11 @@ Cover_Nginx(){
             nginx_conf="$install_path/conf/nginx.conf"
             nginx_conf=$(readlink -f "$nginx_conf")
         fi
-        log_path=$(grep -i 'error_log' "$nginx_conf" | awk '{print $2}' | sed 's/;$//')
+        if [ -f "$nginx_conf" ]; then
+            log_path=$(grep -i 'error_log' "$nginx_conf" | head -n 1 | awk '{print $2}' | sed 's/;$//')
+        else
+            log_path="unknown"
+        fi
         # 如果log_path是相对路径则转换为绝对路径
         if [[ "$log_path" != "unknown" && "$log_path" != /* ]]; then
             log_path=$(dirname "$nginx_conf")/$log_path

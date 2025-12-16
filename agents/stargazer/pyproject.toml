@@ -1,3 +1,10 @@
+[build-system]
+requires = ["setuptools>=45", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+include = ["api*", "core*", "common*", "asserts*", "plugins*", "service*", "monitor*", "utils*"]
+
 [project]
 name = "stargazer"
 version = "0.1.0"
@@ -111,7 +118,7 @@ qingyun = [
 ]
 
 snmp = [
-    "pysnmp==4.4.12",
+    "pysnmp==5.1.0",
     "pyasn1==0.4.8",
     "pyasn1-modules==0.2.8",
 ]

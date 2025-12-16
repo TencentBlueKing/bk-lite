@@ -1,17 +1,17 @@
 'use client';
 import React, { useEffect, useState, useRef, useMemo } from 'react';
 import {
-  Spin,
   Input,
   Button,
   message,
-  Tooltip,
   Dropdown,
   Tag,
   Popconfirm,
   Space,
+  Tooltip,
 } from 'antd';
 import useApiClient from '@/utils/request';
+import { useSearchParams } from 'next/navigation';
 import useMonitorApi from '@/app/monitor/api';
 import useIntegrationApi from '@/app/monitor/api/integration';
 import assetStyle from './index.module.scss';
@@ -25,12 +25,13 @@ import {
   TableDataItem,
   ObjectItem,
 } from '@/app/monitor/types';
-import { RuleInfo, ObjectInstItem } from '@/app/monitor/types/integration';
+import {
+  ObjectInstItem,
+  TemplateDrawerRef,
+} from '@/app/monitor/types/integration';
 import CustomTable from '@/components/custom-table';
 import TimeSelector from '@/components/time-selector';
-import { PlusOutlined, DownOutlined } from '@ant-design/icons';
-import Icon from '@/components/icon';
-import RuleModal from './ruleModal';
+import { DownOutlined } from '@ant-design/icons';
 import { useCommon } from '@/app/monitor/context/common';
 import { useAssetMenuItems } from '@/app/monitor/hooks/integration/common/assetMenuItems';
 import {
@@ -42,9 +43,9 @@ import { useLocalizedTime } from '@/hooks/useLocalizedTime';
 import TreeSelector from '@/app/monitor/components/treeSelector';
 import EditConfig from './updateConfig';
 import EditInstance from './editInstance';
-import DeleteRule from './deleteRuleModal';
+import TemplateConfigDrawer from './templateConfigDrawer';
 import { OBJECT_DEFAULT_ICON } from '@/app/monitor/constants';
-import { NODE_STATUS_MAP } from '@/app/monitor/constants/integration';
+import { EXCLUDED_CHILD_OBJECTS } from '@/app/monitor/constants/integration';
 import Permission from '@/components/permission';
 import EllipsisWithTooltip from '@/components/ellipsis-with-tooltip';
 import type { TableProps, MenuProps } from 'antd';
@@ -55,23 +56,21 @@ type TableRowSelection<T extends object = object> =
 
 const Asset = () => {
   const { isLoading } = useApiClient();
-  const { getInstanceList, getMonitorObject } = useMonitorApi();
-  const {
-    getInstanceGroupRule,
-    getInstanceChildConfig,
-    deleteMonitorInstance,
-  } = useIntegrationApi();
+  const { getMonitorObject } = useMonitorApi();
+  const { deleteMonitorInstance, getInstanceListByPrimaryObject } =
+    useIntegrationApi();
   const { t } = useTranslation();
   const commonContext = useCommon();
   const { convertToLocalizedTime } = useLocalizedTime();
   const { getInstanceType } = useObjectConfigInfo();
+  const searchparams = useSearchParams();
+  const urlObjId = searchparams.get('objId');
   const authList = useRef(commonContext?.authOrganizations || []);
   const organizationList: Organization[] = authList.current;
   const timerRef = useRef<NodeJS.Timeout | null>(null);
-  const ruleRef = useRef<ModalRef>(null);
   const configRef = useRef<ModalRef>(null);
   const instanceRef = useRef<ModalRef>(null);
-  const deleteModalRef = useRef<ModalRef>(null);
+  const templateDrawerRef = useRef<TemplateDrawerRef>(null);
   const assetMenuItems = useAssetMenuItems();
   const [pagination, setPagination] = useState<Pagination>({
     current: 1,
@@ -79,15 +78,14 @@ const Asset = () => {
     pageSize: 20,
   });
   const [tableLoading, setTableLoading] = useState<boolean>(false);
-  const [ruleLoading, setRuleLoading] = useState<boolean>(false);
   const [treeLoading, setTreeLoading] = useState<boolean>(false);
   const [treeData, setTreeData] = useState<TreeItem[]>([]);
-  const [ruleList, setRuleList] = useState<RuleInfo[]>([]);
   const [tableData, setTableData] = useState<TableDataItem[]>([]);
   const [searchText, setSearchText] = useState<string>('');
   const [objects, setObjects] = useState<ObjectItem[]>([]);
-  const [expandedRowKeys, setExpandedRowKeys] = useState<React.Key[]>([]);
-  const [defaultSelectObj, setDefaultSelectObj] = useState<React.Key>('');
+  const [defaultSelectObj, setDefaultSelectObj] = useState<React.Key>(
+    urlObjId ? Number(urlObjId) : ''
+  );
   const [objectId, setObjectId] = useState<React.Key>('');
   const [frequence, setFrequence] = useState<number>(0);
   const [confirmLoading, setConfirmLoading] = useState(false);
@@ -107,88 +105,89 @@ const Asset = () => {
     onClick: handleAssetMenuClick,
   };
 
-  const getChildColumns = (parentRecord: TableDataItem) => {
-    const childColumns: ColumnItem[] = [
-      {
-        title: t('monitor.integrations.collectionMethod'),
-        dataIndex: 'collect_type',
-        key: 'collect_type',
-        width: 150,
-        render: (_, record) => <>{getCollectType(record)}</>,
-      },
-      {
-        title: t('monitor.integrations.collectionNode'),
-        dataIndex: 'agent_id',
-        key: 'agent_id',
-        width: 150,
-      },
-      {
-        title: t('monitor.integrations.reportingStatus'),
-        dataIndex: 'status',
-        key: 'status',
-        width: 150,
-        render: (_, { time, status }) =>
-          time ? (
-            <Tag color={NODE_STATUS_MAP[status] || 'gray'}>
-              {t(`monitor.integrations.${status}`)}
-            </Tag>
-          ) : (
-            <>--</>
-          ),
-      },
-      {
-        title: t('monitor.integrations.lastReportTime'),
-        dataIndex: 'time',
-        key: 'time',
-        width: 160,
-        render: (_, { time }) => (
-          <>
-            {time ? convertToLocalizedTime(new Date(time * 1000) + '') : '--'}
-          </>
-        ),
-      },
-      {
-        title: t('monitor.integrations.installationMethod'),
-        dataIndex: 'config_id',
-        key: 'config_id',
-        width: 170,
-        render: (_, record) => (
-          <>
-            {record.config_ids?.length
-              ? t('monitor.integrations.automatic')
-              : t('monitor.integrations.manual')}
-          </>
-        ),
-      },
-      {
-        title: t('common.action'),
-        key: 'action',
-        dataIndex: 'action',
-        fixed: 'right',
-        width: 100,
-        render: (_, record) => (
-          <>
-            <Permission
-              requiredPermissions={['Edit']}
-              instPermissions={parentRecord.permission}
-            >
-              <Button
-                type="link"
-                disabled={!record.config_ids?.length}
-                onClick={() => openConfigModal(record)}
-              >
-                {t('monitor.integrations.updateConfigration')}
-              </Button>
-            </Permission>
-          </>
-        ),
-      },
-    ];
-    return childColumns;
+  const openTemplateDrawer = (
+    record: any,
+    options?: { selectedConfigId?: string; showTemplateList?: boolean }
+  ) => {
+    const instanceType = getInstanceType(
+      objects.find((item) => item.id === objectId)?.name || ''
+    );
+
+    templateDrawerRef.current?.showModal({
+      instanceName: record.instance_name,
+      instanceId: record.instance_id,
+      instanceType: instanceType,
+      selectedConfigId: options?.selectedConfigId,
+      objName: objects.find((item) => item.id === objectId)?.name || '',
+      plugins: record.plugins || [],
+      showTemplateList: options?.showTemplateList ?? true,
+    });
   };
 
   const columns = useMemo(() => {
     const columnItems: ColumnItem[] = [
+      {
+        title: t('monitor.integrations.collectionTemplate'),
+        dataIndex: 'plugins',
+        key: 'plugins',
+        width: 200,
+        render: (_, record: any) => {
+          const plugins = record.plugins || [];
+          if (!plugins.length) return <>--</>;
+
+          return (
+            <div className="flex flex-wrap gap-1">
+              {plugins.map((plugin: any, index: number) => {
+                const isAuto = plugin.collect_mode === 'auto';
+                const statusInfo = {
+                  color: isAuto
+                    ? plugin.status === 'normal' || plugin.status === 'online'
+                      ? 'success'
+                      : 'error'
+                    : 'default',
+                  text: isAuto
+                    ? t('monitor.integrations.automatic')
+                    : t('monitor.integrations.manual'),
+                };
+
+                const statusText =
+                  plugin.status === 'normal' || plugin.status === 'online'
+                    ? t('monitor.integrations.normal')
+                    : t('monitor.integrations.unavailable');
+                const timeText = plugin.time
+                  ? convertToLocalizedTime(plugin.time)
+                  : '--';
+                const tooltipTitle = `${statusText} - ${t(
+                  'monitor.integrations.lastReportTime'
+                )}：${timeText}`;
+
+                return (
+                  <Tooltip
+                    key={`${plugin.name}-${index}`}
+                    title={tooltipTitle}
+                    color="#000"
+                  >
+                    <Tag
+                      color={statusInfo.color}
+                      className="cursor-pointer"
+                      onClick={() =>
+                        openTemplateDrawer(record, {
+                          selectedConfigId: isAuto ? plugin.name : undefined,
+                          showTemplateList: false,
+                        })
+                      }
+                    >
+                      {plugin.collector
+                        ? `${plugin.name}（${plugin.collector}）`
+                        : plugin.name}
+                    </Tag>
+                  </Tooltip>
+                );
+              })}
+            </div>
+          );
+        },
+      },
       {
         title: t('monitor.group'),
         dataIndex: 'organization',
@@ -204,12 +203,15 @@ const Asset = () => {
         title: t('common.action'),
         key: 'action',
         dataIndex: 'action',
-        width: 160,
+        width: 220,
         fixed: 'right',
         render: (_, record) => (
           <>
-            <Button type="link" onClick={() => checkDetail(record)}>
-              {t('common.detail')}
+            <Button
+              type="link"
+              onClick={() => checkDetail(record as ObjectInstItem)}
+            >
+              {t('monitor.view')}
             </Button>
             <Permission
               requiredPermissions={['Edit']}
@@ -221,6 +223,20 @@ const Asset = () => {
                 onClick={() => openInstanceModal(record, 'edit')}
               >
                 {t('common.edit')}
+              </Button>
+            </Permission>
+            <Permission
+              requiredPermissions={['Edit']}
+              instPermissions={record.permission}
+            >
+              <Button
+                type="link"
+                className="ml-[10px]"
+                onClick={() =>
+                  openTemplateDrawer(record, { showTemplateList: true })
+                }
+              >
+                {t('monitor.integrations.configure')}
               </Button>
             </Permission>
             <Permission
@@ -253,7 +269,7 @@ const Asset = () => {
       }),
       ...columnItems,
     ];
-  }, [objects, objectId, t]);
+  }, [objects, objectId, t, convertToLocalizedTime]);
 
   const enableOperateAsset = useMemo(() => {
     if (!selectedRowKeys.length) return true;
@@ -269,7 +285,6 @@ const Asset = () => {
   useEffect(() => {
     if (objectId) {
       getAssetInsts(objectId);
-      getRuleList(objectId);
     }
   }, [objectId]);
 
@@ -287,7 +302,6 @@ const Asset = () => {
     timerRef.current = setInterval(() => {
       getObjects('timer');
       getAssetInsts(objectId, 'timer');
-      getRuleList(objectId, 'timer');
     }, frequence);
     return () => {
       clearTimer();
@@ -303,7 +317,6 @@ const Asset = () => {
   const onRefresh = () => {
     getObjects();
     getAssetInsts(objectId);
-    getRuleList(objectId);
   };
 
   const clearTimer = () => {
@@ -317,39 +330,7 @@ const Asset = () => {
 
   const handleObjectChange = (id: string) => {
     setTableData([]);
-    setRuleList([]);
     setObjectId(id);
-  };
-
-  const getCollectType = (row: Record<string, string>) => {
-    if (row.collect_type === 'host') {
-      return `${row.collect_type}(${row.config_type})`;
-    }
-    return row.collect_type || '--';
-  };
-
-  const openRuleModal = (type: string, row = {}) => {
-    const title: string = t(
-      type === 'add'
-        ? 'monitor.integrations.addRule'
-        : 'monitor.integrations.editRule'
-    );
-    ruleRef.current?.showModal({
-      title,
-      type,
-      form: row,
-    });
-  };
-
-  const openConfigModal = (row = {}) => {
-    configRef.current?.showModal({
-      title: t('monitor.integrations.updateConfigration'),
-      type: 'edit',
-      form: {
-        ...row,
-        objName: objects.find((item) => item.id === objectId)?.name || '',
-      },
-    });
   };
 
   const openInstanceModal = (row = {}, type: string) => {
@@ -385,13 +366,14 @@ const Asset = () => {
   const getAssetInsts = async (objectId: React.Key, type?: string) => {
     try {
       setTableLoading(type !== 'timer');
-      setExpandedRowKeys([]);
       const params = {
         page: pagination.current,
         page_size: pagination.pageSize,
         name: type === 'clear' ? '' : searchText,
+        id: objectId,
       };
-      const data = await getInstanceList(objectId, params);
+      const data = await getInstanceListByPrimaryObject(params);
+
       setTableData(data?.results || []);
       setPagination((prev: Pagination) => ({
         ...prev,
@@ -399,19 +381,6 @@ const Asset = () => {
       }));
     } finally {
       setTableLoading(false);
-    }
-  };
-
-  const getRuleList = async (objectId: React.Key, type?: string) => {
-    try {
-      setRuleLoading(type !== 'timer');
-      const params = {
-        monitor_object_id: objectId,
-      };
-      const data = await getInstanceGroupRule(params);
-      setRuleList(data || []);
-    } finally {
-      setRuleLoading(false);
     }
   };
 
@@ -426,7 +395,7 @@ const Asset = () => {
       setObjects(data);
       const _treeData = getTreeData(cloneDeep(data));
       setTreeData(_treeData);
-      const defaultKey = data[0]?.id || defaultSelectObj || '';
+      const defaultKey = defaultSelectObj || data[0]?.id || '';
       if (defaultKey) {
         setDefaultSelectObj(defaultKey);
       }
@@ -444,26 +413,16 @@ const Asset = () => {
           children: [],
         };
       }
-      acc[item.type].children.push({
-        title: `${item.display_name || '--'}(${item.instance_count ?? 0})`,
-        key: item.id,
-        children: [],
-      });
+      if (!EXCLUDED_CHILD_OBJECTS.includes(item.name)) {
+        acc[item.type].children.push({
+          title: `${item.display_name || '--'}(${item.instance_count ?? 0})`,
+          key: item.id,
+          children: [],
+        });
+      }
       return acc;
     }, {} as Record<string, TreeItem>);
     return Object.values(groupedData);
-  };
-
-  const operateRule = () => {
-    getRuleList(objectId);
-  };
-
-  const showDeleteConfirm = (row: RuleInfo) => {
-    deleteModalRef.current?.showModal({
-      title: t('common.prompt'),
-      form: row,
-      type: 'delete',
-    });
   };
 
   const deleteInstConfirm = async (row: any) => {
@@ -485,50 +444,6 @@ const Asset = () => {
   const clearText = () => {
     setSearchText('');
     getAssetInsts(objectId, 'clear');
-  };
-
-  const expandRow = async (expanded: boolean, row: any) => {
-    const _dataSource = cloneDeep(tableData);
-    const targetIndex = _dataSource.findIndex(
-      (item: any) => item.instance_id === row.instance_id
-    );
-    try {
-      if (targetIndex != -1 && expanded) {
-        _dataSource[targetIndex].loading = true;
-        setTableData(_dataSource);
-        const data = {
-          instance_id: row.instance_id,
-          instance_type: getInstanceType(
-            objects.find((item) => item.id === objectId)?.name || ''
-          ),
-        };
-        const res = await getInstanceChildConfig(data);
-        _dataSource[targetIndex].dataSource = res.map(
-          (item: TableDataItem, index: number) => ({
-            ...item,
-            id: index,
-          })
-        );
-        setTableData([..._dataSource]);
-      }
-    } finally {
-      _dataSource[targetIndex].loading = false;
-      setTableData([..._dataSource]);
-    }
-  };
-
-  const getRowxpandable = () => {
-    const monitorObjName =
-      objects.find((item: ObjectItem) => item.id === objectId)?.name || '';
-    return ![
-      'Pod',
-      'Node',
-      'Docker Container',
-      'ESXI',
-      'VM',
-      'DataStorage',
-      'CVM',
-    ].includes(monitorObjName);
   };
 
   //判断是否禁用按钮
@@ -591,142 +506,23 @@ const Asset = () => {
           </div>
         </div>
         <CustomTable
-          scroll={{ y: 'calc(100vh - 320px)' }}
+          scroll={{ y: 'calc(100vh - 330px)' }}
           columns={columns}
           dataSource={tableData}
           pagination={pagination}
           loading={tableLoading}
-          expandable={{
-            showExpandColumn: getRowxpandable(),
-            columnWidth: 36,
-            expandedRowRender: (record) => (
-              <CustomTable
-                scroll={{ x: 'calc(100vh - 480px)' }}
-                loading={record.loading}
-                rowKey="id"
-                dataSource={record.dataSource || []}
-                columns={getChildColumns(record)}
-              />
-            ),
-            onExpand: (expanded, record) => {
-              expandRow(expanded, record);
-            },
-            expandedRowKeys: expandedRowKeys,
-            onExpandedRowsChange: (keys) => setExpandedRowKeys(keys as any),
-          }}
           rowKey="instance_id"
           onChange={handleTableChange}
           rowSelection={rowSelection}
         ></CustomTable>
       </div>
-      <Spin spinning={ruleLoading}>
-        <div className={assetStyle.rule}>
-          <div className={`${assetStyle.ruleTips} relative`}>
-            {t('monitor.integrations.rule')}
-            <Tooltip placement="top" title={t('monitor.integrations.ruleTips')}>
-              <div
-                className="absolute cursor-pointer"
-                style={{
-                  top: '-3px',
-                  right: '4px',
-                }}
-              >
-                <Icon
-                  type="a-shuoming2"
-                  className="text-[14px] text-[var(--color-text-3)]"
-                />
-              </div>
-            </Tooltip>
-          </div>
-          <ul className={assetStyle.ruleList}>
-            <li onClick={() => openRuleModal('add')}>
-              <Permission
-                requiredPermissions={['Edit']}
-                className={`${assetStyle.ruleItem} ${assetStyle.add} shadow-sm rounded-sm`}
-              >
-                <PlusOutlined />
-              </Permission>
-            </li>
-            {ruleList.map((item) => (
-              <li
-                key={item.id}
-                className={`${assetStyle.ruleItem} shadow-sm rounded-sm`}
-              >
-                <div className={assetStyle.editItem}>
-                  <Icon
-                    className={assetStyle.icon}
-                    type={
-                      item.type === 'condition' ? 'shaixuantiaojian' : 'xuanze'
-                    }
-                  />
-                  <span title={item.name} className={assetStyle.ruleName}>
-                    {item.name}
-                  </span>
-                  <div className={assetStyle.operate}>
-                    <Dropdown
-                      menu={{
-                        items: [
-                          {
-                            key: 'edit',
-                            label: (
-                              <Permission requiredPermissions={['Edit']}>
-                                <a
-                                  className="text-[12px]"
-                                  target="_blank"
-                                  rel="noopener noreferrer"
-                                  onClick={() => openRuleModal('edit', item)}
-                                >
-                                  {t('common.edit')}
-                                </a>
-                              </Permission>
-                            ),
-                          },
-                          {
-                            key: 'delete',
-                            label: (
-                              <Permission requiredPermissions={['Delete']}>
-                                <a
-                                  className="text-[12px]"
-                                  target="_blank"
-                                  rel="noopener noreferrer"
-                                  onClick={() => showDeleteConfirm(item)}
-                                >
-                                  {t('common.delete')}
-                                </a>
-                              </Permission>
-                            ),
-                          },
-                        ],
-                      }}
-                    >
-                      <div>
-                        <Icon
-                          className={assetStyle.moreIcon}
-                          type="sangedian-copy"
-                        />
-                      </div>
-                    </Dropdown>
-                  </div>
-                </div>
-              </li>
-            ))}
-          </ul>
-        </div>
-      </Spin>
-      <RuleModal
-        ref={ruleRef}
-        monitorObject={objectId}
-        groupList={organizationList}
-        objects={objects}
-        onSuccess={operateRule}
-      />
       <EditConfig ref={configRef} onSuccess={() => getAssetInsts(objectId)} />
-      <DeleteRule ref={deleteModalRef} onSuccess={operateRule} />
       <EditInstance
         ref={instanceRef}
         organizationList={organizationList}
         onSuccess={() => getAssetInsts(objectId)}
       />
+      <TemplateConfigDrawer ref={templateDrawerRef} onSuccess={() => {}} />
     </div>
   );
 };

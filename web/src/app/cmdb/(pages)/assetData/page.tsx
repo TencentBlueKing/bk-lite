@@ -26,6 +26,7 @@ import { useSearchParams } from 'next/navigation';
 import assetDataStyle from './index.module.scss';
 import FieldModal from './list/fieldModal';
 import { useTranslation } from '@/utils/i18n';
+import { useUserInfoContext } from '@/context/userInfo';
 const { confirm } = Modal;
 import { deepClone, getAssetColumns } from '@/app/cmdb/utils/common';
 import {
@@ -75,6 +76,7 @@ interface FieldConfig {
 
 const AssetDataContent = () => {
   const { t } = useTranslation();
+  const { selectedGroup } = useUserInfoContext();
   const { getModelAssociationTypes, getModelAttrList } = useModelApi();
   const { getClassificationList } = useClassificationApi();
   const {
@@ -168,10 +170,11 @@ const AssetDataContent = () => {
       title,
       modelId,
       columns,
+      displayFieldKeys,
       selectedKeys,
       exportType,
       tableData,
-    });
+    } as any);
   };
 
   const showImportModal = () => {
@@ -446,6 +449,38 @@ const AssetDataContent = () => {
     });
   };
 
+  const showCopyModal = (record: any) => {
+    const copyData = { ...record };
+    const excludeFields = [
+      '_id',
+      'inst_id',
+      'id',
+      'created_at',
+      'updated_at',
+      'created_by',
+      'updated_by',
+    ];
+    excludeFields.forEach((field) => {
+      delete copyData[field];
+    });
+
+    propertyList.forEach((attr) => {
+      if (attr.is_required && attr.is_unique && copyData[attr.attr_id]) {
+        copyData[attr.attr_id] = `${copyData[attr.attr_id]}_copy`;
+      }
+    });
+
+    fieldRef.current?.showModal({
+      title: t('common.copy'),
+      type: 'add',
+      attrList: propertyList,
+      formInfo: copyData,
+      subTitle: '',
+      model_id: modelId,
+      list: [],
+    });
+  };
+
   const handleTableChange = (pagination = {}) => {
     setPagination(pagination);
   };
@@ -465,8 +500,9 @@ const AssetDataContent = () => {
     );
   };
 
-  const selectOrganization = (value: number[]) => {
-    setOrganization(value);
+  const selectOrganization = (value: number | number[] | undefined) => {
+    const orgArray = Array.isArray(value) ? value : (value ? [value] : []);
+    setOrganization(orgArray);
   };
 
   const showInstanceModal = (row = { _id: '' }) => {
@@ -615,7 +651,7 @@ const AssetDataContent = () => {
           title: t('common.actions'),
           key: 'action',
           dataIndex: 'action',
-          width: 230,
+          width: 280,
           fixed: 'right',
           render: (_: unknown, record: any) => (
             <>
@@ -636,6 +672,15 @@ const AssetDataContent = () => {
                   onClick={() => showInstanceModal(record)}
                 >
                   {t('Model.association')}
+                </Button>
+              </PermissionWrapper>
+              <PermissionWrapper requiredPermissions={['Add']}>
+                <Button
+                  type="link"
+                  className="mr-[10px]"
+                  onClick={() => showCopyModal(record)}
+                >
+                  {t('common.copy')}
                 </Button>
               </PermissionWrapper>
               <PermissionWrapper
@@ -749,6 +794,9 @@ const AssetDataContent = () => {
                 placeholder={t('common.selectTip')}
                 value={organization}
                 onChange={selectOrganization}
+                filterByRootId={
+                  selectedGroup?.id ? Number(selectedGroup.id) : undefined
+                }
               />
               <SearchFilter
                 key={modelId}

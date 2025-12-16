@@ -7,10 +7,12 @@ export interface NamespaceItem {
   domain: string;
   updated_by_domain: string;
   name: string;
+  namespace?: string;
   account: string;
   password: string;
   describe: string;
   is_active: boolean;
+  enable_tls?: boolean;
 }
 
 export interface TagItem {

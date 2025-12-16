@@ -15,6 +15,7 @@
     "@isoflow/isopacks": "^0.0.10",
     "echarts-for-react": "^3.0.2",
     "fossflow": "^1.0.5",
-    "react-grid-layout": "^1.5.2"
+    "react-grid-layout": "^1.5.2",
+    "react-resizable": "^3.0.5"
   }
 }

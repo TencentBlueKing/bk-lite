@@ -1,17 +1,23 @@
 import React, { useState, useEffect } from 'react';
-import { Modal, Menu, List, Input, Spin, Empty } from 'antd';
+import { Modal, Menu, List, Input, Spin, Empty, Tag } from 'antd';
 import {
   LineChartOutlined,
   BarChartOutlined,
   PieChartOutlined,
   NumberOutlined,
   DashboardOutlined,
+  LockOutlined,
 } from '@ant-design/icons';
 import { useTranslation } from '@/utils/i18n';
 import { ComponentSelectorProps } from '@/app/ops-analysis/types/dashBoard';
 import { useDataSourceApi } from '@/app/ops-analysis/api/dataSource';
 import { useOpsAnalysis } from '@/app/ops-analysis/context/common';
-import type { DatasourceItem } from '@/app/ops-analysis/types/dataSource';
+import { useUserInfoContext } from '@/context/userInfo';
+import { addAuthToDataSources } from '@/app/ops-analysis/utils/permissionChecker';
+import type {
+  DatasourceItem,
+  ChartType,
+} from '@/app/ops-analysis/types/dataSource';
 
 const ComponentSelector: React.FC<ComponentSelectorProps> = ({
   visible,
@@ -19,6 +25,7 @@ const ComponentSelector: React.FC<ComponentSelectorProps> = ({
   onOpenConfig,
 }) => {
   const { t } = useTranslation();
+  const { selectedGroup } = useUserInfoContext();
   const [search, setSearch] = useState('');
   const [selectedTagId, setSelectedTagId] = useState<number | null>(null);
   const [currentDataSources, setCurrentDataSources] = useState<
@@ -29,7 +36,7 @@ const ComponentSelector: React.FC<ComponentSelectorProps> = ({
   const { tagList, tagsLoading, fetchTags } = useOpsAnalysis();
   const { getDataSourceList } = useDataSourceApi();
 
-  const getChartIcon = (chartTypes: any[]) => {
+  const getChartIcon = (chartTypes: ChartType[]) => {
     const iconClass = 'text-[16px] text-[var(--color-primary)]';
 
     const iconMap = {
@@ -59,8 +66,13 @@ const ComponentSelector: React.FC<ComponentSelectorProps> = ({
   const fetchDataSourcesByTag = async (tagItemId: number) => {
     try {
       setDataSourcesLoading(true);
-      const list = await getDataSourceList({ tags: tagItemId });
-      setCurrentDataSources(list || []);
+      const list = await getDataSourceList({
+        tags: tagItemId,
+        all_groups: true,
+      });
+      // 添加权限检查
+      const listWithAuth = addAuthToDataSources(list || [], selectedGroup?.id);
+      setCurrentDataSources(listWithAuth);
     } catch (error) {
       console.error('获取数据源列表失败:', error);
       setCurrentDataSources([]);
@@ -178,8 +190,17 @@ const ComponentSelector: React.FC<ComponentSelectorProps> = ({
                     className="cursor-pointer hover:bg-blue-50 flex items-center gap-3 justify-between p-3 border border-gray-200 rounded mb-2 last:mb-0"
                     onClick={() => handleConfig(item)}
                   >
-                    <div className="flex flex-col gap-1 leading-relaxed">
-                      <span className="font-medium leading-5">{item.name}</span>
+                    <div className="flex flex-col gap-1 leading-relaxed flex-1">
+                      <div className="flex items-center gap-2">
+                        <span className="font-medium leading-5">
+                          {item.name}
+                        </span>
+                        {item.hasAuth === false && (
+                          <Tag icon={<LockOutlined />} color="warning">
+                            {t('common.noAuth')}
+                          </Tag>
+                        )}
+                      </div>
                       <span className="text-xs text-[var(--color-text-2)] leading-4">
                         {item.desc || '--'}
                       </span>

@@ -1,18 +1,19 @@
 import { useMssqlTelegraf } from '../../plugins/database/mssqlTelegraf';
-import { useMssqlExporter } from '../../plugins/database/mssqlExporter';
 
 export const useMssqlConfig = () => {
   const mssqlTelegraf = useMssqlTelegraf();
-  const mssqlExporter = useMssqlExporter();
   const plugins = {
     MSSQL: mssqlTelegraf,
-    'MSSQL-Exporter': mssqlExporter,
   };
 
   return {
     instance_type: 'mssql',
     dashboardDisplay: [],
-    tableDiaplay: [],
+    tableDiaplay: [
+      { type: 'value', key: 'sqlserver_uptime' },
+      { type: 'value', key: 'volume_available_gb' },
+      { type: 'progress', key: 'memory_usage' },
+    ],
     groupIds: {},
     plugins,
   };

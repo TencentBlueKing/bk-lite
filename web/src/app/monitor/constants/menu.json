@@ -59,16 +59,11 @@
       "name": "Integration",
       "children": [
         {
-          "title": "资产",
-          "icon": "_quota_management",
-          "url": "/monitor/integration/asset",
-          "name": "asset"
-        },
-        {
           "title": "集成",
           "icon": "zichan-quanbushebei",
           "url": "/monitor/integration/list",
           "name": "integration_list",
+          "hasDetail": true,
           "children": [
             {
               "title": "配置",
@@ -83,17 +78,23 @@
               "name": "integration_metric"
             }
           ]
+        },
+        {
+          "title": "资产",
+          "icon": "_quota_management",
+          "url": "/monitor/integration/asset",
+          "name": "asset"
+        },
+        {
+          "title": "分组",
+          "icon": "zuzhiguanli",
+          "url": "/monitor/integration/group",
+          "name": "group"
         }
       ]
     }
   ],
   "en": [
-    {
-      "title": "Search",
-      "icon": "search-f",
-      "url": "/monitor/search",
-      "name": "search"
-    },
     {
       "title": "View",
       "icon": "daohang-yunyingfenxishi",
@@ -106,6 +107,12 @@
           "isNotMenuItem": true
         }
       ]
+    },
+    {
+      "title": "Search",
+      "icon": "search-f",
+      "url": "/monitor/search",
+      "name": "search"
     },
     {
       "title": "Event",
@@ -147,16 +154,11 @@
       "name": "Integration",
       "children": [
         {
-          "title": "Asset",
-          "icon": "_quota_management",
-          "url": "/monitor/integration/asset",
-          "name": "asset"
-        },
-        {
           "title": "Integration",
           "icon": "zichan-quanbushebei",
           "url": "/monitor/integration/list",
           "name": "integration_list",
+          "hasDetail": true,
           "children": [
             {
               "title": "Configure",
@@ -171,6 +173,18 @@
               "name": "integration_metric"
             }
           ]
+        },
+        {
+          "title": "Asset",
+          "icon": "_quota_management",
+          "url": "/monitor/integration/asset",
+          "name": "asset"
+        },
+        {
+          "title": "Group",
+          "icon": "zuzhiguanli",
+          "url": "/monitor/integration/group",
+          "name": "group"
         }
       ]
     }

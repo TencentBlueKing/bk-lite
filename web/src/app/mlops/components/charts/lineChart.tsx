@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
-import { Empty, Tooltip as Tip } from 'antd';
+import { Empty } from 'antd';
 import {
   XAxis,
   YAxis,
@@ -21,19 +21,17 @@ import {
 } from '@/app/mlops/utils/common';
 import chartLineStyle from './index.module.scss';
 import dayjs, { Dayjs } from 'dayjs';
-import DimensionFilter from './dimensionFilter';
-import DimensionTable from './dimensionTable';
-import { ChartData, ListItem, TableDataItem } from '@/app/mlops/types';
+// import DimensionFilter from './dimensionFilter';
+// import DimensionTable from './dimensionTable';
+import { ChartData, ListItem } from '@/app/mlops/types';
 import { MetricItem, ThresholdField } from '@/app/mlops/types';
 import { LEVEL_MAP } from '@/app/mlops/constants';
-import { isNumber } from 'lodash';
 
 interface LineChartProps {
   data: ChartData[];
   unit?: string;
   metric?: MetricItem;
   threshold?: ThresholdField[];
-  formID?: number;
   timeline?: any;
   showDimensionFilter?: boolean;
   showDimensionTable?: boolean;
@@ -68,7 +66,6 @@ const LineChart: React.FC<LineChartProps> = ({
   showDimensionFilter = false,
   metric = {},
   threshold = [],
-  formID = null,
   timeline = {
     startIndex: 0,
     endIndex: 0
@@ -86,9 +83,6 @@ const LineChart: React.FC<LineChartProps> = ({
   const [isDragging, setIsDragging] = useState(false);
   const [colors, setColors] = useState<string[]>([]);
   const [visibleAreas, setVisibleAreas] = useState<string[]>([]);
-  const [details, setDetails] = useState<Record<string, any>>({});
-  const [hasDimension, setHasDimension] = useState<boolean>(false);
-  const [boxItems, setBoxItems] = useState<TableDataItem[]>([]);
   // 获取数据中的最小和最大时间
   const [minTime, maxTime] = useMemo(() => {
     if (!data.length) return [0, 0];
@@ -160,14 +154,6 @@ const LineChart: React.FC<LineChartProps> = ({
     return <g key={index} />;
   }, []);
 
-  // 优化图例点击处理
-  const handleLegendClick = useCallback((key: string) => {
-    setVisibleAreas((prevVisibleAreas) =>
-      prevVisibleAreas.includes(key)
-        ? prevVisibleAreas.filter((area) => area !== key)
-        : [...prevVisibleAreas, key]
-    );
-  }, []);
 
   // 添加防抖的 ref
   const timeoutRef = useRef<NodeJS.Timeout | null>(null);
@@ -251,12 +237,7 @@ const LineChart: React.FC<LineChartProps> = ({
   const chartDetails = useMemo(() => getDetails(data), [data]);
 
   useEffect(() => {
-    if (data.length) getEvent();
 
-    setHasDimension(
-      !Object.values(chartDetails || {}).every((item) => !item.length)
-    );
-    setDetails(chartDetails);
     setVisibleAreas(chartKeys);
 
     const generatedColors = chartKeys.map(() => generateUniqueRandomColor());
@@ -267,74 +248,6 @@ const LineChart: React.FC<LineChartProps> = ({
       ];
     });
   }, [data, chartKeys, chartDetails]);
-
-  useEffect(() => {
-    getEvent();
-  }, [formID]);
-
-  const getEvent = async () => {
-    if (!formID) return;
-    try {
-      const _data: any = {
-        result: []
-      };
-      const time_intervals: TableDataItem[] =
-        maxTime === minTime // 折线图只存在一条数据时返回所有事件
-          ? _data.results
-          : _data.results?.filter(
-            (item: any) => {
-              const times = timeToSecond(item.created_at);
-              if (times >= minTime && times <= maxTime) {
-                return true;
-              }
-              return false;
-            }
-          );
-      const intervals = maxTime === minTime ? 120 : Math.ceil((maxTime - minTime) / 60);
-      const lengths = intervals >= 120 ? 24 : Math.ceil(intervals / 5);
-      const step = Math.ceil(_data.results?.length / lengths);
-      setBoxItems(handleCutArray(cutArray(time_intervals.reverse(), step)));
-    } catch (error) {
-      console.log(error);
-    }
-  };
-
-  const cutArray = (array: TableDataItem[], subLength: number) => {
-    let index = 0;
-    const newArr = [];
-    while (index < array.length) {
-      newArr.push(array.slice(index, (index += subLength)));
-    }
-    return newArr;
-  };
-
-  // 对分割的列表进行数据处理
-  const handleCutArray = (array: TableDataItem[]) => {
-    if (!array) return [];
-    const test = array.map((item) => {
-      return item
-        .sort((prev: TableDataItem, next: TableDataItem) => {
-          let flag = null;
-          if (prev.value > next.value) {
-            flag = 1;
-          } else if (prev.value < next.value) {
-            flag = -1;
-          } else {
-            flag =
-              timeToSecond(prev.created_at) > timeToSecond(next.created_at)
-                ? 1
-                : -1;
-          }
-          return flag;
-        })
-        .pop();
-    });
-    return test;
-  };
-
-  const timeToSecond = (time: string) => {
-    return Math.floor(new Date(time).getTime() / 1000);
-  };
 
   return (
     <div
@@ -348,7 +261,7 @@ const LineChart: React.FC<LineChartProps> = ({
               data={data}
               margin={{
                 top: 10,
-                right: formID ? 20 : 0,
+                right: 0,
                 left: 0,
                 bottom: 0,
               }}
@@ -449,42 +362,6 @@ const LineChart: React.FC<LineChartProps> = ({
               }
             </AreaChart>
           </ResponsiveContainer>
-          {formID && (
-            <div className="flex w-[100%] pl-14 pr-[15px] justify-between">
-              {boxItems?.map((item, index) => {
-                return (
-                  <Tip
-                    key={index}
-                    title={`${formatTime(
-                      Date.parse(item.created_at) / 1000,
-                      minTime,
-                      maxTime
-                    )} ${isNumber(item.value) ? item.value.toFixed(2) : item.value
-                    }`}
-                  >
-                    <span
-                      className="flex-1 mr-1 h-2"
-                      style={{
-                        backgroundColor: LEVEL_MAP[item.level] as string,
-                      }}
-                    ></span>
-                  </Tip>
-                );
-              })}
-            </div>
-          )}
-          {showDimensionFilter && hasDimension && (
-            <DimensionFilter
-              data={data}
-              colors={colors}
-              visibleAreas={visibleAreas}
-              details={details}
-              onLegendClick={handleLegendClick}
-            />
-          )}
-          {showDimensionTable && hasDimension && (
-            <DimensionTable data={data} colors={colors} details={details} />
-          )}
         </>
       ) : (
         <div className={`${chartLineStyle.chart} ${chartLineStyle.noData}`}>

@@ -19,6 +19,17 @@ class Executor(object):
         self.download_to_remote_client = ExecutorRpcClient('download.remote')
         self.transfer_file_to_remote_client = ExecutorRpcClient('upload.remote')
         self.unzip_local_client = ExecutorRpcClient('unzip.local')
+        self.health_check_client = ExecutorRpcClient('health.check')
+
+    def health_check(self, timeout=5):
+        """
+        健康检查
+        :param timeout: 执行超时时间(秒)，默认5秒
+        :return: 健康检查结果
+        """
+        request_data = {"execute_timeout": timeout}
+        return_data = self.health_check_client.run(self.instance_id, request_data, _timeout=timeout)
+        return return_data
 
     def execute_local(self, command, timeout=60):
         """

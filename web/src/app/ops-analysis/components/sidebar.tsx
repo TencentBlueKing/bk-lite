@@ -8,25 +8,30 @@ import React, {
   useImperativeHandle,
 } from 'react';
 import Icon from '@/components/icon';
+import GroupTreeSelect from '@/components/group-tree-select';
 import EllipsisWithTooltip from '@/components/ellipsis-with-tooltip';
+import PermissionWrapper from '@/components/permission';
+import useBtnPermissions from '@/hooks/usePermissions';
 import type { DataNode } from 'antd/lib/tree';
 import { Form } from 'antd';
 import { useTranslation } from '@/utils/i18n';
 import { Input, Button, Modal, Dropdown, Menu, Tree, Empty, Spin } from 'antd';
 import { useSearchParams } from 'next/navigation';
 import { useDirectoryApi } from '@/app/ops-analysis/api/index';
+import { useUserInfoContext } from '@/context/userInfo';
 import {
   SidebarProps,
   SidebarRef,
   DirItem,
   ModalAction,
   DirectoryType,
+  FormValues,
+  ItemData,
 } from '@/app/ops-analysis/types';
 import {
   PlusOutlined,
   MoreOutlined,
   BarChartOutlined,
-  SettingOutlined,
   FolderOutlined,
   ApartmentOutlined,
 } from '@ant-design/icons';
@@ -36,6 +41,8 @@ const Sidebar = forwardRef<SidebarRef, SidebarProps>(
     const [form] = Form.useForm();
     const { t } = useTranslation();
     const searchParams = useSearchParams();
+    const { selectedGroup } = useUserInfoContext();
+    const { hasPermission } = useBtnPermissions();
     const [dirs, setDirs] = useState<DirItem[]>([]);
     const [loading, setLoading] = useState(false);
     const [submitLoading, setSubmitLoading] = useState(false);
@@ -85,16 +92,26 @@ const Sidebar = forwardRef<SidebarRef, SidebarProps>(
     ) => {
       setModalAction(action);
       setModalTitle(title);
-      form.setFieldsValue({
+
+      const formData: any = {
         name: defaultValue,
         desc: action === 'edit' && dir ? dir.desc : '',
-      });
+        groups: action === 'edit' && dir ? dir.groups || [] : [],
+      };
+
+      form.setFieldsValue(formData);
+
+      // 如果是新增操作且没有默认 groups，则设置为当前用户选中的分组
+      if (action !== 'edit' && selectedGroup && !formData.groups?.length) {
+        form.setFieldValue('groups', [selectedGroup.id]);
+      }
+
       setCurrentDir(dir);
       setNewItemType(itemType);
       setModalVisible(true);
     };
 
-    const handleSubmit = async (values: any) => {
+    const handleSubmit = async (values: FormValues) => {
       setSubmitLoading(true);
       try {
         if (modalAction === 'edit') {
@@ -102,6 +119,7 @@ const Sidebar = forwardRef<SidebarRef, SidebarProps>(
           const updateData = {
             name: values.name,
             desc: values.desc,
+            groups: values.groups,
           };
           await updateItem(newItemType, currentDir.data_id, updateData);
           if (onDataUpdate) {
@@ -113,9 +131,10 @@ const Sidebar = forwardRef<SidebarRef, SidebarProps>(
             onDataUpdate(updatedItem);
           }
         } else {
-          const itemData: any = {
+          const itemData: ItemData = {
             name: values.name,
             desc: values.desc,
+            groups: values.groups,
           };
           if (modalAction === 'addChild' && currentDir?.data_id) {
             if (
@@ -211,6 +230,11 @@ const Sidebar = forwardRef<SidebarRef, SidebarProps>(
       const isGroup = item.type === 'directory';
       const canDelete = item.type !== 'directory' || !hasChildren(item);
 
+      // 根据 item.type 确定需要的权限
+      const isCatalogue = item.type === 'directory';
+      const editPermission = isCatalogue ? 'EditCatalogue' : 'EditChart';
+      const deletePermission = isCatalogue ? 'DeleteCatalogue' : 'DeleteChart';
+
       return (
         <Menu selectable={false}>
           {isGroup && (
@@ -218,6 +242,7 @@ const Sidebar = forwardRef<SidebarRef, SidebarProps>(
               <Menu.Item
                 key="addDashboard"
                 onClick={() => {
+                  if (!hasPermission(['AddChart'])) return;
                   setNewItemType('dashboard');
                   showModal(
                     'addChild',
@@ -228,11 +253,14 @@ const Sidebar = forwardRef<SidebarRef, SidebarProps>(
                   );
                 }}
               >
-                {t('opsAnalysisSidebar.addDash')}
+                <PermissionWrapper requiredPermissions={['AddChart']}>
+                  {t('opsAnalysisSidebar.addDash')}
+                </PermissionWrapper>
               </Menu.Item>
               <Menu.Item
                 key="addTopology"
                 onClick={() => {
+                  if (!hasPermission(['AddChart'])) return;
                   setNewItemType('topology');
                   showModal(
                     'addChild',
@@ -243,11 +271,14 @@ const Sidebar = forwardRef<SidebarRef, SidebarProps>(
                   );
                 }}
               >
-                {t('opsAnalysisSidebar.addTopo')}
+                <PermissionWrapper requiredPermissions={['AddChart']}>
+                  {t('opsAnalysisSidebar.addTopo')}
+                </PermissionWrapper>
               </Menu.Item>
               <Menu.Item
                 key="addArchitecture"
                 onClick={() => {
+                  if (!hasPermission(['AddChart'])) return;
                   setNewItemType('architecture');
                   showModal(
                     'addChild',
@@ -258,7 +289,9 @@ const Sidebar = forwardRef<SidebarRef, SidebarProps>(
                   );
                 }}
               >
-                {t('opsAnalysisSidebar.addArch')}
+                <PermissionWrapper requiredPermissions={['AddChart']}>
+                  {t('opsAnalysisSidebar.addArch')}
+                </PermissionWrapper>
               </Menu.Item>
             </>
           )}
@@ -266,6 +299,7 @@ const Sidebar = forwardRef<SidebarRef, SidebarProps>(
             <Menu.Item
               key="addGroup"
               onClick={() => {
+                if (!hasPermission(['AddCatalogue'])) return;
                 setNewItemType('directory');
                 showModal(
                   'addChild',
@@ -276,13 +310,16 @@ const Sidebar = forwardRef<SidebarRef, SidebarProps>(
                 );
               }}
             >
-              {t('opsAnalysisSidebar.addGroup')}
+              <PermissionWrapper requiredPermissions={['AddCatalogue']}>
+                {t('opsAnalysisSidebar.addGroup')}
+              </PermissionWrapper>
             </Menu.Item>
           )}
 
           <Menu.Item
             key="edit"
-            onClick={() =>
+            onClick={() => {
+              if (!hasPermission([editPermission])) return;
               showModal(
                 'edit',
                 item.type === 'directory'
@@ -295,18 +332,25 @@ const Sidebar = forwardRef<SidebarRef, SidebarProps>(
                 item.name,
                 item,
                 item.type
-              )
-            }
+              );
+            }}
           >
-            {t('common.edit')}
+            <PermissionWrapper requiredPermissions={[editPermission]}>
+              {t('common.edit')}
+            </PermissionWrapper>
           </Menu.Item>
 
           <Menu.Item
             key="delete"
             disabled={!canDelete}
-            onClick={() => handleDelete(item)}
+            onClick={() => {
+              if (!hasPermission([deletePermission])) return;
+              handleDelete(item);
+            }}
           >
-            {t('common.delete')}
+            <PermissionWrapper requiredPermissions={[deletePermission]}>
+              {t('common.delete')}
+            </PermissionWrapper>
           </Menu.Item>
         </Menu>
       );
@@ -475,12 +519,16 @@ const Sidebar = forwardRef<SidebarRef, SidebarProps>(
             className="flex-1"
             onSearch={handleSearch}
           />
-          <Button
-            type="primary"
-            icon={<PlusOutlined />}
-            className="ml-2"
-            onClick={() => showModal('addRoot', t('opsAnalysisSidebar.addDir'))}
-          />
+          <PermissionWrapper requiredPermissions={['AddCatalogue']}>
+            <Button
+              type="primary"
+              icon={<PlusOutlined />}
+              className="ml-2"
+              onClick={() =>
+                showModal('addRoot', t('opsAnalysisSidebar.addDir'))
+              }
+            />
+          </PermissionWrapper>
         </div>
 
         <div className="overflow-auto flex-1">
@@ -511,20 +559,6 @@ const Sidebar = forwardRef<SidebarRef, SidebarProps>(
             )}
           </Spin>
         </div>
-        <div className="flex justify-center height-[32px]">
-          <Button
-            block
-            icon={<SettingOutlined />}
-            onClick={() => {
-              // 清空tree选中状态
-              setSelectedKeys([]);
-              // 调用父组件的onSelect
-              onSelect && onSelect('settings');
-            }}
-          >
-            设置
-          </Button>
-        </div>
 
         <Modal
           title={modalTitle}
@@ -536,7 +570,7 @@ const Sidebar = forwardRef<SidebarRef, SidebarProps>(
           onCancel={handleModalCancel}
           confirmLoading={submitLoading}
         >
-          <Form form={form} className="mt-5" labelCol={{ span: 3 }}>
+          <Form form={form} className="mt-5" labelCol={{ span: 5 }}>
             <Form.Item
               name="name"
               label={t('opsAnalysisSidebar.nameLabel')}
@@ -544,11 +578,27 @@ const Sidebar = forwardRef<SidebarRef, SidebarProps>(
             >
               <Input placeholder={t('opsAnalysisSidebar.inputPlaceholder')} />
             </Form.Item>
+            <Form.Item
+              name="groups"
+              label={t('common.group')}
+              rules={[
+                {
+                  required: true,
+                  message: `${t('common.selectMsg')}${t('common.group')}`,
+                },
+              ]}
+            >
+              <GroupTreeSelect
+                placeholder={`${t('common.selectMsg')}${t('common.group')}`}
+                multiple={true}
+                mode="ownership"
+              />
+            </Form.Item>
             {newItemType !== 'directory' && (
               <Form.Item name="desc" label={t('opsAnalysisSidebar.descLabel')}>
                 <Input.TextArea
                   autoSize={{ minRows: 3 }}
-                  placeholder={t('common.inputMsg')}
+                  placeholder={`${t('common.inputMsg')} ${t('opsAnalysisSidebar.descLabel')}`}
                 />
               </Form.Item>
             )}

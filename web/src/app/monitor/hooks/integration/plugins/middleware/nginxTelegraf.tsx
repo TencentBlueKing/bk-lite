@@ -13,10 +13,10 @@ export const useNginxTelegraf = () => {
   const { t } = useTranslation();
   const pluginConfig = {
     collect_type: 'middleware',
-    config_type: ['activemq'],
+    config_type: ['nginx'],
     collector: 'Telegraf',
-    instance_type: 'activemq',
-    object_name: 'ActiveMQ',
+    instance_type: 'nginx',
+    object_name: 'Nginx',
   };
 
   return {
@@ -119,9 +119,9 @@ export const useNginxTelegraf = () => {
         edit: {
           formItems,
           getDefaultForm: (formData: TableDataItem) => {
-            const url = formData?.child?.content?.config?.url || '';
+            const url = formData?.child?.content?.config?.urls || [];
             return {
-              monitor_url: url,
+              monitor_url: url[0],
             };
           },
           getParams: (

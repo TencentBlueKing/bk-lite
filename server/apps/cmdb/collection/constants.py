@@ -123,7 +123,10 @@ ALIYUN_COLLECT_CLUSTER = [
     "aliyun_kafka_info_gauge", "aliyun_clb_info_gauge"
 ]
 
-HOST_COLLECT_METRIC = ["host_info_gauge"]
+HOST_COLLECT_METRIC = {
+    "host": ["host_info_gauge"],
+    "physcial_server": ["physcial_server_info_gauge","disk_info_gauge","memory_info_gauge","nic_info_gauge","gpu_info_gauge"],
+}
 
 DB_COLLECT_METRIC_MAP = {
     "es": ["es_info_gauge"],
@@ -158,4 +161,18 @@ QCLOUD_COLLECT_CLUSTER = [
     "qcloud_pulsar_cluster_info_gauge","qcloud_cmq_info_gauge","qcloud_cmq_topic_info_gauge",
     "qcloud_clb_info_gauge","qcloud_eip_info_gauge","qcloud_bucket_info_gauge","qcloud_filesystem_info_gauge",
     "qcloud_domain_info_gauge"
+]
+
+# AWS cloud
+AWS_CLOUD_COLLECT_CLUSTER = [
+    "aws_ec2_info_gauge",
+    "aws_rds_info_gauge",
+    "aws_msk_info_gauge",
+    "aws_elasticache_info_gauge",
+    "aws_eks_info_gauge",
+    "aws_cloudfront_info_gauge",
+    "aws_elb_info_gauge",
+    "aws_s3_bucket_info_gauge",
+    "aws_docdb_info_gauge",
+    "aws_memdb_info_gauge",
 ]

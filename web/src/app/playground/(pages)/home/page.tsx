@@ -8,7 +8,7 @@ const OpenPlatform = () => {
   const activeComponent = searchParams.get('page');
   const componentMap: Record<string, any> = useMemo(() => ({
     'home': HomePage,
-    'anomaly-detection': lazy(() => import(`./components/AnomalyDetection`)),
+    'anomaly_detection': lazy(() => import(`./components/AnomalyDetection`)),
     'log_clustering': lazy(() => import(`./components/LogClustering`)),
     'timeseries_predict': lazy(() => import(`./components/TimeseriesPredict`)),
     'classification': lazy(() => import(`./components/Classification`))

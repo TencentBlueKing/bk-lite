@@ -10,7 +10,7 @@ const { Search } = Input;
 
 interface TreeComponentProps {
   data: TreeItem[];
-  defaultSelectedKey?: string;
+  defaultSelectedKey?: React.Key;
   loading?: boolean;
   draggable?: boolean;
   showAllMenu?: boolean;
@@ -37,7 +37,7 @@ const TreeComponent: React.FC<TreeComponentProps> = ({
   useEffect(() => {
     if (defaultSelectedKey) {
       setSelectedKeys([defaultSelectedKey]);
-      onNodeSelect?.(defaultSelectedKey);
+      onNodeSelect?.(defaultSelectedKey as string);
     }
   }, [defaultSelectedKey]);
 

@@ -18,6 +18,7 @@ interface ModalConfig {
   ids?: string[];
   selectedsystem?: string;
   nodes?: string[];
+  [key: string]: any;
 }
 
 //调用弹窗的类型
@@ -59,6 +60,7 @@ export interface CardItem {
   name: string;
   description: string;
   icon: string;
+  os: string;
   tagList: string[];
 }
 

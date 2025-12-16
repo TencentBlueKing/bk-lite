@@ -64,6 +64,25 @@ const getSubtreeKeys = (node: TreeDataNode): number[] => {
   return keys;
 };
 
+// Get deletable nodes in subtree (excluding organization roles)
+const getDeletableSubtreeKeys = (node: TreeDataNode, organizationRoleIds: number[]): number[] => {
+  const keys: number[] = [];
+  
+  // If current node is not an organization role, it can be deleted
+  if (!organizationRoleIds.includes(node.key as number)) {
+    keys.push(node.key as number);
+  }
+  
+  // Recursively process child nodes
+  if (node.children && node.children.length > 0) {
+    node.children.forEach(child => {
+      keys.push(...getDeletableSubtreeKeys(child, organizationRoleIds));
+    });
+  }
+  
+  return keys;
+};
+
 const cleanSelectedKeys = (
   selected: number[],
   nodes: TreeDataNode[]
@@ -104,17 +123,20 @@ const isNodeDisabled = (node: TreeDataNode): boolean => {
   return node.disabled === true;
 };
 
-// 新增：当 mode 为 "group" 时，生成右侧树的节点，只保留全选节点
+// Generate right tree nodes when mode is "group"
 const transformRightTreeGroup = (
   nodes: TreeDataNode[],
   selectedKeys: number[],
   handlers: NodeHandlers
 ): TreeDataNode[] => {
   return nodes.reduce<TreeDataNode[]>((acc, node) => {
+    const isNodeSelected = selectedKeys.includes(node.key as number);
+    
     if (node.children && node.children.length > 0) {
       const transformedChildren = transformRightTreeGroup(node.children, selectedKeys, handlers);
-      if (isFullySelected(node, selectedKeys)) {
-        // 当所有子节点都选中时，显示父级分组节点
+      
+      // If current node is selected, display it
+      if (isNodeSelected) {
         acc.push({
           ...node,
           title: (
@@ -140,12 +162,17 @@ const transformRightTreeGroup = (
           ),
           children: transformedChildren
         });
-      } else {
-        // 如果父节点不完全选中，则不显示父节点，只返回选中的子节点
-        acc.push(...transformedChildren);
+      } else if (transformedChildren.length > 0) {
+        // If current node is not selected but has selected children, display parent node without action buttons
+        acc.push({
+          ...node,
+          title: typeof node.title === 'function' ? node.title(node) : node.title,
+          children: transformedChildren
+        });
       }
     } else {
-      if (selectedKeys.includes(node.key as number)) {
+      // Leaf node: display if selected
+      if (isNodeSelected) {
         acc.push({
           ...node,
           title: (
@@ -176,7 +203,7 @@ const transformRightTreeGroup = (
   }, []);
 };
 
-// 修改：增加 forceOrganizationRole 参数和禁用角色处理
+// With forceOrganizationRole parameter and disabled role handling
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
 const transformRightTree = (
   nodes: TreeDataNode[],
@@ -189,7 +216,7 @@ const transformRightTree = (
   forceOrganizationRole?: boolean
 ): TreeDataNode[] => {
   if (mode === 'group') {
-    // 使用完整树数据生成全选的分组模式
+    // Generate fully selected tree in group mode using complete tree data
     return transformRightTreeGroup(treeData, selectedKeys, { onPermissionSetting: onPermissionSetting || (() => {}), onRemove });
   }
 
@@ -233,7 +260,7 @@ const transformRightTree = (
   });
 };
 
-// 处理左侧树数据，禁用组织角色
+// Process left tree data, disable organization roles
 const processLeftTreeData = (nodes: TreeDataNode[], organizationRoleIds: number[]): TreeDataNode[] => {
   return nodes.map(node => ({
     ...node,
@@ -242,7 +269,7 @@ const processLeftTreeData = (nodes: TreeDataNode[], organizationRoleIds: number[
   }));
 };
 
-// 新增：处理左侧树数据，添加"全部子组织"复选框
+// Process left tree data and add "Select All Sub-groups" checkbox
 const renderTreeNodeTitle = (
   node: TreeDataNode,
   selectedKeys: number[],
@@ -258,7 +285,7 @@ const renderTreeNodeTitle = (
     return nodeTitle;
   }
 
-  // 修复：使用递归检查所有子孙节点是否全部选中
+  // Use recursion to check if all descendant nodes are selected
   const isAllSubGroupsSelected = isFullySelected(node, selectedKeys);
 
   return (
@@ -278,7 +305,7 @@ const renderTreeNodeTitle = (
   );
 };
 
-// 新增：转换左侧树数据，添加自定义标题
+// Transform left tree data and add custom titles
 const transformLeftTreeData = (
   nodes: TreeDataNode[],
   selectedKeys: number[],
@@ -320,7 +347,7 @@ const RoleTransfer: React.FC<TreeTransferProps> = ({
   const [currentNode, setCurrentNode] = useState<TreeDataNode | null>(null);
   const [currentRules, setCurrentRules] = useState<{ [app: string]: number }>({});
 
-  // 新增：处理"全部子组织"复选框切换
+  // Handle "Select All Sub-groups" checkbox toggle
   const handleSubGroupToggle = useCallback((node: TreeDataNode, includeAll: boolean) => {
     if (disabled || loading) return;
 
@@ -338,7 +365,7 @@ const RoleTransfer: React.FC<TreeTransferProps> = ({
     onChange(newSelectedKeys);
   }, [selectedKeys, onChange, disabled, loading]);
 
-  // 处理左侧树数据，禁用组织角色
+  // Process left tree data, disable organization roles
   const leftTreeData = useMemo(() => {
     if (mode === 'group' && enableSubGroupSelect) {
       return transformLeftTreeData(
@@ -369,7 +396,7 @@ const RoleTransfer: React.FC<TreeTransferProps> = ({
   const handlePermissionOk = (values: any) => {
     if (!currentNode || !onChangeRule) return;
 
-    // 构建应用权限映射对象，保持应用名和权限值的对应关系
+    // Build app permission mapping object, maintain correspondence between app name and permission value
     const appPermissionMap: { [app: string]: number } = {};
     values?.permissions?.forEach((permission: any) => {
       if (permission.permission !== 0) {
@@ -383,7 +410,7 @@ const RoleTransfer: React.FC<TreeTransferProps> = ({
     setIsPermissionModalVisible(false);
   };
 
-  // 创建一个新的 transformRightTree 函数，使用 organizationRoleIds 来判断组织角色
+  // Create a new transformRightTree function, use organizationRoleIds to determine organization roles
   const transformRightTreeWithOrgRoles = (
     nodes: TreeDataNode[],
     treeData: TreeDataNode[],
@@ -402,6 +429,7 @@ const RoleTransfer: React.FC<TreeTransferProps> = ({
       const isDisabled = isNodeDisabled(node);
       const isOrgRole = forceOrganizationRole || isDisabled || organizationRoleIds.includes(node.key as number);
       const isLeafNode = !node.children || node.children.length === 0;
+      const canDelete = !isOrgRole; // Only non-organization roles can be deleted
 
       return {
         ...node,
@@ -420,12 +448,13 @@ const RoleTransfer: React.FC<TreeTransferProps> = ({
                 </Tag>
               )}
             </div>
-            {!isOrgRole && (
+            {canDelete && (
               <DeleteOutlined
                 className="cursor-pointer text-[var(--color-text-4)]"
                 onClick={e => {
                   e.stopPropagation();
-                  const keysToRemove = getSubtreeKeys(node);
+                  // Use getDeletableSubtreeKeys to get deletable nodes, excluding organization roles
+                  const keysToRemove = getDeletableSubtreeKeys(node, organizationRoleIds);
                   let updated = selectedKeys.filter(key => !keysToRemove.includes(key));
                   updated = cleanSelectedKeys(updated, treeData);
                   onRemove(updated);
@@ -504,16 +533,16 @@ const RoleTransfer: React.FC<TreeTransferProps> = ({
                     disabled={disabled || loading}
                     onCheck={(checkedKeys, info) => {
                       if (!disabled && !loading) {
-                        // group 模式下使用 checked 数组，role 模式直接使用 checkedKeys
+                        // In group mode use checked array, in role mode use checkedKeys directly
                         // const actualCheckedKeys = mode === 'group'
                         //   ? (checkedKeys as { checked: React.Key[]; halfChecked: React.Key[] }).checked
                         //   : (checkedKeys as React.Key[]);
 
-                        // 过滤掉禁用的节点（包括组织角色）
+                        // Filter out disabled nodes (including organization roles)
                         const validCheckedNodes = info.checkedNodes.filter((node: any) => !isNodeDisabled(node) && !organizationRoleIds.includes(node.key));
                         const newKeys = validCheckedNodes.map((node: any) => node.key);
 
-                        // 保留原有的组织角色（被禁用的节点）
+                        // Keep existing organization roles (disabled nodes)
                         const existingOrgRoles = selectedKeys.filter(key => organizationRoleIds.includes(key));
                         const finalKeys = [...new Set([...newKeys, ...existingOrgRoles])];
 

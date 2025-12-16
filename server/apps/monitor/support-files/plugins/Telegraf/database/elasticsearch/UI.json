@@ -1,0 +1,129 @@
+{
+  "object_name": "ElasticSearch",
+  "instance_type": "elasticsearch",
+  "collect_type": "database",
+  "config_type": ["elasticsearch"],
+  "collector": "Telegraf",
+  "instance_id": "{{cloud_region}}_{{server}}",
+  "form_fields": [
+    {
+      "name": "server",
+      "label": "服务器地址",
+      "type": "input",
+      "required": true,
+      "visible_in": "edit",
+      "editable": false,
+      "description": "监控对象的服务器地址",
+      "widget_props": {
+        "placeholder": "http://localhost:9200"
+      },
+      "transform_on_edit": {
+        "origin_path": "child.content.config.servers[0]"
+      }
+    },
+    {
+      "name": "username",
+      "label": "用户名",
+      "type": "input",
+      "required": true,
+      "editable": false,
+      "description": "用于访问接口的用户名",
+      "widget_props": {
+        "placeholder": "用户名"
+      },
+      "transform_on_edit": {
+        "origin_path": "child.content.config.username"
+      }
+    },
+    {
+      "name": "ENV_PASSWORD",
+      "label": "密码",
+      "type": "password",
+      "required": true,
+      "editable": false,
+      "description": "对应的登录密码",
+      "widget_props": {
+        "placeholder": "密码"
+      },
+      "transform_on_edit": {
+        "origin_path": "child.env_config.PASSWORD__{{config_id}}"
+      }
+    },
+    {
+      "name": "interval",
+      "label": "间隔",
+      "type": "inputNumber",
+      "required": true,
+      "default_value": 10,
+      "description": "监控数据的采集时间间隔（单位：秒）",
+      "widget_props": {
+        "min": 1,
+        "precision": 0,
+        "placeholder": "间隔",
+        "addonAfter": "s"
+      },
+      "transform_on_edit": {
+        "origin_path": "child.content.config.interval",
+        "to_form": {
+          "regex": "^(\\d+)s$"
+        },
+        "to_api": {
+          "suffix": "s"
+        }
+      }
+    }
+  ],
+  "table_columns": [
+    {
+      "name": "node_ids",
+      "label": "节点",
+      "type": "select",
+      "required": true,
+      "widget_props": {
+        "placeholder": "请选择节点"
+      },
+      "enable_row_filter": true
+    },
+    {
+      "name": "server",
+      "label": "服务器地址",
+      "type": "input",
+      "required": true,
+      "widget_props": {
+        "placeholder": "http://localhost:9200"
+      },
+      "rules": [
+        {
+          "type": "pattern",
+          "pattern": "^(http|https)://.*",
+          "message": "服务器地址必须以http://或https://开头",
+          "excel_formula": "OR(LEFT({{CELL}},7)=\"http://\",LEFT({{CELL}},8)=\"https://\")"
+        }
+      ],
+      "change_handler": {
+        "type": "simple",
+        "source_fields": ["server"],
+        "target_field": "instance_name"
+      }
+    },
+    {
+      "name": "instance_name",
+      "label": "实例名称",
+      "type": "input",
+      "required": true,
+      "widget_props": {
+        "placeholder": "实例名称",
+        "disabled": false
+      }
+    },
+    {
+      "name": "group_ids",
+      "label": "组",
+      "type": "group_select",
+      "required": false,
+      "widget_props": {
+        "placeholder": "请选择组"
+      }
+    }
+  ]
+}

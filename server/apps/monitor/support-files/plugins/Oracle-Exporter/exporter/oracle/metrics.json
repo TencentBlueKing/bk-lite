@@ -1,6 +1,7 @@
 {
   "plugin": "Oracle-Exporter",
   "plugin_desc": "It is used to collect metrics on Oracle's uptime, operation counts, transaction commits/rollbacks, and various wait times in real-time via the exporter method, assisting users in health checks and performance tuning.",
+  "status_query": "any({instance_type='oracle', collect_type='exporter'}) by (instance_id)",
   "name": "Oracle",
   "icon": "oracle",
   "type": "Database",

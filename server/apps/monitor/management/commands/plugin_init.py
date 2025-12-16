@@ -1,7 +1,9 @@
 from django.core.management import BaseCommand
 
 from apps.core.logger import monitor_logger as logger
-from apps.monitor.management.services.plugin_migrate import migrate_plugin, migrate_policy, migrate_default_order
+from apps.monitor.management.services.default_order_migrate import migrate_default_order
+from apps.monitor.management.services.plugin_migrate import migrate_plugin
+from apps.monitor.management.services.policy_migrate import migrate_policy
 
 
 class Command(BaseCommand):
@@ -9,7 +11,7 @@ class Command(BaseCommand):
 
     def handle(self, *args, **options):
         logger.info("初始化监控插件开始！")
-        migrate_plugin()
+        migrate_plugin()  # 已包含配置模板和 UI 模板的导入
         migrate_policy()
         migrate_default_order()
         logger.info("初始化监控插件完成！")
