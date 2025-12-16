@@ -2,6 +2,8 @@
 # @File: vmware.py
 # @Time: 2025/11/12 13:49
 # @Author: windyzhao
+import json
+
 from apps.cmdb.collection.collect_plugin.base import CollectBase
 from apps.cmdb.collection.collect_util import timestamp_gt_one_day_ago
 from apps.cmdb.collection.constants import VMWARE_CLUSTER, VMWARE_COLLECT_MAP
@@ -13,6 +15,7 @@ class CollectVmwareMetrics(CollectBase):
     def __init__(self, inst_name, inst_id, task_id, *args, **kwargs):
         super().__init__(inst_name, inst_id, task_id, *args, **kwargs)
         self.model_resource_id_mapping = {}
+
 
     @property
     def _metrics(self):
@@ -79,8 +82,10 @@ class CollectVmwareMetrics(CollectBase):
         inst_name = f"{data['inst_name']}[{data['resource_id']}]"
         return inst_name
 
-    def set_vc_inst_name(*args, **kwargs):
-        data = args[1]
+    def set_vc_inst_name(self, *args, **kwargs):
+        if self.inst_name:
+            return self.inst_name
+        data = args[0]
         inst_id = data["instance_id"]
         inst_name = "_".join(inst_id.split("_")[1:])
         return inst_name
@@ -131,7 +136,8 @@ class CollectVmwareMetrics(CollectBase):
 
     def prom_sql(self):
         sql = " or ".join(
-            "{}{{instance_id=\"{}\"}}".format(m, f"{self.task_id}_{self.inst_name}") for m in self._metrics)
+                "{}{{instance_id=~\"^{}_.+\"}}".format(m, self.task_id) for m in self._metrics)
+        print(sql)
         return sql
 
     def format_data(self, data):
@@ -176,3 +182,5 @@ class CollectVmwareMetrics(CollectBase):
 
                 result.append(data)
             self.result[model_id] = result
+        import json
+        print(json.dumps(self.result, indent=4))

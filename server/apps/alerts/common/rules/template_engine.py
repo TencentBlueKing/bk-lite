@@ -57,6 +57,99 @@ class AggregationRules:
 
 
 @dataclass
+class ThresholdConfig:
+    """阈值策略配置"""
+    metric_field: str  # 监控指标字段
+    threshold_value: Union[int, float]  # 阈值
+    operator: str = ">="  # 比较操作符: >, <, >=, <=, ==, !=
+    duration_minutes: int = 1  # 持续时间（分钟）
+    
+    def __post_init__(self):
+        allowed_operators = {'>', '<', '>=', '<=', '==', '!='}
+        if self.operator not in allowed_operators:
+            raise ValueError(f"不支持的操作符: {self.operator}")
+
+
+@dataclass
+class MutationConfig:
+    """突变策略配置"""
+    metric_field: str  # 监控指标字段
+    change_rate_threshold: float  # 变化率阈值（百分比）
+    comparison_window_minutes: int = 5  # 对比窗口时间（分钟）
+    change_type: str = "percent"  # 变化类型: "percent"百分比, "absolute"绝对值
+    direction: str = "both"  # 突变方向: "increase"增长, "decrease"下降, "both"双向
+    
+    def __post_init__(self):
+        allowed_change_types = {'percent', 'absolute'}
+        if self.change_type not in allowed_change_types:
+            raise ValueError(f"不支持的变化类型: {self.change_type}")
+        
+        allowed_directions = {'increase', 'decrease', 'both'}
+        if self.direction not in allowed_directions:
+            raise ValueError(f"不支持的突变方向: {self.direction}")
+
+
+@dataclass
+class FrequencyConfig:
+    """频率策略配置"""
+    event_count_threshold: int  # 事件数量阈值
+    time_window_minutes: int = 5  # 时间窗口（分钟）
+    group_by_fields: List[str] = field(default_factory=list)  # 分组字段
+    
+    def __post_init__(self):
+        if self.event_count_threshold <= 0:
+            raise ValueError("事件数量阈值必须大于0")
+        if self.time_window_minutes <= 0:
+            raise ValueError("时间窗口必须大于0分钟")
+
+
+@dataclass
+class TrendConfig:
+    """趋势策略配置"""
+    metric_field: str  # 监控指标字段
+    trend_direction: str  # 趋势方向: "upward"上升, "downward"下降
+    slope_threshold: float  # 斜率阈值
+    data_points: int = 5  # 数据点数量
+    confidence_level: float = 0.8  # 置信度
+    
+    def __post_init__(self):
+        allowed_directions = {'upward', 'downward'}
+        if self.trend_direction not in allowed_directions:
+            raise ValueError(f"不支持的趋势方向: {self.trend_direction}")
+        
+        if not 0 < self.confidence_level <= 1:
+            raise ValueError("置信度必须在0-1之间")
+
+
+@dataclass
+class AnomalyConfig:
+    """异常检测策略配置"""
+    metric_field: str  # 监控指标字段
+    detection_method: str = "zscore"  # 检测方法: "zscore", "iqr", "isolation"
+    sensitivity: float = 2.0  # 敏感度（标准差倍数或其他）
+    baseline_window_minutes: int = 60  # 基线窗口（分钟）
+    min_baseline_samples: int = 10  # 最小基线样本数
+    
+    def __post_init__(self):
+        allowed_methods = {'zscore', 'iqr', 'isolation'}
+        if self.detection_method not in allowed_methods:
+            raise ValueError(f"不支持的检测方法: {self.detection_method}")
+
+
+@dataclass
+class CompositeConfig:
+    """复合条件策略配置"""
+    conditions: List[Dict[str, Any]]  # 条件列表
+    logic_operator: str = "AND"  # 逻辑操作符: "AND", "OR"
+    evaluation_window_minutes: int = 5  # 评估窗口（分钟）
+    
+    def __post_init__(self):
+        allowed_operators = {'AND', 'OR'}
+        if self.logic_operator not in allowed_operators:
+            raise ValueError(f"不支持的逻辑操作符: {self.logic_operator}")
+
+
+@dataclass
 class TemplateContext:
     """模板渲染上下文
 
@@ -73,6 +166,8 @@ class TemplateContext:
     - threshold_conditions: 阈值级别的过滤条件，用于判断是否触发告警
     - group_by_fields: 分组字段列表，决定聚合维度
     - aggregation_rules: 聚合计算规则，控制统计指标的计算
+    - strategy_type: 告警策略类型（阈值、突变、复合等）
+    - strategy_config: 策略特定的配置参数
 
     窗口类型对比：
     1. 固定窗口(fixed)：
@@ -101,6 +196,19 @@ class TemplateContext:
     threshold_conditions: List[FilterCondition] = field(default_factory=list)
     group_by_fields: List[str] = field(default_factory=list)
     aggregation_rules: AggregationRules = field(default_factory=AggregationRules)
+    
+    # 新增策略相关字段
+    strategy_type: str = "composite"  # 默认复合条件策略
+    strategy_config: Union[
+        ThresholdConfig, 
+        MutationConfig, 
+        FrequencyConfig, 
+        TrendConfig, 
+        AnomalyConfig, 
+        CompositeConfig,
+        Dict[str, Any],
+        None
+    ] = None
 
     def __post_init__(self):
         """后初始化验证"""
@@ -115,12 +223,19 @@ class TemplateContext:
             if self.slide_interval > self.window_size:
                 raise ValueError("滑动间隔不能大于窗口大小")
 
+        # 验证策略类型
+        from apps.alerts.constants import AlertStrategyType
+        allowed_strategies = [choice[0] for choice in AlertStrategyType.CHOICES]
+        if self.strategy_type not in allowed_strategies:
+            raise ValueError(f"不支持的策略类型: {self.strategy_type}")
+
     def to_dict(self) -> Dict[str, Any]:
         """转换为字典格式，用于模板渲染"""
-        return {
+        result = {
             'table': self.table,
             'time_column': self.time_column,
             'window_size': self.window_size,
+            'strategy_type': self.strategy_type,
             'resource_filters': [
                 {
                     'field': f.field,
@@ -143,6 +258,21 @@ class TemplateContext:
                 'custom_aggregations': self.aggregation_rules.custom_aggregations,
             }
         }
+
+        # 添加策略配置
+        if self.strategy_config:
+            if hasattr(self.strategy_config, '__dict__'):
+                # 数据类对象转换为字典
+                result['strategy_config'] = self.strategy_config.__dict__
+            elif isinstance(self.strategy_config, dict):
+                # 已经是字典
+                result['strategy_config'] = self.strategy_config
+            else:
+                result['strategy_config'] = {}
+        else:
+            result['strategy_config'] = {}
+
+        return result
 
 
 class AlertSQLTemplateEngine:
@@ -223,9 +353,43 @@ class AlertSQLTemplateEngine:
 
             return field_name
 
+        def strategy_validate(strategy_type):
+            """策略类型验证过滤器"""
+            from apps.alerts.constants import AlertStrategyType
+            allowed_strategies = [choice[0] for choice in AlertStrategyType.CHOICES]
+            if strategy_type not in allowed_strategies:
+                raise ValueError(f"不支持的策略类型: {strategy_type}，支持的策略: {allowed_strategies}")
+            return strategy_type
+
+        def format_strategy_config(strategy_config, strategy_type):
+            """格式化策略配置过滤器"""
+            if not strategy_config:
+                return {}
+            
+            # 根据策略类型验证必要字段
+            if strategy_type == "threshold":
+                required_fields = ['threshold_value', 'operator']
+                for field in required_fields:
+                    if field not in strategy_config:
+                        logger.warning(f"阈值策略缺少必要字段: {field}")
+            elif strategy_type == "mutation":
+                required_fields = ['change_rate_threshold']
+                for field in required_fields:
+                    if field not in strategy_config:
+                        logger.warning(f"突变策略缺少必要字段: {field}")
+            elif strategy_type == "frequency":
+                required_fields = ['event_count_threshold']
+                for field in required_fields:
+                    if field not in strategy_config:
+                        logger.warning(f"频率策略缺少必要字段: {field}")
+            
+            return strategy_config
+
         # 注册过滤器到Jinja2环境
         self.env.filters['sql_escape'] = sql_escape
         self.env.filters['field_validate'] = field_validate
+        self.env.filters['strategy_validate'] = strategy_validate
+        self.env.filters['format_strategy_config'] = format_strategy_config
 
     def render_dynamic_window_sql(self, context: TemplateContext) -> str:
         """
@@ -613,3 +777,114 @@ class TemplateEngine:
             是否通过基础验证
         """
         return self.alert_engine.validate_sql_syntax(sql)
+
+
+class StrategyConfigFactory:
+    """告警策略配置工厂类"""
+    
+    @staticmethod
+    def create_threshold_config(
+        metric_field: str = "value",
+        threshold_value: Union[int, float] = 100,
+        operator: str = ">=",
+        duration_minutes: int = 1
+    ) -> ThresholdConfig:
+        """创建阈值策略配置
+        
+        Args:
+            metric_field: 监控指标字段
+            threshold_value: 阈值
+            operator: 比较操作符
+            duration_minutes: 持续时间（分钟）
+            
+        Returns:
+            ThresholdConfig: 阈值策略配置对象
+        """
+        return ThresholdConfig(
+            metric_field=metric_field,
+            threshold_value=threshold_value,
+            operator=operator,
+            duration_minutes=duration_minutes
+        )
+    
+    @staticmethod
+    def create_mutation_config(
+        metric_field: str = "value",
+        change_rate_threshold: float = 50.0,
+        comparison_window_minutes: int = 5,
+        change_type: str = "percent",
+        direction: str = "both"
+    ) -> MutationConfig:
+        """创建突变策略配置
+        
+        Args:
+            metric_field: 监控指标字段
+            change_rate_threshold: 变化率阈值（百分比）
+            comparison_window_minutes: 对比窗口时间（分钟）
+            change_type: 变化类型
+            direction: 突变方向
+            
+        Returns:
+            MutationConfig: 突变策略配置对象
+        """
+        return MutationConfig(
+            metric_field=metric_field,
+            change_rate_threshold=change_rate_threshold,
+            comparison_window_minutes=comparison_window_minutes,
+            change_type=change_type,
+            direction=direction
+        )
+    
+    @staticmethod
+    def create_frequency_config(
+        event_count_threshold: int = 10,
+        time_window_minutes: int = 5,
+        group_by_fields: List[str] = None
+    ) -> FrequencyConfig:
+        """创建频率策略配置
+        
+        Args:
+            event_count_threshold: 事件数量阈值
+            time_window_minutes: 时间窗口（分钟）
+            group_by_fields: 分组字段
+            
+        Returns:
+            FrequencyConfig: 频率策略配置对象
+        """
+        if group_by_fields is None:
+            group_by_fields = ["resource_type", "resource_name"]
+            
+        return FrequencyConfig(
+            event_count_threshold=event_count_threshold,
+            time_window_minutes=time_window_minutes,
+            group_by_fields=group_by_fields
+        )
+    
+    @staticmethod
+    def create_composite_config(
+        conditions: List[Dict[str, Any]] = None,
+        logic_operator: str = "AND",
+        evaluation_window_minutes: int = 5
+    ) -> CompositeConfig:
+        """创建复合条件策略配置
+        
+        Args:
+            conditions: 条件列表
+            logic_operator: 逻辑操作符
+            evaluation_window_minutes: 评估窗口（分钟）
+            
+        Returns:
+            CompositeConfig: 复合条件策略配置对象
+        """
+        if conditions is None:
+            conditions = []
+            
+        return CompositeConfig(
+            conditions=conditions,
+            logic_operator=logic_operator,
+            evaluation_window_minutes=evaluation_window_minutes
+        )
+
+
+# 工厂实例
+strategy_factory = StrategyConfigFactory()

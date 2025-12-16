@@ -130,7 +130,11 @@ const Asset = () => {
         title: t('monitor.integrations.collectionTemplate'),
         dataIndex: 'plugins',
         key: 'plugins',
-        width: 200,
+        onCell: () => ({
+          style: {
+            minWidth: 150,
+          },
+        }),
         render: (_, record: any) => {
           const plugins = record.plugins || [];
           if (!plugins.length) return <>--</>;
@@ -192,6 +196,11 @@ const Asset = () => {
         title: t('monitor.group'),
         dataIndex: 'organization',
         key: 'organization',
+        onCell: () => ({
+          style: {
+            minWidth: 120,
+          },
+        }),
         render: (_, { organization }) => (
           <EllipsisWithTooltip
             className="w-full overflow-hidden text-ellipsis whitespace-nowrap"
@@ -506,7 +515,7 @@ const Asset = () => {
           </div>
         </div>
         <CustomTable
-          scroll={{ y: 'calc(100vh - 330px)' }}
+          scroll={{ y: 'calc(100vh - 330px)', x: 'max-content' }}
           columns={columns}
           dataSource={tableData}
           pagination={pagination}

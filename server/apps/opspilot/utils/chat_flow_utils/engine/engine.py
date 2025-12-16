@@ -130,7 +130,7 @@ class ChatFlowEngine:
             """
             嵌套的异步生成器：直接调用节点的 execute_method 获取流
             """
-            accumulated_content = ""
+            accumulated_content = []
             try:
                 logger.info(f"[SSE-Engine] 开始流处理 - protocol: {protocol_type}, node: {node_id}")
 
@@ -150,15 +150,16 @@ class ChatFlowEngine:
                             data_str = chunk[6:].strip()
                             data_json = json.loads(data_str)
 
-                            if protocol_type == "AGUI":
-                                # AGUI 协议: TEXT_MESSAGE_CONTENT 类型
-                                if data_json.get("type") == "TEXT_MESSAGE_CONTENT":
-                                    accumulated_content += data_json.get("delta", "")
-                            else:
-                                # SSE/OpenAI 协议: 提取 content/message/text 字段
-                                content = data_json.get("content") or data_json.get("message") or data_json.get("text", "")
-                                if content:
-                                    accumulated_content += content
+                            # if protocol_type == "AGUI":
+                            #     # AGUI 协议: TEXT_MESSAGE_CONTENT 类型
+                            #     if data_json.get("type") == "TEXT_MESSAGE_CONTENT":
+                            #         accumulated_content += data_json.get("delta", "")
+                            # else:
+                            #     # SSE/OpenAI 协议: 提取 content/message/text 字段
+                            #     content = data_json.get("content") or data_json.get("message") or data_json.get("text", "")
+                            #     if content:
+                            #         accumulated_content += content
+                            accumulated_content.append(data_json)
                         except (json.JSONDecodeError, ValueError):
                             pass
 

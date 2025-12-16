@@ -19,7 +19,7 @@ export const ToolCallItem: React.FC<ToolCallItemProps> = ({ toolCall }) => {
         <div className="bg-[var(--color-fill-2)] rounded-2xl p-3 border border-[var(--color-border)]">
             {/* 工具名称和状态 */}
             <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2 mr-5">
                     <span className="iconfont icon-gongju text-blue-500 text-base"></span>
                     <span className="text-sm text-[var(--color-text-1)] font-bold">
                         {toolCall.name}

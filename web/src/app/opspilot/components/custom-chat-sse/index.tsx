@@ -69,6 +69,11 @@ const CustomChatSSE: React.FC<CustomChatSSEProps> = ({
   const currentBotMessageRef = useRef<CustomChatMessage | null>(null);
   const chatContentRef = useRef<HTMLDivElement>(null);
 
+  // 监听 initialMessages 变化
+  useEffect(() => {
+    setMessages(initialMessages.length ? initialMessages : []);
+  }, [initialMessages]);
+
   // Auto scroll
   const scrollToBottom = useCallback(() => {
     if (chatContentRef.current) {
@@ -592,7 +597,7 @@ const CustomChatSSE: React.FC<CustomChatSSEProps> = ({
         </div>
 
         {mode === 'chat' && (
-          <>
+          <div className="flex-shrink-0">
             <div className="flex justify-end pb-2">
               <Popconfirm
                 title={t('chat.clearConfirm')}
@@ -600,6 +605,7 @@ const CustomChatSSE: React.FC<CustomChatSSEProps> = ({
                 onConfirm={handleClearMessages}
                 okText={t('chat.clear')}
                 cancelText={t('common.cancel')}
+                getPopupContainer={(trigger) => trigger.parentElement || document.body}
               >
                 <Button type="text" className="mr-2" icon={<Icon type="shanchu" className="text-2xl" />} />
               </Popconfirm>
@@ -613,7 +619,7 @@ const CustomChatSSE: React.FC<CustomChatSSEProps> = ({
                 shape: 'default',
               })}
             </Flex>
-          </>
+          </div>
         )}
       </div>
       {annotation && (
@@ -632,6 +638,7 @@ const CustomChatSSE: React.FC<CustomChatSSEProps> = ({
         visible={drawerContent.visible}
         title={drawerContent.title}
         onClose={closeDrawer}
+        getContainer={isFullscreen ? false : undefined}
         styles={{
           body: drawerContent.chunkType === 'Graph' ? { padding: 0, height: '100%' } : undefined
         }}

@@ -24,7 +24,9 @@
         "collector": "组件",
         "collectorType": "组件类型",
         "parameterdes": "参数说明",
-        "subconfiguration": "子配置"
+        "subconfiguration": "子配置",
+        "deleteSubConfigWarning": "删除配置属于非常规操作，可能导致组件运行异常。请确认此操作确有必要，并知晓潜在影响。",
+        "searchPlaceholder": "请输入配置类型"
       },
       "node": {
         "installCollector": "安装组件",
@@ -119,6 +121,7 @@
         "loginPassword": "登录密码",
         "desc": "节点是控制器和组件运行的环境，可以是一个主机或容器。平台依托节点上的控制器，对节点进行管理，并统一调控被托管组件的运行。",
         "sidecarVersion": "控制器版本",
+        "controllerVersionTip": "可升级新版本",
         "inactive": "不活跃",
         "bindaditinfo": "绑定配置文件后，对应的托管组件会自动启动。",
         "operateSystem": "操作系统",

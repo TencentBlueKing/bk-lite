@@ -1,13 +1,13 @@
 import { useState, useRef, useEffect } from 'react';
 import { flushSync } from 'react-dom';
 import { aiChatStream } from '@/api/bot';
-import type { Message, ToolCall } from '@/types/conversation';
+import type { Message, ToolCall, MessageContentItem } from '@/types/conversation';
 
 interface UseMessagesReturn {
     messages: Message[];
     setMessages: React.Dispatch<React.SetStateAction<Message[]>>;
     handleSendMessage: (content: string, renderMarkdown: (text: string) => React.ReactNode) => Promise<void>;
-    triggerAIResponse: (content: string, renderMarkdown: (text: string) => React.ReactNode) => Promise<void>;
+    triggerAIResponse: (content: string | MessageContentItem[], renderMarkdown: (text: string) => React.ReactNode) => Promise<void>;
     setRenderMarkdown: (renderMarkdown: (text: string) => React.ReactNode) => void;
     thinkingExpanded: Record<string, boolean>;
     setThinkingExpanded: React.Dispatch<React.SetStateAction<Record<string, boolean>>>;
@@ -50,7 +50,7 @@ export const useMessages = (
      * 处理 AG-UI 事件流 - 使用真实 API
      */
     const handleAGUIEventStream = async (
-        userMessage: string,
+        userMessage: string | MessageContentItem[],
         aiMsgId: string,
         renderMarkdown: (text: string) => React.ReactNode
     ) => {
@@ -69,7 +69,7 @@ export const useMessages = (
                 throw new Error('Missing bot or nodeId configuration');
             }
 
-            // 获取真实 API 事件流
+            // 获取真实 API 事件流 - 直接传递数组或字符串，不做转换
             const eventStream = aiChatStream(bot, nodeId, userMessage, sessionId);
 
             // 处理每个事件
@@ -151,12 +151,12 @@ export const useMessages = (
                                     const parts = msg.contentParts || [];
                                     return {
                                         ...msg,
-                                        toolCalls: [...(msg.toolCalls || []), newToolCall],
                                         // 同时添加到 contentParts
                                         contentParts: [...parts, {
                                             type: 'tool_call' as const,
                                             toolCall: newToolCall
-                                        }]
+                                        }],
+                                        status: 'success'
                                     };
                                 }
                                 return msg;
@@ -177,12 +177,7 @@ export const useMessages = (
                             toolArgsAccumulated[toolCallId] = (toolArgsAccumulated[toolCallId] || '') + (event.delta || '');
                             setMessages((prev) =>
                                 prev.map((msg) => {
-                                    if (msg.id === aiMsgId && msg.toolCalls) {
-                                        const updatedToolCalls = msg.toolCalls.map(tool =>
-                                            tool.id === toolCallId
-                                                ? { ...tool, args: toolArgsAccumulated[toolCallId] }
-                                                : tool
-                                        );
+                                    if (msg.id === aiMsgId) {
                                         // 同时更新 contentParts 中的工具调用
                                         const updatedParts = msg.contentParts?.map(part => {
                                             if (part.type === 'tool_call' && part.toolCall?.id === toolCallId) {
@@ -201,7 +196,6 @@ export const useMessages = (
                                         });
                                         return {
                                             ...msg,
-                                            toolCalls: updatedToolCalls,
                                             contentParts: updatedParts,
                                         };
                                     }
@@ -221,13 +215,8 @@ export const useMessages = (
                             const toolCallId = event.toolCallId;
                             setMessages((prev) =>
                                 prev.map((msg) => {
-                                    if (msg.id === aiMsgId && msg.toolCalls) {
-                                        const updatedToolCalls = msg.toolCalls.map(tool =>
-                                            tool.id === toolCallId
-                                                ? { ...tool, result: event.content, status: 'completed' as const }
-                                                : tool
-                                        );
-                                        // 同时更新 contentParts 中的工具调用结果
+                                    if (msg.id === aiMsgId) {
+                                        // 更新 contentParts 中的工具调用结果
                                         const updatedParts = msg.contentParts?.map(part => {
                                             if (part.type === 'tool_call' && part.toolCall?.id === toolCallId) {
                                                 return {
@@ -245,7 +234,6 @@ export const useMessages = (
                                         });
                                         return {
                                             ...msg,
-                                            toolCalls: updatedToolCalls,
                                             contentParts: updatedParts,
                                         };
                                     }
@@ -331,10 +319,6 @@ export const useMessages = (
                                         const parts = msg.contentParts || [];
                                         return {
                                             ...msg,
-                                            customComponent: {
-                                                component: event.value.component,
-                                                props: event.value.props,
-                                            },
                                             contentParts: [...parts, {
                                                 type: 'component' as const,
                                                 component: {
@@ -413,7 +397,7 @@ export const useMessages = (
         }
     };
 
-    // 发送消息
+    // 发送消息 - 仅用于纯文本消息
     const handleSendMessage = async (content: string, renderMarkdown: (text: string) => React.ReactNode) => {
         const userMessageTimestamp = Date.now();
         renderMarkdownRef.current = renderMarkdown;
@@ -455,7 +439,7 @@ export const useMessages = (
     };
 
     // 只触发 AI 响应，不添加用户消息（用于文件消息场景）
-    const triggerAIResponse = async (content: string, renderMarkdown: (text: string) => React.ReactNode) => {
+    const triggerAIResponse = async (content: string | MessageContentItem[], renderMarkdown: (text: string) => React.ReactNode) => {
         renderMarkdownRef.current = renderMarkdown;
 
         // 创建 AI 消息 ID

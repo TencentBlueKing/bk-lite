@@ -261,7 +261,6 @@ def sync_web_page_knowledge(web_page_knowledge_id):
         False,
         web_page.knowledge_document.created_by,
         web_page.knowledge_document.domain,
-        True,
     )
 
 

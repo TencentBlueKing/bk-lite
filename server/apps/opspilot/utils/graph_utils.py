@@ -218,7 +218,7 @@ class GraphUtils(ChunkHelper):
             return {"result": True, "data": res}
 
         except Exception as e:
-            logger.error(f"获取图谱失败: {e}")
+            logger.exception(f"获取图谱失败: {e}")
             return {"result": False, "message": str(e)}
 
     @classmethod
@@ -231,7 +231,7 @@ class GraphUtils(ChunkHelper):
             cls._run_async(rag.delete_index(request))
             logger.info(f"成功删除图谱: graph-{graph_obj.id}")
         except Exception as e:
-            logger.error(f"删除图谱失败: {e}")
+            logger.exception(f"删除图谱失败: {e}")
             raise Exception("Failed to Delete graph")
 
     @classmethod
@@ -244,7 +244,7 @@ class GraphUtils(ChunkHelper):
             cls._run_async(rag.delete_document(request))
             logger.info(f"成功删除图谱分块: {len(chunk_ids)}个")
         except Exception as e:
-            logger.error(f"删除图谱分块失败: {e}")
+            logger.exception(f"删除图谱分块失败: {e}")
             raise Exception("Failed to Delete graph chunk")
 
     @classmethod
@@ -273,5 +273,5 @@ class GraphUtils(ChunkHelper):
             logger.info(f"成功重建图谱社区: graph-{graph_obj.id}")
             return {"result": True}
         except Exception as e:
-            logger.error(f"重建图谱社区失败: {e}")
+            logger.exception(f"重建图谱社区失败: {e}")
             return {"result": False}

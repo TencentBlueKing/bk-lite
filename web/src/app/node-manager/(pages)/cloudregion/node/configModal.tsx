@@ -31,12 +31,8 @@ const { Option } = Select;
 
 const ConfigModal = forwardRef<ModalRef, ModalSuccess>(
   ({ onSuccess, config: { collectors = [] } }, ref) => {
-    const {
-      updateCollector,
-      createConfig,
-      updateChildConfig,
-      getVariableList,
-    } = useNodeManagerApi();
+    const { updateConfig, createConfig, updateChildConfig, getVariableList } =
+      useNodeManagerApi();
     const cloudId = useCloudId();
     const { t } = useTranslation();
     const columns = useConfigModalColumns();
@@ -108,7 +104,7 @@ const ConfigModal = forwardRef<ModalRef, ModalSuccess>(
         const isAdd = type === 'add';
         await (isAdd
           ? createConfig(params)
-          : updateCollector(editConfigId, params));
+          : updateConfig(editConfigId, params));
         handleSuccess();
         message.success(t(`common.${isAdd ? 'addSuccess' : 'updateSuccess'}`));
       } finally {
