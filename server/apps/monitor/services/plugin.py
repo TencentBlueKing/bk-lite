@@ -1,12 +1,21 @@
 from django.db import transaction
 
 from apps.monitor.constants.database import DatabaseConstants
-from apps.monitor.models import MonitorPlugin
+from apps.monitor.models import MonitorPlugin, MonitorPluginUITemplate
 from apps.monitor.models.monitor_metrics import MetricGroup, Metric
 from apps.monitor.models.monitor_object import MonitorObject, MonitorObjectType
 
 
 class MonitorPluginService:
+    @staticmethod
+    def get_ui_template_by_params(collector, collect_type, monitor_object_id):
+        """获取插件的 UI 模板"""
+        obj =  MonitorPluginUITemplate.objects.filter(
+            plugin__monitor_object_id=monitor_object_id,
+            plugin__collector=collector,
+            plugin__collect_type=collect_type
+        ).first()
+        return obj.content
 
     @staticmethod
     def import_monitor_plugin(data: dict):
