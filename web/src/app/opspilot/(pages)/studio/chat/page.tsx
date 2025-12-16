@@ -11,14 +11,12 @@ import type { MenuProps } from 'antd';
 const StudioChatPage: React.FC = () => {
   const [selectedItem, setSelectedItem] = useState<string>('k8s');
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
-  // 聊天区重置用 key
   const [chatKey, setChatKey] = useState(0);
 
   const [agentList, setAgentList] = useState<any[]>([]);
   const [currentAgent, setCurrentAgent] = useState<any | null>(null);
   const [agentLoading, setAgentLoading] = useState(true);
 
-  // 新增：记录当前会话 sessionId
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [functionList, setFunctionList] = useState<any[]>([]);
   const [functionLoading, setFunctionLoading] = useState(false);
@@ -107,11 +105,10 @@ const StudioChatPage: React.FC = () => {
   const [initialMessages, setInitialMessages] = useState<any[]>([]);
   const [guide, setGuide] = useState<string>('');
 
-  // 点击历史会话只获取消息，不再请求引导语
   const handleSelectSession = async (id: string) => {
     setChatLoading(true);
     setSelectedItem(id);
-    setSessionId(id); // 设置当前会话 ID
+    setSessionId(id);
     try {
       const data = await fetchSessionMessages(id);
       const messages = (data || []).map((item: any) => ({
