@@ -110,7 +110,7 @@ class Command(BaseCommand):
                     updated_count += 1
                     logger.info(f"更新数据源: {api_data['name']}")
                 else:
-                    logger.info(f"跳过已存在的数据源: {api_data['name']} (使用 --force-update 强制更新)")
+                    logger.info(f"跳过已存在的数据源: {api_data['name']}")
 
             success_msg = f"源API数据初始化完成 - 创建: {created_count}, 更新: {updated_count}"
             self.stdout.write(self.style.SUCCESS(success_msg))
