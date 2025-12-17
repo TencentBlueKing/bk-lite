@@ -9,11 +9,13 @@ class ControllerConstants:
             "os": "linux",
             "name": "Controller",
             "description": "The Controller is primarily used to manage various types of collectors, composed of Sidecarand NAS Executor, enabling automated deployment, resource coordination, and task execution on servers.",
+            "version_command": "cat /opt/fusion-collectors/VERSION",
         },
         {
             "os": "windows",
             "name": "Controller",
             "description": "The Controller is primarily used to manage various types of collectors, composed of Sidecarand NAS Executor, enabling automated deployment, resource coordination, and task execution on servers.",
+            "version_command": "type C:\\Program Files\\fusion-collectors\\VERSION",
         },
     ]
 

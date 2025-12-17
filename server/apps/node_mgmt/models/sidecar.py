@@ -18,6 +18,7 @@ class Controller(TimeInfo, MaintainerInfo):
     os = models.CharField(max_length=50, choices=OS_TYPE, verbose_name="操作系统类型")
     name = models.CharField(max_length=100, verbose_name="控制器名称")
     description = models.TextField(blank=True, verbose_name="控制器描述")
+    version_command = models.CharField(max_length=500, blank=True, default="", verbose_name="获取版本命令")
 
     class Meta:
         verbose_name = "控制器信息"

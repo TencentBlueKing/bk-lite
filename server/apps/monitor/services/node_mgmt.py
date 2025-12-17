@@ -42,14 +42,10 @@ class InstanceConfigService:
         return result
 
     @staticmethod
-    def get_instance_configs(collect_instance_id, collector, collect_type):
+    def get_instance_configs(collect_instance_id):
         """获取实例配置"""
 
-        config_objs = CollectConfig.objects.filter(
-            monitor_instance_id=collect_instance_id,
-            collector=collector,
-            collect_type=collect_type,
-        )
+        config_objs = CollectConfig.objects.filter(monitor_instance_id=collect_instance_id)
 
         configs = []
 
