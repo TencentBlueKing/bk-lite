@@ -178,29 +178,6 @@ export const useAnomalyForm = ({ datasetOptions, activeTag, onSuccess, formRef }
     }
   };
 
-  // const onTrainSelectChange = async (value: number) => {
-  //   if (!value) return;
-  //   try {
-  //     if (key !== 'classification') return;
-  //     setLoadingState(prev => ({ ...prev, transfer: true }));
-  //     const { metadata } = await getDatasetByTrainId(value, key);
-  //     if (key === 'classification' && metadata.headers) {
-  //       const _headers = metadata.headers?.map((item: string) => ({
-  //         key: item,
-  //         title: item
-  //       })).slice(0, metadata.headers?.length - 1);
-  //       setSelectedColumns(_headers);
-  //       if (modalState.type === 'add') {
-  //         setTargetKeys(_headers.map((item: any) => item.key));
-  //       }
-  //     }
-  //   } catch (e) {
-  //     console.log(e);
-  //   } finally {
-  //     setLoadingState(prev => ({ ...prev, transfer: false }));
-  //   }
-  // };
-
   // 以数据集版本文件ID获取数据集ID
   const handleAsyncDataLoading = useCallback(async (dataset_version_id: number, key: string) => {
     if (!dataset_version_id) return;
@@ -226,8 +203,6 @@ export const useAnomalyForm = ({ datasetOptions, activeTag, onSuccess, formRef }
     setLoadingState(prev => ({ ...prev, select: true }));
     try {
       if (!formRef.current || !dataset) return;
-      // 加载训练数据选项
-      // const trainOptions = await loadTrainOptions(dataset, key);
       // 加载数据集版本
       const datasetVersions = await getDatasetVerions[key]({ dataset });
       const _versionOptions = datasetVersions.map((item: any) => {
@@ -237,12 +212,7 @@ export const useAnomalyForm = ({ datasetOptions, activeTag, onSuccess, formRef }
         }
       });
       setDatasetVersions(_versionOptions);
-      // onTrainSelectChange(formData?.train_data_id as number);
-      // setTrainDataOption(trainOptions);
       formRef.current.setFieldsValue({
-        // train_data_id: formData?.train_data_id,
-        // val_data_id: formData?.val_data_id,
-        // test_data_id: formData?.test_data_id,
         dataset_version: formData?.dataset_version
       });
     } catch (e) {

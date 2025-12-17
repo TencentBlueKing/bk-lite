@@ -5,64 +5,40 @@ from typing import List
 # 默认配置
 DEFAULT_CONFIG = {
     "model": {
-        "type": "gradient_boosting",
+        "type": "GradientBoosting",
         "name": "timeseries_model"
     },
     
     "hyperparams": {
-        "search": {
-            "enabled": False,
-            "max_evals": 50,
-            "metric": "rmse",
-            "auto_tune": True,
-            "early_stopping": {
-                "enabled": True,
-                "min_evals": 20,
-                "min_evals_ratio": 0.2,
-                "patience": 15,
-                "min_improvement_pct": 1.0,
-                "exploration_ratio": 0.3,
-                "exploration_boost": 1.5,
-                "loss_cap_multiplier": 5.0
-            },
-            "search_space": {
-                "order": {
-                    "p": [0, 1, 2],
-                    "d": [0, 1, 2],
-                    "q": [0, 1, 2]
-                },
-                "seasonal_order": {
-                    "P": [0, 1, 2],
-                    "D": [0, 1],
-                    "Q": [0, 1, 2],
-                    "s": [12]
-                },
-                "trend": ["n", "c", "t", "ct"]
-            }
-        },
-        "fixed": {
-            "order": [1, 1, 1],
-            "seasonal_order": [1, 1, 1, 12],
-            "trend": "c"
+        "use_feature_engineering": True,
+        "random_state": 42,
+        "max_evals": 50,
+        "metric": "rmse",
+        "search_space": {
+            "n_estimators": [50, 100, 200, 300],
+            "learning_rate": [0.01, 0.05, 0.1, 0.2],
+            "max_depth": [3, 5, 7, 10],
+            "min_samples_split": [2, 5, 10],
+            "min_samples_leaf": [1, 2, 4],
+            "subsample": [0.7, 0.8, 0.9, 1.0],
+            "lag_features": [6, 12, 24]
         }
     },
     
     "preprocessing": {
         "handle_missing": "interpolate",
         "max_missing_ratio": 0.3,
-        "interpolation_limit": 3,
-        "detect_outliers": False,
-        "normalize": False
+        "interpolation_limit": 3
     },
     
     "feature_engineering": {
-        "enabled": False,
-        "lag_features": [1, 2, 3, 7, 14],
-        "rolling_features": {
-            "windows": [7, 14, 30],
-            "functions": ["mean", "std", "min", "max"]
-        },
-        "time_features": ["hour", "day_of_week", "month"]
+        "lag_periods": [1, 2, 3, 7, 14],
+        "rolling_windows": [7, 14, 30],
+        "rolling_features": ["mean", "std", "min", "max"],
+        "use_temporal_features": True,
+        "use_cyclical_features": False,
+        "use_diff_features": True,
+        "diff_periods": [1]
     },
     
     "mlflow": {
@@ -73,10 +49,11 @@ DEFAULT_CONFIG = {
 
 # 支持的模型类型
 SUPPORTED_MODELS: List[str] = [
-    "sarima",
-    "prophet",
-    "xgboost",
-    "lstm"
+    "GradientBoosting",
+    "Sarima",
+    "Prophet",
+    "Xgboost",
+    "Lstm"
 ]
 
 

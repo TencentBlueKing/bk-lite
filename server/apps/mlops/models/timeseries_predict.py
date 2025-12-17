@@ -217,13 +217,35 @@ class TimeSeriesPredictTrainJob(MaintainerInfo, TimeInfo):
         verbose_name_plural = "时间序列预测训练任务"
     
     def save(self, *args, **kwargs):
-        """保存时自动同步配置到 MinIO"""
-        if self.hyperopt_config:
-            self._sync_config_to_minio()
+        """保存时自动同步配置到 MinIO（先保存获得 pk，再同步文件）"""
+        from apps.core.logger import opspilot_logger as logger
+        
+        # 1. 先保存到数据库，获得 pk
         super().save(*args, **kwargs)
+        
+        # 2. 基于真实 pk 同步文件到 MinIO
+        config_updated = False
+        
+        if self.hyperopt_config:
+            # 有配置内容 → 补全并上传到 MinIO
+            self._sync_config_to_minio()
+            config_updated = True
+        elif self.config_url:
+            # 配置为空 → 删除 MinIO 文件
+            try:
+                self.config_url.delete(save=False)
+                logger.info(f"Deleted config file (empty config) for TrainJob {self.pk}")
+                self.config_url = None
+                config_updated = True
+            except Exception as e:
+                logger.warning(f"Failed to delete config file: {e}")
+        
+        # 3. 如果 config_url 有变化，更新数据库
+        if config_updated:
+            super().save(update_fields=['config_url'])
     
     def _sync_config_to_minio(self):
-        """将 hyperopt_config 同步上传到 MinIO"""
+        """将 hyperopt_config 同步上传到 MinIO（自动补全 model 和 mlflow 配置）"""
         from django.core.files.base import ContentFile
         import json
         import uuid
@@ -237,9 +259,12 @@ class TimeSeriesPredictTrainJob(MaintainerInfo, TimeInfo):
             except Exception as e:
                 logger.warning(f"Failed to delete old config file: {e}")
         
-        # 上传新文件
+        # 补全配置文件
         try:
-            content = json.dumps(self.hyperopt_config, ensure_ascii=False, indent=2)
+            complete_config = self._build_complete_config()
+            
+            # 上传新文件
+            content = json.dumps(complete_config, ensure_ascii=False, indent=2)
             filename = f'config_{self.pk or "new"}_{uuid.uuid4().hex[:8]}.json'
             self.config_url.save(
                 filename,
@@ -249,6 +274,27 @@ class TimeSeriesPredictTrainJob(MaintainerInfo, TimeInfo):
             logger.info(f"Synced config to MinIO for TrainJob {self.pk}: {filename}")
         except Exception as e:
             logger.error(f"Failed to sync config to MinIO: {e}", exc_info=True)
+    
+    def _build_complete_config(self):
+        """构建完整的配置文件（补全 model 和 mlflow 部分）"""
+        # 基础配置（来自前端）
+        config = dict(self.hyperopt_config) if self.hyperopt_config else {}
+        
+        # 生成模型标识：algorithm_name_id（此时 pk 已存在）
+        model_identifier = f"{self.algorithm}_{self.name}_{self.pk}"
+        
+        # 补充 model 配置
+        config['model'] = {
+            'type': self.algorithm,
+            'name': model_identifier
+        }
+        
+        # 补充 mlflow 配置
+        config['mlflow'] = {
+            'experiment_name': model_identifier
+        }
+        
+        return config
 
 
 class TimeSeriesPredictTrainHistory(MaintainerInfo, TimeInfo, DataPointFeaturesInfo):
@@ -334,13 +380,35 @@ class TimeSeriesPredictTrainHistory(MaintainerInfo, TimeInfo, DataPointFeaturesI
         verbose_name_plural = "时间序列预测训练历史"
     
     def save(self, *args, **kwargs):
-        """保存时自动同步配置到 MinIO"""
-        if self.hyperopt_config:
-            self._sync_config_to_minio()
+        """保存时自动同步配置到 MinIO（先保存获得 pk，再同步文件）"""
+        from apps.core.logger import opspilot_logger as logger
+        
+        # 1. 先保存到数据库，获得 pk
         super().save(*args, **kwargs)
+        
+        # 2. 基于真实 pk 同步文件到 MinIO
+        config_updated = False
+        
+        if self.hyperopt_config:
+            # 有配置内容 → 补全并上传到 MinIO
+            self._sync_config_to_minio()
+            config_updated = True
+        elif self.config_url:
+            # 配置为空 → 删除 MinIO 文件
+            try:
+                self.config_url.delete(save=False)
+                logger.info(f"Deleted config file (empty config) for TrainHistory {self.pk}")
+                self.config_url = None
+                config_updated = True
+            except Exception as e:
+                logger.warning(f"Failed to delete config file: {e}")
+        
+        # 3. 如果 config_url 有变化，更新数据库
+        if config_updated:
+            super().save(update_fields=['config_url'])
     
     def _sync_config_to_minio(self):
-        """将 hyperopt_config 同步上传到 MinIO"""
+        """将 hyperopt_config 同步上传到 MinIO（自动补全 model 和 mlflow 配置）"""
         from django.core.files.base import ContentFile
         import json
         import uuid
@@ -354,9 +422,12 @@ class TimeSeriesPredictTrainHistory(MaintainerInfo, TimeInfo, DataPointFeaturesI
             except Exception as e:
                 logger.warning(f"Failed to delete old config file: {e}")
         
-        # 上传新文件
+        # 补全配置文件
         try:
-            content = json.dumps(self.hyperopt_config, ensure_ascii=False, indent=2)
+            complete_config = self._build_complete_config()
+            
+            # 上传新文件
+            content = json.dumps(complete_config, ensure_ascii=False, indent=2)
             filename = f'config_{self.pk or "new"}_{uuid.uuid4().hex[:8]}.json'
             self.config_url.save(
                 filename,
@@ -366,6 +437,27 @@ class TimeSeriesPredictTrainHistory(MaintainerInfo, TimeInfo, DataPointFeaturesI
             logger.info(f"Synced config to MinIO for TrainHistory {self.pk}: {filename}")
         except Exception as e:
             logger.error(f"Failed to sync config to MinIO: {e}", exc_info=True)
+    
+    def _build_complete_config(self):
+        """构建完整的配置文件（补全 model 和 mlflow 部分）"""
+        # 基础配置（来自前端）
+        config = dict(self.hyperopt_config) if self.hyperopt_config else {}
+        
+        # 生成模型标识：algorithm_history_id（此时 pk 已存在）
+        model_identifier = f"{self.algorithm}_history_{self.pk}"
+        
+        # 补充 model 配置
+        config['model'] = {
+            'type': self.algorithm,
+            'name': model_identifier
+        }
+        
+        # 补充 mlflow 配置
+        config['mlflow'] = {
+            'experiment_name': model_identifier
+        }
+        
+        return config
 
 
 class TimeSeriesPredictServing(MaintainerInfo, TimeInfo):

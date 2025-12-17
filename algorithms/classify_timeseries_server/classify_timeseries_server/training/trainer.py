@@ -96,9 +96,9 @@ class UniversalTrainer:
                 # 记录配置
                 self._log_config()
                 
-                # 6. 超参数优化（可选）
+                # 6. 超参数优化（默认启用）
                 best_params = None
-                if self.config.is_hyperopt_enabled and val_data is not None:
+                if val_data is not None:
                     best_params = self._optimize_hyperparams(train_data, val_data)
                     mlflow.log_params(best_params)
                 
@@ -365,14 +365,22 @@ class UniversalTrainer:
         # 从注册表获取模型类
         model_class = ModelRegistry.get(model_type)
         
-        # 获取模型特定的参数配置
-        model_params = self.config.get("hyperparams", model_type, "fixed", default={})
+        # 获取模型参数
+        model_params = self.config.get_model_params()
+        
+        # 获取特征工程配置
+        fe_config = self.config.get_feature_engineering_config()
         
         logger.info(f"创建模型: {model_type}")
         logger.debug(f"模型参数: {model_params}")
+        if fe_config:
+            logger.debug(f"特征工程配置: {fe_config}")
         
         # 实例化模型
-        model = model_class(**model_params)
+        model = model_class(
+            **model_params,
+            feature_engineering_config=fe_config
+        )
         
         return model
     
@@ -499,7 +507,7 @@ class UniversalTrainer:
         """
         model_type = self.config.model_type
         
-        if model_type == "gradient_boosting":
+        if model_type == "GradientBoosting":
             # GradientBoosting: 更新历史上下文
             # 理由：
             # 1. GB 使用递归预测，需要完整的历史序列
@@ -556,7 +564,7 @@ class UniversalTrainer:
         
         model_type = self.config.model_type
         
-        if model_type == "gradient_boosting":
+        if model_type == "GradientBoosting":
             from .models.gradient_boosting_model import GradientBoostingModel
             if isinstance(self.model, GradientBoostingModel):
                 self.model.save_mlflow(artifact_path="model")
