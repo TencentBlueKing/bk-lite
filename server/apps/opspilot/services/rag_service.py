@@ -103,7 +103,10 @@ class RAGService:
         """
         km_request = {}
         if enable_km_route:
-            llm_model = LLMModel.objects.get(id=km_llm_model)
+            if isinstance(km_llm_model, int) or isinstance(km_llm_model, str):
+                llm_model = LLMModel.objects.get(id=km_llm_model)
+            else:
+                llm_model = km_llm_model
             openai_api_base = llm_model.decrypted_llm_config["openai_base_url"]
             openai_api_key = llm_model.decrypted_llm_config["openai_api_key"]
             model = llm_model.decrypted_llm_config["model"]
