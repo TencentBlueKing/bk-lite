@@ -165,7 +165,6 @@ check_nvidia_gpu() {
 # Function to add mirror prefix to docker image if MIRROR is set
 add_mirror_prefix() {
     local image="$1"
-    MIRROR="bk-lite.tencentcloudcr.com/bklite"
     if [ -n "$MIRROR" ]; then
         # 如果镜像名包含斜杠，说明有仓库前缀
         if [[ "$image" == *"/"* ]]; then
@@ -398,13 +397,14 @@ EOF
 
 generate_common_env() {
     # 检查common.env文件是否存在，存在则加载，不存在则生成
-    # 检查并设置MIRROR环境变量
-    MIRROR=${MIRROR:-""}
+    # 保存当前 MIRROR 值，防止被 common.env 覆盖
+    local current_mirror="$MIRROR"
     COMMON_ENV_FILE="common.env"
     if [ -f "$COMMON_ENV_FILE" ]; then
         log "SUCCESS" "发现 $COMMON_ENV_FILE 配置文件，加载已保存的环境变量..."
         source $COMMON_ENV_FILE
-        MIRROR="bk-lite.tencentcloudcr.com/bklite"
+        # 恢复 MIRROR：优先使用当前环境变量的值（用户设置或脚本默认值）
+        MIRROR="$current_mirror"
         # 定义需要检查的环境变量及其默认值
         local vars_to_check=(
             "OPSPILOT_ENABLED:false"
@@ -446,7 +446,7 @@ generate_common_env() {
         export MINIO_ROOT_USER=minio
         export MINIO_ROOT_PASSWORD=$(generate_password 32)
         export FALKORDB_PASSWORD=$(generate_password 32)
-        export MIRROR=${MIRROR:-""}
+        export MIRROR="$MIRROR"
         export OFFLINE=${OFFLINE:-"false"}
         export OFFLINE_IMAGES_PATH=${OFFLINE_IMAGES_PATH:-"./images"}
         export OPSPILOT_ENABLED=${OPSPILOT_ENABLED:-false}
@@ -616,11 +616,16 @@ install() {
         export MIRROR=""
     fi
     
+    # 保存当前 MIRROR 值，防止被 common.env 覆盖
+    local current_mirror="$MIRROR"
+    
     # 先加载 common.env（如果存在），获取上次保存的参数
     COMMON_ENV_FILE="common.env"
     if [ -f "$COMMON_ENV_FILE" ]; then
         log "SUCCESS" "发现 $COMMON_ENV_FILE 配置文件，加载已保存的配置..."
         source $COMMON_ENV_FILE
+        # 恢复 MIRROR：优先使用当前环境变量的值（用户设置或脚本默认值）
+        MIRROR="$current_mirror"
     fi
     
     # 从配置文件中读取默认值（如果配置文件中有的话）
