@@ -72,7 +72,6 @@ class Collector(TimeInfo, MaintainerInfo):
     introduction = models.TextField(blank=True, verbose_name="采集器介绍")
     icon = models.CharField(max_length=100, default="", verbose_name="图标key")
     controller_default_run = models.BooleanField(default=False, verbose_name="控制器默认运行")
-    enabled_default_config = models.BooleanField(default=False, verbose_name="是否启用默认初始化的配置")
     default_config = JSONField(default=dict, verbose_name="默认初始化的配置")
     tags = JSONField(default=list, verbose_name="标签")
     package_name = models.CharField(max_length=100, blank=True, default="", verbose_name="包名称")

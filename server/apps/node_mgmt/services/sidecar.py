@@ -394,8 +394,10 @@ class Sidecar:
     @staticmethod
     def create_default_config(node, node_types):
 
-        collector_objs = Collector.objects.filter(enabled_default_config=True,
-                                                  node_operating_system=node.operating_system)
+        collector_objs = Collector.objects.filter(
+            controller_default_run=True,
+            node_operating_system=node.operating_system,
+        )
         variables = Sidecar.get_cloud_region_envconfig(node)
         default_sidecar_mode = variables.get("SIDECAR_INPUT_MODE", "nats")
 
