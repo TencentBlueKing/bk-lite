@@ -34,6 +34,7 @@ services:
       SIDECAR_NODENAME: fusion-collector
     volumes:
       - ../conf/certs:/opt/fusion-collectors/certs:ro
+      - ../bin:/opt/fusion-collectors/bin
     networks:
       - prod
     ports:

@@ -3,8 +3,7 @@
 # webhookd infra render script
 # 接收 JSON: {"cluster_name": "xxx", "type": "metric|log", "nats_url": "nats://x.x.x.x:4222", "nats_username": "user", "nats_password": "pass", "nats_ca": "..."}
 # 渲染出 K8s 配置 YAML
-
-set -e
+set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 WEBHOOKD_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
