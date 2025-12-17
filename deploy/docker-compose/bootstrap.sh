@@ -7,8 +7,14 @@ YELLOW='\033[0;33m'
 BLUE='\033[0;34m'
 NC='\033[0m' # No Color
 
-# 读取环境变量 MIRROR，如果未设置则为空
-MIRROR=${MIRROR:-"bk-lite.tencentcloudcr.com/bklite"}
+# 读取环境变量 MIRROR（不设置默认值，允许 common.env 覆盖）
+# 优先级：命令行环境变量 > common.env > 脚本默认值
+# 使用 _MIRROR_FROM_ENV 标记用户是否通过命令行设置了 MIRROR
+if [ -n "${MIRROR:-}" ]; then
+    _MIRROR_FROM_ENV=true
+else
+    _MIRROR_FROM_ENV=false
+fi
 
 # Function to log messages with colored output
 log() {
@@ -397,14 +403,18 @@ EOF
 
 generate_common_env() {
     # 检查common.env文件是否存在，存在则加载，不存在则生成
-    # 保存当前 MIRROR 值，防止被 common.env 覆盖
-    local current_mirror="$MIRROR"
+    # 保存命令行环境变量的 MIRROR 值
+    local env_mirror="${MIRROR:-}"
     COMMON_ENV_FILE="common.env"
     if [ -f "$COMMON_ENV_FILE" ]; then
         log "SUCCESS" "发现 $COMMON_ENV_FILE 配置文件，加载已保存的环境变量..."
         source $COMMON_ENV_FILE
-        # 恢复 MIRROR：优先使用当前环境变量的值（用户设置或脚本默认值）
-        MIRROR="$current_mirror"
+        # 如果用户通过命令行设置了 MIRROR，优先使用命令行的值
+        if [ "$_MIRROR_FROM_ENV" = true ]; then
+            MIRROR="$env_mirror"
+        fi
+        # 如果 MIRROR 仍然为空，使用默认值
+        MIRROR=${MIRROR:-"bk-lite.tencentcloudcr.com/bklite"}
         # 定义需要检查的环境变量及其默认值
         local vars_to_check=(
             "OPSPILOT_ENABLED:false"
@@ -446,7 +456,7 @@ generate_common_env() {
         export MINIO_ROOT_USER=minio
         export MINIO_ROOT_PASSWORD=$(generate_password 32)
         export FALKORDB_PASSWORD=$(generate_password 32)
-        export MIRROR="$MIRROR"
+        export MIRROR=${MIRROR:-"bk-lite.tencentcloudcr.com/bklite"}
         export OFFLINE=${OFFLINE:-"false"}
         export OFFLINE_IMAGES_PATH=${OFFLINE_IMAGES_PATH:-"./images"}
         export OPSPILOT_ENABLED=${OPSPILOT_ENABLED:-false}
@@ -495,6 +505,7 @@ EOF
 # This function can be called by external scripts to set up all Docker image variables
 # All variables are exported for use in docker-compose and other scripts
 init_docker_images() {
+    log "INFO" "初始化镜像变量，当前 MIRROR=${MIRROR}"
     # Infrastructure images
     export DOCKER_IMAGE_TRAEFIK=$(add_mirror_prefix "traefik:3.6.2")
     export DOCKER_IMAGE_REDIS=$(add_mirror_prefix "redis:5.0.14")
@@ -616,16 +627,20 @@ install() {
         export MIRROR=""
     fi
     
-    # 保存当前 MIRROR 值，防止被 common.env 覆盖
-    local current_mirror="$MIRROR"
+    # 保存命令行环境变量的 MIRROR 值
+    local env_mirror="${MIRROR:-}"
     
     # 先加载 common.env（如果存在），获取上次保存的参数
     COMMON_ENV_FILE="common.env"
     if [ -f "$COMMON_ENV_FILE" ]; then
         log "SUCCESS" "发现 $COMMON_ENV_FILE 配置文件，加载已保存的配置..."
         source $COMMON_ENV_FILE
-        # 恢复 MIRROR：优先使用当前环境变量的值（用户设置或脚本默认值）
-        MIRROR="$current_mirror"
+        # 如果用户通过命令行设置了 MIRROR，优先使用命令行的值
+        if [ "$_MIRROR_FROM_ENV" = true ]; then
+            MIRROR="$env_mirror"
+        fi
+        # 如果 MIRROR 仍然为空，使用默认值
+        MIRROR=${MIRROR:-"bk-lite.tencentcloudcr.com/bklite"}
     fi
     
     # 从配置文件中读取默认值（如果配置文件中有的话）
@@ -697,9 +712,11 @@ install() {
     fi
 
     # 现在调用这些函数来生成必要的配置文件和环境变量
-    init_docker_images
+    # 注意：generate_common_env 必须在 init_docker_images 之前调用，
+    # 以确保 MIRROR 变量在生成镜像名时已经正确设置
     generate_ports_env
     generate_common_env
+    init_docker_images
     
     # 更新 common.env 文件中的 OPSPILOT_ENABLED 和 VLLM_ENABLED 值
     if [ -f "$COMMON_ENV_FILE" ]; then
