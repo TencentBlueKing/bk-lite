@@ -124,7 +124,8 @@
       "healthcheckDes": "healthcheck指标集提供容器健康检查状态统计数据。",
       "metricType": "指标类型",
       "uptimeDes": "uptime指标集提供主机操作系统的正常运行时间。",
-      "containerPlaceholder": "请输入容器按回车键结束",
+      "containerPlaceholder": "请输入容器名称（可使用 * 通配符），每输入一个名称后按回车以添加更多",
+      "endpointPlaceholder": "Docer守护进程连接地址，默认为 unix:///var/run/docker.sock",
       "continueThrough": "持续合并所有符合条件的行，直到遇到不符合的行。比如Java报错堆栈中，所有以空格开头的行都会被合并到上一条日志。适合有明显'附属行'特征的场景。",
       "eventDes": "event指标集提供Docker事件统计数据。",
       "dhcpPortDes": "DHCP端口配置，包括服务器端口和客户端端口。",
@@ -228,7 +229,8 @@
       "syslogTargetIp": "目标 IP",
       "syslogNodeDes": "请选择已托管 Telegraf 采集器的容器节点",
       "syslogTargetPort": "目标端口",
-      "syslogStep1": "在设备上配置 Syslog 目标地址"
+      "syslogStep1": "在设备上配置 Syslog 目标地址",
+      "endpoint": "端点"
     },
     "search": {
       "enableScrolling": "开启自动滚动",

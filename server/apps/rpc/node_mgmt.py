@@ -145,3 +145,12 @@ class NodeMgmt(object):
         """
         return_data = self.client.run("cloudregion_tls_env_by_node_id", node_id)
         return return_data
+
+    def get_cloud_region_envconfig(self, cloud_region_id):
+        """
+        获取云区域的所有环境变量配置
+        :param cloud_region_id: 云区域 ID
+        :return: 环境变量字典
+        """
+        return_data = self.client.run("get_cloud_region_envconfig", cloud_region_id)
+        return return_data

@@ -426,11 +426,9 @@ const ProviderPage: React.FC = () => {
                 className="w-60"
                 onSearch={handleSearch}
               />
-              {activeTab !== '4' && (
-                <Button type="primary" onClick={() => setIsAddModalVisible(true)}>
-                  {t('common.add')}
-                </Button>
-              )}
+              <Button type="primary" onClick={() => setIsAddModalVisible(true)}>
+                {t('common.add')}
+              </Button>
             </div>
           </div>
           

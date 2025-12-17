@@ -130,7 +130,7 @@ class ChatFlowEngine:
             """
             嵌套的异步生成器：直接调用节点的 execute_method 获取流
             """
-            accumulated_content = ""
+            accumulated_content = []
             try:
                 logger.info(f"[SSE-Engine] 开始流处理 - protocol: {protocol_type}, node: {node_id}")
 
@@ -144,23 +144,22 @@ class ChatFlowEngine:
                 # 直接迭代异步生成器
                 async for chunk in stream_generator:
                     chunk_index += 1
-                    logger.info(f"[SSE-Engine] Yielding chunk #{chunk_index}, length: {len(chunk)}")
-
                     # 累积内容用于记录对话历史
                     if chunk.startswith("data: "):
                         try:
                             data_str = chunk[6:].strip()
                             data_json = json.loads(data_str)
 
-                            if protocol_type == "AGUI":
-                                # AGUI 协议: TEXT_MESSAGE_CONTENT 类型
-                                if data_json.get("type") == "TEXT_MESSAGE_CONTENT":
-                                    accumulated_content += data_json.get("delta", "")
-                            else:
-                                # SSE/OpenAI 协议: 提取 content/message/text 字段
-                                content = data_json.get("content") or data_json.get("message") or data_json.get("text", "")
-                                if content:
-                                    accumulated_content += content
+                            # if protocol_type == "AGUI":
+                            #     # AGUI 协议: TEXT_MESSAGE_CONTENT 类型
+                            #     if data_json.get("type") == "TEXT_MESSAGE_CONTENT":
+                            #         accumulated_content += data_json.get("delta", "")
+                            # else:
+                            #     # SSE/OpenAI 协议: 提取 content/message/text 字段
+                            #     content = data_json.get("content") or data_json.get("message") or data_json.get("text", "")
+                            #     if content:
+                            #         accumulated_content += content
+                            accumulated_content.append(data_json)
                         except (json.JSONDecodeError, ValueError):
                             pass
 
@@ -505,7 +504,6 @@ class ChatFlowEngine:
             input_data_str = json.dumps(input_data, ensure_ascii=False)
 
             # 准备最后输出
-            last_output = ""
             if isinstance(result, dict):
                 last_output = json.dumps(result, ensure_ascii=False)
             elif isinstance(result, str):
@@ -615,12 +613,6 @@ class ChatFlowEngine:
             # 获取执行结果并记录
             execution_time = time.time() - start_time
             final_last_message = self.variable_manager.get_variable("last_message")
-
-            logger.info("===== 流程执行完成 =====")
-            logger.info(f"flow_id={self.instance.id}, 耗时={execution_time:.2f}秒")
-            logger.info(f"最终 last_message 值: {final_last_message}")
-            logger.info(f"所有变量: {self.variable_manager.get_all_variables()}")
-            logger.info("========================")
 
             # 记录系统输出
             self._record_conversation_history(user_id, final_last_message, "bot", entry_type, node_id, session_id)

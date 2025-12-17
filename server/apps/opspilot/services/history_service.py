@@ -4,8 +4,8 @@ from typing import Any, Dict, List, Tuple, Union
 class HistoryService:
     """处理对话历史和消息格式化的服务"""
 
-    @staticmethod
-    def process_user_message_and_images(user_message: Union[str, List[Dict[str, Any]]]) -> Tuple[str, List[str]]:
+    @classmethod
+    def process_user_message_and_images(cls, user_message: Union[str, List[Dict[str, Any]]]) -> Tuple[str, List[str]]:
         """
         处理用户消息和图片数据
 
@@ -21,7 +21,9 @@ class HistoryService:
         if isinstance(user_message, list):
             for item in user_message:
                 if item["type"] == "image_url":
-                    image_url = item.get("image_url", {}).get("url") or item.get("url")
+                    image_url = item.get("image_url", item.get("url"))
+                    if isinstance(image_url, dict):
+                        image_url = image_url.get("url")
                     if image_url:
                         image_data.append(image_url)
                 else:
@@ -30,7 +32,7 @@ class HistoryService:
         return text_message, image_data
 
     @staticmethod
-    def process_chat_history(chat_history: List[Dict[str, Any]], window_size: int) -> List[Dict[str, Any]]:
+    def process_chat_history(chat_history: List[Dict[str, Any]], window_size: int, image_data) -> List[Dict[str, Any]]:
         """
         处理聊天历史，处理窗口大小和图片数据
 
@@ -51,7 +53,9 @@ class HistoryService:
                 msg = ""
                 for item in user_msg["message"]:
                     if item["type"] == "image_url":
-                        image_url = item.get("image_url", {}).get("url") or item.get("url")
+                        image_url = item.get("image_url", item.get("url"))
+                        if isinstance(image_url, dict):
+                            image_url = image_url.get("url")
                         if image_url:
                             image_list.append(image_url)
                     else:
@@ -67,7 +71,14 @@ class HistoryService:
                         "message": txt,
                     }
                 )
-
+        if image_data:
+            processed_history.append(
+                {
+                    "event": "user",
+                    "message": "",
+                    "image_data": image_data,
+                }
+            )
         return processed_history
 
 

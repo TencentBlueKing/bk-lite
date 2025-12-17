@@ -84,7 +84,7 @@ class AgentNode(BaseNodeExecutor):
             logger.error(f"智能体节点 {node_id} prompt渲染失败: {str(e)}")
             return prompt
 
-    def _build_final_message(self, message: str, node_prompt: str, uploaded_files: list, node_id: str) -> str:
+    def _build_final_message(self, message, node_prompt: str, uploaded_files: list, node_id: str) -> str:
         """构建最终消息
 
         Args:
@@ -103,7 +103,13 @@ class AgentNode(BaseNodeExecutor):
             return message
 
         combined_prompt = files_content + rendered_prompt
-        return f"{combined_prompt}\n{message}"
+        if isinstance(message, str):
+            return f"{combined_prompt}\n{message}"
+        for i in message:
+            if i["type"] == "message":
+                i["message"] = f"{combined_prompt}\n{i['message']}"
+                break
+        return message
 
     def _build_llm_params(self, skill: LLMSkill, final_message: str, flow_input: Dict[str, Any]) -> Dict[str, Any]:
         """构建LLM调用参数
@@ -165,7 +171,6 @@ class AgentNode(BaseNodeExecutor):
         llm_params.pop("group", 0)
 
         chat_kwargs, _, _ = llm_service.format_chat_server_kwargs(llm_params, llm_model)
-
         # 创建 agent 实例
         graph, request = create_agent_instance(skill_type, chat_kwargs)
 

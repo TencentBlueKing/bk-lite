@@ -465,7 +465,7 @@ const AssetDataContent = () => {
     });
 
     propertyList.forEach((attr) => {
-      if (attr.is_required && attr.is_unique && copyData[attr.attr_id]) {
+      if (attr.is_required && attr.is_only && copyData[attr.attr_id]) {
         copyData[attr.attr_id] = `${copyData[attr.attr_id]}_copy`;
       }
     });

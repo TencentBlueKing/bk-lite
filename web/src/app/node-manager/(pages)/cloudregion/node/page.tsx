@@ -104,12 +104,14 @@ const Node = () => {
   const cancelInstall = useCallback(() => {
     setShowNodeTable(true);
     setShowInstallController(false);
-  }, []);
+    getNodes(searchFilters);
+  }, [searchFilters]);
 
   const cancelWait = useCallback(() => {
     setShowNodeTable(true);
     setShowInstallCollectorTable(false);
-  }, []);
+    getNodes(searchFilters);
+  }, [searchFilters]);
 
   const tableColumns = useMemo(() => {
     if (!activeColumns?.length) return columns;
@@ -411,6 +413,34 @@ const Node = () => {
           );
         },
       },
+      //   {
+      //     title: t('node-manager.cloudregion.node.sidecarVersion'),
+      //     dataIndex: 'version',
+      //     key: 'version',
+      //     onCell: () => ({
+      //       style: {
+      //         minWidth: 100,
+      //       },
+      //     }),
+      //     render: (_: any, record: TableDataItem) => {
+      //       const version = record.version || '1.0.0';
+      //       if (!version) return <span>--</span>;
+      //       return (
+      //         <div className="flex items-center gap-2">
+      //           <span>{version}</span>
+      //           <Tooltip
+      //             title={`${t(
+      //               'node-manager.cloudregion.node.controllerVersionTip'
+      //             )}: ${version}`}
+      //           >
+      //             <UpCircleFilled
+      //               style={{ color: 'var(--color-primary)', cursor: 'pointer' }}
+      //             />
+      //           </Tooltip>
+      //         </div>
+      //       );
+      //     },
+      //   },
       {
         title: t('node-manager.cloudregion.node.hostedProgram'),
         dataIndex: 'collectors',

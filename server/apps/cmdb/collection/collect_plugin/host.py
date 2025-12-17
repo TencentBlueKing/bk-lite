@@ -36,14 +36,8 @@ class HostCollectMetrics(CollectBase):
         return HOST_COLLECT_METRIC[self.model_id]
 
     def prom_sql(self):
-        if self.inst_name:
-            # 实例采集模式: 查询特定实例
-            sql = " or ".join(
-                "{}{{instance_id=\"{}\"}}".format(m, f"{self.task_id}_{self.inst_name}") for m in self._metrics)
-        else:
-            # IP范围采集模式: 查询任务下所有主机
-            sql = " or ".join(
-                "{}{{instance_id=~\"^{}_.+\"}}".format(m, self.task_id) for m in self._metrics)
+        sql = " or ".join(
+            "{}{{instance_id=~\"^{}_.+\"}}".format(m, self.task_id) for m in self._metrics)
         return sql
 
     def check_task_id(self, instance_id):
@@ -144,7 +138,8 @@ class HostCollectMetrics(CollectBase):
         """设置实例名称"""
         if self.inst_name:
             return self.inst_name
-
+        if data.get("cmdbhost", ""):
+            return data["cmdbhost"]
         # IP范围采集模式: 从instance_id提取IP
         instance_id = data.get("instance_id", "")
         if instance_id and "_" in instance_id:

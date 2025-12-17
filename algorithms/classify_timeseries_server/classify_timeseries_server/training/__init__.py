@@ -6,7 +6,7 @@
 from .data_loader import load_dataset
 from .trainer import UniversalTrainer
 from .config.loader import TrainingConfig
-from .models import SARIMAModel, SARIMAWrapper, ModelRegistry
+from .models import ModelRegistry
 from .mlflow_utils import MLFlowUtils
 
 __all__ = [
@@ -16,8 +16,6 @@ __all__ = [
     
     # 模型
     "ModelRegistry",
-    "SARIMAModel",
-    "SARIMAWrapper",
     
     # 工具类
     "load_dataset",

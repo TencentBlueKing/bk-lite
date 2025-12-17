@@ -3,146 +3,215 @@ MCP (Model Context Protocol) 客户端工具类
 
 提供标准的 MCP 协议握手和工具获取功能
 """
-from typing import Any, Dict, List, Optional
+import asyncio
+from typing import Any, Dict, List
 
-import httpx
+from langchain_mcp_adapters.client import MultiServerMCPClient
 
 
 class MCPClient:
-    """MCP 协议客户端"""
+    """MCP 协议客户端 - 基于 langchain_mcp_adapters"""
 
-    def __init__(self, server_url: str, timeout: float = 30.0):
+    def __init__(self, server_url: str, timeout: float = 30.0, enable_auth: bool = False, auth_token: str = ""):
         """
         初始化 MCP 客户端
 
         Args:
             server_url: MCP server 地址
             timeout: 请求超时时间（秒）
+            enable_auth: 是否启用基本认证
+            auth_token: 基本认证的 token (已加密的 Base64 字符串或包含 "Basic " 前缀的完整 Authorization 值)
         """
         self.server_url = server_url.rstrip("/")
         self.timeout = timeout
-        self.session_id: Optional[str] = None
-        self._client: Optional[httpx.Client] = None
+        self.enable_auth = enable_auth
+        self.auth_token = auth_token
+        self._mcp_client = None
 
     def __enter__(self):
         """上下文管理器入口"""
-        self._client = httpx.Client(timeout=self.timeout)
+        # 根据 URL 判断传输协议类型
+        if self.server_url.startswith("stdio-mcp:"):
+            # stdio-mcp: 协议需要 command 和 args，这里抛出错误提示
+            raise ValueError("stdio-mcp protocol requires 'command' and 'args' parameters, use dedicated stdio client")
+
+        # 构建服务器配置
+        server_config: Dict[str, Any] = {
+            "url": self.server_url,
+            "timeout": self.timeout,
+            "transport": "sse",  # 基于 HTTP/HTTPS URL 的默认使用 SSE 传输
+        }
+
+        # 添加认证信息
+        if self.enable_auth and self.auth_token:
+            # 判断 token 格式,支持 Basic 和 Bearer
+            if self.auth_token.startswith("Basic ") or self.auth_token.startswith("Bearer "):
+                auth_header = self.auth_token
+            else:
+                # 默认使用 Basic 认证
+                auth_header = f"Basic {self.auth_token}"
+
+            server_config["headers"] = {"Authorization": auth_header}
+
+        # 创建 MultiServerMCPClient 实例
+        # 注意: langchain_mcp_adapters 0.1.0+ 不支持上下文管理器,直接实例化即可
+        self._mcp_client = MultiServerMCPClient({"default": server_config})
+
         return self
 
     def __exit__(self, exc_type, exc_val, exc_tb):
         """上下文管理器出口"""
-        if self._client:
-            self._client.close()
-
-    def _get_common_headers(self) -> Dict[str, str]:
-        """获取公共请求头"""
-        headers = {"Content-Type": "application/json", "Accept": "application/json, text/event-stream"}
-        if self.session_id:
-            headers["mcp-session-id"] = self.session_id
-        return headers
-
-    def _post(self, payload: Dict[str, Any]) -> httpx.Response:
-        """发送 POST 请求"""
-        if not self._client:
-            raise RuntimeError("MCPClient must be used within a context manager")
-
-        return self._client.post(self.server_url, json=payload, headers=self._get_common_headers())
-
-    def initialize(self) -> Dict[str, Any]:
-        """
-        步骤1: 发送 initialize 请求并获取 session ID
-
-        Returns:
-            服务器返回的初始化信息（包含 protocolVersion, capabilities, serverInfo）
-
-        Raises:
-            RuntimeError: 初始化失败或未返回 session ID
-            httpx.HTTPStatusError: HTTP 请求失败
-        """
-        init_payload = {
-            "jsonrpc": "2.0",
-            "id": 1,
-            "method": "initialize",
-            "params": {"protocolVersion": "2024-11-05", "capabilities": {}, "clientInfo": {"name": "bklite", "version": "1.0.0"}},
-        }
-
-        response = self._post(init_payload)
-
-        if response.status_code != 200:
-            raise RuntimeError(f"Initialize failed: {response.text}")
-
-        # 获取 session ID
-        self.session_id = response.headers.get("mcp-session-id")
-        if not self.session_id:
-            raise RuntimeError("MCP server did not return session ID")
-
-        return response.json().get("result", {})
-
-    def send_initialized_notification(self) -> None:
-        """
-        步骤2: 发送 initialized 通知
-
-        必须在 initialize 之后调用
-        """
-        if not self.session_id:
-            raise RuntimeError("Must call initialize() before sending notifications")
-
-        notification_payload = {"jsonrpc": "2.0", "method": "notifications/initialized"}
-
-        self._post(notification_payload)
-
-    def list_tools(self) -> List[Dict[str, Any]]:
-        """
-        步骤3: 获取工具列表
-
-        必须在 initialize 和 send_initialized_notification 之后调用
-
-        Returns:
-            工具列表，每个工具包含 name, description, input_schema 等字段
-
-        Raises:
-            RuntimeError: 请求失败或服务器返回错误
-        """
-        if not self.session_id:
-            raise RuntimeError("Must call initialize() before listing tools")
-
-        tools_payload = {"jsonrpc": "2.0", "id": 2, "method": "tools/list"}
-
-        response = self._post(tools_payload)
-
-        if response.status_code not in [200, 202]:
-            raise RuntimeError(f"Failed to fetch tools: {response.text}")
-
-        if not response.text.strip():
-            raise RuntimeError("MCP server returned empty response")
-
-        response_data = response.json()
-
-        # 处理错误响应
-        if "error" in response_data:
-            error_msg = response_data["error"].get("message", "Unknown error")
-            error_code = response_data["error"].get("code", "")
-            raise RuntimeError(f"MCP server error [{error_code}]: {error_msg}")
-
-        return response_data.get("result", {}).get("tools", [])
+        # MultiServerMCPClient 不需要显式关闭
+        pass
 
     def get_tools(self) -> List[Dict[str, Any]]:
         """
-        完整的 MCP 握手流程并获取工具列表
-
-        执行标准的三步握手：
-        1. initialize - 建立连接并获取 session ID
-        2. notifications/initialized - 通知服务器初始化完成
-        3. tools/list - 请求工具列表
+        获取工具列表
 
         Returns:
-            工具列表
+            工具列表，每个工具包含 name, description, inputSchema 等字段
 
         Raises:
-            RuntimeError: 任何步骤失败
-            httpx.RequestError: 网络请求失败
-            json.JSONDecodeError: 响应解析失败
+            RuntimeError: 获取失败
         """
-        self.initialize()
-        self.send_initialized_notification()
-        return self.list_tools()
+        if not self._mcp_client:
+            raise RuntimeError("MCPClient must be used within a context manager")
+
+        try:
+            tools = self._fetch_tools_async()
+            return [self._convert_tool_to_dict(tool) for tool in tools]
+        except Exception as e:
+            raise RuntimeError(f"Failed to get tools: {str(e)}")
+
+    def _fetch_tools_async(self) -> List[Any]:
+        """异步获取工具列表"""
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        try:
+            return loop.run_until_complete(self._mcp_client.get_tools())
+        finally:
+            loop.close()
+
+    def _convert_tool_to_dict(self, tool) -> Dict[str, Any]:
+        """将工具对象转换为字典格式"""
+        tool_dict = {
+            "name": tool.name,
+            "description": tool.description or "",
+            "parameters": {},
+        }
+
+        input_schema = self._extract_input_schema(tool)
+        if input_schema:
+            tool_dict["parameters"] = self._parse_schema_to_parameters(input_schema)
+
+        return tool_dict
+
+    def _extract_input_schema(self, tool) -> Dict[str, Any]:
+        """从工具对象中提取 input schema"""
+        if hasattr(tool, "input_schema") and tool.input_schema:
+            if isinstance(tool.input_schema, dict):
+                return tool.input_schema
+            return self._schema_to_input_schema(tool.input_schema)
+
+        if hasattr(tool, "args_schema") and tool.args_schema:
+            return self._schema_to_input_schema(tool.args_schema)
+
+        return {}
+
+    def _parse_schema_to_parameters(self, input_schema: Dict[str, Any]) -> Dict[str, Any]:
+        """解析 input_schema 并转换为 parameters 格式"""
+        if "anyOf" in input_schema:
+            return self._parse_anyof_schema(input_schema)
+        return self._parse_standard_schema(input_schema)
+
+    def _parse_anyof_schema(self, input_schema: Dict[str, Any]) -> Dict[str, Any]:
+        """解析 anyOf 类型的 schema"""
+        # 优先级: 有 properties 的 object > $ref > additionalProperties 的 object
+        properties, required_fields = self._find_properties_in_anyof(input_schema)
+
+        if not properties:
+            properties, required_fields = self._find_ref_in_anyof(input_schema)
+
+        if not properties:
+            any_params = self._find_additional_properties_in_anyof(input_schema)
+            if any_params:
+                return any_params
+
+        return self._build_parameters_dict(properties, required_fields)
+
+    def _find_properties_in_anyof(self, input_schema: Dict[str, Any]) -> tuple:
+        """在 anyOf 中查找有 properties 的 object"""
+        for option in input_schema.get("anyOf", []):
+            if isinstance(option, dict) and option.get("type") == "object" and "properties" in option:
+                return option.get("properties", {}), option.get("required", [])
+        return {}, []
+
+    def _find_ref_in_anyof(self, input_schema: Dict[str, Any]) -> tuple:
+        """在 anyOf 中查找 $ref 引用"""
+        for option in input_schema.get("anyOf", []):
+            if not isinstance(option, dict) or "$ref" not in option:
+                continue
+
+            ref_path = option["$ref"]
+            if ref_path.startswith("#/$defs/"):
+                ref_name = ref_path.split("/")[-1]
+                defs = input_schema.get("$defs", {})
+                if ref_name in defs:
+                    ref_schema = defs[ref_name]
+                    return ref_schema.get("properties", {}), ref_schema.get("required", [])
+        return {}, []
+
+    def _find_additional_properties_in_anyof(self, input_schema: Dict[str, Any]) -> Dict[str, Any]:
+        """在 anyOf 中查找 additionalProperties 的 object"""
+        for option in input_schema.get("anyOf", []):
+            if isinstance(option, dict) and option.get("type") == "object" and option.get("additionalProperties"):
+                return {
+                    "__any__": {
+                        "type": "object",
+                        "required": False,
+                        "description": "This tool accepts any parameters",
+                    }
+                }
+        return {}
+
+    def _parse_standard_schema(self, input_schema: Dict[str, Any]) -> Dict[str, Any]:
+        """解析标准的 properties/required 结构"""
+        properties = input_schema.get("properties", {})
+        required_fields = input_schema.get("required", [])
+        return self._build_parameters_dict(properties, required_fields)
+
+    def _build_parameters_dict(self, properties: Dict[str, Any], required_fields: List[str]) -> Dict[str, Any]:
+        """构建参数字典"""
+        parameters = {}
+        for param_name, param_info in properties.items():
+            parameters[param_name] = {
+                "type": param_info.get("type", "string"),
+                "required": param_name in required_fields,
+                "description": param_info.get("description", ""),
+            }
+            # 保留其他字段
+            for key in ["default", "enum", "items", "minimum", "maximum", "title"]:
+                if key in param_info:
+                    parameters[param_name][key] = param_info[key]
+        return parameters
+
+    @staticmethod
+    def _schema_to_input_schema(args_schema) -> Dict[str, Any]:
+        """
+        将 Pydantic schema 转换为 MCP inputSchema 格式
+
+        Args:
+            args_schema: Pydantic model schema
+
+        Returns:
+            MCP inputSchema 格式的字典
+        """
+        try:
+            if hasattr(args_schema, "schema"):
+                return args_schema.schema()
+            elif hasattr(args_schema, "model_json_schema"):
+                return args_schema.model_json_schema()
+            else:
+                return {}
+        except Exception:
+            return {}

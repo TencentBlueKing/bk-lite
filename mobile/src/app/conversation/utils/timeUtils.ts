@@ -1,7 +1,7 @@
 /**
  * 格式化消息时间显示
  */
-export const formatMessageTime = (timestamp: number): string => {
+export const formatMessageTime = (timestamp: number, t?: (key: string) => string): string => {
     const date = new Date(timestamp);
     const now = new Date();
 
@@ -14,7 +14,8 @@ export const formatMessageTime = (timestamp: number): string => {
     const yesterday = new Date(now);
     yesterday.setDate(yesterday.getDate() - 1);
     if (date.toDateString() === yesterday.toDateString()) {
-        return '昨天 ' + date.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' });
+        const yesterdayText = t ? t('common.yesterday') : '昨天';
+        return yesterdayText + ' ' + date.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' });
     }
 
     // 其他日期
@@ -23,10 +24,10 @@ export const formatMessageTime = (timestamp: number): string => {
 };
 
 /**
- * 判断是否需要显示时间（超过1分钟间隔）
+ * 判断是否需要显示时间（超过10分钟间隔）
  */
 export const shouldShowTime = (currentTimestamp: number, previousTimestamp?: number): boolean => {
     if (!previousTimestamp) return true; // 第一条消息总是显示时间
     const diff = currentTimestamp - previousTimestamp;
-    return diff > 1 * 60 * 1000; // 超过1分钟
+    return diff > 10 * 60 * 1000; // 超过10分钟
 };

@@ -667,6 +667,9 @@ const MetricViews: React.FC<ViewDetailProps> = ({
           value={metricId}
           allowClear
           showSearch
+          filterOption={(input, option) =>
+            (option?.label || '').toLowerCase().includes(input.toLowerCase())
+          }
           options={originMetricData.map((item) => ({
             label: item.display_name,
             title: item.name,

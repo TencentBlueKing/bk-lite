@@ -476,7 +476,10 @@
     "editAnnotation": "Edit Annotation",
     "knowledgeDetails": "Knowledge Details",
     "clear": "Clear Conversation",
-    "removeAnnotation": "Remove Annotation"
+    "removeAnnotation": "Remove Annotation",
+    "onlyImageAllowed": "Only image files are allowed",
+    "imageTooLarge": "Image size cannot exceed 5MB",
+    "uploadImage": "Upload Image"
   },
   "settings": {
     "secret": {
@@ -769,7 +772,8 @@
       "appTagMonitorAlarm": "Monitor & Alarm",
       "appTagRoutineOps": "Routine Ops",
       "appIcon": "App Icon",
-      "appTagPerformanceAnalysis": "Performance Analysis"
+      "appTagPerformanceAnalysis": "Performance Analysis",
+      "webAccessAddress": "Web Access Address"
     },
     "collapseSidebar": "Collapse Sidebar",
     "messages": {
@@ -927,7 +931,8 @@
     "restful": "RESTful API",
     "mobile": "Mobile Terminal",
     "webChat": "Web Chat",
-    "embeddedChat": "Embedded Chat"
+    "embeddedChat": "Embedded Chat",
+    "applications": "Applications"
   },
   "provider": {
     "form": {

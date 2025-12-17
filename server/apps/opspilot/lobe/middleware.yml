@@ -1,9 +1,0 @@
-apiVersion: traefik.io/v1alpha1
-kind: Middleware
-metadata:
-  name: strip-{{bot_id}}-prefix
-  namespace: {{ bot_namespace }}
-spec:
-  stripPrefix:
-    prefixes:
-      - "/lobe-chat-{{bot_id}}"

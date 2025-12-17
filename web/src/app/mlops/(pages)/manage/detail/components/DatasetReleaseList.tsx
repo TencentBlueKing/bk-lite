@@ -133,8 +133,9 @@ const DatasetReleaseList: React.FC<DatasetReleaseListProps> = ({ datasetType }) 
   const getStatusTag = (status: string) => {
     const statusMap: Record<string, { color: string; text: string }> = {
       published: { color: 'success', text: '已发布' },
-      pending: { color: 'default', text: '待发布' },
+      pending: { color: 'processing', text: '发布中' },
       failed: { color: 'error', text: '失败' },
+      archived: {color: 'default', text: '归档'}
     };
     const config = statusMap[status] || { color: 'default', text: status };
     return <Tag color={config.color}>{config.text}</Tag>;
@@ -187,14 +188,15 @@ const DatasetReleaseList: React.FC<DatasetReleaseListProps> = ({ datasetType }) 
       title: t(`common.action`),
       key: 'action',
       dataIndex: 'action',
-      width: 150,
+      width: 100,
       fixed: 'right' as const,
-      align: 'center',
+      // align: 'center',
       render: (_: any, record: DatasetRelease) => (
         <Space size="small">
           <Button
             type="link"
             size="small"
+            disabled={record.status === 'pending'}
             href={record.dataset_file}
           >
             {t(`common.download`)}
@@ -212,7 +214,7 @@ const DatasetReleaseList: React.FC<DatasetReleaseListProps> = ({ datasetType }) 
               </Button>
             </Popconfirm>
           )}
-          {record.status == 'pending' && (
+          {record.status == 'archived' && (
             <Popconfirm
               title="确认删除"
               description="该文件将被删除"
@@ -232,21 +234,21 @@ const DatasetReleaseList: React.FC<DatasetReleaseListProps> = ({ datasetType }) 
 
   return (
     <>
-      <Button type="link" className="mr-[10px]" onClick={handleOpenDrawer} disabled={!isSupportedType}>
+      <Button type="primary" className="mr-[10px]" onClick={handleOpenDrawer} disabled={!isSupportedType}>
         版本
       </Button>
 
       <Drawer
-        title={
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <span>数据集版本管理</span>
+        title="数据集版本管理"
+        footer={
+          <div className='flex justify-end'>
             <Button type="primary" icon={<PlusOutlined />} onClick={handleRelease}>
               发布版本
             </Button>
           </div>
         }
         placement="right"
-        width={900}
+        width={850}
         onClose={handleCloseDrawer}
         open={open}
       >
@@ -257,7 +259,7 @@ const DatasetReleaseList: React.FC<DatasetReleaseListProps> = ({ datasetType }) 
           loading={loading}
           pagination={pagination}
           onChange={handleTableChange}
-          scroll={{ x: '100%', y: 'calc(100vh - 250px)' }}
+          scroll={{ x: '100%', y: 'calc(100vh - 265px)' }}
         />
       </Drawer>
 

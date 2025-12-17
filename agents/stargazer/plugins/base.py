@@ -163,6 +163,7 @@ class BaseSSHPlugin(BasePlugin):
 
         try:
             data = await self.exec_script()
+            data['cmdbhost'] = self.host
             prometheus_data = convert_to_prometheus_format(
                 {self.plugin_type: [data]})
             return prometheus_data

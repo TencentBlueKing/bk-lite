@@ -195,8 +195,8 @@ class BasicGraph(ABC):
                                     type=EventType.TEXT_MESSAGE_END, message_id=complete_message_id, timestamp=int(time.time() * 1000)
                                 )
                             )
-            except Exception as stream_error:
-                logger.error(f"处理消息流时出错: {stream_error}", exc_info=True)
+            except Exception:
+                # logger.exception(f"处理消息流时出错: {stream_error}")
                 # 继续抛出异常，让外层 catch 处理
                 raise
 
@@ -210,7 +210,7 @@ class BasicGraph(ABC):
             yield encoder.encode(RunFinishedEvent(type=EventType.RUN_FINISHED, thread_id=thread_id, run_id=run_id, timestamp=int(time.time() * 1000)))
 
         except Exception as e:
-            logger.error(f"agui_stream 执行出错: {e}", exc_info=True)
+            logger.exception(f"agui_stream 执行出错: {e}")
             yield encoder.encode(RunErrorEvent(type=EventType.RUN_ERROR, message=str(e), code="EXECUTION_ERROR", timestamp=int(time.time() * 1000)))
 
     async def _handle_ai_message_chunk(

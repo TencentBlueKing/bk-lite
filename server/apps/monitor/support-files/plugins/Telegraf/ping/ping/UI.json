@@ -62,14 +62,14 @@
       "type": "input",
       "required": true,
       "widget_props": {
-        "placeholder": "https://example.com"
+        "placeholder": "192.168.1.1"
       },
       "rules": [
         {
           "type": "pattern",
-          "pattern": "^(http|https)://.*",
-          "message": "URL必须以http://或https://开头",
-          "excel_formula": "OR(LEFT({{CELL}},7)=\"http://\",LEFT({{CELL}},8)=\"https://\")"
+          "pattern": "^([a-zA-Z0-9]([a-zA-Z0-9\\-]{0,61}[a-zA-Z0-9])?\\.)+[a-zA-Z]{2,}$|^((25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\\.){3}(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)$",
+          "message": "请输入有效的域名或IP地址",
+          "excel_formula": "OR(ISNUMBER(FIND(\".\",{{CELL}})),AND(LEN({{CELL}})>=7,LEN({{CELL}})<=253))"
         }
       ],
       "change_handler": {

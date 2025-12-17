@@ -55,15 +55,6 @@ const useNodeApi = () => {
     return await get('/node_mgmt/api/package/', { params });
   };
 
-  // 获取手动安装控制器指令
-  const getInstallCommand = async (params: {
-    os?: string;
-    package_name?: string;
-    cloud_region_id?: number;
-  }) => {
-    return await post('/node_mgmt/api/installer/get_install_command/', params);
-  };
-
   // 卸载控制器
   const uninstallController = async (params: {
     cloud_region_id?: number;
@@ -125,7 +116,6 @@ const useNodeApi = () => {
     delNode,
     getNodeStateEnum,
     getPackages,
-    getInstallCommand,
     uninstallController,
     installController,
     installCollector,

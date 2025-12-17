@@ -616,12 +616,13 @@ def login(username, password):
         max_retry_count = int(max_retry_setting.value) if max_retry_setting else 5
 
         lock_duration_setting = SystemSettings.objects.filter(key="pwd_set_lock_duration").first()
-        lock_duration_minutes = int(lock_duration_setting.value) if lock_duration_setting else 30
+        lock_duration_seconds = int(lock_duration_setting.value) if lock_duration_setting else 180  # 默认180秒(3分钟)
 
         # 如果错误次数达到或超过最大重试次数，锁定账号
         if user.password_error_count >= max_retry_count:
-            user.account_locked_until = now + timedelta(minutes=lock_duration_minutes)
+            user.account_locked_until = now + timedelta(seconds=lock_duration_seconds)
             user.save()
+            lock_duration_minutes = int(lock_duration_seconds / 60) + 1
             return {
                 "result": False,
                 "message": loader.get(

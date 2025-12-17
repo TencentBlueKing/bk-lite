@@ -4,7 +4,8 @@ from apps.node_mgmt.models.sidecar import ChildConfig
 
 class ChildConfigFilter(filters.FilterSet):
     collector_config_id = filters.CharFilter(field_name='collector_config_id', lookup_expr='exact', label='采集器配置ID')
+    config_type = filters.CharFilter(field_name='config_type', lookup_expr='icontains', label='配置类型')
 
     class Meta:
         model = ChildConfig
-        fields = ['collector_config_id']
+        fields = ['collector_config_id', 'config_type']

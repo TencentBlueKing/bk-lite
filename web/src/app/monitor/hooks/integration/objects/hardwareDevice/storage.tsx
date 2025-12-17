@@ -12,9 +12,6 @@ export const useStorageConfig = () => {
     instance_type: 'storage',
     dashboardDisplay: [],
     tableDiaplay: [
-      { type: 'value', key: 'iftotalInOctets' },
-      { type: 'value', key: 'iftotalOutOctets' },
-      { type: 'value', key: 'sysUpTime' },
       { type: 'enum', key: 'ipmi_power_watts' },
       { type: 'value', key: 'ipmi_temperature_celsius' },
       { type: 'value', key: 'ipmi_voltage_volts' },

@@ -476,7 +476,10 @@
     "editAnnotation": "编辑标注",
     "knowledgeDetails": "知识详情",
     "clear": "清除对话",
-    "removeAnnotation": "删除标注"
+    "removeAnnotation": "删除标注",
+    "onlyImageAllowed": "只能上传图片文件",
+    "imageTooLarge": "图片大小不能超过 5MB",
+    "uploadImage": "上传图片"
   },
   "settings": {
     "secret": {
@@ -769,7 +772,8 @@
       "appTagMonitorAlarm": "监控告警",
       "appTagRoutineOps": "日常运维",
       "appIcon": "应用图标",
-      "appTagPerformanceAnalysis": "性能分析"
+      "appTagPerformanceAnalysis": "性能分析",
+      "webAccessAddress": "Web 访问地址"
     },
     "collapseSidebar": "收缩侧边栏",
     "messages": {
@@ -927,7 +931,8 @@
     "restful": "RESTful API",
     "mobile": "移动端",
     "webChat": "Web对话",
-    "embeddedChat": "嵌入式对话"
+    "embeddedChat": "嵌入式对话",
+    "applications": "应用"
   },
   "provider": {
     "form": {
