@@ -10,6 +10,8 @@ class SSHNodeParamsMixin:
     host_field = "ip_addr"
 
     def set_credential(self, *args, **kwargs):
+        if not self.credential:
+            return {}
         host = kwargs["host"]
         node_ip = self.instance.access_point[0]["ip"]
         credential_data = {
@@ -31,12 +33,12 @@ class SSHNodeParamsMixin:
         return f"{self.instance.id}_{instance}".replace(".", "")
 
     def env_config(self, *args, **kwargs):
+        if not self.credential:
+            return {}
         host = kwargs["host"]
         node_ip = self.instance.access_point[0]["ip"]
         host_ip = host.get("ip_addr", "") if host and isinstance(host, dict) else host
         if host_ip != node_ip:
             _password = "PASSWORD_password_{end_start}".format(end_start=self.get_instance_id(host))
-            return {
-                _password: self.credential.get("password", ""),
-            }
+            return {_password: self.credential.get("password", "")}
         return {}
