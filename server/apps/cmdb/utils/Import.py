@@ -197,7 +197,7 @@ class Import:
 
         add_results, update_results = self.inst_list_update(inst_list)
         if not self.model_asso_map:
-            logger.warning(f"模型 {self.model_id} 没有关联模型, 无需处理关联数据")
+            logger.info(f"模型 {self.model_id} 没有关联模型, 无需处理关联数据")
             self.format_import_result_message(add_results, update_results, [])
             return add_results, update_results, []
         self.format_import_asso_data(asso_key_map)

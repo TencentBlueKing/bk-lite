@@ -137,7 +137,6 @@ class CollectVmwareMetrics(CollectBase):
     def prom_sql(self):
         sql = " or ".join(
                 "{}{{instance_id=~\"^{}_.+\"}}".format(m, self.task_id) for m in self._metrics)
-        print(sql)
         return sql
 
     def format_data(self, data):
@@ -171,16 +170,17 @@ class CollectVmwareMetrics(CollectBase):
                 self.model_resource_id_mapping.update({model_id: {i["resource_id"]: i["inst_name"] for i in metrics}})
             mapping = self.model_field_mapping.get(model_id, {})
             for index_data in metrics:
+                if model_id == "vmware_vc":
+                    if not index_data.get("inst_name"):
+                        continue
                 data = {}
                 for field, key_or_func in mapping.items():
                     if isinstance(key_or_func, tuple):
                         data[field] = key_or_func[0](index_data[key_or_func[1]])
                     elif callable(key_or_func):
-                        data[field] = key_or_func(index_data, index_data["inst_name"])
+                        data[field] = key_or_func(index_data, index_data.get("inst_name",''))
                     else:
                         data[field] = index_data.get(key_or_func, "")
 
                 result.append(data)
             self.result[model_id] = result
-        import json
-        print(json.dumps(self.result, indent=4))
