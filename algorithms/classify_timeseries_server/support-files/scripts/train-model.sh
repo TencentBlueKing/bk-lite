@@ -148,8 +148,8 @@ log_info "MLflow Tracking URI: ${MLFLOW_TRACKING_URI}"
 
 export MLFLOW_TRACKING_URI="${MLFLOW_TRACKING_URI}"
 
-# 构建训练命令
-TRAIN_CMD="uv run classify_timeseries_server train \
+# 构建训练命令（使用 --system 直接使用系统已安装的包，避免创建虚拟环境）
+TRAIN_CMD="uv run --system classify_timeseries_server train \
     --dataset-path \"${EXTRACT_DIR}\" \
     --config \"${CONFIG_FILE}\""
 
