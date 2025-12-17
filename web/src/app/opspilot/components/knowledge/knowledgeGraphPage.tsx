@@ -90,13 +90,12 @@ const KnowledgeGraphPage: React.FC<KnowledgeGraphPageProps> = ({ knowledgeBaseId
   const [isPageVisible, setIsPageVisible] = useState(true);
 
   const initializeGraph = async (isBackgroundRefresh = false) => {
-    // 只有非后台刷新时才显示 loading
+    // 如果是后台刷新且正在轮询中，不显示loading
     if (!isBackgroundRefresh) {
       setLoading(true);
+      setHasGraph(false);
+      setGraphData(null);
     }
-    
-    // 重置图谱显示状态
-    setHasGraph(false);
     
     try {
       if (!knowledgeBaseId) {
@@ -111,9 +110,11 @@ const KnowledgeGraphPage: React.FC<KnowledgeGraphPageProps> = ({ knowledgeBaseId
       const transformedData: GraphData = transformApiDataToGraphData(response.graph);
       setGraphData(transformedData);
       
-      // 只有 status 为 completed 且有数据时才展示图谱
-      if (response.status === 'completed' && transformedData.nodes.length > 0) {
+      // 只有status为completed时才展示图谱，其他状态显示状态文本
+      if (response.status === 'completed') {
         setHasGraph(true);
+      } else {
+        setHasGraph(false);
       }
       
     } catch (error: any) {
@@ -123,8 +124,9 @@ const KnowledgeGraphPage: React.FC<KnowledgeGraphPageProps> = ({ knowledgeBaseId
       setGraphExists(false);
       setStatus('');
     } finally {
-      // 始终结束 loading 状态
-      setLoading(false);
+      if (!isBackgroundRefresh) {
+        setLoading(false);
+      }
     }
   };
 

@@ -1,0 +1,9 @@
+node_modules
+.next
+out
+build
+dist
+public/iconfont.js
+*.config.js
+*.config.mjs
+scripts

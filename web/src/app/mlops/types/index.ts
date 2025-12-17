@@ -1,5 +1,5 @@
+import React from 'react';
 import type { MenuProps } from 'antd';
-import { JSX } from 'react';
 
 export interface Option {
   label: string;
@@ -50,7 +50,7 @@ export interface ColumnItem {
   title: string;
   dataIndex: string;
   key: string;
-  render?: (_: unknown, record: any) => JSX.Element;
+  render?: (_: unknown, record: any) => React.ReactElement;
   [key: string]: unknown;
 }
 
@@ -95,7 +95,7 @@ export interface TabItem {
   key: string;
   label: string;
   name?: string;
-  children?: JSX.Element | string;
+  children?: React.ReactElement | string;
 }
 
 export interface ChartData {

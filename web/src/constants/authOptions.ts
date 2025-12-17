@@ -1,5 +1,7 @@
 import CredentialsProvider from "next-auth/providers/credentials";
-import { AuthOptions } from "next-auth";
+import type { JWT } from "next-auth/jwt";
+
+type AuthOptions = any;
 import WeChatProvider from "../lib/wechatProvider";
 
 async function getWeChatConfig() {
@@ -140,7 +142,7 @@ export async function getAuthOptions(): Promise<AuthOptions> {
       maxAge: 60 * 60 * 24,
     },
     callbacks: {
-      async jwt({ token, user, account }) {
+      async jwt({ token, user, account }: { token: JWT; user: any; account: any }) {
         if (user) {
           token.id = user.id;
           token.username = user.username || user.name || '';
@@ -156,7 +158,7 @@ export async function getAuthOptions(): Promise<AuthOptions> {
         }
         return token;
       },
-      async session({ session, token }) {
+      async session({ session, token }: { session: any; token: JWT }) {
         session.user = {
           id: token.id || '',
           username: token.username,
@@ -267,7 +269,7 @@ export const authOptions: AuthOptions = {
     maxAge: 60 * 60 * 24,
   },
   callbacks: {
-    async jwt({ token, user, account }) {
+    async jwt({ token, user, account }: { token: JWT; user: any; account: any }) {
       if (user) {
         token.id = user.id;
         token.username = user.username || user.name || '';
@@ -283,7 +285,7 @@ export const authOptions: AuthOptions = {
       }
       return token;
     },
-    async session({ session, token }) {
+    async session({ session, token }: { session: any; token: JWT }) {
       session.user = {
         id: token.id || '',
         username: token.username,

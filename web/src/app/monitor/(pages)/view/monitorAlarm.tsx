@@ -56,10 +56,10 @@ const Alert: React.FC<ViewModalProps> = ({
     originValue: 10080,
   });
   const timeDefaultValue =
-    useRef<TimeSelectorDefaultValue>({
+    (useRef<TimeSelectorDefaultValue>({
       selectValue: 10080,
       rangePickerVaule: null,
-    })?.current || {};
+    })?.current || {}) as any;
   const [activeTab, setActiveTab] = useState<string>('activeAlarms');
   const [frequence, setFrequence] = useState<number>(0);
   const [confirmLoading, setConfirmLoading] = useState(false);
