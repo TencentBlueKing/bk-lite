@@ -29,7 +29,7 @@ def import_collector(collectors):
     if update_collectors:
         Collector.objects.bulk_update([Collector(**i) for i in update_collectors],
                                       ["service_type", "executable_path", "execute_parameters", "validation_parameters",
-                                       "default_template", "introduction", "enabled_default_config", "default_config","tags", "package_name", "is_pre"])
+                                       "default_template", "introduction", "controller_default_run", "default_config","tags", "package_name", "is_pre"])
 
 
 def migrate_collector():
