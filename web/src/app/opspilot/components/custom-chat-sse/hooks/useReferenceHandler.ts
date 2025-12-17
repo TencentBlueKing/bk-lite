@@ -86,9 +86,17 @@ export const useReferenceHandler = (t: (key: string) => string) => {
             if (chunkType === 'QA' && data) {
               const question = data.question || '';
               const answer = data.answer || '';
-              displayContent = `问题：${question}\n\n答案：${answer}`;
+              const docName = data.doc_name || '';
+              displayContent = `${t('chat.question')}：${question}\n\n${t('chat.answer')}：${answer}`;
+              if (docName) {
+                displayContent += `\n\n${t('chat.referenceQASource')}：${docName}`;
+              }
             } else {
               displayContent = data?.content || '--';
+              const docName = data?.doc_name || '';
+              if (docName) {
+                displayContent += `\n\n${t('chat.referenceDocSource')}：${docName}`;
+              }
             }
 
             setDrawerContent(prev => ({ ...prev, content: displayContent }));
