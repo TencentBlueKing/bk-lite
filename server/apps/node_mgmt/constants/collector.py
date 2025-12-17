@@ -22,3 +22,6 @@ class CollectorConstants:
         "exporter": {"is_app": False, "name": "Exporter"},
         "beat": {"is_app": False, "name": "Beat"},
     }
+
+    # 容器节点才会默认初始化的采集器配置
+    DEFAULT_CONTAINER_COLLECTOR_CONFIGS = ["Snmptrapd"]

@@ -78,12 +78,12 @@ const ChartContent = ({
   }), [searchParams]);
 
   const colmuns: ColumnItem[] = useMemo(() => {
-    return [
+    const _columns: ColumnItem[] = [
       {
         title: t('mlops-common.time'),
         key: 'timestamp',
         dataIndex: 'timestamp',
-        width: 80,
+        width: 70,
         align: 'center',
         render: (_, record) => {
           const time = new Date(record.timestamp * 1000).toISOString();
@@ -95,7 +95,7 @@ const ChartContent = ({
         key: 'value',
         dataIndex: 'value',
         align: 'center',
-        width: 30,
+        width: 25,
         render: (_, record) => {
           const value = Number(record.value).toFixed(2);
           return <p className="h-full place-content-center">{value}</p>
@@ -108,25 +108,31 @@ const ChartContent = ({
         width: 100,
         align: 'center',
         hidden: true
-      },
-      {
-        title: t('mlops-common.action'),
-        key: 'action',
-        dataIndex: 'action',
-        align: 'center',
-        width: 30,
-        render: (_, record) => {
-          return (
-            <PermissionWrapper requiredPermissions={['File Edit']}>
-              <Button color="danger" variant="link" onClick={() => handleDelete(record)}>
-                {t('common.delete')}
-              </Button>
-            </PermissionWrapper>
-          )
-        }
       }
     ];
-  }, [t, convertToLocalizedTime]);
+
+    if (key === 'anomaly_detection') {
+      _columns.push(
+        {
+          title: t('mlops-common.action'),
+          key: 'action',
+          dataIndex: 'action',
+          align: 'center',
+          width: 30,
+          render: (_, record) => {
+            return (
+              <PermissionWrapper requiredPermissions={['File Edit']}>
+                <Button color="danger" variant="link" className="justify-start items-center !p-0" onClick={() => handleDelete(record)}>
+                  {t('common.delete')}
+                </Button>
+              </PermissionWrapper>
+            )
+          }
+        })
+    }
+
+    return _columns;
+  }, [t, convertToLocalizedTime, key]);
 
   // 动态计算表格滚动高度
   const calculateTableHeight = useCallback(() => {
@@ -337,7 +343,11 @@ const ChartContent = ({
       }
     });
     setCurrentFileData(_data);
-    setTableData(_data.filter((item) => item.label === 1))
+    if (key === 'timeseries_predict') {
+      setTableData(_data);
+    } else {
+      setTableData(_data.filter((item) => item.label === 1));
+    }
   }, []);
 
   const getCurrentFileData = useCallback(async () => {
@@ -358,14 +368,16 @@ const ChartContent = ({
           const response = await fetch(data.train_data);
           if (!response.ok) throw new Error('获取文件数据失败');
           const text = await (await response.blob()).text();
-          const _trainData = handleFileRead(text, key);
+          const pattern = /['"]/g;
+          const _text = text.replaceAll(pattern, ''); // 清除文本中的多余引号
+          const _trainData = handleFileRead(_text, key);
           if (metadata) {
             const response = await fetch(data.metadata);
             if (!response.ok) throw new Error('获取Metadata失败');
             const _metadata = await response.json();
             ponints = _metadata?.anomaly_point || [];
           }
-
+          console.log(_trainData);
           handleLabelData(_trainData?.train_data, ponints);
         }
 
@@ -535,7 +547,8 @@ const ChartContent = ({
           }}
         >
           <div className="flex justify-between flex-1">
-            <div className="w-[74%] flex flex-col">
+            {/* <div className="w-[74%] flex flex-col"> */}
+            <div className="w-full flex flex-col">
               <div className="flex-1 relative">
                 <div
                   style={{
@@ -599,7 +612,7 @@ const ChartContent = ({
               )}
             </div>
             <div
-              className="w-[25%] min-w-[285px] anomaly-container relative"
+              className={`${key === 'anomaly_detection' ? 'w-[355px]' : 'w-[290px]'} anomaly-container relative`}
               ref={tableContainerRef}
               style={{
                 height: `calc(100vh - 120px)`,
@@ -628,7 +641,7 @@ const ChartContent = ({
                   virtual
                   size="small"
                   rowKey="timestamp"
-                  scroll={{ y: tableScrollHeight }}
+                  scroll={{ x: '100%', y: tableScrollHeight }}
                   columns={colmuns}
                   dataSource={pagedData}
                 />

@@ -1,10 +1,4 @@
 from rest_framework import serializers
-from django.db import transaction
-from django_minio_backend import MinioBackend, iso_date_prefix
-import tempfile
-import zipfile
-import json
-from pathlib import Path
 
 from apps.core.utils.serializers import AuthSerializer
 from apps.mlops.models.timeseries_predict import *
@@ -116,7 +110,9 @@ class TimeSeriesPredictDatasetReleaseSerializer(AuthSerializer):
     
     def _create_from_files(self, validated_data, train_file_id, val_file_id, test_file_id):
         """
-        从训练数据文件ID创建数据集发布版本
+        从训练数据文件ID创建数据集发布版本（异步）
+        
+        创建 pending 状态的记录，触发 Celery 任务进行异步处理
         """
         dataset = validated_data.get('dataset')
         version = validated_data.get('version')
@@ -124,141 +120,50 @@ class TimeSeriesPredictDatasetReleaseSerializer(AuthSerializer):
         description = validated_data.get('description', '')
         
         try:
-            # 获取训练数据对象
+            # 验证文件是否存在
             train_obj = TimeSeriesPredictTrainData.objects.get(id=train_file_id, dataset=dataset)
             val_obj = TimeSeriesPredictTrainData.objects.get(id=val_file_id, dataset=dataset)
             test_obj = TimeSeriesPredictTrainData.objects.get(id=test_file_id, dataset=dataset)
             
-            logger.info(f"开始发布数据集 - Dataset: {dataset.id}, Version: {version}, Files: {train_file_id}/{val_file_id}/{test_file_id}")
+            # 检查是否已有相同版本的记录（幂等性保护）
+            existing = TimeSeriesPredictDatasetRelease.objects.filter(
+                dataset=dataset,
+                version=version
+            ).exclude(status='failed').first()
             
-            storage = MinioBackend(bucket_name='munchkin-public')
+            if existing:
+                logger.info(f"数据集版本已存在 - Dataset: {dataset.id}, Version: {version}, Status: {existing.status}")
+                return existing
             
-            # 创建临时目录用于存放文件
-            with tempfile.TemporaryDirectory() as temp_dir:
-                temp_path = Path(temp_dir)
-                
-                # 通过 ORM FileField 直接读取 MinIO 文件
-                files_info = [
-                    (train_obj.train_data, 'train_data.csv'),
-                    (val_obj.train_data, 'val_data.csv'),
-                    (test_obj.train_data, 'test_data.csv'),
-                ]
-                
-                # 统计数据集信息
-                train_samples = 0
-                val_samples = 0
-                test_samples = 0
-                
-                for file_field, filename in files_info:
-                    if file_field and file_field.name:
-                        try:
-                            # 使用 FileField.open() 直接读取 MinIO 文件
-                            with file_field.open('rb') as f:
-                                file_content = f.read()
-                            
-                            # 保存到临时目录
-                            local_file_path = temp_path / filename
-                            with open(local_file_path, 'wb') as f:
-                                f.write(file_content)
-                            
-                            # 统计样本数（CSV文件行数-1表头）
-                            line_count = file_content.decode('utf-8').count('\n')
-                            sample_count = max(0, line_count - 1)
-                            
-                            if 'train' in filename:
-                                train_samples = sample_count
-                            elif 'val' in filename:
-                                val_samples = sample_count
-                            elif 'test' in filename:
-                                test_samples = sample_count
-                            
-                            logger.info(f"下载文件成功: {filename}, 大小: {len(file_content)} bytes, 样本数: {sample_count}")
-                        except Exception as e:
-                            logger.error(f"下载文件失败: {filename} - {str(e)}")
-                            raise
-                
-                # 生成数据集元信息（纯净版本，不包含超参数）
-                total_samples = train_samples + val_samples + test_samples
-                dataset_metadata = {
-                    "train_samples": train_samples,
-                    "val_samples": val_samples,
-                    "test_samples": test_samples,
-                    "total_samples": total_samples,
-                    "features": ["timestamp", "value"],
-                    "data_types": {
-                        "timestamp": "datetime",
-                        "value": "float"
-                    },
-                    "split_ratio": {
-                        "train": round(train_samples / total_samples, 3) if total_samples > 0 else 0,
-                        "val": round(val_samples / total_samples, 3) if total_samples > 0 else 0,
-                        "test": round(test_samples / total_samples, 3) if total_samples > 0 else 0
-                    },
-                    "source": {
-                        "type": "manual_selection",
-                        "train_file_id": train_file_id,
-                        "val_file_id": val_file_id,
-                        "test_file_id": test_file_id,
-                        "train_file_name": train_obj.name,
-                        "val_file_name": val_obj.name,
-                        "test_file_name": test_obj.name,
-                    }
-                }
-                
-                # 保存数据集元信息到临时文件
-                metadata_file = temp_path / 'dataset_metadata.json'
-                with open(metadata_file, 'w', encoding='utf-8') as f:
-                    json.dump(dataset_metadata, f, ensure_ascii=False, indent=2)
-                
-                # 创建ZIP压缩包
-                zip_filename = f"timeseries_dataset_{dataset.name}_{version}.zip"
-                zip_path = temp_path / zip_filename
-                
-                with zipfile.ZipFile(zip_path, 'w', zipfile.ZIP_DEFLATED) as zipf:
-                    for file_path in temp_path.iterdir():
-                        if file_path != zip_path:
-                            zipf.write(file_path, file_path.name)
-                
-                zip_size = zip_path.stat().st_size
-                zip_size_mb = zip_size / 1024 / 1024
-                logger.info(f"数据集打包完成: {zip_filename}, 大小: {zip_size_mb:.2f} MB")
-                
-                # 上传ZIP文件到MinIO
-                with open(zip_path, 'rb') as f:
-                    date_prefixed_path = iso_date_prefix(dataset, zip_filename)
-                    zip_object_path = f'timeseries_datasets/{dataset.id}/{date_prefixed_path}'
-                    
-                    saved_path = storage.save(zip_object_path, f)
-                    zip_url = storage.url(saved_path)
-                
-                logger.info(f"数据集上传成功: {zip_url}")
-                
-                # 创建发布记录
-                with transaction.atomic():
-                    # 更新 validated_data
-                    validated_data['file_size'] = zip_size
-                    validated_data['status'] = 'published'
-                    validated_data['metadata'] = dataset_metadata
-                    
-                    if not name:
-                        validated_data['name'] = f"{dataset.name}_v{version}"
-                    
-                    if not description:
-                        validated_data['description'] = f"从数据集文件手动发布: {train_obj.name}, {val_obj.name}, {test_obj.name}"
-                    
-                    release = TimeSeriesPredictDatasetRelease.objects.create(**validated_data)
-                    
-                    # 手动设置 dataset_file 字段
-                    release.dataset_file.name = saved_path
-                    release.save(update_fields=['dataset_file'])
-                
-                logger.info(f"数据集发布成功 - Release ID: {release.id}, 样本数: {train_samples}/{val_samples}/{test_samples}")
-                
-                return release
-                
+            # 创建 pending 状态的发布记录
+            validated_data['status'] = 'pending'
+            validated_data['file_size'] = 0
+            validated_data['metadata'] = {}
+            
+            if not name:
+                validated_data['name'] = f"{dataset.name}_v{version}"
+            
+            if not description:
+                validated_data['description'] = f"从数据集文件手动发布: {train_obj.name}, {val_obj.name}, {test_obj.name}"
+            
+            release = TimeSeriesPredictDatasetRelease.objects.create(**validated_data)
+            
+            # 触发异步任务
+            from apps.mlops.tasks.timeseries import publish_dataset_release_async
+            publish_dataset_release_async.delay(
+                release.id,
+                train_file_id,
+                val_file_id,
+                test_file_id
+            )
+            
+            logger.info(f"创建数据集发布任务 - Release ID: {release.id}, Dataset: {dataset.id}, Version: {version}")
+            
+            return release
+            
         except TimeSeriesPredictTrainData.DoesNotExist as e:
             logger.error(f"训练数据文件不存在 - {str(e)}")
             raise serializers.ValidationError(f"训练数据文件不存在或不属于该数据集")
         except Exception as e:
-            logger.error(f"数据集发布失败 - {str(e)}", exc_info=True)
-            raise serializers.ValidationError(f"数据集发布失败: {str(e)}")
+            logger.error(f"创建数据集发布任务失败 - {str(e)}", exc_info=True)
+            raise serializers.ValidationError(f"创建发布任务失败: {str(e)}")

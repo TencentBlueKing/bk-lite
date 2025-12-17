@@ -200,6 +200,7 @@ class NodeViewSet(mixins.DestroyModelMixin,
             os=translated_os,
             cloud_server_status=CloudRegionServiceConstants.STATUS_ENUM,
             cloud_deployed_status=CloudRegionServiceConstants.DEPLOY_STATUS_ENUM,
+            manual_install_status=ControllerConstants.MANUAL_INSTALL_STATUS_ENUM,
         )
         return WebUtils.response_success(enum_data)
 

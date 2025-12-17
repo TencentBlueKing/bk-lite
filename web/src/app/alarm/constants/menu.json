@@ -2,7 +2,7 @@
   "zh": [
     {
       "title": "事故",
-      "icon": "shiguanli", 
+      "icon": "qitashigu",
       "url": "/alarm/incidents",
       "name": "Incidents",
       "children": [
@@ -16,13 +16,13 @@
     },
     {
       "title": "告警",
-      "icon": "ic24_incidents2",
+      "icon": "warning-solid",
       "url": "/alarm/alarms",
       "name": "Alarms"
     },
     {
       "title": "集成",
-      "icon": "jiekoukaifa",
+      "icon": "monijiekou",
       "url": "/alarm/integration",
       "name": "Integration",
       "children": [
@@ -76,7 +76,7 @@
   "en": [
     {
       "title": "Incident",
-      "icon": "shiguanli",
+      "icon": "qitashigu",
       "url": "/alarm/incidents",
       "name": "Incidents",
       "children": [
@@ -90,13 +90,13 @@
     },
     {
       "title": "Alarms",
-      "icon": "ic24_incidents2",
+      "icon": "warning-solid",
       "url": "/alarm/alarms",
       "name": "Alarms"
     },
     {
       "title": "Integration",
-      "icon": "jiekoukaifa",
+      "icon": "monijiekou",
       "url": "/alarm/integration",
       "name": "Integration",
       "children": [

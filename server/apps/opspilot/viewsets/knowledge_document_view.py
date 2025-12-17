@@ -79,17 +79,37 @@ class KnowledgeDocumentViewSet(LanguageViewSet):
         if not knowledge_base_id:
             message = self.loader.get("error.knowledge_base_id_required")
             return JsonResponse({"result": False, "message": message})
-        task_list = list(
-            KnowledgeTask.objects.filter(created_by=request.user.username, knowledge_base_id=knowledge_base_id)
-            .values(
-                "task_name",
-                "train_progress",
-                "is_qa_task",
-                "completed_count",
-                "total_count",
+        is_graph = request.GET.get("is_graph", "0") == "1"
+        is_qa_task = request.GET.get("is_qa_task", "0") == "1"
+        knowledge_name = KnowledgeBase.objects.get(id=knowledge_base_id).name
+        if is_graph:
+            task_list = list(
+                KnowledgeTask.objects.filter(
+                    created_by=request.user.username,
+                    domain=request.user.domain,
+                    knowledge_base_id=knowledge_base_id,
+                    task_name=f"{knowledge_name}-图谱",
+                ).values(
+                    "task_name",
+                    "train_progress",
+                    "completed_count",
+                    "total_count",
+                )
             )
-            .order_by("-id")
-        )
+        else:
+            task_list = KnowledgeTask.objects.filter(
+                created_by=request.user.username, domain=request.user.domain, knowledge_base_id=knowledge_base_id
+            ).exclude(task_name=f"{knowledge_name}-图谱")
+            if is_qa_task:
+                task_list = task_list.filter(is_qa_task=True)
+            task_list = list(
+                task_list.values(
+                    "task_name",
+                    "train_progress",
+                    "completed_count",
+                    "total_count",
+                ).order_by("-id")
+            )
         for i in task_list:
             # if not i["is_qa_task"]:
             i["train_progress"] = f"{i['completed_count']}/{i['total_count']}"

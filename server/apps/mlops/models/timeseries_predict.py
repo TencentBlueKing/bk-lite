@@ -127,6 +127,7 @@ class TimeSeriesPredictDatasetRelease(MaintainerInfo, TimeInfo):
             ("pending", "待发布"),
             ("published", "已发布"),
             ("failed", "发布失败"),
+            ("archived", "归档")
         ],
         default="pending",
         verbose_name="发布状态",

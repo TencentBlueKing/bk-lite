@@ -25,8 +25,8 @@ const pricingPlans = [
   },
   {
     name: '标准版',
-    price: '¥ 1000/月起',
-    description: '覆盖核心运维与AI能力的完整解决方案，满足中小团队的日常场景需求。',
+    price: '---',
+    description: '覆盖核心运维与AI能力的完整解决方案,满足中小团队的日常场景需求。',
     features: [
       '提供全量监控、指标分析与可视化',
       '支持多渠道告警、收敛与升级策略',
@@ -44,8 +44,8 @@ const pricingPlans = [
   },
   {
     name: '企业版',
-    price: '自定义价格',
-    description: '面向大型组织的全栈智能运维平台，提供高级能力、权限体系与企业级保障。',
+    price: '---',
+    description: '面向大型组织的全栈智能运维平台,提供高级能力、权限体系与企业级保障。',
     features: [
       '支持企业级组织、角色与权限分级',
       '支持大规模复杂集群的集中化管理',
@@ -75,8 +75,8 @@ function PricingCard({ plan }) {
           <span className={styles.price}>{plan.price}</span>
         </div>
       </div>
-      
-      <Link 
+
+      <Link
         to={plan.buttonLink}
         className={`${styles.ctaButton} ${plan.highlighted ? styles.ctaButtonPrimary : ''}`}
       >
@@ -108,7 +108,7 @@ export default function Pricing() {
           <h1 className={styles.title}>BlueKing Lite</h1>
           <p className={styles.subtitle}>AI 原生的轻量化运维平台，重塑智能运维体验</p>
         </div>
-        
+
         <div className={styles.pricingGrid}>
           {pricingPlans.map((plan, index) => (
             <PricingCard key={index} plan={plan} />

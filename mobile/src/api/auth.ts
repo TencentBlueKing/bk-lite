@@ -18,7 +18,7 @@ export const authLogin = (params: {
   password: string;
   domain: string;
 }) => {
-  return apiPost<any>('/api/proxy/core/api/login', params);
+  return apiPost<any>('/api/proxy/core/api/login/', params);
 };
 
 /**

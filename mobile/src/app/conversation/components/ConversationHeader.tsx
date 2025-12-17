@@ -21,7 +21,7 @@ export const ConversationHeader: React.FC<ConversationHeaderProps> = ({ chatInfo
             </button>
             <div
                 className="flex items-center cursor-pointer"
-                onClick={() => router.push(`/workbench/detail?id=${chatInfo.id}`)}
+                onClick={() => router.push(`/workbench/detail?bot_id=${chatInfo.id}`)}
             >
                 <Avatar
                     src={chatInfo.avatar}
@@ -33,7 +33,7 @@ export const ConversationHeader: React.FC<ConversationHeaderProps> = ({ chatInfo
                 </div>
             </div>
             <button
-                onClick={() => router.push(`/workbench/detail?id=${chatInfo.id}`)}
+                onClick={() => router.push(`/workbench/detail?bot_id=${chatInfo.id}`)}
                 className="absolute right-4"
             >
                 <MoreOutline className="text-[var(--color-text-1)] text-3xl" />

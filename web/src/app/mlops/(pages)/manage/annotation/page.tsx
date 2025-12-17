@@ -104,7 +104,7 @@ const AnnotationPage = () => {
           }}
         >
           <div
-            className={`p-4 flex-1 rounded-md overflow-auto ${sideMenuStyle.sectionContainer} ${sideMenuStyle.sectionContext}`}
+            className={`p-3 flex-1 rounded-md overflow-auto ${sideMenuStyle.sectionContainer} ${sideMenuStyle.sectionContext}`}
             style={{
               transition: 'width 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
               willChange: 'width',

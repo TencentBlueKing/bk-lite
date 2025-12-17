@@ -40,6 +40,18 @@ class Command(BaseCommand):
                 self.style.ERROR(f'创建规则失败: {str(e)}')
             )
 
+    @property
+    def base_fields(self):
+        data = {
+            "image": None,
+            # 继承字段使用默认值，在创建时设置
+            "created_by": "system",
+            "updated_by": "system",
+            "domain": "domain.com",
+            "updated_by_domain": "domain.com"
+        }
+        return data
+
     def _create_aggregation_rules(self, force_update=False):
         """创建或更新聚合规则"""
         created_count = 0
@@ -69,6 +81,7 @@ class Command(BaseCommand):
                         logger.info(f"规则已存在，跳过: {rule_data['name']}")
                         continue
                 else:
+                    rule_data.update(self.base_fields)
                     image = self.get_rule_image(rule_data['rule_id'])
                     if image:
                         rule_data['image'] = image

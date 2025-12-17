@@ -467,14 +467,12 @@ class TimeSeriesPredictDatasetReleaseViewSet(ModelViewSet):
     @HasPermission("timeseries_predict_dataset_releases-Edit")
     def archive(self, request, *args, **kwargs):
         """
-        归档数据集版本（将状态改为 archived）
+        归档数据集版本(将状态改为 archived)
         """
         try:
             release = self.get_object()
             
-            # 可以扩展 status 选项，添加 archived
-            # 暂时使用 pending 表示归档
-            release.status = 'pending'
+            release.status = 'archived'
             release.description = f"[已归档] {release.description or ''}"
             release.save(update_fields=['status', 'description'])
             

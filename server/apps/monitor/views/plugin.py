@@ -70,3 +70,15 @@ class MonitorPluginVieSet(viewsets.ModelViewSet):
             return WebUtils.response_success(ui_template.content)
         except MonitorPluginUITemplate.DoesNotExist:
             return WebUtils.response_success({})
+
+    @action(methods=['get'], detail=False, url_path='ui_template_by_params')
+    def get_ui_template_by_params(self, request):
+        """根据采集器名称和采集类型以及监控对象获取插件的 UI 模板。"""
+        collector = request.query_params.get("collector")
+        collect_type = request.query_params.get("collect_type")
+        monitor_object_id = request.query_params.get("monitor_object_id")
+
+        ui_template = MonitorPluginService.get_ui_template_by_params(
+            collector, collect_type, monitor_object_id
+        )
+        return WebUtils.response_success(ui_template)

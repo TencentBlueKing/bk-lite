@@ -6,6 +6,7 @@ from celery import shared_task
 from tqdm import tqdm
 
 from apps.core.logger import opspilot_logger as logger
+from apps.core.mixinx import EncryptMixin
 from apps.opspilot.enum import DocumentStatus
 from apps.opspilot.metis.llm.rag.naive_rag.pgvector.pgvector_rag import PgvectorRag
 from apps.opspilot.models import (
@@ -155,24 +156,22 @@ def _prepare_ingest_params(document, is_preview=False):
 
     # OCR配置
     ocr_config = {}
-    if document.enable_ocr_parse:
-        if document.ocr_model.name == "AzureOCR":
-            ocr_config = {
-                "ocr_type": "azure_ocr",
-                "azure_api_key": document.ocr_model.ocr_config["api_key"] or " ",
-                "azure_endpoint": document.ocr_model.ocr_config["base_url"],
-            }
-        elif document.ocr_model.name == "OlmOCR":
-            ocr_config = {
-                "ocr_type": "olm_ocr",
-                "olm_base_url": document.ocr_model.ocr_config["base_url"],
-                "olm_api_key": document.ocr_model.ocr_config["api_key"] or " ",
-                "olm_model": document.ocr_model.name,
-            }
-        else:
-            ocr_config = {
-                "ocr_type": "pp_ocr",
-            }
+    if document.enable_ocr_parse and document.ocr_model and document.ocr_model.ocr_config:
+        # 复制一份配置以防止修改原始对象
+        ocr_config = document.ocr_model.ocr_config.copy()
+        # 尝试解密 api_key 字段（如果是明文则会被忽略）
+        try:
+            EncryptMixin.decrypt_field("api_key", ocr_config)
+        except Exception:
+            # 任何解密异常都不应阻塞摄取流程，记录在日志中
+            logger.exception("Failed to decrypt OCR api_key")
+
+        ocr_config = {
+            "ocr_type": ocr_config.get("type", "olm_ocr"),
+            "olm_base_url": ocr_config.get("base_url", ""),
+            "olm_api_key": ocr_config.get("api_key") or " ",
+            "olm_model": ocr_config.get("model", "olmOCR-7B-0225-preview"),
+        }
 
     params = {
         "is_preview": is_preview,
@@ -262,7 +261,6 @@ def sync_web_page_knowledge(web_page_knowledge_id):
         False,
         web_page.knowledge_document.created_by,
         web_page.knowledge_document.domain,
-        True,
     )
 
 
@@ -719,3 +717,15 @@ def chat_flow_celery_task(bot_id, node_id, message):
         logger.info(f"ChatFlow周期任务执行完成: bot_id={bot_id}, node_id={node_id}, 执行结果为{result}")
     except Exception as e:
         logger.error(f"ChatFlow周期任务执行失败: bot_id={bot_id}, node_id={node_id}, error={str(e)}")
+
+
+@shared_task
+def update_graph_task(current_count, all_count, task_id):
+    task_obj = KnowledgeTask.objects.filter(id=task_id).first()
+    if not task_obj:
+        return
+
+    task_obj.completed_count = current_count
+    train_progress = round(float(current_count / all_count) * 100, 2)
+    task_obj.train_progress = train_progress
+    task_obj.save()
