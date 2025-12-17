@@ -546,6 +546,7 @@ generate_collector_packages() {
     local collector_image="${1:-${DOCKER_IMAGE_FUSION_COLLECTOR}}"
     local output_dir="${2:-./pkgs}"
     local certs_dir="${3:-./conf/certs}"
+    local bin_dir="${4:-./bin}"
     
     log "INFO" "开始生成控制器和采集器包..."
     log "INFO" "使用镜像: ${collector_image}"
@@ -579,9 +580,10 @@ generate_collector_packages() {
             fi
             
             # Extract collector binaries and create controller package
-            docker run --rm -v "${PWD}/${output_dir}:/pkgs" \
+            docker run --rm -v "${PWD}/${output_dir}:/pkgs" -v "${PWD}/${bin_dir}:/tmp/bin" \
                 --entrypoint=/bin/bash "${collector_image}" -c "\
                 cp -a bin/* /pkgs/collector/; \
+                cp -af bin/* /tmp/bin; \
                 cd /opt; \
                 cp fusion-collectors/misc/* fusion-collectors/; \
                 mkdir -p /opt/fusion-collectors/certs/; \
