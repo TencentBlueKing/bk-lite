@@ -11,8 +11,6 @@
         "pleaseEnterValue": "请输入值",
         "exactMatch": "精确匹配",
         "filterItems": "检索项：",
-        "cancel": "取消",
-        "confirm": "确定",
         "clearConditions": "清空条件"
     },
     "deleteTitle": "您确定要删除这个项目吗？",
