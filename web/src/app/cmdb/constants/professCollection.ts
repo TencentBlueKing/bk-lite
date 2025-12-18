@@ -90,14 +90,16 @@ export const PASSWORD_PLACEHOLDER = '******';
 
 export const K8S_FORM_INITIAL_VALUES = {
   instId: undefined,
-  cycle: CYCLE_OPTIONS.ONCE,
-  intervalMinutes: 60,
+  cycle: CYCLE_OPTIONS.INTERVAL,
+  intervalMinutes: 30,
+  intervalValue: 30,
   timeout: 60,
 };
 
 export const VM_FORM_INITIAL_VALUES = {
   instId: undefined,
-  cycle: CYCLE_OPTIONS.ONCE,
+  cycle: CYCLE_OPTIONS.INTERVAL,
+  intervalValue: 30,
   enterType: ENTER_TYPE.AUTOMATIC,
   port: '443',
   timeout: 600,
@@ -106,7 +108,8 @@ export const VM_FORM_INITIAL_VALUES = {
 
 export const SNMP_FORM_INITIAL_VALUES = {
   instId: undefined,
-  cycle: CYCLE_OPTIONS.ONCE,
+  cycle: CYCLE_OPTIONS.INTERVAL,
+  intervalValue: 30,
   enterType: ENTER_TYPE.AUTOMATIC,
   version: 'v2',
   snmp_port: '161',
@@ -118,7 +121,8 @@ export const SNMP_FORM_INITIAL_VALUES = {
 
 export const SQL_FORM_INITIAL_VALUES = {
   instId: undefined,
-  cycle: CYCLE_OPTIONS.ONCE,
+  cycle: CYCLE_OPTIONS.INTERVAL,
+  intervalValue: 30,
   enterType: ENTER_TYPE.AUTOMATIC,
   name: '',
   password: '',
@@ -128,7 +132,8 @@ export const SQL_FORM_INITIAL_VALUES = {
 
 export const CLOUD_FORM_INITIAL_VALUES = {
   instId: undefined,
-  cycle: CYCLE_OPTIONS.ONCE,
+  cycle: CYCLE_OPTIONS.INTERVAL,
+  intervalValue: 30,
   enterType: ENTER_TYPE.APPROVAL,
   accessKey: '',
   accessSecret: '',
@@ -138,7 +143,8 @@ export const CLOUD_FORM_INITIAL_VALUES = {
 
 export const HOST_FORM_INITIAL_VALUES = {
   instId: undefined,
-  cycle: CYCLE_OPTIONS.ONCE,
+  cycle: CYCLE_OPTIONS.INTERVAL,
+  intervalValue: 30,
   enterType: ENTER_TYPE.AUTOMATIC,
   username: '',
   password: '',

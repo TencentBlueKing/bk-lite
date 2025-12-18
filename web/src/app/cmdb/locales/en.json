@@ -131,6 +131,7 @@
         "assetList": "Asset List"
     },
     "Collection": {
+        "cycleDeprecated": "The functions of scheduled execution and one-time execution have been taken offline. Please adjust the configuration to periodic execution.",
         "fullTitle": "Fully Collection",
         "fullMessage": "You can automatically collect configuration information and associated information of different objects by creating collection tasks.",
         "professionalTitle": "Professional Collection",
@@ -149,7 +150,7 @@
         "every": "Every",
         "hour": "Hour",
         "once": "Once",
-        "cycleRequired": "Please select scan cycle",
+        "cycleRequired": "Please select cycle",
         "enterType": "Enter Type",
         "automatic": "Automatic",
         "password": "Password",
@@ -217,10 +218,11 @@
         },
         "table": {
             "taskName": "Task Name",
-            "syncStatus": "Sync Status",
+            "syncStatus": "Status",
             "latestOverview": "Latest Overview",
             "creator": "Creator",
             "syncTime": "Sync Time",
+            "reportTime": "Report Time",
             "actions": "Actions",
             "detail": "Detail",
             "sync": "Sync",
