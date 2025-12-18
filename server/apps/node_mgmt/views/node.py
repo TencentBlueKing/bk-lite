@@ -99,6 +99,17 @@ class NodeViewSet(mixins.DestroyModelMixin,
 
         # 应用自定义查询参数格式化
         custom_filters = request.data.get('filters')
+
+        # 从 filters 中提取 upgradeable 参数（因为它不是 Node 模型的直接字段）
+        upgradeable_from_filters = None
+        if custom_filters and 'upgradeable' in custom_filters:
+            upgradeable_conditions = custom_filters.pop('upgradeable', None)
+            if upgradeable_conditions and isinstance(upgradeable_conditions, list):
+                # 取第一个条件的值
+                first_condition = upgradeable_conditions[0]
+                if isinstance(first_condition, dict):
+                    upgradeable_from_filters = first_condition.get('value')
+
         if custom_filters:
             q_filters = self.format_params(custom_filters)
             if q_filters:
@@ -110,9 +121,16 @@ class NodeViewSet(mixins.DestroyModelMixin,
             organization_ids = organization_ids.split(',')
             queryset = queryset.filter(nodeorganization__organization__in=organization_ids).distinct()
 
-        # 是否可升级筛选
-        upgradeable = request.data.get('upgradeable')
+        # 是否可升级筛选 - 优先使用 filters 中的值，其次使用 request.data 中的值
+        upgradeable = upgradeable_from_filters if upgradeable_from_filters is not None else request.data.get('upgradeable')
+
+        # 规范化布尔值处理（支持字符串 "true"/"false" 和布尔值 True/False）
         if upgradeable is not None:
+            if isinstance(upgradeable, str):
+                upgradeable = upgradeable.lower() in ('true', '1', 'yes')
+            elif not isinstance(upgradeable, bool):
+                upgradeable = bool(upgradeable)
+
             if upgradeable:
                 # 筛选有可升级版本的节点
                 queryset = queryset.filter(
