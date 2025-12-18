@@ -110,17 +110,29 @@ class NodeViewSet(mixins.DestroyModelMixin,
             organization_ids = organization_ids.split(',')
             queryset = queryset.filter(nodeorganization__organization__in=organization_ids).distinct()
 
+        # 是否可升级筛选
+        upgradeable = request.data.get('upgradeable')
+        if upgradeable is not None:
+            if upgradeable:
+                # 筛选有可升级版本的节点
+                queryset = queryset.filter(
+                    component_versions__component_type='controller',
+                    component_versions__upgradeable=True
+                ).distinct()
+            else:
+                # 筛选没有可升级版本的节点（排除有 upgradeable=True 的节点）
+                upgradeable_node_ids = Node.objects.filter(
+                    component_versions__component_type='controller',
+                    component_versions__upgradeable=True
+                ).values_list('id', flat=True)
+                queryset = queryset.exclude(id__in=upgradeable_node_ids)
+
         # 应用预加载优化，避免 N+1 查询
         queryset = NodeSerializer.setup_eager_loading(queryset)
 
-        # 一次性获取所有控制器的最新版本映射（只查询一次）
-        from apps.node_mgmt.services.version_upgrade import VersionUpgradeService
-        latest_versions_map = VersionUpgradeService.get_latest_versions_map(component_type='controller')
-
         page = self.paginate_queryset(queryset)
         if page is not None:
-            # 通过 context 传递最新版本映射给序列化器
-            serializer = NodeSerializer(page, many=True, context={'latest_versions_map': latest_versions_map})
+            serializer = NodeSerializer(page, many=True)
             node_data = serializer.data
             processed_data = NodeService.process_node_data(node_data)
 
@@ -129,7 +141,7 @@ class NodeViewSet(mixins.DestroyModelMixin,
 
             return self.get_paginated_response(processed_data)
 
-        serializer = NodeSerializer(queryset, many=True, context={'latest_versions_map': latest_versions_map})
+        serializer = NodeSerializer(queryset, many=True)
         node_data = serializer.data
         processed_data = NodeService.process_node_data(node_data)
 

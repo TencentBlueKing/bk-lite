@@ -246,6 +246,9 @@ class NodeService:
             end = start + page_size
             nodes = qs[start:end]
 
+        # 应用预加载优化，避免 N+1 查询
+        nodes = NodeSerializer.setup_eager_loading(nodes)
+
         serializer = NodeSerializer(nodes, many=True)
         node_data = serializer.data
         return dict(count=count, nodes=node_data)
