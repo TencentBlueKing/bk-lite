@@ -111,6 +111,13 @@ export const formatConfigInfo = (data: ChatflowNodeData, t: any) => {
     case 'embedded_chat':
       return t('chatflow.apiInterface');
 
+    case 'intent_classification':
+      if (config.intents && config.intents.length > 0) {
+        const intentNames = config.intents.map((intent: any) => intent.name).join(', ');
+        return `${t('chatflow.intents')}: ${intentNames}`;
+      }
+      return t('chatflow.notConfigured');
+
     default:
       return t('chatflow.notConfigured');
   }
