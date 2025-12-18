@@ -20,11 +20,8 @@ ADD ./sidecar.yml sidecar.yml
 ADD ./startup.sh startup.sh
 ADD ./misc misc
 
-RUN mkdir -p /opt/fusion-collectors/bin
-RUN mkdir -p /opt/fusion-collectors/cache
-RUN mkdir -p /opt/fusion-collectors/log
-RUN mkdir -p /opt/fusion-collectors/generated
-RUN chmod +x /opt/fusion-collectors/startup.sh
+RUN mkdir -p /opt/fusion-collectors/{bin,cache,log,generated} /opt/release && \
+    chmod +x /opt/fusion-collectors/startup.sh
 
 # Telegraf
 ADD ./mibs /usr/share/snmp/mibs
@@ -40,7 +37,7 @@ ADD ./filebeat ./bin/filebeat
 ADD ./packetbeat ./bin/packetbeat
 ADD ./metricbeat ./bin/metricbeat
 ADD ./auditbeat ./bin/auditbeat
-
+ADD ./windows /opt/release/windows
 # Suporvisor
 ADD ./service.conf /etc/supervisor/conf.d/service.conf
 
