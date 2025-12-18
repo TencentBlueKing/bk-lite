@@ -12,8 +12,8 @@ import matplotlib.pyplot as plt
 import io
 from pathlib import Path
 
-# 跨平台中文字体配置
-matplotlib.rc("font", family=['Microsoft YaHei', 'Noto Sans CJK SC', 'SimHei', 'sans-serif'])
+# 跨平台中文字体配置（优先使用独立的简体中文字体）
+matplotlib.rc("font", family=['Microsoft YaHei', 'WenQuanYi Zen Hei', 'sans-serif'])
 plt.rcParams['axes.unicode_minus'] = False  # 解决负号显示问题
 
 

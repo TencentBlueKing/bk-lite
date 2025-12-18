@@ -5,10 +5,10 @@ ARG NEXUS_PYTHON_REPOSITY
 RUN sed -i 's/deb.debian.org/repo.huaweicloud.com/g' /etc/apt/sources.list.d/debian.sources
 
 RUN apt-get update -y
-RUN apt-get install -y vim supervisor unzip curl fonts-noto-cjk
+RUN apt-get install -y vim supervisor unzip curl fonts-wqy-zenhei
 
-# 清理 matplotlib 字体缓存
-RUN rm -rf /root/.cache/matplotlib
+# 更新系统字体缓存
+RUN fc-cache -fv
 
 # 配置 pip 镜像源（如果提供）
 RUN if [ -n "$NEXUS_PYTHON_REPOSITY" ]; then \
@@ -26,12 +26,17 @@ RUN chmod +x ./support-files/release/startup.sh && \
     chmod +x ./support-files/scripts/train-model.sh && \
     chmod +x ./mc
 
-# 使用 uv 安装项目依赖（通过命令行参数指定镜像源）
+# 使用 uv 安装项目依赖并预先同步虚拟环境（通过命令行参数指定镜像源）
 RUN if [ -n "$NEXUS_PYTHON_REPOSITY" ]; then \
-    uv pip install --system --index-url "$NEXUS_PYTHON_REPOSITY" -e ".[dev]"; \
+    uv pip install --system --index-url "$NEXUS_PYTHON_REPOSITY" -e ".[dev]" && \
+    uv sync --index-url "$NEXUS_PYTHON_REPOSITY"; \
     else \
-    uv pip install --system -e ".[dev]"; \
+    uv pip install --system -e ".[dev]" && \
+    uv sync; \
     fi
+
+# 清理 matplotlib 字体缓存，让其重新扫描字体
+RUN rm -rf /root/.cache/matplotlib /root/.cache/fontconfig
 
 RUN apt-get reinstall -y supervisor 
 
