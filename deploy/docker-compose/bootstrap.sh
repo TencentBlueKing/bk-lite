@@ -893,6 +893,9 @@ python manage.py collector_package_init --os linux --object Vector --pk_version 
 python manage.py collector_package_init --os linux --object Nats-Executor --pk_version latest --file_path /apps/pkgs/collector/nats-executor
 EOF
 
+    NATS_TLS_CA=$(cat conf/certs/ca.crt)
+    echo "NATS_TLS_CA=\"${NATS_TLS_CA}\"" >> .env
+    
     if [ -z "${SIDECAR_NODE_ID:-}" ]; then
         log "WARNING" "重新初始化 Sidecar Node ID 和 Token，可能会导致已注册的 Sidecar 失效"
         mapfile -t ARR < <($DOCKER_COMPOSE_CMD exec -T server /bin/bash -c 'python manage.py node_token_init --ip default' 2>&1| grep -oP 'node_id: \K[0-9a-f]+|token: \K\S+')
@@ -913,7 +916,6 @@ EOF
 
     echo "SIDECAR_NODE_ID=$SIDECAR_NODE_ID" >> .env
     echo "SIDECAR_INIT_TOKEN=$SIDECAR_INIT_TOKEN" >> .env
-
     ${DOCKER_COMPOSE_CMD} up -d fusion-collector
 
     log "SUCCESS" "部署成功，访问 https://$HOST_IP:$TRAEFIK_WEB_PORT 访问系统"

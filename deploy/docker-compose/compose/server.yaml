@@ -34,6 +34,8 @@ services:
       - DEFAULT_ZONE_VAR_NODE_SERVER_URL=https://${HOST_IP}:${TRAEFIK_WEB_PORT}
       - DEFAULT_ZONE_VAR_NATS_PROTOCOL=tls
       - DEFAULT_ZONE_VAR_NATS_TLS_CA_FILE=/opt/fusion-collectors/certs/ca.crt
+      - DEFAULT_ZONE_VAR_NATS_TLS_CA=${NATS_TLS_CA}
+      - DEFAULT_ZONE_VAR_WEBHOOK_SERVER_URL=http://webhookd:8080
       - VICTORIAMETRICS_HOST=http://victoria-metrics:8428
       - TOP_GROUP=Default
       - DEFAULT_GROUP_NAME=Guest
