@@ -12,6 +12,7 @@ interface UseMessagesReturn {
     thinkingExpanded: Record<string, boolean>;
     setThinkingExpanded: React.Dispatch<React.SetStateAction<Record<string, boolean>>>;
     thinkingTypingText: Record<string, string>;
+    setThinkingTypingText: React.Dispatch<React.SetStateAction<Record<string, string>>>;
     messageMarkdownRef: React.MutableRefObject<Map<string, string>>;
     scrollToBottom: () => void;
     isAIRunning: boolean;
@@ -483,6 +484,7 @@ export const useMessages = (
         thinkingExpanded,
         setThinkingExpanded,
         thinkingTypingText,
+        setThinkingTypingText,
         messageMarkdownRef,
         scrollToBottom,
         isAIRunning,

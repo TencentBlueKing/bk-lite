@@ -35,7 +35,8 @@
         "copiedToClipboard": "已复制到剪贴板",
         "camera": "相机",
         "gallery": "相册",
-        "file": "文件"
+        "file": "文件",
+        "allApps": "全部应用"
     },
     "navigation": {
         "conversations": "对话",
@@ -65,7 +66,11 @@
         "releaseToCancel": "松开取消",
         "slideUpToCancel": "松开发送,上滑取消",
         "welcomeMessage": "您好，请问有什么可以帮助您的吗？",
-        "fileCountLimit": "最多只能添加9个文件"
+        "fileCountLimit": "最多只能添加9个文件",
+        "noConversations": "暂无对话记录",
+        "loadFailedDescription": "无法加载应用信息，请检查网络连接或尝试其他操作",
+        "viewOtherConversations": "查看其他对话",
+        "backToAppList": "返回应用列表"
     },
     "auth": {
         "loginTitle": "登录",

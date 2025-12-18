@@ -1,8 +1,9 @@
 // Components
 export { ConversationHeader } from './ConversationHeader';
+export { ConversationSidebar } from './ConversationSidebar';
 export { MessageList } from './MessageList';
 export { CustomInput } from './CustomInput';
-export { ToolCallItem } from './ToolCallItem';
+export { ToolCallItem } from './custom-components/ToolCallItem';
 export { ApplicationForm } from './custom-components/ApplicationForm';
 export { InformationCard } from './custom-components/InformationCard';
 export { SelectionButtons } from './custom-components/SelectionButtons';
