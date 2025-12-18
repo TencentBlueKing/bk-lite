@@ -72,7 +72,7 @@
       "transform_on_edit": {
         "origin_path": "child.content.config.servers[0]",
         "to_form": {
-          "regex": ":(\\d+)\\/"
+          "regex": "@tcp\\([^:]+:(\\d+)\\)"
         }
       }
     },

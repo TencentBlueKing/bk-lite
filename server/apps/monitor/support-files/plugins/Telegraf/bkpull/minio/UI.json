@@ -12,12 +12,16 @@
       "type": "input",
       "required": true,
       "visible_in": "edit",
+      "editable": false,
       "description": "与设备进行通信的主机",
       "widget_props": {
         "placeholder": "主机地址"
       },
       "transform_on_edit": {
-        "origin_path": "base.env_config.host"
+        "origin_path": "child.content.config.urls[0]",
+        "to_form": {
+          "regex": "https?://([^:/]+)"
+        }
       }
     },
     {
@@ -26,6 +30,7 @@
       "type": "inputNumber",
       "required": true,
       "visible_in": "edit",
+      "editable": false,
       "description": "与设备进行通信的端口",
       "widget_props": {
         "min": 1,
@@ -33,7 +38,10 @@
         "placeholder": "端口"
       },
       "transform_on_edit": {
-        "origin_path": "base.env_config.port"
+        "origin_path": "child.content.config.urls[0]",
+        "to_form": {
+          "regex": "https?://[^:]+:(\\d+)"
+        }
       }
     },
     {
