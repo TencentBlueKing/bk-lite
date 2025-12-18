@@ -69,8 +69,9 @@ class InstanceSearch:
             query = "count(prometheus_remote_write_kube_node_info) by (instance_id)"
             return InstanceSearch.get_parent_instance_ids(query)
         elif monitor_obj_name in {"ESXI", "VM", "DataStorage"}:
-            query = 'any({instance_type="vmware"}) by (instance_id)'
-            return InstanceSearch.get_parent_instance_ids(query)
+            # query = 'any({instance_type="vmware"}) by (instance_id)'
+            # return InstanceSearch.get_parent_instance_ids(query)
+            return InstanceSearch.get_parent_instance_list(monitor_object_id)
         elif monitor_obj_name in {"CVM"}:
             query = 'any({instance_type="qcloud"}) by (instance_id)'
             return InstanceSearch.get_parent_instance_ids(query)
