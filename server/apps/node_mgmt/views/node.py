@@ -110,6 +110,26 @@ class NodeViewSet(mixins.DestroyModelMixin,
             organization_ids = organization_ids.split(',')
             queryset = queryset.filter(nodeorganization__organization__in=organization_ids).distinct()
 
+        # 是否可升级筛选
+        upgradeable = request.data.get('upgradeable')
+        if upgradeable is not None:
+            if upgradeable:
+                # 筛选有可升级版本的节点
+                queryset = queryset.filter(
+                    component_versions__component_type='controller',
+                    component_versions__upgradeable=True
+                ).distinct()
+            else:
+                # 筛选没有可升级版本的节点（排除有 upgradeable=True 的节点）
+                upgradeable_node_ids = Node.objects.filter(
+                    component_versions__component_type='controller',
+                    component_versions__upgradeable=True
+                ).values_list('id', flat=True)
+                queryset = queryset.exclude(id__in=upgradeable_node_ids)
+
+        # 应用预加载优化，避免 N+1 查询
+        queryset = NodeSerializer.setup_eager_loading(queryset)
+
         page = self.paginate_queryset(queryset)
         if page is not None:
             serializer = NodeSerializer(page, many=True)
