@@ -13,6 +13,7 @@ import {
   LockOutline,
   UserOutline,
   GlobalOutline,
+  ExclamationTriangleOutline
 } from 'antd-mobile-icons';
 
 export default function LoginPage() {
@@ -27,12 +28,27 @@ export default function LoginPage() {
   const [authStep, setAuthStep] = useState<AuthStep>('login');
   const [showPassword, setShowPassword] = useState(false);
   const [showDomainSelector, setShowDomainSelector] = useState(false);
+  const retryTimerRef = React.useRef<NodeJS.Timeout | null>(null);
 
   useEffect(() => {
     fetchDomainList();
+
+    return () => {
+      // 组件卸载时清理定时器
+      if (retryTimerRef.current) {
+        clearTimeout(retryTimerRef.current);
+        retryTimerRef.current = null;
+      }
+    };
   }, []);
 
   const fetchDomainList = async () => {
+    // 开始新的请求前，先清除可能存在的重试定时器
+    if (retryTimerRef.current) {
+      clearTimeout(retryTimerRef.current);
+      retryTimerRef.current = null;
+    }
+
     try {
       setLoadingDomains(true);
       const responseData = await getDomainList();
@@ -44,10 +60,16 @@ export default function LoginPage() {
         }
       } else {
         setDomainList([]);
+        retryTimerRef.current = setTimeout(() => {
+          fetchDomainList();
+        }, 5000);
       }
     } catch (error) {
       console.error('Failed to fetch domain list:', error);
       setDomainList([]);
+      retryTimerRef.current = setTimeout(() => {
+        fetchDomainList();
+      }, 5000);
     } finally {
       setLoadingDomains(false);
     }
@@ -199,8 +221,9 @@ export default function LoginPage() {
                   </div>
                 )}
                 {!loadingDomains && domainList.length === 0 && (
-                  <div className="text-amber-600 text-sm bg-amber-50 border border-amber-200 px-2.5 py-1.5 rounded-lg">
-                    ⚠ {t('login.noDomainsAvailable')}
+                  <div className="text-amber-600 text-sm bg-amber-50 border border-amber-200 px-2.5 py-1.5 rounded-lg flex items-center space-x-2">
+                    <ExclamationTriangleOutline className="text-lg" />
+                    <span>{t('login.noDomainsAvailable')}</span>
                   </div>
                 )}
               </div>

@@ -41,14 +41,86 @@ export function parseHistoryEvents(eventString: string): ParsedHistoryMessage {
 
     try {
         // 将 Python 风格的字符串转换为 JSON
-        // 替换单引号为双引号，处理特殊情况
-        const jsonString = eventString
-            .replace(/'/g, '"')
-            .replace(/True/g, 'true')
-            .replace(/False/g, 'false')
-            .replace(/None/g, 'null');
+        // 优化版本：使用数组拼接代替字符串拼接，减少内存分配
+        const jsonChars: string[] = [];
+        let inString = false;
+        let stringChar = '';
+        let escaped = false;
+        const len = eventString.length;
+        
+        for (let i = 0; i < len; i++) {
+            const char = eventString[i];
+            
+            // 处理转义字符
+            if (escaped) {
+                jsonChars.push(char);
+                escaped = false;
+                continue;
+            }
+            
+            if (char === '\\') {
+                escaped = true;
+                jsonChars.push(char);
+                continue;
+            }
+            
+            // 检测字符串的开始和结束
+            if ((char === '"' || char === "'") && !inString) {
+                inString = true;
+                stringChar = char;
+                jsonChars.push('"'); // 统一使用双引号
+                continue;
+            }
+            
+            if (char === stringChar && inString) {
+                inString = false;
+                stringChar = '';
+                jsonChars.push('"'); // 统一使用双引号
+                continue;
+            }
+            
+            // 在字符串内部
+            if (inString) {
+                if (char === '"') {
+                    jsonChars.push('\\', '"'); // 转义双引号
+                } else {
+                    jsonChars.push(char);
+                }
+                continue;
+            }
+            
+            // 不在字符串内部，处理 Python 特殊值（快速路径）
+            if (char === 'T' && i + 3 < len && 
+                eventString[i + 1] === 'r' && 
+                eventString[i + 2] === 'u' && 
+                eventString[i + 3] === 'e') {
+                jsonChars.push('t', 'r', 'u', 'e');
+                i += 3;
+                continue;
+            }
+            if (char === 'F' && i + 4 < len && 
+                eventString[i + 1] === 'a' && 
+                eventString[i + 2] === 'l' && 
+                eventString[i + 3] === 's' && 
+                eventString[i + 4] === 'e') {
+                jsonChars.push('f', 'a', 'l', 's', 'e');
+                i += 4;
+                continue;
+            }
+            if (char === 'N' && i + 3 < len && 
+                eventString[i + 1] === 'o' && 
+                eventString[i + 2] === 'n' && 
+                eventString[i + 3] === 'e') {
+                jsonChars.push('n', 'u', 'l', 'l');
+                i += 3;
+                continue;
+            }
+            
+            // 其他字符直接复制
+            jsonChars.push(char);
+        }
 
-        const events = JSON.parse(jsonString);
+        const events = JSON.parse(jsonChars.join(''));
 
         if (!Array.isArray(events)) {
             console.warn('事件数据不是数组格式');
