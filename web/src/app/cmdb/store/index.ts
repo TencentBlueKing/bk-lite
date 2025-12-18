@@ -1,5 +1,9 @@
-// 从各个 store 文件中导入并重新导出它们的 hook
-
+// 导出 assetData 路由下使用的 store
 export * from './useAssetDataStore';
 export { default as useAssetDataStore } from './useAssetDataStore';
+
+// 导出 assetManage 路由下使用的 store
+export * from './useAssetManage';
+export { default as useAssetManageStore } from './useAssetManage';
+
 
