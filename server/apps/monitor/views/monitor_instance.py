@@ -15,7 +15,7 @@ class MonitorInstanceVieSet(viewsets.ViewSet):
 
     @action(methods=['get'], detail=False, url_path='query_params_enum/(?P<name>[^/.]+)')
     def get_query_params_enum(self, request, name):
-        data = InstanceSearch.get_query_params_enum(name)
+        data = InstanceSearch.get_query_params_enum(name, request.GET.get("monitor_object_id"))
         return WebUtils.response_success(data)
 
     @action(methods=['get'], detail=False, url_path='(?P<monitor_object_id>[^/.]+)/list')

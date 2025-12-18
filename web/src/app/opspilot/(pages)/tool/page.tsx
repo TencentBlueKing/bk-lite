@@ -162,21 +162,20 @@ const ToolListPage: React.FC = () => {
         rules: [{ required: true, message: `${t('common.inputMsg')}Token` }],
       }] : []),
     ] : []),
-    ...(!isBuiltIn ? [
-      {
-        name: 'variables',
-        type: 'custom',
-        label: '',
-        component: (
-          <VariableList
-            value={form.getFieldValue('variables') || []}
-            onChange={(newVal: any) => {
-              form.setFieldsValue({ variables: newVal });
-            }}
-            disabled={isBuiltIn}
-          />
-        ),
-      }] : []),
+    {
+      name: 'variables',
+      type: 'custom',
+      label: isBuiltIn ? t('tool.variables') : '',
+      component: (
+        <VariableList
+          value={form.getFieldValue('variables') || []}
+          onChange={(newVal: any) => {
+            form.setFieldsValue({ variables: newVal });
+          }}
+          disabled={isBuiltIn}
+        />
+      ),
+    },
     {
       name: 'team',
       type: 'custom',

@@ -1,3 +1,21 @@
+export interface ChatItem {
+  id: string;
+  name: string;
+  avatar: string;
+  lastMessage?: string;
+  time?: string;
+  hasCall?: boolean;
+  website?: string;
+  unread?: number;
+}
+
+export interface ChatMessage {
+  id: string;
+  chatId: string;
+  sender: 'user' | 'bot';
+  content: string;
+  timestamp: number;
+}
 export interface sessionsItem {
   bot_id: number;
   session_id: string;
@@ -34,14 +52,17 @@ export interface Message {
   status: 'local' | 'ai' | 'thinking' | 'loading' | 'success' | 'ended' | 'history';
   timestamp: number;
   thinking?: string;
-  userInput?: string;
+  userInput?: string | MessageContentItem[]; // 支持字符串或数组格式
   isWelcome?: boolean;
-  toolCalls?: ToolCall[];
-  customComponent?: {
-    component: string;
-    props: any;
-  }; // 自定义组件配置
+  isFileMessage?: boolean; // 标记为文件/图片消息，用于特殊样式
   contentParts?: ContentPart[]; // 按顺序的内容片段(文本和组件)
+}
+
+export interface MessageContentItem {
+  type: 'image_url' | 'file_url' | 'message';
+  image_url?: string;
+  file_url?: string;
+  message?: string;
 }
 
 /**

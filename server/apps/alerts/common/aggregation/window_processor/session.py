@@ -16,7 +16,7 @@ from apps.alerts.utils.util import generate_instance_fingerprint
 from apps.core.logger import alert_logger as logger
 
 
-class SessionWindowAggProcessor(BaseWindowProcessor):
+class SessionWindowProcessor(BaseWindowProcessor):
     """会话窗口聚合处理器
 
     会话窗口的核心理念：基于事件活动检测"活动停止"状态

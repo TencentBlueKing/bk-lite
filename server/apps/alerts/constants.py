@@ -349,6 +349,131 @@ class AggregationRuleType:
     )
 
 
+class AlertStrategyType:
+    """告警策略类型
+    
+    定义了六种告警策略类型，每种策略适用于不同的监控场景：
+    
+    1. THRESHOLD（阈值告警）- 最常用的告警类型
+       适用场景：监控指标超过固定阈值时触发告警
+       配置示例：CPU使用率 > 80%，内存使用 > 90%
+       
+    2. MUTATION（突变告警）- 检测指标急剧变化
+       适用场景：短时间内指标发生异常波动
+       配置示例：QPS在5分钟内增长50%以上，延迟突增200%
+       
+    3. COMPOSITE（复合条件）- 多条件组合判断
+       适用场景：需要同时满足多个条件才触发告警
+       配置示例：CPU > 80% AND 内存 > 90% AND 磁盘IO > 1000
+       
+    4. FREQUENCY（频率告警）- 基于事件发生频次
+       适用场景：一定时间内事件发生次数超过阈值
+       配置示例：5分钟内登录失败超过10次，1小时内接口报错超过100次
+       
+    5. TREND（趋势告警）- 预测性告警，基于历史数据趋势分析
+       适用场景：通过历史趋势预测未来可能发生的问题
+       配置示例：磁盘使用量持续上升，预计3天后将耗尽
+       实现状态：待实现，需要结合时序数据库和趋势分析算法
+       
+    6. ANOMALY（异常检测）- 智能异常检测
+       适用场景：基于统计学方法检测偏离正常模式的异常数据
+       配置示例：使用Z-Score检测CPU使用率异常波动
+       实现状态：待实现，需要结合机器学习模型
+    """
+    THRESHOLD = "threshold"         # 阈值告警：基于数值阈值判断
+    MUTATION = "mutation"           # 突变告警：基于变化率检测
+    COMPOSITE = "composite"         # 复合条件：多条件组合逻辑
+    FREQUENCY = "frequency"         # 频率告警：基于事件频次
+    TREND = "trend"                 # 趋势告警：基于数据趋势分析（待实现）
+    ANOMALY = "anomaly"             # 异常检测：基于统计异常（待实现）
+
+    CHOICES = (
+        (THRESHOLD, "阈值告警"),
+        (MUTATION, "突变告警"), 
+        (COMPOSITE, "复合条件"),
+        (FREQUENCY, "频率告警"),
+        (TREND, "趋势告警"),
+        (ANOMALY, "异常检测"),
+    )
+
+    @classmethod
+    def get_description(cls, strategy_type):
+        """获取策略类型的详细描述
+        
+        Args:
+            strategy_type: 策略类型标识
+            
+        Returns:
+            str: 策略类型的详细描述
+        """
+        descriptions = {
+            cls.THRESHOLD: "当监控指标超过设定阈值时触发告警。适用于CPU、内存、磁盘等资源类监控指标。",
+            cls.MUTATION: "当监控指标在短时间内发生剧烈变化时触发告警。适用于检测流量突增、性能骤降等异常情况。",
+            cls.COMPOSITE: "满足多个复合条件时触发告警，支持AND/OR逻辑组合。适用于需要多维度综合判断的复杂场景。",
+            cls.FREQUENCY: "当特定事件在时间窗口内出现频次超过阈值时触发告警。适用于登录失败、接口报错等事件类监控。",
+            cls.TREND: "基于历史数据趋势，预测性检测异常情况。适用于容量规划、资源增长预警等场景。（功能开发中）",
+            cls.ANOMALY: "使用统计方法检测偏离正常模式的异常数据点。适用于智能化运维场景。（功能开发中）"
+        }
+        return descriptions.get(strategy_type, "未知策略类型")
+    
+    @classmethod
+    def get_config_template(cls, strategy_type):
+        """获取策略类型的配置模板
+        
+        Args:
+            strategy_type: 策略类型标识
+            
+        Returns:
+            dict: 策略配置模板
+        """
+        templates = {
+            cls.THRESHOLD: {
+                "metric_field": "value",
+                "threshold_value": 80,
+                "operator": ">=",
+                "duration_minutes": 1,
+                "description": "指标字段名、阈值、比较操作符、持续时间"
+            },
+            cls.MUTATION: {
+                "metric_field": "value",
+                "change_rate_threshold": 50.0,
+                "comparison_window_minutes": 5,
+                "change_type": "percent",
+                "direction": "both",
+                "description": "指标字段名、变化率阈值(%)、对比窗口、变化类型、突变方向"
+            },
+            cls.COMPOSITE: {
+                "conditions": [],
+                "logic_operator": "AND",
+                "evaluation_window_minutes": 5,
+                "description": "条件列表、逻辑操作符(AND/OR)、评估窗口"
+            },
+            cls.FREQUENCY: {
+                "event_count_threshold": 10,
+                "time_window_minutes": 5,
+                "group_by_fields": ["resource_type", "resource_name"],
+                "description": "事件数量阈值、时间窗口、分组字段"
+            },
+            cls.TREND: {
+                "metric_field": "value",
+                "trend_direction": "upward",
+                "slope_threshold": 0.1,
+                "data_points": 5,
+                "confidence_level": 0.8,
+                "description": "指标字段名、趋势方向、斜率阈值、数据点数、置信度（待实现）"
+            },
+            cls.ANOMALY: {
+                "metric_field": "value",
+                "detection_method": "zscore",
+                "sensitivity": 2.0,
+                "baseline_window_minutes": 60,
+                "min_baseline_samples": 10,
+                "description": "指标字段名、检测方法、敏感度、基线窗口、最小样本数（待实现）"
+            }
+        }
+        return templates.get(strategy_type, {})
+
+
 class NotifyResultStatus:
     """通知结果"""
     SUCCESS = "success"

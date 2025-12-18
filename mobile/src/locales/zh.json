@@ -32,7 +32,10 @@
         "accountsAndSecurity": "账户与安全",
         "noData": "暂无数据",
         "yesterday": "昨天",
-        "copiedToClipboard": "已复制到剪贴板"
+        "copiedToClipboard": "已复制到剪贴板",
+        "camera": "相机",
+        "gallery": "相册",
+        "file": "文件"
     },
     "navigation": {
         "conversations": "对话",
@@ -51,7 +54,18 @@
         "responseError": "响应异常，请稍后再试",
         "executing": "执行中",
         "executionFailed": "执行失败",
-        "executionSuccess": "执行成功"
+        "executionSuccess": "执行成功",
+        "aiProcessing": "AI 正在处理中，请稍候...",
+        "addLimit": "不支持同时添加图片和文件",
+        "fileSizeLimitExceeded": "部分文件超过 10MB 限制，已跳过",
+        "uploading": "正在上传，请稍候...",
+        "fileConversionFailed": "文件转换失败",
+        "fileConversionError": "有文件转换失败，请重试或删除",
+        "holdToTalk": "按住说话",
+        "releaseToCancel": "松开取消",
+        "slideUpToCancel": "松开发送,上滑取消",
+        "welcomeMessage": "您好，请问有什么可以帮助您的吗？",
+        "fileCountLimit": "最多只能添加9个文件"
     },
     "auth": {
         "loginTitle": "登录",

@@ -26,6 +26,7 @@ const SkillSettingsPage: React.FC = () => {
   const id = searchParams ? searchParams.get('id') : null;
 
   const [temperature, setTemperature] = useState(0.7);
+  const [initialMessages] = useState<any[]>([]); // 稳定的空数组引用
 
   const [chatHistoryEnabled, setChatHistoryEnabled] = useState(true);
   const [ragEnabled, setRagEnabled] = useState(true);
@@ -506,6 +507,7 @@ const SkillSettingsPage: React.FC = () => {
               handleSendMessage={handleSendMessage} 
               guide={guideValue}
               useAGUIProtocol={true}
+              initialMessages={initialMessages}
             />
           </div>
         </div>

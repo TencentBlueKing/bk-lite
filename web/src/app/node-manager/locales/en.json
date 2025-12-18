@@ -24,7 +24,9 @@
         "collector": "Components",
         "collectorType": "Component Type",
         "parameterdes": "Parameter description",
-        "subconfiguration": "Subconfiguration"
+        "subconfiguration": "Subconfiguration",
+        "deleteSubConfigWarning": "Deleting a configuration is an unconventional operation that may cause component malfunctions. Please confirm that this action is necessary and be aware of the potential impacts.",
+        "searchPlaceholder": "Enter configuration type"
       },
       "node": {
         "installCollector": "Install Component",
@@ -119,6 +121,7 @@
         "loginPassword": "Login Password",
         "desc": "Node is the environment in which controllers and components operate, which can be a host or a container. The platform leverages the controllers on the nodes to manage the nodes and uniformly regulate the operation of the components.",
         "sidecarVersion": "Controller Version",
+        "controllerVersionTip": "Upgradeable to new version",
         "inactive": "Inactive",
         "bindaditinfo": "After binding the configuration file, the corresponding collector will start automatically.",
         "operateSystem": "Operating System",
@@ -150,6 +153,7 @@
       "variable": {
         "password": "Password",
         "string": "String",
+        "text": "Text",
         "deleteinfo": "Are you sure to delete this variable?",
         "valueType": "Type",
         "desc": "Description",

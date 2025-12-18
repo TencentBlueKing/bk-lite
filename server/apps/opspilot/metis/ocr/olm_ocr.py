@@ -7,9 +7,6 @@ logger = logging.getLogger(__name__)
 
 class OlmOcr:
     def __init__(self, base_url: str, api_key: str, model="olmOCR-7B-0225-preview"):
-        logger.info(f"初始化 OlmOcr - base_url: {base_url}, model: {model}")
-        logger.info(
-            f"API Key 长度: {len(api_key)}, 前缀: {api_key[:10]}... 后缀: ...{api_key[-4:]}")
 
         self.client = OpenAI(
             base_url=base_url,
@@ -39,7 +36,17 @@ class OlmOcr:
                         "content": [
                             {
                                 "type": "text",
-                                "text": "Extract all text from this image."
+                                "text": (
+                                    "请识别这张图片中的所有文本内容,按照自然阅读顺序返回。要求:\n"
+                                    "1. 保持原文的段落结构和排版\n"
+                                    "2. 如果有表格,转换为 Markdown 表格格式\n"
+                                    "3. 如果有数学公式,使用 LaTeX 语法,行内公式用 \\( \\),独立公式用 \\[ \\]\n"
+                                    "4. 如果有手写文字,尽可能准确识别\n"
+                                    "5. 忽略页眉页脚,但保留脚注和参考文献\n"
+                                    "6. 如果图片方向不正确,请按正确方向识别\n"
+                                    "7. 不要编造内容,只返回图片中真实存在的文本\n"
+                                    "直接返回识别结果,不需要额外说明。"
+                                )
                             },
                             {
                                 "type": "image_url",

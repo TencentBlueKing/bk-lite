@@ -66,7 +66,6 @@ const TrainTask = () => {
     total: 0,
     pageSize: 10,
   });
-  const showTrain = ['anomaly', 'classification'];
 
   // 数据集获取映射
   const datasetApiMap: Record<string, () => Promise<DataSet[]>> = {
@@ -243,7 +242,6 @@ const TrainTask = () => {
       fixed: 'right',
       align: 'center',
       render: (_: unknown, record: TrainJob) => {
-        const [key] = selectedKeys;
         return (
           <>
             {/* <PermissionWrapper requiredPermissions={['View']}>
@@ -264,35 +262,31 @@ const TrainTask = () => {
                 {t('common.download')}
               </Button>
             </PermissionWrapper>
-            {showTrain.includes(key) &&
-              (<>
-                <PermissionWrapper requiredPermissions={['Train']}>
-                  <Popconfirm
-                    title={t('traintask.trainStartTitle')}
-                    description={t('traintask.trainStartContent')}
-                    okText={t('common.confirm')}
-                    cancelText={t('common.cancel')}
-                    onConfirm={() => onTrainStart(record)}
-                  >
-                    <Button
-                      type="link"
-                      className="mr-[10px]"
-                    >
-                      {t('traintask.train')}
-                    </Button>
-                  </Popconfirm>
-                </PermissionWrapper>
-                <PermissionWrapper requiredPermissions={['View']}>
-                  <Button
-                    type="link"
-                    className="mr-[10px]"
-                    onClick={() => openDrawer(record)}
-                  >
-                    {t('common.detail')}
-                  </Button>
-                </PermissionWrapper>
-              </>)
-            }
+            <PermissionWrapper requiredPermissions={['Train']}>
+              <Popconfirm
+                title={t('traintask.trainStartTitle')}
+                description={t('traintask.trainStartContent')}
+                okText={t('common.confirm')}
+                cancelText={t('common.cancel')}
+                onConfirm={() => onTrainStart(record)}
+              >
+                <Button
+                  type="link"
+                  className="mr-[10px]"
+                >
+                  {t('traintask.train')}
+                </Button>
+              </Popconfirm>
+            </PermissionWrapper>
+            <PermissionWrapper requiredPermissions={['View']}>
+              <Button
+                type="link"
+                className="mr-[10px]"
+                onClick={() => openDrawer(record)}
+              >
+                {t('common.detail')}
+              </Button>
+            </PermissionWrapper>
             <PermissionWrapper requiredPermissions={['Edit']}>
               <Button
                 type="link"

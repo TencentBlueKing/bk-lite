@@ -6,6 +6,27 @@
   "description": "opspolit",
   "glyphs": [
     {
+      "icon_id": "24285699",
+      "name": "模拟接口",
+      "font_class": "monijiekou",
+      "unicode": "e716",
+      "unicode_decimal": 59158
+    },
+    {
+      "icon_id": "9260272",
+      "name": "其他事故",
+      "font_class": "qitashigu",
+      "unicode": "e712",
+      "unicode_decimal": 59154
+    },
+    {
+      "icon_id": "21073949",
+      "name": "告警-实心",
+      "font_class": "warning-solid",
+      "unicode": "e9be",
+      "unicode_decimal": 59838
+    },
+    {
       "icon_id": "39136567",
       "name": "对话智能体",
       "font_class": "duihuazhinengti",
@@ -830,27 +851,6 @@
       "font_class": "xiangzuojiantou",
       "unicode": "e68d",
       "unicode_decimal": 59021
-    },
-    {
-      "icon_id": "2257244",
-      "name": "接口开发",
-      "font_class": "jiekoukaifa",
-      "unicode": "e69b",
-      "unicode_decimal": 59035
-    },
-    {
-      "icon_id": "28724180",
-      "name": "ic24_incidents2",
-      "font_class": "ic24_incidents2",
-      "unicode": "e6a9",
-      "unicode_decimal": 59049
-    },
-    {
-      "icon_id": "38707496",
-      "name": "事故案例",
-      "font_class": "shiguanli",
-      "unicode": "e69a",
-      "unicode_decimal": 59034
     },
     {
       "icon_id": "16285307",

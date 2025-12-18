@@ -70,12 +70,9 @@ const useEventApi = () => {
     } = {}
   ) => {
     const { id, ...rest } = params;
-    return await get(
-      `/monitor/api/monitor_alert_metric_snapshot/query/${id}/`,
-      {
-        params: rest,
-      }
-    );
+    return await get(`/monitor/api/monitor_alert/snapshots/${id}/`, {
+      params: rest,
+    });
   };
 
   return {

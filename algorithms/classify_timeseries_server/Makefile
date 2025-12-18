@@ -15,4 +15,5 @@ update:
 	copier update 
 
 serving:
-	uv run python -m bentoml serve {{project_name}}.serving.service:MLService --reload
+# 	uv run python -m bentoml serve {{project_name}}.serving.service:MLService --reload
+	uv run python -m bentoml serve classify_timeseries_server.serving.service:MLService --reload
