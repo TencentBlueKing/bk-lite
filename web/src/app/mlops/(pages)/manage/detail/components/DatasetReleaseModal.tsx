@@ -7,7 +7,7 @@ import useMlopsManageApi from '@/app/mlops/api/manage';
 import useMlopsTaskApi from '@/app/mlops/api/task';
 import { ModalRef } from '@/app/mlops/types';
 
-const { TextArea } = Input;
+// const { TextArea } = Input;
 
 interface DatasetReleaseModalProps {
   datasetId: string;
@@ -80,12 +80,9 @@ const DatasetReleaseModal = forwardRef<ModalRef, DatasetReleaseModalProps>(
         message.success('数据集发布成功');
         console.log('发布结果:', result);
 
-        // 显示结果后关闭
-        setTimeout(() => {
-          setOpen(false);
-          formRef.current?.resetFields();
-          onSuccess?.();
-        }, 1500);
+        setOpen(false);
+        formRef.current?.resetFields();
+        onSuccess?.();
       } catch (error: any) {
         console.error('数据集发布失败:', error);
         message.error('数据集发布失败: ' + (error?.response?.data?.error || error.message));
@@ -121,7 +118,7 @@ const DatasetReleaseModal = forwardRef<ModalRef, DatasetReleaseModalProps>(
             <Input placeholder="请输入语义化版本号，例如: v1.0.0" />
           </Form.Item>
 
-          <Form.Item
+          {/* <Form.Item
             name="name"
             label="版本名称（可选）"
           >
@@ -138,7 +135,7 @@ const DatasetReleaseModal = forwardRef<ModalRef, DatasetReleaseModalProps>(
               maxLength={500}
               showCount
             />
-          </Form.Item>
+          </Form.Item> */}
 
           <Form.Item
             name="train_file_id"

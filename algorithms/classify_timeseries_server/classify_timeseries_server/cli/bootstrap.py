@@ -14,41 +14,35 @@ class CLI:
         self,
         dataset_path: str,
         config: str = None,
-        # 命令行参数（可覆盖配置文件）
-        algorithm: str = None,
-        experiment_name: str = None,
         run_name: str = None,
-        model_name: str = None,
-        test_size: float = None,
-        mlflow_tracking_uri: str = None,
-        max_evals: int = None,
-        optimization_metric: str = None,
-        val_dataset_path: str = None,
-        test_dataset_path: str = None,
     ):
         """
-        训练时间序列模型（支持多种模型）
+        训练时间序列模型
         
         Args:
-            dataset_path: 数据集文件或文件夹路径
-            config: train.json 配置文件路径（推荐使用）
-            algorithm: 算法名称（sarima, prophet, xgboost, lstm）
-            experiment_name: MLflow 实验名称
+            dataset_path: 数据集路径（目录或单个CSV文件）
+                         - 目录模式：包含 train_data.csv/val_data.csv/test_data.csv
+                         - 文件模式：单个CSV文件，自动划分
+            config: 配置文件路径（可选，默认使用内置配置）
             run_name: MLflow run 名称（可选）
-            model_name: 注册到 MLflow 的模型名称（可选）
-            test_size: 测试集比例，默认 0.2
-            mlflow_tracking_uri: MLflow tracking 服务地址
-            max_evals: 超参数优化轮次 (0=不优化)
-            optimization_metric: 优化目标指标 (rmse/mae/mape)
-            val_dataset_path: 验证集路径（可选）
-            test_dataset_path: 测试集路径（可选）
-            
+                     大多数情况下使用自动生成的名称即可
+                     用于批量实验标识或 CI/CD 集成时关联构建号
+        
+        Environment Variables:
+            MLFLOW_TRACKING_URI: MLflow 服务地址（必需）
+        
         Example:
-            # 使用配置文件（推荐）
-            classify_timeseries_server train --dataset-path ./data.csv --config ./train.json
+            # 目录模式（标准）
+            export MLFLOW_TRACKING_URI=http://mlflow:5000
+            classify_timeseries_server train --dataset-path ./data/
             
-            # 使用命令行参数
-            classify_timeseries_server train --dataset-path ./data.csv --algorithm sarima --max-evals 50
+            # 文件模式（快速实验）
+            classify_timeseries_server train --dataset-path data.csv
+            
+            # 自定义配置
+            classify_timeseries_server train \\
+                --dataset-path ./data/ \\
+                --config custom-train.json
         """
         from ..training import UniversalTrainer, TrainingConfig
         import os
@@ -57,17 +51,7 @@ class CLI:
             return self._train_with_config(
                 dataset_path=dataset_path,
                 config_path=config,
-                val_dataset_path=val_dataset_path,
-                test_dataset_path=test_dataset_path,
-                # 命令行参数覆盖
-                algorithm=algorithm,
-                model_name=model_name,
-                experiment_name=experiment_name,
                 run_name=run_name,
-                test_size=test_size,
-                mlflow_tracking_uri=mlflow_tracking_uri,
-                max_evals=max_evals,
-                optimization_metric=optimization_metric,
             )
                 
         except Exception as e:
@@ -80,18 +64,14 @@ class CLI:
         self,
         dataset_path: str,
         config_path: str = None,
-        val_dataset_path: str = None,
-        test_dataset_path: str = None,
-        **override_params
+        run_name: str = None,
     ):
-        """使用新架构训练（配置文件驱动）
+        """配置文件驱动的训练流程
         
         Args:
-            dataset_path: 数据集路径
-            config_path: train.json 配置文件路径
-            val_dataset_path: 验证集路径
-            test_dataset_path: 测试集路径
-            **override_params: 命令行参数覆盖
+            dataset_path: 数据集路径（目录或文件）
+            config_path: 配置文件路径（None 时查找默认配置）
+            run_name: MLflow run 名称（可选）
             
         Returns:
             0: 成功, 1: 失败
@@ -99,34 +79,35 @@ class CLI:
         from ..training import UniversalTrainer, TrainingConfig
         import os
         
-        # 1. 加载配置
+        # 1. 检查配置文件参数
+        if config_path is None:
+            raise ValueError(
+                "必须提供配置文件路径。\n"
+                "使用方式: classify_timeseries_server train --dataset-path <path> --config <config.json>"
+            )
+        
+        # 2. 加载配置
         training_config = TrainingConfig(config_path)
         logger.info(f"配置加载完成: {training_config}")
         
-        # 2. 命令行参数覆盖配置文件
-        if override_params.get('algorithm'):
-            training_config.set("model", "type", value=override_params['algorithm'])
-        if override_params.get('model_name'):
-            training_config.set("model", "name", value=override_params['model_name'])
-        if override_params.get('experiment_name'):
-            training_config.set("mlflow", "experiment_name", value=override_params['experiment_name'])
-        if override_params.get('run_name'):
-            training_config.set("mlflow", "run_name", value=override_params['run_name'])
-        if override_params.get('test_size') is not None:
-            training_config.set("training", "test_size", value=float(override_params['test_size']))
-        if override_params.get('mlflow_tracking_uri'):
-            training_config.set("mlflow", "tracking_uri", value=override_params['mlflow_tracking_uri'])
-        elif os.getenv("MLFLOW_TRACKING_URI"):
-            training_config.set("mlflow", "tracking_uri", value=os.getenv("MLFLOW_TRACKING_URI"))
+        # 3. 设置默认 experiment_name（如果配置文件没有）
+        if not training_config.get("mlflow", "experiment_name"):
+            logger.info(
+                "💡 配置文件未指定 mlflow.experiment_name，使用默认值 'default'。\n"
+                "   建议在配置文件中添加有意义的实验名称。"
+            )
+            training_config.set("mlflow", "experiment_name", value="timeseries_gradient_boosting_default")
         
-        # 超参数优化配置
-        if override_params.get('max_evals') is not None:
-            max_evals = int(override_params['max_evals'])
-            training_config.set("hyperparams", "search", "enabled", value=max_evals > 0)
-            if max_evals > 0:
-                training_config.set("hyperparams", "search", "max_evals", value=max_evals)
-        if override_params.get('optimization_metric'):
-            training_config.set("hyperparams", "search", "metric", value=override_params['optimization_metric'])
+        # 4. 注入 tracking_uri（从环境变量）
+        tracking_uri = os.getenv("MLFLOW_TRACKING_URI")
+        if tracking_uri:
+            training_config.set("mlflow", "tracking_uri", value=tracking_uri)
+        else:
+            logger.warning("⚠️  未设置 MLFLOW_TRACKING_URI 环境变量，MLflow 将使用本地文件系统")
+        
+        # 5. 注入 run_name（如果命令行指定）
+        if run_name:
+            training_config.set("mlflow", "run_name", value=run_name)
         
         # 3. 显示配置信息
         logger.info("=" * 60)
@@ -134,10 +115,6 @@ class CLI:
         logger.info(f"  模型类型: {training_config.model_type}")
         logger.info(f"  模型名称: {training_config.model_name}")
         logger.info(f"  数据集: {dataset_path}")
-        if val_dataset_path:
-            logger.info(f"  验证集: {val_dataset_path}")
-        if test_dataset_path:
-            logger.info(f"  测试集: {test_dataset_path}")
         logger.info(f"  MLflow 实验: {training_config.mlflow_experiment_name}")
         if training_config.is_hyperopt_enabled:
             logger.info(f"  超参数优化: 启用 (max_evals={training_config.hyperopt_max_evals})")
@@ -145,11 +122,7 @@ class CLI:
         
         # 4. 创建训练器并训练
         trainer = UniversalTrainer(training_config)
-        result = trainer.train(
-            dataset_path=dataset_path,
-            val_dataset_path=val_dataset_path,
-            test_dataset_path=test_dataset_path
-        )
+        result = trainer.train(dataset_path=dataset_path)
         
         # 5. 输出结果
         metrics = result["test_metrics"]
@@ -164,7 +137,7 @@ class CLI:
         
         return 0
 
-    
+
 def main():
     """主入口函数"""
     fire.Fire(CLI)

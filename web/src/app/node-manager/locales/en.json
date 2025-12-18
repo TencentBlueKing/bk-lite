@@ -24,7 +24,9 @@
         "collector": "Components",
         "collectorType": "Component Type",
         "parameterdes": "Parameter description",
-        "subconfiguration": "Subconfiguration"
+        "subconfiguration": "Subconfiguration",
+        "deleteSubConfigWarning": "Deleting a configuration is an unconventional operation that may cause component malfunctions. Please confirm that this action is necessary and be aware of the potential impacts.",
+        "searchPlaceholder": "Enter configuration type"
       },
       "node": {
         "installCollector": "Install Component",
@@ -151,6 +153,7 @@
       "variable": {
         "password": "Password",
         "string": "String",
+        "text": "Text",
         "deleteinfo": "Are you sure to delete this variable?",
         "valueType": "Type",
         "desc": "Description",

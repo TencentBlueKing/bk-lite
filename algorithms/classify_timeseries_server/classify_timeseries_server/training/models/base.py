@@ -201,7 +201,7 @@ class ModelRegistry:
         """注册模型装饰器
         
         Args:
-            model_type: 模型类型标识（如 "sarima", "prophet"）
+            model_type: 模型类型标识（如 "gradient_boosting", "prophet"）
             
         Returns:
             装饰器函数

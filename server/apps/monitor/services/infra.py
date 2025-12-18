@@ -89,7 +89,7 @@ class InfraService:
         nats_username = env_vars.get('NATS_USERNAME')
         nats_password = env_vars.get('NATS_PASSWORD')
         nats_servers = env_vars.get('NATS_SERVERS')
-        nats_ca_file = env_vars.get('NATS_TLS_CA_FILE')
+        nats_tls_ca = env_vars.get('NATS_TLS_CA')
         webhook_server_url = env_vars.get('WEBHOOK_SERVER_URL')
 
         # 验证必需的环境变量
@@ -115,7 +115,7 @@ class InfraService:
             "cluster_name": cluster_name,
             "type": config_type,
             "nats_url": nats_servers,
-            "nats_ca": nats_ca_file,
+            "nats_ca": nats_tls_ca,
         }
 
         # 调用外部 webhook API
@@ -131,9 +131,7 @@ class InfraService:
         :return: 渲染后的 YAML 字符串
         :raises BaseAppException: API 调用失败时抛出异常
         """
-        # 从 WEBHOOK_SERVER_URL 构造 infra API 地址
-        # 例如: http://10.10.41.149:8080 -> http://10.10.41.149:8080/infra/render
-        api_url = f"{base_url.rstrip('/')}/infra/render" if base_url else None
+        api_url = f"{base_url.rstrip('/')}/infra/kubernetes" if base_url else None
 
         if not api_url:
             raise BaseAppException("Webhook API URL is required")
