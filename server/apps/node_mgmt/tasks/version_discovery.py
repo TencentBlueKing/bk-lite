@@ -38,23 +38,26 @@ def _discover_controller_version(node: Node):
     发现控制器版本信息
     从 Controller 模型中读取配置的 version_command
     """
-    try:
-        # 根据节点操作系统查询对应的控制器配置
-        controller = Controller.objects.filter(os=node.operating_system, name="Controller").first()
+    # 根据节点操作系统查询对应的控制器配置
+    controller = Controller.objects.filter(os=node.operating_system, name="Controller").first()
 
-        if not controller:
-            logger.warning(f"节点 {node.name} 操作系统 {node.operating_system} 未找到对应的控制器配置")
-            # 记录未找到配置的情况
-            NodeComponentVersion.objects.update_or_create(
-                node=node,
-                component_type="controller",
-                component_id="unknown",
-                defaults={
-                    "version": "unknown",
-                    "message": f"未找到操作系统 {node.operating_system} 对应的控制器配置",
-                }
-            )
-            return
+    if not controller:
+        logger.warning(f"节点 {node.name} 操作系统 {node.operating_system} 未找到对应的控制器配置")
+        # 记录未找到配置的情况
+        NodeComponentVersion.objects.update_or_create(
+            node=node,
+            component_type="controller",
+            component_id="unknown",
+            defaults={
+                "version": "unknown",
+                "message": f"未找到操作系统 {node.operating_system} 对应的控制器配置",
+            }
+        )
+        return
+
+    component_id = str(controller.id)
+
+    try:
 
         # 检查是否配置了版本命令
         if not controller.version_command:
@@ -62,7 +65,7 @@ def _discover_controller_version(node: Node):
             NodeComponentVersion.objects.update_or_create(
                 node=node,
                 component_type="controller",
-                component_id=str(controller.id),
+                component_id=component_id,
                 defaults={
                     "version": "unknown",
                     "message": "控制器未配置版本命令",
@@ -91,7 +94,7 @@ def _discover_controller_version(node: Node):
             NodeComponentVersion.objects.update_or_create(
                 node=node,
                 component_type="controller",
-                component_id=str(controller.id),
+                component_id=component_id,
                 defaults={
                     "version": version if version else "unknown",
                     "message": message,
@@ -109,7 +112,7 @@ def _discover_controller_version(node: Node):
             NodeComponentVersion.objects.update_or_create(
                 node=node,
                 component_type="controller",
-                component_id=str(controller.id),
+                component_id=component_id,
                 defaults={
                     "version": "unknown",
                     "message": error_msg,
@@ -125,9 +128,9 @@ def _discover_controller_version(node: Node):
             NodeComponentVersion.objects.update_or_create(
                 node=node,
                 component_type="controller",
-                component_id="unknown",
+                component_id=component_id,
                 defaults={
-                    "version": "error",
+                    "version": "unknown",
                     "message": error_message,
                 }
             )
