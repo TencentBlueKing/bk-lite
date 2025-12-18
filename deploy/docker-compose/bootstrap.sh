@@ -544,7 +544,7 @@ init_docker_images() {
     export DOCKER_IMAGE_VLLM=$(add_mirror_prefix "bklite/vllm:latest")
 
     # webhookd images
-    export DOKCER_IMAGE_WEBHOOKD=$(add_mirror_prefix "bklite/webhookd:latest")
+    export DOCKER_IMAGE_WEBHOOKD=$(add_mirror_prefix "bklite/webhookd:latest")
     
     # Fixed configuration variables
     export DOCKER_NETWORK=prod
@@ -744,6 +744,9 @@ install() {
         log "SUCCESS" "已保存参数配置到 $COMMON_ENV_FILE: OPSPILOT_ENABLED=$OPSPILOT_ENABLED, VLLM_ENABLED=$VLLM_ENABLED"
     fi
 
+    # 生成nats需要的tls自签名证书
+    generate_tls_certs
+
     # 生成合成的docker-compose.yaml文件
     log "INFO" "生成合成的 docker-compose.yaml 文件..."
     $COMPOSE_CMD > docker-compose.yaml
@@ -757,9 +760,6 @@ install() {
         ${DOCKER_COMPOSE_CMD} pull
     fi
     
-
-    # 生成nats需要的tls自签名证书
-    generate_tls_certs
 
     # 调用函数生成采集器包
     generate_collector_packages || exit 1
