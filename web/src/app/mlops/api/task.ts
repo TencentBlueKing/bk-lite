@@ -132,16 +132,6 @@ const useMlopsTaskApi = () => {
     return await get(`/mlops/${TRAINJOB_MAP[activeTap]}/${id}/runs_data_list/`)
   };
 
-  // 获取日志聚类训练历史记录
-  const getLogClusteringHistories = async (id: number) => {
-    return await get(`/mlops/log_clustering_train_history/${id}`);
-  };
-
-  // 获取时序预测训练历史记录
-  const getTimeSeriesHistories = async (id: number) => {
-    return await get(`/mlops/timeseries_predict_train_history/${id}`);
-  };
-
   // 获取状态指标
   const getTrainTaskMetrics = async (id: string, activeTap: string) => {
     return await get(`/mlops/${TRAINJOB_MAP[activeTap]}/runs_metrics_list/${id}`)
@@ -247,16 +237,6 @@ const useMlopsTaskApi = () => {
     return await del(`/mlops/classification_train_jobs/${id}/`);
   };
 
-  // 获取训练所用的数据集数据
-  const getTrainTaskFile = async (id: string, tap: string) => {
-    return await get(`/mlops/${TRAINJOB_MAP[tap]}/${id}/get_file`);
-  };
-
-  // 数据集版本发布（从训练任务快速发布）
-  const datasetRelease = async (id: string, params: any) => {
-    return await post(`/mlops/timeseries_predict_train_jobs/${id}/release_dataset`, params);
-  };
-
   // 创建数据集版本发布（标准方式，从数据集管理页面）
   const createDatasetRelease = async (params: {
     dataset: number;
@@ -295,7 +275,6 @@ const useMlopsTaskApi = () => {
   };
 
   return {
-    getTrainTaskFile,
     getAnomalyTaskList,
     getOneAnomalyTask,
     getTrainTaskState,
@@ -303,9 +282,7 @@ const useMlopsTaskApi = () => {
     getTrainTaskMetricsDetail,
     getRasaPipelines,
     getLogClusteringTaskList,
-    getLogClusteringHistories,
     getTimeSeriesTaskList,
-    getTimeSeriesHistories,
     getDatasetReleaseByID,
     getOneLogClusteringTask,
     getOneRasaTask,
@@ -331,7 +308,6 @@ const useMlopsTaskApi = () => {
     deleteLogClusteringTrainTask,
     deleteTimeSeriesTrainTask,
     deleteClassificationTrainTask,
-    datasetRelease,
     createDatasetRelease,
     getDatasetReleases,
     archiveDatasetRelease,

@@ -281,7 +281,7 @@ class TimeSeriesPredictTrainJob(MaintainerInfo, TimeInfo):
         config = dict(self.hyperopt_config) if self.hyperopt_config else {}
         
         # 生成模型标识：algorithm_name_id（此时 pk 已存在）
-        model_identifier = f"{self.algorithm}_{self.name}_{self.pk}"
+        model_identifier = f"TimeseriesPredict_{self.algorithm}_{self.pk}"
         
         # 补充 model 配置
         config['model'] = {
@@ -307,35 +307,6 @@ class TimeSeriesPredictTrainHistory(MaintainerInfo, TimeInfo, DataPointFeaturesI
             ('GradientBoosting', 'GradientBoosting')
         ]
     )
-
-    # train_data_id = models.ForeignKey(
-    #     'TimeSeriesPredictTrainData',
-    #     on_delete=models.CASCADE,
-    #     related_name="train_history",
-    #     verbose_name="训练数据集",
-    #     help_text="关联的时间序列预测训练数据集"
-    # )
-    # val_data_id = models.ForeignKey(
-    #     'TimeSeriesPredictTrainData',
-    #     on_delete=models.CASCADE,
-    #     related_name="val_history",
-    #     verbose_name="验证数据集",
-    #     help_text="关联的时间序列预测验证数据集"
-    # )
-
-    # test_data_id = models.ForeignKey(
-    #     'TimeSeriesPredictTrainData',
-    #     on_delete=models.CASCADE,
-    #     related_name="test_history",
-    #     verbose_name="测试数据集",
-    #     help_text="关联的时间序列预测测试数据集"
-    # )
-
-    # hyperopt_config = models.JSONField(
-    #     verbose_name="超参数优化配置",
-    #     help_text="用于超参数优化的配置参数",
-    #     default=dict,
-    # )
 
     dataset_version = models.ForeignKey(
         'TimeSeriesPredictDatasetRelease',

@@ -18,8 +18,6 @@ import type { TreeDataNode } from 'antd';
 import { TrainJob } from '@/app/mlops/types/task';
 import { TRAIN_STATUS_MAP, TRAIN_TEXT } from '@/app/mlops/constants';
 import { DataSet } from '@/app/mlops/types/manage';
-import { exportTrainFileToZip } from '@/app/mlops/utils/common';
-import DatasetReleaseModal from './datasetRelease';
 const { Search } = Input;
 
 const getStatusColor = (value: string, TrainStatus: Record<string, string>) => {
@@ -49,12 +47,10 @@ const TrainTask = () => {
     getClassificationTaskList,
     deleteClassificationTrainTask,
     startClassificationTrainTask,
-    getTrainTaskFile
   } = useMlopsTaskApi();
 
   // 状态定义
   const modalRef = useRef<ModalRef>(null);
-  const releaseModalRef = useRef<ModalRef>(null);
   const [tableData, setTableData] = useState<TrainJob[]>([]);
   const [datasetOptions, setDatasetOptions] = useState<Option[]>([]);
   const [selectedKeys, setSelectedKeys] = useState<string[]>([]);
@@ -115,7 +111,7 @@ const TrainTask = () => {
     'anomaly_detection': true,
     'rasa': false,
     'log_clustering': false,
-    'timeseries_predict': false,
+    'timeseries_predict': true,
     'classification': true,
     'image_classification': false,
     'object_detection': false
@@ -244,24 +240,6 @@ const TrainTask = () => {
       render: (_: unknown, record: TrainJob) => {
         return (
           <>
-            {/* <PermissionWrapper requiredPermissions={['View']}>
-              <Button
-                type='link'
-                className='mr-[10px]'
-                onClick={() => handleRelease(record)}
-              >
-                数据集发布
-              </Button>
-            </PermissionWrapper> */}
-            <PermissionWrapper requiredPermissions={['View']}>
-              <Button
-                type="link"
-                className="mr-[10px]"
-                onClick={() => downloadFile(record)}
-              >
-                {t('common.download')}
-              </Button>
-            </PermissionWrapper>
             <PermissionWrapper requiredPermissions={['Train']}>
               <Popconfirm
                 title={t('traintask.trainStartTitle')}
@@ -479,24 +457,6 @@ const TrainTask = () => {
     }
   };
 
-  const downloadFile = async (record: any) => {
-    const [key] = selectedKeys;
-    try {
-      const zipname = `${record.name}_${record.id}`;
-      message.info(t(`traintask.waitData`))
-      const data = await getTrainTaskFile(record.id, key);
-      message.success(t(`traintask.downloadStart`));
-      exportTrainFileToZip(data, zipname);
-    } catch (e) {
-      console.log(e);
-      message.error(t(`traintask.downloadFailed`));
-    }
-  };
-
-  // const handleRelease = async (record: any) => {
-  //   releaseModalRef.current?.showModal(record)
-  // };
-
   const handleChange = (value: any) => {
     setPagination(value);
   };
@@ -570,7 +530,6 @@ const TrainTask = () => {
         }
       />
       <TrainTaskModal ref={modalRef} onSuccess={() => onRefresh()} activeTag={selectedKeys} datasetOptions={datasetOptions} />
-      <DatasetReleaseModal ref={releaseModalRef} activeTag={selectedKeys} />
       <TrainTaskDrawer open={drawerOpen} onCancel={() => setDrawOpen(false)} activeTag={selectedKeys} selectId={selectedTrain} />
     </>
   );

@@ -2,7 +2,7 @@ import CustomTable from "@/components/custom-table"
 import { ColumnItem } from "@/types";
 import { useTranslation } from "@/utils/i18n";
 import { useLocalizedTime } from "@/hooks/useLocalizedTime";
-import { Button } from "antd";
+import { Button, Tag } from "antd";
 
 interface TrainTaskHistoryProps {
   data: any[],
@@ -25,21 +25,32 @@ const TrainTaskHistory = ({
     },
     {
       title: t(`mlops-common.createdAt`),
-      dataIndex: 'create_time',
-      key: 'create_time',
+      dataIndex: 'start_time',
+      key: 'start_time',
       render: (_, record) => {
-        return (<p>{convertToLocalizedTime(record.create_time, 'YYYY-MM-DD HH:mm:ss')}</p>)
+        return (<p>{convertToLocalizedTime(record.start_time, 'YYYY-MM-DD HH:mm:ss')}</p>)
       }
     },
     {
       title: t(`traintask.executionTime`),
-      dataIndex: 'duration',
-      key: 'duration',
+      dataIndex: 'duration_minutes',
+      key: 'duration_minutes',
       render: (_, record) => {
-        const duration = record?.duration || 0;
+        const duration = record?.duration_minutes || 0;
         return (
           <span>{duration.toFixed(2) + 'min'}</span>
         )
+      }
+    },
+    {
+      title: t('mlops-common.status'),
+      key: 'status',
+      dataIndex: 'status',
+      width: 120,
+      render: (_, record) => {
+        return record.status ? (<Tag className=''>
+          {record.status}
+        </Tag>) : (<p>--</p>)
       }
     },
     {
