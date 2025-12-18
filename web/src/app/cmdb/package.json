@@ -15,7 +15,8 @@
     "@dnd-kit/sortable": "^9.0.0",
     "@dnd-kit/utilities": "^3.2.2",
     "react-activation": "^0.13.0",
-    "react-masonry-css": "latest"
+    "react-masonry-css": "latest",
+    "zustand": "5.0.9"
   },
   "devDependencies": {
     "@types/react-beautiful-dnd": "^13.1.8"
