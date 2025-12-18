@@ -1,0 +1,88 @@
+{
+  "object_name": "TCP",
+  "instance_type": "qcloud",
+  "collect_type": "http",
+  "config_type": ["qcloud"],
+  "collector": "Telegraf",
+  "instance_id": "{{cloud_region}}_qcloud_{{username}}",
+  "form_fields": [
+    {
+      "name": "monitor_url",
+      "label": "URL",
+      "type": "input",
+      "required": true,
+      "description": "监控地址",
+      "editable": false,
+      "visible_in": "edit",
+      "widget_props": {
+        "placeholder": ""
+      },
+      "transform_on_edit": {
+        "origin_path": "child.content.config.url[0]",
+        "to_form": {
+          "regex": "://([^:]+):"
+        }
+      }
+    },
+    {
+      "name": "username",
+      "label": "用户名",
+      "type": "input",
+      "required": true,
+      "editable": false
+    },
+    {
+      "name": "password",
+      "label": "密码",
+      "type": "password",
+      "required": true,
+      "editable": false
+    }
+  ],
+  "table_columns": [
+    {
+      "name": "node_ids",
+      "label": "节点",
+      "type": "select",
+      "required": true,
+      "widget_props": {
+        "placeholder": "请选择节点"
+      },
+      "options_key": "node_ids_option",
+      "enable_row_filter": true
+    },
+    {
+      "name": "monitor_url",
+      "label": "URL",
+      "type": "input",
+      "widget_props": {
+        "placeholder": "请输入监控地址"
+      },
+      "change_handler": {
+        "type": "simple",
+        "source_fields": ["monitor_url"],
+        "target_field": "instance_name"
+      }
+    },
+    {
+      "name": "instance_name",
+      "label": "实例名称",
+      "type": "input",
+      "required": true,
+      "widget_props": {
+        "placeholder": "实例名称",
+        "disabled": false
+      }
+    },
+    {
+      "name": "group_ids",
+      "label": "组",
+      "type": "group_select",
+      "required": true,
+      "widget_props": {
+        "placeholder": "请选择组"
+      }
+    }
+  ],
+  "extra_fields": {}
+}

@@ -1,7 +1,4 @@
 export const useScanningDeviceConfig = () => {
-  // 所有插件配置
-  const plugins = {};
-
   return {
     instance_type: 'scanning_device',
     dashboardDisplay: [
@@ -61,6 +58,8 @@ export const useScanningDeviceConfig = () => {
       { type: 'value', key: 'sysUpTime' },
     ],
     groupIds: {},
-    plugins,
+    collectTypes: {
+      'Scanning Device SNMP General': 'snmp',
+    },
   };
 };

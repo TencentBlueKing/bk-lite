@@ -35,21 +35,24 @@ class NetworkNodeParams(BaseNodeParams):
         #     "community": "",
         # }
         """
-
+        _instance_id = self.get_instance_id(instance=kwargs["host"])
+        _community = "PASSWORD_community_{instance_id}".format(instance_id=_instance_id)
+        _authkey = "PASSWORD_authkey_{instance_id}".format(instance_id=_instance_id)
+        _privkey = "PASSWORD_privkey_{instance_id}".format(instance_id=_instance_id)
         credential_data = {
             "snmp_port": self.credential.get("snmp_port", 161),
             # "community": self.credential.get("community", ""), # 团体字 仅v1/v2c使用
-            "community": "${PASSWORD_community}", # 团体字 仅v1/v2c使用
+            "community": "${" + _community + "}",  # 团体字 仅v1/v2c使用
             "version": self.credential.get("version", ""),
             "username": self.credential.get("username", ""),
             "level": self.credential.get("level", ""),
-            "integrity": self.credential.get("integrity", ""), # 哈希算法
-            "privacy": self.credential.get("privacy", ""), #  加密算法
+            "integrity": self.credential.get("integrity", ""),  # 哈希算法
+            "privacy": self.credential.get("privacy", ""),  # 加密算法
             # "authkey": self.credential.get("authkey", ""), # 认证密钥
             # "privkey": self.credential.get("privkey", ""), # 加密密钥
-            "authkey": "${PASSWORD_authkey}",
-            "privkey": "${PASSWORD_privkey}",
-            "timeout": self.credential.get("timeout", "1"), # 超时时间
+            "authkey": "${" + _authkey + "}",
+            "privkey": "${" + _privkey + "}",
+            "timeout": self.credential.get("timeout", "1"),  # 超时时间
         }
         if self.model_id == "network_topo":
             credential_data.update({"topo": "true"})
@@ -60,15 +63,16 @@ class NetworkNodeParams(BaseNodeParams):
         获取实例 id
         """
         if self.has_set_instances:
-            return f"{self.instance.id}_{instance['inst_name']}"
+            return f"{self.instance.id}_{instance['_id']}"
         else:
-            return f"{self.instance.id}_{instance}"
+            return f"{self.instance.id}_{instance}".replace(".", "")
 
-    @property
     def env_config(self, *args, **kwargs):
+        host = kwargs["host"]
+        _instance_id = self.get_instance_id(instance=host)
         env_config = {
-            "$PASSWORD_authkey": self.credential.get("authkey", ""),
-            "$PASSWORD_privkey": self.credential.get("privkey", ""),
-            "$PASSWORD_community": self.credential.get("community", ""),
+            f"PASSWORD_authkey_{_instance_id}": self.credential.get("authkey", ""),
+            f"PASSWORD_privkey_{_instance_id}": self.credential.get("privkey", ""),
+            f"PASSWORD_community_{_instance_id}": self.credential.get("community", ""),
         }
         return env_config

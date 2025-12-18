@@ -1,7 +1,7 @@
 from django.conf import settings
 
 from apps.core.logger import opspilot_logger as logger
-from apps.opspilot.models import LLMSkill, SkillRule
+from apps.opspilot.models import LLMSkill
 from apps.opspilot.services.llm_service import llm_service
 from apps.opspilot.utils.bot_utils import get_user_info
 
@@ -64,57 +64,7 @@ class SkillExecuteService:
 
     @classmethod
     def get_rule_result(cls, channel, llm_skill, user, groups):
-        if channel == "web":
-            return llm_skill.skill_prompt, [
-                {"knowledge_base": int(key), "score": float(value)} for key, value in llm_skill.rag_score_threshold_map.items()
-            ]
-        rules = SkillRule.objects.filter(skill_id=llm_skill.id, is_enabled=True).order_by("-id")
-        bot_rule = cls.get_bot_rule(rules, user, channel, groups)
-        all_knowledge_list = [int(i) for i in llm_skill.rag_score_threshold_map.keys()]
-
-        if bot_rule is None:
-            skill_prompt = llm_skill.skill_prompt
-            filter_knowledge_list = all_knowledge_list
-        else:
-            skill_prompt = bot_rule.action_set.get("skill_prompt") or llm_skill.skill_prompt
-            filter_knowledge_list = bot_rule.action_set.get("knowledge_base_list", all_knowledge_list)
-        rag_score_threshold = [
-            {"knowledge_base": int(key), "score": float(value)}
-            for key, value in llm_skill.rag_score_threshold_map.items()
-            if int(key) in filter_knowledge_list
+        # 移除规则逻辑,直接返回 skill 的配置
+        return llm_skill.skill_prompt, [
+            {"knowledge_base": int(key), "score": float(value)} for key, value in llm_skill.rag_score_threshold_map.items()
         ]
-        return skill_prompt, rag_score_threshold
-
-    @staticmethod
-    def get_bot_rule(rules, user, channel, groups):
-        if not user:
-            return None
-        for i in rules:
-            condition = i.condition
-            if condition["operator"] == "or":
-                for u in condition["conditions"]:
-                    if u["type"] != channel:
-                        continue
-                    if u["obj"] == "user" and u["value"] in user.name:
-                        return i
-                    if u["obj"] == "group":
-                        for group in groups:
-                            if u["value"] in group["name"]:
-                                return i
-            else:
-                flag = True
-                for u in condition["conditions"]:
-                    if u["type"] != channel:
-                        return
-                    if u["obj"] == "user":
-                        flag = flag and u["value"] in user.name
-                    else:
-                        group_flag = False
-                        for group in groups:
-                            if u["value"] in group["name"]:
-                                group_flag = True
-                                break
-                        flag = flag and group_flag
-                if flag:
-                    return i
-        return None

@@ -7,6 +7,34 @@
   "instance_id": "{{cloud_region}}_jvm_{{jmx_url}}",
   "form_fields": [
     {
+      "name": "username",
+      "label": "用户名",
+      "type": "input",
+      "required": false,
+      "editable": false,
+      "description": "用于访问接口的用户名",
+      "widget_props": {
+        "placeholder": "用户名"
+      },
+      "transform_on_edit": {
+        "origin_path": "base.content.username"
+      }
+    },
+    {
+      "name": "password",
+      "label": "密码",
+      "type": "password",
+      "required": false,
+      "editable": false,
+      "description": "对应的登录密码",
+      "widget_props": {
+        "placeholder": "密码"
+      },
+      "transform_on_edit": {
+        "origin_path": "base.content.password"
+      }
+    },
+    {
       "name": "monitor_url",
       "label": "JmxUrl",
       "type": "input",
@@ -18,29 +46,7 @@
         "placeholder": ""
       },
       "transform_on_edit": {
-        "origin_path": "child.content.config.urls"
-      }
-    },
-    {
-      "name": "username",
-      "label": "用户名",
-      "type": "input",
-      "required": true,
-      "editable": false,
-      "description": "用于访问接口的用户名",
-      "widget_props": {
-        "placeholder": "用户名"
-      }
-    },
-    {
-      "name": "password",
-      "label": "密码",
-      "type": "password",
-      "required": true,
-      "editable": false,
-      "description": "对应的登录密码",
-      "widget_props": {
-        "placeholder": "密码"
+        "origin_path": "base.content.jmxUrl"
       }
     },
     {
@@ -56,7 +62,7 @@
         "placeholder": "监听端口"
       },
       "transform_on_edit": {
-        "origin_path": "base.env_config.LISTEN_PORT"
+        "origin_path": "child.env_config.LISTEN_PORT__{{config_id}}"
       }
     },
     {

@@ -7,6 +7,8 @@ export const useDataStorageConfig = () => {
       { type: 'enum', key: 'data_storage_store_accessible_gauge' },
     ],
     groupIds: {},
-    plugins: {},
+    collectTypes: {
+      VMWare: 'http',
+    },
   };
 };

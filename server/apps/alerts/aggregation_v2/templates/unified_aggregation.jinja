@@ -1,0 +1,284 @@
+{# 
+  统一的事件聚合 SQL 模板
+  
+  支持 3×3 = 9 种组合：
+  - 窗口类型: fixed(固定) / sliding(滑动) / session(会话)
+  - 策略类型: threshold(阈值) / composite(复合) / frequency(频率)
+  
+  设计理念：
+  1. 三层 CTE 架构
+     - window_assignment: 窗口分配（基于窗口类型）
+     - strategy_metrics: 策略计算（基于策略类型）  
+     - final_query: 最终过滤和字段选择
+  
+  2. SQL 原生窗口计算
+     - 使用 WINDOW 函数替代应用层循环
+     - 滑动窗口: RANGE BETWEEN
+     - 会话窗口: LAG() + SUM() OVER()
+  
+  3. 性能优化
+     - 避免子查询嵌套
+     - 最小化数据扫描
+     - 利用 DuckDB 的列式存储优势
+#}
+
+WITH filtered_events AS (
+  {# ==================== 第零层：事件过滤 ==================== #}
+  SELECT *
+  FROM events
+  WHERE 1=1
+    {# 应用 filters 配置中的过滤条件 #}
+    {% if filters %}
+      {% for filter in filters %}
+        {% for field, condition in filter.items() %}
+          {% if field != 'custom_sql' and condition is mapping %}
+            {# 结构化过滤器 #}
+            {% if condition.operator == '=' %}
+              AND {{ field }} = {{ condition.value | sql_safe }}
+            {% elif condition.operator == '!=' %}
+              AND {{ field }} != {{ condition.value | sql_safe }}
+            {% elif condition.operator == '>' %}
+              AND {{ field }} > {{ condition.value }}
+            {% elif condition.operator == '<' %}
+              AND {{ field }} < {{ condition.value }}
+            {% elif condition.operator == '>=' %}
+              AND {{ field }} >= {{ condition.value }}
+            {% elif condition.operator == '<=' %}
+              AND {{ field }} <= {{ condition.value }}
+            {% elif condition.operator == 'in' %}
+              AND {{ field }} IN ({% for v in condition.value %}{{ v | sql_safe }}{{ ', ' if not loop.last }}{% endfor %})
+            {% elif condition.operator == 'not_in' %}
+              AND {{ field }} NOT IN ({% for v in condition.value %}{{ v | sql_safe }}{{ ', ' if not loop.last }}{% endfor %})
+            {% elif condition.operator == 'like' %}
+              AND {{ field }} LIKE {{ condition.value | sql_safe }}
+            {% elif condition.operator == 'regex' %}
+              AND {{ field }} ~ {{ condition.value | sql_safe }}
+            {% endif %}
+          {% elif field == 'custom_sql' and condition %}
+            {# 自定义 SQL 表达式 #}
+            AND ({{ condition }})
+          {% endif %}
+        {% endfor %}
+      {% endfor %}
+    {% endif %}
+),
+
+window_assignment AS (
+  {# ==================== 第一层：窗口分配 ==================== #}
+  
+  {% if window_type == 'fixed' %}
+    {# 固定窗口：基于时间戳直接计算窗口 ID #}
+    SELECT 
+      *,
+      -- 窗口 ID: 时间戳 / 窗口大小（秒）
+      FLOOR(EPOCH(received_at) / {{ window_size_seconds }}) AS window_id,
+      -- 窗口起始时间
+      TO_TIMESTAMP(FLOOR(EPOCH(received_at) / {{ window_size_seconds }}) * {{ window_size_seconds }}) AS window_start,
+      -- 窗口结束时间
+      TO_TIMESTAMP((FLOOR(EPOCH(received_at) / {{ window_size_seconds }}) + 1) * {{ window_size_seconds }}) AS window_end
+    FROM filtered_events
+    
+  {% elif window_type == 'sliding' %}
+    {# 滑动窗口：使用 RANGE BETWEEN 实现滑动效果 #}
+    SELECT
+      *,
+      -- 窗口起始时间（当前时间 - 窗口大小）
+      received_at - INTERVAL '{{ window_size }}' AS window_start,
+      -- 窗口结束时间（当前时间）
+      received_at AS window_end,
+      -- 窗口 ID（基于滑动间隔对齐）
+      FLOOR(EPOCH(received_at) / {{ slide_interval_seconds }}) AS window_id
+    FROM filtered_events
+    
+  {% elif window_type == 'session' %}
+    {# 会话窗口：基于事件间隔判断会话边界 #}
+    SELECT
+      *,
+      -- 计算与上一个事件的时间间隔
+      received_at - LAG(received_at, 1, received_at) OVER (
+        PARTITION BY fingerprint 
+        ORDER BY received_at
+      ) AS time_since_last_event,
+      -- 标记会话边界（间隔超过 timeout = 新会话）
+      CASE 
+        WHEN received_at - LAG(received_at, 1, received_at) OVER (
+          PARTITION BY fingerprint 
+          ORDER BY received_at
+        ) > INTERVAL '{{ session_timeout }}' 
+        THEN 1 
+        ELSE 0 
+      END AS is_session_start
+    FROM filtered_events
+  {% endif %}
+),
+
+{% if window_type == 'session' %}
+{# 会话窗口需要额外的会话 ID 计算 #}
+session_numbered AS (
+  SELECT
+    *,
+    -- 累计会话边界标记，生成会话 ID
+    SUM(is_session_start) OVER (
+      PARTITION BY fingerprint 
+      ORDER BY received_at
+      ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW
+    ) AS session_id,
+    -- 会话开始时间
+    FIRST_VALUE(received_at) OVER (
+      PARTITION BY fingerprint
+      ORDER BY received_at
+      ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW
+    ) AS window_start
+  FROM window_assignment
+),
+{% endif %}
+
+strategy_metrics AS (
+  {# ==================== 第二层：策略计算 ==================== #}
+  
+  SELECT
+    -- 分组字段
+    fingerprint,
+    resource_id,
+    resource_name,
+    resource_type,
+    source_id,
+    alert_source,
+    rule_id,
+    
+    -- 窗口标识
+    {% if window_type == 'session' %}
+    session_id AS window_id,
+    {% else %}
+    window_id,
+    {% endif %}
+    window_start,
+    {% if window_type != 'session' %}
+    window_end,
+    {% endif %}
+    
+    {% if custom_aggregations %}
+      {# 使用自定义聚合表达式（完全替代通用指标）#}
+      
+      {# 必需的通用指标（如果 custom_aggregations 中没有）#}
+      {% if 'event_count' not in custom_aggregations %}
+      COUNT(*) AS event_count,
+      {% endif %}
+      {% if 'max_level' not in custom_aggregations %}
+      MAX(level) AS max_level,
+      {% endif %}
+      {% if 'event_ids' not in custom_aggregations %}
+      LIST(event_id) AS event_ids,
+      {% endif %}
+      {% if 'first_event_time' not in custom_aggregations %}
+      MIN(received_at) AS first_event_time,
+      {% endif %}
+      {% if 'last_event_time' not in custom_aggregations %}
+      MAX(received_at) AS last_event_time,
+      {% endif %}
+      
+      {# 自定义聚合 #}
+      {% for agg_name, agg_expr in custom_aggregations.items() %}
+      {{ agg_expr }} AS {{ agg_name }}{{ ',' if not loop.last else '' }}
+      {% endfor %}
+      
+    {% else %}
+      {# 没有自定义聚合时，使用默认通用指标 #}
+      
+      -- 通用指标
+      COUNT(*) AS event_count,
+      MAX(level) AS max_level,
+      LIST(event_id) AS event_ids,
+      MIN(received_at) AS first_event_time,
+      MAX(received_at) AS last_event_time
+      
+      {# 兼容旧版配置的策略特定指标 #}
+      {% if strategy_type == 'threshold' %}
+        ,
+        -- 阈值策略:计算聚合值
+        {{ aggregation_function }}({{ threshold_field }}) AS aggregated_value
+        
+      {% elif strategy_type == 'composite' %}
+        {% if conditions %}
+        ,
+        -- 复合策略:计算多个聚合值
+        {% for cond in conditions %}
+        {{ cond.aggregation }}({{ cond.field }}) AS agg_{{ loop.index }}_value{{ ',' if not loop.last else '' }}
+        {% endfor %}
+        {% endif %}
+        
+      {% elif strategy_type == 'frequency' %}
+        -- 频率策略:只需要事件计数（已在通用指标中）
+        -- 无额外指标
+      {% endif %}
+    {% endif %}
+    
+    
+  FROM {% if window_type == 'session' %}session_numbered{% else %}window_assignment{% endif %}
+  
+  {# 所有窗口类型都需要 GROUP BY，因为使用了聚合函数 #}
+  GROUP BY
+    fingerprint,
+    resource_id,
+    resource_name,
+    resource_type,
+    source_id,
+    alert_source,
+    rule_id,
+    window_id,
+    window_start
+    {% if window_type != 'session' %}
+    , window_end
+    {% endif %}
+  
+  {% if window_type == 'sliding' %}
+  {# 滑动窗口：定义窗口范围（但仍需要 GROUP BY）#}
+  WINDOW sliding_window AS (
+    PARTITION BY fingerprint
+    ORDER BY received_at
+    RANGE BETWEEN INTERVAL '{{ window_size }}' PRECEDING AND CURRENT ROW
+  )
+  {% endif %}
+),
+
+final_query AS (
+  {# ==================== 第三层：最终过滤（聚合后的条件）==================== #}
+  
+  SELECT
+    *
+  FROM strategy_metrics
+  WHERE 1=1
+    {# 最小事件数过滤 #}
+    {% if min_event_count %}
+    AND event_count >= {{ min_event_count }}
+    {% endif %}
+    
+    {# 根据策略类型应用额外的聚合后过滤条件（可选）#}
+    {% if strategy_type == 'threshold' and threshold_operator %}
+      {# 阈值策略：单一条件 #}
+      AND aggregated_value {{ threshold_operator }} {{ threshold_value }}
+      
+    {% elif strategy_type == 'composite' and conditions %}
+      {# 复合策略：多条件组合（兼容旧版）#}
+      AND (
+      {% for cond in conditions %}
+        agg_{{ loop.index }}_value {{ cond.operator }} {{ cond.value }}
+        {% if not loop.last %}
+          {{ logic }}
+        {% endif %}
+      {% endfor %}
+      )
+      
+    {% elif strategy_type == 'frequency' %}
+      {# 频率策略：事件计数阈值（已通过 min_event_count 处理）#}
+      {# 无额外条件 #}
+    {% endif %}
+    
+    {# 会话窗口：额外的最大窗口限制 #}
+    {% if window_type == 'session' and max_window_size_seconds %}
+    AND (last_event_time - first_event_time) <= INTERVAL '{{ max_window_size }}'
+    {% endif %}
+)
+
+SELECT * FROM final_query
+ORDER BY window_start DESC, fingerprint

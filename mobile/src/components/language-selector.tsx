@@ -1,14 +1,16 @@
 'use client';
 import React, { useState } from 'react';
 import { useLocale } from '@/context/locale';
+import { useAuth } from '@/context/auth';
 import { useTranslation } from '@/utils/i18n';
-import { ActionSheet, List, Toast } from 'antd-mobile';
+import { ActionSheet, List, Toast, SpinLoading } from 'antd-mobile';
 import { CheckOutline, GlobalOutline } from 'antd-mobile-icons';
 import { LanguageOption, LanguageSelectorProps } from '@/types/common';
+import { updateUserInfo as updateUserInfoApi } from '@/api/user';
 
 const languages: LanguageOption[] = [
   {
-    key: 'zh-CN',
+    key: 'zh-Hans',
     label: '简体中文',
     nativeLabel: '简体中文',
   },
@@ -22,13 +24,34 @@ const languages: LanguageOption[] = [
 export default function LanguageSelector({ onSelect }: LanguageSelectorProps) {
   const { t } = useTranslation();
   const { locale, setLocale } = useLocale();
+  const { updateUserInfo: updateStoredUserInfo } = useAuth();
   const [visible, setVisible] = useState(false);
+  const [updatingKey, setUpdatingKey] = useState<string | null>(null);
 
   const currentLanguage =
     languages.find((lang) => lang.key === locale) || languages[0];
 
   const handleLanguageChange = async (language: LanguageOption) => {
+    if (language.key === locale) return;
+    if (updatingKey) return;
+
     try {
+      setUpdatingKey(language.key);
+
+      const response = await updateUserInfoApi({ locale: language.key });
+
+      if (!response.result) {
+        const errorMessage = response.message || t('common.switchLanguageFailed');
+        Toast.show({
+          content: errorMessage,
+          icon: 'fail',
+          position: 'center',
+        });
+        return;
+      }
+
+      await updateStoredUserInfo({ locale: language.key });
+
       setLocale(language.key);
       onSelect?.(language.key);
       setVisible(false);
@@ -45,6 +68,8 @@ export default function LanguageSelector({ onSelect }: LanguageSelectorProps) {
         icon: 'fail',
         position: 'center',
       });
+    } finally {
+      setUpdatingKey(null);
     }
   };
 
@@ -60,9 +85,11 @@ export default function LanguageSelector({ onSelect }: LanguageSelectorProps) {
             {language.nativeLabel}
           </span>
         </div>
-        {locale === language.key && (
+        {updatingKey === language.key ? (
+          <SpinLoading color="primary" style={{ '--size': '18px' }} className="ml-3" />
+        ) : locale === language.key ? (
           <CheckOutline className="text-[var(--color-primary)] text-lg ml-3" />
-        )}
+        ) : null}
       </div>
     ),
     onClick: () => handleLanguageChange(language),

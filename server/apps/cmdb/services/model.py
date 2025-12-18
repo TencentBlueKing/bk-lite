@@ -241,18 +241,22 @@ class ModelManage(object):
         return models[0]
 
     @staticmethod
-    def get_organization_option(items: list, result: list):
+    def get_organization_option(items: list, result: list, name_prefix: str = ""):
         for item in items:
+            if name_prefix:
+                name = f"{name_prefix}/{item['name']}"
+            else:
+                name = item['name']
             result.append(
                 dict(
                     id=item["id"],
-                    name=item["name"],
+                    name=name,
                     is_default=False,
                     type="str",
                 )
             )
             if item["subGroups"]:
-                ModelManage.get_organization_option(item["subGroups"], result)
+                ModelManage.get_organization_option(item["subGroups"], result, name)
 
     @staticmethod
     def search_model_attr(model_id: str, language: str = "en"):

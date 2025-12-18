@@ -11,6 +11,7 @@ from ..nodes.agent.agent import AgentNode
 from ..nodes.basic.entry_exit import EntryNode, ExitNode
 from ..nodes.condition.branch import BranchNode
 from ..nodes.function.function import FunctionNode
+from ..nodes.intent.intent_classifier import IntentClassifierNode
 from .core.base_executor import BaseNodeExecutor
 
 
@@ -48,6 +49,9 @@ class NodeRegistry:
 
         # 函数节点
         self.register_node_class("function", FunctionNode)
+
+        # 意图分类节点
+        self.register_node_class("intent_classification", IntentClassifierNode)  # 别名
 
         # 向后兼容的别名
         self.register_node_class("start", EntryNode)

@@ -15,9 +15,8 @@ from apps.alerts.common.aggregation import DuckDBEngine
 from apps.alerts.common.aggregation.util import WindowCalculator
 from apps.alerts.common.assignment import execute_auto_assignment_for_alerts
 from apps.alerts.common.rules.rule_adapter import create_rule_adapter
-from apps.alerts.constants import AlertStatus, LevelType, EventStatus
-from apps.alerts.common.aggregation.enum import WindowType, WindowConfig, DEFAULT_TITLE, \
-    DEFAULT_CONTENT
+from apps.alerts.constants import AlertStatus, LevelType, EventStatus, WindowType
+from apps.alerts.common.aggregation.enum import WindowConfig, DEFAULT_TITLE, DEFAULT_CONTENT
 from apps.alerts.models import Event, Alert, Level, AggregationRules, CorrelationRules, SessionWindow
 from apps.alerts.utils.util import generate_instance_fingerprint
 from apps.core.logger import alert_logger as logger
@@ -83,7 +82,7 @@ class AlertProcessor:
             window_type: 默认窗口类型，支持 sliding/fixed/session（用于向后兼容）
         """
         self.default_window_size = window_size
-        self.default_window_type = WindowType(window_type)
+        self.default_window_type = window_type
 
         self.event_fields = [
             "event_id", "external_id", "item", "received_at", "status", "level", "source__name",

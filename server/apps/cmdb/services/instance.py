@@ -81,7 +81,6 @@ class InstanceManage(object):
             inst_list, count = ag.query_entity(
                 **query
             )
-
         return inst_list, count
 
     @staticmethod
@@ -450,7 +449,6 @@ class InstanceManage(object):
 
         _import = Import(model_id, attrs, exist_items, operator)
         add_results, update_results, asso_result = _import.import_inst_list_support_edit(file_stream)
-
         # 检查是否存在验证错误
         if _import.validation_errors:
             error_summary = f"数据导入失败：发现 {len(_import.validation_errors)} 个数据验证错误\n"
@@ -482,41 +480,63 @@ class InstanceManage(object):
         ]
         batch_create_change_record(INSTANCE, CREATE_INST, add_changes, operator=operator)
         batch_create_change_record(INSTANCE, UPDATE_INST, update_changes, operator=operator)
-        result_message = self.format_result_message(_import.import_result_message)
+        res_status, result_message = self.format_result_message(_import.import_result_message)
         logger.info(f"模型 {model_id} 数据导入成功")
-        return {"success": True, "message": result_message}
+
+        return {"success": res_status, "message": result_message}
 
     @staticmethod
     def format_result_message(result: dict):
         key_map = {"add": "新增", "update": "更新", "asso": "关联"}
         add_mgs = ""
+        res_status = True
         for _key in ["add", "update", "asso"]:
             success_count = result[_key]["success"]
             fail_count = result[_key]["error"]
             data = result[_key]["data"]
             message = " ,".join(data)
-            add_mgs += f"{key_map[_key]}: 成功{success_count}个，失败{fail_count}个. {message}\n"
-        return add_mgs
+            add_mgs += f"{key_map[_key]}: 成功{success_count}个，失败{fail_count}个:{message}\n"
+            if fail_count > 0:
+                res_status = False
+        return res_status, add_mgs
 
     @staticmethod
-    def inst_export(model_id: str, ids: list, permissions_map: dict = {}, created: str = "",
+    def inst_export(model_id: str, ids: list, permissions_map: dict = {}, created: str = "", creator: str = "",
                     attr_list: list = [], association_list: list = []):
         """实例导出"""
         attrs = ModelManage.search_model_attr_v2(model_id)
         association = ModelManage.model_association_search(model_id)
+        format_permission_dict = {}
 
+        for organization_id, organization_permission_data in permissions_map.items():
+            _query_list = []
+            inst_names = organization_permission_data["inst_names"]
+            if inst_names:
+                _query_list.append({"field": "inst_name", "type": "str[]", "value": inst_names})
+                if creator:
+                    # 只有创建人条件
+                    _query_list.append({"field": "_creator", "type": "str=", "value": creator})
+
+            format_permission_dict[organization_id] = _query_list
         # 添加调试日志
         logger.info(f"导出参数 - model_id: {model_id}, ids: {ids}, association_list: {association_list}")
         logger.info(f"查询到的所有关联关系: {len(association)} 个")
-        query_list = [{"field": "id", "type": "id[]", "value": ids},
-                      {"field": "model_id", "type": "str=", "value": model_id}]
+        if ids:
+            query_list = [{"field": "id", "type": "id[]", "value": ids},
+                          {"field": "model_id", "type": "str=", "value": model_id}]
+        else:
+            query_list = [{"field": "model_id", "type": "str=", "value": model_id}]
 
         with GraphClient() as ag:
             # 使用新的基础权限过滤方法获取有权限的实例
             query = dict(label=INSTANCE, params=query_list,
-                         format_permission_dict=permissions_map)
+                         format_permission_dict=format_permission_dict)
             inst_list, _ = ag.query_entity(**query)
-        attrs = [i for i in attrs if i["attr_id"] in attr_list] if attr_list else attrs
+        if attr_list:
+            attr_map = {attr["attr_id"]: attr for attr in attrs}
+            attrs = [attr_map[attr_id] for attr_id in attr_list if attr_id in attr_map]
+        else:
+            attrs = attrs
         # 只有当用户明确选择了关联关系时才包含关联关系
         association = [i for i in association if
                        i["model_asst_id"] in association_list] if association_list else []

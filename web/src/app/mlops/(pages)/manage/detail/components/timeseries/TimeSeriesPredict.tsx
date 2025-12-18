@@ -80,9 +80,6 @@ const TimeSeriesPredict = () => {
       fixed: 'right',
       render: (_: unknown, record) => (
         <>
-          <PermissionWrapper requiredPermissions={['File View']}>
-            <DatasetReleaseList datasetType="timeseries_predict" />
-          </PermissionWrapper>
           <PermissionWrapper requiredPermissions={['File Edit']}>
             <Button
               type="link"
@@ -251,7 +248,6 @@ const TimeSeriesPredict = () => {
           ]}
         />
         <div className='flex gap-2'>
-          
           <Search
             className="w-[240px]"
             placeholder={t('common.search')}
@@ -263,6 +259,9 @@ const TimeSeriesPredict = () => {
             <Button type="primary" className="rounded-md text-xs shadow" onClick={onUpload}>
               {t("datasets.upload")}
             </Button>
+          </PermissionWrapper>
+          <PermissionWrapper requiredPermissions={['File View']}>
+            <DatasetReleaseList datasetType="timeseries_predict" />
           </PermissionWrapper>
         </div>
       </div>

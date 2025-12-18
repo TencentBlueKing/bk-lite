@@ -15,6 +15,71 @@ from apps.rpc.node_mgmt import NodeMgmt
 class InstanceViewSet(viewsets.ViewSet):
 
     @staticmethod
+    def _normalize_query_list(query_list):
+        """
+        Normalize request.data['query_list'] into a flat list of valid query dicts.
+
+        Front-end request format stays unchanged:
+        - query_list can be a dict (single condition) or list (multiple conditions)
+        - list items can be dicts or nested lists (legacy wrapping)
+
+        The graph layer will AND all conditions by default (param_type="AND").
+        """
+        if query_list is None:
+            return []
+
+        if isinstance(query_list, dict):
+            query_list = [query_list]
+
+        if not isinstance(query_list, list):
+            return []
+
+        normalized = []
+
+        def add_condition(item):
+            if not item or not isinstance(item, dict):
+                return
+
+            field = item.get("field")
+            _type = item.get("type")
+            if not field or not _type:
+                return
+
+            if _type == "time":
+                start = item.get("start")
+                end = item.get("end")
+                if not start or not end:
+                    return
+                normalized.append({"field": field, "type": _type, "start": start, "end": end})
+                return
+
+            if "value" not in item:
+                return
+
+            value = item.get("value")
+            if value is None:
+                return
+            if isinstance(value, str) and value == "":
+                return
+            if isinstance(value, list) and not value:
+                return
+
+            normalized.append({"field": field, "type": _type, "value": value})
+
+        def walk(node):
+            if node is None:
+                return
+            if isinstance(node, dict):
+                add_condition(node)
+                return
+            if isinstance(node, list):
+                for sub in node:
+                    walk(sub)
+
+        walk(query_list)
+        return normalized
+
+    @staticmethod
     def check_creator_and_organizations(request, instance):
         organizations = instance["organization"]
         current_team = int(request.COOKIES.get("current_team"))
@@ -101,8 +166,11 @@ class InstanceViewSet(viewsets.ViewSet):
         query_list [{field: "inst_name", type: "str*", value: "allure(weops-prod)"}] 搜索失败
         query_list [{field: "inst_name", type: "str=", value: "allure(weops-prod)"}] 搜索成果
         """
-        model_id = request.data['model_id']
-        query_list = request.data.get("query_list", [])
+        model_id = request.data.get("model_id")
+        if not model_id:
+            return WebUtils.response_error("model_id不能为空", status_code=status.HTTP_400_BAD_REQUEST)
+
+        query_list = self._normalize_query_list(request.data.get("query_list", []))
         page, page_size = int(request.data.get("page", 1)), int(request.data.get("page_size", 10))
         permissions_map = CmdbRulesFormatUtil.format_user_groups_permissions(request, model_id)
         instance_list, count = InstanceManage.instance_list(
@@ -436,12 +504,15 @@ class InstanceViewSet(viewsets.ViewSet):
 
         response = HttpResponse(content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
         response["Content-Disposition"] = f"attachment;filename={f'{model_id}_export.xlsx'}"
+        permissions_map = CmdbRulesFormatUtil.format_user_groups_permissions(request, model_id)
+
         response.write(InstanceManage.inst_export(
             model_id=model_id,
             ids=inst_ids,
-            permissions_map={},
+            permissions_map=permissions_map,
             attr_list=attr_list,
-            association_list=association_list
+            association_list=association_list,
+            creator=request.user.username
         ).read())
         return response
 

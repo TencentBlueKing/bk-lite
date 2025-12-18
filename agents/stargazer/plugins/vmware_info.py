@@ -204,7 +204,7 @@ class VmwareManage(object):
                     datastore_list.append(
                         {
                             "resource_id": datastore._moId,
-                            "url": datastore.summary.url,
+                            "ds_url": datastore.summary.url,
                             # "inst_name": datastore.summary.name,
                             "inst_name": f"{datastore.summary.name}[{datastore._moId}]",
                             "system_type": datastore.summary.type,

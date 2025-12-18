@@ -2,6 +2,8 @@
 # @File: vmware.py
 # @Time: 2025/11/12 13:49
 # @Author: windyzhao
+import json
+
 from apps.cmdb.collection.collect_plugin.base import CollectBase
 from apps.cmdb.collection.collect_util import timestamp_gt_one_day_ago
 from apps.cmdb.collection.constants import VMWARE_CLUSTER, VMWARE_COLLECT_MAP
@@ -13,6 +15,7 @@ class CollectVmwareMetrics(CollectBase):
     def __init__(self, inst_name, inst_id, task_id, *args, **kwargs):
         super().__init__(inst_name, inst_id, task_id, *args, **kwargs)
         self.model_resource_id_mapping = {}
+
 
     @property
     def _metrics(self):
@@ -63,6 +66,13 @@ class CollectVmwareMetrics(CollectBase):
             })
         return result
 
+    def get_vm_esxi_name(self, data, *args, **kwargs):
+        esxi_inst_name = self.model_resource_id_mapping["vmware_esxi"].get(data["vmware_esxi"], "")
+        if esxi_inst_name:
+            return esxi_inst_name
+        else:
+            return ""
+
     @staticmethod
     def set_inst_name(*args, **kwargs):
         """
@@ -72,25 +82,36 @@ class CollectVmwareMetrics(CollectBase):
         inst_name = f"{data['inst_name']}[{data['resource_id']}]"
         return inst_name
 
+    def set_vc_inst_name(self, *args, **kwargs):
+        if self.inst_name:
+            return self.inst_name
+        data = args[0]
+        inst_id = data["instance_id"]
+        inst_name = "_".join(inst_id.split("_")[1:])
+        return inst_name
+
     @property
     def model_field_mapping(self):
         mapping = {
             "vmware_vc": {
                 "vc_version": "vc_version",
-                "inst_name": self.inst_name
+                "inst_name": self.set_vc_inst_name
             },
             "vmware_vm": {
                 "inst_name": "inst_name",
                 "ip_addr": "ip_addr",
+                "self_vc": self.set_vc_inst_name,
                 "resource_id": "resource_id",
                 "os_name": "os_name",
                 "vcpus": (int, "vcpus"),
                 "memory": (int, "memory"),
+                "self_esxi": self.get_vm_esxi_name,
                 self.asso: self.get_vm_asso
             },
             "vmware_esxi": {
                 "inst_name": "inst_name",
                 "ip_addr": "ip_addr",
+                "self_vc": self.set_vc_inst_name,
                 "resource_id": "resource_id",
                 "cpu_cores": (int, "cpu_cores"),
                 "vcpus": (int, "vcpus"),
@@ -101,10 +122,11 @@ class CollectVmwareMetrics(CollectBase):
             },
             "vmware_ds": {
                 "inst_name": "inst_name",
+                "self_vc": self.set_vc_inst_name,
                 "system_type": "system_type",
                 "resource_id": "resource_id",
                 "storage": (int, "storage"),
-                "url": "url",
+                "url": "ds_url",
                 # self.asso: self.get_ds_asso
             }
 
@@ -114,7 +136,7 @@ class CollectVmwareMetrics(CollectBase):
 
     def prom_sql(self):
         sql = " or ".join(
-            "{}{{instance_id=\"{}\"}}".format(m, f"{self.task_id}_{self.inst_name}") for m in self._metrics)
+                "{}{{instance_id=~\"^{}_.+\"}}".format(m, self.task_id) for m in self._metrics)
         return sql
 
     def format_data(self, data):
@@ -148,12 +170,15 @@ class CollectVmwareMetrics(CollectBase):
                 self.model_resource_id_mapping.update({model_id: {i["resource_id"]: i["inst_name"] for i in metrics}})
             mapping = self.model_field_mapping.get(model_id, {})
             for index_data in metrics:
+                if model_id == "vmware_vc":
+                    if not index_data.get("inst_name"):
+                        continue
                 data = {}
                 for field, key_or_func in mapping.items():
                     if isinstance(key_or_func, tuple):
                         data[field] = key_or_func[0](index_data[key_or_func[1]])
                     elif callable(key_or_func):
-                        data[field] = key_or_func(index_data, index_data["inst_name"])
+                        data[field] = key_or_func(index_data, index_data.get("inst_name",''))
                     else:
                         data[field] = index_data.get(key_or_func, "")
 

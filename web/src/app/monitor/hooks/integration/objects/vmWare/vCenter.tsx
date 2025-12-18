@@ -1,11 +1,4 @@
-import { useVCenterTelegraf } from '../../plugins/vmWare/vCenterTelegraf';
-
 export const useVCenterConfig = () => {
-  const vCenter = useVCenterTelegraf();
-  const plugins = {
-    VMWare: vCenter,
-  };
-
   return {
     instance_type: 'vmware',
     dashboardDisplay: [],
@@ -15,6 +8,8 @@ export const useVCenterConfig = () => {
       { type: 'value', key: 'vmware_vm_count' },
     ],
     groupIds: {},
-    plugins,
+    collectTypes: {
+      VMWare: 'http',
+    },
   };
 };

@@ -11,6 +11,8 @@ from apps.node_mgmt.constants.node import NodeConstants
 
 from apps.node_mgmt.models import ControllerTask, CollectorTask, PackageVersion, Node, NodeCollectorInstallStatus, \
     Collector, SidecarEnv
+from apps.node_mgmt.models import ControllerTaskNode
+
 from apps.node_mgmt.utils.installer import exec_command_to_remote, download_to_local, \
     exec_command_to_local, get_install_command, get_uninstall_command, unzip_file, transfer_file_to_remote
 from apps.node_mgmt.utils.token_auth import generate_node_token
@@ -102,22 +104,9 @@ def _handle_step_exception(steps, error_message, exception_obj=None, timestamp=N
         _add_step(steps, "unknown", "error", f"Unexpected error: {error_message}", timestamp, details)
 
 
-@shared_task
-def install_controller(task_id):
-    """安装控制器"""
-    task_obj = ControllerTask.objects.filter(id=task_id).first()
-    if not task_obj:
-        raise BaseAppException("Task not found")
-    package_obj = PackageVersion.objects.filter(id=task_obj.package_version_id).first()
-    if not package_obj:
-        raise BaseAppException("Package version not found")
-
+def install_controller_on_nodes(task_obj, nodes, package_obj):
+    """安装控制器任务调度入口"""
     file_key = f"{package_obj.os}/{package_obj.object}/{package_obj.version}/{package_obj.name}"
-    task_obj.status = "running"
-    task_obj.save()
-
-    # 获取所有节点
-    nodes = task_obj.controllertasknode_set.all()
 
     # 获取控制器下发目录
     dir_map = ControllerConstants.CONTROLLER_INSTALL_DIR.get(package_obj.os)
@@ -134,7 +123,8 @@ def install_controller(task_id):
         download_to_local(task_obj.work_node, NATS_NAMESPACE, file_key, package_obj.name, controller_storage_dir)
 
         base_action = "unzip"
-        unzip_name = unzip_file(task_obj.work_node, f"{controller_storage_dir}/{package_obj.name}", controller_storage_dir)
+        unzip_name = unzip_file(task_obj.work_node, f"{controller_storage_dir}/{package_obj.name}",
+                                controller_storage_dir)
     except Exception as e:
         base_run = False
         base_massage = str(e)
@@ -155,7 +145,7 @@ def install_controller(task_id):
         # 检查凭据有效性
         if not node_obj.password:
             _add_step(steps, "credential_check", "error",
-                     "Node password is empty, credential has expired. Cannot proceed with installation.", timestamp)
+                      "Node password is empty, credential has expired. Cannot proceed with installation.", timestamp)
             _save_node_result(node_obj, steps, "error", "Credential validation failed")
             continue
 
@@ -167,7 +157,7 @@ def install_controller(task_id):
             # 文件传输步骤
             _add_step(steps, "send", "running", "Starting file transfer to remote host", timestamp)
             transfer_file_to_remote(task_obj.work_node, f"{controller_storage_dir}/{unzip_name}",
-                                  controller_install_dir, node_obj.ip, node_obj.username, password, node_obj.port)
+                                    controller_install_dir, node_obj.ip, node_obj.username, password, node_obj.port)
             _update_step_status(steps, "success", "File transfer completed successfully")
 
             # 安装执行步骤
@@ -178,9 +168,10 @@ def install_controller(task_id):
             node_id = uuid.uuid4().hex
             sidecar_token = generate_node_token(node_id, node_obj.ip, task_obj.created_by)
             install_command = get_install_command(package_obj.os, package_obj.name, task_obj.cloud_region_id,
-                                                sidecar_token, server_url, groups, node_obj.node_name, node_id)
+                                                  sidecar_token, server_url, groups, node_obj.node_name, node_id)
 
-            exec_command_to_remote(task_obj.work_node, node_obj.ip, node_obj.username, password, install_command, node_obj.port)
+            exec_command_to_remote(task_obj.work_node, node_obj.ip, node_obj.username, password, install_command,
+                                   node_obj.port)
             _update_step_status(steps, "success", "Controller installation completed successfully")
 
         except Exception as e:
@@ -191,10 +182,73 @@ def install_controller(task_id):
         final_message = "All steps completed successfully" if overall_status == "success" else "Installation failed"
         _save_node_result(node_obj, steps, overall_status, final_message)
 
+
+@shared_task
+def install_controller(task_id):
+    """安装控制器"""
+    task_obj = ControllerTask.objects.filter(id=task_id).first()
+    if not task_obj:
+        raise BaseAppException("Task not found")
+    package_obj = PackageVersion.objects.filter(id=task_obj.package_version_id).first()
+    if not package_obj:
+        raise BaseAppException("Package version not found")
+
+    task_obj.status = "running"
+    task_obj.save()
+
+    # 获取所有节点
+    nodes = task_obj.controllertasknode_set.all()
+    # 安装控制器
+    install_controller_on_nodes(task_obj, nodes, package_obj)
+
     # 更新任务状态并清理密码
     task_obj.status = "finished"
     task_obj.save()
     nodes.update(password="")
+
+
+@shared_task
+def retry_controller(task_id, task_node_ids, password):
+    """
+    重试控制器安装任务中的特定节点
+
+    Args:
+        task_id: 控制器任务ID
+        task_node_ids: 需要重试的节点ID列表（支持单个或多个）
+        password: 节点密码（明文，将被加密后存储）
+    """
+
+    task_obj = ControllerTask.objects.filter(id=task_id).first()
+    if not task_obj:
+        raise BaseAppException("Task not found")
+
+    package_obj = PackageVersion.objects.filter(id=task_obj.package_version_id).first()
+    if not package_obj:
+        raise BaseAppException("Package version not found")
+
+    # 确保 task_node_ids 是列表
+    if not isinstance(task_node_ids, list):
+        task_node_ids = [task_node_ids]
+
+    # 获取需要重试的节点
+    retry_nodes = ControllerTaskNode.objects.filter(
+        id__in=task_node_ids,
+        task_id=task_id
+    )
+
+    if not retry_nodes.exists():
+        raise BaseAppException("No valid nodes found for retry")
+
+    # 加密密码并更新到节点
+    aes_obj = AESCryptor()
+    encrypted_password = aes_obj.encode(password)
+    retry_nodes.update(password=encrypted_password)
+
+    # 调用安装方法
+    install_controller_on_nodes(task_obj, retry_nodes, package_obj)
+
+    # 清理密码
+    retry_nodes.update(password="")
 
 
 @shared_task

@@ -79,7 +79,7 @@ class PlanAndExecuteAgentNode(ToolsNodes):
 
         # 格式化计划显示
         step_list = "\n".join(
-            f"   **{i}.** {step}" for i, step in enumerate(plan_steps, 1))
+            f"- **{i}.** {step}" for i, step in enumerate(plan_steps, 1))
         plan_display = f"""🎯 **执行计划已制定** ({len(plan_steps)} 个步骤)
 
 📝 **计划推理**: {reasoning}
@@ -273,7 +273,7 @@ class PlanAndExecuteAgentNode(ToolsNodes):
         # 格式化最终总结
         formatted_summary = f"""
 
-🎯 **最终结果**
+🎯 # 最终结果
 
 {summary_content}
 

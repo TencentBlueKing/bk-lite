@@ -1,6 +1,7 @@
 from datetime import timezone
 
 from apps.core.utils.permission_utils import get_permission_rules
+from apps.node_mgmt.constants.collector import CollectorConstants
 from apps.node_mgmt.constants.controller import ControllerConstants
 from apps.node_mgmt.constants.node import NodeConstants
 from apps.node_mgmt.models import NodeCollectorInstallStatus
@@ -9,6 +10,9 @@ from apps.node_mgmt.serializers.node import NodeSerializer
 from datetime import datetime, timedelta
 
 from apps.system_mgmt.models import User
+from apps.core.logger import node_logger as logger
+from apps.node_mgmt.services.sidecar import Sidecar
+from jinja2 import Template as JinjaTemplate
 
 
 class NodeService:
@@ -54,12 +58,29 @@ class NodeService:
                 node["status"]["collectors_install"] = node_collector_install
             if 'collectors' not in node['status']:
                 continue
+
+            # 处理采集器状态：忽略不支持空跑的采集器的特定错误，将其状态改为正常
             for collector in node['status']['collectors']:
                 collector_obj = collector_dict.get(collector['collector_id'])
                 collector['collector_name'] = collector_obj.name if collector_obj else None
 
                 configuration_obj = configuration_dict.get(collector['configuration_id'])
                 collector['configuration_name'] = configuration_obj.name if configuration_obj else None
+
+                # 判断是否应该将错误状态改为正常
+                if collector['status'] == 2 and collector_obj:  # status=2 表示失败
+                    # 检查是否是需要忽略错误的采集器
+                    if collector_obj.name in CollectorConstants.IGNORE_ERROR_COLLECTORS:
+                        # 检查错误信息是否匹配需要忽略的消息
+                        verbose_msg = collector.get('verbose_message', '')
+                        if verbose_msg in CollectorConstants.IGNORE_ERROR_COLLECTORS_MESSAGES:
+                            # 将状态从失败改为正常
+                            collector['status'] = 0
+                            collector['message'] = 'Running'
+                            logger.debug(
+                                f"Changed status to Running for collector {collector_obj.name} "
+                                f"on node {node.get('name', node['id'])}: {verbose_msg.strip()}"
+                            )
 
         # 计算节点活跃度，一分钟内为活跃
         for node in node_data:
@@ -103,7 +124,33 @@ class NodeService:
     @staticmethod
     def batch_operate_node_collector(node_ids, collector_id, operation):
         """批量操作节点采集器"""
-        nodes = Node.objects.filter(id__in=node_ids)
+        # 一次性查询所有节点，避免重复查询
+        nodes = Node.objects.filter(id__in=node_ids).select_related('cloud_region')
+
+        # 如果是 start 或 restart 操作，需要检查并创建默认配置
+        if operation in ['start', 'restart']:
+            try:
+                collector = Collector.objects.get(id=collector_id)
+
+                # 批量查询已有配置的节点，避免N+1查询
+                nodes_with_config = CollectorConfiguration.objects.filter(
+                    collector=collector,
+                    nodes__in=nodes
+                ).values_list('nodes__id', flat=True)
+
+                nodes_with_config_set = set(nodes_with_config)
+
+                # 只为没有配置的节点创建默认配置
+                for node in nodes:
+                    if node.id not in nodes_with_config_set:
+                        NodeService._create_collector_default_config(node, collector)
+
+            except Collector.DoesNotExist:
+                logger.error(f"Collector {collector_id} does not exist")
+            except Exception as e:
+                logger.error(f"Error checking/creating default config for collector {collector_id}: {e}")
+
+        # 执行原有的操作逻辑
         for node in nodes:
             action_data = {
                 "collector_id": collector_id,
@@ -112,6 +159,51 @@ class NodeService:
             action, created = Action.objects.get_or_create(node=node)
             action.action.append(action_data)
             action.save()
+
+    @staticmethod
+    def _create_collector_default_config(node, collector):
+        """为节点创建指定采集器的默认配置"""
+        try:
+            # 检查采集器是否有默认配置
+            if not collector.default_config:
+                logger.info(f"Collector {collector.name} has no default_config, skipping")
+                return
+
+            # 获取云区域环境变量
+            variables = Sidecar.get_cloud_region_envconfig(node)
+            default_sidecar_mode = variables.get("SIDECAR_INPUT_MODE", "nats")
+
+            # 获取默认配置模板
+            config_template = collector.default_config.get(default_sidecar_mode, None)
+            if not config_template:
+                logger.info(f"Collector {collector.name} has no config template for mode {default_sidecar_mode}, skipping")
+                return
+
+            # 检查是否为容器节点
+            is_container_node = node.node_type == ControllerConstants.NODE_TYPE_CONTAINER
+            if is_container_node:
+                add_config = collector.default_config.get("add_config", "")
+                if add_config:
+                    config_template = config_template + "\n" + add_config
+                    logger.info(f"Node {node.id} is a container node, appending add_config for {collector.name}")
+
+            # 渲染模板
+            tpl = JinjaTemplate(config_template)
+            rendered_config = tpl.render(variables)
+
+            # 创建配置
+            configuration = CollectorConfiguration.objects.create(
+                name=f'{collector.name}-{node.id}',
+                collector=collector,
+                config_template=rendered_config,
+                is_pre=True,
+                cloud_region=node.cloud_region
+            )
+            configuration.nodes.add(node)
+            logger.info(f"Created default configuration for node {node.id} and collector {collector.name}")
+
+        except Exception as e:
+            logger.error(f"Failed to create default config for node {node.id} and collector {collector.name}: {e}")
 
     @staticmethod
     def get_node_list(organization_ids, cloud_region_id, name, ip, os, page, page_size, is_active, is_manual, is_container, permission_data={}):
@@ -171,6 +263,9 @@ class NodeService:
             start = (page - 1) * page_size
             end = start + page_size
             nodes = qs[start:end]
+
+        # 应用预加载优化，避免 N+1 查询
+        nodes = NodeSerializer.setup_eager_loading(nodes)
 
         serializer = NodeSerializer(nodes, many=True)
         node_data = serializer.data

@@ -1,13 +1,4 @@
-import { useLoadbalanceSnmpPlugin } from '../../plugins/networkDevice/loadbalanceSnmp';
-
 export const useLoadbalanceConfig = () => {
-  const snmpPlugin = useLoadbalanceSnmpPlugin();
-
-  // 所有插件配置
-  const plugins = {
-    'Loadbalance SNMP General': snmpPlugin,
-  };
-
   return {
     instance_type: 'loadbalance',
     dashboardDisplay: [
@@ -70,6 +61,8 @@ export const useLoadbalanceConfig = () => {
       list: ['instance_id'],
       default: ['instance_id'],
     },
-    plugins,
+    collectTypes: {
+      'Loadbalance SNMP General': 'snmp',
+    },
   };
 };

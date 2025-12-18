@@ -18,7 +18,7 @@
         "placeholder": "http://example.com/stub_status"
       },
       "transform_on_edit": {
-        "origin_path": "child.content.config.url"
+        "origin_path": "child.content.config.urls[0]"
       }
     },
     {
@@ -64,6 +64,14 @@
       "widget_props": {
         "placeholder": "http://example.com/stub_status"
       },
+      "rules": [
+        {
+          "type": "pattern",
+          "pattern": "^(http|https)://.*",
+          "message": "URL必须以http://或https://开头",
+          "excel_formula": "OR(LEFT({{CELL}},7)=\"http://\",LEFT({{CELL}},8)=\"https://\")"
+        }
+      ],
       "change_handler": {
         "type": "simple",
         "source_fields": ["url"],

@@ -1,14 +1,13 @@
 'use client';
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Card, Input, Spin, Pagination, Drawer, Button, Checkbox, Tag, Tooltip, message } from 'antd';
-import { MessageOutlined, DeleteOutlined, ExclamationCircleOutlined } from '@ant-design/icons';
+import { DeleteOutlined, ExclamationCircleOutlined } from '@ant-design/icons';
 import { useSearchParams } from 'next/navigation';
 import { useTranslation } from '@/utils/i18n';
 import styles from './index.module.scss';
 import ChunkDetail from '@/app/opspilot/components/chunk-detail';
 import { useKnowledgeApi } from '@/app/opspilot/api/knowledge';
 import OperateModal from '@/components/operate-modal';
-import GenerateQAPairModal from '@/app/opspilot/components/knowledge/generateQAPairModal';
 
 interface Paragraph {
   id: string;
@@ -17,19 +16,6 @@ interface Paragraph {
   index_name?: string;
   qa_count?: number;
   document_id?: string;
-}
-
-interface ModalRef {
-  showModal: (config: {
-    documentId: string;
-    selectedChunkIds: string[];
-    selectedChunks?: ChunkItem[];
-  }) => void;
-}
-
-interface ChunkItem {
-  id: string;
-  content: string;
 }
 
 const DocsResultPage: React.FC = () => {
@@ -48,8 +34,6 @@ const DocsResultPage: React.FC = () => {
   const [deleteMode, setDeleteMode] = useState<'single' | 'batch'>('single');
   const [currentDeleteItem, setCurrentDeleteItem] = useState<string | null>(null);
   const [deleteLoading, setDeleteLoading] = useState<boolean>(false);
-
-  const generateQAModalRef = useRef<ModalRef>(null);
 
   const searchParams = useSearchParams();
   const id = searchParams ? searchParams.get('documentId') : null;
@@ -151,50 +135,6 @@ const DocsResultPage: React.FC = () => {
     }
   };
 
-  const handleBatchGenerateQA = () => {
-    if (!id || selectedItems.length === 0) {
-      message.warning('请先选择要生成问答对的分块');
-      return;
-    }
-
-    const selectedChunks = paragraphsState
-      .filter(paragraph => selectedItems.includes(paragraph.id))
-      .map(paragraph => ({
-        id: paragraph.id,
-        content: paragraph.content
-      }));
-
-    generateQAModalRef.current?.showModal({
-      documentId: id,
-      selectedChunkIds: selectedItems,
-      selectedChunks: selectedChunks
-    });
-  };
-
-  const handleGenerateQA = (paragraph: Paragraph, event: React.MouseEvent) => {
-    event.stopPropagation();
-    
-    if (!id) {
-      message.error('知识库ID不存在');
-      return;
-    }
-
-    generateQAModalRef.current?.showModal({
-      documentId: id,
-      selectedChunkIds: [paragraph.id],
-      selectedChunks: [{
-        id: paragraph.id,
-        content: paragraph.content
-      }]
-    });
-  };
-
-  const handleGenerateQASuccess = () => {
-    message.success(t('knowledge.qaPairs.generateSuccess'));
-    fetchData(currentPage, pageSize, searchTerm);
-    setSelectedItems([]);
-  };
-
   const handleBatchDelete = () => {
     handleDelete(selectedItems, true);
   };
@@ -226,14 +166,6 @@ const DocsResultPage: React.FC = () => {
           </span>
         </div>
         <div className="flex items-center gap-2">
-          <Button 
-            type="primary" 
-            icon={<MessageOutlined />}
-            disabled={selectedItems.length === 0}
-            onClick={handleBatchGenerateQA}
-          >
-            {t('knowledge.documents.result.batchGenerateQA')}
-          </Button>
           <Button 
             danger
             icon={<DeleteOutlined />}
@@ -282,15 +214,6 @@ const DocsResultPage: React.FC = () => {
                           </span>
                         </div>
                         <div className="flex items-center gap-1">
-                          <Tooltip title={t('knowledge.documents.result.generateQA')}>
-                            <Button
-                              type="text"
-                              size="small"
-                              icon={<MessageOutlined />}
-                              onClick={(e) => handleGenerateQA(paragraph, e)}
-                              className="p-1 w-6 h-6 flex items-center justify-center"
-                            />
-                          </Tooltip>
                           <Tooltip title={t('common.delete')}>
                             <Button
                               type="text"
@@ -392,12 +315,6 @@ const DocsResultPage: React.FC = () => {
           </div>
         </div>
       </OperateModal>
-
-      {/* 生成问答对弹窗 */}
-      <GenerateQAPairModal
-        ref={generateQAModalRef}
-        onSuccess={handleGenerateQASuccess}
-      />
     </div>
   );
 };

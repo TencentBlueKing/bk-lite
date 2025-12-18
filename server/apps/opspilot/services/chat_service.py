@@ -2,7 +2,7 @@ import asyncio
 import re
 from typing import Any, Dict, Tuple
 
-from apps.core.logger import opspilot_logger
+from apps.core.logger import opspilot_logger as logger
 from apps.core.mixinx import EncryptMixin
 from apps.core.utils.loader import LanguageLoader
 from apps.opspilot.enum import SkillTypeChoices
@@ -77,7 +77,6 @@ class ChatService:
                 "total_tokens": response.total_tokens,
                 "prompt_tokens": response.prompt_tokens,
                 "completion_tokens": response.completion_tokens,
-                "thread_id": response.thread_id,
             }
 
             # 处理内容（可选隐藏思考过程）
@@ -89,7 +88,7 @@ class ChatService:
 
         except Exception as e:
             # 记录详细的异常信息以便排查问题
-            opspilot_logger.error(f"invoke_chat 执行失败: skill_type={skill_type}, error={str(e)}", exc_info=True)
+            logger.error(f"invoke_chat 执行失败: skill_type={skill_type}, error={str(e)}", exc_info=True)
 
             loader = LanguageLoader(app="opspilot", default_lang="en")
             message = loader.get("error.agent_execution_failed") or f"Agent execution failed: {str(e)}"
@@ -119,7 +118,7 @@ class ChatService:
         user_message, image_data = history_service.process_user_message_and_images(kwargs["user_message"])
 
         # 处理聊天历史
-        chat_history = history_service.process_chat_history(kwargs["chat_history"], kwargs.get("conversation_window_size", 10))
+        chat_history = history_service.process_chat_history(kwargs["chat_history"], kwargs.get("conversation_window_size", 10), image_data)
 
         # 构建聊天参数
         chat_kwargs = {
@@ -130,7 +129,7 @@ class ChatService:
             "temperature": kwargs["temperature"],
             "user_message": user_message,
             "chat_history": chat_history,
-            "image_data": image_data,
+            # "image_data": image_data,
             "user_id": str(kwargs["user_id"]),
             "enable_naive_rag": kwargs["enable_rag"],
             "rag_stage": "string",
@@ -165,7 +164,6 @@ class ChatService:
                 # 如果是内置工具，添加 langchain 前缀的 URL
                 if skill_tool.is_build_in:
                     tool_params["url"] = f"langchain:{skill_tool.name}"
-
                 tools.append(tool_params)
 
             for i in tool_map.values():
@@ -174,7 +172,7 @@ class ChatService:
             chat_kwargs.update({"extra_config": extra_config})
         elif extra_config:
             chat_kwargs.update({"extra_config": extra_config})
-
+        logger.info(f"usermessage: {user_message}")
         return chat_kwargs, doc_map, title_map
 
 

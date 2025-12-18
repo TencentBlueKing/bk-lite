@@ -131,6 +131,16 @@ const useIntegrationApi = () => {
     return await get(`/monitor/api/monitor_plugin/${data.id}/ui_template/`);
   };
 
+  const getUiTemplateByParams = async (params: {
+    collector: string;
+    collect_type: string;
+    monitor_object_id: string;
+  }) => {
+    return await get(`/monitor/api/monitor_plugin/ui_template_by_params/`, {
+      params,
+    });
+  };
+
   const getInstanceListByPrimaryObject = async (
     params: {
       id?: React.Key;
@@ -205,6 +215,7 @@ const useIntegrationApi = () => {
     createK8sInstance,
     getK8sCommand,
     checkCollectStatus,
+    getUiTemplateByParams,
   };
 };
 

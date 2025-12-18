@@ -2,7 +2,7 @@
 import os
 
 from enum import Enum
-
+from apps.cmdb.utils.time_util import parse_cmdb_time
 
 class BaseEnum(str, Enum):
     """
@@ -131,6 +131,7 @@ NEED_CONVERSION_TYPE = {
     "float": float,
     "str": str,
     "list": list,
+    "time": parse_cmdb_time,
 }
 
 EDGE_TYPE = 2
@@ -304,7 +305,7 @@ COLLECT_OBJ_TREE = [
                 "name": "Redis",
                 "task_type": CollectPluginTypes.DB,
                 "type": CollectDriverTypes.JOB,
-                "tag": ["Agent", "JOB"], "desc": "采集Redis关键配置信息",
+                "tag": ["Agent", "JOB", "Linux"], "desc": "采集Redis关键配置信息",
                 "encrypted_fields": ["password"]
             }
         ],
@@ -330,11 +331,11 @@ COLLECT_OBJ_TREE = [
         "name": "主机管理",
         "children": [
             {"id": "host", "model_id": "host", "name": "主机", "task_type": CollectPluginTypes.HOST,
-             "type": CollectDriverTypes.JOB, "tag": ["JOB"], "desc": "采集主机基础信息CPU内存等",
+             "type": CollectDriverTypes.JOB, "tag": ["JOB", "Linux"], "desc": "采集操作系统基础信息CPU内存等",
              "encrypted_fields": ["password"]},
             {"id": "physcial_server", "model_id": "physcial_server", "name": "物理服务器",
              "task_type": CollectPluginTypes.HOST,
-             "type": CollectDriverTypes.JOB, "tag": ["JOB"], "desc": "采集主机基础信息CPU内存等",
+             "type": CollectDriverTypes.JOB, "tag": ["JOB", "Linux"], "desc": "采集物理服务器基础信息CPU、内存、网卡等",
              "encrypted_fields": ["password"]},
         ],
     },
@@ -343,23 +344,23 @@ COLLECT_OBJ_TREE = [
         "name": "中间件",
         "children": [
             {"id": "nginx", "model_id": "nginx", "name": "Nginx", "task_type": CollectPluginTypes.MIDDLEWARE,
-             "type": CollectDriverTypes.JOB, "tag": ["JOB"], "desc": "发现与采集Nginx基础配置信息",
+             "type": CollectDriverTypes.JOB, "tag": ["JOB", "Linux"], "desc": "发现与采集Nginx基础配置信息",
              "encrypted_fields": ["password"]},
             {"id": "zookeeper", "model_id": "zookeeper", "name": "Zookeeper",
              "task_type": CollectPluginTypes.MIDDLEWARE,
-             "type": CollectDriverTypes.JOB, "tag": ["JOB"], "desc": "发现与采集ZK基础配置信息",
+             "type": CollectDriverTypes.JOB, "tag": ["JOB", "Linux"], "desc": "发现与采集ZK基础配置信息",
              "encrypted_fields": ["password"]},
             {"id": "kafka", "model_id": "kafka", "name": "Kafka", "task_type": CollectPluginTypes.MIDDLEWARE,
-             "type": CollectDriverTypes.JOB, "tag": ["JOB"], "desc": "发现与采集Kafka基础配置信息",
+             "type": CollectDriverTypes.JOB, "tag": ["JOB", "Linux"], "desc": "发现与采集Kafka基础配置信息",
              "encrypted_fields": ["password"]},
             {"id": "etcd", "model_id": "etcd", "name": "Etcd", "task_type": CollectPluginTypes.MIDDLEWARE,
-             "type": CollectDriverTypes.JOB, "tag": ["JOB"], "desc": "发现与采集Etcd基础配置信息",
+             "type": CollectDriverTypes.JOB, "tag": ["JOB", "Linux"], "desc": "发现与采集Etcd基础配置信息",
              "encrypted_fields": ["password"]},
             {"id": "rabbitmq", "model_id": "rabbitmq", "name": "RabbitMQ", "task_type": CollectPluginTypes.MIDDLEWARE,
-             "type": CollectDriverTypes.JOB, "tag": ["JOB"], "desc": "发现与采集Rabbitmq基础配置信息",
+             "type": CollectDriverTypes.JOB, "tag": ["JOB", "Linux"], "desc": "发现与采集Rabbitmq基础配置信息",
              "encrypted_fields": ["password"]},
             {"id": "tomcat", "model_id": "tomcat", "name": "Tomcat", "task_type": CollectPluginTypes.MIDDLEWARE,
-             "type": CollectDriverTypes.JOB, "tag": ["JOB"], "desc": "发现与采集Tomcat基础配置信息",
+             "type": CollectDriverTypes.JOB, "tag": ["JOB", "Linux"], "desc": "发现与采集Tomcat基础配置信息",
              "encrypted_fields": ["password"]},
         ],
     }

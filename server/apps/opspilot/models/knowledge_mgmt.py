@@ -169,6 +169,7 @@ class WebPageKnowledge(models.Model, PeriodicTaskUtils):
     max_depth = models.IntegerField(verbose_name=_("max depth"), default=1)
     sync_enabled = models.BooleanField(verbose_name=_("Sync Enabled"), default=False)
     sync_time = models.CharField(verbose_name=_("Sync Time"), null=True, blank=True)
+    last_run_time = models.DateTimeField(null=True, blank=True)
 
     class Meta:
         verbose_name = _("Web Page Knowledge")

@@ -107,25 +107,33 @@ export const getDocumentColumns = (
       return <Tag color={color}>{text}</Tag>;
     },
   },
-  ...(activeTabKey === 'web_page' ? [{
-    title: t('knowledge.documents.syncEnabled'),
-    key: 'sync_enabled',
-    dataIndex: 'sync_enabled',
-    render: (_: any, record: TableData) => {
-      const syncEnabled = record.sync_enabled;
-      const syncTime = record.sync_time;
-
-      if (syncEnabled && syncTime) {
-        return (
-          <div>
-            {syncTime && <div>【{t('knowledge.documents.everyday')} {syncTime}】</div>}
-          </div>
-        );
-      } else {
-        return <div>【{t('knowledge.documents.notSync')}】</div>;
-      }
+  ...(activeTabKey === 'web_page' ? [
+    {
+      title: t('knowledge.documents.lastSyncTime'),
+      key: 'last_run_time',
+      dataIndex: 'last_run_time',
+      render: (text: string) => text ? convertToLocalizedTime(text) : '--',
     },
-  }] : []),
+    {
+      title: t('knowledge.documents.syncEnabled'),
+      key: 'sync_enabled',
+      dataIndex: 'sync_enabled',
+      render: (_: any, record: TableData) => {
+        const syncEnabled = record.sync_enabled;
+        const syncTime = record.sync_time;
+
+        if (syncEnabled && syncTime) {
+          return (
+            <div>
+              {syncTime && <div>【{t('knowledge.documents.everyday')} {syncTime}】</div>}
+            </div>
+          );
+        } else {
+          return <div>【{t('knowledge.documents.notSync')}】</div>;
+        }
+      },
+    }
+  ] : []),
   {
     title: t('knowledge.documents.extractionMethod'),
     key: 'mode',
