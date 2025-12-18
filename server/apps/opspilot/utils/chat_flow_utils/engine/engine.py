@@ -519,7 +519,6 @@ class ChatFlowEngine:
                 output_data=output_data,
                 last_output=last_output,
                 execute_type=execute_type,
-                session_id=input_data.get("session_id", ""),
             )
 
             logger.info(f"工作流执行结果已记录: flow_id={self.instance.id}, status={status}")
