@@ -4,7 +4,7 @@ import { type GetProp } from 'antd';
 import { Message } from '@/types/conversation';
 import { formatMessageTime, shouldShowTime } from '../utils/timeUtils';
 import { actionItems } from '../utils/constants';
-import { ToolCallItem } from './ToolCallItem';
+import { ToolCallItem } from './custom-components/ToolCallItem';
 import { ApplicationForm, InformationCard, SelectionButtons } from './index';
 import { useTranslation } from '@/utils/i18n';
 interface MessageListProps {
