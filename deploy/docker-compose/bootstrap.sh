@@ -542,6 +542,9 @@ init_docker_images() {
 
     # VLLM image
     export DOCKER_IMAGE_VLLM=$(add_mirror_prefix "bklite/vllm:latest")
+
+    # webhookd images
+    export DOKCER_IMAGE_WEBHOOKD=$(add_mirror_prefix "bklite/webhookd:latest")
     
     # Fixed configuration variables
     export DOCKER_NETWORK=prod
@@ -852,6 +855,7 @@ DOCKER_IMAGE_FALKORDB=${DOCKER_IMAGE_FALKORDB}
 DOCKER_IMAGE_PGVECTOR=${DOCKER_IMAGE_PGVECTOR}
 DOCKER_IMAGE_VECTOR=${DOCKER_IMAGE_VECTOR}
 DOCKER_IMAGE_VLLM=${DOCKER_IMAGE_VLLM}
+DOCKER_IMAGE_WEBHOOKD=${DOKCER_IMAGE_WEBHOOKD}
 VLLM_BCE_EMBEDDING_MODEL_NAME=${VLLM_BCE_EMBEDDING_MODEL_NAME}
 VLLM_OLMOCR_MODEL_NAME=${VLLM_OLMOCR_MODEL_NAME}
 VLLM_BGE_EMBEDDING_MODEL_NAME=${VLLM_BGE_EMBEDDING_MODEL_NAME}
@@ -861,8 +865,8 @@ EOF
 
 
     # 按照特定顺序启动服务
-    log "INFO" "启动基础服务 (Traefik, Redis, NATS, VictoriaMetrics, FalkorDB, VictoriaLogs, Minio, MLFlow, NATS Executor, Vector)..."
-    ${DOCKER_COMPOSE_CMD} up -d traefik redis nats victoria-metrics falkordb victoria-logs minio mlflow nats-executor vector
+    log "INFO" "启动基础服务 (Traefik, Redis, NATS, VictoriaMetrics, FalkorDB, VictoriaLogs, Minio, MLFlow, NATS Executor, Vector, Webhookd)..."
+    ${DOCKER_COMPOSE_CMD} up -d traefik redis nats victoria-metrics falkordb victoria-logs minio mlflow nats-executor vector webhookd
 
     # 创建 JetStream - 使用正确的网络名称
     log "INFO" "创建JetStream..."
