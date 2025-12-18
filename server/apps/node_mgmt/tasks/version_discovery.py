@@ -58,7 +58,6 @@ def _discover_controller_version(node: Node):
     component_id = str(controller.id)
 
     try:
-
         # 检查是否配置了版本命令
         if not controller.version_command:
             logger.warning(f"控制器 {controller.name} 未配置版本命令")
@@ -77,38 +76,38 @@ def _discover_controller_version(node: Node):
         executor = Executor(node.id)
         response = executor.execute_local(command=controller.version_command, timeout=10)
 
-        if response and response.get("stdout"):
-            version = response["stdout"].strip()
-            exit_code = response.get("exit_code", -1)
-            stderr = response.get("stderr", "")
+        # response 直接是字符串，不是字典
+        if response:
+            # 去除首尾空白字符（包括换行符）
+            version = response.strip()
 
-            # 构建执行信息
-            if exit_code == 0:
-                message = "版本获取成功"
+            if version:
+                # 更新或创建控制器版本信息
+                NodeComponentVersion.objects.update_or_create(
+                    node=node,
+                    component_type="controller",
+                    component_id=component_id,
+                    defaults={
+                        "version": version,
+                        "message": "版本获取成功",
+                    }
+                )
+                logger.info(f"节点 {node.name} 控制器版本: {version}")
             else:
-                message = f"命令执行返回非零状态码: {exit_code}"
-                if stderr:
-                    message += f", 错误输出: {stderr}"
-
-            # 更新或创建控制器版本信息
-            NodeComponentVersion.objects.update_or_create(
-                node=node,
-                component_type="controller",
-                component_id=component_id,
-                defaults={
-                    "version": version if version else "unknown",
-                    "message": message,
-                }
-            )
-            logger.info(f"节点 {node.name} 控制器版本: {version} (exit_code: {exit_code})")
+                # 命令返回了空字符串
+                NodeComponentVersion.objects.update_or_create(
+                    node=node,
+                    component_type="controller",
+                    component_id=component_id,
+                    defaults={
+                        "version": "unknown",
+                        "message": "命令执行成功但返回了空结果",
+                    }
+                )
+                logger.warning(f"节点 {node.name} 控制器版本命令返回空结果")
         else:
             # 记录获取失败的情况
-            error_msg = "命令执行失败，未返回输出"
-            if response:
-                stderr = response.get("stderr", "")
-                if stderr:
-                    error_msg += f", 错误输出: {stderr}"
-
+            error_msg = "命令执行失败，未返回结果"
             NodeComponentVersion.objects.update_or_create(
                 node=node,
                 component_type="controller",
