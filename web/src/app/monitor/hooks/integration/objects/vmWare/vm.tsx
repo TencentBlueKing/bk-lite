@@ -8,6 +8,8 @@ export const useVmConfig = () => {
       { type: 'value', key: 'vm_disk_io_usage_gauge' },
     ],
     groupIds: {},
-    plugins: {},
+    collectTypes: {
+      VMWare: 'http',
+    },
   };
 };

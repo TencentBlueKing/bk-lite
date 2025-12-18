@@ -31,8 +31,13 @@ export class DataMapper {
     // 回显到表单
     if (direction === 'toForm' && apiData) {
       // 1. 获取源数据
-      const originValue = origin_path
-        ? this.getNestedValue(apiData, origin_path)
+      let resolvedPath = origin_path;
+      // 如果 origin_path 包含变量（如 {{config_id}}），先替换变量
+      if (origin_path && origin_path.includes('{{')) {
+        resolvedPath = this.resolvePathVariables(origin_path, apiData);
+      }
+      const originValue = resolvedPath
+        ? this.getNestedValue(apiData, resolvedPath)
         : value;
       processedValue = originValue;
       // 2. 应用 to_form 转换
@@ -65,7 +70,7 @@ export class DataMapper {
     if (direction === 'toApi') {
       // 如果没有 to_api 配置，表示不需要处理
       if (!to_api) {
-        return undefined; // 返回 undefined 表示不写入
+        return value;
       }
       // 应用 to_api 转换
       if (to_api.type) {
@@ -316,6 +321,31 @@ export class DataMapper {
       }
     }
     return result;
+  }
+
+  /**
+   * 解析路径中的变量（如 {{config_id}}）
+   * 从 apiData 中查找对应的值进行替换
+   */
+  static resolvePathVariables(path: string, apiData: any): string {
+    let resolvedPath = path;
+    // 匹配所有 {{variable}} 格式的变量
+    const matches = path.match(/\{\{(\w+)\}\}/g);
+    if (matches) {
+      matches.forEach((match) => {
+        const varName = match.slice(2, -2); // 去掉 {{ 和 }}
+        // 尝试从常见位置获取变量值
+        let varValue = apiData[varName] || apiData.child?.[varName];
+        // 特殊处理：config_id 对应 child.id 的大写形式
+        if (varName === 'config_id' && !varValue && apiData.child?.id) {
+          varValue = String(apiData.child.id).toUpperCase();
+        }
+        if (varValue !== undefined) {
+          resolvedPath = resolvedPath.replace(match, String(varValue));
+        }
+      });
+    }
+    return resolvedPath;
   }
 
   /**
