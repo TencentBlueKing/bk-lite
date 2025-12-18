@@ -1,4 +1,20 @@
 {
+    "FilterBar": {
+        "fuzzy": "模糊",
+        "exact": "精确",
+        "pleaseSelectValidTimeRange": "请选择有效的时间范围",
+        "pleaseSelectValue": "请选择值",
+        "pleaseSelect": "请选择",
+        "pleaseSelectUser": "请选择用户",
+        "pleaseSelectTimeRange": "请选择时间范围",
+        "pleaseEnterNumber": "请输入数值",
+        "pleaseEnterValue": "请输入值",
+        "exactMatch": "精确匹配",
+        "filterItems": "检索项：",
+        "cancel": "取消",
+        "confirm": "确定",
+        "clearConditions": "清空条件"
+    },
     "deleteTitle": "您确定要删除这个项目吗？",
     "disassociationTitle": "您确定要取消关联吗？",
     "deleteContent": "删除后，数据无法恢复。",
