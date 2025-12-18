@@ -16,6 +16,9 @@
       "description": "与设备进行通信的主机",
       "widget_props": {
         "placeholder": "主机"
+      },
+      "transform_on_edit": {
+        "origin_path": "child.content.config.http_headers.host"
       }
     },
     {
@@ -32,7 +35,7 @@
         "target_path": "custom_headers.username"
       },
       "transform_on_edit": {
-        "origin_path": "child.content.config.custom_headers.username"
+        "origin_path": "child.content.config.http_headers.username"
       }
     },
     {
@@ -49,7 +52,7 @@
         "target_path": "custom_headers.password"
       },
       "transform_on_edit": {
-        "origin_path": "child.content.config.custom_headers.password"
+        "origin_path": "child.content.config.http_headers.password"
       }
     },
     {
