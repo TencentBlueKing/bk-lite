@@ -1,6 +1,4 @@
 export const useBastionHostConfig = () => {
-  const plugins = {};
-
   return {
     instance_type: 'bastion_host',
     dashboardDisplay: [
@@ -60,6 +58,8 @@ export const useBastionHostConfig = () => {
       { type: 'value', key: 'sysUpTime' },
     ],
     groupIds: {},
-    plugins,
+    collectTypes: {
+      'Bastion Host SNMP General': 'snmp',
+    },
   };
 };

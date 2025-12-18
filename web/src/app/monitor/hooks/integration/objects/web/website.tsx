@@ -1,13 +1,4 @@
-import { useWebsiteTelegraf } from '../../plugins/web/websiteTelegraf';
-
 export const useWebsiteConfig = () => {
-  const plugin = useWebsiteTelegraf();
-
-  // 所有插件配置
-  const plugins = {
-    Website: plugin,
-  };
-
   return {
     instance_type: 'web',
     dashboardDisplay: [
@@ -71,6 +62,8 @@ export const useWebsiteConfig = () => {
       list: ['instance_id'],
       default: ['instance_id'],
     },
-    plugins,
+    collectTypes: {
+      Website: 'web',
+    },
   };
 };

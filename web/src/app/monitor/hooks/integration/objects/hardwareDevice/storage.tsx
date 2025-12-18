@@ -1,13 +1,4 @@
-import { useStorageIpmiPlugin } from '../../plugins/hardwareDevice/storageIpmi';
-
 export const useStorageConfig = () => {
-  const ipmiPlugin = useStorageIpmiPlugin();
-
-  // 所有插件配置
-  const plugins = {
-    'Storage IPMI': ipmiPlugin,
-  };
-
   return {
     instance_type: 'storage',
     dashboardDisplay: [],
@@ -17,6 +8,8 @@ export const useStorageConfig = () => {
       { type: 'value', key: 'ipmi_voltage_volts' },
     ],
     groupIds: {},
-    plugins,
+    collectTypes: {
+      'Storage IPMI': 'ipmi',
+    },
   };
 };

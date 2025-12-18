@@ -1,11 +1,4 @@
-import { useMssqlTelegraf } from '../../plugins/database/mssqlTelegraf';
-
 export const useMssqlConfig = () => {
-  const mssqlTelegraf = useMssqlTelegraf();
-  const plugins = {
-    MSSQL: mssqlTelegraf,
-  };
-
   return {
     instance_type: 'mssql',
     dashboardDisplay: [],
@@ -15,6 +8,9 @@ export const useMssqlConfig = () => {
       { type: 'progress', key: 'memory_usage' },
     ],
     groupIds: {},
-    plugins,
+    collectTypes: {
+      'MSSQL-Exporter': 'exporter',
+      MSSQL: 'database',
+    },
   };
 };
