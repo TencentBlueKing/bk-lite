@@ -475,6 +475,15 @@ const useFieldConfigs = (): FieldConfig[] => {
           { id: 'manual', name: installMethodMap['manual']?.text || 'Manual' },
         ],
       },
+      {
+        name: 'upgradeable',
+        label: t('node-manager.cloudregion.node.controllerUpgradeable'),
+        lookup_expr: 'bool',
+        options: [
+          { id: 'true', name: t('common.yes') },
+          { id: 'false', name: t('common.no') },
+        ],
+      },
     ],
     [t, installMethodMap]
   );
