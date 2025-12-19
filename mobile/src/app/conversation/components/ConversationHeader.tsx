@@ -17,9 +17,8 @@ export const ConversationHeader: React.FC<ConversationHeaderProps> = ({ chatInfo
     const handleNewConversation = () => {
         if (loading || !chatInfo) return;
 
-        // 跳转到新对话（不带session_id，添加时间戳强制刷新）
-        const timestamp = Date.now();
-        router.push(`/conversation?bot_id=${chatInfo.id}&t=${timestamp}`);
+        // 跳转到新对话
+        router.push(`/conversation?bot_id=${chatInfo.id}`);
     };
 
     return (
