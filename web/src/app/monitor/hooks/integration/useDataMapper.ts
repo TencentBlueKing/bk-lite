@@ -31,8 +31,13 @@ export class DataMapper {
     // 回显到表单
     if (direction === 'toForm' && apiData) {
       // 1. 获取源数据
-      const originValue = origin_path
-        ? this.getNestedValue(apiData, origin_path)
+      let resolvedPath = origin_path;
+      // 如果 origin_path 包含变量（如 {{config_id}}），先替换变量
+      if (origin_path && origin_path.includes('{{')) {
+        resolvedPath = this.resolvePathVariables(origin_path, apiData);
+      }
+      const originValue = resolvedPath
+        ? this.getNestedValue(apiData, resolvedPath)
         : value;
       processedValue = originValue;
       // 2. 应用 to_form 转换
@@ -65,7 +70,7 @@ export class DataMapper {
     if (direction === 'toApi') {
       // 如果没有 to_api 配置，表示不需要处理
       if (!to_api) {
-        return undefined; // 返回 undefined 表示不写入
+        return value;
       }
       // 应用 to_api 转换
       if (to_api.type) {
@@ -240,30 +245,47 @@ export class DataMapper {
   }
 
   /**
-   * 使用 SHA256 哈希对字符串进行编码
-   * 生成固定长度的 base64 字符串（去除 '=' 填充符）
-   * 注意：这是一个简化的哈希实现，确保每次输入相同的字符串生成相同的输出
+   * 使用改进的哈希算法对字符串进行编码
+   * 使用 FNV-1a 哈希算法生成64位哈希值，减少碰撞概率
+   * 生成固定长度的 base64 字符串（16位），确保相同输入生成相同输出
    */
   static hashInstanceId(id: string): string {
     const instanceId = id || '';
-    // 计算字符串哈希值
-    let hash = 0;
+    // FNV-1a 哈希算法 - 生成两个32位哈希值以获得64位哈希
+    // 第一个32位哈希
+    let hash1 = 2166136261; // FNV offset basis (32-bit)
     for (let i = 0; i < instanceId.length; i++) {
-      const char = instanceId.charCodeAt(i);
-      hash = (hash << 5) - hash + char;
-      hash = hash & hash;
+      hash1 ^= instanceId.charCodeAt(i);
+      hash1 +=
+        (hash1 << 1) +
+        (hash1 << 4) +
+        (hash1 << 7) +
+        (hash1 << 8) +
+        (hash1 << 24);
     }
-    // 转为 8 位十六进制
-    const hashHex = (hash >>> 0).toString(16).padStart(8, '0');
-    // 确保 combined 足够长（至少 16 个字符，才能保证 base64 后有 10+ 位）
-    // 如果原字符串不够长，用哈希值填充
-    const padding = instanceId.padEnd(10, hashHex);
-    const combined = hashHex + padding.slice(0, 10);
+    // 第二个32位哈希（加入字符串长度，确保不同长度的字符串哈希不同）
+    let hash2 = 2166136261;
+    hash2 ^= instanceId.length; // 将长度纳入哈希
+    for (let i = instanceId.length - 1; i >= 0; i--) {
+      hash2 ^= instanceId.charCodeAt(i);
+      hash2 +=
+        (hash2 << 1) +
+        (hash2 << 4) +
+        (hash2 << 7) +
+        (hash2 << 8) +
+        (hash2 << 24);
+    }
+    // 转为无符号32位整数并转为16进制（各8位）
+    const hex1 = (hash1 >>> 0).toString(16).padStart(8, '0');
+    const hex2 = (hash2 >>> 0).toString(16).padStart(8, '0');
+    // 组合成64位哈希的十六进制表示
+    const combined = hex1 + hex2;
     // base64 编码
     const b64 = btoa(combined);
-    // 去除 '=' 填充符，取前 10 位（如果不够 10 位，用 '0' 补齐）
-    const result = b64.replace(/=/g, '');
-    return result.padEnd(10, '0').slice(0, 10);
+    // 去除 '=' 填充符，取前16位（提供更多位数以减少碰撞）
+    const result = b64.replace(/=/g, '').slice(0, 16);
+    // 如果不足16位，用哈希值的字符填充（理论上不会发生）
+    return result.padEnd(16, combined.slice(0, 16 - result.length));
   }
 
   /**
@@ -316,6 +338,31 @@ export class DataMapper {
       }
     }
     return result;
+  }
+
+  /**
+   * 解析路径中的变量（如 {{config_id}}）
+   * 从 apiData 中查找对应的值进行替换
+   */
+  static resolvePathVariables(path: string, apiData: any): string {
+    let resolvedPath = path;
+    // 匹配所有 {{variable}} 格式的变量
+    const matches = path.match(/\{\{(\w+)\}\}/g);
+    if (matches) {
+      matches.forEach((match) => {
+        const varName = match.slice(2, -2); // 去掉 {{ 和 }}
+        // 尝试从常见位置获取变量值
+        let varValue = apiData[varName] || apiData.child?.[varName];
+        // 特殊处理：config_id 对应 child.id 的大写形式
+        if (varName === 'config_id' && !varValue && apiData.child?.id) {
+          varValue = String(apiData.child.id).toUpperCase();
+        }
+        if (varValue !== undefined) {
+          resolvedPath = resolvedPath.replace(match, String(varValue));
+        }
+      });
+    }
+    return resolvedPath;
   }
 
   /**

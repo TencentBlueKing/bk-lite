@@ -62,6 +62,8 @@ export const usePodConfig = () => {
       list: ['uid'],
       default: ['uid'],
     },
-    plugins: {},
+    collectTypes: {
+      K8S: 'k8s',
+    },
   };
 };

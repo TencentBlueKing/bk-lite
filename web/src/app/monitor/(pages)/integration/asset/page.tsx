@@ -38,7 +38,6 @@ import {
   showGroupName,
   getBaseInstanceColumn,
 } from '@/app/monitor/utils/common';
-import { useObjectConfigInfo } from '@/app/monitor/hooks/integration/common/getObjectConfig';
 import { useLocalizedTime } from '@/hooks/useLocalizedTime';
 import TreeSelector from '@/app/monitor/components/treeSelector';
 import EditConfig from './updateConfig';
@@ -62,7 +61,6 @@ const Asset = () => {
   const { t } = useTranslation();
   const commonContext = useCommon();
   const { convertToLocalizedTime } = useLocalizedTime();
-  const { getInstanceType } = useObjectConfigInfo();
   const searchparams = useSearchParams();
   const urlObjId = searchparams.get('objId');
   const authList = useRef(commonContext?.authOrganizations || []);
@@ -109,16 +107,12 @@ const Asset = () => {
     record: any,
     options?: { selectedConfigId?: string; showTemplateList?: boolean }
   ) => {
-    const instanceType = getInstanceType(
-      objects.find((item) => item.id === objectId)?.name || ''
-    );
-
     templateDrawerRef.current?.showModal({
       instanceName: record.instance_name,
       instanceId: record.instance_id,
-      instanceType: instanceType,
       selectedConfigId: options?.selectedConfigId,
       objName: objects.find((item) => item.id === objectId)?.name || '',
+      monitorObjId: objectId,
       plugins: record.plugins || [],
       showTemplateList: options?.showTemplateList ?? true,
     });

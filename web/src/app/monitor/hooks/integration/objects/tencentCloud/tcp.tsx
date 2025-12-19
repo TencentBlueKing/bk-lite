@@ -1,11 +1,4 @@
-import { useTcpTelegraf } from '../../plugins/tencentCloud/tcpTelegraf';
-
 export const useTcpConfig = () => {
-  const tcp = useTcpTelegraf();
-  const plugins = {
-    'Tencent Cloud': tcp,
-  };
-
   return {
     instance_type: 'qcloud',
     dashboardDisplay: [],
@@ -16,6 +9,8 @@ export const useTcpConfig = () => {
       { type: 'value', key: 'cvm_WanOuttraffic' },
     ],
     groupIds: {},
-    plugins,
+    collectTypes: {
+      'Tencent Cloud': 'http',
+    },
   };
 };

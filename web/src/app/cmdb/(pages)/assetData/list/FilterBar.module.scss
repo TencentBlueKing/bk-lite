@@ -1,0 +1,172 @@
+.filterBar {
+  display: flex;
+  align-items: center;
+  padding: 0px 16px;
+  width: 100%;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  min-height: 36px;
+  margin-bottom: 0px;
+  height: 100%;
+
+
+  &.empty {
+    height: 2vh;
+    min-height: 12px;
+    padding: 0px 16px;
+  }
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  margin-right: 8px;
+  flex-shrink: 0;
+  line-height: 4vh;
+  height: 100%;
+}
+
+.headerIcon {
+  font-size: 14px;
+  margin-right: 4px;
+  color: rgba(0, 0, 0, 0.45);
+  line-height: 36px;
+}
+
+.headerLabel {
+  font-size: 14px;
+  font-weight: 500;
+  color: rgba(0, 0, 0, 0.88);
+  line-height: 4vh;
+}
+
+.tagsContainer {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  min-height: 15px;
+  height: 4vh;
+  flex: 0 1 auto;
+}
+
+.tag {
+  background: none;
+  border-radius: 0px !important;
+  display: flex;
+  align-items: center;
+  border: 1px solid #9f9e9f;
+  padding: 2px 5px;
+  font-size: 12px;
+  margin: auto 0;
+  cursor: pointer;
+  transition: all 0.2s;
+  height: 3vh;
+  min-height: 20px;
+
+  &:hover {
+    background: #d1d5db;
+  }
+
+  :global {
+    .ant-tag-close-icon {
+      color: rgb(0, 0, 0);
+      margin-left: 4px;
+      padding: 0 2px;
+
+      &:hover {
+        color: rgb(0, 0, 0);
+      }
+    }
+  }
+}
+
+.tagLabel {
+  color: rgba(0, 0, 0, 0.45);
+  margin-right: 4px;
+}
+
+.tagValue {
+  color: rgba(0, 0, 0, 0.88);
+  max-width: 300px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.clearButton {
+  padding-right: 0;
+  margin-left: 8px;
+  flex-shrink: 0;
+  flex-grow: 0;
+}
+
+.emptyState {
+  font-weight: 500;
+  color: rgba(0, 0, 0, 0.88);
+  transform: translateY(-3px);
+}
+
+// 编辑弹窗样式
+.editModal {
+  :global {
+    .ant-modal-body {
+      padding: 24px;
+    }
+  }
+}
+
+// Popover 内容区域样式
+.popoverContent {
+  padding: 0px;
+
+  :global {
+    .ant-form-item {
+      margin-bottom: 2px;
+    }
+
+    .ant-form-item-label {
+      padding: 0;
+      padding-right: 8px;
+      flex: 0 0 auto;
+    }
+
+    .ant-form-item-label>label {
+      padding: 0;
+      margin: 0;
+    }
+
+    .ant-form-item-control {
+      flex: 1;
+    }
+  }
+}
+
+.editForm {
+  .formItem {
+    margin-bottom: 16px;
+
+    &:last-child {
+      margin-bottom: 0;
+    }
+  }
+
+  .formLabel {
+    display: block;
+    margin-bottom: 8px;
+    color: rgba(0, 0, 0, 0.88);
+    font-weight: 500;
+  }
+}
+
+.tagCloseIcon {
+  transform: translateY(10%);
+
+  :hover {
+    color: #fc0202;
+  }
+}
+
+.exactMatchCheckbox {
+  padding-left: 3px;
+  // border-radius: 7px;
+  border: 1px solid #d9d9d9;
+}

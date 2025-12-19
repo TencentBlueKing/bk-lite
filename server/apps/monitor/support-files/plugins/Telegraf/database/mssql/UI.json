@@ -51,7 +51,7 @@
       "transform_on_edit": {
         "origin_path": "child.content.config.servers[0]",
         "to_form": {
-          "regex": "server=([^;]+)"
+          "regex": "Server=([^;]+)"
         }
       }
     },

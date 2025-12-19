@@ -1,12 +1,4 @@
-import { useTomcatTelegraf } from '../../plugins/middleware/tomcatTelegraf';
-
 export const useTomcatConfig = () => {
-  const tomcatPlugin = useTomcatTelegraf();
-
-  const plugins = {
-    Tomcat: tomcatPlugin,
-  };
-
   return {
     instance_type: 'tomcat',
     dashboardDisplay: [],
@@ -16,6 +8,9 @@ export const useTomcatConfig = () => {
       { type: 'value', key: 'tomcat_connector_error_count' },
     ],
     groupIds: {},
-    plugins,
+    collectTypes: {
+      'Tomcat-JMX': 'jmx',
+      Tomcat: 'middleware',
+    },
   };
 };
