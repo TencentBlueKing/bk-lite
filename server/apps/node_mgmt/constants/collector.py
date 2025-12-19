@@ -31,3 +31,6 @@ class CollectorConstants:
         "Exiting: one or more modules must be configured\n",
         "Exiting: no modules or inputs enabled and configuration reloading disabled. What files do you want me to watch?\n"
     ]
+
+    # 忽略的采集器
+    IGNORE_COLLECTORS = ["natsexecutor_windows",  "natsexecutor_linux"]
