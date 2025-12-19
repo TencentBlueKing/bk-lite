@@ -1,13 +1,4 @@
-import { usePingTelegraf } from '../../plugins/web/pingTelegraf';
-
 export const usePingConfig = () => {
-  const plugin = usePingTelegraf();
-
-  // 所有插件配置
-  const plugins = {
-    Ping: plugin,
-  };
-
   return {
     instance_type: 'ping',
     dashboardDisplay: [
@@ -37,6 +28,8 @@ export const usePingConfig = () => {
       { type: 'enum', key: 'ping_error_response_code' },
     ],
     groupIds: {},
-    plugins,
+    collectTypes: {
+      Ping: 'ping',
+    },
   };
 };

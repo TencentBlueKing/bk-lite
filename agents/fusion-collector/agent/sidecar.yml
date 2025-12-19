@@ -23,3 +23,5 @@ collector_binaries_accesslist:
   - "/opt/fusion-collectors/bin/*"
   - "/opt/fusion-collectors/bin/*/*"
   - "/usr/sbin/snmptrapd"
+  - "/usr/lib/jvm/java-11-openjdk-amd64/bin/java"
+  - "/usr/bin/java"

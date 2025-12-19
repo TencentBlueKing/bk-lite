@@ -8,7 +8,7 @@ ENV SIDECAR_NODEID ""
 ENV SIDECAR_NODENAME "telegraf-proxy"
 
 RUN apt-get update && \
-    apt-get install -y ca-certificates ipmitool vim snmp supervisor zip iputils-ping snmptrapd && \
+    apt-get install -y ca-certificates ipmitool vim snmp supervisor zip iputils-ping snmptrapd openjdk-11-jdk && \
     update-ca-certificates && \
     rm -rf /var/lib/apt/lists/*
 
@@ -20,11 +20,8 @@ ADD ./sidecar.yml sidecar.yml
 ADD ./startup.sh startup.sh
 ADD ./misc misc
 
-RUN mkdir -p /opt/fusion-collectors/bin
-RUN mkdir -p /opt/fusion-collectors/cache
-RUN mkdir -p /opt/fusion-collectors/log
-RUN mkdir -p /opt/fusion-collectors/generated
-RUN chmod +x /opt/fusion-collectors/startup.sh
+RUN bash -c "mkdir -p /opt/fusion-collectors/{bin,cache,log,generated} /opt/release && \
+    chmod +x /opt/fusion-collectors/startup.sh"
 
 # Telegraf
 ADD ./mibs /usr/share/snmp/mibs
@@ -40,7 +37,7 @@ ADD ./filebeat ./bin/filebeat
 ADD ./packetbeat ./bin/packetbeat
 ADD ./metricbeat ./bin/metricbeat
 ADD ./auditbeat ./bin/auditbeat
-
+ADD ./windows /opt/release/windows/fusion-collectors
 # Suporvisor
 ADD ./service.conf /etc/supervisor/conf.d/service.conf
 

@@ -14,6 +14,9 @@ from apps.cmdb.constants.constants import CollectPluginTypes, CollectDriverTypes
 from apps.core.utils.crypto.password_crypto import PasswordCrypto
 from apps.cmdb.constants.constants import SECRET_KEY
 
+# 加密密码的标记前缀
+ENCRYPTED_PREFIX = "enc:"
+
 
 class CollectModels(MaintainerInfo, TimeInfo):
     """
@@ -111,13 +114,18 @@ class CollectModels(MaintainerInfo, TimeInfo):
         """
         加密密码
         :param raw_password: 明文密码
-        :return: 加密后的密码
+        :return: 加密后的密码（带enc:前缀）
         """
         if not raw_password:
             return raw_password
 
+        # 如果已经加密过，直接返回
+        if isinstance(raw_password, str) and raw_password.startswith(ENCRYPTED_PREFIX):
+            return raw_password
+
         crypto = PasswordCrypto(SECRET_KEY)
-        return crypto.encrypt(raw_password)
+        encrypted = crypto.encrypt(raw_password)
+        return f"{ENCRYPTED_PREFIX}{encrypted}"
 
     @staticmethod
     def decrypt_password(password):
@@ -125,10 +133,17 @@ class CollectModels(MaintainerInfo, TimeInfo):
         解密密码
         :return: 明文密码
         """
+        if not password:
+            return password
+
+        # 去除加密前缀
+        encrypted_text = password
+        if isinstance(password, str) and password.startswith(ENCRYPTED_PREFIX):
+            encrypted_text = password[len(ENCRYPTED_PREFIX):]
 
         try:
             crypto = PasswordCrypto(SECRET_KEY)
-            return crypto.decrypt(password)
+            return crypto.decrypt(encrypted_text)
         except Exception:
             # 如果解密失败，可能是明文密码，直接返回
             return password
@@ -143,16 +158,15 @@ class CollectModels(MaintainerInfo, TimeInfo):
         if not self.credential or not isinstance(self.credential, dict):
             return self.credential
 
-        decrypted_credentials = {}
         encrypted_fields = get_collect_model_passwords(collect_model_id=self.model_id)
 
         for encrypted_field in encrypted_fields:
-            password = encrypted_field.get(encrypted_field)
+            password = self.credential.get(encrypted_field)
             if not password:
                 continue
-            decrypted_credentials[encrypted_field] = self.decrypt_password(password)
+            self.credential[encrypted_field] = self.decrypt_password(password)
 
-        return decrypted_credentials
+        return self.credential
 
     def save(self, *args, **kwargs):
         # 只有在密码未加密时才进行加密
@@ -162,7 +176,10 @@ class CollectModels(MaintainerInfo, TimeInfo):
                 password = self.credential.get(encrypted_field)
                 if not password:
                     continue
-                # 直接加密 因为每次前端修改的都是明文密码
+                # 检查是否已加密（通过前缀判断）
+                if isinstance(password, str) and password.startswith(ENCRYPTED_PREFIX):
+                    continue
+                # 加密明文密码
                 self.credential[encrypted_field] = self.encrypt_password(password)
         super().save(*args, **kwargs)
 

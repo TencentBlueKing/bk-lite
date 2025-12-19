@@ -107,18 +107,23 @@ async def vmware_metrics(request):
     logger.info(f"Time range: {start_time_str} to {end_time_str}")
 
     try:
-        object_map = VmwareManage(params=dict(
+        vmware_manager = VmwareManage(params=dict(
             username=username,
             password=password,
             hostname=host,
-        )).service()
+        ))
+        # 先连接 vCenter，然后再调用 service()
+        vmware_manager.connect_vc()
+        object_map = vmware_manager.service()
 
         total_object_count = sum(len(obj_list) if obj_list else 0 for obj_list in object_map.values())
         logger.info(f"VMware connected: {len(object_map)} object types, {total_object_count} total objects")
 
     except Exception as e:
         logger.error(f"VMware connection failed: {str(e)}")
-        return response.json({"error": "VMware connection failed", "message": str(e)}, status=500)
+        # 返回空指标而不是 500 错误，让监控能够继续
+        logger.info("=== VMware metrics collection finished (connection failed) ===")
+        return response.raw("", content_type='text/plain; version=0.0.4; charset=utf-8')
 
     metric_dict = {}
     total_resources_processed = 0

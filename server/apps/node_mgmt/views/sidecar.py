@@ -1,6 +1,9 @@
 from rest_framework.decorators import action
 
 from apps.core.utils.open_base import OpenAPIViewSet
+from apps.core.utils.web_utils import WebUtils
+from apps.node_mgmt.models import PackageVersion
+from apps.node_mgmt.services.package import PackageService
 from apps.node_mgmt.services.sidecar import Sidecar
 from apps.node_mgmt.utils.token_auth import check_token_auth
 
@@ -308,3 +311,11 @@ class OpenSidecarViewSet(OpenAPIViewSet):
         """
         check_token_auth(node_id, request)
         return Sidecar.update_node_client(request, node_id)
+
+    @action(detail=False, methods=["get"], url_path="download/fusion_collector/(?P<pk>.+?)")
+    def download_fusion_collector(self, request, pk=None):
+        """下载 FusionCollector 安装包"""
+        # todo 权限校验
+        obj = PackageVersion.objects.get(pk=pk)
+        file, name = PackageService.download_file(obj)
+        return WebUtils.response_file(file, name)

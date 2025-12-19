@@ -42,14 +42,10 @@ class InstanceConfigService:
         return result
 
     @staticmethod
-    def get_instance_configs(collect_instance_id, collector, collect_type):
+    def get_instance_configs(collect_instance_id):
         """获取实例配置"""
 
-        config_objs = CollectConfig.objects.filter(
-            monitor_instance_id=collect_instance_id,
-            collector=collector,
-            collect_type=collect_type,
-        )
+        config_objs = CollectConfig.objects.filter(monitor_instance_id=collect_instance_id)
 
         configs = []
 
@@ -439,20 +435,17 @@ class InstanceConfigService:
     @staticmethod
     def update_instance_config(child_info, base_info):
 
-        child_env = None
-
         if base_info:
             config_obj = CollectConfig.objects.filter(id=base_info["id"]).first()
             if config_obj:
                 content = ConfigFormat.json_to_yaml(base_info["content"])
                 env_config = base_info.get("env_config")
-                if env_config:
-                    child_env = {k: v for k, v in env_config.items()}
                 NodeMgmt().update_config_content(base_info["id"], content, env_config)
 
-        if child_info or child_env:
+        if child_info:
             config_obj = CollectConfig.objects.filter(id=child_info["id"]).first()
             if not config_obj:
                 return
+            env_config = child_info.get("env_config")
             content = ConfigFormat.json_to_toml(child_info["content"]) if child_info else None
-            NodeMgmt().update_child_config_content(child_info["id"], content, child_env)
+            NodeMgmt().update_child_config_content(child_info["id"], content, env_config)

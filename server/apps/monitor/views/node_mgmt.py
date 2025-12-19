@@ -42,11 +42,7 @@ class NodeMgmtView(ViewSet):
 
     @action(methods=['post'], detail=False, url_path='get_instance_asso_config')
     def get_instance_child_config(self, request):
-        data = InstanceConfigService.get_instance_configs(
-            request.data["instance_id"],
-            request.data["collector"],
-            request.data["collect_type"],
-        )
+        data = InstanceConfigService.get_instance_configs(request.data["instance_id"])
         return WebUtils.response_success(data)
 
     @action(methods=['post'], detail=False, url_path='get_config_content')

@@ -132,7 +132,7 @@
       "selectDocuments": "Select Documents",
       "importSuccess": "Import QA pairs successfully",
       "questionPrompt": "Question Prompt",
-      "generateQuestionAndAnswer": "Generate Questions and Answers",
+      "generateQuestionAndAnswer": "Generate Question and Answer",
       "selectedDocuments": "Selected Documents",
       "question": "Question",
       "generate": "Generate In Chunks",
@@ -206,7 +206,10 @@
       "llmModel": "LLM Model",
       "enterQaCount": "Please enter QA count",
       "qaPairsUpdateFailed": "Failed to update QA pairs",
-      "chunks": "chunks"
+      "chunks": "chunks",
+      "qaCountPerChunk": "QA Count (Per Chunk)",
+      "totalQAPairsPrefix": "Total",
+      "totalQAPairsSuffix": "QA pairs"
     },
     "documents": {
       "status": "STATUS",
@@ -322,7 +325,8 @@
       "pageDescription": "Preserves the independence of each slide's content and visuals, suitable for presentations with page logic.",
       "trainWarning": "Important Notice",
       "semanticFormats": "Structured documents (Word, Markdown), technical documents (PDF with table of contents).",
-      "fullTextMethod": "Extract all text content directly, enabling OCR for scanned PDFs."
+      "fullTextMethod": "Extract all text content directly, enabling OCR for scanned PDFs.",
+      "lastSyncTime": "Last Sync Time"
     },
     "knowledgeGraph": {
       "relationships": "Relationships",
@@ -458,6 +462,8 @@
     "chunkDetails": "Chunk Details",
     "annotationRemoveFailed": "Failed to remove annotation",
     "copied": "Copied to clipboard",
+    "referenceDocSource": "Reference Document Source",
+    "referenceQASource": "Reference QA Source",
     "connectionError": "Connection error, please try again later",
     "question": "Question",
     "inputPlaceholder": "Please enter a message...",
@@ -477,9 +483,9 @@
     "knowledgeDetails": "Knowledge Details",
     "clear": "Clear Conversation",
     "removeAnnotation": "Remove Annotation",
-    "uploadImage": "Upload Image",
     "onlyImageAllowed": "Only image files are allowed",
-    "imageTooLarge": "Image size cannot exceed 5MB"
+    "imageTooLarge": "Image size cannot exceed 5MB",
+    "uploadImage": "Upload Image"
   },
   "settings": {
     "secret": {
@@ -650,7 +656,6 @@
     "deleteConfirm": "Are you sure you want to delete this skill?"
   },
   "chatflow": {
-    "applications": "Applications",
     "nodeConfig": {
       "paramName": "Parameter Name",
       "fileDeleted": "File deleted successfully",
@@ -768,13 +773,24 @@
       "pleaseSelectAppTags": "Please select app tags",
       "appTagAutomation": "Automation",
       "appTagSecurityAudit": "Security Audit",
-      "webAccessAddress": "Web Access Address",
       "appTagOpsPlanning": "Ops Planning",
       "pleaseSelectAppIcon": "Please select app icon",
       "appTagMonitorAlarm": "Monitor & Alarm",
       "appTagRoutineOps": "Routine Ops",
       "appIcon": "App Icon",
-      "appTagPerformanceAnalysis": "Performance Analysis"
+      "appTagPerformanceAnalysis": "Performance Analysis",
+      "intentClassificationConfig": "Intent Classification Configuration",
+      "intentClassification": "Intent Classification",
+      "classification": "Classification",
+      "intents": "Intent List",
+      "intentName": "Intent Name",
+      "intentDescription": "Intent Description",
+      "addIntent": "Add Intent",
+      "removeIntent": "Remove Intent",
+      "intentNamePlaceholder": "Please enter intent name",
+      "intentTopicPlaceholder": "Please enter classification topic name (one per line)",
+      "intentDescPlaceholder": "Please enter intent description (optional)",
+      "intentNameRequired": "Intent name is required"
     },
     "collapseSidebar": "Collapse Sidebar",
     "messages": {
@@ -825,7 +841,7 @@
     "condition": "If Condition",
     "httpMethod": "HTTP Method",
     "export": "Export",
-    "wechatOfficial": "WeChat Official",
+    "wechatOfficial": "WeChat Official Trigger",
     "email": "Email",
     "leaveWithoutSaving": "Leave Without Saving",
     "library": "Library",
@@ -844,7 +860,7 @@
     },
     "fetchNotificationChannelsFailed": "Failed to fetch notification channels",
     "zoom": "Zoom",
-    "dingtalk": "DingTalk",
+    "dingtalk": "DingTalk Trigger",
     "pleaseEnterNotificationTitle": "Please enter notification title",
     "version": "Version",
     "debug": "Debug",
@@ -858,7 +874,7 @@
     "agui": "AG-UI",
     "triggerConfigs": "Trigger Configs",
     "notificationRecipients": "Notification Recipients",
-    "enterpriseWechat": "WeChat",
+    "enterpriseWechat": "WeChat Trigger",
     "celery": "Time Trigger",
     "enterNotificationTitle": "Please enter notification title",
     "save": "Save Workflow",
@@ -932,7 +948,8 @@
     "restful": "RESTful API",
     "mobile": "Mobile Terminal",
     "webChat": "Web Chat",
-    "embeddedChat": "Embedded Chat"
+    "embeddedChat": "Embedded Chat",
+    "intentClassification": "Intent Classification"
   },
   "provider": {
     "form": {

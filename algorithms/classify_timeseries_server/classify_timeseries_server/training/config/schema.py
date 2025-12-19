@@ -5,9 +5,8 @@ from typing import List
 # 默认配置
 DEFAULT_CONFIG = {
     "model": {
-        "type": "sarima",
-        "name": "timeseries_model",
-        "version": "1.0.0"
+        "type": "gradient_boosting",
+        "name": "timeseries_model"
     },
     
     "hyperparams": {
@@ -15,6 +14,17 @@ DEFAULT_CONFIG = {
             "enabled": False,
             "max_evals": 50,
             "metric": "rmse",
+            "auto_tune": True,
+            "early_stopping": {
+                "enabled": True,
+                "min_evals": 20,
+                "min_evals_ratio": 0.2,
+                "patience": 15,
+                "min_improvement_pct": 1.0,
+                "exploration_ratio": 0.3,
+                "exploration_boost": 1.5,
+                "loss_cap_multiplier": 5.0
+            },
             "search_space": {
                 "order": {
                     "p": [0, 1, 2],
@@ -25,7 +35,7 @@ DEFAULT_CONFIG = {
                     "P": [0, 1, 2],
                     "D": [0, 1],
                     "Q": [0, 1, 2],
-                    "s": [12, 24, 7]
+                    "s": [12]
                 },
                 "trend": ["n", "c", "t", "ct"]
             }
@@ -34,18 +44,6 @@ DEFAULT_CONFIG = {
             "order": [1, 1, 1],
             "seasonal_order": [1, 1, 1, 12],
             "trend": "c"
-        }
-    },
-    
-    "training": {
-        "test_size": 0.2,
-        "validation_size": 0.0,
-        "epochs": 100,
-        "batch_size": 32,
-        "early_stopping": {
-            "enabled": False,
-            "patience": 10,
-            "min_delta": 0.001
         }
     },
     
@@ -68,11 +66,7 @@ DEFAULT_CONFIG = {
     },
     
     "mlflow": {
-        "tracking_uri": None,
-        "experiment_name": "timeseries_training",
-        "run_name": None,
-        "log_model": True,
-        "register_model": True
+        "experiment_name": "timeseries_training"
     }
 }
 

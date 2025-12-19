@@ -210,11 +210,6 @@ class TrainingConfig:
         return self.get("model", "name", default="timeseries_model")
     
     @property
-    def model_version(self) -> str:
-        """模型版本"""
-        return self.get("model", "version", default="1.0.0")
-    
-    @property
     def is_hyperopt_enabled(self) -> bool:
         """是否启用超参数优化"""
         return self.get("hyperparams", "search", "enabled", default=False)
@@ -231,27 +226,33 @@ class TrainingConfig:
     
     @property
     def test_size(self) -> float:
-        """测试集比例"""
-        return self.get("training", "test_size", default=0.2)
+        """测试集划分比例（固定值，单文件模式使用）"""
+        return 0.2
     
     @property
     def validation_size(self) -> float:
-        """验证集比例"""
-        return self.get("training", "validation_size", default=0.0)
+        """验证集划分比例（固定值，单文件模式使用）"""
+        return 0.1
     
     @property
     def mlflow_tracking_uri(self) -> Optional[str]:
-        """MLflow 跟踪服务 URI"""
+        """MLflow 跟踪服务 URI（运行时从环境变量注入）"""
         return self.get("mlflow", "tracking_uri")
     
     @property
     def mlflow_experiment_name(self) -> str:
-        """MLflow 实验名称"""
-        return self.get("mlflow", "experiment_name", default="timeseries_training")
+        """MLflow 实验名称（配置文件中或运行时注入）"""
+        value = self.get("mlflow", "experiment_name")
+        if not value:
+            raise ValueError(
+                "未配置 mlflow.experiment_name。\n"
+                "请在配置文件的 mlflow 块中添加 experiment_name 字段。"
+            )
+        return value
     
     @property
     def mlflow_run_name(self) -> Optional[str]:
-        """MLflow 运行名称"""
+        """MLflow 运行名称（可选，运行时注入）"""
         return self.get("mlflow", "run_name")
     
     def __repr__(self) -> str:

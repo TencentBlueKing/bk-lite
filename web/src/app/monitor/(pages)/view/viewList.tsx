@@ -255,7 +255,16 @@ const ViewList: React.FC<ViewListProps> = ({
       const k8sQuery = res[2];
       const queryForm = isPod
         ? getK8SData(k8sQuery || {})
-        : (k8sQuery || []).map((item: string) => ({ id: item, child: [] }));
+        : (k8sQuery || []).map((item: any) => {
+          if (typeof item === 'string') {
+            return { id: item, child: [] };
+          }
+          return {
+            id: item?.id,
+            name: item?.name || '',
+            child: [],
+          };
+        });
       setQueryData(queryForm);
       const _plugins = res[1].map((item: IntegrationItem) => ({
         label: getCollectType(objName as string, item.name as string),
@@ -323,6 +332,7 @@ const ViewList: React.FC<ViewListProps> = ({
             objects,
             row: targetObject,
             t,
+            queryData: queryForm,
           }),
           ...columns,
         ]);
@@ -472,7 +482,7 @@ const ViewList: React.FC<ViewListProps> = ({
               >
                 {queryData.map((item) => (
                   <Option key={item.id} value={item.id}>
-                    {item.id}
+                    {item.name || item.id}
                   </Option>
                 ))}
               </Select>

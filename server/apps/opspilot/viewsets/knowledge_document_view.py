@@ -79,17 +79,37 @@ class KnowledgeDocumentViewSet(LanguageViewSet):
         if not knowledge_base_id:
             message = self.loader.get("error.knowledge_base_id_required")
             return JsonResponse({"result": False, "message": message})
-        task_list = list(
-            KnowledgeTask.objects.filter(created_by=request.user.username, knowledge_base_id=knowledge_base_id)
-            .values(
-                "task_name",
-                "train_progress",
-                "is_qa_task",
-                "completed_count",
-                "total_count",
+        is_graph = request.GET.get("is_graph", "0") == "1"
+        is_qa_task = request.GET.get("is_qa_task", "0") == "1"
+        knowledge_name = KnowledgeBase.objects.get(id=knowledge_base_id).name
+        if is_graph:
+            task_list = list(
+                KnowledgeTask.objects.filter(
+                    created_by=request.user.username,
+                    domain=request.user.domain,
+                    knowledge_base_id=knowledge_base_id,
+                    task_name=f"{knowledge_name}-图谱",
+                ).values(
+                    "task_name",
+                    "train_progress",
+                    "completed_count",
+                    "total_count",
+                )
             )
-            .order_by("-id")
-        )
+        else:
+            task_list = KnowledgeTask.objects.filter(
+                created_by=request.user.username, domain=request.user.domain, knowledge_base_id=knowledge_base_id
+            ).exclude(task_name=f"{knowledge_name}-图谱")
+            if is_qa_task:
+                task_list = task_list.filter(is_qa_task=True)
+            task_list = list(
+                task_list.values(
+                    "task_name",
+                    "train_progress",
+                    "completed_count",
+                    "total_count",
+                ).order_by("-id")
+            )
         for i in task_list:
             # if not i["is_qa_task"]:
             i["train_progress"] = f"{i['completed_count']}/{i['total_count']}"
@@ -197,23 +217,20 @@ class KnowledgeDocumentViewSet(LanguageViewSet):
         if not chunk_id:
             return JsonResponse({"result": True, "message": self.loader.get("error.chunk_id_required")})
         if chunk_type == "QA":
-            qa_paris_id = knowledge_id.split("qa_pairs_id_")[-1]
-            index_name = QAPairs.objects.get(id=qa_paris_id).knowledge_base.knowledge_index_name()
+            qa_pairs_id = knowledge_id.split("qa_pairs_id_")[-1]
+            qa_pairs = QAPairs.objects.get(id=qa_pairs_id)
+            index_name = qa_pairs.knowledge_base.knowledge_index_name()
+            doc_name = qa_pairs.name
         elif chunk_type == "Document":
             instance = KnowledgeDocument.objects.get(id=knowledge_id)
             index_name = instance.knowledge_index_name()
+            doc_name = instance.name
         elif chunk_type == "Graph":
             graph_id = knowledge_id.split("graph-")[-1]
             return self.get_graph_detail(graph_id, chunk_id)
         else:
             return JsonResponse({"result": True, "message": self.loader.get("error.no_support_chunk_type")})
-        res = ChunkHelper.get_document_es_chunk(
-            index_name,
-            1,
-            1,
-            "",
-            metadata_filter={"chunk_id": chunk_id},
-        )
+        res = ChunkHelper.get_document_es_chunk(index_name, 1, 1, "", metadata_filter={"chunk_id": chunk_id})
         if res["documents"]:
             return_data = res["documents"][0]
             if chunk_type == "Document":
@@ -221,6 +238,7 @@ class KnowledgeDocumentViewSet(LanguageViewSet):
                     "id": return_data["metadata"]["chunk_id"],
                     "content": return_data["page_content"],
                     "index_name": index_name,
+                    "doc_name": doc_name,
                 }
             else:
                 data = {
@@ -228,6 +246,7 @@ class KnowledgeDocumentViewSet(LanguageViewSet):
                     "answer": return_data["metadata"]["qa_answer"],
                     "id": return_data["metadata"]["chunk_id"],
                     "base_chunk_id": return_data["metadata"].get("base_chunk_id", ""),
+                    "doc_name": doc_name,
                 }
             return JsonResponse({"result": True, "data": data})
         return JsonResponse({"result": False, "message": self.loader.get("error.chunk_not_found")})
@@ -245,11 +264,10 @@ class KnowledgeDocumentViewSet(LanguageViewSet):
         params = request.data
         chunk_ids = params["ids"]
         keep_qa = not params.get("delete_all", False)
-        for chunk_id in chunk_ids:
-            result = ChunkHelper.delete_es_content(chunk_id, True, keep_qa)
-            if not result:
-                message = self.loader.get("error.qa_pair_delete_failed")
-                return JsonResponse({"result": False, "message": message})
+        result = ChunkHelper.delete_es_content(chunk_ids, True, keep_qa)
+        if not result:
+            message = self.loader.get("error.qa_pair_delete_failed")
+            return JsonResponse({"result": False, "message": message})
         return JsonResponse({"result": True})
 
     @action(methods=["POST"], detail=True)
@@ -259,23 +277,13 @@ class KnowledgeDocumentViewSet(LanguageViewSet):
         enabled = request.data.get("enabled", False)
         chunk_id = request.data.get("chunk_id", "")
         if not chunk_id:
-            return JsonResponse(
-                {
-                    "result": False,
-                    "message": self.loader.get("error.chunk_id_required"),
-                }
-            )
+            return JsonResponse({"result": False, "message": self.loader.get("error.chunk_id_required")})
         try:
             KnowledgeSearchService.change_chunk_enable(instance.knowledge_index_name(), chunk_id, enabled)
             return JsonResponse({"result": True})
         except Exception as e:
             logger.exception(e)
-            return JsonResponse(
-                {
-                    "result": False,
-                    "message": self.loader.get("error.update_failed"),
-                }
-            )
+            return JsonResponse({"result": False, "message": self.loader.get("error.update_failed")})
 
     @action(methods=["POST"], detail=False)
     @HasPermission("knowledge_document-Delete")
@@ -287,8 +295,7 @@ class KnowledgeDocumentViewSet(LanguageViewSet):
         KnowledgeDocument.objects.filter(id__in=doc_ids).delete()
         index_name = f"knowledge_base_{knowledge_base_id}"
         try:
-            for i in doc_ids:
-                KnowledgeSearchService.delete_es_content(index_name, str(i))
+            KnowledgeSearchService.delete_es_content(index_name, doc_ids)
             QAPairs.objects.filter(document_id__in=doc_ids).delete()
         except Exception as e:
             logger.exception(e)
@@ -299,15 +306,8 @@ class KnowledgeDocumentViewSet(LanguageViewSet):
     @HasPermission("knowledge_document-View")
     def get_document_detail(self, request, *args, **kwargs):
         obj: KnowledgeDocument = self.get_object()
-        result = {
-            "document_id": obj.id,
-            "name": obj.name,
-            "knowledge_source_type": obj.knowledge_source_type,
-        }
-        knowledge_model_map = {
-            "web_page": WebPageKnowledge,
-            "manual": ManualKnowledge,
-        }
+        result = {"document_id": obj.id, "name": obj.name, "knowledge_source_type": obj.knowledge_source_type}
+        knowledge_model_map = {"web_page": WebPageKnowledge, "manual": ManualKnowledge}
         doc = knowledge_model_map[obj.knowledge_source_type].objects.filter(knowledge_document_id=obj.id).first()
         result.update(doc.to_dict())
         return JsonResponse({"result": True, "data": result})
@@ -332,10 +332,7 @@ class KnowledgeDocumentViewSet(LanguageViewSet):
     @HasPermission("knowledge_document-Set")
     def update_document_base_info(self, request, *args, **kwargs):
         obj: KnowledgeDocument = self.get_object()
-        knowledge_model_map = {
-            "web_page": WebPageKnowledge,
-            "manual": ManualKnowledge,
-        }
+        knowledge_model_map = {"web_page": WebPageKnowledge, "manual": ManualKnowledge}
         doc = knowledge_model_map[obj.knowledge_source_type].objects.filter(knowledge_document_id=obj.id).first()
         params = request.data
         name = params.pop("name", "")
@@ -434,10 +431,5 @@ class KnowledgeDocumentViewSet(LanguageViewSet):
         document.general_parse_chunk_overlap = kwargs.get("general_parse_chunk_overlap", 32)
         if kwargs.get("semantic_chunk_parse_embedding_model", None):
             document.semantic_chunk_parse_embedding_model = EmbedProvider.objects.get(id=kwargs["semantic_chunk_parse_embedding_model"])
-        res = general_embed_by_document_list(
-            [document],
-            is_show=True,
-            username=request.user.username,
-            domain=request.user.domain,
-        )
+        res = general_embed_by_document_list([document], is_show=True, username=request.user.username, domain=request.user.domain)
         return JsonResponse({"result": True, "data": res})

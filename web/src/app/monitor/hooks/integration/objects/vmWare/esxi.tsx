@@ -8,6 +8,8 @@ export const useEsxiConfig = () => {
       { type: 'value', key: 'esxi_disk_read_average_gauge' },
     ],
     groupIds: {},
-    plugins: {},
+    collectTypes: {
+      VMWare: 'http',
+    },
   };
 };

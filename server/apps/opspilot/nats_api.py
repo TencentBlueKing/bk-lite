@@ -11,30 +11,10 @@ from apps.opspilot.models import (
     LLMModel,
     LLMSkill,
     OCRProvider,
-    QuotaRule,
     RerankProvider,
     SkillTools,
 )
 from apps.opspilot.utils.bot_utils import get_user_info
-
-
-@nats_client.register
-def init_user_set(group_id, group_name):
-    try:
-        QuotaRule.objects.create(
-            name=f"group-{group_name}-llm-quota",
-            target_type="group",
-            target_list=[group_id],
-            rule_type="shared",
-            file_size=50,
-            unit="MB",
-            skill_count=2,
-            bot_count=2,
-        )
-        return {"result": True}
-    except Exception as e:
-        logger.exception(e)
-        return {"result": False, "message": str(e)}
 
 
 @nats_client.register

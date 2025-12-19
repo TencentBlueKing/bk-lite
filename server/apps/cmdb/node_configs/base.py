@@ -30,7 +30,7 @@ class BaseNodeParams(metaclass=ABCMeta):
     def __init__(self, instance):
         self.instance = instance
         self.model_id = instance.model_id
-        self.credential = self.instance.decrypt_credentials
+        self.credential = self.instance.decrypt_credentials or {}
         self.base_path = "${STARGAZER_URL}/api/collect/collect_info"
         self.host_field = "host"  # 默认的 ip字段 若不一样重新定义
         self.timeout = 40 if self.instance.is_cloud else 30
@@ -152,7 +152,7 @@ class BaseNodeParams(metaclass=ABCMeta):
                 "content": jinja_context,
                 "node_id": node["id"],
                 "collector_name": "Telegraf",
-                "env_config": getattr(self, "env_config", {})
+                "env_config": self.env_config(host=host)
             })
         return nodes
 

@@ -1,10 +1,12 @@
 {#
-简化的动态窗口告警检测SQL模板 - DuckDB兼容版本
+动态告警检测SQL模板 - 支持多种策略类型的DuckDB兼容版本
 
 参数说明：
 - table: 事件表名
 - time_column: 时间字段名（默认 received_at）
 - window_size: 窗口大小（分钟）
+- strategy_type: 告警策略类型 (threshold|mutation|composite|frequency|trend|anomaly)
+- strategy_config: 策略特定配置参数
 - resource_filters: 资源过滤条件列表
 - threshold_conditions: 阈值检测条件列表
 - group_by_fields: 分组字段列表
@@ -28,20 +30,258 @@
 - value: 事件值
 - fingerprint: 事件指纹
 
-注意：时间过滤和窗口计算由应用层负责，SQL只负责数据聚合和阈值检测
+支持的告警策略类型：
+- threshold: 阈值告警 - 当指标超过设定阈值时触发
+- mutation: 突变告警 - 当指标发生剧烈变化时触发
+- composite: 复合条件 - 多条件组合逻辑
+- frequency: 频率告警 - 基于事件频次
+- trend: 趋势告警 - 基于数据趋势分析
+- anomaly: 异常检测 - 基于统计异常
+
+注意：时间过滤和窗口计算由应用层负责，SQL只负责数据聚合和策略检测
 #}
 
-WITH aggregated_events AS (
-    -- 按分组条件聚合事件数据
+{%- if strategy_type == 'threshold' -%}
+{# 阈值策略：专注于单一指标的阈值检测 #}
+WITH threshold_events AS (
+    -- 阈值策略事件聚合
     SELECT 
-        CONCAT('AGG-', strftime(MIN({{ time_column }}), '%Y%m%d%H%M'), '-', 
+        CONCAT('THRESHOLD-', strftime(MIN({{ time_column }}), '%Y%m%d%H%M'), '-', 
                SUBSTRING(fingerprint, 1, 10)) as window_id,
-        {%- for field in group_by_fields %}
+        {% for field in group_by_fields -%}
         {{ field | field_validate }},
-        {%- endfor %}
-        {%- if not group_by_fields %}
+        {% endfor -%}
+        {% if not group_by_fields -%}
         fingerprint,
-        {%- endif %}
+        {% endif -%}
+        ANY_VALUE(external_id) as external_id,
+        ANY_VALUE(item) as item,
+        ANY_VALUE(status) as status,
+        ANY_VALUE(alert_source) as alert_source,
+        ANY_VALUE(source_id) as source_id,
+        ANY_VALUE(rule_id) as rule_id,
+        ANY_VALUE(resource_id) as resource_id,
+        ANY_VALUE(resource_type) as resource_type,
+        ANY_VALUE(resource_name) as resource_name,
+        COUNT(*) as event_count,
+        string_agg(event_id, ',' ORDER BY {{ time_column }}) as event_ids,
+        string_agg(title, '|' ORDER BY {{ time_column }}) as event_titles,
+        (array_agg(description ORDER BY {{ time_column }}))[1] as first_description,
+        (array_agg(description ORDER BY {{ time_column }} DESC))[1] as last_description,
+        MIN({{ time_column }}) as first_event_time,
+        MAX({{ time_column }}) as last_event_time,
+        MIN(CAST(level AS INTEGER)) as level,
+        -- 阈值检测相关字段
+        {%- if strategy_config and strategy_config.metric_field %}
+        AVG({{ strategy_config.metric_field | field_validate }}) as avg_metric_value,
+        MAX({{ strategy_config.metric_field | field_validate }}) as max_metric_value,
+        MIN({{ strategy_config.metric_field | field_validate }}) as min_metric_value,
+        STDDEV({{ strategy_config.metric_field | field_validate }}) as stddev_metric_value,
+        {% else -%}
+        AVG(value) as avg_metric_value,
+        MAX(value) as max_metric_value,
+        MIN(value) as min_metric_value,
+        STDDEV(value) as stddev_metric_value,
+        {% endif -%}
+        COUNT(*) / {{ window_size }}.0 as events_per_minute,
+        '{{ strategy_type }}' as strategy_type
+    FROM {{ table }}
+    WHERE status = 'received'
+      {% if resource_filters -%}
+      {% for filter in resource_filters -%}
+      AND {{ filter.field | field_validate }} {{ filter.operator }} {% if filter.operator in ['IN', 'NOT IN'] %}({{ filter.value | join(', ') }}){% else %}{{ filter.value }}{% endif %}
+      {% endfor -%}
+      {% endif -%}
+    GROUP BY 
+        {% for field in group_by_fields -%}
+        {% if loop.first -%}
+        {{ field | field_validate }}
+        {% else -%}
+        , {{ field | field_validate }}
+        {% endif -%}
+        {% endfor -%}
+        {% if not group_by_fields -%}
+        fingerprint
+        {% endif -%}
+    HAVING COUNT(*) >= {{ aggregation_rules.min_event_count | default(1) }}
+      {% if strategy_config and strategy_config.threshold_value -%}
+      AND (
+        {% if strategy_config.operator == '>=' -%}
+        avg_metric_value >= {{ strategy_config.threshold_value }}
+        {% elif strategy_config.operator == '>' -%}
+        avg_metric_value > {{ strategy_config.threshold_value }}
+        {% elif strategy_config.operator == '<=' -%}
+        avg_metric_value <= {{ strategy_config.threshold_value }}
+        {% elif strategy_config.operator == '<' -%}
+        avg_metric_value < {{ strategy_config.threshold_value }}
+        {% elif strategy_config.operator == '==' -%}
+        avg_metric_value = {{ strategy_config.threshold_value }}
+        {% elif strategy_config.operator == '!=' -%}
+        avg_metric_value != {{ strategy_config.threshold_value }}
+        {% endif -%}
+      )
+      {% endif -%}
+)
+
+{%- elif strategy_type == 'mutation' -%}
+{# 突变策略：检测指标的急剧变化 #}
+WITH mutation_events AS (
+    -- 突变策略事件聚合
+    SELECT 
+        CONCAT('MUTATION-', strftime(MIN({{ time_column }}), '%Y%m%d%H%M'), '-', 
+               SUBSTRING(fingerprint, 1, 10)) as window_id,
+        {% for field in group_by_fields -%}
+        {{ field | field_validate }},
+        {% endfor -%}
+        {% if not group_by_fields -%}
+        fingerprint,
+        {% endif -%}
+        ANY_VALUE(external_id) as external_id,
+        ANY_VALUE(item) as item,
+        ANY_VALUE(status) as status,
+        ANY_VALUE(alert_source) as alert_source,
+        ANY_VALUE(source_id) as source_id,
+        ANY_VALUE(rule_id) as rule_id,
+        ANY_VALUE(resource_id) as resource_id,
+        ANY_VALUE(resource_type) as resource_type,
+        ANY_VALUE(resource_name) as resource_name,
+        COUNT(*) as event_count,
+        string_agg(event_id, ',' ORDER BY {{ time_column }}) as event_ids,
+        string_agg(title, '|' ORDER BY {{ time_column }}) as event_titles,
+        (array_agg(description ORDER BY {{ time_column }}))[1] as first_description,
+        (array_agg(description ORDER BY {{ time_column }} DESC))[1] as last_description,
+        MIN({{ time_column }}) as first_event_time,
+        MAX({{ time_column }}) as last_event_time,
+        MIN(CAST(level AS INTEGER)) as level,
+        -- 突变检测相关字段
+        {% if strategy_config and strategy_config.metric_field -%}
+        {% set metric_field = strategy_config.metric_field -%}
+        {% else -%}
+        {% set metric_field = 'value' -%}
+        {% endif -%}
+        AVG({{ metric_field | field_validate }}) as current_avg_value,
+        STDDEV({{ metric_field | field_validate }}) as current_stddev_value,
+        (MAX({{ metric_field | field_validate }}) - MIN({{ metric_field | field_validate }})) as value_range,
+        -- 计算变化率：需要对比历史窗口数据
+        LAG(AVG({{ metric_field | field_validate }}), 1) OVER (
+            PARTITION BY 
+            {% for field in group_by_fields -%}
+            {% if loop.first -%}
+            {{ field | field_validate }}
+            {% else -%}
+            , {{ field | field_validate }}
+            {% endif -%}
+            {% endfor -%}
+            {% if not group_by_fields -%}
+            fingerprint
+            {% endif -%}
+            ORDER BY MIN({{ time_column }})
+        ) as previous_avg_value,
+        COUNT(*) / {{ window_size }}.0 as events_per_minute,
+        '{{ strategy_type }}' as strategy_type
+    FROM {{ table }}
+    WHERE status = 'received'
+      {% if resource_filters -%}
+      {% for filter in resource_filters -%}
+      AND {{ filter.field | field_validate }} {{ filter.operator }} {% if filter.operator in ['IN', 'NOT IN'] %}({{ filter.value | join(', ') }}){% else %}{{ filter.value }}{% endif %}
+      {% endfor -%}
+      {% endif -%}
+    GROUP BY 
+        {% for field in group_by_fields -%}
+        {% if loop.first -%}
+        {{ field | field_validate }}
+        {% else -%}
+        , {{ field | field_validate }}
+        {% endif -%}
+        {% endfor -%}
+        {% if not group_by_fields -%}
+        fingerprint
+        {% endif -%}
+    HAVING COUNT(*) >= {{ aggregation_rules.min_event_count | default(1) }}
+      {% if strategy_config and strategy_config.change_rate_threshold -%}
+      -- 检查变化率是否超过阈值
+      AND (
+        previous_avg_value IS NOT NULL
+        AND previous_avg_value != 0
+        AND ABS((current_avg_value - previous_avg_value) / previous_avg_value * 100) >= {{ strategy_config.change_rate_threshold }}
+      )
+      {% endif -%}
+)
+
+{% elif strategy_type == 'frequency' -%}
+{# 频率策略：基于事件频次检测 #}
+WITH frequency_events AS (
+    -- 频率策略事件聚合
+    SELECT 
+        CONCAT('FREQUENCY-', strftime(MIN({{ time_column }}), '%Y%m%d%H%M'), '-', 
+               SUBSTRING(fingerprint, 1, 10)) as window_id,
+        {% for field in group_by_fields -%}
+        {{ field | field_validate }},
+        {% endfor -%}
+        {% if not group_by_fields -%}
+        fingerprint,
+        {% endif -%}
+        ANY_VALUE(external_id) as external_id,
+        ANY_VALUE(item) as item,
+        ANY_VALUE(status) as status,
+        ANY_VALUE(alert_source) as alert_source,
+        ANY_VALUE(source_id) as source_id,
+        ANY_VALUE(rule_id) as rule_id,
+        ANY_VALUE(resource_id) as resource_id,
+        ANY_VALUE(resource_type) as resource_type,
+        ANY_VALUE(resource_name) as resource_name,
+        COUNT(*) as event_count,
+        string_agg(event_id, ',' ORDER BY {{ time_column }}) as event_ids,
+        string_agg(title, '|' ORDER BY {{ time_column }}) as event_titles,
+        (array_agg(description ORDER BY {{ time_column }}))[1] as first_description,
+        (array_agg(description ORDER BY {{ time_column }} DESC))[1] as last_description,
+        MIN({{ time_column }}) as first_event_time,
+        MAX({{ time_column }}) as last_event_time,
+        MIN(CAST(level AS INTEGER)) as level,
+        -- 频率检测相关字段
+        COUNT(*) / {{ window_size }}.0 as events_per_minute,
+        COUNT(DISTINCT item) as distinct_items,
+        COUNT(DISTINCT resource_id) as distinct_resources,
+        '{{ strategy_type }}' as strategy_type
+    FROM {{ table }}
+    WHERE status = 'received'
+      {% if resource_filters -%}
+      {% for filter in resource_filters -%}
+      AND {{ filter.field | field_validate }} {{ filter.operator }} {% if filter.operator in ['IN', 'NOT IN'] %}({{ filter.value | join(', ') }}){% else %}{{ filter.value }}{% endif %}
+      {% endfor -%}
+      {% endif -%}
+    GROUP BY 
+        {% for field in group_by_fields -%}
+        {% if loop.first -%}
+        {{ field | field_validate }}
+        {% else -%}
+        , {{ field | field_validate }}
+        {% endif -%}
+        {% endfor -%}
+        {% if not group_by_fields -%}
+        fingerprint
+        {% endif -%}
+    HAVING 1=1
+      {% if strategy_config and strategy_config.event_count_threshold -%}
+      AND COUNT(*) >= {{ strategy_config.event_count_threshold }}
+      {% else -%}
+      AND COUNT(*) >= {{ aggregation_rules.min_event_count | default(1) }}
+      {% endif -%}
+)
+
+{% else -%}
+{# 默认复合条件策略：传统的多条件聚合 #}
+WITH aggregated_events AS (
+    -- 按分组条件聚合事件数据（复合条件策略）
+    SELECT 
+        CONCAT('COMPOSITE-', strftime(MIN({{ time_column }}), '%Y%m%d%H%M'), '-', 
+               SUBSTRING(fingerprint, 1, 10)) as window_id,
+        {% for field in group_by_fields %}
+        {{ field | field_validate }},
+        {% endfor -%}
+        {% if not group_by_fields %}
+        fingerprint,
+        {% endif -%}
         -- 聚合所有可用字段
         ANY_VALUE(external_id) as external_id,
         ANY_VALUE(item) as item,
@@ -60,38 +300,55 @@ WITH aggregated_events AS (
         (array_agg(description ORDER BY {{ time_column }} DESC))[1] as last_description,
         MIN({{ time_column }}) as first_event_time,
         MAX({{ time_column }}) as last_event_time,
-        MIN(level) as level,
-        COUNT(*) / {{ window_size }}.0 as events_per_minute
+        MIN(CAST(level AS INTEGER)) as level,
+        COUNT(*) / {{ window_size }}.0 as events_per_minute,
+        '{{ strategy_type | default("composite") }}' as strategy_type
     FROM {{ table }}
     WHERE status = 'received'
-      {%- if resource_filters %}
-      {%- for filter in resource_filters %}
+      {% if resource_filters -%}
+      {% for filter in resource_filters -%}
       AND {{ filter.field | field_validate }} {{ filter.operator }} {% if filter.operator in ['IN', 'NOT IN'] %}({{ filter.value | join(', ') }}){% else %}{{ filter.value }}{% endif %}
-      {%- endfor %}
-      {%- endif %}
+      {% endfor -%}
+      {% endif -%}
     GROUP BY 
-        {%- for field in group_by_fields %}
-        {%- if loop.first %}
+        {% for field in group_by_fields %}
+        {% if loop.first %}
         {{ field | field_validate }}
-        {%- else %}
+        {% else %}
         , {{ field | field_validate }}
-        {%- endif %}
-        {%- endfor %}
-        {%- if not group_by_fields %}
+        {% endif %}
+        {% endfor -%}
+        {% if not group_by_fields %}
         fingerprint
-        {%- endif %}
+        {% endif -%}
     HAVING COUNT(*) >= {{ aggregation_rules.min_event_count | default(1) }}
 )
+{% endif %}
 
--- 主查询：返回满足阈值条件的聚合结果
+-- 主查询:返回满足条件的聚合结果
+{% if strategy_type == 'threshold' -%}
+SELECT * FROM threshold_events
+{% elif strategy_type == 'mutation' -%}
+SELECT 
+    *,
+    -- 添加变化率计算结果
+    CASE 
+        WHEN previous_avg_value IS NOT NULL AND previous_avg_value != 0 
+        THEN (current_avg_value - previous_avg_value) / previous_avg_value * 100
+        ELSE NULL 
+    END as change_rate_percent
+FROM mutation_events
+{% elif strategy_type == 'frequency' -%}
+SELECT * FROM frequency_events
+{% else -%}
 SELECT 
     window_id,
-    {%- for field in group_by_fields %}
+    {% for field in group_by_fields %}
     {{ field | field_validate }},
-    {%- endfor %}
-    {%- if not group_by_fields %}
+    {% endfor -%}
+    {% if not group_by_fields %}
     fingerprint,
-    {%- endif %}
+    {% endif -%}
     -- 所有可用字段
     external_id,
     item,
@@ -112,13 +369,25 @@ SELECT
     last_event_time,
     level,
     events_per_minute,
+    strategy_type,
     {{ window_size }} as window_size_minutes
 FROM aggregated_events
-WHERE 1=1
-{%- if threshold_conditions %}
-{%- for condition in threshold_conditions %}
-  AND {{ condition.field | field_validate }} {{ condition.operator }} {% if condition.operator in ['IN', 'NOT IN'] %}({{ condition.value | join(', ') }}){% else %}{{ condition.value }}{% endif %}
-{%- endfor %}
-{%- endif %}
+{% endif %}
 
-ORDER BY event_count DESC, first_event_time DESC
+WHERE 1=1
+{% if threshold_conditions -%}
+{% for condition in threshold_conditions %}
+  AND {{ condition.field | field_validate }} {{ condition.operator }} {% if condition.operator in ['IN', 'NOT IN'] %}({{ condition.value | join(', ') }}){% else %}{{ condition.value }}{% endif %}
+{% endfor -%}
+{% endif %}
+
+ORDER BY 
+{% if strategy_type == 'threshold' -%}
+    avg_metric_value DESC, first_event_time DESC
+{% elif strategy_type == 'mutation' -%}
+    ABS(change_rate_percent) DESC NULLS LAST, first_event_time DESC
+{% elif strategy_type == 'frequency' -%}
+    event_count DESC, events_per_minute DESC, first_event_time DESC
+{% else -%}
+    event_count DESC, first_event_time DESC
+{% endif -%}

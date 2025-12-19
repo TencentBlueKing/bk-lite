@@ -8,6 +8,8 @@ export const useDockerContainerConfig = () => {
       { type: 'value', key: 'docker_container_mem_usage_percent' },
     ],
     groupIds: {},
-    plugins: {},
+    collectTypes: {
+      Docker: 'docker',
+    },
   };
 };

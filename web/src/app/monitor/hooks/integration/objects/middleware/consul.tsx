@@ -1,12 +1,4 @@
-import { useConsulTelegraf } from '../../plugins/middleware/consulTelegraf';
-
 export const useConsulConfig = () => {
-  const consulTelegraf = useConsulTelegraf();
-
-  const plugins = {
-    Consul: consulTelegraf,
-  };
-
   return {
     instance_type: 'consul',
     dashboardDisplay: [],
@@ -15,6 +7,8 @@ export const useConsulConfig = () => {
       { type: 'value', key: 'consul_health_checks_passing' },
     ],
     groupIds: {},
-    plugins,
+    collectTypes: {
+      Consul: 'middleware',
+    },
   };
 };

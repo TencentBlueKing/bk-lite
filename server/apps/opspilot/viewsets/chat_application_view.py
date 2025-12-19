@@ -1,3 +1,5 @@
+import json
+
 from django.db.models import Min
 from django_filters import filters
 from django_filters.rest_framework import FilterSet
@@ -78,11 +80,11 @@ class ChatApplicationViewSet(viewsets.ReadOnlyModelViewSet):
         username = request.user.username
         domain = getattr(request.user, "domain", "")
         user_id = f"{username}@{domain}" if domain else username
-
+        entry_type = request.GET.get("entry_type", "web_chat")
         # 构建查询条件
         filter_kwargs = {
             "user_id": user_id,
-            "entry_type": "web_chat",
+            "entry_type": entry_type,
             "conversation_role": "user",  # 只取用户输入作为标题
         }
 
@@ -105,17 +107,8 @@ class ChatApplicationViewSet(viewsets.ReadOnlyModelViewSet):
         for session in sessions:
             session_id = session["session_id"]
 
-            # 构建查询第一条记录的条件
-            first_record_kwargs = {
-                "user_id": user_id,
-                "entry_type": "web_chat",
-                "session_id": session_id,
-                "conversation_role": "user",
-            }
-            if bot_id:
-                first_record_kwargs["bot_id"] = bot_id
-
-            first_record = WorkFlowConversationHistory.objects.filter(**first_record_kwargs).order_by("conversation_time").first()
+            # 复用外层的查询条件，添加 session_id
+            first_record = WorkFlowConversationHistory.objects.filter(**filter_kwargs, session_id=session_id).order_by("conversation_time").first()
 
             if first_record:
                 # 取对话内容的前50个字符作为标题
@@ -123,7 +116,7 @@ class ChatApplicationViewSet(viewsets.ReadOnlyModelViewSet):
                 if len(first_record.conversation_content) > 50:
                     title += "..."
 
-                result.append({"session_id": session_id, "title": title})
+                result.append({"session_id": session_id, "title": title, "bot_id": first_record.bot_id})
 
         return Response(result)
 
@@ -161,14 +154,21 @@ class ChatApplicationViewSet(viewsets.ReadOnlyModelViewSet):
 
         # 查询该会话的所有对话记录
         messages = (
-            WorkFlowConversationHistory.objects.filter(user_id=user_id, session_id=session_id, entry_type="web_chat")
+            WorkFlowConversationHistory.objects.filter(user_id=user_id, session_id=session_id, entry_type__in=["web_chat", "mobile"])
             .order_by("conversation_time")
             .values(
                 "id", "bot_id", "node_id", "user_id", "conversation_role", "conversation_content", "conversation_time", "entry_type", "session_id"
             )
         )
-
-        return Response(list(messages))
+        return_data = []
+        for i in messages:
+            obj = dict(i, **{})
+            try:
+                obj["conversation_content"] = json.loads(i["conversation_content"])
+            except Exception:
+                pass
+            return_data.append(obj)
+        return Response(return_data)
 
     @action(detail=False, methods=["get"])
     def skill_guide(self, request):

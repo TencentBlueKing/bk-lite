@@ -7,7 +7,11 @@ import React, {
   useCallback,
 } from 'react';
 import { Button, message, Space, Modal, Tooltip, Tag, Dropdown } from 'antd';
-import { DownOutlined, ReloadOutlined } from '@ant-design/icons';
+import {
+  DownOutlined,
+  ReloadOutlined,
+  UpCircleFilled,
+} from '@ant-design/icons';
 import Icon from '@/components/icon';
 import type { MenuProps, TableProps } from 'antd';
 import nodeStyle from './index.module.scss';
@@ -104,12 +108,14 @@ const Node = () => {
   const cancelInstall = useCallback(() => {
     setShowNodeTable(true);
     setShowInstallController(false);
-  }, []);
+    getNodes(searchFilters);
+  }, [searchFilters]);
 
   const cancelWait = useCallback(() => {
     setShowNodeTable(true);
     setShowInstallCollectorTable(false);
-  }, []);
+    getNodes(searchFilters);
+  }, [searchFilters]);
 
   const tableColumns = useMemo(() => {
     if (!activeColumns?.length) return columns;
@@ -408,6 +414,40 @@ const Node = () => {
                 </Tag>
               </Tooltip>
             </>
+          );
+        },
+      },
+      {
+        title: t('node-manager.cloudregion.node.sidecarVersion'),
+        dataIndex: 'version',
+        key: 'version',
+        onCell: () => ({
+          style: {
+            minWidth: 100,
+          },
+        }),
+        render: (_: any, record: TableDataItem) => {
+          const versions = record.versions || [];
+          const currentVersion = versions.find(
+            (item: TableDataItem) => item.component_type === 'controller'
+          );
+          const version = currentVersion?.version;
+          if (!version) return <span>--</span>;
+          return (
+            <div className="flex items-center gap-2">
+              <span>{version}</span>
+              {currentVersion?.upgradeable && (
+                <Tooltip
+                  title={`${t(
+                    'node-manager.cloudregion.node.controllerVersionTip'
+                  )}: ${currentVersion?.latest_version || '--'}`}
+                >
+                  <UpCircleFilled
+                    style={{ color: 'var(--color-primary)', cursor: 'pointer' }}
+                  />
+                </Tooltip>
+              )}
+            </div>
           );
         },
       },

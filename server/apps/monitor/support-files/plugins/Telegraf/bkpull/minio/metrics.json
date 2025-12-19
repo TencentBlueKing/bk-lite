@@ -8,7 +8,7 @@
   "description": "",
   "default_metric": "any({instance_type='minio'}) by (instance_id)",
   "instance_id_keys": ["instance_id"],
-  "supplementary_indicators": [],
+  "supplementary_indicators": ["minio_cluster_health_status_gauge", "minio_cluster_capacity_usable_free_bytes_gauge", "minio_cluster_nodes_offline_total_gauge"],
   "metrics": [
   {
     "metric_group": "Audit",

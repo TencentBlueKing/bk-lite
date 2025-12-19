@@ -8,7 +8,7 @@
   "description": "",
   "default_metric": "any({instance_type='oracle'}) by (instance_id)",
   "instance_id_keys": ["instance_id"],
-  "supplementary_indicators": [],
+  "supplementary_indicators": ["oracledb_up_gauge", "oracledb_uptime_seconds_gauge"],
   "metrics": [
   {
     "metric_group": "Base",

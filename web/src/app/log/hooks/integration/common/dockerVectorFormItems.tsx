@@ -25,7 +25,7 @@ const useDockerVectorFormItems = () => {
       return (
         <>
           <Form.Item
-            label={t('log.integration.host')}
+            label={t('log.integration.endpoint')}
             required={true}
             name="docker_host"
             rules={[
@@ -35,7 +35,10 @@ const useDockerVectorFormItems = () => {
               },
             ]}
           >
-            <Input disabled={extra.disabledFormItems.docker_host} />
+            <Input
+              placeholder={t('log.integration.endpointPlaceholder')}
+              disabled={extra.disabledFormItems.docker_host}
+            />
           </Form.Item>
           {!extra.hiddenFormItems.include_containers && (
             <Form.Item
