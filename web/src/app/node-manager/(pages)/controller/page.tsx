@@ -64,8 +64,7 @@ const Controller = () => {
 
   const handleResult = (res: any, currentSearch?: string) => {
     const tagSet = new Set<string>();
-    const filter = res.filter((item: any) => !item.controller_default_run);
-    const tempdata = filter.map((item: any) => {
+    const tempdata = (res || []).map((item: any) => {
       const system = item.node_operating_system || item.os || 'linux';
       const systemDisplayName = getOSDisplayName(system);
       const tagList = [systemDisplayName];
