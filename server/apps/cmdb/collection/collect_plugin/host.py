@@ -35,10 +35,7 @@ class HostCollectMetrics(CollectBase):
         assert self.model_id in HOST_COLLECT_METRIC, f"{self.model_id} needs to be defined in HOST_COLLECT_METRIC"
         return HOST_COLLECT_METRIC[self.model_id]
 
-    def prom_sql(self):
-        sql = " or ".join(
-            "{}{{instance_id=~\"^{}_.+\"}}".format(m, self.task_id) for m in self._metrics)
-        return sql
+
 
     def check_task_id(self, instance_id):
         """检查instance_id是否属于当前采集任务"""

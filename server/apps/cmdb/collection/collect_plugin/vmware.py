@@ -134,11 +134,6 @@ class CollectVmwareMetrics(CollectBase):
 
         return mapping
 
-    def prom_sql(self):
-        sql = " or ".join(
-                "{}{{instance_id=~\"^{}_.+\"}}".format(m, self.task_id) for m in self._metrics)
-        print(sql)
-        return sql
 
     def format_data(self, data):
         """格式化数据"""

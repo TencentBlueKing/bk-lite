@@ -3,11 +3,11 @@
 # @Time: 2025/11/13 14:16
 # @Author: windyzhao
 import os
-import ipaddress
 from abc import abstractmethod, ABCMeta
 
 from django.conf import settings
 from jinja2 import Environment, FileSystemLoader, DebugUndefined
+from apps.core.logger import cmdb_logger as logger
 
 
 class BaseNodeParams(metaclass=ABCMeta):
@@ -18,14 +18,15 @@ class BaseNodeParams(metaclass=ABCMeta):
 
     def __init_subclass__(cls, **kwargs):
         super().__init_subclass__(**kwargs)
+        plugin_name = getattr(cls, "plugin_name", None)
         model_id = getattr(cls, "supported_model_id", None)
-        if model_id:
+        if model_id and plugin_name:
             BaseNodeParams._registry[model_id] = cls
-            if model_id == "network":
-                BaseNodeParams._registry["network_topo"] = cls
-            plugin_name = getattr(cls, "plugin_name", None)
-            if plugin_name:
-                BaseNodeParams.PLUGIN_MAP.update({model_id: plugin_name})
+            BaseNodeParams.PLUGIN_MAP.update({model_id: plugin_name})
+        else:
+            logger.warning(
+                f"子类 {cls.__name__} 未正确设置 'supported_model_id' 或 'plugin_name' 属性，将不会被注册到 BaseNodeParams 中。"
+            )
 
     def __init__(self, instance):
         self.instance = instance
@@ -36,46 +37,15 @@ class BaseNodeParams(metaclass=ABCMeta):
         self.timeout = 40 if self.instance.is_cloud else 30
         self.response_timeout = 40 if self.instance.is_cloud else 30
 
-    def get_host_ip_addr(self, host):
-        if isinstance(host, dict):
-            ip_addr = host.get(self.host_field, "")
+    def get_hosts(self):
+        """
+        返回IP段或者IP列表
+        """
+        if self.instance.instances:
+            hosts = ",".join(instance.get(self.host_field, "") for instance in self.instance.instances)
         else:
-            ip_addr = host
-        return "host", ip_addr
-
-    @property
-    def has_set_instances(self):
-        return bool(self.instance.instances)
-
-    @property
-    def has_set_ip_range(self):
-        return bool(self.instance.ip_range)
-
-    @staticmethod
-    def expand_ip_range(ip_range: str) -> list:
-        """
-        将类似 '192.168.0.1-192.168.0.10' 的网段拆分成单个 IP 地址列表
-        """
-        try:
-            start_str, end_str = ip_range.split('-')
-            start_ip = ipaddress.IPv4Address(start_str.strip())
-            end_ip = ipaddress.IPv4Address(end_str.strip())
-        except Exception as e:
-            raise ValueError(f"无效的 IP 网段格式: {ip_range}") from e
-
-        if start_ip > end_ip:
-            raise ValueError("起始 IP 不能大于结束 IP")
-
-        ips = [str(ipaddress.IPv4Address(ip)) for ip in range(int(start_ip), int(end_ip) + 1)]
-        return ips
-
-    @property
-    def hosts(self):
-        """
-        获取实例列表
-        如果没有选择实例 则 是配置了 ip_range
-        """
-        return self.instance.instances or self.expand_ip_range(self.instance.ip_range)
+            hosts = self.instance.ip_range
+        return "host", hosts
 
     @property
     def model_plugin_name(self):
@@ -91,6 +61,7 @@ class BaseNodeParams(metaclass=ABCMeta):
     def set_credential(self, *args, **kwargs):
         """
         生成凭据
+        TODO 后续会有多凭据 后边再改
         """
         raise NotImplementedError
 
@@ -100,13 +71,15 @@ class BaseNodeParams(metaclass=ABCMeta):
         """
         raise NotImplementedError
 
-    def custom_headers(self, host):
+    def custom_headers(self):
         """
         格式化服务器的路径
         """
-        _key, _value = self.get_host_ip_addr(host)
-        params = self.set_credential(host=host)
-        params.update({"plugin_name": self.model_plugin_name, _key: _value})
+        # 加入ip字段和值
+        ip_addr_field, ip_addrs = self.get_hosts()
+        params = self.set_credential()
+        # 加入插件信息
+        params.update({"plugin_name": self.model_plugin_name, ip_addr_field: ip_addrs})
         _params = {f"cmdb{k}": str(v) for k, v in params.items()}
         return _params
 
@@ -118,12 +91,13 @@ class BaseNodeParams(metaclass=ABCMeta):
             instance_type = self.model_id
         return f"cmdb_{instance_type}"
 
-    @abstractmethod
-    def get_instance_id(self, instance):
+    @property
+    def _instance_id(self):
         """
-        获取实例 id，如果没有特殊处理的话就是使用默认配置
+        实例ID
+        采集配置在节点管理中的唯一标识
         """
-        raise NotImplementedError
+        return f"cmdb_{self.instance.id}"
 
     def push_params(self):
         """
@@ -132,28 +106,27 @@ class BaseNodeParams(metaclass=ABCMeta):
         if self.plugin_name is None:
             raise ValueError("插件名称未设置，请检查 plugin_name 是否正确")
 
-        node = self.instance.access_point[0]
         nodes = []
-        for host in self.hosts:
-            content = {
-                "instance_id": str(self.get_instance_id(host)),
-                "interval": self.interval,
-                "instance_type": self.get_instance_type,
-                "timeout": self.timeout,
-                "response_timeout": self.response_timeout,
-                "headers": self.custom_headers(host=host),
-                "config_type": self.model_id,
-            }
-            jinja_context = self.render_template(context=content)
-            nodes.append({
-                "id": self.get_instance_id(host),
-                "collect_type": "http",
-                "type": self.model_id,
-                "content": jinja_context,
-                "node_id": node["id"],
-                "collector_name": "Telegraf",
-                "env_config": self.env_config(host=host)
-            })
+        node = self.instance.access_point[0]
+        content = {
+            "instance_id": self._instance_id,
+            "interval": self.interval,
+            "instance_type": self.get_instance_type,
+            "timeout": self.timeout,
+            "response_timeout": self.response_timeout,
+            "headers": self.custom_headers(),
+            "config_type": self.model_id,
+        }
+        jinja_context = self.render_template(context=content)
+        nodes.append({
+            "id": self._instance_id,
+            "collect_type": "http",
+            "type": self.model_id,
+            "content": jinja_context,
+            "node_id": node["id"],
+            "collector_name": "Telegraf",
+            "env_config": self.env_config()
+        })
         return nodes
 
     @staticmethod
@@ -179,7 +152,7 @@ class BaseNodeParams(metaclass=ABCMeta):
         """
         生成节点管理删除配置的参数
         """
-        return [str(self.get_instance_id(host)) for host in self.hosts]
+        return [self._instance_id]
 
     def main(self, operator="push"):
         """
