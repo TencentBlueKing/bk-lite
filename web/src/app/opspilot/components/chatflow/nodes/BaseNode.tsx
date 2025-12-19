@@ -142,21 +142,6 @@ export const BaseNode = ({
             
             return (
               <React.Fragment key={handleId}>
-                {label && (
-                  <span 
-                    className="absolute text-xs px-1.5 py-0.5 rounded bg-white/80 font-medium pointer-events-none"
-                    style={{ 
-                      top: `${topPercent}%`,
-                      right: '12px',
-                      transform: 'translateY(-50%)',
-                      color: colorClass.replace('!bg-', '').replace('-500', ''),
-                      fontSize: '10px',
-                      lineHeight: '1'
-                    }}
-                  >
-                    {label}
-                  </span>
-                )}
                 <Handle
                   key={`handle-${handleId}`}
                   type="source"
@@ -174,6 +159,23 @@ export const BaseNode = ({
                   isConnectableStart={true}
                   isConnectableEnd={false}
                 />
+                {label && (
+                  <span 
+                    className="absolute text-xs px-2 py-1 rounded bg-white shadow-sm border border-gray-200 font-medium pointer-events-none whitespace-nowrap"
+                    style={{ 
+                      top: `${topPercent}%`,
+                      left: '100%',
+                      marginLeft: '8px',
+                      transform: 'translateY(-50%)',
+                      color: colorClass.replace('!bg-', '').replace('-500', ''),
+                      fontSize: '11px',
+                      lineHeight: '1',
+                      zIndex: 10,
+                    }}
+                  >
+                    {label}
+                  </span>
+                )}
               </React.Fragment>
             );
           })}
