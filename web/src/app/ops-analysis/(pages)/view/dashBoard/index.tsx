@@ -48,7 +48,7 @@ export interface DashboardRef {
   hasUnsavedChanges: () => boolean;
 }
 
-const ResponsiveGridLayout = WidthProvider(GridLayout);
+const ResponsiveGridLayout = WidthProvider(GridLayout) as any;
 
 const Dashboard = forwardRef<DashboardRef, DashboardProps>(
   ({ selectedDashboard }, ref) => {
