@@ -515,41 +515,68 @@ class TimeSeriesPredictTrainJobViewSet(ModelViewSet):
             # 获取指标历史数据
             history = client.get_metric_history(run_id, metric_name)
             
-            # 构建指标历史列表（使用字典去重，相同 step 保留最新的值）
-            metric_dict = {}
-            for metric in history:
-                step = metric.step
-                # 如果 step 已存在，根据 timestamp 保留最新的
-                if step in metric_dict:
-                    if metric.timestamp > metric_dict[step]['timestamp']:
+            if not history:
+                return Response({
+                    "run_id": run_id,
+                    "metric_name": metric_name,
+                    "total_points": 0,
+                    "metric_history": []
+                })
+            
+            # 检查是否所有 step 都相同（通常是 0，表示未设置 step）
+            all_steps = [m.step for m in history]
+            unique_steps = set(all_steps)
+            
+            # 如果所有 step 都相同，说明记录时未指定 step，使用 timestamp 排序
+            if len(unique_steps) == 1:
+                logger.info(f"指标 {metric_name} 未使用 step，按 timestamp 排序（共 {len(history)} 条）")
+                metric_history = [
+                    {
+                        "step": idx,  # 使用序号代替 step
+                        "value": m.value,
+                        "timestamp": m.timestamp
+                    }
+                    for idx, m in enumerate(sorted(history, key=lambda x: x.timestamp))
+                ]
+            else:
+                # 正常场景：使用 step 去重，相同 step 保留最新的值
+                metric_dict = {}
+                for metric in history:
+                    step = metric.step
+                    # 如果 step 已存在，根据 timestamp 保留最新的
+                    if step in metric_dict:
+                        if metric.timestamp > metric_dict[step]['timestamp']:
+                            metric_dict[step] = {
+                                'step': step,
+                                'value': metric.value,
+                                'timestamp': metric.timestamp
+                            }
+                    else:
                         metric_dict[step] = {
                             'step': step,
                             'value': metric.value,
                             'timestamp': metric.timestamp
                         }
-                else:
-                    metric_dict[step] = {
-                        'step': step,
-                        'value': metric.value,
-                        'timestamp': metric.timestamp
-                    }
+                
+                # 按 step 排序
+                metric_history = sorted(metric_dict.values(), key=lambda x: x['step'])
             
-            # 按 step 排序并移除 timestamp（仅用于去重）
-            metric_history = [
+            # 移除 timestamp（仅用于排序/去重）
+            metric_history_clean = [
                 {
                     "step": item['step'],
                     "value": item['value']
                 }
-                for item in sorted(metric_dict.values(), key=lambda x: x['step'])
+                for item in metric_history
             ]
             
-            logger.info(f"返回 {len(metric_history)} 条指标数据，step 范围: {metric_history[0]['step'] if metric_history else 'N/A'} - {metric_history[-1]['step'] if metric_history else 'N/A'}")
+            logger.info(f"返回 {len(metric_history_clean)} 条指标数据，step 范围: {metric_history_clean[0]['step'] if metric_history_clean else 'N/A'} - {metric_history_clean[-1]['step'] if metric_history_clean else 'N/A'}")
             
             return Response({
                 "run_id": run_id,
                 "metric_name": metric_name,
-                "total_points": len(metric_history),
-                "metric_history": metric_history
+                "total_points": len(metric_history_clean),
+                "metric_history": metric_history_clean
             })
             
         except Exception as e:

@@ -1,4 +1,5 @@
 import SimpleLineChart from "@/app/mlops/components/charts/simpleLineChart";
+import HorizontalBarChart from "@/app/mlops/components/charts/horizontalBarChart";
 import useMlopsTaskApi from "@/app/mlops/api/task";
 import { Spin } from "antd";
 // import { LeftOutlined } from "@ant-design/icons";
@@ -107,6 +108,19 @@ const LazyChart: React.FC<LazyChartProps> = ({ metricName, runId, getMetricsDeta
     }
   };
 
+  // 判断是否为单一数值指标（step为0表示没有step数据）
+  const isSingleValueMetric = (data: any[]) => {
+    return data.length === 1 && data[0]?.step === 0;
+  };
+
+  // 转换数据格式为横向柱状图所需格式
+  const transformToBarData = (data: any[]) => {
+    if (data.length > 0) {
+      return [{ name: metricName, value: data[0].value }];
+    }
+    return [];
+  };
+
   return (
     <div ref={chartRef} className={styles.metricCard}>
       <div className={styles.metricCardHeader}>
@@ -120,7 +134,15 @@ const LazyChart: React.FC<LazyChartProps> = ({ metricName, runId, getMetricsDeta
             <Spin size="small" />
           </div>
         ) : data.length > 0 ? (
-          <SimpleLineChart data={data} />
+          isSingleValueMetric(data) ? (
+            <HorizontalBarChart 
+              data={transformToBarData(data)} 
+              minValue={data[0].value >= 0 ? 0 : data[0].value * 1.2}
+              maxValue={data[0].value >= 0 ? data[0].value * 1.2 : 0}
+            />
+          ) : (
+            <SimpleLineChart data={data} />
+          )
         ) : (
           <div className={styles.metricCardEmpty}>
             <span className={styles.metricCardEmptyText}>
