@@ -1002,6 +1002,16 @@ ATTR:
     os_name: 操作系统
     vcpus: vCPU数
     memory: 内存容量(MB)
+    annotation: 备注
+    uptime_seconds: 开机累计秒数
+    tools_version: Tools版本
+    tools_status: Tools状态
+    tools_running_status: Tools运行状态
+    last_boot: 本次开机时间
+    creation_date: 创建时间
+    last_backup: 上次备份时间
+    backup_policy: 备份策略
+    data_disks: 磁盘明细(JSON)
     auto_collect: 是否自动发现
     collect_time: 上次更新时间
     self_esxi: 所属宿主机
