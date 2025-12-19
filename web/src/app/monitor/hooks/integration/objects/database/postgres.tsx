@@ -1,11 +1,4 @@
-import { usePostgresTelegraf } from '../../plugins/database/postgresTelegraf';
-
 export const usePostgresConfig = () => {
-  const postgresPlugin = usePostgresTelegraf();
-  const plugins = {
-    Postgres: postgresPlugin,
-  };
-
   return {
     instance_type: 'postgres',
     dashboardDisplay: [],
@@ -14,6 +7,9 @@ export const usePostgresConfig = () => {
       { type: 'value', key: 'postgresql_blks_hit' },
     ],
     groupIds: {},
-    plugins,
+    collectTypes: {
+      'Postgres-Exporter': 'exporter',
+      Postgres: 'database',
+    },
   };
 };

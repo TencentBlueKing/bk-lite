@@ -11,16 +11,34 @@ export const usePluginFromJson = () => {
     string | number | null
   >(null);
   const { renderFormField, renderTableColumn } = useConfigRenderer();
-  const { getUiTemplate } = useIntegrationApi();
+  const { getUiTemplate, getUiTemplateByParams } = useIntegrationApi();
 
-  // 根据 pluginId 获取配置
+  // 根据 pluginId 或参数获取配置
   const getPluginConfig = useCallback(
-    async (pluginId: string | number) => {
-      if (!pluginId || isLoading) {
+    async (
+      pluginIdOrParams:
+        | string
+        | number
+        | {
+            collector: string;
+            collect_type: string;
+            monitor_object_id: string;
+          },
+      mode?: 'edit'
+    ) => {
+      if (!pluginIdOrParams || isLoading) {
         return {};
       }
       try {
-        const data = await getUiTemplate({ id: pluginId });
+        let data;
+        let pluginId;
+        if (typeof pluginIdOrParams === 'object' && mode === 'edit') {
+          data = await getUiTemplateByParams(pluginIdOrParams);
+          pluginId = `${pluginIdOrParams.monitor_object_id}_${pluginIdOrParams.collector}_${pluginIdOrParams.collect_type}`;
+        } else {
+          pluginId = pluginIdOrParams as string | number;
+          data = await getUiTemplate({ id: pluginId });
+        }
         setConfig(data);
         setCurrentPluginId(pluginId);
         return data;
@@ -36,6 +54,10 @@ export const usePluginFromJson = () => {
           table_columns: [],
         };
         setConfig(defaultConfig);
+        const pluginId =
+          typeof pluginIdOrParams === 'object'
+            ? `${pluginIdOrParams.monitor_object_id}_${pluginIdOrParams.collector}_${pluginIdOrParams.collect_type}`
+            : pluginIdOrParams;
         setCurrentPluginId(pluginId);
         return defaultConfig;
       }
@@ -102,7 +124,7 @@ export const usePluginFromJson = () => {
           formItems: (
             <>
               {formFields?.map((fieldConfig: any) =>
-                renderFormField(fieldConfig)
+                renderFormField(fieldConfig, extra.mode)
               )}
             </>
           ),
@@ -158,7 +180,7 @@ export const usePluginFromJson = () => {
           formItems: (
             <>
               {formFields?.map((fieldConfig: any) =>
-                renderFormField(fieldConfig)
+                renderFormField(fieldConfig, extra.mode)
               )}
             </>
           ),
@@ -178,7 +200,9 @@ export const usePluginFromJson = () => {
             return formValues;
           },
           getParams: (formData: any, configForm: any) => {
-            const result = {
+            console.log(configForm);
+            // 兼容两种格式：有 base 和没有 base
+            const result: any = {
               ...configForm,
               child: {
                 ...configForm.child,
@@ -190,9 +214,20 @@ export const usePluginFromJson = () => {
                 },
               },
             };
+            // 如果有 base，也复制 base（保持结构）
+            if (configForm.base) {
+              result.base = {
+                ...configForm.base,
+                env_config: { ...configForm.base.env_config },
+              };
+            }
             formFields?.forEach((field: any) => {
-              const { name, transform_on_edit } = field;
+              const { name, transform_on_edit, editable } = field;
               const formValue = formData[name];
+              // 跳过不可编辑的字段（只用于回显，不应写入）
+              if (editable === false) {
+                return;
+              }
               if (formValue === undefined) {
                 return;
               }
@@ -204,6 +239,7 @@ export const usePluginFromJson = () => {
                   undefined,
                   formData
                 );
+                // 如果转换后的值是 undefined，跳过（表示该字段不需要写入）
                 if (transformedValue === undefined) {
                   return;
                 }
@@ -220,6 +256,11 @@ export const usePluginFromJson = () => {
                 }
 
                 if (targetPath) {
+                  // 解析路径中的变量（如 {{config_id}}）
+                  targetPath = DataMapper.resolvePathVariables(
+                    targetPath,
+                    configForm
+                  );
                   DataMapper.setNestedValue(
                     result,
                     targetPath,
@@ -251,6 +292,16 @@ export const usePluginFromJson = () => {
                       );
                     }
                   }
+                }
+              );
+            }
+            // 如果有 base，统一同步 child.env_config 到 base.env_config
+            if (result.base && result.child?.env_config) {
+              Object.entries(result.child.env_config).forEach(
+                ([key, value]) => {
+                  // 移除 key 中的后缀（如 USER__8F39C34FEB234A52B9B43D4A846C10FF -> USER）
+                  const baseEnvKey = key.split('__')[0];
+                  result.base.env_config[baseEnvKey] = value;
                 }
               );
             }

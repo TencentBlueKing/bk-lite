@@ -1,11 +1,4 @@
-import { useElasticSearchTelegraf } from '../../plugins/database/elasticSearchTelegraf';
-
 export const useElasticSearchConfig = () => {
-  const ElasticSearchTelegraf = useElasticSearchTelegraf();
-  const plugins = {
-    ElasticSearch: ElasticSearchTelegraf,
-  };
-
   return {
     instance_type: 'elasticsearch',
     dashboardDisplay: [],
@@ -15,6 +8,9 @@ export const useElasticSearchConfig = () => {
       { type: 'value', key: 'elasticsearch_indices_docs_count' },
     ],
     groupIds: {},
-    plugins,
+    collectTypes: {
+      'ElasticSearch-Exporter': 'exporter',
+      ElasticSearch: 'database',
+    },
   };
 };

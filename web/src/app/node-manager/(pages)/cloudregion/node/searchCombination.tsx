@@ -17,16 +17,18 @@ const SearchCombination: React.FC<SearchCombinationProps> = ({
   selectWidth = 200,
 }) => {
   const { t } = useTranslation();
-
   const [selectedField, setSelectedField] = useState<string>(
     fieldConfigs[0]?.name || ''
   );
   const [tags, setTags] = useState<string[]>([]);
   const [showEnumOptions, setShowEnumOptions] = useState(false);
+  const [showBooleanOptions, setShowBooleanOptions] = useState(false);
   const [tempEnumValues, setTempEnumValues] = useState<string[]>([]);
+  const [tempBooleanValue, setTempBooleanValue] = useState<string>('');
   const [isFocused, setIsFocused] = useState(false);
   const wrapperRef = useRef<HTMLDivElement>(null);
   const enumDropdownRef = useRef<HTMLDivElement>(null);
+  const booleanDropdownRef = useRef<HTMLDivElement>(null);
   const selectRef = useRef<any>(null);
   const isClearing = useRef(false);
 
@@ -58,10 +60,13 @@ const SearchCombination: React.FC<SearchCombinationProps> = ({
         wrapperRef.current &&
         !wrapperRef.current.contains(target) &&
         enumDropdownRef.current &&
-        !enumDropdownRef.current.contains(target)
+        !enumDropdownRef.current.contains(target) &&
+        booleanDropdownRef.current &&
+        !booleanDropdownRef.current.contains(target)
       ) {
         setIsFocused(false);
         setShowEnumOptions(false);
+        setShowBooleanOptions(false);
       }
     };
 
@@ -79,11 +84,14 @@ const SearchCombination: React.FC<SearchCombinationProps> = ({
     (config) => config.name === selectedField
   );
   const isEnumField = currentFieldConfig?.lookup_expr === 'in';
+  const isBooleanField = currentFieldConfig?.lookup_expr === 'bool';
 
   const handleFieldChange = useCallback((value: string) => {
     setSelectedField(value);
     setShowEnumOptions(false);
+    setShowBooleanOptions(false);
     setTempEnumValues([]);
+    setTempBooleanValue('');
     setTimeout(() => {
       selectRef.current?.focus();
     }, 0);
@@ -100,7 +108,6 @@ const SearchCombination: React.FC<SearchCombinationProps> = ({
       });
       const uniqueTags = Array.from(new Set(formattedTags));
       setTags(uniqueTags);
-
       // 如果是清空操作且是枚举字段,保持下拉框打开
       if (uniqueTags.length === 0 && isEnumField && isClearing.current) {
         isClearing.current = false;
@@ -110,23 +117,26 @@ const SearchCombination: React.FC<SearchCombinationProps> = ({
           selectRef.current?.focus();
         }, 0);
       }
-
+      // 如果是清空操作且是布尔字段,保持下拉框打开
+      if (uniqueTags.length === 0 && isBooleanField && isClearing.current) {
+        isClearing.current = false;
+        setTimeout(() => {
+          setShowBooleanOptions(true);
+          setIsFocused(true);
+          selectRef.current?.focus();
+        }, 0);
+      }
       const filters: SearchFilters = {};
-
       uniqueTags.forEach((tag) => {
         const [fieldPart, valuePart] = tag.split(': ');
         const fieldConfig = getFieldConfigs().find(
           (config) => config.label === fieldPart
         );
-
         if (!fieldConfig) return;
-
         const fieldName = fieldConfig.name;
-
         if (!filters[fieldName]) {
           filters[fieldName] = [];
         }
-
         if (fieldConfig.lookup_expr === 'in') {
           const displayNames = valuePart.split(', ');
           const ids = displayNames
@@ -142,6 +152,13 @@ const SearchCombination: React.FC<SearchCombinationProps> = ({
             lookup_expr: 'in',
             value: ids,
           });
+        } else if (fieldConfig.lookup_expr === 'bool') {
+          // 布尔字段：将"是"/"否"转换为true/false
+          const boolValue = valuePart === t('common.yes');
+          filters[fieldName].push({
+            lookup_expr: 'exact',
+            value: boolValue,
+          });
         } else {
           filters[fieldName].push({
             lookup_expr: fieldConfig.lookup_expr,
@@ -149,7 +166,6 @@ const SearchCombination: React.FC<SearchCombinationProps> = ({
           });
         }
       });
-
       onChange?.(filters);
     },
     [getFieldConfigs, selectedField, onChange, currentFieldConfig, isEnumField]
@@ -194,12 +210,47 @@ const SearchCombination: React.FC<SearchCombinationProps> = ({
     selectRef.current?.blur();
   }, []);
 
+  const handleBooleanConfirm = useCallback(() => {
+    if (!tempBooleanValue) {
+      setShowBooleanOptions(false);
+      setIsFocused(false);
+      selectRef.current?.blur();
+      return;
+    }
+    const fieldLabel = currentFieldConfig?.label || selectedField;
+    const displayValue =
+      tempBooleanValue === 'true' ? t('common.yes') : t('common.no');
+    const newTag = `${fieldLabel}: ${displayValue}`;
+    const newTags = [...tags, newTag];
+    handleTagsChange(newTags);
+    setTempBooleanValue('');
+    setShowBooleanOptions(false);
+    setIsFocused(false);
+    selectRef.current?.blur();
+  }, [
+    tempBooleanValue,
+    currentFieldConfig,
+    selectedField,
+    tags,
+    handleTagsChange,
+    t,
+  ]);
+
+  const handleBooleanCancel = useCallback(() => {
+    setTempBooleanValue('');
+    setShowBooleanOptions(false);
+    setIsFocused(false);
+    selectRef.current?.blur();
+  }, []);
+
   const handleSelectFocus = useCallback(() => {
     setIsFocused(true);
     if (isEnumField) {
       setShowEnumOptions(true);
+      return;
     }
-  }, [isEnumField]);
+    setShowBooleanOptions(true);
+  }, [isEnumField, isBooleanField]);
 
   const handleSelectBlur = useCallback((e: React.FocusEvent) => {
     const relatedTarget = e.relatedTarget as Node;
@@ -210,7 +261,17 @@ const SearchCombination: React.FC<SearchCombinationProps> = ({
     ) {
       return;
     }
-    if (!enumDropdownRef.current?.contains(document.activeElement)) {
+    if (
+      booleanDropdownRef.current &&
+      relatedTarget &&
+      booleanDropdownRef.current.contains(relatedTarget)
+    ) {
+      return;
+    }
+    if (
+      !enumDropdownRef.current?.contains(document.activeElement) &&
+      !booleanDropdownRef.current?.contains(document.activeElement)
+    ) {
       setIsFocused(false);
     }
   }, []);
@@ -222,7 +283,23 @@ const SearchCombination: React.FC<SearchCombinationProps> = ({
     return value;
   }, []);
 
-  const enumOptionsDropdown = (
+  const handleConfirm = useCallback(() => {
+    if (isEnumField) {
+      handleEnumConfirm();
+      return;
+    }
+    handleBooleanConfirm();
+  }, [isEnumField, isBooleanField, handleEnumConfirm, handleBooleanConfirm]);
+
+  const handleCancel = useCallback(() => {
+    if (isEnumField) {
+      handleEnumCancel();
+      return;
+    }
+    handleBooleanCancel();
+  }, [isEnumField, isBooleanField, handleEnumCancel, handleBooleanCancel]);
+
+  const optionsDropdown = (
     <Card
       size="small"
       bordered={false}
@@ -248,17 +325,25 @@ const SearchCombination: React.FC<SearchCombinationProps> = ({
               }}
               className="enum-option-item"
               onClick={() => {
-                if (tempEnumValues.includes(option.id)) {
-                  setTempEnumValues(
-                    tempEnumValues.filter((val) => val !== option.id)
-                  );
-                } else {
+                if (isEnumField) {
+                  if (tempEnumValues.includes(option.id)) {
+                    setTempEnumValues(
+                      tempEnumValues.filter((val) => val !== option.id)
+                    );
+                    return;
+                  }
                   setTempEnumValues([...tempEnumValues, option.id]);
+                  return;
                 }
+                setTempBooleanValue(option.id);
               }}
             >
               <Checkbox
-                checked={tempEnumValues.includes(option.id)}
+                checked={
+                  isEnumField
+                    ? tempEnumValues.includes(option.id)
+                    : tempBooleanValue === option.id
+                }
                 style={{ marginRight: '8px' }}
               />
               <span style={{ fontSize: '12px' }}>{option.name}</span>
@@ -278,7 +363,7 @@ const SearchCombination: React.FC<SearchCombinationProps> = ({
       >
         <Button
           size="small"
-          onClick={handleEnumCancel}
+          onClick={handleCancel}
           style={{ minWidth: '60px' }}
         >
           {t('common.cancel')}
@@ -286,7 +371,7 @@ const SearchCombination: React.FC<SearchCombinationProps> = ({
         <Button
           type="primary"
           size="small"
-          onClick={handleEnumConfirm}
+          onClick={handleConfirm}
           style={{ minWidth: '60px' }}
         >
           {t('common.confirm')}
@@ -399,12 +484,12 @@ const SearchCombination: React.FC<SearchCombinationProps> = ({
                 onFocus={handleSelectFocus}
                 onBlur={handleSelectBlur}
                 onClear={() => {
-                  if (isEnumField) {
+                  if (isEnumField || isBooleanField) {
                     isClearing.current = true;
                   }
                 }}
                 onInputKeyDown={(e) => {
-                  if (isEnumField) {
+                  if (isEnumField || isBooleanField) {
                     if (e.key !== 'Backspace' && e.key !== 'Delete') {
                       e.preventDefault();
                     }
@@ -483,11 +568,15 @@ const SearchCombination: React.FC<SearchCombinationProps> = ({
                   );
                 }}
               />
-              {showEnumOptions && isEnumField && (
-                <div className="enum-options-dropdown" ref={enumDropdownRef}>
-                  {enumOptionsDropdown}
-                </div>
-              )}
+              {(showEnumOptions && isEnumField) ||
+              (showBooleanOptions && isBooleanField) ? (
+                  <div
+                    className="enum-options-dropdown"
+                    ref={isEnumField ? enumDropdownRef : booleanDropdownRef}
+                  >
+                    {optionsDropdown}
+                  </div>
+                ) : null}
             </div>
           </div>
         </div>

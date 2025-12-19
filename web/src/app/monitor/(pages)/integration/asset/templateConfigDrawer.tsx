@@ -46,31 +46,35 @@ const TemplateConfigDrawer = forwardRef<TemplateDrawerRef, ModalSuccess>(
     const [objName, setObjName] = useState<string>('');
     const [showTemplateList, setShowTemplateList] = useState<boolean>(true);
     const [instanceId, setInstanceId] = useState<number | string>('');
-    const [instanceType, setInstanceType] = useState<string>('');
+    const [objId, setObjId] = useState<React.Key>('');
 
     const fetchConfigList = async (params?: {
       plugin?: PluginItem;
       instanceId?: number | string;
-      instanceType?: string;
+      monitorObjectId?: React.Key;
     }) => {
       const targetPlugin = params?.plugin || selectedPlugin;
       const targetInstanceId = params?.instanceId || instanceId;
-      const targetInstanceType = params?.instanceType || instanceType;
       if (!targetPlugin || targetPlugin.collect_mode === 'manual') {
         setConfigList([]);
         return;
       }
       setLoading(true);
       try {
+        const requestParams = {
+          collect_type: targetPlugin.collect_type,
+          collector: targetPlugin.collector,
+        };
+
         const templateData = await getInstanceChildConfig({
+          ...requestParams,
           instance_id: targetInstanceId,
-          instance_type: targetInstanceType,
-          collect_type: targetPlugin?.collect_type,
-          collector: targetPlugin?.collector,
         });
         const dataWithId = (templateData || []).map(
           (item: any, index: number) => ({
             ...item,
+            ...requestParams,
+            monitor_object_id: params?.monitorObjectId || objId,
             id: index,
           })
         );
@@ -84,7 +88,7 @@ const TemplateConfigDrawer = forwardRef<TemplateDrawerRef, ModalSuccess>(
       showModal: async ({
         instanceName,
         instanceId,
-        instanceType,
+        monitorObjId,
         selectedConfigId,
         objName,
         plugins: externalPlugins,
@@ -93,12 +97,10 @@ const TemplateConfigDrawer = forwardRef<TemplateDrawerRef, ModalSuccess>(
         setVisible(true);
         setInstanceName(instanceName);
         setInstanceId(instanceId);
-        setInstanceType(instanceType);
         setObjName(objName || '');
         setShowTemplateList(shouldShowList);
-        // 设置外层传入的plugins
         setPlugins(externalPlugins || []);
-        // 立即设置选中的插件，让用户打开弹窗时就能看到内容
+        setObjId(monitorObjId || '');
         let selectedTemp: any;
         if (externalPlugins && externalPlugins.length > 0) {
           if (shouldShowList) {
@@ -145,7 +147,7 @@ const TemplateConfigDrawer = forwardRef<TemplateDrawerRef, ModalSuccess>(
           await fetchConfigList({
             plugin: selectedTemp,
             instanceId,
-            instanceType,
+            monitorObjectId: monitorObjId,
           });
         }
       },
@@ -158,7 +160,7 @@ const TemplateConfigDrawer = forwardRef<TemplateDrawerRef, ModalSuccess>(
       setSelectedPlugin(null);
       setInstanceName('');
       setInstanceId('');
-      setInstanceType('');
+      setObjId('');
       setObjName('');
       setShowTemplateList(true);
     };

@@ -17,6 +17,7 @@ import { FieldModalRef } from '@/app/cmdb/types/assetManage';
 import { useTranslation } from '@/utils/i18n';
 import { ModelItem } from '@/app/cmdb/types/autoDiscovery';
 import GroupTreeSelector from '@/components/group-tree-select';
+import { useAssetManageStore } from '@/app/cmdb/store';
 
 import {
   CYCLE_OPTIONS,
@@ -76,8 +77,8 @@ interface BaseTaskFormProps {
 }
 
 export interface BaseTaskRef {
-  instOptions: { label: string; value: string; [key: string]: any }[];
-  accessPoints: { label: string; value: string; [key: string]: any }[];
+  instOptions: { label: string; value: string;[key: string]: any }[];
+  accessPoints: { label: string; value: string;[key: string]: any }[];
   selectedData: TableItem[];
   ipRange: string[];
   collectionType: string;
@@ -104,6 +105,7 @@ const BaseTaskForm = forwardRef<BaseTaskRef, BaseTaskFormProps>(
     },
     ref
   ) => {
+    const { editingId, scan_cycle_type } = useAssetManageStore();
     const { model_id: modelId } = modelItem;
     const { t } = useTranslation();
     const instanceApi = useInstanceApi();
@@ -414,23 +416,29 @@ const BaseTaskForm = forwardRef<BaseTaskRef, BaseTaskFormProps>(
             >
               <Radio.Group>
                 <div className="space-y-3">
-                  <div className="flex items-center">
-                    <Radio value={CYCLE_OPTIONS.DAILY}>
-                      {t('Collection.dailyAt')}
-                      <Form.Item
-                        name="dailyTime"
-                        noStyle
-                        dependencies={['cycle']}
-                        rules={rules.dailyTime}
-                      >
-                        <TimePicker
-                          className="w-40 ml-2"
-                          format="HH:mm"
-                          placeholder={t('common.selectTip')}
-                        />
-                      </Form.Item>
-                    </Radio>
-                  </div>
+                  {/* 每天一次 */}
+                  {editingId && scan_cycle_type !== "cycle"
+                    ? (
+                      <div className="flex items-center" title={t('Collection.cycleDeprecated')}>
+                        <Radio value={CYCLE_OPTIONS.DAILY} disabled={true}>
+                          {t('Collection.dailyAt')}
+                          <Form.Item
+                            name="dailyTime"
+                            noStyle
+                            dependencies={['cycle']}
+                            rules={rules.dailyTime}
+                          >
+                            <TimePicker
+                              className="w-40 ml-2"
+                              format="HH:mm"
+                              placeholder={t('common.selectTip')}
+                            />
+                          </Form.Item>
+                        </Radio>
+                      </div>
+                    )
+                    : (null)}
+                  {/* 每隔几分钟执行一次 */}
                   <div className="flex items-center">
                     <Radio value={CYCLE_OPTIONS.INTERVAL}>
                       <Space>
@@ -451,9 +459,12 @@ const BaseTaskForm = forwardRef<BaseTaskRef, BaseTaskFormProps>(
                       </Space>
                     </Radio>
                   </div>
-                  <Radio value={CYCLE_OPTIONS.ONCE}>
-                    {t('Collection.executeOnce')}
-                  </Radio>
+                  {/* 执行一次 */}
+                  {editingId && scan_cycle_type !== "cycle"
+                    ? (<Radio value={CYCLE_OPTIONS.ONCE} disabled={true} title={t('Collection.cycleDeprecated')}>
+                      {t('Collection.executeOnce')}
+                    </Radio>)
+                    : (null)}
                 </div>
               </Radio.Group>
             </Form.Item>

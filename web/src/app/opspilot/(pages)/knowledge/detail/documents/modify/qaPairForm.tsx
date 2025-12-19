@@ -56,7 +56,6 @@ const QAPairForm = forwardRef<any, QAPairFormProps>(({
   
   const [previewModalVisible, setPreviewModalVisible] = useState<boolean>(false);
   const [selectedChunks, setSelectedChunks] = useState<string[]>([]);
-  const [selectedChunksData, setSelectedChunksData] = useState<Array<{chunk_id: string; content: string; knowledge_id: string}>>([]);
   const [currentQaCount, setCurrentQaCount] = useState<number>(1);
   const [previewResults, setPreviewResults] = useState<Array<{question: string; answer: string}>>([]);
   const [previewLoading, setPreviewLoading] = useState<boolean>(false);
@@ -468,7 +467,6 @@ const QAPairForm = forwardRef<any, QAPairFormProps>(({
   // 确认选中的块并生成预览
   const handleConfirmChunks = useCallback(async (chunks: string[], chunksData: Array<{chunk_id: string; content: string; knowledge_id: string}>) => {
     setSelectedChunks(chunks);
-    setSelectedChunksData(chunksData);
     
     // 自动调用预览接口
     setPreviewLoading(true);

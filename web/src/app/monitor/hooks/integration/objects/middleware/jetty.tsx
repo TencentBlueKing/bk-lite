@@ -1,12 +1,4 @@
-import { useJettyJmx } from '../../plugins/middleware/jettyJmx';
-
 export const useJettyJmxConfig = () => {
-  const clickJettyJmx = useJettyJmx();
-
-  const plugins = {
-    'Jetty-JMX': clickJettyJmx,
-  };
-
   return {
     instance_type: 'jetty',
     dashboardDisplay: [],
@@ -17,6 +9,8 @@ export const useJettyJmxConfig = () => {
       { type: 'enum', key: 'jmx_scrape_error_gauge' },
     ],
     groupIds: {},
-    plugins,
+    collectTypes: {
+      'Jetty-JMX': 'jmx',
+    },
   };
 };

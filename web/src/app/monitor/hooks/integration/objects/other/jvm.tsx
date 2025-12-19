@@ -1,13 +1,4 @@
-import { useJvmJmx } from '../../plugins/other/jvmJmx';
-
 export const useJvmConfig = () => {
-  const plugin = useJvmJmx();
-
-  // 所有插件配置
-  const plugins = {
-    JVM: plugin,
-  };
-
   return {
     instance_type: 'jvm',
     dashboardDisplay: [],
@@ -19,6 +10,8 @@ export const useJvmConfig = () => {
       { type: 'value', key: 'jvm_gc_collectiontime_seconds_value' },
     ],
     groupIds: {},
-    plugins,
+    collectTypes: {
+      JVM: 'jmx',
+    },
   };
 };

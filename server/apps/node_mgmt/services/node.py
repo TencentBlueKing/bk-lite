@@ -1,6 +1,7 @@
 from datetime import timezone
 
 from apps.core.utils.permission_utils import get_permission_rules
+from apps.node_mgmt.constants.collector import CollectorConstants
 from apps.node_mgmt.constants.controller import ControllerConstants
 from apps.node_mgmt.constants.node import NodeConstants
 from apps.node_mgmt.models import NodeCollectorInstallStatus
@@ -47,22 +48,45 @@ class NodeService:
 
 
             node_install_map.setdefault(obj.node_id, []).append(
-                dict( collector_id=obj.collector_id, status=status, message=obj.result)
+                dict(collector_id=obj.collector_id, status=status, message=obj.result)
             )
 
         # 处理节点数据
         for node in node_data:
             node_collector_install = node_install_map.get(node["id"], [])
             if node_collector_install:
+                # 为 collectors_install 中的每个项添加 collector_name
+                for install_item in node_collector_install:
+                    collector_obj = collector_dict.get(install_item['collector_id'])
+                    install_item['collector_name'] = collector_obj.name if collector_obj else None
+
                 node["status"]["collectors_install"] = node_collector_install
+
             if 'collectors' not in node['status']:
                 continue
+
+            # 处理采集器状态：忽略不支持空跑的采集器的特定错误，将其状态改为正常
             for collector in node['status']['collectors']:
                 collector_obj = collector_dict.get(collector['collector_id'])
                 collector['collector_name'] = collector_obj.name if collector_obj else None
 
                 configuration_obj = configuration_dict.get(collector['configuration_id'])
                 collector['configuration_name'] = configuration_obj.name if configuration_obj else None
+
+                # 判断是否应该将错误状态改为正常
+                if collector['status'] == 2 and collector_obj:  # status=2 表示失败
+                    # 检查是否是需要忽略错误的采集器
+                    if collector_obj.name in CollectorConstants.IGNORE_ERROR_COLLECTORS:
+                        # 检查错误信息是否匹配需要忽略的消息
+                        verbose_msg = collector.get('verbose_message', '')
+                        if verbose_msg in CollectorConstants.IGNORE_ERROR_COLLECTORS_MESSAGES:
+                            # 将状态从失败改为正常
+                            collector['status'] = 0
+                            collector['message'] = 'Running'
+                            logger.debug(
+                                f"Changed status to Running for collector {collector_obj.name} "
+                                f"on node {node.get('name', node['id'])}: {verbose_msg.strip()}"
+                            )
 
         # 计算节点活跃度，一分钟内为活跃
         for node in node_data:
@@ -245,6 +269,9 @@ class NodeService:
             start = (page - 1) * page_size
             end = start + page_size
             nodes = qs[start:end]
+
+        # 应用预加载优化，避免 N+1 查询
+        nodes = NodeSerializer.setup_eager_loading(nodes)
 
         serializer = NodeSerializer(nodes, many=True)
         node_data = serializer.data

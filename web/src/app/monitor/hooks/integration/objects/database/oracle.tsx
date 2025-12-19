@@ -1,11 +1,4 @@
-import { useOracleExporter } from '../../plugins/database/oracleExporter';
-
 export const useOracleConfig = () => {
-  const oraclePlugin = useOracleExporter();
-  const plugins = {
-    'Oracle-Exporter': oraclePlugin,
-  };
-
   return {
     instance_type: 'oracle',
     dashboardDisplay: [],
@@ -14,6 +7,8 @@ export const useOracleConfig = () => {
       { type: 'value', key: 'oracledb_uptime_seconds_gauge' },
     ],
     groupIds: {},
-    plugins,
+    collectTypes: {
+      'Oracle-Exporter': 'exporter',
+    },
   };
 };
