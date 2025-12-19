@@ -2,6 +2,7 @@ import requests
 
 from apps.core.exceptions.base_app_exception import BaseAppException
 from apps.node_mgmt.constants.controller import ControllerConstants
+from apps.node_mgmt.constants.installer import InstallerConstants
 from apps.rpc.executor import Executor
 
 
@@ -30,7 +31,6 @@ def get_manual_install_command(os, package_id, cloud_region_id, sidecar_token, s
         raise BaseAppException("Webhook API URL is required")
 
     try:
-
         params = {
             "os": os,
             "api_token": sidecar_token,
@@ -46,7 +46,7 @@ def get_manual_install_command(os, package_id, cloud_region_id, sidecar_token, s
             api_url,
             json=params,
             headers={'Content-Type': 'application/json'},
-            timeout=InfraConstants.REQUEST_TIMEOUT,
+            timeout=InstallerConstants.REQUEST_TIMEOUT,
             verify=False  # 跳过 SSL 证书验证
         )
 
@@ -75,18 +75,6 @@ def get_manual_install_command(os, package_id, cloud_region_id, sidecar_token, s
         import traceback
         error_detail = traceback.format_exc()
         raise BaseAppException(f"Failed to render config: {str(e)} | Detail: {error_detail}")
-
-    manual_install_command = ControllerConstants.MANUAL_INSTALL_COMMAND.get(os)
-    manual_install_command = manual_install_command.format(
-        package_id=package_id,
-        server_url=server_url,
-        server_token=sidecar_token,
-        cloud=cloud_region_id,
-        group=groups,
-        node_name=node_name,
-        node_id=node_id,
-    )
-    return manual_install_command
 
 
 # 获取卸载命令

@@ -9,9 +9,6 @@ from apps.node_mgmt.services.install_token import InstallTokenService
 
 class InstallerService:
 
-    # HTTP 请求超时设置（秒）
-    REQUEST_TIMEOUT = 30
-
     @staticmethod
     def get_install_command(user, ip, node_id, os, package_id, cloud_region_id, organizations, node_name):
         """

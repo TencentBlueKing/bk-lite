@@ -1,22 +1,11 @@
 import uuid
 from django.core.cache import cache
 from apps.core.exceptions.base_app_exception import BaseAppException
+from apps.node_mgmt.constants.installer import InstallerConstants
 
 
 class InstallTokenService:
     """节点安装令牌服务 - 管理限时安装令牌"""
-
-    # 令牌过期时间（秒）- 30分钟
-    TOKEN_EXPIRE_TIME = 60 * 30
-
-    # 令牌最大使用次数
-    TOKEN_MAX_USAGE = 5
-
-    # 下载令牌过期时间（秒）- 10分钟
-    DOWNLOAD_TOKEN_EXPIRE_TIME = 60 * 10
-
-    # 下载令牌最大使用次数
-    DOWNLOAD_TOKEN_MAX_USAGE = 3
 
     @staticmethod
     def generate_install_token(
@@ -43,7 +32,7 @@ class InstallTokenService:
         :return: 限时令牌
         """
         token = str(uuid.uuid4())
-        cache_key = f"node_install_token:{token}"
+        cache_key = f"{InstallerConstants.INSTALL_TOKEN_CACHE_PREFIX}:{token}"
 
         # 在 cache 中存储令牌及其关联的参数和使用次数
         cache.set(cache_key, {
@@ -56,8 +45,8 @@ class InstallTokenService:
             "organizations": organizations,
             "node_name": node_name,
             "usage_count": 0,
-            "max_usage": InstallTokenService.TOKEN_MAX_USAGE,
-        }, timeout=InstallTokenService.TOKEN_EXPIRE_TIME)
+            "max_usage": InstallerConstants.INSTALL_TOKEN_MAX_USAGE,
+        }, timeout=InstallerConstants.INSTALL_TOKEN_EXPIRE_TIME)
 
         return token
 
@@ -70,7 +59,7 @@ class InstallTokenService:
         :return: 包含节点安装所需参数的字典
         :raises BaseAppException: 令牌无效、已过期或超过使用次数
         """
-        cache_key = f"node_install_token:{token}"
+        cache_key = f"{InstallerConstants.INSTALL_TOKEN_CACHE_PREFIX}:{token}"
         data = cache.get(cache_key)
 
         if not data:
@@ -78,10 +67,10 @@ class InstallTokenService:
 
         # 检查使用次数
         usage_count = data.get("usage_count", 0)
-        max_usage = data.get("max_usage", InstallTokenService.TOKEN_MAX_USAGE)
+        max_usage = data.get("max_usage", InstallerConstants.INSTALL_TOKEN_MAX_USAGE)
 
         if usage_count >= max_usage:
-            # 超过最大使用次数，删除令牌
+            # 超过最大使用次数,删除令牌
             cache.delete(cache_key)
             raise BaseAppException(f"Token has exceeded maximum usage limit ({max_usage} times)")
 
@@ -89,7 +78,7 @@ class InstallTokenService:
         data["usage_count"] = usage_count + 1
 
         # 更新 cache
-        cache.set(cache_key, data, timeout=InstallTokenService.TOKEN_EXPIRE_TIME)
+        cache.set(cache_key, data, timeout=InstallerConstants.INSTALL_TOKEN_EXPIRE_TIME)
 
         return {
             "node_id": data["node_id"],
@@ -113,15 +102,15 @@ class InstallTokenService:
         :return: 限时下载令牌
         """
         token = str(uuid.uuid4())
-        cache_key = f"package_download_token:{token}"
+        cache_key = f"{InstallerConstants.DOWNLOAD_TOKEN_CACHE_PREFIX}:{token}"
 
         # 在 cache 中存储令牌及其关联的参数和使用次数
         cache.set(cache_key, {
             "package_id": package_id,
             "node_id": node_id,
             "usage_count": 0,
-            "max_usage": InstallTokenService.DOWNLOAD_TOKEN_MAX_USAGE,
-        }, timeout=InstallTokenService.DOWNLOAD_TOKEN_EXPIRE_TIME)
+            "max_usage": InstallerConstants.DOWNLOAD_TOKEN_MAX_USAGE,
+        }, timeout=InstallerConstants.DOWNLOAD_TOKEN_EXPIRE_TIME)
 
         return token
 
@@ -134,7 +123,7 @@ class InstallTokenService:
         :return: 包含 package_id 和 node_id 的字典
         :raises BaseAppException: 令牌无效、已过期或超过使用次数
         """
-        cache_key = f"package_download_token:{token}"
+        cache_key = f"{InstallerConstants.DOWNLOAD_TOKEN_CACHE_PREFIX}:{token}"
         data = cache.get(cache_key)
 
         if not data:
@@ -142,10 +131,10 @@ class InstallTokenService:
 
         # 检查使用次数
         usage_count = data.get("usage_count", 0)
-        max_usage = data.get("max_usage", InstallTokenService.DOWNLOAD_TOKEN_MAX_USAGE)
+        max_usage = data.get("max_usage", InstallerConstants.DOWNLOAD_TOKEN_MAX_USAGE)
 
         if usage_count >= max_usage:
-            # 超过最大使用次数，删除令牌
+            # 超过最大使用次数,删除令牌
             cache.delete(cache_key)
             raise BaseAppException(f"Download token has exceeded maximum usage limit ({max_usage} times)")
 
@@ -153,7 +142,7 @@ class InstallTokenService:
         data["usage_count"] = usage_count + 1
 
         # 更新 cache
-        cache.set(cache_key, data, timeout=InstallTokenService.DOWNLOAD_TOKEN_EXPIRE_TIME)
+        cache.set(cache_key, data, timeout=InstallerConstants.DOWNLOAD_TOKEN_EXPIRE_TIME)
 
         return {
             "package_id": data["package_id"],
