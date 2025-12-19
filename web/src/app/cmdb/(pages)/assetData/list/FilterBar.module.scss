@@ -66,15 +66,13 @@
     background: #d1d5db;
   }
 
-  :global {
-    .ant-tag-close-icon {
-      color: rgb(0, 0, 0);
-      margin-left: 4px;
-      padding: 0 2px;
+  :global(.ant-tag-close-icon) {
+    color: rgb(0, 0, 0);
+    margin-left: 4px;
+    padding: 0 2px;
 
-      &:hover {
-        color: rgb(0, 0, 0);
-      }
+    &:hover {
+      color: rgb(0, 0, 0);
     }
   }
 }
@@ -107,10 +105,8 @@
 
 // 编辑弹窗样式
 .editModal {
-  :global {
-    .ant-modal-body {
-      padding: 24px;
-    }
+  :global(.ant-modal-body) {
+    padding: 24px;
   }
 }
 
@@ -118,25 +114,23 @@
 .popoverContent {
   padding: 0px;
 
-  :global {
-    .ant-form-item {
-      margin-bottom: 2px;
-    }
+  :global(.ant-form-item) {
+    margin-bottom: 2px;
+  }
 
-    .ant-form-item-label {
-      padding: 0;
-      padding-right: 8px;
-      flex: 0 0 auto;
-    }
+  :global(.ant-form-item-label) {
+    padding: 0;
+    padding-right: 8px;
+    flex: 0 0 auto;
+  }
 
-    .ant-form-item-label>label {
-      padding: 0;
-      margin: 0;
-    }
+  :global(.ant-form-item-label > label) {
+    padding: 0;
+    margin: 0;
+  }
 
-    .ant-form-item-control {
-      flex: 1;
-    }
+  :global(.ant-form-item-control) {
+    flex: 1;
   }
 }
 
@@ -160,7 +154,7 @@
 .tagCloseIcon {
   transform: translateY(10%);
 
-  :hover {
+  &:hover {
     color: #fc0202;
   }
 }

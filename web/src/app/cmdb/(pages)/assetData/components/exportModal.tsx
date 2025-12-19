@@ -363,7 +363,7 @@ const ExportModal = forwardRef<ExportModalRef, ExportModalProps>(
                     onChange={handleRelationChange}
                     className="w-full"
                   >
-                    <div className="space-y-3">
+                    <div className="flex flex-col gap-3">
                       {relationList.map((relation: RelationItem) => (
                         <div
                           key={relation.relation_key}
