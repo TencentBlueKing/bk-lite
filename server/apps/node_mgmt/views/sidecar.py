@@ -380,12 +380,12 @@ class OpenSidecarViewSet(OpenAPIViewSet):
             token (str, required): 限时安装令牌
 
         Response (200 OK):
-            {
-                "install_script": "#!/bin/bash\\n..."  # 安装脚本内容
-            }
+            纯文本安装脚本（text/plain）
+            - Linux: Bash 脚本
+            - Windows: PowerShell 脚本
 
         Response Headers:
-            Content-Type: application/json
+            Content-Type: text/plain
             X-Token-Remaining-Usage: 剩余可用次数
 
         Response (400 Bad Request):
@@ -399,12 +399,8 @@ class OpenSidecarViewSet(OpenAPIViewSet):
             - 下载地址包含临时 token，防止未授权下载
 
         Usage:
-            Linux:
-            curl -sSLk http://server/api/v1/node_mgmt/open_api/installer/render?token=xxx | jq -r '.install_script' | sudo bash
-
-            Windows:
-            $response = Invoke-RestMethod -Uri "http://server/api/v1/node_mgmt/open_api/installer/render?token=xxx" -SkipCertificateCheck
-            $response.install_script | Invoke-Expression
+            curl -sSLk http://server/api/v1/node_mgmt/open_api/installer/render?token=xxx | sudo bash
+            iwr http://server/api/v1/node_mgmt/open_api/installer/render?token=xxx -useb | iex
 
         示例:
             GET /installer/render?token=550e8400-e29b-41d4-a716-446655440000
@@ -500,12 +496,8 @@ class OpenSidecarViewSet(OpenAPIViewSet):
             if not install_script:
                 raise BaseAppException("Invalid response from webhook API: empty or missing script")
 
-            # 返回 JSON 格式（包含 install_script 字段），添加剩余使用次数到响应头
-            response_data = {
-                "install_script": install_script
-            }
-
-            http_response = WebUtils.response_success(response_data)
+            # 直接返回纯文本脚本（text/plain），添加剩余使用次数到响应头
+            http_response = HttpResponse(install_script, content_type="text/plain; charset=utf-8")
             http_response['X-Token-Remaining-Usage'] = str(remaining_usage)
             return http_response
 
