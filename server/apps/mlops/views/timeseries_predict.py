@@ -14,6 +14,9 @@ import os
 import mlflow
 import pandas as pd
 import numpy as np
+import tempfile
+import shutil
+from datetime import datetime, timedelta
 from config.components.mlflow import MLFLOW_TRACKER_URL
 
 from apps.core.logger import opspilot_logger as logger
@@ -106,8 +109,22 @@ class TimeSeriesPredictTrainJobViewSet(ModelViewSet):
             
             # 获取环境变量
             bucket = os.getenv("MINIO_PUBLIC_BUCKETS", "munchkin-public")
+            minio_endpoint = os.getenv("MLFLOW_S3_ENDPOINT_URL", "")
+            mlflow_tracking_uri = os.getenv("MLFLOW_TRACKER_URL", "")
             minio_access_key = os.getenv("MINIO_ACCESS_KEY", "")
             minio_secret_key = os.getenv("MINIO_SECRET_KEY", "")
+
+            if not minio_endpoint:
+                return Response(
+                    {'error': 'MinIO 访问端点未配置'},
+                    status=status.HTTP_500_INTERNAL_SERVER_ERROR
+                )
+            
+            if not mlflow_tracking_uri:
+                return Response(
+                    {'error': 'MLflow 访问端点未配置'},
+                    status=status.HTTP_500_INTERNAL_SERVER_ERROR
+                ) 
             
             if not minio_access_key or not minio_secret_key:
                 return Response(
@@ -137,6 +154,8 @@ class TimeSeriesPredictTrainJobViewSet(ModelViewSet):
                 "bucket": bucket,
                 "dataset": train_job.dataset_version.dataset_file.name,
                 "config": train_job.config_url.name,
+                "minio_endpoint": minio_endpoint,
+                "mlflow_tracking_uri": mlflow_tracking_uri,
                 "minio_access_key": minio_access_key,
                 "minio_secret_key": minio_secret_key
             }
@@ -148,8 +167,8 @@ class TimeSeriesPredictTrainJobViewSet(ModelViewSet):
             logger.info(f"  'bucket': '{bucket}',")
             logger.info(f"  'dataset': '{train_job.dataset_version.dataset_file.name}',")
             logger.info(f"  'config': '{train_job.config_url.name}',")
-            logger.info(f"  'minio_access_key': '***',")
-            logger.info(f"  'minio_secret_key': '***'")
+            logger.info(f"  'minio_endpoint': {minio_endpoint}")
+            logger.info(f"  'mlflow_tracking_uri': {mlflow_tracking_uri}")
             
             # 发送请求到 webhook 服务
             response = requests.post(
@@ -377,8 +396,14 @@ class TimeSeriesPredictTrainJobViewSet(ModelViewSet):
                     end_time = row["end_time"]
                     
                     # 计算耗时
-                    if pd.notna(start_time) and pd.notna(end_time):
-                        duration_seconds = (end_time - start_time).total_seconds()
+                    if pd.notna(start_time):
+                        if pd.notna(end_time):
+                            # 已完成：使用实际结束时间
+                            duration_seconds = (end_time - start_time).total_seconds()
+                        else:
+                            # 运行中：使用当前时间计算已运行时长
+                            current_time = pd.Timestamp.now(tz=start_time.tz)
+                            duration_seconds = (current_time - start_time).total_seconds()
                         duration_minutes = duration_seconds / 60
                     else:
                         duration_minutes = 0
@@ -574,6 +599,246 @@ class TimeSeriesPredictTrainJobViewSet(ModelViewSet):
                 {'error': f'获取运行参数失败: {str(e)}'},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
+    
+    @action(detail=False, methods=['get'], url_path='download_model/(?P<run_id>.+?)')
+    @HasPermission("timeseries_predict_train_jobs-View")
+    def download_model(self, request, run_id: str):
+        """
+        下载 MLflow 模型（MinIO 预签名 URL）
+        
+        基于 Model Registry 和 Run ID 下载模型
+        返回 MinIO 预签名 URL，前端直接下载
+        """
+        try:
+            # 1. 设置 MLflow
+            mlflow.set_tracking_uri(MLFLOW_TRACKER_URL)
+            mlflow_client = mlflow.tracking.MlflowClient()
+            
+            # 2. 获取 run 信息
+            try:
+                run = mlflow_client.get_run(run_id)
+            except Exception as e:
+                logger.error(f"Run 不存在: {run_id} - {e}")
+                return Response(
+                    {'error': f'Run 不存在: {run_id}'},
+                    status=status.HTTP_404_NOT_FOUND
+                )
+            
+            # 3. 检查模型 artifacts 是否存在
+            try:
+                artifacts = mlflow_client.list_artifacts(run_id, path="model")
+                if not artifacts:
+                    return Response(
+                        {'error': '该 Run 未保存模型，无法下载'},
+                        status=status.HTTP_404_NOT_FOUND
+                    )
+            except Exception as e:
+                logger.error(f"获取模型 artifacts 失败: {e}")
+                return Response(
+                    {'error': f'获取模型 artifacts 失败: {str(e)}'},
+                    status=status.HTTP_500_INTERNAL_SERVER_ERROR
+                )
+            
+            # 4. 生成文件名（基于 Model Registry）
+            run_name = run.data.tags.get('mlflow.runName', 'unknown')
+            algorithm = run.data.params.get('algorithm', 'unknown')
+            
+            # 尝试从 Model Registry 获取模型名称和版本
+            model_name = None
+            model_version = None
+            try:
+                # 检查 run 是否关联了注册模型
+                model_versions = mlflow_client.search_model_versions(f"run_id='{run_id}'")
+                if model_versions:
+                    model_name = model_versions[0].name
+                    model_version = model_versions[0].version
+            except Exception as e:
+                logger.warning(f"未找到注册模型信息: {e}")
+            
+            # 构建文件名
+            if model_name and model_version:
+                filename = f"{model_name}_v{model_version}.zip"
+            else:
+                filename = f"{algorithm}_{run_name}_{run_id[:8]}.zip"
+            
+            # 5. 检查 MinIO 缓存
+            bucket_name = "munchkin-public"
+            cache_key = f"models/cache/{run_id}.zip"
+            
+            minio_client = self._get_minio_client()
+            
+            # 尝试获取缓存的模型
+            cached = False
+            try:
+                stat = minio_client.stat_object(bucket_name, cache_key)
+                # 缓存存在，直接生成预签名 URL
+                logger.info(f"模型缓存命中: {cache_key} (大小: {stat.size} 字节)")
+                cached = True
+                presigned_url = minio_client.presigned_get_object(
+                    bucket_name,
+                    cache_key,
+                    expires=timedelta(hours=24)
+                )
+                
+                return Response({
+                    'status': 'success',
+                    'run_id': run_id,
+                    'model_info': {
+                        'name': model_name or run_name,
+                        'version': model_version or 'N/A',
+                        'algorithm': algorithm,
+                        'status': run.info.status
+                    },
+                    'download': {
+                        'url': presigned_url,
+                        'expires_at': (datetime.now() + timedelta(hours=24)).isoformat(),
+                        'size_mb': round(stat.size / 1024 / 1024, 2),
+                        'filename': filename,
+                        'cached': True
+                    }
+                })
+            except Exception:
+                # 缓存未命中，继续打包上传流程
+                logger.info(f"模型缓存未命中，开始打包: {run_id}")
+            
+            # 6. 下载模型到临时目录并打包
+            with tempfile.TemporaryDirectory() as tmpdir:
+                try:
+                    download_start = datetime.now()
+                    logger.info(f"开始下载模型 artifacts: run_id={run_id}")
+                    
+                    # 优化：尝试直接从 MinIO 下载，绕过 MLflow
+                    artifact_uri = run.info.artifact_uri
+                    logger.info(f"Artifact URI: {artifact_uri}")
+                    
+                    # 解析 artifact URI 并尝试直接访问 MinIO
+                    # MLflow 可能使用 mlflow-artifacts: 或 s3:// 格式
+                    direct_download_success = False
+                    
+                    # mlflow-artifacts:/ 代理模式，使用 MLflow 下载
+                    # 注: 此模式性能较慢，建议配置 MLflow --default-artifact-root s3://bucket
+                    
+                    if artifact_uri.startswith('s3://'):
+                        # 直接是 S3 URI，可以直接解析
+                        try:
+                            s3_path = artifact_uri.replace('s3://', '').split('/', 1)
+                            bucket = s3_path[0]
+                            object_prefix = s3_path[1] if len(s3_path) > 1 else ''
+                            model_prefix = f"{object_prefix}/model"
+                            
+                            logger.info(f"直接从 MinIO 下载: bucket={bucket}, prefix={model_prefix}")
+                            
+                            local_path = os.path.join(tmpdir, 'model')
+                            os.makedirs(local_path, exist_ok=True)
+                            
+                            storage = MinioBackend(bucket_name=bucket)
+                            objects = list(storage.client.list_objects(bucket, prefix=model_prefix, recursive=True))
+                            
+                            if objects:
+                                for obj in objects:
+                                    relative_path = obj.object_name[len(model_prefix):].lstrip('/')
+                                    if not relative_path:
+                                        continue
+                                    
+                                    local_file_path = os.path.join(local_path, relative_path)
+                                    os.makedirs(os.path.dirname(local_file_path), exist_ok=True)
+                                    storage.client.fget_object(bucket, obj.object_name, local_file_path)
+                                
+                                download_elapsed = (datetime.now() - download_start).total_seconds()
+                                logger.info(f"模型下载完成: {local_path} (耗时: {download_elapsed:.2f}秒, 直接从MinIO)")
+                                direct_download_success = True
+                        except Exception as e:
+                            logger.warning(f"直接从 MinIO 下载失败，降级使用 MLflow: {e}")
+                    
+                    # 降级：使用 MLflow 原始方法
+                    if not direct_download_success:
+                        logger.info(f"使用 MLflow 下载方式: {artifact_uri}")
+                        local_path = mlflow.artifacts.download_artifacts(
+                            run_id=run_id,
+                            artifact_path="model",
+                            dst_path=tmpdir
+                        )
+                        download_elapsed = (datetime.now() - download_start).total_seconds()
+                        logger.warning(f"模型下载完成: {local_path} (耗时: {download_elapsed:.2f}秒, MLflow方式 - 较慢)")
+                    
+                    # 打包成 ZIP
+                    zip_start = datetime.now()
+                    zip_base = os.path.join(tmpdir, run_id)
+                    zip_path = f"{zip_base}.zip"
+                    shutil.make_archive(
+                        zip_base,
+                        'zip',
+                        local_path
+                    )
+                    zip_elapsed = (datetime.now() - zip_start).total_seconds()
+                    logger.info(f"模型打包完成: {zip_path} (耗时: {zip_elapsed:.2f}秒)")
+                    
+                    # 获取文件大小
+                    file_size = os.path.getsize(zip_path)
+                    logger.info(f"模型文件大小: {round(file_size / 1024 / 1024, 2)} MB")
+                    
+                    # 上传到 MinIO
+                    upload_start = datetime.now()
+                    logger.info(f"上传模型到 MinIO: {bucket_name}/{cache_key}")
+                    minio_client.fput_object(
+                        bucket_name,
+                        cache_key,
+                        zip_path,
+                        content_type="application/zip"
+                    )
+                    upload_elapsed = (datetime.now() - upload_start).total_seconds()
+                    logger.info(f"模型上传成功: {cache_key} (耗时: {upload_elapsed:.2f}秒)")
+                    logger.info(f"总耗时: 下载={download_elapsed:.2f}s, 打包={zip_elapsed:.2f}s, 上传={upload_elapsed:.2f}s")
+                    
+                except Exception as e:
+                    logger.error(f"模型打包或上传失败: {e}", exc_info=True)
+                    return Response(
+                        {'error': f'模型处理失败: {str(e)}'},
+                        status=status.HTTP_500_INTERNAL_SERVER_ERROR
+                    )
+            
+            # 7. 生成预签名 URL
+            presigned_url = minio_client.presigned_get_object(
+                bucket_name,
+                cache_key,
+                expires=timedelta(hours=24)
+            )
+            
+            # 8. 返回结果
+            return Response({
+                'status': 'success',
+                'run_id': run_id,
+                'model_info': {
+                    'name': model_name or run_name,
+                    'version': model_version or 'N/A',
+                    'algorithm': algorithm,
+                    'status': run.info.status
+                },
+                'download': {
+                    'url': presigned_url,
+                    'expires_at': (datetime.now() + timedelta(hours=24)).isoformat(),
+                    'size_mb': round(file_size / 1024 / 1024, 2),
+                    'filename': filename,
+                    'cached': False
+                },
+                'instructions': '点击 URL 直接下载，链接 24 小时有效。固定版本模型会缓存，后续下载无需等待。'
+            })
+            
+        except Exception as e:
+            logger.error(f"生成模型下载链接失败: {str(e)}", exc_info=True)
+            return Response(
+                {'error': f'生成下载链接失败: {str(e)}'},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+    
+    def _get_minio_client(self):
+        """
+        获取 MinIO 客户端实例
+        
+        使用 MinioBackend 的内部 client 来访问原生 MinIO API
+        """
+        storage = MinioBackend(bucket_name="munchkin-public")
+        return storage.client
 
 
 class TimeSeriesPredictTrainHistoryViewSet(ModelViewSet):
@@ -740,6 +1005,12 @@ class TimeSeriesPredictDatasetReleaseViewSet(ModelViewSet):
         try:
             release = self.get_object()
             
+            if release.status == 'archived':
+                return Response(
+                    {'error': '数据集版本已处于归档状态'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            
             release.status = 'archived'
             release.description = f"[已归档] {release.description or ''}"
             release.save(update_fields=['status', 'description'])
@@ -755,6 +1026,44 @@ class TimeSeriesPredictDatasetReleaseViewSet(ModelViewSet):
             logger.error(f"归档失败: {str(e)}", exc_info=True)
             return Response(
                 {'error': f'归档失败: {str(e)}'},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
+    @action(detail=True, methods=['post'], url_path='unarchive')
+    @HasPermission("timeseries_predict_dataset_releases-Edit")
+    def unarchive(self, request, *args, **kwargs):
+        """
+        恢复已归档的数据集版本(将状态改为 published)
+        """
+        try:
+            release = self.get_object()
+            
+            if release.status != 'archived':
+                return Response(
+                    {'error': '只能恢复已归档的数据集版本'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            
+            # 移除归档标记
+            original_description = release.description or ''
+            if original_description.startswith('[已归档] '):
+                release.description = original_description.replace('[已归档] ', '', 1)
+            
+            release.status = 'published'
+            release.save(update_fields=['status', 'description'])
+            
+            logger.info(f"恢复数据集版本: {release.id} - {release.dataset.name} {release.version}")
+            
+            return Response({
+                'message': '恢复成功',
+                'release_id': release.id,
+                'status': release.status
+            })
+            
+        except Exception as e:
+            logger.error(f"恢复失败: {str(e)}", exc_info=True)
+            return Response(
+                {'error': f'恢复失败: {str(e)}'},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
 

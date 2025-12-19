@@ -17,7 +17,7 @@ const TrainTaskDrawer = ({ open, onCancel, selectId, activeTag }:
     activeTag: string[]
   }) => {
   const { t } = useTranslation();
-  const { getTrainTaskState } = useMlopsTaskApi();
+  const { getTrainTaskState, getTimeseriesPredictModelURL } = useMlopsTaskApi();
   const [showList, setShowList] = useState<boolean>(true);
   const [tableLoading, setTableLoading] = useState<boolean>(false);
   const [historyData, setHistoryData] = useState<any[]>([]);
@@ -54,6 +54,20 @@ const TrainTaskDrawer = ({ open, onCancel, selectId, activeTag }:
     setShowList(false);
   };
 
+  const downloadModel = async (record: any) => {
+    try {
+      message.info("等待数据包中")
+      const data = await getTimeseriesPredictModelURL(record.run_id);
+      const link = document.createElement('a');
+      link.href = data.download.url;  // MinIO 预签名 URL
+      link.download = data.download.filename;  // 建议的文件名
+      link.click();
+    } catch (e) {
+      console.error(e);
+      message.error(t(`common.errorFetch`))
+    }
+  };
+
   return (
     <Drawer
       className={`${styles.drawer}`}
@@ -74,7 +88,12 @@ const TrainTaskDrawer = ({ open, onCancel, selectId, activeTag }:
         >
           返回列表
         </Button>
-      ] : null}
+      ] : [
+        <Button key="refresh" type="primary" className="float-right" onClick={getStateData}>
+          刷新列表
+        </Button>,
+        <Button key="close" type="default" className="float-right mr-2" onClick={onCancel}>关闭</Button>
+      ]}
     >
       <div className="drawer-content">
         {showList ?
@@ -82,6 +101,7 @@ const TrainTaskDrawer = ({ open, onCancel, selectId, activeTag }:
             data={historyData}
             loading={tableLoading}
             openDetail={openDetail}
+            downloadModel={downloadModel}
           /> :
           <TrainTaskDetail activeKey={key} backToList={() => setShowList(true)} metricData={currentDetail} />}
       </div>

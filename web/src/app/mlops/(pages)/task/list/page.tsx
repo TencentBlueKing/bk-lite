@@ -4,7 +4,7 @@ import { useLocalizedTime } from "@/hooks/useLocalizedTime";
 import useMlopsTaskApi from '@/app/mlops/api/task';
 import useMlopsManageApi from '@/app/mlops/api/manage';
 import { Button, Input, Popconfirm, message, Tag, Tree } from 'antd';
-import { PlusOutlined, ReloadOutlined } from '@ant-design/icons';
+import { ReloadOutlined } from '@ant-design/icons';
 import CustomTable from '@/components/custom-table';
 import EllipsisWithTooltip from '@/components/ellipsis-with-tooltip';
 import PageLayout from '@/components/page-layout';
@@ -505,7 +505,7 @@ const TrainTask = () => {
                   style={{ fontSize: 15 }}
                 />
                 <PermissionWrapper requiredPermissions={['Add']}>
-                  <Button type="primary" icon={<PlusOutlined />} className="rounded-md text-xs shadow mr-2" onClick={() => handleAdd()}>
+                  <Button type="primary" className="rounded-md text-xs shadow mr-2" onClick={() => handleAdd()}>
                     {t('common.add')}
                   </Button>
                 </PermissionWrapper>

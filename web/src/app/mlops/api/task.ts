@@ -269,9 +269,19 @@ const useMlopsTaskApi = () => {
     return await post(`/mlops/timeseries_predict_dataset_releases/${id}/archive/`);
   };
 
+  // 已归档数据集版本恢复发布
+  const unarchiveDatasetRelease = async (id: string) => {
+    return await post(`/mlops/timeseries_predict_dataset_releases/${id}/unarchive/`);
+  };
+
   // 删除数据集版本
   const deleteDatasetRelease = async (id: string) => {
     return await del(`/mlops/timeseries_predict_dataset_releases/${id}/`);
+  };
+
+  // 获取时间序列模型文件URL
+  const getTimeseriesPredictModelURL = async (run_id: string) => {
+    return await get(`/mlops/timeseries_predict_train_jobs/download_model/${run_id}/`);
   };
 
   return {
@@ -289,6 +299,7 @@ const useMlopsTaskApi = () => {
     getOneTimeSeriesTask,
     getClassificationTaskList,
     getOneClassification,
+    getTimeseriesPredictModelURL,
     addAnomalyTrainTask,
     addRasaTrainTask,
     addLogClusteringTrainTask,
@@ -311,6 +322,7 @@ const useMlopsTaskApi = () => {
     createDatasetRelease,
     getDatasetReleases,
     archiveDatasetRelease,
+    unarchiveDatasetRelease,
     deleteDatasetRelease
   }
 

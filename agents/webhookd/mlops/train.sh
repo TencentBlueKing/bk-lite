@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # webhookd mlops train script
-# 接收 JSON: {"id": "train-001", "bucket": "datasets", "dataset": "file.zip", "config": "config.yml", "minio_access_key": "...", "minio_secret_key": "..."}
+# 接收 JSON: {"id": "train-001", "bucket": "datasets", "dataset": "file.zip", "config": "config.yml", "minio_endpoint": "http://127.0.0.1:9000", "mlflow_tracking_uri": "http://127.0.0.1:15000", "minio_access_key": "...", "minio_secret_key": "..."}
 
 set -e
 
@@ -22,12 +22,19 @@ ID=$(echo "$JSON_DATA" | jq -r '.id // empty')
 BUCKET=$(echo "$JSON_DATA" | jq -r '.bucket // empty')
 DATASET=$(echo "$JSON_DATA" | jq -r '.dataset // empty')
 CONFIG=$(echo "$JSON_DATA" | jq -r '.config // empty')
+MINIO_ENDPOINT=$(echo "$JSON_DATA" | jq -r '.minio_endpoint // empty')
+MLFLOW_TRACKING_URI=$(echo "$JSON_DATA" | jq -r '.mlflow_tracking_uri // empty')
 MINIO_ACCESS_KEY=$(echo "$JSON_DATA" | jq -r '.minio_access_key // empty')
 MINIO_SECRET_KEY=$(echo "$JSON_DATA" | jq -r '.minio_secret_key // empty')
 
 # 验证必需参数
 if [ -z "$ID" ] || [ -z "$BUCKET" ] || [ -z "$DATASET" ] || [ -z "$CONFIG" ]; then
     json_error "${ID:-unknown}" "Missing required fields (id, bucket, dataset, or config)"
+    exit 1
+fi
+
+if [ -z "$MINIO_ENDPOINT" ] || [ -z "$MLFLOW_TRACKING_URI" ]; then
+    json_error "$ID" "Missing service endpoints (minio_endpoint or mlflow_tracking_uri)"
     exit 1
 fi
 
@@ -45,25 +52,16 @@ if docker ps -a --format '{{.Names}}' | grep -q "^${CONTAINER_NAME}$"; then
     exit 1
 fi
 
-# 获取服务endpoint
-MINIO_ENDPOINT=$(get_minio_endpoint)
-MLFLOW_TRACKING_URI=$(get_mlflow_endpoint)
-
-# 验证endpoint是否获取成功
-if [ -z "$MINIO_ENDPOINT" ] || [ -z "$MLFLOW_TRACKING_URI" ]; then
-    json_error "$ID" "Failed to get Docker gateway IP"
-    exit 1
-fi
-
 # 检查镜像是否存在
 if ! docker images --format '{{.Repository}}:{{.Tag}}' | grep -q "^${TRAIN_IMAGE}$"; then
     json_error "$ID" "Training image not found: $TRAIN_IMAGE"
     exit 1
 fi
 
-# 启动训练容器（覆盖 ENTRYPOINT，直接运行训练脚本）
+# 启动训练容器（使用 host 网络模式，覆盖 ENTRYPOINT，直接运行训练脚本）
 DOCKER_OUTPUT=$(docker run -d --rm \
     --name "$CONTAINER_NAME" \
+    --network host \
     --entrypoint /apps/support-files/scripts/train-model.sh \
     -e MINIO_ENDPOINT="$MINIO_ENDPOINT" \
     -e MLFLOW_TRACKING_URI="$MLFLOW_TRACKING_URI" \

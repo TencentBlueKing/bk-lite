@@ -1,7 +1,6 @@
 'use client';
 import { useState, useEffect, useRef } from 'react';
 import { Button, Tag, message, Popconfirm, Space, Drawer } from 'antd';
-import { PlusOutlined } from '@ant-design/icons';
 import { useSearchParams } from 'next/navigation';
 import { useTranslation } from '@/utils/i18n';
 import CustomTable from '@/components/custom-table';
@@ -41,7 +40,7 @@ const DatasetReleaseList: React.FC<DatasetReleaseListProps> = ({ datasetType }) 
   const datasetId = searchParams.get('folder_id');
   const releaseModalRef = useRef<ModalRef>(null);
 
-  const { getDatasetReleases, archiveDatasetRelease, deleteDatasetRelease } = useMlopsTaskApi();
+  const { getDatasetReleases, archiveDatasetRelease, unarchiveDatasetRelease, deleteDatasetRelease } = useMlopsTaskApi();
 
   // 判断当前类型是否支持版本管理
   const isSupportedType = datasetType === 'timeseries_predict';
@@ -96,6 +95,17 @@ const DatasetReleaseList: React.FC<DatasetReleaseListProps> = ({ datasetType }) 
     }
   };
 
+  const handleUnarchive = async (record: DatasetRelease) => {
+    try {
+      await unarchiveDatasetRelease(record.id.toString());
+      message.success('发布成功');
+      fetchReleases()
+    } catch (error) {
+      console.error('发布失败', error);
+      message.error('发布失败');
+    }
+  };
+
   const handleDeleteRelease = async (record: DatasetRelease) => {
     try {
       await deleteDatasetRelease(record.id.toString());
@@ -135,7 +145,7 @@ const DatasetReleaseList: React.FC<DatasetReleaseListProps> = ({ datasetType }) 
       published: { color: 'success', text: '已发布' },
       pending: { color: 'processing', text: '发布中' },
       failed: { color: 'error', text: '失败' },
-      archived: {color: 'default', text: '归档'}
+      archived: { color: 'default', text: '归档' }
     };
     const config = statusMap[status] || { color: 'default', text: status };
     return <Tag color={config.color}>{config.text}</Tag>;
@@ -193,14 +203,23 @@ const DatasetReleaseList: React.FC<DatasetReleaseListProps> = ({ datasetType }) 
       // align: 'center',
       render: (_: any, record: DatasetRelease) => (
         <Space size="small">
-          <Button
-            type="link"
-            size="small"
-            disabled={record.status === 'pending'}
-            href={record.dataset_file}
-          >
-            {t(`common.download`)}
-          </Button>
+          {record.status === 'archived'
+            ? <Button
+              type='link'
+              size='small'
+              onClick={() => handleUnarchive(record)}
+            >
+              {t(`common.publish`)}
+            </Button>
+            : <Button
+              type="link"
+              size="small"
+              disabled={record.status === 'pending'}
+              href={record.dataset_file}
+            >
+              {t(`common.download`)}
+            </Button>
+          }
           {record.status === 'published' && (
             <Popconfirm
               title="确认归档"
@@ -242,7 +261,7 @@ const DatasetReleaseList: React.FC<DatasetReleaseListProps> = ({ datasetType }) 
         title="数据集版本管理"
         footer={
           <div className='flex justify-end'>
-            <Button type="primary" icon={<PlusOutlined />} onClick={handleRelease}>
+            <Button type="primary" onClick={handleRelease}>
               发布版本
             </Button>
           </div>

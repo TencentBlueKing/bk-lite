@@ -7,13 +7,29 @@ import { Button, Tag } from "antd";
 interface TrainTaskHistoryProps {
   data: any[],
   loading: boolean,
-  openDetail: (record: any) => void
+  openDetail: (record: any) => void,
+  downloadModel: (record: any) => void,
+}
+
+const RUN_STATUS_MAP: Record<string, string> = {
+  'RUNNING': 'blue',
+  'FINISHED': 'green',
+  'FAILED': 'red',
+  'KILLED': 'volcano'
+}
+
+const RUN_TEXT_MAP: Record<string, string> = {
+  'RUNNING': 'inProgress',
+  'FINISHED': 'completed',
+  'FAILED': 'failed',
+  'KILLED': 'killed'
 }
 
 const TrainTaskHistory = ({
   data,
   loading,
-  openDetail
+  openDetail,
+  downloadModel
 }: TrainTaskHistoryProps) => {
   const { t } = useTranslation();
   const { convertToLocalizedTime } = useLocalizedTime();
@@ -48,9 +64,13 @@ const TrainTaskHistory = ({
       dataIndex: 'status',
       width: 120,
       render: (_, record) => {
-        return record.status ? (<Tag className=''>
-          {record.status}
-        </Tag>) : (<p>--</p>)
+        return record.status ?
+          (
+            <Tag color={RUN_STATUS_MAP[record.status as string]}>
+              {t(`traintask.${RUN_TEXT_MAP[record.status]}`)}
+            </Tag>
+          )
+          : (<p>--</p>)
       }
     },
     {
@@ -58,7 +78,10 @@ const TrainTaskHistory = ({
       dataIndex: 'action',
       key: 'action',
       render: (_, record) => (
-        <Button type="link" onClick={() => openDetail(record)}>{t(`common.detail`)}</Button>
+        <>
+          <Button type="link" onClick={() => openDetail(record)} className="mr-2">{t(`common.detail`)}</Button>
+          <Button type="link" onClick={() => downloadModel(record)}>{t(`common.download`)}</Button>
+        </>
       )
     }
   ]

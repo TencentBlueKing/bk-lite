@@ -220,6 +220,15 @@ class TimeSeriesPredictTrainJob(MaintainerInfo, TimeInfo):
         """保存时自动同步配置到 MinIO（先保存获得 pk，再同步文件）"""
         from apps.core.logger import opspilot_logger as logger
         
+        # 如果仅更新指定字段且不包含配置相关字段，跳过文件同步
+        update_fields = kwargs.get('update_fields')
+        config_related_fields = {'hyperopt_config', 'config_url', 'algorithm', 'dataset_version'}
+        
+        if update_fields and not any(field in config_related_fields for field in update_fields):
+            # 仅更新状态等非配置字段，直接保存
+            super().save(*args, **kwargs)
+            return
+        
         # 1. 先保存到数据库，获得 pk
         super().save(*args, **kwargs)
         
