@@ -9,6 +9,7 @@ class KnowledgeDocumentSerializer(UsernameSerializer):
     train_status_display = serializers.SerializerMethodField()
     sync_enabled = serializers.SerializerMethodField()
     sync_time = serializers.SerializerMethodField()
+    last_run_time = serializers.SerializerMethodField()
 
     class Meta:
         model = KnowledgeDocument
@@ -25,7 +26,7 @@ class KnowledgeDocumentSerializer(UsernameSerializer):
             document_list = [i.id for i in instance if i.knowledge_source_type == "web_page"]
 
         web_page_doc_list = WebPageKnowledge.objects.filter(knowledge_document__in=document_list).values(
-            "knowledge_document_id", "sync_enabled", "sync_time"
+            "knowledge_document_id", "sync_enabled", "sync_time", "last_run_time"
         )
         self.web_page_doc_map = {i["knowledge_document_id"]: i for i in web_page_doc_list}
 
@@ -37,6 +38,12 @@ class KnowledgeDocumentSerializer(UsernameSerializer):
         if obj.knowledge_source_type == "web_page":
             return self.web_page_doc_map.get(obj.id, {}).get("sync_enabled", False)
         return False
+
+    def get_last_run_time(self, obj):
+        if obj.knowledge_source_type == "web_page":
+            run_time = self.web_page_doc_map.get(obj.id, {}).get("last_run_time", "")
+            return run_time
+        return ""
 
     def get_sync_time(self, obj):
         if obj.knowledge_source_type == "web_page":

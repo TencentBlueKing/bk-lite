@@ -1,13 +1,4 @@
-import { useSwitchSnmpPlugin } from '../../plugins/networkDevice/switchSnmp';
-
 export const useSwitchConfig = () => {
-  const snmpPlugin = useSwitchSnmpPlugin();
-
-  // 所有插件配置
-  const plugins = {
-    'Switch SNMP General': snmpPlugin,
-  };
-
   return {
     instance_type: 'switch',
     dashboardDisplay: [
@@ -70,6 +61,8 @@ export const useSwitchConfig = () => {
       list: ['instance_id'],
       default: ['instance_id'],
     },
-    plugins,
+    collectTypes: {
+      'Switch SNMP General': 'snmp',
+    },
   };
 };

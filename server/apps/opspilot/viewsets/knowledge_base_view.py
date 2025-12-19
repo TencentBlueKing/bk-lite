@@ -5,6 +5,7 @@ from rest_framework.decorators import action
 from rest_framework.response import Response
 
 from apps.core.decorators.api_permission import HasPermission
+from apps.core.logger import opspilot_logger as logger
 from apps.core.utils.viewset_utils import AuthViewSet
 from apps.opspilot.enum import DocumentStatus
 from apps.opspilot.models import (
@@ -13,12 +14,16 @@ from apps.opspilot.models import (
     KnowledgeBase,
     KnowledgeDocument,
     KnowledgeGraph,
+    LLMSkill,
     ManualKnowledge,
     QAPairs,
     WebPageKnowledge,
 )
 from apps.opspilot.serializers import KnowledgeBaseSerializer
+from apps.opspilot.services.knowledge_search_service import KnowledgeSearchService
 from apps.opspilot.tasks import retrain_all
+from apps.opspilot.utils.chunk_helper import ChunkHelper
+from apps.opspilot.utils.graph_utils import GraphUtils
 
 
 class KnowledgeBaseViewSet(AuthViewSet):
@@ -48,18 +53,11 @@ class KnowledgeBaseViewSet(AuthViewSet):
     def create(self, request, *args, **kwargs):
         params = request.data
         if not params.get("team"):
-            message = self.loader.get("error.team_required") if self.loader else "The team field is required."
-            return JsonResponse({"result": False, "message": message})
+            return JsonResponse({"result": False, "message": self.loader.get("error.team_required")})
         if "embed_model" not in params:
             params["embed_model"] = EmbedProvider.objects.get(name="FastEmbed(BAAI/bge-small-zh-v1.5)").id
         if KnowledgeBase.objects.filter(name=params["name"]).exists():
-            message = self.loader.get("error.knowledge_base_name_exists") if self.loader else "The knowledge base name already exists."
-            return JsonResponse(
-                {
-                    "result": False,
-                    "message": message,
-                }
-            )
+            return JsonResponse({"result": False, "message": self.loader.get("error.knowledge_base_name_exists")})
         params["created_by"] = request.user.username
         if params.get("enable_rerank") is None:
             params["enable_rerank"] = False
@@ -80,14 +78,7 @@ class KnowledgeBaseViewSet(AuthViewSet):
         params = request.data
         if instance.embed_model_id != params["embed_model"]:
             if instance.knowledgedocument_set.filter(train_status=DocumentStatus.TRAINING).exists():
-                return JsonResponse(
-                    {
-                        "result": False,
-                        "message": self.loader.get("error.knowledge_base_training")
-                        if self.loader
-                        else "The knowledge base is training and cannot be modified.",
-                    }
-                )
+                return JsonResponse({"result": False, "message": self.loader.get("error.knowledge_base_training")})
             delete_qa_pairs = params.pop("delete_qa_pairs", False)
             retrain_all.delay(instance.id, request.user.username, request.user.domain, delete_qa_pairs)
         return super().update(request, *args, **kwargs)
@@ -101,24 +92,12 @@ class KnowledgeBaseViewSet(AuthViewSet):
             include_children = request.COOKIES.get("include_children", "0") == "1"
             has_permission = self.get_has_permission(request.user, instance, current_team, include_children=include_children)
             if not has_permission:
-                return JsonResponse(
-                    {
-                        "result": False,
-                        "message": self.loader.get("error.permission_update_denied")
-                        if self.loader
-                        else "You do not have permission to update this instance",
-                    }
-                )
+                return JsonResponse({"result": False, "message": self.loader.get("error.permission_update_denied")})
 
         kwargs = request.data
         if kwargs.get("name"):
             if KnowledgeBase.objects.filter(name=kwargs["name"]).exclude(id=instance.id).exists():
-                return JsonResponse(
-                    {
-                        "result": False,
-                        "message": self.loader.get("error.knowledge_base_name_exists") if self.loader else "The knowledge base name already exists.",
-                    }
-                )
+                return JsonResponse({"result": False, "message": self.loader.get("error.knowledge_base_name_exists")})
             instance.name = kwargs["name"]
         if kwargs.get("introduction"):
             instance.introduction = kwargs["introduction"]
@@ -145,30 +124,35 @@ class KnowledgeBaseViewSet(AuthViewSet):
 
     @HasPermission("knowledge_list-Delete")
     def destroy(self, request, *args, **kwargs):
-        if KnowledgeDocument.objects.filter(knowledge_base_id=kwargs["pk"]).exists():
-            message = (
-                self.loader.get("error.knowledge_base_has_documents")
-                if self.loader
-                else "This knowledge base contains documents and cannot be deleted."
-            )
-            return JsonResponse(
-                {
-                    "result": False,
-                    "message": message,
-                }
-            )
-        elif QAPairs.objects.filter(knowledge_base_id=kwargs["pk"]).exists():
-            message = (
-                self.loader.get("error.knowledge_base_has_qa_pairs")
-                if self.loader
-                else "This knowledge base contains Q&A pairs and cannot be deleted."
-            )
-            return JsonResponse(
-                {
-                    "result": False,
-                    "message": message,
-                }
-            )
+        # 检查是否有LLMSkill使用该知识库
+        llm_skills = LLMSkill.objects.filter(knowledge_base__id=kwargs["pk"])
+        if llm_skills.exists():
+            skill_names = ", ".join([skill.name for skill in llm_skills[:5]])
+            if llm_skills.count() > 5:
+                skill_names += f" 等{llm_skills.count()}个技能"
+            message = self.loader.get("error.knowledge_base_used_by_skills").format(skill_names=skill_names)
+            return JsonResponse({"result": False, "message": message})
+
+        knowledge_base_id = kwargs["pk"]
+        instance = self.get_object()
+        index_name = instance.knowledge_index_name()
+        try:
+            # 1. 批量删除所有知识库文档
+            knowledge_document_ids = list(KnowledgeDocument.objects.filter(knowledge_base_id=knowledge_base_id).values_list("id", flat=True))
+            if knowledge_document_ids:
+                KnowledgeSearchService.delete_es_content(index_name=index_name, doc_id=knowledge_document_ids, keep_qa=False)
+            # 2. 删除问答对
+            qa_pairs = list(QAPairs.objects.filter(knowledge_base_id=knowledge_base_id, document_id=0).values_list("id", flat=True))
+            if qa_pairs:
+                ChunkHelper.delete_es_content(qa_pairs)
+            # 3. 批量删除知识图谱
+            knowledge_graph = KnowledgeGraph.objects.filter(knowledge_base_id=knowledge_base_id).first()
+            if knowledge_graph:
+                GraphUtils.delete_graph(knowledge_graph)
+                knowledge_graph.delete()
+        except Exception as e:
+            logger.exception(e)
+            return JsonResponse({"result": False, "message": self.loader.get("error.knowledge_base_delete_related_data_failed")})
         return super().destroy(request, *args, **kwargs)
 
     @action(detail=False, methods=["GET"])

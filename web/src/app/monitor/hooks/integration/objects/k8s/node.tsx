@@ -104,6 +104,8 @@ export const useNodeConfig = () => {
       list: ['node'],
       default: ['node'],
     },
-    plugins: {},
+    collectTypes: {
+      K8S: 'k8s',
+    },
   };
 };

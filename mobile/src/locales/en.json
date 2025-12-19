@@ -35,7 +35,8 @@
         "copiedToClipboard": "Copied to clipboard",
         "camera": "Camera",
         "gallery": "Gallery",
-        "file": "File"
+        "file": "File",
+        "allApps": "All Apps"
     },
     "navigation": {
         "conversations": "Chat",
@@ -65,7 +66,11 @@
         "releaseToCancel": "Release to cancel",
         "slideUpToCancel": "Release to send, slide up to cancel.",
         "welcomeMessage": "Hello, how can I assist you today?",
-        "fileCountLimit": "You can add up to 9 files"
+        "fileCountLimit": "You can add up to 9 files",
+        "noConversations": "No conversations yet",
+        "loadFailedDescription": "Unable to load app information. Please check your network connection or try other options",
+        "viewOtherConversations": "View Other Conversations",
+        "backToAppList": "Back to App List"
     },
     "auth": {
         "loginTitle": "Login",

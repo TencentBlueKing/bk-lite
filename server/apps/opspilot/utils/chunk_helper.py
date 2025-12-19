@@ -119,10 +119,20 @@ class ChunkHelper(ChatServerHelper):
             is_chunk: 是否为chunk
             keep_qa: 是否保留问答对
         """
+        if isinstance(doc_id, list):
+            if is_chunk:
+                doc_ids = [str(i) for i in doc_id]
+            else:
+                doc_ids = [f"qa_pairs_id_{i}" for i in doc_id]
+        else:
+            if is_chunk:
+                doc_ids = [str(doc_id)]
+            else:
+                doc_ids = [f"qa_pairs_id_{doc_id}"]
         rag_client = PgvectorRag()
         request = DocumentDeleteRequest(
-            chunk_ids=[str(doc_id)] if is_chunk else [],
-            knowledge_ids=[f"qa_pairs_id_{doc_id}"] if not is_chunk else [],
+            chunk_ids=doc_ids if is_chunk else [],
+            knowledge_ids=doc_ids if not is_chunk else [],
             keep_qa=keep_qa,
         )
         try:

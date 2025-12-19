@@ -43,6 +43,7 @@ import {
   ModelItem,
   TaskStatusMap,
 } from '@/app/cmdb/types/autoDiscovery';
+import { useAssetManageStore } from '@/app/cmdb/store';
 
 type ExtendedColumnItem = ColumnType<CollectTask> & {
   key: string;
@@ -56,6 +57,7 @@ interface PluginCardProps {
 const ProfessionalCollection: React.FC = () => {
   const { t } = useTranslation();
   const collectApi = useCollectApi();
+  const { editingId, setEditingId } = useAssetManageStore();
   const syncStatusConfig = React.useMemo(() => getExecStatusConfig(t), [t]);
   const [drawerVisible, setDrawerVisible] = useState(false);
   const [categoryList, setCategoryList] = useState<TreeNode[]>([]);
@@ -70,7 +72,6 @@ const ProfessionalCollection: React.FC = () => {
   );
   const [categoryLoading, setCategoryLoading] = useState(false);
   const [tableLoading, setTableLoading] = useState(false);
-  const [editingId, setEditingId] = useState<number | null>(null);
   const [executingTaskIds, setExecutingTaskIds] = useState<number[]>([]);
   const [docDrawerVisible, setDocDrawerVisible] = useState(false);
   const [taskDocDrawerVisible, setTaskDocDrawerVisible] = useState(false);
@@ -135,6 +136,7 @@ const ProfessionalCollection: React.FC = () => {
         items: CollectTask[];
         count: number;
       };
+      // console.log('test2.4:getCollectList', data);
       setTableData(data.items || []);
       tableCountRef.current = data.items.length || 0;
       setPaginationUI((prev) => ({
@@ -299,6 +301,7 @@ const ProfessionalCollection: React.FC = () => {
   };
 
   const handleCreate = () => {
+    // console.log('test2.1');
     setEditingId(null);
     setDrawerVisible(true);
   };
@@ -392,6 +395,7 @@ const ProfessionalCollection: React.FC = () => {
   };
 
   const getTaskContent = () => {
+    // console.log('test2.2', selectedCategoryRef.current.category, currentPlugin);
     if (!selectedCategoryRef.current.category || !currentPlugin) return null;
 
     const actualCategory =
@@ -595,13 +599,6 @@ const ProfessionalCollection: React.FC = () => {
         },
       },
       {
-        title: t('Collection.table.creator'),
-        dataIndex: 'created_by',
-        key: 'created_by',
-        width: 120,
-        render: (text: string) => <span>{text || '--'}</span>,
-      },
-      {
         title: t('Collection.table.syncTime'),
         dataIndex: 'exec_time',
         key: 'exec_time',
@@ -609,6 +606,25 @@ const ProfessionalCollection: React.FC = () => {
         render: (text: string) => (
           <span>{text ? dayjs(text).format('YYYY-MM-DD HH:mm:ss') : '--'}</span>
         ),
+      },
+      {
+        title: t('Collection.table.reportTime'),
+        dataIndex: 'last_time',
+        key: 'last_time',
+        width: 220,
+        render: (_, record: CollectTask) => {
+          const lastTime = (record.message as CollectTaskMessage)?.last_time;
+          return (
+            <span>{lastTime ? dayjs(lastTime).format('YYYY-MM-DD HH:mm:ss') : '--'}</span>
+          );
+        },
+      },
+      {
+        title: t('Collection.table.creator'),
+        dataIndex: 'created_by',
+        key: 'created_by',
+        width: 120,
+        render: (text: string) => <span>{text || '--'}</span>,
       },
       {
         title: t('Collection.table.actions'),
@@ -701,28 +717,23 @@ const ProfessionalCollection: React.FC = () => {
       <Card
         key={tab.id}
         hoverable
-        className={`cursor-pointer transition-all ${
-          isActive
-            ? 'border-blue-500 shadow-md bg-blue-50'
-            : 'border-gray-200 hover:border-blue-300'
+        className={`cursor-pointer transition-all ${isActive
+          ? 'border-blue-500 shadow-md bg-blue-50'
+          : 'border-gray-200 hover:border-blue-300'
         }`}
         styles={{ body: { padding: '12px' } }}
         onClick={() => handlePluginCardClick(tab.id)}
       >
         <div className="flex items-center gap-3 mb-2">
           <div
-            className={`w-10 h-10 rounded flex items-center justify-center text-lg font-semibold flex-shrink-0 ${
-              isActive ? 'bg-blue-500 text-white' : 'bg-blue-100 text-blue-600'
-            }`}
+            className={`w-10 h-10 rounded flex items-center justify-center text-lg font-semibold flex-shrink-0 ${isActive ? 'bg-blue-500 text-white' : 'bg-blue-100 text-blue-600'}`}
           >
             {tab.name?.charAt(0)}
           </div>
           <div className="flex-1 min-w-0">
             <div className="text-xs text-gray-700 mb-2 leading-relaxed">
               <span
-                className={`font-semibold ${
-                  isActive ? 'text-blue-600' : 'text-gray-900'
-                }`}
+                className={`font-semibold ${isActive ? 'text-blue-600' : 'text-gray-900'}`}
               >
                 {tab.name}
               </span>
@@ -889,7 +900,7 @@ const ProfessionalCollection: React.FC = () => {
           </div>
         </div>
       </div>
-
+      {/* 编辑任务弹窗 */}
       <Drawer
         title={
           <div className="flex items-center justify-between">
@@ -910,7 +921,8 @@ const ProfessionalCollection: React.FC = () => {
             >
               {taskDocDrawerVisible
                 ? t('Collection.closeDoc')
-                : t('Collection.viewDoc')}
+                : t('Collection.viewDoc')
+              }
             </Button>
           </div>
         }
@@ -923,6 +935,7 @@ const ProfessionalCollection: React.FC = () => {
           position: 'fixed',
         }}
       >
+        {/* 渲染任务内容 */}
         {drawerVisible && getTaskContent()}
       </Drawer>
 

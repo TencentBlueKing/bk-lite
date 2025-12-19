@@ -43,13 +43,13 @@ curl -sSL https://bklite.ai/install.run | bash -s -
 - 不包含 OpsPilot AI 模块：
 
 ```bash
-curl -sSL https://bklite.ai/install.run | MIRROR=bk-lite.tencentcloudcr.com/bklite bash -s - package
+curl -sSL https://bklite.ai/install.run | bash -s - package
 ```
 
 - 包含 OpsPilot AI 模块：
 
 ```bash
-curl -sSL https://bklite.ai/install.run | MIRROR=bk-lite.tencentcloudcr.com/bklite bash -s - package --opspilot
+curl -sSL https://bklite.ai/install.run | bash -s - package --opspilot
 ```
 
 执行完成后，离线安装所需内容会生成在 **/opt/bk-lite** 目录。
@@ -60,13 +60,13 @@ curl -sSL https://bklite.ai/install.run | MIRROR=bk-lite.tencentcloudcr.com/bkli
 
 ### 3.3 在目标服务器安装（离线机器执行）
 ```bash
-sudo mkdir -p /opt
-sudo tar -xzvf bklite-offline.tar.gz -C /opt
+sudo mkdir -p /opt/bk-lite
+sudo tar -xzvf bklite-offline.tar.gz -C /opt/bk-lite
 cd /opt/bk-lite
 export OFFLINE=true
 bash bootstrap.sh            # 基础版
 # 或
-# bash bootstrap.sh --opspilot  # 完整版（含 AI 模块）
+# bash bootstrap.sh --opspilot --VLLM  # 完整版（含 AI 模块和VLLM内置的ocr、embedding和rerank模型，需要 Nvidia GPU，且可用显存 > 8 GB）
 ```
 
 ---

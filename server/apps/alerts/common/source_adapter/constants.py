@@ -12,15 +12,15 @@ DEFAULT_SOURCE_CONFIG = {
     },
     "examples":{
         "CURL": """
-        curl --location --request POST 'http://127.0.0.1:8000/api/v1/alerts/api/receiver_data/' \
-        --header 'SECRET: QKY2ZupjkfEvypiU3bTg4afuqfVjpIwF' \
+        curl --location --request POST '{url}/api/v1/alerts/api/receiver_data/' \
+        --header 'SECRET: {SECRET}' \
         --header 'Content-Type: application/json' \
         --data-raw '{
           "source_id": "restful",
           "events": [
             {
               "title": "Jenkins流水线 frontend-deploy 构建状态成功1",
-              "description": "流水线: frontend-deploy\n状态: 成功",
+              "description": "流水线: frontend-deploy 状态: 成功",
               "value": 0,
               "item": "jenkins_build_status",
               "level": "1",
@@ -42,14 +42,14 @@ DEFAULT_SOURCE_CONFIG = {
         import requests
         import json
         
-        url = "http://127.0.0.1:8000/api/v1/alerts/api/receiver_data/"
+        url = "{url}/api/v1/alerts/api/receiver_data/"
         
         payload = json.dumps({
            "source_id": "restful",
            "events": [
               {
                  "title": "Jenkins流水线 frontend-deploy 构建状态成功1",
-                 "description": "流水线: frontend-deploy\n状态: 成功",
+                 "description": "流水线: frontend-deploy 状态: 成功",
                  "value": 0,
                  "item": "jenkins_build_status",
                  "level": "1",
@@ -67,7 +67,7 @@ DEFAULT_SOURCE_CONFIG = {
            ]
         })
         headers = {
-           'SECRET': 'QKY2ZupjkfEvypiU3bTg4afuqfVjpIwF',
+           'SECRET': '{SECRET}',
            'Content-Type': 'application/json'
         }
         

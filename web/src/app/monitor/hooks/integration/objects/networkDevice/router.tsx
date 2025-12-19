@@ -1,13 +1,4 @@
-import { useRouterSnmpPlugin } from '../../plugins/networkDevice/routerSnmp';
-
 export const useRouterConfig = () => {
-  const snmpPlugin = useRouterSnmpPlugin();
-
-  // 所有插件配置
-  const plugins = {
-    'Router SNMP General': snmpPlugin,
-  };
-
   return {
     instance_type: 'router',
     dashboardDisplay: [
@@ -70,6 +61,8 @@ export const useRouterConfig = () => {
       list: ['instance_id'],
       default: ['instance_id'],
     },
-    plugins,
+    collectTypes: {
+      'Router SNMP General': 'snmp',
+    },
   };
 };

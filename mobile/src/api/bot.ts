@@ -65,10 +65,12 @@ export const getSessions = (
  */
 export const getSessionMessages = (
   sessionId: string,
+  options?: RequestInit
 ) => {
   return apiGet<any>(
     '/api/proxy/opspilot/bot_mgmt/chat_application/session_messages/',
     { session_id: sessionId },
+    options
   );
 }
 
@@ -77,10 +79,12 @@ export const getSessionMessages = (
  */
 export const getWelcomeMessage = (
   bot_id: number,
-  node_id: string
+  node_id: string,
+  options?: RequestInit
 ) => {
   return apiGet<any>(
     '/api/proxy/opspilot/bot_mgmt/chat_application/skill_guide/',
-    { bot_id, node_id }
+    { bot_id, node_id },
+    options
   );
 }

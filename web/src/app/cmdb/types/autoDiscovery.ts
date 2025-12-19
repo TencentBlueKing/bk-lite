@@ -13,45 +13,46 @@ export interface CollectTaskMessage {
   association_error: number;
   association_success: number;
   message?: string;
+  last_time?: string;
 }
 
 export interface CollectTask {
-    id: number;
-    name: string;
-    task_type: string;
-    driver_type: string;
-    model_id: string;
-    exec_status: number;
-    updated_at: string;
-    message: CollectTaskMessage;
-    exec_time: string | null;
-    input_method: number;
-    examine: boolean,
-    [permission: string]: any;
+  id: number;
+  name: string;
+  task_type: string;
+  driver_type: string;
+  model_id: string;
+  exec_status: number;
+  updated_at: string;
+  message: CollectTaskMessage;
+  exec_time: string | null;
+  input_method: number;
+  examine: boolean,
+  [permission: string]: any;
 }
 
 export interface TreeNode {
-    id: string;
-    model_id?: string;
-    key: string;
-    name: string;
-    type?: string;
-    task_type?: string;
-    tag?: string[];
-    desc?: string;
-    children?: TreeNode[];
-    tabItems?: TreeNode[];
+  id: string;
+  model_id?: string;
+  key: string;
+  name: string;
+  type?: string;
+  task_type?: string;
+  tag?: string[];
+  desc?: string;
+  children?: TreeNode[];
+  tabItems?: TreeNode[];
 }
 
 export interface ModelItem {
-    id: string;
-    model_id: string;
-    key: string;
-    name: string;
-    task_type?: string;
-    tag?: string[];
-    desc?: string;
-    tabItems?: TreeNode[];
+  id: string;
+  model_id: string;
+  key: string;
+  name: string;
+  task_type?: string;
+  tag?: string[];
+  desc?: string;
+  tabItems?: TreeNode[];
 };
 
 export interface TaskStatusStats {

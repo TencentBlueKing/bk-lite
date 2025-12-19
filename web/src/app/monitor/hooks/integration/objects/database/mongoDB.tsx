@@ -1,11 +1,4 @@
-import { useMongoDBTelegraf } from '../../plugins/database/mongoDBTelegraf';
-
 export const useMongoDBConfig = () => {
-  const mongoDB = useMongoDBTelegraf();
-  const plugins = {
-    MongoDB: mongoDB,
-  };
-
   return {
     instance_type: 'mongodb',
     dashboardDisplay: [],
@@ -15,6 +8,9 @@ export const useMongoDBConfig = () => {
       { type: 'value', key: 'mongodb_resident_megabytes' },
     ],
     groupIds: {},
-    plugins,
+    collectTypes: {
+      'Mongodb-Exporter': 'exporter',
+      MongoDB: 'database',
+    },
   };
 };

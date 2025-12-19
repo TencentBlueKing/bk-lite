@@ -1,12 +1,4 @@
-import { useNginxTelegraf } from '../../plugins/middleware/nginxTelegraf';
-
 export const useNginxConfig = () => {
-  const nginxTelegraf = useNginxTelegraf();
-
-  const plugins = {
-    Nginx: nginxTelegraf,
-  };
-
   return {
     instance_type: 'nginx',
     dashboardDisplay: [],
@@ -15,6 +7,9 @@ export const useNginxConfig = () => {
       { type: 'value', key: 'nginx_active' },
     ],
     groupIds: {},
-    plugins,
+    collectTypes: {
+      'Nginx-Exporter': 'exporter',
+      Nginx: 'middleware',
+    },
   };
 };

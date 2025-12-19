@@ -16,6 +16,9 @@
       "description": "监控的Docker容器所在主机的网络地址，用于准确定位和采集性能数据",
       "widget_props": {
         "placeholder": "端点"
+      },
+      "transform_on_edit": {
+        "origin_path": "child.content.config.endpoint"
       }
     },
     {

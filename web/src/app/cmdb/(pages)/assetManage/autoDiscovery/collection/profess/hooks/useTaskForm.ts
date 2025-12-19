@@ -4,6 +4,7 @@ import { useTranslation } from '@/utils/i18n';
 import { useCollectApi } from '@/app/cmdb/api';
 import { CYCLE_OPTIONS } from '@/app/cmdb/constants/professCollection';
 import dayjs from 'dayjs';
+import { useAssetManageStore } from '@/app/cmdb/store';
 
 interface UseTaskFormProps {
   modelId: string;
@@ -48,6 +49,8 @@ export const useTaskForm = ({
     try {
       setLoading(true);
       const data = await collectApi.getCollectDetail(id.toString());
+      // console.log('test2.5:getCollectDetail', data.cycle_value_type);
+      useAssetManageStore.getState().setScanCycleType(data.cycle_value_type || null);
       const cycleType = data.cycle_value_type || CYCLE_OPTIONS.ONCE;
       const cycleValue = data.cycle_value;
       form.setFieldsValue({
@@ -76,8 +79,14 @@ export const useTaskForm = ({
       setSubmitLoading(true);
       const params = formatValues(values);
       if (editId) {
-        await collectApi.updateCollect(editId.toString(), params);
-        message.success(t('successfullyModified'));
+        // console.log('test2.3', params.scan_cycle.value_type);
+        if (params.scan_cycle.value_type === "cycle") {
+          await collectApi.updateCollect(editId.toString(), params);
+          message.success(t('successfullyModified'));
+        }else{
+          message.error(t('Collection.cycleDeprecated'));
+          return;
+        }
       } else {
         await collectApi.createCollect(params);
         message.success(t('successfullyAdded'));

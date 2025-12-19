@@ -41,6 +41,8 @@ export const useClusterConfig = () => {
       list: ['instance_id'],
       default: ['instance_id'],
     },
-    plugins: {},
+    collectTypes: {
+      K8S: 'k8s',
+    },
   };
 };

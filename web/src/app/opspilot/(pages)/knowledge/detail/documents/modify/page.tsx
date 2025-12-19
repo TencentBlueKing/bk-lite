@@ -384,17 +384,9 @@ const KnowledgeModifyPage = () => {
           onFormChange={handleValidationChange} 
           onFormDataChange={handleQAPairDataChange} 
         />
-        <div className="fixed bottom-5 right-10 z-50 flex space-x-2">
+        <div className="fixed bottom-5 right-6 z-50 flex space-x-2">
           <Button disabled={loading} onClick={() => router.back()}>
             {t('common.cancel')}
-          </Button>
-          <Button 
-            type="default" 
-            onClick={() => handleCreateQAPair(true)} 
-            disabled={!isStepValid} 
-            loading={loading}
-          >
-            {t('knowledge.qaPairs.onlyGenerateQuestion')}
           </Button>
           <Button 
             type="primary" 
@@ -435,7 +427,7 @@ const KnowledgeModifyPage = () => {
           onFormChange={handleValidationChange} 
           onFormDataChange={handleCustomQADataChange} 
         />
-        <div className="fixed bottom-5 right-10 z-50 flex space-x-2">
+        <div className="fixed bottom-5 right-6 z-50 flex space-x-2">
           <Button disabled={loading} onClick={() => router.back()}>
             {t('common.cancel')}
           </Button>
@@ -606,7 +598,7 @@ const KnowledgeModifyPage = () => {
             </div>
           </div>
         )}
-        <div className="fixed bottom-5 right-10 z-50 flex space-x-2">
+        <div className="fixed bottom-5 right-6 z-50 flex space-x-2">
           {currentStep > 0 && currentStep < steps.length - 1 && (
             <Button onClick={handlePrevious} disabled={isUpdate && type === 'file' && currentStep === 1}>
               {t('common.pre')}

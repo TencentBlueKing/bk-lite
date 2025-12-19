@@ -1,13 +1,4 @@
-import { useFirewallSnmpPlugin } from '../../plugins/networkDevice/firewallSnmp';
-
 export const useFirewallConfig = () => {
-  const snmpPlugin = useFirewallSnmpPlugin();
-
-  // 所有插件配置
-  const plugins = {
-    'Firewall SNMP General': snmpPlugin,
-  };
-
   return {
     instance_type: 'firewall',
     dashboardDisplay: [
@@ -70,6 +61,8 @@ export const useFirewallConfig = () => {
       list: ['instance_id'],
       default: ['instance_id'],
     },
-    plugins,
+    collectTypes: {
+      'Firewall SNMP General': 'snmp',
+    },
   };
 };

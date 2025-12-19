@@ -17,6 +17,8 @@ import {
 import CustomTable from '@/components/custom-table';
 import GroupTreeSelector from '@/components/group-tree-select';
 import SearchFilter from './list/searchFilter';
+import FilterBar from './list/FilterBar';
+import { useAssetDataStore, type FilterItem } from '@/app/cmdb/store';
 import ImportInst from './list/importInst';
 import SelectInstance from './detail/relationships/selectInstance';
 import ExportModal from './components/exportModal';
@@ -218,14 +220,17 @@ const AssetDataContent = () => {
   const fetchData = async () => {
     setTableLoading(true);
     const params = getTableParams();
+    let caughtError: { name?: string } | null = null;
     try {
+      // console.log("test6:params", params);
       const data = await searchInstances(params);
       setTableData(data.insts);
       pagination.total = data.count;
       setPagination(pagination);
     } catch (error) {
-      console.log(error);
+      caughtError = error;
     } finally {
+      if (caughtError && caughtError?.name === "CanceledError") return;
       setTableLoading(false);
     }
   };
@@ -281,8 +286,10 @@ const AssetDataContent = () => {
   };
 
   const getTableParams = (overrideQueryList?: unknown) => {
-    const activeQueryList =
-      overrideQueryList !== undefined ? overrideQueryList : queryList;
+    const activeQueryList = overrideQueryList !== undefined
+      ? overrideQueryList
+      : queryList || null;
+
     const conditions = organization?.length
       ? [{ field: 'organization', type: 'list[]', value: organization }]
       : [];
@@ -485,17 +492,69 @@ const AssetDataContent = () => {
     setPagination(pagination);
   };
 
-  const handleSearch = (condition: unknown) => {
-    setQueryList(condition);
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const handleSearch = (condition: FilterItem | null, _searchValue?: any) => {
+    // console.log("test1", condition);
+
+    const addFilter = useAssetDataStore.getState().add;
+    const removeFilter = useAssetDataStore.getState().remove;
+    const updateFilter = useAssetDataStore.getState().update;
+    const currentList = useAssetDataStore.getState().query_list;
+
+    // 如果 condition 为 null 或没有 type 属性，说明要清除对应的筛选条件
+    const isClearCondition = !condition || !condition.type
+
+    if (isClearCondition) {
+      const fieldToRemove = condition?.field;
+      if (fieldToRemove) {
+        // 找到对应字段的索引并删除
+        const indexToRemove = currentList.findIndex((item) => item.field === fieldToRemove);
+        if (indexToRemove !== -1) {
+          removeFilter(indexToRemove);
+        }
+      }
+      return;
+    }
+
+    // 检查是否已存在相同 field 的筛选条件
+    const existingIndex = currentList.findIndex(
+      (item) => item.field === condition.field
+    );
+
+    if (existingIndex !== -1) {
+      // 如果已存在，更新该条件
+      updateFilter(existingIndex, condition);
+    } else {
+      // 如果不存在，添加新条件
+      addFilter(condition);
+    }
+  };
+
+  const storeQueryList = useAssetDataStore((state) => state.query_list);
+
+  // 监听 store 的 query_list 变化，同步到 queryList 状态（用于查询）
+  useEffect(() => {
+    if (storeQueryList.length === 0) {
+      setQueryList(null);
+    } else if (storeQueryList.length === 1) {
+      // 单个条件
+      setQueryList(storeQueryList[0]);
+    } else {
+      // console.log("test8:storeQueryList", storeQueryList);
+      // 多个条件
+      setQueryList(storeQueryList);
+    }
+  }, [storeQueryList]);
+
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const handleFilterBarChange = (_filters: FilterItem[]) => {
   };
 
   const checkDetail = (row = { _id: '', inst_name: '', ip_addr: '' }) => {
     const modelItem = modelList.find((item) => item.key === modelId);
     router.push(
-      `/cmdb/assetData/detail/baseInfo?icn=${modelItem?.icn || ''}&model_name=${
-        modelItem?.label || ''
-      }&model_id=${modelId}&classification_id=${groupId}&inst_id=${
-        row._id
+      `/cmdb/assetData/detail/baseInfo?icn=${modelItem?.icn || ''}&model_name=${modelItem?.label || ''
+      }&model_id=${modelId}&classification_id=${groupId}&inst_id=${row._id
       }&${row.inst_name ? `inst_name=${row.inst_name}` : `ip_addr=${row.ip_addr}`}`
     );
   };
@@ -611,6 +670,14 @@ const AssetDataContent = () => {
   }, [modelGroup, renderModelTitle]);
 
   const onSelectUnified = (selectedKeys: React.Key[]) => {
+    // console.log("test7");
+    // 同时清理store中的query_list和searchAttr
+    useAssetDataStore.getState().clear();
+    useAssetDataStore.setState((state) => ({
+      ...state,
+      searchAttr: "",
+    }));
+
     if (!selectedKeys.length) return;
     const key = selectedKeys[0] as string;
     if (key === modelId) return;
@@ -753,6 +820,7 @@ const AssetDataContent = () => {
   return (
     <Spin spinning={loading} wrapperClassName={assetDataStyle.assetLoading}>
       <div className={assetDataStyle.assetData}>
+        {/* 左侧树形选择器 */}
         <div className={`${assetDataStyle.groupSelector}`}>
           <div className={assetDataStyle.treeSearchWrapper}>
             <Input.Search
@@ -785,7 +853,8 @@ const AssetDataContent = () => {
           </div>
         </div>
         <div className={assetDataStyle.assetList}>
-          <div className="flex justify-between mb-4">
+          {/* 搜索行 */}
+          <div className={`flex justify-between ${storeQueryList.length === 0 ? 'mb-4' : ''}`}>
             <Space>
               <GroupTreeSelector
                 style={{
@@ -841,14 +910,26 @@ const AssetDataContent = () => {
               </Dropdown>
             </Space>
           </div>
+          {/* 筛选行 */}
+          <div className="w-full">
+            <FilterBar
+              attrList={propertyList}
+              userList={userList}
+              proxyOptions={proxyOptions}
+              onChange={handleFilterBarChange}
+              onFilterChange={handleFilterBarChange}
+            />
+          </div>
+          {/* 表格 */}
           <CustomTable
+            style={{ marginTop: '-1px' }}
             size="small"
             rowSelection={rowSelection}
             dataSource={tableData}
             columns={currentColumns}
             pagination={pagination}
             loading={tableLoading}
-            scroll={{ x: 'calc(100vw - 400px)', y: 'calc(100vh - 300px)' }}
+            scroll={{ x: 'calc(100vw - 400px)', y: 'calc(100vh - 380px)' }}
             fieldSetting={{
               showSetting: true,
               displayFieldKeys,
