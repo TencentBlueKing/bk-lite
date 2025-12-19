@@ -411,12 +411,12 @@ const FilterBar: React.FC<FilterBarProps> = ({
                     </Form.Item>
                     <Form.Item style={{ marginBottom: 0, textAlign: 'right' }}>
                       <Space>
-                        <Button size="small" onClick={handleCancel}>
-                          {t('common.cancel')}
-                        </Button>
-                        <Button type="primary" size="small" onClick={handleEditConfirm}>
+                        <span className={styles.actionLinkPrimary} onClick={handleEditConfirm}>
                           {t('common.confirm')}
-                        </Button>
+                        </span>
+                        <span className={styles.actionLink} onClick={handleCancel}>
+                          {t('common.cancel')}
+                        </span>
                       </Space>
                     </Form.Item>
                   </Form>
