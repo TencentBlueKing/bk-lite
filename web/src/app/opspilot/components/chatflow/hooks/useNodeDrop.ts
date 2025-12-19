@@ -76,6 +76,9 @@ export const useNodeDrop = ({
             if (nodeType === 'mobile') {
               return t('chatflow.mobile');
             }
+            if (nodeType === 'intent_classification') {
+              return t('chatflow.intentClassification');
+            }
             return t(`chatflow.${nodeType}`);
           } catch {
             return nodeType;

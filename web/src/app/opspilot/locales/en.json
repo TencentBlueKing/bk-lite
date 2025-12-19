@@ -949,7 +949,8 @@
     "mobile": "Mobile Terminal",
     "webChat": "Web Chat",
     "embeddedChat": "Embedded Chat",
-    "intentClassification": "Intent Classification"
+    "intentClassification": "Intent Classification",
+    "applications": "Applications"
   },
   "provider": {
     "form": {
