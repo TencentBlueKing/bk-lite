@@ -542,6 +542,9 @@ init_docker_images() {
 
     # VLLM image
     export DOCKER_IMAGE_VLLM=$(add_mirror_prefix "bklite/vllm:latest")
+
+    # webhookd images
+    export DOCKER_IMAGE_WEBHOOKD=$(add_mirror_prefix "bklite/webhookd:latest")
     
     # Fixed configuration variables
     export DOCKER_NETWORK=prod
@@ -579,12 +582,13 @@ generate_collector_packages() {
             log "INFO" "当前CPU架构为x86_64，生成控制器和采集器包...，耗时较长请耐心等待"
             # Clean and create directories
             [ -d "${output_dir}" ] && rm -rf "${output_dir}"
-            mkdir -p "${output_dir}/controller/certs"
-            mkdir -p "${output_dir}/collector"
+            mkdir -p ${output_dir}/controller/{linux,windows}/certs
+            mkdir -p ${output_dir}/collector/{linux,windows}
             
             # Copy CA certificate
             if [ -f "${certs_dir}/ca.crt" ]; then
-                cp -a "${certs_dir}/ca.crt" "${output_dir}/controller/certs/"
+                cp -a "${certs_dir}/ca.crt" "${output_dir}/controller/linux/certs/"
+                cp -a "${certs_dir}/ca.crt" "${output_dir}/controller/windows/certs/"
             else
                 log "ERROR" "CA证书文件不存在: ${certs_dir}/ca.crt"
                 return 1
@@ -593,17 +597,21 @@ generate_collector_packages() {
             # Extract collector binaries and create controller package
             docker run --rm -v "${PWD}/${output_dir}:/pkgs" -v "${PWD}/${bin_dir}:/tmp/bin" \
                 --entrypoint=/bin/bash "${collector_image}" -c "\
-                cp -a bin/* /pkgs/collector/; \
-                cp -af bin/* /tmp/bin; \
+                cp -a bin/* /pkgs/collector/linux/; \
+                cp -a /opt/release/windows/fusion-collectors/bin/* /pkgs/collector/windows/; \
+                cp -a bin/* /tmp/bin; \
                 cd /opt; \
-                cp fusion-collectors/misc/* fusion-collectors/; \
-                mkdir -p /opt/fusion-collectors/certs/; \
-                cp /pkgs/controller/certs/ca.crt /opt/fusion-collectors/certs/; \
-                zip -rq /pkgs/controller/fusion-collectors.zip fusion-collectors"
+                cp fusion-collectors/misc/linux/* fusion-collectors/; \
+                mkdir -p /opt/fusion-collectors/certs/ /opt/windows/fusion-collectors/certs/; \
+                cp /pkgs/controller/linux/certs/ca.crt /opt/fusion-collectors/certs/; \
+                cp /pkgs/controller/windows/certs/ca.crt /opt/windows/fusion-collectors/certs/; \
+                zip -rq /pkgs/controller/fusion-collectors-linux-amd64.zip fusion-collectors; \
+                zip -rq /pkgs/controller/fusion-collectors-windows-amd64.zip /opt/windows/fusion-collectors; \
+            "
             
             log "SUCCESS" "控制器和采集器包生成成功"
             log "INFO" "采集器目录: ${output_dir}/collector"
-            log "INFO" "控制器包: ${output_dir}/controller/fusion-collectors.zip"
+            log "INFO" "控制器包: ${output_dir}/controller"
             return 0
             ;;
         aarch64)
@@ -736,6 +744,9 @@ install() {
         log "SUCCESS" "已保存参数配置到 $COMMON_ENV_FILE: OPSPILOT_ENABLED=$OPSPILOT_ENABLED, VLLM_ENABLED=$VLLM_ENABLED"
     fi
 
+    # 生成nats需要的tls自签名证书
+    generate_tls_certs
+
     # 生成合成的docker-compose.yaml文件
     log "INFO" "生成合成的 docker-compose.yaml 文件..."
     $COMPOSE_CMD > docker-compose.yaml
@@ -749,9 +760,6 @@ install() {
         ${DOCKER_COMPOSE_CMD} pull
     fi
     
-
-    # 生成nats需要的tls自签名证书
-    generate_tls_certs
 
     # 调用函数生成采集器包
     generate_collector_packages || exit 1
@@ -852,17 +860,19 @@ DOCKER_IMAGE_FALKORDB=${DOCKER_IMAGE_FALKORDB}
 DOCKER_IMAGE_PGVECTOR=${DOCKER_IMAGE_PGVECTOR}
 DOCKER_IMAGE_VECTOR=${DOCKER_IMAGE_VECTOR}
 DOCKER_IMAGE_VLLM=${DOCKER_IMAGE_VLLM}
+DOCKER_IMAGE_WEBHOOKD=${DOCKER_IMAGE_WEBHOOKD}
 VLLM_BCE_EMBEDDING_MODEL_NAME=${VLLM_BCE_EMBEDDING_MODEL_NAME}
 VLLM_OLMOCR_MODEL_NAME=${VLLM_OLMOCR_MODEL_NAME}
 VLLM_BGE_EMBEDDING_MODEL_NAME=${VLLM_BGE_EMBEDDING_MODEL_NAME}
 VLLM_BCE_RERANK_MODEL_NAME=${VLLM_BCE_RERANK_MODEL_NAME}
 INSTALL_APPS="${INSTALL_APPS}"
 EOF
-
+    NATS_TLS_CA=$(cat conf/certs/ca.crt)
+    echo "NATS_TLS_CA=\"${NATS_TLS_CA}\"" >> .env
 
     # 按照特定顺序启动服务
-    log "INFO" "启动基础服务 (Traefik, Redis, NATS, VictoriaMetrics, FalkorDB, VictoriaLogs, Minio, MLFlow, NATS Executor, Vector)..."
-    ${DOCKER_COMPOSE_CMD} up -d traefik redis nats victoria-metrics falkordb victoria-logs minio mlflow nats-executor vector
+    log "INFO" "启动基础服务 (Traefik, Redis, NATS, VictoriaMetrics, FalkorDB, VictoriaLogs, Minio, MLFlow, NATS Executor, Vector, Webhookd)..."
+    ${DOCKER_COMPOSE_CMD} up -d traefik redis nats victoria-metrics falkordb victoria-logs minio mlflow nats-executor vector webhookd
 
     # 创建 JetStream - 使用正确的网络名称
     log "INFO" "创建JetStream..."
@@ -883,12 +893,17 @@ EOF
 
     log "INFO" "开始初始化内置插件"
     $DOCKER_COMPOSE_CMD exec -T server /bin/bash -s <<EOF
-python manage.py controller_package_init --pk_version latest --file_path /apps/pkgs/controller/fusion-collectors.zip
-python manage.py collector_package_init --os linux --object Telegraf --pk_version latest --file_path /apps/pkgs/collector/telegraf
-python manage.py collector_package_init --os linux --object Vector --pk_version latest --file_path /apps/pkgs/collector/vector
-python manage.py collector_package_init --os linux --object Nats-Executor --pk_version latest --file_path /apps/pkgs/collector/nats-executor
+python manage.py controller_package_init --pk_version latest --file_path /apps/pkgs/controller/fusion-collectors-linux-amd64.zip
+python manage.py collector_package_init --os linux --object Telegraf --pk_version latest --file_path /apps/pkgs/collector/linux/telegraf
+python manage.py collector_package_init --os linux --object Vector --pk_version latest --file_path /apps/pkgs/collector/linux/vector
+python manage.py collector_package_init --os linux --object Nats-Executor --pk_version latest --file_path /apps/pkgs/collector/linux/nats-executor
+python manage.py controller_package_init --pk_version windows-latest --file_path /apps/pkgs/controller/fusion-collectors-windows-amd64.zip
+python manage.py collector_package_init --os windows --object Telegraf --pk_version latest --file_path /apps/pkgs/collector/windows/telegraf.exe
+python manage.py collector_package_init --os windows --object Nats-Executor --pk_version latest --file_path /apps/pkgs/collector/windows/nats-executor.exe
 EOF
 
+
+    
     if [ -z "${SIDECAR_NODE_ID:-}" ]; then
         log "WARNING" "重新初始化 Sidecar Node ID 和 Token，可能会导致已注册的 Sidecar 失效"
         mapfile -t ARR < <($DOCKER_COMPOSE_CMD exec -T server /bin/bash -c 'python manage.py node_token_init --ip default' 2>&1| grep -oP 'node_id: \K[0-9a-f]+|token: \K\S+')
@@ -906,7 +921,6 @@ EOF
     else
         log "SUCCESS" "检测到 SIDECAR_NODE_ID 环境变量，跳过 Sidecar Token 初始化"
     fi
-
     echo "SIDECAR_NODE_ID=$SIDECAR_NODE_ID" >> .env
     echo "SIDECAR_INIT_TOKEN=$SIDECAR_INIT_TOKEN" >> .env
 
