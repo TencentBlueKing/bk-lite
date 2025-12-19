@@ -80,8 +80,7 @@ const Collector = () => {
 
   const handleResult = (res: any, enumMap?: Record<string, any>) => {
     const currentTagEnum = enumMap || tagEnum;
-    const filter = res.filter((item: any) => !item.controller_default_run);
-    const tempdata = filter.map((item: any) => {
+    const tempdata = (res || []).map((item: any) => {
       const tagList = item.tags || [];
       const displayTags = tagList.map((tag: string) => {
         return currentTagEnum[tag]?.name || tag;
