@@ -42,6 +42,16 @@
 | os_name       | 客户操作系统全名 |
 | vcpus         | 分配vCPU数量 |
 | memory        | 分配内存（MB） |
+| annotation    | vCenter 备注（vm.summary.config.annotation） |
+| uptime_seconds | 本次开机累计秒数（vm.summary.quickStats.uptimeSeconds；关机/不可用为 0） |
+| tools_version | VMware Tools 版本号（vm.guest.toolsVersion） |
+| tools_status  | VMware Tools 安装状态（vm.guest.toolsStatus） |
+| tools_running_status | VMware Tools 运行状态（vm.guest.toolsRunningStatus） |
+| last_boot     | 本次开机时间（vm.runtime.bootTime；关机为 None） |
+| creation_date | 创建时间（vm.config.createDate；vSphere 6.7+） |
+| last_backup   | 上次备份时间（自定义字段，如 NB_LAST_BACKUP） |
+| backup_policy | 备份策略（自定义字段，如 NB_BACKUP_POLICY） |
+| data_disks    | 磁盘明细 JSON（单盘维度：disk_id/provisioned_gb/used_gb/disk_type/datastore；layoutEx 不可用时 used_gb 为 null） |
 
 **存储(vmware_ds)**
 
