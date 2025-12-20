@@ -12,6 +12,7 @@ import { ModalRef } from '@/app/node-manager/types';
 import PermissionWrapper from '@/components/permission';
 import { useCollectorMenuItem } from '@/app/node-manager/hooks/collector';
 import { useCommon } from '@/app/node-manager/context/common';
+import { cloneDeep } from 'lodash';
 const { Search } = Input;
 const { confirm } = Modal;
 
@@ -54,7 +55,7 @@ const Collector = () => {
 
   const navigateToCollectorDetail = (item: CardItem) => {
     router.push(`
-      /node-manager/collector/detail?id=${item.id}&name=${item.name}&introduction=${item.description}&system=${item.os}&icon=${item.icon}`);
+      /node-manager/collector/detail?id=${item.id}&name=${item.original_name}&displayName=${item.name}&introduction=${item.description}&system=${item.os}&icon=${item.icon}`);
   };
 
   const getTags = () => {
@@ -87,12 +88,15 @@ const Collector = () => {
       });
       return {
         id: item.id,
-        name: item.name,
+        name: item.display_name,
+        original_name: item.name,
+        original_introduction: item.introduction,
         service_type: item.service_type,
         executable_path: item.executable_path,
         execute_parameters: item.execute_parameters,
-        description: item.introduction || '--',
+        description: item.display_introduction || '--',
         icon: item.icon || 'caijiqizongshu',
+        is_pre: item.is_pre,
         os:
           tagList.find((item: string) => ['linux', 'windows'].includes(item)) ||
           'linux',
@@ -133,10 +137,15 @@ const Collector = () => {
   };
 
   const openModal = (config: any) => {
+    const form = cloneDeep(config?.form || {});
+    if (config?.type === 'edit') {
+      form.name = form.original_name;
+      form.description = form.original_introduction;
+    }
     modalRef.current?.showModal({
       title: config?.title,
       type: config?.type,
-      form: config?.form,
+      form,
       key: config?.key,
       appTag: selectedAppTag,
     });

@@ -12,6 +12,7 @@ import CollectorModal from '@/app/node-manager/components/sidecar/collectorModal
 import { ModalRef } from '@/app/node-manager/types';
 import PermissionWrapper from '@/components/permission';
 import { useControllerMenuItem } from '@/app/node-manager/hooks/controller';
+import { cloneDeep } from 'lodash';
 const { Search } = Input;
 
 const Controller = () => {
@@ -36,7 +37,7 @@ const Controller = () => {
 
   const navigateToCollectorDetail = (item: CardItem) => {
     router.push(`
-      /node-manager/controller/detail?id=${item.id}&name=${item.name}&introduction=${item.description}&system=${item.os}`);
+      /node-manager/controller/detail?id=${item.id}&name=${item.original_name}&displayName=${item.name}&introduction=${item.description}&system=${item.os}`);
   };
 
   const filterBySelected = (data: any[], selectedTags: string[]) => {
@@ -75,11 +76,14 @@ const Controller = () => {
       });
       return {
         id: item.id,
-        name: item.name,
+        name: item.display_name,
+        original_name: item.name,
+        original_introduction: item.description,
         service_type: item.service_type,
         executable_path: item.executable_path,
         execute_parameters: item.execute_parameters,
-        description: item.description || '--',
+        description: item.display_description || item.description || '--',
+        is_pre: item.is_pre,
         icon: 'caijiqizongshu',
         tagList,
         os: system,
@@ -109,10 +113,15 @@ const Controller = () => {
   };
 
   const openModal = (config: any) => {
+    const form = cloneDeep(config?.form || {});
+    if (config?.type === 'edit') {
+      form.name = form.original_name;
+      form.description = form.original_introduction;
+    }
     modalRef.current?.showModal({
       title: config?.title,
       type: config?.type,
-      form: config?.form,
+      form,
       key: config?.key,
     });
   };
