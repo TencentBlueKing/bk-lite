@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation';
 import { useTranslation } from '@/utils/i18n';
 import { sessionsItem } from '@/types/conversation';
 import { getSessions } from '@/api/bot';
+import { useRunningSessionIds } from '@/context/conversation';
 
 interface ConversationSidebarProps {
     visible: boolean;
@@ -44,6 +45,9 @@ export const ConversationSidebar: React.FC<ConversationSidebarProps> = ({
     const router = useRouter();
     const { userInfo } = useAuth();
     const scrollContainerRef = React.useRef<HTMLDivElement>(null);
+
+    // 获取正在运行 AI 响应的会话 ID 列表
+    const runningSessionIds = useRunningSessionIds();
 
     useEffect(() => {
         // 等待缓存初始化完成
@@ -131,14 +135,20 @@ export const ConversationSidebar: React.FC<ConversationSidebarProps> = ({
             <div>
                 {sessions.map((session) => {
                     const isActive = session.bot_id === Number(currentBotId) && session.session_id === currentSessionId;
+                    const isRunning = runningSessionIds.includes(session.session_id);
                     return (
                         <div
                             key={session.session_id}
                             onClick={() => handleSessionClick(session)}
                             className={`cursor-pointer text-base ${isActive ? 'bg-[var(--color-fill-2)] font-semibold' : ''} m-2 p-3 rounded-lg`}
                         >
-                            <div className="truncate text-[var(--color-text-1)]">
-                                {session.title}
+                            <div className="flex items-center gap-2">
+                                <div className="flex-1 truncate text-[var(--color-text-1)]">
+                                    {session.title}
+                                </div>
+                                {isRunning && (
+                                    <SpinLoading style={{ '--size': '16px' }} color="primary" />
+                                )}
                             </div>
                         </div>
                     );

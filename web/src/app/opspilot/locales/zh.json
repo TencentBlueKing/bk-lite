@@ -949,7 +949,8 @@
     "mobile": "移动端",
     "webChat": "Web对话",
     "embeddedChat": "嵌入式对话",
-    "intentClassification": "意图分类"
+    "intentClassification": "意图分类",
+    "applications": "应用"
   },
   "provider": {
     "form": {

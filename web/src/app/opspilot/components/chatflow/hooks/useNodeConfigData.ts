@@ -13,6 +13,7 @@ export const useNodeConfigData = () => {
 
   const [skills, setSkills] = useState<any[]>([]);
   const [loadingSkills, setLoadingSkills] = useState(false);
+  const [skillsLoaded, setSkillsLoaded] = useState(false);
   const [notificationChannels, setNotificationChannels] = useState<any[]>([]);
   const [loadingChannels, setLoadingChannels] = useState(false);
   const [allUsers, setAllUsers] = useState<any[]>([]);
@@ -20,17 +21,19 @@ export const useNodeConfigData = () => {
   const [usersLoaded, setUsersLoaded] = useState(false);
 
   const loadSkills = useCallback(async () => {
+    if (skillsLoaded) return;
     try {
       setLoadingSkills(true);
       const data = await fetchSkill({ is_template: 0 });
       setSkills(data || []);
+      setSkillsLoaded(true);
     } catch (error) {
       console.error('Failed to load skills:', error);
       message.error(t('skill.settings.noSkillHasBeenSelected'));
     } finally {
       setLoadingSkills(false);
     }
-  }, [fetchSkill, t]);
+  }, [fetchSkill, skillsLoaded, t]);
 
   const loadChannels = useCallback(async (channelType: 'email' | 'enterprise_wechat_bot') => {
     try {

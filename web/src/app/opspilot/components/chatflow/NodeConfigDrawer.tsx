@@ -116,6 +116,11 @@ const NodeConfigDrawer: React.FC<NodeConfigDrawerProps> = ({
         loadSkills();
       }
 
+      // 加载智能体列表（意图分类节点）
+      if (node.data.type === 'intent_classification') {
+        loadSkills();
+      }
+
       // 加载通知渠道和用户
       if (node.data.type === 'notification') {
         const type = (config.notificationType || 'email') as 'email' | 'enterprise_wechat_bot';
