@@ -3,6 +3,7 @@ from api import api
 from core.config import YamlConfig
 from dotenv import load_dotenv
 from core.nats import initialize_nats
+from core.task_queue import initialize_task_queue
 
 load_dotenv()
 
@@ -12,6 +13,9 @@ app.blueprint(api)
 
 # 初始化 NATS
 nats = initialize_nats(app, service_name="stargazer")
+
+# 初始化任务队列
+task_queue = initialize_task_queue(app)
 
 # 导入 nats_server 模块，确保处理器被注册
 from service import nats_server
