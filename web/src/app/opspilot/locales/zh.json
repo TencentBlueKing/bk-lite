@@ -107,6 +107,8 @@
     "subTools": "子工具",
     "other": "其他",
     "password": "密码",
+    "number": "数字",
+    "checkbox": "复选框",
     "search": "搜索",
     "fetchTools": "获取工具",
     "variables": "变量",
