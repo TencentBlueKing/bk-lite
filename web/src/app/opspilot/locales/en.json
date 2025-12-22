@@ -107,6 +107,8 @@
     "subTools": "Sub Tools",
     "other": "Other",
     "password": "Password",
+    "number": "Number",
+    "checkbox": "Checkbox",
     "search": "Search",
     "fetchTools": "Fetch Tools",
     "variables": "Variables",
