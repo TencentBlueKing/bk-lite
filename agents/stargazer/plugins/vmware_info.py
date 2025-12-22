@@ -2,6 +2,10 @@
 # @File: vmware_info.py
 # @Time: 2025/2/26 11:08
 # @Author: windyzhao
+import json
+from datetime import datetime
+from typing import Any, Dict, List, Optional
+
 from pyVim.connect import Disconnect, SmartConnect
 from pyVmomi import vim
 from sanic.log import logger
@@ -19,6 +23,12 @@ class VmwareManage(object):
         self.ssl = params.get("ssl", "false") == "true"
         self.si = None
         self.content = None
+
+        # disk detail enabled by default (issue #1104)
+        self.collect_disk_detail = str(params.get("collect_disk_detail", "true")).lower() == "true"
+        # NB custom fields (can be overridden by params)
+        self.nb_last_backup_field = params.get("nb_last_backup_field", "NB_LAST_BACKUP")
+        self.nb_backup_policy_field = params.get("nb_backup_policy_field", "NB_BACKUP_POLICY")
 
     def test_connection(self):
         """
@@ -119,6 +129,163 @@ class VmwareManage(object):
                 return None
         return result
 
+    @staticmethod
+    def _safe_str(value: Any) -> str:
+        if value is None:
+            return ""
+        try:
+            return str(value)
+        except Exception:
+            return ""
+
+    @staticmethod
+    def _dt_to_iso(value: Any) -> str:
+        if not value:
+            return ""
+        if isinstance(value, datetime):
+            try:
+                return value.isoformat()
+            except Exception:
+                return ""
+        return ""
+
+    @staticmethod
+    def _bytes_to_gb(value: Any) -> float:
+        try:
+            return round(float(value) / (1024 ** 3), 2)
+        except Exception:
+            return 0.0
+
+    @staticmethod
+    def _get_disk_type(backing: Any) -> str:
+        try:
+            raw_type_1 = getattr(vim.vm.device.VirtualDisk, "RawDiskMappingVer1BackingInfo", None)
+            raw_type_2 = getattr(vim.vm.device.VirtualDisk, "RawDiskMappingVer2BackingInfo", None)
+            raw_types = tuple(t for t in (raw_type_1, raw_type_2) if t is not None)
+            if raw_types and isinstance(backing, raw_types):
+                return "raw"
+
+            se_sparse = getattr(vim.vm.device.VirtualDisk, "SeSparseBackingInfo", None)
+            if se_sparse and isinstance(backing, se_sparse):
+                return "sparse"
+
+            thin = getattr(backing, "thinProvisioned", None)
+            if thin is True:
+                return "thin"
+            if thin is False:
+                return "thick"
+        except Exception:
+            pass
+        return ""
+
+    @staticmethod
+    def _get_custom_field_values(vm) -> Dict[str, str]:
+        try:
+            fields = getattr(vm, "availableField", None) or []
+            values = getattr(vm, "value", None) or []
+        except Exception:
+            return {}
+
+        key_to_name: Dict[int, str] = {}
+        for f in fields:
+            try:
+                key_to_name[int(f.key)] = str(f.name)
+            except Exception:
+                continue
+
+        result: Dict[str, str] = {}
+        for v in values:
+            try:
+                name = key_to_name.get(int(v.key))
+                if not name:
+                    continue
+                result[name] = "" if v.value is None else str(v.value)
+            except Exception:
+                continue
+        return result
+
+    def _get_vm_disks(self, vm) -> List[Dict[str, Any]]:
+        if not self.collect_disk_detail:
+            return []
+
+        used_bytes_by_disk_key: Dict[int, int] = {}
+        try:
+            layout = getattr(vm, "layoutEx", None)
+            if layout and getattr(layout, "file", None) and getattr(layout, "disk", None):
+                file_size_by_key: Dict[int, int] = {}
+                for f in layout.file:
+                    try:
+                        file_size_by_key[int(f.key)] = int(f.size or 0)
+                    except Exception:
+                        continue
+
+                for d in layout.disk:
+                    try:
+                        file_keys: List[int] = []
+                        for chain in getattr(d, "chain", None) or []:
+                            for fk in getattr(chain, "fileKey", None) or []:
+                                file_keys.append(int(fk))
+                        used_bytes_by_disk_key[int(d.key)] = sum(file_size_by_key.get(k, 0) for k in file_keys)
+                    except Exception:
+                        continue
+        except Exception:
+            used_bytes_by_disk_key = {}
+
+        try:
+            devices = getattr(getattr(getattr(vm, "config", None), "hardware", None), "device", None) or []
+        except Exception:
+            devices = []
+
+        disks: List[Dict[str, Any]] = []
+        for dev in devices:
+            if not isinstance(dev, vim.vm.device.VirtualDisk):
+                continue
+
+            backing = getattr(dev, "backing", None)
+            provisioned_bytes = 0
+            try:
+                if getattr(dev, "capacityInBytes", None) is not None:
+                    provisioned_bytes = int(dev.capacityInBytes)
+                elif getattr(dev, "capacityInKB", None) is not None:
+                    provisioned_bytes = int(dev.capacityInKB) * 1024
+            except Exception:
+                provisioned_bytes = 0
+
+            disk_key = None
+            try:
+                disk_key = int(getattr(dev, "key", 0))
+            except Exception:
+                disk_key = None
+
+            used_bytes: Optional[int] = None
+            if disk_key is not None and disk_key in used_bytes_by_disk_key:
+                used_bytes = used_bytes_by_disk_key[disk_key]
+                if provisioned_bytes:
+                    try:
+                        if used_bytes > provisioned_bytes * 1.1:
+                            used_bytes = provisioned_bytes
+                    except Exception:
+                        pass
+
+            datastore_name = ""
+            try:
+                datastore = getattr(backing, "datastore", None)
+                datastore_name = getattr(datastore, "name", "") or ""
+            except Exception:
+                datastore_name = ""
+
+            disks.append(
+                {
+                    "disk_id": disk_key,
+                    "provisioned_gb": self._bytes_to_gb(provisioned_bytes),
+                    "used_gb": None if used_bytes is None else self._bytes_to_gb(used_bytes),
+                    "disk_type": self._get_disk_type(backing),
+                    "datastore": datastore_name,
+                }
+            )
+
+        return disks
+
     def get_vms(self):
         result = []
         try:
@@ -137,6 +304,16 @@ class VmwareManage(object):
                     "os_name": "",
                     "vcpus": "",
                     "memory": "",
+                    "annotation": "",
+                    "uptime_seconds": "0",
+                    "tools_version": "",
+                    "tools_status": "",
+                    "tools_running_status": "",
+                    "last_boot": "",
+                    "creation_date": "",
+                    "last_backup": "",
+                    "backup_policy": "",
+                    "data_disks": "[]",
                 }
 
                 vmnet = self._get_vm_prop(vm, ("guest", "net"))
@@ -172,6 +349,30 @@ class VmwareManage(object):
                 vm_dict["vcpus"] = vm.summary.config.numCpu
                 vm_dict["os_name"] = vm.summary.config.guestFullName
                 vm_dict["memory"] = vm.summary.config.memorySizeMB
+
+                vm_dict["annotation"] = self._safe_str(self._get_vm_prop(vm, ("summary", "config", "annotation")))
+
+                uptime = self._get_vm_prop(vm, ("summary", "quickStats", "uptimeSeconds"))
+                try:
+                    vm_dict["uptime_seconds"] = "0" if uptime in (None, "") else str(int(uptime))
+                except Exception:
+                    vm_dict["uptime_seconds"] = "0"
+
+                vm_dict["tools_version"] = self._safe_str(self._get_vm_prop(vm, ("guest", "toolsVersion")))
+                vm_dict["tools_status"] = self._safe_str(self._get_vm_prop(vm, ("guest", "toolsStatus")))
+                vm_dict["tools_running_status"] = self._safe_str(self._get_vm_prop(vm, ("guest", "toolsRunningStatus")))
+                vm_dict["last_boot"] = self._dt_to_iso(self._get_vm_prop(vm, ("runtime", "bootTime")))
+                vm_dict["creation_date"] = self._dt_to_iso(self._get_vm_prop(vm, ("config", "createDate")))
+
+                custom_fields = self._get_custom_field_values(vm)
+                vm_dict["last_backup"] = self._safe_str(custom_fields.get(self.nb_last_backup_field, ""))
+                vm_dict["backup_policy"] = self._safe_str(custom_fields.get(self.nb_backup_policy_field, ""))
+
+                try:
+                    disks = self._get_vm_disks(vm)
+                    vm_dict["data_disks"] = json.dumps(disks, ensure_ascii=False, separators=(",", ":"))
+                except Exception as err:
+                    logger.error(f"get_vms build disk detail error! {err}")
 
                 result.append(vm_dict)
 

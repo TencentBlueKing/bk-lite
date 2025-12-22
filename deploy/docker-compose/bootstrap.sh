@@ -626,18 +626,9 @@ generate_collector_packages() {
 }
 
 install() {
-    OFFLINE=${OFFLINE:-"false"}
-    # 在 OFFLINE 模式下，强制禁用 MIRROR 以确保镜像名称一致性
-    if [[ "${OFFLINE}" == "true" ]]; then
-        if [ -n "$MIRROR" ]; then
-            log "WARNING" "OFFLINE=true，已自动禁用 MIRROR 配置以确保镜像名称匹配"
-        fi
-        export MIRROR=""
-    fi
-    
     # 保存命令行环境变量的 MIRROR 值
     local env_mirror="${MIRROR:-}"
-    
+    OFFLINE=${OFFLINE:-"false"}
     # 先加载 common.env（如果存在），获取上次保存的参数
     COMMON_ENV_FILE="common.env"
     if [ -f "$COMMON_ENV_FILE" ]; then
@@ -646,6 +637,13 @@ install() {
         # 如果用户通过命令行设置了 MIRROR，优先使用命令行的值
         if [ "$_MIRROR_FROM_ENV" = true ]; then
             MIRROR="$env_mirror"
+        fi
+        # 在 OFFLINE 模式下，强制禁用 MIRROR 以确保镜像名称一致性
+        if [[ "${OFFLINE}" == "true" ]]; then
+            if [ -n "${MIRROR:-}" ]; then
+                log "WARNING" "OFFLINE=true，已自动禁用 MIRROR 配置${MIRROR}以确保镜像名称匹配"
+            fi
+            export MIRROR=""
         fi
         # 如果 MIRROR 仍然为空，使用默认值
         MIRROR=${MIRROR:-"bk-lite.tencentcloudcr.com/bklite"}

@@ -1,11 +1,16 @@
 from rest_framework.decorators import action
+from django.http import HttpResponse
+import requests
 
 from apps.core.utils.open_base import OpenAPIViewSet
 from apps.core.utils.web_utils import WebUtils
-from apps.node_mgmt.models import PackageVersion
+from apps.core.exceptions.base_app_exception import BaseAppException
+from apps.node_mgmt.models import PackageVersion, SidecarEnv
+from apps.node_mgmt.services.install_token import InstallTokenService
 from apps.node_mgmt.services.package import PackageService
 from apps.node_mgmt.services.sidecar import Sidecar
-from apps.node_mgmt.utils.token_auth import check_token_auth
+from apps.node_mgmt.utils.token_auth import check_token_auth, generate_node_token
+from apps.node_mgmt.constants.node import NodeConstants
 
 
 class OpenSidecarViewSet(OpenAPIViewSet):
@@ -314,8 +319,191 @@ class OpenSidecarViewSet(OpenAPIViewSet):
 
     @action(detail=False, methods=["get"], url_path="download/fusion_collector/(?P<pk>.+?)")
     def download_fusion_collector(self, request, pk=None):
-        """下载 FusionCollector 安装包"""
-        # todo 权限校验
+        """
+        下载 FusionCollector 安装包（需要 token 验证）
+
+        API: GET /download/fusion_collector/{package_id}?token={download_token}
+
+        Path Parameters:
+            pk (str, required): 安装包ID
+
+        Query Parameters:
+            token (str, required): 限时下载令牌
+
+        Response (200 OK):
+            文件流（application/octet-stream 或 application/zip）
+
+        Response (400 Bad Request):
+            {
+                "error": "Missing download token" | "Invalid or expired download token"
+            }
+
+        Response (404 Not Found):
+            {
+                "error": "Package not found"
+            }
+
+        Security:
+            - 下载令牌有效期 10 分钟
+            - 最多使用 3 次
+            - 令牌验证后自动递增使用计数
+            - 防止未授权下载安装包
+
+        示例:
+            GET /download/fusion_collector/pkg-123?token=550e8400-e29b-41d4-a716-446655440000
+        """
+        # 获取并验证下载 token
+        download_token = request.query_params.get("token")
+        if not download_token:
+            raise BaseAppException("Missing download token")
+
+        # 验证 token 并获取参数
+        token_data = InstallTokenService.validate_and_get_download_token_data(download_token)
+
+        # 验证 package_id 是否匹配
+        if token_data["package_id"] != pk:
+            raise BaseAppException("Package ID does not match the token")
+
+        # 获取安装包并返回文件
         obj = PackageVersion.objects.get(pk=pk)
         file, name = PackageService.download_file(obj)
         return WebUtils.response_file(file, name)
+
+    @action(detail=False, methods=["GET"], url_path="installer/render")
+    def render_install_script(self, request):
+        """
+        渲染安装脚本（使用限时令牌）
+
+        API: GET /installer/render?token={uuid}
+
+        Query Parameters:
+            token (str, required): 限时安装令牌
+
+        Response (200 OK):
+            纯文本安装脚本（text/plain）
+            - Linux: Bash 脚本
+            - Windows: PowerShell 脚本
+
+        Response Headers:
+            Content-Type: text/plain
+            X-Token-Remaining-Usage: 剩余可用次数
+
+        Response (400 Bad Request):
+            Invalid or expired token
+
+        Security:
+            - 令牌有效期 30 分钟
+            - 最多使用 5 次
+            - 令牌验证后自动递增使用计数
+            - 敏感参数（api_token）不直接暴露在命令中
+            - 下载地址包含临时 token，防止未授权下载
+
+        Usage:
+            curl -sSLk http://server/api/v1/node_mgmt/open_api/installer/render?token=xxx | sudo bash
+            iwr http://server/api/v1/node_mgmt/open_api/installer/render?token=xxx -useb | iex
+
+        示例:
+            GET /installer/render?token=550e8400-e29b-41d4-a716-446655440000
+        """
+        # 从 query 参数获取 token
+        token = request.query_params.get("token")
+        if not token:
+            raise BaseAppException("Missing token parameter")
+
+        # 验证令牌并获取安装参数
+        token_data = InstallTokenService.validate_and_get_token_data(token)
+
+        # 提取参数
+        node_id = token_data["node_id"]
+        ip = token_data["ip"]
+        user = token_data["user"]
+        os = token_data["os"]
+        package_id = token_data["package_id"]
+        cloud_region_id = token_data["cloud_region_id"]
+        organizations = token_data["organizations"]
+        node_name = token_data["node_name"]
+        remaining_usage = token_data["remaining_usage"]
+
+        # 生成节点认证 token
+        sidecar_token = generate_node_token(node_id, ip, user)
+
+        # 生成下载 token（10分钟有效，最多使用3次）
+        download_token = InstallTokenService.generate_download_token(package_id, node_id)
+
+        # 获取服务器地址和 webhook URL
+        objs = SidecarEnv.objects.filter(cloud_region=cloud_region_id)
+        server_url = None
+        webhook_url = None
+        for obj in objs:
+            if obj.key == NodeConstants.SERVER_URL_KEY:
+                server_url = obj.value
+            elif obj.key == "WEBHOOK_SERVER_URL":
+                webhook_url = obj.value
+
+        if not server_url:
+            raise BaseAppException(f"Missing NODE_SERVER_URL in cloud region {cloud_region_id}")
+
+        if not webhook_url:
+            raise BaseAppException(f"Missing WEBHOOK_SERVER_URL in cloud_region {cloud_region_id}")
+
+        # 格式化组织列表
+        groups = ",".join([str(org_id) for org_id in organizations])
+
+        # 构造 webhook API URL
+        webhook_api_url = f"{webhook_url.rstrip('/')}/infra/sidecar"
+
+        # 构造带 token 的下载地址（安全的下载链接）
+        file_url = f"{server_url.rstrip('/')}/api/v1/node_mgmt/open_api/download/fusion_collector/{package_id}?token={download_token}"
+
+        # 准备请求参数
+        webhook_params = {
+            "os": os,
+            "api_token": sidecar_token,
+            "server_url": f"{server_url.rstrip('/')}/api/v1/node_mgmt/open_api/node",
+            "node_id": node_id,
+            "zone_id": cloud_region_id,
+            "group_id": groups,
+            "file_url": file_url,
+            "node_name": node_name
+        }
+
+        try:
+            # 调用 webhook API 获取安装脚本
+            response = requests.post(
+                webhook_api_url,
+                json=webhook_params,
+                headers={'Content-Type': 'application/json'},
+                timeout=30,
+                verify=False  # 跳过 SSL 证书验证（内网环境）
+            )
+
+            # 检查响应状态
+            if response.status_code != 200:
+                raise BaseAppException(
+                    f"Webhook API returned status {response.status_code}: {response.text}"
+                )
+
+            # 解析 webhook 返回的响应
+            # 优先尝试解析 JSON（标准格式）
+            install_script = None
+            try:
+                webhook_response = response.json()
+                install_script = webhook_response.get("install_script")
+            except ValueError:
+                # 如果解析 JSON 失败，则认为返回的是纯文本脚本（向后兼容）
+                install_script = response.text
+
+            if not install_script:
+                raise BaseAppException("Invalid response from webhook API: empty or missing script")
+
+            # 直接返回纯文本脚本（text/plain），添加剩余使用次数到响应头
+            http_response = HttpResponse(install_script, content_type="text/plain; charset=utf-8")
+            http_response['X-Token-Remaining-Usage'] = str(remaining_usage)
+            return http_response
+
+        except requests.Timeout:
+            raise BaseAppException("Webhook API request timeout after 30s")
+        except requests.RequestException as e:
+            raise BaseAppException(f"Webhook API request failed: {str(e)}")
+        except Exception as e:
+            raise BaseAppException(f"Failed to generate install script: {str(e)}")

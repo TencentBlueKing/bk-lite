@@ -1008,6 +1008,16 @@ ATTR:
     os_name: OS Name
     vcpus: vCPU
     memory: Memory
+    annotation: Annotation
+    uptime_seconds: Uptime Seconds
+    tools_version: Tools Version
+    tools_status: Tools Status
+    tools_running_status: Tools Running Status
+    last_boot: Last Boot Time
+    creation_date: Creation Date
+    last_backup: Last Backup
+    backup_policy: Backup Policy
+    data_disks: Data Disks (JSON)
     auto_collect: Auto Collect
     collect_time: Last Updated Time
     self_esxi: Self Host

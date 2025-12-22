@@ -7,11 +7,7 @@ import React, {
   useCallback,
 } from 'react';
 import { Button, message, Space, Modal, Tooltip, Tag, Dropdown } from 'antd';
-import {
-  DownOutlined,
-  ReloadOutlined,
-  UpCircleFilled,
-} from '@ant-design/icons';
+import { DownOutlined, ReloadOutlined } from '@ant-design/icons';
 import Icon from '@/components/icon';
 import type { MenuProps, TableProps } from 'antd';
 import nodeStyle from './index.module.scss';
@@ -442,9 +438,12 @@ const Node = () => {
                     'node-manager.cloudregion.node.controllerVersionTip'
                   )}: ${currentVersion?.latest_version || '--'}`}
                 >
-                  <UpCircleFilled
-                    style={{ color: 'var(--color-primary)', cursor: 'pointer' }}
-                  />
+                  <div>
+                    <Icon
+                      type="shengji"
+                      style={{ fontSize: '16px', cursor: 'pointer' }}
+                    />
+                  </div>
                 </Tooltip>
               )}
             </div>
