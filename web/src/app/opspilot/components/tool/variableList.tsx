@@ -43,6 +43,8 @@ const VariableList: React.FC<VariableListProps> = ({ value = [], onChange, disab
               options={[
                 { value: 'text', label: t('tool.text') },
                 { value: 'password', label: t('tool.password') },
+                { value: 'number', label: t('tool.number') },
+                { value: 'checkbox', label: t('tool.checkbox') },
               ]}
             />
           </Col>
