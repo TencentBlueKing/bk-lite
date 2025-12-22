@@ -1,6 +1,7 @@
 {
   "plugin": "Tencent Cloud",
   "plugin_desc": "It is used to collect various monitoring index data of Tencent Cloud in real - time, covering dimensions such as computing resources, network performance, and storage usage, helping users gain in - depth insights into resource status, accurately locate anomalies, and efficiently complete operation and maintenance management and cost optimization.",
+  "status_query": "any({instance_type='qcloud', collect_type='http'}) by (instance_id)",
   "is_compound_object": true,
   "objects": [
     {
