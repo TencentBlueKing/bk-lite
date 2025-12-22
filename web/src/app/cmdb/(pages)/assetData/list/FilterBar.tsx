@@ -2,7 +2,7 @@
 
 import React, { useState } from 'react';
 import { Tag, Button, Popover, Form, Input, InputNumber, Select, DatePicker, Checkbox, Space } from 'antd';
-import { FunnelPlotOutlined, CloseOutlined } from '@ant-design/icons';
+import { FunnelPlotFilled, CloseOutlined } from '@ant-design/icons';
 import type { AttrFieldType } from '@/app/cmdb/types/assetManage';
 import dayjs from 'dayjs';
 import customParseFormat from 'dayjs/plugin/customParseFormat';
@@ -367,7 +367,7 @@ const FilterBar: React.FC<FilterBarProps> = ({
               rules={[{ required: true, message: t('FilterBar.pleaseEnterValue') }]}
               style={{ marginBottom: 0, flex: 1 }}
             >
-              <Input placeholder={t('FilterBar.pleaseEnterValue')} allowClear />
+              <Input placeholder={t('FilterBar.pleaseEnterValue')} allowClear className={styles.filterInput} />
             </Form.Item>
             <Form.Item
               name="isExact"
@@ -390,7 +390,7 @@ const FilterBar: React.FC<FilterBarProps> = ({
       <div className={styles.filterBar}>
         {/* 左侧：标题区域 */}
         <div className={styles.header}>
-          <FunnelPlotOutlined className={styles.headerIcon} />
+          <FunnelPlotFilled className={styles.headerIcon} />
           <span className={styles.headerLabel}>{t('FilterBar.filterItems')}</span>
         </div>
         {/* 中间：标签列表区域 */}
@@ -411,12 +411,12 @@ const FilterBar: React.FC<FilterBarProps> = ({
                     </Form.Item>
                     <Form.Item style={{ marginBottom: 0, textAlign: 'right' }}>
                       <Space>
-                        <Button size="small" onClick={handleCancel}>
-                          {t('common.cancel')}
-                        </Button>
-                        <Button type="primary" size="small" onClick={handleEditConfirm}>
+                        <span className={styles.actionLinkPrimary} onClick={handleEditConfirm}>
                           {t('common.confirm')}
-                        </Button>
+                        </span>
+                        <span className={styles.actionLink} onClick={handleCancel}>
+                          {t('common.cancel')}
+                        </span>
                       </Space>
                     </Form.Item>
                   </Form>

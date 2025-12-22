@@ -13,7 +13,7 @@ export default function AppDetailPage() {
     const { t } = useTranslation();
     const router = useRouter();
     const searchParams = useSearchParams();
-    const botId = searchParams.get('bot_id') || '';
+    const botId = searchParams?.get('bot_id') || '';
 
     const [botData, setBotData] = useState<any>(null);
     const [loading, setLoading] = useState(true);

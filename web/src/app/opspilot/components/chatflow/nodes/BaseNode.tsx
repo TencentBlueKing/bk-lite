@@ -20,6 +20,9 @@ interface BaseNodeProps {
   hasInput?: boolean;
   hasOutput?: boolean;
   hasMultipleOutputs?: boolean;
+  multipleOutputsCount?: number;
+  outputLabels?: string[];
+  outputHandleIds?: string[]; // 自定义的 Handle ID 列表
 }
 
 export const BaseNode = ({
@@ -31,7 +34,10 @@ export const BaseNode = ({
   color = 'blue',
   hasInput = false,
   hasOutput = true,
-  hasMultipleOutputs = false
+  hasMultipleOutputs = false,
+  outputLabels = [],
+  multipleOutputsCount = 2,
+  outputHandleIds = []
 }: BaseNodeProps) => {
   const { t } = useTranslation();
 
@@ -56,11 +62,29 @@ export const BaseNode = ({
       onClick={handleNodeClick}
     >
       {hasInput && (
-        <Handle
-          type="target"
-          position={Position.Left}
-          className={`w-2.5 h-2.5 ${handleColorClasses[color as keyof typeof handleColorClasses] || handleColorClasses.blue} !border-2 !border-white shadow-md`}
-        />
+        <>
+          {/* 扩大的透明交互区域 */}
+          <div
+            className="absolute left-0 top-1/2 -translate-y-1/2 w-6 h-16 -ml-3"
+            style={{ 
+              zIndex: 999,
+              pointerEvents: 'none',
+            }}
+          />
+          <Handle
+            type="target"
+            position={Position.Left}
+            className={`w-2.5 h-2.5 ${handleColorClasses[color as keyof typeof handleColorClasses] || handleColorClasses.blue} !border-2 !border-white shadow-md`}
+            isConnectable={true}
+            isConnectableStart={false}
+            isConnectableEnd={true}
+            style={{
+              width: '16px',
+              height: '16px',
+              left: '-8px',
+            }}
+          />
+        </>
       )}
 
       {isTriggerNode && (
@@ -94,25 +118,67 @@ export const BaseNode = ({
           type="source"
           position={Position.Right}
           className={`w-2.5 h-2.5 ${handleColorClasses[color as keyof typeof handleColorClasses] || handleColorClasses.blue} !border-2 !border-white shadow-md`}
+          isConnectable={true}
+          isConnectableStart={true}
+          isConnectableEnd={false}
+          style={{
+            width: '14px',
+            height: '14px',
+            right: '-7px',
+          }}
         />
       )}
 
       {hasMultipleOutputs && (
         <>
-          <Handle
-            type="source"
-            position={Position.Right}
-            className="w-2.5 h-2.5 !bg-green-500 !border-2 !border-white shadow-md"
-            id="true"
-            style={{ top: '30%' }}
-          />
-          <Handle
-            type="source"
-            position={Position.Right}
-            className="w-2.5 h-2.5 !bg-red-500 !border-2 !border-white shadow-md"
-            id="false"
-            style={{ top: '70%' }}
-          />
+          {Array.from({ length: multipleOutputsCount }).map((_, index) => {
+            const total = multipleOutputsCount;
+            const topPercent = ((index + 1) / (total + 1)) * 100;
+            const colors = ['!bg-blue-500', '!bg-green-500', '!bg-purple-500', '!bg-orange-500', '!bg-pink-500', '!bg-cyan-500'];
+            const colorClass = colors[index % colors.length];
+            const label = outputLabels[index] || `${index + 1}`;
+            // 使用自定义 Handle ID，如果没有则使用默认的 output-{index}
+            const handleId = outputHandleIds[index] || `output-${index}`;
+            
+            return (
+              <React.Fragment key={handleId}>
+                <Handle
+                  key={`handle-${handleId}`}
+                  type="source"
+                  position={Position.Right}
+                  id={handleId}
+                  className={`${colorClass} !border-2 !border-white shadow-md`}
+                  style={{ 
+                    top: `${topPercent}%`,
+                    transform: 'translateY(-50%)',
+                    width: '14px',
+                    height: '14px',
+                    right: '-7px',
+                  }}
+                  isConnectable={true}
+                  isConnectableStart={true}
+                  isConnectableEnd={false}
+                />
+                {label && (
+                  <span 
+                    className="absolute text-xs px-2 py-1 rounded bg-white shadow-sm border border-gray-200 font-medium pointer-events-none whitespace-nowrap"
+                    style={{ 
+                      top: `${topPercent}%`,
+                      left: '100%',
+                      marginLeft: '8px',
+                      transform: 'translateY(-50%)',
+                      color: colorClass.replace('!bg-', '').replace('-500', ''),
+                      fontSize: '11px',
+                      lineHeight: '1',
+                      zIndex: 10,
+                    }}
+                  >
+                    {label}
+                  </span>
+                )}
+              </React.Fragment>
+            );
+          })}
         </>
       )}
     </div>

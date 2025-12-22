@@ -4,6 +4,7 @@ import { sessionsItem } from '@/types/conversation';
 const SESSIONS_CACHE_KEY = 'bk_lite_sessions_cache';
 const SCROLL_POSITION_KEY = 'bk_lite_sidebar_scroll_position';
 const HAS_FETCHED_KEY = 'bk_lite_sessions_has_fetched';
+const NEED_REFRESH_KEY = 'bk_lite_sessions_need_refresh';
 
 interface SessionsCache {
     sessions: sessionsItem[];
@@ -19,6 +20,7 @@ export const useSessionsCache = () => {
     const [scrollPosition, setScrollPosition] = useState<number>(0);
     const [isInitialized, setIsInitialized] = useState(false);
     const [hasFetched, setHasFetched] = useState(false);
+    const [needRefresh, setNeedRefresh] = useState(false);
 
     // 从 sessionStorage 加载缓存
     useEffect(() => {
@@ -49,6 +51,12 @@ export const useSessionsCache = () => {
             const fetchedFlag = sessionStorage.getItem(HAS_FETCHED_KEY);
             if (fetchedFlag === 'true') {
                 setHasFetched(true);
+            }
+
+            // 加载需要刷新标记
+            const refreshFlag = sessionStorage.getItem(NEED_REFRESH_KEY);
+            if (refreshFlag === 'true') {
+                setNeedRefresh(true);
             }
 
             setIsInitialized(true);
@@ -102,12 +110,28 @@ export const useSessionsCache = () => {
         }
     }, []);
 
+    // 更新需要刷新标记
+    const updateNeedRefresh = useCallback((refresh: boolean) => {
+        try {
+            if (refresh) {
+                sessionStorage.setItem(NEED_REFRESH_KEY, 'true');
+            } else {
+                sessionStorage.removeItem(NEED_REFRESH_KEY);
+            }
+            setNeedRefresh(refresh);
+        } catch (error) {
+            console.error('Failed to update need refresh flag:', error);
+        }
+    }, []);
+
     return {
         cachedSessions,
         scrollPosition,
         isInitialized,
         hasFetched,
+        needRefresh,
         updateSessionsCache,
         updateScrollPosition,
+        updateNeedRefresh,
     };
 };

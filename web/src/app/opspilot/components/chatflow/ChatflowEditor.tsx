@@ -12,6 +12,7 @@ import {
   Connection,
   BackgroundVariant,
   ReactFlowProvider,
+  ConnectionMode,
   type NodeTypes,
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
@@ -30,6 +31,7 @@ import {
   EmbeddedChatNode,
   HttpRequestNode,
   IfConditionNode,
+  IntentClassificationNode,
   NotificationNode,
   EnterpriseWechatNode,
   DingtalkNode,
@@ -143,6 +145,7 @@ const ChatflowEditor = forwardRef<ChatflowEditorRef, ChatflowEditorProps>(({ onS
       web_chat: createNodeComponent(WebChatNode),
       mobile: createNodeComponent(MobileNode),
       condition: createNodeComponent(IfConditionNode),
+      intent_classification: createNodeComponent(IntentClassificationNode),
       http: createNodeComponent(HttpRequestNode),
       notification: createNodeComponent(NotificationNode),
       enterprise_wechat: createNodeComponent(EnterpriseWechatNode),
@@ -157,7 +160,13 @@ const ChatflowEditor = forwardRef<ChatflowEditorRef, ChatflowEditorProps>(({ onS
   }, []);
 
   const onConnect = useCallback(
-    (params: Connection) => setEdges((eds) => addEdge(params, eds)),
+    (params: Connection) => {
+      // 验证连接：source 必须连接到 target
+      if (!params.source || !params.target) return;
+      if (params.source === params.target) return; // 不能连接到自己
+      
+      setEdges((eds) => addEdge(params, eds));
+    },
     [setEdges]
   );
 
@@ -168,13 +177,47 @@ const ChatflowEditor = forwardRef<ChatflowEditorRef, ChatflowEditorProps>(({ onS
 
   const handleSaveConfig = useCallback((nodeId: string, values: any) => {
     const { name, ...config } = values;
+    let isIntentClassification = false;
     
     setNodes((nds) => {
-      const updatedNodes = nds.map((node) =>
-        node.id === nodeId
-          ? { ...node, data: { ...node.data, label: name || node.data.label, config } }
-          : node
-      );
+      const targetNode = nds.find(n => n.id === nodeId);
+      isIntentClassification = targetNode?.data.type === 'intent_classification';
+      
+      const updatedNodes = nds.map((node) => {
+        if (node.id === nodeId) {
+          // 为意图分类节点添加时间戳强制更新
+          const updatedData = {
+            ...node.data,
+            label: name || node.data.label,
+            config: { ...config },
+            // 添加时间戳确保 React 检测到变化
+            ...(node.data.type === 'intent_classification' ? { _timestamp: Date.now() } : {})
+          };
+          
+          return {
+            ...node,
+            data: updatedData
+          };
+        }
+        return node;
+      });
+      
+      // 如果是意图分类节点，更新相关的连线
+      if (targetNode?.data.type === 'intent_classification') {
+        const newIntents = config.intents || [];
+        const validIntentNames = new Set(newIntents.map((intent: any) => intent.name));
+        
+        // 先清理无效的边（移除已删除意图的连线）
+        setEdges((eds) => {
+          return eds.filter(edge => {
+            if (edge.source === nodeId && edge.sourceHandle) {
+              // 检查 sourceHandle 是否在当前的 intent names 中
+              return validIntentNames.has(edge.sourceHandle);
+            }
+            return true;
+          });
+        });
+      }
       
       // 立即触发 onSave 回调，同步更新上层状态
       if (onSave) {
@@ -183,8 +226,35 @@ const ChatflowEditor = forwardRef<ChatflowEditorRef, ChatflowEditorProps>(({ onS
       
       return updatedNodes;
     });
+    
+    // 如果是意图分类节点，强制重新挂载来刷新连接点
+    if (isIntentClassification) {
+      setTimeout(() => {
+        setNodes((nds) => {
+          const targetNode = nds.find(n => n.id === nodeId);
+          if (!targetNode) return nds;
+          
+          // 先移除节点
+          const filtered = nds.filter(n => n.id !== nodeId);
+          
+          // 立即恢复节点（使用当前找到的 targetNode，而不是闭包中的旧数据）
+          setTimeout(() => {
+            setNodes((current) => {
+              // 检查节点是否已经存在，避免重复添加
+              if (current.find(n => n.id === nodeId)) {
+                return current;
+              }
+              return [...current, targetNode];
+            });
+          }, 0);
+          
+          return filtered;
+        });
+      }, 50);
+    }
+    
     setIsConfigDrawerVisible(false);
-  }, [setNodes, edges, onSave]);
+  }, [setNodes, setEdges, edges, onSave, reactFlowInstance]);
 
   useEffect(() => {
     const flowContainer = reactFlowWrapper.current;
@@ -225,6 +295,16 @@ const ChatflowEditor = forwardRef<ChatflowEditorRef, ChatflowEditorProps>(({ onS
             deleteKeyCode={null}
             selectionKeyCode={null}
             multiSelectionKeyCode={null}
+            connectionMode={ConnectionMode.Strict}
+            isValidConnection={(connection) => {
+              // 确保 source 和 target 存在且不同
+              if (!connection.source || !connection.target) return false;
+              if (connection.source === connection.target) return false;
+              
+              // 重要：sourceHandle 必须是 source 类型，targetHandle 必须是 target 类型
+              // 这通过 Handle 的 type 属性自动处理
+              return true;
+            }}
           >
             <MiniMap
               nodeColor="#1890ff"
