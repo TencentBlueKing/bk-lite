@@ -7,7 +7,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 WEBHOOKD_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-LOGS_TEMPLATE=$(cat "$WEBHOOKD_DIR/bk-lite-logs-collector.yaml")
+LOGS_TEMPLATE=$(cat "$WEBHOOKD_DIR/bk-lite-log-collector.yaml")
 METRIC_TEMPLATE=$(cat "$WEBHOOKD_DIR/bk-lite-metric-collector.yaml")
 SECRET_TEMPLATE=$(cat <<'EOF'
 apiVersion: v1
