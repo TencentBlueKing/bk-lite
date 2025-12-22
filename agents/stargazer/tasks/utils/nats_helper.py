@@ -40,6 +40,8 @@ async def publish_metrics_to_nats(
         host_filtered = ''.join(c if c.isalnum() or c in '._' else '_' for c in str(node_ip))
         subject = f"metrics.{host_filtered}"
 
+        logger.info(f"[NATS Helper] Preparing to publish to subject: {subject}")
+
         # 将 Prometheus 格式转换为 InfluxDB Line Protocol 格式
         influx_data = convert_prometheus_to_influx(metrics_data, params)
 
@@ -47,8 +49,23 @@ async def publish_metrics_to_nats(
             logger.warning(f"[NATS Helper] No data to publish for task {task_id}")
             return
 
-        # 创建独立的 NATS 客户端用于推送
-        async with NATSClient(NATSConfig.from_env()) as nats_client:
+        logger.info(f"[NATS Helper] Converted {len(metrics_data)} bytes Prometheus data to {len(influx_data)} bytes InfluxDB format")
+
+        # 创建 NATS 配置并打印调试信息
+        nats_config = NATSConfig.from_env()
+        logger.info(f"[NATS Helper] NATS config: servers={nats_config.servers}, tls_enabled={nats_config.tls_enabled}")
+
+        # 使用 async with 自动管理连接
+        async with NATSClient(nats_config) as nats_client:
+            logger.info(f"[NATS Helper] NATS client connected: {nats_client.is_connected}")
+
+            # 检查连接状态
+            if not nats_client.nc:
+                raise ConnectionError("NATS client nc is None after connect")
+
+            if nats_client.nc.is_closed:
+                raise ConnectionError("NATS connection is closed")
+
             # 直接推送 InfluxDB Line Protocol 格式的字符串（不是 JSON）
             await nats_client.nc.publish(subject, influx_data.encode('utf-8'))
 
