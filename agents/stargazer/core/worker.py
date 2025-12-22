@@ -49,7 +49,13 @@ async def collect_task(ctx: Dict, params: Dict[str, Any], task_id: str) -> Dict[
     monitor_type = params.get("monitor_type")
     plugin_name = params.get("plugin_name")
 
-    logger.info(f"[Worker] Task received: {task_id}, type: {monitor_type or plugin_name}")
+    logger.info(f"[Worker] ==================== TASK START ====================")
+    logger.info(f"[Worker] Task ID: {task_id}")
+    logger.info(f"[Worker] Task Type: {monitor_type or plugin_name}")
+    logger.info(f"[Worker] Params Keys: {list(params.keys())}")
+    logger.info(f"[Worker] Host: {params.get('host', 'N/A')}")
+    logger.info(f"[Worker] Username: {params.get('username', 'N/A')}")
+    logger.info(f"[Worker] ========================================================")
 
     # 判断任务类型并分发到对应的 handler
     if monitor_type == "vmware":
