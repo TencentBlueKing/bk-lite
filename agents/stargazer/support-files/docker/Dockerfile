@@ -14,7 +14,7 @@ WORKDIR /app
 ADD . .
 
 ADD support-files/supervisor/service.conf /etc/supervisor/conf.d/service.conf
-ADD support-files/supervisor/worker.conf /etc/supervisor/conf.d/service.conf
+ADD support-files/supervisor/worker.conf /etc/supervisor/conf.d/worker.conf
 
 RUN if [ -n "$NEXUS_PYTHON_REPOSITY" ]; then \
     pip3 config set global.index-url "$NEXUS_PYTHON_REPOSITY" && \
