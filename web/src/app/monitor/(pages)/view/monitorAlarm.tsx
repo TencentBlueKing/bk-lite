@@ -309,7 +309,7 @@ const Alert: React.FC<ViewModalProps> = ({
         />
       </div>
       <CustomTable
-        scroll={{ y: 'calc(100vh - 412px)', x: 890 }}
+        scroll={{ y: 'calc(100vh - 420px)', x: 890 }}
         columns={columns}
         dataSource={tableData}
         pagination={pagination}
