@@ -48,14 +48,20 @@ class NodeService:
 
 
             node_install_map.setdefault(obj.node_id, []).append(
-                dict( collector_id=obj.collector_id, status=status, message=obj.result)
+                dict(collector_id=obj.collector_id, status=status, message=obj.result)
             )
 
         # 处理节点数据
         for node in node_data:
             node_collector_install = node_install_map.get(node["id"], [])
             if node_collector_install:
+                # 为 collectors_install 中的每个项添加 collector_name
+                for install_item in node_collector_install:
+                    collector_obj = collector_dict.get(install_item['collector_id'])
+                    install_item['collector_name'] = collector_obj.name if collector_obj else None
+
                 node["status"]["collectors_install"] = node_collector_install
+
             if 'collectors' not in node['status']:
                 continue
 

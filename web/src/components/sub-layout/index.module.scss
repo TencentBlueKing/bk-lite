@@ -31,16 +31,16 @@
   }
 }
 
-.segmented :global(.ant-segmented) {
+.segmented :global(.sub-layout-segmented.ant-segmented) {
   background: transparent;
   color: var(--color-text-1);
 }
 
-.segmented :global(.ant-segmented-item) {
+.segmented :global(.sub-layout-segmented .ant-segmented-item) {
   margin-right: 8px;
   padding: 3px 6px !important;
 }
 
-.segmented :global(.ant-segmented-item-selected) {
+.segmented :global(.sub-layout-segmented .ant-segmented-item-selected) {
   color: var(--color-primary);
 }

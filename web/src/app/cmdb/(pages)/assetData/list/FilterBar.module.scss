@@ -26,16 +26,17 @@
 }
 
 .headerIcon {
-  font-size: 14px;
+  font-size: 12px;
+  font-weight: 400;
+  font-style: normal;
   margin-right: 4px;
-  color: rgba(0, 0, 0, 0.45);
+  color: #979ba5;
   line-height: 36px;
 }
 
 .headerLabel {
-  font-size: 14px;
-  font-weight: 500;
-  color: rgba(0, 0, 0, 0.88);
+  font-size: 12px;
+  color: #63656e;
   line-height: 4vh;
 }
 
@@ -50,31 +51,31 @@
 
 .tag {
   background: none;
-  border-radius: 0px !important;
+  border: 0 !important;
   display: flex;
   align-items: center;
-  border: 1px solid #9f9e9f;
-  padding: 2px 5px;
+  background: #f7f7f7;
+  padding-right: 5px;
   font-size: 12px;
   margin: auto 0;
   cursor: pointer;
   transition: all 0.2s;
   height: 3vh;
   min-height: 20px;
+  color: #63656e;
 
   &:hover {
-    background: #d1d5db;
+    cursor: pointer;
+    background: #dcdee5;
   }
 
-  :global {
-    .ant-tag-close-icon {
-      color: rgb(0, 0, 0);
-      margin-left: 4px;
-      padding: 0 2px;
+  :global(.ant-tag-close-icon) {
+    color: rgb(0, 0, 0);
+    margin-left: 4px;
+    padding: 0 2px;
 
-      &:hover {
-        color: rgb(0, 0, 0);
-      }
+    &:hover {
+      color: rgb(0, 0, 0);
     }
   }
 }
@@ -94,9 +95,10 @@
 
 .clearButton {
   padding-right: 0;
-  margin-left: 8px;
+  margin-left: 0px;
   flex-shrink: 0;
   flex-grow: 0;
+  color: #3a84ff;
 }
 
 .emptyState {
@@ -107,10 +109,8 @@
 
 // 编辑弹窗样式
 .editModal {
-  :global {
-    .ant-modal-body {
-      padding: 24px;
-    }
+  :global(.ant-modal-body) {
+    padding: 24px;
   }
 }
 
@@ -118,25 +118,23 @@
 .popoverContent {
   padding: 0px;
 
-  :global {
-    .ant-form-item {
-      margin-bottom: 2px;
-    }
+  :global(.ant-form-item) {
+    margin-bottom: 2px;
+  }
 
-    .ant-form-item-label {
-      padding: 0;
-      padding-right: 8px;
-      flex: 0 0 auto;
-    }
+  :global(.ant-form-item-label) {
+    padding: 0;
+    padding-right: 5px;
+    flex: 0 0 auto;
+  }
 
-    .ant-form-item-label>label {
-      padding: 0;
-      margin: 0;
-    }
+  :global(.ant-form-item-label > label) {
+    padding: 0;
+    margin: 0;
+  }
 
-    .ant-form-item-control {
-      flex: 1;
-    }
+  :global(.ant-form-item-control) {
+    flex: 1;
   }
 }
 
@@ -151,7 +149,7 @@
 
   .formLabel {
     display: block;
-    margin-bottom: 8px;
+    margin-bottom: 5px;
     color: rgba(0, 0, 0, 0.88);
     font-weight: 500;
   }
@@ -159,14 +157,84 @@
 
 .tagCloseIcon {
   transform: translateY(10%);
+  transform: translateY(-5%);
+  color: #9b9ea8 !important;
 
   :hover {
-    color: #fc0202;
+    color: black;
   }
 }
 
 .exactMatchCheckbox {
   padding-left: 3px;
-  // border-radius: 7px;
-  border: 1px solid #d9d9d9;
+  border-radius: 3px;
+  border: 1px solid #bdbfc6;
+
+  :global(.ant-checkbox-wrapper) {
+    display: flex;
+    align-items: center;
+  }
+}
+
+.filterInput {
+  border-radius: 3px !important;
+  border: 1px solid #bdbfc6;
+
+  :global(.ant-input) {
+    border-radius: 3px;
+    box-sizing: border-box;
+    height: 24px;
+    line-height: 22px;
+    padding: 0 11px;
+  }
+
+  // 解决点击后样式偏移问题：确保 focus 和正常状态的 border 宽度一致
+  :global(.ant-input:focus),
+  :global(.ant-input-focused) {
+    border-width: 1px;
+    box-shadow: 0 0 0 2px rgba(5, 145, 255, 0.1);
+    height: 22px;
+    line-height: 22px;
+  }
+
+  // 确保 hover 状态也不会改变 border 宽度
+  :global(.ant-input:hover) {
+    border-width: 1px;
+  }
+}
+
+.exactMatchCheckbox {
+  padding-left: 5px;
+  border-radius: 3px;
+  border: 1px solid #bdbfc6;
+  height: 95% !important;
+
+  :global(.ant-checkbox-wrapper) {
+    display: flex;
+    align-items: center;
+    height: 100%;
+    line-height: 1.5715;
+  }
+}
+
+.actionLink {
+  color: #1890ff;
+  cursor: pointer;
+  font-size: 14px;
+  transition: color 0.2s;
+
+  &:hover {
+    color: #40a9ff;
+  }
+}
+
+.actionLinkPrimary {
+  color: #1890ff;
+  cursor: pointer;
+  font-size: 14px;
+  transition: color 0.2s;
+
+  &:hover {
+    color: #40a9ff;
+  }
 }

@@ -1,26 +1,70 @@
+from apps.core.exceptions.base_app_exception import BaseAppException
 from apps.core.utils.crypto.aes_crypto import AESCryptor
 from apps.node_mgmt.constants.database import DatabaseConstants
 from apps.node_mgmt.constants.node import NodeConstants
 from apps.node_mgmt.models import SidecarEnv, Node
 from apps.node_mgmt.models.installer import ControllerTask, ControllerTaskNode, CollectorTaskNode, CollectorTask
-from apps.node_mgmt.utils.installer import get_manual_install_command
-from apps.node_mgmt.utils.token_auth import generate_node_token
+from apps.node_mgmt.services.install_token import InstallTokenService
 
 
 class InstallerService:
 
     @staticmethod
     def get_install_command(user, ip, node_id, os, package_id, cloud_region_id, organizations, node_name):
-        """获取安装命令"""
-        # 生成sidecar token
-        sidecar_token = generate_node_token(node_id, ip, user)
+        """
+        获取安装命令（生成包含临时 token 的 curl 命令）
 
-        # 获取server url
-        obj = SidecarEnv.objects.filter(cloud_region=cloud_region_id, key=NodeConstants.SERVER_URL_KEY).first()
-        server_url = obj.value if obj else "null"
-        groups = ",".join([ str(i) for i in organizations])
+        :param user: 用户名
+        :param ip: 节点IP
+        :param node_id: 节点ID
+        :param os: 操作系统
+        :param package_id: 安装包ID
+        :param cloud_region_id: 云区域ID
+        :param organizations: 组织列表
+        :param node_name: 节点名称
+        :return: curl 命令字符串
+        """
+        # 从云区域环境变量中获取服务器地址
+        objs = SidecarEnv.objects.filter(cloud_region=cloud_region_id)
+        server_url = None
+        for obj in objs:
+            if obj.key == NodeConstants.SERVER_URL_KEY:
+                server_url = obj.value
+                break
 
-        return get_manual_install_command(os, package_id, cloud_region_id, sidecar_token, server_url, groups, node_name, node_id)
+        if not server_url:
+            raise BaseAppException(f"Missing NODE_SERVER_URL in cloud region {cloud_region_id}")
+
+        # 生成限时令牌（30分钟有效，最多使用5次）
+        token = InstallTokenService.generate_install_token(
+            node_id=node_id,
+            ip=ip,
+            user=user,
+            os=os,
+            package_id=package_id,
+            cloud_region_id=cloud_region_id,
+            organizations=organizations,
+            node_name=node_name
+        )
+
+        # 构造 render API URL（本地服务，用于验证 token 并调用 webhook）
+        # 使用 GET 方式，token 作为 query 参数，便于直接通过浏览器或 curl 访问
+        render_api_url = f"{server_url.rstrip('/')}/api/v1/node_mgmt/open_api/installer/render?token={token}"
+
+        # 根据操作系统生成不同的安装命令（最简洁的形式）
+        if os == NodeConstants.LINUX_OS:
+            # Linux: 直接 curl 下载脚本并通过管道执行
+            # 添加 -k 参数跳过 SSL 证书验证（针对自签名证书或内网环境）
+            install_command = f"curl -sSLk {render_api_url} | sudo bash"
+        elif os == NodeConstants.WINDOWS_OS:
+            # Windows: 使用 PowerShell 的 iwr (Invoke-WebRequest 简写) 下载脚本并执行
+            # -UseBasicParsing: 不依赖 IE，适合服务器环境
+            # iex: Invoke-Expression 的简写
+            install_command = f"iwr {render_api_url} -UseBasicParsing -SkipCertificateCheck | iex"
+        else:
+            raise BaseAppException(f"Unsupported operating system: {os}")
+
+        return install_command
 
     @staticmethod
     def install_controller(cloud_region_id, work_node, package_version_id, nodes):

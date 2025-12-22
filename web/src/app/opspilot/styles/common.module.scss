@@ -130,20 +130,6 @@
   }
 }
 
-.segmented :global(.ant-segmented) {
-  background: transparent;
-  color: var(--color-text-1);
-}
-
-.segmented :global(.ant-segmented-item) {
-  margin-right: 8px;
-  padding: 3px 6px !important;
-}
-
-.segmented :global(.ant-segmented-item-selected) {
-  color: var(--color-primary);
-}
-
 .menuContainer :global(.ant-dropdown-menu-item) {
   padding: 0 !important;
 }

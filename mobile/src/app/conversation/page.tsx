@@ -15,6 +15,7 @@ import { getAvatar } from '@/utils/avatar';
 import { MessageContentItem } from '@/types/conversation';
 import { useSessionsCache } from './hooks';
 import { ExclamationTriangleOutline } from 'antd-mobile-icons';
+import { useConversationManager } from '@/context/conversation';
 
 // localStorage key 用于存储用户最后打开的对话页
 const LAST_CONVERSATION_KEY = 'bk_lite_last_conversation';
@@ -24,7 +25,6 @@ export default function ConversationDetail() {
   const searchParams = useSearchParams();
   const botId = searchParams?.get('bot_id') || '32';
   const sessionId = searchParams?.get('session_id');
-  const timestamp = searchParams?.get('t'); // 获取时间戳参数用于触发刷新
   const { t } = useTranslation();
 
   const [chatInfo, setChatInfo] = useState<ChatInfo | null>(null);
@@ -36,10 +36,11 @@ export default function ConversationDetail() {
   const [imageViewerVisible, setImageViewerVisible] = useState(false);
   const [currentImage, setCurrentImage] = useState<string>('');
   const [sidebarVisible, setSidebarVisible] = useState(false);
-  const [needRefreshSessions, setNeedRefreshSessions] = useState(false);
   const [sessionsLoading, setSessionsLoading] = useState(false);
-  const [isNewConversation, setIsNewConversation] = useState(false);
   const [appDetail, setAppDetail] = useState<{ bot: number; nodeId: string } | null>(null);
+
+  // 获取全局会话管理器
+  const { manager: conversationManager } = useConversationManager();
 
   // 使用对话缓存 hook
   const {
@@ -47,8 +48,10 @@ export default function ConversationDetail() {
     scrollPosition,
     isInitialized: cacheInitialized,
     hasFetched,
+    needRefresh: needRefreshSessions,
     updateSessionsCache,
     updateScrollPosition,
+    updateNeedRefresh: setNeedRefreshSessions,
   } = useSessionsCache();
 
   // 打开图片查看器
@@ -57,17 +60,26 @@ export default function ConversationDetail() {
     setImageViewerVisible(true);
   };
 
-  // 生成或获取 sessionId
+  // 如果 URL 没有 sessionId，生成一个并立即替换 URL，确保用户离开后返回仍能恢复对话
   const currentSessionId = useMemo(() => {
     if (sessionId) {
       return sessionId;
     }
-    // 如果 URL 没有 sessionId，使用时间戳生成一个
+    // 生成新的 sessionId
     const now = new Date();
     const dateStr = now.toISOString().slice(0, 10).replace(/-/g, '');
     const timestampValue = now.getTime();
     return `session-${dateStr}-${timestampValue}`;
-  }, [sessionId, timestamp]);
+  }, [sessionId]);
+
+  // 如果 URL 没有 sessionId，立即替换 URL（不会触发页面重新加载）
+  useEffect(() => {
+    if (!sessionId) {
+      // 使用 replace 而不是 push，这样不会在浏览历史中留下没有 session_id 的记录
+      const newUrl = `/conversation?bot_id=${botId}&session_id=${currentSessionId}`;
+      router.replace(newUrl);
+    }
+  }, [currentSessionId, botId, router]);
 
   // 使用消息管理 hook，传入国际化的错误消息和应用配置
   const {
@@ -108,9 +120,9 @@ export default function ConversationDetail() {
   // 包装发送消息函数
   const handleSendMessage = (message: string | MessageContent) => {
     // 如果是新对话，用户发送第一条消息后，标记需要刷新侧边栏
-    if (isNewConversation) {
+    if (conversationManager.isNewConversation(currentSessionId)) {
       setNeedRefreshSessions(true);
-      setIsNewConversation(false);
+      conversationManager.setNewConversation(currentSessionId, false);
     }
 
     // 如果是字符串，直接发送文本
@@ -318,8 +330,8 @@ export default function ConversationDetail() {
         }
       });
 
-      // 标记为新对话
-      setIsNewConversation(true);
+      // 标记为新对话（保存到全局状态，防止路由切换后丢失）
+      conversationManager.setNewConversation(currentSessionId, true);
 
     } catch (error: any) {
       if (error.name === 'AbortError') {
@@ -358,6 +370,8 @@ export default function ConversationDetail() {
 
                 // 保存完整的原始文本用于复制功能
                 messageMarkdownRef.current.set(msgId, parsed.fullTextContent);
+                // 同时保存到全局状态，确保会话切换后仍能复制
+                conversationManager.setMessageMarkdown(sessionId, msgId, parsed.fullTextContent);
 
                 // 将 contentParts 转换为渲染后的格式
                 const renderedContentParts = parsed.contentParts.map(part => {
@@ -400,6 +414,8 @@ export default function ConversationDetail() {
               } else {
                 // 旧格式：直接当作文本处理
                 messageMarkdownRef.current.set(msgId, content);
+                // 同时保存到全局状态，确保会话切换后仍能复制
+                conversationManager.setMessageMarkdown(sessionId, msgId, content);
                 historyMessages.push({
                   id: msgId,
                   message: renderMarkdown(content),
@@ -557,9 +573,9 @@ export default function ConversationDetail() {
             }
           }
 
-          // 检查是否有用户消息，没有则标记为新对话
+          // 检查是否有用户消息，没有则标记为新对话（保存到全局状态）
           const hasUserMessage = historyMessages.some(msg => msg.status === 'local');
-          setIsNewConversation(!hasUserMessage);
+          conversationManager.setNewConversation(currentSessionId, !hasUserMessage);
         } else {
           // 没有历史消息，获取引导语
           if (!signal?.aborted) {
@@ -628,6 +644,23 @@ export default function ConversationDetail() {
     const abortController = new AbortController();
 
     const loadMessages = async () => {
+      // 检查全局状态是否已有该会话的数据（正在进行的对话或已缓存的对话）
+      const existingState = conversationManager.getSessionState(currentSessionId);
+      const hasExistingMessages = existingState && existingState.messages.length > 0;
+
+      // 如果会话正在进行中（AI 正在响应），不要清空消息，直接恢复状态
+      if (hasExistingMessages) {
+        // 重置页面 UI 状态（不影响消息）
+        setContent('');
+        setIsVoiceMode(false);
+        setImageViewerVisible(false);
+        setCurrentImage('');
+        setMessagesLoading(false);
+        // 延迟滚动到底部，确保 DOM 已更新
+        setTimeout(() => scrollToBottom(), 100);
+        return;
+      }
+
       setMessagesLoading(true);
 
       // 清空之前的消息，确保新对话从空白开始
@@ -641,8 +674,6 @@ export default function ConversationDetail() {
       messageMarkdownRef.current.clear();  // 清空markdown缓存
       setThinkingExpanded({});  // 清空思考过程展开状态
       setThinkingTypingText({});  // 清空思考过程打字文本
-      setIsNewConversation(false);  // 重置新对话标记
-      setNeedRefreshSessions(false);  // 重置刷新标记
 
       try {
         // 如果 URL 中有 sessionId，加载历史对话
@@ -659,7 +690,12 @@ export default function ConversationDetail() {
       } finally {
         if (!abortController.signal.aborted) {
           setMessagesLoading(false);
-          scrollToBottom();
+          // 延迟滚动到底部，确保 DOM 渲染完成
+          requestAnimationFrame(() => {
+            requestAnimationFrame(() => {
+              scrollToBottom();
+            });
+          });
         }
       }
     };
@@ -670,7 +706,7 @@ export default function ConversationDetail() {
     return () => {
       abortController.abort();
     };
-  }, [sessionId, timestamp, appDetail?.bot, appDetail?.nodeId]);
+  }, [appDetail?.bot, appDetail?.nodeId, currentSessionId, conversationManager]);
 
   // 保存当前对话信息到 localStorage
   useEffect(() => {
@@ -775,7 +811,7 @@ export default function ConversationDetail() {
           </div>
 
           <CustomInput
-            key={`${botId}-${sessionId || 'new'}-${timestamp || ''}`}
+            key={`${botId}-${currentSessionId}`}
             content={content}
             setContent={setContent}
             isVoiceMode={isVoiceMode}
