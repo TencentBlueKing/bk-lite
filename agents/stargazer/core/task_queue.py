@@ -21,7 +21,7 @@ import asyncio
 from typing import Optional, Dict, Any
 from arq import create_pool
 from arq.connections import RedisSettings, ArqRedis
-from arq.jobs import JobStatus
+from arq.jobs import JobStatus, Job
 from sanic import Sanic
 from sanic.log import logger
 from dotenv import load_dotenv
@@ -269,11 +269,14 @@ class TaskQueue:
 
             # 将任务加入队列
             job = await self.pool.enqueue_job(
-                'collect_task',
-                params=params,
-                task_id=task_id,
-                _job_id=task_id,
+                'collect_task',  # 函数名
+                params,          # 位置参数：params
+                task_id,         # 位置参数：task_id
+                _job_id=task_id, # 指定 job_id
             )
+
+            if not job:
+                raise RuntimeError(f"Failed to enqueue job {task_id}, enqueue_job returned None")
 
             self.metrics["tasks_enqueued"] += 1
             logger.info(f"Task enqueued: {task_id}, job_id: {job.job_id}")
@@ -296,17 +299,18 @@ class TaskQueue:
             await self.connect()
 
         try:
-            job = await self.pool.get_job(job_id)
+            # 使用 Job.deserialize 从 Redis 获取任务对象（注意是美式拼写）
+            job = await Job.deserialize(job_id, redis=self.pool)
             if job:
                 return {
                     "job_id": job.job_id,
-                    "status": job.status,
+                    "status": await job.status(),
                     "enqueued_time": job.enqueue_time.isoformat() if job.enqueue_time else None,
-                    "score": job.score,
                 }
             return None
         except Exception as e:
-            logger.error(f"Failed to get job status for {job_id}: {e}")
+            # Job 不存在时会抛出异常，这是正常情况
+            logger.debug(f"Job {job_id} not found or error: {e}")
             return None
 
     async def cancel_job(self, job_id: str) -> bool:
@@ -315,7 +319,8 @@ class TaskQueue:
             await self.connect()
 
         try:
-            job = await self.pool.get_job(job_id)
+            # 使用 Job.deserialize 从 Redis 获取任务对象（注意是美式拼写）
+            job = await Job.deserialize(job_id, redis=self.pool)
             if job:
                 await job.abort()
                 logger.info(f"Job {job_id} cancelled")

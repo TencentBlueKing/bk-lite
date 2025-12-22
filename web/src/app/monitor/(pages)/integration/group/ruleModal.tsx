@@ -76,7 +76,7 @@ const RuleModal = forwardRef<ModalRef, ModalProps>(
             placement="top"
             title={t('monitor.integrations.ruleModalTips')}
           >
-            <span className="w-[200] relative">
+            <span className="relative">
               {title}
               <Icon
                 type="a-shuoming2"

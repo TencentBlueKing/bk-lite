@@ -1,3 +1,4 @@
+import time
 from typing import Any, Dict, Optional
 
 from langchain_core.documents import Document
@@ -246,6 +247,9 @@ class ChunkHelper(ChatServerHelper):
         rag_client = PgvectorRag()
 
         # 构建元数据
+        # 使用时间戳确保chunk_id唯一性，避免重复调用时产生相同ID
+        timestamp = str(int(time.time() * 1000000))  # 微秒级时间戳
+
         metadata = {
             "enabled": "true",
             "base_chunk_id": chunk_id,
@@ -254,7 +258,7 @@ class ChunkHelper(ChatServerHelper):
             "knowledge_id": f"qa_pairs_id_{qa_pairs_id}",
             "qa_question": question,
             "qa_answer": answer,
-            "chunk_id": f"qa_{qa_pairs_id}_{chunk_id or 'single'}",
+            "chunk_id": f"qa_{qa_pairs_id}_{timestamp}",
         }
 
         # 创建 Document

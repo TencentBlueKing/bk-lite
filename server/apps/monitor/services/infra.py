@@ -4,6 +4,7 @@ import requests
 from django.core.cache import cache
 
 from apps.core.exceptions.base_app_exception import BaseAppException
+from apps.core.logger import monitor_logger as logger
 from apps.monitor.constants.infra import InfraConstants
 from apps.rpc.node_mgmt import NodeMgmt
 
@@ -14,7 +15,7 @@ class InfraService:
     @staticmethod
     def generate_install_token(cluster_name: str, cloud_region_id: str) -> str:
         """
-        生成安装令牌（5分钟有效，最多使用5次）
+        生成安装令牌（30分钟有效，最多使用5次）
 
         :param cluster_name: 集群名称
         :param cloud_region_id: 云区域 ID
@@ -24,13 +25,22 @@ class InfraService:
         token = str(uuid.uuid4())
         cache_key = f"infra_install_token:{token}"
 
-        # 在 cache 中存储令牌及其关联的参数和使用次数，5分钟过期
-        cache.set(cache_key, {
+        # 在 cache 中存储令牌及其关联的参数和使用次数
+        token_data = {
             "cluster_name": cluster_name,
             "cloud_region_id": cloud_region_id,
             "usage_count": 0,
             "max_usage": InfraConstants.TOKEN_MAX_USAGE,
-        }, timeout=InfraConstants.TOKEN_EXPIRE_TIME)
+        }
+
+        cache.set(cache_key, token_data, timeout=InfraConstants.TOKEN_EXPIRE_TIME)
+
+        logger.info(
+            f"生成 infra 安装令牌成功: token={token[:8]}***, "
+            f"cluster={cluster_name}, region={cloud_region_id}, "
+            f"有效期={InfraConstants.TOKEN_EXPIRE_TIME}秒, "
+            f"最大使用次数={InfraConstants.TOKEN_MAX_USAGE}"
+        )
 
         return token
 
@@ -43,10 +53,19 @@ class InfraService:
         :return: 包含 cluster_name 和 cloud_region_id 的字典
         :raises BaseAppException: 令牌无效、已过期或超过使用次数
         """
+        if not token:
+            logger.warning("Token 验证失败: token 为空")
+            raise BaseAppException("Token is required")
+
         cache_key = f"infra_install_token:{token}"
         data = cache.get(cache_key)
 
         if not data:
+            logger.warning(
+                f"Token 验证失败: token={token[:8]}*** 在缓存中不存在或已过期。"
+                f"可能原因: 1) token 已过期(>{InfraConstants.TOKEN_EXPIRE_TIME}秒) "
+                f"2) 缓存服务重启 3) token 格式错误"
+            )
             raise BaseAppException("Invalid or expired token")
 
         # 检查使用次数
@@ -56,13 +75,23 @@ class InfraService:
         if usage_count >= max_usage:
             # 超过最大使用次数，删除令牌
             cache.delete(cache_key)
+            logger.warning(
+                f"Token 已达到最大使用次数: token={token[:8]}***, "
+                f"usage={usage_count}/{max_usage}, cluster={data.get('cluster_name')}"
+            )
             raise BaseAppException(f"Token has exceeded maximum usage limit ({max_usage} times)")
 
         # 增加使用次数
         data["usage_count"] = usage_count + 1
 
-        # 更新 cache，使用默认过期时间（简化处理，不保留原 TTL）
+        # 更新 cache
         cache.set(cache_key, data, timeout=InfraConstants.TOKEN_EXPIRE_TIME)
+
+        logger.info(
+            f"Token 验证成功: token={token[:8]}***, "
+            f"cluster={data['cluster_name']}, region={data['cloud_region_id']}, "
+            f"使用次数={data['usage_count']}/{max_usage}, 剩余次数={max_usage - data['usage_count']}"
+        )
 
         return {
             "cluster_name": data["cluster_name"],
