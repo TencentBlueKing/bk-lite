@@ -895,7 +895,7 @@ python manage.py controller_package_init --pk_version latest --file_path /apps/p
 python manage.py collector_package_init --os linux --object Telegraf --pk_version latest --file_path /apps/pkgs/collector/linux/telegraf
 python manage.py collector_package_init --os linux --object Vector --pk_version latest --file_path /apps/pkgs/collector/linux/vector
 python manage.py collector_package_init --os linux --object Nats-Executor --pk_version latest --file_path /apps/pkgs/collector/linux/nats-executor
-python manage.py controller_package_init --pk_version windows-latest --file_path /apps/pkgs/controller/fusion-collectors-windows-amd64.zip
+python manage.py controller_package_init --os windows --pk_version windows-latest --file_path /apps/pkgs/controller/fusion-collectors-windows-amd64.zip
 python manage.py collector_package_init --os windows --object Telegraf --pk_version latest --file_path /apps/pkgs/collector/windows/telegraf.exe
 python manage.py collector_package_init --os windows --object Nats-Executor --pk_version latest --file_path /apps/pkgs/collector/windows/nats-executor.exe
 EOF
