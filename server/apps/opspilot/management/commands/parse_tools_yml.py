@@ -59,8 +59,12 @@ class Command(BaseCommand):
             for constructor_param in constructor_parameters:
                 param_name = constructor_param.get("name", "")
                 if param_name:
+                    if "pwd" in param_name or "password" in param_name:
+                        param_type = "password"
+                    else:
+                        param_type = constructor_param.get("type", "string")
                     all_params[param_name] = {
-                        "type": constructor_param.get("type", "string"),
+                        "type": param_type,
                         "required": constructor_param.get("required", False),
                         "description": constructor_param.get("description", ""),
                     }
@@ -94,7 +98,7 @@ class Command(BaseCommand):
             toolkit_description = toolkit.get("description", "")
             tools = toolkit.get("tools", [])
             params = toolkit.get("params", {})
-            constructor = toolkit.get("constructor", "")
+            # constructor = toolkit.get("constructor", "")
 
             # 转换 params 为目标格式
             kwargs = []
@@ -110,6 +114,7 @@ class Command(BaseCommand):
                     "boolean": "checkbox",
                     "array": "text",
                     "object": "text",
+                    "password": "password",
                 }
                 mapped_type = type_mapping.get(param_type, "text")
 
@@ -149,13 +154,10 @@ class Command(BaseCommand):
 
             if created:
                 created_count += 1
-                self.stdout.write(self.style.SUCCESS(
-                    f"✓ 创建工具集: {toolkit_name} ({toolkit_id})"))
+                self.stdout.write(self.style.SUCCESS(f"✓ 创建工具集: {toolkit_name} ({toolkit_id})"))
             else:
                 updated_count += 1
-                self.stdout.write(self.style.WARNING(
-                    f"↻ 更新工具集: {toolkit_name} ({toolkit_id})"))
+                self.stdout.write(self.style.WARNING(f"↻ 更新工具集: {toolkit_name} ({toolkit_id})"))
 
         # 显示统计信息
-        self.stdout.write(self.style.SUCCESS(
-            f"\n完成！创建 {created_count} 个，更新 {updated_count} 个工具集"))
+        self.stdout.write(self.style.SUCCESS(f"\n完成！创建 {created_count} 个，更新 {updated_count} 个工具集"))
