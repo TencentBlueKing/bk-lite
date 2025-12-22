@@ -314,7 +314,7 @@ COLLECT_OBJ_TREE = [
         "id": "cloud",
         "name": "云平台",
         "children": [
-            {"id": "aliyun", "model_id": "aliyun_account", "name": "阿里云", "task_type": CollectPluginTypes.CLOUD,
+            {"id": "aliyun_account", "model_id": "aliyun_account", "name": "阿里云", "task_type": CollectPluginTypes.CLOUD,
              "type": CollectDriverTypes.PROTOCOL, "tag": ["SDK"], "desc": "采集阿里云账户下ECS、VPC、RDS等资产清单",
              "encrypted_fields": ["accessKey", "accessSecret"]
              },
