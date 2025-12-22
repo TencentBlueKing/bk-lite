@@ -29,7 +29,7 @@ ADD ./compose /apps/scripts/compose
 ADD ./kubernetes /apps/scripts/kubernetes
 ADD ./common.sh /apps/scripts/common.sh
 ADD ./infra /apps/scripts/infra
-ADD ./*.yaml /apps/scripts
+ADD ./*.yaml /apps/scripts/
 
 RUN chmod -Rf 777 /apps/scripts
 CMD ["/usr/local/bin/webhookd", "-hook-default-mode","buffered","-hook-scripts","/apps/scripts","-hook-timeout", "30"]
