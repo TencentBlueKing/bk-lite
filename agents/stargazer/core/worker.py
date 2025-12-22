@@ -79,6 +79,10 @@ async def startup(ctx: Dict):
     logger.info("=" * 60)
     logger.info("ARQ Worker started successfully")
     logger.info("Task handlers loaded from 'tasks/handlers/'")
+    logger.info(f"Redis: {os.getenv('REDIS_HOST')}:{os.getenv('REDIS_PORT')}/{os.getenv('REDIS_DB')}")
+    logger.info(f"Registered functions: {[f.__name__ for f in [collect_task]]}")
+    logger.info(f"Max jobs: {os.getenv('TASK_MAX_JOBS', '10')}")
+    logger.info(f"Job timeout: {os.getenv('TASK_JOB_TIMEOUT', '300')}s")
     logger.info("=" * 60)
     ctx['start_time'] = time.time()
 

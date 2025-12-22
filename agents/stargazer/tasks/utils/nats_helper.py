@@ -53,23 +53,30 @@ async def publish_metrics_to_nats(
 
         # 创建 NATS 配置并打印调试信息
         nats_config = NATSConfig.from_env()
-        logger.info(f"[NATS Helper] NATS config: servers={nats_config.servers}, tls_enabled={nats_config.tls_enabled}")
+        logger.info(f"[NATS Helper] NATS config: servers={nats_config.servers}, tls_enabled={nats_config.tls_enabled}, user={nats_config.user}")
 
         # 使用 async with 自动管理连接
-        async with NATSClient(nats_config) as nats_client:
-            logger.info(f"[NATS Helper] NATS client connected: {nats_client.is_connected}")
+        try:
+            async with NATSClient(nats_config) as nats_client:
+                logger.info(f"[NATS Helper] NATS client connected: {nats_client.is_connected}, nc={nats_client.nc}")
 
-            # 检查连接状态
-            if not nats_client.nc:
-                raise ConnectionError("NATS client nc is None after connect")
+                # 检查连接状态
+                if not nats_client.nc:
+                    raise ConnectionError("NATS client nc is None after connect")
 
-            if nats_client.nc.is_closed:
-                raise ConnectionError("NATS connection is closed")
+                if nats_client.nc.is_closed:
+                    raise ConnectionError("NATS connection is closed")
 
-            # 直接推送 InfluxDB Line Protocol 格式的字符串（不是 JSON）
-            await nats_client.nc.publish(subject, influx_data.encode('utf-8'))
+                # 直接推送 InfluxDB Line Protocol 格式的字符串（不是 JSON）
+                await nats_client.nc.publish(subject, influx_data.encode('utf-8'))
 
-            logger.info(f"[NATS Helper] Metrics published to '{subject}' for task {task_id}, size: {len(influx_data)} bytes")
+                logger.info(f"[NATS Helper] Metrics published to '{subject}' for task {task_id}, size: {len(influx_data)} bytes")
+        except ConnectionError as ce:
+            logger.error(f"[NATS Helper] Connection error: {ce}")
+            raise
+        except Exception as conn_err:
+            logger.error(f"[NATS Helper] Failed to connect to NATS: {conn_err}\n{traceback.format_exc()}")
+            raise
 
     except Exception as e:
         logger.error(f"[NATS Helper] Failed to publish metrics: {e}\n{traceback.format_exc()}")
