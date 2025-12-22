@@ -247,10 +247,11 @@ class TaskQueue:
             task_id = self._generate_task_id(params)
 
         try:
-            # 检查任务是否已存在
+            # 检查任务是否已存在（仅检查正在执行的任务，已完成的任务不算重复）
             existing_job = await self.get_job_status(task_id)
             if existing_job:
                 status = existing_job.get("status")
+                logger.info(f"[Task Queue] Found existing job {task_id} with status: {status}")
 
                 # 如果任务还在队列中或正在执行，不重复入队
                 if status in [JobStatus.queued, JobStatus.in_progress]:
@@ -266,8 +267,15 @@ class TaskQueue:
                         "existing_job": existing_job,
                         "timestamp": int(time.time() * 1000)
                     }
+                else:
+                    # 任务已完成（complete/failed），可以重新入队
+                    logger.info(f"[Task Queue] Task {task_id} is {status}, allowing re-enqueue")
 
             # 将任务加入队列
+            logger.info(f"[Task Queue] Attempting to enqueue task: {task_id}")
+            logger.info(f"[Task Queue] Function: 'collect_task', Params keys: {list(params.keys())}")
+            logger.info(f"[Task Queue] Redis pool connected: {self.pool is not None}, healthy: {self._is_healthy}")
+
             job = await self.pool.enqueue_job(
                 'collect_task',  # 函数名
                 params,          # 位置参数：params
@@ -275,7 +283,13 @@ class TaskQueue:
                 _job_id=task_id, # 指定 job_id
             )
 
+            logger.info(f"[Task Queue] enqueue_job returned: {job}, type: {type(job)}")
+
             if not job:
+                # 添加更详细的错误信息
+                logger.error(f"[Task Queue] enqueue_job returned None for task {task_id}")
+                logger.error(f"[Task Queue] Redis info: host={self.config.redis_host}, port={self.config.redis_port}, db={self.config.redis_db}")
+                logger.error(f"[Task Queue] This usually means the Worker is not running or using a different Redis DB")
                 raise RuntimeError(f"Failed to enqueue job {task_id}, enqueue_job returned None")
 
             self.metrics["tasks_enqueued"] += 1

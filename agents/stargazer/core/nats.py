@@ -31,6 +31,10 @@ class NATSConfig:
     max_reconnect_attempts: int = 5
     reconnect_time_wait: int = 2
 
+    # 认证配置
+    user: Optional[str] = None
+    password: Optional[str] = None
+
     # TLS 配置
     tls_enabled: bool = False
     tls_insecure: bool = False
@@ -42,12 +46,40 @@ class NATSConfig:
     @classmethod
     def from_env(cls, service_name: str = "nats-client") -> "NATSConfig":
         """从环境变量加载配置"""
+        import re
+
         nats_urls = os.getenv("NATS_URLS", "nats://localhost:4222")
-        servers = [url.strip() for url in nats_urls.split(",")]
+        servers_list = [url.strip() for url in nats_urls.split(",")]
+
+        # 解析第一个 URL，提取用户名密码和清理后的 server 地址
+        user = None
+        password = None
+        cleaned_servers = []
+
+        for url in servers_list:
+            # 匹配格式: protocol://user:pass@host:port 或 protocol://host:port
+            match = re.match(r'^(.*?://)(?:([^:]+):([^@]+)@)?(.+)$', url)
+            if match:
+                protocol, url_user, url_pass, host_port = match.groups()
+
+                # 提取用户名密码（只从第一个 URL 提取）
+                if url_user and url_pass and not user:
+                    user = url_user
+                    password = url_pass
+
+                # 重新构建不包含用户名密码的 URL
+                cleaned_url = f"{protocol}{host_port}"
+                cleaned_servers.append(cleaned_url)
+            else:
+                cleaned_servers.append(url)
+
+        logger.info(f"Parsed NATS servers: {cleaned_servers}, user: {user}, has_password: {bool(password)}")
 
         return cls(
-            servers=servers,
+            servers=cleaned_servers,
             name=service_name,
+            user=user,
+            password=password,
             connect_timeout=int(os.getenv("NATS_CONNECT_TIMEOUT", "5")),
             max_reconnect_attempts=int(os.getenv("NATS_MAX_RECONNECT_ATTEMPTS", "5")),
             reconnect_time_wait=int(os.getenv("NATS_RECONNECT_TIME_WAIT", "2")),
@@ -94,6 +126,13 @@ class NATSConfig:
             "reconnect_time_wait": self.reconnect_time_wait,
         }
 
+        # 添加认证信息
+        if self.user:
+            options["user"] = self.user
+        if self.password:
+            options["password"] = self.password
+
+        # 添加 TLS 配置
         tls_context = self.create_ssl_context()
         if tls_context:
             options["tls"] = tls_context
@@ -324,4 +363,3 @@ def get_nats() -> NATSSanic:
     if _nats_instance is None:
         raise RuntimeError("NATS not initialized. Call initialize_nats() first.")
     return _nats_instance
-
