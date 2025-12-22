@@ -1,6 +1,6 @@
-from datetime import datetime, timezone
+from datetime import datetime
 from typing import Type
-
+from django.utils import timezone
 from apps.cmdb.collection.common import Management
 from apps.cmdb.constants.constants import INSTANCE
 from apps.cmdb.graph.drivers.graph_client import GraphClient
@@ -34,6 +34,9 @@ class MetricsCannula:
         self.collect_data = new_metrics.result
         for i in new_metrics.raw_data:
             if i.get('metric'):
+                if i['value'][0]:
+                    # 往原始数据中打入vm指标的时间，为“数据实际上报时间”
+                    i['metric']['__time__'] = datetime.fromtimestamp(i['value'][0], timezone.utc).isoformat()
                 self.raw_data.append(i['metric'])
         return result
 

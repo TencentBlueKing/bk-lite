@@ -16,7 +16,7 @@
         "placeholder": "用户名"
       },
       "transform_on_edit": {
-        "origin_path": "base.env_config.USER"
+        "origin_path": "child.env_config.USER__{{config_id}}"
       }
     },
     {
@@ -29,7 +29,7 @@
         "placeholder": "密码"
       },
       "transform_on_edit": {
-        "origin_path": "base.env_config.PASSWORD"
+        "origin_path": "child.env_config.PASSWORD__{{config_id}}"
       }
     },
     {
@@ -42,7 +42,7 @@
         "placeholder": "服务名称"
       },
       "transform_on_edit": {
-        "origin_path": "base.env_config.SERVICE_NAME"
+        "origin_path": "child.env_config.SERVICE_NAME__{{config_id}}"
       }
     },
     {
@@ -58,7 +58,7 @@
         "placeholder": "监听端口"
       },
       "transform_on_edit": {
-        "origin_path": "base.env_config.LISTEN_PORT"
+        "origin_path": "child.env_config.LISTEN_PORT__{{config_id}}"
       }
     },
     {
@@ -72,7 +72,7 @@
         "placeholder": "主机地址"
       },
       "transform_on_edit": {
-        "origin_path": "base.env_config.HOST"
+        "origin_path": "child.env_config.HOST__{{config_id}}"
       }
     },
     {
@@ -88,7 +88,7 @@
         "placeholder": "端口"
       },
       "transform_on_edit": {
-        "origin_path": "base.env_config.PORT"
+        "origin_path": "child.env_config.PORT__{{config_id}}"
       }
     },
     {

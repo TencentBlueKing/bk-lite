@@ -105,6 +105,16 @@ class CollectVmwareMetrics(CollectBase):
                 "os_name": "os_name",
                 "vcpus": (int, "vcpus"),
                 "memory": (int, "memory"),
+                "annotation": "annotation",
+                "uptime_seconds": (int, "uptime_seconds"),
+                "tools_version": "tools_version",
+                "tools_status": "tools_status",
+                "tools_running_status": "tools_running_status",
+                "last_boot": "last_boot",
+                "creation_date": "creation_date",
+                "last_backup": "last_backup",
+                "backup_policy": "backup_policy",
+                "data_disks": "data_disks",
                 "self_esxi": self.get_vm_esxi_name,
                 self.asso: self.get_vm_asso
             },
@@ -133,7 +143,6 @@ class CollectVmwareMetrics(CollectBase):
         }
 
         return mapping
-
 
     def format_data(self, data):
         """格式化数据"""
@@ -166,16 +175,17 @@ class CollectVmwareMetrics(CollectBase):
                 self.model_resource_id_mapping.update({model_id: {i["resource_id"]: i["inst_name"] for i in metrics}})
             mapping = self.model_field_mapping.get(model_id, {})
             for index_data in metrics:
+                if model_id == "vmware_vc":
+                    if not index_data.get("inst_name"):
+                        continue
                 data = {}
                 for field, key_or_func in mapping.items():
                     if isinstance(key_or_func, tuple):
                         data[field] = key_or_func[0](index_data[key_or_func[1]])
                     elif callable(key_or_func):
-                        data[field] = key_or_func(index_data, index_data["inst_name"])
+                        data[field] = key_or_func(index_data, index_data.get("inst_name",''))
                     else:
                         data[field] = index_data.get(key_or_func, "")
 
                 result.append(data)
             self.result[model_id] = result
-        import json
-        print(json.dumps(self.result, indent=4))

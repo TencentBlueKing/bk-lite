@@ -5,6 +5,7 @@ import '@/styles/globals.css';
 import { AuthProvider } from '@/context/auth';
 import { LocaleProvider } from '@/context/locale';
 import { ThemeProvider } from '@/context/theme';
+import { ConversationProvider } from '@/context/conversation';
 import { useEffect } from 'react';
 
 export default function RootLayout({
@@ -54,7 +55,11 @@ export default function RootLayout({
       <body className="antialiased">
         <ThemeProvider>
           <LocaleProvider>
-            <AuthProvider>{children}</AuthProvider>
+            <AuthProvider>
+              <ConversationProvider>
+                {children}
+              </ConversationProvider>
+            </AuthProvider>
           </LocaleProvider>
         </ThemeProvider>
       </body>

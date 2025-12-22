@@ -41,6 +41,12 @@ def format_str_in(param):
     return f"n.{field} IN {value}"
 
 
+def format_user_in(param):
+    field = param["field"]
+    value = param["value"]
+    return f"n.{field} IN {value}"
+
+
 def format_int_eq(param):
     field = param["field"]
     value = param["value"]
@@ -107,6 +113,7 @@ FORMAT_TYPE = {
     "str<>": format_str_neq,
     "str*": format_str_like,  # 修改为使用contains
     "str[]": format_str_in,
+    "user[]": format_user_in,
     "int=": format_int_eq,
     "int>": format_int_gt,
     "int<": format_int_lt,

@@ -2,7 +2,7 @@ import type { Node } from '@xyflow/react';
 
 export interface ChatflowNodeData {
   label: string;
-  type: 'celery' | 'restful' | 'openai' | 'agents' | 'agui' | 'embedded_chat' | 'web_chat' | 'mobile' | 'condition' | 'http' | 'notification' | 'enterprise_wechat' | 'dingtalk' | 'wechat_official';
+  type: 'celery' | 'restful' | 'openai' | 'agents' | 'agui' | 'embedded_chat' | 'web_chat' | 'mobile' | 'condition' | 'http' | 'notification' | 'enterprise_wechat' | 'dingtalk' | 'wechat_official' | 'intent_classification';
   config?: any;
   description?: string;
   [key: string]: unknown;

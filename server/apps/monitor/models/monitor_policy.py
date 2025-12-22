@@ -136,7 +136,7 @@ class MonitorAlert(TimeInfo):
 class MonitorAlertMetricSnapshot(TimeInfo):
     """告警指标快照表 - 记录告警全生命周期内的原始指标数据"""
 
-    alert = models.ForeignKey('MonitorAlert', on_delete=models.CASCADE, verbose_name='关联告警', db_index=True, unique=True)
+    alert = models.OneToOneField('MonitorAlert', on_delete=models.CASCADE, verbose_name='关联告警', db_index=True)
     policy_id = models.IntegerField(db_index=True, verbose_name='监控策略ID')
     monitor_instance_id = models.CharField(db_index=True, max_length=100, verbose_name='监控对象实例ID')
 

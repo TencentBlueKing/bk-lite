@@ -1,12 +1,4 @@
-import { useMinioBkpull } from '../../plugins/middleware/minioBkpull';
-
 export const useMinioBkpullConfig = () => {
-  const minioBkpulPlugin = useMinioBkpull();
-
-  const plugins = {
-    Minio: minioBkpulPlugin,
-  };
-
   return {
     instance_type: 'minio',
     dashboardDisplay: [],
@@ -16,6 +8,8 @@ export const useMinioBkpullConfig = () => {
       { type: 'value', key: 'minio_cluster_drive_offline_total_gauge' },
     ],
     groupIds: {},
-    plugins,
+    collectTypes: {
+      Minio: 'bkpull',
+    },
   };
 };

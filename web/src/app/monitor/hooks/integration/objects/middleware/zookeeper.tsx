@@ -1,11 +1,4 @@
-import { useZookeeperTelegraf } from '../../plugins/middleware/zookeeperTelegraf';
-
 export const useZookeeperConfig = () => {
-  const zookeeperPlugin = useZookeeperTelegraf();
-  const plugins = {
-    Zookeeper: zookeeperPlugin,
-  };
-
   return {
     instance_type: 'zookeeper',
     dashboardDisplay: [],
@@ -15,6 +8,9 @@ export const useZookeeperConfig = () => {
       { type: 'value', key: 'approximate_data_size' },
     ],
     groupIds: {},
-    plugins,
+    collectTypes: {
+      'Zookeeper-Exporter': 'exporter',
+      Zookeeper: 'middleware',
+    },
   };
 };

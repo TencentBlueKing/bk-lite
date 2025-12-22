@@ -138,6 +138,7 @@
         "manual": "手动",
         "lastReportTime": "最后上报时间",
         "installMethod": "安装方式",
+        "controllerUpgradeable": "控制器可升级",
         "auto": "远程",
         "runningStatus": "运行状态",
         "nodeProperties": "节点属性",

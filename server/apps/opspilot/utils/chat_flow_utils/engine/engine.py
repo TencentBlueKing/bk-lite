@@ -519,7 +519,6 @@ class ChatFlowEngine:
                 output_data=output_data,
                 last_output=last_output,
                 execute_type=execute_type,
-                session_id=input_data.get("session_id", ""),
             )
 
             logger.info(f"工作流执行结果已记录: flow_id={self.instance.id}, status={status}")
@@ -779,11 +778,21 @@ class ChatFlowEngine:
             input_key = node_config.get("inputParams", "last_message")
             output_key = node_config.get("outputParams", "last_message")
 
-            # 从全局变量中获取输入值
-            input_value = self.variable_manager.get_variable(input_key)
-            if input_value is None:
-                # 如果全局变量中没有找到，使用默认值
-                input_value = input_data.get(input_key, "")
+            # 检查是否是意图分类节点的目标节点（从意图分类节点路由过来的节点）
+            # 如果前一个节点是意图分类节点，使用意图分类节点的前置节点输出
+            intent_previous_output = self.variable_manager.get_variable("intent_previous_output")
+            if intent_previous_output is not None:
+                # 当前节点是意图分类后的目标节点，使用保存的前置节点输出
+                logger.info(f"节点 {node_id} 使用意图分类的前置节点输出")
+                input_value = intent_previous_output
+                # 清除标记，避免影响后续节点
+                self.variable_manager.delete_variable("intent_previous_output")
+            else:
+                # 从全局变量中获取输入值
+                input_value = self.variable_manager.get_variable(input_key)
+                if input_value is None:
+                    # 如果全局变量中没有找到，使用默认值
+                    input_value = input_data.get(input_key, "")
 
             # 准备节点执行的输入数据
             node_input_data = {input_key: input_value}
@@ -801,10 +810,13 @@ class ChatFlowEngine:
                 if output_value is not None:
                     # 更新全局变量
                     if output_key == "last_message":
-                        # 特殊处理：condition节点的last_message不更新全局变量
-                        if node_type not in ["condition", "branch"]:
+                        # 特殊处理：condition、branch、intent节点的last_message不更新全局变量
+                        # 避免覆盖前置节点的输出
+                        if node_type not in ["condition", "branch", "intent"]:
                             logger.info(f"更新全局变量 last_message={output_value}")
                             self.variable_manager.set_variable("last_message", output_value)
+                        else:
+                            logger.info(f"节点类型 {node_type} 不更新全局变量 last_message")
                     else:
                         # 非last_message的输出直接设置到全局变量
                         logger.info(f"设置全局变量 {output_key}={output_value}")
@@ -985,16 +997,32 @@ class ChatFlowEngine:
         Returns:
             是否应该执行
         """
+        source_handle = edge.get("sourceHandle", "")
+
+        # 检查是否是意图分类节点的路由边（通过sourceHandle匹配意图结果）
+        intent_result = node_result.get("data", {}).get("intent_result")
+        if intent_result:
+            # 这是意图分类节点，检查边的sourceHandle是否匹配意图结果
+            if source_handle and source_handle == intent_result:
+                logger.info(f"意图路由匹配: sourceHandle={source_handle}, 意图结果={intent_result}")
+                return True
+            elif source_handle:
+                logger.debug(f"意图路由不匹配: sourceHandle={source_handle}, 意图结果={intent_result}")
+                return False
+            else:
+                # 没有sourceHandle的边，默认不跟随（意图节点必须有明确的sourceHandle）
+                logger.debug("意图分类节点的边缺少sourceHandle，不跟随")
+                return False
+
         # 检查是否是分支节点的条件边
-        source_handle = edge.get("sourceHandle", "").lower()
-        if source_handle in ["true", "false"]:
+        if source_handle.lower() in ["true", "false"]:
             # 这是一条分支边，需要根据分支节点的执行结果判断
             condition_result = node_result["data"].get("condition_result")
             if condition_result is not None:
-                if source_handle == "true" and condition_result:
+                if source_handle.lower() == "true" and condition_result:
                     logger.info(f"分支边判断: true路径匹配，条件结果: {condition_result}")
                     return True
-                elif source_handle == "false" and not condition_result:
+                elif source_handle.lower() == "false" and not condition_result:
                     logger.info(f"分支边判断: false路径匹配，条件结果: {condition_result}")
                     return True
                 else:
@@ -1003,7 +1031,8 @@ class ChatFlowEngine:
             else:
                 logger.warning(f"分支边缺少条件结果，edge: {edge.get('id', 'unknown')}")
                 return False
-        # 默认跟随边（对于非分支节点的普通边）
+
+        # 默认跟随边（对于非分支、非意图节点的普通边）
         return True
 
     def _parse_nodes(self, flow_json: Dict[str, Any]) -> List[Dict[str, Any]]:

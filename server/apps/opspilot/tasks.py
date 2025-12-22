@@ -3,12 +3,14 @@ import tempfile
 import time
 
 from celery import shared_task
+from django.utils import timezone
 from tqdm import tqdm
 
 from apps.core.logger import opspilot_logger as logger
 from apps.core.mixinx import EncryptMixin
 from apps.opspilot.enum import DocumentStatus
 from apps.opspilot.metis.llm.rag.naive_rag.pgvector.pgvector_rag import PgvectorRag
+from apps.opspilot.metis.llm.rag.naive_rag_entity import DocumentMetadataUpdateRequest
 from apps.opspilot.models import (
     Bot,
     BotWorkFlow,
@@ -255,13 +257,35 @@ def sync_web_page_knowledge(web_page_knowledge_id):
         return
     document_list = [web_page.knowledge_document]
     web_page.knowledge_document.train_status = DocumentStatus.CHUNKING
+    web_page.last_run_time = timezone.now()
+    web_page.save()
     web_page.knowledge_document.save()
+    delete_and_update_old_data(web_page)
     general_embed_by_document_list(
         document_list,
         False,
         web_page.knowledge_document.created_by,
         web_page.knowledge_document.domain,
     )
+
+
+def delete_and_update_old_data(web_page: WebPageKnowledge):
+    try:
+        index_name = web_page.knowledge_document.knowledge_index_name()
+        knowledge_document_ids = [web_page.knowledge_document.id]
+        KnowledgeSearchService.delete_es_content(index_name=index_name, doc_id=knowledge_document_ids, keep_qa=True)
+        qa_pairs = QAPairs.objects.filter(document_id=web_page.knowledge_document.id)
+        qa_pairs.update(document_id=0)
+        qa_pairs_id = list(qa_pairs.values_list("id", flat=True))
+        request = DocumentMetadataUpdateRequest(
+            knowledge_ids=[f"qa_pairs_id_{i}" for i in qa_pairs_id],
+            chunk_ids=[],
+            metadata={"base_chunk_id": ""},
+        )
+        rag_client = PgvectorRag()
+        rag_client.update_metadata(request)
+    except Exception as e:
+        logger.exception(e)
 
 
 @shared_task

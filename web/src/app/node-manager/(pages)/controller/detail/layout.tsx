@@ -21,7 +21,7 @@ const ControllerLayout = ({ children }: { children: React.ReactNode }) => {
     const searchParams = new URLSearchParams(window.location.search);
     const info = {
       id: searchParams.get('id') || '',
-      name: searchParams.get('name') || '',
+      name: searchParams.get('displayName') || '',
       introduction: searchParams.get('introduction') || '',
       icon: searchParams.get('icon') || 'caijiqizongshu',
     };

@@ -138,6 +138,7 @@
         "manual": "Manual",
         "lastReportTime": "Last Report Time",
         "installMethod": "Install Method",
+        "controllerUpgradeable": "Controller Upgradeable",
         "auto": "Remote",
         "runningStatus": "Running Status",
         "nodeProperties": "Node Properties",

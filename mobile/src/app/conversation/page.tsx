@@ -6,13 +6,16 @@ import { Toast, SpinLoading, ImageViewer } from 'antd-mobile';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { ChatInfo } from '@/types/conversation';
 import MarkdownIt from 'markdown-it';
-import { ConversationHeader, MessageList, CustomInput, MessageContent } from './components';
+import { ConversationHeader, ConversationSidebar, MessageList, CustomInput, MessageContent } from './components';
 import { useMessages } from './hooks';
 import { conversationStyles, parseHistoryEvents } from './utils';
 import { useTranslation } from '@/utils/i18n';
 import { getApplication, getSessionMessages, getWelcomeMessage } from '@/api/bot';
 import { getAvatar } from '@/utils/avatar';
 import { MessageContentItem } from '@/types/conversation';
+import { useSessionsCache } from './hooks';
+import { ExclamationTriangleOutline } from 'antd-mobile-icons';
+import { useConversationManager } from '@/context/conversation';
 
 // localStorage key 用于存储用户最后打开的对话页
 const LAST_CONVERSATION_KEY = 'bk_lite_last_conversation';
@@ -20,20 +23,36 @@ const LAST_CONVERSATION_KEY = 'bk_lite_last_conversation';
 export default function ConversationDetail() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const botId = searchParams?.get('bot_id');
+  const botId = searchParams?.get('bot_id') || '32';
   const sessionId = searchParams?.get('session_id');
   const { t } = useTranslation();
 
   const [chatInfo, setChatInfo] = useState<ChatInfo | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [appLoading, setAppLoading] = useState(true);
+  const [messagesLoading, setMessagesLoading] = useState(false);
   const [content, setContent] = useState('');
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const [isVoiceMode, setIsVoiceMode] = useState(false);
   const [imageViewerVisible, setImageViewerVisible] = useState(false);
   const [currentImage, setCurrentImage] = useState<string>('');
-
-  // 应用详情状态（包含 bot 和 node_id）
+  const [sidebarVisible, setSidebarVisible] = useState(false);
+  const [sessionsLoading, setSessionsLoading] = useState(false);
   const [appDetail, setAppDetail] = useState<{ bot: number; nodeId: string } | null>(null);
+
+  // 获取全局会话管理器
+  const { manager: conversationManager } = useConversationManager();
+
+  // 使用对话缓存 hook
+  const {
+    cachedSessions,
+    scrollPosition,
+    isInitialized: cacheInitialized,
+    hasFetched,
+    needRefresh: needRefreshSessions,
+    updateSessionsCache,
+    updateScrollPosition,
+    updateNeedRefresh: setNeedRefreshSessions,
+  } = useSessionsCache();
 
   // 打开图片查看器
   const handleImageClick = (imageUrl: string) => {
@@ -41,17 +60,26 @@ export default function ConversationDetail() {
     setImageViewerVisible(true);
   };
 
-  // 生成或获取 sessionId
+  // 如果 URL 没有 sessionId，生成一个并立即替换 URL，确保用户离开后返回仍能恢复对话
   const currentSessionId = useMemo(() => {
     if (sessionId) {
       return sessionId;
     }
-    // 如果 URL 没有 sessionId，使用时间戳生成一个
+    // 生成新的 sessionId
     const now = new Date();
     const dateStr = now.toISOString().slice(0, 10).replace(/-/g, '');
-    const timestamp = now.getTime();
-    return `session-${dateStr}-${timestamp}`;
+    const timestampValue = now.getTime();
+    return `session-${dateStr}-${timestampValue}`;
   }, [sessionId]);
+
+  // 如果 URL 没有 sessionId，立即替换 URL（不会触发页面重新加载）
+  useEffect(() => {
+    if (!sessionId) {
+      // 使用 replace 而不是 push，这样不会在浏览历史中留下没有 session_id 的记录
+      const newUrl = `/conversation?bot_id=${botId}&session_id=${currentSessionId}`;
+      router.replace(newUrl);
+    }
+  }, [currentSessionId, botId, router]);
 
   // 使用消息管理 hook，传入国际化的错误消息和应用配置
   const {
@@ -62,6 +90,7 @@ export default function ConversationDetail() {
     thinkingExpanded,
     setThinkingExpanded,
     thinkingTypingText,
+    setThinkingTypingText,
     messageMarkdownRef,
     scrollToBottom,
     isAIRunning,
@@ -90,6 +119,12 @@ export default function ConversationDetail() {
 
   // 包装发送消息函数
   const handleSendMessage = (message: string | MessageContent) => {
+    // 如果是新对话，用户发送第一条消息后，标记需要刷新侧边栏
+    if (conversationManager.isNewConversation(currentSessionId)) {
+      setNeedRefreshSessions(true);
+      conversationManager.setNewConversation(currentSessionId, false);
+    }
+
     // 如果是字符串，直接发送文本
     if (typeof message === 'string') {
       sendMessage(message, renderMarkdown);
@@ -253,9 +288,14 @@ export default function ConversationDetail() {
   };
 
   // 获取引导语
-  const fetchWelcomeMessage = async (bot_id: number, node_id: string) => {
+  const fetchWelcomeMessage = async (bot_id: number, node_id: string, signal?: AbortSignal) => {
     try {
-      const response = await getWelcomeMessage(bot_id, node_id);
+      const response = await getWelcomeMessage(bot_id, node_id, signal ? { signal } : undefined);
+
+      if (signal?.aborted) {
+        return;
+      }
+
       if (!response.result) {
         throw new Error(response.message || 'getWelcomeMessage failed');
       }
@@ -276,6 +316,12 @@ export default function ConversationDetail() {
         timestamp: Date.now(),
         isWelcome: true,
       };
+
+      // 再次检查是否被取消（防止在处理数据期间被取消）
+      if (signal?.aborted) {
+        return;
+      }
+
       setMessages((prev) => {
         if (prev.length > 0) {
           return [...prev, welcomeMessage];
@@ -284,15 +330,26 @@ export default function ConversationDetail() {
         }
       });
 
-    } catch (error) {
+      // 标记为新对话（保存到全局状态，防止路由切换后丢失）
+      conversationManager.setNewConversation(currentSessionId, true);
+
+    } catch (error: any) {
+      if (error.name === 'AbortError') {
+        return;
+      }
       console.error('getWelcomeMessage error:', error);
     }
   }
 
   // 加载历史对话
-  const loadHistoryMessages = async (sessionId: string, bot_id: number, node_id: string) => {
+  const loadHistoryMessages = async (sessionId: string, bot_id: number, node_id: string, signal?: AbortSignal) => {
     try {
-      const historyResponse = await getSessionMessages(sessionId);
+      const historyResponse = await getSessionMessages(sessionId, signal ? { signal } : undefined);
+
+      if (signal?.aborted) {
+        return;
+      }
+
       if (historyResponse.result && historyResponse.data) {
         if (historyResponse.data.length > 0) {
           const historyMessages: any[] = [];
@@ -313,6 +370,8 @@ export default function ConversationDetail() {
 
                 // 保存完整的原始文本用于复制功能
                 messageMarkdownRef.current.set(msgId, parsed.fullTextContent);
+                // 同时保存到全局状态，确保会话切换后仍能复制
+                conversationManager.setMessageMarkdown(sessionId, msgId, parsed.fullTextContent);
 
                 // 将 contentParts 转换为渲染后的格式
                 const renderedContentParts = parsed.contentParts.map(part => {
@@ -355,6 +414,8 @@ export default function ConversationDetail() {
               } else {
                 // 旧格式：直接当作文本处理
                 messageMarkdownRef.current.set(msgId, content);
+                // 同时保存到全局状态，确保会话切换后仍能复制
+                conversationManager.setMessageMarkdown(sessionId, msgId, content);
                 historyMessages.push({
                   id: msgId,
                   message: renderMarkdown(content),
@@ -492,6 +553,11 @@ export default function ConversationDetail() {
             }
           });
 
+          // 再次检查是否被取消
+          if (signal?.aborted) {
+            return;
+          }
+
           setMessages(historyMessages);
 
           // 检查最后一条消息的时间，如果超过24小时就获取引导语
@@ -502,30 +568,41 @@ export default function ConversationDetail() {
           const hours24 = 24 * 60 * 60 * 1000;
           if (timeDiff >= hours24) {
             // 超过24小时，获取引导语
-            await fetchWelcomeMessage(bot_id, node_id);
+            if (!signal?.aborted) {
+              await fetchWelcomeMessage(bot_id, node_id, signal);
+            }
           }
+
+          // 检查是否有用户消息，没有则标记为新对话（保存到全局状态）
+          const hasUserMessage = historyMessages.some(msg => msg.status === 'local');
+          conversationManager.setNewConversation(currentSessionId, !hasUserMessage);
         } else {
           // 没有历史消息，获取引导语
-          await fetchWelcomeMessage(bot_id, node_id);
+          if (!signal?.aborted) {
+            await fetchWelcomeMessage(bot_id, node_id, signal);
+          }
         }
       }
-    } catch (Error) {
-      console.error('loadHistoryMessages error:', Error);
+    } catch (error: any) {
+      if (error.name === 'AbortError') {
+        return;
+      }
+      console.error('loadHistoryMessages error:', error);
     }
   }
 
-  // 加载聊天信息和应用详情
+  // 获取应用详情
   useEffect(() => {
-    if (!botId) {
-      router.replace('/conversations');
-      return;
-    }
+    const abortController = new AbortController();
 
-    const fetchChatData = async () => {
-      setLoading(true);
+    const fetchAppDetail = async () => {
+      setAppLoading(true);
       try {
-        // 获取应用详情
-        const response = await getApplication({ bot: Number(botId) });
+        const response = await getApplication(
+          { bot: Number(botId) },
+          { signal: abortController.signal }
+        );
+
         if (!response.result) {
           throw new Error(t('chat.loadChatDataFailed'));
         }
@@ -539,23 +616,97 @@ export default function ConversationDetail() {
           name: data.app_name,
           avatar: getAvatar(data.id),
         });
-
-        // 如果 URL 中有 sessionId，加载历史对话
-        if (sessionId) {
-          await loadHistoryMessages(sessionId, data.bot, data.node_id);
-        } else {
-          await fetchWelcomeMessage(data.bot, data.node_id);
+      } catch (error: any) {
+        if (error.name === 'AbortError') {
+          return;
         }
-      } catch (error) {
-        console.error(error);
+        console.error('Failed to load app detail:', error);
       } finally {
-        setLoading(false);
-        scrollToBottom();
+        if (!abortController.signal.aborted) {
+          setAppLoading(false);
+        }
       }
     };
 
-    fetchChatData();
-  }, [botId, router, sessionId]);
+    fetchAppDetail();
+
+    // 清理函数：取消请求
+    return () => {
+      abortController.abort();
+    };
+  }, [botId]);
+
+  // 加载消息
+  useEffect(() => {
+    // 等待应用详情加载完成
+    if (!appDetail || appLoading) return;
+
+    const abortController = new AbortController();
+
+    const loadMessages = async () => {
+      // 检查全局状态是否已有该会话的数据（正在进行的对话或已缓存的对话）
+      const existingState = conversationManager.getSessionState(currentSessionId);
+      const hasExistingMessages = existingState && existingState.messages.length > 0;
+
+      // 如果会话正在进行中（AI 正在响应），不要清空消息，直接恢复状态
+      if (hasExistingMessages) {
+        // 重置页面 UI 状态（不影响消息）
+        setContent('');
+        setIsVoiceMode(false);
+        setImageViewerVisible(false);
+        setCurrentImage('');
+        setMessagesLoading(false);
+        // 延迟滚动到底部，确保 DOM 已更新
+        setTimeout(() => scrollToBottom(), 100);
+        return;
+      }
+
+      setMessagesLoading(true);
+
+      // 清空之前的消息，确保新对话从空白开始
+      setMessages([]);
+
+      // 重置页面关键状态
+      setContent('');  // 清空输入框
+      setIsVoiceMode(false);  // 重置为文本模式
+      setImageViewerVisible(false);  // 关闭图片查看器
+      setCurrentImage('');  // 清空当前图片
+      messageMarkdownRef.current.clear();  // 清空markdown缓存
+      setThinkingExpanded({});  // 清空思考过程展开状态
+      setThinkingTypingText({});  // 清空思考过程打字文本
+
+      try {
+        // 如果 URL 中有 sessionId，加载历史对话
+        if (sessionId) {
+          await loadHistoryMessages(sessionId, appDetail.bot, appDetail.nodeId, abortController.signal);
+        } else {
+          await fetchWelcomeMessage(appDetail.bot, appDetail.nodeId, abortController.signal);
+        }
+      } catch (error: any) {
+        if (error.name === 'AbortError') {
+          return;
+        }
+        console.error('Failed to load messages:', error);
+      } finally {
+        if (!abortController.signal.aborted) {
+          setMessagesLoading(false);
+          // 延迟滚动到底部，确保 DOM 渲染完成
+          requestAnimationFrame(() => {
+            requestAnimationFrame(() => {
+              scrollToBottom();
+            });
+          });
+        }
+      }
+    };
+
+    loadMessages();
+
+    // 清理函数：取消请求
+    return () => {
+      abortController.abort();
+    };
+  }, [appDetail?.bot, appDetail?.nodeId, currentSessionId, conversationManager]);
 
   // 保存当前对话信息到 localStorage
   useEffect(() => {
@@ -568,31 +719,63 @@ export default function ConversationDetail() {
     }
   }, [botId, currentSessionId]);
 
-  if (loading) {
+  // 如果应用详情加载失败，显示错误页面
+  if (!appLoading && !chatInfo) {
     return (
-      <div className="flex flex-col items-center justify-center h-screen bg-[var(--color-background-body)]">
-        <SpinLoading color="primary" />
-      </div>
-    );
-  }
+      <div className="flex flex-col items-center justify-center h-screen bg-[var(--color-background-body)] px-6">
+        <ExclamationTriangleOutline className="text-amber-400 text-7xl mb-2" />
 
-  if (!chatInfo) {
-    return (
-      <div className="flex flex-col items-center justify-center h-screen bg-[var(--color-background-body)]">
-        <div className="text-[var(--color-text-3)] text-lg">{t('chat.loadChatDataFailed')}</div>
-        <button
-          onClick={() => router.replace('/conversations')}
-          className="mt-4 px-6 py-2 bg-blue-500 text-white rounded-lg"
-        >
-          {t('common.back')}
-        </button>
+        <div className="text-[var(--color-text-1)] text-xl font-medium mb-2">
+          {t('chat.loadChatDataFailed')}
+        </div>
+
+        <div className="text-[var(--color-text-3)] text-sm text-center mb-8 max-w-sm">
+          {t('chat.loadFailedDescription')}
+        </div>
+
+        <div className="flex flex-col gap-3 w-full max-w-xs">
+          <button
+            onClick={() => window.location.reload()}
+            className="w-full px-6 py-3 bg-[var(--adm-color-primary)] text-white rounded-lg font-medium hover:opacity-90 transition-opacity"
+          >
+            {t('common.retry')}
+          </button>
+
+          <button
+            onClick={() => router.replace('/workbench')}
+            className="w-full px-6 py-3 bg-[var(--color-fill-4)] text-[var(--color-text-1)] rounded-lg font-medium hover:bg-[var(--color-fill-4)] transition-colors"
+          >
+            {t('chat.backToAppList')}
+          </button>
+        </div>
       </div>
     );
   }
 
   return (
     <div className="flex flex-col h-full bg-[var(--color-bg)]">
-      <ConversationHeader chatInfo={chatInfo} />
+      <ConversationHeader
+        chatInfo={chatInfo}
+        onMenuClick={() => setSidebarVisible(true)}
+        loading={appLoading}
+      />
+
+      <ConversationSidebar
+        visible={sidebarVisible}
+        onClose={() => setSidebarVisible(false)}
+        currentBotId={botId}
+        currentSessionId={currentSessionId}
+        needRefresh={needRefreshSessions}
+        onRefreshComplete={() => setNeedRefreshSessions(false)}
+        sessions={cachedSessions}
+        onSessionsUpdate={updateSessionsCache}
+        loading={sessionsLoading}
+        onLoadingChange={setSessionsLoading}
+        scrollPosition={scrollPosition}
+        onScrollPositionChange={updateScrollPosition}
+        hasFetched={hasFetched}
+        cacheInitialized={cacheInitialized}
+      />
 
       <div className="flex-1 bg-[var(--color-background-body)] overflow-hidden">
         <Flex vertical style={{ height: '100%', padding: '16px 0 16px 8px' }}>
@@ -608,20 +791,27 @@ export default function ConversationDetail() {
           >
             <style dangerouslySetInnerHTML={{ __html: conversationStyles }} />
 
-            <MessageList
-              messages={messages}
-              router={router}
-              thinkingExpanded={thinkingExpanded}
-              setThinkingExpanded={setThinkingExpanded}
-              thinkingTypingText={thinkingTypingText}
-              renderMarkdown={renderMarkdown}
-              onActionClick={handleActionClick}
-              onRecommendationClick={handleRecommendationClick}
-              onFormSubmit={handleSendMessage}
-            />
+            {(appLoading || messagesLoading) ? (
+              <div className="flex items-center justify-center h-full">
+                <SpinLoading color="primary" />
+              </div>
+            ) : (
+              <MessageList
+                messages={messages}
+                router={router}
+                thinkingExpanded={thinkingExpanded}
+                setThinkingExpanded={setThinkingExpanded}
+                thinkingTypingText={thinkingTypingText}
+                renderMarkdown={renderMarkdown}
+                onActionClick={handleActionClick}
+                onRecommendationClick={handleRecommendationClick}
+                onFormSubmit={handleSendMessage}
+              />
+            )}
           </div>
 
           <CustomInput
+            key={`${botId}-${currentSessionId}`}
             content={content}
             setContent={setContent}
             isVoiceMode={isVoiceMode}

@@ -15,6 +15,7 @@ def controller_init():
             if (controller_info["os"], controller_info["name"]) in old_controller_map:
                 obj = old_controller_map[(controller_info["os"], controller_info["name"])]
                 obj.description = controller_info["description"]
+                obj.version_command = controller_info["version_command"]
                 update_controllers.append(obj)
             else:
                 create_controllers.append(controller_info)
@@ -23,6 +24,6 @@ def controller_init():
             Controller.objects.bulk_create([Controller(**i) for i in create_controllers])
 
         if update_controllers:
-            Controller.objects.bulk_update(update_controllers, ["description"])
+            Controller.objects.bulk_update(update_controllers, ["description", "version_command"])
     except Exception as e:
         logger.exception(e)

@@ -225,3 +225,9 @@ services:
       retries: 3
     networks:
       - prod
+
+  webhookd:
+    image: ${DOCKER_IMAGE_WEBHOOKD}
+    restart: always
+    networks:
+      - prod

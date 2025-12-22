@@ -1,4 +1,5 @@
 import { MetricItem } from '@/app/monitor/types';
+import React from 'react';
 
 export interface OrderParam {
   id: number;
@@ -142,8 +143,8 @@ export interface ConfigItem {
 export interface ShowModalParams {
   instanceName: string;
   instanceId: number;
-  instanceType: string;
   selectedConfigId?: string;
+  monitorObjId?: React.Key;
   objName: string;
   plugins?: PluginItem[];
   showTemplateList?: boolean;
