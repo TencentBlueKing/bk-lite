@@ -5,7 +5,23 @@ MLOps 容器化训练模块
 """
 
 import os
+import requests
 from apps.core.logger import opspilot_logger as logger
+
+
+class WebhookError(Exception):
+    """Webhook 请求错误基类"""
+    pass
+
+
+class WebhookConnectionError(WebhookError):
+    """Webhook 连接错误"""
+    pass
+
+
+class WebhookTimeoutError(WebhookError):
+    """Webhook 请求超时"""
+    pass
 
 
 class WebhookClient:
@@ -77,5 +93,204 @@ class WebhookClient:
         Returns:
             dict: 端点名称到完整 URL 的映射
         """
-        endpoints = ['train', 'status', 'stop', 'logs']
+        endpoints = ['train', 'status', 'stop', 'logs', 'serve', 'remove']
         return {name: WebhookClient.build_url(name) for name in endpoints}
+    
+    @staticmethod
+    def _request(endpoint: str, payload: dict, timeout: int = 30) -> dict:
+        """
+        统一的 webhook 请求方法
+        
+        Args:
+            endpoint: 端点名称，如 'train', 'serve', 'stop' 等
+            payload: 请求数据
+            timeout: 超时时间（秒）
+        
+        Returns:
+            dict: webhook 响应数据
+        
+        Raises:
+            WebhookError: webhookd 返回错误状态
+            WebhookConnectionError: 无法连接到 webhookd
+            WebhookTimeoutError: 请求超时
+        """
+        url = WebhookClient.build_url(endpoint)
+        if not url:
+            raise WebhookError("环境变量 WEBHOOK 未配置")
+        
+        logger.debug(f"请求 webhookd - URL: {url}, Payload: {payload}")
+        
+        try:
+            response = requests.post(url, json=payload, timeout=timeout)
+            
+            logger.debug(f"Webhookd 响应 - 状态码: {response.status_code}, 内容: {response.text[:500]}")
+            
+            if response.status_code != 200:
+                raise WebhookError(f"Webhookd 返回错误状态码: {response.status_code}")
+            
+            response.raise_for_status()
+            return response.json()
+            
+        except requests.exceptions.Timeout:
+            logger.error(f"请求 webhookd 超时({timeout}秒) - URL: {url}")
+            raise WebhookTimeoutError(f"请求 webhookd 服务超时，请检查服务是否正常运行")
+        except requests.exceptions.ConnectionError as e:
+            logger.error(f"无法连接到 webhookd - URL: {url}, Error: {e}")
+            raise WebhookConnectionError(f"无法连接到 webhookd 服务: {e}")
+        except requests.exceptions.RequestException as e:
+            logger.error(f"请求 webhookd 失败 - URL: {url}, Error: {e}", exc_info=True)
+            raise WebhookError(f"请求 webhookd 失败: {e}")
+    
+    @staticmethod
+    def serve(serving_id: str, mlflow_tracking_uri: str, mlflow_model_uri: str) -> dict:
+        """
+        启动 serving 服务
+        
+        Args:
+            serving_id: serving ID，如 "TimeseriesPredict_Serving_1"
+            mlflow_tracking_uri: MLflow tracking server URL
+            mlflow_model_uri: MLflow model URI，如 "models:/model_name/version"
+        
+        Returns:
+            dict: 容器状态信息，格式: {"status": "success", "id": "...", "state": "running", "port": "3042", "detail": "Up"}
+        
+        Raises:
+            WebhookError: 启动失败
+        """
+        payload = {
+            "id": serving_id,
+            "mlflow_tracking_uri": mlflow_tracking_uri,
+            "mlflow_model_uri": mlflow_model_uri
+        }
+        
+        result = WebhookClient._request("serve", payload)
+        
+        if result.get('status') == 'error':
+            error_msg = result.get('message', '未知错误')
+            raise WebhookError(error_msg)
+        
+        return result
+    
+    @staticmethod
+    def train(job_id: str, bucket: str, dataset: str, config: str,
+              minio_endpoint: str, mlflow_tracking_uri: str,
+              minio_access_key: str, minio_secret_key: str) -> dict:
+        """
+        启动训练任务
+        
+        Args:
+            job_id: 训练任务 ID
+            bucket: MinIO bucket 名称
+            dataset: 数据集文件路径
+            config: 配置文件路径
+            minio_endpoint: MinIO 端点 URL
+            mlflow_tracking_uri: MLflow tracking server URL
+            minio_access_key: MinIO access key
+            minio_secret_key: MinIO secret key
+        
+        Returns:
+            dict: webhook 响应数据
+        
+        Raises:
+            WebhookError: 训练启动失败
+        """
+        payload = {
+            "id": job_id,
+            "bucket": bucket,
+            "dataset": dataset,
+            "config": config,
+            "minio_endpoint": minio_endpoint,
+            "mlflow_tracking_uri": mlflow_tracking_uri,
+            "minio_access_key": minio_access_key,
+            "minio_secret_key": minio_secret_key
+        }
+        
+        result = WebhookClient._request("train", payload)
+        
+        if result.get('status') == 'error':
+            error_msg = result.get('message', '未知错误')
+            raise WebhookError(error_msg)
+        
+        return result
+    
+    @staticmethod
+    def stop(job_id: str, remove: bool = True) -> dict:
+        """
+        停止任务/服务
+        
+        Args:
+            job_id: 任务或服务 ID
+            remove: True=停止后删除容器（训练任务默认），False=仅停止（serving 默认）
+        
+        Returns:
+            dict: webhook 响应数据
+        
+        Raises:
+            WebhookError: 停止失败
+        """
+        payload = {
+            "id": job_id,
+            "remove": remove
+        }
+        
+        result = WebhookClient._request("stop", payload)
+        
+        if result.get('status') == 'error':
+            error_msg = result.get('message', '未知错误')
+            raise WebhookError(error_msg)
+        
+        return result
+    
+    @staticmethod
+    def remove(container_id: str) -> dict:
+        """
+        删除容器（可处理运行中的容器）
+        
+        Args:
+            container_id: 容器 ID
+        
+        Returns:
+            dict: webhook 响应数据
+        
+        Raises:
+            WebhookError: 删除失败
+        """
+        payload = {
+            "id": container_id
+        }
+        
+        result = WebhookClient._request("remove", payload)
+        
+        if result.get('status') == 'error':
+            error_msg = result.get('message', '未知错误')
+            raise WebhookError(error_msg)
+        
+        return result
+    
+    @staticmethod
+    def get_status(ids: list[str]) -> list[dict]:
+        """
+        批量查询容器状态
+        
+        Args:
+            ids: 容器 ID 列表，如 ["TimeseriesPredict_Serving_1", "TimeseriesPredict_Serving_2"]
+        
+        Returns:
+            list[dict]: 容器状态列表，每个元素格式如：
+                       {"status": "success", "id": "...", "state": "running", "port": "3042", ...}
+                       或 {"status": "error", "id": "...", "message": "Container not found"}
+        
+        Raises:
+            WebhookError: 查询失败
+        """
+        payload = {"ids": ids}
+        
+        result = WebhookClient._request("status", payload)
+        
+        # 检查整体状态
+        if result.get('status') == 'error':
+            error_msg = result.get('message', '未知错误')
+            raise WebhookError(error_msg)
+        
+        # 返回 results 数组（单个容器的 error 状态不算整体失败）
+        return result.get('results', [])

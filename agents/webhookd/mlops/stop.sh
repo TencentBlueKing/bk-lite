@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # webhookd mlops stop script
-# 接收 JSON: {"id": "train-001"}
+# 接收 JSON: {"id": "train-001", "remove": false}
 
 set -e
 
@@ -17,8 +17,9 @@ fi
 
 JSON_DATA="$1"
 
-# 提取 id
+# 提取参数
 ID=$(echo "$JSON_DATA" | jq -r '.id // empty')
+REMOVE=$(echo "$JSON_DATA" | jq -r '.remove // "true"')
 
 if [ -z "$ID" ]; then
     json_error "unknown" "Missing required field: id"
@@ -30,20 +31,25 @@ CONTAINER_NAME="${ID}"
 
 # 检查容器是否存在
 if ! docker ps -a --format '{{.Names}}' | grep -q "^${CONTAINER_NAME}$"; then
-    json_error "$ID" "Training job not found"
+    json_error "$ID" "Container not found"
     exit 1
 fi
 
-# 停止并移除容器（5秒超时，避免 webhookd 总超时）
+# 停止容器（5秒超时，避免 webhookd 总超时）
 STOP_OUTPUT=$(docker stop --time=5 "$CONTAINER_NAME" 2>&1)
 DOCKER_STATUS=$?
 
-if [ $DOCKER_STATUS -eq 0 ]; then
-    # 确保容器被删除（针对非--rm的容器）
-    docker rm "$CONTAINER_NAME" >/dev/null 2>&1 || true
-    json_success "$ID" "Training stopped successfully"
-    exit 0
-else
-    json_error "$ID" "Failed to stop training" "$STOP_OUTPUT"
+if [ $DOCKER_STATUS -ne 0 ]; then
+    json_error "$ID" "Failed to stop container" "$STOP_OUTPUT"
     exit 1
 fi
+
+# 根据 remove 参数决定是否删除容器
+if [ "$REMOVE" = "true" ]; then
+    docker rm "$CONTAINER_NAME" >/dev/null 2>&1 || true
+    json_success "$ID" "Container stopped and removed"
+else
+    json_success "$ID" "Container stopped (use remove.sh to delete)"
+fi
+
+exit 0

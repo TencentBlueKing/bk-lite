@@ -471,9 +471,16 @@ class TimeSeriesPredictServing(MaintainerInfo, TimeInfo):
             ("active", "Active"),
             ("inactive", "Inactive")
         ],
-        default="active",
+        default="inactive",
         verbose_name="服务状态",
-        help_text="服务的当前状态",
+        help_text="用户意图：是否希望服务运行",
+    )
+
+    container_info = models.JSONField(
+        default=dict,
+        blank=True,
+        verbose_name="容器状态信息",
+        help_text="webhookd 返回的容器实时状态，格式：{status, id, state, port, detail, ...}",
     )
 
     class Meta:
