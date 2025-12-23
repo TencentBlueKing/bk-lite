@@ -11,7 +11,9 @@ from apps.core.logger import opspilot_logger as logger
 
 class WebhookError(Exception):
     """Webhook 请求错误基类"""
-    pass
+    def __init__(self, message: str, code: str = None):
+        super().__init__(message)
+        self.code = code  # webhookd 返回的错误码，如 'CONTAINER_ALREADY_EXISTS'
 
 
 class WebhookConnectionError(WebhookError):
@@ -142,7 +144,7 @@ class WebhookClient:
             raise WebhookError(f"请求 webhookd 失败: {e}")
     
     @staticmethod
-    def serve(serving_id: str, mlflow_tracking_uri: str, mlflow_model_uri: str) -> dict:
+    def serve(serving_id: str, mlflow_tracking_uri: str, mlflow_model_uri: str, port: int = None) -> dict:
         """
         启动 serving 服务
         
@@ -150,6 +152,7 @@ class WebhookClient:
             serving_id: serving ID，如 "TimeseriesPredict_Serving_1"
             mlflow_tracking_uri: MLflow tracking server URL
             mlflow_model_uri: MLflow model URI，如 "models:/model_name/version"
+            port: 用户指定端口，为 None 时由 docker 自动分配
         
         Returns:
             dict: 容器状态信息，格式: {"status": "success", "id": "...", "state": "running", "port": "3042", "detail": "Up"}
@@ -163,11 +166,16 @@ class WebhookClient:
             "mlflow_model_uri": mlflow_model_uri
         }
         
+        # 仅在用户指定端口时传递
+        if port is not None:
+            payload["port"] = port
+        
         result = WebhookClient._request("serve", payload)
         
         if result.get('status') == 'error':
             error_msg = result.get('message', '未知错误')
-            raise WebhookError(error_msg)
+            error_code = result.get('code')
+            raise WebhookError(error_msg, code=error_code)
         
         return result
     
@@ -209,18 +217,18 @@ class WebhookClient:
         
         if result.get('status') == 'error':
             error_msg = result.get('message', '未知错误')
-            raise WebhookError(error_msg)
+            error_code = result.get('code')
+            raise WebhookError(error_msg, code=error_code)
         
         return result
     
     @staticmethod
-    def stop(job_id: str, remove: bool = True) -> dict:
+    def stop(job_id: str) -> dict:
         """
-        停止任务/服务
+        停止任务/服务（默认删除容器）
         
         Args:
             job_id: 任务或服务 ID
-            remove: True=停止后删除容器（训练任务默认），False=仅停止（serving 默认）
         
         Returns:
             dict: webhook 响应数据
@@ -229,15 +237,15 @@ class WebhookClient:
             WebhookError: 停止失败
         """
         payload = {
-            "id": job_id,
-            "remove": remove
+            "id": job_id
         }
         
         result = WebhookClient._request("stop", payload)
         
         if result.get('status') == 'error':
             error_msg = result.get('message', '未知错误')
-            raise WebhookError(error_msg)
+            error_code = result.get('code')
+            raise WebhookError(error_msg, code=error_code)
         
         return result
     
@@ -263,7 +271,8 @@ class WebhookClient:
         
         if result.get('status') == 'error':
             error_msg = result.get('message', '未知错误')
-            raise WebhookError(error_msg)
+            error_code = result.get('code')
+            raise WebhookError(error_msg, code=error_code)
         
         return result
     

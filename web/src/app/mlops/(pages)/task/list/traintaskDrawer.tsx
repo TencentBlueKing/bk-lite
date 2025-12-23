@@ -84,15 +84,14 @@ const TrainTaskDrawer = ({ open, onCancel, selectId, activeTag }:
           type="text"
           icon={<LeftOutlined />}
           onClick={() => setShowList(true)}
-          className="back-to-list-btn"
+          className="back-to-list-btn float-right"
         >
           返回列表
         </Button>
       ] : [
         <Button key="refresh" type="primary" className="float-right" onClick={getStateData}>
           刷新列表
-        </Button>,
-        <Button key="close" type="default" className="float-right mr-2" onClick={onCancel}>关闭</Button>
+        </Button>
       ]}
     >
       <div className="drawer-content">
