@@ -53,7 +53,7 @@ services:
       NATS_TLS_ENABLED: true
       NATS_TLS_CA_FILE: /etc/certs/ca.crt
 
-      NATS_METRIC_TOPIC: metric
+      NATS_METRIC_TOPIC: metrics
 
       REDIS_HOST: redis
       REDIS_PORT: 6379
