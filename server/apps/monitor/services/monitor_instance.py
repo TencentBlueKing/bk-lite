@@ -247,7 +247,11 @@ class InstanceSearch:
         end = start + page_size
         results = qs[start:end]
 
-        return dict(count=count, results=[{"instance_id":obj.id, "instance_name":obj.name} for obj in results])
+        return dict(count=count, results=[{
+            "instance_id": obj.id,
+            "instance_name": obj.name,
+            "instance_id_values": [i for i in ast.literal_eval(obj.id)] if isinstance(obj.id, str) and obj.id.startswith('(') else [obj.id]
+        } for obj in results])
 
     def get_plugin_normal_status_map(self, instance_id_keys, query):
         resp = VictoriaMetricsAPI().query(query, step="20m")

@@ -27,9 +27,13 @@ class NATSConfig:
     """NATS 配置（统一管理所有配置项）"""
     servers: List[str] = field(default_factory=lambda: ["nats://localhost:4222"])
     name: str = "nats-client"
-    connect_timeout: int = 5
+    connect_timeout: int = 10  # 增加到10秒
     max_reconnect_attempts: int = 5
     reconnect_time_wait: int = 2
+
+    # 新增：ping 间隔和最大未响应 ping 数
+    ping_interval: int = 60
+    max_outstanding_pings: int = 2
 
     # 认证配置
     user: Optional[str] = None
@@ -80,9 +84,11 @@ class NATSConfig:
             name=service_name,
             user=user,
             password=password,
-            connect_timeout=int(os.getenv("NATS_CONNECT_TIMEOUT", "5")),
+            connect_timeout=int(os.getenv("NATS_CONNECT_TIMEOUT", "10")),  # 增加到10秒
             max_reconnect_attempts=int(os.getenv("NATS_MAX_RECONNECT_ATTEMPTS", "5")),
             reconnect_time_wait=int(os.getenv("NATS_RECONNECT_TIME_WAIT", "2")),
+            ping_interval=int(os.getenv("NATS_PING_INTERVAL", "60")),
+            max_outstanding_pings=int(os.getenv("NATS_MAX_OUTSTANDING_PINGS", "2")),
             tls_enabled=os.getenv("NATS_TLS_ENABLED", "false").lower() == "true",
             tls_insecure=os.getenv("NATS_TLS_INSECURE", "false").lower() == "true",
             tls_ca_file=os.getenv("NATS_TLS_CA_FILE"),
@@ -124,6 +130,8 @@ class NATSConfig:
             "connect_timeout": self.connect_timeout,
             "max_reconnect_attempts": self.max_reconnect_attempts,
             "reconnect_time_wait": self.reconnect_time_wait,
+            "ping_interval": self.ping_interval,
+            "max_outstanding_pings": self.max_outstanding_pings,
         }
 
         # 添加认证信息
@@ -162,22 +170,64 @@ class NATSClient:
 
         try:
             logger.info(f"[NATSClient] Connecting to NATS servers: {self.config.servers}")
+            logger.info(f"[NATSClient] Connection timeout: {self.config.connect_timeout}s")
             logger.info(f"[NATSClient] TLS enabled: {self.config.tls_enabled}")
             logger.info(f"[NATSClient] User: {self.config.user}")
 
+            # 尝试DNS解析检查
+            try:
+                import socket
+                for server in self.config.servers:
+                    # 从URL中提取主机名和端口
+                    if '://' in server:
+                        host_part = server.split('://')[1]
+                        if ':' in host_part:
+                            host = host_part.split(':')[0]
+                            port = host_part.split(':')[1]
+                        else:
+                            host = host_part
+                            port = '4222'
+
+                        logger.info(f"[NATSClient] Resolving DNS for {host}...")
+                        ip = socket.gethostbyname(host)
+                        logger.info(f"[NATSClient] DNS resolved: {host} -> {ip}")
+            except Exception as dns_err:
+                logger.warning(f"[NATSClient] DNS resolution check failed: {dns_err}")
+
             connect_options = self.config.to_connect_options()
-            logger.info(f"[NATSClient] Connect options keys: {list(connect_options.keys())}")
+            logger.info(f"[NATSClient] Connect options: timeout={connect_options.get('connect_timeout')}s, "
+                       f"max_reconnect_attempts={connect_options.get('max_reconnect_attempts')}, "
+                       f"reconnect_wait={connect_options.get('reconnect_time_wait')}s")
 
-            # 尝试连接
-            self.nc = await NATS().connect(**connect_options)
+            # 创建 NATS 实例并连接
+            self.nc = NATS()
 
-            if self.nc:
-                logger.info(f"[NATSClient] Successfully connected to NATS: {self.config.servers}")
+            # 使用 asyncio.wait_for 添加额外的超时保护
+            try:
+                await asyncio.wait_for(
+                    self.nc.connect(**connect_options),
+                    timeout=self.config.connect_timeout + 5  # 额外5秒缓冲
+                )
+            except asyncio.TimeoutError:
+                logger.error(f"[NATSClient] Connection timeout after {self.config.connect_timeout + 5}s")
+                raise ConnectionError(f"NATS connection timeout to {self.config.servers}")
+
+            if self.nc.is_connected:
+                logger.info(f"[NATSClient] ✓ Successfully connected to NATS: {self.config.servers}")
                 logger.info(f"[NATSClient] Connection status - is_connected: {self.nc.is_connected}, is_closed: {self.nc.is_closed}")
             else:
-                logger.error(f"[NATSClient] Connection returned None!")
-                raise ConnectionError("NATS connection returned None")
+                logger.error(f"[NATSClient] Connection failed - not connected!")
+                raise ConnectionError("NATS connection failed")
 
+        except asyncio.TimeoutError as te:
+            logger.error(f"[NATSClient] Connection timeout: {te}")
+            logger.error(f"[NATSClient] This usually means:")
+            logger.error(f"[NATSClient]   1. NATS server is not reachable (network issue)")
+            logger.error(f"[NATSClient]   2. NATS server is not running on {self.config.servers}")
+            logger.error(f"[NATSClient]   3. Firewall is blocking the connection")
+            logger.error(f"[NATSClient]   4. DNS resolution failed")
+            self.nc = None
+            raise ConnectionError(f"NATS connection timeout to {self.config.servers}")
         except Exception as e:
             logger.error(f"[NATSClient] Failed to connect to NATS: {e}")
             logger.error(f"[NATSClient] Connection details - servers: {self.config.servers}, tls: {self.config.tls_enabled}")
