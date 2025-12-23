@@ -32,14 +32,15 @@ async def publish_metrics_to_nats(
         from core.nats import NATSClient, NATSConfig
         import os
 
-        # 确定 subject
-        # 优先使用 node_ip，其次 host
-        tags = params.get('tags', {})
-        node_ip = tags.get('node_ip') or params.get('host', params.get('node_id', 'unknown'))
+        # 获取 NATS Metric Topic 前缀（从环境变量读取，默认为 metric）
+        metric_topic_prefix = os.getenv('NATS_METRIC_TOPIC', 'metric')
 
-        # 过滤特殊字符，只保留字母数字和点、下划线
-        host_filtered = ''.join(c if c.isalnum() or c in '._' else '_' for c in str(node_ip))
-        subject = f"metrics.{host_filtered}"
+        # 获取任务类型（monitor_type 或 plugin_name）
+        task_type = params.get('monitor_type') or params.get('plugin_name', 'unknown')
+
+        # 构建 subject: {prefix}.{task_type}
+        # 例如: metric.vmware, metric.mysql, metric.host 等
+        subject = f"{metric_topic_prefix}.{task_type}"
 
         logger.info(f"[NATS Helper] Preparing to publish to subject: {subject}")
 
