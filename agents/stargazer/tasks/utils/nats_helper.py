@@ -53,6 +53,18 @@ async def publish_metrics_to_nats(
 
         logger.info(f"[NATS Helper] Converted {len(metrics_data)} bytes Prometheus data to {len(influx_data)} bytes InfluxDB format")
 
+        # 打印前5行指标数据预览（INFO级别，便于生产环境查看）
+        influx_lines = influx_data.split('\n')
+        if influx_lines:
+            preview_count = min(5, len(influx_lines))
+            preview_lines = influx_lines[:preview_count]
+            logger.info(f"[NATS Helper] Metrics preview (first {preview_count} lines):")
+            for i, line in enumerate(preview_lines, 1):
+                if line.strip():  # 跳过空行
+                    logger.info(f"[NATS Helper]   {i}. {line[:120]}{'...' if len(line) > 120 else ''}")
+            if len(influx_lines) > preview_count:
+                logger.info(f"[NATS Helper] ... and {len(influx_lines) - preview_count} more lines")
+
         # 打印环境变量用于调试
         logger.info(f"[NATS Helper] Environment: NATS_URLS={os.getenv('NATS_URLS', 'NOT SET')}")
         logger.info(f"[NATS Helper] Environment: NATS_TLS_ENABLED={os.getenv('NATS_TLS_ENABLED', 'NOT SET')}")
