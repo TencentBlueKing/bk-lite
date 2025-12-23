@@ -33,7 +33,7 @@ async def publish_metrics_to_nats(
         import os
 
         # 获取 NATS Metric Topic 前缀（从环境变量读取，默认为 metric）
-        metric_topic_prefix = os.getenv('NATS_METRIC_TOPIC', 'metric')
+        metric_topic_prefix = os.getenv('NATS_METRIC_TOPIC', 'metrics')
 
         # 获取任务类型（monitor_type 或 plugin_name）
         task_type = params.get('monitor_type') or params.get('plugin_name', 'unknown')
