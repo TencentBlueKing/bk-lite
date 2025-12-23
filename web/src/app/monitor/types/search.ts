@@ -23,4 +23,5 @@ export interface SearchParams {
   start?: number;
   step?: number;
   query: string;
+  source_unit?: string;
 }

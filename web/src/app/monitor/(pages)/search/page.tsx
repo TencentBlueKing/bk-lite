@@ -196,7 +196,10 @@ const SearchView: React.FC = () => {
         values: queryValues[i],
       });
     }
-    const params: SearchParams = { query: '' };
+    const params: SearchParams = {
+      query: '',
+      source_unit: metricItem?.unit || '',
+    };
     const recentTimeRange = getRecentTimeRange(_timeRange);
     const startTime = recentTimeRange.at(0);
     const endTime = recentTimeRange.at(1);
@@ -371,6 +374,7 @@ const SearchView: React.FC = () => {
         params = {
           time: params.end,
           query: params.query,
+          source_unit: params.source_unit,
         };
       }
       const responseData = await get(url, {
