@@ -157,10 +157,34 @@ class NATSClient:
     async def connect(self) -> None:
         """连接到 NATS 服务器"""
         if self.nc and not self.nc.is_closed:
+            logger.info("NATS already connected, reusing existing connection")
             return
 
-        self.nc = await NATS().connect(**self.config.to_connect_options())
-        logger.info(f"Connected to NATS: {self.config.servers}")
+        try:
+            logger.info(f"[NATSClient] Connecting to NATS servers: {self.config.servers}")
+            logger.info(f"[NATSClient] TLS enabled: {self.config.tls_enabled}")
+            logger.info(f"[NATSClient] User: {self.config.user}")
+
+            connect_options = self.config.to_connect_options()
+            logger.info(f"[NATSClient] Connect options keys: {list(connect_options.keys())}")
+
+            # 尝试连接
+            self.nc = await NATS().connect(**connect_options)
+
+            if self.nc:
+                logger.info(f"[NATSClient] Successfully connected to NATS: {self.config.servers}")
+                logger.info(f"[NATSClient] Connection status - is_connected: {self.nc.is_connected}, is_closed: {self.nc.is_closed}")
+            else:
+                logger.error(f"[NATSClient] Connection returned None!")
+                raise ConnectionError("NATS connection returned None")
+
+        except Exception as e:
+            logger.error(f"[NATSClient] Failed to connect to NATS: {e}")
+            logger.error(f"[NATSClient] Connection details - servers: {self.config.servers}, tls: {self.config.tls_enabled}")
+            import traceback
+            logger.error(f"[NATSClient] Traceback: {traceback.format_exc()}")
+            self.nc = None  # 确保 nc 为 None
+            raise  # 重新抛出异常，让调用者知道连接失败了
 
     async def request(self, subject: str, data: Any, timeout: float = 60.0) -> Any:
         """发送请求并等待响应"""

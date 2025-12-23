@@ -49,7 +49,13 @@ async def collect_task(ctx: Dict, params: Dict[str, Any], task_id: str) -> Dict[
     monitor_type = params.get("monitor_type")
     plugin_name = params.get("plugin_name")
 
-    logger.info(f"[Worker] Task received: {task_id}, type: {monitor_type or plugin_name}")
+    logger.info(f"[Worker] ==================== TASK START ====================")
+    logger.info(f"[Worker] Task ID: {task_id}")
+    logger.info(f"[Worker] Task Type: {monitor_type or plugin_name}")
+    logger.info(f"[Worker] Params Keys: {list(params.keys())}")
+    logger.info(f"[Worker] Host: {params.get('host', 'N/A')}")
+    logger.info(f"[Worker] Username: {params.get('username', 'N/A')}")
+    logger.info(f"[Worker] ========================================================")
 
     # 判断任务类型并分发到对应的 handler
     if monitor_type == "vmware":
@@ -76,14 +82,21 @@ async def collect_task(ctx: Dict, params: Dict[str, Any], task_id: str) -> Dict[
 
 async def startup(ctx: Dict):
     """Worker 启动时执行"""
+    redis_db = os.getenv('REDIS_DB', '0')
     logger.info("=" * 60)
     logger.info("ARQ Worker started successfully")
     logger.info("Task handlers loaded from 'tasks/handlers/'")
-    logger.info(f"Redis: {os.getenv('REDIS_HOST')}:{os.getenv('REDIS_PORT')}/{os.getenv('REDIS_DB')}")
+    logger.info(f"Redis: {os.getenv('REDIS_HOST')}:{os.getenv('REDIS_PORT')}/DB={redis_db}")
     logger.info(f"Registered functions: {[f.__name__ for f in [collect_task]]}")
     logger.info(f"Max jobs: {os.getenv('TASK_MAX_JOBS', '10')}")
     logger.info(f"Job timeout: {os.getenv('TASK_JOB_TIMEOUT', '300')}s")
     logger.info("=" * 60)
+
+    # 警告：检查 Redis DB 配置
+    if redis_db != os.getenv('REDIS_DB'):
+        logger.warning(f"⚠️  REDIS_DB environment variable may not be set correctly!")
+        logger.warning(f"⚠️  Worker is using DB={redis_db}, please verify Server is using the same DB")
+
     ctx['start_time'] = time.time()
 
 
@@ -120,3 +133,7 @@ class WorkerSettings:
 
     # 任务重试配置
     max_tries = int(os.getenv("TASK_MAX_TRIES", "3"))
+
+    # 强制启用日志输出（关键配置）
+    log_results = True
+    verbose = True

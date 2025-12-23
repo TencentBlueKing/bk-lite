@@ -30,6 +30,7 @@ async def publish_metrics_to_nats(
     """
     try:
         from core.nats import NATSClient, NATSConfig
+        import os
 
         # 确定 subject
         # 优先使用 node_ip，其次 host
@@ -51,13 +52,20 @@ async def publish_metrics_to_nats(
 
         logger.info(f"[NATS Helper] Converted {len(metrics_data)} bytes Prometheus data to {len(influx_data)} bytes InfluxDB format")
 
+        # 打印环境变量用于调试
+        logger.info(f"[NATS Helper] Environment: NATS_URLS={os.getenv('NATS_URLS', 'NOT SET')}")
+        logger.info(f"[NATS Helper] Environment: NATS_TLS_ENABLED={os.getenv('NATS_TLS_ENABLED', 'NOT SET')}")
+        logger.info(f"[NATS Helper] Environment: NATS_TLS_CA_FILE={os.getenv('NATS_TLS_CA_FILE', 'NOT SET')}")
+
         # 创建 NATS 配置并打印调试信息
         nats_config = NATSConfig.from_env()
         logger.info(f"[NATS Helper] NATS config: servers={nats_config.servers}, tls_enabled={nats_config.tls_enabled}, user={nats_config.user}")
 
         # 使用 async with 自动管理连接
         try:
+            logger.info(f"[NATS Helper] Attempting to connect to NATS...")
             async with NATSClient(nats_config) as nats_client:
+                logger.info(f"[NATS Helper] NATS client async with entered")
                 logger.info(f"[NATS Helper] NATS client connected: {nats_client.is_connected}, nc={nats_client.nc}")
 
                 # 检查连接状态
