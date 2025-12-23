@@ -604,7 +604,7 @@ class FalkorDBClient:
         """格式化properties的remove数据"""
         properties_str = ""
         for attr in attrs:
-            properties_str += f"n.{attr},"
+            properties_str += f"n.`{attr}`,"
         return properties_str if properties_str == "" else properties_str[:-1]
 
     def remove_entitys_properties(self, label: str, params: list, attrs: list):
@@ -613,7 +613,6 @@ class FalkorDBClient:
         properties_str = self.format_properties_remove(attrs)
         params_str = self.format_search_params(params)
         params_str = f"WHERE {params_str}" if params_str else params_str
-
         self._graph.query(f"MATCH (n{label_str}) {params_str} REMOVE {properties_str} RETURN n")
 
     def batch_delete_entity(self, label: str, entity_ids: list):
