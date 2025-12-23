@@ -32,14 +32,15 @@ async def publish_metrics_to_nats(
         from core.nats import NATSClient, NATSConfig
         import os
 
-        # 确定 subject
-        # 优先使用 node_ip，其次 host
-        tags = params.get('tags', {})
-        node_ip = tags.get('node_ip') or params.get('host', params.get('node_id', 'unknown'))
+        # 获取 NATS Metric Topic 前缀（从环境变量读取，默认为 metric）
+        metric_topic_prefix = os.getenv('NATS_METRIC_TOPIC', 'metric')
 
-        # 过滤特殊字符，只保留字母数字和点、下划线
-        host_filtered = ''.join(c if c.isalnum() or c in '._' else '_' for c in str(node_ip))
-        subject = f"metrics.{host_filtered}"
+        # 获取任务类型（monitor_type 或 plugin_name）
+        task_type = params.get('monitor_type') or params.get('plugin_name', 'unknown')
+
+        # 构建 subject: {prefix}.{task_type}
+        # 例如: metric.vmware, metric.mysql, metric.host 等
+        subject = f"{metric_topic_prefix}.{task_type}"
 
         logger.info(f"[NATS Helper] Preparing to publish to subject: {subject}")
 
@@ -51,6 +52,18 @@ async def publish_metrics_to_nats(
             return
 
         logger.info(f"[NATS Helper] Converted {len(metrics_data)} bytes Prometheus data to {len(influx_data)} bytes InfluxDB format")
+
+        # 打印前5行指标数据预览（INFO级别，便于生产环境查看）
+        influx_lines = influx_data.split('\n')
+        if influx_lines:
+            preview_count = min(5, len(influx_lines))
+            preview_lines = influx_lines[:preview_count]
+            logger.info(f"[NATS Helper] Metrics preview (first {preview_count} lines):")
+            for i, line in enumerate(preview_lines, 1):
+                if line.strip():  # 跳过空行
+                    logger.info(f"[NATS Helper]   {i}. {line[:120]}{'...' if len(line) > 120 else ''}")
+            if len(influx_lines) > preview_count:
+                logger.info(f"[NATS Helper] ... and {len(influx_lines) - preview_count} more lines")
 
         # 打印环境变量用于调试
         logger.info(f"[NATS Helper] Environment: NATS_URLS={os.getenv('NATS_URLS', 'NOT SET')}")
@@ -163,11 +176,54 @@ def convert_prometheus_to_influx(prometheus_data: str, params: Dict[str, Any]) -
                         if key not in tags or not tags[key]:
                             tags[key] = val
 
+            # 格式化字段值（InfluxDB 需要类型标识）
+            # 整数加 'i' 后缀，浮点数保持原样，字符串需要引号
+            try:
+                # 尝试转换为数字
+                if '.' in value or 'e' in value.lower():
+                    # 浮点数
+                    float(value)  # 验证是否有效
+                    field_value = value
+                else:
+                    # 整数 - 需要添加 'i' 后缀
+                    int(value)  # 验证是否有效
+                    field_value = f"{value}i"
+            except ValueError:
+                # 字符串值 - 需要引号
+                field_value = f'"{value}"'
+
+            # 转换时间戳：毫秒 -> 纳秒（InfluxDB 默认精度）
+            if timestamp:
+                try:
+                    # 如果是毫秒时间戳（13位），转换为纳秒（19位）
+                    ts = int(timestamp)
+                    if len(timestamp) == 13:
+                        # 毫秒 -> 纳秒：乘以 1000000
+                        timestamp = str(ts * 1000000)
+                    elif len(timestamp) == 10:
+                        # 秒 -> 纳秒：乘以 1000000000
+                        timestamp = str(ts * 1000000000)
+                    elif len(timestamp) == 19:
+                        # 已经是纳秒，不需要转换
+                        timestamp = str(ts)
+                    else:
+                        # 其他长度的时间戳，尝试标准化为纳秒
+                        # 假设是毫秒，如果太大则认为已经是纳秒
+                        if ts > 9999999999999:  # 大于13位，可能是纳秒或更高精度
+                            # 截断到纳秒精度（19位）
+                            timestamp = str(ts)[:19].ljust(19, '0')
+                        else:
+                            # 小于等于13位，按毫秒处理
+                            timestamp = str(ts * 1000000)
+                except ValueError:
+                    logger.warning(f"[NATS Helper] Invalid timestamp: {timestamp}")
+                    timestamp = ""
+
             # 构建 InfluxDB Line Protocol
             # 格式: measurement,tag1=value1,tag2=value2 field=value timestamp
             # 过滤掉空值的 tags
             tag_str = ','.join(f"{k}={v}" for k, v in tags.items() if v)
-            influx_line = f"{metric_name},{tag_str} value={value}"
+            influx_line = f"{metric_name},{tag_str} value={field_value}"
 
             if timestamp:
                 influx_line += f" {timestamp}"
