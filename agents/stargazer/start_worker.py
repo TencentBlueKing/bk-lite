@@ -59,6 +59,15 @@ if __name__ == '__main__':
     print("Press Ctrl+C or send SIGTERM to stop gracefully")
     print("=" * 60)
 
+    # 打印环境变量用于调试
+    print(f"Environment variables:")
+    print(f"  REDIS_HOST: {os.getenv('REDIS_HOST', 'NOT SET')}")
+    print(f"  REDIS_PORT: {os.getenv('REDIS_PORT', 'NOT SET')}")
+    print(f"  REDIS_DB: {os.getenv('REDIS_DB', 'NOT SET')}")
+    print(f"  REDIS_PASSWORD: {'***' if os.getenv('REDIS_PASSWORD') else 'NOT SET'}")
+    print("=" * 60)
+    print("Calling run_worker()...")
+
     try:
         # 运行 Worker
         run_worker(WorkerSettings)
@@ -66,6 +75,8 @@ if __name__ == '__main__':
         print("\n[Worker] Keyboard interrupt received")
     except Exception as e:
         print(f"[Worker] Fatal error: {e}")
+        import traceback
+        traceback.print_exc()
         sys.exit(1)
     finally:
         print("[Worker] Shutdown complete")
