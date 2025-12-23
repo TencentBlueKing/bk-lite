@@ -168,15 +168,16 @@ class NATSClient:
             connect_options = self.config.to_connect_options()
             logger.info(f"[NATSClient] Connect options keys: {list(connect_options.keys())}")
 
-            # 尝试连接
-            self.nc = await NATS().connect(**connect_options)
+            # 创建 NATS 实例并连接
+            self.nc = NATS()
+            await self.nc.connect(**connect_options)
 
-            if self.nc:
+            if self.nc.is_connected:
                 logger.info(f"[NATSClient] Successfully connected to NATS: {self.config.servers}")
                 logger.info(f"[NATSClient] Connection status - is_connected: {self.nc.is_connected}, is_closed: {self.nc.is_closed}")
             else:
-                logger.error(f"[NATSClient] Connection returned None!")
-                raise ConnectionError("NATS connection returned None")
+                logger.error(f"[NATSClient] Connection failed - not connected!")
+                raise ConnectionError("NATS connection failed")
 
         except Exception as e:
             logger.error(f"[NATSClient] Failed to connect to NATS: {e}")
