@@ -260,7 +260,9 @@ class CollectModelService(object):
         }
         stargazer = Stargazer()
         result = stargazer.list_regions(data)
-
+        if result.get('success'):
+            if result.get('regions', {}):
+                result = result.get('regions', {}).get('result',{})
         return result
 
     @classmethod
