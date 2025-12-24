@@ -1,11 +1,4 @@
-import { useMysqlTelegraf } from '../../plugins/database/mysqlTelegraf ';
-
 export const useMysqlConfig = () => {
-  const mysqlPlugin = useMysqlTelegraf();
-  const plugins = {
-    Mysql: mysqlPlugin,
-  };
-
   return {
     instance_type: 'mysql',
     dashboardDisplay: [],
@@ -15,6 +8,9 @@ export const useMysqlConfig = () => {
       { type: 'value', key: 'mysql_connections_total' },
     ],
     groupIds: {},
-    plugins,
+    collectTypes: {
+      'Mysql-Exporter': 'exporter',
+      Mysql: 'database',
+    },
   };
 };

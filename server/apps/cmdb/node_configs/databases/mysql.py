@@ -16,10 +16,13 @@ class MysqlNodeParams(BaseNodeParams):
         self.host_field = "ip_addr"
 
     def set_credential(self, *args, **kwargs):
+        _instance_id = self.get_instance_id(instance=kwargs["host"])
+        _password = f"PASSWORD_password_{_instance_id}"
         credential_data = {
             "port": self.credential.get("port", 3306),
             "user": self.credential.get("user", ""),
-            "password": self.credential.get("password", ""),
+            # "password": self.credential.get("password", ""),
+            "password": "${" + _password + "}",
         }
         return credential_data
 
@@ -28,7 +31,13 @@ class MysqlNodeParams(BaseNodeParams):
         获取实例 id
         """
         if self.has_set_instances:
-            return f"{self.instance.id}_{instance['inst_name']}"
+            return f"{self.instance.id}_{instance['_id']}"
         else:
-            return f"{self.instance.id}_{instance}"
+            return f"{self.instance.id}_{instance}".replace(".", "")
 
+    def env_config(self, *args, **kwargs):
+        host = kwargs["host"]
+        _instance_id = self.get_instance_id(instance=host)
+        return {
+            f"PASSWORD_password_{_instance_id}": self.credential.get("password", ""),
+        }

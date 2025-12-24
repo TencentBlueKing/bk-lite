@@ -23,11 +23,12 @@ def check_all_region_services():
             # 根据服务名称查找对应的健康检查函数
             health_check_func = SERVICES_FUNC.get(service.name)
             if health_check_func:
-                status = health_check_func(region)
+                status, message = health_check_func(region)
                 service.status = status
+                service.message = message
                 services_to_update.append(service)
 
     # 批量更新所有服务状态
     if services_to_update:
-        CloudRegionService.objects.bulk_update(services_to_update, ['status'])
+        CloudRegionService.objects.bulk_update(services_to_update, ['status', 'message'])
         logger.info(f"批量更新了 {len(services_to_update)} 个云区域服务的健康状态")

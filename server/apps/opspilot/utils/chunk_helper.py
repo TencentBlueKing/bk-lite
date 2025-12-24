@@ -1,3 +1,4 @@
+import time
 from typing import Any, Dict, Optional
 
 from langchain_core.documents import Document
@@ -119,10 +120,20 @@ class ChunkHelper(ChatServerHelper):
             is_chunk: 是否为chunk
             keep_qa: 是否保留问答对
         """
+        if isinstance(doc_id, list):
+            if is_chunk:
+                doc_ids = [str(i) for i in doc_id]
+            else:
+                doc_ids = [f"qa_pairs_id_{i}" for i in doc_id]
+        else:
+            if is_chunk:
+                doc_ids = [str(doc_id)]
+            else:
+                doc_ids = [f"qa_pairs_id_{doc_id}"]
         rag_client = PgvectorRag()
         request = DocumentDeleteRequest(
-            chunk_ids=[str(doc_id)] if is_chunk else [],
-            knowledge_ids=[f"qa_pairs_id_{doc_id}"] if not is_chunk else [],
+            chunk_ids=doc_ids if is_chunk else [],
+            knowledge_ids=doc_ids if not is_chunk else [],
             keep_qa=keep_qa,
         )
         try:
@@ -236,6 +247,9 @@ class ChunkHelper(ChatServerHelper):
         rag_client = PgvectorRag()
 
         # 构建元数据
+        # 使用时间戳确保chunk_id唯一性，避免重复调用时产生相同ID
+        timestamp = str(int(time.time() * 1000000))  # 微秒级时间戳
+
         metadata = {
             "enabled": "true",
             "base_chunk_id": chunk_id,
@@ -244,7 +258,7 @@ class ChunkHelper(ChatServerHelper):
             "knowledge_id": f"qa_pairs_id_{qa_pairs_id}",
             "qa_question": question,
             "qa_answer": answer,
-            "chunk_id": f"qa_{qa_pairs_id}_{chunk_id or 'single'}",
+            "chunk_id": f"qa_{qa_pairs_id}_{timestamp}",
         }
 
         # 创建 Document

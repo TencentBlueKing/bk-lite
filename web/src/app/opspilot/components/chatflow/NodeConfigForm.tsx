@@ -2,11 +2,12 @@
 
 import React from 'react';
 import { Form, Input, Select, InputNumber, Button, TimePicker, Upload, Radio } from 'antd';
-import { InboxOutlined, CopyOutlined } from '@ant-design/icons';
+import { InboxOutlined, CopyOutlined, PlusOutlined } from '@ant-design/icons';
 import { useTranslation } from '@/utils/i18n';
 import Link from 'next/link';
 import { message } from 'antd';
 import type { UploadProps } from 'antd';
+import Icon from '@/components/icon';
 
 const { Option } = Select;
 const { TextArea } = Input;
@@ -35,7 +36,6 @@ export const NodeConfigForm: React.FC<any> = ({
   const { t } = useTranslation();
   const nodeType = node.data.type;
 
-  // 复制 API URL
   const copyApiUrl = async () => {
     const currentOrigin = typeof window !== 'undefined' ? window.location.origin : '';
     const apiUrl = `${currentOrigin}/api/v1/opspilot/bot_mgmt/execute_chat_flow/${botId}/${node.id}`;
@@ -53,7 +53,6 @@ export const NodeConfigForm: React.FC<any> = ({
     }
   };
 
-  // 文件上传配置
   const uploadProps: UploadProps = {
     name: 'file',
     multiple: true,
@@ -99,7 +98,6 @@ export const NodeConfigForm: React.FC<any> = ({
     }
   };
 
-  // 渲染键值对编辑器
   const renderKeyValueEditor = (rows: any, label: string) => {
     const { rows: items, addRow, removeRow, updateRow } = rows;
     return (
@@ -290,6 +288,37 @@ export const NodeConfigForm: React.FC<any> = ({
             <Input placeholder={t('chatflow.nodeConfig.enterAppName')} />
           </Form.Item>
           <Form.Item 
+            name="appIcon" 
+            label={t('chatflow.nodeConfig.appIcon')} 
+            rules={[{ 
+              required: true, 
+              message: t('chatflow.nodeConfig.pleaseSelectAppIcon')
+            }]}
+          >
+            <Form.Item noStyle shouldUpdate={(prev, curr) => prev.appIcon !== curr.appIcon}>
+              {() => (
+                <div className="flex gap-3">
+                  {['duihuazhinengti', 'a-zhinengti', 'zhinengtitubiao', 'zhinengti1', 'zhinengti2'].map(iconType => (
+                    <div
+                      key={iconType}
+                      onClick={() => {
+                        form.setFieldValue('appIcon', iconType);
+                        form.validateFields(['appIcon']);
+                      }}
+                      className={`w-10 h-10 flex items-center justify-center rounded cursor-pointer transition-all ${
+                        form.getFieldValue('appIcon') === iconType 
+                          ? 'border-2 border-blue-500 bg-blue-50/50' 
+                          : 'border border-gray-200 hover:border-gray-300'
+                      }`}
+                    >
+                      <Icon type={iconType} className="text-2xl" />
+                    </div>
+                  ))}
+                </div>
+              )}
+            </Form.Item>
+          </Form.Item>
+          <Form.Item 
             name="appDescription" 
             label={t('chatflow.nodeConfig.appDescription')} 
             rules={[{ 
@@ -303,6 +332,14 @@ export const NodeConfigForm: React.FC<any> = ({
               placeholder={t('chatflow.nodeConfig.enterAppDescription')} 
             />
           </Form.Item>
+          <div className="p-3 bg-blue-50 border border-blue-200 rounded-md text-xs">
+            <p className="text-gray-600 mb-1">
+              {t('chatflow.nodeConfig.webAccessAddress')}：
+            </p>
+            <div className="font-mono text-blue-600 break-all">
+              {typeof window !== 'undefined' ? window.location.origin : ''}/opspilot/studio/chat
+            </div>
+          </div>
         </>
       )}
 
@@ -333,12 +370,12 @@ export const NodeConfigForm: React.FC<any> = ({
               mode="multiple" 
               placeholder={t('chatflow.nodeConfig.selectAppTags')}
               options={[
-                { label: t('chatflow.nodeConfig.appTagWork'), value: 'work' },
-                { label: t('chatflow.nodeConfig.appTagBusiness'), value: 'business' },
-                { label: t('chatflow.nodeConfig.appTagEntertainment'), value: 'entertainment' },
-                { label: t('chatflow.nodeConfig.appTagEducation'), value: 'education' },
-                { label: t('chatflow.nodeConfig.appTagProductivity'), value: 'productivity' },
-                { label: t('chatflow.nodeConfig.appTagSocial'), value: 'social' },
+                { label: t('chatflow.nodeConfig.appTagRoutineOps'), value: 'routine_ops' },
+                { label: t('chatflow.nodeConfig.appTagMonitorAlarm'), value: 'monitor_alarm' },
+                { label: t('chatflow.nodeConfig.appTagAutomation'), value: 'automation' },
+                { label: t('chatflow.nodeConfig.appTagSecurityAudit'), value: 'security_audit' },
+                { label: t('chatflow.nodeConfig.appTagPerformanceAnalysis'), value: 'performance_analysis' },
+                { label: t('chatflow.nodeConfig.appTagOpsPlanning'), value: 'ops_planning' },
               ]}
             />
           </Form.Item>
@@ -382,6 +419,78 @@ export const NodeConfigForm: React.FC<any> = ({
               </Select>
             </Form.Item>
           </div>
+        </div>
+      )}
+
+      {nodeType === 'intent_classification' && (
+        <div className="mb-4">
+          <Form.Item 
+            name="agent" 
+            label={t('chatflow.nodeConfig.selectAgent')} 
+            rules={[{ required: true, message: t('chatflow.nodeConfig.pleaseSelectAgent') }]}
+          >
+            <Select 
+              placeholder={t('chatflow.nodeConfig.pleaseSelectAgent')} 
+              loading={loadingSkills}
+              showSearch
+              filterOption={(input, option) => option?.label?.toString().toLowerCase().includes(input.toLowerCase()) ?? false}
+            >
+              {skills.map((s: any) => (
+                <Option key={s.id} value={s.id} label={s.name}>{s.name}</Option>
+              ))}
+            </Select>
+          </Form.Item>
+
+          <Form.List name="intents">
+            {(fields, { add, remove }) => (
+              <>
+                <div className="mb-3 flex items-center justify-between border-b pb-2">
+                  <label className="text-sm font-medium text-gray-700">{t('chatflow.nodeConfig.intentClassification')}</label>
+                  <Button 
+                    type="dashed" 
+                    onClick={() => add({ name: '' })} 
+                    size="small"
+                    icon={<PlusOutlined />}
+                  >
+                    {t('chatflow.nodeConfig.addIntent')}
+                  </Button>
+                </div>
+                {fields.map((field, index) => (
+                  <div key={field.key} className="group mb-3 relative">
+                    <div className="flex items-center gap-2 mb-2">
+                      <div className="w-6 h-6 rounded-full bg-blue-500 text-white text-xs flex items-center justify-center font-semibold shadow-md">
+                        {index + 1}
+                      </div>
+                      <span className="text-xs text-gray-500 font-medium">
+                        {t('chatflow.nodeConfig.classification')} {index + 1}
+                      </span>
+                    </div>
+                    <div className="relative">
+                      <Form.Item
+                        name={[field.name, 'name']}
+                        rules={[{ required: true, message: t('chatflow.nodeConfig.intentNameRequired') }]}
+                        className="mb-0"
+                      >
+                        <TextArea 
+                          rows={3} 
+                          placeholder={t('chatflow.nodeConfig.intentTopicPlaceholder')} 
+                        />
+                      </Form.Item>
+                      <Button
+                        type="text"
+                        danger
+                        size="small"
+                        icon={<Icon type="shanchu" className="text-base" />}
+                        onClick={() => remove(field.name)}
+                        className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity z-10"
+                        title={t('chatflow.nodeConfig.removeIntent')}
+                      />
+                    </div>
+                  </div>
+                ))}
+              </>
+            )}
+          </Form.List>
         </div>
       )}
 

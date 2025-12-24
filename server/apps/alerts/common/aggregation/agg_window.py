@@ -12,7 +12,7 @@ from typing import List, Tuple
 from apps.alerts.common.aggregation.window_processor.base import BaseWindowProcessor
 from apps.alerts.common.aggregation.window_processor.sliding import SlidingWindowProcessor
 from apps.alerts.common.aggregation.window_processor.fixed import FixedWindowProcessor
-from apps.alerts.common.aggregation.window_processor.session import SessionWindowAggProcessor
+from apps.alerts.common.aggregation.window_processor.session import SessionWindowProcessor
 from apps.alerts.models import CorrelationRules
 
 
@@ -22,7 +22,7 @@ class WindowProcessorFactory:
     _processors = {
         'sliding': SlidingWindowProcessor,
         'fixed': FixedWindowProcessor,
-        'session': SessionWindowAggProcessor  # 修复：使用重命名的类
+        'session': SessionWindowProcessor
     }
 
     @classmethod

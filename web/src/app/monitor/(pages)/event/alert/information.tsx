@@ -73,6 +73,8 @@ const Information: React.FC<InformationProps> = ({
   };
 
   const showNotifiers = (row: TableDataItem) => {
+    const users = row.policy?.notice_users;
+    if (!Array.isArray(users)) return users;
     return (
       (row.policy?.notice_users || [])
         .map((item: string) => getUsers(item))

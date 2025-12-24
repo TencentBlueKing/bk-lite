@@ -86,6 +86,13 @@ export class SessionManager {
   }
 
   /**
+   * Manually save current session to storage
+   */
+  public saveSession(): void {
+    this.saveToStorage();
+  }
+
+  /**
    * Save session to storage
    */
   private saveToStorage(): void {

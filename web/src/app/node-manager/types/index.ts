@@ -1,3 +1,5 @@
+import { LogStep } from './controller';
+
 interface TableDataItem {
   id?: string | number;
   [key: string]: any;
@@ -24,6 +26,7 @@ interface ModalConfig {
 //调用弹窗的类型
 interface ModalRef {
   showModal: (config: ModalConfig) => void;
+  updateLogs?: (logs: LogStep[]) => void;
 }
 
 interface TopSectionProps {
@@ -58,6 +61,7 @@ interface Pagination {
 export interface CardItem {
   id: string;
   name: string;
+  original_name?: string;
   description: string;
   icon: string;
   os: string;

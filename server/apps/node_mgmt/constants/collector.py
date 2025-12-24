@@ -23,6 +23,14 @@ class CollectorConstants:
         "beat": {"is_app": False, "name": "Beat"},
     }
 
-    # 需要对密码进行URL编码的采集器ID集合
-    # 这些采集器的密码会在URL中使用，因此需要进行URL编码以确保特殊字符正确传递
-    URL_ENCODE_PASSWORD_COLLECTORS = {"telegraf_linux", "telegraf_windows"}
+    # 容器节点才会默认初始化的采集器配置
+    DEFAULT_CONTAINER_COLLECTOR_CONFIGS = ["Snmptrapd"]
+
+    IGNORE_ERROR_COLLECTORS = ["Metricbeat", "Auditbeat", "Filebeat", "Packetbeat"]
+    IGNORE_ERROR_COLLECTORS_MESSAGES = [
+        "Exiting: one or more modules must be configured\n",
+        "Exiting: no modules or inputs enabled and configuration reloading disabled. What files do you want me to watch?\n"
+    ]
+
+    # 忽略的采集器
+    IGNORE_COLLECTORS = ["natsexecutor_windows",  "natsexecutor_linux"]

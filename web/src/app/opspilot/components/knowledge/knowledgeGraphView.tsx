@@ -29,8 +29,25 @@ const KnowledgeGraphView: React.FC<KnowledgeGraphViewProps> = ({
   const graphRef = useRef<any>(null);
   const [initError, setInitError] = useState<string | null>(null);
   const [isInitializing, setIsInitializing] = useState(false);
+  const [containerHeight, setContainerHeight] = useState<number | string>(height);
 
   const graphData = useMockData || (!data.nodes.length && !loading) ? generateMockData() : data;
+
+  useEffect(() => {
+    if (height === '100%' && containerRef.current) {
+      const updateHeight = () => {
+        const parentHeight = containerRef.current?.parentElement?.clientHeight;
+        if (parentHeight) {
+          setContainerHeight(parentHeight);
+        }
+      };
+      updateHeight();
+      window.addEventListener('resize', updateHeight);
+      return () => window.removeEventListener('resize', updateHeight);
+    } else {
+      setContainerHeight(height);
+    }
+  }, [height]);
 
   /**
    * Get node style configuration based on label type
@@ -125,182 +142,141 @@ const KnowledgeGraphView: React.FC<KnowledgeGraphViewProps> = ({
         throw new Error('G6 Graph constructor not found');
       }
 
+      const actualHeight = container.offsetHeight;
+
       const truncateText = (text: string, maxLength: number = 3) => {
         if (!text) return '';
         return text.length > maxLength ? text.substring(0, maxLength) + '...' : text;
       };
 
-      const processedData = {
+      // 为G6 v5准备数据 - 将样式属性直接放在data中
+      const formattedData = {
         nodes: graphData.nodes.map(node => {
           const nodeType = node.labels && node.labels.length > 0 ? node.labels[0] : 'default';
-          const style = getNodeStyle(nodeType);
+          const nodeStyle = getNodeStyle(nodeType);
           const displayLabel = truncateText(node.label || node.name || '', 3);
 
           return {
             id: node.id,
-            label: displayLabel,
-            labels: node.labels,
-            name: node.name,
-            uuid: node.uuid,
-            summary: node.summary,
-            node_id: node.node_id,
-            group_id: node.group_id,
-            fact: node.fact,
-            size: 60,
-            style: {
-              fill: style.fill,
-              stroke: style.stroke,
+            data: {
+              type: 'circle-node',
+              // 样式属性
+              fill: nodeStyle.fill,
+              stroke: nodeStyle.stroke,
               lineWidth: 2,
+              // 额外数据
+              label: displayLabel,
+              fullLabel: node.label || node.name || '',
+              labels: node.labels,
+              name: node.name,
+              uuid: node.uuid,
+              summary: node.summary,
+              node_id: node.node_id,
+              group_id: node.group_id,
+              fact: node.fact,
             },
           };
         }),
-        edges: graphData.edges.map((edge, index) => {
-          const isSelfLoop = edge.source === edge.target;
-          const style = getEdgeStyle(edge.type, isSelfLoop);
-
-          const loopPositions = ['top', 'top-right', 'right', 'bottom-right', 'bottom', 'bottom-left', 'left', 'top-left'];
-          const loopIndex = index % loopPositions.length;
+        edges: graphData.edges.map((edge) => {
+          const edgeStyle = getEdgeStyle(edge.type, false);
 
           return {
             id: edge.id,
             source: edge.source,
             target: edge.target,
-            label: edge.label,
-            type: isSelfLoop ? 'loop' : 'line',
-            source_name: edge.source_name,
-            target_name: edge.target_name,
-            fact: edge.fact || '-',
-            style: {
-              stroke: style.stroke,
-              lineWidth: style.lineWidth,
-              ...(style.lineDash && { lineDash: style.lineDash }),
-              endArrow: style.endArrow,
+            data: {
+              type: 'line-edge',
+              // 样式属性
+              stroke: edgeStyle.stroke,
+              lineWidth: edgeStyle.lineWidth,
+              // 额外数据
+              label: edge.label,
+              source_name: edge.source_name,
+              target_name: edge.target_name,
+              fact: edge.fact || '-',
+              relation_type: edge.relation_type,
             },
-            ...(isSelfLoop && {
-              loopCfg: {
-                position: loopPositions[loopIndex],
-                dist: 60 + (loopIndex * 10),
-                clockwise: index % 2 === 0,
-              }
-            }),
           };
         }),
       };
 
-      // Initialize G6 Graph with TypeScript assertion for API compatibility
+      // Initialize G6 v5 Graph
       const graph = new G6.Graph({
         container: container,
         width,
-        height,
+        height: actualHeight,
+        data: formattedData,
         layout: {
           type: 'force',
           preventOverlap: true,
-          nodeSize: 60, // Update to match actual node size
-          linkDistance: 180, // Increase link distance to give nodes more space
-          nodeStrength: -150, // Enhance node repulsion to avoid overlap
-          edgeStrength: 0.8,
-          gravity: 0.1,
+          linkDistance: 180,
         },
-        defaultNode: {
-          type: 'circle',
-          size: 60, // Increase node size to provide more space for text
-          labelCfg: {
-            position: 'center',
-            style: {
-              fontSize: 11,
-              fill: '#333', // Change to dark gray for better readability
-              fontWeight: '500', // Slightly reduce font weight
-              textAlign: 'center',
-              textBaseline: 'middle',
-              wordWrap: true, // Enable text wrapping
-              wordWrapWidth: 50, // Set wrap width
-            },
-          },
+        theme: 'light',
+        node: {
           style: {
-            lineWidth: 2,
-            stroke: '#5B8FF9',
-            fill: '#C6E5FF',
-          },
-          stateStyles: {
-            hover: {
-              lineWidth: 4,
-              shadowBlur: 10,
-              shadowOffsetX: 0,
-              shadowOffsetY: 0,
-            },
-            highlight: {
-              lineWidth: 3,
-              opacity: 1,
-            },
-            inactive: {
-              opacity: 0.3,
-            },
+            size: 60,
+            fill: (d: any) => d.data.fill || '#C6E5FF',
+            stroke: (d: any) => d.data.stroke || '#5B8FF9',
+            lineWidth: (d: any) => d.data.lineWidth || 2,
+            opacity: (d: any) => d.data.opacity !== undefined ? d.data.opacity : 1,
+            shadowColor: (d: any) => d.data.shadowColor,
+            shadowBlur: (d: any) => d.data.shadowBlur || 0,
+            labelText: (d: any) => d.data.label || '',
+            labelPlacement: 'center',
+            labelFill: '#fff',
+            labelFontSize: 11,
+            labelFontWeight: 500,
           },
         },
-        defaultEdge: {
-          type: 'line',
-          labelCfg: {
-            autoRotate: true,
-            style: {
-              fontSize: 10,
-              fill: '#666',
-            },
-          },
+        edge: {
           style: {
-            stroke: '#e2e2e2',
-            lineWidth: 2,
-            endArrow: {
-              path: 'M 0,0 L 8,4 L 8,-4 Z',
-              fill: '#e2e2e2',
-              stroke: '#e2e2e2',
-            },
-          },
-          stateStyles: {
-            highlight: {
-              lineWidth: 3,
-              opacity: 1,
-            },
-            inactive: {
-              opacity: 0.2,
-            },
+            stroke: (d: any) => d.data.stroke || '#e2e2e2',
+            lineWidth: (d: any) => d.data.lineWidth || 2,
+            opacity: (d: any) => d.data.opacity !== undefined ? d.data.opacity : 1,
+            endArrow: true,
+            labelText: (d: any) => d.data.label || '',
+            labelPlacement: 'center',
+            labelFill: '#666',
+            labelFontSize: 10,
+            labelBackground: true,
+            labelBackgroundFill: '#fff',
+            labelBackgroundOpacity: 0.8,
+            labelPadding: [2, 4],
           },
         },
-        modes: {
-          default: [
-            'drag-canvas',
-            'zoom-canvas',
-            'drag-node',
-            'click-select',
-          ],
-        },
-        fitView: true,
-        fitViewPadding: 20,
+        behaviors: [
+          'drag-canvas', 
+          'zoom-canvas', 
+          'drag-element',
+          { type: 'hover-activate', degree: 1 }
+        ],
+        autoFit: 'view',
       } as any);
-
-      // Bind data and render graph
-      (graph as any).data(processedData);
-      (graph as any).render();
+      
+      // 渲染图谱
+      await graph.render();
 
       if (onNodeClick) {
         graph.on('node:click', (event: any) => {
           try {
-            const node = event.item;
-            const model = node.getModel();
-            if (model) {
+            // G6 v5 事件对象结构
+            const nodeData = event.target?.id ? graph.getNodeData(event.target.id) : null;
+            if (nodeData && nodeData.data) {
+              const data = nodeData.data as any;
               onNodeClick({
-                id: model.id as string,
-                label: model.label as string,
-                labels: model.labels as string[],
-                name: model.name as string,
-                uuid: model.uuid as string,
-                summary: model.summary as string,
-                node_id: model.node_id as number,
-                group_id: model.group_id as string,
-                fact: model.fact as string,
+                id: nodeData.id as string,
+                label: data.fullLabel || data.label || '',
+                labels: data.labels || [],
+                name: data.name || '',
+                uuid: data.uuid || '',
+                summary: data.summary || '',
+                node_id: data.node_id || 0,
+                group_id: data.group_id || '',
+                fact: data.fact || '',
               });
             }
           } catch (error) {
-            console.warn('Error handling node click:', error);
+            console.error('Error handling node click:', error);
           }
         });
       }
@@ -308,130 +284,246 @@ const KnowledgeGraphView: React.FC<KnowledgeGraphViewProps> = ({
       if (onEdgeClick) {
         graph.on('edge:click', (event: any) => {
           try {
-            const edge = event.item;
-            const model = edge.getModel();
-            if (model) {
+            // G6 v5 事件对象结构
+            const edgeData = event.target?.id ? graph.getEdgeData(event.target.id) : null;
+            if (edgeData && edgeData.data) {
+              const data = edgeData.data as any;
               onEdgeClick({
-                id: model.id as string,
-                source: model.source as string,
-                target: model.target as string,
-                label: model.label as string,
-                type: model.type as 'relation' | 'reference',
-                source_name: model.source_name as string,
-                target_name: model.target_name as string,
-                fact: model.fact as string | null,
+                id: edgeData.id as string,
+                source: edgeData.source as string,
+                target: edgeData.target as string,
+                label: data.label || '',
+                type: 'relation' as 'relation' | 'reference',
+                source_name: data.source_name || '',
+                target_name: data.target_name || '',
+                fact: data.fact || null,
               });
             }
           } catch (error) {
-            console.warn('Error handling edge click:', error);
+            console.error('Error handling edge click:', error);
           }
         });
       }
 
-      /**
-       * Enhanced hover effect with dynamic shadow colors
-       * - Current node: 4px border + matching shadow color
-       * - Related nodes: Keep original colors with thicker border  
-       * - Unrelated nodes: Reduced opacity
-       */
-      graph.on('node:mouseenter', (event: any) => {
+      // 鼠标移入节点时，高亮相关节点和边 - 参考 v4 逻辑用 v5 API 实现
+      let currentHoverNodeId: string | null = null;
+
+      console.log('=== Registering hover events ===');
+      
+      // 先注册 afterrender 来确保图渲染完成后再绑定事件
+      graph.on('afterrender', () => {
+        console.log('Graph rendered, setting up hover handlers');
+      });
+
+      graph.on('node:pointerenter', (event: any) => {
+        console.log('🎯 node:pointerenter triggered!', event);
         try {
-          const node = event.item;
-          const nodeModel = node.getModel();
-          const nodeId = nodeModel.id;
-          
-          // Set dynamic shadow color based on node's original stroke color
-          const shadowColor = nodeModel.style.stroke || '#9254DE';
-          
-          (graph as any).updateItem(node, {
-            style: {
-              ...nodeModel.style,
-              lineWidth: 4,
-              shadowColor: shadowColor,
-              shadowBlur: 10,
-              shadowOffsetX: 0,
-              shadowOffsetY: 0,
-            },
+          // v5 中尝试多种方式获取节点ID
+          const nodeId = event.itemId || event.target?.id || event.target?.cfg?.id || (event.item && event.item.id);
+          console.log('Trying to get nodeId:', {
+            itemId: event.itemId,
+            targetId: event.target?.id,
+            targetCfgId: event.target?.cfg?.id,
+            itemGetId: event.item?.id,
+            finalNodeId: nodeId
           });
           
-          const edges = (graph as any).getEdges();
-          const nodes = (graph as any).getNodes();
+          if (!nodeId) {
+            console.warn('⚠️ No nodeId found in event. Available keys:', Object.keys(event));
+            console.warn('⚠️ Event.target:', event.target);
+            return;
+          }
           
-          // Find related edges and nodes
-          const relatedEdges: any[] = [];
+          console.log('✅ Found Node ID:', nodeId);
+
+          // 如果是同一个节点，不重复处理
+          if (currentHoverNodeId === nodeId) return;
+          
+          currentHoverNodeId = nodeId;
+          const allNodes = graph.getData().nodes || [];
+          const allEdges = graph.getData().edges || [];
+          
+          console.log('📊 Total nodes:', allNodes.length, 'Total edges:', allEdges.length);
+          
+          // 找到所有相关的边和节点
           const relatedNodeIds = new Set([nodeId]);
+          const relatedEdgeIds = new Set<string>();
           
-          edges.forEach((edge: any) => {
-            const edgeModel = edge.getModel();
-            if (edgeModel.source === nodeId || edgeModel.target === nodeId) {
-              relatedEdges.push(edge);
-              relatedNodeIds.add(edgeModel.source);
-              relatedNodeIds.add(edgeModel.target);
+          allEdges.forEach((edge: any) => {
+            if (edge.source === nodeId || edge.target === nodeId) {
+              relatedEdgeIds.add(edge.id);
+              relatedNodeIds.add(edge.source);
+              relatedNodeIds.add(edge.target);
             }
           });
           
-          // Update edge states
-          edges.forEach((edge: any) => {
-            if (relatedEdges.includes(edge)) {
-              (graph as any).setItemState(edge, 'highlight', true);
+          console.log('✅ Related nodes:', relatedNodeIds.size, 'Related edges:', relatedEdgeIds.size);              // 批量更新所有节点的样式
+          const nodeUpdates = allNodes.map((node: any) => {
+            const isRelated = relatedNodeIds.has(node.id);
+            const nodeData = graph.getNodeData(node.id);
+            const data = nodeData?.data as any;
+            const nodeType = data?.labels && data.labels.length > 0 
+              ? data.labels[0] 
+              : 'default';
+            const originalStyle = getNodeStyle(nodeType);
+                
+            if (node.id === nodeId) {
+              // 当前悬停的节点：添加阴影效果，保持原色
+              console.log(`  🎯 Current node: ${node.id} - keeping original color`);
+              return {
+                id: node.id,
+                data: {
+                  ...data,
+                  fill: originalStyle.fill,
+                  stroke: originalStyle.stroke,
+                  lineWidth: 3,
+                  shadowColor: '#000',
+                  shadowBlur: 10,
+                  opacity: 1,
+                }
+              };
+            } else if (isRelated) {
+              // 相关节点：保持原色，增加边框
+              console.log(`  ✅ Related node: ${node.id} - keeping original color`);
+              return {
+                id: node.id,
+                data: {
+                  ...data,
+                  fill: originalStyle.fill,
+                  stroke: originalStyle.stroke,
+                  lineWidth: 3,
+                  opacity: 1,
+                  shadowColor: undefined,
+                  shadowBlur: undefined,
+                }
+              };
             } else {
-              (graph as any).setItemState(edge, 'inactive', true);
+              // 无关节点：变成浅灰色半透明（像图2中框起来的效果）
+              console.log(`  ⚪ Unrelated node: ${node.id} - making it gray and transparent`);
+              return {
+                id: node.id,
+                data: {
+                  ...data,
+                  fill: '#e8e8e8',
+                  stroke: '#d0d0d0',
+                  lineWidth: 1,
+                  opacity: 0.4,
+                  shadowColor: undefined,
+                  shadowBlur: undefined,
+                }
+              };
+            }
+          });
+              
+          console.log('🔄 Updating', nodeUpdates.length, 'nodes');
+          graph.updateNodeData(nodeUpdates);
+          // 强制重新渲染以应用样式变化
+          graph.draw();
+              
+          // 批量更新所有边的样式
+          const edgeUpdates = allEdges.map((edge: any) => {
+            const isRelated = relatedEdgeIds.has(edge.id);
+            const edgeData = graph.getEdgeData(edge.id);
+            const data = edgeData?.data as any;
+                
+            if (isRelated) {
+              // 相关边：保持原色，增加粗细
+              const edgeType = (data?.relation_type as string) || 'relation';
+              const originalStyle = getEdgeStyle(edgeType, false);
+              return {
+                id: edge.id,
+                data: {
+                  ...data,
+                  stroke: originalStyle.stroke,
+                  lineWidth: 3,
+                  opacity: 1,
+                }
+              };
+            } else {
+              // 无关边：变灰暗
+              return {
+                id: edge.id,
+                data: {
+                  ...data,
+                  stroke: '#d9d9d9',
+                  lineWidth: 1,
+                  opacity: 0.2,
+                }
+              };
             }
           });
           
-          // Update node states - keep original colors for related nodes
-          nodes.forEach((n: any) => {
-            const nModel = n.getModel();
-            if (nModel.id !== nodeId) {
-              if (relatedNodeIds.has(nModel.id)) {
-                // Related nodes: preserve original colors, only increase border width
-                (graph as any).updateItem(n, {
-                  style: {
-                    ...nModel.style,
-                    lineWidth: 3,
-                    opacity: 1,
-                  },
-                });
-              } else {
-                (graph as any).setItemState(n, 'inactive', true);
-              }
-            }
-          });
+          console.log('🔄 Updating', edgeUpdates.length, 'edges');
+          graph.updateEdgeData(edgeUpdates);
+          // 强制重新渲染以应用样式变化
+          graph.draw();
         } catch (error) {
-          console.warn('Error handling node mouseenter:', error);
+          console.error('Error handling node pointerenter:', error);
         }
       });
 
-      // Reset all styles when mouse leaves node
-      graph.on('node:mouseleave', () => {
+      // 鼠标移出节点时，重置所有样式为原始状态（所有节点都亮色）
+      graph.on('node:pointerleave', () => {
+        console.log('🔙 node:pointerleave triggered - restoring all to original colors');
         try {
-          const nodes = (graph as any).getNodes();
-          const edges = (graph as any).getEdges();
+          currentHoverNodeId = null;
+          const allNodes = graph.getData().nodes || [];
+          const allEdges = graph.getData().edges || [];
           
-          nodes.forEach((node: any) => {
-            const nodeModel = node.getModel();
-            (graph as any).clearItemStates(node);
-            (graph as any).updateItem(node, {
-              style: {
-                ...nodeModel.style,
+          // 批量重置所有节点样式 - 恢复原始颜色和样式
+          const nodeUpdates = allNodes.map((node: any) => {
+            const nodeData = graph.getNodeData(node.id);
+            const data = nodeData?.data as any;
+            const nodeType = data?.labels && data.labels.length > 0 
+              ? data.labels[0] 
+              : 'default';
+            const originalStyle = getNodeStyle(nodeType);
+            
+            console.log(`  🔄 Restoring node ${node.id} to original: ${originalStyle.fill}`);
+            return {
+              id: node.id,
+              data: {
+                ...data,
+                fill: originalStyle.fill,  // 恢复原始颜色（紫色/橙色/蓝色）
+                stroke: originalStyle.stroke,
                 lineWidth: 2,
+                opacity: 1,  // 完全不透明
                 shadowColor: undefined,
                 shadowBlur: undefined,
-                shadowOffsetX: undefined,
-                shadowOffsetY: undefined,
-                opacity: 1,
-              },
-            });
+              }
+            };
           });
           
-          edges.forEach((edge: any) => {
-            (graph as any).clearItemStates(edge);
+          graph.updateNodeData(nodeUpdates);
+          // 强制重新渲染
+          graph.draw();
+          
+          // 批量重置所有边样式
+          const edgeUpdates = allEdges.map((edge: any) => {
+            const edgeData = graph.getEdgeData(edge.id);
+            const data = edgeData?.data as any;
+            const edgeType = (data?.relation_type as string) || 'relation';
+            const originalStyle = getEdgeStyle(edgeType, false);
+            
+            return {
+              id: edge.id,
+              data: {
+                ...data,
+                stroke: originalStyle.stroke,
+                lineWidth: originalStyle.lineWidth,
+                opacity: 1,
+              }
+            };
           });
+          
+          graph.updateEdgeData(edgeUpdates);
+          // 强制重新渲染
+          graph.draw();
         } catch (error) {
-          console.warn('Error handling node mouseleave:', error);
+          console.error('Error handling node pointerleave:', error);
         }
       });
-      
+
       graphRef.current = graph;
       
     } catch (error) {
@@ -450,7 +542,7 @@ const KnowledgeGraphView: React.FC<KnowledgeGraphViewProps> = ({
 
       return () => clearTimeout(timer);
     }
-  }, [useMockData]);
+  }, [useMockData, containerHeight]);
 
   useEffect(() => {
     return () => {
@@ -470,7 +562,8 @@ const KnowledgeGraphView: React.FC<KnowledgeGraphViewProps> = ({
       if (graphRef.current && containerRef.current) {
         try {
           const newWidth = containerRef.current.offsetWidth;
-          graphRef.current.changeSize(newWidth, height);
+          const newHeight = typeof containerHeight === 'number' ? containerHeight : containerRef.current.offsetHeight || 500;
+          graphRef.current.changeSize(newWidth, newHeight);
         } catch (error) {
           console.warn('Error handling resize:', error);
         }
@@ -479,11 +572,11 @@ const KnowledgeGraphView: React.FC<KnowledgeGraphViewProps> = ({
 
     window.addEventListener('resize', handleResize);
     return () => window.removeEventListener('resize', handleResize);
-  }, [height]);
+  }, [containerHeight]);
 
   if (loading || isInitializing) {
     return (
-      <div className="flex items-center justify-center" style={{ height }}>
+      <div className="flex items-center justify-center" style={{ height: containerHeight }}>
         <Spin size="large" tip={t('knowledge.knowledgeGraph.loading')} />
       </div>
     );
@@ -491,7 +584,7 @@ const KnowledgeGraphView: React.FC<KnowledgeGraphViewProps> = ({
 
   if (initError) {
     return (
-      <div className="flex flex-col items-center justify-center text-gray-500" style={{ height }}>
+      <div className="flex flex-col items-center justify-center text-gray-500" style={{ height: containerHeight }}>
         <div className="text-red-500 mb-2">{t('common.initializeFailed')}</div>
         <div className="text-sm">{initError}</div>
         <button 
@@ -509,7 +602,7 @@ const KnowledgeGraphView: React.FC<KnowledgeGraphViewProps> = ({
 
   if (!graphData.nodes.length) {
     return (
-      <div className="flex items-center justify-center text-gray-500" style={{ height }}>
+      <div className="flex items-center justify-center text-gray-500" style={{ height: containerHeight }}>
         <Empty
           description={t('knowledge.knowledgeGraph.noGraphData')}
           image={Empty.PRESENTED_IMAGE_SIMPLE}
@@ -522,7 +615,7 @@ const KnowledgeGraphView: React.FC<KnowledgeGraphViewProps> = ({
     <div
       ref={containerRef}
       className="w-full border border-gray-200 rounded"
-      style={{ height, minHeight: height }}
+      style={{ height: '100%' }}
     />
   );
 };

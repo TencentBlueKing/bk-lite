@@ -37,8 +37,8 @@ import ViewSelector from '../dashBoard/components/viewSelector';
 const Topology = forwardRef<TopologyRef, TopologyProps>(
   ({ selectedTopology }, ref) => {
     const containerRef = useRef<HTMLDivElement>(null);
-    const canvasContainerRef = useRef<HTMLDivElement>(null);
-    const minimapContainerRef = useRef<HTMLDivElement>(null);
+    const canvasContainerRef = useRef<HTMLDivElement>(null as any);
+    const minimapContainerRef = useRef<HTMLDivElement>(null as any);
     const refreshTimerRef = useRef<NodeJS.Timeout | null>(null);
     const resizeTimeoutRef = useRef<NodeJS.Timeout | null>(null);
     const [addNodeVisible, setAddNodeVisible] = useState(false);

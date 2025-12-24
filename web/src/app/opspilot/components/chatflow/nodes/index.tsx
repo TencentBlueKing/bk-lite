@@ -64,3 +64,34 @@ export const WebChatNode = (props: any) => (
 export const MobileNode = (props: any) => (
   <BaseNode {...props} icon={nodeConfig.mobile.icon} color={nodeConfig.mobile.color} hasOutput={true} />
 );
+
+export const IntentClassificationNode = (props: any) => {
+  const intentCount = props.data?.config?.intents?.length || 1;
+  const intents = props.data?.config?.intents || [{ name: '默认意图' }];
+  
+  // 生成简短的标签：取意图名称的前几个字
+  const outputLabels = intents.map((intent: any, index: number) => {
+    const name = intent.name || `意图${index + 1}`;
+    // 如果名称过长，截取前4个字符
+    return name.length > 4 ? name.substring(0, 4) + '...' : name;
+  });
+  
+  // 使用 intent name 作为 Handle ID
+  const outputHandleIds = intents.map((intent: any) => intent.name || '默认意图');
+  
+  // 使用 intentCount 作为 key 的一部分，确保数量变化时重新渲染
+  return (
+    <BaseNode
+      {...props}
+      key={`${props.id}-${intentCount}-${props.data._timestamp || ''}`}
+      icon={nodeConfig.intent_classification.icon}
+      color={nodeConfig.intent_classification.color}
+      hasInput={true}
+      hasOutput={false}
+      hasMultipleOutputs={true}
+      multipleOutputsCount={Math.max(intentCount, 1)}
+      outputLabels={outputLabels}
+      outputHandleIds={outputHandleIds}
+    />
+  );
+};

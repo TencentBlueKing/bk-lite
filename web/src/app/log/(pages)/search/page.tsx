@@ -353,7 +353,8 @@ const SearchView: React.FC = () => {
 
   // 获取时间范围的方法
   const getTimeRange = () => {
-    return timeSelectorRef.current?.getValue() || [];
+    const value = timeSelectorRef.current?.getValue?.() as any;
+    return value || [];
   };
 
   return (

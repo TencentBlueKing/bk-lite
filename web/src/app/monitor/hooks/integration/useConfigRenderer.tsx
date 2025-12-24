@@ -10,7 +10,7 @@ export const useConfigRenderer = () => {
   const FORM_WIDGET_WIDTH = 300;
   const FORM_WIDGET_WIDTH_CLASS = 'w-[300px]';
 
-  const renderFormField = (fieldConfig: any) => {
+  const renderFormField = (fieldConfig: any, mode?: string) => {
     const {
       name,
       label,
@@ -22,6 +22,7 @@ export const useConfigRenderer = () => {
       dependency,
       rules = [],
       description,
+      editable,
     } = fieldConfig;
 
     const formRules = [
@@ -85,6 +86,7 @@ export const useConfigRenderer = () => {
           return (
             <Password
               {...widget_props}
+              clickToEdit={mode === 'edit' && editable !== false}
               placeholder={widget_props.placeholder || label}
               className={`${FORM_WIDGET_WIDTH_CLASS} mr-[10px]`}
             />
@@ -502,6 +504,7 @@ export const useConfigRenderer = () => {
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
               <Password
                 value={text}
+                clickToEdit={false}
                 onChange={(value) => handleChange(value, record, index)}
                 placeholder={widget_props.placeholder || label}
                 status={errorMsg ? 'error' : ''}

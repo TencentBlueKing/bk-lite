@@ -40,6 +40,61 @@ class QAPairsViewSet(MaintainerViewSet):
             return JsonResponse({"result": False, "message": message})
         return super().destroy(request, *args, **kwargs)
 
+    def _check_user_permission(self, knowledge_base_id, request):
+        knowledge_base = KnowledgeBase.objects.get(id=knowledge_base_id)
+        current_team = request.COOKIES.get("current_team", "0")
+        include_children = request.COOKIES.get("include_children", "0") == "1"
+        has_permission = self.get_has_permission(request.user, knowledge_base, current_team, include_children=include_children)
+        if not has_permission:
+            message = self.loader.get("error.no_update_permission") if self.loader else "You do not have permission to update this instance"
+            return message
+        return ""
+
+    @action(methods=["POST"], detail=False)
+    @HasPermission("knowledge_document-Add")
+    @CheckKnowledgePermission(QAPairs)
+    def preview(self, request):
+        params = request.data
+        client = ChunkHelper()
+        chunk_data = params.get("chunk_list")
+        if not request.user.is_superuser:
+            msg = self._check_user_permission(params["knowledge_base_id"], request)
+            if msg:
+                return JsonResponse({"result": False, "message": msg})
+        question_llm = LLMModel.objects.get(id=params["llm_model_id"])
+        answer_llm = LLMModel.objects.get(id=params["answer_llm_model_id"])
+        question_config = question_llm.decrypted_llm_config
+        answer_config = answer_llm.decrypted_llm_config
+        return_data = []
+        for i in chunk_data:
+            kwargs = {
+                "content": i["content"],
+                "size": params.get("qa_count", 1) or 1,
+                "openai_api_base": question_config["openai_api_base"],
+                "openai_api_key": question_config["openai_api_key"],
+                "model": question_config["model"] or question_llm.name,
+                "extra_prompt": params.get("question_prompt", ""),
+            }
+            res = client.generate_question(kwargs)
+            if not res["result"]:
+                message = self.loader.get("error.generate_question_failed")
+                return JsonResponse({"result": False, "message": message})
+            for u in res["data"]:
+                answer_kwargs = {
+                    "context": i["content"],
+                    "content": u["question"],
+                    "openai_api_base": answer_config["openai_api_base"],
+                    "openai_api_key": answer_config["openai_api_key"],
+                    "model": answer_config["model"] or answer_llm.name,
+                    "extra_prompt": params.get("answer_prompt", ""),
+                }
+                answer_res = client.generate_answer(answer_kwargs)
+                if not answer_res["result"]:
+                    message = self.loader.get("error.generate_answer_failed")
+                    return JsonResponse({"result": False, "message": message})
+                return_data.append(answer_res["data"])
+        return JsonResponse({"result": True, "data": return_data})
+
     @action(methods=["POST"], detail=False)
     @HasPermission("knowledge_document-Add")
     @CheckKnowledgePermission(QAPairs)
@@ -49,18 +104,9 @@ class QAPairsViewSet(MaintainerViewSet):
         data_count = 0
         chunk_data = []
         if not request.user.is_superuser:
-            knowledge_base = KnowledgeBase.objects.get(id=params["knowledge_base_id"])
-            current_team = request.COOKIES.get("current_team", "0")
-            include_children = request.COOKIES.get("include_children", "0") == "1"
-            has_permission = self.get_has_permission(request.user, knowledge_base, current_team, include_children=include_children)
-            if not has_permission:
-                message = self.loader.get("error.no_update_permission") if self.loader else "You do not have permission to update this instance"
-                return JsonResponse(
-                    {
-                        "result": False,
-                        "message": message,
-                    }
-                )
+            msg = self._check_user_permission(params["knowledge_base_id"], request)
+            if msg:
+                return JsonResponse({"result": False, "message": msg})
         for i in params.get("document_list", []):
             chunk_data.extend(
                 client.get_qa_content(
@@ -243,7 +289,6 @@ class QAPairsViewSet(MaintainerViewSet):
         ]
         return JsonResponse({"result": True, "data": {"items": return_data, "count": res["count"]}})
 
-    # TODO 前端配合添加参数knowledge_base_id
     @action(methods=["GET"], detail=False)
     @HasPermission("knowledge_document-View")
     @CheckKnowledgePermission(QAPairs)

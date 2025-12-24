@@ -2,14 +2,21 @@
  * Core type definitions for WebChat
  */
 
-export type MessageType = 'text' | 'image' | 'markdown' | 'html' | 'file' | 'button';
+export type MessageType = 'text' | 'image' | 'markdown' | 'html' | 'file' | 'button' | 'multimodal';
 
 export type ChatState = 'idle' | 'connecting' | 'connected' | 'chatting' | 'closed' | 'error';
+
+export interface MessageContent {
+  type: 'text' | 'image_url' | 'message';
+  text?: string;
+  message?: string;
+  image_url?: string;
+}
 
 export interface Message {
   id: string;
   type: MessageType;
-  content: string;
+  content: string | MessageContent[];
   sender: 'user' | 'bot';
   timestamp: number;
   metadata?: Record<string, any>;

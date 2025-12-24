@@ -11,50 +11,122 @@ export interface ToolCallInfo {
 }
 
 /**
- * 渲染单个工具调用卡片
+ * 初始化全局 tooltip（只执行一次）
+ */
+let tooltipInitialized = false;
+let tooltipElement: HTMLDivElement | null = null;
+
+const initGlobalTooltip = () => {
+  if (tooltipInitialized) return;
+  tooltipInitialized = true;
+
+  // 创建全局 tooltip 元素
+  tooltipElement = document.createElement('div');
+  tooltipElement.className = 'tool-call-tooltip';
+  tooltipElement.style.cssText = `
+    position: fixed;
+    z-index: 99999;
+    padding: 8px 12px;
+    background: rgba(0, 0, 0, 0.85);
+    color: white;
+    font-size: 12px;
+    line-height: 1.5;
+    border-radius: 6px;
+    max-width: 400px;
+    word-wrap: break-word;
+    white-space: pre-wrap;
+    pointer-events: none;
+    display: none;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+  `;
+  document.body.appendChild(tooltipElement);
+
+  // 使用事件委托处理所有 tool-call-tag 的 hover
+  document.addEventListener('mouseover', (e) => {
+    const target = (e.target as HTMLElement).closest('.tool-call-tag') as HTMLElement;
+    if (target && tooltipElement) {
+      const result = target.getAttribute('data-result');
+      if (result) {
+        tooltipElement.textContent = result;
+        tooltipElement.style.display = 'block';
+        
+        // 计算位置
+        const rect = target.getBoundingClientRect();
+        const tooltipRect = tooltipElement.getBoundingClientRect();
+        
+        let top = rect.bottom + 8;
+        let left = rect.left + rect.width / 2 - tooltipRect.width / 2;
+        
+        // 防止超出屏幕
+        if (left < 8) left = 8;
+        if (left + tooltipRect.width > window.innerWidth - 8) {
+          left = window.innerWidth - tooltipRect.width - 8;
+        }
+        if (top + tooltipRect.height > window.innerHeight - 8) {
+          top = rect.top - tooltipRect.height - 8;
+        }
+        
+        tooltipElement.style.top = `${top}px`;
+        tooltipElement.style.left = `${left}px`;
+      }
+    }
+  });
+
+  document.addEventListener('mouseout', (e) => {
+    const target = (e.target as HTMLElement).closest('.tool-call-tag');
+    if (target && tooltipElement) {
+      tooltipElement.style.display = 'none';
+    }
+  });
+};
+
+/**
+ * 确保 tooltip 已初始化
+ */
+export const initToolCallTooltips = () => {
+  if (typeof window !== 'undefined') {
+    initGlobalTooltip();
+  }
+};
+
+/**
+ * 渲染单个工具调用 Tag
  */
 export const renderToolCallCard = (id: string, info: ToolCallInfo): string => {
   const isCalling = info.status === 'calling';
-  
-  const statusConfig = isCalling 
-    ? {
-      borderColor: 'border-blue-400',
-      bgClass: 'bg-gradient-to-br from-blue-50 to-blue-100/50 dark:from-blue-900/20 dark:to-blue-800/10',
-      statusText: '执行中',
-      statusClass: 'text-blue-600 bg-blue-50 dark:text-blue-400 dark:bg-blue-900/30',
-      iconClass: 'animate-pulse'
+
+  // 转义 HTML
+  const escapeHtml = (text: string) => {
+    return text
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;');
+  };
+
+  // 根据状态决定颜色
+  const bgColor = isCalling ? 'rgba(22, 119, 255, 0.1)' : 'rgba(82, 196, 26, 0.1)';
+  const borderColor = isCalling ? '#1677ff' : '#52c41a';
+  const textColor = isCalling ? '#1677ff' : '#52c41a';
+
+  // Spin 动画样式
+  const spinStyle = isCalling ? `<style>
+    @keyframes tool-spin {
+      0% { transform: rotate(0deg); }
+      100% { transform: rotate(360deg); }
     }
-    : {
-      borderColor: 'border-green-400',
-      bgClass: 'bg-gradient-to-br from-green-50 to-emerald-50 dark:from-green-900/20 dark:to-emerald-800/10',
-      statusText: '已完成',
-      statusClass: 'text-green-600 bg-green-50 dark:text-green-400 dark:bg-green-900/30',
-      iconClass: ''
-    };
+  </style>` : '';
 
-  const argsHtml = info.args 
-    ? `<div class="mt-3">
-         <div class="text-xs font-semibold text-[var(--color-text-2)] mb-1.5">参数</div>
-         <code class="text-sm text-[var(--color-text-1)] break-all font-medium">${info.args}</code>
-       </div>`
-    : '';
+  // 状态图标
+  const statusIcon = isCalling 
+    ? `<span style="display: inline-block; width: 12px; height: 12px; margin-left: 6px; border: 2px solid ${textColor}; border-top-color: transparent; border-radius: 50%; animation: tool-spin 0.8s linear infinite;"></span>`
+    : `<span style="display: inline-block; margin-left: 6px; color: ${textColor};">✓</span>`;
 
-  const resultHtml = info.result 
-    ? `<div class="mt-3">
-         <div class="text-xs font-semibold text-[var(--color-text-2)] mb-1.5">结果</div>
-         <pre class="text-sm text-[var(--color-text-1)] whitespace-pre-wrap break-words m-0 font-medium">${info.result}</pre>
-       </div>`
-    : '';
+  const cursor = info.result ? 'help' : 'default';
+  const resultAttr = info.result ? `data-result="${escapeHtml(info.result)}"` : '';
 
-  return `<div class="my-3 p-4 rounded-lg border-l-4 ${statusConfig.borderColor} ${statusConfig.bgClass}" data-tool-id="${id}">
-    <div class="flex items-center gap-2">
-      <span class="text-lg ${statusConfig.iconClass}">🔧</span>
-      <span class="font-medium text-base text-[var(--color-text-2)]">${info.name}</span>
-      <span class="ml-auto text-xs px-2 py-1 rounded ${statusConfig.statusClass} font-medium">${statusConfig.statusText}</span>
-    </div>
-    ${argsHtml}
-    ${resultHtml}
-  </div>`;
+  return `${spinStyle}<span class="tool-call-tag" data-tool-id="${id}" ${resultAttr} style="display: inline-flex; align-items: center; gap: 4px; padding: 2px 10px; margin-right: 8px; font-size: 13px; line-height: 20px; background: ${bgColor}; border: 1px solid ${borderColor}; border-radius: 4px; color: ${textColor}; font-weight: 500; cursor: ${cursor}; vertical-align: middle;">🔧 ${info.name}${statusIcon}</span>`;
 };
 
 /**

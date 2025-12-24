@@ -11,15 +11,17 @@ class OracleNodeParams(BaseNodeParams):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        # 当 instance.model_id 为 "vmware_vc" 时，PLUGIN_MAP 配置为 "vmware_info"
         self.PLUGIN_MAP.update({self.model_id: self.plugin_name})
         self.host_field = "ip_addr"
 
     def set_credential(self, *args, **kwargs):
+        _instance_id = self.get_instance_id(instance=kwargs["host"])
+        _password = f"PASSWORD_password_{_instance_id}"
         credential_data = {
             "port": self.credential.get("port", 1521),
             "user": self.credential.get("user", ""),
-            "password": self.credential.get("password", ""),
+            # "password": self.credential.get("password", ""),
+            "password": "${" + _password + "}",
             "service_name": self.credential.get("service_name", ""),
         }
         return credential_data
@@ -29,6 +31,11 @@ class OracleNodeParams(BaseNodeParams):
         获取实例 id
         """
         if self.has_set_instances:
-            return f"{self.instance.id}_{instance['inst_name']}"
+            return f"{self.instance.id}_{instance['_id']}"
         else:
-            return f"{self.instance.id}_{instance}"
+            return f"{self.instance.id}_{instance}".replace(".", "")
+
+    def env_config(self, *args, **kwargs):
+        host = kwargs["host"]
+        _instance_id = self.get_instance_id(instance=host)
+        return {f"PASSWORD_password_{_instance_id}": self.credential.get("password", "")}

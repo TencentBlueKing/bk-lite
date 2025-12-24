@@ -92,6 +92,14 @@
       "widget_props": {
         "placeholder": "http://example.com:8000"
       },
+      "rules": [
+        {
+          "type": "pattern",
+          "pattern": "^(http|https)://.*",
+          "message": "URL必须以http://或https://开头",
+          "excel_formula": "OR(LEFT({{CELL}},7)=\"http://\",LEFT({{CELL}},8)=\"https://\")"
+        }
+      ],
       "change_handler": {
         "type": "simple",
         "source_fields": ["url"],

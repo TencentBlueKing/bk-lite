@@ -125,8 +125,6 @@ const NodeDetailDrawer: React.FC<NodeDetailDrawerProps> = ({ visible, node, onCl
               { label: 'Name', value: node.name },
               { label: 'Summary', value: node.summary },
               { label: 'UUID', value: node.uuid },
-              { label: 'Group ID', value: node.group_id },
-              { label: 'Node ID', value: node.node_id },
               ...(node.labels && node.labels.length > 0 ? [{ label: 'Labels', value: node.labels.join(', ') }] : []),
               ...(node.fact ? [{ label: 'Fact', value: node.fact }] : [])
             ].map((field, index) => 

@@ -1,12 +1,21 @@
 from django.db import transaction
 
 from apps.monitor.constants.database import DatabaseConstants
-from apps.monitor.models import MonitorPlugin
+from apps.monitor.models import MonitorPlugin, MonitorPluginUITemplate
 from apps.monitor.models.monitor_metrics import MetricGroup, Metric
 from apps.monitor.models.monitor_object import MonitorObject, MonitorObjectType
 
 
 class MonitorPluginService:
+    @staticmethod
+    def get_ui_template_by_params(collector, collect_type, monitor_object_id):
+        """获取插件的 UI 模板"""
+        obj = MonitorPluginUITemplate.objects.filter(
+            plugin__monitor_object__id=monitor_object_id,
+            plugin__collector=collector,
+            plugin__collect_type=collect_type
+        ).first()
+        return obj.content if obj else None
 
     @staticmethod
     def import_monitor_plugin(data: dict):
@@ -84,8 +93,25 @@ class MonitorPluginService:
         metrics_to_create = []
         existing_metrics = {
             metric.name: metric
-            for metric in Metric.objects.filter(monitor_object=monitor_obj)
+            for metric in Metric.objects.filter(monitor_object=monitor_obj, monitor_plugin=plugin_obj)
         }
+
+        # 删除is_pre=True但不在新指标列表中的旧指标（按插件删除）
+        new_metric_names = {metric["name"] for metric in metrics}
+        old_pre_metrics_to_delete = [
+            metric_name for metric_name, metric in existing_metrics.items()
+            if metric.is_pre and metric_name not in new_metric_names
+        ]
+        if old_pre_metrics_to_delete:
+            Metric.objects.filter(
+                monitor_object=monitor_obj,
+                monitor_plugin=plugin_obj,
+                name__in=old_pre_metrics_to_delete,
+                is_pre=True
+            ).delete()
+            # 从existing_metrics中移除已删除的指标
+            for metric_name in old_pre_metrics_to_delete:
+                existing_metrics.pop(metric_name)
 
         for metric in metrics:
             if metric["name"] in existing_metrics:
@@ -203,7 +229,7 @@ class MonitorPluginService:
             "plugin": plugin_obj.name,
             "plugin_desc": plugin_obj.description,
             "collector": plugin_obj.collector,
-            "collect_type": plugin_obj.collect_type,
+            "collect_type": plugin_obj.collector,
             "is_compound_object": True,
             "objects": []
         }

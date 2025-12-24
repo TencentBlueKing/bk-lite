@@ -53,22 +53,19 @@
 }
 
 .flowContainer {
+  display: flex;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  position: relative;
+}
 
-  :global {
-    display: flex;
-    width: 100%;
-    height: 100%;
-    overflow: hidden;
-    position: relative;
+.flowContainer :global(.ant-spin-nested-loading),
+.flowContainer :global(.ant-spin-container) {
+  width: 100%;
+  height: 100%;
+}
 
-    .ant-spin-nested-loading,
-    .ant-spin-container {
-      width: 100%;
-      height: 100%;
-    }
-
-    .react-flow__minimap-svg {
-      border-radius: 16px !important;
-    }
-  }
+.flowContainer :global(.react-flow__minimap-svg) {
+  border-radius: 16px !important;
 }

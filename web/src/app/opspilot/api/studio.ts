@@ -150,6 +150,39 @@ export const useStudioApi = () => {
     return post('/opspilot/bot_mgmt/bot/get_workflow_log_detail/', params);
   };
 
+  /**
+   * Fetches agent list for chat studio (web_chat type).
+   * @param params - Query parameters for agent list.
+   */
+  const fetchApplication = async (params: any): Promise<any> => {
+    return get('/opspilot/bot_mgmt/chat_application/', { params });
+  };
+
+  /**
+   * Fetches web chat session list for a bot.
+   * @param botId - The ID of the bot.
+   */
+  const fetchWebChatSessions = async (botId: string | number): Promise<any[]> => {
+    return get('/opspilot/bot_mgmt/chat_application/web_chat_sessions/', { params: { bot_id: botId } });
+  };
+
+  /**
+   * 获取某个会话的消息列表
+   * @param sessionId - 会话ID
+   */
+  const fetchSessionMessages = async (sessionId: string): Promise<any> => {
+    return get('/opspilot/bot_mgmt/chat_application/session_messages/', { params: { session_id: sessionId } });
+  };
+
+  /**
+   * 查询技能引导语
+   * @param botId - 机器人ID
+   * @param nodeId - 节点ID
+   */
+  const fetchSkillGuide = async (botId: string, nodeId: string): Promise<any> => {
+    return get('/opspilot/bot_mgmt/chat_application/skill_guide/', { params: { bot_id: botId, node_id: nodeId } });
+  };
+
   return {
     fetchLogs,
     fetchWorkflowTaskResult,
@@ -168,5 +201,9 @@ export const useStudioApi = () => {
     getAllUsers,
     fetchWorkflowLogs,
     fetchWorkflowLogDetail,
+    fetchWebChatSessions,
+    fetchApplication,
+    fetchSessionMessages,
+    fetchSkillGuide,
   };
 };

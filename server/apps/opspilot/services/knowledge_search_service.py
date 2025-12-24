@@ -218,9 +218,13 @@ class KnowledgeSearchService:
             keep_qa: 是否保留问答对
         """
         rag_client = PgvectorRag()
+        if isinstance(doc_id, str) or isinstance(doc_id, int):
+            doc_ids = [str(doc_id)]
+        else:
+            doc_ids = [str(i) for i in doc_id]
         request = DocumentDeleteRequest(
-            chunk_ids=[str(doc_id)] if is_chunk else [],
-            knowledge_ids=[str(doc_id)] if not is_chunk else [],
+            chunk_ids=doc_ids if is_chunk else [],
+            knowledge_ids=doc_ids if not is_chunk else [],
             keep_qa=keep_qa,
         )
         try:

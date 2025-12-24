@@ -63,6 +63,9 @@ class WorkFlowExecuteType(models.TextChoices):
     ENTERPRISE_WECHAT = "enterprise_wechat", _("Enterprise WeChat")
     WECHAT_OFFICIAL_ACCOUNT = "wechat_official", _("WeChat Official Account")
     DINGTALK = "dingtalk", _("Ding Talk")
+    EMBEDDED_CHAT = "embedded_chat", _("Embedded Chat")
+    WEB_CHAT = "web_chat", _("Web Chat")
+    MOBILE = "mobile", _("Mobile")
 
 
 class WorkFlowTaskStatus(models.TextChoices):

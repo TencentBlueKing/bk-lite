@@ -174,7 +174,7 @@ const PasswordModal = forwardRef<PasswordModalRef, { onSuccess: () => void }>(
         width={700}
       >
         {/* 密码规则提示 */}
-        {rulesLoading ? (
+        {(rulesLoading ? (
           <Skeleton active paragraph={{ rows: 2 }} className="mb-4" />
         ) : (
           <Alert
@@ -200,9 +200,9 @@ const PasswordModal = forwardRef<PasswordModalRef, { onSuccess: () => void }>(
             showIcon
             className="mb-4"
           />
-        )}
+        )) as any}
 
-        <Form layout="vertical" ref={formRef}>
+        <Form layout="vertical" ref={formRef as any}>
           <Form.Item
             name="password"
             label={t('system.user.form.password')}

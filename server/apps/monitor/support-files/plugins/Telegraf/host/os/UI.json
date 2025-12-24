@@ -90,10 +90,10 @@
       "editable": false,
       "description": "监控的目标主机的 IP 地址，用于标识被采集数据的来源",
       "widget_props": {
-        "placeholder": "1_os_172.18.0.17"
+        "placeholder": ""
       },
       "transform_on_edit": {
-        "origin_path": "child.content.instance.instance_id"
+        "origin_path": "child.content.config.tags.instance_id"
       }
     },
     {

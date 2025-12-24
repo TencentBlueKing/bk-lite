@@ -1,22 +1,18 @@
-.cloudregion {
-   :global {
-      textarea#nest-messages_user_introduction {
-         height: 108px !important;
-      }
+.cloudregion :global(textarea#nest-messages_user_introduction) {
+   height: 108px !important;
+}
 
-      .crp {
-         font-size: smaller;
-         color: var(--color-text-3);
-      }
+.cloudregion :global(.crp) {
+   font-size: smaller;
+   color: var(--color-text-3);
+}
 
-      .textclip {
-         overflow: hidden;
-         text-overflow: ellipsis;
-         white-space: wrap;
-      }
+.cloudregion :global(.textclip) {
+   overflow: hidden;
+   text-overflow: ellipsis;
+   white-space: wrap;
+}
 
-      .ant-dropdown-menu-item {
-         margin-bottom: 3px !important;
-      }
-   }
+.cloudregion :global(.ant-dropdown-menu-item) {
+   margin-bottom: 3px !important;
 }

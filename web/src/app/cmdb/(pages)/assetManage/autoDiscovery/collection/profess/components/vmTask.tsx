@@ -14,7 +14,9 @@ import {
   ENTER_TYPE,
   VM_FORM_INITIAL_VALUES,
   createTaskValidationRules,
+  PASSWORD_PLACEHOLDER,
 } from '@/app/cmdb/constants/professCollection';
+import { formatTaskValues } from '../hooks/formatTaskValues';
 
 interface VMTaskFormProps {
   onClose: () => void;
@@ -32,7 +34,7 @@ const VMTask: React.FC<VMTaskFormProps> = ({
   editId,
 }) => {
   const { t } = useTranslation();
-  const baseRef = useRef<BaseTaskRef>(null);
+  const baseRef = useRef<BaseTaskRef>(null as any);
   const localeContext = useLocale();
   const { model_id: modelId } = modelItem;
 
@@ -50,32 +52,33 @@ const VMTask: React.FC<VMTaskFormProps> = ({
     onSuccess,
     onClose,
     formatValues: (values) => {
-      const instance = baseRef.current?.instOptions.find(
+      const baseData = formatTaskValues({
+        values,
+        baseRef,
+        selectedNode,
+        modelItem,
+        modelId,
+        formatCycleValue,
+      });
+
+      const instance = baseRef.current?.instOptions?.find(
         (item: any) => item.value === values.instId
       );
-      const accessPoint = baseRef.current?.accessPoints.find(
-        (item: any) => item.value === values.accessPointId
-      );
-      const driverType = selectedNode.tabItems?.find(
-        (item) => item.model_id === modelId
-      )?.type;
+
+      const credential: any = {
+        username: values.username,
+        port: values.port,
+        ssl: values.sslVerify,
+      };
+
+      if (values.password && values.password !== PASSWORD_PLACEHOLDER) {
+        credential.password = values.password;
+      }
 
       return {
-        name: values.taskName,
+        ...baseData,
         instances: instance?.origin && [instance.origin],
-        input_method: values.enterType === ENTER_TYPE.APPROVAL ? 1 : 0,
-        access_point: accessPoint?.origin && [accessPoint.origin],
-        timeout: values.timeout || 600,
-        scan_cycle: formatCycleValue(values),
-        model_id: modelId,
-        driver_type: driverType,
-        task_type: modelItem.task_type,
-        credential: {
-          username: values.username,
-          password: values.password,
-          port: values.port,
-          ssl: values.sslVerify,
-        },
+        credential,
       };
     },
   });
@@ -96,8 +99,9 @@ const VMTask: React.FC<VMTaskFormProps> = ({
               ? ENTER_TYPE.AUTOMATIC
               : ENTER_TYPE.APPROVAL,
           accessPointId: values.access_point?.[0]?.id,
+          organization: values.team || [],
           username: values.credential?.username,
-          password: values.credential?.password,
+          password: PASSWORD_PLACEHOLDER,
           port: values.credential?.port,
           sslVerify: values.credential?.ssl,
         });
@@ -161,7 +165,23 @@ const VMTask: React.FC<VMTaskFormProps> = ({
                 label={t('Collection.VMTask.password')}
                 rules={rules.password}
               >
-                <Input.Password placeholder={t('common.inputTip')} />
+                <Input.Password
+                  placeholder={t('common.inputTip')}
+                  onFocus={(e) => {
+                    if (!editId) return;
+                    const value = e.target.value;
+                    if (value === PASSWORD_PLACEHOLDER) {
+                      form.setFieldValue('password', '');
+                    }
+                  }}
+                  onBlur={(e) => {
+                    if (!editId) return;
+                    const value = e.target.value;
+                    if (!value || value.trim() === '') {
+                      form.setFieldValue('password', PASSWORD_PLACEHOLDER);
+                    }
+                  }}
+                />
               </Form.Item>
 
               <Form.Item

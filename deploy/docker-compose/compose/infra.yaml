@@ -208,3 +208,26 @@ services:
       retries: 3
     volumes:
       - falkordb:/var/lib/falkordb/data
+
+  pgvector:
+    image: ${DOCKER_IMAGE_PGVECTOR}
+    restart: always
+    environment:
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+      POSTGRES_USER: ${POSTGRES_USERNAME}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: metis
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "${POSTGRES_USERNAME}"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+    networks:
+      - prod
+
+  webhookd:
+    image: ${DOCKER_IMAGE_WEBHOOKD}
+    restart: always
+    networks:
+      - prod

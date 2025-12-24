@@ -30,7 +30,7 @@ class Import:
     def format_excel_data(self, excel_meta: bytes):
         """格式化excel"""
 
-        need_val_to_id_field_map, need_update_type_field_map = {}, {}
+        need_val_to_id_field_map, need_update_type_field_map, org_user_map = {}, {}, {}
         # 创建属性名称映射，用于错误提示
         attr_name_map = {attr_info["attr_id"]: attr_info["attr_name"] for attr_info in self.attrs}
 
@@ -41,7 +41,8 @@ class Import:
 
             if attr_info["attr_type"] in {ORGANIZATION, USER, ENUM}:
                 need_val_to_id_field_map[attr_info["attr_id"]] = {i["name"]: i["id"] for i in attr_info["option"]}
-
+                if attr_info["attr_type"] in {ORGANIZATION, USER}:
+                    org_user_map[attr_info["attr_id"]] = attr_info["attr_type"]
         # 读取临时文件
         wb = openpyxl.load_workbook(excel_meta)
         # 获取第一个工作表
@@ -100,13 +101,18 @@ class Import:
                         error_msg = f"第{row_index}行，字段'{attr_name_map.get(keys[i], keys[i])}'的值'{value}'格式错误"
                         self.validation_errors.append(error_msg)
                         logger.warning(error_msg)
-                        continue
+                    continue
 
                 # 将需要枚举字段name与id反转的建和值存入字典
                 if keys[i] in need_val_to_id_field_map:
-                    if keys[i] in {ORGANIZATION, USER}:
+                    if keys[i] in org_user_map:
                         if type(value) != list:
-                            value_list = [value]
+                            if ',' in str(value):
+                                value_list = str(value).split(',')
+                            elif '，' in str(value):
+                                value_list = str(value).split('，')
+                            else:
+                                value_list = [str(value)]
                         else:
                             value_list = value
                         enum_id = []
@@ -117,7 +123,10 @@ class Import:
                                 enum_id.append(mapped_id)
                             else:
                                 invalid_values.append(val)
-
+                        # 用户需要支持多选
+                        if org_user_map[keys[i]] == USER:
+                            if enum_id.__len__() >= 1:
+                                enum_id = enum_id[0]
                         if invalid_values:
                             error_msg = f"第{row_index}行，字段'{attr_name_map.get(keys[i], keys[i])}'的值'{invalid_values}'无效"
                             self.validation_errors.append(error_msg)
@@ -138,13 +147,13 @@ class Import:
 
                 # 将键和值存入字典
                 item[keys[i]] = value
-
             # 检查该行是否有验证错误
             row_has_validation_errors = len(self.validation_errors) > row_validation_errors_count
 
             # 只有当行有数据且没有验证错误时才添加到结果列表
             if row_has_data and len(item) > 1 and not row_has_validation_errors:
                 result.append(item)
+                print(item)
         return result, asso_key_map
 
     def get_check_attr_map(self):
@@ -194,7 +203,8 @@ class Import:
 
         add_results, update_results = self.inst_list_update(inst_list)
         if not self.model_asso_map:
-            logger.warning(f"模型 {self.model_id} 没有关联模型, 无需处理关联数据")
+            logger.info(f"模型 {self.model_id} 没有关联模型, 无需处理关联数据")
+            self.format_import_result_message(add_results, update_results, [])
             return add_results, update_results, []
         self.format_import_asso_data(asso_key_map)
         asso_result = self.add_asso_data(asso_key_map)
@@ -215,7 +225,7 @@ class Import:
                 data = "实例 {} 新增成功".format(inst_name)
                 self.import_result_message["add"]["success"] += 1
             else:
-                data = "实例 {} 新增失败: {}".format(inst_name, item.get("error", "未知错误"))
+                data = "实例 {} 新增失败: {}".format(inst_name, item.get("message", "未知错误"))
                 self.import_result_message["add"]["error"] += 1
             self.import_result_message["add"]["data"].append(data)
 

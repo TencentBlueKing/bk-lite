@@ -122,7 +122,7 @@ export interface GraphData {
 export interface KnowledgeGraphViewProps {
   data: GraphData;
   loading?: boolean;
-  height?: number;
+  height?: number | string;
   onNodeClick?: (node: GraphNode) => void;
   onEdgeClick?: (edge: GraphEdge) => void;
   useMockData?: boolean;
@@ -158,25 +158,9 @@ export interface TestKnowledgeResponse {
   graph_data: GraphDataItem[];
 }
 
-// 配置组件相关类型定义
 export interface ConfigProps {
   configData: ConfigDataProps;
   setConfigData: React.Dispatch<React.SetStateAction<ConfigDataProps>>;
-}
-
-// QA对生成弹窗相关类型定义
-export interface GenerateQAPairModalProps {
-  onSuccess?: () => void;
-}
-
-export interface ModalConfig {
-  documentId: string;
-  selectedChunkIds: string[];
-  selectedChunks?: ChunkItem[];
-}
-
-export interface ModalRef {
-  showModal: (config: ModalConfig) => void;
 }
 
 export interface DocumentInfo {

@@ -18,7 +18,7 @@ interface QATaskStatus {
 
 interface TaskProgressProps {
   activeTabKey?: string;
-  pageType?: 'documents' | 'result';
+  pageType?: 'documents' | 'qa_pairs' | 'knowledge_graph' | 'result';
 }
 
 const TaskProgress: React.FC<TaskProgressProps> = ({ activeTabKey, pageType = 'documents' }) => {
@@ -31,62 +31,68 @@ const TaskProgress: React.FC<TaskProgressProps> = ({ activeTabKey, pageType = 'd
   const documentId = searchParams ? searchParams.get('documentId') : null;
 
   useEffect(() => {
+    // Clear tasks immediately when tab changes
+    setTasks([]);
+    setQaTaskStatuses([]);
+
+    // Use flag to prevent stale data updates
+    let isCurrentRequest = true;
+
     const fetchTasks = async () => {
       try {
+        // For result page, use fetchQAPairsTaskStatus API with documentId
         if (pageType === 'result' && documentId) {
-          // For result page, use the new API with documentId
           const data: QATaskStatus[] = await fetchQAPairsTaskStatus({ document_id: documentId });
-          setQaTaskStatuses(data);
-          setTasks([]); // Clear regular tasks
-        } else if (pageType === 'documents' && id) {
-          // For documents page, use the existing API with knowledge_base_id
-          const params = {
-            knowledge_base_id: id
-          };
-          const data: Task[] = await fetchMyTasks(params);
+          if (isCurrentRequest) {
+            setQaTaskStatuses(data);
+            setTasks([]); // Clear regular tasks
+          }
+          return;
+        }
+
+        // For documents/qa_pairs/knowledge_graph pages, use fetchMyTasks with knowledge_base_id
+        if (!id) return;
+
+        const params: any = {
+          knowledge_base_id: id
+        };
+
+        // Add parameters based on pageType
+        if (pageType === 'qa_pairs') {
+          params.is_qa_task = 1;
+        } else if (pageType === 'knowledge_graph') {
+          params.is_graph = 1;
+        }
+        // For documents (source_files), only pass knowledge_base_id
+
+        const data: Task[] = await fetchMyTasks(params);
+        
+        // Only update state if this is still the current request
+        if (isCurrentRequest) {
           setTasks(data);
           setQaTaskStatuses([]); // Clear QA task statuses
         }
       } catch (error) {
-        console.error(`${t('common.fetchFailed')}: ${error}`);
+        if (isCurrentRequest) {
+          console.error(`${t('common.fetchFailed')}: ${error}`);
+        }
       }
     };
 
     fetchTasks();
     const interval = setInterval(fetchTasks, 10000);
-    return () => clearInterval(interval);
-  }, [pageType, id, documentId]);
-
-  // Filter tasks based on activeTabKey and pageType
-  const filteredTasks = tasks.filter((task) => {
-    // For result page, tasks are handled separately
-    if (pageType === 'result') {
-      return false;
-    }
-
-    // For documents page, use existing logic
-    if (!activeTabKey || (activeTabKey !== 'source_files' && activeTabKey !== 'qa_pairs')) {
-      return false;
-    }
-
-    // For source_files tab, show tasks where is_qa_task is false
-    if (activeTabKey === 'source_files') {
-      return !task.is_qa_task;
-    }
-
-    // For qa_pairs tab, show tasks where is_qa_task is true
-    if (activeTabKey === 'qa_pairs') {
-      return task.is_qa_task;
-    }
-
-    return false;
-  });
+    
+    return () => {
+      isCurrentRequest = false;
+      clearInterval(interval);
+    };
+  }, [pageType, id, documentId, activeTabKey]);
 
   // For result page, show QA task statuses if available
   const shouldShowQAStatuses = pageType === 'result' && qaTaskStatuses.length > 0;
   
-  // Don't render if no filtered tasks and no QA statuses
-  if (filteredTasks.length === 0 && !shouldShowQAStatuses) {
+  // Don't render if no tasks and no QA statuses
+  if (tasks.length === 0 && !shouldShowQAStatuses) {
     return null;
   }
 
@@ -107,8 +113,8 @@ const TaskProgress: React.FC<TaskProgressProps> = ({ activeTabKey, pageType = 'd
         </div>
       ))}
       
-      {/* Render regular tasks for documents page */}
-      {filteredTasks.map((task) => (
+      {/* Render regular tasks for other pages */}
+      {tasks.map((task) => (
         <div key={task.id} className="mb-2">
           <div className="flex justify-between items-center text-xs mb-1">
             <span className="flex-1 truncate" title={task.task_name}>

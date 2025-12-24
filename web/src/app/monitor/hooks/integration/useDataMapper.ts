@@ -31,8 +31,13 @@ export class DataMapper {
     // 回显到表单
     if (direction === 'toForm' && apiData) {
       // 1. 获取源数据
-      const originValue = origin_path
-        ? this.getNestedValue(apiData, origin_path)
+      let resolvedPath = origin_path;
+      // 如果 origin_path 包含变量（如 {{config_id}}），先替换变量
+      if (origin_path && origin_path.includes('{{')) {
+        resolvedPath = this.resolvePathVariables(origin_path, apiData);
+      }
+      const originValue = resolvedPath
+        ? this.getNestedValue(apiData, resolvedPath)
         : value;
       processedValue = originValue;
       // 2. 应用 to_form 转换
@@ -65,7 +70,7 @@ export class DataMapper {
     if (direction === 'toApi') {
       // 如果没有 to_api 配置，表示不需要处理
       if (!to_api) {
-        return undefined; // 返回 undefined 表示不写入
+        return value;
       }
       // 应用 to_api 转换
       if (to_api.type) {
@@ -124,6 +129,7 @@ export class DataMapper {
       instance_id?: string;
       config_type_field?: string; // 从表单字段获取config_type的字段名(如主机的metric_type)
       formFields?: any[]; // 表单字段配置数组，用于处理 transform_on_create
+      tableColumns?: any[]; // 表格列配置数组，用于处理表格字段加密
     }
   ) {
     // 获取config_type数组
@@ -147,8 +153,12 @@ export class DataMapper {
     const fieldsToDelete: string[] = []; // 记录已转换到嵌套路径的字段名，避免重复出现在顶层
     if (context.formFields) {
       context.formFields.forEach((field: any) => {
-        const { name, transform_on_create } = field;
-        const fieldValue = formData[name];
+        const { name, transform_on_create, encrypted } = field;
+        let fieldValue = formData[name];
+        // 如果字段标记为加密，使用 URL 编码
+        if (encrypted && fieldValue) {
+          fieldValue = encodeURIComponent(String(fieldValue));
+        }
         if (fieldValue !== undefined && transform_on_create?.target_path) {
           // 如果字段有 transform_on_create.target_path 配置，设置到指定路径
           // 例如：username -> custom_headers.username
@@ -193,16 +203,33 @@ export class DataMapper {
         // 单选模式，将字符串转为数组
         nodeIds = [row.node_ids];
       }
-      // 生成 instance_id（如果有模板）
+      // 生成 instance_id（如果有模板）,使用 SHA256 哈希编码
       let instance_id = row.instance_id;
       if (!instance_id && context.instance_id) {
-        instance_id = this.applyTemplate(context.instance_id, row, context);
+        instance_id = this.hashInstanceId(
+          this.applyTemplate(context.instance_id, row, context)
+        );
       }
-      // 复制 row 并删除 key 字段
-      const { key, ...instanceData } = row;
-      console.log(key);
+      // 过滤掉 key 字段和所有 _error 字段，并处理加密字段
+      const cleanedInstanceData = Object.keys(row)
+        .filter(
+          (fieldKey) => fieldKey !== 'key' && !fieldKey.endsWith('_error')
+        )
+        .reduce((acc, fieldKey) => {
+          let fieldValue = row[fieldKey];
+          // 检查该字段是否需要加密（从 tableColumns 中查找配置）
+          const fieldConfig = context.tableColumns?.find(
+            (f: any) => f.name === fieldKey
+          );
+          if (fieldConfig?.encrypted && fieldValue) {
+            fieldValue = encodeURIComponent(String(fieldValue));
+          }
+          acc[fieldKey] = fieldValue;
+          return acc;
+        }, {} as any);
+
       return {
-        ...instanceData,
+        ...cleanedInstanceData,
         instance_id,
         node_ids: nodeIds,
         instance_type: context.instance_type,
@@ -215,6 +242,50 @@ export class DataMapper {
       configs,
       instances,
     };
+  }
+
+  /**
+   * 使用改进的哈希算法对字符串进行编码
+   * 使用 FNV-1a 哈希算法生成64位哈希值，减少碰撞概率
+   * 生成固定长度的 base64 字符串（16位），确保相同输入生成相同输出
+   */
+  static hashInstanceId(id: string): string {
+    const instanceId = id || '';
+    // FNV-1a 哈希算法 - 生成两个32位哈希值以获得64位哈希
+    // 第一个32位哈希
+    let hash1 = 2166136261; // FNV offset basis (32-bit)
+    for (let i = 0; i < instanceId.length; i++) {
+      hash1 ^= instanceId.charCodeAt(i);
+      hash1 +=
+        (hash1 << 1) +
+        (hash1 << 4) +
+        (hash1 << 7) +
+        (hash1 << 8) +
+        (hash1 << 24);
+    }
+    // 第二个32位哈希（加入字符串长度，确保不同长度的字符串哈希不同）
+    let hash2 = 2166136261;
+    hash2 ^= instanceId.length; // 将长度纳入哈希
+    for (let i = instanceId.length - 1; i >= 0; i--) {
+      hash2 ^= instanceId.charCodeAt(i);
+      hash2 +=
+        (hash2 << 1) +
+        (hash2 << 4) +
+        (hash2 << 7) +
+        (hash2 << 8) +
+        (hash2 << 24);
+    }
+    // 转为无符号32位整数并转为16进制（各8位）
+    const hex1 = (hash1 >>> 0).toString(16).padStart(8, '0');
+    const hex2 = (hash2 >>> 0).toString(16).padStart(8, '0');
+    // 组合成64位哈希的十六进制表示
+    const combined = hex1 + hex2;
+    // base64 编码
+    const b64 = btoa(combined);
+    // 去除 '=' 填充符，取前16位（提供更多位数以减少碰撞）
+    const result = b64.replace(/=/g, '').slice(0, 16);
+    // 如果不足16位，用哈希值的字符填充（理论上不会发生）
+    return result.padEnd(16, combined.slice(0, 16 - result.length));
   }
 
   /**
@@ -267,6 +338,31 @@ export class DataMapper {
       }
     }
     return result;
+  }
+
+  /**
+   * 解析路径中的变量（如 {{config_id}}）
+   * 从 apiData 中查找对应的值进行替换
+   */
+  static resolvePathVariables(path: string, apiData: any): string {
+    let resolvedPath = path;
+    // 匹配所有 {{variable}} 格式的变量
+    const matches = path.match(/\{\{(\w+)\}\}/g);
+    if (matches) {
+      matches.forEach((match) => {
+        const varName = match.slice(2, -2); // 去掉 {{ 和 }}
+        // 尝试从常见位置获取变量值
+        let varValue = apiData[varName] || apiData.child?.[varName];
+        // 特殊处理：config_id 对应 child.id 的大写形式
+        if (varName === 'config_id' && !varValue && apiData.child?.id) {
+          varValue = String(apiData.child.id).toUpperCase();
+        }
+        if (varValue !== undefined) {
+          resolvedPath = resolvedPath.replace(match, String(varValue));
+        }
+      });
+    }
+    return resolvedPath;
   }
 
   /**

@@ -51,7 +51,7 @@ export const mockWorkbenchData = {
         name: 'k8s平台监控工程师',
         introduction: '专注 K8s 集群智能监控，自动采集指标、分析性能瓶颈，实时预警故障并辅助排查，保障平台稳定高效运行。',
         online: false,
-        bot_type: 3,
+        bot_type: 2,
         avatar: '/avatars/01.png',
       },
       {
@@ -88,7 +88,7 @@ export const mockAccountInfo = {
   displayName: '张三',
   email: 'zhangsan@example.com',
   timezone: 'Asia/Shanghai',
-  language: 'zh',
+  language: 'zh-Hans',
   organizations: ['运维部', '开发组', '测试团队'],
   roles: ['系统管理员', '运维工程师', '项目负责人', '技术支持', '数据分析师', '产品经理', '架构师', '安全审计员', '运维专家'],
   userType: '普通用户',

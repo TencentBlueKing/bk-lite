@@ -6,14 +6,13 @@ import time
 from django.conf import settings
 from django.db.models import Count
 from django.db.models.functions import TruncDate
-from django.http import FileResponse, HttpResponse, JsonResponse, StreamingHttpResponse
+from django.http import FileResponse, HttpResponse, JsonResponse
 from django_minio_backend import MinioBackend
 from ipware import get_client_ip
 from wechatpy.enterprise import WeChatCrypto
 
 from apps.base.models import UserAPISecret
 from apps.core.logger import opspilot_logger as logger
-from apps.core.utils.async_utils import create_async_compatible_generator
 from apps.core.utils.exempt import api_exempt
 from apps.core.utils.loader import LanguageLoader
 from apps.opspilot.models import Bot, BotChannel, BotConversationHistory, BotWorkFlow, LLMSkill
@@ -93,7 +92,7 @@ def model_download(request):
     return response
 
 
-def validate_openai_token(token, team=None):
+def validate_openai_token(token, team=None, is_mobile=False):
     """Validate the OpenAI API token"""
     loader = LanguageLoader(app="opspilot", default_lang="en")
     if not token:
@@ -101,8 +100,9 @@ def validate_openai_token(token, team=None):
     token = token.split("Bearer ")[-1]
     user = UserAPISecret.objects.filter(api_secret=token).first()
     if not user:
-        if team is None:
+        if team is None and not is_mobile:
             return False, {"choices": [{"message": {"role": "assistant", "content": loader.get("error.no_authorization", "No authorization")}}]}
+        team = team or 0
         client = SystemMgmt()
         result = client.verify_token(token)
         if not result.get("result"):
@@ -110,6 +110,7 @@ def validate_openai_token(token, team=None):
         user_info = result.get("data")
         user = UserAPISecret(
             username=user_info["username"],
+            domain=user_info["domain"],
             team=int(team),
         )
     return True, user
@@ -472,22 +473,36 @@ def set_channel_type_line(end_time, queryset, start_time):
 
 @api_exempt
 def execute_chat_flow(request, bot_id, node_id):
-    """执行ChatFlow流程"""
+    """执行ChatFlow流程（支持流式响应）"""
     loader = get_loader(request)
     if not bot_id or not node_id:
         return JsonResponse({"result": False, "message": loader.get("error.bot_node_id_required", "Bot ID and Node ID are required.")})
+
+    # 读取请求体
     kwargs = json.loads(request.body)
-    message = kwargs.get("message", "")
+    message = kwargs.get("message", "") or kwargs.get("user_message", "")
+    session_id = kwargs.get("session_id", "")
     is_test = kwargs.get("is_test", False)
+
+    # 检测请求来源是否为移动端
+    user_agent = request.META.get("HTTP_USER_AGENT", "")
+    is_mobile = any(keyword in user_agent.lower() for keyword in ["android", "iphone", "ipad", "mobile", "windows phone", "tauri"])
+
     # 验证token
     token = request.META.get("HTTP_AUTHORIZATION") or request.META.get(settings.API_TOKEN_HEADER_NAME)
-    is_valid, msg = validate_openai_token(token, request.COOKIES.get("current_team") or None)
+    is_valid, msg = validate_openai_token(token, request.COOKIES.get("current_team") or None, is_mobile)
     if not is_valid:
         return JsonResponse(msg)
 
     # 验证Bot
     user = msg
-    filter_dict = {"id": bot_id, "team__contains": int(user.team)}
+    if is_mobile:
+        # 移动端只筛选 bot_id，不校验 team
+        filter_dict = {"id": bot_id}
+    else:
+        # 非移动端保持原有逻辑，需要校验 team
+        filter_dict = {"id": bot_id, "team__contains": int(user.team)}
+
     if not is_test:
         filter_dict["online"] = True
     bot_obj = Bot.objects.filter(**filter_dict).first()
@@ -510,26 +525,26 @@ def execute_chat_flow(request, bot_id, node_id):
         # 获取当前节点类型
         node_obj = engine._get_node_by_id(node_id)
         node_type = node_obj.get("type") if node_obj else None
-
         # 准备输入数据
-        input_data = {"last_message": message, "user_id": user.username, "bot_id": bot_id, "node_id": node_id}
+        input_data = {
+            "last_message": message,
+            "user_id": f"{user.username}@{user.domain}",
+            "bot_id": bot_id,
+            "node_id": node_id,
+            "session_id": session_id,
+        }
 
         logger.info(f"开始执行ChatFlow流程，bot_id: {bot_id}, node_id: {node_id}, user: {user.username}, node_type: {node_type}")
 
-        # 区分 openai 和 agui 类型的流式响应，其余类型统一走原有逻辑
-        if node_type in ["openai", "agui"]:
+        # 区分流式响应节点类型：openai、agui、embedded_chat、mobile、web_chat
+        stream_node_types = ["openai", "agui", "embedded_chat", "mobile", "web_chat"]
+        if node_type in stream_node_types:
             # 使用引擎的流式执行方法，设置入口类型
             input_data["entry_type"] = node_type
-            stream_generator = engine.sse_execute(input_data)
 
-            # 直接返回流式响应
-            async_generator = create_async_compatible_generator(stream_generator)
-            response = StreamingHttpResponse(async_generator, content_type="text/event-stream")
-            response["Cache-Control"] = "no-cache, no-store, must-revalidate"
-            response["X-Accel-Buffering"] = "no"
-            response["Access-Control-Allow-Origin"] = "*"
-            response["Access-Control-Allow-Headers"] = "Cache-Control"
-            return response
+            # 直接返回 engine.sse_execute 的 StreamingHttpResponse（与 execute_agui 保持一致）
+            logger.info(f"[ChatFlow] 调用流式执行 - bot_id: {bot_id}, node_id: {node_id}, node_type: {node_type}")
+            return engine.sse_execute(input_data)
 
         # 非流式节点，使用普通执行
         result = engine.execute(input_data)

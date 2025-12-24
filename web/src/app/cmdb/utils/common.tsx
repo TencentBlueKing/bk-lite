@@ -19,14 +19,38 @@ import {
 } from '@/app/cmdb/types/assetManage';
 const { RangePicker } = DatePicker;
 
-// 通用的组织名称查找函数（用于新的组织显示组件）
-const findOrganizationNameById = (arr: Array<any>, targetValue: unknown) => {
+// 查找组织对象
+const findOrganizationById = (arr: Array<any>, targetValue: unknown) => {
   for (let i = 0; i < arr.length; i++) {
     if (arr[i].id === targetValue || arr[i].value === targetValue) {
-      return arr[i].name || arr[i].label;
+      return arr[i];
     }
   }
   return null;
+};
+
+// 获取组织的完整路径（从根到当前节点）
+const getOrganizationFullPath = (org: any, flatGroups: Array<any>): string => {
+  if (!org) return '';
+  
+  const path: string[] = [];
+  let current = org;
+  
+  while (current) {
+    const name = current.name || current.label;
+    if (name) {
+      path.unshift(name);
+    }
+    
+    const parentId = current.parent_id || current.parentId;
+    if (parentId) {
+      current = findOrganizationById(flatGroups, parentId);
+    } else {
+      break;
+    }
+  }
+  
+  return path.join('/');
 };
 
 // 通用的组织显示文本处理函数
@@ -34,11 +58,16 @@ const getOrganizationDisplayText = (value: any, flatGroups: Array<any>) => {
   if (Array.isArray(value)) {
     if (value.length === 0) return '--';
     const groupNames = value
-      .map((val) => findOrganizationNameById(flatGroups || [], val))
-      .filter((name) => name !== null);
+      .map((val) => {
+        const org = findOrganizationById(flatGroups || [], val);
+        return org ? getOrganizationFullPath(org, flatGroups) : null;
+      })
+      .filter((name) => name !== null && name !== '');
     return groupNames.length > 0 ? groupNames.join('，') : '--';
   } else {
-    return findOrganizationNameById(flatGroups || [], value) || '--';
+    const org = findOrganizationById(flatGroups || [], value);
+    const fullPath = org ? getOrganizationFullPath(org, flatGroups) : '';
+    return fullPath || '--';
   }
 };
 
@@ -337,7 +366,7 @@ export const getFieldItem = (config: {
           </Select>
         );
       case 'organization':
-        return <GroupTreeSelector multiple={false} />;
+        return <GroupTreeSelector multiple={true} />;
       case 'time':
         return (
           <RangePicker

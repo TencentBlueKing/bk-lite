@@ -1,5 +1,5 @@
 import React from 'react';
-import { Tag, Button, Space } from 'antd';
+import { Tag, Button, Space, Tooltip } from 'antd';
 import type { TableColumnsType } from 'antd';
 import { TableData, QAPairData } from '@/app/opspilot/types/knowledge';
 import PermissionWrapper from '@/components/permission';
@@ -29,18 +29,39 @@ export const getDocumentColumns = (
     title: t('knowledge.documents.name'),
     dataIndex: 'name',
     key: 'name',
-    render: (text: string, record: TableData) => (
-      <a
-        href="#"
-        style={{ color: '#155aef' }}
-        onClick={(e) => {
-          e.preventDefault();
-          router.push(`/opspilot/knowledge/detail/documents/result?id=${id}&name=${name}&desc=${desc}&documentId=${record.id}`);
-        }}
-      >
-        {text}
-      </a>
-    ),
+    render: (text: string, record: TableData) => {
+      return (
+        <Tooltip title={text}>
+          <a
+            href="#"
+            style={{ 
+              color: '#155aef',
+              display: 'flex',
+              alignItems: 'center',
+              minHeight: '3em',
+              lineHeight: '1.5em'
+            }}
+            onClick={(e) => {
+              e.preventDefault();
+              router.push(`/opspilot/knowledge/detail/documents/result?id=${id}&name=${name}&desc=${desc}&documentId=${record.id}`);
+            }}
+          >
+            <span
+              style={{
+                display: '-webkit-box',
+                WebkitLineClamp: 2,
+                WebkitBoxOrient: 'vertical' as any,
+                overflow: 'hidden',
+                textOverflow: 'ellipsis',
+                wordBreak: 'break-all'
+              }}
+            >
+              {text}
+            </span>
+          </a>
+        </Tooltip>
+      );
+    },
   },
   {
     title: t('knowledge.documents.chunkSize'),
@@ -86,25 +107,33 @@ export const getDocumentColumns = (
       return <Tag color={color}>{text}</Tag>;
     },
   },
-  ...(activeTabKey === 'web_page' ? [{
-    title: t('knowledge.documents.syncEnabled'),
-    key: 'sync_enabled',
-    dataIndex: 'sync_enabled',
-    render: (_: any, record: TableData) => {
-      const syncEnabled = record.sync_enabled;
-      const syncTime = record.sync_time;
-
-      if (syncEnabled && syncTime) {
-        return (
-          <div>
-            {syncTime && <div>【{t('knowledge.documents.everyday')} {syncTime}】</div>}
-          </div>
-        );
-      } else {
-        return <div>【{t('knowledge.documents.notSync')}】</div>;
-      }
+  ...(activeTabKey === 'web_page' ? [
+    {
+      title: t('knowledge.documents.lastSyncTime'),
+      key: 'last_run_time',
+      dataIndex: 'last_run_time',
+      render: (text: string) => text ? convertToLocalizedTime(text) : '--',
     },
-  }] : []),
+    {
+      title: t('knowledge.documents.syncEnabled'),
+      key: 'sync_enabled',
+      dataIndex: 'sync_enabled',
+      render: (_: any, record: TableData) => {
+        const syncEnabled = record.sync_enabled;
+        const syncTime = record.sync_time;
+
+        if (syncEnabled && syncTime) {
+          return (
+            <div>
+              {syncTime && <div>【{t('knowledge.documents.everyday')} {syncTime}】</div>}
+            </div>
+          );
+        } else {
+          return <div>【{t('knowledge.documents.notSync')}】</div>;
+        }
+      },
+    }
+  ] : []),
   {
     title: t('knowledge.documents.extractionMethod'),
     key: 'mode',
@@ -174,18 +203,39 @@ export const getQAPairColumns = (
     title: t('knowledge.qaPairs.name'),
     dataIndex: 'name',
     key: 'name',
-    render: (text: string, record: QAPairData) => (
-      <a
-        href="#"
-        style={{ color: '#155aef' }}
-        onClick={(e) => {
-          e.preventDefault();
-          router.push(`/opspilot/knowledge/detail/documents/qapair/result?id=${id}&name=${name}&desc=${desc}&qaPairId=${record.id}&documentId=${record.document_id}`);
-        }}
-      >
-        {text}
-      </a>
-    ),
+    render: (text: string, record: QAPairData) => {
+      return (
+        <Tooltip title={text}>
+          <a
+            href="#"
+            style={{ 
+              color: '#155aef',
+              display: 'flex',
+              alignItems: 'center',
+              minHeight: '3em',
+              lineHeight: '1.5em'
+            }}
+            onClick={(e) => {
+              e.preventDefault();
+              router.push(`/opspilot/knowledge/detail/documents/qapair/result?id=${id}&name=${name}&desc=${desc}&qaPairId=${record.id}&documentId=${record.document_id}`);
+            }}
+          >
+            <span
+              style={{
+                display: '-webkit-box',
+                WebkitLineClamp: 2,
+                WebkitBoxOrient: 'vertical' as any,
+                overflow: 'hidden',
+                textOverflow: 'ellipsis',
+                wordBreak: 'break-all'
+              }}
+            >
+              {text}
+            </span>
+          </a>
+        </Tooltip>
+      );
+    },
   },
   {
     title: t('knowledge.qaPairs.qaCount'),

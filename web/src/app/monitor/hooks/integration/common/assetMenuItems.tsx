@@ -1,9 +1,9 @@
-import React, { useMemo } from 'react';
+import { useMemo } from 'react';
 import { useTranslation } from '@/utils/i18n';
 import PermissionWrapper from '@/components/permission';
 import type { MenuProps } from 'antd';
 
-const useAssetMenuItems = (): MenuProps['items'] => {
+export const useAssetMenuItems = (): MenuProps['items'] => {
   const { t } = useTranslation();
   return useMemo(
     () => [
@@ -22,4 +22,3 @@ const useAssetMenuItems = (): MenuProps['items'] => {
     [t]
   );
 };
-export { useAssetMenuItems };

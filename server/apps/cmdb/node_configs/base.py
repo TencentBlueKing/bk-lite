@@ -2,11 +2,9 @@
 # @File: base.py
 # @Time: 2025/11/13 14:16
 # @Author: windyzhao
-
-import ipaddress
 import os
+import ipaddress
 from abc import abstractmethod, ABCMeta
-from pathlib import Path
 
 from django.conf import settings
 from jinja2 import Environment, FileSystemLoader, DebugUndefined
@@ -32,7 +30,7 @@ class BaseNodeParams(metaclass=ABCMeta):
     def __init__(self, instance):
         self.instance = instance
         self.model_id = instance.model_id
-        self.credential = self.instance.credential
+        self.credential = self.instance.decrypt_credentials or {}
         self.base_path = "${STARGAZER_URL}/api/collect/collect_info"
         self.host_field = "host"  # 默认的 ip字段 若不一样重新定义
         self.timeout = 40 if self.instance.is_cloud else 30
@@ -96,6 +94,12 @@ class BaseNodeParams(metaclass=ABCMeta):
         """
         raise NotImplementedError
 
+    def env_config(self, *args, **kwargs):
+        """
+        生成环境变量配置
+        """
+        raise NotImplementedError
+
     def custom_headers(self, host):
         """
         格式化服务器的路径
@@ -138,7 +142,7 @@ class BaseNodeParams(metaclass=ABCMeta):
                 "timeout": self.timeout,
                 "response_timeout": self.response_timeout,
                 "headers": self.custom_headers(host=host),
-                "config_type": self.model_id
+                "config_type": self.model_id,
             }
             jinja_context = self.render_template(context=content)
             nodes.append({
@@ -148,7 +152,7 @@ class BaseNodeParams(metaclass=ABCMeta):
                 "content": jinja_context,
                 "node_id": node["id"],
                 "collector_name": "Telegraf",
-                "env_config": {}
+                "env_config": self.env_config(host=host)
             })
         return nodes
 

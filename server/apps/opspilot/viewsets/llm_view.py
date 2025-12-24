@@ -8,13 +8,11 @@ from rest_framework.response import Response
 from apps.core.decorators.api_permission import HasPermission
 from apps.core.logger import opspilot_logger as logger
 from apps.core.mixinx import EncryptMixin
-from apps.core.utils.async_utils import create_async_compatible_generator
 from apps.core.utils.viewset_utils import AuthViewSet, LanguageViewSet
 from apps.opspilot.models import KnowledgeBase, LLMModel, LLMSkill, SkillRequestLog, SkillTools
 from apps.opspilot.serializers.llm_serializer import LLMModelSerializer, LLMSerializer, SkillRequestLogSerializer, SkillToolsSerializer
 from apps.opspilot.utils.agui_chat import stream_agui_chat
 from apps.opspilot.utils.mcp_client import MCPClient
-from apps.opspilot.utils.quota_utils import get_quota_client
 from apps.opspilot.utils.sse_chat import stream_chat
 
 
@@ -55,12 +53,6 @@ class LLMViewSet(AuthViewSet):
     @HasPermission("skill_list-Add")
     def create(self, request, *args, **kwargs):
         params = request.data
-        if not request.user.is_superuser:
-            client = get_quota_client(request)
-            skill_count, used_skill_count, __ = client.get_skill_quota()
-            if skill_count != -1 and skill_count <= used_skill_count:
-                message = self.loader.get("error.skill_quota_exceeded") if self.loader else "Skill count exceeds quota limit."
-                return JsonResponse({"result": False, "message": message})
         validate_msg = self._validate_name(params["name"], request.user.group_list, params["team"])
         if validate_msg:
             message = (
@@ -151,16 +143,13 @@ class LLMViewSet(AuthViewSet):
         """
         import json
 
-        def error_generator():
+        async def error_generator():
             error_data = {"result": False, "message": error_message, "error": True}
             yield f"data: {json.dumps(error_data, ensure_ascii=False)}\n\n"
             yield "data: [DONE]\n\n"
 
-        # 使用异步兼容的生成器包装器
-
-        async_generator = create_async_compatible_generator(error_generator())
-
-        response = StreamingHttpResponse(async_generator, content_type="text/event-stream")
+        # 直接使用异步生成器
+        response = StreamingHttpResponse(error_generator(), content_type="text/event-stream")
         response["Cache-Control"] = "no-cache, no-store, must-revalidate"
         response["X-Accel-Buffering"] = "no"  # Nginx
         # response["Pragma"] = "no-cache"
@@ -442,7 +431,8 @@ class SkillToolsViewSet(AuthViewSet):
 
         请求参数:
             server_url: MCP server 地址
-
+            enable_auth: 是否启用基本认证
+            auth_token: 基本认证的 token
         返回格式:
             {
                 "result": True,
@@ -456,38 +446,30 @@ class SkillToolsViewSet(AuthViewSet):
             }
         """
         server_url = request.data.get("server_url")
+        enable_auth = request.data.get("enable_auth", False)
+        auth_token = request.data.get("auth_token", "")
+
         if not server_url:
             message = self.loader.get("error.server_url_required") if self.loader else "MCP server URL is required"
             return JsonResponse({"result": False, "message": message})
 
+        # 构建 MCP 客户端配置
+        mcp_config = {"server_url": server_url}
+
+        # 如果启用认证，添加认证信息
+        if enable_auth:
+            if not auth_token:
+                message = self.loader.get("error.auth_token_required") if self.loader else "Auth token is required when authentication is enabled"
+                return JsonResponse({"result": False, "message": message})
+
+            mcp_config["enable_auth"] = True
+            mcp_config["auth_token"] = auth_token
+
         try:
-            with MCPClient(server_url) as mcp_client:
+            with MCPClient(**mcp_config) as mcp_client:
                 tools = mcp_client.get_tools()
-
-                # 转换格式：inputSchema -> parameters
-                formatted_tools = []
-                for tool in tools:
-                    formatted_tool = {"name": tool.get("name", ""), "description": tool.get("description", ""), "parameters": {}}
-
-                    # 提取 inputSchema 中的 properties 作为 parameters
-                    input_schema = tool.get("inputSchema", {})
-                    properties = input_schema.get("properties", {})
-                    required_fields = input_schema.get("required", [])
-
-                    # 转换每个参数
-                    for param_name, param_info in properties.items():
-                        formatted_tool["parameters"][param_name] = {
-                            "type": param_info.get("type", "string"),
-                            "required": param_name in required_fields,
-                            "description": param_info.get("description", ""),
-                        }
-                        # 保留默认值
-                        if "default" in param_info:
-                            formatted_tool["parameters"][param_name]["default"] = param_info["default"]
-
-                    formatted_tools.append(formatted_tool)
-
-                return JsonResponse({"result": True, "data": formatted_tools})
+                # MCPClient 已经返回了格式化后的数据,直接返回
+                return JsonResponse({"result": True, "data": tools})
         except Exception as e:
             logger.exception(e)
             message = self.loader.get("error.mcp_server_error") if self.loader else "Error occurred while fetching MCP tools"

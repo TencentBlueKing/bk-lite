@@ -475,6 +475,7 @@ export const getBaseInstanceColumn = (config: {
   row: ObjectItem;
   objects: ObjectItem[];
   t: any;
+  queryData?: any[];
 }) => {
   const baseTarget = config.objects
     .filter((item) => item.type === config.row?.type)
@@ -486,6 +487,11 @@ export const getBaseInstanceColumn = (config: {
       title: config.t('common.name'),
       dataIndex: 'instance_name',
       width: 300,
+      onCell: () => ({
+        style: {
+          minWidth: 200,
+        },
+      }),
       key: 'instance_name',
       render: (_: unknown, record: TableDataItem) => {
         const instanceName = showInstName(config.row, record);
@@ -503,11 +509,26 @@ export const getBaseInstanceColumn = (config: {
       title: title,
       dataIndex: 'base_instance_name',
       width: 300,
+      onCell: () => ({
+        style: {
+          minWidth: 200,
+        },
+      }),
       key: 'base_instance_name',
       render: (_: unknown, record: TableDataItem) => {
+        const instanceIdValue = record.instance_id_values?.[0];
+        let displayName = instanceIdValue || '--';
+        if (config.queryData && instanceIdValue) {
+          const matchedItem = config.queryData.find(
+            (item: TableDataItem) => item.id === instanceIdValue
+          );
+          if (matchedItem) {
+            displayName = matchedItem.name || matchedItem.id;
+          }
+        }
         return (
           <EllipsisWithTooltip
-            text={record.instance_id_values?.[0] || '--'}
+            text={displayName}
             className="w-full overflow-hidden text-ellipsis whitespace-nowrap"
           ></EllipsisWithTooltip>
         );

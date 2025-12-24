@@ -101,6 +101,9 @@ const ConditionSelector: React.FC<ConditionSelectorProps> = ({
         showSearch
         value={data.metric}
         loading={loading}
+        filterOption={(input, option) =>
+          (option?.label || '').toLowerCase().includes(input.toLowerCase())
+        }
         options={metricData.map((item) => ({
           label: item.display_name,
           title: item.name,

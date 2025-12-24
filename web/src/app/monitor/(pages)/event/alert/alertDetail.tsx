@@ -153,9 +153,9 @@ const AlertDetail = forwardRef<ModalRef, ModalConfig>(
           page_size: -1,
           page: 10,
         });
-        const data = (responseData?.results || []).reduce(
+        const data = (responseData?.snapshots || []).reduce(
           (pre: any, cur: any) => {
-            const values = cur.raw_data?.[0]?.values?.at(-1);
+            const values = cur.raw_data?.values?.at(-1);
             if (values) {
               pre.push(values);
             }
@@ -163,7 +163,6 @@ const AlertDetail = forwardRef<ModalRef, ModalConfig>(
           },
           []
         );
-
         const config = [
           {
             instance_id_values: form.instance_id_values,
@@ -271,7 +270,7 @@ const AlertDetail = forwardRef<ModalRef, ModalConfig>(
 
     const closeModal = () => {
       handleCancel();
-      onSuccess();
+      onSuccess?.();
     };
 
     return (

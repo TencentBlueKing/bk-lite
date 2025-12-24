@@ -1,6 +1,7 @@
 import React, { useState, useCallback, useRef, ReactNode, useEffect } from 'react';
-import { Popconfirm, Button, Tooltip, Flex, Spin, Drawer, ButtonProps } from 'antd';
-import { FullscreenOutlined, FullscreenExitOutlined, SendOutlined } from '@ant-design/icons';
+import { Popconfirm, Button, Tooltip, Flex, Spin, Drawer, ButtonProps, Upload, message as antMessage, Image } from 'antd';
+import { FullscreenOutlined, FullscreenExitOutlined, SendOutlined, PictureOutlined } from '@ant-design/icons';
+import type { UploadFile } from 'antd/es/upload/interface';
 import { Bubble, Sender } from '@ant-design/x';
 import Icon from '@/components/icon';
 import { useTranslation } from '@/utils/i18n';
@@ -39,7 +40,9 @@ const CustomChatSSE: React.FC<CustomChatSSEProps> = ({
   initialMessages = [],
   mode = 'chat',
   guide,
-  useAGUIProtocol = false
+  useAGUIProtocol = false,
+  showHeader = true,
+  requirePermission = true
 }) => {
   const { t } = useTranslation();
 
@@ -52,11 +55,12 @@ const CustomChatSSE: React.FC<CustomChatSSEProps> = ({
   }
 
   const authContext = useAuth();
-  const token = session?.user?.token || authContext?.token || null;
+  const token = (session?.user as any)?.token || authContext?.token || null;
 
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [value, setValue] = useState('');
   const [loading, setLoading] = useState(false);
+  const [imageList, setImageList] = useState<UploadFile[]>([]);
   const [messages, setMessages] = useState<CustomChatMessage[]>(
     initialMessages.length ? initialMessages : []
   );
@@ -64,6 +68,11 @@ const CustomChatSSE: React.FC<CustomChatSSEProps> = ({
   const [annotation, setAnnotation] = useState<Annotation | null>(null);
   const currentBotMessageRef = useRef<CustomChatMessage | null>(null);
   const chatContentRef = useRef<HTMLDivElement>(null);
+
+  // 监听 initialMessages 变化
+  useEffect(() => {
+    setMessages(initialMessages.length ? initialMessages : []);
+  }, [initialMessages]);
 
   // Auto scroll
   const scrollToBottom = useCallback(() => {
@@ -217,20 +226,69 @@ const CustomChatSSE: React.FC<CustomChatSSEProps> = ({
   };
 
   const handleSend = useCallback(
-    async (msg: string) => {
-      if (msg.trim() && !loading && token) {
+    async (msg: string, images?: UploadFile[]) => {
+      if ((msg.trim() || (images && images.length > 0)) && !loading && token) {
         currentBotMessageRef.current = null;
-        await sendMessage(msg);
+        
+        // Convert images to base64
+        let imageData: any[] | undefined;
+        if (images && images.length > 0) {
+          imageData = await Promise.all(
+            images.map(async (file) => {
+              if (file.originFileObj) {
+                const base64 = await new Promise<string>((resolve) => {
+                  const reader = new FileReader();
+                  reader.onloadend = () => resolve(reader.result as string);
+                  reader.readAsDataURL(file.originFileObj as File);
+                });
+                return {
+                  id: file.uid,
+                  url: base64,
+                  name: file.name,
+                  status: 'done'
+                };
+              }
+              return null;
+            })
+          ).then(results => results.filter(Boolean));
+        }
+        
+        await sendMessage(msg, messages, imageData);
       }
     },
-    [loading, token, sendMessage]
+    [loading, token, sendMessage, messages]
   );
 
   const handleCopyMessage = (content: string) => {
-    navigator.clipboard.writeText(content).then(
-      () => console.log(t('chat.copied')),
-      err => console.error(`${t('chat.copyFailed')}:`, err)
-    );
+    // 移除 HTML 标签，保留纯文本
+    const tempDiv = document.createElement('div');
+    tempDiv.innerHTML = content;
+    const plainText = tempDiv.textContent || tempDiv.innerText || content;
+    
+    // 使用现代 API 或降级方案
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(plainText).then(
+        () => console.log(t('chat.copied')),
+        err => console.error(`${t('chat.copyFailed')}:`, err)
+      );
+    } else {
+      // 降级方案：使用 execCommand
+      const textArea = document.createElement('textarea');
+      textArea.value = plainText;
+      textArea.style.position = 'fixed';
+      textArea.style.left = '-999999px';
+      textArea.style.top = '-999999px';
+      document.body.appendChild(textArea);
+      textArea.focus();
+      textArea.select();
+      try {
+        document.execCommand('copy');
+        console.log(t('chat.copied'));
+      } catch (err) {
+        console.error(`${t('chat.copyFailed')}:`, err);
+      }
+      document.body.removeChild(textArea);
+    }
   };
 
   const handleDeleteMessage = (id: string) => {
@@ -248,12 +306,28 @@ const CustomChatSSE: React.FC<CustomChatSSEProps> = ({
   );
 
   const renderContent = (msg: CustomChatMessage) => {
-    const { content, knowledgeBase } = msg;
+    const { content, knowledgeBase, images } = msg;
     const parsedContent = parseReferenceLinks(content || '');
     const parsedSuggestionContent = parseSuggestionLinks(parsedContent);
 
     return (
       <>
+        {images && images.length > 0 && (
+          <div className="flex flex-wrap gap-2 mb-2">
+            <Image.PreviewGroup>
+              {images.map((img) => (
+                <Image
+                  key={img.id}
+                  src={img.url}
+                  alt={img.name || 'image'}
+                  width={120}
+                  height={120}
+                  className="rounded object-cover"
+                />
+              ))}
+            </Image.PreviewGroup>
+          </div>
+        )}
         <div
           dangerouslySetInnerHTML={{ __html: md.render(parsedSuggestionContent) }}
           className={styles.markdownBody}
@@ -272,8 +346,72 @@ const CustomChatSSE: React.FC<CustomChatSSEProps> = ({
   const renderSend = (props: ButtonProps & { ignoreLoading?: boolean; placeholder?: string } = {}) => {
     const { ignoreLoading, placeholder, ...btnProps } = props;
 
-    return (
-      <PermissionWrapper requiredPermissions={['Test']}>
+    const uploadButton = (
+      <Upload
+        accept="image/*"
+        fileList={[]}
+        beforeUpload={(file) => {
+          const isImage = file.type.startsWith('image/');
+          if (!isImage) {
+            antMessage.error(t('chat.onlyImageAllowed') || '只能上传图片文件');
+            return Upload.LIST_IGNORE;
+          }
+          const isLt5M = file.size / 1024 / 1024 < 5;
+          if (!isLt5M) {
+            antMessage.error(t('chat.imageTooLarge') || '图片大小不能超过 5MB');
+            return Upload.LIST_IGNORE;
+          }
+          setImageList(prev => [...prev, {
+            uid: file.uid,
+            name: file.name,
+            status: 'done',
+            originFileObj: file
+          } as any]);
+          return Upload.LIST_IGNORE;
+        }}
+        showUploadList={false}
+      >
+        <Button
+          type="text"
+          icon={<PictureOutlined />}
+          disabled={loading}
+          title={t('chat.uploadImage') || '上传图片'}
+        />
+      </Upload>
+    );
+
+    const senderComponent = (
+      <div className="relative">
+        {imageList.length > 0 && (
+          <div className="flex flex-wrap gap-2 mb-2 p-2 bg-gray-50 rounded">
+            {imageList.map((file) => {
+              const previewUrl = file.originFileObj && typeof window !== 'undefined' 
+                ? URL.createObjectURL(file.originFileObj) 
+                : '';
+              
+              return (
+                <div key={file.uid} className="relative group">
+                  {previewUrl && (
+                    <img
+                      src={previewUrl}
+                      alt={file.name}
+                      className="w-16 h-16 object-cover rounded"
+                    />
+                  )}
+                  <Button
+                    type="text"
+                    danger
+                    size="small"
+                    className="absolute top-0 right-0 opacity-0 group-hover:opacity-100 transition-opacity"
+                    onClick={() => setImageList(imageList.filter(item => item.uid !== file.uid))}
+                  >
+                    ×
+                  </Button>
+                </div>
+              );
+            })}
+          </div>
+        )}
         <Sender
           className={styles.sender}
           value={value}
@@ -281,10 +419,38 @@ const CustomChatSSE: React.FC<CustomChatSSEProps> = ({
           loading={loading}
           onSubmit={(msg: string) => {
             setValue('');
-            handleSend(msg);
+            const currentImages = [...imageList];
+            setImageList([]);
+            handleSend(msg, currentImages);
           }}
           placeholder={placeholder}
           onCancel={stopSSEConnection}
+          prefix={uploadButton}
+          onPaste={(event: React.ClipboardEvent) => {
+            const items = event.clipboardData?.items;
+            if (!items) return;
+
+            for (let i = 0; i < items.length; i++) {
+              const item = items[i];
+              if (item.type.startsWith('image/')) {
+                event.preventDefault();
+                const file = item.getAsFile();
+                if (file) {
+                  const isLt5M = file.size / 1024 / 1024 < 5;
+                  if (!isLt5M) {
+                    antMessage.error(t('chat.imageTooLarge') || '图片大小不能超过 5MB');
+                    continue;
+                  }
+                  setImageList(prev => [...prev, {
+                    uid: `paste-${Date.now()}-${i}`,
+                    name: file.name || `pasted-image-${Date.now()}.png`,
+                    status: 'done',
+                    originFileObj: file
+                  } as any]);
+                }
+              }
+            }
+          }}
           actions={(
             _: any,
             info: {
@@ -305,7 +471,7 @@ const CustomChatSSE: React.FC<CustomChatSSEProps> = ({
             let node: ReactNode = <SendButton {...btnProps} />;
             if (!ignoreLoading) {
               node = (
-                <Tooltip title={value ? `${t('chat.send')}\u21B5` : t('chat.inputMessage')}>
+                <Tooltip title={value || imageList.length > 0 ? `${t('chat.send')}\u21B5` : t('chat.inputMessage')}>
                   {node}
                 </Tooltip>
               );
@@ -313,8 +479,14 @@ const CustomChatSSE: React.FC<CustomChatSSEProps> = ({
             return node;
           }}
         />
-      </PermissionWrapper>
+      </div>
     );
+
+    return requirePermission ? (
+      <PermissionWrapper requiredPermissions={['Test']}>
+        {senderComponent}
+      </PermissionWrapper>
+    ) : senderComponent;
   };
 
   const toggleAnnotationModal = (message: CustomChatMessage) => {
@@ -362,7 +534,7 @@ const CustomChatSSE: React.FC<CustomChatSSEProps> = ({
 
   return (
     <div className={`rounded-lg h-full ${isFullscreen ? styles.fullscreen : ''}`}>
-      {mode === 'chat' && (
+      {mode === 'chat' && showHeader && (
         <div className="flex justify-between items-center mb-3">
           <h2 className="text-base font-semibold">{t('chat.test')}</h2>
           <div>
@@ -375,7 +547,7 @@ const CustomChatSSE: React.FC<CustomChatSSEProps> = ({
       <div
         className={`flex flex-col rounded-lg p-4 h-full overflow-hidden ${styles.chatContainer}`}
         style={{
-          height: isFullscreen ? 'calc(100vh - 70px)' : mode === 'chat' ? 'calc(100% - 40px)' : '100%'
+          height: isFullscreen ? 'calc(100vh - 70px)' : mode === 'chat' ? (showHeader ? 'calc(100% - 40px)' : '100%') : '100%'
         }}
       >
         {guide && guideData.renderedHtml && (
@@ -425,7 +597,7 @@ const CustomChatSSE: React.FC<CustomChatSSEProps> = ({
         </div>
 
         {mode === 'chat' && (
-          <>
+          <div className="flex-shrink-0">
             <div className="flex justify-end pb-2">
               <Popconfirm
                 title={t('chat.clearConfirm')}
@@ -433,6 +605,7 @@ const CustomChatSSE: React.FC<CustomChatSSEProps> = ({
                 onConfirm={handleClearMessages}
                 okText={t('chat.clear')}
                 cancelText={t('common.cancel')}
+                getPopupContainer={(trigger) => trigger.parentElement || document.body}
               >
                 <Button type="text" className="mr-2" icon={<Icon type="shanchu" className="text-2xl" />} />
               </Popconfirm>
@@ -446,7 +619,7 @@ const CustomChatSSE: React.FC<CustomChatSSEProps> = ({
                 shape: 'default',
               })}
             </Flex>
-          </>
+          </div>
         )}
       </div>
       {annotation && (
@@ -465,6 +638,10 @@ const CustomChatSSE: React.FC<CustomChatSSEProps> = ({
         visible={drawerContent.visible}
         title={drawerContent.title}
         onClose={closeDrawer}
+        getContainer={isFullscreen ? false : undefined}
+        styles={{
+          body: drawerContent.chunkType === 'Graph' ? { padding: 0, height: '100%' } : undefined
+        }}
       >
         {referenceModal.loading ? (
           <div className="flex justify-center items-center h-32">
@@ -473,7 +650,12 @@ const CustomChatSSE: React.FC<CustomChatSSEProps> = ({
         ) : (
           <>
             {drawerContent.chunkType === 'Graph' ? (
-              <KnowledgeGraphView data={drawerContent.graphData || { nodes: [], edges: [] }} height={500} />
+              <div style={{ height: '100%', padding: '16px' }}>
+                <KnowledgeGraphView 
+                  data={drawerContent.graphData || { nodes: [], edges: [] }} 
+                  height="100%" 
+                />
+              </div>
             ) : (
               <div className="whitespace-pre-wrap leading-6">{drawerContent.content}</div>
             )}

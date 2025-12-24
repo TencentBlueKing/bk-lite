@@ -15,10 +15,15 @@ class AliyunNodeParams(BaseNodeParams):
         self.PLUGIN_MAP.update({self.model_id: self.plugin_name})
 
     def set_credential(self, *args, **kwargs):
+        _instance_id = self.get_instance_id(instance=kwargs["host"])
+        _access_key = f"PASSWORD_access_key_{_instance_id}"
+        _access_secret = f"PASSWORD_access_secret_{_instance_id}"
         regions_id = self.credential["regions"]["resource_id"]
         credential_data = {
-            "access_key": self.credential.get("accessKey", ""),
-            "access_secret": self.credential.get("accessSecret", ""),
+            # "access_key": self.credential.get("accessKey", ""),
+            # "access_secret": self.credential.get("accessSecret", ""),
+            "access_key": "${" + _access_key + "}",
+            "access_secret": "${" + _access_secret + "}",
             "region_id": regions_id
         }
         return credential_data
@@ -28,6 +33,15 @@ class AliyunNodeParams(BaseNodeParams):
         获取实例 id
         """
         if self.has_set_instances:
-            return f"{self.instance.id}_{instance['inst_name']}"
+            return f"{self.instance.id}_{instance['_id']}"
         else:
-            return f"{self.instance.id}_{instance}"
+            return f"{self.instance.id}_{instance}".replace(".", "")
+
+    def env_config(self, *args, **kwargs):
+        host = kwargs["host"]
+        _instance_id = self.get_instance_id(instance=host)
+        env_config = {
+            f"PASSWORD_access_key_{_instance_id}": self.credential.get("accessKey", ""),
+            f"PASSWORD_access_secret_{_instance_id}": self.credential.get("accessSecret", ""),
+        }
+        return env_config

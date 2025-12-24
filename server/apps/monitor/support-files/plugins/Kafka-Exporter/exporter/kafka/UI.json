@@ -16,7 +16,7 @@
         "placeholder": "2.0.0"
       },
       "transform_on_edit": {
-        "origin_path": "base.env_config.KAFKA_VERSION"
+        "origin_path": "child.env_config.KAFKA_VERSION__{{config_id}}"
       }
     },
     {
@@ -29,7 +29,7 @@
         "placeholder": "用户名"
       },
       "transform_on_edit": {
-        "origin_path": "base.env_config.SASL_USERNAME"
+        "origin_path": "child.env_config.SASL_USERNAME__{{config_id}}"
       }
     },
     {
@@ -42,7 +42,7 @@
         "placeholder": "密码"
       },
       "transform_on_edit": {
-        "origin_path": "base.env_config.SASL_PASSWORD"
+        "origin_path": "child.env_config.SASL_PASSWORD__{{config_id}}"
       }
     },
     {
@@ -55,7 +55,7 @@
         "placeholder": "plain"
       },
       "transform_on_edit": {
-        "origin_path": "base.env_config.SASL_MECHANISM"
+        "origin_path": "child.env_config.SASL_MECHANISM__{{config_id}}"
       }
     },
     {
@@ -71,7 +71,7 @@
         "placeholder": "监听端口"
       },
       "transform_on_edit": {
-        "origin_path": "base.env_config.LISTEN_PORT"
+        "origin_path": "child.env_config.LISTEN_PORT__{{config_id}}"
       }
     },
     {
@@ -85,7 +85,7 @@
         "placeholder": "kafka:9092"
       },
       "transform_on_edit": {
-        "origin_path": "base.env_config.KAFKA_SERVER"
+        "origin_path": "child.env_config.KAFKA_SERVER__{{config_id}}"
       }
     },
     {

@@ -5,9 +5,17 @@
 
 from django.db import models
 from django.db.models import JSONField
+
+from apps.cmdb.services.encrypt_collect_password import get_collect_model_passwords
 from apps.core.models.time_info import TimeInfo
 from apps.core.models.maintainer_info import MaintainerInfo
-from apps.cmdb.constants.constants import CollectPluginTypes, CollectDriverTypes, CollectRunStatusType, CollectInputMethod
+from apps.cmdb.constants.constants import CollectPluginTypes, CollectDriverTypes, CollectRunStatusType, \
+    CollectInputMethod
+from apps.core.utils.crypto.password_crypto import PasswordCrypto
+from apps.cmdb.constants.constants import SECRET_KEY
+
+# 加密密码的标记前缀
+ENCRYPTED_PREFIX = "enc:"
 
 
 class CollectModels(MaintainerInfo, TimeInfo):
@@ -54,6 +62,7 @@ class CollectModels(MaintainerInfo, TimeInfo):
     collect_data = JSONField(default=dict, help_text="采集原数据")
     collect_digest = JSONField(default=dict, help_text="采集摘要数据")
     format_data = JSONField(default=dict, help_text="采集返回的分类后的数据")
+    team = JSONField(default=list, help_text="关联组织")  # 把params里的组织单独抽出来，方便权限控制
 
     class Meta:
         verbose_name = "采集任务"
@@ -99,6 +108,80 @@ class CollectModels(MaintainerInfo, TimeInfo):
     @property
     def is_db(self):
         return self.task_type == CollectPluginTypes.DB
+
+    @staticmethod
+    def encrypt_password(raw_password):
+        """
+        加密密码
+        :param raw_password: 明文密码
+        :return: 加密后的密码（带enc:前缀）
+        """
+        if not raw_password:
+            return raw_password
+
+        # 如果已经加密过，直接返回
+        if isinstance(raw_password, str) and raw_password.startswith(ENCRYPTED_PREFIX):
+            return raw_password
+
+        crypto = PasswordCrypto(SECRET_KEY)
+        encrypted = crypto.encrypt(raw_password)
+        return f"{ENCRYPTED_PREFIX}{encrypted}"
+
+    @staticmethod
+    def decrypt_password(password):
+        """
+        解密密码
+        :return: 明文密码
+        """
+        if not password:
+            return password
+
+        # 去除加密前缀
+        encrypted_text = password
+        if isinstance(password, str) and password.startswith(ENCRYPTED_PREFIX):
+            encrypted_text = password[len(ENCRYPTED_PREFIX):]
+
+        try:
+            crypto = PasswordCrypto(SECRET_KEY)
+            return crypto.decrypt(encrypted_text)
+        except Exception:
+            # 如果解密失败，可能是明文密码，直接返回
+            return password
+
+    @property
+    def decrypt_credentials(self):
+        """
+        解密凭据中的密码字段
+        :return: 解密后的凭据列表
+        {"port": "22", "password": "password", "username": "admin"}
+        """
+        if not self.credential or not isinstance(self.credential, dict):
+            return self.credential
+
+        encrypted_fields = get_collect_model_passwords(collect_model_id=self.model_id)
+
+        for encrypted_field in encrypted_fields:
+            password = self.credential.get(encrypted_field)
+            if not password:
+                continue
+            self.credential[encrypted_field] = self.decrypt_password(password)
+
+        return self.credential
+
+    def save(self, *args, **kwargs):
+        # 只有在密码未加密时才进行加密
+        if self.credential and isinstance(self.credential, dict):
+            encrypted_fields = get_collect_model_passwords(collect_model_id=self.model_id)
+            for encrypted_field in encrypted_fields:
+                password = self.credential.get(encrypted_field)
+                if not password:
+                    continue
+                # 检查是否已加密（通过前缀判断）
+                if isinstance(password, str) and password.startswith(ENCRYPTED_PREFIX):
+                    continue
+                # 加密明文密码
+                self.credential[encrypted_field] = self.encrypt_password(password)
+        super().save(*args, **kwargs)
 
 
 class OidMapping(MaintainerInfo, TimeInfo):

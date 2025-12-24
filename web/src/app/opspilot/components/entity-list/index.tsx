@@ -47,7 +47,7 @@ const EntityList = <T,>({
   const [selectedTypes, setSelectedTypes] = useState<number[]>([]);
   const [hasMore, setHasMore] = useState(true);
   const [currentPage, setCurrentPage] = useState(1);
-  const observer = useRef<IntersectionObserver>();
+  const observer = useRef<IntersectionObserver>(null as any);
   const loadMoreRef = useRef<HTMLDivElement>(null);
   const isFetching = useRef(false);
 
@@ -247,7 +247,7 @@ const EntityList = <T,>({
   return (
     <div className="w-full h-full">
       <div className="flex justify-end mb-4">
-        {(itemTypeSingle === 'skill' || itemTypeSingle === 'studio') ? (
+        {itemTypeSingle === 'skill' ? (
           <Space.Compact>
             <Select
               mode="multiple"

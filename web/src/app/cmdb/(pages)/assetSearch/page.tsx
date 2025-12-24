@@ -28,7 +28,7 @@ interface TabItem {
 interface TabJsxItem {
   key: string;
   label: string;
-  children: JSX.Element;
+  children: React.ReactElement;
 }
 
 const AssetSearch = () => {

@@ -51,6 +51,10 @@ const VariableModal = forwardRef<ModalRef, ModalSuccess>(
             name: t('node-manager.cloudregion.variable.string'),
           },
           {
+            id: 'text',
+            name: t('node-manager.cloudregion.variable.text'),
+          },
+          {
             id: 'secret',
             name: t('node-manager.cloudregion.variable.password'),
           },
@@ -179,6 +183,11 @@ const VariableModal = forwardRef<ModalRef, ModalSuccess>(
                     <Password
                       placeholder={t('common.inputMsg')}
                       onReset={handleReset}
+                    />
+                  ) : getFieldValue('type') === 'text' ? (
+                    <Input.TextArea
+                      rows={5}
+                      placeholder={t('common.inputMsg')}
                     />
                   ) : (
                     <Input placeholder={t('common.inputMsg')} />

@@ -43,6 +43,7 @@ import {
   ModelItem,
   TaskStatusMap,
 } from '@/app/cmdb/types/autoDiscovery';
+import { useAssetManageStore } from '@/app/cmdb/store';
 
 type ExtendedColumnItem = ColumnType<CollectTask> & {
   key: string;
@@ -56,6 +57,7 @@ interface PluginCardProps {
 const ProfessionalCollection: React.FC = () => {
   const { t } = useTranslation();
   const collectApi = useCollectApi();
+  const { editingId, setEditingId } = useAssetManageStore();
   const syncStatusConfig = React.useMemo(() => getExecStatusConfig(t), [t]);
   const [drawerVisible, setDrawerVisible] = useState(false);
   const [categoryList, setCategoryList] = useState<TreeNode[]>([]);
@@ -70,7 +72,6 @@ const ProfessionalCollection: React.FC = () => {
   );
   const [categoryLoading, setCategoryLoading] = useState(false);
   const [tableLoading, setTableLoading] = useState(false);
-  const [editingId, setEditingId] = useState<number | null>(null);
   const [executingTaskIds, setExecutingTaskIds] = useState<number[]>([]);
   const [docDrawerVisible, setDocDrawerVisible] = useState(false);
   const [taskDocDrawerVisible, setTaskDocDrawerVisible] = useState(false);
@@ -135,6 +136,7 @@ const ProfessionalCollection: React.FC = () => {
         items: CollectTask[];
         count: number;
       };
+      // console.log('test2.4:getCollectList', data);
       setTableData(data.items || []);
       tableCountRef.current = data.items.length || 0;
       setPaginationUI((prev) => ({
@@ -299,6 +301,7 @@ const ProfessionalCollection: React.FC = () => {
   };
 
   const handleCreate = () => {
+    // console.log('test2.1');
     setEditingId(null);
     setDrawerVisible(true);
   };
@@ -392,6 +395,7 @@ const ProfessionalCollection: React.FC = () => {
   };
 
   const getTaskContent = () => {
+    // console.log('test2.2', selectedCategoryRef.current.category, currentPlugin);
     if (!selectedCategoryRef.current.category || !currentPlugin) return null;
 
     const actualCategory =
@@ -416,6 +420,7 @@ const ProfessionalCollection: React.FC = () => {
       databases: SQLTask,
       cloud: CloudTask,
       host_manage: HostTask,
+      middleware: HostTask,
     };
     const TaskComponent = taskMap[actualCategory.id] || K8sTask;
     return <TaskComponent {...props} />;
@@ -554,7 +559,13 @@ const ProfessionalCollection: React.FC = () => {
           const digest = (record.message || {}) as CollectTaskMessage;
 
           if (record.exec_status === EXEC_STATUS.ERROR && digest.message) {
-            return <span className="text-gray-500">{digest.message}</span>;
+            return (
+              <Tooltip title={digest.message}>
+                <div className={`${styles.ellipsis2Lines} text-gray-500`}>
+                  {digest.message}
+                </div>
+              </Tooltip>
+            );
           }
 
           const errorTotal =
@@ -588,13 +599,6 @@ const ProfessionalCollection: React.FC = () => {
         },
       },
       {
-        title: t('Collection.table.creator'),
-        dataIndex: 'created_by',
-        key: 'created_by',
-        width: 120,
-        render: (text: string) => <span>{text || '--'}</span>,
-      },
-      {
         title: t('Collection.table.syncTime'),
         dataIndex: 'exec_time',
         key: 'exec_time',
@@ -602,6 +606,25 @@ const ProfessionalCollection: React.FC = () => {
         render: (text: string) => (
           <span>{text ? dayjs(text).format('YYYY-MM-DD HH:mm:ss') : '--'}</span>
         ),
+      },
+      {
+        title: t('Collection.table.reportTime'),
+        dataIndex: 'last_time',
+        key: 'last_time',
+        width: 220,
+        render: (_, record: CollectTask) => {
+          const lastTime = (record.message as CollectTaskMessage)?.last_time;
+          return (
+            <span>{lastTime ? dayjs(lastTime).format('YYYY-MM-DD HH:mm:ss') : '--'}</span>
+          );
+        },
+      },
+      {
+        title: t('Collection.table.creator'),
+        dataIndex: 'created_by',
+        key: 'created_by',
+        width: 120,
+        render: (text: string) => <span>{text || '--'}</span>,
       },
       {
         title: t('Collection.table.actions'),
@@ -694,28 +717,23 @@ const ProfessionalCollection: React.FC = () => {
       <Card
         key={tab.id}
         hoverable
-        className={`cursor-pointer transition-all ${
-          isActive
-            ? 'border-blue-500 shadow-md bg-blue-50'
-            : 'border-gray-200 hover:border-blue-300'
+        className={`cursor-pointer transition-all ${isActive
+          ? 'border-blue-500 shadow-md bg-blue-50'
+          : 'border-gray-200 hover:border-blue-300'
         }`}
         styles={{ body: { padding: '12px' } }}
         onClick={() => handlePluginCardClick(tab.id)}
       >
         <div className="flex items-center gap-3 mb-2">
           <div
-            className={`w-10 h-10 rounded flex items-center justify-center text-lg font-semibold flex-shrink-0 ${
-              isActive ? 'bg-blue-500 text-white' : 'bg-blue-100 text-blue-600'
-            }`}
+            className={`w-10 h-10 rounded flex items-center justify-center text-lg font-semibold flex-shrink-0 ${isActive ? 'bg-blue-500 text-white' : 'bg-blue-100 text-blue-600'}`}
           >
             {tab.name?.charAt(0)}
           </div>
           <div className="flex-1 min-w-0">
             <div className="text-xs text-gray-700 mb-2 leading-relaxed">
               <span
-                className={`font-semibold ${
-                  isActive ? 'text-blue-600' : 'text-gray-900'
-                }`}
+                className={`font-semibold ${isActive ? 'text-blue-600' : 'text-gray-900'}`}
               >
                 {tab.name}
               </span>
@@ -748,7 +766,7 @@ const ProfessionalCollection: React.FC = () => {
         <Tooltip
           placement="left"
           title={
-            <div className="space-y-1">
+            <div className="flex flex-col gap-1">
               {statusItems.map(({ label, value, color }) => (
                 <div key={label} className="flex items-center gap-2 text-xs">
                   <div className={`w-2 h-2 rounded-full ${color}`} />
@@ -761,7 +779,8 @@ const ProfessionalCollection: React.FC = () => {
           }
         >
           <div
-            className="flex items-center justify-around pt-2 mt-3 border-t border-gray-120"
+            className="flex items-center justify-around pt-2 mt-3 border-t"
+            style={{ borderColor: 'var(--color-border-2)' }}
             onClick={(e) => e.stopPropagation()}
           >
             {statusItems.map(({ color, value }, index) => (
@@ -806,7 +825,7 @@ const ProfessionalCollection: React.FC = () => {
               <Spin size="small" />
             </div>
           ) : (
-            <div className="space-y-3 px-2 py-1 overflow-auto h-full">
+            <div className="flex flex-col gap-3 px-2 py-1 overflow-auto h-full">
               {selectedCategoryRef.current.category?.tabItems?.map((tab) => (
                 <PluginCard key={tab.id} tab={tab} />
               ))}
@@ -814,7 +833,10 @@ const ProfessionalCollection: React.FC = () => {
           )}
         </div>
 
-        <div className="w-px bg-gray-200 flex-shrink-0 mr-2"></div>
+        <div
+          className="w-px flex-shrink-0 mr-2"
+          style={{ backgroundColor: 'var(--color-border-2)' }}
+        ></div>
 
         <div className="flex-1 flex flex-col overflow-hidden">
           <div className="flex flex-col flex-1 overflow-hidden bg-white rounded shadow-sm border border-gray-200">
@@ -882,7 +904,7 @@ const ProfessionalCollection: React.FC = () => {
           </div>
         </div>
       </div>
-
+      {/* 编辑任务弹窗 */}
       <Drawer
         title={
           <div className="flex items-center justify-between">
@@ -903,7 +925,8 @@ const ProfessionalCollection: React.FC = () => {
             >
               {taskDocDrawerVisible
                 ? t('Collection.closeDoc')
-                : t('Collection.viewDoc')}
+                : t('Collection.viewDoc')
+              }
             </Button>
           </div>
         }
@@ -912,8 +935,11 @@ const ProfessionalCollection: React.FC = () => {
         onClose={closeDrawer}
         open={drawerVisible}
         getContainer={false}
-        rootStyle={{ position: 'absolute' }}
+        rootStyle={{
+          position: 'fixed',
+        }}
       >
+        {/* 渲染任务内容 */}
         {drawerVisible && getTaskContent()}
       </Drawer>
 
@@ -975,6 +1001,13 @@ const ProfessionalCollection: React.FC = () => {
         width={750}
         onClose={() => setDetailVisible(false)}
         open={detailVisible}
+        footer={
+          <div className="flex justify-start">
+            <Button onClick={() => setDetailVisible(false)}>
+              {t('common.close')}
+            </Button>
+          </div>
+        }
       >
         {detailVisible && currentTask && (
           <TaskDetail

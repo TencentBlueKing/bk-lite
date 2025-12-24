@@ -45,12 +45,22 @@ discover_redis() {
     # 获取主机内网 IP 地址
     bk_host_innerip=$(hostname -I | awk '{print $1}')  # 获取第一个内网 IP 地址
 
+    # 用于记录已处理的端口，实现去重
+    declare -A processed_ports
+
     for proc in "${procs[@]}"; do
         local pid=$(echo $proc | cut -d: -f1)
         local ip=$(echo $proc | cut -d: -f2)
         local port=$(echo $proc | cut -d: -f3)
         local redis_cli=$(echo $proc | cut -d: -f4)
         local install_path=$(echo $proc | cut -d: -f5)
+
+        # 根据端口去重，如果该端口已处理过则跳过
+        if [[ -n "${processed_ports[$port]}" ]]; then
+            continue
+        fi
+        processed_ports[$port]=1
+
         # 替换为绝对路径
         install_path=$(readlink -f "$install_path")
 
