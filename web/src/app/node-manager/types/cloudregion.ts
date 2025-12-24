@@ -145,6 +145,7 @@ interface ServiceItem {
 interface CloudRegionItem extends BaseEntityWithDescription {
   icon: string;
   services?: ServiceItem[];
+  originalName?: string;
   tagList?: Array<{
     name: string;
     color: string;
