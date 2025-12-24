@@ -172,6 +172,7 @@
     "inProgress": "In progress",
     "completed": "Completed",
     "failed": "Training failure",
+    "killed": "Training terminated",
     "maxEvals": "Maximum number of training rounds",
     "maxEvalsMsg": "Please enter the maximum number of training rounds",
     "hyperopt": "Hyperparameterization",

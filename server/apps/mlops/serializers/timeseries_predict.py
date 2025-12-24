@@ -15,21 +15,45 @@ class TimeSeriesPredictDatasetSerializer(AuthSerializer):
 
 
 class TimeSeriesPredictTrainJobSerializer(AuthSerializer):
-    """时间序列预测训练任务序列化器"""
+    """
+    时间序列预测训练任务序列化器
+    
+    使用双字段方案：
+    - hyperopt_config: JSONField，存储在数据库，供API快速返回
+    - config_url: FileField，自动同步到MinIO（Model.save()处理）
+    """
     permission_key = "dataset.timeseries_predict_train_job"
 
     class Meta:
         model = TimeSeriesPredictTrainJob
-        fields = "__all__"
+        fields = '__all__'
+        extra_kwargs = {
+            'config_url': {
+                'write_only': True,  # 前端不需要看到 MinIO 路径
+                'required': False
+            }
+        }
 
 
 class TimeSeriesPredictTrainHistorySerializer(AuthSerializer):
-    """时间序列预测训练历史序列化器"""
+    """
+    时间序列预测训练历史序列化器
+    
+    使用双字段方案：
+    - hyperopt_config: JSONField，存储在数据库，供API快速返回
+    - config_url: FileField，自动同步到MinIO（Model.save()处理）
+    """
     permission_key = "dataset.timeseries_predict_train_history"
 
     class Meta:
         model = TimeSeriesPredictTrainHistory
         fields = "__all__"
+        extra_kwargs = {
+            'config_url': {
+                'write_only': True,  # 前端不需要看到 MinIO 路径
+                'required': False
+            }
+        }
 
 
 class TimeSeriesPredictTrainDataSerializer(AuthSerializer):

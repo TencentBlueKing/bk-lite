@@ -7,7 +7,6 @@ import TrainTaskHistory from "./traintaskHistory";
 import TrainTaskDetail from "./traintaskDetail";
 import { useEffect, useMemo, useState } from "react";
 import styles from './index.module.scss'
-import { LeftOutlined } from "@ant-design/icons";
 
 const TrainTaskDrawer = ({ open, onCancel, selectId, activeTag }:
   {
@@ -17,7 +16,7 @@ const TrainTaskDrawer = ({ open, onCancel, selectId, activeTag }:
     activeTag: string[]
   }) => {
   const { t } = useTranslation();
-  const { getTrainTaskState } = useMlopsTaskApi();
+  const { getTrainTaskState, getTimeseriesPredictModelURL } = useMlopsTaskApi();
   const [showList, setShowList] = useState<boolean>(true);
   const [tableLoading, setTableLoading] = useState<boolean>(false);
   const [historyData, setHistoryData] = useState<any[]>([]);
@@ -54,6 +53,20 @@ const TrainTaskDrawer = ({ open, onCancel, selectId, activeTag }:
     setShowList(false);
   };
 
+  const downloadModel = async (record: any) => {
+    try {
+      message.info("等待数据包中")
+      const data = await getTimeseriesPredictModelURL(record.run_id);
+      const link = document.createElement('a');
+      link.href = data.download.url;  // MinIO 预签名 URL
+      link.download = data.download.filename;  // 建议的文件名
+      link.click();
+    } catch (e) {
+      console.error(e);
+      message.error(t(`common.errorFetch`))
+    }
+  };
+
   return (
     <Drawer
       className={`${styles.drawer}`}
@@ -67,14 +80,18 @@ const TrainTaskDrawer = ({ open, onCancel, selectId, activeTag }:
       footer={!showList ? [
         <Button
           key='back'
-          type="text"
-          icon={<LeftOutlined />}
+          type="primary"
+          // icon={<LeftOutlined />}
           onClick={() => setShowList(true)}
-          className="back-to-list-btn"
+          className="float-right"
         >
           返回列表
         </Button>
-      ] : null}
+      ] : [
+        <Button key="refresh" type="primary" className="float-right" disabled={tableLoading} onClick={getStateData}>
+          刷新列表
+        </Button>
+      ]}
     >
       <div className="drawer-content">
         {showList ?
@@ -82,6 +99,7 @@ const TrainTaskDrawer = ({ open, onCancel, selectId, activeTag }:
             data={historyData}
             loading={tableLoading}
             openDetail={openDetail}
+            downloadModel={downloadModel}
           /> :
           <TrainTaskDetail activeKey={key} backToList={() => setShowList(true)} metricData={currentDetail} />}
       </div>

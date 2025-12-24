@@ -61,7 +61,7 @@ const ReleaseModal = forwardRef<ModalRef, ReleaseModalProps>(({ trainjobs, activ
       };
       
       // 只有 anomaly 类型才设置默认阈值
-      if (tagName === 'anomaly') {
+      if (tagName === 'anomaly_detection') {
         defaultValues.anomaly_threshold = 0.5;
       }
       
@@ -69,7 +69,8 @@ const ReleaseModal = forwardRef<ModalRef, ReleaseModalProps>(({ trainjobs, activ
     } else {
       const editValues: Record<string, any> = {
         ...formData,
-        status: formData.status === 'active' ? true : false
+        status: formData.status === 'active' ? true : false,
+        port: formData.port || undefined // port 为 null 时设置为 undefined，让表单为空
       };
       
       formRef.current.setFieldsValue(editValues);
@@ -81,7 +82,7 @@ const ReleaseModal = forwardRef<ModalRef, ReleaseModalProps>(({ trainjobs, activ
     const [tagName] = activeTag;
     
     switch (tagName) {
-      case 'anomaly':
+      case 'anomaly_detection':
         return (
           <>
             <Form.Item
@@ -163,7 +164,7 @@ const ReleaseModal = forwardRef<ModalRef, ReleaseModalProps>(({ trainjobs, activ
   };
 
   const handleAddMap: Record<string, ((params: any) => Promise<void>) | null> = {
-    'anomaly': async (params: any) => {
+    'anomaly_detection': async (params: any) => {
       await addAnomalyServings(params);
     },
     'rasa': null, // RASA 类型留空
@@ -179,7 +180,7 @@ const ReleaseModal = forwardRef<ModalRef, ReleaseModalProps>(({ trainjobs, activ
   };
 
   const handleUpdateMap: Record<string, ((id: number, params: any) => Promise<void>) | null> = {
-    'anomaly': async (id: number, params: any) => {
+    'anomaly_detection': async (id: number, params: any) => {
       await updateAnomalyServings(id, params);
     },
     'rasa': null, // RASA 类型留空
@@ -257,6 +258,18 @@ const ReleaseModal = forwardRef<ModalRef, ReleaseModalProps>(({ trainjobs, activ
             rules={[{ required: true, message: t('common.inputMsg') }]}
           >
             <Input placeholder={t(`model-release.inputVersionMsg`)} />
+          </Form.Item>
+          
+          <Form.Item
+            name='port'
+            label={'端口'}
+            extra={
+              type === 'edit' && formData?.container_info?.port
+                ? `当前运行端口：${formData.container_info.port}${formData.port ? ' (用户指定)' : ' (自动分配)'}`
+                : '留空则由 Docker 自动分配端口'
+            }
+          >
+            <InputNumber className="w-full" placeholder={'请输入端口号'} min={1} max={65535} />
           </Form.Item>
           
           <Form.Item
