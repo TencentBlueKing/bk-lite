@@ -30,18 +30,17 @@
     }
   }
 }
-.segmented {
-  :global {
-    .ant-segmented {
-      background: transparent;
-      color: var(--color-text-1);
-      .ant-segmented-item {
-        margin-right: 8px;
-        padding: 3px 6px !important;
-      }
-      .ant-segmented-item-selected {
-        color: var(--color-primary);
-      }
-    }
-  }
+
+.segmented :global(.sub-layout-segmented.ant-segmented) {
+  background: transparent;
+  color: var(--color-text-1);
+}
+
+.segmented :global(.sub-layout-segmented .ant-segmented-item) {
+  margin-right: 8px;
+  padding: 3px 6px !important;
+}
+
+.segmented :global(.sub-layout-segmented .ant-segmented-item-selected) {
+  color: var(--color-primary);
 }

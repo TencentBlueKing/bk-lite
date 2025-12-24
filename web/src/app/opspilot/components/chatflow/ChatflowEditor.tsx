@@ -45,7 +45,7 @@ import { useNodeDrop } from './hooks/useNodeDrop';
 
 const ChatflowEditor = forwardRef<ChatflowEditorRef, ChatflowEditorProps>(({ onSave, initialData }, ref) => {
   const { t } = useTranslation();
-  const reactFlowWrapper = useRef<HTMLDivElement>(null);
+  const reactFlowWrapper = useRef<HTMLDivElement>(null as any);
   const [reactFlowInstance, setReactFlowInstance] = useState<any>(null);
   const [selectedNode, setSelectedNode] = useState<ChatflowNode | null>(null);
   const [isConfigDrawerVisible, setIsConfigDrawerVisible] = useState(false);

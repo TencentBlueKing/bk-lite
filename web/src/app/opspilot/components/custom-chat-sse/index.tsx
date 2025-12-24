@@ -55,7 +55,7 @@ const CustomChatSSE: React.FC<CustomChatSSEProps> = ({
   }
 
   const authContext = useAuth();
-  const token = session?.user?.token || authContext?.token || null;
+  const token = (session?.user as any)?.token || authContext?.token || null;
 
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [value, setValue] = useState('');

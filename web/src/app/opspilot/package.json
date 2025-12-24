@@ -10,7 +10,6 @@
     "@ag-ui/core": "^0.0.41",
     "@ant-design/charts": "^2.2.3",
     "@ant-design/x": "1.0.0-alpha.12",
-    "@antv/g6": "^4.8.25",
     "aieditor": "^1.3.3",
     "docx-preview": "^0.3.4",
     "highlight.js": "^11.11.0",

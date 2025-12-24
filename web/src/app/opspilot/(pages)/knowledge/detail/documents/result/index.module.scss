@@ -8,23 +8,6 @@
   background: var(--color-fill-2);
   transition: all 0.2s ease;
   
-  :global {
-    .ant-card-body {
-      height: 115px;
-      position: relative;
-      padding-bottom: 15px;
-    }
-    
-    .ant-card-head {
-      padding: 8px 12px;
-      min-height: auto;
-    }
-    
-    .ant-card-head-title {
-      padding: 0;
-    }
-  }
-  
   span {
     color: var(--color-text-3);
   }
@@ -50,6 +33,21 @@
     box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
     transform: translateY(-1px);
   }
+}
+
+.resultCard :global(.ant-card-body) {
+  height: 115px;
+  position: relative;
+  padding-bottom: 15px;
+}
+
+.resultCard :global(.ant-card-head) {
+  padding: 8px 12px;
+  min-height: auto;
+}
+
+.resultCard :global(.ant-card-head-title) {
+  padding: 0;
 }
 
 .selectedCard {

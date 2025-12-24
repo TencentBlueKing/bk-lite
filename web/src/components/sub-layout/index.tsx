@@ -233,6 +233,7 @@ const WithSideMenuLayout: React.FC<WithSideMenuLayoutProps> = ({
           {menuItems.length > 0 ? (
             <>
               <Segmented
+                className="sub-layout-segmented"
                 options={segmentedOptions}
                 value={selectedKey}
                 onChange={handleSegmentChange}

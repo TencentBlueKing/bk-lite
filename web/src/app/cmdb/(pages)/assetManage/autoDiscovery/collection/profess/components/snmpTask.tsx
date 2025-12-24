@@ -32,7 +32,7 @@ const SNMPTask: React.FC<SNMPTaskFormProps> = ({
   editId,
 }) => {
   const { t } = useTranslation();
-  const baseRef = useRef<BaseTaskRef>(null);
+  const baseRef = useRef<BaseTaskRef>(null as any);
   const [snmpVersion, setSnmpVersion] = useState('v2');
   const [securityLevel, setSecurityLevel] = useState('authNoPriv');
   const localeContext = useLocale();
