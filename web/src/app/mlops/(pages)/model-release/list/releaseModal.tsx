@@ -61,7 +61,7 @@ const ReleaseModal = forwardRef<ModalRef, ReleaseModalProps>(({ trainjobs, activ
       };
       
       // 只有 anomaly 类型才设置默认阈值
-      if (tagName === 'anomaly') {
+      if (tagName === 'anomaly_detection') {
         defaultValues.anomaly_threshold = 0.5;
       }
       
@@ -81,7 +81,7 @@ const ReleaseModal = forwardRef<ModalRef, ReleaseModalProps>(({ trainjobs, activ
     const [tagName] = activeTag;
     
     switch (tagName) {
-      case 'anomaly':
+      case 'anomaly_detection':
         return (
           <>
             <Form.Item
@@ -163,7 +163,7 @@ const ReleaseModal = forwardRef<ModalRef, ReleaseModalProps>(({ trainjobs, activ
   };
 
   const handleAddMap: Record<string, ((params: any) => Promise<void>) | null> = {
-    'anomaly': async (params: any) => {
+    'anomaly_detection': async (params: any) => {
       await addAnomalyServings(params);
     },
     'rasa': null, // RASA 类型留空
@@ -179,7 +179,7 @@ const ReleaseModal = forwardRef<ModalRef, ReleaseModalProps>(({ trainjobs, activ
   };
 
   const handleUpdateMap: Record<string, ((id: number, params: any) => Promise<void>) | null> = {
-    'anomaly': async (id: number, params: any) => {
+    'anomaly_detection': async (id: number, params: any) => {
       await updateAnomalyServings(id, params);
     },
     'rasa': null, // RASA 类型留空

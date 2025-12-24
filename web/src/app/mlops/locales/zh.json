@@ -172,6 +172,7 @@
     "inProgress": "进行中",
     "completed": "已完成",
     "failed": "训练失败",
+    "killed": "训练终止",
     "maxEvals": "最大训练轮次",
     "maxEvalsMsg": "请输入最大训练轮次",
     "hyperopt": "超参数",

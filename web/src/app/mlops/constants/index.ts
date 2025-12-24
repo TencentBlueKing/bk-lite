@@ -100,11 +100,57 @@ const LOG_CLUSTERING_ALGORITHMS_TYPE: Record<string, any> = {
 };
 
 const TIMESERIES_PREDICT_ALGORITHMS_PARAMS: Record<string, AlgorithmParam[]> = {
-  'Prophet': []
+  // 'Prophet': []
+  'GradientBoosting': [
+    {
+      name: 'metric', type: 'choice', default: ['none'], options: [
+        { label: 'rmse', value: 'rmse' },
+        { label: 'mae', value: 'mae' },
+        { label: 'mape', value: 'mape' }
+      ]
+    },
+    {
+      name: 'learning_rate', type: 'randint', default: [0.01, 0.2]
+    },
+    {
+      name: 'max_depth', type: 'randint', default: [3, 10]
+    },
+    {
+      name: 'min_samples_split', type: 'randint', default: [2, 10]
+    },
+    {
+      name: 'min_samples_leaf', type: 'randint', default: [1, 4]
+    },
+    {
+      name: 'subsample', type: 'randint', default: [0.7, 1.0]
+    },
+    {
+      name: 'lag_features', type: 'randint', default: [6, 12]
+    },
+    { name: 'n_estimators', type: 'randint', default: [100, 500] },
+    {
+      name: 'feature_engineering', type: 'choice', default: ['false'],
+      options: [
+        { label: 'true', value: 'true' },
+        { label: 'false', value: 'false' },
+      ]
+    }
+  ]
 };
 
 const TIMESERIES_PREDICT_ALGORITHMS_TYPE: Record<string, any> = {
-  'Prophet': {}
+  // 'Prophet': {},
+  'GradientBoosting': {
+    metric: 'choice',
+    learning_rate: 'randint',
+    max_depth: 'randint',
+    min_samples_split: 'randint',
+    min_samples_leaf: 'randint',
+    subsample: 'randint',
+    lag_features: 'randint',
+    n_estimators: 'randint',
+    feature_engineering: 'choice'
+  }
 };
 
 const ALGORITHMS_PARAMS: Record<string, AlgorithmParam[]> = {
@@ -433,7 +479,7 @@ const POLICIES_OPTIONS: Option[] = [
 ];
 
 const TRAINJOB_MAP: Record<string, string> = {
-  'anomaly': 'anomaly_detection_train_jobs',
+  'anomaly_detection': 'anomaly_detection_train_jobs',
   'classification': 'classification_train_jobs',
   'timeseries_predict': 'timeseries_predict_train_jobs',
   'log_clustering': 'log_clustering_train_jobs',

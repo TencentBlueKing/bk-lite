@@ -2,44 +2,35 @@
 # 时间序列模型训练脚本
 # 功能：从 MinIO 下载训练数据集和配置文件，解压并训练时间序列模型，结果记录到 MLflow
 # 
-# 用法1 (位置参数): ./train-model.sh [BUCKET_NAME] [DATASET_NAME] [CONFIG_NAME]
+# 用法: ./train-model.sh [BUCKET_NAME] [DATASET_NAME] [CONFIG_NAME]
 # 示例: ./train-model.sh my-bucket timeseries_data.zip train.json
-#
-# 用法2 (JSON参数): ./train-model.sh '{"MINIO_BUCKET":"...","DATASET_NAME":"...","CONFIG_NAME":"..."}'
-# 示例: ./train-model.sh '{"MINIO_BUCKET":"my-bucket","DATASET_NAME":"data.zip","CONFIG_NAME":"train.json"}'
+# 
+# 参数说明：
+#   BUCKET_NAME   - MinIO 存储桶名称 (默认: datasets)
+#   DATASET_NAME  - 数据集文件名 (默认: timeseries_train_data.zip)
+#   CONFIG_NAME   - 配置文件名 (可选，不提供则使用本地 train.json)
+# 
 # exec > >(tee log_file.txt) 2>&1
 # set -x
 set -e  # 遇到错误立即退出
 
 # ==================== 配置参数 ====================
-MINIO_ALIAS="${MINIO_ALIAS:-myminio}"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
+MC_BIN="${MC_BIN:-${PROJECT_ROOT}/mc}"
 DOWNLOAD_DIR="${DOWNLOAD_DIR:-${SCRIPT_DIR}/data/downloads}"
 EXTRACT_DIR="${EXTRACT_DIR:-${SCRIPT_DIR}/data/datasets}"
 CONFIG_DIR="${CONFIG_DIR:-${SCRIPT_DIR}/data/configs}"
 
-# ==================== 参数解析（支持JSON和位置参数） ====================
-# 检测第一个参数是否为 JSON 格式
-if [[ "$1" =~ ^\{.*\}$ ]]; then
-    # JSON 参数模式
-    log_info "检测到 JSON 参数格式"
-    JSON_INPUT="$1"
-    
-    # 从 JSON 中提取参数（如果不存在则使用环境变量或默认值）
-    MINIO_BUCKET=$(echo "${JSON_INPUT}" | jq -r '.minio_bucket // empty')
-    DATASET_NAME=$(echo "${JSON_INPUT}" | jq -r '.dataset_name // empty')
-    CONFIG_NAME=$(echo "${JSON_INPUT}" | jq -r '.config_name // empty')
-    
-    # 应用默认值（如果 JSON 中未提供）
-    MINIO_BUCKET="${MINIO_BUCKET:-${MINIO_BUCKET:-datasets}}"
-    DATASET_NAME="${DATASET_NAME:-${DATASET_NAME:-timeseries_train_data.zip}}"
-    # CONFIG_NAME 保持为空或 JSON 提供的值
-else
-    # 传统位置参数模式
-    MINIO_BUCKET="${1:-${MINIO_BUCKET:-datasets}}"
-    DATASET_NAME="${2:-${DATASET_NAME:-timeseries_train_data.zip}}"
-    CONFIG_NAME="$3"
-fi
+# MinIO 连接配置（通过环境变量配置）
+MINIO_ENDPOINT="${MINIO_ENDPOINT:-}"
+MINIO_ACCESS_KEY="${MINIO_ACCESS_KEY:-}"
+MINIO_SECRET_KEY="${MINIO_SECRET_KEY:-}"
+
+# ==================== 参数解析 ====================
+MINIO_BUCKET="${1:-${MINIO_BUCKET:-datasets}}"
+DATASET_NAME="${2:-${DATASET_NAME:-timeseries_train_data.zip}}"
+CONFIG_NAME="$3"
 
 # MLflow 配置
 MLFLOW_TRACKING_URI="${MLFLOW_TRACKING_URI:-http://127.0.0.1:15000}"
@@ -61,18 +52,37 @@ function check_command() {
 }
 
 # ==================== 环境检查 ====================
-log_info "检查必要的命令是否存在..."
-check_command mc
-check_command uv
-check_command unzip
-check_command jq
+log_info "检查必要的命令和文件是否存在..."
 
-# 检查 mc 别名是否配置
-if ! mc alias list | grep -q "^${MINIO_ALIAS}"; then
-    log_error "MinIO 别名 '${MINIO_ALIAS}' 未配置"
-    log_error "请先运行: mc alias set ${MINIO_ALIAS} http://your-minio-server:9000 ACCESS_KEY SECRET_KEY"
+# 检查 mc 二进制文件
+if [ ! -f "${MC_BIN}" ]; then
+    log_error "MinIO Client 二进制文件不存在: ${MC_BIN}"
+    log_error "请确保 mc 二进制文件已放置在项目根目录"
     exit 1
 fi
+
+if [ ! -x "${MC_BIN}" ]; then
+    log_error "MinIO Client 二进制文件不可执行: ${MC_BIN}"
+    log_error "请运行: chmod +x ${MC_BIN}"
+    exit 1
+fi
+
+log_info "使用 MinIO Client: ${MC_BIN}"
+
+# 检查 MinIO 连接配置
+if [ -z "${MINIO_ENDPOINT}" ] || [ -z "${MINIO_ACCESS_KEY}" ] || [ -z "${MINIO_SECRET_KEY}" ]; then
+    log_error "MinIO 连接信息未配置"
+    log_error "请设置以下环境变量："
+    log_error "  MINIO_ENDPOINT=http://your-minio-server:9000"
+    log_error "  MINIO_ACCESS_KEY=your-access-key"
+    log_error "  MINIO_SECRET_KEY=your-secret-key"
+    exit 1
+fi
+
+log_info "MinIO Endpoint: ${MINIO_ENDPOINT}"
+
+check_command uv
+check_command unzip
 
 # ==================== 创建目录 ====================
 log_info "创建必要的目录..."
@@ -84,7 +94,11 @@ mkdir -p "${CONFIG_DIR}"
 log_info "从 MinIO 下载数据集: ${MINIO_BUCKET}/${DATASET_NAME}"
 DATASET_FILE="${DOWNLOAD_DIR}/$(basename ${DATASET_NAME})"
 
-if mc cp "${MINIO_ALIAS}/${MINIO_BUCKET}/${DATASET_NAME}" "${DATASET_FILE}"; then
+export MC_HOST_minio="${MINIO_ENDPOINT}"
+export MC_ACCESS_KEY="${MINIO_ACCESS_KEY}"
+export MC_SECRET_KEY="${MINIO_SECRET_KEY}"
+
+if "${MC_BIN}" cp "minio/${MINIO_BUCKET}/${DATASET_NAME}" "${DATASET_FILE}"; then
     log_info "数据集下载成功: ${DATASET_FILE}"
 else
     log_error "数据集下载失败"
@@ -106,7 +120,7 @@ if [ -n "$3" ]; then
     log_info "从 MinIO 下载配置文件: ${MINIO_BUCKET}/${CONFIG_NAME}"
     CONFIG_FILE="${CONFIG_DIR}/$(basename ${CONFIG_NAME})"
     
-    if mc cp "${MINIO_ALIAS}/${MINIO_BUCKET}/${CONFIG_NAME}" "${CONFIG_FILE}" 2>/dev/null; then
+    if "${MC_BIN}" cp "minio/${MINIO_BUCKET}/${CONFIG_NAME}" "${CONFIG_FILE}" 2>/dev/null; then
         log_info "配置文件下载成功: ${CONFIG_FILE}"
     else
         log_error "配置文件下载失败: ${MINIO_BUCKET}/${CONFIG_NAME}"
@@ -134,7 +148,7 @@ log_info "MLflow Tracking URI: ${MLFLOW_TRACKING_URI}"
 
 export MLFLOW_TRACKING_URI="${MLFLOW_TRACKING_URI}"
 
-# 构建训练命令
+# 构建训练命令（使用 uv run，会有 preparing packages 延迟）
 TRAIN_CMD="uv run classify_timeseries_server train \
     --dataset-path \"${EXTRACT_DIR}\" \
     --config \"${CONFIG_FILE}\""
