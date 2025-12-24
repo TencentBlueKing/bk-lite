@@ -21,6 +21,7 @@ async def publish_metrics_to_nats(
     将采集结果推送到 NATS 的 metrics 主题
 
     推送格式：InfluxDB Line Protocol（与 Telegraf 保持一致）
+    每条指标数据单独发送一次消息
 
     Args:
         ctx: ARQ 上下文
@@ -32,45 +33,41 @@ async def publish_metrics_to_nats(
         from core.nats import NATSClient, NATSConfig
         import os
 
-        # 获取 NATS Metric Topic 前缀（从环境变量读取，默认为 metric）
+        # 获取 NATS Metric Topic 前缀（从环境变量读取，默认为 metrics）
         metric_topic_prefix = os.getenv('NATS_METRIC_TOPIC', 'metrics')
 
         # 获取任务类型（monitor_type 或 plugin_name）
         task_type = params.get('monitor_type') or params.get('plugin_name', 'unknown')
 
         # 构建 subject: {prefix}.{task_type}
-        # 例如: metric.vmware, metric.mysql, metric.host 等
+        # 例如: metrics.vmware, metrics.mysql, metrics.host 等
         subject = f"{metric_topic_prefix}.{task_type}"
 
         logger.info(f"[NATS Helper] Preparing to publish to subject: {subject}")
 
         # 将 Prometheus 格式转换为 InfluxDB Line Protocol 格式
-        influx_data = convert_prometheus_to_influx(metrics_data, params)
+        influx_lines = convert_prometheus_to_influx(metrics_data, params)
 
-        if not influx_data:
+        if not influx_lines:
             logger.warning(f"[NATS Helper] No data to publish for task {task_id}")
             return
 
-        logger.info(f"[NATS Helper] Converted {len(metrics_data)} bytes Prometheus data to {len(influx_data)} bytes InfluxDB format")
+        # 统计信息
+        total_lines = len(influx_lines)
+        total_bytes = sum(len(line.encode('utf-8')) for line in influx_lines)
 
-        # 打印前5行指标数据预览（INFO级别，便于生产环境查看）
-        influx_lines = influx_data.split('\n')
-        if influx_lines:
-            preview_count = min(5, len(influx_lines))
-            preview_lines = influx_lines[:preview_count]
+        logger.info(f"[NATS Helper] Converted {len(metrics_data)} bytes Prometheus data to {total_lines} lines ({total_bytes} bytes)")
+
+        # 打印前3行指标数据预览
+        preview_count = min(3, len(influx_lines))
+        if preview_count > 0:
             logger.info(f"[NATS Helper] Metrics preview (first {preview_count} lines):")
-            for i, line in enumerate(preview_lines, 1):
-                if line.strip():  # 跳过空行
-                    logger.info(f"[NATS Helper]   {i}. {line[:120]}{'...' if len(line) > 120 else ''}")
-            if len(influx_lines) > preview_count:
-                logger.info(f"[NATS Helper] ... and {len(influx_lines) - preview_count} more lines")
+            for i, line in enumerate(influx_lines[:preview_count], 1):
+                logger.info(f"[NATS Helper]   {i}. {line[:150]}{'...' if len(line) > 150 else ''}")
+            if total_lines > preview_count:
+                logger.info(f"[NATS Helper] ... and {total_lines - preview_count} more lines")
 
-        # 打印环境变量用于调试
-        logger.info(f"[NATS Helper] Environment: NATS_URLS={os.getenv('NATS_URLS', 'NOT SET')}")
-        logger.info(f"[NATS Helper] Environment: NATS_TLS_ENABLED={os.getenv('NATS_TLS_ENABLED', 'NOT SET')}")
-        logger.info(f"[NATS Helper] Environment: NATS_TLS_CA_FILE={os.getenv('NATS_TLS_CA_FILE', 'NOT SET')}")
-
-        # 创建 NATS 配置并打印调试信息
+        # 创建 NATS 配置
         nats_config = NATSConfig.from_env()
         logger.info(f"[NATS Helper] NATS config: servers={nats_config.servers}, tls_enabled={nats_config.tls_enabled}, user={nats_config.user}")
 
@@ -78,8 +75,7 @@ async def publish_metrics_to_nats(
         try:
             logger.info(f"[NATS Helper] Attempting to connect to NATS...")
             async with NATSClient(nats_config) as nats_client:
-                logger.info(f"[NATS Helper] NATS client async with entered")
-                logger.info(f"[NATS Helper] NATS client connected: {nats_client.is_connected}, nc={nats_client.nc}")
+                logger.info(f"[NATS Helper] NATS client connected: {nats_client.is_connected}")
 
                 # 检查连接状态
                 if not nats_client.nc:
@@ -88,10 +84,20 @@ async def publish_metrics_to_nats(
                 if nats_client.nc.is_closed:
                     raise ConnectionError("NATS connection is closed")
 
-                # 直接推送 InfluxDB Line Protocol 格式的字符串（不是 JSON）
-                await nats_client.nc.publish(subject, influx_data.encode('utf-8'))
+                # 逐行发送消息（与 Telegraf 保持一致）
+                success_count = 0
+                for line in influx_lines:
+                    try:
+                        await nats_client.nc.publish(subject, line.encode('utf-8'))
+                        success_count += 1
+                    except Exception as pub_err:
+                        logger.error(f"[NATS Helper] Failed to publish line: {line[:100]}, error: {pub_err}")
 
-                logger.info(f"[NATS Helper] Metrics published to '{subject}' for task {task_id}, size: {len(influx_data)} bytes")
+                logger.info(f"[NATS Helper] Successfully published {success_count}/{total_lines} metrics to '{subject}' for task {task_id}")
+
+                if success_count < total_lines:
+                    logger.warning(f"[NATS Helper] Failed to publish {total_lines - success_count} metrics")
+
         except ConnectionError as ce:
             logger.error(f"[NATS Helper] Connection error: {ce}")
             raise
@@ -103,36 +109,57 @@ async def publish_metrics_to_nats(
         logger.error(f"[NATS Helper] Failed to publish metrics: {e}\n{traceback.format_exc()}")
 
 
-def convert_prometheus_to_influx(prometheus_data: str, params: Dict[str, Any]) -> str:
+def convert_prometheus_to_influx(prometheus_data: str, params: Dict[str, Any]) -> list:
     """
     将 Prometheus 格式转换为 InfluxDB Line Protocol 格式
 
     Prometheus 格式:
+        # TYPE metric_name gauge
         metric_name{label1="value1",label2="value2"} value timestamp
 
     InfluxDB Line Protocol 格式:
-        metric_name,tag1=value1,tag2=value2 field=value timestamp
+        metric_name,tag1=value1,tag2=value2 gauge=value timestamp
+        (field 名称从 TYPE 注释中提取，保持与 Telegraf 行为一致)
 
     Args:
         prometheus_data: Prometheus 格式的指标数据
         params: 采集参数（包含从 API 传递的 tags）
 
     Returns:
-        InfluxDB Line Protocol 格式的数据
+        InfluxDB Line Protocol 格式的数据列表（每行一条）
     """
     if not prometheus_data or not prometheus_data.strip():
-        return ""
+        return []
 
     lines = []
 
     # 获取通用 tags（从 API 传递的参数）
     common_tags = _build_common_tags(params)
 
+    # 用于记录每个指标的类型（从 TYPE 注释中提取）
+    metric_types = {}  # {metric_name: field_type}
+    current_type = None
+
     for line in prometheus_data.split('\n'):
         line = line.strip()
 
-        # 跳过注释和空行
-        if not line or line.startswith('#'):
+        # 跳过空行
+        if not line:
+            continue
+
+        # 解析 TYPE 注释，提取指标类型
+        if line.startswith('# TYPE '):
+            # 格式: # TYPE metric_name gauge|counter|histogram|summary
+            parts = line.split()
+            if len(parts) >= 4:
+                metric_name = parts[2]
+                metric_type = parts[3]  # gauge, counter, histogram, summary 等
+                metric_types[metric_name] = metric_type
+                current_type = metric_type
+            continue
+
+        # 跳过其他注释（HELP 等）
+        if line.startswith('#'):
             continue
 
         try:
@@ -177,7 +204,7 @@ def convert_prometheus_to_influx(prometheus_data: str, params: Dict[str, Any]) -
                             tags[key] = val
 
             # 格式化字段值（InfluxDB 需要类型标识）
-            # 整数加 'i' 后缀，浮点数保持原样，字符串需要引号
+            # 整数加 'i' 后缀，浮点数保持原样
             try:
                 # 尝试转换为数字
                 if '.' in value or 'e' in value.lower():
@@ -208,7 +235,6 @@ def convert_prometheus_to_influx(prometheus_data: str, params: Dict[str, Any]) -
                         timestamp = str(ts)
                     else:
                         # 其他长度的时间戳，尝试标准化为纳秒
-                        # 假设是毫秒，如果太大则认为已经是纳秒
                         if ts > 9999999999999:  # 大于13位，可能是纳秒或更高精度
                             # 截断到纳秒精度（19位）
                             timestamp = str(ts)[:19].ljust(19, '0')
@@ -219,11 +245,16 @@ def convert_prometheus_to_influx(prometheus_data: str, params: Dict[str, Any]) -
                     logger.warning(f"[NATS Helper] Invalid timestamp: {timestamp}")
                     timestamp = ""
 
+            # 确定 field 名称：
+            # 1. 优先使用 TYPE 注释中声明的类型（gauge, counter 等）
+            # 2. 如果没有 TYPE 注释，使用 "value"
+            # 这样可以保持与 Telegraf 的行为一致：cpu_usage_average + gauge = cpu_usage_average_gauge
+            field_name = metric_types.get(metric_name, current_type if current_type else "value")
+
             # 构建 InfluxDB Line Protocol
             # 格式: measurement,tag1=value1,tag2=value2 field=value timestamp
-            # 过滤掉空值的 tags
             tag_str = ','.join(f"{k}={v}" for k, v in tags.items() if v)
-            influx_line = f"{metric_name},{tag_str} value={field_value}"
+            influx_line = f"{metric_name},{tag_str} {field_name}={field_value}"
 
             if timestamp:
                 influx_line += f" {timestamp}"
@@ -234,14 +265,14 @@ def convert_prometheus_to_influx(prometheus_data: str, params: Dict[str, Any]) -
             logger.debug(f"[NATS Helper] Failed to parse line: {line}, error: {e}")
             continue
 
-    return '\n'.join(lines)
+    return lines
 
 
 def _build_common_tags(params: Dict[str, Any]) -> Dict[str, str]:
     """
     构建通用的 tags（从 API 传递的参数中获取）
 
-    优先使用 params['tags'] 中 Telegraf 传递的标签，
+    优先使用 params['tags'] 中传递的标签，
     如果没有则使用默认值
 
     核心 Tags（5个）：
@@ -260,27 +291,18 @@ def _build_common_tags(params: Dict[str, Any]) -> Dict[str, str]:
     # 从 API 传递的 tags
     api_tags = params.get('tags', {})
 
-    # 如果 API 传递了完整的 tags，直接使用
-    if api_tags.get('agent_id'):
-        tags = {
-            'agent_id': api_tags.get('agent_id', ''),
-            'instance_id': api_tags.get('instance_id', ''),
-            'instance_type': api_tags.get('instance_type', ''),
-            'collect_type': api_tags.get('collect_type', ''),
-            'config_type': api_tags.get('config_type', ''),
-        }
-    else:
-        # 兼容旧的调用方式（没有传递 tags）
-        host = params.get('host', params.get('node_id', 'unknown'))
-        monitor_type = params.get('monitor_type', params.get('plugin_name', 'unknown'))
+    # 获取基础参数用于生成默认值
+    host = params.get('host', params.get('node_id', 'unknown'))
+    monitor_type = params.get('monitor_type', params.get('plugin_name', 'unknown'))
 
-        tags = {
-            'agent_id': f"stargazer-{host}",
-            'instance_id': host,
-            'instance_type': monitor_type,
-            'collect_type': 'monitor',
-            'config_type': 'auto',
-        }
+    # 构建 tags：优先使用用户传递的值，没有的用默认值
+    tags = {
+        'agent_id': api_tags.get('agent_id') or f"stargazer-{host}",
+        'instance_id': api_tags.get('instance_id') or host,
+        'instance_type': api_tags.get('instance_type') or monitor_type,
+        'collect_type': api_tags.get('collect_type') or 'monitor',
+        'config_type': api_tags.get('config_type') or 'auto',
+    }
 
     # 清理 tags 中的特殊字符
     cleaned_tags = {}
