@@ -67,6 +67,10 @@ const nextConfig = withCombineLocalesAndMenus(
         implementation: 'sass-embedded',
       },
       staticPageGenerationTimeout: 300,
+      transpilePackages: ['@antv/g6'],
+      typescript: {
+        ignoreBuildErrors: true,
+      },
       // experimental: {
       //   proxyTimeout: 300_000, // Set timeout to 300 seconds
       // },

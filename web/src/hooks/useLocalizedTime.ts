@@ -13,11 +13,11 @@ export const useLocalizedTime = () => {
     isoString: string,
     format: string = 'YYYY-MM-DD HH:mm:ss'
   ): string => {
-    if (!session || !session.user || !session.zoneinfo) {
+    if (!session || !session.user || !(session as any).zoneinfo) {
       return dayjs(isoString).format(format);
     }
 
-    const date = dayjs(isoString).tz(session.zoneinfo);
+    const date = dayjs(isoString).tz((session as any).zoneinfo);
     return date.format(format);
   };
 

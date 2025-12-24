@@ -1,11 +1,6 @@
 .customTable {
   position: relative;
   width: 100%;
-  :global {
-    .ant-btn-link {
-      padding: 0 !important;
-    }
-  }
 
   .setting {
     position: absolute;
@@ -14,6 +9,10 @@
     right: 10px;
     cursor: pointer;
   }
+}
+
+.customTable :global(.ant-btn-link) {
+  padding: 0 !important;
 }
 
 .settingFields {

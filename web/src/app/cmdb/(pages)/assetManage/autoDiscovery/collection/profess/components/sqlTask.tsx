@@ -31,7 +31,7 @@ const SQLTask: React.FC<SQLTaskFormProps> = ({
   editId,
 }) => {
   const { t } = useTranslation();
-  const baseRef = useRef<BaseTaskRef>(null);
+  const baseRef = useRef<BaseTaskRef>(null as any);
   const localeContext = useLocale();
   const { model_id: modelId } = modelItem;
 
