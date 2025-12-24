@@ -38,12 +38,14 @@ const LocalFileUpload: React.FC<LocalFileUploadProps> = ({ onFileChange, initial
       'application/vnd.openxmlformats-officedocument.wordprocessingml.document', // .docx
       'application/pdf', // .pdf
       'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', // .xlsx
+      'application/vnd.openxmlformats-officedocument.presentationml.presentation', // .pptx
+      'application/vnd.ms-powerpoint', // .ppt
       'text/plain', // .txt
       'text/markdown',  // .md (standard)
       'text/x-markdown', // .md (non-standard)
       'text/csv' // .csv
     ];
-    const allowedExtensions = ['.docx', '.pdf', '.xlsx', '.txt', '.csv', '.md'];
+    const allowedExtensions = ['.docx', '.pdf', '.xlsx', '.pptx', '.ppt', '.txt', '.csv', '.md'];
     const isAllowedType = allowedTypes.includes(file.type);
     const isAllowedExtension = allowedExtensions.some(ext => file.name.endsWith(ext));
     if (!isAllowedType && !isAllowedExtension) {
@@ -84,7 +86,7 @@ const LocalFileUpload: React.FC<LocalFileUploadProps> = ({ onFileChange, initial
         </p>
         <p className="ant-upload-text">{t('common.uploadText')}</p>
         <p className="ant-upload-hint">
-          {t('common.supports')}: .docx .pdf .xlsx .txt .csv, .md...
+          {t('common.supports')}: .docx .pdf .xlsx .pptx .ppt .txt .csv .md...
         </p>
       </Dragger>
     </div>
