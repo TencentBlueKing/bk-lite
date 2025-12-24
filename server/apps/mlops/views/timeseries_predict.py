@@ -212,8 +212,8 @@ class TimeSeriesPredictTrainJobViewSet(ModelViewSet):
             
             logger.info(f"停止训练任务: {job_id}")
             
-            # 调用 WebhookClient 停止任务（停止后删除容器）
-            result = WebhookClient.stop(job_id, remove=True)
+            # 调用 WebhookClient 停止任务（默认删除容器）
+            result = WebhookClient.stop(job_id)
             
             # 更新任务状态
             train_job.status = 'pending'
@@ -855,40 +855,54 @@ class TimeSeriesPredictServingViewSet(ModelViewSet):
         """列表查询，实时同步容器状态"""
         response = super().list(request, *args, **kwargs)
         
-        # 批量查询容器状态
-        servings = response.data.get('results', [])
-        if servings:
-            serving_ids = [f"TimeseriesPredict_Serving_{s['id']}" for s in servings]
-            try:
-                container_statuses = WebhookClient.get_status(serving_ids)
-                status_map = {s.get('id'): s for s in container_statuses}
+        # 批量查询容器状态（兼容不同分页器的返回格式）
+        servings = response.data.get('items') or response.data.get('results', [])
+        
+        if not servings:
+            return response
+        
+        serving_ids = [f"TimeseriesPredict_Serving_{s['id']}" for s in servings]
+        
+        try:
+            # 批量查询
+            result = WebhookClient.get_status(serving_ids)
+            status_map = {s.get('id'): s for s in result}
+            
+            updates = []
+            for serving_data in servings:
+                serving_id = f"TimeseriesPredict_Serving_{serving_data['id']}"
+                container_info = status_map.get(serving_id)
                 
-                # 合并状态到返回数据 + 批量更新数据库
-                updates = []
-                for serving_data in servings:
-                    serving_id = f"TimeseriesPredict_Serving_{serving_data['id']}"
-                    container_info = status_map.get(serving_id, {
-                        "status": "error",
-                        "id": serving_id,
-                        "message": "未返回状态信息"
-                    })
+                if container_info:
+                    # 直接使用 webhookd 响应
                     serving_data['container_info'] = container_info
                     
-                    # 收集待更新的对象
+                    # 同步到数据库
                     serving_obj = TimeSeriesPredictServing.objects.get(id=serving_data['id'])
                     serving_obj.container_info = container_info
                     updates.append(serving_obj)
-                
-                # 批量更新数据库
-                if updates:
-                    TimeSeriesPredictServing.objects.bulk_update(updates, ['container_info'])
-                    
-            except WebhookError as e:
-                logger.error(f"查询容器状态失败: {e}")
-                return Response(
-                    {'error': f'无法连接 webhookd 服务: {e}'},
-                    status=status.HTTP_500_INTERNAL_SERVER_ERROR
-                )
+                else:
+                    # webhookd 没返回这个容器的状态（不应该发生）
+                    serving_data['container_info'] = {
+                        "status": "error",
+                        "state": "unknown",
+                        "message": "webhookd 未返回此容器状态"
+                    }
+            
+            if updates:
+                TimeSeriesPredictServing.objects.bulk_update(updates, ['container_info'])
+        
+        except WebhookError as e:
+            logger.error(f"查询容器状态失败: {e}")
+            # 降级：使用数据库中的旧值，添加错误标记
+            for serving_data in servings:
+                old_info = serving_data.get('container_info') or {}
+                serving_data['container_info'] = {
+                    **old_info,
+                    "status": "error",
+                    "_query_failed": True,
+                    "_error": str(e)
+                }
         
         return response
 
@@ -898,26 +912,37 @@ class TimeSeriesPredictServingViewSet(ModelViewSet):
         response = super().retrieve(request, *args, **kwargs)
         
         serving_id = f"TimeseriesPredict_Serving_{response.data['id']}"
+        
         try:
-            container_statuses = WebhookClient.get_status([serving_id])
-            container_info = container_statuses[0] if container_statuses else {
-                "status": "error",
-                "id": serving_id,
-                "message": "未返回状态信息"
-            }
+            result = WebhookClient.get_status([serving_id])
+            container_info = result[0] if result else None
             
-            response.data['container_info'] = container_info
-            
-            # 更新数据库
-            TimeSeriesPredictServing.objects.filter(id=response.data['id']).update(
-                container_info=container_info
-            )
+            if container_info:
+                # 直接使用 webhookd 响应
+                response.data['container_info'] = container_info
+                
+                # 更新数据库
+                TimeSeriesPredictServing.objects.filter(id=response.data['id']).update(
+                    container_info=container_info
+                )
+            else:
+                # webhookd 没返回状态
+                response.data['container_info'] = {
+                    "status": "error",
+                    "state": "unknown",
+                    "message": "webhookd 未返回容器状态"
+                }
+        
         except WebhookError as e:
             logger.error(f"查询容器状态失败: {e}")
-            return Response(
-                {'error': f'无法连接 webhookd 服务: {e}'},
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR
-            )
+            # 降级：使用数据库中的旧值，添加错误标记
+            old_info = response.data.get('container_info') or {}
+            response.data['container_info'] = {
+                **old_info,
+                "status": "error",
+                "_query_failed": True,
+                "_error": str(e)
+            }
         
         return response
 
@@ -968,11 +993,11 @@ class TimeSeriesPredictServingViewSet(ModelViewSet):
             # 构建 serving ID
             container_id = f"TimeseriesPredict_Serving_{serving.id}"
             
-            logger.info(f"自动启动 serving 服务: {container_id}, Model URI: {model_uri}")
+            logger.info(f"自动启动 serving 服务: {container_id}, Model URI: {model_uri}, Port: {serving.port or 'auto'}")
             
             try:
                 # 调用 WebhookClient 启动服务
-                result = WebhookClient.serve(container_id, mlflow_tracking_uri, model_uri)
+                result = WebhookClient.serve(container_id, mlflow_tracking_uri, model_uri, port=serving.port)
                 
                 # 启动成功
                 serving.status = 'active'
@@ -991,10 +1016,10 @@ class TimeSeriesPredictServingViewSet(ModelViewSet):
                 logger.error(f"自动启动 serving 失败: {error_msg}")
                 
                 # 处理容器已存在的情况（同步状态）
-                if '已存在' in error_msg or '已在运行' in error_msg or 'already exists' in error_msg.lower():
+                if e.code == 'CONTAINER_ALREADY_EXISTS':
                     try:
-                        container_statuses = WebhookClient.get_status([container_id])
-                        container_info = container_statuses[0] if container_statuses else {
+                        result = WebhookClient.get_status([container_id])
+                        container_info = result[0] if result else {
                             "status": "error",
                             "id": container_id,
                             "message": "无法查询容器状态"
@@ -1039,44 +1064,77 @@ class TimeSeriesPredictServingViewSet(ModelViewSet):
         """
         更新 serving 配置，自动检测并重启容器
         
-        如果更新了 model_version 或 time_series_predict_train_job，
-        会先删除旧容器，再用新配置启动容器
+        基于实际容器运行状态决策：
+        - 容器 running + 配置变更 → 自动重启
+        - 容器非 running → 仅更新数据库，用户自行决定是否启动
         """
         instance = self.get_object()
         
-        # 检测是否更新了影响容器的字段
+        # 保存旧值用于判断变更
+        old_port = instance.port
+        old_model_version = instance.model_version
+        old_train_job_id = instance.time_series_predict_train_job.id
+        
+        # 检测是否更新了影响容器的字段（基于请求数据与旧值对比）
         model_version_changed = (
             'model_version' in request.data and 
-            str(request.data['model_version']) != str(instance.model_version)
+            str(request.data['model_version']) != str(old_model_version)
         )
         train_job_changed = (
             'time_series_predict_train_job' in request.data and 
-            int(request.data['time_series_predict_train_job']) != instance.time_series_predict_train_job.id
+            int(request.data['time_series_predict_train_job']) != old_train_job_id
+        )
+        port_changed = (
+            'port' in request.data and 
+            request.data.get('port') != old_port
         )
         
-        need_restart = model_version_changed or train_job_changed
-        was_running = instance.status == 'active'
         container_id = f"TimeseriesPredict_Serving_{instance.id}"
         
-        # 如果需要重启且当前正在运行，先删除旧容器
-        if need_restart and was_running:
+        # 获取容器实际状态（更新前）
+        container_state = instance.container_info.get('state')
+        container_port = instance.container_info.get('port')
+        
+        # 更新数据库
+        response = super().update(request, *args, **kwargs)
+        instance.refresh_from_db()
+        
+        # 只有容器在运行时才考虑重启
+        if container_state != 'running':
+            return response
+        
+        # 决策：是否需要重启
+        need_restart = False
+        
+        # 1. model/train_job 变更，必须重启
+        if model_version_changed or train_job_changed:
+            need_restart = True
+        
+        # 2. 仅 port 变更，检查策略
+        elif port_changed:
+            new_port = instance.port
+            if new_port is None and old_port is not None:
+                # 有值 → None：不重启（当前端口视为自动分配，下次再应用）
+                need_restart = False
+            elif new_port is not None and old_port is None:
+                # None → 有值：需要重启（用户明确要指定端口）
+                need_restart = True
+            elif new_port is not None and old_port is not None:
+                # 有值 → 另一个有值：检查是否与实际端口一致
+                if container_port and str(new_port) != str(container_port):
+                    need_restart = True
+        
+        # 如果需要重启，先删除旧容器
+        if need_restart:
             try:
                 logger.info(f"配置变更需要重启，删除旧容器: {container_id}")
                 WebhookClient.remove(container_id)
                 logger.info(f"旧容器已删除: {container_id}")
             except WebhookError as e:
                 logger.warning(f"删除旧容器失败（可能已不存在）: {e}")
-                # 继续执行，尝试更新配置
-        
-        # 更新配置
-        response = super().update(request, *args, **kwargs)
-        
-        # 如果需要重启且之前在运行，自动启动新容器
-        if need_restart and was_running:
+                # 继续执行，尝试启动新容器
+            
             try:
-                # 重新获取实例（已更新配置）
-                instance.refresh_from_db()
-                
                 # 获取环境变量
                 mlflow_tracking_uri = os.getenv("MLFLOW_TRACKER_URL", "")
                 if not mlflow_tracking_uri:
@@ -1085,10 +1143,10 @@ class TimeSeriesPredictServingViewSet(ModelViewSet):
                 # 解析新的 model_uri
                 model_uri = self._resolve_model_uri(instance)
                 
-                logger.info(f"使用新配置启动容器: {container_id}, Model URI: {model_uri}")
+                logger.info(f"使用新配置启动容器: {container_id}, Model URI: {model_uri}, Port: {instance.port or 'auto'}")
                 
                 # 启动新容器
-                result = WebhookClient.serve(container_id, mlflow_tracking_uri, model_uri)
+                result = WebhookClient.serve(container_id, mlflow_tracking_uri, model_uri, port=instance.port)
                 
                 # 更新状态
                 instance.status = 'active'
@@ -1149,11 +1207,11 @@ class TimeSeriesPredictServingViewSet(ModelViewSet):
             # 构建 serving ID
             serving_id = f"TimeseriesPredict_Serving_{serving.id}"
             
-            logger.info(f"启动 serving 服务: {serving_id}, Model URI: {model_uri}")
+            logger.info(f"启动 serving 服务: {serving_id}, Model URI: {model_uri}, Port: {serving.port or 'auto'}")
             
             try:
                 # 调用 WebhookClient 启动服务
-                result = WebhookClient.serve(serving_id, mlflow_tracking_uri, model_uri)
+                result = WebhookClient.serve(serving_id, mlflow_tracking_uri, model_uri, port=serving.port)
                 
                 # 正常启动成功
                 serving.status = 'active'
@@ -1172,12 +1230,12 @@ class TimeSeriesPredictServingViewSet(ModelViewSet):
                 error_msg = str(e)
                 
                 # 处理容器已存在的情况
-                if '已存在' in error_msg or '已在运行' in error_msg or 'already exists' in error_msg.lower():
+                if e.code == 'CONTAINER_ALREADY_EXISTS':
                     logger.warning(f"检测到容器已存在，同步状态: {serving_id}")
                     try:
                         # 查询当前容器状态
-                        container_statuses = WebhookClient.get_status([serving_id])
-                        container_info = container_statuses[0] if container_statuses else {
+                        result = WebhookClient.get_status([serving_id])
+                        container_info = result[0] if result else {
                             "status": "error",
                             "id": serving_id,
                             "message": "无法查询容器状态"
@@ -1231,7 +1289,7 @@ class TimeSeriesPredictServingViewSet(ModelViewSet):
     @HasPermission("timeseries_predict_servings-Stop")
     def stop(self, request, *args, **kwargs):
         """
-        停止 serving 服务（保留容器）
+        停止 serving 服务（停止并删除容器）
         """
         try:
             serving = self.get_object()
@@ -1241,8 +1299,8 @@ class TimeSeriesPredictServingViewSet(ModelViewSet):
             
             logger.info(f"停止 serving 服务: {serving_id}")
             
-            # 调用 WebhookClient 停止服务（保留容器）
-            result = WebhookClient.stop(serving_id, remove=False)
+            # 调用 WebhookClient 停止服务（默认删除容器）
+            result = WebhookClient.stop(serving_id)
             
             # 更新任务状态
             serving.status = 'inactive'
@@ -1251,7 +1309,7 @@ class TimeSeriesPredictServingViewSet(ModelViewSet):
             logger.info(f"Serving 服务已停止: {serving_id}")
             
             return Response({
-                'message': '服务已停止（容器保留）',
+                'message': '服务已停止并删除',
                 'serving_id': serving_id,
                 'webhook_response': result
             })

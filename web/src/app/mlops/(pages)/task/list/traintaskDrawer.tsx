@@ -7,7 +7,6 @@ import TrainTaskHistory from "./traintaskHistory";
 import TrainTaskDetail from "./traintaskDetail";
 import { useEffect, useMemo, useState } from "react";
 import styles from './index.module.scss'
-import { LeftOutlined } from "@ant-design/icons";
 
 const TrainTaskDrawer = ({ open, onCancel, selectId, activeTag }:
   {
@@ -81,18 +80,17 @@ const TrainTaskDrawer = ({ open, onCancel, selectId, activeTag }:
       footer={!showList ? [
         <Button
           key='back'
-          type="text"
-          icon={<LeftOutlined />}
+          type="primary"
+          // icon={<LeftOutlined />}
           onClick={() => setShowList(true)}
-          className="back-to-list-btn"
+          className="float-right"
         >
           返回列表
         </Button>
       ] : [
-        <Button key="refresh" type="primary" className="float-right" onClick={getStateData}>
+        <Button key="refresh" type="primary" className="float-right" disabled={tableLoading} onClick={getStateData}>
           刷新列表
-        </Button>,
-        <Button key="close" type="default" className="float-right mr-2" onClick={onCancel}>关闭</Button>
+        </Button>
       ]}
     >
       <div className="drawer-content">

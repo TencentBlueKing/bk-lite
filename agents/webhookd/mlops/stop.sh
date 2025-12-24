@@ -11,7 +11,7 @@ source "$SCRIPT_DIR/common.sh"
 
 # 解析传入的 JSON 数据（第一个参数）
 if [ -z "$1" ]; then
-    json_error "" "No JSON data provided"
+    json_error "INVALID_JSON" "" "No JSON data provided"
     exit 1
 fi
 
@@ -19,10 +19,10 @@ JSON_DATA="$1"
 
 # 提取参数
 ID=$(echo "$JSON_DATA" | jq -r '.id // empty')
-REMOVE=$(echo "$JSON_DATA" | jq -r '.remove // "true"')
+REMOVE=$(echo "$JSON_DATA" | jq -r 'if has("remove") then .remove else true end')
 
 if [ -z "$ID" ]; then
-    json_error "unknown" "Missing required field: id"
+    json_error "MISSING_REQUIRED_FIELD" "unknown" "Missing required field: id"
     exit 1
 fi
 
@@ -31,7 +31,7 @@ CONTAINER_NAME="${ID}"
 
 # 检查容器是否存在
 if ! docker ps -a --format '{{.Names}}' | grep -q "^${CONTAINER_NAME}$"; then
-    json_error "$ID" "Container not found"
+    json_error "CONTAINER_NOT_FOUND" "$ID" "Container not found"
     exit 1
 fi
 
@@ -40,7 +40,7 @@ STOP_OUTPUT=$(docker stop --time=5 "$CONTAINER_NAME" 2>&1)
 DOCKER_STATUS=$?
 
 if [ $DOCKER_STATUS -ne 0 ]; then
-    json_error "$ID" "Failed to stop container" "$STOP_OUTPUT"
+    json_error "CONTAINER_STOP_FAILED" "$ID" "Failed to stop container" "$STOP_OUTPUT"
     exit 1
 fi
 

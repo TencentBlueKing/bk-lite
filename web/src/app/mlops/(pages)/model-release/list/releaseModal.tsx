@@ -69,7 +69,8 @@ const ReleaseModal = forwardRef<ModalRef, ReleaseModalProps>(({ trainjobs, activ
     } else {
       const editValues: Record<string, any> = {
         ...formData,
-        status: formData.status === 'active' ? true : false
+        status: formData.status === 'active' ? true : false,
+        port: formData.port || undefined // port 为 null 时设置为 undefined，让表单为空
       };
       
       formRef.current.setFieldsValue(editValues);
@@ -257,6 +258,18 @@ const ReleaseModal = forwardRef<ModalRef, ReleaseModalProps>(({ trainjobs, activ
             rules={[{ required: true, message: t('common.inputMsg') }]}
           >
             <Input placeholder={t(`model-release.inputVersionMsg`)} />
+          </Form.Item>
+          
+          <Form.Item
+            name='port'
+            label={'端口'}
+            extra={
+              type === 'edit' && formData?.container_info?.port
+                ? `当前运行端口：${formData.container_info.port}${formData.port ? ' (用户指定)' : ' (自动分配)'}`
+                : '留空则由 Docker 自动分配端口'
+            }
+          >
+            <InputNumber className="w-full" placeholder={'请输入端口号'} min={1} max={65535} />
           </Form.Item>
           
           <Form.Item
