@@ -170,6 +170,11 @@ class WebhookClient:
         if port is not None:
             payload["port"] = port
         
+        # 读取并传递 network_mode
+        network_mode = os.getenv('MLOPS_DOCKER_NETWORK')
+        if network_mode:
+            payload["network_mode"] = network_mode
+        
         result = WebhookClient._request("serve", payload)
         
         if result.get('status') == 'error':
@@ -212,6 +217,11 @@ class WebhookClient:
             "minio_access_key": minio_access_key,
             "minio_secret_key": minio_secret_key
         }
+        
+        # 读取并传递 network_mode
+        network_mode = os.getenv('MLOPS_DOCKER_NETWORK')
+        if network_mode:
+            payload["network_mode"] = network_mode
         
         result = WebhookClient._request("train", payload)
         

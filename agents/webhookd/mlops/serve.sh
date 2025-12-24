@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # webhookd mlops serve script
-# 接收 JSON: {"id": "serving-001", "mlflow_tracking_uri": "http://127.0.0.1:15000", "mlflow_model_uri": "models:/model/1", "workers": 2}
+# 接收 JSON: {"id": "serving-001", "mlflow_tracking_uri": "http://127.0.0.1:15000", "mlflow_model_uri": "models:/model/1", "workers": 2, "network_mode": "bridge"}
 
 set -e
 
@@ -23,6 +23,7 @@ MLFLOW_TRACKING_URI=$(echo "$JSON_DATA" | jq -r '.mlflow_tracking_uri // empty')
 MLFLOW_MODEL_URI=$(echo "$JSON_DATA" | jq -r '.mlflow_model_uri // empty')
 WORKERS=$(echo "$JSON_DATA" | jq -r '.workers // "2"')
 PORT=$(echo "$JSON_DATA" | jq -r '.port // empty')
+NETWORK_MODE=$(echo "$JSON_DATA" | jq -r '.network_mode // "bridge"')
 
 # 验证必需参数
 if [ -z "$ID" ] || [ -z "$MLFLOW_TRACKING_URI" ] || [ -z "$MLFLOW_MODEL_URI" ]; then
@@ -62,9 +63,10 @@ else
     PORT_MAPPING="${CONTAINER_PORT}"
 fi
 
-# 启动 serving 容器（使用端口映射而非 host 网络）
+# 启动 serving 容器（使用传入的网络模式）
 DOCKER_OUTPUT=$(docker run -d \
     --name "$ID" \
+    --network "$NETWORK_MODE" \
     -p "${PORT_MAPPING}" \
     --restart unless-stopped \
     --log-driver json-file \

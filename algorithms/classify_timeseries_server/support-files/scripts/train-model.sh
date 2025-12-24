@@ -94,9 +94,12 @@ mkdir -p "${CONFIG_DIR}"
 log_info "从 MinIO 下载数据集: ${MINIO_BUCKET}/${DATASET_NAME}"
 DATASET_FILE="${DOWNLOAD_DIR}/$(basename ${DATASET_NAME})"
 
-export MC_HOST_minio="${MINIO_ENDPOINT}"
-export MC_ACCESS_KEY="${MINIO_ACCESS_KEY}"
-export MC_SECRET_KEY="${MINIO_SECRET_KEY}"
+# 配置 MinIO 连接
+log_info "配置 MinIO 连接..."
+if ! "${MC_BIN}" alias set minio "${MINIO_ENDPOINT}" "${MINIO_ACCESS_KEY}" "${MINIO_SECRET_KEY}" > /dev/null 2>&1; then
+    log_error "无法连接到 MinIO: ${MINIO_ENDPOINT}"
+    exit 1
+fi
 
 if "${MC_BIN}" cp "minio/${MINIO_BUCKET}/${DATASET_NAME}" "${DATASET_FILE}"; then
     log_info "数据集下载成功: ${DATASET_FILE}"
