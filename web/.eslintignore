@@ -7,3 +7,7 @@ public/iconfont.js
 *.config.js
 *.config.mjs
 scripts
+server.cert
+server.csr
+server.js
+server.key
