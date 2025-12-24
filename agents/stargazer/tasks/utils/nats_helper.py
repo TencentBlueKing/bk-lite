@@ -272,7 +272,7 @@ def _build_common_tags(params: Dict[str, Any]) -> Dict[str, str]:
     """
     构建通用的 tags（从 API 传递的参数中获取）
 
-    优先使用 params['tags'] 中 Telegraf 传递的标签，
+    优先使用 params['tags'] 中传递的标签，
     如果没有则使用默认值
 
     核心 Tags（5个）：
@@ -291,27 +291,18 @@ def _build_common_tags(params: Dict[str, Any]) -> Dict[str, str]:
     # 从 API 传递的 tags
     api_tags = params.get('tags', {})
 
-    # 如果 API 传递了完整的 tags，直接使用
-    if api_tags.get('agent_id'):
-        tags = {
-            'agent_id': api_tags.get('agent_id', ''),
-            'instance_id': api_tags.get('instance_id', ''),
-            'instance_type': api_tags.get('instance_type', ''),
-            'collect_type': api_tags.get('collect_type', ''),
-            'config_type': api_tags.get('config_type', ''),
-        }
-    else:
-        # 兼容旧的调用方式（没有传递 tags）
-        host = params.get('host', params.get('node_id', 'unknown'))
-        monitor_type = params.get('monitor_type', params.get('plugin_name', 'unknown'))
+    # 获取基础参数用于生成默认值
+    host = params.get('host', params.get('node_id', 'unknown'))
+    monitor_type = params.get('monitor_type', params.get('plugin_name', 'unknown'))
 
-        tags = {
-            'agent_id': f"stargazer-{host}",
-            'instance_id': host,
-            'instance_type': monitor_type,
-            'collect_type': 'monitor',
-            'config_type': 'auto',
-        }
+    # 构建 tags：优先使用用户传递的值，没有的用默认值
+    tags = {
+        'agent_id': api_tags.get('agent_id') or f"stargazer-{host}",
+        'instance_id': api_tags.get('instance_id') or host,
+        'instance_type': api_tags.get('instance_type') or monitor_type,
+        'collect_type': api_tags.get('collect_type') or 'monitor',
+        'config_type': api_tags.get('config_type') or 'auto',
+    }
 
     # 清理 tags 中的特殊字符
     cleaned_tags = {}
