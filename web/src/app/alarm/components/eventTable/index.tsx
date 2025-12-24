@@ -36,7 +36,7 @@ const EventTable: React.FC<EventTableProps> = ({
   const STATE_MAP = useStateMap();
 
   const handleShowRaw = (record: EventTableItem) => {
-    setRawData(record.raw_data || record);
+    setRawData((record.raw_data || record) as any);
     setRawVisible(true);
   };
 

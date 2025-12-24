@@ -1,12 +1,10 @@
-.customDrawer {
-    :global {
-        .ant-drawer-header {
-            padding: 16px;
-            background: var(--color-modal-header-color) !important;
-            border-bottom: 1px solid var(--color-border-1);
-        }
-    }
+.customDrawer :global(.ant-drawer-header) {
+    padding: 16px;
+    background: var(--color-modal-header-color) !important;
+    border-bottom: 1px solid var(--color-border-1);
+}
 
+.customDrawer {
     .customDrawerHeader {
         display: flex;
         align-items: center;

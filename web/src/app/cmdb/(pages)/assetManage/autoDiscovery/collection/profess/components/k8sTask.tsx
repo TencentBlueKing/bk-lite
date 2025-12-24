@@ -25,7 +25,7 @@ const K8sTaskForm: React.FC<K8sTaskFormProps> = ({
   editId,
 }) => {
   const { t } = useTranslation();
-  const baseRef = useRef<BaseTaskRef>(null);
+  const baseRef = useRef<BaseTaskRef>(null as any);
   const { model_id: modelId } = modelItem;
 
   const {

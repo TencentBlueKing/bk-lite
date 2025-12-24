@@ -12,7 +12,7 @@ interface AccordionProps {
   titleClassName?: string;
   contentClassName?: string;
   isOpen?: boolean;
-  icon?: JSX.Element;
+  icon?: React.ReactElement;
   sortable?: boolean;
   onToggle?: (isOpen: boolean) => void;
   onDragStart?: (e: React.DragEvent<HTMLDivElement>) => void;

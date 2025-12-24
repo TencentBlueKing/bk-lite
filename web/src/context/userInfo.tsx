@@ -39,7 +39,7 @@ export const UserInfoProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       return;
     }
     
-    if (status === 'authenticated' && session && session.user?.id) {
+    if (status === 'authenticated' && session && (session.user as any)?.id) {
       const fetchLoginInfo = async () => {
         setLoading(true);
         try {
@@ -58,7 +58,7 @@ export const UserInfoProvider: React.FC<{ children: React.ReactNode }> = ({ chil
           setIsSuperUser(!!is_superuser);
           setIsFirstLogin(!!is_first_login);
           setUserId(user_id || '');
-          setDisplayName(display_name || session.user?.username || 'User');
+          setDisplayName(display_name || (session.user as any)?.username || 'User');
 
           if (groupList?.length) {
             const flattenedGroups = convertTreeDataToGroupOptions(groupList);

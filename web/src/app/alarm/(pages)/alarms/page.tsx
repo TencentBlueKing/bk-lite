@@ -95,10 +95,10 @@ const Alert: React.FC = () => {
   ];
 
   const timeDefaultValue =
-    useRef<TimeSelectorDefaultValue>({
+    (useRef<TimeSelectorDefaultValue>({
       selectValue: 10080,
       rangePickerVaule: null,
-    })?.current || {};
+    })?.current || {}) as any;
 
   const [filters, setFilters] = useState<FiltersConfig>(() => {
     const { stateFilters } = getSettings();

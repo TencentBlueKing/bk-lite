@@ -1,11 +1,6 @@
 .conditionOperatorColumn {
   .conditionRow {
     margin-bottom: 10px;
-    :global {
-      .ant-form-item {
-        margin-bottom: 0;
-      }
-    }
     &::before {
       content: '';
       position: absolute;
@@ -37,6 +32,11 @@
     }
   }
 }
+
+.conditionOperatorColumn .conditionRow :global(.ant-form-item) {
+  margin-bottom: 0;
+}
+
 .ruleContainer {
   background: var(--color-fill-1);
 }

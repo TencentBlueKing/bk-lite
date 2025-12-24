@@ -101,7 +101,7 @@ const SubModuleTabs: React.FC<SubModuleTabsProps> = ({
   });
 
   // Generate content for specified child module
-  function getContentForChild(child: ModuleItem): JSX.Element {
+  function getContentForChild(child: ModuleItem): React.ReactElement {
     // If has children, show second level
     if (child.children && child.children.length > 0) {
       return renderSecondLevel(child.children);
@@ -127,7 +127,7 @@ const SubModuleTabs: React.FC<SubModuleTabsProps> = ({
   }
 
   // Render second level
-  function renderSecondLevel(children: ModuleItem[]): JSX.Element {
+  function renderSecondLevel(children: ModuleItem[]): React.ReactElement {
     const secondLevelTabs = children.map(child => ({
       key: child.name,
       label: child.display_name || child.name,

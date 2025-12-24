@@ -6,12 +6,8 @@
     max-width: unset !important;
   }
 
-  // 隐藏底部的视图切换器
-  :global {
-    .MuiCard-root.MuiPaper-elevation1 {
-      &:has(svg[data-testid="ChevronRightIcon"]) {
-        display: none !important;
-      }
-    }
+  // 隐藏底部的视图切换器（包含"架构图"文字和箭头svg的面包屑导航卡片）
+  :global(.MuiCard-root.MuiPaper-outlined.MuiPaper-rounded:has(.MuiStack-root > svg[viewBox="0 0 24 24"] + p.MuiTypography-root)) {
+    display: none !important;
   }
 }

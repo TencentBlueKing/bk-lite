@@ -336,9 +336,9 @@ const EventHeatMap: React.FC<EventHeatMapProps> = ({
                           .hour()
                           .toString()
                           .padStart(2, '0')}:00-${dayjs(cellData.date)
-                          .hour()
-                          .toString()
-                          .padStart(2, '0')}:59` // 显示时间段
+                            .hour()
+                            .toString()
+                            .padStart(2, '0')}:59` // 显示时间段
                     }
                   </div>
                 </div>
