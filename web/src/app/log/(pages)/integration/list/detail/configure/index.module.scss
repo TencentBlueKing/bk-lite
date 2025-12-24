@@ -1,9 +1,6 @@
 .configure {
     height: calc(100vh - 260px);
     overflow-y: auto;
-
-    .interval {
-    }
 }
 
 .configure :global(.ant-form-item-required:not(.ant-form-item-required-mark-optional)::before) {

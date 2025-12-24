@@ -230,6 +230,7 @@ export interface MetricItem {
   displayType?: string;
   description?: string;
   viewData?: ChartData[] | InterfaceTableItem[];
+  displayUnit?: string;
   style?: {
     width: string;
     height: string;

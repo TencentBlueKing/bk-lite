@@ -282,7 +282,7 @@ const SearchView: React.FC = () => {
     const target = metrics.find((item) => item.name === val);
     const _labels = (target?.dimensions || []).map((item) => item.name);
     setLabels(_labels);
-    setUnit(target?.unit || '');
+    setUnit('');
   };
 
   const handleObjectChange = (val: string) => {
@@ -381,6 +381,8 @@ const SearchView: React.FC = () => {
         params,
       });
       const data = responseData.data?.result || [];
+      const displayUnit = responseData.data?.unit || '';
+      setUnit(displayUnit);
       if (areaCurrent) {
         const list = instances
           .filter((item) => instanceId.includes(item.instance_id))
@@ -677,18 +679,12 @@ const SearchView: React.FC = () => {
                             ?.display_name || '--'}
                         </span>
                         <span className="text-[var(--color-text-3)] text-[12px]">
-                          {`${
-                            findUnitNameById(
-                              metrics.find((item) => item.name === metric)?.unit
-                            )
-                              ? '（' +
-                                findUnitNameById(
-                                  metrics.find((item) => item.name === metric)
-                                    ?.unit
-                                ) +
-                                '）'
-                              : ''
-                          }`}
+                          {(() => {
+                            const displayUnit = unit === 'short' ? '' : unit;
+                            const unitName =
+                              findUnitNameById(displayUnit) || displayUnit;
+                            return unitName ? `（${unitName}）` : '';
+                          })()}
                         </span>
                         <Tooltip
                           placement="topLeft"
