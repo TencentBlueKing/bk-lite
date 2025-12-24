@@ -588,9 +588,14 @@ const CollectorDetailDrawer = forwardRef<ModalRef, CollectorDetailDrawerProps>(
                             }
                           )}
                         </span>
-                        {selectedCollector.message || '--'}
+                        <span style={{ whiteSpace: 'pre-line' }}>
+                          {selectedCollector.message || '--'}
+                        </span>
                       </span>
-                      <p className="mt-[4px]">
+                      <p
+                        className="mt-[4px]"
+                        style={{ whiteSpace: 'pre-line' }}
+                      >
                         {selectedCollector.verbose_message || ''}
                       </p>
                     </div>

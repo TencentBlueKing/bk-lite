@@ -220,7 +220,7 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
               </p>
             </div>
           )}
-          <div className="flex items-center space-x-4 justify-between">
+          <div className="flex items-center mx-4 my-2 justify-between">
             <Select
               style={{
                 width: '250px',
@@ -240,7 +240,7 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
               ))}
             </Select>
             {
-              <div className="flex items-center space-x-2 py-2">
+              <div className="flex items-center mx-[8px]">
                 <TimeSelector
                   ref={timeSelectorRef}
                   key={`time-selector-${selectedDashboard?.id || 'default'}`}

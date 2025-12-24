@@ -152,11 +152,15 @@ const StrategyOperation = () => {
       }
       form.setFieldsValue(initForm);
       setMetric(_metricId);
+      const instanceIdStr = searchParams.get('instanceId');
+      let instanceIds: string[] = [];
+      if (instanceIdStr) {
+        const matches = instanceIdStr.match(/\('[^']*',?\)/g);
+        instanceIds = matches || [];
+      }
       setSource({
         type: 'instance',
-        values: searchParams.get('instanceId')
-          ? (searchParams.get('instanceId')?.split(',') as string[])
-          : [],
+        values: instanceIds,
       });
     } else {
       dealDetail(formData);

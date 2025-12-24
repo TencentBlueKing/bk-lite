@@ -3,14 +3,7 @@
 # @Time: 2025/12/19
 # @Author: AI Assistant
 """
-异步任务队列模块 - 基于 arq
-用于处理采集任务的异步执行
-
-生产环境增强：
-- Redis 连接池配置
-- 连接重试机制
-- 健康检查
-- 监控指标
+异步任务队列模块 - 使用统一的 Redis 配置
 """
 import os
 import json
@@ -24,53 +17,14 @@ from arq.connections import RedisSettings, ArqRedis
 from arq.jobs import JobStatus, Job
 from sanic import Sanic
 from sanic.log import logger
-from dotenv import load_dotenv
-
-load_dotenv()
-
-
-class TaskQueueConfig:
-    """任务队列配置 - 生产环境增强版"""
-
-    def __init__(self):
-        # Redis 基础配置
-        self.redis_host = os.getenv("REDIS_HOST", "localhost")
-        self.redis_port = int(os.getenv("REDIS_PORT", "6379"))
-        self.redis_password = os.getenv("REDIS_PASSWORD")
-        self.redis_db = int(os.getenv("REDIS_DB", "0"))
-
-        # 连接池配置（生产环境重要）
-        self.socket_timeout = int(os.getenv("REDIS_SOCKET_TIMEOUT", "5"))
-        self.socket_connect_timeout = int(os.getenv("REDIS_CONNECT_TIMEOUT", "5"))
-
-        # 任务配置
-        self.max_jobs = int(os.getenv("TASK_MAX_JOBS", "10"))
-        self.job_timeout = int(os.getenv("TASK_JOB_TIMEOUT", "300"))
-
-        # 健康检查配置
-        self.health_check_interval = int(os.getenv("HEALTH_CHECK_INTERVAL", "30"))
-        self.max_retry_attempts = int(os.getenv("REDIS_MAX_RETRY", "3"))
-
-    def get_redis_settings(self) -> RedisSettings:
-        """获取Redis配置 - 生产环境优化"""
-        return RedisSettings(
-            host=self.redis_host,
-            port=self.redis_port,
-            password=self.redis_password,
-            database=self.redis_db,
-            # 生产环境关键配置
-            conn_timeout=self.socket_connect_timeout,
-            conn_retries=self.max_retry_attempts,
-            conn_retry_delay=1,  # 重试间隔 1秒
-        )
+from core.redis_config import REDIS_CONFIG, print_redis_config
 
 
 class TaskQueue:
-    """任务队列管理器 - 生产环境增强版"""
+    """任务队列管理器 - 使用统一的 Redis 配置"""
 
     def __init__(self, app: Optional[Sanic] = None):
         self.app = app
-        self.config = TaskQueueConfig()
         self.pool: Optional[ArqRedis] = None
         self._health_check_task: Optional[asyncio.Task] = None
         self._is_healthy = False
@@ -110,32 +64,29 @@ class TaskQueue:
             logger.info("Task queue closed")
 
     async def connect(self):
-        """连接到Redis - 带重试机制"""
+        """连接到Redis - 使用统一配置"""
         if self.pool is None:
-            retry_count = 0
-            last_error = None
+            try:
+                # ✅ 使用统一的 Redis 配置
+                redis_settings = RedisSettings(
+                    host=REDIS_CONFIG["host"],
+                    port=REDIS_CONFIG["port"],
+                    password=REDIS_CONFIG["password"],
+                    database=REDIS_CONFIG["database"],
+                )
 
-            while retry_count < self.config.max_retry_attempts:
-                try:
-                    self.pool = await create_pool(self.config.get_redis_settings())
-                    self._is_healthy = True
-                    logger.info(
-                        f"Connected to Redis: {self.config.redis_host}:{self.config.redis_port}"
-                    )
-                    return
-                except Exception as e:
-                    retry_count += 1
-                    last_error = e
-                    self.metrics["redis_connection_errors"] += 1
-                    logger.warning(
-                        f"Failed to connect to Redis (attempt {retry_count}/{self.config.max_retry_attempts}): {e}"
-                    )
-                    if retry_count < self.config.max_retry_attempts:
-                        await asyncio.sleep(1 * retry_count)  # 指数退避
+                self.pool = await create_pool(redis_settings)
+                self._is_healthy = True
 
-            # 所有重试都失败
-            logger.error(f"Failed to connect to Redis after {self.config.max_retry_attempts} attempts")
-            raise ConnectionError(f"Redis connection failed: {last_error}")
+                logger.info("=" * 70)
+                logger.info("Task Queue Connected to Redis")
+                logger.info("=" * 70)
+                print_redis_config()
+                logger.info("=" * 70)
+
+            except Exception as e:
+                logger.error(f"Failed to connect to Redis: {e}")
+                raise ConnectionError(f"Redis connection failed: {e}")
 
     async def close(self):
         """关闭连接"""
@@ -150,16 +101,15 @@ class TaskQueue:
                 self.pool = None
 
     async def _health_check_loop(self):
-        """健康检查循环 - 定期检查 Redis 连接"""
-        logger.info(f"Health check started (interval: {self.config.health_check_interval}s)")
+        """健康检查循环"""
+        health_check_interval = int(os.getenv("HEALTH_CHECK_INTERVAL", "30"))
 
         while True:
             try:
-                await asyncio.sleep(self.config.health_check_interval)
+                await asyncio.sleep(health_check_interval)
 
                 if self.pool:
                     try:
-                        # 执行简单的 ping 检查
                         await self.pool.ping()
                         if not self._is_healthy:
                             logger.info("Redis connection recovered")
@@ -168,12 +118,6 @@ class TaskQueue:
                         logger.error(f"Health check failed: {e}")
                         self._is_healthy = False
                         self.metrics["redis_connection_errors"] += 1
-                        # 尝试重连
-                        try:
-                            await self.close()
-                            await self.connect()
-                        except Exception as reconnect_error:
-                            logger.error(f"Reconnection failed: {reconnect_error}")
                 else:
                     self._is_healthy = False
 
@@ -184,15 +128,7 @@ class TaskQueue:
                 logger.error(f"Unexpected error in health check: {e}")
 
     def _generate_task_id(self, params: Dict[str, Any]) -> str:
-        """根据采集参数生成唯一的任务ID
-
-        基于以下参数生成：
-        - monitor_type / plugin_name: 采集类型
-        - 关键参数（host, instance_id 等）
-
-        这样相同的采集请求会生成相同的 task_id，实现去重
-        """
-        # 提取关键参数用于生成唯一ID
+        """根据采集参数生成唯一的任务ID"""
         key_params = {
             "monitor_type": params.get("monitor_type"),
             "plugin_name": params.get("plugin_name"),
@@ -205,9 +141,9 @@ class TaskQueue:
         # 移除空值
         key_params = {k: v for k, v in key_params.items() if v is not None}
 
-        # 生成稳定的哈希值（使用完整 MD5，避免碰撞）
+        # 生成稳定的哈希值
         param_str = json.dumps(key_params, sort_keys=True)
-        param_hash = hashlib.md5(param_str.encode()).hexdigest()  # 使用完整 32 字符
+        param_hash = hashlib.md5(param_str.encode()).hexdigest()
 
         # 生成任务ID
         task_type = params.get("monitor_type") or params.get("plugin_name", "unknown")
@@ -221,14 +157,11 @@ class TaskQueue:
         task_id: Optional[str] = None
     ) -> Dict[str, Any]:
         """
-        将采集任务加入队列（带去重检查）
+        将采集任务加入队列
 
-        Args:
-            params: 采集参数
-            task_id: 任务ID（可选，如果不提供则自动生成）
-
-        Returns:
-            包含任务信息的字典
+        ⚠️ 去重逻辑：
+        - 如果任务正在执行或在队列中 → 不重复入队
+        - 如果任务已完成 → 允许再次入队
         """
         # 健康检查
         if not self._is_healthy:
@@ -242,44 +175,55 @@ class TaskQueue:
         if not self.pool:
             await self.connect()
 
-        # 生成任务ID（用于去重）
+        # 生成任务ID（用于业务去重）
         if not task_id:
             task_id = self._generate_task_id(params)
 
         try:
-            # 检查任务是否已存在
-            existing_job = await self.get_job_status(task_id)
-            if existing_job:
-                status = existing_job.get("status")
+            # ✅ 应用层去重：检查我们自己维护的任务状态键
+            # 使用 Redis 键来跟踪正在执行的任务：task:running:{task_id}
+            running_key = f"task:running:{task_id}"
 
-                # 如果任务还在队列中或正在执行，不重复入队
-                if status in [JobStatus.queued, JobStatus.in_progress]:
-                    self.metrics["tasks_skipped"] += 1
-                    logger.warning(
-                        f"Task {task_id} already exists with status: {status}, skipping enqueue"
-                    )
-                    return {
-                        "task_id": task_id,
-                        "job_id": existing_job.get("job_id"),
-                        "status": "skipped",
-                        "reason": f"Task already {status}",
-                        "existing_job": existing_job,
-                        "timestamp": int(time.time() * 1000)
-                    }
+            # 检查任务是否正在运行
+            is_running = await self.pool.get(running_key)
+            if is_running:
+                self.metrics["tasks_skipped"] += 1
+                logger.warning(
+                    f"Task {task_id} is already running or queued, skipping enqueue"
+                )
+                return {
+                    "task_id": task_id,
+                    "status": "skipped",
+                    "reason": "Task already running or queued",
+                    "timestamp": int(time.time() * 1000)
+                }
 
             # 将任务加入队列
+            logger.info(f"[Task Queue] Enqueuing task: {task_id}")
+            logger.info(f"[Task Queue] Function: 'collect_task', Params keys: {list(params.keys())}")
+
+            # ⚠️ 关键：不使用 _job_id，让 ARQ 自动生成唯一的 job_id
             job = await self.pool.enqueue_job(
-                'collect_task',  # 函数名
-                params,          # 位置参数：params
-                task_id,         # 位置参数：task_id
-                _job_id=task_id, # 指定 job_id
+                'collect_task',      # 函数名（字符串）
+                params=params,       # kwargs 传递
+                task_id=task_id,     # kwargs 传递（业务 ID）
             )
 
+            logger.info(f"[Task Queue] enqueue_job returned: {job}, type: {type(job)}")
+
             if not job:
+                logger.error(f"[Task Queue] ❌ enqueue_job returned None for task {task_id}")
+                logger.error(f"[Task Queue] This means Worker is NOT running or NOT registered!")
+                print_redis_config()
                 raise RuntimeError(f"Failed to enqueue job {task_id}, enqueue_job returned None")
 
+            # ✅ 标记任务为运行中（设置 TTL，防止任务失败后永久锁定）
+            # TTL 设置为 job_timeout + 60 秒的缓冲时间
+            ttl = int(os.getenv("TASK_JOB_TIMEOUT", "300")) + 60
+            await self.pool.set(running_key, job.job_id, ex=ttl)
+
             self.metrics["tasks_enqueued"] += 1
-            logger.info(f"Task enqueued: {task_id}, job_id: {job.job_id}")
+            logger.info(f"[Task Queue] ✅ Task enqueued successfully: {task_id}, ARQ job_id: {job.job_id}")
 
             return {
                 "task_id": task_id,
@@ -293,13 +237,21 @@ class TaskQueue:
             logger.error(traceback.format_exc())
             raise
 
+    async def mark_task_completed(self, task_id: str):
+        """
+        标记任务完成，清除运行中标记
+        这个方法应该在 Worker 任务完成后调用
+        """
+        running_key = f"task:running:{task_id}"
+        await self.pool.delete(running_key)
+        logger.info(f"[Task Queue] Task {task_id} marked as completed, can be re-queued now")
+
     async def get_job_status(self, job_id: str) -> Optional[Dict[str, Any]]:
-        """获取任务状态"""
+        """获取任务状态（保留用于其他用途）"""
         if not self.pool:
             await self.connect()
 
         try:
-            # 使用 Job.deserialize 从 Redis 获取任务对象（注意是美式拼写）
             job = await Job.deserialize(job_id, redis=self.pool)
             if job:
                 return {
@@ -309,29 +261,11 @@ class TaskQueue:
                 }
             return None
         except Exception as e:
-            # Job 不存在时会抛出异常，这是正常情况
             logger.debug(f"Job {job_id} not found or error: {e}")
             return None
 
-    async def cancel_job(self, job_id: str) -> bool:
-        """取消任务"""
-        if not self.pool:
-            await self.connect()
-
-        try:
-            # 使用 Job.deserialize 从 Redis 获取任务对象（注意是美式拼写）
-            job = await Job.deserialize(job_id, redis=self.pool)
-            if job:
-                await job.abort()
-                logger.info(f"Job {job_id} cancelled")
-                return True
-            return False
-        except Exception as e:
-            logger.error(f"Failed to cancel job {job_id}: {e}")
-            return False
-
     async def get_queue_stats(self) -> Dict[str, Any]:
-        """获取队列统计信息 - 用于监控"""
+        """获取队列统计信息"""
         if not self.pool:
             return {
                 "healthy": False,
@@ -339,18 +273,13 @@ class TaskQueue:
             }
 
         try:
-            # 获取队列信息
             queued_count = await self.pool.zcard("arq:queue")
 
             return {
                 "healthy": self._is_healthy,
                 "queued_jobs": queued_count,
                 "metrics": self.metrics.copy(),
-                "redis_info": {
-                    "host": self.config.redis_host,
-                    "port": self.config.redis_port,
-                    "db": self.config.redis_db,
-                },
+                "redis_info": REDIS_CONFIG.copy(),
                 "timestamp": int(time.time() * 1000)
             }
         except Exception as e:
@@ -366,7 +295,7 @@ _task_queue_instance: Optional[TaskQueue] = None
 
 
 def initialize_task_queue(app: Sanic) -> TaskQueue:
-    """初始化任务队列（在 server.py 中调用）"""
+    """初始化任务队列"""
     global _task_queue_instance
     _task_queue_instance = TaskQueue(app)
     return _task_queue_instance

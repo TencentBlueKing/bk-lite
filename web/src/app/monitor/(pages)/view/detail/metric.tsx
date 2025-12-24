@@ -293,6 +293,7 @@ const MetricViews: React.FC<ViewDetailProps> = ({
           { keys: item.instance_id_keys || [], values: ids },
         ])
       ),
+      source_unit: item.unit || '',
     };
     const recentTimeRange = getRecentTimeRange(timeValues);
     const startTime = recentTimeRange.at(0);

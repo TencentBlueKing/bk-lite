@@ -24,7 +24,7 @@ const SelectCards: React.FC<SelectCardsProps> = ({
           className={`w-[220px] bg-[var(--color-bg-1)] border-2 ${
             value === item.value
               ? 'border-[var(--color-primary)] shadow-lg border-blue-300'
-              : ''
+              : 'border-[var(--color-border-2)]'
           } shadow-md transition-all duration-300 ease-in-out rounded-lg p-3 relative cursor-pointer group hover:shadow-lg`}
         >
           <div className="flex items-center space-x-4 my-1">

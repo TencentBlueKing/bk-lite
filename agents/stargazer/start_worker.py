@@ -1,71 +1,58 @@
 #!/usr/bin/env python
 # -- coding: utf-8 --
-# @File: start_worker.py
-# @Time: 2025/12/19
-# @Author: AI Assistant
 """
-启动 ARQ Worker 的脚本
-用于处理异步采集任务
+ARQ Worker 启动脚本
 
-生产环境增强：
-- 优雅停机（SIGTERM/SIGINT 信号处理）
-- 进程守护支持
+使用方法：
+    python start_worker.py
+
+或使用 ARQ CLI（推荐生产环境）：
+    arq core.worker.WorkerSettings
 """
-import sys
 import os
-import signal
+import sys
+import logging
+from dotenv import load_dotenv
 
-# 添加项目根目录到 Python 路径
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+# 加载环境变量（必须在导入其他模块之前）
+load_dotenv()
 
-from arq import run_worker
-from core.worker import WorkerSettings
+# 配置日志
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    handlers=[logging.StreamHandler(sys.stdout)]
+)
+logger = logging.getLogger(__name__)
 
-# 全局标志，用于优雅停机
-shutdown_flag = False
 
+def main():
+    """启动 ARQ Worker"""
+    logger.info("=" * 70)
+    logger.info("Starting ARQ Worker")
+    logger.info("=" * 70)
+    logger.info(f"Redis: {os.getenv('REDIS_HOST')}:{os.getenv('REDIS_PORT')}/DB={os.getenv('REDIS_DB')}")
+    logger.info("=" * 70)
 
-def signal_handler(signum, frame):
-    """
-    信号处理器 - 优雅停机
+    try:
+        from arq import run_worker
+        from core.worker import WorkerSettings
 
-    当收到 SIGTERM 或 SIGINT 信号时，标记停机标志
-    Worker 会等待当前任务执行完毕后再退出
-    """
-    global shutdown_flag
-    signal_name = signal.Signals(signum).name
-    print(f"\n[Worker] Received {signal_name} signal, shutting down gracefully...")
-    print("[Worker] Waiting for current tasks to complete...")
-    shutdown_flag = True
+        # 验证配置
+        logger.info(f"Max jobs: {WorkerSettings.max_jobs}")
+        logger.info(f"Job timeout: {WorkerSettings.job_timeout}s")
+        logger.info(f"Registered functions: {[f.__name__ for f in WorkerSettings.functions]}")
+        logger.info("=" * 70)
+
+        # 启动 Worker
+        run_worker(WorkerSettings)
+
+    except KeyboardInterrupt:
+        logger.info("Worker stopped by user")
+    except Exception as e:
+        logger.error(f"Failed to start worker: {e}", exc_info=True)
+        sys.exit(1)
 
 
 if __name__ == '__main__':
-    """
-    运行 ARQ Worker
-    
-    使用方法：
-        python start_worker.py
-    
-    优雅停机：
-        kill -TERM <pid>  # 发送 SIGTERM 信号
-        Ctrl+C            # 发送 SIGINT 信号
-    """
-    # 注册信号处理器
-    signal.signal(signal.SIGTERM, signal_handler)  # systemd/supervisor 停止信号
-    signal.signal(signal.SIGINT, signal_handler)   # Ctrl+C
-
-    print("=" * 60)
-    print("Starting ARQ Worker with graceful shutdown support")
-    print("Press Ctrl+C or send SIGTERM to stop gracefully")
-    print("=" * 60)
-
-    try:
-        # 运行 Worker
-        run_worker(WorkerSettings)
-    except KeyboardInterrupt:
-        print("\n[Worker] Keyboard interrupt received")
-    except Exception as e:
-        print(f"[Worker] Fatal error: {e}")
-        sys.exit(1)
-    finally:
-        print("[Worker] Shutdown complete")
+    main()

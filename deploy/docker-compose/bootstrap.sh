@@ -602,12 +602,12 @@ generate_collector_packages() {
                 cp -a bin/* /tmp/bin; \
                 cd /opt; \
                 cp fusion-collectors/misc/linux/* fusion-collectors/; \
+                cp fusion-collectors/misc/VERSION /pkgs/controller/; \
                 mkdir -p /opt/fusion-collectors/certs/ /opt/windows/fusion-collectors/certs/; \
                 cp /pkgs/controller/linux/certs/ca.crt /opt/fusion-collectors/certs/; \
                 cp /pkgs/controller/windows/certs/ca.crt /opt/windows/fusion-collectors/certs/; \
                 zip -rq /pkgs/controller/fusion-collectors-linux-amd64.zip fusion-collectors; \
                 zip -rq /pkgs/controller/fusion-collectors-windows-amd64.zip /opt/windows/fusion-collectors; \
-                cp misc/VERSION /pkgs/controller/; \
             "
             
             log "SUCCESS" "控制器和采集器包生成成功"
@@ -886,7 +886,8 @@ EOF
         --max-msg-size=-1 --max-msgs=-1 --max-msgs-per-subject=1000000 \
         --dupe-window=5m --no-allow-rollup --no-deny-delete --no-deny-purge 
 
-    log "INFO" "启动所有服务"
+    log "INFO" "重启所有服务"
+    ${DOCKER_COMPOSE_CMD} down server
     ${DOCKER_COMPOSE_CMD} up -d
     sleep 10
 

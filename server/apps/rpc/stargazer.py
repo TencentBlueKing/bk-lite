@@ -7,7 +7,7 @@ from apps.rpc.base import RpcClient
 
 class Stargazer(object):
     def __init__(self):
-        self.client = RpcClient()
+        self.client = RpcClient(namespace='stargazer')
 
     def list_regions(self, params):
         return_data = self.client.run("list_regions", **params)
