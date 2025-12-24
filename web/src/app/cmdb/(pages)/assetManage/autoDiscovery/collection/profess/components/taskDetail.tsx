@@ -322,7 +322,7 @@ const TaskDetail: React.FC<TaskDetailProps> = ({ task, modelId }) => {
   ]);
 
   const statisticCards: StatisticCardConfig[] = useMemo(() => {
-    const message = task.message || {};
+    const message = (task.message || {}) as any;
 
     return [
       {

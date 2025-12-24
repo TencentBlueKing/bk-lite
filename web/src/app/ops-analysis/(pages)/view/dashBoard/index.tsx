@@ -9,7 +9,6 @@ import { v4 as uuidv4 } from 'uuid';
 import ViewSelector from './components/viewSelector';
 import ViewConfig from './components/viewConfig';
 import TimeSelector from '@/components/time-selector';
-// @ts-expect-error missing type declarations for react-grid-layout
 import GridLayout, { WidthProvider } from 'react-grid-layout';
 import {
   Button,
@@ -49,7 +48,7 @@ export interface DashboardRef {
   hasUnsavedChanges: () => boolean;
 }
 
-const ResponsiveGridLayout = WidthProvider(GridLayout);
+const ResponsiveGridLayout = WidthProvider(GridLayout) as any;
 
 const Dashboard = forwardRef<DashboardRef, DashboardProps>(
   ({ selectedDashboard }, ref) => {
@@ -100,7 +99,7 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
             start: dayjs(rangePickerVaule[0]).valueOf(),
             end: dayjs(rangePickerVaule[1]).valueOf(),
             selectValue: 0,
-            rangePickerVaule: rangePickerVaule,
+            rangePickerVaule: rangePickerVaule as [dayjs.Dayjs, dayjs.Dayjs],
           };
         } else {
           timeValue = selectValue;

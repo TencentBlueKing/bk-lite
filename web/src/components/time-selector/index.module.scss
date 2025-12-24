@@ -11,11 +11,6 @@
             color: var(--color-text-4);
             font-size: 14px;
         }
-        :global {
-            .ant-select-arrow {
-                visibility: hidden;
-            }
-        }
         .rangePicker {
             position: absolute;
             z-index: -1;
@@ -27,20 +22,21 @@
     .refreshBox {
         .refreshBtn {
             border-radius: 6px 0 0 6px;
-
-            :global {
-                .anticon-reload {
-                    font-size: 12px;
-                }
-            }
         }
 
         .frequence {
-            :global {
-                .ant-select-selector {
-                    border-radius: 0 6px 6px 0;
-                }
-            }
         }
     }
+}
+
+.timeSelector .customSlect :global(.ant-select-arrow) {
+    visibility: hidden;
+}
+
+.timeSelector .refreshBox .refreshBtn :global(.anticon-reload) {
+    font-size: 12px;
+}
+
+.timeSelector .refreshBox .frequence :global(.ant-select-selector) {
+    border-radius: 0 6px 6px 0;
 }

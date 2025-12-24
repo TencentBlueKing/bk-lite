@@ -29,7 +29,7 @@ import { DEFAULT_COLORS } from '@/app/ops-analysis/constants/common';
 import { svgToBase64 } from '@/app/ops-analysis/utils/common';
 
 const Isoflow = dynamic(
-  () => import('fossflow').then((mod) => ({ default: mod.Isoflow })),
+  () => import('x-isoflow-react-19').then((mod) => ({ default: mod.Isoflow })),
   {
     ssr: false,
     loading: () => (

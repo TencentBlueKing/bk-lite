@@ -415,7 +415,7 @@ const BaseTaskForm = forwardRef<BaseTaskRef, BaseTaskFormProps>(
               rules={rules.cycle}
             >
               <Radio.Group>
-                <div className="space-y-3">
+                <div className="flex flex-col gap-3">
                   {/* 每天一次 */}
                   {editingId && scan_cycle_type !== "cycle"
                     ? (

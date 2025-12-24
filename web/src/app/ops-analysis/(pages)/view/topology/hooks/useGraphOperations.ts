@@ -39,9 +39,9 @@ import { getColorByThreshold } from '../utils/thresholdUtils';
 const LOADING_ANIMATION_INTERVAL = 300; // 加载动画间隔时间（ms）
 
 export const useGraphOperations = (
-  containerRef: React.RefObject<HTMLDivElement>,
+  containerRef: React.RefObject<HTMLDivElement | null>,
   state: ReturnType<typeof import('./useTopologyState').useTopologyState>,
-  minimapContainerRef?: React.RefObject<HTMLDivElement>
+  minimapContainerRef?: React.RefObject<HTMLDivElement | null>
 ) => {
   const { t } = useTranslation();
   const { getSourceDataByApiId } = useDataSourceApi();

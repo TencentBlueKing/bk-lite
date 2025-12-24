@@ -228,7 +228,7 @@ const AssetDataContent = () => {
       pagination.total = data.count;
       setPagination(pagination);
     } catch (error) {
-      caughtError = error;
+      caughtError = error as { name?: string } | null;
     } finally {
       if (caughtError && caughtError?.name === "CanceledError") return;
       setTableLoading(false);

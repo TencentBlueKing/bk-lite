@@ -28,7 +28,7 @@ const ExportModal = forwardRef<ExportModalRef, ExportModalProps>(
     const { getModelAssociations } = useModelApi();
     const { data: session } = useSession();
     const authContext = useAuth();
-    const token = session?.user?.token || authContext?.token || null;
+    const token = (session?.user as any)?.token || authContext?.token || null;
 
     const [visible, setVisible] = useState(false);
     const [loading, setLoading] = useState(false);
@@ -363,7 +363,7 @@ const ExportModal = forwardRef<ExportModalRef, ExportModalProps>(
                     onChange={handleRelationChange}
                     className="w-full"
                   >
-                    <div className="space-y-3">
+                    <div className="flex flex-col gap-3">
                       {relationList.map((relation: RelationItem) => (
                         <div
                           key={relation.relation_key}

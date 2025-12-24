@@ -1,14 +1,15 @@
 .attrLayout {
-  :global {
-    .ant-card-body {
-      padding: 10px !important;
-      border: none !important;
-    }
-    aside {
-      height: calc(100vh - 90px);
-    }
-    section {
-      width: calc(100vw - 250px);
-    }
-  }
+}
+
+.attrLayout :global(.ant-card-body) {
+  padding: 10px !important;
+  border: none !important;
+}
+
+.attrLayout :global(aside) {
+  height: calc(100vh - 90px);
+}
+
+.attrLayout :global(section) {
+  width: calc(100vw - 250px);
 }

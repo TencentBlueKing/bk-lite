@@ -30,7 +30,7 @@ const AlarmAction: React.FC<AlarmActionProps> = ({
   const [assignVisible, setAssignVisible] = useState(false);
   const [actionType, setActionType] = useState<ActionType>('assign');
   const idList = rowData.map((item) => item[idKeyMap[from]]);
-  const username = session?.user?.username;
+  const username = (session?.user as any)?.username;
 
   const isMine = () =>
     rowData.every((item) =>

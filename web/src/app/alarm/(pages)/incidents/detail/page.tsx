@@ -546,7 +546,7 @@ const IncidentDetail: React.FC = () => {
                           ),
                         },
                       ]}
-                      onChange={setViewType}
+                      onChange={setViewType as any}
                     />
                   </div>
                   <div>

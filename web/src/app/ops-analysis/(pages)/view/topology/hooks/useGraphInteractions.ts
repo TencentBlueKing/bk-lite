@@ -26,7 +26,7 @@ const removeAllEdgeLabels = (edge: Edge) => {
 };
 
 export const useContextMenuAndModal = (
-  containerRef: React.RefObject<HTMLDivElement>,
+  containerRef: React.RefObject<HTMLDivElement | null>,
   state: TopologyState
 ): UseContextMenuAndModalReturn => {
   const { t } = useTranslation();
