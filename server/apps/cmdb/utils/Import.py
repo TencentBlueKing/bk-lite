@@ -28,6 +28,118 @@ class Import:
         # 用于收集数据验证错误
         self.validation_errors = []
 
+    def _resolve_organization_ids(self, value_list: list, allowed_org_set: set, row_index: int, field_display_name: str):
+        """解析组织字段，支持组织名与路径(Default/xxx)，并按 allowed_org_set 做范围校验。
+
+        Returns:
+            tuple[list[int], str|None, bool]: (org_ids, error_msg, organization_cell_provided)
+        """
+
+        normalized_values = [v.strip() if isinstance(v, str) else v for v in (value_list or [])]
+        organization_cell_provided = any(v not in (None, "") for v in normalized_values)
+
+        if not organization_cell_provided:
+            return [], None, False
+
+        query_names = set()
+        for raw in normalized_values:
+            if not raw:
+                continue
+            if isinstance(raw, str) and "/" in raw:
+                parts = [p.strip() for p in raw.split("/") if p.strip()]
+                if parts:
+                    query_names.add(parts[-1])
+                    if len(parts) >= 2:
+                        query_names.add(parts[-2])
+            else:
+                query_names.add(raw)
+
+        # 先在全量组织表中定位，再根据 allowed_org_set 判定“越界”还是“无效”
+        group_rows = list(Group.objects.filter(name__in=query_names).values("id", "name", "parent_id"))
+
+        parent_ids = {r["parent_id"] for r in group_rows if r.get("parent_id")}
+        parent_name_map = {}
+        if parent_ids:
+            parent_name_map = {
+                r["id"]: r["name"] for r in Group.objects.filter(id__in=parent_ids).values("id", "name")
+            }
+
+        rows_by_name = {}
+        for r in group_rows:
+            rows_by_name.setdefault(r["name"], []).append(r)
+
+        enum_id = []
+        invalid_values = []
+        out_of_scope_values = []
+
+        for raw in normalized_values:
+            if not raw:
+                continue
+
+            if isinstance(raw, str) and "/" in raw:
+                parts = [p.strip() for p in raw.split("/") if p.strip()]
+                if not parts:
+                    invalid_values.append(raw)
+                    continue
+
+                leaf_name = parts[-1]
+                parent_name = parts[-2] if len(parts) >= 2 else None
+                candidates = rows_by_name.get(leaf_name, [])
+                if parent_name:
+                    candidates = [
+                        c for c in candidates if parent_name_map.get(c.get("parent_id")) == parent_name
+                    ]
+
+                if not candidates:
+                    invalid_values.append(raw)
+                    continue
+
+                if allowed_org_set is None:
+                    return [], f"第{row_index}行，字段'{field_display_name}'缺少组织范围上下文，请刷新后重试", organization_cell_provided
+
+                in_scope = [c for c in candidates if c["id"] in allowed_org_set]
+                if len(in_scope) == 1:
+                    mapped_id = in_scope[0]["id"]
+                elif len(in_scope) == 0:
+                    out_of_scope_values.append(raw)
+                    continue
+                else:
+                    invalid_values.append(raw)
+                    continue
+
+            else:
+                candidates = rows_by_name.get(raw, [])
+                if not candidates:
+                    invalid_values.append(raw)
+                    continue
+
+                if allowed_org_set is None:
+                    if len(candidates) == 1:
+                        mapped_id = candidates[0]["id"]
+                    else:
+                        invalid_values.append(raw)
+                        continue
+                else:
+                    in_scope = [c for c in candidates if c["id"] in allowed_org_set]
+                    if len(in_scope) == 1:
+                        mapped_id = in_scope[0]["id"]
+                    elif len(in_scope) == 0:
+                        out_of_scope_values.append(raw)
+                        continue
+                    else:
+                        invalid_values.append(raw)
+                        continue
+
+            enum_id.append(mapped_id)
+
+        if invalid_values:
+            return [], f"第{row_index}行，字段'{field_display_name}'的值'{invalid_values}'无效", organization_cell_provided
+
+        if out_of_scope_values:
+            return [], f"第{row_index}行，字段'{field_display_name}'的值'{out_of_scope_values}'不在当前选择组织范围内", organization_cell_provided
+
+        return enum_id, None, organization_cell_provided
+
     def format_excel_data(self, excel_meta: bytes, allowed_org_ids: list = None):
         """格式化excel"""
 
@@ -123,121 +235,23 @@ class Import:
                         else:
                             value_list = value
 
-                        # 组织字段：不使用 attrs.option 映射，改为从系统组织表按 name 查询
+                        # 组织字段：支持 Default/xxx，并做范围校验
                         if org_user_map[keys[i]] == ORGANIZATION:
-                            normalized_values = [v.strip() if isinstance(v, str) else v for v in value_list]
-                            query_names = set()
-                            for raw in normalized_values:
-                                if not raw:
-                                    continue
-                                if isinstance(raw, str) and "/" in raw:
-                                    parts = [p.strip() for p in raw.split("/") if p.strip()]
-                                    if parts:
-                                        query_names.add(parts[-1])
-                                        if len(parts) >= 2:
-                                            query_names.add(parts[-2])
-                                else:
-                                    query_names.add(raw)
+                            org_ids, error_msg, provided = self._resolve_organization_ids(
+                                value_list=value_list,
+                                allowed_org_set=allowed_org_set,
+                                row_index=row_index,
+                                field_display_name=attr_name_map.get(keys[i], keys[i]),
+                            )
+                            organization_cell_provided = organization_cell_provided or provided
 
-                            # 注意：这里不要用 allowed_org_set 限制查询，否则“存在但越界”的组织会被误判为“无效”
-                            group_rows = list(Group.objects.filter(name__in=query_names).values("id", "name", "parent_id"))
-
-                            # 预取父组织名称（用于解析 Default/xxx 这种路径）
-                            parent_ids = {r["parent_id"] for r in group_rows if r.get("parent_id")}
-                            parent_name_map = {}
-                            if parent_ids:
-                                parent_name_map = {
-                                    r["id"]: r["name"] for r in Group.objects.filter(id__in=parent_ids).values("id", "name")
-                                }
-
-                            rows_by_name = {}
-                            for r in group_rows:
-                                rows_by_name.setdefault(r["name"], []).append(r)
-
-                            enum_id = []
-                            invalid_values = []
-                            out_of_scope_values = []
-
-                            for raw in normalized_values:
-                                if not raw:
-                                    continue
-
-                                if isinstance(raw, str) and "/" in raw:
-                                    parts = [p.strip() for p in raw.split("/") if p.strip()]
-                                    if not parts:
-                                        invalid_values.append(raw)
-                                        continue
-
-                                    leaf_name = parts[-1]
-                                    parent_name = parts[-2] if len(parts) >= 2 else None
-                                    candidates = rows_by_name.get(leaf_name, [])
-                                    if parent_name:
-                                        candidates = [
-                                            c for c in candidates if parent_name_map.get(c.get("parent_id")) == parent_name
-                                        ]
-
-                                    if not candidates:
-                                        invalid_values.append(raw)
-                                        continue
-
-                                    if allowed_org_set is None:
-                                        error_msg = f"第{row_index}行，字段'{attr_name_map.get(keys[i], keys[i])}'缺少组织范围上下文，请刷新后重试"
-                                        self.validation_errors.append(error_msg)
-                                        logger.warning(error_msg)
-                                        continue
-
-                                    in_scope = [c for c in candidates if c["id"] in allowed_org_set]
-                                    if len(in_scope) == 1:
-                                        mapped_id = in_scope[0]["id"]
-                                    elif len(in_scope) == 0:
-                                        out_of_scope_values.append(raw)
-                                        continue
-                                    else:
-                                        invalid_values.append(raw)
-                                        continue
-                                else:
-                                    candidates = rows_by_name.get(raw, [])
-
-                                    if not candidates:
-                                        invalid_values.append(raw)
-                                        continue
-
-                                    if allowed_org_set is None:
-                                        if len(candidates) == 1:
-                                            mapped_id = candidates[0]["id"]
-                                        else:
-                                            invalid_values.append(raw)
-                                            continue
-                                    else:
-                                        in_scope = [c for c in candidates if c["id"] in allowed_org_set]
-                                        if len(in_scope) == 1:
-                                            mapped_id = in_scope[0]["id"]
-                                        elif len(in_scope) == 0:
-                                            out_of_scope_values.append(raw)
-                                            continue
-                                        else:
-                                            # 同名组织在范围内仍不唯一，提示用路径写法
-                                            invalid_values.append(raw)
-                                            continue
-
-                                enum_id.append(mapped_id)
-
-                            if invalid_values:
-                                error_msg = (
-                                    f"第{row_index}行，字段'{attr_name_map.get(keys[i], keys[i])}'的值'{invalid_values}'无效"
-                                )
+                            if error_msg:
                                 self.validation_errors.append(error_msg)
                                 logger.warning(error_msg)
                                 continue
 
-                            if out_of_scope_values:
-                                error_msg = f"第{row_index}行，字段'{attr_name_map.get(keys[i], keys[i])}'的值'{out_of_scope_values}'不在当前选择组织范围内"
-                                self.validation_errors.append(error_msg)
-                                logger.warning(error_msg)
-                                continue
-
-                            if enum_id:
-                                item[keys[i]] = enum_id
+                            if org_ids:
+                                item[keys[i]] = org_ids
                             continue
 
                         enum_id = []
