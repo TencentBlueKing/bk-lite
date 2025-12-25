@@ -110,8 +110,8 @@ class Command(BaseCommand):
                 # 类型映射
                 type_mapping = {
                     "string": "text",
-                    "integer": "text",
-                    "boolean": "text",
+                    "integer": "number",
+                    "boolean": "checkbox",
                     "array": "text",
                     "object": "text",
                     "password": "password",
