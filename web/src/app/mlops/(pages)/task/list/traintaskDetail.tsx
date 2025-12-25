@@ -122,7 +122,7 @@ const LazyChart: React.FC<LazyChartProps> = ({ metricName, runId, getMetricsDeta
   };
 
   return (
-    <div ref={chartRef} className={styles.metricCard}>
+    <div ref={chartRef} className={styles.metricCard} style={{ width: '49%' }}>
       <div className={styles.metricCardHeader}>
         <h3 className={styles.metricCardTitle}>
           {metricName}
@@ -196,7 +196,7 @@ const TrainTaskDetail = ({
     <div className={styles.trainTaskDetail}>
       <div className={styles.taskDetailContainer}>
         {/* Header Section */}
-        <div className={styles.taskHeader}>
+        {/* <div className={styles.taskHeader}>
           <div className={styles.taskHeaderContent}>
             <div className={styles.taskInfo}>
               {metricData?.run_name && (
@@ -213,7 +213,7 @@ const TrainTaskDetail = ({
               )}
             </div>
           </div>
-        </div>
+        </div> */}
 
         {/* Content Section */}
         <div className={styles.taskContent}>
@@ -228,10 +228,10 @@ const TrainTaskDetail = ({
           {/* Metrics Grid */}
           {!loading && metrics.length > 0 && (
             <div className={styles.metricsSection}>
-              <div className={styles.metricsHeader}>
+              {/* <div className={styles.metricsHeader}>
                 <h2 className={styles.metricsTitle}>训练指标</h2>
                 <div className={styles.metricsCount}>{metrics.length} 个指标</div>
-              </div>
+              </div> */}
               <div className={styles.metricsGrid}>
                 {metrics.map((metricName) => (
                   <LazyChart

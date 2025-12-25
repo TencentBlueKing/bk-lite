@@ -11,7 +11,7 @@ source "$SCRIPT_DIR/common.sh"
 
 # 解析传入的 JSON 数据（第一个参数）
 if [ -z "$1" ]; then
-    json_error "" "No JSON data provided"
+    json_error "INVALID_JSON" "" "No JSON data provided"
     exit 1
 fi
 
@@ -22,7 +22,7 @@ ID=$(echo "$JSON_DATA" | jq -r '.id // empty')
 LINES=$(echo "$JSON_DATA" | jq -r '.lines // "100"')
 
 if [ -z "$ID" ]; then
-    json_error "unknown" "Missing required field: id"
+    json_error "MISSING_REQUIRED_FIELD" "unknown" "Missing required field: id"
     exit 1
 fi
 
@@ -31,7 +31,7 @@ CONTAINER_NAME="${ID}"
 
 # 检查容器是否存在
 if ! docker ps -a --format '{{.Names}}' | grep -q "^${CONTAINER_NAME}$"; then
-    json_error "$ID" "Training job not found"
+    json_error "CONTAINER_NOT_FOUND" "$ID" "Training job not found"
     exit 1
 fi
 
@@ -45,6 +45,6 @@ if [ $DOCKER_STATUS -eq 0 ]; then
     echo "{\"status\":\"success\",\"id\":\"$ID\",\"logs\":$LOGS_ESCAPED}"
     exit 0
 else
-    json_error "$ID" "Failed to retrieve logs" "$LOGS"
+    json_error "CONTAINER_LOGS_FAILED" "$ID" "Failed to retrieve logs" "$LOGS"
     exit 1
 fi

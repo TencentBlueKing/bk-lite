@@ -465,6 +465,12 @@ class TimeSeriesPredictServing(MaintainerInfo, TimeInfo):
         verbose_name="模型版本",
         help_text="模型版本",
     )
+    port = models.IntegerField(
+        null=True,
+        blank=True,
+        verbose_name="服务端口",
+        help_text="用户指定端口，为空则由 docker 自动分配。实际端口以 container_info.port 为准",
+    )
     status = models.CharField(
         max_length=20,
         choices=[
