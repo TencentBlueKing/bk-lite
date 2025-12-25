@@ -122,7 +122,7 @@ const ChartContent = ({
           render: (_, record) => {
             return (
               <PermissionWrapper requiredPermissions={['File Edit']}>
-                <Button color="danger" variant="link" className="justify-start items-center !p-0" onClick={() => handleDelete(record)}>
+                <Button color="danger" variant="link" className="justify-start items-center p-0!" onClick={() => handleDelete(record)}>
                   {t('common.delete')}
                 </Button>
               </PermissionWrapper>
@@ -612,7 +612,7 @@ const ChartContent = ({
               )}
             </div>
             <div
-              className={`${key === 'anomaly_detection' ? 'w-[355px]' : 'w-[290px]'} anomaly-container relative`}
+              className={`${key === 'anomaly_detection' ? 'w-88.75' : 'w-72.5'} anomaly-container relative`}
               ref={tableContainerRef}
               style={{
                 height: `calc(100vh - 120px)`,

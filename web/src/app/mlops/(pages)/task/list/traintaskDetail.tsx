@@ -17,15 +17,18 @@ interface TrainTaskDetailProps {
 interface LazyChartProps {
   metricName: string;
   runId: string;
+  status: string;
   getMetricsDetail: (runId: string, metricsName: string) => Promise<any>;
 }
 
-const LazyChart: React.FC<LazyChartProps> = ({ metricName, runId, getMetricsDetail }) => {
+const LazyChart: React.FC<LazyChartProps> = ({ metricName, runId, status, getMetricsDetail }) => {
   const { t } = useTranslation();
   const chartRef = useRef<HTMLDivElement>(null);
   const loadingRef = useRef(false);
   const timeoutRef = useRef<NodeJS.Timeout | null>(null);
   const enterTimeRef = useRef<number | null>(null);
+  const isInViewportRef = useRef(false);
+  const pollingTimerRef = useRef<NodeJS.Timeout | null>(null);
   const [data, setData] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
 
@@ -35,6 +38,9 @@ const LazyChart: React.FC<LazyChartProps> = ({ metricName, runId, getMetricsDeta
       (entries) => {
         entries.forEach((entry) => {
           if (entry.isIntersecting) {
+            // 标记进入视口
+            isInViewportRef.current = true;
+            
             // 记录进入视口的时间
             enterTimeRef.current = Date.now();
 
@@ -60,6 +66,9 @@ const LazyChart: React.FC<LazyChartProps> = ({ metricName, runId, getMetricsDeta
               }
             }, 600);
           } else {
+            // 标记离开视口
+            isInViewportRef.current = false;
+            
             // 离开视口时清除定时器
             if (timeoutRef.current) {
               clearTimeout(timeoutRef.current);
@@ -83,12 +92,11 @@ const LazyChart: React.FC<LazyChartProps> = ({ metricName, runId, getMetricsDeta
       if (chartRef.current) {
         observer.unobserve(chartRef.current);
       }
-      // 清理定时器
       if (timeoutRef.current) {
         clearTimeout(timeoutRef.current);
       }
     };
-  }, []);
+  }, [metricName]);
 
   const loadChartData = async () => {
     if (loadingRef.current) return;
@@ -107,6 +115,58 @@ const LazyChart: React.FC<LazyChartProps> = ({ metricName, runId, getMetricsDeta
       loadingRef.current = false;
     }
   };
+
+  // 轮询更新数据
+  const updateChartData = async () => {
+    try {
+      const detailInfo = await getMetricsDetail(runId, metricName);
+      const newData = detailInfo?.metric_history || [];
+      
+      // 使用函数式更新，确保获取最新的 state
+      setData(prevData => {
+        const merged = mergeData(prevData, newData);
+        
+        if (merged.length !== prevData.length) {
+          console.log(`[Data] ${metricName}: ${prevData.length} → ${merged.length} (+${merged.length - prevData.length})`);
+          return merged;
+        }
+        
+        return prevData;  // 无变化则返回原数据，避免重新渲染
+      });
+    } catch (error) {
+      console.error(`[Error] ${metricName} 更新失败:`, error);
+    }
+  };
+
+  // 数据去重合并
+  const mergeData = (oldData: any[], newData: any[]): any[] => {
+    if (!oldData.length) return newData;
+    if (!newData.length) return oldData;
+    
+    const maxStep = oldData[oldData.length - 1].step;
+    const incremental = newData.filter(d => d.step > maxStep);
+    
+    return incremental.length > 0 ? [...oldData, ...incremental] : oldData;
+  };
+
+  // 轮询定时器
+  useEffect(() => {
+    if (status !== 'RUNNING') {
+      return;
+    }
+    
+    pollingTimerRef.current = setInterval(() => {
+      if (isInViewportRef.current) {
+        updateChartData();
+      }
+    }, 10000);
+    
+    return () => {
+      if (pollingTimerRef.current) {
+        clearInterval(pollingTimerRef.current);
+      }
+    };
+  }, [status, metricName, updateChartData]);
 
   // 判断是否为单一数值指标（step为0表示没有step数据）
   const isSingleValueMetric = (data: any[]) => {
@@ -238,6 +298,7 @@ const TrainTaskDetail = ({
                     key={metricName}
                     metricName={metricName}
                     runId={metricData?.run_id}
+                    status={metricData?.status}
                     getMetricsDetail={getMetricsDetail}
                   />
                 ))}

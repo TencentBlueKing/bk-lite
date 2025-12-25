@@ -89,7 +89,7 @@ export const useTimeseriesPredictForm = ({
       dataset_version: data.dataset_version,
 
       // 展开 hyperparams
-      max_evals: hyperparams.max_evals,
+      max_evals: data.max_evals,  // 直接读取顶层字段（由后端保证一致性）
       metric: hyperparams.metric,
       use_feature_engineering: hyperparams.use_feature_engineering ?? true,
       random_state: hyperparams.random_state,
@@ -139,7 +139,6 @@ export const useTimeseriesPredictForm = ({
       hyperparams: {
         use_feature_engineering: formValues.use_feature_engineering ?? true,
         random_state: formValues.random_state ?? 42,
-        max_evals: formValues.max_evals,
         metric: formValues.metric,
         search_space: {
           n_estimators: stringToArray(searchSpace.n_estimators),
@@ -174,6 +173,7 @@ export const useTimeseriesPredictForm = ({
       algorithm: formValues.algorithm,
       dataset: formValues.dataset,
       dataset_version: formValues.dataset_version,
+      max_evals: formValues.max_evals,  // 顶层字段，由后端同步到配置
       status: 'pending',
       description: formValues.name || '',
       hyperopt_config
@@ -329,6 +329,7 @@ export const useTimeseriesPredictForm = ({
     });
     formRef.current?.resetFields();
     setDatasetVersions([]);
+    setFormData(null);  // 清理表单数据状态
     setIsShow(false);
     setUseFeatureEngineering(true);
     setUseDiffFeatures(true);
@@ -370,17 +371,17 @@ export const useTimeseriesPredictForm = ({
           />
         </Form.Item>
 
+        <Form.Item name='max_evals' label="训练轮次" rules={[{ required: true, message: '请输入训练轮次' }]}>
+          <InputNumber style={{ width: '100%' }} min={1} placeholder="超参数搜索的评估轮次" />
+        </Form.Item>
+
         {/* ========== 参数配置 - 第一层 if (isShow) ========== */}
         {isShow && (
           <>
-            {/* Hyperparams 配置 */}
+            {/* 训练配置 */}
             <Divider orientation='start' orientationMargin={'0'} plain style={{ borderColor: '#d1d5db' }}>
-              {t(`traintask.hyperopt`)}
+              训练配置
             </Divider>
-
-            <Form.Item name='max_evals' label="最大评估次数" rules={[{ required: true, message: t('common.inputMsg') }]}>
-              <InputNumber style={{ width: '100%' }} min={1} placeholder="超参数搜索的最大评估次数" />
-            </Form.Item>
 
             <Form.Item name='metric' label="优化指标" rules={[{ required: true, message: t('common.inputMsg') }]}>
               <Select
@@ -393,27 +394,41 @@ export const useTimeseriesPredictForm = ({
               />
             </Form.Item>
 
-            <Form.Item name='use_feature_engineering' label="特征工程" valuePropName="checked" layout='horizontal'>
-              <Switch defaultChecked size='small' onChange={onFeatureEngineeringChange}  />
+            <Form.Item 
+              name='random_state' 
+              label="随机种子" 
+              tooltip="控制随机性，确保实验可复现。相同种子+相同参数=相同结果"
+              rules={[{ required: true, message: '请输入随机种子' }]}
+            >
+              <InputNumber style={{ width: '100%' }} min={0} placeholder="例: 42" />
             </Form.Item>
 
-            {/* Search Space */}
-            {/* <Divider orientation="left"></Divider> */}
+            {/* 搜索空间 */}
             <Divider orientation='start' orientationMargin={'0'} plain style={{ borderColor: '#d1d5db' }}>
               搜索空间 (Search Space)
             </Divider>
 
+            {/* 树结构参数 */}
+            <div style={{ marginBottom: 12, color: '#666', fontSize: 13, fontWeight: 500 }}>
+              树结构参数
+            </div>
+
             <Form.Item name={['search_space', 'n_estimators']} label="树的数量" rules={[{ required: true, message: '请输入树的数量' }]}>
               <Input placeholder="例: 50,100,200,300" />
+            </Form.Item>
+
+            <Form.Item name={['search_space', 'max_depth']} label="树最大深度" rules={[{ required: true, message: '请输入树最大深度' }]}>
+              <Input placeholder="例: 3,5,7,10" />
             </Form.Item>
 
             <Form.Item name={['search_space', 'learning_rate']} label="学习率" rules={[{ required: true, message: '请输入学习率' }]}>
               <Input placeholder="例: 0.01,0.05,0.1,0.2" />
             </Form.Item>
 
-            <Form.Item name={['search_space', 'max_depth']} label="树最大深度" rules={[{ required: true, message: '请输入树最大深度' }]}>
-              <Input placeholder="例: 3,5,7,10" />
-            </Form.Item>
+            {/* 采样控制参数 */}
+            <div style={{ marginTop: 20, marginBottom: 12, color: '#666', fontSize: 13, fontWeight: 500 }}>
+              采样控制参数
+            </div>
 
             <Form.Item name={['search_space', 'min_samples_split']} label="最小分裂样本数" rules={[{ required: true, message: '请输入最小分裂样本数' }]}>
               <Input placeholder="例: 2,5,10" />
@@ -426,6 +441,11 @@ export const useTimeseriesPredictForm = ({
             <Form.Item name={['search_space', 'subsample']} label="子采样比例" rules={[{ required: true, message: '请输入子采样比例' }]}>
               <Input placeholder="例: 0.7,0.8,0.9,1.0" />
             </Form.Item>
+
+            {/* 特征参数 */}
+            <div style={{ marginTop: 20, marginBottom: 12, color: '#666', fontSize: 13, fontWeight: 500 }}>
+              特征参数
+            </div>
 
             <Form.Item name={['search_space', 'lag_features']} label="滞后特征数量" rules={[{ required: true, message: '请输入滞后特征数量' }]}>
               <Input placeholder="例: 6,12,24" />
@@ -468,14 +488,18 @@ export const useTimeseriesPredictForm = ({
               />
             </Form.Item>
 
+            {/* 特征工程 */}
+            <Divider orientation='start' orientationMargin={'0'} plain style={{ borderColor: '#d1d5db' }}>
+              特征工程 (Feature Engineering)
+            </Divider>
+
+            <Form.Item name='use_feature_engineering' label="启用特征工程" valuePropName="checked" layout='horizontal'>
+              <Switch defaultChecked size='small' onChange={onFeatureEngineeringChange}  />
+            </Form.Item>
+
             {/* ========== Feature Engineering - 第二层 if (useFeatureEngineering) ========== */}
             {useFeatureEngineering && (
               <>
-                {/* <Divider orientation="left">特征工程 (Feature Engineering)</Divider> */}
-                <Divider orientation='start' orientationMargin={'0'} plain style={{ borderColor: '#d1d5db' }}>
-                  特征工程 (Feature Engineering)
-                </Divider>
-
                 <Form.Item name={['feature_engineering', 'lag_periods']} label="滞后期" rules={[{ required: true, message: '请输入滞后期' }]}>
                   <Input placeholder="例: 1,2,3,7,14" />
                 </Form.Item>
@@ -511,18 +535,23 @@ export const useTimeseriesPredictForm = ({
                       <Switch size='small' />
                     </Form.Item>
                   </Col>
+                </Row>
+
+                {/* 差分特征组 */}
+                <Row gutter={16} align='middle'>
                   <Col span={6}>
                     <Form.Item name={['feature_engineering', 'use_diff_features']} label="差分特征" valuePropName="checked" layout='horizontal'>
                       <Switch defaultChecked size='small' onChange={onDiffFeaturesChange} />
                     </Form.Item>
                   </Col>
+                  {useDiffFeatures && (
+                    <Col span={18}>
+                      <Form.Item name={['feature_engineering', 'diff_periods']} label="差分期数" layout='horizontal' rules={[{ required: true, message: '请输入差分期数' }]}>
+                        <Input placeholder="例: 1" />
+                      </Form.Item>
+                    </Col>
+                  )}
                 </Row>
-
-                {useDiffFeatures && (
-                  <Form.Item name={['feature_engineering', 'diff_periods']} label="差分期数" rules={[{ required: true, message: '请输入差分期数' }]}>
-                    <Input placeholder="例: 1" />
-                  </Form.Item>
-                )}
               </>
             )}
           </>

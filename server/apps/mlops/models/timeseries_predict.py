@@ -285,12 +285,19 @@ class TimeSeriesPredictTrainJob(MaintainerInfo, TimeInfo):
             logger.error(f"Failed to sync config to MinIO: {e}", exc_info=True)
     
     def _build_complete_config(self):
-        """构建完整的配置文件（补全 model 和 mlflow 部分）"""
+        """构建完整的配置文件（补全 model、mlflow 和 max_evals 部分）"""
         # 基础配置（来自前端）
         config = dict(self.hyperopt_config) if self.hyperopt_config else {}
         
         # 生成模型标识：algorithm_name_id（此时 pk 已存在）
         model_identifier = f"TimeseriesPredict_{self.algorithm}_{self.pk}"
+        
+        # 确保 hyperparams 存在
+        if 'hyperparams' not in config:
+            config['hyperparams'] = {}
+        
+        # 强制同步 max_evals（以独立字段为准）
+        config['hyperparams']['max_evals'] = self.max_evals
         
         # 补充 model 配置
         config['model'] = {
