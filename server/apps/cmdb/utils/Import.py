@@ -286,17 +286,6 @@ class Import:
 
                 # 将键和值存入字典
                 item[keys[i]] = value
-
-            # 组织字段必填校验：仅当组织单元格确实为空时才报错
-            if (
-                row_has_data
-                and ORGANIZATION in attr_name_map
-                and ORGANIZATION not in item
-                and not organization_cell_provided
-            ):
-                error_msg = f"第{row_index}行，字段'{attr_name_map.get(ORGANIZATION, ORGANIZATION)}'不能为空"
-                self.validation_errors.append(error_msg)
-                logger.warning(error_msg)
             # 检查该行是否有验证错误
             row_has_validation_errors = len(self.validation_errors) > row_validation_errors_count
 
