@@ -267,6 +267,7 @@ class Import:
                             if enum_id.__len__() >= 1:
                                 enum_id = enum_id[0]
                         if invalid_values:
+                            logger.warning(need_val_to_id_field_map[keys[i]])
                             error_msg = f"第{row_index}行，字段'{attr_name_map.get(keys[i], keys[i])}'的值'{invalid_values}'无效"
                             self.validation_errors.append(error_msg)
                             logger.warning(error_msg)
