@@ -4,7 +4,7 @@
   color: var(--color-text-1);
 
   .sectionContainer {
-    background: var( --color-bg);
+    background: var(--color-bg);
   }
 
   .sectionContext {
@@ -17,11 +17,11 @@
   color: var(--color-components-side-nav-text);
 
   .introduction {
-    background: var( --color-bg);
+    background: var(--color-bg);
   }
 
   .nav {
-    background: var( --color-bg);
+    background: var(--color-bg);
 
     li {
       &:hover {
@@ -36,8 +36,7 @@
   }
 }
 
-.segmented {
-}
+.segmented {}
 
 .segmented :global(.ant-segmented) {
   background: transparent;
@@ -51,4 +50,210 @@
 
 .segmented :global(.ant-segmented .ant-segmented-item-selected) {
   color: var(--color-primary);
+}
+
+.drawer :global(.ant-drawer-body) {
+  padding: 0 !important;
+}
+
+.drawer :global(.ant-drawer-footer) {
+  padding: 16px 24px;
+  border-top: 1px solid #e1e1e1;
+  background: #fafafa;
+}
+
+.drawer :global(.ant-drawer-footer .back-to-list-btn) {
+  color: #0078d4;
+  border: none;
+  padding: 8px 16px;
+  font-weight: 500;
+}
+
+.drawer :global(.ant-drawer-footer .back-to-list-btn:hover) {
+  background: #f3f2f1;
+  color: #106ebe;
+}
+
+.drawer :global(.drawer-content) {
+  height: 100%;
+  overflow: hidden;
+}
+
+// Train Task Detail Styles - 与 monitor view 对齐
+.trainTaskDetail {
+  height: 100%;
+  background: var(--color-bg);
+
+  .taskDetailContainer {
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+  }
+
+  // Header Section
+  .taskHeader {
+    background: var(--color-bg-1);
+    border-bottom: 1px solid var(--color-border-1);
+    padding: 20px;
+
+    .taskHeaderContent {
+      max-width: 100%;
+    }
+
+    .taskInfo {
+      display: flex;
+      gap: 32px;
+      align-items: center;
+
+      .taskInfoItem {
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+
+        .taskInfoLabel {
+          font-size: 12px;
+          color: var(--color-text-3);
+          font-weight: 500;
+        }
+
+        .taskInfoValue {
+          font-size: 14px;
+          color: var(--color-text-1);
+          font-weight: 600;
+        }
+      }
+    }
+  }
+
+  // Content Section
+  .taskContent {
+    flex: 1;
+    padding: 20px;
+    overflow-y: auto;
+    width: 100%;
+  }
+
+  // Loading State
+  .taskLoading {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    height: 300px;
+    gap: 16px;
+
+    .taskLoadingText {
+      color: var(--color-text-3);
+      font-size: 14px;
+    }
+  }
+
+  // Metrics Section - 与 monitor view 对齐
+  .metricsSection {
+    .metricsHeader {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 16px;
+
+      .metricsTitle {
+        font-size: 16px;
+        font-weight: 600;
+        color: var(--color-text-1);
+        margin: 0;
+      }
+
+      .metricsCount {
+        color: var(--color-text-3);
+        font-size: 12px;
+      }
+    }
+
+    .metricsGrid {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: space-between;
+    }
+  }
+
+  // Empty State
+  .taskEmpty {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    height: 300px;
+    background: var(--color-bg-1);
+    border: 1px solid var(--color-border-1);
+
+    .taskEmptyIcon {
+      font-size: 48px;
+      margin-bottom: 16px;
+      opacity: 0.6;
+    }
+
+    .taskEmptyTitle {
+      font-size: 16px;
+      font-weight: 600;
+      color: var(--color-text-1);
+      margin-bottom: 8px;
+    }
+
+    .taskEmptyDescription {
+      font-size: 14px;
+      color: var(--color-text-3);
+      text-align: center;
+      max-width: 300px;
+    }
+  }
+
+  // Metric Card Styles - 与 monitor view 对齐
+  .metricCard {
+    background: var(--color-bg-1);
+    border: 1px solid var(--color-border-1);
+    padding: 10px;
+    margin-bottom: 10px;
+
+    .metricCardHeader {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 10px;
+
+      .metricCardTitle {
+        font-size: 14px;
+        font-weight: 600;
+        color: var(--color-text-1);
+        margin: 0;
+        text-overflow: ellipsis;
+        overflow: hidden;
+        white-space: nowrap;
+      }
+    }
+
+    .metricCardContent {
+      height: 200px;
+      position: relative;
+    }
+
+    .metricCardLoading {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      height: 100%;
+    }
+
+    .metricCardEmpty {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      height: 100%;
+
+      .metricCardEmptyText {
+        font-size: 12px;
+        color: var(--color-text-3);
+        text-align: center;
+      }
+    }
+  }
 }
