@@ -1040,7 +1040,7 @@ package() {
         log "INFO" "跳过的类型: ${skip_info}"
     fi
     PKG_NAME="bklite-offline.tar.gz"
-    tar -czf /opt/$PKG_NAME .
+    tar --exclude='*.env' --exclude='conf/certs/' --exclude='conf/nats/nats.conf' --exclude='pkgs/' --exclude='bin/' -czf /opt/$PKG_NAME .
     log "SUCCESS" "已生成离线镜像包: /opt/$PKG_NAME"
 }
 
