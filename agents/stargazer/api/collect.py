@@ -60,14 +60,14 @@ async def collect(request):
     collect_type = request.headers.get("collect_type")
     config_type = request.headers.get("config_type")
 
-    plugin_name = params.get("plugin_name")
-    if not plugin_name:
+    model_id = params.get("model_id")
+    if not model_id:
         # 返回错误指标
         current_timestamp = int(time.time() * 1000)
         error_lines = [
             "# HELP collection_request_error Collection request error",
             "# TYPE collection_request_error gauge",
-            f'collection_request_error{{plugin="",instance_id="{instance_id}",error="plugin_name is Null"}} 1 {current_timestamp}'
+            f'collection_request_error{{model_id="",instance_id="{instance_id}",error="model_id is Null"}} 1 {current_timestamp}'
         ]
 
         return response.raw(
@@ -95,14 +95,14 @@ async def collect(request):
         task_info = await task_queue.enqueue_collect_task(task_params)
         # 注意：不传 task_id 参数，让系统根据参数自动生成（用于去重）
 
-        logger.info(f"Plugin task queued: {task_info['task_id']}, plugin: {plugin_name}")
+        logger.info(f"Plugin task queued: {task_info['task_id']}, model_id: {model_id}")
 
         # 5. 构建 Prometheus 格式的响应（表示请求已接收）
         current_timestamp = int(time.time() * 1000)
         prometheus_lines = [
             "# HELP collection_request_accepted Indicates that collection request was accepted",
             "# TYPE collection_request_accepted gauge",
-            f'collection_request_accepted{{plugin="{plugin_name}",task_id="{task_info["task_id"]}",status="queued"}} 1 {current_timestamp}'
+            f'collection_request_accepted{{model_id="{model_id}",task_id="{task_info["task_id"]}",status="queued"}} 1 {current_timestamp}'
         ]
 
         metrics_response = "\n".join(prometheus_lines) + "\n"
@@ -125,7 +125,7 @@ async def collect(request):
         error_lines = [
             "# HELP collection_request_error Collection request error",
             "# TYPE collection_request_error gauge",
-            f'collection_request_error{{plugin="{plugin_name}",error="{str(e)}"}} 1 {current_timestamp}'
+            f'collection_request_error{{model_id="{model_id}",error="{str(e)}"}} 1 {current_timestamp}'
         ]
 
         return response.raw(

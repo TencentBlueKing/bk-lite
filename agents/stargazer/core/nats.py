@@ -12,7 +12,6 @@ NATS 统一模块 - 简洁高效的 NATS 集成
 import os
 import ssl
 import json
-import asyncio
 from typing import Optional, List, Callable, Dict, Any, Awaitable
 from dataclasses import dataclass, field
 from nats.aio.client import Client as NATS
@@ -309,6 +308,7 @@ def initialize_nats(app: Sanic, service_name: str = "stargazer") -> NATSSanic:
     """初始化 NATS（在 server.py 中调用）"""
     global _nats_instance
     _nats_instance = NATSSanic(app, service_name)
+    print("NATS initialized successfully.")
     return _nats_instance
 
 

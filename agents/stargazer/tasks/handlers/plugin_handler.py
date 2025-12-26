@@ -29,12 +29,12 @@ async def collect_plugin_task(ctx: Dict, params: Dict[str, Any], task_id: str) -
 
     try:
         # 导入服务和工具（延迟导入避免循环依赖）
-        from service.collect_service import CollectService
+        from service.collection_service import CollectionService
         from tasks.utils.nats_helper import publish_metrics_to_nats
         from tasks.utils.metrics_helper import generate_plugin_error_metrics
 
         # 执行采集
-        collect_service = CollectService(params)
+        collect_service = CollectionService(params)
         metrics_data = await collect_service.collect()
 
         logger.info(f"[Plugin Task] {task_id} completed successfully")

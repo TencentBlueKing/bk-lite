@@ -184,7 +184,7 @@ class DiskCategory(Enum):
     # fusioncompute
     SHARE = "共享"
     NORMAL = "普通"
-    # vmware
+    # vmware_vc
     THIN = "精简置备"
     EAGER = "厚置备快速置零"
     LAZY = "厚置备延迟置零"

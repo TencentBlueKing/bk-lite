@@ -47,12 +47,12 @@ async def collect_task(ctx: Dict, params: Dict[str, Any], task_id: str) -> Dict[
         任务执行结果
     """
     monitor_type = params.get("monitor_type")
-    plugin_name = params.get("plugin_name")
+    model_id = params.get("model_id")
 
     logger.info(f"[Worker] Task received: {task_id}, type: {monitor_type or plugin_name}")
 
     # 判断任务类型并分发到对应的 handler
-    if monitor_type == "vmware":
+    if monitor_type == "vmware_vc":
         from tasks.handlers.monitor_handler import collect_vmware_metrics_task
         return await collect_vmware_metrics_task(ctx, params, task_id)
 
@@ -60,7 +60,7 @@ async def collect_task(ctx: Dict, params: Dict[str, Any], task_id: str) -> Dict[
         from tasks.handlers.monitor_handler import collect_qcloud_metrics_task
         return await collect_qcloud_metrics_task(ctx, params, task_id)
 
-    elif plugin_name:
+    elif model_id:
         from tasks.handlers.plugin_handler import collect_plugin_task
         return await collect_plugin_task(ctx, params, task_id)
 

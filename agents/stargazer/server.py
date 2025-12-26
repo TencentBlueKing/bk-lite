@@ -5,7 +5,7 @@ from dotenv import load_dotenv
 from core.nats import initialize_nats
 from core.task_queue import initialize_task_queue
 
-load_dotenv()
+load_dotenv(".env")
 
 yml_config = YamlConfig(path="./config.yml")
 app = Sanic("Stargazer", config=yml_config)
