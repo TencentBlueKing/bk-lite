@@ -6,6 +6,7 @@ from rest_framework import status
 from rest_framework.response import Response
 from django.db import transaction
 from django.core.files.base import ContentFile
+from django.http import FileResponse
 from django_minio_backend import MinioBackend, iso_date_prefix
 from apps.mlops.utils.webhook_client import WebhookClient, WebhookError, WebhookConnectionError, WebhookTimeoutError
 from pathlib import Path
@@ -16,6 +17,7 @@ import pandas as pd
 import numpy as np
 import tempfile
 import shutil
+from io import BytesIO
 from datetime import datetime, timedelta
 from config.components.mlflow import MLFLOW_TRACKER_URL
 
@@ -538,21 +540,20 @@ class TimeSeriesPredictTrainJobViewSet(ModelViewSet):
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
     
-    @action(detail=False, methods=['get'], url_path='download_model/(?P<run_id>.+?)')
+    @action(detail=False, methods=['get'], url_path='download_model/(?P<run_id>[^/]+)')
     @HasPermission("timeseries_predict_train_jobs-View")
     def download_model(self, request, run_id: str):
         """
-        下载 MLflow 模型（MinIO 预签名 URL）
+        从 MLflow 下载模型并直接返回 ZIP 文件
         
-        基于 Model Registry 和 Run ID 下载模型
-        返回 MinIO 预签名 URL，前端直接下载
+        简化版本：直接从 MLflow 拉取 artifact → 打包 → 浏览器下载
         """
         try:
             # 1. 设置 MLflow
             mlflow.set_tracking_uri(MLFLOW_TRACKER_URL)
             mlflow_client = mlflow.tracking.MlflowClient()
             
-            # 2. 获取 run 信息
+            # 2. 验证 run 是否存在
             try:
                 run = mlflow_client.get_run(run_id)
             except Exception as e:
@@ -577,7 +578,7 @@ class TimeSeriesPredictTrainJobViewSet(ModelViewSet):
                     status=status.HTTP_500_INTERNAL_SERVER_ERROR
                 )
             
-            # 4. 生成文件名（基于 Model Registry）
+            # 4. 生成文件名
             run_name = run.data.tags.get('mlflow.runName', 'unknown')
             algorithm = run.data.params.get('algorithm', 'unknown')
             
@@ -585,7 +586,6 @@ class TimeSeriesPredictTrainJobViewSet(ModelViewSet):
             model_name = None
             model_version = None
             try:
-                # 检查 run 是否关联了注册模型
                 model_versions = mlflow_client.search_model_versions(f"run_id='{run_id}'")
                 if model_versions:
                     model_name = model_versions[0].name
@@ -599,184 +599,67 @@ class TimeSeriesPredictTrainJobViewSet(ModelViewSet):
             else:
                 filename = f"{algorithm}_{run_name}_{run_id[:8]}.zip"
             
-            # 5. 检查 MinIO 缓存
-            bucket_name = "munchkin-public"
-            cache_key = f"models/cache/{run_id}.zip"
+            logger.info(f"开始下载模型: run_id={run_id}, filename={filename}")
             
-            minio_client = self._get_minio_client()
-            
-            # 尝试获取缓存的模型
-            cached = False
-            try:
-                stat = minio_client.stat_object(bucket_name, cache_key)
-                # 缓存存在，直接生成预签名 URL
-                logger.info(f"模型缓存命中: {cache_key} (大小: {stat.size} 字节)")
-                cached = True
-                presigned_url = minio_client.presigned_get_object(
-                    bucket_name,
-                    cache_key,
-                    expires=timedelta(hours=24)
-                )
-                
-                return Response({
-                    'status': 'success',
-                    'run_id': run_id,
-                    'model_info': {
-                        'name': model_name or run_name,
-                        'version': model_version or 'N/A',
-                        'algorithm': algorithm,
-                        'status': run.info.status
-                    },
-                    'download': {
-                        'url': presigned_url,
-                        'expires_at': (datetime.now() + timedelta(hours=24)).isoformat(),
-                        'size_mb': round(stat.size / 1024 / 1024, 2),
-                        'filename': filename,
-                        'cached': True
-                    }
-                })
-            except Exception:
-                # 缓存未命中，继续打包上传流程
-                logger.info(f"模型缓存未命中，开始打包: {run_id}")
-            
-            # 6. 下载模型到临时目录并打包
+            # 5. 下载模型并打包
             with tempfile.TemporaryDirectory() as tmpdir:
                 try:
-                    download_start = datetime.now()
-                    logger.info(f"开始下载模型 artifacts: run_id={run_id}")
-                    
-                    # 优化：尝试直接从 MinIO 下载，绕过 MLflow
-                    artifact_uri = run.info.artifact_uri
-                    logger.info(f"Artifact URI: {artifact_uri}")
-                    
-                    # 解析 artifact URI 并尝试直接访问 MinIO
-                    # MLflow 可能使用 mlflow-artifacts: 或 s3:// 格式
-                    direct_download_success = False
-                    
-                    # mlflow-artifacts:/ 代理模式，使用 MLflow 下载
-                    # 注: 此模式性能较慢，建议配置 MLflow --default-artifact-root s3://bucket
-                    
-                    if artifact_uri.startswith('s3://'):
-                        # 直接是 S3 URI，可以直接解析
-                        try:
-                            s3_path = artifact_uri.replace('s3://', '').split('/', 1)
-                            bucket = s3_path[0]
-                            object_prefix = s3_path[1] if len(s3_path) > 1 else ''
-                            model_prefix = f"{object_prefix}/model"
-                            
-                            logger.info(f"直接从 MinIO 下载: bucket={bucket}, prefix={model_prefix}")
-                            
-                            local_path = os.path.join(tmpdir, 'model')
-                            os.makedirs(local_path, exist_ok=True)
-                            
-                            storage = MinioBackend(bucket_name=bucket)
-                            objects = list(storage.client.list_objects(bucket, prefix=model_prefix, recursive=True))
-                            
-                            if objects:
-                                for obj in objects:
-                                    relative_path = obj.object_name[len(model_prefix):].lstrip('/')
-                                    if not relative_path:
-                                        continue
-                                    
-                                    local_file_path = os.path.join(local_path, relative_path)
-                                    os.makedirs(os.path.dirname(local_file_path), exist_ok=True)
-                                    storage.client.fget_object(bucket, obj.object_name, local_file_path)
-                                
-                                download_elapsed = (datetime.now() - download_start).total_seconds()
-                                logger.info(f"模型下载完成: {local_path} (耗时: {download_elapsed:.2f}秒, 直接从MinIO)")
-                                direct_download_success = True
-                        except Exception as e:
-                            logger.warning(f"直接从 MinIO 下载失败，降级使用 MLflow: {e}")
-                    
-                    # 降级：使用 MLflow 原始方法
-                    if not direct_download_success:
-                        logger.info(f"使用 MLflow 下载方式: {artifact_uri}")
-                        local_path = mlflow.artifacts.download_artifacts(
-                            run_id=run_id,
-                            artifact_path="model",
-                            dst_path=tmpdir
-                        )
-                        download_elapsed = (datetime.now() - download_start).total_seconds()
-                        logger.warning(f"模型下载完成: {local_path} (耗时: {download_elapsed:.2f}秒, MLflow方式 - 较慢)")
+                    # 从 MLflow 下载 model artifact
+                    logger.info(f"从 MLflow 下载模型 artifacts...")
+                    local_path = mlflow.artifacts.download_artifacts(
+                        run_id=run_id,
+                        artifact_path="model",
+                        dst_path=tmpdir
+                    )
+                    logger.info(f"模型下载完成: {local_path}")
                     
                     # 打包成 ZIP
-                    zip_start = datetime.now()
+                    logger.info(f"开始打包模型...")
                     zip_base = os.path.join(tmpdir, run_id)
-                    zip_path = f"{zip_base}.zip"
                     shutil.make_archive(
                         zip_base,
                         'zip',
                         local_path
                     )
-                    zip_elapsed = (datetime.now() - zip_start).total_seconds()
-                    logger.info(f"模型打包完成: {zip_path} (耗时: {zip_elapsed:.2f}秒)")
+                    zip_path = f"{zip_base}.zip"
                     
                     # 获取文件大小
                     file_size = os.path.getsize(zip_path)
-                    logger.info(f"模型文件大小: {round(file_size / 1024 / 1024, 2)} MB")
+                    logger.info(f"模型打包完成: {zip_path}, 大小: {round(file_size / 1024 / 1024, 2)} MB")
                     
-                    # 上传到 MinIO
-                    upload_start = datetime.now()
-                    logger.info(f"上传模型到 MinIO: {bucket_name}/{cache_key}")
-                    minio_client.fput_object(
-                        bucket_name,
-                        cache_key,
-                        zip_path,
-                        content_type="application/zip"
+                    # 6. 读取文件到内存（避免 Windows 文件句柄占用问题）
+                    logger.info(f"读取文件到内存...")
+                    with open(zip_path, 'rb') as f:
+                        file_data = f.read()
+                    
+                    logger.info(f"文件已读取到内存，大小: {len(file_data)} 字节")
+                    
+                    # 7. 使用 BytesIO 包装，文件句柄已关闭，临时目录可以正常清理
+                    file_obj = BytesIO(file_data)
+                    
+                    response = FileResponse(
+                        file_obj,
+                        content_type='application/zip',
+                        as_attachment=True,
+                        filename=filename
                     )
-                    upload_elapsed = (datetime.now() - upload_start).total_seconds()
-                    logger.info(f"模型上传成功: {cache_key} (耗时: {upload_elapsed:.2f}秒)")
-                    logger.info(f"总耗时: 下载={download_elapsed:.2f}s, 打包={zip_elapsed:.2f}s, 上传={upload_elapsed:.2f}s")
+                    
+                    logger.info(f"模型下载请求完成: {filename}")
+                    return response
                     
                 except Exception as e:
-                    logger.error(f"模型打包或上传失败: {e}", exc_info=True)
+                    logger.error(f"模型下载或打包失败: {e}", exc_info=True)
                     return Response(
                         {'error': f'模型处理失败: {str(e)}'},
                         status=status.HTTP_500_INTERNAL_SERVER_ERROR
                     )
             
-            # 7. 生成预签名 URL
-            presigned_url = minio_client.presigned_get_object(
-                bucket_name,
-                cache_key,
-                expires=timedelta(hours=24)
-            )
-            
-            # 8. 返回结果
-            return Response({
-                'status': 'success',
-                'run_id': run_id,
-                'model_info': {
-                    'name': model_name or run_name,
-                    'version': model_version or 'N/A',
-                    'algorithm': algorithm,
-                    'status': run.info.status
-                },
-                'download': {
-                    'url': presigned_url,
-                    'expires_at': (datetime.now() + timedelta(hours=24)).isoformat(),
-                    'size_mb': round(file_size / 1024 / 1024, 2),
-                    'filename': filename,
-                    'cached': False
-                },
-                'instructions': '点击 URL 直接下载，链接 24 小时有效。固定版本模型会缓存，后续下载无需等待。'
-            })
-            
         except Exception as e:
-            logger.error(f"生成模型下载链接失败: {str(e)}", exc_info=True)
+            logger.error(f"下载模型失败: {str(e)}", exc_info=True)
             return Response(
-                {'error': f'生成下载链接失败: {str(e)}'},
+                {'error': f'下载模型失败: {str(e)}'},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
-    
-    def _get_minio_client(self):
-        """
-        获取 MinIO 客户端实例
-        
-        使用 MinioBackend 的内部 client 来访问原生 MinIO API
-        """
-        storage = MinioBackend(bucket_name="munchkin-public")
-        return storage.client
 
 
 class TimeSeriesPredictTrainHistoryViewSet(ModelViewSet):

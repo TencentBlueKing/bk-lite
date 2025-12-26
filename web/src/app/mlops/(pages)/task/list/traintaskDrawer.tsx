@@ -1,5 +1,6 @@
 import { Drawer, message, Button } from "antd";
 import { useTranslation } from "@/utils/i18n";
+import { useAuth } from "@/context/auth";
 // import { Tooltip } from 'antd';
 import useMlopsTaskApi from "@/app/mlops/api/task";
 // import SimpleLineChart from "@/app/mlops/components/charts/simpleLineChart";
@@ -16,7 +17,8 @@ const TrainTaskDrawer = ({ open, onCancel, selectId, activeTag }:
     activeTag: string[]
   }) => {
   const { t } = useTranslation();
-  const { getTrainTaskState, getTimeseriesPredictModelURL } = useMlopsTaskApi();
+  const authContext = useAuth();
+  const { getTrainTaskState } = useMlopsTaskApi();
   const [showList, setShowList] = useState<boolean>(true);
   const [tableLoading, setTableLoading] = useState<boolean>(false);
   const [historyData, setHistoryData] = useState<any[]>([]);
@@ -55,15 +57,46 @@ const TrainTaskDrawer = ({ open, onCancel, selectId, activeTag }:
 
   const downloadModel = async (record: any) => {
     try {
-      message.info("等待数据包中")
-      const data = await getTimeseriesPredictModelURL(record.run_id);
+      message.info('下载中..');
+      
+      const response = await fetch(
+        `/api/proxy/mlops/timeseries_predict_train_jobs/download_model/${record.run_id}/`,
+        {
+          method: 'GET',
+          headers: {
+            Authorization: `Bearer ${authContext?.token}`,
+          },
+        }
+      );
+
+      if (!response.ok) {
+        throw new Error(`下载失败: ${response.status}`);
+      }
+
+      const blob = await response.blob();
+      
+      // 从 Content-Disposition 头提取文件名
+      const contentDisposition = response.headers.get('content-disposition');
+      let fileName = `model_${record.run_id.substring(0, 8)}.zip`;
+      if (contentDisposition) {
+        const match = contentDisposition.match(/filename[^;=\n]*=(['\"]?)([^'"\n]*?)\1/);
+        if (match && match[2]) {
+          fileName = match[2];
+        }
+      }
+
+      // 创建下载链接
+      const fileUrl = window.URL.createObjectURL(blob);
       const link = document.createElement('a');
-      link.href = data.download.url;  // MinIO 预签名 URL
-      link.download = data.download.filename;  // 建议的文件名
+      link.href = fileUrl;
+      link.download = fileName;
+      document.body.appendChild(link);
       link.click();
-    } catch (e) {
-      console.error(e);
-      message.error(t(`common.errorFetch`))
+      document.body.removeChild(link);
+      window.URL.revokeObjectURL(fileUrl);
+    } catch (error: any) {
+      console.error('下载模型失败:', error);
+      message.error(error.message || t('common.errorFetch'));
     }
   };
 
