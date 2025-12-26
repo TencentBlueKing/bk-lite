@@ -266,13 +266,15 @@ const InfoList: React.FC<AssetDataFieldProps> = ({
           <CaretRightOutlined rotate={isActive ? 90 : 0} />
         )}
       >
+        {/* 详情页中，用户字段为多选 */}
         <Panel header={t('information')} key="information">
           <Descriptions
             bordered
             items={fieldList?.filter(
-              (item: any) =>
-                ![...builtinAttr, 'organization'].includes(item.key)
-            )}
+              (item: any) => {
+                // console.log('test4.5', item, ![...builtinAttr, 'organization'].includes(item.key));
+                return ![...builtinAttr, 'organization'].includes(item.key)
+              })}
             column={2}
           />
         </Panel>

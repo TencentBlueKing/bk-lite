@@ -116,6 +116,7 @@ const FieldMoadal = forwardRef<FieldModalRef, FieldModalProps>(
         model_id,
         list,
       }) => {
+        // console.log('test4.2', attrList);
         // 开启弹窗的交互
         setGroupVisible(true);
         setSubTitle(subTitle);
@@ -204,10 +205,12 @@ const FieldMoadal = forwardRef<FieldModalRef, FieldModalProps>(
             </Select>
           );
         }
+        // 新增+编辑弹窗中，用户字段为多选
         switch (item.attr_type) {
           case 'user':
             return (
               <Select
+                mode="multiple"
                 showSearch
                 disabled={fieldDisabled}
                 placeholder={t('common.selectTip')}
@@ -305,6 +308,7 @@ const FieldMoadal = forwardRef<FieldModalRef, FieldModalProps>(
 
     const handleSubmit = (confirmType?: string) => {
       form.validateFields().then((values) => {
+        // console.log('test4.1', values);
         for (const key in values) {
           const target = formItems.find((item) => item.attr_id === key);
           if (target?.attr_type === 'time' && values[key]) {

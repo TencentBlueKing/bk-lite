@@ -32,16 +32,13 @@ const findOrganizationById = (arr: Array<any>, targetValue: unknown) => {
 // 获取组织的完整路径（从根到当前节点）
 const getOrganizationFullPath = (org: any, flatGroups: Array<any>): string => {
   if (!org) return '';
-  
   const path: string[] = [];
   let current = org;
-  
   while (current) {
     const name = current.name || current.label;
     if (name) {
       path.unshift(name);
     }
-    
     const parentId = current.parent_id || current.parentId;
     if (parentId) {
       current = findOrganizationById(flatGroups, parentId);
@@ -49,7 +46,6 @@ const getOrganizationFullPath = (org: any, flatGroups: Array<any>): string => {
       break;
     }
   }
-  
   return path.join('/');
 };
 
@@ -224,15 +220,40 @@ export const getAssetColumns = (config: {
         showTitle: false,
       },
     };
+    // 详情页中，用户字段为多选
     switch (attrType) {
       case 'user':
         return {
           ...columnItem,
           render: (_: unknown, record: any) => {
-            const userName = (config.userList || []).find(
-              (item) => item.id === record[attrId]
-            )?.username;
-            return userName ? <UserAvatar userName={userName} /> : <>--</>;
+            const userIds = record[attrId];
+
+            // 处理数组情况
+            if (Array.isArray(userIds) && userIds.length > 0) {
+              const userIdsStr = userIds.map((id: any) => String(id));
+              const users = (config.userList || []).filter((user) =>
+                userIdsStr.includes(String(user.id))
+              );
+              if (users.length === 0) return <>--</>;
+              return (
+                <div className="flex flex-wrap gap-2">
+                  {users.map((user) => (
+                    <UserAvatar key={user.id} userName={user.username} size="small" />
+                  ))}
+                </div>
+              );
+            }
+
+            // 处理单个值情况
+            if (userIds !== null && userIds !== undefined && userIds !== '') {
+              const user = (config.userList || []).find(
+                (item) => String(item.id) === String(userIds)
+              );
+              return user ? <UserAvatar userName={user.username} /> : <>--</>;
+            }
+
+            // 处理空值情况
+            return <>--</>;
           },
         };
       case 'pwd':
@@ -312,6 +333,7 @@ export const getFieldItem = (config: {
       case 'user':
         return (
           <Select
+            mode="multiple"
             showSearch
             filterOption={(input, opt: any) => {
               if (typeof opt?.children?.props?.text === 'string') {
