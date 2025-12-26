@@ -424,6 +424,11 @@ export const useAnomalyForm = ({ datasetOptions, activeTag, onSuccess, formRef }
     );
   }, [t, onTypeChange, loadingState.select, datasetOptions, renderOptions, isShow, traindataOption, renderItem]);
 
+  // 表单值变化处理（空实现，仅为接口统一）
+  const onFormValuesChange = useCallback(() => {
+    // anomaly_detection 不需要动态表单依赖，保持空实现
+  }, []);
+
   return {
     modalState,
     formRef,
@@ -432,5 +437,6 @@ export const useAnomalyForm = ({ datasetOptions, activeTag, onSuccess, formRef }
     handleSubmit,
     handleCancel,
     renderFormContent,
+    onFormValuesChange,
   };
 };

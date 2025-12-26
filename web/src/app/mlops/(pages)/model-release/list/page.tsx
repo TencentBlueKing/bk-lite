@@ -4,7 +4,7 @@ import useMlopsTaskApi from "@/app/mlops/api/task";
 import useMlopsModelReleaseApi from "@/app/mlops/api/modelRelease";
 import CustomTable from "@/components/custom-table";
 import { useTranslation } from "@/utils/i18n";
-import { Button, Popconfirm, Switch, message, Tree, type TreeDataNode, Tag, Tooltip } from "antd";
+import { Button, Popconfirm, message, Tree, type TreeDataNode, Tag, Tooltip } from "antd";
 import { PlusOutlined, ReloadOutlined } from '@ant-design/icons';
 import PageLayout from '@/components/page-layout';
 import TopSection from "@/components/top-section";
@@ -105,7 +105,9 @@ const ModelRelease = () => {
       dataIndex: 'status',
       key: 'status',
       render: (_, record) => {
-        return <Switch checked={record.status === 'active'} onChange={(value: boolean) => handleModelAcitve(record.id, value)} />
+        const isAcitve = record.status === 'active'
+        // return <Switch checked={record.status === 'active'} onChange={(value: boolean) => handleModelAcitve(record.id, value)} />
+        return <Tag color={isAcitve ? 'green' : 'default'}>{isAcitve ? '已发布' : '未发布'}</Tag>
       }
     },
     {
@@ -134,6 +136,9 @@ const ModelRelease = () => {
         return (<>
           <PermissionWrapper requiredPermissions={['Edit']}>
             <Button type="link" className="mr-2" onClick={() => handleEdit(record)}>{'配置'}</Button>
+          </PermissionWrapper>
+          <PermissionWrapper requiredPermissions={['Edit']}>
+            <Button type="link" className="mr-2" onClick={() => handleModelAcitve(record.id, record.status === 'active')}>{'发布'}</Button>
           </PermissionWrapper>
           <PermissionWrapper requiredPermissions={['Edit']}>
             <Button type="link" className="mr-2" onClick={() => handleStartContainer(record.id)} disabled={status === 'success' && state === 'running'}>{'启动'}</Button>

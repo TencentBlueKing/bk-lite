@@ -50,6 +50,7 @@ DEFAULT_CONFIG = {
 # 支持的模型类型
 SUPPORTED_MODELS: List[str] = [
     "GradientBoosting",
+    "RandomForest",
     "Sarima",
     "Prophet",
     "Xgboost",

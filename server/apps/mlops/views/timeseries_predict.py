@@ -882,15 +882,13 @@ class TimeSeriesPredictServingViewSet(ModelViewSet):
                 # 调用 WebhookClient 启动服务
                 result = WebhookClient.serve(container_id, mlflow_tracking_uri, model_uri, port=serving.port)
                 
-                # 启动成功
-                serving.status = 'active'
+                # 启动成功，仅更新容器信息
                 serving.container_info = result
-                serving.save(update_fields=['status', 'container_info'])
+                serving.save(update_fields=['container_info'])
                 
                 logger.info(f"Serving 服务已自动启动: {container_id}, Port: {result.get('port')}")
                 
-                # 更新返回数据
-                response.data['status'] = 'active'
+                # 更新返回数据（status 由用户控制，不修改）
                 response.data['container_info'] = result
                 response.data['message'] = "服务已创建并启动"
                 
@@ -898,7 +896,7 @@ class TimeSeriesPredictServingViewSet(ModelViewSet):
                 error_msg = str(e)
                 logger.error(f"自动启动 serving 失败: {error_msg}")
                 
-                # 处理容器已存在的情况（同步状态）
+                # 处理容器已存在的情况（同步容器状态）
                 if e.code == 'CONTAINER_ALREADY_EXISTS':
                     try:
                         result = WebhookClient.get_status([container_id])
@@ -908,15 +906,13 @@ class TimeSeriesPredictServingViewSet(ModelViewSet):
                             "message": "无法查询容器状态"
                         }
                         
-                        actual_state = container_info.get('state', 'unknown')
-                        serving.status = 'active' if actual_state == 'running' else 'inactive'
+                        # 仅更新容器信息，不修改 status
                         serving.container_info = container_info
-                        serving.save(update_fields=['status', 'container_info'])
+                        serving.save(update_fields=['container_info'])
                         
-                        response.data['status'] = serving.status
                         response.data['container_info'] = container_info
-                        response.data['message'] = "服务已创建，检测到容器已存在并同步状态"
-                        response.data['warning'] = "数据库状态与实际不一致，已自动修复"
+                        response.data['message'] = "服务已创建，检测到容器已存在并同步容器状态"
+                        response.data['warning'] = "容器已存在，已同步容器信息"
                     except WebhookError:
                         serving.container_info = {
                             "status": "error",
@@ -1031,30 +1027,26 @@ class TimeSeriesPredictServingViewSet(ModelViewSet):
                 # 启动新容器
                 result = WebhookClient.serve(container_id, mlflow_tracking_uri, model_uri, port=instance.port)
                 
-                # 更新状态
-                instance.status = 'active'
+                # 更新容器信息（status 由用户控制，不修改）
                 instance.container_info = result
-                instance.save(update_fields=['status', 'container_info'])
+                instance.save(update_fields=['container_info'])
                 
                 logger.info(f"新容器已启动: {container_id}, Port: {result.get('port')}")
                 
                 # 更新返回数据
-                response.data['status'] = 'active'
                 response.data['container_info'] = result
                 response.data['message'] = "配置已更新并重启服务"
                 
             except Exception as e:
                 logger.error(f"自动重启失败: {str(e)}", exc_info=True)
                 
-                # 启动失败，更新状态为 inactive
-                instance.status = 'inactive'
+                # 启动失败，仅更新容器信息
                 instance.container_info = {
                     "status": "error",
                     "message": f"配置已更新但重启失败: {str(e)}"
                 }
-                instance.save(update_fields=['status', 'container_info'])
+                instance.save(update_fields=['container_info'])
                 
-                response.data['status'] = 'inactive'
                 response.data['container_info'] = instance.container_info
                 response.data['message'] = f"配置已更新但重启失败: {str(e)}"
                 response.data['warning'] = "请手动调用 start 接口重新启动服务"
@@ -1096,10 +1088,9 @@ class TimeSeriesPredictServingViewSet(ModelViewSet):
                 # 调用 WebhookClient 启动服务
                 result = WebhookClient.serve(serving_id, mlflow_tracking_uri, model_uri, port=serving.port)
                 
-                # 正常启动成功
-                serving.status = 'active'
+                # 正常启动成功，仅更新容器信息
                 serving.container_info = result
-                serving.save(update_fields=['status', 'container_info'])
+                serving.save(update_fields=['container_info'])
                 
                 logger.info(f"Serving 服务已启动: {serving_id}, Port: {result.get('port')}")
                 
@@ -1114,7 +1105,7 @@ class TimeSeriesPredictServingViewSet(ModelViewSet):
                 
                 # 处理容器已存在的情况
                 if e.code == 'CONTAINER_ALREADY_EXISTS':
-                    logger.warning(f"检测到容器已存在，同步状态: {serving_id}")
+                    logger.warning(f"检测到容器已存在，同步容器信息: {serving_id}")
                     try:
                         # 查询当前容器状态
                         result = WebhookClient.get_status([serving_id])
@@ -1124,18 +1115,16 @@ class TimeSeriesPredictServingViewSet(ModelViewSet):
                             "message": "无法查询容器状态"
                         }
                         
-                        # 根据实际状态更新数据库
-                        actual_state = container_info.get('state', 'unknown')
-                        serving.status = 'active' if actual_state == 'running' else 'inactive'
+                        # 仅更新容器信息，不修改 status
                         serving.container_info = container_info
-                        serving.save(update_fields=['status', 'container_info'])
+                        serving.save(update_fields=['container_info'])
                         
-                        logger.info(f"容器状态已同步: {actual_state}")
+                        logger.info(f"容器信息已同步: {container_info.get('state')}")
                         
                         return Response({
-                            'message': '检测到容器已存在，已同步状态',
+                            'message': '检测到容器已存在，已同步容器信息',
                             'container_info': container_info,
-                            'warning': '数据库状态与实际不一致，已自动修复'
+                            'warning': '容器已存在'
                         })
                     except WebhookError as sync_error:
                         logger.error(f"同步容器状态失败: {sync_error}")
@@ -1185,10 +1174,6 @@ class TimeSeriesPredictServingViewSet(ModelViewSet):
             # 调用 WebhookClient 停止服务（默认删除容器）
             result = WebhookClient.stop(serving_id)
             
-            # 更新任务状态
-            serving.status = 'inactive'
-            serving.save(update_fields=['status'])
-            
             logger.info(f"Serving 服务已停止: {serving_id}")
             
             return Response({
@@ -1237,15 +1222,14 @@ class TimeSeriesPredictServingViewSet(ModelViewSet):
             # 调用 WebhookClient 删除容器
             result = WebhookClient.remove(serving_id)
             
-            # 更新状态
-            serving.status = 'inactive'
+            # 更新容器信息（status 由用户控制，不修改）
             serving.container_info = {
                 "status": "success",
                 "id": serving_id,
                 "state": "removed",
                 "message": "容器已删除"
             }
-            serving.save(update_fields=['status', 'container_info'])
+            serving.save(update_fields=['container_info'])
             
             logger.info(f"Serving 容器已删除: {serving_id}")
             
