@@ -252,15 +252,11 @@ class CollectModelService(object):
         return result
 
     @classmethod
-    def list_regions(cls, plugin_id, credential):
-        data = {
-            "plugin_name": plugin_id,
-            "_timeout": 5,
-            **credential
-        }
+    def list_regions(cls, credential):
         stargazer = Stargazer()
-        result = stargazer.list_regions(data)
-
+        result = stargazer.list_regions(credential)
+        if result["success"]:
+            result = result["regions"]
         return result
 
     @classmethod

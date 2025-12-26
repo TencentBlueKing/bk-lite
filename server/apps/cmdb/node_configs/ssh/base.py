@@ -8,6 +8,7 @@ class SSHNodeParamsMixin:
     plugin_name = f"{supported_model_id}_info"
     interval = 300  # 默认采集间隔：300秒
     host_field = "ip_addr"
+    executor_type = "job"  # 默认执行器类型
 
     def set_credential(self, *args, **kwargs):
         credential_data = {

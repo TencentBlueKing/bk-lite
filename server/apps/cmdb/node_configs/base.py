@@ -30,12 +30,13 @@ class BaseNodeParams(metaclass=ABCMeta):
 
     def __init__(self, instance):
         self.instance = instance
-        self.model_id = instance.model_id
+        self.model_id = instance.model_id # 当出现多对象采集的时候这个model_id就不能准确的标识唯一的model_id
         self.credential = self.instance.decrypt_credentials or {}
         self.base_path = "${STARGAZER_URL}/api/collect/collect_info"
         self.host_field = "host"  # 默认的 ip字段 若不一样重新定义
         self.timeout = 40 if self.instance.is_cloud else 30
         self.response_timeout = 40 if self.instance.is_cloud else 30
+        self.executor_type = "protocol"  # 默认执行器类型
 
     def get_hosts(self):
         """
@@ -45,7 +46,7 @@ class BaseNodeParams(metaclass=ABCMeta):
             hosts = ",".join(instance.get(self.host_field, "") for instance in self.instance.instances)
         else:
             hosts = self.instance.ip_range
-        return "host", hosts
+        return "hosts", hosts
 
     @property
     def model_plugin_name(self):
@@ -75,11 +76,15 @@ class BaseNodeParams(metaclass=ABCMeta):
         """
         格式化服务器的路径
         """
+        # 加入配置的唯一ID
+        _model_id  = getattr(self, "supported_model_id", self.model_id)
         # 加入ip字段和值
         ip_addr_field, ip_addrs = self.get_hosts()
         params = self.set_credential()
         # 加入插件信息
-        params.update({"plugin_name": self.model_plugin_name, ip_addr_field: ip_addrs})
+        params.update(
+            {"plugin_name": self.model_plugin_name, ip_addr_field: ip_addrs, "executor_type": self.executor_type,
+             "model_id": _model_id})
         _params = {f"cmdb{k}": str(v) for k, v in params.items()}
         return _params
 

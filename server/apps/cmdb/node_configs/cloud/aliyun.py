@@ -6,7 +6,7 @@ from apps.cmdb.node_configs.base import BaseNodeParams
 
 
 class AliyunNodeParams(BaseNodeParams):
-    supported_model_id = "aliyun_account"
+    supported_model_id = "aliyun"
     plugin_name = "aliyun_info"
     interval = 300  # 阿里云采集间隔：300秒
 

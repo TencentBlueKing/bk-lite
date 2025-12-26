@@ -49,8 +49,6 @@ class NetworkNodeParams(BaseNodeParams):
             "privkey": "${" + _privkey + "}",
             "timeout": self.credential.get("timeout", "1"),  # 超时时间
         }
-        if self.model_id == "network_topo":
-            credential_data.update({"topo": "true"})
         return credential_data
 
     def env_config(self, *args, **kwargs):
