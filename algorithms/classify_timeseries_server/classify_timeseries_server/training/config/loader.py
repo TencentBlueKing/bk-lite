@@ -14,14 +14,175 @@ from .schema import (
 )
 
 
+class ConfigError(Exception):
+    """配置错误异常"""
+    pass
+
+
+def get_early_stopping_config(max_evals: int) -> Dict[str, Any]:
+    """根据 max_evals 自动计算早停配置
+    
+    Args:
+        max_evals: 最大评估次数
+        
+    Returns:
+        完整的早停配置字典
+    """
+    patience = max(10, min(30, int(max_evals * 0.25)))
+    min_evals = max(10, int(max_evals * 0.2))
+    
+    return {
+        "enabled": True,
+        "patience": patience,
+        "min_evals": min_evals,
+        "min_evals_ratio": 0.2,
+        "min_improvement_pct": 1.0,
+        "exploration_ratio": 0.3,
+        "exploration_boost": 1.5,
+        "loss_cap_multiplier": 5.0
+    }
+
+
+def validate_structure(config: Dict) -> None:
+    """Layer 1: 结构完整性校验"""
+    required_sections = ["model", "hyperparams", "preprocessing", "mlflow"]
+    
+    for section in required_sections:
+        if section not in config:
+            raise ConfigError(f"配置缺少必需的顶层字段: {section}")
+    
+    # 条件依赖
+    use_fe = config.get("hyperparams", {}).get("use_feature_engineering")
+    if use_fe is True:
+        if "feature_engineering" not in config:
+            raise ConfigError(
+                "hyperparams.use_feature_engineering=true 时，"
+                "必须提供 feature_engineering 配置段"
+            )
+
+
+def validate_required_fields(config: Dict) -> None:
+    """Layer 2: 必需字段 + 基本类型校验"""
+    
+    # model 配置
+    model = config.get("model", {})
+    if "type" not in model:
+        raise ConfigError("model.type 为必填项")
+    if "name" not in model:
+        raise ConfigError("model.name 为必填项")
+    
+    # hyperparams 配置
+    hp = config.get("hyperparams", {})
+    required_hp_fields = {
+        "use_feature_engineering": bool,
+        "random_state": int,
+        "max_evals": int,
+        "metric": str,
+        "search_space": dict
+    }
+    
+    for field, expected_type in required_hp_fields.items():
+        if field not in hp:
+            raise ConfigError(f"hyperparams.{field} 为必填项")
+        if not isinstance(hp[field], expected_type):
+            raise ConfigError(
+                f"hyperparams.{field} 类型错误: "
+                f"期望 {expected_type.__name__}, 实际 {type(hp[field]).__name__}"
+            )
+    
+    if hp["max_evals"] < 1:
+        raise ConfigError(f"hyperparams.max_evals 必须 >= 1，当前值: {hp['max_evals']}")
+    
+    valid_metrics = ["rmse", "mae", "mape"]
+    if hp["metric"] not in valid_metrics:
+        raise ConfigError(
+            f"hyperparams.metric 必须是以下之一: {valid_metrics}，"
+            f"当前值: {hp['metric']}"
+        )
+    
+    # search_space 配置
+    ss = hp.get("search_space", {})
+    required_params = [
+        "n_estimators", "learning_rate", "max_depth",
+        "min_samples_split", "min_samples_leaf", "subsample", "lag_features"
+    ]
+    
+    for param in required_params:
+        if param not in ss:
+            raise ConfigError(f"hyperparams.search_space.{param} 为必填项")
+        if not isinstance(ss[param], list) or len(ss[param]) == 0:
+            raise ConfigError(
+                f"hyperparams.search_space.{param} 必须是非空列表"
+            )
+    
+    # feature_engineering 配置（条件依赖）
+    if hp["use_feature_engineering"]:
+        fe = config.get("feature_engineering", {})
+        required_fe_fields = {
+            "lag_periods": list,
+            "rolling_windows": list,
+            "rolling_features": list,
+            "use_temporal_features": bool,
+            "use_cyclical_features": bool,
+            "use_diff_features": bool
+        }
+        
+        for field, expected_type in required_fe_fields.items():
+            if field not in fe:
+                raise ConfigError(
+                    f"use_feature_engineering=true 时，"
+                    f"feature_engineering.{field} 为必填项"
+                )
+            if not isinstance(fe[field], expected_type):
+                raise ConfigError(
+                    f"feature_engineering.{field} 类型错误: "
+                    f"期望 {expected_type.__name__}, "
+                    f"实际 {type(fe[field]).__name__}"
+                )
+        
+        if len(fe["lag_periods"]) == 0:
+            raise ConfigError("feature_engineering.lag_periods 不能为空列表")
+        if len(fe["rolling_windows"]) == 0:
+            raise ConfigError("feature_engineering.rolling_windows 不能为空列表")
+        if len(fe["rolling_features"]) == 0:
+            raise ConfigError("feature_engineering.rolling_features 不能为空列表")
+        
+        if fe["use_diff_features"]:
+            if "diff_periods" not in fe:
+                raise ConfigError(
+                    "use_diff_features=true 时，必须提供 diff_periods 字段"
+                )
+            if not isinstance(fe["diff_periods"], list) or len(fe["diff_periods"]) == 0:
+                raise ConfigError("diff_periods 必须是非空列表")
+    
+    # preprocessing 配置
+    pp = config.get("preprocessing", {})
+    required_pp_fields = ["handle_missing", "max_missing_ratio", "interpolation_limit"]
+    for field in required_pp_fields:
+        if field not in pp:
+            raise ConfigError(f"preprocessing.{field} 为必填项")
+    
+    valid_handlers = ["interpolate", "ffill", "bfill", "drop", "median"]
+    if pp["handle_missing"] not in valid_handlers:
+        raise ConfigError(
+            f"preprocessing.handle_missing 必须是以下之一: {valid_handlers}，"
+            f"当前值: {pp['handle_missing']}"
+        )
+    
+    # mlflow 配置
+    mlflow_cfg = config.get("mlflow", {})
+    if "experiment_name" not in mlflow_cfg:
+        raise ConfigError("mlflow.experiment_name 为必填项")
+
+
 class TrainingConfig:
     """训练配置管理器
     
     支持：
     - 从 JSON 文件加载配置
     - 与默认配置深度合并
-    - 配置验证（宽松模式）
-    - 便捷的多级访问接口
+    - 严格配置验证（2层校验）
+    - 便捷的访问接口
     """
     
     def __init__(self, config_path: Optional[str] = None):
@@ -30,13 +191,12 @@ class TrainingConfig:
         Args:
             config_path: train.json 配置文件路径
                         None 则使用默认配置
-                        "./support-files/train.json" 为推荐位置
         """
         self.config_path = config_path
         self.config = self._load_config(config_path)
-        self._validate_config()
+        self._validate()
         
-        logger.info(f"配置加载完成 - 模型类型: {self.model_type}")
+        logger.info(f"✓ 配置加载并校验完成 - 模型: {self.model_type}")
     
     def _load_config(self, config_path: Optional[str]) -> Dict[str, Any]:
         """加载配置文件
@@ -66,13 +226,12 @@ class TrainingConfig:
             
             # 深度合并配置
             merged_config = self._deep_merge(config, custom_config)
-            logger.debug(f"配置合并完成")
             
             return merged_config
             
         except json.JSONDecodeError as e:
             logger.error(f"配置文件格式错误: {e}")
-            raise ValueError(f"无效的 JSON 配置文件: {config_path}")
+            raise ConfigError(f"无效的 JSON 配置文件: {config_path}")
         except Exception as e:
             logger.error(f"加载配置文件失败: {e}")
             raise
@@ -101,51 +260,10 @@ class TrainingConfig:
         
         return merged
     
-    def _validate_config(self):
-        """验证配置合法性（宽松模式）
-        
-        只验证必需字段和关键约束，允许额外字段存在
-        """
-        # 1. 验证模型类型
-        model_type = self.get("model", "type")
-        if not model_type:
-            raise ValueError("配置中缺少 model.type 字段")
-        
-        if model_type not in SUPPORTED_MODELS:
-            logger.warning(
-                f"模型类型 '{model_type}' 不在支持列表中 {SUPPORTED_MODELS}，"
-                f"可能需要自定义实现"
-            )
-        
-        # 2. 验证优化指标
-        metric = self.get("hyperparams", "search", "metric")
-        if metric and metric not in SUPPORTED_METRICS:
-            logger.warning(
-                f"优化指标 '{metric}' 不在支持列表中 {SUPPORTED_METRICS}"
-            )
-        
-        # 3. 验证缺失值处理方法
-        missing_handler = self.get("preprocessing", "handle_missing")
-        if missing_handler and missing_handler not in SUPPORTED_MISSING_HANDLERS:
-            logger.warning(
-                f"缺失值处理方法 '{missing_handler}' 不在支持列表中 "
-                f"{SUPPORTED_MISSING_HANDLERS}"
-            )
-        
-        # 4. 验证数值范围
-        test_size = self.get("training", "test_size")
-        if test_size and not (0 < test_size < 1):
-            raise ValueError(f"test_size 必须在 (0, 1) 范围内，当前值: {test_size}")
-        
-        val_size = self.get("training", "validation_size")
-        if val_size and not (0 <= val_size < 1):
-            raise ValueError(f"validation_size 必须在 [0, 1) 范围内，当前值: {val_size}")
-        
-        max_missing = self.get("preprocessing", "max_missing_ratio")
-        if max_missing and not (0 <= max_missing <= 1):
-            raise ValueError(f"max_missing_ratio 必须在 [0, 1] 范围内，当前值: {max_missing}")
-        
-        logger.debug("配置验证通过")
+    def _validate(self):
+        """执行2层配置校验"""
+        validate_structure(self.config)
+        validate_required_fields(self.config)
     
     def get(self, *keys, default=None) -> Any:
         """获取配置项（支持多级访问）
@@ -202,36 +320,21 @@ class TrainingConfig:
     @property
     def model_type(self) -> str:
         """模型类型"""
-        return self.get("model", "type", default="sarima")
+        return self.config["model"]["type"]
     
     @property
     def model_name(self) -> str:
         """模型名称"""
-        return self.get("model", "name", default="timeseries_model")
-    
-    @property
-    def is_hyperopt_enabled(self) -> bool:
-        """是否启用超参数优化"""
-        return self.get("hyperparams", "search", "enabled", default=False)
-    
-    @property
-    def hyperopt_max_evals(self) -> int:
-        """超参数优化最大评估次数"""
-        return self.get("hyperparams", "search", "max_evals", default=50)
-    
-    @property
-    def hyperopt_metric(self) -> str:
-        """超参数优化目标指标"""
-        return self.get("hyperparams", "search", "metric", default="rmse")
+        return self.config["model"]["name"]
     
     @property
     def test_size(self) -> float:
-        """测试集划分比例（固定值，单文件模式使用）"""
+        """测试集划分比例（固定值）"""
         return 0.2
     
     @property
     def validation_size(self) -> float:
-        """验证集划分比例（固定值，单文件模式使用）"""
+        """验证集划分比例（固定值）"""
         return 0.1
     
     @property
@@ -241,25 +344,67 @@ class TrainingConfig:
     
     @property
     def mlflow_experiment_name(self) -> str:
-        """MLflow 实验名称（配置文件中或运行时注入）"""
-        value = self.get("mlflow", "experiment_name")
-        if not value:
-            raise ValueError(
-                "未配置 mlflow.experiment_name。\n"
-                "请在配置文件的 mlflow 块中添加 experiment_name 字段。"
-            )
-        return value
+        """MLflow 实验名称"""
+        return self.config["mlflow"]["experiment_name"]
     
     @property
     def mlflow_run_name(self) -> Optional[str]:
-        """MLflow 运行名称（可选，运行时注入）"""
+        """MLflow run 名称（可选，命令行注入）"""
         return self.get("mlflow", "run_name")
+    
+    @property
+    def use_feature_engineering(self) -> bool:
+        """是否使用完整特征工程"""
+        return self.config["hyperparams"]["use_feature_engineering"]
+    
+    @property
+    def max_evals(self) -> int:
+        """超参数搜索最大评估次数"""
+        return self.config["hyperparams"]["max_evals"]
+    
+    @property
+    def early_stopping_config(self) -> Dict[str, Any]:
+        """自动计算的早停配置"""
+        return get_early_stopping_config(self.max_evals)
+    
+    # ===== 配置访问方法 =====
+    
+    def get_model_params(self) -> Dict[str, Any]:
+        """获取模型参数（非搜索参数）"""
+        hp = self.config["hyperparams"]
+        return {
+            "use_feature_engineering": hp["use_feature_engineering"],
+            "random_state": hp["random_state"]
+        }
+    
+    def get_search_config(self) -> Dict[str, Any]:
+        """获取搜索配置"""
+        hp = self.config["hyperparams"]
+        return {
+            "max_evals": hp["max_evals"],
+            "metric": hp["metric"],
+            "search_space": hp["search_space"],
+            "early_stopping": self.early_stopping_config
+        }
+    
+    def get_feature_engineering_config(self) -> Optional[Dict[str, Any]]:
+        """获取特征工程配置"""
+        if not self.use_feature_engineering:
+            return None
+        return self.config.get("feature_engineering")
+    
+    def get_preprocessing_config(self) -> Dict[str, Any]:
+        """获取预处理配置"""
+        return self.config["preprocessing"]
+    
+    def get_mlflow_config(self) -> Dict[str, Any]:
+        """获取 MLflow 配置"""
+        return self.config["mlflow"]
     
     def __repr__(self) -> str:
         return (
             f"TrainingConfig("
             f"model_type='{self.model_type}', "
-            f"model_name='{self.model_name}', "
-            f"config_path='{self.config_path}'"
-            f")"
+            f"use_fe={self.use_feature_engineering}, "
+            f"max_evals={self.max_evals})"
         )

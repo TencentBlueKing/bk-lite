@@ -56,10 +56,10 @@ const Alert: React.FC<ViewModalProps> = ({
     originValue: 10080,
   });
   const timeDefaultValue =
-    useRef<TimeSelectorDefaultValue>({
+    (useRef<TimeSelectorDefaultValue>({
       selectValue: 10080,
       rangePickerVaule: null,
-    })?.current || {};
+    })?.current || {}) as any;
   const [activeTab, setActiveTab] = useState<string>('activeAlarms');
   const [frequence, setFrequence] = useState<number>(0);
   const [confirmLoading, setConfirmLoading] = useState(false);
@@ -309,7 +309,7 @@ const Alert: React.FC<ViewModalProps> = ({
         />
       </div>
       <CustomTable
-        scroll={{ y: 'calc(100vh - 412px)', x: 890 }}
+        scroll={{ y: 'calc(100vh - 420px)', x: 890 }}
         columns={columns}
         dataSource={tableData}
         pagination={pagination}

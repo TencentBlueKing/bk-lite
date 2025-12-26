@@ -29,7 +29,10 @@ class VmwareCollector(BaseCollector):
         host = self.params["host"]
         minutes = self.params.get("minutes", 5)
 
-        logger.info(f"[VMware Collector] Host={host}, Minutes={minutes}")
+        logger.info(f"[VMware Collector] ===== START COLLECTION =====")
+        logger.info(f"[VMware Collector] Params: {list(self.params.keys())}")
+        logger.info(f"[VMware Collector] Target Host={host}, Minutes={minutes}, Username={username}")
+        logger.info(f"[VMware Collector] ===================================")
 
         # 获取时间范围
         end_time = datetime.datetime.now()
@@ -98,4 +101,3 @@ class VmwareCollector(BaseCollector):
         logger.info(f"[VMware Collector] Completed: {total_resources_processed} resources, {len(influxdb_data)} bytes")
 
         return influxdb_data
-

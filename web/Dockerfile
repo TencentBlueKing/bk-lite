@@ -1,4 +1,4 @@
-FROM node:18-alpine AS builder
+FROM node:24-alpine AS builder
 
 ARG NEXUS_NODEJS_REPOSITY
 
@@ -34,7 +34,7 @@ RUN echo 'NEXTAPI_URL="http://bklite-server:8000"' > .env.local
 RUN pnpm install
 RUN pnpm run build
 
-FROM node:18-alpine
+FROM node:24-alpine
 RUN npm install -g pnpm
 
 # 在生产环境也设置内存限制
@@ -47,3 +47,4 @@ COPY --from=builder /app/node_modules ./node_modules
 COPY --from=builder /app/package.json ./
 
 CMD ["pnpm", "run", "start"]
+# 或者直接写明端口（如需更显式可改为：CMD ["pnpm", "exec", "next", "start", "-p", "3001"]）

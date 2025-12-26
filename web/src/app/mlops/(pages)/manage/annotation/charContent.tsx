@@ -641,7 +641,7 @@ const ChartContent = ({
                   virtual
                   size="small"
                   rowKey="timestamp"
-                  scroll={{ x: '100%', y: tableScrollHeight }}
+                  scroll={{ x: '100%', y: key === 'anomaly_detection' ? tableScrollHeight : 'calc(100vh - 160px)' }}
                   columns={colmuns}
                   dataSource={pagedData}
                 />

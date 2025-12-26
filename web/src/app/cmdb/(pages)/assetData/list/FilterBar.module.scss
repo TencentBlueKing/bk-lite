@@ -69,15 +69,13 @@
     background: #dcdee5;
   }
 
-  :global {
-    .ant-tag-close-icon {
-      color: rgb(0, 0, 0);
-      margin-left: 4px;
-      padding: 0 2px;
+  :global(.ant-tag-close-icon) {
+    color: rgb(0, 0, 0);
+    margin-left: 4px;
+    padding: 0 2px;
 
-      &:hover {
-        color: rgb(0, 0, 0);
-      }
+    &:hover {
+      color: rgb(0, 0, 0);
     }
   }
 }
@@ -111,10 +109,8 @@
 
 // 编辑弹窗样式
 .editModal {
-  :global {
-    .ant-modal-body {
-      padding: 24px;
-    }
+  :global(.ant-modal-body) {
+    padding: 24px;
   }
 }
 
@@ -122,25 +118,23 @@
 .popoverContent {
   padding: 0px;
 
-  :global {
-    .ant-form-item {
-      margin-bottom: 2px;
-    }
+  :global(.ant-form-item) {
+    margin-bottom: 2px;
+  }
 
-    .ant-form-item-label {
-      padding: 0;
-      padding-right: 5px;
-      flex: 0 0 auto;
-    }
+  :global(.ant-form-item-label) {
+    padding: 0;
+    padding-right: 5px;
+    flex: 0 0 auto;
+  }
 
-    .ant-form-item-label>label {
-      padding: 0;
-      margin: 0;
-    }
+  :global(.ant-form-item-label > label) {
+    padding: 0;
+    margin: 0;
+  }
 
-    .ant-form-item-control {
-      flex: 1;
-    }
+  :global(.ant-form-item-control) {
+    flex: 1;
   }
 }
 
@@ -176,11 +170,9 @@
   border-radius: 3px;
   border: 1px solid #bdbfc6;
 
-  :global {
-    .ant-checkbox-wrapper {
-      display: flex;
-      align-items: center;
-    }
+  :global(.ant-checkbox-wrapper) {
+    display: flex;
+    align-items: center;
   }
 }
 
@@ -188,28 +180,26 @@
   border-radius: 3px !important;
   border: 1px solid #bdbfc6;
 
-  :global {
-    .ant-input {
-      border-radius: 3px;
-      box-sizing: border-box;
-      height: 24px;
-      line-height: 22px;
-      padding: 0 11px;
-    }
+  :global(.ant-input) {
+    border-radius: 3px;
+    box-sizing: border-box;
+    height: 24px;
+    line-height: 22px;
+    padding: 0 11px;
+  }
 
-    // 解决点击后样式偏移问题：确保 focus 和正常状态的 border 宽度一致
-    .ant-input:focus,
-    .ant-input-focused {
-      border-width: 1px;
-      box-shadow: 0 0 0 2px rgba(5, 145, 255, 0.1);
-      height: 22px;
-      line-height: 22px;
-    }
+  // 解决点击后样式偏移问题：确保 focus 和正常状态的 border 宽度一致
+  :global(.ant-input:focus),
+  :global(.ant-input-focused) {
+    border-width: 1px;
+    box-shadow: 0 0 0 2px rgba(5, 145, 255, 0.1);
+    height: 22px;
+    line-height: 22px;
+  }
 
-    // 确保 hover 状态也不会改变 border 宽度
-    .ant-input:hover {
-      border-width: 1px;
-    }
+  // 确保 hover 状态也不会改变 border 宽度
+  :global(.ant-input:hover) {
+    border-width: 1px;
   }
 }
 
@@ -219,13 +209,11 @@
   border: 1px solid #bdbfc6;
   height: 95% !important;
 
-  :global {
-    .ant-checkbox-wrapper {
-      display: flex;
-      align-items: center;
-      height: 100%;
-      line-height: 1.5715;
-    }
+  :global(.ant-checkbox-wrapper) {
+    display: flex;
+    align-items: center;
+    height: 100%;
+    line-height: 1.5715;
   }
 }
 

@@ -1,160 +1,109 @@
 {
-  "_comment": "时间序列训练配置文件示例",
-  "_usage": "复制此文件为 train.json 并根据需要修改配置",
+  "_comment": "Gradient Boosting 时间序列训练配置文件",
+  "_usage": "复制为 train.json 并根据需要修改参数",
   
   "model": {
-    "type": "sarima",
-    "_type_options": ["sarima", "gradient_boosting", "prophet", "xgboost", "lstm"],
-    "name": "sarima_model_v1",
-    "version": "1.0.0"
+    "type": "gradient_boosting",
+    "_type_desc": "模型类型，当前项目仅支持 gradient_boosting",
+    "name": "timeseries_gb_model",
+    "_name_desc": "模型名称，用于 MLflow 记录和标识"
   },
   
   "hyperparams": {
-    "_comment": "超参数配置，按模型类型分别配置",
+    "_comment": "模型超参数配置（自动进行超参数搜索）",
     
-    "sarima": {
-      "search": {
-        "enabled": false,
-        "_comment": "启用后将进行超参数搜索，忽略 fixed 中的配置",
-        "max_evals": 50,
-        "metric": "rmse",
-        "_metric_options": ["rmse", "mae", "mape"],
-        "early_stopping": {
-          "enabled": false,
-          "patience": 15,
-          "_patience_desc": "多少次评估无改善后停止",
-          "loss_cap_multiplier": 5.0,
-          "_loss_cap_multiplier_desc": "异常loss上限 = std * multiplier"
-        },
-        "search_space": {
-          "_comment": "仅当 enabled=true 时生效",
-          "order": {
-            "p": [0, 1, 2],
-            "d": [0, 1, 2],
-            "q": [0, 1, 2]
-          },
-          "seasonal_order": {
-            "P": [0, 1, 2],
-            "D": [0, 1],
-            "Q": [0, 1, 2],
-            "s": [12, 24, 7]
-          },
-          "trend": ["n", "c", "t", "ct"]
-        }
-      },
-      "fixed": {
-        "_comment": "固定超参数（当 search.enabled=false 时使用）",
-        "order": [1, 1, 1],
-        "_order_desc": "[p, d, q] - AR阶数, 差分阶数, MA阶数",
-        "seasonal_order": [1, 1, 1, 12],
-        "_seasonal_order_desc": "[P, D, Q, s] - 季节性AR, 季节性差分, 季节性MA, 季节周期",
-        "trend": "c",
-        "_trend_options": ["n=无趋势", "c=常数", "t=线性", "ct=常数+线性"]
-      }
-    },
+    "use_feature_engineering": true,
+    "_use_feature_engineering_desc": "是否使用完整特征工程。false=简单滞后窗口，true=使用下方 feature_engineering 配置",
     
-    "gradient_boosting": {
-      "search": {
-        "enabled": false,
-        "_comment": "启用后将进行超参数搜索，忽略 fixed 中的配置",
-        "max_evals": 50,
-        "metric": "rmse",
-        "_metric_options": ["rmse", "mae", "mape"],
-        "early_stopping": {
-          "enabled": false,
-          "patience": 15,
-          "_patience_desc": "多少次评估无改善后停止",
-          "loss_cap_multiplier": 5.0,
-          "_loss_cap_multiplier_desc": "异常loss上限 = std * multiplier"
-        },
-        "search_space": {
-          "_comment": "仅当 enabled=true 时生效",
-          "n_estimators": [50, 100, 200, 300],
-          "_n_estimators_desc": "树的数量，越多越容易过拟合",
-          "learning_rate": [0.01, 0.05, 0.1, 0.2],
-          "_learning_rate_desc": "学习率，与 n_estimators 需权衡",
-          "max_depth": [3, 5, 7, 10],
-          "_max_depth_desc": "树的最大深度，越深越容易过拟合",
-          "min_samples_split": [2, 5, 10],
-          "_min_samples_split_desc": "分裂所需最小样本数，防止过拟合",
-          "min_samples_leaf": [1, 2, 4],
-          "_min_samples_leaf_desc": "叶节点最小样本数，防止过拟合",
-          "subsample": [0.7, 0.8, 0.9, 1.0],
-          "_subsample_desc": "子采样比例，<1.0 可防止过拟合",
-          "lag_features": [6, 12, 18, 24],
-          "_lag_features_desc": "滞后特征数量，影响特征工程"
-        }
-      },
-      "fixed": {
-        "_comment": "固定超参数（当 search.enabled=false 时使用）",
-        "n_estimators": 100,
-        "learning_rate": 0.1,
-        "max_depth": 3,
-        "min_samples_split": 2,
-        "min_samples_leaf": 1,
-        "subsample": 1.0,
-        "lag_features": 12,
-        "random_state": 42,
-        "_random_state_desc": "随机种子，保证可复现性（不参与搜索）",
-        "use_feature_engineering": true,
-        "_use_feature_engineering_desc": "是否使用完整特征工程（不参与搜索）"
-      }
+    "random_state": 42,
+    "_random_state_desc": "随机种子，保证结果可复现",
+    
+    "max_evals": 50,
+    "_max_evals_desc": "超参数搜索的最大评估次数。早停配置将自动根据此值计算（patience ≈ max_evals * 0.25，最小10，最大30）",
+    
+    "metric": "rmse",
+    "_metric_options": ["rmse", "mae", "mape"],
+    "_metric_desc": "优化目标指标。rmse=均方根误差，mae=平均绝对误差，mape=平均绝对百分比误差",
+    
+    "search_space": {
+      "_comment": "超参数搜索空间",
+      
+      "n_estimators": [50, 100, 200, 300],
+      "_n_estimators_desc": "树的数量候选值。越多越容易过拟合且训练更慢",
+      
+      "learning_rate": [0.01, 0.05, 0.1, 0.2],
+      "_learning_rate_desc": "学习率候选值。较小值需要更多树但泛化更好",
+      
+      "max_depth": [3, 5, 7, 10],
+      "_max_depth_desc": "树最大深度候选值。越深越容易过拟合",
+      
+      "min_samples_split": [2, 5, 10],
+      "_min_samples_split_desc": "节点分裂所需最小样本数。越大越保守，可防止过拟合",
+      
+      "min_samples_leaf": [1, 2, 4],
+      "_min_samples_leaf_desc": "叶节点最小样本数。越大越平滑",
+      
+      "subsample": [0.7, 0.8, 0.9, 1.0],
+      "_subsample_desc": "子采样比例。<1.0 引入随机性，可防止过拟合",
+      
+      "lag_features": [6, 12, 24],
+      "_lag_features_desc": "滞后特征数量候选值。仅在 use_feature_engineering=false 时使用，表示使用连续的 1..N 期滞后值作为特征"
     }
-  },
-  
-  "training": {
-    "test_size": 0.2,
-    "_test_size_desc": "测试集比例 (0.0 - 1.0)",
-    "validation_size": 0.0,
-    "_validation_size_desc": "验证集比例，用于超参数优化",
-    "epochs": 100,
-    "_epochs_desc": "训练轮次（仅用于 ML/DL 模型）",
-    "batch_size": 32,
-    "_batch_size_desc": "批次大小（仅用于 DL 模型）",
-    "early_stopping": {
-      "enabled": false,
-      "patience": 10,
-      "min_delta": 0.001
-    }
-  },
-  
-  "preprocessing": {
-    "handle_missing": "interpolate",
-    "_handle_missing_options": ["interpolate", "ffill", "bfill", "drop", "median"],
-    "max_missing_ratio": 0.3,
-    "_max_missing_ratio_desc": "允许的最大缺失率，超过则报错",
-    "interpolation_limit": 3,
-    "_interpolation_limit_desc": "插值最多填充的连续缺失点数",
-    "detect_outliers": false,
-    "_detect_outliers_desc": "是否检测并标记异常值（SARIMA不需要）",
-    "normalize": false,
-    "_normalize_desc": "是否标准化（仅ML模型需要）"
   },
   
   "feature_engineering": {
-    "enabled": false,
-    "_comment": "特征工程（仅用于 ML 模型，SARIMA 不需要）",
-    "lag_features": [1, 2, 3, 7, 14],
-    "_lag_features_desc": "滞后特征：使用过去N个时间点的值",
-    "rolling_features": {
-      "windows": [7, 14, 30],
-      "_windows_desc": "滚动窗口大小（天）",
-      "functions": ["mean", "std", "min", "max"],
-      "_functions_desc": "滚动窗口统计函数"
+    "_comment": "完整特征工程配置（仅当 use_feature_engineering=true 时生效）",
+    "_warning": "use_feature_engineering=true 时，以下所有字段均为必填项",
+    
+    "lag_periods": [1, 2, 3, 7, 14],
+    "_lag_periods_desc": "明确的滞后期列表（默认[1,2,3,7,14]）。如 [1,2,3] 表示使用 t-1, t-2, t-3 作为特征",
+    "_lag_periods_examples": {
+      "日数据": [1, 2, 3, 7, 14, 30],
+      "周数据": [1, 2, 4, 8, 12],
+      "月数据": [1, 2, 3, 6, 12]
     },
-    "time_features": ["hour", "day_of_week", "month"],
-    "_time_features_options": ["hour", "day_of_week", "day_of_month", "month", "quarter", "year"]
+    
+    "rolling_windows": [7, 14, 30],
+    "_rolling_windows_desc": "滚动窗口大小列表（默认[7,14,30]）。对每个窗口计算统计特征（均值、标准差等）",
+    
+    "rolling_features": ["mean", "std", "min", "max"],
+    "_rolling_features_desc": "滚动窗口统计函数（默认['mean','std','min','max']）",
+    "_rolling_features_options": ["mean", "std", "min", "max", "median", "sum"],
+    
+    "use_temporal_features": true,
+    "_use_temporal_features_desc": "是否提取时间特征（默认true）。包括：年、月、日、星期、小时、季度、是否周末等",
+    
+    "use_cyclical_features": false,
+    "_use_cyclical_features_desc": "是否使用周期性编码（默认false）。将月份、星期等用 sin/cos 编码以保留周期性。可能增加大量特征",
+    
+    "use_diff_features": true,
+    "_use_diff_features_desc": "是否使用差分特征（默认true）。有助于捕捉趋势变化",
+    
+    "diff_periods": [1],
+    "_diff_periods_desc": "差分期数列表（默认[1]）。仅在 use_diff_features=true 时生效",
+    "_diff_periods_examples": {
+      "一阶差分": [1],
+      "一阶+季节性差分": [1, 12]
+    }
+  }, 
+  
+  "preprocessing": {
+    "_comment": "数据预处理配置",
+
+    "handle_missing": "interpolate",
+    "_handle_missing_options": ["interpolate", "ffill", "bfill", "drop", "median"],
+    "_handle_missing_desc": "缺失值处理方式：interpolate=线性插值，ffill=前向填充，bfill=后向填充，drop=删除，median=中位数填充",
+    
+    "max_missing_ratio": 0.3,
+    "_max_missing_ratio_desc": "允许的最大缺失率（默认0.3=30%）。数据缺失率超过此值将报错",
+    
+    "interpolation_limit": 3,
+    "_interpolation_limit_desc": "插值最多填充的连续缺失点数（默认3）。连续缺失超过此数量将保留NaN"
   },
   
   "mlflow": {
-    "tracking_uri": null,
-    "_tracking_uri_desc": "MLflow 服务地址，如 http://127.0.0.1:15000，null 则使用本地文件",
-    "experiment_name": "timeseries_training",
-    "run_name": null,
-    "_run_name_desc": "运行名称，null 则自动生成",
-    "log_model": true,
-    "_log_model_desc": "是否记录模型到 MLflow",
-    "register_model": true,
-    "_register_model_desc": "是否注册模型到 MLflow Model Registry"
+    "_comment": "MLflow 实验跟踪配置",
+    "experiment_name": "timeseries_gradient_boosting",
+    "_experiment_name_desc": "MLflow 实验名称。用于组织和管理训练运行"
   }
 }

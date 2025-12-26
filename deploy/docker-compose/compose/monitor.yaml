@@ -52,6 +52,17 @@ services:
       UV_OFFLINE: True
       NATS_TLS_ENABLED: true
       NATS_TLS_CA_FILE: /etc/certs/ca.crt
+
+      NATS_METRIC_TOPIC: metrics
+
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      REDIS_PASSWORD: ${REDIS_PASSWORD}
+      REDIS_DB: 1
+      TASK_MAX_JOBS: 10
+      TASK_JOB_TIMEOUT: 300
+      TASK_KEEP_RESULT: 3600
+      TASK_MAX_TRIES: 3
     volumes:
       - ../conf/certs:/etc/certs:ro
     networks:

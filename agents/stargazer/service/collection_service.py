@@ -36,7 +36,7 @@ class CollectionService:
         self.model_id = self.params["model_id"]
         self.hosts = self.ip_split(self.params.get("hosts", ""))
         # 是否启用并发（默认启用）
-        self.enable_concurrent = len(self.hosts) >= 2
+        self.enable_concurrent = len(self.hosts) >= 3
         if self.enable_concurrent:
             # 初始化异步执行器
             self.async_executor = AsyncExecutor(max_workers=max_workers)

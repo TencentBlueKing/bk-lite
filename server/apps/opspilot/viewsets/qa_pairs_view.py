@@ -70,7 +70,7 @@ class QAPairsViewSet(MaintainerViewSet):
             kwargs = {
                 "content": i["content"],
                 "size": params.get("qa_count", 1) or 1,
-                "openai_api_base": question_config["openai_api_base"],
+                "openai_api_base": question_config["openai_base_url"],
                 "openai_api_key": question_config["openai_api_key"],
                 "model": question_config["model"] or question_llm.name,
                 "extra_prompt": params.get("question_prompt", ""),
@@ -83,7 +83,7 @@ class QAPairsViewSet(MaintainerViewSet):
                 answer_kwargs = {
                     "context": i["content"],
                     "content": u["question"],
-                    "openai_api_base": answer_config["openai_api_base"],
+                    "openai_api_base": answer_config["openai_base_url"],
                     "openai_api_key": answer_config["openai_api_key"],
                     "model": answer_config["model"] or answer_llm.name,
                     "extra_prompt": params.get("answer_prompt", ""),

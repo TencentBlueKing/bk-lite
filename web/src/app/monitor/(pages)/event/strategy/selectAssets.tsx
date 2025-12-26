@@ -229,7 +229,7 @@ const SelectAssets = forwardRef<ModalRef, ModalConfig>(
 
     const handleSubmit = async () => {
       handleCancel();
-      onSuccess(
+      onSuccess?.(
         {
           type: activeTab,
           values: activeTab === 'instance' ? selectedRowKeys : selectedTreeKeys,

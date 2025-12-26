@@ -293,6 +293,7 @@ const MetricViews: React.FC<ViewDetailProps> = ({
           { keys: item.instance_id_keys || [], values: ids },
         ])
       ),
+      source_unit: item.unit || '',
     };
     const recentTimeRange = getRecentTimeRange(timeValues);
     const startTime = recentTimeRange.at(0);
@@ -316,11 +317,9 @@ const MetricViews: React.FC<ViewDetailProps> = ({
     if (loadedMetricIds.has(metric.id) && !cancelledMetricIds.has(metric.id)) {
       return;
     }
-
     if (loadingMetricIds.has(metric.id)) {
       return;
     }
-
     const isCancelledRequest = cancelledMetricIds.has(metric.id);
     if (isCancelledRequest) {
       setCancelledMetricIds((prev) => {
@@ -329,25 +328,17 @@ const MetricViews: React.FC<ViewDetailProps> = ({
         return newSet;
       });
     }
-
     const abortController = new AbortController();
-
     activeRequestsRef.current.set(metric.id, abortController);
-
     manageRequestQueue(metric.id);
-
     const currentController = activeRequestsRef.current.get(metric.id);
     if (!currentController || currentController.signal.aborted) {
       return;
     }
-
     setLoadingMetricIds((prev) => new Set(prev).add(metric.id));
-
     let response;
-
     try {
       const params = getParams(metric, idValues);
-
       response = await get(`/monitor/api/metrics_instance/query_range/`, {
         params,
         signal: abortController.signal,
@@ -358,7 +349,6 @@ const MetricViews: React.FC<ViewDetailProps> = ({
       }
       return;
     }
-
     try {
       const instanceRow = [
         {
@@ -369,16 +359,8 @@ const MetricViews: React.FC<ViewDetailProps> = ({
           title: metric?.display_name || '--',
         },
       ];
-
-      let chartData = [];
-      if (response && response.data && response.data.result) {
-        chartData = response.data.result;
-      } else if (response && response.data) {
-        chartData = Array.isArray(response.data) ? response.data : [];
-      } else if (Array.isArray(response)) {
-        chartData = response;
-      }
-
+      const chartData = response?.data?.result || [];
+      const displayUnit = response?.data?.unit || '';
       const viewData = renderChart(chartData, instanceRow);
 
       setMetricData((prevData) => {
@@ -388,15 +370,14 @@ const MetricViews: React.FC<ViewDetailProps> = ({
             item.id === metric.id
               ? {
                 ...item,
-                viewData: viewData,
+                displayUnit,
+                viewData,
               }
               : item
           ),
         }));
-
         return updatedData;
       });
-
       // 同时更新originMetricData，保持数据同步
       setOriginMetricData((prevData) => {
         const updatedData = prevData.map((group) => ({
@@ -405,20 +386,18 @@ const MetricViews: React.FC<ViewDetailProps> = ({
             item.id === metric.id
               ? {
                 ...item,
-                viewData: viewData,
+                displayUnit,
+                viewData,
               }
               : item
           ),
         }));
-
         return updatedData;
       });
-
       setLoadedMetricIds((prev) => {
         const newSet = new Set(prev).add(metric.id);
         return newSet;
       });
-
       setCancelledMetricIds((prev) => {
         if (prev.has(metric.id)) {
           const newSet = new Set(prev);
@@ -427,7 +406,6 @@ const MetricViews: React.FC<ViewDetailProps> = ({
         }
         return prev;
       });
-
       if (needsRefreshOnExpand) {
         setNeedsRefreshOnExpand(false);
       }
@@ -448,13 +426,11 @@ const MetricViews: React.FC<ViewDetailProps> = ({
           (id) => id !== metric.id
         );
       }
-
       setLoadingMetricIds((prev) => {
         const newSet = new Set(prev);
         newSet.delete(metric.id);
         return newSet;
       });
-
       if (abortController.signal.aborted) {
         setLoadedMetricIds((prev) => {
           const newSet = new Set(prev);

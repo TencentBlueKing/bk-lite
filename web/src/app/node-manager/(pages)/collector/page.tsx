@@ -1,5 +1,5 @@
 'use client';
-import React, { useEffect, useState, useRef, useCallback } from 'react';
+import { useEffect, useState, useRef, useCallback } from 'react';
 import { Menu, Input, Button, message, Modal, Tag, Segmented } from 'antd';
 import useApiClient from '@/utils/request';
 import useNodeManagerApi from '@/app/node-manager/api';
@@ -87,16 +87,12 @@ const Collector = () => {
         return currentTagEnum[tag]?.name || tag;
       });
       return {
-        id: item.id,
+        ...item,
         name: item.display_name,
+        description: item.display_introduction || '--',
         original_name: item.name,
         original_introduction: item.introduction,
-        service_type: item.service_type,
-        executable_path: item.executable_path,
-        execute_parameters: item.execute_parameters,
-        description: item.display_introduction || '--',
         icon: item.icon || 'caijiqizongshu',
-        is_pre: item.is_pre,
         os:
           tagList.find((item: string) => ['linux', 'windows'].includes(item)) ||
           'linux',

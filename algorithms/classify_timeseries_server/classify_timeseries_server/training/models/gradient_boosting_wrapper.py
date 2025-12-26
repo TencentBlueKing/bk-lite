@@ -25,7 +25,8 @@ class GradientBoostingWrapper(mlflow.pyfunc.PythonModel):
         use_feature_engineering: bool,
         feature_engineer,
         training_frequency: Optional[str],
-        feature_names: Optional[list] = None
+        feature_names: Optional[list] = None,
+        feature_engineering_config: Optional[dict] = None
     ):
         """初始化包装器
         
@@ -36,6 +37,7 @@ class GradientBoostingWrapper(mlflow.pyfunc.PythonModel):
             feature_engineer: TimeSeriesFeatureEngineer 对象（或 None）
             training_frequency: 训练时的时间序列频率（如 'MS', 'D'）
             feature_names: 特征名称列表（用于调试）
+            feature_engineering_config: 特征工程配置字典
         """
         self.model = model
         self.lag_features = lag_features
@@ -43,6 +45,7 @@ class GradientBoostingWrapper(mlflow.pyfunc.PythonModel):
         self.feature_engineer = feature_engineer
         self.training_frequency = training_frequency
         self.feature_names = feature_names
+        self.feature_engineering_config = feature_engineering_config
     
     def predict(self, context, model_input) -> np.ndarray:
         """预测接口

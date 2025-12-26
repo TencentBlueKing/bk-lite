@@ -117,7 +117,9 @@
     "fetchToolsFailed": "Failed to fetch tools",
     "subToolDescription": "Sub Tool Description",
     "items": "items",
-    "description": "Description"
+    "description": "Description",
+    "checkbox": "Checkbox",
+    "number": "Number"
   },
   "knowledge": {
     "goToTesting": "Go to Testing",
@@ -132,7 +134,7 @@
       "selectDocuments": "Select Documents",
       "importSuccess": "Import QA pairs successfully",
       "questionPrompt": "Question Prompt",
-      "generateQuestionAndAnswer": "Generate Question and Answer",
+      "generateQuestionAndAnswer": "Generate Questions and Answers",
       "selectedDocuments": "Selected Documents",
       "question": "Question",
       "generate": "Generate In Chunks",
@@ -207,9 +209,9 @@
       "enterQaCount": "Please enter QA count",
       "qaPairsUpdateFailed": "Failed to update QA pairs",
       "chunks": "chunks",
+      "totalQAPairsSuffix": "QA pairs",
       "qaCountPerChunk": "QA Count (Per Chunk)",
-      "totalQAPairsPrefix": "Total",
-      "totalQAPairsSuffix": "QA pairs"
+      "totalQAPairsPrefix": "Total"
     },
     "documents": {
       "status": "STATUS",
@@ -462,8 +464,6 @@
     "chunkDetails": "Chunk Details",
     "annotationRemoveFailed": "Failed to remove annotation",
     "copied": "Copied to clipboard",
-    "referenceDocSource": "Reference Document Source",
-    "referenceQASource": "Reference QA Source",
     "connectionError": "Connection error, please try again later",
     "question": "Question",
     "inputPlaceholder": "Please enter a message...",
@@ -485,7 +485,9 @@
     "removeAnnotation": "Remove Annotation",
     "onlyImageAllowed": "Only image files are allowed",
     "imageTooLarge": "Image size cannot exceed 5MB",
-    "uploadImage": "Upload Image"
+    "uploadImage": "Upload Image",
+    "referenceDocSource": "Reference Document Source",
+    "referenceQASource": "Reference QA Source"
   },
   "settings": {
     "secret": {
@@ -779,18 +781,18 @@
       "appTagRoutineOps": "Routine Ops",
       "appIcon": "App Icon",
       "appTagPerformanceAnalysis": "Performance Analysis",
-      "intentClassificationConfig": "Intent Classification Configuration",
-      "intentClassification": "Intent Classification",
-      "classification": "Classification",
       "intents": "Intent List",
-      "intentName": "Intent Name",
       "intentDescription": "Intent Description",
-      "addIntent": "Add Intent",
-      "removeIntent": "Remove Intent",
       "intentNamePlaceholder": "Please enter intent name",
+      "removeIntent": "Remove Intent",
+      "classification": "Classification",
       "intentTopicPlaceholder": "Please enter classification topic name (one per line)",
+      "intentNameRequired": "Intent name is required",
       "intentDescPlaceholder": "Please enter intent description (optional)",
-      "intentNameRequired": "Intent name is required"
+      "intentClassification": "Intent Classification",
+      "addIntent": "Add Intent",
+      "intentName": "Intent Name",
+      "intentClassificationConfig": "Intent Classification Configuration"
     },
     "collapseSidebar": "Collapse Sidebar",
     "messages": {
@@ -949,8 +951,8 @@
     "mobile": "Mobile Terminal",
     "webChat": "Web Chat",
     "embeddedChat": "Embedded Chat",
-    "intentClassification": "Intent Classification",
-    "applications": "Applications"
+    "applications": "Applications",
+    "intentClassification": "Intent Classification"
   },
   "provider": {
     "form": {

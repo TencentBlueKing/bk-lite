@@ -15,13 +15,13 @@ const useTrainDataLoader = () => {
     getClassificationTrainDataInfo
   } = useMlopsManageApi();
   const getTrainData: Record<string, any> = {
-    'anomaly': getAnomalyTrainData,
+    'anomaly_detection': getAnomalyTrainData,
     'log_clustering': getLogClusteringTrainData,
     'timeseries_predict': getTimeSeriesPredictTrainData,
     'classification': getClassificationTrainData
   };
   const getTrainDataInfo: Record<string, any> = {
-    'anomaly': getAnomalyTrainDataInfo,
+    'anomaly_detection': getAnomalyTrainDataInfo,
     'log_clustering': getLogClusteringTrainDataInfo,
     'timeseries_predict': getTimeSeriesPredictTrainDataInfo,
     'classification': getClassificationTrainDataInfo

@@ -39,11 +39,6 @@ def publish_dataset_release_async(release_id, train_file_id, val_file_id, test_f
     release = None
     
     try:
-        # ===== 调试代码：延迟 30 秒开始处理 =====
-        logger.info(f"[调试] 收到发布任务 - Release ID: {release_id}, 将在 30 秒后开始处理...")
-        time.sleep(30)
-        logger.info(f"[调试] 延迟结束，开始处理 - Release ID: {release_id}")
-        # ===== 调试代码结束 =====
         
         from apps.mlops.models.timeseries_predict import (
             TimeSeriesPredictDatasetRelease,
