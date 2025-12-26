@@ -58,6 +58,10 @@ const CollectorDetailDrawer = forwardRef<ModalRef, CollectorDetailDrawerProps>(
       adminRef.current.includes('admin') ||
       adminRef.current.includes('node--admin');
     const configModalRef = useRef<ModalRef>(null);
+    const configAbortControllerRef = useRef<AbortController | null>(null);
+    const configRequestIdRef = useRef<number>(0);
+    const subConfigAbortControllerRef = useRef<AbortController | null>(null);
+    const subConfigRequestIdRef = useRef<number>(0);
     const [visible, setVisible] = useState<boolean>(false);
     const [selectedCollector, setSelectedCollector] =
       useState<TableDataItem | null>(null);
@@ -139,12 +143,20 @@ const CollectorDetailDrawer = forwardRef<ModalRef, CollectorDetailDrawerProps>(
 
     // 加载所有配置数据（只调用一次 config_node_asso 接口）
     const loadAllConfigs = async (nodeId: string, firstCollectorId: string) => {
+      configAbortControllerRef.current?.abort();
+      const abortController = new AbortController();
+      configAbortControllerRef.current = abortController;
+      const currentRequestId = ++configRequestIdRef.current;
       setMainConfigLoading(true);
       try {
-        const configList = await getConfiglist({
-          cloud_region_id: cloudId,
-          node_id: nodeId,
-        });
+        const configList = await getConfiglist(
+          {
+            cloud_region_id: cloudId,
+            node_id: nodeId,
+          },
+          { signal: abortController.signal }
+        );
+        if (currentRequestId !== configRequestIdRef.current) return;
         const configData: ConfigData[] = configList.map(
           (config: ConfigListProps) => ({
             ...config,
@@ -168,7 +180,9 @@ const CollectorDetailDrawer = forwardRef<ModalRef, CollectorDetailDrawerProps>(
       } catch (error) {
         console.error('Failed to load configs:', error);
       } finally {
-        setMainConfigLoading(false);
+        if (currentRequestId === configRequestIdRef.current) {
+          setMainConfigLoading(false);
+        }
       }
     };
 
@@ -199,6 +213,10 @@ const CollectorDetailDrawer = forwardRef<ModalRef, CollectorDetailDrawerProps>(
       pageSize?: number;
       configType?: string;
     }) => {
+      subConfigAbortControllerRef.current?.abort();
+      const abortController = new AbortController();
+      subConfigAbortControllerRef.current = abortController;
+      const currentRequestId = ++subConfigRequestIdRef.current;
       setSubConfigLoading(true);
       try {
         const params = {
@@ -207,7 +225,10 @@ const CollectorDetailDrawer = forwardRef<ModalRef, CollectorDetailDrawerProps>(
           page_size: pageSize || subConfigPagination.pageSize,
           config_type: configType === undefined ? searchKeyword : configType,
         };
-        const res = await getChildConfig(params);
+        const res = await getChildConfig(params, {
+          signal: abortController.signal,
+        });
+        if (currentRequestId !== subConfigRequestIdRef.current) return;
         const data = res.items.map((item: any) => ({
           ...item,
           key: item.id,
@@ -222,7 +243,9 @@ const CollectorDetailDrawer = forwardRef<ModalRef, CollectorDetailDrawerProps>(
       } catch (error) {
         console.error('Failed to load sub configs:', error);
       } finally {
-        setSubConfigLoading(false);
+        if (currentRequestId === subConfigRequestIdRef.current) {
+          setSubConfigLoading(false);
+        }
       }
     };
 
@@ -243,6 +266,8 @@ const CollectorDetailDrawer = forwardRef<ModalRef, CollectorDetailDrawerProps>(
     };
 
     const handleCancel = () => {
+      configAbortControllerRef.current?.abort();
+      subConfigAbortControllerRef.current?.abort();
       setVisible(false);
       setCollectors([]);
       setSelectedCollector(null);
@@ -257,6 +282,7 @@ const CollectorDetailDrawer = forwardRef<ModalRef, CollectorDetailDrawerProps>(
     };
 
     const handleCollectorClick = (collector: TableDataItem) => {
+      subConfigAbortControllerRef.current?.abort();
       setSubConfigs([]);
       setSubConfigPagination((pre) => ({
         ...pre,
