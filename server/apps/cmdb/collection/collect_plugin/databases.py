@@ -176,7 +176,4 @@ class DBCollectCollectMetrics(CollectBase):
                     result.append(data)
             self.result[self.model_id] = result
 
-    def prom_sql(self):
-        sql = " or ".join(
-                "{}{{instance_id=~\"^{}_.+\"}}".format(m, self.task_id) for m in self._metrics)
-        return sql
+

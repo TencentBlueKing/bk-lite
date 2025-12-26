@@ -21,6 +21,7 @@ class CollectBase(metaclass=ABCMeta):
         self.inst_id = inst_id
         self.task_id = task_id
         self.inst_name = inst_name
+        self._instance_id = f"cmdb_{self.task_id}"
         if not self.inst_name:
             task_inst_data = self.get_collect_inst().instances
             if task_inst_data.__len__():
@@ -51,10 +52,9 @@ class CollectBase(metaclass=ABCMeta):
         """格式化指标"""
         raise NotImplementedError
 
-    @abstractmethod
     def prom_sql(self):
-        """Prometheus查询语句"""
-        raise NotImplementedError
+        sql = " or ".join("{}{{instance_id={}}}".format(m, self._instance_id) for m in self._metrics)
+        return sql
 
     def get_collect_inst(self):
         instance = CollectModels.objects.get(id=self.task_id)

@@ -1,0 +1,28 @@
+name: vmware_vc
+version: "2.0.0"
+category: virtualization
+
+metadata:
+  display_name: "VMware vCenter"
+  description: "VMware vCenter 虚拟化平台采集插件"
+  author: "WeOps"
+  tags: [virtualization, vmware_vc, vcenter]
+  cloud_protocol: false
+  model_id: vmware_vc
+
+# ============================================================================
+# 执行器配置
+# ============================================================================
+executors:
+  # Protocol 类型（协议采集 - VMware 只支持协议方式）
+  protocol:
+    type: protocol
+    timeout: 120
+    
+    # Python 采集器
+    collector:
+      module: plugins.input.vmware_vc.vmware_info
+      class: VmwareManage
+
+# 默认执行器
+default_executor: protocol

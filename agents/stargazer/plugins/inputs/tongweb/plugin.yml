@@ -1,0 +1,34 @@
+name: tongweb
+version: "2.0.0"
+category: webserver
+
+metadata:
+  display_name: "TongWeb 应用服务器"
+  description: "TongWeb 应用服务器采集插件，支持脚本方式采集"
+  author: "WeOps"
+  tags: [webserver, tongweb, java]
+  cloud_protocol: false
+  model_id: tongweb
+
+# ============================================================================
+# 执行器配置
+# ============================================================================
+executors:
+  # Job 类型（脚本采集）
+  job:
+    type: job
+    timeout: 60
+
+    # 不同操作系统的脚本
+    scripts:
+      linux: plugins/inputs/tongweb/tongweb_default_discover.sh
+
+    collector:
+      module: plugins.script_executor
+      class: SSHPlugin
+
+    # 默认脚本
+    default_script: linux
+
+# 默认执行器
+default_executor: job
