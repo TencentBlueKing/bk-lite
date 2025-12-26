@@ -17,6 +17,7 @@ from dataclasses import dataclass, field
 from nats.aio.client import Client as NATS
 from sanic import Sanic
 from sanic.log import logger
+import asyncio
 
 
 # ==================== 配置类 ====================
