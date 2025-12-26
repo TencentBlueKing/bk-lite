@@ -60,8 +60,7 @@ class BaseCollect(object):
             raw_data = result.pop("__raw_data__")
         if result.get("all", False) or result.get("all", False) == 0:
             all_count = result.pop("all")
-        format_data = {"add": [], "update": [],
-                       "delete": [], "association": []}
+        format_data = {"add": [], "update": [], "delete": [], "association": []}
         for value in result.values():
             for operator, datas in value.items():
                 for status, data in datas.items():

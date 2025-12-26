@@ -43,7 +43,7 @@ async def collect_vmware_metrics_task(ctx: Dict, params: Dict[str, Any], task_id
         return {
             "task_id": task_id,
             "status": "success",
-            "monitor_type": "vmware",
+            "monitor_type": "vmware_vc",
             "data_size": len(metrics_data),
             "completed_at": int(time.time() * 1000)
         }
@@ -64,7 +64,7 @@ async def collect_vmware_metrics_task(ctx: Dict, params: Dict[str, Any], task_id
             "task_id": task_id,
             "status": "failed",
             "error": str(e),
-            "monitor_type": "vmware",
+            "monitor_type": "vmware_vc",
             "completed_at": int(time.time() * 1000)
         }
 

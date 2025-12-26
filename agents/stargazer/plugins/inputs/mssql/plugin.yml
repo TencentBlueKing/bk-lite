@@ -1,0 +1,28 @@
+name: mssql
+version: "2.0.0"
+category: database
+
+metadata:
+  display_name: "SQL Server 数据库"
+  description: "Microsoft SQL Server 数据库采集插件，支持协议方式采集"
+  author: "WeOps"
+  tags: [database, mssql, sqlserver]
+  cloud_protocol: false
+  model_id: mssql
+
+# ============================================================================
+# 执行器配置
+# ============================================================================
+executors:
+  # Protocol 类型（协议采集）
+  protocol:
+    type: protocol
+    timeout: 30
+
+    # Python 采集器
+    collector:
+      module: plugins.inputs.mssql.mssql_info
+      class: MSSQLInfo
+
+# 默认执行器
+default_executor: protocol
