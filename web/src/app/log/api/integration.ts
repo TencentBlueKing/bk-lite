@@ -6,6 +6,7 @@ import {
 } from '@/app/log/types/integration';
 import { GroupInfo } from '@/app/log/types/integration';
 import { cloneDeep } from 'lodash';
+import { AxiosRequestConfig } from 'axios';
 interface NodeConfigParam {
   configs?: any;
   collect_type?: string;
@@ -25,10 +26,12 @@ const useIntegrationApi = () => {
       name?: string;
       page?: number;
       page_size?: number;
-    } = {}
+    } = {},
+    config?: AxiosRequestConfig
   ) => {
     return await get('/log/collect_types/', {
       params,
+      ...config,
     });
   };
 
@@ -73,13 +76,16 @@ const useIntegrationApi = () => {
     return await post('/log/node_mgmt/nodes/', data);
   };
 
-  const getInstanceList = async (data: {
-    collect_type_id?: React.Key;
-    page?: number;
-    page_size?: number;
-    name?: string;
-  }) => {
-    return await post('/log/collect_instances/search/', data);
+  const getInstanceList = async (
+    data: {
+      collect_type_id?: React.Key;
+      page?: number;
+      page_size?: number;
+      name?: string;
+    },
+    config?: AxiosRequestConfig
+  ) => {
+    return await post('/log/collect_instances/search/', data, config);
   };
 
   const getInstanceChildConfig = async (data: {

@@ -1,5 +1,5 @@
 'use client';
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import { Input, Button, message, Switch, Popconfirm } from 'antd';
 import useApiClient from '@/utils/request';
 import useLogEventApi from '@/app/log/api/event';
@@ -34,6 +34,10 @@ const Strategy: React.FC = () => {
   const { convertToLocalizedTime } = useLocalizedTime();
   const objId = searchParams.get('objId');
   const router = useRouter();
+  const tableAbortControllerRef = useRef<AbortController | null>(null);
+  const tableRequestIdRef = useRef<number>(0);
+  const treeAbortControllerRef = useRef<AbortController | null>(null);
+  const treeRequestIdRef = useRef<number>(0);
   const [pagination, setPagination] = useState<Pagination>({
     current: 1,
     total: 0,
@@ -176,13 +180,25 @@ const Strategy: React.FC = () => {
   }, [isLoading]);
 
   useEffect(() => {
+    return () => {
+      cancelAllRequests();
+    };
+  }, []);
+
+  useEffect(() => {
     if (objectId) {
       getAssetInsts(objectId);
     }
   }, [pagination.current, pagination.pageSize, objectId]);
 
+  const cancelAllRequests = () => {
+    tableAbortControllerRef.current?.abort();
+    treeAbortControllerRef.current?.abort();
+  };
+
   const handleObjectChange = async (id: string) => {
-    setTableData([])
+    tableAbortControllerRef.current?.abort();
+    setTableData([]);
     setObjectId(id);
   };
 
@@ -214,33 +230,52 @@ const Strategy: React.FC = () => {
   };
 
   const getAssetInsts = async (objectId: React.Key, text?: string) => {
+    tableAbortControllerRef.current?.abort();
+    const abortController = new AbortController();
+    tableAbortControllerRef.current = abortController;
+    const currentRequestId = ++tableRequestIdRef.current;
     try {
       setTableLoading(true);
       const params = getParams(text);
       params.collect_type = objectId;
-      const data = await getPolicy('', params);
+      const data = await getPolicy('', params, {
+        signal: abortController.signal,
+      });
+      if (currentRequestId !== tableRequestIdRef.current) return;
       setTableData(data.items || []);
       setPagination((pre) => ({
         ...pre,
         total: data.count,
       }));
     } finally {
-      setTableLoading(false);
+      if (currentRequestId === tableRequestIdRef.current) {
+        setTableLoading(false);
+      }
     }
   };
 
   const getObjects = async (type?: string) => {
+    treeAbortControllerRef.current?.abort();
+    const abortController = new AbortController();
+    treeAbortControllerRef.current = abortController;
+    const currentRequestId = ++treeRequestIdRef.current;
     try {
       setTreeLoading(true);
-      const data: ObjectItem[] = await getCollectTypes({
-        add_policy_count: true,
-      });
+      const data: ObjectItem[] = await getCollectTypes(
+        {
+          add_policy_count: true,
+        },
+        { signal: abortController.signal }
+      );
+      if (currentRequestId !== treeRequestIdRef.current) return;
       if (!type) {
         setDefaultSelectObj(objId ? +objId : data[0]?.id);
       }
       setTreeData(getTreeData(data));
     } finally {
-      setTreeLoading(false);
+      if (currentRequestId === treeRequestIdRef.current) {
+        setTreeLoading(false);
+      }
     }
   };
 
