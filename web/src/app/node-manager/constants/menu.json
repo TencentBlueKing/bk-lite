@@ -22,7 +22,7 @@
       ]
     },
     {
-      "title": "组件",
+      "title": "组件库",
       "icon": "caijiqi",
       "url": "/node-manager/collector",
       "name": "collector_list",
@@ -75,7 +75,7 @@
       ]
     },
     {
-      "title": "Component",
+      "title": "Component Library",
       "icon": "xiaocaijiqi",
       "url": "/node-manager/collector",
       "name": "collector_list",
