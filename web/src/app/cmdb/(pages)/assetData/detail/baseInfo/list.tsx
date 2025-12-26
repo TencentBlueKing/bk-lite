@@ -272,7 +272,6 @@ const InfoList: React.FC<AssetDataFieldProps> = ({
             bordered
             items={fieldList?.filter(
               (item: any) => {
-                // console.log('test4.5', item, ![...builtinAttr, 'organization'].includes(item.key));
                 return ![...builtinAttr, 'organization'].includes(item.key)
               })}
             column={2}
