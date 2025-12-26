@@ -1,5 +1,6 @@
 import useApiClient from '@/utils/request';
 import React from 'react';
+import { AxiosRequestConfig } from 'axios';
 import { InstanceParam } from '@/app/monitor/types';
 
 interface MetricsParam {
@@ -12,15 +13,23 @@ interface MetricsParam {
 const useMonitorApi = () => {
   const { get, patch } = useApiClient();
 
-  const getMonitorMetrics = async (params: MetricsParam = {}) => {
+  const getMonitorMetrics = async (
+    params: MetricsParam = {},
+    config?: AxiosRequestConfig
+  ) => {
     return await get(`/monitor/api/metrics/`, {
       params,
+      ...config,
     });
   };
 
-  const getMetricsGroup = async (params: MetricsParam = {}) => {
+  const getMetricsGroup = async (
+    params: MetricsParam = {},
+    config?: AxiosRequestConfig
+  ) => {
     return await get(`/monitor/api/metrics_group/`, {
       params,
+      ...config,
     });
   };
 
@@ -47,19 +56,23 @@ const useMonitorApi = () => {
       page_size?: number;
       created_at_after?: string;
       created_at_before?: string;
-    } = {}
+    } = {},
+    config?: AxiosRequestConfig
   ) => {
     return await get(`/monitor/api/monitor_alert/`, {
       params,
+      ...config,
     });
   };
 
   const getInstanceList = async (
     objectId?: React.Key,
-    params: InstanceParam = {}
+    params: InstanceParam = {},
+    config?: AxiosRequestConfig
   ) => {
     return await get(`/monitor/api/monitor_instance/${objectId}/list/`, {
       params,
+      ...config,
     });
   };
 
@@ -67,10 +80,12 @@ const useMonitorApi = () => {
     params: {
       monitor_object_id?: React.Key | null;
       name?: string;
-    } = {}
+    } = {},
+    config?: AxiosRequestConfig
   ) => {
     return await get('/monitor/api/monitor_plugin/', {
       params,
+      ...config,
     });
   };
 
