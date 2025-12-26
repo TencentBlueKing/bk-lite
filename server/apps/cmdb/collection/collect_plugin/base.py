@@ -53,7 +53,7 @@ class CollectBase(metaclass=ABCMeta):
         raise NotImplementedError
 
     def prom_sql(self):
-        sql = " or ".join("{}{{instance_id={}}}".format(m, self._instance_id) for m in self._metrics)
+        sql = " or ".join("{}{{instance_id='{}'}}".format(m, self._instance_id) for m in self._metrics)
         return sql
 
     def get_collect_inst(self):

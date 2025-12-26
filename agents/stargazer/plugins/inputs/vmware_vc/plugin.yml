@@ -21,7 +21,7 @@ executors:
     
     # Python 采集器
     collector:
-      module: plugins.input.vmware_vc.vmware_info
+      module: plugins.inputs.vmware_vc.vmware_info
       class: VmwareManage
 
 # 默认执行器
