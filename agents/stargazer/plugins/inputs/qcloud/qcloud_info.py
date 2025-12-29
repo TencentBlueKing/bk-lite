@@ -56,6 +56,7 @@ class TencentCloudManager:
         self.params = params
         self.secret_id = params.get("secret_id")
         self.secret_key = params.get("secret_key")
+        self.timeout = int(params.get("timeout", 60))
         ssl = params.get("ssl", "false")
         self.protocol = "https" if ssl.lower() == "true" else "http"
 
@@ -67,6 +68,7 @@ class TencentCloudManager:
         """
         httpProfile = HttpProfile()
         httpProfile.protocol = self.protocol
+        httpProfile.reqTimeout = self.timeout
         client_profile = ClientProfile()
         client_profile.httpProfile = httpProfile
         cred = self.get_credentials()

@@ -21,6 +21,7 @@ class VmwareManage(object):
         self.host = params.get("host") or params.get("hostname")
         self.port = params.get("port", 443)
         self.ssl = params.get("ssl", "false") == "true"
+        self.timeout = int(params.get("timeout", 900))
         self.si = None
         self.content = None
 
@@ -49,22 +50,19 @@ class VmwareManage(object):
             container = self.content.viewManager.CreateContainerView(folder, obj_type, True)
         return container.view
 
+    @timer(logger=logger)
     def connect_vc(self):
         try:
             params = dict(host=self.host, port=int(self.port), user=self.user, pwd=self.password,
-                          httpConnectionTimeout=10, connectionPoolTimeout=10)
+                          connectionPoolTimeout=self.timeout)
             if not self.ssl:
                 params['disableSslCertValidation'] = True
-            import time
-            a = time.time()
             si = SmartConnect(**params)
             self.si = si
-            logger.error(f"SmartConnect time cost: {time.time() - a}")
             if not si:
                 raise RuntimeError(
                     "Unable to establish a pyVmomi connection. Could you please double-check the address, username, or password?")
             self.content = si.RetrieveContent()
-            logger.error(f"RetrieveContent time cost: {time.time() - a}")
         except Exception as err:
             logger.error(f"connect_vc error! {err}")
             raise RuntimeError("Connect vcenter error!" + str(err))
@@ -457,5 +455,5 @@ class VmwareManage(object):
             inst_data = {"result": {"cmdb_collect_error": str(err)}, "success": False}
         finally:
             self.disconnect_vc()
-        
+
         return inst_data
