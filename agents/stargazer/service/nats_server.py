@@ -8,7 +8,7 @@ from core.nats import register_handler
 
 
 @register_handler("list_regions")
-async def list_regions_v2(data):
+async def list_regions(data):
     """处理 list_regions 请求"""
     logger.info(f"list_regions received: {data}")
     kwargs = data.get("kwargs", {})

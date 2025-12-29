@@ -11,7 +11,7 @@ from django.utils.timezone import now
 from apps.cmdb.constants.constants import CollectRunStatusType, OPERATOR_COLLECT_TASK
 from apps.cmdb.models import CREATE_INST, UPDATE_INST, DELETE_INST, EXECUTE
 from apps.cmdb.node_configs.config_factory import NodeParamsFactory
-from apps.cmdb.collection.collect_tasks import ProtocolCollect
+from apps.cmdb.collection.collect_tasks.protocol_collect import ProtocolCollect
 from apps.cmdb.utils.change_record import create_change_record
 from apps.core.exceptions.base_app_exception import BaseAppException
 from apps.core.logger import cmdb_logger as logger
