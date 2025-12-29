@@ -3,6 +3,7 @@
 # @Time: 2025/2/26 11:08
 # @Author: windyzhao
 import json
+import ssl
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 
@@ -56,7 +57,8 @@ class VmwareManage(object):
             params = dict(host=self.host, port=int(self.port), user=self.user, pwd=self.password,
                           connectionPoolTimeout=self.timeout)
             if not self.ssl:
-                params['disableSslCertValidation'] = True
+                # 创建不验证 SSL 证书的上下文
+                params['sslContext'] = ssl._create_unverified_context()
             si = SmartConnect(**params)
             self.si = si
             if not si:
@@ -370,9 +372,11 @@ class VmwareManage(object):
 
                 try:
                     disks = self._get_vm_disks(vm)
-                    vm_dict["data_disks"] = json.dumps(disks, ensure_ascii=False, separators=(",", ":"))
                 except Exception as err:
                     logger.error(f"get_vms build disk detail error! {err}")
+                    disks = []
+
+                vm_dict["data_disks"] = disks
 
                 result.append(vm_dict)
 

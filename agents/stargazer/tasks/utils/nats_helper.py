@@ -37,7 +37,7 @@ async def publish_metrics_to_nats(
         metric_topic_prefix = os.getenv('NATS_METRIC_TOPIC', 'metrics')
 
         # 获取任务类型（monitor_type 或 plugin_name）
-        task_type = params.get('monitor_type') or params.get('plugin_name', 'unknown')
+        task_type = params.get('monitor_type') or params.get('plugin_name', params.get("model_id", "unknown"))
 
         # 构建 subject: {prefix}.{task_type}
         # 例如: metrics.vmware, metrics.mysql, metrics.host 等
