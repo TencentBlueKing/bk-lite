@@ -2,7 +2,7 @@
 # @File: network.py
 # @Time: 2025/11/12 14:51
 # @Author: windyzhao
-from apps.cmdb.collect_tasks.base import BaseCollect
+from apps.cmdb.collection.collect_tasks.base import BaseCollect
 from apps.cmdb.collection.collect_plugin.network import CollectNetworkMetrics
 
 

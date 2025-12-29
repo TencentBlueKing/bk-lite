@@ -529,7 +529,7 @@ class BaseCollect(object):
 **示例**：中间件采集任务（`apps/cmdb/collect_tasks/middleware.py`）
 
 ```python
-from apps.cmdb.collect_tasks.base import BaseCollect
+from apps.cmdb.collection.collect_tasks import BaseCollect
 from apps.cmdb.collection.collect_plugin.middleware import MiddlewareCollectMetrics
 
 
@@ -591,7 +591,7 @@ class CollectBase(metaclass=ABCMeta):
 **文件路径**：`apps/cmdb/collect_tasks/middleware.py`（已存在，如需新增类型则创建新文件）
 
 ```python
-from apps.cmdb.collect_tasks.base import BaseCollect
+from apps.cmdb.collection.collect_tasks import BaseCollect
 from apps.cmdb.collection.collect_plugin.middleware import MiddlewareCollectMetrics
 
 

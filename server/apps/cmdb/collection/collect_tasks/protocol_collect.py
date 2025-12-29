@@ -2,13 +2,13 @@
 # @File: protocol_collect.py
 # @Time: 2025/11/12 14:40
 # @Author: windyzhao
-from apps.cmdb.collect_tasks.aliyun import AliyunCollect
-from apps.cmdb.collect_tasks.aws import AWSCollect
-from apps.cmdb.collect_tasks.k8s import K8sCollect
-from apps.cmdb.collect_tasks.network import NetworkCollect
-from apps.cmdb.collect_tasks.protocol import ProtocolTaskCollect
-from apps.cmdb.collect_tasks.qcloud import QCloudCollect
-from apps.cmdb.collect_tasks.vmware import VmwareCollect
+from apps.cmdb.collection.collect_tasks.aliyun import AliyunCollect
+from apps.cmdb.collection.collect_tasks.aws import AWSCollect
+from apps.cmdb.collection.collect_tasks.k8s import K8sCollect
+from apps.cmdb.collection.collect_tasks.network import NetworkCollect
+from apps.cmdb.collection.collect_tasks.protocol import ProtocolTaskCollect
+from apps.cmdb.collection.collect_tasks.qcloud import QCloudCollect
+from apps.cmdb.collection.collect_tasks.vmware import VmwareCollect
 from apps.cmdb.constants.constants import CollectPluginTypes
 
 

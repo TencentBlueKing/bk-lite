@@ -2,7 +2,7 @@
 # @File: aliyun.py
 # @Time: 2025/11/12 15:04
 # @Author: windyzhao
-from apps.cmdb.collect_tasks.base import BaseCollect
+from apps.cmdb.collection.collect_tasks.base import BaseCollect
 from apps.cmdb.collection.collect_plugin.aliyun import AliyunCollectMetrics
 
 

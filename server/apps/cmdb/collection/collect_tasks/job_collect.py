@@ -2,9 +2,9 @@
 # @File: job_collect.py
 # @Time: 2025/11/12 15:09
 # @Author: windyzhao
-from apps.cmdb.collect_tasks.databases import DBCollect
-from apps.cmdb.collect_tasks.host import HostCollect
-from apps.cmdb.collect_tasks.middleware import MiddlewareCollect
+from apps.cmdb.collection.collect_tasks.databases import DBCollect
+from apps.cmdb.collection.collect_tasks.host import HostCollect
+from apps.cmdb.collection.collect_tasks.middleware import MiddlewareCollect
 from apps.cmdb.constants.constants import CollectPluginTypes
 
 

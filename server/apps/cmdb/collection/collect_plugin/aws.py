@@ -18,8 +18,6 @@ class AWSCollectMetrics(CollectBase):
     def _metrics(self):
         return AWS_CLOUD_COLLECT_CLUSTER
 
-
-
     @property
     def model_field_mapping(self):
         mapping = {
