@@ -20,7 +20,15 @@ const CONTAINER_STATE_MAP: Record<string, string> = {
   'not_found': 'default',
   'unknown': 'orange',
   'error': 'red'
-}
+};
+
+const CONTAINER_TEXT_MAP: Record<string, string> = {
+  'running': '运行中',
+  'completed': '已完成',
+  'not_found': '容器不存在',
+  'unknown': '状态异常',
+  'error': '错误'
+};
 
 // running: 正在提供服务的容器
 // completed: 训练任务正常完成
@@ -121,7 +129,7 @@ const ModelRelease = () => {
         const text = isSucess ? state : 'error';
         return (<>
           <Tooltip title={detail || ''}>
-            <Tag color={CONTAINER_STATE_MAP[_status]}>{text}</Tag>
+            <Tag color={CONTAINER_STATE_MAP[_status]}>{CONTAINER_TEXT_MAP[text]}</Tag>
           </Tooltip>
         </>)
       }
@@ -132,20 +140,29 @@ const ModelRelease = () => {
       key: 'action',
       width: 180,
       render: (_, record: TableData) => {
-        const { status, state } = record.container_info;
+        const { status } = record;
+        const { state } = record.container_info;
+        const isActive = record.status === 'active';
         return (<>
           <PermissionWrapper requiredPermissions={['Edit']}>
             <Button type="link" className="mr-2" onClick={() => handleEdit(record)}>{'配置'}</Button>
           </PermissionWrapper>
-          <PermissionWrapper requiredPermissions={['Edit']}>
-            <Button type="link" className="mr-2" onClick={() => handleModelAcitve(record.id, record.status === 'active')}>{'发布'}</Button>
-          </PermissionWrapper>
-          <PermissionWrapper requiredPermissions={['Edit']}>
-            <Button type="link" className="mr-2" onClick={() => handleStartContainer(record.id)} disabled={status === 'success' && state === 'running'}>{'启动'}</Button>
-          </PermissionWrapper>
-          <PermissionWrapper requiredPermissions={['Edit']}>
-            <Button type="link" className="mr-2" onClick={() => handleStopContainer(record.id)} disabled={status !== 'success' || state !== 'running'}>{'停止'}</Button>
-          </PermissionWrapper>
+          {status !== 'active' ?
+            <PermissionWrapper requiredPermissions={['Edit']}>
+              <Button type="link" className="mr-2" onClick={() => handleModelAcitve(record.id, isActive)}>{'发布'}</Button>
+            </PermissionWrapper> :
+            <PermissionWrapper requiredPermissions={['Edit']}>
+              <Button type="link" className="mr-2" danger onClick={() => handleModelAcitve(record.id, isActive)}>{'回收'}</Button>
+            </PermissionWrapper>
+          }
+          {state !== 'running' ?
+            <PermissionWrapper requiredPermissions={['Edit']}>
+              <Button type="link" className="mr-2" onClick={() => handleStartContainer(record.id)}>{'启动'}</Button>
+            </PermissionWrapper> :
+            <PermissionWrapper requiredPermissions={['Edit']}>
+              <Button type="link" className="mr-2" danger onClick={() => handleStopContainer(record.id)}>{'停止'}</Button>
+            </PermissionWrapper>
+          }
           <PermissionWrapper requiredPermissions={['Delete']}>
             <Popconfirm
               title={t(`model-release.delModel`)}
@@ -154,7 +171,7 @@ const ModelRelease = () => {
               cancelText={t('common.cancel')}
               onConfirm={() => handleDelete(record.id)}
             >
-              <Button type="link" danger>{t(`common.delete`)}</Button>
+              <Button type="link" danger disabled={state === 'running'}>{t(`common.delete`)}</Button>
             </Popconfirm>
           </PermissionWrapper>
         </>)
@@ -357,7 +374,7 @@ const ModelRelease = () => {
 
     setLoading(true);
     try {
-      const status = value ? 'active' : 'inactive';
+      const status = value ? 'inactive' : 'active';
       await updateMap[activeTypes]!(id, { status });
       message.success(t('common.updateSuccess'));
     } catch (e) {

@@ -737,9 +737,11 @@ class TimeSeriesPredictServingViewSet(ModelViewSet):
     def list(self, request, *args, **kwargs):
         """列表查询，实时同步容器状态"""
         response = super().list(request, *args, **kwargs)
-        
-        # 批量查询容器状态（兼容不同分页器的返回格式）
-        servings = response.data.get('items') or response.data.get('results', [])
+
+        if isinstance(response.data, dict):
+            servings = response.data.get('items', [])
+        else:
+            servings = response.data
         
         if not servings:
             return response
@@ -1259,6 +1261,127 @@ class TimeSeriesPredictServingViewSet(ModelViewSet):
             logger.error(f"删除 serving 容器失败: {str(e)}", exc_info=True)
             return Response(
                 {'error': f'删除容器失败: {str(e)}'},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+    
+    @action(detail=True, methods=['post'], url_path='predict')
+    @HasPermission("timeseries_predict_servings-Predict")
+    def predict(self, request, *args, **kwargs):
+        """
+        调用 serving 服务进行时间序列预测
+        
+        URL: POST /api/v1/mlops/timeseries_predict_servings/{pk}/predict/
+        
+        请求参数:
+            url: 预测服务主机地址（如 http://192.168.1.100，不含端口）
+            data: 历史时间序列数据数组 [{"timestamp": "...", "value": ...}, ...]
+            steps: 预测步数（默认 10）
+        
+        返回格式:
+            预测服务的响应（通常为 {"success": true, "history": [...], "prediction": [...], "metadata": {...}, "error": null}）
+        """
+        try:
+            serving = self.get_object()
+            
+            # 获取参数
+            url = request.data.get('url')
+            data = request.data.get('data')
+            steps = request.data.get('steps', 10)
+            
+            # 参数校验
+            if not url:
+                return Response(
+                    {'error': 'url 参数不能为空'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            
+            if not data:
+                return Response(
+                    {'error': 'data 参数不能为空'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            
+            if not isinstance(data, list):
+                return Response(
+                    {'error': 'data 必须是数组格式'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            
+            # 获取实际运行端口
+            port = serving.container_info.get('port')
+            if not port:
+                return Response(
+                    {'error': '服务端口未配置，请确认服务已启动'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            
+            # 构建预测服务 URL
+            # url: http://192.168.1.100 + port: 38291 -> http://192.168.1.100:38291/predict
+            predict_url = f"{url.rstrip('/')}:{port}/predict"
+            
+            # 构建请求体
+            payload = {
+                "data": data,
+                "config": {"steps": steps}
+            }
+            
+            logger.info(f"调用预测服务: serving_id={serving.id}, url={predict_url}, steps={steps}, data_size={len(data)}")
+            
+            # 发起 HTTP POST 请求
+            response = requests.post(
+                predict_url,
+                json=payload,
+                timeout=60,
+                headers={'Content-Type': 'application/json'}
+            )
+            
+            # 处理响应
+            if response.status_code == 200:
+                result = response.json()
+                # 安全获取 prediction 长度（处理 None 值）
+                prediction = result.get('prediction') or []
+                prediction_size = len(prediction) if isinstance(prediction, (list, tuple)) else 0
+                logger.info(f"预测成功: serving_id={serving.id}, prediction_size={prediction_size}")
+                return Response(result)
+            else:
+                error_msg = f"预测服务返回错误: HTTP {response.status_code}"
+                try:
+                    error_detail = response.json()
+                    error_msg = f"{error_msg} - {error_detail}"
+                except Exception:
+                    error_msg = f"{error_msg} - {response.text[:200]}"
+                
+                logger.error(f"预测失败: {error_msg}")
+                return Response(
+                    {'error': error_msg},
+                    status=status.HTTP_500_INTERNAL_SERVER_ERROR
+                )
+        
+        except requests.exceptions.Timeout:
+            error_msg = f'预测请求超时（超过 60 秒）'
+            logger.error(f"预测超时: serving_id={serving.id}, url={predict_url}")
+            return Response(
+                {'error': error_msg},
+                status=status.HTTP_504_GATEWAY_TIMEOUT
+            )
+        except requests.exceptions.ConnectionError as e:
+            error_msg = f'无法连接预测服务: {str(e)}'
+            logger.error(f"预测连接失败: serving_id={serving.id}, url={predict_url}, error={e}")
+            return Response(
+                {'error': error_msg},
+                status=status.HTTP_503_SERVICE_UNAVAILABLE
+            )
+        except requests.exceptions.RequestException as e:
+            error_msg = f'预测请求异常: {str(e)}'
+            logger.error(f"预测请求异常: serving_id={serving.id}, error={e}", exc_info=True)
+            return Response(
+                {'error': error_msg},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+        except Exception as e:
+            logger.error(f"预测失败: serving_id={serving.id}, error={str(e)}", exc_info=True)
+            return Response(
+                {'error': f'预测失败: {str(e)}'},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
     
