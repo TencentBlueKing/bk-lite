@@ -30,7 +30,7 @@ class BaseNodeParams(metaclass=ABCMeta):
 
     def __init__(self, instance):
         self.instance = instance
-        self.model_id = instance.model_id # 当出现多对象采集的时候这个model_id就不能准确的标识唯一的model_id
+        self.model_id = instance.model_id  # 当出现多对象采集的时候这个model_id就不能准确的标识唯一的model_id
         self.credential = self.instance.decrypt_credentials or {}
         self.base_path = "${STARGAZER_URL}/api/collect/collect_info"
         self.host_field = "host"  # 默认的 ip字段 若不一样重新定义
@@ -72,12 +72,22 @@ class BaseNodeParams(metaclass=ABCMeta):
         """
         raise NotImplementedError
 
+    @property
+    def tags(self):
+        tags = {
+            "instance_id": self._instance_id,
+            "instance_type": self.get_instance_type,
+            "collect_type": "http",
+            "config_type": self.model_id,
+        }
+        return tags
+
     def custom_headers(self):
         """
         格式化服务器的路径
         """
         # 加入配置的唯一ID
-        _model_id  = getattr(self, "supported_model_id", self.model_id)
+        _model_id = getattr(self, "supported_model_id", self.model_id)
         # 加入ip字段和值
         ip_addr_field, ip_addrs = self.get_hosts()
         params = self.set_credential()
@@ -86,6 +96,8 @@ class BaseNodeParams(metaclass=ABCMeta):
             {"plugin_name": self.model_plugin_name, ip_addr_field: ip_addrs, "executor_type": self.executor_type,
              "model_id": _model_id})
         _params = {f"cmdb{k}": str(v) for k, v in params.items()}
+        # 加入tags 冗余一份
+        _params.update(self.tags)
         return _params
 
     @property
