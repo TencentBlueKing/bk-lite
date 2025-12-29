@@ -25,6 +25,8 @@ const Collector = () => {
   const nodeStateEnum = commonContext?.nodeStateEnum || {};
   const menuItem = useCollectorMenuItem();
   const modalRef = useRef<ModalRef>(null);
+  const collectorAbortControllerRef = useRef<AbortController | null>(null);
+  const collectorRequestIdRef = useRef<number>(0);
   const [collectorCards, setCollectorCards] = useState<CardItem[]>([]);
   const [search, setSearch] = useState<string>('');
   const [loading, setLoading] = useState<boolean>(true);
@@ -39,6 +41,13 @@ const Collector = () => {
       initData();
     }
   }, [isLoading]);
+
+  // 组件卸载时取消所有请求
+  useEffect(() => {
+    return () => {
+      collectorAbortControllerRef.current?.abort();
+    };
+  }, []);
 
   const initData = () => {
     setLoading(true);
@@ -109,6 +118,11 @@ const Collector = () => {
     sysTags?: string[];
     tagEnum?: Record<string, any>;
   }) => {
+    // 取消上一次请求
+    collectorAbortControllerRef.current?.abort();
+    const abortController = new AbortController();
+    collectorAbortControllerRef.current = abortController;
+    const currentRequestId = ++collectorRequestIdRef.current;
     const { searchValue, appTag, sysTags, tagEnum: enumMap } = params;
     const requestParams: any = { name: searchValue };
     const tagsArray: string[] = [];
@@ -125,10 +139,17 @@ const Collector = () => {
     }
     try {
       setLoading(true);
-      const res = await getCollectorlist(requestParams);
+      const res = await getCollectorlist(requestParams, {
+        signal: abortController.signal,
+      });
+      // 只有最新请求才处理数据
+      if (currentRequestId !== collectorRequestIdRef.current) return;
       handleResult(res, enumMap);
     } finally {
-      setLoading(false);
+      // 只有最新请求才控制 loading
+      if (currentRequestId === collectorRequestIdRef.current) {
+        setLoading(false);
+      }
     }
   };
 

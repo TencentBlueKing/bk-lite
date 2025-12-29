@@ -52,6 +52,11 @@ const ViewList: React.FC<ViewListProps> = ({
   const { getCollectType, getTableDiaplay } = useObjectConfigInfo();
   const viewRef = useRef<ModalRef>(null);
   const timerRef = useRef<NodeJS.Timeout | null>(null);
+  const abortControllerRef = useRef<AbortController | null>(null);
+  const requestIdRef = useRef<number>(0);
+  const columnAbortControllerRef = useRef<AbortController | null>(null);
+  const columnRequestIdRef = useRef<number>(0);
+  const currentObjectIdRef = useRef<React.Key>(objectId);
   const [searchText, setSearchText] = useState<string>('');
   const [tableLoading, setTableLoading] = useState<boolean>(false);
   const [tableData, setTableData] = useState<TableDataItem[]>([]);
@@ -171,6 +176,8 @@ const ViewList: React.FC<ViewListProps> = ({
   useEffect(() => {
     if (isLoading) return;
     if (objectId && objects?.length) {
+      currentObjectIdRef.current = objectId;
+      cancelAllRequests();
       setTableData([]);
       setPagination((prev: Pagination) => ({
         ...prev,
@@ -212,6 +219,18 @@ const ViewList: React.FC<ViewListProps> = ({
     }
   }, [colony, namespace, workload, node]);
 
+  // 组件卸载时取消未完成的请求
+  useEffect(() => {
+    return () => {
+      cancelAllRequests();
+    };
+  }, []);
+
+  const cancelAllRequests = () => {
+    abortControllerRef.current?.abort();
+    columnAbortControllerRef.current?.abort();
+  };
+
   const updatePage = () => {
     onRefresh();
     updateTree?.();
@@ -237,21 +256,31 @@ const ViewList: React.FC<ViewListProps> = ({
   };
 
   const getColoumnAndData = async () => {
+    // 取消上一次未完成的列相关请求
+    columnAbortControllerRef.current?.abort();
+    const abortController = new AbortController();
+    columnAbortControllerRef.current = abortController;
+    const currentRequestId = ++columnRequestIdRef.current;
     const objParams = {
       monitor_object_id: objectId,
     };
     const targetObject = objects.find((item) => item.id === objectId);
     const objName = targetObject?.name;
-    const getMetrics = getMonitorMetrics(objParams);
-    const getPlugins = getMonitorPlugin(objParams);
+    const config = { signal: abortController.signal };
+    const getMetrics = getMonitorMetrics(objParams, config);
+    const getPlugins = getMonitorPlugin(objParams, config);
     setTableLoading(true);
     try {
       const res = await Promise.all([
         getMetrics,
         getPlugins,
         showMultipleConditions &&
-          getInstanceQueryParams(objName as string, objParams),
+          getInstanceQueryParams(objName as string, objParams, config),
       ]);
+      // 检查是否是最新的请求
+      if (currentRequestId !== columnRequestIdRef.current) {
+        return;
+      }
       const k8sQuery = res[2];
       const queryForm = isPod
         ? getK8SData(k8sQuery || {})
@@ -339,14 +368,19 @@ const ViewList: React.FC<ViewListProps> = ({
         const indexToInsert = originColumns.length - 1;
         originColumns.splice(indexToInsert, 0, ..._columns);
         setTableColumn(originColumns);
+        if (currentRequestId !== columnRequestIdRef.current) {
+          return;
+        }
         if (!colony) {
           onRefresh();
         } else {
           setColony(null);
         }
       }
-    } catch {
-      setTableLoading(false);
+    } finally {
+      if (currentRequestId === columnRequestIdRef.current && colony) {
+        setTableLoading(false);
+      }
     }
   };
 
@@ -363,6 +397,14 @@ const ViewList: React.FC<ViewListProps> = ({
   };
 
   const getAssetInsts = async (objectId: React.Key, type?: string) => {
+    // 检查 objectId 是否还是当前活跃的，取消现有请求，再获取新的
+    if (objectId !== currentObjectIdRef.current) {
+      return;
+    }
+    abortControllerRef.current?.abort();
+    const abortController = new AbortController();
+    abortControllerRef.current = abortController;
+    const currentRequestId = ++requestIdRef.current;
     const params = getParams();
     if (type === 'clear') {
       params.name = '';
@@ -372,14 +414,28 @@ const ViewList: React.FC<ViewListProps> = ({
       const request = showMultipleConditions
         ? getInstanceSearch
         : getInstanceList;
-      const data = await request(objectId, params);
-      setTableData(data.results || []);
-      setPagination((prev: Pagination) => ({
-        ...prev,
-        total: data.count || 0,
-      }));
+      const data = await request(objectId, params, {
+        signal: abortController.signal,
+      });
+      // 检查是否是最新的请求且 objectId 仍然匹配
+      if (
+        currentRequestId === requestIdRef.current &&
+        objectId === currentObjectIdRef.current
+      ) {
+        setTableData(data.results || []);
+        setPagination((prev: Pagination) => ({
+          ...prev,
+          total: data.count || 0,
+        }));
+      }
     } finally {
-      setTableLoading(false);
+      // 只有当前请求且 objectId 匹配才更新 loading 状态
+      if (
+        currentRequestId === requestIdRef.current &&
+        objectId === currentObjectIdRef.current
+      ) {
+        setTableLoading(false);
+      }
     }
   };
 

@@ -59,13 +59,18 @@ const FilterBar: React.FC<FilterBarProps> = ({
     // 如果有 attrList，优先使用
     const fieldInfo = getFieldInfo(filter.field);
     if (fieldInfo?.attr_type) {
-      // 如果 type 是 user[]，直接返回 user[]
+      // 如果 type 是 list 且字段类型是 user，返回 user
+      if (filter.type === 'list[]' && fieldInfo.attr_type === 'user') {
+        return 'user';
+      }
+      // 兼容旧代码：如果 type 是 user[]，直接返回 user[]
       if (filter.type === 'user[]') {
         return 'user[]';
       }
       return fieldInfo.attr_type;
     }
 
+    // 兼容旧代码：如果 type 是 user[]，返回 user[]
     if (filter.type === 'user[]') {
       return 'user[]';
     }
@@ -108,7 +113,9 @@ const FilterBar: React.FC<FilterBarProps> = ({
       return `${filter.start} ~ ${filter.end}`;
     }
     if (Array.isArray(filter.value)) {
-      if (filter.type === 'user[]') {
+      // 处理 user 类型（type 为 list 且字段类型是 user）
+      const fieldInfo = getFieldInfo(filter.field);
+      if ((filter.type === 'list[]' && fieldInfo?.attr_type === 'user') || filter.type === 'user[]') {
         const userNames = filter.value
           .map((userId) => {
             const user = userList.find((u) => String(u.id) === String(userId));
@@ -169,10 +176,14 @@ const FilterBar: React.FC<FilterBarProps> = ({
           value: [dayjs(filter.start), dayjs(filter.end)],
         });
       }
-    } else if (filter.type === 'user[]') {
-      form.setFieldsValue({
-        value: Array.isArray(filter.value) ? filter.value[0] : filter.value,
-      });
+    } else if (fieldType === 'user' || filter.type === 'list[]' || filter.type === 'user[]') {
+      // 处理 user 类型：支持 type 为 'list' 或 'user[]'（兼容旧代码）
+      const fieldInfo = getFieldInfo(filter.field);
+      if (fieldType === 'user' || fieldInfo?.attr_type === 'user' || filter.type === 'user[]') {
+        form.setFieldsValue({
+          value: Array.isArray(filter.value) ? filter.value : filter.value ? [filter.value] : [],
+        });
+      }
     } else if (fieldType === 'int') {
       form.setFieldsValue({
         value: typeof filter.value === 'number' ? filter.value : Number(filter.value) || 0,
@@ -227,7 +238,12 @@ const FilterBar: React.FC<FilterBarProps> = ({
             throw new Error(t('FilterBar.pleaseSelectValidTimeRange'));
           }
         }
+      } else if (fieldType === 'user') {
+        // 如果为用户字段user，则类型为list
+        updatedFilter.value = Array.isArray(values.value) ? values.value : [values.value];
+        updatedFilter.type = 'list[]';
       } else if (editingFilter?.type === 'user[]') {
+        // 兼容旧代码：如果原来是 user[]，保持 user[]
         updatedFilter.value = Array.isArray(values.value) ? values.value : [values.value];
         updatedFilter.type = 'user[]';
       } else if (fieldType === 'int') {
@@ -287,7 +303,9 @@ const FilterBar: React.FC<FilterBarProps> = ({
       case 'user[]':
         return (
           <Form.Item name="value" rules={[{ required: true, message: t('FilterBar.pleaseSelectUser') }]}>
+            {/* 筛选项中，用户字段为多选 */}
             <Select
+              mode="multiple"
               placeholder={t('FilterBar.pleaseSelectUser')}
               allowClear
               showSearch
@@ -312,7 +330,7 @@ const FilterBar: React.FC<FilterBarProps> = ({
       case 'user':
         return (
           <Form.Item name="value" rules={[{ required: true, message: t('FilterBar.pleaseSelectUser') }]}>
-            <Select placeholder={t('FilterBar.pleaseSelectUser')} allowClear showSearch style={{ width: '100%' }}>
+            <Select mode="multiple" placeholder={t('FilterBar.pleaseSelectUser')} allowClear showSearch style={{ width: '100%' }}>
               {userList.map((user) => (
                 <Select.Option key={user.id} value={user.id}>
                   {user.display_name || user.username}

@@ -37,6 +37,8 @@ const Integration = () => {
   const authContext = useAuth();
   const token = authContext?.token || null;
   const tokenRef = useRef(token);
+  const pluginAbortControllerRef = useRef<AbortController | null>(null);
+  const pluginRequestIdRef = useRef<number>(0);
   const searchParams = useSearchParams();
   const [pageLoading, setPageLoading] = useState<boolean>(false);
   const [searchText, setSearchText] = useState<string>('');
@@ -59,6 +61,12 @@ const Integration = () => {
     getPluginList({ monitor_object_id: objectId });
   }, [objectId, isLoading, objects]);
 
+  useEffect(() => {
+    return () => {
+      cancelAllRequests();
+    };
+  }, []);
+
   const handleNodeDrag = async (data: TreeSortData[]) => {
     try {
       setTreeLoading(true);
@@ -70,17 +78,29 @@ const Integration = () => {
     }
   };
 
+  const cancelAllRequests = () => {
+    pluginAbortControllerRef.current?.abort();
+  };
+
   const handleObjectChange = async (id: string) => {
+    cancelAllRequests();
     setObjectId(id === 'all' ? '' : id);
   };
 
   const getPluginList = async (params = {}) => {
+    pluginAbortControllerRef.current?.abort();
+    const abortController = new AbortController();
+    pluginAbortControllerRef.current = abortController;
+    const currentRequestId = ++pluginRequestIdRef.current;
     setPluginList([]);
     setSelectedApp(null);
     setExportDisabled(true);
     setPageLoading(true);
     try {
-      const data = await getMonitorPlugin(params);
+      const data = await getMonitorPlugin(params, {
+        signal: abortController.signal,
+      });
+      if (currentRequestId !== pluginRequestIdRef.current) return;
       // 根据objects的顺序对插件列表进行排序
       const sortedData = data.sort((a: ObjectItem, b: ObjectItem) => {
         const indexA = objects.findIndex(
@@ -96,7 +116,9 @@ const Integration = () => {
       });
       setPluginList(sortedData);
     } finally {
-      setPageLoading(false);
+      if (currentRequestId === pluginRequestIdRef.current) {
+        setPageLoading(false);
+      }
     }
   };
 

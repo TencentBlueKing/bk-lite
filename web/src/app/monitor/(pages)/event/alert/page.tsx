@@ -77,11 +77,14 @@ const Alert: React.FC = () => {
     timeRange: [],
     originValue: 10080,
   });
-  const timeDefaultValue =
-    (useRef<TimeSelectorDefaultValue>({
-      selectValue: 10080,
-      rangePickerVaule: null,
-    })?.current || {}) as any;
+  const timeDefaultValue = (useRef<TimeSelectorDefaultValue>({
+    selectValue: 10080,
+    rangePickerVaule: null,
+  })?.current || {}) as any;
+  const alertAbortControllerRef = useRef<AbortController | null>(null);
+  const alertRequestIdRef = useRef<number>(0);
+  const chartAbortControllerRef = useRef<AbortController | null>(null);
+  const chartRequestIdRef = useRef<number>(0);
   const [filters, setFilters] = useState<FiltersConfig>({
     level: [],
     state: [],
@@ -277,6 +280,12 @@ const Alert: React.FC = () => {
     getObjects();
   }, [isLoading]);
 
+  useEffect(() => {
+    return () => {
+      cancelAllRequests();
+    };
+  }, []);
+
   const changeTab = (val: string) => {
     setActiveTab(val);
     const filtersConfig = {
@@ -387,6 +396,10 @@ const Alert: React.FC = () => {
       filtersConfig?: FiltersConfig;
     }
   ) => {
+    alertAbortControllerRef.current?.abort();
+    const abortController = new AbortController();
+    alertAbortControllerRef.current = abortController;
+    const currentRequestId = ++alertRequestIdRef.current;
     const params: any = getParams(
       extra?.tab || activeTab,
       extra?.filtersConfig || filters
@@ -396,15 +409,19 @@ const Alert: React.FC = () => {
     }
     try {
       setTableLoading(type !== 'timer');
-      const data = await getMonitorAlert(params);
-
+      const data = await getMonitorAlert(params, {
+        signal: abortController.signal,
+      });
+      if (currentRequestId !== alertRequestIdRef.current) return;
       setTableData(data.results || []);
       setPagination((pre) => ({
         ...pre,
         total: data.count || 0,
       }));
     } finally {
-      setTableLoading(false);
+      if (currentRequestId === alertRequestIdRef.current) {
+        setTableLoading(false);
+      }
     }
   };
 
@@ -415,6 +432,10 @@ const Alert: React.FC = () => {
       filtersConfig?: FiltersConfig;
     }
   ) => {
+    chartAbortControllerRef.current?.abort();
+    const abortController = new AbortController();
+    chartAbortControllerRef.current = abortController;
+    const currentRequestId = ++chartRequestIdRef.current;
     const params = getParams(
       extra?.tab || activeTab,
       extra?.filtersConfig || filters
@@ -426,14 +447,19 @@ const Alert: React.FC = () => {
     chartParams.type = 'count';
     try {
       setChartLoading(type !== 'timer');
-      const data = await getMonitorAlert(chartParams);
+      const data = await getMonitorAlert(chartParams, {
+        signal: abortController.signal,
+      });
+      if (currentRequestId !== chartRequestIdRef.current) return;
       setChartData(
         processDataForStackedBarChart(
           (data.results || []).filter((item: TableDataItem) => !!item.level)
         ) as any
       );
     } finally {
-      setChartLoading(false);
+      if (currentRequestId === chartRequestIdRef.current) {
+        setChartLoading(false);
+      }
     }
   };
 
@@ -542,7 +568,13 @@ const Alert: React.FC = () => {
     getAssetInsts('refresh', { text: text || 'clear' });
   };
 
+  const cancelAllRequests = () => {
+    alertAbortControllerRef.current?.abort();
+    chartAbortControllerRef.current?.abort();
+  };
+
   const handleObjectChange = async (id: string) => {
+    cancelAllRequests();
     setObjectId(id);
   };
 

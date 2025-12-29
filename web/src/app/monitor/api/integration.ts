@@ -5,6 +5,7 @@ import {
   NodeConfigParam,
   InstanceInfo,
 } from '@/app/monitor/types/integration';
+import { AxiosRequestConfig } from 'axios';
 
 const useIntegrationApi = () => {
   const { get, post, del } = useApiClient();
@@ -12,10 +13,12 @@ const useIntegrationApi = () => {
   const getInstanceGroupRule = async (
     params: {
       monitor_object_id?: React.Key;
-    } = {}
+    } = {},
+    config?: AxiosRequestConfig
   ) => {
     return await get(`/monitor/api/organization_rule/`, {
       params,
+      ...config,
     });
   };
 
@@ -144,12 +147,14 @@ const useIntegrationApi = () => {
   const getInstanceListByPrimaryObject = async (
     params: {
       id?: React.Key;
-    } = {}
+    } = {},
+    config?: AxiosRequestConfig
   ) => {
     const { id, ...rest } = params;
     return await post(
       `/monitor/api/monitor_instance/${id}/list_by_primary_object/`,
-      rest
+      rest,
+      config
     );
   };
 

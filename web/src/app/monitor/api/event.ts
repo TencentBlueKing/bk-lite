@@ -1,5 +1,6 @@
 import useApiClient from '@/utils/request';
 import { SourceFeild } from '@/app/monitor/types/event';
+import { AxiosRequestConfig } from 'axios';
 
 const useEventApi = () => {
   const { get, post, patch, del } = useApiClient();
@@ -27,17 +28,22 @@ const useEventApi = () => {
       page?: number;
       page_size?: number;
       monitor_object_id?: React.Key;
-    } = {}
+    } = {},
+    config?: AxiosRequestConfig
   ) => {
     return await get(`/monitor/api/monitor_policy/${id}`, {
       params,
+      ...config,
     });
   };
 
-  const getPolicyTemplate = async (params: {
-    monitor_object_name?: string | null;
-  }) => {
-    return await post('/monitor/api/monitor_policy/template/', params);
+  const getPolicyTemplate = async (
+    params: {
+      monitor_object_name?: string | null;
+    },
+    config?: AxiosRequestConfig
+  ) => {
+    return await post('/monitor/api/monitor_policy/template/', params, config);
   };
 
   const getSystemChannelList = async () => {
