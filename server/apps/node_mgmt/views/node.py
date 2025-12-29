@@ -204,10 +204,15 @@ class NodeViewSet(mixins.DestroyModelMixin,
             queryset = NodeFilterHandler.apply_filters(queryset, custom_filters)
 
         # 根据组织筛选
-        organization_ids = request.query_params.get('organization_ids')
+        organization_ids = request.query_params.get('organization_ids') or request.data.get('organization_ids')
         if organization_ids:
             organization_ids = organization_ids.split(',')
             queryset = queryset.filter(nodeorganization__organization__in=organization_ids).distinct()
+
+        # 根据云区域筛选
+        cloud_region_id = request.query_params.get('cloud_region_id') or request.data.get('cloud_region_id')
+        if cloud_region_id:
+            queryset = queryset.filter(cloud_region_id=cloud_region_id)
 
         # 应用预加载优化，避免 N+1 查询
         queryset = NodeSerializer.setup_eager_loading(queryset)
