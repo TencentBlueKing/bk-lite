@@ -124,6 +124,7 @@
         "nodeType": "节点类型",
         "commandCopied": "命令已复制",
         "commandCopiedDesc": "此命令专用于当前主机，请在其 PowerShell(管理员)窗口中粘贴执行。",
+        "linuxCommandCopiedDesc": "此命令专用于当前主机，请在该主机中粘贴执行。",
         "installError": "安装失败",
         "controllerVersionTip": "可升级新版本",
         "autoInstallDes": "手动安装请按照操作指引在主机上进行操作。",

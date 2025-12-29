@@ -1,6 +1,6 @@
 'use client';
 import React, { useEffect, useState, useRef } from 'react';
-import { Spin, Input, Button, Tag, message } from 'antd';
+import { Spin, Input, Button, Tag, message, Empty } from 'antd';
 import useApiClient from '@/utils/request';
 import useMonitorApi from '@/app/monitor/api';
 import useIntegrationApi from '@/app/monitor/api/integration';
@@ -297,75 +297,79 @@ const Integration = () => {
           </div>
         </div>
         <Spin spinning={pageLoading}>
-          <div
-            className={`grid gap-4 w-full ${integrationStyle.integrationList}`}
-            style={{
-              gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))',
-            }}
-          >
-            {pluginList.map((app) => {
-              const parentObject: any = objects.find(
-                (item) => item.id === app.parent_monitor_object
-              );
-              const objectName = parentObject?.name || '';
+          {!pluginList.length ? (
+            <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} />
+          ) : (
+            <div
+              className={`grid gap-4 w-full ${integrationStyle.integrationList}`}
+              style={{
+                gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))',
+              }}
+            >
+              {pluginList.map((app) => {
+                const parentObject: any = objects.find(
+                  (item) => item.id === app.parent_monitor_object
+                );
+                const objectName = parentObject?.name || '';
 
-              return (
-                <div
-                  key={app.id}
-                  className="p-2"
-                  onClick={() => onAppClick(app)}
-                >
-                  <div className="bg-[var(--color-bg-1)] shadow-sm hover:shadow-md transition-shadow duration-300 ease-in-out rounded-lg p-4 relative cursor-pointer group border">
-                    <div className="flex items-center space-x-4 my-2">
-                      <Icon
-                        type={getIconByObjectName(objectName, objects)}
-                        className="text-[48px] min-w-[48px]"
-                      />
-                      <div
-                        style={{
-                          width: 'calc(100% - 60px)',
-                        }}
-                      >
-                        <h2
-                          title={app.display_name}
-                          className="text-xl font-bold m-0 hide-text"
-                        >
-                          {app.display_name || '--'}
-                        </h2>
-                        <Tag className="mt-[4px]">
-                          {app.collect_type || '--'}
-                        </Tag>
-                      </div>
-                    </div>
-                    <p
-                      className={`mb-[15px] text-[var(--color-text-3)] text-[13px] ${integrationStyle.lineClamp3}`}
-                      title={app.display_description || '--'}
-                    >
-                      {app.display_description || '--'}
-                    </p>
-                    <div className="w-full h-[32px] flex justify-center items-end">
-                      <Permission
-                        requiredPermissions={['Setting']}
-                        className="w-full"
-                      >
-                        <Button
-                          icon={<PlusOutlined />}
-                          type="primary"
-                          className="w-full rounded-md transition-opacity duration-300"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            linkToDetial(app);
+                return (
+                  <div
+                    key={app.id}
+                    className="p-2"
+                    onClick={() => onAppClick(app)}
+                  >
+                    <div className="bg-[var(--color-bg-1)] shadow-sm hover:shadow-md transition-shadow duration-300 ease-in-out rounded-lg p-4 relative cursor-pointer group border">
+                      <div className="flex items-center space-x-4 my-2">
+                        <Icon
+                          type={getIconByObjectName(objectName, objects)}
+                          className="text-[48px] min-w-[48px]"
+                        />
+                        <div
+                          style={{
+                            width: 'calc(100% - 60px)',
                           }}
                         >
-                          {t('monitor.integrations.access')}
-                        </Button>
-                      </Permission>
+                          <h2
+                            title={app.display_name}
+                            className="text-xl font-bold m-0 hide-text"
+                          >
+                            {app.display_name || '--'}
+                          </h2>
+                          <Tag className="mt-[4px]">
+                            {app.collect_type || '--'}
+                          </Tag>
+                        </div>
+                      </div>
+                      <p
+                        className={`mb-[15px] text-[var(--color-text-3)] text-[13px] ${integrationStyle.lineClamp3}`}
+                        title={app.display_description || '--'}
+                      >
+                        {app.display_description || '--'}
+                      </p>
+                      <div className="w-full h-[32px] flex justify-center items-end">
+                        <Permission
+                          requiredPermissions={['Setting']}
+                          className="w-full"
+                        >
+                          <Button
+                            icon={<PlusOutlined />}
+                            type="primary"
+                            className="w-full rounded-md transition-opacity duration-300"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              linkToDetial(app);
+                            }}
+                          >
+                            {t('monitor.integrations.access')}
+                          </Button>
+                        </Permission>
+                      </div>
                     </div>
                   </div>
-                </div>
-              );
-            })}
-          </div>
+                );
+              })}
+            </div>
+          )}
         </Spin>
       </div>
       <ImportModal ref={importRef} onSuccess={onTxtClear} />
