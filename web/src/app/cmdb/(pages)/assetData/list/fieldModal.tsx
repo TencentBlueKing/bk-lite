@@ -225,7 +225,7 @@ const FieldMoadal = forwardRef<FieldModalRef, FieldModalProps>(
                 {userList.map((opt: UserItem) => (
                   <Select.Option key={opt.id} value={opt.id}>
                     <EllipsisWithTooltip
-                      text={`${opt.display_name} (${opt.username})`}
+                      text={`${opt.display_name}(${opt.username})`}
                       className="whitespace-nowrap overflow-hidden text-ellipsis break-all"
                     />
                   </Select.Option>

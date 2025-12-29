@@ -120,7 +120,7 @@ const FilterBar: React.FC<FilterBarProps> = ({
           .map((userId) => {
             const user = userList.find((u) => String(u.id) === String(userId));
             // 筛选条件的user值显示，显示用户名和显示名
-            return `${user?.display_name} (${user?.username})` || String(userId);
+            return `${user?.display_name}(${user?.username})` || String(userId);
           })
           .filter(Boolean);
         return userNames.join(', ');
@@ -323,7 +323,7 @@ const FilterBar: React.FC<FilterBarProps> = ({
               {userList.map((user) => (
                 <Select.Option key={user.id} value={user.id}>
                   {/* 筛选项的修改弹窗，显示用户名和显示名 */}
-                  {user.display_name} ({user.username})
+                  {user.display_name}({user.username})
                 </Select.Option>
               ))}
             </Select>
@@ -338,7 +338,7 @@ const FilterBar: React.FC<FilterBarProps> = ({
                 return (
                   <Select.Option key={user.id} value={user.id}>
                     {/* 筛选项的修改弹窗 */}
-                    {user.display_name} ({user.username})
+                    {user.display_name}({user.username})
                   </Select.Option>
                 )
               })}

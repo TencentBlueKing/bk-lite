@@ -240,14 +240,14 @@ export const getAssetColumns = (config: {
 
               return (
                 <div className="flex items-center gap-2 max-h-[28px] overflow-hidden">
-                  <UserAvatar key={users[0].id} userName={`${users[0].display_name} (${users[0].username})`} size="small" />
+                  <UserAvatar key={users[0].id} userName={`${users[0].display_name}(${users[0].username})`} size="small" />
                   {users.length > 0 && (
                     <Tooltip
                       title={
                         <div className="flex flex-col gap-1">
                           {users.map((user) => (
                             <div key={user.id}>
-                              {String(user.display_name || '')} ({user.username})
+                              {String(user.display_name || '')}({user.username})
                             </div>
                           ))}
                         </div>
@@ -267,7 +267,7 @@ export const getAssetColumns = (config: {
                 (item) => String(item.id) === String(userIds)
               );
               // 表格的user渲染
-              return user ? <UserAvatar userName={`${user.display_name} (${user.username})`} /> : <>--</>;
+              return user ? <UserAvatar userName={`${user.display_name}(${user.username})`} /> : <>--</>;
             }
 
             // 处理空值情况
@@ -366,7 +366,7 @@ export const getFieldItem = (config: {
             {config.userList?.map((opt: UserItem) => (
               <Select.Option key={opt.id} value={opt.id}>
                 <EllipsisWithTooltip
-                  text={`${opt.display_name} (${opt.username})`}
+                  text={`${opt.display_name}(${opt.username})`}
                   className="whitespace-nowrap overflow-hidden text-ellipsis break-all"
                 />
               </Select.Option>
@@ -425,9 +425,9 @@ export const getFieldItem = (config: {
       const user = (config.userList || []).find((item) => item.id === config.value);
       if (!user) return '--';
       return config.hideUserAvatar ? (
-        `${user.display_name} (${user.username})`
+        `${user.display_name}(${user.username})`
       ) : (
-        <UserAvatar userName={`${user.display_name} (${user.username})`} />
+        <UserAvatar userName={`${user.display_name}(${user.username})`} />
       );
     case 'organization':
       return (
