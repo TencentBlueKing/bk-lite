@@ -26,6 +26,11 @@ class PredictionConfig(BaseModel):
         description="预测步数",
         gt=0
     )
+    threshold: Optional[int] = Field(
+        None,
+        description="滚动预测阈值，超过此步数时使用滚动预测避免误差累积",
+        gt=0
+    )
 
 
 class PredictRequest(BaseModel):

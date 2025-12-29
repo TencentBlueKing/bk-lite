@@ -223,13 +223,25 @@ class MLService:
             
             logger.info(f"🔮 Executing prediction with model [{model_info}]")
             
+            # 根据阈值决定预测模式
+            threshold = request.config.threshold
+            if threshold and steps > threshold:
+                logger.info(f"预测步数({steps})超过阈值({threshold}), 使用滚动预测模式")
+                predict_mode = 'rolling'
+            else:
+                predict_mode = 'recursive'
+                if threshold and steps > threshold * 0.8:
+                    logger.warning(f"预测步数({steps})接近阈值({threshold}), 建议使用滚动预测")
+            
             predict_start = time.time()
             prediction_values = self.model.predict({
                 'history': history,
-                'steps': steps
+                'steps': steps,
+                'mode': predict_mode,
+                'threshold': threshold
             })
             predict_time = time.time() - predict_start
-            logger.info(f"⏱️  Prediction executed in {predict_time:.3f}s")
+            logger.info(f"⏱️  Prediction executed in {predict_time:.3f}s (mode={predict_mode})")
             
             # 生成预测时间戳
             last_timestamp = history.index[-1]
