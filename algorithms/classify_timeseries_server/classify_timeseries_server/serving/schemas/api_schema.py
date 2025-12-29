@@ -8,9 +8,9 @@ import pandas as pd
 class TimeSeriesPoint(BaseModel):
     """时间序列数据点."""
     
-    timestamp: str = Field(
+    timestamp: int = Field(
         ...,
-        description="时间戳，ISO 8601格式"
+        description="Unix时间戳（秒级）"
     )
     value: float = Field(
         ...,
@@ -24,11 +24,6 @@ class PredictionConfig(BaseModel):
     steps: int = Field(
         ...,
         description="预测步数",
-        gt=0
-    )
-    threshold: Optional[int] = Field(
-        None,
-        description="滚动预测阈值，超过此步数时使用滚动预测避免误差累积",
         gt=0
     )
 
@@ -47,7 +42,8 @@ class PredictRequest(BaseModel):
     
     def to_series(self) -> pd.Series:
         """转换为 pandas Series."""
-        timestamps = pd.to_datetime([point.timestamp for point in self.data])
+        # 从Unix时间戳（秒级）转换为pd.Timestamp，使用UTC时区
+        timestamps = pd.to_datetime([point.timestamp for point in self.data], unit='s', utc=True)
         values = [point.value for point in self.data]
         return pd.Series(values, index=timestamps)
 

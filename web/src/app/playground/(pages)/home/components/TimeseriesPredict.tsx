@@ -108,21 +108,10 @@ const TimeseriesPredict = () => {
     // 获取最后一个历史数据点，作为分界点
     const lastHistoryItem = allData[allData.length - 1];
     
-    // 转换预测数据格式（ISO 时间戳字符串转为秒级）
+    // 转换预测数据格式（直接使用Unix时间戳）
     const predictDataFormatted = predictData.map(item => {
-      // 处理 ISO 格式时间戳
-      const timestampStr = item.timestamp;
-      let timestamp: number;
-      
-      if (typeof timestampStr === 'string') {
-        // ISO 格式转时间戳（秒级）
-        timestamp = Math.floor(new Date(timestampStr).getTime() / 1000);
-      } else {
-        timestamp = timestampStr;
-      }
-      
       return {
-        timestamp,
+        timestamp: item.timestamp,  // 直接使用Unix时间戳（秒级）
         value1: null,
         value2: item.value  // 使用 value2
       };
@@ -176,11 +165,6 @@ const TimeseriesPredict = () => {
     };
   }, [chartData.length]);
 
-  const anomalyData = useMemo(() => {
-    // 只从原始数据中获取异常数据，不包括预测数据
-    return chartData?.filter((item: any) => item.value1 !== null && item.label === 1) || [];
-  }, [chartData]);
-
   const columns: ColumnItem[] = useMemo(() => [
     {
       title: '时间',
@@ -188,6 +172,10 @@ const TimeseriesPredict = () => {
       key: 'timestamp',
       width: 80,
       align: 'center',
+      render: (_, record) => {
+        const time = new Date(record.timestamp * 1000) + '';
+        return <p>{convertToLocalizedTime(time, 'YYYY-MM-DD HH:mm:ss')}</p>;
+      },
     },
     {
       title: '值',
@@ -360,7 +348,7 @@ const TimeseriesPredict = () => {
   // 格式化数据为API所需格式
   const formatDataForAPI = useCallback((data: ChartDataItem[]) => {
     return data.map(item => ({
-      timestamp: new Date(item.timestamp * 1000).toISOString().slice(0, 19),
+      timestamp: item.timestamp,  // 直接使用Unix时间戳（秒级）
       value: item.value
     }));
   }, []);
@@ -385,8 +373,9 @@ const TimeseriesPredict = () => {
       };
 
       const result = await timeseriesPredictReason(serving.serving_id, params);
+      console.log(result);
       setPredictData(result.prediction || []);
-    } catch (e) {
+    } catch (e) { 
       console.error('预测失败:', e);
       message.error(t(`common.error`));
     } finally {
@@ -651,11 +640,6 @@ const TimeseriesPredict = () => {
                 <span className="mr-4">
                   当前显示: {chartData.length.toLocaleString()} 条
                 </span>
-                {anomalyData.length > 0 && (
-                  <span className="text-red-500">
-                    当前视图异常: {anomalyData.length} 条
-                  </span>
-                )}
                 {isRangeChanging && (
                   <span className="ml-4 text-blue-500">
                     正在更新数据范围...

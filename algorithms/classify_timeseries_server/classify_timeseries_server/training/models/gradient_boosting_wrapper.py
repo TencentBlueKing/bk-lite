@@ -52,39 +52,31 @@ class GradientBoostingWrapper(mlflow.pyfunc.PythonModel):
         
         Args:
             context: MLflow context
-            model_input: 字典格式 {'history': pd.Series, 'steps': int, 'mode': str, 'threshold': int}
+            model_input: 字典格式 {'history': pd.Series, 'steps': int}
             
         Returns:
             预测结果数组
         """
         # 解析输入
-        history, steps, mode, threshold = self._parse_input(model_input)
+        history, steps = self._parse_input(model_input)
         
-        # 根据mode选择预测策略
-        if mode == 'rolling' and threshold:
-            logger.info(f"使用滚动预测: steps={steps}, threshold={threshold}")
-            return self._predict_rolling(history, steps, threshold)
+        if self.use_feature_engineering and self.feature_engineer:
+            return self._predict_with_feature_engineering(history, steps)
         else:
-            # 递归预测（原有逻辑）
-            if self.use_feature_engineering and self.feature_engineer:
-                return self._predict_with_feature_engineering(history, steps)
-            else:
-                return self._predict_simple(history, steps)
+            return self._predict_simple(history, steps)
     
-    def _parse_input(self, model_input) -> tuple[pd.Series, int, str, Optional[int]]:
+    def _parse_input(self, model_input) -> tuple[pd.Series, int]:
         """解析输入数据
         
         Args:
-            model_input: 字典格式 {'history': pd.Series, 'steps': int, 'mode': str, 'threshold': int}
+            model_input: 字典格式 {'history': pd.Series, 'steps': int}
             
         Returns:
-            (history, steps, mode, threshold) 元组
+            (history, steps) 元组
         """
         if isinstance(model_input, dict):
             history = model_input.get('history')
             steps = model_input.get('steps')
-            mode = model_input.get('mode', 'recursive')  # 默认递归模式
-            threshold = model_input.get('threshold')
             
             if history is None or steps is None:
                 raise ValueError("输入必须包含 'history' 和 'steps' 字段")
@@ -92,7 +84,7 @@ class GradientBoostingWrapper(mlflow.pyfunc.PythonModel):
             if not isinstance(history, pd.Series):
                 raise ValueError("'history' 必须是 pandas.Series 类型")
             
-            return history, int(steps), mode, threshold
+            return history, int(steps)
         else:
             raise ValueError("输入格式错误，需要 dict 类型")
     
@@ -178,74 +170,3 @@ class GradientBoostingWrapper(mlflow.pyfunc.PythonModel):
             current_window = np.append(current_window[1:], pred)
         
         return np.array(predictions)
-    
-    def _predict_rolling(self, history: pd.Series, steps: int, threshold: int) -> np.ndarray:
-        """滚动预测：分段预测避免误差累积
-        
-        策略：每次预测threshold步，然后需要真实数据更新。
-        由于推理时没有未来真实值，这里模拟训练时的滚动评估逻辑，
-        但实际上仍是递归预测，只是分段进行以提醒调用方注意长期预测的局限性。
-        
-        注意：真正的滚动预测需要在每个horizon后获取真实观测值，
-        这在生产环境中需要分批次调用API。
-        
-        Args:
-            history: 历史时间序列数据
-            steps: 总预测步数
-            threshold: 单次预测步数上限
-            
-        Returns:
-            预测结果数组
-        """
-        all_predictions = []
-        current_history = history.copy()
-        remaining_steps = steps
-        
-        logger.info(f"滚动预测: 总步数={steps}, 每轮最多={threshold}步")
-        
-        round_num = 0
-        while remaining_steps > 0:
-            round_num += 1
-            # 本轮预测步数
-            current_steps = min(threshold, remaining_steps)
-            
-            logger.debug(f"第{round_num}轮: 预测{current_steps}步 (剩余{remaining_steps}步)")
-            
-            # 执行本轮预测
-            if self.use_feature_engineering and self.feature_engineer:
-                round_predictions = self._predict_with_feature_engineering(current_history, current_steps)
-            else:
-                round_predictions = self._predict_simple(current_history, current_steps)
-            
-            all_predictions.extend(round_predictions)
-            
-            # 更新历史：将预测值作为"观测值"追加（递归预测的本质）
-            # 注意：这仍然会累积误差，真正的滚动预测需要真实观测值
-            for i, pred_value in enumerate(round_predictions):
-                last_timestamp = current_history.index[-1]
-                
-                # 推断下一个时间步
-                if isinstance(current_history.index, pd.DatetimeIndex):
-                    if self.training_frequency:
-                        try:
-                            next_timestamp = last_timestamp + pd.tseries.frequencies.to_offset(self.training_frequency)
-                        except:
-                            avg_delta = (current_history.index[-1] - current_history.index[-2])
-                            next_timestamp = last_timestamp + avg_delta
-                    else:
-                        avg_delta = (current_history.index[-1] - current_history.index[-2])
-                        next_timestamp = last_timestamp + avg_delta
-                else:
-                    next_timestamp = last_timestamp + 1
-                
-                # 追加预测值
-                new_point = pd.Series([pred_value], index=[next_timestamp])
-                current_history = pd.concat([current_history, new_point])
-            
-            remaining_steps -= current_steps
-            
-            if remaining_steps > 0:
-                logger.debug(f"完成第{round_num}轮，继续下一轮...")
-        
-        logger.info(f"滚动预测完成: 共{round_num}轮, 预测{len(all_predictions)}个值")
-        return np.array(all_predictions)
