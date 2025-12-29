@@ -124,6 +124,7 @@
         "nodeType": "Node Type",
         "commandCopied": "Command Copied",
         "commandCopiedDesc": "This command is specific to the current host. Please paste and execute it in the PowerShell (Administrator) window.",
+        "linuxCommandCopiedDesc": "This command is specific to the current host. Please paste and execute it on that host.",
         "installError": "Install Failed",
         "controllerVersionTip": "Upgradeable to new version",
         "autoInstallDes": "For manual installation, please follow the operation instructions on the host device.",
