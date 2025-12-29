@@ -118,6 +118,8 @@ class SnmpAuth(object):
             privacy: str = None,
             authkey: str = None,
             privkey: str = None,
+            timeout: int = 1,
+            retries: int = 5,
     ):
         self.cmdGen = cmdGen
         self.version = version
@@ -128,6 +130,8 @@ class SnmpAuth(object):
         self.privacy = privacy
         self.authKey = authkey
         self.privKey = privkey
+        self.timeout = timeout
+        self.retries = retries
         self.validate()
 
     def validate(self):
@@ -175,6 +179,10 @@ class SnmpAuth(object):
                 )
         return snmp_auth
 
+    def get_transport_opts(self):
+        """获取传输配置"""
+        return {"timeout": self.timeout, "retries": self.retries}
+
 
 class SnmpTopo:
     def __init__(self, kwargs):
@@ -196,10 +204,12 @@ class SnmpTopo:
         self.snmp_port = int(kwargs.get('snmp_port', 161))  # 默认 SNMP 端口为 161
         self.oids = list(DEFAULT_OID_MAP.keys())
         self.cmdGen = cmdgen.CommandGenerator()
-        self.auth = SnmpAuth(
+        self.snmp_auth_obj = SnmpAuth(
             self.cmdGen, self.version, self.community, self.username, self.level, self.integrity, self.privacy,
-            self.authkey, self.privkey
-        ).auth()
+            self.authkey, self.privkey, self.timeout, self.retries
+        )
+        self.auth = self.snmp_auth_obj.auth()
+        self.transport_opts = self.snmp_auth_obj.get_transport_opts()
 
     @staticmethod
     def _format_oids(oids):
@@ -235,11 +245,10 @@ class SnmpTopo:
         批量获取 OID 数据
         """
         eval_oids = self.oids
-        transport_opts = {"timeout": self.timeout, "retries": self.retries}
         oids = self._format_oids(self.oids)
         errorIndication, errorStatus, errorIndex, varBindTable = self.cmdGen.bulkCmd(
             self.auth,
-            cmdgen.UdpTransportTarget((self.host, self.snmp_port), **transport_opts),
+            cmdgen.UdpTransportTarget((self.host, self.snmp_port), **self.transport_opts),
             0,
             25,
             *oids,

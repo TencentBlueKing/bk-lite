@@ -113,7 +113,7 @@ async def collect(request):
             content_type='text/plain; version=0.0.4; charset=utf-8',
             headers={
                 'X-Task-ID': task_info['task_id'],
-                'X-Job-ID': task_info['job_id']
+                'X-Job-ID': task_info.get('job_id', "")
             }
         )
 

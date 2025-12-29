@@ -46,8 +46,7 @@ class NetworkNodeParams(BaseNodeParams):
             "integrity": self.credential.get("integrity", ""),  # 哈希算法
             "privacy": self.credential.get("privacy", ""),  # 加密算法
             "authkey": "${" + _authkey + "}",
-            "privkey": "${" + _privkey + "}",
-            "timeout": self.credential.get("timeout", "1"),  # 超时时间
+            "privkey": "${" + _privkey + "}"
         }
         return credential_data
 

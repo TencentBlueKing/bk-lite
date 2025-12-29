@@ -24,6 +24,7 @@ class MysqlInfo:
         self.user = kwargs.get('user')
         self.password = kwargs.get('password', '')
         self.database = kwargs.get('database', '')
+        self.timeout = int(kwargs.get('timeout', 10))
         self.client_flag = CLIENT.MULTI_STATEMENTS
         self.cursorclass = pymysql.cursors.DictCursor
         self.info = {
@@ -53,6 +54,7 @@ class MysqlInfo:
                 database=self.database,
                 client_flag=self.client_flag,
                 cursorclass=self.cursorclass,
+                connect_timeout=self.timeout,
             )
             self.cursor = self.connection.cursor()
         except Exception as e:
