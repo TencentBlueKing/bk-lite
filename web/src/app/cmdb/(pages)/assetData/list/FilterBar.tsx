@@ -119,7 +119,8 @@ const FilterBar: React.FC<FilterBarProps> = ({
         const userNames = filter.value
           .map((userId) => {
             const user = userList.find((u) => String(u.id) === String(userId));
-            return user?.display_name || user?.username || String(userId);
+            // 筛选条件的user值显示，显示用户名和显示名
+            return `${user?.display_name} (${user?.username})` || String(userId);
           })
           .filter(Boolean);
         return userNames.join(', ');
@@ -321,7 +322,8 @@ const FilterBar: React.FC<FilterBarProps> = ({
             >
               {userList.map((user) => (
                 <Select.Option key={user.id} value={user.id}>
-                  {user.display_name || user.username}
+                  {/* 筛选项的修改弹窗，显示用户名和显示名 */}
+                  {user.display_name} ({user.username})
                 </Select.Option>
               ))}
             </Select>
@@ -331,11 +333,15 @@ const FilterBar: React.FC<FilterBarProps> = ({
         return (
           <Form.Item name="value" rules={[{ required: true, message: t('FilterBar.pleaseSelectUser') }]}>
             <Select mode="multiple" placeholder={t('FilterBar.pleaseSelectUser')} allowClear showSearch style={{ width: '100%' }}>
-              {userList.map((user) => (
-                <Select.Option key={user.id} value={user.id}>
-                  {user.display_name || user.username}
-                </Select.Option>
-              ))}
+              {userList.map((user) => {
+                // 筛选项的修改弹窗
+                return (
+                  <Select.Option key={user.id} value={user.id}>
+                    {/* 筛选项的修改弹窗 */}
+                    {user.display_name} ({user.username})
+                  </Select.Option>
+                )
+              })}
             </Select>
           </Form.Item>
         );
@@ -420,7 +426,6 @@ const FilterBar: React.FC<FilterBarProps> = ({
               onOpenChange={handlePopoverOpenChange}
               trigger="click"
               placement="bottomLeft"
-              destroyTooltipOnHide={false}
               content={
                 <div className={styles.popoverContent}>
                   <Form form={form} layout="horizontal">
@@ -441,6 +446,7 @@ const FilterBar: React.FC<FilterBarProps> = ({
                 </div>
               }
             >
+              {/* 筛选项的标签 */}
               <Tag
                 closable
                 onClose={(e) => handleClose(index, e)}

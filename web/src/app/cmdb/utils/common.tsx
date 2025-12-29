@@ -2,7 +2,7 @@ import { BUILD_IN_MODEL, CREDENTIAL_LIST } from '@/app/cmdb/constants/asset';
 import { getSvgIcon } from './utils';
 import dayjs from 'dayjs';
 import { AttrFieldType } from '@/app/cmdb/types/assetManage';
-import { Tag, Select, Input, DatePicker } from 'antd';
+import { Tag, Select, Input, DatePicker, Tooltip } from 'antd';
 import EllipsisWithTooltip from '@/components/ellipsis-with-tooltip';
 import GroupTreeSelector from '@/components/group-tree-select';
 import { useUserInfoContext } from '@/context/userInfo';
@@ -220,7 +220,7 @@ export const getAssetColumns = (config: {
         showTitle: false,
       },
     };
-    // 详情页中，用户字段为多选
+    // 表格中，用户字段为多选
     switch (attrType) {
       case 'user':
         return {
@@ -234,14 +234,31 @@ export const getAssetColumns = (config: {
               const users = (config.userList || []).filter((user) =>
                 userIdsStr.includes(String(user.id))
               );
+
+              // 处理没有用户的情况
               if (users.length === 0) return <>--</>;
+
               return (
-                <div className="flex flex-wrap gap-2">
-                  {users.map((user) => (
-                    <UserAvatar key={user.id} userName={user.username} size="small" />
-                  ))}
+                <div className="flex items-center gap-2 max-h-[28px] overflow-hidden">
+                  <UserAvatar key={users[0].id} userName={`${users[0].display_name} (${users[0].username})`} size="small" />
+                  {users.length > 0 && (
+                    <Tooltip
+                      title={
+                        <div className="flex flex-col gap-1">
+                          {users.map((user) => (
+                            <div key={user.id}>
+                              {String(user.display_name || '')} ({user.username})
+                            </div>
+                          ))}
+                        </div>
+                      }
+                    >
+                      <span className="text-[var(--color-text-3)] cursor-pointer">...</span>
+                    </Tooltip>
+                  )}
                 </div>
               );
+
             }
 
             // 处理单个值情况
@@ -249,7 +266,8 @@ export const getAssetColumns = (config: {
               const user = (config.userList || []).find(
                 (item) => String(item.id) === String(userIds)
               );
-              return user ? <UserAvatar userName={user.username} /> : <>--</>;
+              // 表格的user渲染
+              return user ? <UserAvatar userName={`${user.display_name} (${user.username})`} /> : <>--</>;
             }
 
             // 处理空值情况
@@ -332,6 +350,7 @@ export const getFieldItem = (config: {
     switch (config.fieldItem.attr_type) {
       case 'user':
         return (
+          // 新增+编辑弹窗中，用户字段为多选
           <Select
             mode="multiple"
             showSearch
@@ -402,14 +421,13 @@ export const getFieldItem = (config: {
   }
   switch (config.fieldItem.attr_type) {
     case 'user':
-      const userName = (config.userList || []).find(
-        (item) => item.id === config.value
-      )?.username;
-      if (!userName) return '--';
+      // 实例详情页中的用户字段
+      const user = (config.userList || []).find((item) => item.id === config.value);
+      if (!user) return '--';
       return config.hideUserAvatar ? (
-        userName
+        `${user.display_name} (${user.username})`
       ) : (
-        <UserAvatar userName={userName} />
+        <UserAvatar userName={`${user.display_name} (${user.username})`} />
       );
     case 'organization':
       return (
