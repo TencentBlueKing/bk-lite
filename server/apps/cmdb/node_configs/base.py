@@ -34,8 +34,8 @@ class BaseNodeParams(metaclass=ABCMeta):
         self.credential = self.instance.decrypt_credentials or {}
         self.base_path = "${STARGAZER_URL}/api/collect/collect_info"
         self.host_field = "host"  # 默认的 ip字段 若不一样重新定义
-        self.timeout = 40 if self.instance.is_cloud else 30
-        self.response_timeout = 40 if self.instance.is_cloud else 30
+        self.timeout = instance.timeout
+        self.response_timeout = 10
         self.executor_type = "protocol"  # 默认执行器类型
 
     def get_hosts(self):
@@ -93,8 +93,14 @@ class BaseNodeParams(metaclass=ABCMeta):
         params = self.set_credential()
         # 加入插件信息
         params.update(
-            {"plugin_name": self.model_plugin_name, ip_addr_field: ip_addrs, "executor_type": self.executor_type,
-             "model_id": _model_id})
+            {
+                "plugin_name": self.model_plugin_name,
+                ip_addr_field: ip_addrs,
+                "executor_type": self.executor_type,
+                "model_id": _model_id,
+                "timeout": self.timeout,
+            }
+        )
         _params = {f"cmdb{k}": str(v) for k, v in params.items()}
         # 加入tags 冗余一份
         _params.update(self.tags)
