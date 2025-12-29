@@ -91,7 +91,7 @@ const Alert: React.FC = () => {
   });
   const [activeTab, setActiveTab] = useState<string>('activeAlarms');
   const [chartData, setChartData] = useState<Record<string, any>[]>([]);
-  const [pageLoading, setPageLoading] = useState<boolean>(false);
+  const [treeLoading, setTreeLoading] = useState<boolean>(false);
   const [objects, setObjects] = useState<ObjectItem[]>([]);
   const [treeData, setTreeData] = useState<TreeItem[]>([]);
   const [confirmLoading, setConfirmLoading] = useState(false);
@@ -299,7 +299,7 @@ const Alert: React.FC = () => {
   };
 
   const getObjects = async () => {
-    setPageLoading(true);
+    setTreeLoading(true);
     try {
       const data: ObjectItem[] = await getMonitorObject({
         add_policy_count: true,
@@ -308,7 +308,7 @@ const Alert: React.FC = () => {
       const _treeData = getTreeData(cloneDeep(data));
       setTreeData(_treeData);
     } finally {
-      setPageLoading(false);
+      setTreeLoading(false);
     }
   };
 
@@ -580,127 +580,126 @@ const Alert: React.FC = () => {
 
   return (
     <div className="w-full">
-      <Spin spinning={pageLoading} className="w-full">
-        <div className={alertStyle.alert}>
-          <div className={alertStyle.filters}>
-            <TreeSelector
-              showAllMenu
-              data={treeData}
-              defaultSelectedKey="all"
-              onNodeSelect={handleObjectChange}
+      <div className={alertStyle.alert}>
+        <div className={alertStyle.filters}>
+          <TreeSelector
+            loading={treeLoading}
+            showAllMenu
+            data={treeData}
+            defaultSelectedKey="all"
+            onNodeSelect={handleObjectChange}
+          />
+        </div>
+        <div className={alertStyle.alarmList}>
+          <Tabs activeKey={activeTab} items={tabs} onChange={changeTab} />
+          <div className={alertStyle.searchCondition}>
+            <div className="mb-[10px]">
+              {t('monitor.search.searchCriteria')}
+            </div>
+            <div className={alertStyle.condition}>
+              <ul className="flex">
+                <li className="mr-[8px]">
+                  <span className="mr-[8px] text-[12px] text-[var(--color-text-3)]">
+                    {t('monitor.events.level')}
+                  </span>
+                  <Select
+                    style={{ width: 200 }}
+                    dropdownStyle={{ width: 130 }}
+                    allowClear
+                    mode="multiple"
+                    maxTagCount="responsive"
+                    value={filters.level}
+                    onChange={(val) => onFilterChange(val, 'level')}
+                  >
+                    {LEVEL_LIST.map((item) => (
+                      <Option key={item.value} value={item.value}>
+                        <Tag
+                          icon={<AlertOutlined />}
+                          color={LEVEL_MAP[item.value as string] as string}
+                        >
+                          {LEVEL_LIST.find((tex) => tex.value === item.value)
+                            ?.label || '--'}
+                        </Tag>
+                      </Option>
+                    ))}
+                  </Select>
+                </li>
+                <li>
+                  <span className="mr-[8px] text-[12px] text-[var(--color-text-3)]">
+                    {t('monitor.events.state')}
+                  </span>
+                  <Select
+                    style={{ width: 200 }}
+                    allowClear
+                    mode="multiple"
+                    maxTagCount="responsive"
+                    value={filters.state}
+                    onChange={(val) => onFilterChange(val, 'state')}
+                    options={activeStateList}
+                  ></Select>
+                </li>
+              </ul>
+              <TimeSelector
+                defaultValue={timeDefaultValue}
+                onlyRefresh={isActiveAlarm}
+                onChange={onTimeChange}
+                onFrequenceChange={onFrequenceChange}
+                onRefresh={onRefresh}
+              />
+            </div>
+          </div>
+          <Spin spinning={chartLoading}>
+            <div className={alertStyle.chartWrapper}>
+              <div className="flex items-center justify-between mb-[2px]">
+                <div className="text-[14px] ml-[10px] relative">
+                  {t('monitor.events.distributionMap')}
+                  <Tooltip
+                    placement="top"
+                    title={t(`monitor.events.${activeTab}MapTips`)}
+                  >
+                    <div
+                      className="absolute cursor-pointer"
+                      style={{
+                        top: '-4px',
+                        right: '-14px',
+                      }}
+                    >
+                      <Icon
+                        type="a-shuoming2"
+                        className="text-[14px] text-[var(--color-text-3)]"
+                      />
+                    </div>
+                  </Tooltip>
+                </div>
+              </div>
+              <div className={alertStyle.chart}>
+                <StackedBarChart data={chartData} colors={LEVEL_MAP as any} />
+              </div>
+            </div>
+          </Spin>
+          <div className={alertStyle.table}>
+            <Search
+              allowClear
+              className="w-[240px] mb-[10px]"
+              placeholder={t('common.searchPlaceHolder')}
+              value={searchText}
+              enterButton
+              onChange={(e) => setSearchText(e.target.value)}
+              onSearch={handleSearch}
+            />
+            <CustomTable
+              className="w-full"
+              scroll={{ y: 'calc(100vh - 640px)', x: 'calc(100vw - 320px)' }}
+              columns={columns}
+              dataSource={tableData}
+              pagination={pagination}
+              loading={tableLoading}
+              rowKey="id"
+              onChange={handleTableChange}
             />
           </div>
-          <div className={alertStyle.alarmList}>
-            <Tabs activeKey={activeTab} items={tabs} onChange={changeTab} />
-            <div className={alertStyle.searchCondition}>
-              <div className="mb-[10px]">
-                {t('monitor.search.searchCriteria')}
-              </div>
-              <div className={alertStyle.condition}>
-                <ul className="flex">
-                  <li className="mr-[8px]">
-                    <span className="mr-[8px] text-[12px] text-[var(--color-text-3)]">
-                      {t('monitor.events.level')}
-                    </span>
-                    <Select
-                      style={{ width: 200 }}
-                      dropdownStyle={{ width: 130 }}
-                      allowClear
-                      mode="multiple"
-                      maxTagCount="responsive"
-                      value={filters.level}
-                      onChange={(val) => onFilterChange(val, 'level')}
-                    >
-                      {LEVEL_LIST.map((item) => (
-                        <Option key={item.value} value={item.value}>
-                          <Tag
-                            icon={<AlertOutlined />}
-                            color={LEVEL_MAP[item.value as string] as string}
-                          >
-                            {LEVEL_LIST.find((tex) => tex.value === item.value)
-                              ?.label || '--'}
-                          </Tag>
-                        </Option>
-                      ))}
-                    </Select>
-                  </li>
-                  <li>
-                    <span className="mr-[8px] text-[12px] text-[var(--color-text-3)]">
-                      {t('monitor.events.state')}
-                    </span>
-                    <Select
-                      style={{ width: 200 }}
-                      allowClear
-                      mode="multiple"
-                      maxTagCount="responsive"
-                      value={filters.state}
-                      onChange={(val) => onFilterChange(val, 'state')}
-                      options={activeStateList}
-                    ></Select>
-                  </li>
-                </ul>
-                <TimeSelector
-                  defaultValue={timeDefaultValue}
-                  onlyRefresh={isActiveAlarm}
-                  onChange={onTimeChange}
-                  onFrequenceChange={onFrequenceChange}
-                  onRefresh={onRefresh}
-                />
-              </div>
-            </div>
-            <Spin spinning={chartLoading}>
-              <div className={alertStyle.chartWrapper}>
-                <div className="flex items-center justify-between mb-[2px]">
-                  <div className="text-[14px] ml-[10px] relative">
-                    {t('monitor.events.distributionMap')}
-                    <Tooltip
-                      placement="top"
-                      title={t(`monitor.events.${activeTab}MapTips`)}
-                    >
-                      <div
-                        className="absolute cursor-pointer"
-                        style={{
-                          top: '-4px',
-                          right: '-14px',
-                        }}
-                      >
-                        <Icon
-                          type="a-shuoming2"
-                          className="text-[14px] text-[var(--color-text-3)]"
-                        />
-                      </div>
-                    </Tooltip>
-                  </div>
-                </div>
-                <div className={alertStyle.chart}>
-                  <StackedBarChart data={chartData} colors={LEVEL_MAP as any} />
-                </div>
-              </div>
-            </Spin>
-            <div className={alertStyle.table}>
-              <Search
-                allowClear
-                className="w-[240px] mb-[10px]"
-                placeholder={t('common.searchPlaceHolder')}
-                value={searchText}
-                enterButton
-                onChange={(e) => setSearchText(e.target.value)}
-                onSearch={handleSearch}
-              />
-              <CustomTable
-                className="w-full"
-                scroll={{ y: 'calc(100vh - 640px)', x: 'calc(100vw - 320px)' }}
-                columns={columns}
-                dataSource={tableData}
-                pagination={pagination}
-                loading={tableLoading}
-                rowKey="id"
-                onChange={handleTableChange}
-              />
-            </div>
-          </div>
         </div>
-      </Spin>
+      </div>
       <AlertDetail
         ref={detailRef}
         objectId={objectId === 'all' ? '' : objectId}
