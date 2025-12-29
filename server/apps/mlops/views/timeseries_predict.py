@@ -1317,8 +1317,7 @@ class TimeSeriesPredictServingViewSet(ModelViewSet):
             
             # 构建预测服务 URL
             # url: http://192.168.1.100 + port: 38291 -> http://192.168.1.100:38291/predict
-            # predict_url = f"{url.rstrip('/')}:{port}/predict"
-            predict_url = f"http://127.0.0.1:3000/predict"
+            predict_url = f"{url.rstrip('/')}:{port}/predict"
             
             # 构建请求体
             payload = {
