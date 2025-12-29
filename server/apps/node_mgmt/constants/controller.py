@@ -99,7 +99,7 @@ class ControllerConstants:
 
     # 卸载命令
     UNINSTALL_COMMAND = {
-        NodeConstants.LINUX_OS: "cd /opt/fusion-collectors && ./uninstall.sh",
+        NodeConstants.LINUX_OS: "cd /opt/fusion-collectors && chmod +x uninstall.sh && ./uninstall.sh",
         NodeConstants.WINDOWS_OS: "powershell -command \"Remove-Item -Path {} -Recurse\"",
     }
 
