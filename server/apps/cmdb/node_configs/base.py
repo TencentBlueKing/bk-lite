@@ -33,7 +33,9 @@ class BaseNodeParams(metaclass=ABCMeta):
         self.model_id = instance.model_id  # 当出现多对象采集的时候这个model_id就不能准确的标识唯一的model_id
         self.credential = self.instance.decrypt_credentials or {}
         self.base_path = "${STARGAZER_URL}/api/collect/collect_info"
-        self.host_field = "host"  # 默认的 ip字段 若不一样重新定义
+        # 只有当子类没有定义 host_field 类属性时才设置默认值,避免覆盖子类定义
+        if not hasattr(self.__class__, 'host_field'):
+            self.host_field = "ip_addr"  # 默认的 ip字段 若不一样重新定义
         self.timeout = instance.timeout
         self.response_timeout = 10
         self.executor_type = "protocol"  # 默认执行器类型
