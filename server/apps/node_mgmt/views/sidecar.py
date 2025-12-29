@@ -352,6 +352,8 @@ class OpenSidecarViewSet(OpenAPIViewSet):
         示例:
             GET /download/fusion_collector/pkg-123?token=550e8400-e29b-41d4-a716-446655440000
         """
+        pk = int(pk)
+
         # 获取并验证下载 token
         download_token = request.query_params.get("token")
         if not download_token:
