@@ -4,7 +4,6 @@
 
 from rest_framework import viewsets
 from rest_framework.decorators import action
-from drf_spectacular.utils import extend_schema, OpenApiParameter
 
 from apps.core.utils.web_utils import WebUtils
 from apps.monitor.serializers.unit import UnitSerializer, UnitSystemSerializer
@@ -19,11 +18,6 @@ class UnitViewSet(viewsets.ViewSet):
     提供单位列表查询功能，用于前端配置指标时选择单位
     """
 
-    @extend_schema(
-        summary="获取所有单位列表",
-        description="返回系统支持的所有单位，包括单位ID、名称、体系、展示格式等信息",
-        responses={200: UnitSerializer(many=True)},
-    )
     @action(methods=['GET'], detail=False, url_path='list')
     def list_units(self, request):
         """获取所有单位列表"""
@@ -35,21 +29,7 @@ class UnitViewSet(viewsets.ViewSet):
             logger.error(f"获取单位列表失败: {e}")
             return WebUtils.response_error(f"获取单位列表失败: {str(e)}")
 
-    @extend_schema(
-        summary="按体系获取单位",
-        description="按单位体系分组返回单位列表",
-        parameters=[
-            OpenApiParameter(
-                name='system',
-                type=str,
-                location=OpenApiParameter.QUERY,
-                required=False,
-                description="体系名称（可选），如 'percent', 'count', 'data_bytes' 等。不传则返回所有体系的单位"
-            ),
-        ],
-        responses={200: UnitSystemSerializer(many=True)},
-    )
-    @action(methods=['GET'], detail=False, url_path='by-system')
+    @action(methods=['GET'], detail=False, url_path='by_system')
     def list_by_system(self, request):
         """按体系获取单位列表"""
         try:
