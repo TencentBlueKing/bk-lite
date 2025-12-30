@@ -41,6 +41,10 @@ class MonitorPolicy(TimeInfo, MaintainerInfo):
     threshold = models.JSONField(default=list, verbose_name="阈值")
     recovery_condition = models.SmallIntegerField(default=1, verbose_name="多少周期不满足阈值自动恢复")
 
+    # 单位配置
+    metric_unit = models.CharField(max_length=50, default="", blank=True, verbose_name="指标原始单位")
+    calculation_unit = models.CharField(max_length=50, default="", blank=True, verbose_name="计算单位（用于阈值对比和结果记录）")
+
     no_data_period = models.JSONField(default=dict, verbose_name="无数据告警的数据周期（eg:10m内无数据）")
     no_data_level = models.CharField(max_length=20, default="", verbose_name="无数据告警级别")
     no_data_recovery_period = models.JSONField(default=dict, verbose_name="无数据告警恢复的数据周期（eg:10m内有数据）")
