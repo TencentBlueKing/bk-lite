@@ -29,6 +29,7 @@ class MSSQLInfo:
         self.user = kwargs.get("user")
         self.password = kwargs.get("password")
         self.database = kwargs.get("database")
+        self.timeout = int(kwargs.get("timeout", 5))
         self.info: Dict[str, Any] = {}
         self.connection = None
         self.cursor = None
@@ -43,7 +44,7 @@ class MSSQLInfo:
                 f"UID={self.user};"
                 f"PWD={self.password}"
             )
-            self.connection = pyodbc.connect(conn_str, timeout=5)
+            self.connection = pyodbc.connect(conn_str, timeout=self.timeout)
             self.cursor = self.connection.cursor()
             logger.info(f"Connected to MSSQL database at {self.host}:{self.port}")
         except pyodbc.Error as e:

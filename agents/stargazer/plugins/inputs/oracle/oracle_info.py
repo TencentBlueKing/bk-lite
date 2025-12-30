@@ -27,24 +27,10 @@ class OracleInfo:
         self.user = kwargs.get("user")
         self.password = kwargs.get("password", "")
         self.service_name = kwargs.get("service_name", "orclpdb")
+        self.timeout = int(kwargs.get("timeout", 20))
         self.info: Dict[str, Any] = {}
         self.connection = None
         self.cursor = None
-
-    def _connect(self):
-        """Establish Oracle connection."""
-        try:
-            dsn = f"{self.host}:{self.port}/{self.service_name}"
-            self.connection = oracledb.connect(
-                user=self.user,
-                password=self.password,
-                dsn=dsn
-            )
-            self.cursor = self.connection.cursor()
-            logger.info(f"Connected to Oracle database at {self.host}:{self.port}")
-        except oracledb.Error as e:
-            logger.error(f"Failed to connect to Oracle: {str(e)}")
-            raise RuntimeError(f"Connection error: {str(e)}")
 
     def _exec_sql(self, query: str) -> Dict[str, Any]:
         """Execute SQL query and return results as dict (first row only)."""
@@ -85,7 +71,8 @@ class OracleInfo:
             with oracledb.connect(
                     user=self.user,
                     password=self.password,
-                    dsn=f"{self.host}:{self.port}/{self.service_name}"
+                    dsn=f"{self.host}:{self.port}/{self.service_name}",
+                    tcp_connect_timeout=self.timeout
             ) as connection:
                 with connection.cursor() as cursor:
                     self.cursor = cursor

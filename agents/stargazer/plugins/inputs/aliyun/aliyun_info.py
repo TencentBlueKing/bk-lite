@@ -184,6 +184,7 @@ class CwAliyun(object):
         self.AccessKey = params["access_key"]
         self.AccessSecret = params["access_secret"]
         self.RegionId = params.get("region_id", "cn-hangzhou")
+        self.timeout = int(params.get("timeout", 30))
         for k, v in kwargs.items():
             setattr(self, k, v)
 
@@ -198,7 +199,8 @@ class CwAliyun(object):
 
         # 创建ACS客户端
         self.client = client.AcsClient(
-            self.AccessKey, self.AccessSecret, self.RegionId, timeout=30, connect_timeout=30, max_retry_time=3
+            self.AccessKey, self.AccessSecret, self.RegionId, timeout=self.timeout * 2, connect_timeout=self.timeout,
+            max_retry_time=3
         )
 
         # 创建OSS认证对象

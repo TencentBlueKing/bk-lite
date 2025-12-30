@@ -1,7 +1,7 @@
 import boto3
+from botocore.config import Config
 from typing import List, Dict, Optional
 from sanic.log import logger
-
 
 
 class AWSManager:
@@ -9,6 +9,9 @@ class AWSManager:
         self.access_key_id = params.get("access_key_id")
         self.secret_access_key = params.get("secret_access_key")
         self.default_region = params.get('region', 'us-east-1')
+        self.connect_timeout = int(params.get('timeout', 10))
+        self.read_timeout = self.connect_timeout * 6
+        self.max_attempts = 3
 
     def get_session(self):
         session_args = {}
@@ -19,11 +22,15 @@ class AWSManager:
         session_args['aws_secret_access_key'] = self.secret_access_key
         return boto3.Session(**session_args)
 
-
     def get_client(self, service: str, region_name: Optional[str] = None):
         session = self.get_session()
         region = region_name or self.default_region
-        return session.client(service, region_name=region)
+        config = Config(
+            connect_timeout=self.connect_timeout,  # 连接超时
+            read_timeout=self.read_timeout,  # 读取超时
+            retries={'max_attempts': self.max_attempts}  # 重试次数
+        )
+        return session.client(service, region_name=region, config=config)
 
     def get_organization_info(self) -> Optional[Dict]:
         try:
@@ -44,7 +51,8 @@ class AWSManager:
         try:
             ec2 = self.get_client('ec2', region_name=self.default_region)
             resp = ec2.describe_regions(AllRegions=False)
-            regions = [r['RegionName'] for r in resp.get('Regions', []) if r.get('OptInStatus', 'opt-in-not-required') != 'not-opted-in']
+            regions = [r['RegionName'] for r in resp.get('Regions', []) if
+                       r.get('OptInStatus', 'opt-in-not-required') != 'not-opted-in']
             return regions
         except Exception as e:
             logger.error(f"get_available_regions error: {e}")
@@ -63,7 +71,7 @@ class AWSManager:
                         for inst in reservation.get('Instances', []):
                             inst_name = None
                             for tag in inst.get('Tags', []) or []:
-                                if tag.get('Key') in ('Name','name'):
+                                if tag.get('Key') in ('Name', 'name'):
                                     inst_name = tag.get('Value')
                                     break
                             results.append({
@@ -79,7 +87,8 @@ class AWSManager:
                                 "status": inst.get('State', {}).get('Name'),
                                 "instance_type": inst.get('InstanceType'),
                                 "vcpus": (inst.get('CpuOptions', {}).get('CoreCount', 0) *
-                                          inst.get('CpuOptions', {}).get('ThreadsPerCore', 1)) if inst.get('CpuOptions') else None,
+                                          inst.get('CpuOptions', {}).get('ThreadsPerCore', 1)) if inst.get(
+                                    'CpuOptions') else None,
                                 "key_name": inst.get('KeyName'),
                             })
             except Exception as e:
@@ -125,7 +134,8 @@ class AWSManager:
                             "instance_type": inst.get('DBInstanceClass'),
                             "engine": inst.get('Engine'),
                             "engine_version": inst.get('EngineVersion'),
-                            "parameter_group": [pg.get('DBParameterGroupName') for pg in inst.get('DBParameterGroups', [])],
+                            "parameter_group": [pg.get('DBParameterGroupName') for pg in
+                                                inst.get('DBParameterGroups', [])],
                             "endpoint": endpoint.get('Address'),
                             "maintenance_window": inst.get('PreferredMaintenanceWindow'),
                             "ca": ca_id,
@@ -270,7 +280,8 @@ class AWSManager:
                             "resource_name": lb.get('LoadBalancerName'),
                             "resource_id": lb.get('LoadBalancerArn'),
                             "region": region,
-                            "zone": ",".join([az.get('ZoneName') for az in lb.get('AvailabilityZones', []) if az.get('ZoneName')]),
+                            "zone": ",".join(
+                                [az.get('ZoneName') for az in lb.get('AvailabilityZones', []) if az.get('ZoneName')]),
                             "vpc": lb.get('VpcId'),
                             "scheme": lb.get('Scheme'),
                             "status": lb.get('State', {}).get('Code'),
@@ -331,7 +342,8 @@ class AWSManager:
                             "port": inst.get('Endpoint', {}).get('Port'),
                             "engine": inst.get('Engine'),
                             "engine_version": inst.get('EngineVersion'),
-                            "parameter_group": [pg.get('DBParameterGroupName') for pg in inst.get('DBParameterGroups', [])],
+                            "parameter_group": [pg.get('DBParameterGroupName') for pg in
+                                                inst.get('DBParameterGroups', [])],
                             "maintenance_window": inst.get('PreferredMaintenanceWindow'),
                         })
             except Exception as e:
@@ -391,7 +403,7 @@ class AWSManager:
     def list_all_resources(self) -> Dict[str, any]:
         try:
             collect_data = self.exec_script()
-            result = {"result":collect_data, "success": True}
+            result = {"result": collect_data, "success": True}
         except Exception as err:
             import traceback
             logger.error(f"{self.__class__.__name__} main error! {traceback.format_exc()}")
@@ -411,6 +423,7 @@ class AWSManager:
 
 if __name__ == "__main__":
     import os
+
     params = {
         "access_key_id": os.getenv("access_key_id"),
         "secret_access_key": os.getenv("secret_access_key"),
@@ -421,4 +434,3 @@ if __name__ == "__main__":
 
     print("Test connection:", manager.test_connection())
     all_res = manager.exec_script()
-
