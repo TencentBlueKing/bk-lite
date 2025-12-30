@@ -45,7 +45,7 @@ def get_default_group_id():
     :return: 默认组织ID
     """
     from apps.system_mgmt.models.user import Group
-    default_group = Group.objects.get(name="Default")
+    default_group = Group.objects.get(name="Default", parent_id=0)
     return [default_group.id]
 
 

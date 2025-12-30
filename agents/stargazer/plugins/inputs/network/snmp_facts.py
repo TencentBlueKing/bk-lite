@@ -158,7 +158,11 @@ class SnmpFacts:
                 current_oid = oid.prettyPrint()
                 current_val = val.prettyPrint()
                 if current_oid == v.sysDescr:
-                    results['system']['sysdescr'] = str(current_val)
+                    try:
+                        current_val = val._value.decode()
+                    except Exception:
+                        current_val = str(current_val)
+                    results['system']['sysdescr'] = current_val
                 elif current_oid == v.sysObjectId:
                     results['system']['sysobjectid'] = current_val
                 # elif current_oid == v.sysUpTime:
