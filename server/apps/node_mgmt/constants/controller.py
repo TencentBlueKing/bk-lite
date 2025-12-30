@@ -99,13 +99,13 @@ class ControllerConstants:
 
     # 卸载命令
     UNINSTALL_COMMAND = {
-        NodeConstants.LINUX_OS: "cd /opt/fusion-collectors && chmod +x uninstall.sh && ./uninstall.sh",
+        NodeConstants.LINUX_OS: "cd /opt/fusion-collectors && sudo chmod +x uninstall.sh && sudo ./uninstall.sh",
         NodeConstants.WINDOWS_OS: "powershell -command \"Remove-Item -Path {} -Recurse\"",
     }
 
     # 控制器目录删除命令
     CONTROLLER_DIR_DELETE_COMMAND = {
-        NodeConstants.LINUX_OS: "rm -rf /opt/fusion-collectors",
+        NodeConstants.LINUX_OS: "sudo rm -rf /opt/fusion-collectors",
         NodeConstants.WINDOWS_OS: "powershell -command \"Remove-Item -Path {} -Recurse\"",
     }
 
