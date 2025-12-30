@@ -95,12 +95,11 @@ const LazyMetricItem: React.FC<LazyMetricItemProps> = ({
   }, [item.id, hasBeenVisible, isCancelled, isLoading, observerOptions]);
 
   const getUnit = useCallback(
-    (item: TableDataItem) =>
-      `${
-        findUnitNameById(item.unit)
-          ? '（' + findUnitNameById(item.unit) + '）'
-          : '\u00A0\u00A0'
-      }`,
+    (item: TableDataItem) => {
+      const displayUnit = item.displayUnit === 'short' ? '' : item.displayUnit;
+      const unitName = findUnitNameById(displayUnit) || displayUnit;
+      return unitName ? `（${unitName}）` : '\u00A0\u00A0';
+    },
     [findUnitNameById]
   );
 
@@ -166,7 +165,7 @@ const LazyMetricItem: React.FC<LazyMetricItemProps> = ({
                   ? (item.viewData as ChartData[]) || []
                   : []
               }
-              unit={item.unit}
+              unit={item.displayUnit}
               onXRangeChange={onXRangeChange}
             />
           </>

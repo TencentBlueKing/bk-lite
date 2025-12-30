@@ -454,7 +454,7 @@ class FusionComputeTest(PrivateCloudManage):
                     "device_type": FusionComputeDiskType[cur_disk["type"] + "_cn"],
                     "is_attached": True,
                     "status": "使用中",
-                    "platform_type": "vmware",
+                    "platform_type": "vmware_vc",
                     "disk_type": "系统盘" if cur_disk["systemVolume"] else "数据盘",
                     "disk_size": cur_disk["quantityGB"],
                     "description": "",
@@ -4291,7 +4291,7 @@ class FusionComputeNew(PrivateCloudManage):
                 "is_attached": True,
                 "device_type": FusionComputeDiskType[cur_disk["type"]],
                 "status": cur_disk.get("status"),
-                "platform_type": "vmware",
+                "platform_type": "vmware_vc",
                 "disk_type": "系统盘" if cur_disk.get("is_system_volume") else "数据盘",
                 "disk_size": cur_disk.get("size"),
             }

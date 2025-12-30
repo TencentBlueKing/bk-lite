@@ -4,6 +4,7 @@ import type {
   ConfigListParams,
 } from '@/app/node-manager/types/cloudregion';
 import React from 'react';
+import { AxiosRequestConfig } from 'axios';
 
 /**
  * 配置管理API Hook
@@ -13,8 +14,15 @@ const useConfigApi = () => {
   const { get, post, del, patch } = useApiClient();
 
   // 获取配置文件列表
-  const getConfiglist = async (params: ConfigListParams) => {
-    return await post('/node_mgmt/api/configuration/config_node_asso/', params);
+  const getConfiglist = async (
+    params: ConfigListParams,
+    config?: AxiosRequestConfig
+  ) => {
+    return await post(
+      '/node_mgmt/api/configuration/config_node_asso/',
+      params,
+      config
+    );
   };
 
   // 查询节点信息以及关联的配置
@@ -23,13 +31,16 @@ const useConfigApi = () => {
   };
 
   // 获取子配置文件列表
-  const getChildConfig = async (params: {
-    collector_config_id: string;
-    config_type?: string;
-    page?: number;
-    page_size?: number;
-  }) => {
-    return await get('/node_mgmt/api/child_config', { params });
+  const getChildConfig = async (
+    params: {
+      collector_config_id: string;
+      config_type?: string;
+      page?: number;
+      page_size?: number;
+    },
+    config?: AxiosRequestConfig
+  ) => {
+    return await get('/node_mgmt/api/child_config', { params, ...config });
   };
 
   // 创建一个配置文件

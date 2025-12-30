@@ -58,7 +58,8 @@ class SyncInstance:
         metrics_instance_map = self.get_instance_map_by_metrics()  # VM 指标采集
         vm_all = set(metrics_instance_map.keys())
 
-        all_instances_qs = MonitorInstance.objects.all().values("id", "is_deleted")
+        # 只查询自动发现的实例（auto=True），排除手动接入的实例
+        all_instances_qs = MonitorInstance.objects.filter(auto=True).values("id", "is_deleted")
         table_all = {i["id"] for i in all_instances_qs}
         table_deleted = {i["id"] for i in all_instances_qs if i["is_deleted"]}
         table_alive = table_all - table_deleted
@@ -70,7 +71,7 @@ class SyncInstance:
 
         # 执行删除（物理删除）
         if delete_set:
-            MonitorInstance.objects.filter(id__in=delete_set, is_deleted=True).delete()
+            MonitorInstance.objects.filter(id__in=delete_set, is_deleted=True, auto=True).delete()
 
         # 需要插入或更新的对象构建
         create_instances = []
@@ -92,22 +93,28 @@ class SyncInstance:
         if update_instances:
             for instance in update_instances:
                 instance.is_deleted = False  # 恢复
-            MonitorInstance.objects.bulk_update(update_instances, ["name", "is_deleted", "auto"], batch_size=DatabaseConstants.BULK_UPDATE_BATCH_SIZE)
+            # 不更新 auto 字段，保留原有的接入方式（手动/自动）
+            MonitorInstance.objects.bulk_update(update_instances, ["name", "is_deleted"], batch_size=DatabaseConstants.BULK_UPDATE_BATCH_SIZE)
 
-        # 计算不活跃实例
+        # 计算不活跃实例（只针对自动发现的实例）
         no_alive_set = table_alive - vm_all
 
-        # 查询不活跃实例
+        # 查询上个周期已经不活跃的自动发现实例
         no_alive_instances = {i["id"] for i in MonitorInstance.objects.filter(is_active=False, auto=True).values("id")}
 
-        MonitorInstance.objects.filter(id__in=no_alive_set).update(is_active=False)
-        MonitorInstance.objects.exclude(id__in=no_alive_set).update(is_active=True)
+        # 更新活跃状态（只更新自动发现的实例）
+        if no_alive_set:
+            MonitorInstance.objects.filter(id__in=no_alive_set, auto=True).update(is_active=False)
+        # 更新活跃状态：在 vm_all 中的自动发现实例标记为活跃
+        if vm_all:
+            MonitorInstance.objects.filter(id__in=vm_all, auto=True).update(is_active=True)
 
         if not no_alive_instances:
             return
 
-        # 删除不活跃且为自动发现的实例
-        MonitorInstance.objects.filter(id__in=no_alive_instances).delete()
+        # 删除上个周期就不活跃的自动发现实例
+        deleted_count = MonitorInstance.objects.filter(id__in=no_alive_instances, auto=True).delete()[0]
+        logger.info(f"监控-删除不活跃的自动发现实例,数量:{deleted_count}")
 
 
     def run(self):

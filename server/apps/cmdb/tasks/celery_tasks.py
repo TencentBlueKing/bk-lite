@@ -6,8 +6,8 @@ from datetime import datetime, timedelta
 
 from celery import shared_task
 
-from apps.cmdb.collect_tasks.job_collect import JobCollect
-from apps.cmdb.collect_tasks.protocol_collect import ProtocolCollect
+from apps.cmdb.collection.collect_tasks.job_collect import JobCollect
+from apps.cmdb.collection.collect_tasks.protocol_collect import ProtocolCollect
 from apps.core.logger import cmdb_logger as logger
 from apps.cmdb.models.collect_model import CollectModels
 from apps.cmdb.constants.constants import CollectRunStatusType
@@ -68,7 +68,7 @@ def sync_collect_task(instance_id):
         # 如果任务执行失败，添加错误信息提示
         if task_exec_status == CollectRunStatusType.ERROR:
             collect_digest['message'] = exec_error_message
-        if format_data.get('__raw_data__',[]).__len__() == 0:
+        elif format_data.get('__raw_data__',[]).__len__() == 0:
             collect_digest['message'] = "没有发现任何有效数据!"
             instance.exec_status = CollectRunStatusType.ERROR
         else:

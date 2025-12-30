@@ -151,10 +151,10 @@ const TrainTask = () => {
           title: t(`datasets.anomaly`),
           key: 'anomaly_detection',
         },
-        {
-          title: t(`datasets.rasa`),
-          key: 'rasa'
-        },
+        // {
+        //   title: t(`datasets.rasa`),
+        //   key: 'rasa'
+        // },
         {
           title: t(`datasets.timeseriesPredict`),
           key: 'timeseries_predict',
@@ -496,7 +496,7 @@ const TrainTask = () => {
         rightSection={
           (<>
             <div className="flex justify-end items-center mb-4 gap-2">
-              <div className="flex">
+              <div className="flex items-center">
                 <Search
                   className="w-[240px] mr-1.5"
                   placeholder={t('traintask.searchText')}
@@ -509,7 +509,9 @@ const TrainTask = () => {
                     {t('common.add')}
                   </Button>
                 </PermissionWrapper>
-                <ReloadOutlined onClick={onRefresh} />
+                <PermissionWrapper requiredPermissions={['View']}>
+                  <ReloadOutlined onClick={onRefresh} />
+                </PermissionWrapper>
               </div>
             </div>
             <div className="flex-1 relative">

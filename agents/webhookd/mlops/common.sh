@@ -31,15 +31,16 @@ json_success() {
 
 # JSON 错误响应
 json_error() {
-    local id="$1"
-    local message="$2"
-    local detail="$3"
+    local code="$1"
+    local id="$2"
+    local message="$3"
+    local detail="$4"
     
     if [ -n "$detail" ]; then
         # 转义双引号和换行符
         detail=$(echo "$detail" | sed 's/"/\\"/g' | tr '\n' ' ')
-        echo "{\"status\":\"error\",\"id\":\"$id\",\"message\":\"$message\",\"detail\":\"$detail\"}"
+        echo "{\"status\":\"error\",\"code\":\"$code\",\"id\":\"$id\",\"message\":\"$message\",\"detail\":\"$detail\"}"
     else
-        echo "{\"status\":\"error\",\"id\":\"$id\",\"message\":\"$message\"}"
+        echo "{\"status\":\"error\",\"code\":\"$code\",\"id\":\"$id\",\"message\":\"$message\"}"
     fi
 }

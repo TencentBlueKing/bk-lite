@@ -239,6 +239,16 @@ const useMlopsModelReleaseApi = () => {
     return await del(`/mlops/classification_servings/${id}`);
   };
 
+  /// 启动时序预测服务容器
+  const startTimeseriesPredictServingContainer = async (id: number) => {
+    return await post(`/mlops/timeseries_predict_servings/${id}/start`);
+  };
+
+  // 停止时序预测服务容器
+  const stopTimeseriesPredictServingContainer = async (id: number) => {
+    return await post(`/mlops/timeseries_predict_servings/${id}/stop`);
+  };
+
   return {
     getAnomalyServingsList,
     getOneAnomalyServing,
@@ -263,7 +273,9 @@ const useMlopsModelReleaseApi = () => {
     deleteAnomalyServing,
     deleteTimeSeriesPredictServing,
     deleteLogClusteringServing,
-    deleteClassificationServing
+    deleteClassificationServing,
+    startTimeseriesPredictServingContainer,
+    stopTimeseriesPredictServingContainer
   };
 };
 

@@ -97,7 +97,7 @@ const CloudRegionModal = forwardRef<ModalRef, ModalSuccess>(
               <Button
                 type="primary"
                 className="mr-[10px]"
-                disabled={formData.name === 'default'}
+                disabled={formData.originalName === 'default'}
                 loading={confirmLoading}
                 onClick={handleFormOkClick}
               >
@@ -117,7 +117,9 @@ const CloudRegionModal = forwardRef<ModalRef, ModalSuccess>(
               rules={[{ required: true, message: t('common.inputRequired') }]}
             >
               <Input
-                disabled={formData?.name === 'default' || type === 'delete'}
+                disabled={
+                  formData?.originalName === 'default' || type === 'delete'
+                }
                 placeholder={t('common.inputMsg')}
               />
             </Form.Item>
@@ -127,7 +129,9 @@ const CloudRegionModal = forwardRef<ModalRef, ModalSuccess>(
               rules={[{ required: true, message: t('common.inputRequired') }]}
             >
               <Input.TextArea
-                disabled={formData?.name === 'default' || type === 'delete'}
+                disabled={
+                  formData?.originalName === 'default' || type === 'delete'
+                }
                 rows={5}
                 placeholder={t('common.inputMsg')}
               />

@@ -55,11 +55,12 @@ const Alert: React.FC<ViewModalProps> = ({
     timeRange: [],
     originValue: 10080,
   });
-  const timeDefaultValue =
-    (useRef<TimeSelectorDefaultValue>({
-      selectValue: 10080,
-      rangePickerVaule: null,
-    })?.current || {}) as any;
+  const timeDefaultValue = (useRef<TimeSelectorDefaultValue>({
+    selectValue: 10080,
+    rangePickerVaule: null,
+  })?.current || {}) as any;
+  const abortControllerRef = useRef<AbortController | null>(null);
+  const requestIdRef = useRef<number>(0);
   const [activeTab, setActiveTab] = useState<string>('activeAlarms');
   const [frequence, setFrequence] = useState<number>(0);
   const [confirmLoading, setConfirmLoading] = useState(false);
@@ -171,12 +172,20 @@ const Alert: React.FC<ViewModalProps> = ({
     pagination.pageSize,
   ]);
 
+  useEffect(() => {
+    return () => {
+      abortControllerRef.current?.abort();
+      clearTimer();
+    };
+  }, []);
+
   const clearTimer = () => {
     if (timerRef.current) clearInterval(timerRef.current);
     timerRef.current = null;
   };
 
   const changeTab = (val: string) => {
+    abortControllerRef.current?.abort();
     setActiveTab(val);
   };
 
@@ -211,6 +220,10 @@ const Alert: React.FC<ViewModalProps> = ({
   };
 
   const getAssetInsts = async (type: string, text?: string) => {
+    abortControllerRef.current?.abort();
+    const abortController = new AbortController();
+    abortControllerRef.current = abortController;
+    const currentRequestId = ++requestIdRef.current;
     const params: any = getParams();
     if (text) {
       params.content = '';
@@ -224,14 +237,19 @@ const Alert: React.FC<ViewModalProps> = ({
     }
     try {
       setTableLoading(type !== 'timer');
-      const data = await getMonitorAlert(params);
+      const data = await getMonitorAlert(params, {
+        signal: abortController.signal,
+      });
+      if (currentRequestId !== requestIdRef.current) return;
       setTableData(data.results);
       setPagination((pre) => ({
         ...pre,
         total: data.count,
       }));
     } finally {
-      setTableLoading(false);
+      if (currentRequestId === requestIdRef.current) {
+        setTableLoading(false);
+      }
     }
   };
 

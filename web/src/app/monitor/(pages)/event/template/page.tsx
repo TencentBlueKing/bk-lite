@@ -1,5 +1,5 @@
 'use client';
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import useApiClient from '@/utils/request';
 import useMonitorApi from '@/app/monitor/api';
 import useEventApi from '@/app/monitor/api/event';
@@ -18,6 +18,8 @@ const Template: React.FC = () => {
   const searchParams = useSearchParams();
   const objId = searchParams.get('objId');
   const router = useRouter();
+  const templateAbortControllerRef = useRef<AbortController | null>(null);
+  const templateRequestIdRef = useRef<number>(0);
   const [tableLoading, setTableLoading] = useState<boolean>(false);
   const [treeLoading, setTreeLoading] = useState<boolean>(false);
   const [treeData, setTreeData] = useState<TreeItem[]>([]);
@@ -37,18 +39,36 @@ const Template: React.FC = () => {
     }
   }, [objectId]);
 
+  useEffect(() => {
+    return () => {
+      cancelAllRequests();
+    };
+  }, []);
+
+  const cancelAllRequests = () => {
+    templateAbortControllerRef.current?.abort();
+  };
+
   const handleObjectChange = async (id: string) => {
+    cancelAllRequests();
     setObjectId(id);
   };
 
   const getAssetInsts = async (objectId: React.Key) => {
+    templateAbortControllerRef.current?.abort();
+    const abortController = new AbortController();
+    templateAbortControllerRef.current = abortController;
+    const currentRequestId = ++templateRequestIdRef.current;
     try {
       setTableLoading(true);
       const monitorName = findLabelById(treeData, objectId as string);
       const params = {
         monitor_object_name: monitorName,
       };
-      const data = await getPolicyTemplate(params);
+      const data = await getPolicyTemplate(params, {
+        signal: abortController.signal,
+      });
+      if (currentRequestId !== templateRequestIdRef.current) return;
       const list = data.map((item: TableDataItem, index: number) => ({
         ...item,
         id: index,
@@ -57,7 +77,9 @@ const Template: React.FC = () => {
       }));
       setTableData(list);
     } finally {
-      setTableLoading(false);
+      if (currentRequestId === templateRequestIdRef.current) {
+        setTableLoading(false);
+      }
     }
   };
 

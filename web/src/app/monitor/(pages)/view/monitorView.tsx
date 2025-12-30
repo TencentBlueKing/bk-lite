@@ -305,11 +305,9 @@ const MonitorView: React.FC<ViewModalProps> = ({
     if (loadedMetricIds.has(metric.id) && !cancelledMetricIds.has(metric.id)) {
       return;
     }
-
     if (loadingMetricIds.has(metric.id)) {
       return;
     }
-
     const isCancelledRequest = cancelledMetricIds.has(metric.id);
     if (isCancelledRequest) {
       setCancelledMetricIds((prev) => {
@@ -318,25 +316,17 @@ const MonitorView: React.FC<ViewModalProps> = ({
         return newSet;
       });
     }
-
     const abortController = new AbortController();
-
     activeRequestsRef.current.set(metric.id, abortController);
-
     manageRequestQueue(metric.id);
-
     const currentController = activeRequestsRef.current.get(metric.id);
     if (!currentController || currentController.signal.aborted) {
       return;
     }
-
     setLoadingMetricIds((prev) => new Set(prev).add(metric.id));
-
     let response;
-
     try {
       const params = getParams(metric, form?.instance_id_values || []);
-
       response = await get(`/monitor/api/metrics_instance/query_range/`, {
         params,
         signal: abortController.signal,
@@ -345,10 +335,8 @@ const MonitorView: React.FC<ViewModalProps> = ({
       if (error.name === 'AbortError') {
         return;
       }
-
       return;
     }
-
     try {
       const instanceRow = [
         {
@@ -359,18 +347,9 @@ const MonitorView: React.FC<ViewModalProps> = ({
           title: metric?.display_name || '--',
         },
       ];
-
-      let chartData = [];
-      if (response && response.data && response.data.result) {
-        chartData = response.data.result;
-      } else if (response && response.data) {
-        chartData = Array.isArray(response.data) ? response.data : [];
-      } else if (Array.isArray(response)) {
-        chartData = response;
-      }
-
+      const chartData = response?.data?.result || [];
+      const displayUnit = response?.data?.unit || '';
       const viewData = renderChart(chartData, instanceRow);
-
       setMetricData((prevData) => {
         const updatedData = prevData.map((group) => ({
           ...group,
@@ -378,15 +357,14 @@ const MonitorView: React.FC<ViewModalProps> = ({
             item.id === metric.id
               ? {
                 ...item,
-                viewData: viewData,
+                displayUnit,
+                viewData,
               }
               : item
           ),
         }));
-
         return updatedData;
       });
-
       // 同时更新originMetricData，保持数据同步
       setOriginMetricData((prevData) => {
         const updatedData = prevData.map((group) => ({
@@ -395,20 +373,18 @@ const MonitorView: React.FC<ViewModalProps> = ({
             item.id === metric.id
               ? {
                 ...item,
-                viewData: viewData,
+                displayUnit,
+                viewData,
               }
               : item
           ),
         }));
-
         return updatedData;
       });
-
       setLoadedMetricIds((prev) => {
         const newSet = new Set(prev).add(metric.id);
         return newSet;
       });
-
       setCancelledMetricIds((prev) => {
         if (prev.has(metric.id)) {
           const newSet = new Set(prev);
@@ -417,7 +393,6 @@ const MonitorView: React.FC<ViewModalProps> = ({
         }
         return prev;
       });
-
       if (needsRefreshOnExpand) {
         setNeedsRefreshOnExpand(false);
       }
@@ -430,7 +405,6 @@ const MonitorView: React.FC<ViewModalProps> = ({
         });
         return;
       }
-
       return;
     } finally {
       if (activeRequestsRef.current.get(metric.id) === abortController) {
@@ -439,13 +413,11 @@ const MonitorView: React.FC<ViewModalProps> = ({
           (id) => id !== metric.id
         );
       }
-
       setLoadingMetricIds((prev) => {
         const newSet = new Set(prev);
         newSet.delete(metric.id);
         return newSet;
       });
-
       if (abortController.signal.aborted) {
         setLoadedMetricIds((prev) => {
           const newSet = new Set(prev);

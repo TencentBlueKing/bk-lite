@@ -17,10 +17,7 @@ class ProtocolCollectMetrics(CollectBase):
         data = PROTOCOL_METRIC_MAP[self.model_id]
         return data
 
-    def prom_sql(self):
-        sql = " or ".join(
-            "{}{{instance_id=~\"^{}_.+\"}}".format(m, self.task_id) for m in self._metrics)
-        return sql
+
 
     def get_inst_name(self, data):
         return f"{data['ip_addr']}-{self.model_id}-{data['port']}"

@@ -6,6 +6,7 @@ from rest_framework import status
 from rest_framework.response import Response
 from django.db import transaction
 from django.core.files.base import ContentFile
+from django.http import FileResponse
 from django_minio_backend import MinioBackend, iso_date_prefix
 from apps.mlops.utils.webhook_client import WebhookClient, WebhookError, WebhookConnectionError, WebhookTimeoutError
 from pathlib import Path
@@ -16,6 +17,7 @@ import pandas as pd
 import numpy as np
 import tempfile
 import shutil
+from io import BytesIO
 from datetime import datetime, timedelta
 from config.components.mlflow import MLFLOW_TRACKER_URL
 
@@ -212,8 +214,8 @@ class TimeSeriesPredictTrainJobViewSet(ModelViewSet):
             
             logger.info(f"停止训练任务: {job_id}")
             
-            # 调用 WebhookClient 停止任务（停止后删除容器）
-            result = WebhookClient.stop(job_id, remove=True)
+            # 调用 WebhookClient 停止任务（默认删除容器）
+            result = WebhookClient.stop(job_id)
             
             # 更新任务状态
             train_job.status = 'pending'
@@ -538,21 +540,20 @@ class TimeSeriesPredictTrainJobViewSet(ModelViewSet):
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
     
-    @action(detail=False, methods=['get'], url_path='download_model/(?P<run_id>.+?)')
+    @action(detail=False, methods=['get'], url_path='download_model/(?P<run_id>[^/]+)')
     @HasPermission("timeseries_predict_train_jobs-View")
     def download_model(self, request, run_id: str):
         """
-        下载 MLflow 模型（MinIO 预签名 URL）
+        从 MLflow 下载模型并直接返回 ZIP 文件
         
-        基于 Model Registry 和 Run ID 下载模型
-        返回 MinIO 预签名 URL，前端直接下载
+        简化版本：直接从 MLflow 拉取 artifact → 打包 → 浏览器下载
         """
         try:
             # 1. 设置 MLflow
             mlflow.set_tracking_uri(MLFLOW_TRACKER_URL)
             mlflow_client = mlflow.tracking.MlflowClient()
             
-            # 2. 获取 run 信息
+            # 2. 验证 run 是否存在
             try:
                 run = mlflow_client.get_run(run_id)
             except Exception as e:
@@ -577,7 +578,7 @@ class TimeSeriesPredictTrainJobViewSet(ModelViewSet):
                     status=status.HTTP_500_INTERNAL_SERVER_ERROR
                 )
             
-            # 4. 生成文件名（基于 Model Registry）
+            # 4. 生成文件名
             run_name = run.data.tags.get('mlflow.runName', 'unknown')
             algorithm = run.data.params.get('algorithm', 'unknown')
             
@@ -585,7 +586,6 @@ class TimeSeriesPredictTrainJobViewSet(ModelViewSet):
             model_name = None
             model_version = None
             try:
-                # 检查 run 是否关联了注册模型
                 model_versions = mlflow_client.search_model_versions(f"run_id='{run_id}'")
                 if model_versions:
                     model_name = model_versions[0].name
@@ -599,184 +599,67 @@ class TimeSeriesPredictTrainJobViewSet(ModelViewSet):
             else:
                 filename = f"{algorithm}_{run_name}_{run_id[:8]}.zip"
             
-            # 5. 检查 MinIO 缓存
-            bucket_name = "munchkin-public"
-            cache_key = f"models/cache/{run_id}.zip"
+            logger.info(f"开始下载模型: run_id={run_id}, filename={filename}")
             
-            minio_client = self._get_minio_client()
-            
-            # 尝试获取缓存的模型
-            cached = False
-            try:
-                stat = minio_client.stat_object(bucket_name, cache_key)
-                # 缓存存在，直接生成预签名 URL
-                logger.info(f"模型缓存命中: {cache_key} (大小: {stat.size} 字节)")
-                cached = True
-                presigned_url = minio_client.presigned_get_object(
-                    bucket_name,
-                    cache_key,
-                    expires=timedelta(hours=24)
-                )
-                
-                return Response({
-                    'status': 'success',
-                    'run_id': run_id,
-                    'model_info': {
-                        'name': model_name or run_name,
-                        'version': model_version or 'N/A',
-                        'algorithm': algorithm,
-                        'status': run.info.status
-                    },
-                    'download': {
-                        'url': presigned_url,
-                        'expires_at': (datetime.now() + timedelta(hours=24)).isoformat(),
-                        'size_mb': round(stat.size / 1024 / 1024, 2),
-                        'filename': filename,
-                        'cached': True
-                    }
-                })
-            except Exception:
-                # 缓存未命中，继续打包上传流程
-                logger.info(f"模型缓存未命中，开始打包: {run_id}")
-            
-            # 6. 下载模型到临时目录并打包
+            # 5. 下载模型并打包
             with tempfile.TemporaryDirectory() as tmpdir:
                 try:
-                    download_start = datetime.now()
-                    logger.info(f"开始下载模型 artifacts: run_id={run_id}")
-                    
-                    # 优化：尝试直接从 MinIO 下载，绕过 MLflow
-                    artifact_uri = run.info.artifact_uri
-                    logger.info(f"Artifact URI: {artifact_uri}")
-                    
-                    # 解析 artifact URI 并尝试直接访问 MinIO
-                    # MLflow 可能使用 mlflow-artifacts: 或 s3:// 格式
-                    direct_download_success = False
-                    
-                    # mlflow-artifacts:/ 代理模式，使用 MLflow 下载
-                    # 注: 此模式性能较慢，建议配置 MLflow --default-artifact-root s3://bucket
-                    
-                    if artifact_uri.startswith('s3://'):
-                        # 直接是 S3 URI，可以直接解析
-                        try:
-                            s3_path = artifact_uri.replace('s3://', '').split('/', 1)
-                            bucket = s3_path[0]
-                            object_prefix = s3_path[1] if len(s3_path) > 1 else ''
-                            model_prefix = f"{object_prefix}/model"
-                            
-                            logger.info(f"直接从 MinIO 下载: bucket={bucket}, prefix={model_prefix}")
-                            
-                            local_path = os.path.join(tmpdir, 'model')
-                            os.makedirs(local_path, exist_ok=True)
-                            
-                            storage = MinioBackend(bucket_name=bucket)
-                            objects = list(storage.client.list_objects(bucket, prefix=model_prefix, recursive=True))
-                            
-                            if objects:
-                                for obj in objects:
-                                    relative_path = obj.object_name[len(model_prefix):].lstrip('/')
-                                    if not relative_path:
-                                        continue
-                                    
-                                    local_file_path = os.path.join(local_path, relative_path)
-                                    os.makedirs(os.path.dirname(local_file_path), exist_ok=True)
-                                    storage.client.fget_object(bucket, obj.object_name, local_file_path)
-                                
-                                download_elapsed = (datetime.now() - download_start).total_seconds()
-                                logger.info(f"模型下载完成: {local_path} (耗时: {download_elapsed:.2f}秒, 直接从MinIO)")
-                                direct_download_success = True
-                        except Exception as e:
-                            logger.warning(f"直接从 MinIO 下载失败，降级使用 MLflow: {e}")
-                    
-                    # 降级：使用 MLflow 原始方法
-                    if not direct_download_success:
-                        logger.info(f"使用 MLflow 下载方式: {artifact_uri}")
-                        local_path = mlflow.artifacts.download_artifacts(
-                            run_id=run_id,
-                            artifact_path="model",
-                            dst_path=tmpdir
-                        )
-                        download_elapsed = (datetime.now() - download_start).total_seconds()
-                        logger.warning(f"模型下载完成: {local_path} (耗时: {download_elapsed:.2f}秒, MLflow方式 - 较慢)")
+                    # 从 MLflow 下载 model artifact
+                    logger.info(f"从 MLflow 下载模型 artifacts...")
+                    local_path = mlflow.artifacts.download_artifacts(
+                        run_id=run_id,
+                        artifact_path="model",
+                        dst_path=tmpdir
+                    )
+                    logger.info(f"模型下载完成: {local_path}")
                     
                     # 打包成 ZIP
-                    zip_start = datetime.now()
+                    logger.info(f"开始打包模型...")
                     zip_base = os.path.join(tmpdir, run_id)
-                    zip_path = f"{zip_base}.zip"
                     shutil.make_archive(
                         zip_base,
                         'zip',
                         local_path
                     )
-                    zip_elapsed = (datetime.now() - zip_start).total_seconds()
-                    logger.info(f"模型打包完成: {zip_path} (耗时: {zip_elapsed:.2f}秒)")
+                    zip_path = f"{zip_base}.zip"
                     
                     # 获取文件大小
                     file_size = os.path.getsize(zip_path)
-                    logger.info(f"模型文件大小: {round(file_size / 1024 / 1024, 2)} MB")
+                    logger.info(f"模型打包完成: {zip_path}, 大小: {round(file_size / 1024 / 1024, 2)} MB")
                     
-                    # 上传到 MinIO
-                    upload_start = datetime.now()
-                    logger.info(f"上传模型到 MinIO: {bucket_name}/{cache_key}")
-                    minio_client.fput_object(
-                        bucket_name,
-                        cache_key,
-                        zip_path,
-                        content_type="application/zip"
+                    # 6. 读取文件到内存（避免 Windows 文件句柄占用问题）
+                    logger.info(f"读取文件到内存...")
+                    with open(zip_path, 'rb') as f:
+                        file_data = f.read()
+                    
+                    logger.info(f"文件已读取到内存，大小: {len(file_data)} 字节")
+                    
+                    # 7. 使用 BytesIO 包装，文件句柄已关闭，临时目录可以正常清理
+                    file_obj = BytesIO(file_data)
+                    
+                    response = FileResponse(
+                        file_obj,
+                        content_type='application/zip',
+                        as_attachment=True,
+                        filename=filename
                     )
-                    upload_elapsed = (datetime.now() - upload_start).total_seconds()
-                    logger.info(f"模型上传成功: {cache_key} (耗时: {upload_elapsed:.2f}秒)")
-                    logger.info(f"总耗时: 下载={download_elapsed:.2f}s, 打包={zip_elapsed:.2f}s, 上传={upload_elapsed:.2f}s")
+                    
+                    logger.info(f"模型下载请求完成: {filename}")
+                    return response
                     
                 except Exception as e:
-                    logger.error(f"模型打包或上传失败: {e}", exc_info=True)
+                    logger.error(f"模型下载或打包失败: {e}", exc_info=True)
                     return Response(
                         {'error': f'模型处理失败: {str(e)}'},
                         status=status.HTTP_500_INTERNAL_SERVER_ERROR
                     )
             
-            # 7. 生成预签名 URL
-            presigned_url = minio_client.presigned_get_object(
-                bucket_name,
-                cache_key,
-                expires=timedelta(hours=24)
-            )
-            
-            # 8. 返回结果
-            return Response({
-                'status': 'success',
-                'run_id': run_id,
-                'model_info': {
-                    'name': model_name or run_name,
-                    'version': model_version or 'N/A',
-                    'algorithm': algorithm,
-                    'status': run.info.status
-                },
-                'download': {
-                    'url': presigned_url,
-                    'expires_at': (datetime.now() + timedelta(hours=24)).isoformat(),
-                    'size_mb': round(file_size / 1024 / 1024, 2),
-                    'filename': filename,
-                    'cached': False
-                },
-                'instructions': '点击 URL 直接下载，链接 24 小时有效。固定版本模型会缓存，后续下载无需等待。'
-            })
-            
         except Exception as e:
-            logger.error(f"生成模型下载链接失败: {str(e)}", exc_info=True)
+            logger.error(f"下载模型失败: {str(e)}", exc_info=True)
             return Response(
-                {'error': f'生成下载链接失败: {str(e)}'},
+                {'error': f'下载模型失败: {str(e)}'},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
-    
-    def _get_minio_client(self):
-        """
-        获取 MinIO 客户端实例
-        
-        使用 MinioBackend 的内部 client 来访问原生 MinIO API
-        """
-        storage = MinioBackend(bucket_name="munchkin-public")
-        return storage.client
 
 
 class TimeSeriesPredictTrainHistoryViewSet(ModelViewSet):
@@ -854,41 +737,57 @@ class TimeSeriesPredictServingViewSet(ModelViewSet):
     def list(self, request, *args, **kwargs):
         """列表查询，实时同步容器状态"""
         response = super().list(request, *args, **kwargs)
+
+        if isinstance(response.data, dict):
+            servings = response.data.get('items', [])
+        else:
+            servings = response.data
         
-        # 批量查询容器状态
-        servings = response.data.get('results', [])
-        if servings:
-            serving_ids = [f"TimeseriesPredict_Serving_{s['id']}" for s in servings]
-            try:
-                container_statuses = WebhookClient.get_status(serving_ids)
-                status_map = {s.get('id'): s for s in container_statuses}
+        if not servings:
+            return response
+        
+        serving_ids = [f"TimeseriesPredict_Serving_{s['id']}" for s in servings]
+        
+        try:
+            # 批量查询
+            result = WebhookClient.get_status(serving_ids)
+            status_map = {s.get('id'): s for s in result}
+            
+            updates = []
+            for serving_data in servings:
+                serving_id = f"TimeseriesPredict_Serving_{serving_data['id']}"
+                container_info = status_map.get(serving_id)
                 
-                # 合并状态到返回数据 + 批量更新数据库
-                updates = []
-                for serving_data in servings:
-                    serving_id = f"TimeseriesPredict_Serving_{serving_data['id']}"
-                    container_info = status_map.get(serving_id, {
-                        "status": "error",
-                        "id": serving_id,
-                        "message": "未返回状态信息"
-                    })
+                if container_info:
+                    # 直接使用 webhookd 响应
                     serving_data['container_info'] = container_info
                     
-                    # 收集待更新的对象
+                    # 同步到数据库
                     serving_obj = TimeSeriesPredictServing.objects.get(id=serving_data['id'])
                     serving_obj.container_info = container_info
                     updates.append(serving_obj)
-                
-                # 批量更新数据库
-                if updates:
-                    TimeSeriesPredictServing.objects.bulk_update(updates, ['container_info'])
-                    
-            except WebhookError as e:
-                logger.error(f"查询容器状态失败: {e}")
-                return Response(
-                    {'error': f'无法连接 webhookd 服务: {e}'},
-                    status=status.HTTP_500_INTERNAL_SERVER_ERROR
-                )
+                else:
+                    # webhookd 没返回这个容器的状态（不应该发生）
+                    serving_data['container_info'] = {
+                        "status": "error",
+                        "state": "unknown",
+                        "message": "webhookd 未返回此容器状态"
+                    }
+            
+            if updates:
+                TimeSeriesPredictServing.objects.bulk_update(updates, ['container_info'])
+        
+        except WebhookError as e:
+            logger.error(f"查询容器状态失败: {e}")
+            # 降级：使用数据库中的旧值，添加错误标记
+            for serving_data in servings:
+                old_info = serving_data.get('container_info') or {}
+                serving_data['container_info'] = {
+                    **old_info,
+                    "status": "error",
+                    "_query_failed": True,
+                    "_error": str(e)
+                }
         
         return response
 
@@ -898,26 +797,37 @@ class TimeSeriesPredictServingViewSet(ModelViewSet):
         response = super().retrieve(request, *args, **kwargs)
         
         serving_id = f"TimeseriesPredict_Serving_{response.data['id']}"
+        
         try:
-            container_statuses = WebhookClient.get_status([serving_id])
-            container_info = container_statuses[0] if container_statuses else {
-                "status": "error",
-                "id": serving_id,
-                "message": "未返回状态信息"
-            }
+            result = WebhookClient.get_status([serving_id])
+            container_info = result[0] if result else None
             
-            response.data['container_info'] = container_info
-            
-            # 更新数据库
-            TimeSeriesPredictServing.objects.filter(id=response.data['id']).update(
-                container_info=container_info
-            )
+            if container_info:
+                # 直接使用 webhookd 响应
+                response.data['container_info'] = container_info
+                
+                # 更新数据库
+                TimeSeriesPredictServing.objects.filter(id=response.data['id']).update(
+                    container_info=container_info
+                )
+            else:
+                # webhookd 没返回状态
+                response.data['container_info'] = {
+                    "status": "error",
+                    "state": "unknown",
+                    "message": "webhookd 未返回容器状态"
+                }
+        
         except WebhookError as e:
             logger.error(f"查询容器状态失败: {e}")
-            return Response(
-                {'error': f'无法连接 webhookd 服务: {e}'},
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR
-            )
+            # 降级：使用数据库中的旧值，添加错误标记
+            old_info = response.data.get('container_info') or {}
+            response.data['container_info'] = {
+                **old_info,
+                "status": "error",
+                "_query_failed": True,
+                "_error": str(e)
+            }
         
         return response
 
@@ -968,21 +878,19 @@ class TimeSeriesPredictServingViewSet(ModelViewSet):
             # 构建 serving ID
             container_id = f"TimeseriesPredict_Serving_{serving.id}"
             
-            logger.info(f"自动启动 serving 服务: {container_id}, Model URI: {model_uri}")
+            logger.info(f"自动启动 serving 服务: {container_id}, Model URI: {model_uri}, Port: {serving.port or 'auto'}")
             
             try:
                 # 调用 WebhookClient 启动服务
-                result = WebhookClient.serve(container_id, mlflow_tracking_uri, model_uri)
+                result = WebhookClient.serve(container_id, mlflow_tracking_uri, model_uri, port=serving.port)
                 
-                # 启动成功
-                serving.status = 'active'
+                # 启动成功，仅更新容器信息
                 serving.container_info = result
-                serving.save(update_fields=['status', 'container_info'])
+                serving.save(update_fields=['container_info'])
                 
                 logger.info(f"Serving 服务已自动启动: {container_id}, Port: {result.get('port')}")
                 
-                # 更新返回数据
-                response.data['status'] = 'active'
+                # 更新返回数据（status 由用户控制，不修改）
                 response.data['container_info'] = result
                 response.data['message'] = "服务已创建并启动"
                 
@@ -990,25 +898,23 @@ class TimeSeriesPredictServingViewSet(ModelViewSet):
                 error_msg = str(e)
                 logger.error(f"自动启动 serving 失败: {error_msg}")
                 
-                # 处理容器已存在的情况（同步状态）
-                if '已存在' in error_msg or '已在运行' in error_msg or 'already exists' in error_msg.lower():
+                # 处理容器已存在的情况（同步容器状态）
+                if e.code == 'CONTAINER_ALREADY_EXISTS':
                     try:
-                        container_statuses = WebhookClient.get_status([container_id])
-                        container_info = container_statuses[0] if container_statuses else {
+                        result = WebhookClient.get_status([container_id])
+                        container_info = result[0] if result else {
                             "status": "error",
                             "id": container_id,
                             "message": "无法查询容器状态"
                         }
                         
-                        actual_state = container_info.get('state', 'unknown')
-                        serving.status = 'active' if actual_state == 'running' else 'inactive'
+                        # 仅更新容器信息，不修改 status
                         serving.container_info = container_info
-                        serving.save(update_fields=['status', 'container_info'])
+                        serving.save(update_fields=['container_info'])
                         
-                        response.data['status'] = serving.status
                         response.data['container_info'] = container_info
-                        response.data['message'] = "服务已创建，检测到容器已存在并同步状态"
-                        response.data['warning'] = "数据库状态与实际不一致，已自动修复"
+                        response.data['message'] = "服务已创建，检测到容器已存在并同步容器状态"
+                        response.data['warning'] = "容器已存在，已同步容器信息"
                     except WebhookError:
                         serving.container_info = {
                             "status": "error",
@@ -1039,44 +945,77 @@ class TimeSeriesPredictServingViewSet(ModelViewSet):
         """
         更新 serving 配置，自动检测并重启容器
         
-        如果更新了 model_version 或 time_series_predict_train_job，
-        会先删除旧容器，再用新配置启动容器
+        基于实际容器运行状态决策：
+        - 容器 running + 配置变更 → 自动重启
+        - 容器非 running → 仅更新数据库，用户自行决定是否启动
         """
         instance = self.get_object()
         
-        # 检测是否更新了影响容器的字段
+        # 保存旧值用于判断变更
+        old_port = instance.port
+        old_model_version = instance.model_version
+        old_train_job_id = instance.time_series_predict_train_job.id
+        
+        # 检测是否更新了影响容器的字段（基于请求数据与旧值对比）
         model_version_changed = (
             'model_version' in request.data and 
-            str(request.data['model_version']) != str(instance.model_version)
+            str(request.data['model_version']) != str(old_model_version)
         )
         train_job_changed = (
             'time_series_predict_train_job' in request.data and 
-            int(request.data['time_series_predict_train_job']) != instance.time_series_predict_train_job.id
+            int(request.data['time_series_predict_train_job']) != old_train_job_id
+        )
+        port_changed = (
+            'port' in request.data and 
+            request.data.get('port') != old_port
         )
         
-        need_restart = model_version_changed or train_job_changed
-        was_running = instance.status == 'active'
         container_id = f"TimeseriesPredict_Serving_{instance.id}"
         
-        # 如果需要重启且当前正在运行，先删除旧容器
-        if need_restart and was_running:
+        # 获取容器实际状态（更新前）
+        container_state = instance.container_info.get('state')
+        container_port = instance.container_info.get('port')
+        
+        # 更新数据库
+        response = super().update(request, *args, **kwargs)
+        instance.refresh_from_db()
+        
+        # 只有容器在运行时才考虑重启
+        if container_state != 'running':
+            return response
+        
+        # 决策：是否需要重启
+        need_restart = False
+        
+        # 1. model/train_job 变更，必须重启
+        if model_version_changed or train_job_changed:
+            need_restart = True
+        
+        # 2. 仅 port 变更，检查策略
+        elif port_changed:
+            new_port = instance.port
+            if new_port is None and old_port is not None:
+                # 有值 → None：不重启（当前端口视为自动分配，下次再应用）
+                need_restart = False
+            elif new_port is not None and old_port is None:
+                # None → 有值：需要重启（用户明确要指定端口）
+                need_restart = True
+            elif new_port is not None and old_port is not None:
+                # 有值 → 另一个有值：检查是否与实际端口一致
+                if container_port and str(new_port) != str(container_port):
+                    need_restart = True
+        
+        # 如果需要重启，先删除旧容器
+        if need_restart:
             try:
                 logger.info(f"配置变更需要重启，删除旧容器: {container_id}")
                 WebhookClient.remove(container_id)
                 logger.info(f"旧容器已删除: {container_id}")
             except WebhookError as e:
                 logger.warning(f"删除旧容器失败（可能已不存在）: {e}")
-                # 继续执行，尝试更新配置
-        
-        # 更新配置
-        response = super().update(request, *args, **kwargs)
-        
-        # 如果需要重启且之前在运行，自动启动新容器
-        if need_restart and was_running:
+                # 继续执行，尝试启动新容器
+            
             try:
-                # 重新获取实例（已更新配置）
-                instance.refresh_from_db()
-                
                 # 获取环境变量
                 mlflow_tracking_uri = os.getenv("MLFLOW_TRACKER_URL", "")
                 if not mlflow_tracking_uri:
@@ -1085,35 +1024,31 @@ class TimeSeriesPredictServingViewSet(ModelViewSet):
                 # 解析新的 model_uri
                 model_uri = self._resolve_model_uri(instance)
                 
-                logger.info(f"使用新配置启动容器: {container_id}, Model URI: {model_uri}")
+                logger.info(f"使用新配置启动容器: {container_id}, Model URI: {model_uri}, Port: {instance.port or 'auto'}")
                 
                 # 启动新容器
-                result = WebhookClient.serve(container_id, mlflow_tracking_uri, model_uri)
+                result = WebhookClient.serve(container_id, mlflow_tracking_uri, model_uri, port=instance.port)
                 
-                # 更新状态
-                instance.status = 'active'
+                # 更新容器信息（status 由用户控制，不修改）
                 instance.container_info = result
-                instance.save(update_fields=['status', 'container_info'])
+                instance.save(update_fields=['container_info'])
                 
                 logger.info(f"新容器已启动: {container_id}, Port: {result.get('port')}")
                 
                 # 更新返回数据
-                response.data['status'] = 'active'
                 response.data['container_info'] = result
                 response.data['message'] = "配置已更新并重启服务"
                 
             except Exception as e:
                 logger.error(f"自动重启失败: {str(e)}", exc_info=True)
                 
-                # 启动失败，更新状态为 inactive
-                instance.status = 'inactive'
+                # 启动失败，仅更新容器信息
                 instance.container_info = {
                     "status": "error",
                     "message": f"配置已更新但重启失败: {str(e)}"
                 }
-                instance.save(update_fields=['status', 'container_info'])
+                instance.save(update_fields=['container_info'])
                 
-                response.data['status'] = 'inactive'
                 response.data['container_info'] = instance.container_info
                 response.data['message'] = f"配置已更新但重启失败: {str(e)}"
                 response.data['warning'] = "请手动调用 start 接口重新启动服务"
@@ -1149,16 +1084,15 @@ class TimeSeriesPredictServingViewSet(ModelViewSet):
             # 构建 serving ID
             serving_id = f"TimeseriesPredict_Serving_{serving.id}"
             
-            logger.info(f"启动 serving 服务: {serving_id}, Model URI: {model_uri}")
+            logger.info(f"启动 serving 服务: {serving_id}, Model URI: {model_uri}, Port: {serving.port or 'auto'}")
             
             try:
                 # 调用 WebhookClient 启动服务
-                result = WebhookClient.serve(serving_id, mlflow_tracking_uri, model_uri)
+                result = WebhookClient.serve(serving_id, mlflow_tracking_uri, model_uri, port=serving.port)
                 
-                # 正常启动成功
-                serving.status = 'active'
+                # 正常启动成功，仅更新容器信息
                 serving.container_info = result
-                serving.save(update_fields=['status', 'container_info'])
+                serving.save(update_fields=['container_info'])
                 
                 logger.info(f"Serving 服务已启动: {serving_id}, Port: {result.get('port')}")
                 
@@ -1172,29 +1106,27 @@ class TimeSeriesPredictServingViewSet(ModelViewSet):
                 error_msg = str(e)
                 
                 # 处理容器已存在的情况
-                if '已存在' in error_msg or '已在运行' in error_msg or 'already exists' in error_msg.lower():
-                    logger.warning(f"检测到容器已存在，同步状态: {serving_id}")
+                if e.code == 'CONTAINER_ALREADY_EXISTS':
+                    logger.warning(f"检测到容器已存在，同步容器信息: {serving_id}")
                     try:
                         # 查询当前容器状态
-                        container_statuses = WebhookClient.get_status([serving_id])
-                        container_info = container_statuses[0] if container_statuses else {
+                        result = WebhookClient.get_status([serving_id])
+                        container_info = result[0] if result else {
                             "status": "error",
                             "id": serving_id,
                             "message": "无法查询容器状态"
                         }
                         
-                        # 根据实际状态更新数据库
-                        actual_state = container_info.get('state', 'unknown')
-                        serving.status = 'active' if actual_state == 'running' else 'inactive'
+                        # 仅更新容器信息，不修改 status
                         serving.container_info = container_info
-                        serving.save(update_fields=['status', 'container_info'])
+                        serving.save(update_fields=['container_info'])
                         
-                        logger.info(f"容器状态已同步: {actual_state}")
+                        logger.info(f"容器信息已同步: {container_info.get('state')}")
                         
                         return Response({
-                            'message': '检测到容器已存在，已同步状态',
+                            'message': '检测到容器已存在，已同步容器信息',
                             'container_info': container_info,
-                            'warning': '数据库状态与实际不一致，已自动修复'
+                            'warning': '容器已存在'
                         })
                     except WebhookError as sync_error:
                         logger.error(f"同步容器状态失败: {sync_error}")
@@ -1231,7 +1163,7 @@ class TimeSeriesPredictServingViewSet(ModelViewSet):
     @HasPermission("timeseries_predict_servings-Stop")
     def stop(self, request, *args, **kwargs):
         """
-        停止 serving 服务（保留容器）
+        停止 serving 服务（停止并删除容器）
         """
         try:
             serving = self.get_object()
@@ -1241,17 +1173,13 @@ class TimeSeriesPredictServingViewSet(ModelViewSet):
             
             logger.info(f"停止 serving 服务: {serving_id}")
             
-            # 调用 WebhookClient 停止服务（保留容器）
-            result = WebhookClient.stop(serving_id, remove=False)
-            
-            # 更新任务状态
-            serving.status = 'inactive'
-            serving.save(update_fields=['status'])
+            # 调用 WebhookClient 停止服务（默认删除容器）
+            result = WebhookClient.stop(serving_id)
             
             logger.info(f"Serving 服务已停止: {serving_id}")
             
             return Response({
-                'message': '服务已停止（容器保留）',
+                'message': '服务已停止并删除',
                 'serving_id': serving_id,
                 'webhook_response': result
             })
@@ -1296,15 +1224,14 @@ class TimeSeriesPredictServingViewSet(ModelViewSet):
             # 调用 WebhookClient 删除容器
             result = WebhookClient.remove(serving_id)
             
-            # 更新状态
-            serving.status = 'inactive'
+            # 更新容器信息（status 由用户控制，不修改）
             serving.container_info = {
                 "status": "success",
                 "id": serving_id,
                 "state": "removed",
                 "message": "容器已删除"
             }
-            serving.save(update_fields=['status', 'container_info'])
+            serving.save(update_fields=['container_info'])
             
             logger.info(f"Serving 容器已删除: {serving_id}")
             
@@ -1334,6 +1261,145 @@ class TimeSeriesPredictServingViewSet(ModelViewSet):
             logger.error(f"删除 serving 容器失败: {str(e)}", exc_info=True)
             return Response(
                 {'error': f'删除容器失败: {str(e)}'},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+    
+    @action(detail=True, methods=['post'], url_path='predict')
+    @HasPermission("timeseries_predict_servings-Predict")
+    def predict(self, request, *args, **kwargs):
+        """
+        调用 serving 服务进行时间序列预测
+        
+        URL: POST /api/v1/mlops/timeseries_predict_servings/{pk}/predict/
+        
+        请求参数:
+            url: 预测服务主机地址（如 http://192.168.1.100，不含端口）
+            data: 历史时间序列数据数组 [{"timestamp": "...", "value": ...}, ...]
+            steps: 预测步数（默认 10）
+        
+        返回格式:
+            预测服务的响应（通常为 {"success": true, "history": [...], "prediction": [...], "metadata": {...}, "error": null}）
+        """
+        try:
+            serving = self.get_object()
+            
+            # 获取参数
+            url = request.data.get('url')
+            data = request.data.get('data')
+            steps = request.data.get('steps', 10)
+            
+            # 参数校验
+            if not url:
+                return Response(
+                    {'error': 'url 参数不能为空'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            
+            if not data:
+                return Response(
+                    {'error': 'data 参数不能为空'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            
+            if not isinstance(data, list):
+                return Response(
+                    {'error': 'data 必须是数组格式'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            
+            # 获取实际运行端口
+            port = serving.container_info.get('port')
+            if not port:
+                return Response(
+                    {'error': '服务端口未配置，请确认服务已启动'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            
+            # 构建预测服务 URL
+            # url: http://192.168.1.100 + port: 38291 -> http://192.168.1.100:38291/predict
+            predict_url = f"{url.rstrip('/')}:{port}/predict"
+            
+            # 构建请求体
+            payload = {
+                "data": data,
+                "config": {"steps": steps}
+            }
+            
+            logger.info(f"调用预测服务: serving_id={serving.id}, url={predict_url}, steps={steps}, data_size={len(data)}")
+            
+            # 发起 HTTP POST 请求
+            response = requests.post(
+                predict_url,
+                json=payload,
+                timeout=60,
+                headers={'Content-Type': 'application/json'}
+            )
+            
+            # 处理响应
+            if response.status_code == 200:
+                result = response.json()
+                
+                # 检查业务层面的 success 状态
+                if result.get('success') is False:
+                    # 预测服务返回失败
+                    error_info = result.get('error') or {}
+                    error_code = error_info.get('code', 'UNKNOWN')
+                    error_message = error_info.get('message', '预测失败')
+                    
+                    logger.error(f"预测服务返回失败: serving_id={serving.id}, code={error_code}, message={error_message}")
+                    return Response(
+                        {
+                            'error': error_message,
+                            'error_code': error_code,
+                            'details': error_info.get('details')
+                        },
+                        status=status.HTTP_400_BAD_REQUEST
+                    )
+                
+                # 预测成功
+                prediction = result.get('prediction') or []
+                prediction_size = len(prediction) if isinstance(prediction, (list, tuple)) else 0
+                logger.info(f"预测成功: serving_id={serving.id}, prediction_size={prediction_size}")
+                return Response(result)
+            else:
+                error_msg = f"预测服务返回错误: HTTP {response.status_code}"
+                try:
+                    error_detail = response.json()
+                    error_msg = f"{error_msg} - {error_detail}"
+                except Exception:
+                    error_msg = f"{error_msg} - {response.text[:200]}"
+                
+                logger.error(f"预测失败: {error_msg}")
+                return Response(
+                    {'error': error_msg},
+                    status=status.HTTP_500_INTERNAL_SERVER_ERROR
+                )
+        
+        except requests.exceptions.Timeout:
+            error_msg = f'预测请求超时（超过 60 秒）'
+            logger.error(f"预测超时: serving_id={serving.id}, url={predict_url}")
+            return Response(
+                {'error': error_msg},
+                status=status.HTTP_504_GATEWAY_TIMEOUT
+            )
+        except requests.exceptions.ConnectionError as e:
+            error_msg = f'无法连接预测服务: {str(e)}'
+            logger.error(f"预测连接失败: serving_id={serving.id}, url={predict_url}, error={e}")
+            return Response(
+                {'error': error_msg},
+                status=status.HTTP_503_SERVICE_UNAVAILABLE
+            )
+        except requests.exceptions.RequestException as e:
+            error_msg = f'预测请求异常: {str(e)}'
+            logger.error(f"预测请求异常: serving_id={serving.id}, error={e}", exc_info=True)
+            return Response(
+                {'error': error_msg},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+        except Exception as e:
+            logger.error(f"预测失败: serving_id={serving.id}, error={str(e)}", exc_info=True)
+            return Response(
+                {'error': f'预测失败: {str(e)}'},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
     
