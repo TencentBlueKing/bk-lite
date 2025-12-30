@@ -151,10 +151,10 @@ const TrainTask = () => {
           title: t(`datasets.anomaly`),
           key: 'anomaly_detection',
         },
-        {
-          title: t(`datasets.rasa`),
-          key: 'rasa'
-        },
+        // {
+        //   title: t(`datasets.rasa`),
+        //   key: 'rasa'
+        // },
         {
           title: t(`datasets.timeseriesPredict`),
           key: 'timeseries_predict',

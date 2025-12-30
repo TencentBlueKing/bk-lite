@@ -1,5 +1,5 @@
 import { LevelMap, Option, } from "@/app/mlops/types";
-import { AlgorithmParam } from "@/app/mlops/types/task";
+import { AlgorithmParam, AlgorithmConfig } from "@/app/mlops/types/task";
 
 const LEVEL_MAP: LevelMap = {
   critical: '#F43B2C',
@@ -99,45 +99,6 @@ const LOG_CLUSTERING_ALGORITHMS_TYPE: Record<string, any> = {
   'LogCluster': {},
 };
 
-const TIMESERIES_PREDICT_ALGORITHMS_PARAMS: Record<string, AlgorithmParam[]> = {
-  // 'Prophet': []
-  'GradientBoosting': [
-    {
-      name: 'metric', type: 'choice', default: ['none'], options: [
-        { label: 'rmse', value: 'rmse' },
-        { label: 'mae', value: 'mae' },
-        { label: 'mape', value: 'mape' }
-      ]
-    },
-    {
-      name: 'learning_rate', type: 'randint', default: [0.01, 0.2]
-    },
-    {
-      name: 'max_depth', type: 'randint', default: [3, 10]
-    },
-    {
-      name: 'min_samples_split', type: 'randint', default: [2, 10]
-    },
-    {
-      name: 'min_samples_leaf', type: 'randint', default: [1, 4]
-    },
-    {
-      name: 'subsample', type: 'randint', default: [0.7, 1.0]
-    },
-    {
-      name: 'lag_features', type: 'randint', default: [6, 12]
-    },
-    { name: 'n_estimators', type: 'randint', default: [100, 500] },
-    {
-      name: 'feature_engineering', type: 'choice', default: ['false'],
-      options: [
-        { label: 'true', value: 'true' },
-        { label: 'false', value: 'false' },
-      ]
-    }
-  ]
-};
-
 const TIMESERIES_PREDICT_ALGORITHMS_TYPE: Record<string, any> = {
   // 'Prophet': {},
   'GradientBoosting': {
@@ -156,7 +117,6 @@ const TIMESERIES_PREDICT_ALGORITHMS_TYPE: Record<string, any> = {
 const ALGORITHMS_PARAMS: Record<string, AlgorithmParam[]> = {
   ...ANOMALY_ALGORITHMS_PARAMS,
   ...LOG_CLUSTERING_ALGORITHMS_PARAMS,
-  ...TIMESERIES_PREDICT_ALGORITHMS_PARAMS
 };
 
 const ALGORITHMS_TYPE: Record<string, any> = {
@@ -538,6 +498,467 @@ const RASA_MENUS = [
   },
 ];
 
+// 时序预测算法配置 - 用于动态表单渲染
+const TIMESERIES_ALGORITHM_CONFIGS: Record<string, AlgorithmConfig> = {
+  GradientBoosting: {
+    algorithm: 'GradientBoosting',
+    groups: {
+      hyperparams: [
+        {
+          title: '训练配置',
+          fields: [
+            {
+              name: ['hyperparams', 'metric'],
+              label: '优化指标',
+              type: 'select',
+              required: true,
+              placeholder: '选择优化目标指标',
+              defaultValue: 'rmse',
+              options: [
+                { label: 'RMSE (均方根误差)', value: 'rmse' },
+                { label: 'MAE (平均绝对误差)', value: 'mae' },
+                { label: 'MAPE (平均绝对百分比误差)', value: 'mape' }
+              ]
+            },
+            {
+              name: ['hyperparams', 'random_state'],
+              label: '随机种子',
+              type: 'inputNumber',
+              required: true,
+              tooltip: '控制随机性，确保实验可复现。相同种子+相同参数=相同结果',
+              placeholder: '例: 42',
+              defaultValue: 42,
+              min: 0
+            }
+          ]
+        },
+        {
+          title: '搜索空间 (Search Space)',
+          subtitle: '树结构参数',
+          fields: [
+            {
+              name: ['hyperparams', 'search_space', 'n_estimators'],
+              label: '树的数量',
+              type: 'stringArray',
+              required: true,
+              placeholder: '例: 50,100,200,300',
+              defaultValue: '50,100,200,300'
+            },
+            {
+              name: ['hyperparams', 'search_space', 'max_depth'],
+              label: '树最大深度',
+              type: 'stringArray',
+              required: true,
+              placeholder: '例: 3,5,7,10',
+              defaultValue: '3,5,7,10'
+            },
+            {
+              name: ['hyperparams', 'search_space', 'learning_rate'],
+              label: '学习率',
+              type: 'stringArray',
+              required: true,
+              placeholder: '例: 0.01,0.05,0.1,0.2',
+              defaultValue: '0.01,0.05,0.1,0.2'
+            }
+          ]
+        },
+        {
+          title: '',
+          subtitle: '采样控制参数',
+          fields: [
+            {
+              name: ['hyperparams', 'search_space', 'min_samples_split'],
+              label: '最小分裂样本数',
+              type: 'stringArray',
+              required: true,
+              placeholder: '例: 2,5,10',
+              defaultValue: '2,5,10'
+            },
+            {
+              name: ['hyperparams', 'search_space', 'min_samples_leaf'],
+              label: '叶节点最小样本数',
+              type: 'stringArray',
+              required: true,
+              placeholder: '例: 1,2,4',
+              defaultValue: '1,2,4'
+            },
+            {
+              name: ['hyperparams', 'search_space', 'subsample'],
+              label: '子采样比例',
+              type: 'stringArray',
+              required: true,
+              placeholder: '例: 0.7,0.8,0.9,1.0',
+              defaultValue: '0.7,0.8,0.9,1.0'
+            }
+          ]
+        },
+        {
+          title: '',
+          subtitle: '特征参数',
+          fields: [
+            {
+              name: ['hyperparams', 'use_feature_engineering'],
+              label: '启用特征工程',
+              type: 'switch',
+              defaultValue: true,
+              layout: 'horizontal',
+              tooltip: '启用完整特征工程（滚动窗口、时间特征等）或仅使用简单滞后特征'
+            },
+            {
+              name: ['hyperparams', 'search_space', 'lag_features'],
+              label: '滞后特征数量',
+              type: 'stringArray',
+              required: true,
+              placeholder: '例: 6,12,24',
+              defaultValue: '6,12,24',
+              tooltip: '仅在 use_feature_engineering=false 时使用'
+            }
+          ]
+        }
+      ],
+      preprocessing: [
+        {
+          title: '数据预处理 (Preprocessing)',
+          fields: [
+            {
+              name: ['preprocessing', 'handle_missing'],
+              label: '缺失值处理',
+              type: 'select',
+              required: true,
+              placeholder: '选择缺失值处理方式',
+              defaultValue: 'interpolate',
+              options: [
+                { label: '线性插值 (interpolate)', value: 'interpolate' },
+                { label: '前向填充 (ffill)', value: 'ffill' },
+                { label: '后向填充 (bfill)', value: 'bfill' },
+                { label: '删除 (drop)', value: 'drop' },
+                { label: '中位数填充 (median)', value: 'median' }
+              ]
+            },
+            {
+              name: ['preprocessing', 'max_missing_ratio'],
+              label: '最大缺失率',
+              type: 'inputNumber',
+              required: true,
+              placeholder: '0.0 - 1.0',
+              defaultValue: 0.3,
+              min: 0,
+              max: 1,
+              step: 0.1
+            },
+            {
+              name: ['preprocessing', 'interpolation_limit'],
+              label: '插值限制',
+              type: 'inputNumber',
+              required: true,
+              placeholder: '最多填充的连续缺失点数',
+              defaultValue: 3,
+              min: 1
+            }
+          ]
+        }
+      ],
+      feature_engineering: [
+        {
+          title: '特征工程 (Feature Engineering)',
+          fields: [
+            {
+              name: ['feature_engineering', 'lag_periods'],
+              label: '滞后期',
+              type: 'stringArray',
+              required: true,
+              placeholder: '例: 1,2,3,7,14',
+              defaultValue: '1,2,3,7,14',
+              dependencies: ['hyperparams', 'use_feature_engineering']
+            },
+            {
+              name: ['feature_engineering', 'rolling_windows'],
+              label: '滚动窗口大小',
+              type: 'stringArray',
+              required: true,
+              placeholder: '例: 7,14,30',
+              defaultValue: '7,14,30',
+              dependencies: ['hyperparams', 'use_feature_engineering']
+            },
+            {
+              name: ['feature_engineering', 'rolling_features'],
+              label: '滚动窗口统计',
+              type: 'multiSelect',
+              required: true,
+              placeholder: '选择统计函数',
+              defaultValue: ['mean', 'std', 'min', 'max'],
+              options: [
+                { label: '均值 (mean)', value: 'mean' },
+                { label: '标准差 (std)', value: 'std' },
+                { label: '最小值 (min)', value: 'min' },
+                { label: '最大值 (max)', value: 'max' },
+                { label: '中位数 (median)', value: 'median' },
+                { label: '求和 (sum)', value: 'sum' }
+              ],
+              dependencies: ['hyperparams', 'use_feature_engineering']
+            },
+            {
+              name: ['feature_engineering', 'use_temporal_features'],
+              label: '时间特征',
+              type: 'switch',
+              defaultValue: true,
+              layout: 'horizontal',
+              dependencies: ['hyperparams', 'use_feature_engineering']
+            },
+            {
+              name: ['feature_engineering', 'use_cyclical_features'],
+              label: '周期性编码',
+              type: 'switch',
+              defaultValue: false,
+              layout: 'horizontal',
+              dependencies: ['hyperparams', 'use_feature_engineering']
+            },
+            {
+              name: ['feature_engineering', 'use_diff_features'],
+              label: '差分特征',
+              type: 'switch',
+              defaultValue: true,
+              layout: 'horizontal',
+              dependencies: ['hyperparams', 'use_feature_engineering']
+            },
+            {
+              name: ['feature_engineering', 'diff_periods'],
+              label: '差分期数',
+              type: 'stringArray',
+              required: true,
+              placeholder: '例: 1',
+              defaultValue: '1',
+              dependencies: ['feature_engineering', 'use_diff_features']
+            }
+          ]
+        }
+      ]
+    }
+  },
+  RandomForest: {
+    algorithm: 'RandomForest',
+    groups: {
+      hyperparams: [
+        {
+          title: '训练配置',
+          fields: [
+            {
+              name: ['hyperparams', 'metric'],
+              label: '优化指标',
+              type: 'select',
+              required: true,
+              placeholder: '选择优化目标指标',
+              defaultValue: 'rmse',
+              options: [
+                { label: 'RMSE (均方根误差)', value: 'rmse' },
+                { label: 'MAE (平均绝对误差)', value: 'mae' },
+                { label: 'MAPE (平均绝对百分比误差)', value: 'mape' }
+              ]
+            },
+            {
+              name: ['hyperparams', 'random_state'],
+              label: '随机种子',
+              type: 'inputNumber',
+              required: true,
+              tooltip: '控制随机性，确保实验可复现。相同种子+相同参数=相同结果',
+              placeholder: '例: 42',
+              defaultValue: 42,
+              min: 0
+            }
+          ]
+        },
+        {
+          title: '搜索空间 (Search Space)',
+          subtitle: '树结构参数',
+          fields: [
+            {
+              name: ['hyperparams', 'search_space', 'n_estimators'],
+              label: '树的数量',
+              type: 'stringArray',
+              required: true,
+              placeholder: '例: 50,100,200,300',
+              defaultValue: '50,100,200,300'
+            },
+            {
+              name: ['hyperparams', 'search_space', 'max_depth'],
+              label: '树最大深度',
+              type: 'stringArray',
+              required: true,
+              placeholder: '例: 3,5,7,10',
+              defaultValue: '3,5,7,10'
+            },
+            {
+              name: ['hyperparams', 'search_space', 'min_samples_split'],
+              label: '最小分裂样本数',
+              type: 'stringArray',
+              required: true,
+              placeholder: '例: 2,5,10',
+              defaultValue: '2,5,10'
+            },
+            {
+              name: ['hyperparams', 'search_space', 'min_samples_leaf'],
+              label: '叶节点最小样本数',
+              type: 'stringArray',
+              required: true,
+              placeholder: '例: 1,2,4',
+              defaultValue: '1,2,4'
+            },
+            {
+              name: ['hyperparams', 'search_space', 'max_features'],
+              label: '最大特征数',
+              type: 'stringArray',
+              required: true,
+              tooltip: 'sqrt=特征数的平方根(推荐)，log2=特征数的对数(更保守)',
+              placeholder: '例: sqrt,log2',
+              defaultValue: 'sqrt,log2'
+            }
+          ]
+        },
+        {
+          title: '',
+          subtitle: '特征参数',
+          fields: [
+            {
+              name: ['hyperparams', 'use_feature_engineering'],
+              label: '启用特征工程',
+              type: 'switch',
+              defaultValue: true,
+              layout: 'horizontal',
+              tooltip: '启用完整特征工程（滚动窗口、时间特征等）或仅使用简单滞后特征'
+            },
+            {
+              name: ['hyperparams', 'search_space', 'lag_features'],
+              label: '滞后特征数量',
+              type: 'stringArray',
+              required: true,
+              placeholder: '例: 6,12,24',
+              defaultValue: '6,12,24',
+              tooltip: '仅在 use_feature_engineering=false 时使用'
+            }
+          ]
+        }
+      ],
+      preprocessing: [
+        {
+          title: '数据预处理 (Preprocessing)',
+          fields: [
+            {
+              name: ['preprocessing', 'handle_missing'],
+              label: '缺失值处理',
+              type: 'select',
+              required: true,
+              placeholder: '选择缺失值处理方式',
+              defaultValue: 'interpolate',
+              options: [
+                { label: '线性插值 (interpolate)', value: 'interpolate' },
+                { label: '前向填充 (ffill)', value: 'ffill' },
+                { label: '后向填充 (bfill)', value: 'bfill' },
+                { label: '删除 (drop)', value: 'drop' },
+                { label: '中位数填充 (median)', value: 'median' }
+              ]
+            },
+            {
+              name: ['preprocessing', 'max_missing_ratio'],
+              label: '最大缺失率',
+              type: 'inputNumber',
+              required: true,
+              placeholder: '0.0 - 1.0',
+              defaultValue: 0.3,
+              min: 0,
+              max: 1,
+              step: 0.1
+            },
+            {
+              name: ['preprocessing', 'interpolation_limit'],
+              label: '插值限制',
+              type: 'inputNumber',
+              required: true,
+              placeholder: '最多填充的连续缺失点数',
+              defaultValue: 3,
+              min: 1
+            }
+          ]
+        }
+      ],
+      feature_engineering: [
+        {
+          title: '特征工程 (Feature Engineering)',
+          fields: [
+            {
+              name: ['feature_engineering', 'lag_periods'],
+              label: '滞后期',
+              type: 'stringArray',
+              required: true,
+              placeholder: '例: 1,2,3,7,14',
+              defaultValue: '1,2,3,7,14',
+              dependencies: ['hyperparams', 'use_feature_engineering']
+            },
+            {
+              name: ['feature_engineering', 'rolling_windows'],
+              label: '滚动窗口大小',
+              type: 'stringArray',
+              required: true,
+              placeholder: '例: 7,14,30',
+              defaultValue: '7,14,30',
+              dependencies: ['hyperparams', 'use_feature_engineering']
+            },
+            {
+              name: ['feature_engineering', 'rolling_features'],
+              label: '滚动窗口统计',
+              type: 'multiSelect',
+              required: true,
+              placeholder: '选择统计函数',
+              defaultValue: ['mean', 'std', 'min', 'max'],
+              options: [
+                { label: '均值 (mean)', value: 'mean' },
+                { label: '标准差 (std)', value: 'std' },
+                { label: '最小值 (min)', value: 'min' },
+                { label: '最大值 (max)', value: 'max' },
+                { label: '中位数 (median)', value: 'median' },
+                { label: '求和 (sum)', value: 'sum' }
+              ],
+              dependencies: ['hyperparams', 'use_feature_engineering']
+            },
+            {
+              name: ['feature_engineering', 'use_temporal_features'],
+              label: '时间特征',
+              type: 'switch',
+              defaultValue: true,
+              layout: 'horizontal',
+              dependencies: ['hyperparams', 'use_feature_engineering']
+            },
+            {
+              name: ['feature_engineering', 'use_cyclical_features'],
+              label: '周期性编码',
+              type: 'switch',
+              defaultValue: false,
+              layout: 'horizontal',
+              dependencies: ['hyperparams', 'use_feature_engineering']
+            },
+            {
+              name: ['feature_engineering', 'use_diff_features'],
+              label: '差分特征',
+              type: 'switch',
+              defaultValue: true,
+              layout: 'horizontal',
+              dependencies: ['hyperparams', 'use_feature_engineering']
+            },
+            {
+              name: ['feature_engineering', 'diff_periods'],
+              label: '差分期数',
+              type: 'stringArray',
+              required: true,
+              placeholder: '例: 1',
+              defaultValue: '1',
+              dependencies: ['feature_engineering', 'use_diff_features']
+            }
+          ]
+        }
+      ]
+    }
+  }
+};
+
 
 export {
   LEVEL_MAP,
@@ -555,7 +976,7 @@ export {
   PIPELINE_TYPE_OPTIONS,
   ANOMALY_ALGORITHMS_PARAMS,
   LOG_CLUSTERING_ALGORITHMS_PARAMS,
-  TIMESERIES_PREDICT_ALGORITHMS_PARAMS,
+  TIMESERIES_ALGORITHM_CONFIGS,
   TRAINJOB_MAP,
   TYPE_FILE_MAP
 }

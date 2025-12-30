@@ -61,7 +61,16 @@ const SampleManageModal = forwardRef<ModalRef, UploadModalProps>(({ onSuccess },
       return headers.reduce((obj: Record<string, any>, key, idx) => {
         const value = values[idx];
         if (key === 'timestamp') {
-          const timestamp = new Date(value).getTime();
+          // 处理不完整的日期格式（如 "1966-10" 补全为 "1966-10-01"）
+          let dateStr = value.trim().replace(/"/g, ''); // 移除引号和空格
+          
+          // 如果是 YYYY-MM 格式，补全为 YYYY-MM-01
+          if (/^\d{4}-\d{1,2}$/.test(dateStr)) {
+            const [year, month] = dateStr.split('-');
+            dateStr = `${year}-${month.padStart(2, '0')}-01`;
+          }
+          
+          const timestamp = new Date(dateStr).getTime();
           obj[key] = timestamp / 1000;
         } else {
           const numValue = Number(value);

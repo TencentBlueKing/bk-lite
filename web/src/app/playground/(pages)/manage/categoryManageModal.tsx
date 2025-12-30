@@ -93,25 +93,30 @@ const CategoryManageModal = forwardRef<ModalRef, any>(({ onSuccess }, ref) => {
       if (!formData?.categoryType) return;
       const data = await getServingsList[formData.categoryType]();
       const options = data?.filter((item: any) => item?.status === 'active').map((item: any) => {
+        const _data = {
+          serving_id: item.id,
+          categoryType: formData.categoryType,
+        };
+
+        if (item.anomaly_threshold) {
+          Object.defineProperty(_data, 'anomaly_threshold', item.anomaly_threshold)
+        }
+
         return {
           label: item?.name,
           value: item?.id,
-          data: {
-            serving_id: item.id,
-            categoryType: formData.categoryType,
-            model_name: `RandomForest_${item.id}`,
-            model_version: item.model_version,
-            algorithm: "RandomForest",
-            anomaly_threshold: item.anomaly_threshold
-          }
+          data: _data
         }
       });
+      console.log(options);
       setServingsOptions(options);
       if (type.startsWith('update')) {
         const servingID = formData?.config?.serving_id;
         const config = options.find((k: any) => k.value === servingID)?.data || {};
-        formRef.current?.setFieldValue('serving_id', servingID);
-        setServingConfig(config)
+        formRef.current?.setFieldsValue({
+          serving_id: servingID
+        });
+        setServingConfig(config);
       }
     } catch (e) {
       console.log(e);
@@ -153,6 +158,14 @@ const CategoryManageModal = forwardRef<ModalRef, any>(({ onSuccess }, ref) => {
     setServingsOptions([]);
   };
 
+  const urlFieldValid = (_: any, value: any) => {
+    if(value.startsWith('http://') || value.startsWith('https://')) {
+      return Promise.resolve()
+    } else {
+      return Promise.reject(new Error('链接格式错误,请输入http://或https://格式的链接'))
+    }
+  };
+
   return (
     <OperateModal
       title={t(`manage.${title}`)}
@@ -180,7 +193,7 @@ const CategoryManageModal = forwardRef<ModalRef, any>(({ onSuccess }, ref) => {
             <Form.Item
               name='url'
               label={t(`playground-common.url`)}
-              rules={[{ required: true, message: t('common.inputMsg') }]}
+              rules={[{ required: true, validator: urlFieldValid }]}
             >
               <Input placeholder={t(`common.inputMsg`)} />
             </Form.Item>
@@ -190,7 +203,10 @@ const CategoryManageModal = forwardRef<ModalRef, any>(({ onSuccess }, ref) => {
               rules={[{ required: true, message: t('common.selectMsg') }]}
             >
               <Select
+                allowClear
+                showSearch
                 options={servingsOptions}
+                optionFilterProp="label"
                 loading={selectLoading}
                 onChange={(value, option) => {
                   if (option && typeof option === 'object' && 'data' in option) {
@@ -198,7 +214,6 @@ const CategoryManageModal = forwardRef<ModalRef, any>(({ onSuccess }, ref) => {
                   }
                 }}
                 placeholder={t(`manage.servingsMsg`)}
-                allowClear
               />
             </Form.Item>
             <Form.Item
