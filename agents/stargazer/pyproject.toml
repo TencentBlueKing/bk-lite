@@ -33,6 +33,7 @@ dependencies = [
     "pytz==2025.2",
     "arq>=0.26.0",
     "redis>=5.0.0",
+    "influxdb-client>=1.49.0",
 ]
 
 [project.optional-dependencies]
