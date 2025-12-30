@@ -169,8 +169,8 @@ def convert_prometheus_to_influx(prometheus_data: str, params: Dict[str, Any]) -
                 # 有 labels
                 metric_name = line[:line.index('{')]
                 rest = line[line.index('{') + 1:]
-                labels_part = rest[:rest.index('}')]
-                value_part = rest[rest.index('}') + 1:].strip()
+                labels_part = rest[:rest.rindex('}')]
+                value_part = rest[rest.rindex('}') + 1:].strip()
             else:
                 # 无 labels
                 parts = line.split()
@@ -193,15 +193,20 @@ def convert_prometheus_to_influx(prometheus_data: str, params: Dict[str, Any]) -
 
             # 解析 Prometheus labels 作为 tags（会被 common_tags 覆盖）
             if labels_part:
+                labels_list = []
                 for label in labels_part.split(','):
                     label = label.strip()
                     if '=' in label:
-                        key, val = label.split('=', 1)
-                        key = key.strip()
-                        val = val.strip().strip('"')
-                        # 只有 common_tags 中不存在的才添加
-                        if key not in tags or not tags[key]:
-                            tags[key] = val
+                        labels_list.append(label)
+                    else:
+                        labels_list[-1] = labels_list[-1] + ',' + label
+                for label in labels_list:
+                    key, val = label.split('=', 1)
+                    key = key.strip()
+                    val = val.strip().strip('"')
+                    # 只有 common_tags 中不存在的才添加
+                    if key not in tags or not tags[key]:
+                        tags[key] = escape_val(val)
 
             # 格式化字段值（InfluxDB 需要类型标识）
             # 整数加 'i' 后缀，浮点数保持原样
@@ -267,6 +272,20 @@ def convert_prometheus_to_influx(prometheus_data: str, params: Dict[str, Any]) -
 
     return lines
 
+def escape_val(v: str) -> str:
+    """对 value 中的特殊字符做转义，可按需要调整种类"""
+    # 示例：对 `\` `"` 换行、逗号、空格、括号做转义
+    v = v.replace('\\', '\\\\')
+    v = v.replace("'", '"')
+    v = v.replace('"', '\\"')
+    v = v.replace('\n', ' ')
+    v = v.replace(',', '\\,')
+    v = v.replace(' ', '\\ ')
+    v = v.replace(' (', '\\(').replace(' )', '\\)')
+    v = v.replace(' <', '\\<').replace(' >', '\\>')
+    # v = v.replace('[', '\\[').replace(']', '\\]')
+    v = v.replace('=', '-')
+    return v
 
 def _build_common_tags(params: Dict[str, Any]) -> Dict[str, str]:
     """

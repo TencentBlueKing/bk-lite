@@ -27,7 +27,7 @@ hostname_val="$(safe hostname -f)"
 # -----------------------------
 # OS
 # -----------------------------
-os_type="$(safe uname -o)"
+os_type="$(safe uname -s)"
 
 os_name="$(
     awk -F= '/^NAME=/{gsub(/"/,"",$2);print $2;exit}' /etc/os-release 2>/dev/null

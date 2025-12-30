@@ -7,4 +7,4 @@ from apps.cmdb.node_configs.ssh.base import SSHNodeParamsMixin
 
 
 class PhysicalServerNodeParams(SSHNodeParamsMixin, BaseNodeParams):
-    supported_model_id = "physical_server"  # 模型id
+    supported_model_id = "physcial_server"  # 模型id

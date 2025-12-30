@@ -10,7 +10,7 @@ from sanic.log import logger
 from plugins.script_executor import SSHPlugin
 
 
-class PhysicalServerInfo(SSHPlugin):
+class PhyscialServerInfo(SSHPlugin):
 
     async def list_all_resources(self):
         """
@@ -18,7 +18,7 @@ class PhysicalServerInfo(SSHPlugin):
         """
         model_id = self.model_id or "physical_server"
         try:
-            data = await super().list_all_resources()
+            data = await super().list_all_resources(need_raw=True)
             if "===" in data.get("result", ''):
                 parsed_data = parse_server_info(data.get("result", ''))
                 self_device = self.host
@@ -27,24 +27,19 @@ class PhysicalServerInfo(SSHPlugin):
                 nic_info = parsed_data.pop('nic')
                 gpu_info = parsed_data.pop('gpu')
                 return_data = {
-                    model_id: [{"success": True, "result": json.dumps(parsed_data)}],
-                    "disk": [{"result": json.dumps({**i, "self_device": self_device}), "success": True} for i in
-                             disk_info],
-                    "memory": [{"result": json.dumps({**i, "self_device": self_device}), "success": True} for i in
-                               mem_info],
-                    "nic": [{"result": json.dumps({**i, "self_device": self_device}), "success": True} for i in
-                            nic_info],
-                    "gpu": [{"result": json.dumps({**i, "self_device": self_device}), "success": True} for i in
-                            gpu_info],
+                    model_id: [parsed_data],
+                    "disk": [{**i, "self_device": self_device} for i in disk_info],
+                    "memory": [{**i, "self_device": self_device} for i in mem_info],
+                    "nic": [{**i, "self_device": self_device} for i in nic_info],
+                    "gpu": [{**i, "self_device": self_device} for i in gpu_info],
                 }
-                result = {"success": True, "result": {"physical_server": return_data}}
+                result = {"success": True, "result": return_data}
             else:
                 result = {"success": True, "result": {"physical_server": {}}}
         except Exception as err:
             import traceback
             logger.error(f"{self.__class__.__name__} main error! {traceback.format_exc()}")
             result = {"result": {"cmdb_collect_error": str(err)}, "success": False}
-
         return result
 
 
