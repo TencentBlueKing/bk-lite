@@ -248,7 +248,7 @@ class MLService:
                     timestamp=timestamp_unix,
                     value=float(prediction_values[i-1])
                 ))
-            
+                        
             # 构造成功响应
             response = PredictResponse(
                 success=True,

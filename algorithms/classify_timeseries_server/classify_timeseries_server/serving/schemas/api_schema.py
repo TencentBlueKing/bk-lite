@@ -42,8 +42,8 @@ class PredictRequest(BaseModel):
     
     def to_series(self) -> pd.Series:
         """转换为 pandas Series."""
-        # 从Unix时间戳（秒级）转换为pd.Timestamp，使用UTC时区
-        timestamps = pd.to_datetime([point.timestamp for point in self.data], unit='s', utc=True)
+        # 从Unix时间戳（秒级）转换为pd.Timestamp，不带时区（naive datetime）
+        timestamps = pd.to_datetime([point.timestamp for point in self.data], unit='s')
         values = [point.value for point in self.data]
         return pd.Series(values, index=timestamps)
 
