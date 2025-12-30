@@ -35,15 +35,11 @@ class UnitConverter:
         unit = unit.strip()
         unit_lower = unit.lower()
 
-        # 1. 直接查找单位ID映射
+        # 直接查找单位ID映射
         if unit_lower in UnitConverterConstants.UNIT_ID_TO_NAME:
             return UnitConverterConstants.UNIT_ID_TO_NAME[unit_lower]
 
-        # 2. 查找别名映射
-        if unit_lower in UnitConverterConstants.UNIT_ALIASES:
-            return UnitConverterConstants.UNIT_ALIASES[unit_lower]
-
-        # 3. 返回原始单位（可能是未知单位）
+        # 返回原始单位（可能是未知单位）
         logger.warning(f"未识别的单位: {unit}")
         return unit_lower
 
@@ -483,7 +479,7 @@ class UnitConverter:
             'hertz': 'Hertz (Hz)',
             'kilohertz': 'Kilohertz (KHz)',
             'megahertz': 'Megahertz (MHz)',
-            'msps': 'milliseconds/sec (ms/s)',
+            'msps': 'milliseconds/sec(ms/s)',  # 注意：括号前无空格
 
             # Temperature
             'celsius': 'Celsius (°C)',

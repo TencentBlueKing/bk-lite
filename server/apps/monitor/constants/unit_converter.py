@@ -149,69 +149,7 @@ class UnitConverterConstants:
         'volts': 'volts',
     }
 
-    # 单位别名映射（兼容旧单位格式）
-    UNIT_ALIASES = {
-        # 百分比
-        '%': 'percent',
-        'percentage': 'percent',
-
-        # 字节
-        'b': 'bytes',
-        'byte': 'bytes',
-        'kib': 'kibibytes',
-        'mib': 'mebibytes',
-        'gib': 'gibibytes',
-        'tib': 'tebibytes',
-        'pib': 'pebibytes',
-
-        # 比特
-        'bit': 'bits',
-        'kb': 'kilobits',
-        'mb': 'megabits',
-        'gb': 'gigabits',
-        'tb': 'terabits',
-        'pb': 'petabits',
-
-        # 时间
-        'nanosecond': 'ns',
-        'microsecond': 'µs',
-        'millisecond': 'ms',
-        'second': 's',
-        'minute': 'm',
-        'min': 'm',
-        'hour': 'h',
-        'day': 'd',
-
-        # 速率
-        'b/s': 'byteps',
-        'bytes/s': 'byteps',
-        'bytes/sec': 'byteps',
-        'kib/s': 'kibyteps',
-        'mib/s': 'mibyteps',
-        'gib/s': 'gibyteps',
-        'tib/s': 'tibyteps',
-        'pib/s': 'pibyteps',
-        'bit/s': 'bitps',
-        'bits/s': 'bitps',
-        'kb/s': 'kbitps',
-        'mb/s': 'mbitps',
-        'gb/s': 'gbitps',
-        'tb/s': 'tbitps',
-        'pb/s': 'pbitps',
-
-        # 频率
-        'hz': 'hertz',
-        'khz': 'kilohertz',
-        'mhz': 'megahertz',
-
-        # 计数
-        'k': 'thousand',
-        'mil': 'million',
-        'bil': 'billion',
-        'tri': 'trillion',
-    }
-
-    # 展示单位映射（单位名称 -> 展示格式）
+    # 展示单位映射（单位ID -> 展示格式）
     DISPLAY_UNIT_MAPPING = {
         'percent': '%',
         'percentunit': '%',

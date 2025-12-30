@@ -2,20 +2,12 @@
 单位管理相关视图
 """
 
-from rest_framework import viewsets, status
+from rest_framework import viewsets
 from rest_framework.decorators import action
-from rest_framework.response import Response
 from drf_spectacular.utils import extend_schema, OpenApiParameter
 
 from apps.core.utils.web_utils import WebUtils
-from apps.monitor.serializers.unit import (
-    UnitSerializer,
-    UnitSystemSerializer,
-    UnitConversionRequestSerializer,
-    UnitConversionResponseSerializer,
-    UnitSuggestionRequestSerializer,
-    UnitSuggestionResponseSerializer,
-)
+from apps.monitor.serializers.unit import UnitSerializer, UnitSystemSerializer
 from apps.monitor.utils.unit_converter import UnitConverter
 from apps.core.logger import monitor_logger as logger
 
@@ -24,7 +16,7 @@ class UnitViewSet(viewsets.ViewSet):
     """
     单位管理视图集
 
-    提供单位列表、单位转换、单位建议等功能
+    提供单位列表查询功能，用于前端配置指标时选择单位
     """
 
     @extend_schema(
@@ -100,129 +92,3 @@ class UnitViewSet(viewsets.ViewSet):
             logger.error(f"按体系获取单位失败: {e}")
             return WebUtils.response_error(f"按体系获取单位失败: {str(e)}")
 
-    @extend_schema(
-        summary="单位转换",
-        description="将数值从源单位转换到目标单位（必须是同一体系）",
-        request=UnitConversionRequestSerializer,
-        responses={200: UnitConversionResponseSerializer},
-    )
-    @action(methods=['POST'], detail=False, url_path='convert')
-    def convert_units(self, request):
-        """单位转换"""
-        try:
-            request_serializer = UnitConversionRequestSerializer(data=request.data)
-            if not request_serializer.is_valid():
-                return WebUtils.response_error("请求参数错误", data=request_serializer.errors)
-
-            values = request_serializer.validated_data['values']
-            source_unit = request_serializer.validated_data['source_unit']
-            target_unit = request_serializer.validated_data['target_unit']
-
-            # 检查是否可以转换
-            if not UnitConverter.is_convertible(source_unit, target_unit):
-                return WebUtils.response_error(
-                    f"单位 '{source_unit}' 和 '{target_unit}' 不属于同一体系，无法转换"
-                )
-
-            # 执行转换
-            converted_values = UnitConverter.convert_values(values, source_unit, target_unit)
-
-            # 获取展示单位
-            source_display = UnitConverter.get_display_unit(source_unit)
-            target_display = UnitConverter.get_display_unit(target_unit)
-
-            response_data = {
-                'converted_values': converted_values,
-                'source_unit': source_unit,
-                'target_unit': target_unit,
-                'source_display': source_display,
-                'target_display': target_display,
-            }
-
-            response_serializer = UnitConversionResponseSerializer(response_data)
-            return WebUtils.response_success(response_serializer.data)
-
-        except Exception as e:
-            logger.error(f"单位转换失败: {e}")
-            return WebUtils.response_error(f"单位转换失败: {str(e)}")
-
-    @extend_schema(
-        summary="单位建议",
-        description="根据数值范围自动建议合适的单位并进行转换",
-        request=UnitSuggestionRequestSerializer,
-        responses={200: UnitSuggestionResponseSerializer},
-    )
-    @action(methods=['POST'], detail=False, url_path='suggest')
-    def suggest_unit(self, request):
-        """单位建议"""
-        try:
-            request_serializer = UnitSuggestionRequestSerializer(data=request.data)
-            if not request_serializer.is_valid():
-                return WebUtils.response_error("请求参数错误", data=request_serializer.errors)
-
-            values = request_serializer.validated_data['values']
-            source_unit = request_serializer.validated_data['source_unit']
-            strategy = request_serializer.validated_data.get('strategy', 'median')
-
-            # 自动转换
-            converted_values, suggested_unit = UnitConverter.auto_convert(
-                values, source_unit, strategy=strategy
-            )
-
-            # 获取展示单位
-            suggested_display = UnitConverter.get_display_unit(suggested_unit)
-
-            response_data = {
-                'suggested_unit': suggested_unit,
-                'suggested_display': suggested_display,
-                'converted_values': converted_values,
-            }
-
-            response_serializer = UnitSuggestionResponseSerializer(response_data)
-            return WebUtils.response_success(response_serializer.data)
-
-        except Exception as e:
-            logger.error(f"单位建议失败: {e}")
-            return WebUtils.response_error(f"单位建议失败: {str(e)}")
-
-    @extend_schema(
-        summary="检查单位可转换性",
-        description="检查两个单位是否可以互相转换",
-        parameters=[
-            OpenApiParameter(
-                name='source_unit',
-                type=str,
-                location=OpenApiParameter.QUERY,
-                required=True,
-                description="源单位"
-            ),
-            OpenApiParameter(
-                name='target_unit',
-                type=str,
-                location=OpenApiParameter.QUERY,
-                required=True,
-                description="目标单位"
-            ),
-        ],
-    )
-    @action(methods=['GET'], detail=False, url_path='check-convertible')
-    def check_convertible(self, request):
-        """检查单位可转换性"""
-        try:
-            source_unit = request.query_params.get('source_unit')
-            target_unit = request.query_params.get('target_unit')
-
-            if not source_unit or not target_unit:
-                return WebUtils.response_error("缺少 source_unit 或 target_unit 参数")
-
-            is_convertible = UnitConverter.is_convertible(source_unit, target_unit)
-
-            return WebUtils.response_success({
-                'source_unit': source_unit,
-                'target_unit': target_unit,
-                'is_convertible': is_convertible,
-            })
-
-        except Exception as e:
-            logger.error(f"检查单位可转换性失败: {e}")
-            return WebUtils.response_error(f"检查单位可转换性失败: {str(e)}")
