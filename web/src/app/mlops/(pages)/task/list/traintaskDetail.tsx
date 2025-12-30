@@ -220,6 +220,7 @@ const TrainTaskDetail = ({
   activeKey
   // backToList
 }: TrainTaskDetailProps) => {
+  const { t } = useTranslation();
   const [metrics, setMetricsList] = useState<string[]>([]);
   const [loading, setLoading] = useState(false);
   const { getTrainTaskMetrics, getTrainTaskMetricsDetail } = useMlopsTaskApi();
@@ -255,33 +256,13 @@ const TrainTaskDetail = ({
   return (
     <div className={styles.trainTaskDetail}>
       <div className={styles.taskDetailContainer}>
-        {/* Header Section */}
-        {/* <div className={styles.taskHeader}>
-          <div className={styles.taskHeaderContent}>
-            <div className={styles.taskInfo}>
-              {metricData?.run_name && (
-                <div className={styles.taskInfoItem}>
-                  <span className={styles.taskInfoLabel}>任务名称</span>
-                  <span className={styles.taskInfoValue}>{metricData.run_name}</span>
-                </div>
-              )}
-              {metricData?.run_id && (
-                <div className={styles.taskInfoItem}>
-                  <span className={styles.taskInfoLabel}>任务ID</span>
-                  <span className={styles.taskInfoValue}>{metricData.run_id}</span>
-                </div>
-              )}
-            </div>
-          </div>
-        </div> */}
-
         {/* Content Section */}
         <div className={styles.taskContent}>
           {/* Loading State */}
           {loading && (
             <div className={styles.taskLoading}>
               <Spin size="large" />
-              <span className={styles.taskLoadingText}>正在加载训练指标...</span>
+              <span className={styles.taskLoadingText}>{t(`mlops-common.loadingData`)}</span>
             </div>
           )}
 
@@ -310,8 +291,8 @@ const TrainTaskDetail = ({
           {!loading && metrics.length === 0 && (
             <div className={styles.taskEmpty}>
               <div className={styles.taskEmptyIcon}>📊</div>
-              <div className={styles.taskEmptyTitle}>暂无训练指标</div>
-              <div className={styles.taskEmptyDescription}>该任务还没有生成训练指标数据</div>
+              <div className={styles.taskEmptyTitle}>{t(`common.noData`)}</div>
+              <div className={styles.taskEmptyDescription}>{t(`common.noData`)}</div>
             </div>
           )}
         </div>

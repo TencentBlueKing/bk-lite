@@ -145,22 +145,22 @@ const ModelRelease = () => {
         const isActive = record.status === 'active';
         return (<>
           <PermissionWrapper requiredPermissions={['Edit']}>
-            <Button type="link" className="mr-2" onClick={() => handleEdit(record)}>{'配置'}</Button>
+            <Button type="link" className="mr-2" onClick={() => handleEdit(record)}>{t(`model-release.configuration`)}</Button>
           </PermissionWrapper>
           {status !== 'active' ?
             <PermissionWrapper requiredPermissions={['Edit']}>
-              <Button type="link" className="mr-2" onClick={() => handleModelAcitve(record.id, isActive)}>{'发布'}</Button>
+              <Button type="link" className="mr-2" onClick={() => handleModelAcitve(record.id, isActive)}>{t(`model-release.release`)}</Button>
             </PermissionWrapper> :
             <PermissionWrapper requiredPermissions={['Edit']}>
-              <Button type="link" className="mr-2" danger onClick={() => handleModelAcitve(record.id, isActive)}>{'回收'}</Button>
+              <Button type="link" className="mr-2" danger onClick={() => handleModelAcitve(record.id, isActive)}>{t(`model-release.discontinued`)}</Button>
             </PermissionWrapper>
           }
           {state !== 'running' ?
             <PermissionWrapper requiredPermissions={['Edit']}>
-              <Button type="link" className="mr-2" onClick={() => handleStartContainer(record.id)}>{'启动'}</Button>
+              <Button type="link" className="mr-2" onClick={() => handleStartContainer(record.id)}>{t(`mlops-common.start`)}</Button>
             </PermissionWrapper> :
             <PermissionWrapper requiredPermissions={['Edit']}>
-              <Button type="link" className="mr-2" danger onClick={() => handleStopContainer(record.id)}>{'停止'}</Button>
+              <Button type="link" className="mr-2" danger onClick={() => handleStopContainer(record.id)}>{t(`mlops-common.stop`)}</Button>
             </PermissionWrapper>
           }
           <PermissionWrapper requiredPermissions={['Delete']}>

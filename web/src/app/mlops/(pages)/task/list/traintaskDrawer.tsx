@@ -57,7 +57,7 @@ const TrainTaskDrawer = ({ open, onCancel, selectId, activeTag }:
 
   const downloadModel = async (record: any) => {
     try {
-      message.info('下载中..');
+      message.info(t(`traintask.downloadStart`));
       
       const response = await fetch(
         `/api/proxy/mlops/timeseries_predict_train_jobs/download_model/${record.run_id}/`,
@@ -95,7 +95,7 @@ const TrainTaskDrawer = ({ open, onCancel, selectId, activeTag }:
       document.body.removeChild(link);
       window.URL.revokeObjectURL(fileUrl);
     } catch (error: any) {
-      console.error('下载模型失败:', error);
+      console.error(t(`traintask.downloadFailed`), error);
       message.error(error.message || t('common.errorFetch'));
     }
   };
@@ -118,11 +118,11 @@ const TrainTaskDrawer = ({ open, onCancel, selectId, activeTag }:
           onClick={() => setShowList(true)}
           className="float-right"
         >
-          返回列表
+          {t(`mlops-common.backToList`)}
         </Button>
       ] : [
         <Button key="refresh" type="primary" className="float-right" disabled={tableLoading} onClick={getStateData}>
-          刷新列表
+          {t(`mlops-common.refreshList`)}
         </Button>
       ]}
     >

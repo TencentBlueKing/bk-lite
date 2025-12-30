@@ -1338,7 +1338,25 @@ class TimeSeriesPredictServingViewSet(ModelViewSet):
             # 处理响应
             if response.status_code == 200:
                 result = response.json()
-                # 安全获取 prediction 长度（处理 None 值）
+                
+                # 检查业务层面的 success 状态
+                if result.get('success') is False:
+                    # 预测服务返回失败
+                    error_info = result.get('error') or {}
+                    error_code = error_info.get('code', 'UNKNOWN')
+                    error_message = error_info.get('message', '预测失败')
+                    
+                    logger.error(f"预测服务返回失败: serving_id={serving.id}, code={error_code}, message={error_message}")
+                    return Response(
+                        {
+                            'error': error_message,
+                            'error_code': error_code,
+                            'details': error_info.get('details')
+                        },
+                        status=status.HTTP_400_BAD_REQUEST
+                    )
+                
+                # 预测成功
                 prediction = result.get('prediction') or []
                 prediction_size = len(prediction) if isinstance(prediction, (list, tuple)) else 0
                 logger.info(f"预测成功: serving_id={serving.id}, prediction_size={prediction_size}")
