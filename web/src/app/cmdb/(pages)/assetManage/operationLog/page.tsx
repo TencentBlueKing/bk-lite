@@ -78,7 +78,7 @@ const OperationLog: React.FC = () => {
   ];
 
   const operators = userList.map((user: UserItem) => {
-    const labelText = `${user.display_name} (${user.username})`;
+    const labelText = `${user.display_name}(${user.username})`;
     return {
       value: user.username,
       label: (

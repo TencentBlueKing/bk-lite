@@ -6,10 +6,14 @@
 from .base import BaseTimeSeriesModel, ModelRegistry
 from .gradient_boosting_model import GradientBoostingModel
 from .gradient_boosting_wrapper import GradientBoostingWrapper
+from .random_forest_model import RandomForestModel
+from .random_forest_wrapper import RandomForestWrapper
 
 __all__ = [
     "BaseTimeSeriesModel",
     "ModelRegistry",
     "GradientBoostingModel",
     "GradientBoostingWrapper",
+    "RandomForestModel",
+    "RandomForestWrapper",
 ]

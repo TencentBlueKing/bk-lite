@@ -56,6 +56,7 @@ const QAPairForm = forwardRef<any, QAPairFormProps>(({
   
   const [previewModalVisible, setPreviewModalVisible] = useState<boolean>(false);
   const [selectedChunks, setSelectedChunks] = useState<string[]>([]);
+  const [chunksDocumentMap, setChunksDocumentMap] = useState<{[chunkId: string]: string}>({});
   const [currentQaCount, setCurrentQaCount] = useState<number>(1);
   const [previewResults, setPreviewResults] = useState<Array<{question: string; answer: string}>>([]);
   const [previewLoading, setPreviewLoading] = useState<boolean>(false);
@@ -342,6 +343,38 @@ const QAPairForm = forwardRef<any, QAPairFormProps>(({
     validateAndNotify();
   }, [selectedDocuments, validateAndNotify]);
 
+  // 使用 ref 存储 chunksDocumentMap 以避免闭包问题
+  const chunksDocumentMapRef = useRef(chunksDocumentMap);
+  useEffect(() => {
+    chunksDocumentMapRef.current = chunksDocumentMap;
+  }, [chunksDocumentMap]);
+
+  // 监听 selectedDocuments 变化，清理不再属于已选文档的 chunks
+  useEffect(() => {
+    const currentMap = chunksDocumentMapRef.current;
+    if (Object.keys(currentMap).length > 0) {
+      const selectedDocSet = new Set(selectedDocuments);
+      setSelectedChunks(prevChunks => {
+        const filteredChunks = prevChunks.filter(chunkId => {
+          const docId = currentMap[chunkId];
+          return docId && selectedDocSet.has(docId);
+        });
+        if (filteredChunks.length !== prevChunks.length) {
+          // 同时清理 chunksDocumentMap 中不再需要的映射
+          const newMap: {[chunkId: string]: string} = {};
+          filteredChunks.forEach(chunkId => {
+            if (currentMap[chunkId]) {
+              newMap[chunkId] = currentMap[chunkId];
+            }
+          });
+          setChunksDocumentMap(newMap);
+          return filteredChunks;
+        }
+        return prevChunks;
+      });
+    }
+  }, [selectedDocuments]);
+
   const handleTabChange = useCallback((tabKey: string) => {
     setActiveDocumentTab(tabKey);
     setCurrentPage(1);
@@ -467,6 +500,13 @@ const QAPairForm = forwardRef<any, QAPairFormProps>(({
   // 确认选中的块并生成预览
   const handleConfirmChunks = useCallback(async (chunks: string[], chunksData: Array<{chunk_id: string; content: string; knowledge_id: string}>) => {
     setSelectedChunks(chunks);
+    
+    // 存储 chunk 和文档的对应关系
+    const newMap: {[chunkId: string]: string} = {};
+    chunksData.forEach(item => {
+      newMap[item.chunk_id] = item.knowledge_id;
+    });
+    setChunksDocumentMap(newMap);
     
     // 自动调用预览接口
     setPreviewLoading(true);

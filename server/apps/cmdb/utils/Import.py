@@ -28,6 +28,27 @@ class Import:
         # 用于收集数据验证错误
         self.validation_errors = []
 
+    @staticmethod
+    def _normalize_user_token(token):
+        """将Excel中的用户显示值规范化为username。
+
+        支持：
+        - username
+        - 显示名(username)
+        - 显示名（username）
+        """
+        if token is None:
+            return None
+        s = str(token).strip()
+        if not s:
+            return ""
+        # 兼容英文括号与中文括号
+        if s.endswith(")") and "(" in s:
+            return s.rsplit("(", 1)[-1].rstrip(")").strip()
+        if s.endswith("）") and "（" in s:
+            return s.rsplit("（", 1)[-1].rstrip("）").strip()
+        return s
+
     def _resolve_organization_ids(self, value_list: list, allowed_org_set: set, row_index: int, field_display_name: str):
         """解析组织字段，支持组织名与路径(Default/xxx)，并按 allowed_org_set 做范围校验。
 
@@ -257,15 +278,25 @@ class Import:
                         enum_id = []
                         invalid_values = []
                         for val in value_list:
-                            mapped_id = need_val_to_id_field_map[keys[i]].get(val)
+                            raw_val = val
+                            lookup_val = self._normalize_user_token(val) if org_user_map[keys[i]] == USER else val
+                            mapped_id = need_val_to_id_field_map[keys[i]].get(lookup_val)
                             if mapped_id is not None:
                                 enum_id.append(mapped_id)
                             else:
-                                invalid_values.append(val)
-                        # 用户需要支持多选
+                                invalid_values.append(raw_val)
+
+                        # 用户字段：主要维护人(operator)支持多选；其他USER字段保持原先单选逻辑
                         if org_user_map[keys[i]] == USER:
-                            if enum_id.__len__() >= 1:
-                                enum_id = enum_id[0]
+                            if keys[i] == "operator":
+                                # 允许多个主要维护人：保存为list；单个则保持标量，兼容旧数据
+                                if len(enum_id) == 1:
+                                    enum_id = enum_id[0]
+                                elif len(enum_id) > 1:
+                                    enum_id = enum_id
+                            else:
+                                if len(enum_id) >= 1:
+                                    enum_id = enum_id[0]
                         if invalid_values:
                             logger.warning(need_val_to_id_field_map[keys[i]])
                             error_msg = f"第{row_index}行，字段'{attr_name_map.get(keys[i], keys[i])}'的值'{invalid_values}'无效"

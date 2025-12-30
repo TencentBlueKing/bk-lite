@@ -309,6 +309,8 @@ class ModelManage(object):
                     # id=user["username"],
                     id=user["id"],
                     name=user["username"],
+                    username=user.get("username"),
+                    display_name=user.get("display_name"),
                     is_default=False,
                     type="str",
                 )

@@ -4,7 +4,7 @@ import useMlopsTaskApi from "@/app/mlops/api/task";
 import useMlopsModelReleaseApi from "@/app/mlops/api/modelRelease";
 import CustomTable from "@/components/custom-table";
 import { useTranslation } from "@/utils/i18n";
-import { Button, Popconfirm, Switch, message, Tree, type TreeDataNode, Tag, Tooltip } from "antd";
+import { Button, Popconfirm, message, Tree, type TreeDataNode, Tag, Tooltip } from "antd";
 import { PlusOutlined, ReloadOutlined } from '@ant-design/icons';
 import PageLayout from '@/components/page-layout';
 import TopSection from "@/components/top-section";
@@ -20,7 +20,15 @@ const CONTAINER_STATE_MAP: Record<string, string> = {
   'not_found': 'default',
   'unknown': 'orange',
   'error': 'red'
-}
+};
+
+const CONTAINER_TEXT_MAP: Record<string, string> = {
+  'running': '运行中',
+  'completed': '已完成',
+  'not_found': '容器不存在',
+  'unknown': '状态异常',
+  'error': '错误'
+};
 
 // running: 正在提供服务的容器
 // completed: 训练任务正常完成
@@ -105,7 +113,9 @@ const ModelRelease = () => {
       dataIndex: 'status',
       key: 'status',
       render: (_, record) => {
-        return <Switch checked={record.status === 'active'} onChange={(value: boolean) => handleModelAcitve(record.id, value)} />
+        const isAcitve = record.status === 'active'
+        // return <Switch checked={record.status === 'active'} onChange={(value: boolean) => handleModelAcitve(record.id, value)} />
+        return <Tag color={isAcitve ? 'green' : 'default'}>{isAcitve ? '已发布' : '未发布'}</Tag>
       }
     },
     {
@@ -119,7 +129,7 @@ const ModelRelease = () => {
         const text = isSucess ? state : 'error';
         return (<>
           <Tooltip title={detail || ''}>
-            <Tag color={CONTAINER_STATE_MAP[_status]}>{text}</Tag>
+            <Tag color={CONTAINER_STATE_MAP[_status]}>{CONTAINER_TEXT_MAP[text]}</Tag>
           </Tooltip>
         </>)
       }
@@ -130,17 +140,29 @@ const ModelRelease = () => {
       key: 'action',
       width: 180,
       render: (_, record: TableData) => {
-        const { status, state } = record.container_info;
+        const { status } = record;
+        const { state } = record.container_info;
+        const isActive = record.status === 'active';
         return (<>
           <PermissionWrapper requiredPermissions={['Edit']}>
-            <Button type="link" className="mr-2" onClick={() => handleEdit(record)}>{'配置'}</Button>
+            <Button type="link" className="mr-2" onClick={() => handleEdit(record)}>{t(`model-release.configuration`)}</Button>
           </PermissionWrapper>
-          <PermissionWrapper requiredPermissions={['Edit']}>
-            <Button type="link" className="mr-2" onClick={() => handleStartContainer(record.id)} disabled={status === 'success' && state === 'running'}>{'启动'}</Button>
-          </PermissionWrapper>
-          <PermissionWrapper requiredPermissions={['Edit']}>
-            <Button type="link" className="mr-2" onClick={() => handleStopContainer(record.id)} disabled={status !== 'success' || state !== 'running'}>{'停止'}</Button>
-          </PermissionWrapper>
+          {status !== 'active' ?
+            <PermissionWrapper requiredPermissions={['Edit']}>
+              <Button type="link" className="mr-2" onClick={() => handleModelAcitve(record.id, isActive)}>{t(`model-release.release`)}</Button>
+            </PermissionWrapper> :
+            <PermissionWrapper requiredPermissions={['Edit']}>
+              <Button type="link" className="mr-2" danger onClick={() => handleModelAcitve(record.id, isActive)}>{t(`model-release.discontinued`)}</Button>
+            </PermissionWrapper>
+          }
+          {state !== 'running' ?
+            <PermissionWrapper requiredPermissions={['Edit']}>
+              <Button type="link" className="mr-2" onClick={() => handleStartContainer(record.id)}>{t(`mlops-common.start`)}</Button>
+            </PermissionWrapper> :
+            <PermissionWrapper requiredPermissions={['Edit']}>
+              <Button type="link" className="mr-2" danger onClick={() => handleStopContainer(record.id)}>{t(`mlops-common.stop`)}</Button>
+            </PermissionWrapper>
+          }
           <PermissionWrapper requiredPermissions={['Delete']}>
             <Popconfirm
               title={t(`model-release.delModel`)}
@@ -149,7 +171,7 @@ const ModelRelease = () => {
               cancelText={t('common.cancel')}
               onConfirm={() => handleDelete(record.id)}
             >
-              <Button type="link" danger>{t(`common.delete`)}</Button>
+              <Button type="link" danger disabled={state === 'running'}>{t(`common.delete`)}</Button>
             </Popconfirm>
           </PermissionWrapper>
         </>)
@@ -352,7 +374,7 @@ const ModelRelease = () => {
 
     setLoading(true);
     try {
-      const status = value ? 'active' : 'inactive';
+      const status = value ? 'inactive' : 'active';
       await updateMap[activeTypes]!(id, { status });
       message.success(t('common.updateSuccess'));
     } catch (e) {
