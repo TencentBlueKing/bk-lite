@@ -538,6 +538,11 @@ export const useRasaForm = ({ datasetOptions, activeTag, onSuccess, formRef }: U
     )
   }, [t, pipeline, policies, pipelineTypeOptions, pipelineOptions, policiesOptions, datasetOptions, handlePipelineTypeChange, handlePipelineSelectChange, handlePoliciesSelectChange, handleEditClick, handleAddClick, handleRemoveClick, handleDragStart, handleDragOver, handleDrop, editingItem, configFormData, handleConfigSave, handleConfigCancel, ConfigFormFields, validatePipeline, validatePolicies]);
 
+  // 表单值变化处理（空实现，仅为接口统一）
+  const onFormValuesChange = useCallback(() => {
+    // rasa 不需要动态表单依赖，保持空实现
+  }, []);
+
   return {
     renderFormContent,
     modalState,
@@ -545,6 +550,7 @@ export const useRasaForm = ({ datasetOptions, activeTag, onSuccess, formRef }: U
     loadingState,
     showModal,
     handleCancel,
-    handleSubmit
+    handleSubmit,
+    onFormValuesChange,
   }
 };
