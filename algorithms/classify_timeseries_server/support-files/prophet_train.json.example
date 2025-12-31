@@ -1,0 +1,246 @@
+{
+  "_comment": "Prophet 时间序列训练配置文件",
+  "_usage": "复制为 prophet_train.json 并根据需要修改参数",
+  
+  "model": {
+    "type": "Prophet",
+    "_type_desc": "模型类型，使用 Facebook Prophet 算法",
+    "_type_comparison": "Prophet 是专门的时间序列预测算法，擅长处理具有强季节性模式和节假日效应的数据",
+    "name": "timeseries_prophet_model",
+    "_name_desc": "模型名称，用于 MLflow 记录和标识"
+  },
+  
+  "hyperparams": {
+    "_comment": "模型超参数配置（自动进行超参数搜索）",
+    
+    "use_feature_engineering": false,
+    "_use_feature_engineering_desc": "Prophet 是原生时间序列模型，内置特征提取，固定为 false",
+    "_use_feature_engineering_note": "Prophet 自动处理趋势、季节性和节假日，无需手动特征工程",
+    
+    "random_state": 42,
+    "_random_state_desc": "随机种子，保证结果可复现",
+    
+    "max_evals": 30,
+    "_max_evals_desc": "超参数搜索的最大评估次数。Prophet 训练较慢，建议 20-30 次",
+    "_max_evals_recommendation": "Prophet 每次训练需要 3-10 秒，max_evals=30 约需 1.5-5 分钟",
+    "_max_evals_comparison": "相比 GradientBoosting/RandomForest 的 50-100 次，Prophet 建议减少评估次数",
+    
+    "metric": "rmse",
+    "_metric_options": ["rmse", "mae", "mape"],
+    "_metric_desc": "优化目标指标。rmse=均方根误差，mae=平均绝对误差，mape=平均绝对百分比误差",
+    
+    "_prophet_params_comment": "以下是 Prophet 的固定参数（不参与超参数搜索）",
+    
+    "growth": "linear",
+    "_growth_desc": "增长趋势类型",
+    "_growth_options": {
+      "linear": "线性增长（默认，适合大多数情况）",
+      "logistic": "逻辑增长（需要设置 cap 和 floor，适合有饱和上限的数据）",
+      "flat": "无增长（仅季节性波动）"
+    },
+    "_growth_recommendation": "默认 'linear' 即可，除非数据有明显的饱和趋势",
+    
+    "yearly_seasonality": "auto",
+    "_yearly_seasonality_desc": "年度季节性配置",
+    "_yearly_seasonality_options": {
+      "auto": "自动检测（数据 >= 2 年则启用）",
+      "true": "强制启用",
+      "false": "禁用",
+      "数字": "傅里叶项数量（如 10），数字越大拟合越精细"
+    },
+    "_yearly_seasonality_recommendation": "'auto' 适合大多数情况，月度/季度数据通常需要年度季节性",
+    
+    "weekly_seasonality": "auto",
+    "_weekly_seasonality_desc": "周度季节性配置",
+    "_weekly_seasonality_options": {
+      "auto": "自动检测（数据 >= 2 周则启用）",
+      "true": "强制启用",
+      "false": "禁用",
+      "数字": "傅里叶项数量（如 3）"
+    },
+    "_weekly_seasonality_recommendation": "日度数据建议启用，月度数据建议禁用（false）",
+    
+    "daily_seasonality": "auto",
+    "_daily_seasonality_desc": "日内季节性配置",
+    "_daily_seasonality_options": {
+      "auto": "自动检测（数据 >= 2 天且频率 < 1 天则启用）",
+      "true": "强制启用",
+      "false": "禁用",
+      "数字": "傅里叶项数量（如 4）"
+    },
+    "_daily_seasonality_recommendation": "小时级数据建议启用，日度及以上数据建议禁用（false）",
+    
+    "seasonality_prior_scale": 10.0,
+    "_seasonality_prior_scale_desc": "季节性强度的先验尺度（越大越灵活，越小越平滑）",
+    "_seasonality_prior_scale_range": "推荐范围：0.01 - 10",
+    "_seasonality_prior_scale_effect": {
+      "大值（如 10）": "允许季节性剧烈变化，拟合更精细但可能过拟合",
+      "小值（如 0.01）": "限制季节性变化，更平滑但可能欠拟合"
+    },
+    "_seasonality_prior_scale_recommendation": "默认 10.0 适合大多数情况，数据噪声大时可减小到 1.0",
+    
+    "holidays_prior_scale": 10.0,
+    "_holidays_prior_scale_desc": "节假日效应的先验尺度",
+    "_holidays_prior_scale_note": "控制节假日对预测的影响强度，仅在提供节假日数据时有效",
+    "_holidays_prior_scale_recommendation": "默认 10.0 即可，节假日效应不明显时可减小到 1.0",
+    
+    "n_changepoints": 25,
+    "_n_changepoints_desc": "潜在趋势变点的数量",
+    "_n_changepoints_note": "Prophet 自动在训练数据的前 80% 均匀分布这些变点候选",
+    "_n_changepoints_recommendation": "默认 25 适合大多数情况，数据点少时可减少到 10-15",
+    
+    "search_space": {
+      "_comment": "超参数搜索空间 - Prophet 特定参数",
+      "_note": "列出需要优化的参数，其他参数使用上面的固定值",
+      "_search_params_count": "5 个参数参与搜索，与 GradientBoosting/RandomForest 保持一致",
+      
+      "seasonality_mode": ["additive", "multiplicative"],
+      "_seasonality_mode_desc": "季节性模式候选值（重要性：⭐⭐⭐⭐）",
+      "_seasonality_mode_options": {
+        "additive": "加性季节性（默认）：季节性波动幅度固定，如 ±100",
+        "multiplicative": "乘性季节性：季节性波动幅度随趋势变化，如 ±10%"
+      },
+      "_seasonality_mode_recommendation": "数据波动幅度随时间增长时用 'multiplicative'，否则用 'additive'",
+      "_seasonality_mode_examples": {
+        "additive": "网站访问量、温度",
+        "multiplicative": "销售额、股票价格"
+      },
+      
+      "changepoint_prior_scale": [0.001, 0.01, 0.05, 0.1, 0.5],
+      "_changepoint_prior_scale_desc": "趋势变点灵活度候选值（重要性：⭐⭐⭐⭐⭐，最重要的超参数）",
+      "_changepoint_prior_scale_effect": {
+        "大值（如 0.5）": "趋势可以频繁大幅变化，拟合更精细但易过拟合",
+        "小值（如 0.001）": "趋势变化平滑保守，更稳定但可能欠拟合"
+      },
+      "_changepoint_prior_scale_recommendation": "从 0.05 开始调整，训练集拟合不足时增大，过拟合时减小",
+      "_changepoint_prior_scale_tuning_guide": {
+        "过拟合迹象": "训练集拟合很好，但测试集误差大 → 减小到 0.01 或 0.001",
+        "欠拟合迹象": "训练集拟合不好，无法捕捉趋势变化 → 增大到 0.1 或 0.5"
+      },
+      
+      "seasonality_prior_scale": [0.01, 0.1, 1.0, 10.0],
+      "_seasonality_prior_scale_desc": "季节性强度的先验尺度候选值（重要性：⭐⭐⭐⭐）",
+      "_seasonality_prior_scale_note": "此参数也在上面有默认值 10.0，搜索可以找到最优值",
+      "_seasonality_prior_scale_effect": {
+        "大值（如 10）": "允许季节性剧烈变化，拟合更精细",
+        "小值（如 0.01）": "限制季节性变化，更平滑保守"
+      },
+      "_seasonality_prior_scale_recommendation": "季节性明显时用较大值（10），季节性弱或噪声大时用较小值（0.1-1.0）",
+      
+      "holidays_prior_scale": [0.01, 0.1, 1.0, 10.0],
+      "_holidays_prior_scale_desc": "节假日效应强度候选值（重要性：⭐⭐⭐）",
+      "_holidays_prior_scale_note": "仅在提供节假日数据时有效，无节假日数据时此参数无影响",
+      "_holidays_prior_scale_recommendation": "有明显节假日效应时用较大值（10），效应不明显时用较小值（0.1-1.0）",
+      
+      "n_changepoints": [10, 25, 50],
+      "_n_changepoints_desc": "潜在趋势变点数量候选值（重要性：⭐⭐）",
+      "_n_changepoints_note": "此参数也在上面有默认值 25，搜索可以找到最优值",
+      "_n_changepoints_effect": {
+        "多（如 50）": "更多变点候选，能捕捉更复杂的趋势变化",
+        "少（如 10）": "较少变点，趋势更平滑简单"
+      },
+      "_n_changepoints_recommendation": "数据点多（> 365）时可用 50，数据点少（< 100）时用 10-15"
+    }
+  },
+  
+  "preprocessing": {
+    "_comment": "数据预处理配置",
+
+    "handle_missing": "interpolate",
+    "_handle_missing_options": ["interpolate", "ffill", "bfill", "drop", "median"],
+    "_handle_missing_desc": "缺失值处理方式：interpolate=线性插值（推荐），ffill=前向填充，bfill=后向填充，drop=删除，median=中位数填充",
+    "_handle_missing_note": "Prophet 要求时间序列无缺失值，预处理阶段必须处理",
+    
+    "max_missing_ratio": 0.3,
+    "_max_missing_ratio_desc": "允许的最大缺失率（默认0.3=30%）。数据缺失率超过此值将报错",
+    
+    "interpolation_limit": 3,
+    "_interpolation_limit_desc": "插值最多填充的连续缺失点数（默认3）。连续缺失超过此数量将保留NaN"
+  },
+  
+  "mlflow": {
+    "_comment": "MLflow 实验跟踪配置",
+    "experiment_name": "timeseries_prophet",
+    "_experiment_name_desc": "MLflow 实验名称。用于组织和管理训练运行"
+  },
+  
+  "_model_characteristics": {
+    "_comment": "Prophet 模型特性说明（仅供参考，不是配置项）",
+    "优点": [
+      "专为时间序列设计，原生支持趋势和季节性",
+      "自动处理节假日效应（需提供节假日列表）",
+      "对缺失值和异常值鲁棒性强",
+      "可解释性强，可以分解趋势、季节性、节假日效应",
+      "不需要手动特征工程",
+      "支持非均匀时间间隔的数据",
+      "提供不确定性区间估计"
+    ],
+    "缺点": [
+      "训练速度较慢（每次 3-10 秒）",
+      "对非季节性、非线性趋势的数据效果一般",
+      "超参数调优较复杂（主要是 changepoint_prior_scale）",
+      "模型文件较大（包含采样数据）",
+      "依赖 pystan，安装可能有问题"
+    ],
+    "适用场景": [
+      "具有明显季节性模式的数据（日、周、月、年）",
+      "有节假日效应的业务数据（如零售、电商）",
+      "历史数据 >= 几个月（至少一个完整季节周期）",
+      "需要可解释的预测结果",
+      "数据频率：小时、日、周、月（不适合分钟级高频数据）"
+    ],
+    "不适用场景": [
+      "纯随机游走数据（无季节性、无趋势）",
+      "高频金融数据（分钟级、秒级）",
+      "历史数据太短（< 2 个季节周期）",
+      "需要实时预测的场景（训练太慢）"
+    ],
+    "调参建议": [
+      "1. 先用默认参数训练，观察拟合情况",
+      "2. 绘制组件图（趋势、季节性），检查是否合理",
+      "3. 调整 changepoint_prior_scale：过拟合则减小，欠拟合则增大",
+      "4. 根据数据频率调整季节性：日度数据禁用 weekly_seasonality，小时数据启用 daily_seasonality",
+      "5. 如果有明显的节假日效应，添加节假日数据",
+      "6. seasonality_mode：观察季节性波动是否随趋势增长，是则用 'multiplicative'"
+    ]
+  },
+  
+  "_comparison_with_other_models": {
+    "_comment": "与其他模型的对比（仅供参考）",
+    "vs_GradientBoosting_RandomForest": {
+      "适用数据": "Prophet 适合有季节性的时间序列，GB/RF 适合任意表格数据",
+      "特征工程": "Prophet 无需手动特征工程，GB/RF 需要滞后特征、滚动窗口等",
+      "训练速度": "Prophet 慢（3-10秒/次），GB/RF 快（0.1-1秒/次）",
+      "预测精度": "有季节性时 Prophet 可能更好，复杂非线性模式 GB 更好",
+      "可解释性": "Prophet 可分解各组件，GB/RF 只有特征重要性",
+      "选择建议": "有明显季节性用 Prophet，否则用 GB/RF"
+    },
+    "vs_SARIMA": {
+      "灵活性": "Prophet 更灵活（自动变点检测、节假日），SARIMA 更传统严格",
+      "调参难度": "Prophet 更简单（主要调 1-2 个参数），SARIMA 需要确定 (p,d,q)(P,D,Q,s)",
+      "训练速度": "Prophet 稍快，SARIMA 需要多次迭代",
+      "预测精度": "数据符合 SARIMA 假设时 SARIMA 更好，否则 Prophet 更好",
+      "选择建议": "追求简单和快速用 Prophet，追求统计严谨性用 SARIMA"
+    }
+  },
+  
+  "_prophet_specific_features": {
+    "_comment": "Prophet 特有功能说明（需要在代码中实现）",
+    "custom_seasonality": {
+      "desc": "添加自定义季节性（如每月季节性、每季度季节性）",
+      "example": "model.add_seasonality(name='monthly', period=30.5, fourier_order=5)"
+    },
+    "holidays": {
+      "desc": "添加节假日效应",
+      "example": "提供包含 'ds' 和 'holiday' 列的 DataFrame"
+    },
+    "regressors": {
+      "desc": "添加外部回归变量（如促销、价格、天气等）",
+      "example": "model.add_regressor('promotion', prior_scale=0.5)"
+    },
+    "saturating_forecasts": {
+      "desc": "使用逻辑增长模型（有上限）",
+      "example": "growth='logistic', 需要提供 cap 和 floor"
+    }
+  }
+}
