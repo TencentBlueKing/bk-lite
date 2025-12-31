@@ -3,10 +3,10 @@
 SSH 脚本执行器插件
 用于统一处理所有基于脚本的采集任务
 """
+import os
 import json
 from pathlib import Path
 from typing import Dict, Any
-
 from sanic.log import logger
 from core.nats_utils import nats_request
 
@@ -41,7 +41,7 @@ class SSHPlugin:
         self.script_path = params.get("script_path")
         self.username = params.get("username")
         self.password = params.get("password")
-        self.port = int(params.get("port", 22))
+        self.port = params.get("port", 22)
         self.execute_timeout = int(params.get("execute_timeout", 60))
         self.node_info = params.get("node_info", {})
         self.model_id = params.get("model_id")
@@ -109,7 +109,7 @@ class SSHPlugin:
                 "user": self.username,
                 "username": self.username,
                 "password": self.password,
-                "port": self.port
+                "port": int(self.port)
             })
         else:
             # 本地执行时指定脚本类型
@@ -167,11 +167,11 @@ class SSHPlugin:
 
 # if __name__ == '__main__':
 #     import os
-#     os.environ["NATS_URLS"] = ""
+#     os.environ["NATS_URLS"] = "tls://admin:glUc4sGULEeHBnIha6BMeVrDOJrYtRUW@10.10.41.149:4222"
 #     os.environ["NATS_TLS_ENABLED"] = "true"
-#     os.environ["NATS_TLS_CA_FILE"] = ""
+#     os.environ["NATS_TLS_CA_FILE"] = "/Users/windyzhao/Documents/Canway/weops_X/cmdb/bk-lite/server/ca.pem"
 #     params = {
-#         "node_id": "",
+#         "node_id": "9e0353a3-9aac-4fed-9cae-6734b40f6fc7",
 #         "host": "172.30.112.1",
 #         "script_path": "plugins/inputs/host/host_windows_discover.ps1",
 #         "model_id": "host",
