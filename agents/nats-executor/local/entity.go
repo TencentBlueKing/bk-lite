@@ -1,8 +1,19 @@
 package local
 
+// 支持的脚本类型常量
+const (
+	ShellTypeSh         = "sh"         // Unix Shell（默认）
+	ShellTypeBash       = "bash"       // Bash Shell
+	ShellTypeBat        = "bat"        // Windows 批处理（cmd.exe）
+	ShellTypeCmd        = "cmd"        // Windows 命令提示符（同 bat）
+	ShellTypePowerShell = "powershell" // Windows PowerShell
+	ShellTypePwsh       = "pwsh"       // PowerShell Core（跨平台）
+)
+
 type ExecuteRequest struct {
 	Command        string `json:"command"`
 	ExecuteTimeout int    `json:"execute_timeout"`
+	Shell          string `json:"shell,omitempty"` // 脚本类型，支持：sh, bash, bat, cmd, powershell, pwsh，默认 "sh"
 }
 
 type ExecuteResponse struct {
