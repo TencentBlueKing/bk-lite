@@ -145,6 +145,9 @@ class CmdbRulesFormatUtil:
         inst_names = list(permission_instances_map.keys())
         permission_rule_map = {}
         for team in user_teams:
+            if not include_children and team not in teams:
+                # 不包含子组织的情况下跳过非当前的组织
+                continue
             if team in teams:
                 # 全部权限
                 permission_rule_map[team] = {
