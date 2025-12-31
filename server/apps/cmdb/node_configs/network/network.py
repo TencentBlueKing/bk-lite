@@ -8,7 +8,7 @@ from apps.cmdb.node_configs.base import BaseNodeParams
 class NetworkNodeParams(BaseNodeParams):
     supported_model_id = "network"  # 通过此属性自动注册
     plugin_name = "snmp_facts"  # 插件名称
-    interval = 300  # 网络设备采集间隔：300秒
+    interval = 60  # 网络设备采集间隔：300秒
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
