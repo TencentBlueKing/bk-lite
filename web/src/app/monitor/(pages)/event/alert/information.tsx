@@ -7,7 +7,8 @@ import informationStyle from './index.module.scss';
 import { useLocalizedTime } from '@/hooks/useLocalizedTime';
 import LineChart from '@/app/monitor/components/charts/lineChart';
 import { ObjectItem } from '@/app/monitor/types';
-import { findUnitNameById, showGroupName } from '@/app/monitor/utils/common';
+import { showGroupName } from '@/app/monitor/utils/common';
+import { useUnitTransform } from '@/app/monitor/hooks/useUnitTransform';
 import { useCommon } from '@/app/monitor/context/common';
 import { Popconfirm, message, Button } from 'antd';
 import useMonitorApi from '@/app/monitor/api';
@@ -30,6 +31,7 @@ const Information: React.FC<InformationProps> = ({
 }) => {
   const { t } = useTranslation();
   const { convertToLocalizedTime } = useLocalizedTime();
+  const { findUnitNameById } = useUnitTransform();
   const LEVEL_LIST = useLevelList();
   const { patchMonitorAlert } = useMonitorApi();
   const commonContext = useCommon();

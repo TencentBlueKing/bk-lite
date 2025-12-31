@@ -12,7 +12,7 @@ import { BellOutlined, SearchOutlined } from '@ant-design/icons';
 import LineChart from '@/app/monitor/components/charts/lineChart';
 import { TableDataItem, MetricItem, ChartData } from '@/app/monitor/types';
 import { useTranslation } from '@/utils/i18n';
-import { findUnitNameById } from '@/app/monitor/utils/common';
+import { useUnitTransform } from '@/app/monitor/hooks/useUnitTransform';
 import { Dayjs } from 'dayjs';
 import Icon from '@/components/icon';
 
@@ -47,6 +47,7 @@ const LazyMetricItem: React.FC<LazyMetricItemProps> = ({
   const observerRef = useRef<IntersectionObserver | null>(null);
   const [hasBeenVisible, setHasBeenVisible] = useState(false);
   const { t } = useTranslation();
+  const { findUnitNameById } = useUnitTransform();
 
   // 缓存 observer 配置
   const observerOptions = useMemo(

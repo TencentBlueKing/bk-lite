@@ -424,10 +424,12 @@ dependencies = [
     { name = "mlflow" },
     { name = "numpy" },
     { name = "pandas" },
+    { name = "prophet" },
     { name = "python-dotenv" },
     { name = "requests" },
     { name = "scikit-learn" },
     { name = "setuptools" },
+    { name = "sktime" },
     { name = "statsmodels" },
     { name = "tqdm" },
 ]
@@ -451,10 +453,12 @@ requires-dist = [
     { name = "mlflow", specifier = ">=3.6.0" },
     { name = "numpy", specifier = ">=1.26.0" },
     { name = "pandas", specifier = ">=2.2.0" },
+    { name = "prophet", specifier = ">=1.1.5" },
     { name = "python-dotenv", specifier = ">=1.2.1" },
     { name = "requests", specifier = ">=2.32.5" },
     { name = "scikit-learn", specifier = ">=1.7.2" },
     { name = "setuptools", specifier = ">=68.0.0" },
+    { name = "sktime", specifier = ">=0.30.0" },
     { name = "statsmodels", specifier = ">=0.14.4" },
     { name = "tqdm", specifier = ">=4.67.1" },
 ]
@@ -498,6 +502,21 @@ source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/27/fb/576f067976d320f5f0114a8d9fa1215425441bb35627b1993e5afd8111e5/cloudpickle-3.1.2.tar.gz", hash = "sha256:7fda9eb655c9c230dab534f1983763de5835249750e85fbcef43aaa30a9a2414", size = 22330, upload-time = "2025-11-03T09:25:26.604Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/88/39/799be3f2f0f38cc727ee3b4f1445fe6d5e4133064ec2e4115069418a5bb6/cloudpickle-3.1.2-py3-none-any.whl", hash = "sha256:9acb47f6afd73f60dc1df93bb801b472f05ff42fa6c84167d25cb206be1fbf4a", size = 22228, upload-time = "2025-11-03T09:25:25.534Z" },
+]
+
+[[package]]
+name = "cmdstanpy"
+version = "1.3.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "numpy" },
+    { name = "pandas" },
+    { name = "stanio" },
+    { name = "tqdm" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/40/0a/cc5cbec39155e5ab76b96cbb1acd23bd7f19a4e2203fdf9948a7cbec65b8/cmdstanpy-1.3.0.tar.gz", hash = "sha256:60b10d110993bd8345735994786b2b17782fdc5530a6adbc0cd8ec836d82c2b9", size = 122922, upload-time = "2025-10-20T19:25:08.128Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/ef/04/7bbe85aa6abf99236cc657ceb5a629f63a82a01910a095533111ea3860f3/cmdstanpy-1.3.0-py3-none-any.whl", hash = "sha256:67d83fbb823948c3ca8a84912359d6c0a5c616a62025526dba5f43a1d970bc52", size = 99147, upload-time = "2025-10-20T19:25:06.306Z" },
 ]
 
 [[package]]
@@ -1033,6 +1052,18 @@ wheels = [
 ]
 
 [[package]]
+name = "holidays"
+version = "0.87"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "python-dateutil" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/3e/fa/4464d560583ece7ae139ed8a3036bc0134b5cc0e7ebf86f0d19dbbc88855/holidays-0.87.tar.gz", hash = "sha256:e47d4e9c6b9c7afe331cc18f7fcf2026a38b4d701c9560a823d68a0306d8b3b3", size = 818962, upload-time = "2025-12-15T21:00:29.428Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/62/51/597674c97d586c7f9ad003f41df8161a879184224558c05378a8d0f64fea/holidays-0.87-py3-none-any.whl", hash = "sha256:c6ced9bd1b19b1a386365e0caf857220d5d7a29f02e7bdfc2f38f27d64b10265", size = 1335850, upload-time = "2025-12-15T21:00:27.627Z" },
+]
+
+[[package]]
 name = "httpcore"
 version = "1.0.9"
 source = { registry = "https://pypi.org/simple" }
@@ -1122,6 +1153,15 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/76/66/650a33bd90f786193e4de4b3ad86ea60b53c89b669a5c7be931fac31cdb0/importlib_metadata-8.7.0.tar.gz", hash = "sha256:d13b81ad223b890aa16c5471f2ac3056cf76c5f10f82d6f9292f0b415f389000", size = 56641, upload-time = "2025-04-27T15:29:01.736Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/20/b0/36bd937216ec521246249be3bf9855081de4c5e06a0c9b4219dbeda50373/importlib_metadata-8.7.0-py3-none-any.whl", hash = "sha256:e5dd1551894c77868a30651cef00984d50e1002d06942a7101d34870c5f02afd", size = 27656, upload-time = "2025-04-27T15:29:00.214Z" },
+]
+
+[[package]]
+name = "importlib-resources"
+version = "6.5.2"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/cf/8c/f834fbf984f691b4f7ff60f50b514cc3de5cc08abfc3295564dd89c5e2e7/importlib_resources-6.5.2.tar.gz", hash = "sha256:185f87adef5bcc288449d98fb4fba07cea78bc036455dd44c5fc4a2fe78fed2c", size = 44693, upload-time = "2025-01-03T18:51:56.698Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/a4/ed/1f1afb2e9e7f38a545d628f864d562a5ae64fe6f7a10e28ffb9b185b4e89/importlib_resources-6.5.2-py3-none-any.whl", hash = "sha256:789cfdc3ed28c78b67a06acb8126751ced69a3d5f79c095a98298cd8a760ccec", size = 37461, upload-time = "2025-01-03T18:51:54.306Z" },
 ]
 
 [[package]]
@@ -2040,6 +2080,28 @@ wheels = [
 ]
 
 [[package]]
+name = "prophet"
+version = "1.2.1"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "cmdstanpy" },
+    { name = "holidays" },
+    { name = "importlib-resources" },
+    { name = "matplotlib" },
+    { name = "numpy" },
+    { name = "pandas" },
+    { name = "tqdm" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/f8/65/be1c93ebd4d3d70f96cf8192d5a1b915d8ee56fdc6ce88010aacefe7d212/prophet-1.2.1.tar.gz", hash = "sha256:0c06a1de02396b95022aec60178d9348412c2799572b1b13315c6d045106471f", size = 66247, upload-time = "2025-10-21T23:07:27.894Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/9a/00/49023dca49a9d5d22ad4c5c6fc869fb42e0232e6fdb98615d64125ca234b/prophet-1.2.1-py3-none-macosx_10_11_x86_64.whl", hash = "sha256:4d9d91d04cafe32f3393eeaf928e3e510475a2852d2bd443147c515fae092735", size = 12743680, upload-time = "2025-10-21T23:07:16.628Z" },
+    { url = "https://files.pythonhosted.org/packages/17/30/cdfcac5c41ccda2906e5ed60936af581c4e74302a1b4810b521751e60ae0/prophet-1.2.1-py3-none-macosx_11_0_arm64.whl", hash = "sha256:1604a7750099a5e8eb3501d3d901ea9681cda2ff444f578cb4f543427bae5a41", size = 12121067, upload-time = "2025-10-21T23:07:19.064Z" },
+    { url = "https://files.pythonhosted.org/packages/7b/5e/328193778f8680c07eebf8bba6bb3b794c726fe18f2f87f1cd0c41824728/prophet-1.2.1-py3-none-manylinux2014_x86_64.manylinux_2_17_x86_64.whl", hash = "sha256:23fab28c2b679e931211b4b9153a2b592e58d036a2d4f52763726586f1cb1a0d", size = 12118207, upload-time = "2025-10-21T23:07:21.569Z" },
+    { url = "https://files.pythonhosted.org/packages/bf/51/facbb0dc3c0e2a54cf976b2e75e2f9400e85875a072e33df1aa16f3e1744/prophet-1.2.1-py3-none-manylinux_2_26_aarch64.manylinux_2_28_aarch64.whl", hash = "sha256:45454a55331f8089faf636aaa436a60c66baac7728d132ffdbfd88cc0e650389", size = 11879098, upload-time = "2025-10-21T23:07:24.027Z" },
+    { url = "https://files.pythonhosted.org/packages/43/f8/c2ff0c6b6e5379fca5a9e98af9c34e60831c8f0e753daa0733be5a8c986f/prophet-1.2.1-py3-none-win_amd64.whl", hash = "sha256:b1adaeb76e6900c7044db8519492272242617c08057eca0c05b740deefff5cb1", size = 12109003, upload-time = "2025-10-21T23:07:26.03Z" },
+]
+
+[[package]]
 name = "protobuf"
 version = "6.33.1"
 source = { registry = "https://pypi.org/simple" }
@@ -2539,6 +2601,15 @@ wheels = [
 ]
 
 [[package]]
+name = "scikit-base"
+version = "0.13.0"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/6b/4d/53b477e05ba7897026133543114c48c9e67646180b85a9e3bd6edb6e5223/scikit_base-0.13.0.tar.gz", hash = "sha256:436c26067173a7235c465c64ac105008f6f889f09308c5e4e4a16e21c38c3ddc", size = 127431, upload-time = "2025-10-08T20:39:35.509Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/94/1c/7c00d3823bef4ef2e5a95507475bc5cf3bdabf00c8577f8bb5ff406e9f2e/scikit_base-0.13.0-py3-none-any.whl", hash = "sha256:efe7df0f09854b9f28e9532f6be87ef433dd8f1358cabd24ebf168aa4ccca1fc", size = 151529, upload-time = "2025-10-08T20:39:33.951Z" },
+]
+
+[[package]]
 name = "scikit-learn"
 version = "1.7.2"
 source = { registry = "https://pypi.org/simple" }
@@ -2661,6 +2732,24 @@ wheels = [
 ]
 
 [[package]]
+name = "sktime"
+version = "0.40.1"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "joblib" },
+    { name = "numpy" },
+    { name = "packaging" },
+    { name = "pandas" },
+    { name = "scikit-base" },
+    { name = "scikit-learn" },
+    { name = "scipy" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/84/7a/22b99a00a7cabaa34c350f78f33ae89711cfc08deef06043daee3835dbb3/sktime-0.40.1.tar.gz", hash = "sha256:bbf3c2971c7ad388fbebc1d1fb573e20f730e6486c00935b336d8edf13bca04d", size = 35197759, upload-time = "2025-11-25T00:03:38.744Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/7e/0d/3b2e5b51593009f72fb7fb6956e6c652da1450c8c5484c40a276113c2114/sktime-0.40.1-py3-none-any.whl", hash = "sha256:130bb0c39ca4377e491c4dfa64c8ac67c3de2660dd406dd7690db6a8ac349c4e", size = 36265753, upload-time = "2025-11-25T00:03:34.522Z" },
+]
+
+[[package]]
 name = "smmap"
 version = "5.0.2"
 source = { registry = "https://pypi.org/simple" }
@@ -2705,6 +2794,18 @@ source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/18/67/701f86b28d63b2086de47c942eccf8ca2208b3be69715a1119a4e384415a/sqlparse-0.5.4.tar.gz", hash = "sha256:4396a7d3cf1cd679c1be976cf3dc6e0a51d0111e87787e7a8d780e7d5a998f9e", size = 120112, upload-time = "2025-11-28T07:10:18.377Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/25/70/001ee337f7aa888fb2e3f5fd7592a6afc5283adb1ed44ce8df5764070f22/sqlparse-0.5.4-py3-none-any.whl", hash = "sha256:99a9f0314977b76d776a0fcb8554de91b9bb8a18560631d6bc48721d07023dcb", size = 45933, upload-time = "2025-11-28T07:10:19.73Z" },
+]
+
+[[package]]
+name = "stanio"
+version = "0.5.1"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "numpy" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/2c/5b/6e376499c3f9d71e4154b031d059663598534dd038f421e8c643d61afec5/stanio-0.5.1.tar.gz", hash = "sha256:348d52f947dec431e118f4b601c4c5296929b86401d4d4dd5aa9373b0d4ae4ac", size = 11983, upload-time = "2024-07-08T19:35:48.029Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/56/87/37a80e4d5bd453c33262d8fb618b6840fd98d24ed08e046a4a9b10177fa3/stanio-0.5.1-py3-none-any.whl", hash = "sha256:99ad590daa5834681245c2b651716ec2e06223853661ada21430c621521c849f", size = 8065, upload-time = "2024-07-08T19:35:46.503Z" },
 ]
 
 [[package]]

@@ -22,6 +22,7 @@ executors:
     # 不同操作系统的脚本
     scripts:
       linux: plugins/inputs/host/host_default_discover.sh
+      windows: plugins/inputs/host/host_windows_discover.ps1
 
     collector:
       module: plugins.script_executor

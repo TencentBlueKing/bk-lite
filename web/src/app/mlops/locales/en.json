@@ -98,7 +98,7 @@
     "labelResult": "Labeling results",
     "delDataset": "Deleting a dataset",
     "delDatasetInfo": "Confirm deletion of dataset?",
-    "anomaly": "Single Indicator Anomaly Detection",
+    "anomaly": "Anomaly Detection",
     "rasa": "Rasa Model",
     "timeseriesPredict": "Time Series Predict",
     "logClustering": "Log Clustering",

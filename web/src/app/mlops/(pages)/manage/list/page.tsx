@@ -45,7 +45,7 @@ const DatasetManagePage = () => {
   const modalRef = useRef<ModalRef>(null);
   const datasetTypes = [
     { key: 'anomaly_detection', value: 'anomaly', label: t('datasets.anomaly') },
-    { key: 'rasa', value: 'rasa', label: t('datasets.rasa') },
+    // { key: 'rasa', value: 'rasa', label: t('datasets.rasa') },
     { key: 'log_clustering', value: 'log_clustering', label: t('datasets.logClustering') },
     { key: 'timeseries_predict', value: 'timeseries_predict', label: t('datasets.timeseriesPredict') },
     { key: 'classification', value: 'classification', label: t('datasets.classification') },

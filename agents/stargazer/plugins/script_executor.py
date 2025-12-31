@@ -41,7 +41,7 @@ class SSHPlugin:
         self.script_path = params.get("script_path")
         self.username = params.get("username")
         self.password = params.get("password")
-        self.port = int(params.get("port", 22))
+        self.port = params.get("port", 22)
         self.execute_timeout = int(params.get("execute_timeout", 60))
         self.node_info = params.get("node_info", {})
         self.model_id = params.get("model_id")
@@ -54,24 +54,51 @@ class SSHPlugin:
         """NATS 命名空间"""
         return os.getenv("NATS_NAMESPACE", "bklite")
 
+    def _get_shell_type(self) -> str:
+        """
+        根据脚本文件扩展名判断脚本类型
+        
+        Returns:
+            脚本类型，支持: "sh"(默认), "bash", "bat", "cmd", "powershell", "pwsh"
+        """
+        path = Path(self.script_path)
+        ext = path.suffix.lower()
+
+        # 扩展名到 shell 类型的映射
+        ext_to_shell = {
+            '.sh': 'bash',
+            '.bash': 'bash',
+            '.bat': 'bat',
+            '.cmd': 'cmd',
+            '.ps1': 'powershell',
+            '.psm1': 'powershell',
+        }
+
+        return ext_to_shell.get(ext, 'sh')  # 默认返回 sh
+
     def _read_script(self) -> str:
         """读取脚本内容"""
         path = Path(self.script_path)
 
+        # 如果是相对路径，转换为基于项目根目录的绝对路径
+        if not path.is_absolute():
+            # 获取当前文件所在目录的父目录的父目录（项目根目录）
+            project_root = Path(__file__).parent.parent
+            path = project_root / self.script_path
+
         if not path.exists():
-            raise FileNotFoundError(f"Script not found: {self.script_path}")
+            raise FileNotFoundError(f"Script not found: {path} (original: {self.script_path})")
 
         with open(path, 'r', encoding='utf-8') as f:
             content = f.read()
 
-        logger.info(f"📖 Script loaded from {self.script_path}: {len(content)} bytes")
+        logger.info(f"📖 Script loaded from {path}: {len(content)} bytes")
         return content
 
     def _build_exec_params(self, script_content: str) -> Dict[str, Any]:
         """构建执行参数"""
         exec_params = {
             "command": script_content,
-            "port": self.port,
             "execute_timeout": self.execute_timeout
         }
 
@@ -81,8 +108,14 @@ class SSHPlugin:
                 "host": self.host,
                 "user": self.username,
                 "username": self.username,
-                "password": self.password
+                "password": self.password,
+                "port": int(self.port)
             })
+        else:
+            # 本地执行时指定脚本类型
+            shell_type = self._get_shell_type()
+            exec_params["shell"] = shell_type
+            logger.info(f"🔧 Local execution: shell type={shell_type}")
 
         return exec_params
 
@@ -95,10 +128,6 @@ class SSHPlugin:
             need_raw： 是否需要原始结果
         """
         try:
-            # 检查 Windows 系统
-            if self.node_info and self.node_info.get("operating_system") == "windows":
-                raise RuntimeError("当前节点为Windows系统，无法使用SSH方式采集数据")
-
             # 1. 读取脚本内容
             script_content = self._read_script()
 
@@ -139,3 +168,21 @@ class SSHPlugin:
             import traceback
             logger.error(f"❌ SSHPlugin execution failed: {traceback.format_exc()}")
             return {"result": {"cmdb_collect_error": str(e)}, "success": False}
+
+
+# if __name__ == '__main__':
+#     import os
+#     os.environ["NATS_URLS"] = ""
+#     os.environ["NATS_TLS_ENABLED"] = "true"
+#     os.environ["NATS_TLS_CA_FILE"] = ""
+#     params = {
+#         "node_id": "",
+#         "host": "172.30.112.1",
+#         "script_path": "plugins/inputs/host/host_windows_discover.ps1",
+#         "model_id": "host",
+#         "node_info": {"name": 1}
+#     }
+#     plugin = SSHPlugin(params=params)
+#     import asyncio
+#
+#     asyncio.run(plugin.list_all_resources())

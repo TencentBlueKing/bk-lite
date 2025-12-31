@@ -29,9 +29,9 @@ import { EditOutlined } from '@ant-design/icons';
 import {
   getK8SData,
   getEnumColor,
-  getEnumValueUnit,
   isStringArray,
 } from '@/app/monitor/utils/common';
+import { useUnitTransform } from '@/app/monitor/hooks/useUnitTransform';
 import { useObjectConfigInfo } from '@/app/monitor/hooks/integration/common/getObjectConfig';
 import { Select, Spin } from 'antd';
 import { ListItem } from '@/types';
@@ -44,6 +44,7 @@ const ViewHive: React.FC<ViewListProps> = ({ objects, objectId }) => {
   const { getMonitorMetrics } = useMonitorApi();
   const { getInstanceQueryParams, getInstanceSearch } = useViewApi();
   const { t } = useTranslation();
+  const { getEnumValueUnit } = useUnitTransform();
   const { getTableDiaplay } = useObjectConfigInfo();
   const timerRef = useRef<NodeJS.Timeout | null>(null);
   const modalRef = useRef<ModalRef>(null);
