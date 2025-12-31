@@ -32,11 +32,11 @@ import {
   ConditionItem,
 } from '@/app/monitor/types/search';
 import {
-  findUnitNameById,
   mergeViewQueryKeyValues,
   renderChart,
   getRecentTimeRange,
 } from '@/app/monitor/utils/common';
+import { useUnitTransform } from '@/app/monitor/hooks/useUnitTransform';
 import { useSearchParams } from 'next/navigation';
 import dayjs from 'dayjs';
 import TreeSelector from '@/app/monitor/components/treeSelector';
@@ -45,6 +45,7 @@ const { Option } = Select;
 
 const SearchView: React.FC = () => {
   const { get, isLoading } = useApiClient();
+  const { findUnitNameById } = useUnitTransform();
   const {
     getMonitorObject,
     getMonitorMetrics,

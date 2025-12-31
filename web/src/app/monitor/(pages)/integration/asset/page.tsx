@@ -140,11 +140,9 @@ const Asset = () => {
               {plugins.map((plugin: any, index: number) => {
                 const isAuto = plugin.collect_mode === 'auto';
                 const statusInfo = {
-                  color: isAuto
-                    ? plugin.status === 'normal' || plugin.status === 'online'
-                      ? 'success'
-                      : 'error'
-                    : 'default',
+                  color: ['normal', 'online'].includes(plugin.status)
+                    ? 'success'
+                    : 'error',
                   text: isAuto
                     ? t('monitor.integrations.automatic')
                     : t('monitor.integrations.manual'),
@@ -177,9 +175,7 @@ const Asset = () => {
                         })
                       }
                     >
-                      {plugin.collector
-                        ? `${plugin.name}（${plugin.collector}）`
-                        : plugin.name}
+                      {plugin.display_name || '--'}
                     </Tag>
                   </Tooltip>
                 );

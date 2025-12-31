@@ -98,6 +98,14 @@ const useMonitorApi = () => {
     return await patch(`/monitor/api/monitor_alert/${id}/`, data);
   };
 
+  const getAllUsers = async () => {
+    return await get(`/monitor/api/system_mgmt/user_all/`);
+  };
+
+  const getUnitList = async () => {
+    return await get(`/monitor/api/unit/list`);
+  };
+
   return {
     getMonitorMetrics,
     getMetricsGroup,
@@ -106,6 +114,8 @@ const useMonitorApi = () => {
     getInstanceList,
     getMonitorPlugin,
     patchMonitorAlert,
+    getAllUsers,
+    getUnitList,
   };
 };
 
