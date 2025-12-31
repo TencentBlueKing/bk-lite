@@ -14,11 +14,9 @@ class UnitConverterConstants:
     UNIT_SYSTEMS = {
         # 百分比体系
         'percent': {
-            'units': ['percentunit', 'percent'],  # percentunit (0.0-1.0) -> percent (0-100)
+            'units': ['percent'],
             'base': 1,
-            'display_units': ['%', '%'],
-            # percentunit 是基准单位，percent = 0.01 * percentunit（在倍数意义上）
-            # 即：percentunit的值 * 100 = percent的值
+            'display_units': ['%'],
         },
 
         # 计数体系（1000进制）
@@ -77,7 +75,6 @@ class UnitConverterConstants:
         # Base
         'none': 'none',
         'percent': 'percent',
-        'percentunit': 'percentunit',
 
         # Count
         'counts': 'counts',
@@ -152,7 +149,6 @@ class UnitConverterConstants:
     # 展示单位映射（单位ID -> 展示格式）
     DISPLAY_UNIT_MAPPING = {
         'percent': '%',
-        'percentunit': '%',
         'counts': '',
         'thousand': 'K',
         'million': 'Mil',
@@ -208,6 +204,81 @@ class UnitConverterConstants:
 
     # 不支持转换的单位（独立单位）
     STANDALONE_UNITS = ['none', 'cps', 'msps', 'celsius', 'fahrenheit', 'kelvin', 'watts', 'volts']
+
+    # 单位分类映射（对应前端展示分类）
+    UNIT_CATEGORY_MAPPING = {
+        # Base 类别
+        'none': 'Base',
+        'percent': 'Base',
+
+        # Count 类别
+        'counts': 'Count',
+        'thousand': 'Count',
+        'million': 'Count',
+        'billion': 'Count',
+        'trillion': 'Count',
+        'quadrillion': 'Count',
+        'quintillion': 'Count',
+        'sextillion': 'Count',
+        'septillion': 'Count',
+
+        # Data (bits) 类别
+        'bits': 'Data (bits)',
+        'kilobits': 'Data (bits)',
+        'megabits': 'Data (bits)',
+        'gigabits': 'Data (bits)',
+        'terabits': 'Data (bits)',
+        'petabits': 'Data (bits)',
+
+        # Data (bytes) 类别
+        'bytes': 'Data (bytes)',
+        'kibibytes': 'Data (bytes)',
+        'mebibytes': 'Data (bytes)',
+        'gibibytes': 'Data (bytes)',
+        'tebibytes': 'Data (bytes)',
+        'pebibytes': 'Data (bytes)',
+
+        # Data Rate (bits) 类别
+        'bitps': 'Data Rate（bits）',
+        'kbitps': 'Data Rate（bits）',
+        'mbitps': 'Data Rate（bits）',
+        'gbitps': 'Data Rate（bits）',
+        'tbitps': 'Data Rate（bits）',
+        'pbitps': 'Data Rate（bits）',
+
+        # Data Rate (bytes) 类别
+        'byteps': 'Data Rate（bytes）',
+        'kibyteps': 'Data Rate（bytes）',
+        'mibyteps': 'Data Rate（bytes）',
+        'gibyteps': 'Data Rate（bytes）',
+        'tibyteps': 'Data Rate（bytes）',
+        'pibyteps': 'Data Rate（bytes）',
+
+        # Time 类别
+        'ns': 'Time',
+        'µs': 'Time',
+        'ms': 'Time',
+        's': 'Time',
+        'm': 'Time',
+        'h': 'Time',
+        'd': 'Time',
+
+        # Rate 类别
+        'cps': 'Rate',
+        'hertz': 'Rate',
+        'kilohertz': 'Rate',
+        'megahertz': 'Rate',
+        'msps': 'Rate',
+
+        # Temperature 类别
+        'celsius': 'Temperature',
+        'fahrenheit': 'Temperature',
+        'kelvin': 'Temperature',
+
+        # Other 类别
+        'watts': 'Other',
+        'volts': 'Other',
+    }
 
     # 单位建议策略配置
     STRATEGY_MEDIAN = 'median'  # 中位数（默认，抗干扰）
