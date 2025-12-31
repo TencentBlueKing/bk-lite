@@ -5,7 +5,7 @@ import { useTranslation } from '@/utils/i18n';
 import useMlopsTaskApi from '@/app/mlops/api/task';
 import type { Option } from '@/types';
 import type { TrainJob, FieldConfig } from '@/app/mlops/types/task';
-import { TIMESERIES_ALGORITHM_CONFIGS } from '@/app/mlops/constants';
+import { TIMESERIES_ALGORITHM_CONFIGS, TIMESERIES_ALGORITHM_SCENARIOS } from '@/app/mlops/constants';
 import { AlgorithmFieldRenderer } from '@/app/mlops/components/AlgorithmFieldRenderer';
 import { 
   transformGroupData, 
@@ -315,10 +315,17 @@ export const useTimeseriesPredictForm = ({
             onChange={onAlgorithmChange}
             options={[
               { value: 'GradientBoosting', label: 'GradientBoosting' },
-              { value: 'RandomForest', label: 'RandomForest' }
+              { value: 'RandomForest', label: 'RandomForest' },
+              { value: 'Prophet', label: 'Prophet' },
             ]}
           />
         </Form.Item>
+        
+        {currentAlgorithm && TIMESERIES_ALGORITHM_SCENARIOS[currentAlgorithm] && (
+          <div style={{ marginTop: -16, marginBottom: 24, fontSize: 12, color: '#999' }}>
+            {TIMESERIES_ALGORITHM_SCENARIOS[currentAlgorithm]}
+          </div>
+        )}
 
         <Form.Item name='dataset' label={t('traintask.datasets')} rules={[{ required: true, message: t('traintask.selectDatasets') }]}>
           <Select

@@ -372,10 +372,29 @@ class TrainingConfig:
     def get_model_params(self) -> Dict[str, Any]:
         """获取模型参数（非搜索参数）"""
         hp = self.config["hyperparams"]
-        return {
-            "use_feature_engineering": hp["use_feature_engineering"],
-            "random_state": hp["random_state"]
+
+        # 向后兼容：对于传统模型（如 GradientBoosting、RandomForest），
+        # 仅返回通用标志位和 random_state
+        if self.model_type not in ("Prophet",):
+            return {
+                "use_feature_engineering": hp["use_feature_engineering"],
+                "random_state": hp["random_state"]
+            }
+
+        # 对于 Prophet（以及未来的原生时间序列模型），返回 hyperparams
+        # 中的所有模型参数（排除搜索相关字段），以便调用方用配置中的
+        # 默认值构建模型。search_space 仍然作为超参数搜索的唯一来源。
+        exclude_keys = {"max_evals", "metric", "search_space"}
+
+        prophet_params: Dict[str, Any] = {
+            k: v for k, v in hp.items() if k not in exclude_keys
         }
+
+        # Ensure random_state present (keeps behaviour consistent)
+        if "random_state" not in prophet_params and "random_state" in hp:
+            prophet_params["random_state"] = hp["random_state"]
+
+        return prophet_params
     
     def get_search_config(self) -> Dict[str, Any]:
         """获取搜索配置"""
