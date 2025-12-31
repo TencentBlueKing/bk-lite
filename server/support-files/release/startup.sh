@@ -2,136 +2,24 @@ python3 manage.py migrate || true
 python3 manage.py createcachetable django_cache
 python3 manage.py collectstatic --noinput
 
-# 初始化函数定义
-init_system_mgmt() {
-    echo "系统管理资源初始化..."
-    python3 manage.py init_realm_resource || true
-    python3 manage.py init_login_settings || true
-    python3 manage.py create_user admin password --email=admin@bklite.net --is_superuser || true
-    python3 manage.py init_custom_menu || true
-    python3 manage.py clean_group_data || true
-}
-
-init_cmdb() {
-    echo "CMDB资源初始化..."
-    python3 manage.py model_init || true
-    python3 manage.py init_oid || true
-    python3 manage.py update_collect_task_data || true
-}
-
-init_console_mgmt() {
-    echo "控制台管理资源初始化..."
-    # 如果有控制台管理相关的初始化命令，在这里添加
-}
-
-init_monitor() {
-    echo "初始化监控资源..."
-    python3 manage.py plugin_init || true
-}
-
-init_node_mgmt() {
-    echo "初始化节点管理..."
-    python3 manage.py node_init || true
-}
-
-init_alerts() {
-    echo "告警系统资源初始化..."
-    python3 manage.py init_alert_sources || true
-    python3 manage.py init_alert_levels || true
-    python3 manage.py create_builtin_rules --update || true
-}
-
-init_operation_analysis() {
-    echo "运营分析系统资源初始化..."
-    python3 manage.py init_default_namespace || true
-    python3 manage.py init_default_groups  || true
-    python3 manage.py init_source_api_data --update || true
-}
-
-init_opspilot() {
-    echo "OpsPilot资源初始化..."
-    python3 manage.py init_bot || true
-    python3 manage.py init_channel || true
-    python3 manage.py init_llm || true
-    python3 manage.py init_provider_model  || true
-    python3 manage.py parse_tools_yml  || true
-}
-
-init_playground() {
-    echo "playground资源初始化..."
-    python3 manage.py category_init || true
-}
-
-
-
-init_log(){
-    echo "日志模块初始化..."
-    python3 manage.py log_init || true
-}
-
 # 读取 INSTALL_APPS 环境变量
 INSTALL_APPS=${INSTALL_APPS:-""}
 
 # 去除空白字符
 INSTALL_APPS=$(echo "$INSTALL_APPS" | tr -d ' ')
 
+# 使用统一的批量初始化命令，在单个 Python 进程中完成所有初始化
+# 大幅减少启动时间（从原来的多次 Python 进程启动优化为单次启动）
+echo "开始批量初始化..."
+python3 manage.py batch_init --apps="$INSTALL_APPS" || true
+
 # 检查是否包含 opspilot 模块
 opspilot_installed=false
-
-# 如果 INSTALL_APPS 为空，执行所有初始化
 if [ -z "$INSTALL_APPS" ]; then
-    init_system_mgmt
-    init_cmdb
-    init_monitor
-    init_node_mgmt
-    init_alerts
-    init_operation_analysis
-    init_opspilot
-    init_log
-    init_playground
+    # 空表示安装所有模块，包括 opspilot
     opspilot_installed=true
-else
-    # 按逗号分割 INSTALL_APPS
-    IFS=',' read -ra APPS <<< "$INSTALL_APPS"
-    
-    for app in "${APPS[@]}"; do
-        case "$app" in
-            "log")
-                init_log
-                ;;
-            "system_mgmt")
-                init_system_mgmt
-                ;;
-            "cmdb")
-                init_cmdb
-                ;;
-            "console_mgmt")
-                init_console_mgmt
-                ;;
-            "monitor")
-                init_monitor
-                ;;
-            "node_mgmt")
-                init_node_mgmt
-                ;;
-            "alerts")
-                init_alerts
-                ;;
-            "operation_analysis")
-                init_operation_analysis
-                ;;
-            "playground")
-                init_playground
-                ;;
-            "opspilot")
-                init_opspilot
-                opspilot_installed=true
-                ;;
-            *)
-                echo "未知模块: $app"
-                ;;
-        esac
-    done
+elif echo "$INSTALL_APPS" | grep -q "opspilot"; then
+    opspilot_installed=true
 fi
 
 # 如果没有安装 opspilot 模块，删除 consumer.conf 文件
