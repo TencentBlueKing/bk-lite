@@ -114,12 +114,12 @@ class FalkorDBClient:
         start_time = time.time()
 
         # 记录查询日志
-        logger.info(f"[CQL] {query}")
+        logger.debug(f"[CQL] {query}")
 
         try:
             result = self._graph.query(query)
             execution_time = (time.time() - start_time) * 1000  # 转换为毫秒
-            logger.info(f"[CQL Result] 查询成功，耗时: {execution_time:.2f}ms")
+            logger.debug(f"[CQL Result] 查询成功，耗时: {execution_time:.2f}ms")
             return result
         except Exception as e:
             execution_time = (time.time() - start_time) * 1000
@@ -481,7 +481,7 @@ class FalkorDBClient:
         """
         查询实体详情
         """
-        obj = self._graph.query(f"MATCH (n) WHERE ID(n) = {id} RETURN n")
+        obj = self._execute_query(f"MATCH (n) WHERE ID(n) = {id} RETURN n")
         if not obj:
             return {}
         return self.entity_to_dict(obj)
@@ -490,7 +490,7 @@ class FalkorDBClient:
         """
         查询实体列表
         """
-        objs = self._graph.query(f"MATCH (n) WHERE ID(n) IN {ids} RETURN n")
+        objs = self._execute_query(f"MATCH (n) WHERE ID(n) IN {ids} RETURN n")
         if not objs:
             return []
         return self.entity_to_list(objs)
@@ -500,7 +500,7 @@ class FalkorDBClient:
         查询实体列表 通过实例名称
         """
         queries = f"AND n.model_id= '{model_id}'" if model_id else ""
-        objs = self._graph.query(f"MATCH (n) WHERE n.inst_name IN {inst_names} {queries} RETURN n")
+        objs = self._execute_query(f"MATCH (n) WHERE n.inst_name IN {inst_names} {queries} RETURN n")
         if not objs:
             return []
         return self.entity_to_list(objs)
@@ -519,7 +519,7 @@ class FalkorDBClient:
         params_str = self.format_search_params(params, param_type)
         params_str = f"WHERE {params_str}" if params_str else params_str
 
-        objs = self._graph.query(f"MATCH p=(a)-[n{label_str}]->(b) {params_str} RETURN p")
+        objs = self._execute_query(f"MATCH p=(a)-[n{label_str}]->(b) {params_str} RETURN p")
 
         return self.edge_to_list(objs, return_entity)
 
@@ -527,7 +527,7 @@ class FalkorDBClient:
         """
         查询边详情
         """
-        objs = self._graph.query(f"MATCH p=(a)-[n]->(b) WHERE ID(n) = {id} RETURN p")
+        objs = self._execute_query(f"MATCH p=(a)-[n]->(b) WHERE ID(n) = {id} RETURN p")
         edges = self.edge_to_list(objs, return_entity)
         return edges[0]
 
@@ -597,7 +597,7 @@ class FalkorDBClient:
         properties_str = self.format_properties_set(properties)
         if not properties_str:
             raise BaseAppException("properties is empty")
-        nodes = self._graph.query(f"MATCH (n{label_str}) WHERE ID(n) IN {node_ids} SET {properties_str} RETURN n")
+        nodes = self._execute_query(f"MATCH (n{label_str}) WHERE ID(n) IN {node_ids} SET {properties_str} RETURN n")
         return nodes
 
     def format_properties_remove(self, attrs: list):
@@ -613,21 +613,21 @@ class FalkorDBClient:
         properties_str = self.format_properties_remove(attrs)
         params_str = self.format_search_params(params)
         params_str = f"WHERE {params_str}" if params_str else params_str
-        self._graph.query(f"MATCH (n{label_str}) {params_str} REMOVE {properties_str} RETURN n")
+        self._execute_query(f"MATCH (n{label_str}) {params_str} REMOVE {properties_str} RETURN n")
 
     def batch_delete_entity(self, label: str, entity_ids: list):
         """批量删除实体"""
         label_str = f":{label}" if label else ""
-        self._graph.query(f"MATCH (n{label_str}) WHERE ID(n) IN {entity_ids} DETACH DELETE n")
+        self._execute_query(f"MATCH (n{label_str}) WHERE ID(n) IN {entity_ids} DETACH DELETE n")
 
     def detach_delete_entity(self, label: str, id: int):
         """删除实体，以及实体的关联关系"""
         label_str = f":{label}" if label else ""
-        self._graph.query(f"MATCH (n{label_str}) WHERE ID(n) = {id} DETACH DELETE n")
+        self._execute_query(f"MATCH (n{label_str}) WHERE ID(n) = {id} DETACH DELETE n")
 
     def delete_edge(self, edge_id: int):
         """删除边"""
-        self._graph.query(f"MATCH ()-[n]->() WHERE ID(n) = {edge_id} DELETE n")
+        self._execute_query(f"MATCH ()-[n]->() WHERE ID(n) = {edge_id} DELETE n")
 
     def entity_objs(self, label: str, params: list, permission_params: str = ""):
         """实体对象查询"""
@@ -638,7 +638,7 @@ class FalkorDBClient:
 
         sql_str = f"MATCH (n{label_str}) {params_str} RETURN n"
 
-        inst_objs = self._graph.query(sql_str)
+        inst_objs = self._execute_query(sql_str)
         return inst_objs
 
     def query_topo(self, label: str, inst_id: int):
@@ -661,8 +661,8 @@ class FalkorDBClient:
             dst_query = f"MATCH p=(m{label_str})-[*]->(n{label_str}) WHERE ID(n) = {inst_id} RETURN p"
 
         try:
-            src_objs = self._graph.query(src_query)
-            dst_objs = self._graph.query(dst_query)
+            src_objs = self._execute_query(src_query)
+            dst_objs = self._execute_query(dst_query)
         except Exception as e:
             logger.error(f"Query topo failed: {e}")
             # 如果复杂查询失败，使用简单的直接关系查询
@@ -766,8 +766,8 @@ class FalkorDBClient:
         if params_str:
             params_str = f"AND {params_str}"
 
-        src_objs = self._graph.query(self.convert_to_cypher_match(label_str, model_id, params_str, dst=False))
-        dst_objs = self._graph.query(self.convert_to_cypher_match(label_str, model_id, params_str, dst=True))
+        src_objs = self._execute_query(self.convert_to_cypher_match(label_str, model_id, params_str, dst=False))
+        dst_objs = self._execute_query(self.convert_to_cypher_match(label_str, model_id, params_str, dst=True))
 
         return dict(
             src_result=self.format_topo(inst_id, src_objs, True),
@@ -867,7 +867,7 @@ class FalkorDBClient:
             filter_str = f"WHERE {filter_str}"
 
         count_sql = f"MATCH (n{label_str}) {filter_str} RETURN n.{group_by_attr} AS {group_by_attr}, COUNT(n) AS count"
-        data = self._graph.query(count_sql)
+        data = self._execute_query(count_sql)
         result = FormatDBResult(data).to_result_of_count()
         return result
 
@@ -905,7 +905,7 @@ class FalkorDBClient:
         query = f"""MATCH (n:{INSTANCE}) WHERE {where_clause} RETURN n"""
 
         try:
-            objs = self._graph.query(query)
+            objs = self._execute_query(query)
             return self.entity_to_list(objs)
         except Exception as e:
             logger.error(f"Full text search failed: {e}")
@@ -932,7 +932,7 @@ class FalkorDBClient:
                 simple_where_clause = " AND ".join(simple_conditions) if simple_conditions else "true"
                 fallback_query = f"""MATCH (n:{INSTANCE}) WHERE {simple_where_clause} RETURN n"""
 
-                objs = self._graph.query(fallback_query)
+                objs = self._execute_query(fallback_query)
                 return self.entity_to_list(objs)
             except Exception as fallback_e:
                 logger.error(f"Fallback full text search also failed: {fallback_e}")

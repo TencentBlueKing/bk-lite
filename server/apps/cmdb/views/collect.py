@@ -147,9 +147,10 @@ class CollectModelViewSet(AuthViewSet):
     @HasPermission("auto_collection-View")
     @action(methods=["get"], detail=False, url_path="task_status")
     def task_status(self, request, *args, **kwargs):
-        queryset = self.filter_queryset(self.get_queryset())
-        queryset = queryset.only("model_id", "exec_status")
-        serializer = CollectModelIdStatusSerializer(queryset, many=True, context={"request": request})
+        queryset = self.get_queryset()
+        filter_queryset = self.get_queryset_by_permission(request=request,queryset=queryset)
+        filter_queryset = filter_queryset.only("model_id", "exec_status")
+        serializer = CollectModelIdStatusSerializer(filter_queryset, many=True, context={"request": request})
         data = {}
         for model_data in serializer.data:
             if not data.get(model_data['model_id'], False):
