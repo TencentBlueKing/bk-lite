@@ -67,6 +67,7 @@ class MonitorInstanceVieSet(viewsets.ViewSet):
             monitor_obj,
             dict(**request.data),
             qs=qs,
+            locale=request.user.locale,
         )
         data = search_obj.search()
         # 如果有权限规则，则添加到数据中
@@ -100,6 +101,7 @@ class MonitorInstanceVieSet(viewsets.ViewSet):
             monitor_obj,
             dict(**request.data),
             qs=qs,
+            locale=request.user.locale,
         )
         data = search_obj.search_by_primary_object()
         # 如果有权限规则，则添加到数据中
