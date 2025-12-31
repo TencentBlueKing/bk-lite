@@ -31,14 +31,17 @@ class Executor(object):
         return_data = self.health_check_client.run(self.instance_id, request_data, _timeout=timeout)
         return return_data
 
-    def execute_local(self, command, timeout=60):
+    def execute_local(self, command, timeout=60, shell=None):
         """
         执行本地命令
         :param command: 要执行的命令
         :param timeout: 执行超时时间(秒)
+        :param shell: 脚本类型，支持: "sh"(默认), "bash", "bat", "cmd", "powershell", "pwsh"
         :return: 命令执行结果
         """
         request_data = {"command": command, "execute_timeout": timeout}
+        if shell:
+            request_data["shell"] = shell
         return_data = self.local_client.run(self.instance_id, request_data, _timeout=timeout)
         return return_data
 
