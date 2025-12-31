@@ -135,8 +135,8 @@ class HostCollectMetrics(CollectBase):
         """设置实例名称"""
         if self.inst_name:
             return self.inst_name
-        if data.get("cmdbhost", ""):
-            return data["cmdbhost"]
+        if data.get("host", ""):
+            return data["host"]
         # IP范围采集模式: 从instance_id提取IP
         instance_id = data.get("instance_id", "")
         if instance_id and "_" in instance_id:
@@ -221,9 +221,10 @@ class HostCollectMetrics(CollectBase):
         for index_data in data.get("result", []):
             metric_name = index_data["metric"]["__name__"]
             # 检查instance_id是否属于当前采集任务
-            instance_id = index_data["metric"].get("instance_id", "")
-            if instance_id and not self.check_task_id(instance_id):
-                continue
+            # print(index_data["metric"])
+            # instance_id = index_data["metric"].get("instance_id", "")
+            # if instance_id and not self.check_task_id(instance_id):
+            #     continue
 
             value = index_data["value"]
             _time, value = value[0], value[1]
@@ -235,15 +236,7 @@ class HostCollectMetrics(CollectBase):
             # 解析result字段中的JSON数据
             # VictoriaMetrics返回的JSON字符串包含转义字符（如\n），需要先反转义再解析
             result_data = {}
-            result_json = index_data["metric"].get("result", "{}")
-            if result_json and result_json != "{}":
-                try:
-                    unescaped_json = codecs.decode(
-                        result_json, 'unicode_escape')
-                    result_data = json.loads(unescaped_json)
-                except Exception:
-                    result_data = {}
-            if isinstance(result_data, dict) and not result_data:
+            if index_data["metric"].get("collect_status", 'success') == 'failed':
                 continue
             index_dict = dict(
                 index_key=metric_name,

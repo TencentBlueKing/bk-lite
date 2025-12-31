@@ -90,6 +90,13 @@ class CollectVmwareMetrics(CollectBase):
         inst_name = "_".join(inst_id.split("_")[1:])
         return inst_name
 
+    def set_data_disks(self, *args, **kwargs):
+        data = args[0]
+        if data.get('data_disks'):
+            data['data_disks'] = data['data_disks'].replace('\\"', '"')
+            return data['data_disks']
+        return ""
+
     @property
     def model_field_mapping(self):
         mapping = {
@@ -114,7 +121,7 @@ class CollectVmwareMetrics(CollectBase):
                 "creation_date": "creation_date",
                 "last_backup": "last_backup",
                 "backup_policy": "backup_policy",
-                "data_disks": "data_disks",
+                "data_disks": self.set_data_disks,
                 "self_esxi": self.get_vm_esxi_name,
                 self.asso: self.get_vm_asso
             },
@@ -149,13 +156,14 @@ class CollectVmwareMetrics(CollectBase):
         for index_data in data["result"]:
             metric_name = index_data["metric"]["__name__"]
             value = index_data["value"]
+            if index_data["metric"].get("collect_status", 'success') == 'failed':
+                continue
             _time, value = value[0], value[1]
             if not self.timestamp_gt:
                 if timestamp_gt_one_day_ago(_time):
                     break
                 else:
                     self.timestamp_gt = True
-
             index_dict = dict(
                 index_key=metric_name,
                 index_value=value,
@@ -186,6 +194,6 @@ class CollectVmwareMetrics(CollectBase):
                         data[field] = key_or_func(index_data, index_data.get("inst_name",''))
                     else:
                         data[field] = index_data.get(key_or_func, "")
-
+                        data[field] =data[field].replace("\\", '')
                 result.append(data)
             self.result[model_id] = result

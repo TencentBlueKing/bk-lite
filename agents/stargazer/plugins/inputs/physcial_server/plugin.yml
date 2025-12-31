@@ -1,4 +1,4 @@
-name: physical_server
+name: physcial_server
 version: "2.0.0"
 category: infrastructure
 
@@ -8,7 +8,7 @@ metadata:
   author: "WeOps"
   tags: [infrastructure, server, hardware]
   cloud_protocol: false
-  model_id: physical_server
+  model_id: physcial_server
 
 # ============================================================================
 # 执行器配置
@@ -21,12 +21,12 @@ executors:
 
     # 不同操作系统的脚本
     scripts:
-      linux: plugins/inputs/physical_server/physical_server_default_discover.sh
+      linux: plugins/inputs/physcial_server/physcial_server_default_discover.sh
 
     # 如果有需要可以继承重写 SSHPlugin
     collector:
-      module: plugins.inputs.physical_server.physical_server_info
-      class: PhysicalServerInfo
+      module: plugins.inputs.physcial_server.physcial_server_info
+      class: PhyscialServerInfo
 
     # 默认脚本
     default_script: linux
