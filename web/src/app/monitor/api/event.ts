@@ -81,6 +81,10 @@ const useEventApi = () => {
     });
   };
 
+  const getUnitList = async () => {
+    return await get(`/monitor/api/unit/list/`);
+  };
+
   return {
     getMonitorEventDetail,
     getEventRaw,
@@ -91,6 +95,7 @@ const useEventApi = () => {
     deleteMonitorPolicy,
     getTemplateObjects,
     getSnapshot,
+    getUnitList,
   };
 };
 

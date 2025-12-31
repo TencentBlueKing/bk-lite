@@ -20,6 +20,7 @@ import {
 } from 'antd';
 import { AggregationColor } from 'antd/es/color-picker/color';
 import { PlusOutlined, MinusOutlined } from '@ant-design/icons';
+import { useCommon } from '@/app/monitor/context/common';
 import OperateModal from '@/components/operate-modal';
 import type { FormInstance } from 'antd';
 import useApiClient from '@/utils/request';
@@ -30,7 +31,6 @@ import { useTranslation } from '@/utils/i18n';
 import type { ColorPickerProps } from 'antd';
 import { generate, green, presetPalettes, red } from '@ant-design/colors';
 import { findCascaderPath } from '@/app/monitor/utils/common';
-import { UNIT_LIST } from '@/app/monitor/constants';
 import { cloneDeep } from 'lodash';
 const { Option } = Select;
 
@@ -64,8 +64,9 @@ const MetricModal = forwardRef<ModalRef, ModalProps>(
       green,
     });
     const formRef = useRef<FormInstance>(null);
+    const commonContext = useCommon();
     const unitList = useRef<CascaderItem[]>(
-      cloneDeep(UNIT_LIST as any).map((item: CascaderItem) => ({
+      (commonContext?.groupedUnitList || []).map((item: any) => ({
         ...item,
         value: item.label,
       }))
