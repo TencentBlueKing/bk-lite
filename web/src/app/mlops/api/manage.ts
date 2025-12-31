@@ -512,8 +512,12 @@ const useMlopsManageApi = () => {
   };
 
   // 新增异常数据检测集样本
-  const addAnomalyTrainData = async (params: TrainDataBrochure) => {
-    return await post(`/mlops/anomaly_detection_train_data`, params);
+  const addAnomalyTrainData = async (params: FormData) => {
+    return await post(`/mlops/anomaly_detection_train_data`, params, {
+      headers: {
+        "Content-Type": 'multipart/form-data'
+      }
+    });
   };
 
   // 新增日志聚类数据集样本文件

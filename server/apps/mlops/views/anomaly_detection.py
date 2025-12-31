@@ -11,10 +11,14 @@ from config.drf.pagination import CustomPageNumberPagination
 from rest_framework.response import Response
 import mlflow
 from rest_framework import status
-from django.http import Http404
+from django.http import Http404, FileResponse
 import pandas as pd
 import numpy as np
 from rest_framework.decorators import action
+from apps.mlops.utils.webhook_client import WebhookClient, WebhookError, WebhookConnectionError, WebhookTimeoutError
+import os
+import tempfile
+import shutil
 
 
 class AnomalyDetectionDatasetViewSet(ModelViewSet):
@@ -56,22 +60,168 @@ class AnomalyDetectionTrainJobViewSet(ModelViewSet):
     @action(detail=True, methods=['post'], url_path='train')
     @HasPermission("train_tasks-Train")
     def train(self, request, pk=None):
+        """
+        启动训练任务
+        """
         try:
             train_job = self.get_object()
-            # start_anomaly_detection_train.delay(train_job.id)
+            
+            # 检查任务状态
+            if train_job.status == 'running':
+                return Response(
+                    {'error': '训练任务已在运行中'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            
+            # 获取环境变量
+            bucket = os.getenv("MINIO_PUBLIC_BUCKETS", "munchkin-public")
+            minio_endpoint = os.getenv("MLFLOW_S3_ENDPOINT_URL", "")
+            mlflow_tracking_uri = os.getenv("MLFLOW_TRACKER_URL", "")
+            minio_access_key = os.getenv("MINIO_ACCESS_KEY", "")
+            minio_secret_key = os.getenv("MINIO_SECRET_KEY", "")
 
-            return Response(
-                status=status.HTTP_200_OK
+            if not minio_endpoint:
+                return Response(
+                    {'error': 'MinIO 访问端点未配置'},
+                    status=status.HTTP_500_INTERNAL_SERVER_ERROR
+                )
+            
+            if not mlflow_tracking_uri:
+                return Response(
+                    {'error': 'MLflow 访问端点未配置'},
+                    status=status.HTTP_500_INTERNAL_SERVER_ERROR
+                ) 
+            
+            if not minio_access_key or not minio_secret_key:
+                return Response(
+                    {'error': 'MinIO 访问凭证未配置'},
+                    status=status.HTTP_500_INTERNAL_SERVER_ERROR
+                )
+            
+            # 检查必要字段
+            if not train_job.dataset_version or not train_job.dataset_version.dataset_file:
+                return Response(
+                    {'error': '数据集文件不存在'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            
+            if not train_job.config_url:
+                return Response(
+                    {'error': '训练配置文件不存在'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            
+            # 构建训练任务标识
+            job_id = f"AnomalyDetection_{train_job.algorithm}_{train_job.id}"
+            
+            logger.info(f"启动训练任务: {job_id}")
+            logger.info(f"  Dataset: {train_job.dataset_version.dataset_file.name}")
+            logger.info(f"  Config: {train_job.config_url.name}")
+            
+            # 调用 WebhookClient 启动训练
+            WebhookClient.train(
+                job_id=job_id,
+                bucket=bucket,
+                dataset=train_job.dataset_version.dataset_file.name,
+                config=train_job.config_url.name,
+                minio_endpoint=minio_endpoint,
+                mlflow_tracking_uri=mlflow_tracking_uri,
+                minio_access_key=minio_access_key,
+                minio_secret_key=minio_secret_key
             )
-
-        except ValueError as e:
+            
+            # 更新任务状态
+            train_job.status = 'running'
+            train_job.save(update_fields=['status'])
+            
+            logger.info(f"训练任务已启动: {job_id}")
+            
+            return Response({
+                'message': '训练任务已启动',
+                'job_id': job_id,
+                'train_job_id': train_job.id
+            })
+            
+        except WebhookTimeoutError as e:
             return Response(
                 {'error': str(e)},
-                status=status.HTTP_400_BAD_REQUEST
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+        except WebhookConnectionError as e:
+            return Response(
+                {'error': str(e)},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+        except WebhookError as e:
+            logger.error(f"启动训练任务失败: {e}")
+            return Response(
+                {'error': str(e)},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
         except Exception as e:
+            logger.error(f"启动训练任务失败: {str(e)}", exc_info=True)
             return Response(
-                {'error': f'训练启动失败: {str(e)}'},
+                {'error': f'启动训练任务失败: {str(e)}'},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+    
+    @action(detail=True, methods=['post'], url_path='stop')
+    @HasPermission("train_tasks-Stop")
+    def stop(self, request, *args, **kwargs):
+        """
+        停止训练任务
+        """
+        try:
+            train_job = self.get_object()
+            
+            # 检查任务状态
+            if train_job.status != 'running':
+                return Response(
+                    {'error': '训练任务未在运行中'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            
+            # 构建训练任务标识
+            job_id = f"AnomalyDetection_{train_job.algorithm}_{train_job.id}"
+            
+            logger.info(f"停止训练任务: {job_id}")
+            
+            # 调用 WebhookClient 停止任务（默认删除容器）
+            result = WebhookClient.stop(job_id)
+            
+            # 更新任务状态
+            train_job.status = 'pending'
+            train_job.save(update_fields=['status'])
+            
+            logger.info(f"训练任务已停止: {job_id}")
+            
+            return Response({
+                'message': '训练任务已停止',
+                'job_id': job_id,
+                'train_job_id': train_job.id,
+                'webhook_response': result
+            })
+            
+        except WebhookTimeoutError as e:
+            return Response(
+                {'error': str(e)},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+        except WebhookConnectionError as e:
+            return Response(
+                {'error': str(e)},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+        except WebhookError as e:
+            logger.error(f"停止训练任务失败: {e}")
+            return Response(
+                {'error': str(e)},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+        except Exception as e:
+            logger.error(f"停止训练任务失败: {str(e)}", exc_info=True)
+            return Response(
+                {'error': f'停止训练任务失败: {str(e)}'},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
 
@@ -91,10 +241,14 @@ class AnomalyDetectionTrainJobViewSet(ModelViewSet):
             # 查找实验
             experiments = mlflow.search_experiments(filter_string=f"name = '{experiment_name}'")
             if not experiments:
-                return Response(
-                    {'error': '未找到对应的MLflow实验'},
-                    status=status.HTTP_404_NOT_FOUND
-                )
+                return Response({
+                    'train_job_id': train_job.id,
+                    'train_job_name': train_job.name,
+                    'algorithm': train_job.algorithm,
+                    'job_status': train_job.status,
+                    'message': '未找到对应的MLflow实验',
+                    'data': []
+                })
 
             experiment = experiments[0]
 
@@ -105,66 +259,91 @@ class AnomalyDetectionTrainJobViewSet(ModelViewSet):
             )
 
             if runs.empty:
-                return Response(
-                    {'error': '未找到训练运行记录'},
-                    status=status.HTTP_404_NOT_FOUND
-                )
+                return Response({
+                    'train_job_id': train_job.id,
+                    'train_job_name': train_job.name,
+                    'algorithm': train_job.algorithm,
+                    'job_status': train_job.status,
+                    'message': '未找到训练运行记录',
+                    'data': []
+                })
 
             # 每次运行信息的耗时和名称
             run_datas = []
-            for _, row in runs.iterrows():
+            latest_run_status = None  # 记录最新一次运行的状态
+            
+            for idx, row in runs.iterrows():
                 # 处理时间计算，避免产生NaN或Infinity
                 try:
                     start_time = row["start_time"]
                     end_time = row["end_time"]
 
-                    # 检查时间是否有效
-                    if pd.isna(start_time) or pd.isna(end_time):
-                        duration_minutes = 0
-                    else:
-                        duration = end_time - start_time
-                        # 检查duration是否为有效值
-                        if pd.isna(duration):
-                            duration_minutes = 0
+                    # 计算耗时
+                    if pd.notna(start_time):
+                        if pd.notna(end_time):
+                            # 已完成：使用实际结束时间
+                            duration_seconds = (end_time - start_time).total_seconds()
                         else:
-                            duration_seconds = duration.total_seconds()
-                            # 检查是否为有效数值
-                            if np.isfinite(duration_seconds):
-                                duration_minutes = duration_seconds / 60
-                            else:
-                                duration_minutes = 0
+                            # 运行中：使用当前时间计算已运行时长
+                            current_time = pd.Timestamp.now(tz=start_time.tz)
+                            duration_seconds = (current_time - start_time).total_seconds()
+                        duration_minutes = duration_seconds / 60
+                    else:
+                        duration_minutes = 0
 
                     # 获取run_name，处理可能的缺失值
                     run_name = row.get("tags.mlflow.runName", "")
                     if pd.isna(run_name):
                         run_name = ""
+                    
+                    # 获取状态
+                    run_status = row.get("status", "UNKNOWN")
+                    
+                    # 记录第一条（最新）的运行状态
+                    if idx == 0:
+                        latest_run_status = run_status
 
-                except Exception:
-                    # 如果计算出错，使用默认值
-                    duration_minutes = 0
-                    run_name = ""
+                    run_data = {
+                        "run_id": str(row["run_id"]),
+                        "run_name": str(run_name),
+                        "status": str(run_status),  # RUNNING/FINISHED/FAILED/KILLED
+                        "start_time": start_time.isoformat() if pd.notna(start_time) else None,
+                        "end_time": end_time.isoformat() if pd.notna(end_time) else None,
+                        "duration_minutes": float(duration_minutes) if np.isfinite(duration_minutes) else 0
+                    }
+                    run_datas.append(run_data)
 
-                run_data = {
-                    "run_id": str(row["run_id"]),  # 确保是字符串
-                    "create_time": row["start_time"].isoformat() if not pd.isna(row["start_time"]) else None,
-                    "duration": float(duration_minutes) if np.isfinite(duration_minutes) else 0,
-                    "run_name": str(run_name)
+                except Exception as e:
+                    logger.warning(f"解析 run 数据失败: {e}")
+                    continue
+            
+            # 同步最新运行状态到 TrainJob（避免状态不一致）
+            if latest_run_status and train_job.status == 'running':
+                status_map = {
+                    'FINISHED': 'completed',
+                    'FAILED': 'failed',
+                    'KILLED': 'failed',
                 }
-                run_datas.append(run_data)
+                new_status = status_map.get(latest_run_status)
+                
+                if new_status:
+                    train_job.status = new_status
+                    train_job.save(update_fields=['status'])
+                    logger.info(f"自动同步 TrainJob {train_job.id} 状态: running -> {new_status} (基于 MLflow: {latest_run_status})")
 
-            return Response(
-                {
-                    'train_job_name': train_job.name,
-                    'data': run_datas
-                }
-            )
+            return Response({
+                'train_job_id': train_job.id,
+                'train_job_name': train_job.name,
+                'algorithm': train_job.algorithm,
+                'job_status': train_job.status,  # 返回当前 TrainJob 状态
+                'total_runs': len(run_datas),
+                'data': run_datas
+            })
         except Exception as e:
-
+            logger.error(f"获取训练记录列表失败: {str(e)}", exc_info=True)
             return Response(
-                {
-                    'train_job_name': train_job.name,
-                    'data': [],
-                }
+                {'error': f'获取训练记录失败: {str(e)}'},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
 
     @action(detail=False, methods=['get'], url_path='runs_metrics_list/(?P<run_id>.+?)')
@@ -192,31 +371,255 @@ class AnomalyDetectionTrainJobViewSet(ModelViewSet):
             )
 
     @action(detail=False, methods=['get'], url_path='runs_metrics_history/(?P<run_id>.+?)/(?P<metric_name>.+?)')
+    @HasPermission("train_tasks-View")
     def get_metric_data(self, request, run_id: str, metric_name: str):
-        # 跟踪Mlflow的uri
-        mlflow.set_tracking_uri(MLFLOW_TRACKER_URL)
+        """
+        获取指定 run 的指定指标的历史数据
+        """
+        try:
+            # 跟踪Mlflow的uri
+            mlflow.set_tracking_uri(MLFLOW_TRACKER_URL)
 
-        # 创建客户端
-        client = mlflow.tracking.MlflowClient()
+            # 创建客户端
+            client = mlflow.tracking.MlflowClient()
 
-        # 获取指标历史数据
-        history = client.get_metric_history(run_id, metric_name)
+            # 获取指标历史数据
+            history = client.get_metric_history(run_id, metric_name)
+            
+            if not history:
+                return Response({
+                    "run_id": run_id,
+                    "metric_name": metric_name,
+                    "total_points": 0,
+                    "metric_history": []
+                })
+            
+            # 检查是否所有 step 都相同（通常是 0，表示未设置 step）
+            all_steps = [m.step for m in history]
+            unique_steps = set(all_steps)
+            
+            # 如果所有 step 都相同，说明记录时未指定 step，使用 timestamp 排序
+            if len(unique_steps) == 1:
+                logger.info(f"指标 {metric_name} 未使用 step，按 timestamp 排序（共 {len(history)} 条）")
+                metric_history = [
+                    {
+                        "step": idx,  # 使用序号代替 step
+                        "value": m.value,
+                        "timestamp": m.timestamp
+                    }
+                    for idx, m in enumerate(sorted(history, key=lambda x: x.timestamp))
+                ]
+            else:
+                # 正常场景：使用 step 去重，相同 step 保留最新的值
+                metric_dict = {}
+                for metric in history:
+                    step = metric.step
+                    # 如果 step 已存在，根据 timestamp 保留最新的
+                    if step in metric_dict:
+                        if metric.timestamp > metric_dict[step]['timestamp']:
+                            metric_dict[step] = {
+                                'step': step,
+                                'value': metric.value,
+                                'timestamp': metric.timestamp
+                            }
+                    else:
+                        metric_dict[step] = {
+                            'step': step,
+                            'value': metric.value,
+                            'timestamp': metric.timestamp
+                        }
+                
+                # 按 step 排序
+                metric_history = sorted(metric_dict.values(), key=lambda x: x['step'])
+            
+            # 移除 timestamp（仅用于排序/去重）
+            metric_history_clean = [
+                {
+                    "step": item['step'],
+                    "value": item['value']
+                }
+                for item in metric_history
+            ]
+            
+            logger.info(f"返回 {len(metric_history_clean)} 条指标数据，step 范围: {metric_history_clean[0]['step'] if metric_history_clean else 'N/A'} - {metric_history_clean[-1]['step'] if metric_history_clean else 'N/A'}")
 
-        # 创建data字典
-        metric_history = [
-            {
-                "step": metric.step,
-                "value": metric.value
-            }
-            for metric in history
-        ]
-
-        return Response(
-            {
+            return Response({
+                "run_id": run_id,
                 "metric_name": metric_name,
-                "metric_history": metric_history
-            }
-        )
+                "total_points": len(metric_history_clean),
+                "metric_history": metric_history_clean
+            })
+            
+        except Exception as e:
+            logger.error(f"获取指标历史数据失败: {str(e)}", exc_info=True)
+            return Response(
+                {'error': f'获取指标历史数据失败: {str(e)}'},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+    
+    @action(detail=False, methods=['get'], url_path='run_params/(?P<run_id>.+?)')
+    @HasPermission("train_tasks-View")
+    def get_run_params(self, request, run_id: str):
+        """
+        获取指定 run 的配置参数（用于查看历史训练的配置）
+        """
+        try:
+            # 设置 MLflow 跟踪 URI
+            mlflow.set_tracking_uri(MLFLOW_TRACKER_URL)
+            
+            # 创建 MLflow 客户端
+            client = mlflow.tracking.MlflowClient()
+            
+            # 获取 run 信息
+            run = client.get_run(run_id)
+            
+            # 获取所有参数
+            params = run.data.params
+            
+            # 获取 run_name 和状态
+            run_name = run.data.tags.get('mlflow.runName', '')
+            run_status = run.info.status
+            start_time = run.info.start_time
+            end_time = run.info.end_time
+            
+            return Response({
+                'run_id': run_id,
+                'run_name': run_name,
+                'status': run_status,
+                'start_time': pd.Timestamp(start_time, unit='ms').isoformat() if start_time else None,
+                'end_time': pd.Timestamp(end_time, unit='ms').isoformat() if end_time else None,
+                'params': params
+            })
+            
+        except Exception as e:
+            logger.error(f"获取运行参数失败: {str(e)}", exc_info=True)
+            return Response(
+                {'error': f'获取运行参数失败: {str(e)}'},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+    
+    @action(detail=False, methods=['get'], url_path='download_model/(?P<run_id>[^/]+)')
+    @HasPermission("train_tasks-View")
+    def download_model(self, request, run_id: str):
+        """
+        从 MLflow 下载模型并直接返回 ZIP 文件
+        
+        简化版本：直接从 MLflow 拉取 artifact → 打包 → 浏览器下载
+        """
+        from io import BytesIO
+        
+        try:
+            # 1. 设置 MLflow
+            mlflow.set_tracking_uri(MLFLOW_TRACKER_URL)
+            mlflow_client = mlflow.tracking.MlflowClient()
+            
+            # 2. 验证 run 是否存在
+            try:
+                run = mlflow_client.get_run(run_id)
+            except Exception as e:
+                logger.error(f"Run 不存在: {run_id} - {e}")
+                return Response(
+                    {'error': f'Run 不存在: {run_id}'},
+                    status=status.HTTP_404_NOT_FOUND
+                )
+            
+            # 3. 检查模型 artifacts 是否存在
+            try:
+                artifacts = mlflow_client.list_artifacts(run_id, path="model")
+                if not artifacts:
+                    return Response(
+                        {'error': '该 Run 未保存模型，无法下载'},
+                        status=status.HTTP_404_NOT_FOUND
+                    )
+            except Exception as e:
+                logger.error(f"获取模型 artifacts 失败: {e}")
+                return Response(
+                    {'error': f'获取模型 artifacts 失败: {str(e)}'},
+                    status=status.HTTP_500_INTERNAL_SERVER_ERROR
+                )
+            
+            # 4. 生成文件名
+            run_name = run.data.tags.get('mlflow.runName', 'unknown')
+            algorithm = run.data.params.get('algorithm', 'unknown')
+            
+            # 尝试从 Model Registry 获取模型名称和版本
+            model_name = None
+            model_version = None
+            try:
+                model_versions = mlflow_client.search_model_versions(f"run_id='{run_id}'")
+                if model_versions:
+                    model_name = model_versions[0].name
+                    model_version = model_versions[0].version
+            except Exception as e:
+                logger.warning(f"未找到注册模型信息: {e}")
+            
+            # 构建文件名
+            if model_name and model_version:
+                filename = f"{model_name}_v{model_version}.zip"
+            else:
+                filename = f"{algorithm}_{run_name}_{run_id[:8]}.zip"
+            
+            logger.info(f"开始下载模型: run_id={run_id}, filename={filename}")
+            
+            # 5. 下载模型并打包
+            with tempfile.TemporaryDirectory() as tmpdir:
+                try:
+                    # 从 MLflow 下载 model artifact
+                    logger.info(f"从 MLflow 下载模型 artifacts...")
+                    local_path = mlflow.artifacts.download_artifacts(
+                        run_id=run_id,
+                        artifact_path="model",
+                        dst_path=tmpdir
+                    )
+                    logger.info(f"模型下载完成: {local_path}")
+                    
+                    # 打包成 ZIP
+                    logger.info(f"开始打包模型...")
+                    zip_base = os.path.join(tmpdir, run_id)
+                    shutil.make_archive(
+                        zip_base,
+                        'zip',
+                        local_path
+                    )
+                    zip_path = f"{zip_base}.zip"
+                    
+                    # 获取文件大小
+                    file_size = os.path.getsize(zip_path)
+                    logger.info(f"模型打包完成: {zip_path}, 大小: {round(file_size / 1024 / 1024, 2)} MB")
+                    
+                    # 6. 读取文件到内存（避免 Windows 文件句柄占用问题）
+                    logger.info(f"读取文件到内存...")
+                    with open(zip_path, 'rb') as f:
+                        file_data = f.read()
+                    
+                    logger.info(f"文件已读取到内存，大小: {len(file_data)} 字节")
+                    
+                    # 7. 使用 BytesIO 包装，文件句柄已关闭，临时目录可以正常清理
+                    file_obj = BytesIO(file_data)
+                    
+                    response = FileResponse(
+                        file_obj,
+                        content_type='application/zip',
+                        as_attachment=True,
+                        filename=filename
+                    )
+                    
+                    logger.info(f"模型下载请求完成: {filename}")
+                    return response
+                    
+                except Exception as e:
+                    logger.error(f"模型下载或打包失败: {e}", exc_info=True)
+                    return Response(
+                        {'error': f'模型处理失败: {str(e)}'},
+                        status=status.HTTP_500_INTERNAL_SERVER_ERROR
+                    )
+            
+        except Exception as e:
+            logger.error(f"下载模型失败: {str(e)}", exc_info=True)
+            return Response(
+                {'error': f'下载模型失败: {str(e)}'},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
 
     @HasPermission("train_tasks-View")
     def list(self, request, *args, **kwargs):
@@ -317,6 +720,139 @@ class AnomalyDetectionTrainDataViewSet(ModelViewSet):
     @HasPermission("anomaly_detection_datasets_detail-File View")
     def retrieve(self, request, *args, **kwargs):
         return super().retrieve(request, *args, **kwargs)
+
+
+class AnomalyDetectionDatasetReleaseViewSet(ModelViewSet):
+    """异常检测数据集发布版本视图集"""
+    queryset = AnomalyDetectionDatasetRelease.objects.all()
+    serializer_class = AnomalyDetectionDatasetReleaseSerializer
+    filterset_class = AnomalyDetectionDatasetReleaseFilter
+    pagination_class = CustomPageNumberPagination
+    permission_key = "dataset.anomaly_detection_dataset_release"
+
+    @HasPermission("anomaly_detection_datasets-View")
+    def list(self, request, *args, **kwargs):
+        return super().list(request, *args, **kwargs)
+
+    @HasPermission("anomaly_detection_datasets-View")
+    def retrieve(self, request, *args, **kwargs):
+        return super().retrieve(request, *args, **kwargs)
+
+    @HasPermission("anomaly_detection_datasets-Delete")
+    def destroy(self, request, *args, **kwargs):
+        return super().destroy(request, *args, **kwargs)
+
+    @HasPermission("anomaly_detection_datasets-Add")
+    def create(self, request, *args, **kwargs):
+        return super().create(request, *args, **kwargs)
+
+    @HasPermission("anomaly_detection_datasets-Edit")
+    def update(self, request, *args, **kwargs):
+        return super().update(request, *args, **kwargs)
+    
+    @action(detail=True, methods=['get'], url_path='download')
+    @HasPermission("anomaly_detection_datasets-View")
+    def download(self, request, *args, **kwargs):
+        """
+        下载数据集版本的 ZIP 文件
+        """
+        try:
+            release = self.get_object()
+            
+            if not release.dataset_file or not release.dataset_file.name:
+                return Response(
+                    {'error': '数据集文件不存在'},
+                    status=status.HTTP_404_NOT_FOUND
+                )
+            
+            # 获取文件
+            file = release.dataset_file.open('rb')
+            filename = f"{release.dataset.name}_{release.version}.zip"
+            
+            response = FileResponse(file, content_type='application/zip')
+            response['Content-Disposition'] = f'attachment; filename="{filename}"'
+            
+            logger.info(f"下载数据集版本: {release.id} - {filename}")
+            
+            return response
+            
+        except Exception as e:
+            logger.error(f"下载数据集失败: {str(e)}", exc_info=True)
+            return Response(
+                {'error': f'下载失败: {str(e)}'},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+    
+    @action(detail=True, methods=['post'], url_path='archive')
+    @HasPermission("anomaly_detection_datasets-Edit")
+    def archive(self, request, *args, **kwargs):
+        """
+        归档数据集版本(将状态改为 archived)
+        """
+        try:
+            release = self.get_object()
+            
+            if release.status == 'archived':
+                return Response(
+                    {'error': '数据集版本已处于归档状态'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            
+            release.status = 'archived'
+            release.description = f"[已归档] {release.description or ''}"
+            release.save(update_fields=['status', 'description'])
+            
+            logger.info(f"归档数据集版本: {release.id}")
+            
+            return Response({
+                'message': '归档成功',
+                'release_id': release.id
+            })
+            
+        except Exception as e:
+            logger.error(f"归档失败: {str(e)}", exc_info=True)
+            return Response(
+                {'error': f'归档失败: {str(e)}'},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+    
+    @action(detail=True, methods=['post'], url_path='unarchive')
+    @HasPermission("anomaly_detection_datasets-Edit")
+    def unarchive(self, request, *args, **kwargs):
+        """
+        恢复已归档的数据集版本(将状态改为 published)
+        """
+        try:
+            release = self.get_object()
+            
+            if release.status != 'archived':
+                return Response(
+                    {'error': '只能恢复已归档的数据集版本'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            
+            # 移除归档标记
+            original_description = release.description or ''
+            if original_description.startswith('[已归档] '):
+                release.description = original_description.replace('[已归档] ', '', 1)
+            
+            release.status = 'published'
+            release.save(update_fields=['status', 'description'])
+            
+            logger.info(f"恢复数据集版本: {release.id} - {release.dataset.name} {release.version}")
+            
+            return Response({
+                'message': '恢复成功',
+                'release_id': release.id,
+                'status': release.status
+            })
+            
+        except Exception as e:
+            logger.error(f"恢复失败: {str(e)}", exc_info=True)
+            return Response(
+                {'error': f'恢复失败: {str(e)}'},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
 
 
 class AnomalyDetectionServingViewSet(ModelViewSet):

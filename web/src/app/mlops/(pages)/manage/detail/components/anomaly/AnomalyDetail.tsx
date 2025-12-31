@@ -6,6 +6,7 @@ import CustomTable from "@/components/custom-table";
 import PermissionWrapper from '@/components/permission';
 import UploadModal from "../../uploadModal";
 import OperateModal from "@/components/operate-modal";
+import DatasetReleaseList from '../DatasetReleaseList';
 import {
   Input,
   Button,
@@ -82,7 +83,7 @@ const AnomalyDetail = () => {
         <>
           <Button
             type="link"
-            className="mr-[10px]"
+            className="mr-2.5"
             onClick={() => toAnnotation(record)}
           >
             {t('datasets.annotate')}
@@ -90,7 +91,7 @@ const AnomalyDetail = () => {
           <PermissionWrapper requiredPermissions={['File Edit']}>
             <Button
               type="link"
-              className="mr-[10px]"
+              className="mr-2.5"
               onClick={() => openModal(record)}
             >
               {t('common.edit')}
@@ -233,31 +234,37 @@ const AnomalyDetail = () => {
 
   return (
     <>
-      <div className="flex justify-between items-center mb-4 gap-2">
-        <div>
-          <Breadcrumb
-            separator=">"
-            items={[
-              { title: <a href="#" onClick={() => router.push(`/mlops/manage/list`)}>{t(`datasets.datasets`)}</a> },
-              { title: t(`datasets.datasetsDetail`) }
-            ]}
-          />
-        </div>
-        <div className='flex'>
+      <div className="flex justify-between items-center mb-4 gap-2 h-8">
+        <Breadcrumb
+          separator=">"
+          items={[
+            {
+              title: <a href="#" onClick={() => router.push(`/mlops/manage/list`)}>{t(`datasets.datasets`)}</a>
+            },
+            {
+              title: t(`datasets.datasetsDetail`)
+            }
+          ]}
+        />
+        <div className='flex gap-2'>
           <Search
-            className="w-[240px] mr-1.5"
+            className="w-60"
             placeholder={t('common.search')}
             enterButton
             onSearch={onSearch}
             style={{ fontSize: 15 }}
           />
           <PermissionWrapper requiredPermissions={['File Upload']}>
-            <Button type="primary" className="rounded-md text-xs shadow" onClick={onUpload}>
+            <Button type="primary" className="rounded-md shadow" onClick={onUpload}>
               {t("datasets.upload")}
             </Button>
           </PermissionWrapper>
+          <PermissionWrapper requiredPermissions={['File View']}>
+            <DatasetReleaseList datasetType="anomaly_detection" />
+          </PermissionWrapper>
         </div>
       </div>
+      
       <div className="flex-1 relative">
         <div className='absolute w-full'>
           <CustomTable

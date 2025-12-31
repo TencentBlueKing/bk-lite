@@ -14,13 +14,13 @@ router = routers.DefaultRouter()
 router.register(r'anomaly_detection_datasets', AnomalyDetectionDatasetViewSet, basename='anomaly_detection_datasets')
 router.register(r'anomaly_detection_train_data', AnomalyDetectionTrainDataViewSet, basename='anomaly_detection_train_data')
 router.register(r'anomaly_detection_train_jobs', AnomalyDetectionTrainJobViewSet, basename='anomaly_detection_train_jobs')
+router.register(r'anomaly_detection_dataset_releases', AnomalyDetectionDatasetReleaseViewSet, basename='anomaly_detection_dataset_releases')
 router.register(r'anomaly_detection_servings', AnomalyDetectionServingViewSet, basename='anomaly_detection_servings')
 
 # 时间序列预测
 router.register(r'timeseries_predict_datasets', TimeSeriesPredictDatasetViewSet, basename='timeseries_predict_datasets')
 router.register(r'timeseries_predict_train_data', TimeSeriesPredictTrainDataViewSet, basename='timeseries_predict_train_data')
 router.register(r'timeseries_predict_train_jobs', TimeSeriesPredictTrainJobViewSet, basename='timeseries_predict_train_jobs')
-router.register(r'timeseries_predict_train_history', TimeSeriesPredictTrainHistoryViewSet, basename='timeseries_predict_train_history')
 router.register(r'timeseries_predict_servings', TimeSeriesPredictServingViewSet, basename='timeseries_predict_servings')
 router.register(r'timeseries_predict_dataset_releases', TimeSeriesPredictDatasetReleaseViewSet, basename='timeseries_predict_dataset_releases')
 

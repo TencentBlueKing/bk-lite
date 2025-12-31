@@ -33,6 +33,28 @@ interface DatasetReleaseListProps {
   datasetType: 'timeseries_predict' | 'anomaly_detection' | 'classification' | 'log_clustering' | 'rasa' | 'image_classification' | 'object_detection';
 }
 
+const GET_RELEASES_API: Record<string, string> = {
+  timeseries_predict: 'getDatasetReleases',
+  anomaly_detection: 'getAnomalyDatasetReleases',
+};
+
+const ARCHIVE_RELEASE_API: Record<string, string> = {
+  timeseries_predict: 'archiveDatasetRelease',
+  anomaly_detection: 'archiveAnomalyDatasetRelease',
+};
+
+const UNARCHIVE_RELEASE_API: Record<string, string> = {
+  timeseries_predict: 'unarchiveDatasetRelease',
+  anomaly_detection: 'unarchiveAnomalyDatasetRelease',
+};
+
+const DELETE_RELEASE_API: Record<string, string> = {
+  timeseries_predict: 'deleteDatasetRelease',
+  anomaly_detection: 'deleteAnomalyDatasetRelease',
+};
+
+const SUPPORTED_DATASET_TYPES = ['timeseries_predict', 'anomaly_detection'];
+
 const DatasetReleaseList: React.FC<DatasetReleaseListProps> = ({ datasetType }) => {
   const { t } = useTranslation();
   const { convertToLocalizedTime } = useLocalizedTime();
@@ -40,10 +62,10 @@ const DatasetReleaseList: React.FC<DatasetReleaseListProps> = ({ datasetType }) 
   const datasetId = searchParams.get('folder_id');
   const releaseModalRef = useRef<ModalRef>(null);
 
-  const { getDatasetReleases, archiveDatasetRelease, unarchiveDatasetRelease, deleteDatasetRelease } = useMlopsTaskApi();
+  const taskApi = useMlopsTaskApi();
 
   // 判断当前类型是否支持版本管理
-  const isSupportedType = datasetType === 'timeseries_predict';
+  const isSupportedType = SUPPORTED_DATASET_TYPES.includes(datasetType);
 
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -65,7 +87,8 @@ const DatasetReleaseList: React.FC<DatasetReleaseListProps> = ({ datasetType }) 
     if (!isSupportedType) return;
     setLoading(true);
     try {
-      const result = await getDatasetReleases({
+      const getReleasesFn = taskApi[GET_RELEASES_API[datasetType] as keyof typeof taskApi] as (params?: { dataset?: number; page?: number; page_size?: number }) => Promise<{ items: DatasetRelease[]; count: number }>;
+      const result = await getReleasesFn({
         dataset: Number(datasetId),
         page: pagination.current,
         page_size: pagination.pageSize,
@@ -86,7 +109,8 @@ const DatasetReleaseList: React.FC<DatasetReleaseListProps> = ({ datasetType }) 
 
   const handleArchive = async (record: DatasetRelease) => {
     try {
-      await archiveDatasetRelease(record.id.toString());
+      const archiveFn = taskApi[ARCHIVE_RELEASE_API[datasetType] as keyof typeof taskApi] as (id: string) => Promise<unknown>;
+      await archiveFn(record.id.toString());
       message.success('归档成功');
       fetchReleases();
     } catch (error) {
@@ -97,7 +121,8 @@ const DatasetReleaseList: React.FC<DatasetReleaseListProps> = ({ datasetType }) 
 
   const handleUnarchive = async (record: DatasetRelease) => {
     try {
-      await unarchiveDatasetRelease(record.id.toString());
+      const unarchiveFn = taskApi[UNARCHIVE_RELEASE_API[datasetType] as keyof typeof taskApi] as (id: string) => Promise<unknown>;
+      await unarchiveFn(record.id.toString());
       message.success('发布成功');
       fetchReleases()
     } catch (error) {
@@ -108,7 +133,8 @@ const DatasetReleaseList: React.FC<DatasetReleaseListProps> = ({ datasetType }) 
 
   const handleDeleteRelease = async (record: DatasetRelease) => {
     try {
-      await deleteDatasetRelease(record.id.toString());
+      const deleteFn = taskApi[DELETE_RELEASE_API[datasetType] as keyof typeof taskApi] as (id: string) => Promise<unknown>;
+      await deleteFn(record.id.toString());
       message.success(t(`common.delSuccess`));
       fetchReleases();
     } catch (e) {
@@ -253,7 +279,7 @@ const DatasetReleaseList: React.FC<DatasetReleaseListProps> = ({ datasetType }) 
 
   return (
     <>
-      <Button type="primary" className="mr-[10px]" onClick={handleOpenDrawer} disabled={!isSupportedType}>
+      <Button type="primary" className="mr-2.5" onClick={handleOpenDrawer} disabled={!isSupportedType}>
         版本
       </Button>
 
@@ -285,6 +311,7 @@ const DatasetReleaseList: React.FC<DatasetReleaseListProps> = ({ datasetType }) 
       <DatasetReleaseModal
         ref={releaseModalRef}
         datasetId={datasetId || ''}
+        datasetType={datasetType}
         onSuccess={() => fetchReleases()}
       />
     </>

@@ -11,8 +11,20 @@ import { ModalRef } from '@/app/mlops/types';
 
 interface DatasetReleaseModalProps {
   datasetId: string;
+  datasetType: 'timeseries_predict' | 'anomaly_detection' | 'classification' | 'log_clustering' | 'rasa' | 'image_classification' | 'object_detection';
   onSuccess?: () => void;
 }
+
+// API 配置映射
+const GET_TRAIN_DATA_API: Record<string, string> = {
+  timeseries_predict: 'getTimeSeriesPredictTrainData',
+  anomaly_detection: 'getAnomalyTrainData',
+};
+
+const CREATE_RELEASE_API: Record<string, string> = {
+  timeseries_predict: 'createDatasetRelease',
+  anomaly_detection: 'createAnomalyDatasetRelease',
+};
 
 interface TrainDataFile {
   id: number;
@@ -23,10 +35,10 @@ interface TrainDataFile {
 }
 
 const DatasetReleaseModal = forwardRef<ModalRef, DatasetReleaseModalProps>(
-  ({ datasetId, onSuccess }, ref) => {
+  ({ datasetId, datasetType, onSuccess }, ref) => {
     const { t } = useTranslation();
-    const { getTimeSeriesPredictTrainData } = useMlopsManageApi();
-    const { createDatasetRelease } = useMlopsTaskApi();
+    const manageApi = useMlopsManageApi();
+    const taskApi = useMlopsTaskApi();
     const formRef = useRef<FormInstance>(null);
     const [open, setOpen] = useState<boolean>(false);
     const [confirmLoading, setConfirmLoading] = useState<boolean>(false);
@@ -43,7 +55,8 @@ const DatasetReleaseModal = forwardRef<ModalRef, DatasetReleaseModalProps>(
 
     const fetchFiles = async () => {
       try {
-        const { items } = await getTimeSeriesPredictTrainData({
+        const getTrainDataFn = manageApi[GET_TRAIN_DATA_API[datasetType] as keyof typeof manageApi] as (params: any) => Promise<any>;
+        const { items } = await getTrainDataFn({
           dataset: datasetId,
           page: 1,
           page_size: 1000,
@@ -72,7 +85,8 @@ const DatasetReleaseModal = forwardRef<ModalRef, DatasetReleaseModalProps>(
       try {
         const values = await formRef.current?.validateFields();
 
-        const result = await createDatasetRelease({
+        const createReleaseFn = taskApi[CREATE_RELEASE_API[datasetType] as keyof typeof taskApi] as (params: any) => Promise<any>;
+        const result = await createReleaseFn({
           dataset: parseInt(datasetId),
           ...values,
         });

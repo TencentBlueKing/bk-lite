@@ -1,26 +1,26 @@
-"use client";
 import OperateModal from '@/components/operate-modal';
 import { useState, useImperativeHandle, forwardRef, useRef } from 'react';
 import { useTranslation } from '@/utils/i18n';
-import { handleFileRead, exportToCSV } from '@/app/mlops/utils/common';
+import { exportToCSV } from '@/app/mlops/utils/common';
 import useMlopsManageApi from '@/app/mlops/api/manage';
 import { Upload, Button, message, Checkbox, type UploadFile, type UploadProps, Input, Form, FormInstance } from 'antd';
 import { InboxOutlined } from '@ant-design/icons';
 import { ModalConfig, ModalRef, TableData } from '@/app/mlops/types';
-import { TrainDataParams } from '@/app/mlops/types/manage';
 import { useSearchParams } from 'next/navigation';
-import { TYPE_FILE_MAP } from '@/app/mlops/constants';
 const { Dragger } = Upload;
 
 interface UploadModalProps {
   onSuccess: () => void
 }
 
-// 定义数据类型
-type ProcessedData = TrainDataParams[] | string[] | {
-  train_data: TrainDataParams[],
-  headers: string[]
-};
+const SUPPORTED_UPLOAD_TYPES = [
+  'anomaly_detection',
+  'timeseries_predict',
+  'image_classification',
+  'object_detection'
+] as const;
+
+const IMAGE_TYPES = ['image_classification', 'object_detection'];
 
 const UploadModal = forwardRef<ModalRef, UploadModalProps>(({ onSuccess }, ref) => {
   const { t } = useTranslation();
@@ -29,11 +29,24 @@ const UploadModal = forwardRef<ModalRef, UploadModalProps>(({ onSuccess }, ref) 
   const {
     addAnomalyTrainData,
     addTimeSeriesPredictTrainData,
-    addLogClusteringTrainData,
-    addClassificationTrainData,
     addImageClassificationTrainData,
     addObjectDetectionTrainData
   } = useMlopsManageApi();
+
+  const UPLOAD_API: Record<string, (data: FormData) => Promise<any>> = {
+    anomaly_detection: addAnomalyTrainData,
+    timeseries_predict: addTimeSeriesPredictTrainData,
+    image_classification: addImageClassificationTrainData,
+    object_detection: addObjectDetectionTrainData,
+  };
+
+  const FILE_CONFIG: Record<string, { accept: string; maxCount: number; fileType: string }> = {
+    anomaly_detection: { accept: '.csv', maxCount: 1, fileType: 'csv' },
+    timeseries_predict: { accept: '.csv', maxCount: 1, fileType: 'csv' },
+    image_classification: { accept: 'image/*', maxCount: 10, fileType: 'image' },
+    object_detection: { accept: 'image/*', maxCount: 10, fileType: 'image' },
+  };
+
   const [visiable, setVisiable] = useState<boolean>(false);
   const [confirmLoading, setConfirmLoading] = useState<boolean>(false);
   const [fileList, setFileList] = useState<UploadFile<any>[]>([]);
@@ -55,40 +68,33 @@ const UploadModal = forwardRef<ModalRef, UploadModalProps>(({ onSuccess }, ref) 
     setFileList(fileList);
   };
 
+  const config = FILE_CONFIG[activeType];
+
   const props: UploadProps = {
     name: 'file',
-    multiple: TYPE_FILE_MAP[activeType] !== 'image' ? false : true,
-    maxCount: TYPE_FILE_MAP[activeType] !== 'image' ? 1 : 10,
+    multiple: config?.fileType === 'image',
+    maxCount: config?.maxCount || 1,
     fileList: fileList,
     onChange: handleChange,
     beforeUpload: (file) => {
-      if (TYPE_FILE_MAP[activeType] === 'csv') {
+      if (!config) return false;
+
+      if (config.fileType === 'csv') {
         const isCSV = file.type === "text/csv" || file.name.endsWith('.csv');
         if (!isCSV) {
-          message.warning(t('datasets.uploadWarn'))
+          message.warning(t('datasets.uploadWarn'));
         }
         return isCSV;
-      } else if (TYPE_FILE_MAP[activeType] === 'txt') {
-        const isTxt = file.type === 'text/plain' || file.name.endsWith('.txt');
-        if (!isTxt) {
-          message.warning(t('datasets.uploadWarn'))
-        }
-        return isTxt;
-      } else if (TYPE_FILE_MAP[activeType] === 'image') {
-        // const isPng = file.type === 'image/png' || file.name.endsWith('.png');
+      } else if (config.fileType === 'image') {
         const isLt2M = file.size / 1024 / 1024 < 2;
-        // if (!isPng) {
-        //   message.error(t('datasets.uploadWarn'));
-        // }
         if (!isLt2M) {
           message.error(t('datasets.over2MB'));
         }
-
-        return (isLt2M) || Upload.LIST_IGNORE;
+        return isLt2M || Upload.LIST_IGNORE;
       }
-
+      return true;
     },
-    accept: TYPE_FILE_MAP[activeType] !== 'image' ? `.${TYPE_FILE_MAP[activeType]}` : 'image/*',
+    accept: config?.accept || '.csv',
   };
 
   const onSelectChange = (value: string[]) => {
@@ -102,80 +108,40 @@ const UploadModal = forwardRef<ModalRef, UploadModalProps>(({ onSuccess }, ref) 
     setSelectTags(object);
   };
 
-  // 定义提交策略映射
-  const submitStrategies = {
-    anomaly_detection: {
-      processData: (data: ProcessedData) => {
-        const trainData = data as TrainDataParams[];
-        return {
-          train_data: trainData.map(item => ({ timestamp: item.timestamp, value: item.value })),
-          metadata: {
-            anomaly_point: trainData.filter(item => item?.label === 1).map(k => k.index)
-          }
-        };
-      },
-      apiCall: addAnomalyTrainData
-    },
-    timeseries_predict: {
-      processData: (data: ProcessedData) => ({ train_data: data as TrainDataParams[] }),
-      apiCall: addTimeSeriesPredictTrainData
-    },
-    log_clustering: {
-      processData: (data: ProcessedData) => ({ train_data: data as string[] }),
-      apiCall: addLogClusteringTrainData
-    },
-    classification: {
-      processData: (data: ProcessedData) => {
-        if (typeof data === 'object' && !Array.isArray(data) && 'train_data' in data) {
-          return {
-            train_data: data.train_data,
-            metadata: {
-              headers: data.headers
-            }
-          };
-        }
-        return {
-          train_data: data
-        };
-      },
-      apiCall: addClassificationTrainData
-    }
-  };
-
-  // 验证文件上传
-  const validateFileUpload = (): UploadFile<any>[] | null => {
-    // const file = fileList[0];
-    fileList.forEach((file) => {
+  const validateFileUpload = (): UploadFile[] | null => {
+    for (const file of fileList) {
       if (!file?.originFileObj) {
         message.error(t('datasets.pleaseUpload'));
         return null;
       }
-    })
-
+    }
     return fileList;
   };
 
-  // 构建通用参数
-  const buildSubmitParams = (file: UploadFile<any>, processedData: any) => ({
-    dataset: formData?.dataset_id,
-    name: file.name,
-    ...processedData,
-    ...selectTags
-  });
+  const buildFormDataForFile = (file: UploadFile): FormData => {
+    const params = new FormData();
+    params.append('dataset', formData?.dataset_id || '');
+    params.append('name', file.name);
+    params.append('train_data', file.originFileObj!);
+    Object.entries(selectTags).forEach(([key, val]) => {
+      params.append(key, String(val));
+    });
+    return params;
+  };
 
-  // 构建FormData参数
-  const buildFormDataParams = (file: UploadFile<any>) => {
-    if (file.originFileObj) {
-      const params = new FormData();
-      params.append('dataset', formData?.dataset_id);
-      params.append('name', file.name);
-      params.append('train_data', file.originFileObj);
-      Object.entries(selectTags).forEach(([key, val]) => {
-        params.append(key, String(val));
-      });
-
-      return params;
-    }
+  const buildFormDataForImages = (files: UploadFile[], name: string): FormData => {
+    const params = new FormData();
+    params.append('dataset', formData?.dataset_id || '');
+    params.append('name', name);
+    Object.entries(selectTags).forEach(([key, val]) => {
+      params.append(key, String(val));
+    });
+    files.forEach((file) => {
+      if (file.originFileObj) {
+        params.append('images', file.originFileObj);
+      }
+    });
+    return params;
   };
 
   // 处理提交成功
@@ -197,74 +163,29 @@ const UploadModal = forwardRef<ModalRef, UploadModalProps>(({ onSuccess }, ref) 
     setConfirmLoading(true);
 
     try {
-      // 1. 验证文件
-      const fileList = validateFileUpload();
-      if (!fileList?.length) return;
+      const validatedFiles = validateFileUpload();
+      if (!validatedFiles?.length) return;
 
-      if (TYPE_FILE_MAP[activeType] !== 'image') {
-        // 2. 获取当前类型的策略
-        const strategy = submitStrategies[formData?.activeTap as keyof typeof submitStrategies];
-        if (!strategy) {
-          throw new Error(`Unsupported upload type: ${formData?.activeTap}`);
-        }
-        // 3. 读取并处理文件内容
-        const file = fileList[0].originFileObj;
-        if (activeType !== 'timeseries_predict') {
-          const text = await file!.text();
-          const incluede_header = formData?.activeTap === 'classification' ? true : false;
-          const rawData = handleFileRead(text, formData?.activeTap || '', incluede_header);
-
-          // 根据类型决定传递的数据结构
-          let dataToProcess: ProcessedData;
-          if (formData?.activeTap === 'classification' && rawData.headers) {
-            dataToProcess = { headers: rawData.headers, train_data: rawData.train_data as TrainDataParams[] };
-          } else {
-            dataToProcess = rawData.train_data;
-          }
-
-          const processedData = strategy.processData(dataToProcess);
-
-          // 4. 构建提交参数
-          const params = buildSubmitParams(fileList[0], processedData);
-          console.log(params);
-          // 5. 调用对应的API
-          await strategy.apiCall(params);
-        } else {
-          const params = buildFormDataParams(fileList[0]);
-
-          if (params) {
-            await addTimeSeriesPredictTrainData(params)
-          }
-        }
-      } else {
-        console.log('时序预测')
-        // 图片上传处理
-        const value = await formRef.current?.validateFields();
-        const submitData = new FormData();
-        submitData.append('dataset', formData?.dataset_id || '');
-        submitData.append('name', value.name);
-
-        // 添加标签
-        Object.entries(selectTags).forEach(([key, val]) => {
-          submitData.append(key, String(val));
-        });
-
-        // 添加图片文件
-        fileList.forEach((file) => {
-          if (file.originFileObj) {
-            submitData.append('images', file.originFileObj);
-          }
-        });
-
-        // 根据类型调用不同的API
-        if (formData?.activeTap === 'image_classification') {
-          await addImageClassificationTrainData(submitData);
-        } else if (formData?.activeTap === 'object_detection') {
-          await addObjectDetectionTrainData(submitData);
-        }
+      if (!SUPPORTED_UPLOAD_TYPES.includes(activeType as any)) {
+        throw new Error(`Unsupported type: ${activeType}`);
       }
 
-      // 6. 处理成功
+      const uploadApi = UPLOAD_API[activeType];
+      if (!uploadApi) {
+        throw new Error(`API not found for type: ${activeType}`);
+      }
+
+      let uploadData: FormData;
+
+      if (IMAGE_TYPES.includes(activeType)) {
+        const { name } = await formRef.current?.validateFields();
+        uploadData = buildFormDataForImages(validatedFiles, name);
+      } else {
+        uploadData = buildFormDataForFile(validatedFiles[0]);
+      }
+
+      await uploadApi(uploadData);
+
       handleSubmitSuccess();
 
     } catch (error) {
@@ -326,7 +247,7 @@ const UploadModal = forwardRef<ModalRef, UploadModalProps>(({ onSuccess }, ref) 
   const CheckedType = () => (
     <div className='text-left flex justify-between items-center'>
       <div className='flex-1'>
-        <span className='leading-[32px] mr-2'>{t(`mlops-common.type`) + ": "} </span>
+        <span className='leading-8 mr-2'>{t(`mlops-common.type`) + ": "} </span>
         <Checkbox.Group onChange={onSelectChange} value={checkedType}>
           <Checkbox value={'is_train_data'}>{t(`datasets.train`)}</Checkbox>
           <Checkbox value={'is_val_data'}>{t(`datasets.validate`)}</Checkbox>
@@ -351,7 +272,7 @@ const UploadModal = forwardRef<ModalRef, UploadModalProps>(({ onSuccess }, ref) 
         <CheckedType key="checked" />,
       ]}
     >
-      {TYPE_FILE_MAP[activeType] === 'image' &&
+      {config?.fileType === 'image' &&
         <Form layout='vertical' ref={formRef}>
           <Form.Item
             name="name"
@@ -368,8 +289,8 @@ const UploadModal = forwardRef<ModalRef, UploadModalProps>(({ onSuccess }, ref) 
         </p>
         <p className="ant-upload-text">{t('datasets.uploadText')}</p>
       </Dragger>
-      {TYPE_FILE_MAP[activeType] !== 'image' && (
-        <p>{t(`datasets.${activeType !== 'log_clustering' ? 'downloadCSV' : 'downloadTxt'}`)}<Button type='link' onClick={downloadTemplate}>{t('datasets.template')}</Button></p>
+      {config?.fileType !== 'image' && (
+        <p>{t(`datasets.downloadCSV`)}<Button type='link' onClick={downloadTemplate}>{t('datasets.template')}</Button></p>
       )}
     </OperateModal>
   )
