@@ -167,11 +167,11 @@ class SSHPlugin:
 
 # if __name__ == '__main__':
 #     import os
-#     os.environ["NATS_URLS"] = "tls://admin:glUc4sGULEeHBnIha6BMeVrDOJrYtRUW@10.10.41.149:4222"
+#     os.environ["NATS_URLS"] = ""
 #     os.environ["NATS_TLS_ENABLED"] = "true"
-#     os.environ["NATS_TLS_CA_FILE"] = "/Users/windyzhao/Documents/Canway/weops_X/cmdb/bk-lite/server/ca.pem"
+#     os.environ["NATS_TLS_CA_FILE"] = ""
 #     params = {
-#         "node_id": "9e0353a3-9aac-4fed-9cae-6734b40f6fc7",
+#         "node_id": "",
 #         "host": "172.30.112.1",
 #         "script_path": "plugins/inputs/host/host_windows_discover.ps1",
 #         "model_id": "host",
