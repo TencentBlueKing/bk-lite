@@ -38,6 +38,9 @@ $NodeId = "${NODE_ID}"
 # [可选] Zone ID for the sidecar (default: 1)
 $ZoneId = "${ZONE_ID}"
 
+# [可选] Node Name for the sidecar (default: "")
+$NodeName = "${NODE_NAME}"
+
 # [可选] Group ID for the sidecar (default: 1)
 $GroupId = "${GROUP_ID}"
 
@@ -143,6 +146,7 @@ function Generate-Config {
 server_url: "$ServerUrl"
 server_api_token: "$ApiToken"
 node_id: "$NodeId"
+node_name: "$NodeName"
 update_interval: 10
 tls_skip_verify: false
 send_status: true
@@ -155,7 +159,7 @@ collector_validation_timeout: "1m"
 collector_shutdown_timeout: "10s"
 collector_configuration_directory: "${INSTALL_PATH}generated"
 windows_drive_range: ""
-tags: ["cloud:$ZoneId", "group:$GroupId"]
+tags: ["cloud:$ZoneId", "group:$GroupId", "install_method:manual", "node_type:container"]
 collector_binaries_accesslist:
 - "${INSTALL_PATH}bin\*"
 "@
