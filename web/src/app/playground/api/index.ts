@@ -21,6 +21,11 @@ interface ClassificationReason {
   data: any[];
 }
 
+interface TimeseriesPredictReason {
+  data: any[];
+  steps: number;
+}
+
 const usePlayroundApi = () => {
   const {
     get,
@@ -174,6 +179,11 @@ const usePlayroundApi = () => {
     return await post(`/mlops/anomaly_detection_servings/predict/`, params);
   };
 
+  // 时序预测推理
+  const timeseriesPredictReason = async (serving_id: number, params: TimeseriesPredictReason) => {
+    return await post(`/mlops/timeseries_predict_servings/${serving_id}/predict`, params);
+  };
+
   // 分类任务推理
   const classificationReason = async (params: ClassificationReason) => {
     return await post(`/mlops/classification_servings/predict/`, params);
@@ -218,6 +228,7 @@ const usePlayroundApi = () => {
     updateSampleFile,
     anomalyDetectionReason,
     classificationReason,
+    timeseriesPredictReason,
     deleteCategory,
     deleteCapability,
     deleteSampleFile

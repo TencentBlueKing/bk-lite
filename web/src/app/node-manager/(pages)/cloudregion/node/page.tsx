@@ -307,6 +307,7 @@ const Node = () => {
           const installMethodLabel =
             nodeStateEnum?.install_method?.[installMethodValue] ||
             installMethodValue;
+          const isAutoInstall = installMethodValue === 'auto';
 
           // 获取节点类型映射
           const nodeTypeValue = record.node_type;
@@ -335,7 +336,7 @@ const Node = () => {
                         ? 'rongqifuwuContainerServi'
                         : 'zhuji'
                     }
-                    style={{ fontSize: '24px', cursor: 'pointer' }}
+                    style={{ fontSize: '28px', cursor: 'pointer' }}
                   />
                 </div>
               </Tooltip>
@@ -347,7 +348,7 @@ const Node = () => {
                 <div className="flex items-center">
                   <Icon
                     type={osValue === 'linux' ? 'Linux' : 'Window-Windows'}
-                    style={{ fontSize: '24px', cursor: 'pointer' }}
+                    style={{ fontSize: '26px', cursor: 'pointer' }}
                   />
                 </div>
               </Tooltip>
@@ -358,12 +359,12 @@ const Node = () => {
               >
                 <div className="flex items-center">
                   <Icon
-                    type={
-                      installMethodValue === 'auto'
-                        ? 'daohang_007'
-                        : 'rengongganyu'
-                    }
-                    style={{ fontSize: '24px', cursor: 'pointer' }}
+                    type={isAutoInstall ? 'daohang_007' : 'rengongganyu'}
+                    style={{
+                      fontSize: isAutoInstall ? '32px' : '24px',
+                      transform: isAutoInstall ? 'none' : 'translateX(2px)',
+                      cursor: 'pointer',
+                    }}
                   />
                 </div>
               </Tooltip>

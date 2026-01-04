@@ -16,7 +16,7 @@ from .base import BaseTimeSeriesModel, ModelRegistry
 from .gradient_boosting_wrapper import GradientBoostingWrapper
 
 
-@ModelRegistry.register("gradient_boosting")
+@ModelRegistry.register("GradientBoosting")
 class GradientBoostingModel(BaseTimeSeriesModel):
     """Gradient Boosting 时间序列预测模型
     
@@ -45,6 +45,7 @@ class GradientBoostingModel(BaseTimeSeriesModel):
                  subsample: float = 1.0,
                  random_state: int = 42,
                  use_feature_engineering: bool = True,
+                 feature_engineering_config: Optional[Dict] = None,
                  **kwargs):
         """初始化 Gradient Boosting 模型
         
@@ -58,6 +59,7 @@ class GradientBoostingModel(BaseTimeSeriesModel):
             subsample: 子采样比例
             random_state: 随机种子
             use_feature_engineering: 是否使用完整的特征工程（推荐）
+            feature_engineering_config: 特征工程配置字典
             **kwargs: 其他参数
         """
         super().__init__(
@@ -82,6 +84,7 @@ class GradientBoostingModel(BaseTimeSeriesModel):
         self.subsample = subsample
         self.random_state = random_state
         self.use_feature_engineering = use_feature_engineering
+        self.feature_engineering_config = feature_engineering_config
         
         # 用于预测的最后观测值
         self.last_train_values = None
@@ -121,6 +124,7 @@ class GradientBoostingModel(BaseTimeSeriesModel):
             train_data: pd.Series,
             val_data: Optional[pd.Series] = None,
             merge_val: bool = True,
+            verbose: bool = True,
             **kwargs) -> 'GradientBoostingModel':
         """训练 Gradient Boosting 模型
         
@@ -138,6 +142,9 @@ class GradientBoostingModel(BaseTimeSeriesModel):
                         * 用于超参数优化阶段（Hyperopt 的 objective 函数）
                         * 目的：在独立验证集上评估泛化能力，避免过拟合
                         * val 数据用于计算优化目标 loss
+            verbose: 是否输出详细训练日志（默认 True）
+                     - True: 输出完整训练过程（用于正常训练）
+                     - False: 只输出关键信息（用于超参数优化）
             **kwargs: 其他训练参数
             
         Returns:
@@ -160,11 +167,12 @@ class GradientBoostingModel(BaseTimeSeriesModel):
         if not isinstance(combined_data, pd.Series):
             raise ValueError("train_data 必须是 pandas.Series")
         
-        logger.info(
-            f"开始训练 GradientBoosting 模型: "
-            f"n_estimators={self.n_estimators}, lr={self.learning_rate}"
-        )
-        logger.info(f"训练数据: {len(combined_data)} 个数据点")
+        if verbose:
+            logger.info(
+                f"开始训练 GradientBoosting 模型: "
+                f"n_estimators={self.n_estimators}, lr={self.learning_rate}"
+            )
+            logger.info(f"训练数据: {len(combined_data)} 个数据点")
         
         # 存储频率信息
         if isinstance(combined_data.index, pd.DatetimeIndex):
@@ -178,21 +186,34 @@ class GradientBoostingModel(BaseTimeSeriesModel):
             # 使用完整的特征工程
             from ..preprocessing.feature_engineering import TimeSeriesFeatureEngineer
             
-            logger.info("使用完整的特征工程...")
+            if not self.feature_engineering_config:
+                raise ValueError(
+                    "use_feature_engineering=true 但未提供 feature_engineering_config 配置"
+                )
+            
+            logger.info("使用完整的特征工程（配置驱动）...")
+            fe_cfg = self.feature_engineering_config
+            
             self.feature_engineer = TimeSeriesFeatureEngineer(
-                lag_periods=list(range(1, self.lag_features + 1)),
-                rolling_windows=[7, 14, 30] if self.lag_features >= 30 else [self.lag_features // 2],
-                rolling_features=['mean', 'std', 'min', 'max'],
-                use_temporal_features=True,
-                use_cyclical_features=False,  # 避免过多特征
-                use_diff_features=True,
-                diff_periods=[1],
+                lag_periods=fe_cfg["lag_periods"],
+                rolling_windows=fe_cfg["rolling_windows"],
+                rolling_features=fe_cfg["rolling_features"],
+                use_temporal_features=fe_cfg["use_temporal_features"],
+                use_cyclical_features=fe_cfg["use_cyclical_features"],
+                use_diff_features=fe_cfg["use_diff_features"],
+                diff_periods=fe_cfg.get("diff_periods", [1]),
                 drop_na=True
             )
             
+            if verbose:
+                logger.info(f"特征工程配置: lag_periods={fe_cfg['lag_periods']}, "
+                           f"rolling_windows={fe_cfg['rolling_windows']}, "
+                           f"use_temporal={fe_cfg['use_temporal_features']}")
+            
             X_train, y_train = self.feature_engineer.fit_transform(combined_data)
-            logger.info(f"特征工程后样本: X={X_train.shape}, y={y_train.shape}")
-            logger.info(f"生成 {len(self.feature_engineer.get_feature_names())} 个特征")
+            if verbose:
+                logger.info(f"特征工程后样本: X={X_train.shape}, y={y_train.shape}")
+                logger.info(f"生成 {len(self.feature_engineer.get_feature_names())} 个特征")
             
             # 保存特征名称
             self.feature_names_ = X_train.columns.tolist()
@@ -230,9 +251,11 @@ class GradientBoostingModel(BaseTimeSeriesModel):
                 logger.info(f"特征工程信息已记录到MLflow: {X_train.shape[1]} 个特征")
         else:
             # 使用简单的滞后窗口
-            logger.info(f"使用简单滞后窗口: lag={self.lag_features}")
+            if verbose:
+                logger.info(f"使用简单滞后窗口: lag={self.lag_features}")
             X_train, y_train = self._create_supervised_data(train_data)
-            logger.info(f"监督学习样本: X={X_train.shape}, y={y_train.shape}")
+            if verbose:
+                logger.info(f"监督学习样本: X={X_train.shape}, y={y_train.shape}")
             
             # 记录简单模式信息到MLflow
             if mlflow.active_run():
@@ -262,7 +285,8 @@ class GradientBoostingModel(BaseTimeSeriesModel):
             )
             
             self.model.fit(X_train, y_train)
-            logger.info("模型训练完成")
+            if verbose:
+                logger.info("模型训练完成")
             
             # 保存最后的观测值用于预测
             self.last_train_values = train_data.values[-max(self.lag_features, 50):].copy()
@@ -858,17 +882,19 @@ class GradientBoostingModel(BaseTimeSeriesModel):
         """
         from hyperopt import fmin, tpe, hp, Trials, STATUS_OK
         
-        max_evals = config.hyperopt_max_evals
-        metric = config.hyperopt_metric
-        search_space_config = config.get("hyperparams", "gradient_boosting", "search", "search_space")
+        # 获取搜索配置
+        search_config = config.get_search_config()
+        max_evals = search_config["max_evals"]
+        metric = search_config["metric"]
+        search_space_config = search_config["search_space"]
         
         # 获取早停配置
-        early_stop_config = config.get("hyperparams", "gradient_boosting", "search", "early_stopping")
-        early_stop_enabled = early_stop_config.get("enabled", False) if early_stop_config else False
-        patience = early_stop_config.get("patience", 15) if early_stop_config else 15
+        early_stop_config = search_config["early_stopping"]
+        early_stop_enabled = early_stop_config.get("enabled", True)
+        patience = early_stop_config.get("patience", 15)
         
         # 异常值配置
-        loss_cap_multiplier = early_stop_config.get("loss_cap_multiplier", 5.0) if early_stop_config else 5.0
+        loss_cap_multiplier = early_stop_config.get("loss_cap_multiplier", 5.0)
         
         logger.info(
             f"开始超参数优化: max_evals={max_evals}, metric={metric}"
@@ -884,6 +910,21 @@ class GradientBoostingModel(BaseTimeSeriesModel):
             f"(std {data_std:.2f} × {loss_cap_multiplier})"
         )
         
+        # 输出共享配置信息（所有 trial 通用，只输出一次）
+        logger.info("=" * 60)
+        logger.info("特征工程配置（所有 trial 共享）:")
+        if self.use_feature_engineering:
+            fe_cfg = self.feature_engineering_config
+            logger.info(f"  lag_periods: {fe_cfg['lag_periods']}")
+            logger.info(f"  rolling_windows: {fe_cfg['rolling_windows']}")
+            logger.info(f"  rolling_features: {fe_cfg['rolling_features']}")
+            logger.info(f"  use_temporal_features: {fe_cfg['use_temporal_features']}")
+            logger.info(f"  use_cyclical_features: {fe_cfg['use_cyclical_features']}")
+            logger.info(f"  use_diff_features: {fe_cfg['use_diff_features']}")
+        else:
+            logger.info(f"  使用简单滞后窗口: lag={self.lag_features}")
+        logger.info("=" * 60)
+        
         # 定义搜索空间
         space = self._build_search_space(search_space_config)
         
@@ -898,22 +939,19 @@ class GradientBoostingModel(BaseTimeSeriesModel):
             current_eval = eval_count[0]
             
             try:
-                logger.info("=" * 60)
-                logger.info(f"Hyperopt Trial [{current_eval}/{max_evals}]")
-                logger.info(f"  hyperopt 采样的原始参数: {params}")
-                for key, value in params.items():
-                    logger.info(f"    {key}: {value} (type: {type(value).__name__})")
-                logger.info("=" * 60)
-                
                 # 准备参数（hyperopt 直接返回实际值）
                 decoded_params = self._decode_params(params, search_space_config)
                 
-                logger.info(f"  解码后的参数: {decoded_params}")
-                logger.info("=" * 60)
+                # 输出当前尝试的核心超参数（排除固定参数和配置字典）
+                exclude_keys = {'random_state', 'use_feature_engineering', 'feature_engineering_config'}
+                core_params = {k: v for k, v in decoded_params.items() if k not in exclude_keys}
+                logger.info(f"[{current_eval}/{max_evals}] 尝试参数:")
+                for k, v in core_params.items():
+                    logger.info(f"  {k}={v}")
                 
                 # 创建临时模型并训练（仅用 train_data，val_data 用于评估）
                 temp_model = GradientBoostingModel(**decoded_params)
-                temp_model.fit(train_data, val_data=val_data, merge_val=False)
+                temp_model.fit(train_data, val_data=val_data, merge_val=False, verbose=False)
                 
                 # 训练集评估（样本内评估，快速检测欠拟合）
                 train_metrics = temp_model.evaluate(train_data, is_in_sample=True)
@@ -964,22 +1002,13 @@ class GradientBoostingModel(BaseTimeSeriesModel):
                 
                 # 记录最优结果
                 if score < best_score[0]:
-                    improvement_pct = 0.0
-                    if best_score[0] != float('inf'):
-                        improvement_pct = (best_score[0] - score) / best_score[0] * 100
-                    
                     best_score[0] = score
-                    
-                    logger.info(
-                        f"  ✓ 发现更优参数! [{current_eval}/{max_evals}] "
-                        f"{metric}={score:.4f}"
-                    )
-                    logger.info(f"    参数: {decoded_params}")
+                    logger.info(f"  ✓ 发现更优参数! [{current_eval}/{max_evals}] {metric}={score:.4f}")
+                    for k, v in core_params.items():
+                        logger.info(f"    {k}={v}")
                     
                     if mlflow.active_run():
                         mlflow.log_metric("hyperopt/best_so_far", score, step=current_eval)
-                        if improvement_pct > 0:
-                            mlflow.log_metric("hyperopt/improvement_pct", improvement_pct, step=current_eval)
                 
                 return {'loss': float(score), 'status': STATUS_OK}
                 
@@ -1012,14 +1041,8 @@ class GradientBoostingModel(BaseTimeSeriesModel):
             verbose=False
         )
         
-        logger.info("=" * 60)
-        logger.info("Hyperopt 优化完成，转换最优参数...")
-        logger.info(f"  fmin() 返回的原始值（索引）: {best_params_raw}")
-        
         # 使用 space_eval 将索引转换为实际值（标准做法）
         best_params_actual = space_eval(space, best_params_raw)
-        logger.info(f"  space_eval() 转换后的实际值: {best_params_actual}")
-        logger.info("=" * 60)
         
         # 转换最优参数（添加默认值和类型转换）
         best_params = self._decode_params(best_params_actual, search_space_config)
@@ -1160,6 +1183,7 @@ class GradientBoostingModel(BaseTimeSeriesModel):
         # 2. 添加固定参数
         decoded['random_state'] = self.random_state
         decoded['use_feature_engineering'] = self.use_feature_engineering
+        decoded['feature_engineering_config'] = self.feature_engineering_config
         
         # 3. 参数验证和修正（防御性编程）
         if 'min_samples_split' in decoded:
@@ -1230,7 +1254,7 @@ class GradientBoostingModel(BaseTimeSeriesModel):
                 fe_version = "unknown"
             
             metadata = {
-                'model_type': 'gradient_boosting',
+                'model_type': 'GradientBoosting',
                 'lag_features': self.lag_features,
                 'use_feature_engineering': self.use_feature_engineering,
                 'n_features': len(self.feature_names_) if self.feature_names_ else self.lag_features,
@@ -1270,7 +1294,8 @@ class GradientBoostingModel(BaseTimeSeriesModel):
             use_feature_engineering=self.use_feature_engineering,
             feature_engineer=self.feature_engineer if self.use_feature_engineering else None,
             training_frequency=self.frequency,
-            feature_names=self.feature_names_
+            feature_names=self.feature_names_,
+            feature_engineering_config=self.feature_engineering_config
         )
         logger.info("✓ Wrapper 创建成功")
         

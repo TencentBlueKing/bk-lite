@@ -4,7 +4,7 @@ import { useLocalizedTime } from "@/hooks/useLocalizedTime";
 import useMlopsTaskApi from '@/app/mlops/api/task';
 import useMlopsManageApi from '@/app/mlops/api/manage';
 import { Button, Input, Popconfirm, message, Tag, Tree } from 'antd';
-import { PlusOutlined, ReloadOutlined } from '@ant-design/icons';
+import { ReloadOutlined } from '@ant-design/icons';
 import CustomTable from '@/components/custom-table';
 import EllipsisWithTooltip from '@/components/ellipsis-with-tooltip';
 import PageLayout from '@/components/page-layout';
@@ -18,8 +18,6 @@ import type { TreeDataNode } from 'antd';
 import { TrainJob } from '@/app/mlops/types/task';
 import { TRAIN_STATUS_MAP, TRAIN_TEXT } from '@/app/mlops/constants';
 import { DataSet } from '@/app/mlops/types/manage';
-import { exportTrainFileToZip } from '@/app/mlops/utils/common';
-import DatasetReleaseModal from './datasetRelease';
 const { Search } = Input;
 
 const getStatusColor = (value: string, TrainStatus: Record<string, string>) => {
@@ -49,12 +47,10 @@ const TrainTask = () => {
     getClassificationTaskList,
     deleteClassificationTrainTask,
     startClassificationTrainTask,
-    getTrainTaskFile
   } = useMlopsTaskApi();
 
   // 状态定义
   const modalRef = useRef<ModalRef>(null);
-  const releaseModalRef = useRef<ModalRef>(null);
   const [tableData, setTableData] = useState<TrainJob[]>([]);
   const [datasetOptions, setDatasetOptions] = useState<Option[]>([]);
   const [selectedKeys, setSelectedKeys] = useState<string[]>([]);
@@ -69,7 +65,7 @@ const TrainTask = () => {
 
   // 数据集获取映射
   const datasetApiMap: Record<string, () => Promise<DataSet[]>> = {
-    'anomaly': () => getAnomalyDatasetsList({}),
+    'anomaly_detection': () => getAnomalyDatasetsList({}),
     'rasa': () => getRasaDatasetsList({}),
     'log_clustering': () => getLogClusteringList({}),
     'timeseries_predict': () => getTimeSeriesPredictList({}),
@@ -80,7 +76,7 @@ const TrainTask = () => {
 
   // 任务获取映射
   const taskApiMap: Record<string, (params: any) => Promise<any>> = {
-    'anomaly': (params) => getAnomalyTaskList(params),
+    'anomaly_detection': (params) => getAnomalyTaskList(params),
     'rasa': () => getRasaPipelines({}),
     'log_clustering': (params) => getLogClusteringTaskList(params),
     'timeseries_predict': (params) => getTimeSeriesTaskList(params),
@@ -91,7 +87,7 @@ const TrainTask = () => {
 
   // 训练开始操作映射
   const trainStartApiMap: Record<string, (id: any) => Promise<void>> = {
-    'anomaly': startAnomalyTrainTask,
+    'anomaly_detection': startAnomalyTrainTask,
     'log_clustering': startLogClusteringTrainTask,
     'timeseries_predict': startTimeSeriesTrainTask,
     'classification': startClassificationTrainTask,
@@ -101,7 +97,7 @@ const TrainTask = () => {
 
   // 删除操作映射
   const deleteApiMap: Record<string, (id: string) => Promise<void>> = {
-    'anomaly': deleteAnomalyTrainTask,
+    'anomaly_detection': deleteAnomalyTrainTask,
     'rasa': deleteRasaPipelines,
     'log_clustering': deleteLogClusteringTrainTask,
     'timeseries_predict': deleteTimeSeriesTrainTask,
@@ -112,10 +108,10 @@ const TrainTask = () => {
 
   // 抽屉操作映射
   const drawerSupportMap: Record<string, boolean> = {
-    'anomaly': true,
+    'anomaly_detection': true,
     'rasa': false,
     'log_clustering': false,
-    'timeseries_predict': false,
+    'timeseries_predict': true,
     'classification': true,
     'image_classification': false,
     'object_detection': false
@@ -123,7 +119,7 @@ const TrainTask = () => {
 
   // 数据处理映射
   const dataProcessorMap: Record<string, (data: any) => { tableData: TrainJob[], total: number }> = {
-    'anomaly': (data) => processAnomalyLikeData(data, 'anomaly'),
+    'anomaly_detection': (data) => processAnomalyLikeData(data, 'anomaly'),
     'rasa': (data) => {
       const _data = data.map((item: any) => ({
         id: item.id,
@@ -153,12 +149,12 @@ const TrainTask = () => {
       children: [
         {
           title: t(`datasets.anomaly`),
-          key: 'anomaly',
+          key: 'anomaly_detection',
         },
-        {
-          title: t(`datasets.rasa`),
-          key: 'rasa'
-        },
+        // {
+        //   title: t(`datasets.rasa`),
+        //   key: 'rasa'
+        // },
         {
           title: t(`datasets.timeseriesPredict`),
           key: 'timeseries_predict',
@@ -244,24 +240,6 @@ const TrainTask = () => {
       render: (_: unknown, record: TrainJob) => {
         return (
           <>
-            {/* <PermissionWrapper requiredPermissions={['View']}>
-              <Button
-                type='link'
-                className='mr-[10px]'
-                onClick={() => handleRelease(record)}
-              >
-                数据集发布
-              </Button>
-            </PermissionWrapper> */}
-            <PermissionWrapper requiredPermissions={['View']}>
-              <Button
-                type="link"
-                className="mr-[10px]"
-                onClick={() => downloadFile(record)}
-              >
-                {t('common.download')}
-              </Button>
-            </PermissionWrapper>
             <PermissionWrapper requiredPermissions={['Train']}>
               <Popconfirm
                 title={t('traintask.trainStartTitle')}
@@ -325,14 +303,14 @@ const TrainTask = () => {
         treeData={treeData}
         showLine
         selectedKeys={selectedKeys}
-        defaultExpandedKeys={['anomaly']}
+        defaultExpandedKeys={['anomaly_detection']}
         onSelect={(keys) => setSelectedKeys(keys as string[])}
       />
     </div>
   );
 
   useEffect(() => {
-    setSelectedKeys(['anomaly']);
+    setSelectedKeys(['anomaly_detection']);
   }, []);
 
   useEffect(() => {
@@ -349,9 +327,10 @@ const TrainTask = () => {
       const job = {
         id: item.id,
         name: item.name,
-        train_data_id: item.train_data_id,
-        val_data_id: item.val_data_id,
-        test_data_id: item.test_data_id,
+        dataset_version: item.dataset_version,
+        // train_data_id: item.train_data_id,
+        // val_data_id: item.val_data_id,
+        // test_data_id: item.test_data_id,
         created_at: item.created_at,
         creator: item?.created_by,
         status: item?.status,
@@ -478,24 +457,6 @@ const TrainTask = () => {
     }
   };
 
-  const downloadFile = async (record: any) => {
-    const [key] = selectedKeys;
-    try {
-      const zipname = `${record.name}_${record.id}`;
-      message.info(t(`traintask.waitData`))
-      const data = await getTrainTaskFile(record.id, key);
-      message.success(t(`traintask.downloadStart`));
-      exportTrainFileToZip(data, zipname);
-    } catch (e) {
-      console.log(e);
-      message.error(t(`traintask.downloadFailed`));
-    }
-  };
-
-  // const handleRelease = async (record: any) => {
-  //   releaseModalRef.current?.showModal(record)
-  // };
-
   const handleChange = (value: any) => {
     setPagination(value);
   };
@@ -535,7 +496,7 @@ const TrainTask = () => {
         rightSection={
           (<>
             <div className="flex justify-end items-center mb-4 gap-2">
-              <div className="flex">
+              <div className="flex items-center">
                 <Search
                   className="w-[240px] mr-1.5"
                   placeholder={t('traintask.searchText')}
@@ -544,11 +505,13 @@ const TrainTask = () => {
                   style={{ fontSize: 15 }}
                 />
                 <PermissionWrapper requiredPermissions={['Add']}>
-                  <Button type="primary" icon={<PlusOutlined />} className="rounded-md text-xs shadow mr-2" onClick={() => handleAdd()}>
+                  <Button type="primary" className="rounded-md text-xs shadow mr-2" onClick={() => handleAdd()}>
                     {t('common.add')}
                   </Button>
                 </PermissionWrapper>
-                <ReloadOutlined onClick={onRefresh} />
+                <PermissionWrapper requiredPermissions={['View']}>
+                  <ReloadOutlined onClick={onRefresh} />
+                </PermissionWrapper>
               </div>
             </div>
             <div className="flex-1 relative">
@@ -569,7 +532,6 @@ const TrainTask = () => {
         }
       />
       <TrainTaskModal ref={modalRef} onSuccess={() => onRefresh()} activeTag={selectedKeys} datasetOptions={datasetOptions} />
-      <DatasetReleaseModal ref={releaseModalRef} activeTag={selectedKeys} />
       <TrainTaskDrawer open={drawerOpen} onCancel={() => setDrawOpen(false)} activeTag={selectedKeys} selectId={selectedTrain} />
     </>
   );

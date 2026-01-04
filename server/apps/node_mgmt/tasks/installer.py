@@ -142,22 +142,44 @@ def install_controller_on_nodes(task_obj, nodes, package_obj):
             _save_node_result(node_obj, steps, "error", f"Base preparation failed at {base_action}")
             continue
 
-        # 检查凭据有效性
-        if not node_obj.password:
+        # 检查凭据有效性（密码或私钥至少提供一个）
+        has_password = bool(node_obj.password)
+        has_private_key = bool(node_obj.private_key)
+        
+        if not has_password and not has_private_key:
             _add_step(steps, "credential_check", "error",
-                      "Node password is empty, credential has expired. Cannot proceed with installation.", timestamp)
+                      "No authentication method provided. Password or private key is required.", timestamp)
             _save_node_result(node_obj, steps, "error", "Credential validation failed")
             continue
 
         # 凭据验证成功
-        _add_step(steps, "credential_check", "success", "Credential validation passed", timestamp)
-        password = aes_obj.decode(node_obj.password)
+        auth_method = "private key" if has_private_key else "password"
+        _add_step(steps, "credential_check", "success", f"Credential validation passed (using {auth_method})", timestamp)
+        
+        # 解密密码（如果有）
+        password = None
+        if has_password:
+            password = aes_obj.decode(node_obj.password)
+        
+        # 解密私钥密码短语（如果有）
+        passphrase = None
+        if node_obj.passphrase:
+            passphrase = aes_obj.decode(node_obj.passphrase)
 
         try:
             # 文件传输步骤
             _add_step(steps, "send", "running", "Starting file transfer to remote host", timestamp)
-            transfer_file_to_remote(task_obj.work_node, f"{controller_storage_dir}/{unzip_name}",
-                                    controller_install_dir, node_obj.ip, node_obj.username, password, node_obj.port)
+            transfer_file_to_remote(
+                task_obj.work_node, 
+                f"{controller_storage_dir}/{unzip_name}",
+                controller_install_dir, 
+                node_obj.ip, 
+                node_obj.username, 
+                password, 
+                node_obj.port,
+                private_key=private_key,
+                passphrase=passphrase
+            )
             _update_step_status(steps, "success", "File transfer completed successfully")
 
             # 安装执行步骤
@@ -170,8 +192,16 @@ def install_controller_on_nodes(task_obj, nodes, package_obj):
             install_command = get_install_command(package_obj.os, package_obj.name, task_obj.cloud_region_id,
                                                   sidecar_token, server_url, groups, node_obj.node_name, node_id)
 
-            exec_command_to_remote(task_obj.work_node, node_obj.ip, node_obj.username, password, install_command,
-                                   node_obj.port)
+            exec_command_to_remote(
+                task_obj.work_node, 
+                node_obj.ip, 
+                node_obj.username, 
+                password, 
+                install_command,
+                node_obj.port,
+                private_key=private_key,
+                passphrase=passphrase
+            )
             _update_step_status(steps, "success", "Controller installation completed successfully")
 
         except Exception as e:
@@ -204,18 +234,20 @@ def install_controller(task_id):
     # 更新任务状态并清理密码
     task_obj.status = "finished"
     task_obj.save()
-    nodes.update(password="")
+    nodes.update(password="", private_key="", passphrase="")
 
 
 @shared_task
-def retry_controller(task_id, task_node_ids, password):
+def retry_controller(task_id, task_node_ids, password=None, private_key=None, passphrase=None):
     """
     重试控制器安装任务中的特定节点
 
     Args:
         task_id: 控制器任务ID
         task_node_ids: 需要重试的节点ID列表（支持单个或多个）
-        password: 节点密码（明文，将被加密后存储）
+        password: 节点密码（明文，将被加密后存储，可选）
+        private_key: SSH私钥（PEM格式，将被加密后存储，可选）
+        passphrase: 私钥密码短语（明文，将被加密后存储，可选）
     """
 
     task_obj = ControllerTask.objects.filter(id=task_id).first()
@@ -239,16 +271,25 @@ def retry_controller(task_id, task_node_ids, password):
     if not retry_nodes.exists():
         raise BaseAppException("No valid nodes found for retry")
 
-    # 加密密码并更新到节点
+    # 加密并更新到节点
     aes_obj = AESCryptor()
-    encrypted_password = aes_obj.encode(password)
-    retry_nodes.update(password=encrypted_password)
+    update_data = {}
+    
+    if password:
+        update_data["password"] = aes_obj.encode(password)
+    if private_key:
+        update_data["private_key"] = aes_obj.encode(private_key)
+    if passphrase:
+        update_data["passphrase"] = aes_obj.encode(passphrase)
+    
+    if update_data:
+        retry_nodes.update(**update_data)
 
     # 调用安装方法
     install_controller_on_nodes(task_obj, retry_nodes, package_obj)
 
-    # 清理密码
-    retry_nodes.update(password="")
+    # 清理密码和密钥
+    retry_nodes.update(password="", private_key="", passphrase="")
 
 
 @shared_task
@@ -268,28 +309,63 @@ def uninstall_controller(task_id):
         steps = []
         overall_status = "success"
 
-        # 检查凭据有效性
-        if not node_obj.password:
+        # 检查凭据有效性（密码或私钥至少提供一个）
+        has_password = bool(node_obj.password)
+        has_private_key = bool(node_obj.private_key)
+        
+        if not has_password and not has_private_key:
             _add_step(steps, "credential_check", "error",
-                     "Node password is empty, credential has expired. Cannot proceed with uninstallation.", timestamp)
+                     "No authentication method provided. Password or private key is required.", timestamp)
             _save_node_result(node_obj, steps, "error", "Credential validation failed")
             continue
 
         # 凭据验证成功
-        _add_step(steps, "credential_check", "success", "Credential validation passed", timestamp)
-        password = aes_obj.decode(node_obj.password)
+        auth_method = "private key" if has_private_key else "password"
+        _add_step(steps, "credential_check", "success", f"Credential validation passed (using {auth_method})", timestamp)
+        
+        # 解密密码（如果有）
+        password = None
+        if has_password:
+            password = aes_obj.decode(node_obj.password)
+        
+        # 解密私钥（如果有）
+        private_key = None
+        if has_private_key:
+            private_key = aes_obj.decode(node_obj.private_key)
+        
+        # 解密私钥密码短语（如果有）
+        passphrase = None
+        if node_obj.passphrase:
+            passphrase = aes_obj.decode(node_obj.passphrase)
 
         try:
             # 停止服务步骤
             _add_step(steps, "stop_run", "running", "Stopping controller service", timestamp)
             uninstall_command = get_uninstall_command(node_obj.os)
-            exec_command_to_remote(task_obj.work_node, node_obj.ip, node_obj.username, password, uninstall_command, node_obj.port)
+            exec_command_to_remote(
+                task_obj.work_node, 
+                node_obj.ip, 
+                node_obj.username, 
+                password, 
+                uninstall_command, 
+                node_obj.port,
+                private_key=private_key,
+                passphrase=passphrase
+            )
             _update_step_status(steps, "success", "Controller service stopped successfully")
 
             # 删除控制器安装目录步骤
             _add_step(steps, "delete_dir", "running", "Removing controller installation directory", timestamp)
-            exec_command_to_remote(task_obj.work_node, node_obj.ip, node_obj.username, password,
-                                 ControllerConstants.CONTROLLER_DIR_DELETE_COMMAND.get(node_obj.os), node_obj.port)
+            exec_command_to_remote(
+                task_obj.work_node, 
+                node_obj.ip, 
+                node_obj.username, 
+                password,
+                ControllerConstants.CONTROLLER_DIR_DELETE_COMMAND.get(node_obj.os), 
+                node_obj.port,
+                private_key=private_key,
+                passphrase=passphrase
+            )
             _update_step_status(steps, "success", "Installation directory removed successfully")
 
             # 删除node实例步骤
@@ -305,10 +381,10 @@ def uninstall_controller(task_id):
         final_message = "All steps completed successfully" if overall_status == "success" else "Uninstallation failed"
         _save_node_result(node_obj, steps, overall_status, final_message)
 
-    # 更新任务状态并清理密码
+    # 更新任务状态并清理密码和密钥
     task_obj.status = "finished"
     task_obj.save()
-    nodes.update(password="")
+    nodes.update(password="", private_key="", passphrase="")
 
 
 @shared_task

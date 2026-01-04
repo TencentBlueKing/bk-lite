@@ -1,4 +1,5 @@
 import { getAuthOptions } from "@/constants/authOptions";
+// @ts-expect-error - next-auth v4 getServerSession exists but types may not be exported correctly
 import { getServerSession } from "next-auth";
 import { redirect } from "next/navigation";
 import SigninClient from "./SigninClient";
@@ -16,18 +17,19 @@ const signinErrors: Record<string | "default", string> = {
 };
 
 interface SignInPageProp {
-  params?: object;
-  searchParams: {
+  params?: Promise<any>;
+  searchParams: Promise<{
     callbackUrl: string;
     error: string;
-  };
+  }>;
 }
 
 export default async function SigninPage({ searchParams }: SignInPageProp) {
   const authOptions = await getAuthOptions();
   const session = await getServerSession(authOptions);
+  const resolvedSearchParams = await searchParams;
   if (session && session.user && session.user.id) {
-    redirect(searchParams.callbackUrl || "/");
+    redirect(resolvedSearchParams.callbackUrl || "/");
   }
-  return <SigninClient searchParams={searchParams} signinErrors={signinErrors} />;
+  return <SigninClient searchParams={resolvedSearchParams} signinErrors={signinErrors} />;
 }

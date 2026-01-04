@@ -30,7 +30,8 @@ import useMonitorApi from '@/app/monitor/api';
 import useEventApi from '@/app/monitor/api/event';
 import Information from './information';
 import EventHeatMap from '@/components/heat-map';
-import { getEnumValueUnit, renderChart } from '@/app/monitor/utils/common';
+import { renderChart } from '@/app/monitor/utils/common';
+import { useUnitTransform } from '@/app/monitor/hooks/useUnitTransform';
 import { LEVEL_MAP } from '@/app/monitor/constants';
 
 const AlertDetail = forwardRef<ModalRef, ModalConfig>(
@@ -39,6 +40,7 @@ const AlertDetail = forwardRef<ModalRef, ModalConfig>(
     const { getMonitorMetrics } = useMonitorApi();
     const { getMonitorEventDetail, getEventRaw, getSnapshot } = useEventApi();
     const { convertToLocalizedTime } = useLocalizedTime();
+    const { getEnumValueUnit } = useUnitTransform();
     const STATE_MAP = useStateMap();
     const LEVEL_LIST = useLevelList();
     const [groupVisible, setGroupVisible] = useState<boolean>(false);
@@ -94,10 +96,12 @@ const AlertDetail = forwardRef<ModalRef, ModalConfig>(
             (item: MetricItem) =>
               item.id === row.policy?.query_condition?.metric_id
           ) || {};
+        const displayUnit = row.policy?.calculation_unit || metricInfo.unit;
+        const metricWithUnit = { ...metricInfo, unit: displayUnit };
         const form: TableDataItem = {
           ...row,
-          metric: metricInfo,
-          alertValue: getEnumValueUnit(metricInfo as MetricItem, row.value),
+          metric: metricWithUnit,
+          alertValue: getEnumValueUnit(metricWithUnit as MetricItem, row.value),
         };
         setFormData(form);
         if (form.policy?.query_condition?.type === 'pmq') {
@@ -270,7 +274,7 @@ const AlertDetail = forwardRef<ModalRef, ModalConfig>(
 
     const closeModal = () => {
       handleCancel();
-      onSuccess();
+      onSuccess?.();
     };
 
     return (

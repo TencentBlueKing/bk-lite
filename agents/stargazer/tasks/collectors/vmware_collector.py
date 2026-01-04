@@ -6,7 +6,6 @@
 VMware 监控数据采集器
 """
 import datetime
-from typing import Dict, Any
 from sanic.log import logger
 from .base_collector import BaseCollector
 
@@ -22,7 +21,7 @@ class VmwareCollector(BaseCollector):
             Prometheus 格式的指标数据
         """
         from common.cmp.driver import CMPDriver
-        from plugins.vmware_info import VmwareManage
+        from plugins.inputs.vmware_vc.vmware_info import VmwareManage
         from utils.convert import convert_to_prometheus
 
         username = self.params["username"]
@@ -30,7 +29,10 @@ class VmwareCollector(BaseCollector):
         host = self.params["host"]
         minutes = self.params.get("minutes", 5)
 
-        logger.info(f"[VMware Collector] Host={host}, Minutes={minutes}")
+        logger.info(f"[VMware Collector] ===== START COLLECTION =====")
+        logger.info(f"[VMware Collector] Params: {list(self.params.keys())}")
+        logger.info(f"[VMware Collector] Target Host={host}, Minutes={minutes}, Username={username}")
+        logger.info(f"[VMware Collector] ===================================")
 
         # 获取时间范围
         end_time = datetime.datetime.now()
@@ -40,7 +42,7 @@ class VmwareCollector(BaseCollector):
 
         logger.info(f"[VMware Collector] Time range: {start_time_str} to {end_time_str}")
 
-        driver = CMPDriver(username, password, "vmware", host=host)
+        driver = CMPDriver(username, password, "vmware_vc", host=host)
 
         try:
             vmware_manager = VmwareManage(params=dict(
@@ -99,4 +101,3 @@ class VmwareCollector(BaseCollector):
         logger.info(f"[VMware Collector] Completed: {total_resources_processed} resources, {len(influxdb_data)} bytes")
 
         return influxdb_data
-

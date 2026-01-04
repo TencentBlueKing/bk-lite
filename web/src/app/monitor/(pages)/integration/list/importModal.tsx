@@ -59,7 +59,7 @@ const ImportModal = forwardRef<ModalRef, ModalConfig>(({ onSuccess }, ref) => {
       setConfirmLoading(true);
       await importMonitorPlugin(parsedData);
       message.success(t('common.successfullyImported'));
-      onSuccess();
+      onSuccess?.();
       handleCancel();
     } finally {
       setConfirmLoading(false);

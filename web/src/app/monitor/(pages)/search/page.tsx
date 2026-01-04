@@ -32,11 +32,11 @@ import {
   ConditionItem,
 } from '@/app/monitor/types/search';
 import {
-  findUnitNameById,
   mergeViewQueryKeyValues,
   renderChart,
   getRecentTimeRange,
 } from '@/app/monitor/utils/common';
+import { useUnitTransform } from '@/app/monitor/hooks/useUnitTransform';
 import { useSearchParams } from 'next/navigation';
 import dayjs from 'dayjs';
 import TreeSelector from '@/app/monitor/components/treeSelector';
@@ -45,6 +45,7 @@ const { Option } = Select;
 
 const SearchView: React.FC = () => {
   const { get, isLoading } = useApiClient();
+  const { findUnitNameById } = useUnitTransform();
   const {
     getMonitorObject,
     getMonitorMetrics,
@@ -81,16 +82,36 @@ const SearchView: React.FC = () => {
       selectValue: 15,
       rangePickerVaule: null,
     });
+  const timerRef = useRef<NodeJS.Timeout | null>(null);
+  const searchAbortControllerRef = useRef<AbortController | null>(null);
+  const searchRequestIdRef = useRef<number>(0);
+  const metricsAbortControllerRef = useRef<AbortController | null>(null);
+  const metricsRequestIdRef = useRef<number>(0);
+  const instanceAbortControllerRef = useRef<AbortController | null>(null);
+  const instanceRequestIdRef = useRef<number>(0);
+  const currentObjectIdRef = useRef<React.Key>(object);
   const [columns, setColumns] = useState<ColumnItem[]>([]);
   const [tableData, setTableData] = useState<SearchTableDataItem[]>([]);
   const [chartData, setChartData] = useState<ChartData[]>([]);
   const [frequence, setFrequence] = useState<number>(0);
   const [unit, setUnit] = useState<string>('');
   const isArea: boolean = activeTab === 'area';
-  const timerRef = useRef<NodeJS.Timeout | null>(null);
   const [treeData, setTreeData] = useState<TreeItem[]>([]);
   const [originMetricData, setOriginMetricData] = useState<IndexViewItem[]>([]);
   const [defaultSelectObj, setDefaultSelectObj] = useState<React.Key>('');
+
+  const cancelAllRequests = () => {
+    searchAbortControllerRef.current?.abort();
+    metricsAbortControllerRef.current?.abort();
+    instanceAbortControllerRef.current?.abort();
+  };
+
+  useEffect(() => {
+    return () => {
+      clearTimer();
+      cancelAllRequests();
+    };
+  }, []);
 
   useEffect(() => {
     if (isLoading) return;
@@ -133,48 +154,67 @@ const SearchView: React.FC = () => {
   };
 
   const getMetrics = async (params = {}) => {
+    metricsAbortControllerRef.current?.abort();
+    const abortController = new AbortController();
+    metricsAbortControllerRef.current = abortController;
+    const currentRequestId = ++metricsRequestIdRef.current;
     try {
       setMetricsLoading(true);
-      const getGroupList = getMetricsGroup(params);
-      const getMetrics = getMonitorMetrics(params);
-      Promise.all([getGroupList, getMetrics])
-        .then((res) => {
-          const metricData = cloneDeep(res[1] || []);
-          setMetrics(res[1] || []);
-          const groupData = res[0].map((item: GroupInfo) => ({
-            ...item,
-            child: [],
-          }));
-          metricData.forEach((metric: MetricItem) => {
-            const target = groupData.find(
-              (item: GroupInfo) => item.id === metric.metric_group
-            );
-            if (target) {
-              target.child.push(metric);
-            }
-          });
-          const _groupData = groupData.filter(
-            (item: IndexViewItem) => !!item.child?.length
-          );
-          setOriginMetricData(_groupData);
-        })
-        .finally(() => {
-          setMetricsLoading(false);
-        });
-    } catch {
-      setMetricsLoading(false);
+      const config = { signal: abortController.signal };
+      const getGroupList = getMetricsGroup(params, config);
+      const getMetrics = getMonitorMetrics(params, config);
+      const res = await Promise.all([getGroupList, getMetrics]);
+      if (currentRequestId !== metricsRequestIdRef.current) {
+        return;
+      }
+      const metricData = cloneDeep(res[1] || []);
+      setMetrics(res[1] || []);
+      const groupData = res[0].map((item: GroupInfo) => ({
+        ...item,
+        child: [],
+      }));
+      metricData.forEach((metric: MetricItem) => {
+        const target = groupData.find(
+          (item: GroupInfo) => item.id === metric.metric_group
+        );
+        if (target) {
+          target.child.push(metric);
+        }
+      });
+      const _groupData = groupData.filter(
+        (item: IndexViewItem) => !!item.child?.length
+      );
+      setOriginMetricData(_groupData);
+    } finally {
+      if (currentRequestId === metricsRequestIdRef.current) {
+        setMetricsLoading(false);
+      }
     }
   };
 
   const getInstList = async (id: React.Key) => {
+    instanceAbortControllerRef.current?.abort();
+    const abortController = new AbortController();
+    instanceAbortControllerRef.current = abortController;
+    const currentRequestId = ++instanceRequestIdRef.current;
     try {
       setInstanceLoading(true);
-      const data = await getInstanceList(id, {
-        page_size: -1,
-      });
-      setInstances(data.results || []);
+      const data = await getInstanceList(
+        id,
+        {
+          page_size: -1,
+        },
+        {
+          signal: abortController.signal,
+        }
+      );
+      if (currentRequestId === instanceRequestIdRef.current) {
+        setInstances(data.results || []);
+      }
     } finally {
-      setInstanceLoading(false);
+      if (currentRequestId === instanceRequestIdRef.current) {
+        setInstanceLoading(false);
+      }
     }
   };
 
@@ -196,7 +236,10 @@ const SearchView: React.FC = () => {
         values: queryValues[i],
       });
     }
-    const params: SearchParams = { query: '' };
+    const params: SearchParams = {
+      query: '',
+      source_unit: metricItem?.unit || '',
+    };
     const recentTimeRange = getRecentTimeRange(_timeRange);
     const startTime = recentTimeRange.at(0);
     const endTime = recentTimeRange.at(1);
@@ -279,11 +322,12 @@ const SearchView: React.FC = () => {
     const target = metrics.find((item) => item.name === val);
     const _labels = (target?.dimensions || []).map((item) => item.name);
     setLabels(_labels);
-    setUnit(target?.unit || '');
+    setUnit('');
   };
 
   const handleObjectChange = (val: string) => {
     if (object) {
+      cancelAllRequests();
       setMetrics([]);
       setLabels([]);
       setMetric(null);
@@ -293,6 +337,8 @@ const SearchView: React.FC = () => {
       setChartData([]);
       setTableData([]);
     }
+    // 更新当前活跃的 objectId
+    currentObjectIdRef.current = val;
     setObject(val);
     if (val) {
       getMetrics({
@@ -360,6 +406,10 @@ const SearchView: React.FC = () => {
     if (!canSearch()) {
       return;
     }
+    searchAbortControllerRef.current?.abort();
+    const abortController = new AbortController();
+    searchAbortControllerRef.current = abortController;
+    const currentRequestId = ++searchRequestIdRef.current;
     try {
       setPageLoading(type === 'refresh');
       const areaCurrent = tab === 'area';
@@ -371,12 +421,19 @@ const SearchView: React.FC = () => {
         params = {
           time: params.end,
           query: params.query,
+          source_unit: params.source_unit,
         };
       }
       const responseData = await get(url, {
         params,
+        signal: abortController.signal,
       });
+      if (currentRequestId !== searchRequestIdRef.current) {
+        return;
+      }
       const data = responseData.data?.result || [];
+      const displayUnit = responseData.data?.unit || '';
+      setUnit(displayUnit);
       if (areaCurrent) {
         const list = instances
           .filter((item) => instanceId.includes(item.instance_id))
@@ -428,7 +485,9 @@ const SearchView: React.FC = () => {
         setTableData(_tableData);
       }
     } finally {
-      setPageLoading(false);
+      if (currentRequestId === searchRequestIdRef.current) {
+        setPageLoading(false);
+      }
     }
   };
 
@@ -673,18 +732,12 @@ const SearchView: React.FC = () => {
                             ?.display_name || '--'}
                         </span>
                         <span className="text-[var(--color-text-3)] text-[12px]">
-                          {`${
-                            findUnitNameById(
-                              metrics.find((item) => item.name === metric)?.unit
-                            )
-                              ? '（' +
-                                findUnitNameById(
-                                  metrics.find((item) => item.name === metric)
-                                    ?.unit
-                                ) +
-                                '）'
-                              : ''
-                          }`}
+                          {(() => {
+                            const displayUnit = unit === 'short' ? '' : unit;
+                            const unitName =
+                              findUnitNameById(displayUnit) || displayUnit;
+                            return unitName ? `（${unitName}）` : '';
+                          })()}
                         </span>
                         <Tooltip
                           placement="topLeft"

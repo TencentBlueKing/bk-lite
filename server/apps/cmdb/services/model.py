@@ -21,9 +21,15 @@ from apps.cmdb.utils.change_record import create_change_record
 from apps.core.exceptions.base_app_exception import BaseAppException
 from apps.core.services.user_group import UserGroup
 from apps.rpc.system_mgmt import SystemMgmt
-
+import re
 
 class ModelManage(object):
+    ATTR_ID_PATTERN = re.compile(r"^[A-Za-z][A-Za-z0-9_]*$")
+    @staticmethod
+    def _validate_attr_id(attr_id: str):
+        if not isinstance(attr_id, str) or not ModelManage.ATTR_ID_PATTERN.match(attr_id):
+            raise BaseAppException("模型ID必须以字母开头，且仅包含字母、数字或下划线")
+
     @staticmethod
     def create_model(data: dict, username="admin"):
         """
@@ -130,6 +136,7 @@ class ModelManage(object):
         创建模型属性
         """
         with GraphClient() as ag:
+            ModelManage._validate_attr_id(attr_info["attr_id"])
             model_query = {"field": "model_id", "type": "str=", "value": model_id}
             models, model_count = ag.query_entity(MODEL, [model_query])
             if model_count == 0:
@@ -161,6 +168,7 @@ class ModelManage(object):
         更新模型属性
         """
         with GraphClient() as ag:
+            ModelManage._validate_attr_id(attr_info["attr_id"])
             model_query = {"field": "model_id", "type": "str=", "value": model_id}
             models, model_count = ag.query_entity(MODEL, [model_query])
             if model_count == 0:
@@ -294,12 +302,15 @@ class ModelManage(object):
                     attr.update(option=option)
 
         if USER in attr_types:
-            users = UserGroup.user_list(system_mgmt_client, {"search": ""})
+            # users = UserGroup.user_list(system_mgmt_client, {"search": ""})
+            users = UserGroup.get_all_users(system_mgmt_client)
             option = [
                 dict(
                     # id=user["username"],
                     id=user["id"],
                     name=user["username"],
+                    username=user.get("username"),
+                    display_name=user.get("display_name"),
                     is_default=False,
                     type="str",
                 )

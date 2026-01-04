@@ -99,11 +99,17 @@ const ExtractionStep: React.FC<{
   // Word: fullText + chapter (default: chapter)
   // Excel: fullText + worksheet + row (default: row)  
   // PDF: fullText + page (default: page)
+  // PPT: fullText + page (default: fullText)
   // Others: fullText only
   const getAvailableExtractionMethods = (extension: string) => {
     const ext = extension.toLowerCase();
 
-    if (ext === 'docx' || ext === 'doc') {
+    if (ext === 'ppt' || ext === 'pptx') {
+      return {
+        methods: ['fullText', 'page'],
+        default: 'fullText',
+      };
+    } else if (ext === 'docx' || ext === 'doc') {
       return {
         methods: ['fullText', 'chapter'],
         default: 'chapter',
@@ -265,7 +271,7 @@ const ExtractionStep: React.FC<{
     if (extractionConfig && extractionConfig.knowledge_document_list) {
       const doc = extractionConfig.knowledge_document_list.find((d) => d.id === record.key);
       if (doc) {
-        setSelectedMethod(doc.parse_type as keyof typeof extractionMethods || availableMethods.default);
+        setSelectedMethod((doc.parse_type as any) || availableMethods.default);
         setOcrEnabled(doc.enable_ocr_parse);
         setSelectedOcrModel(doc.ocr_model);
       }

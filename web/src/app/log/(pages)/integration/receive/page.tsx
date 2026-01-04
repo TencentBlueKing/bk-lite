@@ -48,6 +48,10 @@ const Asset = () => {
   const timerRef = useRef<NodeJS.Timeout | null>(null);
   const configRef = useRef<ModalRef>(null);
   const instanceRef = useRef<ModalRef>(null);
+  const instanceAbortControllerRef = useRef<AbortController | null>(null);
+  const instanceRequestIdRef = useRef<number>(0);
+  const treeAbortControllerRef = useRef<AbortController | null>(null);
+  const treeRequestIdRef = useRef<number>(0);
   const assetMenuItems = useAssetMenuItems();
   const [pagination, setPagination] = useState<Pagination>({
     current: 1,
@@ -183,6 +187,13 @@ const Asset = () => {
     }
   }, [isLoading]);
 
+  // 组件卸载时取消所有请求
+  useEffect(() => {
+    return () => {
+      cancelAllRequests();
+    };
+  }, []);
+
   useEffect(() => {
     if (!frequence) {
       clearTimer();
@@ -212,14 +223,27 @@ const Asset = () => {
   };
 
   const getObjects = async () => {
+    // 取消上一次请求
+    treeAbortControllerRef.current?.abort();
+    const abortController = new AbortController();
+    treeAbortControllerRef.current = abortController;
+    const currentRequestId = ++treeRequestIdRef.current;
     try {
       setTreeLoading(true);
-      const data: ObjectItem[] = await getCollectTypes({
-        add_instance_count: true,
-      });
+      const data: ObjectItem[] = await getCollectTypes(
+        {
+          add_instance_count: true,
+        },
+        { signal: abortController.signal }
+      );
+      // 只有最新请求才处理数据
+      if (currentRequestId !== treeRequestIdRef.current) return;
       setTreeData(getTreeData(data));
     } finally {
-      setTreeLoading(false);
+      // 只有最新请求才控制 loading
+      if (currentRequestId === treeRequestIdRef.current) {
+        setTreeLoading(false);
+      }
     }
   };
 
@@ -321,6 +345,11 @@ const Asset = () => {
   };
 
   const getAssetInsts = async (type?: string) => {
+    // 取消上一次请求
+    instanceAbortControllerRef.current?.abort();
+    const abortController = new AbortController();
+    instanceAbortControllerRef.current = abortController;
+    const currentRequestId = ++instanceRequestIdRef.current;
     try {
       setTableLoading(type !== 'timer');
       const params = {
@@ -329,14 +358,21 @@ const Asset = () => {
         collect_type_id: objectId === 'all' ? '' : objectId,
         name: type === 'clear' ? '' : searchText,
       };
-      const data = await getInstanceList(params);
+      const data = await getInstanceList(params, {
+        signal: abortController.signal,
+      });
+      // 只有最新请求才处理数据
+      if (currentRequestId !== instanceRequestIdRef.current) return;
       setTableData(data?.items || []);
       setPagination((prev: Pagination) => ({
         ...prev,
         total: data?.count || 0,
       }));
     } finally {
-      setTableLoading(false);
+      // 只有最新请求才控制 loading
+      if (currentRequestId === instanceRequestIdRef.current) {
+        setTableLoading(false);
+      }
     }
   };
 
@@ -371,7 +407,14 @@ const Asset = () => {
     onChange: onSelectChange,
   };
 
+  // 取消所有请求
+  const cancelAllRequests = () => {
+    instanceAbortControllerRef.current?.abort();
+    treeAbortControllerRef.current?.abort();
+  };
+
   const handleObjectChange = async (id: string) => {
+    cancelAllRequests();
     setTableData([]);
     setObjectId(id);
   };

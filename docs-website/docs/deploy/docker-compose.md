@@ -20,7 +20,7 @@
 推荐使用完整版，获得完整 AI 助手能力：
 
 ```bash
-curl -sSL https://bklite.ai/install.run | bash -s - --opspilot
+curl -sSL https://bklite.ai/install.run | bash -s - --opspilot --vllm
 ```
 
 ### 2.2 基础版（不含 OpsPilot AI）

@@ -15,21 +15,45 @@ class TimeSeriesPredictDatasetSerializer(AuthSerializer):
 
 
 class TimeSeriesPredictTrainJobSerializer(AuthSerializer):
-    """时间序列预测训练任务序列化器"""
+    """
+    时间序列预测训练任务序列化器
+    
+    使用双字段方案：
+    - hyperopt_config: JSONField，存储在数据库，供API快速返回
+    - config_url: FileField，自动同步到MinIO（Model.save()处理）
+    """
     permission_key = "dataset.timeseries_predict_train_job"
 
     class Meta:
         model = TimeSeriesPredictTrainJob
-        fields = "__all__"
+        fields = '__all__'
+        extra_kwargs = {
+            'config_url': {
+                'write_only': True,  # 前端不需要看到 MinIO 路径
+                'required': False
+            }
+        }
 
 
 class TimeSeriesPredictTrainHistorySerializer(AuthSerializer):
-    """时间序列预测训练历史序列化器"""
+    """
+    时间序列预测训练历史序列化器
+    
+    使用双字段方案：
+    - hyperopt_config: JSONField，存储在数据库，供API快速返回
+    - config_url: FileField，自动同步到MinIO（Model.save()处理）
+    """
     permission_key = "dataset.timeseries_predict_train_history"
 
     class Meta:
         model = TimeSeriesPredictTrainHistory
         fields = "__all__"
+        extra_kwargs = {
+            'config_url': {
+                'write_only': True,  # 前端不需要看到 MinIO 路径
+                'required': False
+            }
+        }
 
 
 class TimeSeriesPredictTrainDataSerializer(AuthSerializer):
@@ -56,12 +80,52 @@ class TimeSeriesPredictTrainDataSerializer(AuthSerializer):
     def to_representation(self, instance):
         """
         自定义返回数据，根据 include_train_data 参数动态控制 train_data 字段
+        当 include_train_data=true 时，后端直接读取 CSV 并解析为结构化数据返回
         """
+        from apps.core.logger import opspilot_logger as logger
+        import pandas as pd
+        
         representation = super().to_representation(instance)
-        if not self.include_train_data:
-            representation.pop("train_data", None)  # 移除 train_data 字段
-        if not self.include_metadata:
-            representation.pop("metadata", None)  # 移除 metadata 字段
+        
+        # 处理 train_data：后端直接读取并解析 CSV
+        if self.include_train_data and instance.train_data:
+            try:
+                # 读取 CSV 文件
+                df = pd.read_csv(instance.train_data.open('rb'))
+                
+                # 🔥 处理 timestamp 字段：转换为 Unix 时间戳（秒）
+                if 'timestamp' in df.columns:
+                    try:
+                        # 尝试解析各种日期格式
+                        df['timestamp'] = pd.to_datetime(df['timestamp'])
+                        # 转换为 Unix 时间戳（秒）
+                        df['timestamp'] = (df['timestamp'].astype('int64') / 1e9).astype('int64')
+                    except Exception as e:
+                        logger.warning(f"Failed to parse timestamp column: {e}")
+                        # 如果解析失败，尝试保持原值
+                
+                # 转换为字典列表并添加索引
+                data_list = df.to_dict('records')
+                for i, row in enumerate(data_list):
+                    row['index'] = i
+                
+                representation['train_data'] = data_list
+                logger.info(f"Successfully loaded train_data for instance {instance.id}: {len(data_list)} rows")
+                
+            except Exception as e:
+                logger.error(f"Failed to read train_data for instance {instance.id}: {e}", exc_info=True)
+                representation['train_data'] = []
+                representation['error'] = f"读取训练数据失败: {str(e)}"
+        elif not self.include_train_data:
+            representation.pop("train_data", None)
+        
+        # 处理 metadata：S3JSONField 自动处理，直接返回对象
+        if self.include_metadata and instance.metadata:
+            # S3JSONField 会自动从 MinIO 读取并解压
+            representation['metadata'] = instance.metadata
+        elif not self.include_metadata:
+            representation.pop("metadata", None)
+        
         return representation
 
 class TimeSeriesPredictServingSerializer(AuthSerializer):

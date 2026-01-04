@@ -1,6 +1,8 @@
 import ast
 
 from apps.core.exceptions.base_app_exception import BaseAppException
+from apps.core.utils.loader import LanguageLoader
+from apps.monitor.constants.language import LanguageConstants
 from apps.monitor.constants.monitor_object import MonitorObjConstants
 from apps.monitor.constants.plugin import PluginConstants
 from apps.monitor.models import Metric, MonitorObject, CollectConfig, MonitorPlugin, MonitorInstanceOrganization, \
@@ -11,11 +13,12 @@ from datetime import datetime, timezone
 
 
 class InstanceSearch:
-    def __init__(self, monitor_obj, query_data, qs=None):
+    def __init__(self, monitor_obj, query_data, qs=None, locale=None):
         self.monitor_obj = monitor_obj
         self.query_data = query_data
         self.obj_metric_map = self.get_obj_metric_map()
         self.qs = qs
+        self.locale = locale or "zh-Hans"
 
     @staticmethod
     def get_parent_instance_ids(query):
@@ -135,6 +138,9 @@ class InstanceSearch:
         if data["count"] == 0:
             return data
 
+        # 初始化语言加载器
+        lan = LanguageLoader(app=LanguageConstants.APP, default_lang=self.locale)
+
         # 获取实例的插件采集状态
         confs = CollectConfig.objects.filter(
             monitor_instance_id__in=[i["instance_id"] for i in data["results"]],
@@ -152,8 +158,15 @@ class InstanceSearch:
 
         for plugin in plugins:
             plugin_key = (self.monitor_obj.id, plugin.collector, plugin.collect_type)
-            plugin_map[plugin_key] = dict(name=plugin.name, collector=plugin.collector,
-                                          collect_type=plugin.collect_type)
+            # 添加翻译属性
+            plugin_key_name = f"{LanguageConstants.MONITOR_OBJECT_PLUGIN}.{plugin.name}"
+            plugin_map[plugin_key] = dict(
+                name=plugin.name,
+                collector=plugin.collector,
+                collect_type=plugin.collect_type,
+                display_name=lan.get(f"{plugin_key_name}.name") or plugin.name,
+                display_description=lan.get(f"{plugin_key_name}.desc") or plugin.description
+            )
             plugin_status_map[plugin_key] = self.get_plugin_normal_status_map(instance_id_keys, plugin.status_query)
 
         # 反转插件状态映射，方便后续查询
@@ -247,7 +260,11 @@ class InstanceSearch:
         end = start + page_size
         results = qs[start:end]
 
-        return dict(count=count, results=[{"instance_id":obj.id, "instance_name":obj.name} for obj in results])
+        return dict(count=count, results=[{
+            "instance_id": obj.id,
+            "instance_name": obj.name,
+            "instance_id_values": [i for i in ast.literal_eval(obj.id)] if isinstance(obj.id, str) and obj.id.startswith('(') else [obj.id]
+        } for obj in results])
 
     def get_plugin_normal_status_map(self, instance_id_keys, query):
         resp = VictoriaMetricsAPI().query(query, step="20m")

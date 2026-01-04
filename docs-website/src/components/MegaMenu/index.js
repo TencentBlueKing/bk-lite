@@ -6,29 +6,27 @@ const productGroups = [
     {
         title: '经典运维',
         products: [
-            { name: '监控平台', description: '指标采集 · 实时监控 · 智能告警', link: '/docs/monitor/feature' },
-            { name: '日志平台', description: '日志聚合 · 全文检索 · 智能分析', link: '/docs/log/feature' },
-            { name: 'CMDB', description: '资产管理 · 拓扑发现 · 配置追踪', link: '/docs/cmdb' },
-            { name: '告警中心', description: '事件聚合 · 降噪收敛 · 智能分派', link: '/docs/alert' },
-            { name: 'ITSM', description: '工单流转 · 变更管理 · 流程编排', link: '/docs/itsm/feature' },
-            { name: '数据分析', description: '多维分析 · 数据可视化 · 运营报表', link: '/docs/analysis' },
+            { name: '监控中心', description: '秒级监控 · 精准告警 · 稳定保障', link: '/docs/monitor/feature' },
+            { name: '日志中心', description: '快速检索 · 故障定位 · 合规留存', link: '/docs/log/feature' },
+            { name: 'CMDB', description: '资产可视 · 架构清晰 · 数据可信', link: '/docs/cmdb' },
+            { name: '告警中心', description: '智能降噪 · 精准分派 · 快速闭环', link: '/docs/alert' },
+            { name: 'ITSM', description: '标准执行 · 透明可控 · 合规保障', link: '/docs/itsm/feature' },
+            { name: '运营分析', description: '数据融合 · 智能分析 · 价值呈现', link: '/docs/analysis' },
         ]
     },
     {
         title: '平台底座',
         products: [
-            { name: '控制台', description: '平台介绍 · 应用导航 · 快速入门', link: '/docs/console' },
-            { name: '系统管理', description: '租户管理 · 权限控制 · 审计日志', link: '/docs/system/feature' },
-            { name: '节点管理', description: 'Agent 部署 · 插件管理 · 进程托管', link: '/docs/node/feature' },
+            { name: '控制台', description: '一站访问 · 通知聚合 · 智能推荐', link: '/docs/console' },
+            { name: '系统管理', description: '权限隔离 · 精细管控 · 全程追溯', link: '/docs/system/feature' },
+            { name: '节点管理', description: '跨云管理 · 自动部署 · 状态可视', link: '/docs/node/feature' },
         ]
     },
     {
         title: '智能运维',
         products: [
-            { name: 'OpsPilot', description: '智能问答 · 知识图谱 · 自动诊断', link: '/docs/opspilot/introduce' },
-            { name: 'MLOps', description: '数据标注 · 模型训练 · 服务发布', link: '/docs/mlops/feature' },
-            { name: 'AI Lab', description: 'Notebook · 算法开发 · 环境管理', link: '/docs/lab' },
-            { name: 'Playground', description: '模型测试 · 效果验证 · 沙箱隔离', link: '/docs/playground' },
+            { name: 'OpsPilot', description: '自主诊断 · 智能决策 · 自动修复', link: '/docs/opspilot/introduce' },
+            { name: 'MLOps', description: '数据标注 · 模型训练 · 能力发布', link: '/docs/mlops/feature' },
         ]
     },
 ];

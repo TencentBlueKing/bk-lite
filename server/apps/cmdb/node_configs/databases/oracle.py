@@ -15,27 +15,14 @@ class OracleNodeParams(BaseNodeParams):
         self.host_field = "ip_addr"
 
     def set_credential(self, *args, **kwargs):
-        _instance_id = self.get_instance_id(instance=kwargs["host"])
-        _password = f"PASSWORD_password_{_instance_id}"
+        _password = f"PASSWORD_password_{self._instance_id}"
         credential_data = {
             "port": self.credential.get("port", 1521),
             "user": self.credential.get("user", ""),
-            # "password": self.credential.get("password", ""),
             "password": "${" + _password + "}",
             "service_name": self.credential.get("service_name", ""),
         }
         return credential_data
 
-    def get_instance_id(self, instance):
-        """
-        获取实例 id
-        """
-        if self.has_set_instances:
-            return f"{self.instance.id}_{instance['_id']}"
-        else:
-            return f"{self.instance.id}_{instance}".replace(".", "")
-
     def env_config(self, *args, **kwargs):
-        host = kwargs["host"]
-        _instance_id = self.get_instance_id(instance=host)
-        return {f"PASSWORD_password_{_instance_id}": self.credential.get("password", "")}
+        return {f"PASSWORD_password_{self._instance_id}": self.credential.get("password", "")}

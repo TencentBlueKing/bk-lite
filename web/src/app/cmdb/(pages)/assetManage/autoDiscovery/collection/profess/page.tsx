@@ -766,7 +766,7 @@ const ProfessionalCollection: React.FC = () => {
         <Tooltip
           placement="left"
           title={
-            <div className="space-y-1">
+            <div className="flex flex-col gap-1">
               {statusItems.map(({ label, value, color }) => (
                 <div key={label} className="flex items-center gap-2 text-xs">
                   <div className={`w-2 h-2 rounded-full ${color}`} />
@@ -779,7 +779,8 @@ const ProfessionalCollection: React.FC = () => {
           }
         >
           <div
-            className="flex items-center justify-around pt-2 mt-3 border-t border-gray-120"
+            className="flex items-center justify-around pt-2 mt-3 border-t"
+            style={{ borderColor: 'var(--color-border-2)' }}
             onClick={(e) => e.stopPropagation()}
           >
             {statusItems.map(({ color, value }, index) => (
@@ -824,7 +825,7 @@ const ProfessionalCollection: React.FC = () => {
               <Spin size="small" />
             </div>
           ) : (
-            <div className="space-y-3 px-2 py-1 overflow-auto h-full">
+            <div className="flex flex-col gap-3 px-2 py-1 overflow-auto h-full">
               {selectedCategoryRef.current.category?.tabItems?.map((tab) => (
                 <PluginCard key={tab.id} tab={tab} />
               ))}
@@ -832,7 +833,10 @@ const ProfessionalCollection: React.FC = () => {
           )}
         </div>
 
-        <div className="w-px bg-gray-200 flex-shrink-0 mr-2"></div>
+        <div
+          className="w-px flex-shrink-0 mr-2"
+          style={{ backgroundColor: 'var(--color-border-2)' }}
+        ></div>
 
         <div className="flex-1 flex flex-col overflow-hidden">
           <div className="flex flex-col flex-1 overflow-hidden bg-white rounded shadow-sm border border-gray-200">

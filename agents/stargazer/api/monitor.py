@@ -62,11 +62,11 @@ async def vmware_metrics(request):
     minutes = request.args.get("minutes", 5)
 
     # 必需的 Tags（由 Telegraf 传递）
-    agent_id = request.headers.get("X-Agent-ID")
-    instance_id = request.headers.get("X-Instance-ID")
-    instance_type = request.headers.get("X-Instance-Type")
-    collect_type = request.headers.get("X-Collect-Type")
-    config_type = request.headers.get("X-Config-Type")
+    agent_id = request.headers.get("agent_id", "")
+    instance_id = request.headers.get("instance_id")
+    instance_type = request.headers.get("instance_type")
+    collect_type = request.headers.get("collect_type")
+    config_type = request.headers.get("config_type")
 
     logger.info(f"Request: Host={host}, Minutes={minutes}, User={username}")
     logger.info(f"Tags: agent_id={agent_id}, instance_id={instance_id}, instance_type={instance_type}")
@@ -74,7 +74,7 @@ async def vmware_metrics(request):
     try:
         # 构建任务参数
         task_params = {
-            "monitor_type": "vmware",
+            "monitor_type": "vmware_vc",
             "username": username,
             "password": password,
             "host": host,
@@ -101,7 +101,7 @@ async def vmware_metrics(request):
         prometheus_lines = [
             "# HELP monitor_request_accepted Indicates that monitor request was accepted",
             "# TYPE monitor_request_accepted gauge",
-            f'monitor_request_accepted{{monitor_type="vmware",host="{host}",task_id="{task_info["task_id"]}",status="queued"}} 1 {current_timestamp}'
+            f'monitor_request_accepted{{monitor_type="vmware_vc",host="{host}",task_id="{task_info["task_id"]}",status="queued"}} 1 {current_timestamp}'
         ]
 
         metrics_response = "\n".join(prometheus_lines) + "\n"
@@ -124,7 +124,7 @@ async def vmware_metrics(request):
         error_lines = [
             "# HELP monitor_request_error Monitor request error",
             "# TYPE monitor_request_error gauge",
-            f'monitor_request_error{{monitor_type="vmware",host="{host}",error="{str(e)}"}} 1 {current_timestamp}'
+            f'monitor_request_error{{monitor_type="vmware_vc",host="{host}",error="{str(e)}"}} 1 {current_timestamp}'
         ]
 
         return response.raw(
@@ -184,11 +184,11 @@ async def qcloud_metrics(request):
     minutes = request.args.get("minutes", 5)
 
     # 必需的 Tags（由 Telegraf 传递）
-    agent_id = request.headers.get("X-Agent-ID")
-    instance_id = request.headers.get("X-Instance-ID")
-    instance_type = request.headers.get("X-Instance-Type")
-    collect_type = request.headers.get("X-Collect-Type")
-    config_type = request.headers.get("X-Config-Type")
+    agent_id = request.headers.get("agent_id", "")
+    instance_id = request.headers.get("instance_id")
+    instance_type = request.headers.get("instance_type")
+    collect_type = request.headers.get("collect_type")
+    config_type = request.headers.get("config_type")
 
     logger.info(f"Request: Minutes={minutes}, User={username}")
     logger.info(f"Tags: agent_id={agent_id}, instance_id={instance_id}, instance_type={instance_type}")

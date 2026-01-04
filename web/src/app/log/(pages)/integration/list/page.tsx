@@ -138,13 +138,14 @@ const Integration = () => {
         <Spin spinning={pageLoading}>
           {collectTypes.length ? (
             <div
-              className={`flex flex-wrap w-full ${integrationStyle.integrationList}`}
+              className={`grid gap-4 w-full ${integrationStyle.integrationList}`}
+              style={{
+                gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))',
+              }}
             >
               {collectTypes.map((app) => (
-                <div key={app.id} className="w-full sm:w-1/4 p-2">
-                  <div
-                    className={`bg-[var(--color-bg-1)] shadow-sm hover:shadow-md transition-shadow duration-300 ease-in-out rounded-lg p-4 relative cursor-pointer group ${integrationStyle.cardItem}`}
-                  >
+                <div key={app.id} className="p-2">
+                  <div className="bg-[var(--color-bg-1)] shadow-sm hover:shadow-md transition-shadow duration-300 ease-in-out rounded-lg p-4 relative cursor-pointer group border">
                     <div className="flex items-center space-x-4 my-2">
                       <Icon
                         type={getIcon(app.name, app.collector)}

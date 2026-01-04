@@ -37,6 +37,8 @@ const Strategy: React.FC = () => {
   const objId = searchParams.get('objId');
   const router = useRouter();
   const instRef = useRef<ModalRef>(null);
+  const policyAbortControllerRef = useRef<AbortController | null>(null);
+  const policyRequestIdRef = useRef<number>(0);
   const [pagination, setPagination] = useState<Pagination>({
     current: 1,
     total: 0,
@@ -194,7 +196,18 @@ const Strategy: React.FC = () => {
     }
   }, [pagination.current, pagination.pageSize, objectId]);
 
+  useEffect(() => {
+    return () => {
+      cancelAllRequests();
+    };
+  }, []);
+
+  const cancelAllRequests = () => {
+    policyAbortControllerRef.current?.abort();
+  };
+
   const handleObjectChange = async (id: string) => {
+    cancelAllRequests();
     setObjectId(id);
   };
 
@@ -251,18 +264,27 @@ const Strategy: React.FC = () => {
   };
 
   const getAssetInsts = async (objectId: React.Key, text?: string) => {
+    policyAbortControllerRef.current?.abort();
+    const abortController = new AbortController();
+    policyAbortControllerRef.current = abortController;
+    const currentRequestId = ++policyRequestIdRef.current;
     try {
       setTableLoading(true);
       const params = getParams(text);
       params.monitor_object_id = objectId;
-      const data = await getMonitorPolicy('', params);
+      const data = await getMonitorPolicy('', params, {
+        signal: abortController.signal,
+      });
+      if (currentRequestId !== policyRequestIdRef.current) return;
       setTableData(data.items || []);
       setPagination((pre) => ({
         ...pre,
         total: data.count,
       }));
     } finally {
-      setTableLoading(false);
+      if (currentRequestId === policyRequestIdRef.current) {
+        setTableLoading(false);
+      }
     }
   };
 

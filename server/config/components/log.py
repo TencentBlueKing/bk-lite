@@ -11,6 +11,9 @@ else:
 if not os.path.exists(log_dir):
     os.makedirs(log_dir)
 
+# 根据 DEBUG 环境变量设置日志级别
+LOG_LEVEL = "DEBUG" if DEBUG else "INFO"
+
 
 class IgnoreSpecificPaths(logging.Filter):
     def filter(self, record):
@@ -138,17 +141,17 @@ LOGGING = {
             "propagate": True,
         },
         "django.db.backends": {"handlers": ["db"], "level": "INFO", "propagate": True},
-        "app": {"handlers": ["root", "console"], "level": "DEBUG", "propagate": True},
-        "cmdb": {"handlers": ["cmdb", "console"], "level": "DEBUG", "propagate": True},
-        "operation_analysis": {"handlers": ["operation_analysis", "console"], "level": "DEBUG", "propagate": True},
-        "nats": {"handlers": ["nats", "console"], "level": "DEBUG", "propagate": True},
-        "monitor": {"handlers": ["monitor", "console"], "level": "DEBUG", "propagate": True},
-        "node": {"handlers": ["node", "console"], "level": "DEBUG", "propagate": True},
-        "ops-console": {"handlers": ["ops-console", "console"], "level": "DEBUG", "propagate": True},
-        "system-manager": {"handlers": ["system-manager", "console"], "level": "DEBUG", "propagate": True},
-        "opspilot": {"handlers": ["opspilot", "console"], "level": "DEBUG", "propagate": True},
-        "alert": {"handlers": ["alert", "console"], "level": "DEBUG", "propagate": True},
+        "app": {"handlers": ["root", "console"], "level": LOG_LEVEL, "propagate": True},
+        "cmdb": {"handlers": ["cmdb", "console"], "level": LOG_LEVEL, "propagate": True},
+        "operation_analysis": {"handlers": ["operation_analysis", "console"], "level": LOG_LEVEL, "propagate": True},
+        "nats": {"handlers": ["nats", "console"], "level": LOG_LEVEL, "propagate": True},
+        "monitor": {"handlers": ["monitor", "console"], "level": LOG_LEVEL, "propagate": True},
+        "node": {"handlers": ["node", "console"], "level": LOG_LEVEL, "propagate": True},
+        "ops-console": {"handlers": ["ops-console", "console"], "level": LOG_LEVEL, "propagate": True},
+        "system-manager": {"handlers": ["system-manager", "console"], "level": LOG_LEVEL, "propagate": True},
+        "opspilot": {"handlers": ["opspilot", "console"], "level": LOG_LEVEL, "propagate": True},
+        "alert": {"handlers": ["alert", "console"], "level": LOG_LEVEL, "propagate": True},
         "celery": {"handlers": ["root"], "level": "INFO", "propagate": True},
-        "playground": {"handlers": ["playground", "console"], "level": "DEBUG", "propagate": True},
+        "playground": {"handlers": ["playground", "console"], "level": LOG_LEVEL, "propagate": True},
     },
 }

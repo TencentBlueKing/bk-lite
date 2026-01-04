@@ -67,6 +67,8 @@ const Asset = () => {
   const organizationList: Organization[] = authList.current;
   const timerRef = useRef<NodeJS.Timeout | null>(null);
   const configRef = useRef<ModalRef>(null);
+  const assetAbortControllerRef = useRef<AbortController | null>(null);
+  const assetRequestIdRef = useRef<number>(0);
   const instanceRef = useRef<ModalRef>(null);
   const templateDrawerRef = useRef<TemplateDrawerRef>(null);
   const assetMenuItems = useAssetMenuItems();
@@ -138,11 +140,9 @@ const Asset = () => {
               {plugins.map((plugin: any, index: number) => {
                 const isAuto = plugin.collect_mode === 'auto';
                 const statusInfo = {
-                  color: isAuto
-                    ? plugin.status === 'normal' || plugin.status === 'online'
-                      ? 'success'
-                      : 'error'
-                    : 'default',
+                  color: ['normal', 'online'].includes(plugin.status)
+                    ? 'success'
+                    : 'error',
                   text: isAuto
                     ? t('monitor.integrations.automatic')
                     : t('monitor.integrations.manual'),
@@ -175,9 +175,7 @@ const Asset = () => {
                         })
                       }
                     >
-                      {plugin.collector
-                        ? `${plugin.name}（${plugin.collector}）`
-                        : plugin.name}
+                      {plugin.display_name || '--'}
                     </Tag>
                   </Tooltip>
                 );
@@ -286,6 +284,12 @@ const Asset = () => {
   }, [isLoading]);
 
   useEffect(() => {
+    return () => {
+      cancelAllRequests();
+    };
+  }, []);
+
+  useEffect(() => {
     if (objectId) {
       getAssetInsts(objectId);
     }
@@ -331,7 +335,12 @@ const Asset = () => {
     setFrequence(val);
   };
 
+  const cancelAllRequests = () => {
+    assetAbortControllerRef.current?.abort();
+  };
+
   const handleObjectChange = (id: string) => {
+    cancelAllRequests();
     setTableData([]);
     setObjectId(id);
   };
@@ -367,6 +376,10 @@ const Asset = () => {
   };
 
   const getAssetInsts = async (objectId: React.Key, type?: string) => {
+    assetAbortControllerRef.current?.abort();
+    const abortController = new AbortController();
+    assetAbortControllerRef.current = abortController;
+    const currentRequestId = ++assetRequestIdRef.current;
     try {
       setTableLoading(type !== 'timer');
       const params = {
@@ -375,15 +388,19 @@ const Asset = () => {
         name: type === 'clear' ? '' : searchText,
         id: objectId,
       };
-      const data = await getInstanceListByPrimaryObject(params);
-
+      const data = await getInstanceListByPrimaryObject(params, {
+        signal: abortController.signal,
+      });
+      if (currentRequestId !== assetRequestIdRef.current) return;
       setTableData(data?.results || []);
       setPagination((prev: Pagination) => ({
         ...prev,
         total: data?.count || 0,
       }));
     } finally {
-      setTableLoading(false);
+      if (currentRequestId === assetRequestIdRef.current) {
+        setTableLoading(false);
+      }
     }
   };
 

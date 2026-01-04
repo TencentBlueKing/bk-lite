@@ -36,6 +36,8 @@ const GroupPage = () => {
   const organizationList: Organization[] = authList.current;
   const ruleRef = useRef<ModalRef>(null);
   const deleteModalRef = useRef<ModalRef>(null);
+  const ruleAbortControllerRef = useRef<AbortController | null>(null);
+  const ruleRequestIdRef = useRef<number>(0);
   const [pagination, setPagination] = useState<Pagination>({
     current: 1,
     total: 0,
@@ -143,7 +145,18 @@ const GroupPage = () => {
     }
   }, [objectId, pagination.current, pagination.pageSize]);
 
+  useEffect(() => {
+    return () => {
+      cancelAllRequests();
+    };
+  }, []);
+
+  const cancelAllRequests = () => {
+    ruleAbortControllerRef.current?.abort();
+  };
+
   const handleObjectChange = (id: string) => {
+    cancelAllRequests();
     setRuleList([]);
     setObjectId(id);
     setPagination((prev) => ({
@@ -170,6 +183,10 @@ const GroupPage = () => {
   };
 
   const getRuleList = async (objectId: React.Key, type?: string) => {
+    ruleAbortControllerRef.current?.abort();
+    const abortController = new AbortController();
+    ruleAbortControllerRef.current = abortController;
+    const currentRequestId = ++ruleRequestIdRef.current;
     try {
       setRuleLoading(type !== 'timer');
       const params: any = {
@@ -178,14 +195,19 @@ const GroupPage = () => {
         page_size: pagination.pageSize,
         name: type === 'clear' ? '' : searchText,
       };
-      const data = await getInstanceGroupRule(params);
+      const data = await getInstanceGroupRule(params, {
+        signal: abortController.signal,
+      });
+      if (currentRequestId !== ruleRequestIdRef.current) return;
       setRuleList(data?.items || []);
       setPagination((prev: Pagination) => ({
         ...prev,
         total: data?.count || 0,
       }));
     } finally {
-      setRuleLoading(false);
+      if (currentRequestId === ruleRequestIdRef.current) {
+        setRuleLoading(false);
+      }
     }
   };
 

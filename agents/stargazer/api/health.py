@@ -25,7 +25,7 @@ async def health_check(request):
     }
     """
     return response.json({
-        "status": "healthy",
+        "status": "ok",
         "timestamp": int(__import__("time").time() * 1000)
     })
 
