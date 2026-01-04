@@ -376,7 +376,7 @@ main() {
     SERVER_API_TOKEN=${API_TOKEN}
     ZONE=${ZONE_ID}
     GROUP=${GROUP_ID}
-    NODE_NAME=""
+    NODE_NAME="${NODE_NAME}"
     NODE_ID=${NODE_ID}
 
     # download package
@@ -481,6 +481,7 @@ GROUP_ID=$(echo "$JSON_DATA" | jq -r '.group_id')
 validate_param "os" "$OS" "required"
 validate_param "os" "$OS" "enum" "linux windows"
 validate_param "node_id" "$NODE_ID" "required"
+validate_param "node_name" "$NODE_NAME" "required"
 validate_param "api_token" "$API_TOKEN" "required" "$NODE_ID"
 validate_param "server_url" "$SERVER_URL" "required" "$NODE_ID"
 validate_param "server_url" "$SERVER_URL" "url" "$NODE_ID"
@@ -501,6 +502,7 @@ declare -A replacements=(
   [ZONE_ID]="$ZONE_ID"
   [GROUP_ID]="$GROUP_ID"
   [INSTALL_DIR]="$INSTALL_DIR"
+  [NODE_NAME]="$NODE_NAME"
 )
 
 for key in "${!replacements[@]}"; do
