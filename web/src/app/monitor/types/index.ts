@@ -1,3 +1,4 @@
+import React from 'react';
 import { Dayjs } from 'dayjs';
 import { InterfaceTableItem } from './view';
 
@@ -5,7 +6,7 @@ export interface ColumnItem {
   title: string;
   dataIndex: string;
   key: string;
-  render?: (_: unknown, record: TableDataItem) => JSX.Element;
+  render?: (_: unknown, record: TableDataItem) => React.ReactElement;
   [key: string]: unknown;
 }
 
@@ -24,7 +25,18 @@ export interface ModalConfig {
   subTitle?: string;
   title: string;
   [key: string]: any;
-  onSuccess?: () => void;
+  onSuccess?: (...args: any[]) => void;
+}
+
+export interface UnitListItem {
+  description: string;
+  display_unit: string;
+  is_standalone: boolean;
+  system: string;
+  unit_id: string;
+  unit_name: string;
+  category: string;
+  [key: string]: any;
 }
 
 export interface ModalRef {
@@ -38,7 +50,7 @@ export interface CascaderItem {
 }
 
 export interface TreeItem {
-  title: JSX.Element | string;
+  title: React.ReactElement | string;
   key: string | number;
   label?: string;
   children: TreeItem[];
@@ -86,6 +98,17 @@ export interface UnitItem {
   children?: UnitItem[];
 }
 
+export interface GroupedUnitItem {
+  label: string;
+  value: string;
+  unit: string;
+}
+
+export interface GroupedUnitList {
+  label: string;
+  children: GroupedUnitItem[];
+}
+
 export interface OriginOrganization {
   id: string;
   name: string;
@@ -97,7 +120,7 @@ export interface TabItem {
   key: string;
   label: string;
   name?: string;
-  children?: JSX.Element | string;
+  children?: React.ReactElement | string;
 }
 
 export interface ChartData {
@@ -134,7 +157,7 @@ export interface TimeSelectorDefaultValue {
 
 export interface TimeLineItem {
   color: string;
-  children: JSX.Element;
+  children: React.ReactElement;
 }
 
 export interface ViewQueryKeyValuePairs {
@@ -229,6 +252,7 @@ export interface MetricItem {
   displayType?: string;
   description?: string;
   viewData?: ChartData[] | InterfaceTableItem[];
+  displayUnit?: string;
   style?: {
     width: string;
     height: string;

@@ -21,7 +21,8 @@ from .schemas import PredictRequest, PredictResponse
 
 
 @bentoml.service(
-    name=f"{{project_name}}_service",
+    # name="{{project_name}}_service",
+    name="classify_timeseries_service",
     traffic={"timeout": 30},
 )
 class MLService:
@@ -200,19 +201,21 @@ class MLService:
                 )
             )
         
-        logger.info(f"Received prediction request: steps={request.config.steps}, data_points={len(request.data)}")
+        logger.info(f"📥 Received prediction request: steps={request.config.steps}, data_points={len(request.data)}")
 
         try:
             # 转换历史数据
             history = request.to_series()
             steps = request.config.steps
             
+            logger.info(f"📊 Input data range: {history.index[0]} to {history.index[-1]}")
+            
             # 推断频率（严格验证）
             inferred_freq = pd.infer_freq(history.index)
             if inferred_freq is None:
                 raise ValueError("无法推断输入数据的时间频率，请检查时间戳是否规则")
             
-            logger.info(f"Detected frequency: {inferred_freq}")
+            logger.info(f"🕒 Detected frequency: {inferred_freq}")
             
             # 执行预测（添加模型来源信息）
             model_info = f"source={self.config.source}, type={type(self.model).__name__}"
@@ -221,7 +224,8 @@ class MLService:
             elif self.config.source == "mlflow":
                 model_info += f", uri={self.config.mlflow_model_uri}"
             
-            logger.info(f"🔮 Executing prediction with model [{model_info}]")
+            logger.info(f"🤖 Model info: {model_info}")
+            logger.info(f"🔮 Starting recursive prediction: steps={steps}")
             
             predict_start = time.time()
             prediction_values = self.model.predict({
@@ -229,18 +233,22 @@ class MLService:
                 'steps': steps
             })
             predict_time = time.time() - predict_start
-            logger.info(f"⏱️  Prediction executed in {predict_time:.3f}s")
+            
+            logger.info(f"✅ Prediction completed successfully")
+            logger.info(f"⏱️  Prediction time: {predict_time:.3f}s, returned {len(prediction_values)} values")
             
             # 生成预测时间戳
             last_timestamp = history.index[-1]
             predicted_points = []
             for i in range(1, steps + 1):
                 next_ts = last_timestamp + i * pd.tseries.frequencies.to_offset(inferred_freq)
+                # 转换为Unix时间戳（秒级）
+                timestamp_unix = int(next_ts.timestamp())
                 predicted_points.append(TimeSeriesPoint(
-                    timestamp=next_ts.isoformat(),
+                    timestamp=timestamp_unix,
                     value=float(prediction_values[i-1])
                 ))
-            
+                        
             # 构造成功响应
             response = PredictResponse(
                 success=True,

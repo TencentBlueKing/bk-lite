@@ -1,6 +1,7 @@
 import React from 'react';
-import { getEnumValue, findUnitNameById } from '@/app/monitor/utils/common';
+import { getEnumValue } from '@/app/monitor/utils/common';
 import { MetricItem } from '@/app/monitor/types';
+import { useUnitTransform } from '@/app/monitor/hooks/useUnitTransform';
 
 interface SingleValueDisplayProps {
   value: number | string;
@@ -25,6 +26,8 @@ const SingleValueDisplay: React.FC<SingleValueDisplayProps> = ({
   labelFontSize = 14, // 默认标签字体大小
   metric = {},
 }) => {
+  const { findUnitNameById } = useUnitTransform();
+
   return (
     <div className="bg-[var(--color-bg-1)]">
       <div

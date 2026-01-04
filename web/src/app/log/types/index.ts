@@ -1,10 +1,11 @@
+import React from 'react';
 import { Dayjs } from 'dayjs';
 
 export interface ColumnItem {
   title: string;
   dataIndex: string;
   key: string;
-  render?: (_: unknown, record: any) => JSX.Element;
+  render?: (_: unknown, record: any) => React.ReactElement;
   [key: string]: unknown;
 }
 
@@ -39,7 +40,7 @@ export interface CascaderItem {
 }
 
 export interface TreeItem {
-  title: JSX.Element | string;
+  title: React.ReactElement | string;
   key: string | number;
   label?: string;
   children: TreeItem[];
@@ -85,7 +86,7 @@ export interface TabItem {
   key: string;
   label: string;
   name?: string;
-  children?: JSX.Element | string;
+  children?: React.ReactElement | string;
 }
 
 export interface ChartData {
@@ -117,7 +118,7 @@ export interface TimeSelectorDefaultValue {
 
 export interface TimeLineItem {
   color: string;
-  children: JSX.Element;
+  children: React.ReactElement;
 }
 
 export interface ViewQueryKeyValuePairs {

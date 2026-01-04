@@ -1,4 +1,5 @@
 import SimpleLineChart from "@/app/mlops/components/charts/simpleLineChart";
+import HorizontalBarChart from "@/app/mlops/components/charts/horizontalBarChart";
 import useMlopsTaskApi from "@/app/mlops/api/task";
 import { Spin } from "antd";
 // import { LeftOutlined } from "@ant-design/icons";
@@ -16,15 +17,18 @@ interface TrainTaskDetailProps {
 interface LazyChartProps {
   metricName: string;
   runId: string;
+  status: string;
   getMetricsDetail: (runId: string, metricsName: string) => Promise<any>;
 }
 
-const LazyChart: React.FC<LazyChartProps> = ({ metricName, runId, getMetricsDetail }) => {
+const LazyChart: React.FC<LazyChartProps> = ({ metricName, runId, status, getMetricsDetail }) => {
   const { t } = useTranslation();
   const chartRef = useRef<HTMLDivElement>(null);
   const loadingRef = useRef(false);
   const timeoutRef = useRef<NodeJS.Timeout | null>(null);
   const enterTimeRef = useRef<number | null>(null);
+  const isInViewportRef = useRef(false);
+  const pollingTimerRef = useRef<NodeJS.Timeout | null>(null);
   const [data, setData] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
 
@@ -34,6 +38,9 @@ const LazyChart: React.FC<LazyChartProps> = ({ metricName, runId, getMetricsDeta
       (entries) => {
         entries.forEach((entry) => {
           if (entry.isIntersecting) {
+            // 标记进入视口
+            isInViewportRef.current = true;
+            
             // 记录进入视口的时间
             enterTimeRef.current = Date.now();
 
@@ -59,6 +66,9 @@ const LazyChart: React.FC<LazyChartProps> = ({ metricName, runId, getMetricsDeta
               }
             }, 600);
           } else {
+            // 标记离开视口
+            isInViewportRef.current = false;
+            
             // 离开视口时清除定时器
             if (timeoutRef.current) {
               clearTimeout(timeoutRef.current);
@@ -82,12 +92,11 @@ const LazyChart: React.FC<LazyChartProps> = ({ metricName, runId, getMetricsDeta
       if (chartRef.current) {
         observer.unobserve(chartRef.current);
       }
-      // 清理定时器
       if (timeoutRef.current) {
         clearTimeout(timeoutRef.current);
       }
     };
-  }, []);
+  }, [metricName]);
 
   const loadChartData = async () => {
     if (loadingRef.current) return;
@@ -107,8 +116,73 @@ const LazyChart: React.FC<LazyChartProps> = ({ metricName, runId, getMetricsDeta
     }
   };
 
+  // 轮询更新数据
+  const updateChartData = async () => {
+    try {
+      const detailInfo = await getMetricsDetail(runId, metricName);
+      const newData = detailInfo?.metric_history || [];
+      
+      // 使用函数式更新，确保获取最新的 state
+      setData(prevData => {
+        const merged = mergeData(prevData, newData);
+        
+        if (merged.length !== prevData.length) {
+          console.log(`[Data] ${metricName}: ${prevData.length} → ${merged.length} (+${merged.length - prevData.length})`);
+          return merged;
+        }
+        
+        return prevData;  // 无变化则返回原数据，避免重新渲染
+      });
+    } catch (error) {
+      console.error(`[Error] ${metricName} 更新失败:`, error);
+    }
+  };
+
+  // 数据去重合并
+  const mergeData = (oldData: any[], newData: any[]): any[] => {
+    if (!oldData.length) return newData;
+    if (!newData.length) return oldData;
+    
+    const maxStep = oldData[oldData.length - 1].step;
+    const incremental = newData.filter(d => d.step > maxStep);
+    
+    return incremental.length > 0 ? [...oldData, ...incremental] : oldData;
+  };
+
+  // 轮询定时器
+  useEffect(() => {
+    if (status !== 'RUNNING') {
+      return;
+    }
+    
+    pollingTimerRef.current = setInterval(() => {
+      if (isInViewportRef.current) {
+        updateChartData();
+      }
+    }, 10000);
+    
+    return () => {
+      if (pollingTimerRef.current) {
+        clearInterval(pollingTimerRef.current);
+      }
+    };
+  }, [status, metricName, updateChartData]);
+
+  // 判断是否为单一数值指标（step为0表示没有step数据）
+  const isSingleValueMetric = (data: any[]) => {
+    return data.length === 1 && data[0]?.step === 0;
+  };
+
+  // 转换数据格式为横向柱状图所需格式
+  const transformToBarData = (data: any[]) => {
+    if (data.length > 0) {
+      return [{ name: metricName, value: data[0].value }];
+    }
+    return [];
+  };
+
   return (
-    <div ref={chartRef} className={styles.metricCard}>
+    <div ref={chartRef} className={styles.metricCard} style={{ width: '49%' }}>
       <div className={styles.metricCardHeader}>
         <h3 className={styles.metricCardTitle}>
           {metricName}
@@ -120,7 +194,15 @@ const LazyChart: React.FC<LazyChartProps> = ({ metricName, runId, getMetricsDeta
             <Spin size="small" />
           </div>
         ) : data.length > 0 ? (
-          <SimpleLineChart data={data} />
+          isSingleValueMetric(data) ? (
+            <HorizontalBarChart 
+              data={transformToBarData(data)} 
+              minValue={data[0].value >= 0 ? 0 : data[0].value * 1.2}
+              maxValue={data[0].value >= 0 ? data[0].value * 1.2 : 0}
+            />
+          ) : (
+            <SimpleLineChart data={data} />
+          )
         ) : (
           <div className={styles.metricCardEmpty}>
             <span className={styles.metricCardEmptyText}>
@@ -138,6 +220,7 @@ const TrainTaskDetail = ({
   activeKey
   // backToList
 }: TrainTaskDetailProps) => {
+  const { t } = useTranslation();
   const [metrics, setMetricsList] = useState<string[]>([]);
   const [loading, setLoading] = useState(false);
   const { getTrainTaskMetrics, getTrainTaskMetricsDetail } = useMlopsTaskApi();
@@ -173,49 +256,30 @@ const TrainTaskDetail = ({
   return (
     <div className={styles.trainTaskDetail}>
       <div className={styles.taskDetailContainer}>
-        {/* Header Section */}
-        <div className={styles.taskHeader}>
-          <div className={styles.taskHeaderContent}>
-            <div className={styles.taskInfo}>
-              {metricData?.run_name && (
-                <div className={styles.taskInfoItem}>
-                  <span className={styles.taskInfoLabel}>任务名称</span>
-                  <span className={styles.taskInfoValue}>{metricData.run_name}</span>
-                </div>
-              )}
-              {metricData?.run_id && (
-                <div className={styles.taskInfoItem}>
-                  <span className={styles.taskInfoLabel}>任务ID</span>
-                  <span className={styles.taskInfoValue}>{metricData.run_id}</span>
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
-
         {/* Content Section */}
         <div className={styles.taskContent}>
           {/* Loading State */}
           {loading && (
             <div className={styles.taskLoading}>
               <Spin size="large" />
-              <span className={styles.taskLoadingText}>正在加载训练指标...</span>
+              <span className={styles.taskLoadingText}>{t(`mlops-common.loadingData`)}</span>
             </div>
           )}
 
           {/* Metrics Grid */}
           {!loading && metrics.length > 0 && (
             <div className={styles.metricsSection}>
-              <div className={styles.metricsHeader}>
+              {/* <div className={styles.metricsHeader}>
                 <h2 className={styles.metricsTitle}>训练指标</h2>
                 <div className={styles.metricsCount}>{metrics.length} 个指标</div>
-              </div>
+              </div> */}
               <div className={styles.metricsGrid}>
                 {metrics.map((metricName) => (
                   <LazyChart
                     key={metricName}
                     metricName={metricName}
                     runId={metricData?.run_id}
+                    status={metricData?.status}
                     getMetricsDetail={getMetricsDetail}
                   />
                 ))}
@@ -227,8 +291,8 @@ const TrainTaskDetail = ({
           {!loading && metrics.length === 0 && (
             <div className={styles.taskEmpty}>
               <div className={styles.taskEmptyIcon}>📊</div>
-              <div className={styles.taskEmptyTitle}>暂无训练指标</div>
-              <div className={styles.taskEmptyDescription}>该任务还没有生成训练指标数据</div>
+              <div className={styles.taskEmptyTitle}>{t(`common.noData`)}</div>
+              <div className={styles.taskEmptyDescription}>{t(`common.noData`)}</div>
             </div>
           )}
         </div>

@@ -1,7 +1,4 @@
 export const useDetectionDeviceConfig = () => {
-  // 所有插件配置
-  const plugins = {};
-
   return {
     instance_type: 'detection_device',
     dashboardDisplay: [
@@ -61,6 +58,8 @@ export const useDetectionDeviceConfig = () => {
       { type: 'value', key: 'sysUpTime' },
     ],
     groupIds: {},
-    plugins,
+    collectTypes: {
+      'Detection Device SNMP General': 'snmp',
+    },
   };
 };

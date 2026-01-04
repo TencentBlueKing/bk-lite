@@ -1,4 +1,4 @@
-import React, {
+import {
   forwardRef,
   useEffect,
   useImperativeHandle,
@@ -46,26 +46,25 @@ const CollectorModal = forwardRef<ModalRef, ModalSuccess>(
     const [tags, setTags] = useState<string[]>([]); //编辑时的tags
 
     useImperativeHandle(ref, () => ({
-      showModal: ({ type, form, title, key, appTag }) => {
+      showModal: ({ type, form, title, key }) => {
+        console.log(type);
         const info = cloneDeep(form) as TableDataItem;
         const {
-          name,
-          description,
-          executable_path,
-          execute_parameters,
+          display_name,
+          display_introduction,
           originalTags = [],
+          is_pre,
         } = form as TableDataItem;
         setKey(key as string);
         setId(form?.id as string);
         setType(type);
         setTitle(title as string);
         setVisible(true);
-        info.name = name || null;
         info.system = info.os || 'linux';
-        info.description = description || null;
-        info.executable_path = executable_path || null;
-        info.execute_parameters = execute_parameters || null;
-        info.appTag = appTag;
+        if (is_pre && type === 'edit') {
+          info.name = display_name;
+          info.description = display_introduction;
+        }
         setFormData(info);
         setTags(originalTags);
       },
@@ -106,6 +105,11 @@ const CollectorModal = forwardRef<ModalRef, ModalSuccess>(
             execute_parameters: values.execute_parameters || '',
             tags,
           };
+          if (type === 'edit' && formData.is_pre) {
+            param.name = formData.original_name || param.name;
+            param.introduction =
+              formData.original_introduction || param.introduction;
+          }
           if (type === 'add') {
             param.tags = [values.system, formData.appTag];
           }
@@ -140,7 +144,7 @@ const CollectorModal = forwardRef<ModalRef, ModalSuccess>(
         name: file.name,
         os: formData.system,
         type: key,
-        object: formData.name,
+        object: formData.original_name || formData.name,
         file: file.originFileObj,
       };
       Object.entries(params).forEach(([k, v]) => {
@@ -215,7 +219,10 @@ const CollectorModal = forwardRef<ModalRef, ModalSuccess>(
                     { required: true, message: t('common.inputRequired') },
                   ]}
                 >
-                  <Input placeholder={t('common.inputMsg')} />
+                  <Input
+                    placeholder={t('common.inputMsg')}
+                    disabled={type === 'edit' && formData.is_pre}
+                  />
                 </Form.Item>
                 <Form.Item
                   label={t('node-manager.cloudregion.Configuration.system')}
@@ -261,7 +268,9 @@ const CollectorModal = forwardRef<ModalRef, ModalSuccess>(
                   ]}
                 >
                   <TextArea
-                    disabled={type === 'delete'}
+                    disabled={
+                      type === 'delete' || (type === 'edit' && formData.is_pre)
+                    }
                     placeholder={t('common.inputMsg')}
                   />
                 </Form.Item>

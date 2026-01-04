@@ -10,6 +10,7 @@ from apps.cmdb.services.model import ModelManage
 from apps.cmdb.utils.change_record import create_change_record_by_asso
 from apps.core.exceptions.base_app_exception import BaseAppException
 from apps.core.logger import cmdb_logger as logger
+from apps.system_mgmt.models import Group
 
 
 class Import:
@@ -27,10 +28,145 @@ class Import:
         # 用于收集数据验证错误
         self.validation_errors = []
 
-    def format_excel_data(self, excel_meta: bytes):
+    @staticmethod
+    def _normalize_user_token(token):
+        """将Excel中的用户显示值规范化为username。
+
+        支持：
+        - username
+        - 显示名(username)
+        - 显示名（username）
+        """
+        if token is None:
+            return None
+        s = str(token).strip()
+        if not s:
+            return ""
+        # 兼容英文括号与中文括号
+        if s.endswith(")") and "(" in s:
+            return s.rsplit("(", 1)[-1].rstrip(")").strip()
+        if s.endswith("）") and "（" in s:
+            return s.rsplit("（", 1)[-1].rstrip("）").strip()
+        return s
+
+    def _resolve_organization_ids(self, value_list: list, allowed_org_set: set, row_index: int, field_display_name: str):
+        """解析组织字段，支持组织名与路径(Default/xxx)，并按 allowed_org_set 做范围校验。
+
+        Returns:
+            tuple[list[int], str|None, bool]: (org_ids, error_msg, organization_cell_provided)
+        """
+
+        normalized_values = [v.strip() if isinstance(v, str) else v for v in (value_list or [])]
+        organization_cell_provided = any(v not in (None, "") for v in normalized_values)
+
+        if not organization_cell_provided:
+            return [], None, False
+
+        query_names = set()
+        for raw in normalized_values:
+            if not raw:
+                continue
+            if isinstance(raw, str) and "/" in raw:
+                parts = [p.strip() for p in raw.split("/") if p.strip()]
+                if parts:
+                    query_names.add(parts[-1])
+                    if len(parts) >= 2:
+                        query_names.add(parts[-2])
+            else:
+                query_names.add(raw)
+
+        # 先在全量组织表中定位，再根据 allowed_org_set 判定“越界”还是“无效”
+        group_rows = list(Group.objects.filter(name__in=query_names).values("id", "name", "parent_id"))
+
+        parent_ids = {r["parent_id"] for r in group_rows if r.get("parent_id")}
+        parent_name_map = {}
+        if parent_ids:
+            parent_name_map = {
+                r["id"]: r["name"] for r in Group.objects.filter(id__in=parent_ids).values("id", "name")
+            }
+
+        rows_by_name = {}
+        for r in group_rows:
+            rows_by_name.setdefault(r["name"], []).append(r)
+
+        enum_id = []
+        invalid_values = []
+        out_of_scope_values = []
+
+        for raw in normalized_values:
+            if not raw:
+                continue
+
+            if isinstance(raw, str) and "/" in raw:
+                parts = [p.strip() for p in raw.split("/") if p.strip()]
+                if not parts:
+                    invalid_values.append(raw)
+                    continue
+
+                leaf_name = parts[-1]
+                parent_name = parts[-2] if len(parts) >= 2 else None
+                candidates = rows_by_name.get(leaf_name, [])
+                if parent_name:
+                    candidates = [
+                        c for c in candidates if parent_name_map.get(c.get("parent_id")) == parent_name
+                    ]
+
+                if not candidates:
+                    invalid_values.append(raw)
+                    continue
+
+                if allowed_org_set is None:
+                    return [], f"第{row_index}行，字段'{field_display_name}'缺少组织范围上下文，请刷新后重试", organization_cell_provided
+
+                in_scope = [c for c in candidates if c["id"] in allowed_org_set]
+                if len(in_scope) == 1:
+                    mapped_id = in_scope[0]["id"]
+                elif len(in_scope) == 0:
+                    out_of_scope_values.append(raw)
+                    continue
+                else:
+                    invalid_values.append(raw)
+                    continue
+
+            else:
+                candidates = rows_by_name.get(raw, [])
+                if not candidates:
+                    invalid_values.append(raw)
+                    continue
+
+                if allowed_org_set is None:
+                    if len(candidates) == 1:
+                        mapped_id = candidates[0]["id"]
+                    else:
+                        invalid_values.append(raw)
+                        continue
+                else:
+                    in_scope = [c for c in candidates if c["id"] in allowed_org_set]
+                    if len(in_scope) == 1:
+                        mapped_id = in_scope[0]["id"]
+                    elif len(in_scope) == 0:
+                        out_of_scope_values.append(raw)
+                        continue
+                    else:
+                        invalid_values.append(raw)
+                        continue
+
+            enum_id.append(mapped_id)
+
+        if invalid_values:
+            return [], f"第{row_index}行，字段'{field_display_name}'的值'{invalid_values}'无效", organization_cell_provided
+
+        if out_of_scope_values:
+            return [], f"第{row_index}行，字段'{field_display_name}'的值'{out_of_scope_values}'不在当前选择组织范围内", organization_cell_provided
+
+        return enum_id, None, organization_cell_provided
+
+    def format_excel_data(self, excel_meta: bytes, allowed_org_ids: list = None):
         """格式化excel"""
 
-        need_val_to_id_field_map, need_update_type_field_map = {}, {}
+        allowed_org_set = set(allowed_org_ids) if allowed_org_ids is not None else None
+
+        need_val_to_id_field_map, need_update_type_field_map, org_user_map = {}, {}, {}
         # 创建属性名称映射，用于错误提示
         attr_name_map = {attr_info["attr_id"]: attr_info["attr_name"] for attr_info in self.attrs}
 
@@ -41,6 +177,8 @@ class Import:
 
             if attr_info["attr_type"] in {ORGANIZATION, USER, ENUM}:
                 need_val_to_id_field_map[attr_info["attr_id"]] = {i["name"]: i["id"] for i in attr_info["option"]}
+                if attr_info["attr_type"] in {ORGANIZATION, USER}:
+                    org_user_map[attr_info["attr_id"]] = attr_info["attr_type"]
         # 读取临时文件
         wb = openpyxl.load_workbook(excel_meta)
         # 获取第一个工作表
@@ -65,6 +203,7 @@ class Import:
             item = {"model_id": self.model_id}
             inst_name = ""
             row_has_data = False
+            organization_cell_provided = False
             row_validation_errors_count = len(self.validation_errors)  # 记录处理该行前的错误数量
 
             # 遍历每一列
@@ -78,6 +217,9 @@ class Import:
                     continue
 
                 row_has_data = True
+
+                if keys[i] == ORGANIZATION:
+                    organization_cell_provided = True
 
                 if keys[i] == "inst_name":
                     inst_name = value
@@ -103,26 +245,60 @@ class Import:
 
                 # 将需要枚举字段name与id反转的建和值存入字典
                 if keys[i] in need_val_to_id_field_map:
-                    if keys[i] in {ORGANIZATION, USER}:
+                    if keys[i] in org_user_map:
                         if type(value) != list:
                             if ',' in str(value):
                                 value_list = str(value).split(',')
                             elif '，' in str(value):
                                 value_list = str(value).split('，')
                             else:
-                                value_list = [value]
+                                value_list = [str(value)]
                         else:
                             value_list = value
+
+                        # 组织字段：支持 Default/xxx，并做范围校验
+                        if org_user_map[keys[i]] == ORGANIZATION:
+                            org_ids, error_msg, provided = self._resolve_organization_ids(
+                                value_list=value_list,
+                                allowed_org_set=allowed_org_set,
+                                row_index=row_index,
+                                field_display_name=attr_name_map.get(keys[i], keys[i]),
+                            )
+                            organization_cell_provided = organization_cell_provided or provided
+
+                            if error_msg:
+                                self.validation_errors.append(error_msg)
+                                logger.warning(error_msg)
+                                continue
+
+                            if org_ids:
+                                item[keys[i]] = org_ids
+                            continue
+
                         enum_id = []
                         invalid_values = []
                         for val in value_list:
-                            mapped_id = need_val_to_id_field_map[keys[i]].get(val)
+                            raw_val = val
+                            lookup_val = self._normalize_user_token(val) if org_user_map[keys[i]] == USER else val
+                            mapped_id = need_val_to_id_field_map[keys[i]].get(lookup_val)
                             if mapped_id is not None:
                                 enum_id.append(mapped_id)
                             else:
-                                invalid_values.append(val)
+                                invalid_values.append(raw_val)
 
+                        # 用户字段：主要维护人(operator)支持多选；其他USER字段保持原先单选逻辑
+                        if org_user_map[keys[i]] == USER:
+                            if keys[i] == "operator":
+                                # 允许多个主要维护人：保存为list；单个则保持标量，兼容旧数据
+                                if len(enum_id) == 1:
+                                    enum_id = enum_id[0]
+                                elif len(enum_id) > 1:
+                                    enum_id = enum_id
+                            else:
+                                if len(enum_id) >= 1:
+                                    enum_id = enum_id[0]
                         if invalid_values:
+                            logger.warning(need_val_to_id_field_map[keys[i]])
                             error_msg = f"第{row_index}行，字段'{attr_name_map.get(keys[i], keys[i])}'的值'{invalid_values}'无效"
                             self.validation_errors.append(error_msg)
                             logger.warning(error_msg)
@@ -148,6 +324,7 @@ class Import:
             # 只有当行有数据且没有验证错误时才添加到结果列表
             if row_has_data and len(item) > 1 and not row_has_validation_errors:
                 result.append(item)
+                print(item)
         return result, asso_key_map
 
     def get_check_attr_map(self):
@@ -179,13 +356,13 @@ class Import:
 
     def import_inst_list(self, file_stream: bytes):
         """将excel主机数据导入"""
-        inst_list = self.format_excel_data(file_stream)
+        inst_list, _asso_key_map = self.format_excel_data(file_stream)
         result = self.inst_list_save(inst_list)
         return result
 
-    def import_inst_list_support_edit(self, file_stream: bytes):
+    def import_inst_list_support_edit(self, file_stream: bytes, allowed_org_ids: list = None):
         """将excel主机数据导入"""
-        inst_list, asso_key_map = self.format_excel_data(file_stream)
+        inst_list, asso_key_map = self.format_excel_data(file_stream, allowed_org_ids=allowed_org_ids)
 
         # 如果存在验证错误，立即返回错误信息，不执行导入
         if self.validation_errors:
@@ -197,7 +374,7 @@ class Import:
 
         add_results, update_results = self.inst_list_update(inst_list)
         if not self.model_asso_map:
-            logger.warning(f"模型 {self.model_id} 没有关联模型, 无需处理关联数据")
+            logger.info(f"模型 {self.model_id} 没有关联模型, 无需处理关联数据")
             self.format_import_result_message(add_results, update_results, [])
             return add_results, update_results, []
         self.format_import_asso_data(asso_key_map)

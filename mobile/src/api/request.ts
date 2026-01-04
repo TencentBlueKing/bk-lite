@@ -1,8 +1,24 @@
 import { tauriFetch, isTauriApp } from '../utils/tauriFetch';
 import { tauriApiStream } from '../utils/tauriApiProxy';
-import { getTokenSync } from '../utils/secureStorage';
+import { getTokenSync, clearAuthData } from '../utils/secureStorage';
 
 const TARGET_SERVER = (process.env.NEXT_PUBLIC_API_URL || 'https://bklite.canway.net') + '/api/v1';
+
+/**
+ * 处理 401 未授权错误
+ * 清空认证信息并跳转到登录页
+ */
+async function handle401Error() {
+  console.warn('检测到 401 未授权，清空认证信息并跳转到登录页');
+
+  // 清空存储的认证信息
+  await clearAuthData();
+
+  // 跳转到登录页
+  if (typeof window !== 'undefined') {
+    window.location.href = '/login';
+  }
+}
 
 export async function apiRequest<T = any>(
   endpoint: string,
@@ -29,7 +45,13 @@ export async function apiRequest<T = any>(
     // 统一使用 tauriFetch，自动选择最佳方式（Tauri Rust 代理 > 标准 fetch）
     const response = await tauriFetch(targetUrl, config);
 
-    // 检查响应状态
+    // 检查 401 未授权错误
+    if (response.status === 401) {
+      await handle401Error();
+      throw new Error('未授权，请重新登录');
+    }
+
+    // 检查其他响应状态
     if (!response.ok) {
       let errorText = '';
       try {

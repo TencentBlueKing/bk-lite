@@ -176,6 +176,11 @@ const LineChart: React.FC<LineChartProps> = memo(
             (item: ListItem) => item.id === +label
           )?.name;
           label = unitName || label;
+        } else {
+          const numValue = Number(payload.value);
+          label = Number.isInteger(numValue)
+            ? String(numValue)
+            : numValue.toFixed(2);
         }
         const maxLength = 6; // 设置标签的最大长度
         return (

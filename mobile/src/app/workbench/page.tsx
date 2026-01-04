@@ -2,10 +2,9 @@
 
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { Tabs, Swiper, ErrorBlock, SpinLoading } from 'antd-mobile';
-import { SearchOutline } from 'antd-mobile-icons';
+import { SearchOutline, LeftOutline } from 'antd-mobile-icons';
 import { useRouter } from 'next/navigation';
 import Image from 'next/image';
-import BottomTabBar from '@/components/bottom-tab-bar';
 import { useTranslation } from '@/utils/i18n';
 import { getApplication } from '@/api/bot';
 import { getAvatar } from '@/utils/avatar';
@@ -237,6 +236,12 @@ export default function WorkbenchPage() {
         <div className="flex flex-col h-screen bg-[var(--color-background-body)]">
             {/* 标签栏和搜索图标 */}
             <div className="bg-[var(--color-bg)] flex items-center">
+                <div className="pl-2 py-3 flex-shrink-0 ">
+                    <LeftOutline
+                        className="text-2xl text-[var(--color-text-2)]"
+                        onClick={() => router.back()}
+                    />
+                </div>
                 <div className="flex-1 overflow-hidden">
                     <style dangerouslySetInnerHTML={{
                         __html: `
@@ -258,7 +263,7 @@ export default function WorkbenchPage() {
                         activeKey={activeTab}
                         onChange={handleTabChange}
                         style={{
-                            '--title-font-size': '14px',
+                            '--title-font-size': '16px',
                             '--content-padding': '0',
                         }}
                     >
@@ -267,10 +272,9 @@ export default function WorkbenchPage() {
                         ))}
                     </Tabs>
                 </div>
-                <div className="px-4 py-3 flex-shrink-0 border-l border-[var(--color-border)]">
+                <div className="pl-1 pr-2 py-3 flex-shrink-0 ">
                     <SearchOutline
-                        fontSize={22}
-                        className="text-[var(--color-text-2)]"
+                        className="text-2xl text-[var(--color-text-2)]"
                         onClick={() => router.push('/search?type=WorkbenchPage')}
                     />
                 </div>
@@ -299,7 +303,6 @@ export default function WorkbenchPage() {
                     );
                 })}
             </Swiper>
-            <BottomTabBar />
         </div>
     );
 }

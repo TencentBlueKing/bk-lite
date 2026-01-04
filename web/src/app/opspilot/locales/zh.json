@@ -117,7 +117,9 @@
     "fetchToolsFailed": "获取工具列表失败",
     "subToolDescription": "子工具描述",
     "items": "个",
-    "description": "描述"
+    "description": "描述",
+    "checkbox": "复选框",
+    "number": "数字"
   },
   "knowledge": {
     "goToTesting": "前往测试",
@@ -206,7 +208,10 @@
       "llmModel": "LLM模型",
       "enterQaCount": "请输入问答对数量",
       "qaPairsUpdateFailed": "问答对更新失败",
-      "chunks": "个分块"
+      "chunks": "个分块",
+      "totalQAPairsSuffix": "个问答对",
+      "qaCountPerChunk": "问答对数量(每块)",
+      "totalQAPairsPrefix": "共"
     },
     "documents": {
       "status": "状态",
@@ -322,7 +327,8 @@
       "pageDescription": "保留PPT每页的视觉和内容独立性，适合处理包含分页逻辑的演示文稿，便于后续分块或按页检索。",
       "trainWarning": "重要提示",
       "semanticFormats": "结构化文档（Word、Markdown）、技术文档（PDF 带目录）。",
-      "fullTextMethod": "直接提取全部文本内容，并对扫描版PDF启用OCR识别图像文字。"
+      "fullTextMethod": "直接提取全部文本内容，并对扫描版PDF启用OCR识别图像文字。",
+      "lastSyncTime": "最后同步时间"
     },
     "knowledgeGraph": {
       "relationships": "关系",
@@ -479,7 +485,9 @@
     "removeAnnotation": "删除标注",
     "onlyImageAllowed": "只能上传图片文件",
     "imageTooLarge": "图片大小不能超过 5MB",
-    "uploadImage": "上传图片"
+    "uploadImage": "上传图片",
+    "referenceDocSource": "引用文档来源",
+    "referenceQASource": "引用问答对来源"
   },
   "settings": {
     "secret": {
@@ -773,7 +781,18 @@
       "appTagRoutineOps": "日常运维",
       "appIcon": "应用图标",
       "appTagPerformanceAnalysis": "性能分析",
-      "webAccessAddress": "Web 访问地址"
+      "intents": "意图列表",
+      "intentDescription": "意图描述",
+      "intentNamePlaceholder": "请输入意图名称",
+      "removeIntent": "删除意图",
+      "classification": "分类",
+      "intentTopicPlaceholder": "请输入分类主题名称（每行一个）",
+      "intentNameRequired": "意图名称不能为空",
+      "intentDescPlaceholder": "请输入意图描述（可选）",
+      "intentClassification": "意图分类",
+      "addIntent": "添加意图",
+      "intentName": "意图名称",
+      "intentClassificationConfig": "意图分类配置"
     },
     "collapseSidebar": "收缩侧边栏",
     "messages": {
@@ -932,7 +951,8 @@
     "mobile": "移动端",
     "webChat": "Web对话",
     "embeddedChat": "嵌入式对话",
-    "applications": "应用"
+    "applications": "应用",
+    "intentClassification": "意图分类"
   },
   "provider": {
     "form": {

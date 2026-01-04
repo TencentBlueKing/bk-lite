@@ -124,8 +124,7 @@
       "healthcheckDes": "The healthcheck metricset provides container health check status statistics.",
       "metricType": "Metric Type",
       "uptimeDes": "The System uptime metricset provides the uptime of the host operating system.",
-      "containerPlaceholder": "Enter container name (wildcards * supported), press Enter after each name to add more",
-      "endpointPlaceholder": "Docker daemon connection address, default is unix:///var/run/docker.sock",
+      "containerPlaceholder": "Please enter the container and press Enter to end",
       "continueThrough": "Continue merging all lines that match the condition until encountering a non-matching line. For example, in Java error stack traces, all lines starting with spaces will be merged into the previous log. Suitable for scenarios with clear 'subordinate line' characteristics.",
       "eventDes": "The event metricset provides Docker event statistics.",
       "dhcpPortDes": "DHCP port configuration, including server ports and client ports.",
@@ -230,6 +229,7 @@
       "syslogNodeDes": "Please select the container node that has been hosting the Telegraf collector",
       "syslogTargetPort": "Target Port",
       "syslogStep1": "Configure Syslog Target Address on Device",
+      "endpointPlaceholder": "Docker daemon connection address, default is unix:///var/run/docker.sock",
       "endpoint": "Endpoint"
     },
     "search": {

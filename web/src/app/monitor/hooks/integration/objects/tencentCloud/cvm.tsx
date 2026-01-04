@@ -8,6 +8,8 @@ export const useCvmConfig = () => {
       { type: 'value', key: 'cvm_CvmDiskUsage' },
     ],
     groupIds: {},
-    plugins: {},
+    collectTypes: {
+      'Tencent Cloud': 'http',
+    },
   };
 };

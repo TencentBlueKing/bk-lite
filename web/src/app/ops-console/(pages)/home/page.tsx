@@ -287,7 +287,7 @@ const ControlPage = () => {
             </div>
             {!(loading || userLoading || appConfigLoading) && (
               <span
-                className='bg-[var(--color-text-2)] text-white px-4 py-1 rounded-2xl cursor-pointer hover:bg-[var(--color-text-3)] transition-colors'
+                className='bg-[var(--color-primary)] text-white px-4 py-1 rounded-2xl cursor-pointer transition-colors'
                 onClick={() => setCustomSettingsVisible(true)}
               >
                 {t('opsConsole.customSettings')}
@@ -306,7 +306,7 @@ const ControlPage = () => {
             displayApps.map((cardData: ClientData, index: number) => (
               <div
                 key={index}
-                className="bg-[var(--color-bg)] p-4 rounded shadow-md flex flex-col justify-between relative h-[190px]"
+                className="bg-[var(--color-bg)] p-4 rounded shadow-md flex flex-col justify-between relative"
                 onClick={() => handleCardClick(cardData.url)}
               >
                 <div className="absolute top-6 right-4">
@@ -322,7 +322,7 @@ const ControlPage = () => {
                     {t('opsConsole.clickToEnter')}
                   </Button>
                 </div>
-                <div className="flex flex-col items-start">
+                <div className="flex flex-col items-start mb-2">
                   <div className="flex items-center mb-2">
                     <Icon type={cardData.icon || cardData.name} className="text-6xl mb-2 mr-2" />
                     <h2 className="text-xl font-bold mb-2">{cardData.display_name}</h2>
@@ -338,8 +338,8 @@ const ControlPage = () => {
                   </div>
                 </div>
                 <p
-                  className="text-[var(--color-text-3)] overflow-hidden text-ellipsis line-clamp-2 text-sm"
-                  style={{ minHeight: "2.5rem" }}
+                  className="text-[var(--color-text-3)] overflow-hidden text-ellipsis line-clamp-2 text-sm leading-5"
+                  style={{ height: "2.5rem" }}
                 >
                   {cardData.description}
                 </p>
@@ -406,8 +406,8 @@ const ControlPage = () => {
                     onDrop={(e) => handleDrop(e, index)}
                     onDragEnd={handleDragEnd}
                     className={`
-                      ${styles.dragIndicator} flex items-center gap-2 px-3 py-1.5 rounded-md border cursor-move transition-all
-                      border-[var(--color-primary)] bg-blue-50
+                      ${styles.dragIndicator} flex items-center gap-2 px-3 py-1.5 rounded-md cursor-move transition-all
+                      bg-blue-50
                       ${draggedItem?.id === app.id ? 'opacity-50' : ''}
                       ${indicatorPosition === 'left' ? styles.activeLeft : ''}
                       ${indicatorPosition === 'right' ? styles.activeRight : ''}

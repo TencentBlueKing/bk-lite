@@ -1,5 +1,6 @@
 'use client';
 
+import '@ant-design/v5-patch-for-react-19';
 import { useEffect, useState, useCallback, useMemo } from 'react';
 import Script from 'next/script';
 import { useRouter, usePathname } from 'next/navigation';
@@ -13,7 +14,7 @@ import { ClientProvider } from '@/context/client';
 import { PermissionsProvider, usePermissions } from '@/context/permissions';
 import AuthProvider from '@/context/auth';
 import TopMenu from '@/components/top-menu';
-import { ConfigProvider, message } from 'antd';
+import { ConfigProvider } from 'antd';
 import Spin from '@/components/spin';
 import '@/styles/globals.css';
 import { MenuItem } from '@/types/index'
@@ -34,7 +35,7 @@ const LayoutWithProviders = ({ children }: { children: React.ReactNode }) => {
   const pathname = usePathname();
   const [isAllowed, setIsAllowed] = useState(false);
 
-  const isAuthenticated = status === 'authenticated' && !!session && !session.user?.temporary_pwd;
+  const isAuthenticated = status === 'authenticated' && !!session && !(session.user as any)?.temporary_pwd;
   const isAuthLoading = status === 'loading';
   
   const isLoading = isAuthLoading || (isAuthenticated && (permissionsLoading || menusLoading));
@@ -128,12 +129,6 @@ export default function RootLayout({
 }: Readonly<{
   children: React.ReactNode;
 }>) {
-  useEffect(() => {
-    message.config({
-      maxCount: 2,
-    });
-  }, []);
-
   return (
     <html lang="en">
       <head>

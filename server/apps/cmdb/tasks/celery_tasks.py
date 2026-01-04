@@ -6,8 +6,8 @@ from datetime import datetime, timedelta
 
 from celery import shared_task
 
-from apps.cmdb.collect_tasks.job_collect import JobCollect
-from apps.cmdb.collect_tasks.protocol_collect import ProtocolCollect
+from apps.cmdb.collection.collect_tasks.job_collect import JobCollect
+from apps.cmdb.collection.collect_tasks.protocol_collect import ProtocolCollect
 from apps.core.logger import cmdb_logger as logger
 from apps.cmdb.models.collect_model import CollectModels
 from apps.cmdb.constants.constants import CollectRunStatusType
@@ -18,7 +18,7 @@ def sync_collect_task(instance_id):
     """
     同步采集任务
     """
-    logger.info("==开始采集任务== task_id={}".format(instance_id))
+    logger.info("开始采集任务 task_id={}".format(instance_id))
     instance = CollectModels.objects.filter(id=instance_id).first()
     if not instance:
         return
@@ -39,8 +39,8 @@ def sync_collect_task(instance_id):
 
     except Exception as err:
         import traceback
-        logger.error("==同步数据失败== task_id={}, error={}".format(instance_id, traceback.format_exc()))
-        exec_error_message = "==同步数据失败==, error={}".format(err)
+        logger.error("同步数据失败 task_id={}, error={}".format(instance_id, traceback.format_exc()))
+        exec_error_message = "同步数据失败, error={}".format(err)
         result = {}
         format_data = {}
         instance.exec_status = CollectRunStatusType.ERROR
@@ -68,17 +68,28 @@ def sync_collect_task(instance_id):
         # 如果任务执行失败，添加错误信息提示
         if task_exec_status == CollectRunStatusType.ERROR:
             collect_digest['message'] = exec_error_message
+        elif format_data.get('__raw_data__',[]).__len__() == 0:
+            collect_digest['message'] = "没有发现任何有效数据!"
+            instance.exec_status = CollectRunStatusType.ERROR
+        else:
+            # 计算最后数据的最后上报时间
+            last_time = ''
+            for i in format_data['__raw_data__']:
+                if i.get('__time__'):
+                    if i['__time__'] > last_time:
+                        last_time = i['__time__']
+            collect_digest['last_time'] = last_time
         instance.collect_digest = collect_digest
         instance.save()
     except Exception as err:
         import traceback
-        logger.error("==保存采集结果失败== task_id={}, error={}".format(instance_id, traceback.format_exc()))
+        logger.error("保存采集结果失败 task_id={}, error={}".format(instance_id, traceback.format_exc()))
         CollectModels.objects.filter(id=instance_id).update(
             exec_status=CollectRunStatusType.ERROR,
             collect_digest={"message": "保存采集结果失败: {}".format(err)}
         )
 
-    logger.info("==采集任务执行结束== task_id={}".format(instance_id))
+    logger.info("采集任务执行结束 task_id={}".format(instance_id))
 
 
 @shared_task
@@ -93,4 +104,4 @@ def sync_periodic_update_task_status():
     rows = CollectModels.objects.filter(exec_status=CollectRunStatusType.RUNNING,
                                         exec_time__lt=five_minutes_ago).update(
         exec_status=CollectRunStatusType.ERROR)
-    logger.info("==开始周期执行修改采集状态完成==, rows={}".format(rows))
+    logger.info("开始周期执行修改采集状态完成, rows={}".format(rows))

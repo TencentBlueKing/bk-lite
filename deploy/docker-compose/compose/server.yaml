@@ -24,6 +24,7 @@ services:
       - KNOWLEDGE_GRAPH_PORT=6379
       - ENABLE_CELERY=true
       - CELERY_WORKER_CONCURRENCY=1
+      - REDIS_CACHE_URL=redis://:${REDIS_PASSWORD}@redis:6379/1
       - CELERY_BROKER_URL=redis://:${REDIS_PASSWORD}@redis:6379/3
       - CELERY_RESULT_BACKEND=redis://:${REDIS_PASSWORD}@redis:6379/3
       - DEFAULT_ZONE_VAR_NATS_SERVERS=${HOST_IP}:4222
@@ -33,6 +34,8 @@ services:
       - DEFAULT_ZONE_VAR_NODE_SERVER_URL=https://${HOST_IP}:${TRAEFIK_WEB_PORT}
       - DEFAULT_ZONE_VAR_NATS_PROTOCOL=tls
       - DEFAULT_ZONE_VAR_NATS_TLS_CA_FILE=/opt/fusion-collectors/certs/ca.crt
+      - DEFAULT_ZONE_VAR_NATS_TLS_CA=${NATS_TLS_CA}
+      - DEFAULT_ZONE_VAR_WEBHOOK_SERVER_URL=http://webhookd:8080
       - VICTORIAMETRICS_HOST=http://victoria-metrics:8428
       - TOP_GROUP=Default
       - DEFAULT_GROUP_NAME=Guest

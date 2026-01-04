@@ -1,0 +1,41 @@
+name: mysql
+version: "2.0.0"
+category: database
+
+metadata:
+  display_name: "MySQL 数据库"
+  description: "MySQL 数据库采集插件，支持脚本和协议两种方式"
+  author: "WeOps"
+  tags: [database, mysql]
+  cloud_protocol: false
+  model_id: mysql
+
+# ============================================================================
+# 执行器配置
+# ============================================================================
+executors:
+  # Job 类型（脚本采集）
+  job:
+    type: job
+    timeout: 60
+
+    # 不同操作系统的脚本
+    scripts:
+      linux: plugins/shell/mysql_default_discover.sh
+      windows: plugins/shell/mysql_windows_discover.ps1
+
+    # 默认脚本
+    default_script: linux
+
+  # Protocol 类型（协议采集）
+  protocol:
+    type: protocol
+    timeout: 30
+
+    # Python 采集器
+    collector:
+      module: plugins.inputs.mysql.mysql_info
+      class: MysqlInfo
+
+# 默认执行器
+default_executor: protocol

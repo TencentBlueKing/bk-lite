@@ -11,6 +11,7 @@ from apps.monitor.tasks.utils.policy_calculate import vm_to_dataframe, calculate
 from apps.monitor.tasks.utils.policy_methods import METHOD, period_to_seconds
 from apps.monitor.utils.system_mgmt_api import SystemMgmtUtils
 from apps.monitor.utils.victoriametrics_api import VictoriaMetricsAPI
+from apps.monitor.utils.unit_converter import UnitConverter
 from apps.core.logger import celery_logger as logger
 
 
@@ -23,6 +24,12 @@ class MonitorPolicyScan:
         self.active_alerts = self._get_active_alerts()
         self.instance_id_keys = None
         self.metric = None
+        # 单位转换配置
+        self._unit_conversion_enabled = bool(
+            self.policy.metric_unit and 
+            self.policy.calculation_unit and 
+            self.policy.metric_unit != self.policy.calculation_unit
+        )
 
     def _get_active_alerts(self):
         """获取策略的活动告警
@@ -192,6 +199,69 @@ class MonitorPolicyScan:
 
         self.instance_id_keys = self.metric.instance_id_keys
 
+    def _convert_metric_values(self, vm_data):
+        """转换指标数值到计算单位
+
+        Args:
+            vm_data: VictoriaMetrics返回的数据
+
+        Returns:
+            dict: 转换后的数据（如果不需要转换则返回原数据）
+        """
+        if not self._unit_conversion_enabled:
+            return vm_data
+
+        # 检查单位是否可以转换
+        if not UnitConverter.is_convertible(self.policy.metric_unit, self.policy.calculation_unit):
+            logger.warning(
+                f"策略 {self.policy.id}: 单位 '{self.policy.metric_unit}' 和 "
+                f"'{self.policy.calculation_unit}' 不属于同一体系，跳过单位转换"
+            )
+            return vm_data
+
+        try:
+            # 遍历所有result，转换values中的数值
+            for result in vm_data.get("data", {}).get("result", []):
+                if "values" not in result:
+                    continue
+
+                # 提取所有数值（跳过时间戳）
+                values = [float(v[1]) for v in result["values"]]
+
+                # 进行单位转换
+                converted_values = UnitConverter.convert_values(
+                    values,
+                    self.policy.metric_unit,
+                    self.policy.calculation_unit
+                )
+
+                # 更新result中的values
+                for i, (timestamp, _) in enumerate(result["values"]):
+                    result["values"][i] = [timestamp, str(converted_values[i])]
+
+            logger.info(
+                f"策略 {self.policy.id}: 成功转换指标单位 "
+                f"{self.policy.metric_unit} -> {self.policy.calculation_unit}"
+            )
+
+        except Exception as e:
+            logger.error(f"策略 {self.policy.id}: 单位转换失败: {e}")
+
+        return vm_data
+
+    def _get_display_unit(self):
+        """获取用于展示的单位
+
+        Returns:
+            str: 展示单位
+        """
+        if self._unit_conversion_enabled:
+            return UnitConverter.get_display_unit(self.policy.calculation_unit)
+        elif self.policy.metric_unit:
+            return UnitConverter.get_display_unit(self.policy.metric_unit)
+        else:
+            return ""
+
     def format_aggregration_metrics(self, metrics):
         """格式化聚合指标数据
 
@@ -230,8 +300,13 @@ class MonitorPolicyScan:
         Returns:
             tuple: (告警事件列表, 正常事件列表)
         """
-        # 查询并转换指标数据
+        # 查询指标数据
         vm_data = self.query_aggregation_metrics(self.policy.period)
+        
+        # 应用单位转换
+        vm_data = self._convert_metric_values(vm_data)
+        
+        # 转换为DataFrame
         df = vm_to_dataframe(
             vm_data.get("data", {}).get("result", []),
             self.instance_id_keys

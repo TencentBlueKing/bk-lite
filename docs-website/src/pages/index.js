@@ -12,8 +12,8 @@ import confetti from 'canvas-confetti';
 import styles from './index.module.css';
 
 function HomepageHeader() {
-  const [selectedVersion, setSelectedVersion] = useState('ai');
-  
+  const [selectedVersion, setSelectedVersion] = useState('basic');
+
   // 版本配置
   const versions = {
     basic: {
@@ -26,7 +26,7 @@ function HomepageHeader() {
     },
     ai: {
       name: '智能版',
-      command: 'curl -sSL https://bklite.ai/install.run | bash -s - --opspilot',
+      command: 'curl -sSL https://bklite.ai/install.run | bash -s - --opspilot --vllm',
       description: 'AI驱动，智能运维',
       icon: '✨',
       color: '#3b82f6',
@@ -110,25 +110,25 @@ function HomepageHeader() {
   const handleCopy = async () => {
     try {
       await navigator.clipboard.writeText(versions[selectedVersion].command);
-      
+
       // 添加视觉反馈 - 复制按钮样式变化
       const copyBtn = document.querySelector(`.${styles.copyButton}`);
       if (copyBtn) {
         copyBtn.classList.add(styles.copied);
         copyBtn.querySelector(`.${styles.copyIcon}`).textContent = '✅';
-        
+
         // 2秒后恢复原状
         setTimeout(() => {
           copyBtn.classList.remove(styles.copied);
           copyBtn.querySelector(`.${styles.copyIcon}`).textContent = '📋';
         }, 2000);
       }
-      
+
       // 随机选择一种撒花效果
       const effects = [basicCannon, randomDirection, realisticLook];
       const randomEffect = effects[Math.floor(Math.random() * effects.length)];
       randomEffect();
-      
+
     } catch (err) {
       console.error('复制失败:', err);
       // 添加失败反馈
@@ -137,7 +137,7 @@ function HomepageHeader() {
         copyBtn.style.background = 'rgba(239, 68, 68, 0.2)';
         copyBtn.style.color = '#ef4444';
         copyBtn.querySelector(`.${styles.copyIcon}`).textContent = '❌';
-        
+
         setTimeout(() => {
           copyBtn.style.background = '';
           copyBtn.style.color = '';
@@ -160,17 +160,17 @@ function HomepageHeader() {
         <div className={styles.heroAnimation}>
           <div className={styles.heroTitleAccent}>BlueKing Lite</div>
           <p className={styles.heroSubtitle}>
-            AI 原生的轻量化运维平台，重塑智能运维体验
+            全栈能力，轻量落地
           </p>
           <div className={styles.heroStats}>
             <div className={styles.statCard}>
               <div className={styles.statValue}>AI原生</div>
             </div>
             <div className={styles.statCard}>
-              <div className={styles.statValue}>渐进式体验</div>
+              <div className={styles.statValue}>极简部署</div>
             </div>
             <div className={styles.statCard}>
-              <div className={styles.statValue}>轻量化架构</div>
+              <div className={styles.statValue}>按需启用</div>
             </div>
           </div>
           <div className={styles.quickInstall}>
@@ -192,14 +192,14 @@ function HomepageHeader() {
                 ))}
               </div>
             </div>
-            
+
             {/* 代码块 */}
             <div className={styles.codeBlock}>
               <div className={styles.codeContentWrapper}>
                 <pre className={styles.codeContent}>
                   <code>{versions[selectedVersion].command}</code>
                 </pre>
-                <button 
+                <button
                   className={styles.copyButton}
                   onClick={handleCopy}
                   title="复制脚本"
@@ -222,8 +222,8 @@ function HomepageHeader() {
 }
 
 export default function Home() {
-  const {siteConfig} = useDocusaurusContext();
-  
+  const { siteConfig } = useDocusaurusContext();
+
   // 确保页面加载时滚动到顶部
   useEffect(() => {
     // 立即滚动到顶部
@@ -232,7 +232,7 @@ export default function Home() {
       left: 0,
       behavior: 'instant'
     });
-    
+
     // 使用requestAnimationFrame确保DOM渲染完成后再次检查
     const handleLoad = () => {
       requestAnimationFrame(() => {
@@ -243,14 +243,14 @@ export default function Home() {
         });
       });
     };
-    
+
     // 监听窗口加载完成
     if (document.readyState === 'complete') {
       handleLoad();
     } else {
       window.addEventListener('load', handleLoad);
     }
-    
+
     // 延迟执行，确保所有动画开始后页面位置正确
     const timeoutId = setTimeout(() => {
       window.scrollTo({
@@ -259,13 +259,13 @@ export default function Home() {
         behavior: 'instant'
       });
     }, 100);
-    
+
     return () => {
       window.removeEventListener('load', handleLoad);
       clearTimeout(timeoutId);
     };
   }, []);
-  
+
   return (
     <Layout
       title={`${siteConfig.title} - 轻量级运维平台`}

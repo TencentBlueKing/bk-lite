@@ -1,13 +1,4 @@
-import { useHostTelegraf } from '../../plugins/os/hostTelegraf';
-
 export const useHostConfig = () => {
-  const plugin = useHostTelegraf();
-
-  // 所有插件配置
-  const plugins = {
-    Host: plugin,
-  };
-
   return {
     instance_type: 'os',
     dashboardDisplay: [
@@ -133,6 +124,8 @@ export const useHostConfig = () => {
       list: ['instance_id'],
       default: ['instance_id'],
     },
-    plugins,
+    collectTypes: {
+      Host: 'host',
+    },
   };
 };

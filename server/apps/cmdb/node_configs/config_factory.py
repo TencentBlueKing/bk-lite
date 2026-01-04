@@ -12,7 +12,8 @@ class NodeParamsFactory:
 
     @staticmethod
     def get_node_params(instance):
-        params_cls = BaseNodeParams._registry.get(instance.model_id)
+        model_id = instance.model_id.replace("_account", "")
+        params_cls = BaseNodeParams._registry.get(model_id)
         if params_cls is None:
-            raise ValueError(f"不支持的 model_id: {instance.model_id}")
+            raise ValueError(f"不支持的 model_id: {model_id}")
         return params_cls(instance)

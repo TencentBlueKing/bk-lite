@@ -307,6 +307,7 @@ const Node = () => {
           const installMethodLabel =
             nodeStateEnum?.install_method?.[installMethodValue] ||
             installMethodValue;
+          const isAutoInstall = installMethodValue === 'auto';
 
           // 获取节点类型映射
           const nodeTypeValue = record.node_type;
@@ -335,7 +336,7 @@ const Node = () => {
                         ? 'rongqifuwuContainerServi'
                         : 'zhuji'
                     }
-                    style={{ fontSize: '24px', cursor: 'pointer' }}
+                    style={{ fontSize: '28px', cursor: 'pointer' }}
                   />
                 </div>
               </Tooltip>
@@ -347,7 +348,7 @@ const Node = () => {
                 <div className="flex items-center">
                   <Icon
                     type={osValue === 'linux' ? 'Linux' : 'Window-Windows'}
-                    style={{ fontSize: '24px', cursor: 'pointer' }}
+                    style={{ fontSize: '26px', cursor: 'pointer' }}
                   />
                 </div>
               </Tooltip>
@@ -358,12 +359,12 @@ const Node = () => {
               >
                 <div className="flex items-center">
                   <Icon
-                    type={
-                      installMethodValue === 'auto'
-                        ? 'daohang_007'
-                        : 'rengongganyu'
-                    }
-                    style={{ fontSize: '24px', cursor: 'pointer' }}
+                    type={isAutoInstall ? 'daohang_007' : 'rengongganyu'}
+                    style={{
+                      fontSize: isAutoInstall ? '32px' : '24px',
+                      transform: isAutoInstall ? 'none' : 'translateX(2px)',
+                      cursor: 'pointer',
+                    }}
                   />
                 </div>
               </Tooltip>
@@ -413,34 +414,43 @@ const Node = () => {
           );
         },
       },
-      //   {
-      //     title: t('node-manager.cloudregion.node.sidecarVersion'),
-      //     dataIndex: 'version',
-      //     key: 'version',
-      //     onCell: () => ({
-      //       style: {
-      //         minWidth: 100,
-      //       },
-      //     }),
-      //     render: (_: any, record: TableDataItem) => {
-      //       const version = record.version || '1.0.0';
-      //       if (!version) return <span>--</span>;
-      //       return (
-      //         <div className="flex items-center gap-2">
-      //           <span>{version}</span>
-      //           <Tooltip
-      //             title={`${t(
-      //               'node-manager.cloudregion.node.controllerVersionTip'
-      //             )}: ${version}`}
-      //           >
-      //             <UpCircleFilled
-      //               style={{ color: 'var(--color-primary)', cursor: 'pointer' }}
-      //             />
-      //           </Tooltip>
-      //         </div>
-      //       );
-      //     },
-      //   },
+      {
+        title: t('node-manager.cloudregion.node.sidecarVersion'),
+        dataIndex: 'version',
+        key: 'version',
+        onCell: () => ({
+          style: {
+            minWidth: 100,
+          },
+        }),
+        render: (_: any, record: TableDataItem) => {
+          const versions = record.versions || [];
+          const currentVersion = versions.find(
+            (item: TableDataItem) => item.component_type === 'controller'
+          );
+          const version = currentVersion?.version;
+          if (!version) return <span>--</span>;
+          return (
+            <div className="flex items-center gap-2">
+              <span>{version}</span>
+              {currentVersion?.upgradeable && (
+                <Tooltip
+                  title={`${t(
+                    'node-manager.cloudregion.node.controllerVersionTip'
+                  )}: ${currentVersion?.latest_version || '--'}`}
+                >
+                  <div>
+                    <Icon
+                      type="shengji"
+                      style={{ fontSize: '16px', cursor: 'pointer' }}
+                    />
+                  </div>
+                </Tooltip>
+              )}
+            </div>
+          );
+        },
+      },
       {
         title: t('node-manager.cloudregion.node.hostedProgram'),
         dataIndex: 'collectors',

@@ -18,27 +18,16 @@ class QCloudNodeParams(BaseNodeParams):
         """
         生成 Tencent Cloud 的凭据
         """
-        _instance_id = self.get_instance_id(instance=kwargs["host"])
-        _secret_id = f"PASSWORD_secret_id_{_instance_id}"
-        _secret_key = f"PASSWORD_secret_key_{_instance_id}"
+        _secret_id = f"PASSWORD_secret_id_{self._instance_id}"
+        _secret_key = f"PASSWORD_secret_key_{self._instance_id}"
         return {
-            # "secret_id": self.credential.get("accessKey", ""),
-            # "secret_key": self.credential.get("secretSecret", ""),
             "secret_id": "${" + _secret_id + "}",
             "secret_key": "${" + _secret_key + "}",
         }
 
-    def get_instance_id(self, instance):
-        """
-        获取实例 ID
-        """
-        return f"{self.instance.id}_{instance['_id']}"
-
     def env_config(self, *args, **kwargs):
-        host = kwargs["host"]
-        _instance_id = self.get_instance_id(instance=host)
         env_config = {
-            f"PASSWORD_secret_id_{_instance_id}": self.credential.get("accessKey", ""),
-            f"PASSWORD_secret_key_{_instance_id}": self.credential.get("secretSecret", ""),
+            f"PASSWORD_secret_id_{self._instance_id}": self.credential.get("accessKey", ""),
+            f"PASSWORD_secret_key_{self._instance_id}": self.credential.get("secretSecret", ""),
         }
         return env_config

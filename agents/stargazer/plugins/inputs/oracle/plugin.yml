@@ -1,0 +1,28 @@
+name: oracle
+version: "2.0.0"
+category: database
+
+metadata:
+  display_name: "Oracle 数据库"
+  description: "Oracle 数据库采集插件，支持协议方式采集"
+  author: "WeOps"
+  tags: [database, oracle]
+  cloud_protocol: false
+  model_id: oracle
+
+# ============================================================================
+# 执行器配置
+# ============================================================================
+executors:
+  # Protocol 类型（协议采集）
+  protocol:
+    type: protocol
+    timeout: 30
+
+    # Python 采集器
+    collector:
+      module: plugins.inputs.oracle.oracle_info
+      class: OracleInfo
+
+# 默认执行器
+default_executor: protocol

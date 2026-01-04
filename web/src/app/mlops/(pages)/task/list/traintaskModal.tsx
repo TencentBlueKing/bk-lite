@@ -25,7 +25,8 @@ const TrainTaskModal = forwardRef<ModalRef, TrainTaskModalProps>(({ datasetOptio
     showModal,
     handleSubmit,
     handleCancel,
-    renderFormContent
+    renderFormContent,
+    onFormValuesChange
   } = useTaskForm({ datasetOptions, activeTag, onSuccess, formRef }); // 使用统一入口
 
   useImperativeHandle(ref, () => ({
@@ -52,6 +53,7 @@ const TrainTaskModal = forwardRef<ModalRef, TrainTaskModalProps>(({ datasetOptio
         <Form
           ref={formRef}
           layout="vertical"
+          onValuesChange={onFormValuesChange}
         >
           {renderFormContent()}
         </Form>

@@ -8,6 +8,7 @@ export const nodeConfig = {
   web_chat: { icon: 'WebSphereMQ', color: 'cyan' as const },
   mobile: { icon: 'zhuji', color: 'indigo' as const },
   condition: { icon: 'tiaojianfenzhi', color: 'yellow' as const },
+  intent_classification: { icon: 'question-circle-fill', color: 'purple' as const },
   http: { icon: 'HTTP', color: 'cyan' as const },
   notification: { icon: 'alarm', color: 'pink' as const },
   enterprise_wechat: { icon: 'qiwei2', color: 'green' as const },
@@ -80,6 +81,14 @@ export const getDefaultConfig = (nodeType: string) => {
         conditionField: '',
         conditionOperator: 'equals',
         conditionValue: ''
+      };
+    case 'intent_classification':
+      return {
+        ...baseConfig,
+        agent: null,
+        intents: [
+          { name: '默认意图' }
+        ]
       };
     case 'enterprise_wechat':
       return {

@@ -6,6 +6,7 @@ import {
   AssoFieldType,
   ColumnItem
 } from '@/app/cmdb/types/assetManage';
+import { FilterItem } from '@/app/cmdb/store';
   
 
 export interface TopoData {
@@ -99,7 +100,7 @@ export interface SearchFilterProps {
   proxyOptions: { proxy_id: string; proxy_name: string }[];
   userList: UserItem[];
   showExactSearch?: boolean;
-  onSearch: (condition: unknown, value: any) => void;
+  onSearch: (condition: FilterItem | null, value: any) => void;
 }
 
 export interface RelationItem extends AssoFieldType {

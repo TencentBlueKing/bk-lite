@@ -45,7 +45,8 @@ const nodeCategories = [
     key: 'logic',
     labelKey: 'chatflow.logicNodes',
     items: [
-      { type: 'condition', icon: 'tiaojianfenzhi', labelKey: 'chatflow.condition' }
+      { type: 'condition', icon: 'tiaojianfenzhi', labelKey: 'chatflow.condition' },
+      { type: 'intent_classification', icon: 'question-circle-fill', labelKey: 'chatflow.intentClassification' }
     ]
   },
   {

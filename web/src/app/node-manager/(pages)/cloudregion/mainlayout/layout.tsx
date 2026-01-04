@@ -8,7 +8,7 @@ import { useRouter } from 'next/navigation';
 
 const Collectorintro = () => {
   const searchParams = new URLSearchParams(window.location.search);
-  const name = searchParams.get('name');
+  const name = searchParams.get('displayName');
   return (
     <div className="flex h-[58px] flex-col items-center justify-center">
       <Icon

@@ -1,6 +1,6 @@
-import { Button, Upload, message, Select, Spin, Slider } from "antd";
+import { Button, Upload, message, Select, Spin, Slider, Modal, InputNumber } from "antd";
 import type { UploadProps } from 'antd';
-import { handleFileRead, formatProbability } from "@/app/playground/utils/common";
+import { handleFileRead } from "@/app/playground/utils/common";
 import { useCallback, useState, useEffect, useMemo, useRef } from "react";
 import { useSearchParams } from "next/navigation";
 import { useTranslation } from "@/utils/i18n";
@@ -25,7 +25,7 @@ const TimeseriesPredict = () => {
   const searchParams = useSearchParams();
   const { convertToLocalizedTime } = useLocalizedTime();
   const {
-    anomalyDetectionReason,
+    timeseriesPredictReason,
     getCapabilityDetail,
     getSampleFileOfCapability,
     getSampleFileDetail
@@ -34,9 +34,14 @@ const TimeseriesPredict = () => {
   // 基础状态
   const [currentFileId, setCurrentFileId] = useState<string | null>(null);
   const [selectId, setSelectId] = useState<number | null>(null);
-  const [servingData, setServingData] = useState<any>(null);
+  const [capabilityData, setCapabilityData] = useState<any>(null);
+  const [steps, setSteps] = useState<number>(1);
   const [sampleOptions, setSampleOptions] = useState<Option[]>([]);
   const [chartLoading, setChartLoading] = useState<boolean>(false);
+  const [predictData, setPredictData] = useState<any[]>([]);
+
+  // 弹窗相关状态
+  const [modalVisible, setModalVisible] = useState<boolean>(false);
 
   // 懒加载相关状态
   const [allData, setAllData] = useState<ChartDataItem[]>([
@@ -74,27 +79,63 @@ const TimeseriesPredict = () => {
   const isDraggingRef = useRef(false);
   const allDataRef = useRef<ChartDataItem[]>(allData);
 
-  //  同步数据到 ref
+  // 同步状态到 ref
   useEffect(() => {
     allDataRef.current = allData;
-  }, [allData]);
-
-  //  同步临时范围到 ref
-  useEffect(() => {
     tempVisibleRangeRef.current = tempVisibleRange;
-  }, [tempVisibleRange]);
+  }, [allData, tempVisibleRange]);
+
+  // 合并历史数据和预测数据
+  const mergedData = useMemo(() => {
+    if (!allData || allData.length === 0) return [];
+    
+    // 只有历史数据，没有预测数据
+    if (!predictData || predictData.length === 0) {
+      return allData.map(item => ({
+        timestamp: item.timestamp,
+        value1: item.value,  // 使用 value1
+        value2: null
+      }));
+    }
+    
+    // 转换历史数据格式
+    const historyData = allData.map(item => ({
+      timestamp: item.timestamp,
+      value1: item.value,  // 使用 value1
+      value2: null
+    }));
+    
+    // 获取最后一个历史数据点，作为分界点
+    const lastHistoryItem = allData[allData.length - 1];
+    
+    // 转换预测数据格式（直接使用Unix时间戳）
+    const predictDataFormatted = predictData.map(item => {
+      return {
+        timestamp: item.timestamp,  // 直接使用Unix时间戳（秒级）
+        value1: null,
+        value2: item.value  // 使用 value2
+      };
+    });
+    
+    // 在分界点添加重叠点，实现平滑过渡
+    if (historyData.length > 0) {
+      historyData[historyData.length - 1].value2 = lastHistoryItem.value;
+    }
+    
+    return [...historyData, ...predictDataFormatted];
+  }, [allData, predictData]);
 
   // 计算当前显示的数据
   const chartData = useMemo(() => {
-    if (!allData || allData.length === 0) return [];
+    if (!mergedData || mergedData.length === 0) return [];
 
     // 如果数据量小于阈值，直接返回所有数据
-    if (allData.length <= maxRenderCount) {
-      return allData;
+    if (mergedData.length <= maxRenderCount) {
+      return mergedData;
     }
 
     // 计算可见范围内的数据索引（使用实际范围，不是临时范围）
-    const totalCount = allData.length;
+    const totalCount = mergedData.length;
     const startIndex = Math.floor((visibleRange[0] / 100) * totalCount);
     const endIndex = Math.min(
       Math.ceil((visibleRange[1] / 100) * totalCount),
@@ -106,15 +147,15 @@ const TimeseriesPredict = () => {
     if (rangeSize > maxRenderCount) {
       // 等间距采样
       const step = Math.ceil(rangeSize / maxRenderCount);
-      const sampledData: ChartDataItem[] = [];
+      const sampledData: any[] = [];
       for (let i = startIndex; i < endIndex; i += step) {
-        sampledData.push(allData[i]);
+        sampledData.push(mergedData[i]);
       }
       return sampledData;
     }
 
-    return allData.slice(startIndex, endIndex);
-  }, [allData, visibleRange, maxRenderCount]);
+    return mergedData.slice(startIndex, endIndex);
+  }, [mergedData, visibleRange, maxRenderCount]);
 
   const timeline = useMemo(() => {
     const length = chartData.length;
@@ -124,10 +165,6 @@ const TimeseriesPredict = () => {
     };
   }, [chartData.length]);
 
-  const anomalyData = useMemo(() => {
-    return chartData?.filter((item) => item.label === 1) || [];
-  }, [chartData]);
-
   const columns: ColumnItem[] = useMemo(() => [
     {
       title: '时间',
@@ -136,8 +173,8 @@ const TimeseriesPredict = () => {
       width: 80,
       align: 'center',
       render: (_, record) => {
-        const time = new Date(record.timestamp * 1000).toISOString();
-        return <p>{convertToLocalizedTime(time.toString(), 'YYYY-MM-DD HH:mm:ss')}</p>;
+        const time = new Date(record.timestamp * 1000) + '';
+        return <p>{convertToLocalizedTime(time, 'YYYY-MM-DD HH:mm:ss')}</p>;
       },
     },
     {
@@ -148,17 +185,6 @@ const TimeseriesPredict = () => {
       width: 30,
       render: (_, record) => {
         const value = Number(record.value || 0).toFixed(2);
-        return <p>{value}</p>
-      },
-    },
-    {
-      title: '异常概率',
-      dataIndex: 'anomaly_probability',
-      key: 'anomaly_probability',
-      align: 'center',
-      width: 40,
-      render: (_, record) => {
-        const value = formatProbability(record.anomaly_probability || 0);
         return <p>{value}</p>
       },
     }
@@ -173,7 +199,20 @@ const TimeseriesPredict = () => {
     };
   }, []);
 
-  const getConfigData = useCallback(async () => {
+  // 数据加载后的初始化逻辑
+  const initializeDataState = useCallback((data: ChartDataItem[]) => {
+    setAllData(data);
+    setPredictData([]);
+    setIsLargeDataset(data.length > maxRenderCount);
+    
+    const initialRange = [0, data.length > maxRenderCount ? 10 : 100];
+    setVisibleRange(initialRange);
+    setTempVisibleRange(initialRange);
+    tempVisibleRangeRef.current = initialRange;
+  }, [maxRenderCount]);
+
+  // 初始化配置数据
+  const initializeCapability = useCallback(async () => {
     if (isInitialized) return;
 
     const id = searchParams.get('id') || '';
@@ -185,13 +224,19 @@ const TimeseriesPredict = () => {
         getSampleFileOfCapability(id)
       ]);
 
+      const _data = {
+        url: capabilityData?.url || '',
+        ...capabilityData.config
+      };
+
+
       const options = sampleList.filter((item: any) => item?.is_active).map((item: any) => ({
         label: item?.name,
         value: item?.id,
       }));
 
       setSampleOptions(options);
-      setServingData(capabilityData?.config);
+      setCapabilityData(_data);
       setIsInitialized(true);
 
     } catch (e) {
@@ -201,14 +246,15 @@ const TimeseriesPredict = () => {
 
   useEffect(() => {
     setIsInitialized(false);
-    getConfigData();
+    initializeCapability();
   }, [searchParams.get('id')]);
 
   // 样本选择处理
-  const onSelectChange = async (value: number) => {
+  const handleSampleSelect = async (value: number) => {
     if (!value) {
       setSelectId(null);
       setAllData([]);
+      setPredictData([]);
       setIsLargeDataset(false);
       setVisibleRange([0, 100]);
       setTempVisibleRange([0, 100]);
@@ -222,15 +268,10 @@ const TimeseriesPredict = () => {
       const data = await getSampleFileDetail(value as number);
       const trainData = data?.train_data || [];
 
-      setAllData(trainData);
-      setIsLargeDataset(trainData.length > maxRenderCount);
-      const initialRange = [0, trainData.length > maxRenderCount ? 10 : 100];
-      setVisibleRange(initialRange);
-      setTempVisibleRange(initialRange);
-      tempVisibleRangeRef.current = initialRange;
+      initializeDataState(trainData);
       setCurrentFileId(null);
     } catch (e) {
-      console.log(e);
+      console.error('获取样本文件失败:', e);
       message.error('获取样本文件失败');
     } finally {
       setChartLoading(false);
@@ -238,10 +279,11 @@ const TimeseriesPredict = () => {
   };
 
   // 文件上传处理
-  const onUploadChange: UploadProps['onChange'] = useCallback(async ({ fileList }: { fileList: any }) => {
+  const handleFileUpload: UploadProps['onChange'] = useCallback(async ({ fileList }: { fileList: any }) => {
     if (!fileList.length) {
       setCurrentFileId(null);
       setAllData([]);
+      setPredictData([]);
       setIsLargeDataset(false);
       setVisibleRange([0, 100]);
       setTempVisibleRange([0, 100]);
@@ -260,37 +302,22 @@ const TimeseriesPredict = () => {
 
     try {
       const text = await file?.originFileObj?.text();
+      const data = await new Promise<any[]>((resolve, reject) => {
+        setTimeout(() => {
+          try {
+            resolve(handleFileRead(text));
+          } catch (error) {
+            reject(error);
+          }
+        }, 100);
+      });
 
-      const processData = (text: string): Promise<any[]> => {
-        return new Promise((resolve, reject) => {
-          setTimeout(() => {
-            try {
-              const data = handleFileRead(text);
-              resolve(data);
-            } catch (error) {
-              reject(error);
-            }
-          }, 100);
-        });
-      };
-
-      const data = await processData(text);
-
-      setAllData(data);
-      setIsLargeDataset(data.length > maxRenderCount);
+      initializeDataState(data);
 
       if (data.length > maxRenderCount) {
         const initialPercent = Math.min(20, (maxRenderCount / data.length) * 100);
-        const initialRange = [0, initialPercent];
-        setVisibleRange(initialRange);
-        setTempVisibleRange(initialRange);
-        tempVisibleRangeRef.current = initialRange;
         message.info(`文件较大（${data.length.toLocaleString()} 条数据），当前显示前 ${initialPercent.toFixed(1)}%，可通过底部滑块查看更多数据`);
       } else {
-        const fullRange = [0, 100];
-        setVisibleRange(fullRange);
-        setTempVisibleRange(fullRange);
-        tempVisibleRangeRef.current = fullRange;
         message.success(`文件上传成功，共 ${data.length.toLocaleString()} 条数据`);
       }
 
@@ -300,14 +327,14 @@ const TimeseriesPredict = () => {
     } finally {
       setChartLoading(false);
     }
-  }, [currentFileId, maxRenderCount]);
+  }, [currentFileId, maxRenderCount, initializeDataState]);
 
   const props: UploadProps = {
     name: 'file',
     multiple: false,
     maxCount: 1,
     showUploadList: false,
-    onChange: onUploadChange,
+    onChange: handleFileUpload,
     beforeUpload: (file) => {
       const isCSV = file.type === "text/csv" || file.name.endsWith('.csv');
       if (!isCSV) {
@@ -318,8 +345,16 @@ const TimeseriesPredict = () => {
     accept: '.csv'
   };
 
-  // 内部提交函数
-  const handleSubmitInternal = useCallback(async (serving: any, dataToSubmit?: ChartDataItem[]) => {
+  // 格式化数据为API所需格式
+  const formatDataForAPI = useCallback((data: ChartDataItem[]) => {
+    return data.map(item => ({
+      timestamp: item.timestamp,  // 直接使用Unix时间戳（秒级）
+      value: item.value
+    }));
+  }, []);
+
+  // 执行预测
+  const executePrediction = useCallback(async (serving: any, stepsValue: number, dataToSubmit?: ChartDataItem[]) => {
     const dataSource = dataToSubmit || allDataRef.current;
 
     if (!dataSource || dataSource.length === 0) {
@@ -330,47 +365,54 @@ const TimeseriesPredict = () => {
 
     setChartLoading(true);
     try {
-      const submitData = dataSource.map(item => ({
-        timestamp: item.timestamp,
-        value: item.value
-      }));
-
+      const submitData = formatDataForAPI(dataSource);
       const params = {
-        serving_id: serving.serving_id,
-        model_name: `RandomForest_${serving.serving_id}`,
-        algorithm: "RandomForest",
-        model_version: serving.model_version,
-        anomaly_threshold: serving.anomaly_threshold,
+        url: capabilityData.url,
         data: submitData,
+        steps: stepsValue
       };
-      const result = await anomalyDetectionReason(params);
-      const labelData = result.predictions?.map((item: any) => ({
-        timestamp: item.timestamp,
-        value: item.value,
-        label: item.is_anomaly,
-        anomaly_probability: item.anomaly_probability
-      })) || [];
 
-      setAllData(labelData);
-      setIsLargeDataset(labelData.length > maxRenderCount);
-      const anomalyCount = labelData.filter((item: any) => item.label === 1).length;
-      message.success(`检测完成，发现 ${anomalyCount} 个异常点`);
-    } catch (e) {
-      console.error('检测失败:', e);
+      const result = await timeseriesPredictReason(serving.serving_id, params);
+      console.log(result);
+      setPredictData(result.prediction || []);
+    } catch (e) { 
+      console.error('预测失败:', e);
       message.error(t(`common.error`));
     } finally {
       setChartLoading(false);
     }
-  }, [anomalyDetectionReason, t, maxRenderCount, chartLoading]);
+  }, [timeseriesPredictReason, t, chartLoading, formatDataForAPI, capabilityData]);
 
-  // 用户点击提交的处理函数
-  const handleSubmit = useCallback(async (serving = servingData) => {
+  // 显示预测参数设置弹窗
+  const showPredictionModal = useCallback((serving = capabilityData) => {
     if (!serving) {
       message.error('服务配置未加载');
       return;
     }
-    await handleSubmitInternal(serving);
-  }, [servingData, handleSubmitInternal]);
+
+    if (!allData || allData.length === 0) {
+      message.error(t(`playground-common.uploadMsg`));
+      return;
+    }
+
+    setModalVisible(true);
+  }, [capabilityData, allData, t]);
+
+  // 弹窗确认并执行预测
+  const handleModalConfirm = useCallback(async () => {
+    if (!steps || steps <= 0) {
+      message.error('请输入有效的预测步数');
+      return;
+    }
+
+    setModalVisible(false);
+    await executePrediction(capabilityData, steps);
+  }, [steps, capabilityData, executePrediction]);
+
+  // 弹窗取消处理函数
+  const handleModalCancel = useCallback(() => {
+    setModalVisible(false);
+  }, []);
 
   //  使用 ref 避免依赖 allData
   const applyRangeChange = useCallback((newRange: number[]) => {
@@ -525,6 +567,33 @@ const TimeseriesPredict = () => {
 
   return (
     <div className="relative">
+      {/* 预测步数输入弹窗 */}
+      <Modal
+        title="设置预测参数"
+        open={modalVisible}
+        onOk={handleModalConfirm}
+        onCancel={handleModalCancel}
+        okText="开始检测"
+        cancelText="取消"
+        width={400}
+      >
+        <div className="py-4">
+          <div className="mb-2 text-sm">请输入预测未来的步数：</div>
+          <InputNumber
+            min={1}
+            max={1000}
+            value={steps}
+            onChange={(value) => setSteps(value || 10)}
+            placeholder="请输入步数"
+            className="w-full"
+            size="large"
+          />
+          <div className="mt-2 text-xs text-[var(--color-text-3)]">
+            步数表示预测未来多少个时间点的数据，建议设置为 1-100
+          </div>
+        </div>
+      </Modal>
+
       <div className="banner-content w-full h-[460px] pr-[400px] pl-[200px] pt-[80px] bg-[url(/app/pg_banner_1.png)] bg-cover">
         {renderBanner}
       </div>
@@ -542,7 +611,7 @@ const TimeseriesPredict = () => {
                   allowClear
                   options={sampleOptions}
                   placeholder={t(`playground-common.selectSampleMsg`)}
-                  onChange={onSelectChange}
+                  onChange={handleSampleSelect}
                   value={selectId}
                 />
                 <span className="mx-4 text-base pt-1">{t(`playground-common.or`)}</span>
@@ -556,7 +625,7 @@ const TimeseriesPredict = () => {
                   className="rounded-none ml-4 text-sm"
                   type="primary"
                   loading={chartLoading}
-                  onClick={() => handleSubmit(servingData)}
+                  onClick={() => showPredictionModal(capabilityData)}
                 >
                   {t(`playground-common.clickTest`)}
                 </Button>
@@ -571,11 +640,6 @@ const TimeseriesPredict = () => {
                 <span className="mr-4">
                   当前显示: {chartData.length.toLocaleString()} 条
                 </span>
-                {anomalyData.length > 0 && (
-                  <span className="text-red-500">
-                    当前视图异常: {anomalyData.length} 条
-                  </span>
-                )}
                 {isRangeChanging && (
                   <span className="ml-4 text-blue-500">
                     正在更新数据范围...
@@ -599,10 +663,10 @@ const TimeseriesPredict = () => {
               <div className="params w-[30%] max-w-[360px] bg-[var(--color-bg-4)]">
                 <header className="pl-2">
                   <span className="inline-block h-[60px] text-[var(--color-text-2)] content-center ml-10 text-sm">
-                    检测结果 ({anomalyData.length})
+                    预测结果 ({predictData.length})
                   </span>
                 </header>
-                <div className="border-r [&_.ant-table]:!h-[543px]">
+                <div className="[&_.ant-table]:!h-[543px]">
                   <CustomTable
                     virtual
                     className="h-[543px]"
@@ -610,7 +674,7 @@ const TimeseriesPredict = () => {
                     rowKey='timestamp'
                     columns={columns}
                     sticky={{ offsetHeader: 0 }}
-                    dataSource={anomalyData}
+                    dataSource={predictData}
                     pagination={false}
                   />
                 </div>

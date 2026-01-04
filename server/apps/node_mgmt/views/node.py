@@ -2,6 +2,7 @@ from django.core.cache import cache
 from rest_framework import mixins
 from rest_framework.decorators import action
 from rest_framework.viewsets import GenericViewSet
+from django.db.models import Q
 
 from apps.core.utils.loader import LanguageLoader
 from apps.core.utils.permission_utils import get_permission_rules, permission_filter
@@ -16,6 +17,157 @@ from config.drf.pagination import CustomPageNumberPagination
 from apps.node_mgmt.serializers.node import NodeSerializer, BatchBindingNodeConfigurationSerializer, \
     BatchOperateNodeCollectorSerializer
 from apps.node_mgmt.services.node import NodeService
+
+
+class NodeFilterHandler:
+    """节点查询过滤器处理器 - 统一管理所有特殊字段的过滤逻辑"""
+
+    @staticmethod
+    def normalize_bool_value(value):
+        """规范化布尔值"""
+        if isinstance(value, str):
+            return value.lower() in ('true', '1', 'yes')
+        elif isinstance(value, bool):
+            return value
+        return bool(value) if value is not None else None
+
+    @staticmethod
+    def handle_upgradeable_filter(queryset, conditions):
+        """
+        处理 upgradeable 过滤逻辑
+
+        Args:
+            queryset: Django QuerySet
+            conditions: 过滤条件列表
+
+        Returns:
+            过滤后的 QuerySet
+        """
+        if not conditions or not isinstance(conditions, list):
+            return queryset
+
+        # 收集所有有效的布尔值
+        values = []
+        for condition in conditions:
+            if not isinstance(condition, dict):
+                continue
+
+            value = NodeFilterHandler.normalize_bool_value(condition.get('value'))
+            if value is not None:
+                values.append(value)
+
+        # 如果没有有效值，返回原查询
+        if not values:
+            return queryset
+
+        # 检查是否存在矛盾条件（同时有 True 和 False）
+        if True in values and False in values:
+            # 矛盾条件：既要可升级又要不可升级，返回空结果
+            return queryset.none()
+
+        # 取最后一个有效值作为过滤条件
+        final_value = values[-1]
+
+        # upgradeable=True: 筛选有可升级版本的节点
+        if final_value:
+            return queryset.filter(
+                component_versions__component_type='controller',
+                component_versions__upgradeable=True
+            ).distinct()
+
+        # upgradeable=False: 排除有可升级版本的节点
+        else:
+            upgradeable_node_ids = Node.objects.filter(
+                component_versions__component_type='controller',
+                component_versions__upgradeable=True
+            ).values_list('id', flat=True)
+            return queryset.exclude(id__in=upgradeable_node_ids)
+
+    @staticmethod
+    def build_standard_filters(params):
+        """
+        构建标准字段的 Q 对象过滤条件
+
+        Args:
+            params: 过滤参数字典
+
+        Returns:
+            Q 对象
+        """
+        if not params:
+            return Q()
+
+        final_q = Q()
+
+        for field_name, conditions in params.items():
+            if not conditions or not isinstance(conditions, list):
+                continue
+
+            for condition in conditions:
+                if not isinstance(condition, dict):
+                    continue
+
+                lookup_expr = condition.get('lookup_expr', 'exact')
+                value = condition.get('value')
+
+                if value is None or value == '':
+                    continue
+
+                # 规范化布尔值
+                if lookup_expr == 'bool':
+                    value = NodeFilterHandler.normalize_bool_value(value)
+                    lookup_expr = 'exact'
+
+                # 构建查询键
+                lookup_key = f"{field_name}__{lookup_expr}"
+                final_q &= Q(**{lookup_key: value})
+
+        return final_q
+
+    @classmethod
+    def apply_filters(cls, queryset, filters):
+        """
+        应用所有过滤条件到 QuerySet
+
+        Args:
+            queryset: Django QuerySet
+            filters: 过滤条件字典
+
+        Returns:
+            过滤后的 QuerySet
+        """
+        if not filters:
+            return queryset
+
+        # 特殊字段列表（需要自定义处理逻辑）
+        SPECIAL_FIELDS = {
+            'upgradeable': cls.handle_upgradeable_filter,
+            # 未来可以在这里添加其他特殊字段处理器
+            # 'custom_field': cls.handle_custom_field_filter,
+        }
+
+        # 分离特殊字段和标准字段
+        special_filters = {}
+        standard_filters = {}
+
+        for field_name, conditions in filters.items():
+            if field_name in SPECIAL_FIELDS:
+                special_filters[field_name] = conditions
+            else:
+                standard_filters[field_name] = conditions
+
+        # 1. 先应用标准字段过滤
+        if standard_filters:
+            q_filters = cls.build_standard_filters(standard_filters)
+            if q_filters:
+                queryset = queryset.filter(q_filters).distinct()
+
+        # 2. 再依次应用特殊字段过滤
+        for field_name, conditions in special_filters.items():
+            handler = SPECIAL_FIELDS[field_name]
+            queryset = handler(queryset, conditions)
+
+        return queryset
 
 
 class NodeViewSet(mixins.DestroyModelMixin,
@@ -33,57 +185,6 @@ class NodeViewSet(mixins.DestroyModelMixin,
             else:
                 node_info["permission"] = NodeConstants.DEFAULT_PERMISSION
 
-    @staticmethod
-    def format_params(params: dict):
-        """
-        格式化查询参数，支持灵活的 lookup_expr
-
-        输入格式:
-        {
-            'name': [
-                {'lookup_expr': 'exact', 'value': 'xx'},
-                {'lookup_expr': 'icontains', 'value': 'xxx'}
-            ],
-            'ip': [
-                {'lookup_expr': 'exact', 'value': '10.10.10.11'}
-            ]
-        }
-
-        返回: Q 对象用于过滤 queryset
-
-        注意：所有条件之间都是 AND 逻辑关系
-        """
-        from django.db.models import Q
-
-        if not params:
-            return Q()
-
-        # 最终的 Q 对象，使用 AND 逻辑组合所有条件
-        final_q = Q()
-
-        for field_name, conditions in params.items():
-            if not conditions or not isinstance(conditions, list):
-                continue
-
-            # 同一字段的多个条件也使用 AND 逻辑
-            for condition in conditions:
-                if not isinstance(condition, dict):
-                    continue
-
-                lookup_expr = condition.get('lookup_expr', 'exact')
-                value = condition.get('value')
-
-                if value is None or value == '':
-                    continue
-
-                # 构建查询键，例如: name__exact, name__icontains
-                lookup_key = f"{field_name}__{lookup_expr}"
-
-                # 使用 AND 逻辑组合所有条件
-                final_q &= Q(**{lookup_key: value})
-
-        return final_q
-
     @action(methods=["post"], detail=False, url_path=r"search")
     def search(self, request, *args, **kwargs):
         # 获取权限规则
@@ -97,18 +198,27 @@ class NodeViewSet(mixins.DestroyModelMixin,
         # 应用权限过滤
         queryset = permission_filter(Node, permission, team_key="nodeorganization__organization__in", id_key="id__in")
 
-        # 应用自定义查询参数格式化
+        # 应用自定义查询参数格式化（统一处理所有过滤条件）
         custom_filters = request.data.get('filters')
         if custom_filters:
-            q_filters = self.format_params(custom_filters)
-            if q_filters:
-                queryset = queryset.filter(q_filters)
+            queryset = NodeFilterHandler.apply_filters(queryset, custom_filters)
 
         # 根据组织筛选
-        organization_ids = request.query_params.get('organization_ids')
+        organization_ids = request.query_params.get('organization_ids') or request.data.get('organization_ids')
         if organization_ids:
             organization_ids = organization_ids.split(',')
             queryset = queryset.filter(nodeorganization__organization__in=organization_ids).distinct()
+
+        # 根据云区域筛选
+        cloud_region_id = request.query_params.get('cloud_region_id') or request.data.get('cloud_region_id')
+        if cloud_region_id:
+            queryset = queryset.filter(cloud_region_id=cloud_region_id)
+
+        # 应用预加载优化，避免 N+1 查询
+        queryset = NodeSerializer.setup_eager_loading(queryset)
+
+        # 按创建时间倒序排序（最新的在前）
+        queryset = queryset.order_by('-created_at')
 
         page = self.paginate_queryset(queryset)
         if page is not None:

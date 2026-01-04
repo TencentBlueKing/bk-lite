@@ -117,7 +117,9 @@
     "fetchToolsFailed": "Failed to fetch tools",
     "subToolDescription": "Sub Tool Description",
     "items": "items",
-    "description": "Description"
+    "description": "Description",
+    "checkbox": "Checkbox",
+    "number": "Number"
   },
   "knowledge": {
     "goToTesting": "Go to Testing",
@@ -206,7 +208,10 @@
       "llmModel": "LLM Model",
       "enterQaCount": "Please enter QA count",
       "qaPairsUpdateFailed": "Failed to update QA pairs",
-      "chunks": "chunks"
+      "chunks": "chunks",
+      "totalQAPairsSuffix": "QA pairs",
+      "qaCountPerChunk": "QA Count (Per Chunk)",
+      "totalQAPairsPrefix": "Total"
     },
     "documents": {
       "status": "STATUS",
@@ -322,7 +327,8 @@
       "pageDescription": "Preserves the independence of each slide's content and visuals, suitable for presentations with page logic.",
       "trainWarning": "Important Notice",
       "semanticFormats": "Structured documents (Word, Markdown), technical documents (PDF with table of contents).",
-      "fullTextMethod": "Extract all text content directly, enabling OCR for scanned PDFs."
+      "fullTextMethod": "Extract all text content directly, enabling OCR for scanned PDFs.",
+      "lastSyncTime": "Last Sync Time"
     },
     "knowledgeGraph": {
       "relationships": "Relationships",
@@ -479,7 +485,9 @@
     "removeAnnotation": "Remove Annotation",
     "onlyImageAllowed": "Only image files are allowed",
     "imageTooLarge": "Image size cannot exceed 5MB",
-    "uploadImage": "Upload Image"
+    "uploadImage": "Upload Image",
+    "referenceDocSource": "Reference Document Source",
+    "referenceQASource": "Reference QA Source"
   },
   "settings": {
     "secret": {
@@ -773,7 +781,18 @@
       "appTagRoutineOps": "Routine Ops",
       "appIcon": "App Icon",
       "appTagPerformanceAnalysis": "Performance Analysis",
-      "webAccessAddress": "Web Access Address"
+      "intents": "Intent List",
+      "intentDescription": "Intent Description",
+      "intentNamePlaceholder": "Please enter intent name",
+      "removeIntent": "Remove Intent",
+      "classification": "Classification",
+      "intentTopicPlaceholder": "Please enter classification topic name (one per line)",
+      "intentNameRequired": "Intent name is required",
+      "intentDescPlaceholder": "Please enter intent description (optional)",
+      "intentClassification": "Intent Classification",
+      "addIntent": "Add Intent",
+      "intentName": "Intent Name",
+      "intentClassificationConfig": "Intent Classification Configuration"
     },
     "collapseSidebar": "Collapse Sidebar",
     "messages": {
@@ -932,7 +951,8 @@
     "mobile": "Mobile Terminal",
     "webChat": "Web Chat",
     "embeddedChat": "Embedded Chat",
-    "applications": "Applications"
+    "applications": "Applications",
+    "intentClassification": "Intent Classification"
   },
   "provider": {
     "form": {

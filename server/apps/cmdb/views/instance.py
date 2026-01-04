@@ -10,9 +10,75 @@ from apps.core.decorators.api_permission import HasPermission
 from apps.core.logger import cmdb_logger as logger
 from apps.core.utils.web_utils import WebUtils
 from apps.rpc.node_mgmt import NodeMgmt
+from apps.system_mgmt.utils.group_utils import GroupUtils
 
 
 class InstanceViewSet(viewsets.ViewSet):
+
+    @staticmethod
+    def _normalize_query_list(query_list):
+        """
+        Normalize request.data['query_list'] into a flat list of valid query dicts.
+
+        Front-end request format stays unchanged:
+        - query_list can be a dict (single condition) or list (multiple conditions)
+        - list items can be dicts or nested lists (legacy wrapping)
+
+        The graph layer will AND all conditions by default (param_type="AND").
+        """
+        if query_list is None:
+            return []
+
+        if isinstance(query_list, dict):
+            query_list = [query_list]
+
+        if not isinstance(query_list, list):
+            return []
+
+        normalized = []
+
+        def add_condition(item):
+            if not item or not isinstance(item, dict):
+                return
+
+            field = item.get("field")
+            _type = item.get("type")
+            if not field or not _type:
+                return
+
+            if _type == "time":
+                start = item.get("start")
+                end = item.get("end")
+                if not start or not end:
+                    return
+                normalized.append({"field": field, "type": _type, "start": start, "end": end})
+                return
+
+            if "value" not in item:
+                return
+
+            value = item.get("value")
+            if value is None:
+                return
+            if isinstance(value, str) and value == "":
+                return
+            if isinstance(value, list) and not value:
+                return
+
+            normalized.append({"field": field, "type": _type, "value": value})
+
+        def walk(node):
+            if node is None:
+                return
+            if isinstance(node, dict):
+                add_condition(node)
+                return
+            if isinstance(node, list):
+                for sub in node:
+                    walk(sub)
+
+        walk(query_list)
+        return normalized
 
     @staticmethod
     def check_creator_and_organizations(request, instance):
@@ -101,8 +167,11 @@ class InstanceViewSet(viewsets.ViewSet):
         query_list [{field: "inst_name", type: "str*", value: "allure(weops-prod)"}] 搜索失败
         query_list [{field: "inst_name", type: "str=", value: "allure(weops-prod)"}] 搜索成果
         """
-        model_id = request.data['model_id']
-        query_list = request.data.get("query_list", [])
+        model_id = request.data.get("model_id")
+        if not model_id:
+            return WebUtils.response_error("model_id不能为空", status_code=status.HTTP_400_BAD_REQUEST)
+
+        query_list = self._normalize_query_list(request.data.get("query_list", []))
         page, page_size = int(request.data.get("page", 1)), int(request.data.get("page_size", 10))
         permissions_map = CmdbRulesFormatUtil.format_user_groups_permissions(request, model_id)
         instance_list, count = InstanceManage.instance_list(
@@ -387,6 +456,46 @@ class InstanceViewSet(viewsets.ViewSet):
     @action(methods=["post"], detail=False, url_path=r"(?P<model_id>.+?)/inst_import")
     def inst_import(self, request, model_id):
         try:
+            current_team_raw = request.COOKIES.get("current_team")
+            if not current_team_raw:
+                return JsonResponse({
+                    "data": [],
+                    "result": False,
+                    "message": "请先选择组织后再导入",
+                })
+
+            try:
+                current_team = int(current_team_raw)
+            except (TypeError, ValueError):
+                return JsonResponse({
+                    "data": [],
+                    "result": False,
+                    "message": "当前组织参数无效，请刷新页面后重试",
+                })
+
+            include_children = request.COOKIES.get("include_children") == "1"
+            user_group_ids = [i["id"] for i in request.user.group_list]
+
+            if getattr(request.user, "is_superuser", False):
+                allowed_org_ids = (
+                    GroupUtils.get_all_child_groups(current_team, include_self=True, group_list=None)
+                    if include_children
+                    else [current_team]
+                )
+            else:
+                allowed_org_ids = GroupUtils.get_user_authorized_child_groups(
+                    user_group_list=user_group_ids,
+                    target_group_id=current_team,
+                    include_children=include_children,
+                )
+
+            if not allowed_org_ids:
+                return JsonResponse({
+                    "data": [],
+                    "result": False,
+                    "message": "抱歉！您没有该组织的权限或组织选择无效",
+                })
+
             # 检查是否上传了文件
             uploaded_file = request.data.get("file")
             if not uploaded_file:
@@ -400,6 +509,7 @@ class InstanceViewSet(viewsets.ViewSet):
                 model_id=model_id,
                 file_stream=uploaded_file.file,
                 operator=request.user.username,
+                allowed_org_ids=allowed_org_ids,
             )
 
             # 根据返回的结果结构判断成功或失败

@@ -439,7 +439,7 @@ class InstanceManage(object):
 
         return results
 
-    def inst_import_support_edit(self, model_id: str, file_stream: bytes, operator: str):
+    def inst_import_support_edit(self, model_id: str, file_stream: bytes, operator: str, allowed_org_ids: list = None):
         """实例导入-支持编辑"""
         attrs = ModelManage.search_model_attr_v2(model_id)
         model_info = ModelManage.search_model_info(model_id)
@@ -448,7 +448,10 @@ class InstanceManage(object):
             exist_items, _ = ag.query_entity(INSTANCE, [{"field": "model_id", "type": "str=", "value": model_id}])
 
         _import = Import(model_id, attrs, exist_items, operator)
-        add_results, update_results, asso_result = _import.import_inst_list_support_edit(file_stream)
+        add_results, update_results, asso_result = _import.import_inst_list_support_edit(
+            file_stream,
+            allowed_org_ids=allowed_org_ids,
+        )
         # 检查是否存在验证错误
         if _import.validation_errors:
             error_summary = f"数据导入失败：发现 {len(_import.validation_errors)} 个数据验证错误\n"

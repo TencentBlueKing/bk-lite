@@ -61,6 +61,7 @@ interface Pagination {
 export interface CardItem {
   id: string;
   name: string;
+  original_name?: string;
   description: string;
   icon: string;
   os: string;

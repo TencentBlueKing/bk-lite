@@ -65,7 +65,6 @@ class Command(BaseCommand):
             self.init_tags()
 
             # 获取默认命名空间
-            # 获取默认命名空间
             namespace_id = self.get_default_namespace()
             if not namespace_id:
                 error_msg = "未找到默认命名空间，请先初始化默认命名空间"
@@ -79,31 +78,46 @@ class Command(BaseCommand):
             updated_count = 0
 
             for api_data in source_api_data_list:
+                # 提取标签数据,避免在defaults中包含多对多字段
+                tags = api_data.pop("tag", [])
+                
+                # 准备创建数据(排除多对多字段)
+                defaults = {k: v for k, v in api_data.items() if k not in ["name", "rest_api"]}
+                defaults["created_by"] = "system"
+                defaults["updated_by"] = "system"
+                
                 obj, created = DataSourceAPIModel.objects.get_or_create(
                     name=api_data["name"],
                     rest_api=api_data["rest_api"],
-                    defaults={
-                        **api_data,
-                        "created_by": "system",
-                        "updated_by": "system"
-                    }
+                    defaults=defaults
                 )
+
+                # 获取标签实例
+                tag_instances = DataSourceTag.objects.filter(tag_id__in=tags)
 
                 if created:
                     obj.namespaces.set([namespace_id])
+                    if tag_instances.exists():
+                        obj.tag.set(tag_instances)
                     created_count += 1
                     logger.info(f"创建数据源: {api_data['name']}")
                 elif force_update:
                     # 只有在强制更新模式下才更新现有数据源的配置
                     for key, value in api_data.items():
-                        if key != "name":  # name作为唯一标识不更新
+                        if key not in ["name", "rest_api"]:  # name和rest_api作为唯一标识不更新
                             setattr(obj, key, value)
+
                     obj.updated_by = "system"
                     obj.save()
+                    
+                    # 更新标签关联
+                    if tag_instances.exists():
+                        obj.tag.set(tag_instances)
+                    
                     updated_count += 1
                     logger.info(f"更新数据源: {api_data['name']}")
                 else:
-                    logger.info(f"跳过已存在的数据源: {api_data['name']} (使用 --force-update 强制更新)")
+                    logger.info(f"跳过已存在的数据源: {api_data['name']}")
 
             success_msg = f"源API数据初始化完成 - 创建: {created_count}, 更新: {updated_count}"
             self.stdout.write(self.style.SUCCESS(success_msg))

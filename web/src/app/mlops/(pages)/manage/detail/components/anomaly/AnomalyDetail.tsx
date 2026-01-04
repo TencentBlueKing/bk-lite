@@ -203,7 +203,7 @@ const AnomalyDetail = () => {
   const handleSubmit = async () => {
     setConfirmLoading(true);
     try {
-      if (activeTap === 'anomaly') {
+      if (activeTap === 'anomaly_detection') {
         const params = {
           is_train_data: selectedTags.includes('is_train_data'),
           is_val_data: selectedTags.includes('is_val_data'),

@@ -1,5 +1,5 @@
 import { FormInstance } from 'antd';
-import { useAnomalyForm, useRasaForm } from './forms';
+import { useAnomalyForm, useRasaForm, useTimeseriesPredictForm } from './forms';
 import type { Option } from '@/types';
 import { RefObject } from 'react';
 
@@ -14,12 +14,15 @@ const useTaskForm = ({ datasetOptions, activeTag, onSuccess, formRef }: UseTaskF
   const [activeType] = activeTag;
   const anomalyFormResult = useAnomalyForm({ datasetOptions, activeTag, onSuccess, formRef });
   const rasaFormResult = useRasaForm({ datasetOptions, activeTag, onSuccess, formRef });
+  const timeseriesPredictFormResult = useTimeseriesPredictForm({ datasetOptions, activeTag, onSuccess, formRef });
 
   switch (activeType) {
-    case 'anomaly':
+    case 'anomaly_detection':
       return anomalyFormResult;
     case 'rasa':
       return rasaFormResult;
+    case 'timeseries_predict':
+      return timeseriesPredictFormResult;
     default:
       return anomalyFormResult;
   }
