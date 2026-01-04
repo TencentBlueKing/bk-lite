@@ -161,6 +161,11 @@ def install_controller_on_nodes(task_obj, nodes, package_obj):
         if has_password:
             password = aes_obj.decode(node_obj.password)
         
+        # 解密私钥（如果有）
+        private_key = None
+        if has_private_key:
+            private_key = aes_obj.decode(node_obj.private_key)
+        
         # 解密私钥密码短语（如果有）
         passphrase = None
         if node_obj.passphrase:
