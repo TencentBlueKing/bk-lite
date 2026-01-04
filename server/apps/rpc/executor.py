@@ -45,7 +45,7 @@ class Executor(object):
         return_data = self.local_client.run(self.instance_id, request_data, _timeout=timeout)
         return return_data
 
-    def execute_ssh(self, command, host, username, password=None, key_file=None, timeout=60, port=22):
+    def execute_ssh(self, command, host, username, password=None, private_key=None, passphrase=None, timeout=60, port=22):
         """
         通过SSH执行远程命令
         :param command: 要执行的命令
@@ -53,7 +53,8 @@ class Executor(object):
         :param port: 远程主机端口(可选)
         :param username: SSH用户名
         :param password: SSH密码(可选)
-        :param key_file: SSH密钥文件路径(可选)
+        :param private_key: SSH私钥内容(PEM格式，可选)
+        :param passphrase: 私钥密码短语(可选)
         :param timeout: 执行超时时间(秒)
         :return: 命令执行结果
         """
@@ -62,8 +63,10 @@ class Executor(object):
         # 添加可选参数
         if password:
             request_data["password"] = password
-        if key_file:
-            request_data["key_file"] = key_file
+        if private_key:
+            request_data["private_key"] = private_key
+        if passphrase:
+            request_data["passphrase"] = passphrase
 
         return_data = self.ssh_client.run(self.instance_id, request_data, _timeout=timeout)
         return return_data
@@ -89,7 +92,7 @@ class Executor(object):
         return return_data
 
     def download_to_remote(
-        self, bucket_name, file_key, file_name, target_path, host, username, password=None, timeout=60, port=22
+        self, bucket_name, file_key, file_name, target_path, host, username, password=None, private_key=None, passphrase=None, timeout=60, port=22
     ):
         """
         下载文件到远程
@@ -101,6 +104,8 @@ class Executor(object):
         :param port: 远程主机端口(可选)
         :param username: SSH用户名
         :param password: SSH密码(可选)
+        :param private_key: SSH私钥内容(PEM格式，可选)
+        :param passphrase: 私钥密码短语(可选)
         :param timeout: 执行超时时间(秒)
         :return: 下载结果
         """
@@ -117,6 +122,10 @@ class Executor(object):
         # 添加可选参数
         if password:
             request_data["password"] = password
+        if private_key:
+            request_data["private_key"] = private_key
+        if passphrase:
+            request_data["passphrase"] = passphrase
         return_data = self.download_to_remote_client.run(self.instance_id, request_data, _timeout=timeout)
         return return_data
 
@@ -134,7 +143,7 @@ class Executor(object):
         return_data = self.unzip_local_client.run(self.instance_id, request_data, _timeout=timeout)
         return return_data
 
-    def transfer_file_to_remote(self, source_path, target_path, host, username, password=None, timeout=60, port=22):
+    def transfer_file_to_remote(self, source_path, target_path, host, username, password=None, private_key=None, passphrase=None, timeout=60, port=22):
         """
         传递文件到远程主机
         :param source_path: 要传递的文件路径
@@ -143,6 +152,8 @@ class Executor(object):
         :param port: 远程主机端口(可选)
         :param username: SSH用户名
         :param password: SSH密码(可选)
+        :param private_key: SSH私钥内容(PEM格式，可选)
+        :param passphrase: 私钥密码短语(可选)
         :param timeout: 执行超时时间(秒)
         :return: 传递结果
         """
@@ -157,5 +168,9 @@ class Executor(object):
         # 添加可选参数
         if password:
             request_data["password"] = password
+        if private_key:
+            request_data["private_key"] = private_key
+        if passphrase:
+            request_data["passphrase"] = passphrase
         return_data = self.transfer_file_to_remote_client.run(self.instance_id, request_data, _timeout=timeout)
         return return_data

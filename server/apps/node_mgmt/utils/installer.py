@@ -92,9 +92,9 @@ def exec_command_to_local(instance_id, command):
 
 
 # 执行远程命令
-def exec_command_to_remote(instance_id, ip, username, password, command, port=22):
+def exec_command_to_remote(instance_id, ip, username, password, command, port=22, private_key=None, passphrase=None):
     exe_obj = Executor(instance_id)
-    result = exe_obj.execute_ssh(command, ip, username, password=password, timeout=600, port=port)
+    result = exe_obj.execute_ssh(command, ip, username, password=password, private_key=private_key, passphrase=passphrase, timeout=600, port=port)
     return result
 
 
@@ -106,16 +106,16 @@ def download_to_local(instance_id, bucket_name, file_key, file_name, target_path
 
 
 # 文件下发到远程
-def download_to_remote(instance_id, bucket_name, file_key, file_name, target_path, host, username, password, port=22):
+def download_to_remote(instance_id, bucket_name, file_key, file_name, target_path, host, username, password, port=22, private_key=None, passphrase=None):
     exe_obj = Executor(instance_id)
-    result = exe_obj.download_to_remote(bucket_name, file_key, file_name, target_path, host, username, password, timeout=600, port=port)
+    result = exe_obj.download_to_remote(bucket_name, file_key, file_name, target_path, host, username, password, private_key=private_key, passphrase=passphrase, timeout=600, port=port)
     return result
 
 
 # 本机文件下发到远程
-def transfer_file_to_remote(instance_id, local_path, remote_path, host, username, password, port=22):
+def transfer_file_to_remote(instance_id, local_path, remote_path, host, username, password, port=22, private_key=None, passphrase=None):
     exe_obj = Executor(instance_id)
-    result = exe_obj.transfer_file_to_remote(local_path, remote_path, host, username, password, timeout=600, port=port)
+    result = exe_obj.transfer_file_to_remote(local_path, remote_path, host, username, password, private_key=private_key, passphrase=passphrase, timeout=600, port=port)
     return result
 
 
