@@ -75,6 +75,39 @@ class AnomalyDetectionTrainData(MaintainerInfo, TimeInfo):
 
     def __str__(self):
         return f"{self.name} - {self.dataset.name}"
+    
+    def save(self, *args, **kwargs):
+        """保存时自动清理旧的训练数据文件"""
+        from apps.core.logger import opspilot_logger as logger
+        
+        # 如果是更新操作，检查文件是否变化
+        if self.pk:
+            try:
+                old_instance = AnomalyDetectionTrainData.objects.get(pk=self.pk)
+                old_file = old_instance.train_data
+                new_file = self.train_data
+                
+                # 提取文件路径（处理 FieldFile 对象和 None 的情况）
+                old_path = old_file.name if old_file else None
+                new_path = new_file.name if new_file else None
+                
+                # 如果旧文件存在且路径发生变化（包括被清空的情况），删除旧文件
+                if old_path and old_path != new_path:
+                    try:
+                        old_file.delete(save=False)
+                        logger.info(
+                            f"Deleted old train_data file for AnomalyDetectionTrainData {self.pk}: "
+                            f"old={old_path}, new={new_path or 'None'}"
+                        )
+                    except Exception as delete_err:
+                        logger.warning(f"Failed to delete old file '{old_path}': {delete_err}")
+                        
+            except AnomalyDetectionTrainData.DoesNotExist:
+                pass
+            except Exception as e:
+                logger.warning(f"Failed to check old train_data file: {e}")
+        
+        super().save(*args, **kwargs)
 
 
 class AnomalyDetectionDatasetRelease(MaintainerInfo, TimeInfo):

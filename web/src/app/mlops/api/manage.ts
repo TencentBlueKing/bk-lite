@@ -688,16 +688,19 @@ const useMlopsManageApi = () => {
     return await put(`/mlops/rasa_action/${id}`, params);
   };
 
-  // 标注数据
-  const labelingData = async (id: string, params: {
-    metadata?: {
-      anomaly_point: number[]
-    },
+  // 更新异常检测数据集样本文件
+  const updateAnomalyTrainDataFile = async (id: string, params: {
     is_train_data?: boolean,
     is_val_data?: boolean,
-    is_test_data?: boolean
-  }) => {
-    return await patch(`/mlops/anomaly_detection_train_data/${id}/`, params);
+    is_test_data?: boolean,
+    meta_data?: any,
+    train_data?: any
+  } | FormData) => {
+    return await patch(`/mlops/anomaly_detection_train_data/${id}/`, params, {
+      headers: {
+        'Content-Type': 'multipart/form-data',
+      },
+    })
   };
 
   // 更新日志聚类数据集样本文件
@@ -730,7 +733,7 @@ const useMlopsManageApi = () => {
 
   // 更新图片分类任务数据集样本文件
   const updateImageClassificationTrainData = async (
-    id: string, 
+    id: string,
     params: {
       is_train_data?: boolean,
       is_val_data?: boolean,
@@ -950,7 +953,7 @@ const useMlopsManageApi = () => {
     updateImageClassificationDataset,
     updateImageClassificationTrainData,
     updateObjectDetectionTrainData,
-    labelingData,
+    updateAnomalyTrainDataFile,
     deleteAnomalyDatasets,
     deleteAnomalyTrainData,
     deleteRasaDatasets,

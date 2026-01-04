@@ -26,7 +26,7 @@ const AnomalyDetail = () => {
   const router = useRouter();
   const modalRef = useRef<ModalRef>(null);
   const searchParams = useSearchParams();
-  const { getAnomalyTrainData, deleteAnomalyTrainData, labelingData } = useMlopsManageApi();
+  const { getAnomalyTrainData, deleteAnomalyTrainData, updateAnomalyTrainDataFile } = useMlopsManageApi();
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
   const [tableData, setTableData] = useState<TableData[]>([]);
   const [currentData, setCurrentData] = useState<any>(null);
@@ -210,7 +210,7 @@ const AnomalyDetail = () => {
           is_val_data: selectedTags.includes('is_val_data'),
           is_test_data: selectedTags.includes('is_test_data')
         };
-        await labelingData(currentData?.id, params);
+        await updateAnomalyTrainDataFile(currentData?.id, params);
         message.success(t(`common.updateSuccess`));
         setModalOpen(false);
         getDataset();
