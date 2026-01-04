@@ -843,9 +843,15 @@ class PgvectorRag:
             包含状态和结果信息的字典
         """
         logger.info(f"网站内容摄取开始 - URL: {url}, 最大深度: {max_depth}, 预览模式: {params['is_preview']}")
+        ocr_type = params.get("ocr_type")
+        base_url = params.get("olm_base_url") or params.get("azure_endpoint")
+        model = params.get("olm_model")
+        api_key = params.get("olm_api_key") or params.get("azure_api_key")
+
+        ocr = OcrManager.load_ocr(ocr_type=ocr_type, model=model, base_url=base_url, api_key=api_key)
 
         # 加载网站内容
-        loader = WebSiteLoader(url, max_depth)
+        loader = WebSiteLoader(url, max_depth, ocr)
         docs = loader.load()
 
         # 使用统一的文档处理流水线
