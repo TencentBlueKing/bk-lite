@@ -365,7 +365,7 @@ class UnitConverter:
         """
         获取所有支持的单位列表
 
-        :return: 单位列表，每个单位包含：unit_id, unit_name, system, display_unit, description
+        :return: 单位列表，每个单位包含：unit_id, unit_name, category, system, display_unit, description
         """
         units = []
 
@@ -381,9 +381,13 @@ class UnitConverter:
                 # 生成单位描述
                 description = cls._generate_unit_description(unit_id, system_name, base)
 
+                # 获取单位分类
+                category = UnitConverterConstants.UNIT_CATEGORY_MAPPING.get(unit_id, 'Other')
+
                 units.append({
                     'unit_id': unit_id,
                     'unit_name': cls._get_unit_display_name(unit_id),
+                    'category': category,
                     'system': system_name,
                     'display_unit': display_unit,
                     'description': description,
@@ -392,14 +396,15 @@ class UnitConverter:
 
         # 添加独立单位（不支持转换）
         for unit_id in UnitConverterConstants.STANDALONE_UNITS:
-            if unit_id == 'none':
-                continue  # 跳过 none
-
             display_unit = UnitConverterConstants.DISPLAY_UNIT_MAPPING.get(unit_id, unit_id)
+
+            # 获取单位分类
+            category = UnitConverterConstants.UNIT_CATEGORY_MAPPING.get(unit_id, 'Other')
 
             units.append({
                 'unit_id': unit_id,
                 'unit_name': cls._get_unit_display_name(unit_id),
+                'category': category,
                 'system': None,
                 'display_unit': display_unit,
                 'description': '独立单位，不支持转换',
@@ -419,8 +424,8 @@ class UnitConverter:
         # 单位ID到显示名称的映射
         unit_display_names = {
             # Base
-            'percent': 'percent (0-100)',
-            'percentunit': 'percent (0.0-1.0)',
+            'none': 'none',
+            'percent': 'percent',
 
             # Count
             'counts': 'counts',

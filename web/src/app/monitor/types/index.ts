@@ -28,6 +28,17 @@ export interface ModalConfig {
   onSuccess?: (...args: any[]) => void;
 }
 
+export interface UnitListItem {
+  description: string;
+  display_unit: string;
+  is_standalone: boolean;
+  system: string;
+  unit_id: string;
+  unit_name: string;
+  category: string;
+  [key: string]: any;
+}
+
 export interface ModalRef {
   showModal: (config: ModalConfig) => void;
 }
@@ -85,6 +96,17 @@ export interface UnitItem {
   value?: string;
   unit?: string;
   children?: UnitItem[];
+}
+
+export interface GroupedUnitItem {
+  label: string;
+  value: string;
+  unit: string;
+}
+
+export interface GroupedUnitList {
+  label: string;
+  children: GroupedUnitItem[];
 }
 
 export interface OriginOrganization {

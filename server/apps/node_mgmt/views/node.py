@@ -217,6 +217,9 @@ class NodeViewSet(mixins.DestroyModelMixin,
         # 应用预加载优化，避免 N+1 查询
         queryset = NodeSerializer.setup_eager_loading(queryset)
 
+        # 按创建时间倒序排序（最新的在前）
+        queryset = queryset.order_by('-created_at')
+
         page = self.paginate_queryset(queryset)
         if page is not None:
             serializer = NodeSerializer(page, many=True)

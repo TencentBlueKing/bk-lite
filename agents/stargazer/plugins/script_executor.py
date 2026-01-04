@@ -119,12 +119,13 @@ class SSHPlugin:
 
         return exec_params
 
-    async def list_all_resources(self) -> Dict[str, Any]:
+    async def list_all_resources(self, need_raw=False) -> Dict[str, Any]:
         """
         执行脚本采集
         
         Returns:
             采集结果，格式：{"success": True, "result": "..."}
+            need_raw： 是否需要原始结果
         """
         try:
             # 1. 读取脚本内容
@@ -132,10 +133,13 @@ class SSHPlugin:
 
             # 2. 构建执行参数
             exec_params = self._build_exec_params(script_content)
-
             # 3. 判断执行模式（本地 or SSH）
             execution_mode = "local" if self.node_info else "ssh"
-            subject = f"{execution_mode}.execute.{self.node_id}"
+            # 如果是local，则使用对应的node_id
+            if execution_mode == "local":
+                subject = f"{execution_mode}.execute.{self.node_info['id']}"
+            else:
+                subject = f"{execution_mode}.execute.{self.node_id}"
 
             logger.info(f"🚀 Executing script via NATS: mode={execution_mode}, subject={subject}")
 
@@ -147,6 +151,8 @@ class SSHPlugin:
                 timeout=self.execute_timeout
             )
             if response.get("success"):
+                if need_raw:
+                    return response
                 collect_data = response["result"]
                 try:
                     # 尝试解析为 JSON
@@ -158,7 +164,6 @@ class SSHPlugin:
                 result = {"result": {"cmdb_collect_error": response.get("result")}, "success": False}
             logger.info(f"✅ Script execution completed: success={response.get('success')}")
             return result
-
         except Exception as e:
             import traceback
             logger.error(f"❌ SSHPlugin execution failed: {traceback.format_exc()}")

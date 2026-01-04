@@ -1,5 +1,5 @@
 'use client';
-import React, { useEffect, useState, useRef } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { Spin, Button, Form, message, Steps } from 'antd';
 import useApiClient from '@/utils/request';
 import useMonitorApi from '@/app/monitor/api';
@@ -105,6 +105,7 @@ const StrategyOperation = () => {
       value: null,
     },
   ]);
+  const [calculationUnit, setCalculationUnit] = useState<string | null>(null);
   const [pluginList, setPluginList] = useState<SegmentedItem[]>([]);
   const [originMetricData, setOriginMetricData] = useState<IndexViewItem[]>([]);
   const [initMetricData, setInitMetricData] = useState<MetricItem[]>([]);
@@ -226,6 +227,7 @@ const StrategyOperation = () => {
       collect_type,
       enable_alerts,
       no_data_recovery_period,
+      calculation_unit,
     } = data;
     form.setFieldsValue({
       ...data,
@@ -237,6 +239,7 @@ const StrategyOperation = () => {
     });
     setGroupBy(group_by || []);
     feedbackThreshold(thresholdList);
+    setCalculationUnit(calculation_unit || null);
     if (source?.type) {
       setSource(source);
     } else {
@@ -388,6 +391,10 @@ const StrategyOperation = () => {
     setThreshold(value);
   };
 
+  const handleCalculationUnitChange = (unit: string) => {
+    setCalculationUnit(unit);
+  };
+
   const goBack = () => {
     const targetUrl = `/monitor/event/${
       type === 'builtIn' ? 'template' : 'strategy'
@@ -415,16 +422,19 @@ const StrategyOperation = () => {
         params.source = {};
         params.algorithm = 'last_over_time';
       } else {
+        const mertricTarget = metrics.find((item) => item.name === metric);
         params.query_condition = {
           type: 'metric',
-          metric_id: metrics.find((item) => item.name === metric)?.id,
+          metric_id: mertricTarget?.id,
           filter: conditions,
         };
         params.source = source;
+        params.metric_unit = mertricTarget?.unit;
       }
       params.threshold = threshold.filter(
         (item) => !!item.value || item.value === 0
       );
+      params.calculation_unit = calculationUnit;
       params.monitor_object = monitorObjId;
       params.schedule = {
         type: unit,
@@ -552,12 +562,14 @@ const StrategyOperation = () => {
                     <AlertConditionsForm
                       enableAlerts={enableAlerts}
                       threshold={threshold}
+                      calculationUnit={calculationUnit}
                       noDataAlert={noDataAlert}
                       nodataUnit={nodataUnit}
                       noDataRecovery={noDataRecovery}
                       noDataRecoveryUnit={noDataRecoveryUnit}
                       onEnableAlertsChange={setEnableAlerts}
                       onThresholdChange={handleThresholdChange}
+                      onCalculationUnitChange={handleCalculationUnitChange}
                       onNodataUnitChange={handleNodataUnitChange}
                       onNoDataAlertChange={handleNoDataAlertChange}
                       onNodataRecoveryUnitChange={

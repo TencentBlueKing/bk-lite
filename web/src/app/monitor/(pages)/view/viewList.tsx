@@ -6,11 +6,11 @@ import useMonitorApi from '@/app/monitor/api';
 import useViewApi from '@/app/monitor/api/view';
 import { useTranslation } from '@/utils/i18n';
 import {
-  getEnumValueUnit,
   getEnumColor,
   getK8SData,
   getBaseInstanceColumn,
 } from '@/app/monitor/utils/common';
+import { useUnitTransform } from '@/app/monitor/hooks/useUnitTransform';
 import { useObjectConfigInfo } from '@/app/monitor/hooks/integration/common/getObjectConfig';
 import { useRouter } from 'next/navigation';
 import ViewModal from './viewModal';
@@ -49,6 +49,7 @@ const ViewList: React.FC<ViewListProps> = ({
   const { t } = useTranslation();
   const router = useRouter();
   const { convertToLocalizedTime } = useLocalizedTime();
+  const { getEnumValueUnit } = useUnitTransform();
   const { getCollectType, getTableDiaplay } = useObjectConfigInfo();
   const viewRef = useRef<ModalRef>(null);
   const timerRef = useRef<NodeJS.Timeout | null>(null);
