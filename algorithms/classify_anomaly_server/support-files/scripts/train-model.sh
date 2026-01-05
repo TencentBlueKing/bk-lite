@@ -122,14 +122,6 @@ else
     exit 1
 fi
 
-# 查找解压后的 CSV 文件
-DATASET_PATH=$(find "${EXTRACT_DIR}" -name "*.csv" | head -1)
-if [ -z "${DATASET_PATH}" ]; then
-    log_error "解压后未找到 CSV 文件"
-    exit 1
-fi
-log_info "找到数据集文件: ${DATASET_PATH}"
-
 # 准备配置文件
 if [ -n "$3" ]; then
     # 用户指定了配置名称，从 MinIO 下载
@@ -158,7 +150,7 @@ fi
 
 # ==================== 训练模型 ====================
 log_info "开始训练异常检测模型..."
-log_info "数据集路径: ${DATASET_PATH}"
+log_info "数据集目录: ${EXTRACT_DIR}"
 log_info "配置文件: ${CONFIG_FILE}"
 log_info "MLflow Tracking URI: ${MLFLOW_TRACKING_URI}"
 
@@ -169,7 +161,7 @@ cd "${PROJECT_ROOT}"
 
 # 构建训练命令（使用注册的 CLI 命令）
 TRAIN_CMD="uv run classify_anomaly_server train \
-    --dataset-path=\"${DATASET_PATH}\" \
+    --dataset-path=\"${EXTRACT_DIR}\" \
     --config=\"${CONFIG_FILE}\""
 
 # 执行训练
