@@ -71,17 +71,6 @@
           "description": "It represents the CPU utilization rate of the system or application program, which is a key indicator for measuring CPU load and performance."
         },
         {
-          "metric_group": "CPU",
-          "name": "esxi_cpu_usagemhz_average_gauge",
-          "query": "cpu_usagemhz_average_gauge{resource_type=\"vmware_esxi\",__$labels__}",
-          "display_name": "CPU utilization rate",
-          "data_type": "Number",
-          "unit": "megahertz",
-          "dimensions": [],
-          "instance_id_keys": ["instance_id", "resource_id"],
-          "description": "It represents the CPU usage, measured in megahertz (MHz), and reflects the actual operating frequency of the CPU."
-        },
-        {
           "metric_group": "Memory",
           "name": "esxi_mem_usage_average_gauge",
           "query": "mem_usage_average_gauge{resource_type=\"vmware_esxi\",__$labels__}",
@@ -191,17 +180,6 @@
           "dimensions": [],
           "instance_id_keys": ["instance_id", "resource_id"],
           "description": "It represents the CPU utilization rate of the system within a specific time period, usually expressed as a percentage. This indicator helps to understand the CPU load situation, so as to carry out performance optimization and capacity planning."
-        },
-        {
-          "metric_group": "CPU",
-          "name": "vm_cpu_usagemhz_average_gauge",
-          "query": "cpu_usagemhz_average_gauge{resource_type=\"vmware_vm\",__$labels__}",
-          "display_name": "CPU usage",
-          "data_type": "Number",
-          "unit": "megahertz",
-          "dimensions": [],
-          "instance_id_keys": ["instance_id", "resource_id"],
-          "description": "It represents the CPU usage of the system within a specific time period, usually measured in MHz. This indicator is used to measure the actual operating frequency of the CPU and helps to analyze the consumption of CPU resources."
         },
         {
           "metric_group": "Memory",
