@@ -15,6 +15,7 @@ import pandas as pd
 import numpy as np
 import mlflow
 from loguru import logger
+from pyod.models.ecod import ECOD
 
 from .base import BaseAnomalyModel, ModelRegistry
 
@@ -60,6 +61,9 @@ class ECODModel(BaseAnomalyModel):
         
         self.contamination = contamination
         
+        # 创建 PyOD ECOD 模型
+        self.model = ECOD(contamination=contamination)
+        
         # 模型参数（训练后设置）
         self.feature_names_ = None
         self.n_features_ = None
@@ -94,17 +98,16 @@ class ECODModel(BaseAnomalyModel):
             logger.info(f"开始训练 ECOD 模型: contamination={self.contamination}")
             logger.info(f"训练数据: {train_data.shape}")
         
-        # 保存训练数据（ECOD 需要参考分布）
-        self.train_data_ = train_data.copy()
+        # 保存特征信息
         self.feature_names_ = train_data.columns.tolist()
         self.n_features_ = len(self.feature_names_)
         self.n_samples_train_ = len(train_data)
         
-        # 计算训练数据的异常分数
-        train_scores = self._calculate_scores(train_data)
+        # 使用 PyOD ECOD 训练
+        self.model.fit(train_data.values)
         
-        # 根据 contamination 确定阈值
-        self.threshold_ = np.percentile(train_scores, 100 * (1 - self.contamination))
+        # 获取阈值（PyOD 自动计算）
+        self.threshold_ = self.model.threshold_
         
         if verbose:
             logger.info(f"训练完成: 特征={self.n_features_}, 样本={self.n_samples_train_}")
@@ -136,8 +139,18 @@ class ECODModel(BaseAnomalyModel):
         """
         self._check_fitted()
         
-        scores = self.predict_proba(X)
-        predictions = (scores > self.threshold_).astype(int)
+        if not isinstance(X, pd.DataFrame):
+            raise ValueError("X 必须是 pandas.DataFrame")
+        
+        # 验证特征列
+        if list(X.columns) != self.feature_names_:
+            raise ValueError(
+                f"特征列不匹配。期望: {self.feature_names_}, "
+                f"实际: {list(X.columns)}"
+            )
+        
+        # 使用 PyOD ECOD 预测
+        predictions = self.model.predict(X.values)
         
         return predictions
     
@@ -162,85 +175,10 @@ class ECODModel(BaseAnomalyModel):
                 f"实际: {list(X.columns)}"
             )
         
-        scores = self._calculate_scores(X)
+        # 使用 PyOD ECOD 计算异常分数
+        scores = self.model.decision_function(X.values)
         
         return scores
-    
-    def _calculate_scores(self, X: pd.DataFrame) -> np.ndarray:
-        """计算异常分数（ECOD 核心算法）
-        
-        算法步骤：
-        1. 对每个特征，计算每个样本的左尾和右尾累积概率
-        2. 取左尾和右尾的最小值（最极端的概率）
-        3. 聚合所有特征的分数
-        
-        Args:
-            X: 特征矩阵
-            
-        Returns:
-            异常分数数组
-        """
-        n_samples = len(X)
-        n_features = len(self.feature_names_)
-        
-        # 存储每个特征的异常分数
-        feature_scores = np.zeros((n_samples, n_features))
-        
-        for i, col in enumerate(self.feature_names_):
-            # 获取训练数据的该特征值
-            train_values = self.train_data_[col].values
-            test_values = X[col].values
-            
-            # 计算经验累积分布函数（ECDF）
-            # 左尾概率：P(X <= x)
-            left_probs = self._empirical_cdf(test_values, train_values)
-            
-            # 右尾概率：P(X >= x) = 1 - P(X < x)
-            right_probs = 1 - left_probs
-            
-            # 取左右尾概率的最小值（最极端的那个）
-            # 然后取负对数，使得极端值（接近0的概率）得到高分
-            min_probs = np.minimum(left_probs, right_probs)
-            
-            # 避免 log(0)
-            min_probs = np.clip(min_probs, 1e-10, 1.0)
-            
-            # 异常分数：-log(min_prob)
-            # 概率越小，分数越高
-            feature_scores[:, i] = -np.log(min_probs)
-        
-        # 聚合所有特征的分数（取最大值）
-        # 如果任何一个特征异常，整体就异常
-        anomaly_scores = np.max(feature_scores, axis=1)
-        
-        return anomaly_scores
-    
-    def _empirical_cdf(self, test_values: np.ndarray, train_values: np.ndarray) -> np.ndarray:
-        """计算经验累积分布函数
-        
-        对每个测试值，计算训练集中小于等于它的比例。
-        
-        Args:
-            test_values: 测试数据的特征值
-            train_values: 训练数据的特征值（参考分布）
-            
-        Returns:
-            累积概率数组
-        """
-        # 对训练数据排序
-        sorted_train = np.sort(train_values)
-        n_train = len(sorted_train)
-        
-        # 对每个测试值，计算 ECDF
-        probabilities = np.zeros(len(test_values))
-        
-        for i, value in enumerate(test_values):
-            # 使用 searchsorted 快速找到位置
-            # 返回 value 应该插入的位置，即小于等于 value 的元素个数
-            count = np.searchsorted(sorted_train, value, side='right')
-            probabilities[i] = count / n_train
-        
-        return probabilities
     
     def get_feature_importance(self) -> Dict[str, float]:
         """获取特征重要性（基于训练数据的异常贡献）
@@ -250,28 +188,14 @@ class ECODModel(BaseAnomalyModel):
         """
         self._check_fitted()
         
-        # 计算训练数据每个特征的异常分数方差
-        n_samples = len(self.train_data_)
-        n_features = len(self.feature_names_)
-        
-        feature_scores = np.zeros((n_samples, n_features))
-        
-        for i, col in enumerate(self.feature_names_):
-            train_values = self.train_data_[col].values
-            left_probs = self._empirical_cdf(train_values, train_values)
-            right_probs = 1 - left_probs
-            min_probs = np.minimum(left_probs, right_probs)
-            min_probs = np.clip(min_probs, 1e-10, 1.0)
-            feature_scores[:, i] = -np.log(min_probs)
-        
-        # 计算每个特征的方差（方差越大，对异常检测贡献越大）
+        # PyOD ECOD 没有直接的特征重要性，返回均等权重
         feature_importance = {}
-        total_variance = feature_scores.var(axis=0).sum()
+        equal_importance = 1.0 / self.n_features_ if self.n_features_ > 0 else 0
         
-        for i, col in enumerate(self.feature_names_):
-            variance = feature_scores[:, i].var()
-            importance = variance / total_variance if total_variance > 0 else 0
-            feature_importance[col] = importance
+        for col in self.feature_names_:
+            feature_importance[col] = equal_importance
+        
+        logger.info("PyOD ECOD 模型使用均等特征权重")
         
         return feature_importance
     
