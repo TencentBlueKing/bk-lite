@@ -28,17 +28,6 @@ class DBCollectCollectMetrics(CollectBase):
                     self.timestamp_gt = True
             # 原始版本没有result，2025.11.27修改stargazer格式，将采集数据放到result中
             result_data = {}
-            if index_data["metric"].get("result", False) or index_data["metric"].get("success", False):
-                result_json = index_data["metric"].get("result", "{}")
-                if result_json and result_json != "{}":
-                    try:
-                        unescaped_json = codecs.decode(
-                            result_json, 'unicode_escape')
-                        result_data = json.loads(unescaped_json)
-                    except Exception:
-                        result_data = {}
-                if isinstance(result_data, dict) and not result_data:
-                    continue
             index_dict = dict(
                 index_key=metric_name,
                 index_value=value,
