@@ -11,6 +11,7 @@ import {
 import { useTranslation } from '@/utils/i18n';
 import GroupSelect from '@/components/group-tree-select';
 import OperateModal from '@/app/monitor/components/operate-drawer';
+import EllipsisWithTooltip from '@/components/ellipsis-with-tooltip';
 
 interface ModalRef {
   showModal: (config: {
@@ -91,10 +92,13 @@ const BatchEditModal = forwardRef<ModalRef, BatchEditModalProps>(
         case 'auth_input':
           if (authTypeValue === 'private_key') {
             widget = uploadedFileName ? (
-              <div className="relative group py-1 text-[var(--color-text-1)] truncate">
-                {uploadedFileName}
+              <div className="inline-flex items-center gap-2 text-[var(--color-text-1)] max-w-full group">
+                <EllipsisWithTooltip
+                  text={uploadedFileName}
+                  className="overflow-hidden text-ellipsis whitespace-nowrap"
+                />
                 <span
-                  className="absolute top-0 right-0 cursor-pointer opacity-0 group-hover:opacity-100 transition-opacity"
+                  className="cursor-pointer opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0"
                   style={{
                     fontSize: 16,
                     color: 'var(--color-primary)',
@@ -105,7 +109,7 @@ const BatchEditModal = forwardRef<ModalRef, BatchEditModalProps>(
                     form.setFieldValue(column.name, undefined);
                     form.setFieldValue('private_key', undefined);
                   }}
-                  title={t('common.delete') || '删除'}
+                  title={t('common.delete')}
                 >
                   ×
                 </span>

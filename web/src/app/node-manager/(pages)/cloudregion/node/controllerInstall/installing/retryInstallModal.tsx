@@ -198,7 +198,7 @@ const RetryInstallModal = forwardRef<ModalRef, ModalSuccess>(
               }
             >
               {uploadedFileName ? (
-                <div className="inline-flex items-center gap-2 py-1 text-[var(--color-text-1)] max-w-full group">
+                <div className="inline-flex items-center gap-2 text-[var(--color-text-1)] max-w-full group">
                   <EllipsisWithTooltip
                     className="overflow-hidden text-ellipsis whitespace-nowrap"
                     text={uploadedFileName}

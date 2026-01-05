@@ -217,13 +217,13 @@ export const useTableRenderer = () => {
             return (
               <div className="flex items-center gap-[8px]">
                 {fileName ? (
-                  <div className="flex-1 relative group py-1 text-[var(--color-text-1)] truncate">
+                  <div className="inline-flex items-center gap-2 text-[var(--color-text-1)] max-w-full group">
                     <EllipsisWithTooltip
-                      className="w-full overflow-hidden text-ellipsis whitespace-nowrap"
+                      className="overflow-hidden text-ellipsis whitespace-nowrap"
                       text={fileName}
                     />
                     <span
-                      className="absolute -top-1.5 right-0 cursor-pointer opacity-0 group-hover:opacity-100 transition-opacity"
+                      className="cursor-pointer opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0"
                       style={{
                         fontSize: 16,
                         color: 'var(--color-primary)',

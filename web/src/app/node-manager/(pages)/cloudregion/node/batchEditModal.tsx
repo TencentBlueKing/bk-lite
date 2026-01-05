@@ -21,6 +21,7 @@ import { BATCH_FIELD_MAPS } from '@/app/node-manager/constants/cloudregion';
 import { useTranslation } from '@/utils/i18n';
 import { cloneDeep } from 'lodash';
 const { Option } = Select;
+import EllipsisWithTooltip from '@/components/ellipsis-with-tooltip';
 
 interface ModalProps {
   onSuccess: (row: any) => void;
@@ -70,15 +71,13 @@ const BatchEditModal = forwardRef<ModalRef, ModalProps>(
         case 'password':
           if (authTypeValue === 'private_key') {
             return uploadedFileName ? (
-              <div className="flex-1 relative group py-1 text-[var(--color-text-1)] truncate">
+              <div className="inline-flex items-center gap-2 text-[var(--color-text-1)] max-w-full group">
+                <EllipsisWithTooltip
+                  text={uploadedFileName}
+                  className="overflow-hidden text-ellipsis whitespace-nowrap"
+                />
                 <span
-                  className="block overflow-hidden text-ellipsis whitespace-nowrap"
-                  title={uploadedFileName}
-                >
-                  {uploadedFileName}
-                </span>
-                <span
-                  className="absolute -top-1.5 right-0 cursor-pointer opacity-0 group-hover:opacity-100 transition-opacity"
+                  className="cursor-pointer opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0"
                   style={{
                     fontSize: 16,
                     color: 'var(--color-primary)',

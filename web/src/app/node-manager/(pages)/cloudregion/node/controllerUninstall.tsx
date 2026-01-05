@@ -33,6 +33,7 @@ import { ControllerInstallFields } from '@/app/node-manager/types/cloudregion';
 import CustomTable from '@/components/custom-table';
 import BatchEditModal from './batchEditModal';
 import { cloneDeep, isNumber } from 'lodash';
+import EllipsisWithTooltip from '@/components/ellipsis-with-tooltip';
 
 const ControllerUninstall = forwardRef<ModalRef, ModalSuccess>(
   ({ onSuccess, config }, ref) => {
@@ -168,20 +169,17 @@ const ControllerUninstall = forwardRef<ModalRef, ModalSuccess>(
           render: (value: string, row: TableDataItem) => {
             const authType = row.auth_type || 'password';
             const fileName = row.key_file_name;
-
             if (authType === 'private_key') {
               return (
                 <div className="flex items-center">
                   {fileName ? (
-                    <div className="flex-1 relative group py-1 text-[var(--color-text-1)] truncate">
+                    <div className="inline-flex items-center gap-2 text-[var(--color-text-1)] max-w-[130px] group">
+                      <EllipsisWithTooltip
+                        className="overflow-hidden text-ellipsis whitespace-nowrap"
+                        text={fileName}
+                      />
                       <span
-                        className="block overflow-hidden text-ellipsis whitespace-nowrap"
-                        title={fileName}
-                      >
-                        {fileName}
-                      </span>
-                      <span
-                        className="absolute -top-1.5 right-0 cursor-pointer opacity-0 group-hover:opacity-100 transition-opacity"
+                        className="cursor-pointer opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0"
                         style={{
                           fontSize: 16,
                           color: 'var(--color-primary)',
