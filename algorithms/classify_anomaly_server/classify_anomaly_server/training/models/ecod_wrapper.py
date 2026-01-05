@@ -39,36 +39,62 @@ class ECODWrapper(mlflow.pyfunc.PythonModel):
             f"threshold={threshold}"
         )
     
-    def predict(self, context, model_input) -> pd.DataFrame:
+    def predict(self, context, model_input) -> dict:
         """预测接口
         
         Args:
             context: MLflow context
-            model_input: 输入数据 (pd.DataFrame)
+            model_input: 字典格式 {'data': pd.Series, 'threshold': float (可选)}
             
         Returns:
-            包含异常分数和标签的 DataFrame
+            字典格式 {'labels': [0,1,...], 'scores': [0.1,0.9,...]}
         """
-        if not isinstance(model_input, pd.DataFrame):
-            raise ValueError(f"输入必须是 pd.DataFrame，实际类型: {type(model_input)}")
+        # 解析输入
+        data, threshold = self._parse_input(model_input)
         
-        # 检查特征
-        if model_input.shape[1] != len(self.feature_names):
+        # 转换为 DataFrame（内部处理）
+        if isinstance(data, pd.Series):
+            df = pd.DataFrame({'value': data.values}, index=data.index)
+        elif isinstance(data, pd.DataFrame):
+            df = data
+        else:
+            raise ValueError(f"data 必须是 pd.Series 或 pd.DataFrame，实际类型: {type(data)}")
+        
+        # 检查特征（如果是 DataFrame 且指定了特征名）
+        if isinstance(data, pd.DataFrame) and df.shape[1] != len(self.feature_names):
             raise ValueError(
                 f"特征数量不匹配: 期望 {len(self.feature_names)}，"
-                f"实际 {model_input.shape[1]}"
+                f"实际 {df.shape[1]}"
             )
         
         # 预测异常分数
-        scores = self.model.decision_function(model_input)
+        scores = self.model.decision_function(df)
         
         # 根据阈值判断异常
-        predictions = (scores > self.threshold).astype(int)
+        predictions = (scores > threshold).astype(int)
         
-        # 返回结果
-        result = pd.DataFrame({
-            'anomaly_score': scores,
-            'is_anomaly': predictions
-        }, index=model_input.index)
+        # 返回字典格式（与 DummyModel 一致）
+        return {
+            'labels': predictions.tolist(),
+            'scores': scores.tolist()
+        }
+    
+    def _parse_input(self, model_input) -> tuple:
+        """解析输入数据
         
-        return result
+        Args:
+            model_input: 字典格式 {'data': pd.Series, 'threshold': float (可选)}
+            
+        Returns:
+            (data, threshold) 元组
+        """
+        if isinstance(model_input, dict):
+            data = model_input.get('data')
+            threshold = model_input.get('threshold', self.threshold)
+            
+            if data is None:
+                raise ValueError("输入必须包含 'data' 字段")
+            
+            return data, threshold
+        else:
+            raise ValueError("输入格式错误，需要 dict 类型")

@@ -14,15 +14,15 @@ class DummyModel:
 
     def predict(self, model_input: dict) -> dict:
         """
-        模拟异常检测.
+        模拟异常检测（统一接口）.
 
         Args:
             model_input: 模型输入字典
                 - data: pd.Series 时间序列数据
-                - threshold: Optional[float] 异常阈值（可选）
+                - threshold: Optional[float] 异常阈值（默认 0.7）
 
         Returns:
-            检测结果字典:
+            检测结果字典（与 MLflow Wrapper 一致）:
                 - labels: list[int] 标签列表 (0=正常, 1=异常)
                 - scores: list[float] 异常分数列表 (0-1之间)
         """

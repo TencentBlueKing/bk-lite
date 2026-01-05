@@ -169,12 +169,12 @@ class MLService:
             
             detect_start = time.time()
             
-            # 准备模型输入
+            # 准备模型输入（统一字典格式）
             model_input = {'data': series}
             if request.config and request.config.threshold is not None:
                 model_input['threshold'] = request.config.threshold
             
-            # 调用模型检测
+            # 调用模型检测（统一接口）
             detection_result = self.model.predict(model_input)
             
             detect_time = time.time() - detect_start
