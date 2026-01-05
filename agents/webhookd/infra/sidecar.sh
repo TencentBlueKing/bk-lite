@@ -480,6 +480,7 @@ SERVER_URL=$(echo "$JSON_DATA" | jq -r '.server_url')
 NODE_ID=$(echo "$JSON_DATA" | jq -r '.node_id')
 ZONE_ID=$(echo "$JSON_DATA" | jq -r '.zone_id')
 GROUP_ID=$(echo "$JSON_DATA" | jq -r '.group_id')
+NODE_NAME=$(echo "$JSON_DATA" | jq -r '.node_name')
 
 # 参数校验（优雅的声明式风格）
 validate_param "os" "$OS" "required"
