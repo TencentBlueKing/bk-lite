@@ -21,11 +21,6 @@ const GET_TRAIN_DATA_API: Record<string, string> = {
   anomaly_detection: 'getAnomalyTrainData',
 };
 
-const CREATE_RELEASE_API: Record<string, string> = {
-  timeseries_predict: 'createDatasetRelease',
-  anomaly_detection: 'createAnomalyDatasetRelease',
-};
-
 interface TrainDataFile {
   id: number;
   name: string;
@@ -85,11 +80,13 @@ const DatasetReleaseModal = forwardRef<ModalRef, DatasetReleaseModalProps>(
       try {
         const values = await formRef.current?.validateFields();
 
-        const createReleaseFn = taskApi[CREATE_RELEASE_API[datasetType] as keyof typeof taskApi] as (params: any) => Promise<any>;
-        const result = await createReleaseFn({
-          dataset: parseInt(datasetId),
-          ...values,
-        });
+        const result = await taskApi.createDatasetRelease(
+          datasetType as 'timeseries_predict' | 'anomaly_detection',
+          {
+            dataset: parseInt(datasetId),
+            ...values,
+          }
+        );
 
         message.success('数据集发布成功');
         console.log('发布结果:', result);

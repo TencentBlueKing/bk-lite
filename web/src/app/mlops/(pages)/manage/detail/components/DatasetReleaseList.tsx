@@ -33,26 +33,6 @@ interface DatasetReleaseListProps {
   datasetType: 'timeseries_predict' | 'anomaly_detection' | 'classification' | 'log_clustering' | 'rasa' | 'image_classification' | 'object_detection';
 }
 
-const GET_RELEASES_API: Record<string, string> = {
-  timeseries_predict: 'getDatasetReleases',
-  anomaly_detection: 'getAnomalyDatasetReleases',
-};
-
-const ARCHIVE_RELEASE_API: Record<string, string> = {
-  timeseries_predict: 'archiveDatasetRelease',
-  anomaly_detection: 'archiveAnomalyDatasetRelease',
-};
-
-const UNARCHIVE_RELEASE_API: Record<string, string> = {
-  timeseries_predict: 'unarchiveDatasetRelease',
-  anomaly_detection: 'unarchiveAnomalyDatasetRelease',
-};
-
-const DELETE_RELEASE_API: Record<string, string> = {
-  timeseries_predict: 'deleteDatasetRelease',
-  anomaly_detection: 'deleteAnomalyDatasetRelease',
-};
-
 const SUPPORTED_DATASET_TYPES = ['timeseries_predict', 'anomaly_detection'];
 
 const DatasetReleaseList: React.FC<DatasetReleaseListProps> = ({ datasetType }) => {
@@ -87,12 +67,14 @@ const DatasetReleaseList: React.FC<DatasetReleaseListProps> = ({ datasetType }) 
     if (!isSupportedType) return;
     setLoading(true);
     try {
-      const getReleasesFn = taskApi[GET_RELEASES_API[datasetType] as keyof typeof taskApi] as (params?: { dataset?: number; page?: number; page_size?: number }) => Promise<{ items: DatasetRelease[]; count: number }>;
-      const result = await getReleasesFn({
-        dataset: Number(datasetId),
-        page: pagination.current,
-        page_size: pagination.pageSize,
-      });
+      const result = await taskApi.getDatasetReleases(
+        datasetType as 'timeseries_predict' | 'anomaly_detection',
+        {
+          dataset: Number(datasetId),
+          page: pagination.current,
+          page_size: pagination.pageSize,
+        }
+      );
 
       setDataSource(result.items || []);
       setPagination(prev => ({
@@ -109,8 +91,10 @@ const DatasetReleaseList: React.FC<DatasetReleaseListProps> = ({ datasetType }) 
 
   const handleArchive = async (record: DatasetRelease) => {
     try {
-      const archiveFn = taskApi[ARCHIVE_RELEASE_API[datasetType] as keyof typeof taskApi] as (id: string) => Promise<unknown>;
-      await archiveFn(record.id.toString());
+      await taskApi.archiveDatasetRelease(
+        datasetType as 'timeseries_predict' | 'anomaly_detection',
+        record.id.toString()
+      );
       message.success('归档成功');
       fetchReleases();
     } catch (error) {
@@ -121,8 +105,10 @@ const DatasetReleaseList: React.FC<DatasetReleaseListProps> = ({ datasetType }) 
 
   const handleUnarchive = async (record: DatasetRelease) => {
     try {
-      const unarchiveFn = taskApi[UNARCHIVE_RELEASE_API[datasetType] as keyof typeof taskApi] as (id: string) => Promise<unknown>;
-      await unarchiveFn(record.id.toString());
+      await taskApi.unarchiveDatasetRelease(
+        datasetType as 'timeseries_predict' | 'anomaly_detection',
+        record.id.toString()
+      );
       message.success('发布成功');
       fetchReleases()
     } catch (error) {
@@ -133,8 +119,10 @@ const DatasetReleaseList: React.FC<DatasetReleaseListProps> = ({ datasetType }) 
 
   const handleDeleteRelease = async (record: DatasetRelease) => {
     try {
-      const deleteFn = taskApi[DELETE_RELEASE_API[datasetType] as keyof typeof taskApi] as (id: string) => Promise<unknown>;
-      await deleteFn(record.id.toString());
+      await taskApi.deleteDatasetRelease(
+        datasetType as 'timeseries_predict' | 'anomaly_detection',
+        record.id.toString()
+      );
       message.success(t(`common.delSuccess`));
       fetchReleases();
     } catch (e) {

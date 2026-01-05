@@ -1,6 +1,8 @@
 import useApiClient from '@/utils/request';
 import { TRAINJOB_MAP } from '@/app/mlops/constants';
 
+type DatasetReleaseKey = 'timeseries_predict' | 'anomaly_detection' | 'log_clustering' | 'classification' | 'image_classification' | 'object_detection';
+
 interface TrainTaskParams {
   name: string;
   description?: string;
@@ -238,45 +240,51 @@ const useMlopsTaskApi = () => {
   };
 
   // 创建数据集版本发布（标准方式，从数据集管理页面）
-  const createDatasetRelease = async (params: {
-    dataset: number;
-    version: string;
-    name?: string;
-    description?: string;
-    train_file_id: number;
-    val_file_id: number;
-    test_file_id: number;
-  }) => {
-    return await post('/mlops/timeseries_predict_dataset_releases/', params);
+  const createDatasetRelease = async (
+    key: DatasetReleaseKey,
+    params: {
+      dataset: number;
+      version: string;
+      name?: string;
+      description?: string;
+      train_file_id: number;
+      val_file_id: number;
+      test_file_id: number;
+    }
+  ) => {
+    return await post(`/mlops/${key}_dataset_releases/`, params);
   };
 
   // 获取数据集版本列表
-  const getDatasetReleases = async (params?: { dataset?: number; page?: number; page_size?: number }) => {
+  const getDatasetReleases = async (
+    key: DatasetReleaseKey,
+    params?: { dataset?: number; page?: number; page_size?: number }
+  ) => {
     const queryParams = new URLSearchParams();
     if (params?.dataset) queryParams.append('dataset', params.dataset.toString());
     if (params?.page) queryParams.append('page', params.page.toString());
     if (params?.page_size) queryParams.append('page_size', params.page_size.toString());
-    return await get(`/mlops/timeseries_predict_dataset_releases/?${queryParams.toString()}`);
+    return await get(`/mlops/${key}_dataset_releases/?${queryParams.toString()}`);
   };
 
   // 获取指定数据集版本信息
-  const getDatasetReleaseByID = async (id: any) => {
-    return await get(`/mlops/timeseries_predict_dataset_releases/${id}/`)
+  const getDatasetReleaseByID = async (key: DatasetReleaseKey, id: any) => {
+    return await get(`/mlops/${key}_dataset_releases/${id}/`);
   };
 
   // 归档数据集版本
-  const archiveDatasetRelease = async (id: string) => {
-    return await post(`/mlops/timeseries_predict_dataset_releases/${id}/archive/`);
+  const archiveDatasetRelease = async (key: DatasetReleaseKey, id: string) => {
+    return await post(`/mlops/${key}_dataset_releases/${id}/archive/`);
   };
 
   // 已归档数据集版本恢复发布
-  const unarchiveDatasetRelease = async (id: string) => {
-    return await post(`/mlops/timeseries_predict_dataset_releases/${id}/unarchive/`);
+  const unarchiveDatasetRelease = async (key: DatasetReleaseKey, id: string) => {
+    return await post(`/mlops/${key}_dataset_releases/${id}/unarchive/`);
   };
 
   // 删除数据集版本
-  const deleteDatasetRelease = async (id: string) => {
-    return await del(`/mlops/timeseries_predict_dataset_releases/${id}/`);
+  const deleteDatasetRelease = async (key: DatasetReleaseKey, id: string) => {
+    return await del(`/mlops/${key}_dataset_releases/${id}/`);
   };
 
   // 获取时间序列模型文件URL
@@ -284,48 +292,7 @@ const useMlopsTaskApi = () => {
     return await get(`/mlops/timeseries_predict_train_jobs/download_model/${run_id}/`);
   };
 
-  // ============= 异常检测数据集版本管理 =============
-  // 创建异常检测数据集版本发布
-  const createAnomalyDatasetRelease = async (params: {
-    dataset: number;
-    version: string;
-    name?: string;
-    description?: string;
-    train_file_id: number;
-    val_file_id: number;
-    test_file_id: number;
-  }) => {
-    return await post('/mlops/anomaly_detection_dataset_releases/', params);
-  };
 
-  // 获取异常检测数据集版本列表
-  const getAnomalyDatasetReleases = async (params?: { dataset?: number; page?: number; page_size?: number }) => {
-    const queryParams = new URLSearchParams();
-    if (params?.dataset) queryParams.append('dataset', params.dataset.toString());
-    if (params?.page) queryParams.append('page', params.page.toString());
-    if (params?.page_size) queryParams.append('page_size', params.page_size.toString());
-    return await get(`/mlops/anomaly_detection_dataset_releases/?${queryParams.toString()}`);
-  };
-
-  // 获取指定异常检测数据集版本信息
-  const getAnomalyDatasetReleaseByID = async (id: any) => {
-    return await get(`/mlops/anomaly_detection_dataset_releases/${id}/`);
-  };
-
-  // 归档异常检测数据集版本
-  const archiveAnomalyDatasetRelease = async (id: string) => {
-    return await post(`/mlops/anomaly_detection_dataset_releases/${id}/archive/`);
-  };
-
-  // 已归档异常检测数据集版本恢复发布
-  const unarchiveAnomalyDatasetRelease = async (id: string) => {
-    return await post(`/mlops/anomaly_detection_dataset_releases/${id}/unarchive/`);
-  };
-
-  // 删除异常检测数据集版本
-  const deleteAnomalyDatasetRelease = async (id: string) => {
-    return await del(`/mlops/anomaly_detection_dataset_releases/${id}/`);
-  };
 
   return {
     getAnomalyTaskList,
@@ -366,13 +333,7 @@ const useMlopsTaskApi = () => {
     getDatasetReleases,
     archiveDatasetRelease,
     unarchiveDatasetRelease,
-    deleteDatasetRelease,
-    createAnomalyDatasetRelease,
-    getAnomalyDatasetReleases,
-    getAnomalyDatasetReleaseByID,
-    archiveAnomalyDatasetRelease,
-    unarchiveAnomalyDatasetRelease,
-    deleteAnomalyDatasetRelease
+    deleteDatasetRelease
   }
 
 };

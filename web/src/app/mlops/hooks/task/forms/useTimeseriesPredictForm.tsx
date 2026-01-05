@@ -7,10 +7,10 @@ import type { Option } from '@/types';
 import type { TrainJob, FieldConfig } from '@/app/mlops/types/task';
 import { TIMESERIES_ALGORITHM_CONFIGS, TIMESERIES_ALGORITHM_SCENARIOS } from '@/app/mlops/constants';
 import { AlgorithmFieldRenderer } from '@/app/mlops/components/AlgorithmFieldRenderer';
-import { 
-  transformGroupData, 
+import {
+  transformGroupData,
   reverseTransformGroupData,
-  extractDefaultValues 
+  extractDefaultValues
 } from '@/app/mlops/utils/algorithmConfigUtils';
 
 interface ModalState {
@@ -162,7 +162,7 @@ export const useTimeseriesPredictForm = ({
       description: formValues.name || '',
       hyperopt_config
     };
-    
+
     console.log('===== [formToApi] 提交给后端的数据 =====');
     console.log('[formToApi] result:', JSON.stringify(result, null, 2));
     console.log('[formToApi] hyperopt_config:', JSON.stringify(hyperopt_config, null, 2));
@@ -192,7 +192,7 @@ export const useTimeseriesPredictForm = ({
     if (!dataset_version_id) return;
     setLoadingState((prev) => ({ ...prev, select: true }));
     try {
-      const { dataset } = await getDatasetReleaseByID(dataset_version_id);
+      const { dataset } = await getDatasetReleaseByID('timeseries_predict', dataset_version_id);
       if (dataset && formRef.current) {
         formRef.current.setFieldsValue({
           dataset
@@ -212,7 +212,7 @@ export const useTimeseriesPredictForm = ({
     try {
       if (!formRef.current || !dataset) return;
       // 加载数据集版本
-      const datasetVersions = await getDatasetReleases({ dataset });
+      const datasetVersions = await getDatasetReleases('timeseries_predict', { dataset });
       const _versionOptions = datasetVersions.map((item: any) => ({
         label: item?.name || '',
         value: item?.id
@@ -320,7 +320,7 @@ export const useTimeseriesPredictForm = ({
             ]}
           />
         </Form.Item>
-        
+
         {currentAlgorithm && TIMESERIES_ALGORITHM_SCENARIOS[currentAlgorithm] && (
           <div style={{ marginTop: -16, marginBottom: 24, fontSize: 12, color: '#999' }}>
             {TIMESERIES_ALGORITHM_SCENARIOS[currentAlgorithm]}

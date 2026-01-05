@@ -207,7 +207,8 @@ class AnomalyDetectionTrainJob(MaintainerInfo, TimeInfo, DataPointFeaturesInfo):
         verbose_name="算法模型",
         help_text="使用的异常检测算法模型",
         choices=[
-            ('RandomForest', '随机森林'),
+            ('RandomForest', 'RandomForest'),
+            ('ECOD', 'ECOD'),
         ]
     )
 
