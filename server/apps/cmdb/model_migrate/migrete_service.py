@@ -35,12 +35,12 @@ class ModelMigrate:
 
         # 遍历所有 sheet 页，并将每个 sheet 页的 DataFrame 转换为列表字典
         for sheet_name, sheet_data in sheets_dict.items():
-            # 对 NaN 值进行填充，修改原 DataFrame
-            sheet_data.fillna("", inplace=True)
-
             # 如果 sheet_data 是 Series（单列数据），转换为 DataFrame
             if isinstance(sheet_data, pd.Series):
                 sheet_data = sheet_data.to_frame()  # 将 Series 转换为 DataFrame
+            
+            # 对 NaN 值进行填充，先转换为 object 类型避免类型不兼容警告
+            sheet_data = sheet_data.astype(object).fillna("")
 
             # 将 DataFrame 转换为字典格式，使用 'records' 使每行成为一个字典
             data = sheet_data.to_dict(orient="records")

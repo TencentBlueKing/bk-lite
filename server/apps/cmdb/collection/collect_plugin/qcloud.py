@@ -18,10 +18,7 @@ class QCloudCollectMetrics(CollectBase):
     def _metrics(self):
         return QCLOUD_COLLECT_CLUSTER
 
-    def prom_sql(self):
-        sql = " or ".join(
-            "{}{{instance_id=~\"^{}_.+\"}}".format(m, self.task_id) for m in self._metrics)
-        return sql
+
 
     @staticmethod
     def set_instance_inst_name(data, *args, **kwargs):

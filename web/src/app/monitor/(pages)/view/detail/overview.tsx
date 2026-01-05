@@ -23,13 +23,12 @@ import {
 } from '@/app/monitor/types';
 import { useTranslation } from '@/utils/i18n';
 import {
-  findUnitNameById,
   calculateMetrics,
-  getEnumValueUnit,
   mergeViewQueryKeyValues,
   renderChart,
   getRecentTimeRange,
 } from '@/app/monitor/utils/common';
+import { useUnitTransform } from '@/app/monitor/hooks/useUnitTransform';
 import { useObjectConfigInfo } from '@/app/monitor/hooks/integration/common/getObjectConfig';
 import dayjs, { Dayjs } from 'dayjs';
 import { useInterfaceLabelMap } from '@/app/monitor/hooks/view';
@@ -47,6 +46,7 @@ const Overview: React.FC<ViewDetailProps> = ({
   const { isLoading } = useApiClient();
   const { getMonitorMetrics } = useMonitorApi();
   const { getInstanceQuery } = useViewApi();
+  const { findUnitNameById, getEnumValueUnit } = useUnitTransform();
   const { getDashboardDisplay } = useObjectConfigInfo();
   const { t } = useTranslation();
   const INTERFACE_LABEL_MAP = useInterfaceLabelMap();

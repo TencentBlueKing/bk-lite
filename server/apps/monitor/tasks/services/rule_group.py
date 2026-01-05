@@ -61,19 +61,13 @@ class RuleGrouping:
         """更新监控实例分组"""
         monitor_inst_asso_set = set()
         for rule in self.rules:
-            # if rule.type == MonitorObjectOrganizationRule.CONDITION:
-            #     asso_list = self.get_asso_by_condition_rule(rule)
-            # elif rule.type == MonitorObjectOrganizationRule.SELECT:
-            #     asso_list = self.get_asso_by_select_rule(rule)
-            # else:
-            #     continue
+
             asso_list = RuleGrouping.get_asso_by_condition_rule(rule)
             for instance_id, organization in asso_list:
                 monitor_inst_asso_set.add((instance_id, organization))
 
         exist_instance_map = {(i.monitor_instance_id, i.organization): i.id for i in MonitorInstanceOrganization.objects.all()}
         create_asso_set = monitor_inst_asso_set - set(exist_instance_map.keys())
-        # delete_asso_set = set(exist_instance_map.keys()) - monitor_inst_asso_set
 
         if create_asso_set:
             create_objs = [
@@ -81,7 +75,3 @@ class RuleGrouping:
                 for asso_tuple in create_asso_set
             ]
             MonitorInstanceOrganization.objects.bulk_create(create_objs, batch_size=DatabaseConstants.BULK_CREATE_BATCH_SIZE, ignore_conflicts=True)
-
-        # if delete_asso_set:
-        #     delete_ids = [exist_instance_map[asso_tuple] for asso_tuple in delete_asso_set]
-        #     MonitorInstanceOrganization.objects.filter(id__in=delete_ids).delete()

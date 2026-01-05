@@ -141,7 +141,7 @@ const DeployModal = forwardRef<ModalRef, ModalSuccess>(({ onSuccess }, ref) => {
   const k8sDeployContent = (
     <div className="min-h-[400px] flex items-center justify-center bg-[var(--color-fill-1)]  border-dashed border-[var(--color-primary)] border rounded-xl">
       <div className="text-center py-10 px-5">
-        <div className="inline-flex items-center justify-center w-20 h-20 bg-gradient-to-br from-indigo-500 to-purple-600 rounded-[20px] mb-6">
+        <div className="inline-flex items-center justify-center w-20 h-20 bg-[var(--color-primary)] rounded-[20px] mb-6">
           <RocketOutlined className="text-[40px] text-white" />
         </div>
         <h3 className="text-lg font-semibold text-[var(--color-text-1)] mb-3">

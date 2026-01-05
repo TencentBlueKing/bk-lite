@@ -40,6 +40,8 @@ class ControllerTaskNode(models.Model):
     port = models.IntegerField(verbose_name="端口")
     username = models.CharField(max_length=100, verbose_name="用户名")
     password = models.CharField(max_length=100, verbose_name="密码")
+    private_key = models.TextField(default="", blank=True, verbose_name="SSH私钥")
+    passphrase = models.TextField(default="", blank=True, verbose_name="私钥密码短语")
     status = models.CharField(max_length=100, default="", verbose_name="任务状态")
     result = JSONField(default=dict, verbose_name="结果")
 

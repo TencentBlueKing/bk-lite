@@ -12,7 +12,7 @@ import { BellOutlined, SearchOutlined } from '@ant-design/icons';
 import LineChart from '@/app/monitor/components/charts/lineChart';
 import { TableDataItem, MetricItem, ChartData } from '@/app/monitor/types';
 import { useTranslation } from '@/utils/i18n';
-import { findUnitNameById } from '@/app/monitor/utils/common';
+import { useUnitTransform } from '@/app/monitor/hooks/useUnitTransform';
 import { Dayjs } from 'dayjs';
 import Icon from '@/components/icon';
 
@@ -47,6 +47,7 @@ const LazyMetricItem: React.FC<LazyMetricItemProps> = ({
   const observerRef = useRef<IntersectionObserver | null>(null);
   const [hasBeenVisible, setHasBeenVisible] = useState(false);
   const { t } = useTranslation();
+  const { findUnitNameById } = useUnitTransform();
 
   // 缓存 observer 配置
   const observerOptions = useMemo(
@@ -95,12 +96,11 @@ const LazyMetricItem: React.FC<LazyMetricItemProps> = ({
   }, [item.id, hasBeenVisible, isCancelled, isLoading, observerOptions]);
 
   const getUnit = useCallback(
-    (item: TableDataItem) =>
-      `${
-        findUnitNameById(item.unit)
-          ? '（' + findUnitNameById(item.unit) + '）'
-          : '\u00A0\u00A0'
-      }`,
+    (item: TableDataItem) => {
+      const displayUnit = item.displayUnit === 'short' ? '' : item.displayUnit;
+      const unitName = findUnitNameById(displayUnit) || displayUnit;
+      return unitName ? `（${unitName}）` : '\u00A0\u00A0';
+    },
     [findUnitNameById]
   );
 
@@ -166,7 +166,7 @@ const LazyMetricItem: React.FC<LazyMetricItemProps> = ({
                   ? (item.viewData as ChartData[]) || []
                   : []
               }
-              unit={item.unit}
+              unit={item.displayUnit}
               onXRangeChange={onXRangeChange}
             />
           </>

@@ -21,6 +21,18 @@ class Export:
             self.association_type_map = {i["asst_id"]: i["asst_name"] for i in ASSOCIATION_TYPE}
             self.set_model_name_map()
 
+    @staticmethod
+    def _format_user_display_username(user_option: dict | None):
+        """将用户 option(dict) 格式化为 display_name(username)，返回None表示无法格式化。"""
+        if not user_option:
+            return None
+
+        username = user_option.get("username") or user_option.get("name")
+        display_name = user_option.get("display_name")
+        if display_name and username:
+            return f"{display_name}({username})"
+        return display_name or username
+
     def set_model_name_map(self):
         models = ModelManage.search_model()
         for model in models:
@@ -123,6 +135,11 @@ class Export:
             for attr_info in self.attrs
             if attr_info["attr_type"] in {ORGANIZATION, USER, ENUM}
         }
+        user_option_dict = {
+            attr_info["attr_id"]: {i.get("id"): i for i in attr_info.get("option", [])}
+            for attr_info in self.attrs
+            if attr_info["attr_type"] == USER
+        }
         for inst_info in inst_list:
             sheet_data = [""]
             for attr in self.attrs:
@@ -134,16 +151,45 @@ class Export:
                     #     str([enum_field_dict[attr["attr_id"]].get(i) for i in attr_id_value])
                     # )
                     attr_id_value = inst_info.get(attr["attr_id"], '')
-                    #  TODO 目前只支持单选组织和用户，所以导出返回str即可 若支持单选则返回[]
-                    if isinstance(attr_id_value, list) and len(attr_id_value) > 0:
-                        name = ','.join([str(enum_field_dict[attr["attr_id"]].get(i)) for i in attr_id_value])
-                        sheet_data.append(
-                            name
-                        )
+                    # 主要维护人字段（operator）：支持多值，并格式化为 display_name(username)
+                    if attr["attr_type"] == USER and attr.get("attr_id") == "operator":
+                        if isinstance(attr_id_value, list):
+                            formatted = []
+                            for uid in attr_id_value:
+                                text = self._format_user_display_username(
+                                    user_option_dict.get(attr["attr_id"], {}).get(uid)
+                                )
+                                if text:
+                                    formatted.append(text)
+                                else:
+                                    mapped = enum_field_dict.get(attr["attr_id"], {}).get(uid)
+                                    if mapped is not None:
+                                        formatted.append(str(mapped))
+                                    elif uid not in (None, ""):
+                                        formatted.append(str(uid))
+                            sheet_data.append(",".join(formatted))
+                        else:
+                            text = self._format_user_display_username(
+                                user_option_dict.get(attr["attr_id"], {}).get(attr_id_value)
+                            )
+                            if text:
+                                sheet_data.append(text)
+                            else:
+                                mapped = enum_field_dict.get(attr["attr_id"], {}).get(attr_id_value)
+                                sheet_data.append(str(mapped) if mapped is not None else "")
+                        continue
+
+                    # 其他组织/用户字段保持原有导出格式
+                    # TODO 目前只支持单选组织和用户，所以导出返回str即可 若支持单选则返回[]
+                    if isinstance(attr_id_value, list):
+                        if len(attr_id_value) > 0:
+                            name = ','.join([str(enum_field_dict[attr["attr_id"]].get(i)) for i in attr_id_value])
+                            sheet_data.append(name)
+                        else:
+                            # 兼容空列表，避免 dict.get(list) 触发 TypeError 导致导出 500
+                            sheet_data.append("")
                     else:
-                        sheet_data.append(
-                            str(enum_field_dict[attr["attr_id"]].get(attr_id_value))
-                        )
+                        sheet_data.append(str(enum_field_dict[attr["attr_id"]].get(attr_id_value)))
                     continue
 
                 _value = inst_info.get(attr["attr_id"])

@@ -1,0 +1,35 @@
+name: physcial_server
+version: "2.0.0"
+category: infrastructure
+
+metadata:
+  display_name: "物理服务器"
+  description: "物理服务器硬件信息采集插件，支持脚本方式采集"
+  author: "WeOps"
+  tags: [infrastructure, server, hardware]
+  cloud_protocol: false
+  model_id: physcial_server
+
+# ============================================================================
+# 执行器配置
+# ============================================================================
+executors:
+  # Job 类型（脚本采集）
+  job:
+    type: job
+    timeout: 120
+
+    # 不同操作系统的脚本
+    scripts:
+      linux: plugins/inputs/physcial_server/physcial_server_default_discover.sh
+
+    # 如果有需要可以继承重写 SSHPlugin
+    collector:
+      module: plugins.inputs.physcial_server.physcial_server_info
+      class: PhyscialServerInfo
+
+    # 默认脚本
+    default_script: linux
+
+# 默认执行器
+default_executor: job

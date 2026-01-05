@@ -1,0 +1,101 @@
+# -- coding: utf-8 --
+# @File: base.py
+# @Time: 2025/11/12 14:41
+# @Author: windyzhao
+from apps.cmdb.collection.metrics_cannula import MetricsCannula
+from apps.cmdb.models import CollectModels
+
+
+class BaseCollect(object):
+    COLLECT_PLUGIN = None
+
+    def __init__(self, instance_id, default_metrics=None):
+        self.task = CollectModels.objects.get(id=instance_id)
+        self.default_metrics = default_metrics
+        self.model_id, self.inst_name, self.organization, self.inst_id, self.filter_collect_task = self.format_params()
+
+    def format_params(self):
+        if not self.task.instances:
+            # IP范围采集模式
+            organization = self.task.team
+            if not organization:
+                organization = self.task.params.get("organization")
+                if organization is not None and not isinstance(organization, list):
+                    organization = [organization]
+            return self.task.model_id, None, organization, None, not self.task.is_host
+
+        instance = self.task.instances[0]
+        model_id = instance["model_id"]
+        inst_name = instance["inst_name"]
+        organization = instance.get("organization") or self.task.team
+        if organization is not None and not isinstance(organization, list):
+            organization = [organization]
+        inst_id = instance["_id"]
+        return model_id, inst_name, organization, inst_id, not self.task.is_host
+
+    @property
+    def task_id(self):
+        if self.task.is_k8s:
+            return self.inst_name
+        return self.task.id
+
+    def run(self):
+        if self.COLLECT_PLUGIN is None:
+            raise NotImplementedError("Please implement the collect plugin")
+
+        metrics_cannula = MetricsCannula(inst_id=self.inst_id, organization=self.organization, inst_name=self.inst_name,
+                                         task_id=self.task_id, collect_plugin=self.COLLECT_PLUGIN,
+                                         manual=bool(self.task.input_method), default_metrics=self.default_metrics,
+                                         filter_collect_task=self.filter_collect_task)
+        result = metrics_cannula.collect_controller()
+        format_data = self.format_collect_data(result)
+        return metrics_cannula.collect_data, format_data
+
+    def format_collect_data(self, result):
+        # 强加了一个原始数据，如果原始数据存在则删除，保留原有逻辑
+        raw_data = []
+        # 强加一个总数，这个总数是发现正常数据的总数，不是原始数据的总数
+        all_count = []
+        if result.get("__raw_data__", False) or result.get("__raw_data__", False) == []:
+            raw_data = result.pop("__raw_data__")
+        if result.get("all", False) or result.get("all", False) == 0:
+            all_count = result.pop("all")
+        format_data = {"add": [], "update": [], "delete": [], "association": []}
+        for value in result.values():
+            for operator, datas in value.items():
+                for status, data in datas.items():
+                    for i in data:
+                        assos_result = i.pop("assos_result", {})
+                        format_assos_result = self.format_assos_result(
+                            assos_result)
+                        if format_assos_result:
+                            format_data["association"].extend(
+                                format_assos_result)
+
+                        _data = {"_status": status}
+                        if status == "failed":
+                            update_data = i.get("instance_info")
+                            update_data['_error'] = i.get("error", "")
+                        else:
+                            update_data = i.get("inst_info")
+                        if not update_data:
+                            continue
+                        _data.update(update_data)
+                        format_data[operator].append(_data)
+        if raw_data:
+            format_data["__raw_data__"] = raw_data
+        if raw_data:
+            format_data["all"] = all_count
+        return format_data
+
+    @staticmethod
+    def format_assos_result(assos_result):
+        result = []
+        for status, data in assos_result.items():
+            for i in data:
+                i["_status"] = status
+                result.append(i)
+        return result
+
+    def __call__(self, *args, **kwargs):
+        return self.run()

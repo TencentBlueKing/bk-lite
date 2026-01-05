@@ -16,21 +16,16 @@ class VmwareNodeParams(BaseNodeParams):
         self.PLUGIN_MAP.update({self.model_id: self.plugin_name})
         self.host_field = "ip_addr"
 
-    def get_host_ip_addr(self, host):
-        if isinstance(host, dict):
-            ip_addr = host.get(self.host_field, "")
-        else:
-            ip_addr = host
+    def get_hosts(self):
+        _, ip_addr = super().get_hosts()
         return "hostname", ip_addr
 
     def set_credential(self, *args, **kwargs):
         """
         生成 vmware vc 的凭据
         """
-        _instance_id = self.get_instance_id(instance=kwargs["host"])
-        _password = f"PASSWORD_password_{_instance_id}"
+        _password = f"PASSWORD_password_{self._instance_id}"
         credential_data = {
-            # "password": self.credential.get("password"),
             "username": self.credential.get("username"),
             "password": "${" + _password + "}",
             "port": self.credential.get("port", 443),
@@ -38,17 +33,6 @@ class VmwareNodeParams(BaseNodeParams):
         }
         return credential_data
 
-    def get_instance_id(self, instance):
-        """
-        获取实例 id
-        """
-        return f"{self.instance.id}_{instance['_id']}"
-
     def env_config(self, *args, **kwargs):
-        host = kwargs["host"]
-        _instance_id = self.get_instance_id(instance=host)
-        env_config = {
-            f"PASSWORD_password_{_instance_id}": self.credential.get("password"),
-        }
+        env_config = {f"PASSWORD_password_{self._instance_id}": self.credential.get("password")}
         return env_config
-

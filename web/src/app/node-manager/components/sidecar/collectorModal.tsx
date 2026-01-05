@@ -1,4 +1,4 @@
-import React, {
+import {
   forwardRef,
   useEffect,
   useImperativeHandle,
@@ -46,26 +46,25 @@ const CollectorModal = forwardRef<ModalRef, ModalSuccess>(
     const [tags, setTags] = useState<string[]>([]); //编辑时的tags
 
     useImperativeHandle(ref, () => ({
-      showModal: ({ type, form, title, key, appTag }) => {
+      showModal: ({ type, form, title, key }) => {
+        console.log(type);
         const info = cloneDeep(form) as TableDataItem;
         const {
-          name,
-          description,
-          executable_path,
-          execute_parameters,
+          display_name,
+          display_introduction,
           originalTags = [],
+          is_pre,
         } = form as TableDataItem;
         setKey(key as string);
         setId(form?.id as string);
         setType(type);
         setTitle(title as string);
         setVisible(true);
-        info.name = name || null;
         info.system = info.os || 'linux';
-        info.description = description || null;
-        info.executable_path = executable_path || null;
-        info.execute_parameters = execute_parameters || null;
-        info.appTag = appTag;
+        if (is_pre && type === 'edit') {
+          info.name = display_name;
+          info.description = display_introduction;
+        }
         setFormData(info);
         setTags(originalTags);
       },

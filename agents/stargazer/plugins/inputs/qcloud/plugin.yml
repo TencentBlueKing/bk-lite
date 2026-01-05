@@ -1,0 +1,28 @@
+name: qcloud
+version: "2.0.0"
+category: cloud
+
+metadata:
+  display_name: "腾讯云平台"
+  description: "腾讯云平台资源采集插件"
+  author: "WeOps"
+  tags: [cloud, qcloud, tencent]
+  cloud_protocol: true
+  model_id: qcloud
+
+# ============================================================================
+# 执行器配置
+# ============================================================================
+executors:
+  # Protocol 类型（协议采集）
+  protocol:
+    type: protocol
+    timeout: 120
+
+    # Python 采集器
+    collector:
+      module: plugins.inputs.qcloud.qcloud_info
+      class: TencentCloudManager
+
+# 默认执行器
+default_executor: protocol

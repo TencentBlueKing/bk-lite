@@ -18,10 +18,7 @@ class AliyunCollectMetrics(CollectBase):
     def _metrics(self):
         return ALIYUN_COLLECT_CLUSTER
 
-    def prom_sql(self):
-        sql = " or ".join(
-            "{}{{instance_id=~\"^{}_.+\"}}".format(m, self.task_id) for m in self._metrics)
-        return sql
+
 
     def check_task_id(self, instance_id):
         # 只要是同一个account 就认为是同一个task 为了保证不同的区域的数据能在同一个地方采集上来

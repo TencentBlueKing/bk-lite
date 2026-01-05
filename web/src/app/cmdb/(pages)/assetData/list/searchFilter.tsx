@@ -75,7 +75,8 @@ const SearchFilter: React.FC<SearchFilterProps> = ({
           condition.type = isExact ? 'str=' : 'str*';
           break;
         case 'user':
-          condition.type = 'user[]';
+          // test4.5:如果为用户字段user，则类型为list（operator 字段的数据类型转换）
+          condition.type = 'list[]';
           condition.value = Array.isArray(value) ? value : [value];
           break;
         case 'int':
@@ -137,14 +138,18 @@ const SearchFilter: React.FC<SearchFilterProps> = ({
     switch (selectedAttr?.attr_type) {
       case 'user':
         return (
+          // 筛选项搜索框中，用户字段为多选
           <Select
+            mode="multiple"
             allowClear
             showSearch
             className="value"
-            style={{ width: 200 }}
-            value={Array.isArray(searchValue) ? searchValue[0] : searchValue}
+            style={{ minWidth: 200 }}
+            value={Array.isArray(searchValue) ? searchValue : searchValue ? [searchValue] : []}
             onChange={(e) => onSearchValueChange(e, isExactSearch)}
             onClear={() => onSearchValueChange('', isExactSearch)}
+            maxTagCount={2}
+            maxTagPlaceholder={(omittedValues) => `+${omittedValues.length}`}
             filterOption={(input, opt: any) => {
               if (typeof opt?.children?.props?.text === 'string') {
                 return opt?.children?.props?.text
@@ -157,7 +162,7 @@ const SearchFilter: React.FC<SearchFilterProps> = ({
             {userList.map((opt: UserItem) => (
               <Select.Option key={opt.id} value={opt.id}>
                 <EllipsisWithTooltip
-                  text={`${opt.display_name} (${opt.username})`}
+                  text={`${opt.display_name}(${opt.username})`}
                   className="whitespace-nowrap overflow-hidden text-ellipsis break-all"
                 />
               </Select.Option>

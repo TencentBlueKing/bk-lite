@@ -38,6 +38,9 @@ $NodeId = "${NODE_ID}"
 # [可选] Zone ID for the sidecar (default: 1)
 $ZoneId = "${ZONE_ID}"
 
+# [可选] Node Name for the sidecar (default: "")
+$NodeName = "${NODE_NAME}"
+
 # [可选] Group ID for the sidecar (default: 1)
 $GroupId = "${GROUP_ID}"
 
@@ -143,6 +146,7 @@ function Generate-Config {
 server_url: "$ServerUrl"
 server_api_token: "$ApiToken"
 node_id: "$NodeId"
+node_name: "$NodeName"
 update_interval: 10
 tls_skip_verify: false
 send_status: true
@@ -155,7 +159,7 @@ collector_validation_timeout: "1m"
 collector_shutdown_timeout: "10s"
 collector_configuration_directory: "${INSTALL_PATH}generated"
 windows_drive_range: ""
-tags: ["cloud:$ZoneId", "group:$GroupId"]
+tags: ["cloud:$ZoneId", "group:$GroupId", "install_method:manual", "node_type:container"]
 collector_binaries_accesslist:
 - "${INSTALL_PATH}bin\*"
 "@
@@ -376,7 +380,7 @@ main() {
     SERVER_API_TOKEN=${API_TOKEN}
     ZONE=${ZONE_ID}
     GROUP=${GROUP_ID}
-    NODE_NAME=""
+    NODE_NAME="${NODE_NAME}"
     NODE_ID=${NODE_ID}
 
     # download package
@@ -481,6 +485,7 @@ GROUP_ID=$(echo "$JSON_DATA" | jq -r '.group_id')
 validate_param "os" "$OS" "required"
 validate_param "os" "$OS" "enum" "linux windows"
 validate_param "node_id" "$NODE_ID" "required"
+validate_param "node_name" "$NODE_NAME" "required"
 validate_param "api_token" "$API_TOKEN" "required" "$NODE_ID"
 validate_param "server_url" "$SERVER_URL" "required" "$NODE_ID"
 validate_param "server_url" "$SERVER_URL" "url" "$NODE_ID"
@@ -501,6 +506,7 @@ declare -A replacements=(
   [ZONE_ID]="$ZONE_ID"
   [GROUP_ID]="$GROUP_ID"
   [INSTALL_DIR]="$INSTALL_DIR"
+  [NODE_NAME]="$NODE_NAME"
 )
 
 for key in "${!replacements[@]}"; do

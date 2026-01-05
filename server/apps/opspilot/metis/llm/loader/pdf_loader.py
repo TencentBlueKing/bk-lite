@@ -87,6 +87,7 @@ class PDFLoader:
         for page_number in tqdm(range(1, len(pdf) + 1), desc=f"解析PDF图片[{self.file_path}]"):
             page = pdf[page_number - 1]
             for image_number, image in enumerate(page.get_images(), start=1):
+                tmp_file_path = None
                 try:
                     xref_value = image[0]
                     base_image = pdf.extract_image(xref_value)
@@ -94,13 +95,26 @@ class PDFLoader:
 
                     image_base64 = base64.b64encode(image_bytes).decode("utf-8")
 
-                    with tempfile.NamedTemporaryFile(delete=True, suffix=".png") as tmp_file:
+                    # 在 Windows 上，需要先关闭文件后再使用，避免权限错误
+                    with tempfile.NamedTemporaryFile(delete=False, suffix=".png") as tmp_file:
                         tmp_file.write(image_bytes)
-                        predict_result = self.ocr.predict(tmp_file.name)
-                        metadata = {"format": "image", "page": page_number, "image_base64": image_base64}
-                        docs.append(Document(predict_result, metadata=metadata))
+                        tmp_file.flush()
+                        tmp_file_path = tmp_file.name
+
+                    predict_result = self.ocr.predict(tmp_file_path)
+                    metadata = {"format": "image", "page": page_number, "image_base64": image_base64}
+                    docs.append(Document(predict_result, metadata=metadata))
                 except Exception as e:
                     logger.error(f"解析图片失败: {e}")
+                finally:
+                    # 清理临时文件
+                    if tmp_file_path:
+                        try:
+                            import os
+
+                            os.unlink(tmp_file_path)
+                        except Exception as cleanup_error:
+                            logger.warning(f"清理临时文件失败 {tmp_file_path}: {cleanup_error}")
 
         return docs
 

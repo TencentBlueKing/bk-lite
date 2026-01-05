@@ -22,10 +22,10 @@ export default function FinalCTA() {
         <div className={styles.ctaContainer}>
           <div className={styles.ctaContent}>
             <Heading as="h2" className={styles.ctaTitle}>
-              开启您的 AI 驱动运维探索之旅
+              立即开始，轻量落地智能运维
             </Heading>
             <p className={styles.ctaDescription}>
-              BlueKing Lite 提供轻量化的运维开源方案，从部署到运维，从监控到自动化，帮助社区和团队快速构建智能运维能力。现在就上手，体验下一代开源运维平台。
+              完整的开源运维能力体系，灵活的模块化架构，AI 驱动的智能决策。快速部署，轻松上手，与社区共同打造下一代运维平台。
             </p>
             <div className={styles.ctaButtons}>
               <Link
@@ -58,7 +58,7 @@ export default function FinalCTA() {
           </div>
         </div>
       </div>
-      
+
       {/* QR Code Modal */}
       {showQRCode && (
         <div className={styles.qrModal} onClick={closeQRCode}>
@@ -68,9 +68,9 @@ export default function FinalCTA() {
             </button>
             <h3 className={styles.qrTitle}>扫码加入社区</h3>
             <div className={styles.qrImageContainer}>
-              <img 
-                src="/img/community-qrcode.png" 
-                alt="社区二维码" 
+              <img
+                src="/img/community-qrcode.png"
+                alt="社区二维码"
                 className={styles.qrImage}
               />
             </div>

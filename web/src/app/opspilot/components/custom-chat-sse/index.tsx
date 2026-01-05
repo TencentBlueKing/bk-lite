@@ -170,16 +170,8 @@ const CustomChatSSE: React.FC<CustomChatSSEProps> = ({
             ? 'zhishitupu'
             : 'wendangguanlixitong-wendangguanlixitongtubiao';
 
-      return `<span class="reference-link inline-flex items-center gap-1" 
-                data-ref-number="${refNumber}" 
-                data-chunk-id="${chunkId}" 
-                data-knowledge-id="${knowledgeId}"
-                data-chunk-type="${chunkType}"
-                style="color: #1890ff; cursor: pointer; margin: 0 2px;">
-                <svg class="icon icon-${iconType} inline-block" style="width: 1em; height: 1em; vertical-align: text-bottom;" aria-hidden="true">
-                  <use href="#icon-${iconType}"></use>
-                </svg>
-              </span>`;
+      // 一行内联 HTML，避免换行和缩进
+      return `<span class="reference-link inline-flex items-center gap-1" data-ref-number="${refNumber}" data-chunk-id="${chunkId}" data-knowledge-id="${knowledgeId}" data-chunk-type="${chunkType}" style="color: #1890ff; cursor: pointer; margin: 0 2px;"><svg class="icon icon-${iconType} inline-block" style="width: 1em; height: 1em; vertical-align: text-bottom;" aria-hidden="true"><use href="#icon-${iconType}"></use></svg></span>`;
     });
   }, []);
 
@@ -307,8 +299,10 @@ const CustomChatSSE: React.FC<CustomChatSSEProps> = ({
 
   const renderContent = (msg: CustomChatMessage) => {
     const { content, knowledgeBase, images } = msg;
-    const parsedContent = parseReferenceLinks(content || '');
-    const parsedSuggestionContent = parseSuggestionLinks(parsedContent);
+    // 渲染前先替换 reference-link 和 suggestion-link
+    let replacedContent = parseReferenceLinks(content || '');
+    replacedContent = parseSuggestionLinks(replacedContent);
+    const html = md.render(replacedContent);
 
     return (
       <>
@@ -329,7 +323,7 @@ const CustomChatSSE: React.FC<CustomChatSSEProps> = ({
           </div>
         )}
         <div
-          dangerouslySetInnerHTML={{ __html: md.render(parsedSuggestionContent) }}
+          dangerouslySetInnerHTML={{ __html: html }}
           className={styles.markdownBody}
           onClick={e => {
             handleReferenceClick(e);
