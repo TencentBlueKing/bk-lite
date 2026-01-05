@@ -7,6 +7,7 @@ import {
 } from '@ant-design/icons';
 import { useTranslation } from '@/utils/i18n';
 import GroupSelect from '@/components/group-tree-select';
+import EllipsisWithTooltip from '@/components/ellipsis-with-tooltip';
 
 /**
  * 表格渲染器 - 用于渲染控制器安装表格的列
@@ -41,17 +42,22 @@ export const useTableRenderer = () => {
         ...newData[index],
         [name]: value,
       };
-
       // onChange时触发验证
       let errorMsg: string | null = null;
-
+      let valueToValidate = value;
+      if (
+        name === 'password' &&
+        newData[index]['auth_type'] === 'private_key'
+      ) {
+        valueToValidate = newData[index]['private_key'];
+      }
       // 必填验证
       if (required) {
         if (
-          value === undefined ||
-          value === null ||
-          value === '' ||
-          (Array.isArray(value) && value.length === 0)
+          valueToValidate === undefined ||
+          valueToValidate === null ||
+          valueToValidate === '' ||
+          (Array.isArray(valueToValidate) && valueToValidate.length === 0)
         ) {
           errorMsg = t('common.required');
         }
@@ -61,9 +67,13 @@ export const useTableRenderer = () => {
       if (rules.length > 0 && !errorMsg) {
         for (const rule of rules) {
           if (rule.type === 'pattern') {
-            if (value !== undefined && value !== null && value !== '') {
+            if (
+              valueToValidate !== undefined &&
+              valueToValidate !== null &&
+              valueToValidate !== ''
+            ) {
               const regex = new RegExp(rule.pattern);
-              if (!regex.test(String(value))) {
+              if (!regex.test(String(valueToValidate))) {
                 errorMsg = rule.message || t('common.formatError');
                 break;
               }
@@ -187,6 +197,103 @@ export const useTableRenderer = () => {
                   onChange={(value) => handleChange(value, record, index)}
                 />
               </div>
+              {errorMsg && (
+                <Tooltip title={errorMsg}>
+                  <ExclamationCircleFilled className="text-[#ff4d4f] text-[14px] cursor-pointer flex-shrink-0" />
+                </Tooltip>
+              )}
+            </div>
+          );
+        };
+        break;
+
+      case 'auth_input':
+        column.render = (text: any, record: any, index: number) => {
+          const errorMsg = record[`${name}_error`];
+          const authType = record['auth_type'] || 'password';
+          const fileName = record['key_file_name'];
+
+          if (authType === 'private_key') {
+            return (
+              <div className="flex items-center gap-[8px]">
+                {fileName ? (
+                  <div className="inline-flex items-center gap-2 text-[var(--color-text-1)] max-w-full group">
+                    <EllipsisWithTooltip
+                      className="overflow-hidden text-ellipsis whitespace-nowrap"
+                      text={fileName}
+                    />
+                    <span
+                      className="cursor-pointer opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0"
+                      style={{
+                        fontSize: 16,
+                        color: 'var(--color-primary)',
+                        fontWeight: 'bold',
+                      }}
+                      onClick={() => {
+                        const newData = [...dataSource];
+                        newData[index] = {
+                          ...newData[index],
+                          [name]: '',
+                          private_key: '',
+                          key_file_name: undefined,
+                        };
+                        onTableDataChange(newData);
+                      }}
+                      title={t('common.delete')}
+                    >
+                      ×
+                    </span>
+                  </div>
+                ) : (
+                  <Button
+                    className="flex-1"
+                    onClick={() => {
+                      const input = document.createElement('input');
+                      input.type = 'file';
+                      input.accept = '.txt';
+                      input.onchange = (e: any) => {
+                        const file = e.target.files[0];
+                        if (file) {
+                          const reader = new FileReader();
+                          reader.onload = (event) => {
+                            const content = event.target?.result as string;
+                            const newData = [...dataSource];
+                            newData[index] = {
+                              ...newData[index],
+                              [name]: '',
+                              private_key: content,
+                              key_file_name: file.name,
+                              [`${name}_error`]: null,
+                            };
+                            onTableDataChange(newData);
+                          };
+                          reader.readAsText(file);
+                        }
+                      };
+                      input.click();
+                    }}
+                  >
+                    {t('node-manager.cloudregion.node.uploadPrivateKey')}
+                  </Button>
+                )}
+                {errorMsg && (
+                  <Tooltip title={errorMsg}>
+                    <ExclamationCircleFilled className="text-[#ff4d4f] text-[14px] cursor-pointer flex-shrink-0" />
+                  </Tooltip>
+                )}
+              </div>
+            );
+          }
+
+          return (
+            <div className="flex items-center gap-[8px]">
+              <Input.Password
+                value={record[name]}
+                placeholder={widget_props.placeholder}
+                onChange={(e) => handleChange(e.target.value, record, index)}
+                status={errorMsg ? 'error' : ''}
+                className="flex-1"
+              />
               {errorMsg && (
                 <Tooltip title={errorMsg}>
                   <ExclamationCircleFilled className="text-[#ff4d4f] text-[14px] cursor-pointer flex-shrink-0" />
