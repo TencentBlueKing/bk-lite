@@ -80,9 +80,6 @@ export const useTimeseriesPredictForm = ({
 
   // 后端数据 → 表单数据
   const apiToForm = (data: any) => {
-    console.log('===== [apiToForm] 从后端读取的原始数据 =====');
-    console.log('[apiToForm] data:', JSON.stringify(data, null, 2));
-    console.log('[apiToForm] hyperopt_config:', JSON.stringify(data.hyperopt_config, null, 2));
     const config = data.hyperopt_config || {};
     const algorithm = data.algorithm;
     const algorithmConfig = TIMESERIES_ALGORITHM_CONFIGS[algorithm];
@@ -163,9 +160,6 @@ export const useTimeseriesPredictForm = ({
       hyperopt_config
     };
 
-    console.log('===== [formToApi] 提交给后端的数据 =====');
-    console.log('[formToApi] result:', JSON.stringify(result, null, 2));
-    console.log('[formToApi] hyperopt_config:', JSON.stringify(hyperopt_config, null, 2));
     return result;
   };
 
