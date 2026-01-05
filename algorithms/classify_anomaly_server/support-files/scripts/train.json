@@ -1,0 +1,31 @@
+{
+  "model": {
+    "type": "ECOD",
+    "name": "anomaly_ecod_model"
+  },
+  "hyperparams": {
+    "use_feature_engineering": false,
+    "random_state": 42,
+    "max_evals": 30,
+    "metric": "f1",
+    "search_space": {
+      "contamination": [0.49, 0.50, 0.51, 0.52, 0.53, 0.54, 0.55]
+    }
+  },
+  "feature_engineering": {
+    "lag_periods": [1, 2, 3],
+    "rolling_windows": [12, 24, 48],
+    "rolling_features": ["mean", "std", "min", "max"],
+    "use_temporal_features": true,
+    "use_cyclical_features": false,
+    "use_diff_features": true,
+    "diff_periods": [1]
+  },
+  "preprocessing": {
+    "handle_missing": "interpolate",
+    "max_missing_ratio": 0.3
+  },
+  "mlflow": {
+    "experiment_name": "anomaly_detection_ecod"
+  }
+}
