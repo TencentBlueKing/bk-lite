@@ -197,14 +197,14 @@ class MLService:
             result_points = []
             anomaly_count = 0
             for i, point in enumerate(request.data):
-                is_anomaly = bool(labels[i])
-                if is_anomaly:
+                label = int(labels[i])  # 0=正常, 1=异常
+                if label == 1:
                     anomaly_count += 1
                     
                 result_points.append(AnomalyPoint(
                     timestamp=point.timestamp,
                     value=point.value,
-                    is_anomaly=is_anomaly,
+                    label=label,
                     anomaly_score=float(scores[i])
                 ))
             

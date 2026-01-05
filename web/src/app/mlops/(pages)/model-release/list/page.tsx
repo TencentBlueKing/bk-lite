@@ -48,6 +48,7 @@ const ModelRelease = () => {
     getClassificationServingsList, deleteClassificationServing, updateClassificationServings,
     stopTimeseriesPredictServingContainer,
     startTimeseriesPredictServingContainer,
+    startAnomalyDetectionServingContainer, stopAnomalyDetectionServingContainer
   } = useMlopsModelReleaseApi();
   const [trainjobs, setTrainjobs] = useState<Option[]>([]);
   const [tableData, setTableData] = useState<TableData[]>([]);
@@ -223,7 +224,7 @@ const ModelRelease = () => {
 
   // 容器启动映射
   const containerStartMap: Record<string, ((id: number) => Promise<void>) | null> = {
-    'anomaly_detection': null,
+    'anomaly_detection': startAnomalyDetectionServingContainer,
     'rasa': null,
     'log_clustering': null,
     'timeseries_predict': startTimeseriesPredictServingContainer,
@@ -234,7 +235,7 @@ const ModelRelease = () => {
 
   // 容器停止映射
   const containerStopMap: Record<string, ((id: number) => Promise<void>) | null> = {
-    'anomaly_detection': null,
+    'anomaly_detection': stopAnomalyDetectionServingContainer,
     'rasa': null,
     'log_clustering': null,
     'timeseries_predict': stopTimeseriesPredictServingContainer,

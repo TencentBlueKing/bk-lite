@@ -42,11 +42,32 @@ class PredictRequest(BaseModel):
     )
     
     def to_series(self) -> pd.Series:
-        """转换为 pandas Series."""
+        """转换为 pandas Series，自动处理排序和去重."""
+        from loguru import logger
+        
         # 从Unix时间戳（秒级）转换为pd.Timestamp，不带时区（naive datetime）
         timestamps = pd.to_datetime([point.timestamp for point in self.data], unit='s')
         values = [point.value for point in self.data]
-        return pd.Series(values, index=timestamps)
+        series = pd.Series(values, index=timestamps)
+        
+        original_count = len(series)
+        
+        # 自动排序（如果未排序）
+        if not series.index.is_monotonic_increasing:
+            logger.warning(f"⚠️  时间戳未按升序排列，自动排序")
+            series = series.sort_index()
+        
+        # 去重（如果有重复时间戳，保留最后一个值）
+        if series.index.has_duplicates:
+            duplicate_count = series.index.duplicated().sum()
+            logger.warning(f"⚠️  发现 {duplicate_count} 个重复时间戳，保留最后出现的值")
+            series = series[~series.index.duplicated(keep='last')]
+        
+        # 记录处理结果
+        if len(series) != original_count:
+            logger.info(f"📊 数据处理: 输入 {original_count} 个点 -> 输出 {len(series)} 个点")
+        
+        return series
 
 
 class AnomalyPoint(BaseModel):
@@ -54,7 +75,7 @@ class AnomalyPoint(BaseModel):
     
     timestamp: int = Field(..., description="Unix时间戳（秒级）")
     value: float = Field(..., description="原始观测值")
-    is_anomaly: bool = Field(..., description="是否为异常点")
+    label: int = Field(..., description="标签: 0=正常, 1=异常")
     anomaly_score: float = Field(..., description="异常分数（越高越异常）")
 
 

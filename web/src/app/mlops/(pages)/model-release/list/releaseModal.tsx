@@ -92,13 +92,6 @@ const ReleaseModal = forwardRef<ModalRef, ReleaseModalProps>(({ trainjobs, activ
             >
               <Select options={trainjobs} placeholder={t(`model-release.selectTraintask`)} />
             </Form.Item>
-            <Form.Item
-              name='anomaly_threshold'
-              label={t(`model-release.modelThreshold`)}
-              rules={[{ required: true, message: t('common.inputMsg') }]}
-            >
-              <InputNumber className="w-full" placeholder={t(`model-release.inputThreshold`)} />
-            </Form.Item>
           </>
         );
       

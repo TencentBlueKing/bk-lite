@@ -69,7 +69,7 @@ else
     PORT_MAPPING="${CONTAINER_PORT}"
 fi
 
-# 启动 serving 容器（使用传入的网络模式）
+# 启动 serving 容器（使用 Makefile 统一入口）
 DOCKER_OUTPUT=$(docker run -d \
     --name "$ID" \
     --network "$NETWORK_MODE" \
@@ -85,9 +85,9 @@ DOCKER_OUTPUT=$(docker run -d \
     -e MLFLOW_MODEL_URI="$MLFLOW_MODEL_URI" \
     -e WORKERS="$WORKERS" \
     -e ALLOW_DUMMY_FALLBACK="false" \
-    --entrypoint "uv" \
+    --entrypoint "make" \
     "$TRAIN_IMAGE" \
-    run bentoml serve classify_timeseries_server.serving.service:MLService 2>&1)
+    serving 2>&1)
 
 DOCKER_STATUS=$?
 
