@@ -33,11 +33,17 @@ const BatchEditModal = forwardRef<ModalRef, BatchEditModalProps>(
     const [enabledFields, setEnabledFields] = useState<{
       [key: string]: boolean;
     }>({});
+    const [authTypeValue, setAuthTypeValue] = useState<string | undefined>();
+    const [uploadedFileName, setUploadedFileName] = useState<
+      string | undefined
+    >();
 
     useImperativeHandle(ref, () => ({
       showModal: (config) => {
         setColumns(config.columns || []);
         setEnabledFields({});
+        setAuthTypeValue(undefined);
+        setUploadedFileName(undefined);
         form.resetFields();
         setVisible(true);
       },
@@ -56,7 +62,13 @@ const BatchEditModal = forwardRef<ModalRef, BatchEditModalProps>(
     const renderFormItem = (column: any) => {
       const isEnabled = enabledFields[column.name];
       const isDisabled = !isEnabled;
-      const fieldDisabled = column.widget_props?.disabled === true;
+      // password/auth_input字段额外检查是否依赖auth_type
+      const isPasswordField =
+        column.name === 'password' || column.type === 'auth_input';
+      const needAuthType = isPasswordField && !authTypeValue;
+      const fieldDisabled =
+        column.widget_props?.disabled === true ||
+        (isPasswordField && needAuthType);
       let widget = null;
 
       switch (column.type) {
@@ -76,6 +88,64 @@ const BatchEditModal = forwardRef<ModalRef, BatchEditModalProps>(
             />
           );
           break;
+        case 'auth_input':
+          if (authTypeValue === 'private_key') {
+            widget = uploadedFileName ? (
+              <div className="relative group py-1 text-[var(--color-text-1)] truncate">
+                {uploadedFileName}
+                <span
+                  className="absolute top-0 right-0 cursor-pointer opacity-0 group-hover:opacity-100 transition-opacity"
+                  style={{
+                    fontSize: 16,
+                    color: 'var(--color-primary)',
+                    fontWeight: 'bold',
+                  }}
+                  onClick={() => {
+                    setUploadedFileName(undefined);
+                    form.setFieldValue(column.name, undefined);
+                    form.setFieldValue('private_key', undefined);
+                  }}
+                  title={t('common.delete') || '删除'}
+                >
+                  ×
+                </span>
+              </div>
+            ) : (
+              <Button
+                disabled={isDisabled}
+                onClick={() => {
+                  const input = document.createElement('input');
+                  input.type = 'file';
+                  input.accept = '.txt';
+                  input.onchange = (e: any) => {
+                    const file = e.target.files[0];
+                    if (file) {
+                      const reader = new FileReader();
+                      reader.onload = (event) => {
+                        const content = event.target?.result as string;
+                        // 将密钥内容存储到private_key字段，清空password字段
+                        form.setFieldValue('private_key', content);
+                        form.setFieldValue(column.name, '');
+                        setUploadedFileName(file.name);
+                      };
+                      reader.readAsText(file);
+                    }
+                  };
+                  input.click();
+                }}
+              >
+                {t('node-manager.cloudregion.node.uploadPrivateKey')}
+              </Button>
+            );
+          } else {
+            widget = (
+              <Input.Password
+                disabled={isDisabled}
+                placeholder={column.widget_props?.placeholder}
+              />
+            );
+          }
+          break;
         case 'inputNumber':
           widget = (
             <InputNumber
@@ -93,7 +163,20 @@ const BatchEditModal = forwardRef<ModalRef, BatchEditModalProps>(
             <Select
               disabled={isDisabled}
               placeholder={column.widget_props?.placeholder}
-              options={column.options || []}
+              options={column.widget_props?.options || []}
+              allowClear={column.name === 'auth_type'}
+              onChange={(value) => {
+                if (column.name === 'auth_type') {
+                  setAuthTypeValue(value);
+                  if (!value) {
+                    setEnabledFields((prev) => ({
+                      ...prev,
+                      password: false,
+                    }));
+                    form.setFieldValue('password', undefined);
+                  }
+                }
+              }}
             />
           );
           break;
@@ -154,6 +237,13 @@ const BatchEditModal = forwardRef<ModalRef, BatchEditModalProps>(
             editedFields[key] = value;
           }
         });
+        if (uploadedFileName) {
+          editedFields.key_file_name = uploadedFileName;
+          const privateKeyValue = form.getFieldValue('private_key');
+          if (privateKeyValue) {
+            editedFields.private_key = privateKeyValue;
+          }
+        }
         // 如果所有字段都为空，提示用户
         if (Object.keys(editedFields).length === 0) {
           message.warning(
@@ -171,6 +261,8 @@ const BatchEditModal = forwardRef<ModalRef, BatchEditModalProps>(
     const handleCancel = () => {
       setVisible(false);
       setEnabledFields({});
+      setAuthTypeValue(undefined);
+      setUploadedFileName(undefined);
       form.resetFields();
     };
 

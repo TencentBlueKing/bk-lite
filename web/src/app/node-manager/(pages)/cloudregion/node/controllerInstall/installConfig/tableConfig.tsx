@@ -68,9 +68,30 @@ export const useTableConfig = (installMethod: string) => {
       },
     },
     {
+      name: 'auth_type',
+      label: t('node-manager.cloudregion.node.authType'),
+      type: 'select',
+      required: true,
+      default_value: 'password',
+      widget_props: {
+        placeholder: t('common.selectTip'),
+        options: [
+          {
+            label: t('node-manager.cloudregion.node.password'),
+            value: 'password',
+          },
+          {
+            label: t('node-manager.cloudregion.node.privateKey'),
+            value: 'private_key',
+          },
+        ],
+      },
+    },
+    {
       name: 'password',
       label: t('node-manager.cloudregion.node.loginPassword'),
-      type: 'password',
+      excel_label: t('node-manager.cloudregion.node.excelLoginPassword'),
+      type: 'auth_input',
       required: true,
       widget_props: {
         placeholder: t('common.inputTip'),
