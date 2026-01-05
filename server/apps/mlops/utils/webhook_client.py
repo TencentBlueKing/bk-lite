@@ -144,7 +144,7 @@ class WebhookClient:
             raise WebhookError(f"请求 webhookd 失败: {e}")
     
     @staticmethod
-    def serve(serving_id: str, mlflow_tracking_uri: str, mlflow_model_uri: str, port: int = None) -> dict:
+    def serve(serving_id: str, mlflow_tracking_uri: str, mlflow_model_uri: str, port: int = None, train_image: str = None) -> dict:
         """
         启动 serving 服务
         
@@ -153,6 +153,7 @@ class WebhookClient:
             mlflow_tracking_uri: MLflow tracking server URL
             mlflow_model_uri: MLflow model URI，如 "models:/model_name/version"
             port: 用户指定端口，为 None 时由 docker 自动分配
+            train_image: 训练镜像名称，为 None 时由 webhookd 使用默认镜像
         
         Returns:
             dict: 容器状态信息，格式: {"status": "success", "id": "...", "state": "running", "port": "3042", "detail": "Up"}
@@ -169,6 +170,10 @@ class WebhookClient:
         # 仅在用户指定端口时传递
         if port is not None:
             payload["port"] = port
+        
+        # 仅在指定训练镜像时传递
+        if train_image is not None:
+            payload["train_image"] = train_image
         
         # 读取并传递 network_mode
         network_mode = os.getenv('MLOPS_DOCKER_NETWORK')
@@ -187,7 +192,7 @@ class WebhookClient:
     @staticmethod
     def train(job_id: str, bucket: str, dataset: str, config: str,
               minio_endpoint: str, mlflow_tracking_uri: str,
-              minio_access_key: str, minio_secret_key: str) -> dict:
+              minio_access_key: str, minio_secret_key: str, train_image: str = None) -> dict:
         """
         启动训练任务
         
@@ -200,6 +205,7 @@ class WebhookClient:
             mlflow_tracking_uri: MLflow tracking server URL
             minio_access_key: MinIO access key
             minio_secret_key: MinIO secret key
+            train_image: 训练镜像名称，为 None 时由 webhookd 使用默认镜像
         
         Returns:
             dict: webhook 响应数据
@@ -217,6 +223,10 @@ class WebhookClient:
             "minio_access_key": minio_access_key,
             "minio_secret_key": minio_secret_key
         }
+        
+        # 仅在指定训练镜像时传递
+        if train_image is not None:
+            payload["train_image"] = train_image
         
         # 读取并传递 network_mode
         network_mode = os.getenv('MLOPS_DOCKER_NETWORK')

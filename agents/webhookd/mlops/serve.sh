@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # webhookd mlops serve script
-# 接收 JSON: {"id": "serving-001", "mlflow_tracking_uri": "http://127.0.0.1:15000", "mlflow_model_uri": "models:/model/1", "workers": 2, "network_mode": "bridge"}
+# 接收 JSON: {"id": "serving-001", "mlflow_tracking_uri": "http://127.0.0.1:15000", "mlflow_model_uri": "models:/model/1", "train_image": "classify-timeseries:latest", "workers": 2, "network_mode": "bridge"}
 
 set -e
 
@@ -24,10 +24,16 @@ MLFLOW_MODEL_URI=$(echo "$JSON_DATA" | jq -r '.mlflow_model_uri // empty')
 WORKERS=$(echo "$JSON_DATA" | jq -r '.workers // "2"')
 PORT=$(echo "$JSON_DATA" | jq -r '.port // empty')
 NETWORK_MODE=$(echo "$JSON_DATA" | jq -r '.network_mode // "bridge"')
+TRAIN_IMAGE=$(echo "$JSON_DATA" | jq -r '.train_image // empty')
 
 # 验证必需参数
 if [ -z "$ID" ] || [ -z "$MLFLOW_TRACKING_URI" ] || [ -z "$MLFLOW_MODEL_URI" ]; then
     json_error "MISSING_REQUIRED_FIELD" "${ID:-unknown}" "Missing required fields (id, mlflow_tracking_uri, mlflow_model_uri)"
+    exit 1
+fi
+
+if [ -z "$TRAIN_IMAGE" ]; then
+    json_error "MISSING_TRAIN_IMAGE" "$ID" "Missing required field: train_image"
     exit 1
 fi
 

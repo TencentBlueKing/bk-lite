@@ -5,7 +5,7 @@
 # 工作目录
 MLOPS_DIR="${MLOPS_DIR:-/opt/webhookd/mlops}"
 
-# 训练镜像
+# 训练镜像（如果没有从 JSON 传入，使用此默认值）
 TRAIN_IMAGE="${TRAIN_IMAGE:-classify-timeseries:latest}"
 
 # 日志函数

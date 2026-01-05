@@ -155,7 +155,8 @@ class TimeSeriesPredictTrainJobViewSet(ModelViewSet):
                 minio_endpoint=minio_endpoint,
                 mlflow_tracking_uri=mlflow_tracking_uri,
                 minio_access_key=minio_access_key,
-                minio_secret_key=minio_secret_key
+                minio_secret_key=minio_secret_key,
+                train_image="classify-timeseries:latest"
             )
             
             # 更新任务状态
@@ -852,7 +853,7 @@ class TimeSeriesPredictServingViewSet(ModelViewSet):
             
             try:
                 # 调用 WebhookClient 启动服务
-                result = WebhookClient.serve(container_id, mlflow_tracking_uri, model_uri, port=serving.port)
+                result = WebhookClient.serve(container_id, mlflow_tracking_uri, model_uri, port=serving.port, train_image="classify-timeseries:latest")
                 
                 # 启动成功，仅更新容器信息
                 serving.container_info = result
@@ -997,7 +998,7 @@ class TimeSeriesPredictServingViewSet(ModelViewSet):
                 logger.info(f"使用新配置启动容器: {container_id}, Model URI: {model_uri}, Port: {instance.port or 'auto'}")
                 
                 # 启动新容器
-                result = WebhookClient.serve(container_id, mlflow_tracking_uri, model_uri, port=instance.port)
+                result = WebhookClient.serve(container_id, mlflow_tracking_uri, model_uri, port=instance.port, train_image="classify-timeseries:latest")
                 
                 # 更新容器信息（status 由用户控制，不修改）
                 instance.container_info = result
@@ -1058,7 +1059,7 @@ class TimeSeriesPredictServingViewSet(ModelViewSet):
             
             try:
                 # 调用 WebhookClient 启动服务
-                result = WebhookClient.serve(serving_id, mlflow_tracking_uri, model_uri, port=serving.port)
+                result = WebhookClient.serve(serving_id, mlflow_tracking_uri, model_uri, port=serving.port, train_image="classify-timeseries:latest")
                 
                 # 正常启动成功，仅更新容器信息
                 serving.container_info = result

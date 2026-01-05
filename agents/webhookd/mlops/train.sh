@@ -1,13 +1,16 @@
 #!/bin/bash
 
 # webhookd mlops train script
-# 接收 JSON: {"id": "train-001", "bucket": "datasets", "dataset": "file.zip", "config": "config.yml", "network_mode": "host", "minio_endpoint": "http://127.0.0.1:9000", "mlflow_tracking_uri": "http://127.0.0.1:15000", "minio_access_key": "...", "minio_secret_key": "..."}
+# 接收 JSON: {"id": "train-001", "bucket": "datasets", "dataset": "file.zip", "config": "config.yml", "train_image": "classify-timeseries:latest", "network_mode": "host", "minio_endpoint": "http://127.0.0.1:9000", "mlflow_tracking_uri": "http://127.0.0.1:15000", "minio_access_key": "...", "minio_secret_key": "..."}
 
 set -e
 
 # 加载公共配置
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-source "$SCRIPT_DIR/common.sh"
+source "$SCRIPT_DIR/common.sh" 2>&1 || {
+    echo '{"status":"error","code":"COMMON_SH_LOAD_FAILED","message":"Failed to load common.sh"}' >&2
+    exit 1
+}
 
 # 解析传入的 JSON 数据（第一个参数）
 if [ -z "$1" ]; then
@@ -17,8 +20,17 @@ fi
 
 JSON_DATA="$1"
 
-# 提取必需参数
-ID=$(echo "$JSON_DATA" | jq -r '.id // empty')
+# 检查 jq 是否可用
+if ! command -v jq >/dev/null 2>&1; then
+    echo '{"status":"error","code":"JQ_NOT_FOUND","message":"jq command not found"}' >&2
+    exit 1
+fi
+
+# 提取必需参数（添加错误处理）
+ID=$(echo "$JSON_DATA" | jq -r '.id // empty' 2>/dev/null) || {
+    echo '{"status":"error","code":"JSON_PARSE_FAILED","message":"Failed to parse JSON data"}' >&2
+    exit 1
+}
 BUCKET=$(echo "$JSON_DATA" | jq -r '.bucket // empty')
 DATASET=$(echo "$JSON_DATA" | jq -r '.dataset // empty')
 CONFIG=$(echo "$JSON_DATA" | jq -r '.config // empty')
@@ -27,6 +39,7 @@ MLFLOW_TRACKING_URI=$(echo "$JSON_DATA" | jq -r '.mlflow_tracking_uri // empty')
 MINIO_ACCESS_KEY=$(echo "$JSON_DATA" | jq -r '.minio_access_key // empty')
 MINIO_SECRET_KEY=$(echo "$JSON_DATA" | jq -r '.minio_secret_key // empty')
 NETWORK_MODE=$(echo "$JSON_DATA" | jq -r '.network_mode // "host"')
+TRAIN_IMAGE=$(echo "$JSON_DATA" | jq -r '.train_image // empty')
 
 # 验证必需参数
 if [ -z "$ID" ] || [ -z "$BUCKET" ] || [ -z "$DATASET" ] || [ -z "$CONFIG" ]; then
@@ -41,6 +54,11 @@ fi
 
 if [ -z "$MINIO_ACCESS_KEY" ] || [ -z "$MINIO_SECRET_KEY" ]; then
     json_error "MISSING_CREDENTIALS" "$ID" "Missing MinIO credentials"
+    exit 1
+fi
+
+if [ -z "$TRAIN_IMAGE" ]; then
+    json_error "MISSING_TRAIN_IMAGE" "$ID" "Missing required field: train_image"
     exit 1
 fi
 
