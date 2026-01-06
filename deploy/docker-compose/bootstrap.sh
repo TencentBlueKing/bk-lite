@@ -897,10 +897,19 @@ tls {
   key_file: "/etc/nats/certs/server.key"
   ca_file: "/etc/nats/certs/ca.crt"
 }
-
+leafnodes {
+    port: 7422
+    tls {
+        cert_file: "/etc/nats/certs/server.crt"
+        key_file: "/etc/nats/certs/server.key"
+        ca_file: "/etc/nats/certs/ca.crt"
+        verify: true
+    }
+}
 jetstream: enabled
 jetstream {
   store_dir=/nats/storage
+  domain=bklite
 }
 
 server_name=nats-server

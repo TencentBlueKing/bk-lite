@@ -68,6 +68,7 @@ services:
       - nats:/nats
     ports:
       - "4222:4222"
+      - "7422:7422"
     command:
       - "-c"
       - "/etc/nats/nats.conf"
