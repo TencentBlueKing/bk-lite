@@ -127,7 +127,7 @@ const BatchEditModal = forwardRef<ModalRef, BatchEditModalProps>(
                       const reader = new FileReader();
                       reader.onload = (event) => {
                         const content = event.target?.result as string;
-                        // 将密钥内容存储到private_key字段，清空password字段
+                        // 将秘钥内容存储到private_key字段，清空password字段
                         form.setFieldValue('private_key', content);
                         form.setFieldValue(column.name, '');
                         setUploadedFileName(file.name);
