@@ -43,6 +43,7 @@ def deployed_cloud_services(data: dict):
     password = data["password"]
     cloud_region_id = data["cloud_region_id"]
     cloudregion_env = RegionService.get_cloud_region_envconfig(cloud_region_id)
+    cloudregion_env.update(cloud_region_id=cloud_region_id)
 
     services = CloudRegionService.objects.filter(id=cloud_region_id)
 
