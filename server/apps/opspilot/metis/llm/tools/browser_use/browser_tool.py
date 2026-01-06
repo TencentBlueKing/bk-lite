@@ -1,12 +1,14 @@
 """浏览器操作工具 - 使用Browser-Use进行网页自动化"""
+
 import asyncio
 from typing import Any, Dict, Optional
 from urllib.parse import urlparse
 
-from browser_use import Agent
+from browser_use import Agent as BrowserAgent
+from browser_use import Browser
+from browser_use.llm import ChatOpenAI
 from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import tool
-from langchain_openai import ChatOpenAI
 from loguru import logger
 from tenacity import retry, stop_after_attempt, wait_exponential
 
@@ -49,8 +51,9 @@ def _validate_url(url: str) -> bool:
 async def _browse_website_async(
     url: str,
     task: Optional[str] = None,
-    timeout: int = DEFAULT_TIMEOUT,
-    llm=None,
+    max_steps: int = 10,
+    headless: bool = True,
+    llm: ChatOpenAI = None,
 ) -> Dict[str, Any]:
     """
     异步浏览网站并执行任务
@@ -58,8 +61,8 @@ async def _browse_website_async(
     Args:
         url: 目标网站URL
         task: 可选的任务描述，如"提取标题"、"点击登录按钮"等
-        timeout: 超时时间（秒）
-        llm: LLM实例，如果不提供则使用默认的 gpt-4o
+        max_steps: 最大执行步骤数
+        headless: 是否无头模式
 
     Returns:
         Dict[str, Any]: 执行结果
@@ -70,41 +73,38 @@ async def _browse_website_async(
     Raises:
         ValueError: 参数错误或执行失败
     """
+    browser = None
     try:
         logger.info(f"开始浏览网站: {url}, 任务: {task or '无特定任务'}")
 
-        # 如果没有提供LLM，使用默认的
-        if llm is None:
-            llm = ChatOpenAI(model="gpt-4o")
-            logger.debug("使用默认LLM: gpt-4o")
-        else:
-            logger.debug(f"使用自定义LLM: {llm.__class__.__name__}")
+        # 初始化 LLM（使用 browser_use.llm.ChatOpenAI）
+        if not llm:
+            llm = ChatOpenAI(model="gpt-4o", temperature=0.7)
 
-        # 创建Browser-Use Agent
-        agent = Agent(
-            task=task or f"访问 {url} 并提取页面主要内容",
-            llm=llm,
-        )
+        # 初始化 Browser
+        browser = Browser(headless=headless, enable_default_extensions=False)
+
+        # 创建 browser-use agent
+        browser_agent = BrowserAgent(task=f"首先，导航到 {url}。然后，{task}", llm=llm, browser=browser)
 
         # 执行浏览任务
-        result = await agent.run()
+        agent_result = await browser_agent.run(max_steps=max_steps)
 
         logger.info(f"浏览任务完成: {url}")
 
         # 提取结果
-        if result:
-            return {
-                "success": True,
-                "content": str(result),
-                "url": url,
-                "task": task,
-            }
-        else:
-            return {
-                "success": False,
-                "error": "未获取到有效结果",
-                "url": url,
-            }
+        final_result = agent_result.final_result()
+        result_text = str(final_result) if final_result else "未获取到有效结果"
+
+        return {
+            "success": agent_result.is_successful(),
+            "content": result_text,
+            "url": url,
+            "task": task,
+            "has_errors": agent_result.has_errors(),
+            "errors": [str(err) for err in agent_result.errors() if err],
+            "steps_taken": agent_result.number_of_steps(),
+        }
 
     except ImportError as e:
         error_msg = "browser-use 包未安装，请先安装: pip install browser-use"
@@ -115,6 +115,15 @@ async def _browse_website_async(
         error_msg = f"浏览器操作失败: {str(e)}"
         logger.error(error_msg)
         raise ValueError(error_msg) from e
+
+    finally:
+        # 清理浏览器资源
+        if browser:
+            try:
+                await browser.kill()
+                logger.debug("浏览器已关闭")
+            except Exception as e:
+                logger.warning(f"关闭浏览器时出错: {e}")
 
 
 def _run_async_task(coro):
@@ -145,7 +154,7 @@ def _run_async_task(coro):
 
 
 @tool()
-def browse_website(url: str, task: Optional[str] = None, timeout: int = DEFAULT_TIMEOUT, config: RunnableConfig = None) -> Dict[str, Any]:
+def browse_website(url: str, task: Optional[str] = None, config: RunnableConfig = None) -> Dict[str, Any]:
     """
     使用AI驱动的浏览器打开网站并执行操作
 
@@ -183,7 +192,6 @@ def browse_website(url: str, task: Optional[str] = None, timeout: int = DEFAULT_
     Args:
         url (str): 目标网站URL（必填）
         task (str, optional): 任务描述，告诉AI需要做什么
-        timeout (int): 超时时间（秒），默认60秒
         config (RunnableConfig): 工具配置（自动传递）
 
     Returns:
@@ -207,28 +215,17 @@ def browse_website(url: str, task: Optional[str] = None, timeout: int = DEFAULT_
     - http_get: 仅发送HTTP请求，不渲染页面
     - browse_website: 完整的浏览器环境，可执行复杂交互
     """
+    llm_config = config.get("configurable", {}).get("graph_request")
     try:
         # 验证URL
         _validate_url(url)
-
+        llm = ChatOpenAI(model=llm_config.model, temperature=0.7, api_key=llm_config.openai_api_key, base_url=llm_config.openai_api_base)
         # 记录日志
         user_id = config.get("configurable", {}).get("user_id", "unknown") if config else "unknown"
         logger.info(f"用户:[{user_id}] 执行工具[浏览网站], URL:[{url}], 任务:[{task or '无'}]")
 
-        # 尝试从 config 中获取 LLM 实例
-        llm = None
-        if config and "configurable" in config:
-            llm = config["configurable"].get("llm")
-
         # 执行异步浏览任务
-        result = _run_async_task(
-            _browse_website_async(
-                url=url,
-                task=task,
-                timeout=timeout,
-                llm=llm,
-            )
-        )
+        result = _run_async_task(_browse_website_async(url=url, task=task, llm=llm))
 
         logger.info(f"用户:[{user_id}] 工具执行完成, 成功:[{result.get('success')}]")
         return result
@@ -236,25 +233,15 @@ def browse_website(url: str, task: Optional[str] = None, timeout: int = DEFAULT_
     except ValueError as e:
         error_msg = str(e)
         logger.error(f"参数验证失败: {error_msg}")
-        return {
-            "success": False,
-            "error": error_msg,
-            "url": url,
-        }
+        return {"success": False, "error": error_msg, "url": url}
     except Exception as e:
         error_msg = f"浏览器操作异常: {str(e)}"
         logger.error(error_msg)
-        return {
-            "success": False,
-            "error": error_msg,
-            "url": url,
-        }
+        return {"success": False, "error": error_msg, "url": url}
 
 
 @tool()
-def extract_webpage_info(
-    url: str, selectors: Optional[Dict[str, str]] = None, timeout: int = DEFAULT_TIMEOUT, config: RunnableConfig = None
-) -> Dict[str, Any]:
+def extract_webpage_info(url: str, selectors: Optional[Dict[str, str]] = None, config: RunnableConfig = None) -> Dict[str, Any]:
     """
     从网页中提取特定信息
 
@@ -286,7 +273,6 @@ def extract_webpage_info(
         url (str): 目标网站URL（必填）
         selectors (dict, optional): 要提取的信息字典
             键：字段名，值：字段描述
-        timeout (int): 超时时间（秒），默认60秒
         config (RunnableConfig): 工具配置（自动传递）
 
     Returns:
@@ -304,7 +290,8 @@ def extract_webpage_info(
     try:
         # 验证URL
         _validate_url(url)
-
+        llm_config = config.get("configurable", {}).get("graph_request")
+        llm = ChatOpenAI(model=llm_config.model, temperature=0.7, api_key=llm_config.openai_api_key, base_url=llm_config.openai_api_base)
         # 构建提取任务
         if selectors:
             task_parts = ["从页面中提取以下信息："]
@@ -318,44 +305,18 @@ def extract_webpage_info(
         user_id = config.get("configurable", {}).get("user_id", "unknown") if config else "unknown"
         logger.info(f"用户:[{user_id}] 执行工具[提取网页信息], URL:[{url}]")
 
-        # 尝试从 config 中获取 LLM 实例
-        llm = None
-        if config and "configurable" in config:
-            llm = config["configurable"].get("llm")
-
         # 执行浏览任务
-        result = _run_async_task(
-            _browse_website_async(
-                url=url,
-                task=task,
-                timeout=timeout,
-                llm=llm,
-            )
-        )
+        result = _run_async_task(_browse_website_async(url=url, task=task, llm=llm))
 
         if result.get("success"):
-            return {
-                "success": True,
-                "data": result.get("content"),
-                "url": url,
-                "selectors": selectors,
-            }
-        else:
-            return result
+            return {"success": True, "data": result.get("content"), "url": url, "selectors": selectors}
+        return result
 
     except ValueError as e:
         error_msg = str(e)
         logger.error(f"参数验证失败: {error_msg}")
-        return {
-            "success": False,
-            "error": error_msg,
-            "url": url,
-        }
+        return {"success": False, "error": error_msg, "url": url}
     except Exception as e:
         error_msg = f"信息提取异常: {str(e)}"
         logger.error(error_msg)
-        return {
-            "success": False,
-            "error": error_msg,
-            "url": url,
-        }
+        return {"success": False, "error": error_msg, "url": url}
