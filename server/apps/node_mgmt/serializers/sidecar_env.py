@@ -28,7 +28,7 @@ class SidecarEnvSerializer(serializers.ModelSerializer):
         return super().update(instance, validated_data)
 
     def _encrypt_if_secret(self, value, type_):
-        if type_ == EnvVariableConstants.TYPE_SECRET:
+        if type_ == EnvVariableConstants.TYPE_SECRET and value:
             aes_obj = AESCryptor()
             secret_value = aes_obj.encode(value)
             return secret_value
@@ -41,6 +41,13 @@ class EnvVariableCreateSerializer(serializers.ModelSerializer):
     class Meta:
         model = SidecarEnv
         fields = ['key', 'value', 'type', 'description', 'cloud_region_id']
+
+    def create(self, validated_data):
+        # 如果是 secret 类型且值不为空，需要加密
+        if validated_data.get('type') == EnvVariableConstants.TYPE_SECRET and validated_data.get('value'):
+            aes_obj = AESCryptor()
+            validated_data['value'] = aes_obj.encode(validated_data['value'])
+        return super().create(validated_data)
 
 
 class EnvVariableUpdateSerializer(serializers.ModelSerializer):
