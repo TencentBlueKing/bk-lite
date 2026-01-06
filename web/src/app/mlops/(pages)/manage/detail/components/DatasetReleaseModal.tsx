@@ -19,6 +19,7 @@ interface DatasetReleaseModalProps {
 const GET_TRAIN_DATA_API: Record<string, string> = {
   timeseries_predict: 'getTimeSeriesPredictTrainData',
   anomaly_detection: 'getAnomalyTrainData',
+  log_clustering: 'getLogClusteringTrainData',
 };
 
 interface TrainDataFile {

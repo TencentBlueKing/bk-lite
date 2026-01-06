@@ -43,7 +43,7 @@ router.register(r'object_detection_traindata', ObjectDetectionTrainDataViewSet, 
 router.register(r'log_clustering_datasets', LogClusteringDatasetViewSet, basename='log_clustering_datasets')
 router.register(r'log_clustering_train_data', LogClusteringTrainDataViewSet, basename='log_clustering_train_data')
 router.register(r'log_clustering_train_jobs', LogClusteringTrainJobViewSet, basename='log_clustering_train_jobs')
-router.register(r'log_clustering_train_history', LogClusteringTrainHistoryViewSet, basename='log_clustering_train_history')
+router.register(r'log_clustering_dataset_releases', LogClusteringDatasetReleaseViewSet, basename='log_clustering_dataset_releases')
 router.register(r'log_clustering_servings', LogClusteringServingViewSet, basename='log_clustering_servings')
 
 # Rasa
