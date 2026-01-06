@@ -333,6 +333,7 @@ EOF
 generate_tls_certs() {
     : "${HOST_IP:?HOST_IP 未设置}"
     local dir=./conf/certs
+    local traefik_certs_dir=./conf/traefik/certs
     local san="DNS:nats,DNS:localhost,IP:127.0.0.1,IP:${HOST_IP}"
     local cn="BluekingLite"
     local openssl_image=$DOCKER_IMAGE_OPENSSL
@@ -399,6 +400,15 @@ EOF
     rm -f "${dir}/server.csr" "${dir}/openssl.conf"
 
     log "SUCCESS" "TLS 证书生成完成：$(ls -1 $dir/server.crt)"
+    
+    # 复制证书到 traefik 目录
+    if [ -f "${traefik_certs_dir}/server.crt" ]; then
+        log "INFO" "Traefik 证书目录已存在证书，跳过复制步骤..."
+    else
+        log "INFO" "复制证书到 Traefik 目录..."
+        mkdir -p ${traefik_certs_dir}
+        cp ${dir}/server.crt ${dir}/server.key ${traefik_certs_dir}/
+    fi
 }
 
 generate_common_env() {
@@ -887,10 +897,19 @@ tls {
   key_file: "/etc/nats/certs/server.key"
   ca_file: "/etc/nats/certs/ca.crt"
 }
-
+leafnodes {
+    port: 7422
+    tls {
+        cert_file: "/etc/nats/certs/server.crt"
+        key_file: "/etc/nats/certs/server.key"
+        ca_file: "/etc/nats/certs/ca.crt"
+        verify: true
+    }
+}
 jetstream: enabled
 jetstream {
   store_dir=/nats/storage
+  domain=bklite
 }
 
 server_name=nats-server

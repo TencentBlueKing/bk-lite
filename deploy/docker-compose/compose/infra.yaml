@@ -22,7 +22,7 @@ services:
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       - ../conf/traefik/dynamic.yml:/etc/traefik/dynamic.yml
-      - ../conf/certs:/etc/certs:ro
+      - ../conf/traefik/certs:/etc/certs:ro
     labels:
       - "traefik.enable=true"
       - "traefik.http.services.traefik-dashboard.loadbalancer.server.port=8080"
@@ -68,6 +68,7 @@ services:
       - nats:/nats
     ports:
       - "4222:4222"
+      - "7422:7422"
     command:
       - "-c"
       - "/etc/nats/nats.conf"

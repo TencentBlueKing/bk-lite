@@ -1,0 +1,14 @@
+{
+    "name": "OBJ_bklite",
+    "mirror": {
+        "name": "OBJ_bklite",
+        "external": {
+            "api": "$JS.bklite.API"
+        }
+    },
+    "storage": "file",
+    "retention": "limits",
+    "max_bytes": -1,
+    "num_replicas": 1,
+    "allow_rollup_hdrs": true
+}
