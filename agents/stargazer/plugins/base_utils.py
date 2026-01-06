@@ -4,6 +4,7 @@
 # @Author: windyzhao
 import time
 import datetime
+import ipaddress
 
 import pytz
 
@@ -96,3 +97,21 @@ def ts_to_dts(ts: int, fmt="%Y-%m-%d %H:%M:%S") -> str:
         ts = ts / 1000
     ts = datetime.datetime.fromtimestamp(ts)
     return ts.strftime(fmt)
+
+
+def expand_ip_range(ip_range: str) -> list:
+    """
+    将类似 '192.168.0.1-192.168.0.10' 的网段拆分成单个 IP 地址列表
+    """
+    try:
+        start_str, end_str = ip_range.split('-')
+        start_ip = ipaddress.IPv4Address(start_str.strip())
+        end_ip = ipaddress.IPv4Address(end_str.strip())
+    except Exception as e:
+        raise ValueError(f"无效的 IP 网段格式: {ip_range}") from e
+
+    if start_ip > end_ip:
+        raise ValueError("起始 IP 不能大于结束 IP")
+
+    ips = [str(ipaddress.IPv4Address(ip)) for ip in range(int(start_ip), int(end_ip) + 1)]
+    return ips

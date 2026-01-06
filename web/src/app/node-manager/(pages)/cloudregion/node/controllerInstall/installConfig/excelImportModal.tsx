@@ -112,7 +112,18 @@ const ExcelImportModal = forwardRef<ExcelImportModalRef, ExcelImportModalProps>(
       }
       setConfirmLoading(true);
       try {
-        onSuccess(parsedData);
+        const fixedData = parsedData.map((row) => {
+          if (row.auth_type === 'private_key') {
+            return {
+              ...row,
+              password: '',
+              private_key: '',
+              key_file_name: undefined,
+            };
+          }
+          return row;
+        });
+        onSuccess(fixedData);
         const successMsg = `${t(
           'node-manager.cloudregion.integrations.importSuccess'
         )} (${parsedData.length})`;
@@ -178,7 +189,24 @@ const ExcelImportModal = forwardRef<ExcelImportModalRef, ExcelImportModalProps>(
                 const cleanHeader = header
                   .replace(/\s*\([^)]*\)\s*$/, '')
                   .trim();
-                const column = columns.find((col) => col.label === cleanHeader);
+                // 特殊处理：如果表头是"密码"，直接匹配到password字段
+                if (index === headers.length - 1) {
+                  const passwordColumn = columns.find(
+                    (col) => col.name === 'password'
+                  );
+                  if (passwordColumn) {
+                    const cellValue = row[index];
+                    rowData.password = transformCellValue(
+                      cellValue,
+                      passwordColumn
+                    );
+                  }
+                  return;
+                }
+                const column = columns.find(
+                  (col) =>
+                    col.excel_label === cleanHeader || col.label === cleanHeader
+                );
                 if (column) {
                   const cellValue = row[index];
                   rowData[column.name] = transformCellValue(cellValue, column);
@@ -207,8 +235,11 @@ const ExcelImportModal = forwardRef<ExcelImportModalRef, ExcelImportModalProps>(
         for (const column of columns) {
           const { name, label, required = false, rules = [] } = column;
           const value = row[name];
-          // 必填验证
-          if (required) {
+          // 特殊处理：如果是password字段且auth_type为private_key，则不校验必填
+          const isPasswordField = name === 'password';
+          const isPrivateKeyAuth = row['auth_type'] === 'private_key';
+          const skipPasswordRequired = isPasswordField && isPrivateKeyAuth;
+          if (required && !skipPasswordRequired) {
             if (
               value === undefined ||
               value === null ||
@@ -304,9 +335,26 @@ const ExcelImportModal = forwardRef<ExcelImportModalRef, ExcelImportModalProps>(
           const isMultiple = column.widget_props?.mode === 'multiple';
           const selectValue = String(value?.text || value);
           if (isMultiple) {
-            return selectValue.split(',').map((v) => v.trim());
+            const values = selectValue.split(',').map((v) => v.trim());
+            if (column.widget_props?.options) {
+              return values.map((v: string) => {
+                const option = column.widget_props.options.find(
+                  (opt: any) => opt.label === v
+                );
+                return option ? option.value : v;
+              });
+            }
+            return values;
+          }
+          if (column.widget_props?.options) {
+            const option = column.widget_props.options.find(
+              (opt: any) => opt.label === selectValue
+            );
+            return option ? option.value : selectValue;
           }
           return selectValue;
+        case 'auth_input':
+          return String(value?.text || value);
         default:
           return String(value?.text || value);
       }
@@ -323,7 +371,7 @@ const ExcelImportModal = forwardRef<ExcelImportModalRef, ExcelImportModalProps>(
       const headers = columns.map((col) => {
         const isMultiple =
           col.widget_props?.mode === 'multiple' || col.type === 'group_select';
-        const baseLabel = col.label;
+        const baseLabel = col.excel_label || col.label;
         return isMultiple
           ? `${baseLabel} (${t(
             'node-manager.cloudregion.integrations.multipleSelectHint'
@@ -347,23 +395,29 @@ const ExcelImportModal = forwardRef<ExcelImportModalRef, ExcelImportModalProps>(
       columns.forEach((col, index) => {
         // 设置列宽
         mainSheet.getColumn(index + 1).width = 25;
-
-        const colIndex = index + 1;
+        let options: string[] = [];
+        let sheetName = '';
         if (col.type === 'group_select') {
-          const options = groupList.map((g: any) => g.label);
+          options = groupList.map((g: any) => g.label);
           if (options.length > 0) {
-            const sheetName = `${col.label}_${t(
+            sheetName = `${col.label}_${t(
               'node-manager.cloudregion.integrations.options'
             )}`;
-            const optionsSheet = workbook.addWorksheet(sheetName);
-            // 从第一行开始添加选项数据（不添加空行）
-            options.forEach((opt) => {
-              optionsSheet.addRow([opt]);
-            });
-            optionsSheet.getColumn(1).width = 30;
-            optionsSheet.state = 'hidden';
-            columnValidations.set(colIndex, { sheetName, options });
           }
+        } else if (col.type === 'select' && col.widget_props?.options) {
+          options = col.widget_props.options.map((opt: any) => opt.label);
+          if (options.length > 0) {
+            sheetName = `${col.label}_${t(
+              'node-manager.cloudregion.integrations.options'
+            )}`;
+          }
+        }
+        if (options.length > 0 && sheetName) {
+          const optionsSheet = workbook.addWorksheet(sheetName);
+          options.forEach((opt) => optionsSheet.addRow([opt]));
+          optionsSheet.getColumn(1).width = 30;
+          optionsSheet.state = 'hidden';
+          columnValidations.set(index + 1, { sheetName, options });
         }
       });
       // 为主工作表的数据列添加数据验证

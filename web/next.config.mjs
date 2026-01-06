@@ -1,60 +1,34 @@
 import withBundleAnalyzer from '@next/bundle-analyzer';
 import { combineLocales, combineMenus, copyPublicDirectories } from './src/utils/dynamicsMerged.mjs';
 
-let hasCombinedLocalesAndMenus = false;
-let hasCopiedPublicDirs = false;
+// 在模块加载时就执行准备工作
+const isProduction = process.env.NODE_ENV === 'production';
+
+// 准备构建资源
+async function prepareBuildAssets() {
+  console.log('🔄 Preparing build assets...');
+  
+  // 合并 locales 和 menus
+  await combineLocales();
+  await combineMenus();
+  
+  // 拷贝 public 目录
+  copyPublicDirectories();
+  
+  console.log('✅ Build assets prepared successfully!');
+}
+
+// 只在生产构建时执行准备工作
+if (isProduction) {
+  await prepareBuildAssets();
+}
 
 const withCombineLocalesAndMenus = (nextConfig = {}) => {
-  return {
-    ...nextConfig,
-    webpack(config, { isServer, dev }) {
-      if (!dev && isServer && !hasCombinedLocalesAndMenus) {
-        config.plugins.push({
-          apply: (compiler) => {
-            compiler.hooks.beforeCompile.tapPromise('CombineLocalesAndMenusPlugin', async (compilation) => {
-              if (!hasCombinedLocalesAndMenus) {
-                await combineLocales();
-                await combineMenus();
-                hasCombinedLocalesAndMenus = true;
-              }
-            });
-          },
-        });
-      }
-
-      if (typeof nextConfig.webpack === 'function') {
-        return nextConfig.webpack(config, { isServer, dev });
-      }
-
-      return config;
-    },
-  };
+  return nextConfig;
 };
 
 const withCopyPublicDirs = (nextConfig = {}) => {
-  return {
-    ...nextConfig,
-    webpack(config, { isServer, dev }) {
-      if (!hasCopiedPublicDirs) {
-        config.plugins.push({
-          apply: (compiler) => {
-            compiler.hooks.beforeCompile.tapPromise('CopyPublicDirsPlugin', async (compilation) => {
-              if (!hasCopiedPublicDirs) {
-                copyPublicDirectories();
-                hasCopiedPublicDirs = true;
-              }
-            });
-          },
-        });
-      }
-
-      if (typeof nextConfig.webpack === 'function') {
-        return nextConfig.webpack(config, { isServer, dev });
-      }
-
-      return config;
-    },
-  };
+  return nextConfig;
 };
 
 const nextConfig = withCombineLocalesAndMenus(

@@ -1,0 +1,142 @@
+# -- coding: utf-8 --
+# @File: physcial_server_info.py.py
+# @Time: 2025/12/25 11:14
+# @Author: windyzhao
+import re
+import json
+from typing import Dict, Any
+from sanic.log import logger
+
+from plugins.script_executor import SSHPlugin
+
+
+class PhyscialServerInfo(SSHPlugin):
+
+    async def list_all_resources(self):
+        """
+        Convert collected data to a standard format.
+        """
+        model_id = self.model_id or "physical_server"
+        try:
+            data = await super().list_all_resources(need_raw=True)
+            if "===" in data.get("result", ''):
+                parsed_data = parse_server_info(data.get("result", ''))
+                self_device = self.host
+                disk_info = parsed_data.pop('disk')
+                mem_info = parsed_data.pop('memory')
+                nic_info = parsed_data.pop('nic')
+                gpu_info = parsed_data.pop('gpu')
+                return_data = {
+                    model_id: [parsed_data],
+                    "disk": [{**i, "self_device": self_device} for i in disk_info],
+                    "memory": [{**i, "self_device": self_device} for i in mem_info],
+                    "nic": [{**i, "self_device": self_device} for i in nic_info],
+                    "gpu": [{**i, "self_device": self_device} for i in gpu_info],
+                }
+                result = {"success": True, "result": return_data}
+            else:
+                result = {"success": True, "result": {"physical_server": {}}}
+        except Exception as err:
+            import traceback
+            logger.error(f"{self.__class__.__name__} main error! {traceback.format_exc()}")
+            result = {"result": {"cmdb_collect_error": str(err)}, "success": False}
+        return result
+
+
+def parse_server_info(shell_output: str) -> Dict[str, Any]:
+    """
+    解析物理服务器shell输出为JSON格式
+
+    基于 === section === 标记来识别不同类型的数据
+
+    Args:
+        shell_output: shell脚本的输出文本
+
+    Returns:
+        包含服务器信息的字典
+    """
+    result = {
+        "disk": [],
+        "memory": [],
+        "nic": [],
+        "gpu": []
+    }
+
+    lines = shell_output.strip().split('\n')
+    current_section = None
+    current_item = {}
+
+    # 定义哪些section的数据应该存为列表
+    list_sections = {
+        'disk_info': 'disk',
+        'mem_info': 'memory',
+        'NIC info': 'nic',
+        'GPU info': 'gpu'
+    }
+
+    for line in lines:
+        line = line.strip()
+        # 跳过空行和无关内容
+        if not line or line.startswith('【') or line.startswith('---'):
+            continue
+
+        # 检测section标记 === xxx ===
+        if line.startswith('===') and line.endswith('==='):
+            # 保存上一个section的item
+            if current_section and current_item:
+                if current_section in list_sections:
+                    result[list_sections[current_section]].append(current_item)
+                current_item = {}
+
+            # 提取新的section名称
+            section_match = re.search(r'===\s*(.+?)\s*===', line)
+            if section_match:
+                current_section = section_match.group(1).strip()
+            continue
+
+        # 解析键值对
+        if '=' in line and current_section:
+            key, value = line.split('=', 1)
+            key = key.strip()
+            value = value.strip()
+
+            # 根据当前section判断数据归属
+            if current_section in list_sections:
+                # 需要存为列表的section
+                # 检测是否是新对象的开始(通常是第一个字段)
+                if current_item and is_new_item_start(key, current_section):
+                    result[list_sections[current_section]].append(current_item)
+                    current_item = {}
+                current_item[key] = value
+            else:
+                # 直接合并到根对象的section
+                result[key] = value
+
+    # 处理最后一个item
+    if current_section and current_item:
+        if current_section in list_sections:
+            result[list_sections[current_section]].append(current_item)
+
+    return result
+
+
+def is_new_item_start(key: str, section: str) -> bool:
+    """
+    判断当前key是否是新对象的开始
+
+    Args:
+        key: 当前的键名
+        section: 当前所在的section
+
+    Returns:
+        是否是新对象的第一个字段
+    """
+    # 定义每个section中标识新对象开始的字段
+    start_keys = {
+        'disk_info': 'disk_name',
+        'mem_info': 'mem_locator',
+        'NIC info': 'nic_pci_addr',
+        'GPU info': 'gpu'
+    }
+
+    return key == start_keys.get(section)

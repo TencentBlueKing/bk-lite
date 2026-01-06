@@ -107,8 +107,6 @@
     "subTools": "子工具",
     "other": "其他",
     "password": "密码",
-    "number": "数字",
-    "checkbox": "复选框",
     "search": "搜索",
     "fetchTools": "获取工具",
     "variables": "变量",
@@ -119,7 +117,9 @@
     "fetchToolsFailed": "获取工具列表失败",
     "subToolDescription": "子工具描述",
     "items": "个",
-    "description": "描述"
+    "description": "描述",
+    "checkbox": "复选框",
+    "number": "数字"
   },
   "knowledge": {
     "goToTesting": "前往测试",
@@ -134,7 +134,7 @@
       "selectDocuments": "选择文档",
       "importSuccess": "导入问答对成功",
       "questionPrompt": "问题提示语",
-      "generateQuestionAndAnswer": "生成问答对",
+      "generateQuestionAndAnswer": "生成问题和答案",
       "selectedDocuments": "已选文档",
       "question": "问题",
       "generate": "分块生成",
@@ -209,9 +209,9 @@
       "enterQaCount": "请输入问答对数量",
       "qaPairsUpdateFailed": "问答对更新失败",
       "chunks": "个分块",
+      "totalQAPairsSuffix": "个问答对",
       "qaCountPerChunk": "问答对数量(每块)",
-      "totalQAPairsPrefix": "共",
-      "totalQAPairsSuffix": "个问答对"
+      "totalQAPairsPrefix": "共"
     },
     "documents": {
       "status": "状态",
@@ -277,7 +277,6 @@
       "originalChunk": "原始分块",
       "selectExtractionMethod": "选择提取方式",
       "noneIllustration": "无分块示例。",
-      "lastSyncTime": "最后同步时间",
       "syncEnabled": "定时同步",
       "viewChunk": "查看块",
       "syncEnabledTip": "开启自动同步后，将按照定时时间定时从网站拉取最新内容，并且进行训练。网站分块更新后，依据旧分块生成的问答对，将会被删除。",
@@ -328,7 +327,8 @@
       "pageDescription": "保留PPT每页的视觉和内容独立性，适合处理包含分页逻辑的演示文稿，便于后续分块或按页检索。",
       "trainWarning": "重要提示",
       "semanticFormats": "结构化文档（Word、Markdown）、技术文档（PDF 带目录）。",
-      "fullTextMethod": "直接提取全部文本内容，并对扫描版PDF启用OCR识别图像文字。"
+      "fullTextMethod": "直接提取全部文本内容，并对扫描版PDF启用OCR识别图像文字。",
+      "lastSyncTime": "最后同步时间"
     },
     "knowledgeGraph": {
       "relationships": "关系",
@@ -464,8 +464,6 @@
     "chunkDetails": "分块详情",
     "annotationRemoveFailed": "标注移除失败",
     "copied": "已复制到粘贴板",
-    "referenceDocSource": "引用文档来源",
-    "referenceQASource": "引用问答对来源",
     "connectionError": "连接错误，请稍后重试",
     "question": "问题",
     "inputPlaceholder": "请输入消息...",
@@ -487,7 +485,9 @@
     "removeAnnotation": "删除标注",
     "onlyImageAllowed": "只能上传图片文件",
     "imageTooLarge": "图片大小不能超过 5MB",
-    "uploadImage": "上传图片"
+    "uploadImage": "上传图片",
+    "referenceDocSource": "引用文档来源",
+    "referenceQASource": "引用问答对来源"
   },
   "settings": {
     "secret": {
@@ -781,18 +781,18 @@
       "appTagRoutineOps": "日常运维",
       "appIcon": "应用图标",
       "appTagPerformanceAnalysis": "性能分析",
-      "intentClassificationConfig": "意图分类配置",
-      "intentClassification": "意图分类",
-      "classification": "分类",
       "intents": "意图列表",
-      "intentName": "意图名称",
       "intentDescription": "意图描述",
-      "addIntent": "添加意图",
-      "removeIntent": "删除意图",
       "intentNamePlaceholder": "请输入意图名称",
+      "removeIntent": "删除意图",
+      "classification": "分类",
       "intentTopicPlaceholder": "请输入分类主题名称（每行一个）",
+      "intentNameRequired": "意图名称不能为空",
       "intentDescPlaceholder": "请输入意图描述（可选）",
-      "intentNameRequired": "意图名称不能为空"
+      "intentClassification": "意图分类",
+      "addIntent": "添加意图",
+      "intentName": "意图名称",
+      "intentClassificationConfig": "意图分类配置"
     },
     "collapseSidebar": "收缩侧边栏",
     "messages": {
@@ -951,8 +951,8 @@
     "mobile": "移动端",
     "webChat": "Web对话",
     "embeddedChat": "嵌入式对话",
-    "intentClassification": "意图分类",
-    "applications": "应用"
+    "applications": "应用",
+    "intentClassification": "意图分类"
   },
   "provider": {
     "form": {

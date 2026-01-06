@@ -4,7 +4,7 @@
  */
 
 .finalCTA {
-  padding: 4rem 0;
+  padding: 5rem 0 6rem 0;
   background: linear-gradient(
     180deg,
     #ffffff 0%,
@@ -42,7 +42,7 @@
 }
 
 .ctaContent {
-  padding: 2rem 0;
+  padding: 3rem 0;
 }
 
 .ctaIcon {
@@ -76,7 +76,7 @@
   line-height: 1.1;
   color: #0f172a;
   letter-spacing: -0.025em;
-  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", sans-serif;
+  font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', sans-serif;
   max-width: 700px;
   margin-left: auto;
   margin-right: auto;
@@ -91,7 +91,7 @@
   max-width: 600px;
   margin-left: auto;
   margin-right: auto;
-  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif;
+  font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', sans-serif;
 }
 
 .ctaButtons {
@@ -172,15 +172,15 @@
   .finalCTA {
     padding: 3rem 0;
   }
-  
+
   .ctaTitle {
     font-size: 2.5rem;
   }
-  
+
   .ctaDescription {
     font-size: 1rem;
   }
-  
+
   .ctaFeatures {
     gap: 2rem;
   }
@@ -190,70 +190,70 @@
   .finalCTA {
     padding: 4rem 0;
   }
-  
+
   .ctaTitle {
     font-size: 2.75rem;
   }
-  
+
   .ctaDescription {
     font-size: 1.125rem;
   }
-  
+
   .ctaButtons {
     flex-direction: column;
     align-items: center;
     gap: 1rem;
   }
-  
+
   .ctaButton {
     width: 100%;
     max-width: 320px;
     justify-content: center;
   }
-  
+
   .ctaFeatures {
     flex-direction: column;
     align-items: center;
     gap: 1.5rem;
   }
-  
+
   .ctaIcon {
     width: 90px;
     height: 90px;
   }
-  
+
   .iconEmoji {
     font-size: 2.5rem;
   }
-  
+
   .visualCard {
     max-width: 100%;
   }
-  
+
   .visualContent {
     padding: 2rem 1.5rem;
   }
-  
+
   .visualMetric {
     gap: 1rem;
     margin-bottom: 1.5rem;
   }
-  
+
   .metricLabel {
     min-width: 80px;
     font-size: 0.875rem;
   }
-  
+
   .metricValue {
     min-width: 60px;
     font-size: 0.875rem;
   }
-  
+
   .qrModalContent {
     padding: 2rem 1.5rem;
     max-width: 350px;
   }
-  
+
   .qrImage {
     width: 180px;
     height: 180px;
@@ -264,39 +264,39 @@
   .finalCTA {
     padding: 3rem 0;
   }
-  
+
   .ctaTitle {
     font-size: 2.25rem;
   }
-  
+
   .ctaDescription {
     font-size: 1rem;
   }
-  
+
   .ctaButton {
     padding: 1rem 1.5rem;
     font-size: 1rem;
   }
-  
+
   .ctaIcon {
     width: 80px;
     height: 80px;
   }
-  
+
   .iconEmoji {
     font-size: 2rem;
   }
-  
+
   .qrModalContent {
     padding: 1.5rem;
     max-width: 320px;
   }
-  
+
   .qrImage {
     width: 160px;
     height: 160px;
   }
-  
+
   .qrTitle {
     font-size: 1.25rem;
   }
@@ -304,14 +304,20 @@
 
 /* Dark mode adjustments */
 [data-theme='dark'] .finalCTA {
-  background: linear-gradient(135deg, #1e293b 0%, #334155 25%, #475569 50%, #64748b 75%, #94a3b8 100%);
+  background: linear-gradient(
+    135deg,
+    #1e293b 0%,
+    #334155 25%,
+    #475569 50%,
+    #64748b 75%,
+    #94a3b8 100%
+  );
 }
 
 [data-theme='dark'] .ctaIcon {
   background: rgba(255, 255, 255, 0.1);
   border-color: rgba(255, 255, 255, 0.2);
-  box-shadow: 
-    0 25px 50px rgba(0, 0, 0, 0.5),
+  box-shadow: 0 25px 50px rgba(0, 0, 0, 0.5),
     0 10px 25px rgba(255, 255, 255, 0.05),
     inset 0 1px 0 rgba(255, 255, 255, 0.2);
 }
@@ -319,27 +325,21 @@
 [data-theme='dark'] .ctaPrimary {
   background: linear-gradient(135deg, #f8fafc 0%, #e2e8f0 100%);
   color: #1e293b;
-  box-shadow: 
-    0 15px 35px rgba(255, 255, 255, 0.15),
-    0 8px 15px rgba(0, 0, 0, 0.2),
-    inset 0 1px 0 rgba(255, 255, 255, 0.9);
+  box-shadow: 0 15px 35px rgba(255, 255, 255, 0.15),
+    0 8px 15px rgba(0, 0, 0, 0.2), inset 0 1px 0 rgba(255, 255, 255, 0.9);
 }
 
 [data-theme='dark'] .ctaPrimary:hover {
   background: #ffffff;
   color: #1e293b;
-  box-shadow: 
-    0 20px 45px rgba(255, 255, 255, 0.2),
-    0 15px 25px rgba(0, 0, 0, 0.25),
-    inset 0 1px 0 rgba(255, 255, 255, 1);
+  box-shadow: 0 20px 45px rgba(255, 255, 255, 0.2),
+    0 15px 25px rgba(0, 0, 0, 0.25), inset 0 1px 0 rgba(255, 255, 255, 1);
 }
 
 [data-theme='dark'] .visualCard {
   background: rgba(255, 255, 255, 0.95);
   border-color: rgba(255, 255, 255, 0.2);
-  box-shadow: 
-    0 25px 60px rgba(0, 0, 0, 0.6),
-    0 15px 35px rgba(0, 0, 0, 0.3),
+  box-shadow: 0 25px 60px rgba(0, 0, 0, 0.6), 0 15px 35px rgba(0, 0, 0, 0.3),
     inset 0 1px 0 rgba(255, 255, 255, 0.8);
 }
 
@@ -408,7 +408,7 @@
   font-weight: 700;
   margin-bottom: 1.5rem;
   color: #0f172a;
-  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", sans-serif;
+  font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', sans-serif;
 }
 
 .qrImageContainer {
@@ -433,7 +433,7 @@
   color: #64748b;
   line-height: 1.5;
   margin: 0;
-  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif;
+  font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', sans-serif;
 }
 
 /* Animation keyframes */
@@ -487,7 +487,8 @@
 
 /* Premium Animation keyframes */
 @keyframes shimmer {
-  0%, 100% {
+  0%,
+  100% {
     opacity: 0.6;
     transform: scale(1);
   }
@@ -498,7 +499,8 @@
 }
 
 @keyframes float {
-  0%, 100% {
+  0%,
+  100% {
     transform: translateY(0px) rotate(0deg);
   }
   33% {

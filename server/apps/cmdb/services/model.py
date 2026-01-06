@@ -302,12 +302,15 @@ class ModelManage(object):
                     attr.update(option=option)
 
         if USER in attr_types:
-            users = UserGroup.user_list(system_mgmt_client, {"search": ""})
+            # users = UserGroup.user_list(system_mgmt_client, {"search": ""})
+            users = UserGroup.get_all_users(system_mgmt_client)
             option = [
                 dict(
                     # id=user["username"],
                     id=user["id"],
                     name=user["username"],
+                    username=user.get("username"),
+                    display_name=user.get("display_name"),
                     is_default=False,
                     type="str",
                 )

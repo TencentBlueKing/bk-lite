@@ -87,12 +87,12 @@ const config = {
         },
         items: [
           {
-            "label": "部署指南",
-            "to": "/docs/deploy/docker-compose"
-          },
-          {
             "label": "产品文档",
             "to": "/docs/opspilot/introduce"
+          },
+          {
+            "label": "部署指南",
+            "to": "/docs/deploy/docker-compose"
           },
           {
             "label": "运维手册",

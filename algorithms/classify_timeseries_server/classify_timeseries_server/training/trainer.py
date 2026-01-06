@@ -96,9 +96,9 @@ class UniversalTrainer:
                 # 记录配置
                 self._log_config()
                 
-                # 6. 超参数优化（可选）
+                # 6. 超参数优化（默认启用）
                 best_params = None
-                if self.config.is_hyperopt_enabled and val_data is not None:
+                if val_data is not None:
                     best_params = self._optimize_hyperparams(train_data, val_data)
                     mlflow.log_params(best_params)
                 
@@ -365,14 +365,22 @@ class UniversalTrainer:
         # 从注册表获取模型类
         model_class = ModelRegistry.get(model_type)
         
-        # 获取模型特定的参数配置
-        model_params = self.config.get("hyperparams", model_type, "fixed", default={})
+        # 获取模型参数
+        model_params = self.config.get_model_params()
+        
+        # 获取特征工程配置
+        fe_config = self.config.get_feature_engineering_config()
         
         logger.info(f"创建模型: {model_type}")
         logger.debug(f"模型参数: {model_params}")
+        if fe_config:
+            logger.debug(f"特征工程配置: {fe_config}")
         
         # 实例化模型
-        model = model_class(**model_params)
+        model = model_class(
+            **model_params,
+            feature_engineering_config=fe_config
+        )
         
         return model
     
@@ -499,7 +507,7 @@ class UniversalTrainer:
         """
         model_type = self.config.model_type
         
-        if model_type == "gradient_boosting":
+        if model_type == "GradientBoosting":
             # GradientBoosting: 更新历史上下文
             # 理由：
             # 1. GB 使用递归预测，需要完整的历史序列
@@ -547,7 +555,7 @@ class UniversalTrainer:
             mlflow.log_param(f"model_{key}", value)
     
     def _save_model_to_mlflow(self) -> str:
-        """保存模型到 MLflow
+        """保存模型到 MLflow（自动支持所有实现了 save_mlflow 的模型）
         
         Returns:
             模型 URI
@@ -556,16 +564,16 @@ class UniversalTrainer:
         
         model_type = self.config.model_type
         
-        if model_type == "gradient_boosting":
-            from .models.gradient_boosting_model import GradientBoostingModel
-            if isinstance(self.model, GradientBoostingModel):
+        # 检查模型是否有 save_mlflow 方法（鸭子类型）
+        if hasattr(self.model, 'save_mlflow') and callable(getattr(self.model, 'save_mlflow')):
+            try:
                 self.model.save_mlflow(artifact_path="model")
-                logger.info("GradientBoosting 模型已保存")
-            else:
-                logger.warning("模型类型不匹配，跳过保存")
+                logger.info(f"{model_type} 模型已保存")
+            except Exception as e:
+                logger.error(f"模型保存失败: {e}")
+                raise
         else:
-            # 其他模型类型的保存逻辑（未来扩展）
-            logger.warning(f"模型类型 {model_type} 的 MLflow 保存尚未实现")
+            logger.warning(f"模型类型 {model_type} 没有实现 save_mlflow 方法")
         
         model_uri = f"runs:/{mlflow.active_run().info.run_id}/model"
         return model_uri

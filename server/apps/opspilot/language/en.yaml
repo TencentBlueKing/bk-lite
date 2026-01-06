@@ -155,10 +155,6 @@ error:
   no_support_chunk_type: Unsupported type
   knowledge_base_has_documents: This knowledge base contains documents and cannot
     be deleted.
-  knowledge_base_used_by_skills: This knowledge base is being used by the following
-    skills and cannot be deleted: {skill_names}
-  knowledge_base_delete_related_data_failed: Failed to delete related data, please
-    try again
   builtin_model_types_no_modify: Built-in model types cannot be modified
   chunk_not_found: Chunk not found
   not_a_file: Not a file
@@ -188,3 +184,5 @@ error:
   mcp_tools_fetch_failed: Failed to fetch tools from MCP server
   no_bot_stop_permission: You do not have permission to stop this bot
   knowledge_base_training: The knowledge base is training and cannot be modified.
+  knowledge_base_used_by_skills: ''
+  knowledge_base_delete_related_data_failed: ''

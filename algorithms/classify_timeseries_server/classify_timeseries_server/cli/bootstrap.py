@@ -116,8 +116,7 @@ class CLI:
         logger.info(f"  模型名称: {training_config.model_name}")
         logger.info(f"  数据集: {dataset_path}")
         logger.info(f"  MLflow 实验: {training_config.mlflow_experiment_name}")
-        if training_config.is_hyperopt_enabled:
-            logger.info(f"  超参数优化: 启用 (max_evals={training_config.hyperopt_max_evals})")
+        logger.info(f"  超参数搜索: max_evals={training_config.max_evals}")
         logger.info("=" * 60)
         
         # 4. 创建训练器并训练

@@ -24,7 +24,6 @@ import CustomTable from "@/components/custom-table";
 import PermissionWrapper from '@/components/permission';
 import { ColumnItem, TableDataItem, } from '@/app/mlops/types';
 import { AnnotationData } from '@/app/mlops/types/manage';
-import { handleFileRead } from "@/app/mlops/utils/common";
 
 const ChartContent = ({
   flag,
@@ -122,7 +121,7 @@ const ChartContent = ({
           render: (_, record) => {
             return (
               <PermissionWrapper requiredPermissions={['File Edit']}>
-                <Button color="danger" variant="link" className="justify-start items-center !p-0" onClick={() => handleDelete(record)}>
+                <Button color="danger" variant="link" className="justify-start items-center p-0!" onClick={() => handleDelete(record)}>
                   {t('common.delete')}
                 </Button>
               </PermissionWrapper>
@@ -359,31 +358,19 @@ const ChartContent = ({
     try {
       if (!key) return;
       const data = await getTrainDataInfoMap[key](id as string, true, true);
-      if (key !== 'timeseries_predict') {
-        handleLabelData(data?.train_data, data?.metadata?.anomaly_point);
-      } else {
+      
+      if (key === 'timeseries_predict') {
         const { train_data, metadata } = data;
-        let ponints: number[] = [];
-        if (train_data) {
-          const response = await fetch(data.train_data);
-          if (!response.ok) throw new Error('获取文件数据失败');
-          const text = await (await response.blob()).text();
-          const pattern = /['"]/g;
-          const _text = text.replaceAll(pattern, ''); // 清除文本中的多余引号
-          const _trainData = handleFileRead(_text, key);
-          if (metadata) {
-            const response = await fetch(data.metadata);
-            if (!response.ok) throw new Error('获取Metadata失败');
-            const _metadata = await response.json();
-            ponints = _metadata?.anomaly_point || [];
-          }
-          console.log(_trainData);
-          handleLabelData(_trainData?.train_data, ponints);
-        }
-
+        const points = metadata?.anomaly_point || [];
+        
+        handleLabelData(train_data || [], points);
+      } else {
+        // 异常检测模式
+        handleLabelData(data?.train_data, data?.metadata?.anomaly_point);
       }
     } catch (e) {
-      console.log(e);
+      console.error('Failed to load data:', e);
+      message.error(t('datasets.loadDataError'));
     } finally {
       setLoadingState(prev => ({ ...prev, loading: false, chartLoading: false }));
     }
@@ -612,7 +599,7 @@ const ChartContent = ({
               )}
             </div>
             <div
-              className={`${key === 'anomaly_detection' ? 'w-[355px]' : 'w-[290px]'} anomaly-container relative`}
+              className={`${key === 'anomaly_detection' ? 'w-88.75' : 'w-72.5'} anomaly-container relative`}
               ref={tableContainerRef}
               style={{
                 height: `calc(100vh - 120px)`,
@@ -641,7 +628,7 @@ const ChartContent = ({
                   virtual
                   size="small"
                   rowKey="timestamp"
-                  scroll={{ x: '100%', y: tableScrollHeight }}
+                  scroll={{ x: '100%', y: key === 'anomaly_detection' ? tableScrollHeight : 'calc(100vh - 160px)' }}
                   columns={colmuns}
                   dataSource={pagedData}
                 />

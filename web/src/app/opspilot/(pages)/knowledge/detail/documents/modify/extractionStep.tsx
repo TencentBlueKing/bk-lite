@@ -99,11 +99,17 @@ const ExtractionStep: React.FC<{
   // Word: fullText + chapter (default: chapter)
   // Excel: fullText + worksheet + row (default: row)  
   // PDF: fullText + page (default: page)
+  // PPT: fullText + page (default: fullText)
   // Others: fullText only
   const getAvailableExtractionMethods = (extension: string) => {
     const ext = extension.toLowerCase();
 
-    if (ext === 'docx' || ext === 'doc') {
+    if (ext === 'ppt' || ext === 'pptx') {
+      return {
+        methods: ['fullText', 'page'],
+        default: 'fullText',
+      };
+    } else if (ext === 'docx' || ext === 'doc') {
       return {
         methods: ['fullText', 'chapter'],
         default: 'chapter',

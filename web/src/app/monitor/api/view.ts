@@ -1,4 +1,5 @@
 import useApiClient from '@/utils/request';
+import { AxiosRequestConfig } from 'axios';
 import { SearchParams } from '@/app/monitor/types/search';
 import { InstanceParam } from '@/app/monitor/types';
 
@@ -17,11 +18,13 @@ const useViewApi = () => {
 
   const getInstanceSearch = async (
     objectId: React.Key,
-    data: InstanceParam
+    data: InstanceParam,
+    config?: AxiosRequestConfig
   ) => {
     return await post(
       `/monitor/api/monitor_instance/${objectId}/search/`,
-      data
+      data,
+      config
     );
   };
 
@@ -29,12 +32,14 @@ const useViewApi = () => {
     name: string,
     params: {
       monitor_object_id?: React.Key;
-    } = {}
+    } = {},
+    config?: AxiosRequestConfig
   ) => {
     return await get(
       `/monitor/api/monitor_instance/query_params_enum/${name}/`,
       {
         params,
+        ...config,
       }
     );
   };

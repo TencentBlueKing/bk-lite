@@ -17,6 +17,7 @@ const BATCH_FIELD_MAPS: Record<string, string> = {
   username: 'loginAccount',
   port: 'loginPort',
   password: 'loginPassword',
+  auth_type: 'authType',
 };
 
 const DISPLAY_PLUGINS_COUNT = 4; // 最多展示几个插件

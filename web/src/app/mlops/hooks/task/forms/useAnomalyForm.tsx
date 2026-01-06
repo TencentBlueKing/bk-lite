@@ -40,7 +40,9 @@ export const useAnomalyForm = ({ datasetOptions, activeTag, onSuccess, formRef }
     addTimeSeriesTrainTask,
     updateTimeSeriesTrainTask,
     addClassificationTrainTask,
-    updateClassificationTrainTask
+    updateClassificationTrainTask,
+    getDatasetReleases,
+    getDatasetReleaseByID
   } = useMlopsTaskApi();
   const { loadTrainOptions, getDatasetByTrainId } = useTrainDataLoader();
   const { hyperoptConversion, renderParams } = useParamsUtil();
@@ -71,25 +73,38 @@ export const useAnomalyForm = ({ datasetOptions, activeTag, onSuccess, formRef }
     valOption: [],
     testOption: []
   });
+  const [datasetVersions, setDatasetVersions] = useState<Option[]>([]);
   const [isShow, setIsShow] = useState<boolean>(false);
   const [algorithmType, setAlgorithmsType] = useState<string>('');
   const [selectedColumns, setSelectedColumns] = useState<RecordType[]>([]);
   const [targetKeys, setTargetKeys] = useState<TransferProps['targetKeys']>([]);
   const [selectedKeys, setSelectedKeys] = useState<TransferProps['targetKeys']>([]);
   const addTrainTask: Record<string, any> = {
-    'anomaly': addAnomalyTrainTask,
+    'anomaly_detection': addAnomalyTrainTask,
     'log_clustering': addLogClusteringTrainTask,
     'timeseries_predict': addTimeSeriesTrainTask,
     'classification': addClassificationTrainTask
   };
   const updateTrainTask: Record<string, any> = {
-    'anomaly': updateAnomalyTrainTask,
+    'anomaly_detection': updateAnomalyTrainTask,
     'log_clustering': updateLogClusteringTrainTask,
     'timeseries_predict': updateTimeSeriesTrainTask,
     'classification': updateClassificationTrainTask
   };
+  const getDatasetVerions: Record<string, any> = {
+    'anomaly_detection': () => { },
+    'log_clustering': () => { },
+    'timeseries_predict': getDatasetReleases,
+    'classification': () => { }
+  };
+  const getDatasetReleaseByIDMap: Record<string, any> = {
+    'anomaly_detection': () => { },
+    'log_clustering': () => { },
+    'timeseries_predict': getDatasetReleaseByID,
+    'classification': () => { }
+  };
   const algorithmOptions: Record<string, Option[]> = {
-    'anomaly': [
+    'anomaly_detection': [
       { value: 'RandomForest', label: `RandomForest` },
     ],
     'log_clustering': [
@@ -100,7 +115,8 @@ export const useAnomalyForm = ({ datasetOptions, activeTag, onSuccess, formRef }
       { value: 'LogCluster', label: 'LogCluster' },
     ],
     'timeseries_predict': [
-      { value: 'Prophet', label: 'Prophet' }
+      // { value: 'Prophet', label: 'Prophet' },
+      { value: 'GradientBoosting', label: 'GradientBoosting' }
     ],
     'classification': [
       { value: 'RandomForest', label: `RandomForest` },
@@ -134,11 +150,11 @@ export const useAnomalyForm = ({ datasetOptions, activeTag, onSuccess, formRef }
     // });
     if (!formRef.current) return;
     formRef.current.resetFields();
-
+    console.log(formData);
     if (modalState.type === 'add') {
-      // formRef.current.setFieldsValue({
-      //   hyperopt_config: defaultParams
-      // });
+      formRef.current.setFieldsValue({
+        max_evals: 50
+      });
     } else if (formData) {
       setAlgorithmsType(formData.algorithm);
       const immediateData = {
@@ -146,48 +162,28 @@ export const useAnomalyForm = ({ datasetOptions, activeTag, onSuccess, formRef }
         type: formData.type,
         max_evals: formData.max_evals,
         algorithm: formData.algorithm,
+        dataset: formData.dataset,
+        dataset_version: formData.dataset_version,
         hyperopt_config: hyperoptConversion(formData.hyperopt_config)
       };
 
+
       formRef.current.setFieldsValue(immediateData);
       setIsShow(true);
-      handleAsyncDataLoading(formData.train_data_id as number, formData);
-      if(key === 'classification') {
+      handleAsyncDataLoading(formData.dataset_version as number, key);
+      if (key === 'classification') {
         console.log(formData.labels)
         setTargetKeys(formData.labels || [])
       }
     }
   };
 
-  const onTrainSelectChange = async (value: number) => {
-    if (!value) return;
-    try {
-      if(key !== 'classification') return;
-      setLoadingState(prev => ({...prev, transfer: true}));
-      const { metadata } = await getDatasetByTrainId(value, key);
-      if (key === 'classification' && metadata.headers) {
-        const _headers = metadata.headers?.map((item: string) => ({
-          key: item,
-          title: item
-        })).slice(0, metadata.headers?.length - 1);
-        setSelectedColumns(_headers);
-        if(modalState.type === 'add') {
-          setTargetKeys(_headers.map((item: any) => item.key));
-        }
-      }
-    } catch (e) {
-      console.log(e);
-    } finally {
-      setLoadingState(prev => ({...prev, transfer: false}));
-    }
-  };
-
-  // 以训练文件ID获取数据ID
-  const handleAsyncDataLoading = useCallback(async (trainDataId: number, formData: TrainJob) => {
-    if (!trainDataId) return;
+  // 以数据集版本文件ID获取数据集ID
+  const handleAsyncDataLoading = useCallback(async (dataset_version_id: number, key: string) => {
+    if (!dataset_version_id) return;
     setLoadingState((prev) => ({ ...prev, select: true }));
     try {
-      const { dataset } = await getDatasetByTrainId(formData.train_data_id as number, key);
+      const { dataset } = await getDatasetReleaseByIDMap[key](dataset_version_id as number);
       if (dataset && formRef.current) {
         formRef.current.setFieldsValue({
           dataset_id: dataset
@@ -207,14 +203,17 @@ export const useAnomalyForm = ({ datasetOptions, activeTag, onSuccess, formRef }
     setLoadingState(prev => ({ ...prev, select: true }));
     try {
       if (!formRef.current || !dataset) return;
-      // 加载训练数据选项
-      const trainOptions = await loadTrainOptions(dataset, key);
-      onTrainSelectChange(formData?.train_data_id as number);
-      setTrainDataOption(trainOptions);
+      // 加载数据集版本
+      const datasetVersions = await getDatasetVerions[key]({ dataset });
+      const _versionOptions = datasetVersions.map((item: any) => {
+        return {
+          label: item?.name || '',
+          value: item?.id
+        }
+      });
+      setDatasetVersions(_versionOptions);
       formRef.current.setFieldsValue({
-        train_data_id: formData?.train_data_id,
-        val_data_id: formData?.val_data_id,
-        test_data_id: formData?.test_data_id,
+        dataset_version: formData?.dataset_version
       });
     } catch (e) {
       console.log(e);
@@ -275,7 +274,7 @@ export const useAnomalyForm = ({ datasetOptions, activeTag, onSuccess, formRef }
         hyperopt_config,
         description: value.name || ''
       };
-      if(key === 'classification') {
+      if (key === 'classification') {
         params['labels'] = selectedColumns.filter(item => targetKeys?.includes(item.key)).map(item => item.title);
       }
       console.log(params);
@@ -300,7 +299,7 @@ export const useAnomalyForm = ({ datasetOptions, activeTag, onSuccess, formRef }
   }, [modalState.type, formData, onSuccess, addAnomalyTrainTask, updateAnomalyTrainTask, renderParams, t]);
 
   const transferVaildate = useCallback(() => {
-    if(targetKeys?.length === 0) {
+    if (targetKeys?.length === 0) {
       return Promise.reject(new Error(`请至少选择一个列用于训练`))
     }
     return Promise.resolve();
@@ -325,7 +324,7 @@ export const useAnomalyForm = ({ datasetOptions, activeTag, onSuccess, formRef }
 
   // 渲染表单内容
   const renderFormContent = useCallback(() => {
-    // if (key !== 'anomaly') return;
+    // if (key !== 'anomaly_detection') return;
     return (
       <>
         <Form.Item
@@ -347,7 +346,7 @@ export const useAnomalyForm = ({ datasetOptions, activeTag, onSuccess, formRef }
           label={t('traintask.maxEvals')}
           rules={[{ required: true, message: t('common.inputMsg') }]}
         >
-          <InputNumber style={{ width: '100%' }} placeholder={t('traintask.maxEvalsMsg')} />
+          <InputNumber style={{ width: '100%' }} min={0} placeholder={t('traintask.maxEvalsMsg')} />
         </Form.Item>
         <Form.Item
           name='dataset_id'
@@ -358,10 +357,19 @@ export const useAnomalyForm = ({ datasetOptions, activeTag, onSuccess, formRef }
         </Form.Item>
         {isShow && (
           <>
-            <Divider orientation='start' orientationMargin={'0'} plain style={{ borderColor: '#d1d5db' }}>
-              {t(`traintask.trainfile`)}
-            </Divider>
             <Form.Item
+              name='dataset_version'
+              label={"数据集版本"}
+            >
+              <Select
+                placeholder="选择一个数据集版本"
+                showSearch
+                optionFilterProp="label"
+                loading={loadingState.select}
+                options={datasetVersions}
+              />
+            </Form.Item>
+            {/* <Form.Item
               name='train_data_id'
               className='ml-2'
               label={t('datasets.train')}
@@ -384,7 +392,7 @@ export const useAnomalyForm = ({ datasetOptions, activeTag, onSuccess, formRef }
               rules={[{ required: true, message: t('common.selectMsg') }]}
             >
               <Select placeholder={t('common.selectMsg')} loading={loadingState.select} options={traindataOption.testOption} />
-            </Form.Item>
+            </Form.Item> */}
             {key === 'classification' &&
               <Form.Item
                 name='selected_columns'
@@ -416,6 +424,11 @@ export const useAnomalyForm = ({ datasetOptions, activeTag, onSuccess, formRef }
     );
   }, [t, onTypeChange, loadingState.select, datasetOptions, renderOptions, isShow, traindataOption, renderItem]);
 
+  // 表单值变化处理（空实现，仅为接口统一）
+  const onFormValuesChange = useCallback(() => {
+    // anomaly_detection 不需要动态表单依赖，保持空实现
+  }, []);
+
   return {
     modalState,
     formRef,
@@ -424,5 +437,6 @@ export const useAnomalyForm = ({ datasetOptions, activeTag, onSuccess, formRef }
     handleSubmit,
     handleCancel,
     renderFormContent,
+    onFormValuesChange,
   };
 };

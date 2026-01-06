@@ -22,6 +22,7 @@ from apps.cmdb.models.collect_model import CollectModels, OidMapping
 from apps.cmdb.serializers.collect_serializer import CollectModelSerializer, CollectModelLIstSerializer, \
     OidModelSerializer, CollectModelIdStatusSerializer
 from apps.cmdb.services.collect_service import CollectModelService
+from apps.core.logger import cmdb_logger as logger
 
 
 class CollectModelViewSet(AuthViewSet):
@@ -139,17 +140,17 @@ class CollectModelViewSet(AuthViewSet):
         查询云的所有区域
         """
         params = requests.data
-        model_id = params.pop("model_id")
-        plugin_id = "{}_info".format(model_id.split("_", 1)[0])
-        result = CollectModelService.list_regions(plugin_id, params)
+        params["model_id"] = params["model_id"].split("_account", 1)[0]
+        result = CollectModelService.list_regions(params)
         return WebUtils.response_success(result)
 
     @HasPermission("auto_collection-View")
     @action(methods=["get"], detail=False, url_path="task_status")
     def task_status(self, request, *args, **kwargs):
-        queryset = self.filter_queryset(self.get_queryset())
-        queryset = queryset.only("model_id", "exec_status")
-        serializer = CollectModelIdStatusSerializer(queryset, many=True, context={"request": request})
+        queryset = self.get_queryset()
+        filter_queryset = self.get_queryset_by_permission(request=request,queryset=queryset)
+        filter_queryset = filter_queryset.only("model_id", "exec_status")
+        serializer = CollectModelIdStatusSerializer(filter_queryset, many=True, context={"request": request})
         data = {}
         for model_data in serializer.data:
             if not data.get(model_data['model_id'], False):
@@ -164,7 +165,7 @@ class CollectModelViewSet(AuthViewSet):
 
     @HasPermission("auto_collection-View")
     @action(methods=["get"], detail=False, url_path="collect_model_doc")
-    def modeldoc(self, request, *args, **kwargs):
+    def model_doc(self, request, *args, **kwargs):
         model_id = request.GET.get("id")
         file_name = str(model_id) + ".md"
         template_dir = os.path.join(settings.BASE_DIR, "apps/cmdb/support-files/plugins_doc")
@@ -174,6 +175,8 @@ class CollectModelViewSet(AuthViewSet):
             with open(file_path, "r", encoding="utf-8") as f:
                 data = f.read()
         except Exception as e:
+            import traceback
+            logger.error(f"读取采集插件文档失败：{traceback.format_exc()}")
             data = "未找到对应的文档！"
         return WebUtils.response_success(data)
 

@@ -198,7 +198,7 @@ const Installing: React.FC<InstallingProps> = ({
                   {['error', 'timeout'].includes(row.status) && (
                     <Button
                       type="link"
-                      className="m1-[10px]"
+                      className="ml-[10px]"
                       onClick={() => handleRetry(row)}
                     >
                       {t('node-manager.cloudregion.node.retry')}
@@ -327,6 +327,7 @@ const Installing: React.FC<InstallingProps> = ({
   const handleCopyInstallCommand = async (row: any) => {
     try {
       setCopyingNodeIds((prev) => [...prev, row.id]);
+      const isLinux = row?.os === 'linux';
       const result = await getInstallCommand(row);
       const installCommand = result || '';
       handleCopy({
@@ -335,7 +336,9 @@ const Installing: React.FC<InstallingProps> = ({
       });
       notification.success({
         message: t('node-manager.cloudregion.node.commandCopied'),
-        description: t('node-manager.cloudregion.node.commandCopiedDesc'),
+        description: isLinux
+          ? t('node-manager.cloudregion.node.linuxCommandCopiedDesc')
+          : t('node-manager.cloudregion.node.commandCopiedDesc'),
         icon: <CheckCircleFilled style={{ color: 'var(--color-success)' }} />,
         placement: 'top',
       });

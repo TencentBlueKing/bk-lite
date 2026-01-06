@@ -18,7 +18,7 @@ async def run_test():
     subject = "bklite.node_list"
     # 使用正确的 exec_params 格式
     exec_params = {
-        "args": [{"ip": "10.10.41.14"}],  # 位置参数列表
+        "args": [{"page_size": -1}],  # 位置参数列表
         "kwargs": {}  # 关键字参数字典
     }
     payload = json.dumps(exec_params).encode()
@@ -27,5 +27,5 @@ async def run_test():
 
 
 if __name__ == '__main__':
-    load_dotenv()
+    load_dotenv(".env")
     asyncio.run(run_test())

@@ -9,13 +9,12 @@ ARQ Worker 配置和任务处理
 """
 import os
 import time
-import logging
 from typing import Dict, Any
 from arq import create_pool
 from arq.connections import RedisSettings
 from core.redis_config import REDIS_CONFIG
+from sanic.log import logger
 
-logger = logging.getLogger(__name__)
 
 
 async def collect_task(ctx: Dict, params: Dict[str, Any], task_id: str) -> Dict[str, Any]:
@@ -34,11 +33,11 @@ async def collect_task(ctx: Dict, params: Dict[str, Any], task_id: str) -> Dict[
         任务完成后会自动清除运行标记，允许相同参数的任务再次入队
     """
     monitor_type = params.get("monitor_type")
-    plugin_name = params.get("plugin_name")
+    model_id = params.get("model_id")
 
     logger.info("=" * 60)
     logger.info(f"Task received: {task_id}")
-    logger.info(f"Type: {monitor_type or plugin_name}")
+    logger.info(f"Type: {monitor_type or model_id}")
     logger.info(f"Host: {params.get('host', 'N/A')}")
     logger.info("=" * 60)
 
@@ -64,7 +63,7 @@ async def collect_task(ctx: Dict, params: Dict[str, Any], task_id: str) -> Dict[
                 "completed_at": int(time.time() * 1000)
             }
 
-        elif plugin_name:
+        elif model_id:
             from tasks.handlers.plugin_handler import collect_plugin_task
             result = await collect_plugin_task(ctx, params, task_id)
 

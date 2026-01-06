@@ -11,5 +11,5 @@ class Command(BaseCommand):
         # 模型初始化
         logger.info("初始化模型！")
         result = ModelMigrate().main()
-        logger.info("初始化模型完成！结果如下：")
-        logger.info(result)
+        logger.info("初始化模型完成！")
+        logger.debug(result)

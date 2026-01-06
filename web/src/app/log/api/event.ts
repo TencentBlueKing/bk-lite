@@ -1,6 +1,7 @@
 import useApiClient from '@/utils/request';
 import React from 'react';
 import { LogAlertParams, StrategyFields } from '@/app/log/types/event';
+import { AxiosRequestConfig } from 'axios';
 
 const useLogEventApi = () => {
   const { get, post, del, put, patch } = useApiClient();
@@ -16,10 +17,12 @@ const useLogEventApi = () => {
       page?: number;
       page_size?: number;
       collect_type?: React.Key;
-    } = {}
+    } = {},
+    config?: AxiosRequestConfig
   ) => {
     return await get(`/log/policy/${id}`, {
       params,
+      ...config,
     });
   };
 
@@ -41,9 +44,13 @@ const useLogEventApi = () => {
     return await del(`/log/policy/${id}/`);
   };
 
-  const getLogAlert = async (params: LogAlertParams = {}) => {
+  const getLogAlert = async (
+    params: LogAlertParams = {},
+    config?: AxiosRequestConfig
+  ) => {
     return await get(`/log/alert/`, {
       params,
+      ...config,
     });
   };
 
@@ -80,9 +87,13 @@ const useLogEventApi = () => {
     });
   };
 
-  const getLogAlertStats = async (params: LogAlertParams = {}) => {
+  const getLogAlertStats = async (
+    params: LogAlertParams = {},
+    config?: AxiosRequestConfig
+  ) => {
     return await get(`/log/alert/stats/`, {
       params,
+      ...config,
     });
   };
 

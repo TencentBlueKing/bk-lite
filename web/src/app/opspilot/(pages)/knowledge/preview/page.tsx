@@ -1,14 +1,11 @@
 "use client";
 import React, { useEffect, useState, useRef } from "react";
-import dynamic from "next/dynamic";
 import { Spin } from "antd";
 import { useAuth } from "@/context/auth";
 import { useSearchParams } from "next/navigation";
-const FileViewer = dynamic(() => import("react-file-viewer"), {
-  ssr: false,
-});
 import * as docx from "docx-preview";
 import ExcelJS from "exceljs";
+import SimpleFilePreview from "./SimpleFilePreview";
 
 const PreviewPage: React.FC = () => {
   const searchParams = useSearchParams();
@@ -109,17 +106,7 @@ const PreviewPage: React.FC = () => {
     }
   }, [fileType, fileUrl]);
 
-  const getFileTypeForViewer = (contentType: string | null): string | null => {
-    if (!contentType) return null;
-    const types: Record<string, string> = {
-      'application/pdf': 'pdf',
-      'text/plain': 'txt',
-      'image/png': 'png',
-      'image/jpeg': 'jpg',
-      'text/csv': 'csv',
-    };
-    return Object.entries(types).find(([key]) => contentType.includes(key))?.[1] || null;
-  };
+
 
   if (loading) {
     return (
@@ -130,21 +117,18 @@ const PreviewPage: React.FC = () => {
   }
 
   return (
-    <div className="w-full h-full">
+    <div style={{ width: "100%", height: "100vh" }}>
       {fileType?.includes("wordprocessingml.document") && (
-        <div ref={docxContainerRef} className="w-full h-full" />
+        <div ref={docxContainerRef} style={{ width: "100%", height: "100%" }} />
       )}
 
       {fileType?.includes("spreadsheetml.sheet") && (
-        <div ref={xlsxContainerRef} className="w-full h-full overflow-auto" />
+        <div ref={xlsxContainerRef} style={{ width: "100%", height: "100%", overflow: "auto" }} />
       )}
 
+      {/* 其他类型用自定义预览组件 */}
       {!fileType?.includes("wordprocessingml.document") && !fileType?.includes("spreadsheetml.sheet") && fileUrl && fileType && (
-        <FileViewer
-          fileType={getFileTypeForViewer(fileType) as string}
-          filePath={fileUrl}
-          onError={(e: Error) => console.error("FileViewer error:", e)}
-        />
+        <SimpleFilePreview fileType={fileType} fileUrl={fileUrl} onError={(e) => console.error("FilePreview error:", e)} />
       )}
     </div>
   );
