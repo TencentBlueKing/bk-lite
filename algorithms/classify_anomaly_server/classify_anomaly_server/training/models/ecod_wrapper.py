@@ -70,13 +70,18 @@ class ECODWrapper(mlflow.pyfunc.PythonModel):
         # 预测异常分数
         scores = self.model.decision_function(df)
         
+        # 计算归一化概率（基于阈值线性映射）
+        # threshold对应0.5概率，2*threshold对应1.0概率
+        probabilities = np.minimum(scores / (threshold * 2), 1.0)
+        
         # 根据阈值判断异常
         predictions = (scores > threshold).astype(int)
         
         # 返回字典格式（与 DummyModel 一致）
         return {
             'labels': predictions.tolist(),
-            'scores': scores.tolist()
+            'scores': scores.tolist(),
+            'probabilities': probabilities.tolist()
         }
     
     def _parse_input(self, model_input) -> tuple:

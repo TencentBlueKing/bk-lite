@@ -431,7 +431,7 @@ class ECODModel(BaseAnomalyModel):
         # 参数验证和修正
         if 'contamination' in decoded:
             contamination = decoded['contamination']
-            # contamination 理论范围是 (0, 1)，通常建议 < 0.5，但允许用户自行决定
+            # contamination 理论范围是 (0, 1)，通常建议 < 0.5
             if not 0 < contamination < 1.0:
                 logger.warning(
                     f"contamination={contamination} 超出有效范围 (0, 1.0)，"
@@ -441,7 +441,6 @@ class ECODModel(BaseAnomalyModel):
             elif contamination >= 0.5:
                 logger.warning(
                     f"contamination={contamination:.4f} >= 0.5，异常率超过50%可能不合理，"
-                    f"但仍允许继续（用户决策）"
                 )
         
         return decoded    

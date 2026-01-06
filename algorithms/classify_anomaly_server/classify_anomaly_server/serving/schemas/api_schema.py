@@ -77,6 +77,7 @@ class AnomalyPoint(BaseModel):
     value: float = Field(..., description="原始观测值")
     label: int = Field(..., description="标签: 0=正常, 1=异常")
     anomaly_score: float = Field(..., description="异常分数（越高越异常）")
+    anomaly_probability: float = Field(..., description="归一化的异常概率 [0,1]，基于阈值线性映射")
 
 
 class ResponseMetadata(BaseModel):

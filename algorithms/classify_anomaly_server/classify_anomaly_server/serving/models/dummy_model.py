@@ -40,11 +40,17 @@ class DummyModel:
             # 所有值相同，无异常
             labels = [0] * len(series)
             scores = [0.0] * len(series)
+            probabilities = [0.0] * len(series)
         else:
             # 计算标准化偏离度作为异常分数
             z_scores = np.abs((series - mean_val) / std_val)
-            # 映射到 0-1 范围（使用sigmoid函数）
-            scores = (1 / (1 + np.exp(-z_scores + 2))).tolist()
+            # 使用sigmoid函数映射到分数
+            scores = (1 / (1 + np.exp(-z_scores + 2)))
+            
+            # 计算归一化概率（基于阈值线性映射，与ECODWrapper一致）
+            probabilities = np.minimum(scores / (threshold * 2), 1.0).tolist()
+            scores = scores.tolist()
+            
             # 根据阈值判定异常
             labels = [1 if score > threshold else 0 for score in scores]
         
@@ -56,5 +62,6 @@ class DummyModel:
         
         return {
             'labels': labels,
-            'scores': scores
+            'scores': scores,
+            'probabilities': probabilities
         }
