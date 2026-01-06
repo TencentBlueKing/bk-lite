@@ -733,10 +733,7 @@ const SearchView: React.FC = () => {
                         </span>
                         <span className="text-[var(--color-text-3)] text-[12px]">
                           {(() => {
-                            const displayUnit = unit === 'short' ? '' : unit;
-                            const unitName =
-                              findUnitNameById(displayUnit) || displayUnit;
-                            return unitName ? `（${unitName}）` : '';
+                            return findUnitNameById(unit) ? `（${unit}）` : '';
                           })()}
                         </span>
                         <Tooltip
