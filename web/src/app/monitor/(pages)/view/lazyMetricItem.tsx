@@ -97,8 +97,7 @@ const LazyMetricItem: React.FC<LazyMetricItemProps> = ({
 
   const getUnit = useCallback(
     (item: TableDataItem) => {
-      const displayUnit = item.displayUnit === 'short' ? '' : item.displayUnit;
-      const unitName = findUnitNameById(displayUnit) || displayUnit;
+      const unitName = findUnitNameById(item.displayUnit);
       return unitName ? `（${unitName}）` : '\u00A0\u00A0';
     },
     [findUnitNameById]

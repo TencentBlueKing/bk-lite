@@ -9,9 +9,14 @@ export const useUnitTransform = () => {
   const unitList = commonContext?.unitList || [];
 
   const findUnitNameById = (value: unknown): string => {
-    if (!value) return '';
+    if (!value || value === 'short') return '';
+    if (isStringArray(value as string)) {
+      return '';
+    }
     const unit = unitList.find((item) => item.unit_id === value);
-    return unit?.display_unit || '';
+    return unit?.display_unit === 'short'
+      ? ''
+      : unit?.display_unit || value?.toString() || '';
   };
 
   const getEnumValueUnit = (metric: MetricItem, id: number | string) => {
