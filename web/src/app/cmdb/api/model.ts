@@ -28,7 +28,7 @@ export const useModelApi = () => {
     post(`/cmdb/api/model/${modelId}/attr/`, params);
 
   // 更新模型属性
-  const updateModelAttr = (modelId: string, params: any) => 
+  const updateModelAttr = (modelId: string, params: any) =>
     put(`/cmdb/api/model/${modelId}/attr_update/`, params);
 
   // 删除模型属性
@@ -54,6 +54,47 @@ export const useModelApi = () => {
   const getModelDetail = (modelId: string) =>
     get(`/cmdb/api/model/get_model_info/${modelId}/`);
 
+  // 获取模型属性分组列表
+  const getModelAttrGroups = async (modelId: string) => get(`/cmdb/api/field_groups/?model_id=${modelId}`);
+
+  const getModelAttrGroupsFullInfo = async (modelId: string) => get(`/cmdb/api/field_groups/full_info/?model_id=${modelId}`);
+
+  // 创建属性分组
+  const createModelAttrGroup = async (params: { model_id: string; group_name: string }) => {
+    return post('/cmdb/api/field_groups/', params);
+  };
+
+  // 更新属性分组
+  const updateModelAttrGroup = async (groupId: number | string, params: { group_name: string }) => {
+    return put(`/cmdb/api/field_groups/${groupId}/`, params);
+  };
+
+  // 删除属性分组
+  const deleteModelAttrGroup = async (groupId: number | string) => {
+    return del(`/cmdb/api/field_groups/${groupId}/`);
+  };
+
+  const moveModelAttrGroup = async (groupId: number | string, direction: 'up' | 'down') => {
+    return post(`/cmdb/api/field_groups/${groupId}/move/`, { direction });
+  };
+
+  const reorderGroupAttrs = async (params: {
+    model_id: string;
+    group_name: string;
+    attr_orders: string[];
+  }) => {
+    return post('/cmdb/api/field_groups/reorder_group_attrs/', params);
+  };
+
+  const moveAttrToGroup = async (params: {
+    model_id: string;
+    attr_id: string;
+    group_name: string;
+    order_id: number;
+  }) => {
+    return post('/cmdb/api/field_groups/update_attr_group/', params);
+  };
+
   return {
     getModelList,
     createModel,
@@ -67,6 +108,14 @@ export const useModelApi = () => {
     createModelAssociation,
     deleteModelAssociation,
     getModelAssociationTypes,
-    getModelDetail
+    getModelDetail,
+    getModelAttrGroups,
+    getModelAttrGroupsFullInfo,
+    createModelAttrGroup,
+    updateModelAttrGroup,
+    deleteModelAttrGroup,
+    moveModelAttrGroup,
+    reorderGroupAttrs,
+    moveAttrToGroup
   };
 };
