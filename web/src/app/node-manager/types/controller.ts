@@ -29,6 +29,7 @@ export interface RetryInstallParams {
   password?: string;
   port?: string | number;
   username?: string;
+  private_key?: string;
 }
 
 export interface InstallingProps {

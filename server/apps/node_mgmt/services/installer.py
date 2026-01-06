@@ -79,6 +79,13 @@ class InstallerService:
         creates = []
         aes_obj = AESCryptor()
         for node in nodes:
+            # 加密密码（如果有）
+            password = aes_obj.encode(node["password"]) if node.get("password") else ""
+            # 加密私钥（如果有）
+            private_key = aes_obj.encode(node["private_key"]) if node.get("private_key") else ""
+            # 加密密码短语（如果有）
+            passphrase = aes_obj.encode(node["passphrase"]) if node.get("passphrase") else ""
+            
             creates.append(ControllerTaskNode(
                 task_id=task_obj.id,
                 ip=node["ip"],
@@ -87,7 +94,9 @@ class InstallerService:
                 organizations=node["organizations"],
                 port=node["port"],
                 username=node["username"],
-                password=aes_obj.encode(node["password"]),
+                password=password,
+                private_key=private_key,
+                passphrase=passphrase,
                 status="waiting",
             ))
         ControllerTaskNode.objects.bulk_create(creates, batch_size=DatabaseConstants.BULK_CREATE_BATCH_SIZE)
@@ -122,13 +131,22 @@ class InstallerService:
         creates = []
         aes_obj = AESCryptor()
         for node in nodes:
+            # 加密密码（如果有）
+            password = aes_obj.encode(node["password"]) if node.get("password") else ""
+            # 加密私钥（如果有）
+            private_key = aes_obj.encode(node["private_key"]) if node.get("private_key") else ""
+            # 加密密码短语（如果有）
+            passphrase = aes_obj.encode(node["passphrase"]) if node.get("passphrase") else ""
+            
             creates.append(ControllerTaskNode(
                 task_id=task_obj.id,
                 ip=node["ip"],
                 os=node["os"],
                 port=node["port"],
                 username=node["username"],
-                password=aes_obj.encode(node["password"]),
+                password=password,
+                private_key=private_key,
+                passphrase=passphrase,
                 status="waiting",
             ))
         ControllerTaskNode.objects.bulk_create(creates, batch_size=DatabaseConstants.BULK_CREATE_BATCH_SIZE)

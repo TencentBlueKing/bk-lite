@@ -21,6 +21,7 @@ interface CustomTableProps<T>
   };
   onSelectFields?: (fields: string[]) => void;
   rowDraggable?: boolean;
+  onRowDragStart?: (index: number) => void;
   onRowDragEnd?: (
     targetTableData: TableProps<T>['dataSource'],
     sourceIndex: number,
@@ -46,6 +47,7 @@ const CustomTable = <T extends object>({
   pagination,
   onChange,
   rowDraggable = false,
+  onRowDragStart,
   onRowDragEnd,
   rowSelection,
   ...TableProps
@@ -211,6 +213,7 @@ const CustomTable = <T extends object>({
 
   const handleDragStart = (index: number) => () => {
     setDraggedIndex(index);
+    onRowDragStart?.(index);
   };
 
   const handleDragOver =
@@ -226,6 +229,12 @@ const CustomTable = <T extends object>({
       const targetIndex = index;
       setDraggedIndex(null);
       setHoveredIndex(null);
+
+      if (sourceIndex === null) {
+        const targetTableData = cloneDeep(TableProps.dataSource) as T[];
+        onRowDragEnd?.(targetTableData, targetIndex, -1);
+        return;
+      }
 
       if (
         sourceIndex !== null &&

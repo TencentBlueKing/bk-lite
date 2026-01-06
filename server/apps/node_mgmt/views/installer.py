@@ -31,7 +31,13 @@ class InstallerViewSet(ViewSet):
 
     @action(detail=False, methods=["post"], url_path="controller/retry")
     def controller_retry(self, request):
-        retry_controller.delay(request.data["task_id"], request.data["task_node_ids"], request.data["password"])
+        retry_controller.delay(
+            request.data["task_id"], 
+            request.data["task_node_ids"], 
+            password=request.data.get("password"),
+            private_key=request.data.get("private_key"),
+            passphrase=request.data.get("passphrase")
+        )
         return WebUtils.response_success()
 
     # 控制器手动安装

@@ -222,4 +222,69 @@ export interface FieldModalRef {
     showModal: (config: FieldConfig) => void;
 }
 
+// 属性分组相关类型
+export interface AttrGroup {
+  id: number;
+  model_id: string;
+  group_name: string;
+  order: number;
+  is_collapsed: boolean;
+  description: string;
+  attr_orders: any[];
+  created_by: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface AttrItem {
+  attr_id: string;
+  attr_name: string;
+  attr_type: string;
+  is_required: boolean;
+  editable: boolean;
+  is_only: boolean;
+  group_id?: string;
+  order?: number;
+}
+
+// 获取模型完整信息接口相关类型
+export interface FullInfoAttrItem {
+  attr_id: string;
+  attr_name: string;
+  attr_type: string;
+  option: string;
+  attr_group: string;
+  is_only: boolean;
+  editable: boolean;
+  is_required: boolean;
+  is_pre: boolean;
+}
+
+export interface FullInfoGroupItem {
+  id: number;
+  group_name: string;
+  order: number;
+  is_collapsed: boolean;
+  description: string;
+  attrs: FullInfoAttrItem[];
+  attrs_count: number;
+  can_move_up: boolean;
+  can_move_down: boolean;
+  can_delete: boolean;
+}
+
+export interface ModelFullInfo {
+  model_id: string;
+  model_name: string;
+  groups: FullInfoGroupItem[];
+  total_groups: number;
+  total_attrs: number;
+}
+
+export interface ModelFullInfoResponse {
+  data: ModelFullInfo;
+  result: boolean;
+  message: string;
+}
+
 
