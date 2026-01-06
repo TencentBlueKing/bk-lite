@@ -59,12 +59,15 @@ services:
       # 不挂载 docker.sock
       - ./conf/traefik/dynamic.yml:/etc/traefik/dynamic.yml
       - ./conf/traefik/certs:/etc/certs:ro
+    environment:
+      - TRAEFIK_SERVER_URL=${SERVER_URL}
     command:
       - "--log.level=INFO"
       - "--api.insecure=true"
       - "--api.dashboard=false"
       - "--providers.file.filename=/etc/traefik/dynamic.yml"
       - "--providers.file.watch=true"
+      - "--providers.file.templating=true"
       - "--accesslog"
       - "--entrypoints.websecure.address=:${TRAEFIK_WEB_PORT}"
     networks:
