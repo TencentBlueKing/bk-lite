@@ -16,15 +16,15 @@ class CloudRegionServiceConstants:
 
     # 部署状态枚举
     NOT_DEPLOYED_STATUS = 0  # 未部署
-    DEPLOYING = 1  # 部署中
+    # DEPLOYING = 1  # 部署中
     DEPLOYED = 2  #  已部署
-    ERROR = 3  # 部署失败
-    DEPLOY_STATUS_ENUM = {
-        DEPLOYED: "未部署",
-        NOT_DEPLOYED_STATUS: "部署中",
-        DEPLOYING: "已部署",
-        ERROR: "部署失败",
-    }
+    # ERROR = 3  # 部署失败
+    # DEPLOY_STATUS_ENUM = {
+    #     DEPLOYED: "未部署",
+    #     NOT_DEPLOYED_STATUS: "部署中",
+    #     # DEPLOYING: "已部署",
+    #     # ERROR: "部署失败",
+    # }
 
     LOCAL_CA_CERT_PATH = "/etc/nats/certs/ca.crt"
     REMOTE_CA_CERT_PATH = "/opt/bk-lite/conf/certs"
