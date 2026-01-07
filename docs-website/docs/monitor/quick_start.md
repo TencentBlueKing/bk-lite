@@ -191,7 +191,66 @@ sidebar_position: 2
 ### 接入 Elasticsearch
 
 通过 Telegraf 插件连接 Elasticsearch 集群，采集集群健康状态、节点性能、索引及 JVM 内存使用情况。
+#### 前置条件
 
+在开始接入前，请确保满足以下条件：
+
+1.  **版本支持**
+    *   **ElasticSearch 版本**: `6.8` 及以上（推荐 `7.x` 或 `8.x`）
+    *   **Telegraf Agent**: 已在指定采集节点上安装并运行。
+
+2.  **网络连通性**
+    *   确保 Telegraf 所在的采集节点服务器可以访问到目标 ElasticSearch 的 **HTTP/HTTPS 端口**（默认为 `9200`，部分环境可能配置为 `39201` 等自定义端口）。
+    *   如有防火墙或安全组，请提前放行 TCP 协议。
+
+3.  **创建专用的监控账号 (安全最佳实践)**
+    为了遵循**最小权限原则**，避免使用 `elastic` 超级管理员账号进行明文配置，建议通过 REST API 创建一个仅具备读取权限的专用账号。
+
+    **操作步骤如下：**
+
+    > **注意**：如果您的 ES 集群开启了 HTTPS 且使用自签名证书（如内网环境），请在以下 `curl` 命令中添加 `-k` 参数来跳过证书验证。
+
+    a. **创建只读角色 (Role)**
+       首先定义一个名为 `read_only_role` 的角色，仅赋予集群监控和索引读取权限。
+       请将 URL 中的 IP 和端口替换为实际值，并使用超管账号认证。
+
+       ```bash
+       curl -k -u elastic:<超管密码> -X POST "https://<ES主机IP>:<端口>/_security/role/read_only_role" \
+       -H "Content-Type: application/json" \
+       -d '{
+         "cluster": ["monitor"],
+         "indices": [
+           {
+             "names": [ "*" ],
+             "privileges": [ "read", "view_index_metadata" ]
+           }
+         ]
+       }'
+       ```
+
+    b. **创建监控用户 (User)**
+       创建一个名为 `monitor_user` 的用户，并分配上述创建的只读角色。
+       ```bash
+       curl -k -u elastic:<超管密码> -X POST "https://<ES主机IP>:<端口>/_security/user/monitor_user" \
+       -H "Content-Type: application/json" \
+       -d '{
+         "password": "<设置您的安全密码>",
+         "roles": [ "read_only_role" ],
+         "full_name": "Telegraf Monitor User"
+       }'
+       ```
+
+    c. **验证权限**
+       使用新创建的账号尝试访问集群根目录，若返回版本信息则表示配置成功。
+       ```bash
+       curl -k -u monitor_user:<您的安全密码> -X GET "https://<ES主机IP>:<端口>/"
+       ```
+
+       > **原理：**
+       > *   `cluster: ["monitor"]`：允许采集端获取集群层面的健康状况和统计信息（Cluster Stats）。
+       > *   `indices: ["read", "view_index_metadata"]`：允许采集端读取索引级别的统计数据（Index Stats），但**不允许修改或删除数据**，从而保障数据安全。
+
+---
 #### 步骤一：选择集成插件
 
 1.  进入 Monitor 后，点击顶部导航栏的 **“集成”**。
@@ -335,7 +394,74 @@ sidebar_position: 2
 ### 接入 Postgres
 
 通过 Telegraf 插件连接 PostgreSQL 数据库，采集 **事务吞吐量**、**连接数**、**缓存命中率** 及 **死锁** 等关键性能指标。
+#### 前置条件
 
+在开始接入前，请确保满足以下条件：
+
+1.  **版本支持**
+    *   **PostgreSQL 版本**: 建议 `9.6` 及以上 (以便使用 `pg_monitor` 角色)
+    *   **Telegraf Agent**: 已在指定采集节点上安装并运行。
+
+2.  **网络连通性**
+    *   确保 Telegraf 所在的采集节点服务器可以访问到目标 PostgreSQL 数据库的 **服务端口** (默认为 `5432`)。如有防火墙，请提前放行。
+
+3.  **创建专用的监控账号 (安全最佳实践)**
+    为了遵循**最小权限原则**，避免使用 `postgres` 或其他超级用户账号进行监控，请提前在您的 PostgreSQL 实例中创建一个专用的低权限监控角色。
+
+    **操作步骤如下：**
+
+    a. **以管理员身份登录 PostgreSQL**
+       使用 `postgres` 或其他高权限账号登录到您要监控的 PostgreSQL 实例。
+       ```bash
+       # 示例：psql -h <您的PG主机IP> -p <端口> -U <管理员用户> -d <数据库>
+       psql -h 10.10.90.113 -p 5432 -U postgres -d postgres
+       ```
+
+    b. **创建监控用户**
+       执行以下 SQL 命令，创建一个名为 `telegraf_monitor` 的用户。
+       ```sql
+       CREATE ROLE telegraf_monitor WITH LOGIN PASSWORD '您的安全密码';
+       ```
+       > **说明：**
+       > *   请将 `'您的安全密码'` 替换为一个健壮的密码。
+       > *   与 MySQL 不同，PostgreSQL 的用户访问控制主要由服务器配置文件 `pg_hba.conf` 管理，而不是在创建用户时指定 IP。
+
+    c. **授予最小监控权限**
+       执行以下 SQL 命令，为 `telegraf_monitor` 用户赋予采集性能指标所必需的、最少的权限。
+       ```sql
+       -- 授予 'pg_monitor' 预定义角色，这是实现安全监控的最佳实践
+       GRANT pg_monitor TO telegraf_monitor;
+       ```
+       > **原理：** `pg_monitor` 是 PostgreSQL 官方提供的预设角色，它打包了所有用于监控所需的**只读权限**，可以访问各类统计视图 (`pg_stat_*`)。此授权方案严格限制了 `telegraf_monitor` 用户的能力，使其只能读取性能相关的系统数据，**无法读取任何业务数据表**，从而保障了您数据库的业务安全。
+
+#### 注意：启用远程连接（重要）
+
+与许多数据库不同，PostgreSQL 默认配置非常严格，通常不允许远程网络连接。在创建完用户后，您**很可能需要修改服务器端的配置文件**才能使新账号从远程成功登录。
+
+**请登录到 PostgreSQL 服务器本机**，检查并修改以下两个文件：
+
+1.  **`postgresql.conf`**
+    *   **目的**：让 PostgreSQL 监听网络连接。
+    *   **操作**：找到 `listen_addresses` 配置项，确保其值不是 `'localhost'`。通常应修改为：
+        ```ini
+        listen_addresses = '*'
+        ```
+
+2.  **`pg_hba.conf`**
+    *   **目的**：添加一条“准入规则”，允许监控用户从指定 IP 远程连接。
+    *   **操作**：在文件末尾添加一行新规则。
+        ```ini
+        # 格式: TYPE  DATABASE   USER                ADDRESS/MASK            METHOD
+        # 允许来自任何 IP 的连接 (安全性较低)
+        host    all        telegraf_monitor    0.0.0.0/0               scram-sha-256
+
+        # 或者，仅允许来自 Telegraf 节点的连接 (更安全)
+        # host    all        telegraf_monitor    10.10.27.31/32          scram-sha-256
+        ```
+
+修改完以上文件后，**必须重启或重载 (restart/reload) PostgreSQL 服务**才能使配置生效。
+
+---
 #### 步骤一：选择集成插件
 
 1.  进入 Monitor 后，点击顶部导航栏的 **“集成”**。
@@ -750,7 +876,68 @@ sidebar_position: 2
 ### 接入 RabbitMQ
 
 通过 Telegraf 插件连接 RabbitMQ 管理接口，采集 **队列深度**、**消息吞吐量**、**连接数** 及 **节点资源** 等关键指标。
+#### 前置条件
 
+在开始接入前，请确保您已完成以下准备工作，这是保障监控顺利进行和数据安全的基础。
+
+1.  **版本支持与环境**
+    *   **RabbitMQ 版本**: 建议 `3.0` 及以上，并确保 **Management Plugin** 已启用（现代版本默认启用）。
+    *   **Telegraf Agent**: 已在指定采集节点上安装并运行。
+
+2.  **网络连通性**
+    *   确保 Telegraf 所在的采集节点服务器可以访问到目标 RabbitMQ 服务器的 **Management API 端口**（默认为 `15672`）。
+    *   如有防火墙（无论是服务器防火墙还是网络防火墙），请提前为该端口配置放行策略。
+
+3.  **创建专用的监控账号 (安全最佳实践)**
+    为了遵循**最小权限原则**，强烈建议**避免**使用 `guest` 或其他管理员账号进行监控。请提前在您的 RabbitMQ 实例中创建一个专用的、低权限的监控账号。
+
+    **操作步骤如下：**
+
+    我们提供两种创建方式，您可以根据便利性任选其一。
+
+    *   **方式一：通过 `rabbitmqctl` 命令行（需登录服务器）**
+        *   a. **以管理员身份登录 RabbitMQ 服务器**
+            使用 SSH 等方式，以 root 或具有 sudo 权限的用户登录到 RabbitMQ 所在的服务器。
+        *   b. **执行以下脚本创建低权限用户**
+            ```bash
+            # 步骤 1: 创建一个全新的、专门用于监控的登录用户
+            # 重要：请将 '您的安全密码!' 替换为一个真实的高强度密码
+            rabbitmqctl add_user telegraf_monitor '您的安全密码!'
+
+            # 步骤 2: 为这个新用户赋予 'monitoring' 标签，这是实现最小权限的核心
+            rabbitmqctl set_user_tags telegraf_monitor monitoring
+
+            # 步骤 3: 授予用户访问默认虚拟主机 ('/') 的权限
+            # 权限会被 'monitoring' 标签进一步限制，确保安全
+            rabbitmqctl set_permissions -p / telegraf_monitor ".*" ".*" ".*"
+            ```
+
+    *   **方式二：通过 Management HTTP API 远程创建（推荐）**
+        *   a. **在任意可访问网络的终端操作**
+            此方法无需登录 RabbitMQ 服务器，只需在任意一台能够访问其 `15672` 端口的机器上，使用 `curl` 等工具执行即可。需要准备一个**已有的管理员账号**（如 `guest` 或 `weops`）用于操作认证。
+        *   b. **执行以下 `curl` 命令创建低权限用户**
+            ```bash
+            # 步骤 1: 创建用户、设置密码并直接打上 'monitoring' 标签
+            # - 将 [admin_user]:[admin_pass] 替换为现有管理员账号密码，如 weops:guest
+            # - 将 '您的安全密码!' 替换为新用户的高强度密码
+            # - 将 [rabbitmq_host] 替换为 RabbitMQ 服务器的 IP 地址或域名
+            curl -i -u [admin_user]:[admin_pass] -X PUT -H "content-type:application/json" \
+            -d '{"password":"您的安全密码!", "tags":"monitoring"}' \
+            http://[rabbitmq_host]:15672/api/users/telegraf_monitor
+
+
+            # 步骤 2: 为新用户授予访问默认虚拟主机 ('/') 的权限
+            # 注意: URL 中的 %2F 是 / 的编码
+            curl -i -u [admin_user]:[admin_pass] -X PUT -H "content-type:application/json" \
+            -d '{"configure":".*", "write":".*", "read":".*"}' \
+            http://[rabbitmq_host]:15672/api/permissions/%2F/telegraf_monitor
+            ```
+
+> **原理说明：**
+> *   `set_user_tags ... monitoring`: 这是实现最小权限监控的**核心**。RabbitMQ 内置的 `monitoring` 标签会强制将用户的能力限制为：只能查看所有对象的元数据和性能指标，**无法**查看任何队列中的具体消息，也**无法**进行发布/订阅或修改配置等任何管理操作。
+> *   `set_permissions ...`: 此命令用于授予用户访问指定虚拟主机（Virtual Host，此处为默认的 `/`）的“入场券”。虽然命令中的正则表达式 `".*"` 看起来授予了所有权限，但 `monitoring` 标签的**优先级更高**，会覆盖这些权限，最终确保用户只能执行只读的监控操作。
+> *   此方案严格限制了 `telegraf_monitor` 用户的能力，使其**只能读取服务器级的状态和指标**，**无法访问任何业务数据**，从而保障了您消息队列的业务安全。
+---
 #### 步骤一：选择集成插件
 
 1.  进入 Monitor 后，点击顶部导航栏的 **“集成”**。
@@ -799,7 +986,51 @@ sidebar_position: 2
 ### 接入 Nginx
 
 通过 Telegraf 插件连接 Nginx 的 `stub_status` 接口，采集 **活跃连接数**、**请求处理速率** 及 **连接状态分布** 等核心指标。
+#### 前置条件
 
+在开始接入前，请确保 Nginx 服务端已开启 `http_stub_status_module` 模块并配置了状态页（Status URL），这是数据采集的基础。
+
+1.  **确认模块支持**
+    *   检查 Nginx 是否已编译 `http_stub_status_module` 模块（大多数发行版默认包含）。
+    *   **验证命令**：`nginx -V 2>&1 | grep -o with-http_stub_status_module`
+    *   如果输出包含该模块名称，说明支持监控。
+
+2.  **配置 Nginx 状态页**
+    *   编辑 Nginx 配置文件（通常位于 `/etc/nginx/nginx.conf` 或 `/etc/nginx/conf.d/default.conf`）。
+    *   在您业务对应的 `server` 块中（或新增一个），添加以下 `location` 配置：
+        ```nginx
+        server {
+            listen 80; # 请根据实际情况调整端口，例如 30080
+            
+            # --- 添加以下监控配置块 ---
+            location /stub_status {
+                stub_status;       # 开启状态监控指令
+                access_log off;    # 关闭此接口的访问日志，避免日志刷屏
+                
+                # 安全控制：建议仅允许本机和 Telegraf 采集机访问
+                allow 127.0.0.1;
+                allow <Telegraf采集机IP>; 
+                deny all;
+            }
+        }
+        ```
+    *   配置完成后，执行 `nginx -t` 检查语法，并执行 `nginx -s reload` 重载服务。
+
+3.  **验证接口可用性**
+    *   **重要提示**：Nginx 的状态页默认即为机器可读格式，无需特殊参数。
+    *   **测试命令**：
+        ```bash
+        curl http://<NginxIP>:<端口>/stub_status
+        ```
+    *   **成功标准**：返回类似以下格式的纯文本信息：
+        ```text
+        Active connections: 2 
+        server accepts handled requests
+         105 105 105 
+        Reading: 0 Writing: 1 Waiting: 1 
+        ```
+
+---
 #### 步骤一：选择集成插件
 
 1.  进入 Monitor 后，点击顶部导航栏的 **“集成”**。
@@ -845,7 +1076,40 @@ sidebar_position: 2
 ### 接入 Apache
 
 通过 Telegraf 插件连接 Apache HTTP Server 的 `mod_status` 接口，采集 **工作进程数**、**流量负载** 及 **请求计分板** 等指标。
+#### 前置条件
 
+在开始接入前，请确保 Apache 已启用 `mod_status` 模块并配置了状态页，这是数据采集的基础。
+
+1.  **确认模块支持**
+    *   检查 Apache 是否已加载 `mod_status` 模块（通常默认启用）。
+    *   **验证命令**：`apachectl -M | grep status_module`
+    *   如果输出包含 `status_module`，说明支持监控。
+
+2.  **配置 Apache 状态页**
+    *   编辑 Apache 配置文件（如 `httpd.conf` 或 `/etc/apache2/mods-enabled/status.conf`）。
+    *   **开启扩展信息的配置示例**：
+        ```apache
+        # 开启扩展状态信息（推荐），否则无法采集流量(Total kBytes)和CPU负载信息
+        ExtendedStatus On
+
+        <Location "/server-status">
+            SetHandler server-status
+            # 安全控制：仅允许本机和采集机 IP 访问
+            Require ip 127.0.0.1
+            Require ip <Telegraf采集机IP>
+        </Location>
+        ```
+    *   配置完成后，执行 `apachectl -k graceful` 或重启服务。
+
+3.  **验证接口可用性**
+    *   **重要提示**：Telegraf 必须读取机器可读格式，因此验证时**必须**带上 `?auto` 参数。
+    *   **测试命令**：
+        ```bash
+        curl "http://<ApacheIP>:<端口>/server-status?auto"
+        ```
+    *   **成功标准**：返回类似 `Total Accesses: ...` 和 `Scoreboard: ...` 的纯文本信息。
+
+---
 #### 步骤一：选择集成插件
 
 1.  进入 Monitor 后，点击顶部导航栏的 **“集成”**。
@@ -892,7 +1156,44 @@ sidebar_position: 2
 ### 接入 Consul
 
 通过 Telegraf 插件连接 Consul HTTP API，采集 **服务健康状态**、**检查点结果** 及 **集群成员状态** 等关键指标。
+#### 前置条件
 
+在开始接入前，请确保 Consul Agent 的 API 接口可访问，若集群开启了 ACL 鉴权，还需准备相应的 Token。
+
+1.  **确认网络连通性**
+    *   Telegraf 需要访问 Consul Agent 的 HTTP 端口（默认为 `8500`）。
+    *   **验证命令**（在采集机执行）：
+        ```bash
+        # 检查是否能连接到目标 Consul IP
+        curl -I http://<ConsulIP>:8500/v1/status/leader
+        ```
+    *   **成功标准**：返回 `HTTP/1.1 200 OK`。
+
+2.  **配置访问权限 (仅 ACL 开启时需要)**
+    *   如果您的 Consul 集群**未开启** ACL（默认情况），可跳过此步。
+    *   如果**已开启** ACL，请创建一个具有**只读权限**的 Token 供监控使用。
+    *   **最小权限 Policy 示例**：
+        ```hcl
+        # 允许读取节点状态、服务信息和 Agent 自身信息
+        node_prefix "" { policy = "read" }
+        service_prefix "" { policy = "read" }
+        agent_prefix "" { policy = "read" }
+        ```
+    *   *注意：获取到的 Token 需填写在 Telegraf 配置文件的 `token` 字段或作为 Bearer Token 使用。*
+
+3.  **验证接口数据**
+    *   建议手动请求一次 API 以确保数据返回正常。
+    *   **测试命令**：
+        ```bash
+        # 无 ACL 模式
+        curl http://<ConsulIP>:8500/v1/agent/self
+        
+        # 有 ACL 模式 (把 xxxxx 换成您的 Token)
+        curl -H "X-Consul-Token: xxxxx" http://<ConsulIP>:8500/v1/agent/self
+        ```
+    *   **成功标准**：返回包含 `Member` 和 `Config` 信息的 JSON 数据。
+
+---
 #### 步骤一：选择集成插件
 
 1.  进入 Monitor 后，点击顶部导航栏的 **“集成”**。
@@ -939,7 +1240,30 @@ sidebar_position: 2
 ### 接入 Tomcat
 
 通过 Telegraf 插件连接 Tomcat Manager 应用，采集 **线程池状态**、**请求处理**、**会话管理** 及 **JVM 内存** 等关键指标。
+#### 前置条件
 
+在开始接入前，请确保 Tomcat 已启用 `manager` 应用，并拥有可用的管理账号。
+
+1.  **确认 Manager 应用存在**
+    *   检查 Tomcat 是否已部署 Manager 应用（通常默认包含在发行版中）。
+
+2.  **准备监控账号**
+    *   **方案 A（推荐）：使用现有管理账号**
+        *   如果您已有具备 `manager-gui` 或 `manager-script` 权限的账号（如 `weops`），可直接使用，无需新建。
+    *   **方案 B（可选）：新建最小权限账号**
+        *   *注意：此操作需登录 Tomcat 服务器内部修改配置文件，不支持远程操作。*
+        *   编辑 `conf/tomcat-users.xml`，添加仅具备 `manager-script` 角色的用户，以实现最小权限控制。
+
+3.  **验证接口可用性**
+    *   **重要提示**：Tomcat 默认返回 HTML 页面，Telegraf 必须读取 XML 格式，因此验证时**必须**带上 `?XML=true` 参数。
+    *   **测试命令**（在采集机上执行）：
+        ```bash
+        # 请替换为您实际的账号密码
+        curl -u weops:Weops@123 "http://10.10.90.115:30880/manager/status?XML=true"
+        ```
+    *   **成功标准**：返回以 `<?xml ... ?><status>...` 开头的数据。
+
+---
 #### 步骤一：选择集成插件
 
 1.  进入 Monitor 后，点击顶部导航栏的 **“集成”**。
@@ -989,7 +1313,28 @@ sidebar_position: 2
 ### 接入 Zookeeper
 
 通过 Telegraf 采集器连接 Zookeeper 服务，采集 **平均延迟**、**堆积请求数**、**节点状态** 及 **Znode 数量** 等核心指标。
+#### 前置条件
 
+在开始接入前，请务必确认 Zookeeper 的服务端口及命令权限。
+
+1.  **确认服务端口**
+    *   Zookeeper 的默认客户端端口为 **`2181`**。
+    *   **⚠️ 注意**：如果您的环境使用了 **Docker 映射** 或 **自定义配置**（如 `zoo.cfg` 中修改了 `clientPort`），端口可能为 `32181`、`12181` 等。
+    *   **查询方法**：可在 Zookeeper 服务器上执行 `netstat -nutlp | grep java` 查看实际监听端口。
+
+2.  **验证接口可用性**
+    *   为了确保采集通畅，请在采集机上使用实际端口进行测试。
+    *   **测试命令**：
+        ```bash
+        # 请将 <端口> 替换为您实际的端口号 (例如 2181 或 32181)
+        echo mntr | nc <ZookeeperIP> <端口>
+        ```
+    *   **成功标准**：返回 `zk_version`、`zk_avg_latency` 等多行文本数据。
+
+3.  **确认命令支持**
+    *   如果测试命令返回 `is not executed...` 错误，说明您的 Zookeeper 版本（通常是 3.5+）默认禁用了监控命令。需在 `zoo.cfg` 中添加 `4lw.commands.whitelist=mntr` 并重启服务。
+
+---
 #### 步骤一：选择集成插件
 
 1.  进入 Monitor 后，点击顶部导航栏的 **“集成”**。
@@ -1039,7 +1384,41 @@ sidebar_position: 2
 ### 接入 ActiveMQ
 
 通过 Telegraf 插件连接 ActiveMQ 的 Web Console 接口，采集 **队列深度**、**消费者数量**、**消息吞吐** 及 **JVM 状态** 等核心指标。
+#### 前置条件
 
+在接入前，请确保 ActiveMQ 已启用 Web Console，并确认 Jolokia 接口可用。
+
+1.  **确认 Jolokia 接口支持**
+    *   ActiveMQ 5.8 及以上版本默认集成了 Jolokia。
+    *   **验证方法**：在浏览器访问 `http://IP:8161/api/jolokia/version`。若需登录且返回 JSON 格式版本信息，说明接口可用。
+
+2.  **准备监控账号**
+    *   **方案 A（快速接入）：使用现有管理员账号**
+        *   直接使用 ActiveMQ 的 `admin` 账号。此方案无需登录服务器配置，但在安全性上非最优（Telegraf 仅执行读取操作，风险可控）。
+    *   **方式 B：创建专用监控账号（推荐生产环境）**
+        *   为了安全起见，建议创建一个独立的账号用于监控。
+        *   **配置步骤**（需登录 ActiveMQ 服务器）：
+            1. 编辑 ActiveMQ 安装目录下的 `conf/jetty-realm.properties` 文件。
+            2. 在文件末尾添加一行新用户配置：
+               ```properties
+               # 格式：用户名: 密码, 角色
+               # 创建一个名为 monitor 的用户，赋予 admin 角色以允许读取 JMX 指标
+               monitor: Monitor@2025, admin
+               ```
+            3. 保存文件（通常无需重启 ActiveMQ 即可生效，如不生效请重启）。
+
+
+3.  **验证接口可用性 (务必执行)**
+    *   使用 `curl` 模拟 Telegraf 请求，确保账号密码及 URL 正确。
+    *   **测试命令**：
+        ```bash
+        # 请替换 IP、端口及账号密码
+        # 注意 URL 必须以 /api/jolokia/version 结尾
+        curl -u admin:admin "http://10.10.90.115:8161/api/jolokia/version"
+        ```
+    *   **成功标准**：返回包含 `"status":200` 和 `"agent":...` 的 JSON 数据。
+
+---
 #### 步骤一：选择集成插件
 
 1.  进入 Monitor 后，点击顶部导航栏的 **“集成”**。
@@ -1090,7 +1469,44 @@ sidebar_position: 2
 ### 接入 Kafka
 
 由于 Kafka 监控依赖专用的 Exporter 组件，接入前需要在目标节点上**手动安装 Kafka-Exporter**。
+#### 前置条件
 
+在接入前，请确保 Kafka 集群的网络连通性，并准备好 SASL 认证账号。
+
+1.  **确认 Zookeeper 连接 (授权必需)**
+    *   Kafka 的权限管理（ACLs）依赖 Zookeeper。
+    *   **ZK 地址确认**：请确认您的 Zookeeper 集群地址（例如 `IP:2181` 或 `IP:32181`）。
+
+2.  **准备监控账号（二选一）**
+
+    > **注意**：Kafka (0.11及早期版本) 的 SASL/PLAIN 账号存储在服务端的配置文件中，**无法远程创建**，且新增账号**必须重启 Broker**。
+
+    *   **方案 A：使用现有管理员账号（推荐 - 快速接入）**
+        *   如果您无法重启生产环境 Kafka，请直接使用**当前已有的具备访问权限的账号**（例如您日常运维使用的 `admin` 或其他管理员账号）。
+        *   **优势**：无需修改配置文件，无需重启服务，对业务无影响。
+
+    *   **方案 B：创建最小权限账号（仅限有服务器权限时）**
+        *   **步骤 1：添加认证用户 (需登录服务器)**
+            *   找到 Kafka 的 JAAS 配置文件（通常在启动脚本中指定，如 `kafka_server_jaas.conf`）。
+            *   在 `PlainLoginModule` 部分添加一行新用户：
+                ```properties
+                // 语法格式：user_<您的用户名>="<您的密码>";
+                // 示例：创建一个名为 monitor 的用户，密码为 Monitor@2025
+                user_monitor="Monitor@2025";
+                ```
+            *   **重启 Kafka Broker** 使账号生效。
+        
+        *   **步骤 2：配置 ACL 权限 (授予只读)**
+            *   登录服务器，使用 `kafka-acls.sh` 工具授予该用户对集群的描述权限和读取权限。
+            *   **执行命令**（示例）：
+                ```bash
+                # 授予全局只读权限
+                bin/kafka-acls.sh --authorizer-properties zookeeper.connect=localhost:2181 \
+                --add --allow-principal User:monitor \
+                --operation Read --operation Describe \
+                --topic '*' --group '*'
+                ```
+---
 #### 前置步骤：安装采集组件
 
 在配置监控之前，请先前往 **“节点管理 (Node)”** 模块下发 Kafka 采集器。
@@ -1167,7 +1583,53 @@ sidebar_position: 2
 ### 接入 MinIO
 
 通过 Telegraf 采集器连接 MinIO 的 Prometheus 指标接口，收集对象存储系统的 **运行状态**、**存储容量**、**网络流量** 及 **S3 请求** 等关键指标。
+#### 前置条件
 
+在接入前，请确保网络连通性，并准备好用于身份验证的密钥（Access Key / Secret Key）。
+
+1.  **确认服务端口**
+    *   MinIO 通常运行在 `9000` 端口。
+    *   **验证命令**：`curl -I http://<MinIO_IP>:9000/minio/health/live`
+    *   **成功标准**：返回 `200 OK`，说明服务在线。
+
+2.  **准备监控账号（二选一）**
+
+    > MinIO 的指标接口默认需要鉴权。请根据安全需求选择以下方式。
+
+    *   **方案 A：使用现有管理员凭证（快速接入）**
+        *   直接使用 MinIO 安装时设置的 **RootUser** (Access Key) 和 **RootPassword** (Secret Key)。
+        *   **适用场景**：测试环境或您拥有最高权限，且允许在监控系统中配置管理员密钥。
+
+    *   **方案 B：创建最小权限账号（安全最佳实践）**
+        *   *前置要求：需在运维机上安装 MinIO 客户端工具 `mc` 并已配置好连接别名（示例别名为 `myminio`）。*
+        *   **步骤 1：定义只读策略**
+            创建一个名为 `prometheus.json` 的文件，内容如下：
+            ```json
+            {
+                "Version": "2012-10-17",
+                "Statement": [
+                    {
+                        "Action": ["admin:Prometheus"],
+                        "Effect": "Allow",
+                        "Resource": ["arn:minio:admin:::*"]
+                    }
+                ]
+            }
+            ```
+        *   **步骤 2：应用策略并创建用户**
+            执行以下 `mc` 命令创建用户并绑定策略：
+            ```bash
+            # 1. 添加策略到 MinIO
+            mc admin policy add myminio monitor_policy prometheus.json
+            
+            # 2. 创建监控用户 (AccessKey: monitor, SecretKey: Monitor@2025)
+            mc admin user add myminio monitor Monitor@2025
+            
+            # 3. 将只读策略绑定给该用户
+            mc admin policy set myminio monitor_policy user=monitor
+            ```
+
+---
 #### 步骤一：选择集成插件
 
 1.  进入 Monitor 后，点击顶部导航栏的 **“集成”**。
