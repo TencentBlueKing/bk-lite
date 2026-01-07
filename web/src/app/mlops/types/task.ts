@@ -64,7 +64,7 @@ export interface FieldConfig {
   min?: number; // 用于 inputNumber
   max?: number; // 用于 inputNumber
   step?: number; // 用于 inputNumber
-  dependencies?: string[]; // 依赖字段路径（单个），如 ['feature_engineering', 'use_diff_features']
+  dependencies?: string[][]; // 依赖字段路径数组（支持多个依赖），如 [['hyperparams', 'use_feature_engineering'], ['feature_engineering', 'use_diff_features']]
   layout?: 'vertical' | 'horizontal'; // vertical: label在上, horizontal: label和input水平排列
 }
 

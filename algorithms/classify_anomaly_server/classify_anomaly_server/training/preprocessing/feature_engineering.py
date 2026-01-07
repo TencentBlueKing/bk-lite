@@ -58,11 +58,11 @@ class AnomalyFeatureEngineer:
         """
         # 默认配置：为异常检测优化
         self.rolling_windows = rolling_windows or [12, 24, 48]
-        self.rolling_features = rolling_features or ['mean', 'std', 'min', 'max']
+        self.rolling_features = rolling_features or ['mean', 'std', 'min', 'max', 'median']
         self.lag_periods = lag_periods or [1, 2, 3]
         self.use_temporal_features = use_temporal_features
         self.use_diff_features = use_diff_features
-        self.diff_periods = diff_periods or [1]
+        self.diff_periods = diff_periods or [1, 5, 10]  # 多期差分：捕捉短期、中期、长期变化
         self.drop_na = drop_na
         
         # Feature-engine 转换器
@@ -204,6 +204,14 @@ class AnomalyFeatureEngineer:
             df_features = self._add_diff_features(df_features)
             logger.debug(f"差分特征: {len(self.diff_periods)} 个")
         
+        # 5. 变化率和偏离度特征（捕捉趋势变化和异常偏离）
+        df_features = self._add_change_features(df_features)
+        logger.debug("变化率和z-score特征已提取")
+        
+        # 6. 波动性特征（捕捉方差突变）
+        df_features = self._add_volatility_features(df_features)
+        logger.debug("波动性特征已提取")
+        
         # 记录特征名（排除原始 value 列）
         self.feature_names_ = [col for col in df_features.columns if col != 'value']
         
@@ -244,6 +252,10 @@ class AnomalyFeatureEngineer:
         """添加差分特征
         
         差分特征可以捕捉突变，对异常检测很有用。
+        多期差分能捕捉不同时间尺度的变化：
+        - 短期（1-3）：瞬时突变
+        - 中期（5-10）：趋势变化
+        - 长期（>10）：周期性破坏
         """
         for period in self.diff_periods:
             col_name = f'value_diff_{period}'
@@ -251,6 +263,72 @@ class AnomalyFeatureEngineer:
             
             # 添加差分的绝对值（突变幅度）
             df[f'{col_name}_abs'] = df[col_name].abs()
+        
+        return df
+    
+    def _add_change_features(self, df: pd.DataFrame) -> pd.DataFrame:
+        """添加变化率和偏离度特征
+        
+        这些特征能更好地捕捉：
+        1. 变化率（rate of change）：标准化的变化速度
+        2. z-score：相对历史分布的偏离程度（标准化偏离）
+        3. 百分比偏离：相对历史均值的偏离比例
+        
+        对检测绿框类型的突变非常有效！
+        """
+        # 多期变化率（标准化的差分）
+        for period in [3, 5, 10]:
+            if period <= len(df):
+                df[f'rate_of_change_{period}'] = (
+                    (df['value'] - df['value'].shift(period)) / period
+                )
+        
+        # 与移动均值的标准化偏离（z-score）
+        for window in self.rolling_windows:
+            if window <= len(df):
+                rolling_mean = df['value'].rolling(window, min_periods=1).mean()
+                rolling_std = df['value'].rolling(window, min_periods=1).std()
+                
+                # z-score：标准差单位的偏离
+                df[f'z_score_{window}'] = (
+                    (df['value'] - rolling_mean) / (rolling_std + 1e-8)
+                )
+                
+                # 百分比偏离
+                df[f'pct_deviation_{window}'] = (
+                    (df['value'] - rolling_mean) / (rolling_mean.abs() + 1e-8)
+                )
+        
+        return df
+    
+    def _add_volatility_features(self, df: pd.DataFrame) -> pd.DataFrame:
+        """添加波动性检测特征
+        
+        这些特征能捕捉：
+        1. 变异系数（CV）：标准化的波动性
+        2. 波动范围：最大最小值差
+        3. 方差突变：std的差分，检测波动性突然增大
+        
+        对检测绿框区域的波动性突增非常有效！
+        """
+        for window in self.rolling_windows:
+            if window <= len(df):
+                rolling_mean = df['value'].rolling(window, min_periods=1).mean()
+                rolling_std = df['value'].rolling(window, min_periods=1).std()
+                rolling_max = df['value'].rolling(window, min_periods=1).max()
+                rolling_min = df['value'].rolling(window, min_periods=1).min()
+                
+                # 变异系数（标准化的波动性）
+                df[f'cv_{window}'] = rolling_std / (rolling_mean.abs() + 1e-8)
+                
+                # 波动范围
+                df[f'range_{window}'] = rolling_max - rolling_min
+                
+                # 方差的变化（捕捉波动性突变）
+                df[f'std_change_{window}'] = rolling_std.diff(1)
+                
+                # 范围的变化率（捕捉波动幅度突变）
+                df[f'range_change_{window}'] = df[f'range_{window}'].diff(1)
         
         return df
     

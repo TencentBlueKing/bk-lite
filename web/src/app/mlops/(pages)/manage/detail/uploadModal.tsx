@@ -17,7 +17,8 @@ const SUPPORTED_UPLOAD_TYPES = [
   'anomaly_detection',
   'timeseries_predict',
   'image_classification',
-  'object_detection'
+  'object_detection',
+  'log_clustering'
 ] as const;
 
 const IMAGE_TYPES = ['image_classification', 'object_detection'];
@@ -30,7 +31,8 @@ const UploadModal = forwardRef<ModalRef, UploadModalProps>(({ onSuccess }, ref) 
     addAnomalyTrainData,
     addTimeSeriesPredictTrainData,
     addImageClassificationTrainData,
-    addObjectDetectionTrainData
+    addObjectDetectionTrainData,
+    addLogClusteringTrainData
   } = useMlopsManageApi();
 
   const UPLOAD_API: Record<string, (data: FormData) => Promise<any>> = {
@@ -38,6 +40,7 @@ const UploadModal = forwardRef<ModalRef, UploadModalProps>(({ onSuccess }, ref) 
     timeseries_predict: addTimeSeriesPredictTrainData,
     image_classification: addImageClassificationTrainData,
     object_detection: addObjectDetectionTrainData,
+    log_clustering: addLogClusteringTrainData,
   };
 
   const FILE_CONFIG: Record<string, { accept: string; maxCount: number; fileType: string }> = {
@@ -45,6 +48,7 @@ const UploadModal = forwardRef<ModalRef, UploadModalProps>(({ onSuccess }, ref) 
     timeseries_predict: { accept: '.csv', maxCount: 1, fileType: 'csv' },
     image_classification: { accept: 'image/*', maxCount: 10, fileType: 'image' },
     object_detection: { accept: 'image/*', maxCount: 10, fileType: 'image' },
+    log_clustering: { accept: '.txt', maxCount: 1, fileType: 'txt' },
   };
 
   const [visiable, setVisiable] = useState<boolean>(false);
@@ -85,6 +89,12 @@ const UploadModal = forwardRef<ModalRef, UploadModalProps>(({ onSuccess }, ref) 
           message.warning(t('datasets.uploadWarn'));
         }
         return isCSV;
+      } else if (config.fileType === 'txt') {
+        const isTXT = file.type === "text/plain" || file.name.endsWith('.txt');
+        if (!isTXT) {
+          message.warning(t('datasets.uploadTxtWarn'));
+        }
+        return isTXT;
       } else if (config.fileType === 'image') {
         const isLt2M = file.size / 1024 / 1024 < 2;
         if (!isLt2M) {

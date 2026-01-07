@@ -31,6 +31,5 @@
   
   "mlflow": {
     "experiment_name": "anomaly_detection_training",
-    "run_name": "ecod_baseline"
   }
 }

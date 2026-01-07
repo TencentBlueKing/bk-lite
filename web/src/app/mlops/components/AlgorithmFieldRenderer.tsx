@@ -15,15 +15,16 @@ export const AlgorithmFieldRenderer: React.FC<AlgorithmFieldRendererProps> = ({
 }) => {
   /**
    * 检查字段是否应该显示（基于 dependencies）
+   * dependencies 格式：[['path', 'to', 'field1'], ['path', 'to', 'field2']]
+   * 所有依赖条件必须同时满足（AND 逻辑）
    */
   const shouldShowField = (field: FieldConfig): boolean => {
     if (!field.dependencies || field.dependencies.length === 0) {
       return true;
     }
 
-    // dependencies 是单个嵌套路径，例如 ['feature_engineering', 'use_diff_features']
-    const dependencyValue = get(formValues, field.dependencies);
-    return !!dependencyValue;
+    // 检查所有依赖条件，必须全部为 true
+    return field.dependencies.every(dep => !!get(formValues, dep));
   };
 
   /**

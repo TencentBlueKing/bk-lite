@@ -212,6 +212,7 @@ class LogClusteringTrainJob(MaintainerInfo, TimeInfo):
             ('AgglomerativeClustering', '层次聚类'),
             ('Drain', 'Drain'),
             ('LogCluster', 'LogCluster'),
+            ('Spell', 'Spell'),
         ]
     )
 

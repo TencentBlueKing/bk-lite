@@ -521,8 +521,12 @@ const useMlopsManageApi = () => {
   };
 
   // 新增日志聚类数据集样本文件
-  const addLogClusteringTrainData = async (params: TrainDataBrochure) => {
-    return await post(`/mlops/log_clustering_train_data`, params);
+  const addLogClusteringTrainData = async (params: FormData) => {
+    return await post(`/mlops/log_clustering_train_data`, params, {
+      headers: {
+        "Content-Type": 'multipart/form-data'
+      }
+    });
   };
 
   // 新增时序预测样本文件
