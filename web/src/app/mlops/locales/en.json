@@ -21,7 +21,11 @@
     "btn": "Button",
     "restart": "Restart",
     "showThumbnail": "Show Thumbnail",
-    "hideThumbnail": "Hide Thumbnail"
+    "hideThumbnail": "Hide Thumbnail",
+    "refreshList": "Refresh List",
+    "loadingData": "Loading Data",
+    "start": "Start",
+    "stop": "Stop"
   },
   "datasets": {
     "datasets": "Datasets",
@@ -94,7 +98,7 @@
     "labelResult": "Labeling results",
     "delDataset": "Deleting a dataset",
     "delDatasetInfo": "Confirm deletion of dataset?",
-    "anomaly": "Single Indicator Anomaly Detection",
+    "anomaly": "Anomaly Detection",
     "rasa": "Rasa Model",
     "timeseriesPredict": "Time Series Predict",
     "logClustering": "Log Clustering",
@@ -179,10 +183,11 @@
     "getTrainStatusFailed": "Error retrieving training status",
     "selectedColumns": "Selected Columns",
     "waitData": "Waiting for data...",
-    "downloadStart": "Data loading complete. Downloading files.",
+    "downloadStart": "Start downloading the model",
     "downloadFailed": "Download Failed"
   },
   "model-release": {
+    "release": "Release",
     "modelName": "Competence Name",
     "title": "Competence release",
     "detail": "Publishing management of trained models.",
@@ -205,6 +210,8 @@
     "supportedLogFormats": "Supported Log Formats",
     "inputApiEndpoint": "Please enter API endpoint",
     "inputMaxRequests": "Please enter max requests per minute",
-    "inputLogFormats": "Please enter supported log formats"
+    "inputLogFormats": "Please enter supported log formats",
+    "configuration": "Configuration",
+    "discontinued": "Discontinued"
   }
 }

@@ -1,0 +1,34 @@
+name: db2
+version: "2.0.0"
+category: database
+
+metadata:
+  display_name: "DB2 数据库"
+  description: "IBM DB2 数据库采集插件，支持脚本方式采集"
+  author: "WeOps"
+  tags: [database, db2, ibm]
+  cloud_protocol: false
+  model_id: db2
+
+# ============================================================================
+# 执行器配置
+# ============================================================================
+executors:
+  # Job 类型（脚本采集）
+  job:
+    type: job
+    timeout: 60
+
+    # 不同操作系统的脚本
+    scripts:
+      linux: plugins/inputs/db2/db2_default_discover.sh
+
+    collector:
+      module: plugins.script_executor
+      class: SSHPlugin
+
+    # 默认脚本
+    default_script: linux
+
+# 默认执行器
+default_executor: job

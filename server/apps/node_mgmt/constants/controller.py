@@ -15,7 +15,7 @@ class ControllerConstants:
             "os": "windows",
             "name": "Controller",
             "description": "The Controller is primarily used to manage various types of collectors, composed of Sidecarand NAS Executor, enabling automated deployment, resource coordination, and task execution on servers.",
-            "version_command": "type C:\\Program Files\\fusion-collectors\\VERSION",
+            "version_command": "type C:\\bklite\\fusion-collectors\\VERSION",
         },
     ]
 
@@ -59,53 +59,15 @@ class ControllerConstants:
         ),
     }
 
-    # 手动安装命令
-    MANUAL_INSTALL_COMMAND = {
-        NodeConstants.LINUX_OS: (
-            "sudo rm -rf /tmp/fusion-collectors /tmp/fusion-collectors.zip && "
-            "cd /tmp && "
-            "curl -L -o fusion-collectors.zip '{server_url}/api/v1/node_mgmt/open_api/download/fusion_collector/{package_id}' && "
-            "unzip -o fusion-collectors.zip && "
-            "sudo rm -rf /opt/fusion-collectors && "
-            "sudo mv fusion-collectors /opt/fusion-collectors && "
-            "sudo chmod -R +x /opt/fusion-collectors/* && "
-            "cd /opt/fusion-collectors && "
-            "sudo bash ./install.sh {server_url}/api/v1/node_mgmt/open_api/node "
-            "{server_token} {cloud} {group} {node_name} {node_id}"
-        ),
-        NodeConstants.WINDOWS_OS: (
-            "powershell -ExecutionPolicy Unrestricted -Command \""
-            "$packageUrl = '{server_url}/api/v1/node_mgmt/open_api/download/fusion_collector/{package_id}'; "
-            "$downloadPath = 'C:\\temp\\fusion-collectors.zip'; "
-            "$extractPath = 'C:\\gse'; "
-            "New-Item -ItemType Directory -Force -Path C:\\temp | Out-Null; "
-            "if (Test-Path $downloadPath) {{ Remove-Item -Path $downloadPath -Force }}; "
-            "Write-Host 'Downloading package...'; "
-            "Invoke-WebRequest -Uri $packageUrl -OutFile $downloadPath; "
-            "if (Test-Path $extractPath\\fusion-collectors) {{ Remove-Item -Path $extractPath\\fusion-collectors -Recurse -Force }}; "
-            "Write-Host 'Extracting package...'; "
-            "Add-Type -AssemblyName System.IO.Compression.FileSystem; "
-            "[System.IO.Compression.ZipFile]::ExtractToDirectory($downloadPath, $extractPath); "
-            "Write-Host 'Running installation script...'; "
-            "& '$extractPath\\fusion-collectors\\install.ps1' "
-            "-ServerUrl '{server_url}/api/v1/node_mgmt/open_api/node' "
-            "-ServerToken '{server_token}' "
-            "-Cloud '{cloud}' "
-            "-Group '{group}' "
-            "-NodeName '{node_name}' "
-            "-NodeId '{node_id}'\""
-        ),
-    }
-
     # 卸载命令
     UNINSTALL_COMMAND = {
-        NodeConstants.LINUX_OS: "cd /opt/fusion-collectors && ./uninstall.sh",
+        NodeConstants.LINUX_OS: "cd /opt/fusion-collectors && sudo chmod +x uninstall.sh && sudo ./uninstall.sh",
         NodeConstants.WINDOWS_OS: "powershell -command \"Remove-Item -Path {} -Recurse\"",
     }
 
     # 控制器目录删除命令
     CONTROLLER_DIR_DELETE_COMMAND = {
-        NodeConstants.LINUX_OS: "rm -rf /opt/fusion-collectors",
+        NodeConstants.LINUX_OS: "sudo rm -rf /opt/fusion-collectors",
         NodeConstants.WINDOWS_OS: "powershell -command \"Remove-Item -Path {} -Recurse\"",
     }
 

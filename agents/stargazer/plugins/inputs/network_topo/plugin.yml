@@ -1,0 +1,28 @@
+name: network_topo
+version: "2.0.0"
+category: network
+
+metadata:
+  display_name: "SNMP 网络设备拓扑"
+  description: "SNMP 网络设备采集插件，支持协议方式采集"
+  author: "WeOps"
+  tags: [network, network]
+  cloud_protocol: false
+  model_id: network_topo
+
+# ============================================================================
+# 执行器配置
+# ============================================================================
+executors:
+  # Protocol 类型（协议采集）
+  protocol:
+    type: protocol
+    timeout: 60
+
+    # Python 采集器
+    collector:
+      module: plugins.inputs.network_topo.snmp_topo
+      class: SnmpTopo
+
+# 默认执行器
+default_executor: protocol

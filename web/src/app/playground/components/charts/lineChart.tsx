@@ -404,12 +404,14 @@ const LineChart: React.FC<LineChartProps> = ({
                   type="monotone"
                   dataKey={key}
                   dot={renderDot}
-                  stroke={'#1976d2'}
+                  stroke={key === 'value2' ? '#ff4d4f' : '#1976d2'}
+                  strokeDasharray={key === 'value2' ? '5 5' : undefined}
                   strokeWidth={2}
                   fillOpacity={0}
                   fill={colors[index]}
                   hide={!visibleAreas.includes(key)}
                   isAnimationActive={false}
+                  connectNulls={false}
                 />
               ))}
               {isDragging &&
@@ -440,11 +442,13 @@ const LineChart: React.FC<LineChartProps> = ({
                       key={key}
                       type="monotone"
                       dataKey={key}
-                      stroke={'#1976d2'}
+                      stroke={key === 'value2' ? '#ff4d4f' : '#1976d2'}
+                      strokeDasharray={key === 'value2' ? '5 5' : undefined}
                       fill={colors[index]}
                       fillOpacity={0}
                       isAnimationActive={false}
                       dot={renderMinDot}
+                      connectNulls={false}
                     />
                   ))}
                 </AreaChart>

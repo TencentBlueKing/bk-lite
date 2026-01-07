@@ -1,0 +1,35 @@
+name: host
+version: "2.0.0"
+category: infrastructure
+
+metadata:
+  display_name: "主机信息"
+  description: "主机信息采集插件，支持脚本方式采集"
+  author: "WeOps"
+  tags: [infrastructure, host]
+  cloud_protocol: false
+  model_id: host
+
+# ============================================================================
+# 执行器配置
+# ============================================================================
+executors:
+  # Job 类型（脚本采集）
+  job:
+    type: job
+    timeout: 60
+
+    # 不同操作系统的脚本
+    scripts:
+      linux: plugins/inputs/host/host_default_discover.sh
+      windows: plugins/inputs/host/host_windows_discover.ps1
+
+    collector:
+      module: plugins.script_executor
+      class: SSHPlugin
+
+    # 默认脚本
+    default_script: linux
+
+# 默认执行器
+default_executor: job

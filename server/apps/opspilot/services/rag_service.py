@@ -354,7 +354,7 @@ class RAGService:
         if file_extension in ["docx", "doc"]:
             return DocLoader(file_path, ocr, load_mode)
         elif file_extension in ["pptx", "ppt"]:
-            return PPTLoader(file_path, load_mode)
+            return PPTLoader(file_path, ocr, load_mode)
         elif file_extension == "txt":
             return TextLoader(file_path, load_mode)
         elif file_extension in ["jpg", "png", "jpeg"]:

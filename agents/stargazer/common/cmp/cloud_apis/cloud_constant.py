@@ -80,7 +80,7 @@ class CloudPlatform:
 
     VMware = CloudType.VMWARE.value
     VMware_cn = "VMware"
-    vmware = "vmware"
+    vmware = "vmware_vc"
 
     FusionCompute = CloudType.FUSIONCOMPUTE.value
     FusionCompute_cn = "FusionCompute"

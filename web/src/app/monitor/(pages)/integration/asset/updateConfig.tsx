@@ -1,5 +1,5 @@
 import { ModalRef, ModalProps, TableDataItem } from '@/app/monitor/types';
-import { Form, Button, message, Spin } from 'antd';
+import { Form, Button, message, Spin, Empty } from 'antd';
 import { cloneDeep } from 'lodash';
 import React, {
   useState,
@@ -116,12 +116,15 @@ const UpdateConfig = forwardRef<ModalRef, ModalProps>(({ onSuccess }, ref) => {
     }
   };
 
+  // 判断是否显示空状态
+  const showEmpty = !configLoading && !formItems?.props?.children?.length;
+
   return (
     <OperateModal
       width={700}
       title={title}
       visible={modalVisible}
-      zIndex={9999}
+      zIndex={2000}
       onCancel={handleCancel}
       footer={
         <div>
@@ -129,7 +132,7 @@ const UpdateConfig = forwardRef<ModalRef, ModalProps>(({ onSuccess }, ref) => {
             className="mr-[10px]"
             type="primary"
             loading={confirmLoading}
-            disabled={configLoading}
+            disabled={configLoading || showEmpty}
             onClick={handleSubmit}
           >
             {t('common.confirm')}
@@ -141,9 +144,13 @@ const UpdateConfig = forwardRef<ModalRef, ModalProps>(({ onSuccess }, ref) => {
       <div className="px-[10px]">
         <Spin spinning={configLoading} className="w-full">
           <div style={{ minHeight: configLoading ? '200px' : 'auto' }}>
-            <Form ref={formRef} form={form} name="basic" layout="vertical">
-              {formItems}
-            </Form>
+            {showEmpty ? (
+              <Empty description={t('monitor.integrations.noConfigData')} />
+            ) : (
+              <Form ref={formRef} form={form} name="basic" layout="vertical">
+                {formItems}
+              </Form>
+            )}
           </div>
         </Spin>
       </div>

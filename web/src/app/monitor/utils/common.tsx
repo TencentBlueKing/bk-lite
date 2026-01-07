@@ -15,11 +15,9 @@ import {
   ChartDataItem,
   NodeWorkload,
   OrganizationNode,
-  UnitItem,
 } from '@/app/monitor/types';
 import { Group } from '@/types';
 import {
-  UNIT_LIST,
   APPOINT_METRIC_IDS,
   DERIVATIVE_OBJECTS,
   OBJECT_DEFAULT_ICON,
@@ -202,25 +200,6 @@ export const useFormatTime = () => {
   return { formatTime };
 };
 
-// 根据id找到单位名称（单个id展示）
-export const findUnitNameById = (
-  value: unknown,
-  arr: UnitItem[] = UNIT_LIST
-): string => {
-  for (let i = 0; i < arr.length; i++) {
-    if (arr[i].value === value) {
-      return arr[i].unit || '';
-    }
-    if (arr[i].children && arr[i].children?.length) {
-      const label = findUnitNameById(value, arr[i]?.children || []);
-      if (label) {
-        return label;
-      }
-    }
-  }
-  return '';
-};
-
 // 柱形图或者折线图单条线时，获取其最大值、最小值、平均值和最新值
 export const calculateMetrics = (
   data: Record<string, number>[],
@@ -301,21 +280,6 @@ export const getEnumColor = (metric: MetricItem, id: number | string) => {
     );
   }
   return '';
-};
-
-// 根据指标枚举获取值+单位
-export const getEnumValueUnit = (metric: MetricItem, id: number | string) => {
-  const { unit: input = '', name } = metric || {};
-  if (!id && id !== 0) return '--';
-  if (isStringArray(input)) {
-    return (
-      JSON.parse(input).find((item: ListItem) => item.id === +id)?.name || id
-    );
-  }
-  const unit = findUnitNameById(input);
-  return isNaN(+id) || APPOINT_METRIC_IDS.includes(name)
-    ? `${id} ${unit}`
-    : `${(+id).toFixed(2)} ${unit}`;
 };
 
 export const transformTreeData = (nodes: Group[]): CascaderItem[] => {

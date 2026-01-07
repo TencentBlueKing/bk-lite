@@ -35,22 +35,6 @@ class HostCollectMetrics(CollectBase):
         assert self.model_id in HOST_COLLECT_METRIC, f"{self.model_id} needs to be defined in HOST_COLLECT_METRIC"
         return HOST_COLLECT_METRIC[self.model_id]
 
-    def prom_sql(self):
-        sql = " or ".join(
-            "{}{{instance_id=~\"^{}_.+\"}}".format(m, self.task_id) for m in self._metrics)
-        return sql
-
-    def check_task_id(self, instance_id):
-        """检查instance_id是否属于当前采集任务"""
-        if "_" not in instance_id:
-            return False
-        task_id_str = str(self.task_id)
-
-        if self.inst_name:
-            return instance_id == f"{task_id_str}_{self.inst_name}"
-        else:
-            return instance_id.startswith(f"{task_id_str}_")
-
     @property
     def model_field_mapping(self):
         mapping = {
@@ -83,12 +67,12 @@ class HostCollectMetrics(CollectBase):
             },
             "memory": {
                 "inst_name": self.set_component_inst_name,
-                "self_device":"self_device",
-                "mem_locator":"mem_locator",
-                "mem_part_number":"mem_part_number",
-                "mem_type":"mem_type",
-                "mem_size":(self.transform_unit_int, "mem_size"),
-                "mem_sn":"mem_sn",
+                "self_device": "self_device",
+                "mem_locator": "mem_locator",
+                "mem_part_number": "mem_part_number",
+                "mem_type": "mem_type",
+                "mem_size": (self.transform_unit_int, "mem_size"),
+                "mem_sn": "mem_sn",
                 self.asso: self.set_asso_instances
             },
             "gpu": {
@@ -138,8 +122,8 @@ class HostCollectMetrics(CollectBase):
         """设置实例名称"""
         if self.inst_name:
             return self.inst_name
-        if data.get("cmdbhost", ""):
-            return data["cmdbhost"]
+        if data.get("host", ""):
+            return data["host"]
         # IP范围采集模式: 从instance_id提取IP
         instance_id = data.get("instance_id", "")
         if instance_id and "_" in instance_id:
@@ -223,11 +207,6 @@ class HostCollectMetrics(CollectBase):
             return
         for index_data in data.get("result", []):
             metric_name = index_data["metric"]["__name__"]
-            # 检查instance_id是否属于当前采集任务
-            instance_id = index_data["metric"].get("instance_id", "")
-            if instance_id and not self.check_task_id(instance_id):
-                continue
-
             value = index_data["value"]
             _time, value = value[0], value[1]
             if not self.timestamp_gt:
@@ -238,15 +217,7 @@ class HostCollectMetrics(CollectBase):
             # 解析result字段中的JSON数据
             # VictoriaMetrics返回的JSON字符串包含转义字符（如\n），需要先反转义再解析
             result_data = {}
-            result_json = index_data["metric"].get("result", "{}")
-            if result_json and result_json != "{}":
-                try:
-                    unescaped_json = codecs.decode(
-                        result_json, 'unicode_escape')
-                    result_data = json.loads(unescaped_json)
-                except Exception:
-                    result_data = {}
-            if isinstance(result_data, dict) and not result_data:
+            if index_data["metric"].get("collect_status", 'success') == 'failed':
                 continue
             index_dict = dict(
                 index_key=metric_name,
@@ -255,7 +226,6 @@ class HostCollectMetrics(CollectBase):
                 **result_data,  # 将解析后的JSON数据合并到index_dict中
             )
             self.collection_metrics_dict[metric_name].append(index_dict)
-
 
     def format_metrics(self):
         """格式化数据"""
@@ -286,4 +256,3 @@ class HostCollectMetrics(CollectBase):
                     result.append(data)
             self.result[model_id] = result
         # print(json.dumps(self.result, indent=4))
-

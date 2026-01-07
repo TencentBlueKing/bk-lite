@@ -1,4 +1,5 @@
 import useApiClient from '@/utils/request';
+import { AxiosRequestConfig } from 'axios';
 
 export interface CollectorParams {
   id: string;
@@ -18,23 +19,27 @@ const useCollectorApi = () => {
   const { get, post, del, put } = useApiClient();
 
   // 获取采集器列表
-  const getCollectorlist = async ({
-    search,
-    node_operating_system,
-    name,
-    page,
-    page_size,
-    tags,
-  }: {
-    search?: string;
-    node_operating_system?: string;
-    name?: string;
-    page?: number;
-    page_size?: number;
-    tags?: string;
-  }) => {
+  const getCollectorlist = async (
+    {
+      search,
+      node_operating_system,
+      name,
+      page,
+      page_size,
+      tags,
+    }: {
+      search?: string;
+      node_operating_system?: string;
+      name?: string;
+      page?: number;
+      page_size?: number;
+      tags?: string;
+    },
+    config?: AxiosRequestConfig
+  ) => {
     return await get('/node_mgmt/api/collector/', {
       params: { search, node_operating_system, name, page, page_size, tags },
+      ...config,
     });
   };
 

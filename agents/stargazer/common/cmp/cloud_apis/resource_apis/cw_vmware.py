@@ -61,7 +61,7 @@ class Vmware(PrivateCloudManage):
 
     def __init__(self, si, content, name, region):
         """
-        Initialize vmware vSphere object.
+        Initialize vmware_vc vSphere object.
         :param si: a service instance object using for connecting to the specified server.
         :param content: retrieve content object
         :param name: calling method name
@@ -313,7 +313,7 @@ class Vmware(PrivateCloudManage):
 
     def list_vms(self, ids=None):
         """
-        Get vm list on vmware vsphere platforms
+        Get vm list on vmware_vc vsphere platforms
         :param kwargs: accept multiple key value pair arguments.
         :rtype: dict
         """

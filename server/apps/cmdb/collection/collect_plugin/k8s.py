@@ -1,10 +1,5 @@
 # -- coding: utf-8 --
 # @File: k8s.py
-# @Time: 2025/11/12 13:49
-# @Author: windyzhao
-
-# -- coding: utf-8 --
-# @File: k8s.py
 # @Time: 2025/11/12 11:39
 # @Author: windyzhao
 import json

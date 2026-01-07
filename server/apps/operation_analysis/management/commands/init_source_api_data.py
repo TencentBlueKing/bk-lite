@@ -78,34 +78,42 @@ class Command(BaseCommand):
             updated_count = 0
 
             for api_data in source_api_data_list:
+                # 提取标签数据,避免在defaults中包含多对多字段
+                tags = api_data.pop("tag", [])
+                
+                # 准备创建数据(排除多对多字段)
+                defaults = {k: v for k, v in api_data.items() if k not in ["name", "rest_api"]}
+                defaults["created_by"] = "system"
+                defaults["updated_by"] = "system"
+                
                 obj, created = DataSourceAPIModel.objects.get_or_create(
                     name=api_data["name"],
                     rest_api=api_data["rest_api"],
-                    defaults={
-                        **api_data,
-                        "created_by": "system",
-                        "updated_by": "system"
-                    }
+                    defaults=defaults
                 )
 
-                tags = api_data.get("tag", [])
-                tag_instance = DataSourceTag.objects.filter(tag_id__in=tags)
+                # 获取标签实例
+                tag_instances = DataSourceTag.objects.filter(tag_id__in=tags)
 
                 if created:
                     obj.namespaces.set([namespace_id])
-                    obj.tag.set(tag_instance)
+                    if tag_instances.exists():
+                        obj.tag.set(tag_instances)
                     created_count += 1
                     logger.info(f"创建数据源: {api_data['name']}")
                 elif force_update:
                     # 只有在强制更新模式下才更新现有数据源的配置
                     for key, value in api_data.items():
-                        if key not in ["name", "tag"]:  # name作为唯一标识不更新
+                        if key not in ["name", "rest_api"]:  # name和rest_api作为唯一标识不更新
                             setattr(obj, key, value)
-                        elif key == "tag":
-                            obj.tag.set(tag_instance)
 
                     obj.updated_by = "system"
                     obj.save()
+                    
+                    # 更新标签关联
+                    if tag_instances.exists():
+                        obj.tag.set(tag_instances)
+                    
                     updated_count += 1
                     logger.info(f"更新数据源: {api_data['name']}")
                 else:

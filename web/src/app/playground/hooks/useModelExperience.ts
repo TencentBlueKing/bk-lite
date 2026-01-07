@@ -128,7 +128,7 @@ const useModelExperience = (shouldLoad: boolean = true) => {
           id: item.id,
           name: item?.name || 'Unnamed',
           description: item?.description || '',
-          url: `${item?.url}?page=${item.config?.categoryType}&id=${item?.id}&name=${encodeURIComponent(item?.name || '')}&description=${encodeURIComponent(item?.description || '')}`,
+          url: `/playground/home?page=${item.config?.categoryType}&id=${item?.id}&name=${encodeURIComponent(item?.name || '')}&description=${encodeURIComponent(item?.description || '')}`,
         }))
     })).filter(({ capabilities }) => capabilities.length > 0);
   }, [categoryList, capabilityList]);
@@ -137,21 +137,6 @@ const useModelExperience = (shouldLoad: boolean = true) => {
     return categoryList;
   }, [categoryList]);
 
-  const getCapabilitiesByCategory = useCallback((categoryId: number): ProcessedCapability[] => {
-    return capabilityList
-      .filter((item: Capability) => {
-        const itemCategoryId = typeof item.category === 'object'
-          ? item.category.id
-          : item.category;
-        return itemCategoryId === categoryId && item.is_active !== false;
-      })
-      .map((item: Capability) => ({
-        id: item.id,
-        name: item?.name || 'Unnamed',
-        description: item?.description || '',
-        url: `${item?.url}?page=anomaly-detection&id=${item?.id}&name=${encodeURIComponent(item?.name || '')}&description=${encodeURIComponent(item?.description || '')}`,
-      }));
-  }, [capabilityList]);
 
   const isDataReady = categoryList.length > 0 && capabilityList.length > 0 && !loading;
 
@@ -163,7 +148,7 @@ const useModelExperience = (shouldLoad: boolean = true) => {
     reload,
     renderMenu,
     getAllCategories,
-    getCapabilitiesByCategory,
+    // getCapabilitiesByCategory,
     isDataReady,
   };
 };

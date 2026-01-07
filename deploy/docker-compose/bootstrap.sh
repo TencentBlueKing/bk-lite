@@ -333,6 +333,7 @@ EOF
 generate_tls_certs() {
     : "${HOST_IP:?HOST_IP 未设置}"
     local dir=./conf/certs
+    local traefik_certs_dir=./conf/traefik/certs
     local san="DNS:nats,DNS:localhost,IP:127.0.0.1,IP:${HOST_IP}"
     local cn="BluekingLite"
     local openssl_image=$DOCKER_IMAGE_OPENSSL
@@ -399,6 +400,15 @@ EOF
     rm -f "${dir}/server.csr" "${dir}/openssl.conf"
 
     log "SUCCESS" "TLS 证书生成完成：$(ls -1 $dir/server.crt)"
+    
+    # 复制证书到 traefik 目录
+    if [ -f "${traefik_certs_dir}/server.crt" ]; then
+        log "INFO" "Traefik 证书目录已存在证书，跳过复制步骤..."
+    else
+        log "INFO" "复制证书到 Traefik 目录..."
+        mkdir -p ${traefik_certs_dir}
+        cp ${dir}/server.crt ${dir}/server.key ${traefik_certs_dir}/
+    fi
 }
 
 generate_common_env() {
@@ -594,21 +604,123 @@ generate_collector_packages() {
                 return 1
             fi
             
-            # Extract collector binaries and create controller package
-            docker run --rm -v "${PWD}/${output_dir}:/pkgs" -v "${PWD}/${bin_dir}:/tmp/bin" \
-                --entrypoint=/bin/bash "${collector_image}" -c "\
-                cp -a bin/* /pkgs/collector/linux/; \
-                cp -a /opt/release/windows/fusion-collectors/bin/* /pkgs/collector/windows/; \
-                cp -a bin/* /tmp/bin; \
-                cd /opt; \
-                cp fusion-collectors/misc/linux/* fusion-collectors/; \
-                cp fusion-collectors/misc/VERSION /pkgs/controller/; \
-                mkdir -p /opt/fusion-collectors/certs/ /opt/windows/fusion-collectors/certs/; \
-                cp /pkgs/controller/linux/certs/ca.crt /opt/fusion-collectors/certs/; \
-                cp /pkgs/controller/windows/certs/ca.crt /opt/windows/fusion-collectors/certs/; \
-                zip -rq /pkgs/controller/fusion-collectors-linux-amd64.zip fusion-collectors; \
-                zip -rq /pkgs/controller/fusion-collectors-windows-amd64.zip /opt/windows/fusion-collectors; \
-            "
+            DOCKER_ARGS=(
+                --rm 
+                -v "${PWD}/${output_dir}:/pkgs" 
+                -v "${PWD}/${bin_dir}:/tmp/bin" 
+                --entrypoint=/bin/bash 
+                "${collector_image}"
+            )
+
+            cat << 'EOF' | docker run -i "${DOCKER_ARGS[@]}" -s
+    set -e
+    RED='\033[0;31m'
+    GREEN='\033[0;32m'
+    YELLOW='\033[0;33m'
+    BLUE='\033[0;34m'
+    CYAN='\033[0;36m'  # 新增青色，用于 Header
+    NC='\033[0m' # No Color
+
+    # 默认 Header，防止为空
+    LOG_HEADER="INIT"
+
+    log() {
+        local level="$1"
+        local message="$2"
+        local color=""
+        
+        case "$level" in
+            "INFO") color="$BLUE" ;;
+            "WARNING") color="$YELLOW" ;;
+            "ERROR") color="$RED" ;;
+            "SUCCESS") color="$GREEN" ;;
+            *) color="$NC" ;;
+        esac
+
+        # 格式: [Header] [Level] Message
+        # 使用 CYAN 颜色高亮 Header，使其更醒目
+        echo -e "${CYAN}[${LOG_HEADER}]${NC} ${color}[$level] $message${NC}"
+    }
+
+    log() {
+        local level="$1"
+        local message="$2"
+        local color=""
+        case "$level" in
+            "INFO") color="$BLUE" ;;
+            "WARNING") color="$YELLOW" ;;
+            "ERROR") color="$RED" ;;
+            "SUCCESS") color="$GREEN" ;;
+            *) color="$NC" ;;
+        esac
+        echo -e "${color}[Package] [$level] $message${NC}"
+    }
+
+    # ==============================
+    # 2. 变量定义
+    # ==============================
+    OPT="/opt"
+    PKG="/pkgs"
+    STAGE_L="${OPT}/fusion-collectors"
+    STAGE_W="${OPT}/windows/fusion-collectors"
+    
+    log "INFO" "Starting Build Process in Container..."
+
+    # ==============================
+    # 3. 导出二进制文件
+    # ==============================
+    log "INFO" "Step 1: Exporting binaries..."
+
+    # 3.1 关键任务：导出到 pkgs (如果失败必须报错退出，所以保留 -e 行为)
+    cp -a bin/* "${PKG}/collector/linux/"
+    
+    # 3.2 非关键任务：更新 /tmp/bin (如果占用则跳过，不退出)
+    # 逻辑：尝试拷贝 || 如果失败则执行 log WARNING
+    cp -a bin/* /tmp/bin/ 2>/dev/null || log "WARNING" "Failed to update /tmp/bin (Text file busy). Skipping."
+
+    # 3.3 Windows binaries
+    cp -a "${OPT}/release/windows/fusion-collectors/bin/"* "${PKG}/collector/windows/"
+
+    # ==============================
+    # 4. 构建 Linux 包
+    # ==============================
+    log "INFO" "Step 2: Building Linux package..."
+
+    cp -a "${STAGE_L}/misc/linux/"* "${STAGE_L}/"
+    cp "${STAGE_L}/misc/VERSION" "${PKG}/controller/"
+    
+    mkdir -p "${STAGE_L}/certs"
+    cp "${PKG}/controller/linux/certs/ca.crt" "${STAGE_L}/certs/"
+    cp "${STAGE_L}/misc/VERSION" "${STAGE_L}/"
+    
+    rm -rf "${STAGE_L}/misc"
+    
+    # 使用子Shell打包
+    (cd "${OPT}" && zip -rq "${PKG}/controller/fusion-collectors-linux-amd64.zip" fusion-collectors)
+    log "INFO" "Linux package built successfully."
+
+    # ==============================
+    # 5. 构建 Windows 包
+    # ==============================
+    log "INFO" "Step 3: Building Windows package..."
+
+    mkdir -p "$(dirname ${STAGE_W})"
+    cp -a "${OPT}/release/windows/"* "$(dirname ${STAGE_W})/"
+    
+    mkdir -p "${STAGE_W}/certs"
+    cp "${PKG}/controller/windows/certs/ca.crt" "${STAGE_W}/certs/"
+    cp "${STAGE_L}/VERSION" "${STAGE_W}/"
+    
+    rm -rf "${STAGE_W}/misc"
+    
+    (cd "${OPT}/windows" && zip -rq "${PKG}/controller/fusion-collectors-windows-amd64.zip" fusion-collectors)
+    log "INFO" "Windows package built successfully."
+
+    # ==============================
+    # 6. 完成
+    # ==============================
+    log "SUCCESS" "All tasks completed successfully."
+EOF
             
             log "SUCCESS" "控制器和采集器包生成成功"
             log "INFO" "采集器目录: ${output_dir}/collector"
@@ -785,10 +897,19 @@ tls {
   key_file: "/etc/nats/certs/server.key"
   ca_file: "/etc/nats/certs/ca.crt"
 }
-
+leafnodes {
+    port: 7422
+    tls {
+        cert_file: "/etc/nats/certs/server.crt"
+        key_file: "/etc/nats/certs/server.key"
+        ca_file: "/etc/nats/certs/ca.crt"
+        verify: true
+    }
+}
 jetstream: enabled
 jetstream {
   store_dir=/nats/storage
+  domain=bklite
 }
 
 server_name=nats-server
@@ -1040,7 +1161,7 @@ package() {
         log "INFO" "跳过的类型: ${skip_info}"
     fi
     PKG_NAME="bklite-offline.tar.gz"
-    tar -czf /opt/$PKG_NAME .
+    tar --exclude='*.env' --exclude='conf/certs/' --exclude='conf/nats/nats.conf' --exclude='pkgs/' --exclude='bin/' -czf /opt/$PKG_NAME .
     log "SUCCESS" "已生成离线镜像包: /opt/$PKG_NAME"
 }
 

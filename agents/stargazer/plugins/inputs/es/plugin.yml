@@ -1,0 +1,34 @@
+name: es
+version: "2.0.0"
+category: middleware
+
+metadata:
+  display_name: "Elasticsearch 搜索引擎"
+  description: "Elasticsearch 搜索引擎采集插件，支持脚本方式采集"
+  author: "WeOps"
+  tags: [middleware, elasticsearch, search]
+  cloud_protocol: false
+  model_id: es
+
+# ============================================================================
+# 执行器配置
+# ============================================================================
+executors:
+  # Job 类型（脚本采集）
+  job:
+    type: job
+    timeout: 60
+
+    # 不同操作系统的脚本
+    scripts:
+      linux: plugins/inputs/es/es_default_discover.sh
+
+    collector:
+      module: plugins.script_executor
+      class: SSHPlugin
+
+    # 默认脚本
+    default_script: linux
+
+# 默认执行器
+default_executor: job

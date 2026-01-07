@@ -15,7 +15,7 @@ from apps.cmdb.constants.constants import (
 )
 from apps.cmdb.graph.drivers.graph_client import GraphClient
 from apps.cmdb.language.service import SettingLanguage
-from apps.cmdb.models import UPDATE_INST, DELETE_INST, CREATE_INST
+from apps.cmdb.models import UPDATE_INST, DELETE_INST, CREATE_INST, FieldGroup
 from apps.cmdb.services.classification import ClassificationManage
 from apps.cmdb.utils.change_record import create_change_record
 from apps.core.exceptions.base_app_exception import BaseAppException
@@ -279,6 +279,7 @@ class ModelManage(object):
         # for attr in attrs:
         #     if model_attr:
         #         attr["attr_name"] = model_attr.get(attr["attr_id"]) or attr["attr_name"]
+        #
         return attrs
 
     @staticmethod
@@ -309,6 +310,8 @@ class ModelManage(object):
                     # id=user["username"],
                     id=user["id"],
                     name=user["username"],
+                    username=user.get("username"),
+                    display_name=user.get("display_name"),
                     is_default=False,
                     type="str",
                 )
@@ -436,38 +439,4 @@ class ModelManage(object):
                     [],
                     False
                 )
-        return True
-
-    @staticmethod
-    def reset_all_model_orders():
-        """
-        重置所有模型的 order_id
-        按照分类分组，每个分类内部从1开始排序
-        Returns:
-            bool: 更新是否成功
-        """
-        with GraphClient() as ag:
-            # 获取所有模型并按classification_id分组
-            models, _ = ag.query_entity(MODEL, [], order="classification_id")
-
-            # 按classification_id分组
-            grouped_models = {}
-            for model in models:
-                classification_id = model["classification_id"]
-                if classification_id not in grouped_models:
-                    grouped_models[classification_id] = []
-                grouped_models[classification_id].append(model)
-
-            # 为每个分组内的模型更新order_id
-            for classification_id, group_models in grouped_models.items():
-                for index, model in enumerate(group_models, start=1):
-                    ag.set_entity_properties(
-                        MODEL,
-                        [model["_id"]],
-                        {"order_id": index},
-                        {},
-                        [],
-                        False
-                    )
-
         return True

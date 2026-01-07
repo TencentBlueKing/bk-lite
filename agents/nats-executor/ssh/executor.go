@@ -5,22 +5,122 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"github.com/nats-io/nats.go"
-	"golang.org/x/crypto/ssh"
 	"log"
 	"nats-executor/local"
 	"nats-executor/utils"
+	"os"
+	"path/filepath"
 	"time"
+
+	"github.com/nats-io/nats.go"
+	"golang.org/x/crypto/ssh"
 )
+
+// buildSCPCommand 构建 SCP 命令，支持密钥和密码认证
+func buildSCPCommand(user, host, password, privateKey string, port uint, sourcePath, targetPath string, isUpload bool) (string, func(), error) {
+	var cleanup func()
+	var scpCommand string
+
+	// 优先使用密钥认证
+	if privateKey != "" {
+		// 创建临时密钥文件
+		tmpDir := os.TempDir()
+		keyFile := filepath.Join(tmpDir, fmt.Sprintf("ssh_key_%d", time.Now().UnixNano()))
+
+		if err := os.WriteFile(keyFile, []byte(privateKey), 0600); err != nil {
+			return "", nil, fmt.Errorf("failed to write private key to temp file: %v", err)
+		}
+
+		cleanup = func() {
+			os.Remove(keyFile)
+			log.Printf("[SCP] Cleaned up temporary key file: %s", keyFile)
+		}
+
+		// 使用密钥文件的 SCP 命令
+		if isUpload {
+			scpCommand = fmt.Sprintf("scp -i %s -o StrictHostKeyChecking=no -o HostKeyAlgorithms=+ssh-rsa,ssh-dss -o PubkeyAcceptedKeyTypes=+ssh-rsa,ssh-dss -P %d -r %s %s@%s:%s",
+				keyFile, port, sourcePath, user, host, targetPath)
+		} else {
+			scpCommand = fmt.Sprintf("scp -i %s -o StrictHostKeyChecking=no -o HostKeyAlgorithms=+ssh-rsa,ssh-dss -o PubkeyAcceptedKeyTypes=+ssh-rsa,ssh-dss -P %d -r %s %s@%s:%s",
+				keyFile, port, sourcePath, user, host, targetPath)
+		}
+
+		log.Printf("[SCP] Using private key authentication")
+	} else if password != "" {
+		// 使用密码认证
+		cleanup = func() {} // 无需清理
+
+		if isUpload {
+			scpCommand = fmt.Sprintf("sshpass -p '%s' scp -o StrictHostKeyChecking=no -o HostKeyAlgorithms=+ssh-rsa,ssh-dss -o PubkeyAcceptedKeyTypes=+ssh-rsa,ssh-dss -P %d -r %s %s@%s:%s",
+				password, port, sourcePath, user, host, targetPath)
+		} else {
+			scpCommand = fmt.Sprintf("sshpass -p '%s' scp -o StrictHostKeyChecking=no -o HostKeyAlgorithms=+ssh-rsa,ssh-dss -o PubkeyAcceptedKeyTypes=+ssh-rsa,ssh-dss -P %d -r %s %s@%s:%s",
+				password, port, sourcePath, user, host, targetPath)
+		}
+
+		log.Printf("[SCP] Using password authentication")
+	} else {
+		return "", nil, fmt.Errorf("no authentication method provided (password or private key required)")
+	}
+
+	return scpCommand, cleanup, nil
+}
 
 func Execute(req ExecuteRequest, instanceId string) ExecuteResponse {
 	log.Printf("[SSH Execute] Instance: %s, Starting SSH connection to %s@%s:%d", instanceId, req.User, req.Host, req.Port)
 	log.Printf("[SSH Execute] Instance: %s, Command: %s, Timeout: %ds", instanceId, req.Command, req.ExecuteTimeout)
 
+	// 配置认证方法
+	var authMethods []ssh.AuthMethod
+
+	// 优先使用密钥认证
+	if req.PrivateKey != "" {
+		var signer ssh.Signer
+		var err error
+
+		if req.Passphrase != "" {
+			// 使用带密码短语的私钥
+			signer, err = ssh.ParsePrivateKeyWithPassphrase([]byte(req.PrivateKey), []byte(req.Passphrase))
+		} else {
+			// 使用无密码短语的私钥
+			signer, err = ssh.ParsePrivateKey([]byte(req.PrivateKey))
+		}
+
+		if err != nil {
+			errMsg := fmt.Sprintf("Failed to parse private key: %v", err)
+			log.Printf("[SSH Execute] Instance: %s, %s", instanceId, errMsg)
+			return ExecuteResponse{
+				InstanceId: instanceId,
+				Success:    false,
+				Output:     errMsg,
+				Error:      errMsg,
+			}
+		}
+		authMethods = append(authMethods, ssh.PublicKeys(signer))
+		log.Printf("[SSH Execute] Instance: %s, Using public key authentication", instanceId)
+	}
+
+	// 如果提供了密码，添加密码认证作为备选
+	if req.Password != "" {
+		authMethods = append(authMethods, ssh.Password(req.Password))
+		log.Printf("[SSH Execute] Instance: %s, Password authentication enabled", instanceId)
+	}
+
+	if len(authMethods) == 0 {
+		errMsg := "No authentication method provided (password or private key required)"
+		log.Printf("[SSH Execute] Instance: %s, %s", instanceId, errMsg)
+		return ExecuteResponse{
+			InstanceId: instanceId,
+			Success:    false,
+			Output:     errMsg,
+			Error:      errMsg,
+		}
+	}
+
 	// 配置 SSH 客户端，支持旧版和新版加密算法
 	sshConfig := &ssh.ClientConfig{
 		User:            req.User,
-		Auth:            []ssh.AuthMethod{ssh.Password(req.Password)},
+		Auth:            authMethods,
 		Timeout:         30 * time.Second,
 		HostKeyCallback: ssh.InsecureIgnoreHostKey(),
 		// 支持多种主机密钥算法，包括旧版的 ssh-rsa 和 ssh-dss
@@ -225,15 +325,34 @@ func SubscribeDownloadToRemote(nc *nats.Conn, instanceId *string) {
 		}
 		log.Printf("[Download Subscribe] Instance: %s, File downloaded successfully to: %s/%s", *instanceId, localdownloadRequest.TargetPath, localdownloadRequest.FileName)
 
-		// 使用 sshpass 处理带密码的 scp 传输，添加对旧版 SSH 服务器的支持
-		scpCommand := fmt.Sprintf("sshpass -p '%s' scp -o StrictHostKeyChecking=no -o HostKeyAlgorithms=+ssh-rsa,ssh-dss -o PubkeyAcceptedKeyTypes=+ssh-rsa,ssh-dss -P %d -r %s/%s %s@%s:%s",
-			downloadRequest.Password,
-			downloadRequest.Port,
-			localdownloadRequest.TargetPath,
-			localdownloadRequest.FileName,
+		// 构建 SCP 命令（支持密钥和密码认证）
+		sourcePath := fmt.Sprintf("%s/%s", localdownloadRequest.TargetPath, localdownloadRequest.FileName)
+		scpCommand, cleanup, err := buildSCPCommand(
 			downloadRequest.User,
 			downloadRequest.Host,
-			downloadRequest.TargetPath)
+			downloadRequest.Password,
+			downloadRequest.PrivateKey,
+			downloadRequest.Port,
+			sourcePath,
+			downloadRequest.TargetPath,
+			true, // isUpload = true (从本地上传到远程)
+		)
+
+		if cleanup != nil {
+			defer cleanup()
+		}
+
+		if err != nil {
+			log.Printf("[Download Subscribe] Instance: %s, Error building SCP command: %v", *instanceId, err)
+			errorResponse := local.ExecuteResponse{
+				InstanceId: *instanceId,
+				Success:    false,
+				Error:      fmt.Sprintf("Failed to build SCP command: %v", err),
+			}
+			responseContent, _ := json.Marshal(errorResponse)
+			msg.Respond(responseContent)
+			return
+		}
 
 		localExecuteRequest := local.ExecuteRequest{
 			Command:        scpCommand,
@@ -300,14 +419,33 @@ func SubscribeUploadToRemote(nc *nats.Conn, instanceId *string) {
 
 		log.Printf("[Upload Subscribe] Instance: %s, Starting upload from local path %s to remote host %s@%s:%s", *instanceId, uploadRequest.SourcePath, uploadRequest.User, uploadRequest.Host, uploadRequest.TargetPath)
 
-		// 使用 sshpass 处理带密码的 scp 传输，添加对旧版 SSH 服务器的支持
-		scpCommand := fmt.Sprintf("sshpass -p '%s' scp -o StrictHostKeyChecking=no -o HostKeyAlgorithms=+ssh-rsa,ssh-dss -o PubkeyAcceptedKeyTypes=+ssh-rsa,ssh-dss -P %d -r %s %s@%s:%s",
-			uploadRequest.Password,
-			uploadRequest.Port,
-			uploadRequest.SourcePath,
+		// 构建 SCP 命令（支持密钥和密码认证）
+		scpCommand, cleanup, err := buildSCPCommand(
 			uploadRequest.User,
 			uploadRequest.Host,
-			uploadRequest.TargetPath)
+			uploadRequest.Password,
+			uploadRequest.PrivateKey,
+			uploadRequest.Port,
+			uploadRequest.SourcePath,
+			uploadRequest.TargetPath,
+			true, // isUpload = true
+		)
+
+		if cleanup != nil {
+			defer cleanup()
+		}
+
+		if err != nil {
+			log.Printf("[Upload Subscribe] Instance: %s, Error building SCP command: %v", *instanceId, err)
+			errorResponse := local.ExecuteResponse{
+				InstanceId: *instanceId,
+				Success:    false,
+				Error:      fmt.Sprintf("Failed to build SCP command: %v", err),
+			}
+			responseContent, _ := json.Marshal(errorResponse)
+			msg.Respond(responseContent)
+			return
+		}
 
 		localExecuteRequest := local.ExecuteRequest{
 			Command:        scpCommand,
