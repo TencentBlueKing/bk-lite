@@ -341,6 +341,13 @@ generate_tls_certs() {
     # 当存在server.crt时，跳过生成
     if [ -f "$dir/server.crt" ] && [ -f "$dir/server.key" ] && [ -f "$dir/ca.crt" ]; then
         log "SUCCESS" "TLS 证书已存在，跳过生成步骤..."
+        if [ -f "$traefik_certs_dir/server.crt" ]; then
+            log "INFO" "Traefik 证书目录已存在证书，跳过复制步骤..."
+        else
+            log "INFO" "复制证书到 Traefik 目录..."
+            mkdir -p ${traefik_certs_dir}
+            cp ${dir}/server.crt ${dir}/server.key ${traefik_certs_dir}/
+        fi
         return
     fi
     log "INFO" "生成自签名 TLS 证书（使用容器：${openssl_image}）..."
