@@ -22,7 +22,7 @@ http:
     backend:
       loadBalancer:
         servers:
-          - url: "env TRAEFIK_SERVER_URL"
+          - url: '{{ env "SERVER_URL" }}'
         serversTransport: insecure
 
   serversTransports:
