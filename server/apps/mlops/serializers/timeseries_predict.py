@@ -33,6 +33,17 @@ class TimeSeriesPredictTrainJobSerializer(AuthSerializer):
                 'required': False
             }
         }
+    
+    def validate(self, attrs):
+        """
+        验证创建时 dataset_version 必须传入
+        """
+        # 只在创建时验证（更新时不强制要求）
+        if not self.instance and not attrs.get('dataset_version'):
+            raise serializers.ValidationError({
+                'dataset_version': '创建训练任务时必须指定数据集版本'
+            })
+        return super().validate(attrs)
 
 
 class TimeSeriesPredictTrainDataSerializer(AuthSerializer):

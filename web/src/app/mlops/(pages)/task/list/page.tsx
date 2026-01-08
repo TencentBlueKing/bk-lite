@@ -13,7 +13,7 @@ import PermissionWrapper from '@/components/permission';
 import TrainTaskModal from './traintaskModal';
 import TrainTaskDrawer from './traintaskDrawer';
 import { useTranslation } from '@/utils/i18n';
-import { ModalRef, ColumnItem, Option } from '@/app/mlops/types';
+import { ModalRef, ColumnItem, Option, DatasetReleaseKey } from '@/app/mlops/types';
 import type { TreeDataNode } from 'antd';
 import { TrainJob } from '@/app/mlops/types/task';
 import { TRAIN_STATUS_MAP, TRAIN_TEXT } from '@/app/mlops/constants';
@@ -33,20 +33,10 @@ const TrainTask = () => {
   const { convertToLocalizedTime } = useLocalizedTime();
   const { getAnomalyDatasetsList, getRasaDatasetsList, getLogClusteringList, getTimeSeriesPredictList, getClassificationDatasetsList } = useMlopsManageApi();
   const {
-    getAnomalyTaskList,
-    deleteAnomalyTrainTask,
-    startAnomalyTrainTask,
-    getRasaPipelines,
-    deleteRasaPipelines,
-    getLogClusteringTaskList,
-    deleteLogClusteringTrainTask,
-    startLogClusteringTrainTask,
-    getTimeSeriesTaskList,
-    deleteTimeSeriesTrainTask,
-    startTimeSeriesTrainTask,
-    getClassificationTaskList,
-    deleteClassificationTrainTask,
-    startClassificationTrainTask,
+    getTrainJobList,
+
+    deleteTrainTask,
+    startTrainTask,
   } = useMlopsTaskApi();
 
   // 状态定义
@@ -72,38 +62,6 @@ const TrainTask = () => {
     'classification': () => getClassificationDatasetsList({}),
     'image_classification': () => Promise.resolve([]),
     'object_detection': () => Promise.resolve([])
-  };
-
-  // 任务获取映射
-  const taskApiMap: Record<string, (params: any) => Promise<any>> = {
-    'anomaly_detection': (params) => getAnomalyTaskList(params),
-    'rasa': () => getRasaPipelines({}),
-    'log_clustering': (params) => getLogClusteringTaskList(params),
-    'timeseries_predict': (params) => getTimeSeriesTaskList(params),
-    'classification': (params) => getClassificationTaskList(params),
-    'image_classification': () => Promise.resolve([]),
-    'object_detection': () => Promise.resolve([])
-  };
-
-  // 训练开始操作映射
-  const trainStartApiMap: Record<string, (id: any) => Promise<void>> = {
-    'anomaly_detection': startAnomalyTrainTask,
-    'log_clustering': startLogClusteringTrainTask,
-    'timeseries_predict': startTimeSeriesTrainTask,
-    'classification': startClassificationTrainTask,
-    'image_classification': () => Promise.resolve(),
-    'object_detection': () => Promise.resolve()
-  };
-
-  // 删除操作映射
-  const deleteApiMap: Record<string, (id: string) => Promise<void>> = {
-    'anomaly_detection': deleteAnomalyTrainTask,
-    'rasa': deleteRasaPipelines,
-    'log_clustering': deleteLogClusteringTrainTask,
-    'timeseries_predict': deleteTimeSeriesTrainTask,
-    'classification': deleteClassificationTrainTask,
-    'image_classification': () => Promise.resolve(),
-    'object_detection': () => Promise.resolve()
   };
 
   // 抽屉操作映射
@@ -387,15 +345,16 @@ const TrainTask = () => {
 
   const fetchTaskList = useCallback(async (name: string = '', page: number = 1, pageSize: number = 10) => {
     const [activeTab] = selectedKeys;
-    if (!activeTab || !taskApiMap[activeTab]) return { items: [], count: 0 };
+    if (!activeTab) return { items: [], count: 0 };
 
     try {
       if (activeTab === 'rasa') {
         // RASA 特殊处理，不需要分页参数
-        return await taskApiMap[activeTab]({});
+        return await getTrainJobList({key: activeTab as DatasetReleaseKey});
       } else {
         // 其他类型需要分页参数
-        const result = await taskApiMap[activeTab]({
+        const result = await getTrainJobList({
+          key: activeTab as DatasetReleaseKey,
           name,
           page,
           page_size: pageSize
@@ -406,7 +365,7 @@ const TrainTask = () => {
       console.error(error);
       return { items: [], count: 0 };
     }
-  }, [selectedKeys, taskApiMap]);
+  }, [selectedKeys]);
 
   const openDrawer = (record: any) => {
     const [activeTab] = selectedKeys;
@@ -439,12 +398,12 @@ const TrainTask = () => {
   const onTrainStart = async (record: TrainJob) => {
     try {
       const [activeTab] = selectedKeys;
-      if (!activeTab || !trainStartApiMap[activeTab]) {
+      if (!activeTab) {
         message.error(t('traintask.trainNotSupported'));
         return;
       }
 
-      await trainStartApiMap[activeTab](record.id);
+      await startTrainTask(record.id, activeTab as DatasetReleaseKey);
       message.success(t(`traintask.trainStartSucess`));
     } catch (e) {
       console.log(e);
@@ -464,13 +423,13 @@ const TrainTask = () => {
 
   const onDelete = async (record: TrainJob) => {
     const [activeTab] = selectedKeys;
-    if (!activeTab || !deleteApiMap[activeTab]) {
+    if (!activeTab) {
       message.error(t('common.deleteNotSupported'));
       return;
     }
 
     try {
-      await deleteApiMap[activeTab](record.id as string);
+      await deleteTrainTask(record.id as string, activeTab as DatasetReleaseKey);
       message.success(t('common.delSuccess'));
     } catch (e) {
       console.log(e);

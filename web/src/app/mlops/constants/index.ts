@@ -446,6 +446,13 @@ const TRAINJOB_MAP: Record<string, string> = {
   'rasa': 'rasa_pipelines'
 };
 
+const SERVING_MAP: Record<string, string> = {
+  'anomaly_detection': 'anomaly_detection_servings',
+  'classification': 'classification_servings',
+  'timeseries_predict': 'timeseries_predict_servings',
+  'log_clustering': 'log_clustering_servings',
+};
+
 const TYPE_FILE_MAP: Record<string, any> = {
   'anomaly_detection': 'csv',
   'log_clustering': 'txt',
@@ -1711,5 +1718,6 @@ export {
   LOG_CLUSTERING_ALGORITHM_CONFIGS,
   LOG_CLUSTERING_ALGORITHM_SCENARIOS,
   TRAINJOB_MAP,
-  TYPE_FILE_MAP
+  TYPE_FILE_MAP,
+  SERVING_MAP
 }

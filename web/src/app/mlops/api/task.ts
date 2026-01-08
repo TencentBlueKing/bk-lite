@@ -39,94 +39,24 @@ const useMlopsTaskApi = () => {
     patch
   } = useApiClient();
 
-  // 获取异常检测训练任务列表
-  const getAnomalyTaskList = async ({
+  // 获取训练任务列表
+  const getTrainJobList = async ({
+    key,
     name = '',
     page = 1,
     page_size = -1
   }: {
+    key: DatasetReleaseKey,
     name?: string,
     page?: number,
     page_size?: number
   }) => {
-    return await get(`/mlops/anomaly_detection_train_jobs/?name=${name}&page=${page}&page_size=${page_size}`);
+    return await get(`/mlops/${TRAINJOB_MAP[key]}/?name=${name}&page=${page}&page_size=${page_size}`);
   };
 
-  // 获取Rasa流水线
-  const getRasaPipelines = async ({
-    name = '',
-    page = 1,
-    page_size = -1
-  }: {
-    name?: string,
-    page?: number,
-    page_size?: number
-  }) => {
-    return await get(`/mlops/rasa_pipelines/?name=${name}&page=${page}&page_size=${page_size}`);
-  };
-
-  // 获取日志聚类训练任务
-  const getLogClusteringTaskList = async ({
-    name = '',
-    page = 1,
-    page_size = -1
-  }: {
-    name?: string,
-    page?: number,
-    page_size?: number
-  }) => {
-    return await get(`/mlops/log_clustering_train_jobs/?name=${name}&page=${page}&page_size=${page_size}`);
-  };
-
-  // 获取时序预测训练任务
-  const getTimeSeriesTaskList = async ({
-    name = '',
-    page = 1,
-    page_size = -1
-  }: {
-    name?: string,
-    page?: number,
-    page_size?: number
-  }) => {
-    return await get(`/mlops/timeseries_predict_train_jobs/?name=${name}&page=${page}&page_size=${page_size}`);
-  };
-
-  // 获取分类任务训练任务
-  const getClassificationTaskList = async ({
-    name = '',
-    page = 1,
-    page_size = -1
-  }: {
-    name?: string,
-    page?: number,
-    page_size?: number
-  }) => {
-    return await get(`/mlops/classification_train_jobs/?name=${name}&page=${page}&page_size=${page_size}`);
-  };
-
-  // 查询指定的异常检测任务
-  const getOneAnomalyTask = async (id: number | string) => {
-    return await get(`/mlops/anomaly_detection_train_jobs/${id}`)
-  };
-
-  // 查询指定Rasa流水线
-  const getOneRasaTask = async (id: number | string) => {
-    return await get(`/mlops/rasa_pipelines/${id}`);
-  };
-
-  // 查询指定日志聚类训练任务
-  const getOneLogClusteringTask = async (id: number | string) => {
-    return await get(`/mlops/log_clustering_train_jobs/${id}`)
-  };
-
-  // 查询指定时序预测训练任务
-  const getOneTimeSeriesTask = async (id: number | string) => {
-    return await get(`/mlops/timeseries_predict_train_jobs/${id}`)
-  };
-
-  // 查询指定分类任务训练任务
-  const getOneClassification = async (id: number | string) => {
-    return await get(`/mlops/classification_train_jobs/${id}`);
+  // 查询指定的训练任务
+  const getOneTrainJobInfo = async (id: number | string, key: DatasetReleaseKey) => {
+    return await get(`/mlops/${TRAINJOB_MAP[key]}/${id}`);
   };
 
   // 获取训练状态数据
@@ -169,24 +99,9 @@ const useMlopsTaskApi = () => {
     return await post(`/mlops/classification_train_jobs`, params);
   };
 
-  // 启动异常检测训练任务
-  const startAnomalyTrainTask = async (id: number | string) => {
-    return await post(`/mlops/anomaly_detection_train_jobs/${id}/train/`);
-  };
-
-  // 启动日志聚类训练任务
-  const startLogClusteringTrainTask = async (id: number | string) => {
-    return await post(`/mlops/log_clustering_train_jobs/${id}/train/`);
-  };
-
-  // 启动时序预测训练任务
-  const startTimeSeriesTrainTask = async (id: number | string) => {
-    return await post(`/mlops/timeseries_predict_train_jobs/${id}/train/`);
-  };
-
-  // 启动分类任务训练任务
-  const startClassificationTrainTask = async (id: number | string) => {
-    return await post(`/mlops/classification_train_jobs/${id}/train/`);
+  // 启动训练
+  const startTrainTask = async (id: number | string, key: DatasetReleaseKey) => {
+    return await post(`/mlops/${TRAINJOB_MAP[key]}/${id}/train/`);
   };
 
   // 编辑异常检测训练任务
@@ -214,29 +129,9 @@ const useMlopsTaskApi = () => {
     return await patch(`/mlops/classification_train_jobs/${id}/`, params);
   };
 
-  // 删除异常检测训练任务
-  const deleteAnomalyTrainTask = async (id: string) => {
-    return await del(`/mlops/anomaly_detection_train_jobs/${id}/`);
-  };
-
-  // 删除Rasa训练流水线
-  const deleteRasaPipelines = async (id: string) => {
-    return await del(`/mlops/rasa_pipelines/${id}`);
-  };
-
-  // 删除日志聚类训练任务
-  const deleteLogClusteringTrainTask = async (id: string) => {
-    return await del(`/mlops/log_clustering_train_jobs/${id}/`);
-  };
-
-  // 删除时序预测训练任务
-  const deleteTimeSeriesTrainTask = async (id: string) => {
-    return await del(`/mlops/timeseries_predict_train_jobs/${id}/`);
-  };
-
-  // 删除分类任务训练任务
-  const deleteClassificationTrainTask = async (id: string) => {
-    return await del(`/mlops/classification_train_jobs/${id}/`);
+  // 删除训练任务
+  const deleteTrainTask = async (id: string, key: DatasetReleaseKey) => {
+    return await del(`/mlops/${TRAINJOB_MAP[key]}/${id}/`);
   };
 
   // 创建数据集版本发布（标准方式，从数据集管理页面）
@@ -295,40 +190,25 @@ const useMlopsTaskApi = () => {
 
 
   return {
-    getAnomalyTaskList,
-    getOneAnomalyTask,
+    getTrainJobList,
+    getOneTrainJobInfo,
     getTrainTaskState,
     getTrainTaskMetrics,
     getTrainTaskMetricsDetail,
-    getRasaPipelines,
-    getLogClusteringTaskList,
-    getTimeSeriesTaskList,
     getDatasetReleaseByID,
-    getOneLogClusteringTask,
-    getOneRasaTask,
-    getOneTimeSeriesTask,
-    getClassificationTaskList,
-    getOneClassification,
     getTimeseriesPredictModelURL,
     addAnomalyTrainTask,
     addRasaTrainTask,
     addLogClusteringTrainTask,
     addTimeSeriesTrainTask,
     addClassificationTrainTask,
-    startAnomalyTrainTask,
-    startLogClusteringTrainTask,
-    startTimeSeriesTrainTask,
-    startClassificationTrainTask,
+    startTrainTask,
     updateAnomalyTrainTask,
     updateRasaPipelines,
     updateLogClusteringTrainTask,
     updateTimeSeriesTrainTask,
     updateClassificationTrainTask,
-    deleteAnomalyTrainTask,
-    deleteRasaPipelines,
-    deleteLogClusteringTrainTask,
-    deleteTimeSeriesTrainTask,
-    deleteClassificationTrainTask,
+    deleteTrainTask,
     createDatasetRelease,
     getDatasetReleases,
     archiveDatasetRelease,

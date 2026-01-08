@@ -12,6 +12,7 @@ import ReleaseModal from "./releaseModal";
 import PermissionWrapper from '@/components/permission';
 import { ModalRef, Option, Pagination, TableData } from "@/app/mlops/types";
 import { ColumnItem } from "@/types";
+import { DatasetReleaseKey } from "@/app/mlops/types";
 import { TrainJob } from "@/app/mlops/types/task";
 
 const CONTAINER_STATE_MAP: Record<string, string> = {
@@ -40,15 +41,15 @@ const CONTAINER_TEXT_MAP: Record<string, string> = {
 const ModelRelease = () => {
   const { t } = useTranslation();
   const modalRef = useRef<ModalRef>(null);
-  const { getAnomalyTaskList, getLogClusteringTaskList, getTimeSeriesTaskList, getClassificationTaskList } = useMlopsTaskApi();
+  const { getTrainJobList } = useMlopsTaskApi();
   const {
-    getAnomalyServingsList, deleteAnomalyServing, updateAnomalyServings,
-    getTimeSeriesPredictServingsList, deleteTimeSeriesPredictServing, updateTimeSeriesPredictServings,
-    getLogClusteringServingsList, deleteLogClusteringServing, updateLogClusteringServings,
-    getClassificationServingsList, deleteClassificationServing, updateClassificationServings,
-    stopTimeseriesPredictServingContainer,
-    startTimeseriesPredictServingContainer,
-    startAnomalyDetectionServingContainer, stopAnomalyDetectionServingContainer
+    getServingList,
+    deleteServing,
+    updateAnomalyServings,
+    updateTimeSeriesPredictServings,
+    updateLogClusteringServings,
+    updateClassificationServings,
+    startServingContainer, stopServingContainer
   } = useMlopsModelReleaseApi();
   const [trainjobs, setTrainjobs] = useState<Option[]>([]);
   const [tableData, setTableData] = useState<TableData[]>([]);
@@ -156,7 +157,7 @@ const ModelRelease = () => {
               <Button type="link" className="mr-2" danger onClick={() => handleModelAcitve(record.id, isActive)}>{t(`model-release.discontinued`)}</Button>
             </PermissionWrapper>
           }
-          {state !== 'running' ?
+          {state !== 'running' && state !== 'unknown' ?
             <PermissionWrapper requiredPermissions={['Edit']}>
               <Button type="link" className="mr-2" onClick={() => handleStartContainer(record.id)}>{t(`mlops-common.start`)}</Button>
             </PermissionWrapper> :
@@ -180,36 +181,6 @@ const ModelRelease = () => {
     }
   ];
 
-  const getServingsMap: Record<string, any> = {
-    'anomaly_detection': getAnomalyServingsList,
-    'rasa': null, // RASA 类型留空
-    'log_clustering': getLogClusteringServingsList,
-    'timeseries_predict': getTimeSeriesPredictServingsList,
-    'classification': getClassificationServingsList,
-    'image_classification': () => { },
-    'object_detection': () => { }
-  };
-
-  const getTaskMap: Record<string, any> = {
-    'anomaly_detection': getAnomalyTaskList,
-    'rasa': null, // RASA 类型留空
-    'log_clustering': getLogClusteringTaskList,
-    'timeseries_predict': getTimeSeriesTaskList,
-    'classification': getClassificationTaskList,
-    'image_classification': () => { },
-    'object_detection': () => { }
-  };
-
-  // 删除操作映射
-  const deleteMap: Record<string, ((id: number) => Promise<void>) | null> = {
-    'anomaly_detection': deleteAnomalyServing,
-    'rasa': null, // RASA 类型留空
-    'log_clustering': deleteLogClusteringServing,
-    'timeseries_predict': deleteTimeSeriesPredictServing,
-    'classification': deleteClassificationServing,
-    'image_classification': null,
-    'object_detection': null
-  };
 
   // 更新操作映射
   const updateMap: Record<string, ((id: number, params: any) => Promise<void>) | null> = {
@@ -218,28 +189,6 @@ const ModelRelease = () => {
     'log_clustering': updateLogClusteringServings,
     'timeseries_predict': updateTimeSeriesPredictServings,
     'classification': updateClassificationServings,
-    'image_classification': null,
-    'object_detection': null
-  };
-
-  // 容器启动映射
-  const containerStartMap: Record<string, ((id: number) => Promise<void>) | null> = {
-    'anomaly_detection': startAnomalyDetectionServingContainer,
-    'rasa': null,
-    'log_clustering': null,
-    'timeseries_predict': startTimeseriesPredictServingContainer,
-    'classification': null,
-    'image_classification': null,
-    'object_detection': null
-  };
-
-  // 容器停止映射
-  const containerStopMap: Record<string, ((id: number) => Promise<void>) | null> = {
-    'anomaly_detection': stopAnomalyDetectionServingContainer,
-    'rasa': null,
-    'log_clustering': null,
-    'timeseries_predict': stopTimeseriesPredictServingContainer,
-    'classification': null,
     'image_classification': null,
     'object_detection': null
   };
@@ -282,8 +231,8 @@ const ModelRelease = () => {
   };
 
   const getModelServings = async () => {
-    // const [activeTypes] = selectedKeys;
-    if (!activeTypes || !getServingsMap[activeTypes] || !getTaskMap[activeTypes]) {
+    const [activeTypes] = selectedKeys;
+    if (!activeTypes) {
       setTableData([]);
       return;
     }
@@ -291,14 +240,15 @@ const ModelRelease = () => {
     setLoading(true);
     try {
       const params = {
+        key: activeTypes as DatasetReleaseKey,
         page: pagination.current,
         page_size: pagination.pageSize,
       };
 
       // 获取任务列表和服务列表
       const [taskList, { count, items }] = await Promise.all([
-        getTaskMap[activeTypes]({}),
-        getServingsMap[activeTypes](params)
+        getTrainJobList({key: activeTypes as DatasetReleaseKey}),
+        getServingList(params)
       ]);
 
       const _data = taskList.map((item: TrainJob) => ({
@@ -320,12 +270,11 @@ const ModelRelease = () => {
   };
 
   const handleStartContainer = async (id: number) => {
-    // const [activeTypes] = selectedKeys;
-    if (!containerStartMap[activeTypes]) return;
+    const [activeTypes] = selectedKeys;
 
     setLoading(true);
     try {
-      await containerStartMap[activeTypes](id);
+      await startServingContainer(id, activeTypes as DatasetReleaseKey);
       getModelServings();
     } catch (e) {
       console.log(e);
@@ -336,12 +285,12 @@ const ModelRelease = () => {
   };
 
   const handleStopContainer = async (id: number) => {
-    // const [activeTypes] = selectedKeys;
-    if (!containerStopMap[activeTypes]) return;
+    const [activeTypes] = selectedKeys;
+    if (!activeTypes) return;
 
     setLoading(true);
     try {
-      await containerStopMap[activeTypes](id);
+      await stopServingContainer(id, activeTypes as DatasetReleaseKey);
       getModelServings();
     } catch (e) {
       console.log(e);
@@ -352,13 +301,11 @@ const ModelRelease = () => {
   };
 
   const handleDelete = async (id: number) => {
-    // const [activeTypes] = selectedKeys;
-    if (!activeTypes || !deleteMap[activeTypes]) {
-      return;
-    }
+    const [activeTypes] = selectedKeys;
+    if (!activeTypes) return;
 
     try {
-      await deleteMap[activeTypes]!(id);
+      await deleteServing(id, activeTypes as DatasetReleaseKey);
       getModelServings();
       message.success(t('common.delSuccess'));
     } catch (e) {

@@ -217,7 +217,9 @@ class AnomalyDetectionTrainJob(MaintainerInfo, TimeInfo, DataPointFeaturesInfo):
         on_delete=models.CASCADE,
         related_name="train_jobs",
         verbose_name="数据集版本",
-        help_text="关联的异常检测数据集版本"
+        help_text="关联的异常检测数据集版本",
+        null=True,
+        blank=True
     )
 
     # 数据库存储 - 工作数据，供API快速查询
