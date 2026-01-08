@@ -17,6 +17,7 @@ from apps.node_mgmt.services.cloudregion import RegionService
 
 
 class CloudRegionViewSet(mixins.ListModelMixin,
+                         mixins.RetrieveModelMixin,
                          mixins.UpdateModelMixin,
                          mixins.DestroyModelMixin,
                          mixins.CreateModelMixin,
@@ -29,7 +30,7 @@ class CloudRegionViewSet(mixins.ListModelMixin,
     def get_queryset(self):
         """优化查询，预加载服务数据"""
         queryset = super().get_queryset()
-        if self.action == 'list':
+        if self.action in ['list', 'retrieve']:
             queryset = queryset.prefetch_related('cloudregionservice_set')
         return queryset
 
@@ -51,6 +52,22 @@ class CloudRegionViewSet(mixins.ListModelMixin,
             return self.get_paginated_response(page)
 
         return Response(results)
+
+    def retrieve(self, request, *args, **kwargs):
+        """获取云区域详情，包含服务状态和多语言字段"""
+        instance = self.get_object()
+        serializer = self.get_serializer(instance)
+        result = serializer.data
+        #
+        # lan = LanguageLoader(app=LanguageConstants.APP, default_lang=request.user.locale)
+        #
+        # # 添加多语言字段
+        # name_key = f"{LanguageConstants.CLOUD_REGION}.{result['name']}.name"
+        # desc_key = f"{LanguageConstants.CLOUD_REGION}.{result['name']}.description"
+        # result["display_name"] = lan.get(name_key) or result["name"]
+        # result["display_introduction"] = lan.get(desc_key) or result["introduction"]
+
+        return Response(result)
 
     def partial_update(self, request, *args, **kwargs):
         self.serializer_class = CloudRegionUpdateSerializer
