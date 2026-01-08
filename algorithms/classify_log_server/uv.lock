@@ -413,6 +413,7 @@ version = "0.1.0"
 source = { editable = "." }
 dependencies = [
     { name = "bentoml" },
+    { name = "cloudpickle" },
     { name = "feature-engine" },
     { name = "fire" },
     { name = "hyperopt" },
@@ -441,6 +442,7 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "bentoml", specifier = ">=1.4.30" },
+    { name = "cloudpickle", specifier = ">=3.0.0" },
     { name = "feature-engine", specifier = ">=1.9.3" },
     { name = "fire", specifier = ">=0.7.1" },
     { name = "hyperopt", specifier = ">=0.2.7" },
