@@ -48,39 +48,74 @@ class InstanceSearch:
     def get_query_params_enum(monitor_obj_name, monitor_object_id=None):
         """获取查询参数枚举"""
         if monitor_obj_name == "Pod":
-            query = "count(prometheus_remote_write_kube_pod_info{}) by (instance_id, namespace, created_by_kind, created_by_name, node)"
+            query = "count(prometheus_remote_write_kube_pod_info{}) by (instance_id, node)"
             metrics = VictoriaMetricsAPI().query(query)
-            map = {}
-            for metric_info in  metrics.get("data", {}).get("result", []):
+
+            # 使用 set 去重
+            instance_ids = set()  # Cluster 实例 ID
+            node_ids = set()      # Node 实例 ID
+
+            for metric_info in metrics.get("data", {}).get("result", []):
                 instance_id = metric_info["metric"].get("instance_id")
-                if instance_id not in map:
-                    map[instance_id] = {}
-                namespace = metric_info["metric"].get("namespace")
-                if namespace not in map[instance_id]:
-                    map[instance_id][namespace] = {}
-                created_by_kind = metric_info["metric"].get("created_by_kind")
-                created_by_name = metric_info["metric"].get("created_by_name")
-                if "workload" not in map[instance_id][namespace]:
-                    map[instance_id][namespace]["workload"] = []
-                map[instance_id][namespace]["workload"].append({"created_by_kind": created_by_kind, "created_by_name": created_by_name})
                 node = metric_info["metric"].get("node")
-                if "node" not in map[instance_id][namespace]:
-                    map[instance_id][namespace]["node"] = []
-                map[instance_id][namespace]["node"].append(node)
-            return map
+
+                if instance_id:
+                    # instance_id 作为单元素元组（对应 Cluster 监控实例）
+                    instance_ids.add((instance_id,))
+
+                if instance_id and node:
+                    # node ID 由 (instance_id, node) 组合而成（对应 Node 监控实例）
+                    node_ids.add((instance_id, node))
+
+            # 转换为字符串格式的 ID 列表，用于数据库查询实例名称
+            instance_id_strs = [str(iid) for iid in instance_ids]
+            node_id_strs = [str(nid) for nid in node_ids]
+
+            # 从数据库查询 Cluster 和 Node 实例名称
+            instance_name_map = {}
+            node_name_map = {}
+
+            if instance_id_strs:
+                # 查询 Cluster 实例名称
+                cluster_instances = MonitorInstance.objects.filter(id__in=instance_id_strs).values('id', 'name')
+                instance_name_map = {inst['id']: inst['name'] for inst in cluster_instances}
+
+            if node_id_strs:
+                # 查询 Node 实例名称
+                node_instances = MonitorInstance.objects.filter(id__in=node_id_strs).values('id', 'name')
+                node_name_map = {inst['id']: inst['name'] for inst in node_instances}
+
+            # 构建返回结果：id 使用原始维度值（用于查询），name 从数据库获取（用于展示）
+            instance_list = [
+                {
+                    "id": iid[0],  # 原始 instance_id 维度值（如 "k8s-prod"）
+                    "name": instance_name_map.get(str(iid), iid[0])  # Cluster 名称
+                }
+                for iid in instance_ids
+            ]
+
+            node_list = [
+                {
+                    "id": nid[-1],  # 原始 node 维度值（如 "worker-node-1"）
+                    "name": node_name_map.get(str(nid), nid[-1])  # Node 名称
+                }
+                for nid in node_ids
+            ]
+
+            # 返回打平的结构：{"instance_id": [...], "node": [...]}
+            return {
+                "cluster": instance_list,
+                "node": node_list
+            }
         elif monitor_obj_name == "Node":
             query = "count(prometheus_remote_write_kube_node_info) by (instance_id)"
             return InstanceSearch.get_parent_instance_ids(query)
         elif monitor_obj_name in {"ESXI", "VM", "DataStorage"}:
-            # query = 'any({instance_type="vmware"}) by (instance_id)'
-            # return InstanceSearch.get_parent_instance_ids(query)
             return InstanceSearch.get_parent_instance_list(monitor_object_id)
         elif monitor_obj_name in {"CVM"}:
             query = 'any({instance_type="qcloud"}) by (instance_id)'
             return InstanceSearch.get_parent_instance_ids(query)
         elif monitor_obj_name in {"Docker Container"}:
-            # query = 'any({instance_type="docker"}) by (instance_id)'
-            # return InstanceSearch.get_parent_instance_ids(query)
             return InstanceSearch.get_parent_instance_list(monitor_object_id)
 
     def get_obj_metric_map(self):
