@@ -25,10 +25,10 @@ class CloudRegionSerializer(serializers.ModelSerializer):
     
     class Meta:
         model = CloudRegion
-        fields = ['id', 'name', 'introduction', 'services']
+        fields = ['id', 'name', 'introduction', 'proxy_address', 'services']
 
 
 class CloudRegionUpdateSerializer(serializers.ModelSerializer):
     class Meta:
         model = CloudRegion
-        fields = ['name', 'introduction']
+        fields = ['name', 'introduction', 'proxy_address']

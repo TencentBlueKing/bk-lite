@@ -11,6 +11,7 @@ from apps.node_mgmt.services.package import PackageService
 from apps.node_mgmt.services.sidecar import Sidecar
 from apps.node_mgmt.utils.token_auth import check_token_auth, generate_node_token
 from apps.node_mgmt.constants.node import NodeConstants
+from apps.node_mgmt.constants.cloudregion_service import CloudRegionServiceConstants
 
 
 class OpenSidecarViewSet(OpenAPIViewSet):
@@ -475,7 +476,7 @@ class OpenSidecarViewSet(OpenAPIViewSet):
                 webhook_api_url,
                 json=webhook_params,
                 headers={'Content-Type': 'application/json'},
-                timeout=30,
+                timeout=CloudRegionServiceConstants.WEBHOOK_REQUEST_TIMEOUT,
                 verify=False  # 跳过 SSL 证书验证（内网环境）
             )
 

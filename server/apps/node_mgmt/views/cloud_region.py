@@ -13,6 +13,7 @@ from apps.node_mgmt.filters.cloud_region import CloudRegionFilter
 from apps.node_mgmt.models import Node
 from apps.node_mgmt.serializers.cloud_region import CloudRegionSerializer, CloudRegionUpdateSerializer
 from apps.node_mgmt.models.cloud_region import CloudRegion, CloudRegionService
+from apps.node_mgmt.services.cloudregion import RegionService
 
 
 class CloudRegionViewSet(mixins.ListModelMixin,
@@ -64,9 +65,10 @@ class CloudRegionViewSet(mixins.ListModelMixin,
         self.serializer_class = CloudRegionSerializer
         response = super().create(request, *args, **kwargs)
 
-        # 创建成功后，初始化云区域下的服务
         if response.status_code == status.HTTP_201_CREATED:
             cloud_region_id = response.data.get('id')
+
+            # 创建成功后，初始化云区域下的服务
             for service_name in CloudRegionServiceConstants.SERVICES:
                 CloudRegionService.objects.get_or_create(
                     cloud_region_id=cloud_region_id,
@@ -76,6 +78,9 @@ class CloudRegionViewSet(mixins.ListModelMixin,
                         "description": f"{service_name} 服务"
                     }
                 )
+
+            # 创建成功后，初始化云区域下的环境变量（从默认云区域复制）
+            RegionService.init_env_vars(cloud_region_id)
 
         return response
 
@@ -94,6 +99,45 @@ class CloudRegionViewSet(mixins.ListModelMixin,
 
     @action(methods=["post"], detail=False, url_path="deploy_command")
     def deploy_command(self, request, *args, **kwargs):
-        """获取部署云区域服务的命令"""
-        commands = ""
-        return WebUtils.response_success({"commands": commands})
+        """
+        获取部署云区域服务的命令
+
+        API: POST /deploy_command
+
+        Request Body:
+            {
+                "cloud_region_id": 1,  # 云区域ID（必填，整数）
+                "services": ["nats", "telegraf"]  # 可选：要部署的服务列表
+            }
+
+        Response (200 OK):
+            {
+                "commands": "#!/bin/bash\n..."  # 部署脚本命令
+            }
+
+        Response (400 Bad Request):
+            {
+                "error": "Missing cloud_region_id" | "Cloud region not found"
+            }
+            
+        Security:
+            - 需要适当的用户权限（取决于 ViewSet 配置）
+            - 响应脚本可能包含敏感信息，应谨慎处理
+            - 建议在生产环境中添加额外的权限验证
+        """
+        # 获取云区域ID（必填参数）
+        cloud_region_id = request.data.get("cloud_region_id")
+        if not cloud_region_id:
+            raise BaseAppException("Missing cloud_region_id")
+
+        # 获取要部署的服务列表（可选参数）
+        services = request.data.get("services")
+        
+        # 验证 services 参数类型
+        if services is not None and not isinstance(services, list):
+            raise BaseAppException("Invalid services parameter: must be a list")
+
+        # 调用 service 层获取部署脚本
+        deploy_script = RegionService.get_deploy_script(cloud_region_id, services)
+
+        return WebUtils.response_success({"commands": deploy_script})

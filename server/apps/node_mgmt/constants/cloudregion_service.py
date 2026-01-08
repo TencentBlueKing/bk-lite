@@ -1,4 +1,10 @@
+import os
+
+
 class CloudRegionServiceConstants:
+    # Webhook 请求配置
+    WEBHOOK_REQUEST_TIMEOUT = int(os.getenv("WEBHOOK_REQUEST_TIMEOUT", "30"))  # Webhook API 请求超时时间（秒）
+
     # 服务名称
     STARGAZER_SERVICE_NAME = "stargazer"
     NATS_EXECUTOR_SERVICE_NAME = "nats-executor"
