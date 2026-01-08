@@ -1,5 +1,5 @@
 'use client';
-import { ModalRef, Option } from "@/app/mlops/types";
+import { ModalRef, Option, DatasetReleaseKey } from "@/app/mlops/types";
 import { forwardRef, useImperativeHandle, useState, useRef, useEffect } from "react";
 import OperateModal from '@/components/operate-modal';
 import { Form, FormInstance, Select, Button, Input, InputNumber, message } from "antd";
@@ -15,16 +15,19 @@ interface ReleaseModalProps {
 
 const ReleaseModal = forwardRef<ModalRef, ReleaseModalProps>(({ trainjobs, activeTag, onSuccess }, ref) => {
   const { t } = useTranslation();
-  const { 
+  const {
     addAnomalyServings, updateAnomalyServings,
     addLogClusteringServings, updateLogClusteringServings,
     addTimeseriesPredictServings, updateTimeSeriesPredictServings,
-    addClassificationServings, updateClassificationServings
+    addClassificationServings, updateClassificationServings,
+    getModelVersionList
   } = useMlopsModelReleaseApi();
   const formRef = useRef<FormInstance>(null);
   const [type, setType] = useState<string>('add');
   const [formData, setFormData] = useState<any>(null);
   const [modalOpen, setModalOpen] = useState<boolean>(false);
+  const [versionOptions, setVersionOptions] = useState<Option[]>([]);
+  const [versionLoading, setVersionLoading] = useState<boolean>(false);
   const [confirmLoading, setConfirmLoading] = useState<boolean>(false);
 
   useImperativeHandle(ref, () => ({
@@ -51,20 +54,20 @@ const ReleaseModal = forwardRef<ModalRef, ReleaseModalProps>(({ trainjobs, activ
   const initializeForm = () => {
     if (!formRef.current) return;
     formRef.current.resetFields();
-    
+
     const [tagName] = activeTag;
-    
+
     if (type === 'add') {
       const defaultValues: Record<string, any> = {
         model_version: 'latest',
         status: true
       };
-      
+
       // 只有 anomaly 类型才设置默认阈值
       if (tagName === 'anomaly_detection') {
         defaultValues.anomaly_threshold = 0.5;
       }
-      
+
       formRef.current.setFieldsValue(defaultValues);
     } else {
       const editValues: Record<string, any> = {
@@ -72,7 +75,7 @@ const ReleaseModal = forwardRef<ModalRef, ReleaseModalProps>(({ trainjobs, activ
         status: formData.status === 'active' ? true : false,
         port: formData.port || undefined // port 为 null 时设置为 undefined，让表单为空
       };
-      
+      getModelVersionListWithTrainJob(formData.id, tagName as DatasetReleaseKey);
       formRef.current.setFieldsValue(editValues);
     }
   };
@@ -80,7 +83,7 @@ const ReleaseModal = forwardRef<ModalRef, ReleaseModalProps>(({ trainjobs, activ
   // 渲染不同类型的特有字段
   const renderTypeSpecificFields = () => {
     const [tagName] = activeTag;
-    
+
     switch (tagName) {
       case 'anomaly_detection':
         return (
@@ -90,11 +93,11 @@ const ReleaseModal = forwardRef<ModalRef, ReleaseModalProps>(({ trainjobs, activ
               label={t(`traintask.traintask`)}
               rules={[{ required: true, message: t('common.inputMsg') }]}
             >
-              <Select options={trainjobs} placeholder={t(`model-release.selectTraintask`)} />
+              <Select options={trainjobs} placeholder={t(`model-release.selectTraintask`)} onChange={(value) => onTrainJobChange(value, tagName)} />
             </Form.Item>
           </>
         );
-      
+
       case 'log_clustering':
         return (
           <>
@@ -103,32 +106,11 @@ const ReleaseModal = forwardRef<ModalRef, ReleaseModalProps>(({ trainjobs, activ
               label={t(`traintask.traintask`)}
               rules={[{ required: true, message: t('common.inputMsg') }]}
             >
-              <Select options={trainjobs} placeholder={t(`model-release.selectTraintask`)} />
-            </Form.Item>
-            <Form.Item
-              name='api_endpoint'
-              label={t(`model-release.apiEndpoint`)}
-              rules={[{ required: true, message: t('common.inputMsg') }]}
-            >
-              <Input placeholder={t(`model-release.inputApiEndpoint`)} />
-            </Form.Item>
-            <Form.Item
-              name='max_requests_per_minute'
-              label={t(`model-release.maxRequestsPerMinute`)}
-              rules={[{ required: true, message: t('common.inputMsg') }]}
-            >
-              <InputNumber className="w-full" placeholder={t(`model-release.inputMaxRequests`)} />
-            </Form.Item>
-            <Form.Item
-              name='supported_log_formats'
-              label={t(`model-release.supportedLogFormats`)}
-              rules={[{ required: true, message: t('common.inputMsg') }]}
-            >
-              <TextArea placeholder={t(`model-release.inputLogFormats`)} rows={2} />
+              <Select options={trainjobs} placeholder={t(`model-release.selectTraintask`)} onChange={(value) => onTrainJobChange(value, tagName)} />
             </Form.Item>
           </>
         );
-      
+
       case 'timeseries_predict':
         return (
           <Form.Item
@@ -136,21 +118,21 @@ const ReleaseModal = forwardRef<ModalRef, ReleaseModalProps>(({ trainjobs, activ
             label={t(`traintask.traintask`)}
             rules={[{ required: true, message: t('common.inputMsg') }]}
           >
-            <Select options={trainjobs} placeholder={t(`model-release.selectTraintask`)} />
+            <Select options={trainjobs} placeholder={t(`model-release.selectTraintask`)} onChange={(value) => onTrainJobChange(value, tagName)} />
           </Form.Item>
         );
 
-      case 'classification': 
+      case 'classification':
         return (
           <Form.Item
             name='classification_train_job'
             label={t(`traintask.traintask`)}
             rules={[{ required: true, message: t('common.inputMsg') }]}
           >
-            <Select options={trainjobs} placeholder={t(`model-release.selectTraintask`)} />
+            <Select options={trainjobs} placeholder={t(`model-release.selectTraintask`)} onChange={(value) => onTrainJobChange(value, tagName)} />
           </Form.Item>
         )
-      
+
       default:
         return null;
     }
@@ -186,6 +168,30 @@ const ReleaseModal = forwardRef<ModalRef, ReleaseModalProps>(({ trainjobs, activ
     'classification': async (id: number, params: any) => {
       await updateClassificationServings(id, params);
     },
+  };
+
+  // 获取训练任务对应的模型列表
+  const getModelVersionListWithTrainJob = async (id: number, key: DatasetReleaseKey) => {
+    setVersionLoading(true);
+    try {
+      const data = await getModelVersionList(id, key);
+      const ready_versions = data.versions?.filter((item: any) => item.status === 'READY') || [];
+      const options = ready_versions.map((item: any) => ({
+        label: `Version_${item?.version}`,
+        value: item?.version
+      }));
+      options.unshift({ label: 'latest', value: 'latest' });
+
+      setVersionOptions(options);
+    } catch (e) {
+      console.log(e);
+    } finally {
+      setVersionLoading(false);
+    }
+  };
+
+  const onTrainJobChange = (value: number, key: string) => {
+    getModelVersionListWithTrainJob(value, key as DatasetReleaseKey);
   };
 
   const handleConfirm = async () => {
@@ -241,18 +247,18 @@ const ReleaseModal = forwardRef<ModalRef, ReleaseModalProps>(({ trainjobs, activ
           >
             <Input placeholder={t(`common.inputMsg`)} />
           </Form.Item>
-          
+
           {/* 不同类型的特有字段 */}
           {renderTypeSpecificFields()}
-          
+
           <Form.Item
             name='model_version'
             label={t(`model-release.modelVersion`)}
             rules={[{ required: true, message: t('common.inputMsg') }]}
           >
-            <Input placeholder={t(`model-release.inputVersionMsg`)} />
+            <Select placeholder={t(`model-release.inputVersionMsg`)} loading={versionLoading} options={versionOptions} />
           </Form.Item>
-          
+
           <Form.Item
             name='port'
             label={'端口'}
@@ -264,7 +270,7 @@ const ReleaseModal = forwardRef<ModalRef, ReleaseModalProps>(({ trainjobs, activ
           >
             <InputNumber className="w-full" placeholder={'请输入端口号'} min={1} max={65535} />
           </Form.Item>
-          
+
           <Form.Item
             name='description'
             label={t(`model-release.modelDescription`)}

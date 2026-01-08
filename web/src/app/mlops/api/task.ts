@@ -1,7 +1,7 @@
 import useApiClient from '@/utils/request';
 import { TRAINJOB_MAP } from '@/app/mlops/constants';
+import { DatasetReleaseKey } from '@/app/mlops/types';
 
-type DatasetReleaseKey = 'timeseries_predict' | 'anomaly_detection' | 'log_clustering' | 'classification' | 'image_classification' | 'object_detection';
 
 interface TrainTaskParams {
   name: string;

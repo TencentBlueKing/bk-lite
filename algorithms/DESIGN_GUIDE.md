@@ -2,11 +2,8 @@
 
 > 本指南用于指导新模型算法服务的设计与实现，确保架构一致性和代码质量。
 >
-> 更新时间：2026年1月7日 - v1.2
-> 最近更新：
-> - 移除代码中的 DEFAULT_CONFIG，实现真正的配置外部化
-> - 明确职责分离：train-model.sh 管理配置路径，代码只负责加载
-> - 配置文件路径改为必需参数，无默认值
+> 更新时间：2026年1月8日 - v1.3
+
 
 ## 📐 设计原则
 
@@ -177,6 +174,8 @@ UniversalTrainer(config_obj)
 8. 模型训练
 9. 模型评估（train/val/test）
 10. 模型保存和注册
+   - `self._save_model_to_mlflow(model, metrics)`: 保存模型到 MLflow
+   - `self._register_model(model_uri)`: 注册模型到 MLflow Model Registry
 
 **超参数优化架构**（Trainer 调度，Model 实现）：
 
@@ -185,6 +184,24 @@ def _optimize_hyperparams(self, train_data, val_data) -> Optional[Dict[str, Any]
     """超参数优化统一调度
     
     架构：Trainer 负责配置检查和错误处理，Model 实现具体优化逻辑
+    
+    val_data 参数用途说明：
+    - 不用于模型训练（model.fit() 不使用）
+    - 仅用于超参数优化时的目标函数评估
+    - 在 optimize_hyperparams() 中训练临时模型并在 val_data 上评估性能
+    
+    三种使用模式：
+    1. 时间序列（Prophet/RandomForest）：
+       - fit(train_data, val_data, merge_val=False)  # 只用训练集训练
+       - evaluate(val_data, is_in_sample=False)      # 验证集评估（样本外）
+       
+    2. 日志聚类（Spell）：
+       - fit(train_data)                              # 无监督训练，不使用验证集
+       - evaluate(val_data)                           # 验证集评估（模板质量）
+       
+    3. 异常检测（ECOD）：
+       - fit(train_data)                              # 无监督训练
+       - evaluate(val_data, val_labels)               # 验证集评估（需要标签）
     """
     # 1. 检查是否启用（max_evals=0 表示跳过）
     max_evals = getattr(self.config, 'max_evals', 0)
@@ -257,6 +274,38 @@ model = ModelRegistry.get("my_model")(**params)
 - `classify_anomaly_server/training/models/base.py`
 - `classify_log_server/training/models/base.py`
 
+### 模型保存与注册
+
+**训练完成后自动执行两步**：
+
+1. **保存到 MLflow**：模型类实现 `save_mlflow(artifact_path="model")` 方法
+   - 创建 MLflow pyfunc Wrapper（如需要）
+   - 调用 `mlflow.pyfunc.log_model()` 保存模型和 artifacts
+
+2. **注册到 Model Registry**：Trainer 实现 `_register_model(model_uri)` 方法
+   - 默认启用，无需配置开关
+   - 使用 `config.model_name` 作为注册名称
+   - 每次训练自动递增版本号
+
+**配置示例**：
+```json
+{
+  "model": {
+    "type": "Spell",
+    "name": "spell_log_clustering"  // Model Registry 注册名
+  },
+  "mlflow": {
+    "experiment_name": "log_clustering_spell"  // 实验名(一般与model.name一致)
+  }
+}
+```
+
+**参考实现**：
+- 保存：`classify_log_server/training/models/spell_model.py` - `save_mlflow()` 
+- 注册：`classify_anomaly_server/training/trainer.py` - `_register_model()`
+
+---
+
 ### MLflow 推理包装器（Wrapper）
 
 **何时需要**：
@@ -267,13 +316,12 @@ model = ModelRegistry.get("my_model")(**params)
 
 **核心作用**：
 - 继承 `mlflow.pyfunc.PythonModel`
-- 实现 `predict(context, model_input)` 方法
+- 实现 `predict(context, model_input)` 方法（**不加类型提示**，避免警告）
 - 封装完整推理流程（解析输入 → 特征工程 → 预测 → 后处理）
-- 避免推理时加载训练依赖（如 hyperopt）
 
 **参考实现**：
 - `classify_timeseries_server/training/models/gradient_boosting_wrapper.py`
-- `classify_timeseries_server/training/models/prophet_wrapper.py`
+- `classify_log_server/training/models/spell_wrapper.py`
 
 ---
 

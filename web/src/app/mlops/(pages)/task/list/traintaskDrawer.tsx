@@ -7,6 +7,7 @@ import useMlopsTaskApi from "@/app/mlops/api/task";
 import TrainTaskHistory from "./traintaskHistory";
 import TrainTaskDetail from "./traintaskDetail";
 import { useEffect, useMemo, useState } from "react";
+import { TRAINJOB_MAP } from "@/app/mlops/constants";
 import styles from './index.module.scss'
 
 const TrainTaskDrawer = ({ open, onCancel, selectId, activeTag }:
@@ -56,11 +57,12 @@ const TrainTaskDrawer = ({ open, onCancel, selectId, activeTag }:
   };
 
   const downloadModel = async (record: any) => {
+    const [tagName] = activeTag;
     try {
       message.info(t(`traintask.downloadStart`));
-      
+
       const response = await fetch(
-        `/api/proxy/mlops/timeseries_predict_train_jobs/download_model/${record.run_id}/`,
+        `/api/proxy/mlops/${TRAINJOB_MAP[tagName]}/download_model/${record.run_id}/`,
         {
           method: 'GET',
           headers: {
@@ -74,7 +76,7 @@ const TrainTaskDrawer = ({ open, onCancel, selectId, activeTag }:
       }
 
       const blob = await response.blob();
-      
+
       // 从 Content-Disposition 头提取文件名
       const contentDisposition = response.headers.get('content-disposition');
       let fileName = `model_${record.run_id.substring(0, 8)}.zip`;

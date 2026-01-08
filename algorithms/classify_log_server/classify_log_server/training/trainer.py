@@ -168,6 +168,9 @@ class UniversalTrainer:
                 # 10. 保存模型到 MLflow
                 model_uri = self._save_model_to_mlflow()
                 
+                # 11. 注册模型到 MLflow Model Registry（如果配置启用）
+                self._register_model(model_uri)
+                
                 # 生成结果
                 result = {
                     "model": self.model,
@@ -465,6 +468,25 @@ class UniversalTrainer:
         model_uri = f"runs:/{run.info.run_id}/model"
         
         return model_uri
+    
+    def _register_model(self, model_uri: Optional[str]):
+        """注册模型到 MLflow Model Registry
+        
+        Args:
+            model_uri: 模型 URI
+        """
+        if not model_uri:
+            logger.warning("模型 URI 为空，跳过注册")
+            return
+        
+        model_name = self.config.model_name
+        
+        try:
+            logger.info(f"注册模型到 Model Registry: {model_name}")
+            model_version = mlflow.register_model(model_uri, model_name)
+            logger.info(f"模型注册成功: {model_name}, 版本: {model_version.version}")
+        except Exception as e:
+            logger.warning(f"模型注册失败: {e}")
 
     def _generate_run_name(self):
         """生成基于模型类型和时间戳的 run 名称。"""

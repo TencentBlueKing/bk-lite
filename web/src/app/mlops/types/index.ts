@@ -1,6 +1,8 @@
 import React from 'react';
 import type { MenuProps } from 'antd';
 
+export type DatasetReleaseKey = 'timeseries_predict' | 'anomaly_detection' | 'log_clustering' | 'classification' | 'image_classification' | 'object_detection';
+
 export interface Option {
   label: string;
   value: string | number;

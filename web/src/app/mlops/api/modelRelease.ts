@@ -1,5 +1,6 @@
 import useApiClient from '@/utils/request';
-
+import { TRAINJOB_MAP } from '@/app/mlops/constants';
+import { DatasetReleaseKey } from '@/app/mlops/types';
 interface LabelData {
   timestamp: string;
   value: string;
@@ -101,6 +102,11 @@ const useMlopsModelReleaseApi = () => {
   // 查询单个分类任务能力
   const getOneClassificationServing = async (id: number) => {
     return await get(`/mlops/classification_servings/${id}/`);
+  };
+
+  // 查询模型版本列表
+  const getModelVersionList = async (id: number, key: DatasetReleaseKey) => {
+    return await get(`mlops/${TRAINJOB_MAP[key]}/${id}/model_versions`);
   };
 
   // 新增能力发布
@@ -260,6 +266,7 @@ const useMlopsModelReleaseApi = () => {
   };
 
   return {
+    getModelVersionList,
     getAnomalyServingsList,
     getOneAnomalyServing,
     getTimeSeriesPredictServingsList,

@@ -500,6 +500,52 @@ class AnomalyDetectionTrainJobViewSet(ModelViewSet):
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
     
+    @action(detail=True, methods=['get'], url_path='model_versions')
+    @HasPermission("train_tasks-View")
+    def get_model_versions(self, request, pk=None):
+        """
+        获取训练任务对应模型的所有版本列表
+        """
+        try:
+            train_job = self.get_object()
+            model_name = f"AnomalyDetection_{train_job.algorithm}_{train_job.id}"
+            
+            mlflow.set_tracking_uri(MLFLOW_TRACKER_URL)
+            client = mlflow.tracking.MlflowClient()
+            
+            # 获取模型的所有版本
+            versions = client.search_model_versions(f"name='{model_name}'")
+            
+            version_list = []
+            for version in versions:
+                version_list.append({
+                    'version': version.version,
+                    'status': version.status,
+                    'creation_timestamp': version.creation_timestamp,
+                    'last_updated_timestamp': version.last_updated_timestamp,
+                    'current_stage': version.current_stage,
+                    'description': version.description,
+                    'run_id': version.run_id,
+                })
+            
+            # 按版本号降序排序
+            version_list.sort(key=lambda x: int(x['version']), reverse=True)
+            
+            logger.info(f"获取模型版本列表成功: {model_name}, 共 {len(version_list)} 个版本")
+            
+            return Response({
+                'model_name': model_name,
+                'versions': version_list,
+                'total': len(version_list)
+            })
+            
+        except Exception as e:
+            logger.error(f"获取模型版本列表失败: {str(e)}", exc_info=True)
+            return Response(
+                {'error': f'获取模型版本列表失败: {str(e)}'},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+    
     @action(detail=False, methods=['get'], url_path='download_model/(?P<run_id>[^/]+)')
     @HasPermission("train_tasks-View")
     def download_model(self, request, run_id: str):
@@ -542,7 +588,18 @@ class AnomalyDetectionTrainJobViewSet(ModelViewSet):
             
             # 4. 生成文件名
             run_name = run.data.tags.get('mlflow.runName', 'unknown')
-            algorithm = run.data.params.get('algorithm', 'unknown')
+            
+            # 尝试从 Experiment name 提取 algorithm (格式: AnomalyDetection_{algorithm}_{id})
+            experiment_id = run.info.experiment_id
+            experiment = mlflow_client.get_experiment(experiment_id)
+            experiment_name = experiment.name if experiment else ""
+            
+            # 从 experiment_name 解析: AnomalyDetection_{algorithm}_{id}
+            algorithm = 'unknown'
+            if experiment_name.startswith('AnomalyDetection_'):
+                parts = experiment_name.split('_')
+                if len(parts) >= 3:
+                    algorithm = parts[1]  # 提取算法名
             
             # 尝试从 Model Registry 获取模型名称和版本
             model_name = None

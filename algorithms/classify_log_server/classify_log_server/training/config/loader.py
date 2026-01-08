@@ -222,12 +222,7 @@ class TrainingConfig:
     
     def _validate_dependencies(self):
         """Layer 4: 依赖关系校验"""
-        # 验证模型注册依赖
-        mlflow_config = self.config.get("mlflow", {})
-        if mlflow_config.get("register_model") and not mlflow_config.get("registered_model_name"):
-            raise ConfigError(
-                "mlflow.register_model=true 时，必须提供 mlflow.registered_model_name"
-            )
+        # 暂无依赖校验
         
         # 验证特征工程依赖
         use_fe = self.config.get("hyperparams", {}).get("use_feature_engineering")
