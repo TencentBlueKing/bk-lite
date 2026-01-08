@@ -3,10 +3,10 @@ from rest_framework.decorators import action
 from rest_framework.viewsets import GenericViewSet
 from rest_framework.response import Response
 from rest_framework import status
+from django.http import HttpResponse
 
 from apps.core.exceptions.base_app_exception import BaseAppException
 from apps.core.utils.loader import LanguageLoader
-from apps.core.utils.web_utils import WebUtils
 from apps.node_mgmt.constants.language import LanguageConstants
 from apps.node_mgmt.constants.cloudregion_service import CloudRegionServiceConstants
 from apps.node_mgmt.filters.cloud_region import CloudRegionFilter
@@ -123,38 +123,47 @@ class CloudRegionViewSet(mixins.ListModelMixin,
 
         Request Body:
             {
-                "cloud_region_id": 1,  # 云区域ID（必填，整数）
-                "services": ["nats", "telegraf"]  # 可选：要部署的服务列表
+                "cloud_region_id": 1  # 云区域ID（必填，整数）
             }
 
         Response (200 OK):
-            {
-                "commands": "#!/bin/bash\n..."  # 部署脚本命令
-            }
+            纯文本部署脚本（text/plain）
+            - 包含完整的部署命令和配置
+            - 可直接在目标环境执行
+
+        Response Headers:
+            Content-Type: text/plain; charset=utf-8
 
         Response (400 Bad Request):
             {
-                "error": "Missing cloud_region_id" | "Cloud region not found"
+                "error": "Missing cloud_region_id" | "Invalid cloud_region_id" | "Cloud region not found"
             }
-            
+
+        Response (500 Internal Server Error):
+            {
+                "error": "Webhook configuration missing" | "Failed to generate deploy script"
+            }
+
         Security:
             - 需要适当的用户权限（取决于 ViewSet 配置）
-            - 响应脚本可能包含敏感信息，应谨慎处理
+            - 响应脚本可能包含敏感信息（如密码、密钥），应谨慎处理
             - 建议在生产环境中添加额外的权限验证
+            - 脚本通过 webhook 服务生成，确保内网安全
+
+        Usage:
+            curl -X POST http://server/api/v1/node_mgmt/cloud_regions/deploy_command \
+                -H "Content-Type: application/json" \
+                -H "Authorization: Bearer <token>" \
+                -d '{"cloud_region_id": 1}' | sudo bash
+
+        示例:
+            POST /deploy_command
+            {
+                "cloud_region_id": 1
+            }
         """
-        # 获取云区域ID（必填参数）
-        cloud_region_id = request.data.get("cloud_region_id")
-        if not cloud_region_id:
-            raise BaseAppException("Missing cloud_region_id")
-
-        # 获取要部署的服务列表（可选参数）
-        services = request.data.get("services")
-        
-        # 验证 services 参数类型
-        if services is not None and not isinstance(services, list):
-            raise BaseAppException("Invalid services parameter: must be a list")
-
         # 调用 service 层获取部署脚本
-        deploy_script = RegionService.get_deploy_script(cloud_region_id, services)
+        deploy_script = RegionService.get_deploy_script(request.data)
 
-        return WebUtils.response_success({"commands": deploy_script})
+        # 返回纯文本脚本（text/plain），与 render_install_script 保持一致
+        return HttpResponse(deploy_script, content_type="text/plain; charset=utf-8")

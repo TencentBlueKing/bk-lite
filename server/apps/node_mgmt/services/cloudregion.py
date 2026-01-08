@@ -30,13 +30,12 @@ class RegionService:
         return variables
 
     @staticmethod
-    def get_deploy_script(cloud_region_id, services=None):
+    def get_deploy_script(data: dict):
         """获取云区域服务部署脚本
         
-        Args:
+        data:
             cloud_region_id: 云区域ID（必须是整数）
-            services: 要部署的服务列表，可选（必须是列表或None）
-            
+
         Returns:
             str: 部署脚本内容
             
@@ -45,12 +44,9 @@ class RegionService:
         """
         # 参数类型验证
         try:
-            cloud_region_id = int(cloud_region_id)
+            cloud_region_id = int(data["cloud_region_id"])
         except (TypeError, ValueError):
             raise BaseAppException("Invalid cloud_region_id: must be an integer")
-        
-        if services is not None and not isinstance(services, list):
-            raise BaseAppException("Invalid services: must be a list or None")
         
         # 验证云区域是否存在
         cloud_region = CloudRegion.objects.filter(id=cloud_region_id).first()
@@ -77,10 +73,7 @@ class RegionService:
         webhook_params = {
             "cloud_region_id": cloud_region_id,
             "cloud_region_name": cloud_region.name,
-            "services": services or []
         }
-
-        logger.info(f"Requesting deploy script for cloud region {cloud_region_id}, services: {services}")
 
         try:
             # 调用 webhook API 获取部署脚本
