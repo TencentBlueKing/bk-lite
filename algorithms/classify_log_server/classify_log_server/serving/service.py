@@ -18,17 +18,14 @@ from .models import load_model
 from .schemas import (
     ClusteringSummary,
     LogClusterRequest,
-    LogClusterResponse,
     LogClusterResponseV2,
     LogClusterResult,
-    PredictRequest,
-    PredictResponse,
     TemplateGroup,
 )
 
 
 @bentoml.service(
-    name=f"{{project_name}}_service",
+    name="classify_log_server_service",
     traffic={"timeout": 30},
 )
 class MLService:
