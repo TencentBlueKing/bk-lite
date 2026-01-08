@@ -198,6 +198,13 @@ class SpellModel(BaseLogClusterModel):
             template_str = ' '.join(cluster['template'])
             self.templates.append(template_str)
         
+        # 7. 保存训练数据的聚类分配（用于生成可视化）
+        self._last_predictions = []
+        for cluster in self.clusters:
+            cluster_id = cluster['id']
+            log_count = len(cluster['log_ids'])
+            self._last_predictions.extend([cluster_id] * log_count)
+        
         self.is_trained = True
         
         elapsed_time = time.time() - start_time
@@ -599,12 +606,19 @@ class SpellModel(BaseLogClusterModel):
             except Exception as e:
                 logger.warning(f"元数据记录失败: {e}")
         
-        # 2. 创建 MLflow pyfunc Wrapper
+        # 2. 获取预处理器（如果有）
+        preprocessor = getattr(self, 'preprocessor', None)
+        if preprocessor:
+            logger.info(f"✓ 发现预处理器: {type(preprocessor).__name__}")
+        else:
+            logger.warning("⚠ 未发现预处理器，推理时可能需要手动预处理")
+        
+        # 3. 创建 MLflow pyfunc Wrapper
         logger.info("创建 SpellWrapper...")
         from .spell_wrapper import SpellWrapper
         
         try:
-            wrapped_model = SpellWrapper(model=self)
+            wrapped_model = SpellWrapper(model=self, preprocessor=preprocessor)
             logger.info("✓ Wrapper 创建成功")
         except Exception as e:
             logger.error(f"✗ Wrapper 创建失败: {type(e).__name__}: {e}")
@@ -612,7 +626,7 @@ class SpellModel(BaseLogClusterModel):
             logger.error(f"详细错误:\n{traceback.format_exc()}")
             raise RuntimeError(f"SpellWrapper 创建失败: {e}")
         
-        # 3. 测试 Wrapper 序列化
+        # 4. 测试 Wrapper 序列化
         logger.info("测试 Wrapper 序列化...")
         try:
             import cloudpickle
@@ -628,7 +642,7 @@ class SpellModel(BaseLogClusterModel):
             logger.error(f"详细错误:\n{traceback.format_exc()}")
             raise RuntimeError(f"Wrapper 不可序列化: {e}")
         
-        # 4. 保存模型到 MLflow
+        # 5. 保存模型到 MLflow
         logger.info("调用 mlflow.pyfunc.log_model()...")
         try:
             mlflow.pyfunc.log_model(
@@ -648,7 +662,7 @@ class SpellModel(BaseLogClusterModel):
             logger.error(f"详细错误:\n{traceback.format_exc()}")
             raise
         
-        # 5. 验证模型是否真的保存了
+        # 6. 验证模型是否真的保存了
         if mlflow.active_run():
             run_id = mlflow.active_run().info.run_id
             logger.info(f"验证模型文件是否存在 (Run ID: {run_id})...")
@@ -665,7 +679,7 @@ class SpellModel(BaseLogClusterModel):
             except Exception as e:
                 logger.warning(f"无法验证 artifacts: {e}")
         
-        # 6. 保存和记录模板（额外的 artifacts）
+        # 7. 保存和记录模板（额外的 artifacts）
         templates = self.get_templates()
         if templates:
             try:

@@ -15,14 +15,16 @@ class SpellWrapper(mlflow.pyfunc.PythonModel):
     使 Spell 模型能够通过 MLflow 模型注册中心和 BentoML 提供服务。
     """
 
-    def __init__(self, model: SpellModel):
+    def __init__(self, model: SpellModel, preprocessor=None):
         """初始化封装器
 
         Args:
             model: 已训练的 SpellModel 实例
+            preprocessor: 日志预处理器（可选，用于推理时预处理）
         """
         self.model = model
-        logger.info("SpellWrapper initialized")
+        self.preprocessor = preprocessor
+        logger.info(f"SpellWrapper initialized (preprocessor={'enabled' if preprocessor else 'disabled'})")
 
     def load_context(self, context):
         """加载模型上下文（MLflow 加载模型时调用）
@@ -45,6 +47,11 @@ class SpellWrapper(mlflow.pyfunc.PythonModel):
         """
         # 解析输入
         logs = self._parse_input(model_input)
+
+        # 预处理（如果有预处理器）
+        if self.preprocessor:
+            logs = self.preprocessor.preprocess(logs)
+            logger.debug(f"Preprocessed {len(logs)} logs")
 
         # 获取预测结果
         cluster_ids = self.model.predict(logs)

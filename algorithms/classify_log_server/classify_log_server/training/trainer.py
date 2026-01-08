@@ -422,6 +422,13 @@ class UniversalTrainer:
         """
         logger.info("训练模型...")
         
+        # 将预处理器附加到模型（用于推理时使用）
+        if self.preprocessor:
+            self.model.preprocessor = self.preprocessor
+            logger.info("✓ 预处理器已附加到模型")
+        else:
+            logger.warning("⚠ 未找到预处理器，推理时可能需要手动预处理")
+        
         # 如果有验证集，合并后训练
         if val_data:
             final_train_data = train_data + val_data
