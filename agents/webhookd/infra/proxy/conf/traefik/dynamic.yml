@@ -1,0 +1,30 @@
+tls:
+  certificates:
+    - certFile: /etc/certs/proxy.crt
+      keyFile: /etc/certs/proxy.key
+
+  stores:
+    default:
+      defaultCertificate:
+        certFile: /etc/certs/proxy.crt
+        keyFile: /etc/certs/proxy.key
+
+http:
+  routers:
+    catch-all:
+      rule: "PathPrefix(`/`)"
+      entryPoints:
+        - websecure
+      service: backend
+      tls: {}
+
+  services:
+    backend:
+      loadBalancer:
+        servers:
+          - url: '{{ env "SERVER_URL" }}'
+        serversTransport: insecure
+
+  serversTransports:
+    insecure:
+      insecureSkipVerify: true

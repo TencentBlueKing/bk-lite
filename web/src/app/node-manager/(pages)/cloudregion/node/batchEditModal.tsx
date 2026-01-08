@@ -21,6 +21,7 @@ import { BATCH_FIELD_MAPS } from '@/app/node-manager/constants/cloudregion';
 import { useTranslation } from '@/utils/i18n';
 import { cloneDeep } from 'lodash';
 const { Option } = Select;
+import EllipsisWithTooltip from '@/components/ellipsis-with-tooltip';
 
 interface ModalProps {
   onSuccess: (row: any) => void;
@@ -38,15 +39,23 @@ const BatchEditModal = forwardRef<ModalRef, ModalProps>(
     const [groupForm, setGroupForm] = useState<TableDataItem>({});
     const [title, setTitle] = useState<string>('');
     const [field, setField] = useState<string>('os');
+    const [authTypeValue, setAuthTypeValue] = useState<string | undefined>();
+    const [uploadedFileName, setUploadedFileName] = useState<
+      string | undefined
+    >();
 
     useImperativeHandle(ref, () => ({
-      showModal: ({ form, title, type }) => {
+      showModal: ({ form, title, type, authType }) => {
         // 开启弹窗的交互
         const formData = cloneDeep(form || {});
         setGroupForm(formData);
         setGroupVisible(true);
         setField(type || 'os');
         setTitle(title || '');
+        setAuthTypeValue(
+          type === 'password' ? authType || 'password' : undefined
+        );
+        setUploadedFileName(undefined);
       },
     }));
 
@@ -60,6 +69,56 @@ const BatchEditModal = forwardRef<ModalRef, ModalProps>(
     const renderFormItem = useCallback(() => {
       switch (field) {
         case 'password':
+          if (authTypeValue === 'private_key') {
+            return uploadedFileName ? (
+              <div className="inline-flex items-center gap-2 text-[var(--color-text-1)] max-w-full group">
+                <EllipsisWithTooltip
+                  text={uploadedFileName}
+                  className="overflow-hidden text-ellipsis whitespace-nowrap"
+                />
+                <span
+                  className="cursor-pointer opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0"
+                  style={{
+                    fontSize: 16,
+                    color: 'var(--color-primary)',
+                    fontWeight: 'bold',
+                  }}
+                  onClick={() => {
+                    setUploadedFileName(undefined);
+                    formRef.current?.setFieldValue('id', undefined);
+                    formRef.current?.setFieldValue('private_key', undefined);
+                  }}
+                  title={t('common.delete')}
+                >
+                  ×
+                </span>
+              </div>
+            ) : (
+              <Button
+                onClick={() => {
+                  const input = document.createElement('input');
+                  input.type = 'file';
+                  input.accept = '.*';
+                  input.onchange = (e: any) => {
+                    const file = e.target.files[0];
+                    if (file) {
+                      const reader = new FileReader();
+                      reader.onload = (event) => {
+                        const content = event.target?.result as string;
+                        formRef.current?.setFieldValue('private_key', content);
+                        formRef.current?.setFieldValue('id', '');
+                        setUploadedFileName(file.name);
+                      };
+                      reader.readAsText(file);
+                    }
+                  };
+                  input.click();
+                }}
+              >
+                {t('node-manager.cloudregion.node.uploadPrivateKey')}
+              </Button>
+            );
+          }
           return <Input.Password />;
         case 'os':
           return (
@@ -86,13 +145,19 @@ const BatchEditModal = forwardRef<ModalRef, ModalProps>(
         default:
           return <Input />;
       }
-    }, [field]);
+    }, [field, authTypeValue, uploadedFileName, t, systemList, groupList]);
 
     const handleSubmit = () => {
       formRef.current?.validateFields().then((values) => {
         const formData: TableDataItem = {};
-        formData.value = values.id;
         formData.field = field;
+        if (field === 'password' && authTypeValue === 'private_key') {
+          formData.value = '';
+          formData.key_file_name = uploadedFileName;
+          formData.private_key = values.private_key;
+        } else {
+          formData.value = values.id;
+        }
         onSuccess(formData);
         handleCancel();
       });
@@ -100,6 +165,8 @@ const BatchEditModal = forwardRef<ModalRef, ModalProps>(
 
     const handleCancel = () => {
       setGroupVisible(false);
+      setAuthTypeValue(undefined);
+      setUploadedFileName(undefined);
     };
 
     return (
@@ -123,12 +190,33 @@ const BatchEditModal = forwardRef<ModalRef, ModalProps>(
           }
         >
           <Form ref={formRef} name="basic" layout="vertical">
+            <Form.Item name="private_key" hidden>
+              <Input />
+            </Form.Item>
             <Form.Item<ControllerInstallFields>
               label={t(
                 `node-manager.cloudregion.node.${BATCH_FIELD_MAPS[field]}`
               )}
               name="id"
-              rules={[{ required: true, message: t('common.required') }]}
+              rules={[
+                {
+                  required: true,
+                  message: t('common.required'),
+                  validator: (_, value) => {
+                    if (
+                      field === 'password' &&
+                      authTypeValue === 'private_key'
+                    ) {
+                      return uploadedFileName
+                        ? Promise.resolve()
+                        : Promise.reject(new Error(t('common.required')));
+                    }
+                    return value
+                      ? Promise.resolve()
+                      : Promise.reject(new Error(t('common.required')));
+                  },
+                },
+              ]}
             >
               {renderFormItem()}
             </Form.Item>

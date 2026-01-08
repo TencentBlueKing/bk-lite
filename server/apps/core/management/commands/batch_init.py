@@ -78,6 +78,7 @@ class Command(BaseCommand):
         call_command('model_init')
         call_command('init_oid')
         call_command('update_collect_task_data')
+        call_command("init_field_groups")
 
     def _init_console_mgmt(self):
         """控制台管理资源初始化"""

@@ -198,7 +198,7 @@ const Installing: React.FC<InstallingProps> = ({
                   {['error', 'timeout'].includes(row.status) && (
                     <Button
                       type="link"
-                      className="m1-[10px]"
+                      className="ml-[10px]"
                       onClick={() => handleRetry(row)}
                     >
                       {t('node-manager.cloudregion.node.retry')}

@@ -49,6 +49,7 @@ const InstallConfig: React.FC<InstallConfigProps> = ({ onNext, cancel }) => {
       organizations: [commonContext.selectedGroup?.id],
       port: 22,
       username: 'root',
+      auth_type: 'password',
       password: null,
       node_name: null,
     }),
@@ -277,8 +278,13 @@ const InstallConfig: React.FC<InstallConfigProps> = ({ onNext, cancel }) => {
     tableConfig.forEach((column: any) => {
       const { name, rules = [], required = false } = column;
       tableData.forEach((row, index) => {
-        const value = row[name];
+        let value = row[name];
         let errorMsg: string | null = null;
+        // 特殊处理：如果是password字段且auth_type为private_key，则验证private_key字段
+        if (name === 'password' && row['auth_type'] === 'private_key') {
+          value = row['private_key'];
+        }
+
         // 如果字段标记为required，进行必填验证
         if (required) {
           if (
@@ -367,7 +373,8 @@ const InstallConfig: React.FC<InstallConfigProps> = ({ onNext, cancel }) => {
           organizations: item.organizations,
           port: item.port,
           username: item.username,
-          password: item.password,
+          password: item.private_key ? '' : item.password,
+          private_key: item.private_key || '',
           node_name: item.node_name,
         }));
       } else {

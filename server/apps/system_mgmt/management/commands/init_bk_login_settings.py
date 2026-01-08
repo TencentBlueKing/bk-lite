@@ -12,8 +12,8 @@ class Command(BaseCommand):
         LoginModule.objects.get_or_create(
             name="蓝鲸平台",
             source_type="bk_login",
-            is_build_in=True,
             defaults={
+                "is_build_in": True,
                 "other_config": {
                     "sync": False,
                     "app_id": "weops_saas",

@@ -13,6 +13,7 @@ services:
       - "traefik.enable=true"
       - "traefik.http.routers.system-manager-web.rule=Host(`${HOST_IP}`)"
       - "traefik.http.routers.system-manager-web.entrypoints=websecure"
+      - "traefik.http.routers.system-manager-web.priority=10"
       - "traefik.http.services.system-manager-web.loadbalancer.server.port=3000"
     networks:
       - prod
