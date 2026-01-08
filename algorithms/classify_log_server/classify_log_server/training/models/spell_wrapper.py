@@ -33,9 +33,7 @@ class SpellWrapper(mlflow.pyfunc.PythonModel):
         # 模型已在__init__中加载
         logger.info("SpellWrapper context loaded")
 
-    def predict(
-        self, context, model_input: Union[pd.DataFrame, List[str], Dict[str, Any]]
-    ) -> pd.DataFrame:
+    def predict(self, context, model_input):
         """预测输入日志的聚类 ID
 
         Args:

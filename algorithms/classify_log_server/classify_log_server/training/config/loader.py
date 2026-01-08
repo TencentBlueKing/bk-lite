@@ -8,7 +8,7 @@ from typing import Any, Dict, Optional
 
 from loguru import logger
 
-from .schema import DEFAULT_CONFIG, SUPPORTED_MODELS, SUPPORTED_METRICS
+from .schema import SUPPORTED_MODELS, SUPPORTED_METRICS
 
 
 class ConfigError(Exception):
@@ -49,74 +49,59 @@ class TrainingConfig:
     """
     Training configuration loader and validator.
     
-    Loads configuration from JSON file and merges with default values.
-    Provides validation and easy access to configuration parameters.
+    Loads configuration from JSON file and provides validation.
     """
 
-    def __init__(self, config_path: Optional[str] = None, config_dict: Optional[Dict[str, Any]] = None):
+    def __init__(self, config_path: str):
         """
         Initialize configuration.
 
         Args:
-            config_path: Path to JSON configuration file
-            config_dict: Configuration dictionary (alternative to file)
+            config_path: Path to JSON configuration file (required)
+        
+        Raises:
+            FileNotFoundError: Configuration file not found
+            json.JSONDecodeError: Invalid JSON format
         """
-        self.config = self._load_config(config_path, config_dict)
+        self.config = self._load_config(config_path)
         self._validate_config()
 
-    def _load_config(self, config_path: Optional[str], config_dict: Optional[Dict[str, Any]]) -> Dict[str, Any]:
+    def _load_config(self, config_path: str) -> Dict[str, Any]:
         """
-        Load configuration from file or dictionary.
+        Load configuration from file.
 
         Args:
             config_path: Path to JSON configuration file
-            config_dict: Configuration dictionary
 
         Returns:
-            Merged configuration dictionary
+            Configuration dictionary
+        
+        Raises:
+            FileNotFoundError: Configuration file not found
+            json.JSONDecodeError: Invalid JSON format
         """
-        # Start with default config
-        config = DEFAULT_CONFIG.copy()
+        config_path = Path(config_path)
+        
+        if not config_path.exists():
+            raise FileNotFoundError(
+                f"Configuration file not found: {config_path}\n"
+                f"Please provide a valid configuration file or refer to "
+                f"support-files/train.json.example for template"
+            )
 
-        # Load from file if provided
-        if config_path:
-            config_path = Path(config_path)
-            if not config_path.exists():
-                raise FileNotFoundError(f"Configuration file not found: {config_path}")
-
-            logger.info(f"Loading configuration from {config_path}")
+        logger.info(f"Loading configuration from {config_path}")
+        
+        try:
             with open(config_path, "r", encoding="utf-8") as f:
-                user_config = json.load(f)
-
-            # Deep merge user config with defaults
-            config = self._deep_merge(config, user_config)
-
-        # Override with dictionary if provided
-        if config_dict:
-            config = self._deep_merge(config, config_dict)
+                config = json.load(f)
+        except json.JSONDecodeError as e:
+            raise json.JSONDecodeError(
+                f"Invalid JSON in configuration file: {config_path}",
+                e.doc,
+                e.pos
+            )
 
         return config
-
-    def _deep_merge(self, base: Dict[str, Any], override: Dict[str, Any]) -> Dict[str, Any]:
-        """
-        Deep merge two dictionaries.
-
-        Args:
-            base: Base dictionary
-            override: Override dictionary
-
-        Returns:
-            Merged dictionary
-        """
-        result = base.copy()
-
-        for key, value in override.items():
-            if key in result and isinstance(result[key], dict) and isinstance(value, dict):
-                result[key] = self._deep_merge(result[key], value)
-            else:
-                result[key] = value
-
-        return result
 
     def _validate_config(self):
         """多层配置验证"""
@@ -255,49 +240,52 @@ class TrainingConfig:
                     "必须提供 datetime_column"
                 )
 
-    def get(self, key: str, default: Any = None) -> Any:
-        """
-        Get configuration value by key.
-
-        Supports nested keys with dot notation (e.g., 'data.train_file').
-
+    def get(self, *keys, default=None) -> Any:
+        """获取配置项（支持多级访问）
+        
         Args:
-            key: Configuration key
-            default: Default value if key not found
-
+            *keys: 配置路径，如 get("model", "type")
+            default: 默认值
+            
         Returns:
-            Configuration value
+            配置值，如果不存在返回 default
+            
+        Example:
+            config.get("model", "type")  # "Spell"
+            config.get("hyperparams", "search_space", "tau")  # [0.4, 0.45, ...]
+            config.get("unknown", "key", default="fallback")  # "fallback"
         """
-        keys = key.split(".")
         value = self.config
-
-        for k in keys:
-            if isinstance(value, dict) and k in value:
-                value = value[k]
+        for key in keys:
+            if isinstance(value, dict):
+                value = value.get(key)
+                if value is None:
+                    return default
             else:
                 return default
-
         return value
 
-    def set(self, key: str, value: Any):
-        """
-        Set configuration value by key.
-
-        Supports nested keys with dot notation.
-
+    def set(self, *keys, value):
+        """设置配置项（支持多级访问）
+        
         Args:
-            key: Configuration key
-            value: Value to set
+            *keys: 配置路径，如 set("model", "type", value="Spell")
+            value: 要设置的值
+            
+        Example:
+            config.set("model", "type", value="Spell")
+            config.set("mlflow", "tracking_uri", value="http://mlflow:5000")
         """
-        keys = key.split(".")
-        config = self.config
-
-        for k in keys[:-1]:
-            if k not in config:
-                config[k] = {}
-            config = config[k]
-
-        config[keys[-1]] = value
+        if len(keys) < 1:
+            raise ValueError("至少需要一个键")
+        
+        target = self.config
+        for key in keys[:-1]:
+            if key not in target:
+                target[key] = {}
+            target = target[key]
+        
+        target[keys[-1]] = value
 
     def to_dict(self) -> Dict[str, Any]:
         """

@@ -128,9 +128,10 @@ class CLI:
         logger.info("=" * 60)
         logger.info("训练完成!")
         logger.info(f"测试集指标:")
-        logger.info(f"  模板数量: {test_metrics.get('test_num_templates', 0)}")
-        logger.info(f"  覆盖率: {test_metrics.get('test_coverage_rate', 0):.4f}")
-        logger.info(f"  模板多样性: {test_metrics.get('test_template_diversity', 0):.4f}")
+        logger.info(f"  模板数量: {test_metrics.get('num_templates', 0)}")
+        logger.info(f"  覆盖率: {test_metrics.get('coverage_rate', 0):.4f}")
+        logger.info(f"  模板多样性: {test_metrics.get('template_diversity', 0):.4f}")
+        logger.info(f"  模板质量: {test_metrics.get('template_quality_score', 0):.4f}")
         logger.info(f"MLflow Run ID: {result['run_id']}")
         logger.info("=" * 60)
         

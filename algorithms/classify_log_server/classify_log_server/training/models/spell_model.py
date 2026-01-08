@@ -11,7 +11,7 @@ from loguru import logger
 from .base import BaseLogClusterModel, ModelRegistry
 
 
-@ModelRegistry.register("spell")
+@ModelRegistry.register("Spell")
 class SpellModel(BaseLogClusterModel):
     """
     用于日志聚类的 Spell 模型。
@@ -586,7 +586,7 @@ class SpellModel(BaseLogClusterModel):
         # 1. 记录模型元数据
         if mlflow.active_run():
             metadata = {
-                'model_type': 'spell',
+                'model_type': 'Spell',
                 'tau': self.tau,
                 'num_templates': len(self.templates) if self.templates else 0,
                 'is_trained': self.is_trained,
@@ -760,7 +760,7 @@ class SpellModel(BaseLogClusterModel):
             包含模型信息的字典
         """
         info = {
-            "model_type": "spell",
+            "model_type": "Spell",
             "tau": self.tau,
             "num_templates": len(self.templates) if self.templates else 0,
             "is_trained": self.is_trained,

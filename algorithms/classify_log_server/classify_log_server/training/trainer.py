@@ -11,6 +11,7 @@ from .config.loader import TrainingConfig
 from .data_loader import LogDataLoader
 from .mlflow_utils import MLFlowUtils
 from .models.base import ModelRegistry
+from .models import SpellModel  # 导入具体模型以触发注册
 from .preprocessing.log_preprocessor import LogPreprocessor, LogParser
 from .preprocessing.feature_engineering import LogFeatureEngineer, prepare_log_dataframe
 
@@ -226,33 +227,33 @@ class UniversalTrainer:
             # 目录模式
             logger.info(f"📁 检测到目录模式: {dataset_path}")
             
-            train_file = dataset_path / "train.txt"
+            train_file = dataset_path / "train_data.txt"
             if not train_file.exists():
                 raise FileNotFoundError(
                     f"目录模式下未找到训练文件: {train_file}\n"
-                    f"目录中必须包含 train.txt"
+                    f"目录中必须包含 train_data.txt"
                 )
             
             train_logs = self.data_loader.load_txt(str(train_file))
-            logger.info(f"✓ 训练集: {len(train_logs)} 条日志 (train.txt)")
+            logger.info(f"✓ 训练集: {len(train_logs)} 条日志 (train_data.txt)")
             
             # 可选的验证集
             val_logs = None
-            val_file = dataset_path / "val.txt"
+            val_file = dataset_path / "val_data.txt"
             if val_file.exists():
                 val_logs = self.data_loader.load_txt(str(val_file))
-                logger.info(f"✓ 验证集: {len(val_logs)} 条日志 (val.txt)")
+                logger.info(f"✓ 验证集: {len(val_logs)} 条日志 (val_data.txt)")
             else:
-                logger.info("⚠ 未找到 val.txt，将跳过验证")
+                logger.info("⚠ 未找到 val_data.txt，将跳过验证")
             
             # 可选的测试集
             test_logs = None
-            test_file = dataset_path / "test.txt"
+            test_file = dataset_path / "test_data.txt"
             if test_file.exists():
                 test_logs = self.data_loader.load_txt(str(test_file))
-                logger.info(f"✓ 测试集: {len(test_logs)} 条日志 (test.txt)")
+                logger.info(f"✓ 测试集: {len(test_logs)} 条日志 (test_data.txt)")
             else:
-                logger.info("⚠ 未找到 test.txt，将使用训练集进行评估")
+                logger.info("⚠ 未找到 test_data.txt，将使用训练集进行评估")
             
             return train_logs, val_logs, test_logs
         
@@ -289,7 +290,7 @@ class UniversalTrainer:
         
         # 1. 初始化组件（只初始化一次）
         self.log_parser = LogParser(log_format="<Content>")
-        preprocessing_config = self.config.get("preprocessing", {})
+        preprocessing_config = self.config.config.get("preprocessing", {})
         self.preprocessor = LogPreprocessor(preprocessing_config)
         
         logger.info(f"预处理配置: {preprocessing_config}")
@@ -358,7 +359,7 @@ class UniversalTrainer:
         logger.info(f"创建模型: {self.config.model_type}")
 
         # 从search_space中获取tau（第一个值）
-        search_space = self.config.get("hyperparams.search_space", {})
+        search_space = self.config.get("hyperparams", "search_space", default={})
         tau_values = search_space.get("tau", [0.5])
         tau = tau_values[0] if isinstance(tau_values, list) else tau_values
         
@@ -385,7 +386,7 @@ class UniversalTrainer:
         logger.info("检查超参数优化配置...")
         
         # 1. 检查配置
-        max_evals = self.config.get("hyperparams.max_evals", 0)
+        max_evals = self.config.get("hyperparams", "max_evals", default=0)
         
         if max_evals == 0:
             logger.info("max_evals=0，跳过超参数优化")

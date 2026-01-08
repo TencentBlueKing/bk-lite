@@ -3,11 +3,9 @@
 from typing import Dict, Any, Optional
 from pathlib import Path
 import json
-import copy
 from loguru import logger
 
 from .schema import (
-    DEFAULT_CONFIG,
     SUPPORTED_MODELS,
     SUPPORTED_METRICS,
     SUPPORTED_MISSING_HANDLERS
@@ -174,17 +172,19 @@ class TrainingConfig:
     
     支持：
     - 从 JSON 文件加载配置
-    - 与默认配置深度合并
     - 严格配置验证（2层校验）
     - 便捷的访问接口
     """
     
-    def __init__(self, config_path: Optional[str] = None):
+    def __init__(self, config_path: str):
         """初始化配置管理器
         
         Args:
-            config_path: train.json 配置文件路径
-                        None 则使用默认配置
+            config_path: train.json 配置文件路径（必需）
+        
+        Raises:
+            FileNotFoundError: 配置文件不存在
+            json.JSONDecodeError: 配置文件格式错误
         """
         self.config_path = config_path
         self.config = self._load_config(config_path)
@@ -192,67 +192,43 @@ class TrainingConfig:
         
         logger.info(f"✓ 配置加载并校验完成 - 模型: {self.model_type}")
     
-    def _load_config(self, config_path: Optional[str]) -> Dict[str, Any]:
+    def _load_config(self, config_path: str) -> Dict[str, Any]:
         """加载配置文件
         
         Args:
-            config_path: 配置文件路径
+            config_path: 配置文件路径（必需）
             
         Returns:
             配置字典
+        
+        Raises:
+            FileNotFoundError: 配置文件不存在
+            json.JSONDecodeError: 配置文件格式错误
         """
-        # 使用默认配置作为基础
-        config = copy.deepcopy(DEFAULT_CONFIG)
-        
-        if config_path is None:
-            logger.info("未指定配置文件，使用默认配置")
-            return config
-        
         config_file = Path(config_path)
+        
         if not config_file.exists():
-            logger.warning(f"配置文件不存在: {config_path}，使用默认配置")
-            return config
+            raise FileNotFoundError(
+                f"配置文件不存在: {config_path}\n"
+                f"请提供有效的配置文件或参考 support-files/train.json.example"
+            )
         
         try:
             logger.info(f"加载配置文件: {config_path}")
             with open(config_file, 'r', encoding='utf-8') as f:
-                custom_config = json.load(f)
+                config = json.load(f)
             
-            # 深度合并配置
-            merged_config = self._deep_merge(config, custom_config)
-            
-            return merged_config
+            return config
             
         except json.JSONDecodeError as e:
-            logger.error(f"配置文件格式错误: {e}")
-            raise ConfigError(f"无效的 JSON 配置文件: {config_path}")
+            raise json.JSONDecodeError(
+                f"配置文件格式错误: {config_path}",
+                e.doc,
+                e.pos
+            )
         except Exception as e:
             logger.error(f"加载配置文件失败: {e}")
             raise
-    
-    def _deep_merge(self, base: Dict, custom: Dict) -> Dict:
-        """深度合并两个字典
-        
-        Args:
-            base: 基础配置（默认配置）
-            custom: 自定义配置（用户配置）
-            
-        Returns:
-            合并后的配置
-        """
-        merged = copy.deepcopy(base)
-        
-        for key, value in custom.items():
-            if key in merged and isinstance(merged[key], dict) and isinstance(value, dict):
-                # 递归合并嵌套字典
-                merged[key] = self._deep_merge(merged[key], value)
-            else:
-                # 直接覆盖或添加新键
-                merged[key] = value
-                if key not in base:
-                    logger.debug(f"配置中包含额外字段: {key}")
-        
-        return merged
     
     def _validate(self):
         """执行2层配置校验"""

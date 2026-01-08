@@ -214,12 +214,12 @@ class ModelRegistry:
     使用装饰器模式注册模型类：
     
     Example:
-        @ModelRegistry.register("spell")
+        @ModelRegistry.register("Spell")
         class SpellModel(BaseLogClusterModel):
             pass
         
         # 动态创建模型
-        model = ModelRegistry.create_model("spell", tau=0.5)
+        model = ModelRegistry.create_model("Spell", tau=0.5)
     """
 
     _registry: Dict[str, type] = {}

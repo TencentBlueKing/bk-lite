@@ -2,7 +2,11 @@
 
 > 本指南用于指导新模型算法服务的设计与实现，确保架构一致性和代码质量。
 >
-> 更新时间：2026年1月7日
+> 更新时间：2026年1月7日 - v1.2
+> 最近更新：
+> - 移除代码中的 DEFAULT_CONFIG，实现真正的配置外部化
+> - 明确职责分离：train-model.sh 管理配置路径，代码只负责加载
+> - 配置文件路径改为必需参数，无默认值
 
 ## 📐 设计原则
 
@@ -117,6 +121,8 @@ algorithms/
   - `data/`: 运行时数据目录（不纳入版本控制）
 
 #### 3. 数据流向
+
+**数据集流向**：
 ```
 MinIO (datasets bucket)
   ↓ train-model.sh 下载
@@ -135,6 +141,21 @@ MLflow Model Registry
 serving/models/loader.py
   ↓ 预测
 serving/service.py
+```
+
+**配置文件流向**：
+```
+train-model.sh 接收 CONFIG 参数
+  ├─ 传入路径 → 使用指定配置（本地或MinIO路径）
+  └─ 未传入 → 使用默认配置（./train.json）
+       ↓
+CLI bootstrap.py (--config 参数)
+       ↓ 验证文件存在
+TrainingConfig.from_file()
+       ↓ 加载配置
+UniversalTrainer(config_obj)
+       ↓ 应用配置
+模型训练（超参数、预处理、特征工程等）
 ```
 
 ---
@@ -201,334 +222,58 @@ def _optimize_hyperparams(self, train_data, val_data) -> Optional[Dict[str, Any]
 
 ### 统一接口定义
 
+**必须实现的抽象方法**：
+- `fit(train_data, val_data, **kwargs)`: 训练模型
+- `predict(X)`: 模型预测
+- `evaluate(test_data, ground_truth, prefix="test")`: 评估性能，返回指标字典
+- `optimize_hyperparams(train_data, val_data, max_evals)`: 超参数优化（使用 Hyperopt）
+
+**可选工具方法**：
+- `get_params()`: 获取模型参数
+- `_check_fitted()`: 检查模型是否已训练
+
+**ModelRegistry 注册机制**：
 ```python
-"""模型基类 - 标准接口定义"""
+@ModelRegistry.register("my_model")
+class MyModel(Base{Domain}Model):
+    ...
 
-from abc import ABC, abstractmethod
-from typing import Any, Dict, Optional, Type
-import pandas as pd
-import numpy as np
-from loguru import logger
-
-
-class Base{Domain}Model(ABC):
-    """模型基类 - 定义统一接口
-    
-    设计原则：
-    1. 基类只定义接口契约（@abstractmethod）
-    2. 不实现具体的业务逻辑（如评估算法）
-    3. 子类完整实现各自的评估逻辑
-    
-    必须实现的核心方法：
-    - fit(): 训练模型
-    - predict(): 预测
-    - evaluate(): 评估性能
-    - optimize_hyperparams(): 超参数优化
-    
-    可选实现的方法：
-    - get_params(): 获取模型参数
-    - save()/load(): 模型持久化
-    
-    命名规范：
-    {Domain} 应替换为算法领域的 PascalCase 单词，例如：
-    - 时间序列：BaseTimeSeriesModel
-    - 日志分析：BaseLogClusterModel
-    - 异常检测：BaseAnomalyModel
-    """
-    
-    def __init__(self, **kwargs):
-        """初始化模型
-        
-        Args:
-            **kwargs: 模型特定的参数
-        """
-        self.model = None
-        self.config = kwargs
-        self.is_fitted = False
-    
-    @abstractmethod
-    def fit(self, 
-            train_data: Any,
-            val_data: Optional[Any] = None,
-            **kwargs) -> 'Base{Domain}Model':
-        """训练模型
-        
-        Args:
-            train_data: 训练数据
-            val_data: 验证数据（可选）
-            **kwargs: 额外参数
-            
-        Returns:
-            self: 训练后的模型实例
-        """
-        pass
-    
-    @abstractmethod
-    def predict(self, X: Any) -> np.ndarray:
-        """预测
-        
-        Args:
-            X: 输入数据
-            
-        Returns:
-            预测结果
-            
-        Raises:
-            RuntimeError: 模型未训练
-        """
-        pass
-    
-    @abstractmethod
-    def evaluate(self, 
-                 test_data: Any,
-                 ground_truth: Optional[Any] = None,
-                 prefix: str = "test") -> Dict[str, float]:
-        """评估模型性能（⚠️ 子类必须完整实现）
-        
-        设计要求：
-        1. 各模型实现自己的评估逻辑，不调用基类方法
-        2. 根据算法特性选择合适的评估指标
-        3. 返回的指标应与任务类型匹配
-        
-        Args:
-            test_data: 测试数据（格式由子类定义）
-            ground_truth: 真实标签（监督任务使用，可选）
-            prefix: 指标名称前缀（默认"test"）
-            
-        Returns:
-            评估指标字典，格式: {f"{prefix}_metric_name": value}
-            
-        示例：
-            # 日志聚类
-            {"test_num_templates": 50, "test_coverage_rate": 0.95}
-            
-            # 异常检测
-            {"test_precision": 0.85, "test_recall": 0.78, "test_f1": 0.81}
-            
-            # 时序预测
-            {"test_rmse": 12.5, "test_mae": 8.3, "test_mape": 0.15}
-            
-        注意：
-        - 内部数据使用 _ 前缀（如 _predictions, _y_true）
-        - 以 _ 开头的字段不会被 MLflow 记录
-        - 各模型的评估逻辑完全独立，保持自治
-        
-        评估指标命名规范：
-        - 统一使用小写下划线（snake_case）
-        - 优先使用行业标准缩写（如 rmse、mae、f1、auc、precision、recall）
-        - 自定义指标使用描述性英文单词（如 num_templates、coverage_rate）
-        - 避免混用缩写和全称（如 precision_f1score）
-        """
-        pass
-    
-    @abstractmethod
-    def optimize_hyperparams(
-        self,
-        train_data: Any,
-        val_data: Any,
-        max_evals: int,
-        **kwargs
-    ) -> Dict[str, Any]:
-        """超参数优化（必须实现）
-        
-        使用 Hyperopt 进行贝叶斯优化，寻找最优超参数组合。
-        
-        Args:
-            train_data: 训练数据
-            val_data: 验证数据
-            max_evals: 最大评估次数
-            **kwargs: 额外参数
-            
-        Returns:
-            最优超参数字典
-            
-        实现要求：
-        1. 定义搜索空间（从 self.config 读取 search_space）
-        2. 定义目标函数（训练模型并在验证集上评估）
-        3. 使用 hyperopt.fmin() 执行优化
-        4. 返回最优参数字典
-        
-        示例：
-            from hyperopt import fmin, tpe, hp, Trials
-            
-            def objective(params):
-                model = self.__class__(**params)
-                model.fit(train_data)
-                metrics = model.evaluate(val_data, prefix="val")
-                return metrics["val_loss"]  # 最小化目标
-            
-            space = {
-                'param1': hp.choice('param1', [10, 20, 30]),
-                'param2': hp.uniform('param2', 0.1, 1.0)
-            }
-            
-            best = fmin(objective, space, algo=tpe.suggest, max_evals=max_evals)
-            return best
-        """
-        pass
-    
-    def get_params(self) -> Dict[str, Any]:
-        """获取模型参数"""
-        return self.config.copy()
-    
-    def _check_fitted(self):
-        """检查模型是否已训练"""
-        if not self.is_fitted:
-            raise RuntimeError(f"{self.__class__.__name__} 必须先调用 fit()")
-
-
-class ModelRegistry:
-    """模型注册机制 - 支持动态模型加载
-    
-    使用方式：
-        @ModelRegistry.register("my_model")
-        class MyModel(Base{Domain}Model):
-            ...
-        
-        # 动态创建模型
-        model_class = ModelRegistry.get("my_model")
-        model = model_class(**params)
-    """
-    
-    _registry: Dict[str, Type[Base{Domain}Model]] = {}
-    
-    @classmethod
-    def register(cls, name: str):
-        """注册模型装饰器"""
-        def decorator(model_class: Type[Base{Domain}Model]):
-            if name in cls._registry:
-                logger.warning(f"模型 '{name}' 已存在，将被覆盖")
-            cls._registry[name] = model_class
-            logger.info(f"模型已注册: {name} -> {model_class.__name__}")
-            return model_class
-        return decorator
-    
-    @classmethod
-    def get(cls, name: str) -> Type[Base{Domain}Model]:
-        """获取注册的模型类"""
-        if name not in cls._registry:
-            available = ', '.join(cls._registry.keys())
-            raise ValueError(
-                f"未找到模型 '{name}'。可用模型: {available}"
-            )
-        return cls._registry[name]
-    
-    @classmethod
-    def list_models(cls) -> list:
-        """列出所有已注册的模型"""
-        return list(cls._registry.keys())
+# 动态创建
+model = ModelRegistry.get("my_model")(**params)
 ```
 
-### 具体模型实现示例
+**命名规范**：
+- 时间序列：`BaseTimeSeriesModel`
+- 日志分析：`BaseLogClusterModel`
+- 异常检测：`BaseAnomalyModel`
 
-#### 模型类必须实现的方法
+**评估指标要求**：
+- 返回格式：`{f"{prefix}_metric_name": value}`
+- 命名规范：小写下划线（rmse、mae、f1、precision、recall）
+- 内部数据用 `_` 前缀（不会被 MLflow 记录）
 
-- `fit()`: 模型训练（必须）
-- `predict()`: 预测逻辑（必须）
-- `evaluate()`: 评估指标计算，注意使用 `prefix` 参数（必须）
-- `optimize_hyperparams()`: 超参数优化（必须）
-- `to_dict()`: 模型状态序列化（可选，简单模型可直接保存sklearn对象）
-- `from_dict()`: 从字典恢复模型（可选，与to_dict配对使用）
+**完整实现参考**：
+- `classify_timeseries_server/training/models/base.py`
+- `classify_anomaly_server/training/models/base.py`
+- `classify_log_server/training/models/base.py`
 
-#### MLflow 推理包装器（Wrapper）
+### MLflow 推理包装器（Wrapper）
 
-**定义**：Wrapper 是继承自 `mlflow.pyfunc.PythonModel` 的类，用于将训练好的模型封装为 MLflow 可部署的推理接口。
+**何时需要**：
+- ✅ 推理需要额外的预处理/后处理逻辑
+- ✅ 需要在推理时使用特征工程器
+- ✅ 推理逻辑与训练差异大（如递归预测）
+- ❌ 简单 sklearn 模型可直接用 `mlflow.sklearn.log_model()`
 
-**作用**：
-1. **统一推理接口**：实现 `predict()` 方法，处理输入解析和输出格式化
-2. **封装推理逻辑**：包含特征工程、数据预处理、后处理等完整推理流程
-3. **支持模型持久化**：通过 `mlflow.pyfunc.save_model()` 保存为 MLflow 格式
-4. **避免重型依赖**：推理时不需要导入训练相关的依赖（如 hyperopt）
-
-**何时需要实现 Wrapper**：
-- ✅ 模型推理需要额外的预处理或后处理逻辑
-- ✅ 需要在推理时动态使用特征工程器
-- ✅ 推理逻辑与训练逻辑差异较大（如递归预测、在线学习）
-- ✅ 需要支持多种推理模式（如批量预测、流式预测）
-- ❌ 简单的 sklearn 模型可直接使用 `mlflow.sklearn.log_model()`
-
-**实现位置**：`training/models/{algorithm}_wrapper.py`
-
-**标准结构**：
-```python
-import mlflow
-import pandas as pd
-import numpy as np
-
-class {Algorithm}Wrapper(mlflow.pyfunc.PythonModel):
-    """模型推理包装器"""
-    
-    def __init__(self, model, feature_engineer=None, **config):
-        """初始化
-        
-        Args:
-            model: 训练好的模型对象
-            feature_engineer: 特征工程器（如需要）
-            **config: 其他配置参数
-        """
-        self.model = model
-        self.feature_engineer = feature_engineer
-        self.config = config
-    
-    def predict(self, context, model_input):
-        """推理接口
-        
-        Args:
-            context: MLflow context（通常不使用）
-            model_input: 输入数据（dict、DataFrame等）
-            
-        Returns:
-            预测结果（numpy array、list等）
-        """
-        # 1. 解析输入
-        X = self._parse_input(model_input)
-        
-        # 2. 特征工程（如需要）
-        if self.feature_engineer:
-            X = self.feature_engineer.transform(X)
-        
-        # 3. 模型预测
-        predictions = self.model.predict(X)
-        
-        # 4. 后处理（如需要）
-        return self._postprocess(predictions)
-    
-    def _parse_input(self, model_input):
-        """解析输入数据（子类实现）"""
-        raise NotImplementedError
-    
-    def _postprocess(self, predictions):
-        """后处理预测结果（可选）"""
-        return predictions
-```
-
-**与模型类的关系**：
-```python
-# 在模型类中创建 Wrapper 并保存到 MLflow
-class MyModel(BaseModel):
-    def save_to_mlflow(self, run_id: str):
-        """保存模型到 MLflow"""
-        # 创建 Wrapper
-        wrapper = MyModelWrapper(
-            model=self.model,
-            feature_engineer=self.feature_engineer,
-            config=self.config
-        )
-        
-        # 保存为 MLflow pyfunc 格式
-        mlflow.pyfunc.save_model(
-            path=f"models/{run_id}",
-            python_model=wrapper,
-            artifacts={"model": self.model},
-            conda_env=self._get_conda_env()
-        )
-```
+**核心作用**：
+- 继承 `mlflow.pyfunc.PythonModel`
+- 实现 `predict(context, model_input)` 方法
+- 封装完整推理流程（解析输入 → 特征工程 → 预测 → 后处理）
+- 避免推理时加载训练依赖（如 hyperopt）
 
 **参考实现**：
 - `classify_timeseries_server/training/models/gradient_boosting_wrapper.py`
 - `classify_timeseries_server/training/models/prophet_wrapper.py`
-
-详细实现请参考现有项目的具体模型文件。
 
 ---
 
@@ -567,13 +312,97 @@ class MyModel(BaseModel):
 - 包含必要的注释字段（`_comment`、`_desc`）
 - 提供合理的默认值
 - 支持超参数搜索空间定义
+- **配置外部化**：配置应存储在文件中，而非代码中硬编码
 
 **必需的顶层字段**：
 1. `model`: 模型配置（type, name）
-2. `hyperparams`: 超参数配置（含搜索空间）
+2. `hyperparams`: 超参数配置（含搜索空间，含 `use_feature_engineering` 开关）
 3. `preprocessing`: 数据预处理配置
-4. `feature_engineering`: 特征工程配置（必选）
-5. `mlflow`: MLflow 实验跟踪配置（可选，使用环境变量）
+4. `feature_engineering`: 特征工程配置（必须实现，训练时由 `use_feature_engineering` 控制）
+5. `mlflow`: MLflow 实验跟踪配置（可选，推荐使用环境变量）
+
+### 配置加载策略
+
+**推荐方式：单一文件模式 + 职责分离**
+
+```python
+class TrainingConfig:
+    def __init__(self, config_path: str):
+        """从文件加载配置
+        
+        Args:
+            config_path: 配置文件路径（必需参数）
+        
+        Raises:
+            FileNotFoundError: 配置文件不存在
+        """
+        config_path = Path(config_path)
+        if not config_path.exists():
+            raise FileNotFoundError(f"配置文件不存在: {config_path}")
+        
+        with open(config_path, "r", encoding="utf-8") as f:
+            self.config = json.load(f)
+        
+        self._validate_config()
+```
+
+**设计理念（职责分离）**：
+- ✅ **配置外部化**：配置存储在文件中，便于版本控制
+- ✅ **职责清晰**：train-model.sh 管理配置来源，Python代码只负责加载
+- ✅ **无硬编码**：代码中不保存任何默认路径或默认配置
+- ✅ **符合单一职责原则**：每个组件只做一件事
+
+**职责划分**：
+
+| 组件 | 职责 |
+|------|------|
+| **train-model.sh** | • 决定配置文件路径（默认 ./train.json）<br>• 从 MinIO 下载配置（如需要）<br>• 传递明确路径给 CLI |
+| **CLI (bootstrap.py)** | • 接收配置路径参数（必需）<br>• 传递给 TrainingConfig |
+| **TrainingConfig** | • 加载给定路径的配置文件<br>• 验证配置正确性<br>• 提供配置访问接口 |
+
+**配置来源管理流程**：
+```
+train-model.sh 接收 CONFIG 参数
+  ├─ 参数传入 → 使用指定配置
+  └─ 参数未传入 → 使用默认配置（./train.json）
+       ↓
+train-model.sh 准备配置文件
+  ├─ MinIO 路径 → 下载到本地
+  └─ 本地路径 → 检查文件存在性
+       ↓
+train-model.sh 调用 CLI（总是传入明确路径）
+  uv run classify_{domain}_server train \
+      --dataset-path=... \
+      --config="$CONFIG"
+       ↓
+CLI 接收 --config 参数（必需）
+       ↓
+TrainingConfig(config_path)  # config_path 是必需参数
+       ↓
+加载并验证配置文件
+```
+
+**配置文件存放位置**：
+```
+support-files/
+  ├── train.json.example        # 详细示例（文档参考，带大量注释）
+  └── scripts/
+      ├── train.json             # 默认配置（train-model.sh 使用）
+      └── data/                  # 运行时数据目录
+```
+
+**重要说明**：
+- ✅ `train.json` 是完整配置，包含所有必需字段
+- ✅ 代码中不存在 `DEFAULT_CONFIG` 字典
+- ✅ 配置文件是配置的唯一真实来源
+- ✅ train-model.sh 决定使用哪个配置文件
+
+**测试环境配置**：
+```
+tests/
+  └── fixtures/
+      └── test_config.json      # 测试专用配置（完整配置）
+```
 
 ### 配置示例
 大体结构，具体参数由类型实现而定
@@ -593,174 +422,141 @@ class MyModel(BaseModel):
     "search_space": {
       "param_name": ["候选值列表"]
     }
-    "search_space": {
-      ...
-    }
   },
   
   "feature_engineering": {
-    ...
+    "...": "特征工程详细配置（由 use_feature_engineering 控制是否启用）"
   },
   
   "preprocessing": {
-    ...
+    "...": "预处理配置"
   },
+  
   "mlflow": {
-    "experiment_name": "..."
+    "experiment_name": "实验名称"
   }
 }
 ```
+
+**配置验证**：
+
+实现4层验证机制，确保配置的正确性和完整性：
+
+```python
+def _validate_config(self):
+    """配置验证（推荐实现4层）"""
+    # Layer 1: 结构完整性校验
+    self._validate_structure()
+    
+    # Layer 2: 必需字段 + 基本类型校验
+    self._validate_required_fields()
+    
+    # Layer 3: 业务规则校验
+    self._validate_business_rules()
+    
+    # Layer 4: 依赖关系校验
+    self._validate_dependencies()
+```
+
+**验证层次说明**：
+- **Layer 1**: 检查必需的顶层字段是否存在
+- **Layer 2**: 检查字段类型和必填项
+- **Layer 3**: 检查参数值的合理性（如范围、枚举值）
+- **Layer 4**: 检查条件依赖（如 `use_feature_engineering=true` 时必须提供 `feature_engineering` 配置）
+
+**注意**：
+- ✅ 前两层为最小验证要求
+- ✅ 后两层可根据项目复杂度选择性实现
+- ⚠️ 验证失败应立即抛出异常（Fast Fail）
+- ⚠️ 由于没有代码默认值，配置文件必须完整
+
+---
+
+### 配置Schema定义
+
+**schema.py 的作用**：
+
+```python
+"""配置文件 Schema 定义"""
+
+from typing import List
+
+# ✅ 定义支持的枚举值（用于验证）
+SUPPORTED_MODELS: List[str] = [
+    "model_type_1",
+    "model_type_2",
+]
+
+SUPPORTED_METRICS: List[str] = [
+    "metric_1",
+    "metric_2",
+]
+
+# ❌ 不再定义 DEFAULT_CONFIG
+# 原因：配置应该外部化，不在代码中硬编码
+```
+
+**设计原则**：
+- ✅ 只定义枚举常量和验证规则
+- ❌ 不定义默认配置字典
+- ❌ 不定义默认文件路径
 
 ---
 
 ## 🔧 CLI 设计
 
-### bootstrap.py 标准实现
+### 核心命令
 
-```python
-"""命令行接口 - 标准实现"""
+**train 命令**：
+- 参数：
+  - `--dataset-path`: 数据集路径（目录或文件，必需）
+  - `--config`: 配置文件路径（必需）
+  - `--run-name`: MLflow run 名称（可选）
+- 环境变量：`MLFLOW_TRACKING_URI`（必需）
 
-from dotenv import load_dotenv
-import fire
-from loguru import logger
-from pathlib import Path
-import json
+**使用示例**：
+```bash
+# 基本训练
+export MLFLOW_TRACKING_URI=http://mlflow:5000
+classify_{domain}_server train \
+    --dataset-path ./data/ \
+    --config train.json
 
-load_dotenv()
-
-
-class CLI:
-    """命令行工具"""
-    
-    def train(
-        self,
-        dataset_path: str,
-        config: str,
-        run_name: str = None,
-    ):
-        """训练模型
-        
-        Args:
-            dataset_path: 数据集路径（目录或文件）
-            config: 配置文件路径（必需）
-            run_name: MLflow run 名称（可选）
-        
-        Environment Variables:
-            MLFLOW_TRACKING_URI: MLflow 服务地址（必需）
-        
-        Example:
-            # 基本训练
-            export MLFLOW_TRACKING_URI=http://mlflow:5000
-            classify_{domain}_server train \\
-                --dataset-path ./data/ \\
-                --config train.json
-            
-            # 自定义run名称
-            classify_{domain}_server train \\
-                --dataset-path ./data/ \\
-                --config custom-train.json \\
-                --run-name my_experiment_v1
-        """
-        from ..training import UniversalTrainer, TrainingConfig
-        import os
-        
-        try:
-            # 检查必需的环境变量
-            if not os.getenv("MLFLOW_TRACKING_URI"):
-                logger.error("❌ MLFLOW_TRACKING_URI 环境变量未设置")
-                return
-            
-            # 检查配置文件是否存在
-            config_path = Path(config)
-            if not config_path.exists():
-                logger.error(f"❌ 配置文件不存在: {config}")
-                return
-            
-            # 加载配置
-            config_obj = TrainingConfig.from_file(config)
-            
-            # 覆盖 run_name（如果提供）
-            if run_name:
-                config_obj.mlflow_run_name = run_name
-            
-            # 创建训练器并训练
-            trainer = UniversalTrainer(config_obj)
-            result = trainer.train(dataset_path)
-            
-            logger.info("✅ 训练成功完成")
-            logger.info(f"Run ID: {result['run_id']}")
-            
-        except Exception as e:
-            logger.error(f"❌ 训练失败: {e}", exc_info=True)
-            raise
-    
-    def version(self):
-        """显示版本信息"""
-        print("classify_{domain}_server v0.1.0")
-
-
-def main():
-    """CLI 入口"""
-    fire.Fire(CLI)
-
-
-if __name__ == "__main__":
-    main()
+# 自定义run名称
+classify_{domain}_server train \
+    --dataset-path ./data/ \
+    --config custom.json \
+    --run-name my_experiment_v1
 ```
+
+**关键逻辑**：
+1. 检查环境变量和配置文件存在性（Fast Fail）
+2. 加载配置：`TrainingConfig.from_file(config)`
+3. 创建训练器：`UniversalTrainer(config_obj)`
+4. 执行训练：`trainer.train(dataset_path)`
+
+**完整实现参考**：`classify_*/cli/bootstrap.py`
 
 ---
 
 ## 🐳 Docker 部署配置
 
-### Dockerfile 标准实现
+### 关键要点
 
-所有三个服务使用统一的 Dockerfile 结构，确保构建一致性：
+所有服务使用统一 Dockerfile：`support-files/release/Dockerfile`
 
-```dockerfile
-FROM python:3.12
-WORKDIR /apps
-ARG NEXUS_PYTHON_REPOSITY
+**核心配置**：
+- 基础镜像：`python:3.12`
+- 包管理：`uv`（Python包管理工具）
+- 系统组件：`supervisor`（进程管理）、`fonts-wqy-zenhei`（中文字体）
+- 构建参数：`NEXUS_PYTHON_REPOSITY`（可选，私有镜像源）
+- 入口点：`startup.sh`（启动 BentoML + MLflow UI）
 
-RUN sed -i 's/deb.debian.org/repo.huaweicloud.com/g' /etc/apt/sources.list.d/debian.sources
-
-RUN apt-get update -y
-RUN apt-get install -y vim supervisor unzip curl fonts-wqy-zenhei
-
-# 更新系统字体缓存
-RUN fc-cache -fv
-
-# 配置 pip 镜像源（如果提供）
-RUN if [ -n "$NEXUS_PYTHON_REPOSITY" ]; then \
-    pip3 config set global.index-url "$NEXUS_PYTHON_REPOSITY" && \
-    pip3 config set global.trusted-host "$(echo $NEXUS_PYTHON_REPOSITY | sed -E 's|^https?://([^/:]+).*|\1|')"; \
-    fi
-
-# 安装 uv (Python 包管理工具)
-RUN pip3 install uv
-
-ADD . .
-
-# 设置脚本和 mc 可执行权限
-RUN chmod +x ./support-files/release/startup.sh && \
-    chmod +x ./support-files/scripts/train-model.sh && \
-    chmod +x ./mc
-
-# 使用 uv 安装项目依赖并预先同步虚拟环境（通过命令行参数指定镜像源）
-RUN if [ -n "$NEXUS_PYTHON_REPOSITY" ]; then \
-    uv pip install --system --index-url "$NEXUS_PYTHON_REPOSITY" -e ".[dev]" && \
-    uv sync --index-url "$NEXUS_PYTHON_REPOSITY"; \
-    else \
-    uv pip install --system -e ".[dev]" && \
-    uv sync; \
-    fi
-
-# 清理 matplotlib 字体缓存，让其重新扫描字体
-RUN rm -rf /root/.cache/matplotlib /root/.cache/fontconfig
-
-RUN apt-get reinstall -y supervisor 
-
-ENTRYPOINT ["/bin/bash","/apps/support-files/release/startup.sh"]
-```
+**部署结构**：
+- Supervisor 管理多进程：
+  - `supervisord.conf`: 主配置
+  - `conf.d/bentoml.conf`: BentoML 服务
+  - `conf.d/mlflow.conf`: MLflow UI
 
 ---
 
@@ -773,8 +569,8 @@ ENTRYPOINT ["/bin/bash","/apps/support-files/release/startup.sh"]
 **核心功能**：
 1. 从 MinIO 下载数据集（ZIP格式）
 2. 解压到本地目录
-3. 下载或使用本地配置文件 (未接收到传入配置文件路径则使用默认配置地址 默认存放位置 ./train.json(本地路径，和train-model.sh同一目录))
-4. 调用 CLI 训练命令
+3. 管理配置文件路径（默认 ./train.json，或从 MinIO 下载）
+4. 调用 CLI 训练命令（总是传入明确的配置路径）
 5. 可选的清理操作
 
 **参数接口**：
@@ -841,6 +637,7 @@ export MLFLOW_TRACKING_URI=http://mlflow:15000
 - **函数名**: `snake_case`（如 `load_model`）
 - **常量**: `UPPER_CASE`（如 `MAX_RETRIES`）
 - **私有方法**: `_snake_case`（如 `_validate_config`）
+-- **模型注册名**: `PascalCase`（如 `GradientBoosting`,`Spell`,特殊的：`ECOD`(全大写,缩写特例)）
 
 ---
 
