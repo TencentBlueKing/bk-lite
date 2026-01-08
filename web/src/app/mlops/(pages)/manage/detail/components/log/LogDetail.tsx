@@ -26,7 +26,7 @@ const LogDetail = () => {
   const router = useRouter();
   const modalRef = useRef<ModalRef>(null);
   const searchParams = useSearchParams();
-  const { getLogClusteringTrainData, deleteLogClusteringTrainData, updateLogClusteringTrainData } = useMlopsManageApi();
+  const { getTrainDataByDataset, deleteTrainDataFile, updateLogClusteringTrainData } = useMlopsManageApi();
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
   const [tableData, setTableData] = useState<TableData[]>([]);
   const [currentData, setCurrentData] = useState<any>(null);
@@ -139,7 +139,8 @@ const LogDetail = () => {
   const getDataset = useCallback(async (search: string = '') => {
     setLoading(true);
     try {
-      const { count, items } = await getLogClusteringTrainData({
+      const { count, items } = await getTrainDataByDataset({
+        key: 'log_clustering',
         name: search,
         dataset: folder_id as string,
         page: pagination.current,
@@ -182,7 +183,7 @@ const LogDetail = () => {
   const onDelete = async (data: any) => {
     setConfirmLoading(true);
     try {
-      await deleteLogClusteringTrainData(data.id);
+      await deleteTrainDataFile(data.id, 'log_clustering');
     } catch (e) {
       console.log(e);
     } finally {

@@ -26,7 +26,7 @@ const AnomalyDetail = () => {
   const router = useRouter();
   const modalRef = useRef<ModalRef>(null);
   const searchParams = useSearchParams();
-  const { getAnomalyTrainData, deleteAnomalyTrainData, updateAnomalyTrainDataFile } = useMlopsManageApi();
+  const { getTrainDataByDataset, deleteTrainDataFile, updateAnomalyTrainDataFile } = useMlopsManageApi();
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
   const [tableData, setTableData] = useState<TableData[]>([]);
   const [currentData, setCurrentData] = useState<any>(null);
@@ -137,7 +137,8 @@ const AnomalyDetail = () => {
   const getDataset = useCallback(async (search: string = '') => {
     setLoading(true);
     try {
-      const { count, items } = await getAnomalyTrainData({
+      const { count, items } = await getTrainDataByDataset({
+        key: 'anomaly_detection',
         name: search,
         dataset: folder_id as string,
         page: pagination.current,
@@ -180,7 +181,7 @@ const AnomalyDetail = () => {
   const onDelete = async (data: any) => {
     setConfirmLoading(true);
     try {
-      await deleteAnomalyTrainData(data.id);
+      await deleteTrainDataFile(data.id, 'anomaly_detection');
     } catch (e) {
       console.log(e);
     } finally {

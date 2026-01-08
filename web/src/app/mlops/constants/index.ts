@@ -438,6 +438,25 @@ const POLICIES_OPTIONS: Option[] = [
   { label: 'RulePolicy', value: 'RulePolicy' },
 ];
 
+const DATASET_MAP: Record<string, string> = {
+  'anomaly_detection': 'anomaly_detection_datasets',
+  'classification': 'classification_datasets',
+  'timeseries_predict': 'timeseries_predict_datasets',
+  'log_clustering': 'log_clustering_datasets',
+  'rasa': 'rasa_datasets',
+  'image_classification': 'image_classification_datasets',
+  'object_detection': 'object_detection_datasets',
+};
+
+const TRAINDATA_MAP: Record<string, string> = {
+  'anomaly_detection': 'anomaly_detection_train_data',
+  'classification': 'classification_train_data',
+  'timeseries_predict': 'timeseries_predict_train_data',
+  'log_clustering': 'log_clustering_train_data',
+  'image_classification': 'image_classification_train_data',
+  'object_detection': 'object_detection_train_data',
+};
+
 const TRAINJOB_MAP: Record<string, string> = {
   'anomaly_detection': 'anomaly_detection_train_jobs',
   'classification': 'classification_train_jobs',
@@ -1719,5 +1738,7 @@ export {
   LOG_CLUSTERING_ALGORITHM_SCENARIOS,
   TRAINJOB_MAP,
   TYPE_FILE_MAP,
-  SERVING_MAP
+  SERVING_MAP,
+  DATASET_MAP,
+  TRAINDATA_MAP
 }

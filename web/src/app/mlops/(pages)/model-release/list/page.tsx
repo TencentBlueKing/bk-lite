@@ -26,7 +26,7 @@ const CONTAINER_STATE_MAP: Record<string, string> = {
 const CONTAINER_TEXT_MAP: Record<string, string> = {
   'running': '运行中',
   'completed': '已完成',
-  'not_found': '容器不存在',
+  'not_found': '已停止',
   'unknown': '状态异常',
   'error': '错误'
 };

@@ -16,7 +16,7 @@ import PageLayout from '@/components/page-layout';
 import TopSection from '@/components/top-section';
 import EntityList from '@/components/entity-list';
 import PermissionWrapper from '@/components/permission';
-import { ModalRef } from '@/app/mlops/types';
+import { DatasetReleaseKey, ModalRef } from '@/app/mlops/types';
 import { DataSet } from '@/app/mlops/types/manage';
 const { confirm } = Modal;
 
@@ -24,20 +24,8 @@ const DatasetManagePage = () => {
   const { t } = useTranslation();
   const router = useRouter();
   const {
-    deleteAnomalyDatasets,
-    deleteRasaDatasets,
-    getAnomalyDatasetsList,
-    getRasaDatasetsList,
-    getLogClusteringList,
-    getTimeSeriesPredictList,
-    getClassificationDatasetsList,
-    getImageClassificationDatasetsList,
-    getObjectDetectionDatasetsList,
-    deleteLogClustering,
-    deleteTimeSeriesPredict,
-    deleteClassificationDataset,
-    deleteImageClassificationDataset,
-    deleteObjectDetectionDataset
+    getDatasetsList,
+    deleteDataset,
   } = useMlopsManageApi();
   const [datasets, setDatasets] = useState<DataSet[]>([]);
   const [loading, setLoading] = useState<boolean>(false);
@@ -99,33 +87,13 @@ const DatasetManagePage = () => {
     getDataSets();
   }, [selectedKeys]);
 
-  const handleGetDatasetsMap: Record<string, any> = {
-    'anomaly_detection': getAnomalyDatasetsList,
-    'rasa': getRasaDatasetsList,
-    'log_clustering': getLogClusteringList,
-    'timeseries_predict': getTimeSeriesPredictList,
-    'classification': getClassificationDatasetsList,
-    'image_classification': getImageClassificationDatasetsList,
-    'object_detection': getObjectDetectionDatasetsList
-  };
-
-  const handleDelDatasetsMap: Record<string, any> = {
-    'anomaly_detection': deleteAnomalyDatasets,
-    'rasa': deleteRasaDatasets,
-    'log_clustering': deleteLogClustering,
-    'timeseries_predict': deleteTimeSeriesPredict,
-    'classification': deleteClassificationDataset,
-    'image_classification': deleteImageClassificationDataset,
-    'object_detection': deleteObjectDetectionDataset
-  };
-
 
   const getDataSets = useCallback(async () => {
     const [activeTab] = selectedKeys;
     if (!activeTab) return;
     setLoading(true);
     try {
-      const data = await handleGetDatasetsMap[activeTab]({ page: 1, page_size: -1 });
+      const data = await getDatasetsList({ key: activeTab as DatasetReleaseKey, page: 1, page_size: -1 });
       const _data: DataSet[] = data?.map((item: any) => {
         return {
           id: item.id,
@@ -160,7 +128,7 @@ const DatasetManagePage = () => {
       onOk: async () => {
         try {
           const [activeTab] = selectedKeys;
-          await handleDelDatasetsMap[activeTab](id);
+          await deleteDataset(id, activeTab as DatasetReleaseKey);
           message.success(t('common.delSuccess'));
         } catch (e) {
           console.log(e);

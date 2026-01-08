@@ -25,7 +25,7 @@ const ClassificationDetail = () => {
   const router = useRouter();
   const modalRef = useRef<ModalRef>(null);
   const searchParams = useSearchParams();
-  const { getClassificationTrainData, deleteClassificationTrainData, updateClassificationTrainData } = useMlopsManageApi();
+  const { getTrainDataByDataset, deleteTrainDataFile, updateClassificationTrainData } = useMlopsManageApi();
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
   const [tableData, setTableData] = useState<TableData[]>([]);
   const [currentData, setCurrentData] = useState<any>(null);
@@ -138,7 +138,8 @@ const ClassificationDetail = () => {
   const getDataset = useCallback(async (search: string = '') => {
     setLoading(true);
     try {
-      const { count, items } = await getClassificationTrainData({
+      const { count, items } = await getTrainDataByDataset({
+        key: 'classification',
         name: search,
         dataset: folder_id as string,
         page: pagination.current,
@@ -182,7 +183,7 @@ const ClassificationDetail = () => {
   const onDelete = async (data: any) => {
     setConfirmLoading(true);
     try {
-      await deleteClassificationTrainData(data.id);
+      await deleteTrainDataFile(data.id, 'classification');
     } catch (e) {
       console.log(e);
     } finally {

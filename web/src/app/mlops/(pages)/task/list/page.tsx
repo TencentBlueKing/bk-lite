@@ -31,7 +31,7 @@ const getStatusText = (value: string, TrainText: Record<string, string>) => {
 const TrainTask = () => {
   const { t } = useTranslation();
   const { convertToLocalizedTime } = useLocalizedTime();
-  const { getAnomalyDatasetsList, getRasaDatasetsList, getLogClusteringList, getTimeSeriesPredictList, getClassificationDatasetsList } = useMlopsManageApi();
+  const { getDatasetsList } = useMlopsManageApi();
   const {
     getTrainJobList,
 
@@ -52,17 +52,6 @@ const TrainTask = () => {
     total: 0,
     pageSize: 10,
   });
-
-  // 数据集获取映射
-  const datasetApiMap: Record<string, () => Promise<DataSet[]>> = {
-    'anomaly_detection': () => getAnomalyDatasetsList({}),
-    'rasa': () => getRasaDatasetsList({}),
-    'log_clustering': () => getLogClusteringList({}),
-    'timeseries_predict': () => getTimeSeriesPredictList({}),
-    'classification': () => getClassificationDatasetsList({}),
-    'image_classification': () => Promise.resolve([]),
-    'object_detection': () => Promise.resolve([])
-  };
 
   // 抽屉操作映射
   const drawerSupportMap: Record<string, boolean> = {
@@ -329,10 +318,10 @@ const TrainTask = () => {
 
   const getDatasetList = async () => {
     const [activeTab] = selectedKeys;
-    if (!activeTab || !datasetApiMap[activeTab]) return;
+    if (!activeTab) return;
 
     try {
-      const data = await datasetApiMap[activeTab]();
+      const data = await getDatasetsList({ key: activeTab as DatasetReleaseKey });
       const items = data.map((item: DataSet) => ({
         value: item.id,
         label: item.name
@@ -350,7 +339,7 @@ const TrainTask = () => {
     try {
       if (activeTab === 'rasa') {
         // RASA 特殊处理，不需要分页参数
-        return await getTrainJobList({key: activeTab as DatasetReleaseKey});
+        return await getTrainJobList({ key: activeTab as DatasetReleaseKey });
       } else {
         // 其他类型需要分页参数
         const result = await getTrainJobList({

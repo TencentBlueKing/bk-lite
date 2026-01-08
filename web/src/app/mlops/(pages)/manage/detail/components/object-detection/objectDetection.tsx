@@ -26,8 +26,8 @@ const ObjectDetectionDetail = () => {
   const modalRef = useRef<ModalRef>(null);
   const searchParams = useSearchParams();
   const {
-    getObjectDetectionTrainData,
-    deleteObjectDetectionTrainData,
+    getTrainDataByDataset,
+    deleteTrainDataFile,
     updateObjectDetectionTrainData
   } = useMlopsManageApi();
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
@@ -142,7 +142,8 @@ const ObjectDetectionDetail = () => {
   const getDataset = useCallback(async (search: string = '') => {
     setLoading(true);
     try {
-      const { count, items } = await getObjectDetectionTrainData({
+      const { count, items } = await getTrainDataByDataset({
+        key: 'object_detection',
         name: search,
         dataset: folder_id as string,
         page: pagination.current,
@@ -185,7 +186,7 @@ const ObjectDetectionDetail = () => {
   const onDelete = async (data: any) => {
     setConfirmLoading(true);
     try {
-      await deleteObjectDetectionTrainData(data.id);
+      await deleteTrainDataFile(data.id, 'object_detection');
     } catch (e) {
       console.log(e);
     } finally {

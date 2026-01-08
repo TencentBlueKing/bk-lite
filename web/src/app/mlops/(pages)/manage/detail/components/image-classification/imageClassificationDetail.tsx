@@ -26,8 +26,8 @@ const ImageClassificationDetail = () => {
   const modalRef = useRef<ModalRef>(null);
   const searchParams = useSearchParams();
   const {
-    getImageClassificationTrainData,
-    deleteImageClassificationTrainData,
+    getTrainDataByDataset,
+    deleteTrainDataFile,
     updateImageClassificationTrainData
   } = useMlopsManageApi();
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
@@ -142,7 +142,8 @@ const ImageClassificationDetail = () => {
   const getDataset = useCallback(async (search: string = '') => {
     setLoading(true);
     try {
-      const { count, items } = await getImageClassificationTrainData({
+      const { count, items } = await getTrainDataByDataset({
+        key:'image_classification',
         name: search,
         dataset: folder_id as string,
         page: pagination.current,
@@ -185,7 +186,7 @@ const ImageClassificationDetail = () => {
   const onDelete = async (data: any) => {
     setConfirmLoading(true);
     try {
-      await deleteImageClassificationTrainData(data.id);
+      await deleteTrainDataFile(data.id, 'image_classification');
     } catch (e) {
       console.log(e);
     } finally {

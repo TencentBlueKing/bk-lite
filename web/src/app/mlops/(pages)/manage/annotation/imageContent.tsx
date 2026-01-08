@@ -23,7 +23,7 @@ interface LabelItem {
 const ImageContent = () => {
   const { t } = useTranslation();
   const searchParams = useSearchParams();
-  const { getImageClassificationTrainDataInfo, updateImageClassificationTrainData } = useMlopsManageApi();
+  const { getTrainDataInfo, updateImageClassificationTrainData } = useMlopsManageApi();
   const [trainData, setTrainData] = useState<TrainDataItem[]>([]);
   // const [fileList, setFileList] = useState<UploadFile<any>[]>([]);
   const [labels, setLabels] = useState<LabelItem[]>([
@@ -96,26 +96,26 @@ const ImageContent = () => {
   };
 
   useEffect(() => {
-    getTrainDataInfo()
+    getImageTrainDataInfo()
   }, [searchParams]);
 
   useEffect(() => {
     const container = thumbnailContainerRef.current;
-    if(!container) return;
+    if (!container) return;
 
     const handleWheel = (e: WheelEvent) => {
       e.preventDefault();
       container.scrollLeft += e.deltaY;
     };
 
-    container.addEventListener('wheel', handleWheel, {passive: false});
+    container.addEventListener('wheel', handleWheel, { passive: false });
     return () => container.removeEventListener('wheel', handleWheel);
   }, [])
 
-  const getTrainDataInfo = async () => {
+  const getImageTrainDataInfo = async () => {
     setLoadingState((prev) => ({ ...prev, imageLoading: true }));
     try {
-      const data = await getImageClassificationTrainDataInfo(id, true, true);
+      const data = await getTrainDataInfo(id, 'image_classification', true, true);
       const train_data = data.train_data || [];
       const meta_data = data.meta_data;
       const allData = train_data.map((item: any) => {
@@ -170,7 +170,7 @@ const ImageContent = () => {
   const handleAddLabel = (event: React.KeyboardEvent<HTMLInputElement>) => {
     const value = event.currentTarget.value.trim();
 
-    if(!value) {
+    if (!value) {
       return;
     }
 
@@ -178,7 +178,7 @@ const ImageContent = () => {
       return;
     }
 
-    setLabels(prev => [...prev,{
+    setLabels(prev => [...prev, {
       id: prev.length > 0 ? Math.max(...prev.map(l => l.id)) + 1 : 1,
       name: value
     }]);
@@ -236,8 +236,8 @@ const ImageContent = () => {
 
     const labelItem = labels.find(l => l.id === id);
     const hasUsed = trainData.some(item => item.label === labelItem?.name);
-    
-    if(hasUsed) {
+
+    if (hasUsed) {
       message.warning('该标签已被使用');
       return;
     }
@@ -253,7 +253,7 @@ const ImageContent = () => {
       if (file.originFileObj) {
         formData.append('images', file.originFileObj);
         await updateImageClassificationTrainData(id, formData);
-        getTrainDataInfo();
+        getImageTrainDataInfo();
         message.success(t('datasets.uploadSuccess'));
       }
     } catch (e) {
@@ -263,7 +263,7 @@ const ImageContent = () => {
     }
   };
 
-  const handleCancel = () => { getTrainDataInfo() };
+  const handleCancel = () => { getImageTrainDataInfo() };
   const handleSave = async () => {
     setLoadingState(prev => ({ ...prev, saveLoading: true }));
     try {
@@ -281,7 +281,7 @@ const ImageContent = () => {
           image_label
         })
       });
-      getTrainDataInfo();
+      getImageTrainDataInfo();
       message.success(t('datasets.saveSuccess'));
     } catch (e) {
       console.log(e);

@@ -22,7 +22,7 @@ import {
 import LineChart from "@/app/mlops/components/charts/lineChart";
 import CustomTable from "@/components/custom-table";
 import PermissionWrapper from '@/components/permission';
-import { ColumnItem, TableDataItem, } from '@/app/mlops/types';
+import { ColumnItem, DatasetReleaseKey, TableDataItem, } from '@/app/mlops/types';
 import { AnnotationData } from '@/app/mlops/types/manage';
 
 const ChartContent = ({
@@ -38,7 +38,7 @@ const ChartContent = ({
 }) => {
   const { t } = useTranslation();
   const searchParams = useSearchParams();
-  const { getAnomalyTrainDataInfo, getTimeSeriesPredictTrainDataInfo, updateAnomalyTrainDataFile } = useMlopsManageApi();
+  const { getTrainDataInfo, updateAnomalyTrainDataFile } = useMlopsManageApi();
   const { convertToLocalizedTime } = useLocalizedTime();
   const [tableData, setTableData] = useState<TableDataItem[]>([]);
   const [currentFileData, setCurrentFileData] = useState<AnnotationData[]>([]);
@@ -62,11 +62,6 @@ const ChartContent = ({
   const isSlidingRef = useRef<boolean>(false);
   const isInitializedRef = useRef<boolean>(false);
   const dataRangeRef = useRef<[number, number]>([0, 2000]);
-
-  const getTrainDataInfoMap: Record<string, any> = {
-    'anomaly_detection': getAnomalyTrainDataInfo,
-    'timeseries_predict': getTimeSeriesPredictTrainDataInfo
-  };
 
   const {
     id,
@@ -343,7 +338,7 @@ const ChartContent = ({
 
     try {
       if (!key) return;
-      const data = await getTrainDataInfoMap[key](id as string, true, true);
+      const data = await getTrainDataInfo(id as string, key as DatasetReleaseKey, true, true);
 
       handleLabelData(data?.train_data);
     } catch (e) {

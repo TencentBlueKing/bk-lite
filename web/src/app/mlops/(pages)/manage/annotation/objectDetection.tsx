@@ -131,7 +131,7 @@ const ObjectDetection = ({
   const { t } = useTranslation();
   const annotatorRef = useRef<AnnotatorRef>(null);
   const searchParams = useSearchParams();
-  const { getObjectDetectionTrainDataInfo, updateObjectDetectionTrainData, generateYoloDataset } = useMlopsManageApi();
+  const { getTrainDataInfo, updateObjectDetectionTrainData, generateYoloDataset } = useMlopsManageApi();
   const [config, setConfig] = useState<any>(null);
   const [currentSample, setCurrentSample] = useState<ImageSample | null>(null);
   const [result, setResult] = useState<any>({});
@@ -157,7 +157,7 @@ const ObjectDetection = ({
 
   useEffect(() => {
     if (id) {
-      getTrainDataInfo();
+      getObjectTrainDataInfo();
     }
   }, [id]);
 
@@ -297,7 +297,7 @@ const ObjectDetection = ({
       }
       await updateObjectDetectionTrainData(id, params);
       setIsChange(false);
-      getTrainDataInfo();
+      getObjectTrainDataInfo();
     } catch (e) {
       console.log(e);
     } finally {
@@ -347,7 +347,7 @@ const ObjectDetection = ({
     return (
       <div className='flex items-center'>
         <Tooltip title={t('common.refresh')}>
-          <Button type='default' className='rounded-none' icon={<ReloadOutlined rev={undefined} />} onClick={() => getTrainDataInfo()} />
+          <Button type='default' className='rounded-none' icon={<ReloadOutlined rev={undefined} />} onClick={() => getObjectTrainDataInfo()} />
         </Tooltip>
         <Tooltip title={t('datasets.generateTitle')}>
           <Button type='default' className='rounded-none' icon={<CloudUploadOutlined rev={undefined} />} onClick={() => generateDataset()} />
@@ -366,10 +366,10 @@ const ObjectDetection = ({
     )
   }, [showResult, trainData]);
 
-  const getTrainDataInfo = async () => {
+  const getObjectTrainDataInfo = async () => {
     setLoading(true);
     try {
-      const data = await getObjectDetectionTrainDataInfo(id, true, true);
+      const data = await getTrainDataInfo(id, 'object_detection',true, true);
       setTrainData(data.train_data);
       setMetadata(data.meta_data);
     } catch (e) {

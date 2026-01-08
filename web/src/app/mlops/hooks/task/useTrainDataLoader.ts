@@ -1,34 +1,17 @@
 import useMlopsManageApi from "@/app/mlops/api/manage"
 import { useCallback } from "react";
 import { TrainData } from "@/app/mlops/types/manage";
+import { DatasetReleaseKey } from "../../types";
 
 
 const useTrainDataLoader = () => {
   const {
-    getAnomalyTrainData,
-    getLogClusteringTrainData,
-    getTimeSeriesPredictTrainData,
-    getClassificationTrainData,
-    getAnomalyTrainDataInfo,
-    getLogClusteringTrainDataInfo,
-    getTimeSeriesPredictTrainDataInfo,
-    getClassificationTrainDataInfo
+    getTrainDataByDataset,
+    getTrainDataInfo,
   } = useMlopsManageApi();
-  const getTrainData: Record<string, any> = {
-    'anomaly_detection': getAnomalyTrainData,
-    'log_clustering': getLogClusteringTrainData,
-    'timeseries_predict': getTimeSeriesPredictTrainData,
-    'classification': getClassificationTrainData
-  };
-  const getTrainDataInfo: Record<string, any> = {
-    'anomaly_detection': getAnomalyTrainDataInfo,
-    'log_clustering': getLogClusteringTrainDataInfo,
-    'timeseries_predict': getTimeSeriesPredictTrainDataInfo,
-    'classification': getClassificationTrainDataInfo
-  };
 
   const loadTrainOptions = useCallback(async (datasetId: number, key: string) => {
-    const trainData = await getTrainData[key]({ dataset: datasetId });
+    const trainData = await getTrainDataByDataset({ key: key as DatasetReleaseKey, dataset: datasetId });
 
     return {
       trainOption: trainData.filter((item: TrainData) => item.is_train_data).map((item: TrainData) => ({
@@ -44,12 +27,12 @@ const useTrainDataLoader = () => {
         value: item.id
       }))
     }
-  }, [getAnomalyTrainData]);
+  }, [getTrainDataByDataset]);
 
   const getDatasetByTrainId = useCallback(async (trianDataId: number, key: string) => {
-    const { dataset, metadata } = await getTrainDataInfo[key](trianDataId, false, true);
+    const { dataset, metadata } = await getTrainDataInfo(trianDataId, key as DatasetReleaseKey, false, true);
     return { dataset, metadata };
-  }, [getAnomalyTrainDataInfo]);
+  }, [getTrainDataInfo]);
 
   return { loadTrainOptions, getDatasetByTrainId }
 };

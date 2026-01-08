@@ -1,7 +1,7 @@
 import CustomTable from "@/components/custom-table";
 import { useSearchParams } from 'next/navigation';
 import { useEffect, useMemo, useState } from "react";
-import { ColumnItem, TableDataItem, Pagination } from "@/app/mlops/types";
+import { ColumnItem, TableDataItem, Pagination, DatasetReleaseKey } from "@/app/mlops/types";
 import useMlopsManageApi from "@/app/mlops/api/manage";
 import { useTranslation } from "@/utils/i18n";
 // import PermissionWrapper from '@/components/permission';
@@ -12,9 +12,8 @@ const TableContent = () => {
   const { t } = useTranslation();
   const searchParams = useSearchParams();
   const { 
-    getLogClusteringTrainDataInfo, 
+    getTrainDataInfo,
     // updateLogClusteringTrainData, 
-    getClassificationTrainDataInfo, 
     // updateClassificationTrainData 
   } = useMlopsManageApi();
   const [tableData, setTableData] = useState<TableDataItem[]>([]);
@@ -88,11 +87,6 @@ const TableContent = () => {
     return baseColumns[key] || [];
   }, [key, dynamicColumns, t]);
 
-  const getTrainDataInfoMap: Record<string, any> = {
-    'log_clustering': getLogClusteringTrainDataInfo,
-    'classification': getClassificationTrainDataInfo
-  };
-
   // const updateTrainDataInfoMap: Record<string, any> = {
   //   'log_clustering': updateLogClusteringTrainData,
   //   'classification': updateClassificationTrainData
@@ -124,7 +118,7 @@ const TableContent = () => {
   const getTableData = async () => {
     setLoading(true);
     try {
-      const data = await getTrainDataInfoMap[key](id, true, true);
+      const data = await getTrainDataInfo(id, key as DatasetReleaseKey,true, true);
       console.log(data);
       let processedData: TableDataItem[] = [];
       

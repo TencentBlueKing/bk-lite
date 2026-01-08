@@ -25,7 +25,7 @@ const TimeSeriesPredict = () => {
   const { t } = useTranslation();
   const searchParams = useSearchParams();
   const router = useRouter();
-  const { getTimeSeriesPredictTrainData, deleteTimeSeriesPredictTrainData, updateTimeSeriesPredictTrainData } = useMlopsManageApi();
+  const { getTrainDataByDataset, deleteTrainDataFile, updateTimeSeriesPredictTrainData } = useMlopsManageApi();
   const modalRef = useRef<ModalRef>(null);
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
   const [tableData, setTableData] = useState<TableData[]>([]);
@@ -142,7 +142,8 @@ const TimeSeriesPredict = () => {
   const getDataset = useCallback(async (search: string = '') => {
     setLoading(true);
     try {
-      const { count, items } = await getTimeSeriesPredictTrainData({
+      const { count, items } = await getTrainDataByDataset({
+        key: 'timeseries_predict',
         name: search,
         dataset: folder_id as string,
         page: pagination.current,
@@ -185,7 +186,7 @@ const TimeSeriesPredict = () => {
   const onDelete = async (data: any) => {
     setConfirmLoading(true);
     try {
-      await deleteTimeSeriesPredictTrainData(data.id);
+      await deleteTrainDataFile(data.id, 'timeseries_predict');
     } catch (e) {
       console.log(e);
     } finally {
