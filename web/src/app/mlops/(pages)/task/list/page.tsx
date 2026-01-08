@@ -110,7 +110,7 @@ const TrainTask = () => {
   const drawerSupportMap: Record<string, boolean> = {
     'anomaly_detection': true,
     'rasa': false,
-    'log_clustering': false,
+    'log_clustering': true,
     'timeseries_predict': true,
     'classification': true,
     'image_classification': false,

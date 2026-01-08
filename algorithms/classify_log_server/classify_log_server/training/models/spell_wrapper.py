@@ -175,11 +175,12 @@ def log_spell_model_to_mlflow(
             {
                 "pip": [
                     f"mlflow=={mlflow.__version__}",
-                    "logparser3>=1.0.4",
                     "pandas>=2.2.0",
                     "numpy>=1.26.0",
                     "loguru>=0.7.3",
                     "joblib>=1.4.0",
+                    "cloudpickle>=3.0.0",
+                    "regex>=2022.3.2",
                 ]
             },
         ],

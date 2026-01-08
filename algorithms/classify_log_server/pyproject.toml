@@ -24,9 +24,9 @@ dependencies = [
     "regex>=2022.3.2",
     "hyperopt>=0.2.7",
     "joblib>=1.4.0",
-    "logparser3>=1.0.4",
     "matplotlib>=3.9.0",
     "setuptools>=68.0.0",
+    "cloudpickle>=3.0.0",  # 用于 SpellWrapper 序列化测试
 ]
 
 [dependency-groups]

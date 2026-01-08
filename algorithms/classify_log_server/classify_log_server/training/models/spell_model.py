@@ -654,10 +654,11 @@ class SpellModel(BaseLogClusterModel):
         except Exception as e:
             logger.error(f"✗ 模型保存失败: {type(e).__name__}: {e}")
             logger.error("可能原因:")
-            logger.error("  1. Spell 模型包含不可序列化的对象")
-            logger.error("  2. logparser3 库版本不兼容")
+            logger.error("  1. Spell 模型包含不可序列化的对象（如 defaultdict、缓存等）")
+            logger.error("  2. SpellWrapper 或预处理器序列化失败")
             logger.error("  3. 内存不足或磁盘空间不足")
-            logger.error(f"调试信息: tau={self.tau}, templates={len(self.templates)}")
+            logger.error("  4. MLflow 服务连接问题")
+            logger.error(f"调试信息: tau={self.tau}, templates={len(self.templates)}, preprocessor={getattr(self, 'preprocessor', None) is not None}")
             import traceback
             logger.error(f"详细错误:\n{traceback.format_exc()}")
             raise

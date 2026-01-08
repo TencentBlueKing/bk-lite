@@ -247,7 +247,7 @@ class MLFlowUtils:
         ax2.set_title('聚类大小箱线图', fontsize=11, fontweight='bold')
         ax2.grid(True, alpha=0.3, axis='y')
         
-        # 添加统计信息
+        # 添加统计信息（调整到右上角，避免遮挡数据）
         stats_text = (
             f"总聚类数: {len(cluster_counts)}\n"
             f"平均大小: {np.mean(sizes):.1f}\n"
@@ -255,8 +255,8 @@ class MLFlowUtils:
             f"最大: {max(sizes)}\n"
             f"最小: {min(sizes)}"
         )
-        ax2.text(0.5, 0.98, stats_text, transform=ax2.transAxes,
-                fontsize=9, verticalalignment='top', horizontalalignment='center',
+        ax2.text(1.02, 0.98, stats_text, transform=ax2.transAxes,
+                fontsize=9, verticalalignment='top', horizontalalignment='left',
                 bbox=dict(boxstyle='round', facecolor='wheat', alpha=0.8))
         
         plt.suptitle(title, fontsize=12, fontweight='bold', y=1.00)
@@ -293,14 +293,17 @@ class MLFlowUtils:
     def plot_clustering_metrics_comparison(
         train_metrics: Dict[str, float],
         test_metrics: Optional[Dict[str, float]] = None,
-        title: str = "训练集 vs 测试集指标对比",
+        title: str = "样本内拟合 vs 样本外泛化指标对比",
         artifact_name: str = "metrics_comparison"
     ) -> str:
         """
         绘制训练集和测试集指标对比图
         
+        注：训练集包含 train+val（如果有验证集），评估的是样本内拟合度；
+            测试集评估的是样本外泛化能力。
+        
         Args:
-            train_metrics: 训练集指标字典
+            train_metrics: 训练集指标字典（final_train 或 train）
             test_metrics: 测试集指标字典（可选）
             title: 图表标题
             artifact_name: 保存的文件名
@@ -335,12 +338,12 @@ class MLFlowUtils:
         train_values = [train_numerical[m] for m in metrics_to_plot]
         
         bars1 = ax.bar(x - width/2, train_values, width, 
-                      label='训练集', color='#2E86AB', alpha=0.8)
+                      label='样本内（训练拟合）', color='#2E86AB', alpha=0.8)
         
         if test_metrics:
             test_values = [test_numerical[m] for m in metrics_to_plot]
             bars2 = ax.bar(x + width/2, test_values, width, 
-                          label='测试集', color='#F24236', alpha=0.8)
+                          label='样本外（测试泛化）', color='#F24236', alpha=0.8)
             
             # 添加数值标签
             for bar in bars2:
@@ -358,8 +361,9 @@ class MLFlowUtils:
         ax.set_ylabel('数值', fontsize=10)
         ax.set_title(title, fontsize=12, fontweight='bold')
         ax.set_xticks(x)
-        ax.set_xticklabels(metrics_to_plot, rotation=45, ha='right')
-        ax.legend(loc='best', framealpha=0.9)
+        # 优化：减少倾斜角度（45° → 30°），提升可读性
+        ax.set_xticklabels(metrics_to_plot, rotation=30, ha='right', fontsize=9)
+        ax.legend(loc='upper left', framealpha=0.9)
         ax.grid(True, alpha=0.3, axis='y')
         
         plt.tight_layout()
