@@ -101,15 +101,42 @@ class InstanceSearch:
                 }
                 for nid in node_ids
             ]
-
-            # 返回打平的结构：{"instance_id": [...], "node": [...]}
             return {
                 "cluster": instance_list,
                 "node": node_list
             }
         elif monitor_obj_name == "Node":
             query = "count(prometheus_remote_write_kube_node_info) by (instance_id)"
-            return InstanceSearch.get_parent_instance_ids(query)
+            metrics = VictoriaMetricsAPI().query(query, step="10m")
+
+            # 使用 set 去重
+            instance_ids = set()  # Cluster 实例 ID
+
+            for metric_info in metrics.get("data", {}).get("result", []):
+                instance_id = metric_info["metric"].get("instance_id")
+                if instance_id:
+                    # instance_id 作为单元素元组（对应 Cluster 监控实例）
+                    instance_ids.add((instance_id,))
+
+            # 转换为字符串格式的 ID 列表，用于数据库查询实例名称
+            instance_id_strs = [str(iid) for iid in instance_ids]
+
+            # 从数据库查询 Cluster 实例名称
+            instance_name_map = {}
+            if instance_id_strs:
+                cluster_instances = MonitorInstance.objects.filter(id__in=instance_id_strs).values('id', 'name')
+                instance_name_map = {inst['id']: inst['name'] for inst in cluster_instances}
+
+            # 构建返回结果：id 使用原始维度值（用于查询），name 从数据库获取（用于展示）
+            instance_list = [
+                {
+                    "id": iid[0],  # 原始 instance_id 维度值（如 "k8s-prod"）
+                    "name": instance_name_map.get(str(iid), iid[0])  # Cluster 名称
+                }
+                for iid in instance_ids
+            ]
+
+            return {"cluster": instance_list}
         elif monitor_obj_name in {"ESXI", "VM", "DataStorage"}:
             return InstanceSearch.get_parent_instance_list(monitor_object_id)
         elif monitor_obj_name in {"CVM"}:
