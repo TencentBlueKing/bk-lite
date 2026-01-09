@@ -15,4 +15,4 @@ update:
 	copier update 
 
 serving:
-	uv run python -m bentoml serve classify_log_server.serving.service:MLService --reload
+	uv run python -m bentoml serve classify_log_server.serving.service:MLService
