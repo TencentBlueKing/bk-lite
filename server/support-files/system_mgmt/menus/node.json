@@ -24,21 +24,23 @@
           ]
         },
         {
+          "id": "cloud_region_node",
+          "name": "Cloud Region-Node",
+          "operation": [
+            "View",
+            "Delete",
+            "Edit",
+            "EditMainConfiguration",
+            "EditSubConfiguration",
+            "InstallController",
+            "UninstallController",
+            "OperateCollector"
+          ]
+        },
+        {
           "id": "cloud_region_environment",
           "name": "Cloud Region-Environment",
           "operation": ["View", "Edit"]
-        },
-        {
-          "id": "cloud_region_configuration",
-          "name": "Cloud Region-Configuration",
-          "operation": [
-            "View",
-            "Add",
-            "Apply",
-            "Edit",
-            "Delete",
-            "SubConfiguration"
-          ]
         },
         {
           "id": "cloud_region_variable",
