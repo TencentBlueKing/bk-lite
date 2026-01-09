@@ -40,7 +40,7 @@ install_service() {
     # 替换配置文件中的占位符
     sed -i "s|__SERVER__URL__|$SERVER_URL|g" /opt/fusion-collectors/sidecar.yml
     sed -i "s|__SERVER__API__TOKEN__|$SERVER_API_TOKEN|g" /opt/fusion-collectors/sidecar.yml
-    sed -i "s|__TAGS__|\"cloud:$ZONE\", \"group:$TEAMS\"|g" /opt/fusion-collectors/sidecar.yml
+    sed -i "s|__TAGS__|\"zone:$ZONE\", \"group:$TEAMS\"|g" /opt/fusion-collectors/sidecar.yml
     sed -i "s|__NODE__NAME__|$NODE_NAME|g" /opt/fusion-collectors/sidecar.yml
 
     # 拷贝服务文件并启用

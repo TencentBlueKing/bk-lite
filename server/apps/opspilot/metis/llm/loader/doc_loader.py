@@ -1,4 +1,5 @@
 import base64
+import os
 import tempfile
 
 import docx
@@ -10,7 +11,7 @@ from apps.opspilot.metis.ocr.base_ocr import BaseOCR
 
 
 class DocLoader:
-    def __init__(self, file_path: str, ocr: BaseOCR, mode: str = 'full'):
+    def __init__(self, file_path: str, ocr: BaseOCR, mode: str = "full"):
         """
         mode: full, paragraph
         """
@@ -32,10 +33,10 @@ class DocLoader:
 
         docs = []
 
-        if self.mode == 'full':
+        if self.mode == "full":
             docs = self.full_mode_parser(paragraphs)
 
-        elif self.mode == 'paragraph':
+        elif self.mode == "paragraph":
             docs = self.paragraph_mode_parse(paragraphs)
 
         else:
@@ -46,8 +47,7 @@ class DocLoader:
         if tables:
             logger.info(f"检测到[{self.file_path}]中有[{len(tables)}]个表格,开始解析表格")
             for table in tqdm(tables, desc=f"解析[{self.file_path}]的表格"):
-                docs.append(Document(self.table_to_md(table),
-                                     metadata={"format": "table"}))
+                docs.append(Document(self.table_to_md(table), metadata={"format": "table"}))
 
         # 提取图片并使用OCR识别
         if self.ocr is not None:
@@ -55,22 +55,29 @@ class DocLoader:
             for rel in document.part.rels.values():
                 if "image" in rel.target_ref:
                     image_data = rel.target_part.blob
+                    temp_img_path = None
                     try:
-                        image_base64 = base64.b64encode(
-                            image_data).decode('utf-8')
-                        with tempfile.NamedTemporaryFile(suffix=".png", delete=True) as temp_img:
+                        image_base64 = base64.b64encode(image_data).decode("utf-8")
+
+                        # 在 Windows 上，需要先关闭文件后再使用，避免权限错误
+                        with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as temp_img:
                             temp_img.write(image_data)
                             temp_img.flush()
-                            ocr_result = self.ocr.predict(temp_img.name)
-                            docs.append(
-                                Document(ocr_result,
-                                         metadata={
-                                             "format": "image", "image_base64": image_base64
-                                         })
-                            )
+                            temp_img_path = temp_img.name
+
+                        logger.info(f"开始处理图片: {temp_img_path}")
+                        ocr_result = self.ocr.predict(temp_img_path)
+                        docs.append(Document(ocr_result, metadata={"format": "image", "image_base64": image_base64}))
+                        logger.debug(f"图片OCR识别成功: {temp_img_path}")
                     except Exception as e:
                         logger.error(f"处理图片失败: {e}")
-                        continue
+                    finally:
+                        # 清理临时文件
+                        if temp_img_path:
+                            try:
+                                os.unlink(temp_img_path)
+                            except Exception as cleanup_error:
+                                logger.warning(f"清理临时文件失败 {temp_img_path}: {cleanup_error}")
 
         return docs
 
@@ -78,16 +85,16 @@ class DocLoader:
         # Converts a docx table to markdown format
         md_table = []
         for row in table.rows:
-            md_row = '| ' + ' | '.join(cell.text for cell in row.cells) + ' |'
+            md_row = "| " + " | ".join(cell.text for cell in row.cells) + " |"
             md_table.append(md_row)
-        return '\n'.join(md_table)
+        return "\n".join(md_table)
 
     def paragraph_mode_parse(self, paragraphs):
         current_doc = None
         docs = []
 
         for paragraph in tqdm(paragraphs, desc=f"解析[{self.file_path}]的段落"):
-            if any(heading in paragraph.style.name for heading in ('Heading', '标题')):
+            if any(heading in paragraph.style.name for heading in ("Heading", "标题")):
                 if current_doc is not None:
                     docs.append(Document(current_doc.strip()))
                 current_doc = paragraph.text.strip() + "\n"  # Start a new

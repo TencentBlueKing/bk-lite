@@ -44,6 +44,7 @@ const CloudRegion = () => {
         item.originalName = regionItem.name;
         item.originalDescription = regionItem.introduction;
         item.icon = 'yunquyu';
+        item.proxy_address = regionItem.proxy_address;
         // 处理 services 转换为 tagList
         if (item.services?.length) {
           item.tagList = item.services.map((service: any) => {
@@ -77,14 +78,13 @@ const CloudRegion = () => {
   }, [isLoading]);
 
   const navigateToNode = (item: CloudRegionItem) => {
-    if (
-      (item.services || []).find((service) => service.status === 'not_deployed')
-    ) {
-      deployModalRef.current?.showModal(item as any);
-      return;
-    }
+    const isNotDeployed = (item.services || []).find(
+      (service) => service.status === 'not_deployed'
+    );
+    const notDeployed = isNotDeployed ? 1 : 0;
+    const menu = isNotDeployed ? 'environment' : 'node';
     router.push(
-      `/node-manager/cloudregion/node?cloud_region_id=${item.id}&name=${item.originalName}&displayName=${item.name}`
+      `/node-manager/cloudregion/${menu}?cloud_region_id=${item.id}&name=${item.originalName}&displayName=${item.name}&not_deployed=${notDeployed}&proxy_address=${item.proxy_address}`
     );
   };
 

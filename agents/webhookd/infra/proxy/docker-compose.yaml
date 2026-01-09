@@ -1,0 +1,119 @@
+networks:
+  prod:
+    driver: bridge
+    name: bklite-proxy
+
+services:
+  nats:
+    image: ${DOCKER_IMAGE_NATS}
+    restart: always
+    volumes:
+      - ./conf/nats/nats.conf:/etc/nats/nats.conf:ro
+      - ./conf/certs:/etc/nats/certs:ro
+      - nats:/nats
+    ports:
+      - "4223:4222"
+    command:
+      - "-c"
+      - "/etc/nats/nats.conf"
+    networks:
+      - prod
+
+  nats-executor:
+    image: ${DOCKER_IMAGE_NATS_EXECUTOR}
+    environment:
+      - NATS_INSTANCE_ID=${ZONE_NAME}
+      - NATS_URLS=tls://${NATS_ADMIN_USERNAME}:${NATS_ADMIN_PASSWORD}@nats:4222
+      - NATS_CA_FILE=/etc/nats/certs/ca.crt
+    networks:
+      - prod
+    restart: always
+    volumes:
+      - ./conf/certs:/etc/nats/certs:ro
+
+  fusion-collector:
+    image: ${DOCKER_IMAGE_FUSION_COLLECTOR}
+    hostname: ${SIDECAR_NODE_NAME}
+    environment:
+      SERVER_URL: https://traefik:444/api/v1/node_mgmt/open_api/node
+      SERVER_API_TOKEN: ${SIDECAR_INIT_TOKEN}
+      SIDECAR_ZONE: ${ZONE_ID}
+      SIDECAR_GROUP: 1
+      SIDECAR_NODEID: ${SIDECAR_NODE_ID}
+      SIDECAR_NODENAME: ${SIDECAR_NODE_NAME}
+    volumes:
+      - ./conf/certs:/opt/fusion-collectors/certs:ro
+      - ./bin:/opt/fusion-collectors/bin
+    networks:
+      - prod
+    ports:
+      - 163:162/udp
+    restart: always
+
+  traefik:
+    image: ${DOCKER_IMAGE_TRAEFIK}
+    restart: always
+    ports:
+      - "${TRAEFIK_WEB_PORT}:${TRAEFIK_WEB_PORT}"
+    volumes:
+      # 不挂载 docker.sock
+      - ./conf/traefik/dynamic.yml:/etc/traefik/dynamic.yml
+      - ./conf/traefik/certs:/etc/certs:ro
+    environment:
+      - TRAEFIK_SERVER_URL=${SERVER_URL}
+    command:
+      - "--log.level=INFO"
+      - "--api.insecure=true"
+      - "--api.dashboard=false"
+      - "--providers.file.filename=/etc/traefik/dynamic.yml"
+      - "--providers.file.watch=true"
+      - "--providers.file.templating=true"
+      - "--accesslog"
+      - "--entrypoints.websecure.address=:${TRAEFIK_WEB_PORT}"
+    networks:
+      - prod
+
+  stargazer:
+    image: ${DOCKER_IMAGE_STARGAZER}
+    environment:
+      NATS_URLS: tls://${NATS_ADMIN_USERNAME}:${NATS_ADMIN_PASSWORD}@nats:4222
+      UV_OFFLINE: True
+      NATS_TLS_ENABLED: true
+      NATS_TLS_CA_FILE: /etc/certs/ca.crt
+
+      NATS_METRIC_TOPIC: metrics
+
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      REDIS_PASSWORD: ${REDIS_PASSWORD}
+      REDIS_DB: 1
+      TASK_MAX_JOBS: 10
+      TASK_JOB_TIMEOUT: 300
+      TASK_KEEP_RESULT: 3600
+      TASK_MAX_TRIES: 3
+    volumes:
+      - ./conf/certs:/etc/certs:ro
+    networks:
+      - prod
+
+
+  redis:
+    image: ${DOCKER_IMAGE_REDIS}
+    restart: always
+    volumes:
+      - redis:/data
+    command:
+      - "redis-server"
+      - "--requirepass"
+      - "${REDIS_PASSWORD}"
+    healthcheck:
+      test: ["CMD", "redis-cli", "-h", "redis", "-p", "6379", "-a", "${REDIS_PASSWORD}", "ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    networks:
+      - prod
+
+volumes:
+  nats:
+  redis:

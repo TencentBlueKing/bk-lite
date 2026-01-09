@@ -201,7 +201,16 @@
       "display_name": "Disk Usage Rate",
       "data_type": "Number",
       "unit": "percent",
-      "dimensions": [],
+      "dimensions": [
+        {
+          "name": "device",
+          "description": "device"
+        },
+        {
+          "name": "path",
+          "description": "path"
+        }
+      ],
       "instance_id_keys": ["instance_id"],
       "description": "Displays the percentage of disk space used, helping understand the utilization of disk resources. This metric is important for preventing disk overflow."
     },

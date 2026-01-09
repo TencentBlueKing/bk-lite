@@ -169,8 +169,14 @@ check_nvidia_gpu() {
 }
 
 # Function to add mirror prefix to docker image if MIRROR is set
+# In OFFLINE mode, always return the original image name without any prefix
 add_mirror_prefix() {
     local image="$1"
+    # OFFLINE 模式下直接返回原始镜像名，确保与 package 时保存的镜像名一致
+    if [[ "${OFFLINE:-false}" == "true" ]]; then
+        echo "$image"
+        return
+    fi
     if [ -n "$MIRROR" ]; then
         # 如果镜像名包含斜杠，说明有仓库前缀
         if [[ "$image" == *"/"* ]]; then
@@ -333,6 +339,7 @@ EOF
 generate_tls_certs() {
     : "${HOST_IP:?HOST_IP 未设置}"
     local dir=./conf/certs
+    local traefik_certs_dir=./conf/traefik/certs
     local san="DNS:nats,DNS:localhost,IP:127.0.0.1,IP:${HOST_IP}"
     local cn="BluekingLite"
     local openssl_image=$DOCKER_IMAGE_OPENSSL
@@ -340,6 +347,13 @@ generate_tls_certs() {
     # 当存在server.crt时，跳过生成
     if [ -f "$dir/server.crt" ] && [ -f "$dir/server.key" ] && [ -f "$dir/ca.crt" ]; then
         log "SUCCESS" "TLS 证书已存在，跳过生成步骤..."
+        if [ -f "$traefik_certs_dir/server.crt" ]; then
+            log "INFO" "Traefik 证书目录已存在证书，跳过复制步骤..."
+        else
+            log "INFO" "复制证书到 Traefik 目录..."
+            mkdir -p ${traefik_certs_dir}
+            cp ${dir}/server.crt ${dir}/server.key ${traefik_certs_dir}/
+        fi
         return
     fi
     log "INFO" "生成自签名 TLS 证书（使用容器：${openssl_image}）..."
@@ -399,6 +413,15 @@ EOF
     rm -f "${dir}/server.csr" "${dir}/openssl.conf"
 
     log "SUCCESS" "TLS 证书生成完成：$(ls -1 $dir/server.crt)"
+    
+    # 复制证书到 traefik 目录
+    if [ -f "${traefik_certs_dir}/server.crt" ]; then
+        log "INFO" "Traefik 证书目录已存在证书，跳过复制步骤..."
+    else
+        log "INFO" "复制证书到 Traefik 目录..."
+        mkdir -p ${traefik_certs_dir}
+        cp ${dir}/server.crt ${dir}/server.key ${traefik_certs_dir}/
+    fi
 }
 
 generate_common_env() {
@@ -741,13 +764,6 @@ install() {
         if [ "$_MIRROR_FROM_ENV" = true ]; then
             MIRROR="$env_mirror"
         fi
-        # 在 OFFLINE 模式下，强制禁用 MIRROR 以确保镜像名称一致性
-        if [[ "${OFFLINE}" == "true" ]]; then
-            if [ -n "${MIRROR:-}" ]; then
-                log "WARNING" "OFFLINE=true，已自动禁用 MIRROR 配置${MIRROR}以确保镜像名称匹配"
-            fi
-            export MIRROR=""
-        fi
         # 如果 MIRROR 仍然为空，使用默认值
         MIRROR=${MIRROR:-"bk-lite.tencentcloudcr.com/bklite"}
     fi
@@ -887,10 +903,19 @@ tls {
   key_file: "/etc/nats/certs/server.key"
   ca_file: "/etc/nats/certs/ca.crt"
 }
-
+leafnodes {
+    port: 7422
+    tls {
+        cert_file: "/etc/nats/certs/server.crt"
+        key_file: "/etc/nats/certs/server.key"
+        ca_file: "/etc/nats/certs/ca.crt"
+        verify: true
+    }
+}
 jetstream: enabled
 jetstream {
   store_dir=/nats/storage
+  domain=bklite
 }
 
 server_name=nats-server

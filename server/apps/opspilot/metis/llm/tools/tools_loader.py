@@ -1,20 +1,11 @@
-import inspect
 import copy
+import inspect
+
 from loguru import logger
 
-from apps.opspilot.metis.utils.template_loader import TemplateLoader
-
 # 静态导入所有工具模块
-from apps.opspilot.metis.llm.tools import date
-from apps.opspilot.metis.llm.tools import fetch
-from apps.opspilot.metis.llm.tools import github
-from apps.opspilot.metis.llm.tools import jenkins
-from apps.opspilot.metis.llm.tools import kubernetes
-from apps.opspilot.metis.llm.tools import postgres
-from apps.opspilot.metis.llm.tools import python
-from apps.opspilot.metis.llm.tools import search
-from apps.opspilot.metis.llm.tools import shell
-from apps.opspilot.metis.llm.tools import ssh
+from apps.opspilot.metis.llm.tools import browser_use, date, fetch, github, jenkins, kubernetes, postgres, python, search, shell, ssh
+from apps.opspilot.metis.utils.template_loader import TemplateLoader
 
 
 class ToolsLoader:
@@ -39,16 +30,17 @@ class ToolsLoader:
 
     # 静态定义所有工具模块映射
     TOOL_MODULES = {
-        'current_time': (date, False),
-        'duckduckgo': (search, False),
-        'fetch': (fetch, False),
-        'github': (github, False),
-        'jenkins': (jenkins, False),
-        'kubernetes': (kubernetes, False),
-        'postgres': (postgres, False),
-        'python': (python, False),
-        'shell': (shell, False),
-        'ssh': (ssh, False),
+        "browser_use": (browser_use, False),
+        "current_time": (date, False),
+        "duckduckgo": (search, False),
+        "fetch": (fetch, False),
+        "github": (github, False),
+        "jenkins": (jenkins, False),
+        "kubernetes": (kubernetes, False),
+        "postgres": (postgres, False),
+        "python": (python, False),
+        "shell": (shell, False),
+        "ssh": (ssh, False),
     }
 
     @staticmethod
@@ -62,13 +54,11 @@ class ToolsLoader:
         tools_map = {}
 
         for tool_category, (module, enable_extra_prompt) in ToolsLoader.TOOL_MODULES.items():
-            tool_functions = ToolsLoader._extract_tools_from_module(
-                module, enable_extra_prompt)
+            tool_functions = ToolsLoader._extract_tools_from_module(module, enable_extra_prompt)
 
             if tool_functions:
                 tools_map[tool_category] = tool_functions
-                logger.info(
-                    f"从 {tool_category} 加载了 {len(tool_functions)} 个工具")
+                logger.info(f"从 {tool_category} 加载了 {len(tool_functions)} 个工具")
 
         logger.info(f"总共发现 {len(tools_map)} 个工具类别")
         return tools_map
@@ -88,12 +78,8 @@ class ToolsLoader:
         tool_functions = []
 
         for name, obj in inspect.getmembers(module):
-            if (hasattr(obj, '__class__')
-                    and obj.__class__.__name__ == ToolsLoader.STRUCTURED_TOOL_CLASS):
-                tool_functions.append({
-                    "func": obj,
-                    "enable_extra_prompt": enable_extra_prompt
-                })
+            if hasattr(obj, "__class__") and obj.__class__.__name__ == ToolsLoader.STRUCTURED_TOOL_CLASS:
+                tool_functions.append({"func": obj, "enable_extra_prompt": enable_extra_prompt})
 
         return tool_functions
 
@@ -103,7 +89,7 @@ class ToolsLoader:
         根据 tool_server_url 配置按需加载对应的工具
 
         Args:
-            tool_server_url (str): 工具服务器URL    
+            tool_server_url (str): 工具服务器URL
 
         Returns:
             list: 加载的工具函数列表
@@ -127,8 +113,7 @@ class ToolsLoader:
 
         tools = []
         for tool_info in tool_functions:
-            processed_tool = ToolsLoader._process_tool(
-                tool_info, extra_tools_prompt, extra_param_prompt)
+            processed_tool = ToolsLoader._process_tool(tool_info, extra_tools_prompt, extra_param_prompt)
             if processed_tool:
                 tools.append(processed_tool)
 
@@ -138,12 +123,11 @@ class ToolsLoader:
     def _process_tool(tool_info, extra_tools_prompt: str, extra_param_prompt: dict):
         """处理单个工具，应用额外提示"""
         try:
-            func = copy.deepcopy(tool_info['func'])
-            enable_extra_prompt = tool_info['enable_extra_prompt']
+            func = copy.deepcopy(tool_info["func"])
+            enable_extra_prompt = tool_info["enable_extra_prompt"]
 
             if enable_extra_prompt:
-                ToolsLoader._apply_extra_prompts(
-                    func, extra_tools_prompt, extra_param_prompt)
+                ToolsLoader._apply_extra_prompts(func, extra_tools_prompt, extra_param_prompt)
 
             return func
 
@@ -158,13 +142,11 @@ class ToolsLoader:
             func.description += f"\n{extra_tools_prompt}"
 
         if extra_param_prompt:
-            param_descriptions = [f"{key}:{value}" for key,
-                                  value in extra_param_prompt.items()]
+            param_descriptions = [f"{key}:{value}" for key, value in extra_param_prompt.items()]
 
             # 使用模板加载器生成动态参数提示
             final_prompt = TemplateLoader.render_template(
-                "prompts/tools/dynamic_param_generation",
-                {"param_descriptions": ', '.join(param_descriptions)}
+                "prompts/tools/dynamic_param_generation", {"param_descriptions": ", ".join(param_descriptions)}
             )
             func.description += f"\n{final_prompt}"
 
@@ -184,12 +166,10 @@ class ToolsLoader:
             return []
 
         module, enable_extra_prompt = ToolsLoader.TOOL_MODULES[tool_category]
-        tool_functions = ToolsLoader._extract_tools_from_module(
-            module, enable_extra_prompt)
+        tool_functions = ToolsLoader._extract_tools_from_module(module, enable_extra_prompt)
 
         if tool_functions:
-            logger.info(
-                f"从 {tool_category} 加载了 {len(tool_functions)} 个工具")
+            logger.info(f"从 {tool_category} 加载了 {len(tool_functions)} 个工具")
 
         return tool_functions
 
@@ -243,8 +223,7 @@ class ToolsLoader:
         metadata_list = []
 
         for tool_category, (module, enable_extra_prompt) in ToolsLoader.TOOL_MODULES.items():
-            tool_functions = ToolsLoader._extract_tools_from_module(
-                module, enable_extra_prompt)
+            tool_functions = ToolsLoader._extract_tools_from_module(module, enable_extra_prompt)
 
             if not tool_functions:
                 continue
@@ -253,54 +232,50 @@ class ToolsLoader:
             module_path = module.__name__
 
             # 提取工具集描述(从模块的 docstring)
-            category_description = module.__doc__.strip(
-            ) if module.__doc__ else f"{tool_category} 工具集"
+            category_description = module.__doc__.strip() if module.__doc__ else f"{tool_category} 工具集"
 
             # 提取构造参数(如果模块定义了 CONSTRUCTOR_PARAMS)
-            constructor_params = getattr(module, 'CONSTRUCTOR_PARAMS', None)
+            constructor_params = getattr(module, "CONSTRUCTOR_PARAMS", None)
 
             # 如果只有一个工具，作为单一工具处理
             if len(tool_functions) == 1:
-                tool_func = tool_functions[0]['func']
+                tool_func = tool_functions[0]["func"]
                 tool_metadata = {
-                    'name': tool_category,
-                    'constructor': module_path,
-                    'constructor_description': category_description,
-                    'description': tool_func.description or category_description,
+                    "name": tool_category,
+                    "constructor": module_path,
+                    "constructor_description": category_description,
+                    "description": tool_func.description or category_description,
                 }
                 # 添加构造参数信息
                 if constructor_params:
-                    tool_metadata['constructor_parameters'] = constructor_params
+                    tool_metadata["constructor_parameters"] = constructor_params
                 # 添加工具参数信息
-                if hasattr(tool_func, 'args_schema') and tool_func.args_schema:
-                    tool_metadata['parameters'] = tool_func.args_schema.schema()
+                if hasattr(tool_func, "args_schema") and tool_func.args_schema:
+                    tool_metadata["parameters"] = tool_func.args_schema.schema()
 
                 metadata_list.append(tool_metadata)
             else:
                 # 多个工具，作为工具集处理
                 sub_tools = []
                 for tool_info in tool_functions:
-                    tool_func = tool_info['func']
-                    sub_tool_info = {
-                        'name': tool_func.name,
-                        'description': tool_func.description or ''
-                    }
+                    tool_func = tool_info["func"]
+                    sub_tool_info = {"name": tool_func.name, "description": tool_func.description or ""}
                     # 添加子工具参数信息
-                    if hasattr(tool_func, 'args_schema') and tool_func.args_schema:
-                        sub_tool_info['parameters'] = tool_func.args_schema.schema()
+                    if hasattr(tool_func, "args_schema") and tool_func.args_schema:
+                        sub_tool_info["parameters"] = tool_func.args_schema.schema()
 
                     sub_tools.append(sub_tool_info)
 
                 tool_set_metadata = {
-                    'name': tool_category,
-                    'constructor': module_path,
-                    'constructor_description': category_description,
-                    'description': category_description,
-                    'tools': sub_tools
+                    "name": tool_category,
+                    "constructor": module_path,
+                    "constructor_description": category_description,
+                    "description": category_description,
+                    "tools": sub_tools,
                 }
                 # 添加构造参数信息
                 if constructor_params:
-                    tool_set_metadata['constructor_parameters'] = constructor_params
+                    tool_set_metadata["constructor_parameters"] = constructor_params
 
                 metadata_list.append(tool_set_metadata)
 

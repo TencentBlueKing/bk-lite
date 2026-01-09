@@ -79,6 +79,7 @@ services:
       - ../pkgs:/apps/pkgs
     labels:
       - "traefik.enable=true"
-      - "traefik.http.routers.sidecar.rule=Host(`${HOST_IP}`) && PathPrefix(`/api/v1`)"
+      - "traefik.http.routers.sidecar.rule=PathPrefix(`/api/v1`)"
       - "traefik.http.routers.sidecar.entrypoints=websecure"
+      - "traefik.http.routers.sidecar.priority=20"
       - "traefik.http.services.sidecar.loadbalancer.server.port=8000"

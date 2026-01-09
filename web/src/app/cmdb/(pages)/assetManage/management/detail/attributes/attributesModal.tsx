@@ -16,7 +16,11 @@ import type { FormInstance } from 'antd';
 import { PlusOutlined, DeleteTwoTone, HolderOutlined } from '@ant-design/icons';
 import { deepClone } from '@/app/cmdb/utils/common';
 import { useSearchParams } from 'next/navigation';
-import { AttrFieldType, EnumList } from '@/app/cmdb/types/assetManage';
+import {
+  AttrFieldType,
+  EnumList,
+  AttrGroup,
+} from '@/app/cmdb/types/assetManage';
 import { useTranslation } from '@/utils/i18n';
 import { useModelApi } from '@/app/cmdb/api';
 const { Option } = Select;
@@ -24,6 +28,7 @@ const { Option } = Select;
 interface AttrModalProps {
   onSuccess: (type?: unknown) => void;
   attrTypeList: Array<{ id: string; name: string }>;
+  groups: AttrGroup[];
 }
 
 interface AttrConfig {
@@ -66,7 +71,8 @@ const SortableItem = ({
 };
 
 const AttributesModal = forwardRef<AttrModalRef, AttrModalProps>(
-  ({ onSuccess, attrTypeList }, ref) => {
+  (props, ref) => {
+    const { onSuccess, attrTypeList, groups } = props;
     const [modelVisible, setModelVisible] = useState<boolean>(false);
     const [subTitle, setSubTitle] = useState<string>('');
     const [title, setTitle] = useState<string>('');
@@ -84,21 +90,24 @@ const AttributesModal = forwardRef<AttrModalRef, AttrModalProps>(
 
     const { createModelAttr, updateModelAttr } = useModelApi();
 
-    const classificationId: string =
-      searchParams.get('classification_id') || '';
     const modelId: string = searchParams.get('model_id') || '';
     const { t } = useTranslation();
 
     useEffect(() => {
       if (modelVisible) {
         formRef.current?.resetFields();
-        formRef.current?.setFieldsValue(attrInfo);
+        const selectedGroup = groups.find(
+          (group) => group.group_name === attrInfo.attr_group
+        );
+        formRef.current?.setFieldsValue({
+          ...attrInfo,
+          group_id: selectedGroup?.id,
+        });
       }
-    }, [modelVisible, attrInfo]);
+    }, [modelVisible, attrInfo, groups]);
 
     useImperativeHandle(ref, () => ({
       showModal: ({ type, attrInfo, subTitle, title }) => {
-        // 开启弹窗的交互
         setModelVisible(true);
         setSubTitle(subTitle);
         setType(type);
@@ -125,10 +134,13 @@ const AttributesModal = forwardRef<AttrModalRef, AttrModalProps>(
     const handleSubmit = () => {
       formRef.current?.validateFields().then((values) => {
         const flag = enumList.every((item) => !!item.id && !!item.name);
+        const selectedGroup = groups.find(
+          (group) => group.id === values.group_id
+        );
         operateAttr({
           ...values,
           option: flag ? enumList : [],
-          attr_group: classificationId,
+          attr_group: selectedGroup?.group_name || '',
           model_id: modelId,
         });
       });
@@ -255,6 +267,19 @@ const AttributesModal = forwardRef<AttrModalRef, AttrModalProps>(
               rules={[{ required: true, message: t('required') }]}
             >
               <Input disabled={type === 'edit'} />
+            </Form.Item>
+            <Form.Item<AttrFieldType>
+              label={t('Model.attrGroupName')}
+              name="group_id"
+              rules={[{ required: true, message: t('required') }]}
+            >
+              <Select placeholder={t('common.selectMsg')}>
+                {props.groups.map((group) => (
+                  <Option value={group.id} key={group.id}>
+                    {group.group_name}
+                  </Option>
+                ))}
+              </Select>
             </Form.Item>
             <Form.Item<AttrFieldType>
               label={t('type')}

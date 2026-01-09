@@ -3,7 +3,7 @@ from rest_framework.decorators import action
 
 from apps.cmdb.constants.constants import ASSOCIATION_TYPE, OPERATOR_MODEL, PERMISSION_MODEL, OPERATE, VIEW
 from apps.cmdb.language.service import SettingLanguage
-from apps.cmdb.models import DELETE_INST, UPDATE_INST
+from apps.cmdb.models import DELETE_INST, UPDATE_INST, FieldGroup
 from apps.cmdb.services.model import ModelManage
 from apps.cmdb.utils.base import get_default_group_id
 from apps.cmdb.utils.change_record import create_change_record
@@ -143,6 +143,10 @@ class ModelViewSet(viewsets.ViewSet):
         create_change_record(operator=request.user.username, model_id=model_info["model_id"], label="模型管理",
                              _type=DELETE_INST, message=f"删除模型. 模型名称: {model_info['model_name']}",
                              inst_id=model_info['_id'], model_object=OPERATOR_MODEL)
+
+        # 删除该模型下的所有字段分组配置，避免属性变更后字段分组配置不一致的问题
+        FieldGroup.objects.filter(model_id=model_info["model_id"]).delete()
+
         return WebUtils.response_success()
 
     @HasPermission("model_management-Edit Model")
@@ -342,6 +346,17 @@ class ModelViewSet(viewsets.ViewSet):
             return WebUtils.response_error("抱歉！您没有此模型的权限", status_code=status.HTTP_403_FORBIDDEN)
 
         result = ModelManage.create_model_attr(model_id, request.data, username=request.user.username)
+        # 把分组信息也更新了
+        attr_group = request.data.get("attr_group")
+        field_group = FieldGroup.objects.filter(model_id=model_id, group_name=attr_group).first()
+        if field_group:
+            attr_id = request.data.get("attr_id")
+            attr_orders = field_group.attr_orders
+            if attr_id not in attr_orders:
+                attr_orders.append(attr_id)
+                field_group.attr_orders = attr_orders
+                field_group.save()
+
         return WebUtils.response_success(result)
 
     @HasPermission("model_management-Edit Model")
@@ -370,6 +385,18 @@ class ModelViewSet(viewsets.ViewSet):
             return WebUtils.response_error("抱歉！您没有此模型的权限", status_code=status.HTTP_403_FORBIDDEN)
 
         result = ModelManage.update_model_attr(model_id, request.data, username=request.user.username)
+
+        # 把分组信息也更新了
+        attr_group = request.data.get("attr_group")
+        field_group = FieldGroup.objects.filter(model_id=model_id, group_name=attr_group).first()
+        if field_group:
+            attr_id = request.data.get("attr_id")
+            attr_orders = field_group.attr_orders
+            if attr_id not in attr_orders:
+                attr_orders.append(attr_id)
+                field_group.attr_orders = attr_orders
+                field_group.save()
+
         return WebUtils.response_success(result)
 
     @HasPermission("model_management-Delete Model")
@@ -402,6 +429,13 @@ class ModelViewSet(viewsets.ViewSet):
             return WebUtils.response_error("抱歉！您没有此模型的权限", status_code=status.HTTP_403_FORBIDDEN)
 
         result = ModelManage.delete_model_attr(model_id, attr_id, username=request.user.username)
+
+        # 把分组信息也更新了
+        field_group = FieldGroup.objects.filter(model_id=model_id, attr_orders__contains=attr_id).first()
+        if field_group:
+            field_group.attr_orders = [i for i in field_group.attr_orders if i != attr_id]
+            field_group.save()
+
         return WebUtils.response_success(result)
 
     @HasPermission("model_management-View")
