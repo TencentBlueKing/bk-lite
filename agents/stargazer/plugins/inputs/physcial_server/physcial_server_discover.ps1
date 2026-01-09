@@ -105,12 +105,12 @@ foreach ($gpu in $gpus) {
     Write-Output ("gpu_desc=" + $gpu.Name + " " + $gpu.Description)
     
     # 尝试获取 NVIDIA 显卡详细信息
-    if (Get-Command nvidia-smi -ErrorAction SilentlyContinue) {
-        $nvidiaInfo = nvidia-smi --query-gpu=serial,uuid --format=csv,noheader,nounits | Select-Object -First 1
-        if ($nvidiaInfo) {
-           Write-Output ("gpu_desc_ext=" + $nvidiaInfo)
-        }
-    }
+    # if (Get-Command nvidia-smi -ErrorAction SilentlyContinue) {
+        # $nvidiaInfo = nvidia-smi --query-gpu=serial,uuid --format=csv,noheader,nounits | Select-Object -First 1
+        # if ($nvidiaInfo) {
+           # Write-Output ("gpu_desc_ext=" + $nvidiaInfo)
+        # }
+    # }
     Write-Output ""
 }
 
