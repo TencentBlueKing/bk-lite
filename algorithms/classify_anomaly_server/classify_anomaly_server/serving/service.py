@@ -18,7 +18,7 @@ from .schemas import PredictRequest, PredictResponse
 
 
 @bentoml.service(
-    name=f"{{project_name}}_service",
+    name=f"classify_anomaly_service",
     traffic={"timeout": 30},
 )
 class MLService:

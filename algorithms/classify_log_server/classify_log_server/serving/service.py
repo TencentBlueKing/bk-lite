@@ -25,7 +25,7 @@ from .schemas import (
 
 
 @bentoml.service(
-    name="classify_log_server_service",
+    name="classify_log_service",
     traffic={"timeout": 30},
 )
 class MLService:
@@ -170,7 +170,7 @@ class MLService:
             else:  # cluster_id
                 template_groups.sort(key=lambda x: x.cluster_id)
             
-            # 处理未知日志（P0优化：未知日志标记）
+            # 处理未知日志
             unknown_mask = result_df['cluster_id'] == -1
             unknown_logs = []
             if unknown_mask.any():

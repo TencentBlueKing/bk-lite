@@ -21,7 +21,6 @@ from .schemas import PredictRequest, PredictResponse
 
 
 @bentoml.service(
-    # name="{{project_name}}_service",
     name="classify_timeseries_service",
     traffic={"timeout": 30},
 )
