@@ -431,6 +431,159 @@ class MLFlowUtils:
         return img_path
     
     @staticmethod
+    def plot_coverage_comparison(
+        train_cluster_ids: List[int],
+        test_cluster_ids: List[int],
+        noise_label: int = -1,
+        title: str = "训练集 vs 测试集覆盖率对比",
+        artifact_name: str = "coverage_comparison"
+    ) -> str:
+        """
+        绘制训练集和测试集的覆盖率对比（左右并排）
+        
+        Args:
+            train_cluster_ids: 训练集聚类ID列表
+            test_cluster_ids: 测试集聚类ID列表
+            noise_label: 噪声/未匹配日志的标签值（默认-1）
+            title: 图表标题
+            artifact_name: 保存的文件名
+            
+        Returns:
+            保存的图片路径
+        """
+        def calc_stats(cluster_ids):
+            """计算覆盖率统计信息"""
+            total = len(cluster_ids)
+            if total == 0:
+                return 0, 0, 0.0, 0
+            covered = sum(1 for cid in cluster_ids if cid != noise_label)
+            uncovered = total - covered
+            rate = covered / total
+            valid_clusters = len(set(cid for cid in cluster_ids if cid != noise_label))
+            return covered, uncovered, rate, valid_clusters
+        
+        # 计算统计数据
+        train_covered, train_uncovered, train_rate, train_clusters = calc_stats(train_cluster_ids)
+        test_covered, test_uncovered, test_rate, test_clusters = calc_stats(test_cluster_ids)
+        
+        if len(train_cluster_ids) == 0 and len(test_cluster_ids) == 0:
+            logger.warning("训练集和测试集都为空，无法生成覆盖率对比可视化")
+            return ""
+        
+        # 创建图表（1行2列，每列包含饼图和指标）
+        fig = plt.figure(figsize=(18, 7))
+        gs = fig.add_gridspec(1, 2, wspace=0.25)
+        
+        # 定义绘制单个覆盖率面板的函数
+        def plot_panel(ax_pie, ax_metrics, covered, uncovered, rate, clusters, total, panel_title, prefix):
+            # 饼图
+            colors = ['#06A77D', '#F24236']
+            labels = [f'已覆盖\n{covered:,} 条', f'未覆盖\n{uncovered:,} 条']
+            sizes = [covered, uncovered]
+            
+            wedges, texts, autotexts = ax_pie.pie(
+                sizes, 
+                labels=labels, 
+                colors=colors,
+                autopct='%1.1f%%',
+                startangle=90,
+                textprops={'fontsize': 10, 'weight': 'bold'},
+                explode=(0.05, 0.05)
+            )
+            
+            for autotext in autotexts:
+                autotext.set_color('white')
+                autotext.set_fontsize(12)
+                autotext.set_weight('bold')
+            
+            ax_pie.set_title(panel_title, fontsize=13, fontweight='bold', pad=15)
+            
+            # 指标展示
+            ax_metrics.axis('off')
+            
+            metrics_data = [
+                ('覆盖率', f'{rate*100:.2f}%', '#06A77D'),
+                ('未覆盖', f'{uncovered:,}', '#F24236'),
+                ('有效聚类', f'{clusters:,}', '#2E86AB'),
+                ('总日志', f'{total:,}', '#555555')
+            ]
+            
+            y_start = 0.88
+            y_step = 0.22
+            
+            for i, (name, value, color) in enumerate(metrics_data):
+                y_pos = y_start - i * y_step
+                ax_metrics.text(0.15, y_pos, name, fontsize=11, color='#333333')
+                ax_metrics.text(0.15, y_pos - 0.08, value, fontsize=22, weight='bold', color=color)
+            
+            # 健康度评估
+            if rate >= 0.95:
+                status, color, icon = "优秀", '#06A77D', "✓"
+            elif rate >= 0.85:
+                status, color, icon = "良好", '#FFA500', "○"
+            elif rate >= 0.70:
+                status, color, icon = "一般", '#FF8C00', "△"
+            else:
+                status, color, icon = "较差", '#F24236', "✗"
+            
+            ax_metrics.text(0.15, 0.02, f'{icon} {status}', fontsize=13, weight='bold', color=color,
+                          bbox=dict(boxstyle='round,pad=0.4', facecolor=color, alpha=0.2, 
+                                   edgecolor=color, linewidth=2))
+            
+            return rate, uncovered, clusters
+        
+        # 左侧：训练集
+        gs_left = gs[0].subgridspec(1, 2, width_ratios=[1, 1])
+        ax_train_pie = fig.add_subplot(gs_left[0])
+        ax_train_metrics = fig.add_subplot(gs_left[1])
+        train_stats = plot_panel(ax_train_pie, ax_train_metrics, train_covered, train_uncovered, 
+                                 train_rate, train_clusters, len(train_cluster_ids), 
+                                 '训练集覆盖率', 'train')
+        
+        # 右侧：测试集
+        gs_right = gs[1].subgridspec(1, 2, width_ratios=[1, 1])
+        ax_test_pie = fig.add_subplot(gs_right[0])
+        ax_test_metrics = fig.add_subplot(gs_right[1])
+        test_stats = plot_panel(ax_test_pie, ax_test_metrics, test_covered, test_uncovered, 
+                                test_rate, test_clusters, len(test_cluster_ids), 
+                                '测试集覆盖率', 'test')
+        
+        # 主标题
+        fig.suptitle(title, fontsize=15, fontweight='bold', y=0.98)
+        
+        # 保存图片
+        img_path = f"{artifact_name}.png"
+        plt.savefig(img_path, dpi=150, bbox_inches='tight')
+        
+        # 上传到 MLflow
+        if mlflow.active_run():
+            mlflow.log_artifact(img_path)
+            logger.info(f"覆盖率对比图已上传到 MLflow: {img_path}")
+            
+            # 记录指标
+            mlflow.log_metric("train_coverage_rate", train_rate)
+            mlflow.log_metric("train_uncovered_count", train_uncovered)
+            mlflow.log_metric("train_num_valid_clusters", train_clusters)
+            mlflow.log_metric("test_coverage_rate", test_rate)
+            mlflow.log_metric("test_uncovered_count", test_uncovered)
+            mlflow.log_metric("test_num_valid_clusters", test_clusters)
+            
+            # 记录覆盖率差异
+            coverage_diff = train_rate - test_rate
+            mlflow.log_metric("coverage_rate_diff", coverage_diff)
+            
+            # 清理本地临时文件
+            try:
+                import os
+                os.remove(img_path)
+            except Exception as e:
+                logger.warning(f"删除临时文件失败: {img_path}, 错误: {e}")
+        
+        plt.close()
+        
+        return img_path
+    
+    @staticmethod
     def plot_clustering_metrics_comparison(
         train_metrics: Dict[str, float],
         test_metrics: Optional[Dict[str, float]] = None,

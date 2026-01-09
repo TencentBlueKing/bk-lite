@@ -715,11 +715,7 @@ class SpellModel(BaseLogClusterModel):
                         MLFlowUtils.plot_cluster_size_distribution(
                             cluster_ids=cluster_ids
                         )
-                        MLFlowUtils.plot_coverage_overview(
-                            cluster_ids=cluster_ids,
-                            noise_label=-1
-                        )
-                        logger.info("✓ 模板分布及覆盖率可视化已生成")
+                        logger.info("✓ 模板分布可视化已生成")
                     except Exception as e:
                         logger.warning(f"生成模板可视化失败: {e}")
             except Exception as e:

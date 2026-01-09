@@ -148,7 +148,20 @@ class UniversalTrainer:
                     }
                     logger.info(f"测试集评估完成: {test_summary}")
                     
-                    # 生成对比可视化
+                    # 生成覆盖率对比可视化（训练集 vs 测试集）
+                    try:
+                        train_predictions = self.model.predict(train_data)
+                        test_predictions = self.model.predict(test_data)
+                        MLFlowUtils.plot_coverage_comparison(
+                            train_cluster_ids=train_predictions,
+                            test_cluster_ids=test_predictions,
+                            noise_label=-1
+                        )
+                        logger.info("✓ 覆盖率对比可视化已生成")
+                    except Exception as e:
+                        logger.warning(f"生成覆盖率对比可视化失败: {e}")
+                    
+                    # 生成指标对比可视化
                     try:
                         # 使用final_train_metrics或train_metrics
                         train_cmp_metrics = final_train_metrics if val_data else train_metrics
