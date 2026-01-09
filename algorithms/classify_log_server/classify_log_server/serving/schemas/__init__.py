@@ -2,6 +2,7 @@
 
 from .api_schema import (
     ClusteringSummary,
+    LogClusterConfig,
     LogClusterRequest,
     LogClusterResponseV2,
     LogClusterResult,
@@ -10,6 +11,7 @@ from .api_schema import (
 
 __all__ = [
     "ClusteringSummary",
+    "LogClusterConfig",
     "LogClusterRequest",
     "LogClusterResponseV2",
     "LogClusterResult",

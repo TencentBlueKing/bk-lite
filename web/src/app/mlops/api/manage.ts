@@ -110,7 +110,7 @@ const useMlopsManageApi = () => {
     return await get(`/mlops/rasa_entity/?dataset=${dataset}&name=${name}&page=${page}&page_size=${page_size}`);
   };
 
-  // 获取Rasa 实体数
+  // 获取Rasa实体数
   const getRasaEntityCount = async () => {
     return await get(`/mlops/rasa_entity/count`)
   };

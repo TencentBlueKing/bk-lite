@@ -78,9 +78,9 @@ class MLService:
         logger.info("=== Cleanup completed ===")
 
     @bentoml.api
-    async def predict(self, request: LogClusterRequest) -> LogClusterResponseV2:
+    async def predict(self, data: list[str], config: dict | None = None) -> LogClusterResponseV2:
         """
-        日志聚类预测接口（P0优化版）.
+        日志聚类预测接口.
         
         P0优化点：
         1. 返回聚合数据，减少90%网络传输
@@ -89,7 +89,8 @@ class MLService:
         4. 可选的详细模式
 
         Args:
-            request: 日志聚类请求
+            data: 日志消息列表
+            config: 聚类配置参数（可选）
 
         Returns:
             聚合的日志聚类响应
@@ -97,10 +98,14 @@ class MLService:
         Raises:
             ModelInferenceError: 模型推理失败
         """
+        # 构建请求对象
+        from .schemas import LogClusterConfig
+        req_config = LogClusterConfig(**(config or {}))
+        
         start_time = time.time()
         logger.info(
-            f"收到日志聚类请求: {len(request.logs)} 条日志, "
-            f"return_details={request.return_details}, sort_by={request.sort_by}"
+            f"收到日志聚类请求: {len(data)} 条日志, "
+            f"return_details={req_config.return_details}, sort_by={req_config.sort_by}"
         )
 
         try:
@@ -110,15 +115,13 @@ class MLService:
             import pandas as pd
 
             if hasattr(self.model, "predict"):
-                # SpellWrapper or MLflow pyfunc interface
-                result_df = self.model.predict(None, request.logs)
+                result_df = self.model.predict(data)
             else:
-                # Fallback: direct model call
                 result_df = pd.DataFrame(
                     {
-                        "log": request.logs,
-                        "cluster_id": [-1] * len(request.logs),
-                        "template": [None] * len(request.logs),
+                        "log": data,
+                        "cluster_id": [-1] * len(data),
+                        "template": [None] * len(data),
                     }
                 )
             
@@ -128,7 +131,7 @@ class MLService:
             aggregate_start = time.time()
             
             # 统计基本信息
-            total_logs = len(request.logs)
+            total_logs = len(data)
             matched_logs = len(result_df[result_df['cluster_id'] != -1])
             
             # 统计每个模板的出现次数
@@ -145,9 +148,9 @@ class MLService:
                 indices = result_df[mask].index.tolist()
                 
                 # 采样代表性日志
-                sample_size = min(request.max_samples, count)
+                sample_size = min(req_config.max_samples, count)
                 sample_indices = indices[:sample_size]
-                sample_logs = [request.logs[i] for i in sample_indices]
+                sample_logs = [data[i] for i in sample_indices]
                 
                 # 获取模板字符串
                 template_str = result_df[mask]['template'].iloc[0]
@@ -162,7 +165,7 @@ class MLService:
                 ))
             
             # 排序模板分组
-            if request.sort_by == "count":
+            if req_config.sort_by == "count":
                 template_groups.sort(key=lambda x: x.count, reverse=True)
             else:  # cluster_id
                 template_groups.sort(key=lambda x: x.cluster_id)
@@ -175,7 +178,7 @@ class MLService:
                 unknown_logs = [
                     {
                         'index': idx,
-                        'log': request.logs[idx],
+                        'log': data[idx],
                         'reason': 'no_matching_template'
                     }
                     for idx in unknown_indices
@@ -206,7 +209,7 @@ class MLService:
             )
             
             # 4. 可选：返回原始明细
-            if request.return_details:
+            if req_config.return_details:
                 results = [
                     LogClusterResult(
                         log=row["log"],

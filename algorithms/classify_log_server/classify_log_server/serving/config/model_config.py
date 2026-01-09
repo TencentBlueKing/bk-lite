@@ -1,8 +1,10 @@
 """模型加载配置."""
 
 import os
+from pathlib import Path
 from typing import Literal
 
+from dotenv import load_dotenv
 from pydantic import BaseModel, Field
 
 
@@ -29,6 +31,10 @@ class ModelConfig(BaseModel):
 
 def get_model_config() -> ModelConfig:
     """从环境变量加载模型配置."""
+    # 加载 .env 文件（如果存在）
+    env_path = Path(__file__).parent.parent.parent.parent / ".env"
+    load_dotenv(dotenv_path=env_path, override=False)
+    
     return ModelConfig(
         source=os.getenv("MODEL_SOURCE", "dummy"),
         model_path=os.getenv("MODEL_PATH"),

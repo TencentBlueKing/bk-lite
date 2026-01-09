@@ -5,24 +5,9 @@ from typing import Any, Dict, List, Optional
 from pydantic import BaseModel, Field, field_validator
 
 
-class LogClusterRequest(BaseModel):
-    """日志聚类请求."""
-
-    logs: List[str] = Field(
-        ...,
-        min_length=1,
-        max_length=10000,
-        description="日志消息列表（1-10000条）",
-        examples=[
-            [
-                "User login failed from IP 192.168.1.100",
-                "Database connection timeout after 30 seconds",
-                "User login failed from IP 10.0.0.5",
-            ]
-        ],
-    )
+class LogClusterConfig(BaseModel):
+    """日志聚类配置参数."""
     
-    # P0 优化：新增可选参数
     return_details: bool = Field(
         False,
         description="是否返回原始明细（默认只返回聚合视图）"
@@ -40,8 +25,31 @@ class LogClusterRequest(BaseModel):
         pattern="^(count|cluster_id)$",
         description="排序方式: count（按出现次数降序）, cluster_id（按ID升序）"
     )
+
+
+class LogClusterRequest(BaseModel):
+    """日志聚类请求."""
+
+    data: List[str] = Field(
+        ...,
+        min_length=1,
+        max_length=10000,
+        description="日志消息列表（1-10000条）",
+        examples=[
+            [
+                "User login failed from IP 192.168.1.100",
+                "Database connection timeout after 30 seconds",
+                "User login failed from IP 10.0.0.5",
+            ]
+        ],
+    )
     
-    @field_validator('logs')
+    config: LogClusterConfig = Field(
+        default_factory=LogClusterConfig,
+        description="聚类配置参数"
+    )
+    
+    @field_validator('data')
     @classmethod
     def validate_log_size(cls, v: List[str]) -> List[str]:
         """验证单条日志大小不超过10KB"""
