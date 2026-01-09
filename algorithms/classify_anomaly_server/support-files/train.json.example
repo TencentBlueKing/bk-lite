@@ -17,6 +17,7 @@
   "preprocessing": {
     "handle_missing": "interpolate",
     "max_missing_ratio": 0.3,
+    "interpolation_limit": 5,
     "label_column": "label"
   },
   

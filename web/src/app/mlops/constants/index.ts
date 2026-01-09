@@ -646,6 +646,25 @@ const ANOMALY_ALGORITHM_CONFIGS: Record<string, AlgorithmConfig> = {
               min: 0,
               max: 1,
               step: 0.1
+            },
+            {
+              name: ['preprocessing', 'interpolation_limit'],
+              label: '插值限制',
+              type: 'inputNumber',
+              required: true,
+              tooltip: '连续缺失值最多插值的数量，超过此数量的连续缺失不进行插值',
+              placeholder: '例: 5',
+              defaultValue: 5,
+              min: 1
+            },
+            {
+              name: ['preprocessing', 'label_column'],
+              label: '标签列名',
+              type: 'input',
+              required: true,
+              tooltip: '数据集中标签列的名称，用于区分正常和异常样本',
+              placeholder: '例: label',
+              defaultValue: 'label'
             }
           ]
         }

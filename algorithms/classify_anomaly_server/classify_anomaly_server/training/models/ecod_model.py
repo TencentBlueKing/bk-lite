@@ -383,6 +383,11 @@ class ECODModel(BaseAnomalyModel):
         self.contamination = best_params['contamination']
         self.config['contamination'] = best_params['contamination']
         
+        # 重新创建PyOD模型对象以应用新的contamination参数
+        # 必须重新创建,因为PyOD在初始化时保存contamination,fit时使用该值计算threshold
+        self.model = ECOD(contamination=self.contamination)
+        logger.info(f"已使用优化参数重新创建ECOD模型: contamination={self.contamination}")
+        
         return best_params
     
     def _build_search_space(self, search_space_config: Dict) -> Dict:
