@@ -584,6 +584,26 @@ class UniversalTrainer:
             except Exception as e:
                 logger.warning(f"PR 曲线绘制失败: {e}")
             
+            # 6. ECOD 异常分数分解图（仅对ECOD模型）
+            if self.config.model_type.upper() == "ECOD":
+                try:
+                    # 获取PyOD ECOD模型实例
+                    pyod_model = self.model.model if hasattr(self.model, 'model') else None
+                    if pyod_model is not None:
+                        MLFlowUtils.plot_ecod_decomposition(
+                            model=pyod_model,
+                            X=X_test,
+                            feature_names=X_test.columns.tolist(),
+                            top_n=10,  # 展示异常分数最高的10个样本
+                            title=f"{self.config.model_type} 异常分数分解",
+                            artifact_name=f"{self.config.model_type}_decomposition"
+                        )
+                        logger.info("✓ ECOD分解图已生成")
+                    else:
+                        logger.warning("无法获取ECOD模型实例，跳过分解可视化")
+                except Exception as e:
+                    logger.warning(f"ECOD分解图绘制失败: {e}")
+            
             logger.info("✓ 可视化图表已全部上传到 MLflow")
         
         return metrics
