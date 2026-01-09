@@ -76,7 +76,23 @@ class CloudRegionViewSet(mixins.ListModelMixin,
         cloud_region = CloudRegion.objects.filter(id=cloud_region_id).first()
         if cloud_region and cloud_region.name == 'default':
             raise BaseAppException("默认云区域禁止编辑")
-        return super().partial_update(request, *args, **kwargs)
+
+        # 如果proxy_address修改了，要同步更新云区域的环境变量PROXY_ADDRESS_REPLACE_KEYS
+        old_proxy_address = cloud_region.proxy_address if cloud_region else None
+        new_proxy_address = request.data.get('proxy_address')
+
+        # 执行更新
+        response = super().partial_update(request, *args, **kwargs)
+
+        # 如果proxy_address发生变化，更新相关环境变量
+        if new_proxy_address is not None and old_proxy_address != new_proxy_address:
+            RegionService.update_env_vars_on_proxy_change(
+                cloud_region_id=cloud_region_id,
+                old_proxy_address=old_proxy_address,
+                new_proxy_address=new_proxy_address
+            )
+
+        return response
 
     def create(self, request, *args, **kwargs):
         self.serializer_class = CloudRegionSerializer
