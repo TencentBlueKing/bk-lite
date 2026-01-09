@@ -42,10 +42,6 @@
         "installationMethod": "安装方式",
         "viewGuide": "查看指引",
         "loginAccount": "登录账号",
-        "authType": "验证方式",
-        "password": "密码",
-        "privateKey": "秘钥",
-        "uploadPrivateKey": "上传秘钥",
         "group": "组织",
         "error": "异常",
         "downloadPackage": "下载安装包",
@@ -100,8 +96,7 @@
         "btntext1": "如果您没有所需的配置文件，请单击",
         "successInstall": "安装成功",
         "ipaddress": "IP地址",
-        "loginPassword": "密码/秘钥",
-        "excelLoginPassword": "密码（秘钥请在网页导入）",
+        "loginPassword": "登录密码",
         "desc": "节点是控制器和组件运行的环境，可以是一个主机或容器。平台依托节点上的控制器，对节点进行管理，并统一调控被托管组件的运行。",
         "sidecarVersion": "控制器版本",
         "inactive": "不活跃",
@@ -129,7 +124,6 @@
         "nodeType": "节点类型",
         "commandCopied": "命令已复制",
         "commandCopiedDesc": "此命令专用于当前主机，请在其 PowerShell(管理员)窗口中粘贴执行。",
-        "linuxCommandCopiedDesc": "此命令专用于当前主机，请在该主机中粘贴执行。",
         "installError": "安装失败",
         "controllerVersionTip": "可升级新版本",
         "autoInstallDes": "手动安装请按照操作指引在主机上进行操作。",
@@ -151,7 +145,13 @@
         "confirmFinishContent1": "当前有",
         "statusCompleted": "已完成",
         "retrySuccess": "重试成功",
-        "copyInstallCommand": "复制安装命令"
+        "copyInstallCommand": "复制安装命令",
+        "excelLoginPassword": "密码（秘钥请在网页导入）",
+        "authType": "验证方式",
+        "linuxCommandCopiedDesc": "此命令专用于当前主机，请在该主机中粘贴执行。",
+        "password": "密码",
+        "privateKey": "秘钥",
+        "uploadPrivateKey": "上传秘钥"
       },
       "editform": {
         "Introduction": "简介",
@@ -281,7 +281,6 @@
     "refSuccess": "刷新成功",
     "topdes": "节点是控制器和托管组件运行的环境，可以是一个主机或容器。平台依托节点上的控制器，对节点进行管理，并统一调控被托管组件的运行。",
     "download": "下载",
-    "upload": "上传",
     "deleteTips": "您确定要修改此项吗？",
     "search": "搜索...",
     "unapply": "解绑",
@@ -289,6 +288,7 @@
     "batchbindSuccess": "绑定成功",
     "successfulDownloaded": "下载成功！",
     "configuration": "配置",
-    "successfullyModified": "修改成功！"
+    "successfullyModified": "修改成功！",
+    "upload": "上传"
   }
 }

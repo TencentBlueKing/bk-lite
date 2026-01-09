@@ -42,10 +42,6 @@
         "installationMethod": "Installation Method",
         "viewGuide": "View guidance",
         "loginAccount": "Login Account",
-        "authType": "Authentication Type",
-        "password": "Password",
-        "privateKey": "Secret Key",
-        "uploadPrivateKey": "Upload key",
         "group": "Group",
         "error": "Error",
         "downloadPackage": "Download Installation Package",
@@ -100,8 +96,7 @@
         "btntext1": "If you do not have the configuration file you need, please click",
         "successInstall": "Installed successfully",
         "ipaddress": "IP Address",
-        "loginPassword": "Password/Private Key",
-        "excelLoginPassword": "Password (please import the key on the webpage)",
+        "loginPassword": "Login Password",
         "desc": "Node is the environment in which controllers and components operate, which can be a host or a container. The platform leverages the controllers on the nodes to manage the nodes and uniformly regulate the operation of the components.",
         "sidecarVersion": "Controller Version",
         "inactive": "Inactive",
@@ -129,7 +124,6 @@
         "nodeType": "Node Type",
         "commandCopied": "Command Copied",
         "commandCopiedDesc": "This command is specific to the current host. Please paste and execute it in the PowerShell (Administrator) window.",
-        "linuxCommandCopiedDesc": "This command is specific to the current host. Please paste and execute it on that host.",
         "installError": "Install Failed",
         "controllerVersionTip": "Upgradeable to new version",
         "autoInstallDes": "For manual installation, please follow the operation instructions on the host device.",
@@ -151,7 +145,13 @@
         "confirmFinishContent1": "Currently",
         "statusCompleted": "Completed",
         "retrySuccess": "Retry successful",
-        "copyInstallCommand": "Copy Install Command"
+        "copyInstallCommand": "Copy Install Command",
+        "excelLoginPassword": "Password (please import the key on the webpage)",
+        "authType": "Authentication Type",
+        "linuxCommandCopiedDesc": "This command is specific to the current host. Please paste and execute it on that host.",
+        "password": "Password",
+        "privateKey": "Secret Key",
+        "uploadPrivateKey": "Upload key"
       },
       "editform": {
         "Introduction": "Introduction",
@@ -281,7 +281,6 @@
     "refSuccess": "Refresh successful",
     "topdes": "Node is the environment in which controllers and components operate, which can be a host or a container. The platform leverages the controllers on the nodes to manage the nodes and uniformly regulate the operation of the components.",
     "download": "Download",
-    "upload": "Upload",
     "deleteTips": "Are you sure you want to modify this item?",
     "search": "Search...",
     "unapply": "Unapply",
@@ -289,6 +288,7 @@
     "batchbindSuccess": "Bound successfully",
     "successfulDownloaded": "Download successful !",
     "configuration": "Configuration",
-    "successfullyModified": "Modified successfully!"
+    "successfullyModified": "Modified successfully!",
+    "upload": "Upload"
   }
 }
