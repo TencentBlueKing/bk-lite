@@ -237,3 +237,72 @@ class RegionService:
             logger.exception(f"Failed to initialize environment variables for cloud region {cloud_region_id}")
             # 不抛出异常，避免影响云区域创建流程
             return 0
+
+    @staticmethod
+    def update_env_vars_on_proxy_change(cloud_region_id, old_proxy_address, new_proxy_address):
+        """当云区域的 proxy_address 修改时，更新相关环境变量
+
+        Args:
+            cloud_region_id: 云区域ID
+            old_proxy_address: 旧的代理地址
+            new_proxy_address: 新的代理地址
+
+        Returns:
+            int: 更新的环境变量数量
+        """
+        try:
+            # 获取默认云区域的地址（从 NODE_SERVER_URL 中提取）
+            default_env_var = SidecarEnv.objects.filter(
+                cloud_region_id=CloudRegionConstants.DEFAULT_CLOUD_REGION_ID,
+                key=NodeConstants.SERVER_URL_KEY,
+                is_pre=True
+            ).first()
+
+            if not default_env_var:
+                logger.warning(f"Could not find NODE_SERVER_URL in default cloud region")
+                return 0
+
+            default_address = RegionService._extract_default_address(default_env_var.value)
+            if not default_address:
+                logger.warning(f"Could not extract default address from NODE_SERVER_URL")
+                return 0
+
+            # 确定旧地址和新地址
+            # 如果没有旧代理地址，说明之前使用的是默认地址
+            old_address = old_proxy_address if old_proxy_address else default_address
+            new_address = new_proxy_address if new_proxy_address else default_address
+
+            if old_address == new_address:
+                logger.info(f"Proxy address not changed for cloud region {cloud_region_id}, skip update")
+                return 0
+
+            # 获取需要更新的环境变量
+            env_vars_to_update = SidecarEnv.objects.filter(
+                cloud_region_id=cloud_region_id,
+                key__in=NodeConstants.PROXY_ADDRESS_REPLACE_KEYS
+            )
+
+            if not env_vars_to_update.exists():
+                logger.warning(f"No environment variables to update for cloud region {cloud_region_id}")
+                return 0
+
+            # 批量更新环境变量
+            updated_count = 0
+            for env_var in env_vars_to_update:
+                old_value = env_var.value
+                new_value = RegionService._replace_address(old_value, old_address, new_address)
+
+                if old_value != new_value:
+                    env_var.value = new_value
+                    env_var.save(update_fields=['value'])
+                    updated_count += 1
+                    logger.info(f"Updated {env_var.key} for cloud region {cloud_region_id}: {old_value} -> {new_value}")
+
+            logger.info(f"Updated {updated_count} environment variables for cloud region {cloud_region_id}")
+            return updated_count
+
+        except Exception as e:
+            logger.exception(f"Failed to update environment variables for cloud region {cloud_region_id}")
+            # 不抛出异常，避免影响云区域更新流程
+            return 0
+

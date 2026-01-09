@@ -1,6 +1,20 @@
 {
   "node-manager": {
     "cloudregion": {
+      "pageConfig": {
+        "node": {
+          "title": "节点",
+          "description": "节点是控制器和托管组件运行的环境，可以是一个主机或容器。平台依托节点上的控制器，对节点进行管理，并统一调控被托管组件的运行。"
+        },
+        "environment": {
+          "title": "环境",
+          "description": "云区域环境中通过在代理主机或 K8s 集群上运行的 Nats Executor 和 Stargazer 组件，实现与平台的通信。"
+        },
+        "variable": {
+          "title": "变量",
+          "description": "变量用于在配置文件中动态替换值，便于统一管理和配置复用。"
+        }
+      },
       "Configuration": {
         "windows": "Windows",
         "configurationType": "配置类型",
@@ -155,7 +169,10 @@
       },
       "editform": {
         "Introduction": "简介",
-        "title": "编辑云区域"
+        "title": "编辑云区域",
+        "proxyIpOrDomain": "代理IP/域名",
+        "proxyIpOrDomainPlaceholder": "请输入代理主机的IP地址或域名，例如：192.168.1.100或example.com",
+        "proxyTips": "代理主机是在云区域中能够与平台相互通信（默认通信端口：443、4222）的主机，请输入代理主机在该云区域网络中的IP或域名。"
       },
       "variable": {
         "password": "密码",
@@ -167,6 +184,29 @@
         "value": "数值",
         "variableNameTips": "仅允许字符 A-Z, a-z, 0-9, 和 _",
         "text": "文本"
+      },
+      "environment": {
+        "envStatus": "环境状态",
+        "envDeploy": "环境部署",
+        "containerDeploy": "容器部署",
+        "k8sDeploy": "K8s部署",
+        "proxyIpOrDomain": "代理IP/域名",
+        "proxyIpPlaceholder": "请输入代理主机的IP或域名",
+        "proxyTips": "代理主机是在云区域中能够与平台相互通信（默认通信端口：443、4222）的主机，请输入代理主机在该云区域网络中的IP或域名。",
+        "generateScript": "生成部署脚本",
+        "generateSuccess": "脚本生成成功",
+        "deployScript": "部署脚本",
+        "copyScript": "复制脚本",
+        "copySuccess": "复制成功",
+        "copySuccessDesc": "请前往代理主机执行复制的命令，命令执行成功后刷新代理状态。",
+        "refreshProxyStatus": "刷新代理状态",
+        "abnormal": "异常",
+        "normal": "正常",
+        "notDeployed": "未部署",
+        "editWarningTitle": "重要提示",
+        "editWarningContent": "修改云区域代理主机信息属于非常规操作，可能导致已有节点失联。",
+        "editWarningTip": "请确认此操作确有必要，并知晓潜在影响。",
+        "confirmEdit": "我已知晓，继续修改"
       },
       "deleteform": {
         "deleteInfo": "您确定要删除此云区域吗?",
@@ -267,6 +307,7 @@
     "name": "名称",
     "bulkEdit": "批量编辑",
     "batchbindFailed": "绑定失败",
+    "environment": "环境",
     "variable": "变量",
     "applysuccess": "应用成功!",
     "prompt": "提示",
@@ -279,7 +320,8 @@
     "apply": "应用",
     "quesuccess": "查询成功",
     "refSuccess": "刷新成功",
-    "topdes": "节点是控制器和托管组件运行的环境，可以是一个主机或容器。平台依托节点上的控制器，对节点进行管理，并统一调控被托管组件的运行。",
+    "loading": "加载中...",
+    "close": "关闭",
     "download": "下载",
     "deleteTips": "您确定要修改此项吗？",
     "search": "搜索...",

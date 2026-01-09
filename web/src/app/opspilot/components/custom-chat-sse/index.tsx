@@ -544,19 +544,18 @@ const CustomChatSSE: React.FC<CustomChatSSEProps> = ({
           height: isFullscreen ? 'calc(100vh - 70px)' : mode === 'chat' ? (showHeader ? 'calc(100% - 40px)' : '100%') : '100%'
         }}
       >
-        {guide && guideData.renderedHtml && (
-          <div className="mb-4 flex items-start gap-3" onClick={handleGuideClick}>
-            <div className="flex-shrink-0 mt-1">
-              <Icon type="jiqiren3" className={styles.guideAvatar} />
-            </div>
-            <div
-              dangerouslySetInnerHTML={{ __html: guideData.renderedHtml }}
-              className={`${styles.markdownBody} flex-1 p-3 bg-[var(--color-bg)] rounded-lg`}
-            />
-          </div>
-        )}
-
         <div ref={chatContentRef} className="flex-1 chat-content-wrapper overflow-y-auto overflow-x-hidden pb-4">
+          {guide && guideData.renderedHtml && (
+            <div className="mb-4 flex items-start gap-3" onClick={handleGuideClick}>
+              <div className="flex-shrink-0 mt-1">
+                <Icon type="jiqiren3" className={styles.guideAvatar} />
+              </div>
+              <div
+                dangerouslySetInnerHTML={{ __html: guideData.renderedHtml }}
+                className={`${styles.markdownBody} flex-1 p-3 bg-[var(--color-bg)] rounded-lg`}
+              />
+            </div>
+          )}
           <Flex gap="small" vertical>
             {messages.map(msg => (
               <Bubble
