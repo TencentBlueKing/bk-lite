@@ -10,6 +10,7 @@ from ..nodes.action.action import HttpActionNode, NotifyNode
 from ..nodes.agent.agent import AgentNode
 from ..nodes.basic.entry_exit import EntryNode, ExitNode
 from ..nodes.condition.branch import BranchNode
+from ..nodes.converter.text_to_pdf import TextToPdfNode
 from ..nodes.function.function import FunctionNode
 from ..nodes.intent.intent_classifier import IntentClassifierNode
 from .core.base_executor import BaseNodeExecutor
@@ -49,6 +50,9 @@ class NodeRegistry:
 
         # 函数节点
         self.register_node_class("function", FunctionNode)
+
+        # 转换节点
+        self.register_node_class("text_to_pdf", TextToPdfNode)
 
         # 意图分类节点
         self.register_node_class("intent_classification", IntentClassifierNode)  # 别名
