@@ -1,4 +1,6 @@
 from rest_framework import serializers
+
+from apps.node_mgmt.constants.database import CloudRegionConstants
 from apps.node_mgmt.models.cloud_region import CloudRegion, CloudRegionService
 from apps.node_mgmt.constants.cloudregion_service import CloudRegionServiceConstants
 
@@ -14,7 +16,7 @@ class CloudRegionServiceSerializer(serializers.ModelSerializer):
         data = super().to_representation(instance)
 
         # 当部署状态为未部署时，status 默认为 'not_deployed'
-        if instance.deployed_status == CloudRegionServiceConstants.NOT_DEPLOYED_STATUS:
+        if instance.deployed_status == CloudRegionServiceConstants.NOT_DEPLOYED_STATUS and instance.cloud_region.id != CloudRegionConstants.DEFAULT_CLOUD_REGION_ID:
             data['status'] = CloudRegionServiceConstants.NOT_DEPLOYED
 
         return data
