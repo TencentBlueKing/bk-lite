@@ -290,6 +290,147 @@ class MLFlowUtils:
         return img_path
     
     @staticmethod
+    def plot_coverage_overview(
+        cluster_ids: List[int],
+        noise_label: int = -1,
+        title: str = "日志模板覆盖率分析",
+        artifact_name: str = "coverage_overview"
+    ) -> str:
+        """
+        绘制日志模板覆盖率概览（饼图 + 关键指标）
+        
+        Args:
+            cluster_ids: 聚类ID列表
+            noise_label: 噪声/未匹配日志的标签值（默认-1）
+            title: 图表标题
+            artifact_name: 保存的文件名
+            
+        Returns:
+            保存的图片路径
+        """
+        total_logs = len(cluster_ids)
+        if total_logs == 0:
+            logger.warning("cluster_ids 为空，无法生成覆盖率可视化")
+            return ""
+        
+        # 统计覆盖情况
+        covered_count = sum(1 for cid in cluster_ids if cid != noise_label)
+        uncovered_count = total_logs - covered_count
+        coverage_rate = covered_count / total_logs
+        
+        # 统计有效聚类数（排除噪声标签）
+        valid_clusters = set(cid for cid in cluster_ids if cid != noise_label)
+        num_valid_clusters = len(valid_clusters)
+        
+        # 创建图表（1行2列：左侧饼图，右侧指标）
+        fig = plt.figure(figsize=(14, 6))
+        gs = fig.add_gridspec(1, 2, width_ratios=[1, 1.2])
+        
+        # 左侧：饼图
+        ax1 = fig.add_subplot(gs[0])
+        colors = ['#06A77D', '#F24236']  # 绿色（覆盖）、红色（未覆盖）
+        labels = [f'已覆盖\n{covered_count:,} 条', f'未覆盖\n{uncovered_count:,} 条']
+        sizes = [covered_count, uncovered_count]
+        
+        wedges, texts, autotexts = ax1.pie(
+            sizes, 
+            labels=labels, 
+            colors=colors,
+            autopct='%1.1f%%',
+            startangle=90,
+            textprops={'fontsize': 11, 'weight': 'bold'},
+            explode=(0.05, 0.05)
+        )
+        
+        for autotext in autotexts:
+            autotext.set_color('white')
+            autotext.set_fontsize(13)
+            autotext.set_weight('bold')
+        
+        ax1.set_title('覆盖率分布', fontsize=12, fontweight='bold', pad=20)
+        
+        # 右侧：关键指标展示
+        ax2 = fig.add_subplot(gs[1])
+        ax2.axis('off')
+        
+        # 大数字展示区域
+        metrics_data = [
+            ('覆盖率', f'{coverage_rate*100:.2f}%', '#06A77D'),
+            ('未覆盖日志数', f'{uncovered_count:,}', '#F24236'),
+            ('有效聚类数', f'{num_valid_clusters:,}', '#2E86AB'),
+            ('总日志数', f'{total_logs:,}', '#555555')
+        ]
+        
+        y_start = 0.85
+        y_step = 0.20
+        
+        for i, (metric_name, metric_value, color) in enumerate(metrics_data):
+            y_pos = y_start - i * y_step
+            
+            # 指标名称
+            ax2.text(0.1, y_pos, metric_name, 
+                    fontsize=13, color='#333333',
+                    verticalalignment='top')
+            
+            # 指标值（大号显示）
+            ax2.text(0.1, y_pos - 0.08, metric_value,
+                    fontsize=28, weight='bold', color=color,
+                    verticalalignment='top')
+        
+        # 添加健康度评估
+        health_y = 0.05
+        if coverage_rate >= 0.95:
+            health_status = "优秀"
+            health_color = '#06A77D'
+            health_icon = "✓"
+        elif coverage_rate >= 0.85:
+            health_status = "良好"
+            health_color = '#FFA500'
+            health_icon = "○"
+        elif coverage_rate >= 0.70:
+            health_status = "一般"
+            health_color = '#FF8C00'
+            health_icon = "△"
+        else:
+            health_status = "较差"
+            health_color = '#F24236'
+            health_icon = "✗"
+        
+        ax2.text(0.1, health_y, f'健康度评估: {health_icon} {health_status}',
+                fontsize=14, weight='bold', color=health_color,
+                bbox=dict(boxstyle='round,pad=0.5', facecolor=health_color, 
+                         alpha=0.2, edgecolor=health_color, linewidth=2))
+        
+        # 主标题
+        fig.suptitle(title, fontsize=14, fontweight='bold', y=0.98)
+        plt.tight_layout()
+        
+        # 保存图片
+        img_path = f"{artifact_name}.png"
+        plt.savefig(img_path, dpi=150, bbox_inches='tight')
+        
+        # 上传到 MLflow
+        if mlflow.active_run():
+            mlflow.log_artifact(img_path)
+            logger.info(f"覆盖率分析图已上传到 MLflow: {img_path}")
+            
+            # 记录覆盖率指标
+            mlflow.log_metric("coverage_rate", coverage_rate)
+            mlflow.log_metric("uncovered_count", uncovered_count)
+            mlflow.log_metric("num_valid_clusters", num_valid_clusters)
+            
+            # 清理本地临时文件
+            try:
+                import os
+                os.remove(img_path)
+            except Exception as e:
+                logger.warning(f"删除临时文件失败: {img_path}, 错误: {e}")
+        
+        plt.close()
+        
+        return img_path
+    
+    @staticmethod
     def plot_clustering_metrics_comparison(
         train_metrics: Dict[str, float],
         test_metrics: Optional[Dict[str, float]] = None,
