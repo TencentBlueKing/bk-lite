@@ -15,7 +15,7 @@ class CloudRegionServiceSerializer(serializers.ModelSerializer):
         """自定义序列化输出：当 deployed_status=0 时，status 默认为 'not_deployed'"""
         data = super().to_representation(instance)
 
-        # 当部署状态为未部署时，status 默认为 'not_deployed'
+        # 如果服务未部署，且不属于默认云区域，则将状态设置为 'not_deployed'
         if instance.deployed_status == CloudRegionServiceConstants.NOT_DEPLOYED_STATUS and instance.cloud_region.id != CloudRegionConstants.DEFAULT_CLOUD_REGION_ID:
             data['status'] = CloudRegionServiceConstants.NOT_DEPLOYED
 
