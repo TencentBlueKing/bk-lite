@@ -9,12 +9,17 @@ export const useUnitTransform = () => {
   const unitList = commonContext?.unitList || [];
 
   const findUnitNameById = (value: unknown): string => {
-    if (!value || value === 'short' || isStringArray(value as string)) {
+    const vacantUnits = ['short', 'none', 'counts'];
+    if (
+      !value ||
+      vacantUnits.includes(value as string) ||
+      isStringArray(value as string)
+    ) {
       return '';
     }
     const unit = unitList.find((item) => item.unit_id === value);
-    const isShortUnit = unit?.display_unit === 'short';
-    return isShortUnit ? '' : unit?.display_unit || value?.toString() || '';
+    const isVacantUnit = vacantUnits.includes(unit?.display_unit);
+    return isVacantUnit ? '' : unit?.display_unit || value?.toString() || '';
   };
 
   const getEnumValueUnit = (metric: MetricItem, id: number | string) => {
