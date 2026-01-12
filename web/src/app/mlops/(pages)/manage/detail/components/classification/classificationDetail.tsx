@@ -5,6 +5,7 @@ import useMlopsManageApi from '@/app/mlops/api/manage';
 import CustomTable from "@/components/custom-table";
 import PermissionWrapper from '@/components/permission';
 import UploadModal from "../../uploadModal";
+import DatasetReleaseList from '../DatasetReleaseList';
 import OperateModal from "@/components/operate-modal";
 import {
   Input,
@@ -145,7 +146,7 @@ const ClassificationDetail = () => {
         page: pagination.current,
         page_size: pagination.pageSize
       });
-      
+
       const _tableData = items?.map((item: any) => {
         return {
           id: item?.id,
@@ -243,7 +244,7 @@ const ClassificationDetail = () => {
             ]}
           />
         </div>
-        <div className='flex'>
+        <div className='flex gap-2'>
           <Search
             className="w-[240px] mr-1.5"
             placeholder={t('common.search')}
@@ -255,6 +256,9 @@ const ClassificationDetail = () => {
             <Button type="primary" className="rounded-md text-xs shadow" onClick={onUpload}>
               {t("datasets.upload")}
             </Button>
+          </PermissionWrapper>
+          <PermissionWrapper requiredPermissions={['File View']}>
+            <DatasetReleaseList datasetType="classification" />
           </PermissionWrapper>
         </div>
       </div>

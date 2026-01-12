@@ -16,6 +16,7 @@ interface UploadModalProps {
 const SUPPORTED_UPLOAD_TYPES = [
   'anomaly_detection',
   'timeseries_predict',
+  'classification',
   'image_classification',
   'object_detection',
   'log_clustering'
@@ -32,7 +33,8 @@ const UploadModal = forwardRef<ModalRef, UploadModalProps>(({ onSuccess }, ref) 
     addTimeSeriesPredictTrainData,
     addImageClassificationTrainData,
     addObjectDetectionTrainData,
-    addLogClusteringTrainData
+    addLogClusteringTrainData,
+    addClassificationTrainData
   } = useMlopsManageApi();
 
   const UPLOAD_API: Record<string, (data: FormData) => Promise<any>> = {
@@ -41,6 +43,7 @@ const UploadModal = forwardRef<ModalRef, UploadModalProps>(({ onSuccess }, ref) 
     image_classification: addImageClassificationTrainData,
     object_detection: addObjectDetectionTrainData,
     log_clustering: addLogClusteringTrainData,
+    classification: addClassificationTrainData
   };
 
   const FILE_CONFIG: Record<string, { accept: string; maxCount: number; fileType: string }> = {
@@ -49,6 +52,7 @@ const UploadModal = forwardRef<ModalRef, UploadModalProps>(({ onSuccess }, ref) 
     image_classification: { accept: 'image/*', maxCount: 10, fileType: 'image' },
     object_detection: { accept: 'image/*', maxCount: 10, fileType: 'image' },
     log_clustering: { accept: '.txt', maxCount: 1, fileType: 'txt' },
+    classification: { accept: '.csv', maxCount: 1, fileType: 'csv' },
   };
 
   const [visiable, setVisiable] = useState<boolean>(false);

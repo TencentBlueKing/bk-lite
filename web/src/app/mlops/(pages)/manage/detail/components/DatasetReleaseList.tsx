@@ -6,7 +6,7 @@ import { useTranslation } from '@/utils/i18n';
 import CustomTable from '@/components/custom-table';
 import useMlopsTaskApi from '@/app/mlops/api/task';
 import { useLocalizedTime } from '@/hooks/useLocalizedTime';
-import { ModalRef, ColumnItem } from '@/app/mlops/types';
+import { ModalRef, ColumnItem, DatasetReleaseKey } from '@/app/mlops/types';
 import DatasetReleaseModal from './DatasetReleaseModal';
 
 interface DatasetRelease {
@@ -30,10 +30,10 @@ interface DatasetRelease {
 }
 
 interface DatasetReleaseListProps {
-  datasetType: 'timeseries_predict' | 'anomaly_detection' | 'classification' | 'log_clustering' | 'rasa' | 'image_classification' | 'object_detection';
+  datasetType: DatasetReleaseKey;
 }
 
-const SUPPORTED_DATASET_TYPES = ['timeseries_predict', 'anomaly_detection', 'log_clustering'];
+const SUPPORTED_DATASET_TYPES = ['timeseries_predict', 'anomaly_detection', 'log_clustering', 'classification'];
 
 const DatasetReleaseList: React.FC<DatasetReleaseListProps> = ({ datasetType }) => {
   const { t } = useTranslation();
@@ -67,6 +67,7 @@ const DatasetReleaseList: React.FC<DatasetReleaseListProps> = ({ datasetType }) 
     if (!isSupportedType) return;
     setLoading(true);
     try {
+      console.log(datasetType)
       const result = await taskApi.getDatasetReleases(
         datasetType as 'timeseries_predict' | 'anomaly_detection',
         {
@@ -217,7 +218,7 @@ const DatasetReleaseList: React.FC<DatasetReleaseListProps> = ({ datasetType }) 
       // align: 'center',
       render: (_: any, record: DatasetRelease) => (
         <Space size="small">
-          {record.status === 'archived'
+          {(record.status === 'archived')
             ? <Button
               type='link'
               size='small'
@@ -228,7 +229,7 @@ const DatasetReleaseList: React.FC<DatasetReleaseListProps> = ({ datasetType }) 
             : <Button
               type="link"
               size="small"
-              disabled={record.status === 'pending'}
+              disabled={record.status === 'pending' || record.status == 'failed'}
               href={record.dataset_file}
             >
               {t(`common.download`)}
@@ -247,7 +248,7 @@ const DatasetReleaseList: React.FC<DatasetReleaseListProps> = ({ datasetType }) 
               </Button>
             </Popconfirm>
           )}
-          {record.status == 'archived' && (
+          {(record.status == 'archived' || record.status == 'failed') && (
             <Popconfirm
               title="确认删除"
               description="该文件将被删除"

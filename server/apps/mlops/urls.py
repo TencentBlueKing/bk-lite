@@ -28,7 +28,7 @@ router.register(r'timeseries_predict_dataset_releases', TimeSeriesPredictDataset
 router.register(r'classification_datasets', ClassificationDatasetViewSet, basename='classification_datasets')
 router.register(r'classification_train_data', ClassificationTrainDataViewSet, basename='classification_train_data')
 router.register(r'classification_train_jobs', ClassificationTrainJobViewSet, basename='classification_train_jobs')
-router.register(r'classification_train_history', ClassificationTrainHistoryViewSet, basename='classification_train_history')
+router.register(r'classification_dataset_releases', ClassificationDatasetReleaseViewSet, basename='classification_dataset_releases')
 router.register(r'classification_servings', ClassificationServingViewSet, basename='classification_servings')
 
 # 图片分类任务

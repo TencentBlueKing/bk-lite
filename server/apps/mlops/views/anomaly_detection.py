@@ -1,24 +1,19 @@
-from operator import index
 from config.drf.viewsets import ModelViewSet
 from apps.mlops.filters.anomaly_detection import *
-from rest_framework import viewsets
-from config.components.mlflow import MLFLOW_TRACKER_URL
 from apps.core.logger import opspilot_logger as logger
 from apps.core.decorators.api_permission import HasPermission
 from apps.mlops.models.anomaly_detection import *
 from apps.mlops.serializers.anomaly_detection import *
 from config.drf.pagination import CustomPageNumberPagination
 from rest_framework.response import Response
-import mlflow
 from rest_framework import status
-from django.http import Http404, FileResponse
+from django.http import FileResponse
 import pandas as pd
 import numpy as np
 from rest_framework.decorators import action
 from apps.mlops.utils.webhook_client import WebhookClient, WebhookError, WebhookConnectionError, WebhookTimeoutError
+from apps.mlops.utils import mlflow_service
 import os
-import tempfile
-import shutil
 import requests
 
 
@@ -56,7 +51,10 @@ class AnomalyDetectionTrainJobViewSet(ModelViewSet):
     serializer_class = AnomalyDetectionTrainJobSerializer
     filterset_class = AnomalyDetectionTrainJobFilter
     pagination_class = CustomPageNumberPagination
+    ordering = ("-id",)
     permission_key = "dataset.anomaly_detection_train_job"
+    
+    MLFLOW_PREFIX = "AnomalyDetection"  # MLflow 命名前缀
 
     @action(detail=True, methods=['post'], url_path='train')
     @HasPermission("train_tasks-Train")
@@ -113,7 +111,11 @@ class AnomalyDetectionTrainJobViewSet(ModelViewSet):
                 )
             
             # 构建训练任务标识
-            job_id = f"AnomalyDetection_{train_job.algorithm}_{train_job.id}"
+            job_id = mlflow_service.build_job_id(
+                prefix=self.MLFLOW_PREFIX,
+                algorithm=train_job.algorithm,
+                train_job_id=train_job.id
+            )
             
             logger.info(f"启动训练任务: {job_id}")
             logger.info(f"  Dataset: {train_job.dataset_version.dataset_file.name}")
@@ -184,7 +186,11 @@ class AnomalyDetectionTrainJobViewSet(ModelViewSet):
                 )
             
             # 构建训练任务标识
-            job_id = f"AnomalyDetection_{train_job.algorithm}_{train_job.id}"
+            job_id = mlflow_service.build_job_id(
+                prefix=self.MLFLOW_PREFIX,
+                algorithm=train_job.algorithm,
+                train_job_id=train_job.id
+            )
             
             logger.info(f"停止训练任务: {job_id}")
             
@@ -234,15 +240,16 @@ class AnomalyDetectionTrainJobViewSet(ModelViewSet):
             # 获取训练任务
             train_job = self.get_object()
 
-            # 设置mlflow跟踪
-            mlflow.set_tracking_uri(MLFLOW_TRACKER_URL)
-
             # 构造实验名称（与训练时保持一致）
-            experiment_name = f"AnomalyDetection_{train_job.algorithm}_{train_job.id}"
+            experiment_name = mlflow_service.build_experiment_name(
+                prefix=self.MLFLOW_PREFIX,
+                algorithm=train_job.algorithm,
+                train_job_id=train_job.id
+            )
 
             # 查找实验
-            experiments = mlflow.search_experiments(filter_string=f"name = '{experiment_name}'")
-            if not experiments:
+            experiment = mlflow_service.get_experiment_by_name(experiment_name)
+            if not experiment:
                 return Response({
                     'train_job_id': train_job.id,
                     'train_job_name': train_job.name,
@@ -252,13 +259,8 @@ class AnomalyDetectionTrainJobViewSet(ModelViewSet):
                     'data': []
                 })
 
-            experiment = experiments[0]
-
             # 查找该实验中的运行
-            runs = mlflow.search_runs(
-                experiment_ids=[experiment.experiment_id],
-                order_by=["start_time DESC"],
-            )
+            runs = mlflow_service.get_experiment_runs(experiment.experiment_id)
 
             if runs.empty:
                 return Response({
@@ -352,18 +354,15 @@ class AnomalyDetectionTrainJobViewSet(ModelViewSet):
     @HasPermission("train_tasks-View")
     def get_runs_metrics_list(self, request, run_id: str):
         try:
-            # 设置MLflow跟踪URI
-            mlflow.set_tracking_uri(MLFLOW_TRACKER_URL)
-
-            # 创建MLflow客户端
-            client = mlflow.tracking.MlflowClient()
-
-            # 定义需要获取历史的指标
-            important_metrics = [metric for metric in client.get_run(run_id).data.metrics.keys()
-                                 if not str(metric).startswith("system")]
+            # 获取运行的指标列表（过滤系统指标）
+            model_metrics = mlflow_service.get_run_metrics(
+                run_id=run_id,
+                filter_system=True
+            )
 
             return Response({
-                'metrics': important_metrics
+                'run_id': run_id,
+                'metrics': model_metrics
             })
 
         except Exception as e:
@@ -379,16 +378,10 @@ class AnomalyDetectionTrainJobViewSet(ModelViewSet):
         获取指定 run 的指定指标的历史数据
         """
         try:
-            # 跟踪Mlflow的uri
-            mlflow.set_tracking_uri(MLFLOW_TRACKER_URL)
-
-            # 创建客户端
-            client = mlflow.tracking.MlflowClient()
-
-            # 获取指标历史数据
-            history = client.get_metric_history(run_id, metric_name)
+            # 获取指标历史数据（自动处理排序）
+            metric_data = mlflow_service.get_metric_history(run_id, metric_name)
             
-            if not history:
+            if not metric_data:
                 return Response({
                     "run_id": run_id,
                     "metric_name": metric_name,
@@ -396,60 +389,13 @@ class AnomalyDetectionTrainJobViewSet(ModelViewSet):
                     "metric_history": []
                 })
             
-            # 检查是否所有 step 都相同（通常是 0，表示未设置 step）
-            all_steps = [m.step for m in history]
-            unique_steps = set(all_steps)
-            
-            # 如果所有 step 都相同，说明记录时未指定 step，使用 timestamp 排序
-            if len(unique_steps) == 1:
-                logger.info(f"指标 {metric_name} 未使用 step，按 timestamp 排序（共 {len(history)} 条）")
-                metric_history = [
-                    {
-                        "step": idx,  # 使用序号代替 step
-                        "value": m.value,
-                        "timestamp": m.timestamp
-                    }
-                    for idx, m in enumerate(sorted(history, key=lambda x: x.timestamp))
-                ]
-            else:
-                # 正常场景：使用 step 去重，相同 step 保留最新的值
-                metric_dict = {}
-                for metric in history:
-                    step = metric.step
-                    # 如果 step 已存在，根据 timestamp 保留最新的
-                    if step in metric_dict:
-                        if metric.timestamp > metric_dict[step]['timestamp']:
-                            metric_dict[step] = {
-                                'step': step,
-                                'value': metric.value,
-                                'timestamp': metric.timestamp
-                            }
-                    else:
-                        metric_dict[step] = {
-                            'step': step,
-                            'value': metric.value,
-                            'timestamp': metric.timestamp
-                        }
-                
-                # 按 step 排序
-                metric_history = sorted(metric_dict.values(), key=lambda x: x['step'])
-            
-            # 移除 timestamp（仅用于排序/去重）
-            metric_history_clean = [
-                {
-                    "step": item['step'],
-                    "value": item['value']
-                }
-                for item in metric_history
-            ]
-            
-            logger.info(f"返回 {len(metric_history_clean)} 条指标数据，step 范围: {metric_history_clean[0]['step'] if metric_history_clean else 'N/A'} - {metric_history_clean[-1]['step'] if metric_history_clean else 'N/A'}")
+            logger.info(f"返回 {len(metric_data)} 条指标数据")
 
             return Response({
                 "run_id": run_id,
                 "metric_name": metric_name,
-                "total_points": len(metric_history_clean),
-                "metric_history": metric_history_clean
+                "total_points": len(metric_data),
+                "metric_history": metric_data
             })
             
         except Exception as e:
@@ -466,20 +412,12 @@ class AnomalyDetectionTrainJobViewSet(ModelViewSet):
         获取指定 run 的配置参数（用于查看历史训练的配置）
         """
         try:
-            # 设置 MLflow 跟踪 URI
-            mlflow.set_tracking_uri(MLFLOW_TRACKER_URL)
+            # 获取运行信息和参数
+            run = mlflow_service.get_run_info(run_id)
+            params = mlflow_service.get_run_params(run_id)
             
-            # 创建 MLflow 客户端
-            client = mlflow.tracking.MlflowClient()
-            
-            # 获取 run 信息
-            run = client.get_run(run_id)
-            
-            # 获取所有参数
-            params = run.data.params
-            
-            # 获取 run_name 和状态
-            run_name = run.data.tags.get('mlflow.runName', '')
+            # 提取运行元信息
+            run_name = run.data.tags.get('mlflow.runName', run_id)
             run_status = run.info.status
             start_time = run.info.start_time
             end_time = run.info.end_time
@@ -508,36 +446,28 @@ class AnomalyDetectionTrainJobViewSet(ModelViewSet):
         """
         try:
             train_job = self.get_object()
-            model_name = f"AnomalyDetection_{train_job.algorithm}_{train_job.id}"
             
-            mlflow.set_tracking_uri(MLFLOW_TRACKER_URL)
-            client = mlflow.tracking.MlflowClient()
+            # 构造模型名称
+            model_name = mlflow_service.build_model_name(
+                prefix=self.MLFLOW_PREFIX,
+                algorithm=train_job.algorithm,
+                train_job_id=train_job.id
+            )
             
-            # 获取模型的所有版本
-            versions = client.search_model_versions(f"name='{model_name}'")
+            # 查询模型版本
+            version_data = mlflow_service.get_model_versions(model_name)
             
-            version_list = []
-            for version in versions:
-                version_list.append({
-                    'version': version.version,
-                    'status': version.status,
-                    'creation_timestamp': version.creation_timestamp,
-                    'last_updated_timestamp': version.last_updated_timestamp,
-                    'current_stage': version.current_stage,
-                    'description': version.description,
-                    'run_id': version.run_id,
+            if not version_data:
+                logger.info(f"模型未找到版本: {model_name}")
+                return Response({
+                    'model_name': model_name,
+                    'versions': [],
+                    'total': 0
                 })
             
-            # 按版本号降序排序
-            version_list.sort(key=lambda x: int(x['version']), reverse=True)
+            logger.info(f"获取模型版本列表成功: {model_name}, 共 {version_data['total']} 个版本")
             
-            logger.info(f"获取模型版本列表成功: {model_name}, 共 {len(version_list)} 个版本")
-            
-            return Response({
-                'model_name': model_name,
-                'versions': version_list,
-                'total': len(version_list)
-            })
+            return Response(version_data)
             
         except Exception as e:
             logger.error(f"获取模型版本列表失败: {str(e)}", exc_info=True)
@@ -557,121 +487,26 @@ class AnomalyDetectionTrainJobViewSet(ModelViewSet):
         from io import BytesIO
         
         try:
-            # 1. 设置 MLflow
-            mlflow.set_tracking_uri(MLFLOW_TRACKER_URL)
-            mlflow_client = mlflow.tracking.MlflowClient()
+            # 获取 run 信息（用于文件命名）
+            run = mlflow_service.get_run_info(run_id)
+            run_name = run.data.tags.get("mlflow.runName", run_id)
             
-            # 2. 验证 run 是否存在
-            try:
-                run = mlflow_client.get_run(run_id)
-            except Exception as e:
-                logger.error(f"Run 不存在: {run_id} - {e}")
-                return Response(
-                    {'error': f'Run 不存在: {run_id}'},
-                    status=status.HTTP_404_NOT_FOUND
-                )
-            
-            # 3. 检查模型 artifacts 是否存在
-            try:
-                artifacts = mlflow_client.list_artifacts(run_id, path="model")
-                if not artifacts:
-                    return Response(
-                        {'error': '该 Run 未保存模型，无法下载'},
-                        status=status.HTTP_404_NOT_FOUND
-                    )
-            except Exception as e:
-                logger.error(f"获取模型 artifacts 失败: {e}")
-                return Response(
-                    {'error': f'获取模型 artifacts 失败: {str(e)}'},
-                    status=status.HTTP_500_INTERNAL_SERVER_ERROR
-                )
-            
-            # 4. 生成文件名
-            run_name = run.data.tags.get('mlflow.runName', 'unknown')
-            
-            # 尝试从 Experiment name 提取 algorithm (格式: AnomalyDetection_{algorithm}_{id})
-            experiment_id = run.info.experiment_id
-            experiment = mlflow_client.get_experiment(experiment_id)
-            experiment_name = experiment.name if experiment else ""
-            
-            # 从 experiment_name 解析: AnomalyDetection_{algorithm}_{id}
-            algorithm = 'unknown'
-            if experiment_name.startswith('AnomalyDetection_'):
-                parts = experiment_name.split('_')
-                if len(parts) >= 3:
-                    algorithm = parts[1]  # 提取算法名
-            
-            # 尝试从 Model Registry 获取模型名称和版本
-            model_name = None
-            model_version = None
-            try:
-                model_versions = mlflow_client.search_model_versions(f"run_id='{run_id}'")
-                if model_versions:
-                    model_name = model_versions[0].name
-                    model_version = model_versions[0].version
-            except Exception as e:
-                logger.warning(f"未找到注册模型信息: {e}")
+            # 下载并打包模型
+            zip_buffer = mlflow_service.download_model_artifact(run_id)
             
             # 构建文件名
-            if model_name and model_version:
-                filename = f"{model_name}_v{model_version}.zip"
-            else:
-                filename = f"{algorithm}_{run_name}_{run_id[:8]}.zip"
+            filename = f"AnomalyDetection_{run_name}_{run_id[:8]}.zip"
             
-            logger.info(f"开始下载模型: run_id={run_id}, filename={filename}")
+            # 返回文件
+            response = FileResponse(
+                zip_buffer,
+                content_type='application/zip',
+                as_attachment=True,
+                filename=filename
+            )
             
-            # 5. 下载模型并打包
-            with tempfile.TemporaryDirectory() as tmpdir:
-                try:
-                    # 从 MLflow 下载 model artifact
-                    logger.info(f"从 MLflow 下载模型 artifacts...")
-                    local_path = mlflow.artifacts.download_artifacts(
-                        run_id=run_id,
-                        artifact_path="model",
-                        dst_path=tmpdir
-                    )
-                    logger.info(f"模型下载完成: {local_path}")
-                    
-                    # 打包成 ZIP
-                    logger.info(f"开始打包模型...")
-                    zip_base = os.path.join(tmpdir, run_id)
-                    shutil.make_archive(
-                        zip_base,
-                        'zip',
-                        local_path
-                    )
-                    zip_path = f"{zip_base}.zip"
-                    
-                    # 获取文件大小
-                    file_size = os.path.getsize(zip_path)
-                    logger.info(f"模型打包完成: {zip_path}, 大小: {round(file_size / 1024 / 1024, 2)} MB")
-                    
-                    # 6. 读取文件到内存（避免 Windows 文件句柄占用问题）
-                    logger.info(f"读取文件到内存...")
-                    with open(zip_path, 'rb') as f:
-                        file_data = f.read()
-                    
-                    logger.info(f"文件已读取到内存，大小: {len(file_data)} 字节")
-                    
-                    # 7. 使用 BytesIO 包装，文件句柄已关闭，临时目录可以正常清理
-                    file_obj = BytesIO(file_data)
-                    
-                    response = FileResponse(
-                        file_obj,
-                        content_type='application/zip',
-                        as_attachment=True,
-                        filename=filename
-                    )
-                    
-                    logger.info(f"模型下载请求完成: {filename}")
-                    return response
-                    
-                except Exception as e:
-                    logger.error(f"模型下载或打包失败: {e}", exc_info=True)
-                    return Response(
-                        {'error': f'模型处理失败: {str(e)}'},
-                        status=status.HTTP_500_INTERNAL_SERVER_ERROR
-                    )
+            logger.info(f"模型下载请求完成: {filename}")
+            return response
             
         except Exception as e:
             logger.error(f"下载模型失败: {str(e)}", exc_info=True)
@@ -920,6 +755,8 @@ class AnomalyDetectionServingViewSet(ModelViewSet):
     filterset_class = AnomalyDetectionServingFilter
     pagination_class = CustomPageNumberPagination
     permission_key = "serving.anomaly_detection_serving"
+    
+    MLFLOW_PREFIX = "AnomalyDetection"  # MLflow 命名前缀
 
     @HasPermission("model_release-View")
     def list(self, request, *args, **kwargs):
@@ -1614,32 +1451,16 @@ class AnomalyDetectionServingViewSet(ModelViewSet):
             serving: AnomalyDetectionServing 实例
         
         Returns:
-            str: MLflow model URI，如 "models:/AnomalyDetection_RandomForest_1/28"
+            str: MLflow model URI
         
         Raises:
             ValueError: 解析失败时抛出
         """
         train_job = serving.anomaly_detection_train_job
-        model_name = f"AnomalyDetection_{train_job.algorithm}_{train_job.id}"
+        model_name = mlflow_service.build_model_name(
+            prefix=self.MLFLOW_PREFIX,
+            algorithm=train_job.algorithm,
+            train_job_id=train_job.id
+        )
         
-        if serving.model_version == "latest":
-            # 查询最新版本
-            mlflow.set_tracking_uri(MLFLOW_TRACKER_URL)
-            client = mlflow.tracking.MlflowClient()
-            
-            try:
-                # 搜索模型的所有版本
-                versions = client.search_model_versions(f"name='{model_name}'")
-                if not versions:
-                    raise ValueError(f"模型 {model_name} 没有已注册的版本")
-                
-                # 获取最新版本号
-                latest_version = max([int(v.version) for v in versions])
-                logger.info(f"解析 latest 版本: {model_name} -> {latest_version}")
-                return f"models:/{model_name}/{latest_version}"
-                
-            except Exception as e:
-                raise ValueError(f"无法解析 latest 版本: {e}")
-        else:
-            # 直接使用指定版本
-            return f"models:/{model_name}/{serving.model_version}"
+        return mlflow_service.resolve_model_uri(model_name, serving.model_version)

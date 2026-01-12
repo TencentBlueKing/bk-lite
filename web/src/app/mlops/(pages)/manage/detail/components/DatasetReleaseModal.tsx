@@ -5,22 +5,15 @@ import { useTranslation } from '@/utils/i18n';
 import OperateModal from '@/components/operate-modal';
 import useMlopsManageApi from '@/app/mlops/api/manage';
 import useMlopsTaskApi from '@/app/mlops/api/task';
-import { ModalRef } from '@/app/mlops/types';
+import { DatasetReleaseKey, ModalRef } from '@/app/mlops/types';
 
 // const { TextArea } = Input;
 
 interface DatasetReleaseModalProps {
   datasetId: string;
-  datasetType: 'timeseries_predict' | 'anomaly_detection' | 'classification' | 'log_clustering' | 'rasa' | 'image_classification' | 'object_detection';
+  datasetType: DatasetReleaseKey;
   onSuccess?: () => void;
 }
-
-// API 配置映射
-const GET_TRAIN_DATA_API: Record<string, string> = {
-  timeseries_predict: 'getTimeSeriesPredictTrainData',
-  anomaly_detection: 'getAnomalyTrainData',
-  log_clustering: 'getLogClusteringTrainData',
-};
 
 interface TrainDataFile {
   id: number;
@@ -33,7 +26,7 @@ interface TrainDataFile {
 const DatasetReleaseModal = forwardRef<ModalRef, DatasetReleaseModalProps>(
   ({ datasetId, datasetType, onSuccess }, ref) => {
     const { t } = useTranslation();
-    const manageApi = useMlopsManageApi();
+    const { getTrainDataByDataset } = useMlopsManageApi();
     const taskApi = useMlopsTaskApi();
     const formRef = useRef<FormInstance>(null);
     const [open, setOpen] = useState<boolean>(false);
@@ -51,8 +44,8 @@ const DatasetReleaseModal = forwardRef<ModalRef, DatasetReleaseModalProps>(
 
     const fetchFiles = async () => {
       try {
-        const getTrainDataFn = manageApi[GET_TRAIN_DATA_API[datasetType] as keyof typeof manageApi] as (params: any) => Promise<any>;
-        const { items } = await getTrainDataFn({
+        const { items } = await getTrainDataByDataset({
+          key: datasetType,
           dataset: datasetId,
           page: 1,
           page_size: 1000,

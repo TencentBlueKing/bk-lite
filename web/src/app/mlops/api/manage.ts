@@ -1,17 +1,6 @@
 import useApiClient from "@/utils/request";
-import { TrainDataParams } from '@/app/mlops/types/manage';
 import { DATASET_MAP, TRAINDATA_MAP } from "@/app/mlops/constants";
 import { DatasetReleaseKey } from "../types";
-
-interface TrainDataBrochure {
-  dataset: number;
-  name: string;
-  train_data: (TrainDataParams | string)[];
-  metadata?: object;
-  is_train_data?: boolean;
-  is_val_data?: boolean;
-  is_test_data?: boolean;
-}
 
 const useMlopsManageApi = () => {
   const {
@@ -309,8 +298,12 @@ const useMlopsManageApi = () => {
   };
 
   // 新增分类任务样本文件
-  const addClassificationTrainData = async (params: TrainDataBrochure) => {
-    return await post(`/mlops/classification_train_data`, params);
+  const addClassificationTrainData = async (params: FormData) => {
+    return await post(`/mlops/classification_train_data`, params, {
+      headers: {
+        "Content-Type": 'multipart/form-data'
+      }
+    });
   };
 
   // 新增图片分类任务样本文件
