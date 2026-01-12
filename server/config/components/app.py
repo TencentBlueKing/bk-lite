@@ -61,6 +61,7 @@ AUTH_USER_MODEL = "base.User"
 MIDDLEWARE = (
     "django.middleware.security.SecurityMiddleware",
     "whitenoise.middleware.WhiteNoiseMiddleware",
+    "apps.core.middlewares.request_timing_middleware.RequestTimingMiddleware",  # 请求耗时记录
     "django.contrib.sessions.middleware.SessionMiddleware",
     "django.middleware.common.CommonMiddleware",
     # "django.middleware.csrf.CsrfViewMiddleware",
