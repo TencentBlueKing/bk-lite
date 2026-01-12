@@ -1,3 +1,5 @@
+import json
+
 from rest_framework import viewsets, status
 from rest_framework.decorators import action
 
@@ -397,6 +399,13 @@ class ModelViewSet(viewsets.ViewSet):
                 field_group.attr_orders = attr_orders
                 field_group.save()
 
+        # 如果修改的是枚举类型字段，需要更新所有实例的 _display 冗余字段
+        attr_type = request.data.get("attr_type")
+        if attr_type == "enum":
+            attr_id = request.data.get("attr_id")
+            new_options = request.data.get("option", [])
+            ModelManage.update_enum_instances_display(model_id, attr_id, new_options)
+
         return WebUtils.response_success(result)
 
     @HasPermission("model_management-Delete Model")
@@ -464,7 +473,8 @@ class ModelViewSet(viewsets.ViewSet):
             return WebUtils.response_error("抱歉！您没有此模型的权限", status_code=status.HTTP_403_FORBIDDEN)
 
         result = ModelManage.search_model_attr(model_id, request.user.locale)
-        return WebUtils.response_success(result)
+        filtered_attrs = [attr for attr in result if not attr.get("is_display_field")]
+        return WebUtils.response_success(filtered_attrs)
 
     @HasPermission("model_management-View")
     @action(detail=False, methods=["get"], url_path="model_association_type")

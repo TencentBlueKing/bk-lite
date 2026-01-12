@@ -105,3 +105,59 @@ def sync_periodic_update_task_status():
                                         exec_time__lt=five_minutes_ago).update(
         exec_status=CollectRunStatusType.ERROR)
     logger.info("开始周期执行修改采集状态完成, rows={}".format(rows))
+
+
+@shared_task
+def sync_cmdb_display_fields_task(data: dict):
+    """
+    同步 CMDB 实例的 _display 字段（Celery 任务）
+    
+    当系统管理模块修改组织或用户信息时，触发此任务同步更新 CMDB 所有实例的 _display 字段
+    
+    Args:
+        data: 变更数据字典
+            格式: {
+                "organizations": [{"id": 1, "name": "新组织名"}],
+                "users": [{"id": 1, "display_name": "新显示名"}]
+            }
+    
+    Returns:
+        dict: 执行结果
+            格式: {
+                "result": True,
+                "data": {"organizations": 10, "users": 5}
+            }
+    """
+    try:
+        from apps.cmdb.display_field import DisplayFieldSynchronizer
+        
+        logger.info(
+            f"[SyncCMDBDisplayFields] 开始同步 CMDB _display 字段, "
+            f"组织数: {len(data.get('organizations', []))}, "
+            f"用户数: {len(data.get('users', []))}"
+        )
+        
+        # 执行同步
+        result = DisplayFieldSynchronizer.sync_all(data)
+        
+        logger.info(
+            f"[SyncCMDBDisplayFields] 同步完成, "
+            f"组织更新实例数: {result.get('organizations', 0)}, "
+            f"用户更新实例数: {result.get('users', 0)}"
+        )
+        
+        return {
+            "result": True,
+            "message": "CMDB display fields synced successfully",
+            "data": result
+        }
+        
+    except Exception as exc:
+        logger.error(
+            f"[SyncCMDBDisplayFields] 同步失败: {str(exc)}",
+            exc_info=True
+        )
+        return {
+            "result": False,
+            "message": f"Failed to sync CMDB display fields: {str(exc)}"
+        }
