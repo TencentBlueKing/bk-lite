@@ -162,6 +162,7 @@ def verify_token(token):
             "role_ids": all_role_ids,  # 返回所有角色ID（个人+组）
             "locale": user.locale,
             "permission": menus,
+            "timezone": user.timezone,
         },
     }
 
