@@ -29,7 +29,7 @@ export const useHostConfig = () => {
         },
       },
       {
-        indexId: 'load5',
+        indexId: 'system_load5',
         displayType: 'dashboard',
         sortIndex: 2,
         displayDimension: [],
@@ -55,7 +55,7 @@ export const useHostConfig = () => {
         },
       },
       {
-        indexId: 'cpu_summary.usage',
+        indexId: 'cpu_usage_total',
         displayType: 'lineChart',
         sortIndex: 4,
         displayDimension: ['cpu'],
@@ -75,7 +75,7 @@ export const useHostConfig = () => {
         },
       },
       {
-        indexId: 'mem.pct_used',
+        indexId: 'mem_used_percent',
         displayType: 'lineChart',
         sortIndex: 6,
         displayDimension: ['device'],
@@ -116,9 +116,9 @@ export const useHostConfig = () => {
       },
     ],
     tableDiaplay: [
-      { type: 'progress', key: 'cpu_summary.usage' },
-      { type: 'progress', key: 'mem.pct_used' },
-      { type: 'value', key: 'load5' },
+      { type: 'progress', key: 'cpu_usage_total' },
+      { type: 'progress', key: 'mem_used_percent' },
+      { type: 'value', key: 'system_load5' },
     ],
     groupIds: {
       list: ['instance_id'],
