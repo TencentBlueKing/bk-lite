@@ -3,6 +3,7 @@
 """
 
 import json
+import threading
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from graphlib import CycleError, TopologicalSorter
@@ -177,9 +178,10 @@ class ChatFlowEngine:
                             user_id, accumulated_content, "bot", entry_type, node_id, session_id
                         )
 
-                    import threading
-
                     threading.Thread(target=record_history_in_background, daemon=True).start()
+
+                # 执行后续节点(在后台异步执行,不阻塞流式响应)
+                self._execute_subsequent_nodes_async(target_agent_node, accumulated_content)
 
             except Exception as e:
                 logger.error(f"[SSE-Engine] Stream error: {e}", exc_info=True)
@@ -414,6 +416,121 @@ class ChatFlowEngine:
         response["Cache-Control"] = "no-cache, no-store, must-revalidate"
         response["X-Accel-Buffering"] = "no"
         return response
+
+    def _execute_subsequent_nodes_async(self, agent_node: Dict[str, Any], agent_output: Any):
+        """在后台异步执行agents节点之后的节点
+
+        Args:
+            agent_node: agents节点配置
+            agent_output: agents节点的输出内容
+        """
+        import threading
+
+        def execute_in_background():
+            """后台线程执行函数"""
+            try:
+                # 获取后续节点
+                next_nodes = self._get_next_nodes(agent_node.get("id"), {"success": True, "data": {}})
+
+                if not next_nodes:
+                    logger.info(f"[SSE-Engine] agents节点 {agent_node.get('id')} 没有后续节点")
+                    return
+
+                logger.info(f"[SSE-Engine] 开始执行 {len(next_nodes)} 个后续节点: {next_nodes}")
+
+                # 准备输入数据
+                # 从累积的内容中提取最终消息
+                final_message = self._extract_final_message(agent_output)
+
+                # 更新全局变量
+                self.variable_manager.set_variable("last_message", final_message)
+
+                # 准备节点输入
+                node_input = {"last_message": final_message}
+
+                # 执行每个后续节点
+                for next_node_id in next_nodes:
+                    try:
+                        next_node = self._get_node_by_id(next_node_id)
+                        if not next_node:
+                            logger.warning(f"[SSE-Engine] 后续节点不存在: {next_node_id}")
+                            continue
+
+                        node_type = next_node.get("type")
+                        executor = self._get_node_executor(node_type)
+
+                        if not executor:
+                            logger.warning(f"[SSE-Engine] 找不到节点执行器: {node_type}")
+                            continue
+
+                        logger.info(f"[SSE-Engine] 执行后续节点: {next_node_id} ({node_type})")
+
+                        # 执行节点
+                        result = executor.execute(next_node_id, next_node, node_input)
+
+                        logger.info(f"[SSE-Engine] 后续节点 {next_node_id} 执行完成: {result}")
+
+                        # 更新输入为下一个节点准备
+                        if result and isinstance(result, dict):
+                            node_input.update(result)
+
+                    except Exception as e:
+                        logger.error(f"[SSE-Engine] 后续节点 {next_node_id} 执行失败: {str(e)}", exc_info=True)
+                        # 继续执行其他节点
+                        continue
+
+            except Exception as e:
+                logger.error(f"[SSE-Engine] 后续节点执行失败: {str(e)}", exc_info=True)
+
+        # 在后台线程中执行
+        thread = threading.Thread(target=execute_in_background, daemon=True, name="SSE-SubsequentNodes")
+        thread.start()
+        logger.info("[SSE-Engine] 已启动后台线程执行后续节点")
+
+    def _extract_final_message(self, accumulated_content: list) -> str:
+        """从累积的流式内容中提取最终消息
+
+        Args:
+            accumulated_content: 累积的数据列表
+
+        Returns:
+            最终消息字符串
+        """
+        if not accumulated_content:
+            return ""
+
+        # 尝试从最后一个消息中提取
+        final_msg_parts = []
+
+        for data in accumulated_content:
+            if not isinstance(data, dict):
+                continue
+
+            data_type = data.get("type", "")
+
+            # 处理不同协议的消息类型
+            if data_type == "TEXT_MESSAGE_CONTENT":
+                # AGUI 协议
+                delta = data.get("delta", "")
+                if delta:
+                    final_msg_parts.append(delta)
+            elif data_type in ["message", "content", "text"]:
+                # SSE/OpenAI 协议
+                content = data.get("content") or data.get("message") or data.get("text", "")
+                if content:
+                    final_msg_parts.append(content)
+            else:
+                # 尝试直接提取常见字段
+                for key in ["content", "message", "text", "delta"]:
+                    value = data.get(key)
+                    if value and isinstance(value, str):
+                        final_msg_parts.append(value)
+                        break
+
+        final_message = "".join(final_msg_parts) if final_msg_parts else str(accumulated_content[-1] if accumulated_content else "")
+
+        logger.info(f"[SSE-Engine] 提取的最终消息长度: {len(final_message)}")
+        return final_message
 
     """聊天流程执行引擎"""
 

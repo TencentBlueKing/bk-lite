@@ -3,6 +3,12 @@ class NodeConstants:
 
     # 节点服务地址key
     SERVER_URL_KEY = "NODE_SERVER_URL"
+    
+    # NATS 服务器地址key
+    NATS_SERVERS_KEY = "NATS_SERVERS"
+    
+    # 需要替换代理地址的环境变量key列表
+    PROXY_ADDRESS_REPLACE_KEYS = [SERVER_URL_KEY, NATS_SERVERS_KEY]
 
     # 节点支持的操作系统
     LINUX_OS = "linux"

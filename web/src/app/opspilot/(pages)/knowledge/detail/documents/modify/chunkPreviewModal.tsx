@@ -35,11 +35,6 @@ const ChunkPreviewModal: React.FC<ChunkPreviewModalProps> = ({
   const [chunkPageSize, setChunkPageSize] = useState<number>(20);
   const [chunkTotalCount, setChunkTotalCount] = useState<number>(0);
 
-  // 同步 initialSelectedChunks 变化到内部 state
-  useEffect(() => {
-    setSelectedChunks(initialSelectedChunks);
-  }, [initialSelectedChunks]);
-
   useEffect(() => {
     if (visible && selectedDocuments.length > 0 && !selectedPreviewDoc) {
       const firstDoc = selectedDocuments[0];

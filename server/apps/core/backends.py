@@ -1,9 +1,11 @@
 import logging
 from typing import Any, Dict, Optional
 
+import pytz
 from django.contrib.auth.backends import ModelBackend
 from django.core.cache import caches
 from django.db import IntegrityError
+from django.utils import timezone as django_timezone
 from django.utils import translation
 
 from apps.base.models import User, UserAPISecret
@@ -100,6 +102,17 @@ class AuthBackend(ModelBackend):
         except Exception:
             pass  # 忽略locale设置失败
 
+        # 处理用户时区设置
+        timezone = user_info.get("timezone")
+        if not timezone:
+            return
+
+        try:
+            tz = pytz.timezone(timezone)
+            django_timezone.activate(tz)
+        except Exception as e:
+            logger.warning(f"Failed to activate timezone {timezone}: {e}")
+
     def _get_user_rules(self, request, user_info: Dict[str, Any]) -> Dict[str, Any]:
         """获取用户规则权限"""
         if not request or not hasattr(request, "COOKIES"):
@@ -126,7 +139,7 @@ class AuthBackend(ModelBackend):
         if is_superuser:
             return True
         app_name = request.path.split("api/v1/")[-1].split("/", 1)[0]
-        app_name_map = {"system_mgmt": "system-manager", "node_mgmt": "node", "console_mgmt": "ops-console","operation_analysis":"ops-analysis"}
+        app_name_map = {"system_mgmt": "system-manager", "node_mgmt": "node", "console_mgmt": "ops-console", "operation_analysis": "ops-analysis"}
         app_name = app_name_map.get(app_name, app_name)
         app_admin = f"{app_name}--admin"
         return app_admin in user_info.get("roles", [])

@@ -13,7 +13,6 @@ import {
   ObjectItem,
   MetricItem,
   ChartDataItem,
-  NodeWorkload,
   OrganizationNode,
 } from '@/app/monitor/types';
 import { Group } from '@/types';
@@ -394,36 +393,6 @@ export const findTreeParentKey = (
   };
   loop(treeData, null); // 初始父节点为 null
   return parentKey;
-};
-
-export const getK8SData = (
-  data: Record<
-    string,
-    Record<string, { node: string[]; workload: NodeWorkload[] }>
-  >
-) => {
-  let result = [];
-  try {
-    result = Object.entries(data).map(([key, value]) => ({
-      id: key,
-      child: Object.entries(value).map(([innerKey, innerValue]) => ({
-        id: innerKey,
-        child: [
-          {
-            id: 'node',
-            child: innerValue.node,
-          },
-          {
-            id: 'workload',
-            child: innerValue.workload,
-          },
-        ],
-      })),
-    }));
-  } catch {
-    return [];
-  }
-  return result;
 };
 
 // 展示监控示例名称

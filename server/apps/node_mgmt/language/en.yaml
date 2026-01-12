@@ -139,4 +139,4 @@ controller:
     name: Windows Controller
 controller_install_method:
   manual: Manual Installation
-  auto: Automatic Installation
+  auto: Remote installation

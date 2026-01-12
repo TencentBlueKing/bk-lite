@@ -196,10 +196,10 @@ const StudioChatPage: React.FC = () => {
                 </div>
               </Dropdown>
               <div 
-                className="text-xl cursor-pointer hover:text-blue-500 transition-colors ml-2 flex-shrink-0"
+                className="w-8 h-8 rounded-full bg-white shadow-md hover:shadow-lg cursor-pointer hover:text-blue-500 transition-all ml-2 flex-shrink-0 flex items-center justify-center"
                 onClick={() => setSidebarCollapsed(true)}
               >
-                <Icon type="xiangzuoshousuo" />
+                <Icon type="xiangzuoshousuo" className="text-base" />
               </div>
             </div>
             <Button 

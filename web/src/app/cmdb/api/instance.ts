@@ -11,7 +11,12 @@ export const useInstanceApi = () => {
   const fulltextSearchInstances = (params: any) =>
     post('/cmdb/api/instance/fulltext_search/', params);
 
-  // 拓扑搜索实例
+  const fulltextSearchStats = (params: any) =>
+    post('/cmdb/api/instance/fulltext_search/stats/', params);
+
+  const fulltextSearchByModel = (params: any) =>
+    post('/cmdb/api/instance/fulltext_search/by_model/', params);
+
   const topoSearchInstances = (modelId: string, instId: string) =>
     get(`/cmdb/api/instance/topo_search/${modelId}/${instId}/`);
 
@@ -80,6 +85,8 @@ export const useInstanceApi = () => {
   return {
     searchInstances,
     fulltextSearchInstances,
+    fulltextSearchStats,
+    fulltextSearchByModel,
     topoSearchInstances,
     getInstanceDetail,
     createInstance,
