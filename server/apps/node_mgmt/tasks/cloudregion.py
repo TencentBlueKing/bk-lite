@@ -33,5 +33,5 @@ def check_all_region_services():
 
     # 批量更新所有服务状态
     if services_to_update:
-        CloudRegionService.objects.bulk_update(services_to_update, ['status', 'message'])
+        CloudRegionService.objects.bulk_update(services_to_update, ['status', 'deployed_status', 'message'])
         logger.info(f"批量更新了 {len(services_to_update)} 个云区域服务的健康状态")
