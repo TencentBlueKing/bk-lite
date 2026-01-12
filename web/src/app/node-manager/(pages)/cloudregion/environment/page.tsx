@@ -12,6 +12,7 @@ import {
   message,
   Modal,
   Spin,
+  Empty,
 } from 'antd';
 import { useTranslation } from '@/utils/i18n';
 import {
@@ -280,49 +281,56 @@ const EnvironmentPage = () => {
             />
           </div>
           <Spin spinning={loading}>
-            <div style={{ display: 'flex', gap: 24 }}>
-              {envStatusList.map((envItem) => {
-                const config =
-                  statusConfig[envItem.status] || statusConfig.not_deployed;
-                return (
-                  <Card
-                    key={envItem.id}
-                    bordered={false}
-                    style={{
-                      flex: 1,
-                      borderTop: `3px solid ${config.borderColor}`,
-                      borderRadius: '4px',
-                      background: config.backgroundColor,
-                    }}
-                    bodyStyle={{ padding: '20px 24px' }}
-                  >
-                    <div
+            {!!envStatusList?.length ? (
+              <div style={{ display: 'flex', gap: 24 }}>
+                {envStatusList.map((envItem) => {
+                  const config =
+                    statusConfig[envItem.status] || statusConfig.not_deployed;
+                  return (
+                    <Card
+                      key={envItem.id}
+                      bordered={false}
                       style={{
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'space-between',
+                        flex: 1,
+                        borderTop: `3px solid ${config.borderColor}`,
+                        borderRadius: '4px',
+                        background: config.backgroundColor,
                       }}
+                      bodyStyle={{ padding: '20px 24px' }}
                     >
-                      <Space size={12}>
-                        {envItem.icon}
-                        <span
-                          style={{
-                            fontSize: 16,
-                            fontWeight: 500,
-                            color: config.textColor,
-                          }}
-                        >
-                          {envItem.name}
-                        </span>
-                      </Space>
-                      <Tag color={config.tagColor} style={{ margin: 0 }}>
-                        {config.label}
-                      </Tag>
-                    </div>
-                  </Card>
-                );
-              })}
-            </div>
+                      <div
+                        style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'space-between',
+                        }}
+                      >
+                        <Space size={12}>
+                          {envItem.icon}
+                          <span
+                            style={{
+                              fontSize: 16,
+                              fontWeight: 500,
+                              color: config.textColor,
+                            }}
+                          >
+                            {envItem.name}
+                          </span>
+                        </Space>
+                        <Tag color={config.tagColor} style={{ margin: 0 }}>
+                          {config.label}
+                        </Tag>
+                      </div>
+                    </Card>
+                  );
+                })}
+              </div>
+            ) : (
+              <Empty
+                image={Empty.PRESENTED_IMAGE_SIMPLE}
+                style={{ height: 54 }}
+              />
+            )}
           </Spin>
         </div>
 

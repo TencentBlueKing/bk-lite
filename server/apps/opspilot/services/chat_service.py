@@ -172,7 +172,6 @@ class ChatService:
             chat_kwargs.update({"extra_config": extra_config})
         elif extra_config:
             chat_kwargs.update({"extra_config": extra_config})
-        logger.info(f"usermessage: {user_message}")
         return chat_kwargs, doc_map, title_map
 
 
