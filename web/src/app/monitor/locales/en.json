@@ -127,7 +127,6 @@
       "activemq_topic_queue_size_value": "Queue Size",
       "ifOutErrors": "Out Errors",
       "apache_req_per_sec": "Requests per Second",
-      "cpu_usage_total": "CPU Usage",
       "filterOptions": "Filter Options",
       "jvm_memory_usage_max_value": "JVM Memory Usage Max",
       "pod_memory_utilization": "Memory Usage",
@@ -170,7 +169,6 @@
       "tomcat_connector_request_count": "Request Count",
       "jmx_scrape_error_gauge": "JMX Scrape Error",
       "esxi_cpu_usage_average_gauge": "CPU Usage",
-      "mem_used_percent": "Memory Usage",
       "tomcat_connector_current_threads_busy": "Busy Thread Count",
       "zookeeper_avg_latency": "Average Latency",
       "oracledb_up_gauge": "OracleDb Status",
@@ -196,7 +194,6 @@
       "cluster_node_count": "Node Count",
       "cvm_LanOuttraffic": "Internal Outbound Network Bandwidth",
       "ipmi_power_watts": "Power Status",
-      "system_load5": "Load(5min)",
       "ifOutOctets": "Out Traffic",
       "data_storage_store_accessible_gauge": "Storage Connectivity Status",
       "dashboard": "Dashboard",
@@ -243,7 +240,10 @@
       "minio_cluster_drive_offline_total_gauge": "Total Offline Nodes",
       "memory_usage": "Memory Usage",
       "avg_latency": "Average Latency",
-      "minio_cluster_capacity_usable_free_bytes_gauge": "Cluster Usable Free Cap"
+      "minio_cluster_capacity_usable_free_bytes_gauge": "Cluster Usable Free Cap",
+      "cpu_usage_total": "CPU Usage",
+      "mem_used_percent": "Memory Usage",
+      "system_load5": "Load(5min)"
     },
     "integrations": {
       "publishAddressDes": "The main website for system monitoring, used to detect its availability and performance status.",

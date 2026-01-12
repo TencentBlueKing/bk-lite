@@ -130,144 +130,143 @@ monitor_object_metric:
       desc: 结合在线、脱机数量评估存储设备整体状况。
       name: 集群中的驱动器总数
   Host:
-    cpu_usage_total:
-      name: CPU使用率
-      desc: 反映主机整体 CPU 的使用情况，表示非空闲时间在总 CPU 时间中的占比，用于衡量系统的整体计算压力。持续高位通常意味着 CPU 资源成为系统瓶颈。
-    cpu_usage_core:
-      name: CPU单核使用率
-      desc: 描述单个 CPU 核心的使用情况，用于分析 CPU 负载在各核心间的分布，帮助识别负载不均或热点核心问题。
-    cpu_usage_iowait_total:
-      name: CPU等待IO占比
-      desc: 表示 CPU 因等待 I/O 操作完成而处于空闲状态的时间占比，主要用于判断系统是否受限于磁盘或其他 I/O 性能。
-    cpu_usage_system_total:
-      name: CPU系统占用率
-      desc: 表示 CPU 在内核态执行操作系统相关任务所占用的时间比例，异常升高可能与系统调用频繁或内核开销增加有关。
-    cpu_usage_user_total:
-      name: CPU用户占用率
-      desc: 表示 CPU 在用户态执行应用程序逻辑所消耗的时间占比，通常用于衡量业务程序对 CPU 的消耗程度。
-    cpu_usage_irq_total:
-      name: CPU 硬件中断占用率
-      desc: 表示 CPU 用于处理硬件中断请求的时间占比，可用于辅助定位硬件设备或驱动相关的性能问题。
-    cpu_usage_steal_total:
-      name: CPU 被抢占率
-      desc: 表示在虚拟化环境中，当前虚拟机的 CPU 时间被宿主机或其他虚拟机占用的比例，用于评估虚拟化资源争抢情况。
-    system_load1:
-      name: 1分钟平均负载
-      desc: 表示系统在最近 1 分钟内的平均运行负载，主要用于观察系统的瞬时压力变化。
-    system_load5:
-      name: 5分钟平均负载
-      desc: 表示系统在最近 5 分钟内的平均运行负载，用于分析系统负载的短期趋势。
-    system_load15:
-      name: 15分钟平均负载
-      desc: 表示系统在最近 15 分钟内的平均运行负载，用于评估系统负载的长期稳定性。
-    diskio_io_util:
-      name: 磁盘IO使用率
-      desc: 表示磁盘设备处于忙碌状态的时间占比，用于衡量磁盘 I/O 资源的整体利用情况。持续高位通常意味着磁盘 I/O 成为性能瓶颈。
-    diskio_writes_rate:
-      name: 磁盘写入IOPS
-      desc: 表示磁盘每秒完成的写入操作次数，用于衡量写入请求的并发强度和 I/O 压力。
-    diskio_write_bytes_rate:
-      name: 磁盘写入速率
-      desc: 表示磁盘单位时间内写入的数据量，用于评估磁盘写入吞吐能力。
-    disk_write_latency:
-      name: 磁盘写入延迟
-      desc: 表示单次磁盘写入操作的平均耗时，用于分析磁盘写入性能及响应能力。
-    diskio_reads_rate:
-      name: 磁盘读出IOPS
-      desc: 表示磁盘每秒完成的读取操作次数，用于衡量读请求的并发程度和 I/O 压力。
-    diskio_read_bytes_rate:
-      name: 磁盘读出速率
-      desc: 表示磁盘单位时间内读取的数据量，用于评估磁盘读取吞吐能力。
-    disk_read_latency:
-      name: 磁盘读出延迟
-      desc: 表示单次磁盘读取操作的平均耗时，用于分析磁盘读取性能和访问延迟。
-    disk_total:
-      name: 磁盘总空间
-      desc: 表示磁盘或文件系统的总容量，用于容量规划与资源管理。
-    disk_free:
-      name: 磁盘剩余空间
-      desc: 表示磁盘或文件系统当前可用的剩余容量，用于监控磁盘空间风险。
-    disk_used_percent:
-      name: 磁盘使用率
-      desc: 表示磁盘已使用空间占总容量的比例，是磁盘容量监控的核心指标。
-    disk_inodes_used_percent:
-      name: Inode使用率
-      desc: 表示文件系统 Inode 的使用比例，用于防范因 Inode 耗尽导致的文件创建失败问题。
-    processes_running:
-      name: 运行中进程数
-      desc: 表示当前处于运行状态的进程数量，用于反映系统的并发执行情况。
-    processes_blocked:
-      name: 阻塞进程数
-      desc: 表示因 I/O 或资源竞争而处于阻塞状态的进程数量，用于辅助判断系统资源瓶颈。
-    processes_zombies:
-      name: 僵尸进程数
-      desc: 表示已退出但仍保留进程表项的僵尸进程数量，持续存在可能表明进程回收异常。
-    processes_sleeping:
-      name: 休眠进程数
-      desc: 表示当前处于休眠或等待事件状态的进程数量。
-    mem_total:
-      name: 内存总量
-      desc: 表示系统可使用的物理内存总容量，是内存资源评估的基础指标。
-    mem_available:
-      name: 可用内存
-      desc: 表示系统在不触发明显性能下降的情况下，可分配给应用使用的内存容量。
-    mem_used_percent:
-      name: 内存使用率
-      desc: 表示已使用内存占总内存的比例，用于评估系统的内存压力水平。
-    mem_swap_free:
-      name: 空闲交换内存
-      desc: 表示当前剩余可用的交换内存空间，用于监控内存紧张情况下的缓冲能力。
-    mem_cached:
-      name: 缓存内存
-      desc: 表示操作系统用于文件缓存的内存大小，该部分内存可在需要时被回收。
-    mem_shared:
-      name: 共享内存
-      desc: 表示被多个进程共享使用的内存容量。
-    mem_buffered:
-      name: 缓冲内存
-      desc: 表示操作系统用于块设备 I/O 缓冲的内存容量。
-    net_packets_recv_rate:
-      name: 网络接收包速率
-      desc: 表示网络接口单位时间内接收的数据包数量，用于衡量网络包级流量情况。
-    net_packets_sent_rate:
-      name: 网络发送包速率
-      desc: 表示网络接口单位时间内发送的数据包数量。
-    net_bytes_recv_rate:
-      name: 网络接收吞吐速率
-      desc: 表示网络接口单位时间内接收的数据量，用于评估网络接收带宽使用情况。
-    net_bytes_sent_rate:
-      name: 网络发送吞吐速率
-      desc: 表示网络接口单位时间内发送的数据量，用于评估网络发送带宽使用情况。
-    net_err_in_rate:
-      name: 网络接收错误包速率
-      desc: 表示网络接口单位时间内接收到的错误数据包数量，用于监控网络质量。
-    net_err_out_rate:
-      name: 网络发送错误包速率
-      desc: 表示网络接口单位时间内发送失败的错误数据包数量。
-    net_drop_in_rate:
-      name: 网络接收丢包速率
-      desc: 表示网络接口单位时间内被丢弃的接收数据包数量，用于评估网络拥塞或异常情况。
-    net_drop_out_rate:
-      name: 网络发送丢包速率
-      desc: 表示网络接口单位时间内被丢弃的发送数据包数量。
+    env:
+      proc_running_current:
+        name: 正在运行进程数
+        desc: 显示当前正在运行的进程数，用于评估系统的并发运行情况。此指标对实时监控系统负载有重要价值。
+      procs_blocked_current:
+        desc: 显示正在等待IO操作的进程数，分析此值有助于优化系统性能并减少瓶颈。此指标对发现IO瓶颈很有帮助。
+        name: 正在等待 IO 的进程数
+      procs:
+        desc: 显示系统中运行的总进程数，帮助了解系统负载分布情况。此指标对监控系统的整体运行情况非常重要。
+        name: 总进程数
+    net:
+      speed_sent:
+        name: 网卡出流量
+        desc: 显示单位时间内网络接口发送的字节数量（单位为MB），用于评估网络带宽利用率。本指标对监控网络带宽非常关键。
+      dropped_out:
+        desc: 显示网络接口发送的丢弃包数量，指示网络发送拥塞情况。本指标对监控网络可靠性非常关键。
+        name: 网卡丢弃包
+      errors_out:
+        name: 网卡错误包
+        desc: 显示网络接口发送的错误包数量，帮助了解网络传输错误。此指标对发现网络故障和不正常流量非常有帮助。
+      speed_recv:
+        name: 网卡入流量
+        desc: 显示单位时间内网络接口接收的字节数量（单位为MB），用于评估网络带宽利用率。本指标对监控网络带宽非常重要。
+      errors_in:
+        desc: 显示网络接口接收到的错误包数量，用于检测网络问题。此指标对发现网络故障和不正常流量非常有帮助。
+        name: 网卡错误包
+      speed_packets_sent:
+        name: 网卡出包量
+        desc: 显示单位时间内网络接口发送的数据包数量，用于评估网络发送性能。本指标对监控网络流量非常关键。
+      speed_packets_recv:
+        name: 网卡入包量
+        desc: 显示单位时间内网络接口接收的数据包数量，用于评估网络接收性能。本指标对监控网络流量非常关键。
+      dropped_in:
+        name: 网卡丢弃包
+        desc: 显示网络接口接收到的丢弃包数量，指示网络接收拥塞情况。本指标对监控网络可靠性非常关键。
     nvidia_smi_memory_total:
+      desc: GPU的显存总容量，表示该设备支持的最大显存量。
       name: GPU显存总容量
-      desc: 表示 GPU 可用的显存总容量，是 GPU 资源评估的基础指标。
-    nvidia_smi_memory_free:
-      name: GPU显存空闲量
-      desc: 表示当前 GPU 可分配的空闲显存容量。
-    nvidia_smi_utilization_memory:
-      name: GPU显存使用率
-      desc: 表示已使用 GPU 显存占总显存的比例，用于评估 GPU 显存压力。
-    nvidia_smi_power_draw:
-      name: GPU功耗
-      desc: 表示 GPU 当前的实时功耗水平，用于监控能耗和运行状态。
+    load5:
+      name: 5 分钟平均负载
+      desc: 显示系统在最近五分钟内的平均负载，反映中期系统的负载情况。此中期指标有助于发现持续和间歇性的高负载情况。
+    cpu_summary:
+      iowait:
+        name: 等待 IO 的时间占比
+        desc: 显示CPU等待IO操作完成的时间占比，这指示出磁盘或网络性能对系统的影响程度。减少等待时间有助于提升系统性能。此指标对分析系统瓶颈点非常有用。
+      system:
+        desc: 显示系统占用率，表示内核进程消耗的CPU资源，分析该值有助于优化系统内核的性能和稳定性。
+        name: 系统占用率
+      user:
+        desc: 显示用户进程占用的CPU资源比例，这帮助了解应用程序和服务的性能。本指标对于了解具体应用的CPU消耗有帮助。
+        name: 用户占用率
+      idle:
+        desc: 显示CPU的空闲率，表示系统中未被使用的CPU资源量。这有助于了解系统是否处于高负载。此指标对分析系统性能和效率至关重要。
+        name: CPU 空闲率
+      usage:
+        desc: 显示CPU的使用率，来表示系统的负载情况。它通过总量减去空闲量得出。此指标对监控系统性能非常关键。
+        name: CPU 使用率
+    nvidia_smi_memory_used:
+      name: GPU显存已使用量
+      desc: 当前GPU显存已经被占用的容量，反映运行任务占用的显存大小。
+    diskio_write_bytes:
+      desc: 统计在指定时间间隔内，系统写入数据到磁盘的字节数，并用兆字节 (MB) 表示。
+      name: 磁盘写入大小
+    mem:
+      buffer:
+        desc: 显示用于缓冲的内存量（单位为GB），保障数据的稳定传输。此指标对于性能优化策略非常重要。
+        name: Buffer 的空间大小
+      shared:
+        desc: 显示共享内存的使用量（单位为GB），用于进程间的数据共享。此指标对优化系统内存分配策略有帮助。
+        name: 共享内存使用量
+      pct_used:
+        name: 应用程序内存使用占比
+        desc: 显示应用程序内存使用占比，了解内存使用分布情况。此指标对优化内存使用有重要参考价值。
+      pct_usable:
+        desc: 显示内存可用率，帮助确定内存是否充足以支持应用程序。该指标对监控内存压力和扩容策略有用。
+        name: 应用程序内存可用率
+      free:
+        desc: 显示当前空闲的物理内存量（单位为GB），帮助了解可用资源。此指标是掌握内存资源使用情况的关键。
+        name: 物理内存空闲量
+      total:
+        desc: 显示系统的总物理内存量（单位为GB），概述系统资源配置。此指标对了解系统资源的基础配置很重要。
+        name: 物理内存总大小
+      used:
+        desc: 显示应用程序使用的内存量（单位为GB），分析此值有助于优化应用内存使用。此指标对监控应用资源消耗非常关键。
+        name: 应用程序内存使用量
+      psc_used:
+        name: 物理内存已用量
+        desc: 显示系统已用的物理内存总量（单位为GB），帮助整体掌握内存资源分配。此指标对全面了解系统内存使用情况非常重要。
+      usable:
+        name: 应用程序内存可用量
+        desc: 显示应用程序可用的内存（单位为GB），确保应用的平稳运行。此指标对维持应用性能和稳定性很重要。
+      cached:
+        name: Cache 缓存的空间大小
+        desc: 显示用于缓存的内存量（单位为GB），用于提高系统性能。该指标对理解内存缓存策略非常重要。
+    load1:
+      desc: 显示系统在最近一分钟内的平均负载，提供短期内系统活动的快照。本指标有助于实时监控系统性能。
+      name: 1 分钟平均负载
+    diskio_reads:
+      desc: 统计在指定时间间隔内，系统从磁盘读取数据的操作次数。
+      name: 磁盘读出速率
+    diskio_write_time:
+      name: 磁盘写入耗时
+      desc: 统计在指定时间间隔内，系统写入数据到磁盘所用的时间，以秒 (s) 为单位。
+    disk:
+      is_use:
+        desc: 显示磁盘空间的使用比例，帮助了解磁盘资源的使用情况。该指标对防止磁盘满溢非常重要。
+        name: 磁盘使用率
+      used:
+        desc: 显示实际使用的磁盘空间（以GB为单位），用于确定磁盘容量使用情况。本指标对监控磁盘空间的使用量很有帮助。
+        name: 磁盘已用空间大小
+    diskio_read_time:
+      name: 磁盘读出耗时
+      desc: 统计在指定时间间隔内，系统从磁盘读取数据所用的时间，以秒 (s) 为单位。
+    diskio_read_bytes:
+      name: 磁盘读出大小
+      desc: 统计在指定时间间隔内，系统从磁盘读取的字节数，并用兆字节 (MB) 表示。
     nvidia_smi_temperature_gpu:
       name: GPU核心温度
-      desc: 表示 GPU 核心当前的运行温度，用于监控 GPU 热状态及散热健康度。
-    nvidia_smi_fan_speed_avg:
-      name: GPU风扇转速
-      desc: 表示 GPU 风扇的平均转速百分比，用于辅助判断散热策略和硬件状态。
+      desc: 当前GPU核心的运行温度，以摄氏度（°C）为单位，用于监控设备的运行状态和安全性。
+    load15:
+      name: 15 分钟平均负载
+      desc: 显示系统在最近十五分钟内的平均负载，长时间的负载观察有助于了解系统的整体性能趋势。
+    diskio_writes:
+      desc: 统计在指定时间间隔内，系统写入数据到磁盘的操作次数。
+      name: 磁盘写入速率
+    nvidia_smi_fan_speed:
+      desc: 当前GPU风扇运行速度的百分比，相对于风扇的最大转速（0%~100%），用于监控散热情况和工作状态。
+      name: GPU风扇转速占比
+    nvidia_smi_memory_free:
+      desc: 当前GPU显存中未被占用的剩余容量，用于评估可用资源。
+      name: GPU显存剩余容量
+    nvidia_smi_utilization_memory:
+      name: GPU显存使用率
+      desc: 当前显存使用的百分比，表示GPU显存资源的使用情况（0%~100%），有助于优化显存分配。
+    nvidia_smi_power_draw:
+      name: GPU实时功耗
+      desc: 当前GPU使用的实时功率消耗，以瓦特（W）为单位，用于监控GPU的能耗水平。
   JVM:
     jvm_memorypool_usage_used_value:
       desc: Java 虚拟机中内存池当前实际已使用的内存量，直观体现内存池使用程度
@@ -2001,14 +2000,13 @@ monitor_object_metric_group:
     Tablespace: 表空间
     RAC: 集群
   Host:
-    CPU: CPU
-    System: 系统
-    Disk IO: 磁盘 IO
-    Disk: 磁盘
-    Process: 进程
-    Memory: 内存
     Net: 网络
-    Nvidia GPU: Nvidia GPU
+    CPU: CPU
+    DISK: 磁盘
+    Disk IO: 磁盘 IO
+    Process: 进程
+    MEMORY: 内存
+    System: 系统
   Firewall:
     Packet: 数据包
     Packet Loss: 数据包丢失
