@@ -129,6 +129,7 @@ opspilot = [
     "azure-cognitiveservices-vision-computervision==0.9.0",
     "browser-use==0.9.0",
     "patchright",
+    "reportlab==4.2.5",
 ]
 
 [tool.black]
