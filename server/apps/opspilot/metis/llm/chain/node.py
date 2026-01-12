@@ -108,6 +108,7 @@ class BasicNode:
             selected_knowledge_ids = self._select_knowledge_ids(config)
 
         rag_result = []
+        all_img_docs = []  # 收集所有图片文档
 
         for rag_search_request in naive_rag_request:
             rag_search_request.search_query = config["configurable"]["graph_request"].graph_user_message
@@ -120,12 +121,21 @@ class BasicNode:
             naive_rag_search_result = rag.search(rag_search_request)
 
             rag_documents = []
+            img_docs = []
             for doc in naive_rag_search_result:
                 # 根据 is_doc 字段处理文档内容
+                if getattr(doc, "metadata", {}).get("format") == "image":
+                    img_docs.append(doc)
+                    continue  # 图片不加入普通文档处理流程
                 processed_doc = self._process_document_content(doc)
                 rag_documents.append(processed_doc)
 
             rag_result.extend(rag_documents)
+            all_img_docs.extend(img_docs)
+
+            logger.info(f"文档中的图片数：{len(img_docs)}")
+            if img_docs:
+                logger.info(f"图片文档示例： {img_docs[0].page_content[:50] if img_docs[0].page_content else 'empty'}")
 
             # 执行图谱 RAG 检索
             if rag_search_request.enable_graph_rag:
@@ -138,8 +148,22 @@ class BasicNode:
         # 使用模板生成 RAG 消息
         rag_message = TemplateLoader.render_template("prompts/graph/naive_rag_node_prompt", template_data)
 
+        # 如果有图片文档，将图片的OCR识别内容添加到rag_message
+        if all_img_docs:
+            # all_img_docs = all_img_docs[:10]
+            img_text_content = self._extract_image_text_content(all_img_docs)
+            if img_text_content:
+                rag_message += f"\n\n=== 图片识别内容 ===\n{img_text_content}"
+
         logger.debug(f"RAG增强Prompt已生成，长度: {len(rag_message)}")
+
+        # 添加文本 RAG 消息
         state["messages"].append(HumanMessage(content=rag_message))
+
+        # 添加图片到消息（仅图片base64，不含文本内容）
+        if all_img_docs:
+            self._add_image_docs_to_messages(state, all_img_docs)
+
         return state
 
     def _select_knowledge_ids(self, config: RunnableConfig) -> list:
@@ -362,6 +386,58 @@ class BasicNode:
             doc.metadata["chunk_type"] = "Document"
 
         return doc
+
+    def _extract_image_text_content(self, img_docs: List[Any]) -> str:
+        """从图片文档中提取文本内容（OCR识别结果）
+
+        Args:
+            img_docs: 图片文档列表
+
+        Returns:
+            合并后的图片文本内容
+        """
+        text_parts = []
+        for idx, doc in enumerate(img_docs, 1):
+            page_content = getattr(doc, "page_content", "")
+            if page_content:
+                text_parts.append(f"[图片 {idx}]\n{page_content}")
+
+        return "\n\n".join(text_parts) if text_parts else ""
+
+    def _add_image_docs_to_messages(self, state: Dict[str, Any], img_docs: List[Any]) -> None:
+        """将图片以ImageContentBlock形式添加到消息列表
+
+        Args:
+            state: 状态字典
+            img_docs: 图片文档列表，每个文档的metadata包含format, page, image_base64字段
+        """
+        if not img_docs:
+            return
+
+        # 构建包含所有图片的多模态消息内容（仅图片，不含文本说明）
+        content = []
+
+        # 添加所有图片
+        for idx, doc in enumerate(img_docs, 1):
+            metadata = getattr(doc, "metadata", {})
+            image_base64 = metadata.get("image_base64", "")
+            page_number = metadata.get("page", "unknown")
+
+            if not image_base64:
+                logger.warning(f"图片文档 {idx} 缺少 image_base64 字段，跳过")
+                continue
+
+            # 添加图片URL（base64格式）- ImageContentBlock
+            content.append({"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{image_base64}"}})
+
+            logger.debug(f"添加图片 {idx}/{len(img_docs)} - 页码: {page_number}, base64长度: {len(image_base64)}")
+
+        # 只有在至少有一张有效图片时才添加消息
+        if content:
+            state["messages"].append(HumanMessage(content=content))
+            logger.info(f"已将 {len(content)} 张图片添加到消息中")
+        else:
+            logger.warning("所有图片文档都缺少有效的 image_base64，未添加图片消息")
 
     def _rewrite_query(self, request: BasicLLMRequest, config: RunnableConfig) -> str:
         """

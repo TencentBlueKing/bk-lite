@@ -136,7 +136,7 @@ def is_new_item_start(key: str, section: str) -> bool:
         'disk_info': 'disk_name',
         'mem_info': 'mem_locator',
         'NIC info': 'nic_pci_addr',
-        'GPU info': 'gpu'
+        'GPU info': 'gpu_name'
     }
 
     return key == start_keys.get(section)

@@ -177,19 +177,26 @@ class NotifyNode(BaseNodeExecutor):
     def execute(self, node_id: str, node_config: Dict[str, Any], input_data: Dict[str, Any]) -> Dict[str, Any]:
         """执行通知发送"""
         config = node_config["data"].get("config", {})
-
+        output_key = config.get("outputParams", "last_message")
+        logger.info("开始执行通知节点")
         try:
-            # 获取通知配置参数
+            # 获取通知配置参数 - 兼容多种字段名
             channel_id = config.get("notificationMethod")
-            title = config.get("notificationSubject", "")
+            title = config.get("notificationTitle") or config.get("notificationSubject", "")
             content = config.get("notificationContent", "")
-            receivers = config.get("notificationReceivers", [])
+            receivers = config.get("notificationRecipients") or config.get("notificationReceivers", [])
 
             # 参数验证
             if not channel_id:
-                raise ValueError(f"通知节点 {node_id} 缺少通知渠道ID")
+                error_msg = f"通知节点 {node_id} 缺少通知渠道ID (notificationMethod)"
+                logger.error(error_msg)
+                raise ValueError(error_msg)
             if not content:
-                raise ValueError(f"通知节点 {node_id} 缺少通知内容")
+                error_msg = f"通知节点 {node_id} 缺少通知内容 (notificationContent)"
+                logger.error(error_msg)
+                raise ValueError(error_msg)
+            if not receivers:
+                logger.warning(f"通知节点 {node_id} 缺少接收人列表,通知可能无法发送")
 
             # 渲染通知内容
             rendered_content = self._render_content(content, node_id)
@@ -199,11 +206,16 @@ class NotifyNode(BaseNodeExecutor):
             result = self._send_notification(channel_id, rendered_title, rendered_content, receivers, node_id)
 
             logger.info(f"通知节点 {node_id} 执行完成: {result}")
-            return {}
+            return {output_key: f"通知已发送: {rendered_title}"}
 
+        except ValueError as e:
+            # 配置错误应该向上传播,中断流程
+            logger.error(f"通知节点 {node_id} 配置错误: {str(e)}")
+            raise
         except Exception as e:
+            # 其他错误记录后继续(避免阻塞流程)
             logger.error(f"通知节点 {node_id} 执行失败: {str(e)}")
-            return {}
+            return {output_key: f"通知发送失败: {str(e)}"}
 
     def _send_notification(self, channel_id: int, title: str, content: str, receivers: list, node_id: str) -> Dict[str, Any]:
         """发送通知消息"""
