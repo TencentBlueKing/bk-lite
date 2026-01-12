@@ -13,6 +13,7 @@ from falkordb import falkordb
 from apps.cmdb.constants.constants import INSTANCE, ModelConstraintKey
 from apps.cmdb.graph.falkordb_format import FormatDBResult
 from apps.cmdb.graph.format_type import FORMAT_TYPE
+from apps.cmdb.display_field import ExcludeFieldsCache
 from apps.core.exceptions.base_app_exception import BaseAppException
 from apps.core.logger import cmdb_logger as logger
 
@@ -134,7 +135,7 @@ class FalkorDBClient:
 
     @staticmethod
     def entity_to_dict(data: dict, _format=True):
-        """将使用single查询的结果转换成字典类型"""
+        """将使用single查询的结果转换成字典类型，过滤以_display结尾的字段"""
         if _format:
             _format = FormatDBResult(data)
             result = _format.to_list_of_dicts()
@@ -198,7 +199,7 @@ class FalkorDBClient:
 
         for exist_item in exist_items:
             for attr in check_attrs:
-                if exist_item[attr] == item[attr]:
+                if exist_item.get(attr) == item[attr]:
                     not_only_attr.add(attr)
 
         if not not_only_attr:
@@ -871,13 +872,25 @@ class FalkorDBClient:
         result = FormatDBResult(data).to_result_of_count()
         return result
 
-    def full_text(self, search: str, permission_params: str = "", inst_name_params: str = "", created: str = ""):
-        """全文检索"""
-
-        # 构建过滤条件
+    def _build_full_text_conditions(self, search: str, permission_params: str = "",
+                                    inst_name_params: str = "", created: str = "",
+                                    case_sensitive: bool = False) -> str:
+        """
+        构建全文检索的WHERE条件（统一权限逻辑）
+        
+        Args:
+            search: 搜索关键词
+            permission_params: 权限过滤参数
+            inst_name_params: 实例名称过滤参数
+            created: 创建者过滤
+            case_sensitive: 是否区分大小写（True=精准匹配，False=模糊匹配）
+            
+        Returns:
+            构建的WHERE条件字符串
+        """
         conditions = []
 
-        # 添加权限和实例名称过滤条件
+        # 1. 权限和实例名称过滤（OR关系）
         or_filters = []
         if permission_params:
             or_filters.append(permission_params)
@@ -887,56 +900,235 @@ class FalkorDBClient:
         if or_filters:
             or_condition = " OR ".join(or_filters)
             conditions.append(f"({or_condition})")
+            logger.debug(f"[全文检索] 权限条件已添加: {len(or_filters)} 个过滤器")
 
-        # 添加创建者过滤条件
+        # 2. 创建者过滤（AND关系）
         if created:
             params = [{"field": "_creator", "type": "str=", "value": created}]
             params_str = self.format_search_params(params)
             if params_str:
                 conditions.append(params_str)
+                logger.debug(f"[全文检索] 创建者过滤已添加: {created}")
 
-        # 添加全文检索条件
+        # 3. 全文检索条件（AND关系）
+        # 从缓存获取需要排除的原始字段列表（organization/user/enum）
+        exclude_fields = ExcludeFieldsCache.get_exclude_fields()
+        
+        if not exclude_fields:
+            raise BaseAppException("排除字段缓存未初始化，请检查缓存配置")
+        
         escaped_search = self.escape_cql_string(search)
-        search_condition = f"ANY(key IN keys(n) WHERE key <> 'organization' AND n[key] IS NOT NULL AND toString(n[key]) CONTAINS '{escaped_search}')"
+        
+        # 构建排除字段列表，用于 none() 函数检查
+        # 格式：['organization', 'user', 'status', ...]
+        exclude_list_str = "[" + ", ".join([f"'{field}'" for field in exclude_fields]) + "]"
+        logger.debug(f"[全文检索] 排除字段: {exclude_fields}")
+
+        if case_sensitive:
+            # 精准匹配：区分大小写
+            # 使用 none() 函数确保 key 不在排除列表中
+            search_condition = (
+                f"ANY(key IN keys(n) WHERE "
+                f"none(excluded IN {exclude_list_str} WHERE excluded = key) AND "
+                f"n[key] IS NOT NULL AND "
+                f"toString(n[key]) CONTAINS '{escaped_search}')"
+            )
+            logger.debug(f"[全文检索] 使用精准匹配（区分大小写）: {search}")
+        else:
+            # 模糊匹配：不区分大小写
+            # 使用 none() 函数确保 key 不在排除列表中
+            search_condition = (
+                f"ANY(key IN keys(n) WHERE "
+                f"none(excluded IN {exclude_list_str} WHERE excluded = key) AND "
+                f"n[key] IS NOT NULL AND "
+                f"toLower(toString(n[key])) CONTAINS toLower('{escaped_search}'))"
+            )
+            logger.debug(f"[全文检索] 使用模糊匹配（不区分大小写）: {search}")
+
         conditions.append(search_condition)
 
-        # 构建完整WHERE子句
+        # 构建完整条件
         where_clause = " AND ".join(conditions) if conditions else "true"
-        query = f"""MATCH (n:{INSTANCE}) WHERE {where_clause} RETURN n"""
+        return where_clause
 
-        try:
-            objs = self._execute_query(query)
-            return self.entity_to_list(objs)
-        except Exception as e:
-            logger.error(f"Full text search failed: {e}")
-            # 如果还是失败，使用最简单的方案：只搜索特定的字符串字段
-            try:
-                # 重新构建简化的条件列表（不包含复杂的ANY条件）
-                simple_conditions = []
 
-                # 保留权限和创建者过滤条件
-                if or_filters:
-                    or_condition = " OR ".join(or_filters)
-                    simple_conditions.append(f"({or_condition})")
 
-                if created:
-                    params = [{"field": "_creator", "type": "str=", "value": created}]
-                    params_str = self.format_search_params(params)
-                    if params_str:
-                        simple_conditions.append(params_str)
+    def full_text_stats(self, search: str, permission_params: str = "",
+                        inst_name_params: str = "", created: str = "",
+                        case_sensitive: bool = False) -> dict:
+        """
+        全文检索 - 模型统计接口
+        返回搜索结果中每个模型的总数统计
+        
+        Args:
+            search: 搜索关键词
+            permission_params: 权限过滤参数（与现有全文检索保持一致）
+            inst_name_params: 实例名称过滤参数
+            created: 创建者过滤
+            case_sensitive: 是否区分大小写（True=精准匹配，False=模糊匹配，默认False）
+            
+        Returns:
+            {
+                "total": 156,  # 所有匹配实例总数
+                "model_stats": [
+                    {"model_id": "Center", "count": 45},
+                    {"model_id": "阿里云", "count": 23}
+                ]
+            }
+        """
+        logger.info(f"[全文检索统计] 开始查询，关键词: {search}, 区分大小写: {case_sensitive}")
 
-                # 添加简化的搜索条件
-                simple_search_condition = f"(n.inst_name CONTAINS '{escaped_search}' OR n.model_id CONTAINS '{escaped_search}' OR toString(n._id) CONTAINS '{escaped_search}')"
-                simple_conditions.append(simple_search_condition)
+        # 构建WHERE条件（统一权限逻辑）
+        where_clause = self._build_full_text_conditions(
+            search, permission_params, inst_name_params, created, case_sensitive
+        )
 
-                simple_where_clause = " AND ".join(simple_conditions) if simple_conditions else "true"
-                fallback_query = f"""MATCH (n:{INSTANCE}) WHERE {simple_where_clause} RETURN n"""
+        # 执行统计查询
+        query = (
+            f"MATCH (n:{INSTANCE}) "
+            f"WHERE {where_clause} "
+            f"RETURN n.model_id AS model_id, COUNT(n) AS count "
+            f"ORDER BY count DESC"
+        )
 
-                objs = self._execute_query(fallback_query)
-                return self.entity_to_list(objs)
-            except Exception as fallback_e:
-                logger.error(f"Fallback full text search also failed: {fallback_e}")
-                return []
+        result = self._execute_query(query)
+        formatted_result = FormatDBResult(result).to_result_of_count()
+
+        # 构建返回结果
+        model_stats = []
+        total = 0
+        for model_id, count in formatted_result.items():
+            model_stats.append({"model_id": model_id, "count": count})
+            total += count
+
+        logger.info(f"[全文检索统计] 查询成功，总数: {total}, 模型数: {len(model_stats)}")
+
+        return {
+            "total": total,
+            "model_stats": model_stats
+        }
+
+    def full_text_by_model(self, search: str, model_id: str,
+                           permission_params: str = "", inst_name_params: str = "",
+                           created: str = "", page: int = 1, page_size: int = 10,
+                           case_sensitive: bool = False) -> dict:
+        """
+        全文检索 - 模型数据查询接口
+        返回指定模型的分页数据
+        
+        Args:
+            search: 搜索关键词
+            model_id: 目标模型ID（必填）
+            permission_params: 权限过滤参数（与现有全文检索保持一致）
+            inst_name_params: 实例名称过滤参数
+            created: 创建者过滤
+            page: 页码（从1开始）
+            page_size: 每页大小（默认10）
+            case_sensitive: 是否区分大小写（True=精准匹配，False=模糊匹配，默认False）
+            
+        Returns:
+            {
+                "model_id": "Center",
+                "total": 45,  # 该模型匹配的总数
+                "page": 1,
+                "page_size": 10,
+                "data": [{...}, {...}]  # 分页数据
+            }
+        """
+        logger.info(
+            f"[全文检索数据] 开始查询，关键词: {search}, 模型: {model_id}, "
+            f"页码: {page}, 每页: {page_size}, 区分大小写: {case_sensitive}"
+        )
+
+        # 参数校验
+        if not model_id:
+            raise BaseAppException("model_id is required")
+
+        if page < 1:
+            raise BaseAppException("page must be >= 1")
+
+        if page_size < 1 or page_size > 100:
+            raise BaseAppException("page_size must be between 1 and 100")
+
+        # 构建WHERE条件（统一权限逻辑）
+        base_where_clause = self._build_full_text_conditions(
+            search, permission_params, inst_name_params, created, case_sensitive
+        )
+
+        # 添加模型过滤
+        escaped_model_id = self.escape_cql_string(model_id)
+        where_clause = f"n.model_id = '{escaped_model_id}' AND ({base_where_clause})"
+
+        # 第一步：查询该模型的总数
+        count_query = (
+            f"MATCH (n:{INSTANCE}) "
+            f"WHERE {where_clause} "
+            f"RETURN COUNT(n) AS total"
+        )
+
+        count_result = self._execute_query(count_query)
+        count_data = FormatDBResult(count_result).to_list_of_lists()
+        total = count_data[0] if count_data else 0
+
+        logger.debug(f"[全文检索数据] 模型 {model_id} 总数: {total}")
+
+        # 第二步：查询分页数据
+        skip = (page - 1) * page_size
+        data_query = (
+            f"MATCH (n:{INSTANCE}) "
+            f"WHERE {where_clause} "
+            f"RETURN n "
+            f"ORDER BY ID(n) "
+            f"SKIP {skip} LIMIT {page_size}"
+        )
+
+        data_result = self._execute_query(data_query)
+        data = self.entity_to_list(data_result)
+
+        logger.info(
+            f"[全文检索数据] 查询成功，模型: {model_id}, 总数: {total}, "
+            f"返回: {len(data)} 条数据"
+        )
+
+        return {
+            "model_id": model_id,
+            "total": total,
+            "page": page,
+            "page_size": page_size,
+            "data": data
+        }
+
+    def full_text(self, search: str, permission_params: str = "",
+                  inst_name_params: str = "", created: str = "",
+                  case_sensitive: bool = False):
+        """
+        全文检索（兼容旧接口）
+        推荐使用 full_text_stats 和 full_text_by_model 替代
+        
+        Args:
+            search: 搜索关键词
+            permission_params: 权限过滤参数
+            inst_name_params: 实例名称过滤参数
+            created: 创建者过滤
+            case_sensitive: 是否区分大小写（默认False，模糊匹配）
+            
+        Returns:
+            匹配的实例列表
+        """
+        logger.info(f"[全文检索] 开始查询（旧接口），关键词: {search}")
+
+        # 使用统一的条件构建方法
+        where_clause = self._build_full_text_conditions(
+            search, permission_params, inst_name_params, created, case_sensitive
+        )
+
+        query = f"MATCH (n:{INSTANCE}) WHERE {where_clause} RETURN n"
+
+        objs = self._execute_query(query)
+        result = self.entity_to_list(objs)
+
+        logger.info(f"[全文检索] 查询成功，返回: {len(result)} 条数据")
+        return result
 
     def batch_save_entity(
             self,
