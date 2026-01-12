@@ -103,14 +103,16 @@ const ThresholdList: React.FC<ThresholdListProps> = ({
               style={{
                 width: 180,
               }}
+              showSearch
+              filterOption={(input, option) =>
+                option.label.toLowerCase().includes(input.toLowerCase())
+              }
+              options={unitOptions.map((option) => ({
+                label: option.display_unit || option.unit_name,
+                value: option.unit_id,
+              }))}
               onChange={handleUnitChange}
-            >
-              {unitOptions.map((option) => (
-                <Option key={option.unit_id} value={option.unit_id}>
-                  {option.display_unit || option.unit_name}
-                </Option>
-              ))}
-            </Select>
+            />
           </div>
         </div>
       ))}
