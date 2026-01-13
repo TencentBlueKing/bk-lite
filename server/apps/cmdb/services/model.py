@@ -164,12 +164,159 @@ class ModelManage(object):
 
         # 初始化排除字段缓存
         from apps.cmdb.display_field import ExcludeFieldsCache
-        ExcludeFieldsCache.update_on_model_change(data["model_id"], attrs)
+        ExcludeFieldsCache.update_on_model_change(data["model_id"])
 
         create_change_record(operator=username, model_id=data["model_id"], label="模型管理",
                              _type=CREATE_INST, message=f"创建模型. 模型名称: {data['model_name']}",
                              inst_id=result['_id'], model_object=OPERATOR_MODEL)
         return result
+
+    @staticmethod
+    def copy_model(src_model_id: str, new_model_id: str, new_model_name: str,
+                   classification_id: str = None, group: list = None, icn: str = None,
+                   copy_attributes: bool = False, copy_relationships: bool = False, username="admin"):
+        """
+        复制模型
+        Args:
+            src_model_id: 源模型ID
+            new_model_id: 新模型ID
+            new_model_name: 新模型名称
+            classification_id: 模型分类ID（可选，不传则继承源模型）
+            group: 组织列表（可选，不传则继承源模型）
+            icn: 图标（可选，不传则继承源模型）
+            copy_attributes: 是否复制属性
+            copy_relationships: 是否复制关系
+            username: 操作用户
+        Returns:
+            新模型信息
+        """
+        # 校验复制方式
+        if not copy_attributes and not copy_relationships:
+            raise BaseAppException("至少选择一种复制方式（属性或关系）")
+
+        # 获取源模型信息
+        src_model_info = ModelManage.search_model_info(src_model_id)
+        if not src_model_info:
+            raise BaseAppException("源模型不存在")
+
+        # 准备属性列表
+        if copy_attributes:
+            # 完全复制源模型的所有属性
+            src_attrs = ModelManage.parse_attrs(src_model_info.get("attrs", "[]"))
+            attrs = [dict(attr) for attr in src_attrs]
+        else:
+            # 不复制属性：只使用默认属性
+            attrs = list(INST_NAME_INFOS)
+            # 为默认字段中的目标类型添加 _display 字段定义
+            for attr in list(attrs):
+                ModelManage._add_display_field_to_attrs(attrs, attr, new_model_id, is_pre=True)
+
+        # 构建新模型数据
+        new_model_data = {
+            "model_id": new_model_id,
+            "model_name": new_model_name,
+            "classification_id": classification_id or src_model_info.get("classification_id"),
+            "group": group if group is not None else src_model_info.get("group", []),
+            "icn": icn if icn is not None else src_model_info.get("icn", ""),
+            "attrs": json.dumps(attrs)
+        }
+
+        # 一次性创建模型（包含所有属性）
+        with GraphClient() as ag:
+            exist_items, _ = ag.query_entity(MODEL, [])
+            new_model = ag.create_entity(MODEL, new_model_data, CREATE_MODEL_CHECK_ATTR, exist_items)
+            
+            # 创建模型与分类的关联
+            classification_info = ClassificationManage.search_model_classification_info(new_model_data["classification_id"])
+            ag.create_edge(
+                SUBORDINATE_MODEL,
+                classification_info["_id"],
+                CLASSIFICATION,
+                new_model["_id"],
+                MODEL,
+                dict(classification_model_asst_id=f"{new_model['classification_id']}_{SUBORDINATE_MODEL}_{new_model['model_id']}"),
+                "classification_model_asst_id",
+            )
+
+        # 初始化排除字段缓存
+        from apps.cmdb.display_field import ExcludeFieldsCache
+        ExcludeFieldsCache.update_on_model_change(new_model_id)
+
+        try:
+            # 处理字段分组复制
+            if copy_attributes:
+                # 复制源模型的字段分组配置
+                src_field_groups = FieldGroup.objects.filter(model_id=src_model_id).order_by('order')
+                for src_group in src_field_groups:
+                    FieldGroup.objects.create(
+                        model_id=new_model_id,
+                        group_name=src_group.group_name,
+                        attr_orders=src_group.attr_orders or [],
+                        order=src_group.order
+                    )
+
+            # 处理关系复制
+            if copy_relationships:
+                associations = ModelManage.model_association_search(src_model_id)
+                
+                for assoc in associations:
+                    # 确定新的源模型ID和目标模型ID
+                    new_src_model_id = new_model_id if assoc["src_model_id"] == src_model_id else assoc["src_model_id"]
+                    new_dst_model_id = new_model_id if assoc["dst_model_id"] == src_model_id else assoc["dst_model_id"]
+                    
+                    # 如果关联的两端都是源模型（自关联），则两端都改为新模型
+                    if assoc["src_model_id"] == src_model_id and assoc["dst_model_id"] == src_model_id:
+                        new_src_model_id = new_model_id
+                        new_dst_model_id = new_model_id
+                    
+                    # 获取新的src和dst的_id
+                    src_model_info_new = ModelManage.search_model_info(new_src_model_id)
+                    dst_model_info_new = ModelManage.search_model_info(new_dst_model_id)
+                    
+                    if not src_model_info_new or not dst_model_info_new:
+                        continue
+                    
+                    # 创建新的关联ID
+                    new_model_asst_id = f'{new_src_model_id}_{assoc["asst_id"]}_{new_dst_model_id}'
+                    
+                    # 复制关联关系
+                    try:
+                        ModelManage.model_association_create(
+                            src_id=src_model_info_new["_id"],
+                            dst_id=dst_model_info_new["_id"],
+                            src_model_id=new_src_model_id,
+                            dst_model_id=new_dst_model_id,
+                            asst_id=assoc.get("asst_id", ""),
+                            asst_name=assoc.get("asst_name", ""),
+                            mapping=assoc.get("mapping", "1:n"),
+                            on_delete=assoc.get("on_delete", "none"),
+                            is_pre=assoc.get("is_pre", False),
+                            model_asst_id=new_model_asst_id,
+                        )
+                    except BaseAppException:
+                        # 如果关联已存在，跳过
+                        continue
+
+            # 记录变更
+            create_change_record(
+                operator=username,
+                model_id=new_model_id,
+                label="模型管理",
+                _type=CREATE_INST,
+                message=f"复制模型. 源模型: {src_model_info['model_name']}, 新模型: {new_model_name}",
+                inst_id=new_model['_id'],
+                model_object=OPERATOR_MODEL
+            )
+
+            return new_model
+
+        except Exception as e:
+            # 如果复制过程中出错，删除已创建的模型
+            try:
+                ModelManage.delete_model(new_model["_id"])
+            except Exception:
+                pass
+            raise e
 
     @staticmethod
     def delete_model(id: int):
@@ -341,7 +488,7 @@ class ModelManage(object):
 
         updated_count = 0
         display_field_id = f"{attr_id}_display"
-        
+
         try:
             with GraphClient() as ag:
                 # 查询该模型的所有实例
@@ -349,16 +496,16 @@ class ModelManage(object):
                     INSTANCE,
                     [{"field": "model_id", "type": "str=", "value": model_id}]
                 )
-                
+
                 # 批量更新实例的 _display 字段
                 for instance in instances:
                     # 检查实例是否有该枚举字段
                     if attr_id in instance and instance[attr_id]:
                         enum_value = instance[attr_id]
-                        
+
                         # 使用统一的转换器生成新的 _display 值
                         new_display_value = DisplayFieldConverter.convert_enum(enum_value, new_options)
-                        
+
                         # 更新实例的 _display 字段
                         update_data = {display_field_id: new_display_value}
                         ag.batch_update_node_properties(
@@ -367,13 +514,13 @@ class ModelManage(object):
                             update_data
                         )
                         updated_count += 1
-                
+
                 if updated_count > 0:
                     logger.info(
                         f"[update_enum_instances_display] 枚举选项变更，已更新 {updated_count} 个实例的 {display_field_id} 字段, "
                         f"模型: {model_id}, 字段: {attr_id}"
                     )
-        
+
         except Exception as e:
             logger.error(
                 f"[update_enum_instances_display] 更新实例枚举 _display 字段失败: "
@@ -381,7 +528,7 @@ class ModelManage(object):
                 exc_info=True
             )
             # 不抛出异常，避免中断主流程
-        
+
         return updated_count
 
     @staticmethod
