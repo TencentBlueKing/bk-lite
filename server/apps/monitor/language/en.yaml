@@ -2592,48 +2592,54 @@ monitor_object_metric:
       name: Search Thread Pool Queue Length
       desc: Query performance warning metric, reflects the length of the query request queue; growing queue length indicates insufficient query capacity, affecting business experience
   Redis:
+    redis_uptime:
+      name: Service Uptime
+      desc: Duration of Redis service continuous operation, reflecting service stability and availability, continuous positive values indicate normal operation
+    redis_used_memory:
+      name: Memory Usage
+      desc: Total memory currently occupied by Redis instance, including data storage and internal data structures, monitoring prevents service interruption due to memory overflow
+    redis_maxmemory:
+      name: Memory Limit Configuration
+      desc: Configured maximum memory usage limit for Redis instance, combined with memory usage to calculate utilization rate, guides capacity planning and expansion decisions
     redis_mem_fragmentation_ratio:
       name: Memory Fragmentation Ratio
-      desc: This metric indicates the memory fragmentation ratio, reflecting memory
-        usage efficiency.
-    redis_keyspace_hits:
-      name: Keyspace Hits
-      desc: This metric indicates the number of cache hits.
-    redis_evicted_keys:
-      name: Number of Evicted Keys
-      desc: This metric indicates the number of key-value pairs evicted due to memory
-        constraints.
-    redis_used_cpu_sys_rate:
-      desc: Rate of CPU time consumed by Redis in system mode per second. High value
-        (>1) may indicate heavy I/O operations, triggering an alert.
-      name: Redis System CPU Rate
-    redis_connected_slaves:
-      name: Connected Slaves
-      desc: This metric indicates the current number of replicas connected to the
-        master node.
-    redis_keyspace_misses:
-      name: Keyspace Misses
-      desc: This metric indicates the number of cache misses.
+      desc: Ratio of memory allocated by allocator to memory reported by OS, reflects degree of memory fragmentation, high ratio may affect memory allocation efficiency
     redis_instantaneous_ops_per_sec:
-      desc: This metric indicates the number of Redis commands processed per second
-        (QPS).
-      name: Operations per Second
-    redis_rejected_connections:
-      name: Connections Rejected
-      desc: This metric indicates the number of connections rejected due to server
-        overload or policy restrictions.
-    redis_rdb_last_save_time_elapsed:
-      desc: This metric indicates the elapsed time since the last successful RDB save
-        operation.
-      name: Last Save Elapsed Time
-    redis_clients:
-      desc: This metric indicates the current number of connected clients, reflecting
-        active connections.
-      name: Number of Connected Clients
-    redis_used_memory:
-      desc: This metric indicates the memory used by the Redis allocator, including
-        all internal data structures and caches.
-      name: Used Memory
+      name: Real-time Operation Frequency
+      desc: Real-time frequency of command operations processed by Redis instance, directly reflects current service load level, used to identify traffic peaks and abnormal fluctuations
+    redis_total_commands_processed_rate:
+      name: Command Processing Rate
+      desc: Average rate of commands processed by Redis instance, measures service processing capacity, rate decline may indicate performance bottlenecks or insufficient resources
+    redis_keyspace_hits_rate:
+      name: Key Hit Frequency
+      desc: Frequency of successful key space hits, reflects cache hit efficiency, high frequency indicates effective cache strategy and high data access efficiency
+    redis_keyspace_misses_rate:
+      name: Key Miss Frequency
+      desc: Frequency of key space misses, reflects cache miss situation, high frequency may require optimization of cache strategy or increase in cache capacity
+    redis_keyspace_hitrate:
+      name: Cache Hit Rate
+      desc: Proportion of key space hit operations to total operations, core performance metric, high hit rate indicates efficient cache system operation and good data access performance
+    redis_total_net_input_bytes_rate:
+      name: Network Inflow Rate
+      desc: Average rate of network data received by Redis instance, monitors input traffic changes, abnormal increase may indicate attacks or business logic changes
+    redis_total_net_output_bytes_rate:
+      name: Network Outflow Rate
+      desc: Average rate of network data sent by Redis instance, monitors output traffic changes, analyzes response data volume trends combined with business metrics
+    redis_connected_clients:
+      name: Client Connections
+      desc: Number of currently active client connections, reflects service concurrent processing capacity, approaching max connections configuration may affect new connection establishment
+    redis_blocked_clients:
+      name: Blocked Clients
+      desc: Number of clients in blocked waiting state, non-zero value indicates performance bottlenecks or resource contention, requires further investigation
+    redis_expired_keys_rate:
+      name: Key Expiration Frequency
+      desc: Frequency of keys automatically deleted due to expiration time, reflects data lifecycle management, abnormal frequency requires attention
+    redis_evicted_keys_rate:
+      name: Key Eviction Frequency
+      desc: Frequency of keys actively evicted due to memory limits, reflects memory pressure, non-zero frequency indicates memory usage has reached limit
+    redis_rejected_connections_rate:
+      name: Connection Rejection Frequency
+      desc: Frequency of connection requests rejected due to reaching max connections, reflects connection resource tension, non-zero frequency requires consideration of expansion
   Docker:
     docker_n_containers_running:
       name: Running Containers
@@ -3045,14 +3051,12 @@ monitor_object_metric_group:
     Status: Status
     Packet Error: Packet Error
   Redis:
-    Cache: Cache
-    Replication: Replication
-    Clients: Clients
+    Base: Base
     Memory: Memory
-    Disk: Disk
-    Connectivity: Connectivity
     Performance: Performance
-    CPU: CPU
+    Network: Network
+    Client: Client
+    Error: Error
   ActiveMQ-JMX:
     Other: Other
     JvmMemory: JVM Memory

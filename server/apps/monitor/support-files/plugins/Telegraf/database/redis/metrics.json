@@ -1,6 +1,6 @@
 {
   "plugin": "Redis",
-  "plugin_desc": "Used to collect key indicators of Redis performance and resource utilization, helping improve system efficiency and stability.",
+  "plugin_desc": "Used to collect key indicators of Redis performance and resource utilization.",
   "status_query": "any({instance_type='redis', collect_type='database'}) by (instance_id)",
   "name": "Redis",
   "icon": "Redis",
@@ -8,157 +8,182 @@
   "description": "",
   "default_metric": "any({instance_type='redis'}) by (instance_id)",
   "instance_id_keys": ["instance_id"],
-  "supplementary_indicators": ["redis_used_memory", "redis_instantaneous_ops_per_sec"],
+  "supplementary_indicators": ["redis_uptime", "redis_used_memory", "redis_instantaneous_ops_per_sec"],
   "metrics": [
+    {
+      "metric_group": "Base",
+      "name": "redis_uptime",
+      "display_name": "Service Uptime",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "s",
+      "dimensions": [],
+      "description": "Duration of Redis service continuous operation, reflecting service stability and availability, continuous positive values indicate normal operation",
+      "query": "redis_uptime{__$labels__}"
+    },
     {
       "metric_group": "Memory",
       "name": "redis_used_memory",
-      "display_name": "Used Memory",
+      "display_name": "Memory Usage",
       "instance_id_keys": ["instance_id"],
       "data_type": "Number",
-      "unit": "mebibytes",
+      "unit": "bytes",
       "dimensions": [],
-      "description": "This metric indicates the memory used by the Redis allocator.",
-      "query": "sum(redis_used_memory{__$labels__}/1024/1024) by (instance_id)"
+      "description": "Total memory currently occupied by Redis instance, including data storage and internal data structures, monitoring prevents service interruption due to memory overflow",
+      "query": "redis_used_memory{__$labels__}"
+    },
+    {
+      "metric_group": "Memory",
+      "name": "redis_maxmemory",
+      "display_name": "Memory Limit Configuration",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "bytes",
+      "dimensions": [],
+      "description": "Configured maximum memory usage limit for Redis instance, combined with memory usage to calculate utilization rate, guides capacity planning and expansion decisions",
+      "query": "redis_maxmemory{__$labels__}"
     },
     {
       "metric_group": "Memory",
       "name": "redis_mem_fragmentation_ratio",
-      "display_name": "Memory Fragmentation",
+      "display_name": "Memory Fragmentation Ratio",
       "instance_id_keys": ["instance_id"],
       "data_type": "Number",
-      "unit": "percent",
-      "dimensions": [
-        {
-          "name": "instance_id",
-          "description": "The unique identifier for the Redis instance."
-        }
-      ],
-      "description": "This metric indicates the memory fragmentation ratio of the Redis allocator.",
+      "unit": "short",
+      "dimensions": [],
+      "description": "Ratio of memory allocated by allocator to memory reported by OS, reflects degree of memory fragmentation, high ratio may affect memory allocation efficiency",
       "query": "redis_mem_fragmentation_ratio{__$labels__}"
     },
     {
       "metric_group": "Performance",
       "name": "redis_instantaneous_ops_per_sec",
-      "display_name": "Operations per Second",
-      "instance_id_keys": ["instance_id"],
-      "data_type": "Number",
-      "unit": "ops",
-      "dimensions": [
-        {
-          "name": "instance_id",
-          "description": "The unique identifier for the Redis instance."
-        }
-      ],
-      "description": "This metric indicates the total number of commands processed by Redis per second.",
-      "query": "sum(redis_instantaneous_ops_per_sec{__$labels__}) by (instance_id)"
-    },
-    {
-      "metric_group": "Cache",
-      "name": "redis_keyspace_hits",
-      "display_name": "Keyspace Hits",
+      "display_name": "Real-time Operation Frequency",
       "instance_id_keys": ["instance_id"],
       "data_type": "Number",
       "unit": "cps",
       "dimensions": [],
-      "description": "This metric indicates the rate of cache hits by Redis.",
-      "query": "rate(redis_keyspace_hits{__$labels__}[5m])"
-    },
-    {
-      "metric_group": "Cache",
-      "name": "redis_keyspace_misses",
-      "display_name": "Keyspace Misses",
-      "instance_id_keys": ["instance_id"],
-      "data_type": "Number",
-      "unit": "cps",
-      "dimensions": [],
-      "description": "This metric indicates the rate of cache misses by Redis.",
-      "query": "rate(redis_keyspace_misses{__$labels__}[5m])"
-    },
-    {
-      "metric_group": "Clients",
-      "name": "redis_clients",
-      "display_name": "Connected Clients",
-      "instance_id_keys": ["instance_id"],
-      "data_type": "Number",
-      "unit": "short",
-      "dimensions": [
-        {
-          "name": "instance_id",
-          "description": "The unique identifier for the Redis instance."
-        }
-      ],
-      "description": "This metric indicates the number of currently connected clients to Redis.",
-      "query": "redis_clients{__$labels__}"
-    },
-    {
-      "metric_group": "CPU",
-      "name": "redis_used_cpu_sys_rate",
-      "display_name": "Redis System CPU Rate",
-      "instance_id_keys": ["instance_id"],
-      "data_type": "Number",
-      "unit": "s",
-      "dimensions": [
-        {
-          "name": "instance_id",
-          "description": "The unique identifier for the Redis instance."
-        }
-      ],
-      "description": "Rate of CPU time consumed by Redis in system mode per second. High value (>1) may indicate heavy I/O operations, triggering an alert.",
-      "query": "last_over_time(rate(redis_used_cpu_sys{__$labels__}[1s])[5m])"
+      "description": "Real-time frequency of command operations processed by Redis instance, directly reflects current service load level, used to identify traffic peaks and abnormal fluctuations",
+      "query": "redis_instantaneous_ops_per_sec{__$labels__}"
     },
     {
       "metric_group": "Performance",
-      "name": "redis_evicted_keys",
-      "display_name": "Evicted Keys",
+      "name": "redis_total_commands_processed_rate",
+      "display_name": "Command Processing Rate",
       "instance_id_keys": ["instance_id"],
       "data_type": "Number",
       "unit": "cps",
       "dimensions": [],
-      "description": "This metric indicates the rate of keys evicted due to memory limits.",
-      "query": "rate(redis_evicted_keys{__$labels__}[5m])"
+      "description": "Average rate of commands processed by Redis instance, measures service processing capacity, rate decline may indicate performance bottlenecks or insufficient resources",
+      "query": "rate(redis_total_commands_processed{__$labels__}[5m])"
     },
     {
-      "metric_group": "Replication",
-      "name": "redis_connected_slaves",
-      "display_name": "Connected Slaves",
+      "metric_group": "Performance",
+      "name": "redis_keyspace_hits_rate",
+      "display_name": "Key Hit Frequency",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "cps",
+      "dimensions": [],
+      "description": "Frequency of successful key space hits, reflects cache hit efficiency, high frequency indicates effective cache strategy and high data access efficiency",
+      "query": "rate(redis_keyspace_hits{__$labels__}[5m])"
+    },
+    {
+      "metric_group": "Performance",
+      "name": "redis_keyspace_misses_rate",
+      "display_name": "Key Miss Frequency",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "cps",
+      "dimensions": [],
+      "description": "Frequency of key space misses, reflects cache miss situation, high frequency may require optimization of cache strategy or increase in cache capacity",
+      "query": "rate(redis_keyspace_misses{__$labels__}[5m])"
+    },
+    {
+      "metric_group": "Performance",
+      "name": "redis_keyspace_hitrate",
+      "display_name": "Cache Hit Rate",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "percent",
+      "dimensions": [],
+      "description": "Proportion of key space hit operations to total operations, core performance metric, high hit rate indicates efficient cache system operation and good data access performance",
+      "query": "redis_keyspace_hitrate{__$labels__}"
+    },
+    {
+      "metric_group": "Network",
+      "name": "redis_total_net_input_bytes_rate",
+      "display_name": "Network Inflow Rate",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "byteps",
+      "dimensions": [],
+      "description": "Average rate of network data received by Redis instance, monitors input traffic changes, abnormal increase may indicate attacks or business logic changes",
+      "query": "rate(redis_total_net_input_bytes{__$labels__}[5m])"
+    },
+    {
+      "metric_group": "Network",
+      "name": "redis_total_net_output_bytes_rate",
+      "display_name": "Network Outflow Rate",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "byteps",
+      "dimensions": [],
+      "description": "Average rate of network data sent by Redis instance, monitors output traffic changes, analyzes response data volume trends combined with business metrics",
+      "query": "rate(redis_total_net_output_bytes{__$labels__}[5m])"
+    },
+    {
+      "metric_group": "Client",
+      "name": "redis_connected_clients",
+      "display_name": "Client Connections",
       "instance_id_keys": ["instance_id"],
       "data_type": "Number",
       "unit": "short",
-      "dimensions": [
-        {
-          "name": "instance_id",
-          "description": "The unique identifier for the Redis instance."
-        }
-      ],
-      "description": "This metric indicates the number of connected replicas to the Redis master.",
-      "query": "redis_connected_slaves{__$labels__}"
+      "dimensions": [],
+      "description": "Number of currently active client connections, reflects service concurrent processing capacity, approaching max connections configuration may affect new connection establishment",
+      "query": "redis_connected_clients{__$labels__}"
     },
     {
-      "metric_group": "Disk",
-      "name": "redis_rdb_last_save_time_elapsed",
-      "display_name": "Last Save Elapsed Time",
+      "metric_group": "Client",
+      "name": "redis_blocked_clients",
+      "display_name": "Blocked Clients",
       "instance_id_keys": ["instance_id"],
       "data_type": "Number",
-      "unit": "s",
-      "dimensions": [
-        {
-          "name": "instance_id",
-          "description": "The unique identifier for the Redis instance."
-        }
-      ],
-      "description": "This metric indicates the elapsed time since the last successful RDB save operation.",
-      "query": "redis_rdb_last_save_time_elapsed{__$labels__}"
+      "unit": "short",
+      "dimensions": [],
+      "description": "Number of clients in blocked waiting state, non-zero value indicates performance bottlenecks or resource contention, requires further investigation",
+      "query": "redis_blocked_clients{__$labels__}"
     },
     {
-      "metric_group": "Connectivity",
-      "name": "redis_rejected_connections",
-      "display_name": "Rejected Connections",
+      "metric_group": "Error",
+      "name": "redis_expired_keys_rate",
+      "display_name": "Key Expiration Frequency",
       "instance_id_keys": ["instance_id"],
       "data_type": "Number",
       "unit": "cps",
       "dimensions": [],
-      "description": "This metric indicates the rate of connections rejected due to server overload or policy limits.",
+      "description": "Frequency of keys automatically deleted due to expiration time, reflects data lifecycle management, abnormal frequency requires attention",
+      "query": "rate(redis_expired_keys{__$labels__}[5m])"
+    },
+    {
+      "metric_group": "Error",
+      "name": "redis_evicted_keys_rate",
+      "display_name": "Key Eviction Frequency",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "cps",
+      "dimensions": [],
+      "description": "Frequency of keys actively evicted due to memory limits, reflects memory pressure, non-zero frequency indicates memory usage has reached limit",
+      "query": "rate(redis_evicted_keys{__$labels__}[5m])"
+    },
+    {
+      "metric_group": "Error",
+      "name": "redis_rejected_connections_rate",
+      "display_name": "Connection Rejection Frequency",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "cps",
+      "dimensions": [],
+      "description": "Frequency of connection requests rejected due to reaching max connections, reflects connection resource tension, non-zero frequency requires consideration of expansion",
       "query": "rate(redis_rejected_connections{__$labels__}[5m])"
     }
   ]

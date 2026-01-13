@@ -1778,39 +1778,54 @@ monitor_object_metric:
       name: 搜索线程池队列长度
       desc: 查询性能预警指标，反映查询请求队列的长度情况；队列长度持续增长表示查询处理能力不足，会影响业务使用体验
   Redis:
+    redis_uptime:
+      name: 服务运行时长
+      desc: Redis服务持续运行的时间长度，反映服务的稳定性与可用性，持续为正值表示服务正常运行
+    redis_used_memory:
+      name: 内存使用量
+      desc: Redis实例当前占用的内存总量，包括数据存储和内部数据结构，监控该指标可防止内存溢出导致的服务中断
+    redis_maxmemory:
+      name: 内存限制配置
+      desc: Redis实例配置的最大内存使用上限，与内存使用量结合可计算内存使用率，指导容量规划与扩容决策
     redis_mem_fragmentation_ratio:
       name: 内存碎片率
-      desc: 内存碎片率，反映内存使用效率。
-    redis_keyspace_hits:
-      name: 键空间命中次数
-      desc: 缓存命中的次数。
-    redis_evicted_keys:
-      name: 驱逐的键数
-      desc: 因内存限制而被逐出的键值数量。
-    redis_used_cpu_sys_rate:
-      desc: Redis 在系统模式下每秒消耗的 CPU 时间变化率。值过高（如 >1）可能表示 I/O 操作频繁，需告警。
-      name: Redis 系统模式 CPU 变化率
-    redis_connected_slaves:
-      name: 已连接从节点数
-      desc: 当前连接到主节点的副本数量。
-    redis_keyspace_misses:
-      name: 键空间未命中次数
-      desc: 缓存未命中的次数。
+      desc: 内存分配器已分配内存与操作系统报告内存的比值，反映内存碎片化程度，高比值可能影响内存分配效率
     redis_instantaneous_ops_per_sec:
-      desc: 当前每秒处理的 Redis 命令数（QPS）。
-      name: 每秒操作次数
-    redis_rejected_connections:
-      name: 拒绝的连接数
-      desc: 因服务器过载或策略限制而被拒绝的连接数。
-    redis_rdb_last_save_time_elapsed:
-      desc: 上次成功进行 RDB 保存操作后的经过时间。
-      name: 上次保存经过时间
-    redis_clients:
-      desc: 当前连接的客户端数量，反映活跃连接数。
-      name: 已连接客户端数
-    redis_used_memory:
-      desc: Redis 所使用的总内存大小，包括所有内部数据结构和缓存。
-      name: 已用内存
+      name: 实时操作频率
+      desc: Redis实例处理命令操作的实时频率，直接反映当前服务负载水平，用于识别流量峰值与异常波动
+    redis_total_commands_processed_rate:
+      name: 命令处理速率
+      desc: Redis实例处理命令的平均速率，衡量服务处理能力，速率下降可能表示性能瓶颈或资源不足
+    redis_keyspace_hits_rate:
+      name: 键命中频率
+      desc: 键空间成功命中的操作频率，反映缓存命中效率，高频率表明缓存策略有效，数据访问效率高
+    redis_keyspace_misses_rate:
+      name: 键未命中频率
+      desc: 键空间未能命中的操作频率，反映缓存未命中情况，高频率可能需优化缓存策略或增加缓存容量
+    redis_keyspace_hitrate:
+      name: 缓存命中率
+      desc: 键空间命中操作占总操作的比例，核心性能指标，高命中率表明缓存系统高效运行，数据访问性能良好
+    redis_total_net_input_bytes_rate:
+      name: 网络流入速率
+      desc: Redis实例接收网络数据的平均速率，监控输入流量变化，异常增长可能表示攻击或业务逻辑变化
+    redis_total_net_output_bytes_rate:
+      name: 网络流出速率
+      desc: Redis实例发送网络数据的平均速率，监控输出流量变化，结合业务指标分析响应数据量变化趋势
+    redis_connected_clients:
+      name: 客户端连接数
+      desc: 当前活跃的客户端连接数量，反映服务并发处理能力，接近最大连接数配置时可能影响新连接建立
+    redis_blocked_clients:
+      name: 阻塞客户端数
+      desc: 处于阻塞等待状态的客户端数量，非零值表示存在性能瓶颈或资源竞争，需进一步排查原因
+    redis_expired_keys_rate:
+      name: 键过期频率
+      desc: 因过期时间到达而被自动删除的键操作频率，反映数据生命周期管理情况，异常频率需关注
+    redis_evicted_keys_rate:
+      name: 键驱逐频率
+      desc: 因内存限制而被主动驱逐的键操作频率，反映内存压力情况，非零频率表示内存使用已达上限
+    redis_rejected_connections_rate:
+      name: 连接拒绝频率
+      desc: 因达到最大连接数而被拒绝的连接请求频率，反映连接资源紧张程度，非零频率需考虑扩容
   Docker:
     docker_n_containers_running:
       name: 正在运行的容器数
@@ -2182,14 +2197,12 @@ monitor_object_metric_group:
     Status: 状态
     Packet Error: 数据包错误
   Redis:
-    Cache: 缓存
-    Replication: 复制
-    Clients: 客户端
+    Base: 基础
     Memory: 内存
-    Disk: 磁盘
-    Connectivity: 连接
     Performance: 性能
-    CPU: CPU
+    Network: 网络
+    Client: 客户端
+    Error: 错误
   ActiveMQ-JMX:
     Other: 其他
     JvmMemory: JVM内存
