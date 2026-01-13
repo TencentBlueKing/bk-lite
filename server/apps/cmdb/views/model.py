@@ -476,6 +476,78 @@ class ModelViewSet(viewsets.ViewSet):
         filtered_attrs = [attr for attr in result if not attr.get("is_display_field")]
         return WebUtils.response_success(filtered_attrs)
 
+    @HasPermission("model_management-Add Model")
+    @action(detail=False, methods=["post"], url_path="(?P<model_id>.+?)/copy")
+    def model_copy(self, request, model_id: str):
+        """
+        复制模型
+        请求参数：
+        - new_model_id: 新模型ID（必填）
+        - new_model_name: 新模型名称（必填）
+        - classification_id: 模型分类ID（可选，不传则继承源模型）
+        - group: 组织列表（可选，不传则继承源模型）
+        - icn: 图标（可选，不传则继承源模型）
+        - copy_attributes: 是否复制属性（可选，默认False）
+        - copy_relationships: 是否复制关系（可选，默认False）
+        """
+        # 检查源模型是否存在
+        model_info = ModelManage.search_model_info(model_id)
+        if not model_info:
+            return WebUtils.response_error("源模型不存在", status_code=status.HTTP_404_NOT_FOUND)
+
+        # 检查源模型权限
+        permissions_map = CmdbRulesFormatUtil.format_user_groups_permissions(request=request,
+                                                                             model_id=model_id,
+                                                                             permission_type=PERMISSION_MODEL)
+
+        organizations = self.organizations(request, model_info)
+        # 再次确认用户所在的组织
+        if not organizations:
+            return WebUtils.response_error("抱歉！您没有此模型的权限", status_code=status.HTTP_403_FORBIDDEN)
+
+        has_permission = CmdbRulesFormatUtil.has_object_permission(obj_type=PERMISSION_MODEL,
+                                                                   operator=VIEW,
+                                                                   model_id=model_id,
+                                                                   permission_instances_map=permissions_map,
+                                                                   instance=model_info,
+                                                                   default_group_id=self.default_group_id)
+        if not has_permission:
+            return WebUtils.response_error("抱歉！您没有此模型的权限", status_code=status.HTTP_403_FORBIDDEN)
+
+        # 获取请求参数
+        new_model_id = request.data.get("new_model_id")
+        new_model_name = request.data.get("new_model_name")
+        classification_id = request.data.get("classification_id")  # 可选，不传则继承源模型
+        group = request.data.get("group")  # 可选，不传则继承源模型
+        icn = request.data.get("icn")  # 可选，不传则继承源模型
+        copy_attributes = request.data.get("copy_attributes", False)
+        copy_relationships = request.data.get("copy_relationships", False)
+
+        # 参数校验
+        if not new_model_id:
+            return WebUtils.response_error("新模型ID不能为空", status_code=status.HTTP_400_BAD_REQUEST)
+        
+        if not new_model_name:
+            return WebUtils.response_error("新模型名称不能为空", status_code=status.HTTP_400_BAD_REQUEST)
+
+        if not copy_attributes and not copy_relationships:
+            return WebUtils.response_error("至少选择一种复制方式（属性或关系）", status_code=status.HTTP_400_BAD_REQUEST)
+
+        # 执行复制
+        result = ModelManage.copy_model(
+            src_model_id=model_id,
+            new_model_id=new_model_id,
+            new_model_name=new_model_name,
+            classification_id=classification_id,
+            group=group,
+            icn=icn,
+            copy_attributes=copy_attributes,
+            copy_relationships=copy_relationships,
+            username=request.user.username
+        )
+
+        return WebUtils.response_success(result)
+
     @HasPermission("model_management-View")
     @action(detail=False, methods=["get"], url_path="model_association_type")
     def model_association_type(self, request):

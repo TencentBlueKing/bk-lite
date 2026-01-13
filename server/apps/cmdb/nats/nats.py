@@ -37,7 +37,7 @@ def get_cmdb_module_data(module, child_module, page, page_size, group_id):
                 "id": instance["inst_name"]
             })
     elif module == PERMISSION_MODEL:
-        models = ModelManage.search_model(classification_ids=[child_module], group_list=[int(group_id)])
+        models = ModelManage.search_model(classification_ids=[child_module])
         count = len(models)
         queryset = [{"id": model["model_id"], "name": model["model_name"]} for model in models]
 
@@ -111,4 +111,32 @@ def search_instances(params):
 
     instances, _ = InstanceManage.search_inst(model_id=model_id, inst_name=inst_name, _id=_id)
     result = instances[0] if instances else {}
+    return result
+
+
+@nats_client.register
+def sync_display_fields(params):
+    """
+    同步组织/用户的 _display 字段
+    
+    Args:
+        params: 包含组织或用户变更数据的字典
+            {
+                "organizations": [{"id": 1, "name": "新组织名"}],  # 可选
+                "users": [{"id": 1, "username": "admin", "display_name": "新显示名"}]  # 可选
+            }
+    
+    Returns:
+        任务提交结果 {"task_id": "uuid", "status": "submitted"}
+    """
+    from apps.cmdb.display_field.sync import sync_display_fields_for_system_mgmt
+    
+    organizations = params.get("organizations")
+    users = params.get("users")
+    
+    result = sync_display_fields_for_system_mgmt(
+        organizations=organizations,
+        users=users
+    )
+    
     return result
