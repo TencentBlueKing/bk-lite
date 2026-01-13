@@ -295,7 +295,9 @@ model = ModelRegistry.get("my_model")(**params)
     "name": "spell_log_clustering"  // Model Registry 注册名
   },
   "mlflow": {
-    "experiment_name": "log_clustering_spell"  // 实验名(一般与model.name一致)
+    "_comment": "MLflow 实验跟踪配置",
+    "experiment_name": "log_clustering_spell",  // 实验名(一般与model.name一致)
+    "_note": "tracking_uri 通过环境变量 MLFLOW_TRACKING_URI 配置"
   }
 }
 ```
@@ -362,12 +364,50 @@ model = ModelRegistry.get("my_model")(**params)
 - 支持超参数搜索空间定义
 - **配置外部化**：配置应存储在文件中，而非代码中硬编码
 
-**必需的顶层字段**：
+**固定的顶层字段**：
 1. `model`: 模型配置（type, name）
 2. `hyperparams`: 超参数配置（含搜索空间，含 `use_feature_engineering` 开关）
 3. `preprocessing`: 数据预处理配置
 4. `feature_engineering`: 特征工程配置（必须实现，训练时由 `use_feature_engineering` 控制）
-5. `mlflow`: MLflow 实验跟踪配置（可选，推荐使用环境变量）
+5. `mlflow`: MLflow 实验跟踪配置
+   - `experiment_name`: 实验名称（必需，在配置文件中指定）
+   - `tracking_uri`: ⚠️ **不在配置文件中设置**，通过环境变量 `MLFLOW_TRACKING_URI` 注入
+
+### MLflow Tracking URI 配置机制
+
+**设计原则**：
+- ✅ **tracking_uri 通过环境变量注入**：符合云原生部署最佳实践
+- ✅ **动态注入模式**：bootstrap.py 读取环境变量并注入到配置对象
+- ✅ **配置文件分离**：配置文件只包含业务配置，运行时环境配置通过环境变量管理
+
+**实现流程**：
+```
+环境变量 MLFLOW_TRACKING_URI 
+    ↓
+bootstrap.py 读取并注入 → config.set("mlflow", "tracking_uri", value=tracking_uri)
+    ↓
+config.mlflow_tracking_uri → trainer 使用
+```
+
+**配置文件示例**：
+```json
+{
+  "mlflow": {
+    "_comment": "MLflow 实验跟踪配置",
+    "experiment_name": "text_classification_xgboost",
+    "_note": "tracking_uri 通过环境变量 MLFLOW_TRACKING_URI 配置，不在此文件中设置"
+  }
+}
+```
+
+**环境变量设置**：
+```bash
+# 开发/生产环境 (开发者手动配置.env 文件)
+export MLFLOW_TRACKING_URI=http://mlflow:5000
+
+# 容器部署（环境变量或 Kubernetes ConfigMap）
+MLFLOW_TRACKING_URI=http://mlflow-service:5000
+```
 
 ### 配置加载策略
 
@@ -579,9 +619,10 @@ classify_{domain}_server train \
 
 **关键逻辑**：
 1. 检查环境变量和配置文件存在性（Fast Fail）
-2. 加载配置：`TrainingConfig.from_file(config)`
-3. 创建训练器：`UniversalTrainer(config_obj)`
-4. 执行训练：`trainer.train(dataset_path)`
+2. 加载配置：`TrainingConfig(config_path)`
+3. 动态注入 MLflow Tracking URI：`config.set("mlflow", "tracking_uri", value=os.getenv("MLFLOW_TRACKING_URI"))`
+4. 创建训练器：`UniversalTrainer(config=config_obj, dataset_path=dataset_path, run_name=run_name)`
+5. 执行训练：`trainer.train()`
 
 **完整实现参考**：`classify_*/cli/bootstrap.py`
 
@@ -635,8 +676,14 @@ classify_{domain}_server train \
 export MINIO_ENDPOINT=http://minio-server:9000
 export MINIO_ACCESS_KEY=your-access-key
 export MINIO_SECRET_KEY=your-secret-key
-export MLFLOW_TRACKING_URI=http://mlflow:15000
+export MLFLOW_TRACKING_URI=http://mlflow:15000  # ⚠️ 训练脚本必需，用于 MLflow 实验跟踪
 ```
+
+**关键说明**：
+- `MLFLOW_TRACKING_URI`: 
+  - 训练时**必需**，由 bootstrap.py 读取并注入到配置对象
+  - 不在配置文件中设置，遵循云原生配置外部化原则
+  - 支持本地 (`file:./mlruns`) 或远程 (`http://mlflow:5000`) MLflow 服务器
 
 **脚本核心逻辑**：
 1. 环境检查（uv, python, unzip, mc）

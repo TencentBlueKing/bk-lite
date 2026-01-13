@@ -1,5 +1,5 @@
 import { FormInstance } from 'antd';
-import { useAnomalyForm, useRasaForm, useTimeseriesPredictForm, useLogClusteringForm } from './forms';
+import { useAnomalyForm, useClassificationForm, useRasaForm, useTimeseriesPredictForm, useLogClusteringForm } from './forms';
 import type { Option } from '@/types';
 import { RefObject } from 'react';
 
@@ -13,6 +13,7 @@ interface UseTaskFormProps {
 const useTaskForm = ({ datasetOptions, activeTag, onSuccess, formRef }: UseTaskFormProps) => {
   const [activeType] = activeTag;
   const anomalyFormResult = useAnomalyForm({ datasetOptions, activeTag, onSuccess, formRef });
+  const classificationFormResult = useClassificationForm({ datasetOptions, activeTag, onSuccess, formRef });
   const rasaFormResult = useRasaForm({ datasetOptions, activeTag, onSuccess, formRef });
   const timeseriesPredictFormResult = useTimeseriesPredictForm({ datasetOptions, activeTag, onSuccess, formRef });
   const logClusteringFormResult = useLogClusteringForm({ datasetOptions, activeTag, onSuccess, formRef });
@@ -26,6 +27,8 @@ const useTaskForm = ({ datasetOptions, activeTag, onSuccess, formRef }: UseTaskF
       return timeseriesPredictFormResult;
     case 'log_clustering':
       return logClusteringFormResult;
+    case 'classification':
+      return classificationFormResult;
     default:
       return anomalyFormResult;
   }

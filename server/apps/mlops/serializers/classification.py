@@ -183,14 +183,21 @@ class ClassificationDatasetReleaseSerializer(AuthSerializer):
             
             # 触发异步任务
             from apps.mlops.tasks.classification import publish_dataset_release_async
-            publish_dataset_release_async.delay(
-                release.id,
-                train_file_id,
-                val_file_id,
-                test_file_id
-            )
-            
-            logger.info(f"创建数据集发布任务 - Release ID: {release.id}, Dataset: {dataset.id}, Version: {version}")
+            try:
+                result = publish_dataset_release_async.delay(
+                    release.id,
+                    train_file_id,
+                    val_file_id,
+                    test_file_id
+                )
+                logger.info(f"创建数据集发布任务 - Release ID: {release.id}, Dataset: {dataset.id}, Version: {version}, Task ID: {result.id}")
+                
+            except Exception as task_error:
+                logger.error(f"投递 Celery 任务失败 - Release ID: {release.id}, Error: {str(task_error)}", exc_info=True)
+                # 任务投递失败，更新发布状态为失败
+                release.status = 'failed'
+                release.save(update_fields=['status'])
+                raise serializers.ValidationError(f"投递异步任务失败: {str(task_error)}")
             
             return release
             
