@@ -334,6 +334,7 @@ func SubscribeHealthCheck(nc *nats.Conn, instanceId *string) {
 	log.Printf("[Health Check Subscribe] Instance: %s, Subscribing to subject: %s", *instanceId, subject)
 
 	_, err := nc.Subscribe(subject, func(msg *nats.Msg) {
+		log.Printf("[Health Check] Received health check request from subject: %s", subject)
 		response := HealthCheckResponse{
 			Success:    true,
 			Status:     "ok",
@@ -342,6 +343,7 @@ func SubscribeHealthCheck(nc *nats.Conn, instanceId *string) {
 		}
 		responseContent, _ := json.Marshal(response)
 		msg.Respond(responseContent)
+		log.Printf("[Health Check] Responded with status: ok")
 	})
 
 	if err != nil {

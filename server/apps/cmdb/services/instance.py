@@ -1,4 +1,5 @@
 from apps.cmdb.constants.constants import INSTANCE, INSTANCE_ASSOCIATION, OPERATOR_INSTANCE
+from apps.cmdb.display_field.constants import DISPLAY_FIELD_TYPES, DISPLAY_SUFFIX, FIELD_TYPE_ORGANIZATION, FIELD_TYPE_USER, FIELD_TYPE_ENUM
 from apps.cmdb.graph.drivers.graph_client import GraphClient
 from apps.cmdb.models.change_record import CREATE_INST, CREATE_INST_ASST, DELETE_INST, DELETE_INST_ASST, UPDATE_INST
 from apps.cmdb.models.show_field import ShowField
@@ -95,6 +96,10 @@ class InstanceManage(object):
             if attr["is_required"]:
                 check_attr_map["is_required"][attr["attr_id"]] = attr["attr_name"]
 
+        # 为 organization/user/enum 字段生成 _display 冗余字段
+        from apps.cmdb.display_field import DisplayFieldHandler
+        instance_info = DisplayFieldHandler.build_display_fields(model_id, instance_info, attrs)
+        
         with GraphClient() as ag:
             exist_items, _ = ag.query_entity(INSTANCE, [{"field": "model_id", "type": "str=", "value": model_id}])
             result = ag.create_entity(INSTANCE, instance_info, check_attr_map, exist_items, operator)
@@ -133,6 +138,30 @@ class InstanceManage(object):
             if attr["editable"]:
                 check_attr_map["editable"][attr["attr_id"]] = attr["attr_name"]
 
+        # 只有当对应的原始字段更新时,才更新 _display 字段
+        from apps.cmdb.display_field import DisplayFieldHandler, DisplayFieldConverter
+        for attr in attrs:
+            attr_id = attr.get('attr_id')
+            attr_type = attr.get('attr_type')
+            
+            # 检查是否更新了目标类型的字段
+            if attr_type in DISPLAY_FIELD_TYPES and attr_id in update_attr:
+                display_field_id = f"{attr_id}{DISPLAY_SUFFIX}"
+                original_value = update_attr[attr_id]
+                
+                # 使用统一的转换器进行转换
+                if attr_type == FIELD_TYPE_ORGANIZATION:
+                    display_value = DisplayFieldConverter.convert_organization(original_value)
+                elif attr_type == FIELD_TYPE_USER:
+                    display_value = DisplayFieldConverter.convert_user(original_value)
+                elif attr_type == FIELD_TYPE_ENUM:
+                    display_value = DisplayFieldConverter.convert_enum(original_value, attr.get('option', []))
+                else:
+                    continue
+                
+                # 将生成的 _display 值添加到更新数据中
+                update_attr[display_field_id] = display_value
+        
         with GraphClient() as ag:
             exist_items, _ = ag.query_entity(
                 INSTANCE,
@@ -156,7 +185,7 @@ class InstanceManage(object):
         return result[0]
 
     @staticmethod
-    def batch_instance_update(user_groups: list, roles: list, inst_ids: list, update_attr: dict, operator: str):
+    def batch_instance_update(inst_ids: list, update_attr: dict, operator: str):
         """批量修改实例属性"""
 
         inst_list = InstanceManage.query_entity_by_ids(inst_ids)
@@ -175,9 +204,33 @@ class InstanceManage(object):
                 check_attr_map["is_only"][attr["attr_id"]] = attr["attr_name"]
             if attr["is_required"]:
                 check_attr_map["is_required"][attr["attr_id"]] = attr["attr_name"]
-            if attr["editable"]:
+            if attr["editable"] or attr["is_display_field"]:
                 check_attr_map["editable"][attr["attr_id"]] = attr["attr_name"]
 
+        # 只有当对应的原始字段更新时,才更新 _display 字段
+        from apps.cmdb.display_field import DisplayFieldHandler, DisplayFieldConverter
+        for attr in attrs:
+            attr_id = attr.get('attr_id')
+            attr_type = attr.get('attr_type')
+
+            # 检查是否更新了目标类型的字段
+            if attr_type in DISPLAY_FIELD_TYPES and attr_id in update_attr:
+                display_field_id = f"{attr_id}{DISPLAY_SUFFIX}"
+                original_value = update_attr[attr_id]
+
+                # 使用统一的转换器进行转换
+                if attr_type == FIELD_TYPE_ORGANIZATION:
+                    display_value = DisplayFieldConverter.convert_organization(original_value)
+                elif attr_type == FIELD_TYPE_USER:
+                    display_value = DisplayFieldConverter.convert_user(original_value)
+                elif attr_type == FIELD_TYPE_ENUM:
+                    display_value = DisplayFieldConverter.convert_enum(original_value, attr.get('option', []))
+                else:
+                    continue
+
+                # 将生成的 _display 值添加到更新数据中
+                update_attr[display_field_id] = display_value
+        
         with GraphClient() as ag:
             exist_items, _ = ag.query_entity(
                 INSTANCE,
@@ -636,9 +689,17 @@ class InstanceManage(object):
         return data
 
     @classmethod
-    def fulltext_search(cls, search: str, permission_map: dict, creator: str = ""):
-        """全文检索 - 使用与 instance_list 一致的权限逻辑"""
-
+    def _build_permission_params(cls, permission_map: dict, creator: str = ""):
+        """
+        构建权限参数（统一方法，供全文检索系列接口使用）
+        
+        Args:
+            permission_map: 权限映射字典
+            creator: 创建者
+            
+        Returns:
+            permission_params: 权限过滤字符串
+        """
         # 构建所有有权限模型的权限过滤条件（与 instance_list 一致）
         format_permission_dict = {}
 
@@ -671,11 +732,128 @@ class InstanceManage(object):
             # 多个组织的权限条件用 OR 连接
             permission_params = " OR ".join(permission_filters) if permission_filters else ""
 
+        return permission_params
+
+    @classmethod
+    def fulltext_search(cls, search: str, permission_map: dict, creator: str = "", case_sensitive: bool = False):
+        """
+        全文检索（兼容旧接口）
+        
+        Args:
+            search: 搜索关键词
+            permission_map: 权限映射
+            creator: 创建者
+            case_sensitive: 是否区分大小写（默认False，模糊匹配）
+            
+        Returns:
+            实例列表
+        """
+        logger.info(f"[InstanceManage.fulltext_search] 搜索关键词: {search}, 区分大小写: {case_sensitive}")
+        
+        # 构建权限参数
+        permission_params = cls._build_permission_params(permission_map, creator)
+
+        with GraphClient() as ag:
             # 调用 full_text，保留全文搜索逻辑
             data = ag.full_text(
                 search=search,
                 permission_params=permission_params,
                 inst_name_params="",  # 实例名称权限已包含在 permission_params 中
-                created=""  # 创建人权限已包含在 permission_params 中
+                created="",  # 创建人权限已包含在 permission_params 中
+                case_sensitive=case_sensitive
             )
+        
+        logger.info(f"[InstanceManage.fulltext_search] 返回 {len(data)} 条结果")
         return data
+
+    @classmethod
+    def fulltext_search_stats(cls, search: str, permission_map: dict, creator: str = "", case_sensitive: bool = False):
+        """
+        全文检索 - 模型统计接口
+        返回搜索结果中每个模型的总数统计
+        
+        Args:
+            search: 搜索关键词
+            permission_map: 权限映射
+            creator: 创建者
+            case_sensitive: 是否区分大小写（默认False，模糊匹配）
+            
+        Returns:
+            {
+                "total": 156,
+                "model_stats": [{"model_id": "Center", "count": 45}, ...]
+            }
+        """
+        logger.info(f"[InstanceManage.fulltext_search_stats] 搜索关键词: {search}, 区分大小写: {case_sensitive}")
+        
+        # 构建权限参数（统一逻辑）
+        permission_params = cls._build_permission_params(permission_map, creator)
+
+        with GraphClient() as ag:
+            # 调用新的统计接口
+            result = ag.full_text_stats(
+                search=search,
+                permission_params=permission_params,
+                inst_name_params="",  # 实例名称权限已包含在 permission_params 中
+                created="",  # 创建人权限已包含在 permission_params 中
+                case_sensitive=case_sensitive
+            )
+        
+        logger.info(
+            f"[InstanceManage.fulltext_search_stats] 返回统计: 总数={result.get('total', 0)}, "
+            f"模型数={len(result.get('model_stats', []))}"
+        )
+        return result
+
+    @classmethod
+    def fulltext_search_by_model(cls, search: str, model_id: str, permission_map: dict, 
+                                creator: str = "", page: int = 1, page_size: int = 10,
+                                case_sensitive: bool = False):
+        """
+        全文检索 - 模型数据查询接口
+        返回指定模型的分页数据
+        
+        Args:
+            search: 搜索关键词
+            model_id: 模型ID
+            permission_map: 权限映射
+            creator: 创建者
+            page: 页码（从1开始）
+            page_size: 每页大小
+            case_sensitive: 是否区分大小写（默认False，模糊匹配）
+            
+        Returns:
+            {
+                "model_id": "Center",
+                "total": 45,
+                "page": 1,
+                "page_size": 10,
+                "data": [{...}, {...}]
+            }
+        """
+        logger.info(
+            f"[InstanceManage.fulltext_search_by_model] 搜索关键词: {search}, 模型: {model_id}, "
+            f"页码: {page}, 每页: {page_size}, 区分大小写: {case_sensitive}"
+        )
+        
+        # 构建权限参数（统一逻辑）
+        permission_params = cls._build_permission_params(permission_map, creator)
+
+        with GraphClient() as ag:
+            # 调用新的分页查询接口
+            result = ag.full_text_by_model(
+                search=search,
+                model_id=model_id,
+                permission_params=permission_params,
+                inst_name_params="",  # 实例名称权限已包含在 permission_params 中
+                created="",  # 创建人权限已包含在 permission_params 中
+                page=page,
+                page_size=page_size,
+                case_sensitive=case_sensitive
+            )
+        
+        logger.info(
+            f"[InstanceManage.fulltext_search_by_model] 返回结果: 模型={model_id}, 总数={result.get('total', 0)}, "
+            f"当前页={result.get('page', 0)}, 数据条数={len(result.get('data', []))}"
+        )
+        return result

@@ -341,11 +341,9 @@ class InstanceViewSet(viewsets.ViewSet):
                                                    status_code=status.HTTP_403_FORBIDDEN)
 
         InstanceManage.batch_instance_update(
-            request.user.group_list,
-            request.user.roles,
             request.data["inst_ids"],
             request.data["update_data"],
-            request.user.username,
+            request.user.username
         )
         return WebUtils.response_success()
 
@@ -561,6 +559,7 @@ class InstanceViewSet(viewsets.ViewSet):
     @HasPermission("search-View")
     @action(methods=["post"], detail=False)
     def fulltext_search(self, request):
+        """全文检索（兼容旧接口）"""
         search = request.data.get("search", "")
         # 为每个模型构建权限映射（与 search 方法保持一致）
         permissions_map = CmdbRulesFormatUtil.format_user_groups_permissions(request=request, model_id="")
@@ -570,6 +569,115 @@ class InstanceViewSet(viewsets.ViewSet):
             permission_map=permissions_map,
             creator=request.user.username
         )
+        return WebUtils.response_success(result)
+
+    @HasPermission("search-View")
+    @action(methods=["post"], detail=False, url_path="fulltext_search/stats")
+    def fulltext_search_stats(self, request):
+        """
+        全文检索 - 模型统计接口
+        返回搜索结果中每个模型的总数统计
+        
+        请求参数:
+            - search: 搜索关键词（必填）
+            - case_sensitive: 是否区分大小写（可选，默认False即模糊匹配）
+        
+        返回示例:
+            {
+                "code": 200,
+                "message": "success",
+                "data": {
+                    "total": 156,
+                    "model_stats": [
+                        {"model_id": "Center", "count": 45},
+                        {"model_id": "阿里云", "count": 23}
+                    ]
+                }
+            }
+        """
+        search = request.data.get("search", "")
+        case_sensitive = request.data.get("case_sensitive", False)
+        
+        if not search:
+            return WebUtils.response_error("search keyword is required")
+        
+        # 构建权限映射
+        permissions_map = CmdbRulesFormatUtil.format_user_groups_permissions(request=request, model_id="")
+        
+        result = InstanceManage.fulltext_search_stats(
+            search=search,
+            permission_map=permissions_map,
+            creator=request.user.username,
+            case_sensitive=case_sensitive
+        )
+        
+        return WebUtils.response_success(result)
+
+    @HasPermission("search-View")
+    @action(methods=["post"], detail=False, url_path="fulltext_search/by_model")
+    def fulltext_search_by_model(self, request):
+        """
+        全文检索 - 模型数据查询接口
+        返回指定模型的分页数据
+        
+        请求参数:
+            - search: 搜索关键词（必填）
+            - model_id: 模型ID（必填）
+            - page: 页码（可选，默认1）
+            - page_size: 每页大小（可选，默认10，最大100）
+            - case_sensitive: 是否区分大小写（可选，默认False即模糊匹配）
+        
+        返回示例:
+            {
+                "code": 200,
+                "message": "success",
+                "data": {
+                    "model_id": "Center",
+                    "total": 45,
+                    "page": 1,
+                    "page_size": 10,
+                    "data": [{...}, {...}]
+                }
+            }
+        """
+        search = request.data.get("search", "")
+        model_id = request.data.get("model_id", "")
+        page = request.data.get("page", 1)
+        page_size = request.data.get("page_size", 10)
+        case_sensitive = request.data.get("case_sensitive", False)
+        
+        if not search:
+            return WebUtils.response_error("search keyword is required")
+        
+        if not model_id:
+            return WebUtils.response_error("model_id is required")
+        
+        # 参数校验
+        try:
+            page = int(page)
+            page_size = int(page_size)
+        except (ValueError, TypeError):
+            return WebUtils.response_error("page and page_size must be integers")
+        
+        if page < 1:
+            return WebUtils.response_error("page must be >= 1")
+        
+        if page_size < 1 or page_size > 100:
+            return WebUtils.response_error("page_size must be between 1 and 100")
+        
+        # 构建权限映射
+        permissions_map = CmdbRulesFormatUtil.format_user_groups_permissions(request=request, model_id="")
+        
+        result = InstanceManage.fulltext_search_by_model(
+            search=search,
+            model_id=model_id,
+            permission_map=permissions_map,
+            creator=request.user.username,
+            page=page,
+            page_size=page_size,
+            case_sensitive=case_sensitive
+        )
+        
         return WebUtils.response_success(result)
 
     @action(

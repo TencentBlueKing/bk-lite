@@ -2610,39 +2610,48 @@ monitor_object_metric:
         write performance of applications.
       name: Disk Write Rate
   ElasticSearch:
-    elasticsearch_indices_docs_deleted:
-      desc: Total number of deleted documents in Elasticsearch.
-      name: Total Deleted Documents
-    elasticsearch_breakers_fielddata_tripped:
-      name: Field Data Circuit Breaker Trips
-      desc: Field data circuit breaker trips in 5 minutes.
-    elasticsearch_indices_query_cache_cache_count:
-      name: Query Cache Entries
-      desc: Tracks the number of query cache entries.
+    elasticsearch_cluster_health_status_code:
+      name: Cluster Health Status
+      desc: Core cluster health metric, reflects cluster health via status values: 1=normal (green), 2=replica missing, 3=primary missing (failure); red status impacts data availability
+    elasticsearch_cluster_health_active_primary_shards:
+      name: Active Primary Shards
+      desc: Core data availability metric, represents the count of active primary shards; missing primary shards block data read/write; ensure consistency with expected count
+    elasticsearch_cluster_health_unassigned_shards:
+      name: Unassigned Shards
+      desc: Core cluster anomaly indicator, represents the count of unassigned shards; investigate if >0; long-term existence reduces data redundancy and availability
+    elasticsearch_jvm_mem_heap_used_percent:
+      name: JVM Heap Usage
+      desc: Core JVM memory pressure metric, reflects JVM memory usage; high usage triggers Full GC and cluster lag
+    elasticsearch_jvm_gc_collectors_young_collection_time_in_millis_rate:
+      name: Young Gen GC Time Per Second
+      desc: GC efficiency monitoring metric, reflects GC operation latency; sustained high values indicate high CPU usage by GC, affecting business performance
+    elasticsearch_fs_data_0_available_in_bytes:
+      name: Node Available Disk Space
+      desc: Node storage availability metric, reflects remaining disk space on nodes; disk exhaustion causes node offline
+    elasticsearch_process_cpu_percent:
+      name: Process CPU Usage
+      desc: Process compute load metric, reflects CPU load of the process; high load degrades cluster read/write performance
+    elasticsearch_process_open_file_descriptors:
+      name: Open File Descriptors
+      desc: File resource monitoring metric, reflects file descriptor usage; approaching system limits affects shard availability
+    elasticsearch_breakers_fielddata_tripped_rate:
+      name: Fielddata Memory Breaker Trigger Rate
+      desc: Memory protection mechanism monitoring, reflects triggers of the memory protection breaker; >0 indicates recent memory shortage
+    elasticsearch_breakers_request_tripped_rate:
+      name: Rate of HTTP Request Circuit Breaker Triggering
+      desc: Request-level memory protection monitoring, reflects triggers of the request-level memory protection breaker; >0 indicates recent request memory overload
     elasticsearch_http_current_open:
-      desc: Tracks the number of currently open HTTP connections.
-      name: Current HTTP Connections
-    elasticsearch_fs_total_free_in_bytes:
-      name: Total Free Disk Space
-      desc: Represents unallocated available disk space.
-    elasticsearch_http_total_opened:
-      name: New HTTP Connections (5-minute Interval)
-      desc: Number of new HTTP connections opened in 5 minutes.
-    elasticsearch_fs_io_stats_total_read_kilobytes:
-      desc: Tracks disk read throughput (MB/s).
-      name: Disk Read Throughput
-    elasticsearch_breakers_parent_tripped:
-      desc: Parent circuit breaker trips in 5 minutes.
-      name: Parent Circuit Breaker Trips
-    elasticsearch_indices_docs_count:
-      desc: Total number of document entries in Elasticsearch.
-      name: Total Documents
-    elasticsearch_fs_total_available_in_bytes:
-      desc: Indicates total available disk space, converted to GB.
-      name: Available Disk Space
-    elasticsearch_fs_io_stats_total_write_kilobytes:
-      desc: Monitors disk write throughput (MB/s).
-      name: Disk Write Throughput
+      name: HTTP Current Connections
+      desc: HTTP service availability metric, reflects connection usage of the HTTP service; approaching connection limits affects new request acceptance
+    elasticsearch_http_total_opened_rate:
+      name: HTTP New Connections Per Second
+      desc: HTTP service traffic metric, reflects recent business request traffic changes; aids in troubleshooting traffic peak issues
+    elasticsearch_thread_pool_index_queue:
+      name: Index Thread Pool Queue Length
+      desc: Write performance warning metric, reflects the length of the write request queue; growing queue length indicates insufficient write capacity, causing latency spikes
+    elasticsearch_thread_pool_search_queue:
+      name: Search Thread Pool Queue Length
+      desc: Query performance warning metric, reflects the length of the query request queue; growing queue length indicates insufficient query capacity, affecting business experience
   Redis:
     redis_mem_fragmentation_ratio:
       name: Memory Fragmentation Ratio
@@ -3078,12 +3087,11 @@ monitor_object_metric_group:
     Bandwidth: Bandwidth
     Traffic: Traffic
   ElasticSearch:
-    Circuit Breakers: Circuit Breakers
-    Disk: Disk
-    Indices: Indices
+    Base: Base
+    Node: Node
+    Breaker: Breaker
     HTTP: HTTP
-    Cache: Cache
-    IO: IO
+    ThreadPool: ThreadPool
   Loadbalance:
     Packet Loss: Packet Loss
     Traffic: Traffic

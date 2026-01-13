@@ -1,35 +1,33 @@
 'use client';
 import React, { useEffect, useState, useRef } from 'react';
+import assetSearchStyle from './index.module.scss';
 import { useTranslation } from '@/utils/i18n';
 import { SearchOutlined } from '@ant-design/icons';
-import assetSearchStyle from './index.module.scss';
 import { ArrowRightOutlined, CloseCircleOutlined } from '@ant-design/icons';
+import { AttrFieldType, UserItem } from '@/app/cmdb/types/assetManage';
 import {
-  AttrFieldType,
-  UserItem,
-} from '@/app/cmdb/types/assetManage';
-import { Spin, Input, Tabs, Button, Tag, Empty } from 'antd';
+  AssetListItem,
+  SearchStatsResponse,
+  SearchByModelResponse,
+  TabJsxItem,
+  ModelStat,
+  InstDetailItem,
+} from '@/app/cmdb/types/assetSearch';
+import {
+  Spin,
+  Input,
+  Tabs,
+  Button,
+  Tag,
+  Empty,
+  Pagination,
+  Checkbox,
+} from 'antd';
 import useApiClient from '@/utils/request';
 import { useCommon } from '@/app/cmdb/context/common';
 import { deepClone, getFieldItem } from '@/app/cmdb/utils/common';
 import { useModelApi, useInstanceApi } from '@/app/cmdb/api';
 const { Search } = Input;
-interface AssetListItem {
-  model_id: string;
-  _id: string;
-  [key: string]: unknown;
-}
-interface TabItem {
-  key: string;
-  label: string;
-  children: Array<AssetListItem>;
-}
-
-interface TabJsxItem {
-  key: string;
-  label: string;
-  children: React.ReactElement;
-}
 
 const AssetSearch = () => {
   const { t } = useTranslation();
@@ -37,7 +35,7 @@ const AssetSearch = () => {
   const commonContext = useCommon();
 
   const { getModelAttrList } = useModelApi();
-  const { fulltextSearchInstances } = useInstanceApi();
+  const { fulltextSearchStats, fulltextSearchByModel } = useInstanceApi();
 
   const users = useRef(commonContext?.userList || []);
   const userList: UserItem[] = users.current;
@@ -47,11 +45,16 @@ const AssetSearch = () => {
   const [activeTab, setActiveTab] = useState<string>('');
   const [items, setItems] = useState<TabJsxItem[]>([]);
   const [showSearch, setShowSearch] = useState<boolean>(true);
-  const [instDetail, setInstDetail] = useState<TabJsxItem[]>([]);
+  const [instDetail, setInstDetail] = useState<InstDetailItem[]>([]);
   const [pageLoading, setPageLoading] = useState<boolean>(false);
   const [activeInstItem, setActiveInstItem] = useState<number>(-1);
-  const [instData, setInstData] = useState<TabItem[]>([]);
   const [historyList, setHistoryList] = useState<string[]>([]);
+  const [modelStats, setModelStats] = useState<ModelStat[]>([]);
+  const [currentModelData, setCurrentModelData] = useState<AssetListItem[]>([]);
+  const [currentPage, setCurrentPage] = useState<number>(1);
+  const [pageSize, setPageSize] = useState<number>(10);
+  const [totalCount, setTotalCount] = useState<number>(0);
+  const [caseSensitive, setCaseSensitive] = useState<boolean>(false);
 
   useEffect(() => {
     if (isLoading || !modelList.length) return;
@@ -63,11 +66,11 @@ const AssetSearch = () => {
   }, []);
 
   useEffect(() => {
-    if (propertyList.length) {
-      const tabJsx = getInstDetial(instData, propertyList);
+    if (propertyList.length && currentModelData.length) {
+      const tabJsx = getInstDetial(currentModelData, propertyList);
       setItems(tabJsx);
     }
-  }, [propertyList, instData, activeInstItem, activeTab]);
+  }, [propertyList, currentModelData, activeInstItem, activeTab]);
 
   const handleTextChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setSearchText(e.target.value);
@@ -76,6 +79,7 @@ const AssetSearch = () => {
   const handleSearch = async () => {
     setShowSearch(!searchText);
     if (!searchText) return;
+
     const histories = deepClone(historyList);
     if (
       !histories.length ||
@@ -85,201 +89,288 @@ const AssetSearch = () => {
     }
     localStorage.setItem('assetSearchHistory', JSON.stringify(histories));
     setHistoryList(histories);
+
     setPageLoading(true);
     try {
-      const data: AssetListItem[] = await fulltextSearchInstances({
+      const stats: SearchStatsResponse = await fulltextSearchStats({
         search: searchText,
+        case_sensitive: caseSensitive,
       });
-      const tabItems: TabItem[] = getAssetList(data);
-      const defaultTab = tabItems[0]?.key || '';
 
-      if (!defaultTab || !data.length) {
-        // 清空所有相关数据
-        setInstData([]);
+      if (!stats.model_stats || stats.model_stats.length === 0) {
+        setModelStats([]);
+        setCurrentModelData([]);
         setItems([]);
         setPropertyList([]);
         setActiveTab('');
         setInstDetail([]);
         setActiveInstItem(-1);
+        setTotalCount(0);
+        setCurrentPage(1);
         setPageLoading(false);
         return;
       }
-      const attrList = await getModelAttrList(defaultTab);
-      setPropertyList(attrList);
-      setInstData(tabItems);
-      setActiveTab(defaultTab);
-      setActiveInstItem(-1); 
-      setPageLoading(false);
-    } catch {
-      // 搜索失败时也要清空数据
-      setInstData([]);
+
+      setModelStats(stats.model_stats);
+
+      const firstModelId = stats.model_stats[0].model_id;
+      setActiveTab(firstModelId);
+      setCurrentPage(1);
+
+      await loadModelData(firstModelId, 1, pageSize);
+    } catch (error) {
+      console.error('Search failed:', error);
+      setModelStats([]);
+      setCurrentModelData([]);
       setItems([]);
       setPropertyList([]);
       setActiveTab('');
       setInstDetail([]);
       setActiveInstItem(-1);
+      setTotalCount(0);
+      setCurrentPage(1);
       setPageLoading(false);
     }
   };
 
-  const getAssetList = (data: AssetListItem[]) => {
-    const result = data.reduce((acc: any, item) => {
-      const { model_id: modelId } = item;
-      if (acc[modelId]) {
-        acc[modelId].children.push(item);
-      } else {
-        acc[modelId] = { key: modelId, children: [item] };
-      }
-      return acc;
-    }, {});
-    return Object.values(result).map((item: any) => ({
-      ...item,
-      label: getModelName(item),
-    }));
-  };
-
-  const getInstDetial = (tabItems: TabItem[], properties: AttrFieldType[]) => {
-    const lists = deepClone(tabItems);
-    lists.forEach((item: any) => {
-      const descItems = item.children.map((desc: AssetListItem) => {
-        const arr = Object.entries(desc)
-          .map(([key, value]) => {
-            return {
-              key: key,
-              label: properties.find((item) => item.attr_id === key)?.attr_name,
-              children: value,
-              id: desc._id,
-            };
-          })
-          .filter((desc) => !!desc.label);
-        return arr;
+  const loadModelData = async (modelId: string, page: number, size: number) => {
+    setPageLoading(true);
+    try {
+      const result: SearchByModelResponse = await fulltextSearchByModel({
+        search: searchText,
+        model_id: modelId,
+        page: page,
+        page_size: size,
+        case_sensitive: caseSensitive,
       });
-      if (item.key === activeTab) {
-        setInstDetail(descItems[0] || []);
-        if (activeInstItem < 0) {
-          setActiveInstItem(0);
-        }
-      }
-      item.children = (
-        <div className={assetSearchStyle.searchResult}>
-          <div className={assetSearchStyle.list}>
-            {descItems.map((target: TabJsxItem[], index: number) => (
-              <div
-                key={index}
-                className={`${assetSearchStyle.listItem} ${
-                  index === activeInstItem ? assetSearchStyle.active : ''
-                }`}
-                onClick={() => checkInstDetail(index, target)}
-              >
-                <div className={assetSearchStyle.title}>{`${item.key} - ${
-                  target.find((title: TabJsxItem) => title.key === 'inst_name')
-                    ?.children || '--'
-                }`}</div>
-                <ul>
-                  {target.map((list: TabJsxItem) => {
-                    const fieldItem: any =
-                      propertyList.find(
-                        (property) => property.attr_id === list.key
-                      ) || {};
-                    const fieldVal: string =
-                      getFieldItem({
-                        fieldItem,
-                        userList,
-                        isEdit: false,
-                        value: list.children,
-                        hideUserAvatar: true,
-                      }) || '--';
-                    const isStrField =
-                      typeof fieldVal === 'string' &&
-                      fieldVal.includes(searchText);
-                    return isStrField ||
-                      ['inst_name', 'organization'].includes(list.key) ? (
-                        <li key={list.key}>
-                          <span>{list.label}</span>：
-                          <span
-                            className={
-                              isStrField ? 'text-[var(--color-primary)]' : ''
-                            }
-                          >
-                            {fieldVal}
-                          </span>
-                        </li>
-                      ) : null;
-                  })}
-                </ul>
-              </div>
-            ))}
-          </div>
-          <div className={assetSearchStyle.detail}>
-            <div className={assetSearchStyle.detailTile}>
-              <div className={assetSearchStyle.title}>{`${item.key} - ${
-                instDetail.find(
-                  (title: TabJsxItem) => title.key === 'inst_name'
-                )?.children || '--'
-              }`}</div>
-              <Button
-                type="link"
-                iconPosition="end"
-                icon={<ArrowRightOutlined />}
-                onClick={linkToDetail}
-              >
-                {t('seeMore')}
-              </Button>
-            </div>
-            <ul>
-              {instDetail.map((list: TabJsxItem) => {
-                const fieldItem: any =
-                  propertyList.find(
-                    (property) => property.attr_id === list.key
-                  ) || {};
-                const fieldVal: string =
-                  getFieldItem({
-                    fieldItem,
-                    userList,
-                    isEdit: false,
-                    value: list.children,
-                    hideUserAvatar: true,
-                  }) || '--';
-                const isStrField =
-                  typeof fieldVal === 'string' && fieldVal.includes(searchText);
-                return (
-                  <li
-                    key={list.key}
-                    className={assetSearchStyle.detailListItem}
-                  >
-                    <span className={assetSearchStyle.listItemLabel}>
-                      <span
-                        className={assetSearchStyle.label}
-                        title={list.label}
-                      >
-                        {list.label}
-                      </span>
-                      <span className={assetSearchStyle.labelColon}>：</span>
-                    </span>
-                    <span
-                      title={fieldVal}
-                      className={`${
-                        isStrField ? 'text-[var(--color-primary)]' : ''
-                      } ${assetSearchStyle.listItemValue}`}
-                    >
-                      {fieldVal}
-                    </span>
-                  </li>
-                );
-              })}
-            </ul>
-          </div>
-        </div>
-      );
-    });
-    return lists;
+
+      setCurrentModelData(result.data || []);
+      setTotalCount(result.total);
+
+      const attrList = await getModelAttrList(modelId);
+      setPropertyList(attrList);
+
+      setActiveInstItem(result.data && result.data.length > 0 ? 0 : -1);
+    } catch (error) {
+      console.error('Load model data failed:', error);
+      setCurrentModelData([]);
+      setTotalCount(0);
+      setActiveInstItem(-1);
+    } finally {
+      setPageLoading(false);
+    }
   };
 
-  const getModelName = (item: TabItem) => {
-    return (
-      (modelList.find((model) => model.model_id === item.key)?.model_name ||
-        '--') + `(${item.children.length})`
-    );
+  const getInstDetial = (
+    data: AssetListItem[],
+    properties: AttrFieldType[]
+  ) => {
+    if (!data || data.length === 0) return [];
+
+    const descItems: InstDetailItem[][] = data.map((desc: AssetListItem) => {
+      const arr = Object.entries(desc)
+        .map(([key, value]) => {
+          return {
+            key: key,
+            label: properties.find((item) => item.attr_id === key)?.attr_name,
+            children: value,
+            id: desc._id,
+          };
+        })
+        .filter((desc) => !!desc.label);
+      return arr;
+    });
+
+    // 计算当前要显示的详情索引
+    const detailIndex =
+      activeInstItem >= 0 && activeInstItem < descItems.length
+        ? activeInstItem
+        : 0;
+    const currentDetail =
+      descItems.length > 0 ? descItems[detailIndex] || [] : [];
+
+    // 设置详情状态
+    if (descItems.length > 0) {
+      setInstDetail(currentDetail);
+    } else {
+      setInstDetail([]);
+    }
+
+    const modelName =
+      modelList.find((model) => model.model_id === activeTab)?.model_name ||
+      activeTab;
+
+    const result: TabJsxItem[] = [
+      {
+        key: activeTab,
+        label: `${modelName}(${totalCount})`,
+        children: (
+          <div className={assetSearchStyle.searchResult}>
+            <div
+              className={assetSearchStyle.list}
+              style={{
+                display: 'flex',
+                flexDirection: 'column',
+                maxHeight: 'calc(100vh - 184px)',
+                minHeight: 'calc(100vh - 184px)',
+              }}
+            >
+              <div style={{ flex: 1, overflow: 'auto' }}>
+                {descItems.map((target: InstDetailItem[], index: number) => (
+                  <div
+                    key={index}
+                    className={`${assetSearchStyle.listItem} ${
+                      index === activeInstItem ? assetSearchStyle.active : ''
+                    }`}
+                    onClick={() => checkInstDetail(index, target)}
+                  >
+                    <div className={assetSearchStyle.title}>{`${modelName} - ${
+                      target.find(
+                        (title: InstDetailItem) => title.key === 'inst_name'
+                      )?.children || '--'
+                    }`}</div>
+                    <ul>
+                      {target.map((list: InstDetailItem) => {
+                        const fieldItem: any =
+                          propertyList.find(
+                            (property) => property.attr_id === list.key
+                          ) || {};
+                        const fieldVal: string =
+                          getFieldItem({
+                            fieldItem,
+                            userList,
+                            isEdit: false,
+                            value: list.children,
+                            hideUserAvatar: true,
+                          }) || '--';
+                        const isStrField =
+                          typeof fieldVal === 'string' &&
+                          fieldVal.includes(searchText);
+                        return isStrField ||
+                          ['inst_name', 'organization'].includes(list.key) ? (
+                          <li key={list.key}>
+                            <span>{list.label}</span>：
+                            <span
+                              className={
+                                isStrField ? 'text-[var(--color-primary)]' : ''
+                              }
+                            >
+                              {fieldVal}
+                            </span>
+                          </li>
+                          ) : null;
+                      })}
+                    </ul>
+                  </div>
+                ))}
+              </div>
+              {totalCount > 0 && (
+                <div
+                  style={{
+                    padding: '12px 16px',
+                    borderTop: '1px solid var(--color-border-2)',
+                    flexShrink: 0,
+                    display: 'flex',
+                    justifyContent: 'flex-end',
+                  }}
+                >
+                  <Pagination
+                    current={currentPage}
+                    pageSize={pageSize}
+                    total={totalCount}
+                    onChange={handlePageChange}
+                    showSizeChanger
+                    showTotal={(total) =>
+                      `${t('common.total')} ${total} ${t('common.items')}`
+                    }
+                    pageSizeOptions={[10, 20, 50, 100]}
+                  />
+                </div>
+              )}
+            </div>
+            <div className={assetSearchStyle.detail}>
+              <div className={assetSearchStyle.detailTile}>
+                <div className={assetSearchStyle.title}>{`${modelName} - ${
+                  currentDetail.find(
+                    (title: InstDetailItem) => title.key === 'inst_name'
+                  )?.children || '--'
+                }`}</div>
+                <Button
+                  type="link"
+                  iconPosition="end"
+                  icon={<ArrowRightOutlined />}
+                  onClick={linkToDetail}
+                >
+                  {t('seeMore')}
+                </Button>
+              </div>
+              <ul>
+                {currentDetail.map((list: InstDetailItem) => {
+                  const fieldItem: any =
+                    propertyList.find(
+                      (property) => property.attr_id === list.key
+                    ) || {};
+                  const fieldVal: string =
+                    getFieldItem({
+                      fieldItem,
+                      userList,
+                      isEdit: false,
+                      value: list.children,
+                      hideUserAvatar: true,
+                    }) || '--';
+                  const isStrField =
+                    typeof fieldVal === 'string' &&
+                    fieldVal.includes(searchText);
+                  return (
+                    <li
+                      key={list.key}
+                      className={assetSearchStyle.detailListItem}
+                    >
+                      <span className={assetSearchStyle.listItemLabel}>
+                        <span
+                          className={assetSearchStyle.label}
+                          title={list.label}
+                        >
+                          {list.label}
+                        </span>
+                        <span className={assetSearchStyle.labelColon}>：</span>
+                      </span>
+                      <span
+                        title={fieldVal}
+                        className={`${
+                          isStrField ? 'text-[var(--color-primary)]' : ''
+                        } ${assetSearchStyle.listItemValue}`}
+                      >
+                        {fieldVal}
+                      </span>
+                    </li>
+                  );
+                })}
+              </ul>
+            </div>
+          </div>
+        ),
+      },
+    ];
+
+    return result;
+  };
+
+  const getModelTabs = () => {
+    return modelStats.map((stat) => {
+      const modelName =
+        modelList.find((model) => model.model_id === stat.model_id)
+          ?.model_name || stat.model_id;
+
+      const isActive = stat.model_id === activeTab;
+      const content = isActive && items.length > 0 ? items[0].children : null;
+
+      return {
+        key: stat.model_id,
+        label: `${modelName}(${stat.count})`,
+        children: content,
+      };
+    });
   };
 
   const linkToDetail = () => {
@@ -293,7 +384,7 @@ const AssetSearch = () => {
       classification_id: '',
       inst_id: _instDetail[0]?.id || '',
       inst_name: _instDetail.find(
-        (title: TabJsxItem) => title.key === 'inst_name'
+        (title: InstDetailItem) => title.key === 'inst_name'
       )?.children,
     };
     const queryString = new URLSearchParams(params).toString();
@@ -303,19 +394,21 @@ const AssetSearch = () => {
 
   const onTabChange = async (key: string) => {
     setActiveTab(key);
-    setPageLoading(true);
-    try {
-      const attrList = await getModelAttrList(key);
-      setPropertyList(attrList);
-      setActiveInstItem(-1);
-    } finally {
-      setPageLoading(false);
-    }
+    setCurrentPage(1);
+    setActiveInstItem(-1);
+    await loadModelData(key, 1, pageSize);
   };
 
-  const checkInstDetail = (index: number, row: TabJsxItem[]) => {
+  const checkInstDetail = (index: number, row: InstDetailItem[]) => {
     setActiveInstItem(index);
     setInstDetail(row);
+  };
+
+  const handlePageChange = (page: number, size: number) => {
+    setCurrentPage(page);
+    setPageSize(size);
+    setActiveInstItem(-1);
+    loadModelData(activeTab, page, size);
   };
 
   const clearHistoryItem = (
@@ -342,24 +435,42 @@ const AssetSearch = () => {
             <h1 className={assetSearchStyle.searchTitle}>{`${t(
               'searchTitle'
             )}`}</h1>
-            <Search
-              className={assetSearchStyle.inputBtn}
-              value={searchText}
-              allowClear
-              size="large"
-              placeholder={t('assetSearchTxt')}
-              enterButton={
-                <div
-                  className={assetSearchStyle.searchBtn}
-                  onClick={handleSearch}
+            <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
+              <Search
+                className={assetSearchStyle.inputBtn}
+                value={searchText}
+                allowClear
+                size="large"
+                placeholder={t('assetSearchTxt')}
+                enterButton={
+                  <div
+                    className={assetSearchStyle.searchBtn}
+                    onClick={handleSearch}
+                  >
+                    <SearchOutlined className="pr-[8px]" />
+                    {t('common.search')}
+                  </div>
+                }
+                onChange={handleTextChange}
+                onPressEnter={handleSearch}
+              />
+              <div
+                style={{
+                  border: '1px solid var(--color-border-2)',
+                  borderRadius: '2px',
+                  padding: '4px 12px',
+                  background: 'var(--color-bg-1)',
+                  whiteSpace: 'nowrap',
+                }}
+              >
+                <Checkbox
+                  checked={caseSensitive}
+                  onChange={(e) => setCaseSensitive(e.target.checked)}
                 >
-                  <SearchOutlined className="pr-[8px]" />
-                  {t('common.search')}
-                </div>
-              }
-              onChange={handleTextChange}
-              onPressEnter={handleSearch}
-            />
+                  {t('FilterBar.exactMatch')}
+                </Checkbox>
+              </div>
+            </div>
             {!!historyList.length && (
               <div className={assetSearchStyle.history}>
                 <div className={assetSearchStyle.description}>
@@ -388,28 +499,57 @@ const AssetSearch = () => {
           </div>
         ) : (
           <div className={assetSearchStyle.searchDetail}>
-            <Search
-              className={assetSearchStyle.input}
-              value={searchText}
-              allowClear
-              placeholder={t('assetSearchTxt')}
-              enterButton={
-                <div
-                  className={assetSearchStyle.searchBtn}
-                  onClick={handleSearch}
+            <div
+              style={{
+                display: 'flex',
+                gap: '12px',
+                alignItems: 'center',
+                marginBottom: '12px',
+              }}
+            >
+              <Search
+                className={assetSearchStyle.input}
+                value={searchText}
+                allowClear
+                placeholder={t('assetSearchTxt')}
+                enterButton={
+                  <div
+                    className={assetSearchStyle.searchBtn}
+                    onClick={handleSearch}
+                  >
+                    <SearchOutlined className="pr-[8px]" />
+                    {t('common.search')}
+                  </div>
+                }
+                onChange={handleTextChange}
+                onPressEnter={handleSearch}
+              />
+              <div
+                style={{
+                  border: '1px solid var(--color-border-2)',
+                  borderRadius: '2px',
+                  padding: '4px 12px',
+                  background: 'var(--color-bg-1)',
+                  whiteSpace: 'nowrap',
+                }}
+              >
+                <Checkbox
+                  checked={caseSensitive}
+                  onChange={(e) => setCaseSensitive(e.target.checked)}
                 >
-                  <SearchOutlined className="pr-[8px]" />
-                  {t('common.search')}
-                </div>
-              }
-              onChange={handleTextChange}
-              onPressEnter={handleSearch}
-            />
-            <div>
-              {items.length ? (
+                  {t('FilterBar.exactMatch')}
+                </Checkbox>
+              </div>
+            </div>
+            <div
+              style={{
+                height: 'calc(100vh - 136px)',
+              }}
+            >
+              {modelStats.length ? (
                 <Tabs
                   activeKey={activeTab}
-                  items={items}
+                  items={getModelTabs()}
                   onChange={onTabChange}
                 />
               ) : (

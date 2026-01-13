@@ -127,9 +127,6 @@
       "activemq_topic_queue_size_value": "队列大小",
       "ifOutErrors": "每秒发送错误数据包数",
       "apache_req_per_sec": "每秒请求数",
-      "cpu_summary": {
-        "usage": "CPU使用率"
-      },
       "filterOptions": "过滤项",
       "jvm_memory_usage_max_value": "JVM 内存使用最大值",
       "pod_memory_utilization": "内存使用率",
@@ -172,9 +169,6 @@
       "tomcat_connector_request_count": "请求数量",
       "jmx_scrape_error_gauge": "JMX抓取错误",
       "esxi_cpu_usage_average_gauge": "CPU使用率",
-      "mem": {
-        "pct_used": "内存使用率"
-      },
       "tomcat_connector_current_threads_busy": "忙碌线程数",
       "zookeeper_avg_latency": "平均延迟",
       "oracledb_up_gauge": "运行状态",
@@ -200,7 +194,6 @@
       "cluster_node_count": "集群节点数",
       "cvm_LanOuttraffic": "内网出带宽",
       "ipmi_power_watts": "电源状态",
-      "load5": "平均负载(5min)",
       "ifOutOctets": "每秒发送流量",
       "data_storage_store_accessible_gauge": "存储连接状态",
       "dashboard": "仪表盘",
@@ -247,7 +240,10 @@
       "minio_cluster_drive_offline_total_gauge": "集群中处于离线状态的节点数量",
       "memory_usage": "内存使用率",
       "avg_latency": "平均延迟",
-      "minio_cluster_capacity_usable_free_bytes_gauge": "集群可使用容量"
+      "minio_cluster_capacity_usable_free_bytes_gauge": "集群可使用容量",
+      "cpu_usage_total": "CPU使用率",
+      "mem_used_percent": "内存使用率",
+      "system_load5": "平均负载(5min)"
     },
     "integrations": {
       "publishAddressDes": "系统监控的主要网址，用于检测其可用性和性能状态",

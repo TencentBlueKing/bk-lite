@@ -29,6 +29,8 @@ class CwVmware(object):
             setattr(self, k, v)
 
         self.si = self._connect_vc()
+        if self.si is None:
+            raise ConnectionError(f"Failed to connect to VMware vCenter: {self.host}")
         self.content = self.si.RetrieveContent()
 
     def __getattr__(self, item):
