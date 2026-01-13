@@ -95,6 +95,10 @@ export const useModelApi = () => {
     return post('/cmdb/api/field_groups/update_attr_group/', params);
   };
 
+  // 复制模型
+  const copyModel = (modelId: string, params: any) =>
+    post(`/cmdb/api/model/${modelId}/copy/`, params);
+
   return {
     getModelList,
     createModel,
@@ -116,6 +120,7 @@ export const useModelApi = () => {
     deleteModelAttrGroup,
     moveModelAttrGroup,
     reorderGroupAttrs,
-    moveAttrToGroup
+    moveAttrToGroup,
+    copyModel
   };
 };
