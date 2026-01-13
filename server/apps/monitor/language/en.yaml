@@ -1521,61 +1521,66 @@ monitor_object_metric:
       desc: The maximum number of file descriptors that can be opened by the Oracle
         Database Monitoring Probe process.
   Mysql:
-    mysql_aborted_clients:
-      name: Number of Aborted Client Connections
-      desc: This metric represents the number of connections aborted due to client
-        errors. Monitoring this metric can help identify connection reliability issues.
-    mysql_access_denied_errors:
-      name: Number of Access Denied Errors
-      desc: This metric represents the number of access denials due to insufficient
-        privileges or authentication failures. Monitoring this metric helps in identifying
-        and resolving permission issues.
-    mysql_connections_total:
-      name: Total Connections Created
-      desc: This metric represents the total number of connections created since the
-        server started. Monitoring the total connections helps understand connection
-        patterns and load.
-    mysql_com_update:
-      desc: This metric represents the number of Update commands executed. Monitoring
-        this metric helps understand the frequency of update operations and system
-        load.
-      name: Number of Update Commands Executed
+    mysql_threads_connected:
+      name: Current Connections
+      desc: Number of currently open connections; new connections are rejected when approaching max_connections
+    mysql_threads_running:
+      name: Running Threads
+      desc: Number of threads currently executing queries, reflecting concurrent processing capacity
     mysql_aborted_connects:
-      desc: This metric represents the number of connection attempts aborted due to
-        connection issues. High values may indicate configuration issues or server
-        overload.
-      name: Number of Aborted Connections
-    mysql_bytes_received:
-      desc: This metric indicates the number of bytes received by the MySQL server.
-        Monitoring this metric helps understand the network traffic load.
-      name: Bytes Received
-    mysql_bytes_sent:
-      name: Bytes Sent
-      desc: This metric indicates the number of bytes sent by the MySQL server. Monitoring
-        this metric helps understand the network traffic load.
-    mysql_com_insert:
-      name: Number of Insert Commands Executed
-      desc: This metric represents the number of Insert commands executed. Monitoring
-        this metric helps understand the frequency of write operations and system
-        load.
-    mysql_com_delete:
-      desc: This metric represents the number of Delete commands executed. Monitoring
-        this metric helps understand the frequency of delete operations and system
-        load.
-      name: Number of Delete Commands Executed
-    mysql_aria_pagecache_blocks_unused:
-      name: Aria Pagecache Blocks Unused
-      desc: This metric indicates the number of unused page cache blocks in the Aria
-        storage engine. Monitoring this metric helps optimize cache allocation.
-    mysql_aria_pagecache_blocks_used:
-      name: Aria Pagecache Blocks Used
-      desc: This metric indicates the number of used page cache blocks in the Aria
-        storage engine. Monitoring this metric helps assess the effective utilization
-        of the cache.
-    mysql_com_select:
-      name: Number of Select Queries Executed
-      desc: This metric represents the number of Select queries executed. Monitoring
-        this metric helps understand the frequency of read operations and system load.
+      name: Aborted Connections
+      desc: Number of failed connection attempts, possibly due to permissions, network, or configuration
+    mysql_slow_queries_rate:
+      name: Slow Query Request Trigger Rate
+      desc: Number of slow query requests, reflecting the frequency of slow queries
+    mysql_com_select_rate:
+      name: SELECT Query Rate
+      desc: SELECT queries, reflecting read load trends
+    mysql_com_insert_rate:
+      name: INSERT Write Rate
+      desc: INSERT queries, reflecting write load trends
+    mysql_com_update_rate:
+      name: UPDATE Update Rate
+      desc: UPDATE operations, reflecting data update frequency
+    mysql_com_delete_rate:
+      name: DELETE Delete Rate
+      desc: DELETE operations; a spike requires checking data cleanup rationality
+    mysql_innodb_row_lock_time_avg:
+      name: Avg Row Lock Wait Time
+      desc: Average row lock wait time; >50ms indicates severe lock contention
+    mysql_innodb_row_lock_waits_rate:
+      name: Row Lock Waits Rate
+      desc: Number of InnoDB row lock waits
+    mysql_innodb_buffer_pool_read_requests_rate:
+      name: Buffer Pool Read Requests Rate
+      desc: Buffer pool read requests, reflecting database read load
+    mysql_innodb_buffer_pool_disk_reads_rate:
+      name: Buffer Pool Disk Reads Rate
+      desc: Buffer pool disk reads; high values indicate insufficient memory
+    mysql_innodb_buffer_pool_pages_dirty:
+      name: Dirty Pages
+      desc: Number of dirty pages in buffer pool (not yet written to disk); indicates buffer pool utilization
+    mysql_innodb_buffer_pool_pages_total:
+      name: Total Buffer Pool Pages
+      desc: Total pages in buffer pool; used to calculate buffer pool utilization
+    mysql_bytes_received_rate:
+      name: Data Received Rate
+      desc: Data received, reflecting database input traffic
+    mysql_bytes_sent_rate:
+      name: Data Sent Rate
+      desc: Data sent, reflecting database output traffic
+    mysql_table_open_cache_hits_rate:
+      name: Table Cache Hits Ratio
+      desc: Table cache hit rate; <95% requires adjusting table_open_cache configuration
+    mysql_table_open_cache_misses_rate:
+      name: Table Cache Misses Rate
+      desc: Number of table open cache miss requests, reflecting table cache hit status
+    mysql_created_tmp_disk_tables_rate:
+      name: Disk Temporary Tables Create Rate
+      desc: Number of disk temporary tables created
+    mysql_created_tmp_tables_rate:
+      name: Total Temporary Tables Create Rate
+      desc: Total number of temporary tables (memory + disk) created
   ActiveMQ-JMX:
     activemq_topic_producer_flow_control_value:
       desc: Indicates whether flow control is enabled for producers on the specified
@@ -2991,12 +2996,12 @@ monitor_object_metric_group:
     Disk: Disk
     Memory: Memory
   Mysql:
-    Traffic: Traffic
-    Session: Session
-    Cache: Cache
-    Command: Command
-    Error: Error
-    Connection: Connection
+    ConnStatus: Connection Status
+    QueryPerf: Query Performance
+    InnoDBPerf: InnoDB Performance
+    NetTraffic: Network Traffic
+    TableCache: Table Cache
+    TempTable: Temporary Tables
   Minio:
     CPU: CPU
     ClusterDrive: Cluster Drive

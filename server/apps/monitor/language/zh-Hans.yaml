@@ -1037,42 +1037,66 @@ monitor_object_metric:
       name: Oracle数据库监控探针进程最大文件描述符数
       desc: Oracle数据库监控探针进程能够打开的最大文件描述符数。
   Mysql:
-    mysql_aborted_clients:
-      name: 终止的客户端连接次数
-      desc: 此指标表示由于客户端错误中止的连接次数。监控此指标可以帮助识别连接可靠性问题。
-    mysql_access_denied_errors:
-      name: 访问拒绝错误次数
-      desc: 此指标表示由于权限不足或认证失败导致的访问拒绝次数。监控此指标有助于识别和解决权限问题。
-    mysql_connections_total:
-      name: 总连接创建数
-      desc: 此指标表示从服务器启动以来创建的总连接数。监控连接总数有助于了解连接模式和流量。
-    mysql_com_update:
-      desc: 此指标表示Update命令的执行次数。监控此指标有助于了解更新操作的频率和系统负载。
-      name: Update命令执行次数
+    mysql_threads_connected:
+      name: 当前连接数
+      desc: 当前打开的连接数；接近 max_connections 时会拒绝新连接
+    mysql_threads_running:
+      name: 运行中的线程数
+      desc: 当前正在执行查询的线程数，反映并发处理能力
     mysql_aborted_connects:
-      desc: 此指标表示因连接问题而终止的连接尝试次数。高值可能表示系统配置问题或服务器过载。
-      name: 终止的连接尝试次数
-    mysql_bytes_received:
-      desc: 此指标表示MySQL服务器接收到的字节数。监控此指标可以了解网络流量负载情况。
-      name: 接收字节数
-    mysql_bytes_sent:
-      name: 发送字节数
-      desc: 此指标表示MySQL服务器发送的字节数。监控此指标可以了解网络流量负载情况。
-    mysql_com_insert:
-      name: Insert命令执行次数
-      desc: 此指标表示Insert命令的执行次数。监控此指标有助于了解写入操作的频率和系统负载。
-    mysql_com_delete:
-      desc: 此指标表示Delete命令的执行次数。监控此指标有助于了解删除操作的频率和系统负载。
-      name: Delete命令执行次数
-    mysql_aria_pagecache_blocks_unused:
-      name: 未使用的Aria页高速缓存块数
-      desc: 此指标表示Aria存储引擎中未使用的页高速缓存块数。监控此指标可以帮助优化缓存分配。
-    mysql_aria_pagecache_blocks_used:
-      name: 已使用的Aria页高速缓存块数
-      desc: 此指标表示Aria存储引擎中已使用的页高速缓存块数。监控此指标可以帮助评估缓存的有效利用。
-    mysql_com_select:
-      name: Select命令执行次数
-      desc: 此指标表示Select查询的执行次数。监控此指标有助于了解读取操作的频率和系统负载。
+      name: 中止的连接数
+      desc: 连接尝试失败的次数，可能由权限、网络或配置问题引起
+    mysql_slow_queries_rate:
+      name: 慢查询请求触发速率
+      desc: 慢查询请求数量，反映慢查询发生的频率
+    mysql_com_select_rate:
+      name: SELECT 查询速率
+      desc: SELECT 查询数，反映读取负载趋势
+    mysql_com_insert_rate:
+      name: INSERT 写入速率
+      desc: INSERT 查询数，反映写入负载趋势
+    mysql_com_update_rate:
+      name: UPDATE 更新速率
+      desc: UPDATE 操作数，反映数据更新频率
+    mysql_com_delete_rate:
+      name: DELETE 删除速率
+      desc: DELETE 操作数；激增时需检查数据清理合理性
+    mysql_innodb_row_lock_time_avg:
+      name: 平均行锁等待时间
+      desc: 平均行锁等待时间；>50ms 表示锁竞争严重
+    mysql_innodb_row_lock_waits_rate:
+      name: 行锁等待速率
+      desc: InnoDB 行锁等待次数
+    mysql_innodb_buffer_pool_read_requests_rate:
+      name: 缓冲池读取请求速率
+      desc: 缓冲池读取请求，反映数据库读取负载
+    mysql_innodb_buffer_pool_disk_reads_rate:
+      name: 缓冲池磁盘读取速率
+      desc: 缓冲池磁盘读取次数；值高表示内存不足
+    mysql_innodb_buffer_pool_pages_dirty:
+      name: 脏页数
+      desc: 缓冲池中的脏页数（尚未写入磁盘）；表示缓冲池利用情况
+    mysql_innodb_buffer_pool_pages_total:
+      name: 缓冲池总页数
+      desc: 缓冲池中的总页数；用于计算缓冲池利用率
+    mysql_bytes_received_rate:
+      name: 数据接收速率
+      desc: 接收的数据量，反映数据库输入流量
+    mysql_bytes_sent_rate:
+      name: 数据发送速率
+      desc: 发送的数据量，反映数据库输出流量
+    mysql_table_open_cache_hits_rate:
+      name: 表缓存命中率
+      desc: 表缓存命中率；<95% 需调整 table_open_cache 配置
+    mysql_table_open_cache_misses_rate:
+      name: 表缓存未命中速率
+      desc: 表打开缓存未命中请求数，反映表缓存命中状况
+    mysql_created_tmp_disk_tables_rate:
+      name: 磁盘临时表创建速率
+      desc: 创建的磁盘临时表数量
+    mysql_created_tmp_tables_rate:
+      name: 总临时表创建速率
+      desc: 创建的临时表总数（内存 + 磁盘）
   ActiveMQ-JMX:
     activemq_topic_producer_flow_control_value:
       desc: 显示指定目标主题的生产者是否启用了流量控制，1 表示启用，0 表示未启用，用于防止生产者发送过多消息导致系统过载。
@@ -2093,12 +2117,12 @@ monitor_object_metric_group:
     Disk: 磁盘
     Memory: 内存
   Mysql:
-    Traffic: 流量
-    Session: 会话
-    Cache: 缓存
-    Command: 命令
-    Error: 错误
-    Connection: 连接
+    ConnStatus: 连接状态
+    QueryPerf: 查询性能
+    InnoDBPerf: InnoDB 性能
+    NetTraffic: 网络流量
+    TableCache: 表缓存
+    TempTable: 临时表
   Minio:
     CPU: CPU
     ClusterDrive: 集群驱动器
