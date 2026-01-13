@@ -722,33 +722,93 @@ monitor_object_metric:
       name: 文件描述符使用率
       desc: 该指标表示 RabbitMQ 节点已用文件描述符与总文件描述符的比例。过高的比例可能导致文件描述符不足。
   MongoDB:
-    mongodb_net_in_bytes:
-      name: 每秒接收流量
-      desc: 每秒接收到的数据量，用于监控网络流量。
-    mongodb_latency_commands:
-      name: 操作指令平均延迟
-      desc: 数据库指令的平均延迟情况，用于评估数据库性能。
+    mongodb_uptime_ns:
+      name: 运行时长
+      desc: MongoDB实例已连续运行的时间长度，反映服务稳定性
     mongodb_connections_current:
       name: 当前连接数
-      desc: 当前正在与数据库通信的客户端连接数。
-    mongodb_active_writes:
-      desc: 当前正在执行的活跃写操作数，用于监控数据库写入压力。
-      name: 活跃写操作
-    mongodb_net_out_bytes:
-      desc: 每秒发送的数据量，用于监控网络流量。
-      name: 每秒发送流量
-    mongodb_commands:
-      name: 每秒操作指令数
-      desc: 每秒执行的数据库操作指令数，反映数据库负载。
+      desc: 当前活动的客户端连接数量，反映数据库并发访问负载
+    mongodb_connections_available:
+      name: 可用连接数
+      desc: 可用的连接槽位数量，反映连接池资源余量
+    mongodb_open_connections:
+      name: 打开连接数
+      desc: 当前打开的连接总数，包括活动和空闲连接
     mongodb_active_reads:
-      desc: 当前正在执行的活跃读操作数，用于监控数据库负载情况。
-      name: 活跃读操作
-    mongodb_total_docs_scanned:
-      desc: 查询时扫描的文档数量，评估查询性能。
-      name: 每秒扫描文档数量
+      name: 活跃读操作数
+      desc: 当前正在执行的读取操作数量，反映实时读取负载
+    mongodb_active_writes:
+      name: 活跃写操作数
+      desc: 当前正在执行的写入操作数量，反映实时写入负载
+    mongodb_queued_reads:
+      name: 排队读操作数
+      desc: 等待执行的读取操作数量，反映读取队列积压情况
+    mongodb_queued_writes:
+      name: 排队写操作数
+      desc: 等待执行的写入操作数量，反映写入队列积压情况
+    mongodb_page_faults_rate:
+      name: 缺页中断频率
+      desc: 缺页中断发生的频率，反映内存压力和工作集大小是否合适
+    mongodb_latency_commands_avg:
+      name: 平均命令延迟
+      desc: 命令操作的平均延迟时间，反映数据库响应性能
+    mongodb_latency_reads_avg:
+      name: 平均读取延迟
+      desc: 读取操作的平均延迟时间，反映数据库读取性能
+    mongodb_commands_rate:
+      name: 命令操作频率
+      desc: 命令类型操作执行的频率，反映数据库整体处理负载
+    mongodb_queries_rate:
+      name: 查询操作频率
+      desc: 查询类型操作执行的频率，反映数据库查询处理负载
+    mongodb_inserts_rate:
+      name: 插入操作频率
+      desc: 插入类型操作执行的频率，反映数据写入负载
+    mongodb_updates_rate:
+      name: 更新操作频率
+      desc: 更新类型操作执行的频率，反映数据更新负载
+    mongodb_deletes_rate:
+      name: 删除操作频率
+      desc: 删除类型操作执行的频率，反映数据删除负载
+    mongodb_document_inserted_rate:
+      name: 文档插入频率
+      desc: 文档插入操作的频率，反映数据增长速率
+    mongodb_document_updated_rate:
+      name: 文档更新频率
+      desc: 文档更新操作的频率，反映数据变更活跃度
+    mongodb_document_deleted_rate:
+      name: 文档删除频率
+      desc: 文档删除操作的频率，反映数据清理活跃度
+    mongodb_assert_user:
+      name: 用户断言次数
+      desc: 用户断言的累计触发次数，反映应用程序逻辑或数据异常
+    mongodb_cursor_timed_out_count:
+      name: 超时游标数
+      desc: 超时的游标累计数量，反映查询执行时间过长或资源管理问题
     mongodb_resident_megabytes:
-      name: MongoDB 内存使用量
-      desc: 数据库物理内存使用量，反映资源占用情况。
+      name: 常驻内存大小
+      desc: MongoDB进程使用的物理内存大小，反映内存资源使用情况
+    mongodb_vsize_megabytes:
+      name: 虚拟内存大小
+      desc: MongoDB进程使用的虚拟内存大小，反映内存资源分配情况
+    mongodb_tcmalloc_current_allocated_bytes:
+      name: 当前分配内存
+      desc: 通过tcmalloc内存分配器当前分配的内存大小，反映内存使用效率
+    mongodb_wtcache_current_bytes:
+      name: WiredTiger缓存大小
+      desc: WiredTiger存储引擎缓存当前使用的大小，反映缓存利用率
+    mongodb_wtcache_max_bytes_configured:
+      name: WiredTiger缓存最大配置
+      desc: WiredTiger存储引擎缓存的最大配置大小，反映缓存容量上限
+    mongodb_wtcache_tracked_dirty_bytes:
+      name: 跟踪的脏数据大小
+      desc: WiredTiger缓存中已修改但未写入磁盘的数据大小，反映数据持久化延迟
+    mongodb_net_in_bytes_count_rate:
+      name: 网络输入频率
+      desc: 网络数据接收的频率，反映数据库输入流量负载
+    mongodb_net_out_bytes_count_rate:
+      name: 网络输出频率
+      desc: 网络数据发送的频率，反映数据库输出流量负载
   Tomcat:
     tomcat_jvm_memory_max:
       desc: 该指标表示Tomcat JVM的最大内存量，用于监控内存限制。
@@ -2110,13 +2170,10 @@ monitor_object_metric_group:
     Disk: 磁盘
     Network: 网络
   MongoDB:
-    Latency: 延迟
-    Storage: 存储
-    Active Operations: 活动操作
-    Commands: 指令
-    Memory: 内存
-    Traffic: 流量
-    Connections: 连接
+    Base: 基础信息
+    Performance: 性能
+    Operations: 操作
+    Resources: 资源
   Tomcat-JMX:
     Session: 会话
     GlobalRequestProcessor: 全局请求处理
@@ -2379,7 +2436,7 @@ monitor_object_plugin:
     name: Ping（Telegraf）
   MongoDB:
     name: MongoDB（Telegraf）
-    desc: 通过Telegraf采集器定期收集MongoDB的读写活动、命令执行、连接数、延迟、内存使用及网络流量指标，帮助优化性能，保障数据库高效稳定运行。
+    desc: 通过Telegraf采集器定期收集MongoDB的基础信息、性能指标、操作统计和资源使用情况，帮助优化性能，保障数据库高效稳定运行。
   JVM:
     name: JVM（JMX）
     desc: 通过JVM JMX采集器定期收集JVM（Java 虚拟机）的运行状态、内存使用、线程活动、垃圾回收情况及系统资源等性能指标。

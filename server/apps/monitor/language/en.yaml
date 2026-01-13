@@ -1016,37 +1016,93 @@ monitor_object_metric:
       desc: This metric shows the ratio of used file descriptors to the total number
         of file descriptors on the RabbitMQ node.
   MongoDB:
-    mongodb_net_in_bytes:
-      name: Incoming Network Traffic
-      desc: The amount of incoming data received per second, used to monitor network
-        traffic.
-    mongodb_latency_commands:
-      name: Average Command Latency
-      desc: The average latency of database commands, used to assess database performance.
+    mongodb_uptime_ns:
+      name: Uptime
+      desc: Duration the MongoDB instance has been continuously running, indicating service stability
     mongodb_connections_current:
       name: Current Connections
-      desc: The number of active client connections to the database.
-    mongodb_active_writes:
-      desc: The number of active write operations currently being executed, used to
-        monitor write pressure.
-      name: Active Writes
-    mongodb_net_out_bytes:
-      desc: The amount of outgoing data sent per second, used to monitor network traffic.
-      name: Outgoing Network Traffic
-    mongodb_commands:
-      name: Commands Per Second
-      desc: The number of database operations per second, reflecting database load.
+      desc: Number of active client connections, indicating database concurrent access load
+    mongodb_connections_available:
+      name: Available Connections
+      desc: Number of available connection slots, indicating connection pool resource capacity
+    mongodb_open_connections:
+      name: Open Connections
+      desc: Total number of currently open connections, including active and idle connections
     mongodb_active_reads:
-      desc: The number of active read operations currently being executed, used to
-        monitor database load.
-      name: Active Reads
-    mongodb_total_docs_scanned:
-      desc: The number of documents scanned per second during queries, used to assess
-        query performance.
-      name: Documents Scanned Per Second
+      name: Active Read Operations
+      desc: Number of read operations currently executing, indicating real-time read load
+    mongodb_active_writes:
+      name: Active Write Operations
+      desc: Number of write operations currently executing, indicating real-time write load
+    mongodb_queued_reads:
+      name: Queued Read Operations
+      desc: Number of read operations waiting to execute, indicating read queue backlog
+    mongodb_queued_writes:
+      name: Queued Write Operations
+      desc: Number of write operations waiting to execute, indicating write queue backlog
+    mongodb_page_faults_rate:
+      name: Page Faults Frequency
+      desc: Frequency of page faults occurrence, indicating memory pressure and working set size appropriateness
+    mongodb_latency_commands_avg:
+      name: Average Command Latency
+      desc: Average latency time for command operations, indicating database response performance
+    mongodb_latency_reads_avg:
+      name: Average Read Latency
+      desc: Average latency time for read operations, indicating database read performance
+    mongodb_commands_rate:
+      name: Command Operations Frequency
+      desc: Frequency of command type operations execution, indicating overall database processing load
+    mongodb_queries_rate:
+      name: Query Operations Frequency
+      desc: Frequency of query type operations execution, indicating database query processing load
+    mongodb_inserts_rate:
+      name: Insert Operations Frequency
+      desc: Frequency of insert type operations execution, indicating data write load
+    mongodb_updates_rate:
+      name: Update Operations Frequency
+      desc: Frequency of update type operations execution, indicating data update load
+    mongodb_deletes_rate:
+      name: Delete Operations Frequency
+      desc: Frequency of delete type operations execution, indicating data delete load
+    mongodb_document_inserted_rate:
+      name: Document Inserted Frequency
+      desc: Frequency of document insertion operations, indicating data growth rate
+    mongodb_document_updated_rate:
+      name: Document Updated Frequency
+      desc: Frequency of document update operations, indicating data modification activity level
+    mongodb_document_deleted_rate:
+      name: Document Deleted Frequency
+      desc: Frequency of document deletion operations, indicating data cleanup activity level
+    mongodb_assert_user:
+      name: User Assertions
+      desc: Cumulative number of user assertions triggered, indicating application logic or data anomalies
+    mongodb_cursor_timed_out_count:
+      name: Timed Out Cursors
+      desc: Cumulative number of cursors that have timed out, indicating long query execution time or resource management issues
     mongodb_resident_megabytes:
-      name: Resident Memory Usage
-      desc: The amount of physical memory used by MongoDB, reflecting resource usage.
+      name: Resident Memory Size
+      desc: Physical memory size used by MongoDB process, indicating memory resource usage
+    mongodb_vsize_megabytes:
+      name: Virtual Memory Size
+      desc: Virtual memory size used by MongoDB process, indicating memory resource allocation
+    mongodb_tcmalloc_current_allocated_bytes:
+      name: Currently Allocated Memory
+      desc: Memory currently allocated via tcmalloc memory allocator, indicating memory usage efficiency
+    mongodb_wtcache_current_bytes:
+      name: WiredTiger Cache Size
+      desc: Current usage size of WiredTiger storage engine cache, indicating cache utilization
+    mongodb_wtcache_max_bytes_configured:
+      name: WiredTiger Cache Max Configured
+      desc: Maximum configured size for WiredTiger storage engine cache, indicating cache capacity limit
+    mongodb_wtcache_tracked_dirty_bytes:
+      name: Tracked Dirty Data Size
+      desc: Size of modified but not yet written to disk data in WiredTiger cache, indicating data persistence delay
+    mongodb_net_in_bytes_count_rate:
+      name: Network Input Frequency
+      desc: Frequency of network data reception, indicating database input traffic load
+    mongodb_net_out_bytes_count_rate:
+      name: Network Output Frequency
+      desc: Frequency of network data transmission, indicating database output traffic load
   Tomcat:
     tomcat_jvm_memory_max:
       desc: This metric indicates the maximum memory available to Tomcat JVM, used
@@ -2910,13 +2966,10 @@ monitor_object_metric_group:
     Disk: Disk
     Network: Network
   MongoDB:
-    Latency: Latency
-    Storage: Storage
-    Active Operations: Active Operations
-    Commands: Commands
-    Memory: Memory
-    Traffic: Traffic
-    Connections: Connections
+    Base: Base
+    Performance: Performance
+    Operations: Operations
+    Resources: Resources
   Tomcat-JMX:
     Session: Session
     GlobalRequestProcessor: Global Request Processing
@@ -3236,9 +3289,9 @@ monitor_object_plugin:
   MongoDB:
     name: MongoDB(Telegraf)
     desc: Through the Telegraf collector, regularly collect MongoDB metrics including
-      read/write activities, command execution, connection counts, latency, memory
-      usage, and network traffic to help optimize performance and ensure efficient
-      and stable database operation.
+      basic information, performance indicators, operation statistics, and resource
+      usage to help optimize performance and ensure efficient and stable database
+      operation.
   JVM:
     name: JVM(JMX)
     desc: Through the JVM JMX collector, regularly collect performance metrics from
