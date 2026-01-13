@@ -14,7 +14,7 @@ from tenacity import retry, stop_after_attempt, wait_exponential
 
 # 安全配置
 DEFAULT_TIMEOUT = 60
-MAX_RETRIES = 2
+MAX_RETRIES = 4
 
 
 def _validate_url(url: str) -> bool:
@@ -51,7 +51,7 @@ def _validate_url(url: str) -> bool:
 async def _browse_website_async(
     url: str,
     task: Optional[str] = None,
-    max_steps: int = 10,
+    max_steps: int = 100,
     headless: bool = True,
     llm: ChatOpenAI = None,
 ) -> Dict[str, Any]:
@@ -85,13 +85,18 @@ async def _browse_website_async(
         browser = Browser(headless=headless, enable_default_extensions=False)
 
         # 创建 browser-use agent
-        browser_agent = BrowserAgent(task=f"首先，导航到 {url}。然后，{task}", llm=llm, browser=browser)
+        # 判断task中是否已经明确包含了URL信息
+        # 只有当task中包含完整URL或明确提到该URL时，才认为已包含导航信息
+        if task and url.lower() in task.lower():
+            # 任务已明确包含URL，直接使用
+            final_task = task
+        else:
+            # 任务不包含URL或没有任务，添加导航步骤
+            final_task = f"首先，导航到 {url}。然后，{task}" if task else f"导航到 {url}"
+        browser_agent = BrowserAgent(task=final_task, llm=llm, browser=browser)
 
         # 执行浏览任务
         agent_result = await browser_agent.run(max_steps=max_steps)
-
-        logger.info(f"浏览任务完成: {url}")
-
         # 提取结果
         final_result = agent_result.final_result()
         result_text = str(final_result) if final_result else "未获取到有效结果"
@@ -219,15 +224,9 @@ def browse_website(url: str, task: Optional[str] = None, config: RunnableConfig 
     try:
         # 验证URL
         _validate_url(url)
-        llm = ChatOpenAI(model=llm_config.model, temperature=0.7, api_key=llm_config.openai_api_key, base_url=llm_config.openai_api_base)
+        llm = ChatOpenAI(model=llm_config.model, temperature=0.9, api_key=llm_config.openai_api_key, base_url=llm_config.openai_api_base)
         # 记录日志
-        user_id = config.get("configurable", {}).get("user_id", "unknown") if config else "unknown"
-        logger.info(f"用户:[{user_id}] 执行工具[浏览网站], URL:[{url}], 任务:[{task or '无'}]")
-
-        # 执行异步浏览任务
         result = _run_async_task(_browse_website_async(url=url, task=task, llm=llm))
-
-        logger.info(f"用户:[{user_id}] 工具执行完成, 成功:[{result.get('success')}]")
         return result
 
     except ValueError as e:
@@ -291,7 +290,7 @@ def extract_webpage_info(url: str, selectors: Optional[Dict[str, str]] = None, c
         # 验证URL
         _validate_url(url)
         llm_config = config.get("configurable", {}).get("graph_request")
-        llm = ChatOpenAI(model=llm_config.model, temperature=0.7, api_key=llm_config.openai_api_key, base_url=llm_config.openai_api_base)
+        llm = ChatOpenAI(model=llm_config.model, temperature=0.9, api_key=llm_config.openai_api_key, base_url=llm_config.openai_api_base)
         # 构建提取任务
         if selectors:
             task_parts = ["从页面中提取以下信息："]
@@ -302,9 +301,6 @@ def extract_webpage_info(url: str, selectors: Optional[Dict[str, str]] = None, c
             task = "提取页面的主要内容，包括标题、正文和关键信息"
 
         # 记录日志
-        user_id = config.get("configurable", {}).get("user_id", "unknown") if config else "unknown"
-        logger.info(f"用户:[{user_id}] 执行工具[提取网页信息], URL:[{url}]")
-
         # 执行浏览任务
         result = _run_async_task(_browse_website_async(url=url, task=task, llm=llm))
 

@@ -122,7 +122,9 @@ const AlertConditionsForm: React.FC<AlertConditionsFormProps> = ({
               onChange={onThresholdChange}
               calculationUnit={calculationUnit}
               onUnitChange={onCalculationUnitChange}
-              unitOptions={unitList}
+              unitOptions={unitList.filter(
+                (item) => !['none', 'short'].includes(item.unit_id)
+              )}
             />
           )}
         </div>

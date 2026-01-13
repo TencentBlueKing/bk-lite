@@ -64,7 +64,7 @@ class KnowledgeDocumentViewSet(LanguageViewSet):
         if type(knowledge_document_ids) is not list:
             knowledge_document_ids = [knowledge_document_ids]
         KnowledgeDocument.objects.filter(id__in=knowledge_document_ids).update(train_status=DocumentStatus.TRAINING)
-        general_embed(
+        general_embed.delay(
             knowledge_document_ids,
             request.user.username,
             request.user.domain,
