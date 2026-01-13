@@ -185,215 +185,144 @@ monitor_object_metric:
       desc: Evaluates overall storage device status with online and offline counts.
       name: Total Drives in Cluster
   Host:
-    env:
-      proc_running_current:
-        name: Number of Running Processes
-        desc: Displays the number of processes currently running, used to assess the
-          concurrency. This metric is valuable for real-time monitoring of system
-          load.
-      procs_blocked_current:
-        desc: Displays the number of processes currently blocked by IO operations.
-          Analyzing this value helps optimize the system and reduce bottlenecks. This
-          metric is helpful for identifying IO bottlenecks.
-        name: Number of Processes Blocked by IO
-      procs:
-        desc: Displays the total number of processes running on the system, helping
-          understand the load distribution. This metric is important for monitoring
-          the overall operation of the system.
-        name: Total Processes
-    net:
-      speed_sent:
-        name: Outgoing Network Traffic
-        desc: Displays the number of bytes sent by the network interface per unit
-          of time (in MB), used to evaluate network bandwidth utilization. This metric
-          is crucial for monitoring network bandwidth.
-      dropped_out:
-        desc: Displays the number of dropped packets sent by the network interface,
-          indicating network transmission congestion. This metric is crucial for monitoring
-          network reliability.
-        name: Network Interface Send Dropped Packets
-      errors_out:
-        name: Network Interface Send Error Packets
-        desc: Displays the number of error packets sent by the network interface,
-          helping understand network transmission errors. This metric is helpful for
-          identifying network faults and abnormal traffic.
-      speed_recv:
-        name: Incoming Network Traffic
-        desc: Displays the number of bytes received by the network interface per unit
-          of time (in MB), used to evaluate network bandwidth utilization. This metric
-          is important for monitoring network bandwidth.
-      errors_in:
-        desc: Displays the number of error packets received by the network interface,
-          used to detect network issues. This metric is helpful for identifying network
-          faults and abnormal traffic.
-        name: Network Interface Receive Error Packets
-      speed_packets_sent:
-        name: Outgoing Network Packets
-        desc: Displays the number of data packets sent by the network interface per
-          unit of time, used to evaluate network transmission performance. This metric
-          is crucial for monitoring network traffic.
-      speed_packets_recv:
-        name: Incoming Network Packets
-        desc: Displays the number of data packets received by the network interface
-          per unit of time, used to evaluate network reception performance. This metric
-          is crucial for monitoring network traffic.
-      dropped_in:
-        name: Network Interface Receive Dropped Packets
-        desc: Displays the number of dropped packets received by the network interface,
-          indicating network congestion. This metric is crucial for monitoring network
-          reliability.
-    nvidia_smi_memory_total:
-      desc: The total capacity of GPU memory, indicating the maximum memory the device
-        supports.
-      name: GPU Total Memory Capacity
-    load5:
-      name: 5 Minute Average Load
-      desc: Displays the average system load over the last 5 minutes, reflecting the
-        medium-term load on the system. This medium-term metric helps identify sustained
-        and intermittent high load situations.
-    cpu_summary:
-      iowait:
-        name: Percentage of Time Waiting for IO
-        desc: Displays the percentage of CPU time spent waiting for IO operations,
-          indicating the impact of disk or network performance on the system. Reducing
-          wait time helps improve system performance. This metric is very useful for
-          analyzing system bottlenecks.
-      system:
-        desc: Displays the system usage rate, showing the CPU resources consumed by
-          kernel processes. Analyzing this value helps optimize system kernel performance
-          and stability.
-        name: System Usage Rate
-      user:
-        desc: Displays the percentage of CPU resources used by user processes, helping
-          understand the performance of applications and services. This metric is
-          helpful in understanding the CPU consumption of specific applications.
-        name: CPU Usage by User Processes
-      idle:
-        desc: Displays the CPU idle rate, representing the amount of unused CPU resources
-          in the system. It helps to know if the system is under high load. This metric
-          is crucial for analyzing system performance and efficiency.
-        name: CPU Idle Rate
-      usage:
-        desc: Displays the CPU usage rate to indicate the system's load. It is derived
-          by subtracting the idle from total. This metric is crucial for monitoring
-          system performance.
-        name: CPU Usage Rate
-    nvidia_smi_memory_used:
-      name: GPU Memory Used
-      desc: The capacity of GPU memory currently occupied, reflecting the memory size
-        used by running tasks.
-    diskio_write_bytes:
-      desc: Counts the number of bytes written to the disk in the specified time interval,
-        represented in megabytes (MB).
-      name: Disk I/O Write Bytes Rate
-    mem:
-      buffer:
-        desc: Displays the amount of memory used for buffering (in GB), ensuring stable
-          data transfer. This metric is crucial for performance optimization strategies.
-        name: Buffer Memory Size
-      shared:
-        desc: Displays the usage of shared memory (in GB), used for data sharing between
-          processes. This metric helps optimize system memory allocation strategies.
-        name: Shared Memory Usage
-      pct_used:
-        name: Application Memory Usage Percentage
-        desc: Displays the percentage of memory used by applications, understanding
-          memory usage distribution. This metric is valuable for optimizing memory
-          usage.
-      pct_usable:
-        desc: Displays the percentage of memory available, helping determine if there
-          is sufficient memory to support applications. This metric is useful for
-          monitoring memory pressure and capacity planning strategies.
-        name: Available Memory Percentage for Applications
-      free:
-        desc: Displays the amount of free physical memory currently available (in
-          GB), helping understand the available resources. This metric is crucial
-          for keeping track of memory resource usage.
-        name: Free Physical Memory Amount
-      total:
-        desc: Displays the total physical memory of the system (in GB), providing
-          an overview of system resource configuration. This metric is important for
-          understanding the base configuration of system resources.
-        name: Total Physical Memory
-      used:
-        desc: Displays the memory used by applications (in GB), analyzing this value
-          helps optimize application memory usage. This metric is crucial for monitoring
-          application resource consumption.
-        name: Application Memory Usage
-      psc_used:
-        name: Used Physical Memory Amount
-        desc: Displays the total amount of physical memory used by the system (in
-          GB), helping understand the overall distribution of memory resources. This
-          metric is crucial for gaining a comprehensive understanding of system memory
-          usage.
-      usable:
-        name: Available Memory for Applications
-        desc: Displays the memory available for applications (in GB), ensuring smooth
-          application operation. This metric is important for maintaining application
-          performance and stability.
-      cached:
-        name: Cache Memory Size
-        desc: Displays the amount of memory used for caching (in GB), used to improve
-          system performance. This metric is important for understanding memory caching
-          strategies.
-    load1:
-      desc: Displays the average system load over the last 1 minute, providing a snapshot
-        of short-term system activity. This metric helps monitor system performance
-        in real-time.
+    cpu_usage_total:
+      name: CPU Usage
+      desc: Reflects the overall CPU utilization of the host, representing the proportion of non-idle CPU time. Sustained high values usually indicate CPU resource pressure or bottlenecks.
+    cpu_usage_core:
+      name: CPU Core Usage
+      desc: Describes the utilization of individual CPU cores, enabling analysis of load distribution and identification of imbalanced or hot cores.
+    cpu_usage_iowait_total:
+      name: CPU IOWait Rate
+      desc: Indicates the proportion of CPU time spent waiting for I/O operations to complete, commonly used to identify disk or I/O performance constraints.
+    cpu_usage_system_total:
+      name: CPU System Usage
+      desc: Represents the percentage of CPU time spent executing kernel-level tasks. Abnormally high values may indicate increased system overhead or frequent system calls.
+    cpu_usage_user_total:
+      name: CPU User Usage
+      desc: Indicates the percentage of CPU time spent executing user-space application logic, commonly used to evaluate application CPU consumption.
+    cpu_usage_irq_total:
+      name: CPU IRQ Usage
+      desc: Represents the percentage of CPU time spent handling hardware interrupts, helpful for diagnosing hardware or driver-related performance issues.
+    cpu_usage_steal_total:
+      name: CPU Steal Rate
+      desc: Indicates the proportion of CPU time stolen by the hypervisor in virtualized environments, used to assess CPU contention.
+    system_load1:
       name: 1 Minute Average Load
-    diskio_reads:
-      desc: Counts the number of data read operations from the disk in the specified
-        time interval.
-      name: Disk I/O Read Rate
-    diskio_write_time:
-      name: Disk I/O Write Time Rate
-      desc: Counts the time taken to write data to the disk in the specified time
-        interval, represented in seconds (s).
-    disk:
-      is_use:
-        desc: Displays the percentage of disk space used, helping understand the utilization
-          of disk resources. This metric is important for preventing disk overflow.
-        name: Disk Usage Rate
-      used:
-        desc: Displays the actual used disk space (in GB), used to determine disk
-          capacity usage. This metric is helpful for monitoring disk space usage.
-        name: Disk Used Space
-    diskio_read_time:
-      name: Disk I/O Read Time Rate
-      desc: Counts the time taken to read data from the disk in the specified time
-        interval, represented in seconds (s).
-    diskio_read_bytes:
-      name: Disk I/O Read Bytes Rate
-      desc: Counts the number of bytes read from the disk in the specified time interval,
-        represented in megabytes (MB).
-    nvidia_smi_temperature_gpu:
-      name: GPU Core Temperature
-      desc: The operating temperature of the GPU core, measured in degrees Celsius
-        (°C), used to monitor device status and safety.
-    load15:
+      desc: Represents the average system load over the last 1 minute, primarily used to observe short-term load fluctuations.
+    system_load5:
+      name: 5 Minute Average Load
+      desc: Represents the average system load over the last 5 minutes, useful for analyzing short-term load trends.
+    system_load15:
       name: 15 Minute Average Load
-      desc: Displays the average system load over the last 15 minutes, providing long-term
-        load observation to understand the overall performance trend of the system.
-    diskio_writes:
-      desc: Counts the number of data write operations to the disk in the specified
-        time interval.
-      name: Disk I/O Write Rate
-    nvidia_smi_fan_speed:
-      desc: The percentage of current GPU fan speed relative to the maximum speed
-        (0%-100%), used to monitor cooling condition and operational status.
-      name: GPU Fan Speed Percentage
+      desc: Represents the average system load over the last 15 minutes, commonly used to evaluate long-term load stability.
+    diskio_io_util:
+      name: Disk I/O Usage
+      desc: Indicates the proportion of time a disk device is busy handling I/O operations. Sustained high values usually suggest disk I/O saturation.
+    diskio_writes_rate:
+      name: Disk Write IOPS
+      desc: Represents the number of disk write operations completed per second, measuring write I/O intensity and concurrency.
+    diskio_write_bytes_rate:
+      name: Disk Write Rate
+      desc: Indicates the amount of data written to disk per unit time, used to evaluate disk write throughput.
+    disk_write_latency:
+      name: Disk Write Latency
+      desc: Represents the average latency of disk write operations, used to analyze disk write performance and responsiveness.
+    diskio_reads_rate:
+      name: Disk Read IOPS
+      desc: Represents the number of disk read operations completed per second, measuring read I/O concurrency and intensity.
+    diskio_read_bytes_rate:
+      name: Disk Read Rate
+      desc: Indicates the amount of data read from disk per unit time, used to evaluate disk read throughput.
+    disk_read_latency:
+      name: Disk Read Latency
+      desc: Represents the average latency of disk read operations, used to analyze disk read performance and access delay.
+    disk_total:
+      name: Disk Total
+      desc: Represents the total capacity of a disk or filesystem, used for capacity planning and resource management.
+    disk_free:
+      name: Disk Free
+      desc: Represents the currently available free space of a disk or filesystem, used to monitor capacity risks.
+    disk_used_percent:
+      name: Disk Usage
+      desc: Represents the percentage of disk space that has been consumed, a core metric for disk capacity monitoring.
+    disk_inodes_used_percent:
+      name: Inode Usage
+      desc: Represents the percentage of inode usage in a filesystem, helping prevent failures caused by inode exhaustion.
+    processes_running:
+      name: Running Process
+      desc: Represents the number of processes currently in a running state, reflecting system concurrency.
+    processes_blocked:
+      name: Blocked Process
+      desc: Represents the number of processes blocked due to I/O or resource contention, helping identify system bottlenecks.
+    processes_zombies:
+      name: Zombie Process
+      desc: Represents the number of zombie processes that have exited but remain unreaped, potentially indicating process management issues.
+    processes_sleeping:
+      name: Sleeping Process
+      desc: Represents the number of processes currently in a sleeping or waiting state.
+    mem_total:
+      name: Total Memory
+      desc: Represents the total amount of physical memory available on the system, serving as a baseline for memory evaluation.
+    mem_available:
+      name: Available Memory
+      desc: Represents the amount of memory available for applications without causing significant performance degradation.
+    mem_used_percent:
+      name: Memory Usage
+      desc: Represents the percentage of memory currently in use, indicating overall memory pressure.
+    mem_swap_free:
+      name: Swap Free Memory
+      desc: Represents the amount of free swap space available, used to monitor buffering capacity under memory pressure.
+    mem_cached:
+      name: Cached Memory
+      desc: Represents the amount of memory used for file caching, which can be reclaimed when necessary.
+    mem_shared:
+      name: Shared Memory
+      desc: Represents the amount of memory shared among multiple processes.
+    mem_buffered:
+      name: Buffered Memory
+      desc: Represents the amount of memory used for buffering block device I/O operations.
+    net_packets_recv_rate:
+      name: Network Receive Packet Rate
+      desc: Represents the number of packets received per unit time on a network interface, reflecting packet-level traffic.
+    net_packets_sent_rate:
+      name: Network Send Packet Rate
+      desc: Represents the number of packets sent per unit time on a network interface.
+    net_bytes_recv_rate:
+      name: Network Receive Throughput Rate
+      desc: Represents the amount of data received per unit time on a network interface, used to evaluate inbound bandwidth utilization.
+    net_bytes_sent_rate:
+      name: Network Send Throughput Rate
+      desc: Represents the amount of data sent per unit time on a network interface, used to evaluate outbound bandwidth utilization.
+    net_err_in_rate:
+      name: Network Receive Error Rate
+      desc: Represents the number of errored packets received per unit time, used to monitor network quality.
+    net_err_out_rate:
+      name: Network Send Error Rate
+      desc: Represents the number of errored packets sent per unit time on a network interface.
+    net_drop_in_rate:
+      name: Network Receive Drop Rate
+      desc: Represents the number of incoming packets dropped per unit time, indicating congestion or abnormal conditions.
+    net_drop_out_rate:
+      name: Network Send Drop Rate
+      desc: Represents the number of outgoing packets dropped per unit time on a network interface.
+    nvidia_smi_memory_total:
+      name: GPU Memory Total
+      desc: Represents the total available memory capacity of the GPU, serving as a baseline GPU resource metric.
     nvidia_smi_memory_free:
-      desc: The remaining capacity of GPU memory currently unoccupied, used to assess
-        available resources.
-      name: GPU Remaining Memory Capacity
+      name: GPU Memory Free
+      desc: Represents the amount of free GPU memory currently available for allocation.
     nvidia_smi_utilization_memory:
       name: GPU Memory Utilization
-      desc: The percentage of current memory usage, indicating the utilization of
-        GPU memory resources (0%-100%), useful for optimizing memory allocation.
+      desc: Represents the percentage of GPU memory currently in use, indicating GPU memory pressure.
     nvidia_smi_power_draw:
-      name: GPU Real-Time Power Consumption
-      desc: The real-time power consumption of GPU, measured in watts (W), used to
-        monitor energy consumption level.
+      name: GPU Power Draw
+      desc: Represents the current power consumption of the GPU, used to monitor energy usage and operating status.
+    nvidia_smi_temperature_gpu:
+      name: GPU Core Temperature
+      desc: Represents the current core temperature of the GPU, used to monitor thermal conditions and cooling health.
+    nvidia_smi_fan_speed_avg:
+      name: GPU Fan Speed
+      desc: Represents the average GPU fan speed as a percentage, used to assess cooling behavior and hardware status.
   JVM:
     jvm_memorypool_usage_used_value:
       desc: The current actual memory usage of the memory pool in the Java Virtual
@@ -2979,13 +2908,14 @@ monitor_object_metric_group:
     Tablespace: Tablespace
     RAC: RAC
   Host:
-    Net: Net
     CPU: CPU
-    DISK: Disk
-    Disk IO: Disk I/O
-    Process: Process
-    MEMORY: Memory
     System: System
+    Disk IO: Disk I/O
+    Disk: Disk
+    Process: Process
+    Memory: Memory
+    Net: Net
+    Nvidia GPU: Nvidia GPU
   Firewall:
     Packet: Packet
     Packet Loss: Packet Loss
