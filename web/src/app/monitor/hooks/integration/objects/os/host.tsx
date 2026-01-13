@@ -29,16 +29,10 @@ export const useHostConfig = () => {
         },
       },
       {
-        indexId: 'system_load5',
-        displayType: 'dashboard',
-        sortIndex: 2,
-        displayDimension: [],
-        segments: [
-          { value: 1.5, color: '#27C274' }, // 绿色区域
-          { value: 3, color: '#FF9214' }, // 黄色区域
-          { value: 5, color: '#D97007' }, // 黄色区域
-          { value: 20, color: '#F43B2C' }, // 红色区域
-        ],
+        indexId: 'disk_used_percent',
+        displayType: 'lineChart',
+        sortIndex: 6,
+        displayDimension: ['device'],
         style: {
           height: '200px',
           width: '15%',
@@ -117,8 +111,8 @@ export const useHostConfig = () => {
     ],
     tableDiaplay: [
       { type: 'progress', key: 'cpu_usage_total' },
+      { type: 'progress', key: 'disk_used_percent' },
       { type: 'progress', key: 'mem_used_percent' },
-      { type: 'value', key: 'system_load5' },
     ],
     groupIds: {
       list: ['instance_id'],

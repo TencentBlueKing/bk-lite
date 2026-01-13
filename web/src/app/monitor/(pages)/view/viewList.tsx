@@ -536,7 +536,7 @@ const ViewList: React.FC<ViewListProps> = ({
         fieldSetting={{
           showSetting: false,
           displayFieldKeys: [
-            'elasticsearch_fs_total_available_in_bytes',
+            'elasticsearch_cluster_health_status_code',
             'instance_name',
           ],
           choosableFields: tableColumn.slice(0, tableColumn.length - 1),
