@@ -130,143 +130,144 @@ monitor_object_metric:
       desc: 结合在线、脱机数量评估存储设备整体状况。
       name: 集群中的驱动器总数
   Host:
-    env:
-      proc_running_current:
-        name: 正在运行进程数
-        desc: 显示当前正在运行的进程数，用于评估系统的并发运行情况。此指标对实时监控系统负载有重要价值。
-      procs_blocked_current:
-        desc: 显示正在等待IO操作的进程数，分析此值有助于优化系统性能并减少瓶颈。此指标对发现IO瓶颈很有帮助。
-        name: 正在等待 IO 的进程数
-      procs:
-        desc: 显示系统中运行的总进程数，帮助了解系统负载分布情况。此指标对监控系统的整体运行情况非常重要。
-        name: 总进程数
-    net:
-      speed_sent:
-        name: 网卡出流量
-        desc: 显示单位时间内网络接口发送的字节数量（单位为MB），用于评估网络带宽利用率。本指标对监控网络带宽非常关键。
-      dropped_out:
-        desc: 显示网络接口发送的丢弃包数量，指示网络发送拥塞情况。本指标对监控网络可靠性非常关键。
-        name: 网卡丢弃包
-      errors_out:
-        name: 网卡错误包
-        desc: 显示网络接口发送的错误包数量，帮助了解网络传输错误。此指标对发现网络故障和不正常流量非常有帮助。
-      speed_recv:
-        name: 网卡入流量
-        desc: 显示单位时间内网络接口接收的字节数量（单位为MB），用于评估网络带宽利用率。本指标对监控网络带宽非常重要。
-      errors_in:
-        desc: 显示网络接口接收到的错误包数量，用于检测网络问题。此指标对发现网络故障和不正常流量非常有帮助。
-        name: 网卡错误包
-      speed_packets_sent:
-        name: 网卡出包量
-        desc: 显示单位时间内网络接口发送的数据包数量，用于评估网络发送性能。本指标对监控网络流量非常关键。
-      speed_packets_recv:
-        name: 网卡入包量
-        desc: 显示单位时间内网络接口接收的数据包数量，用于评估网络接收性能。本指标对监控网络流量非常关键。
-      dropped_in:
-        name: 网卡丢弃包
-        desc: 显示网络接口接收到的丢弃包数量，指示网络接收拥塞情况。本指标对监控网络可靠性非常关键。
-    nvidia_smi_memory_total:
-      desc: GPU的显存总容量，表示该设备支持的最大显存量。
-      name: GPU显存总容量
-    load5:
-      name: 5 分钟平均负载
-      desc: 显示系统在最近五分钟内的平均负载，反映中期系统的负载情况。此中期指标有助于发现持续和间歇性的高负载情况。
-    cpu_summary:
-      iowait:
-        name: 等待 IO 的时间占比
-        desc: 显示CPU等待IO操作完成的时间占比，这指示出磁盘或网络性能对系统的影响程度。减少等待时间有助于提升系统性能。此指标对分析系统瓶颈点非常有用。
-      system:
-        desc: 显示系统占用率，表示内核进程消耗的CPU资源，分析该值有助于优化系统内核的性能和稳定性。
-        name: 系统占用率
-      user:
-        desc: 显示用户进程占用的CPU资源比例，这帮助了解应用程序和服务的性能。本指标对于了解具体应用的CPU消耗有帮助。
-        name: 用户占用率
-      idle:
-        desc: 显示CPU的空闲率，表示系统中未被使用的CPU资源量。这有助于了解系统是否处于高负载。此指标对分析系统性能和效率至关重要。
-        name: CPU 空闲率
-      usage:
-        desc: 显示CPU的使用率，来表示系统的负载情况。它通过总量减去空闲量得出。此指标对监控系统性能非常关键。
-        name: CPU 使用率
-    nvidia_smi_memory_used:
-      name: GPU显存已使用量
-      desc: 当前GPU显存已经被占用的容量，反映运行任务占用的显存大小。
-    diskio_write_bytes:
-      desc: 统计在指定时间间隔内，系统写入数据到磁盘的字节数，并用兆字节 (MB) 表示。
-      name: 磁盘写入大小
-    mem:
-      buffer:
-        desc: 显示用于缓冲的内存量（单位为GB），保障数据的稳定传输。此指标对于性能优化策略非常重要。
-        name: Buffer 的空间大小
-      shared:
-        desc: 显示共享内存的使用量（单位为GB），用于进程间的数据共享。此指标对优化系统内存分配策略有帮助。
-        name: 共享内存使用量
-      pct_used:
-        name: 应用程序内存使用占比
-        desc: 显示应用程序内存使用占比，了解内存使用分布情况。此指标对优化内存使用有重要参考价值。
-      pct_usable:
-        desc: 显示内存可用率，帮助确定内存是否充足以支持应用程序。该指标对监控内存压力和扩容策略有用。
-        name: 应用程序内存可用率
-      free:
-        desc: 显示当前空闲的物理内存量（单位为GB），帮助了解可用资源。此指标是掌握内存资源使用情况的关键。
-        name: 物理内存空闲量
-      total:
-        desc: 显示系统的总物理内存量（单位为GB），概述系统资源配置。此指标对了解系统资源的基础配置很重要。
-        name: 物理内存总大小
-      used:
-        desc: 显示应用程序使用的内存量（单位为GB），分析此值有助于优化应用内存使用。此指标对监控应用资源消耗非常关键。
-        name: 应用程序内存使用量
-      psc_used:
-        name: 物理内存已用量
-        desc: 显示系统已用的物理内存总量（单位为GB），帮助整体掌握内存资源分配。此指标对全面了解系统内存使用情况非常重要。
-      usable:
-        name: 应用程序内存可用量
-        desc: 显示应用程序可用的内存（单位为GB），确保应用的平稳运行。此指标对维持应用性能和稳定性很重要。
-      cached:
-        name: Cache 缓存的空间大小
-        desc: 显示用于缓存的内存量（单位为GB），用于提高系统性能。该指标对理解内存缓存策略非常重要。
-    load1:
-      desc: 显示系统在最近一分钟内的平均负载，提供短期内系统活动的快照。本指标有助于实时监控系统性能。
-      name: 1 分钟平均负载
-    diskio_reads:
-      desc: 统计在指定时间间隔内，系统从磁盘读取数据的操作次数。
-      name: 磁盘读出速率
-    diskio_write_time:
-      name: 磁盘写入耗时
-      desc: 统计在指定时间间隔内，系统写入数据到磁盘所用的时间，以秒 (s) 为单位。
-    disk:
-      is_use:
-        desc: 显示磁盘空间的使用比例，帮助了解磁盘资源的使用情况。该指标对防止磁盘满溢非常重要。
-        name: 磁盘使用率
-      used:
-        desc: 显示实际使用的磁盘空间（以GB为单位），用于确定磁盘容量使用情况。本指标对监控磁盘空间的使用量很有帮助。
-        name: 磁盘已用空间大小
-    diskio_read_time:
-      name: 磁盘读出耗时
-      desc: 统计在指定时间间隔内，系统从磁盘读取数据所用的时间，以秒 (s) 为单位。
-    diskio_read_bytes:
-      name: 磁盘读出大小
-      desc: 统计在指定时间间隔内，系统从磁盘读取的字节数，并用兆字节 (MB) 表示。
-    nvidia_smi_temperature_gpu:
-      name: GPU核心温度
-      desc: 当前GPU核心的运行温度，以摄氏度（°C）为单位，用于监控设备的运行状态和安全性。
-    load15:
-      name: 15 分钟平均负载
-      desc: 显示系统在最近十五分钟内的平均负载，长时间的负载观察有助于了解系统的整体性能趋势。
-    diskio_writes:
-      desc: 统计在指定时间间隔内，系统写入数据到磁盘的操作次数。
+    cpu_usage_total:
+      name: CPU使用率
+      desc: 反映主机整体 CPU 的使用情况，表示非空闲时间在总 CPU 时间中的占比，用于衡量系统的整体计算压力。持续高位通常意味着 CPU 资源成为系统瓶颈。
+    cpu_usage_core:
+      name: CPU单核使用率
+      desc: 描述单个 CPU 核心的使用情况，用于分析 CPU 负载在各核心间的分布，帮助识别负载不均或热点核心问题。
+    cpu_usage_iowait_total:
+      name: CPU等待IO占比
+      desc: 表示 CPU 因等待 I/O 操作完成而处于空闲状态的时间占比，主要用于判断系统是否受限于磁盘或其他 I/O 性能。
+    cpu_usage_system_total:
+      name: CPU系统占用率
+      desc: 表示 CPU 在内核态执行操作系统相关任务所占用的时间比例，异常升高可能与系统调用频繁或内核开销增加有关。
+    cpu_usage_user_total:
+      name: CPU用户占用率
+      desc: 表示 CPU 在用户态执行应用程序逻辑所消耗的时间占比，通常用于衡量业务程序对 CPU 的消耗程度。
+    cpu_usage_irq_total:
+      name: CPU 硬件中断占用率
+      desc: 表示 CPU 用于处理硬件中断请求的时间占比，可用于辅助定位硬件设备或驱动相关的性能问题。
+    cpu_usage_steal_total:
+      name: CPU 被抢占率
+      desc: 表示在虚拟化环境中，当前虚拟机的 CPU 时间被宿主机或其他虚拟机占用的比例，用于评估虚拟化资源争抢情况。
+    system_load1:
+      name: 1分钟平均负载
+      desc: 表示系统在最近 1 分钟内的平均运行负载，主要用于观察系统的瞬时压力变化。
+    system_load5:
+      name: 5分钟平均负载
+      desc: 表示系统在最近 5 分钟内的平均运行负载，用于分析系统负载的短期趋势。
+    system_load15:
+      name: 15分钟平均负载
+      desc: 表示系统在最近 15 分钟内的平均运行负载，用于评估系统负载的长期稳定性。
+    diskio_io_util:
+      name: 磁盘IO使用率
+      desc: 表示磁盘设备处于忙碌状态的时间占比，用于衡量磁盘 I/O 资源的整体利用情况。持续高位通常意味着磁盘 I/O 成为性能瓶颈。
+    diskio_writes_rate:
+      name: 磁盘写入IOPS
+      desc: 表示磁盘每秒完成的写入操作次数，用于衡量写入请求的并发强度和 I/O 压力。
+    diskio_write_bytes_rate:
       name: 磁盘写入速率
-    nvidia_smi_fan_speed:
-      desc: 当前GPU风扇运行速度的百分比，相对于风扇的最大转速（0%~100%），用于监控散热情况和工作状态。
-      name: GPU风扇转速占比
+      desc: 表示磁盘单位时间内写入的数据量，用于评估磁盘写入吞吐能力。
+    disk_write_latency:
+      name: 磁盘写入延迟
+      desc: 表示单次磁盘写入操作的平均耗时，用于分析磁盘写入性能及响应能力。
+    diskio_reads_rate:
+      name: 磁盘读出IOPS
+      desc: 表示磁盘每秒完成的读取操作次数，用于衡量读请求的并发程度和 I/O 压力。
+    diskio_read_bytes_rate:
+      name: 磁盘读出速率
+      desc: 表示磁盘单位时间内读取的数据量，用于评估磁盘读取吞吐能力。
+    disk_read_latency:
+      name: 磁盘读出延迟
+      desc: 表示单次磁盘读取操作的平均耗时，用于分析磁盘读取性能和访问延迟。
+    disk_total:
+      name: 磁盘总空间
+      desc: 表示磁盘或文件系统的总容量，用于容量规划与资源管理。
+    disk_free:
+      name: 磁盘剩余空间
+      desc: 表示磁盘或文件系统当前可用的剩余容量，用于监控磁盘空间风险。
+    disk_used_percent:
+      name: 磁盘使用率
+      desc: 表示磁盘已使用空间占总容量的比例，是磁盘容量监控的核心指标。
+    disk_inodes_used_percent:
+      name: Inode使用率
+      desc: 表示文件系统 Inode 的使用比例，用于防范因 Inode 耗尽导致的文件创建失败问题。
+    processes_running:
+      name: 运行中进程数
+      desc: 表示当前处于运行状态的进程数量，用于反映系统的并发执行情况。
+    processes_blocked:
+      name: 阻塞进程数
+      desc: 表示因 I/O 或资源竞争而处于阻塞状态的进程数量，用于辅助判断系统资源瓶颈。
+    processes_zombies:
+      name: 僵尸进程数
+      desc: 表示已退出但仍保留进程表项的僵尸进程数量，持续存在可能表明进程回收异常。
+    processes_sleeping:
+      name: 休眠进程数
+      desc: 表示当前处于休眠或等待事件状态的进程数量。
+    mem_total:
+      name: 内存总量
+      desc: 表示系统可使用的物理内存总容量，是内存资源评估的基础指标。
+    mem_available:
+      name: 可用内存
+      desc: 表示系统在不触发明显性能下降的情况下，可分配给应用使用的内存容量。
+    mem_used_percent:
+      name: 内存使用率
+      desc: 表示已使用内存占总内存的比例，用于评估系统的内存压力水平。
+    mem_swap_free:
+      name: 空闲交换内存
+      desc: 表示当前剩余可用的交换内存空间，用于监控内存紧张情况下的缓冲能力。
+    mem_cached:
+      name: 缓存内存
+      desc: 表示操作系统用于文件缓存的内存大小，该部分内存可在需要时被回收。
+    mem_shared:
+      name: 共享内存
+      desc: 表示被多个进程共享使用的内存容量。
+    mem_buffered:
+      name: 缓冲内存
+      desc: 表示操作系统用于块设备 I/O 缓冲的内存容量。
+    net_packets_recv_rate:
+      name: 网络接收包速率
+      desc: 表示网络接口单位时间内接收的数据包数量，用于衡量网络包级流量情况。
+    net_packets_sent_rate:
+      name: 网络发送包速率
+      desc: 表示网络接口单位时间内发送的数据包数量。
+    net_bytes_recv_rate:
+      name: 网络接收吞吐速率
+      desc: 表示网络接口单位时间内接收的数据量，用于评估网络接收带宽使用情况。
+    net_bytes_sent_rate:
+      name: 网络发送吞吐速率
+      desc: 表示网络接口单位时间内发送的数据量，用于评估网络发送带宽使用情况。
+    net_err_in_rate:
+      name: 网络接收错误包速率
+      desc: 表示网络接口单位时间内接收到的错误数据包数量，用于监控网络质量。
+    net_err_out_rate:
+      name: 网络发送错误包速率
+      desc: 表示网络接口单位时间内发送失败的错误数据包数量。
+    net_drop_in_rate:
+      name: 网络接收丢包速率
+      desc: 表示网络接口单位时间内被丢弃的接收数据包数量，用于评估网络拥塞或异常情况。
+    net_drop_out_rate:
+      name: 网络发送丢包速率
+      desc: 表示网络接口单位时间内被丢弃的发送数据包数量。
+    nvidia_smi_memory_total:
+      name: GPU显存总容量
+      desc: 表示 GPU 可用的显存总容量，是 GPU 资源评估的基础指标。
     nvidia_smi_memory_free:
-      desc: 当前GPU显存中未被占用的剩余容量，用于评估可用资源。
-      name: GPU显存剩余容量
+      name: GPU显存空闲量
+      desc: 表示当前 GPU 可分配的空闲显存容量。
     nvidia_smi_utilization_memory:
       name: GPU显存使用率
-      desc: 当前显存使用的百分比，表示GPU显存资源的使用情况（0%~100%），有助于优化显存分配。
+      desc: 表示已使用 GPU 显存占总显存的比例，用于评估 GPU 显存压力。
     nvidia_smi_power_draw:
-      name: GPU实时功耗
-      desc: 当前GPU使用的实时功率消耗，以瓦特（W）为单位，用于监控GPU的能耗水平。
+      name: GPU功耗
+      desc: 表示 GPU 当前的实时功耗水平，用于监控能耗和运行状态。
+    nvidia_smi_temperature_gpu:
+      name: GPU核心温度
+      desc: 表示 GPU 核心当前的运行温度，用于监控 GPU 热状态及散热健康度。
+    nvidia_smi_fan_speed_avg:
+      name: GPU风扇转速
+      desc: 表示 GPU 风扇的平均转速百分比，用于辅助判断散热策略和硬件状态。
   JVM:
     jvm_memorypool_usage_used_value:
       desc: Java 虚拟机中内存池当前实际已使用的内存量，直观体现内存池使用程度
@@ -623,45 +624,66 @@ monitor_object_metric:
       name: 消费者数量
       desc: 该指标表示每个主题的消费者数量，用于监测消费者是否均衡分布。
   Postgres:
-    postgresql_xact_rollback:
-      name: PostgreSQL 回滚事务速率
-      desc: 表示 PostgreSQL 实例的回滚事务速率（次/秒）。用于监控事务回滚的频率。
-    postgresql_active_time:
-      name: PostgreSQL 活跃时间
-      desc: 此指标表示 PostgreSQL实例在活跃状态下的总时长，反映数据库活动的持续时间。
-    postgresql_buffers_checkpoint:
-      name: PostgreSQL 检查点缓存速率
-      desc: 表示 PostgreSQL 实例的检查点缓存速率（次/秒）。用于监控检查点操作的频率。
-    postgresql_blks_hit_ratio:
-      desc: 表示 PostgreSQL 实例在过去 5 分钟内的块缓存命中率，反映缓存的有效性。高命中率意味着大部分数据请求直接从缓存获取，减少磁盘读取，提升查询性能。
-      name: PostgreSQL 块缓存命中率（5m）
-    postgresql_sessions_abandoned:
-      name: PostgreSQL 异常断开会话频率
-      desc: 每秒因网络中断或客户端崩溃导致的异常断开会话数，用于定位客户端或网络层稳定性问题，避免残留进程占用资源。
-    postgresql_xact_commit:
-      desc: 表示 PostgreSQL 实例的提交事务速率（次/秒）。用于监控事务提交的频率。
-      name: PostgreSQL 提交事务速率
-    postgresql_blk_write_time:
-      name: PostgreSQL 块写耗时变化率
-      desc: 表示 PostgreSQL 实例的块写操作耗时变化率（秒/秒）。用于监控写操作的性能。
-    postgresql_blks_hit:
-      desc: 表示 PostgreSQL 实例的块缓存命中次数的变化率（次/秒）。用于监控缓存效率。
-      name: PostgreSQL 块缓存命中变化率
-    postgresql_blks_read:
-      desc: 表示 PostgreSQL 实例的块读取速率（次/秒）。用于监控读取操作的频率。
-      name: PostgreSQL 块读取速率
-    postgresql_sessions:
-      desc: 单个PostgreSQL 实例中所有数据库的活跃会话总数（包括空闲连接），用于监控数据库连接池使用情况，识别连接泄漏或异常激增。
-      name: PostgreSQL 活跃会话数
-    postgresql_blk_read_time:
-      name: PostgreSQL 块读耗时变化率
-      desc: 表示 PostgreSQL 实例的块读操作耗时变化率（秒/秒）。用于监控读操作的性能。
-    postgresql_sessions_killed:
-      name: PostgreSQL 被终止会话频率
-      desc: 表示 PostgreSQL 实例的被终止会话速率（次/秒）。用于监控会话终止的频率。
-    postgresql_buffers_alloc:
-      desc: 表示 PostgreSQL 实例的缓存分配速率（次/秒）。用于监控缓存分配情况。
-      name: PostgreSQL 缓存分配速率
+    postgresql_numbackends:
+      name: 当前活跃数据库连接数
+      desc: 监控数据库活跃会话数量，用于评估并发负载和连接池使用情况
+    postgresql_xact_commit_rate:
+      name: 事务提交速率
+      desc: 反映数据库写入操作频率，用于衡量业务活动水平
+    postgresql_xact_rollback_rate:
+      name: 事务回滚速率
+      desc: 跟踪事务失败或冲突导致的回滚情况
+    postgresql_tup_returned_rate:
+      name: 查询返回行速率
+      desc: 统计查询结果集中返回的数据行数量
+    postgresql_tup_fetched_rate:
+      name: 查询读取行速率
+      desc: 监控查询从存储层读取的数据行数量
+    postgresql_tup_inserted_rate:
+      name: 数据插入行速率
+      desc: 跟踪插入操作频率，评估数据增长和写入负载
+    postgresql_tup_updated_rate:
+      name: 数据更新行速率
+      desc: 反映数据修改活动和并发更新压力
+    postgresql_tup_deleted_rate:
+      name: 数据删除行速率
+      desc: 监控数据清理活动和空间回收情况
+    postgresql_blks_hit_rate:
+      name: 缓冲区缓存命中速率
+      desc: 反映共享缓冲区缓存的命中效率
+    postgresql_blks_read_rate:
+      name: 磁盘数据块读取速率
+      desc: 评估磁盘 I/O 负载及缓存不足情况
+    postgresql_deadlocks_rate:
+      name: 死锁发生速率
+      desc: 检测事务间死锁发生频率
+    postgresql_conflicts_rate:
+      name: 并发冲突速率
+      desc: 跟踪并发操作引发的冲突情况
+    postgresql_temp_files_rate:
+      name: 临时文件创建速率
+      desc: 反映复杂查询对临时文件的依赖程度
+    postgresql_temp_bytes_rate:
+      name: 临时文件写入速率
+      desc: 评估排序、哈希等操作的磁盘资源消耗
+    postgresql_checkpoints_timed_rate:
+      name: 定时检查点速率
+      desc: 监控系统周期性检查点执行情况
+    postgresql_checkpoints_req_rate:
+      name: 请求检查点速率
+      desc: 反映 WAL 写入压力和配置合理性
+    postgresql_buffers_alloc_rate:
+      name: 缓冲区分配速率
+      desc: 反映共享缓冲区内存使用趋势
+    postgresql_buffers_backend_rate:
+      name: 后端缓冲区写入速率
+      desc: 表示客户端驱动的直接写入活动
+    postgresql_buffers_checkpoint_rate:
+      name: 检查点缓冲区写入速率
+      desc: 反映检查点对磁盘 I/O 的影响
+    postgresql_maxwritten_clean_rate:
+      name: 后台干净页写入速率
+      desc: 表示写入压力过高导致的提前清理
   RabbitMQ:
     rabbitmq_unacked_message_ratio:
       name: 未确认消息占比
@@ -700,33 +722,93 @@ monitor_object_metric:
       name: 文件描述符使用率
       desc: 该指标表示 RabbitMQ 节点已用文件描述符与总文件描述符的比例。过高的比例可能导致文件描述符不足。
   MongoDB:
-    mongodb_net_in_bytes:
-      name: 每秒接收流量
-      desc: 每秒接收到的数据量，用于监控网络流量。
-    mongodb_latency_commands:
-      name: 操作指令平均延迟
-      desc: 数据库指令的平均延迟情况，用于评估数据库性能。
+    mongodb_uptime_ns:
+      name: 运行时长
+      desc: MongoDB实例已连续运行的时间长度，反映服务稳定性
     mongodb_connections_current:
       name: 当前连接数
-      desc: 当前正在与数据库通信的客户端连接数。
-    mongodb_active_writes:
-      desc: 当前正在执行的活跃写操作数，用于监控数据库写入压力。
-      name: 活跃写操作
-    mongodb_net_out_bytes:
-      desc: 每秒发送的数据量，用于监控网络流量。
-      name: 每秒发送流量
-    mongodb_commands:
-      name: 每秒操作指令数
-      desc: 每秒执行的数据库操作指令数，反映数据库负载。
+      desc: 当前活动的客户端连接数量，反映数据库并发访问负载
+    mongodb_connections_available:
+      name: 可用连接数
+      desc: 可用的连接槽位数量，反映连接池资源余量
+    mongodb_open_connections:
+      name: 打开连接数
+      desc: 当前打开的连接总数，包括活动和空闲连接
     mongodb_active_reads:
-      desc: 当前正在执行的活跃读操作数，用于监控数据库负载情况。
-      name: 活跃读操作
-    mongodb_total_docs_scanned:
-      desc: 查询时扫描的文档数量，评估查询性能。
-      name: 每秒扫描文档数量
+      name: 活跃读操作数
+      desc: 当前正在执行的读取操作数量，反映实时读取负载
+    mongodb_active_writes:
+      name: 活跃写操作数
+      desc: 当前正在执行的写入操作数量，反映实时写入负载
+    mongodb_queued_reads:
+      name: 排队读操作数
+      desc: 等待执行的读取操作数量，反映读取队列积压情况
+    mongodb_queued_writes:
+      name: 排队写操作数
+      desc: 等待执行的写入操作数量，反映写入队列积压情况
+    mongodb_page_faults_rate:
+      name: 缺页中断频率
+      desc: 缺页中断发生的频率，反映内存压力和工作集大小是否合适
+    mongodb_latency_commands_avg:
+      name: 平均命令延迟
+      desc: 命令操作的平均延迟时间，反映数据库响应性能
+    mongodb_latency_reads_avg:
+      name: 平均读取延迟
+      desc: 读取操作的平均延迟时间，反映数据库读取性能
+    mongodb_commands_rate:
+      name: 命令操作频率
+      desc: 命令类型操作执行的频率，反映数据库整体处理负载
+    mongodb_queries_rate:
+      name: 查询操作频率
+      desc: 查询类型操作执行的频率，反映数据库查询处理负载
+    mongodb_inserts_rate:
+      name: 插入操作频率
+      desc: 插入类型操作执行的频率，反映数据写入负载
+    mongodb_updates_rate:
+      name: 更新操作频率
+      desc: 更新类型操作执行的频率，反映数据更新负载
+    mongodb_deletes_rate:
+      name: 删除操作频率
+      desc: 删除类型操作执行的频率，反映数据删除负载
+    mongodb_document_inserted_rate:
+      name: 文档插入频率
+      desc: 文档插入操作的频率，反映数据增长速率
+    mongodb_document_updated_rate:
+      name: 文档更新频率
+      desc: 文档更新操作的频率，反映数据变更活跃度
+    mongodb_document_deleted_rate:
+      name: 文档删除频率
+      desc: 文档删除操作的频率，反映数据清理活跃度
+    mongodb_assert_user:
+      name: 用户断言次数
+      desc: 用户断言的累计触发次数，反映应用程序逻辑或数据异常
+    mongodb_cursor_timed_out_count:
+      name: 超时游标数
+      desc: 超时的游标累计数量，反映查询执行时间过长或资源管理问题
     mongodb_resident_megabytes:
-      name: MongoDB 内存使用量
-      desc: 数据库物理内存使用量，反映资源占用情况。
+      name: 常驻内存大小
+      desc: MongoDB进程使用的物理内存大小，反映内存资源使用情况
+    mongodb_vsize_megabytes:
+      name: 虚拟内存大小
+      desc: MongoDB进程使用的虚拟内存大小，反映内存资源分配情况
+    mongodb_tcmalloc_current_allocated_bytes:
+      name: 当前分配内存
+      desc: 通过tcmalloc内存分配器当前分配的内存大小，反映内存使用效率
+    mongodb_wtcache_current_bytes:
+      name: WiredTiger缓存大小
+      desc: WiredTiger存储引擎缓存当前使用的大小，反映缓存利用率
+    mongodb_wtcache_max_bytes_configured:
+      name: WiredTiger缓存最大配置
+      desc: WiredTiger存储引擎缓存的最大配置大小，反映缓存容量上限
+    mongodb_wtcache_tracked_dirty_bytes:
+      name: 跟踪的脏数据大小
+      desc: WiredTiger缓存中已修改但未写入磁盘的数据大小，反映数据持久化延迟
+    mongodb_net_in_bytes_count_rate:
+      name: 网络输入频率
+      desc: 网络数据接收的频率，反映数据库输入流量负载
+    mongodb_net_out_bytes_count_rate:
+      name: 网络输出频率
+      desc: 网络数据发送的频率，反映数据库输出流量负载
   Tomcat:
     tomcat_jvm_memory_max:
       desc: 该指标表示Tomcat JVM的最大内存量，用于监控内存限制。
@@ -924,154 +1006,175 @@ monitor_object_metric:
       name: 接收到的数据包总数
       desc: 容器接收到的数据包数量，显示网络流入的活跃度。
   Oracle-Exporter:
-    oracledb_wait_time_configuration_gauge:
-      desc: 等待系统资源配置的时间，例如等待参数更改生效的时间。
-      name: Oracle数据库配置等待时间
-    oracledb_exporter_scrapes_total_counter:
-      name: Oracle数据库监控探针抓取指标总数
-      desc: 从OracleDB监控探针启动以来抓取指标的总次数，若进程重启将重新计算。
-    process_virtual_memory_bytes_gauge:
-      name: Oracle数据库监控探针进程虚拟内存大小
-      desc: Oracle数据库监控探针进程当前虚拟内存的大小。
-    oracledb_wait_time_system_io_gauge:
-      desc: 等待系统进行I/O操作的时间，例如等待从磁盘读取数据的时间。
-      name: Oracle数据库系统I/O等待时间
-    oracledb_activity_user_commits_rate:
-      name: Oracle数据库用户提交速率
-      desc: 监控一段时间内（如过去5分钟）用户事务提交的速率，反映数据库事务活动情况。
-    oracledb_pga_total_gauge:
-      desc: PGA是Oracle数据库实例中每个用户进程或服务器进程独立分配的内存区域，用于存储会话或操作的数据和信息。本指标用于表示PGA的总内存大小，体现
-        PGA 的整体资源分配规模。
-      name: Oracle数据库PGA总大小
-    oracledb_sessions_value_gauge:
-      desc: 数据库当前打开的会话数。维度含义：status：会话状态，例如 ACTIVE, INACTIVE, BLOCKED, KILLED 等等。type：会话类型，例如
-        BACKGROUND, CDB, PDB, SYS, USER 等等。
-      name: Oracle数据库会话数
-    oracledb_resource_utilization_rate:
-      desc: 当前 Oracle 数据库实例中某种资源的使用率，可以反映会话、进程、内存等资源对其资源限定值的使用百分比。当值为负数（-）时，表示该资源没有被限制，即该资源可以无限制地使用。这种情况下，监控该维度的指标的意义不大。
-      name: Oracle数据库资源使用率
-    oracledb_rac_node_gauge:
-      name: Oracle数据库RAC节点数量
-      desc: 当前Oracle数据库集群节点数量。
-    oracledb_activity_execute_rate:
-      name: Oracle数据库执行速率
-      desc: 监控一段时间内（如过去5分钟）SQL执行的速率，反映数据库负载的变化趋势。
-    oracledb_activity_user_rollbacks_rate:
-      desc: 监控一段时间内（如过去5分钟）用户事务回滚的速率，帮助发现异常事务。
-      name: Oracle数据库用户回滚速率
-    oracledb_uptime_seconds_gauge:
-      name: Oracle数据库实例已运行时间
-      desc: Oracle数据库已运行时长
-    oracledb_activity_parse_rate:
-      desc: 监控一段时间内（如过去5分钟）SQL解析的速率，帮助发现频繁解析情况。
-      name: Oracle数据库解析速率
-    oracledb_tablespace_max_bytes_gauge:
-      desc: 指定表空间的最大磁盘空间限制。
-      name: Oracle数据库表最大容量限制
-    oracledb_wait_time_other_gauge:
-      name: Oracle数据库其他等待时间
-      desc: 无法归类到其他等待时间中的等待时间。
-    oracledb_wait_time_user_io_gauge:
-      name: Oracle数据库用户I/O等待时间
-      desc: 等待用户I/O操作完成的时间。
-    oracledb_tablespace_free_gauge:
-      name: Oracle数据库表可用容量大小
-      desc: 指定表空间中剩余的磁盘空间的大小。
-    oracledb_wait_time_concurrency_gauge:
-      name: Oracle数据库并发等待时间
-      desc: 由于数据库资源争用而导致的等待时间，例如等待锁。
-    process_cpu_seconds_total_counter:
-      name: Oracle数据库监控探针进程CPU秒数总计
-      desc: Oracle数据库监控探针进程已使用的CPU时间总量。
-    oracledb_wait_time_commit_gauge:
-      desc: 等待事务提交完成的时间。
-      name: Oracle数据库提交等待时间
-    oracledb_pga_used_percent_gauge:
-      name: Oracle数据库PGA使用率
-      desc: 表示 Oracle 数据库 PGA 的内存使用率，用于衡量 PGA 资源的利用效率。
-    oracledb_sga_used_percent_gauge:
-      desc: 表示 Oracle 数据库 SGA 的内存使用率，用于评估 SGA 资源的利用效率。
-      name: Oracle数据库SGA使用率
-    oracledb_tablespace_used_percent_gauge:
-      desc: 指定表空间已使用容量的百分比。
-      name: Oracle数据库表空间使用率
-    oracledb_wait_time_network_gauge:
-      desc: 等待网络传输的时间，例如等待数据从客户端发送到服务器。
-      name: Oracle数据库网络等待时间
     oracledb_up_gauge:
-      desc: 当前Oracle数据库运行状态，0为正常运行，1为运行异常。
-      name: Oracle数据库运行状态
-    oracledb_exporter_last_scrape_duration_seconds_gauge:
-      name: Oracle数据库监控探针最近一次抓取时长
-      desc: 最近一次从Oracle数据库抓取指标所花费的时间。
-    process_resident_memory_bytes_gauge:
-      desc: Oracle数据库监控探针进程当前常驻内存的大小。
-      name: Oracle数据库监控探针进程常驻内存大小
-    oracledb_pga_used_gauge:
-      name: Oracle数据库PGA已使用大小
-      desc: 表示 Oracle 数据库 PGA 当前已使用的内存大小，反映 PGA 资源的实际消耗情况。
-    oracledb_process_count_gauge:
-      name: Oracle数据库进程数
-      desc: 当前活动的数据库进程数
+      name: 运行状态
+      desc: 当前Oracle数据库运行状态，0为正常运行，1为运行异常
+    oracledb_uptime_seconds_gauge:
+      name: 实例已运行时间
+      desc: Oracle数据库已运行时长
+    oracledb_activity_execute_count_gauge_rate:
+      name: 执行速率
+      desc: 监控一段时间内（如过去5分钟）SQL执行的速率，反映数据库负载的变化趋势
+    oracledb_activity_parse_count_total_gauge_rate:
+      name: 解析速率
+      desc: 监控一段时间内（如过去5分钟）SQL解析的速率，帮助发现频繁解析情况
+    oracledb_activity_user_commits_gauge_rate:
+      name: 用户提交速率
+      desc: 监控一段时间内（如过去5分钟）用户事务提交的速率，反映数据库事务活动情况
+    oracledb_activity_user_rollbacks_gauge_rate:
+      name: 用户回滚速率
+      desc: 监控一段时间内（如过去5分钟）用户事务回滚的速率，帮助发现异常事务
     oracledb_wait_time_application_gauge:
-      desc: 数据库客户端应用程序与数据库的通信等待时间。
-      name: Oracle数据库应用类等待时间
-    oracledb_sga_free_gauge:
-      desc: 表示 Oracle 数据库 SGA 当前可用的内存大小，反映 SGA 中未被使用的空闲资源量。
-      name: Oracle数据库SGA可用大小
-    oracledb_exporter_last_scrape_error_gauge:
-      desc: OracleDB监控探针在最近一次抓取指标时是否出现错误。
-      name: Oracle数据库监控探针最近一次抓取状态
-    oracledb_tablespace_bytes_gauge:
-      name: Oracle数据库表已使用容量大小
-      desc: 指定表空间中已使用的磁盘空间的总大小。
+      name: 应用类等待时间
+      desc: 数据库客户端应用程序与数据库的通信等待时间
+    oracledb_wait_time_commit_gauge:
+      name: 提交等待时间
+      desc: 等待事务提交完成的时间
+    oracledb_wait_time_concurrency_gauge:
+      name: 并发等待时间
+      desc: 由于数据库资源争用而导致的等待时间，例如等待锁
+    oracledb_wait_time_configuration_gauge:
+      name: 配置等待时间
+      desc: 等待系统资源配置的时间，例如等待参数更改生效的时间
+    oracledb_wait_time_network_gauge:
+      name: 网络等待时间
+      desc: 等待网络传输的时间，例如等待数据从客户端发送到服务器
+    oracledb_wait_time_other_gauge:
+      name: 其他等待时间
+      desc: 无法归类到其他等待时间中的等待时间
+    oracledb_wait_time_system_io_gauge:
+      name: 系统I/O等待时间
+      desc: 等待系统进行I/O操作的时间，例如等待从磁盘读取数据的时间
+    oracledb_wait_time_user_io_gauge:
+      name: 用户I/O等待时间
+      desc: 等待用户I/O操作完成的时间
+    oracledb_resource_utilization_rate:
+      name: 资源使用率
+      desc: 当前Oracle数据库实例中某种资源的使用率，可以反映会话、进程、内存等资源对其资源限定值的使用百分比
+    oracledb_process_count_gauge:
+      name: 进程数
+      desc: 当前活动的数据库进程数
+    oracledb_sessions_value_gauge:
+      name: 会话数
+      desc: 数据库当前打开的会话数
     oracledb_sga_total_gauge:
-      desc: SGA是Oracle数据库实例在内存中分配的一块共享内存区域，用于存储全局数据和信息，以支持数据库实例的运行和访问。本指标用于表示SGA的总内存大小，用于衡量
-        SGA 的整体资源分配规模。
-      name: Oracle数据库SGA总大小
-    process_open_fds_gauge:
-      name: Oracle数据库监控探针进程打开文件描述符数
-      desc: Oracle数据库监控探针进程当前打开的文件描述符数。
+      name: SGA总大小
+      desc: SGA是Oracle数据库实例在内存中分配的一块共享内存区域，用于存储全局数据和信息
+    oracledb_sga_free_gauge:
+      name: SGA可用大小
+      desc: 表示Oracle数据库SGA当前可用的内存大小，反映SGA中未被使用的空闲资源量
+    oracledb_sga_used_percent_gauge:
+      name: SGA使用率
+      desc: 表示Oracle数据库SGA的内存使用率，用于评估SGA资源的利用效率
+    oracledb_pga_total_gauge:
+      name: PGA总大小
+      desc: PGA是Oracle数据库实例中每个用户进程或服务器进程独立分配的内存区域
+    oracledb_pga_used_gauge:
+      name: PGA已使用大小
+      desc: 表示Oracle数据库PGA当前已使用的内存大小，反映PGA资源的实际消耗情况
+    oracledb_pga_used_percent_gauge:
+      name: PGA使用率
+      desc: 表示Oracle数据库PGA的内存使用率，用于衡量PGA资源的利用效率
+    oracledb_tablespace_bytes_gauge:
+      name: 表已使用容量大小
+      desc: 指定表空间中已使用的磁盘空间的总大小
+    oracledb_tablespace_max_bytes_gauge:
+      name: 表最大容量限制
+      desc: 指定表空间的最大磁盘空间限制
+    oracledb_tablespace_free_gauge:
+      name: 表可用容量大小
+      desc: 指定表空间中剩余的磁盘空间的大小
+    oracledb_tablespace_used_percent_gauge:
+      name: 表空间使用率
+      desc: 指定表空间已使用容量的百分比
+    oracledb_rac_node_gauge:
+      name: RAC节点数量
+      desc: 当前Oracle数据库集群节点数量
+    process_cpu_seconds_total_counter:
+      name: 监控探针进程CPU秒数总计
+      desc: Oracle数据库监控探针进程已使用的CPU时间总量
     process_max_fds_gauge:
-      name: Oracle数据库监控探针进程最大文件描述符数
-      desc: Oracle数据库监控探针进程能够打开的最大文件描述符数。
+      name: 监控探针进程最大文件描述符数
+      desc: Oracle数据库监控探针进程能够打开的最大文件描述符数
+    process_open_fds_gauge:
+      name: 监控探针进程打开文件描述符数
+      desc: Oracle数据库监控探针进程当前打开的文件描述符数
+    process_resident_memory_bytes_gauge:
+      name: 监控探针进程常驻内存大小
+      desc: Oracle数据库监控探针进程当前常驻内存的大小
+    process_virtual_memory_bytes_gauge:
+      name: 监控探针进程虚拟内存大小
+      desc: Oracle数据库监控探针进程当前虚拟内存的大小
+    oracledb_exporter_last_scrape_duration_seconds_gauge:
+      name: 监控探针最近一次抓取时长
+      desc: 最近一次从Oracle数据库抓取指标所花费的时间
+    oracledb_exporter_last_scrape_error_gauge:
+      name: 监控探针最近一次抓取状态
+      desc: OracleDB监控探针在最近一次抓取指标时是否出现错误
+    oracledb_exporter_scrapes_total_counter:
+      name: 监控探针抓取指标总数
+      desc: 从OracleDB监控探针启动以来抓取指标的总次数，若进程重启将重新计算
   Mysql:
-    mysql_aborted_clients:
-      name: 终止的客户端连接次数
-      desc: 此指标表示由于客户端错误中止的连接次数。监控此指标可以帮助识别连接可靠性问题。
-    mysql_access_denied_errors:
-      name: 访问拒绝错误次数
-      desc: 此指标表示由于权限不足或认证失败导致的访问拒绝次数。监控此指标有助于识别和解决权限问题。
-    mysql_connections_total:
-      name: 总连接创建数
-      desc: 此指标表示从服务器启动以来创建的总连接数。监控连接总数有助于了解连接模式和流量。
-    mysql_com_update:
-      desc: 此指标表示Update命令的执行次数。监控此指标有助于了解更新操作的频率和系统负载。
-      name: Update命令执行次数
+    mysql_threads_connected:
+      name: 当前连接数
+      desc: 当前打开的连接数；接近 max_connections 时会拒绝新连接
+    mysql_threads_running:
+      name: 运行中的线程数
+      desc: 当前正在执行查询的线程数，反映并发处理能力
     mysql_aborted_connects:
-      desc: 此指标表示因连接问题而终止的连接尝试次数。高值可能表示系统配置问题或服务器过载。
-      name: 终止的连接尝试次数
-    mysql_bytes_received:
-      desc: 此指标表示MySQL服务器接收到的字节数。监控此指标可以了解网络流量负载情况。
-      name: 接收字节数
-    mysql_bytes_sent:
-      name: 发送字节数
-      desc: 此指标表示MySQL服务器发送的字节数。监控此指标可以了解网络流量负载情况。
-    mysql_com_insert:
-      name: Insert命令执行次数
-      desc: 此指标表示Insert命令的执行次数。监控此指标有助于了解写入操作的频率和系统负载。
-    mysql_com_delete:
-      desc: 此指标表示Delete命令的执行次数。监控此指标有助于了解删除操作的频率和系统负载。
-      name: Delete命令执行次数
-    mysql_aria_pagecache_blocks_unused:
-      name: 未使用的Aria页高速缓存块数
-      desc: 此指标表示Aria存储引擎中未使用的页高速缓存块数。监控此指标可以帮助优化缓存分配。
-    mysql_aria_pagecache_blocks_used:
-      name: 已使用的Aria页高速缓存块数
-      desc: 此指标表示Aria存储引擎中已使用的页高速缓存块数。监控此指标可以帮助评估缓存的有效利用。
-    mysql_com_select:
-      name: Select命令执行次数
-      desc: 此指标表示Select查询的执行次数。监控此指标有助于了解读取操作的频率和系统负载。
+      name: 中止的连接数
+      desc: 连接尝试失败的次数，可能由权限、网络或配置问题引起
+    mysql_slow_queries_rate:
+      name: 慢查询请求触发速率
+      desc: 慢查询请求数量，反映慢查询发生的频率
+    mysql_com_select_rate:
+      name: SELECT 查询速率
+      desc: SELECT 查询数，反映读取负载趋势
+    mysql_com_insert_rate:
+      name: INSERT 写入速率
+      desc: INSERT 查询数，反映写入负载趋势
+    mysql_com_update_rate:
+      name: UPDATE 更新速率
+      desc: UPDATE 操作数，反映数据更新频率
+    mysql_com_delete_rate:
+      name: DELETE 删除速率
+      desc: DELETE 操作数；激增时需检查数据清理合理性
+    mysql_innodb_row_lock_time_avg:
+      name: 平均行锁等待时间
+      desc: 平均行锁等待时间；>50ms 表示锁竞争严重
+    mysql_innodb_row_lock_waits_rate:
+      name: 行锁等待速率
+      desc: InnoDB 行锁等待次数
+    mysql_innodb_buffer_pool_read_requests_rate:
+      name: 缓冲池读取请求速率
+      desc: 缓冲池读取请求，反映数据库读取负载
+    mysql_innodb_buffer_pool_disk_reads_rate:
+      name: 缓冲池磁盘读取速率
+      desc: 缓冲池磁盘读取次数；值高表示内存不足
+    mysql_innodb_buffer_pool_pages_dirty:
+      name: 脏页数
+      desc: 缓冲池中的脏页数（尚未写入磁盘）；表示缓冲池利用情况
+    mysql_innodb_buffer_pool_pages_total:
+      name: 缓冲池总页数
+      desc: 缓冲池中的总页数；用于计算缓冲池利用率
+    mysql_bytes_received_rate:
+      name: 数据接收速率
+      desc: 接收的数据量，反映数据库输入流量
+    mysql_bytes_sent_rate:
+      name: 数据发送速率
+      desc: 发送的数据量，反映数据库输出流量
+    mysql_table_open_cache_hits_rate:
+      name: 表缓存命中率
+      desc: 表缓存命中率；<95% 需调整 table_open_cache 配置
+    mysql_table_open_cache_misses_rate:
+      name: 表缓存未命中速率
+      desc: 表打开缓存未命中请求数，反映表缓存命中状况
+    mysql_created_tmp_disk_tables_rate:
+      name: 磁盘临时表创建速率
+      desc: 创建的磁盘临时表数量
+    mysql_created_tmp_tables_rate:
+      name: 总临时表创建速率
+      desc: 创建的临时表总数（内存 + 磁盘）
   ActiveMQ-JMX:
     activemq_topic_producer_flow_control_value:
       desc: 显示指定目标主题的生产者是否启用了流量控制，1 表示启用，0 表示未启用，用于防止生产者发送过多消息导致系统过载。
@@ -1732,39 +1835,54 @@ monitor_object_metric:
       name: 搜索线程池队列长度
       desc: 查询性能预警指标，反映查询请求队列的长度情况；队列长度持续增长表示查询处理能力不足，会影响业务使用体验
   Redis:
+    redis_uptime:
+      name: 服务运行时长
+      desc: Redis服务持续运行的时间长度，反映服务的稳定性与可用性，持续为正值表示服务正常运行
+    redis_used_memory:
+      name: 内存使用量
+      desc: Redis实例当前占用的内存总量，包括数据存储和内部数据结构，监控该指标可防止内存溢出导致的服务中断
+    redis_maxmemory:
+      name: 内存限制配置
+      desc: Redis实例配置的最大内存使用上限，与内存使用量结合可计算内存使用率，指导容量规划与扩容决策
     redis_mem_fragmentation_ratio:
       name: 内存碎片率
-      desc: 内存碎片率，反映内存使用效率。
-    redis_keyspace_hits:
-      name: 键空间命中次数
-      desc: 缓存命中的次数。
-    redis_evicted_keys:
-      name: 驱逐的键数
-      desc: 因内存限制而被逐出的键值数量。
-    redis_used_cpu_sys_rate:
-      desc: Redis 在系统模式下每秒消耗的 CPU 时间变化率。值过高（如 >1）可能表示 I/O 操作频繁，需告警。
-      name: Redis 系统模式 CPU 变化率
-    redis_connected_slaves:
-      name: 已连接从节点数
-      desc: 当前连接到主节点的副本数量。
-    redis_keyspace_misses:
-      name: 键空间未命中次数
-      desc: 缓存未命中的次数。
+      desc: 内存分配器已分配内存与操作系统报告内存的比值，反映内存碎片化程度，高比值可能影响内存分配效率
     redis_instantaneous_ops_per_sec:
-      desc: 当前每秒处理的 Redis 命令数（QPS）。
-      name: 每秒操作次数
-    redis_rejected_connections:
-      name: 拒绝的连接数
-      desc: 因服务器过载或策略限制而被拒绝的连接数。
-    redis_rdb_last_save_time_elapsed:
-      desc: 上次成功进行 RDB 保存操作后的经过时间。
-      name: 上次保存经过时间
-    redis_clients:
-      desc: 当前连接的客户端数量，反映活跃连接数。
-      name: 已连接客户端数
-    redis_used_memory:
-      desc: Redis 所使用的总内存大小，包括所有内部数据结构和缓存。
-      name: 已用内存
+      name: 实时操作频率
+      desc: Redis实例处理命令操作的实时频率，直接反映当前服务负载水平，用于识别流量峰值与异常波动
+    redis_total_commands_processed_rate:
+      name: 命令处理速率
+      desc: Redis实例处理命令的平均速率，衡量服务处理能力，速率下降可能表示性能瓶颈或资源不足
+    redis_keyspace_hits_rate:
+      name: 键命中频率
+      desc: 键空间成功命中的操作频率，反映缓存命中效率，高频率表明缓存策略有效，数据访问效率高
+    redis_keyspace_misses_rate:
+      name: 键未命中频率
+      desc: 键空间未能命中的操作频率，反映缓存未命中情况，高频率可能需优化缓存策略或增加缓存容量
+    redis_keyspace_hitrate:
+      name: 缓存命中率
+      desc: 键空间命中操作占总操作的比例，核心性能指标，高命中率表明缓存系统高效运行，数据访问性能良好
+    redis_total_net_input_bytes_rate:
+      name: 网络流入速率
+      desc: Redis实例接收网络数据的平均速率，监控输入流量变化，异常增长可能表示攻击或业务逻辑变化
+    redis_total_net_output_bytes_rate:
+      name: 网络流出速率
+      desc: Redis实例发送网络数据的平均速率，监控输出流量变化，结合业务指标分析响应数据量变化趋势
+    redis_connected_clients:
+      name: 客户端连接数
+      desc: 当前活跃的客户端连接数量，反映服务并发处理能力，接近最大连接数配置时可能影响新连接建立
+    redis_blocked_clients:
+      name: 阻塞客户端数
+      desc: 处于阻塞等待状态的客户端数量，非零值表示存在性能瓶颈或资源竞争，需进一步排查原因
+    redis_expired_keys_rate:
+      name: 键过期频率
+      desc: 因过期时间到达而被自动删除的键操作频率，反映数据生命周期管理情况，异常频率需关注
+    redis_evicted_keys_rate:
+      name: 键驱逐频率
+      desc: 因内存限制而被主动驱逐的键操作频率，反映内存压力情况，非零频率表示内存使用已达上限
+    redis_rejected_connections_rate:
+      name: 连接拒绝频率
+      desc: 因达到最大连接数而被拒绝的连接请求频率，反映连接资源紧张程度，非零频率需考虑扩容
   Docker:
     docker_n_containers_running:
       name: 正在运行的容器数
@@ -1821,69 +1939,84 @@ monitor_object_metric:
       name: 存储连接状态
       desc: 存储连接状态，表示存储设备的可连接性，是评估存储系统健康状态的指标。
   MSSQL:
-    volume_available_gb:
-      name: 磁盘可用空间
-      desc: SQL Server数据卷的可用磁盘空间（GB）
-    signal_wait_ratio:
-      desc: 信号等待时间占总等待时间的比例
-      name: 信号等待比例
-    memory_usage:
-      name: 内存使用率
-      desc: SQL Server进程的内存使用压力百分比
-    avg_request_time:
-      desc: 每个活动连接的平均请求执行时间
-      name: 平均请求时间
-    waiting_tasks_rate:
-      desc: 每秒新增的等待任务数量
-      name: 等待任务速率
-    logical_reads_rate:
-      name: 逻辑读取速率
-      desc: 每秒的逻辑读取操作次数
-    runnable_tasks:
-      desc: 等待在运行队列中的任务数量，反映CPU压力
-      name: 可运行任务数
-    resource_wait_ratio:
-      name: 资源等待比例
-      desc: 资源等待时间占总等待时间的比例
-    avg_write_latency:
-      desc: 每次写入操作的平均延迟时间
-      name: 平均写入延迟
-    volume_space_usage:
-      desc: SQL Server数据卷的磁盘空间使用百分比
-      name: 磁盘使用率
-    available_memory_mb:
-      desc: SQL Server可用的物理内存（MB）
-      name: 可用内存
-    sqlserver_uptime:
-      desc: SQL Server实例的运行时间（小时）
-      name: SQL Server运行时间
-    context_switches_rate:
-      desc: 每秒的上下文切换次数
-      name: 上下文切换速率
-    total_io_throughput:
-      name: 总IO吞吐量
-      desc: 数据库读写操作的总吞吐量
-    online_databases:
-      desc: 当前在线的数据库数量
-      name: 在线数据库数
-    active_connections:
-      name: 活动连接数
-      desc: 当前活动的数据库连接数量
-    current_workers:
-      name: 当前工作线程
-      desc: 当前活动的工作线程数量
-    avg_wait_time:
-      name: 平均等待时间
-      desc: 每个等待任务的平均等待时间
-    write_throughput_mbps:
-      desc: 数据库写入操作的吞吐量
-      name: 写入吞吐量
-    avg_read_latency:
-      desc: 每次读取操作的平均延迟时间
-      name: 平均读取延迟
-    read_throughput_mbps:
-      name: 读取吞吐量
-      desc: 数据库读取操作的吞吐量
+    sqlserver_cpu_sqlserver_process_cpu_avg:
+      name: MSSQL进程CPU使用率
+      desc: SQL Server数据库进程的CPU使用率，直接反映数据库计算负载。持续高值可能表示查询需要优化或存在资源瓶颈。
+    sqlserver_cpu_system_idle_cpu_avg:
+      name: 系统空闲CPU
+      desc: 整个操作系统空闲的CPU百分比，反映服务器整体CPU资源利用率。低值表示CPU资源紧张，可能影响系统稳定性。
+    sqlserver_server_properties_uptime:
+      name: 运行时长
+      desc: SQL Server实例自上次启动以来的持续运行时间，用于监控实例稳定性。长时间运行后可能需要重启以释放内存和清理资源。
+    sqlserver_database_io_read_latency_ms:
+      name: 数据库读取延迟
+      desc: 数据库文件读取操作的平均延迟时间，反映存储子系统性能。高延迟可能表明存储瓶颈、网络问题或硬件性能不足。
+    sqlserver_database_io_write_latency_ms:
+      name: 数据库写入延迟
+      desc: 数据库文件写入操作的平均延迟时间，直接影响事务性能和应用程序响应时间。高延迟可能影响数据写入速度和系统吞吐量。
+    sqlserver_database_io_reads_rate:
+      name: 数据库读取速率
+      desc: 数据库文件读取操作的速率，反映数据读取负载强度和工作集访问模式。高读取速率可能表明查询频繁或缓存效率低。
+    sqlserver_database_io_writes_rate:
+      name: 数据库写入速率
+      desc: 数据库文件写入操作的速率，反映数据写入负载强度和事务活动级别。高写入速率可能表示大量数据更新或插入操作。
+    sqlserver_memory_clerks_size_kb:
+      name: 内存Clerk大小
+      desc: SQL Server内部内存分配器当前占用的内存大小，用于分析内存使用分布和识别潜在内存泄漏。不同clerk代表不同的内存使用用途。
+    sqlserver_performance_batch_requests_rate:
+      name: 批处理请求速率
+      desc: SQL Server批处理请求的速率，衡量数据库整体吞吐量和负载压力。高请求率表示数据库处理大量查询。
+    sqlserver_performance_page_life_expectancy:
+      name: 页生命周期期望
+      desc: 数据页在缓冲池中的平均停留时间，反映内存压力。值过低表明内存不足，可能导致频繁的物理IO，影响性能。
+    sqlserver_performance_buffer_cache_hit_ratio:
+      name: 缓冲区缓存命中率
+      desc: 从缓冲池中读取数据页的百分比，反映内存效率。高命中率表明大部分数据请求由内存满足，性能良好。低命中率可能表明需要更多内存。
+    sqlserver_performance_user_connections_rate:
+      name: 用户连接数
+      desc: 当前连接到SQL Server实例的用户数量，反映数据库的并发负载和连接池使用情况。连接数过多可能导致资源争用。
+    sqlserver_performance_lock_wait_time_rate:
+      name: 锁等待时间
+      desc: 锁等待时间的速率，反映数据库的并发争用情况。高值可能表明存在阻塞或锁竞争问题，需要优化事务设计。
+    sqlserver_requests_cpu_time_ms_rate:
+      name: 请求CPU时间速率
+      desc: 请求消耗CPU时间的速率，用于识别高CPU消耗的查询和语句，帮助进行性能优化和资源分配决策。
+    sqlserver_requests_logical_reads_rate:
+      name: 请求逻辑读取速率
+      desc: 请求执行逻辑读取操作的速率，反映查询数据访问模式和工作集大小。高逻辑读取可能表明查询缺少索引或需要优化。
+    sqlserver_requests_total_elapsed_time_ms_rate:
+      name: 请求运行时间速率
+      desc: 请求总运行时间的速率，监控查询执行效率和响应时间。高运行时间可能表明查询复杂、数据量大或存在性能问题。
+    sqlserver_requests_wait_time_ms_rate:
+      name: 请求等待时间速率
+      desc: 请求等待时间的速率，反映查询在资源上的等待情况。高等待时间可能表明存在资源瓶颈或锁竞争。
+    sqlserver_schedulers_active_workers_count:
+      name: 调度器活动工作线程数
+      desc: 调度器上当前正在执行任务的活动工作线程数量，反映CPU调度负载。过高可能表示CPU压力大或存在并行查询争用。
+    sqlserver_schedulers_runnable_tasks_count:
+      name: 调度器可运行任务数
+      desc: 调度器上准备就绪等待CPU执行的任务数量，反映CPU队列长度。高值表示CPU资源不足或存在大量并发请求。
+    sqlserver_waitstats_resource_wait_ms:
+      name: 资源等待时间速率
+      desc: 等待外部资源（如磁盘、网络、内存）的时间速率，反映真正的资源瓶颈。帮助识别IO、内存或网络等硬件限制。
+    sqlserver_waitstats_signal_wait_time_ms_rate:
+      name: 信号等待时间速率
+      desc: 等待CPU调度的时间速率，反映CPU压力。高信号等待时间表明CPU资源紧张或存在并行查询争用，需要优化查询或增加CPU资源。
+    sqlserver_waitstats_wait_time_ms_rate:
+      name: 等待时间速率
+      desc: SQL Server中各种等待类型的累计等待时间的速率，是性能调优的关键指标，帮助识别系统瓶颈。
+    sqlserver_waitstats_waiting_tasks_count:
+      name: 等待任务数
+      desc: 当前正在等待的SQL Server任务数量，反映系统的并发等待情况。高等待任务数可能表明系统存在资源争用。
+    sqlserver_volume_space_available_space_bytes:
+      name: 卷可用空间
+      desc: 存储卷的可用空间大小，监控磁盘空间使用情况。空间不足可能导致数据库操作失败或性能下降。
+    sqlserver_volume_space_total_space_bytes:
+      name: 卷总空间
+      desc: 存储卷的总空间大小，用于计算磁盘使用率，规划存储扩容。
+    sqlserver_volume_space_used_space_bytes:
+      name: 卷已用空间
+      desc: 存储卷的已用空间大小，结合总空间可计算使用率，监控存储增长趋势。
   Zookeeper:
     max_latency:
       desc: ZooKeeper请求的最大响应延迟
@@ -1967,11 +2100,15 @@ monitor_object_metric_group:
     Duration: 响应时间
     Request: 请求
   Postgres:
-    Transaction: 事务
-    Session: 会话
+    Connection: 连接
+    Query: 查询
+    DataOperation: 数据操作
     Cache: 缓存
-    Memory: 内存
-    Performance: 性能
+    Concurrency: 并发
+    TempFiles: 临时文件
+    Checkpoint: 检查点
+    Buffer: 缓冲
+    WriteActivity: 写入行为
   ESXI:
     Memory: 内存
     Network: 网络
@@ -1999,23 +2136,25 @@ monitor_object_metric_group:
   vCenter:
     Quantity: 数量
   Oracle-Exporter:
-    PGA: 程序全局区域
-    Activity: 数据库活动
     Base: 基础信息
-    SGA: 系统全局区域
+    Activity: 数据库活动
     Wait: 等待时间
-    Process: 进程
-    selfMonitor: 自监控信息
+    Resource: 资源
+    SGA: 系统全局区域
+    PGA: 程序全局区域
     Tablespace: 表空间
     RAC: 集群
-  Host:
-    Net: 网络
-    CPU: CPU
-    DISK: 磁盘
-    Disk IO: 磁盘 IO
     Process: 进程
-    MEMORY: 内存
+    SelfMonitor: 自监控信息
+  Host:
+    CPU: CPU
     System: 系统
+    Disk IO: 磁盘 IO
+    Disk: 磁盘
+    Process: 进程
+    Memory: 内存
+    Net: 网络
+    Nvidia GPU: Nvidia GPU
   Firewall:
     Packet: 数据包
     Packet Loss: 数据包丢失
@@ -2031,13 +2170,10 @@ monitor_object_metric_group:
     Disk: 磁盘
     Network: 网络
   MongoDB:
-    Latency: 延迟
-    Storage: 存储
-    Active Operations: 活动操作
-    Commands: 指令
-    Memory: 内存
-    Traffic: 流量
-    Connections: 连接
+    Base: 基础信息
+    Performance: 性能
+    Operations: 操作
+    Resources: 资源
   Tomcat-JMX:
     Session: 会话
     GlobalRequestProcessor: 全局请求处理
@@ -2091,12 +2227,12 @@ monitor_object_metric_group:
     Disk: 磁盘
     Memory: 内存
   Mysql:
-    Traffic: 流量
-    Session: 会话
-    Cache: 缓存
-    Command: 命令
-    Error: 错误
-    Connection: 连接
+    ConnStatus: 连接状态
+    QueryPerf: 查询性能
+    InnoDBPerf: InnoDB 性能
+    NetTraffic: 网络流量
+    TableCache: 表缓存
+    TempTable: 临时表
   Minio:
     CPU: CPU
     ClusterDrive: 集群驱动器
@@ -2131,14 +2267,12 @@ monitor_object_metric_group:
     Status: 状态
     Packet Error: 数据包错误
   Redis:
-    Cache: 缓存
-    Replication: 复制
-    Clients: 客户端
+    Base: 基础
     Memory: 内存
-    Disk: 磁盘
-    Connectivity: 连接
     Performance: 性能
-    CPU: CPU
+    Network: 网络
+    Client: 客户端
+    Error: 错误
   ActiveMQ-JMX:
     Other: 其他
     JvmMemory: JVM内存
@@ -2197,10 +2331,9 @@ monitor_object_metric_group:
   Website:
     HTTP: HTTP
   MSSQL:
-    Disk: 磁盘
-    Scheduler: 调度器
-    IO: IO
-    Memory: 内存
+    Base: 基础信息
+    Performance: 性能
+    Storage: 存储
     Connection: 连接
     Base: 基础信息
     Wait: 等待时间
@@ -2303,7 +2436,7 @@ monitor_object_plugin:
     name: Ping（Telegraf）
   MongoDB:
     name: MongoDB（Telegraf）
-    desc: 通过Telegraf采集器定期收集MongoDB的读写活动、命令执行、连接数、延迟、内存使用及网络流量指标，帮助优化性能，保障数据库高效稳定运行。
+    desc: 通过Telegraf采集器定期收集MongoDB的基础信息、性能指标、操作统计和资源使用情况，帮助优化性能，保障数据库高效稳定运行。
   JVM:
     name: JVM（JMX）
     desc: 通过JVM JMX采集器定期收集JVM（Java 虚拟机）的运行状态、内存使用、线程活动、垃圾回收情况及系统资源等性能指标。
@@ -2323,7 +2456,7 @@ monitor_object_plugin:
     desc: 通过Telegraf采集器利用Stargazer能力定期收集VMware中vCenter、ESXi、虚拟机、数据存储的关键指标。
     name: VMWare
   MSSQL:
-    desc: 通过Telegraf采集器定期收集MSSQL关键指标，包括磁盘、内存、IO、等待时间等。
+    desc: 通过Telegraf采集器定期收集MSSQL关键指标，包括基础信息、性能指标、存储状态等。
     name: MSSQL（Telegraf）
 monitor_object:
   Apache: Apache
