@@ -338,12 +338,11 @@ class FieldGroupService:
 
         # 3. 解析属性
         attrs = ModelManage.parse_attrs(model_info.get("attrs", "[]"))
-
         # 4. 按分组组织属性
         groups_data = []
         for idx, group in enumerate(groups):
             group_attrs = [
-                attr for attr in attrs if attr.get("attr_group") == group.group_name
+                attr for attr in attrs if attr.get("attr_group") == group.group_name and not attr.get("is_display_field")
             ]
 
             # 按FieldGroup中存储的attr_orders排序分组内的属性
