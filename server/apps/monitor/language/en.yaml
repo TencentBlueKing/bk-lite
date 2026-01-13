@@ -905,61 +905,66 @@ monitor_object_metric:
       desc: This metric represents the number of consumers per topic, used to monitor
         if consumers are evenly distributed.
   Postgres:
-    postgresql_xact_rollback:
-      name: PostgreSQL Transactions Rolled Back Rate
-      desc: Indicates the rate of transactions rolled back by the PostgreSQL instance
-        (in rollbacks per second). Used for monitoring transaction rollback frequency.
-    postgresql_active_time:
-      name: PostgreSQL Active Time
-      desc: This metric indicates the total duration of the PostgreSQL instance in
-        an active state, reflecting the duration of database activity.
-    postgresql_buffers_checkpoint:
-      name: PostgreSQL Buffer Checkpoint Rate
-      desc: Indicates the rate of buffers at checkpoints by the PostgreSQL instance
-        (in checkpoints per second). Used for monitoring checkpoint frequency.
-    postgresql_blks_hit_ratio:
-      desc: Indicates the PostgreSQL instance's block cache hit ratio over the past
-        5 minutes, reflecting cache effectiveness. A high hit ratio means most data
-        requests are fulfilled from the cache, reducing disk reads and improving query
-        performance.
-      name: PostgreSQL Blocks Hit Ratio(5m)
-    postgresql_sessions_abandoned:
-      name: PostgreSQL Abnormal Session Disconnection Rate
-      desc: Rate of sessions abnormally disconnected due to network/client issues
-        per second, used to identify client/network instability and resource leaks.
-    postgresql_xact_commit:
-      desc: Indicates the rate of transactions committed by the PostgreSQL instance
-        (in commits per second). Used for monitoring transaction commit frequency.
-      name: PostgreSQL Transactions Committed Rate
-    postgresql_blk_write_time:
-      name: PostgreSQL Block Write Time Rate
-      desc: Indicates the rate of time spent on block write operations by the PostgreSQL
-        instance (in seconds per second). Used for monitoring write performance.
-    postgresql_blks_hit:
-      desc: Indicates the rate of block cache hits by the PostgreSQL instance (in
-        hits per second). Used for monitoring cache efficiency.
-      name: PostgreSQL Blocks Hit Rate
-    postgresql_blks_read:
-      desc: Indicates the rate of block reads by the PostgreSQL instance (in reads
-        per second). Used for monitoring read frequency.
-      name: PostgreSQL Blocks Read Rate
-    postgresql_sessions:
-      desc: Indicates the total number of sessions for the PostgreSQL instance (including
-        idle connections), used for monitoring connection pool usage and identifying
-        connection leaks or abnormal surges.
-      name: PostgreSQL Total Active Sessions
-    postgresql_blk_read_time:
-      name: PostgreSQL Block Read Time Rate
-      desc: Indicates the rate of time spent on block read operations by the PostgreSQL
-        instance (in seconds per second). Used for monitoring read performance.
-    postgresql_sessions_killed:
-      name: PostgreSQL Terminated Sessions Rate
-      desc: Indicates the rate of killed sessions for the PostgreSQL instance (in
-        terminations per second). Used for monitoring session termination frequency.
-    postgresql_buffers_alloc:
-      desc: Indicates the rate of buffer allocations by the PostgreSQL instance (in
-        allocations per second). Used for monitoring buffer allocation.
-      name: PostgreSQL Buffer Allocation Rate
+    postgresql_numbackends:
+      name: Active DB Connections
+      desc: Monitors active database sessions to assess concurrency load and connection pool usage
+    postgresql_xact_commit_rate:
+      name: Transaction Commit Rate
+      desc: Indicates frequency of committed transactions, reflecting business activity
+    postgresql_xact_rollback_rate:
+      name: Transaction Rollback Rate
+      desc: Tracks rollback frequency caused by failures or conflicts
+    postgresql_tup_returned_rate:
+      name: Query Rows Returned Rate
+      desc: Counts rows returned in query result sets
+    postgresql_tup_fetched_rate:
+      name: Query Rows Fetched Rate
+      desc: Monitors rows fetched from storage during queries
+    postgresql_tup_inserted_rate:
+      name: Rows Inserted Rate
+      desc: Tracks row insertion frequency
+    postgresql_tup_updated_rate:
+      name: Rows Updated Rate
+      desc: Reflects data modification activity
+    postgresql_tup_deleted_rate:
+      name: Rows Deleted Rate
+      desc: Monitors data deletion activity
+    postgresql_blks_hit_rate:
+      name: Buffer Cache Hit Rate
+      desc: Reflects shared buffer cache efficiency
+    postgresql_blks_read_rate:
+      name: Disk Block Read Rate
+      desc: Evaluates disk I/O load and cache misses
+    postgresql_deadlocks_rate:
+      name: Deadlock Rate
+      desc: Detects transaction deadlock frequency
+    postgresql_conflicts_rate:
+      name: Concurrency Conflict Rate
+      desc: Tracks conflicts caused by concurrent operations
+    postgresql_temp_files_rate:
+      name: Temporary Files Creation Rate
+      desc: Reflects temporary file usage by complex queries
+    postgresql_temp_bytes_rate:
+      name: Temporary File Write Throughput
+      desc: Measures disk usage by temp files
+    postgresql_checkpoints_timed_rate:
+      name: Timed Checkpoint Rate
+      desc: Monitors system-triggered checkpoints
+    postgresql_checkpoints_req_rate:
+      name: Requested Checkpoint Rate
+      desc: Reflects WAL pressure and checkpoint tuning
+    postgresql_buffers_alloc_rate:
+      name: Buffer Allocation Rate
+      desc: Tracks shared buffer allocation
+    postgresql_buffers_backend_rate:
+      name: Backend Buffer Write Rate
+      desc: Represents backend-driven writes
+    postgresql_buffers_checkpoint_rate:
+      name: Checkpoint Buffer Write Rate
+      desc: Reflects checkpoint I/O impact
+    postgresql_maxwritten_clean_rate:
+      name: Background Clean Page Write Rate
+      desc: Indicates high write pressure
   RabbitMQ:
     rabbitmq_unacked_message_ratio:
       name: Unacked Message Ratio
@@ -2871,11 +2876,15 @@ monitor_object_metric_group:
     Duration: Duration
     Request: Request
   Postgres:
-    Transaction: Transaction
-    Session: Session
+    Connection: Connection
+    Query: Query
+    DataOperation: Data Operation
     Cache: Cache
-    Memory: Memory
-    Performance: Performance
+    Concurrency: Concurrency
+    TempFiles: Temporary Files
+    Checkpoint: Checkpoint
+    Buffer: Buffer
+    WriteActivity: Write Activity
   ESXI:
     Memory: Memory
     Network: Network

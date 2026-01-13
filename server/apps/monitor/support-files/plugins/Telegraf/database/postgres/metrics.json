@@ -1,6 +1,6 @@
 {
   "plugin": "Postgres",
-  "plugin_desc": "Collecting PostgreSQL's session management, transaction metrics, and I/O performance data helps monitor resource usage, access behavior, operational efficiency, and identify potential issues within the database.",
+  "plugin_desc": "Used to collect and monitor key metrics for PostgreSQL database health and performance.",
   "status_query": "any({instance_type='postgres', collect_type='database'}) by (instance_id)",
   "name": "Postgres",
   "icon": "postgres",
@@ -8,7 +8,300 @@
   "description": "",
   "default_metric": "any({instance_type='postgres'}) by (instance_id)",
   "instance_id_keys": ["instance_id"],
-  "supplementary_indicators": ["postgresql_active_time", "postgresql_blks_hit"],
+  "supplementary_indicators": ["postgresql_numbackends", "postgresql_xact_commit_rate", "postgresql_xact_rollback_rate"],
+  "metrics": [
+    {
+      "metric_group": "Connection",
+      "name": "postgresql_numbackends",
+      "display_name": "Active DB Connections",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "short",
+      "dimensions": [
+        {
+          "name": "dbname",
+          "description": "Database name"
+        }
+      ],
+      "description": "Monitors active database sessions to assess concurrency load and connection pool usage",
+      "query": "postgresql_numbackends{__$labels__}"
+    },
+    {
+      "metric_group": "Connection",
+      "name": "postgresql_xact_commit_rate",
+      "display_name": "Transaction Commit Rate",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "cps",
+      "dimensions": [
+        {
+          "name": "dbname",
+          "description": "Database name"
+        }
+      ],
+      "description": "Indicates frequency of committed transactions, reflecting business activity",
+      "query": "rate(postgresql_xact_commit{__$labels__}[5m])"
+    },
+    {
+      "metric_group": "Connection",
+      "name": "postgresql_xact_rollback_rate",
+      "display_name": "Transaction Rollback Rate",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "cps",
+      "dimensions": [
+        {
+          "name": "dbname",
+          "description": "Database name"
+        }
+      ],
+      "description": "Tracks rollback frequency caused by failures or conflicts",
+      "query": "rate(postgresql_xact_rollback{__$labels__}[5m])"
+    },
+    {
+      "metric_group": "Query",
+      "name": "postgresql_tup_returned_rate",
+      "display_name": "Query Rows Returned Rate",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "cps",
+      "dimensions": [
+        {
+          "name": "dbname",
+          "description": "Database name"
+        }
+      ],
+      "description": "Counts rows returned in query result sets",
+      "query": "rate(postgresql_tup_returned{__$labels__}[5m])"
+    },
+    {
+      "metric_group": "Query",
+      "name": "postgresql_tup_fetched_rate",
+      "display_name": "Query Rows Fetched Rate",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "cps",
+      "dimensions": [
+        {
+          "name": "dbname",
+          "description": "Database name"
+        }
+      ],
+      "description": "Monitors rows fetched from storage during queries",
+      "query": "rate(postgresql_tup_fetched{__$labels__}[5m])"
+    },
+    {
+      "metric_group": "DataOperation",
+      "name": "postgresql_tup_inserted_rate",
+      "display_name": "Rows Inserted Rate",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "cps",
+      "dimensions": [
+        {
+          "name": "dbname",
+          "description": "Database name"
+        }
+      ],
+      "description": "Tracks row insertion frequency",
+      "query": "rate(postgresql_tup_inserted{__$labels__}[5m])"
+    },
+    {
+      "metric_group": "DataOperation",
+      "name": "postgresql_tup_updated_rate",
+      "display_name": "Rows Updated Rate",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "cps",
+      "dimensions": [
+        {
+          "name": "dbname",
+          "description": "Database name"
+        }
+      ],
+      "description": "Reflects data modification activity",
+      "query": "rate(postgresql_tup_updated{__$labels__}[5m])"
+    },
+    {
+      "metric_group": "DataOperation",
+      "name": "postgresql_tup_deleted_rate",
+      "display_name": "Rows Deleted Rate",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "cps",
+      "dimensions": [
+        {
+          "name": "dbname",
+          "description": "Database name"
+        }
+      ],
+      "description": "Monitors data deletion activity",
+      "query": "rate(postgresql_tup_deleted{__$labels__}[5m])"
+    },
+    {
+      "metric_group": "Cache",
+      "name": "postgresql_blks_hit_rate",
+      "display_name": "Buffer Cache Hit Rate",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "cps",
+      "dimensions": [
+        {
+          "name": "dbname",
+          "description": "Database name"
+        }
+      ],
+      "description": "Reflects shared buffer cache efficiency",
+      "query": "rate(postgresql_blks_hit{__$labels__}[5m])"
+    },
+    {
+      "metric_group": "Cache",
+      "name": "postgresql_blks_read_rate",
+      "display_name": "Disk Block Read Rate",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "cps",
+      "dimensions": [
+        {
+          "name": "dbname",
+          "description": "Database name"
+        }
+      ],
+      "description": "Evaluates disk I/O load and cache misses",
+      "query": "rate(postgresql_blks_read{__$labels__}[5m])"
+    },
+    {
+      "metric_group": "Concurrency",
+      "name": "postgresql_deadlocks_rate",
+      "display_name": "Deadlock Rate",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "cps",
+      "dimensions": [
+        {
+          "name": "dbname",
+          "description": "Database name"
+        }
+      ],
+      "description": "Detects transaction deadlock frequency",
+      "query": "rate(postgresql_deadlocks{__$labels__}[5m])"
+    },
+    {
+      "metric_group": "Concurrency",
+      "name": "postgresql_conflicts_rate",
+      "display_name": "Concurrency Conflict Rate",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "cps",
+      "dimensions": [
+        {
+          "name": "dbname",
+          "description": "Database name"
+        }
+      ],
+      "description": "Tracks conflicts caused by concurrent operations",
+      "query": "rate(postgresql_conflicts{__$labels__}[5m])"
+    },
+    {
+      "metric_group": "TempFiles",
+      "name": "postgresql_temp_files_rate",
+      "display_name": "Temporary Files Creation Rate",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "cps",
+      "dimensions": [
+        {
+          "name": "dbname",
+          "description": "Database name"
+        }
+      ],
+      "description": "Reflects temporary file usage by complex queries",
+      "query": "rate(postgresql_temp_files{__$labels__}[5m])"
+    },
+    {
+      "metric_group": "TempFiles",
+      "name": "postgresql_temp_bytes_rate",
+      "display_name": "Temporary File Write Throughput",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "byteps",
+      "dimensions": [
+        {
+          "name": "dbname",
+          "description": "Database name"
+        }
+      ],
+      "description": "Measures disk usage by temp files",
+      "query": "rate(postgresql_temp_bytes{__$labels__}[5m])"
+    },
+    {
+      "metric_group": "Checkpoint",
+      "name": "postgresql_checkpoints_timed_rate",
+      "display_name": "Timed Checkpoint Rate",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "cps",
+      "dimensions": [],
+      "description": "Monitors system-triggered checkpoints",
+      "query": "rate(postgresql_checkpoints_timed{__$labels__}[5m])"
+    },
+    {
+      "metric_group": "Checkpoint",
+      "name": "postgresql_checkpoints_req_rate",
+      "display_name": "Requested Checkpoint Rate",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "cps",
+      "dimensions": [],
+      "description": "Reflects WAL pressure and checkpoint tuning",
+      "query": "rate(postgresql_checkpoints_req{__$labels__}[5m])"
+    },
+    {
+      "metric_group": "Buffer",
+      "name": "postgresql_buffers_alloc_rate",
+      "display_name": "Buffer Allocation Rate",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "cps",
+      "dimensions": [],
+      "description": "Tracks shared buffer allocation",
+      "query": "rate(postgresql_buffers_alloc{__$labels__}[5m])"
+    },
+    {
+      "metric_group": "Buffer",
+      "name": "postgresql_buffers_backend_rate",
+      "display_name": "Backend Buffer Write Rate",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "cps",
+      "dimensions": [],
+      "description": "Represents backend-driven writes",
+      "query": "rate(postgresql_buffers_backend{__$labels__}[5m])"
+    },
+    {
+      "metric_group": "Buffer",
+      "name": "postgresql_buffers_checkpoint_rate",
+      "display_name": "Checkpoint Buffer Write Rate",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "cps",
+      "dimensions": [],
+      "description": "Reflects checkpoint I/O impact",
+      "query": "rate(postgresql_buffers_checkpoint{__$labels__}[5m])"
+    },
+    {
+      "metric_group": "WriteActivity",
+      "name": "postgresql_maxwritten_clean_rate",
+      "display_name": "Background Clean Page Write Rate",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "cps",
+      "dimensions": [],
+      "description": "Indicates high write pressure",
+      "query": "rate(postgresql_maxwritten_clean{__$labels__}[5m])"
+    }
+  ]
+}
   "metrics": [
     {
       "metric_group": "Performance",
