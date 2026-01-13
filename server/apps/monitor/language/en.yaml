@@ -2679,90 +2679,84 @@ monitor_object_metric:
         device and is an indicator for evaluating the health status of the storage
         system.
   MSSQL:
-    volume_available_gb:
-      name: Volume Available Space (GB)
-      desc: Displays the available space in gigabytes on database volumes, assisting
-        in storage management.
-    signal_wait_ratio:
-      desc: Indicates the ratio of time spent waiting for signals, helping assess
-        system responsiveness.
-      name: Signal Wait Ratio
-    memory_usage:
-      name: Memory Usage
-      desc: Reflects the percentage of memory currently utilized by the SQL Server,
-        indicating resource consumption.
-    avg_request_time:
-      desc: Indicates the average time taken to process requests in milliseconds,
-        helping evaluate performance.
-      name: Average Request Time (ms)
-    waiting_tasks_rate:
-      desc: Reflects the rate of tasks currently waiting for resources, indicating
-        system load.
-      name: Waiting Tasks Rate
-    logical_reads_rate:
-      name: Logical Reads Rate
-      desc: Shows the rate of logical read operations per second, reflecting database
-        efficiency.
-    runnable_tasks:
-      desc: Displays the number of tasks that are ready to run but waiting for CPU
-        time, indicating system load.
-      name: Runnable Tasks
-    resource_wait_ratio:
-      name: Resource Wait Ratio
-      desc: Displays the ratio of time spent waiting for resources, reflecting system
-        efficiency.
-    avg_write_latency:
-      desc: Indicates the average latency for write operations in milliseconds, assisting
-        in performance diagnostics.
-      name: Average Write Latency (ms)
-    volume_space_usage:
-      desc: Indicates the percentage of used space on database volumes, helping monitor
-        storage capacity.
-      name: Volume Space Usage
-    available_memory_mb:
-      desc: Shows the available memory in megabytes for the SQL Server instance, aiding
-        in performance tuning.
-      name: Available Memory (MB)
-    sqlserver_uptime:
-      desc: Shows the total uptime of the SQL Server instance since the last restart,
-        reflecting system stability.
-      name: SQL Server Uptime
-    context_switches_rate:
-      desc: Shows the rate of context switches per second, helping assess CPU scheduling
-        efficiency.
-      name: Context Switches Rate
-    total_io_throughput:
-      name: Total I/O Throughput (MBps)
-      desc: Reflects the combined rate of read and write operations in megabytes per
-        second, providing an overall view of I/O performance.
-    online_databases:
-      desc: Displays the count of databases currently online, indicating the availability
-        of database services.
-      name: Number of Online Databases
-    active_connections:
-      name: Active Connections
-      desc: Displays the number of active connections to the SQL Server instance,
-        providing insight into usage patterns.
-    current_workers:
-      name: Current Workers
-      desc: Indicates the current number of worker threads in use by the SQL Server,
-        reflecting resource utilization.
-    avg_wait_time:
-      name: Average Wait Time (ms)
-      desc: Shows the average wait time in milliseconds for various operations, aiding
-        in performance analysis.
-    write_throughput_mbps:
-      desc: Displays the rate of data write operations in megabytes per second, indicating
-        I/O efficiency.
-      name: Write Throughput (MBps)
-    avg_read_latency:
-      desc: Shows the average latency for read operations in milliseconds, helping
-        identify performance bottlenecks.
-      name: Average Read Latency (ms)
-    read_throughput_mbps:
-      name: Read Throughput (MBps)
-      desc: Indicates the rate of data read operations in megabytes per second, reflecting
-        I/O performance.
+    sqlserver_cpu_sqlserver_process_cpu_avg:
+      name: MSSQL Process CPU Usage
+      desc: CPU usage by the SQL Server database process, directly reflecting database computational load. Sustained high values may indicate queries need optimization or resource bottlenecks exist.
+    sqlserver_cpu_system_idle_cpu_avg:
+      name: System Idle CPU
+      desc: Overall operating system idle CPU percentage, indicating total CPU resource utilization. Low values indicate CPU resource constraints that may affect system stability.
+    sqlserver_server_properties_uptime:
+      name: Uptime
+      desc: Duration since last SQL Server instance startup, monitoring instance stability. Long uptime may require a restart to free memory and clean up resources.
+    sqlserver_database_io_read_latency_ms:
+      name: Database Read Latency
+      desc: Average latency time for database file read operations, reflecting storage subsystem performance. High latency may indicate storage bottlenecks, network issues, or insufficient hardware performance.
+    sqlserver_database_io_write_latency_ms:
+      name: Database Write Latency
+      desc: Average latency time for database file write operations, directly impacting transaction performance and application response times. High latency may affect data write speed and system throughput.
+    sqlserver_database_io_reads_rate:
+      name: Database Read Rate
+      desc: Rate of database file read operations, indicating data retrieval load intensity and working set access patterns. High read rates may indicate frequent queries or low cache efficiency.
+    sqlserver_database_io_writes_rate:
+      name: Database Write Rate
+      desc: Rate of database file write operations, indicating data write load intensity and transaction activity levels. High write rates may indicate substantial data updates or insert operations.
+    sqlserver_memory_clerks_size_kb:
+      name: Memory Clerk Size
+      desc: Current memory size allocated by SQL Server internal memory clerks, used to analyze memory usage distribution and identify potential memory leaks. Different clerks represent different memory usage purposes.
+    sqlserver_performance_batch_requests_rate:
+      name: Batch Requests Rate
+      desc: Rate of batch requests processed by SQL Server, measuring overall database throughput and load pressure. High request rates indicate the database is processing a large volume of queries.
+    sqlserver_performance_page_life_expectancy:
+      name: Page Life Expectancy
+      desc: Average time data pages stay in the buffer pool, reflecting memory pressure. Low values suggest insufficient memory, potentially causing frequent physical I/O and impacting performance.
+    sqlserver_performance_buffer_cache_hit_ratio:
+      name: Buffer Cache Hit Ratio
+      desc: Percentage of data page reads satisfied from the buffer pool, reflecting memory efficiency. High hit ratios indicate most data requests are served from memory, suggesting good performance. Low hit ratios may indicate a need for more memory.
+    sqlserver_performance_user_connections_rate:
+      name: User Connections
+      desc: Number of users currently connected to the SQL Server instance, reflecting concurrent load and connection pool usage. Too many connections may lead to resource contention.
+    sqlserver_performance_lock_wait_time_rate:
+      name: Lock Wait Time
+      desc: Rate of lock wait time, reflecting concurrency contention. High values may indicate blocking or lock contention issues that require transaction design optimization.
+    sqlserver_requests_cpu_time_ms_rate:
+      name: Request CPU Time Rate
+      desc: Rate of CPU time consumed by requests, used to identify queries and statements with high CPU consumption, aiding in performance optimization and resource allocation decisions.
+    sqlserver_requests_logical_reads_rate:
+      name: Request Logical Reads Rate
+      desc: Rate of logical read operations by requests, reflecting query data access patterns and working set size. High logical reads may indicate queries lacking indexes or needing optimization.
+    sqlserver_requests_total_elapsed_time_ms_rate:
+      name: Request Elapsed Time Rate
+      desc: Rate of total elapsed time of requests, monitoring query execution efficiency and response times. High elapsed time may indicate complex queries, large data volumes, or performance issues.
+    sqlserver_requests_wait_time_ms_rate:
+      name: Request Wait Time Rate
+      desc: Rate of wait time of requests, reflecting query waiting on resources. High wait times may indicate resource bottlenecks or lock contention.
+    sqlserver_schedulers_active_workers_count:
+      name: Scheduler Active Workers Count
+      desc: Number of active workers currently executing tasks on schedulers, reflecting CPU scheduling load. Excessive numbers may indicate high CPU pressure or parallel query contention.
+    sqlserver_schedulers_runnable_tasks_count:
+      name: Scheduler Runnable Tasks Count
+      desc: Number of tasks ready to run and waiting for CPU execution on schedulers, reflecting CPU queue length. High values indicate insufficient CPU resources or a large number of concurrent requests.
+    sqlserver_waitstats_resource_wait_ms:
+      name: Resource Wait Time Rate
+      desc: Rate of time spent waiting for external resources (such as disk, network, memory), reflecting true resource bottlenecks. Helps identify hardware limitations like I/O, memory, or network.
+    sqlserver_waitstats_signal_wait_time_ms_rate:
+      name: Signal Wait Time Rate
+      desc: Rate of time spent waiting for CPU scheduler, reflecting CPU pressure. High signal wait time indicates CPU resource contention or parallel query issues, requiring query optimization or additional CPU resources.
+    sqlserver_waitstats_wait_time_ms_rate:
+      name: Wait Time Rate
+      desc: Rate of cumulative wait time for various wait types in SQL Server, a key metric for performance tuning that helps identify system bottlenecks.
+    sqlserver_waitstats_waiting_tasks_count:
+      name: Waiting Tasks Count
+      desc: Number of SQL Server tasks currently waiting, reflecting the system's concurrent wait situation. High waiting tasks count may indicate resource contention in the system.
+    sqlserver_volume_space_available_space_bytes:
+      name: Volume Available Space
+      desc: Available space on storage volumes, monitoring disk space usage. Insufficient space may cause database operation failures or performance degradation.
+    sqlserver_volume_space_total_space_bytes:
+      name: Volume Total Space
+      desc: Total space on storage volumes, used to calculate disk usage and plan storage expansion.
+    sqlserver_volume_space_used_space_bytes:
+      name: Volume Used Space
+      desc: Used space on storage volumes, combined with total space to calculate usage rate and monitor storage growth trends.
   Zookeeper:
     max_latency:
       desc: Maximum latency of ZooKeeper requests
@@ -3080,13 +3074,9 @@ monitor_object_metric_group:
   Website:
     HTTP: HTTP
   MSSQL:
-    Disk: Disk
-    Scheduler: Scheduler
-    IO: IO
-    Memory: Memory
-    Connection: Connection
     Base: Base
-    Wait: Wait
+    Performance: Performance
+    Storage: Storage
 monitor_object_plugin:
   Detection Device SNMP General:
     name: Detection Device General (SNMP)
@@ -3280,7 +3270,7 @@ monitor_object_plugin:
     name: VMWare
   MSSQL:
     desc: Through the Telegraf collector regularly gathers key MSSQL metrics, including
-      disk usage, memory, I/O, wait times, and more.
+      basic information, performance indicators, storage status, and more.
     name: MSSQL(Telegraf)
 monitor_object:
   Apache: Apache

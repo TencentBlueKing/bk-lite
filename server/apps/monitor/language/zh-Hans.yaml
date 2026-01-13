@@ -1879,69 +1879,84 @@ monitor_object_metric:
       name: 存储连接状态
       desc: 存储连接状态，表示存储设备的可连接性，是评估存储系统健康状态的指标。
   MSSQL:
-    volume_available_gb:
-      name: 磁盘可用空间
-      desc: SQL Server数据卷的可用磁盘空间（GB）
-    signal_wait_ratio:
-      desc: 信号等待时间占总等待时间的比例
-      name: 信号等待比例
-    memory_usage:
-      name: 内存使用率
-      desc: SQL Server进程的内存使用压力百分比
-    avg_request_time:
-      desc: 每个活动连接的平均请求执行时间
-      name: 平均请求时间
-    waiting_tasks_rate:
-      desc: 每秒新增的等待任务数量
-      name: 等待任务速率
-    logical_reads_rate:
-      name: 逻辑读取速率
-      desc: 每秒的逻辑读取操作次数
-    runnable_tasks:
-      desc: 等待在运行队列中的任务数量，反映CPU压力
-      name: 可运行任务数
-    resource_wait_ratio:
-      name: 资源等待比例
-      desc: 资源等待时间占总等待时间的比例
-    avg_write_latency:
-      desc: 每次写入操作的平均延迟时间
-      name: 平均写入延迟
-    volume_space_usage:
-      desc: SQL Server数据卷的磁盘空间使用百分比
-      name: 磁盘使用率
-    available_memory_mb:
-      desc: SQL Server可用的物理内存（MB）
-      name: 可用内存
-    sqlserver_uptime:
-      desc: SQL Server实例的运行时间（小时）
-      name: SQL Server运行时间
-    context_switches_rate:
-      desc: 每秒的上下文切换次数
-      name: 上下文切换速率
-    total_io_throughput:
-      name: 总IO吞吐量
-      desc: 数据库读写操作的总吞吐量
-    online_databases:
-      desc: 当前在线的数据库数量
-      name: 在线数据库数
-    active_connections:
-      name: 活动连接数
-      desc: 当前活动的数据库连接数量
-    current_workers:
-      name: 当前工作线程
-      desc: 当前活动的工作线程数量
-    avg_wait_time:
-      name: 平均等待时间
-      desc: 每个等待任务的平均等待时间
-    write_throughput_mbps:
-      desc: 数据库写入操作的吞吐量
-      name: 写入吞吐量
-    avg_read_latency:
-      desc: 每次读取操作的平均延迟时间
-      name: 平均读取延迟
-    read_throughput_mbps:
-      name: 读取吞吐量
-      desc: 数据库读取操作的吞吐量
+    sqlserver_cpu_sqlserver_process_cpu_avg:
+      name: MSSQL进程CPU使用率
+      desc: SQL Server数据库进程的CPU使用率，直接反映数据库计算负载。持续高值可能表示查询需要优化或存在资源瓶颈。
+    sqlserver_cpu_system_idle_cpu_avg:
+      name: 系统空闲CPU
+      desc: 整个操作系统空闲的CPU百分比，反映服务器整体CPU资源利用率。低值表示CPU资源紧张，可能影响系统稳定性。
+    sqlserver_server_properties_uptime:
+      name: 运行时长
+      desc: SQL Server实例自上次启动以来的持续运行时间，用于监控实例稳定性。长时间运行后可能需要重启以释放内存和清理资源。
+    sqlserver_database_io_read_latency_ms:
+      name: 数据库读取延迟
+      desc: 数据库文件读取操作的平均延迟时间，反映存储子系统性能。高延迟可能表明存储瓶颈、网络问题或硬件性能不足。
+    sqlserver_database_io_write_latency_ms:
+      name: 数据库写入延迟
+      desc: 数据库文件写入操作的平均延迟时间，直接影响事务性能和应用程序响应时间。高延迟可能影响数据写入速度和系统吞吐量。
+    sqlserver_database_io_reads_rate:
+      name: 数据库读取速率
+      desc: 数据库文件读取操作的速率，反映数据读取负载强度和工作集访问模式。高读取速率可能表明查询频繁或缓存效率低。
+    sqlserver_database_io_writes_rate:
+      name: 数据库写入速率
+      desc: 数据库文件写入操作的速率，反映数据写入负载强度和事务活动级别。高写入速率可能表示大量数据更新或插入操作。
+    sqlserver_memory_clerks_size_kb:
+      name: 内存Clerk大小
+      desc: SQL Server内部内存分配器当前占用的内存大小，用于分析内存使用分布和识别潜在内存泄漏。不同clerk代表不同的内存使用用途。
+    sqlserver_performance_batch_requests_rate:
+      name: 批处理请求速率
+      desc: SQL Server批处理请求的速率，衡量数据库整体吞吐量和负载压力。高请求率表示数据库处理大量查询。
+    sqlserver_performance_page_life_expectancy:
+      name: 页生命周期期望
+      desc: 数据页在缓冲池中的平均停留时间，反映内存压力。值过低表明内存不足，可能导致频繁的物理IO，影响性能。
+    sqlserver_performance_buffer_cache_hit_ratio:
+      name: 缓冲区缓存命中率
+      desc: 从缓冲池中读取数据页的百分比，反映内存效率。高命中率表明大部分数据请求由内存满足，性能良好。低命中率可能表明需要更多内存。
+    sqlserver_performance_user_connections_rate:
+      name: 用户连接数
+      desc: 当前连接到SQL Server实例的用户数量，反映数据库的并发负载和连接池使用情况。连接数过多可能导致资源争用。
+    sqlserver_performance_lock_wait_time_rate:
+      name: 锁等待时间
+      desc: 锁等待时间的速率，反映数据库的并发争用情况。高值可能表明存在阻塞或锁竞争问题，需要优化事务设计。
+    sqlserver_requests_cpu_time_ms_rate:
+      name: 请求CPU时间速率
+      desc: 请求消耗CPU时间的速率，用于识别高CPU消耗的查询和语句，帮助进行性能优化和资源分配决策。
+    sqlserver_requests_logical_reads_rate:
+      name: 请求逻辑读取速率
+      desc: 请求执行逻辑读取操作的速率，反映查询数据访问模式和工作集大小。高逻辑读取可能表明查询缺少索引或需要优化。
+    sqlserver_requests_total_elapsed_time_ms_rate:
+      name: 请求运行时间速率
+      desc: 请求总运行时间的速率，监控查询执行效率和响应时间。高运行时间可能表明查询复杂、数据量大或存在性能问题。
+    sqlserver_requests_wait_time_ms_rate:
+      name: 请求等待时间速率
+      desc: 请求等待时间的速率，反映查询在资源上的等待情况。高等待时间可能表明存在资源瓶颈或锁竞争。
+    sqlserver_schedulers_active_workers_count:
+      name: 调度器活动工作线程数
+      desc: 调度器上当前正在执行任务的活动工作线程数量，反映CPU调度负载。过高可能表示CPU压力大或存在并行查询争用。
+    sqlserver_schedulers_runnable_tasks_count:
+      name: 调度器可运行任务数
+      desc: 调度器上准备就绪等待CPU执行的任务数量，反映CPU队列长度。高值表示CPU资源不足或存在大量并发请求。
+    sqlserver_waitstats_resource_wait_ms:
+      name: 资源等待时间速率
+      desc: 等待外部资源（如磁盘、网络、内存）的时间速率，反映真正的资源瓶颈。帮助识别IO、内存或网络等硬件限制。
+    sqlserver_waitstats_signal_wait_time_ms_rate:
+      name: 信号等待时间速率
+      desc: 等待CPU调度的时间速率，反映CPU压力。高信号等待时间表明CPU资源紧张或存在并行查询争用，需要优化查询或增加CPU资源。
+    sqlserver_waitstats_wait_time_ms_rate:
+      name: 等待时间速率
+      desc: SQL Server中各种等待类型的累计等待时间的速率，是性能调优的关键指标，帮助识别系统瓶颈。
+    sqlserver_waitstats_waiting_tasks_count:
+      name: 等待任务数
+      desc: 当前正在等待的SQL Server任务数量，反映系统的并发等待情况。高等待任务数可能表明系统存在资源争用。
+    sqlserver_volume_space_available_space_bytes:
+      name: 卷可用空间
+      desc: 存储卷的可用空间大小，监控磁盘空间使用情况。空间不足可能导致数据库操作失败或性能下降。
+    sqlserver_volume_space_total_space_bytes:
+      name: 卷总空间
+      desc: 存储卷的总空间大小，用于计算磁盘使用率，规划存储扩容。
+    sqlserver_volume_space_used_space_bytes:
+      name: 卷已用空间
+      desc: 存储卷的已用空间大小，结合总空间可计算使用率，监控存储增长趋势。
   Zookeeper:
     max_latency:
       desc: ZooKeeper请求的最大响应延迟
@@ -2259,10 +2274,9 @@ monitor_object_metric_group:
   Website:
     HTTP: HTTP
   MSSQL:
-    Disk: 磁盘
-    Scheduler: 调度器
-    IO: IO
-    Memory: 内存
+    Base: 基础信息
+    Performance: 性能
+    Storage: 存储
     Connection: 连接
     Base: 基础信息
     Wait: 等待时间
@@ -2385,7 +2399,7 @@ monitor_object_plugin:
     desc: 通过Telegraf采集器利用Stargazer能力定期收集VMware中vCenter、ESXi、虚拟机、数据存储的关键指标。
     name: VMWare
   MSSQL:
-    desc: 通过Telegraf采集器定期收集MSSQL关键指标，包括磁盘、内存、IO、等待时间等。
+    desc: 通过Telegraf采集器定期收集MSSQL关键指标，包括基础信息、性能指标、存储状态等。
     name: MSSQL（Telegraf）
 monitor_object:
   Apache: Apache
