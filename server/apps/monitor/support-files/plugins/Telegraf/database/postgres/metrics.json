@@ -8,7 +8,7 @@
   "description": "",
   "default_metric": "any({instance_type='postgres'}) by (instance_id)",
   "instance_id_keys": ["instance_id"],
-  "supplementary_indicators": ["postgresql_numbackends", "postgresql_xact_commit_rate", "postgresql_xact_rollback_rate"],
+  "supplementary_indicators": ["postgresql_numbackends", "postgresql_blks_read_rate", "postgresql_temp_files_rate"],
   "metrics": [
     {
       "metric_group": "Connection",

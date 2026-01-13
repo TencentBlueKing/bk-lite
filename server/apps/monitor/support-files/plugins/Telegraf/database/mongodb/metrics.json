@@ -8,7 +8,7 @@
   "description": "",
   "default_metric": "any({instance_type='mongodb'}) by (instance_id)",
   "instance_id_keys": ["instance_id"],
-  "supplementary_indicators": ["mongodb_uptime_ns", "mongodb_connections_current", "mongodb_resident_megabytes"],
+  "supplementary_indicators": ["mongodb_connections_current", "mongodb_page_faults_rate", "mongodb_latency_commands_avg"],
   "metrics": [
     {
       "metric_group": "Base",

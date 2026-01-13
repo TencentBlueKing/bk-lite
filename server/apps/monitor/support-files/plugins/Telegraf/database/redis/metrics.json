@@ -8,7 +8,7 @@
   "description": "",
   "default_metric": "any({instance_type='redis'}) by (instance_id)",
   "instance_id_keys": ["instance_id"],
-  "supplementary_indicators": ["redis_uptime", "redis_used_memory", "redis_instantaneous_ops_per_sec"],
+  "supplementary_indicators": ["redis_mem_fragmentation_ratio", "redis_connected_clients", "redis_evicted_keys_rate"],
   "metrics": [
     {
       "metric_group": "Base",

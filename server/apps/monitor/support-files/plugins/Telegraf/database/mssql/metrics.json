@@ -8,7 +8,7 @@
   "description": "",
   "default_metric": "any({instance_type='mssql'}) by (instance_id)",
   "instance_id_keys": ["instance_id"],
-  "supplementary_indicators": ["sqlserver_server_properties_uptime", "sqlserver_volume_space_available_space_bytes", "sqlserver_cpu_sqlserver_process_cpu_avg"],
+  "supplementary_indicators": ["sqlserver_database_io_read_latency_ms", "sqlserver_waitstats_wait_time_ms_rate", "sqlserver_volume_space_available_space_bytes"],
   "metrics": [
     {
       "metric_group": "Base",

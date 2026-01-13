@@ -8,7 +8,7 @@
   "description": "",
   "default_metric": "any({instance_type='elasticsearch'}) by (instance_id)",
   "instance_id_keys": ["instance_id"],
-  "supplementary_indicators": ["elasticsearch_cluster_health_status_code", "elasticsearch_cluster_health_active_primary_shards", "elasticsearch_cluster_health_unassigned_shards"],
+  "supplementary_indicators": ["elasticsearch_cluster_health_status_code", "elasticsearch_cluster_health_unassigned_shards", "elasticsearch_jvm_mem_heap_used_percent"],
   "metrics": [
     {
       "metric_group": "Base",

@@ -8,7 +8,7 @@
   "description": "",
   "default_metric": "any({instance_type='mysql'}) by (instance_id)",
   "instance_id_keys": ["instance_id"],
-  "supplementary_indicators": ["mysql_threads_connected", "mysql_threads_running", "mysql_aborted_connects"],
+  "supplementary_indicators": ["mysql_threads_running", "mysql_slow_queries_rate", "mysql_innodb_buffer_pool_disk_reads_rate"],
   "metrics": [
     {
       "metric_group": "ConnStatus",
