@@ -1381,150 +1381,114 @@ monitor_object_metric:
       desc: Total number of packets received by the container, indicating the activity
         level of inbound network flow.
   Oracle-Exporter:
-    oracledb_wait_time_configuration_gauge:
-      desc: The time waiting for system resource configuration, such as waiting for
-        parameter changes to take effect.
-      name: OracleDb Configuration Wait Time
-    oracledb_exporter_scrapes_total_counter:
-      name: OracleDb Exporter Scrape Metrics Total
-      desc: The total number of times of collecting indicators since the OracleDB
-        monitoring probe was started, and if the process is restarted, it will be
-        recalculated.
-    process_virtual_memory_bytes_gauge:
-      name: OracleDb Monitoring Probe Process Virtual Memory
-      desc: The current virtual memory size of the Oracle Database Monitoring Probe
-        process.
-    oracledb_wait_time_system_io_gauge:
-      desc: The time waiting for the system to perform I/O operations, such as waiting
-        for data to be read from the disk.
-      name: OracleDb System I/O Wait Time
-    oracledb_activity_user_commits_rate:
-      name: OracleDb User Commits Rate
-      desc: Monitors the rate of user transaction commits over a period (e.g., 5m)
-        to reflect transactional activity.
-    oracledb_pga_total_gauge:
-      desc: A PGA is an independently allocated area of memory for each user process
-        or server process in an Oracle database instance that stores data and information
-        for sessions or operations. This metric is used to represent the total memory
-        size of the PGA and reflect the overall resource allocation scale of the PGA.
-      name: OracleDb PGA Total Size
-    oracledb_sessions_value_gauge:
-      desc: 'The current number of open sessions in the database. Dimension meaning:
-        Status: Session status, such as ACTION, INACTIVE, BLOCKED, KILLED, etc. Type:
-        Session type, such as Backend, CDB, PDB, SYS, USER, etc.'
-      name: OracleDb Sessions
-    oracledb_resource_utilization_rate:
-      desc: The utilization rate of a resource in the current Oracle DB instance,
-        which reflects the percentage of resources such as sessions, processes, memory,
-        and so on that resource limits are used. If the value is negative（-）, the
-        resource is not restricted, that is, the resource can be used indefinitely.
-        In this case, it doesn't make much sense to monitor metrics for that dimension.
-      name: OracleDb Resource Utilization rate
-    oracledb_rac_node_gauge:
-      name: OracleDb RAC Node Count
-      desc: The current number of Oracle database cluster nodes.
-    oracledb_activity_execute_rate:
-      name: OracleDb Execution Rate
-      desc: Monitors the rate of SQL executions over a period (e.g., 5m) to reflect
-        load changes.
-    oracledb_activity_user_rollbacks_rate:
-      desc: Monitors the rate of user transaction rollbacks over a period (e.g., 5m)
-        to identify unusual transactions.
-      name: OracleDb User Rollbacks Rate
+    oracledb_up_gauge:
+      name: OracleDb Status
+      desc: The current Oracle database is running in the current state, 0 is normal, and 1 is abnormal
     oracledb_uptime_seconds_gauge:
       name: OracleDb Instance Uptime
-      desc: The duration for which the Oracle database has been running.
-    oracledb_activity_parse_rate:
-      desc: Monitors the rate of SQL parses in a period (e.g., 5m) to help identify
-        frequent parsing issues.
+      desc: The duration for which the Oracle database has been running
+    oracledb_activity_execute_count_gauge_rate:
+      name: OracleDb Execution Rate
+      desc: Monitors the rate of SQL executions over a period (e.g., 5m) to reflect load changes
+    oracledb_activity_parse_count_total_gauge_rate:
       name: OracleDb Parse Count Rate
-    oracledb_tablespace_max_bytes_gauge:
-      desc: The maximum disk space limit of the specified tablespace.
-      name: OracleDb Table Maximum Capacity
-    oracledb_wait_time_other_gauge:
-      name: OracleDb Other Wait Time
-      desc: The waiting time that cannot be classified into other waiting times.
-    oracledb_wait_time_user_io_gauge:
-      name: OracleDb User I/O Wait Time
-      desc: The time waiting for the user I/O operation to complete.
-    oracledb_tablespace_free_gauge:
-      name: OracleDb Table Available Space
-      desc: The size of the remaining disk space in the specified tablespace.
+      desc: Monitors the rate of SQL parses in a period (e.g., 5m) to help identify frequent parsing issues
+    oracledb_activity_user_commits_gauge_rate:
+      name: OracleDb User Commits Rate
+      desc: Monitors the rate of user transaction commits over a period (e.g., 5m) to reflect transactional activity
+    oracledb_activity_user_rollbacks_gauge_rate:
+      name: OracleDb User Rollbacks Rate
+      desc: Monitors the rate of user transaction rollbacks over a period (e.g., 5m) to identify unusual transactions
+    oracledb_wait_time_application_gauge:
+      name: OracleDb Application Wait Time
+      desc: The waiting time for communication between the database client application and the database
+    oracledb_wait_time_commit_gauge:
+      name: OracleDb Commit Wait Time
+      desc: The time waiting for transaction commit completion
     oracledb_wait_time_concurrency_gauge:
       name: OracleDb Concurrency Wait Time
-      desc: The waiting time caused by database resource contention, such as waiting
-        for locks.
-    process_cpu_seconds_total_counter:
-      name: OracleDb Monitoring Probe Process CPU Time
-      desc: The total amount of CPU time used by the Oracle Database Monitoring Probe
-        process.
-    oracledb_wait_time_commit_gauge:
-      desc: The time waiting for transaction commit completion.
-      name: OracleDb Commit Wait Time
-    oracledb_pga_used_percent_gauge:
-      name: OracleDb PGA Usage Percentage
-      desc: Represents the memory usage of the Oracle Database PGA, which is a measure
-        of how efficiently the PGA resources are being utilized.
-    oracledb_sga_used_percent_gauge:
-      desc: Represents the memory usage of the Oracle Database SGA and is used to
-        evaluate the efficiency of the SGA's resources.
-      name: OracleDb SGA Usage Percentage
-    oracledb_tablespace_used_percent_gauge:
-      desc: The percentage of the used capacity of the specified tablespace.
-      name: OracleDb Tablespace Usage Percentage
+      desc: The waiting time caused by database resource contention, such as waiting for locks
+    oracledb_wait_time_configuration_gauge:
+      name: OracleDb Configuration Wait Time
+      desc: The time waiting for system resource configuration, such as waiting for parameter changes to take effect
     oracledb_wait_time_network_gauge:
-      desc: The time waiting for network transmission, such as waiting for data to
-        be sent from the client to the server.
       name: OracleDb Network Wait Time
-    oracledb_up_gauge:
-      desc: The current Oracle database is running in the current state, 0 is normal,
-        and 1 is abnormal.
-      name: OracleDb Status
-    oracledb_exporter_last_scrape_duration_seconds_gauge:
-      name: OracleDb Exporter Last Scrape Duration
-      desc: The time spent on the most recent collection of indicators from the Oracle
-        database.
-    process_resident_memory_bytes_gauge:
-      desc: The size of the current resident memory of the Oracle Database monitoring
-        probe process.
-      name: OracleDb Monitoring Probe Process Resident Memory
-    oracledb_pga_used_gauge:
-      name: OracleDb PGA Used Size
-      desc: Represents the amount of memory currently used by the Oracle Database
-        PGA, reflecting the actual consumption of PGA resources.
+      desc: The time waiting for network transmission, such as waiting for data to be sent from the client to the server
+    oracledb_wait_time_other_gauge:
+      name: OracleDb Other Wait Time
+      desc: The waiting time that cannot be classified into other waiting times
+    oracledb_wait_time_system_io_gauge:
+      name: OracleDb System I/O Wait Time
+      desc: The time waiting for the system to perform I/O operations, such as waiting for data to be read from the disk
+    oracledb_wait_time_user_io_gauge:
+      name: OracleDb User I/O Wait Time
+      desc: The time waiting for the user I/O operation to complete
+    oracledb_resource_utilization_rate:
+      name: OracleDb Resource Utilization Rate
+      desc: The utilization rate of a resource in the current Oracle DB instance, which reflects the percentage of resources such as sessions, processes, memory, and so on that resource limits are used
     oracledb_process_count_gauge:
       name: OracleDb Processes
-      desc: The number of currently active database processes.
-    oracledb_wait_time_application_gauge:
-      desc: The waiting time for communication between the database client application
-        and the database.
-      name: OracleDb Application Wait Time
+      desc: The number of currently active database processes
+    oracledb_sessions_value_gauge:
+      name: OracleDb Sessions
+      desc: The current number of open sessions in the database
+    oracledb_sga_total_gauge:
+      name: OracleDb SGA Total Size
+      desc: SGA is a shared memory area allocated in memory by an Oracle database instance to store global data and information
     oracledb_sga_free_gauge:
-      desc: Represents the amount of memory currently available for the Oracle Database
-        SGA, reflecting the amount of unused idle resources in the SGA.
       name: OracleDb SGA Free Size
-    oracledb_exporter_last_scrape_error_gauge:
-      desc: Whether an error occurred when the OracleDB monitoring probe collected
-        indicators in the most recent time.
-      name: OracleDb Exporter Last Scrape Status
+      desc: Represents the amount of memory currently available for the Oracle Database SGA, reflecting the amount of unused idle resources in the SGA
+    oracledb_sga_used_percent_gauge:
+      name: OracleDb SGA Usage Percentage
+      desc: Represents the memory usage of the Oracle Database SGA and is used to evaluate the efficiency of the SGA's resources
+    oracledb_pga_total_gauge:
+      name: OracleDb PGA Total Size
+      desc: A PGA is an independently allocated area of memory for each user process or server process in an Oracle database instance
+    oracledb_pga_used_gauge:
+      name: OracleDb PGA Used Size
+      desc: Represents the amount of memory currently used by the Oracle Database PGA, reflecting the actual consumption of PGA resources
+    oracledb_pga_used_percent_gauge:
+      name: OracleDb PGA Usage Percentage
+      desc: Represents the memory usage of the Oracle Database PGA, which is a measure of how efficiently the PGA resources are being utilized
     oracledb_tablespace_bytes_gauge:
       name: OracleDb Table Used Space
-      desc: The total size of the used disk space in the specified tablespace.
-    oracledb_sga_total_gauge:
-      desc: SGA is a shared memory area allocated in memory by an Oracle database
-        instance to store global data and information to support the operation and
-        access of the database instance. This metric is used to represent the total
-        memory size of SGA and is used to measure the overall resource allocation
-        scale of SGA.
-      name: OracleDb SGA Total Size
-    process_open_fds_gauge:
-      name: OracleDb Monitoring Probe Process Open File Descriptors
-      desc: The number of file descriptors that are currently open by the Oracle Database
-        Monitoring Probe process.
+      desc: The total size of the used disk space in the specified tablespace
+    oracledb_tablespace_max_bytes_gauge:
+      name: OracleDb Table Maximum Capacity
+      desc: The maximum disk space limit of the specified tablespace
+    oracledb_tablespace_free_gauge:
+      name: OracleDb Table Available Space
+      desc: The size of the remaining disk space in the specified tablespace
+    oracledb_tablespace_used_percent_gauge:
+      name: OracleDb Tablespace Usage Percentage
+      desc: The percentage of the used capacity of the specified tablespace
+    oracledb_rac_node_gauge:
+      name: OracleDb RAC Node Count
+      desc: The current number of Oracle database cluster nodes
+    process_cpu_seconds_total_counter:
+      name: OracleDb Monitoring Probe Process CPU Time
+      desc: The total amount of CPU time used by the Oracle Database Monitoring Probe process
     process_max_fds_gauge:
       name: OracleDb Monitoring Probe Process Max File Descriptors
-      desc: The maximum number of file descriptors that can be opened by the Oracle
-        Database Monitoring Probe process.
+      desc: The maximum number of file descriptors that can be opened by the Oracle Database monitoring probe process
+    process_open_fds_gauge:
+      name: OracleDb Monitoring Probe Process Open File Descriptors
+      desc: The number of file descriptors that are currently open by the Oracle Database monitoring probe process
+    process_resident_memory_bytes_gauge:
+      name: OracleDb Monitoring Probe Process Resident Memory
+      desc: The size of the current resident memory of the Oracle Database monitoring probe process
+    process_virtual_memory_bytes_gauge:
+      name: OracleDb Monitoring Probe Process Virtual Memory
+      desc: The current virtual memory size of the Oracle Database Monitoring Probe process
+    oracledb_exporter_last_scrape_duration_seconds_gauge:
+      name: OracleDb Exporter Last Scrape Duration
+      desc: The time spent on the most recent collection of indicators from the Oracle database
+    oracledb_exporter_last_scrape_error_gauge:
+      name: OracleDb Exporter Last Scrape Status
+      desc: Whether an error occurred when the OracleDB monitoring probe collected indicators in the most recent time
+    oracledb_exporter_scrapes_total_counter:
+      name: OracleDb Exporter Scrape Metrics Total
+      desc: The total number of times of collecting indicators since the OracleDB monitoring probe was started, and if the process is restarted, it will be recalculated
   Mysql:
     mysql_threads_connected:
       name: Current Connections
@@ -2918,15 +2882,16 @@ monitor_object_metric_group:
   vCenter:
     Quantity: Quantity
   Oracle-Exporter:
-    PGA: PGA
-    Activity: Database Activity
     Base: Base
-    SGA: SGA
+    Activity: Database Activity
     Wait: Wait
-    Process: Process
-    selfMonitor: SelfMonitor
+    Resource: Resource
+    SGA: SGA
+    PGA: PGA
     Tablespace: Tablespace
     RAC: RAC
+    Process: Process
+    SelfMonitor: SelfMonitor
   Host:
     CPU: CPU
     System: System

@@ -946,117 +946,114 @@ monitor_object_metric:
       name: 接收到的数据包总数
       desc: 容器接收到的数据包数量，显示网络流入的活跃度。
   Oracle-Exporter:
-    oracledb_wait_time_configuration_gauge:
-      desc: 等待系统资源配置的时间，例如等待参数更改生效的时间。
-      name: Oracle数据库配置等待时间
-    oracledb_exporter_scrapes_total_counter:
-      name: Oracle数据库监控探针抓取指标总数
-      desc: 从OracleDB监控探针启动以来抓取指标的总次数，若进程重启将重新计算。
-    process_virtual_memory_bytes_gauge:
-      name: Oracle数据库监控探针进程虚拟内存大小
-      desc: Oracle数据库监控探针进程当前虚拟内存的大小。
-    oracledb_wait_time_system_io_gauge:
-      desc: 等待系统进行I/O操作的时间，例如等待从磁盘读取数据的时间。
-      name: Oracle数据库系统I/O等待时间
-    oracledb_activity_user_commits_rate:
-      name: Oracle数据库用户提交速率
-      desc: 监控一段时间内（如过去5分钟）用户事务提交的速率，反映数据库事务活动情况。
-    oracledb_pga_total_gauge:
-      desc: PGA是Oracle数据库实例中每个用户进程或服务器进程独立分配的内存区域，用于存储会话或操作的数据和信息。本指标用于表示PGA的总内存大小，体现
-        PGA 的整体资源分配规模。
-      name: Oracle数据库PGA总大小
-    oracledb_sessions_value_gauge:
-      desc: 数据库当前打开的会话数。维度含义：status：会话状态，例如 ACTIVE, INACTIVE, BLOCKED, KILLED 等等。type：会话类型，例如
-        BACKGROUND, CDB, PDB, SYS, USER 等等。
-      name: Oracle数据库会话数
-    oracledb_resource_utilization_rate:
-      desc: 当前 Oracle 数据库实例中某种资源的使用率，可以反映会话、进程、内存等资源对其资源限定值的使用百分比。当值为负数（-）时，表示该资源没有被限制，即该资源可以无限制地使用。这种情况下，监控该维度的指标的意义不大。
-      name: Oracle数据库资源使用率
-    oracledb_rac_node_gauge:
-      name: Oracle数据库RAC节点数量
-      desc: 当前Oracle数据库集群节点数量。
-    oracledb_activity_execute_rate:
-      name: Oracle数据库执行速率
-      desc: 监控一段时间内（如过去5分钟）SQL执行的速率，反映数据库负载的变化趋势。
-    oracledb_activity_user_rollbacks_rate:
-      desc: 监控一段时间内（如过去5分钟）用户事务回滚的速率，帮助发现异常事务。
-      name: Oracle数据库用户回滚速率
-    oracledb_uptime_seconds_gauge:
-      name: Oracle数据库实例已运行时间
-      desc: Oracle数据库已运行时长
-    oracledb_activity_parse_rate:
-      desc: 监控一段时间内（如过去5分钟）SQL解析的速率，帮助发现频繁解析情况。
-      name: Oracle数据库解析速率
-    oracledb_tablespace_max_bytes_gauge:
-      desc: 指定表空间的最大磁盘空间限制。
-      name: Oracle数据库表最大容量限制
-    oracledb_wait_time_other_gauge:
-      name: Oracle数据库其他等待时间
-      desc: 无法归类到其他等待时间中的等待时间。
-    oracledb_wait_time_user_io_gauge:
-      name: Oracle数据库用户I/O等待时间
-      desc: 等待用户I/O操作完成的时间。
-    oracledb_tablespace_free_gauge:
-      name: Oracle数据库表可用容量大小
-      desc: 指定表空间中剩余的磁盘空间的大小。
-    oracledb_wait_time_concurrency_gauge:
-      name: Oracle数据库并发等待时间
-      desc: 由于数据库资源争用而导致的等待时间，例如等待锁。
-    process_cpu_seconds_total_counter:
-      name: Oracle数据库监控探针进程CPU秒数总计
-      desc: Oracle数据库监控探针进程已使用的CPU时间总量。
-    oracledb_wait_time_commit_gauge:
-      desc: 等待事务提交完成的时间。
-      name: Oracle数据库提交等待时间
-    oracledb_pga_used_percent_gauge:
-      name: Oracle数据库PGA使用率
-      desc: 表示 Oracle 数据库 PGA 的内存使用率，用于衡量 PGA 资源的利用效率。
-    oracledb_sga_used_percent_gauge:
-      desc: 表示 Oracle 数据库 SGA 的内存使用率，用于评估 SGA 资源的利用效率。
-      name: Oracle数据库SGA使用率
-    oracledb_tablespace_used_percent_gauge:
-      desc: 指定表空间已使用容量的百分比。
-      name: Oracle数据库表空间使用率
-    oracledb_wait_time_network_gauge:
-      desc: 等待网络传输的时间，例如等待数据从客户端发送到服务器。
-      name: Oracle数据库网络等待时间
     oracledb_up_gauge:
-      desc: 当前Oracle数据库运行状态，0为正常运行，1为运行异常。
-      name: Oracle数据库运行状态
-    oracledb_exporter_last_scrape_duration_seconds_gauge:
-      name: Oracle数据库监控探针最近一次抓取时长
-      desc: 最近一次从Oracle数据库抓取指标所花费的时间。
-    process_resident_memory_bytes_gauge:
-      desc: Oracle数据库监控探针进程当前常驻内存的大小。
-      name: Oracle数据库监控探针进程常驻内存大小
-    oracledb_pga_used_gauge:
-      name: Oracle数据库PGA已使用大小
-      desc: 表示 Oracle 数据库 PGA 当前已使用的内存大小，反映 PGA 资源的实际消耗情况。
-    oracledb_process_count_gauge:
-      name: Oracle数据库进程数
-      desc: 当前活动的数据库进程数
+      name: 运行状态
+      desc: 当前Oracle数据库运行状态，0为正常运行，1为运行异常
+    oracledb_uptime_seconds_gauge:
+      name: 实例已运行时间
+      desc: Oracle数据库已运行时长
+    oracledb_activity_execute_count_gauge_rate:
+      name: 执行速率
+      desc: 监控一段时间内（如过去5分钟）SQL执行的速率，反映数据库负载的变化趋势
+    oracledb_activity_parse_count_total_gauge_rate:
+      name: 解析速率
+      desc: 监控一段时间内（如过去5分钟）SQL解析的速率，帮助发现频繁解析情况
+    oracledb_activity_user_commits_gauge_rate:
+      name: 用户提交速率
+      desc: 监控一段时间内（如过去5分钟）用户事务提交的速率，反映数据库事务活动情况
+    oracledb_activity_user_rollbacks_gauge_rate:
+      name: 用户回滚速率
+      desc: 监控一段时间内（如过去5分钟）用户事务回滚的速率，帮助发现异常事务
     oracledb_wait_time_application_gauge:
-      desc: 数据库客户端应用程序与数据库的通信等待时间。
-      name: Oracle数据库应用类等待时间
-    oracledb_sga_free_gauge:
-      desc: 表示 Oracle 数据库 SGA 当前可用的内存大小，反映 SGA 中未被使用的空闲资源量。
-      name: Oracle数据库SGA可用大小
-    oracledb_exporter_last_scrape_error_gauge:
-      desc: OracleDB监控探针在最近一次抓取指标时是否出现错误。
-      name: Oracle数据库监控探针最近一次抓取状态
-    oracledb_tablespace_bytes_gauge:
-      name: Oracle数据库表已使用容量大小
-      desc: 指定表空间中已使用的磁盘空间的总大小。
+      name: 应用类等待时间
+      desc: 数据库客户端应用程序与数据库的通信等待时间
+    oracledb_wait_time_commit_gauge:
+      name: 提交等待时间
+      desc: 等待事务提交完成的时间
+    oracledb_wait_time_concurrency_gauge:
+      name: 并发等待时间
+      desc: 由于数据库资源争用而导致的等待时间，例如等待锁
+    oracledb_wait_time_configuration_gauge:
+      name: 配置等待时间
+      desc: 等待系统资源配置的时间，例如等待参数更改生效的时间
+    oracledb_wait_time_network_gauge:
+      name: 网络等待时间
+      desc: 等待网络传输的时间，例如等待数据从客户端发送到服务器
+    oracledb_wait_time_other_gauge:
+      name: 其他等待时间
+      desc: 无法归类到其他等待时间中的等待时间
+    oracledb_wait_time_system_io_gauge:
+      name: 系统I/O等待时间
+      desc: 等待系统进行I/O操作的时间，例如等待从磁盘读取数据的时间
+    oracledb_wait_time_user_io_gauge:
+      name: 用户I/O等待时间
+      desc: 等待用户I/O操作完成的时间
+    oracledb_resource_utilization_rate:
+      name: 资源使用率
+      desc: 当前Oracle数据库实例中某种资源的使用率，可以反映会话、进程、内存等资源对其资源限定值的使用百分比
+    oracledb_process_count_gauge:
+      name: 进程数
+      desc: 当前活动的数据库进程数
+    oracledb_sessions_value_gauge:
+      name: 会话数
+      desc: 数据库当前打开的会话数
     oracledb_sga_total_gauge:
-      desc: SGA是Oracle数据库实例在内存中分配的一块共享内存区域，用于存储全局数据和信息，以支持数据库实例的运行和访问。本指标用于表示SGA的总内存大小，用于衡量
-        SGA 的整体资源分配规模。
-      name: Oracle数据库SGA总大小
-    process_open_fds_gauge:
-      name: Oracle数据库监控探针进程打开文件描述符数
-      desc: Oracle数据库监控探针进程当前打开的文件描述符数。
+      name: SGA总大小
+      desc: SGA是Oracle数据库实例在内存中分配的一块共享内存区域，用于存储全局数据和信息
+    oracledb_sga_free_gauge:
+      name: SGA可用大小
+      desc: 表示Oracle数据库SGA当前可用的内存大小，反映SGA中未被使用的空闲资源量
+    oracledb_sga_used_percent_gauge:
+      name: SGA使用率
+      desc: 表示Oracle数据库SGA的内存使用率，用于评估SGA资源的利用效率
+    oracledb_pga_total_gauge:
+      name: PGA总大小
+      desc: PGA是Oracle数据库实例中每个用户进程或服务器进程独立分配的内存区域
+    oracledb_pga_used_gauge:
+      name: PGA已使用大小
+      desc: 表示Oracle数据库PGA当前已使用的内存大小，反映PGA资源的实际消耗情况
+    oracledb_pga_used_percent_gauge:
+      name: PGA使用率
+      desc: 表示Oracle数据库PGA的内存使用率，用于衡量PGA资源的利用效率
+    oracledb_tablespace_bytes_gauge:
+      name: 表已使用容量大小
+      desc: 指定表空间中已使用的磁盘空间的总大小
+    oracledb_tablespace_max_bytes_gauge:
+      name: 表最大容量限制
+      desc: 指定表空间的最大磁盘空间限制
+    oracledb_tablespace_free_gauge:
+      name: 表可用容量大小
+      desc: 指定表空间中剩余的磁盘空间的大小
+    oracledb_tablespace_used_percent_gauge:
+      name: 表空间使用率
+      desc: 指定表空间已使用容量的百分比
+    oracledb_rac_node_gauge:
+      name: RAC节点数量
+      desc: 当前Oracle数据库集群节点数量
+    process_cpu_seconds_total_counter:
+      name: 监控探针进程CPU秒数总计
+      desc: Oracle数据库监控探针进程已使用的CPU时间总量
     process_max_fds_gauge:
-      name: Oracle数据库监控探针进程最大文件描述符数
-      desc: Oracle数据库监控探针进程能够打开的最大文件描述符数。
+      name: 监控探针进程最大文件描述符数
+      desc: Oracle数据库监控探针进程能够打开的最大文件描述符数
+    process_open_fds_gauge:
+      name: 监控探针进程打开文件描述符数
+      desc: Oracle数据库监控探针进程当前打开的文件描述符数
+    process_resident_memory_bytes_gauge:
+      name: 监控探针进程常驻内存大小
+      desc: Oracle数据库监控探针进程当前常驻内存的大小
+    process_virtual_memory_bytes_gauge:
+      name: 监控探针进程虚拟内存大小
+      desc: Oracle数据库监控探针进程当前虚拟内存的大小
+    oracledb_exporter_last_scrape_duration_seconds_gauge:
+      name: 监控探针最近一次抓取时长
+      desc: 最近一次从Oracle数据库抓取指标所花费的时间
+    oracledb_exporter_last_scrape_error_gauge:
+      name: 监控探针最近一次抓取状态
+      desc: OracleDB监控探针在最近一次抓取指标时是否出现错误
+    oracledb_exporter_scrapes_total_counter:
+      name: 监控探针抓取指标总数
+      desc: 从OracleDB监控探针启动以来抓取指标的总次数，若进程重启将重新计算
   Mysql:
     mysql_threads_connected:
       name: 当前连接数
@@ -2064,15 +2061,16 @@ monitor_object_metric_group:
   vCenter:
     Quantity: 数量
   Oracle-Exporter:
-    PGA: 程序全局区域
-    Activity: 数据库活动
     Base: 基础信息
-    SGA: 系统全局区域
+    Activity: 数据库活动
     Wait: 等待时间
-    Process: 进程
-    selfMonitor: 自监控信息
+    Resource: 资源
+    SGA: 系统全局区域
+    PGA: 程序全局区域
     Tablespace: 表空间
     RAC: 集群
+    Process: 进程
+    SelfMonitor: 自监控信息
   Host:
     CPU: CPU
     System: 系统
