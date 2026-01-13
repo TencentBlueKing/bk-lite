@@ -1690,39 +1690,48 @@ monitor_object_metric:
       desc: 磁盘写入速率表示节点在特定时间段内进行的写入操作的速率。此指标对于监控应用程序的磁盘写入性能至关重要。
       name: 磁盘写入速率
   ElasticSearch:
-    elasticsearch_indices_docs_deleted:
-      desc: 被标记删除的文档总数，可用于评估段合并工作量。
-      name: 被删除文档总数
-    elasticsearch_breakers_fielddata_tripped:
-      name: 字段数据断路器触发次数
-      desc: 5 分钟内字段数据断路器触发的次数，监控内存溢出情况。
-    elasticsearch_indices_query_cache_cache_count:
-      name: 查询缓存条数
-      desc: 监控查询缓存条目数，用于优化查询性能。
+    elasticsearch_cluster_health_status_code:
+      name: 集群健康状态
+      desc: 集群健康核心度量，通过状态值反映集群健康程度：1 对应正常（green）、2 对应副本缺失、3 对应主分片缺失（故障）；red 状态会直接影响数据可用性
+    elasticsearch_cluster_health_active_primary_shards:
+      name: 活跃主分片数
+      desc: 数据可用性核心指标，代表主分片的活跃数量；若主分片缺失，对应数据将无法读写，需确保其与预期数量一致
+    elasticsearch_cluster_health_unassigned_shards:
+      name: 未分配分片数
+      desc: 集群异常核心标志，代表未分配分片的数量；该值大于 0 时需及时排查，长期存在会降低数据冗余度与系统可用性
+    elasticsearch_jvm_mem_heap_used_percent:
+      name: JVM 堆使用率
+      desc: JVM 内存压力核心指标，反映 JVM 内存的占用情况；内存占用过高易引发 Full GC，进而导致集群运行卡顿
+    elasticsearch_jvm_gc_collectors_young_collection_time_in_millis_rate:
+      name: 年轻代 GC 每秒耗时
+      desc: GC 效率监控指标，反映 GC 操作的耗时情况；该值持续偏高表示 GC 占用大量 CPU 资源，会对业务性能造成影响
+    elasticsearch_fs_data_0_available_in_bytes:
+      name: 节点可用磁盘空间
+      desc: 节点存储可用性指标，反映节点磁盘的剩余空间情况；磁盘空间耗尽会导致节点离线
+    elasticsearch_process_cpu_percent:
+      name: 进程 CPU 使用率
+      desc: 进程计算负载指标，反映进程的 CPU 负载情况；高负载会导致集群的读写性能下降
+    elasticsearch_process_open_file_descriptors:
+      name: 打开文件描述符数
+      desc: 文件资源监控指标，反映文件描述符的使用情况；当使用量接近系统上限时，会影响分片的可用性
+    elasticsearch_breakers_fielddata_tripped_rate:
+      name: Fielddata 内存断路器触发速率
+      desc: 内存保护机制监控，反映内存保护断路器的触发情况；该值大于 0 表示近期存在内存不足的情况
+    elasticsearch_breakers_request_tripped_rate:
+      name: HTTP 请求断路器触发速率
+      desc: 请求级内存保护监控，反映请求级内存保护断路器的触发情况；该值大于 0 表示近期存在请求内存过载的情况
     elasticsearch_http_current_open:
-      desc: 监控当前 HTTP 打开的连接数，判断负载状态。
-      name: 当前 HTTP 连接数
-    elasticsearch_fs_total_free_in_bytes:
-      name: 磁盘总剩余空间
-      desc: 文件系统内未分配的可用磁盘空间，用于监控整体容量。
-    elasticsearch_http_total_opened:
-      name: 每 5 分钟新增 HTTP 连接数
-      desc: 5 分钟内新建的 HTTP 连接数，可用于监测请求负载变化。
-    elasticsearch_fs_io_stats_total_read_kilobytes:
-      desc: 监控磁盘读取速率（MB/s），用于识别 IO 瓶颈。
-      name: 每秒磁盘读取速率
-    elasticsearch_breakers_parent_tripped:
-      desc: 5 分钟内父级断路器触发的次数，监控内存超限情况。
-      name: 父级断路器触发次数
-    elasticsearch_indices_docs_count:
-      desc: 当前 Elasticsearch 中所有索引的文档条数。
-      name: 索引文档总数
-    elasticsearch_fs_total_available_in_bytes:
-      desc: 文件系统剩余可用空间，换算为 GB。
-      name: 磁盘剩余空间
-    elasticsearch_fs_io_stats_total_write_kilobytes:
-      desc: 监控磁盘写入速率（MB/s），用于分析 IO 性能。
-      name: 每秒磁盘写入速率
+      name: HTTP 当前连接数
+      desc: HTTP 服务可用性指标，反映 HTTP 服务的连接使用情况；当连接数接近上限时，会影响新请求的接收
+    elasticsearch_http_total_opened_rate:
+      name: HTTP 每秒新建连接数
+      desc: HTTP 服务流量指标，反映近期业务请求的流量变化情况，可辅助排查流量峰值相关问题
+    elasticsearch_thread_pool_index_queue:
+      name: 索引线程池队列长度
+      desc: 写入性能预警指标，反映写入请求队列的长度情况；队列长度持续增长表示写入处理能力不足，会导致请求延迟升高
+    elasticsearch_thread_pool_search_queue:
+      name: 搜索线程池队列长度
+      desc: 查询性能预警指标，反映查询请求队列的长度情况；队列长度持续增长表示查询处理能力不足，会影响业务使用体验
   Redis:
     redis_mem_fragmentation_ratio:
       name: 内存碎片率
@@ -2110,12 +2119,11 @@ monitor_object_metric_group:
     Bandwidth: 带宽
     Traffic: 流量
   ElasticSearch:
-    Circuit Breakers: 断路器
-    Disk: 磁盘
-    Indices: 索引
-    HTTP: HTTP
-    Cache: 缓存
-    IO: IO
+    Base: 集群健康
+    Node: 节点资源
+    Breaker: 断路器
+    HTTP: HTTP服务
+    ThreadPool: 线程池
   Loadbalance:
     Packet Loss: 数据包丢失
     Traffic: 流量
