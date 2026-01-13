@@ -22,12 +22,6 @@ class SSHNodeParamsMixin:
             credential_data["username"] = self.credential.get("username", self.credential.get("user", ""))
         return credential_data
 
-    @property
-    def tags(self):
-        tags = super().tags
-        tags["collect_type"] = "ssh"
-        return tags
-
     def env_config(self, *args, **kwargs):
         if not self.credential:
             return {}
