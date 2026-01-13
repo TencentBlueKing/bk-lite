@@ -13,7 +13,16 @@ import {
   ModelStat,
   InstDetailItem,
 } from '@/app/cmdb/types/assetSearch';
-import { Spin, Input, Tabs, Button, Tag, Empty, Pagination } from 'antd';
+import {
+  Spin,
+  Input,
+  Tabs,
+  Button,
+  Tag,
+  Empty,
+  Pagination,
+  Checkbox,
+} from 'antd';
 import useApiClient from '@/utils/request';
 import { useCommon } from '@/app/cmdb/context/common';
 import { deepClone, getFieldItem } from '@/app/cmdb/utils/common';
@@ -45,6 +54,7 @@ const AssetSearch = () => {
   const [currentPage, setCurrentPage] = useState<number>(1);
   const [pageSize, setPageSize] = useState<number>(10);
   const [totalCount, setTotalCount] = useState<number>(0);
+  const [caseSensitive, setCaseSensitive] = useState<boolean>(false);
 
   useEffect(() => {
     if (isLoading || !modelList.length) return;
@@ -84,6 +94,7 @@ const AssetSearch = () => {
     try {
       const stats: SearchStatsResponse = await fulltextSearchStats({
         search: searchText,
+        case_sensitive: caseSensitive,
       });
 
       if (!stats.model_stats || stats.model_stats.length === 0) {
@@ -130,7 +141,7 @@ const AssetSearch = () => {
         model_id: modelId,
         page: page,
         page_size: size,
-        case_sensitive: false,
+        case_sensitive: caseSensitive,
       });
 
       setCurrentModelData(result.data || []);
@@ -424,24 +435,42 @@ const AssetSearch = () => {
             <h1 className={assetSearchStyle.searchTitle}>{`${t(
               'searchTitle'
             )}`}</h1>
-            <Search
-              className={assetSearchStyle.inputBtn}
-              value={searchText}
-              allowClear
-              size="large"
-              placeholder={t('assetSearchTxt')}
-              enterButton={
-                <div
-                  className={assetSearchStyle.searchBtn}
-                  onClick={handleSearch}
+            <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
+              <Search
+                className={assetSearchStyle.inputBtn}
+                value={searchText}
+                allowClear
+                size="large"
+                placeholder={t('assetSearchTxt')}
+                enterButton={
+                  <div
+                    className={assetSearchStyle.searchBtn}
+                    onClick={handleSearch}
+                  >
+                    <SearchOutlined className="pr-[8px]" />
+                    {t('common.search')}
+                  </div>
+                }
+                onChange={handleTextChange}
+                onPressEnter={handleSearch}
+              />
+              <div
+                style={{
+                  border: '1px solid var(--color-border-2)',
+                  borderRadius: '2px',
+                  padding: '4px 12px',
+                  background: 'var(--color-bg-1)',
+                  whiteSpace: 'nowrap',
+                }}
+              >
+                <Checkbox
+                  checked={caseSensitive}
+                  onChange={(e) => setCaseSensitive(e.target.checked)}
                 >
-                  <SearchOutlined className="pr-[8px]" />
-                  {t('common.search')}
-                </div>
-              }
-              onChange={handleTextChange}
-              onPressEnter={handleSearch}
-            />
+                  {t('FilterBar.exactMatch')}
+                </Checkbox>
+              </div>
+            </div>
             {!!historyList.length && (
               <div className={assetSearchStyle.history}>
                 <div className={assetSearchStyle.description}>
@@ -470,26 +499,51 @@ const AssetSearch = () => {
           </div>
         ) : (
           <div className={assetSearchStyle.searchDetail}>
-            <Search
-              className={assetSearchStyle.input}
-              value={searchText}
-              allowClear
-              placeholder={t('assetSearchTxt')}
-              enterButton={
-                <div
-                  className={assetSearchStyle.searchBtn}
-                  onClick={handleSearch}
-                >
-                  <SearchOutlined className="pr-[8px]" />
-                  {t('common.search')}
-                </div>
-              }
-              onChange={handleTextChange}
-              onPressEnter={handleSearch}
-            />
             <div
               style={{
-                height: 'calc(100vh - 124px)',
+                display: 'flex',
+                gap: '12px',
+                alignItems: 'center',
+                marginBottom: '12px',
+              }}
+            >
+              <Search
+                className={assetSearchStyle.input}
+                value={searchText}
+                allowClear
+                placeholder={t('assetSearchTxt')}
+                enterButton={
+                  <div
+                    className={assetSearchStyle.searchBtn}
+                    onClick={handleSearch}
+                  >
+                    <SearchOutlined className="pr-[8px]" />
+                    {t('common.search')}
+                  </div>
+                }
+                onChange={handleTextChange}
+                onPressEnter={handleSearch}
+              />
+              <div
+                style={{
+                  border: '1px solid var(--color-border-2)',
+                  borderRadius: '2px',
+                  padding: '4px 12px',
+                  background: 'var(--color-bg-1)',
+                  whiteSpace: 'nowrap',
+                }}
+              >
+                <Checkbox
+                  checked={caseSensitive}
+                  onChange={(e) => setCaseSensitive(e.target.checked)}
+                >
+                  {t('FilterBar.exactMatch')}
+                </Checkbox>
+              </div>
+            </div>
+            <div
+              style={{
+                height: 'calc(100vh - 136px)',
               }}
             >
               {modelStats.length ? (
