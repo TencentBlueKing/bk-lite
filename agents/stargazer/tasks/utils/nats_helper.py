@@ -128,11 +128,6 @@ def convert_prometheus_to_influx(prometheus_data: str, params: Dict[str, Any]) -
     """
     将 Prometheus 格式转换为 InfluxDB Line Protocol 格式
 
-    使用 influxdb_client.Point 类来构建 Line Protocol，提供：
-    - 自动类型处理（整数、浮点数、字符串）
-    - 自动转义特殊字符（空格、逗号、等号等）
-    - 更清晰的对象化 API
-
     Prometheus 格式:
         # TYPE metric_name gauge
         metric_name{label1="value1",label2="value2"} value timestamp
@@ -151,7 +146,6 @@ def convert_prometheus_to_influx(prometheus_data: str, params: Dict[str, Any]) -
     if not prometheus_data or not prometheus_data.strip():
         return []
 
-    from influxdb_client import Point, WritePrecision
     import re
 
     lines = []
@@ -232,9 +226,6 @@ def convert_prometheus_to_influx(prometheus_data: str, params: Dict[str, Any]) -
                     f"[NATS Helper] Skipping special value: {value_str}")
                 continue
 
-            # 创建 Point 对象
-            point = Point(metric_name)
-
             # 先收集所有标签（优先级：common_tags > Prometheus labels）
             all_tags = {}
 
@@ -256,26 +247,17 @@ def convert_prometheus_to_influx(prometheus_data: str, params: Dict[str, Any]) -
                     all_tags[tag_key] = tag_value
 
             # 3. 添加到 Point 对象
-            for tag_key, tag_value in all_tags.items():
-                point.tag(tag_key, tag_value)
 
             # 确定 field 名称（从 TYPE 注释中提取）
             field_name = metric_types.get(
                 metric_name, current_type if current_type else "value")
 
-            # 添加 field（Point 会自动处理类型：int -> i 后缀，float 保持原样，str 加引号）
-            try:
-                if '.' in value_str or 'e' in value_str.lower():
-                    # 浮点数
-                    point.field(field_name, float(value_str))
-                else:
-                    # 整数
-                    point.field(field_name, int(value_str))
-            except ValueError:
-                # 字符串值
-                point.field(field_name, value_str)
+            field_value_repr = _format_influx_field_value(value_str)
+            if field_value_repr is None:
+                continue
 
             # 转换时间戳：统一转换为纳秒（InfluxDB 默认精度）
+            ts_ns = None
             if timestamp_str:
                 try:
                     ts = int(timestamp_str)
@@ -294,14 +276,24 @@ def convert_prometheus_to_influx(prometheus_data: str, params: Dict[str, Any]) -
                             ts_ns = int(str(ts)[:19].ljust(19, '0'))
                         else:
                             ts_ns = ts * 1000000
-
-                    point.time(ts_ns, WritePrecision.NS)
                 except ValueError:
                     logger.warning(
                         f"[NATS Helper] Invalid timestamp: {timestamp_str}")
 
-            # 生成 Line Protocol（Point 自动处理转义和格式化）
-            line_protocol = point.to_line_protocol()
+            # 生成 InfluxDB Line Protocol
+            measurement = _escape_influx_measurement(metric_name)
+            tags_str = _format_influx_tags(all_tags)
+            field_key = _escape_influx_key(field_name)
+            fields_str = f"{field_key}={field_value_repr}"
+
+            if tags_str:
+                line_protocol = f"{measurement},{tags_str} {fields_str}"
+            else:
+                line_protocol = f"{measurement} {fields_str}"
+
+            if ts_ns is not None:
+                line_protocol = f"{line_protocol} {ts_ns}"
+
             lines.append(line_protocol)
 
         except Exception as e:
@@ -310,6 +302,62 @@ def convert_prometheus_to_influx(prometheus_data: str, params: Dict[str, Any]) -
             continue
 
     return lines
+
+
+def _escape_influx_measurement(value: str) -> str:
+    # measurement 需转义逗号、空格
+    return str(value).replace("\\", "\\\\").replace(" ", "\\ ").replace(",", "\\,")
+
+
+def _escape_influx_key(value: str) -> str:
+    # tag key / field key 需转义逗号、空格、等号
+    return (
+        str(value)
+        .replace("\\", "\\\\")
+        .replace(" ", "\\ ")
+        .replace(",", "\\,")
+        .replace("=", "\\=")
+    )
+
+
+def _escape_influx_tag_value(value: str) -> str:
+    # tag value 需转义逗号、空格、等号
+    return _escape_influx_key(value)
+
+
+def _format_influx_tags(tags: Dict[str, Any]) -> str:
+    if not tags:
+        return ""
+    # 稳定输出顺序，避免同一批数据 tag 顺序漂移
+    parts = []
+    for k in sorted(tags.keys()):
+        v = tags.get(k)
+        if v is None:
+            continue
+        v_str = str(v)
+        if not v_str:
+            continue
+        parts.append(f"{_escape_influx_key(k)}={_escape_influx_tag_value(v_str)}")
+    return ",".join(parts)
+
+
+def _format_influx_field_value(value_str: str):
+    """返回 Influx line protocol 的 field value 表达式。
+
+    - int: 123i
+    - float: 1.23
+    - string: "abc"（转义引号与反斜杠）
+    """
+    if value_str in ["NaN", "Inf", "+Inf", "-Inf"]:
+        return None
+
+    try:
+        if "." in value_str or "e" in value_str.lower():
+            return str(float(value_str))
+        return f"{int(value_str)}i"
+    except ValueError:
+        escaped = str(value_str).replace("\\", "\\\\").replace('"', '\\"')
+        return f'"{escaped}"'
 
 
 def _build_common_tags(params: Dict[str, Any]) -> Dict[str, str]:

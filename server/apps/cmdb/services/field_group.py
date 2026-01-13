@@ -20,6 +20,65 @@ class FieldGroupService:
     """字段分组服务层"""
 
     @staticmethod
+    def _ensure_groups_for_model(model_id: str, attrs: List[Dict], created_by: str = "system") -> None:
+        """确保模型存在与 attrs.attr_group 一致的 FieldGroup 记录。
+
+        说明：
+        - 前端模型属性页依赖 /field_groups/full_info 返回的 groups[].attrs。
+        - 若模型已有 attrs 但 FieldGroup 缺失，或 FieldGroup 的 group_name 与 attrs 中 attr_group 不一致，
+          页面会显示“空”，但新增属性又会因为 attr_id 已存在而报重复。
+        - 这里按 attrs 中出现过的 attr_group 自动补齐缺失分组（仅创建缺失分组，不修改已有 attrs）。
+        """
+
+        if not attrs:
+            return
+
+        existing_group_names = set(
+            FieldGroup.objects.filter(model_id=model_id).values_list("group_name", flat=True)
+        )
+
+        # 收集 attrs 中出现过的分组名（保持顺序，去重）
+        group_names: List[str] = []
+        seen = set()
+        for attr in attrs:
+            g = attr.get("attr_group")
+            if not g:
+                continue
+            if g in seen:
+                continue
+            seen.add(g)
+            group_names.append(g)
+
+        # 如果 attrs 全都没有 attr_group，至少给一个默认分组，避免 full_info 为空
+        if not group_names:
+            group_names = ["default"]
+
+        missing = [g for g in group_names if g not in existing_group_names]
+        if not missing:
+            return
+
+        max_order = (
+            FieldGroup.objects.filter(model_id=model_id).aggregate(max_order=Max("order"))["max_order"]
+            or 0
+        )
+
+        for idx, group_name in enumerate(missing, start=1):
+            group_attr_orders = [
+                a.get("attr_id")
+                for a in attrs
+                if a.get("attr_group") == group_name and a.get("attr_id")
+            ]
+            FieldGroup.objects.create(
+                model_id=model_id,
+                group_name=group_name,
+                order=max_order + idx,
+                is_collapsed=False,
+                description="auto created",
+                created_by=created_by,
+                attr_orders=group_attr_orders,
+            )
+
+    @staticmethod
     def create_group(
             model_id: str, group_name: str, created_by: str, **kwargs
     ) -> FieldGroup:
@@ -332,12 +391,16 @@ class FieldGroupService:
         if not model_info:
             raise BaseAppException("模型不存在")
 
-        # 2. 获取所有分组
-        groups = FieldGroup.objects.filter(model_id=model_id).order_by("order")
-        groups_count = groups.count()
-
-        # 3. 解析属性
+        # 2. 解析属性
         attrs = ModelManage.parse_attrs(model_info.get("attrs", "[]"))
+
+        # 3. 获取所有分组（若缺失/不匹配则自动补齐，避免前端属性页显示为空）
+        groups = FieldGroup.objects.filter(model_id=model_id).order_by("order")
+        if attrs:
+            FieldGroupService._ensure_groups_for_model(model_id=model_id, attrs=attrs)
+            groups = FieldGroup.objects.filter(model_id=model_id).order_by("order")
+
+        groups_count = groups.count()
 
         # 4. 按分组组织属性
         groups_data = []

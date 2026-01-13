@@ -348,14 +348,27 @@ class ModelViewSet(viewsets.ViewSet):
         result = ModelManage.create_model_attr(model_id, request.data, username=request.user.username)
         # 把分组信息也更新了
         attr_group = request.data.get("attr_group")
-        field_group = FieldGroup.objects.filter(model_id=model_id, group_name=attr_group).first()
-        if field_group:
-            attr_id = request.data.get("attr_id")
-            attr_orders = field_group.attr_orders
+        attr_id = request.data.get("attr_id")
+        if attr_group and attr_id:
+            field_group = FieldGroup.objects.filter(model_id=model_id, group_name=attr_group).first()
+            if not field_group:
+                last_group = FieldGroup.objects.filter(model_id=model_id).order_by("-order").first()
+                next_order = (last_group.order if last_group else 0) + 1
+                field_group = FieldGroup.objects.create(
+                    model_id=model_id,
+                    group_name=attr_group,
+                    order=next_order,
+                    is_collapsed=False,
+                    description="",
+                    created_by=request.user.username,
+                    attr_orders=[],
+                )
+
+            attr_orders = field_group.attr_orders or []
             if attr_id not in attr_orders:
                 attr_orders.append(attr_id)
                 field_group.attr_orders = attr_orders
-                field_group.save()
+                field_group.save(update_fields=["attr_orders"])
 
         return WebUtils.response_success(result)
 
@@ -388,14 +401,27 @@ class ModelViewSet(viewsets.ViewSet):
 
         # 把分组信息也更新了
         attr_group = request.data.get("attr_group")
-        field_group = FieldGroup.objects.filter(model_id=model_id, group_name=attr_group).first()
-        if field_group:
-            attr_id = request.data.get("attr_id")
-            attr_orders = field_group.attr_orders
+        attr_id = request.data.get("attr_id")
+        if attr_group and attr_id:
+            field_group = FieldGroup.objects.filter(model_id=model_id, group_name=attr_group).first()
+            if not field_group:
+                last_group = FieldGroup.objects.filter(model_id=model_id).order_by("-order").first()
+                next_order = (last_group.order if last_group else 0) + 1
+                field_group = FieldGroup.objects.create(
+                    model_id=model_id,
+                    group_name=attr_group,
+                    order=next_order,
+                    is_collapsed=False,
+                    description="",
+                    created_by=request.user.username,
+                    attr_orders=[],
+                )
+
+            attr_orders = field_group.attr_orders or []
             if attr_id not in attr_orders:
                 attr_orders.append(attr_id)
                 field_group.attr_orders = attr_orders
-                field_group.save()
+                field_group.save(update_fields=["attr_orders"])
 
         return WebUtils.response_success(result)
 

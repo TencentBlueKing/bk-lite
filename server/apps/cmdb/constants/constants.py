@@ -362,6 +362,9 @@ COLLECT_OBJ_TREE = [
             {"id": "tomcat", "model_id": "tomcat", "name": "Tomcat", "task_type": CollectPluginTypes.MIDDLEWARE,
              "type": CollectDriverTypes.JOB, "tag": ["JOB", "Linux"], "desc": "发现与采集Tomcat基础配置信息",
              "encrypted_fields": ["password"]},
+            {"id": "consul", "model_id": "consul", "name": "Consul", "task_type": CollectPluginTypes.MIDDLEWARE,
+             "type": CollectDriverTypes.JOB, "tag": ["JOB", "Linux"], "desc": "发现与采集Consul基础配置信息",
+             "encrypted_fields": ["password"]},
         ],
     }
 

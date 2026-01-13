@@ -16,18 +16,25 @@ class MiddlewareCollectMetrics(CollectBase):
 
     def format_data(self, data):
         for index_data in data["result"]:
-            metric_name = index_data["metric"]["__name__"]
+            # 方案A：失败采集记录只用于观测（raw_data/VM可查），不参与实例纳管/同步。
+            # 否则会出现“collect_status=failed 也被同步成一条实例”的问题。
+            metric = index_data.get("metric", {}) or {}
+            collect_status = metric.get("collect_status")
+            if collect_status and collect_status != "success":
+                continue
+
+            metric_name = metric["__name__"]
             value = index_data["value"]
             _time, value = value[0], value[1]
-            if not self.timestamp_gt:
-                if timestamp_gt_one_day_ago(_time):
-                    break
-                else:
-                    self.timestamp_gt = True
+            # 注意：VM 的 query 返回顺序不保证按时间排序。
+            # 旧逻辑在遇到一条“>1天前的样本”时直接 break，会导致同一批 result 中其它有效数据被误丢。
+            # 这里改为按条跳过旧样本。
+            if timestamp_gt_one_day_ago(_time):
+                continue
             # 原始版本没有result，2025.11.27修改stargazer格式，将采集数据放到result中
             result_data = {}
-            if index_data["metric"].get("result", False) or index_data["metric"].get("success", False):
-                result_json = index_data["metric"].get("result", "{}")
+            if metric.get("result", False) or metric.get("success", False):
+                result_json = metric.get("result", "{}")
                 if result_json and result_json != "{}":
                     try:
                         unescaped_json = codecs.decode(
@@ -40,14 +47,20 @@ class MiddlewareCollectMetrics(CollectBase):
             index_dict = dict(
                 index_key=metric_name,
                 index_value=value,
-                **index_data["metric"],
+                **metric,
                 **result_data,  # 将解析后的JSON数据合并到index_dict中
             )
 
             self.collection_metrics_dict[metric_name].append(index_dict)
 
     def get_inst_name(self, data):
-        return f"{data['ip_addr']}-{self.model_id}-{data['port']}"
+        ip_addr = data.get("ip_addr") or data.get("host") or ""
+        port = data.get("port") or ""
+        if ip_addr and port:
+            return f"{ip_addr}-{self.model_id}-{port}"
+        if ip_addr:
+            return f"{ip_addr}-{self.model_id}"
+        return f"{self.model_id}"
 
     @property
     def model_field_mapping(self):
@@ -134,6 +147,16 @@ class MiddlewareCollectMetrics(CollectBase):
                 "permsize": "permsize",
                 "log_path": "log_path",
                 "java_version": "java_version",
+            },
+            "consul": {
+                "inst_name": self.get_inst_name,
+                "ip_addr": "ip_addr",
+                "port": "port",
+                "install_path": "install_path",
+                "version": "version",
+                "data_dir": "data_dir",
+                "conf_path": "conf_path",
+                "role": "role",
             },
             "apache":{
                 "inst_name": self.get_inst_name,

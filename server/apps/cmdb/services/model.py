@@ -150,17 +150,18 @@ class ModelManage(object):
 
         attrs = ModelManage.parse_attrs(result[0].get("attrs", "[]"))
 
-        attr = None
+        created_attr = None
         for attr in attrs:
-            if attr["attr_id"] != attr_info["attr_id"]:
+            if attr.get("attr_id") != attr_info["attr_id"]:
                 continue
-            attr = attr
+            created_attr = attr
+            break
 
         create_change_record(operator=username, model_id=model_id, label="模型管理",
                              _type=CREATE_INST, message=f"创建模型属性. 模型名称: {model_info['model_name']}",
                              inst_id=model_info['_id'], model_object=OPERATOR_MODEL)
 
-        return attr
+        return created_attr
 
     @staticmethod
     def update_model_attr(model_id, attr_info, username="admin"):

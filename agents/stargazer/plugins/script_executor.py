@@ -153,13 +153,9 @@ class SSHPlugin:
             if response.get("success"):
                 if need_raw:
                     return response
-                collect_data = response["result"]
-                try:
-                    # 尝试解析为 JSON
-                    collect_data = json.loads(collect_data)
-                except Exception:
-                    collect_data = {}
-                result = {"result": {self.model_id: [collect_data]}, "success": True}
+                collect_text = response.get("result", "")
+                parsed_items = self._parse_collect_output(collect_text)
+                result = {"result": {self.model_id: parsed_items}, "success": True}
             else:
                 result = {"result": {"cmdb_collect_error": response.get("result")}, "success": False}
             logger.info(f"✅ Script execution completed: success={response.get('success')}")
@@ -168,6 +164,81 @@ class SSHPlugin:
             import traceback
             logger.error(f"❌ SSHPlugin execution failed: {traceback.format_exc()}")
             return {"result": {"cmdb_collect_error": str(e)}, "success": False}
+
+    @staticmethod
+    def _parse_collect_output(collect_text: str):
+        """解析脚本 stdout。
+
+        兼容以下输出形式：
+        - 单个 JSON 对象（推荐）：{"a":1}
+        - JSON 数组：[{"a":1},{"b":2}]
+        - 多行 JSON（每行一个对象）：\n 分隔
+
+        为保持兼容：
+        - 当完全无法解析出任何 JSON 时，返回 [{}]（与旧逻辑 json.loads 失败回退为 {} 基本一致）。
+        """
+        text = (collect_text or "").strip()
+        if not text:
+            return [{}]
+
+        # 1) 优先尝试整体按 JSON 解析
+        try:
+            obj = json.loads(text)
+            if isinstance(obj, dict):
+                return [obj]
+            if isinstance(obj, list):
+                return [x for x in obj if isinstance(x, dict)] or [{}]
+        except Exception:
+            pass
+
+        # 1.5) stdout 可能混入提示/告警/日志，尝试从文本中提取 JSON 片段（支持多段 JSON）
+        decoder = json.JSONDecoder()
+        extracted: list[dict] = []
+
+        idx = 0
+        while idx < len(text):
+            next_obj = text.find("{", idx)
+            next_arr = text.find("[", idx)
+            if next_obj == -1 and next_arr == -1:
+                break
+
+            # 选择更靠前的起点
+            if next_obj == -1:
+                start = next_arr
+            elif next_arr == -1:
+                start = next_obj
+            else:
+                start = min(next_obj, next_arr)
+
+            try:
+                obj, end = decoder.raw_decode(text, start)
+                if isinstance(obj, dict):
+                    extracted.append(obj)
+                elif isinstance(obj, list):
+                    extracted.extend([x for x in obj if isinstance(x, dict)])
+                idx = end
+            except Exception:
+                idx = start + 1
+
+        if extracted:
+            return extracted
+
+        # 2) 再尝试逐行解析（脚本可能输出多行，每行一个 JSON）
+        parsed = []
+        for line in text.splitlines():
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                obj = json.loads(line)
+                if isinstance(obj, dict):
+                    parsed.append(obj)
+                elif isinstance(obj, list):
+                    parsed.extend([x for x in obj if isinstance(x, dict)])
+            except Exception:
+                continue
+
+        return parsed or [{}]
 
 
 # if __name__ == '__main__':

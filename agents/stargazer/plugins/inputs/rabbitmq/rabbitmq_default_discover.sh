@@ -86,6 +86,8 @@ get_erlang_version() {
             val=$(erl -eval 'erlang:display(erlang:system_info(otp_release)), halt().' -noshell 2>/dev/null | tr -d '\r' | tail -1)
         fi
     fi
+    # erl 可能输出带引号的版本号（如 "R16B03-1"），直接拼到 JSON 会变成 ""R16B03-1"" 导致 JSON 非法
+    val=$(echo "$val" | tr -d '\r' | sed 's/^"//; s/"$//')
     echo "$val"
 }
 

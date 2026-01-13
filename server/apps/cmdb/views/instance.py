@@ -585,7 +585,7 @@ class InstanceViewSet(viewsets.ViewSet):
 
         if self.check_creator_and_organizations(request, instance):
             # 如果是自己创建的实例，直接返回拓扑搜索结果
-            result = InstanceManage.topo_search(int(inst_id))
+            result = InstanceManage.topo_search_lite(int(inst_id), depth=3)
             return WebUtils.response_success(result)
 
         organizations = self.organizations(request, instance)
@@ -597,7 +597,50 @@ class InstanceViewSet(viewsets.ViewSet):
         if not has_permission:
             return WebUtils.response_error("抱歉！您没有此实例的权限", status_code=status.HTTP_403_FORBIDDEN)
 
-        result = InstanceManage.topo_search(int(inst_id))
+        result = InstanceManage.topo_search_lite(int(inst_id), depth=3)
+        return WebUtils.response_success(result)
+
+    @action(
+        detail=False,
+        methods=["post"],
+        url_path=r"topo_search_expand",
+    )
+    @HasPermission("asset_info-View")
+    def topo_search_expand_post(self, request):
+        """
+        用于拓扑第3层节点点击“+”后的二次查询：
+        前端传入 model_id / inst_id / parent_id（父节点列表），后端返回该节点为中心的下一层拓扑数据。
+        """
+        inst_id = request.data.get("inst_id")
+        parent_ids = request.data.get("parent_id") or []
+
+        if inst_id is None:
+            return WebUtils.response_error("inst_id不能为空", status_code=status.HTTP_400_BAD_REQUEST)
+        try:
+            inst_id = int(inst_id)
+        except (TypeError, ValueError):
+            return WebUtils.response_error("inst_id不合法", status_code=status.HTTP_400_BAD_REQUEST)
+
+        if not isinstance(parent_ids, list):
+            parent_ids = [parent_ids]
+
+        instance = InstanceManage.query_entity_by_id(inst_id)
+        if not instance:
+            return WebUtils.response_error("实例不存在", status_code=status.HTTP_404_NOT_FOUND)
+
+        if self.check_creator_and_organizations(request, instance):
+            result = InstanceManage.topo_search_expand(inst_id, parent_ids, depth=2)
+            return WebUtils.response_success(result)
+
+        organizations = self.organizations(request, instance)
+        if not organizations:
+            return WebUtils.response_error("抱歉！您没有此实例的权限", status_code=status.HTTP_403_FORBIDDEN)
+
+        has_permission = self.check_instance_permission(request, instance, operator=VIEW)
+        if not has_permission:
+            return WebUtils.response_error("抱歉！您没有此实例的权限", status_code=status.HTTP_403_FORBIDDEN)
+
+        result = InstanceManage.topo_search_expand(inst_id, parent_ids, depth=2)
         return WebUtils.response_success(result)
 
     @action(

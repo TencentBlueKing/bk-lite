@@ -556,6 +556,20 @@ class InstanceManage(object):
         return result
 
     @staticmethod
+    def topo_search_lite(inst_id: int, depth: int = 3):
+        """拓扑查询（轻量）：限制返回层级，避免一次返回全量树"""
+        with GraphClient() as ag:
+            result = ag.query_topo_lite(INSTANCE, inst_id, depth=depth)
+        return result
+
+    @staticmethod
+    def topo_search_expand(inst_id: int, parent_ids: list, depth: int = 2):
+        """拓扑展开：从指定节点向后展开一层，并过滤父节点列表"""
+        with GraphClient() as ag:
+            result = ag.query_topo_lite(INSTANCE, inst_id, depth=depth, exclude_ids=parent_ids)
+        return result
+
+    @staticmethod
     def topo_search_test_config(inst_id: int, model_id: str):
         """拓扑查询"""
         with GraphClient() as ag:
