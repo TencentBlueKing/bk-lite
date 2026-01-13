@@ -42,7 +42,14 @@ class VmwareCollector(BaseCollector):
 
         logger.info(f"[VMware Collector] Time range: {start_time_str} to {end_time_str}")
 
-        driver = CMPDriver(username, password, "vmware_vc", host=host)
+        try:
+            driver = CMPDriver(username, password, "vmware_vc", host=host)
+        except ConnectionError as e:
+            logger.error(f"[VMware Collector] Failed to create driver: {str(e)}")
+            return ""
+        except Exception as e:
+            logger.error(f"[VMware Collector] Unexpected error creating driver: {str(e)}")
+            return ""
 
         try:
             vmware_manager = VmwareManage(params=dict(
