@@ -16,7 +16,7 @@
       "display_name": "Current Connections",
       "instance_id_keys": ["instance_id"],
       "data_type": "Number",
-      "unit": "short",
+      "unit": "counts",
       "dimensions": [],
       "description": "Number of currently open connections; new connections are rejected when approaching max_connections",
       "query": "mysql_threads_connected{__$labels__}"
@@ -27,7 +27,7 @@
       "display_name": "Running Threads",
       "instance_id_keys": ["instance_id"],
       "data_type": "Number",
-      "unit": "short",
+      "unit": "counts",
       "dimensions": [],
       "description": "Number of threads currently executing queries, reflecting concurrent processing capacity",
       "query": "mysql_threads_running{__$labels__}"
@@ -38,7 +38,7 @@
       "display_name": "Aborted Connections",
       "instance_id_keys": ["instance_id"],
       "data_type": "Number",
-      "unit": "short",
+      "unit": "counts",
       "dimensions": [],
       "description": "Number of failed connection attempts, possibly due to permissions, network, or configuration",
       "query": "mysql_aborted_connects{__$labels__}"
@@ -148,7 +148,7 @@
       "display_name": "Dirty Pages",
       "instance_id_keys": ["instance_id"],
       "data_type": "Number",
-      "unit": "short",
+      "unit": "counts",
       "dimensions": [],
       "description": "Number of dirty pages in buffer pool (not yet written to disk); indicates buffer pool utilization",
       "query": "mysql_innodb_buffer_pool_pages_dirty{__$labels__}"
@@ -159,7 +159,7 @@
       "display_name": "Total Buffer Pool Pages",
       "instance_id_keys": ["instance_id"],
       "data_type": "Number",
-      "unit": "short",
+      "unit": "counts",
       "dimensions": [],
       "description": "Total pages in buffer pool; used to calculate buffer pool utilization",
       "query": "mysql_innodb_buffer_pool_pages_total{__$labels__}"
