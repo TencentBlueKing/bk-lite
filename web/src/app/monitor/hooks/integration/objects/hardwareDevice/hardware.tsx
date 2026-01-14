@@ -3,9 +3,9 @@ export const useHardwareConfig = () => {
     instance_type: 'hardware_server',
     dashboardDisplay: [],
     tableDiaplay: [
-      { type: 'enum', key: 'ipmi_power_watts' },
+      { type: 'enum', key: 'ipmi_chassis_power_state' },
+      { type: 'value', key: 'ipmi_fan_speed_rpm' },
       { type: 'value', key: 'ipmi_temperature_celsius' },
-      { type: 'value', key: 'ipmi_voltage_volts' },
     ],
     groupIds: {},
     collectTypes: {

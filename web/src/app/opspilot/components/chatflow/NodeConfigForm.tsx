@@ -510,7 +510,17 @@ export const NodeConfigForm: React.FC<any> = ({
           {notificationType === 'email' && (
             <>
               <Form.Item name="notificationRecipients" label={t('chatflow.notificationRecipients')} rules={[{ required: true }]}>
-                <Select mode="multiple" placeholder={t('chatflow.selectNotificationRecipients')} loading={loadingUsers} showSearch>
+                <Select 
+                  mode="multiple" 
+                  placeholder={t('chatflow.selectNotificationRecipients')} 
+                  loading={loadingUsers} 
+                  showSearch
+                  filterOption={(input, option) => {
+                    const label = option?.label as string || '';
+                    return label.toLowerCase().includes(input.toLowerCase());
+                  }}
+                  optionFilterProp="label"
+                >
                   {allUsers.map((u: any) => <Option key={u.id} value={u.id} label={`${u.display_name || u.name}(${u.username})`}>{u.display_name || u.name}({u.username})</Option>)}
                 </Select>
               </Form.Item>

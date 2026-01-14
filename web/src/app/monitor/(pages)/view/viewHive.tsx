@@ -26,10 +26,7 @@ import TimeSelector from '@/components/time-selector';
 import HexGridChart from '@/app/monitor/components/charts/hexgrid';
 import HiveModal from './hiveModal';
 import { EditOutlined } from '@ant-design/icons';
-import {
-  getEnumColor,
-  isStringArray,
-} from '@/app/monitor/utils/common';
+import { getEnumColor, isStringArray } from '@/app/monitor/utils/common';
 import { useUnitTransform } from '@/app/monitor/hooks/useUnitTransform';
 import { useObjectConfigInfo } from '@/app/monitor/hooks/integration/common/getObjectConfig';
 import { Select, Spin } from 'antd';
@@ -65,22 +62,26 @@ const ViewHive: React.FC<ViewListProps> = ({ objects, objectId }) => {
   const [hexColor, setHexColor] = useState<NodeThresholdColor[]>([]);
   const [nodeList, setNodeList] = useState<ListItem[]>([]);
 
+  const isPod = useMemo(() => {
+    return objects.find((item) => item.id === objectId)?.name === 'Pod';
+  }, [objects, objectId]);
+
   const metricList = useMemo(() => {
     if (objectId && objects?.length && mertics?.length) {
       const objName = objects.find((item) => item.id === objectId)?.name;
+      const nodeMetircs = [
+        { type: 'progress', key: 'node_cpu_utilization' },
+        { type: 'enum', key: 'node_status_condition' },
+      ];
       if (objName) {
-        const filterMetrics = getTableDiaplay(objName);
+        const filterMetrics = isPod ? getTableDiaplay(objName) : nodeMetircs;
         return mertics.filter((metric) =>
           filterMetrics.find((item: TableDataItem) => item.key === metric.name)
         );
       }
     }
     return [];
-  }, [mertics]);
-
-  const isPod = useMemo(() => {
-    return objects.find((item) => item.id === objectId)?.name === 'Pod';
-  }, [objects, objectId]);
+  }, [mertics, isPod]);
 
   // 动态设置 pageSize
   useEffect(() => {
@@ -229,8 +230,12 @@ const ViewHive: React.FC<ViewListProps> = ({ objects, objectId }) => {
       setMertics(metricsData || []);
       const tagetMerticItem = metricsData.find(
         (item: MetricItem) =>
-          item.name === (isPod ? 'pod_status' : 'node_status_condition')
+          item.name ===
+          (isPod
+            ? 'prometheus_remote_write_kube_pod_status_phase'
+            : 'node_status_condition')
       );
+      console.log(tagetMerticItem);
       if (isStringArray(tagetMerticItem?.unit || '')) {
         const unitInfo = JSON.parse(tagetMerticItem.unit).map(
           (item: TableDataItem) => ({
@@ -287,7 +292,10 @@ const ViewHive: React.FC<ViewListProps> = ({ objects, objectId }) => {
     } = chartConfig;
     const chartList = data.map((item: TableDataItem) => {
       const metricName =
-        queryMetric || (isPod ? 'pod_status' : 'node_status_condition');
+        queryMetric ||
+        (isPod
+          ? 'prometheus_remote_write_kube_pod_status_phase'
+          : 'node_status_condition');
       const tagetMerticItem = metricsData.find(
         (item) => item.name === metricName
       );

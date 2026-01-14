@@ -1,6 +1,7 @@
 from apps.cmdb.constants.constants import INSTANCE, INSTANCE_ASSOCIATION, OPERATOR_INSTANCE
 from apps.cmdb.display_field.constants import DISPLAY_FIELD_TYPES, DISPLAY_SUFFIX, FIELD_TYPE_ORGANIZATION, FIELD_TYPE_USER, FIELD_TYPE_ENUM
 from apps.cmdb.graph.drivers.graph_client import GraphClient
+from apps.cmdb.graph.format_type import ParameterCollector
 from apps.cmdb.models.change_record import CREATE_INST, CREATE_INST_ASST, DELETE_INST, DELETE_INST_ASST, UPDATE_INST
 from apps.cmdb.models.show_field import ShowField
 from apps.cmdb.services.model import ModelManage
@@ -204,7 +205,7 @@ class InstanceManage(object):
                 check_attr_map["is_only"][attr["attr_id"]] = attr["attr_name"]
             if attr["is_required"]:
                 check_attr_map["is_required"][attr["attr_id"]] = attr["attr_name"]
-            if attr["editable"] or attr["is_display_field"]:
+            if attr["editable"] or attr.get("is_display_field"):
                 check_attr_map["editable"][attr["attr_id"]] = attr["attr_name"]
 
         # 只有当对应的原始字段更新时,才更新 _display 字段
@@ -557,6 +558,20 @@ class InstanceManage(object):
         return res_status, add_mgs
 
     @staticmethod
+    def topo_search_lite(inst_id: int, depth: int = 3):
+        """拓扑查询（轻量）：限制返回层级，避免一次返回全量树"""
+        with GraphClient() as ag:
+            result = ag.query_topo_lite(INSTANCE, inst_id, depth=depth)
+        return result
+
+    @staticmethod
+    def topo_search_expand(inst_id: int, parent_ids: list, depth: int = 2):
+        """拓扑展开：从指定节点向后展开一层，并过滤父节点列表"""
+        with GraphClient() as ag:
+            result = ag.query_topo_lite(INSTANCE, inst_id, depth=depth, exclude_ids=parent_ids)
+        return result
+    
+    @staticmethod
     def inst_export(model_id: str, ids: list, permissions_map: dict = {}, created: str = "", creator: str = "",
                     attr_list: list = [], association_list: list = []):
         """实例导出"""
@@ -720,19 +735,27 @@ class InstanceManage(object):
 
         # 将 format_permission_dict 转换为 full_text 需要的参数格式
         with GraphClient() as ag:
+            # 使用共享的参数收集器（参数化模式）
+            param_collector = ParameterCollector() if ag.ENABLE_PARAMETERIZATION else None
+            
             # 构建权限过滤字符串（与 query_entity 的逻辑一致）
             permission_filters = []
             for query_list in format_permission_dict.values():
                 if not query_list:
                     continue
-                org_permission_str = ag.format_search_params(query_list, param_type="OR")
+                # 使用共享的 param_collector 累积参数
+                org_permission_str, _ = ag.format_search_params(query_list, param_type="OR", param_collector=param_collector)
                 if org_permission_str:
                     permission_filters.append(org_permission_str)
 
             # 多个组织的权限条件用 OR 连接
             permission_params = " OR ".join(permission_filters) if permission_filters else ""
-
-        return permission_params
+            
+            # 返回权限参数和参数字典
+            if ag.ENABLE_PARAMETERIZATION and param_collector:
+                return permission_params, param_collector.get_params()
+            else:
+                return permission_params, {}
 
     @classmethod
     def fulltext_search(cls, search: str, permission_map: dict, creator: str = "", case_sensitive: bool = False):
@@ -751,7 +774,7 @@ class InstanceManage(object):
         logger.info(f"[InstanceManage.fulltext_search] 搜索关键词: {search}, 区分大小写: {case_sensitive}")
         
         # 构建权限参数
-        permission_params = cls._build_permission_params(permission_map, creator)
+        permission_params, _ = cls._build_permission_params(permission_map, creator)
 
         with GraphClient() as ag:
             # 调用 full_text，保留全文搜索逻辑
@@ -787,7 +810,7 @@ class InstanceManage(object):
         logger.info(f"[InstanceManage.fulltext_search_stats] 搜索关键词: {search}, 区分大小写: {case_sensitive}")
         
         # 构建权限参数（统一逻辑）
-        permission_params = cls._build_permission_params(permission_map, creator)
+        permission_params, permission_params_dict = cls._build_permission_params(permission_map, creator)
 
         with GraphClient() as ag:
             # 调用新的统计接口
@@ -796,7 +819,8 @@ class InstanceManage(object):
                 permission_params=permission_params,
                 inst_name_params="",  # 实例名称权限已包含在 permission_params 中
                 created="",  # 创建人权限已包含在 permission_params 中
-                case_sensitive=case_sensitive
+                case_sensitive=case_sensitive,
+                permission_params_dict=permission_params_dict  # 传递参数字典
             )
         
         logger.info(
@@ -837,7 +861,7 @@ class InstanceManage(object):
         )
         
         # 构建权限参数（统一逻辑）
-        permission_params = cls._build_permission_params(permission_map, creator)
+        permission_params, permission_params_dict = cls._build_permission_params(permission_map, creator)
 
         with GraphClient() as ag:
             # 调用新的分页查询接口
@@ -849,7 +873,8 @@ class InstanceManage(object):
                 created="",  # 创建人权限已包含在 permission_params 中
                 page=page,
                 page_size=page_size,
-                case_sensitive=case_sensitive
+                case_sensitive=case_sensitive,
+                permission_params_dict=permission_params_dict  # 传递参数字典
             )
         
         logger.info(
