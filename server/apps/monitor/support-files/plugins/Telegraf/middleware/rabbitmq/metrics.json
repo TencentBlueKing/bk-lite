@@ -8,179 +8,227 @@
   "description": "",
   "default_metric": "any({instance_type='rabbitmq'}) by (instance_id)",
   "instance_id_keys": ["instance_id"],
-  "supplementary_indicators": ["rabbitmq_overview_messages_ready"],
+  "supplementary_indicators": ["rabbitmq_node_running", "rabbitmq_overview_messages_ready", "rabbitmq_node_mem_alarm"],
   "metrics": [
     {
-      "metric_group": "Exchange",
-      "name": "rabbitmq_exchange_publish_in_rate",
-      "display_name": "Exchange Publish In Rate",
-      "instance_id_keys": ["instance_id"],
-      "data_type": "Number",
-      "unit": "pps",
-      "dimensions": [
-        {
-          "name": "exchange",
-          "description": "exchange"
-        }
-      ],
-      "description": "This metric shows the rate of messages published to the RabbitMQ exchange per second. It helps identify bottlenecks in message inflow.",
-      "query": "rate(rabbitmq_exchange_messages_publish_in{__$labels__}[5m])"
-    },
-    {
-      "metric_group": "Exchange",
-      "name": "rabbitmq_exchange_publish_out_rate",
-      "display_name": "Exchange Publish Out Rate",
-      "instance_id_keys": ["instance_id"],
-      "data_type": "Number",
-      "unit": "pps",
-      "dimensions": [
-        {
-          "name": "exchange",
-          "description": "exchange"
-        }
-      ],
-      "description": "This metric shows the rate of messages published out of the RabbitMQ exchange per second. It helps identify issues in message outflow.",
-      "query": "rate(rabbitmq_exchange_messages_publish_out{__$labels__}[5m])"
-    },
-    {
-      "metric_group": "Node",
-      "name": "rabbitmq_node_disk_free",
-      "display_name": "Disk Space Free",
-      "instance_id_keys": ["instance_id"],
-      "data_type": "Number",
-      "unit": "gibibytes",
-      "dimensions": [
-        {
-          "name": "node",
-          "description": "node"
-        }
-      ],
-      "description": "This metric indicates the free disk space on the RabbitMQ node, in bytes. Low disk space can lead to performance degradation or failures.",
-      "query": "rabbitmq_node_disk_free{__$labels__}/1024/1024/1024"
-    },
-    {
-      "metric_group": "Node",
-      "name": "rabbitmq_node_fd_used",
-      "display_name": "File Descriptors Used",
-      "instance_id_keys": ["instance_id"],
-      "data_type": "Number",
-      "unit": "short",
-      "dimensions": [
-        {
-          "name": "node",
-          "description": "node"
-        }
-      ],
-      "description": "This metric shows the number of file descriptors used by the RabbitMQ node. Excessive use may prevent the system from handling additional connections.",
-      "query": "rabbitmq_node_fd_used{__$labels__}"
-    },
-    {
-      "metric_group": "Node",
-      "name": "rabbitmq_node_mem_used",
-      "display_name": "Memory Used",
-      "instance_id_keys": ["instance_id"],
-      "data_type": "Number",
-      "unit": "mebibytes",
-      "dimensions": [
-        {
-          "name": "node",
-          "description": "node"
-        }
-      ],
-      "description": "This metric indicates the memory usage on the RabbitMQ node. High memory usage may lead to performance issues or node crashes.",
-      "query": "rabbitmq_node_mem_used{__$labels__}/1024/1024"
-    },
-    {
-      "metric_group": "Node",
-      "name": "rabbitmq_node_run_queue",
-      "display_name": "Run Queue",
-      "instance_id_keys": ["instance_id"],
-      "data_type": "Number",
-      "unit": "short",
-      "dimensions": [
-        {
-          "name": "node",
-          "description": "node"
-        }
-      ],
-      "description": "This metric shows the number of queues currently being handled by the RabbitMQ node. A high number may indicate system pressure and need for optimization.",
-      "query": "rabbitmq_node_run_queue{__$labels__}"
-    },
-    {
-      "metric_group": "Node",
+      "metric_group": "Base",
       "name": "rabbitmq_node_uptime",
-      "display_name": "Uptime",
+      "display_name": "Node Uptime",
       "instance_id_keys": ["instance_id"],
       "data_type": "Number",
-      "unit": "d",
-      "dimensions": [
-        {
-          "name": "node",
-          "description": "node"
-        }
-      ],
-      "description": "This metric indicates the uptime of the RabbitMQ node, in seconds. Nodes running for extended periods may require a restart to free resources and perform maintenance.",
-      "query": "rabbitmq_node_uptime{__$labels__}/1000/60/60/24"
+      "unit": "s",
+      "dimensions": ["url"],
+      "description": "Uptime of RabbitMQ node since startup, reflecting node stability",
+      "query": "rabbitmq_node_uptime{__$labels__}"
     },
     {
-      "metric_group": "Node",
-      "name": "rabbitmq_fd_usage_ratio",
-      "display_name": "File Descriptor Usage Ratio",
+      "metric_group": "Base",
+      "name": "rabbitmq_node_running",
+      "display_name": "Node Running Status",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Enum",
+      "unit": "[{\"name\":\"静止\",\"id\":0,\"color\":\"#ff4d4f\"},{\"name\":\"运行中\",\"id\":1,\"color\":\"#1ac44a\"}]",
+      "dimensions": ["url"],
+      "description": "Whether RabbitMQ node is running, 1 indicates running, 0 indicates stopped",
+      "query": "rabbitmq_node_running{__$labels__}"
+    },
+    {
+      "metric_group": "Performance",
+      "name": "rabbitmq_overview_connections",
+      "display_name": "Connections",
       "instance_id_keys": ["instance_id"],
       "data_type": "Number",
-      "unit": "percent",
-      "dimensions": [
-        {
-          "name": "node",
-          "description": "node"
-        }
-      ],
-      "description": "This metric shows the ratio of used file descriptors to the total number of file descriptors on the RabbitMQ node.",
-      "query": "100*sum(rabbitmq_node_fd_used{__$labels__} ) by (instance_id)/ sum(rabbitmq_node_fd_total{__$labels__} ) by (instance_id)"
+      "unit": "counts",
+      "dimensions": ["url"],
+      "description": "Number of active client connections, reflecting system load",
+      "query": "rabbitmq_overview_connections{__$labels__}"
     },
     {
-      "metric_group": "Message",
+      "metric_group": "Performance",
+      "name": "rabbitmq_overview_channels",
+      "display_name": "Channels",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "counts",
+      "dimensions": ["url"],
+      "description": "Number of open channels, reflecting message flow control capability",
+      "query": "rabbitmq_overview_channels{__$labels__}"
+    },
+    {
+      "metric_group": "Performance",
+      "name": "rabbitmq_overview_consumers",
+      "display_name": "Consumers",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "counts",
+      "dimensions": ["url"],
+      "description": "Number of active consumers, reflecting message consumption capacity",
+      "query": "rabbitmq_overview_consumers{__$labels__}"
+    },
+    {
+      "metric_group": "Performance",
+      "name": "rabbitmq_overview_queues",
+      "display_name": "Queues",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "counts",
+      "dimensions": ["url"],
+      "description": "Number of defined queues, reflecting message storage structure",
+      "query": "rabbitmq_overview_queues{__$labels__}"
+    },
+    {
+      "metric_group": "Performance",
+      "name": "rabbitmq_overview_messages",
+      "display_name": "Total Messages",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "counts",
+      "dimensions": ["url"],
+      "description": "Total messages in all queues, reflecting message backlog",
+      "query": "rabbitmq_overview_messages{__$labels__}"
+    },
+    {
+      "metric_group": "Performance",
       "name": "rabbitmq_overview_messages_ready",
-      "display_name": "Messages Ready",
+      "display_name": "Ready Messages",
       "instance_id_keys": ["instance_id"],
       "data_type": "Number",
-      "unit": "short",
-      "dimensions": [],
-      "description": "This metric indicates the number of messages ready for processing. A high number of ready messages may indicate consumer lag or slow processing speed.",
-      "query": "sum(rabbitmq_overview_messages_ready{__$labels__}) by (instance_id)"
+      "unit": "counts",
+      "dimensions": ["url"],
+      "description": "Number of messages ready for delivery in queues, reflecting pending messages",
+      "query": "rabbitmq_overview_messages_ready{__$labels__}"
     },
     {
-      "metric_group": "Message",
+      "metric_group": "Performance",
       "name": "rabbitmq_overview_messages_unacked",
       "display_name": "Unacknowledged Messages",
       "instance_id_keys": ["instance_id"],
       "data_type": "Number",
-      "unit": "short",
-      "dimensions": [],
-      "description": "This metric represents the number of unacknowledged messages. A high number of unacknowledged messages may indicate slow consumer processing or backlog.",
+      "unit": "counts",
+      "dimensions": ["url"],
+      "description": "Number of delivered but unacknowledged messages, reflecting message processing delay",
       "query": "rabbitmq_overview_messages_unacked{__$labels__}"
     },
     {
-      "metric_group": "Message",
-      "name": "rabbitmq_queue_message_backlog_ratio",
-      "display_name": "Queue Message Backlog Ratio",
+      "metric_group": "Performance",
+      "name": "rabbitmq_overview_messages_published_rate",
+      "display_name": "Message Publish Rate",
       "instance_id_keys": ["instance_id"],
       "data_type": "Number",
-      "unit": "percent",
-      "dimensions": [],
-      "description": "This metric shows the ratio of ready messages to acked messages in the queue, helping to identify message backlog in the system.",
-      "query": "100 * sum(rate(rabbitmq_overview_messages_ready{__$labels__}[5m])) by (instance_id) /\n(sum(rate(rabbitmq_overview_messages_acked{__$labels__}[5m])) by (instance_id) + sum(rate(rabbitmq_overview_messages_ready{__$labels__}[5m])) by (instance_id))"
+      "unit": "counts",
+      "dimensions": ["url"],
+      "description": "Rate of messages published to RabbitMQ, reflecting message production volume",
+      "query": "rate(rabbitmq_overview_messages_published{__$labels__}[5m])"
     },
     {
-      "metric_group": "Message",
-      "name": "rabbitmq_unacked_message_ratio",
-      "display_name": "Unacked Message Ratio",
+      "metric_group": "Performance",
+      "name": "rabbitmq_node_run_queue",
+      "display_name": "Run Queue",
       "instance_id_keys": ["instance_id"],
       "data_type": "Number",
-      "unit": "percent",
-      "dimensions": [],
-      "description": "This metric shows the ratio of unacknowledged messages to the total messages in the queue, helping to identify slow consumers.",
-      "query": "100 * sum(rabbitmq_overview_messages_unacked{__$labels__}) by (instance_id) / (sum(rabbitmq_overview_messages_acked{__$labels__}) by (instance_id) + sum(rabbitmq_overview_messages_unacked{__$labels__}) by (instance_id))"
+      "unit": "counts",
+      "dimensions": ["url"],
+      "description": "Erlang run queue length, reflecting system CPU load and scheduling delay",
+      "query": "rabbitmq_node_run_queue{__$labels__}"
+    },
+    {
+      "metric_group": "Performance",
+      "name": "rabbitmq_node_mnesia_disk_tx_count_rate",
+      "display_name": "Mnesia Disk Transaction Rate",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "counts",
+      "dimensions": ["url"],
+      "description": "Rate of Mnesia database disk transactions, reflecting data persistence activity intensity",
+      "query": "rate(rabbitmq_node_mnesia_disk_tx_count{__$labels__}[5m])"
+    },
+    {
+      "metric_group": "Resource",
+      "name": "rabbitmq_node_mem_used",
+      "display_name": "Memory Used",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "bytes",
+      "dimensions": ["url"],
+      "description": "Current memory used by RabbitMQ node, reflecting memory resource consumption",
+      "query": "rabbitmq_node_mem_used{__$labels__}"
+    },
+    {
+      "metric_group": "Resource",
+      "name": "rabbitmq_node_mem_limit",
+      "display_name": "Memory Limit",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "bytes",
+      "dimensions": ["url"],
+      "description": "Memory limit for RabbitMQ node, used to calculate memory usage rate",
+      "query": "rabbitmq_node_mem_limit{__$labels__}"
+    },
+    {
+      "metric_group": "Resource",
+      "name": "rabbitmq_node_mem_alarm",
+      "display_name": "Memory Alarm",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Enum",
+      "unit": "[{\"name\":\"正常\",\"id\":0,\"color\":\"#1ac44a\"},{\"name\":\"告警\",\"id\":1,\"color\":\"#ff4d4f\"}]",
+      "dimensions": ["url"],
+      "description": "Whether memory usage triggers alarm, 1 indicates alarm, 0 indicates normal",
+      "query": "rabbitmq_node_mem_alarm{__$labels__}"
+    },
+    {
+      "metric_group": "Resource",
+      "name": "rabbitmq_node_disk_free",
+      "display_name": "Disk Free Space",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "bytes",
+      "dimensions": ["url"],
+      "description": "Available free disk space for RabbitMQ node, reflecting storage capacity",
+      "query": "rabbitmq_node_disk_free{__$labels__}"
+    },
+    {
+      "metric_group": "Resource",
+      "name": "rabbitmq_node_disk_free_alarm",
+      "display_name": "Disk Space Alarm",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Enum",
+      "unit": "[{\"name\":\"正常\",\"id\":0,\"color\":\"#1ac44a\"},{\"name\":\"告警\",\"id\":1,\"color\":\"#ff4d4f\"}]",
+      "dimensions": ["url"],
+      "description": "Whether disk space usage triggers alarm, 1 indicates alarm, 0 indicates normal",
+      "query": "rabbitmq_node_disk_free_alarm{__$labels__}"
+    },
+    {
+      "metric_group": "Resource",
+      "name": "rabbitmq_node_fd_used",
+      "display_name": "File Descriptors Used",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "counts",
+      "dimensions": ["url"],
+      "description": "Number of file descriptors currently used by RabbitMQ node, reflecting system resource usage",
+      "query": "rabbitmq_node_fd_used{__$labels__}"
+    },
+    {
+      "metric_group": "Resource",
+      "name": "rabbitmq_node_sockets_used",
+      "display_name": "Sockets Used",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "counts",
+      "dimensions": ["url"],
+      "description": "Number of sockets currently used by RabbitMQ node, reflecting network connection status",
+      "query": "rabbitmq_node_sockets_used{__$labels__}"
+    },
+    {
+      "metric_group": "Resource",
+      "name": "rabbitmq_node_proc_used",
+      "display_name": "Processes Used",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "counts",
+      "dimensions": ["url"],
+      "description": "Number of Erlang processes currently used by RabbitMQ node, reflecting system process load",
+      "query": "rabbitmq_node_proc_used{__$labels__}"
     }
   ]
 }

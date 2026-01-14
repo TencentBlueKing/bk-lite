@@ -966,55 +966,66 @@ monitor_object_metric:
       name: Background Clean Page Write Rate
       desc: Indicates high write pressure
   RabbitMQ:
-    rabbitmq_unacked_message_ratio:
-      name: Unacked Message Ratio
-      desc: This metric shows the ratio of unacknowledged messages to the total messages
-        in the queue, helping to identify slow consumers.
-    rabbitmq_node_run_queue:
-      name: Active Queues
-      desc: This metric shows the number of queues currently being handled by the
-        RabbitMQ node. A high number may indicate system pressure and need for optimization.
-    rabbitmq_node_mem_used:
-      desc: This metric indicates the memory usage on the RabbitMQ node. High memory
-        usage may lead to performance issues or node crashes.
-      name: Memory Usage
-    rabbitmq_overview_messages_ready:
-      name: Number of Messages Ready
-      desc: This metric indicates the number of messages ready for processing. A high
-        number of ready messages may indicate consumer lag or slow processing speed.
-    rabbitmq_node_fd_used:
-      name: Number of File Descriptors Used
-      desc: This metric shows the number of file descriptors used by the RabbitMQ
-        node. Excessive use may prevent the system from handling additional connections.
-    rabbitmq_exchange_publish_in_rate:
-      desc: This metric shows the rate of messages published to the RabbitMQ exchange
-        per second. It helps identify bottlenecks in message inflow.
-      name: Exchange Publish In Rate
     rabbitmq_node_uptime:
-      desc: This metric indicates the uptime of the RabbitMQ node, in seconds. Nodes
-        running for extended periods may require a restart to free resources and perform
-        maintenance.
-      name: Uptime
+      name: Node Uptime
+      desc: Uptime of RabbitMQ node since startup, reflecting node stability
+    rabbitmq_node_running:
+      name: Node Running Status
+      desc: Whether RabbitMQ node is running, 1 indicates running, 0 indicates stopped
+    rabbitmq_overview_connections:
+      name: Connections
+      desc: Number of active client connections, reflecting system load
+    rabbitmq_overview_channels:
+      name: Channels
+      desc: Number of open channels, reflecting message flow control capability
+    rabbitmq_overview_consumers:
+      name: Consumers
+      desc: Number of active consumers, reflecting message consumption capacity
+    rabbitmq_overview_queues:
+      name: Queues
+      desc: Number of defined queues, reflecting message storage structure
+    rabbitmq_overview_messages:
+      name: Total Messages
+      desc: Total messages in all queues, reflecting message backlog
+    rabbitmq_overview_messages_ready:
+      name: Ready Messages
+      desc: Number of messages ready for delivery in queues, reflecting pending messages
     rabbitmq_overview_messages_unacked:
-      name: Number of Unacknowledged Messages
-      desc: This metric represents the number of unacknowledged messages. A high number
-        of unacknowledged messages may indicate slow consumer processing or backlog.
+      name: Unacknowledged Messages
+      desc: Number of delivered but unacknowledged messages, reflecting message processing delay
+    rabbitmq_overview_messages_published_rate:
+      name: Message Publish Rate
+      desc: Rate of messages published to RabbitMQ, reflecting message production volume
+    rabbitmq_node_run_queue:
+      name: Run Queue
+      desc: Erlang run queue length, reflecting system CPU load and scheduling delay
+    rabbitmq_node_mnesia_disk_tx_count_rate:
+      name: Mnesia Disk Transaction Rate
+      desc: Rate of Mnesia database disk transactions, reflecting data persistence activity intensity
+    rabbitmq_node_mem_used:
+      name: Memory Used
+      desc: Current memory used by RabbitMQ node, reflecting memory resource consumption
+    rabbitmq_node_mem_limit:
+      name: Memory Limit
+      desc: Memory limit for RabbitMQ node, used to calculate memory usage rate
+    rabbitmq_node_mem_alarm:
+      name: Memory Alarm
+      desc: Whether memory usage triggers alarm, 1 indicates alarm, 0 indicates normal
     rabbitmq_node_disk_free:
-      desc: This metric indicates the free disk space on the RabbitMQ node, in bytes.
-        Low disk space can lead to performance degradation or failures.
-      name: Disk Space Free
-    rabbitmq_queue_message_backlog_ratio:
-      desc: This metric shows the ratio of ready messages to acked messages in the
-        queue, helping to identify message backlog in the system.
-      name: Queue Message Backlog Ratio
-    rabbitmq_exchange_publish_out_rate:
-      name: Exchange Publish Out Rate
-      desc: This metric shows the rate of messages published out of the RabbitMQ exchange
-        per second. It helps identify issues in message outflow.
-    rabbitmq_fd_usage_ratio:
-      name: File Descriptor Usage Ratio
-      desc: This metric shows the ratio of used file descriptors to the total number
-        of file descriptors on the RabbitMQ node.
+      name: Disk Free Space
+      desc: Available free disk space for RabbitMQ node, reflecting storage capacity
+    rabbitmq_node_disk_free_alarm:
+      name: Disk Space Alarm
+      desc: Whether disk space usage triggers alarm, 1 indicates alarm, 0 indicates normal
+    rabbitmq_node_fd_used:
+      name: File Descriptors Used
+      desc: Number of file descriptors currently used by RabbitMQ node, reflecting system resource usage
+    rabbitmq_node_sockets_used:
+      name: Sockets Used
+      desc: Number of sockets currently used by RabbitMQ node, reflecting network connection status
+    rabbitmq_node_proc_used:
+      name: Processes Used
+      desc: Number of Erlang processes currently used by RabbitMQ node, reflecting system process load
   MongoDB:
     mongodb_uptime_ns:
       name: Uptime
@@ -2886,9 +2897,9 @@ monitor_object_metric_group:
   ActiveMQ:
     Topic: Topic
   RabbitMQ:
-    Message: Message
-    Node: Node
-    Exchange: Exchange
+    Base: Base
+    Performance: Performance
+    Resource: Resource
   Apache:
     CPU: CPU
     Uptime: Uptime
