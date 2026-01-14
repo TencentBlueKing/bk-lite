@@ -3,9 +3,9 @@ export const useApacheConfig = () => {
     instance_type: 'apache',
     dashboardDisplay: [],
     tableDiaplay: [
-      { type: 'value', key: 'apache_uptime' },
-      { type: 'value', key: 'apache_req_per_sec' },
-      { type: 'progress', key: 'apache_cpu_load' },
+      { type: 'value', key: 'apache_ReqPerSec' },
+      { type: 'value', key: 'apache_BusyWorkers' },
+      { type: 'progress', key: 'apache_CPULoad' },
     ],
     groupIds: {},
     collectTypes: {

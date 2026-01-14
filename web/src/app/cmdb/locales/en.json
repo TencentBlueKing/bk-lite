@@ -82,6 +82,10 @@
     "Model": {
         "addModel": "Add Model",
         "editModel": "Edit Model",
+        "copyModel": "Copy Model",
+        "copy": "Copy",
+        "copyMode": "Copy Mode",
+        "selectCopyMode": "Please select at least one copy mode",
         "addGroup": "Add Group",
         "editGroup": "Edit Group",
         "modelGroup": "Model Group",

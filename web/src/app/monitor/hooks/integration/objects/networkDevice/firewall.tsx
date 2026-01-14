@@ -3,7 +3,7 @@ export const useFirewallConfig = () => {
     instance_type: 'firewall',
     dashboardDisplay: [
       {
-        indexId: 'sysUpTime',
+        indexId: 'interface_ifOutDiscards',
         displayType: 'single',
         sortIndex: 0,
         displayDimension: [],
@@ -13,7 +13,7 @@ export const useFirewallConfig = () => {
         },
       },
       {
-        indexId: 'iftotalInOctets',
+        indexId: 'interface_ifOperStatus',
         displayType: 'lineChart',
         sortIndex: 1,
         displayDimension: [],
@@ -23,7 +23,7 @@ export const useFirewallConfig = () => {
         },
       },
       {
-        indexId: 'iftotalOutOctets',
+        indexId: 'interface_ifInErrors',
         displayType: 'lineChart',
         sortIndex: 2,
         displayDimension: [],
@@ -53,9 +53,9 @@ export const useFirewallConfig = () => {
       },
     ],
     tableDiaplay: [
-      { type: 'value', key: 'iftotalInOctets' },
-      { type: 'value', key: 'iftotalOutOctets' },
-      { type: 'value', key: 'sysUpTime' },
+      { type: 'value', key: 'interface_ifOperStatus' },
+      { type: 'value', key: 'interface_ifInErrors' },
+      { type: 'value', key: 'interface_ifOutDiscards' },
     ],
     groupIds: {
       list: ['instance_id'],

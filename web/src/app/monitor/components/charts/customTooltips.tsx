@@ -37,8 +37,8 @@ const CustomTooltip: React.FC<CustomToolTipProps> = ({
             <div className="flex items-center mt-[4px]">
               <span
                 style={{
-                  display: 'inline-block',
                   width: '10px',
+                  minWidth: '10px',
                   height: '10px',
                   backgroundColor: item.color,
                   borderRadius: '50%',

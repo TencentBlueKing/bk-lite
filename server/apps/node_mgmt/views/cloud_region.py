@@ -58,14 +58,6 @@ class CloudRegionViewSet(mixins.ListModelMixin,
         instance = self.get_object()
         serializer = self.get_serializer(instance)
         result = serializer.data
-        #
-        # lan = LanguageLoader(app=LanguageConstants.APP, default_lang=request.user.locale)
-        #
-        # # 添加多语言字段
-        # name_key = f"{LanguageConstants.CLOUD_REGION}.{result['name']}.name"
-        # desc_key = f"{LanguageConstants.CLOUD_REGION}.{result['name']}.description"
-        # result["display_name"] = lan.get(name_key) or result["name"]
-        # result["display_introduction"] = lan.get(desc_key) or result["introduction"]
 
         return Response(result)
 

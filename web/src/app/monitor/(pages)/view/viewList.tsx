@@ -276,8 +276,8 @@ const ViewList: React.FC<ViewListProps> = ({
           if (item.type === 'progress') {
             return {
               title:
-                t(`monitor.views.${[item.key]}`) ||
                 target?.display_name ||
+                t(`monitor.views.${[item.key]}`) ||
                 '--',
               dataIndex: item.key,
               key: item.key,
@@ -536,7 +536,7 @@ const ViewList: React.FC<ViewListProps> = ({
         fieldSetting={{
           showSetting: false,
           displayFieldKeys: [
-            'elasticsearch_fs_total_available_in_bytes',
+            'elasticsearch_cluster_health_status_code',
             'instance_name',
           ],
           choosableFields: tableColumn.slice(0, tableColumn.length - 1),

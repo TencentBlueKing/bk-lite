@@ -1,5 +1,5 @@
 'use client';
-import React, { useEffect, useState, useRef } from 'react';
+import React, { useEffect, useState, useRef, useMemo } from 'react';
 import assetSearchStyle from './index.module.scss';
 import { useTranslation } from '@/utils/i18n';
 import { SearchOutlined } from '@ant-design/icons';
@@ -13,7 +13,16 @@ import {
   ModelStat,
   InstDetailItem,
 } from '@/app/cmdb/types/assetSearch';
-import { Spin, Input, Tabs, Button, Tag, Empty, Pagination } from 'antd';
+import {
+  Spin,
+  Input,
+  Tabs,
+  Button,
+  Tag,
+  Empty,
+  Pagination,
+  Checkbox,
+} from 'antd';
 import useApiClient from '@/utils/request';
 import { useCommon } from '@/app/cmdb/context/common';
 import { deepClone, getFieldItem } from '@/app/cmdb/utils/common';
@@ -36,7 +45,6 @@ const AssetSearch = () => {
   const [activeTab, setActiveTab] = useState<string>('');
   const [items, setItems] = useState<TabJsxItem[]>([]);
   const [showSearch, setShowSearch] = useState<boolean>(true);
-  const [instDetail, setInstDetail] = useState<InstDetailItem[]>([]);
   const [pageLoading, setPageLoading] = useState<boolean>(false);
   const [activeInstItem, setActiveInstItem] = useState<number>(-1);
   const [historyList, setHistoryList] = useState<string[]>([]);
@@ -45,6 +53,7 @@ const AssetSearch = () => {
   const [currentPage, setCurrentPage] = useState<number>(1);
   const [pageSize, setPageSize] = useState<number>(10);
   const [totalCount, setTotalCount] = useState<number>(0);
+  const [caseSensitive, setCaseSensitive] = useState<boolean>(false);
 
   useEffect(() => {
     if (isLoading || !modelList.length) return;
@@ -84,6 +93,7 @@ const AssetSearch = () => {
     try {
       const stats: SearchStatsResponse = await fulltextSearchStats({
         search: searchText,
+        case_sensitive: caseSensitive,
       });
 
       if (!stats.model_stats || stats.model_stats.length === 0) {
@@ -92,7 +102,6 @@ const AssetSearch = () => {
         setItems([]);
         setPropertyList([]);
         setActiveTab('');
-        setInstDetail([]);
         setActiveInstItem(-1);
         setTotalCount(0);
         setCurrentPage(1);
@@ -114,7 +123,6 @@ const AssetSearch = () => {
       setItems([]);
       setPropertyList([]);
       setActiveTab('');
-      setInstDetail([]);
       setActiveInstItem(-1);
       setTotalCount(0);
       setCurrentPage(1);
@@ -130,7 +138,7 @@ const AssetSearch = () => {
         model_id: modelId,
         page: page,
         page_size: size,
-        case_sensitive: false,
+        case_sensitive: caseSensitive,
       });
 
       setCurrentModelData(result.data || []);
@@ -178,13 +186,6 @@ const AssetSearch = () => {
     const currentDetail =
       descItems.length > 0 ? descItems[detailIndex] || [] : [];
 
-    // 设置详情状态
-    if (descItems.length > 0) {
-      setInstDetail(currentDetail);
-    } else {
-      setInstDetail([]);
-    }
-
     const modelName =
       modelList.find((model) => model.model_id === activeTab)?.model_name ||
       activeTab;
@@ -211,7 +212,7 @@ const AssetSearch = () => {
                     className={`${assetSearchStyle.listItem} ${
                       index === activeInstItem ? assetSearchStyle.active : ''
                     }`}
-                    onClick={() => checkInstDetail(index, target)}
+                    onClick={() => checkInstDetail(index)}
                   >
                     <div className={assetSearchStyle.title}>{`${modelName} - ${
                       target.find(
@@ -362,8 +363,21 @@ const AssetSearch = () => {
     });
   };
 
+  const currentInstDetail = useMemo(() => {
+    if (activeInstItem < 0 || !currentModelData[activeInstItem]) return [];
+    const currentInst = currentModelData[activeInstItem];
+    return Object.entries(currentInst)
+      .map(([key, value]) => ({
+        key: key,
+        label: propertyList.find((item) => item.attr_id === key)?.attr_name,
+        children: value,
+        id: currentInst._id,
+      }))
+      .filter((desc) => !!desc.label);
+  }, [activeInstItem, currentModelData, propertyList]);
+
   const linkToDetail = () => {
-    const _instDetail = deepClone(instDetail);
+    if (currentInstDetail.length === 0) return;
     const params: any = {
       icn: '',
       model_name:
@@ -371,8 +385,8 @@ const AssetSearch = () => {
         '--',
       model_id: activeTab,
       classification_id: '',
-      inst_id: _instDetail[0]?.id || '',
-      inst_name: _instDetail.find(
+      inst_id: currentInstDetail[0]?.id || '',
+      inst_name: currentInstDetail.find(
         (title: InstDetailItem) => title.key === 'inst_name'
       )?.children,
     };
@@ -388,9 +402,8 @@ const AssetSearch = () => {
     await loadModelData(key, 1, pageSize);
   };
 
-  const checkInstDetail = (index: number, row: InstDetailItem[]) => {
+  const checkInstDetail = (index: number) => {
     setActiveInstItem(index);
-    setInstDetail(row);
   };
 
   const handlePageChange = (page: number, size: number) => {
@@ -424,24 +437,42 @@ const AssetSearch = () => {
             <h1 className={assetSearchStyle.searchTitle}>{`${t(
               'searchTitle'
             )}`}</h1>
-            <Search
-              className={assetSearchStyle.inputBtn}
-              value={searchText}
-              allowClear
-              size="large"
-              placeholder={t('assetSearchTxt')}
-              enterButton={
-                <div
-                  className={assetSearchStyle.searchBtn}
-                  onClick={handleSearch}
+            <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
+              <Search
+                className={assetSearchStyle.inputBtn}
+                value={searchText}
+                allowClear
+                size="large"
+                placeholder={t('assetSearchTxt')}
+                enterButton={
+                  <div
+                    className={assetSearchStyle.searchBtn}
+                    onClick={handleSearch}
+                  >
+                    <SearchOutlined className="pr-[8px]" />
+                    {t('common.search')}
+                  </div>
+                }
+                onChange={handleTextChange}
+                onPressEnter={handleSearch}
+              />
+              <div
+                style={{
+                  border: '1px solid var(--color-border-2)',
+                  borderRadius: '2px',
+                  padding: '4px 12px',
+                  background: 'var(--color-bg-1)',
+                  whiteSpace: 'nowrap',
+                }}
+              >
+                <Checkbox
+                  checked={caseSensitive}
+                  onChange={(e) => setCaseSensitive(e.target.checked)}
                 >
-                  <SearchOutlined className="pr-[8px]" />
-                  {t('common.search')}
-                </div>
-              }
-              onChange={handleTextChange}
-              onPressEnter={handleSearch}
-            />
+                  {t('FilterBar.exactMatch')}
+                </Checkbox>
+              </div>
+            </div>
             {!!historyList.length && (
               <div className={assetSearchStyle.history}>
                 <div className={assetSearchStyle.description}>
@@ -470,26 +501,51 @@ const AssetSearch = () => {
           </div>
         ) : (
           <div className={assetSearchStyle.searchDetail}>
-            <Search
-              className={assetSearchStyle.input}
-              value={searchText}
-              allowClear
-              placeholder={t('assetSearchTxt')}
-              enterButton={
-                <div
-                  className={assetSearchStyle.searchBtn}
-                  onClick={handleSearch}
-                >
-                  <SearchOutlined className="pr-[8px]" />
-                  {t('common.search')}
-                </div>
-              }
-              onChange={handleTextChange}
-              onPressEnter={handleSearch}
-            />
             <div
               style={{
-                height: 'calc(100vh - 124px)',
+                display: 'flex',
+                gap: '12px',
+                alignItems: 'center',
+                marginBottom: '12px',
+              }}
+            >
+              <Search
+                className={assetSearchStyle.input}
+                value={searchText}
+                allowClear
+                placeholder={t('assetSearchTxt')}
+                enterButton={
+                  <div
+                    className={assetSearchStyle.searchBtn}
+                    onClick={handleSearch}
+                  >
+                    <SearchOutlined className="pr-[8px]" />
+                    {t('common.search')}
+                  </div>
+                }
+                onChange={handleTextChange}
+                onPressEnter={handleSearch}
+              />
+              <div
+                style={{
+                  border: '1px solid var(--color-border-2)',
+                  borderRadius: '2px',
+                  padding: '4px 12px',
+                  background: 'var(--color-bg-1)',
+                  whiteSpace: 'nowrap',
+                }}
+              >
+                <Checkbox
+                  checked={caseSensitive}
+                  onChange={(e) => setCaseSensitive(e.target.checked)}
+                >
+                  {t('FilterBar.exactMatch')}
+                </Checkbox>
+              </div>
+            </div>
+            <div
+              style={{
+                height: 'calc(100vh - 136px)',
               }}
             >
               {modelStats.length ? (
