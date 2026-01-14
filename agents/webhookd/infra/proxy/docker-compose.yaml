@@ -35,7 +35,7 @@ services:
     image: ${DOCKER_IMAGE_FUSION_COLLECTOR}
     hostname: ${SIDECAR_NODE_NAME}
     environment:
-      SERVER_URL: https://traefik:444/api/v1/node_mgmt/open_api/node
+      SERVER_URL: https://traefik:${TRAEFIK_WEB_PORT}/api/v1/node_mgmt/open_api/node
       SERVER_API_TOKEN: ${SIDECAR_INIT_TOKEN}
       SIDECAR_ZONE: ${ZONE_ID}
       SIDECAR_GROUP: 1
@@ -47,7 +47,7 @@ services:
     networks:
       - prod
     ports:
-      - 163:162/udp
+      - 162:162/udp
     restart: always
 
   traefik:
@@ -80,9 +80,7 @@ services:
       UV_OFFLINE: True
       NATS_TLS_ENABLED: true
       NATS_TLS_CA_FILE: /etc/certs/ca.crt
-
       NATS_METRIC_TOPIC: metrics
-
       REDIS_HOST: redis
       REDIS_PORT: 6379
       REDIS_PASSWORD: ${REDIS_PASSWORD}
