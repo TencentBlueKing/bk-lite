@@ -7,7 +7,7 @@ import json
 from apps.cmdb.collection.collect_plugin.base import CollectBase
 from apps.cmdb.collection.collect_util import timestamp_gt_one_day_ago
 from apps.cmdb.collection.constants import VMWARE_CLUSTER, VMWARE_COLLECT_MAP
-
+from apps.core.logger import cmdb_logger as logger
 
 class CollectVmwareMetrics(CollectBase):
     _MODEL_ID = "vmware_vc"
@@ -189,9 +189,15 @@ class CollectVmwareMetrics(CollectBase):
                 data = {}
                 for field, key_or_func in mapping.items():
                     if isinstance(key_or_func, tuple):
-                        data[field] = key_or_func[0](index_data[key_or_func[1]])
+                        try:
+                            data[field] = key_or_func[0](index_data[key_or_func[1]])
+                        except Exception as e:
+                            logger.error(f"数据转换失败 field:{field}, value:{index_data[key_or_func[1]]}, error:{e}")
                     elif callable(key_or_func):
-                        data[field] = key_or_func(index_data, index_data.get("inst_name",''))
+                        try:
+                            data[field] = key_or_func(index_data, index_data.get("inst_name",''))
+                        except Exception as e:
+                            logger.error(f"数据处理转换失败 field:{field}, error:{e}")
                     else:
                         data[field] = index_data.get(key_or_func, "")
                         data[field] =data[field].replace("\\", '')
