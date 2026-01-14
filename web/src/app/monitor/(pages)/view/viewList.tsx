@@ -276,8 +276,8 @@ const ViewList: React.FC<ViewListProps> = ({
           if (item.type === 'progress') {
             return {
               title:
-                t(`monitor.views.${[item.key]}`) ||
                 target?.display_name ||
+                t(`monitor.views.${[item.key]}`) ||
                 '--',
               dataIndex: item.key,
               key: item.key,
