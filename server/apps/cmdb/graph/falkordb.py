@@ -544,15 +544,22 @@ class FalkorDBClient:
             logger.debug(f"[query_entity] org_id={organization_id}, query_list={query_list}")
             logger.debug(f"[query_entity] org_base={org_base_permission_str}, org_perm={org_permission_str}")
             
+            # 组合组织条件（避免多余括号）
             org_filters = []
             if org_base_permission_str:
                 org_filters.append(org_base_permission_str)
             if org_permission_str:
-                org_filters.append(f"({org_permission_str})")
+                # org_permission_str 已经包含括号(如 (cond1 OR cond2))，直接使用
+                org_filters.append(org_permission_str)
             
             if org_filters:
-                combined_filter = f"({' AND '.join(org_filters)})"
-                permission_filters.append(combined_filter)
+                # 单个条件不需要额外括号
+                if len(org_filters) == 1:
+                    permission_filters.append(org_filters[0])
+                else:
+                    # 多个条件用 AND 连接时需要括号保证优先级
+                    combined_filter = f"({' AND '.join(org_filters)})"
+                    permission_filters.append(combined_filter)
         
         # 从统一的收集器获取所有参数
         query_params = param_collector.get_params() if param_collector else {}
@@ -560,8 +567,13 @@ class FalkorDBClient:
         # 组合最终查询条件
         final_conditions = []
         if permission_filters:
-            permission_str = f"({' OR '.join(permission_filters)})"
-            final_conditions.append(permission_str)
+            # 单个权限条件不需要额外括号
+            if len(permission_filters) == 1:
+                final_conditions.append(permission_filters[0])
+            else:
+                # 多个权限条件用 OR 连接时需要括号
+                permission_str = ' OR '.join(permission_filters)
+                final_conditions.append(f"({permission_str})")
         if base_params_str:
             final_conditions.append(base_params_str)
 
@@ -1122,18 +1134,22 @@ class FalkorDBClient:
                 org_permission_str, _ = self.format_search_params(query_list, param_type="OR")
             
             if base_permission_str and org_permission_str:
-                combined_filter = f"({base_permission_str} AND ({org_permission_str}))"
+                # org_permission_str 已经有括号，只需要外层括号保证 AND 优先级
+                combined_filter = f"({base_permission_str} AND {org_permission_str})"
                 permission_filters.append(combined_filter)
             elif base_permission_str:
-                # 只有组织条件，没有其他权限条件
-                permission_filters.append(f"({base_permission_str})")
+                # 只有组织条件，直接使用（format_search_params 返回的已有括号）
+                permission_filters.append(base_permission_str)
 
         # 组合最终查询条件：基础参数 AND (权限条件1 OR 权限条件2 OR ...)
         final_conditions = []
         if permission_filters:
             # 多个组织的权限条件用 OR 连接
-            permission_str = " OR ".join(permission_filters)
-            final_conditions.append(f"({permission_str})")
+            if len(permission_filters) == 1:
+                final_conditions.append(permission_filters[0])
+            else:
+                permission_str = " OR ".join(permission_filters)
+                final_conditions.append(f"({permission_str})")
 
         filter_str = " AND ".join(final_conditions) if final_conditions else ""
         if filter_str:
