@@ -10,12 +10,14 @@ import {
   DeleteTwoTone,
   SwitcherOutlined,
   HolderOutlined,
+  CopyOutlined,
 } from '@ant-design/icons';
 import Image from 'next/image';
 import assetManageStyle from './index.module.scss';
 import { getIconUrl } from '@/app/cmdb/utils/common';
 import GroupModal from './list/groupModal';
 import ModelModal from './list/modelModal';
+import CopyModelModal from './list/copyModelModal';
 import { useRouter } from 'next/navigation';
 import { useTranslation } from '@/utils/i18n';
 import PermissionWrapper from '@/components/permission';
@@ -33,6 +35,7 @@ const AssetManage = () => {
   const router = useRouter();
   const groupRef = useRef<any>(null);
   const modelRef = useRef<any>(null);
+  const copyModelRef = useRef<any>(null);
   const [modelGroup, setModelGroup] = useState<GroupItem[]>([]);
   const [groupList, setGroupList] = useState<GroupItem[]>([]);
   const [loading, setLoading] = useState<boolean>(false);
@@ -40,6 +43,7 @@ const AssetManage = () => {
   const [dragItem, setDragItem] = useState<any>({});
   const [dragOverItem, setDragOverItem] = useState<any>({});
   const [rawModelGroup, setRawModelGroup] = useState<GroupItem[]>([]);
+  const [hoveredModelId, setHoveredModelId] = useState<string | null>(null);
 
   useEffect(() => {
     if (modelListFromContext.length > 0) {
@@ -108,6 +112,10 @@ const AssetManage = () => {
       modelForm: row,
       subTitle: '',
     });
+  };
+
+  const showCopyModelModal = (model: ModelItem) => {
+    copyModelRef.current?.showModal(model);
   };
 
   const updateGroupList = () => {
@@ -201,6 +209,11 @@ const AssetManage = () => {
       classificationId: item.classification_id,
     }).toString();
     router.push(`/cmdb/assetData?${params}`);
+  };
+
+  const handleCopyClick = (e: React.MouseEvent, model: ModelItem) => {
+    e.stopPropagation();
+    showCopyModelModal(model);
   };
 
   return (
@@ -301,6 +314,8 @@ const AssetManage = () => {
                           })
                         }
                         onDragEnd={() => handleDragEnd(groupIndex)}
+                        onMouseEnter={() => setHoveredModelId(model.model_id)}
+                        onMouseLeave={() => setHoveredModelId(null)}
                       >
                         <div
                           className={assetManageStyle.leftSide}
@@ -332,6 +347,23 @@ const AssetManage = () => {
                             </span>
                           </div>
                         </div>
+                        {/* 复制按钮 */}
+                        {hoveredModelId === model.model_id && (
+                          <PermissionWrapper
+                            requiredPermissions={['Add Model']}
+                            instPermissions={model.permission}
+                          >
+                            <div className={assetManageStyle.copyButton}>
+                              <Button
+                                type="primary"
+                                shape="circle"
+                                icon={<CopyOutlined />}
+                                onClick={(e) => handleCopyClick(e, model)}
+                                title={t('Model.copy')}
+                              />
+                            </div>
+                          </PermissionWrapper>
+                        )}
                         <div
                           className={assetManageStyle.rightSide}
                           onClick={() => linkToInstList(model)}
@@ -355,6 +387,11 @@ const AssetManage = () => {
       <GroupModal ref={groupRef} onSuccess={updateGroupList} />
       <ModelModal
         ref={modelRef}
+        modelGroupList={groupList}
+        onSuccess={updateModelList}
+      />
+      <CopyModelModal
+        ref={copyModelRef}
         modelGroupList={groupList}
         onSuccess={updateModelList}
       />

@@ -8,7 +8,7 @@
   "description": "",
   "default_metric": "any({instance_type='os'}) by (instance_id)",
   "instance_id_keys": ["instance_id"],
-  "supplementary_indicators": ["cpu_usage_total", "mem_used_percent", "system_load5"],
+  "supplementary_indicators": ["cpu_usage_total", "mem_used_percent", "disk_used_percent"],
   "metrics": [
     {
       "metric_group": "CPU",

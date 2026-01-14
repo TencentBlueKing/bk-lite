@@ -1,6 +1,20 @@
 {
   "node-manager": {
     "cloudregion": {
+      "pageConfig": {
+        "node": {
+          "title": "Node",
+          "description": "Node is the environment in which controllers and components operate, which can be a host or a container. The platform leverages the controllers on the nodes to manage the nodes and uniformly regulate the operation of the components."
+        },
+        "environment": {
+          "title": "Environment",
+          "description": "The cloud region environment communicates with the platform through Nats Executor and Stargazer components running on proxy hosts or K8s clusters."
+        },
+        "variable": {
+          "title": "Variable",
+          "description": "Variables are used to dynamically replace values in configuration files, facilitating unified management and configuration reuse."
+        }
+      },
       "Configuration": {
         "windows": "Windows",
         "configurationType": "Configuration type",
@@ -42,6 +56,10 @@
         "installationMethod": "Installation Method",
         "viewGuide": "View guidance",
         "loginAccount": "Login Account",
+        "authType": "Authentication Type",
+        "password": "Password",
+        "privateKey": "Secret Key",
+        "uploadPrivateKey": "Upload key",
         "group": "Group",
         "error": "Error",
         "downloadPackage": "Download Installation Package",
@@ -96,7 +114,8 @@
         "btntext1": "If you do not have the configuration file you need, please click",
         "successInstall": "Installed successfully",
         "ipaddress": "IP Address",
-        "loginPassword": "Login Password",
+        "loginPassword": "Password/Private Key",
+        "excelLoginPassword": "Password (please import the key on the webpage)",
         "desc": "Node is the environment in which controllers and components operate, which can be a host or a container. The platform leverages the controllers on the nodes to manage the nodes and uniformly regulate the operation of the components.",
         "sidecarVersion": "Controller Version",
         "inactive": "Inactive",
@@ -124,6 +143,7 @@
         "nodeType": "Node Type",
         "commandCopied": "Command Copied",
         "commandCopiedDesc": "This command is specific to the current host. Please paste and execute it in the PowerShell (Administrator) window.",
+        "linuxCommandCopiedDesc": "This command is specific to the current host. Please paste and execute it on that host.",
         "installError": "Install Failed",
         "controllerVersionTip": "Upgradeable to new version",
         "autoInstallDes": "For manual installation, please follow the operation instructions on the host device.",
@@ -145,17 +165,14 @@
         "confirmFinishContent1": "Currently",
         "statusCompleted": "Completed",
         "retrySuccess": "Retry successful",
-        "copyInstallCommand": "Copy Install Command",
-        "excelLoginPassword": "Password (please import the key on the webpage)",
-        "authType": "Authentication Type",
-        "linuxCommandCopiedDesc": "This command is specific to the current host. Please paste and execute it on that host.",
-        "password": "Password",
-        "privateKey": "Secret Key",
-        "uploadPrivateKey": "Upload key"
+        "copyInstallCommand": "Copy Install Command"
       },
       "editform": {
         "Introduction": "Introduction",
-        "title": "Edit Cloud Region"
+        "title": "Edit Cloud Region",
+        "proxyIpOrDomain": "Proxy IP/Domain",
+        "proxyIpOrDomainPlaceholder": "Please enter the IP address or domain name of the proxy host, e.g., 192.168.1.100 or example.com",
+        "proxyTips": "The proxy host is a host in the cloud region that can communicate with the platform (default communication ports: 443, 4222). Please enter the IP or domain name of the proxy host in the cloud region network."
       },
       "variable": {
         "password": "Password",
@@ -167,6 +184,29 @@
         "value": "Value",
         "variableNameTips": "Only A-Z, a-z, 0-9, and _ are allowed",
         "text": "Text"
+      },
+      "environment": {
+        "envStatus": "Environment Status",
+        "envDeploy": "Environment Deployment",
+        "containerDeploy": "Container Deploy",
+        "k8sDeploy": "K8s Deploy",
+        "proxyIpOrDomain": "Proxy IP/Domain",
+        "proxyIpPlaceholder": "Please enter the IP address or domain name of the proxy host",
+        "proxyTips": "The proxy host is a host in the cloud region that can communicate with the platform (default communication ports: 443, 4222). Please enter the IP or domain name of the proxy host in the cloud region network.",
+        "generateScript": "Generate Deploy Script",
+        "generateSuccess": "Script generated successfully",
+        "deployScript": "Deploy Script",
+        "copyScript": "Copy Script",
+        "copySuccess": "Copy Success",
+        "copySuccessDesc": "Please go to the proxy host to execute the copied command. Refresh the proxy status after the command is executed successfully.",
+        "refreshProxyStatus": "Refresh Proxy Status",
+        "abnormal": "Abnormal",
+        "normal": "Normal",
+        "notDeployed": "Not Deployed",
+        "editWarningTitle": "Important Notice",
+        "editWarningContent": "Modifying the cloud region proxy host information is an unconventional operation that may cause existing nodes to lose connection.",
+        "editWarningTip": "Please confirm that this operation is necessary and be aware of potential impacts.",
+        "confirmEdit": "I Acknowledge, Continue Editing"
       },
       "deleteform": {
         "deleteInfo": "Are you sure you want to delete this cloud area?",
@@ -267,6 +307,7 @@
     "name": "Name",
     "bulkEdit": "Bulk Edit",
     "batchbindFailed": "Binding failed",
+    "environment": "Environment",
     "variable": "Variable",
     "applysuccess": "Applied successfully!",
     "prompt": "Prompt",
@@ -279,8 +320,10 @@
     "apply": "Apply",
     "quesuccess": "Query successful!",
     "refSuccess": "Refresh successful",
-    "topdes": "Node is the environment in which controllers and components operate, which can be a host or a container. The platform leverages the controllers on the nodes to manage the nodes and uniformly regulate the operation of the components.",
+    "loading": "Loading...",
+    "close": "Close",
     "download": "Download",
+    "upload": "Upload",
     "deleteTips": "Are you sure you want to modify this item?",
     "search": "Search...",
     "unapply": "Unapply",
@@ -288,7 +331,6 @@
     "batchbindSuccess": "Bound successfully",
     "successfulDownloaded": "Download successful !",
     "configuration": "Configuration",
-    "successfullyModified": "Modified successfully!",
-    "upload": "Upload"
+    "successfullyModified": "Modified successfully!"
   }
 }

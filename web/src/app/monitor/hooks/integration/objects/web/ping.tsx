@@ -3,7 +3,7 @@ export const usePingConfig = () => {
     instance_type: 'ping',
     dashboardDisplay: [
       {
-        indexId: 'ping_response_time',
+        indexId: 'ping_average_response_ms',
         displayType: 'single',
         sortIndex: 0,
         displayDimension: [],
@@ -13,7 +13,7 @@ export const usePingConfig = () => {
         },
       },
       {
-        indexId: 'ping_error_response_code',
+        indexId: 'ping_result_code',
         displayType: 'single',
         sortIndex: 1,
         displayDimension: [],
@@ -24,8 +24,9 @@ export const usePingConfig = () => {
       },
     ],
     tableDiaplay: [
-      { type: 'value', key: 'ping_response_time' },
-      { type: 'enum', key: 'ping_error_response_code' },
+      { type: 'value', key: 'ping_average_response_ms' },
+      { type: 'progress', key: 'ping_percent_packet_loss' },
+      { type: 'enum', key: 'ping_result_code' },
     ],
     groupIds: {},
     collectTypes: {
