@@ -20,7 +20,15 @@ class VmwareManage(object):
         self.user = params.get("username")
         self.host = params.get("host") or params.get("hostname")
         self.port = params.get("port", 443)
-        self.ssl = params.get("ssl", "false") == "true"
+        """
+        启用证书校验
+        vCenter 必须：
+        证书没过期
+        主机名匹配
+        CA 可信（或已导入）
+        否则直接连接失败
+        """
+        self.ssl_verify = params.get("ssl", "false") == "true" # 要不要严格检查 vCenter 的 HTTPS 证书是不是合法的
         self.si = None
         self.content = None
 
@@ -53,7 +61,7 @@ class VmwareManage(object):
         try:
             params = dict(host=self.host, port=int(self.port), user=self.user, pwd=self.password,
                           httpConnectionTimeout=10, connectionPoolTimeout=10)
-            if not self.ssl:
+            if not self.ssl_verify:
                 params['disableSslCertValidation'] = True
             import time
             a = time.time()
