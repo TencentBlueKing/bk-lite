@@ -3,8 +3,9 @@ export const useRedisConfig = () => {
     instance_type: 'redis',
     dashboardDisplay: [],
     tableDiaplay: [
-      { type: 'value', key: 'redis_used_memory' },
-      { type: 'value', key: 'redis_instantaneous_ops_per_sec' },
+      { type: 'value', key: 'redis_mem_fragmentation_ratio' },
+      { type: 'value', key: 'redis_connected_clients' },
+      { type: 'value', key: 'redis_evicted_keys_rate' },
     ],
     groupIds: {},
     collectTypes: {
