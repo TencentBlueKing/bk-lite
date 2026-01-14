@@ -166,6 +166,17 @@ class ModelManage(object):
         from apps.cmdb.display_field import ExcludeFieldsCache
         ExcludeFieldsCache.update_on_model_change(data["model_id"])
 
+        # 为新建模型创建默认字段分组
+        FieldGroup.objects.create(
+            model_id=data["model_id"],
+            group_name="default",
+            order=1,
+            is_collapsed=False,
+            description="默认分组",
+            created_by=username,
+            attr_orders=[attr.get("attr_id") for attr in attrs if not attr.get("is_display_field")],
+        )
+
         create_change_record(operator=username, model_id=data["model_id"], label="模型管理",
                              _type=CREATE_INST, message=f"创建模型. 模型名称: {data['model_name']}",
                              inst_id=result['_id'], model_object=OPERATOR_MODEL)
@@ -254,6 +265,17 @@ class ModelManage(object):
                         attr_orders=src_group.attr_orders or [],
                         order=src_group.order
                     )
+            else:
+                # 不复制属性时，为新模型创建默认分组
+                FieldGroup.objects.create(
+                    model_id=new_model_id,
+                    group_name="default",
+                    order=1,
+                    is_collapsed=False,
+                    description="默认分组",
+                    created_by=username,
+                    attr_orders=[attr.get("attr_id") for attr in attrs if not attr.get("is_display_field")],
+                )
 
             # 处理关系复制
             if copy_relationships:
