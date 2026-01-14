@@ -306,15 +306,26 @@ const FieldMoadal = forwardRef<FieldModalRef, FieldModalProps>(
     };
 
     const handleSubmit = (confirmType?: string) => {
-      form.validateFields().then((values) => {
-        for (const key in values) {
-          const target = formItems.find((item) => item.attr_id === key);
-          if (target?.attr_type === 'time' && values[key]) {
-            values[key] = values[key].format('YYYY-MM-DD HH:mm:ss');
+      form
+        .validateFields()
+        .then((values) => {
+          for (const key in values) {
+            const target = formItems.find((item) => item.attr_id === key);
+            if (target?.attr_type === 'time' && values[key]) {
+              values[key] = values[key].format('YYYY-MM-DD HH:mm:ss');
+            }
           }
-        }
-        operateAttr(values, confirmType);
-      });
+          operateAttr(values, confirmType);
+        })
+        .catch((errorInfo) => {
+          if (errorInfo.errorFields && errorInfo.errorFields.length > 0) {
+            const firstErrorField = errorInfo.errorFields[0].name[0];
+            form.scrollToField(firstErrorField, {
+              behavior: 'smooth',
+              block: 'center',
+            });
+          }
+        });
     };
 
     const operateAttr = async (params: AttrFieldType, confirmType?: string) => {
