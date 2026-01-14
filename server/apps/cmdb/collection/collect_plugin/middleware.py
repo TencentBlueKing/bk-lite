@@ -147,6 +147,16 @@ class MiddlewareCollectMetrics(CollectBase):
                 "custom_Log":"custom_Log",
                 "include":"include",
             },
+            "consul": {
+                "inst_name": self.get_inst_name,
+                "ip_addr": "ip_addr",
+                "port": "port",
+                "install_path": "install_path",
+                "version": "version",
+                "data_dir": "data_dir",
+                "conf_path": "conf_path",
+                "role": "role",
+            },
             "activemq":{
                 "inst_name": self.get_inst_name,
                 "ip_addr":"ip_addr",
