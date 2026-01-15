@@ -1,134 +1,80 @@
 monitor_object_metric:
   Minio:
-    minio_cluster_nodes_offline_total_gauge:
-      desc: 统计离线节点数，处理影响集群性能和冗余的问题。
-      name: 集群中处于离线状态的节点数量
-    minio_cluster_drive_offline_rate:
-      desc: 离线驱动器数量与总驱动器数量的比率,衡量存储设备的可靠性和可用性,超过阈值（如 5%）时可能影响数据冗余.
-      name: 集群驱动器离线率
-    minio_cluster_drive_online_total_gauge:
-      name: 集群中在线的驱动器总数
-      desc: 评估集群可用存储设备数量，保障集群正常运行。
-    minio_s3_requests_total_rate:
-      name: S3 请求速率
-      desc: 计算过去 5 分钟内 S3 请求的平均处理速率，反映系统吞吐量以及服务负载和性能基线。
-    minio_cluster_health_status_gauge:
-      desc: 综合反映集群健康状况，快速了解运行状态。0 = 不健康，1 = 健康
+    cluster_capacity_usable_total_bytes_gauge:
+      name: 集群可用总容量
+      desc: 集群经过纠删码计算后的可用逻辑存储总容量，反映了考虑冗余后的存储资源规模
+    cluster_capacity_usable_free_bytes_gauge:
+      name: 集群可用空闲容量
+      desc: 集群可用逻辑存储的空闲容量，用于监控存储使用情况和预测存储需求
+    cluster_drive_online_total_gauge:
+      name: 在线驱动器数
+      desc: 集群中当前在线可用的存储驱动器数量，反映存储硬件的可用性状态
+    cluster_nodes_online_total_gauge:
+      name: 在线节点数
+      desc: 集群中当前在线可用的节点服务器数量，影响集群处理能力和容错能力
+    cluster_health_status_gauge:
       name: 集群健康状态
-    minio_node_drive_reads_per_sec_gauge:
-      desc: 统计指定驱动器每秒的读取操作次数，用于评估驱动器的读取性能，排查读取相关的性能问题。
+      desc: 集群整体健康状态，1表示健康，0表示不健康，提供集群运行状况快速概览
+    cluster_health_erasure_set_status_gauge:
+      name: 擦除集状态
+      desc: 擦除集的状态（1=正常），反映数据冗余集的健康状况，直接影响数据安全性
+    cluster_health_erasure_set_online_drives_gauge:
+      name: 擦除集在线驱动器数
+      desc: 擦除集中在线驱动器的数量，影响数据可用性和冗余度，确保冗余策略有效性
+    node_cpu_avg_load1_gauge:
+      name: 节点1分钟平均负载
+      desc: 节点过去1分钟的平均系统负载，反映短期CPU压力，评估短期性能压力
+    node_cpu_avg_idle_gauge:
+      name: 节点CPU空闲率
+      desc: 节点CPU的空闲时间百分比，反映CPU利用率，低空闲率可能表示CPU瓶颈
+    node_mem_used_perc_gauge:
+      name: 节点内存使用率
+      desc: 节点内存使用百分比，反映内存压力，过高使用率可能导致性能下降
+    node_drive_perc_util_gauge:
+      name: 驱动器使用率
+      desc: 单个驱动器的使用百分比，反映存储设备空间使用情况，对容量规划重要
+    node_drive_reads_per_sec_gauge:
       name: 驱动器每秒读取次数
-    minio_bucket_requests_total_rate:
-      desc: 存储桶收到的 S3 请求总数的每秒增长率，反映存储桶的请求流量强度和业务访问频率。
-      name: 存储桶 S3 请求总数速率
-    minio_s3_requests_waiting_total_gauge:
-      name: S3 等待请求总数
-      desc: 显示等待处理的 S3 请求数，优化请求处理效率，直接反映系统处理能力是否饱和。
-    minio_cluster_capacity_storage_utilization:
-      name: 集群存储容量利用率
-      desc: 统计集群存储容量中已使用容量占总容量的百分比，监控存储资源使用情况，评估剩余存储资源。
-    minio_node_if_tx_errors_rate:
-      desc: 统计指定服务器网络接口过去5分钟内,每秒传输数据时出现的错误数量，用于排查网络传输故障，提高网络通信可靠性。
-      name: 传输错误率（每秒）
-    minio_node_drive_writes_kb_per_sec_gauge:
-      name: 驱动器上每秒写入的千字节数
-      desc: 统计指定驱动器每秒写入的数据量（以千字节为单位），反映驱动器的写入带宽，有助于优化数据写入效率。
-    minio_cluster_capacity_usable_free_bytes_gauge:
-      name: 集群可使用容量
-      desc: 反映实际可用存储资源，便于规划数据存储。
-    minio_cluster_write_quorum_gauge:
-      name: 集群最大写入确认数
-      desc: 保障数据写入一致性和可靠性，影响写入性能。
-    minio_audit_failed_messages_counter:
-      desc: 统计未发送消息数量，用于发现消息发送故障，保障消息传递完整性。
-      name: 未发送的消息总数
-    minio_node_if_tx_bytes_rate:
-      desc: 统计指定服务器网络接口过去5分钟内,每秒传输多少数据量用于监控网络流量流出情况，评估网络带宽使用效率。
-      name: 每秒传输的数据量
-    minio_bucket_requests_inflight_total_gauge:
-      name: 存储桶正在运行的 S3 请求总数
-      desc: 统计指定存储桶正在处理的 S3 请求数量，用于监控请求处理进度，优化系统性能。
-    minio_node_drive_reads_kb_per_sec_gauge:
-      name: 驱动器每秒读取千字节数
-      desc: 统计指定驱动器每秒读取的数据量（以千字节为单位），直观反映驱动器的读取带宽，帮助优化数据读取策略。
-    minio_bucket_usage_total_bytes_gauge:
-      desc: 统计指定存储桶所占用的存储空间大小，用于监控存储资源消耗，规划存储容量。
-      name: 存储桶总大小
-    minio_s3_requests_rejected_invalid_total_rate:
-      desc: 过去 5 分钟内因格式或参数错误被拒绝的 S3 请求平均速率，反映客户端请求质量。
-      name: S3 无效请求速率
-    minio_s3_requests_errors_total_rate:
-      name: S3 请求错误速率
-      desc: 过去 5 分钟内 S3 请求中发生错误的平均速率，反映系统稳定性。
-    minio_bucket_usage_object_total_gauge:
-      desc: 统计指定存储桶内的对象数量，用于了解存储桶的数据规模，评估存储桶的使用情况。
-      name: 存储桶对象总数
-    minio_bucket_requests_4xx_errors_total_rate:
-      name: 存储桶 S3 请求错误总率(4xx)
-      desc: 存储桶收到的 S3 请求中客户端错误（如 403/404）过去5分钟中的每秒发生率，反映客户端请求合法性问题的实时频率。
-    minio_audit_total_messages_counter:
-      name: 发送的消息总数
-      desc: 结合未发送消息数评估发送成功率，衡量消息发送稳定性。
-    minio_node_drive_writes_per_sec_gauge:
-      desc: 统计指定驱动器每秒的写入操作次数，用于评估驱动器的写入性能，分析写入操作对系统的影响。
+      desc: 单个驱动器每秒读取操作次数，反映存储设备读取性能和工作负载
+    node_drive_writes_per_sec_gauge:
       name: 驱动器每秒写入次数
-    minio_node_if_rx_bytes_rate:
-      name: 每秒接收的数据量
-      desc: 统计指定服务器网络接口过去5分钟内,每秒接收多少数据量，用于监控网络流量流入情况，评估网络带宽使用。
-    minio_node_cpu_avg_load5_gauge:
-      desc: 计算 CPU 过去 5 分钟平均负载，反映等待 CPU 资源的进程数（含运行中与等待进程），用于评估短期负载趋势、辅助性能优化决策。
-      name: CPU 五分钟平均负载
-    minio_node_drive_perc_util_gauge:
-      desc: 统计指定驱动器处于繁忙状态的时间百分比，用于评估驱动器的负载情况，合理分配存储任务。
-      name: 驱动器处于繁忙状态的时间使用率
-    minio_bucket_traffic_received_rate:
-      name: 存储桶接收流量速率
-      desc: 计算存储桶 5 分钟内平均每秒接收的数据流量，转换为 MB/s 单位，用于监控数据下载或读取的带宽使用情况。
-    minio_s3_requests_rejected_auth_total_rate:
-      name: S3 认证失败速率
-      desc: 过去 5 分钟内因认证失败被拒绝的 S3 请求平均速率，反映身份验证问题。
-    minio_node_cpu_avg_load15_gauge:
-      desc: 计算 CPU 过去 15 分钟平均负载，反映等待 CPU 资源的进程数（含运行中与等待进程），用于分析长期负载情况、规划系统资源。
-      name: CPU 十五分钟平均负载
-    minio_node_cpu_avg_load1_gauge:
-      name: CPU 一分钟平均负载
-      desc: 计算 CPU 过去 1 分钟平均负载，反映等待 CPU 资源的进程数（含运行中与等待进程），数值越大 CPU 越紧张，用于实时监控即时压力、发现性能问题。
-    minio_node_if_rx_errors_rate:
-      name: 接收错误率（每秒）
-      desc: 统计指定服务器网络接口过去5分钟内,每秒接收数据时出现的错误数量，用于排查网络接收故障，保障网络数据传输质量。
-    minio_audit_target_queue_length_gauge:
-      desc: 反映目标队列消息积压情况，帮助优化消息处理流程。
-      name: 目标队列中未发送的消息数
-    minio_s3_traffic_received_bytes_rate:
-      name: S3 接收流量速率
-      desc: 计算过去 5 分钟内 S3 请求接收数据的平均速率，反映数据下载性能。
-    minio_node_drive_used_inodes_utilization:
-      name: 驱动器inode 使用率
-      desc: 统计指定驱动器已使用的 inode 百分比，可了解驱动器的使用程度，辅助存储资源管理。
-    minio_cluster_nodes_online_total_gauge:
-      name: 集群中处于在线状态的节点数量
-      desc: 评估集群可用资源，保障服务能力。
-    minio_s3_traffic_sent_bytes_rate:
-      desc: 计算过去 5 分钟内 S3 请求发送数据的平均速率，反映数据上传性能。
-      name: S3 发送流量速率
-    minio_cluster_drive_offline_total_gauge:
-      name: 集群中处于脱机状态的驱动器总数
-      desc: 统计脱机驱动器数量，排查影响集群性能和数据可用性的问题。
-    minio_audit_delivery_success_rate:
-      desc: 发送消息的成功率，用于衡量审计消息发送的可靠性、稳定性。
-      name: 消息发送成功率
-    minio_node_drive_total_inodes_gauge:
-      desc: 统计指定驱动器的 inode 总数，用于衡量驱动器存储文件的能力上限，可评估存储资源规模。
-      name: 驱动器 inode 总数
-    minio_cluster_nodes_offline_rate:
-      desc: 离线节点数量占总节点数量的百分比，反映集群节点的健康状况,用于评估集群节点的稳定性。
-      name: 集群节点离线率
-    minio_cluster_capacity_usable_total_bytes_gauge:
-      name: 集群已使用容量
-      desc: 统计已用存储量，用于计算存储利用率。
-    minio_cluster_drive_total_gauge:
-      desc: 结合在线、脱机数量评估存储设备整体状况。
-      name: 集群中的驱动器总数
+      desc: 单个驱动器每秒写入操作次数，反映存储设备写入性能和工作负载
+    node_if_rx_bytes_gauge:
+      name: 网络接口接收字节数
+      desc: 网络接口接收的数据字节数，反映网络流入流量，监控网络带宽使用
+    node_if_tx_bytes_gauge:
+      name: 网络接口发送字节数
+      desc: 网络接口发送的数据字节数，反映网络流出流量，监控网络带宽使用
+    node_process_uptime_seconds_gauge:
+      name: 进程运行时间
+      desc: MinIO进程运行秒数，反映进程稳定性，长时间运行表示稳定，频繁重启可能有问题
+    node_process_cpu_total_seconds_counter_rate:
+      name: 进程CPU使用速率
+      desc: MinIO进程每秒消耗的CPU时间，反映MinIO服务对CPU资源的实时消耗
+    node_process_resident_memory_bytes_gauge:
+      name: 进程常驻内存
+      desc: MinIO进程占用的常驻内存大小，反映进程内存使用情况，监控内存泄漏
+    node_go_routine_total_gauge:
+      name: Go协程总数
+      desc: MinIO进程中当前的Go协程数量，反映并发处理能力，异常增加可能表示问题
+    s3_requests_incoming_total_gauge:
+      name: 当前传入S3请求数
+      desc: 当前正在处理的传入S3 API请求数量，反映当前S3服务负载
+    s3_requests_waiting_total_gauge:
+      name: 等待中S3请求数
+      desc: 当前等待处理的S3 API请求数量，反映S3服务处理队列积压情况
+    s3_traffic_received_bytes_counter_rate:
+      name: S3接收流量速率
+      desc: S3服务每秒接收的数据流量，反映数据上传速率和网络流入带宽使用
+    s3_traffic_sent_bytes_counter_rate:
+      name: S3发送流量速率
+      desc: S3服务每秒发送的数据流量，反映数据下载速率和网络流出带宽使用
+    s3_requests_rejected_auth_total_counter_rate:
+      name: 认证拒绝S3请求速率
+      desc: 因认证失败而被拒绝的S3请求每秒数量，反映认证失败频率和安全状况
+    node_scanner_objects_scanned_counter_rate:
+      name: 对象扫描速率
+      desc: 扫描器每秒扫描的对象数量，反映存储系统内部维护活动的效率
   Host:
     cpu_usage_total:
       name: CPU使用率
@@ -2378,16 +2324,9 @@ monitor_object_metric_group:
     TableCache: 表缓存
     TempTable: 临时表
   Minio:
-    CPU: CPU
-    ClusterDrive: 集群驱动器
-    DriveResource: 驱动器资源
-    ClusterHealth: 集群健康
-    NetworkInterface: 网络接口
-    Audit: 审计
-    BucketRequests: 存储桶请求
-    BucketUsage: 存储桶使用量
-    ClusterCapacity: 集群容量
-    S3Request: S3 请求
+    Cluster Monitoring: 集群监控
+    Resource Monitoring: 资源监控
+    S3 Service Monitoring: S3服务监控
   Switch:
     Base: 基础
     Packet: 数据包

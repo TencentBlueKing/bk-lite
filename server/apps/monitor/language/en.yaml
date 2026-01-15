@@ -1,189 +1,80 @@
 monitor_object_metric:
   Minio:
-    minio_cluster_nodes_offline_total_gauge:
-      desc: Counts offline nodes to address issues affecting performance and redundancy.
-      name: Total Offline Nodes
-    minio_cluster_drive_offline_rate:
-      desc: The ratio of the number of offline drives to the total number of drives,
-        a measure of the reliability and availability of storage devices, can affect
-        data redundancy when thresholds such as 5% are exceeded.
-      name: Cluster Drive Offline Rate
-    minio_cluster_drive_online_total_gauge:
-      name: Total Online Drives
-      desc: Evaluates available storage devices to ensure cluster operation.
-    minio_s3_requests_total_rate:
-      name: S3 Request Rate
-      desc: Calculates the average processing rate of S3 requests over the last 5
-        minutes, reflecting system throughput and service load and performance baselines.
-    minio_cluster_health_status_gauge:
-      desc: Reflects overall cluster health for quick status check. 0 = Unhealthy,
-        1 = Healthy
+    cluster_capacity_usable_total_bytes_gauge:
+      name: Cluster Usable Total Capacity
+      desc: Total usable logical storage capacity after erasure coding, reflecting storage resource scale after redundancy
+    cluster_capacity_usable_free_bytes_gauge:
+      name: Cluster Usable Free Capacity
+      desc: Available logical storage capacity of the cluster, used for monitoring usage and predicting storage needs
+    cluster_drive_online_total_gauge:
+      name: Online Drives Count
+      desc: Number of currently online and available storage drives, indicating storage hardware availability
+    cluster_nodes_online_total_gauge:
+      name: Online Nodes Count
+      desc: Number of currently online server nodes, affecting cluster processing capacity and fault tolerance
+    cluster_health_status_gauge:
       name: Cluster Health Status
-    minio_node_drive_reads_per_sec_gauge:
-      desc: Counts the number of read operations per second on a specified drive to
-        evaluate its read performance and troubleshoot read-related performance issues.
-      name: Drive Reads per Second
-    minio_bucket_requests_total_rate:
-      desc: The growth rate per second of the total number of S3 requests received
-        by a bucket reflects the intensity of request traffic and the frequency of
-        business access to the bucket.
-      name: Bucket S3 Total Request Rate
-    minio_s3_requests_waiting_total_gauge:
-      name: Total Waiting S3 Requests
-      desc: Displays the number of S3 requests waiting to be processed, optimizes
-        request processing efficiency, and directly reflects whether the system is
-        saturated.
-    minio_cluster_capacity_storage_utilization:
-      name: Cluster Storage Capacity Utilization
-      desc: Collect statistics on the percentage of used capacity in the cluster storage
-        capacity to the total capacity, monitor the storage resource usage, and evaluate
-        the remaining storage resources.
-    minio_node_if_tx_errors_rate:
-      desc: Statistics on the number of errors that occur during data transmission
-        per second on the network interface of a specified server in the past 5 minutes
-        are used to troubleshoot network transmission faults and improve network communication
-        reliability.
-      name: Transmission Error Rate
-    minio_node_drive_writes_kb_per_sec_gauge:
-      name: Drive Write Kilobytes per Second
-      desc: Counts the amount of data written per second (in kilobytes) on a specified
-        drive, reflecting its write bandwidth to improve data-writing efficiency.
-    minio_cluster_capacity_usable_free_bytes_gauge:
-      name: Cluster Available Capacity
-      desc: Reflects available storage for data storage planning.
-    minio_cluster_write_quorum_gauge:
-      name: Cluster Max Write Acknowledgments
-      desc: Ensures data write consistency and reliability, affecting write performance.
-    minio_audit_failed_messages_counter:
-      desc: Counts unsent messages to detect sending failures and ensure message delivery
-        integrity.
-      name: Total Unsent Messages
-    minio_node_if_tx_bytes_rate:
-      desc: Statistics on the amount of data transmitted per second on a specified
-        server network interface in the past five minutes are used to monitor network
-        traffic outflow and evaluate network bandwidth efficiency.
-      name: The amount of data transferred per second
-    minio_bucket_requests_inflight_total_gauge:
-      name: Bucket Active S3 Requests
-      desc: Statistics on the number of S3 requests processed by a specified bucket
-        can be used to monitor the request processing progress and optimize system
-        performance.
-    minio_node_drive_reads_kb_per_sec_gauge:
-      name: Drive Read Kilobytes per Second
-      desc: Counts the amount of data read per second (in kilobytes) on a specified
-        drive, directly reflecting its read bandwidth to optimize data-reading strategies.
-    minio_bucket_usage_total_bytes_gauge:
-      desc: Statistics on the amount of storage space occupied by a specified bucket
-        can be used to monitor storage resource consumption and plan storage capacity.
-      name: Total Bucket Size
-    minio_s3_requests_rejected_invalid_total_rate:
-      desc: Calculates the average rate of S3 requests rejected due to invalid format
-        or parameters over the past 5 minutes, reflecting client request quality.
-      name: S3 Invalid Requests Rate
-    minio_s3_requests_errors_total_rate:
-      name: S3 Request Error Rate
-      desc: Calculates the average rate of errors in S3 requests over the past 5 minutes,
-        reflecting system stability.
-    minio_bucket_usage_object_total_gauge:
-      desc: Statistics on the number of objects in a specified bucket are used to
-        understand the data scale of the bucket and evaluate the bucket usage.
-      name: Total Objects in Bucket
-    minio_bucket_requests_4xx_errors_total_rate:
-      name: Total Bucket S3 Request Error Rate (4xx)
-      desc: The rate per second of client errors (e.g., 403/404) in S3 requests received
-        by the bucket over the past 5 minutes, reflecting the real-time frequency
-        of client request legitimacy issues.
-    minio_audit_total_messages_counter:
-      name: Total Sent Messages
-      desc: Evaluates sending success rate with unsent messages to measure stability.
-    minio_node_drive_writes_per_sec_gauge:
-      desc: Counts the number of write operations per second on a specified drive
-        to evaluate its write performance and analyze the impact of write operations
-        on the system.
-      name: Drive Writes per Second
-    minio_node_if_rx_bytes_rate:
-      name: Data Receive Rate per Second
-      desc: Statistics on the amount of data received per second by a specified server
-        network interface in the past five minutes are used to monitor network traffic
-        inflow and evaluate network bandwidth usage.
-    minio_node_cpu_avg_load5_gauge:
-      desc: Calculate the average CPU load over the past 5 minutes, reflecting the
-        number of processes waiting for CPU resources (including running and waiting
-        processes), which is used to evaluate short-term load trends and assist in
-        performance optimization decisions.
-      name: CPU 5-Minute Average Load
-    minio_node_drive_perc_util_gauge:
-      desc: Counts the percentage of time a specified drive is busy to evaluate its
-        load and allocate storage tasks reasonably.
-      name: Drive Busy Time Utilization
-    minio_bucket_traffic_received_rate:
-      name: Bucket Data Receive Rate
-      desc: The average amount of data traffic received by the compute bucket per
-        second over a 5-minute period, converted to MB/s units, is used to monitor
-        bandwidth usage for data downloads or reads.
-    minio_s3_requests_rejected_auth_total_rate:
-      name: S3 Authentication Failure Rate
-      desc: Calculates the average rate of S3 requests rejected due to authentication
-        failures over the past 5 minutes, reflecting authentication issues.
-    minio_node_cpu_avg_load15_gauge:
-      desc: The average CPU load in the past 15 minutes is calculated, reflecting
-        the number of processes waiting for CPU resources (including running and waiting
-        processes), which is used to analyze the long-term load and plan system resources.
-      name: CPU 15-Minute Average Load
-    minio_node_cpu_avg_load1_gauge:
-      name: CPU 1-Minute Average Load
-      desc: Calculate the average load of the CPU in the past 1 minute, reflecting
-        the number of processes waiting for CPU resources (including running and waiting
-        processes), the larger the value, the more CPU tension, for real-time monitoring
-        of real-time pressure and detection of performance problems.
-    minio_node_if_rx_errors_rate:
-      name: Receiving Error Rate
-      desc: Statistics on the number of errors that occur when receiving data per
-        second on a specified server network interface in the past 5 minutes is used
-        to troubleshoot network receiving faults and ensure network data transmission
-        quality.
-    minio_audit_target_queue_length_gauge:
-      desc: Reflects message backlog in target queue for optimizing message processing.
-      name: Unsent Messages in Target Queue
-    minio_s3_traffic_received_bytes_rate:
-      name: S3 Data Received Rate
-      desc: Calculates the average rate of data received in S3 requests over the past
-        5 minutes, reflecting data download performance.
-    minio_node_drive_used_inodes_utilization:
-      name: Drive Inode Utilization
-      desc: Statistics on the percentage of inodes used by a specified drive can be
-        used to understand the degree of drive usage and assist in storage resource
-        management.
-    minio_cluster_nodes_online_total_gauge:
-      name: Total Online Nodes
-      desc: Evaluates available cluster resources to ensure service capacity.
-    minio_s3_traffic_sent_bytes_rate:
-      desc: Calculates the average rate of data sent in S3 requests over the past
-        5 minutes, reflecting data upload performance.
-      name: S3 Data Sent Rate
-    minio_cluster_drive_offline_total_gauge:
-      name: Total Offline Drives
-      desc: Counts offline drives to troubleshoot issues affecting performance and
-        data availability.
-    minio_audit_delivery_success_rate:
-      desc: The success rate of sending messages is used to measure the reliability
-        and stability of audit message sending.
-      name: Message Delivery Success Rate
-    minio_node_drive_total_inodes_gauge:
-      desc: Counts the total number of inodes on a specified drive to measure its
-        file-storage capacity limit and evaluate the scale of storage resources.
-      name: Total Inodes of Drive
-    minio_cluster_nodes_offline_rate:
-      desc: The percentage of the number of offline nodes in the total number of nodes
-        reflects the health status of the cluster nodes and is used to evaluate the
-        stability of the cluster nodes.
-      name: Cluster Nodes Offline Rate
-    minio_cluster_capacity_usable_total_bytes_gauge:
-      name: Cluster Used Capacity
-      desc: Counts used storage for calculating utilization rate.
-    minio_cluster_drive_total_gauge:
-      desc: Evaluates overall storage device status with online and offline counts.
-      name: Total Drives in Cluster
+      desc: Overall cluster health status, 1 indicates healthy, 0 indicates unhealthy, providing quick overview of cluster status
+    cluster_health_erasure_set_status_gauge:
+      name: Erasure Set Status
+      desc: Erasure set status (1=healthy), indicating data redundancy set health and directly affecting data security
+    cluster_health_erasure_set_online_drives_gauge:
+      name: Erasure Set Online Drives
+      desc: Number of online drives in erasure set, affecting data availability and redundancy, ensuring redundancy strategy effectiveness
+    node_cpu_avg_load1_gauge:
+      name: Node 1-minute Average Load
+      desc: Average system load over last 1 minute, indicating short-term CPU pressure and performance stress
+    node_cpu_avg_idle_gauge:
+      name: Node CPU Idle Rate
+      desc: Percentage of CPU idle time, indicating CPU utilization, low idle rate may indicate CPU bottleneck
+    node_mem_used_perc_gauge:
+      name: Node Memory Usage Rate
+      desc: Percentage of memory used, indicating memory pressure, high usage may cause performance degradation
+    node_drive_perc_util_gauge:
+      name: Drive Utilization Rate
+      desc: Utilization percentage of single drive, reflecting storage space usage, important for capacity planning
+    node_drive_reads_per_sec_gauge:
+      name: Drive Reads Per Second
+      desc: Number of read operations per second on single drive, reflecting read performance and workload
+    node_drive_writes_per_sec_gauge:
+      name: Drive Writes Per Second
+      desc: Number of write operations per second on single drive, reflecting write performance and workload
+    node_if_rx_bytes_gauge:
+      name: Network Interface Receive Bytes
+      desc: Received data bytes on network interface, reflecting network inflow, monitoring bandwidth usage
+    node_if_tx_bytes_gauge:
+      name: Network Interface Transmit Bytes
+      desc: Transmitted data bytes on network interface, reflecting network outflow, monitoring bandwidth usage
+    node_process_uptime_seconds_gauge:
+      name: Process Uptime
+      desc: Seconds MinIO process has been running, indicating stability, long uptime indicates stability, frequent restarts may indicate issues
+    node_process_cpu_total_seconds_counter_rate:
+      name: Process CPU Usage Rate
+      desc: CPU time consumed per second by MinIO process, reflecting real-time CPU resource consumption
+    node_process_resident_memory_bytes_gauge:
+      name: Process Resident Memory
+      desc: Resident memory size occupied by MinIO process, reflecting memory usage, monitoring memory leaks
+    node_go_routine_total_gauge:
+      name: Go Routines Total
+      desc: Current number of Go routines in MinIO process, reflecting concurrency capacity, abnormal increase may indicate issues
+    s3_requests_incoming_total_gauge:
+      name: Current Incoming S3 Requests
+      desc: Number of incoming S3 API requests currently being processed, reflecting current S3 service load
+    s3_requests_waiting_total_gauge:
+      name: Waiting S3 Requests
+      desc: Number of S3 API requests currently waiting for processing, reflecting S3 service queue backlog
+    s3_traffic_received_bytes_counter_rate:
+      name: S3 Received Traffic Rate
+      desc: Data traffic received per second by S3 service, reflecting upload rate and network inflow bandwidth usage
+    s3_traffic_sent_bytes_counter_rate:
+      name: S3 Sent Traffic Rate
+      desc: Data traffic sent per second by S3 service, reflecting download rate and network outflow bandwidth usage
+    s3_requests_rejected_auth_total_counter_rate:
+      name: Auth Rejected S3 Requests Rate
+      desc: Number of S3 requests rejected per second due to authentication failure, reflecting authentication failure frequency and security status
+    node_scanner_objects_scanned_counter_rate:
+      name: Objects Scan Rate
+      desc: Number of objects scanned per second by scanner, reflecting efficiency of storage system internal maintenance activities
   Host:
     cpu_usage_total:
       name: CPU Usage
@@ -3166,16 +3057,9 @@ monitor_object_metric_group:
     TableCache: Table Cache
     TempTable: Temporary Tables
   Minio:
-    CPU: CPU
-    ClusterDrive: Cluster Drive
-    DriveResource: Drive Resource
-    ClusterHealth: Cluster Health
-    NetworkInterface: Network Interface
-    Audit: Audit
-    BucketRequests: Bucket Requests
-    BucketUsage: Bucket Usage
-    ClusterCapacity: Cluster Capacity
-    S3Request: S3 Request
+    Cluster Monitoring: Cluster Monitoring
+    Resource Monitoring: Resource Monitoring
+    S3 Service Monitoring: S3 Service Monitoring
   Switch:
     Base: Base
     Packet: Packet
