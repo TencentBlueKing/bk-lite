@@ -107,7 +107,9 @@ const BasicInfoForm: React.FC<BasicInfoFormProps> = ({
                   <span className="text-[var(--color-primary)] px-[4px]">
                     {source.values.length}
                   </span>
-                  {t('monitor.assets')}
+                  {source.type === 'instance'
+                    ? t('monitor.assets')
+                    : t('monitor.group')}
                   <Button
                     className="ml-[10px]"
                     icon={<PlusOutlined />}
