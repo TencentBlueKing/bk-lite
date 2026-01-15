@@ -8,50 +8,50 @@
   "description": "",
   "default_metric": "any({instance_type='activemq'}) by (instance_id)",
   "instance_id_keys": ["instance_id"],
-  "supplementary_indicators": ["activemq_topic_consumer_count"],
+  "supplementary_indicators": ["activemq_topics_consumer_count", "activemq_topics_enqueue_count", "activemq_topics_size"],
   "metrics": [
     {
       "metric_group": "Topic",
-      "name": "activemq_topic_consumer_count",
-      "display_name": "Consumer Count",
+      "name": "topics_consumer_count",
+      "display_name": "Topic Consumer Count",
       "instance_id_keys": ["instance_id"],
       "data_type": "Number",
-      "unit": "short",
+      "unit": "counts",
       "dimensions": [],
-      "description": "This metric represents the number of consumers per topic, used to monitor if consumers are evenly distributed.",
-      "query": "sum(activemq_topics_consumer_count{__$labels__}) by (instance_id)"
+      "description": "Current number of consumer connections for a specific topic, reflecting message consumption capacity",
+      "query": "activemq_topics_consumer_count{__$labels__}"
     },
     {
       "metric_group": "Topic",
-      "name": "activemq_topic_dequeue_rate",
-      "display_name": "Dequeue Rate",
+      "name": "topics_dequeue_count",
+      "display_name": "Topic Dequeue Count",
       "instance_id_keys": ["instance_id"],
       "data_type": "Number",
-      "unit": "pps",
+      "unit": "counts",
       "dimensions": [],
-      "description": "This metric shows the rate at which messages are consumed from the topic, indicating the consumption rate per second.",
-      "query": "rate(activemq_topics_dequeue_count{__$labels__}[5m])"
+      "description": "Total number of messages dequeued from a specific topic, reflecting processed message volume",
+      "query": "activemq_topics_dequeue_count{__$labels__}"
     },
     {
       "metric_group": "Topic",
-      "name": "activemq_topic_enqueue_rate",
-      "display_name": "Enqueue Rate",
+      "name": "topics_enqueue_count",
+      "display_name": "Topic Enqueue Count",
       "instance_id_keys": ["instance_id"],
       "data_type": "Number",
-      "unit": "pps",
+      "unit": "counts",
       "dimensions": [],
-      "description": "This metric shows the rate at which messages are enqueued to the topic, indicating the incoming message rate per second.",
-      "query": "rate(activemq_topics_enqueue_count{__$labels__}[5m])"
+      "description": "Total number of messages enqueued to a specific topic, reflecting received message volume",
+      "query": "activemq_topics_enqueue_count{__$labels__}"
     },
     {
       "metric_group": "Topic",
-      "name": "activemq_topic_size",
-      "display_name": "Topic Size",
+      "name": "topics_size",
+      "display_name": "Topic Current Size",
       "instance_id_keys": ["instance_id"],
       "data_type": "Number",
-      "unit": "short",
+      "unit": "counts",
       "dimensions": [],
-      "description": "This metric shows the number of unconsumed messages in the topic, helping to identify potential message backlog.",
+      "description": "Current number of messages stored in a specific topic, reflecting backlog status",
       "query": "activemq_topics_size{__$labels__}"
     }
   ]
