@@ -52,20 +52,6 @@ class RegionService:
             )
             raise BaseAppException("Webhook configuration missing")
 
-        required_keys = [
-            "NATS_SERVERS",
-            "NATS_ADMIN_USERNAME",
-            "NATS_ADMIN_PASSWORD",
-            "NODE_SERVER_URL",
-            "TRAEFIK_WEB_PORT",
-        ]
-        missing_keys = [k for k in required_keys if not env_vars.get(k)]
-        if missing_keys:
-            logger.error(
-                f"Missing env vars for cloud region {cloud_region_id}: {missing_keys}"
-            )
-            raise BaseAppException(f"Missing configuration: {', '.join(missing_keys)}")
-
         proxy_ip = cloud_region.proxy_address
         if not proxy_ip:
             logger.error(f"Missing proxy_address for cloud region {cloud_region_id}")
@@ -81,13 +67,13 @@ class RegionService:
             "zone_name": cloud_region.name,
             "server_url": env_vars.get("NODE_SERVER_URL"),
             "nats_url": env_vars.get("NATS_SERVERS"),
-            "nats_username": env_vars.get("NATS_ADMIN_USERNAME"),
-            "nats_password": env_vars.get("NATS_ADMIN_PASSWORD"),
+            "nats_username": env_vars.get("NATS_USERNAME"),
+            "nats_password": env_vars.get("NATS_PASSWORD"),
             "api_token": api_token,
             "redis_password": redis_password,
             "proxy_ip": proxy_ip,
-            "nats_monitor_username": env_vars.get("NATS_ADMIN_USERNAME"),
-            "nats_monitor_password": env_vars.get("NATS_ADMIN_PASSWORD"),
+            "nats_monitor_username": env_vars.get("NATS_USERNAME"),
+            "nats_monitor_password": env_vars.get("NATS_PASSWORD"),
             "traefik_web_port": env_vars.get("TRAEFIK_WEB_PORT", "443"),
         }
 
