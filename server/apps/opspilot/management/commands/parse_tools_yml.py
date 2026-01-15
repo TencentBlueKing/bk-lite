@@ -115,6 +115,7 @@ class Command(BaseCommand):
                     "array": "text",
                     "object": "text",
                     "password": "password",
+                    "textarea": "textarea",
                 }
                 mapped_type = type_mapping.get(param_type, "text")
 

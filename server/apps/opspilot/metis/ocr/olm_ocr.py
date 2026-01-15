@@ -25,11 +25,9 @@ class OlmOcr:
             压缩后的图片字节数据
         """
         data_size = len(image_data)
-        logger.info(f"原始图片大小: {data_size / 1024:.2f} KB")
 
         # 如果文件小于限制，直接返回原始数据
         if data_size <= max_size_kb * 1024:
-            logger.info("图片大小在限制范围内，无需压缩")
             return image_data
 
         # 使用 Pillow 压缩图片
@@ -97,17 +95,11 @@ class OlmOcr:
         Returns:
             OCR识别结果文本
         """
-        logger.info(f"开始处理base64图片，编码长度: {len(image_base64)}")
-
         # 解码base64得到图片字节数据
         image_data = base64.b64decode(image_base64)
-
         # 压缩图片（如需要）
         compressed_image = self._compress_image_from_bytes(image_data)
         compressed_base64 = base64.b64encode(compressed_image).decode("utf-8")
-
-        logger.info(f"压缩后 base64 编码长度: {len(compressed_base64)}")
-
         # 调用OCR识别
         return self._perform_ocr(compressed_base64)
 
@@ -144,8 +136,6 @@ class OlmOcr:
             OCR识别结果文本
         """
         try:
-            logger.info(f"准备发送请求 - model: {self.model}, base_url: {self.client.base_url}")
-
             # 使用 OpenAI SDK 发送请求
             response = self.client.chat.completions.create(
                 model=self.model,
@@ -198,15 +188,11 @@ class OlmOcr:
                 temperature=0.01,
             )
 
-            logger.info("请求成功，开始解析响应")
-
             # 提取文本内容
             if response.choices and len(response.choices) > 0:
                 content = response.choices[0].message.content
-                logger.info(f"识别成功，内容长度: {len(content) if content else 0}")
                 return content
             else:
-                logger.warning("响应中没有 choices 或 choices 为空")
                 return "无法识别文本"
 
         except Exception as e:
