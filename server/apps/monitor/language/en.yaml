@@ -2140,22 +2140,30 @@ monitor_object_metric:
         supporting overall traffic monitoring and capacity planning.
       name: Device Total Inbound Traffic (per second)
   Consul:
-    consul_health_checks_status:
-      name: Health Check Status
-      desc: This metric represents the status of the health check in Consul, where
-        0=passing, 1=warning, 2=critical.
-    consul_health_checks_critical:
-      desc: This metric shows the number of health checks in critical status, used
-        to monitor critical failures.
-      name: Critical Health Checks  Count
-    consul_health_checks_warning:
-      desc: This metric shows the number of health checks in warning status, used
-        to monitor potential issues.
-      name: Warning Health Checks Count
     consul_health_checks_passing:
-      desc: This metric indicates the number of passing health checks, used to monitor
-        the health status of services.
-      name: Passing Health Checks Count
+      name: Health Checks Passing
+      desc: Number of health checks in passing state on Consul node; 1 indicates check
+        passed, 0 indicates not passed
+    consul_health_checks_critical:
+      name: Health Checks Critical
+      desc: Number of health checks in critical state on Consul node; 1 indicates
+        check is critical, 0 indicates normal
+    consul_health_checks_warning:
+      name: Health Checks Warning
+      desc: Number of health checks in warning state on Consul node; 1 indicates check
+        is warning, 0 indicates normal
+    consul_health_checks_status:
+      name: Health Checks Status
+      desc: Current status value of health checks on Consul node, typically indicating
+        specific status codes
+    consul_health_checks_check_name:
+      name: Check Name Identifier
+      desc: Name identifier of health check, distinguishing different types (e.g.,
+        serfHealth for Serf cluster health check)
+    consul_health_checks_service_id:
+      name: Service ID Identifier
+      desc: Service ID identifier associated with health check; 0 indicates node-level
+        check, non-zero indicates service-specific check
   Ping:
     ping_response_time:
       name: Average Response Time
@@ -3158,7 +3166,9 @@ monitor_object_metric_group:
     Counts: Counts
     Utilization: Utilization
   Consul:
-    Check: Check
+    Health: Health
+    Node: Node
+    Service: Service
   Ping:
     Ping: Ping
   SNMP Trap: None

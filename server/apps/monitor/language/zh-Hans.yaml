@@ -1522,18 +1522,24 @@ monitor_object_metric:
       desc: 此指标表示整个设备在过去5分钟内接收到的总字节流量的平均速率，单位为兆字节每秒（MB/s）。通过对多个接口的接收字节进行汇总计算，帮助管理员获取整个设备的接收流量情况，从而支持总体流量监控以及容量规划。
       name: 设备每秒接收总流量
   Consul:
+    consul_health_checks_passing:
+      name: 健康检查通过数
+      desc: Consul节点上健康检查结果为通过状态的数量，值为1表示检查通过，0表示未通过
+    consul_health_checks_critical:
+      name: 健康检查危险数
+      desc: Consul节点上健康检查结果为危险状态的数量，值为1表示检查处于危险状态，0表示正常
+    consul_health_checks_warning:
+      name: 健康检查警告数
+      desc: Consul节点上健康检查结果为警告状态的数量，值为1表示检查处于警告状态，0表示正常
     consul_health_checks_status:
       name: 健康检查状态
-      desc: 该指标表示Consul健康检查的状态，其中0为通过，1为警告，2为严重。
-    consul_health_checks_critical:
-      desc: 该指标表示当前处于严重状态的健康检查数量，用于监测服务的重大故障。
-      name: 严重的健康检查数
-    consul_health_checks_warning:
-      desc: 该指标表示当前处于警告状态的健康检查数量，用于监测潜在的服务问题。
-      name: 警告的健康检查数
-    consul_health_checks_passing:
-      desc: 该指标表示当前通过的健康检查数量，用于监测健康检查的正常情况。
-      name: 通过的健康检查数
+      desc: Consul节点上健康检查的当前状态值，通常用于表示检查的具体状态代码
+    consul_health_checks_check_name:
+      name: 检查名称标识
+      desc: 健康检查的名称标识符，用于区分不同类型的检查（如serfHealth表示Serf集群健康检查）
+    consul_health_checks_service_id:
+      name: 服务ID标识
+      desc: 健康检查关联的服务ID标识符，值为0表示节点级检查，非0表示关联特定服务
   Ping:
     ping_response_time:
       name: 平均响应时间
@@ -2368,7 +2374,9 @@ monitor_object_metric_group:
     Counts: 数量
     Utilization: 使用率
   Consul:
-    Check: 检查情况
+    Health: 健康检查
+    Node: 节点状态
+    Service: 服务状态
   Ping:
     Ping: Ping
   SNMP Trap: None
