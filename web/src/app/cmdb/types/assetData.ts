@@ -21,6 +21,7 @@ export interface NodeData {
   asst_id?: string;
   expanded?: boolean;
   children: NodeData[];
+  has_more?: boolean;
 }
 
 export interface RecordsEnum {
