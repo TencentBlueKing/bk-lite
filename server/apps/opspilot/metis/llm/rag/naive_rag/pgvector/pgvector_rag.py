@@ -483,16 +483,15 @@ class PgvectorRag:
 
         embedding = EmbedManager().get_embed(req.embed_model_base_url, req.embed_model_name, req.embed_model_api_key, req.embed_model_base_url)
 
-        vector_store = PGVector(
-            embeddings=embedding,
-            collection_name=req.index_name,
-            connection=self.db_url,
-            use_jsonb=True,
-        )
+        vector_store = PGVector(embeddings=embedding, collection_name=req.index_name, connection=self.db_url, use_jsonb=True)
 
         try:
-            chunk_ids = [doc.metadata["chunk_id"] for doc in req.docs]
-            vector_store.add_documents(req.docs, ids=chunk_ids)
+            chunk_ids = []
+            # 逐个处理文档，避免超过 OpenAI batch size 限制
+            for doc in req.docs:
+                doc_id = doc.metadata["chunk_id"]
+                vector_store.add_documents([doc], ids=[doc_id])
+                chunk_ids.append(doc_id)
 
             logger.info(f"文档导入成功 - 索引: {req.index_name}, 导入数量: {len(req.docs)}")
             return chunk_ids
