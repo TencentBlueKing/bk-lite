@@ -1302,62 +1302,48 @@ monitor_object_metric:
         system, enabling more effective traffic management and optimization.
       name: Device Total Outgoing Traffic (per second)
   Docker Container:
-    docker_container_mem_usage:
-      desc: Amount of memory used by the container, typically shown in bytes, indicating
-        the actual physical memory consumption.
-      name: Memory Usage
-    docker_container_blkio_io_service_bytes_recursive_total:
-      name: Total Block I/O Bytes
-      desc: Total number of bytes transferred during block I/O operations in the container,
-        including all read and write operations.
-    docker_container_net_tx_bytes:
-      name: Transmitted Network Bytes
-      desc: This metric indicates the number of network bytes sent by the container,
-        used to monitor the network traffic of the container.
-    docker_container_blkio_io_service_bytes_recursive_read:
-      name: Bytes Read from Block Device
-      desc: Number of bytes read from block devices, reflecting the load of read operations
-        and storage performance.
-    docker_container_mem_usage_percent:
-      name: Memory Usage Percent
-      desc: This metric indicates the percentage of memory usage of the container,
-        monitoring the memory load of the container.
-    docker_container_blkio_io_service_bytes_recursive_write:
-      name: Bytes Written to Block Device
-      desc: Number of bytes written to block devices, indicating the load of write
-        operations and storage performance.
+    docker_container_status:
+      name: Container Status
+      desc: Reflects the current running state of the container, such as running, stopped, or paused
+    docker_container_status_restart_count:
+      name: Restart Count
+      desc: The number of times the container has restarted, i.e., how many resets have occurred since its last start
     docker_container_cpu_usage_percent:
       name: CPU Usage Percent
-      desc: This metric indicates the percentage of CPU usage of the container, monitoring
-        the CPU load of the container.
-    docker_container_net_tx_errors:
-      desc: Total number of errors encountered by the container when sending packets,
-        useful for identifying outbound network problems.
-      name: Total Network Sent Errors
-    docker_container_net_tx_packets:
-      name: Total Sent Packets
-      desc: Total number of packets sent by the container, reflecting the activity
-        level of outbound network flow.
-    docker_container_net_rx_errors:
-      desc: Total number of errors encountered by the container when receiving packets,
-        useful for diagnosing network issues.
-      name: Total Network Receive Errors
-    docker_container_net_rx_bytes:
-      name: Received Network Bytes
-      desc: This metric indicates the number of network bytes received by the container,
-        used to monitor the network traffic of the container.
-    docker_container_status_restart_count:
-      desc: This metric indicates the number of container restarts, helping monitor
-        if the container is frequently restarting.
-      name: Restart Count
-    docker_container_status:
-      desc: This metric indicates the state of the container, where 0 means the container
-        is normal.
-      name: Container Status
-    docker_container_net_rx_packets:
-      name: Total Received Packets
-      desc: Total number of packets received by the container, indicating the activity
-        level of inbound network flow.
+      desc: Percentage of CPU resources used by the container relative to the available resources, used to monitor performance and load
+    docker_container_mem_usage_percent:
+      name: Memory Usage Percent
+      desc: Percentage of memory used by the container relative to the memory limit set, helps understand memory usage
+    docker_container_mem_usage:
+      name: Memory Usage
+      desc: Amount of memory used by the container, indicating the actual physical memory consumption
+    docker_container_blkio_io_service_bytes_recursive_total_rate:
+      name: Total Block I/O Bytes Rate
+      desc: Total number of bytes transferred per second during block I/O operations in the container, including all read and write operations
+    docker_container_blkio_io_service_bytes_recursive_read_rate:
+      name: Block Device Read Bytes Rate
+      desc: Number of bytes read per second from block devices, reflecting the load of read operations and storage performance
+    docker_container_blkio_io_service_bytes_recursive_write_rate:
+      name: Block Device Write Bytes Rate
+      desc: Number of bytes written per second to block devices, indicating the load of write operations and storage performance
+    docker_container_net_rx_bytes_rate:
+      name: Received Network Bytes Rate
+      desc: Number of bytes received per second by the container through its network interfaces, used to monitor inbound network traffic
+    docker_container_net_tx_bytes_rate:
+      name: Transmitted Network Bytes Rate
+      desc: Number of bytes sent per second from the container through its network interfaces, used to monitor outbound network traffic
+    docker_container_net_rx_errors_rate:
+      name: Network Receive Errors Rate
+      desc: Number of errors per second encountered by the container when receiving packets, useful for diagnosing network issues
+    docker_container_net_tx_errors_rate:
+      name: Network Transmit Errors Rate
+      desc: Number of errors per second encountered by the container when sending packets, useful for identifying outbound network problems
+    docker_container_net_rx_packets_rate:
+      name: Received Packets Rate
+      desc: Number of packets received per second by the container, indicating the activity level of inbound network flow
+    docker_container_net_tx_packets_rate:
+      name: Transmitted Packets Rate
+      desc: Number of packets sent per second by the container, reflecting the activity level of outbound network flow
   Oracle-Exporter:
     oracledb_up_gauge:
       name: OracleDb Status
@@ -2620,17 +2606,14 @@ monitor_object_metric:
       desc: Frequency of connection requests rejected due to reaching max connections, reflects connection resource tension, non-zero frequency requires consideration of expansion
   Docker:
     docker_n_containers_running:
-      name: Running Containers
-      desc: This metric indicates the number of containers running on the Docker host,
-        reflecting the host's load.
+      name: Running Container Count
+      desc: This metric represents the number of running containers on the Docker host
     docker_n_containers:
-      desc: This metric indicates the total number of containers on the Docker host,
-        reflecting the host's load.
-      name: Total Containers
+      name: Total Container Count
+      desc: This metric represents the total number of containers on the Docker host
     docker_n_containers_stopped:
-      desc: This metric indicates the number of stopped containers on the Docker host,
-        helping to understand container status.
-      name: Stopped Containers
+      name: Stopped Container Count
+      desc: This metric represents the number of stopped containers on the Docker host
   Pod:
     pod_cpu_utilization:
       desc: Calculates the CPU utilization of a Pod, reflecting the difference between
@@ -3105,11 +3088,11 @@ monitor_object_metric_group:
     Memory: Memory
     JMXselfMonitor: JMX Self-Monitoring Information
   Docker Container:
-    IO: IO
-    CPU: CPU
     Status: Status
+    CPU: CPU
     Memory: Memory
-    Net: Net
+    Block I/O: Block I/O
+    Network: Network
   Tomcat:
     Connector: Connector
     JVM Memory: JVM Memory

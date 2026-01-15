@@ -957,48 +957,48 @@ monitor_object_metric:
       desc: 此指标表示整个设备在过去5分钟内发送的总字节流量的平均速率，单位为兆字节每秒（MB/s）。通过对多个接口的发送字节进行汇总，管理员可以全面评估整个系统的发送性能，从而进行更有效的流量管理和优化。
       name: 设备每秒发送总流量
   Docker Container:
-    docker_container_mem_usage:
-      desc: 容器使用的内存量，通常以字节为单位，显示容器实际占用的物理内存量。
-      name: 内存使用量
-    docker_container_blkio_io_service_bytes_recursive_total:
-      name: 总块I/O字节数
-      desc: 该指标表示容器的总块I/O字节数，反映容器的磁盘I/O负载。
-    docker_container_net_tx_bytes:
-      name: 发送网络字节数
-      desc: 该指标表示容器发送的网络字节数，用于监控容器的网络流量。
-    docker_container_blkio_io_service_bytes_recursive_read:
-      name: 块设备读取字节数
-      desc: 从块设备中读取的字节数，反映读取操作的负载和存储性能。
-    docker_container_mem_usage_percent:
-      name: 内存使用率
-      desc: 该指标表示容器的内存使用百分比，监控容器的内存负载情况。
-    docker_container_blkio_io_service_bytes_recursive_write:
-      name: 块设备写入字节数
-      desc: 向块设备写入的字节数，表示写入操作的负载和存储性能。
+    docker_container_status:
+      name: 容器状态
+      desc: 表示容器当前的运行状态，例如是否正在运行、停止或暂停
+    docker_container_status_restart_count:
+      name: 重启次数
+      desc: 容器已重启的次数，即自上次启动以来容器已执行的重启次数
     docker_container_cpu_usage_percent:
       name: CPU使用率
-      desc: 该指标表示容器的CPU使用百分比，监控容器的CPU负载情况。
-    docker_container_net_tx_errors:
-      desc: 容器在发送数据包时遇到的错误总数，帮助识别网络发送问题。
-      name: 网络发送错误总数
-    docker_container_net_tx_packets:
-      name: 发送的数据包总数
-      desc: 容器发送的数据包数量，反映网络流出的活跃度。
-    docker_container_net_rx_errors:
-      desc: 容器在接收数据包时遇到的错误总数，可用于诊断网络问题。
-      name: 网络接收错误总数
-    docker_container_net_rx_bytes:
-      name: 接收网络字节数
-      desc: 该指标表示容器接收到的网络字节数，用于监控容器的网络流量。
-    docker_container_status_restart_count:
-      desc: 该指标表示容器的重启次数，帮助监控容器是否频繁重启。
-      name: 重启次数
-    docker_container_status:
-      desc: 该指标表示容器的状态，0表示容器正常。
-      name: 容器状态
-    docker_container_net_rx_packets:
-      name: 接收到的数据包总数
-      desc: 容器接收到的数据包数量，显示网络流入的活跃度。
+      desc: 容器使用的CPU资源占可用资源的百分比，用于监测性能和负载
+    docker_container_mem_usage_percent:
+      name: 内存使用率
+      desc: 容器使用的内存占设定限制的百分比，帮助了解内存资源的使用情况
+    docker_container_mem_usage:
+      name: 内存使用量
+      desc: 容器使用的内存量，显示容器实际占用的物理内存量
+    docker_container_blkio_io_service_bytes_recursive_total_rate:
+      name: 总块I/O字节速率
+      desc: 在容器中块设备读写操作传输的总字节速率，包括所有读取和写入操作
+    docker_container_blkio_io_service_bytes_recursive_read_rate:
+      name: 块设备读取字节速率
+      desc: 从块设备中读取的字节速率，反映读取操作的负载和存储性能
+    docker_container_blkio_io_service_bytes_recursive_write_rate:
+      name: 块设备写入字节速率
+      desc: 向块设备写入的字节速率，表示写入操作的负载和存储性能
+    docker_container_net_rx_bytes_rate:
+      name: 接收网络字节速率
+      desc: 容器通过网络接口接收到的字节速率，用于监测容器的网络流入流量
+    docker_container_net_tx_bytes_rate:
+      name: 发送网络字节速率
+      desc: 容器通过网络接口发送出去的字节速率，用于监测容器的网络流出流量
+    docker_container_net_rx_errors_rate:
+      name: 网络接收错误速率
+      desc: 容器在接收数据包时遇到的错误速率，可用于诊断网络问题
+    docker_container_net_tx_errors_rate:
+      name: 网络发送错误速率
+      desc: 容器在发送数据包时遇到的错误速率，帮助识别网络发送问题
+    docker_container_net_rx_packets_rate:
+      name: 接收数据包速率
+      desc: 容器接收到的数据包速率，显示网络流入的活跃度
+    docker_container_net_tx_packets_rate:
+      name: 发送数据包速率
+      desc: 容器发送的数据包速率，反映网络流出的活跃度
   Oracle-Exporter:
     oracledb_up_gauge:
       name: 运行状态
@@ -1907,13 +1907,13 @@ monitor_object_metric:
   Docker:
     docker_n_containers_running:
       name: 正在运行的容器数
-      desc: 该指标表示Docker主机上正在运行的容器数，反映主机的负载情况。
+      desc: 该指标表示 Docker 主机上正在运行的容器数量
     docker_n_containers:
-      desc: 该指标表示Docker主机上容器总数，反映主机的负载情况。
       name: 容器总数
+      desc: 该指标表示 Docker 主机上的容器总数量
     docker_n_containers_stopped:
-      desc: 该指标表示Docker主机上停止的容器数，帮助了解容器的运行情况。
       name: 停止的容器数
+      desc: 该指标表示 Docker 主机上停止的容器数量
   Pod:
     pod_cpu_utilization:
       desc: 计算 Pod CPU 使用率，即容器 CPU 限制与请求的差值，反映 CPU 资源的入住情况。
@@ -2372,11 +2372,11 @@ monitor_object_metric_group:
     Memory: 内存
     JMXselfMonitor: JMX自监控信息
   Docker Container:
-    IO: IO
-    CPU: CPU
     Status: 状态
+    CPU: CPU
     Memory: 内存
-    Net: 网络
+    Block I/O: 块I/O
+    Network: 网络
   Tomcat:
     Connector: 连接器性能
     JVM Memory: JVM内存
