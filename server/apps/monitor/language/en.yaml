@@ -1115,59 +1115,83 @@ monitor_object_metric:
       name: Network Output Frequency
       desc: Frequency of network data transmission, indicating database output traffic load
   Tomcat:
-    tomcat_jvm_memory_max:
-      desc: This metric indicates the maximum memory available to Tomcat JVM, used
-        to monitor memory limits.
-      name: JMX Max Memory
-    tomcat_connector_current_threads_busy:
-      desc: This metric indicates the number of busy threads in the Tomcat connector,
-        used to monitor concurrent processing.
-      name: Busy Thread Count
-    tomcat_connector_max_threads:
-      desc: This metric indicates the maximum number of threads for the Tomcat connector,
-        used to monitor Tomcat's concurrency capabilities.
-      name: Max Thread Count
+    tomcat_connector_request_count:
+      name: Total Requests Processed
+      desc: Total number of HTTP requests processed by connector, reflecting overall
+        workload
+    tomcat_connector_error_count:
+      name: Total Error Requests
+      desc: Total number of error requests during processing, indicating service reliability
+        issues
+    tomcat_connector_bytes_received:
+      name: Total Bytes Received
+      desc: Total bytes received from clients by connector, reflecting network input
+        traffic
+    tomcat_connector_bytes_sent:
+      name: Total Bytes Sent
+      desc: Total bytes sent to clients by connector, reflecting network output traffic
+    tomcat_connector_processing_time:
+      name: Total Processing Time
+      desc: Total time spent processing all requests by connector, reflecting processing
+        performance
+    tomcat_connector_max_time:
+      name: Maximum Request Processing Time
+      desc: Maximum time taken to process a single request by connector, indicating
+        extreme performance cases
     tomcat_connector_current_thread_count:
       name: Current Thread Count
-      desc: This metric shows the current number of threads used by the Tomcat connector,
-        used to monitor concurrency capabilities.
-    tomcat_connector_bytes_sent:
-      desc: This metric represents the average number of bytes sent per second by
-        the Tomcat connector in the past 5 minutes, and it is used to monitor traffic
-        and response load.
-      name: Bytes Sent
-    tomcat_jvm_memorypool_used:
-      name: JMX Used Memory Pool
-      desc: This metric shows the amount of memory used in the Tomcat JVM memory pool,
-        used to monitor memory pool usage.
-    tomcat_connector_max_time:
-      desc: This metric indicates the maximum time taken to process a single request
-        in Tomcat, reflecting the performance of the slowest request.
-      name: Max Processing Time
+      desc: Total number of threads currently managed in connector thread pool, indicating
+        resource allocation
+    tomcat_connector_current_threads_busy:
+      name: Busy Threads Count
+      desc: Number of threads currently busy processing requests, indicating real-time
+        load
+    tomcat_connector_max_threads:
+      name: Maximum Threads
+      desc: Maximum number of threads allowed in connector thread pool, indicating
+        concurrency capacity limit
     tomcat_jvm_memory_free:
-      desc: This metric shows the free memory in Tomcat JVM, used to monitor memory
-        usage.
-      name: JMX Free Memory
-    tomcat_connector_request_count:
-      name: Request Count
-      desc: This metric represents the total number of requests processed per second
-        on average by the Tomcat connector in the past 5 minutes, and is used to monitor
-        the request load.
-    tomcat_connector_processing_time:
-      desc: This metric is used to measure the average per - second change in the
-        time taken by the Tomcat connector to process requests over the past 5 minutes.
-        It can reflect the efficiency of the server in processing requests.
-      name: Processing Time
-    tomcat_connector_error_count:
-      desc: This metric represents the average number of errors per second that occur
-        when the Tomcat connector processes requests in the past 5 minutes, and it
-        is used to monitor the error rate.
-      name: Error Count
-    tomcat_connector_bytes_received:
-      desc: It represents the number of bytes of data received per second on average
-        by the Tomcat connector in the past 5 minutes. It can be used to monitor the
-        network traffic load of the Tomcat server.
-      name: Bytes Received
+      name: Free Memory Size
+      desc: Current free space in JVM heap memory, indicating available memory capacity
+    tomcat_jvm_memory_total:
+      name: Total Allocated Memory
+      desc: Total allocated space in JVM heap memory, indicating memory usage scale
+    tomcat_jvm_memory_max:
+      name: Maximum Available Memory
+      desc: Maximum available space configured for JVM heap memory, indicating memory
+        capacity limit
+    tomcat_jvm_memorypool_used:
+      name: Memory Pool Used
+      desc: Current used memory size in specific JVM memory pool, indicating detailed
+        memory allocation
+    tomcat_jvm_memorypool_committed:
+      name: Memory Pool Committed
+      desc: Memory size committed to OS for specific JVM memory pool, indicating memory
+        reservation
+    tomcat_jvm_memorypool_max:
+      name: Memory Pool Maximum
+      desc: Maximum memory size allowed for specific JVM memory pool, indicating capacity
+        limit
+    tomcat_jvm_memorypool_init:
+      name: Memory Pool Initial
+      desc: Initial memory size allocated for specific JVM memory pool, indicating
+        startup configuration
+    tomcat_connector_request_count_rate:
+      name: Request Processing Rate
+      desc: Request processing rate per second calculated over 5-minute window, indicating
+        real-time throughput
+    tomcat_connector_error_count_rate:
+      name: Error Request Rate
+      desc: Error request rate per second calculated over 5-minute window, indicating
+        service stability trend
+    tomcat_connector_bytes_sent_rate:
+      name: Data Sending Rate
+      desc: Data sending rate per second calculated over 5-minute window, indicating
+        network output traffic trend
+    tomcat_connector_current_thread_utilization:
+      name: Thread Pool Utilization
+      desc: Percentage of busy threads relative to maximum threads, indicating thread
+        resource utilization efficiency
   Website:
     http_duration:
       desc: This metric represents the total time taken from initiating an HTTP request
@@ -3132,11 +3156,10 @@ monitor_object_metric_group:
     Memory: Memory
     Net: Net
   Tomcat:
-    Error: Error
-    Request: Request
-    Net: Net
-    Threads: Threads
-    JMX: 'JMX '
+    Connector: Connector
+    JVM Memory: JVM Memory
+    Memory Pool: Memory Pool
+    Performance: Performance
   Docker:
     Docker Count: Docker Count
   Jetty-JMX:
