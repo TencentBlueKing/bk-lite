@@ -30,7 +30,7 @@
       "assetGroup": "组织",
       "level": "级别",
       "hours": "小时",
-      "setAssets": "请设置要监控的资产。",
+      "setAssets": "支持通过组织，动态选择组织下的资产。",
       "configureNotifications": "配置通知",
       "notified": "已通知",
       "defineTheMetric": "定义指标",

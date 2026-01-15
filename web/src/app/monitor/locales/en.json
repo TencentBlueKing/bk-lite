@@ -30,7 +30,7 @@
       "assetGroup": "Asset Group",
       "level": "Level",
       "hours": "Hour(s)",
-      "setAssets": "Please set the assets to be monitored.",
+      "setAssets": "Support dynamic selection of assets under an organization through the organization itself.",
       "configureNotifications": "Configure notifications",
       "notified": "Notified",
       "defineTheMetric": "Define the Metric",
