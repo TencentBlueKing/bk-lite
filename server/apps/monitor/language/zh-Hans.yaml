@@ -611,18 +611,18 @@ monitor_object_metric:
       desc: 此指标表示整个设备在过去5分钟内接收到的总字节流量的平均速率，单位为兆字节每秒（MB/s）。通过对多个接口的接收字节进行汇总计算，帮助管理员获取整个设备的接收流量情况，从而支持总体流量监控以及容量规划。
       name: 设备每秒接收总流量
   ActiveMQ:
-    activemq_topic_size:
-      name: 主题消息数
-      desc: 该指标表示每个主题中未消费的消息数量，有助于识别主题是否存在消息积压。
-    activemq_topic_enqueue_rate:
-      name: 消息入队速率
-      desc: 该指标表示主题的消息入队速率，即每秒钟入队的消息数量。
-    activemq_topic_dequeue_rate:
-      name: 消息消费速率
-      desc: 该指标表示主题的消息消费速率，即每秒钟消费的消息数量。
-    activemq_topic_consumer_count:
-      name: 消费者数量
-      desc: 该指标表示每个主题的消费者数量，用于监测消费者是否均衡分布。
+    topics_consumer_count:
+      name: 主题消费者数量
+      desc: 指定主题的当前消费者连接数量，反映主题的消息消费能力
+    topics_dequeue_count:
+      name: 主题出队消息数
+      desc: 从指定主题出队的消息总数，反映主题已处理的消息量
+    topics_enqueue_count:
+      name: 主题入队消息数
+      desc: 进入指定主题的消息总数，反映主题接收的消息量
+    topics_size:
+      name: 主题当前消息数
+      desc: 指定主题当前存储的消息数量，反映主题积压情况
   Postgres:
     postgresql_numbackends:
       name: 当前活跃数据库连接数
@@ -2181,7 +2181,7 @@ monitor_object_metric_group:
     Environment: 环境
     Traffic: 流量
   ActiveMQ:
-    Topic: Topic
+    Topic: 主题
   RabbitMQ:
     Base: 基础信息
     Performance: 性能

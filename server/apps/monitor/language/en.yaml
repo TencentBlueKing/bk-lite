@@ -888,22 +888,18 @@ monitor_object_metric:
         supporting overall traffic monitoring and capacity planning.
       name: Device Total Incoming Traffic (per second)
   ActiveMQ:
-    activemq_topic_size:
-      name: Topic Size
-      desc: This metric shows the number of unconsumed messages in the topic, helping
-        to identify potential message backlog.
-    activemq_topic_enqueue_rate:
-      name: Enqueue Rate
-      desc: This metric shows the rate at which messages are enqueued to the topic,
-        indicating the incoming message rate per second.
-    activemq_topic_dequeue_rate:
-      name: Dequeue Rate
-      desc: This metric shows the rate at which messages are consumed from the topic,
-        indicating the consumption rate per second.
-    activemq_topic_consumer_count:
-      name: Consumer Count
-      desc: This metric represents the number of consumers per topic, used to monitor
-        if consumers are evenly distributed.
+    topics_consumer_count:
+      name: Topic Consumer Count
+      desc: Current number of consumer connections for a specific topic, reflecting message consumption capacity
+    topics_dequeue_count:
+      name: Topic Dequeue Count
+      desc: Total number of messages dequeued from a specific topic, reflecting processed message volume
+    topics_enqueue_count:
+      name: Topic Enqueue Count
+      desc: Total number of messages enqueued to a specific topic, reflecting received message volume
+    topics_size:
+      name: Topic Current Size
+      desc: Current number of messages stored in a specific topic, reflecting backlog status
   Postgres:
     postgresql_numbackends:
       name: Active DB Connections
