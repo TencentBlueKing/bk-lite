@@ -1302,62 +1302,48 @@ monitor_object_metric:
         system, enabling more effective traffic management and optimization.
       name: Device Total Outgoing Traffic (per second)
   Docker Container:
-    docker_container_mem_usage:
-      desc: Amount of memory used by the container, typically shown in bytes, indicating
-        the actual physical memory consumption.
-      name: Memory Usage
-    docker_container_blkio_io_service_bytes_recursive_total:
-      name: Total Block I/O Bytes
-      desc: Total number of bytes transferred during block I/O operations in the container,
-        including all read and write operations.
-    docker_container_net_tx_bytes:
-      name: Transmitted Network Bytes
-      desc: This metric indicates the number of network bytes sent by the container,
-        used to monitor the network traffic of the container.
-    docker_container_blkio_io_service_bytes_recursive_read:
-      name: Bytes Read from Block Device
-      desc: Number of bytes read from block devices, reflecting the load of read operations
-        and storage performance.
-    docker_container_mem_usage_percent:
-      name: Memory Usage Percent
-      desc: This metric indicates the percentage of memory usage of the container,
-        monitoring the memory load of the container.
-    docker_container_blkio_io_service_bytes_recursive_write:
-      name: Bytes Written to Block Device
-      desc: Number of bytes written to block devices, indicating the load of write
-        operations and storage performance.
+    docker_container_status:
+      name: Container Status
+      desc: Reflects the current running state of the container, such as running, stopped, or paused
+    docker_container_status_restart_count:
+      name: Restart Count
+      desc: The number of times the container has restarted, i.e., how many resets have occurred since its last start
     docker_container_cpu_usage_percent:
       name: CPU Usage Percent
-      desc: This metric indicates the percentage of CPU usage of the container, monitoring
-        the CPU load of the container.
-    docker_container_net_tx_errors:
-      desc: Total number of errors encountered by the container when sending packets,
-        useful for identifying outbound network problems.
-      name: Total Network Sent Errors
-    docker_container_net_tx_packets:
-      name: Total Sent Packets
-      desc: Total number of packets sent by the container, reflecting the activity
-        level of outbound network flow.
-    docker_container_net_rx_errors:
-      desc: Total number of errors encountered by the container when receiving packets,
-        useful for diagnosing network issues.
-      name: Total Network Receive Errors
-    docker_container_net_rx_bytes:
-      name: Received Network Bytes
-      desc: This metric indicates the number of network bytes received by the container,
-        used to monitor the network traffic of the container.
-    docker_container_status_restart_count:
-      desc: This metric indicates the number of container restarts, helping monitor
-        if the container is frequently restarting.
-      name: Restart Count
-    docker_container_status:
-      desc: This metric indicates the state of the container, where 0 means the container
-        is normal.
-      name: Container Status
-    docker_container_net_rx_packets:
-      name: Total Received Packets
-      desc: Total number of packets received by the container, indicating the activity
-        level of inbound network flow.
+      desc: Percentage of CPU resources used by the container relative to the available resources, used to monitor performance and load
+    docker_container_mem_usage_percent:
+      name: Memory Usage Percent
+      desc: Percentage of memory used by the container relative to the memory limit set, helps understand memory usage
+    docker_container_mem_usage:
+      name: Memory Usage
+      desc: Amount of memory used by the container, indicating the actual physical memory consumption
+    docker_container_blkio_io_service_bytes_recursive_total_rate:
+      name: Total Block I/O Bytes Rate
+      desc: Total number of bytes transferred per second during block I/O operations in the container, including all read and write operations
+    docker_container_blkio_io_service_bytes_recursive_read_rate:
+      name: Block Device Read Bytes Rate
+      desc: Number of bytes read per second from block devices, reflecting the load of read operations and storage performance
+    docker_container_blkio_io_service_bytes_recursive_write_rate:
+      name: Block Device Write Bytes Rate
+      desc: Number of bytes written per second to block devices, indicating the load of write operations and storage performance
+    docker_container_net_rx_bytes_rate:
+      name: Received Network Bytes Rate
+      desc: Number of bytes received per second by the container through its network interfaces, used to monitor inbound network traffic
+    docker_container_net_tx_bytes_rate:
+      name: Transmitted Network Bytes Rate
+      desc: Number of bytes sent per second from the container through its network interfaces, used to monitor outbound network traffic
+    docker_container_net_rx_errors_rate:
+      name: Network Receive Errors Rate
+      desc: Number of errors per second encountered by the container when receiving packets, useful for diagnosing network issues
+    docker_container_net_tx_errors_rate:
+      name: Network Transmit Errors Rate
+      desc: Number of errors per second encountered by the container when sending packets, useful for identifying outbound network problems
+    docker_container_net_rx_packets_rate:
+      name: Received Packets Rate
+      desc: Number of packets received per second by the container, indicating the activity level of inbound network flow
+    docker_container_net_tx_packets_rate:
+      name: Transmitted Packets Rate
+      desc: Number of packets sent per second by the container, reflecting the activity level of outbound network flow
   Oracle-Exporter:
     oracledb_up_gauge:
       name: OracleDb Status
@@ -2329,22 +2315,19 @@ monitor_object_metric:
         for measuring the disk read performance.
   Cluster:
     cluster_node_count:
-      desc: It is used to count the total number of nodes currently available in the
-        Kubernetes cluster. This metric returns the number of nodes in the cluster,
-        helping users understand the scale and resources of the cluster.
-      name: Node Count
+  Cluster:
     cluster_pod_count:
-      desc: It is used to count the total number of Pods currently present in the
-        Kubernetes cluster. This metric returns the count of Pods running in the cluster,
-        including those across all namespaces.
       name: Pod Count
+      desc: It is used to count the total number of Pods currently present in the Kubernetes cluster. This metric returns the count of Pods running in the cluster, including those across all namespaces
+    cluster_node_count:
+      name: Node Count
+      desc: It is used to count the total number of nodes currently available in the Kubernetes cluster. This metric returns the number of nodes in the cluster, helping users understand the scale and resources of the cluster
     cluster_cpu_utilization:
-      desc: Represents the current CPU utilization of the cluster, typically expressed
-        as a percentage.
       name: CPU Utilization
+      desc: Represents the current CPU utilization of the cluster, typically expressed as a percentage
     cluster_memory_utilization:
-      desc: Shows the current memory utilization of the cluster, expressed as a percentage.
       name: Memory Utilization
+      desc: Shows the current memory utilization of the cluster, expressed as a percentage
   Apache:
     apache_ServerUptimeSeconds:
       name: Server Uptime
@@ -2427,105 +2410,69 @@ monitor_object_metric:
       desc: Amount of physical memory currently occupied by the process, monitoring
         memory usage and identifying leaks
   Node:
-    node_cpu_load1:
-      name: 1 Minute Average Load
-      desc: 1 Minute Average Load indicates the average load on the system over the
-        last minute. This metric helps provide a real-time understanding of the system’s
-        load level.
-    node_cpu_load15:
-      desc: 15 Minute Average Load indicates the average load on the system over the
-        last 15 minutes. Monitoring this metric helps administrators understand the
-        long-term load state of the system.
-      name: 15 Minute Average Load
-    node_network_receive:
-      desc: Network In refers to the volume of data traffic received through the network
-        interface. Monitoring this metric helps analyze if network bandwidth is sufficient
-        and the overall network performance.
-      name: Incoming Network Traffic
     node_status_condition:
-      desc: Node Status indicates the current operational state of the node, such
-        as 'Running' or 'Stopped.' It helps administrators monitor and manage nodes
-        within the Kubernetes cluster.
       name: Node Status
-    node_memory_utilization:
-      desc: Application Memory Utilization Rate is the ratio of memory used by the
-        application to its configured memory limits. By monitoring this metric, users
-        can determine if adjustments to memory limits are needed.
-      name: Application Memory Utilization Rate
-    node_cpu_load5:
-      desc: 5 Minute Average Load indicates the average load on the system over the
-        last 5 minutes. This metric helps identify load trends and their impact on
-        system performance.
-      name: 5 Minute Average Load
-    node_network_transmit:
-      name: Outgoing Network Traffic
-      desc: Network Out refers to the volume of data traffic sent through the network
-        interface. This metric helps understand the node's network egress demands
-        and potential bottlenecks.
-    node_memory_usage:
-      name: Application Memory Usage
-      desc: Application Memory Usage represents the total amount of memory utilized
-        by applications running on the node. This metric helps understand the memory
-        demands of applications and their impact on system performance.
+      desc: Node Status indicates the current operational state of the node, such as "Running" or "Stopped." It helps administrators monitor and manage nodes within the Kubernetes cluster
     node_cpu_utilization:
       name: CPU Utilization
-      desc: CPU Utilization indicates the current usage level of the node's CPU relative
-        to its total available CPU resources. Monitoring this metric helps identify
-        CPU bottlenecks and optimize resource allocation.
-    node_disk:
-      is_use:
-        name: Disk Used Space Rate
-        desc: Disk Used Space indicates the percentage of disk space currently utilized
-          on the node. Monitoring this metric helps manage storage resources effectively.
-      used:
-        desc: Disk Used Space indicates the total amount of disk space currently utilized
-          on the node. Monitoring this metric helps manage storage resources effectively.
-        name: Disk Used Space
-    node_diskio_write_time:
-      name: Disk Write Time
-      desc: Disk Write Time indicates the total time spent on write operations to
-        the disk. This metric helps evaluate the efficiency of disk write processes.
-    node_diskio_reads:
-      name: Disk Read Rate
-      desc: Disk Read Rate indicates the rate of read operations performed by the
-        node over a specified period. This metric helps assess the data reading performance
-        of applications and storage load.
-    node_cpu_summary:
-      user:
-        desc: CPU User Time represents the percentage of time the CPU spends executing
-          user-level processes and applications.
-        name: CPU User Time
-      idle:
-        desc: CPU Idle Time represents the percentage of time the CPU spends in an
-          idle state, indicating available processing capacity.
-        name: CPU Idle Time
-      system:
-        name: CPU System Time
-        desc: CPU System Time reflects the percentage of time the CPU spends executing
-          system-level processes and kernel operations.
-      iowait:
-        desc: CPU I/O Wait Time indicates the percentage of time the CPU spends waiting
-          for I/O operations to complete, which can impact overall performance.
-        name: CPU I/O Wait Time
-    node_diskio_read_bytes:
-      desc: Disk Read Throughput indicates the amount of data read from the disk per
-        second. Monitoring this metric helps evaluate the data reading performance
-        of applications.
-      name: Disk Read Throughput
-    node_diskio_read_time:
-      desc: Disk Read Time indicates the total time spent on read operations from
-        the disk. This metric helps evaluate the efficiency of disk read processes.
-      name: Disk Read Time
-    node_diskio_write_bytes:
-      desc: Disk Write Throughput indicates the amount of data written to the disk
-        per second. Monitoring this metric helps assess the data writing performance
-        of applications.
-      name: Disk Write Throughput
-    node_diskio_writes:
-      desc: Disk Write Rate indicates the rate of write operations performed by the
-        node over a specified period. This metric is crucial for monitoring the disk
-        write performance of applications.
-      name: Disk Write Rate
+      desc: CPU Utilization indicates the current usage level of the node's CPU relative to its total available CPU resources. Monitoring this metric helps identify CPU bottlenecks and optimize resource allocation
+    node_cpu_idle_rate:
+      name: CPU Idle Rate
+      desc: Displays the CPU idle rate, representing the amount of unused CPU resources in the system. It helps to know if the system is under high load. This metric is crucial for analyzing system performance and efficiency
+    node_cpu_iowait_rate:
+      name: Percentage of Time Waiting for IO
+      desc: Displays the percentage of CPU time spent waiting for IO operations, indicating the impact of disk or network performance on the system. Reducing wait time helps improve system performance
+    node_cpu_system_rate:
+      name: System Usage Rate
+      desc: Displays the system usage rate, showing the CPU resources consumed by kernel processes. Analyzing this value helps optimize system kernel performance and stability
+    node_cpu_user_rate:
+      name: User Usage Rate
+      desc: Displays the percentage of CPU resources used by user processes, helping understand the performance of applications and services
+    node_memory_usage:
+      name: Application Memory Usage
+      desc: Application Memory Usage represents the total amount of memory utilized by applications running on the node. This metric helps understand the memory demands of applications and their impact on system performance
+    node_memory_utilization:
+      name: Application Memory Utilization Rate
+      desc: Application Memory Utilization Rate is the ratio of memory used by the application to its configured memory limits. By monitoring this metric, users can determine if adjustments to memory limits are needed
+    node_disk_usage_rate:
+      name: Disk Usage Rate
+      desc: Displays the percentage of disk space used, helping understand the utilization of disk resources. This metric is important for preventing disk overflow
+    node_disk_used:
+      name: Disk Used Size
+      desc: Displays the actual used disk space, used to determine disk capacity usage. This metric is helpful for monitoring disk space usage
+    node_diskio_writes_rate:
+      name: Disk I/O Write Rate
+      desc: Counts the rate of data write operations to the disk in the specified time interval
+    node_diskio_write_bytes_rate:
+      name: Disk I/O Write Bytes Rate
+      desc: Counts the rate of bytes written to the disk in the specified time interval
+    node_diskio_write_time_rate:
+      name: Disk I/O Write Time Rate
+      desc: Counts the rate of time taken to write data to the disk in the specified time interval
+    node_diskio_reads_rate:
+      name: Disk I/O Read Rate
+      desc: Counts the rate of data read operations from the disk in the specified time interval
+    node_diskio_read_bytes_rate:
+      name: Disk I/O Read Bytes Rate
+      desc: Counts the rate of bytes read from the disk in the specified time interval
+    node_diskio_read_time_rate:
+      name: Disk I/O Read Time Rate
+      desc: Counts the rate of time taken to read data from the disk in the specified time interval
+    node_network_receive_rate:
+      name: Incoming Bytes on NIC Rate
+      desc: Network In refers to the rate of data traffic received through the network interface. Monitoring this metric helps analyze if network bandwidth is sufficient and the overall network performance
+    node_network_transmit_rate:
+      name: Outgoing Bytes on NIC Rate
+      desc: Network Out refers to the rate of data traffic sent through the network interface. This metric helps understand the node's network egress demands and potential bottlenecks
+    node_cpu_load1:
+      name: 1 Minute Average Load
+      desc: 1 Minute Average Load indicates the average load on the system over the last minute. This metric helps provide a real-time understanding of the system's load level
+    node_cpu_load5:
+      name: 5 Minute Average Load
+      desc: 5 Minute Average Load indicates the average load on the system over the last 5 minutes. This metric helps identify load trends and their impact on system performance
+    node_cpu_load15:
+      name: 15 Minute Average Load
+      desc: 15 Minute Average Load indicates the average load on the system over the last 15 minutes. Monitoring this metric helps administrators understand the long-term load state of the system
   ElasticSearch:
     elasticsearch_cluster_health_status_code:
       name: Cluster Health Status
@@ -2620,51 +2567,39 @@ monitor_object_metric:
       desc: Frequency of connection requests rejected due to reaching max connections, reflects connection resource tension, non-zero frequency requires consideration of expansion
   Docker:
     docker_n_containers_running:
-      name: Running Containers
-      desc: This metric indicates the number of containers running on the Docker host,
-        reflecting the host's load.
+      name: Running Container Count
+      desc: This metric represents the number of running containers on the Docker host
     docker_n_containers:
-      desc: This metric indicates the total number of containers on the Docker host,
-        reflecting the host's load.
-      name: Total Containers
+      name: Total Container Count
+      desc: This metric represents the total number of containers on the Docker host
     docker_n_containers_stopped:
-      desc: This metric indicates the number of stopped containers on the Docker host,
-        helping to understand container status.
-      name: Stopped Containers
+      name: Stopped Container Count
+      desc: This metric represents the number of stopped containers on the Docker host
   Pod:
-    pod_cpu_utilization:
-      desc: Calculates the CPU utilization of a Pod, reflecting the difference between
-        container CPU limits and requests.
-      name: CPU Utilization
-    pod_restart_count:
-      desc: Monitors the restart counts of containers in the Pod to assess stability
-        and frequency of issues.
+    prometheus_remote_write_kube_pod_status_phase:
+      name: Pod Status
+      desc: Retrieves the current status of the Pod, such as Running, Stopped, etc.
+    prometheus_remote_write_kube_pod_container_status_restarts_total:
       name: Restart Count
+      desc: Monitors the restart counts of containers in the Pod to assess stability and frequency of issues
+    pod_cpu_utilization:
+      name: CPU Utilization
+      desc: Calculates the CPU utilization of a Pod, reflecting the difference between container CPU limits and requests
     pod_memory_utilization:
       name: Memory Utilization
-      desc: Calculates the memory utilization of the Pod as a ratio of memory limits
-        to requests.
-    pod_io_writes:
-      desc: This metric represents the number of I/O write operations performed by
-        a specific Pod over a specified time period. The write count can help analyze
-        the write demands of the application on the storage system.
+      desc: Calculates the memory utilization of the Pod as a ratio of memory limits to requests
+    prometheus_remote_write_container_fs_writes_total:
       name: I/O Write Rate
-    pod_io_read:
-      desc: This metric represents the number of I/O read operations performed by
-        a specific Pod over a specified time period. The read count can help analyze
-        the read demands of the application on the storage system.
+      desc: This metric represents the rate of I/O write operations performed by a specific Pod, helping analyze the write demands of the application on the storage system
+    pod_io_reads_rate:
       name: I/O Read Rate
-    pod_network_in:
-      name: Network Inbound Traffic
-      desc: Monitors the inbound network traffic of a Pod, calculated based on the
-        number of containers and IPs.
-    pod_network_out:
-      desc: Monitors the outbound network traffic of a Pod, calculated based on the
-        number of containers and IPs.
-      name: Network Outbound Traffic
-    pod_status:
-      desc: Retrieves the current status of the Pod, such as Running, Stopped, etc.
-      name: Pod Status
+      desc: This metric represents the rate of I/O read operations performed by a specific Pod, helping analyze the read demands of the application on the storage system
+    pod_network_in_rate:
+      name: Network In Rate
+      desc: Monitors the inbound network traffic rate of a Pod, calculated based on the number of containers and IPs
+    pod_network_out_rate:
+      name: Network Out Rate
+      desc: Monitors the outbound network traffic rate of a Pod, calculated based on the number of containers and IPs
   vCenter:
     vmware_vm_count:
       desc: This metric counts the number of virtual machines in the VMware environment,
@@ -3105,11 +3040,11 @@ monitor_object_metric_group:
     Memory: Memory
     JMXselfMonitor: JMX Self-Monitoring Information
   Docker Container:
-    IO: IO
-    CPU: CPU
     Status: Status
+    CPU: CPU
     Memory: Memory
-    Net: Net
+    Block I/O: Block I/O
+    Network: Network
   Tomcat:
     Connector: Connector
     JVM Memory: JVM Memory
@@ -3127,11 +3062,19 @@ monitor_object_metric_group:
     JMXselfMonitor: JMX Self-Monitoring Information
     Serverconnector: Server Network Connector
   Pod:
-    Disk: Disk
-    Network: Network
+    Status: Status
     CPU: CPU
     Memory: Memory
+    Disk: Disk
+    Network: Network
+  Node:
     Status: Status
+    CPU: CPU
+    Memory: Memory
+    Disk: Disk
+    Disk IO: Disk IO
+    Network: Network
+    Load: Load
   TCP: ''
   Zookeeper:
     System Status: System Status
