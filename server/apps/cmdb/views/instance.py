@@ -1,7 +1,7 @@
 from django.http import HttpResponse, JsonResponse
 from rest_framework import viewsets, status
 from rest_framework.decorators import action
-
+from apps.core.exceptions.base_app_exception import BaseAppException
 from apps.cmdb.constants.constants import PERMISSION_INSTANCES, OPERATE, VIEW
 from apps.cmdb.services.instance import InstanceManage
 from apps.cmdb.utils.base import format_group_params, get_organization_and_children_ids
@@ -380,8 +380,11 @@ class InstanceViewSet(viewsets.ViewSet):
                 return WebUtils.response_error(f"抱歉！您没有此实例[{dst_inst['inst_name']}]的权限",
                                                status_code=status.HTTP_403_FORBIDDEN)
 
-        asso = InstanceManage.instance_association_create(request.data, request.user.username)
-        return WebUtils.response_success(asso)
+        try:
+            asso = InstanceManage.instance_association_create(request.data, request.user.username)
+            return WebUtils.response_success(asso)
+        except BaseAppException as e:
+            return WebUtils.response_error(error_message=e.message, status_code=status.HTTP_400_BAD_REQUEST)
 
     @HasPermission("asset_info-Delete Associate")
     @action(detail=False, methods=["delete"], url_path="association/(?P<id>.+?)")
