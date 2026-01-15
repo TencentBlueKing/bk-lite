@@ -1710,39 +1710,66 @@ monitor_object_metric:
       desc: 显示集群内存的当前利用率，以百分比形式展示。
       name: 内存利用率
   Apache:
-    apache_cpu_user:
-      desc: 该指标表示Apache服务器在用户进程层面的CPU使用率。
-      name: 用户CPU使用率
-    apache_busy_workers:
-      name: 繁忙工作进程数
-      desc: 该指标表示Apache服务器中当前处于繁忙状态的工作进程数，用于评估服务器的负载情况。
-    apache_cpu_system:
-      desc: 该指标表示Apache服务器在系统层面的CPU使用率。
-      name: 系统CPU使用率
-    apache_bytes_per_sec:
-      desc: 该指标表示Apache每秒传输的字节数，反映了网络流量的情况。
-      name: 每秒字节数
-    apache_cpu_load:
-      desc: 该指标表示Apache服务器的CPU负载情况，反映系统总体 CPU 负载压力。
-      name: CPU负载
-    apache_idle_workers:
-      desc: 该指标表示Apache服务器中当前处于空闲状态的工作进程数，反映了服务器的资源利用情况。
-      name: 空闲工作进程数
-    apache_total_duration:
-      name: 总处理时长
-      desc: 该指标表示Apache服务器自启动以来的总请求处理时长，用于评估服务器的处理负载。
-    apache_uptime:
-      name: 系统运行时长
-      desc: 该指标表示Apache服务器自启动以来的运行时间，用于监测服务器的健康状态。
-    apache_total_accesses:
+    apache_ServerUptimeSeconds:
+      name: 服务运行时间
+      desc: 服务器自最近一次启动以来的持续运行时长，反映服务的稳定性与可用性
+    apache_ParentServerConfigGeneration:
+      name: 父服务器配置生成
+      desc: 父服务器配置重新加载的次数，每次配置重载该值会增加
+    apache_TotalAccesses:
       name: 总访问次数
-      desc: 该指标表示Apache服务器自启动以来的总访问次数，反映服务器的总体请求量。
-    apache_req_per_sec:
-      desc: 该指标表示Apache每秒处理的请求数量，用于监测服务器的请求处理能力。
-      name: 每秒请求数
-    apache_duration_per_req:
-      name: 每个请求的处理时长
-      desc: 该指标表示每个请求的平均处理时长，帮助评估服务器处理请求的效率。
+      desc: 累计处理的HTTP请求总数，用于衡量服务器的总体工作负载和处理能力
+    apache_ReqPerSec:
+      name: 请求处理速率
+      desc: 当前时刻服务器处理请求的速率，直接反映服务器的实时处理性能
+    apache_BytesPerSec:
+      name: 数据传输速率
+      desc: 服务器每秒发送的数据量，反映网络带宽使用情况和数据吞吐能力
+    apache_BusyWorkers:
+      name: 忙碌工作进程数
+      desc: 当前正在处理客户端请求的工作进程数量，数值过高可能表明服务器负载过大
+    apache_IdleWorkers:
+      name: 空闲工作进程数
+      desc: 当前处于空闲状态等待请求的工作进程数量，反映服务器的处理能力余量
+    apache_CPULoad:
+      name: CPU负载
+      desc: 进程占用的CPU资源百分比，用于监控CPU使用率和识别资源瓶颈
+    apache_Load1:
+      name: 1分钟系统负载
+      desc: 过去1分钟内系统的平均负载，反映短期内的系统资源压力
+    apache_Load5:
+      name: 5分钟系统负载
+      desc: 过去5分钟内系统的平均负载，反映中期系统资源压力趋势
+    apache_Load15:
+      name: 15分钟系统负载
+      desc: 过去15分钟内系统的平均负载，反映长期系统资源压力趋势
+    apache_TotalAccesses_rate:
+      name: 请求速率变化率
+      desc: 基于5分钟时间窗口计算的每秒请求数变化率，反映请求流量的趋势和波动
+    apache_scboard_open:
+      name: 打开连接数
+      desc: 记分板中当前处于打开状态的连接总数，反映当前的并发连接数量
+    apache_scboard_waiting:
+      name: 等待连接数
+      desc: 记分板中等待空闲工作进程的连接数量，数值过高可能表示服务器资源不足
+    apache_scboard_reading:
+      name: 读取连接数
+      desc: 记分板中正在读取客户端请求头的连接数量，反映请求接收阶段的状态
+    apache_scboard_sending:
+      name: 发送连接数
+      desc: 记分板中正在向客户端发送响应的连接数量，反映响应发送阶段的状态
+    apache_scboard_open_rate:
+      name: 连接打开变化率
+      desc: 基于5分钟时间窗口计算的每秒连接打开数变化率，反映连接建立的趋势和速率
+    apache_CacheCurrentEntries:
+      name: 当前缓存条目数
+      desc: 缓存模块当前存储的缓存条目数量，反映缓存使用情况和内存占用
+    apache_CacheRetrieveHitCount:
+      name: 缓存命中次数
+      desc: 缓存检索中成功命中的次数，高命中率表明缓存效率良好，减轻了后端负载
+    process_resident_memory_bytes:
+      name: 进程驻留内存
+      desc: 进程当前占用的物理内存大小，用于监控内存使用情况和识别内存泄漏
   Node:
     node_cpu_load1:
       name: 1 分钟平均负载
@@ -2112,11 +2139,11 @@ monitor_object_metric_group:
     Performance: 性能
     Resource: 资源
   Apache:
-    CPU: CPU
-    Uptime: 运行时间
-    Work: 线程
-    Duration: 响应时间
-    Request: 请求
+    Base: 基础信息
+    Performance: 性能
+    State: 状态
+    Cache: 缓存
+    Process: 进程
   Postgres:
     Connection: 连接
     Query: 查询

@@ -2427,48 +2427,86 @@ monitor_object_metric:
       desc: Shows the current memory utilization of the cluster, expressed as a percentage.
       name: Memory Utilization
   Apache:
-    apache_cpu_user:
-      desc: This metric represents the CPU usage by user processes in Apache.
-      name: User CPU Usage
-    apache_busy_workers:
-      name: Busy Workers
-      desc: This metric represents the number of busy worker threads in the Apache
-        server, used to assess server load.
-    apache_cpu_system:
-      desc: This metric represents the CPU usage by system processes in Apache.
-      name: System CPU Usage
-    apache_bytes_per_sec:
-      desc: This metric represents the number of bytes transferred by Apache per second,
-        reflecting the network traffic.
-      name: Bytes per Second
-    apache_cpu_load:
-      desc: This metric represents the CPU load of the Apache server, reflecting the
-        overall load of the system.
-      name: CPU Load
-    apache_idle_workers:
-      desc: This metric represents the number of idle worker processes in the Apache
-        server, reflecting the server's resource utilization.
-      name: Idle Workers
-    apache_total_duration:
-      name: Total Processing Time
-      desc: This metric represents the total request processing duration since the
-        Apache server started, used to assess the server's processing load.
-    apache_uptime:
-      name: Uptime
-      desc: This metric represents the uptime of the Apache server since it was started,
-        used to monitor the server's health.
-    apache_total_accesses:
+    apache_ServerUptimeSeconds:
+      name: Server Uptime
+      desc: Duration the server has been running since last restart, reflecting service
+        stability and availability
+    apache_ParentServerConfigGeneration:
+      name: Parent Server Config Generation
+      desc: Number of times parent server configuration has been reloaded; increments
+        on each reload
+    apache_TotalAccesses:
       name: Total Accesses
-      desc: This metric represents the total number of accesses to the Apache server
-        since startup, reflecting the overall request volume.
-    apache_req_per_sec:
-      desc: This metric represents the number of requests handled by Apache per second,
-        used to monitor the server's request processing capability.
-      name: Requests per Second
-    apache_duration_per_req:
-      name: Average Request Processing Time
-      desc: This metric represents the average duration per request, helping to evaluate
-        the efficiency of request handling by the server.
+      desc: Total number of HTTP requests processed, measuring overall server workload
+        and processing capacity
+    apache_ReqPerSec:
+      name: Request Processing Rate
+      desc: Current rate at which the server processes requests, directly indicating
+        real-time processing performance
+    apache_BytesPerSec:
+      name: Data Transfer Rate
+      desc: Amount of data sent per second, reflecting network bandwidth usage and
+        data throughput capacity
+    apache_BusyWorkers:
+      name: Busy Workers
+      desc: Number of worker processes currently handling client requests; high values
+        may indicate server overload
+    apache_IdleWorkers:
+      name: Idle Workers
+      desc: Number of worker processes idle and waiting for requests, indicating available
+        processing capacity
+    apache_CPULoad:
+      name: CPU Load
+      desc: Percentage of CPU resources utilized by the process, monitoring CPU usage
+        and identifying resource bottlenecks
+    apache_Load1:
+      name: 1-Minute System Load
+      desc: Average system load over the past 1 minute, reflecting short-term system
+        resource pressure
+    apache_Load5:
+      name: 5-Minute System Load
+      desc: Average system load over the past 5 minutes, indicating medium-term system
+        resource pressure trends
+    apache_Load15:
+      name: 15-Minute System Load
+      desc: Average system load over the past 15 minutes, indicating long-term system
+        resource pressure trends
+    apache_TotalAccesses_rate:
+      name: Request Rate Change
+      desc: Rate of change in requests per second calculated over a 5-minute window,
+        indicating traffic trends and fluctuations
+    apache_scboard_open:
+      name: Open Connections
+      desc: Total number of connections currently open in the scoreboard, indicating
+        concurrent connections
+    apache_scboard_waiting:
+      name: Waiting Connections
+      desc: Number of connections waiting for idle worker processes; high values may
+        indicate insufficient server resources
+    apache_scboard_reading:
+      name: Reading Connections
+      desc: Number of connections currently reading client request headers, reflecting
+        the state of request reception
+    apache_scboard_sending:
+      name: Sending Connections
+      desc: Number of connections currently sending responses to clients, reflecting
+        the state of response delivery
+    apache_scboard_open_rate:
+      name: Connection Open Rate Change
+      desc: Rate of change in connection openings per second calculated over a 5-minute
+        window, indicating connection establishment trends
+    apache_CacheCurrentEntries:
+      name: Cache Current Entries
+      desc: Number of cache entries currently stored, indicating cache usage and memory
+        occupancy
+    apache_CacheRetrieveHitCount:
+      name: Cache Retrieve Hit Count
+      desc: Number of successful cache retrievals; high hit rate indicates efficient
+        caching and reduced backend load
+    process_resident_memory_bytes:
+      name: Process Resident Memory
+      desc: Amount of physical memory currently occupied by the process, monitoring
+        memory usage and identifying leaks
   Node:
     node_cpu_load1:
       name: 1 Minute Average Load
@@ -2891,11 +2929,11 @@ monitor_object_metric_group:
     Performance: Performance
     Resource: Resource
   Apache:
-    CPU: CPU
-    Uptime: Uptime
-    Work: Work
-    Duration: Duration
-    Request: Request
+    Base: Base
+    Performance: Performance
+    State: State
+    Cache: Cache
+    Process: Process
   Postgres:
     Connection: Connection
     Query: Query
