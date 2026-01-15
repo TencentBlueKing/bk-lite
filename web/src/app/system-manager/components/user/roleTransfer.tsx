@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useCallback } from 'react';
-import { Transfer, Tree, Spin, Tag, Checkbox } from 'antd';
-import { DeleteOutlined, SettingOutlined } from '@ant-design/icons';
+import { Transfer, Tree, Spin, Tag, Checkbox, Input } from 'antd';
+import { DeleteOutlined, SettingOutlined, SearchOutlined } from '@ant-design/icons';
 import type { DataNode as TreeDataNode } from 'antd/lib/tree';
 import { useTranslation } from '@/utils/i18n';
 import PermissionModal from './permissionModal';
@@ -121,6 +121,46 @@ const getAllKeys = (nodes: TreeDataNode[]): number[] => {
 
 const isNodeDisabled = (node: TreeDataNode): boolean => {
   return node.disabled === true;
+};
+
+// Extract text from TreeDataNode title (can be string or ReactNode or function)
+const extractTextFromTitle = (title: React.ReactNode | ((data: TreeDataNode) => React.ReactNode)): string => {
+  // If it's a function, we can't extract text from it easily, return empty string
+  if (typeof title === 'function') {
+    return '';
+  }
+  if (typeof title === 'string') {
+    return title;
+  }
+  if (typeof title === 'number') {
+    return String(title);
+  }
+  if (React.isValidElement(title)) {
+    const props = title.props as any;
+    if (props && props.children) {
+      if (typeof props.children === 'string') {
+        return props.children;
+      }
+      if (typeof props.children === 'number') {
+        return String(props.children);
+      }
+      if (Array.isArray(props.children)) {
+        return props.children
+          .map((child: any) => {
+            if (typeof child === 'string' || typeof child === 'number') {
+              return String(child);
+            }
+            if (React.isValidElement(child)) {
+              return extractTextFromTitle(child);
+            }
+            return '';
+          })
+          .filter(Boolean)
+          .join('');
+      }
+    }
+  }
+  return '';
 };
 
 // Generate right tree nodes when mode is "group"
@@ -346,6 +386,10 @@ const RoleTransfer: React.FC<TreeTransferProps> = ({
   const [isPermissionModalVisible, setIsPermissionModalVisible] = useState<boolean>(false);
   const [currentNode, setCurrentNode] = useState<TreeDataNode | null>(null);
   const [currentRules, setCurrentRules] = useState<{ [app: string]: number }>({});
+  const [leftSearchValue, setLeftSearchValue] = useState<string>('');
+  const [rightSearchValue, setRightSearchValue] = useState<string>('');
+  const [leftExpandedKeys, setLeftExpandedKeys] = useState<React.Key[]>([]);
+  const [rightExpandedKeys, setRightExpandedKeys] = useState<React.Key[]>([]);
 
   // Handle "Select All Sub-groups" checkbox toggle
   const handleSubGroupToggle = useCallback((node: TreeDataNode, includeAll: boolean) => {
@@ -365,35 +409,109 @@ const RoleTransfer: React.FC<TreeTransferProps> = ({
     onChange(newSelectedKeys);
   }, [selectedKeys, onChange, disabled, loading]);
 
+  // Filter tree data based on search value
+  const filterTreeNode = useCallback((node: TreeDataNode, searchValue: string): TreeDataNode | null => {
+    const nodeTitle = extractTextFromTitle(node.title);
+    const match = nodeTitle.toLowerCase().includes(searchValue.toLowerCase());
+
+    if (node.children && node.children.length > 0) {
+      const filteredChildren = node.children
+        .map(child => filterTreeNode(child, searchValue))
+        .filter(Boolean) as TreeDataNode[];
+
+      if (match || filteredChildren.length > 0) {
+        return { ...node, children: filteredChildren };
+      }
+    }
+
+    return match ? node : null;
+  }, []);
+
+  // Get all keys that should be expanded when searching
+  const getSearchExpandedKeys = useCallback((nodes: TreeDataNode[], searchValue: string): React.Key[] => {
+    const keys: React.Key[] = [];
+    
+    const traverse = (node: TreeDataNode) => {
+      if (node.children && node.children.length > 0) {
+        const nodeTitle = extractTextFromTitle(node.title);
+        const hasMatchInChildren = node.children.some(child => {
+          const childTitle = extractTextFromTitle(child.title);
+          return childTitle.toLowerCase().includes(searchValue.toLowerCase());
+        });
+
+        if (hasMatchInChildren || nodeTitle.toLowerCase().includes(searchValue.toLowerCase())) {
+          keys.push(node.key);
+        }
+
+        node.children.forEach(traverse);
+      }
+    };
+
+    nodes.forEach(traverse);
+    return keys;
+  }, []);
+
   // Process left tree data, disable organization roles
   const leftTreeData = useMemo(() => {
+    // First apply search filter on original data
+    let baseData = treeData;
+    if (leftSearchValue) {
+      const filtered = treeData
+        .map(node => filterTreeNode(node, leftSearchValue))
+        .filter(Boolean) as TreeDataNode[];
+      baseData = filtered;
+    }
+
+    // Then apply transformations
     if (mode === 'group' && enableSubGroupSelect) {
       return transformLeftTreeData(
-        treeData,
+        baseData,
         selectedKeys,
         enableSubGroupSelect,
         handleSubGroupToggle,
         t,
         organizationRoleIds
       );
+    } else {
+      return processLeftTreeData(baseData, organizationRoleIds);
     }
-    return processLeftTreeData(treeData, organizationRoleIds);
-  }, [treeData, selectedKeys, enableSubGroupSelect, handleSubGroupToggle, t, mode, organizationRoleIds]);
+  }, [treeData, selectedKeys, enableSubGroupSelect, handleSubGroupToggle, t, mode, organizationRoleIds, leftSearchValue, filterTreeNode]);
+
+  // Initialize left expanded keys
+  React.useEffect(() => {
+    if (leftSearchValue) {
+      const expandedKeys = getSearchExpandedKeys(treeData, leftSearchValue);
+      setLeftExpandedKeys(expandedKeys);
+    } else {
+      setLeftExpandedKeys(getAllKeys(treeData));
+    }
+  }, [leftSearchValue, treeData, getSearchExpandedKeys]);
 
   const flattenedRoleData = useMemo(() => flattenRoleData(leftTreeData), [leftTreeData]);
-  const leftExpandedKeys = useMemo(() => getAllKeys(leftTreeData), [leftTreeData]);
-  const filteredRightData = useMemo(() => filterTreeData(treeData, selectedKeys), [treeData, selectedKeys]);
+  
+  const filteredRightData = useMemo(() => {
+    let filtered = filterTreeData(treeData, selectedKeys);
+    
+    // Apply search filter for right tree
+    if (rightSearchValue) {
+      filtered = filtered
+        .map(node => filterTreeNode(node, rightSearchValue))
+        .filter(Boolean) as TreeDataNode[];
+    }
+    
+    return filtered;
+  }, [treeData, selectedKeys, rightSearchValue, filterTreeNode]);
 
-  const handlePermissionSetting = (node: TreeDataNode, e: React.MouseEvent) => {
+  const handlePermissionSetting = useCallback((node: TreeDataNode, e: React.MouseEvent) => {
     e.stopPropagation();
     setCurrentNode(node);
     const nodeKey = node.key as number;
     const rules = groupRules[nodeKey] || {};
     setCurrentRules(rules);
     setIsPermissionModalVisible(true);
-  };
+  }, [groupRules]);
 
-  const handlePermissionOk = (values: any) => {
+  const handlePermissionOk = useCallback((values: any) => {
     if (!currentNode || !onChangeRule) return;
 
     // Build app permission mapping object, maintain correspondence between app name and permission value
@@ -408,79 +526,78 @@ const RoleTransfer: React.FC<TreeTransferProps> = ({
 
     onChangeRule(nodeKey, appPermissionMap);
     setIsPermissionModalVisible(false);
-  };
+  }, [currentNode, onChangeRule]);
 
-  // Create a new transformRightTree function, use organizationRoleIds to determine organization roles
-  const transformRightTreeWithOrgRoles = (
-    nodes: TreeDataNode[],
-    treeData: TreeDataNode[],
-    selectedKeys: number[],
-    onRemove: (newKeys: number[]) => void,
-    organizationRoleIds: number[]
-  ): TreeDataNode[] => {
-    if (mode === 'group') {
-      return transformRightTreeGroup(treeData, selectedKeys, {
-        onPermissionSetting: onChangeRule ? handlePermissionSetting : () => {},
-        onRemove
-      });
-    }
+  const rightTransformedData = useMemo(() => {
+    // Helper function to transform right tree
+    const transform = (
+      nodes: TreeDataNode[],
+      treeData: TreeDataNode[],
+      selectedKeys: number[],
+      onRemove: (newKeys: number[]) => void,
+      organizationRoleIds: number[]
+    ): TreeDataNode[] => {
+      if (mode === 'group') {
+        return transformRightTreeGroup(treeData, selectedKeys, {
+          onPermissionSetting: onChangeRule ? handlePermissionSetting : () => {},
+          onRemove
+        });
+      }
 
-    return nodes.map(node => {
-      const isDisabled = isNodeDisabled(node);
-      const isOrgRole = forceOrganizationRole || isDisabled || organizationRoleIds.includes(node.key as number);
-      const isLeafNode = !node.children || node.children.length === 0;
-      const canDelete = !isOrgRole; // Only non-organization roles can be deleted
+      return nodes.map(node => {
+        const isDisabled = isNodeDisabled(node);
+        const isOrgRole = forceOrganizationRole || isDisabled || organizationRoleIds.includes(node.key as number);
+        const isLeafNode = !node.children || node.children.length === 0;
+        const canDelete = !isOrgRole;
 
-      return {
-        ...node,
-        title: (
-          <div className="flex justify-between items-center w-full">
-            <div className="flex items-center gap-2">
-              <span>{typeof node.title === 'function' ? node.title(node) : node.title}</span>
-              {isLeafNode && isOrgRole && (
-                <Tag className='font-mini' color="orange">
-                  {t('system.role.organizationRole')}
-                </Tag>
-              )}
-              {isLeafNode && !isOrgRole && (
-                <Tag className='font-mini' color="blue">
-                  {t('system.role.personalRole')}
-                </Tag>
+        return {
+          ...node,
+          title: (
+            <div className="flex justify-between items-center w-full">
+              <div className="flex items-center gap-2">
+                <span>{typeof node.title === 'function' ? node.title(node) : node.title}</span>
+                {isLeafNode && isOrgRole && (
+                  <Tag className='font-mini' color="orange">
+                    {t('system.role.organizationRole')}
+                  </Tag>
+                )}
+                {isLeafNode && !isOrgRole && (
+                  <Tag className='font-mini' color="blue">
+                    {t('system.role.personalRole')}
+                  </Tag>
+                )}
+              </div>
+              {canDelete && (
+                <DeleteOutlined
+                  className="cursor-pointer text-[var(--color-text-4)]"
+                  onClick={e => {
+                    e.stopPropagation();
+                    const keysToRemove = getDeletableSubtreeKeys(node, organizationRoleIds);
+                    let updated = selectedKeys.filter(key => !keysToRemove.includes(key));
+                    updated = cleanSelectedKeys(updated, treeData);
+                    onRemove(updated);
+                  }}
+                />
               )}
             </div>
-            {canDelete && (
-              <DeleteOutlined
-                className="cursor-pointer text-[var(--color-text-4)]"
-                onClick={e => {
-                  e.stopPropagation();
-                  // Use getDeletableSubtreeKeys to get deletable nodes, excluding organization roles
-                  const keysToRemove = getDeletableSubtreeKeys(node, organizationRoleIds);
-                  let updated = selectedKeys.filter(key => !keysToRemove.includes(key));
-                  updated = cleanSelectedKeys(updated, treeData);
-                  onRemove(updated);
-                }}
-              />
-            )}
-          </div>
-        ),
-        children: node.children ? transformRightTreeWithOrgRoles(node.children, treeData, selectedKeys, onRemove, organizationRoleIds) : []
-      };
-    });
-  };
+          ),
+          children: node.children ? transform(node.children, treeData, selectedKeys, onRemove, organizationRoleIds) : []
+        };
+      });
+    };
 
-  const rightTransformedData = useMemo(() =>
-    transformRightTreeWithOrgRoles(
-      filteredRightData,
-      treeData,
-      selectedKeys,
-      onChange,
-      organizationRoleIds
-    ), [filteredRightData, treeData, selectedKeys, onChange, organizationRoleIds, mode, onChangeRule, forceOrganizationRole]
-  );
+    return transform(filteredRightData, treeData, selectedKeys, onChange, organizationRoleIds);
+  }, [filteredRightData, treeData, selectedKeys, onChange, organizationRoleIds, mode, onChangeRule, forceOrganizationRole, t, handlePermissionSetting]);
 
-  const rightExpandedKeys = useMemo(() =>
-    getAllKeys(rightTransformedData), [rightTransformedData]
-  );
+  // Initialize right expanded keys
+  React.useEffect(() => {
+    if (rightSearchValue) {
+      const expandedKeys = getSearchExpandedKeys(filteredRightData, rightSearchValue);
+      setRightExpandedKeys(expandedKeys);
+    } else {
+      setRightExpandedKeys(getAllKeys(filteredRightData));
+    }
+  }, [rightSearchValue, filteredRightData, getSearchExpandedKeys]);
 
   const transferDataSource = useMemo(() => {
     if (mode === 'group') {
@@ -521,47 +638,71 @@ const RoleTransfer: React.FC<TreeTransferProps> = ({
           {({ direction }) => {
             if (direction === 'left') {
               return (
-                <div className="p-1 max-h-[250px] overflow-auto">
-                  <Tree
-                    blockNode
-                    checkable
-                    selectable={false}
-                    checkStrictly={mode === 'group'}
-                    expandedKeys={leftExpandedKeys}
-                    checkedKeys={mode === 'group' ? { checked: selectedKeys, halfChecked: [] } : selectedKeys}
-                    treeData={leftTreeData}
-                    disabled={disabled || loading}
-                    onCheck={(checkedKeys, info) => {
-                      if (!disabled && !loading) {
-                        // In group mode use checked array, in role mode use checkedKeys directly
-                        // const actualCheckedKeys = mode === 'group'
-                        //   ? (checkedKeys as { checked: React.Key[]; halfChecked: React.Key[] }).checked
-                        //   : (checkedKeys as React.Key[]);
+                <div className="flex flex-col">
+                  <div className="p-2">
+                    <Input
+                      prefix={<SearchOutlined />}
+                      placeholder={t('common.search')}
+                      value={leftSearchValue}
+                      onChange={(e) => setLeftSearchValue(e.target.value)}
+                      allowClear
+                    />
+                  </div>
+                  <div className="p-1 max-h-[250px] overflow-auto">
+                    <Tree
+                      blockNode
+                      checkable
+                      selectable={false}
+                      checkStrictly={mode === 'group'}
+                      expandedKeys={leftExpandedKeys}
+                      onExpand={(keys) => setLeftExpandedKeys(keys)}
+                      checkedKeys={mode === 'group' ? { checked: selectedKeys, halfChecked: [] } : selectedKeys}
+                      treeData={leftTreeData}
+                      disabled={disabled || loading}
+                      onCheck={(checkedKeys, info) => {
+                        if (!disabled && !loading) {
+                          // In group mode use checked array, in role mode use checkedKeys directly
+                          // const actualCheckedKeys = mode === 'group'
+                          //   ? (checkedKeys as { checked: React.Key[]; halfChecked: React.Key[] }).checked
+                          //   : (checkedKeys as React.Key[]);
 
-                        // Filter out disabled nodes (including organization roles)
-                        const validCheckedNodes = info.checkedNodes.filter((node: any) => !isNodeDisabled(node) && !organizationRoleIds.includes(node.key));
-                        const newKeys = validCheckedNodes.map((node: any) => node.key);
+                          // Filter out disabled nodes (including organization roles)
+                          const validCheckedNodes = info.checkedNodes.filter((node: any) => !isNodeDisabled(node) && !organizationRoleIds.includes(node.key));
+                          const newKeys = validCheckedNodes.map((node: any) => node.key);
 
-                        // Keep existing organization roles (disabled nodes)
-                        const existingOrgRoles = selectedKeys.filter(key => organizationRoleIds.includes(key));
-                        const finalKeys = [...new Set([...newKeys, ...existingOrgRoles])];
+                          // Keep existing organization roles (disabled nodes)
+                          const existingOrgRoles = selectedKeys.filter(key => organizationRoleIds.includes(key));
+                          const finalKeys = [...new Set([...newKeys, ...existingOrgRoles])];
 
-                        onChange(finalKeys);
-                      }
-                    }}
-                  />
+                          onChange(finalKeys);
+                        }
+                      }}
+                    />
+                  </div>
                 </div>
               );
             } else if (direction === 'right') {
               return (
-                <div className="w-full p-1 max-h-[250px] overflow-auto">
-                  <Tree
-                    blockNode
-                    selectable={false}
-                    expandedKeys={rightExpandedKeys}
-                    treeData={rightTransformedData}
-                    disabled={disabled || loading}
-                  />
+                <div className="flex flex-col w-full">
+                  <div className="p-2">
+                    <Input
+                      prefix={<SearchOutlined />}
+                      placeholder={t('common.search')}
+                      value={rightSearchValue}
+                      onChange={(e) => setRightSearchValue(e.target.value)}
+                      allowClear
+                    />
+                  </div>
+                  <div className="w-full p-1 max-h-[250px] overflow-auto">
+                    <Tree
+                      blockNode
+                      selectable={false}
+                      expandedKeys={rightExpandedKeys}
+                      onExpand={(keys) => setRightExpandedKeys(keys)}
+                      treeData={rightTransformedData}
+                      disabled={disabled || loading}
+                    />
+                  </div>
                 </div>
               );
             }

@@ -2,7 +2,7 @@ port 4222
 
 monitor_port: 8222
 jetstream {
-    store_dir: "store_dir=/nats/storage"
+    store_dir: "/nats/storage"
     domain: leaf-${ZONE_ID}
 }
 tls {
@@ -29,7 +29,7 @@ debug: false
 trace: false
 authorization {  
   default_permissions = {
-    publish =[]
+    publish = []
     subscribe = []
   }
   users = [
@@ -45,7 +45,7 @@ authorization {
       user: "${NATS_MONITOR_USERNAME}"
       password: "${NATS_MONITOR_PASSWORD}"
       permissions: {
-        publish = ["metrics.>","vector"]
+        publish = ["metrics.>", "vector"]
         subscribe = []
       }
     }

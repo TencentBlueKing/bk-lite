@@ -685,42 +685,66 @@ monitor_object_metric:
       name: 后台干净页写入速率
       desc: 表示写入压力过高导致的提前清理
   RabbitMQ:
-    rabbitmq_unacked_message_ratio:
-      name: 未确认消息占比
-      desc: 该指标用于衡量队列中未被消费者确认的消息比例，过高可能表示消费者处理消息滞后。
-    rabbitmq_node_run_queue:
-      name: 正在处理的队列数
-      desc: 该指标表示 RabbitMQ 节点当前正在处理的队列数。队列数过多可能表明系统压力较大，且可能需要进行优化。
-    rabbitmq_node_mem_used:
-      desc: 该指标表示 RabbitMQ 节点的内存使用情况。内存使用过高可能会导致性能下降，甚至导致节点崩溃。
-      name: 内存使用量
+    rabbitmq_node_uptime:
+      name: 节点运行时间
+      desc: RabbitMQ 节点自启动以来的运行时间，反映节点稳定性
+    rabbitmq_node_running:
+      name: 节点运行状态
+      desc: RabbitMQ 节点是否处于运行状态，1 表示运行中，0 表示已停止
+    rabbitmq_overview_connections:
+      name: 连接数
+      desc: 活动的客户端连接数量，反映系统负载
+    rabbitmq_overview_channels:
+      name: 通道数
+      desc: 打开的通道数量，反映消息流控制能力
+    rabbitmq_overview_consumers:
+      name: 消费者数量
+      desc: 活动的消费者数量，反映消息消费能力
+    rabbitmq_overview_queues:
+      name: 队列数量
+      desc: 已定义的队列数量，反映消息存储结构
+    rabbitmq_overview_messages:
+      name: 总消息数
+      desc: 所有队列中的总消息数，反映消息积压情况
     rabbitmq_overview_messages_ready:
       name: 就绪消息数
-      desc: 该指标表示当前待处理的消息数量。过多的就绪消息可能意味着消费者滞后或消息处理速度较慢。
-    rabbitmq_node_fd_used:
-      name: 已用文件描述符数量
-      desc: 该指标表示 RabbitMQ 节点已用的文件描述符数量。过多的文件描述符使用可能会导致系统无法处理更多的连接。
-    rabbitmq_exchange_publish_in_rate:
-      desc: 该指标表示每秒通过 RabbitMQ 交换机发布进入的消息数量。用于评估消息发布速率，帮助发现消息流入的瓶颈。
-      name: 交换发布进入速率
-    rabbitmq_node_uptime:
-      desc: 该指标表示 RabbitMQ 节点的运行时间，单位为分钟。长时间运行的节点可能需要重启来释放资源并进行维护。
-      name: 节点运行时间
+      desc: 队列中待投递的就绪消息数量，反映待处理消息
     rabbitmq_overview_messages_unacked:
       name: 未确认消息数
-      desc: 该指标表示未被消费者确认的消息数量。未确认的消息过多可能表示消费者处理速度过慢，或者有未处理的消息积压。
+      desc: 已投递但未确认的消息数量，反映消息处理延迟
+    rabbitmq_overview_messages_published_rate:
+      name: 消息发布速率
+      desc: 向 RabbitMQ 发布消息的速率，反映消息生产量
+    rabbitmq_node_run_queue:
+      name: 运行队列长度
+      desc: Erlang 运行队列长度，反映系统 CPU 负载和调度延迟
+    rabbitmq_node_mnesia_disk_tx_count_rate:
+      name: Mnesia 磁盘事务速率
+      desc: Mnesia 数据库磁盘事务速率，反映数据持久化活动强度
+    rabbitmq_node_mem_used:
+      name: 已用内存
+      desc: RabbitMQ 节点当前使用的内存，反映内存资源消耗
+    rabbitmq_node_mem_limit:
+      name: 内存限制
+      desc: RabbitMQ 节点的内存限制，用于计算内存使用率
+    rabbitmq_node_mem_alarm:
+      name: 内存告警
+      desc: 内存使用是否触发告警，1 表示告警，0 表示正常
     rabbitmq_node_disk_free:
-      desc: 该指标表示 RabbitMQ 节点上剩余的磁盘空间，单位为GiB。低磁盘空间可能会导致性能下降或故障。
-      name: 剩余磁盘空间
-    rabbitmq_queue_message_backlog_ratio:
-      desc: 该指标用于衡量队列中待处理消息与已确认消息的比例，帮助识别系统中是否存在消息积压。
-      name: 队列消息积压率
-    rabbitmq_exchange_publish_out_rate:
-      name: 交换发布输出速率
-      desc: 该指标表示每秒通过 RabbitMQ 交换机发布输出的消息数量。用于评估消息的流出速率，帮助识别消息流出问题。
-    rabbitmq_fd_usage_ratio:
-      name: 文件描述符使用率
-      desc: 该指标表示 RabbitMQ 节点已用文件描述符与总文件描述符的比例。过高的比例可能导致文件描述符不足。
+      name: 可用磁盘空间
+      desc: RabbitMQ 节点的可用磁盘剩余空间，反映存储容量
+    rabbitmq_node_disk_free_alarm:
+      name: 磁盘空间告警
+      desc: 磁盘空间使用是否触发告警，1 表示告警，0 表示正常
+    rabbitmq_node_fd_used:
+      name: 已用文件描述符
+      desc: RabbitMQ 节点当前使用的文件描述符数量，反映系统资源使用
+    rabbitmq_node_sockets_used:
+      name: 已用套接字数
+      desc: RabbitMQ 节点当前使用的套接字数量，反映网络连接状况
+    rabbitmq_node_proc_used:
+      name: 已用进程数
+      desc: RabbitMQ 节点当前使用的 Erlang 进程数量，反映系统进程负载
   MongoDB:
     mongodb_uptime_ns:
       name: 运行时长
@@ -2090,9 +2114,9 @@ monitor_object_metric_group:
   ActiveMQ:
     Topic: Topic
   RabbitMQ:
-    Message: 消息
-    Node: Node
-    Exchange: 交换消息
+    Base: 基础信息
+    Performance: 性能
+    Resource: 资源
   Apache:
     CPU: CPU
     Uptime: 运行时间
