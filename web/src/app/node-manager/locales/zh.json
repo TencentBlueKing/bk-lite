@@ -1,6 +1,20 @@
 {
   "node-manager": {
     "cloudregion": {
+      "pageConfig": {
+        "node": {
+          "title": "节点",
+          "description": "节点是控制器和托管组件运行的环境，可以是一个主机或容器。平台依托节点上的控制器，对节点进行管理，并统一调控被托管组件的运行。"
+        },
+        "environment": {
+          "title": "环境",
+          "description": "云区域环境中通过在代理主机或 K8s 集群上运行的 Nats Executor 和 Stargazer 组件，实现与平台的通信。"
+        },
+        "variable": {
+          "title": "变量",
+          "description": "变量用于在配置文件中动态替换值，便于统一管理和配置复用。"
+        }
+      },
       "Configuration": {
         "windows": "Windows",
         "configurationType": "配置类型",
@@ -42,6 +56,10 @@
         "installationMethod": "安装方式",
         "viewGuide": "查看指引",
         "loginAccount": "登录账号",
+        "authType": "验证方式",
+        "password": "密码",
+        "privateKey": "秘钥",
+        "uploadPrivateKey": "上传秘钥",
         "group": "组织",
         "error": "异常",
         "downloadPackage": "下载安装包",
@@ -96,7 +114,8 @@
         "btntext1": "如果您没有所需的配置文件，请单击",
         "successInstall": "安装成功",
         "ipaddress": "IP地址",
-        "loginPassword": "登录密码",
+        "loginPassword": "密码/秘钥",
+        "excelLoginPassword": "密码（秘钥请在网页导入）",
         "desc": "节点是控制器和组件运行的环境，可以是一个主机或容器。平台依托节点上的控制器，对节点进行管理，并统一调控被托管组件的运行。",
         "sidecarVersion": "控制器版本",
         "inactive": "不活跃",
@@ -124,6 +143,7 @@
         "nodeType": "节点类型",
         "commandCopied": "命令已复制",
         "commandCopiedDesc": "此命令专用于当前主机，请在其 PowerShell(管理员)窗口中粘贴执行。",
+        "linuxCommandCopiedDesc": "此命令专用于当前主机，请在该主机中粘贴执行。",
         "installError": "安装失败",
         "controllerVersionTip": "可升级新版本",
         "autoInstallDes": "手动安装请按照操作指引在主机上进行操作。",
@@ -145,17 +165,14 @@
         "confirmFinishContent1": "当前有",
         "statusCompleted": "已完成",
         "retrySuccess": "重试成功",
-        "copyInstallCommand": "复制安装命令",
-        "excelLoginPassword": "密码（秘钥请在网页导入）",
-        "authType": "验证方式",
-        "linuxCommandCopiedDesc": "此命令专用于当前主机，请在该主机中粘贴执行。",
-        "password": "密码",
-        "privateKey": "秘钥",
-        "uploadPrivateKey": "上传秘钥"
+        "copyInstallCommand": "复制安装命令"
       },
       "editform": {
         "Introduction": "简介",
-        "title": "编辑云区域"
+        "title": "编辑云区域",
+        "proxyIpOrDomain": "代理IP/域名",
+        "proxyIpOrDomainPlaceholder": "请输入代理主机的IP地址或域名，例如：192.168.1.100或example.com",
+        "proxyTips": "代理主机是在云区域中能够与平台相互通信（默认通信端口：443、4222）的主机，请输入代理主机在该云区域网络中的IP或域名。"
       },
       "variable": {
         "password": "密码",
@@ -167,6 +184,29 @@
         "value": "数值",
         "variableNameTips": "仅允许字符 A-Z, a-z, 0-9, 和 _",
         "text": "文本"
+      },
+      "environment": {
+        "envStatus": "环境状态",
+        "envDeploy": "环境部署",
+        "containerDeploy": "容器部署",
+        "k8sDeploy": "K8s部署",
+        "proxyIpOrDomain": "代理IP/域名",
+        "proxyIpPlaceholder": "请输入代理主机的IP或域名",
+        "proxyTips": "代理主机是在云区域中能够与平台相互通信（默认通信端口：443、4222）的主机，请输入代理主机在该云区域网络中的IP或域名。",
+        "generateScript": "生成部署脚本",
+        "generateSuccess": "脚本生成成功",
+        "deployScript": "部署脚本",
+        "copyScript": "复制脚本",
+        "copySuccess": "复制成功",
+        "copySuccessDesc": "请前往代理主机执行复制的命令，命令执行成功后刷新代理状态。",
+        "refreshProxyStatus": "刷新代理状态",
+        "abnormal": "异常",
+        "normal": "正常",
+        "notDeployed": "未部署",
+        "editWarningTitle": "重要提示",
+        "editWarningContent": "修改云区域代理主机信息属于非常规操作，可能导致已有节点失联。",
+        "editWarningTip": "请确认此操作确有必要，并知晓潜在影响。",
+        "confirmEdit": "我已知晓，继续修改"
       },
       "deleteform": {
         "deleteInfo": "您确定要删除此云区域吗?",
@@ -267,6 +307,7 @@
     "name": "名称",
     "bulkEdit": "批量编辑",
     "batchbindFailed": "绑定失败",
+    "environment": "环境",
     "variable": "变量",
     "applysuccess": "应用成功!",
     "prompt": "提示",
@@ -279,8 +320,10 @@
     "apply": "应用",
     "quesuccess": "查询成功",
     "refSuccess": "刷新成功",
-    "topdes": "节点是控制器和托管组件运行的环境，可以是一个主机或容器。平台依托节点上的控制器，对节点进行管理，并统一调控被托管组件的运行。",
+    "loading": "加载中...",
+    "close": "关闭",
     "download": "下载",
+    "upload": "上传",
     "deleteTips": "您确定要修改此项吗？",
     "search": "搜索...",
     "unapply": "解绑",
@@ -288,7 +331,6 @@
     "batchbindSuccess": "绑定成功",
     "successfulDownloaded": "下载成功！",
     "configuration": "配置",
-    "successfullyModified": "修改成功！",
-    "upload": "上传"
+    "successfullyModified": "修改成功！"
   }
 }

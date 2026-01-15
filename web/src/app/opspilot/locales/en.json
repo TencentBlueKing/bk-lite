@@ -92,6 +92,7 @@
   },
   "tool": {
     "text": "Text",
+    "textarea": "Textarea",
     "deleteConfirm": "Are you sure you want to delete this tool?",
     "parameters": "Parameters",
     "addTool": "Add Tool",

@@ -1,399 +1,219 @@
 monitor_object_metric:
   Minio:
-    minio_cluster_nodes_offline_total_gauge:
-      desc: Counts offline nodes to address issues affecting performance and redundancy.
-      name: Total Offline Nodes
-    minio_cluster_drive_offline_rate:
-      desc: The ratio of the number of offline drives to the total number of drives,
-        a measure of the reliability and availability of storage devices, can affect
-        data redundancy when thresholds such as 5% are exceeded.
-      name: Cluster Drive Offline Rate
-    minio_cluster_drive_online_total_gauge:
-      name: Total Online Drives
-      desc: Evaluates available storage devices to ensure cluster operation.
-    minio_s3_requests_total_rate:
-      name: S3 Request Rate
-      desc: Calculates the average processing rate of S3 requests over the last 5
-        minutes, reflecting system throughput and service load and performance baselines.
-    minio_cluster_health_status_gauge:
-      desc: Reflects overall cluster health for quick status check. 0 = Unhealthy,
-        1 = Healthy
+    cluster_capacity_usable_total_bytes_gauge:
+      name: Cluster Usable Total Capacity
+      desc: Total usable logical storage capacity after erasure coding, reflecting storage resource scale after redundancy
+    cluster_capacity_usable_free_bytes_gauge:
+      name: Cluster Usable Free Capacity
+      desc: Available logical storage capacity of the cluster, used for monitoring usage and predicting storage needs
+    cluster_drive_online_total_gauge:
+      name: Online Drives Count
+      desc: Number of currently online and available storage drives, indicating storage hardware availability
+    cluster_nodes_online_total_gauge:
+      name: Online Nodes Count
+      desc: Number of currently online server nodes, affecting cluster processing capacity and fault tolerance
+    cluster_health_status_gauge:
       name: Cluster Health Status
-    minio_node_drive_reads_per_sec_gauge:
-      desc: Counts the number of read operations per second on a specified drive to
-        evaluate its read performance and troubleshoot read-related performance issues.
-      name: Drive Reads per Second
-    minio_bucket_requests_total_rate:
-      desc: The growth rate per second of the total number of S3 requests received
-        by a bucket reflects the intensity of request traffic and the frequency of
-        business access to the bucket.
-      name: Bucket S3 Total Request Rate
-    minio_s3_requests_waiting_total_gauge:
-      name: Total Waiting S3 Requests
-      desc: Displays the number of S3 requests waiting to be processed, optimizes
-        request processing efficiency, and directly reflects whether the system is
-        saturated.
-    minio_cluster_capacity_storage_utilization:
-      name: Cluster Storage Capacity Utilization
-      desc: Collect statistics on the percentage of used capacity in the cluster storage
-        capacity to the total capacity, monitor the storage resource usage, and evaluate
-        the remaining storage resources.
-    minio_node_if_tx_errors_rate:
-      desc: Statistics on the number of errors that occur during data transmission
-        per second on the network interface of a specified server in the past 5 minutes
-        are used to troubleshoot network transmission faults and improve network communication
-        reliability.
-      name: Transmission Error Rate
-    minio_node_drive_writes_kb_per_sec_gauge:
-      name: Drive Write Kilobytes per Second
-      desc: Counts the amount of data written per second (in kilobytes) on a specified
-        drive, reflecting its write bandwidth to improve data-writing efficiency.
-    minio_cluster_capacity_usable_free_bytes_gauge:
-      name: Cluster Available Capacity
-      desc: Reflects available storage for data storage planning.
-    minio_cluster_write_quorum_gauge:
-      name: Cluster Max Write Acknowledgments
-      desc: Ensures data write consistency and reliability, affecting write performance.
-    minio_audit_failed_messages_counter:
-      desc: Counts unsent messages to detect sending failures and ensure message delivery
-        integrity.
-      name: Total Unsent Messages
-    minio_node_if_tx_bytes_rate:
-      desc: Statistics on the amount of data transmitted per second on a specified
-        server network interface in the past five minutes are used to monitor network
-        traffic outflow and evaluate network bandwidth efficiency.
-      name: The amount of data transferred per second
-    minio_bucket_requests_inflight_total_gauge:
-      name: Bucket Active S3 Requests
-      desc: Statistics on the number of S3 requests processed by a specified bucket
-        can be used to monitor the request processing progress and optimize system
-        performance.
-    minio_node_drive_reads_kb_per_sec_gauge:
-      name: Drive Read Kilobytes per Second
-      desc: Counts the amount of data read per second (in kilobytes) on a specified
-        drive, directly reflecting its read bandwidth to optimize data-reading strategies.
-    minio_bucket_usage_total_bytes_gauge:
-      desc: Statistics on the amount of storage space occupied by a specified bucket
-        can be used to monitor storage resource consumption and plan storage capacity.
-      name: Total Bucket Size
-    minio_s3_requests_rejected_invalid_total_rate:
-      desc: Calculates the average rate of S3 requests rejected due to invalid format
-        or parameters over the past 5 minutes, reflecting client request quality.
-      name: S3 Invalid Requests Rate
-    minio_s3_requests_errors_total_rate:
-      name: S3 Request Error Rate
-      desc: Calculates the average rate of errors in S3 requests over the past 5 minutes,
-        reflecting system stability.
-    minio_bucket_usage_object_total_gauge:
-      desc: Statistics on the number of objects in a specified bucket are used to
-        understand the data scale of the bucket and evaluate the bucket usage.
-      name: Total Objects in Bucket
-    minio_bucket_requests_4xx_errors_total_rate:
-      name: Total Bucket S3 Request Error Rate (4xx)
-      desc: The rate per second of client errors (e.g., 403/404) in S3 requests received
-        by the bucket over the past 5 minutes, reflecting the real-time frequency
-        of client request legitimacy issues.
-    minio_audit_total_messages_counter:
-      name: Total Sent Messages
-      desc: Evaluates sending success rate with unsent messages to measure stability.
-    minio_node_drive_writes_per_sec_gauge:
-      desc: Counts the number of write operations per second on a specified drive
-        to evaluate its write performance and analyze the impact of write operations
-        on the system.
-      name: Drive Writes per Second
-    minio_node_if_rx_bytes_rate:
-      name: Data Receive Rate per Second
-      desc: Statistics on the amount of data received per second by a specified server
-        network interface in the past five minutes are used to monitor network traffic
-        inflow and evaluate network bandwidth usage.
-    minio_node_cpu_avg_load5_gauge:
-      desc: Calculate the average CPU load over the past 5 minutes, reflecting the
-        number of processes waiting for CPU resources (including running and waiting
-        processes), which is used to evaluate short-term load trends and assist in
-        performance optimization decisions.
-      name: CPU 5-Minute Average Load
-    minio_node_drive_perc_util_gauge:
-      desc: Counts the percentage of time a specified drive is busy to evaluate its
-        load and allocate storage tasks reasonably.
-      name: Drive Busy Time Utilization
-    minio_bucket_traffic_received_rate:
-      name: Bucket Data Receive Rate
-      desc: The average amount of data traffic received by the compute bucket per
-        second over a 5-minute period, converted to MB/s units, is used to monitor
-        bandwidth usage for data downloads or reads.
-    minio_s3_requests_rejected_auth_total_rate:
-      name: S3 Authentication Failure Rate
-      desc: Calculates the average rate of S3 requests rejected due to authentication
-        failures over the past 5 minutes, reflecting authentication issues.
-    minio_node_cpu_avg_load15_gauge:
-      desc: The average CPU load in the past 15 minutes is calculated, reflecting
-        the number of processes waiting for CPU resources (including running and waiting
-        processes), which is used to analyze the long-term load and plan system resources.
-      name: CPU 15-Minute Average Load
-    minio_node_cpu_avg_load1_gauge:
-      name: CPU 1-Minute Average Load
-      desc: Calculate the average load of the CPU in the past 1 minute, reflecting
-        the number of processes waiting for CPU resources (including running and waiting
-        processes), the larger the value, the more CPU tension, for real-time monitoring
-        of real-time pressure and detection of performance problems.
-    minio_node_if_rx_errors_rate:
-      name: Receiving Error Rate
-      desc: Statistics on the number of errors that occur when receiving data per
-        second on a specified server network interface in the past 5 minutes is used
-        to troubleshoot network receiving faults and ensure network data transmission
-        quality.
-    minio_audit_target_queue_length_gauge:
-      desc: Reflects message backlog in target queue for optimizing message processing.
-      name: Unsent Messages in Target Queue
-    minio_s3_traffic_received_bytes_rate:
-      name: S3 Data Received Rate
-      desc: Calculates the average rate of data received in S3 requests over the past
-        5 minutes, reflecting data download performance.
-    minio_node_drive_used_inodes_utilization:
-      name: Drive Inode Utilization
-      desc: Statistics on the percentage of inodes used by a specified drive can be
-        used to understand the degree of drive usage and assist in storage resource
-        management.
-    minio_cluster_nodes_online_total_gauge:
-      name: Total Online Nodes
-      desc: Evaluates available cluster resources to ensure service capacity.
-    minio_s3_traffic_sent_bytes_rate:
-      desc: Calculates the average rate of data sent in S3 requests over the past
-        5 minutes, reflecting data upload performance.
-      name: S3 Data Sent Rate
-    minio_cluster_drive_offline_total_gauge:
-      name: Total Offline Drives
-      desc: Counts offline drives to troubleshoot issues affecting performance and
-        data availability.
-    minio_audit_delivery_success_rate:
-      desc: The success rate of sending messages is used to measure the reliability
-        and stability of audit message sending.
-      name: Message Delivery Success Rate
-    minio_node_drive_total_inodes_gauge:
-      desc: Counts the total number of inodes on a specified drive to measure its
-        file-storage capacity limit and evaluate the scale of storage resources.
-      name: Total Inodes of Drive
-    minio_cluster_nodes_offline_rate:
-      desc: The percentage of the number of offline nodes in the total number of nodes
-        reflects the health status of the cluster nodes and is used to evaluate the
-        stability of the cluster nodes.
-      name: Cluster Nodes Offline Rate
-    minio_cluster_capacity_usable_total_bytes_gauge:
-      name: Cluster Used Capacity
-      desc: Counts used storage for calculating utilization rate.
-    minio_cluster_drive_total_gauge:
-      desc: Evaluates overall storage device status with online and offline counts.
-      name: Total Drives in Cluster
+      desc: Overall cluster health status, 1 indicates healthy, 0 indicates unhealthy, providing quick overview of cluster status
+    cluster_health_erasure_set_status_gauge:
+      name: Erasure Set Status
+      desc: Erasure set status (1=healthy), indicating data redundancy set health and directly affecting data security
+    cluster_health_erasure_set_online_drives_gauge:
+      name: Erasure Set Online Drives
+      desc: Number of online drives in erasure set, affecting data availability and redundancy, ensuring redundancy strategy effectiveness
+    node_cpu_avg_load1_gauge:
+      name: Node 1-minute Average Load
+      desc: Average system load over last 1 minute, indicating short-term CPU pressure and performance stress
+    node_cpu_avg_idle_gauge:
+      name: Node CPU Idle Rate
+      desc: Percentage of CPU idle time, indicating CPU utilization, low idle rate may indicate CPU bottleneck
+    node_mem_used_perc_gauge:
+      name: Node Memory Usage Rate
+      desc: Percentage of memory used, indicating memory pressure, high usage may cause performance degradation
+    node_drive_perc_util_gauge:
+      name: Drive Utilization Rate
+      desc: Utilization percentage of single drive, reflecting storage space usage, important for capacity planning
+    node_drive_reads_per_sec_gauge:
+      name: Drive Reads Per Second
+      desc: Number of read operations per second on single drive, reflecting read performance and workload
+    node_drive_writes_per_sec_gauge:
+      name: Drive Writes Per Second
+      desc: Number of write operations per second on single drive, reflecting write performance and workload
+    node_if_rx_bytes_gauge:
+      name: Network Interface Receive Bytes
+      desc: Received data bytes on network interface, reflecting network inflow, monitoring bandwidth usage
+    node_if_tx_bytes_gauge:
+      name: Network Interface Transmit Bytes
+      desc: Transmitted data bytes on network interface, reflecting network outflow, monitoring bandwidth usage
+    node_process_uptime_seconds_gauge:
+      name: Process Uptime
+      desc: Seconds MinIO process has been running, indicating stability, long uptime indicates stability, frequent restarts may indicate issues
+    node_process_cpu_total_seconds_counter_rate:
+      name: Process CPU Usage Rate
+      desc: CPU time consumed per second by MinIO process, reflecting real-time CPU resource consumption
+    node_process_resident_memory_bytes_gauge:
+      name: Process Resident Memory
+      desc: Resident memory size occupied by MinIO process, reflecting memory usage, monitoring memory leaks
+    node_go_routine_total_gauge:
+      name: Go Routines Total
+      desc: Current number of Go routines in MinIO process, reflecting concurrency capacity, abnormal increase may indicate issues
+    s3_requests_incoming_total_gauge:
+      name: Current Incoming S3 Requests
+      desc: Number of incoming S3 API requests currently being processed, reflecting current S3 service load
+    s3_requests_waiting_total_gauge:
+      name: Waiting S3 Requests
+      desc: Number of S3 API requests currently waiting for processing, reflecting S3 service queue backlog
+    s3_traffic_received_bytes_counter_rate:
+      name: S3 Received Traffic Rate
+      desc: Data traffic received per second by S3 service, reflecting upload rate and network inflow bandwidth usage
+    s3_traffic_sent_bytes_counter_rate:
+      name: S3 Sent Traffic Rate
+      desc: Data traffic sent per second by S3 service, reflecting download rate and network outflow bandwidth usage
+    s3_requests_rejected_auth_total_counter_rate:
+      name: Auth Rejected S3 Requests Rate
+      desc: Number of S3 requests rejected per second due to authentication failure, reflecting authentication failure frequency and security status
+    node_scanner_objects_scanned_counter_rate:
+      name: Objects Scan Rate
+      desc: Number of objects scanned per second by scanner, reflecting efficiency of storage system internal maintenance activities
   Host:
-    env:
-      proc_running_current:
-        name: Number of Running Processes
-        desc: Displays the number of processes currently running, used to assess the
-          concurrency. This metric is valuable for real-time monitoring of system
-          load.
-      procs_blocked_current:
-        desc: Displays the number of processes currently blocked by IO operations.
-          Analyzing this value helps optimize the system and reduce bottlenecks. This
-          metric is helpful for identifying IO bottlenecks.
-        name: Number of Processes Blocked by IO
-      procs:
-        desc: Displays the total number of processes running on the system, helping
-          understand the load distribution. This metric is important for monitoring
-          the overall operation of the system.
-        name: Total Processes
-    net:
-      speed_sent:
-        name: Outgoing Network Traffic
-        desc: Displays the number of bytes sent by the network interface per unit
-          of time (in MB), used to evaluate network bandwidth utilization. This metric
-          is crucial for monitoring network bandwidth.
-      dropped_out:
-        desc: Displays the number of dropped packets sent by the network interface,
-          indicating network transmission congestion. This metric is crucial for monitoring
-          network reliability.
-        name: Network Interface Send Dropped Packets
-      errors_out:
-        name: Network Interface Send Error Packets
-        desc: Displays the number of error packets sent by the network interface,
-          helping understand network transmission errors. This metric is helpful for
-          identifying network faults and abnormal traffic.
-      speed_recv:
-        name: Incoming Network Traffic
-        desc: Displays the number of bytes received by the network interface per unit
-          of time (in MB), used to evaluate network bandwidth utilization. This metric
-          is important for monitoring network bandwidth.
-      errors_in:
-        desc: Displays the number of error packets received by the network interface,
-          used to detect network issues. This metric is helpful for identifying network
-          faults and abnormal traffic.
-        name: Network Interface Receive Error Packets
-      speed_packets_sent:
-        name: Outgoing Network Packets
-        desc: Displays the number of data packets sent by the network interface per
-          unit of time, used to evaluate network transmission performance. This metric
-          is crucial for monitoring network traffic.
-      speed_packets_recv:
-        name: Incoming Network Packets
-        desc: Displays the number of data packets received by the network interface
-          per unit of time, used to evaluate network reception performance. This metric
-          is crucial for monitoring network traffic.
-      dropped_in:
-        name: Network Interface Receive Dropped Packets
-        desc: Displays the number of dropped packets received by the network interface,
-          indicating network congestion. This metric is crucial for monitoring network
-          reliability.
-    nvidia_smi_memory_total:
-      desc: The total capacity of GPU memory, indicating the maximum memory the device
-        supports.
-      name: GPU Total Memory Capacity
-    load5:
-      name: 5 Minute Average Load
-      desc: Displays the average system load over the last 5 minutes, reflecting the
-        medium-term load on the system. This medium-term metric helps identify sustained
-        and intermittent high load situations.
-    cpu_summary:
-      iowait:
-        name: Percentage of Time Waiting for IO
-        desc: Displays the percentage of CPU time spent waiting for IO operations,
-          indicating the impact of disk or network performance on the system. Reducing
-          wait time helps improve system performance. This metric is very useful for
-          analyzing system bottlenecks.
-      system:
-        desc: Displays the system usage rate, showing the CPU resources consumed by
-          kernel processes. Analyzing this value helps optimize system kernel performance
-          and stability.
-        name: System Usage Rate
-      user:
-        desc: Displays the percentage of CPU resources used by user processes, helping
-          understand the performance of applications and services. This metric is
-          helpful in understanding the CPU consumption of specific applications.
-        name: CPU Usage by User Processes
-      idle:
-        desc: Displays the CPU idle rate, representing the amount of unused CPU resources
-          in the system. It helps to know if the system is under high load. This metric
-          is crucial for analyzing system performance and efficiency.
-        name: CPU Idle Rate
-      usage:
-        desc: Displays the CPU usage rate to indicate the system's load. It is derived
-          by subtracting the idle from total. This metric is crucial for monitoring
-          system performance.
-        name: CPU Usage Rate
-    nvidia_smi_memory_used:
-      name: GPU Memory Used
-      desc: The capacity of GPU memory currently occupied, reflecting the memory size
-        used by running tasks.
-    diskio_write_bytes:
-      desc: Counts the number of bytes written to the disk in the specified time interval,
-        represented in megabytes (MB).
-      name: Disk I/O Write Bytes Rate
-    mem:
-      buffer:
-        desc: Displays the amount of memory used for buffering (in GB), ensuring stable
-          data transfer. This metric is crucial for performance optimization strategies.
-        name: Buffer Memory Size
-      shared:
-        desc: Displays the usage of shared memory (in GB), used for data sharing between
-          processes. This metric helps optimize system memory allocation strategies.
-        name: Shared Memory Usage
-      pct_used:
-        name: Application Memory Usage Percentage
-        desc: Displays the percentage of memory used by applications, understanding
-          memory usage distribution. This metric is valuable for optimizing memory
-          usage.
-      pct_usable:
-        desc: Displays the percentage of memory available, helping determine if there
-          is sufficient memory to support applications. This metric is useful for
-          monitoring memory pressure and capacity planning strategies.
-        name: Available Memory Percentage for Applications
-      free:
-        desc: Displays the amount of free physical memory currently available (in
-          GB), helping understand the available resources. This metric is crucial
-          for keeping track of memory resource usage.
-        name: Free Physical Memory Amount
-      total:
-        desc: Displays the total physical memory of the system (in GB), providing
-          an overview of system resource configuration. This metric is important for
-          understanding the base configuration of system resources.
-        name: Total Physical Memory
-      used:
-        desc: Displays the memory used by applications (in GB), analyzing this value
-          helps optimize application memory usage. This metric is crucial for monitoring
-          application resource consumption.
-        name: Application Memory Usage
-      psc_used:
-        name: Used Physical Memory Amount
-        desc: Displays the total amount of physical memory used by the system (in
-          GB), helping understand the overall distribution of memory resources. This
-          metric is crucial for gaining a comprehensive understanding of system memory
-          usage.
-      usable:
-        name: Available Memory for Applications
-        desc: Displays the memory available for applications (in GB), ensuring smooth
-          application operation. This metric is important for maintaining application
-          performance and stability.
-      cached:
-        name: Cache Memory Size
-        desc: Displays the amount of memory used for caching (in GB), used to improve
-          system performance. This metric is important for understanding memory caching
-          strategies.
-    load1:
-      desc: Displays the average system load over the last 1 minute, providing a snapshot
-        of short-term system activity. This metric helps monitor system performance
-        in real-time.
+    cpu_usage_total:
+      name: CPU Usage
+      desc: Reflects the overall CPU utilization of the host, representing the proportion of non-idle CPU time. Sustained high values usually indicate CPU resource pressure or bottlenecks.
+    cpu_usage_core:
+      name: CPU Core Usage
+      desc: Describes the utilization of individual CPU cores, enabling analysis of load distribution and identification of imbalanced or hot cores.
+    cpu_usage_iowait_total:
+      name: CPU IOWait Rate
+      desc: Indicates the proportion of CPU time spent waiting for I/O operations to complete, commonly used to identify disk or I/O performance constraints.
+    cpu_usage_system_total:
+      name: CPU System Usage
+      desc: Represents the percentage of CPU time spent executing kernel-level tasks. Abnormally high values may indicate increased system overhead or frequent system calls.
+    cpu_usage_user_total:
+      name: CPU User Usage
+      desc: Indicates the percentage of CPU time spent executing user-space application logic, commonly used to evaluate application CPU consumption.
+    cpu_usage_irq_total:
+      name: CPU IRQ Usage
+      desc: Represents the percentage of CPU time spent handling hardware interrupts, helpful for diagnosing hardware or driver-related performance issues.
+    cpu_usage_steal_total:
+      name: CPU Steal Rate
+      desc: Indicates the proportion of CPU time stolen by the hypervisor in virtualized environments, used to assess CPU contention.
+    system_load1:
       name: 1 Minute Average Load
-    diskio_reads:
-      desc: Counts the number of data read operations from the disk in the specified
-        time interval.
-      name: Disk I/O Read Rate
-    diskio_write_time:
-      name: Disk I/O Write Time Rate
-      desc: Counts the time taken to write data to the disk in the specified time
-        interval, represented in seconds (s).
-    disk:
-      is_use:
-        desc: Displays the percentage of disk space used, helping understand the utilization
-          of disk resources. This metric is important for preventing disk overflow.
-        name: Disk Usage Rate
-      used:
-        desc: Displays the actual used disk space (in GB), used to determine disk
-          capacity usage. This metric is helpful for monitoring disk space usage.
-        name: Disk Used Space
-    diskio_read_time:
-      name: Disk I/O Read Time Rate
-      desc: Counts the time taken to read data from the disk in the specified time
-        interval, represented in seconds (s).
-    diskio_read_bytes:
-      name: Disk I/O Read Bytes Rate
-      desc: Counts the number of bytes read from the disk in the specified time interval,
-        represented in megabytes (MB).
-    nvidia_smi_temperature_gpu:
-      name: GPU Core Temperature
-      desc: The operating temperature of the GPU core, measured in degrees Celsius
-        (°C), used to monitor device status and safety.
-    load15:
+      desc: Represents the average system load over the last 1 minute, primarily used to observe short-term load fluctuations.
+    system_load5:
+      name: 5 Minute Average Load
+      desc: Represents the average system load over the last 5 minutes, useful for analyzing short-term load trends.
+    system_load15:
       name: 15 Minute Average Load
-      desc: Displays the average system load over the last 15 minutes, providing long-term
-        load observation to understand the overall performance trend of the system.
-    diskio_writes:
-      desc: Counts the number of data write operations to the disk in the specified
-        time interval.
-      name: Disk I/O Write Rate
-    nvidia_smi_fan_speed:
-      desc: The percentage of current GPU fan speed relative to the maximum speed
-        (0%-100%), used to monitor cooling condition and operational status.
-      name: GPU Fan Speed Percentage
+      desc: Represents the average system load over the last 15 minutes, commonly used to evaluate long-term load stability.
+    diskio_io_util:
+      name: Disk I/O Usage
+      desc: Indicates the proportion of time a disk device is busy handling I/O operations. Sustained high values usually suggest disk I/O saturation.
+    diskio_writes_rate:
+      name: Disk Write IOPS
+      desc: Represents the number of disk write operations completed per second, measuring write I/O intensity and concurrency.
+    diskio_write_bytes_rate:
+      name: Disk Write Rate
+      desc: Indicates the amount of data written to disk per unit time, used to evaluate disk write throughput.
+    disk_write_latency:
+      name: Disk Write Latency
+      desc: Represents the average latency of disk write operations, used to analyze disk write performance and responsiveness.
+    diskio_reads_rate:
+      name: Disk Read IOPS
+      desc: Represents the number of disk read operations completed per second, measuring read I/O concurrency and intensity.
+    diskio_read_bytes_rate:
+      name: Disk Read Rate
+      desc: Indicates the amount of data read from disk per unit time, used to evaluate disk read throughput.
+    disk_read_latency:
+      name: Disk Read Latency
+      desc: Represents the average latency of disk read operations, used to analyze disk read performance and access delay.
+    disk_total:
+      name: Disk Total
+      desc: Represents the total capacity of a disk or filesystem, used for capacity planning and resource management.
+    disk_free:
+      name: Disk Free
+      desc: Represents the currently available free space of a disk or filesystem, used to monitor capacity risks.
+    disk_used_percent:
+      name: Disk Usage
+      desc: Represents the percentage of disk space that has been consumed, a core metric for disk capacity monitoring.
+    disk_inodes_used_percent:
+      name: Inode Usage
+      desc: Represents the percentage of inode usage in a filesystem, helping prevent failures caused by inode exhaustion.
+    processes_running:
+      name: Running Process
+      desc: Represents the number of processes currently in a running state, reflecting system concurrency.
+    processes_blocked:
+      name: Blocked Process
+      desc: Represents the number of processes blocked due to I/O or resource contention, helping identify system bottlenecks.
+    processes_zombies:
+      name: Zombie Process
+      desc: Represents the number of zombie processes that have exited but remain unreaped, potentially indicating process management issues.
+    processes_sleeping:
+      name: Sleeping Process
+      desc: Represents the number of processes currently in a sleeping or waiting state.
+    mem_total:
+      name: Total Memory
+      desc: Represents the total amount of physical memory available on the system, serving as a baseline for memory evaluation.
+    mem_available:
+      name: Available Memory
+      desc: Represents the amount of memory available for applications without causing significant performance degradation.
+    mem_used_percent:
+      name: Memory Usage
+      desc: Represents the percentage of memory currently in use, indicating overall memory pressure.
+    mem_swap_free:
+      name: Swap Free Memory
+      desc: Represents the amount of free swap space available, used to monitor buffering capacity under memory pressure.
+    mem_cached:
+      name: Cached Memory
+      desc: Represents the amount of memory used for file caching, which can be reclaimed when necessary.
+    mem_shared:
+      name: Shared Memory
+      desc: Represents the amount of memory shared among multiple processes.
+    mem_buffered:
+      name: Buffered Memory
+      desc: Represents the amount of memory used for buffering block device I/O operations.
+    net_packets_recv_rate:
+      name: Network Receive Packet Rate
+      desc: Represents the number of packets received per unit time on a network interface, reflecting packet-level traffic.
+    net_packets_sent_rate:
+      name: Network Send Packet Rate
+      desc: Represents the number of packets sent per unit time on a network interface.
+    net_bytes_recv_rate:
+      name: Network Receive Throughput Rate
+      desc: Represents the amount of data received per unit time on a network interface, used to evaluate inbound bandwidth utilization.
+    net_bytes_sent_rate:
+      name: Network Send Throughput Rate
+      desc: Represents the amount of data sent per unit time on a network interface, used to evaluate outbound bandwidth utilization.
+    net_err_in_rate:
+      name: Network Receive Error Rate
+      desc: Represents the number of errored packets received per unit time, used to monitor network quality.
+    net_err_out_rate:
+      name: Network Send Error Rate
+      desc: Represents the number of errored packets sent per unit time on a network interface.
+    net_drop_in_rate:
+      name: Network Receive Drop Rate
+      desc: Represents the number of incoming packets dropped per unit time, indicating congestion or abnormal conditions.
+    net_drop_out_rate:
+      name: Network Send Drop Rate
+      desc: Represents the number of outgoing packets dropped per unit time on a network interface.
+    nvidia_smi_memory_total:
+      name: GPU Memory Total
+      desc: Represents the total available memory capacity of the GPU, serving as a baseline GPU resource metric.
     nvidia_smi_memory_free:
-      desc: The remaining capacity of GPU memory currently unoccupied, used to assess
-        available resources.
-      name: GPU Remaining Memory Capacity
+      name: GPU Memory Free
+      desc: Represents the amount of free GPU memory currently available for allocation.
     nvidia_smi_utilization_memory:
       name: GPU Memory Utilization
-      desc: The percentage of current memory usage, indicating the utilization of
-        GPU memory resources (0%-100%), useful for optimizing memory allocation.
+      desc: Represents the percentage of GPU memory currently in use, indicating GPU memory pressure.
     nvidia_smi_power_draw:
-      name: GPU Real-Time Power Consumption
-      desc: The real-time power consumption of GPU, measured in watts (W), used to
-        monitor energy consumption level.
+      name: GPU Power Draw
+      desc: Represents the current power consumption of the GPU, used to monitor energy usage and operating status.
+    nvidia_smi_temperature_gpu:
+      name: GPU Core Temperature
+      desc: Represents the current core temperature of the GPU, used to monitor thermal conditions and cooling health.
+    nvidia_smi_fan_speed_avg:
+      name: GPU Fan Speed
+      desc: Represents the average GPU fan speed as a percentage, used to assess cooling behavior and hardware status.
   JVM:
     jvm_memorypool_usage_used_value:
       desc: The current actual memory usage of the memory pool in the Java Virtual
@@ -959,214 +779,306 @@ monitor_object_metric:
         supporting overall traffic monitoring and capacity planning.
       name: Device Total Incoming Traffic (per second)
   ActiveMQ:
-    activemq_topic_size:
-      name: Topic Size
-      desc: This metric shows the number of unconsumed messages in the topic, helping
-        to identify potential message backlog.
-    activemq_topic_enqueue_rate:
-      name: Enqueue Rate
-      desc: This metric shows the rate at which messages are enqueued to the topic,
-        indicating the incoming message rate per second.
-    activemq_topic_dequeue_rate:
-      name: Dequeue Rate
-      desc: This metric shows the rate at which messages are consumed from the topic,
-        indicating the consumption rate per second.
-    activemq_topic_consumer_count:
-      name: Consumer Count
-      desc: This metric represents the number of consumers per topic, used to monitor
-        if consumers are evenly distributed.
+    topics_consumer_count:
+      name: Topic Consumer Count
+      desc: Current number of consumer connections for a specific topic, reflecting message consumption capacity
+    topics_dequeue_count:
+      name: Topic Dequeue Count
+      desc: Total number of messages dequeued from a specific topic, reflecting processed message volume
+    topics_enqueue_count:
+      name: Topic Enqueue Count
+      desc: Total number of messages enqueued to a specific topic, reflecting received message volume
+    topics_size:
+      name: Topic Current Size
+      desc: Current number of messages stored in a specific topic, reflecting backlog status
   Postgres:
-    postgresql_xact_rollback:
-      name: PostgreSQL Transactions Rolled Back Rate
-      desc: Indicates the rate of transactions rolled back by the PostgreSQL instance
-        (in rollbacks per second). Used for monitoring transaction rollback frequency.
-    postgresql_active_time:
-      name: PostgreSQL Active Time
-      desc: This metric indicates the total duration of the PostgreSQL instance in
-        an active state, reflecting the duration of database activity.
-    postgresql_buffers_checkpoint:
-      name: PostgreSQL Buffer Checkpoint Rate
-      desc: Indicates the rate of buffers at checkpoints by the PostgreSQL instance
-        (in checkpoints per second). Used for monitoring checkpoint frequency.
-    postgresql_blks_hit_ratio:
-      desc: Indicates the PostgreSQL instance's block cache hit ratio over the past
-        5 minutes, reflecting cache effectiveness. A high hit ratio means most data
-        requests are fulfilled from the cache, reducing disk reads and improving query
-        performance.
-      name: PostgreSQL Blocks Hit Ratio(5m)
-    postgresql_sessions_abandoned:
-      name: PostgreSQL Abnormal Session Disconnection Rate
-      desc: Rate of sessions abnormally disconnected due to network/client issues
-        per second, used to identify client/network instability and resource leaks.
-    postgresql_xact_commit:
-      desc: Indicates the rate of transactions committed by the PostgreSQL instance
-        (in commits per second). Used for monitoring transaction commit frequency.
-      name: PostgreSQL Transactions Committed Rate
-    postgresql_blk_write_time:
-      name: PostgreSQL Block Write Time Rate
-      desc: Indicates the rate of time spent on block write operations by the PostgreSQL
-        instance (in seconds per second). Used for monitoring write performance.
-    postgresql_blks_hit:
-      desc: Indicates the rate of block cache hits by the PostgreSQL instance (in
-        hits per second). Used for monitoring cache efficiency.
-      name: PostgreSQL Blocks Hit Rate
-    postgresql_blks_read:
-      desc: Indicates the rate of block reads by the PostgreSQL instance (in reads
-        per second). Used for monitoring read frequency.
-      name: PostgreSQL Blocks Read Rate
-    postgresql_sessions:
-      desc: Indicates the total number of sessions for the PostgreSQL instance (including
-        idle connections), used for monitoring connection pool usage and identifying
-        connection leaks or abnormal surges.
-      name: PostgreSQL Total Active Sessions
-    postgresql_blk_read_time:
-      name: PostgreSQL Block Read Time Rate
-      desc: Indicates the rate of time spent on block read operations by the PostgreSQL
-        instance (in seconds per second). Used for monitoring read performance.
-    postgresql_sessions_killed:
-      name: PostgreSQL Terminated Sessions Rate
-      desc: Indicates the rate of killed sessions for the PostgreSQL instance (in
-        terminations per second). Used for monitoring session termination frequency.
-    postgresql_buffers_alloc:
-      desc: Indicates the rate of buffer allocations by the PostgreSQL instance (in
-        allocations per second). Used for monitoring buffer allocation.
-      name: PostgreSQL Buffer Allocation Rate
+    postgresql_numbackends:
+      name: Active DB Connections
+      desc: Monitors active database sessions to assess concurrency load and connection pool usage
+    postgresql_xact_commit_rate:
+      name: Transaction Commit Rate
+      desc: Indicates frequency of committed transactions, reflecting business activity
+    postgresql_xact_rollback_rate:
+      name: Transaction Rollback Rate
+      desc: Tracks rollback frequency caused by failures or conflicts
+    postgresql_tup_returned_rate:
+      name: Query Rows Returned Rate
+      desc: Counts rows returned in query result sets
+    postgresql_tup_fetched_rate:
+      name: Query Rows Fetched Rate
+      desc: Monitors rows fetched from storage during queries
+    postgresql_tup_inserted_rate:
+      name: Rows Inserted Rate
+      desc: Tracks row insertion frequency
+    postgresql_tup_updated_rate:
+      name: Rows Updated Rate
+      desc: Reflects data modification activity
+    postgresql_tup_deleted_rate:
+      name: Rows Deleted Rate
+      desc: Monitors data deletion activity
+    postgresql_blks_hit_rate:
+      name: Buffer Cache Hit Rate
+      desc: Reflects shared buffer cache efficiency
+    postgresql_blks_read_rate:
+      name: Disk Block Read Rate
+      desc: Evaluates disk I/O load and cache misses
+    postgresql_deadlocks_rate:
+      name: Deadlock Rate
+      desc: Detects transaction deadlock frequency
+    postgresql_conflicts_rate:
+      name: Concurrency Conflict Rate
+      desc: Tracks conflicts caused by concurrent operations
+    postgresql_temp_files_rate:
+      name: Temporary Files Creation Rate
+      desc: Reflects temporary file usage by complex queries
+    postgresql_temp_bytes_rate:
+      name: Temporary File Write Throughput
+      desc: Measures disk usage by temp files
+    postgresql_checkpoints_timed_rate:
+      name: Timed Checkpoint Rate
+      desc: Monitors system-triggered checkpoints
+    postgresql_checkpoints_req_rate:
+      name: Requested Checkpoint Rate
+      desc: Reflects WAL pressure and checkpoint tuning
+    postgresql_buffers_alloc_rate:
+      name: Buffer Allocation Rate
+      desc: Tracks shared buffer allocation
+    postgresql_buffers_backend_rate:
+      name: Backend Buffer Write Rate
+      desc: Represents backend-driven writes
+    postgresql_buffers_checkpoint_rate:
+      name: Checkpoint Buffer Write Rate
+      desc: Reflects checkpoint I/O impact
+    postgresql_maxwritten_clean_rate:
+      name: Background Clean Page Write Rate
+      desc: Indicates high write pressure
   RabbitMQ:
-    rabbitmq_unacked_message_ratio:
-      name: Unacked Message Ratio
-      desc: This metric shows the ratio of unacknowledged messages to the total messages
-        in the queue, helping to identify slow consumers.
-    rabbitmq_node_run_queue:
-      name: Active Queues
-      desc: This metric shows the number of queues currently being handled by the
-        RabbitMQ node. A high number may indicate system pressure and need for optimization.
-    rabbitmq_node_mem_used:
-      desc: This metric indicates the memory usage on the RabbitMQ node. High memory
-        usage may lead to performance issues or node crashes.
-      name: Memory Usage
-    rabbitmq_overview_messages_ready:
-      name: Number of Messages Ready
-      desc: This metric indicates the number of messages ready for processing. A high
-        number of ready messages may indicate consumer lag or slow processing speed.
-    rabbitmq_node_fd_used:
-      name: Number of File Descriptors Used
-      desc: This metric shows the number of file descriptors used by the RabbitMQ
-        node. Excessive use may prevent the system from handling additional connections.
-    rabbitmq_exchange_publish_in_rate:
-      desc: This metric shows the rate of messages published to the RabbitMQ exchange
-        per second. It helps identify bottlenecks in message inflow.
-      name: Exchange Publish In Rate
     rabbitmq_node_uptime:
-      desc: This metric indicates the uptime of the RabbitMQ node, in seconds. Nodes
-        running for extended periods may require a restart to free resources and perform
-        maintenance.
-      name: Uptime
+      name: Node Uptime
+      desc: Uptime of RabbitMQ node since startup, reflecting node stability
+    rabbitmq_node_running:
+      name: Node Running Status
+      desc: Whether RabbitMQ node is running, 1 indicates running, 0 indicates stopped
+    rabbitmq_overview_connections:
+      name: Connections
+      desc: Number of active client connections, reflecting system load
+    rabbitmq_overview_channels:
+      name: Channels
+      desc: Number of open channels, reflecting message flow control capability
+    rabbitmq_overview_consumers:
+      name: Consumers
+      desc: Number of active consumers, reflecting message consumption capacity
+    rabbitmq_overview_queues:
+      name: Queues
+      desc: Number of defined queues, reflecting message storage structure
+    rabbitmq_overview_messages:
+      name: Total Messages
+      desc: Total messages in all queues, reflecting message backlog
+    rabbitmq_overview_messages_ready:
+      name: Ready Messages
+      desc: Number of messages ready for delivery in queues, reflecting pending messages
     rabbitmq_overview_messages_unacked:
-      name: Number of Unacknowledged Messages
-      desc: This metric represents the number of unacknowledged messages. A high number
-        of unacknowledged messages may indicate slow consumer processing or backlog.
+      name: Unacknowledged Messages
+      desc: Number of delivered but unacknowledged messages, reflecting message processing delay
+    rabbitmq_overview_messages_published_rate:
+      name: Message Publish Rate
+      desc: Rate of messages published to RabbitMQ, reflecting message production volume
+    rabbitmq_node_run_queue:
+      name: Run Queue
+      desc: Erlang run queue length, reflecting system CPU load and scheduling delay
+    rabbitmq_node_mnesia_disk_tx_count_rate:
+      name: Mnesia Disk Transaction Rate
+      desc: Rate of Mnesia database disk transactions, reflecting data persistence activity intensity
+    rabbitmq_node_mem_used:
+      name: Memory Used
+      desc: Current memory used by RabbitMQ node, reflecting memory resource consumption
+    rabbitmq_node_mem_limit:
+      name: Memory Limit
+      desc: Memory limit for RabbitMQ node, used to calculate memory usage rate
+    rabbitmq_node_mem_alarm:
+      name: Memory Alarm
+      desc: Whether memory usage triggers alarm, 1 indicates alarm, 0 indicates normal
     rabbitmq_node_disk_free:
-      desc: This metric indicates the free disk space on the RabbitMQ node, in bytes.
-        Low disk space can lead to performance degradation or failures.
-      name: Disk Space Free
-    rabbitmq_queue_message_backlog_ratio:
-      desc: This metric shows the ratio of ready messages to acked messages in the
-        queue, helping to identify message backlog in the system.
-      name: Queue Message Backlog Ratio
-    rabbitmq_exchange_publish_out_rate:
-      name: Exchange Publish Out Rate
-      desc: This metric shows the rate of messages published out of the RabbitMQ exchange
-        per second. It helps identify issues in message outflow.
-    rabbitmq_fd_usage_ratio:
-      name: File Descriptor Usage Ratio
-      desc: This metric shows the ratio of used file descriptors to the total number
-        of file descriptors on the RabbitMQ node.
+      name: Disk Free Space
+      desc: Available free disk space for RabbitMQ node, reflecting storage capacity
+    rabbitmq_node_disk_free_alarm:
+      name: Disk Space Alarm
+      desc: Whether disk space usage triggers alarm, 1 indicates alarm, 0 indicates normal
+    rabbitmq_node_fd_used:
+      name: File Descriptors Used
+      desc: Number of file descriptors currently used by RabbitMQ node, reflecting system resource usage
+    rabbitmq_node_sockets_used:
+      name: Sockets Used
+      desc: Number of sockets currently used by RabbitMQ node, reflecting network connection status
+    rabbitmq_node_proc_used:
+      name: Processes Used
+      desc: Number of Erlang processes currently used by RabbitMQ node, reflecting system process load
   MongoDB:
-    mongodb_net_in_bytes:
-      name: Incoming Network Traffic
-      desc: The amount of incoming data received per second, used to monitor network
-        traffic.
-    mongodb_latency_commands:
-      name: Average Command Latency
-      desc: The average latency of database commands, used to assess database performance.
+    mongodb_uptime_ns:
+      name: Uptime
+      desc: Duration the MongoDB instance has been continuously running, indicating service stability
     mongodb_connections_current:
       name: Current Connections
-      desc: The number of active client connections to the database.
-    mongodb_active_writes:
-      desc: The number of active write operations currently being executed, used to
-        monitor write pressure.
-      name: Active Writes
-    mongodb_net_out_bytes:
-      desc: The amount of outgoing data sent per second, used to monitor network traffic.
-      name: Outgoing Network Traffic
-    mongodb_commands:
-      name: Commands Per Second
-      desc: The number of database operations per second, reflecting database load.
+      desc: Number of active client connections, indicating database concurrent access load
+    mongodb_connections_available:
+      name: Available Connections
+      desc: Number of available connection slots, indicating connection pool resource capacity
+    mongodb_open_connections:
+      name: Open Connections
+      desc: Total number of currently open connections, including active and idle connections
     mongodb_active_reads:
-      desc: The number of active read operations currently being executed, used to
-        monitor database load.
-      name: Active Reads
-    mongodb_total_docs_scanned:
-      desc: The number of documents scanned per second during queries, used to assess
-        query performance.
-      name: Documents Scanned Per Second
+      name: Active Read Operations
+      desc: Number of read operations currently executing, indicating real-time read load
+    mongodb_active_writes:
+      name: Active Write Operations
+      desc: Number of write operations currently executing, indicating real-time write load
+    mongodb_queued_reads:
+      name: Queued Read Operations
+      desc: Number of read operations waiting to execute, indicating read queue backlog
+    mongodb_queued_writes:
+      name: Queued Write Operations
+      desc: Number of write operations waiting to execute, indicating write queue backlog
+    mongodb_page_faults_rate:
+      name: Page Faults Frequency
+      desc: Frequency of page faults occurrence, indicating memory pressure and working set size appropriateness
+    mongodb_latency_commands_avg:
+      name: Average Command Latency
+      desc: Average latency time for command operations, indicating database response performance
+    mongodb_latency_reads_avg:
+      name: Average Read Latency
+      desc: Average latency time for read operations, indicating database read performance
+    mongodb_commands_rate:
+      name: Command Operations Frequency
+      desc: Frequency of command type operations execution, indicating overall database processing load
+    mongodb_queries_rate:
+      name: Query Operations Frequency
+      desc: Frequency of query type operations execution, indicating database query processing load
+    mongodb_inserts_rate:
+      name: Insert Operations Frequency
+      desc: Frequency of insert type operations execution, indicating data write load
+    mongodb_updates_rate:
+      name: Update Operations Frequency
+      desc: Frequency of update type operations execution, indicating data update load
+    mongodb_deletes_rate:
+      name: Delete Operations Frequency
+      desc: Frequency of delete type operations execution, indicating data delete load
+    mongodb_document_inserted_rate:
+      name: Document Inserted Frequency
+      desc: Frequency of document insertion operations, indicating data growth rate
+    mongodb_document_updated_rate:
+      name: Document Updated Frequency
+      desc: Frequency of document update operations, indicating data modification activity level
+    mongodb_document_deleted_rate:
+      name: Document Deleted Frequency
+      desc: Frequency of document deletion operations, indicating data cleanup activity level
+    mongodb_assert_user:
+      name: User Assertions
+      desc: Cumulative number of user assertions triggered, indicating application logic or data anomalies
+    mongodb_cursor_timed_out_count:
+      name: Timed Out Cursors
+      desc: Cumulative number of cursors that have timed out, indicating long query execution time or resource management issues
     mongodb_resident_megabytes:
-      name: Resident Memory Usage
-      desc: The amount of physical memory used by MongoDB, reflecting resource usage.
+      name: Resident Memory Size
+      desc: Physical memory size used by MongoDB process, indicating memory resource usage
+    mongodb_vsize_megabytes:
+      name: Virtual Memory Size
+      desc: Virtual memory size used by MongoDB process, indicating memory resource allocation
+    mongodb_tcmalloc_current_allocated_bytes:
+      name: Currently Allocated Memory
+      desc: Memory currently allocated via tcmalloc memory allocator, indicating memory usage efficiency
+    mongodb_wtcache_current_bytes:
+      name: WiredTiger Cache Size
+      desc: Current usage size of WiredTiger storage engine cache, indicating cache utilization
+    mongodb_wtcache_max_bytes_configured:
+      name: WiredTiger Cache Max Configured
+      desc: Maximum configured size for WiredTiger storage engine cache, indicating cache capacity limit
+    mongodb_wtcache_tracked_dirty_bytes:
+      name: Tracked Dirty Data Size
+      desc: Size of modified but not yet written to disk data in WiredTiger cache, indicating data persistence delay
+    mongodb_net_in_bytes_count_rate:
+      name: Network Input Frequency
+      desc: Frequency of network data reception, indicating database input traffic load
+    mongodb_net_out_bytes_count_rate:
+      name: Network Output Frequency
+      desc: Frequency of network data transmission, indicating database output traffic load
   Tomcat:
-    tomcat_jvm_memory_max:
-      desc: This metric indicates the maximum memory available to Tomcat JVM, used
-        to monitor memory limits.
-      name: JMX Max Memory
-    tomcat_connector_current_threads_busy:
-      desc: This metric indicates the number of busy threads in the Tomcat connector,
-        used to monitor concurrent processing.
-      name: Busy Thread Count
-    tomcat_connector_max_threads:
-      desc: This metric indicates the maximum number of threads for the Tomcat connector,
-        used to monitor Tomcat's concurrency capabilities.
-      name: Max Thread Count
+    tomcat_connector_request_count:
+      name: Total Requests Processed
+      desc: Total number of HTTP requests processed by connector, reflecting overall
+        workload
+    tomcat_connector_error_count:
+      name: Total Error Requests
+      desc: Total number of error requests during processing, indicating service reliability
+        issues
+    tomcat_connector_bytes_received:
+      name: Total Bytes Received
+      desc: Total bytes received from clients by connector, reflecting network input
+        traffic
+    tomcat_connector_bytes_sent:
+      name: Total Bytes Sent
+      desc: Total bytes sent to clients by connector, reflecting network output traffic
+    tomcat_connector_processing_time:
+      name: Total Processing Time
+      desc: Total time spent processing all requests by connector, reflecting processing
+        performance
+    tomcat_connector_max_time:
+      name: Maximum Request Processing Time
+      desc: Maximum time taken to process a single request by connector, indicating
+        extreme performance cases
     tomcat_connector_current_thread_count:
       name: Current Thread Count
-      desc: This metric shows the current number of threads used by the Tomcat connector,
-        used to monitor concurrency capabilities.
-    tomcat_connector_bytes_sent:
-      desc: This metric represents the average number of bytes sent per second by
-        the Tomcat connector in the past 5 minutes, and it is used to monitor traffic
-        and response load.
-      name: Bytes Sent
-    tomcat_jvm_memorypool_used:
-      name: JMX Used Memory Pool
-      desc: This metric shows the amount of memory used in the Tomcat JVM memory pool,
-        used to monitor memory pool usage.
-    tomcat_connector_max_time:
-      desc: This metric indicates the maximum time taken to process a single request
-        in Tomcat, reflecting the performance of the slowest request.
-      name: Max Processing Time
+      desc: Total number of threads currently managed in connector thread pool, indicating
+        resource allocation
+    tomcat_connector_current_threads_busy:
+      name: Busy Threads Count
+      desc: Number of threads currently busy processing requests, indicating real-time
+        load
+    tomcat_connector_max_threads:
+      name: Maximum Threads
+      desc: Maximum number of threads allowed in connector thread pool, indicating
+        concurrency capacity limit
     tomcat_jvm_memory_free:
-      desc: This metric shows the free memory in Tomcat JVM, used to monitor memory
-        usage.
-      name: JMX Free Memory
-    tomcat_connector_request_count:
-      name: Request Count
-      desc: This metric represents the total number of requests processed per second
-        on average by the Tomcat connector in the past 5 minutes, and is used to monitor
-        the request load.
-    tomcat_connector_processing_time:
-      desc: This metric is used to measure the average per - second change in the
-        time taken by the Tomcat connector to process requests over the past 5 minutes.
-        It can reflect the efficiency of the server in processing requests.
-      name: Processing Time
-    tomcat_connector_error_count:
-      desc: This metric represents the average number of errors per second that occur
-        when the Tomcat connector processes requests in the past 5 minutes, and it
-        is used to monitor the error rate.
-      name: Error Count
-    tomcat_connector_bytes_received:
-      desc: It represents the number of bytes of data received per second on average
-        by the Tomcat connector in the past 5 minutes. It can be used to monitor the
-        network traffic load of the Tomcat server.
-      name: Bytes Received
+      name: Free Memory Size
+      desc: Current free space in JVM heap memory, indicating available memory capacity
+    tomcat_jvm_memory_total:
+      name: Total Allocated Memory
+      desc: Total allocated space in JVM heap memory, indicating memory usage scale
+    tomcat_jvm_memory_max:
+      name: Maximum Available Memory
+      desc: Maximum available space configured for JVM heap memory, indicating memory
+        capacity limit
+    tomcat_jvm_memorypool_used:
+      name: Memory Pool Used
+      desc: Current used memory size in specific JVM memory pool, indicating detailed
+        memory allocation
+    tomcat_jvm_memorypool_committed:
+      name: Memory Pool Committed
+      desc: Memory size committed to OS for specific JVM memory pool, indicating memory
+        reservation
+    tomcat_jvm_memorypool_max:
+      name: Memory Pool Maximum
+      desc: Maximum memory size allowed for specific JVM memory pool, indicating capacity
+        limit
+    tomcat_jvm_memorypool_init:
+      name: Memory Pool Initial
+      desc: Initial memory size allocated for specific JVM memory pool, indicating
+        startup configuration
+    tomcat_connector_request_count_rate:
+      name: Request Processing Rate
+      desc: Request processing rate per second calculated over 5-minute window, indicating
+        real-time throughput
+    tomcat_connector_error_count_rate:
+      name: Error Request Rate
+      desc: Error request rate per second calculated over 5-minute window, indicating
+        service stability trend
+    tomcat_connector_bytes_sent_rate:
+      name: Data Sending Rate
+      desc: Data sending rate per second calculated over 5-minute window, indicating
+        network output traffic trend
+    tomcat_connector_current_thread_utilization:
+      name: Thread Pool Utilization
+      desc: Percentage of busy threads relative to maximum threads, indicating thread
+        resource utilization efficiency
   Website:
     http_duration:
       desc: This metric represents the total time taken from initiating an HTTP request
@@ -1447,206 +1359,175 @@ monitor_object_metric:
       desc: Total number of packets received by the container, indicating the activity
         level of inbound network flow.
   Oracle-Exporter:
-    oracledb_wait_time_configuration_gauge:
-      desc: The time waiting for system resource configuration, such as waiting for
-        parameter changes to take effect.
-      name: OracleDb Configuration Wait Time
-    oracledb_exporter_scrapes_total_counter:
-      name: OracleDb Exporter Scrape Metrics Total
-      desc: The total number of times of collecting indicators since the OracleDB
-        monitoring probe was started, and if the process is restarted, it will be
-        recalculated.
-    process_virtual_memory_bytes_gauge:
-      name: OracleDb Monitoring Probe Process Virtual Memory
-      desc: The current virtual memory size of the Oracle Database Monitoring Probe
-        process.
-    oracledb_wait_time_system_io_gauge:
-      desc: The time waiting for the system to perform I/O operations, such as waiting
-        for data to be read from the disk.
-      name: OracleDb System I/O Wait Time
-    oracledb_activity_user_commits_rate:
-      name: OracleDb User Commits Rate
-      desc: Monitors the rate of user transaction commits over a period (e.g., 5m)
-        to reflect transactional activity.
-    oracledb_pga_total_gauge:
-      desc: A PGA is an independently allocated area of memory for each user process
-        or server process in an Oracle database instance that stores data and information
-        for sessions or operations. This metric is used to represent the total memory
-        size of the PGA and reflect the overall resource allocation scale of the PGA.
-      name: OracleDb PGA Total Size
-    oracledb_sessions_value_gauge:
-      desc: 'The current number of open sessions in the database. Dimension meaning:
-        Status: Session status, such as ACTION, INACTIVE, BLOCKED, KILLED, etc. Type:
-        Session type, such as Backend, CDB, PDB, SYS, USER, etc.'
-      name: OracleDb Sessions
-    oracledb_resource_utilization_rate:
-      desc: The utilization rate of a resource in the current Oracle DB instance,
-        which reflects the percentage of resources such as sessions, processes, memory,
-        and so on that resource limits are used. If the value is negative（-）, the
-        resource is not restricted, that is, the resource can be used indefinitely.
-        In this case, it doesn't make much sense to monitor metrics for that dimension.
-      name: OracleDb Resource Utilization rate
-    oracledb_rac_node_gauge:
-      name: OracleDb RAC Node Count
-      desc: The current number of Oracle database cluster nodes.
-    oracledb_activity_execute_rate:
-      name: OracleDb Execution Rate
-      desc: Monitors the rate of SQL executions over a period (e.g., 5m) to reflect
-        load changes.
-    oracledb_activity_user_rollbacks_rate:
-      desc: Monitors the rate of user transaction rollbacks over a period (e.g., 5m)
-        to identify unusual transactions.
-      name: OracleDb User Rollbacks Rate
+    oracledb_up_gauge:
+      name: OracleDb Status
+      desc: The current Oracle database is running in the current state, 0 is normal, and 1 is abnormal
     oracledb_uptime_seconds_gauge:
       name: OracleDb Instance Uptime
-      desc: The duration for which the Oracle database has been running.
-    oracledb_activity_parse_rate:
-      desc: Monitors the rate of SQL parses in a period (e.g., 5m) to help identify
-        frequent parsing issues.
+      desc: The duration for which the Oracle database has been running
+    oracledb_activity_execute_count_gauge_rate:
+      name: OracleDb Execution Rate
+      desc: Monitors the rate of SQL executions over a period (e.g., 5m) to reflect load changes
+    oracledb_activity_parse_count_total_gauge_rate:
       name: OracleDb Parse Count Rate
-    oracledb_tablespace_max_bytes_gauge:
-      desc: The maximum disk space limit of the specified tablespace.
-      name: OracleDb Table Maximum Capacity
-    oracledb_wait_time_other_gauge:
-      name: OracleDb Other Wait Time
-      desc: The waiting time that cannot be classified into other waiting times.
-    oracledb_wait_time_user_io_gauge:
-      name: OracleDb User I/O Wait Time
-      desc: The time waiting for the user I/O operation to complete.
-    oracledb_tablespace_free_gauge:
-      name: OracleDb Table Available Space
-      desc: The size of the remaining disk space in the specified tablespace.
+      desc: Monitors the rate of SQL parses in a period (e.g., 5m) to help identify frequent parsing issues
+    oracledb_activity_user_commits_gauge_rate:
+      name: OracleDb User Commits Rate
+      desc: Monitors the rate of user transaction commits over a period (e.g., 5m) to reflect transactional activity
+    oracledb_activity_user_rollbacks_gauge_rate:
+      name: OracleDb User Rollbacks Rate
+      desc: Monitors the rate of user transaction rollbacks over a period (e.g., 5m) to identify unusual transactions
+    oracledb_wait_time_application_gauge:
+      name: OracleDb Application Wait Time
+      desc: The waiting time for communication between the database client application and the database
+    oracledb_wait_time_commit_gauge:
+      name: OracleDb Commit Wait Time
+      desc: The time waiting for transaction commit completion
     oracledb_wait_time_concurrency_gauge:
       name: OracleDb Concurrency Wait Time
-      desc: The waiting time caused by database resource contention, such as waiting
-        for locks.
-    process_cpu_seconds_total_counter:
-      name: OracleDb Monitoring Probe Process CPU Time
-      desc: The total amount of CPU time used by the Oracle Database Monitoring Probe
-        process.
-    oracledb_wait_time_commit_gauge:
-      desc: The time waiting for transaction commit completion.
-      name: OracleDb Commit Wait Time
-    oracledb_pga_used_percent_gauge:
-      name: OracleDb PGA Usage Percentage
-      desc: Represents the memory usage of the Oracle Database PGA, which is a measure
-        of how efficiently the PGA resources are being utilized.
-    oracledb_sga_used_percent_gauge:
-      desc: Represents the memory usage of the Oracle Database SGA and is used to
-        evaluate the efficiency of the SGA's resources.
-      name: OracleDb SGA Usage Percentage
-    oracledb_tablespace_used_percent_gauge:
-      desc: The percentage of the used capacity of the specified tablespace.
-      name: OracleDb Tablespace Usage Percentage
+      desc: The waiting time caused by database resource contention, such as waiting for locks
+    oracledb_wait_time_configuration_gauge:
+      name: OracleDb Configuration Wait Time
+      desc: The time waiting for system resource configuration, such as waiting for parameter changes to take effect
     oracledb_wait_time_network_gauge:
-      desc: The time waiting for network transmission, such as waiting for data to
-        be sent from the client to the server.
       name: OracleDb Network Wait Time
-    oracledb_up_gauge:
-      desc: The current Oracle database is running in the current state, 0 is normal,
-        and 1 is abnormal.
-      name: OracleDb Status
-    oracledb_exporter_last_scrape_duration_seconds_gauge:
-      name: OracleDb Exporter Last Scrape Duration
-      desc: The time spent on the most recent collection of indicators from the Oracle
-        database.
-    process_resident_memory_bytes_gauge:
-      desc: The size of the current resident memory of the Oracle Database monitoring
-        probe process.
-      name: OracleDb Monitoring Probe Process Resident Memory
-    oracledb_pga_used_gauge:
-      name: OracleDb PGA Used Size
-      desc: Represents the amount of memory currently used by the Oracle Database
-        PGA, reflecting the actual consumption of PGA resources.
+      desc: The time waiting for network transmission, such as waiting for data to be sent from the client to the server
+    oracledb_wait_time_other_gauge:
+      name: OracleDb Other Wait Time
+      desc: The waiting time that cannot be classified into other waiting times
+    oracledb_wait_time_system_io_gauge:
+      name: OracleDb System I/O Wait Time
+      desc: The time waiting for the system to perform I/O operations, such as waiting for data to be read from the disk
+    oracledb_wait_time_user_io_gauge:
+      name: OracleDb User I/O Wait Time
+      desc: The time waiting for the user I/O operation to complete
+    oracledb_resource_utilization_rate:
+      name: OracleDb Resource Utilization Rate
+      desc: The utilization rate of a resource in the current Oracle DB instance, which reflects the percentage of resources such as sessions, processes, memory, and so on that resource limits are used
     oracledb_process_count_gauge:
       name: OracleDb Processes
-      desc: The number of currently active database processes.
-    oracledb_wait_time_application_gauge:
-      desc: The waiting time for communication between the database client application
-        and the database.
-      name: OracleDb Application Wait Time
+      desc: The number of currently active database processes
+    oracledb_sessions_value_gauge:
+      name: OracleDb Sessions
+      desc: The current number of open sessions in the database
+    oracledb_sga_total_gauge:
+      name: OracleDb SGA Total Size
+      desc: SGA is a shared memory area allocated in memory by an Oracle database instance to store global data and information
     oracledb_sga_free_gauge:
-      desc: Represents the amount of memory currently available for the Oracle Database
-        SGA, reflecting the amount of unused idle resources in the SGA.
       name: OracleDb SGA Free Size
-    oracledb_exporter_last_scrape_error_gauge:
-      desc: Whether an error occurred when the OracleDB monitoring probe collected
-        indicators in the most recent time.
-      name: OracleDb Exporter Last Scrape Status
+      desc: Represents the amount of memory currently available for the Oracle Database SGA, reflecting the amount of unused idle resources in the SGA
+    oracledb_sga_used_percent_gauge:
+      name: OracleDb SGA Usage Percentage
+      desc: Represents the memory usage of the Oracle Database SGA and is used to evaluate the efficiency of the SGA's resources
+    oracledb_pga_total_gauge:
+      name: OracleDb PGA Total Size
+      desc: A PGA is an independently allocated area of memory for each user process or server process in an Oracle database instance
+    oracledb_pga_used_gauge:
+      name: OracleDb PGA Used Size
+      desc: Represents the amount of memory currently used by the Oracle Database PGA, reflecting the actual consumption of PGA resources
+    oracledb_pga_used_percent_gauge:
+      name: OracleDb PGA Usage Percentage
+      desc: Represents the memory usage of the Oracle Database PGA, which is a measure of how efficiently the PGA resources are being utilized
     oracledb_tablespace_bytes_gauge:
       name: OracleDb Table Used Space
-      desc: The total size of the used disk space in the specified tablespace.
-    oracledb_sga_total_gauge:
-      desc: SGA is a shared memory area allocated in memory by an Oracle database
-        instance to store global data and information to support the operation and
-        access of the database instance. This metric is used to represent the total
-        memory size of SGA and is used to measure the overall resource allocation
-        scale of SGA.
-      name: OracleDb SGA Total Size
-    process_open_fds_gauge:
-      name: OracleDb Monitoring Probe Process Open File Descriptors
-      desc: The number of file descriptors that are currently open by the Oracle Database
-        Monitoring Probe process.
+      desc: The total size of the used disk space in the specified tablespace
+    oracledb_tablespace_max_bytes_gauge:
+      name: OracleDb Table Maximum Capacity
+      desc: The maximum disk space limit of the specified tablespace
+    oracledb_tablespace_free_gauge:
+      name: OracleDb Table Available Space
+      desc: The size of the remaining disk space in the specified tablespace
+    oracledb_tablespace_used_percent_gauge:
+      name: OracleDb Tablespace Usage Percentage
+      desc: The percentage of the used capacity of the specified tablespace
+    oracledb_rac_node_gauge:
+      name: OracleDb RAC Node Count
+      desc: The current number of Oracle database cluster nodes
+    process_cpu_seconds_total_counter:
+      name: OracleDb Monitoring Probe Process CPU Time
+      desc: The total amount of CPU time used by the Oracle Database Monitoring Probe process
     process_max_fds_gauge:
       name: OracleDb Monitoring Probe Process Max File Descriptors
-      desc: The maximum number of file descriptors that can be opened by the Oracle
-        Database Monitoring Probe process.
+      desc: The maximum number of file descriptors that can be opened by the Oracle Database monitoring probe process
+    process_open_fds_gauge:
+      name: OracleDb Monitoring Probe Process Open File Descriptors
+      desc: The number of file descriptors that are currently open by the Oracle Database monitoring probe process
+    process_resident_memory_bytes_gauge:
+      name: OracleDb Monitoring Probe Process Resident Memory
+      desc: The size of the current resident memory of the Oracle Database monitoring probe process
+    process_virtual_memory_bytes_gauge:
+      name: OracleDb Monitoring Probe Process Virtual Memory
+      desc: The current virtual memory size of the Oracle Database Monitoring Probe process
+    oracledb_exporter_last_scrape_duration_seconds_gauge:
+      name: OracleDb Exporter Last Scrape Duration
+      desc: The time spent on the most recent collection of indicators from the Oracle database
+    oracledb_exporter_last_scrape_error_gauge:
+      name: OracleDb Exporter Last Scrape Status
+      desc: Whether an error occurred when the OracleDB monitoring probe collected indicators in the most recent time
+    oracledb_exporter_scrapes_total_counter:
+      name: OracleDb Exporter Scrape Metrics Total
+      desc: The total number of times of collecting indicators since the OracleDB monitoring probe was started, and if the process is restarted, it will be recalculated
   Mysql:
-    mysql_aborted_clients:
-      name: Number of Aborted Client Connections
-      desc: This metric represents the number of connections aborted due to client
-        errors. Monitoring this metric can help identify connection reliability issues.
-    mysql_access_denied_errors:
-      name: Number of Access Denied Errors
-      desc: This metric represents the number of access denials due to insufficient
-        privileges or authentication failures. Monitoring this metric helps in identifying
-        and resolving permission issues.
-    mysql_connections_total:
-      name: Total Connections Created
-      desc: This metric represents the total number of connections created since the
-        server started. Monitoring the total connections helps understand connection
-        patterns and load.
-    mysql_com_update:
-      desc: This metric represents the number of Update commands executed. Monitoring
-        this metric helps understand the frequency of update operations and system
-        load.
-      name: Number of Update Commands Executed
+    mysql_threads_connected:
+      name: Current Connections
+      desc: Number of currently open connections; new connections are rejected when approaching max_connections
+    mysql_threads_running:
+      name: Running Threads
+      desc: Number of threads currently executing queries, reflecting concurrent processing capacity
     mysql_aborted_connects:
-      desc: This metric represents the number of connection attempts aborted due to
-        connection issues. High values may indicate configuration issues or server
-        overload.
-      name: Number of Aborted Connections
-    mysql_bytes_received:
-      desc: This metric indicates the number of bytes received by the MySQL server.
-        Monitoring this metric helps understand the network traffic load.
-      name: Bytes Received
-    mysql_bytes_sent:
-      name: Bytes Sent
-      desc: This metric indicates the number of bytes sent by the MySQL server. Monitoring
-        this metric helps understand the network traffic load.
-    mysql_com_insert:
-      name: Number of Insert Commands Executed
-      desc: This metric represents the number of Insert commands executed. Monitoring
-        this metric helps understand the frequency of write operations and system
-        load.
-    mysql_com_delete:
-      desc: This metric represents the number of Delete commands executed. Monitoring
-        this metric helps understand the frequency of delete operations and system
-        load.
-      name: Number of Delete Commands Executed
-    mysql_aria_pagecache_blocks_unused:
-      name: Aria Pagecache Blocks Unused
-      desc: This metric indicates the number of unused page cache blocks in the Aria
-        storage engine. Monitoring this metric helps optimize cache allocation.
-    mysql_aria_pagecache_blocks_used:
-      name: Aria Pagecache Blocks Used
-      desc: This metric indicates the number of used page cache blocks in the Aria
-        storage engine. Monitoring this metric helps assess the effective utilization
-        of the cache.
-    mysql_com_select:
-      name: Number of Select Queries Executed
-      desc: This metric represents the number of Select queries executed. Monitoring
-        this metric helps understand the frequency of read operations and system load.
+      name: Aborted Connections
+      desc: Number of failed connection attempts, possibly due to permissions, network, or configuration
+    mysql_slow_queries_rate:
+      name: Slow Query Request Trigger Rate
+      desc: Number of slow query requests, reflecting the frequency of slow queries
+    mysql_com_select_rate:
+      name: SELECT Query Rate
+      desc: SELECT queries, reflecting read load trends
+    mysql_com_insert_rate:
+      name: INSERT Write Rate
+      desc: INSERT queries, reflecting write load trends
+    mysql_com_update_rate:
+      name: UPDATE Update Rate
+      desc: UPDATE operations, reflecting data update frequency
+    mysql_com_delete_rate:
+      name: DELETE Delete Rate
+      desc: DELETE operations; a spike requires checking data cleanup rationality
+    mysql_innodb_row_lock_time_avg:
+      name: Avg Row Lock Wait Time
+      desc: Average row lock wait time; >50ms indicates severe lock contention
+    mysql_innodb_row_lock_waits_rate:
+      name: Row Lock Waits Rate
+      desc: Number of InnoDB row lock waits
+    mysql_innodb_buffer_pool_read_requests_rate:
+      name: Buffer Pool Read Requests Rate
+      desc: Buffer pool read requests, reflecting database read load
+    mysql_innodb_buffer_pool_disk_reads_rate:
+      name: Buffer Pool Disk Reads Rate
+      desc: Buffer pool disk reads; high values indicate insufficient memory
+    mysql_innodb_buffer_pool_pages_dirty:
+      name: Dirty Pages
+      desc: Number of dirty pages in buffer pool (not yet written to disk); indicates buffer pool utilization
+    mysql_innodb_buffer_pool_pages_total:
+      name: Total Buffer Pool Pages
+      desc: Total pages in buffer pool; used to calculate buffer pool utilization
+    mysql_bytes_received_rate:
+      name: Data Received Rate
+      desc: Data received, reflecting database input traffic
+    mysql_bytes_sent_rate:
+      name: Data Sent Rate
+      desc: Data sent, reflecting database output traffic
+    mysql_table_open_cache_hits_rate:
+      name: Table Cache Hits Ratio
+      desc: Table cache hit rate; <95% requires adjusting table_open_cache configuration
+    mysql_table_open_cache_misses_rate:
+      name: Table Cache Misses Rate
+      desc: Number of table open cache miss requests, reflecting table cache hit status
+    mysql_created_tmp_disk_tables_rate:
+      name: Disk Temporary Tables Create Rate
+      desc: Number of disk temporary tables created
+    mysql_created_tmp_tables_rate:
+      name: Total Temporary Tables Create Rate
+      desc: Total number of temporary tables (memory + disk) created
   ActiveMQ-JMX:
     activemq_topic_producer_flow_control_value:
       desc: Indicates whether flow control is enabled for producers on the specified
@@ -2170,22 +2051,30 @@ monitor_object_metric:
         supporting overall traffic monitoring and capacity planning.
       name: Device Total Inbound Traffic (per second)
   Consul:
-    consul_health_checks_status:
-      name: Health Check Status
-      desc: This metric represents the status of the health check in Consul, where
-        0=passing, 1=warning, 2=critical.
-    consul_health_checks_critical:
-      desc: This metric shows the number of health checks in critical status, used
-        to monitor critical failures.
-      name: Critical Health Checks  Count
-    consul_health_checks_warning:
-      desc: This metric shows the number of health checks in warning status, used
-        to monitor potential issues.
-      name: Warning Health Checks Count
     consul_health_checks_passing:
-      desc: This metric indicates the number of passing health checks, used to monitor
-        the health status of services.
-      name: Passing Health Checks Count
+      name: Health Checks Passing
+      desc: Number of health checks in passing state on Consul node; 1 indicates check
+        passed, 0 indicates not passed
+    consul_health_checks_critical:
+      name: Health Checks Critical
+      desc: Number of health checks in critical state on Consul node; 1 indicates
+        check is critical, 0 indicates normal
+    consul_health_checks_warning:
+      name: Health Checks Warning
+      desc: Number of health checks in warning state on Consul node; 1 indicates check
+        is warning, 0 indicates normal
+    consul_health_checks_status:
+      name: Health Checks Status
+      desc: Current status value of health checks on Consul node, typically indicating
+        specific status codes
+    consul_health_checks_check_name:
+      name: Check Name Identifier
+      desc: Name identifier of health check, distinguishing different types (e.g.,
+        serfHealth for Serf cluster health check)
+    consul_health_checks_service_id:
+      name: Service ID Identifier
+      desc: Service ID identifier associated with health check; 0 indicates node-level
+        check, non-zero indicates service-specific check
   Ping:
     ping_response_time:
       name: Average Response Time
@@ -2215,41 +2104,31 @@ monitor_object_metric:
         loss rates indicate more stable connectivity.
   Nginx:
     nginx_active:
-      desc: The number of active connections currently including those in reading,
-        writing, and waiting states.
       name: Active Connections
-    nginx_requests:
-      desc: Indicates the number of HTTP requests per second processed over the last
-        5 minutes, reflecting server load.
-      name: Requests Per Second
-    nginx_writing:
-      name: Connections with Active Writes
-      desc: The number of connections currently writing response data to clients,
-        used to monitor performance in the response stage.
+      desc: Number of active client connections, reflecting concurrent load
     nginx_reading:
-      desc: The number of connections currently reading client requests (header or
-        body), used to monitor load in the reading stage.
       name: Reading Connections
+      desc: Number of connections reading request headers, reflecting request processing
+        status
+    nginx_writing:
+      name: Writing Connections
+      desc: Number of connections writing responses, reflecting response processing
+        status
     nginx_waiting:
-      desc: The current number of idle connections waiting to be processed, reflecting
-        the waiting connection queue.
       name: Waiting Connections
-    nginx_handled:
-      desc: Indicates the number of connected sessions successfully handled per second
-        over the last 5 minutes, monitoring connection handling capacity.
-      name: Handled Connections Rate
-    nginx_connect_rate:
-      desc: The percentage of handled connections out of total accepted connections
-        over the last 5 minutes, used to analyze connection handling stability.
-      name: Connection Handling Success Rate
-    nginx_accepts:
-      name: Accepted Connections Rate
-      desc: Indicates the number of client connections successfully established per
-        second over the last 5 minutes, used to monitor connection activity.
-    nginx_request_handling_efficiency:
-      desc: Indicates the average number of requests per handled connection, indirectly
-        reflecting Nginx's efficiency and load level.
-      name: Requests per Handled Connection
+      desc: Number of idle connections waiting for requests, reflecting connection
+        pool usage
+    nginx_requests_rate:
+      name: Request Rate
+      desc: Rate of requests handled by Nginx, reflecting real-time load
+    nginx_accepts_rate:
+      name: Connection Acceptance Rate
+      desc: Rate of new connections accepted by Nginx, reflecting connection establishment
+        frequency
+    nginx_handled_rate:
+      name: Connection Handling Rate
+      desc: Rate of connections handled by Nginx, reflecting connection processing
+        capacity
   WebLogic-JMX:
     weblogic_jms_jmsservers_current_count_value:
       name: JMS Servers Current Count
@@ -2467,48 +2346,86 @@ monitor_object_metric:
       desc: Shows the current memory utilization of the cluster, expressed as a percentage.
       name: Memory Utilization
   Apache:
-    apache_cpu_user:
-      desc: This metric represents the CPU usage by user processes in Apache.
-      name: User CPU Usage
-    apache_busy_workers:
-      name: Busy Workers
-      desc: This metric represents the number of busy worker threads in the Apache
-        server, used to assess server load.
-    apache_cpu_system:
-      desc: This metric represents the CPU usage by system processes in Apache.
-      name: System CPU Usage
-    apache_bytes_per_sec:
-      desc: This metric represents the number of bytes transferred by Apache per second,
-        reflecting the network traffic.
-      name: Bytes per Second
-    apache_cpu_load:
-      desc: This metric represents the CPU load of the Apache server, reflecting the
-        overall load of the system.
-      name: CPU Load
-    apache_idle_workers:
-      desc: This metric represents the number of idle worker processes in the Apache
-        server, reflecting the server's resource utilization.
-      name: Idle Workers
-    apache_total_duration:
-      name: Total Processing Time
-      desc: This metric represents the total request processing duration since the
-        Apache server started, used to assess the server's processing load.
-    apache_uptime:
-      name: Uptime
-      desc: This metric represents the uptime of the Apache server since it was started,
-        used to monitor the server's health.
-    apache_total_accesses:
+    apache_ServerUptimeSeconds:
+      name: Server Uptime
+      desc: Duration the server has been running since last restart, reflecting service
+        stability and availability
+    apache_ParentServerConfigGeneration:
+      name: Parent Server Config Generation
+      desc: Number of times parent server configuration has been reloaded; increments
+        on each reload
+    apache_TotalAccesses:
       name: Total Accesses
-      desc: This metric represents the total number of accesses to the Apache server
-        since startup, reflecting the overall request volume.
-    apache_req_per_sec:
-      desc: This metric represents the number of requests handled by Apache per second,
-        used to monitor the server's request processing capability.
-      name: Requests per Second
-    apache_duration_per_req:
-      name: Average Request Processing Time
-      desc: This metric represents the average duration per request, helping to evaluate
-        the efficiency of request handling by the server.
+      desc: Total number of HTTP requests processed, measuring overall server workload
+        and processing capacity
+    apache_ReqPerSec:
+      name: Request Processing Rate
+      desc: Current rate at which the server processes requests, directly indicating
+        real-time processing performance
+    apache_BytesPerSec:
+      name: Data Transfer Rate
+      desc: Amount of data sent per second, reflecting network bandwidth usage and
+        data throughput capacity
+    apache_BusyWorkers:
+      name: Busy Workers
+      desc: Number of worker processes currently handling client requests; high values
+        may indicate server overload
+    apache_IdleWorkers:
+      name: Idle Workers
+      desc: Number of worker processes idle and waiting for requests, indicating available
+        processing capacity
+    apache_CPULoad:
+      name: CPU Load
+      desc: Percentage of CPU resources utilized by the process, monitoring CPU usage
+        and identifying resource bottlenecks
+    apache_Load1:
+      name: 1-Minute System Load
+      desc: Average system load over the past 1 minute, reflecting short-term system
+        resource pressure
+    apache_Load5:
+      name: 5-Minute System Load
+      desc: Average system load over the past 5 minutes, indicating medium-term system
+        resource pressure trends
+    apache_Load15:
+      name: 15-Minute System Load
+      desc: Average system load over the past 15 minutes, indicating long-term system
+        resource pressure trends
+    apache_TotalAccesses_rate:
+      name: Request Rate Change
+      desc: Rate of change in requests per second calculated over a 5-minute window,
+        indicating traffic trends and fluctuations
+    apache_scboard_open:
+      name: Open Connections
+      desc: Total number of connections currently open in the scoreboard, indicating
+        concurrent connections
+    apache_scboard_waiting:
+      name: Waiting Connections
+      desc: Number of connections waiting for idle worker processes; high values may
+        indicate insufficient server resources
+    apache_scboard_reading:
+      name: Reading Connections
+      desc: Number of connections currently reading client request headers, reflecting
+        the state of request reception
+    apache_scboard_sending:
+      name: Sending Connections
+      desc: Number of connections currently sending responses to clients, reflecting
+        the state of response delivery
+    apache_scboard_open_rate:
+      name: Connection Open Rate Change
+      desc: Rate of change in connection openings per second calculated over a 5-minute
+        window, indicating connection establishment trends
+    apache_CacheCurrentEntries:
+      name: Cache Current Entries
+      desc: Number of cache entries currently stored, indicating cache usage and memory
+        occupancy
+    apache_CacheRetrieveHitCount:
+      name: Cache Retrieve Hit Count
+      desc: Number of successful cache retrievals; high hit rate indicates efficient
+        caching and reduced backend load
+    process_resident_memory_bytes:
+      name: Process Resident Memory
+      desc: Amount of physical memory currently occupied by the process, monitoring
+        memory usage and identifying leaks
   Node:
     node_cpu_load1:
       name: 1 Minute Average Load
@@ -2653,48 +2570,54 @@ monitor_object_metric:
       name: Search Thread Pool Queue Length
       desc: Query performance warning metric, reflects the length of the query request queue; growing queue length indicates insufficient query capacity, affecting business experience
   Redis:
+    redis_uptime:
+      name: Service Uptime
+      desc: Duration of Redis service continuous operation, reflecting service stability and availability, continuous positive values indicate normal operation
+    redis_used_memory:
+      name: Memory Usage
+      desc: Total memory currently occupied by Redis instance, including data storage and internal data structures, monitoring prevents service interruption due to memory overflow
+    redis_maxmemory:
+      name: Memory Limit Configuration
+      desc: Configured maximum memory usage limit for Redis instance, combined with memory usage to calculate utilization rate, guides capacity planning and expansion decisions
     redis_mem_fragmentation_ratio:
       name: Memory Fragmentation Ratio
-      desc: This metric indicates the memory fragmentation ratio, reflecting memory
-        usage efficiency.
-    redis_keyspace_hits:
-      name: Keyspace Hits
-      desc: This metric indicates the number of cache hits.
-    redis_evicted_keys:
-      name: Number of Evicted Keys
-      desc: This metric indicates the number of key-value pairs evicted due to memory
-        constraints.
-    redis_used_cpu_sys_rate:
-      desc: Rate of CPU time consumed by Redis in system mode per second. High value
-        (>1) may indicate heavy I/O operations, triggering an alert.
-      name: Redis System CPU Rate
-    redis_connected_slaves:
-      name: Connected Slaves
-      desc: This metric indicates the current number of replicas connected to the
-        master node.
-    redis_keyspace_misses:
-      name: Keyspace Misses
-      desc: This metric indicates the number of cache misses.
+      desc: Ratio of memory allocated by allocator to memory reported by OS, reflects degree of memory fragmentation, high ratio may affect memory allocation efficiency
     redis_instantaneous_ops_per_sec:
-      desc: This metric indicates the number of Redis commands processed per second
-        (QPS).
-      name: Operations per Second
-    redis_rejected_connections:
-      name: Connections Rejected
-      desc: This metric indicates the number of connections rejected due to server
-        overload or policy restrictions.
-    redis_rdb_last_save_time_elapsed:
-      desc: This metric indicates the elapsed time since the last successful RDB save
-        operation.
-      name: Last Save Elapsed Time
-    redis_clients:
-      desc: This metric indicates the current number of connected clients, reflecting
-        active connections.
-      name: Number of Connected Clients
-    redis_used_memory:
-      desc: This metric indicates the memory used by the Redis allocator, including
-        all internal data structures and caches.
-      name: Used Memory
+      name: Real-time Operation Frequency
+      desc: Real-time frequency of command operations processed by Redis instance, directly reflects current service load level, used to identify traffic peaks and abnormal fluctuations
+    redis_total_commands_processed_rate:
+      name: Command Processing Rate
+      desc: Average rate of commands processed by Redis instance, measures service processing capacity, rate decline may indicate performance bottlenecks or insufficient resources
+    redis_keyspace_hits_rate:
+      name: Key Hit Frequency
+      desc: Frequency of successful key space hits, reflects cache hit efficiency, high frequency indicates effective cache strategy and high data access efficiency
+    redis_keyspace_misses_rate:
+      name: Key Miss Frequency
+      desc: Frequency of key space misses, reflects cache miss situation, high frequency may require optimization of cache strategy or increase in cache capacity
+    redis_keyspace_hitrate:
+      name: Cache Hit Rate
+      desc: Proportion of key space hit operations to total operations, core performance metric, high hit rate indicates efficient cache system operation and good data access performance
+    redis_total_net_input_bytes_rate:
+      name: Network Inflow Rate
+      desc: Average rate of network data received by Redis instance, monitors input traffic changes, abnormal increase may indicate attacks or business logic changes
+    redis_total_net_output_bytes_rate:
+      name: Network Outflow Rate
+      desc: Average rate of network data sent by Redis instance, monitors output traffic changes, analyzes response data volume trends combined with business metrics
+    redis_connected_clients:
+      name: Client Connections
+      desc: Number of currently active client connections, reflects service concurrent processing capacity, approaching max connections configuration may affect new connection establishment
+    redis_blocked_clients:
+      name: Blocked Clients
+      desc: Number of clients in blocked waiting state, non-zero value indicates performance bottlenecks or resource contention, requires further investigation
+    redis_expired_keys_rate:
+      name: Key Expiration Frequency
+      desc: Frequency of keys automatically deleted due to expiration time, reflects data lifecycle management, abnormal frequency requires attention
+    redis_evicted_keys_rate:
+      name: Key Eviction Frequency
+      desc: Frequency of keys actively evicted due to memory limits, reflects memory pressure, non-zero frequency indicates memory usage has reached limit
+    redis_rejected_connections_rate:
+      name: Connection Rejection Frequency
+      desc: Frequency of connection requests rejected due to reaching max connections, reflects connection resource tension, non-zero frequency requires consideration of expansion
   Docker:
     docker_n_containers_running:
       name: Running Containers
@@ -2770,133 +2693,197 @@ monitor_object_metric:
         device and is an indicator for evaluating the health status of the storage
         system.
   MSSQL:
-    volume_available_gb:
-      name: Volume Available Space (GB)
-      desc: Displays the available space in gigabytes on database volumes, assisting
-        in storage management.
-    signal_wait_ratio:
-      desc: Indicates the ratio of time spent waiting for signals, helping assess
-        system responsiveness.
-      name: Signal Wait Ratio
-    memory_usage:
-      name: Memory Usage
-      desc: Reflects the percentage of memory currently utilized by the SQL Server,
-        indicating resource consumption.
-    avg_request_time:
-      desc: Indicates the average time taken to process requests in milliseconds,
-        helping evaluate performance.
-      name: Average Request Time (ms)
-    waiting_tasks_rate:
-      desc: Reflects the rate of tasks currently waiting for resources, indicating
-        system load.
-      name: Waiting Tasks Rate
-    logical_reads_rate:
-      name: Logical Reads Rate
-      desc: Shows the rate of logical read operations per second, reflecting database
-        efficiency.
-    runnable_tasks:
-      desc: Displays the number of tasks that are ready to run but waiting for CPU
-        time, indicating system load.
-      name: Runnable Tasks
-    resource_wait_ratio:
-      name: Resource Wait Ratio
-      desc: Displays the ratio of time spent waiting for resources, reflecting system
-        efficiency.
-    avg_write_latency:
-      desc: Indicates the average latency for write operations in milliseconds, assisting
-        in performance diagnostics.
-      name: Average Write Latency (ms)
-    volume_space_usage:
-      desc: Indicates the percentage of used space on database volumes, helping monitor
-        storage capacity.
-      name: Volume Space Usage
-    available_memory_mb:
-      desc: Shows the available memory in megabytes for the SQL Server instance, aiding
-        in performance tuning.
-      name: Available Memory (MB)
-    sqlserver_uptime:
-      desc: Shows the total uptime of the SQL Server instance since the last restart,
-        reflecting system stability.
-      name: SQL Server Uptime
-    context_switches_rate:
-      desc: Shows the rate of context switches per second, helping assess CPU scheduling
-        efficiency.
-      name: Context Switches Rate
-    total_io_throughput:
-      name: Total I/O Throughput (MBps)
-      desc: Reflects the combined rate of read and write operations in megabytes per
-        second, providing an overall view of I/O performance.
-    online_databases:
-      desc: Displays the count of databases currently online, indicating the availability
-        of database services.
-      name: Number of Online Databases
-    active_connections:
-      name: Active Connections
-      desc: Displays the number of active connections to the SQL Server instance,
-        providing insight into usage patterns.
-    current_workers:
-      name: Current Workers
-      desc: Indicates the current number of worker threads in use by the SQL Server,
-        reflecting resource utilization.
-    avg_wait_time:
-      name: Average Wait Time (ms)
-      desc: Shows the average wait time in milliseconds for various operations, aiding
-        in performance analysis.
-    write_throughput_mbps:
-      desc: Displays the rate of data write operations in megabytes per second, indicating
-        I/O efficiency.
-      name: Write Throughput (MBps)
-    avg_read_latency:
-      desc: Shows the average latency for read operations in milliseconds, helping
-        identify performance bottlenecks.
-      name: Average Read Latency (ms)
-    read_throughput_mbps:
-      name: Read Throughput (MBps)
-      desc: Indicates the rate of data read operations in megabytes per second, reflecting
-        I/O performance.
+    sqlserver_cpu_sqlserver_process_cpu_avg:
+      name: MSSQL Process CPU Usage
+      desc: CPU usage by the SQL Server database process, directly reflecting database computational load. Sustained high values may indicate queries need optimization or resource bottlenecks exist.
+    sqlserver_cpu_system_idle_cpu_avg:
+      name: System Idle CPU
+      desc: Overall operating system idle CPU percentage, indicating total CPU resource utilization. Low values indicate CPU resource constraints that may affect system stability.
+    sqlserver_server_properties_uptime:
+      name: Uptime
+      desc: Duration since last SQL Server instance startup, monitoring instance stability. Long uptime may require a restart to free memory and clean up resources.
+    sqlserver_database_io_read_latency_ms:
+      name: Database Read Latency
+      desc: Average latency time for database file read operations, reflecting storage subsystem performance. High latency may indicate storage bottlenecks, network issues, or insufficient hardware performance.
+    sqlserver_database_io_write_latency_ms:
+      name: Database Write Latency
+      desc: Average latency time for database file write operations, directly impacting transaction performance and application response times. High latency may affect data write speed and system throughput.
+    sqlserver_database_io_reads_rate:
+      name: Database Read Rate
+      desc: Rate of database file read operations, indicating data retrieval load intensity and working set access patterns. High read rates may indicate frequent queries or low cache efficiency.
+    sqlserver_database_io_writes_rate:
+      name: Database Write Rate
+      desc: Rate of database file write operations, indicating data write load intensity and transaction activity levels. High write rates may indicate substantial data updates or insert operations.
+    sqlserver_memory_clerks_size_kb:
+      name: Memory Clerk Size
+      desc: Current memory size allocated by SQL Server internal memory clerks, used to analyze memory usage distribution and identify potential memory leaks. Different clerks represent different memory usage purposes.
+    sqlserver_performance_batch_requests_rate:
+      name: Batch Requests Rate
+      desc: Rate of batch requests processed by SQL Server, measuring overall database throughput and load pressure. High request rates indicate the database is processing a large volume of queries.
+    sqlserver_performance_page_life_expectancy:
+      name: Page Life Expectancy
+      desc: Average time data pages stay in the buffer pool, reflecting memory pressure. Low values suggest insufficient memory, potentially causing frequent physical I/O and impacting performance.
+    sqlserver_performance_buffer_cache_hit_ratio:
+      name: Buffer Cache Hit Ratio
+      desc: Percentage of data page reads satisfied from the buffer pool, reflecting memory efficiency. High hit ratios indicate most data requests are served from memory, suggesting good performance. Low hit ratios may indicate a need for more memory.
+    sqlserver_performance_user_connections_rate:
+      name: User Connections
+      desc: Number of users currently connected to the SQL Server instance, reflecting concurrent load and connection pool usage. Too many connections may lead to resource contention.
+    sqlserver_performance_lock_wait_time_rate:
+      name: Lock Wait Time
+      desc: Rate of lock wait time, reflecting concurrency contention. High values may indicate blocking or lock contention issues that require transaction design optimization.
+    sqlserver_requests_cpu_time_ms_rate:
+      name: Request CPU Time Rate
+      desc: Rate of CPU time consumed by requests, used to identify queries and statements with high CPU consumption, aiding in performance optimization and resource allocation decisions.
+    sqlserver_requests_logical_reads_rate:
+      name: Request Logical Reads Rate
+      desc: Rate of logical read operations by requests, reflecting query data access patterns and working set size. High logical reads may indicate queries lacking indexes or needing optimization.
+    sqlserver_requests_total_elapsed_time_ms_rate:
+      name: Request Elapsed Time Rate
+      desc: Rate of total elapsed time of requests, monitoring query execution efficiency and response times. High elapsed time may indicate complex queries, large data volumes, or performance issues.
+    sqlserver_requests_wait_time_ms_rate:
+      name: Request Wait Time Rate
+      desc: Rate of wait time of requests, reflecting query waiting on resources. High wait times may indicate resource bottlenecks or lock contention.
+    sqlserver_schedulers_active_workers_count:
+      name: Scheduler Active Workers Count
+      desc: Number of active workers currently executing tasks on schedulers, reflecting CPU scheduling load. Excessive numbers may indicate high CPU pressure or parallel query contention.
+    sqlserver_schedulers_runnable_tasks_count:
+      name: Scheduler Runnable Tasks Count
+      desc: Number of tasks ready to run and waiting for CPU execution on schedulers, reflecting CPU queue length. High values indicate insufficient CPU resources or a large number of concurrent requests.
+    sqlserver_waitstats_resource_wait_ms:
+      name: Resource Wait Time Rate
+      desc: Rate of time spent waiting for external resources (such as disk, network, memory), reflecting true resource bottlenecks. Helps identify hardware limitations like I/O, memory, or network.
+    sqlserver_waitstats_signal_wait_time_ms_rate:
+      name: Signal Wait Time Rate
+      desc: Rate of time spent waiting for CPU scheduler, reflecting CPU pressure. High signal wait time indicates CPU resource contention or parallel query issues, requiring query optimization or additional CPU resources.
+    sqlserver_waitstats_wait_time_ms_rate:
+      name: Wait Time Rate
+      desc: Rate of cumulative wait time for various wait types in SQL Server, a key metric for performance tuning that helps identify system bottlenecks.
+    sqlserver_waitstats_waiting_tasks_count:
+      name: Waiting Tasks Count
+      desc: Number of SQL Server tasks currently waiting, reflecting the system's concurrent wait situation. High waiting tasks count may indicate resource contention in the system.
+    sqlserver_volume_space_available_space_bytes:
+      name: Volume Available Space
+      desc: Available space on storage volumes, monitoring disk space usage. Insufficient space may cause database operation failures or performance degradation.
+    sqlserver_volume_space_total_space_bytes:
+      name: Volume Total Space
+      desc: Total space on storage volumes, used to calculate disk usage and plan storage expansion.
+    sqlserver_volume_space_used_space_bytes:
+      name: Volume Used Space
+      desc: Used space on storage volumes, combined with total space to calculate usage rate and monitor storage growth trends.
   Zookeeper:
-    max_latency:
-      desc: Maximum latency of ZooKeeper requests
-      name: Maximum Latency
-    packets_send_rate:
-      desc: Packets sent per second
-      name: Packet Send Rate
-    fsync_threshold_exceed_count:
-      desc: Number of times fsync operations exceeded threshold
-      name: Fsync Threshold Exceeds
-    fd_usage_percentage:
-      desc: Percentage of file descriptors used
-      name: File Descriptor Usage
+    version:
+      name: Version Info
+      desc: Zookeeper service version identifier for software version recognition and compatibility.
+    num_alive_connections:
+      name: Alive Connections
+      desc: Number of active client connections, a key metric for measuring real-time service load and concurrency pressure.
+    outstanding_requests:
+      name: Outstanding Requests
+      desc: Number of requests queued for processing. Consistently high values indicate potential service processing bottlenecks.
     avg_latency:
-      desc: Average latency of ZooKeeper requests
       name: Average Latency
-    znode_count:
-      name: Total ZNode Count
-      desc: Total number of ZNodes
+      desc: Average response time for client requests, the primary metric for evaluating Zookeeper core performance.
+    max_latency:
+      name: Maximum Latency
+      desc: Maximum recorded response time for a single request, reflecting performance bottlenecks under extreme conditions.
+    min_latency:
+      name: Minimum Latency
+      desc: Minimum response time for processing requests, representing the best performance under ideal conditions.
+    packets_received:
+      name: Packets Received
+      desc: Total number of network packets received by the server, measuring network input traffic.
+    packets_sent:
+      name: Packets Sent
+      desc: Total number of network packets sent by the server, measuring network output traffic.
     watch_count:
       name: Watch Count
-      desc: Number of active watches
-    num_alive_connections:
-      desc: Number of active client connections
-      name: Active Connections
-    packets_receive_rate:
-      desc: Packets received per second
-      name: Packet Receive Rate
-    min_latency:
-      desc: Minimum latency of ZooKeeper requests
-      name: Minimum Latency
+      desc: Number of watchers currently registered on ZNodes, reflecting client interest in data changes.
     ephemerals_count:
-      desc: Number of ephemeral ZNodes
-      name: Ephemeral Nodes Count
+      name: Ephemeral Nodes
+      desc: Number of ephemeral nodes in the current data tree, typically associated with session lifecycle.
+    znode_count:
+      name: ZNode Count
+      desc: Total number of all nodes in the Zookeeper data tree, reflecting the scale and complexity of the data structure.
     approximate_data_size:
-      name: Approximate Data Size
-      desc: Approximate size of data stored in ZooKeeper
+      name: Data Size
+      desc: Approximate memory footprint of all stored ZNode data, used for capacity planning.
     open_file_descriptor_count:
       name: Open File Descriptors
-      desc: Number of open file descriptors
-    outstanding_requests:
-      desc: Number of requests queued for processing
-      name: Outstanding Requests
+      desc: Number of file descriptors currently open by the process. Nearing the system limit may impact service.
+    max_file_descriptor_count:
+      name: Max File Descriptors
+      desc: Maximum number of file descriptors the operating system allows for this process, a configurable resource limit.
+    fsync_threshold_exceed_count:
+      name: Fsync Threshold Exceed
+      desc: Number of times transaction log sync to disk exceeded the time threshold, indicating disk I/O performance issues.
+    packets_received_rate:
+      name: Packets Received Rate
+      desc: Average packet reception rate over the past 5 minutes, reflecting real-time network input load.
+    packets_sent_rate:
+      name: Packets Sent Rate
+      desc: Average packet transmission rate over the past 5 minutes, reflecting real-time network output load.
+    fsync_threshold_exceed_rate:
+      name: Fsync Exceed Rate
+      desc: Frequency of Fsync operation threshold exceedances over the past 5 minutes, monitoring trends in disk performance degradation.
+    avg_latency_avg:
+      name: Avg Latency Trend
+      desc: Moving average of latency over the past 5 minutes, smoothing out instant fluctuations to observe stable trends.
+    max_latency_max:
+      name: Max Latency Peak
+      desc: Maximum latency value recorded in the past 5 minutes, identifying the most severe performance event within the timeframe.
+  Kafka:
+    up_gauge:
+      name: Probe Status
+      desc: Probe Uptime status. 0 means connection failed, 1 means connection success. Check for no data issues which may indicate a missing connection.
+    brokers_gauge:
+      name: Broker Count
+      desc: Number of Kafka Brokers in the cluster.
+    broker_info_gauge:
+      name: Broker Info
+      desc: Information about Kafka node, including node address and ID.
+    topic_partition_count:
+      name: Topic Partition Count
+      desc: Number of partitions for a given Kafka topic.
+    topic_partition_current_offset:
+      name: Partition Current Offset
+      desc: Current offset for the specified topic and partition.
+    topic_partition_oldest_offset:
+      name: Partition Oldest Offset
+      desc: Oldest offset for the specified topic and partition.
+    topic_partition_in_sync_replica:
+      name: Partition In-Sync Replicas
+      desc: Number of in-sync replicas for the specified topic and partition.
+    topic_partition_leader_is_preferred:
+      name: Partition Preferred Leader Status
+      desc: Value is 1 if the preferred Broker node is in use for the topic/partition, otherwise 0.
+    topic_partition_replicas:
+      name: Partition Replica Count
+      desc: Number of replicas for the specified topic and partition.
+    topic_partition_under_replicated_partition:
+      name: Partition Under-Replicated Status
+      desc: Value is 1 if the topic/partition is under-replicated, otherwise 0.
+    consumergroup_current_offset:
+      name: Consumer Group Current Offset
+      desc: Current offset for the consumer group in the specified topic and partition.
+    consumergroup_lag:
+      name: Consumer Group Lag
+      desc: Current approximate lag of the consumer group in the specified topic and partition.
+    process_cpu_seconds_total:
+      name: Probe Process CPU Time
+      desc: Total CPU time used by the probe process.
+    process_max_fds_gauge:
+      name: Probe Process Max File Descriptors
+      desc: Maximum number of file descriptors that the probe process can open.
+    process_open_fds_gauge:
+      name: Probe Process Open File Descriptors
+      desc: Current number of open file descriptors used by the probe process.
+    process_resident_memory_bytes_gauge:
+      name: Probe Process Resident Memory
+      desc: Current resident memory size of the probe process.
+    process_virtual_memory_bytes_gauge:
+      name: Probe Process Virtual Memory
+      desc: Current virtual memory size of the probe process.
 monitor_object_metric_group:
   Detection Device:
     Status: Status
@@ -2927,21 +2914,25 @@ monitor_object_metric_group:
   ActiveMQ:
     Topic: Topic
   RabbitMQ:
-    Message: Message
-    Node: Node
-    Exchange: Exchange
-  Apache:
-    CPU: CPU
-    Uptime: Uptime
-    Work: Work
-    Duration: Duration
-    Request: Request
-  Postgres:
-    Transaction: Transaction
-    Session: Session
-    Cache: Cache
-    Memory: Memory
+    Base: Base
     Performance: Performance
+    Resource: Resource
+  Apache:
+    Base: Base
+    Performance: Performance
+    State: State
+    Cache: Cache
+    Process: Process
+  Postgres:
+    Connection: Connection
+    Query: Query
+    DataOperation: Data Operation
+    Cache: Cache
+    Concurrency: Concurrency
+    TempFiles: Temporary Files
+    Checkpoint: Checkpoint
+    Buffer: Buffer
+    WriteActivity: Write Activity
   ESXI:
     Memory: Memory
     Network: Network
@@ -2955,9 +2946,8 @@ monitor_object_metric_group:
     Part: Part
     Load: Load
   Nginx:
-    Connection: Connection
-    Efficiency: Efficiency
-    Request: Request
+    StubStatus: Stub Status
+    Performance: Performance
   Router:
     Packet Loss: Packet Loss
     Traffic: Traffic
@@ -2969,23 +2959,25 @@ monitor_object_metric_group:
   vCenter:
     Quantity: Quantity
   Oracle-Exporter:
-    PGA: PGA
-    Activity: Database Activity
     Base: Base
-    SGA: SGA
+    Activity: Database Activity
     Wait: Wait
-    Process: Process
-    selfMonitor: SelfMonitor
+    Resource: Resource
+    SGA: SGA
+    PGA: PGA
     Tablespace: Tablespace
     RAC: RAC
-  Host:
-    Net: Net
-    CPU: CPU
-    DISK: Disk
-    Disk IO: Disk I/O
     Process: Process
-    MEMORY: Memory
+    SelfMonitor: SelfMonitor
+  Host:
+    CPU: CPU
     System: System
+    Disk IO: Disk I/O
+    Disk: Disk
+    Process: Process
+    Memory: Memory
+    Net: Net
+    Nvidia GPU: Nvidia GPU
   Firewall:
     Packet: Packet
     Packet Loss: Packet Loss
@@ -3001,13 +2993,10 @@ monitor_object_metric_group:
     Disk: Disk
     Network: Network
   MongoDB:
-    Latency: Latency
-    Storage: Storage
-    Active Operations: Active Operations
-    Commands: Commands
-    Memory: Memory
-    Traffic: Traffic
-    Connections: Connections
+    Base: Base
+    Performance: Performance
+    Operations: Operations
+    Resources: Resources
   Tomcat-JMX:
     Session: Session
     GlobalRequestProcessor: Global Request Processing
@@ -3061,23 +3050,16 @@ monitor_object_metric_group:
     Disk: Disk
     Memory: Memory
   Mysql:
-    Traffic: Traffic
-    Session: Session
-    Cache: Cache
-    Command: Command
-    Error: Error
-    Connection: Connection
+    ConnStatus: Connection Status
+    QueryPerf: Query Performance
+    InnoDBPerf: InnoDB Performance
+    NetTraffic: Network Traffic
+    TableCache: Table Cache
+    TempTable: Temporary Tables
   Minio:
-    CPU: CPU
-    ClusterDrive: Cluster Drive
-    DriveResource: Drive Resource
-    ClusterHealth: Cluster Health
-    NetworkInterface: Network Interface
-    Audit: Audit
-    BucketRequests: Bucket Requests
-    BucketUsage: Bucket Usage
-    ClusterCapacity: Cluster Capacity
-    S3Request: S3 Request
+    Cluster Monitoring: Cluster Monitoring
+    Resource Monitoring: Resource Monitoring
+    S3 Service Monitoring: S3 Service Monitoring
   Switch:
     Base: Base
     Packet: Packet
@@ -3101,14 +3083,17 @@ monitor_object_metric_group:
     Status: Status
     Packet Error: Packet Error
   Redis:
-    Cache: Cache
-    Replication: Replication
-    Clients: Clients
+    Base: Base
     Memory: Memory
-    Disk: Disk
-    Connectivity: Connectivity
     Performance: Performance
-    CPU: CPU
+    Network: Network
+    Client: Client
+    Error: Error
+  Kafka:
+    Base: Base
+    Topic: Topic
+    ConsumerGroup: ConsumerGroup
+    Process: Process
   ActiveMQ-JMX:
     Other: Other
     JvmMemory: JVM Memory
@@ -3126,11 +3111,10 @@ monitor_object_metric_group:
     Memory: Memory
     Net: Net
   Tomcat:
-    Error: Error
-    Request: Request
-    Net: Net
-    Threads: Threads
-    JMX: 'JMX '
+    Connector: Connector
+    JVM Memory: JVM Memory
+    Memory Pool: Memory Pool
+    Performance: Performance
   Docker:
     Docker Count: Docker Count
   Jetty-JMX:
@@ -3150,30 +3134,27 @@ monitor_object_metric_group:
     Status: Status
   TCP: ''
   Zookeeper:
-    Connection: Connection
-    Performance: Performance
-    Data: Data
-    Count: Count
-    Packet: Packet
-    Other: Other
+    System Status: System Status
+    Performance Metrics: Performance Metrics
+    Data Storage: Data Storage
+    Resource Usage: Resource Usage
+    Performance Trends: Performance Trends
   Cluster:
     Counts: Counts
     Utilization: Utilization
   Consul:
-    Check: Check
+    Health: Health
+    Node: Node
+    Service: Service
   Ping:
     Ping: Ping
   SNMP Trap: None
   Website:
     HTTP: HTTP
   MSSQL:
-    Disk: Disk
-    Scheduler: Scheduler
-    IO: IO
-    Memory: Memory
-    Connection: Connection
     Base: Base
-    Wait: Wait
+    Performance: Performance
+    Storage: Storage
 monitor_object_plugin:
   Detection Device SNMP General:
     name: Detection Device General (SNMP)
@@ -3333,9 +3314,9 @@ monitor_object_plugin:
   MongoDB:
     name: MongoDB(Telegraf)
     desc: Through the Telegraf collector, regularly collect MongoDB metrics including
-      read/write activities, command execution, connection counts, latency, memory
-      usage, and network traffic to help optimize performance and ensure efficient
-      and stable database operation.
+      basic information, performance indicators, operation statistics, and resource
+      usage to help optimize performance and ensure efficient and stable database
+      operation.
   JVM:
     name: JVM(JMX)
     desc: Through the JVM JMX collector, regularly collect performance metrics from
@@ -3367,8 +3348,11 @@ monitor_object_plugin:
     name: VMWare
   MSSQL:
     desc: Through the Telegraf collector regularly gathers key MSSQL metrics, including
-      disk usage, memory, I/O, wait times, and more.
+      basic information, performance indicators, storage status, and more.
     name: MSSQL(Telegraf)
+  Kafka:
+    name: Kafka(Exporter)
+    desc: Through the Kafka Exporter collector, regularly gather metrics from Kafka clusters, including topic statistics, partition counts, consumer group status, and more, to help monitor the health and performance of Kafka clusters.
 monitor_object:
   Apache: Apache
   Firewall: Firewall
@@ -3393,6 +3377,7 @@ monitor_object:
   Consul: Consul
   RabbitMQ: RabbitMQ
   Zookeeper: Zookeeper
+  Kafka: Kafka
   Detection Device: Detection Device
   ClickHouse: ClickHouse
   Hardware Server: Hardware Server

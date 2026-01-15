@@ -1,5 +1,5 @@
 'use client';
-import React, { useEffect, useState, useRef } from 'react';
+import React, { useEffect, useState, useRef, useMemo } from 'react';
 import assetSearchStyle from './index.module.scss';
 import { useTranslation } from '@/utils/i18n';
 import { SearchOutlined } from '@ant-design/icons';
@@ -45,7 +45,6 @@ const AssetSearch = () => {
   const [activeTab, setActiveTab] = useState<string>('');
   const [items, setItems] = useState<TabJsxItem[]>([]);
   const [showSearch, setShowSearch] = useState<boolean>(true);
-  const [instDetail, setInstDetail] = useState<InstDetailItem[]>([]);
   const [pageLoading, setPageLoading] = useState<boolean>(false);
   const [activeInstItem, setActiveInstItem] = useState<number>(-1);
   const [historyList, setHistoryList] = useState<string[]>([]);
@@ -103,7 +102,6 @@ const AssetSearch = () => {
         setItems([]);
         setPropertyList([]);
         setActiveTab('');
-        setInstDetail([]);
         setActiveInstItem(-1);
         setTotalCount(0);
         setCurrentPage(1);
@@ -125,7 +123,6 @@ const AssetSearch = () => {
       setItems([]);
       setPropertyList([]);
       setActiveTab('');
-      setInstDetail([]);
       setActiveInstItem(-1);
       setTotalCount(0);
       setCurrentPage(1);
@@ -189,13 +186,6 @@ const AssetSearch = () => {
     const currentDetail =
       descItems.length > 0 ? descItems[detailIndex] || [] : [];
 
-    // 设置详情状态
-    if (descItems.length > 0) {
-      setInstDetail(currentDetail);
-    } else {
-      setInstDetail([]);
-    }
-
     const modelName =
       modelList.find((model) => model.model_id === activeTab)?.model_name ||
       activeTab;
@@ -222,7 +212,7 @@ const AssetSearch = () => {
                     className={`${assetSearchStyle.listItem} ${
                       index === activeInstItem ? assetSearchStyle.active : ''
                     }`}
-                    onClick={() => checkInstDetail(index, target)}
+                    onClick={() => checkInstDetail(index)}
                   >
                     <div className={assetSearchStyle.title}>{`${modelName} - ${
                       target.find(
@@ -373,8 +363,21 @@ const AssetSearch = () => {
     });
   };
 
+  const currentInstDetail = useMemo(() => {
+    if (activeInstItem < 0 || !currentModelData[activeInstItem]) return [];
+    const currentInst = currentModelData[activeInstItem];
+    return Object.entries(currentInst)
+      .map(([key, value]) => ({
+        key: key,
+        label: propertyList.find((item) => item.attr_id === key)?.attr_name,
+        children: value,
+        id: currentInst._id,
+      }))
+      .filter((desc) => !!desc.label);
+  }, [activeInstItem, currentModelData, propertyList]);
+
   const linkToDetail = () => {
-    const _instDetail = deepClone(instDetail);
+    if (currentInstDetail.length === 0) return;
     const params: any = {
       icn: '',
       model_name:
@@ -382,8 +385,8 @@ const AssetSearch = () => {
         '--',
       model_id: activeTab,
       classification_id: '',
-      inst_id: _instDetail[0]?.id || '',
-      inst_name: _instDetail.find(
+      inst_id: currentInstDetail[0]?.id || '',
+      inst_name: currentInstDetail.find(
         (title: InstDetailItem) => title.key === 'inst_name'
       )?.children,
     };
@@ -399,9 +402,8 @@ const AssetSearch = () => {
     await loadModelData(key, 1, pageSize);
   };
 
-  const checkInstDetail = (index: number, row: InstDetailItem[]) => {
+  const checkInstDetail = (index: number) => {
     setActiveInstItem(index);
-    setInstDetail(row);
   };
 
   const handlePageChange = (page: number, size: number) => {

@@ -33,6 +33,7 @@
         border-radius: 4px;
         cursor: pointer;
         user-select: none;
+        position: relative;
 
         .leftSide {
           display: flex;
@@ -52,6 +53,24 @@
           }
         }
 
+        .copyButton {
+          position: absolute;
+          right: -8px;
+          top: -8px;
+          width: 24px;
+          height: 24px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          background: var(--color-bg-2);
+          border-radius: 4px;
+          z-index: 10;
+          
+          &:hover {
+            background: var(--color-fill-2);
+          }
+        }
+
         .rightSide {
           width: 70px;
           height: 100%;
@@ -61,6 +80,7 @@
           flex-direction: column;
           color: var(--color-primary);
           border-left: 1px solid var(--color-border);
+          position: relative;
         }
       }
 
