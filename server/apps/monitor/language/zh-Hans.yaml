@@ -2153,6 +2153,58 @@ monitor_object_metric:
     max_latency_max:
       name: 最大延迟峰值
       desc: 过去5分钟内记录的最大延迟值，用于识别时间段内的最严重性能事件。
+  Kafka:
+    up_gauge:
+      name: 监控探针状态
+      desc: 监控探针的运行状态。0代表连接服务不正常，1代表连接服务正常。需要注意无数据的情况可能是连接不存在。
+    brokers_gauge:
+      name: Broker数量
+      desc: Kafka集群中的 Broker 数量。
+    broker_info_gauge:
+      name: 节点信息
+      desc: Kafka节点的信息，包含节点地址和节点ID。
+    topic_partition_count:
+      name: 主题分区数
+      desc: 主题的分区数量。
+    topic_partition_current_offset:
+      name: 分区当前偏移量
+      desc: 指定主题和分区的当前偏移量。
+    topic_partition_oldest_offset:
+      name: 分区最早偏移量
+      desc: 指定主题和分区的最早偏移量。
+    topic_partition_in_sync_replica:
+      name: 分区同步副本数
+      desc: 指定主题和分区的同步副本数量。
+    topic_partition_leader_is_preferred:
+      name: 分区首选领导者状态
+      desc: 若主题/分区正在使用首选 Broker节点，则值为 1，否则为 0。
+    topic_partition_replicas:
+      name: 分区副本数
+      desc: 指定主题和分区的副本数量。
+    topic_partition_under_replicated_partition:
+      name: 分区副本不足状态
+      desc: 若主题/分区处于副本不足状态，则值为 1，否则为 0。
+    consumergroup_current_offset:
+      name: 消费者组当前偏移量
+      desc: 指定消费者组在指定主题和分区的当前偏移量。
+    consumergroup_lag:
+      name: 消费者组滞后偏移量
+      desc: 指定消费者组在指定主题和分区的当前近似滞后偏移量。
+    process_cpu_seconds_total:
+      name: 探针进程CPU总时间
+      desc: 监控探针进程已使用的CPU时间总量。
+    process_max_fds_gauge:
+      name: 探针进程最大文件描述符数
+      desc: 监控探针进程能够打开的最大文件描述符数。
+    process_open_fds_gauge:
+      name: 探针进程打开文件描述符数
+      desc: 监控探针进程当前打开的文件描述符数。
+    process_resident_memory_bytes_gauge:
+      name: 探针进程常驻内存大小
+      desc: 监控探针进程当前常驻内存的大小。
+    process_virtual_memory_bytes_gauge:
+      name: 探针进程虚拟内存大小
+      desc: 监控探针进程当前虚拟内存的大小。
 monitor_object_metric_group:
   Detection Device:
     Status: 状态
@@ -2365,6 +2417,11 @@ monitor_object_metric_group:
     Network: 网络
     Client: 客户端
     Error: 错误
+  Kafka:
+    Base: 基础信息
+    Topic: 主题
+    ConsumerGroup: 消费者组
+    Process: 进程
   ActiveMQ-JMX:
     Other: 其他
     JvmMemory: JVM内存
@@ -2550,6 +2607,9 @@ monitor_object_plugin:
   MSSQL:
     desc: 通过Telegraf采集器定期收集MSSQL关键指标，包括基础信息、性能指标、存储状态等。
     name: MSSQL（Telegraf）
+  Kafka:
+    name: Kafka（Exporter）
+    desc: 通过Kafka Exporter采集器定期收集Kafka集群的主题统计、分区数量、消费者组状态等指标，帮助监控Kafka集群的健康和性能。
 monitor_object:
   Apache: Apache
   Firewall: 防火墙
@@ -2574,6 +2634,7 @@ monitor_object:
   Consul: Consul
   RabbitMQ: RabbitMQ
   Zookeeper: Zookeeper
+  Kafka: Kafka
   Detection Device: 检测设备
   ClickHouse: ClickHouse
   Hardware Server: 硬件服务器

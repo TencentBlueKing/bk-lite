@@ -2941,6 +2941,58 @@ monitor_object_metric:
     max_latency_max:
       name: Max Latency Peak
       desc: Maximum latency value recorded in the past 5 minutes, identifying the most severe performance event within the timeframe.
+  Kafka:
+    up_gauge:
+      name: Probe Status
+      desc: Probe Uptime status. 0 means connection failed, 1 means connection success. Check for no data issues which may indicate a missing connection.
+    brokers_gauge:
+      name: Broker Count
+      desc: Number of Kafka Brokers in the cluster.
+    broker_info_gauge:
+      name: Broker Info
+      desc: Information about Kafka node, including node address and ID.
+    topic_partition_count:
+      name: Topic Partition Count
+      desc: Number of partitions for a given Kafka topic.
+    topic_partition_current_offset:
+      name: Partition Current Offset
+      desc: Current offset for the specified topic and partition.
+    topic_partition_oldest_offset:
+      name: Partition Oldest Offset
+      desc: Oldest offset for the specified topic and partition.
+    topic_partition_in_sync_replica:
+      name: Partition In-Sync Replicas
+      desc: Number of in-sync replicas for the specified topic and partition.
+    topic_partition_leader_is_preferred:
+      name: Partition Preferred Leader Status
+      desc: Value is 1 if the preferred Broker node is in use for the topic/partition, otherwise 0.
+    topic_partition_replicas:
+      name: Partition Replica Count
+      desc: Number of replicas for the specified topic and partition.
+    topic_partition_under_replicated_partition:
+      name: Partition Under-Replicated Status
+      desc: Value is 1 if the topic/partition is under-replicated, otherwise 0.
+    consumergroup_current_offset:
+      name: Consumer Group Current Offset
+      desc: Current offset for the consumer group in the specified topic and partition.
+    consumergroup_lag:
+      name: Consumer Group Lag
+      desc: Current approximate lag of the consumer group in the specified topic and partition.
+    process_cpu_seconds_total:
+      name: Probe Process CPU Time
+      desc: Total CPU time used by the probe process.
+    process_max_fds_gauge:
+      name: Probe Process Max File Descriptors
+      desc: Maximum number of file descriptors that the probe process can open.
+    process_open_fds_gauge:
+      name: Probe Process Open File Descriptors
+      desc: Current number of open file descriptors used by the probe process.
+    process_resident_memory_bytes_gauge:
+      name: Probe Process Resident Memory
+      desc: Current resident memory size of the probe process.
+    process_virtual_memory_bytes_gauge:
+      name: Probe Process Virtual Memory
+      desc: Current virtual memory size of the probe process.
 monitor_object_metric_group:
   Detection Device:
     Status: Status
@@ -3153,6 +3205,11 @@ monitor_object_metric_group:
     Network: Network
     Client: Client
     Error: Error
+  Kafka:
+    Base: Base
+    Topic: Topic
+    ConsumerGroup: ConsumerGroup
+    Process: Process
   ActiveMQ-JMX:
     Other: Other
     JvmMemory: JVM Memory
@@ -3409,6 +3466,9 @@ monitor_object_plugin:
     desc: Through the Telegraf collector regularly gathers key MSSQL metrics, including
       basic information, performance indicators, storage status, and more.
     name: MSSQL(Telegraf)
+  Kafka:
+    name: Kafka(Exporter)
+    desc: Through the Kafka Exporter collector, regularly gather metrics from Kafka clusters, including topic statistics, partition counts, consumer group status, and more, to help monitor the health and performance of Kafka clusters.
 monitor_object:
   Apache: Apache
   Firewall: Firewall
@@ -3433,6 +3493,7 @@ monitor_object:
   Consul: Consul
   RabbitMQ: RabbitMQ
   Zookeeper: Zookeeper
+  Kafka: Kafka
   Detection Device: Detection Device
   ClickHouse: ClickHouse
   Hardware Server: Hardware Server
