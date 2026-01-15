@@ -131,6 +131,7 @@ export const InitNode: React.FC<TopoDataProps> = ({
       model_id: row.modelId,
       classification_id: '',
       inst_id: node.id,
+      inst_name: row.inst_name || '',
     };
     const queryString = new URLSearchParams(params).toString();
     const url = `/cmdb/assetData/detail/baseInfo?${queryString}`;
@@ -223,7 +224,7 @@ export const InitNode: React.FC<TopoDataProps> = ({
 
           children.forEach((child, index) => {
             nodePositions[child.id] = {
-              x: isSrc 
+              x: isSrc
                 ? parentPos.x - CONFIG.horizontalGap
                 : parentPos.x + CONFIG.horizontalGap,
               y: startY + index * verticalGap
@@ -274,9 +275,11 @@ export const InitNode: React.FC<TopoDataProps> = ({
     );
     const currentLevel = Number(level);
     const isExpanded = currentLevel < CONFIG.maxExpandedLevel;
-    const hasLeftBtn =(currentLevel === 1 && hasSrc) || (currentLevel !== 1 && isSrc && hasChild)
+    const hasLeftBtn = (currentLevel === 1 && hasSrc) || (currentLevel !== 1 && isSrc && hasChild)
     const hasRightBtn = (currentLevel === 1 && hasDst) || (currentLevel !== 1 && !isSrc && hasChild);
 
+    // 创建x6节点
+    // console.log("test6.4",node);
     nodes.push({
       id,
       x: position.x,
@@ -306,7 +309,7 @@ export const InitNode: React.FC<TopoDataProps> = ({
         },
         expandBtnR: {
           stroke: hasRightBtn ? 'var(--color-border-3)' : '',
-          fill:  hasRightBtn ? 'var(--color-bg-1)' : 'transparent',
+          fill: hasRightBtn ? 'var(--color-bg-1)' : 'transparent',
           d: getExpandBtnPath(hasRightBtn, isExpanded),
         },
       },
@@ -315,6 +318,7 @@ export const InitNode: React.FC<TopoDataProps> = ({
         expanded: isExpanded,
         children: hasChild ? node.children : [],
         modelId: node.model_id,
+        inst_name: node.inst_name,
         isSrc: isSrc,
         level: currentLevel,
       },
