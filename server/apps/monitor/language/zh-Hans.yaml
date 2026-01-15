@@ -1552,32 +1552,26 @@ monitor_object_metric:
       desc: 表示在 ping 请求中丢失数据包所占的百分比。此指标帮助确定不稳定的网络连接或传输问题。较低的丢失率表示网络连接更稳定。
   Nginx:
     nginx_active:
-      desc: 当前所有处于活动状态的连接数，包含读取、写入和等待处理的所有连接。
-      name: 当前活跃连接数
-    nginx_requests:
-      desc: 表示过去 5 分钟内每秒处理的 HTTP 请求数量，反映服务器的负载情况。
-      name: 每秒请求量
-    nginx_writing:
-      name: 当前写入连接数
-      desc: 表示当前正在向客户端写响应数据的连接数量，用于监控响应阶段的性能。
+      name: 活跃连接数
+      desc: 当前活跃的客户端连接数，反映并发负载
     nginx_reading:
-      desc: 表示当前正在读取客户端请求（头部或主体）的连接数量，用于监控读取阶段的负载。
-      name: 当前读取连接数
+      name: 读取连接数
+      desc: 正在读取请求头的连接数，反映请求处理状态
+    nginx_writing:
+      name: 写入连接数
+      desc: 正在写入响应的连接数，反映响应处理状态
     nginx_waiting:
-      desc: 当前处于等待状态（空闲）的连接数量，表示当前未处理的客户端连接。
-      name: 当前等待连接数
-    nginx_handled:
-      desc: 表示过去 5 分钟内每秒成功处理的已连接会话数量，监控连接处理能力。
-      name: 每秒连接处理量
-    nginx_connect_rate:
-      desc: 表示过去 5 分钟内已处理的连接数占总接收连接数量的百分比，可用于分析连接处理的稳定性。
-      name: 连接处理成功率
-    nginx_accepts:
-      name: 每秒连接建立量
-      desc: 表示过去 5 分钟内每秒成功建立的客户端连接数量，用于监控连接活跃度。
-    nginx_request_handling_efficiency:
-      desc: 表示每个处理连接的平均请求数量，间接反映了 Nginx 的工作效率以及负载级别。
-      name: 每个连接平均请求数
+      name: 等待连接数
+      desc: 等待请求的空闲连接数，反映连接池使用情况
+    nginx_requests_rate:
+      name: 请求速率
+      desc: Nginx处理的请求速率，反映实时负载
+    nginx_accepts_rate:
+      name: 连接接受速率
+      desc: Nginx接受新连接的速率，反映连接建立频率
+    nginx_handled_rate:
+      name: 连接处理速率
+      desc: Nginx处理连接的速率，反映连接处理能力
   WebLogic-JMX:
     weblogic_jms_jmsservers_current_count_value:
       name: JMS 服务器当前数量
@@ -2146,9 +2140,8 @@ monitor_object_metric_group:
     Part: 分片
     Load: 负载
   Nginx:
-    Connection: 连接
-    Efficiency: 效率
-    Request: 请求
+    StubStatus: Stub状态
+    Performance: 性能
   Router:
     Packet Loss: 数据包丢失
     Traffic: 流量

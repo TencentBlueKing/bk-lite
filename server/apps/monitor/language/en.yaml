@@ -2185,41 +2185,31 @@ monitor_object_metric:
         loss rates indicate more stable connectivity.
   Nginx:
     nginx_active:
-      desc: The number of active connections currently including those in reading,
-        writing, and waiting states.
       name: Active Connections
-    nginx_requests:
-      desc: Indicates the number of HTTP requests per second processed over the last
-        5 minutes, reflecting server load.
-      name: Requests Per Second
-    nginx_writing:
-      name: Connections with Active Writes
-      desc: The number of connections currently writing response data to clients,
-        used to monitor performance in the response stage.
+      desc: Number of active client connections, reflecting concurrent load
     nginx_reading:
-      desc: The number of connections currently reading client requests (header or
-        body), used to monitor load in the reading stage.
       name: Reading Connections
+      desc: Number of connections reading request headers, reflecting request processing
+        status
+    nginx_writing:
+      name: Writing Connections
+      desc: Number of connections writing responses, reflecting response processing
+        status
     nginx_waiting:
-      desc: The current number of idle connections waiting to be processed, reflecting
-        the waiting connection queue.
       name: Waiting Connections
-    nginx_handled:
-      desc: Indicates the number of connected sessions successfully handled per second
-        over the last 5 minutes, monitoring connection handling capacity.
-      name: Handled Connections Rate
-    nginx_connect_rate:
-      desc: The percentage of handled connections out of total accepted connections
-        over the last 5 minutes, used to analyze connection handling stability.
-      name: Connection Handling Success Rate
-    nginx_accepts:
-      name: Accepted Connections Rate
-      desc: Indicates the number of client connections successfully established per
-        second over the last 5 minutes, used to monitor connection activity.
-    nginx_request_handling_efficiency:
-      desc: Indicates the average number of requests per handled connection, indirectly
-        reflecting Nginx's efficiency and load level.
-      name: Requests per Handled Connection
+      desc: Number of idle connections waiting for requests, reflecting connection
+        pool usage
+    nginx_requests_rate:
+      name: Request Rate
+      desc: Rate of requests handled by Nginx, reflecting real-time load
+    nginx_accepts_rate:
+      name: Connection Acceptance Rate
+      desc: Rate of new connections accepted by Nginx, reflecting connection establishment
+        frequency
+    nginx_handled_rate:
+      name: Connection Handling Rate
+      desc: Rate of connections handled by Nginx, reflecting connection processing
+        capacity
   WebLogic-JMX:
     weblogic_jms_jmsservers_current_count_value:
       name: JMS Servers Current Count
@@ -2929,9 +2919,8 @@ monitor_object_metric_group:
     Part: Part
     Load: Load
   Nginx:
-    Connection: Connection
-    Efficiency: Efficiency
-    Request: Request
+    StubStatus: Stub Status
+    Performance: Performance
   Router:
     Packet Loss: Packet Loss
     Traffic: Traffic
