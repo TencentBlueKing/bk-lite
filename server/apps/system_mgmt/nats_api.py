@@ -50,10 +50,10 @@ def get_user_all_roles(user):
     # 用户所属组织的角色（只包含直接所属组织，不递归子组）
     group_role_ids = set()
     if user.group_list:
-        # 使用ManyToMany关系获取组角色
-        groups = Group.objects.filter(id__in=user.group_list)
+        # 使用prefetch_related避免N+1查询
+        groups = Group.objects.filter(id__in=user.group_list).prefetch_related("roles")
         for group in groups:
-            group_role_ids.update(group.roles.values_list("id", flat=True))
+            group_role_ids.update(role.id for role in group.roles.all())
 
     # 合并去重
     all_role_ids = list(personal_role_ids | group_role_ids)
@@ -132,7 +132,7 @@ def verify_token(token):
         group_list = group_list.filter(id__in=user.group_list)
     # groups = GroupUtils.build_group_tree(group_list)
     groups = list(group_list.values("id", "name", "parent_id"))
-    queryset = Group.objects.all()
+    queryset = Group.objects.prefetch_related("roles").all()
 
     # 构建嵌套组结构
     groups_data = GroupUtils.build_group_tree(queryset, is_superuser, [i["id"] for i in groups])
@@ -319,7 +319,7 @@ def create_default_rule(llm_model, ocr_model, embed_model, rerank_model):
 
 @nats_client.register
 def get_all_groups():
-    groups = Group.objects.all()
+    groups = Group.objects.prefetch_related("roles").all()
     return_data = GroupUtils.build_group_tree(groups, True)
     return {"result": True, "data": return_data}
 
