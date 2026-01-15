@@ -1,100 +1,116 @@
 #!/bin/bash
 set -euo pipefail
 
-# 检测脚本模板
-DETECT_SCRIPT_TEMPLATE=$(
-    cat <<'EOF'
-EOF
-)
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROXY_DIR="${SCRIPT_DIR}/proxy"
+CA_KEY="/etc/certs/ca.key"
+CA_CRT="/etc/certs/ca.crt"
 
-# 返回成功的 JSON 响应（支持多行内容）
-json_success() {
-    local id="$1"
-    local message="$2"
-    shift 2
-    
-    # 使用 jq 构建 JSON，确保正确转义
-    local json
-    json=$(jq -n --arg id "$id" --arg message "$message" '{status: "success", id: $id, message: $message}')
-    
-    # 添加额外的字段
-    while [ $# -gt 0 ]; do
-        json=$(echo "$json" | jq --arg key "$1" --arg value "$2" '. + {($key): $value}')
-        shift 2
-    done
-    
-    echo "$json"
-}
+die() { echo "{\"status\":\"error\",\"message\":\"$1\"}" >&2; exit 1; }
 
-# 返回错误的 JSON 响应
-json_error() {
-    local id="$1"
-    local message="$2"
-    local error="${3:-}"
-    
-    if [ -n "$error" ]; then
-        jq -n --arg id "$id" --arg message "$message" --arg error "$error" \
-            '{status: "error", id: $id, message: $message, error: $error}'
-    else
-        jq -n --arg id "$id" --arg message "$message" \
-            '{status: "error", id: $id, message: $message}'
-    fi
-}
-
-# 参数校验函数
-validate_param() {
-    local param_name="$1"
-    local param_value="$2"
-    local validation_type="$3"
-    local node_id="${4:-}"
-    
-    case "$validation_type" in
-        required)
-            [ -n "$param_value" ] || { json_error "$node_id" "Missing required parameter: $param_name"; exit 1; }
-            ;;
-        url)
-            [ -z "$param_value" ] || echo "$param_value" | grep -qE '^https?://' || \
-                { json_error "$node_id" "Invalid $param_name format. Must start with http:// or https://"; exit 1; }
-            ;;
-        positive_int)
-            echo "$param_value" | grep -qE '^[0-9]+$' || \
-                { json_error "$node_id" "Invalid $param_name: must be a positive integer"; exit 1; }
-            ;;
-    esac
-}
-
-# 检查依赖和输入数据
-command -v jq &> /dev/null || \
-    { echo '{"status": "error", "message": "jq command not found. Please install jq to run this script."}' >&2; exit 1; }
-
-JSON_DATA="${1:-$(cat)}"
-[ -n "$JSON_DATA" ] || { json_error "" "No input data provided"; exit 1; }
-echo "$JSON_DATA" | jq empty 2>/dev/null || { json_error "" "Invalid JSON format"; exit 1; }
-
-# 提取所有参数
-NODE_ID=$(echo "$JSON_DATA" | jq -r '.node_id // empty')
-REMOTE_HOST=$(echo "$JSON_DATA" | jq -r '.remote_host // empty')
-REMOTE_PORT=$(echo "$JSON_DATA" | jq -r '.remote_port // "7422"')
-TIMEOUT=$(echo "$JSON_DATA" | jq -r '.timeout // "5"')
-
-# 参数校验
-validate_param "node_id" "$NODE_ID" "required"
-validate_param "remote_port" "$REMOTE_PORT" "positive_int" "$NODE_ID"
-validate_param "timeout" "$TIMEOUT" "positive_int" "$NODE_ID"
-
-# 生成检测脚本
-DETECT_SCRIPT="$DETECT_SCRIPT_TEMPLATE"
-
-declare -A replacements=(
-    [REMOTE_HOST]="$REMOTE_HOST"
-    [REMOTE_PORT]="$REMOTE_PORT"
-    [TIMEOUT]="$TIMEOUT"
-)
-
-for key in "${!replacements[@]}"; do
-    DETECT_SCRIPT="${DETECT_SCRIPT//\$\{$key\}/${replacements[$key]}}"
+for cmd in jq openssl tar base64 envsubst; do
+    command -v $cmd &>/dev/null || die "$cmd not found"
 done
 
-# 返回成功的 JSON 响应，包含生成的检测脚本
-json_success "$NODE_ID" "Detection script generated successfully" "detect_script" "$DETECT_SCRIPT"
-exit 0
+[ -f "$CA_KEY" ] && [ -f "$CA_CRT" ] || die "CA certs not found at /etc/certs/"
+[ -d "$PROXY_DIR" ] || die "proxy dir not found"
+
+JSON="${1:-$(cat)}"
+[ -n "$JSON" ] || die "no input"
+echo "$JSON" | jq empty 2>/dev/null || die "invalid json"
+
+get() { echo "$JSON" | jq -r ".$1 // empty"; }
+
+NODE_ID=$(get node_id)
+ZONE_ID=$(get zone_id)
+ZONE_NAME=$(get zone_name)
+SERVER_URL=$(get server_url)
+NATS_URL=$(get nats_url)
+NATS_USER=$(get nats_username)
+NATS_PASS=$(get nats_password)
+API_TOKEN=$(get api_token)
+REDIS_PASS=$(get redis_password)
+INSTALL_PATH=$(get install_path)
+INSTALL_PATH="${INSTALL_PATH:-/opt/bk-lite/proxy}"
+PROXY_IP=$(get proxy_ip)
+MONITOR_USER=$(get nats_monitor_username)
+MONITOR_PASS=$(get nats_monitor_password)
+TRAEFIK_WEB_PORT=$(get traefik_web_port)
+
+for p in node_id zone_id zone_name server_url nats_url nats_username nats_password api_token redis_password proxy_ip nats_monitor_username nats_monitor_password traefik_web_port; do
+    [ -n "$(get $p)" ] || die "missing $p"
+done
+
+NATS_HOST=$(echo "$NATS_URL" | sed -E 's#^(tls|nats)://##' | cut -d: -f1)
+NATS_PORT=$(echo "$NATS_URL" | sed -E 's#^(tls|nats)://##' | cut -d: -f2)
+NATS_PORT="${NATS_PORT:-4222}"
+
+WORK=$(mktemp -d)
+trap "rm -rf $WORK" EXIT
+
+cp -r "$PROXY_DIR"/* "$WORK/"
+
+openssl genrsa -out "$WORK/conf/certs/proxy.key" 2048 2>/dev/null
+
+cat > "$WORK/proxy.cnf" << EOF
+[req]
+default_bits=2048
+prompt=no
+default_md=sha256
+distinguished_name=dn
+req_extensions=ext
+[dn]
+CN=${NODE_ID}
+[ext]
+subjectAltName=DNS:${NODE_ID},DNS:localhost,DNS:nats,DNS:traefik,IP:127.0.0.1,IP:${PROXY_IP}
+EOF
+
+openssl req -new -key "$WORK/conf/certs/proxy.key" -out "$WORK/proxy.csr" -config "$WORK/proxy.cnf" 2>/dev/null
+openssl x509 -req -in "$WORK/proxy.csr" -CA "$CA_CRT" -CAkey "$CA_KEY" -CAcreateserial \
+    -out "$WORK/conf/certs/proxy.crt" -days 365 -extensions ext -extfile "$WORK/proxy.cnf" 2>/dev/null
+cp "$CA_CRT" "$WORK/conf/certs/ca.crt"
+
+cp "$WORK/conf/certs/ca.crt" "$WORK/conf/traefik/certs/"
+cp "$WORK/conf/certs/proxy.crt" "$WORK/conf/traefik/certs/"
+cp "$WORK/conf/certs/proxy.key" "$WORK/conf/traefik/certs/"
+
+# 设置环境变量供 envsubst 使用
+export ZONE_ID ZONE_NAME SERVER_URL
+export SIDECAR_NODE_ID="${NODE_ID}"
+export SIDECAR_NODE_NAME="${NODE_ID}"
+export SIDECAR_INIT_TOKEN="${API_TOKEN}"
+export NATS_ADMIN_USERNAME="${NATS_USER}"
+export NATS_ADMIN_PASSWORD="${NATS_PASS}"
+export REDIS_PASSWORD="${REDIS_PASS}"
+export TRAEFIK_WEB_PORT
+
+envsubst < "$WORK/env.template" > "$WORK/.env"
+
+export REMOTE_HOST="${NATS_HOST}"
+export REMOTE_NATS_PORT="${NATS_PORT}"
+export NATS_MONITOR_USERNAME="${MONITOR_USER}"
+export NATS_MONITOR_PASSWORD="${MONITOR_PASS}"
+
+envsubst < "$WORK/conf/nats/nats.conf.template" > "$WORK/conf/nats/nats.conf"
+
+rm -f "$WORK/proxy.cnf" "$WORK/proxy.csr" "$WORK/env.template" "$WORK/conf/nats/nats.conf.template"
+
+ARCHIVE=$(tar -czf - -C "$WORK" . | base64 -w0)
+
+INSTALL_SCRIPT=$(cat << 'SCRIPT'
+#!/bin/bash
+set -euo pipefail
+INSTALL_PATH="__INSTALL_PATH__"
+ARCHIVE="__ARCHIVE__"
+mkdir -p "$INSTALL_PATH"
+echo "$ARCHIVE" | base64 -d | tar -xzf - -C "$INSTALL_PATH"
+chmod 600 "$INSTALL_PATH/conf/certs/proxy.key" "$INSTALL_PATH/conf/traefik/certs/proxy.key"
+cd "$INSTALL_PATH" && ./bootstrap.sh
+SCRIPT
+)
+
+INSTALL_SCRIPT="${INSTALL_SCRIPT/__INSTALL_PATH__/$INSTALL_PATH}"
+INSTALL_SCRIPT="${INSTALL_SCRIPT/__ARCHIVE__/$ARCHIVE}"
+
+jq -n --arg id "$NODE_ID" --arg script "$INSTALL_SCRIPT" \
+    '{status:"success",id:$id,message:"ok",install_script:$script}'

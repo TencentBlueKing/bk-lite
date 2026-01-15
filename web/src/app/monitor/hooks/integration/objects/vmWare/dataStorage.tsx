@@ -4,6 +4,7 @@ export const useDataStorageConfig = () => {
     dashboardDisplay: [],
     tableDiaplay: [
       { type: 'progress', key: 'disk_used_average_gauge' },
+      { type: 'value', key: 'disk_free_average_gauge' },
       { type: 'enum', key: 'store_accessible_gauge' },
     ],
     groupIds: {},

@@ -1,5 +1,9 @@
 """Kubernetes工具的通用辅助函数"""
-from kubernetes import client, config
+import io
+
+from kubernetes import config
+
+from apps.core.logger import opspilot_logger as logger
 
 
 def prepare_context(cfg):
@@ -10,10 +14,15 @@ def prepare_context(cfg):
         cfg: RunnableConfig配置对象
     """
     try:
-        if cfg and cfg.get('configurable', {}).get('kubeconfig_path'):
-            # 使用指定的 kubeconfig 路径
-            config.load_kube_config(
-                config_file=cfg['configurable']['kubeconfig_path'])
+        if cfg and cfg.get("configurable", {}).get("kubeconfig_data"):
+            # 使用传入的 kubeconfig 配置内容
+            kubeconfig_data = cfg["configurable"]["kubeconfig_data"]
+            # 处理可能的转义换行符
+            if isinstance(kubeconfig_data, str):
+                kubeconfig_data = kubeconfig_data.replace("\\n", "\n")
+            # 将配置内容写入 IO 对象
+            kubeconfig_io = io.StringIO(kubeconfig_data)
+            config.load_kube_config(config_file=kubeconfig_io)
         else:
             # 首先尝试默认的 kubeconfig 路径 (~/.kube/config)
             try:
@@ -22,8 +31,8 @@ def prepare_context(cfg):
                 # 如果默认路径失败，尝试集群内配置
                 config.load_incluster_config()
     except Exception as e:
-        raise Exception(
-            f"无法加载 Kubernetes 配置: {str(e)}. 请检查 kubeconfig 文件路径或集群连接。")
+        logger.exception(e)
+        raise Exception(f"无法加载 Kubernetes 配置: {str(e)}. 请检查 kubeconfig 配置内容或集群连接。")
 
 
 def format_bytes(size):
@@ -40,7 +49,7 @@ def format_bytes(size):
         str: Human-readable string representation of the size
             (e.g., "2.5 MiB")
     """
-    power = 2 ** 10
+    power = 2**10
     n = 0
     power_labels = {0: "B", 1: "KiB", 2: "MiB", 3: "GiB", 4: "TiB"}
     while size > power:
@@ -63,24 +72,15 @@ def parse_resource_quantity(quantity_str):
         return 0
 
     # CPU资源 (cores)
-    if quantity_str.endswith('m'):
+    if quantity_str.endswith("m"):
         return float(quantity_str[:-1]) / 1000
 
     # 内存资源 (bytes)
-    multipliers = {
-        'Ki': 1024,
-        'Mi': 1024**2,
-        'Gi': 1024**3,
-        'Ti': 1024**4,
-        'K': 1000,
-        'M': 1000**2,
-        'G': 1000**3,
-        'T': 1000**4
-    }
+    multipliers = {"Ki": 1024, "Mi": 1024**2, "Gi": 1024**3, "Ti": 1024**4, "K": 1000, "M": 1000**2, "G": 1000**3, "T": 1000**4}
 
     for suffix, multiplier in multipliers.items():
         if quantity_str.endswith(suffix):
-            return float(quantity_str[:-len(suffix)]) * multiplier
+            return float(quantity_str[: -len(suffix)]) * multiplier
 
     # 无单位，直接转换
     try:

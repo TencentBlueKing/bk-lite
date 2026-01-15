@@ -1,0 +1,228 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: bk-lite-collector
+---
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: vector-daemonset
+  namespace: bk-lite-collector    
+spec:
+  selector:
+    matchLabels:
+      app: vector-daemonset
+  template:
+    metadata:
+      labels:
+        app: vector-daemonset
+    spec:
+      serviceAccount: vector-daemonset
+      containers:
+        - name: vector
+          image: timberio/vector:0.39.0-debian
+          volumeMounts:
+            - name: vector-config-volume
+              mountPath: /etc/vector/vector.yaml
+              subPath: vector.yaml
+            - name: var-log
+              mountPath: /var/log
+              readOnly: true
+            - name: var-lib-docker-containers
+              mountPath: /var/lib/docker/containers
+              readOnly: true
+            - name: proc
+              mountPath: /host/proc
+              readOnly: true
+            - name: sys
+              mountPath: /host/sys
+              readOnly: true
+            - name: nats-ca-cert
+              mountPath: /etc/nats_ca.crt
+              subPath: ca.crt
+              readOnly: true
+          env:
+            - name: VECTOR_CONFIG
+              value: /etc/vector/vector.yaml
+            - name: VECTOR_NODE_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: spec.nodeName
+          envFrom:
+            - secretRef:
+                name: bk-lite-monitor-config-secret
+          ports:
+            - containerPort: 8686
+          resources:
+            requests:
+              memory: "64Mi"
+              cpu: "50m"
+            limits:
+              memory: "256Mi"
+              cpu: "200m"
+      volumes:
+        - name: vector-config-volume
+          configMap:
+            name: vector-daemonset-config
+        - name: var-log
+          hostPath:
+            path: /var/log
+        - name: var-lib-docker-containers
+          hostPath:
+            path: /var/lib/docker/containers
+        - name: proc
+          hostPath:
+            path: /proc
+        - name: sys
+          hostPath:
+            path: /sys
+        - name: nats-ca-cert
+          secret:
+            secretName: bk-lite-monitor-config-secret
+            items:
+              - key: ca.crt
+                path: ca.crt
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: vector-daemonset
+  namespace: bk-lite-collector
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: vector-daemonset
+rules:
+  - apiGroups: [""]
+    resources: ["pods", "namespaces", "nodes"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: [""]
+    resources: ["pods/log"]
+    verbs: ["get", "list"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: vector-daemonset
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: vector-daemonset
+subjects:
+  - kind: ServiceAccount
+    name: vector-daemonset
+    namespace: bk-lite-collector
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: vector-daemonset
+  namespace: bk-lite-collector
+  labels:
+    app: vector-daemonset
+spec:
+  type: ClusterIP
+  ports:
+    - name: api
+      port: 8686
+      targetPort: 8686
+      protocol: TCP
+  selector:
+    app: vector-daemonset
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: vector-daemonset-config
+  namespace: bk-lite-collector  
+data:
+  vector.yaml: |
+    api:
+      enabled: true
+      address: "0.0.0.0:8686"
+
+    sources:
+      kubernetes_logs:
+        type: kubernetes_logs
+        self_node_name: "${VECTOR_NODE_NAME}"
+        pod_annotation_fields:
+          container_image: "container_image"
+          container_name: "container_name" 
+          pod_name: "pod_name"
+          pod_namespace: "pod_namespace"
+          pod_node_name: "pod_node_name"
+        namespace_annotation_fields:
+          namespace_labels: "namespace_labels"
+        node_annotation_fields:
+          node_labels: "node_labels"
+        extra_field_selector: ""
+        extra_label_selector: ""
+        max_read_bytes: 2048
+        max_line_bytes: 32768
+        fingerprint_lines: 1
+        glob_minimum_cooldown_ms: 60000
+        timezone: "UTC"
+
+    transforms:
+      # 多行日志合并 - 支持主流开发语言日志格式
+      multiline_merge:
+        type: reduce
+        inputs:
+          - kubernetes_logs
+        group_by:
+          - kubernetes.pod_name
+          - kubernetes.container_name
+          - kubernetes.pod_namespace
+        merge_strategies:
+          message: concat_newline
+        # 匹配常见的日志开始模式：支持 Log4j、uWSGI、Traefik 等
+        starts_when: match(string!(.message), r'(?i)^(\d{4}-\d{2}-\d{2}[\sT]\d{2}:\d{2}:\d{2}|\d{2}/\w{3}/\d{4}\s+\d{2}:\d{2}:\d{2}|\w{3}\s+\d{1,2},\s+\d{4}|\[[^\]]*\d{2}:\d{2}:\d{2}[^\]]*\]|time="[^"]*").*?(ERROR|WARN|WARNING|INFO|DEBUG|TRACE|FATAL|SEVERE)|^(ERROR|WARN|WARNING|INFO|DEBUG|TRACE|FATAL|SEVERE)[\s\[\(:>-]|^\[pid:\s*\d+\||^\*{3}\s+\w+|^spawned\s+uWSGI')
+        flush_period_ms: 1000
+
+      parse_and_enrich:
+        type: remap
+        inputs:
+          - multiline_merge
+        source: |
+          # 添加采集相关的元数据
+          .collect_type = "kubernetes"
+          .instance_id = "lite"
+          .streams = ["default", "${CLUSTER_NAME}"]
+          .node_name = get_env_var!("VECTOR_NODE_NAME")
+          
+          # 处理时间戳 - kubernetes_logs 源已经提供了正确的时间戳
+          if !exists(.timestamp) {
+            .timestamp = now()
+          }
+          
+          # 提取重要的Kubernetes元数据
+          .k8s_pod_name = .kubernetes.pod_name
+          .k8s_namespace = .kubernetes.pod_namespace
+          .k8s_container_name = .kubernetes.container_name
+          .k8s_node_name = .kubernetes.pod_node_name
+          
+          # 保持原始消息
+          .log_message = .message
+
+    sinks:
+      nats_sink:
+        type: nats
+        inputs:
+          - parse_and_enrich
+        connection_name: vector-daemonset
+        subject: vector
+        # 从环境变量NATS_URL读取
+        url: ${NATS_URL}
+        tls:
+          enabled: true
+          ca_file: /etc/nats_ca.crt
+        auth:
+          strategy: user_password
+          user_password:
+            user: ${NATS_USERNAME}
+            password: ${NATS_PASSWORD}
+        encoding:
+          codec: json
+        healthcheck:
+          enabled: true

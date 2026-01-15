@@ -546,6 +546,108 @@ class Neo4jClient:
             src_result=self.format_topo(inst_id, src_objs, True), dst_result=self.format_topo(inst_id, dst_objs, False)
         )
 
+    def query_topo_lite(self, label: str, inst_id: int, depth: int = 3, exclude_ids=None):
+        """查询实例拓扑（轻量）：限制返回层级，减少前端一次性渲染与网络传输压力"""
+        depth = max(1, int(depth))
+        probe_depth = depth + 1
+
+        label_str = f":{label}" if label else ""
+        params_str = self.format_search_params([{"field": "id", "type": "id=", "value": inst_id}])
+        where_clause = f"WHERE {params_str}" if params_str else ""
+
+        src_objs = self.session.run(
+            f"MATCH p=(n{label_str})-[*1..{probe_depth}]->(m{label_str}) {where_clause} RETURN p"
+        )
+        dst_objs = self.session.run(
+            f"MATCH p=(m{label_str})-[*1..{probe_depth}]->(n{label_str}) {where_clause} RETURN p"
+        )
+
+        return dict(
+            src_result=self.format_topo_lite(inst_id, src_objs, True, depth=depth, exclude_ids=exclude_ids),
+            dst_result=self.format_topo_lite(inst_id, dst_objs, False, depth=depth, exclude_ids=exclude_ids),
+        )
+
+    def format_topo_lite(self, start_id, objs, entity_is_src=True, depth: int = 3, exclude_ids=None):
+        if objs.peek() is None:
+            return {}
+
+        exclude_id_set = set()
+        for value in exclude_ids or []:
+            try:
+                exclude_id_set.add(int(value))
+            except (TypeError, ValueError):
+                continue
+        exclude_id_set.discard(start_id)
+
+        edge_map = {}
+        entity_map = {}
+        for obj in objs:
+            for element in obj:
+                if not isinstance(element, Path):
+                    continue
+                nodes = element.nodes
+                relationships = element.relationships
+                for node in nodes:
+                    entity_map[node.id] = dict(_id=node.id, _label=list(node.labels)[0], **node._properties)
+                for relationship in relationships:
+                    edge_map[relationship.id] = dict(
+                        _id=relationship.id, _label=relationship.type, **relationship._properties
+                    )
+
+        edges = list(edge_map.values())
+        edges = [edge for edge in edges if edge["src_inst_id"] != edge["dst_inst_id"]]
+        if exclude_id_set:
+            for node_id in exclude_id_set:
+                entity_map.pop(node_id, None)
+            edges = [
+                edge
+                for edge in edges
+                if edge["src_inst_id"] not in exclude_id_set and edge["dst_inst_id"] not in exclude_id_set
+            ]
+        entities = list(entity_map.values())
+        if start_id not in entity_map:
+            return {}
+
+        return self.create_node_lite(entity_map[start_id], edges, entities, entity_is_src, level=1, max_depth=depth)
+
+    def create_node_lite(self, entity, edges, entities, entity_is_src=True, level: int = 1, max_depth: int = 3):
+        node = {
+            "_id": entity["_id"],
+            "model_id": entity["model_id"],
+            "inst_name": entity["inst_name"],
+            "children": [],
+        }
+
+        if entity_is_src:
+            entity_key, child_entity_key = "src", "dst"
+        else:
+            entity_key, child_entity_key = "dst", "src"
+
+        if level >= max_depth:
+            # 只在达到最大层级时返回 has_more，用于前端展示“+”
+            node["has_more"] = any(
+                edge.get(f"{entity_key}_inst_id") == entity["_id"] for edge in edges
+            )
+            return node
+
+        for edge in edges:
+            if edge.get(f"{entity_key}_inst_id") == entity["_id"]:
+                child_entity = self.find_entity_by_id(edge.get(f"{child_entity_key}_inst_id"), entities)
+                if child_entity:
+                    child_node = self.create_node_lite(
+                        child_entity,
+                        edges,
+                        entities,
+                        entity_is_src,
+                        level=level + 1,
+                        max_depth=max_depth,
+                    )
+                    child_node["model_asst_id"] = edge.get("model_asst_id")
+                    child_node["asst_id"] = edge.get("asst_id")
+                    node["children"].append(child_node)
+        return node
+
+    
     @staticmethod
     def get_topo_config() -> dict:
         try:
@@ -673,10 +775,17 @@ class Neo4jClient:
         edges = [edge for edge in edges if edge["src_inst_id"] != edge["dst_inst_id"]]
         entities = list(entity_map.values())
 
-        result = self.create_node(entity_map[start_id], edges, entities, entity_is_src)
+        result = self.create_node(entity_map[start_id], edges, entities, entity_is_src, level=1)
         return result
 
-    def create_node(self, entity, edges, entities, entity_is_src=True):
+    def create_node(
+        self,
+        entity,
+        edges,
+        entities,
+        entity_is_src=True,
+        level: int = 1,
+    ):
         """entity作为目标"""
         node = {
             "_id": entity["_id"],
@@ -692,12 +801,21 @@ class Neo4jClient:
 
         for edge in edges:
             if edge[f"{entity_key}_inst_id"] == entity["_id"]:
-                child_entity = self.find_entity_by_id(edge[f"{child_entity_key}_inst_id"], entities)
+                child_id = edge[f"{child_entity_key}_inst_id"]
+                child_entity = self.find_entity_by_id(child_id, entities)
                 if child_entity:
-                    child_node = self.create_node(child_entity, edges, entities, entity_is_src)
+                    child_node = self.create_node(
+                        child_entity,
+                        edges,
+                        entities,
+                        entity_is_src,
+                        level=level + 1,
+                    )
                     child_node["model_asst_id"] = edge["model_asst_id"]
                     child_node["asst_id"] = edge["asst_id"]
                     node["children"].append(child_node)
+        if level == 3:
+            node["has_more"] = len(node["children"]) > 0
         return node
 
     def find_entity_by_id(self, entity_id, entities):
