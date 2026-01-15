@@ -177,6 +177,11 @@ const useMlopsManageApi = () => {
   const getTrainDataInfo = async (id: number | string, key: DatasetReleaseKey,include_train_data?: boolean, include_metadata?: boolean) => {
     return await get(`/mlops/${TRAINDATA_MAP[key]}/${id}?include_train_data=${include_train_data}&include_metadata=${include_metadata}`);
   };
+
+  // 下载图片分类训练数据压缩包
+  // const getImageTrainDataZip = async (id: number | string) => {
+  //   return await get(`/mlops/image_classification_train_data/${id}/download`);
+  // };
   
   // 新增数据集
   const addDataset = async (key: DatasetReleaseKey, params: {
@@ -308,7 +313,7 @@ const useMlopsManageApi = () => {
 
   // 新增图片分类任务样本文件
   const addImageClassificationTrainData = async (params: FormData) => {
-    return await post(`/mlops/image_classification_traindata`, params, {
+    return await post(`/mlops/image_classification_train_data`, params, {
       headers: {
         'Content-Type': 'multipart/form-data',
       },
@@ -317,7 +322,7 @@ const useMlopsManageApi = () => {
 
   // 新增目标检测任务样本文件
   const addObjectDetectionTrainData = async (params: FormData) => {
-    return await post(`/mlops/object_detection_traindata`, params, {
+    return await post(`/mlops/object_detection_train_data`, params, {
       headers: {
         'Content-Type': 'multipart/form-data'
       }
@@ -460,7 +465,7 @@ const useMlopsManageApi = () => {
       meta_data?: any
     } | FormData
   ) => {
-    return await patch(`/mlops/image_classification_traindata/${id}`, params,
+    return await patch(`/mlops/image_classification_train_data/${id}`, params,
       {
         headers: {
           'Content-Type': 'multipart/form-data',

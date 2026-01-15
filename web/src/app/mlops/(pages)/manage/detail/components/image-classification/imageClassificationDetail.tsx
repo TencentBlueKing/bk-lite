@@ -6,6 +6,7 @@ import CustomTable from "@/components/custom-table";
 import PermissionWrapper from '@/components/permission';
 import UploadModal from "../../uploadModal";
 import OperateModal from "@/components/operate-modal";
+import DatasetReleaseList from '../DatasetReleaseList';
 import {
   Input,
   Button,
@@ -28,7 +29,7 @@ const ImageClassificationDetail = () => {
   const {
     getTrainDataByDataset,
     deleteTrainDataFile,
-    updateImageClassificationTrainData
+    updateImageClassificationTrainData,
   } = useMlopsManageApi();
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
   const [tableData, setTableData] = useState<TableData[]>([]);
@@ -143,7 +144,7 @@ const ImageClassificationDetail = () => {
     setLoading(true);
     try {
       const { count, items } = await getTrainDataByDataset({
-        key:'image_classification',
+        key: 'image_classification',
         name: search,
         dataset: folder_id as string,
         page: pagination.current,
@@ -246,7 +247,7 @@ const ImageClassificationDetail = () => {
             ]}
           />
         </div>
-        <div className='flex'>
+        <div className='flex gap-2'>
           <Search
             className="w-[240px] mr-1.5"
             placeholder={t('common.search')}
@@ -258,6 +259,9 @@ const ImageClassificationDetail = () => {
             <Button type="primary" className="rounded-md text-xs shadow" onClick={onUpload}>
               {t("datasets.upload")}
             </Button>
+          </PermissionWrapper>
+          <PermissionWrapper requiredPermissions={['File View']}>
+            <DatasetReleaseList datasetType="image_classification" />
           </PermissionWrapper>
         </div>
       </div>

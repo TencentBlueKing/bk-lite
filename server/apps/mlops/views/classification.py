@@ -202,7 +202,7 @@ class ClassificationServingViewSet(ModelViewSet):
                     mlflow_tracking_uri, 
                     model_uri, 
                     port=serving.port,
-                    train_image="classify-classification:latest"
+                    train_image="classify-text-classification:latest"
                 )
                 
                 serving.container_info = result
@@ -298,7 +298,7 @@ class ClassificationServingViewSet(ModelViewSet):
                     mlflow_tracking_uri, 
                     model_uri, 
                     port=serving.port,
-                    train_image="classify-classification:latest"
+                    train_image="classify-text-classification:latest"
                 )
                 
                 # 正常启动成功，仅更新容器信息
@@ -759,7 +759,7 @@ class ClassificationTrainJobViewSet(ModelViewSet):
                 mlflow_tracking_uri=mlflow_tracking_uri,
                 minio_access_key=minio_access_key,
                 minio_secret_key=minio_secret_key,
-                train_image="classify-classification:latest"
+                train_image="classify-text-classification:latest"
             )
             
             # 更新任务状态
@@ -1027,9 +1027,13 @@ class ClassificationTrainJobViewSet(ModelViewSet):
                     'total': 0
                 })
             
-            logger.info(f"获取模型版本列表成功: {model_name}, 共 {version_data['total']} 个版本")
+            logger.info(f"获取模型版本列表成功: {model_name}, 共 {len(version_data)} 个版本")
             
-            return Response(version_data)
+            return Response({
+                'model_name': model_name,
+                'total': len(version_data),
+                'versions': version_data
+            })
             
         except Exception as e:
             logger.error(f"获取模型版本列表失败: {str(e)}", exc_info=True)

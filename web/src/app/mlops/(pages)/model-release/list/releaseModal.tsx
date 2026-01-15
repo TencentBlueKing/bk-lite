@@ -63,11 +63,6 @@ const ReleaseModal = forwardRef<ModalRef, ReleaseModalProps>(({ trainjobs, activ
         status: true
       };
 
-      // 只有 anomaly 类型才设置默认阈值
-      if (tagName === 'anomaly_detection') {
-        defaultValues.anomaly_threshold = 0.5;
-      }
-
       formRef.current.setFieldsValue(defaultValues);
     } else {
       const editValues: Record<string, any> = {
@@ -181,6 +176,7 @@ const ReleaseModal = forwardRef<ModalRef, ReleaseModalProps>(({ trainjobs, activ
         value: item?.version
       }));
       options.unshift({ label: 'latest', value: 'latest' });
+      
 
       setVersionOptions(options);
     } catch (e) {

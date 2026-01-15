@@ -1,0 +1,38 @@
+{
+  "model": {
+    "type": "YOLOClassification",
+    "name": "yolo_image_classification"
+  },
+  "hyperparams": {
+    "_comment": "核心训练超参数",
+    "model_name": "yolo11n-cls.pt",
+    "epochs": 100,
+    "imgsz": 224,
+    "batch": 16,
+    "lr0": 0.01,
+    "optimizer": "AdamW",
+    "device": "auto",
+    "amp": true,
+    "patience": 50,
+    
+    "_comment_tuning": "超参数优化配置（可选）",
+    "max_evals": 0,
+    "metric": "acc_top1",
+    "search_space": {
+      "lr0": [0.0001, 0.001, 0.01, 0.05, 0.1],
+      "batch": [8, 16, 32, 64],
+      "imgsz": [224, 256, 320, 384]
+    }
+  },
+  "preprocessing": {
+    "min_image_size": 32,
+    "allowed_extensions": [".jpg", ".jpeg", ".png", ".bmp"]
+  },
+  "feature_engineering": {
+    "_comment": "数据增强配置（YOLO自动处理，通常保持默认即可）",
+    "augmentation_enabled": true
+  },
+  "mlflow": {
+    "experiment_name": "yolo_image_classification"
+  }
+}

@@ -33,11 +33,14 @@ router.register(r'classification_servings', ClassificationServingViewSet, basena
 
 # 图片分类任务
 router.register(r'image_classification_datasets', ImageClassificationDatasetViewSet, basename='image_classification_datasets')
-router.register(r'image_classification_traindata', ImageClassificationTrainDataViewSet, basename='image_classification_traindata')
+router.register(r'image_classification_train_data', ImageClassificationTrainDataViewSet, basename='image_classification_train_data')
+router.register(r'image_classification_dataset_releases', ImageClassificationDatasetReleaseViewSet, basename='image_classification_dataset_releases')
+router.register(r'image_classification_train_jobs', ImageClassificationTrainJobViewSet, basename='image_classification_train_jobs')
+router.register(r'image_classification_servings', ImageClassificationServingViewSet, basename='image_classification_servings')
 
 # 目标检测
 router.register(r'object_detection_datasets', ObjectDetectionDatasetViewSet, basename='object_detection_datasets')
-router.register(r'object_detection_traindata', ObjectDetectionTrainDataViewSet, basename='object_detection_traindata')
+router.register(r'object_detection_train_data', ObjectDetectionTrainDataViewSet, basename='object_detection_train_data')
 
 # 日志聚类
 router.register(r'log_clustering_datasets', LogClusteringDatasetViewSet, basename='log_clustering_datasets')

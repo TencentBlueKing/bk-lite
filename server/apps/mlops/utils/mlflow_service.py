@@ -300,6 +300,7 @@ def get_model_versions(model_name: str) -> List[dict]:
             - version: 版本号
             - run_id: 关联的运行 ID
             - stage: 阶段（None/Staging/Production/Archived）
+            - status: 状态（READY/PENDING_REGISTRATION/FAILED_REGISTRATION）
             - description: 描述信息
     
     Raises:
@@ -316,6 +317,7 @@ def get_model_versions(model_name: str) -> List[dict]:
                 "version": int(v.version),
                 "run_id": v.run_id,
                 "stage": v.current_stage,
+                "status": v.status,
                 "description": v.description or ""
             }
             for v in versions

@@ -7,6 +7,7 @@ import { Upload, Button, message, Checkbox, type UploadFile, type UploadProps, I
 import { InboxOutlined } from '@ant-design/icons';
 import { ModalConfig, ModalRef, TableData } from '@/app/mlops/types';
 import { useSearchParams } from 'next/navigation';
+import JSZip from 'jszip';
 const { Dragger } = Upload;
 
 interface UploadModalProps {
@@ -71,6 +72,61 @@ const UploadModal = forwardRef<ModalRef, UploadModalProps>(({ onSuccess }, ref) 
       setFormData(form);
     }
   }));
+
+  // 验证图片文件名格式（只允许英文、数字、下划线，长度1-64）
+  const validateImageFileName = (fileName: string): { 
+    valid: boolean; 
+    reason?: string 
+  } => {
+    if (!fileName || fileName.trim() === '') {
+      return { valid: false, reason: '文件名不能为空' };
+    }
+    
+    // 取最后一个点分割文件名和扩展名
+    const lastDotIndex = fileName.lastIndexOf('.');
+    
+    if (lastDotIndex === -1) {
+      return { 
+        valid: false, 
+        reason: '文件名必须包含扩展名' 
+      };
+    }
+    
+    if (lastDotIndex === 0) {
+      return { 
+        valid: false, 
+        reason: '文件名不能为空' 
+      };
+    }
+    
+    const mainName = fileName.substring(0, lastDotIndex);
+    
+    // 长度限制：1-64个字符
+    if (mainName.length < 1) {
+      return { 
+        valid: false, 
+        reason: '文件名不能为空' 
+      };
+    }
+    
+    if (mainName.length > 64) {
+      return { 
+        valid: false, 
+        reason: '文件名过长（最多64个字符）' 
+      };
+    }
+    
+    // 只允许英文字母、数字、下划线
+    const validNamePattern = /^[a-zA-Z0-9_]+$/;
+    if (!validNamePattern.test(mainName)) {
+      return { 
+        valid: false, 
+        reason: '文件名只能包含英文字母、数字和下划线' 
+      };
+    }
+    
+    return { valid: true };
+  };
 
   const handleChange: UploadProps['onChange'] = ({ fileList }) => {
     setFileList(fileList);
@@ -143,18 +199,35 @@ const UploadModal = forwardRef<ModalRef, UploadModalProps>(({ onSuccess }, ref) 
     return params;
   };
 
-  const buildFormDataForImages = (files: UploadFile[], name: string): FormData => {
+  const buildFormDataForImages = async (files: UploadFile[], name: string): Promise<FormData> => {
+    // 创建ZIP实例
+    const zip = new JSZip();
+    
+    // 将所有图片添加到ZIP（扁平化结构）
+    files.forEach((file) => {
+      if (file.originFileObj) {
+        zip.file(file.name, file.originFileObj);
+      }
+    });
+    
+    // 生成ZIP Blob
+    const zipBlob = await zip.generateAsync({
+      type: 'blob',
+      compression: 'DEFLATE',
+      compressionOptions: {
+        level: 6  // 压缩级别 1-9
+      }
+    });
+    
+    // 构建FormData
     const params = new FormData();
     params.append('dataset', formData?.dataset_id || '');
     params.append('name', name);
+    params.append('train_data', zipBlob, `${name}.zip`);  // 使用train_data字段
     Object.entries(selectTags).forEach(([key, val]) => {
       params.append(key, String(val));
     });
-    files.forEach((file) => {
-      if (file.originFileObj) {
-        params.append('images', file.originFileObj);
-      }
-    });
+    
     return params;
   };
 
@@ -174,11 +247,43 @@ const UploadModal = forwardRef<ModalRef, UploadModalProps>(({ onSuccess }, ref) 
   };
 
   const handleSubmit = async () => {
+    const validatedFiles = validateFileUpload();
+    if (!validatedFiles?.length) return;
+    
     setConfirmLoading(true);
 
     try {
-      const validatedFiles = validateFileUpload();
-      if (!validatedFiles?.length) return;
+      // 图片文件名格式验证
+      if (IMAGE_TYPES.includes(activeType)) {
+        const invalidFiles: string[] = [];
+        
+        validatedFiles.forEach(file => {
+          const { valid, reason } = validateImageFileName(file.name);
+          if (!valid && reason) {
+            invalidFiles.push(`${file.name}: ${reason}`);
+          }
+        });
+        
+        if (invalidFiles.length > 0) {
+          message.error({
+            content: (
+              <div>
+                <div style={{ marginBottom: 8, fontWeight: 500 }}>
+                  文件名不符合规范（只能包含英文字母、数字、下划线，长度不超过64个字符）：
+                </div>
+                {invalidFiles.map((msg, idx) => (
+                  <div key={idx} style={{ fontSize: 12, marginLeft: 8, marginTop: 4 }}>
+                    • {msg}
+                  </div>
+                ))}
+              </div>
+            ),
+            duration: 6
+          });
+          setConfirmLoading(false);
+          return;
+        }
+      }
 
       if (!SUPPORTED_UPLOAD_TYPES.includes(activeType as any)) {
         throw new Error(`Unsupported type: ${activeType}`);
@@ -193,7 +298,7 @@ const UploadModal = forwardRef<ModalRef, UploadModalProps>(({ onSuccess }, ref) 
 
       if (IMAGE_TYPES.includes(activeType)) {
         const { name } = await formRef.current?.validateFields();
-        uploadData = buildFormDataForImages(validatedFiles, name);
+        uploadData = await buildFormDataForImages(validatedFiles, name);
       } else {
         uploadData = buildFormDataForFile(validatedFiles[0]);
       }
@@ -302,6 +407,11 @@ const UploadModal = forwardRef<ModalRef, UploadModalProps>(({ onSuccess }, ref) 
           <InboxOutlined />
         </p>
         <p className="ant-upload-text">{t('datasets.uploadText')}</p>
+        {config?.fileType === 'image' && (
+          <p className="ant-upload-hint" style={{ fontSize: 12, color: '#999', margin: '4px 0 0' }}>
+            文件名只能包含英文字母、数字和下划线，长度不超过64个字符
+          </p>
+        )}
       </Dragger>
       {config?.fileType !== 'image' && (
         <p>{t(`datasets.downloadCSV`)}<Button type='link' onClick={downloadTemplate}>{t('datasets.template')}</Button></p>

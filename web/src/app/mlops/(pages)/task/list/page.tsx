@@ -34,7 +34,6 @@ const TrainTask = () => {
   const { getDatasetsList } = useMlopsManageApi();
   const {
     getTrainJobList,
-
     deleteTrainTask,
     startTrainTask,
   } = useMlopsTaskApi();
@@ -60,7 +59,7 @@ const TrainTask = () => {
     'log_clustering': true,
     'timeseries_predict': true,
     'classification': true,
-    'image_classification': false,
+    'image_classification': true,
     'object_detection': false
   };
 
@@ -319,7 +318,6 @@ const TrainTask = () => {
   const getDatasetList = async () => {
     const [activeTab] = selectedKeys;
     if (!activeTab) return;
-
     try {
       const data = await getDatasetsList({ key: activeTab as DatasetReleaseKey });
       const items = data.map((item: DataSet) => ({
