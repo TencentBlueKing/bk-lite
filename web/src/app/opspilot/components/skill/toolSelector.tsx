@@ -1,5 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Button, Tooltip, Form, Input, Empty, InputNumber, Switch } from 'antd';
+
+const { TextArea } = Input;
 import { DeleteOutlined, EditOutlined } from '@ant-design/icons';
 import { useTranslation } from '@/utils/i18n';
 import SelectorOperateModal from './operateModal';
@@ -176,6 +178,8 @@ const ToolSelector: React.FC<ToolSelectorProps> = ({ defaultTools, onChange }) =
                     switch (fieldType) {
                       case 'text':
                         return <Input />;
+                      case 'textarea':
+                        return <TextArea rows={4} />;
                       case 'password':
                         return <EditablePasswordField />;
                       case 'number':
