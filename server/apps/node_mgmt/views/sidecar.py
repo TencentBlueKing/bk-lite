@@ -11,6 +11,7 @@ from apps.node_mgmt.services.package import PackageService
 from apps.node_mgmt.services.sidecar import Sidecar
 from apps.node_mgmt.utils.token_auth import check_token_auth, generate_node_token
 from apps.node_mgmt.constants.node import NodeConstants
+from apps.node_mgmt.constants.controller import ControllerConstants
 from apps.node_mgmt.constants.cloudregion_service import CloudRegionServiceConstants
 
 
@@ -543,7 +544,7 @@ class OpenSidecarViewSet(OpenAPIViewSet):
                 "api_token": "xxx",
                 "download_url": "xxx",
                 "group_id": "1",
-                "install_dir": "C:\\fusion-collectors",
+                "install_dir": "C:\\bklite\\fusion-collectors",
                 "node_id": "xxx",
                 "node_name": "xxx",
                 "server_url": "xxx",
@@ -589,7 +590,7 @@ class OpenSidecarViewSet(OpenAPIViewSet):
             "api_token": sidecar_token,
             "download_url": download_url,
             "group_id": groups,
-            "install_dir": "C:\\fusion-collectors",
+            "install_dir": ControllerConstants.WINDOWS_INSTALL_DIR,
             "node_id": node_id,
             "node_name": node_name,
             "server_url": f"{server_url.rstrip('/')}/api/v1/node_mgmt/open_api/node",
