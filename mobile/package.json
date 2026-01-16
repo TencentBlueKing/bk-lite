@@ -32,7 +32,7 @@
     "intl-messageformat": "^10.7.18",
     "markdown-it": "^14.1.0",
     "next": "15.5.9",
-    "next-auth": "^4.24.10",
+    "next-auth": "^4.24.12",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "react-easy-crop": "^5.5.3",
