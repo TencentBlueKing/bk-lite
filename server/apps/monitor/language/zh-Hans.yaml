@@ -1508,21 +1508,24 @@ monitor_object_metric:
       name: 服务ID标识
       desc: 健康检查关联的服务ID标识符，值为0表示节点级检查，非0表示关联特定服务
   Ping:
-    ping_response_time:
+    ping_average_response_ms:
       name: 平均响应时间
-      desc: 表示一段时间内，目标设备的 ping 响应时间的均值。该指标帮助衡量目标设备与源设备的延迟表现。较低的平均响应时间表示网络性能较好。
-    ping_error_response_code:
-      name: Ping状态
-      desc: 表示 ping 操作执行后的结果代码。结果代码为 0 表示操作成功，非零值表示网络或主机可能存在问题。该指标用于快速检测网络连接故障。
-    ping_ttl:
-      desc: 表示 ping 数据包从源设备到目标设备允许的平均跳数（或时间）。此指标有助于发现数据包是否经过了异常多的跳数或是否存在路径异常。TTL 值较高时网络路径较长。
-      name: 平均TTL
-    ping_packet_transmission_rate:
-      name: 数据包传输成功率
-      desc: 表示成功接收的数据包数占发送数据包总数的百分比。此指标用于衡量网络质量和数据传输的可靠性。丢包率低表示网络连接稳定且可靠。
-    ping_packet_loss_rate:
+      desc: ICMP 请求的平均响应时间，反映网络延迟的平均水平
+    ping_maximum_response_ms:
+      name: 最大响应时间
+      desc: ICMP 请求的最大响应时间，反映网络延迟的峰值情况
+    ping_minimum_response_ms:
+      name: 最小响应时间
+      desc: ICMP 请求的最小响应时间，反映网络延迟的最佳情况
+    ping_percent_packet_loss:
       name: 数据包丢失率
-      desc: 表示在 ping 请求中丢失数据包所占的百分比。此指标帮助确定不稳定的网络连接或传输问题。较低的丢失率表示网络连接更稳定。
+      desc: ICMP数据包丢失百分比，反映网络连接的稳定性
+    ping_result_code:
+      name: Ping结果代码
+      desc: Ping测试的结果代码，表示Ping操作的成功或失败状态
+    ping_ttl:
+      name: 生存时间(TTL)
+      desc: 接收到的ICMP响应包的生存时间值，反映数据包经过的网络跳数
   Nginx:
     nginx_active:
       name: 活跃连接数

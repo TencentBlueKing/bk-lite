@@ -2005,32 +2005,24 @@ monitor_object_metric:
       desc: Service ID identifier associated with health check; 0 indicates node-level
         check, non-zero indicates service-specific check
   Ping:
-    ping_response_time:
+    ping_average_response_ms:
       name: Average Response Time
-      desc: Represents the average ping response time of the target device over a
-        period. This metric helps evaluate latency between the source and target device.
-        Lower average response time indicates good network performance.
-    ping_error_response_code:
-      name: Ping State
-      desc: Represents the resulting code after a ping operation. A code of 0 indicates
-        success, while non-zero values indicate potential issues with the network
-        or host. This metric helps quickly detect network connectivity errors.
+      desc: Average response time of ICMP Ping requests, reflecting average network latency
+    ping_maximum_response_ms:
+      name: Maximum Response Time
+      desc: Maximum response time of ICMP Ping requests, reflecting peak network latency
+    ping_minimum_response_ms:
+      name: Minimum Response Time
+      desc: Minimum response time of ICMP Ping requests, reflecting best-case network latency
+    ping_percent_packet_loss:
+      name: Packet Loss Percentage
+      desc: Percentage of ICMP packet loss, reflecting network connection stability
+    ping_result_code:
+      name: Result Code
+      desc: Result code of Ping test, indicating success or failure status of Ping operation
     ping_ttl:
-      desc: Represents the average 'hop count' (or time) allowed for ping packets
-        from the source device to the target. This metric helps identify if packets
-        take an abnormal number of hops or if there are route anomalies. Higher TTL
-        values indicate longer paths.
-      name: Average TTL
-    ping_packet_transmission_rate:
-      name: Packet Transmission Success Rate
-      desc: Represents the percentage of successfully received packets out of the
-        total packets transmitted. This metric measures network quality and transmission
-        reliability. Low packet loss indicates stable and reliable connectivity.
-    ping_packet_loss_rate:
-      name: Packet Loss Rate
-      desc: Represents the percentage of packets lost during ping requests. This metric
-        helps identify unstable network connections or transmission problems. Lower
-        loss rates indicate more stable connectivity.
+      name: Time To Live
+      desc: Time To Live value of received ICMP response packets, reflecting number of network hops
   Nginx:
     nginx_active:
       name: Active Connections
