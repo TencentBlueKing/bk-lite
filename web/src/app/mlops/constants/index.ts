@@ -1,4 +1,4 @@
-﻿import { LevelMap, Option, } from "@/app/mlops/types";
+import { LevelMap, Option, } from "@/app/mlops/types";
 import { AlgorithmConfig } from "@/app/mlops/types/task";
 
 const LEVEL_MAP: LevelMap = {
@@ -414,7 +414,17 @@ const TRAINJOB_MAP: Record<string, string> = {
   'timeseries_predict': 'timeseries_predict_train_jobs',
   'log_clustering': 'log_clustering_train_jobs',
   'image_classification': 'image_classification_train_jobs',
+  'object_detection': 'object_detection_train_jobs',
   'rasa': 'rasa_pipelines'
+};
+
+const DATASET_RELEASE_MAP: Record<string, string> = {
+  'anomaly_detection': 'anomaly_detection_dataset_releases',
+  'classification': 'classification_dataset_releases',
+  'timeseries_predict': 'timeseries_predict_dataset_releases',
+  'log_clustering': 'log_clustering_dataset_releases',
+  'image_classification': 'image_classification_dataset_releases',
+  'object_detection': 'object_detection_dataset_releases'
 };
 
 const SERVING_MAP: Record<string, string> = {
@@ -939,6 +949,43 @@ const IMAGE_CLASSIFICATION_ALGORITHM_CONFIGS: Record<string, AlgorithmConfig> = 
               defaultValue: true,
               layout: 'horizontal',
               tooltip: '开启后将自动应用随机翻转、旋转、缩放、亮度调整等增强，提升模型泛化能力。YOLO内部自动处理'
+            }
+          ]
+        }
+      ]
+    }
+  }
+};
+
+// 目标检测算法场景描述
+const OBJECT_DETECTION_ALGORITHM_SCENARIOS: Record<string, string> = {
+  YOLO11Detection: '基于 YOLO11 的高性能目标检测算法，适用于工业缺陷检测、物体识别定位、智能监控等场景。支持实时检测，可精确标注物体位置和类别'
+};
+
+// 目标检测算法配置 - 用于动态表单渲染
+const OBJECT_DETECTION_ALGORITHM_CONFIGS: Record<string, AlgorithmConfig> = {
+  YOLO11Detection: {
+    algorithm: 'YOLO11Detection',
+    groups: {
+      hyperparams: [
+        {
+          title: '基础配置',
+          fields: [
+            {
+              name: ['hyperparams', 'model_name'],
+              label: '预训练模型',
+              type: 'select',
+              required: true,
+              placeholder: '选择预训练模型',
+              defaultValue: 'yolo11n.pt',
+              tooltip: 'n适合快速验证，m适合生产环境，x适合追求极致精度',
+              options: [
+                { label: 'YOLOv11n (最快)', value: 'yolo11n.pt' },
+                { label: 'YOLOv11s (轻量级)', value: 'yolo11s.pt' },
+                { label: 'YOLOv11m (平衡型，推荐)', value: 'yolo11m.pt' },
+                { label: 'YOLOv11l (高精度)', value: 'yolo11l.pt' },
+                { label: 'YOLOv11x (最高精度)', value: 'yolo11x.pt' }
+              ]
             }
           ]
         }
@@ -2241,9 +2288,12 @@ export {
   LOG_CLUSTERING_ALGORITHM_SCENARIOS,
   IMAGE_CLASSIFICATION_ALGORITHM_CONFIGS,
   IMAGE_CLASSIFICATION_ALGORITHM_SCENARIOS,
+  OBJECT_DETECTION_ALGORITHM_CONFIGS,
+  OBJECT_DETECTION_ALGORITHM_SCENARIOS,
   TRAINJOB_MAP,
   TYPE_FILE_MAP,
   SERVING_MAP,
   DATASET_MAP,
-  TRAINDATA_MAP
+  TRAINDATA_MAP,
+  DATASET_RELEASE_MAP
 }

@@ -33,7 +33,7 @@ interface DatasetReleaseListProps {
   datasetType: DatasetReleaseKey;
 }
 
-const SUPPORTED_DATASET_TYPES = ['timeseries_predict', 'anomaly_detection', 'log_clustering', 'classification', 'image_classification'];
+const SUPPORTED_DATASET_TYPES = ['timeseries_predict', 'anomaly_detection', 'log_clustering', 'classification', 'image_classification', 'object_detection'];
 
 const DatasetReleaseList: React.FC<DatasetReleaseListProps> = ({ datasetType }) => {
   const { t } = useTranslation();

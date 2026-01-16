@@ -482,7 +482,7 @@ const useMlopsManageApi = () => {
     meta_data?: any,
     train_data?: any
   } | FormData) => {
-    return await patch(`/mlops/object_detection_traindata/${id}`, params,
+    return await patch(`/mlops/object_detection_train_data/${id}`, params,
       {
         headers: {
           'Content-Type': 'multipart/form-data',

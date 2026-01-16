@@ -104,6 +104,11 @@ const useMlopsTaskApi = () => {
     return await post(`/mlops/image_classification_train_jobs/`, params);
   };
 
+  // 新建目标检测训练任务
+  const addObjectDetectionTrainTask = async (params: TrainTaskParams) => {
+    return await post(`/mlops/object_detection_train_jobs/`, params);
+  };
+
   // 启动训练
   const startTrainTask = async (id: number | string, key: DatasetReleaseKey) => {
     return await post(`/mlops/${TRAINJOB_MAP[key]}/${id}/train/`);
@@ -137,6 +142,11 @@ const useMlopsTaskApi = () => {
   // 编辑图片分类训练任务
   const updateImageClassificationTrainTask = async (id: string, params: TrainTaskParams) => {
     return await patch(`/mlops/image_classification_train_jobs/${id}/`, params);
+  };
+
+  // 编辑目标检测训练任务
+  const updateObjectDetectionTrainTask = async (id: string, params: TrainTaskParams) => {
+    return await patch(`/mlops/object_detection_train_jobs/${id}/`, params);
   };
 
   // 删除训练任务
@@ -213,6 +223,7 @@ const useMlopsTaskApi = () => {
     addTimeSeriesTrainTask,
     addClassificationTrainTask,
     addImageClassificationTrainTask,
+    addObjectDetectionTrainTask,
     startTrainTask,
     updateAnomalyTrainTask,
     updateRasaPipelines,
@@ -220,6 +231,7 @@ const useMlopsTaskApi = () => {
     updateTimeSeriesTrainTask,
     updateClassificationTrainTask,
     updateImageClassificationTrainTask,
+    updateObjectDetectionTrainTask,
     deleteTrainTask,
     createDatasetRelease,
     getDatasetReleases,

@@ -6,6 +6,7 @@ import CustomTable from "@/components/custom-table";
 import PermissionWrapper from '@/components/permission';
 import UploadModal from "../../uploadModal";
 import OperateModal from "@/components/operate-modal";
+import DatasetReleaseList from '../DatasetReleaseList';
 import {
   Input,
   Button,
@@ -206,7 +207,7 @@ const ObjectDetectionDetail = () => {
   const handleSubmit = async () => {
     setConfirmLoading(true);
     try {
-      if (activeTap === 'image_classification') {
+      if (activeTap === 'object_detection') {
         const params = {
           is_train_data: selectedTags.includes('is_train_data'),
           is_val_data: selectedTags.includes('is_val_data'),
@@ -246,7 +247,7 @@ const ObjectDetectionDetail = () => {
             ]}
           />
         </div>
-        <div className='flex'>
+        <div className='flex gap-2'>
           <Search
             className="w-[240px] mr-1.5"
             placeholder={t('common.search')}
@@ -258,6 +259,9 @@ const ObjectDetectionDetail = () => {
             <Button type="primary" className="rounded-md text-xs shadow" onClick={onUpload}>
               {t("datasets.upload")}
             </Button>
+          </PermissionWrapper>
+          <PermissionWrapper requiredPermissions={['File View']}>
+            <DatasetReleaseList datasetType="object_detection" />
           </PermissionWrapper>
         </div>
       </div>

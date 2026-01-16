@@ -186,3 +186,42 @@ export interface NodeData {
   target: any[],
   [key: string]: any
 }
+
+// YOLO格式的标注数据
+export interface YOLOAnnotation {
+  class_id: number;
+  class_name: string;
+  x_center: number;
+  y_center: number;
+  width: number;
+  height: number;
+}
+
+// Object Detection 元数据结构
+export interface ObjectDetectionMetadata {
+  format: 'YOLO';
+  classes: string[];
+  num_classes: number;
+  num_images: number;
+  labels: Record<string, YOLOAnnotation[]>;
+  statistics: {
+    total_annotations: number;
+    images_with_annotations: number;
+    images_without_annotations: number;
+    class_distribution: Record<string, number>;
+  };
+}
+
+// 数据集版本发布
+export interface DatasetRelease {
+  id: number;
+  dataset: number;
+  version: string;
+  name?: string;
+  description?: string;
+  train_file_id: number;
+  val_file_id: number;
+  test_file_id: number;
+  created_at: string;
+  is_archived: boolean;
+}

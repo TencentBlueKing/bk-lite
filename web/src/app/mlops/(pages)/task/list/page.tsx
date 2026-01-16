@@ -60,7 +60,7 @@ const TrainTask = () => {
     'timeseries_predict': true,
     'classification': true,
     'image_classification': true,
-    'object_detection': false
+    'object_detection': true
   };
 
   // 数据处理映射
