@@ -1601,43 +1601,42 @@ monitor_object_metric:
       desc: 线程池请求队列中的任务数量，反映请求积压情况。队列长度过长意味着大量请求等待处理，可能需要增加线程池资源或优化请求处理逻辑。
       name: 线程池队列长度
   CVM:
-    cvm_LanIntraffic:
-      name: 内网入带宽
-      desc: 内网网卡的平均每秒入流量
-    cvm_CvmDiskUsage:
-      name: 磁盘利用率
-      desc: 磁盘已使用容量占总容量的百分比(所有磁盘)
-    cvm_WanInpkg:
-      name: 外网入包量
-      desc: 外网网卡的平均每秒入包量
-    cvm_MemUsage:
-      desc: 用户实际内存使用率，不包括缓冲区与系统缓存占用的内存，该指标表示除去缓存、缓冲区和空闲内存后，用户实际使用内存与总内存之比
-      name: 内存利用率
-    cvm_WanOuttraffic:
-      name: 外网出带宽
-      desc: 外网平均每秒出流量速率，最小粒度数据为10秒总流量/10秒计算得出，该数据为 EIP+CLB+CVM 的外网出带宽总和
-    cvm_LanInpkg:
-      desc: 内网网卡的平均每秒入包量
-      name: 内网入包量
-    cvm_MemUsed:
-      name: 内存使用量
-      desc: 用户实际使用的内存量，不包括缓冲区与系统缓存占用的内存，总内存 - 可用内存（包括 buffers 与 cached）得到内存使用量数值，不包含
-        buffers和 cached
-    cvm_LanOuttraffic:
-      desc: 内网网卡的平均每秒出流量
-      name: 内网出带宽
-    cvm_WanIntraffic:
-      name: 外网入带宽
-      desc: 外网平均每秒入流量速率，最小粒度数据为10秒总流量/10秒计算得出，该数据为 EIP+CLB+CVM 的外网入带宽总和
-    cvm_WanOutpkg:
-      desc: 外网网卡的平均每秒出包量
-      name: 外网出包量
-    cvm_CPU_Usage:
-      desc: 系统运行期间的实时 CPU 占用率
+    CPUUsage_gauge:
       name: CPU 利用率
-    cvm_LanOutpkg:
-      desc: 内网网卡的平均每秒出包量
-      name: 内网出包量
+      desc: 机器运行期间实时占用的 CPU 百分比
+    MemUsed_gauge:
+      name: 内存使用量
+      desc: 用户实际使用的内存量，不包括缓冲区与系统缓存占用的内存。计算方式为：总内存 - (可用内存，含 buffers 与 cached)
+    MemUsage_gauge:
+      name: 内存利用率
+      desc: 用户实际内存使用率，不包括缓冲区与系统缓存占用的内存。为用户实际使用内存与总内存之比
+    CvmDiskUsage_gauge:
+      name: 磁盘利用率
+      desc: 所有磁盘的已使用容量占总容量的百分比
+    LanOuttraffic_gauge:
+      name: 内网出流量
+      desc: 内网网卡的平均出流量速率
+    LanIntraffic_gauge:
+      name: 内网入流量
+      desc: 内网网卡的平均入流量速率
+    LanOutpkg_gauge:
+      name: 内网出包率
+      desc: 内网网卡的平均出包速率
+    LanInpkg_gauge:
+      name: 内网入包率
+      desc: 内网网卡的平均入包速率
+    WanOuttraffic_gauge:
+      name: 外网出流量
+      desc: 外网平均出流量速率（EIP+CLB+CVM 外网出带宽总和）。最小统计粒度为10秒平均值
+    WanIntraffic_gauge:
+      name: 外网入流量
+      desc: 外网平均入流量速率（EIP+CLB+CVM 外网入带宽总和）。最小统计粒度为10秒平均值
+    WanOutpkg_gauge:
+      name: 外网出包率
+      desc: 外网网卡的平均出包速率
+    WanInpkg_gauge:
+      name: 外网入包率
+      desc: 外网网卡的平均入包速率
   ESXI:
     cpu_usage_average_gauge:
       name: CPU使用率

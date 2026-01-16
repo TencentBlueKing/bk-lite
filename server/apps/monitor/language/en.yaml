@@ -2185,52 +2185,42 @@ monitor_object_metric:
         logic.
       name: Thread Pool Queue Length
   CVM:
-    cvm_LanIntraffic:
-      name: Internal Inbound Bandwidth
-      desc: Average inbound traffic per second on the internal network interface.
-    cvm_CvmDiskUsage:
-      name: Disk Usage
-      desc: The percentage of used disk capacity relative to total capacity (all disks).
-    cvm_WanInpkg:
-      name: External Inbound Packet Rate
-      desc: Average inbound packet rate per second on the external network interface.
-    cvm_MemUsage:
-      desc: The actual memory utilization, excluding memory used for system cache
-        and buffers. This metric represents the ratio of used memory to total memory
-        after excluding cache, buffers, and free memory.
-      name: Memory Utilization
-    cvm_WanOuttraffic:
-      name: External Outbound Bandwidth
-      desc: Average outbound traffic rate per second on the external network. The
-        minimum granularity data is calculated as total traffic over 10 seconds divided
-        by 10. This data represents the sum of outbound bandwidth from EIP+CLB+CVM
-        on the external network.
-    cvm_LanInpkg:
-      desc: Average inbound packet rate per second on the internal network interface.
-      name: Internal Inbound Packet Rate
-    cvm_MemUsed:
-      name: Memory Usage
-      desc: The actual memory used by the user, excluding buffers and cache. Calculated
-        as Total Memory - (Buffers + Cached + Free)
-    cvm_LanOuttraffic:
-      desc: Average outbound traffic per second on the internal network interface.
-      name: Internal Outbound Bandwidth
-    cvm_WanIntraffic:
-      name: External Inbound Bandwidth
-      desc: Average inbound traffic rate per second on the external network. The minimum
-        granularity data is calculated as total traffic over 10 seconds divided by
-        10. This data represents the sum of inbound bandwidth from EIP+CLB+CVM on
-        the external network.
-    cvm_WanOutpkg:
-      desc: Average outbound packet rate per second on the external network interface
-        card.
-      name: External Outbound Packet Rate
-    cvm_CPU_Usage:
-      desc: The real-time percentage of CPU occupied during machine operation.
+    CPUUsage_gauge:
       name: CPU Utilization
-    cvm_LanOutpkg:
-      desc: Average outbound packet rate per second on the internal network interface.
+      desc: The real-time percentage of CPU occupied during machine operation.
+    MemUsed_gauge:
+      name: Memory Usage
+      desc: The actual memory used by the user, excluding memory occupied by buffers and system cache. Calculated as Total Memory - Available Memory (including buffers and cached).
+    MemUsage_gauge:
+      name: Memory Utilization
+      desc: The actual memory utilization rate by the user, excluding memory occupied by buffers and system cache. It is the ratio of actual user memory usage to total memory.
+    CvmDiskUsage_gauge:
+      name: Disk Utilization
+      desc: The percentage of used disk capacity relative to total capacity (all disks).
+    LanOuttraffic_gauge:
+      name: Internal Outbound Traffic
+      desc: Average outbound traffic rate on the internal network interface card.
+    LanIntraffic_gauge:
+      name: Internal Inbound Traffic
+      desc: Average inbound traffic rate on the internal network interface card.
+    LanOutpkg_gauge:
       name: Internal Outbound Packet Rate
+      desc: Average outbound packet rate on the internal network interface card.
+    LanInpkg_gauge:
+      name: Internal Inbound Packet Rate
+      desc: Average inbound packet rate on the internal network interface card.
+    WanOuttraffic_gauge:
+      name: External Outbound Traffic
+      desc: Average outbound traffic rate on the external network (sum of EIP, CLB, and CVM outbound bandwidth). The minimum granularity is a 10-second average.
+    WanIntraffic_gauge:
+      name: External Inbound Traffic
+      desc: Average inbound traffic rate on the external network (sum of EIP, CLB, and CVM inbound bandwidth). The minimum granularity is a 10-second average.
+    WanOutpkg_gauge:
+      name: External Outbound Packet Rate
+      desc: Average outbound packet rate on the external network interface card.
+    WanInpkg_gauge:
+      name: External Inbound Packet Rate
+      desc: Average inbound packet rate on the external network interface card.
   ESXI:
     cpu_usage_average_gauge:
       name: CPU usage
