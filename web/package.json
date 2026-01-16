@@ -30,7 +30,7 @@
     "intl-messageformat": "^10.7.7",
     "js-cookie": "^3.0.5",
     "lodash": "^4.17.21",
-    "next": "16.0.7",
+    "next": "16.0.10",
     "next-auth": "4.24.13",
     "react": "19.2.3",
     "react-dom": "19.2.3",
