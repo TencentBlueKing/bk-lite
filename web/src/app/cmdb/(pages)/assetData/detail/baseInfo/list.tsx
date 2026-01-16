@@ -18,6 +18,7 @@ import {
   CaretRightOutlined,
 } from '@ant-design/icons';
 import { useInstanceApi } from '@/app/cmdb/api';
+import dayjs from 'dayjs';
 
 const { Panel } = Collapse;
 
@@ -48,16 +49,14 @@ const InfoList: React.FC<AssetDataFieldProps> = ({
     }
   }, [propertyList, instDetail, userList, attrList]);
 
-  const updateInst = async (config: {
-    id: string;
-    values: any;
-    type: string;
-  }) => {
+  const updateInst = async (config: { id: string; values: any }) => {
     const fieldKey = config.id;
     let fieldValue = config.values[fieldKey];
 
     const fieldAttr = attrList.find((item) => item.attr_id === fieldKey);
-    if (fieldAttr?.attr_type === 'organization' && fieldValue != null) {
+    if (fieldAttr?.attr_type === 'time' && fieldValue) {
+      fieldValue = fieldValue.format('YYYY-MM-DD HH:mm:ss');
+    } else if (fieldAttr?.attr_type === 'organization' && fieldValue != null) {
       fieldValue = Array.isArray(fieldValue) ? fieldValue : [fieldValue];
     }
 
@@ -66,26 +65,23 @@ const InfoList: React.FC<AssetDataFieldProps> = ({
     await updateInstance(instId, params);
     message.success(t('successfullyModified'));
     const list = deepClone(attrList);
-    const [target, index] = list.reduce(
+    const [, index] = list.reduce(
       (acc: any, item: AttrFieldType, idx: number) => {
         return item.attr_id === fieldKey ? [item, idx] : acc;
       },
       [undefined, -1]
     );
-    if (
-      config.type === 'success' ||
-      (config.type === 'fail' && !target?.is_required)
-    ) {
-      list[index].isEdit = false;
-      list[index].value = fieldValue;
-      setAttrList(list);
-    }
+    list[index].isEdit = false;
+    list[index].value = fieldValue;
+    setAttrList(list);
     onsuccessEdit();
   };
 
   const initData = (list: any) => {
     list.forEach((item: any) => {
-      item.value = item.value || instDetail[item.attr_id];
+      if (item.value === undefined) {
+        item.value = instDetail[item.attr_id];
+      }
       item.key = item.attr_id;
       item.label = item.is_required ? (
         <>
@@ -112,7 +108,11 @@ const InfoList: React.FC<AssetDataFieldProps> = ({
                       message: '',
                     },
                   ]}
-                  initialValue={item.value}
+                  initialValue={
+                    item.attr_type === 'time' && item.value
+                      ? dayjs(item.value, 'YYYY-MM-DD HH:mm:ss')
+                      : item.value
+                  }
                   className="mb-0 w-full"
                 >
                   <>
@@ -195,7 +195,12 @@ const InfoList: React.FC<AssetDataFieldProps> = ({
     const index = list.findIndex((item: AttrFieldType) => item.attr_id === id);
     list[index].isEdit = false;
     const obj: any = {};
-    obj[id] = list[index].value;
+    const fieldValue = list[index].value;
+    if (list[index].attr_type === 'time' && fieldValue) {
+      obj[id] = dayjs(fieldValue, 'YYYY-MM-DD HH:mm:ss');
+    } else {
+      obj[id] = fieldValue;
+    }
     form.setFieldsValue(obj);
     setAttrList(list);
   };
@@ -206,8 +211,8 @@ const InfoList: React.FC<AssetDataFieldProps> = ({
       .then((values) => {
         onFinish(values, id);
       })
-      .catch(({ values }) => {
-        onFailFinish(values, id);
+      .catch((errorInfo) => {
+        console.log('Validation Failed:', errorInfo);
       });
   };
 
@@ -215,15 +220,6 @@ const InfoList: React.FC<AssetDataFieldProps> = ({
     updateInst({
       values,
       id,
-      type: 'success',
-    });
-  };
-
-  const onFailFinish = (values: any, id: string) => {
-    updateInst({
-      values,
-      id,
-      type: 'fail',
     });
   };
 
