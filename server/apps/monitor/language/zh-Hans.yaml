@@ -841,20 +841,18 @@ monitor_object_metric:
       name: 线程池利用率
       desc: 当前忙碌线程数占最大线程数的百分比，反映线程资源使用效率
   Website:
-    http_duration:
-      desc: 该指标表示从发起HTTP请求到接收到HTTP响应的总时间。用于评估Web服务的性能，尤其是在处理用户请求时。较长的持续时间可能表示后端处理效率低或网络延迟，影响用户体验。对提高系统响应性和优化性能至关重要。
+    http_node_success_rate:
+      name: 单点成功率
+      desc: 统计每个拨测节点5分钟的拨测成功率，用于反映特定地域或网络环境下的访问情况。
+    http_response_response_time:
       name: HTTP响应时间
-    http_code:
-      desc: 该指标用于表示HTTP请求的响应状态码。它记录了HTTP响应状态码的值，例如200（成功）、404（未找到）、500（服务器错误）等。这些状态码对于监控Web应用程序的健康状况和性能非常重要，可以帮助识别潜在问题。
+      desc: 从发起HTTP请求到接收到HTTP响应的总时间。用于评估Web服务的性能，尤其是在处理用户请求时。
+    http_response_http_response_code:
       name: HTTP 响应状态码
-    http_success:
-      rate:
-        desc: 衡量多个节点在拨测目标时成功响应的比例（成功次数占总请求次数的百分比）。
-        name: 拨测成功率
-    http_content:
-      length:
-        name: HTTP内容长度
-        desc: 该指标表示HTTP响应的内容长度，单位为字节。较大的内容长度可能导致数据传输时间过长，并消耗更多带宽。在优化网站性能或分析带宽使用时，监测此指标至关重要。了解响应内容大小可以帮助开发者进行优化。
+      desc: 该指标用于表示HTTP请求的响应状态码。它记录了HTTP响应状态码的值，例如200（成功）、404（未找到）、500（服务器错误）等。
+    http_response_content_length:
+      name: HTTP内容长度
+      desc: 该指标表示HTTP响应的内容长度。较大的内容长度可能导致数据传输时间过长，并消耗更多带宽。
   Scanning Device:
     iftotalInOctets:
       desc: 此指标表示整个设备在过去5分钟内接收到的总字节流量的平均速率，单位为兆字节每秒（MB/s）。通过对多个接口的接收字节进行汇总计算，帮助管理员获取整个设备的接收流量情况，从而支持总体流量监控以及容量规划。

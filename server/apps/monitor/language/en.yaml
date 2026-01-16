@@ -1053,34 +1053,18 @@ monitor_object_metric:
       desc: Percentage of busy threads relative to maximum threads, indicating thread
         resource utilization efficiency
   Website:
-    http_duration:
-      desc: This metric represents the total time taken from initiating an HTTP request
-        to receiving the HTTP response. It is used to assess the performance of web
-        services, especially when handling user requests. An extended duration may
-        indicate lower backend processing efficiency or network latency, which can
-        adversely affect the user experience. It is crucial for enhancing system responsiveness
-        and optimizing performance.
-      name: HTTP Response Time
-    http_code:
-      desc: This metric represents the HTTP response status code for an HTTP request.
-        It captures the value of the HTTP response status codes, such as 200 (OK),
-        404 (Not Found), 500 (Internal Server Error), etc. These status codes are
-        vital for monitoring the health and performance of web applications, assisting
-        in identifying potential issues.
-      name: HTTP Response Code
-    http_success:
-      rate:
-        desc: Measures the success rate of multiple nodes probing targets (the percentage
-          of successful responses out of the total number of requests).
-        name: Success Rate
-    http_content:
-      length:
-        name: HTTP Content Length
-        desc: This metric indicates the length of the HTTP response content in bytes.
-          Larger content lengths can result in extended data transfer times and consume
-          more bandwidth. Monitoring this metric is crucial for optimizing website
-          performance or analyzing bandwidth usage. Understanding the size of the
-          response content can assist developers in making optimizations.
+    http_node_success_rate:
+      name: Node Success Rate
+      desc: Calculate the 5-minute probe success rate for each probing node, reflecting the access experience in a specific region or network environment.
+    http_response_response_time:
+      name: Response Time
+      desc: Represents the total time taken from initiating an HTTP request to receiving the HTTP response. It is used to assess the performance of web services, especially when handling user requests.
+    http_response_http_response_code:
+      name: HTTP Code
+      desc: This metric represents the HTTP response status code for an HTTP request. It captures the value of the HTTP response status codes, such as 200 (OK), 404 (Not Found), 500 (Internal Server Error), etc.
+    http_response_content_length:
+      name: HTTP Content Length
+      desc: This metric indicates the length of the HTTP. Larger content lengths can result in extended data transfer times and consume more bandwidth.
   Scanning Device:
     iftotalInOctets:
       desc: This metric indicates the average rate of total bytes received by the
