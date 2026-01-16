@@ -498,6 +498,7 @@ class FalkorDBClient:
         params: list,
         param_type: str = "AND",
         param_collector: ParameterCollector = None,
+        case_sensitive: bool = True,
     ):
         """
         查询参数格式化（参数化版本）
@@ -506,6 +507,7 @@ class FalkorDBClient:
             params: 参数列表
             param_type: 连接类型（AND/OR）
             param_collector: 可选的参数收集器。如果提供则使用它（累积参数），否则使用实例收集器（独立查询）
+            case_sensitive: 是否区分大小写（仅对 str* 类型生效）
 
         Returns:
             str: 条件字符串（参数存入 collector）
@@ -530,14 +532,13 @@ class FalkorDBClient:
                 continue
 
             if self.ENABLE_PARAMETERIZATION:
-                # 使用参数化格式化器
                 method = FORMAT_TYPE_PARAMS.get(param_format_type)
                 if method:
-                    condition = method(param, collector)
+                    param_with_context = {**param, "case_sensitive": case_sensitive}
+                    condition = method(param_with_context, collector)
                     if condition:
                         params_conditions.append(condition)
             else:
-                # 回退到旧逻辑
                 method = FORMAT_TYPE.get(param_format_type)
                 if method:
                     condition = method(param)
@@ -578,6 +579,7 @@ class FalkorDBClient:
         order_type: str = "ASC",
         param_type="AND",
         organization_field: str = "organization",
+        case_sensitive: bool = True,
     ):
         """
         查询实体（参数化版本）
@@ -595,7 +597,10 @@ class FalkorDBClient:
 
         # 使用参数化的format_search_params（传入统一的收集器）
         base_params_str, _ = self.format_search_params(
-            params, param_type=param_type, param_collector=param_collector
+            params,
+            param_type=param_type,
+            param_collector=param_collector,
+            case_sensitive=case_sensitive,
         )
 
         # 构建权限参数（参数化，使用同一个收集器）
@@ -610,11 +615,17 @@ class FalkorDBClient:
                 }
             ]
             org_base_permission_str, _ = self.format_search_params(
-                organization_query, param_type="AND", param_collector=param_collector
+                organization_query,
+                param_type="AND",
+                param_collector=param_collector,
+                case_sensitive=case_sensitive,
             )
 
             org_permission_str, _ = self.format_search_params(
-                query_list, param_type="OR", param_collector=param_collector
+                query_list,
+                param_type="OR",
+                param_collector=param_collector,
+                case_sensitive=case_sensitive,
             )
 
             # 调试日志
