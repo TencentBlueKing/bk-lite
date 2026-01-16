@@ -293,6 +293,9 @@ const AssetDataContent = () => {
     const conditions = organization?.length
       ? [{ field: 'organization', type: 'list[]', value: organization }]
       : [];
+
+    const caseSensitive = useAssetDataStore.getState().case_sensitive;
+
     return {
       query_list: activeQueryList
         ? [activeQueryList, ...conditions]
@@ -302,6 +305,7 @@ const AssetDataContent = () => {
       order: '',
       model_id: modelId,
       role: '',
+      case_sensitive: caseSensitive,
     };
   };
 

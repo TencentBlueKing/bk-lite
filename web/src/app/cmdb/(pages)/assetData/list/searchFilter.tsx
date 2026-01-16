@@ -107,7 +107,14 @@ const SearchFilter: React.FC<SearchFilterProps> = ({
     setSearchAttr(attr);
   };
 
-  const onExactSearchChange: CheckboxProps['onChange'] = (e) => { setIsExactSearch(e.target.checked); };
+  const onExactSearchChange: CheckboxProps['onChange'] = (e) => {
+    const checked = e.target.checked;
+    setIsExactSearch(checked);
+    useAssetDataStore.setState((state) => ({
+      ...state,
+      case_sensitive: checked,
+    }));
+  };
   const handleSearchClick = () => {
     onSearchValueChange(searchValue, isExactSearch);
   };

@@ -25,7 +25,7 @@ dependencies = [
     "importlib-metadata==4.6.1",
     "importlib-resources==5.2.0",
     "xmltodict==0.13.0",
-    "boto3==1.21.9",
+    "boto3>=1.35.0",
     "PyMySQL==1.1.1",
     "oracledb==3.3.0",
     "pyodbc==5.2.0",
@@ -80,20 +80,19 @@ qcloud = [
 ]
 
 huawei = [
-    "huaweicloudsdkiam==3.0.34rc0",
-    "huaweicloudsdkecs==3.0.34rc0",
-    "huaweicloudsdkbss==3.0.34rc0",
-    "huaweicloudsdkevs==3.0.34rc0",
-    "huaweicloudsdkvpc==3.0.71",
-    "huaweicloudsdkeip==3.0.34rc0",
-    "huaweicloudsdkims==3.0.34rc0",
-    "huaweicloudsdkces==3.1.35",
-    "huaweicloudsdkelb==3.0.71",
-    "esdk-obs-python==3.20.11",
-    "huaweicloudsdkrds==3.0.51",
-    "huaweicloudsdkdcs==3.0.51",
-    "huaweicloudsdkdds==3.0.51",
-    "esdk-obs-python==3.20.11",
+    "huaweicloudsdkiam>=3.1.183",
+    "huaweicloudsdkecs>=3.1.183",
+    "huaweicloudsdkbss>=3.1.183",
+    "huaweicloudsdkevs>=3.1.183",
+    "huaweicloudsdkvpc>=3.1.183",
+    "huaweicloudsdkeip>=3.1.183",
+    "huaweicloudsdkims>=3.1.183",
+    "huaweicloudsdkces>=3.1.183",
+    "huaweicloudsdkelb>=3.1.183",
+    "huaweicloudsdkrds>=3.1.183",
+    "huaweicloudsdkdcs>=3.1.183",
+    "huaweicloudsdkdds>=3.1.183",
+    "esdk-obs-python>=3.20.11",
 ]
 
 vmware = [
@@ -121,7 +120,7 @@ qingyun = [
 ]
 
 snmp = [
-    "pysnmp==5.1.0",
-    "pyasn1==0.4.8",
-    "pyasn1-modules==0.2.8",
+    "pysnmp>=5.1.0",
+    "pyasn1>=0.5.0",
+    "pyasn1-modules>=0.3.0",
 ]
