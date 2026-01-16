@@ -379,198 +379,106 @@ monitor_object_metric:
         is essential for identifying transmission issues and ensuring data integrity.
       name: Outgoing Error Packets Rate
   Hardware Server:
-    ifInDiscards:
-      name: Incoming Discards Rate
-      desc: This metric represents the average rate of incoming discarded packets
-        over the past 5 minutes, measured in packets per second. Packet discards may
-        indicate network congestion or resource shortages, and monitoring this metric
-        can help administrators optimize network performance.
-    ifAdminStatus:
-      desc: This metric indicates the administrative status of the network switch
-        interface. It serves to indicate whether the interface is enabled (up) or
-        disabled (down) by an administrator, along with other states such as testing
-        or unavailable. This information is vital for network management and troubleshooting.
-      name: Interface Administrative Status
-    ifInUcastPkts:
-      name: Incoming Unicast Packets Rate
-      desc: This metric indicates the average rate of incoming unicast packets over
-        the past 5 minutes, measured in packets per second. Monitoring unicast packets
-        is crucial for assessing interface utilization and traffic load.
-    ifOutOctets:
-      name: Interface Outgoing Traffic Rate
-      desc: This metric calculates the average rate of bytes sent over the past 5
-        minutes, measured in megabytes (MB). Monitoring outgoing traffic is crucial
-        for ensuring data transmission quality and optimizing network performance.
-    iftotalInOctets:
-      desc: This metric indicates the average rate of total bytes received by the
-        entire device over the past 5 minutes, measured in megabytes per second (MB/s).
-        By summing the incoming byte counts from multiple interfaces, this metric
-        helps administrators obtain an overview of the device's incoming traffic,
-        supporting overall traffic monitoring and capacity planning.
-      name: Device Total Incoming Traffic Rate
-    ifOutUcastPkts:
-      desc: This metric calculates the average rate of outgoing unicast packets over
-        the past 5 minutes, measured in packets per second. By monitoring the number
-        of unicast packets, administrators can assess the transmission performance
-        of the interface and the usage of traffic.
-      name: Outgoing Unicast Packets Rate (per second)
-    ifInOctets:
-      name: Interface Incoming Traffic Rate
-      desc: This metric indicates the average rate of bytes received over the past
-        5 minutes, converted to megabytes (MB). Monitoring byte traffic helps evaluate
-        the load on the interface and bandwidth usage.
-    ifInErrors:
+    snmp_uptime:
+      name: System Uptime
+      desc: This metric indicates the uptime of the device since the last restart, measured in days. By monitoring the uptime, network administrators can understand the stability and reliability of the device and identify potential reboot or failure issues.
+    interface_ifAdminStatus:
+      name: Interface Admin Status
+      desc: This metric indicates the administrative status of the network switch interface. It serves to indicate whether the interface is enabled (up) or disabled (down) by an administrator, along with other states such as testing or not present. This information is vital for network management and troubleshooting.
+    interface_ifOperStatus:
+      name: Interface Oper Status
+      desc: This metric reflects the actual operational status of the network switch interface, indicating whether the interface is operational. Unlike the administrative status, the operational status shows whether the interface can successfully receive and send traffic, which is crucial for monitoring network health.
+    interface_ifSpeed:
+      name: Interface Bandwidth
+      desc: This metric indicates the maximum data transmission speed supported by the network interface, measured in bits per second. Understanding the maximum speed of the interface helps administrators optimize traffic and utilize network resources effectively.
+    interface_ifInErrors:
       name: Incoming Errors Rate
-      desc: This metric calculates the average rate of incoming error packets over
-        the past 5 minutes, measured in packets per second. Monitoring incoming errors
-        allows administrators to detect potential issues, such as physical connection
-        faults or configuration errors, in a timely manner.
+      desc: This metric calculates the average rate of incoming error packets over the past 5 minutes, measured in packets per second. Monitoring incoming errors allows administrators to detect potential issues, such as physical connection faults or configuration errors, in a timely manner.
+    interface_ifOutErrors:
+      name: Outgoing Errors Rate
+      desc: This metric calculates the average rate of outgoing error packets over the past 5 minutes, measured in packets per second. Monitoring outgoing errors is essential for identifying transmission issues and ensuring data integrity.
+    interface_ifInDiscards:
+      name: Incoming Discards Rate
+      desc: This metric represents the average rate of incoming discarded packets over the past 5 minutes, measured in packets per second. Packet discards may indicate network congestion or resource shortages, and monitoring this metric can help administrators optimize network performance.
+    interface_ifOutDiscards:
+      name: Outgoing Discards Rate
+      desc: This metric calculates the average rate of outgoing discarded packets over the past 5 minutes, measured in packets per second. Monitoring outgoing discards can help identify network transmission issues and misconfigurations.
+    interface_ifInUcastPkts:
+      name: Incoming Unicast Packets Rate
+      desc: This metric indicates the average rate of incoming unicast packets over the past 5 minutes, measured in packets per second. Monitoring unicast packets is crucial for assessing interface utilization and traffic load.
+    interface_ifOutUcastPkts:
+      name: Outgoing Unicast Packets Rate
+      desc: This metric calculates the average rate of outgoing unicast packets over the past 5 minutes, measured in packets per second. By monitoring the number of unicast packets, administrators can assess the transmission performance of the interface and the usage of traffic.
+    interface_ifInOctets:
+      name: Interface Incoming Traffic Rate
+      desc: This metric indicates the average rate of bytes received over the past 5 minutes, measured in bytes per second. Monitoring byte traffic helps evaluate the load on the interface and bandwidth usage.
+    interface_ifOutOctets:
+      name: Interface Outgoing Traffic Rate
+      desc: This metric calculates the average rate of bytes sent over the past 5 minutes, measured in bytes per second. Monitoring outgoing traffic is crucial for ensuring data transmission quality and optimizing network performance.
+    device_total_incoming_traffic:
+      name: Device Total Incoming Traffic Rate
+      desc: This metric indicates the average rate of total bytes received by the entire device over the past 5 minutes, measured in bytes per second. By summing the incoming byte counts from multiple interfaces, this metric helps administrators obtain an overview of the device's incoming traffic, supporting overall traffic monitoring and capacity planning.
+    device_total_outgoing_traffic:
+      name: Device Total Outgoing Traffic Rate
+      desc: This metric represents the average rate of total bytes sent by the entire device over the past 5 minutes, measured in bytes per second. By summing the outgoing byte counts from multiple interfaces, this metric allows administrators to comprehensively assess the sending performance of the entire system, enabling more effective traffic management and optimization.
     ipmi_chassis_power_state:
       name: Power State
-      desc: The power state indicator is used to monitor if the device is powered
-        on. Its value can indicate whether the power is on or off. It is mainly used
-        for remote management and monitoring of the device's power state.
+      desc: The power state indicator is used to monitor if the device is powered on. Its value can indicate whether the power is on or off. It is mainly used for remote management and monitoring of the device's power state.
     ipmi_fan_speed_rpm:
-      desc: The fan speed, measured in revolutions per minute (RPM), monitors the
-        operational status of the device fans. Efficient fan operation is key to maintaining
-        device temperature. It helps prevent overheating and ensures the device's
-        stable long-term operation.
       name: Fan Speed
+      desc: The fan speed, measured in revolutions per minute (RPM), monitors the operational status of the device fans. Efficient fan operation is key to maintaining device temperature. It helps prevent overheating and ensures the device's stable long-term operation.
     ipmi_temperature_celsius:
-      desc: The temperature indicator measured in degrees Celsius monitors the internal
-        temperature of the device. Monitoring temperature prevents heat accumulation
-        and avoids device overheating. It is crucial for maintaining system stability
-        and longevity.
       name: Temperature
-    ifOperStatus:
-      desc: This metric reflects the actual operational status of the network switch
-        interface, indicating whether the interface is operational. Unlike the administrative
-        status, the operational status shows whether the interface can successfully
-        receive and send traffic, which is crucial for monitoring network health.
-      name: Interface Operational Status
-    iftotalOutOctets:
-      name: Device Total Outgoing Traffic Rate
-      desc: This metric represents the average rate of total bytes sent by the entire
-        device over the past 5 minutes, measured in megabytes per second (MB/s). By
-        summing the outgoing byte counts from multiple interfaces, this metric allows
-        administrators to comprehensively assess the sending performance of the entire
-        system, enabling more effective traffic management and optimization.
-    ifOutErrors:
-      name: Outgoing Errors Rate
-      desc: This metric calculates the average rate of outgoing error packets over
-        the past 5 minutes, measured in packets per second. Monitoring outgoing errors
-        is essential for identifying transmission issues and ensuring data integrity.
-    sysUpTime:
-      desc: This metric indicates the uptime of the device since the last restart,
-        measured in days. By monitoring the uptime, network administrators can understand
-        the stability and reliability of the device and identify potential reboot
-        or failure issues.
-      name: System Uptime
+      desc: The temperature indicator measured in degrees Celsius monitors the internal temperature of the device. Monitoring temperature prevents heat accumulation and avoids device overheating. It is crucial for maintaining system stability and longevity.
     ipmi_voltage_volts:
       name: Voltage
-      desc: The voltage indicator measured in volts monitors the voltage levels of
-        different power rails within the device. Stable voltage supply is crucial
-        for the reliability of the device. This indicator helps quickly identify electrical
-        issues, ensuring normal operation.
+      desc: The voltage indicator measured in volts monitors the voltage levels of different power rails within the device. Stable voltage supply is crucial for the reliability of the device. This indicator helps quickly identify electrical issues, ensuring normal operation.
     ipmi_power_watts:
-      desc: The power indicator is measured in watts and reflects the current power
-        consumption of the device. This indicator helps evaluate the device's energy
-        efficiency and power consumption trends. It facilitates the implementation
-        of energy-saving policies and resource optimization.
       name: Power Consumption
-    ifHighSpeed:
-      name: Interface Bandwidth
-      desc: This metric indicates the maximum data transmission speed supported by
-        the network interface, usually measured in Mbps. Understanding the maximum
-        speed of the interface helps administrators optimize traffic and utilize network
-        resources effectively.
-    ifOutDiscards:
-      name: Outgoing Discards Rate
-      desc: This metric calculates the average rate of outgoing discarded packets
-        over the past 5 minutes, measured in packets per second. Monitoring outgoing
-        discards can help identify network transmission issues and misconfigurations.
+      desc: The power indicator is measured in watts and reflects the current power consumption of the device. This indicator helps evaluate the device's energy efficiency and power consumption trends. It facilitates the implementation of energy-saving policies and resource optimization.
   Loadbalance:
-    ifOutErrors:
-      desc: This metric calculates the average rate of outgoing error packets over
-        the past 5 minutes, measured in packets per second. Monitoring outgoing errors
-        is essential for identifying transmission issues and ensuring data integrity.
-      name: Outgoing Errors Rate
-    ifOperStatus:
-      desc: This metric reflects the actual operational status of the network switch
-        interface, indicating whether the interface is operational. Unlike the administrative
-        status, the operational status shows whether the interface can successfully
-        receive and send traffic, which is crucial for monitoring network health.
-      name: Interface Operational Status
-    iftotalOutOctets:
-      name: Device Total Outgoing Traffic (per second)
-      desc: This metric represents the average rate of total bytes sent by the entire
-        device over the past 5 minutes, measured in megabytes per second (MB/s). By
-        summing the outgoing byte counts from multiple interfaces, this metric allows
-        administrators to comprehensively assess the sending performance of the entire
-        system, enabling more effective traffic management and optimization.
-    ifAdminStatus:
-      name: Interface Administrative Status
-      desc: This metric indicates the administrative status of the network switch
-        interface. It serves to indicate whether the interface is enabled (up) or
-        disabled (down) by an administrator, along with other states such as testing
-        or not present. This information is vital for network management and troubleshooting.
-    ifInDiscards:
-      name: Incoming Discards Rate
-      desc: This metric represents the average rate of incoming discarded packets
-        over the past 5 minutes, measured in packets per second. Packet discards may
-        indicate network congestion or resource shortages, and monitoring this metric
-        can help administrators optimize network performance.
-    ifInOctets:
-      name: Interface Incoming Traffic Rate
-      desc: This metric indicates the average rate of bytes received over the past
-        5 minutes, converted to megabytes (MB). Monitoring byte traffic helps evaluate
-        the load on the interface and bandwidth usage.
-    ifHighSpeed:
-      name: Interface Bandwidth
-      desc: This metric indicates the maximum data transmission speed supported by
-        the network interface, usually measured in Kbps. Understanding the maximum
-        speed of the interface helps administrators optimize traffic and utilize network
-        resources effectively.
-    ifOutUcastPkts:
-      desc: This metric calculates the average rate of outgoing unicast packets over
-        the past 5 minutes, measured in packets per second. By monitoring the number
-        of unicast packets, administrators can assess the transmission performance
-        of the interface and the usage of traffic.
-      name: Outgoing Unicast Packets Rate
-    ifInErrors:
-      desc: This metric calculates the average rate of incoming error packets over
-        the past 5 minutes, measured in packets per second. Monitoring incoming errors
-        allows administrators to detect potential issues, such as physical connection
-        faults or configuration errors, in a timely manner.
-      name: Incoming Errors Rate
-    iftotalInOctets:
-      desc: This metric indicates the average rate of total bytes received by the
-        entire device over the past 5 minutes, measured in megabytes per second (MB/s).
-        By summing the incoming byte counts from multiple interfaces, this metric
-        helps administrators obtain an overview of the device's incoming traffic,
-        supporting overall traffic monitoring and capacity planning.
-      name: Device Total Incoming Traffic (per second)
-    ifOutOctets:
-      desc: This metric calculates the average rate of bytes sent over the past 5
-        minutes, measured in megabytes (MB). Monitoring outgoing traffic is crucial
-        for ensuring data transmission quality and optimizing network performance.
-      name: Interface Outgoing Traffic Rate
-    ifOutDiscards:
-      desc: This metric calculates the average rate of outgoing discarded packets
-        over the past 5 minutes, measured in packets per second. Monitoring outgoing
-        discards can help identify network transmission issues and misconfigurations.
-      name: Outgoing Discards Rate
-    ifInUcastPkts:
-      desc: This metric indicates the average rate of incoming unicast packets over
-        the past 5 minutes, measured in packets per second. Monitoring unicast packets
-        is crucial for assessing interface utilization and traffic load.
-      name: Incoming Unicast Packets Rate
-    sysUpTime:
+    snmp_uptime:
       name: System Uptime
-      desc: This metric indicates the uptime of the device since the last restart,
-        measured in days. By monitoring the uptime, network administrators can understand
-        the stability and reliability of the device and identify potential reboot
-        or failure issues.
+      desc: This metric indicates the uptime of the device since the last restart, measured in days. By monitoring the uptime, network administrators can understand the stability and reliability of the device and identify potential reboot or failure issues.
+    interface_ifAdminStatus:
+      name: Interface Admin Status
+      desc: This metric indicates the administrative status of the network switch interface. It serves to indicate whether the interface is enabled (up) or disabled (down) by an administrator, along with other states such as testing or not present. This information is vital for network management and troubleshooting.
+    interface_ifOperStatus:
+      name: Interface Oper Status
+      desc: This metric reflects the actual operational status of the network switch interface, indicating whether the interface is operational. Unlike the administrative status, the operational status shows whether the interface can successfully receive and send traffic, which is crucial for monitoring network health.
+    interface_ifSpeed:
+      name: Interface Bandwidth
+      desc: This metric indicates the maximum data transmission speed supported by the network interface, measured in bits per second. Understanding the maximum speed of the interface helps administrators optimize traffic and utilize network resources effectively.
+    interface_ifInErrors:
+      name: Incoming Errors Rate
+      desc: This metric calculates the average rate of incoming error packets over the past 5 minutes, measured in packets per second. Monitoring incoming errors allows administrators to detect potential issues, such as physical connection faults or configuration errors, in a timely manner.
+    interface_ifOutErrors:
+      name: Outgoing Errors Rate
+      desc: This metric calculates the average rate of outgoing error packets over the past 5 minutes, measured in packets per second. Monitoring outgoing errors is essential for identifying transmission issues and ensuring data integrity.
+    interface_ifInDiscards:
+      name: Incoming Discards Rate
+      desc: This metric represents the average rate of incoming discarded packets over the past 5 minutes, measured in packets per second. Packet discards may indicate network congestion or resource shortages, and monitoring this metric can help administrators optimize network performance.
+    interface_ifOutDiscards:
+      name: Outgoing Discards Rate
+      desc: This metric calculates the average rate of outgoing discarded packets over the past 5 minutes, measured in packets per second. Monitoring outgoing discards can help identify network transmission issues and misconfigurations.
+    interface_ifInUcastPkts:
+      name: Incoming Unicast Packets Rate
+      desc: This metric indicates the average rate of incoming unicast packets over the past 5 minutes, measured in packets per second. Monitoring unicast packets is crucial for assessing interface utilization and traffic load.
+    interface_ifOutUcastPkts:
+      name: Outgoing Unicast Packets Rate
+      desc: This metric calculates the average rate of outgoing unicast packets over the past 5 minutes, measured in packets per second. By monitoring the number of unicast packets, administrators can assess the transmission performance of the interface and the usage of traffic.
+    interface_ifInOctets:
+      name: Interface Incoming Traffic Rate
+      desc: This metric indicates the average rate of bytes received over the past 5 minutes, measured in bytes per second. Monitoring byte traffic helps evaluate the load on the interface and bandwidth usage.
+    interface_ifOutOctets:
+      name: Interface Outgoing Traffic Rate
+      desc: This metric calculates the average rate of bytes sent over the past 5 minutes, measured in bytes per second. Monitoring outgoing traffic is crucial for ensuring data transmission quality and optimizing network performance.
+    device_total_incoming_traffic:
+      name: Device Total Incoming Traffic Rate
+      desc: This metric indicates the average rate of total bytes received by the entire device over the past 5 minutes, measured in bytes per second. By summing the incoming byte counts from multiple interfaces, this metric helps administrators obtain an overview of the device's incoming traffic, supporting overall traffic monitoring and capacity planning.
+    device_total_outgoing_traffic:
+      name: Device Total Outgoing Traffic Rate
+      desc: This metric represents the average rate of total bytes sent by the entire device over the past 5 minutes, measured in bytes per second. By summing the outgoing byte counts from multiple interfaces, this metric allows administrators to comprehensively assess the sending performance of the entire system, enabling more effective traffic management and optimization.
   Jetty-JMX:
     jetty_queuedthreadpool_threads_value:
       name: Thread Count
@@ -670,87 +578,48 @@ monitor_object_metric:
       desc: Indicates the maximum keep-alive time (seconds) for HTTP connections without
         data transfer, releasing idle resources to prevent waste and malicious occupation.
   Firewall:
-    ifInErrors:
-      name: Incoming Error Packet Rate
-      desc: This metric calculates the average rate of incoming error packets over
-        the past 5 minutes, measured in packets per second. Monitoring incoming errors
-        allows administrators to detect potential issues, such as physical connection
-        faults or configuration errors, in a timely manner.
-    ifInUcastPkts:
-      desc: This metric indicates the average rate of incoming unicast packets over
-        the past 5 minutes, measured in packets per second. Monitoring unicast packets
-        is crucial for assessing interface utilization and traffic load.
-      name: Incoming Unicast Packets Rate
-    ifAdminStatus:
-      desc: This metric indicates the administrative status of the network switch
-        interface. It serves to indicate whether the interface is enabled (up) or
-        disabled (down) by an administrator, along with other states such as testing
-        or not present. This information is vital for network management and troubleshooting.
-      name: Interface Administrative Status
-    ifHighSpeed:
-      desc: This metric indicates the maximum data transmission speed supported by
-        the network interface, usually measured in Kbps. Understanding the maximum
-        speed of the interface helps administrators optimize traffic and utilize network
-        resources effectively.
-      name: Interface Bandwidth
-    sysUpTime:
+    snmp_uptime:
       name: System Uptime
-      desc: This metric indicates the uptime of the device since the last restart,
-        measured in days. By monitoring the uptime, network administrators can understand
-        the stability and reliability of the device and identify potential reboot
-        or failure issues.
-    ifInOctets:
-      desc: This metric indicates the average rate of bytes received over the past
-        5 minutes, converted to megabytes (MB). Monitoring byte traffic helps evaluate
-        the load on the interface and bandwidth usage.
-      name: Interface Incoming Traffic Rate
-    ifOperStatus:
-      desc: This metric reflects the actual operational status of the network switch
-        interface, indicating whether the interface is operational. Unlike the administrative
-        status, the operational status shows whether the interface can successfully
-        receive and send traffic, which is crucial for monitoring network health.
-      name: Interface Operational Status
-    ifInDiscards:
-      name: Incoming Discard Packet Rate
-      desc: This metric represents the average rate of incoming discarded packets
-        over the past 5 minutes, measured in packets per second. Packet discards may
-        indicate network congestion or resource shortages, and monitoring this metric
-        can help administrators optimize network performance.
-    ifOutErrors:
-      desc: This metric calculates the average rate of outgoing error packets over
-        the past 5 minutes, measured in packets per second. Monitoring outgoing errors
-        is essential for identifying transmission issues and ensuring data integrity.
-      name: Outgoing Error Packet Rate
-    ifOutDiscards:
-      name: Outgoing Discard Packet Rate
-      desc: This metric calculates the average rate of outgoing discarded packets
-        over the past 5 minutes, measured in packets per second. Monitoring outgoing
-        discards can help identify network transmission issues and misconfigurations.
-    ifOutUcastPkts:
+      desc: This metric indicates the uptime of the device since the last restart, measured in days. By monitoring the uptime, network administrators can understand the stability and reliability of the device and identify potential reboot or failure issues.
+    interface_ifAdminStatus:
+      name: Interface Admin Status
+      desc: This metric indicates the administrative status of the network switch interface. It serves to indicate whether the interface is enabled (up) or disabled (down) by an administrator, along with other states such as testing or not present. This information is vital for network management and troubleshooting.
+    interface_ifOperStatus:
+      name: Interface Oper Status
+      desc: This metric reflects the actual operational status of the network switch interface, indicating whether the interface is operational. Unlike the administrative status, the operational status shows whether the interface can successfully receive and send traffic, which is crucial for monitoring network health.
+    interface_ifSpeed:
+      name: Interface Bandwidth
+      desc: This metric indicates the maximum data transmission speed supported by the network interface, measured in bits per second. Understanding the maximum speed of the interface helps administrators optimize traffic and utilize network resources effectively.
+    interface_ifInErrors:
+      name: Incoming Errors Rate
+      desc: This metric calculates the average rate of incoming error packets over the past 5 minutes, measured in packets per second. Monitoring incoming errors allows administrators to detect potential issues, such as physical connection faults or configuration errors, in a timely manner.
+    interface_ifOutErrors:
+      name: Outgoing Errors Rate
+      desc: This metric calculates the average rate of outgoing error packets over the past 5 minutes, measured in packets per second. Monitoring outgoing errors is essential for identifying transmission issues and ensuring data integrity.
+    interface_ifInDiscards:
+      name: Incoming Discards Rate
+      desc: This metric represents the average rate of incoming discarded packets over the past 5 minutes, measured in packets per second. Packet discards may indicate network congestion or resource shortages, and monitoring this metric can help administrators optimize network performance.
+    interface_ifOutDiscards:
+      name: Outgoing Discards Rate
+      desc: This metric calculates the average rate of outgoing discarded packets over the past 5 minutes, measured in packets per second. Monitoring outgoing discards can help identify network transmission issues and misconfigurations.
+    interface_ifInUcastPkts:
+      name: Incoming Unicast Packets Rate
+      desc: This metric indicates the average rate of incoming unicast packets over the past 5 minutes, measured in packets per second. Monitoring unicast packets is crucial for assessing interface utilization and traffic load.
+    interface_ifOutUcastPkts:
       name: Outgoing Unicast Packets Rate
-      desc: This metric calculates the average rate of outgoing unicast packets over
-        the past 5 minutes, measured in packets per second. By monitoring the number
-        of unicast packets, administrators can assess the transmission performance
-        of the interface and the usage of traffic.
-    iftotalOutOctets:
-      name: Device Total Outgoing Traffic (per second)
-      desc: This metric represents the average rate of total bytes sent by the entire
-        device over the past 5 minutes, measured in megabytes per second (MB/s). By
-        summing the outgoing byte counts from multiple interfaces, this metric allows
-        administrators to comprehensively assess the sending performance of the entire
-        system, enabling more effective traffic management and optimization.
-    ifOutOctets:
-      desc: This metric calculates the average rate of bytes sent over the past 5
-        minutes, measured in megabytes (MB). Monitoring outgoing traffic is crucial
-        for ensuring data transmission quality and optimizing network performance.
+      desc: This metric calculates the average rate of outgoing unicast packets over the past 5 minutes, measured in packets per second. By monitoring the number of unicast packets, administrators can assess the transmission performance of the interface and the usage of traffic.
+    interface_ifInOctets:
+      name: Interface Incoming Traffic Rate
+      desc: This metric indicates the average rate of bytes received over the past 5 minutes, measured in bytes per second. Monitoring byte traffic helps evaluate the load on the interface and bandwidth usage.
+    interface_ifOutOctets:
       name: Interface Outgoing Traffic Rate
-    iftotalInOctets:
-      desc: This metric indicates the average rate of total bytes received by the
-        entire device over the past 5 minutes, measured in megabytes per second (MB/s).
-        By summing the incoming byte counts from multiple interfaces, this metric
-        helps administrators obtain an overview of the device's incoming traffic,
-        supporting overall traffic monitoring and capacity planning.
-      name: Device Total Incoming Traffic (per second)
+      desc: This metric calculates the average rate of bytes sent over the past 5 minutes, measured in bytes per second. Monitoring outgoing traffic is crucial for ensuring data transmission quality and optimizing network performance.
+    device_total_incoming_traffic:
+      name: Device Total Incoming Traffic Rate
+      desc: This metric indicates the average rate of total bytes received by the entire device over the past 5 minutes, measured in bytes per second. By summing the incoming byte counts from multiple interfaces, this metric helps administrators obtain an overview of the device's incoming traffic, supporting overall traffic monitoring and capacity planning.
+    device_total_outgoing_traffic:
+      name: Device Total Outgoing Traffic Rate
+      desc: This metric represents the average rate of total bytes sent by the entire device over the past 5 minutes, measured in bytes per second. By summing the outgoing byte counts from multiple interfaces, this metric allows administrators to comprehensively assess the sending performance of the entire system, enabling more effective traffic management and optimization.
   ActiveMQ:
     topics_consumer_count:
       name: Topic Consumer Count
@@ -1800,169 +1669,91 @@ monitor_object_metric:
         speed of the interface helps administrators optimize traffic and utilize network
         resources effectively.
   Switch:
-    ifInOctets:
-      name: Interface Incoming Traffic Rate
-      desc: This metric indicates the average rate of bytes received over the past
-        5 minutes, converted to megabytes (MB). Monitoring byte traffic helps evaluate
-        the load on the interface and bandwidth usage.
-    ifHighSpeed:
-      desc: This metric indicates the maximum data transmission speed supported by
-        the network interface, usually measured in Kbps. Understanding the maximum
-        speed of the interface helps administrators optimize traffic and utilize network
-        resources effectively.
-      name: Interface Bandwidth
-    ifInDiscards:
-      desc: This metric represents the average rate of incoming discarded packets
-        over the past 5 minutes, measured in packets per second. Packet discards may
-        indicate network congestion or resource shortages, and monitoring this metric
-        can help administrators optimize network performance.
-      name: Incoming Discards Rate
-    iftotalInOctets:
-      name: Device Total Incoming Traffic
-      desc: This metric indicates the average rate of total bytes received by the
-        entire device over the past 5 minutes, measured in megabytes per second (MB/s).
-        By summing the incoming byte counts from multiple interfaces, this metric
-        helps administrators obtain an overview of the device's incoming traffic,
-        supporting overall traffic monitoring and capacity planning.
-    ifInErrors:
-      name: 'Incoming Errors Rate '
-      desc: This metric calculates the average rate of incoming error packets over
-        the past 5 minutes, measured in packets per second. Monitoring incoming errors
-        allows administrators to detect potential issues, such as physical connection
-        faults or configuration errors, in a timely manner.
-    ifAdminStatus:
-      desc: This metric indicates the administrative status of the network switch
-        interface. It serves to indicate whether the interface is enabled (up) or
-        disabled (down) by an administrator, along with other states such as testing
-        or not present. This information is vital for network management and troubleshooting.
-      name: Interface Administrative Status
-    ifOutDiscards:
-      desc: This metric calculates the average rate of outgoing discarded packets
-        over the past 5 minutes, measured in packets per second. Monitoring outgoing
-        discards can help identify network transmission issues and misconfigurations.
-      name: Outgoing Discards Rate
-    ifOutErrors:
-      desc: This metric calculates the average rate of outgoing error packets over
-        the past 5 minutes, measured in packets per second. Monitoring outgoing errors
-        is essential for identifying transmission issues and ensuring data integrity.
-      name: Outgoing Error Packet Rate
-    iftotalOutOctets:
-      desc: This metric represents the average rate of total bytes sent by the entire
-        device over the past 5 minutes, measured in megabytes per second (MB/s). By
-        summing the outgoing byte counts from multiple interfaces, this metric allows
-        administrators to comprehensively assess the sending performance of the entire
-        system, enabling more effective traffic management and optimization.
-      name: Device Total Outgoing Traffic
-    ifOutOctets:
-      name: Interface Outgoing Traffic Rate
-      desc: This metric calculates the average rate of bytes sent over the past 5
-        minutes, measured in megabytes (MB). Monitoring outgoing traffic is crucial
-        for ensuring data transmission quality and optimizing network performance.
-    ifOperStatus:
-      desc: This metric reflects the actual operational status of the network switch
-        interface, indicating whether the interface is operational. Unlike the administrative
-        status, the operational status shows whether the interface can successfully
-        receive and send traffic, which is crucial for monitoring network health.
-      name: Interface Operational Status
-    ifOutUcastPkts:
-      desc: This metric calculates the average rate of outgoing unicast packets over
-        the past 5 minutes, measured in packets per second. By monitoring the number
-        of unicast packets, administrators can assess the transmission performance
-        of the interface and the usage of traffic.
-      name: Outgoing Unicast Packets Rate
-    ifInUcastPkts:
-      desc: This metric indicates the average rate of incoming unicast packets over
-        the past 5 minutes, measured in packets per second. Monitoring unicast packets
-        is crucial for assessing interface utilization and traffic load.
-      name: Incoming Unicast Packets Rate
-    sysUpTime:
-      desc: This metric indicates the uptime of the device since the last restart,
-        measured in days. By monitoring the uptime, network administrators can understand
-        the stability and reliability of the device and identify potential reboot
-        or failure issues.
+    snmp_uptime:
       name: System Uptime
-  Router:
-    ifOutDiscards:
-      desc: This metric calculates the average rate of outgoing discarded packets
-        over the past 5 minutes, measured in packets per second. Monitoring outgoing
-        discards can help identify network transmission issues and misconfigurations.
-      name: Outgoing Discarded Packet Rate
-    ifHighSpeed:
+      desc: This metric indicates the uptime of the device since the last restart, measured in days. By monitoring the uptime, network administrators can understand the stability and reliability of the device and identify potential reboot or failure issues.
+    interface_ifAdminStatus:
+      name: Interface Admin Status
+      desc: This metric indicates the administrative status of the network switch interface. It serves to indicate whether the interface is enabled (up) or disabled (down) by an administrator, along with other states such as testing or not present. This information is vital for network management and troubleshooting.
+    interface_ifOperStatus:
+      name: Interface Oper Status
+      desc: This metric reflects the actual operational status of the network switch interface, indicating whether the interface is operational. Unlike the administrative status, the operational status shows whether the interface can successfully receive and send traffic, which is crucial for monitoring network health.
+    interface_ifSpeed:
       name: Interface Bandwidth
-      desc: This metric indicates the maximum data transmission speed supported by
-        the network interface, usually measured in Kbps. Understanding the maximum
-        speed of the interface helps administrators optimize traffic and utilize network
-        resources effectively.
-    ifOperStatus:
-      desc: This metric reflects the actual operational status of the network switch
-        interface, indicating whether the interface is operational. Unlike the administrative
-        status, the operational status shows whether the interface can successfully
-        receive and send traffic, which is crucial for monitoring network health.
-      name: Interface Operational Status
-    ifOutOctets:
-      name: Interface Outbound Traffic Rate
-      desc: This metric calculates the average rate of bytes sent over the past 5
-        minutes, measured in megabytes (MB). Monitoring outgoing traffic is crucial
-        for ensuring data transmission quality and optimizing network performance.
-    ifAdminStatus:
-      name: Interface Administrative Status
-      desc: This metric indicates the administrative status of the network switch
-        interface. It serves to indicate whether the interface is enabled (up) or
-        disabled (down) by an administrator, along with other states such as testing
-        or not present. This information is vital for network management and troubleshooting.
-    ifInDiscards:
-      desc: This metric represents the average rate of incoming discarded packets
-        over the past 5 minutes, measured in packets per second. Packet discards may
-        indicate network congestion or resource shortages, and monitoring this metric
-        can help administrators optimize network performance.
-      name: Incoming Discards Rate
-    iftotalOutOctets:
-      name: Device Total Outbound Traffic (per second)
-      desc: This metric represents the average rate of total bytes sent by the entire
-        device over the past 5 minutes, measured in megabytes per second (MB/s). By
-        summing the outgoing byte counts from multiple interfaces, this metric allows
-        administrators to comprehensively assess the sending performance of the entire
-        system, enabling more effective traffic management and optimization.
-    ifInUcastPkts:
-      name: Incoming Unicast Packet Rate
-      desc: This metric indicates the average rate of incoming unicast packets over
-        the past 5 minutes, measured in packets per second. Monitoring unicast packets
-        is crucial for assessing interface utilization and traffic load.
-    sysUpTime:
-      name: System Uptime
-      desc: This metric indicates the uptime of the device since the last restart,
-        measured in days. By monitoring the uptime, network administrators can understand
-        the stability and reliability of the device and identify potential reboot
-        or failure issues.
-    ifOutUcastPkts:
-      name: Outgoing Unicast Packet Rate
-      desc: This metric calculates the average rate of outgoing unicast packets over
-        the past 5 minutes, measured in packets per second. By monitoring the number
-        of unicast packets, administrators can assess the transmission performance
-        of the interface and the usage of traffic.
-    ifOutErrors:
-      desc: This metric calculates the average rate of outgoing error packets over
-        the past 5 minutes, measured in packets per second. Monitoring outgoing errors
-        is essential for identifying transmission issues and ensuring data integrity.
-      name: Outgoing Errors Rate
-    ifInOctets:
-      name: Interface Inbound Traffic Rate
-      desc: This metric indicates the average rate of bytes received over the past
-        5 minutes, converted to megabytes (MB). Monitoring byte traffic helps evaluate
-        the load on the interface and bandwidth usage.
-    ifInErrors:
+      desc: This metric indicates the maximum data transmission speed supported by the network interface, measured in bits per second. Understanding the maximum speed of the interface helps administrators optimize traffic and utilize network resources effectively.
+    interface_ifInErrors:
       name: Incoming Errors Rate
-      desc: This metric calculates the average rate of incoming error packets over
-        the past 5 minutes, measured in packets per second. Monitoring incoming errors
-        allows administrators to detect potential issues, such as physical connection
-        faults or configuration errors, in a timely manner.
-    iftotalInOctets:
-      desc: This metric indicates the average rate of total bytes received by the
-        entire device over the past 5 minutes, measured in megabytes per second (MB/s).
-        By summing the incoming byte counts from multiple interfaces, this metric
-        helps administrators obtain an overview of the device's incoming traffic,
-        supporting overall traffic monitoring and capacity planning.
-      name: Device Total Inbound Traffic (per second)
+      desc: This metric calculates the average rate of incoming error packets over the past 5 minutes, measured in packets per second. Monitoring incoming errors allows administrators to detect potential issues, such as physical connection faults or configuration errors, in a timely manner.
+    interface_ifOutErrors:
+      name: Outgoing Errors Rate
+      desc: This metric calculates the average rate of outgoing error packets over the past 5 minutes, measured in packets per second. Monitoring outgoing errors is essential for identifying transmission issues and ensuring data integrity.
+    interface_ifInDiscards:
+      name: Incoming Discards Rate
+      desc: This metric represents the average rate of incoming discarded packets over the past 5 minutes, measured in packets per second. Packet discards may indicate network congestion or resource shortages, and monitoring this metric can help administrators optimize network performance.
+    interface_ifOutDiscards:
+      name: Outgoing Discards Rate
+      desc: This metric calculates the average rate of outgoing discarded packets over the past 5 minutes, measured in packets per second. Monitoring outgoing discards can help identify network transmission issues and misconfigurations.
+    interface_ifInUcastPkts:
+      name: Incoming Unicast Packets Rate
+      desc: This metric indicates the average rate of incoming unicast packets over the past 5 minutes, measured in packets per second. Monitoring unicast packets is crucial for assessing interface utilization and traffic load.
+    interface_ifOutUcastPkts:
+      name: Outgoing Unicast Packets Rate
+      desc: This metric calculates the average rate of outgoing unicast packets over the past 5 minutes, measured in packets per second. By monitoring the number of unicast packets, administrators can assess the transmission performance of the interface and the usage of traffic.
+    interface_ifInOctets:
+      name: Interface Incoming Traffic Rate
+      desc: This metric indicates the average rate of bytes received over the past 5 minutes, measured in bytes per second. Monitoring byte traffic helps evaluate the load on the interface and bandwidth usage.
+    interface_ifOutOctets:
+      name: Interface Outgoing Traffic Rate
+      desc: This metric calculates the average rate of bytes sent over the past 5 minutes, measured in bytes per second. Monitoring outgoing traffic is crucial for ensuring data transmission quality and optimizing network performance.
+    device_total_incoming_traffic:
+      name: Device Total Incoming Traffic Rate
+      desc: This metric indicates the average rate of total bytes received by the entire device over the past 5 minutes, measured in bytes per second. By summing the incoming byte counts from multiple interfaces, this metric helps administrators obtain an overview of the device's incoming traffic, supporting overall traffic monitoring and capacity planning.
+    device_total_outgoing_traffic:
+      name: Device Total Outgoing Traffic Rate
+      desc: This metric represents the average rate of total bytes sent by the entire device over the past 5 minutes, measured in bytes per second. By summing the outgoing byte counts from multiple interfaces, this metric allows administrators to comprehensively assess the sending performance of the entire system, enabling more effective traffic management and optimization.
+  Router:
+    snmp_uptime:
+      name: System Uptime
+      desc: This metric indicates the uptime of the device since the last restart, measured in days. By monitoring the uptime, network administrators can understand the stability and reliability of the device and identify potential reboot or failure issues.
+    interface_ifAdminStatus:
+      name: Interface Admin Status
+      desc: This metric indicates the administrative status of the network switch interface. It serves to indicate whether the interface is enabled (up) or disabled (down) by an administrator, along with other states such as testing or not present. This information is vital for network management and troubleshooting.
+    interface_ifOperStatus:
+      name: Interface Oper Status
+      desc: This metric reflects the actual operational status of the network switch interface, indicating whether the interface is operational. Unlike the administrative status, the operational status shows whether the interface can successfully receive and send traffic, which is crucial for monitoring network health.
+    interface_ifSpeed:
+      name: Interface Bandwidth
+      desc: This metric indicates the maximum data transmission speed supported by the network interface, measured in bits per second. Understanding the maximum speed of the interface helps administrators optimize traffic and utilize network resources effectively.
+    interface_ifInErrors:
+      name: Incoming Errors Rate
+      desc: This metric calculates the average rate of incoming error packets over the past 5 minutes, measured in packets per second. Monitoring incoming errors allows administrators to detect potential issues, such as physical connection faults or configuration errors, in a timely manner.
+    interface_ifOutErrors:
+      name: Outgoing Errors Rate
+      desc: This metric calculates the average rate of outgoing error packets over the past 5 minutes, measured in packets per second. Monitoring outgoing errors is essential for identifying transmission issues and ensuring data integrity.
+    interface_ifInDiscards:
+      name: Incoming Discards Rate
+      desc: This metric represents the average rate of incoming discarded packets over the past 5 minutes, measured in packets per second. Packet discards may indicate network congestion or resource shortages, and monitoring this metric can help administrators optimize network performance.
+    interface_ifOutDiscards:
+      name: Outgoing Discards Rate
+      desc: This metric calculates the average rate of outgoing discarded packets over the past 5 minutes, measured in packets per second. Monitoring outgoing discards can help identify network transmission issues and misconfigurations.
+    interface_ifInUcastPkts:
+      name: Incoming Unicast Packets Rate
+      desc: This metric indicates the average rate of incoming unicast packets over the past 5 minutes, measured in packets per second. Monitoring unicast packets is crucial for assessing interface utilization and traffic load.
+    interface_ifOutUcastPkts:
+      name: Outgoing Unicast Packets Rate
+      desc: This metric calculates the average rate of outgoing unicast packets over the past 5 minutes, measured in packets per second. By monitoring the number of unicast packets, administrators can assess the transmission performance of the interface and the usage of traffic.
+    interface_ifInOctets:
+      name: Interface Incoming Traffic Rate
+      desc: This metric indicates the average rate of bytes received over the past 5 minutes, measured in bytes per second. Monitoring byte traffic helps evaluate the load on the interface and bandwidth usage.
+    interface_ifOutOctets:
+      name: Interface Outgoing Traffic Rate
+      desc: This metric calculates the average rate of bytes sent over the past 5 minutes, measured in bytes per second. Monitoring outgoing traffic is crucial for ensuring data transmission quality and optimizing network performance.
+    device_total_incoming_traffic:
+      name: Device Total Incoming Traffic Rate
+      desc: This metric indicates the average rate of total bytes received by the entire device over the past 5 minutes, measured in bytes per second. By summing the incoming byte counts from multiple interfaces, this metric helps administrators obtain an overview of the device's incoming traffic, supporting overall traffic monitoring and capacity planning.
+    device_total_outgoing_traffic:
+      name: Device Total Outgoing Traffic Rate
+      desc: This metric represents the average rate of total bytes sent by the entire device over the past 5 minutes, measured in bytes per second. By summing the outgoing byte counts from multiple interfaces, this metric allows administrators to comprehensively assess the sending performance of the entire system, enabling more effective traffic management and optimization.
   Consul:
     consul_health_checks_passing:
       name: Health Checks Passing
