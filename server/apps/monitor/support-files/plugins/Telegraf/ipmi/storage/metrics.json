@@ -8,23 +8,28 @@
   "description": "",
   "default_metric": "any({instance_type='storage'}) by (instance_id)",
   "instance_id_keys": ["instance_id"],
-  "supplementary_indicators": [],
+  "supplementary_indicators": ["ipmi_chassis_power_state", "ipmi_power_watts", "ipmi_temperature_celsius"],
   "metrics": [
     {
       "metric_group": "Power",
       "name": "ipmi_chassis_power_state",
-      "query": "ipmi_sensor_status{name=~\"host_power\", instance_type=\"storage\",__$labels__}",
+      "query": "ipmi_sensor_status{name=~\"host_power\", __$labels__}",
       "display_name": "Power State",
       "data_type": "Enum",
-      "unit": "[{\"name\":\"Normal\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"Abnormal\",\"id\":2,\"color\":\"#faad14\"}]",
-      "dimensions": [],
+      "unit": "[{\"name\":\"正常\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"异常\",\"id\":2,\"color\":\"#ff4d4f\"}]",
+      "dimensions": [
+        {
+          "name": "name",
+          "description": "name"
+        }
+      ],
       "instance_id_keys": ["instance_id"],
       "description": "The power state indicator is used to monitor if the device is powered on. Its value can indicate whether the power is on or off. It is mainly used for remote management and monitoring of the device's power state."
     },
     {
       "metric_group": "Power",
       "name": "ipmi_power_watts",
-      "query": "ipmi_sensor_value{unit=\"watts\", instance_type=\"storage\",__$labels__}",
+      "query": "ipmi_sensor_value{unit=\"watts\", __$labels__}",
       "display_name": "Power",
       "data_type": "Number",
       "unit": "watts",
@@ -40,7 +45,7 @@
     {
       "metric_group": "Power",
       "name": "ipmi_voltage_volts",
-      "query": "ipmi_sensor_value{unit=\"volts\", instance_type=\"storage\",__$labels__}",
+      "query": "ipmi_sensor_value{unit=\"volts\", __$labels__}",
       "display_name": "Voltage",
       "data_type": "Number",
       "unit": "volts",
@@ -56,10 +61,10 @@
     {
       "metric_group": "Environment",
       "name": "ipmi_fan_speed_rpm",
-      "query": "ipmi_sensor_value{unit=\"rpm\", instance_type=\"storage\",__$labels__}",
+      "query": "ipmi_sensor_value{unit=\"rpm\", __$labels__}",
       "display_name": "Fan Speed",
       "data_type": "Number",
-      "unit": "rpm",
+      "unit": "none",
       "dimensions": [
         {
           "name": "name",
@@ -67,15 +72,15 @@
         }
       ],
       "instance_id_keys": ["instance_id"],
-      "description": "The fan speed indicator is measured in rotations per minute (rpm) and monitors the fan's operation status within the device. Efficient fan operation is key to maintaining device temperature. It helps prevent overheating and ensures the device's stable long-term operation."
+      "description": "The fan speed indicator is measured in rotations per minute and monitors the fan's operation status within the device. Efficient fan operation is key to maintaining device temperature. It helps prevent overheating and ensures the device's stable long-term operation."
     },
     {
       "metric_group": "Environment",
       "name": "ipmi_temperature_celsius",
-      "query": "ipmi_sensor_value{unit=\"degrees_c\", instance_type=\"storage\",__$labels__}",
+      "query": "ipmi_sensor_value{unit=\"degrees_c\", __$labels__}",
       "display_name": "Temperature",
       "data_type": "Number",
-      "unit": "degrees_c",
+      "unit": "celsius",
       "dimensions": [
         {
           "name": "name",
@@ -87,4 +92,3 @@
     }
   ]
 }
-    
