@@ -22,25 +22,16 @@ import OperateModal from '@/components/operate-modal';
 import { useTranslation } from '@/utils/i18n';
 import GroupTreeSelector from '@/components/group-tree-select';
 import { useUserInfoContext } from '@/context/userInfo';
-import { AttrFieldType, UserItem } from '@/app/cmdb/types/assetManage';
+import { AttrFieldType, UserItem, FullInfoGroupItem, FullInfoAttrItem, FieldConfig } from '@/app/cmdb/types/assetManage';
 import { deepClone } from '@/app/cmdb/utils/common';
 import { useInstanceApi } from '@/app/cmdb/api';
 import dayjs from 'dayjs';
 import EllipsisWithTooltip from '@/components/ellipsis-with-tooltip';
+import styles from './FilterBar.module.scss';
 
 interface FieldModalProps {
   onSuccess: (instId?: string) => void;
   userList: UserItem[];
-}
-
-interface FieldConfig {
-  type: string;
-  attrList: AttrFieldType[];
-  formInfo: any;
-  subTitle: string;
-  title: string;
-  model_id: string;
-  list: Array<any>;
 }
 
 export interface FieldModalRef {
@@ -55,7 +46,7 @@ const FieldMoadal = forwardRef<FieldModalRef, FieldModalProps>(
     const [subTitle, setSubTitle] = useState<string>('');
     const [title, setTitle] = useState<string>('');
     const [type, setType] = useState<string>('');
-    const [formItems, setFormItems] = useState<AttrFieldType[]>([]);
+    const [formItems, setFormItems] = useState<FullInfoGroupItem[]>([]);
     const [instanceData, setInstanceData] = useState<any>({});
     const [selectedRows, setSelectedRows] = useState<any[]>([]);
     const [modelId, setModelId] = useState<string>('');
@@ -116,6 +107,9 @@ const FieldMoadal = forwardRef<FieldModalRef, FieldModalProps>(
         model_id,
         list,
       }) => {
+        // 打印属性标题列表+值
+        // console.log('test7.9', attrList);
+
         // 开启弹窗的交互
         setGroupVisible(true);
         setSubTitle(subTitle);
@@ -125,6 +119,10 @@ const FieldMoadal = forwardRef<FieldModalRef, FieldModalProps>(
         setFormItems(attrList);
         setSelectedRows(list);
         const forms = deepClone(formInfo);
+
+        // 提取所有属性并扁平化，用于在315行数据中查找
+        const allAttrs = attrList.flatMap((group) => group.attrs || []);
+
         if (type === 'add') {
           Object.assign(forms, {
             organization: selectedGroup?.id
@@ -133,7 +131,7 @@ const FieldMoadal = forwardRef<FieldModalRef, FieldModalProps>(
           });
         } else {
           for (const key in forms) {
-            const target = attrList.find((item) => item.attr_id === key);
+            const target = allAttrs.find((item: FullInfoAttrItem) => item.attr_id === key);
             if (target?.attr_type === 'time' && forms[key]) {
               forms[key] = dayjs(forms[key], 'YYYY-MM-DD HH:mm:ss');
             } else if (target?.attr_type === 'organization' && forms[key]) {
@@ -158,7 +156,7 @@ const FieldMoadal = forwardRef<FieldModalRef, FieldModalProps>(
       }
     };
 
-    const renderFormLabel = (item: AttrFieldType) => {
+    const renderFormLabel = (item: FullInfoAttrItem) => {
       return (
         <div className="flex items-center">
           {type === 'batchEdit' && item.editable && !item.is_only ? (
@@ -180,7 +178,7 @@ const FieldMoadal = forwardRef<FieldModalRef, FieldModalProps>(
       );
     };
 
-    const renderFormField = (item: AttrFieldType) => {
+    const renderFormField = (item: FullInfoAttrItem) => {
       const fieldDisabled =
         type === 'batchEdit'
           ? !enabledFields[item.attr_id]
@@ -247,7 +245,7 @@ const FieldMoadal = forwardRef<FieldModalRef, FieldModalProps>(
                   return true;
                 }}
               >
-                {item.option?.map((opt) => (
+                {(Array.isArray(item.option) ? item.option : item.option ? JSON.parse(item.option) : []).map((opt: any) => (
                   <Select.Option key={opt.id} value={opt.id}>
                     {opt.name}
                   </Select.Option>
@@ -309,8 +307,10 @@ const FieldMoadal = forwardRef<FieldModalRef, FieldModalProps>(
       form
         .validateFields()
         .then((values) => {
+          // 从分组中提取所有属性并扁平化，用于在315行数据中查找
+          const allAttrs = formItems.flatMap((group) => group.attrs || []);
           for (const key in values) {
-            const target = formItems.find((item) => item.attr_id === key);
+            const target = allAttrs.find((item: FullInfoAttrItem) => item.attr_id === key);
             if (target?.attr_type === 'time' && values[key]) {
               values[key] = values[key].format('YYYY-MM-DD HH:mm:ss');
             }
@@ -413,61 +413,78 @@ const FieldMoadal = forwardRef<FieldModalRef, FieldModalProps>(
             </div>
           }
         >
+          {/* 编辑弹窗的内容部分 */}
           <Form form={form} layout="vertical">
-            <div className="font-[600] text-[var(--color-text-2)] text-[18px] pl-[12px] pb-[14px]">
-              {t('common.group')}
-            </div>
-            <Row gutter={24}>
-              {formItems
-                .filter((formItem) => formItem.attr_id === 'organization')
-                .map((item) => (
-                  <Col span={12} key={item.attr_id}>
-                    <Form.Item
-                      className="mb-4"
-                      name={item.attr_id}
-                      label={renderFormLabel({
-                        ...item,
-                        attr_type: 'organization',
-                      })}
-                      rules={[
-                        {
-                          required: item.is_required && type !== 'batchEdit',
-                          message: t('required'),
-                        },
-                      ]}
-                    >
-                      {renderFormField({
-                        ...item,
-                        attr_type: 'organization',
-                      })}
-                    </Form.Item>
-                  </Col>
-                ))}
-            </Row>
-            <div className="font-[600] text-[var(--color-text-2)] text-[18px] pl-[12px] pb-[14px]">
-              {t('information')}
-            </div>
-            <Row gutter={24}>
-              {formItems
-                .filter((formItem) => formItem.attr_id !== 'organization')
-                .map((item) => (
-                  <Col span={12} key={item.attr_id}>
-                    <Form.Item
-                      className="mb-4"
-                      name={item.attr_id}
-                      label={renderFormLabel(item)}
-                      rules={[
-                        {
-                          required: item.is_required && type !== 'batchEdit',
-                          message: t('required'),
-                        },
-                      ]}
-                    >
-                      {renderFormField(item)}
-                    </Form.Item>
-                  </Col>
-                ))}
-            </Row>
+            {/* 遍历所有提取 organization 字段 */}
+            {(() => {
+              const organizationAttrs = formItems.flatMap((group) =>
+                group.attrs.filter((attr) => attr.attr_id === 'organization')
+              );
+
+              // 返回 organization 字段的数据
+              return (
+                <>
+                  <div className={styles.groupOrganization}>
+                    {t('common.group')}
+                  </div>
+                  <Row gutter={24}>
+                    {organizationAttrs.map((item) => (
+                      <Col span={12} key={item.attr_id}>
+                        <Form.Item
+                          className="mb-4"
+                          name={item.attr_id}
+                          label={renderFormLabel(item)}
+                          rules={[
+                            {
+                              required: item.is_required && type !== 'batchEdit',
+                              message: t('required'),
+                            },
+                          ]}
+                        >
+                          {renderFormField(item)}
+                        </Form.Item>
+                      </Col>
+                    ))}
+                  </Row>
+                </>
+              )
+            })()}
+
+            {/* 其他分组（不包含 organization 字段） */}
+            {formItems.map((group) => {
+              const otherAttrs = group.attrs.filter(
+                (attr) => attr.attr_id !== 'organization'
+              );
+              if (otherAttrs.length === 0) return null;
+
+              // 返回其他分组的数据
+              return (
+                <div key={group.id}>
+                  <div className={styles.groupOther}>
+                    {group.group_name}
+                  </div>
+                  <Row gutter={24}>
+                    {otherAttrs.map((item) => (
+                      <Col span={12} key={item.attr_id}>
+                        <Form.Item
+                          className="mb-4"
+                          name={item.attr_id}
+                          label={renderFormLabel(item)}
+                          rules={[
+                            {
+                              required: item.is_required && type !== 'batchEdit',
+                              message: t('required'),
+                            },
+                          ]}
+                        >
+                          {renderFormField(item)}
+                        </Form.Item>
+                      </Col>
+                    ))}
+                  </Row>
+                </div>
+              );
+            })}
           </Form>
         </OperateModal>
       </div>
