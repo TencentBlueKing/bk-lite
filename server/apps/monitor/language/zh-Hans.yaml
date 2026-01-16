@@ -1240,45 +1240,42 @@ monitor_object_metric:
       name: 未确认消息总数
       desc: 系统中未确认的消息总计。此指标帮助识别可能的消息积压问题。
   VM:
-    vm_disk_io_usage_gauge:
-      name: 磁盘I/O使用率
-      desc: 表示虚拟机磁盘的I/O使用率，即磁盘在特定时间段内的繁忙程度。值越高，表示磁盘负载越高。
-    vm_mem_usage_average_gauge:
-      desc: 表示系统在特定时间段内的内存使用率，通常以百分比表示。这个指标帮助了解内存的负载情况，有助于优化内存使用和进行容量规划。
-      name: 内存使用率
-    vm_net_bytesRx_average_gauge:
-      desc: 表示系统在特定时间段内的网络接收速率，通常以MB/s或GB/s为单位。这个指标用于衡量网络的接收性能，帮助分析网络流量和带宽使用情况。
-      name: 网络接收速率
-    vm_cpu_usagemhz_average_gauge:
-      name: CPU使用量
-      desc: 表示系统在特定时间段内的CPU使用量，通常以MHz为单位。这个指标用于衡量CPU的实际工作频率，帮助分析CPU资源的消耗情况。
-    vm_cpu_usage_average_gauge:
+    cpu_usage_average_gauge:
       name: CPU使用率
-      desc: 表示系统在特定时间段内的CPU使用率，通常以百分比表示。这个指标帮助了解CPU的负载情况，以便进行性能优化和容量规划。
-    vm_disk_write_average_gauge:
-      desc: 表示虚拟机磁盘在特定时间段内的平均写入速率。值越高，表示写入性能越好。
-      name: 磁盘写入吞吐量
-    vm_net_bytesTx_average_gauge:
-      name: 网络发送速率
-      desc: 表示系统在特定时间段内的网络发送速率，通常以MB/s或GB/s为单位。这个指标用于衡量网络的发送性能，帮助分析网络流量和带宽使用情况。
-    vm_disk_read_average_gauge:
-      desc: 表示虚拟机磁盘在特定时间段内的平均读取速率。值越高，表示读取性能越好。
-      name: 磁盘读取吞吐量
-    vm_disk_used_average_gauge:
-      desc: 表示虚拟机磁盘的平均使用率，即磁盘已使用的空间比例。值越高，表示磁盘空间越紧张。
-      name: 磁盘使用率
-    vm_disk_numberWrite_summation_gauge:
-      name: 磁盘写IO
-      desc: 表示每秒完成的磁盘写操作次数，是衡量磁盘写请求频率的重要指标。值越高，表示磁盘写请求越频繁。
-    vm_disk_numberRead_summation_gauge:
-      desc: 表示每秒完成的磁盘读操作次数，是衡量磁盘读请求频率的重要指标。值越高，表示磁盘读请求越频繁。
-      name: 磁盘读IO
-    vm_mem_consumed_average_gauge:
+      desc: 表示系统在特定时间段内的CPU使用率，通常以百分比表示。这个指标帮助了解CPU的负载情况，以便进行性能优化和容量规划
+    mem_usage_average_gauge:
+      name: 内存使用率
+      desc: 表示系统在特定时间段内的内存使用率，通常以百分比表示。这个指标帮助了解内存的负载情况，有助于优化内存使用和进行容量规划
+    mem_consumed_average_gauge:
       name: 活动内存
-      desc: 表示系统在特定时间段内的活动内存，通常以MB或GB为单位。这个指标用于衡量系统实际消耗的内存资源，帮助分析内存使用情况。
-    vm_power_state_gauge:
+      desc: 表示系统在特定时间段内的活动内存，通常以字节为单位。这个指标用于衡量系统实际消耗的内存资源，帮助分析内存使用情况
+    disk_io_usage_gauge:
+      name: 磁盘I/O使用率
+      desc: 表示虚拟机磁盘的I/O使用率，即磁盘在特定时间段内的繁忙程度。值越高，表示磁盘负载越高
+    disk_read_average_gauge:
+      name: 磁盘读取吞吐量
+      desc: 表示虚拟机磁盘在特定时间段内的平均读取速率。值越高，表示读取性能越好
+    disk_used_average_gauge:
+      name: 磁盘使用率
+      desc: 表示虚拟机磁盘的平均使用率，即磁盘已使用的空间比例。值越高，表示磁盘空间越紧张
+    disk_numberRead_summation_gauge_rate:
+      name: 磁盘读IO速率
+      desc: 表示每秒完成的磁盘读操作次数，是衡量磁盘读请求频率的重要指标。值越高，表示磁盘读请求越频繁
+    disk_numberWrite_summation_gauge_rate:
+      name: 磁盘写IO速率
+      desc: 表示每秒完成的磁盘写操作次数，是衡量磁盘写请求频率的重要指标。值越高，表示磁盘写请求越频繁
+    disk_write_average_gauge:
+      name: 磁盘写入吞吐量
+      desc: 表示虚拟机磁盘在特定时间段内的平均写入速率。值越高，表示写入性能越好
+    net_bytesRx_average_gauge:
+      name: 网络接收速率
+      desc: 表示系统在特定时间段内的网络接收速率，通常以字节每秒为单位。这个指标用于衡量网络的接收性能，帮助分析网络流量和带宽使用情况
+    net_bytesTx_average_gauge:
+      name: 网络发送速率
+      desc: 表示系统在特定时间段内的网络发送速率，通常以字节每秒为单位。这个指标用于衡量网络的发送性能，帮助分析网络流量和带宽使用情况
+    power_state_gauge:
       name: 电源状态
-      desc: 表示虚拟机（VM）当前的电源状态，用于监控 VM 是处于开机还是关机状态。该指标对于监测 VM 可用性、优化资源分配和自动化运维具有重要作用。
+      desc: 表示虚拟机（VM）当前的电源状态，用于监控VM是处于开机还是关机状态。该指标对于监测VM可用性、优化资源分配和自动化运维具有重要作用
   ClickHouse:
     clickhouse_asynchronous_metrics_os_memory_available:
       name: 可用内存
@@ -1642,36 +1639,33 @@ monitor_object_metric:
       desc: 内网网卡的平均每秒出包量
       name: 内网出包量
   ESXI:
-    esxi_cpu_usage_average_gauge:
-      desc: 表示系统或应用程序的CPU使用率，单位是百分比（%），是衡量CPU负载和性能的关键指标。
+    cpu_usage_average_gauge:
       name: CPU使用率
-    esxi_mem_usage_average_gauge:
-      desc: 内存使用率，表示内存的使用情况，单位是百分比（%），用于评估系统或应用程序的内存负载。
+      desc: 表示系统或应用程序的CPU使用率，是衡量CPU负载和性能的关键指标
+    mem_usage_average_gauge:
       name: 内存使用率
-    esxi_mem_consumed_average_gauge:
+      desc: 内存使用率，表示内存的使用情况，用于评估系统或应用程序的内存负载
+    mem_consumed_average_gauge:
       name: 活动内存
-      desc: 活动内存，表示系统或应用程序实际使用的内存量，单位是兆字节（MB），是内存消耗的关键指标。
-    esxi_disk_numberRead_summation_gauge:
-      desc: 表示每秒完成的磁盘读操作次数，单位是IOPS（次/秒），是衡量磁盘读请求频率的重要指标。值越高，表示磁盘读请求越频繁。
-      name: 磁盘读I/O
-    esxi_disk_numberWrite_summation_gauge:
-      desc: 表示每秒完成的磁盘写操作次数，单位是IOPS（次/秒），是衡量磁盘写请求频率的重要指标。值越高，表示磁盘写请求越频繁。
-      name: 磁盘写I/O
-    esxi_net_bytesTx_average_gauge:
-      name: 网络发送速率
-      desc: 网络发送速率，表示每秒钟发送出去的数据量，单位是千字节每秒（KB/s），是网络流量的重要衡量标准。
-    esxi_net_bytesRx_average_gauge:
-      desc: 网络接收速率，表示每秒钟接收到的数据量，单位是千字节每秒（KB/s），是网络流量的重要衡量标准。
-      name: 网络接收速率
-    esxi_cpu_usagemhz_average_gauge:
-      desc: 代表CPU的使用量，以兆赫兹（MHz）为单位，反映了CPU的实际工作频率。
-      name: CPU使用频率
-    esxi_disk_write_average_gauge:
-      desc: 磁盘写速率，表示每秒钟向磁盘写入的数据量，单位是兆字节每秒（MB/s），是衡量磁盘写性能的重要指标。
-      name: 磁盘写速率
-    esxi_disk_read_average_gauge:
+      desc: 活动内存，表示系统或应用程序实际使用的内存量，是内存消耗的关键指标
+    disk_read_average_gauge:
       name: 磁盘读速率
-      desc: 磁盘读速率，表示每秒钟从磁盘读取的数据量，单位是兆字节每秒（MB/s），是衡量磁盘读性能的重要指标。
+      desc: 磁盘读速率，表示每秒钟从磁盘读取的数据量，是衡量磁盘读性能的重要指标
+    disk_write_average_gauge:
+      name: 磁盘写速率
+      desc: 磁盘写速率，表示每秒钟向磁盘写入的数据量，是衡量磁盘写性能的重要指标
+    disk_numberRead_summation_gauge_rate:
+      name: 磁盘读IO速率
+      desc: 表示每秒完成的磁盘读操作次数，是衡量磁盘读请求频率的重要指标。值越高，表示磁盘读请求越频繁
+    disk_numberWrite_summation_gauge_rate:
+      name: 磁盘写IO速率
+      desc: 表示每秒完成的磁盘写操作次数，是衡量磁盘写请求频率的重要指标。值越高，表示磁盘写请求越频繁
+    net_bytesRx_average_gauge:
+      name: 网络接收速率
+      desc: 网络接收速率，表示每秒钟接收到的数据量，是网络流量的重要衡量标准
+    net_bytesTx_average_gauge:
+      name: 网络发送速率
+      desc: 网络发送速率，表示每秒钟发送出去的数据量，是网络流量的重要衡量标准
   Cluster:
     cluster_pod_count:
       name: 集群Pod总数
@@ -1938,25 +1932,25 @@ monitor_object_metric:
       name: 网络出流量速率
       desc: 监控Pod的网络流出流量速率，通过Pod的容器数量与IP数量计算而得
   vCenter:
-    vmware_vm_count:
-      desc: 该指标统计 VMware 环境中虚拟机的数量，用于评估虚拟化资源的使用情况。
-      name: 虚拟机数量
+    vmware_esxi_count:
+      name: ESXI数量
+      desc: 该指标用于统计VMware环境中ESXi主机的数量，帮助管理员了解当前的物理主机资源情况
     vmware_datastore_count:
       name: 数据存储数量
-      desc: 该指标统计 VMware 环境中数据存储的数量，便于监控存储资源的分配和使用情况。
-    vmware_esxi_count:
-      desc: 该指标用于统计 VMware 环境中 ESXi 主机的数量，帮助管理员了解当前的物理主机资源情况。
-      name: ESXI数量
+      desc: 该指标统计VMware环境中数据存储的数量，便于监控存储资源的分配和使用情况
+    vmware_vm_count:
+      name: 虚拟机数量
+      desc: 该指标统计VMware环境中虚拟机的数量，用于评估虚拟化资源的使用情况
   DataStorage:
-    data_storage_disk_used_average_gauge:
-      desc: 磁盘使用率，表示磁盘空间的使用情况，是衡量磁盘存储利用率的指标。
+    disk_used_average_gauge:
       name: 磁盘使用率
-    data_storage_disk_free_average_gauge:
-      desc: 磁盘剩余量，表示磁盘中未使用的空间量，是评估磁盘容量的关键指标。
+      desc: 磁盘使用率，表示磁盘空间的使用情况，是衡量磁盘存储利用率的指标
+    disk_free_average_gauge:
       name: 磁盘剩余量
-    data_storage_store_accessible_gauge:
+      desc: 磁盘剩余量，表示磁盘中未使用的空间量，是评估磁盘容量的关键指标
+    store_accessible_gauge:
       name: 存储连接状态
-      desc: 存储连接状态，表示存储设备的可连接性，是评估存储系统健康状态的指标。
+      desc: 存储连接状态，表示存储设备的可连接性，是评估存储系统健康状态的指标
   MSSQL:
     sqlserver_cpu_sqlserver_process_cpu_avg:
       name: MSSQL进程CPU使用率
@@ -2268,7 +2262,7 @@ monitor_object_metric_group:
     Threadpool: 线程池
     JMXselfMonitor: JMX 自监控信息
   DataStorage:
-    Default: 默认分组
+    DataStorage: 数据存储
   JVM:
     OS: 操作系统
     JMXselfMonitor: JMX自监控信息
