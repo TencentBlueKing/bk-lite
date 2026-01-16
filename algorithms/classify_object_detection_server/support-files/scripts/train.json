@@ -1,0 +1,38 @@
+{
+  "model": {
+    "type": "YOLOv11Detection",
+    "name": "yolov11_detection"
+  },
+  "hyperparams": {
+    "_comment": "核心训练超参数",
+    "model_name": "yolo11n.pt",
+    "epochs": 100,
+    "imgsz": 640,
+    "batch": 16,
+    "lr0": 0.01,
+    "optimizer": "SGD",
+    "device": "auto",
+    "amp": true,
+    "patience": 50,
+    
+    "_comment_tuning": "超参数优化配置（可选）",
+    "max_evals": 0,
+    "metric": "mAP50-95",
+    "search_space": {
+      "lr0": [0.001, 0.01, 0.05],
+      "batch": [8, 16, 32],
+      "imgsz": [416, 512, 640]
+    }
+  },
+  "preprocessing": {
+    "min_image_size": 32,
+    "allowed_extensions": [".jpg", ".jpeg", ".png", ".bmp"]
+  },
+  "feature_engineering": {
+    "_comment": "数据增强配置（YOLO自动处理，通常保持默认即可）",
+    "augmentation_enabled": true
+  },
+  "mlflow": {
+    "experiment_name": "object_detection_training"
+  }
+}
