@@ -215,87 +215,87 @@ monitor_object_metric:
       name: GPU风扇转速
       desc: 表示 GPU 风扇的平均转速百分比，用于辅助判断散热策略和硬件状态。
   JVM:
-    jvm_memorypool_usage_used_value:
-      desc: Java 虚拟机中内存池当前实际已使用的内存量，直观体现内存池使用程度
-      name: 内存池已使用内存
-    jvm_os_memory_swap_total_value:
-      name: 总交换空间
-      desc: 系统中交换空间的总容量大小，决定可扩展的虚拟内存上限
-    jvm_bufferpool_memoryused_value:
-      name: BufferPool 已用内存
-      desc: Java NIO 中 BufferPool 当前已使用的内存大小，反映资源池使用情况
-    jvm_threads_count_value:
-      name: 当前线程数
-      desc: Java 虚拟机当前正在运行的线程数量，实时反映线程活跃程度
-    jvm_threads_total_started_count_value:
-      desc: Java 虚拟机自启动以来总共创建并启动的线程数量，展示线程创建规模
-      name: 总线程数
     jmx_scrape_duration_seconds_gauge:
+      name: 抓取消耗时间
       desc: 最近一次的JMX监控数据采集耗时，以秒为单位，用于评估数据采集性能。
-      name: JMX 抓取消耗时间
+    jmx_scrape_error_gauge:
+      name: 抓取错误
+      desc: 标识 JMX 抓取过程中是否出现失败，非零值表示抓取失败
     jvm_memory_usage_init_value:
       name: 初始内存大小
       desc: Java 虚拟机启动时初始化分配的内存大小，反映内存初始配置
-    jvm_os_memory_swap_free_value:
-      name: 可用交换空间
-      desc: 系统当前可用的交换空间大小，用于在物理内存不足时临时存储数据
-    jvm_os_memory_physical_free_value:
-      name: 可用物理内存
-      desc: 系统当前可用的物理内存大小，体现系统剩余内存资源
-    jvm_os_processcputime_seconds_value:
-      desc: Java 虚拟机进程自启动以来消耗的 CPU 时间，衡量进程资源占用
-      name: 进程 CPU 时间
-    jvm_memorypool_usage_max_value:
-      name: 内存池最大使用量
-      desc: Java 虚拟机中内存池在运行过程中曾达到的最大内存使用量，可检测内存池压力
-    jvm_memorypool_usage_init_value:
-      desc: Java 虚拟机中内存池初始化分配的内存使用量，体现内存池初始状态
-      name: 内存池初始使用量
-    jvm_gc_collectiontime_seconds_value:
-      name: GC 收集总时间
-      desc: Java 虚拟机中垃圾回收操作累计消耗的总时间，用于评估 GC 性能
-    jmx_scrape_error_gauge:
-      desc: 标识 JMX 抓取过程中是否出现失败，非零值表示抓取失败
-      name: JMX 抓取错误
-    jvm_gc_collectioncount_value:
-      name: GC 收集总次数
-      desc: Java 虚拟机中垃圾回收操作的累计执行次数，反映 GC 活动频率
-    jvm_os_memory_committed_virtual_value:
-      name: 提交的虚拟内存
-      desc: Java 虚拟机已提交使用的虚拟内存大小，反映对虚拟内存资源的占用
-    jvm_threads_daemon_count_value:
-      desc: Java 虚拟机中当前处于活动状态的守护线程数量，守护线程用于服务其他线程
-      name: 守护线程数
     jvm_memory_usage_committed_value:
       name: 已提交内存大小
       desc: Java 虚拟机当前已提交给系统使用的内存大小，可用于评估内存资源占用
-    jvm_os_memory_physical_total_value:
-      desc: 系统中物理内存的总容量大小，是硬件配置的固定参数
-      name: 总物理内存
+    jvm_memory_usage_used_value:
+      name: 已使用内存大小
+      desc: Java 虚拟机当前实际已使用的内存量，直观体现内存使用情况
+    jvm_memory_usage_max_value:
+      name: 内存使用最大值
+      desc: Java 虚拟机在运行过程中内存使用曾达到的最大值，可用于检测内存压力和泄漏
+    jvm_threads_total_started_count_value:
+      name: 总启动线程数
+      desc: Java 虚拟机自启动以来总共创建并启动的线程数量，展示线程创建规模
+    jvm_threads_daemon_count_value:
+      name: 守护线程数
+      desc: Java 虚拟机中当前处于活动状态的守护线程数量，守护线程用于服务其他线程
     jvm_threads_peak_count_value:
       name: 峰值线程数
       desc: Java 虚拟机运行过程中线程数量达到的峰值，可辅助分析线程资源使用高峰
-    jvm_memory_usage_max_value:
-      name: JVM 内存使用最大值
-      desc: Java 虚拟机在运行过程中内存使用曾达到的最大值，可用于检测内存压力和泄漏
-    jvm_os_available_processors_value:
-      desc: 系统当前可用于执行线程的处理器核心数量，影响程序并行处理能力
-      name: 可用处理器数
-    jvm_bufferpool_totalcapacity_value:
-      name: BufferPool 总容量
-      desc: Java NIO 中 BufferPool 的总内存容量大小，展示资源池最大承载能力
+    jvm_threads_count_value:
+      name: 当前线程数
+      desc: Java 虚拟机当前正在运行的线程数量，实时反映线程活跃程度
     jvm_threads_current_user_time_value:
+      name: 线程用户时间
       desc: Java 虚拟机中当前线程执行用户代码所花费的 CPU 时间，用于分析线程性能
-      name: 当前线程用户时间
-    jvm_memory_usage_used_value:
-      desc: Java 虚拟机当前实际已使用的内存量，直观体现内存使用情况
-      name: 已使用内存大小
-    jvm_memorypool_usage_committed_value:
-      desc: Java 虚拟机中内存池当前已提交使用的内存量，展示内存池资源占用
-      name: 内存池提交内存使用量
+    jvm_os_memory_physical_free_value:
+      name: 可用物理内存
+      desc: 系统当前可用的物理内存大小，体现系统剩余内存资源
+    jvm_os_memory_physical_total_value:
+      name: 总物理内存
+      desc: 系统中物理内存的总容量大小，是硬件配置的固定参数
+    jvm_os_memory_swap_free_value:
+      name: 可用交换空间
+      desc: 系统当前可用的交换空间大小，用于在物理内存不足时临时存储数据
+    jvm_os_memory_swap_total_value:
+      name: 总交换空间
+      desc: 系统中交换空间的总容量大小，决定可扩展的虚拟内存上限
+    jvm_os_memory_committed_virtual_value:
+      name: 提交的虚拟内存
+      desc: Java 虚拟机已提交使用的虚拟内存大小，反映对虚拟内存资源的占用
+    jvm_os_available_processors_value:
+      name: 可用处理器数
+      desc: 系统当前可用于执行线程的处理器核心数量，影响程序并行处理能力
+    jvm_os_processcputime_seconds_value:
+      name: 进程 CPU 时间
+      desc: Java 虚拟机进程自启动以来消耗的 CPU 时间，衡量进程资源占用
     jvm_bufferpool_count_value:
       name: BufferPool 计数
       desc: Java NIO 中 BufferPool 的缓冲区对象数量，用于监控资源池规模
+    jvm_bufferpool_memoryused_value:
+      name: BufferPool 已用内存
+      desc: Java NIO 中 BufferPool 当前已使用的内存大小，反映资源池使用情况
+    jvm_bufferpool_totalcapacity_value:
+      name: BufferPool 总容量
+      desc: Java NIO 中 BufferPool 的总内存容量大小，展示资源池最大承载能力
+    jvm_gc_collectiontime_seconds_value:
+      name: GC 收集总时间
+      desc: Java 虚拟机中垃圾回收操作累计消耗的总时间，用于评估 GC 性能
+    jvm_gc_collectioncount_value:
+      name: GC 收集总次数
+      desc: Java 虚拟机中垃圾回收操作的累计执行次数，反映 GC 活动频率
+    jvm_memorypool_usage_init_value:
+      name: 内存池初始使用量
+      desc: Java 虚拟机中内存池初始化分配的内存使用量，体现内存池初始状态
+    jvm_memorypool_usage_committed_value:
+      name: 内存池提交内存使用量
+      desc: Java 虚拟机中内存池当前已提交使用的内存量，展示内存池资源占用
+    jvm_memorypool_usage_used_value:
+      name: 内存池已使用内存
+      desc: Java 虚拟机中内存池当前实际已使用的内存量，直观体现内存池使用程度
+    jvm_memorypool_usage_max_value:
+      name: 内存池最大使用量
+      desc: Java 虚拟机中内存池在运行过程中曾达到的最大内存使用量，可检测内存池压力
   Bastion Host:
     ifOutUcastPkts:
       name: 每秒发送单播数据包数

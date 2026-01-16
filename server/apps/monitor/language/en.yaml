@@ -215,114 +215,87 @@ monitor_object_metric:
       name: GPU Fan Speed
       desc: Represents the average GPU fan speed as a percentage, used to assess cooling behavior and hardware status.
   JVM:
-    jvm_memorypool_usage_used_value:
-      desc: The current actual memory usage of the memory pool in the Java Virtual
-        Machine, directly reflecting the usage level of the memory pool
-      name: MemoryPool Used
-    jvm_os_memory_swap_total_value:
-      name: Total Swap Space
-      desc: The total capacity of swap space in the system, determining the upper
-        limit of expandable virtual memory
-    jvm_bufferpool_memoryused_value:
-      name: BufferPool Memory Used
-      desc: The current size of memory used by the BufferPool in Java NIO, reflecting
-        the usage of the resource pool
-    jvm_threads_count_value:
-      name: JVM Current Threads Count
-      desc: The current number of running threads in the Java Virtual Machine, real-time
-        reflecting thread activity
-    jvm_threads_total_started_count_value:
-      desc: The total number of threads created and started by the Java Virtual Machine
-        since startup, showing the scale of thread creation
-      name: JVM Total Threads Started/sec
     jmx_scrape_duration_seconds_gauge:
-      desc: The duration of the most recent JMX monitoring data collection, measured
-        in seconds, is used to evaluate the performance of data collection.
-      name: JMX Scrape Duration
+      name: Scrape Duration
+      desc: The duration of the most recent JMX monitoring data collection, measured in seconds, is used to evaluate the performance of data collection.
+    jmx_scrape_error_gauge:
+      name: Scrape Error
+      desc: Indicates whether there is a failure during the JMX scraping process. A non-zero value indicates a failure.
     jvm_memory_usage_init_value:
-      name: JVM Memory Init
-      desc: The size of memory initialized and allocated when the Java Virtual Machine
-        starts, reflecting the initial memory configuration
-    jvm_os_memory_swap_free_value:
-      name: Free Swap Space
-      desc: The current available size of swap space in the system, used to temporarily
-        store data when physical memory is insufficient
+      name: Memory Init
+      desc: The size of memory initialized and allocated when the Java Virtual Machine starts, reflecting the initial memory configuration.
+    jvm_memory_usage_committed_value:
+      name: Memory Committed
+      desc: The current size of memory committed for use by the Java Virtual Machine, which can be used to assess memory resource occupancy.
+    jvm_memory_usage_used_value:
+      name: Memory Used
+      desc: The current actual amount of memory used by the Java Virtual Machine, directly reflecting the memory usage.
+    jvm_memory_usage_max_value:
+      name: Memory Usage Max
+      desc: The maximum amount of memory used by the Java Virtual Machine during operation, which can be used to detect memory pressure and leaks.
+    jvm_threads_total_started_count_value:
+      name: Total Threads Started
+      desc: The total number of threads created and started by the Java Virtual Machine since startup, showing the scale of thread creation.
+    jvm_threads_daemon_count_value:
+      name: Daemon Threads
+      desc: The current number of active daemon threads in the Java Virtual Machine. Daemon threads are used to serve other threads.
+    jvm_threads_peak_count_value:
+      name: Peak Threads
+      desc: The peak number of threads during the operation of the Java Virtual Machine, which can assist in analyzing peak thread resource usage.
+    jvm_threads_count_value:
+      name: Current Threads Count
+      desc: The current number of running threads in the Java Virtual Machine, real-time reflecting thread activity.
+    jvm_threads_current_user_time_value:
+      name: Thread User Time
+      desc: The CPU time spent by the current threads in the Java Virtual Machine executing user code, used to analyze thread performance.
     jvm_os_memory_physical_free_value:
       name: Free Physical Memory
-      desc: The current available size of physical memory in the system, reflecting
-        the remaining memory resources
-    jvm_os_processcputime_seconds_value:
-      desc: The CPU time consumed by the Java Virtual Machine process since startup,
-        measuring process resource occupancy
-      name: JVM Process CPU Time
-    jvm_memorypool_usage_max_value:
-      name: MemoryPool Max Usage
-      desc: The maximum memory usage ever reached by the memory pool during the operation
-        of the Java Virtual Machine, which can detect memory pool pressure
-    jvm_memorypool_usage_init_value:
-      desc: The initialized memory usage of the memory pool in the Java Virtual Machine,
-        reflecting the initial state of the memory pool
-      name: MemoryPool Init Usage
-    jvm_gc_collectiontime_seconds_value:
-      name: GC Collection Time
-      desc: The total cumulative time consumed by garbage collection operations in
-        the Java Virtual Machine, used to evaluate GC performance
-    jmx_scrape_error_gauge:
-      desc: Indicates whether there is a failure during the JMX scraping process.
-        A non-zero value indicates a failure
-      name: JMX Scrape Error
-    jvm_gc_collectioncount_value:
-      name: GC Collection Count
-      desc: The cumulative number of garbage collection operations in the Java Virtual
-        Machine, reflecting the frequency of GC activities
+      desc: The current available size of physical memory in the system, reflecting the remaining memory resources.
+    jvm_os_memory_physical_total_value:
+      name: Total Physical Memory
+      desc: The total capacity of physical memory in the system, which is a fixed parameter of the hardware configuration.
+    jvm_os_memory_swap_free_value:
+      name: Free Swap Space
+      desc: The current available size of swap space in the system, used to temporarily store data when physical memory is insufficient.
+    jvm_os_memory_swap_total_value:
+      name: Total Swap Space
+      desc: The total capacity of swap space in the system, determining the upper limit of expandable virtual memory.
     jvm_os_memory_committed_virtual_value:
       name: Committed Virtual Memory
-      desc: The size of virtual memory committed for use by the Java Virtual Machine,
-        reflecting the occupancy of virtual memory resources
-    jvm_threads_daemon_count_value:
-      desc: The current number of active daemon threads in the Java Virtual Machine.
-        Daemon threads are used to serve other threads
-      name: JVM Daemon Threads
-    jvm_memory_usage_committed_value:
-      name: JVM Memory Committed
-      desc: The current size of memory committed for use by the Java Virtual Machine,
-        which can be used to assess memory resource occupancy
-    jvm_os_memory_physical_total_value:
-      desc: The total capacity of physical memory in the system, which is a fixed
-        parameter of the hardware configuration
-      name: Total Physical Memory
-    jvm_threads_peak_count_value:
-      name: JVM Peak Threads
-      desc: The peak number of threads during the operation of the Java Virtual Machine,
-        which can assist in analyzing peak thread resource usage
-    jvm_memory_usage_max_value:
-      name: JVM Memory Usage Max
-      desc: The maximum amount of memory used by the Java Virtual Machine during operation,
-        which can be used to detect memory pressure and leaks
+      desc: The size of virtual memory committed for use by the Java Virtual Machine, reflecting the occupancy of virtual memory resources.
     jvm_os_available_processors_value:
-      desc: The current number of processor cores available for executing threads
-        in the system, affecting the program's parallel processing ability
       name: Available Processors
-    jvm_bufferpool_totalcapacity_value:
-      name: BufferPool Total Capacity
-      desc: The total memory capacity of the BufferPool in Java NIO, showing the maximum
-        carrying capacity of the resource pool
-    jvm_threads_current_user_time_value:
-      desc: The CPU time spent by the current threads in the Java Virtual Machine
-        executing user code, used to analyze thread performance
-      name: JVM Thread User Time
-    jvm_memory_usage_used_value:
-      desc: The current actual amount of memory used by the Java Virtual Machine,
-        directly reflecting the memory usage
-      name: JVM Memory Used
-    jvm_memorypool_usage_committed_value:
-      desc: The current committed memory usage of the memory pool in the Java Virtual
-        Machine, showing the occupancy of memory pool resources
-      name: MemoryPool Committed
+      desc: The current number of processor cores available for executing threads in the system, affecting the program's parallel processing ability.
+    jvm_os_processcputime_seconds_value:
+      name: Process CPU Time
+      desc: The CPU time consumed by the Java Virtual Machine process since startup, measuring process resource occupancy.
     jvm_bufferpool_count_value:
       name: BufferPool Count
-      desc: The number of buffer objects in the BufferPool of Java NIO, used to monitor
-        the scale of the resource pool
+      desc: The number of buffer objects in the BufferPool of Java NIO, used to monitor the scale of the resource pool.
+    jvm_bufferpool_memoryused_value:
+      name: BufferPool Memory Used
+      desc: The current size of memory used by the BufferPool in Java NIO, reflecting the usage of the resource pool.
+    jvm_bufferpool_totalcapacity_value:
+      name: BufferPool Total Capacity
+      desc: The total memory capacity of the BufferPool in Java NIO, showing the maximum carrying capacity of the resource pool.
+    jvm_gc_collectiontime_seconds_value:
+      name: GC Collection Time
+      desc: The total cumulative time consumed by garbage collection operations in the Java Virtual Machine, used to evaluate GC performance.
+    jvm_gc_collectioncount_value:
+      name: GC Collection Count
+      desc: The cumulative number of garbage collection operations in the Java Virtual Machine, reflecting the frequency of GC activities.
+    jvm_memorypool_usage_init_value:
+      name: MemoryPool Init Usage
+      desc: The initialized memory usage of the memory pool in the Java Virtual Machine, reflecting the initial state of the memory pool.
+    jvm_memorypool_usage_committed_value:
+      name: MemoryPool Committed
+      desc: The current committed memory usage of the memory pool in the Java Virtual Machine, showing the occupancy of memory pool resources.
+    jvm_memorypool_usage_used_value:
+      name: MemoryPool Used
+      desc: The current actual memory usage of the memory pool in the Java Virtual Machine, directly reflecting the usage level of the memory pool.
+    jvm_memorypool_usage_max_value:
+      name: MemoryPool Max Usage
+      desc: The maximum memory usage ever reached by the memory pool during the operation of the Java Virtual Machine, which can detect memory pool pressure.
   Bastion Host:
     ifOutUcastPkts:
       name: Outgoing Unicast Packets per Second
