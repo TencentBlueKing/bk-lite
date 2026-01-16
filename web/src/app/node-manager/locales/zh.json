@@ -142,7 +142,7 @@
         "hostedProgramList": "托管组件列表",
         "nodeType": "节点类型",
         "commandCopied": "命令已复制",
-        "commandCopiedDesc": "此命令专用于当前主机，请在其 PowerShell(管理员)窗口中粘贴执行。",
+        "commandCopiedDesc": "请将安装参数拷贝到安装输入框",
         "linuxCommandCopiedDesc": "此命令专用于当前主机，请在该主机中粘贴执行。",
         "installError": "安装失败",
         "controllerVersionTip": "可升级新版本",
@@ -165,7 +165,18 @@
         "confirmFinishContent1": "当前有",
         "statusCompleted": "已完成",
         "retrySuccess": "重试成功",
-        "copyInstallCommand": "复制安装命令"
+        "copyInstallCommand": "复制安装命令",
+        "operationGuidance": "操作指引",
+        "downloadPackageStep": "下载安装包",
+        "clickDownloadPackage": "点击下载安装包",
+        "uploadPackageStep": "上传安装包",
+        "uploadPackageDesc": "将安装包上传至目标主机节点的任意目录。",
+        "uploadPackageNote": "提示：本安装包可在任意符合条件的Windows主机上运行安装。",
+        "runPackageStep": "运行安装包",
+        "runPackageDesc": "以管理员身份运行安装包，并将安装参数拷贝到安装输入框。",
+        "installParams": "安装参数",
+        "importantNote": "重要提示",
+        "importantNoteDesc": "安装参数与主机严格绑定，必须确保参数与当前主机信息匹配，禁止交叉混用。"
       },
       "editform": {
         "Introduction": "简介",
