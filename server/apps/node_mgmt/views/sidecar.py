@@ -1,5 +1,5 @@
 from rest_framework.decorators import action
-from django.http import HttpResponse
+from django.http import HttpResponse, JsonResponse
 import requests
 
 from apps.core.utils.open_base import OpenAPIViewSet
@@ -110,8 +110,11 @@ class OpenSidecarViewSet(OpenAPIViewSet):
         check_token_auth(node_id, request)
         return Sidecar.get_collectors(request)
 
-    @action(detail=False, methods=["get"],
-            url_path="node/sidecar/configurations/render/(?P<node_id>.+?)/(?P<configuration_id>.+?)")
+    @action(
+        detail=False,
+        methods=["get"],
+        url_path="node/sidecar/configurations/render/(?P<node_id>.+?)/(?P<configuration_id>.+?)",
+    )
     def configuration(self, request, node_id, configuration_id):
         """
         获取渲染后的采集器配置
@@ -169,8 +172,11 @@ class OpenSidecarViewSet(OpenAPIViewSet):
         check_token_auth(node_id, request)
         return Sidecar.get_node_config(request, node_id, configuration_id)
 
-    @action(detail=False, methods=["get"],
-            url_path="node/sidecar/env_config/(?P<node_id>.+?)/(?P<configuration_id>.+?)")
+    @action(
+        detail=False,
+        methods=["get"],
+        url_path="node/sidecar/env_config/(?P<node_id>.+?)/(?P<configuration_id>.+?)",
+    )
     def configuration_env(self, request, node_id, configuration_id):
         """
         获取采集器配置的加密环境变量
@@ -318,7 +324,9 @@ class OpenSidecarViewSet(OpenAPIViewSet):
         check_token_auth(node_id, request)
         return Sidecar.update_node_client(request, node_id)
 
-    @action(detail=False, methods=["get"], url_path="download/fusion_collector/(?P<pk>.+?)")
+    @action(
+        detail=False, methods=["get"], url_path="download/fusion_collector/(?P<pk>.+?)"
+    )
     def download_fusion_collector(self, request, pk=None):
         """
         下载 FusionCollector 安装包（需要 token 验证）
@@ -361,7 +369,9 @@ class OpenSidecarViewSet(OpenAPIViewSet):
             raise BaseAppException("Missing download token")
 
         # 验证 token 并获取参数
-        token_data = InstallTokenService.validate_and_get_download_token_data(download_token)
+        token_data = InstallTokenService.validate_and_get_download_token_data(
+            download_token
+        )
 
         # 验证 package_id 是否匹配
         if token_data["package_id"] != pk:
@@ -431,7 +441,9 @@ class OpenSidecarViewSet(OpenAPIViewSet):
         sidecar_token = generate_node_token(node_id, ip, user)
 
         # 生成下载 token（10分钟有效，最多使用3次）
-        download_token = InstallTokenService.generate_download_token(package_id, node_id)
+        download_token = InstallTokenService.generate_download_token(
+            package_id, node_id
+        )
 
         # 获取服务器地址和 webhook URL
         objs = SidecarEnv.objects.filter(cloud_region=cloud_region_id)
@@ -444,10 +456,14 @@ class OpenSidecarViewSet(OpenAPIViewSet):
                 webhook_url = obj.value
 
         if not server_url:
-            raise BaseAppException(f"Missing NODE_SERVER_URL in cloud region {cloud_region_id}")
+            raise BaseAppException(
+                f"Missing NODE_SERVER_URL in cloud region {cloud_region_id}"
+            )
 
         if not webhook_url:
-            raise BaseAppException(f"Missing WEBHOOK_SERVER_URL in cloud_region {cloud_region_id}")
+            raise BaseAppException(
+                f"Missing WEBHOOK_SERVER_URL in cloud_region {cloud_region_id}"
+            )
 
         # 格式化组织列表
         groups = ",".join([str(org_id) for org_id in organizations])
@@ -467,7 +483,7 @@ class OpenSidecarViewSet(OpenAPIViewSet):
             "zone_id": cloud_region_id,
             "group_id": groups,
             "file_url": file_url,
-            "node_name": node_name
+            "node_name": node_name,
         }
 
         try:
@@ -475,9 +491,9 @@ class OpenSidecarViewSet(OpenAPIViewSet):
             response = requests.post(
                 webhook_api_url,
                 json=webhook_params,
-                headers={'Content-Type': 'application/json'},
+                headers={"Content-Type": "application/json"},
                 timeout=CloudRegionServiceConstants.WEBHOOK_REQUEST_TIMEOUT,
-                verify=False  # 跳过 SSL 证书验证（内网环境）
+                verify=False,  # 跳过 SSL 证书验证（内网环境）
             )
 
             # 检查响应状态
@@ -497,11 +513,15 @@ class OpenSidecarViewSet(OpenAPIViewSet):
                 install_script = response.text
 
             if not install_script:
-                raise BaseAppException("Invalid response from webhook API: empty or missing script")
+                raise BaseAppException(
+                    "Invalid response from webhook API: empty or missing script"
+                )
 
             # 直接返回纯文本脚本（text/plain），添加剩余使用次数到响应头
-            http_response = HttpResponse(install_script, content_type="text/plain; charset=utf-8")
-            http_response['X-Token-Remaining-Usage'] = str(remaining_usage)
+            http_response = HttpResponse(
+                install_script, content_type="text/plain; charset=utf-8"
+            )
+            http_response["X-Token-Remaining-Usage"] = str(remaining_usage)
             return http_response
 
         except requests.Timeout:
@@ -510,3 +530,72 @@ class OpenSidecarViewSet(OpenAPIViewSet):
             raise BaseAppException(f"Webhook API request failed: {str(e)}")
         except Exception as e:
             raise BaseAppException(f"Failed to generate install script: {str(e)}")
+
+    @action(detail=False, methods=["GET"], url_path="installer/windows_config")
+    def windows_install_config(self, request):
+        """
+        获取 Windows 安装配置信息（使用限时令牌）
+
+        API: GET /installer/windows_config?token={uuid}
+
+        Response (200 OK):
+            {
+                "api_token": "xxx",
+                "download_url": "xxx",
+                "group_id": "1",
+                "install_dir": "C:\\fusion-collectors",
+                "node_id": "xxx",
+                "node_name": "xxx",
+                "server_url": "xxx",
+                "zone_id": "1"
+            }
+        """
+        token = request.query_params.get("token")
+        if not token:
+            raise BaseAppException("Missing token parameter")
+
+        token_data = InstallTokenService.validate_and_get_token_data(token)
+
+        node_id = token_data["node_id"]
+        ip = token_data["ip"]
+        user = token_data["user"]
+        package_id = token_data["package_id"]
+        cloud_region_id = token_data["cloud_region_id"]
+        organizations = token_data["organizations"]
+        node_name = token_data["node_name"]
+        remaining_usage = token_data["remaining_usage"]
+
+        sidecar_token = generate_node_token(node_id, ip, user)
+        download_token = InstallTokenService.generate_download_token(
+            package_id, node_id
+        )
+
+        objs = SidecarEnv.objects.filter(cloud_region=cloud_region_id)
+        server_url = None
+        for obj in objs:
+            if obj.key == NodeConstants.SERVER_URL_KEY:
+                server_url = obj.value
+                break
+
+        if not server_url:
+            raise BaseAppException(
+                f"Missing NODE_SERVER_URL in cloud region {cloud_region_id}"
+            )
+
+        groups = ",".join([str(org_id) for org_id in organizations])
+        download_url = f"{server_url.rstrip('/')}/api/v1/node_mgmt/open_api/download/fusion_collector/{package_id}?token={download_token}"
+
+        config = {
+            "api_token": sidecar_token,
+            "download_url": download_url,
+            "group_id": groups,
+            "install_dir": "C:\\fusion-collectors",
+            "node_id": node_id,
+            "node_name": node_name,
+            "server_url": f"{server_url.rstrip('/')}/api/v1/node_mgmt/open_api/node",
+            "zone_id": str(cloud_region_id),
+        }
+
+        response = JsonResponse(config)
+        response["X-Token-Remaining-Usage"] = str(remaining_usage)
+        return response
