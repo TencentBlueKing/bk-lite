@@ -17,7 +17,7 @@ dependencies = [
     "better-exceptions==0.3.3",
     "celery==5.4.0",
     "celery-singleton==0.3.1",
-    "django==4.2.22",
+    "django==4.2.27",
     "django-celery-beat==2.6.0",
     "django-celery-results==2.6.0",
     "django-comment-migrate==0.1.7",
