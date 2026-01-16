@@ -215,114 +215,87 @@ monitor_object_metric:
       name: GPU Fan Speed
       desc: Represents the average GPU fan speed as a percentage, used to assess cooling behavior and hardware status.
   JVM:
-    jvm_memorypool_usage_used_value:
-      desc: The current actual memory usage of the memory pool in the Java Virtual
-        Machine, directly reflecting the usage level of the memory pool
-      name: MemoryPool Used
-    jvm_os_memory_swap_total_value:
-      name: Total Swap Space
-      desc: The total capacity of swap space in the system, determining the upper
-        limit of expandable virtual memory
-    jvm_bufferpool_memoryused_value:
-      name: BufferPool Memory Used
-      desc: The current size of memory used by the BufferPool in Java NIO, reflecting
-        the usage of the resource pool
-    jvm_threads_count_value:
-      name: JVM Current Threads Count
-      desc: The current number of running threads in the Java Virtual Machine, real-time
-        reflecting thread activity
-    jvm_threads_total_started_count_value:
-      desc: The total number of threads created and started by the Java Virtual Machine
-        since startup, showing the scale of thread creation
-      name: JVM Total Threads Started/sec
     jmx_scrape_duration_seconds_gauge:
-      desc: The duration of the most recent JMX monitoring data collection, measured
-        in seconds, is used to evaluate the performance of data collection.
-      name: JMX Scrape Duration
+      name: Scrape Duration
+      desc: The duration of the most recent JMX monitoring data collection, measured in seconds, is used to evaluate the performance of data collection.
+    jmx_scrape_error_gauge:
+      name: Scrape Error
+      desc: Indicates whether there is a failure during the JMX scraping process. A non-zero value indicates a failure.
     jvm_memory_usage_init_value:
-      name: JVM Memory Init
-      desc: The size of memory initialized and allocated when the Java Virtual Machine
-        starts, reflecting the initial memory configuration
-    jvm_os_memory_swap_free_value:
-      name: Free Swap Space
-      desc: The current available size of swap space in the system, used to temporarily
-        store data when physical memory is insufficient
+      name: Memory Init
+      desc: The size of memory initialized and allocated when the Java Virtual Machine starts, reflecting the initial memory configuration.
+    jvm_memory_usage_committed_value:
+      name: Memory Committed
+      desc: The current size of memory committed for use by the Java Virtual Machine, which can be used to assess memory resource occupancy.
+    jvm_memory_usage_used_value:
+      name: Memory Used
+      desc: The current actual amount of memory used by the Java Virtual Machine, directly reflecting the memory usage.
+    jvm_memory_usage_max_value:
+      name: Memory Usage Max
+      desc: The maximum amount of memory used by the Java Virtual Machine during operation, which can be used to detect memory pressure and leaks.
+    jvm_threads_total_started_count_value:
+      name: Total Threads Started
+      desc: The total number of threads created and started by the Java Virtual Machine since startup, showing the scale of thread creation.
+    jvm_threads_daemon_count_value:
+      name: Daemon Threads
+      desc: The current number of active daemon threads in the Java Virtual Machine. Daemon threads are used to serve other threads.
+    jvm_threads_peak_count_value:
+      name: Peak Threads
+      desc: The peak number of threads during the operation of the Java Virtual Machine, which can assist in analyzing peak thread resource usage.
+    jvm_threads_count_value:
+      name: Current Threads Count
+      desc: The current number of running threads in the Java Virtual Machine, real-time reflecting thread activity.
+    jvm_threads_current_user_time_value:
+      name: Thread User Time
+      desc: The CPU time spent by the current threads in the Java Virtual Machine executing user code, used to analyze thread performance.
     jvm_os_memory_physical_free_value:
       name: Free Physical Memory
-      desc: The current available size of physical memory in the system, reflecting
-        the remaining memory resources
-    jvm_os_processcputime_seconds_value:
-      desc: The CPU time consumed by the Java Virtual Machine process since startup,
-        measuring process resource occupancy
-      name: JVM Process CPU Time
-    jvm_memorypool_usage_max_value:
-      name: MemoryPool Max Usage
-      desc: The maximum memory usage ever reached by the memory pool during the operation
-        of the Java Virtual Machine, which can detect memory pool pressure
-    jvm_memorypool_usage_init_value:
-      desc: The initialized memory usage of the memory pool in the Java Virtual Machine,
-        reflecting the initial state of the memory pool
-      name: MemoryPool Init Usage
-    jvm_gc_collectiontime_seconds_value:
-      name: GC Collection Time
-      desc: The total cumulative time consumed by garbage collection operations in
-        the Java Virtual Machine, used to evaluate GC performance
-    jmx_scrape_error_gauge:
-      desc: Indicates whether there is a failure during the JMX scraping process.
-        A non-zero value indicates a failure
-      name: JMX Scrape Error
-    jvm_gc_collectioncount_value:
-      name: GC Collection Count
-      desc: The cumulative number of garbage collection operations in the Java Virtual
-        Machine, reflecting the frequency of GC activities
+      desc: The current available size of physical memory in the system, reflecting the remaining memory resources.
+    jvm_os_memory_physical_total_value:
+      name: Total Physical Memory
+      desc: The total capacity of physical memory in the system, which is a fixed parameter of the hardware configuration.
+    jvm_os_memory_swap_free_value:
+      name: Free Swap Space
+      desc: The current available size of swap space in the system, used to temporarily store data when physical memory is insufficient.
+    jvm_os_memory_swap_total_value:
+      name: Total Swap Space
+      desc: The total capacity of swap space in the system, determining the upper limit of expandable virtual memory.
     jvm_os_memory_committed_virtual_value:
       name: Committed Virtual Memory
-      desc: The size of virtual memory committed for use by the Java Virtual Machine,
-        reflecting the occupancy of virtual memory resources
-    jvm_threads_daemon_count_value:
-      desc: The current number of active daemon threads in the Java Virtual Machine.
-        Daemon threads are used to serve other threads
-      name: JVM Daemon Threads
-    jvm_memory_usage_committed_value:
-      name: JVM Memory Committed
-      desc: The current size of memory committed for use by the Java Virtual Machine,
-        which can be used to assess memory resource occupancy
-    jvm_os_memory_physical_total_value:
-      desc: The total capacity of physical memory in the system, which is a fixed
-        parameter of the hardware configuration
-      name: Total Physical Memory
-    jvm_threads_peak_count_value:
-      name: JVM Peak Threads
-      desc: The peak number of threads during the operation of the Java Virtual Machine,
-        which can assist in analyzing peak thread resource usage
-    jvm_memory_usage_max_value:
-      name: JVM Memory Usage Max
-      desc: The maximum amount of memory used by the Java Virtual Machine during operation,
-        which can be used to detect memory pressure and leaks
+      desc: The size of virtual memory committed for use by the Java Virtual Machine, reflecting the occupancy of virtual memory resources.
     jvm_os_available_processors_value:
-      desc: The current number of processor cores available for executing threads
-        in the system, affecting the program's parallel processing ability
       name: Available Processors
-    jvm_bufferpool_totalcapacity_value:
-      name: BufferPool Total Capacity
-      desc: The total memory capacity of the BufferPool in Java NIO, showing the maximum
-        carrying capacity of the resource pool
-    jvm_threads_current_user_time_value:
-      desc: The CPU time spent by the current threads in the Java Virtual Machine
-        executing user code, used to analyze thread performance
-      name: JVM Thread User Time
-    jvm_memory_usage_used_value:
-      desc: The current actual amount of memory used by the Java Virtual Machine,
-        directly reflecting the memory usage
-      name: JVM Memory Used
-    jvm_memorypool_usage_committed_value:
-      desc: The current committed memory usage of the memory pool in the Java Virtual
-        Machine, showing the occupancy of memory pool resources
-      name: MemoryPool Committed
+      desc: The current number of processor cores available for executing threads in the system, affecting the program's parallel processing ability.
+    jvm_os_processcputime_seconds_value:
+      name: Process CPU Time
+      desc: The CPU time consumed by the Java Virtual Machine process since startup, measuring process resource occupancy.
     jvm_bufferpool_count_value:
       name: BufferPool Count
-      desc: The number of buffer objects in the BufferPool of Java NIO, used to monitor
-        the scale of the resource pool
+      desc: The number of buffer objects in the BufferPool of Java NIO, used to monitor the scale of the resource pool.
+    jvm_bufferpool_memoryused_value:
+      name: BufferPool Memory Used
+      desc: The current size of memory used by the BufferPool in Java NIO, reflecting the usage of the resource pool.
+    jvm_bufferpool_totalcapacity_value:
+      name: BufferPool Total Capacity
+      desc: The total memory capacity of the BufferPool in Java NIO, showing the maximum carrying capacity of the resource pool.
+    jvm_gc_collectiontime_seconds_value:
+      name: GC Collection Time
+      desc: The total cumulative time consumed by garbage collection operations in the Java Virtual Machine, used to evaluate GC performance.
+    jvm_gc_collectioncount_value:
+      name: GC Collection Count
+      desc: The cumulative number of garbage collection operations in the Java Virtual Machine, reflecting the frequency of GC activities.
+    jvm_memorypool_usage_init_value:
+      name: MemoryPool Init Usage
+      desc: The initialized memory usage of the memory pool in the Java Virtual Machine, reflecting the initial state of the memory pool.
+    jvm_memorypool_usage_committed_value:
+      name: MemoryPool Committed
+      desc: The current committed memory usage of the memory pool in the Java Virtual Machine, showing the occupancy of memory pool resources.
+    jvm_memorypool_usage_used_value:
+      name: MemoryPool Used
+      desc: The current actual memory usage of the memory pool in the Java Virtual Machine, directly reflecting the usage level of the memory pool.
+    jvm_memorypool_usage_max_value:
+      name: MemoryPool Max Usage
+      desc: The maximum memory usage ever reached by the memory pool during the operation of the Java Virtual Machine, which can detect memory pool pressure.
   Bastion Host:
     ifOutUcastPkts:
       name: Outgoing Unicast Packets per Second
@@ -406,198 +379,106 @@ monitor_object_metric:
         is essential for identifying transmission issues and ensuring data integrity.
       name: Outgoing Error Packets Rate
   Hardware Server:
-    ifInDiscards:
-      name: Incoming Discards Rate
-      desc: This metric represents the average rate of incoming discarded packets
-        over the past 5 minutes, measured in packets per second. Packet discards may
-        indicate network congestion or resource shortages, and monitoring this metric
-        can help administrators optimize network performance.
-    ifAdminStatus:
-      desc: This metric indicates the administrative status of the network switch
-        interface. It serves to indicate whether the interface is enabled (up) or
-        disabled (down) by an administrator, along with other states such as testing
-        or unavailable. This information is vital for network management and troubleshooting.
-      name: Interface Administrative Status
-    ifInUcastPkts:
-      name: Incoming Unicast Packets Rate
-      desc: This metric indicates the average rate of incoming unicast packets over
-        the past 5 minutes, measured in packets per second. Monitoring unicast packets
-        is crucial for assessing interface utilization and traffic load.
-    ifOutOctets:
-      name: Interface Outgoing Traffic Rate
-      desc: This metric calculates the average rate of bytes sent over the past 5
-        minutes, measured in megabytes (MB). Monitoring outgoing traffic is crucial
-        for ensuring data transmission quality and optimizing network performance.
-    iftotalInOctets:
-      desc: This metric indicates the average rate of total bytes received by the
-        entire device over the past 5 minutes, measured in megabytes per second (MB/s).
-        By summing the incoming byte counts from multiple interfaces, this metric
-        helps administrators obtain an overview of the device's incoming traffic,
-        supporting overall traffic monitoring and capacity planning.
-      name: Device Total Incoming Traffic Rate
-    ifOutUcastPkts:
-      desc: This metric calculates the average rate of outgoing unicast packets over
-        the past 5 minutes, measured in packets per second. By monitoring the number
-        of unicast packets, administrators can assess the transmission performance
-        of the interface and the usage of traffic.
-      name: Outgoing Unicast Packets Rate (per second)
-    ifInOctets:
-      name: Interface Incoming Traffic Rate
-      desc: This metric indicates the average rate of bytes received over the past
-        5 minutes, converted to megabytes (MB). Monitoring byte traffic helps evaluate
-        the load on the interface and bandwidth usage.
-    ifInErrors:
+    snmp_uptime:
+      name: System Uptime
+      desc: This metric indicates the uptime of the device since the last restart, measured in days. By monitoring the uptime, network administrators can understand the stability and reliability of the device and identify potential reboot or failure issues.
+    interface_ifAdminStatus:
+      name: Interface Admin Status
+      desc: This metric indicates the administrative status of the network switch interface. It serves to indicate whether the interface is enabled (up) or disabled (down) by an administrator, along with other states such as testing or not present. This information is vital for network management and troubleshooting.
+    interface_ifOperStatus:
+      name: Interface Oper Status
+      desc: This metric reflects the actual operational status of the network switch interface, indicating whether the interface is operational. Unlike the administrative status, the operational status shows whether the interface can successfully receive and send traffic, which is crucial for monitoring network health.
+    interface_ifSpeed:
+      name: Interface Bandwidth
+      desc: This metric indicates the maximum data transmission speed supported by the network interface, measured in bits per second. Understanding the maximum speed of the interface helps administrators optimize traffic and utilize network resources effectively.
+    interface_ifInErrors:
       name: Incoming Errors Rate
-      desc: This metric calculates the average rate of incoming error packets over
-        the past 5 minutes, measured in packets per second. Monitoring incoming errors
-        allows administrators to detect potential issues, such as physical connection
-        faults or configuration errors, in a timely manner.
+      desc: This metric calculates the average rate of incoming error packets over the past 5 minutes, measured in packets per second. Monitoring incoming errors allows administrators to detect potential issues, such as physical connection faults or configuration errors, in a timely manner.
+    interface_ifOutErrors:
+      name: Outgoing Errors Rate
+      desc: This metric calculates the average rate of outgoing error packets over the past 5 minutes, measured in packets per second. Monitoring outgoing errors is essential for identifying transmission issues and ensuring data integrity.
+    interface_ifInDiscards:
+      name: Incoming Discards Rate
+      desc: This metric represents the average rate of incoming discarded packets over the past 5 minutes, measured in packets per second. Packet discards may indicate network congestion or resource shortages, and monitoring this metric can help administrators optimize network performance.
+    interface_ifOutDiscards:
+      name: Outgoing Discards Rate
+      desc: This metric calculates the average rate of outgoing discarded packets over the past 5 minutes, measured in packets per second. Monitoring outgoing discards can help identify network transmission issues and misconfigurations.
+    interface_ifInUcastPkts:
+      name: Incoming Unicast Packets Rate
+      desc: This metric indicates the average rate of incoming unicast packets over the past 5 minutes, measured in packets per second. Monitoring unicast packets is crucial for assessing interface utilization and traffic load.
+    interface_ifOutUcastPkts:
+      name: Outgoing Unicast Packets Rate
+      desc: This metric calculates the average rate of outgoing unicast packets over the past 5 minutes, measured in packets per second. By monitoring the number of unicast packets, administrators can assess the transmission performance of the interface and the usage of traffic.
+    interface_ifInOctets:
+      name: Interface Incoming Traffic Rate
+      desc: This metric indicates the average rate of bytes received over the past 5 minutes, measured in bytes per second. Monitoring byte traffic helps evaluate the load on the interface and bandwidth usage.
+    interface_ifOutOctets:
+      name: Interface Outgoing Traffic Rate
+      desc: This metric calculates the average rate of bytes sent over the past 5 minutes, measured in bytes per second. Monitoring outgoing traffic is crucial for ensuring data transmission quality and optimizing network performance.
+    device_total_incoming_traffic:
+      name: Device Total Incoming Traffic Rate
+      desc: This metric indicates the average rate of total bytes received by the entire device over the past 5 minutes, measured in bytes per second. By summing the incoming byte counts from multiple interfaces, this metric helps administrators obtain an overview of the device's incoming traffic, supporting overall traffic monitoring and capacity planning.
+    device_total_outgoing_traffic:
+      name: Device Total Outgoing Traffic Rate
+      desc: This metric represents the average rate of total bytes sent by the entire device over the past 5 minutes, measured in bytes per second. By summing the outgoing byte counts from multiple interfaces, this metric allows administrators to comprehensively assess the sending performance of the entire system, enabling more effective traffic management and optimization.
     ipmi_chassis_power_state:
       name: Power State
-      desc: The power state indicator is used to monitor if the device is powered
-        on. Its value can indicate whether the power is on or off. It is mainly used
-        for remote management and monitoring of the device's power state.
+      desc: The power state indicator is used to monitor if the device is powered on. Its value can indicate whether the power is on or off. It is mainly used for remote management and monitoring of the device's power state.
     ipmi_fan_speed_rpm:
-      desc: The fan speed, measured in revolutions per minute (RPM), monitors the
-        operational status of the device fans. Efficient fan operation is key to maintaining
-        device temperature. It helps prevent overheating and ensures the device's
-        stable long-term operation.
       name: Fan Speed
+      desc: The fan speed, measured in revolutions per minute (RPM), monitors the operational status of the device fans. Efficient fan operation is key to maintaining device temperature. It helps prevent overheating and ensures the device's stable long-term operation.
     ipmi_temperature_celsius:
-      desc: The temperature indicator measured in degrees Celsius monitors the internal
-        temperature of the device. Monitoring temperature prevents heat accumulation
-        and avoids device overheating. It is crucial for maintaining system stability
-        and longevity.
       name: Temperature
-    ifOperStatus:
-      desc: This metric reflects the actual operational status of the network switch
-        interface, indicating whether the interface is operational. Unlike the administrative
-        status, the operational status shows whether the interface can successfully
-        receive and send traffic, which is crucial for monitoring network health.
-      name: Interface Operational Status
-    iftotalOutOctets:
-      name: Device Total Outgoing Traffic Rate
-      desc: This metric represents the average rate of total bytes sent by the entire
-        device over the past 5 minutes, measured in megabytes per second (MB/s). By
-        summing the outgoing byte counts from multiple interfaces, this metric allows
-        administrators to comprehensively assess the sending performance of the entire
-        system, enabling more effective traffic management and optimization.
-    ifOutErrors:
-      name: Outgoing Errors Rate
-      desc: This metric calculates the average rate of outgoing error packets over
-        the past 5 minutes, measured in packets per second. Monitoring outgoing errors
-        is essential for identifying transmission issues and ensuring data integrity.
-    sysUpTime:
-      desc: This metric indicates the uptime of the device since the last restart,
-        measured in days. By monitoring the uptime, network administrators can understand
-        the stability and reliability of the device and identify potential reboot
-        or failure issues.
-      name: System Uptime
+      desc: The temperature indicator measured in degrees Celsius monitors the internal temperature of the device. Monitoring temperature prevents heat accumulation and avoids device overheating. It is crucial for maintaining system stability and longevity.
     ipmi_voltage_volts:
       name: Voltage
-      desc: The voltage indicator measured in volts monitors the voltage levels of
-        different power rails within the device. Stable voltage supply is crucial
-        for the reliability of the device. This indicator helps quickly identify electrical
-        issues, ensuring normal operation.
+      desc: The voltage indicator measured in volts monitors the voltage levels of different power rails within the device. Stable voltage supply is crucial for the reliability of the device. This indicator helps quickly identify electrical issues, ensuring normal operation.
     ipmi_power_watts:
-      desc: The power indicator is measured in watts and reflects the current power
-        consumption of the device. This indicator helps evaluate the device's energy
-        efficiency and power consumption trends. It facilitates the implementation
-        of energy-saving policies and resource optimization.
       name: Power Consumption
-    ifHighSpeed:
-      name: Interface Bandwidth
-      desc: This metric indicates the maximum data transmission speed supported by
-        the network interface, usually measured in Mbps. Understanding the maximum
-        speed of the interface helps administrators optimize traffic and utilize network
-        resources effectively.
-    ifOutDiscards:
-      name: Outgoing Discards Rate
-      desc: This metric calculates the average rate of outgoing discarded packets
-        over the past 5 minutes, measured in packets per second. Monitoring outgoing
-        discards can help identify network transmission issues and misconfigurations.
+      desc: The power indicator is measured in watts and reflects the current power consumption of the device. This indicator helps evaluate the device's energy efficiency and power consumption trends. It facilitates the implementation of energy-saving policies and resource optimization.
   Loadbalance:
-    ifOutErrors:
-      desc: This metric calculates the average rate of outgoing error packets over
-        the past 5 minutes, measured in packets per second. Monitoring outgoing errors
-        is essential for identifying transmission issues and ensuring data integrity.
-      name: Outgoing Errors Rate
-    ifOperStatus:
-      desc: This metric reflects the actual operational status of the network switch
-        interface, indicating whether the interface is operational. Unlike the administrative
-        status, the operational status shows whether the interface can successfully
-        receive and send traffic, which is crucial for monitoring network health.
-      name: Interface Operational Status
-    iftotalOutOctets:
-      name: Device Total Outgoing Traffic (per second)
-      desc: This metric represents the average rate of total bytes sent by the entire
-        device over the past 5 minutes, measured in megabytes per second (MB/s). By
-        summing the outgoing byte counts from multiple interfaces, this metric allows
-        administrators to comprehensively assess the sending performance of the entire
-        system, enabling more effective traffic management and optimization.
-    ifAdminStatus:
-      name: Interface Administrative Status
-      desc: This metric indicates the administrative status of the network switch
-        interface. It serves to indicate whether the interface is enabled (up) or
-        disabled (down) by an administrator, along with other states such as testing
-        or not present. This information is vital for network management and troubleshooting.
-    ifInDiscards:
-      name: Incoming Discards Rate
-      desc: This metric represents the average rate of incoming discarded packets
-        over the past 5 minutes, measured in packets per second. Packet discards may
-        indicate network congestion or resource shortages, and monitoring this metric
-        can help administrators optimize network performance.
-    ifInOctets:
-      name: Interface Incoming Traffic Rate
-      desc: This metric indicates the average rate of bytes received over the past
-        5 minutes, converted to megabytes (MB). Monitoring byte traffic helps evaluate
-        the load on the interface and bandwidth usage.
-    ifHighSpeed:
-      name: Interface Bandwidth
-      desc: This metric indicates the maximum data transmission speed supported by
-        the network interface, usually measured in Kbps. Understanding the maximum
-        speed of the interface helps administrators optimize traffic and utilize network
-        resources effectively.
-    ifOutUcastPkts:
-      desc: This metric calculates the average rate of outgoing unicast packets over
-        the past 5 minutes, measured in packets per second. By monitoring the number
-        of unicast packets, administrators can assess the transmission performance
-        of the interface and the usage of traffic.
-      name: Outgoing Unicast Packets Rate
-    ifInErrors:
-      desc: This metric calculates the average rate of incoming error packets over
-        the past 5 minutes, measured in packets per second. Monitoring incoming errors
-        allows administrators to detect potential issues, such as physical connection
-        faults or configuration errors, in a timely manner.
-      name: Incoming Errors Rate
-    iftotalInOctets:
-      desc: This metric indicates the average rate of total bytes received by the
-        entire device over the past 5 minutes, measured in megabytes per second (MB/s).
-        By summing the incoming byte counts from multiple interfaces, this metric
-        helps administrators obtain an overview of the device's incoming traffic,
-        supporting overall traffic monitoring and capacity planning.
-      name: Device Total Incoming Traffic (per second)
-    ifOutOctets:
-      desc: This metric calculates the average rate of bytes sent over the past 5
-        minutes, measured in megabytes (MB). Monitoring outgoing traffic is crucial
-        for ensuring data transmission quality and optimizing network performance.
-      name: Interface Outgoing Traffic Rate
-    ifOutDiscards:
-      desc: This metric calculates the average rate of outgoing discarded packets
-        over the past 5 minutes, measured in packets per second. Monitoring outgoing
-        discards can help identify network transmission issues and misconfigurations.
-      name: Outgoing Discards Rate
-    ifInUcastPkts:
-      desc: This metric indicates the average rate of incoming unicast packets over
-        the past 5 minutes, measured in packets per second. Monitoring unicast packets
-        is crucial for assessing interface utilization and traffic load.
-      name: Incoming Unicast Packets Rate
-    sysUpTime:
+    snmp_uptime:
       name: System Uptime
-      desc: This metric indicates the uptime of the device since the last restart,
-        measured in days. By monitoring the uptime, network administrators can understand
-        the stability and reliability of the device and identify potential reboot
-        or failure issues.
+      desc: This metric indicates the uptime of the device since the last restart, measured in days. By monitoring the uptime, network administrators can understand the stability and reliability of the device and identify potential reboot or failure issues.
+    interface_ifAdminStatus:
+      name: Interface Admin Status
+      desc: This metric indicates the administrative status of the network switch interface. It serves to indicate whether the interface is enabled (up) or disabled (down) by an administrator, along with other states such as testing or not present. This information is vital for network management and troubleshooting.
+    interface_ifOperStatus:
+      name: Interface Oper Status
+      desc: This metric reflects the actual operational status of the network switch interface, indicating whether the interface is operational. Unlike the administrative status, the operational status shows whether the interface can successfully receive and send traffic, which is crucial for monitoring network health.
+    interface_ifSpeed:
+      name: Interface Bandwidth
+      desc: This metric indicates the maximum data transmission speed supported by the network interface, measured in bits per second. Understanding the maximum speed of the interface helps administrators optimize traffic and utilize network resources effectively.
+    interface_ifInErrors:
+      name: Incoming Errors Rate
+      desc: This metric calculates the average rate of incoming error packets over the past 5 minutes, measured in packets per second. Monitoring incoming errors allows administrators to detect potential issues, such as physical connection faults or configuration errors, in a timely manner.
+    interface_ifOutErrors:
+      name: Outgoing Errors Rate
+      desc: This metric calculates the average rate of outgoing error packets over the past 5 minutes, measured in packets per second. Monitoring outgoing errors is essential for identifying transmission issues and ensuring data integrity.
+    interface_ifInDiscards:
+      name: Incoming Discards Rate
+      desc: This metric represents the average rate of incoming discarded packets over the past 5 minutes, measured in packets per second. Packet discards may indicate network congestion or resource shortages, and monitoring this metric can help administrators optimize network performance.
+    interface_ifOutDiscards:
+      name: Outgoing Discards Rate
+      desc: This metric calculates the average rate of outgoing discarded packets over the past 5 minutes, measured in packets per second. Monitoring outgoing discards can help identify network transmission issues and misconfigurations.
+    interface_ifInUcastPkts:
+      name: Incoming Unicast Packets Rate
+      desc: This metric indicates the average rate of incoming unicast packets over the past 5 minutes, measured in packets per second. Monitoring unicast packets is crucial for assessing interface utilization and traffic load.
+    interface_ifOutUcastPkts:
+      name: Outgoing Unicast Packets Rate
+      desc: This metric calculates the average rate of outgoing unicast packets over the past 5 minutes, measured in packets per second. By monitoring the number of unicast packets, administrators can assess the transmission performance of the interface and the usage of traffic.
+    interface_ifInOctets:
+      name: Interface Incoming Traffic Rate
+      desc: This metric indicates the average rate of bytes received over the past 5 minutes, measured in bytes per second. Monitoring byte traffic helps evaluate the load on the interface and bandwidth usage.
+    interface_ifOutOctets:
+      name: Interface Outgoing Traffic Rate
+      desc: This metric calculates the average rate of bytes sent over the past 5 minutes, measured in bytes per second. Monitoring outgoing traffic is crucial for ensuring data transmission quality and optimizing network performance.
+    device_total_incoming_traffic:
+      name: Device Total Incoming Traffic Rate
+      desc: This metric indicates the average rate of total bytes received by the entire device over the past 5 minutes, measured in bytes per second. By summing the incoming byte counts from multiple interfaces, this metric helps administrators obtain an overview of the device's incoming traffic, supporting overall traffic monitoring and capacity planning.
+    device_total_outgoing_traffic:
+      name: Device Total Outgoing Traffic Rate
+      desc: This metric represents the average rate of total bytes sent by the entire device over the past 5 minutes, measured in bytes per second. By summing the outgoing byte counts from multiple interfaces, this metric allows administrators to comprehensively assess the sending performance of the entire system, enabling more effective traffic management and optimization.
   Jetty-JMX:
     jetty_queuedthreadpool_threads_value:
       name: Thread Count
@@ -697,87 +578,48 @@ monitor_object_metric:
       desc: Indicates the maximum keep-alive time (seconds) for HTTP connections without
         data transfer, releasing idle resources to prevent waste and malicious occupation.
   Firewall:
-    ifInErrors:
-      name: Incoming Error Packet Rate
-      desc: This metric calculates the average rate of incoming error packets over
-        the past 5 minutes, measured in packets per second. Monitoring incoming errors
-        allows administrators to detect potential issues, such as physical connection
-        faults or configuration errors, in a timely manner.
-    ifInUcastPkts:
-      desc: This metric indicates the average rate of incoming unicast packets over
-        the past 5 minutes, measured in packets per second. Monitoring unicast packets
-        is crucial for assessing interface utilization and traffic load.
-      name: Incoming Unicast Packets Rate
-    ifAdminStatus:
-      desc: This metric indicates the administrative status of the network switch
-        interface. It serves to indicate whether the interface is enabled (up) or
-        disabled (down) by an administrator, along with other states such as testing
-        or not present. This information is vital for network management and troubleshooting.
-      name: Interface Administrative Status
-    ifHighSpeed:
-      desc: This metric indicates the maximum data transmission speed supported by
-        the network interface, usually measured in Kbps. Understanding the maximum
-        speed of the interface helps administrators optimize traffic and utilize network
-        resources effectively.
-      name: Interface Bandwidth
-    sysUpTime:
+    snmp_uptime:
       name: System Uptime
-      desc: This metric indicates the uptime of the device since the last restart,
-        measured in days. By monitoring the uptime, network administrators can understand
-        the stability and reliability of the device and identify potential reboot
-        or failure issues.
-    ifInOctets:
-      desc: This metric indicates the average rate of bytes received over the past
-        5 minutes, converted to megabytes (MB). Monitoring byte traffic helps evaluate
-        the load on the interface and bandwidth usage.
-      name: Interface Incoming Traffic Rate
-    ifOperStatus:
-      desc: This metric reflects the actual operational status of the network switch
-        interface, indicating whether the interface is operational. Unlike the administrative
-        status, the operational status shows whether the interface can successfully
-        receive and send traffic, which is crucial for monitoring network health.
-      name: Interface Operational Status
-    ifInDiscards:
-      name: Incoming Discard Packet Rate
-      desc: This metric represents the average rate of incoming discarded packets
-        over the past 5 minutes, measured in packets per second. Packet discards may
-        indicate network congestion or resource shortages, and monitoring this metric
-        can help administrators optimize network performance.
-    ifOutErrors:
-      desc: This metric calculates the average rate of outgoing error packets over
-        the past 5 minutes, measured in packets per second. Monitoring outgoing errors
-        is essential for identifying transmission issues and ensuring data integrity.
-      name: Outgoing Error Packet Rate
-    ifOutDiscards:
-      name: Outgoing Discard Packet Rate
-      desc: This metric calculates the average rate of outgoing discarded packets
-        over the past 5 minutes, measured in packets per second. Monitoring outgoing
-        discards can help identify network transmission issues and misconfigurations.
-    ifOutUcastPkts:
+      desc: This metric indicates the uptime of the device since the last restart, measured in days. By monitoring the uptime, network administrators can understand the stability and reliability of the device and identify potential reboot or failure issues.
+    interface_ifAdminStatus:
+      name: Interface Admin Status
+      desc: This metric indicates the administrative status of the network switch interface. It serves to indicate whether the interface is enabled (up) or disabled (down) by an administrator, along with other states such as testing or not present. This information is vital for network management and troubleshooting.
+    interface_ifOperStatus:
+      name: Interface Oper Status
+      desc: This metric reflects the actual operational status of the network switch interface, indicating whether the interface is operational. Unlike the administrative status, the operational status shows whether the interface can successfully receive and send traffic, which is crucial for monitoring network health.
+    interface_ifSpeed:
+      name: Interface Bandwidth
+      desc: This metric indicates the maximum data transmission speed supported by the network interface, measured in bits per second. Understanding the maximum speed of the interface helps administrators optimize traffic and utilize network resources effectively.
+    interface_ifInErrors:
+      name: Incoming Errors Rate
+      desc: This metric calculates the average rate of incoming error packets over the past 5 minutes, measured in packets per second. Monitoring incoming errors allows administrators to detect potential issues, such as physical connection faults or configuration errors, in a timely manner.
+    interface_ifOutErrors:
+      name: Outgoing Errors Rate
+      desc: This metric calculates the average rate of outgoing error packets over the past 5 minutes, measured in packets per second. Monitoring outgoing errors is essential for identifying transmission issues and ensuring data integrity.
+    interface_ifInDiscards:
+      name: Incoming Discards Rate
+      desc: This metric represents the average rate of incoming discarded packets over the past 5 minutes, measured in packets per second. Packet discards may indicate network congestion or resource shortages, and monitoring this metric can help administrators optimize network performance.
+    interface_ifOutDiscards:
+      name: Outgoing Discards Rate
+      desc: This metric calculates the average rate of outgoing discarded packets over the past 5 minutes, measured in packets per second. Monitoring outgoing discards can help identify network transmission issues and misconfigurations.
+    interface_ifInUcastPkts:
+      name: Incoming Unicast Packets Rate
+      desc: This metric indicates the average rate of incoming unicast packets over the past 5 minutes, measured in packets per second. Monitoring unicast packets is crucial for assessing interface utilization and traffic load.
+    interface_ifOutUcastPkts:
       name: Outgoing Unicast Packets Rate
-      desc: This metric calculates the average rate of outgoing unicast packets over
-        the past 5 minutes, measured in packets per second. By monitoring the number
-        of unicast packets, administrators can assess the transmission performance
-        of the interface and the usage of traffic.
-    iftotalOutOctets:
-      name: Device Total Outgoing Traffic (per second)
-      desc: This metric represents the average rate of total bytes sent by the entire
-        device over the past 5 minutes, measured in megabytes per second (MB/s). By
-        summing the outgoing byte counts from multiple interfaces, this metric allows
-        administrators to comprehensively assess the sending performance of the entire
-        system, enabling more effective traffic management and optimization.
-    ifOutOctets:
-      desc: This metric calculates the average rate of bytes sent over the past 5
-        minutes, measured in megabytes (MB). Monitoring outgoing traffic is crucial
-        for ensuring data transmission quality and optimizing network performance.
+      desc: This metric calculates the average rate of outgoing unicast packets over the past 5 minutes, measured in packets per second. By monitoring the number of unicast packets, administrators can assess the transmission performance of the interface and the usage of traffic.
+    interface_ifInOctets:
+      name: Interface Incoming Traffic Rate
+      desc: This metric indicates the average rate of bytes received over the past 5 minutes, measured in bytes per second. Monitoring byte traffic helps evaluate the load on the interface and bandwidth usage.
+    interface_ifOutOctets:
       name: Interface Outgoing Traffic Rate
-    iftotalInOctets:
-      desc: This metric indicates the average rate of total bytes received by the
-        entire device over the past 5 minutes, measured in megabytes per second (MB/s).
-        By summing the incoming byte counts from multiple interfaces, this metric
-        helps administrators obtain an overview of the device's incoming traffic,
-        supporting overall traffic monitoring and capacity planning.
-      name: Device Total Incoming Traffic (per second)
+      desc: This metric calculates the average rate of bytes sent over the past 5 minutes, measured in bytes per second. Monitoring outgoing traffic is crucial for ensuring data transmission quality and optimizing network performance.
+    device_total_incoming_traffic:
+      name: Device Total Incoming Traffic Rate
+      desc: This metric indicates the average rate of total bytes received by the entire device over the past 5 minutes, measured in bytes per second. By summing the incoming byte counts from multiple interfaces, this metric helps administrators obtain an overview of the device's incoming traffic, supporting overall traffic monitoring and capacity planning.
+    device_total_outgoing_traffic:
+      name: Device Total Outgoing Traffic Rate
+      desc: This metric represents the average rate of total bytes sent by the entire device over the past 5 minutes, measured in bytes per second. By summing the outgoing byte counts from multiple interfaces, this metric allows administrators to comprehensively assess the sending performance of the entire system, enabling more effective traffic management and optimization.
   ActiveMQ:
     topics_consumer_count:
       name: Topic Consumer Count
@@ -1080,34 +922,18 @@ monitor_object_metric:
       desc: Percentage of busy threads relative to maximum threads, indicating thread
         resource utilization efficiency
   Website:
-    http_duration:
-      desc: This metric represents the total time taken from initiating an HTTP request
-        to receiving the HTTP response. It is used to assess the performance of web
-        services, especially when handling user requests. An extended duration may
-        indicate lower backend processing efficiency or network latency, which can
-        adversely affect the user experience. It is crucial for enhancing system responsiveness
-        and optimizing performance.
-      name: HTTP Response Time
-    http_code:
-      desc: This metric represents the HTTP response status code for an HTTP request.
-        It captures the value of the HTTP response status codes, such as 200 (OK),
-        404 (Not Found), 500 (Internal Server Error), etc. These status codes are
-        vital for monitoring the health and performance of web applications, assisting
-        in identifying potential issues.
-      name: HTTP Response Code
-    http_success:
-      rate:
-        desc: Measures the success rate of multiple nodes probing targets (the percentage
-          of successful responses out of the total number of requests).
-        name: Success Rate
-    http_content:
-      length:
-        name: HTTP Content Length
-        desc: This metric indicates the length of the HTTP response content in bytes.
-          Larger content lengths can result in extended data transfer times and consume
-          more bandwidth. Monitoring this metric is crucial for optimizing website
-          performance or analyzing bandwidth usage. Understanding the size of the
-          response content can assist developers in making optimizations.
+    http_node_success_rate:
+      name: Node Success Rate
+      desc: Calculate the 5-minute probe success rate for each probing node, reflecting the access experience in a specific region or network environment.
+    http_response_response_time:
+      name: Response Time
+      desc: Represents the total time taken from initiating an HTTP request to receiving the HTTP response. It is used to assess the performance of web services, especially when handling user requests.
+    http_response_http_response_code:
+      name: HTTP Code
+      desc: This metric represents the HTTP response status code for an HTTP request. It captures the value of the HTTP response status codes, such as 200 (OK), 404 (Not Found), 500 (Internal Server Error), etc.
+    http_response_content_length:
+      name: HTTP Content Length
+      desc: This metric indicates the length of the HTTP. Larger content lengths can result in extended data transfer times and consume more bandwidth.
   Scanning Device:
     iftotalInOctets:
       desc: This metric indicates the average rate of total bytes received by the
@@ -1609,72 +1435,42 @@ monitor_object_metric:
       desc: Total number of unacknowledged messages in the system, helping to identify
         potential message backlog issues.
   VM:
-    vm_disk_io_usage_gauge:
+    cpu_usage_average_gauge:
+      name: CPU utilization rate
+      desc: It represents the CPU utilization rate of the system within a specific time period, usually expressed as a percentage. This indicator helps to understand the CPU load situation, so as to carry out performance optimization and capacity planning
+    mem_usage_average_gauge:
+      name: Memory utilization rate
+      desc: It represents the memory utilization rate of the system within a specific time period, usually expressed as a percentage. This indicator helps to understand the memory load situation, which is helpful for optimizing memory usage and conducting capacity planning
+    mem_consumed_average_gauge:
+      name: Active memory
+      desc: It represents the active memory of the system within a specific time period, usually measured in bytes. This indicator is used to measure the actual memory resources consumed by the system and helps to analyze the memory usage situation
+    disk_io_usage_gauge:
       name: Disk I/O Usage
-      desc: Indicates the I/O usage of the VM's disk, i.e., the busyness of the disk
-        over a period of time. Higher values indicate higher disk load.
-    vm_mem_usage_average_gauge:
-      desc: It represents the memory utilization rate of the system within a specific
-        time period, usually expressed as a percentage. This indicator helps to understand
-        the memory load situation, which is helpful for optimizing memory usage and
-        conducting capacity planning.
-      name: Memory Utilization
-    vm_net_bytesRx_average_gauge:
-      desc: It represents the network receive rate of the system within a specific
-        time period, usually measured in MB/s or GB/s. This indicator is used to measure
-        the network receiving performance and helps to analyze network traffic and
-        bandwidth usage.
-      name: Network Reception Rate
-    vm_cpu_usagemhz_average_gauge:
-      name: CPU Usage
-      desc: It represents the CPU usage of the system within a specific time period,
-        usually measured in MHz. This indicator is used to measure the actual operating
-        frequency of the CPU and helps to analyze the consumption of CPU resources.
-    vm_cpu_usage_average_gauge:
-      name: CPU Utilization
-      desc: It represents the CPU utilization rate of the system within a specific
-        time period, usually expressed as a percentage. This indicator helps to understand
-        the CPU load situation, so as to carry out performance optimization and capacity
-        planning.
-    vm_disk_write_average_gauge:
-      desc: Represents the average write throughput of the VM's disk over a period
-        of time. Higher values indicate better write performance.
-      name: Disk Write Throughput
-    vm_net_bytesTx_average_gauge:
-      name: Network Transmission Rate
-      desc: It represents the network transmit rate of the system within a specific
-        time period, usually measured in MB/s or GB/s. This indicator is used to measure
-        the network transmitting performance and helps to analyze network traffic
-        and bandwidth usage.
-    vm_disk_read_average_gauge:
-      desc: Represents the average read throughput of the VM's disk over a period
-        of time. Higher values indicate better read performance.
+      desc: Indicates the I/O usage of the VM's disk, i.e., the busyness of the disk over a period of time. Higher values indicate higher disk load
+    disk_read_average_gauge:
       name: Disk Read Throughput
-    vm_disk_used_average_gauge:
-      desc: Represents the average usage of the VM's disk, i.e., the proportion of
-        disk space used. Higher values indicate tighter disk space.
+      desc: Represents the average read throughput of the VM's disk over a period of time. Higher values indicate better read performance
+    disk_used_average_gauge:
       name: Disk Usage
-    vm_disk_numberWrite_summation_gauge:
-      name: Disk write I/O
-      desc: Represents the number of disk write operations completed per second, an
-        important metric for measuring the frequency of disk write requests.
-    vm_disk_numberRead_summation_gauge:
-      desc: Represents the number of disk read operations completed per second, an
-        important metric for measuring the frequency of disk read requests. Higher
-        values indicate more frequent read requests.
-      name: Disk read I/O
-    vm_mem_consumed_average_gauge:
-      name: Active Memory
-      desc: It represents the active memory of the system within a specific time period,
-        usually measured in MB or GB. This indicator is used to measure the actual
-        memory resources consumed by the system and helps to analyze the memory usage
-        situation.
-    vm_power_state_gauge:
-      name: Power State
-      desc: It indicates the current power status of a virtual machine (VM). This
-        metric helps administrators monitor whether a VM is powered on or off. This
-        metric is essential for tracking VM availability, optimizing resource allocation,
-        and automating workflows in VMware environments.
+      desc: Represents the average usage of the VM's disk, i.e., the proportion of disk space used. Higher values indicate tighter disk space
+    disk_numberRead_summation_gauge_rate:
+      name: Disk read I/O Rate
+      desc: Represents the number of disk read operations completed per second, an important metric for measuring the frequency of disk read requests. Higher values indicate more frequent read requests
+    disk_numberWrite_summation_gauge_rate:
+      name: Disk write I/O Rate
+      desc: Represents the number of disk write operations completed per second, an important metric for measuring the frequency of disk write requests. Higher values indicate more frequent write requests
+    disk_write_average_gauge:
+      name: Disk Write Throughput
+      desc: Represents the average write throughput of the VM's disk over a period of time. Higher values indicate better write performance
+    net_bytesRx_average_gauge:
+      name: Network receive rate
+      desc: It represents the network receive rate of the system within a specific time period, usually measured in bytes per second. This indicator is used to measure the network receiving performance and helps to analyze network traffic and bandwidth usage
+    net_bytesTx_average_gauge:
+      name: Network transmit rate
+      desc: It represents the network transmit rate of the system within a specific time period, usually measured in bytes per second. This indicator is used to measure the network transmitting performance and helps to analyze network traffic and bandwidth usage
+    power_state_gauge:
+      name: Power state
+      desc: It indicates the current power status of a virtual machine (VM). This metric helps administrators monitor whether a VM is powered on or off.This metric is essential for tracking VM availability, optimizing resource allocation, and automating workflows in VMware environments
   ClickHouse:
     clickhouse_asynchronous_metrics_os_memory_available:
       name: Available Memory
@@ -1873,169 +1669,91 @@ monitor_object_metric:
         speed of the interface helps administrators optimize traffic and utilize network
         resources effectively.
   Switch:
-    ifInOctets:
-      name: Interface Incoming Traffic Rate
-      desc: This metric indicates the average rate of bytes received over the past
-        5 minutes, converted to megabytes (MB). Monitoring byte traffic helps evaluate
-        the load on the interface and bandwidth usage.
-    ifHighSpeed:
-      desc: This metric indicates the maximum data transmission speed supported by
-        the network interface, usually measured in Kbps. Understanding the maximum
-        speed of the interface helps administrators optimize traffic and utilize network
-        resources effectively.
-      name: Interface Bandwidth
-    ifInDiscards:
-      desc: This metric represents the average rate of incoming discarded packets
-        over the past 5 minutes, measured in packets per second. Packet discards may
-        indicate network congestion or resource shortages, and monitoring this metric
-        can help administrators optimize network performance.
-      name: Incoming Discards Rate
-    iftotalInOctets:
-      name: Device Total Incoming Traffic
-      desc: This metric indicates the average rate of total bytes received by the
-        entire device over the past 5 minutes, measured in megabytes per second (MB/s).
-        By summing the incoming byte counts from multiple interfaces, this metric
-        helps administrators obtain an overview of the device's incoming traffic,
-        supporting overall traffic monitoring and capacity planning.
-    ifInErrors:
-      name: 'Incoming Errors Rate '
-      desc: This metric calculates the average rate of incoming error packets over
-        the past 5 minutes, measured in packets per second. Monitoring incoming errors
-        allows administrators to detect potential issues, such as physical connection
-        faults or configuration errors, in a timely manner.
-    ifAdminStatus:
-      desc: This metric indicates the administrative status of the network switch
-        interface. It serves to indicate whether the interface is enabled (up) or
-        disabled (down) by an administrator, along with other states such as testing
-        or not present. This information is vital for network management and troubleshooting.
-      name: Interface Administrative Status
-    ifOutDiscards:
-      desc: This metric calculates the average rate of outgoing discarded packets
-        over the past 5 minutes, measured in packets per second. Monitoring outgoing
-        discards can help identify network transmission issues and misconfigurations.
-      name: Outgoing Discards Rate
-    ifOutErrors:
-      desc: This metric calculates the average rate of outgoing error packets over
-        the past 5 minutes, measured in packets per second. Monitoring outgoing errors
-        is essential for identifying transmission issues and ensuring data integrity.
-      name: Outgoing Error Packet Rate
-    iftotalOutOctets:
-      desc: This metric represents the average rate of total bytes sent by the entire
-        device over the past 5 minutes, measured in megabytes per second (MB/s). By
-        summing the outgoing byte counts from multiple interfaces, this metric allows
-        administrators to comprehensively assess the sending performance of the entire
-        system, enabling more effective traffic management and optimization.
-      name: Device Total Outgoing Traffic
-    ifOutOctets:
-      name: Interface Outgoing Traffic Rate
-      desc: This metric calculates the average rate of bytes sent over the past 5
-        minutes, measured in megabytes (MB). Monitoring outgoing traffic is crucial
-        for ensuring data transmission quality and optimizing network performance.
-    ifOperStatus:
-      desc: This metric reflects the actual operational status of the network switch
-        interface, indicating whether the interface is operational. Unlike the administrative
-        status, the operational status shows whether the interface can successfully
-        receive and send traffic, which is crucial for monitoring network health.
-      name: Interface Operational Status
-    ifOutUcastPkts:
-      desc: This metric calculates the average rate of outgoing unicast packets over
-        the past 5 minutes, measured in packets per second. By monitoring the number
-        of unicast packets, administrators can assess the transmission performance
-        of the interface and the usage of traffic.
-      name: Outgoing Unicast Packets Rate
-    ifInUcastPkts:
-      desc: This metric indicates the average rate of incoming unicast packets over
-        the past 5 minutes, measured in packets per second. Monitoring unicast packets
-        is crucial for assessing interface utilization and traffic load.
-      name: Incoming Unicast Packets Rate
-    sysUpTime:
-      desc: This metric indicates the uptime of the device since the last restart,
-        measured in days. By monitoring the uptime, network administrators can understand
-        the stability and reliability of the device and identify potential reboot
-        or failure issues.
+    snmp_uptime:
       name: System Uptime
-  Router:
-    ifOutDiscards:
-      desc: This metric calculates the average rate of outgoing discarded packets
-        over the past 5 minutes, measured in packets per second. Monitoring outgoing
-        discards can help identify network transmission issues and misconfigurations.
-      name: Outgoing Discarded Packet Rate
-    ifHighSpeed:
+      desc: This metric indicates the uptime of the device since the last restart, measured in days. By monitoring the uptime, network administrators can understand the stability and reliability of the device and identify potential reboot or failure issues.
+    interface_ifAdminStatus:
+      name: Interface Admin Status
+      desc: This metric indicates the administrative status of the network switch interface. It serves to indicate whether the interface is enabled (up) or disabled (down) by an administrator, along with other states such as testing or not present. This information is vital for network management and troubleshooting.
+    interface_ifOperStatus:
+      name: Interface Oper Status
+      desc: This metric reflects the actual operational status of the network switch interface, indicating whether the interface is operational. Unlike the administrative status, the operational status shows whether the interface can successfully receive and send traffic, which is crucial for monitoring network health.
+    interface_ifSpeed:
       name: Interface Bandwidth
-      desc: This metric indicates the maximum data transmission speed supported by
-        the network interface, usually measured in Kbps. Understanding the maximum
-        speed of the interface helps administrators optimize traffic and utilize network
-        resources effectively.
-    ifOperStatus:
-      desc: This metric reflects the actual operational status of the network switch
-        interface, indicating whether the interface is operational. Unlike the administrative
-        status, the operational status shows whether the interface can successfully
-        receive and send traffic, which is crucial for monitoring network health.
-      name: Interface Operational Status
-    ifOutOctets:
-      name: Interface Outbound Traffic Rate
-      desc: This metric calculates the average rate of bytes sent over the past 5
-        minutes, measured in megabytes (MB). Monitoring outgoing traffic is crucial
-        for ensuring data transmission quality and optimizing network performance.
-    ifAdminStatus:
-      name: Interface Administrative Status
-      desc: This metric indicates the administrative status of the network switch
-        interface. It serves to indicate whether the interface is enabled (up) or
-        disabled (down) by an administrator, along with other states such as testing
-        or not present. This information is vital for network management and troubleshooting.
-    ifInDiscards:
-      desc: This metric represents the average rate of incoming discarded packets
-        over the past 5 minutes, measured in packets per second. Packet discards may
-        indicate network congestion or resource shortages, and monitoring this metric
-        can help administrators optimize network performance.
-      name: Incoming Discards Rate
-    iftotalOutOctets:
-      name: Device Total Outbound Traffic (per second)
-      desc: This metric represents the average rate of total bytes sent by the entire
-        device over the past 5 minutes, measured in megabytes per second (MB/s). By
-        summing the outgoing byte counts from multiple interfaces, this metric allows
-        administrators to comprehensively assess the sending performance of the entire
-        system, enabling more effective traffic management and optimization.
-    ifInUcastPkts:
-      name: Incoming Unicast Packet Rate
-      desc: This metric indicates the average rate of incoming unicast packets over
-        the past 5 minutes, measured in packets per second. Monitoring unicast packets
-        is crucial for assessing interface utilization and traffic load.
-    sysUpTime:
-      name: System Uptime
-      desc: This metric indicates the uptime of the device since the last restart,
-        measured in days. By monitoring the uptime, network administrators can understand
-        the stability and reliability of the device and identify potential reboot
-        or failure issues.
-    ifOutUcastPkts:
-      name: Outgoing Unicast Packet Rate
-      desc: This metric calculates the average rate of outgoing unicast packets over
-        the past 5 minutes, measured in packets per second. By monitoring the number
-        of unicast packets, administrators can assess the transmission performance
-        of the interface and the usage of traffic.
-    ifOutErrors:
-      desc: This metric calculates the average rate of outgoing error packets over
-        the past 5 minutes, measured in packets per second. Monitoring outgoing errors
-        is essential for identifying transmission issues and ensuring data integrity.
-      name: Outgoing Errors Rate
-    ifInOctets:
-      name: Interface Inbound Traffic Rate
-      desc: This metric indicates the average rate of bytes received over the past
-        5 minutes, converted to megabytes (MB). Monitoring byte traffic helps evaluate
-        the load on the interface and bandwidth usage.
-    ifInErrors:
+      desc: This metric indicates the maximum data transmission speed supported by the network interface, measured in bits per second. Understanding the maximum speed of the interface helps administrators optimize traffic and utilize network resources effectively.
+    interface_ifInErrors:
       name: Incoming Errors Rate
-      desc: This metric calculates the average rate of incoming error packets over
-        the past 5 minutes, measured in packets per second. Monitoring incoming errors
-        allows administrators to detect potential issues, such as physical connection
-        faults or configuration errors, in a timely manner.
-    iftotalInOctets:
-      desc: This metric indicates the average rate of total bytes received by the
-        entire device over the past 5 minutes, measured in megabytes per second (MB/s).
-        By summing the incoming byte counts from multiple interfaces, this metric
-        helps administrators obtain an overview of the device's incoming traffic,
-        supporting overall traffic monitoring and capacity planning.
-      name: Device Total Inbound Traffic (per second)
+      desc: This metric calculates the average rate of incoming error packets over the past 5 minutes, measured in packets per second. Monitoring incoming errors allows administrators to detect potential issues, such as physical connection faults or configuration errors, in a timely manner.
+    interface_ifOutErrors:
+      name: Outgoing Errors Rate
+      desc: This metric calculates the average rate of outgoing error packets over the past 5 minutes, measured in packets per second. Monitoring outgoing errors is essential for identifying transmission issues and ensuring data integrity.
+    interface_ifInDiscards:
+      name: Incoming Discards Rate
+      desc: This metric represents the average rate of incoming discarded packets over the past 5 minutes, measured in packets per second. Packet discards may indicate network congestion or resource shortages, and monitoring this metric can help administrators optimize network performance.
+    interface_ifOutDiscards:
+      name: Outgoing Discards Rate
+      desc: This metric calculates the average rate of outgoing discarded packets over the past 5 minutes, measured in packets per second. Monitoring outgoing discards can help identify network transmission issues and misconfigurations.
+    interface_ifInUcastPkts:
+      name: Incoming Unicast Packets Rate
+      desc: This metric indicates the average rate of incoming unicast packets over the past 5 minutes, measured in packets per second. Monitoring unicast packets is crucial for assessing interface utilization and traffic load.
+    interface_ifOutUcastPkts:
+      name: Outgoing Unicast Packets Rate
+      desc: This metric calculates the average rate of outgoing unicast packets over the past 5 minutes, measured in packets per second. By monitoring the number of unicast packets, administrators can assess the transmission performance of the interface and the usage of traffic.
+    interface_ifInOctets:
+      name: Interface Incoming Traffic Rate
+      desc: This metric indicates the average rate of bytes received over the past 5 minutes, measured in bytes per second. Monitoring byte traffic helps evaluate the load on the interface and bandwidth usage.
+    interface_ifOutOctets:
+      name: Interface Outgoing Traffic Rate
+      desc: This metric calculates the average rate of bytes sent over the past 5 minutes, measured in bytes per second. Monitoring outgoing traffic is crucial for ensuring data transmission quality and optimizing network performance.
+    device_total_incoming_traffic:
+      name: Device Total Incoming Traffic Rate
+      desc: This metric indicates the average rate of total bytes received by the entire device over the past 5 minutes, measured in bytes per second. By summing the incoming byte counts from multiple interfaces, this metric helps administrators obtain an overview of the device's incoming traffic, supporting overall traffic monitoring and capacity planning.
+    device_total_outgoing_traffic:
+      name: Device Total Outgoing Traffic Rate
+      desc: This metric represents the average rate of total bytes sent by the entire device over the past 5 minutes, measured in bytes per second. By summing the outgoing byte counts from multiple interfaces, this metric allows administrators to comprehensively assess the sending performance of the entire system, enabling more effective traffic management and optimization.
+  Router:
+    snmp_uptime:
+      name: System Uptime
+      desc: This metric indicates the uptime of the device since the last restart, measured in days. By monitoring the uptime, network administrators can understand the stability and reliability of the device and identify potential reboot or failure issues.
+    interface_ifAdminStatus:
+      name: Interface Admin Status
+      desc: This metric indicates the administrative status of the network switch interface. It serves to indicate whether the interface is enabled (up) or disabled (down) by an administrator, along with other states such as testing or not present. This information is vital for network management and troubleshooting.
+    interface_ifOperStatus:
+      name: Interface Oper Status
+      desc: This metric reflects the actual operational status of the network switch interface, indicating whether the interface is operational. Unlike the administrative status, the operational status shows whether the interface can successfully receive and send traffic, which is crucial for monitoring network health.
+    interface_ifSpeed:
+      name: Interface Bandwidth
+      desc: This metric indicates the maximum data transmission speed supported by the network interface, measured in bits per second. Understanding the maximum speed of the interface helps administrators optimize traffic and utilize network resources effectively.
+    interface_ifInErrors:
+      name: Incoming Errors Rate
+      desc: This metric calculates the average rate of incoming error packets over the past 5 minutes, measured in packets per second. Monitoring incoming errors allows administrators to detect potential issues, such as physical connection faults or configuration errors, in a timely manner.
+    interface_ifOutErrors:
+      name: Outgoing Errors Rate
+      desc: This metric calculates the average rate of outgoing error packets over the past 5 minutes, measured in packets per second. Monitoring outgoing errors is essential for identifying transmission issues and ensuring data integrity.
+    interface_ifInDiscards:
+      name: Incoming Discards Rate
+      desc: This metric represents the average rate of incoming discarded packets over the past 5 minutes, measured in packets per second. Packet discards may indicate network congestion or resource shortages, and monitoring this metric can help administrators optimize network performance.
+    interface_ifOutDiscards:
+      name: Outgoing Discards Rate
+      desc: This metric calculates the average rate of outgoing discarded packets over the past 5 minutes, measured in packets per second. Monitoring outgoing discards can help identify network transmission issues and misconfigurations.
+    interface_ifInUcastPkts:
+      name: Incoming Unicast Packets Rate
+      desc: This metric indicates the average rate of incoming unicast packets over the past 5 minutes, measured in packets per second. Monitoring unicast packets is crucial for assessing interface utilization and traffic load.
+    interface_ifOutUcastPkts:
+      name: Outgoing Unicast Packets Rate
+      desc: This metric calculates the average rate of outgoing unicast packets over the past 5 minutes, measured in packets per second. By monitoring the number of unicast packets, administrators can assess the transmission performance of the interface and the usage of traffic.
+    interface_ifInOctets:
+      name: Interface Incoming Traffic Rate
+      desc: This metric indicates the average rate of bytes received over the past 5 minutes, measured in bytes per second. Monitoring byte traffic helps evaluate the load on the interface and bandwidth usage.
+    interface_ifOutOctets:
+      name: Interface Outgoing Traffic Rate
+      desc: This metric calculates the average rate of bytes sent over the past 5 minutes, measured in bytes per second. Monitoring outgoing traffic is crucial for ensuring data transmission quality and optimizing network performance.
+    device_total_incoming_traffic:
+      name: Device Total Incoming Traffic Rate
+      desc: This metric indicates the average rate of total bytes received by the entire device over the past 5 minutes, measured in bytes per second. By summing the incoming byte counts from multiple interfaces, this metric helps administrators obtain an overview of the device's incoming traffic, supporting overall traffic monitoring and capacity planning.
+    device_total_outgoing_traffic:
+      name: Device Total Outgoing Traffic Rate
+      desc: This metric represents the average rate of total bytes sent by the entire device over the past 5 minutes, measured in bytes per second. By summing the outgoing byte counts from multiple interfaces, this metric allows administrators to comprehensively assess the sending performance of the entire system, enabling more effective traffic management and optimization.
   Consul:
     consul_health_checks_passing:
       name: Health Checks Passing
@@ -2062,32 +1780,24 @@ monitor_object_metric:
       desc: Service ID identifier associated with health check; 0 indicates node-level
         check, non-zero indicates service-specific check
   Ping:
-    ping_response_time:
+    ping_average_response_ms:
       name: Average Response Time
-      desc: Represents the average ping response time of the target device over a
-        period. This metric helps evaluate latency between the source and target device.
-        Lower average response time indicates good network performance.
-    ping_error_response_code:
-      name: Ping State
-      desc: Represents the resulting code after a ping operation. A code of 0 indicates
-        success, while non-zero values indicate potential issues with the network
-        or host. This metric helps quickly detect network connectivity errors.
+      desc: Average response time of ICMP Ping requests, reflecting average network latency
+    ping_maximum_response_ms:
+      name: Maximum Response Time
+      desc: Maximum response time of ICMP Ping requests, reflecting peak network latency
+    ping_minimum_response_ms:
+      name: Minimum Response Time
+      desc: Minimum response time of ICMP Ping requests, reflecting best-case network latency
+    ping_percent_packet_loss:
+      name: Packet Loss Percentage
+      desc: Percentage of ICMP packet loss, reflecting network connection stability
+    ping_result_code:
+      name: Result Code
+      desc: Result code of Ping test, indicating success or failure status of Ping operation
     ping_ttl:
-      desc: Represents the average 'hop count' (or time) allowed for ping packets
-        from the source device to the target. This metric helps identify if packets
-        take an abnormal number of hops or if there are route anomalies. Higher TTL
-        values indicate longer paths.
-      name: Average TTL
-    ping_packet_transmission_rate:
-      name: Packet Transmission Success Rate
-      desc: Represents the percentage of successfully received packets out of the
-        total packets transmitted. This metric measures network quality and transmission
-        reliability. Low packet loss indicates stable and reliable connectivity.
-    ping_packet_loss_rate:
-      name: Packet Loss Rate
-      desc: Represents the percentage of packets lost during ping requests. This metric
-        helps identify unstable network connections or transmission problems. Lower
-        loss rates indicate more stable connectivity.
+      name: Time To Live
+      desc: Time To Live value of received ICMP response packets, reflecting number of network hops
   Nginx:
     nginx_active:
       name: Active Connections
@@ -2215,104 +1925,70 @@ monitor_object_metric:
         logic.
       name: Thread Pool Queue Length
   CVM:
-    cvm_LanIntraffic:
-      name: Internal Inbound Bandwidth
-      desc: Average inbound traffic per second on the internal network interface.
-    cvm_CvmDiskUsage:
-      name: Disk Usage
-      desc: The percentage of used disk capacity relative to total capacity (all disks).
-    cvm_WanInpkg:
-      name: External Inbound Packet Rate
-      desc: Average inbound packet rate per second on the external network interface.
-    cvm_MemUsage:
-      desc: The actual memory utilization, excluding memory used for system cache
-        and buffers. This metric represents the ratio of used memory to total memory
-        after excluding cache, buffers, and free memory.
-      name: Memory Utilization
-    cvm_WanOuttraffic:
-      name: External Outbound Bandwidth
-      desc: Average outbound traffic rate per second on the external network. The
-        minimum granularity data is calculated as total traffic over 10 seconds divided
-        by 10. This data represents the sum of outbound bandwidth from EIP+CLB+CVM
-        on the external network.
-    cvm_LanInpkg:
-      desc: Average inbound packet rate per second on the internal network interface.
-      name: Internal Inbound Packet Rate
-    cvm_MemUsed:
-      name: Memory Usage
-      desc: The actual memory used by the user, excluding buffers and cache. Calculated
-        as Total Memory - (Buffers + Cached + Free)
-    cvm_LanOuttraffic:
-      desc: Average outbound traffic per second on the internal network interface.
-      name: Internal Outbound Bandwidth
-    cvm_WanIntraffic:
-      name: External Inbound Bandwidth
-      desc: Average inbound traffic rate per second on the external network. The minimum
-        granularity data is calculated as total traffic over 10 seconds divided by
-        10. This data represents the sum of inbound bandwidth from EIP+CLB+CVM on
-        the external network.
-    cvm_WanOutpkg:
-      desc: Average outbound packet rate per second on the external network interface
-        card.
-      name: External Outbound Packet Rate
-    cvm_CPU_Usage:
-      desc: The real-time percentage of CPU occupied during machine operation.
+    CPUUsage_gauge:
       name: CPU Utilization
-    cvm_LanOutpkg:
-      desc: Average outbound packet rate per second on the internal network interface.
+      desc: The real-time percentage of CPU occupied during machine operation.
+    MemUsed_gauge:
+      name: Memory Usage
+      desc: The actual memory used by the user, excluding memory occupied by buffers and system cache. Calculated as Total Memory - Available Memory (including buffers and cached).
+    MemUsage_gauge:
+      name: Memory Utilization
+      desc: The actual memory utilization rate by the user, excluding memory occupied by buffers and system cache. It is the ratio of actual user memory usage to total memory.
+    CvmDiskUsage_gauge:
+      name: Disk Utilization
+      desc: The percentage of used disk capacity relative to total capacity (all disks).
+    LanOuttraffic_gauge:
+      name: Internal Outbound Traffic
+      desc: Average outbound traffic rate on the internal network interface card.
+    LanIntraffic_gauge:
+      name: Internal Inbound Traffic
+      desc: Average inbound traffic rate on the internal network interface card.
+    LanOutpkg_gauge:
       name: Internal Outbound Packet Rate
+      desc: Average outbound packet rate on the internal network interface card.
+    LanInpkg_gauge:
+      name: Internal Inbound Packet Rate
+      desc: Average inbound packet rate on the internal network interface card.
+    WanOuttraffic_gauge:
+      name: External Outbound Traffic
+      desc: Average outbound traffic rate on the external network (sum of EIP, CLB, and CVM outbound bandwidth). The minimum granularity is a 10-second average.
+    WanIntraffic_gauge:
+      name: External Inbound Traffic
+      desc: Average inbound traffic rate on the external network (sum of EIP, CLB, and CVM inbound bandwidth). The minimum granularity is a 10-second average.
+    WanOutpkg_gauge:
+      name: External Outbound Packet Rate
+      desc: Average outbound packet rate on the external network interface card.
+    WanInpkg_gauge:
+      name: External Inbound Packet Rate
+      desc: Average inbound packet rate on the external network interface card.
   ESXI:
-    esxi_cpu_usage_average_gauge:
-      desc: It represents the CPU utilization rate of the system or application program,
-        measured in percent (%), which is a key indicator for measuring CPU load and
-        performance.
-      name: CPU Usage
-    esxi_mem_usage_average_gauge:
-      desc: The memory utilization rate indicates the usage situation of the memory,
-        measured in percent (%), and is used to evaluate the memory load of the system
-        or application program.
-      name: Memory Utilization Rate
-    esxi_mem_consumed_average_gauge:
+    cpu_usage_average_gauge:
+      name: CPU usage
+      desc: It represents the CPU utilization rate of the system or application program, which is a key indicator for measuring CPU load and performance
+    mem_usage_average_gauge:
+      name: Memory utilization rate
+      desc: The memory utilization rate indicates the usage situation of the memory and is used to evaluate the memory load of the system or application program
+    mem_consumed_average_gauge:
       name: Active memory
-      desc: The active memory represents the actual amount of memory used by the system
-        or application program, measured in megabytes (MB), and is a key indicator
-        of memory consumption.
-    esxi_disk_numberRead_summation_gauge:
-      desc: Represents the number of disk read operations completed per second, measured
-        in IOPS (operations per second), which is an important metric for measuring
-        the frequency of disk read requests. Higher values indicate more frequent
-        read requests.
-      name: Disk Read I/O
-    esxi_disk_numberWrite_summation_gauge:
-      desc: Represents the number of disk write operations completed per second, measured
-        in IOPS (operations per second), which is an important metric for measuring
-        the frequency of disk write requests. Higher values indicate more frequent
-        write requests.
-      name: Disk Write I/O
-    esxi_net_bytesTx_average_gauge:
-      name: Network Transmit Rate
-      desc: The network transmit rate represents the amount of data sent out per second,
-        measured in kilobytes per second (KB/s), and is an important criterion for
-        measuring network traffic.
-    esxi_net_bytesRx_average_gauge:
-      desc: The network receive rate represents the amount of data received per second,
-        measured in kilobytes per second (KB/s), and is an important criterion for
-        measuring network traffic.
-      name: Network Receive Rate
-    esxi_cpu_usagemhz_average_gauge:
-      desc: It represents the CPU usage, measured in megahertz (MHz), and reflects
-        the actual operating frequency of the CPU.
-      name: CPU Frequency
-    esxi_disk_write_average_gauge:
-      desc: The disk write rate represents the amount of data written to the disk
-        per second, measured in megabytes per second (MB/s), and is an important indicator
-        for measuring the disk write performance.
-      name: Disk Write Rate
-    esxi_disk_read_average_gauge:
-      name: Disk Read Rate
-      desc: The disk read rate represents the amount of data read from the disk per
-        second, measured in megabytes per second (MB/s), and is an important indicator
-        for measuring the disk read performance.
+      desc: The active memory represents the actual amount of memory used by the system or application program and is a key indicator of memory consumption
+    disk_read_average_gauge:
+      name: Disk read rate
+      desc: The disk read rate represents the amount of data read from the disk per second and is an important indicator for measuring the disk read performance
+    disk_write_average_gauge:
+      name: Disk write rate
+      desc: The disk write rate represents the amount of data written to the disk per second and is an important indicator for measuring the disk write performance
+    disk_numberRead_summation_gauge_rate:
+      name: Disk read I/O Rate
+      desc: Represents the number of disk read operations completed per second, an important metric for measuring the frequency of disk read requests. Higher values indicate more frequent read requests
+    disk_numberWrite_summation_gauge_rate:
+      name: Disk write I/O Rate
+      desc: Represents the number of disk write operations completed per second, an important metric for measuring the frequency of disk write requests. Higher values indicate more frequent write requests
+    net_bytesRx_average_gauge:
+      name: Network receive rate
+      desc: The network receive rate represents the amount of data received per second and is an important criterion for measuring network traffic
+    net_bytesTx_average_gauge:
+      name: Network transmit rate
+      desc: The network transmit rate represents the amount of data sent out per second and is an important criterion for measuring network traffic
   Cluster:
     cluster_node_count:
   Cluster:
@@ -2601,32 +2277,25 @@ monitor_object_metric:
       name: Network Out Rate
       desc: Monitors the outbound network traffic rate of a Pod, calculated based on the number of containers and IPs
   vCenter:
-    vmware_vm_count:
-      desc: This metric counts the number of virtual machines in the VMware environment,
-        used to assess the utilization of virtualization resources.
-      name: Number of VM
+    vmware_esxi_count:
+      name: Number of ESXi
+      desc: This metric counts the number of ESXi hosts in the VMware environment, helping administrators understand the current physical host resources
     vmware_datastore_count:
       name: Number of Datastores
-      desc: This metric counts the number of datastores in the VMware environment,
-        facilitating the monitoring of storage resource allocation and usage.
-    vmware_esxi_count:
-      desc: This metric counts the number of ESXi hosts in the VMware environment,
-        helping administrators understand the current physical host resources.
-      name: Number of ESXi
+      desc: This metric counts the number of datastores in the VMware environment, facilitating the monitoring of storage resource allocation and usage
+    vmware_vm_count:
+      name: Number of VM
+      desc: This metric counts the number of virtual machines in the VMware environment, used to assess the utilization of virtualization resources
   DataStorage:
-    data_storage_disk_used_average_gauge:
-      desc: The disk utilization rate indicates the usage situation of disk space
-        and is an indicator for measuring the utilization rate of disk storage.
-      name: Disk Utilization
-    data_storage_disk_free_average_gauge:
-      desc: The remaining disk space represents the amount of unused space in the
-        disk and is a key indicator for evaluating the disk capacity.
-      name: Available Disk Space
-    data_storage_store_accessible_gauge:
-      name: Storage Connection Status
-      desc: The storage connection status indicates the connectability of the storage
-        device and is an indicator for evaluating the health status of the storage
-        system.
+    disk_used_average_gauge:
+      name: Disk utilization rate
+      desc: The disk utilization rate indicates the usage situation of disk space and is an indicator for measuring the utilization rate of disk storage
+    disk_free_average_gauge:
+      name: Disk remaining capacity
+      desc: The remaining disk space represents the amount of unused space in the disk and is a key indicator for evaluating the disk capacity
+    store_accessible_gauge:
+      name: Storage connection status
+      desc: The storage connection status indicates the connectability of the storage device and is an indicator for evaluating the health status of the storage system
   MSSQL:
     sqlserver_cpu_sqlserver_process_cpu_avg:
       name: MSSQL Process CPU Usage
