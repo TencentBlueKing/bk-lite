@@ -7,36 +7,24 @@
   "instance_id": "{{cloud_region}}_qcloud_{{username}}",
   "form_fields": [
     {
-      "name": "monitor_url",
-      "label": "URL",
-      "type": "input",
-      "required": true,
-      "description": "监控地址",
-      "editable": false,
-      "visible_in": "edit",
-      "widget_props": {
-        "placeholder": ""
-      },
-      "transform_on_edit": {
-        "origin_path": "child.content.config.url[0]",
-        "to_form": {
-          "regex": "://([^:]+):"
-        }
-      }
-    },
-    {
       "name": "username",
       "label": "用户名",
       "type": "input",
       "required": true,
-      "editable": false
+      "editable": false,
+      "transform_on_edit": {
+        "origin_path": "child.content.config.http_headers.username"
+      }
     },
     {
       "name": "password",
       "label": "密码",
       "type": "password",
       "required": true,
-      "editable": false
+      "editable": false,
+      "transform_on_edit": {
+        "origin_path": "child.content.config.http_headers.password"
+      }
     }
   ],
   "table_columns": [
@@ -50,19 +38,6 @@
       },
       "options_key": "node_ids_option",
       "enable_row_filter": true
-    },
-    {
-      "name": "monitor_url",
-      "label": "URL",
-      "type": "input",
-      "widget_props": {
-        "placeholder": "请输入监控地址"
-      },
-      "change_handler": {
-        "type": "simple",
-        "source_fields": ["monitor_url"],
-        "target_field": "instance_name"
-      }
     },
     {
       "name": "instance_name",
