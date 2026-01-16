@@ -13,10 +13,12 @@ export interface FilterItem {
 interface AssetDataStore {
   query_list: FilterItem[];
   searchAttr: string;
+  case_sensitive: boolean;
   add: (item: FilterItem) => FilterItem[];
   remove: (index: number) => FilterItem[];
   clear: () => FilterItem[];
   update: (index: number, item: FilterItem) => FilterItem[];
+  setCaseSensitive: (value: boolean) => void;
 }
 
 //创建store
@@ -24,7 +26,7 @@ const useAssetDataStore = create<AssetDataStore>((set, get) => ({
   //创建数据
   query_list: [], // 筛选条件列表
   searchAttr: "inst_name", // 当前搜索字段
-
+  case_sensitive: false, // 是否精确匹配（大小写敏感）
 
   // 方法
   add: (item: FilterItem) => {
@@ -49,6 +51,9 @@ const useAssetDataStore = create<AssetDataStore>((set, get) => ({
       return { query_list: newList };
     });
     return get().query_list;
+  },
+  setCaseSensitive: (value: boolean) => {
+    set({ case_sensitive: value });
   },
 }))
 
