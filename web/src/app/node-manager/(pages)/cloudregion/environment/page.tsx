@@ -168,9 +168,9 @@ const EnvironmentPage = () => {
         setGenerateLoading(false);
       }
       // 模拟异步生成脚本
-      getDeployCommand({ proxy_address: proxyIp })
+      getDeployCommand({ cloud_region_id: cloudId })
         .then((res) => {
-          const generatedScript = res?.commands || '';
+          const generatedScript = res || '';
           setScript(generatedScript);
           message.success(
             t('node-manager.cloudregion.environment.generateSuccess')

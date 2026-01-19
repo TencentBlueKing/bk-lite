@@ -142,7 +142,7 @@
         "hostedProgramList": "Hosted Components List",
         "nodeType": "Node Type",
         "commandCopied": "Command Copied",
-        "commandCopiedDesc": "This command is specific to the current host. Please paste and execute it in the PowerShell (Administrator) window.",
+        "commandCopiedDesc": "Please copy the installation parameters into the installation input box",
         "linuxCommandCopiedDesc": "This command is specific to the current host. Please paste and execute it on that host.",
         "installError": "Install Failed",
         "controllerVersionTip": "Upgradeable to new version",
@@ -165,7 +165,18 @@
         "confirmFinishContent1": "Currently",
         "statusCompleted": "Completed",
         "retrySuccess": "Retry successful",
-        "copyInstallCommand": "Copy Install Command"
+        "copyInstallCommand": "Copy Install Command",
+        "operationGuidance": "Operation Guidance",
+        "downloadPackageStep": "Download Installation Package",
+        "clickDownloadPackage": "Click to Download Package",
+        "uploadPackageStep": "Upload Installation Package",
+        "uploadPackageDesc": "Upload the installation package to any directory on the target host node.",
+        "uploadPackageNote": "Note: This installation package can be run and installed on any eligible Windows host.",
+        "runPackageStep": "Run Installation Package",
+        "runPackageDesc": "Run the installation package as an administrator and copy the installation parameters to the installation input box.",
+        "installParams": "Installation Parameters",
+        "importantNote": "Important Note",
+        "importantNoteDesc": "Installation parameters are strictly bound to the host. Ensure that the parameters match the current host information and do not cross-use them."
       },
       "editform": {
         "Introduction": "Introduction",

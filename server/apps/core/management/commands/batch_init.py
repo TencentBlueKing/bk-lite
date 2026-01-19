@@ -79,6 +79,7 @@ class Command(BaseCommand):
         call_command('init_oid')
         call_command('update_collect_task_data')
         call_command("init_field_groups")
+        call_command("init_display_fields")
 
     def _init_console_mgmt(self):
         """控制台管理资源初始化"""

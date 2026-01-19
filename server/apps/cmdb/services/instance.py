@@ -1,11 +1,31 @@
-from apps.cmdb.constants.constants import INSTANCE, INSTANCE_ASSOCIATION, OPERATOR_INSTANCE
-from apps.cmdb.display_field.constants import DISPLAY_FIELD_TYPES, DISPLAY_SUFFIX, FIELD_TYPE_ORGANIZATION, FIELD_TYPE_USER, FIELD_TYPE_ENUM
+from apps.cmdb.constants.constants import (
+    INSTANCE,
+    INSTANCE_ASSOCIATION,
+    OPERATOR_INSTANCE,
+)
+from apps.cmdb.display_field.constants import (
+    DISPLAY_FIELD_TYPES,
+    DISPLAY_SUFFIX,
+    FIELD_TYPE_ORGANIZATION,
+    FIELD_TYPE_USER,
+    FIELD_TYPE_ENUM,
+)
 from apps.cmdb.graph.drivers.graph_client import GraphClient
 from apps.cmdb.graph.format_type import ParameterCollector
-from apps.cmdb.models.change_record import CREATE_INST, CREATE_INST_ASST, DELETE_INST, DELETE_INST_ASST, UPDATE_INST
+from apps.cmdb.models.change_record import (
+    CREATE_INST,
+    CREATE_INST_ASST,
+    DELETE_INST,
+    DELETE_INST_ASST,
+    UPDATE_INST,
+)
 from apps.cmdb.models.show_field import ShowField
 from apps.cmdb.services.model import ModelManage
-from apps.cmdb.utils.change_record import batch_create_change_record, create_change_record, create_change_record_by_asso
+from apps.cmdb.utils.change_record import (
+    batch_create_change_record,
+    create_change_record,
+    create_change_record_by_asso,
+)
 from apps.cmdb.utils.export import Export
 from apps.cmdb.utils.Import import Import
 from apps.cmdb.permissions.instance_permission import PermissionManage
@@ -14,7 +34,6 @@ from apps.core.logger import cmdb_logger as logger
 
 
 class InstanceManage(object):
-
     @classmethod
     def search_inst(cls, model_id: str, inst_name: str = None, _id: int = None):
         """查询实例"""
@@ -23,7 +42,9 @@ class InstanceManage(object):
             if _id:
                 params.append({"field": "id", "type": "id=", "value": int(_id)})
             if inst_name:
-                params.append({"field": "inst_name", "type": "str=", "value": inst_name})
+                params.append(
+                    {"field": "inst_name", "type": "str=", "value": inst_name}
+                )
             inst_list, count = ag.query_entity(INSTANCE, params)
         return inst_list, count
 
@@ -40,7 +61,7 @@ class InstanceManage(object):
         with GraphClient() as ag:
             inst_list, count = ag.query_entity(
                 label=INSTANCE,
-                params=[{"field": "model_id", "type": "str=", "value": model_id}]
+                params=[{"field": "model_id", "type": "str=", "value": model_id}],
             )
 
         permission_map = {i["_id"]: i for i in inst_list}
@@ -54,8 +75,16 @@ class InstanceManage(object):
         raise BaseAppException(message)
 
     @staticmethod
-    def instance_list(model_id: str, params: list, page: int, page_size: int, order: str,
-                      permission_map: dict, creator: str = None):
+    def instance_list(
+        model_id: str,
+        params: list,
+        page: int,
+        page_size: int,
+        order: str,
+        permission_map: dict,
+        creator: str = None,
+        case_sensitive: bool = True,
+    ):
         """实例列表"""
 
         params.append({"field": "model_id", "type": "str=", "value": model_id})
@@ -66,10 +95,14 @@ class InstanceManage(object):
             _query_list = []
             inst_names = organization_permission_data["inst_names"]
             if inst_names:
-                _query_list.append({"field": "inst_name", "type": "str[]", "value": inst_names})
+                _query_list.append(
+                    {"field": "inst_name", "type": "str[]", "value": inst_names}
+                )
                 if creator:
                     # 只有创建人条件
-                    _query_list.append({"field": "_creator", "type": "str=", "value": creator})
+                    _query_list.append(
+                        {"field": "_creator", "type": "str=", "value": creator}
+                    )
 
             format_permission_dict[organization_id] = _query_list
 
@@ -78,11 +111,15 @@ class InstanceManage(object):
             order = f"{order.replace('-', '')} DESC"
 
         with GraphClient() as ag:
-            query = dict(label=INSTANCE, params=params, page=_page, order=order,
-                         format_permission_dict=format_permission_dict)
-            inst_list, count = ag.query_entity(
-                **query
+            query = dict(
+                label=INSTANCE,
+                params=params,
+                page=_page,
+                order=order,
+                format_permission_dict=format_permission_dict,
+                case_sensitive=case_sensitive,
             )
+            inst_list, count = ag.query_entity(**query)
         return inst_list, count
 
     @staticmethod
@@ -99,11 +136,18 @@ class InstanceManage(object):
 
         # 为 organization/user/enum 字段生成 _display 冗余字段
         from apps.cmdb.display_field import DisplayFieldHandler
-        instance_info = DisplayFieldHandler.build_display_fields(model_id, instance_info, attrs)
-        
+
+        instance_info = DisplayFieldHandler.build_display_fields(
+            model_id, instance_info, attrs
+        )
+
         with GraphClient() as ag:
-            exist_items, _ = ag.query_entity(INSTANCE, [{"field": "model_id", "type": "str=", "value": model_id}])
-            result = ag.create_entity(INSTANCE, instance_info, check_attr_map, exist_items, operator)
+            exist_items, _ = ag.query_entity(
+                INSTANCE, [{"field": "model_id", "type": "str=", "value": model_id}]
+            )
+            result = ag.create_entity(
+                INSTANCE, instance_info, check_attr_map, exist_items, operator
+            )
 
         create_change_record(
             result["_id"],
@@ -118,7 +162,9 @@ class InstanceManage(object):
         return result
 
     @staticmethod
-    def instance_update(user_groups: list, roles: list, inst_id: int, update_attr: dict, operator: str):
+    def instance_update(
+        user_groups: list, roles: list, inst_id: int, update_attr: dict, operator: str
+    ):
         """修改实例属性"""
         inst_info = InstanceManage.query_entity_by_id(inst_id)
 
@@ -141,35 +187,42 @@ class InstanceManage(object):
 
         # 只有当对应的原始字段更新时,才更新 _display 字段
         from apps.cmdb.display_field import DisplayFieldHandler, DisplayFieldConverter
+
         for attr in attrs:
-            attr_id = attr.get('attr_id')
-            attr_type = attr.get('attr_type')
-            
+            attr_id = attr.get("attr_id")
+            attr_type = attr.get("attr_type")
+
             # 检查是否更新了目标类型的字段
             if attr_type in DISPLAY_FIELD_TYPES and attr_id in update_attr:
                 display_field_id = f"{attr_id}{DISPLAY_SUFFIX}"
                 original_value = update_attr[attr_id]
-                
+
                 # 使用统一的转换器进行转换
                 if attr_type == FIELD_TYPE_ORGANIZATION:
-                    display_value = DisplayFieldConverter.convert_organization(original_value)
+                    display_value = DisplayFieldConverter.convert_organization(
+                        original_value
+                    )
                 elif attr_type == FIELD_TYPE_USER:
                     display_value = DisplayFieldConverter.convert_user(original_value)
                 elif attr_type == FIELD_TYPE_ENUM:
-                    display_value = DisplayFieldConverter.convert_enum(original_value, attr.get('option', []))
+                    display_value = DisplayFieldConverter.convert_enum(
+                        original_value, attr.get("option", [])
+                    )
                 else:
                     continue
-                
+
                 # 将生成的 _display 值添加到更新数据中
                 update_attr[display_field_id] = display_value
-        
+
         with GraphClient() as ag:
             exist_items, _ = ag.query_entity(
                 INSTANCE,
                 [{"field": "model_id", "type": "str=", "value": inst_info["model_id"]}],
             )
             exist_items = [i for i in exist_items if i["_id"] != inst_id]
-            result = ag.set_entity_properties(INSTANCE, [inst_id], update_attr, check_attr_map, exist_items)
+            result = ag.set_entity_properties(
+                INSTANCE, [inst_id], update_attr, check_attr_map, exist_items
+            )
 
         create_change_record(
             inst_info["_id"],
@@ -210,9 +263,10 @@ class InstanceManage(object):
 
         # 只有当对应的原始字段更新时,才更新 _display 字段
         from apps.cmdb.display_field import DisplayFieldHandler, DisplayFieldConverter
+
         for attr in attrs:
-            attr_id = attr.get('attr_id')
-            attr_type = attr.get('attr_type')
+            attr_id = attr.get("attr_id")
+            attr_type = attr.get("attr_type")
 
             # 检查是否更新了目标类型的字段
             if attr_type in DISPLAY_FIELD_TYPES and attr_id in update_attr:
@@ -221,17 +275,21 @@ class InstanceManage(object):
 
                 # 使用统一的转换器进行转换
                 if attr_type == FIELD_TYPE_ORGANIZATION:
-                    display_value = DisplayFieldConverter.convert_organization(original_value)
+                    display_value = DisplayFieldConverter.convert_organization(
+                        original_value
+                    )
                 elif attr_type == FIELD_TYPE_USER:
                     display_value = DisplayFieldConverter.convert_user(original_value)
                 elif attr_type == FIELD_TYPE_ENUM:
-                    display_value = DisplayFieldConverter.convert_enum(original_value, attr.get('option', []))
+                    display_value = DisplayFieldConverter.convert_enum(
+                        original_value, attr.get("option", [])
+                    )
                 else:
                     continue
 
                 # 将生成的 _display 值添加到更新数据中
                 update_attr[display_field_id] = display_value
-        
+
         with GraphClient() as ag:
             exist_items, _ = ag.query_entity(
                 INSTANCE,
@@ -244,7 +302,9 @@ class InstanceManage(object):
                 ],
             )
             exist_items = [i for i in exist_items if i["_id"] not in inst_ids]
-            result = ag.set_entity_properties(INSTANCE, inst_ids, update_attr, check_attr_map, exist_items)
+            result = ag.set_entity_properties(
+                INSTANCE, inst_ids, update_attr, check_attr_map, exist_items
+            )
 
         after_dict = {i["_id"]: i for i in result}
         change_records = [
@@ -258,12 +318,16 @@ class InstanceManage(object):
             )
             for i in inst_list
         ]
-        batch_create_change_record(INSTANCE, UPDATE_INST, change_records, operator=operator)
+        batch_create_change_record(
+            INSTANCE, UPDATE_INST, change_records, operator=operator
+        )
 
         return result
 
     @staticmethod
-    def instance_batch_delete(user_groups: list, roles: list, inst_ids: list, operator: str):
+    def instance_batch_delete(
+        user_groups: list, roles: list, inst_ids: list, operator: str
+    ):
         """批量删除实例"""
         inst_list = InstanceManage.query_entity_by_ids(inst_ids)
 
@@ -277,10 +341,19 @@ class InstanceManage(object):
         with GraphClient() as ag:
             ag.batch_delete_entity(INSTANCE, inst_ids)
 
-        change_records = [dict(inst_id=i["_id"], model_id=i["model_id"], before_data=i, model_object=OPERATOR_INSTANCE,
-                               message=f"删除模型实例. 模型:{model_info['model_name']} 实例:{i.get('inst_name') or i.get('ip_addr', '')}")
-                          for i in inst_list]
-        batch_create_change_record(INSTANCE, DELETE_INST, change_records, operator=operator)
+        change_records = [
+            dict(
+                inst_id=i["_id"],
+                model_id=i["model_id"],
+                before_data=i,
+                model_object=OPERATOR_INSTANCE,
+                message=f"删除模型实例. 模型:{model_info['model_name']} 实例:{i.get('inst_name') or i.get('ip_addr', '')}",
+            )
+            for i in inst_list
+        ]
+        batch_create_change_record(
+            INSTANCE, DELETE_INST, change_records, operator=operator
+        )
 
     @staticmethod
     def instance_association_instance_list(model_id: str, inst_id: int):
@@ -292,14 +365,18 @@ class InstanceManage(object):
                 {"field": "src_inst_id", "type": "int=", "value": inst_id},
                 {"field": "src_model_id", "type": "str=", "value": model_id},
             ]
-            src_edge = ag.query_edge(INSTANCE_ASSOCIATION, src_query_data, return_entity=True)
+            src_edge = ag.query_edge(
+                INSTANCE_ASSOCIATION, src_query_data, return_entity=True
+            )
 
             # 作为目标模型实例
             dst_query_data = [
                 {"field": "dst_inst_id", "type": "int=", "value": inst_id},
                 {"field": "dst_model_id", "type": "str=", "value": model_id},
             ]
-            dst_edge = ag.query_edge(INSTANCE_ASSOCIATION, dst_query_data, return_entity=True)
+            dst_edge = ag.query_edge(
+                INSTANCE_ASSOCIATION, dst_query_data, return_entity=True
+            )
 
         result = {}
         for item in src_edge + dst_edge:
@@ -356,23 +433,43 @@ class InstanceManage(object):
             with GraphClient() as ag:
                 # 作为源模型实例
                 dst_query_data = [
-                    {"field": "dst_inst_id", "type": "int=", "value": data["dst_inst_id"]},
-                    {"field": "model_asst_id", "type": "str=", "value": data["model_asst_id"]},
+                    {
+                        "field": "dst_inst_id",
+                        "type": "int=",
+                        "value": data["dst_inst_id"],
+                    },
+                    {
+                        "field": "model_asst_id",
+                        "type": "str=",
+                        "value": data["model_asst_id"],
+                    },
                 ]
                 dst_edge = ag.query_edge(INSTANCE_ASSOCIATION, dst_query_data)
                 if dst_edge:
-                    raise BaseAppException("destination instance already exists association!")
+                    raise BaseAppException(
+                        "destination instance already exists association!"
+                    )
         # n:1关联校验
         elif asso_info["mapping"] == "n:1":
             # 检查源实例是否已经存在关联
             with GraphClient() as ag:
                 src_query_data = [
-                    {"field": "src_inst_id", "type": "int=", "value": data["src_inst_id"]},
-                    {"field": "model_asst_id", "type": "str=", "value": data["model_asst_id"]},
+                    {
+                        "field": "src_inst_id",
+                        "type": "int=",
+                        "value": data["src_inst_id"],
+                    },
+                    {
+                        "field": "model_asst_id",
+                        "type": "str=",
+                        "value": data["model_asst_id"],
+                    },
                 ]
                 src_edge = ag.query_edge(INSTANCE_ASSOCIATION, src_query_data)
                 if src_edge:
-                    raise BaseAppException("source instance already exists association!")
+                    raise BaseAppException(
+                        "source instance already exists association!"
+                    )
 
         # 1:1关联校验
         elif asso_info["mapping"] == "1:1":
@@ -380,23 +477,45 @@ class InstanceManage(object):
             with GraphClient() as ag:
                 # 作为源模型实例
                 src_query_data = [
-                    {"field": "src_inst_id", "type": "int=", "value": data["src_inst_id"]},
-                    {"field": "model_asst_id", "type": "str=", "value": data["model_asst_id"]},
+                    {
+                        "field": "src_inst_id",
+                        "type": "int=",
+                        "value": data["src_inst_id"],
+                    },
+                    {
+                        "field": "model_asst_id",
+                        "type": "str=",
+                        "value": data["model_asst_id"],
+                    },
                 ]
                 src_edge = ag.query_edge(INSTANCE_ASSOCIATION, src_query_data)
                 if src_edge:
-                    raise BaseAppException("source instance already exists association!")
+                    raise BaseAppException(
+                        "source instance already exists association!"
+                    )
 
                 # 作为目标模型实例
                 dst_query_data = [
-                    {"field": "dst_inst_id", "type": "int=", "value": data["dst_inst_id"]},
-                    {"field": "model_asst_id", "type": "str=", "value": data["model_asst_id"]},
+                    {
+                        "field": "dst_inst_id",
+                        "type": "int=",
+                        "value": data["dst_inst_id"],
+                    },
+                    {
+                        "field": "model_asst_id",
+                        "type": "str=",
+                        "value": data["model_asst_id"],
+                    },
                 ]
                 dst_edge = ag.query_edge(INSTANCE_ASSOCIATION, dst_query_data)
                 if dst_edge:
-                    raise BaseAppException("destination instance already exists association!")
+                    raise BaseAppException(
+                        "destination instance already exists association!"
+                    )
         else:
-            raise BaseAppException("association mapping error! mapping={}".format(asso_info["mapping"]))
+            raise BaseAppException(
+                "association mapping error! mapping={}".format(asso_info["mapping"])
+            )
 
     @staticmethod
     def instance_association_create(data: dict, operator: str):
@@ -422,8 +541,13 @@ class InstanceManage(object):
 
         asso_info = InstanceManage.instance_association_by_asso_id(edge["_id"])
         message = f"创建模型关联关系. 原模型: {asso_info['src']['model_id']} 原模型实例: {asso_info['src']['inst_name']}  目标模型ID: {asso_info['dst']['model_id']} 目标模型实例: {asso_info['dst'].get('inst_name') or asso_info['dst'].get('ip_addr', '')}"
-        create_change_record_by_asso(INSTANCE_ASSOCIATION, CREATE_INST_ASST, asso_info, message=message,
-                                     operator=operator)
+        create_change_record_by_asso(
+            INSTANCE_ASSOCIATION,
+            CREATE_INST_ASST,
+            asso_info,
+            message=message,
+            operator=operator,
+        )
 
         return edge
 
@@ -437,8 +561,13 @@ class InstanceManage(object):
             ag.delete_edge(asso_id)
 
         message = f"删除模型关联关系. 原模型: {asso_info['src']['model_id']} 原模型实例: {asso_info['src'].get('inst_name') or asso_info['src'].get('ip_addr', '')}  目标模型ID: {asso_info['dst']['model_id']} 目标模型实例: {asso_info['dst'].get('inst_name') or asso_info['dst'].get('ip_addr', '')}"
-        create_change_record_by_asso(INSTANCE_ASSOCIATION, DELETE_INST_ASST, asso_info, message=message,
-                                     operator=operator)
+        create_change_record_by_asso(
+            INSTANCE_ASSOCIATION,
+            DELETE_INST_ASST,
+            asso_info,
+            message=message,
+            operator=operator,
+        )
 
     @staticmethod
     def instance_association_by_asso_id(asso_id: int):
@@ -466,7 +595,9 @@ class InstanceManage(object):
         """下载导入模板"""
         attrs = ModelManage.search_model_attr_v2(model_id)
         association = ModelManage.model_association_search(model_id)
-        return Export(attrs, model_id=model_id, association=association).export_template()
+        return Export(
+            attrs, model_id=model_id, association=association
+        ).export_template()
 
     @staticmethod
     def inst_import(model_id: str, file_stream: bytes, operator: str):
@@ -475,8 +606,12 @@ class InstanceManage(object):
         model_info = ModelManage.search_model_info(model_id)
 
         with GraphClient() as ag:
-            exist_items, _ = ag.query_entity(INSTANCE, [{"field": "model_id", "type": "str=", "value": model_id}])
-        results = Import(model_id, attrs, exist_items, operator).import_inst_list(file_stream)
+            exist_items, _ = ag.query_entity(
+                INSTANCE, [{"field": "model_id", "type": "str=", "value": model_id}]
+            )
+        results = Import(model_id, attrs, exist_items, operator).import_inst_list(
+            file_stream
+        )
 
         change_records = [
             dict(
@@ -489,28 +624,44 @@ class InstanceManage(object):
             for i in results
             if i["success"]
         ]
-        batch_create_change_record(INSTANCE, CREATE_INST, change_records, operator=operator)
+        batch_create_change_record(
+            INSTANCE, CREATE_INST, change_records, operator=operator
+        )
 
         return results
 
-    def inst_import_support_edit(self, model_id: str, file_stream: bytes, operator: str, allowed_org_ids: list = None):
+    def inst_import_support_edit(
+        self,
+        model_id: str,
+        file_stream: bytes,
+        operator: str,
+        allowed_org_ids: list = None,
+    ):
         """实例导入-支持编辑"""
         attrs = ModelManage.search_model_attr_v2(model_id)
         model_info = ModelManage.search_model_info(model_id)
 
         with GraphClient() as ag:
-            exist_items, _ = ag.query_entity(INSTANCE, [{"field": "model_id", "type": "str=", "value": model_id}])
+            exist_items, _ = ag.query_entity(
+                INSTANCE, [{"field": "model_id", "type": "str=", "value": model_id}]
+            )
 
         _import = Import(model_id, attrs, exist_items, operator)
-        add_results, update_results, asso_result = _import.import_inst_list_support_edit(
-            file_stream,
-            allowed_org_ids=allowed_org_ids,
+        add_results, update_results, asso_result = (
+            _import.import_inst_list_support_edit(
+                file_stream,
+                allowed_org_ids=allowed_org_ids,
+            )
         )
         # 检查是否存在验证错误
         if _import.validation_errors:
-            error_summary = f"数据导入失败：发现 {len(_import.validation_errors)} 个数据验证错误\n"
+            error_summary = (
+                f"数据导入失败：发现 {len(_import.validation_errors)} 个数据验证错误\n"
+            )
             error_details = "\n".join(_import.validation_errors)
-            logger.warning(f"模型 {model_id} 数据导入验证失败，错误数量: {len(_import.validation_errors)}")
+            logger.warning(
+                f"模型 {model_id} 数据导入验证失败，错误数量: {len(_import.validation_errors)}"
+            )
             return {"success": False, "message": error_summary + error_details}
 
         add_changes = [
@@ -533,11 +684,18 @@ class InstanceManage(object):
                 model_object=OPERATOR_INSTANCE,
                 message=f"导入模型实例. 模型:{model_info['model_name']} 更新模型实例:{i['data'].get('inst_name') or i['data'].get('ip_addr', '')}",
             )
-            for i in update_results if i["success"]
+            for i in update_results
+            if i["success"]
         ]
-        batch_create_change_record(INSTANCE, CREATE_INST, add_changes, operator=operator)
-        batch_create_change_record(INSTANCE, UPDATE_INST, update_changes, operator=operator)
-        res_status, result_message = self.format_result_message(_import.import_result_message)
+        batch_create_change_record(
+            INSTANCE, CREATE_INST, add_changes, operator=operator
+        )
+        batch_create_change_record(
+            INSTANCE, UPDATE_INST, update_changes, operator=operator
+        )
+        res_status, result_message = self.format_result_message(
+            _import.import_result_message
+        )
         logger.info(f"模型 {model_id} 数据导入成功")
 
         return {"success": res_status, "message": result_message}
@@ -568,12 +726,21 @@ class InstanceManage(object):
     def topo_search_expand(inst_id: int, parent_ids: list, depth: int = 2):
         """拓扑展开：从指定节点向后展开一层，并过滤父节点列表"""
         with GraphClient() as ag:
-            result = ag.query_topo_lite(INSTANCE, inst_id, depth=depth, exclude_ids=parent_ids)
+            result = ag.query_topo_lite(
+                INSTANCE, inst_id, depth=depth, exclude_ids=parent_ids
+            )
         return result
-    
+
     @staticmethod
-    def inst_export(model_id: str, ids: list, permissions_map: dict = {}, created: str = "", creator: str = "",
-                    attr_list: list = [], association_list: list = []):
+    def inst_export(
+        model_id: str,
+        ids: list,
+        permissions_map: dict = {},
+        created: str = "",
+        creator: str = "",
+        attr_list: list = [],
+        association_list: list = [],
+    ):
         """实例导出"""
         attrs = ModelManage.search_model_attr_v2(model_id)
         association = ModelManage.model_association_search(model_id)
@@ -583,25 +750,36 @@ class InstanceManage(object):
             _query_list = []
             inst_names = organization_permission_data["inst_names"]
             if inst_names:
-                _query_list.append({"field": "inst_name", "type": "str[]", "value": inst_names})
+                _query_list.append(
+                    {"field": "inst_name", "type": "str[]", "value": inst_names}
+                )
                 if creator:
                     # 只有创建人条件
-                    _query_list.append({"field": "_creator", "type": "str=", "value": creator})
+                    _query_list.append(
+                        {"field": "_creator", "type": "str=", "value": creator}
+                    )
 
             format_permission_dict[organization_id] = _query_list
         # 添加调试日志
-        logger.info(f"导出参数 - model_id: {model_id}, ids: {ids}, association_list: {association_list}")
+        logger.info(
+            f"导出参数 - model_id: {model_id}, ids: {ids}, association_list: {association_list}"
+        )
         logger.info(f"查询到的所有关联关系: {len(association)} 个")
         if ids:
-            query_list = [{"field": "id", "type": "id[]", "value": ids},
-                          {"field": "model_id", "type": "str=", "value": model_id}]
+            query_list = [
+                {"field": "id", "type": "id[]", "value": ids},
+                {"field": "model_id", "type": "str=", "value": model_id},
+            ]
         else:
             query_list = [{"field": "model_id", "type": "str=", "value": model_id}]
 
         with GraphClient() as ag:
             # 使用新的基础权限过滤方法获取有权限的实例
-            query = dict(label=INSTANCE, params=query_list,
-                         format_permission_dict=format_permission_dict)
+            query = dict(
+                label=INSTANCE,
+                params=query_list,
+                format_permission_dict=format_permission_dict,
+            )
             inst_list, _ = ag.query_entity(**query)
         if attr_list:
             attr_map = {attr["attr_id"]: attr for attr in attrs}
@@ -609,12 +787,17 @@ class InstanceManage(object):
         else:
             attrs = attrs
         # 只有当用户明确选择了关联关系时才包含关联关系
-        association = [i for i in association if
-                       i["model_asst_id"] in association_list] if association_list else []
+        association = (
+            [i for i in association if i["model_asst_id"] in association_list]
+            if association_list
+            else []
+        )
 
         logger.info(f"过滤后的关联关系: {len(association)} 个")
 
-        return Export(attrs, model_id=model_id, association=association).export_inst_list(inst_list)
+        return Export(
+            attrs, model_id=model_id, association=association
+        ).export_inst_list(inst_list)
 
     @staticmethod
     def topo_search(inst_id: int):
@@ -644,7 +827,9 @@ class InstanceManage(object):
     @staticmethod
     def get_info(model_id: str, created_by: str):
         obj = ShowField.objects.filter(created_by=created_by, model_id=model_id).first()
-        result = dict(model_id=obj.model_id, show_fields=obj.show_fields) if obj else None
+        result = (
+            dict(model_id=obj.model_id, show_fields=obj.show_fields) if obj else None
+        )
         return result
 
     @staticmethod
@@ -662,17 +847,16 @@ class InstanceManage(object):
 
                 for perm in permissions:
                     # id为'0'或'-1'表示全选，不需要过滤
-                    if perm.get('id') not in ['0', '-1']:
+                    if perm.get("id") not in ["0", "-1"]:
                         has_specific_instances = True
                         # 这里的id实际上是inst_name
-                        specific_instance_names.append(perm.get('id'))
+                        specific_instance_names.append(perm.get("id"))
 
                 # 如果有具体的实例权限限制，添加到过滤参数中
                 if has_specific_instances and specific_instance_names:
-                    result.append({
-                        'model_id': model_id,
-                        'inst_names': specific_instance_names
-                    })
+                    result.append(
+                        {"model_id": model_id, "inst_names": specific_instance_names}
+                    )
         return result
 
     @staticmethod
@@ -688,10 +872,14 @@ class InstanceManage(object):
             _query_list = []
             inst_names = organization_permission_data["inst_names"]
             if inst_names:
-                _query_list.append({"field": "inst_name", "type": "str[]", "value": inst_names})
+                _query_list.append(
+                    {"field": "inst_name", "type": "str[]", "value": inst_names}
+                )
                 if creator:
                     # 只有创建人条件
-                    _query_list.append({"field": "_creator", "type": "str=", "value": creator})
+                    _query_list.append(
+                        {"field": "_creator", "type": "str=", "value": creator}
+                    )
 
             format_permission_dict[organization_id] = _query_list
 
@@ -707,11 +895,11 @@ class InstanceManage(object):
     def _build_permission_params(cls, permission_map: dict, creator: str = ""):
         """
         构建权限参数（统一方法，供全文检索系列接口使用）
-        
+
         Args:
             permission_map: 权限映射字典
             creator: 创建者
-            
+
         Returns:
             permission_params: 权限过滤字符串
         """
@@ -720,14 +908,20 @@ class InstanceManage(object):
 
         for organization_id, organization_permission_data in permission_map.items():
             # 为每个组织构建查询条件（与 instance_list 保持一致）
-            _query_list = [{"field": "organization", "type": "list[]", "value": [organization_id]}]
+            _query_list = [
+                {"field": "organization", "type": "list[]", "value": [organization_id]}
+            ]
 
             inst_names = organization_permission_data["inst_names"]
             if inst_names:
-                _query_list.append({"field": "inst_name", "type": "str[]", "value": inst_names})
+                _query_list.append(
+                    {"field": "inst_name", "type": "str[]", "value": inst_names}
+                )
 
                 if creator:
-                    _query_list.append({"field": "_creator", "type": "str=", "value": creator})
+                    _query_list.append(
+                        {"field": "_creator", "type": "str=", "value": creator}
+                    )
 
             # 使用 organization_id 作为 key（多个模型可能共享同一组织）
             if organization_id not in format_permission_dict:
@@ -736,21 +930,27 @@ class InstanceManage(object):
         # 将 format_permission_dict 转换为 full_text 需要的参数格式
         with GraphClient() as ag:
             # 使用共享的参数收集器（参数化模式）
-            param_collector = ParameterCollector() if ag.ENABLE_PARAMETERIZATION else None
-            
+            param_collector = (
+                ParameterCollector() if ag.ENABLE_PARAMETERIZATION else None
+            )
+
             # 构建权限过滤字符串（与 query_entity 的逻辑一致）
             permission_filters = []
             for query_list in format_permission_dict.values():
                 if not query_list:
                     continue
                 # 使用共享的 param_collector 累积参数
-                org_permission_str, _ = ag.format_search_params(query_list, param_type="OR", param_collector=param_collector)
+                org_permission_str, _ = ag.format_search_params(
+                    query_list, param_type="OR", param_collector=param_collector
+                )
                 if org_permission_str:
                     permission_filters.append(org_permission_str)
 
             # 多个组织的权限条件用 OR 连接
-            permission_params = " OR ".join(permission_filters) if permission_filters else ""
-            
+            permission_params = (
+                " OR ".join(permission_filters) if permission_filters else ""
+            )
+
             # 返回权限参数和参数字典
             if ag.ENABLE_PARAMETERIZATION and param_collector:
                 return permission_params, param_collector.get_params()
@@ -758,21 +958,29 @@ class InstanceManage(object):
                 return permission_params, {}
 
     @classmethod
-    def fulltext_search(cls, search: str, permission_map: dict, creator: str = "", case_sensitive: bool = False):
+    def fulltext_search(
+        cls,
+        search: str,
+        permission_map: dict,
+        creator: str = "",
+        case_sensitive: bool = False,
+    ):
         """
         全文检索（兼容旧接口）
-        
+
         Args:
             search: 搜索关键词
             permission_map: 权限映射
             creator: 创建者
             case_sensitive: 是否区分大小写（默认False，模糊匹配）
-            
+
         Returns:
             实例列表
         """
-        logger.info(f"[InstanceManage.fulltext_search] 搜索关键词: {search}, 区分大小写: {case_sensitive}")
-        
+        logger.info(
+            f"[InstanceManage.fulltext_search] 搜索关键词: {search}, 区分大小写: {case_sensitive}"
+        )
+
         # 构建权限参数
         permission_params, _ = cls._build_permission_params(permission_map, creator)
 
@@ -783,34 +991,44 @@ class InstanceManage(object):
                 permission_params=permission_params,
                 inst_name_params="",  # 实例名称权限已包含在 permission_params 中
                 created="",  # 创建人权限已包含在 permission_params 中
-                case_sensitive=case_sensitive
+                case_sensitive=case_sensitive,
             )
-        
+
         logger.info(f"[InstanceManage.fulltext_search] 返回 {len(data)} 条结果")
         return data
 
     @classmethod
-    def fulltext_search_stats(cls, search: str, permission_map: dict, creator: str = "", case_sensitive: bool = False):
+    def fulltext_search_stats(
+        cls,
+        search: str,
+        permission_map: dict,
+        creator: str = "",
+        case_sensitive: bool = False,
+    ):
         """
         全文检索 - 模型统计接口
         返回搜索结果中每个模型的总数统计
-        
+
         Args:
             search: 搜索关键词
             permission_map: 权限映射
             creator: 创建者
             case_sensitive: 是否区分大小写（默认False，模糊匹配）
-            
+
         Returns:
             {
                 "total": 156,
                 "model_stats": [{"model_id": "Center", "count": 45}, ...]
             }
         """
-        logger.info(f"[InstanceManage.fulltext_search_stats] 搜索关键词: {search}, 区分大小写: {case_sensitive}")
-        
+        logger.info(
+            f"[InstanceManage.fulltext_search_stats] 搜索关键词: {search}, 区分大小写: {case_sensitive}"
+        )
+
         # 构建权限参数（统一逻辑）
-        permission_params, permission_params_dict = cls._build_permission_params(permission_map, creator)
+        permission_params, permission_params_dict = cls._build_permission_params(
+            permission_map, creator
+        )
 
         with GraphClient() as ag:
             # 调用新的统计接口
@@ -820,9 +1038,9 @@ class InstanceManage(object):
                 inst_name_params="",  # 实例名称权限已包含在 permission_params 中
                 created="",  # 创建人权限已包含在 permission_params 中
                 case_sensitive=case_sensitive,
-                permission_params_dict=permission_params_dict  # 传递参数字典
+                permission_params_dict=permission_params_dict,  # 传递参数字典
             )
-        
+
         logger.info(
             f"[InstanceManage.fulltext_search_stats] 返回统计: 总数={result.get('total', 0)}, "
             f"模型数={len(result.get('model_stats', []))}"
@@ -830,13 +1048,20 @@ class InstanceManage(object):
         return result
 
     @classmethod
-    def fulltext_search_by_model(cls, search: str, model_id: str, permission_map: dict, 
-                                creator: str = "", page: int = 1, page_size: int = 10,
-                                case_sensitive: bool = False):
+    def fulltext_search_by_model(
+        cls,
+        search: str,
+        model_id: str,
+        permission_map: dict,
+        creator: str = "",
+        page: int = 1,
+        page_size: int = 10,
+        case_sensitive: bool = False,
+    ):
         """
         全文检索 - 模型数据查询接口
         返回指定模型的分页数据
-        
+
         Args:
             search: 搜索关键词
             model_id: 模型ID
@@ -845,7 +1070,7 @@ class InstanceManage(object):
             page: 页码（从1开始）
             page_size: 每页大小
             case_sensitive: 是否区分大小写（默认False，模糊匹配）
-            
+
         Returns:
             {
                 "model_id": "Center",
@@ -859,9 +1084,11 @@ class InstanceManage(object):
             f"[InstanceManage.fulltext_search_by_model] 搜索关键词: {search}, 模型: {model_id}, "
             f"页码: {page}, 每页: {page_size}, 区分大小写: {case_sensitive}"
         )
-        
+
         # 构建权限参数（统一逻辑）
-        permission_params, permission_params_dict = cls._build_permission_params(permission_map, creator)
+        permission_params, permission_params_dict = cls._build_permission_params(
+            permission_map, creator
+        )
 
         with GraphClient() as ag:
             # 调用新的分页查询接口
@@ -874,9 +1101,9 @@ class InstanceManage(object):
                 page=page,
                 page_size=page_size,
                 case_sensitive=case_sensitive,
-                permission_params_dict=permission_params_dict  # 传递参数字典
+                permission_params_dict=permission_params_dict,  # 传递参数字典
             )
-        
+
         logger.info(
             f"[InstanceManage.fulltext_search_by_model] 返回结果: 模型={model_id}, 总数={result.get('total', 0)}, "
             f"当前页={result.get('page', 0)}, 数据条数={len(result.get('data', []))}"

@@ -12,7 +12,7 @@ import {
 } from '@/app/cmdb/types/assetManage';
 
 const BaseInfo = () => {
-  const { getModelAttrList } = useModelApi();
+  const { getModelAttrGroupsFullInfo } = useModelApi();
   const { getInstanceDetail } = useInstanceApi();
 
   const searchParams = useSearchParams();
@@ -33,11 +33,18 @@ const BaseInfo = () => {
   const getInitData = async () => {
     setPageLoading(true);
     try {
+
+      // 通过Promise.all并发获取模型属性列表和实例详情
       const [propertData, instDetailData] = await Promise.all([
-        getModelAttrList(modelId),
+        // getModelAttrList(modelId),
+        getModelAttrGroupsFullInfo(modelId),
         getInstanceDetail(instId),
       ]);
-      setPropertyList(propertData);
+
+      // 模型属性列表+值：propertData.groups
+      // console.log("test7.5", propertData.groups);
+
+      setPropertyList(propertData.groups);
       setInstDetail(instDetailData);
     } catch {
       console.log('获取数据失败');
@@ -58,6 +65,7 @@ const BaseInfo = () => {
 
   return (
     <Spin spinning={pageLoading}>
+      {/* propertyList是模型属性列表+值 */}
       <List
         instDetail={instDetail}
         propertyList={propertyList}

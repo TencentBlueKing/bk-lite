@@ -6,9 +6,13 @@
 NATS 推送辅助工具
 处理指标数据推送到 NATS（InfluxDB Line Protocol 格式）
 """
+import os
+import re
 import traceback
 from typing import Dict, Any
 from sanic.log import logger
+from influxdb_client import Point, WritePrecision
+from core.nats import NATSClient, NATSConfig
 
 
 async def publish_metrics_to_nats(
@@ -30,9 +34,6 @@ async def publish_metrics_to_nats(
         task_id: 任务ID
     """
     try:
-        from core.nats import NATSClient, NATSConfig
-        import os
-
         # 获取 NATS Metric Topic 前缀（从环境变量读取，默认为 metrics）
         metric_topic_prefix = os.getenv('NATS_METRIC_TOPIC', 'metrics')
 
@@ -150,9 +151,6 @@ def convert_prometheus_to_influx(prometheus_data: str, params: Dict[str, Any]) -
     """
     if not prometheus_data or not prometheus_data.strip():
         return []
-
-    from influxdb_client import Point, WritePrecision
-    import re
 
     lines = []
 

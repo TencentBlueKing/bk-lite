@@ -161,9 +161,10 @@ export const useStudioApi = () => {
   /**
    * Fetches web chat session list for a bot.
    * @param botId - The ID of the bot.
+   * @param nodeId - The ID of the node.
    */
-  const fetchWebChatSessions = async (botId: string | number): Promise<any[]> => {
-    return get('/opspilot/bot_mgmt/chat_application/web_chat_sessions/', { params: { bot_id: botId } });
+  const fetchWebChatSessions = async (botId: string | number, nodeId?: string | number): Promise<any[]> => {
+    return get('/opspilot/bot_mgmt/chat_application/web_chat_sessions/', { params: { bot_id: botId, node_id: nodeId } });
   };
 
   /**
@@ -182,7 +183,14 @@ export const useStudioApi = () => {
   const fetchSkillGuide = async (botId: string, nodeId: string): Promise<any> => {
     return get('/opspilot/bot_mgmt/chat_application/skill_guide/', { params: { bot_id: botId, node_id: nodeId } });
   };
-
+  /**
+   * 删除会话历史
+   * @param nodeId - 节点ID
+   * @param sessionId - 会话ID
+   */
+  const deleteSessionHistory = async (nodeId: string | number, sessionId: string): Promise<any> => {
+    return post('/opspilot/bot_mgmt/chat_application/delete_session_history/', { node_id: nodeId, session_id: sessionId });
+  };
   return {
     fetchLogs,
     fetchWorkflowTaskResult,
@@ -205,5 +213,6 @@ export const useStudioApi = () => {
     fetchApplication,
     fetchSessionMessages,
     fetchSkillGuide,
+    deleteSessionHistory,
   };
 };
