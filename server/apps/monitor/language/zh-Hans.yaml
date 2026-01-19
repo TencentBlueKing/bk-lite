@@ -1976,19 +1976,19 @@ monitor_object_metric:
     sqlserver_memory_clerks_size_kb:
       name: 内存Clerk大小
       desc: SQL Server内部内存分配器当前占用的内存大小，用于分析内存使用分布和识别潜在内存泄漏。不同clerk代表不同的内存使用用途。
-    sqlserver_performance_batch_requests_rate:
+    sqlserver_performance_value_rate:
       name: 批处理请求速率
       desc: SQL Server批处理请求的速率，衡量数据库整体吞吐量和负载压力。高请求率表示数据库处理大量查询。
-    sqlserver_performance_page_life_expectancy:
+    sqlserver_page_life_expectancy:
       name: 页生命周期期望
       desc: 数据页在缓冲池中的平均停留时间，反映内存压力。值过低表明内存不足，可能导致频繁的物理IO，影响性能。
-    sqlserver_performance_buffer_cache_hit_ratio:
+    sqlserver_buffer_cache_hit_ratio:
       name: 缓冲区缓存命中率
       desc: 从缓冲池中读取数据页的百分比，反映内存效率。高命中率表明大部分数据请求由内存满足，性能良好。低命中率可能表明需要更多内存。
-    sqlserver_performance_user_connections_rate:
+    sqlserver_user_connections_rate:
       name: 用户连接数
       desc: 当前连接到SQL Server实例的用户数量，反映数据库的并发负载和连接池使用情况。连接数过多可能导致资源争用。
-    sqlserver_performance_lock_wait_time_rate:
+    sqlserver_lock_wait_time_rate:
       name: 锁等待时间
       desc: 锁等待时间的速率，反映数据库的并发争用情况。高值可能表明存在阻塞或锁竞争问题，需要优化事务设计。
     sqlserver_requests_cpu_time_ms_rate:

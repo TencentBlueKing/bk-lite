@@ -2321,19 +2321,19 @@ monitor_object_metric:
     sqlserver_memory_clerks_size_kb:
       name: Memory Clerk Size
       desc: Current memory size allocated by SQL Server internal memory clerks, used to analyze memory usage distribution and identify potential memory leaks. Different clerks represent different memory usage purposes.
-    sqlserver_performance_batch_requests_rate:
+    sqlserver_performance_value_rate:
       name: Batch Requests Rate
       desc: Rate of batch requests processed by SQL Server, measuring overall database throughput and load pressure. High request rates indicate the database is processing a large volume of queries.
-    sqlserver_performance_page_life_expectancy:
+    sqlserver_page_life_expectancy:
       name: Page Life Expectancy
       desc: Average time data pages stay in the buffer pool, reflecting memory pressure. Low values suggest insufficient memory, potentially causing frequent physical I/O and impacting performance.
-    sqlserver_performance_buffer_cache_hit_ratio:
+    sqlserver_buffer_cache_hit_ratio:
       name: Buffer Cache Hit Ratio
       desc: Percentage of data page reads satisfied from the buffer pool, reflecting memory efficiency. High hit ratios indicate most data requests are served from memory, suggesting good performance. Low hit ratios may indicate a need for more memory.
-    sqlserver_performance_user_connections_rate:
+    sqlserver_user_connections_rate:
       name: User Connections
       desc: Number of users currently connected to the SQL Server instance, reflecting concurrent load and connection pool usage. Too many connections may lead to resource contention.
-    sqlserver_performance_lock_wait_time_rate:
+    sqlserver_lock_wait_time_rate:
       name: Lock Wait Time
       desc: Rate of lock wait time, reflecting concurrency contention. High values may indicate blocking or lock contention issues that require transaction design optimization.
     sqlserver_requests_cpu_time_ms_rate:
