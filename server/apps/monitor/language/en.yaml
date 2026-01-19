@@ -2081,10 +2081,6 @@ monitor_object_metric:
       name: Cache Retrieve Hit Count
       desc: Number of successful cache retrievals; high hit rate indicates efficient
         caching and reduced backend load
-    process_resident_memory_bytes:
-      name: Process Resident Memory
-      desc: Amount of physical memory currently occupied by the process, monitoring
-        memory usage and identifying leaks
   Node:
     node_status_condition:
       name: Node Status

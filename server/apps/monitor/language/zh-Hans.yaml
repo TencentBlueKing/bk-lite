@@ -1737,9 +1737,6 @@ monitor_object_metric:
     apache_CacheRetrieveHitCount:
       name: 缓存命中次数
       desc: 缓存检索中成功命中的次数，高命中率表明缓存效率良好，减轻了后端负载
-    process_resident_memory_bytes:
-      name: 进程驻留内存
-      desc: 进程当前占用的物理内存大小，用于监控内存使用情况和识别内存泄漏
   Node:
     node_status_condition:
       name: Node状态
