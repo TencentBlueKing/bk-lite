@@ -1,6 +1,7 @@
 """浏览器操作工具 - 使用Browser-Use进行网页自动化"""
 
 import asyncio
+import os
 from typing import Any, Dict, Optional
 from urllib.parse import urlparse
 
@@ -80,9 +81,9 @@ async def _browse_website_async(
         # 初始化 LLM（使用 browser_use.llm.ChatOpenAI）
         if not llm:
             llm = ChatOpenAI(model="gpt-4o", temperature=0.7)
-
+        executable_path = os.getenv("EXECUTABLE_PATH", None) or None
         # 初始化 Browser
-        browser = Browser(headless=headless, enable_default_extensions=False)
+        browser = Browser(executable_path=executable_path, headless=headless, enable_default_extensions=False)
 
         # 创建 browser-use agent
         # 判断task中是否已经明确包含了URL信息
