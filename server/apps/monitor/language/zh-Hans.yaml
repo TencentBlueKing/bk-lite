@@ -997,7 +997,7 @@ monitor_object_metric:
     docker_container_net_tx_packets_rate:
       name: 发送数据包速率
       desc: 容器发送的数据包速率，反映网络流出的活跃度
-  Oracle-Exporter:
+  Oracle:
     oracledb_up_gauge:
       name: 运行状态
       desc: 当前Oracle数据库运行状态，0为正常运行，1为运行异常
@@ -2217,7 +2217,7 @@ monitor_object_metric_group:
     Status: 状态
   vCenter:
     Quantity: 数量
-  Oracle-Exporter:
+  Oracle:
     Base: 基础信息
     Activity: 数据库活动
     Wait: 等待时间
@@ -2531,7 +2531,7 @@ monitor_object_plugin:
   Storage SNMP General:
     desc: 通过Telegraf采集器利用SNMP协议定期收集存储设备各接口的流量、丢包数、错包数等IF-MIB关键指标。
     name: 存储设备SNMP通用（Telegraf）
-  Oracle-Exporter:
+  Oracle:
     desc: 通过Oracle Exporter采集器定期采集Oracle运行时长、操作次数、事务提交回滚及各类等待时间等指标。
     name: Oracle（Exporter）
   Scanning Device SNMP General:

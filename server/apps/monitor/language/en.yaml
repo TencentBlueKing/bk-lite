@@ -1170,7 +1170,7 @@ monitor_object_metric:
     docker_container_net_tx_packets_rate:
       name: Transmitted Packets Rate
       desc: Number of packets sent per second by the container, reflecting the activity level of outbound network flow
-  Oracle-Exporter:
+  Oracle:
     oracledb_up_gauge:
       name: OracleDb Status
       desc: The current Oracle database is running in the current state, 0 is normal, and 1 is abnormal
@@ -2562,7 +2562,7 @@ monitor_object_metric_group:
     Status: Status
   vCenter:
     Quantity: Quantity
-  Oracle-Exporter:
+  Oracle:
     Base: Base
     Activity: Database Activity
     Wait: Wait
@@ -2939,7 +2939,7 @@ monitor_object_plugin:
       key IF-MIB metrics from storage device interfaces, including traffic volume,
       packet loss, and error counts.
     name: Storage SNMP General (Telegraf)
-  Oracle-Exporter:
+  Oracle:
     desc: The Oracle Exporter collector regularly gathers metrics from Oracle, including
       uptime, operation counts, transaction commits and rollbacks, as well as various
       wait times.
