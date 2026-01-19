@@ -147,6 +147,7 @@ MIDDLEWARE_METRIC_MAP = {
     "rabbitmq": ["rabbitmq_info_gauge"],
     "tomcat": ["tomcat_info_gauge"],
     "consul": ["consul_info_gauge"],
+    "docker": ["docker_info_gauge"],
     "apache": ["apache_info_gauge"],
     "activemq": ["activemq_info_gauge"],
     "weblogic": ["weblogic_info_gauge"],
