@@ -73,6 +73,15 @@ func run(client *http.Client) {
 	}
 	cfg.InstallDir = filepath.Clean(cfg.InstallDir)
 
+	// Ensure install directory is absolute path (required by collector-sidecar)
+	if !filepath.IsAbs(cfg.InstallDir) {
+		absPath, err := filepath.Abs(cfg.InstallDir)
+		if err != nil {
+			fatal("Failed to resolve absolute path for install dir: %v", err)
+		}
+		cfg.InstallDir = absPath
+	}
+
 	log("[2/6] Preparing directories...")
 	if err := prepareDirs(cfg.InstallDir); err != nil {
 		fatal("Failed: %v", err)
@@ -113,6 +122,7 @@ func run(client *http.Client) {
 
 func log(format string, args ...interface{}) {
 	fmt.Printf(format+"\n", args...)
+	os.Stdout.Sync()
 }
 
 func fatal(format string, args ...interface{}) {
@@ -187,6 +197,26 @@ func prepareDirs(base string) error {
 	return nil
 }
 
+type progressWriter struct {
+	total      int64
+	downloaded int64
+	lastPct    int
+	desc       string
+}
+
+func (pw *progressWriter) Write(p []byte) (int, error) {
+	n := len(p)
+	pw.downloaded += int64(n)
+	if pw.total > 0 {
+		pct := int(pw.downloaded * 100 / pw.total)
+		if pct/10 > pw.lastPct/10 {
+			log("      %s... %d%%", pw.desc, pct)
+			pw.lastPct = pct
+		}
+	}
+	return n, nil
+}
+
 func download(client *http.Client, url string) (string, error) {
 	resp, err := client.Get(url)
 	if err != nil {
@@ -204,8 +234,18 @@ func download(client *http.Client, url string) (string, error) {
 		return "", err
 	}
 
-	_, err = io.Copy(f, resp.Body)
+	if resp.ContentLength > 0 {
+		log("      Downloading... 0%%")
+		pw := &progressWriter{total: resp.ContentLength, desc: "Downloading"}
+		_, err = io.Copy(f, io.TeeReader(resp.Body, pw))
+		if pw.lastPct < 100 {
+			log("      Downloading... 100%%")
+		}
+	} else {
+		_, err = io.Copy(f, resp.Body)
+	}
 	f.Close()
+
 	if err != nil {
 		os.Remove(tmp)
 		return "", err
@@ -220,11 +260,32 @@ func extract(zipPath, dest string) (int, error) {
 	}
 	defer r.Close()
 
+	stripPrefix := detectCommonPrefix(r.File)
+
+	totalFiles := 0
+	for _, f := range r.File {
+		if !f.FileInfo().IsDir() {
+			totalFiles++
+		}
+	}
+
 	count := 0
+	lastPct := 0
+	if totalFiles > 0 {
+		log("      Extracting... 0%%")
+	}
 	destClean := filepath.Clean(dest) + string(os.PathSeparator)
 
 	for _, f := range r.File {
-		target := filepath.Join(dest, f.Name)
+		name := f.Name
+		if stripPrefix != "" {
+			name = strings.TrimPrefix(name, stripPrefix)
+			if name == "" {
+				continue
+			}
+		}
+
+		target := filepath.Join(dest, name)
 		if !strings.HasPrefix(filepath.Clean(target)+string(os.PathSeparator), destClean) {
 			if filepath.Clean(target) != filepath.Clean(dest) {
 				continue
@@ -256,17 +317,62 @@ func extract(zipPath, dest string) (int, error) {
 			return count, err
 		}
 		count++
+
+		if totalFiles > 0 {
+			pct := count * 100 / totalFiles
+			if pct/10 > lastPct/10 {
+				log("      Extracting... %d%%", pct)
+				lastPct = pct
+			}
+		}
 	}
+
+	if totalFiles > 0 && lastPct < 100 {
+		log("      Extracting... 100%%")
+	}
+
 	return count, nil
 }
 
+// detectCommonPrefix finds a common top-level directory prefix if all files share one
+func detectCommonPrefix(files []*zip.File) string {
+	if len(files) == 0 {
+		return ""
+	}
+
+	var prefix string
+	for _, f := range files {
+		name := f.Name
+		// Get the first path component
+		idx := strings.Index(name, "/")
+		if idx == -1 {
+			// File at root level, no common prefix
+			return ""
+		}
+		firstDir := name[:idx+1] // include trailing slash
+
+		if prefix == "" {
+			prefix = firstDir
+		} else if prefix != firstDir {
+			// Different top-level directories, no common prefix
+			return ""
+		}
+	}
+	return prefix
+}
+
 func writeConfig(cfg *Config) error {
+	escapePath := func(p string) string {
+		return strings.ReplaceAll(p, `\`, `\\`)
+	}
+	installDir := escapePath(cfg.InstallDir)
+
 	content := fmt.Sprintf(`server_url: "%s"
 server_api_token: "%s"
 node_id: "%s"
 node_name: "%s"
 update_interval: 10
-tls_skip_verify: false
+tls_skip_verify: true
 send_status: true
 cache_path: "%s\\cache"
 log_path: "%s\\logs"
@@ -279,9 +385,9 @@ collector_binaries_accesslist:
 		cfg.APIToken,
 		cfg.NodeID,
 		cfg.NodeName,
-		cfg.InstallDir, cfg.InstallDir, cfg.InstallDir,
+		installDir, installDir, installDir,
 		cfg.ZoneID, cfg.GroupID,
-		cfg.InstallDir,
+		installDir,
 	)
 
 	return os.WriteFile(filepath.Join(cfg.InstallDir, "sidecar.yml"), []byte(content), 0644)
@@ -290,45 +396,39 @@ collector_binaries_accesslist:
 func registerService(installDir string) error {
 	exePath := filepath.Join(installDir, "collector-sidecar.exe")
 	cfgPath := filepath.Join(installDir, "sidecar.yml")
+	logPath := filepath.Join(installDir, "logs")
 
-	// Verify exe exists
 	if _, err := os.Stat(exePath); os.IsNotExist(err) {
 		return fmt.Errorf("collector-sidecar.exe not found at %s", exePath)
 	}
 
-	// Verify config exists
 	if _, err := os.Stat(cfgPath); os.IsNotExist(err) {
 		return fmt.Errorf("sidecar.yml not found at %s", cfgPath)
 	}
 
 	binPath := fmt.Sprintf(`"%s" -c "%s"`, exePath, cfgPath)
 
-	// Stop existing service (ignore errors)
 	exec.Command("sc.exe", "stop", "sidecar").Run()
 	time.Sleep(time.Second)
 	exec.Command("sc.exe", "delete", "sidecar").Run()
 	time.Sleep(time.Second)
 
-	// Create service
 	out, err := exec.Command("sc.exe", "create", "sidecar",
 		"binPath=", binPath,
 		"start=", "auto",
 		"DisplayName=", "Collector Sidecar",
 	).CombinedOutput()
 	if err != nil {
-		return fmt.Errorf("sc create failed: %s", strings.TrimSpace(string(out)))
+		return fmt.Errorf("sc create failed: %s\n\nTroubleshooting:\n  1. Run as Administrator\n  2. Check: sc.exe query sidecar\n  3. Manual delete: sc.exe delete sidecar", strings.TrimSpace(string(out)))
 	}
 
-	// Set description (ignore error)
 	exec.Command("sc.exe", "description", "sidecar", "Collector Sidecar - Log and metric collector agent").Run()
 
-	// Start service
 	out, err = exec.Command("sc.exe", "start", "sidecar").CombinedOutput()
 	if err != nil {
-		return fmt.Errorf("sc start failed: %s", strings.TrimSpace(string(out)))
+		return serviceStartError(string(out), exePath, cfgPath, logPath)
 	}
 
-	// Wait for service to be running
 	for i := 0; i < 10; i++ {
 		time.Sleep(time.Second)
 		out, _ := exec.Command("sc.exe", "query", "sidecar").Output()
@@ -338,14 +438,36 @@ func registerService(installDir string) error {
 		}
 	}
 
-	// Check final state
 	out, _ = exec.Command("sc.exe", "query", "sidecar").Output()
-	if strings.Contains(string(out), "STOPPED") {
-		return fmt.Errorf("service failed to start (STOPPED)")
-	}
-	if strings.Contains(string(out), "FAILED") {
-		return fmt.Errorf("service failed to start (FAILED)")
-	}
+	return serviceStartError(string(out), exePath, cfgPath, logPath)
+}
 
-	return fmt.Errorf("service did not reach RUNNING state within 10 seconds")
+func serviceStartError(scOutput, exePath, cfgPath, logPath string) error {
+	return fmt.Errorf(`service failed to start
+
+sc.exe output:
+%s
+
+Troubleshooting steps:
+  1. Check service status:
+     sc.exe query sidecar
+     sc.exe qc sidecar
+
+  2. Test executable directly:
+     "%s" -c "%s"
+
+  3. Check logs:
+     dir "%s"
+
+  4. Verify config file:
+     type "%s"
+
+  5. Check Windows Event Viewer:
+     eventvwr.msc -> Windows Logs -> Application
+
+  6. Manual service control:
+     sc.exe stop sidecar
+     sc.exe delete sidecar
+     sc.exe create sidecar binPath= "..." start= auto`,
+		strings.TrimSpace(scOutput), exePath, cfgPath, logPath, cfgPath)
 }
