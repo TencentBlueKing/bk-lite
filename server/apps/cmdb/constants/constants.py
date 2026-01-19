@@ -267,12 +267,15 @@ encrypted_fields: 需要加密的字段列表 新增采集对象后需要配置�
 COLLECT_OBJ_TREE = [
     {
         "id": "k8s",
-        "name": "K8S",
+        "name": "容器",
         "children": [
             {"id": "k8s_cluster", "model_id": "k8s_cluster", "name": "K8S", "task_type": CollectPluginTypes.K8S,
              "type": CollectDriverTypes.PROTOCOL, "tag": ["apiserver"],
              "desc": "采集k8s集群核心对象node节点、命名空间、工作负载、pod",
-             "encrypted_fields": []}
+             "encrypted_fields": []},
+            {"id": "docker", "model_id": "docker", "name": "Docker", "task_type": CollectPluginTypes.MIDDLEWARE,
+             "type": CollectDriverTypes.JOB, "tag": ["JOB", "Linux"], "desc": "发现与采集Docker容器配置信息",
+             "encrypted_fields": ["password"]},
         ],
     },
     {
@@ -303,7 +306,7 @@ COLLECT_OBJ_TREE = [
         "id": "databases",
         "name": "数据库",
         "children": [
-            {"id": "mysql", "model_id": "mysql", "name": "Mysql", "task_type": CollectPluginTypes.PROTOCOL,
+            {"id": "mysql", "model_id": "mysql", "name": "Mysql", "task_type": CollectPluginTypes.DB,
              "type": CollectDriverTypes.PROTOCOL, "tag": ["Agentless", "TCP"], "desc": "采集MySQL关键配置信息",
              "encrypted_fields": ["password"]
              },
