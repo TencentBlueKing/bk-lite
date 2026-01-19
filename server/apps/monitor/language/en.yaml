@@ -1,78 +1,78 @@
 monitor_object_metric:
   Minio:
-    cluster_capacity_usable_total_bytes_gauge:
+    minio_cluster_capacity_usable_total_bytes_gauge:
       name: Cluster Usable Total Capacity
       desc: Total usable logical storage capacity after erasure coding, reflecting storage resource scale after redundancy
-    cluster_capacity_usable_free_bytes_gauge:
+    minio_cluster_capacity_usable_free_bytes_gauge:
       name: Cluster Usable Free Capacity
       desc: Available logical storage capacity of the cluster, used for monitoring usage and predicting storage needs
-    cluster_drive_online_total_gauge:
+    minio_cluster_drive_online_total_gauge:
       name: Online Drives Count
       desc: Number of currently online and available storage drives, indicating storage hardware availability
-    cluster_nodes_online_total_gauge:
+    minio_cluster_nodes_online_total_gauge:
       name: Online Nodes Count
       desc: Number of currently online server nodes, affecting cluster processing capacity and fault tolerance
-    cluster_health_status_gauge:
+    minio_cluster_health_status_gauge:
       name: Cluster Health Status
       desc: Overall cluster health status, 1 indicates healthy, 0 indicates unhealthy, providing quick overview of cluster status
-    cluster_health_erasure_set_status_gauge:
+    minio_cluster_health_erasure_set_status_gauge:
       name: Erasure Set Status
       desc: Erasure set status (1=healthy), indicating data redundancy set health and directly affecting data security
-    cluster_health_erasure_set_online_drives_gauge:
+    minio_cluster_health_erasure_set_online_drives_gauge:
       name: Erasure Set Online Drives
       desc: Number of online drives in erasure set, affecting data availability and redundancy, ensuring redundancy strategy effectiveness
-    node_cpu_avg_load1_gauge:
+    minio_node_cpu_avg_load1_gauge:
       name: Node 1-minute Average Load
       desc: Average system load over last 1 minute, indicating short-term CPU pressure and performance stress
-    node_cpu_avg_idle_gauge:
+    minio_node_cpu_avg_idle_gauge:
       name: Node CPU Idle Rate
       desc: Percentage of CPU idle time, indicating CPU utilization, low idle rate may indicate CPU bottleneck
-    node_mem_used_perc_gauge:
+    minio_node_mem_used_perc_gauge:
       name: Node Memory Usage Rate
       desc: Percentage of memory used, indicating memory pressure, high usage may cause performance degradation
-    node_drive_perc_util_gauge:
+    minio_node_drive_perc_util_gauge:
       name: Drive Utilization Rate
       desc: Utilization percentage of single drive, reflecting storage space usage, important for capacity planning
-    node_drive_reads_per_sec_gauge:
+    minio_node_drive_reads_per_sec_gauge:
       name: Drive Reads Per Second
       desc: Number of read operations per second on single drive, reflecting read performance and workload
-    node_drive_writes_per_sec_gauge:
+    minio_node_drive_writes_per_sec_gauge:
       name: Drive Writes Per Second
       desc: Number of write operations per second on single drive, reflecting write performance and workload
-    node_if_rx_bytes_gauge:
+    minio_node_if_rx_bytes_gauge:
       name: Network Interface Receive Bytes
       desc: Received data bytes on network interface, reflecting network inflow, monitoring bandwidth usage
-    node_if_tx_bytes_gauge:
+    minio_node_if_tx_bytes_gauge:
       name: Network Interface Transmit Bytes
       desc: Transmitted data bytes on network interface, reflecting network outflow, monitoring bandwidth usage
-    node_process_uptime_seconds_gauge:
+    minio_node_process_uptime_seconds_gauge:
       name: Process Uptime
       desc: Seconds MinIO process has been running, indicating stability, long uptime indicates stability, frequent restarts may indicate issues
-    node_process_cpu_total_seconds_counter_rate:
+    minio_node_process_cpu_total_seconds_counter_rate:
       name: Process CPU Usage Rate
       desc: CPU time consumed per second by MinIO process, reflecting real-time CPU resource consumption
-    node_process_resident_memory_bytes_gauge:
+    minio_node_process_resident_memory_bytes_gauge:
       name: Process Resident Memory
       desc: Resident memory size occupied by MinIO process, reflecting memory usage, monitoring memory leaks
-    node_go_routine_total_gauge:
+    minio_node_go_routine_total_gauge:
       name: Go Routines Total
       desc: Current number of Go routines in MinIO process, reflecting concurrency capacity, abnormal increase may indicate issues
-    s3_requests_incoming_total_gauge:
+    minio_s3_requests_incoming_total_gauge:
       name: Current Incoming S3 Requests
       desc: Number of incoming S3 API requests currently being processed, reflecting current S3 service load
-    s3_requests_waiting_total_gauge:
+    minio_s3_requests_waiting_total_gauge:
       name: Waiting S3 Requests
       desc: Number of S3 API requests currently waiting for processing, reflecting S3 service queue backlog
-    s3_traffic_received_bytes_counter_rate:
+    minio_s3_traffic_received_bytes_counter_rate:
       name: S3 Received Traffic Rate
       desc: Data traffic received per second by S3 service, reflecting upload rate and network inflow bandwidth usage
-    s3_traffic_sent_bytes_counter_rate:
+    minio_s3_traffic_sent_bytes_counter_rate:
       name: S3 Sent Traffic Rate
       desc: Data traffic sent per second by S3 service, reflecting download rate and network outflow bandwidth usage
-    s3_requests_rejected_auth_total_counter_rate:
+    minio_s3_requests_rejected_auth_total_counter_rate:
       name: Auth Rejected S3 Requests Rate
       desc: Number of S3 requests rejected per second due to authentication failure, reflecting authentication failure frequency and security status
-    node_scanner_objects_scanned_counter_rate:
+    minio_node_scanner_objects_scanned_counter_rate:
       name: Objects Scan Rate
       desc: Number of objects scanned per second by scanner, reflecting efficiency of storage system internal maintenance activities
   Host:
