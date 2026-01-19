@@ -422,7 +422,7 @@ const ProfessionalCollection: React.FC = () => {
       host: HostTask,
       middleware: HostTask,
       snmp: SNMPTask,
-      db: SQLTask,
+      protocol: SQLTask,
     };
 
     const taskTypeKey = currentPlugin.task_type || currentPlugin.type || actualCategory.id;
