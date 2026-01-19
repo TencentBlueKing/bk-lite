@@ -123,23 +123,25 @@ const FieldMoadal = forwardRef<FieldModalRef, FieldModalProps>(
         // 提取所有属性并扁平化，用于在315行数据中查找
         const allAttrs = attrList.flatMap((group) => group.attrs || []);
 
+        // 转换日期和组织字段格式（复制和编辑都需要）
+        for (const key in forms) {
+          const target = allAttrs.find((item: FullInfoAttrItem) => item.attr_id === key);
+          if (target?.attr_type === 'time' && forms[key]) {
+            forms[key] = dayjs(forms[key], 'YYYY-MM-DD HH:mm:ss');
+          } else if (target?.attr_type === 'organization' && forms[key]) {
+            forms[key] = forms[key]
+              .map((item: any) => Number(item))
+              .filter((num: number) => !isNaN(num));
+          }
+        }
+
+        // 复制操作时，覆盖组织字段为当前选中的分组
         if (type === 'add') {
           Object.assign(forms, {
             organization: selectedGroup?.id
               ? [Number(selectedGroup.id)]
               : undefined,
           });
-        } else {
-          for (const key in forms) {
-            const target = allAttrs.find((item: FullInfoAttrItem) => item.attr_id === key);
-            if (target?.attr_type === 'time' && forms[key]) {
-              forms[key] = dayjs(forms[key], 'YYYY-MM-DD HH:mm:ss');
-            } else if (target?.attr_type === 'organization' && forms[key]) {
-              forms[key] = forms[key]
-                .map((item: any) => Number(item))
-                .filter((num: number) => !isNaN(num));
-            }
-          }
         }
         setInstanceData(forms);
       },
