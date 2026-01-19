@@ -14,44 +14,16 @@
       "id": "xy-edge__agents-1768553454952-notification-1768288641818",
       "source": "agents-1768553454952",
       "target": "notification-1768288641818"
-    },
-    {
-      "id": "xy-edge__restful-1768288636794-agents-1768288638263",
-      "source": "restful-1768288636794",
-      "target": "agents-1768288638263"
     }
   ],
   "nodes": [
-    {
-      "id": "restful-1768288636794",
-      "data": {
-        "type": "restful",
-        "label": "RESTful API",
-        "config": {
-          "inputParams": "last_message",
-          "outputParams": "last_message"
-        },
-        "description": ""
-      },
-      "type": "restful",
-      "dragging": false,
-      "measured": {
-        "width": 240,
-        "height": 120
-      },
-      "position": {
-        "x": 217.78274129638265,
-        "y": 662.8634498646053
-      },
-      "selected": false
-    },
     {
       "id": "agents-1768288638263",
       "data": {
         "type": "agents",
         "label": "智能体",
         "config": {
-          "agent": 1693,
+          "agent": 32,
           "params": [],
           "prompt": "",
           "headers": [],
@@ -77,37 +49,11 @@
     {
       "id": "notification-1768288641818",
       "data": {
-        "type": "notification",
+       "type": "notification",
         "label": "对外通知",
         "config": {
-          "params": [],
-          "headers": [],
           "inputParams": "last_message",
-          "outputParams": "last_message",
-          "notificationType": "email",
-          "notificationTitle": "巡检报告",
-          "notificationMethod": 2,
-          "notificationContent": "{{last_message}}",
-          "notificationChannels": [
-            {
-              "id": 2,
-              "name": "邮件系统",
-              "config": {
-                "port": "465",
-                "smtp_pwd": "gAAAAABo0hD8c_eSJaw2FhFqJ7nCRoOhMo6dvRV3gjZ3nYsK4pAICpguDF1r8JCb-oUA9cqscOArYi-SQwtcfjl8MeeI7ZzQYqSZ6CxpKSmb5UaSMzUrYiY=",
-                "smtp_user": "weops@canway.net",
-                "mail_sender": "weops@canway.net",
-                "smtp_server": "smtp.exmail.qq.com",
-                "smtp_usessl": true,
-                "smtp_usetls": false
-              },
-              "description": "测试",
-              "channel_type": "email"
-            }
-          ],
-          "notificationRecipients": [
-            51
-          ]
+          "outputParams": "last_message"
         },
         "description": ""
       },
@@ -118,8 +64,8 @@
         "height": 120
       },
       "position": {
-        "x": 1426.339419818946,
-        "y": 383.12002195729684
+        "x": 1348.0060864856127,
+        "y": 411.45335529063016
       },
       "selected": false
     },
@@ -130,7 +76,7 @@
         "label": "定时触发",
         "config": {
           "time": "00:00",
-          "message": "",
+          "message": "巡检，并输出报告",
           "frequency": "daily",
           "inputParams": "last_message",
           "outputParams": "last_message"
@@ -155,11 +101,11 @@
         "type": "agents",
         "label": "智能体",
         "config": {
-          "agent": 1696,
+          "agent": 33,
           "params": [],
           "prompt": "",
           "headers": [],
-          "agentName": "PGSQL 数据汇总",
+          "agentName": "Postgres DB 数据汇总",
           "inputParams": "last_message",
           "outputParams": "last_message",
           "uploadedFiles": []

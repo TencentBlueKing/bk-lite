@@ -1,11 +1,6 @@
 {
   "edges": [
     {
-      "id": "xy-edge__restful-1768531549783-agents-1768531551936",
-      "source": "restful-1768531549783",
-      "target": "agents-1768531551936"
-    },
-    {
       "id": "xy-edge__agents-1768531551936-agents-1768531553421",
       "source": "agents-1768531551936",
       "target": "agents-1768531553421"
@@ -14,39 +9,21 @@
       "id": "xy-edge__agents-1768531553421-notification-1768531622172",
       "source": "agents-1768531553421",
       "target": "notification-1768531622172"
+    },
+    {
+      "id": "xy-edge__celery-1768803261943-agents-1768531551936",
+      "source": "celery-1768803261943",
+      "target": "agents-1768531551936"
     }
   ],
   "nodes": [
-    {
-      "id": "restful-1768531549783",
-      "data": {
-        "type": "restful",
-        "label": "RESTful API",
-        "config": {
-          "inputParams": "last_message",
-          "outputParams": "last_message"
-        },
-        "description": ""
-      },
-      "type": "restful",
-      "dragging": true,
-      "measured": {
-        "width": 240,
-        "height": 120
-      },
-      "position": {
-        "x": 186.79894780573306,
-        "y": 512.9001315242833
-      },
-      "selected": true
-    },
     {
       "id": "agents-1768531551936",
       "data": {
         "type": "agents",
         "label": "智能体",
         "config": {
-          "agent": 1694,
+          "agent": 30,
           "params": [],
           "prompt": "",
           "headers": [],
@@ -75,7 +52,7 @@
         "type": "agents",
         "label": "智能体",
         "config": {
-          "agent": 1695,
+          "agent": 31,
           "params": [],
           "prompt": "",
           "headers": [],
@@ -104,34 +81,8 @@
         "type": "notification",
         "label": "对外通知",
         "config": {
-          "params": [],
-          "headers": [],
           "inputParams": "last_message",
-          "outputParams": "last_message",
-          "notificationType": "email",
-          "notificationTitle": "k8s巡检结果",
-          "notificationMethod": 2,
-          "notificationContent": "{{last_message}}",
-          "notificationChannels": [
-            {
-              "id": 2,
-              "name": "邮件系统",
-              "config": {
-                "port": "465",
-                "smtp_pwd": "gAAAAABo0hD8c_eSJaw2FhFqJ7nCRoOhMo6dvRV3gjZ3nYsK4pAICpguDF1r8JCb-oUA9cqscOArYi-SQwtcfjl8MeeI7ZzQYqSZ6CxpKSmb5UaSMzUrYiY=",
-                "smtp_user": "weops@canway.net",
-                "mail_sender": "weops@canway.net",
-                "smtp_server": "smtp.exmail.qq.com",
-                "smtp_usessl": true,
-                "smtp_usetls": false
-              },
-              "description": "测试",
-              "channel_type": "email"
-            }
-          ],
-          "notificationRecipients": [
-            51
-          ]
+          "outputParams": "last_message"
         },
         "description": ""
       },
@@ -146,6 +97,32 @@
         "y": 512.5843197654588
       },
       "selected": false
+    },
+    {
+      "id": "celery-1768803261943",
+      "data": {
+        "type": "celery",
+        "label": "定时触发",
+        "config": {
+          "time": "00:00",
+          "message": "巡检，并输出报告",
+          "frequency": "daily",
+          "inputParams": "last_message",
+          "outputParams": "last_message"
+        },
+        "description": ""
+      },
+      "type": "celery",
+      "dragging": false,
+      "measured": {
+        "width": 240,
+        "height": 120
+      },
+      "position": {
+        "x": 145,
+        "y": 511.66666666666674
+      },
+      "selected": true
     }
   ]
 }

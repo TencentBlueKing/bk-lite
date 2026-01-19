@@ -1,9 +1,6 @@
 import json
 from pathlib import Path
 
-from apps.core.logger import opspilot_logger as logger
-from apps.opspilot.models import Bot, BotWorkFlow, LLMSkill, SkillTools
-
 
 class ChatFlowInitService:
     """ChatFlow 初始化服务
@@ -13,6 +10,10 @@ class ChatFlowInitService:
     - check.txt: 巡检 prompt（用于创建主 LLMSkill）
     - format.txt: 格式化 prompt（用于创建格式化 LLMSkill）
     - workflow.json: chatflow 工作流配置
+
+    支持两种模式：
+    1. 普通模式（默认）：直接导入模型，用于 management command
+    2. 迁移模式：通过 apps.get_model 获取模型，用于 data migration
     """
 
     CHATFLOW_DATA_DIR = Path(__file__).parent.parent / "management" / "chatflow_data"
@@ -39,8 +40,56 @@ class ChatFlowInitService:
         "domain": "domain.com",
     }
 
-    def __init__(self):
-        pass
+    def __init__(self, apps=None):
+        """初始化服务
+
+        Args:
+            apps: Django apps registry，用于迁移模式。如果为 None，使用普通模式直接导入模型
+        """
+        self._apps = apps
+        self._models_cache = {}
+
+    def _get_model(self, model_name: str):
+        """获取模型类
+
+        迁移模式下使用 apps.get_model，普通模式下直接导入
+        """
+        if model_name in self._models_cache:
+            return self._models_cache[model_name]
+
+        if self._apps is not None:
+            # 迁移模式：使用 apps.get_model 获取历史模型状态
+            model = self._apps.get_model("opspilot", model_name)
+        else:
+            # 普通模式：直接导入当前模型
+            from apps.opspilot.models import Bot, BotWorkFlow, LLMSkill, SkillTools
+
+            model_map = {
+                "Bot": Bot,
+                "BotWorkFlow": BotWorkFlow,
+                "LLMSkill": LLMSkill,
+                "SkillTools": SkillTools,
+            }
+            model = model_map.get(model_name)
+
+        self._models_cache[model_name] = model
+        return model
+
+    def _get_logger(self):
+        """获取 logger，迁移模式下使用 print"""
+        if self._apps is not None:
+            return None
+        from apps.core.logger import opspilot_logger
+
+        return opspilot_logger
+
+    def _log(self, level: str, message: str):
+        """记录日志"""
+        logger = self._get_logger()
+        if logger:
+            getattr(logger, level)(message)
+        else:
+            print(f"[{level.upper()}] {message}")
 
     def _build_tools_list(self, tool_names: list) -> list:
         """根据工具名称列表构建 tools JSON
@@ -54,25 +103,17 @@ class ChatFlowInitService:
         if not tool_names:
             return []
 
+        SkillTools = self._get_model("SkillTools")
         tools_list = []
         for tool_name in tool_names:
             skill_tool = SkillTools.objects.filter(name=tool_name).first()
             if not skill_tool:
-                logger.warning(f"SkillTools 不存在: {tool_name}")
+                self._log("warning", f"SkillTools 不存在: {tool_name}")
                 continue
 
-            # 构建 kwargs 列表
-            kwargs = []
-            for key, param_info in skill_tool.params.items():
-                kwargs.append(
-                    {
-                        "key": key,
-                        "type": param_info.get("type", "text"),
-                        "value": param_info.get("default", ""),
-                        "isRequired": param_info.get("required", False),
-                        "description": param_info.get("description", ""),
-                    }
-                )
+            # params 结构为 {url, name, kwargs: [{key, type, value, isRequired, description}]}
+            # 直接使用 params 中的 kwargs 列表
+            kwargs = skill_tool.params.get("kwargs", []) if isinstance(skill_tool.params, dict) else []
 
             tools_list.append(
                 {
@@ -90,7 +131,7 @@ class ChatFlowInitService:
         config_path = self.CHATFLOW_DATA_DIR / "config.json"
 
         if not config_path.exists():
-            logger.warning(f"ChatFlow 配置文件不存在: {config_path}")
+            self._log("warning", f"ChatFlow 配置文件不存在: {config_path}")
             return
 
         with open(config_path, "r", encoding="utf-8") as f:
@@ -100,7 +141,7 @@ class ChatFlowInitService:
             try:
                 self._init_single_chatflow(config)
             except Exception as e:
-                logger.exception(f"初始化 ChatFlow [{config.get('id')}] 失败: {e}")
+                self._log("exception", f"初始化 ChatFlow [{config.get('id')}] 失败: {e}")
 
     def _init_single_chatflow(self, config: dict):
         """初始化单个 chatflow
@@ -119,7 +160,7 @@ class ChatFlowInitService:
         chatflow_dir = self.CHATFLOW_DATA_DIR / chatflow_id
 
         if not chatflow_dir.exists():
-            logger.warning(f"ChatFlow 目录不存在: {chatflow_dir}")
+            self._log("warning", f"ChatFlow 目录不存在: {chatflow_dir}")
             return
 
         # 读取 prompt 文件
@@ -128,57 +169,70 @@ class ChatFlowInitService:
         workflow_json = self._read_json(chatflow_dir / "workflow.json")
 
         if not check_prompt or not format_prompt or not workflow_json:
-            logger.warning(f"ChatFlow [{chatflow_id}] 配置文件不完整，跳过")
+            self._log("warning", f"ChatFlow [{chatflow_id}] 配置文件不完整，跳过")
             return
 
         # 构建 tools 列表
         tools_list = self._build_tools_list(tool_names)
 
-        # 创建或更新主 LLMSkill（巡检）
-        main_skill = LLMSkill.objects.filter(
-            name=chatflow_name,
-            created_by=self.DEFAULT_CREATED_BY,
-            domain=self.DEFAULT_DOMAIN,
-        ).first()
-        if main_skill:
-            # 已存在，更新但不修改 team 和 tools
-            main_skill.skill_prompt = check_prompt
-            main_skill.introduction = description
-            main_skill.save()
+        # 获取模型类
+        LLMSkill = self._get_model("LLMSkill")
+        Bot = self._get_model("Bot")
+        BotWorkFlow = self._get_model("BotWorkFlow")
+
+        # 导入 BotTypeChoice
+        if self._apps is not None:
+            # 迁移模式下无法导入 enum，使用硬编码值
+            bot_type_chatflow = 3  # BotTypeChoice.CHAT_FLOW
         else:
-            # 新建，设置完整参数
+            from apps.opspilot.enum import BotTypeChoice
+
+            bot_type_chatflow = BotTypeChoice.CHAT_FLOW
+
+        # 创建主 LLMSkill（内置技能只新增不修改，根据 name + is_builtin=True 判断唯一性）
+        main_skill = LLMSkill.objects.filter(name=chatflow_name, is_builtin=True).first()
+        if main_skill:
+            # 已存在内置技能，跳过
+            self._log(
+                "info",
+                f"内置 LLMSkill 已存在，跳过: {chatflow_name} (ID: {main_skill.id})",
+            )
+        else:
+            # 新建内置技能
             main_skill = LLMSkill.objects.create(
                 name=chatflow_name,
                 skill_prompt=check_prompt,
                 introduction=description,
                 skill_type=check_skill_type,
                 tools=tools_list,
+                is_builtin=True,
                 **self.DEFAULT_SKILL_CONFIG,
             )
-        logger.info(f"创建/更新 LLMSkill: {chatflow_name} (ID: {main_skill.id})")
+            self._log("info", f"创建内置 LLMSkill: {chatflow_name} (ID: {main_skill.id})")
 
-        # 创建或更新格式化 LLMSkill
-        format_skill = LLMSkill.objects.filter(
-            name=format_skill_name,
-            created_by=self.DEFAULT_CREATED_BY,
-            domain=self.DEFAULT_DOMAIN,
-        ).first()
+        # 创建格式化 LLMSkill（内置技能只新增不修改）
+        format_skill = LLMSkill.objects.filter(name=format_skill_name, is_builtin=True).first()
         if format_skill:
-            # 已存在，更新但不修改 team
-            format_skill.skill_prompt = format_prompt
-            format_skill.introduction = f"{chatflow_name} 数据格式化"
-            format_skill.save()
+            # 已存在内置技能，跳过
+            self._log(
+                "info",
+                f"内置 LLMSkill 已存在，跳过: {format_skill_name} (ID: {format_skill.id})",
+            )
         else:
-            # 新建，设置完整参数
+            # 新建内置技能
             format_skill = LLMSkill.objects.create(
                 name=format_skill_name,
                 skill_prompt=format_prompt,
                 introduction=f"{chatflow_name} 数据格式化",
                 skill_type=format_skill_type,
                 tools=[],
+                is_builtin=True,
                 **self.DEFAULT_SKILL_CONFIG,
             )
-        logger.info(f"创建/更新 LLMSkill: {format_skill_name} (ID: {format_skill.id})")
+            self._log(
+                "info",
+                f"创建内置 LLMSkill: {format_skill_name} (ID: {format_skill.id})",
+            )
 
         # 更新 workflow.json 中的 agent ID
         updated_workflow = self._update_workflow_agent_ids(
@@ -189,19 +243,16 @@ class ChatFlowInitService:
             format_skill.id,
         )
 
-        # 创建或更新 Bot
-        bot = Bot.objects.filter(
-            name=chatflow_name,
-            created_by=self.DEFAULT_CREATED_BY,
-            domain=self.DEFAULT_DOMAIN,
-        ).first()
+        # 清理 workflow 中的收件人信息（内置 workflow 不需要收件人）
+        self._clear_workflow_recipients(updated_workflow)
+
+        # 创建 Bot（内置 Bot 只新增不修改，根据 is_builtin + name 判断唯一性）
+        bot = Bot.objects.filter(name=chatflow_name, is_builtin=True).first()
         if bot:
-            # 已存在，更新但不修改 team
-            bot.introduction = description
-            bot.online = False
-            bot.save()
+            # 已存在内置 Bot，跳过
+            self._log("info", f"内置 Bot 已存在，跳过: {chatflow_name} (ID: {bot.id})")
         else:
-            # 新建，设置 team
+            # 新建内置 Bot
             bot = Bot.objects.create(
                 name=chatflow_name,
                 created_by=self.DEFAULT_CREATED_BY,
@@ -209,8 +260,10 @@ class ChatFlowInitService:
                 introduction=description,
                 online=False,
                 team=self.DEFAULT_TEAM,
+                is_builtin=True,
+                bot_type=bot_type_chatflow,
             )
-        logger.info(f"创建/更新 Bot: {chatflow_name} (ID: {bot.id})")
+            self._log("info", f"创建内置 Bot: {chatflow_name} (ID: {bot.id})")
 
         # 创建或更新 BotWorkFlow
         BotWorkFlow.objects.update_or_create(
@@ -220,12 +273,12 @@ class ChatFlowInitService:
                 "web_json": updated_workflow,
             },
         )
-        logger.info(f"创建/更新 BotWorkFlow for Bot: {chatflow_name}")
+        self._log("info", f"创建/更新 BotWorkFlow for Bot: {chatflow_name}")
 
     def _read_file(self, path: Path) -> str | None:
         """读取文本文件"""
         if not path.exists():
-            logger.warning(f"文件不存在: {path}")
+            self._log("warning", f"文件不存在: {path}")
             return None
 
         with open(path, "r", encoding="utf-8") as f:
@@ -234,7 +287,7 @@ class ChatFlowInitService:
     def _read_json(self, path: Path) -> dict | None:
         """读取 JSON 文件"""
         if not path.exists():
-            logger.warning(f"文件不存在: {path}")
+            self._log("warning", f"文件不存在: {path}")
             return None
 
         with open(path, "r", encoding="utf-8") as f:
@@ -273,9 +326,28 @@ class ChatFlowInitService:
 
             if agent_name == main_skill_name:
                 config["agent"] = main_skill_id
-                logger.debug(f"更新节点 {node['id']} 的 agent ID 为 {main_skill_id}")
+                self._log("debug", f"更新节点 {node['id']} 的 agent ID 为 {main_skill_id}")
             elif agent_name == format_skill_name:
                 config["agent"] = format_skill_id
-                logger.debug(f"更新节点 {node['id']} 的 agent ID 为 {format_skill_id}")
+                self._log("debug", f"更新节点 {node['id']} 的 agent ID 为 {format_skill_id}")
 
         return workflow
+
+    def _clear_workflow_recipients(self, workflow: dict) -> None:
+        """清理 workflow 中的收件人信息
+
+        内置 workflow 不需要预设收件人，清空 notification 节点中的 notificationRecipients
+
+        Args:
+            workflow: workflow 配置（会直接修改）
+        """
+        nodes = workflow.get("nodes", [])
+
+        for node in nodes:
+            if node.get("type") != "notification":
+                continue
+
+            config = node.get("data", {}).get("config", {})
+            if "notificationRecipients" in config:
+                config["notificationRecipients"] = []
+                self._log("debug", f"清空节点 {node['id']} 的收件人列表")
