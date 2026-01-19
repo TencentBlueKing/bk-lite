@@ -88,7 +88,7 @@ class ChatService:
 
         except Exception as e:
             # 记录详细的异常信息以便排查问题
-            logger.error(f"invoke_chat 执行失败: skill_type={skill_type}, error={str(e)}", exc_info=True)
+            logger.exception(f"invoke_chat 执行失败: skill_type={skill_type}, error={str(e)}")
 
             loader = LanguageLoader(app="opspilot", default_lang="en")
             message = loader.get("error.agent_execution_failed") or f"Agent execution failed: {str(e)}"
