@@ -17,7 +17,6 @@ import {
   OriginSubGroupItem,
   EnumList,
 } from '@/app/cmdb/types/assetManage';
-const { RangePicker } = DatePicker;
 
 // 查找组织对象
 const findOrganizationById = (arr: Array<any>, targetValue: unknown) => {
@@ -129,14 +128,21 @@ export const deepClone = (obj: any, hash = new WeakMap()) => {
       ? new Date(obj)
       : obj instanceof RegExp
         ? new RegExp(obj.source, obj.flags)
-        : obj.constructor
-          ? new obj.constructor()
-          : Object.create(null);
+        : dayjs.isDayjs(obj)
+          ? obj.clone()
+          : obj.constructor
+            ? new obj.constructor()
+            : Object.create(null);
 
   hash.set(obj, result);
 
   if (obj instanceof Map) {
     Array.from(obj, ([key, val]) => result.set(key, deepClone(val, hash)));
+  }
+
+  // 如果是 dayjs 对象，直接返回克隆后的对象
+  if (dayjs.isDayjs(obj)) {
+    return result;
   }
 
   // 复制函数
@@ -409,12 +415,7 @@ export const getFieldItem = (config: {
       case 'organization':
         return <GroupTreeSelector multiple={true} />;
       case 'time':
-        return (
-          <RangePicker
-            showTime={{ format: 'HH:mm' }}
-            format="YYYY-MM-DD HH:mm"
-          />
-        );
+        return <DatePicker showTime format="YYYY-MM-DD HH:mm:ss" />;
       default:
         return <Input />;
     }
@@ -422,7 +423,33 @@ export const getFieldItem = (config: {
   switch (config.fieldItem.attr_type) {
     case 'user':
       // 实例详情页中的用户字段
-      const user = (config.userList || []).find((item) => item.id === config.value);
+      if (Array.isArray(config.value)) {
+        if (config.value.length === 0) return '--';
+        const userIds = config.value.map((id: any) => String(id));
+        const users = (config.userList || []).filter((user) =>
+          userIds.includes(String(user.id))
+        );
+        if (users.length === 0) return '--';
+        const userNames = users
+          .map((user) => `${user.display_name}(${user.username})`)
+          .join('，');
+        return config.hideUserAvatar ? (
+          userNames
+        ) : (
+          <div className="flex items-center gap-2 flex-wrap">
+            {users.map((user) => (
+              <UserAvatar
+                key={user.id}
+                userName={`${user.display_name}(${user.username})`}
+              />
+            ))}
+          </div>
+        );
+      }
+      // 处理单选情况
+      const user = (config.userList || []).find(
+        (item) => String(item.id) === String(config.value)
+      );
       if (!user) return '--';
       return config.hideUserAvatar ? (
         `${user.display_name}(${user.username})`
@@ -439,6 +466,20 @@ export const getFieldItem = (config: {
     case 'bool':
       return config.value ? 'Yes' : 'No';
     case 'enum':
+      // 处理多选情况（数组）
+      if (Array.isArray(config.value)) {
+        if (config.value.length === 0) return '--';
+        const enumNames = config.value
+          .map((val: any) => {
+            return config.fieldItem.option?.find(
+              (item: EnumList) => item.id === val
+            )?.name;
+          })
+          .filter((name) => name !== undefined)
+          .join('，');
+        return enumNames || '--';
+      }
+      // 处理单选情况
       return (
         config.fieldItem.option?.find(
           (item: EnumList) => item.id === config.value

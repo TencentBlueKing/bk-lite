@@ -11,7 +11,12 @@ export const useInstanceApi = () => {
   const fulltextSearchInstances = (params: any) =>
     post('/cmdb/api/instance/fulltext_search/', params);
 
-  // 拓扑搜索实例
+  const fulltextSearchStats = (params: any) =>
+    post('/cmdb/api/instance/fulltext_search/stats/', params);
+
+  const fulltextSearchByModel = (params: any) =>
+    post('/cmdb/api/instance/fulltext_search/by_model/', params);
+
   const topoSearchInstances = (modelId: string, instId: string) =>
     get(`/cmdb/api/instance/topo_search/${modelId}/${instId}/`);
 
@@ -59,6 +64,11 @@ export const useInstanceApi = () => {
   const getAssociationInstanceList = (modelId: string, instId: string) =>
     get(`/cmdb/api/instance/association_instance_list/${modelId}/${instId}/`);
 
+  // 拓扑搜索更多实例
+  const topoSearchMore = (params: { model_id: string, inst_id: string, parent_id: string[] }) =>
+    post('/cmdb/api/instance/topo_search_expand/', params);
+
+
   // 创建实例关联
   const createInstanceAssociation = (params: any) =>
     post('/cmdb/api/instance/association/', params);
@@ -80,6 +90,8 @@ export const useInstanceApi = () => {
   return {
     searchInstances,
     fulltextSearchInstances,
+    fulltextSearchStats,
+    fulltextSearchByModel,
     topoSearchInstances,
     getInstanceDetail,
     createInstance,
@@ -92,6 +104,7 @@ export const useInstanceApi = () => {
     getInstanceShowFieldDetail,
     setInstanceShowFieldSettings,
     getAssociationInstanceList,
+    topoSearchMore,
     createInstanceAssociation,
     deleteInstanceAssociation,
     importInstances,

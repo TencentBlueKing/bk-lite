@@ -58,16 +58,19 @@ const Attributes: React.FC = () => {
       title: 'ID',
       dataIndex: 'attr_id',
       key: 'attr_id',
+      width: 200,
     },
     {
       title: t('name'),
       dataIndex: 'attr_name',
       key: 'attr_name',
+      width: 200,
     },
     {
       title: t('type'),
       dataIndex: 'attr_type',
       key: 'attr_type',
+      width: 150,
       render: (attr_type: unknown) => (
         <span>
           {ATTR_TYPE_LIST.find((item) => item.id === attr_type)?.name || '--'}
@@ -78,6 +81,7 @@ const Attributes: React.FC = () => {
       title: t('editable'),
       key: 'editable',
       dataIndex: 'editable',
+      width: 100,
       render: (editable: unknown) => (
         <Tag color={editable ? 'green' : 'geekblue'}>
           {editable ? 'YES' : 'NO'}
@@ -88,6 +92,7 @@ const Attributes: React.FC = () => {
       title: t('unique'),
       key: 'is_only',
       dataIndex: 'is_only',
+      width: 100,
       render: (is_only: unknown) => (
         <Tag color={is_only ? 'green' : 'geekblue'}>
           {is_only ? 'YES' : 'NO'}
@@ -98,6 +103,7 @@ const Attributes: React.FC = () => {
       title: t('required'),
       key: 'is_required',
       dataIndex: 'is_required',
+      width: 100,
       render: (is_required: unknown) => (
         <Tag color={is_required ? 'green' : 'geekblue'}>
           {is_required ? 'YES' : 'NO'}
@@ -108,6 +114,7 @@ const Attributes: React.FC = () => {
       title: t('common.action'),
       key: 'action',
       dataIndex: 'action',
+      width: 150,
       render: (_: any, record: AttrItem) => (
         <Space>
           <PermissionWrapper

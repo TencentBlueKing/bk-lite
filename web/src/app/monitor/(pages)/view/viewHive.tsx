@@ -26,11 +26,7 @@ import TimeSelector from '@/components/time-selector';
 import HexGridChart from '@/app/monitor/components/charts/hexgrid';
 import HiveModal from './hiveModal';
 import { EditOutlined } from '@ant-design/icons';
-import {
-  getK8SData,
-  getEnumColor,
-  isStringArray,
-} from '@/app/monitor/utils/common';
+import { getEnumColor, isStringArray } from '@/app/monitor/utils/common';
 import { useUnitTransform } from '@/app/monitor/hooks/useUnitTransform';
 import { useObjectConfigInfo } from '@/app/monitor/hooks/integration/common/getObjectConfig';
 import { Select, Spin } from 'antd';
@@ -61,59 +57,31 @@ const ViewHive: React.FC<ViewListProps> = ({ objects, objectId }) => {
   const [queryData, setQueryData] = useState<any[]>([]);
   const [mertics, setMertics] = useState<MetricItem[]>([]);
   const [colony, setColony] = useState<string | null>(null);
-  const [namespace, setNameSpace] = useState<string | null>(null);
-  const [workload, setWorkload] = useState<string | null>(null);
   const [node, setNode] = useState<string | null>(null);
   const [queryMetric, setQueryMetric] = useState<string | null>(null);
   const [hexColor, setHexColor] = useState<NodeThresholdColor[]>([]);
+  const [nodeList, setNodeList] = useState<ListItem[]>([]);
 
-  const namespaceList = useMemo(() => {
-    if (queryData.length && colony) {
-      return queryData.find((item) => item.id === colony)?.child || [];
-    }
-    return [];
-  }, [colony, queryData]);
-
-  const workloadList = useMemo(() => {
-    if (namespaceList.length && namespace) {
-      return (
-        (
-          namespaceList.find((item: ListItem) => item.id === namespace)
-            ?.child || []
-        ).filter((item: ListItem) => item.id === 'workload')[0]?.child || []
-      );
-    }
-    return [];
-  }, [namespaceList, namespace]);
-
-  const nodeList = useMemo(() => {
-    if (namespaceList.length && namespace) {
-      return (
-        (
-          namespaceList.find((item: ListItem) => item.id === namespace)
-            ?.child || []
-        ).filter((item: ListItem) => item.id === 'node')[0]?.child || []
-      );
-    }
-    return [];
-  }, [namespaceList, namespace]);
+  const isPod = useMemo(() => {
+    return objects.find((item) => item.id === objectId)?.name === 'Pod';
+  }, [objects, objectId]);
 
   const metricList = useMemo(() => {
     if (objectId && objects?.length && mertics?.length) {
       const objName = objects.find((item) => item.id === objectId)?.name;
+      const nodeMetircs = [
+        { type: 'progress', key: 'node_cpu_utilization' },
+        { type: 'enum', key: 'node_status_condition' },
+      ];
       if (objName) {
-        const filterMetrics = getTableDiaplay(objName);
+        const filterMetrics = isPod ? getTableDiaplay(objName) : nodeMetircs;
         return mertics.filter((metric) =>
           filterMetrics.find((item: TableDataItem) => item.key === metric.name)
         );
       }
     }
     return [];
-  }, [mertics]);
-
-  const isPod = useMemo(() => {
-    return objects.find((item) => item.id === objectId)?.name === 'Pod';
-  }, [objects, objectId]);
+  }, [mertics, isPod]);
 
   // 动态设置 pageSize
   useEffect(() => {
@@ -152,7 +120,7 @@ const ViewHive: React.FC<ViewListProps> = ({ objects, objectId }) => {
     if (objectId && objects?.length && !isLoading) {
       onRefresh();
     }
-  }, [colony, namespace, workload, node]);
+  }, [colony, node]);
 
   // 更新与销毁定时器
   useEffect(() => {
@@ -174,8 +142,6 @@ const ViewHive: React.FC<ViewListProps> = ({ objects, objectId }) => {
     frequence,
     objectId,
     colony,
-    namespace,
-    workload,
     node,
     pagination.current,
     pagination.pageSize,
@@ -217,29 +183,7 @@ const ViewHive: React.FC<ViewListProps> = ({ objects, objectId }) => {
 
   const handleColonyChange = (id: string) => {
     setColony(id);
-    setNameSpace(null);
-    setWorkload(null);
     setNode(null);
-    setChartData([]);
-    setPagination((prev: Pagination) => ({
-      ...prev,
-      current: 1,
-    }));
-  };
-
-  const handleNameSpaceChange = (id: string) => {
-    setNameSpace(id);
-    setWorkload(null);
-    setNode(null);
-    setChartData([]);
-    setPagination((prev: Pagination) => ({
-      ...prev,
-      current: 1,
-    }));
-  };
-
-  const handleWorkloadChange = (id: string) => {
-    setWorkload(id);
     setChartData([]);
     setPagination((prev: Pagination) => ({
       ...prev,
@@ -268,13 +212,7 @@ const ViewHive: React.FC<ViewListProps> = ({ objects, objectId }) => {
       name: '',
       vm_params: {
         instance_id: colony || '',
-        namespace: namespace || '',
         node: node || '',
-        created_by_kind: workload || '',
-        created_by_name:
-          workloadList.find(
-            (item: TableDataItem) => item.created_by_kind === workload
-          )?.created_by_name || '',
       },
     };
   };
@@ -292,8 +230,12 @@ const ViewHive: React.FC<ViewListProps> = ({ objects, objectId }) => {
       setMertics(metricsData || []);
       const tagetMerticItem = metricsData.find(
         (item: MetricItem) =>
-          item.name === (isPod ? 'pod_status' : 'node_status_condition')
+          item.name ===
+          (isPod
+            ? 'prometheus_remote_write_kube_pod_status_phase'
+            : 'node_status_condition')
       );
+      console.log(tagetMerticItem);
       if (isStringArray(tagetMerticItem?.unit || '')) {
         const unitInfo = JSON.parse(tagetMerticItem.unit).map(
           (item: TableDataItem) => ({
@@ -306,9 +248,22 @@ const ViewHive: React.FC<ViewListProps> = ({ objects, objectId }) => {
       }
       const res = await Promise.all([getInstList, getQueryParams]);
       const k8sQuery = res[1];
-      const queryForm = isPod
-        ? getK8SData(k8sQuery || {})
-        : (k8sQuery || []).map((item: string) => ({ id: item, child: [] }));
+      let queryForm: any[] = [];
+      if (k8sQuery?.cluster) {
+        queryForm = k8sQuery?.cluster || [];
+        setNodeList(k8sQuery?.node || []);
+      } else {
+        queryForm = (k8sQuery || []).map((item: any) => {
+          if (typeof item === 'string') {
+            return { id: item, child: [] };
+          }
+          return {
+            id: item?.id,
+            name: item?.name || '',
+            child: [],
+          };
+        });
+      }
       const chartConfig = {
         data: res[0]?.results || [],
         metricsData,
@@ -337,7 +292,10 @@ const ViewHive: React.FC<ViewListProps> = ({ objects, objectId }) => {
     } = chartConfig;
     const chartList = data.map((item: TableDataItem) => {
       const metricName =
-        queryMetric || (isPod ? 'pod_status' : 'node_status_condition');
+        queryMetric ||
+        (isPod
+          ? 'prometheus_remote_write_kube_pod_status_phase'
+          : 'node_status_condition');
       const tagetMerticItem = metricsData.find(
         (item) => item.name === metricName
       );
@@ -479,7 +437,7 @@ const ViewHive: React.FC<ViewListProps> = ({ objects, objectId }) => {
             value={colony}
             allowClear
             showSearch
-            style={{ width: 120 }}
+            style={{ width: 240 }}
             placeholder={t('monitor.views.colony')}
             onChange={handleColonyChange}
           >
@@ -492,46 +450,17 @@ const ViewHive: React.FC<ViewListProps> = ({ objects, objectId }) => {
           {isPod && (
             <>
               <Select
-                value={namespace}
-                allowClear
-                showSearch
-                className="mx-[10px]"
-                style={{ width: 120 }}
-                placeholder={t('monitor.views.namespace')}
-                onChange={handleNameSpaceChange}
-              >
-                {namespaceList.map((item: ListItem) => (
-                  <Option key={item.id} value={item.id}>
-                    {item.id}
-                  </Option>
-                ))}
-              </Select>
-              <Select
-                value={workload}
-                allowClear
-                showSearch
-                className="mr-[10px]"
-                style={{ width: 120 }}
-                placeholder={t('monitor.views.workload')}
-                onChange={handleWorkloadChange}
-              >
-                {workloadList.map((item: TableDataItem, index: number) => (
-                  <Option key={index} value={item.created_by_kind}>
-                    {item.created_by_name}
-                  </Option>
-                ))}
-              </Select>
-              <Select
+                className="ml-[8px]"
                 value={node}
                 allowClear
                 showSearch
-                style={{ width: 120 }}
+                style={{ width: 240 }}
                 placeholder={t('monitor.views.node')}
                 onChange={handleNodeChange}
               >
-                {nodeList.map((item: string, index: number) => (
-                  <Option key={index} value={item}>
-                    {item}
+                {nodeList.map((item: ListItem, index: number) => (
+                  <Option key={index} value={item.id}>
+                    {item.name}
                   </Option>
                 ))}
               </Select>
@@ -539,7 +468,7 @@ const ViewHive: React.FC<ViewListProps> = ({ objects, objectId }) => {
           )}
         </div>
         <div className="flex items-center mb-[20px]">
-          <div className="mr-[10px]">
+          <div className="mr-[8px]">
             <span className="text-[14px] mr-[10px]">
               {t('monitor.views.displayIndicators')}
             </span>

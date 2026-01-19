@@ -4,6 +4,7 @@ import os
 from enum import Enum
 from apps.cmdb.utils.time_util import parse_cmdb_time
 
+
 class BaseEnum(str, Enum):
     """
     枚举基类
@@ -166,8 +167,15 @@ OPERATOR_INSTANCE = "资产实例"
 OPERATOR_MODEL = "模型管理"
 OPERATOR_COLLECT_TASK = "采集任务"
 
-
-# ===================
+# ====== Display Field 配置 ======
+# _display 字段的属性配置
+DISPLAY_FIELD_CONFIG = {
+    'attr_type': 'str',  # 冗余字段统一为字符串类型
+    'editable': True,
+    'is_only': False,  # 不需要唯一性校验
+    'is_required': False,  # 非必填
+    'is_display_field': True,  # 标记为冗余展示字段，前端不展示此字段
+}
 
 
 # ====== 配置采集 ======
@@ -314,7 +322,8 @@ COLLECT_OBJ_TREE = [
         "id": "cloud",
         "name": "云平台",
         "children": [
-            {"id": "aliyun_account", "model_id": "aliyun_account", "name": "阿里云", "task_type": CollectPluginTypes.CLOUD,
+            {"id": "aliyun_account", "model_id": "aliyun_account", "name": "阿里云",
+             "task_type": CollectPluginTypes.CLOUD,
              "type": CollectDriverTypes.PROTOCOL, "tag": ["SDK"], "desc": "采集阿里云账户下ECS、VPC、RDS等资产清单",
              "encrypted_fields": ["accessKey", "accessSecret"]
              },
@@ -352,6 +361,9 @@ COLLECT_OBJ_TREE = [
              "encrypted_fields": ["password"]},
             {"id": "kafka", "model_id": "kafka", "name": "Kafka", "task_type": CollectPluginTypes.MIDDLEWARE,
              "type": CollectDriverTypes.JOB, "tag": ["JOB", "Linux"], "desc": "发现与采集Kafka基础配置信息",
+             "encrypted_fields": ["password"]},
+             {"id": "consul", "model_id": "consul", "name": "Consul", "task_type": CollectPluginTypes.MIDDLEWARE,
+             "type": CollectDriverTypes.JOB, "tag": ["JOB", "Linux"], "desc": "发现与采集Consul基础配置信息",
              "encrypted_fields": ["password"]},
             {"id": "etcd", "model_id": "etcd", "name": "Etcd", "task_type": CollectPluginTypes.MIDDLEWARE,
              "type": CollectDriverTypes.JOB, "tag": ["JOB", "Linux"], "desc": "发现与采集Etcd基础配置信息",

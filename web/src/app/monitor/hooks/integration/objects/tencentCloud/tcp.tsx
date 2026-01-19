@@ -3,10 +3,8 @@ export const useTcpConfig = () => {
     instance_type: 'qcloud',
     dashboardDisplay: [],
     tableDiaplay: [
-      { type: 'value', key: 'cvm_CPU_Usage' },
-      { type: 'value', key: 'cvm_MemUsage' },
-      { type: 'value', key: 'cvm_LanOuttraffic' },
-      { type: 'value', key: 'cvm_WanOuttraffic' },
+      { type: 'progress', key: 'CPUUsage_gauge' },
+      { type: 'progress', key: 'MemUsage_gauge' },
     ],
     groupIds: {},
     collectTypes: {

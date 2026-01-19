@@ -33,10 +33,7 @@ export const useClusterConfig = () => {
         },
       },
     ],
-    tableDiaplay: [
-      { type: 'value', key: 'cluster_pod_count' },
-      { type: 'value', key: 'cluster_node_count' },
-    ],
+    tableDiaplay: [{ type: 'value', key: 'cluster_cpu_utilization' }],
     groupIds: {
       list: ['instance_id'],
       default: ['instance_id'],

@@ -17,6 +17,7 @@ import PageLayout from '@/components/page-layout';
 import PermissionWrapper from '@/components/permission';
 import OperateModal from '@/components/operate-modal';
 import { useLocalizedTime } from '@/hooks/useLocalizedTime';
+import { useUserInfoContext } from '@/context/userInfo';
 import styles from './index.module.scss';
 
 import GroupTree from '@/app/system-manager/components/user/GroupTree';
@@ -61,6 +62,7 @@ const User: React.FC = () => {
   const { getUsersList, getOrgTree, deleteUser } = useUserApi();
   const { addTeamData, deleteTeam } = useGroupApi();
   const { convertToLocalizedTime } = useLocalizedTime();
+  const { refreshUserInfo } = useUserInfoContext();
 
   const appIconMap = new Map(
     clientData
@@ -294,6 +296,7 @@ const User: React.FC = () => {
                 
                 const isSelectedDeleted = selectedTreeKeys.includes(groupKey);
                 await fetchTreeData();
+                await refreshUserInfo();
                 
                 if (isSelectedDeleted) {
                   setSelectedTreeKeys([]);
@@ -327,6 +330,7 @@ const User: React.FC = () => {
       });
       message.success(t('common.saveSuccess'));
       await fetchTreeData();
+      await refreshUserInfo();
       setAddGroupModalOpen(false);
       setAddSubGroupModalOpen(false);
       addGroupFormRef.current?.resetFields();
@@ -352,8 +356,9 @@ const User: React.FC = () => {
     fetchUsers({ search: searchValue, page: currentPage, page_size: pageSize });
   };
 
-  const onSuccessGroupEdit = () => {
-    fetchTreeData();
+  const onSuccessGroupEdit = async () => {
+    await fetchTreeData();
+    await refreshUserInfo();
     if (selectedTreeKeys.length > 0) {
       fetchUsers({ search: searchValue, page: currentPage, page_size: pageSize });
     }

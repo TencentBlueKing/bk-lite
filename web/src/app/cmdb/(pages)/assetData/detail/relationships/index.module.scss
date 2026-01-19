@@ -62,3 +62,15 @@
 .topo :global(.x6-widget-minimap) {
   background: var(--color-bg-1);
 }
+
+// 隐藏节点图标的 CSS 类，当节点容器有 hide-image 类时，隐藏其内部的 image 元素
+:global(.x6-node.hide-image image[selector="image"]),
+:global(.x6-node.hide-image > image),
+:global(.x6-node.hide-image svg image) {
+  display: none !important;
+}
+
+// 隐藏边的 CSS 类，当边有 hide-edge 类时，隐藏该边
+:global(.x6-edge.hide-edge) {
+  display: none !important;
+}

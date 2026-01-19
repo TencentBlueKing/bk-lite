@@ -338,12 +338,11 @@ class FieldGroupService:
 
         # 3. 解析属性
         attrs = ModelManage.parse_attrs(model_info.get("attrs", "[]"))
-
         # 4. 按分组组织属性
         groups_data = []
         for idx, group in enumerate(groups):
             group_attrs = [
-                attr for attr in attrs if attr.get("attr_group") == group.group_name
+                attr for attr in attrs if attr.get("attr_group") == group.group_name and not attr.get("is_display_field")
             ]
 
             # 按FieldGroup中存储的attr_orders排序分组内的属性
@@ -609,7 +608,7 @@ class FieldGroupService:
                 raise BaseAppException(f"属性'{attr_id}'不属于分组'{group_name}'")
 
         # 5. 校验：attr_orders必须包含该分组的所有属性
-        if set(attr_orders) != group_attr_ids:
+        if set(attr_orders) != set(i for i in group_attr_ids if not i.endswith('_display')):
             missing = group_attr_ids - set(attr_orders)
             raise BaseAppException(f"缺少属性：{', '.join(missing)}")
 

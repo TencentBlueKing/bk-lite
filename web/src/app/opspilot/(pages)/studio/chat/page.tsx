@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { useStudioApi } from '@/app/opspilot/api/studio';
-import { List, Button, Dropdown, Skeleton } from 'antd';
+import { List, Button, Dropdown, Skeleton, Popconfirm } from 'antd';
 import CustomChatSSE from '@/app/opspilot/components/custom-chat-sse';
 import { processHistoryMessageContent } from '@/app/opspilot/components/custom-chat-sse/historyMessageProcessor';
 import Icon from '@/components/icon';
@@ -22,7 +22,7 @@ const StudioChatPage: React.FC = () => {
   const [functionLoading, setFunctionLoading] = useState(false);
   const [chatLoading, setChatLoading] = useState(false);
 
-  const { fetchApplication, fetchWebChatSessions, fetchSessionMessages, fetchSkillGuide } = useStudioApi();
+  const { fetchApplication, fetchWebChatSessions, fetchSessionMessages, fetchSkillGuide, deleteSessionHistory } = useStudioApi();
 
   useEffect(() => {
     async function fetchAgents() {
@@ -55,11 +55,19 @@ const StudioChatPage: React.FC = () => {
       if (!currentAgent?.bot_id) {
         setFunctionList([]);
         setGuide('');
+        setSessionId(null);
+        setSelectedItem('');
+        setInitialMessages([]);
         return;
       }
       setFunctionLoading(true);
+      // 切换 agent 时重置状态
+      setSessionId(null);
+      setSelectedItem('');
+      setInitialMessages([]);
+      
       try {
-        const sessions = await fetchWebChatSessions(currentAgent.bot_id);
+        const sessions = await fetchWebChatSessions(currentAgent.bot_id, currentAgent.node_id);
         setFunctionList(
           (sessions || []).map((item: any) => ({
             id: item.session_id,
@@ -86,8 +94,19 @@ const StudioChatPage: React.FC = () => {
   // 监听 functionList 变化，自动选中第一个历史会话并展示其消息
   useEffect(() => {
     if (functionList.length > 0) {
+      // 如果当前已经有选中的会话，不要重新加载（避免打断正在进行的对话）
+      if (sessionId && functionList.find(item => item.id === sessionId)) {
+        return;
+      }
       setSelectedItem(functionList[0].id);
       handleSelectSession(functionList[0].id);
+    } else if (currentAgent?.bot_id) {
+      // 如果没有历史对话但有当前应用，创建一个新会话以便用户开始对话
+      const newId = `session_${Date.now()}`;
+      setSessionId(newId);
+      setSelectedItem(newId);
+      setInitialMessages([]);
+      setChatKey(k => k + 1);
     }
   }, [functionList]);
 
@@ -147,6 +166,26 @@ const StudioChatPage: React.FC = () => {
     }, 400); // 体验优化，防止闪烁，可根据实际调整
   };
 
+  const handleDeleteSession = async (e: React.MouseEvent, sessionId: string) => {
+    e.stopPropagation();
+    if (!currentAgent?.node_id) return;
+    
+    try {
+      await deleteSessionHistory(currentAgent.node_id, sessionId);
+      // 从列表中移除
+      setFunctionList(list => list.filter(item => item.id !== sessionId));
+      // 如果删除的是当前选中的会话，清空选择
+      if (selectedItem === sessionId) {
+        setSelectedItem('');
+        setSessionId(null);
+        setInitialMessages([]);
+        setChatKey(k => k + 1);
+      }
+    } catch (error) {
+      console.error('Failed to delete session:', error);
+    }
+  };
+
   const handleSendMessage = async (message: string) => {
     try {
       const bot_id = currentAgent?.bot_id;
@@ -157,6 +196,19 @@ const StudioChatPage: React.FC = () => {
         message: message,
         session_id: sessionId,
       };
+      
+      // 如果是临时会话（以 session_ 开头），在首次发送消息后添加到历史列表
+      if (sessionId && sessionId.startsWith('session_') && !functionList.find(item => item.id === sessionId)) {
+        setFunctionList(list => [
+          {
+            id: sessionId,
+            title: `新会话 ${new Date().toLocaleString('zh-CN', { hour12: false })}`,
+            icon: 'jiqiren3',
+          },
+          ...list
+        ]);
+      }
+      
       return {
         url,
         payload
@@ -196,10 +248,10 @@ const StudioChatPage: React.FC = () => {
                 </div>
               </Dropdown>
               <div 
-                className="text-xl cursor-pointer hover:text-blue-500 transition-colors ml-2 flex-shrink-0"
+                className="w-8 h-8 rounded-full bg-white shadow-md hover:shadow-lg cursor-pointer hover:text-blue-500 transition-all ml-2 flex-shrink-0 flex items-center justify-center"
                 onClick={() => setSidebarCollapsed(true)}
               >
-                <Icon type="xiangzuoshousuo" />
+                <Icon type="xiangzuoshousuo" className="text-base" />
               </div>
             </div>
             <Button 
@@ -220,14 +272,31 @@ const StudioChatPage: React.FC = () => {
                 loading={functionLoading}
                 renderItem={(item) => (
                   <List.Item
-                    className={`cursor-pointer py-3 px-4 mx-2 mb-1 rounded hover:bg-gray-100 transition-colors border-0 ${
+                    className={`cursor-pointer py-3 px-4 mx-2 mb-1 rounded hover:bg-gray-100 transition-colors border-0 group ${
                       selectedItem === item.id ? 'bg-blue-50 hover:bg-blue-50' : ''
                     }`}
                     onClick={() => handleSelectSession(item.id)}
                     style={{ border: 'none' }}
                   >
-                    <div className={`text-sm px-2 font-normal ${selectedItem === item.id ? 'text-blue-600' : 'text-gray-900'}`}>
-                      {item.title}
+                    <div className="flex items-center justify-between w-full gap-2">
+                      <div className={`text-sm px-2 font-normal flex-1 truncate ${selectedItem === item.id ? 'text-blue-600' : 'text-gray-900'}`}>
+                        {item.title}
+                      </div>
+                      <Popconfirm
+                        title="删除会话"
+                        description="确定要删除这个会话吗？删除后无法恢复。"
+                        onConfirm={(e) => handleDeleteSession(e!, item.id)}
+                        okText="删除"
+                        cancelText="取消"
+                        okButtonProps={{ danger: true }}
+                      >
+                        <div 
+                          className="invisible group-hover:visible flex-shrink-0 p-1 hover:bg-red-50 rounded cursor-pointer transition-all"
+                          onClick={(e) => e.stopPropagation()}
+                        >
+                          <Icon type="shanchu" className="text-gray-400 hover:text-red-500 text-base" />
+                        </div>
+                      </Popconfirm>
                     </div>
                   </List.Item>
                 )}

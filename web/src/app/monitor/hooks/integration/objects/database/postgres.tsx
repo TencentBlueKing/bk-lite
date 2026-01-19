@@ -3,8 +3,9 @@ export const usePostgresConfig = () => {
     instance_type: 'postgres',
     dashboardDisplay: [],
     tableDiaplay: [
-      { type: 'value', key: 'postgresql_active_time' },
-      { type: 'value', key: 'postgresql_blks_hit' },
+      { type: 'value', key: 'postgresql_numbackends' },
+      { type: 'value', key: 'postgresql_blks_read_rate' },
+      { type: 'value', key: 'postgresql_temp_files_rate' },
     ],
     groupIds: {},
     collectTypes: {

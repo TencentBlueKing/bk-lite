@@ -1,7 +1,6 @@
 from celery import shared_task
 from apps.core.logger import celery_logger as logger
 from apps.node_mgmt.constants.cloudregion_service import CloudRegionServiceConstants
-from apps.node_mgmt.constants.database import CloudRegionConstants
 from apps.node_mgmt.models import CloudRegion, CloudRegionService
 from apps.node_mgmt.tasks.services.cloud_service_check_health import SERVICES_FUNC
 
@@ -17,10 +16,6 @@ def check_all_region_services():
     for region in regions:
         for service in region.cloudregionservice_set.all():
 
-            # 如果没有部署则无需检查
-            if not service.deployed_status == 0 and region.id != CloudRegionConstants.DEFAULT_CLOUD_REGION_ID:
-                continue
-
             # 根据服务名称查找对应的健康检查函数
             health_check_func = SERVICES_FUNC.get(service.name)
             if health_check_func:
@@ -33,5 +28,5 @@ def check_all_region_services():
 
     # 批量更新所有服务状态
     if services_to_update:
-        CloudRegionService.objects.bulk_update(services_to_update, ['status', 'message'])
+        CloudRegionService.objects.bulk_update(services_to_update, ['status', 'deployed_status', 'message'])
         logger.info(f"批量更新了 {len(services_to_update)} 个云区域服务的健康状态")

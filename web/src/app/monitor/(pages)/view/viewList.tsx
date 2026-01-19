@@ -7,7 +7,6 @@ import useViewApi from '@/app/monitor/api/view';
 import { useTranslation } from '@/utils/i18n';
 import {
   getEnumColor,
-  getK8SData,
   getBaseInstanceColumn,
 } from '@/app/monitor/utils/common';
 import { useUnitTransform } from '@/app/monitor/hooks/useUnitTransform';
@@ -114,11 +113,10 @@ const ViewList: React.FC<ViewListProps> = ({
   ];
   const [tableColumn, setTableColumn] = useState<ColumnItem[]>(columns);
   const [metrics, setMetrics] = useState<MetricItem[]>([]);
-  const [namespace, setNameSpace] = useState<string | null>(null);
-  const [workload, setWorkload] = useState<string | null>(null);
   const [node, setNode] = useState<string | null>(null);
   const [colony, setColony] = useState<string | null>(null);
   const [queryData, setQueryData] = useState<any[]>([]);
+  const [nodeList, setNodeList] = useState<ListItem[]>([]);
 
   const instNamePlaceholder = useMemo(() => {
     const type = objects.find((item) => item.id === objectId)?.type || '';
@@ -132,37 +130,6 @@ const ViewList: React.FC<ViewListProps> = ({
   const isPod = useMemo(() => {
     return objects.find((item) => item.id === objectId)?.name === 'Pod';
   }, [objects, objectId]);
-
-  const namespaceList = useMemo(() => {
-    if (queryData.length && colony) {
-      return queryData.find((item) => item.id === colony)?.child || [];
-    }
-    return [];
-  }, [colony, queryData]);
-
-  const workloadList = useMemo(() => {
-    if (namespaceList.length && namespace) {
-      return (
-        (
-          namespaceList.find((item: ListItem) => item.id === namespace)
-            ?.child || []
-        ).filter((item: ListItem) => item.id === 'workload')[0]?.child || []
-      );
-    }
-    return [];
-  }, [namespaceList, namespace]);
-
-  const nodeList = useMemo(() => {
-    if (namespaceList.length && namespace) {
-      return (
-        (
-          namespaceList.find((item: ListItem) => item.id === namespace)
-            ?.child || []
-        ).filter((item: ListItem) => item.id === 'node')[0]?.child || []
-      );
-    }
-    return [];
-  }, [namespaceList, namespace]);
 
   const showMultipleConditions = useMemo(() => {
     const objectNames = DERIVATIVE_OBJECTS.filter(
@@ -218,7 +185,7 @@ const ViewList: React.FC<ViewListProps> = ({
     if (objectId && objects?.length && !isLoading) {
       onRefresh();
     }
-  }, [colony, namespace, workload, node]);
+  }, [colony, node]);
 
   // 组件卸载时取消未完成的请求
   useEffect(() => {
@@ -245,13 +212,7 @@ const ViewList: React.FC<ViewListProps> = ({
       name: searchText,
       vm_params: {
         instance_id: colony || '',
-        namespace: namespace || '',
         node: node || '',
-        created_by_kind: workload || '',
-        created_by_name:
-          workloadList.find(
-            (item: TableDataItem) => item.created_by_kind === workload
-          )?.created_by_name || '',
       },
     };
   };
@@ -283,9 +244,12 @@ const ViewList: React.FC<ViewListProps> = ({
         return;
       }
       const k8sQuery = res[2];
-      const queryForm = isPod
-        ? getK8SData(k8sQuery || {})
-        : (k8sQuery || []).map((item: any) => {
+      let queryForm: any[] = [];
+      if (k8sQuery?.cluster) {
+        queryForm = k8sQuery?.cluster || [];
+        setNodeList(k8sQuery?.node || []);
+      } else {
+        queryForm = (k8sQuery || []).map((item: any) => {
           if (typeof item === 'string') {
             return { id: item, child: [] };
           }
@@ -295,6 +259,7 @@ const ViewList: React.FC<ViewListProps> = ({
             child: [],
           };
         });
+      }
       setQueryData(queryForm);
       const _plugins = res[1].map((item: IntegrationItem) => ({
         label: getCollectType(objName as string, item.name as string),
@@ -311,8 +276,8 @@ const ViewList: React.FC<ViewListProps> = ({
           if (item.type === 'progress') {
             return {
               title:
-                t(`monitor.views.${[item.key]}`) ||
                 target?.display_name ||
+                t(`monitor.views.${[item.key]}`) ||
                 '--',
               dataIndex: item.key,
               key: item.key,
@@ -481,29 +446,7 @@ const ViewList: React.FC<ViewListProps> = ({
 
   const handleColonyChange = (id: string) => {
     setColony(id);
-    setNameSpace(null);
-    setWorkload(null);
     setNode(null);
-    setTableData([]);
-    setPagination((prev: Pagination) => ({
-      ...prev,
-      current: 1,
-    }));
-  };
-
-  const handleNameSpaceChange = (id: string) => {
-    setNameSpace(id);
-    setWorkload(null);
-    setNode(null);
-    setTableData([]);
-    setPagination((prev: Pagination) => ({
-      ...prev,
-      current: 1,
-    }));
-  };
-
-  const handleWorkloadChange = (id: string) => {
-    setWorkload(id);
     setTableData([]);
     setPagination((prev: Pagination) => ({
       ...prev,
@@ -533,7 +476,7 @@ const ViewList: React.FC<ViewListProps> = ({
                 value={colony}
                 allowClear
                 showSearch
-                style={{ width: isPod ? 120 : 240 }}
+                style={{ width: 240 }}
                 placeholder={instNamePlaceholder}
                 onChange={handleColonyChange}
               >
@@ -546,46 +489,17 @@ const ViewList: React.FC<ViewListProps> = ({
               {showTab && isPod && (
                 <>
                   <Select
-                    value={namespace}
-                    allowClear
-                    showSearch
-                    className="mx-[10px]"
-                    style={{ width: 120 }}
-                    placeholder={t('monitor.views.namespace')}
-                    onChange={handleNameSpaceChange}
-                  >
-                    {namespaceList.map((item: ListItem) => (
-                      <Option key={item.id} value={item.id}>
-                        {item.id}
-                      </Option>
-                    ))}
-                  </Select>
-                  <Select
-                    value={workload}
-                    allowClear
-                    showSearch
-                    className="mr-[10px]"
-                    style={{ width: 120 }}
-                    placeholder={t('monitor.views.workload')}
-                    onChange={handleWorkloadChange}
-                  >
-                    {workloadList.map((item: TableDataItem, index: number) => (
-                      <Option key={index} value={item.created_by_kind}>
-                        {item.created_by_name}
-                      </Option>
-                    ))}
-                  </Select>
-                  <Select
+                    className="ml-[8px]"
                     value={node}
                     allowClear
                     showSearch
-                    style={{ width: 120 }}
+                    style={{ width: 240 }}
                     placeholder={t('monitor.views.node')}
                     onChange={handleNodeChange}
                   >
-                    {nodeList.map((item: string, index: number) => (
-                      <Option key={index} value={item}>
-                        {item}
+                    {nodeList.map((item: ListItem, index: number) => (
+                      <Option key={index} value={item.id}>
+                        {item.name}
                       </Option>
                     ))}
                   </Select>
@@ -595,7 +509,7 @@ const ViewList: React.FC<ViewListProps> = ({
           )}
           <Input
             allowClear
-            className="w-[240px] ml-[10px]"
+            className="w-[240px] ml-[8px]"
             placeholder={t('common.searchPlaceHolder')}
             value={searchText}
             onChange={(e) => setSearchText(e.target.value)}
@@ -622,7 +536,7 @@ const ViewList: React.FC<ViewListProps> = ({
         fieldSetting={{
           showSetting: false,
           displayFieldKeys: [
-            'elasticsearch_fs_total_available_in_bytes',
+            'elasticsearch_cluster_health_status_code',
             'instance_name',
           ],
           choosableFields: tableColumn.slice(0, tableColumn.length - 1),

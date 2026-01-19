@@ -80,6 +80,10 @@
     "Model": {
         "addModel": "新增模型",
         "editModel": "编辑模型",
+        "copyModel": "复制模型",
+        "copy": "复制",
+        "copyMode": "复制方式",
+        "selectCopyMode": "请至少选择一种复制方式",
         "addGroup": "新增分组",
         "editGroup": "编辑分组",
         "modelGroup": "模型分组",

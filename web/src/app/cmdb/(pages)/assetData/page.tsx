@@ -39,6 +39,7 @@ import {
   AttrFieldType,
   RelationInstanceRef,
   AssoTypeItem,
+  FullInfoGroupItem,
 } from '@/app/cmdb/types/assetManage';
 import { useCommon } from '@/app/cmdb/context/common';
 import type { MenuProps } from 'antd';
@@ -57,7 +58,15 @@ interface ModelTabs {
   icn: string;
 }
 interface FieldRef {
-  showModal: (config: FieldConfig) => void;
+  showModal: (config: {
+    type: string;
+    attrList: FullInfoGroupItem[];
+    formInfo: any;
+    subTitle: string;
+    title: string;
+    model_id: string;
+    list: Array<any>;
+  }) => void;
 }
 interface ImportRef {
   showModal: (config: {
@@ -66,20 +75,11 @@ interface ImportRef {
     model_id: string;
   }) => void;
 }
-interface FieldConfig {
-  type: string;
-  attrList: AttrFieldType[];
-  formInfo: any;
-  subTitle: string;
-  title: string;
-  model_id: string;
-  list: Array<any>;
-}
 
 const AssetDataContent = () => {
   const { t } = useTranslation();
   const { selectedGroup } = useUserInfoContext();
-  const { getModelAssociationTypes, getModelAttrList } = useModelApi();
+  const { getModelAssociationTypes, getModelAttrList, getModelAttrGroupsFullInfo } = useModelApi();
   const { getClassificationList } = useClassificationApi();
   const {
     getInstanceProxys,
@@ -111,6 +111,7 @@ const AssetDataContent = () => {
   const [groupId, setGroupId] = useState<string>('');
   const [modelId, setModelId] = useState<string>('');
   const [modelList, setModelList] = useState<ModelTabs[]>([]);
+  const [propertyListGroups, setPropertyListGroups] = useState<FullInfoGroupItem[]>([]);
   const [propertyList, setPropertyList] = useState<AttrFieldType[]>([]);
   const [displayFieldKeys, setDisplayFieldKeys] = useState<string[]>([]);
   const [columns, setColumns] = useState<ColumnItem[]>([]);
@@ -293,6 +294,9 @@ const AssetDataContent = () => {
     const conditions = organization?.length
       ? [{ field: 'organization', type: 'list[]', value: organization }]
       : [];
+
+    const caseSensitive = useAssetDataStore.getState().case_sensitive;
+
     return {
       query_list: activeQueryList
         ? [activeQueryList, ...conditions]
@@ -302,12 +306,26 @@ const AssetDataContent = () => {
       order: '',
       model_id: modelId,
       role: '',
+      case_sensitive: caseSensitive,
     };
   };
 
   const getInitData = (id: string, overrideQueryList?: unknown) => {
     const tableParmas = getTableParams(overrideQueryList);
+
+    // 获取模型属性列表的接口（除了编辑和新增弹窗）
     const getAttrList = getModelAttrList(id);
+
+    // 编辑弹窗中，获取模型属性分组列表的接口
+    getModelAttrGroupsFullInfo(id).then((res) => {
+      setPropertyListGroups(res.groups);
+    }).catch((err) => {
+      console.error('Failed:', err);
+      message.error(t('common.getFailed'));
+    });
+
+
+
     const getInstList = searchInstances({
       ...tableParmas,
       model_id: id,
@@ -448,7 +466,8 @@ const AssetDataContent = () => {
     fieldRef.current?.showModal({
       title,
       type,
-      attrList: propertyList,
+      // attrList: propertyList,
+      attrList: propertyListGroups,
       formInfo: row,
       subTitle: '',
       model_id: modelId,
@@ -471,7 +490,9 @@ const AssetDataContent = () => {
       delete copyData[field];
     });
 
-    propertyList.forEach((attr) => {
+    // 从分组中提取所有属性
+    const allAttrs = propertyListGroups.flatMap((group) => group.attrs || []);
+    allAttrs.forEach((attr) => {
       if (attr.is_required && attr.is_only && copyData[attr.attr_id]) {
         copyData[attr.attr_id] = `${copyData[attr.attr_id]}_copy`;
       }
@@ -480,7 +501,7 @@ const AssetDataContent = () => {
     fieldRef.current?.showModal({
       title: t('common.copy'),
       type: 'add',
-      attrList: propertyList,
+      attrList: propertyListGroups,
       formInfo: copyData,
       subTitle: '',
       model_id: modelId,
@@ -929,7 +950,13 @@ const AssetDataContent = () => {
             columns={currentColumns}
             pagination={pagination}
             loading={tableLoading}
-            scroll={{ x: 'calc(100vw - 400px)', y: 'calc(100vh - 380px)' }}
+            // 表格滚动高度（根据查询条件变化）
+            scroll={{
+              x: 'calc(100vw - 400px)',
+              y: storeQueryList.length > 0
+                ? 'calc(100vh - 320px)'
+                : 'calc(100vh - 300px)'
+            }}
             fieldSetting={{
               showSetting: true,
               displayFieldKeys,

@@ -3,9 +3,9 @@ export const useMysqlConfig = () => {
     instance_type: 'mysql',
     dashboardDisplay: [],
     tableDiaplay: [
-      { type: 'value', key: 'mysql_bytes_received' },
-      { type: 'value', key: 'mysql_bytes_sent' },
-      { type: 'value', key: 'mysql_connections_total' },
+      { type: 'value', key: 'mysql_threads_running' },
+      { type: 'value', key: 'mysql_slow_queries_rate' },
+      { type: 'value', key: 'mysql_innodb_buffer_pool_disk_reads_rate' },
     ],
     groupIds: {},
     collectTypes: {

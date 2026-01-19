@@ -31,3 +31,13 @@ class CMDB(object):
         """
         return_data = self.client.run("search_instances", **kwargs)
         return return_data
+
+    def sync_display_fields(self, **kwargs):
+        """
+        同步组织/用户的 _display 字段
+        :param organizations: 组织变更数据列表 [{"id": 1, "name": "新组织名"}]
+        :param users: 用户变更数据列表 [{"id": 1, "username": "admin", "display_name": "新显示名"}]
+        :return: 任务提交结果 {"task_id": "uuid", "status": "submitted"}
+        """
+        return_data = self.client.run("sync_display_fields", **kwargs)
+        return return_data

@@ -4,13 +4,14 @@ import React, { useRef, useState, useEffect } from 'react';
 import Image from 'next/image';
 import WithSideMenuLayout from '@/components/sub-layout';
 import ModelModal from '../list/modelModal';
+import CopyModelModal from '../list/copyModelModal';
 import attrLayoutStyle from './layout.module.scss';
 import useApiClient from '@/utils/request';
 import PermissionWrapper from '@/components/permission';
-import { Card, Modal, message } from 'antd';
+import { Card, Modal, message, Tooltip } from 'antd';
 import { useRouter } from 'next/navigation';
 import { getIconUrl } from '@/app/cmdb/utils/common';
-import { EditTwoTone, DeleteTwoTone } from '@ant-design/icons';
+import { EditTwoTone, DeleteTwoTone, CopyOutlined } from '@ant-design/icons';
 import { useSearchParams } from 'next/navigation';
 import { ClassificationItem } from '@/app/cmdb/types/assetManage';
 import { useTranslation } from '@/utils/i18n';
@@ -33,6 +34,7 @@ const AboutLayout = ({ children }: { children: React.ReactNode }) => {
   const modelId: string = searchParams.get('model_id') || '';
   const isPre = searchParams.get('is_pre') === 'true';
   const modelRef = useRef<any>(null);
+  const copyModelRef = useRef<any>(null);
   const [groupList, setGroupList] = useState<ClassificationItem[]>([]);
   const [modelDetail, setModelDetail] = useState<any>({});
 
@@ -116,6 +118,16 @@ const AboutLayout = ({ children }: { children: React.ReactNode }) => {
     });
   };
 
+  const showCopyModelModal = () => {
+    copyModelRef.current?.showModal({
+      model_id: modelId,
+      model_name: modelDetail.model_name || '',
+      classification_id: modelDetail.classification_id || '',
+      icn: modelDetail.icn || '',
+      group: modelDetail.group,
+    });
+  };
+
   return (
     <ModelDetailContext.Provider value={modelDetail}>
       <div className={`${attrLayoutStyle.attrLayout}`}>
@@ -131,11 +143,62 @@ const AboutLayout = ({ children }: { children: React.ReactNode }) => {
               width={30}
               height={30}
             />
-            <div className="mr-[14px]">
-              <div
-                className={`text-[14px] font-[800] mb-[2px] ${attrLayoutStyle.ellipsisText} break-all`}
-              >
-                {modelDetail.model_name || ''}
+            <div>
+              <div className="flex items-center mb-[2px]">
+                <div
+                  className={`text-[14px] font-[800] ${attrLayoutStyle.ellipsisText} break-all`}
+                >
+                  {modelDetail.model_name || ''}
+                </div>
+                <div className="flex items-center gap-[14px] ml-[24px]">
+                  {!isPre && (
+                    <>
+                      <PermissionWrapper
+                        requiredPermissions={['Edit Model']}
+                        instPermissions={modelDetail.permission || []}
+                      >
+                        <EditTwoTone
+                          className="edit text-[14px] cursor-pointer"
+                          onClick={() =>
+                            shoModelModal('edit', {
+                              model_name: modelDetail.model_name || '',
+                              model_id: modelId,
+                              classification_id:
+                                modelDetail.classification_id || '',
+                              icn: modelDetail.icn || '',
+                              group: modelDetail.group,
+                            })
+                          }
+                        />
+                      </PermissionWrapper>
+                      <PermissionWrapper
+                        requiredPermissions={['Delete Model']}
+                        instPermissions={modelDetail.permission || []}
+                      >
+                        <DeleteTwoTone
+                          className="delete text-[14px] cursor-pointer"
+                          onClick={() =>
+                            showDeleteConfirm({
+                              model_id: modelId,
+                            })
+                          }
+                        />
+                      </PermissionWrapper>
+                    </>
+                  )}
+                  <PermissionWrapper
+                    requiredPermissions={['Add Model']}
+                    instPermissions={modelDetail.permission || []}
+                  >
+                    <Tooltip title={t('Model.copyModel')}>
+                      <CopyOutlined
+                        className="copy text-[14px] cursor-pointer"
+                        style={{ color: 'var(--color-primary)' }}
+                        onClick={showCopyModelModal}
+                      />
+                    </Tooltip>
+                  </PermissionWrapper>
+                </div>
               </div>
               <div className="text-[var(--color-text-2)] text-[12px] break-all">
                 {modelId}
@@ -145,40 +208,6 @@ const AboutLayout = ({ children }: { children: React.ReactNode }) => {
                 </span>
               </div>
             </div>
-            {!isPre && (
-              <div className="self-start">
-                <PermissionWrapper
-                  requiredPermissions={['Edit Model']}
-                  instPermissions={modelDetail.permission || []}
-                >
-                  <EditTwoTone
-                    className="edit mr-[10px] text-[14px] cursor-pointer"
-                    onClick={() =>
-                      shoModelModal('edit', {
-                        model_name: modelDetail.model_name || '',
-                        model_id: modelId,
-                        classification_id: modelDetail.classification_id || '',
-                        icn: modelDetail.icn || '',
-                        group: modelDetail.group,
-                      })
-                    }
-                  />
-                </PermissionWrapper>
-                <PermissionWrapper
-                  requiredPermissions={['Delete Model']}
-                  instPermissions={modelDetail.permission || []}
-                >
-                  <DeleteTwoTone
-                    className="delete text-[14px] cursor-pointer"
-                    onClick={() =>
-                      showDeleteConfirm({
-                        model_id: modelId,
-                      })
-                    }
-                  />
-                </PermissionWrapper>
-              </div>
-            )}
           </header>
         </Card>
         <div
@@ -197,6 +226,11 @@ const AboutLayout = ({ children }: { children: React.ReactNode }) => {
         </div>
         <ModelModal
           ref={modelRef}
+          modelGroupList={groupList}
+          onSuccess={onSuccess}
+        />
+        <CopyModelModal
+          ref={copyModelRef}
           modelGroupList={groupList}
           onSuccess={onSuccess}
         />
