@@ -883,7 +883,6 @@ class ChatFlowEngine:
 
         node_type = node.get("type", "")
         logger.info(f"开始执行节点: {node_id} (类型: {node_type})")
-
         try:
             # 获取执行器
             executor = self._get_node_executor(node_type)
@@ -913,24 +912,18 @@ class ChatFlowEngine:
 
             # 准备节点执行的输入数据
             node_input_data = {input_key: input_value}
-
             # 执行节点
             result = executor.execute(node_id, node, node_input_data)
-
-            logger.info(f"节点 {node_id} 执行结果: result={result}, output_key={output_key}")
-
             # 处理输出数据到全局变量
             if result and isinstance(result, dict):
                 # 获取节点的实际输出值
                 output_value = result.get(output_key)
-                logger.info(f"节点 {node_id} 输出值: output_key={output_key}, output_value={output_value}")
                 if output_value is not None:
                     # 更新全局变量
                     if output_key == "last_message":
                         # 特殊处理：condition、branch、intent节点的last_message不更新全局变量
                         # 避免覆盖前置节点的输出
                         if node_type not in ["condition", "branch", "intent"]:
-                            logger.info(f"更新全局变量 last_message={output_value}")
                             self.variable_manager.set_variable("last_message", output_value)
                         else:
                             logger.info(f"节点类型 {node_type} 不更新全局变量 last_message")

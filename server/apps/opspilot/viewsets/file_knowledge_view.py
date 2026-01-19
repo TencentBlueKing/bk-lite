@@ -40,6 +40,6 @@ class FileKnowledgeViewSet(LanguageViewSet):
             objs = FileKnowledge.objects.bulk_create(file_knowledge_list, batch_size=10)
             return {"result": True, "data": [i.knowledge_document_id for i in objs]}
         except Exception as e:
-            logger.error(f"Failed to import file: {e}")
+            logger.exception(f"Failed to import file: {e}")
             message = self.loader.get("error.file_import_failed") or "Failed to import file."
             return {"result": False, "message": message}
