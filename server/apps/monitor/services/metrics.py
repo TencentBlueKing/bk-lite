@@ -1,5 +1,10 @@
+import ast
+
 import pandas as pd
 
+from apps.monitor.models.monitor_metrics import Metric
+from apps.monitor.models.monitor_object import MonitorObject
+from apps.monitor.utils.unit_converter import UnitConverter
 from apps.monitor.utils.victoriametrics_api import VictoriaMetricsAPI
 
 
@@ -12,10 +17,12 @@ class Metrics:
     @staticmethod
     def get_metrics_range(query, start, end, step):
         """查询指标（范围）"""
-        start = int(start)/1000  # Convert milliseconds to seconds
-        end = int(end)/1000  # Convert milliseconds to seconds
+        start = int(start) / 1000  # Convert milliseconds to seconds
+        end = int(end) / 1000  # Convert milliseconds to seconds
         resp = VictoriaMetricsAPI().query_range(query, start, end, step)
-        Metrics.fill_missing_points(start, end, step, resp.get("data", {}).get("result", []))
+        Metrics.fill_missing_points(
+            start, end, step, resp.get("data", {}).get("result", [])
+        )
         return resp
 
     @staticmethod
@@ -36,21 +43,25 @@ class Metrics:
 
             # Convert original values to DataFrame
             original_df = pd.DataFrame(values, columns=["timestamp", "value"])
-            original_df["timestamp"] = pd.to_datetime(original_df["timestamp"].astype(float), unit="s")
+            original_df["timestamp"] = pd.to_datetime(
+                original_df["timestamp"].astype(float), unit="s"
+            )
             original_df.set_index("timestamp", inplace=True)
 
             # Create complete time range DataFrame (start and end are now in seconds)
             full_time_index = pd.date_range(
                 start=pd.to_datetime(start, unit="s"),
                 end=pd.to_datetime(end, unit="s"),
-                freq=f"{step}S"
+                freq=f"{step}S",
             )
             full_df = pd.DataFrame(index=full_time_index, columns=["value"])
             full_df["value"] = None
 
             # Concatenate and sort all timestamps
             all_df = pd.concat([original_df, full_df])
-            all_df = all_df[~all_df.index.duplicated(keep='first')]  # Keep original values for duplicates
+            all_df = all_df[
+                ~all_df.index.duplicated(keep="first")
+            ]  # Keep original values for duplicates
             all_df.sort_index(inplace=True)
 
             # Convert back to the original `values` format
@@ -64,3 +75,99 @@ class Metrics:
                 result_values.append([timestamp_float, value])
 
             item["values"] = result_values
+
+    @staticmethod
+    def query_metric_by_instance(
+        metric_query: str, instance_id: str, instance_id_keys: list, dimensions: list
+    ):
+        """
+        根据实例ID查询指标，按维度分组
+
+        :param metric_query: 指标查询语句模板，包含 __$labels__ 占位符
+        :param instance_id: 实例ID，字符串元组格式，如 "('aa', 'bb')"
+        :param instance_id_keys: 实例ID对应的维度键列表，如 ["name", "id"]
+        :param dimensions: 用于分组的维度列表
+        :return: 查询结果
+        """
+        # 解析 instance_id 字符串元组
+        try:
+            instance_id_values = ast.literal_eval(instance_id)
+            if not isinstance(instance_id_values, tuple):
+                instance_id_values = (instance_id_values,)
+        except (ValueError, SyntaxError):
+            instance_id_values = (instance_id,)
+
+        # 构建标签过滤条件: name="aa", id="bb"
+        label_conditions = []
+        for key, value in zip(instance_id_keys, instance_id_values):
+            label_conditions.append(f'{key}="{value}"')
+        labels_str = ", ".join(label_conditions)
+
+        # 替换查询语句中的占位符
+        query = metric_query.replace("__$labels__", labels_str)
+
+        # 构建分组条件
+        group_by = ", ".join(dimensions) if dimensions else ""
+
+        # 使用 any() 聚合函数进行即时查询
+        if group_by:
+            final_query = f"any({query}) by ({group_by})"
+        else:
+            final_query = f"any({query})"
+
+        return VictoriaMetricsAPI().query(final_query)
+
+    @staticmethod
+    def convert_instance_list_metrics(monitor_object_id: int, instances: list) -> list:
+        """
+        对实例列表中的补充指标进行单位转换
+
+        :param monitor_object_id: 监控对象ID
+        :param instances: 实例列表，每个实例包含指标名称作为key，值为字符串
+        :return: 转换后的实例列表，指标值变为 {"value": "xxx", "unit": "xxx"} 格式
+        """
+        if not instances:
+            return instances
+
+        monitor_obj = MonitorObject.objects.filter(id=monitor_object_id).first()
+        if not monitor_obj or not monitor_obj.supplementary_indicators:
+            return instances
+
+        indicator_names = monitor_obj.supplementary_indicators
+
+        metrics = Metric.objects.filter(
+            monitor_object_id=monitor_object_id, name__in=indicator_names
+        ).values("name", "unit")
+        metric_unit_map = {m["name"]: m["unit"] for m in metrics}
+
+        for metric_name in indicator_names:
+            source_unit = metric_unit_map.get(metric_name)
+            if not source_unit:
+                continue
+
+            values = []
+            valid_indices = []
+            for idx, instance in enumerate(instances):
+                raw_value = instance.get(metric_name)
+                if raw_value is not None:
+                    try:
+                        values.append(float(raw_value))
+                        valid_indices.append(idx)
+                    except (ValueError, TypeError):
+                        pass
+
+            if not values:
+                continue
+
+            converted_values, target_unit = UnitConverter.auto_convert(
+                values, source_unit
+            )
+            display_unit = UnitConverter.get_display_unit(target_unit)
+
+            for i, idx in enumerate(valid_indices):
+                instances[idx][metric_name] = {
+                    "value": str(converted_values[i]),
+                    "unit": display_unit,
+                }
+
+        return instances
