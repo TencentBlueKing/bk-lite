@@ -306,7 +306,7 @@ COLLECT_OBJ_TREE = [
         "id": "databases",
         "name": "数据库",
         "children": [
-            {"id": "mysql", "model_id": "mysql", "name": "Mysql", "task_type": CollectPluginTypes.PROTOCOL,
+            {"id": "mysql", "model_id": "mysql", "name": "Mysql", "task_type": CollectPluginTypes.DB,
              "type": CollectDriverTypes.PROTOCOL, "tag": ["Agentless", "TCP"], "desc": "采集MySQL关键配置信息",
              "encrypted_fields": ["password"]
              },
