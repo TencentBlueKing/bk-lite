@@ -2,6 +2,9 @@ import ast
 
 import pandas as pd
 
+from apps.monitor.models.monitor_metrics import Metric
+from apps.monitor.models.monitor_object import MonitorObject
+from apps.monitor.utils.unit_converter import UnitConverter
 from apps.monitor.utils.victoriametrics_api import VictoriaMetricsAPI
 
 
@@ -113,3 +116,58 @@ class Metrics:
             final_query = f"any({query})"
 
         return VictoriaMetricsAPI().query(final_query)
+
+    @staticmethod
+    def convert_instance_list_metrics(monitor_object_id: int, instances: list) -> list:
+        """
+        对实例列表中的补充指标进行单位转换
+
+        :param monitor_object_id: 监控对象ID
+        :param instances: 实例列表，每个实例包含指标名称作为key，值为字符串
+        :return: 转换后的实例列表，指标值变为 {"value": "xxx", "unit": "xxx"} 格式
+        """
+        if not instances:
+            return instances
+
+        monitor_obj = MonitorObject.objects.filter(id=monitor_object_id).first()
+        if not monitor_obj or not monitor_obj.supplementary_indicators:
+            return instances
+
+        indicator_names = monitor_obj.supplementary_indicators
+
+        metrics = Metric.objects.filter(
+            monitor_object_id=monitor_object_id, name__in=indicator_names
+        ).values("name", "unit")
+        metric_unit_map = {m["name"]: m["unit"] for m in metrics}
+
+        for metric_name in indicator_names:
+            source_unit = metric_unit_map.get(metric_name)
+            if not source_unit:
+                continue
+
+            values = []
+            valid_indices = []
+            for idx, instance in enumerate(instances):
+                raw_value = instance.get(metric_name)
+                if raw_value is not None:
+                    try:
+                        values.append(float(raw_value))
+                        valid_indices.append(idx)
+                    except (ValueError, TypeError):
+                        pass
+
+            if not values:
+                continue
+
+            converted_values, target_unit = UnitConverter.auto_convert(
+                values, source_unit
+            )
+            display_unit = UnitConverter.get_display_unit(target_unit)
+
+            for i, idx in enumerate(valid_indices):
+                instances[idx][metric_name] = {
+                    "value": str(converted_values[i]),
+                    "unit": display_unit,
+                }
+
+        return instances
