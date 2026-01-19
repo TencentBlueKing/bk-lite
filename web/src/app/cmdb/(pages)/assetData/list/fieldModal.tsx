@@ -420,7 +420,7 @@ const FieldMoadal = forwardRef<FieldModalRef, FieldModalProps>(
             {/* 遍历所有提取 organization 字段 */}
             {(() => {
               const organizationAttrs = formItems.flatMap((group) =>
-                group.attrs.filter((attr) => attr.attr_id === 'organization')
+                (group.attrs || []).filter((attr) => attr.attr_id === 'organization')
               );
 
               // 返回 organization 字段的数据
@@ -454,7 +454,7 @@ const FieldMoadal = forwardRef<FieldModalRef, FieldModalProps>(
 
             {/* 其他分组（不包含 organization 字段） */}
             {formItems.map((group) => {
-              const otherAttrs = group.attrs.filter(
+              const otherAttrs = (group.attrs || []).filter(
                 (attr) => attr.attr_id !== 'organization'
               );
               if (otherAttrs.length === 0) return null;
