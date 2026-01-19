@@ -1313,7 +1313,7 @@ monitor_object_metric:
     mysql_innodb_buffer_pool_read_requests_rate:
       name: Buffer Pool Read Requests Rate
       desc: Buffer pool read requests, reflecting database read load
-    mysql_innodb_buffer_pool_disk_reads_rate:
+    mysql_innodb_buffer_pool_reads_rate:
       name: Buffer Pool Disk Reads Rate
       desc: Buffer pool disk reads; high values indicate insufficient memory
     mysql_innodb_buffer_pool_pages_dirty:

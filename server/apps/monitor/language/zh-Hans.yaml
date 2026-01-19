@@ -1111,11 +1111,11 @@ monitor_object_metric:
       name: 当前连接数
       desc: 当前打开的连接数；接近 max_connections 时会拒绝新连接
     mysql_threads_running:
-      name: 运行中的线程数
-      desc: 当前正在执行查询的线程数，反映并发处理能力
+      name: 活跃线程数
+      desc: 当前正在执行的线程数；反映数据库并发处理能力
     mysql_aborted_connects:
-      name: 中止的连接数
-      desc: 连接尝试失败的次数，可能由权限、网络或配置问题引起
+      name: 中断连接数
+      desc: 连接尝试失败的次数；突增反映权限 / 网络配置问题
     mysql_slow_queries_rate:
       name: 慢查询请求触发速率
       desc: 慢查询请求数量，反映慢查询发生的频率
@@ -1135,17 +1135,17 @@ monitor_object_metric:
       name: 平均行锁等待时间
       desc: 平均行锁等待时间；>50ms 表示锁竞争严重
     mysql_innodb_row_lock_waits_rate:
-      name: 行锁等待速率
-      desc: InnoDB 行锁等待次数
+      name: InnoDB 行锁等待次数速率
+      desc: InnoDB 引擎发生行锁等待的次数
     mysql_innodb_buffer_pool_read_requests_rate:
       name: 缓冲池读取请求速率
       desc: 缓冲池读取请求，反映数据库读取负载
-    mysql_innodb_buffer_pool_disk_reads_rate:
+    mysql_innodb_buffer_pool_reads_rate:
       name: 缓冲池磁盘读取速率
-      desc: 缓冲池磁盘读取次数；值高表示内存不足
+      desc: 缓冲池物理磁盘读取数；过高表示内存不足
     mysql_innodb_buffer_pool_pages_dirty:
-      name: 脏页数
-      desc: 缓冲池中的脏页数（尚未写入磁盘）；表示缓冲池利用情况
+      name: 脏页数量
+      desc: 缓冲池中已修改未写入磁盘的页数；反映内存使用效率
     mysql_innodb_buffer_pool_pages_total:
       name: 缓冲池总页数
       desc: 缓冲池中的总页数；用于计算缓冲池利用率
@@ -1159,8 +1159,8 @@ monitor_object_metric:
       name: 表缓存命中率
       desc: 表缓存命中率；<95% 需调整 table_open_cache 配置
     mysql_table_open_cache_misses_rate:
-      name: 表缓存未命中速率
-      desc: 表打开缓存未命中请求数，反映表缓存命中状况
+      name: 表缓存未命中请求速率
+      desc: 表缓存未命中的请求次数，反映表缓存的命中情况
     mysql_created_tmp_disk_tables_rate:
       name: 磁盘临时表创建速率
       desc: 创建的磁盘临时表数量
