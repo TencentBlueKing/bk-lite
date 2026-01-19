@@ -14,4 +14,14 @@ class Migration(migrations.Migration):
             name="error_message",
             field=models.TextField(blank=True, null=True, verbose_name="error message"),
         ),
+        migrations.AddField(
+            model_name="bot",
+            name="is_builtin",
+            field=models.BooleanField(db_index=True, default=False, verbose_name="是否内置"),
+        ),
+        migrations.AddField(
+            model_name="llmskill",
+            name="is_builtin",
+            field=models.BooleanField(db_index=True, default=False, verbose_name="是否内置"),
+        ),
     ]
