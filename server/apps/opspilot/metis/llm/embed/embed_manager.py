@@ -11,16 +11,9 @@ class EmbedManager:
 
     # 默认配置
     DEFAULT_TIMEOUT = 300
-    # OpenAI batch size 限制为 25，设置 20 以留有余量
-    # DEFAULT_CHUNK_SIZE = 20
 
     def get_embed(
-        self,
-        protocol: str,
-        model_name: str = "",
-        model_api_key: str = "",
-        model_base_url: str = "",
-        cache_folder: str = "./models",
+        self, protocol: str, model_name: str = "", model_api_key: str = "", model_base_url: str = "", cache_folder: str = "./models"
     ) -> Any:
         """获取嵌入模型实例。"""
         if not protocol:
@@ -37,16 +30,4 @@ class EmbedManager:
             base_url=model_base_url,
             timeout=self.DEFAULT_TIMEOUT,
             check_embedding_ctx_length=False,  # 禁用 token 长度检查,直接发送原始文本
-            # 限制每批发送的文档数，避免超过 API 限制
-            # chunk_size=self.DEFAULT_CHUNK_SIZE,
-        )
-
-        logger.info(f"Creating remote embed instance: {model_name}")
-        return OpenAIEmbeddings(
-            model=model_name,
-            api_key=model_api_key,
-            base_url=model_base_url,
-            timeout=self.DEFAULT_TIMEOUT,
-            check_embedding_ctx_length=False,  # 禁用 token 长度检查,直接发送原始文本
-            chunk_size=self.DEFAULT_CHUNK_SIZE,  # 限制每批发送的文档数，避免超过 API 限制
         )
