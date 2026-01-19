@@ -218,17 +218,6 @@
       "dimensions": [],
       "description": "Number of successful cache retrievals; high hit rate indicates efficient caching and reduced backend load",
       "query": "apache_CacheRetrieveHitCount{__$labels__}"
-    },
-    {
-      "metric_group": "Process",
-      "name": "process_resident_memory_bytes",
-      "display_name": "Process Resident Memory",
-      "instance_id_keys": ["instance_id"],
-      "data_type": "Number",
-      "unit": "bytes",
-      "dimensions": [],
-      "description": "Amount of physical memory currently occupied by the process, monitoring memory usage and identifying leaks",
-      "query": "process_resident_memory_bytes{__$labels__}"
     }
   ]
 }
