@@ -1881,7 +1881,7 @@ monitor_object_metric:
     redis_total_net_output_bytes_rate:
       name: 网络流出速率
       desc: Redis实例发送网络数据的平均速率，监控输出流量变化，结合业务指标分析响应数据量变化趋势
-    redis_connected_clients:
+    redis_clients:
       name: 客户端连接数
       desc: 当前活跃的客户端连接数量，反映服务并发处理能力，接近最大连接数配置时可能影响新连接建立
     redis_blocked_clients:

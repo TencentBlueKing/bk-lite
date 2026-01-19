@@ -2226,7 +2226,7 @@ monitor_object_metric:
     redis_total_net_output_bytes_rate:
       name: Network Outflow Rate
       desc: Average rate of network data sent by Redis instance, monitors output traffic changes, analyzes response data volume trends combined with business metrics
-    redis_connected_clients:
+    redis_clients:
       name: Client Connections
       desc: Number of currently active client connections, reflects service concurrent processing capacity, approaching max connections configuration may affect new connection establishment
     redis_blocked_clients:
