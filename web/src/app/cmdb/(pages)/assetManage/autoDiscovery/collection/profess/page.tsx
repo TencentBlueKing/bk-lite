@@ -398,37 +398,34 @@ const ProfessionalCollection: React.FC = () => {
     // console.log('test2.2', selectedCategoryRef.current.category, currentPlugin);
     if (!selectedCategoryRef.current.category || !currentPlugin) return null;
 
-    if (!currentPlugin) return null;
-
     const actualCategory =
       selectedCategoryRef.current.categoryId === 'all'
-        ? findParentCategoryByPluginId(currentPlugin.id)
+        ? findParentCategoryByPluginId(selectedPluginId)
         : selectedCategoryRef.current.category;
 
     if (!actualCategory) return null;
 
-    const taskProps = {
+    const props = {
       onClose: closeDrawer,
       onSuccess: fetchData,
       selectedNode: actualCategory,
       modelItem: currentPlugin as ModelItem,
       editId: editingId,
     };
-
     const taskMap: Record<string, React.ComponentType<any>> = {
       k8s: K8sTask,
-      vm: VMTask,
+      vmware: VMTask,
+      network_topo: SNMPTask,
+      network: SNMPTask,
+      databases: SQLTask,
       cloud: CloudTask,
-      host: HostTask,
+      host_manage: HostTask,
       middleware: HostTask,
       snmp: SNMPTask,
       protocol: SQLTask,
     };
-
-    const taskTypeKey = currentPlugin.task_type || currentPlugin.type || actualCategory.id;
-    const TaskComponent = taskMap[taskTypeKey] || K8sTask;
-
-    return <TaskComponent {...taskProps} />;
+    const TaskComponent = taskMap[actualCategory.id] || K8sTask;
+    return <TaskComponent {...props} />;
   };
 
   const toCamelCase = (str: string) => {

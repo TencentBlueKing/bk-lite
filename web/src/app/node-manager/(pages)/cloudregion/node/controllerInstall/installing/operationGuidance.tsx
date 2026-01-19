@@ -187,7 +187,7 @@ const OperationGuidance = forwardRef<ModalRef>(({}, ref) => {
         <Alert
           message={t('node-manager.cloudregion.node.importantNote')}
           description={t('node-manager.cloudregion.node.importantNoteDesc')}
-          type="error"
+          type="warning"
           showIcon
           className="mb-[16px]"
         />

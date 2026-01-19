@@ -11,27 +11,33 @@ from apps.node_mgmt.constants.language import LanguageConstants
 from apps.node_mgmt.constants.cloudregion_service import CloudRegionServiceConstants
 from apps.node_mgmt.filters.cloud_region import CloudRegionFilter
 from apps.node_mgmt.models import Node
-from apps.node_mgmt.serializers.cloud_region import CloudRegionSerializer, CloudRegionUpdateSerializer
+from apps.node_mgmt.serializers.cloud_region import (
+    CloudRegionSerializer,
+    CloudRegionUpdateSerializer,
+)
 from apps.node_mgmt.models.cloud_region import CloudRegion, CloudRegionService
 from apps.node_mgmt.services.cloudregion import RegionService
+from apps.core.utils.web_utils import WebUtils
 
 
-class CloudRegionViewSet(mixins.ListModelMixin,
-                         mixins.RetrieveModelMixin,
-                         mixins.UpdateModelMixin,
-                         mixins.DestroyModelMixin,
-                         mixins.CreateModelMixin,
-                         GenericViewSet):
+class CloudRegionViewSet(
+    mixins.ListModelMixin,
+    mixins.RetrieveModelMixin,
+    mixins.UpdateModelMixin,
+    mixins.DestroyModelMixin,
+    mixins.CreateModelMixin,
+    GenericViewSet,
+):
     queryset = CloudRegion.objects.all()
     serializer_class = CloudRegionSerializer
     filterset_class = CloudRegionFilter
-    search_fields = ['name', 'introduction']  # 搜索字段
+    search_fields = ["name", "introduction"]  # 搜索字段
 
     def get_queryset(self):
         """优化查询，预加载服务数据"""
         queryset = super().get_queryset()
-        if self.action in ['list', 'retrieve']:
-            queryset = queryset.prefetch_related('cloudregionservice_set')
+        if self.action in ["list", "retrieve"]:
+            queryset = queryset.prefetch_related("cloudregionservice_set")
         return queryset
 
     def list(self, request, *args, **kwargs):
@@ -39,7 +45,9 @@ class CloudRegionViewSet(mixins.ListModelMixin,
         serializer = self.get_serializer(queryset, many=True)
         results = serializer.data
 
-        lan = LanguageLoader(app=LanguageConstants.APP, default_lang=request.user.locale)
+        lan = LanguageLoader(
+            app=LanguageConstants.APP, default_lang=request.user.locale
+        )
 
         for result in results:
             name_key = f"{LanguageConstants.CLOUD_REGION}.{result['name']}.name"
@@ -64,14 +72,14 @@ class CloudRegionViewSet(mixins.ListModelMixin,
     def partial_update(self, request, *args, **kwargs):
         self.serializer_class = CloudRegionUpdateSerializer
         # 默认云区域default禁止编辑
-        cloud_region_id = kwargs.get('pk')
+        cloud_region_id = kwargs.get("pk")
         cloud_region = CloudRegion.objects.filter(id=cloud_region_id).first()
-        if cloud_region and cloud_region.name == 'default':
+        if cloud_region and cloud_region.name == "default":
             raise BaseAppException("默认云区域禁止编辑")
 
         # 如果proxy_address修改了，要同步更新云区域的环境变量PROXY_ADDRESS_REPLACE_KEYS
         old_proxy_address = cloud_region.proxy_address if cloud_region else None
-        new_proxy_address = request.data.get('proxy_address')
+        new_proxy_address = request.data.get("proxy_address")
 
         # 执行更新
         response = super().partial_update(request, *args, **kwargs)
@@ -81,7 +89,7 @@ class CloudRegionViewSet(mixins.ListModelMixin,
             RegionService.update_env_vars_on_proxy_change(
                 cloud_region_id=cloud_region_id,
                 old_proxy_address=old_proxy_address,
-                new_proxy_address=new_proxy_address
+                new_proxy_address=new_proxy_address,
             )
 
         return response
@@ -91,7 +99,7 @@ class CloudRegionViewSet(mixins.ListModelMixin,
         response = super().create(request, *args, **kwargs)
 
         if response.status_code == status.HTTP_201_CREATED:
-            cloud_region_id = response.data.get('id')
+            cloud_region_id = response.data.get("id")
 
             # 创建成功后，初始化云区域下的服务
             for service_name in CloudRegionServiceConstants.SERVICES:
@@ -100,8 +108,8 @@ class CloudRegionViewSet(mixins.ListModelMixin,
                     name=service_name,
                     defaults={
                         "status": CloudRegionServiceConstants.NOT_DEPLOYED,
-                        "description": f"{service_name} 服务"
-                    }
+                        "description": f"{service_name} 服务",
+                    },
                 )
 
             # 创建成功后，初始化云区域下的环境变量（从默认云区域复制）
@@ -111,7 +119,7 @@ class CloudRegionViewSet(mixins.ListModelMixin,
 
     def destroy(self, request, *args, **kwargs):
         # 校验云区域下是否存在节点
-        cloud_region_id = kwargs.get('pk')
+        cloud_region_id = kwargs.get("pk")
         if Node.objects.filter(cloud_region_id=cloud_region_id).exists():
             raise BaseAppException("该云区域下存在节点，无法删除")
         return super().destroy(request, *args, **kwargs)
@@ -173,5 +181,4 @@ class CloudRegionViewSet(mixins.ListModelMixin,
         # 调用 service 层获取部署脚本
         deploy_script = RegionService.get_deploy_script(request.data)
 
-        # 返回纯文本脚本（text/plain），与 render_install_script 保持一致
-        return HttpResponse(deploy_script, content_type="text/plain; charset=utf-8")
+        return WebUtils.response_success(deploy_script)

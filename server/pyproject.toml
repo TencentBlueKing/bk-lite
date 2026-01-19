@@ -99,6 +99,7 @@ mlops = [
     "scikit-learn==1.6.1",
     "tsfresh==0.21.1",
     "hyperopt==0.2.7",
+    "numba>=0.59.0", 
 ]
 
 opspilot = [

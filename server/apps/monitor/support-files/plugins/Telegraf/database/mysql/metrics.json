@@ -8,7 +8,7 @@
   "description": "",
   "default_metric": "any({instance_type='mysql'}) by (instance_id)",
   "instance_id_keys": ["instance_id"],
-  "supplementary_indicators": ["mysql_threads_running", "mysql_slow_queries_rate", "mysql_innodb_buffer_pool_disk_reads_rate"],
+  "supplementary_indicators": ["mysql_threads_running", "mysql_slow_queries_rate", "mysql_innodb_buffer_pool_reads_rate"],
   "metrics": [
     {
       "metric_group": "ConnStatus",
@@ -133,14 +133,14 @@
     },
     {
       "metric_group": "InnoDBPerf",
-      "name": "mysql_innodb_buffer_pool_disk_reads_rate",
+      "name": "mysql_innodb_buffer_pool_reads_rate",
       "display_name": "Buffer Pool Disk Reads Rate",
       "instance_id_keys": ["instance_id"],
       "data_type": "Number",
       "unit": "cps",
       "dimensions": [],
       "description": "Buffer pool disk reads; high values indicate insufficient memory",
-      "query": "rate(mysql_innodb_buffer_pool_disk_reads{__$labels__}[5m])"
+      "query": "rate(mysql_innodb_buffer_pool_reads{__$labels__}[5m])"
     },
     {
       "metric_group": "InnoDBPerf",

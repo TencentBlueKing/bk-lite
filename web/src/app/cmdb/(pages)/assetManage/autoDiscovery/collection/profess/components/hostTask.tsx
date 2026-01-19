@@ -156,11 +156,19 @@ const HostTask: React.FC<HostTaskFormProps> = ({
               }
               key="credential"
             >
-              <Form.Item label={t('user')} name="username">
+              <Form.Item
+                label={t('user')}
+                name="username"
+                rules={[{ required: true, message: t('common.inputTip') }]}
+              >
                 <Input placeholder={t('common.inputTip')} />
               </Form.Item>
 
-              <Form.Item label={t('password')} name="password">
+              <Form.Item
+                label={t('password')}
+                name="password"
+                rules={[{ required: true, message: t('common.inputTip') }]}
+              >
                 <Input.Password
                   placeholder={t('common.inputTip')}
                   onFocus={(e) => {
@@ -180,7 +188,11 @@ const HostTask: React.FC<HostTaskFormProps> = ({
                 />
               </Form.Item>
 
-              <Form.Item label={t('Collection.port')} name="port">
+              <Form.Item
+                label={t('Collection.port')}
+                name="port"
+                rules={[{ required: true, message: t('common.inputTip') }]}
+              >
                 <InputNumber
                   min={1}
                   max={65535}
