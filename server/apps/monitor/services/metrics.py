@@ -2,6 +2,7 @@ import ast
 
 import pandas as pd
 
+from apps.monitor.constants.unit_converter import UnitConverterConstants
 from apps.monitor.models.monitor_metrics import Metric
 from apps.monitor.models.monitor_object import MonitorObject
 from apps.monitor.utils.unit_converter import UnitConverter
@@ -137,12 +138,20 @@ class Metrics:
 
         metrics = Metric.objects.filter(
             monitor_object_id=monitor_object_id, name__in=indicator_names
-        ).values("name", "unit")
+        ).values("name", "unit", "data_type")
         metric_unit_map = {m["name"]: m["unit"] for m in metrics}
+        metric_data_type_map = {m["name"]: m["data_type"] for m in metrics}
 
         for metric_name in indicator_names:
             source_unit = metric_unit_map.get(metric_name)
             if not source_unit:
+                continue
+
+            if metric_data_type_map.get(metric_name) == "Enum":
+                for instance in instances:
+                    raw_value = instance.get(metric_name)
+                    if raw_value is not None:
+                        instance[metric_name] = {"value": str(raw_value), "unit": ""}
                 continue
 
             values = []
