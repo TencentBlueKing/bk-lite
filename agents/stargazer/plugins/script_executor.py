@@ -6,7 +6,7 @@ SSH 脚本执行器插件
 import os
 import json
 from pathlib import Path
-from typing import Dict, Any
+from typing import Dict, Any, List
 from sanic.log import logger
 from core.nats_utils import nats_request
 
@@ -119,6 +119,30 @@ class SSHPlugin:
 
         return exec_params
 
+    def _parse_collect_output(self, collect_output: str) -> List[Dict[str, Any]]:
+        if not collect_output:
+            return [{}]
+        try:
+            parsed = json.loads(collect_output)
+            if isinstance(parsed, list):
+                return [item for item in parsed if isinstance(item, dict)] or [{}]
+            if isinstance(parsed, dict):
+                return [parsed]
+        except Exception:
+            pass
+        records: List[Dict[str, Any]] = []
+        for line in collect_output.splitlines():
+            stripped = line.strip()
+            if not stripped:
+                continue
+            try:
+                parsed_line = json.loads(stripped)
+                if isinstance(parsed_line, dict):
+                    records.append(parsed_line)
+            except Exception:
+                continue
+        return records or [{}]
+
     async def list_all_resources(self, need_raw=False) -> Dict[str, Any]:
         """
         执行脚本采集
@@ -154,12 +178,8 @@ class SSHPlugin:
                 if need_raw:
                     return response
                 collect_data = response["result"]
-                try:
-                    # 尝试解析为 JSON
-                    collect_data = json.loads(collect_data)
-                except Exception:
-                    collect_data = {}
-                result = {"result": {self.model_id: [collect_data]}, "success": True}
+                parsed_payload = self._parse_collect_output(collect_data)
+                result = {"result": {self.model_id: parsed_payload}, "success": True}
             else:
                 result = {"result": {"cmdb_collect_error": response.get("result")}, "success": False}
             logger.info(f"✅ Script execution completed: success={response.get('success')}")
