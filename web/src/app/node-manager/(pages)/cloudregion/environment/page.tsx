@@ -260,7 +260,7 @@ const EnvironmentPage = () => {
 
   return (
     <MainLayout>
-      <div className="w-[calc(100vw-288px)] min-w-[1000px] h-full">
+      <div className="h-full w-[calc(100vw-285px)] min-w-[1000px]">
         {/* 环境状态 */}
         <div style={{ marginBottom: 32 }}>
           <div

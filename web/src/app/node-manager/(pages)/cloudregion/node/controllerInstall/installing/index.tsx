@@ -188,7 +188,6 @@ const Installing: React.FC<InstallingProps> = ({
                     <Button
                       type="link"
                       className="mr-[10px]"
-                      disabled
                       onClick={() => handleOperationGuidance(row)}
                     >
                       {t('node-manager.cloudregion.node.operationGuidance')}
@@ -355,14 +354,16 @@ const Installing: React.FC<InstallingProps> = ({
           t('node-manager.cloudregion.node.linuxCommandCopiedDesc')
         ) : (
           <div>
-            <div className="mb-[12px]">
+            <div className="mb-[12px] text-[var(--color-text-3)]">
               {t('node-manager.cloudregion.node.commandCopiedDesc')}
             </div>
             <Alert
-              message={t('node-manager.cloudregion.node.importantNote')}
-              description={t('node-manager.cloudregion.node.importantNoteDesc')}
-              type="error"
-              showIcon
+              description={
+                <span className="text-[13px] text-[var(--color-text-2)]">
+                  {t('node-manager.cloudregion.node.importantNoteDesc')}
+                </span>
+              }
+              type="warning"
             />
           </div>
         ),
