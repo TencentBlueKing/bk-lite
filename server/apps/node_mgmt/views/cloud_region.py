@@ -14,6 +14,7 @@ from apps.node_mgmt.models import Node
 from apps.node_mgmt.serializers.cloud_region import CloudRegionSerializer, CloudRegionUpdateSerializer
 from apps.node_mgmt.models.cloud_region import CloudRegion, CloudRegionService
 from apps.node_mgmt.services.cloudregion import RegionService
+from server.apps.core.utils.web_utils import WebUtils
 
 
 class CloudRegionViewSet(mixins.ListModelMixin,
@@ -173,5 +174,4 @@ class CloudRegionViewSet(mixins.ListModelMixin,
         # 调用 service 层获取部署脚本
         deploy_script = RegionService.get_deploy_script(request.data)
 
-        # 返回纯文本脚本（text/plain），与 render_install_script 保持一致
-        return HttpResponse(deploy_script, content_type="text/plain; charset=utf-8")
+        return WebUtils.response_success(deploy_script)
