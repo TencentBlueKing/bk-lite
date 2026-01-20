@@ -2,72 +2,110 @@
 import React, { useState, useCallback } from 'react';
 import { Tooltip, Spin } from 'antd';
 import { UnorderedListOutlined } from '@ant-design/icons';
-import useApiClient from '@/utils/request';
+import useViewApi from '@/app/monitor/api/view';
 import { useTranslation } from '@/utils/i18n';
-
-interface DimensionDataItem {
-  label: string;
-  value: number | string;
-}
-
-interface MetricDimensionTooltipProps {
-  instanceId: string;
-  metricName: string;
-  monitorObjectId: React.Key;
-}
+import { useUnitTransform } from '@/app/monitor/hooks/useUnitTransform';
+import {
+  TooltipMetricDataItem,
+  TooltipDimensionDataItem,
+  MetricDimensionTooltipProps,
+} from '@/app/monitor/types/view';
 
 const MetricDimensionTooltip: React.FC<MetricDimensionTooltipProps> = ({
   instanceId,
-  metricName,
+  metricId,
   monitorObjectId,
+  metricItem,
 }) => {
   const { t } = useTranslation();
-  const { get } = useApiClient();
   const [loading, setLoading] = useState<boolean>(false);
-  const [dimensionData, setDimensionData] = useState<DimensionDataItem[]>([]);
-  const [hasLoaded, setHasLoaded] = useState<boolean>(false);
+  const [dimensionData, setDimensionData] = useState<
+    TooltipDimensionDataItem[]
+  >([]);
+  const { getMetricsInstanceQuery } = useViewApi();
+  const { getEnumValueUnit } = useUnitTransform();
+
+  const dimensions = metricItem?.dimensions || [];
+
+  const formatMetricData = useCallback(
+    (
+      metricsData: TooltipMetricDataItem[],
+      unit: string
+    ): TooltipDimensionDataItem[] => {
+      if (!metricsData?.length || !dimensions?.length) {
+        return [];
+      }
+      return metricsData.map((item) => {
+        const metric = item.metric;
+        const rawValue = item.value[1];
+        const value = getEnumValueUnit({ ...metricItem, unit }, rawValue);
+        const dimensionParts = dimensions
+          .map((dim) => {
+            const dimValue = metric[dim.name];
+            if (dimValue !== undefined) {
+              return `${dim.description || dim.name}: ${dimValue}`;
+            }
+            return null;
+          })
+          .filter(Boolean);
+        const label = [dimensionParts.join('-')].filter(Boolean).join('');
+        return {
+          label,
+          value,
+        };
+      });
+    },
+    [dimensions, metricItem, getEnumValueUnit]
+  );
 
   const fetchDimensionData = useCallback(async () => {
-    if (hasLoaded) return;
-
     setLoading(true);
     try {
-      const data = await get(
-        `/monitor/api/monitor_instance/${monitorObjectId}/metric_dimensions/`,
-        {
-          params: {
-            instance_id: instanceId,
-            metric_name: metricName,
-          },
-        }
-      );
-      setDimensionData(data || []);
-      setHasLoaded(true);
-    } catch (error) {
-      console.error('Failed to fetch dimension data:', error);
+      const responseData = await getMetricsInstanceQuery({
+        monitor_object_id: monitorObjectId,
+        instance_id: instanceId,
+        metric_id: metricId,
+        auto_convert: false,
+      });
+      const data = responseData?.data || {};
+      const formattedData = formatMetricData(data.result || [], data.unit);
+      setDimensionData(formattedData);
+    } catch {
       setDimensionData([]);
     } finally {
       setLoading(false);
     }
-  }, [instanceId, metricName, monitorObjectId, hasLoaded, get]);
+  }, [
+    instanceId,
+    metricId,
+    monitorObjectId,
+    getMetricsInstanceQuery,
+    formatMetricData,
+  ]);
 
   const handleOpenChange = (open: boolean) => {
-    if (open && !hasLoaded) {
+    if (open) {
       fetchDimensionData();
     }
   };
 
   const tooltipContent = (
-    <div className="min-w-[200px] max-w-[400px] max-h-[300px] overflow-y-auto">
+    <div className="min-w-[200px] max-w-[800px] max-h-[500px] overflow-y-auto">
       {loading ? (
         <div className="flex justify-center items-center py-[20px]">
           <Spin size="small" />
         </div>
       ) : dimensionData.length > 0 ? (
-        <div className="flex flex-col gap-[4px]">
+        <div className="flex flex-col gap-[8px]">
           {dimensionData.map((item, index) => (
-            <div key={index} className="whitespace-nowrap">
-              {item.label}: {item.value}
+            <div
+              key={index}
+              className="flex justify-between items-start gap-[16px]"
+            >
+              <span className="whitespace-pre-line">{item.label}</span>
+              <span className="font-medium whitespace-nowrap">
+                {item.value}
+              </span>
             </div>
           ))}
         </div>
