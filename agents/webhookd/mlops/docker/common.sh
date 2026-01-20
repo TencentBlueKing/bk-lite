@@ -45,39 +45,56 @@ json_error() {
     fi
 }
 
-# GPU 配置函数
-# 参数: $1 = gpu 配置值 (all|none|0|0,1|... 或空)
-# 返回: GPU_ARGS 变量（Docker 命令行参数）
+# 检查 GPU 是否可用
+check_gpu_available() {
+    # 检查是否有 NVIDIA Docker Runtime
+    docker run --rm --gpus all nvidia/cuda:11.0-base nvidia-smi >/dev/null 2>&1
+}
+
+# Device 配置函数
+# 参数: $1 = device 配置值 (cpu|gpu|auto 或空)
+# 返回: DEVICE_ARGS 变量（Docker 命令行参数）
 # 
 # 行为：
-#   - 未传递（空/null）：不添加任何 GPU 参数（Docker 默认行为）
-#   - "all"：使用所有 GPU
-#   - "none"：明确禁用 GPU（不添加参数，等同于未传递）
-#   - "0" 或 "0,1"：指定 GPU 设备
-setup_gpu_args() {
-    local gpu_config="$1"
-    GPU_ARGS=""
+#   - 未传递（空/null）或 "cpu"：不添加 GPU 参数（CPU 模式）
+#   - "auto"：自动检测，有 GPU 则使用，无 GPU 则 CPU
+#   - "gpu"：必须使用 GPU，无 GPU 则报错
+setup_device_args() {
+    local device="$1"
+    DEVICE_ARGS=""
     
-    # 未传递或为 null：不添加 GPU 参数
-    if [ -z "$gpu_config" ] || [ "$gpu_config" = "null" ]; then
-        echo "[INFO] GPU parameter not specified, using Docker default behavior" >&2
-        return
+    # 未传递、null 或 cpu：默认 CPU 模式
+    if [ -z "$device" ] || [ "$device" = "null" ] || [ "$device" = "cpu" ]; then
+        echo "[INFO] Device: CPU" >&2
+        return 0
     fi
     
-    case "$gpu_config" in
-        "all")
-            # 使用所有 GPU
-            GPU_ARGS="--gpus all"
-            echo "[INFO] Using all GPUs" >&2
+    case "$device" in
+        "auto")
+            # 自动检测 GPU
+            echo "[INFO] Device: auto (detecting GPU availability...)" >&2
+            if check_gpu_available; then
+                DEVICE_ARGS="--gpus all"
+                echo "[INFO] GPU detected, using GPU mode" >&2
+            else
+                echo "[INFO] No GPU detected, using CPU mode" >&2
+            fi
+            return 0
             ;;
-        "none")
-            # 明确禁用 GPU（不添加参数）
-            echo "[INFO] GPU explicitly disabled, using CPU only" >&2
+        "gpu")
+            # 必须使用 GPU
+            echo "[INFO] Device: GPU (required)" >&2
+            if ! check_gpu_available; then
+                echo "[ERROR] GPU required but not available" >&2
+                return 1
+            fi
+            DEVICE_ARGS="--gpus all"
+            echo "[INFO] GPU available, using GPU mode" >&2
+            return 0
             ;;
         *)
-            # 指定设备：0 或 0,1 等
-            GPU_ARGS="--gpus '\"device=${gpu_config}\"'"
-            echo "[INFO] Using GPU devices: $gpu_config" >&2
+            echo "[ERROR] Invalid device parameter: $device (expected: cpu, gpu, auto)" >&2
+            return 1
             ;;
     esac
 }

@@ -194,7 +194,7 @@ class WebhookClient:
         mlflow_model_uri: str,
         port: Optional[int] = None,
         train_image: Optional[str] = None,
-        gpu: Optional[str] = None,
+        device: Optional[str] = None,
     ) -> dict:
         """
         启动 serving 服务
@@ -205,7 +205,7 @@ class WebhookClient:
             mlflow_model_uri: MLflow model URI，如 "models:/model_name/version"
             port: 用户指定端口，为 None 时由 docker 自动分配
             train_image: 训练镜像名称，为 None 时由 webhookd 使用默认镜像
-            gpu: GPU 配置 (如 "count:1", "all", "none")
+            device: 设备类型 ("cpu", "gpu", "auto")
 
         Returns:
             dict: 容器状态信息，格式: {"status": "success", "id": "...", "state": "running", "port": "3042", "detail": "Up"}
@@ -224,8 +224,8 @@ class WebhookClient:
             payload["port"] = port
         if train_image is not None:
             payload["train_image"] = train_image
-        if gpu is not None:
-            payload["gpu"] = gpu
+        if device is not None:
+            payload["device"] = device
 
         # 添加运行时特定参数
         WebhookClient._add_runtime_params(payload)
@@ -250,7 +250,7 @@ class WebhookClient:
         minio_access_key: str,
         minio_secret_key: str,
         train_image: Optional[str] = None,
-        gpu: Optional[str] = None,
+        device: Optional[str] = None,
     ) -> dict:
         """
         启动训练任务
@@ -265,7 +265,7 @@ class WebhookClient:
             minio_access_key: MinIO access key
             minio_secret_key: MinIO secret key
             train_image: 训练镜像名称，为 None 时由 webhookd 使用默认镜像
-            gpu: GPU 配置 (如 "count:1", "all", "none")
+            device: 设备类型 ("cpu", "gpu", "auto")
 
         Returns:
             dict: webhook 响应数据
@@ -287,8 +287,8 @@ class WebhookClient:
         # 添加可选参数
         if train_image is not None:
             payload["train_image"] = train_image
-        if gpu is not None:
-            payload["gpu"] = gpu
+        if device is not None:
+            payload["device"] = device
 
         # 添加运行时特定参数
         WebhookClient._add_runtime_params(payload)

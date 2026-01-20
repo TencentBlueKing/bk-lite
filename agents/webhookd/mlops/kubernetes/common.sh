@@ -48,60 +48,57 @@ json_error() {
     fi
 }
 
-# GPU 配置函数（Kubernetes 版本）
-# 参数: $1 = gpu 配置值 (all|none|0|0,1|count:2 或空)
-# 返回: GPU_RESOURCE 变量（Kubernetes resources.limits）
+# 检查 Kubernetes 集群是否有 GPU 节点
+check_gpu_available_k8s() {
+    local gpu_count=$(kubectl get nodes -o json 2>/dev/null | \
+        jq '[.items[].status.capacity["nvidia.com/gpu"] | select(. != null)] | length' 2>/dev/null || echo "0")
+    [ "$gpu_count" -gt 0 ]
+}
+
+# Device 配置函数（Kubernetes 版本）
+# 参数: $1 = device 配置值 (cpu|gpu|auto 或空)
+# 返回: DEVICE_LIMIT_YAML 变量（Kubernetes resources.limits）
 # 
 # 行为：
-#   - 未传递（空/null）：不添加任何 GPU 限制
-#   - "all"：nvidia.com/gpu: 1（Kubernetes 中需要指定具体数量）
-#   - "none"：明确禁用 GPU
-#   - "count:N"：nvidia.com/gpu: N
-#   - "0" 或 "0,1"：转换为 count（计算逗号分隔的设备数）
-setup_gpu_resources() {
-    local gpu_config="$1"
-    GPU_RESOURCE=""
-    GPU_LIMIT_YAML=""
+#   - 未传递（空/null）或 "cpu"：不添加 GPU 限制（CPU 模式）
+#   - "auto"：自动检测，有 GPU 节点则请求 1 个，无 GPU 节点则 CPU
+#   - "gpu"：必须使用 GPU，无 GPU 节点则报错
+setup_device_resources() {
+    local device="$1"
+    DEVICE_LIMIT_YAML=""
     
-    # 未传递或为 null：不添加 GPU 限制
-    if [ -z "$gpu_config" ] || [ "$gpu_config" = "null" ]; then
-        echo "[INFO] GPU parameter not specified, no GPU resources requested" >&2
-        return
+    # 未传递、null 或 cpu：默认 CPU 模式
+    if [ -z "$device" ] || [ "$device" = "null" ] || [ "$device" = "cpu" ]; then
+        echo "[INFO] Device: CPU" >&2
+        return 0
     fi
     
-    case "$gpu_config" in
-        "all")
-            # Kubernetes 不支持 "all"，默认请求 1 个 GPU
-            GPU_RESOURCE="1"
-            GPU_LIMIT_YAML="            nvidia.com/gpu: \"1\""
-            echo "[INFO] Requesting 1 GPU (Kubernetes does not support 'all', defaulting to 1)" >&2
+    case "$device" in
+        "auto")
+            # 自动检测 GPU
+            echo "[INFO] Device: auto (detecting GPU availability...)" >&2
+            if check_gpu_available_k8s; then
+                DEVICE_LIMIT_YAML="            nvidia.com/gpu: \"1\""
+                echo "[INFO] GPU nodes detected, requesting 1 GPU" >&2
+            else
+                echo "[INFO] No GPU nodes detected, using CPU mode" >&2
+            fi
+            return 0
             ;;
-        "none")
-            # 明确禁用 GPU
-            echo "[INFO] GPU explicitly disabled, no GPU resources requested" >&2
-            ;;
-        count:*)
-            # 指定数量：count:2
-            GPU_RESOURCE="${gpu_config#count:}"
-            GPU_LIMIT_YAML="            nvidia.com/gpu: \"${GPU_RESOURCE}\""
-            echo "[INFO] Requesting ${GPU_RESOURCE} GPU(s)" >&2
-            ;;
-        *,*)
-            # 设备列表：0,1 -> 计算数量
-            GPU_COUNT=$(echo "$gpu_config" | tr ',' '\n' | wc -l)
-            GPU_RESOURCE="$GPU_COUNT"
-            GPU_LIMIT_YAML="            nvidia.com/gpu: \"${GPU_RESOURCE}\""
-            echo "[INFO] Requesting ${GPU_RESOURCE} GPU(s) (parsed from device list: $gpu_config)" >&2
+        "gpu")
+            # 必须使用 GPU
+            echo "[INFO] Device: GPU (required)" >&2
+            if ! check_gpu_available_k8s; then
+                echo "[ERROR] GPU required but no GPU nodes found in cluster" >&2
+                return 1
+            fi
+            DEVICE_LIMIT_YAML="            nvidia.com/gpu: \"1\""
+            echo "[INFO] GPU nodes available, requesting 1 GPU" >&2
+            return 0
             ;;
         *)
-            # 单个设备或数字：0 或 1
-            if [[ "$gpu_config" =~ ^[0-9]+$ ]]; then
-                GPU_RESOURCE="1"
-                GPU_LIMIT_YAML="            nvidia.com/gpu: \"1\""
-                echo "[INFO] Requesting 1 GPU (device: $gpu_config)" >&2
-            else
-                echo "[WARN] Invalid GPU config: $gpu_config, ignoring" >&2
-            fi
+            echo "[ERROR] Invalid device parameter: $device (expected: cpu, gpu, auto)" >&2
+            return 1
             ;;
     esac
 }

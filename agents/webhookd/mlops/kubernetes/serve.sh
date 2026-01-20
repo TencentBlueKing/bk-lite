@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # webhookd mlops serve script (Kubernetes)
-# 接收 JSON: {"id": "serving-001", "mlflow_tracking_uri": "http://mlflow.default.svc.cluster.local:15000", "mlflow_model_uri": "models:/model/1", "train_image": "classify-timeseries:latest", "workers": 2, "namespace": "mlops", "port": 30000, "service_type": "NodePort", "gpu": "count:1"}
+# 接收 JSON: {"id": "serving-001", "mlflow_tracking_uri": "http://mlflow.default.svc.cluster.local:15000", "mlflow_model_uri": "models:/model/1", "train_image": "classify-timeseries:latest", "workers": 2, "namespace": "mlops", "port": 30000, "service_type": "NodePort", "device": "auto|cpu|gpu"}
 
 set -e
 
@@ -32,7 +32,7 @@ PORT=$(echo "$JSON_DATA" | jq -r '.port // empty')
 NAMESPACE=$(echo "$JSON_DATA" | jq -r '.namespace // empty')
 SERVICE_TYPE=$(echo "$JSON_DATA" | jq -r '.service_type // "NodePort"')
 TRAIN_IMAGE=$(echo "$JSON_DATA" | jq -r '.train_image // empty')
-GPU_CONFIG=$(echo "$JSON_DATA" | jq -r '.gpu // empty')
+DEVICE=$(echo "$JSON_DATA" | jq -r '.device // empty')
 REPLICAS=$(echo "$JSON_DATA" | jq -r '.replicas // "1"')
 
 # 使用默认命名空间（如果未指定）
@@ -78,8 +78,11 @@ fi
 # 容器内固定端口 3000
 CONTAINER_PORT="3000"
 
-# 配置 GPU 资源
-setup_gpu_resources "$GPU_CONFIG"
+# 配置设备资源
+setup_device_resources "$DEVICE" || {
+    json_error "DEVICE_SETUP_FAILED" "$ID" "Failed to setup device: GPU required but not available"
+    exit 1
+}
 
 # 生成 Kubernetes Deployment YAML
 DEPLOYMENT_YAML=$(cat <<EOF
@@ -142,15 +145,15 @@ spec:
 EOF
 )
 
-# 添加 GPU 资源限制（如果配置了）
-if [ -n "$GPU_LIMIT_YAML" ]; then
+# 添加设备资源限制（如果配置了）
+if [ -n "$DEVICE_LIMIT_YAML" ]; then
     DEPLOYMENT_YAML=$(cat <<EOF
 ${DEPLOYMENT_YAML}
         resources:
           limits:
-${GPU_LIMIT_YAML}
+${DEVICE_LIMIT_YAML}
           requests:
-${GPU_LIMIT_YAML}
+${DEVICE_LIMIT_YAML}
 EOF
 )
 fi

@@ -357,6 +357,14 @@ class ObjectDetectionTrainJobViewSet(ModelViewSet):
             logger.info(f"  Dataset: {train_job.dataset_release.dataset_file.name}")
             logger.info(f"  Config: {train_job.config_url.name}")
 
+            # 从 hyperopt_config 中提取 device 参数
+            device = None
+            if train_job.hyperopt_config:
+                hyperparams = train_job.hyperopt_config.get("hyperparams", {})
+                device = hyperparams.get("device")
+                if device:
+                    logger.info(f"  Device: {device}")
+
             # 调用 WebhookClient 启动训练
             WebhookClient.train(
                 job_id=job_id,
@@ -368,6 +376,7 @@ class ObjectDetectionTrainJobViewSet(ModelViewSet):
                 minio_access_key=minio_access_key,
                 minio_secret_key=minio_secret_key,
                 train_image="object-detection:latest",  # YOLO 目标检测训练镜像
+                device=device,
             )
 
             # 更新任务状态
@@ -610,8 +619,14 @@ class ObjectDetectionServingViewSet(ModelViewSet):
             # 构建 serving ID
             serving_id = f"ObjectDetection_Serving_{serving.id}"
 
+            # 从关联训练任务的 hyperopt_config 中提取 device 参数
+            device = None
+            if serving.train_job and serving.train_job.hyperopt_config:
+                hyperparams = serving.train_job.hyperopt_config.get("hyperparams", {})
+                device = hyperparams.get("device")
+
             logger.info(
-                f"启动目标检测 serving 服务: {serving_id}, Model URI: {model_uri}, Port: {serving.port or 'auto'}"
+                f"启动目标检测 serving 服务: {serving_id}, Model URI: {model_uri}, Port: {serving.port or 'auto'}, Device: {device or 'default'}"
             )
 
             try:
@@ -622,6 +637,7 @@ class ObjectDetectionServingViewSet(ModelViewSet):
                     model_uri,
                     port=serving.port,
                     train_image="object-detection:latest",  # YOLO 目标检测推理镜像
+                    device=device,
                 )
 
                 # 正常启动成功，仅更新容器信息

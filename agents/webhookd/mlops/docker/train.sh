@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # webhookd mlops train script
-# 接收 JSON: {"id": "train-001", "bucket": "datasets", "dataset": "file.zip", "config": "config.yml", "train_image": "classify-timeseries:latest", "network_mode": "host", "minio_endpoint": "http://127.0.0.1:9000", "mlflow_tracking_uri": "http://127.0.0.1:15000", "minio_access_key": "...", "minio_secret_key": "..."}
+# 接收 JSON: {"id": "train-001", "bucket": "datasets", "dataset": "file.zip", "config": "config.yml", "train_image": "classify-timeseries:latest", "network_mode": "host", "minio_endpoint": "http://127.0.0.1:9000", "mlflow_tracking_uri": "http://127.0.0.1:15000", "minio_access_key": "...", "minio_secret_key": "...", "device": "auto|cpu|gpu"}
 
 set -e
 
@@ -40,7 +40,7 @@ MINIO_ACCESS_KEY=$(echo "$JSON_DATA" | jq -r '.minio_access_key // empty')
 MINIO_SECRET_KEY=$(echo "$JSON_DATA" | jq -r '.minio_secret_key // empty')
 NETWORK_MODE=$(echo "$JSON_DATA" | jq -r '.network_mode // "host"')
 TRAIN_IMAGE=$(echo "$JSON_DATA" | jq -r '.train_image // empty')
-GPU_CONFIG=$(echo "$JSON_DATA" | jq -r '.gpu // empty')  # 未传递时为空字符串
+DEVICE=$(echo "$JSON_DATA" | jq -r '.device // empty')  # 未传递时为空字符串
 
 # 验证必需参数
 if [ -z "$ID" ] || [ -z "$BUCKET" ] || [ -z "$DATASET" ] || [ -z "$CONFIG" ]; then
@@ -78,14 +78,17 @@ if ! docker images --format '{{.Repository}}:{{.Tag}}' | grep -q "^${TRAIN_IMAGE
     exit 1
 fi
 
-# 配置 GPU 参数
-setup_gpu_args "$GPU_CONFIG"
+# 配置设备参数
+setup_device_args "$DEVICE" || {
+    json_error "DEVICE_SETUP_FAILED" "$ID" "Failed to setup device"
+    exit 1
+}
 
 # 启动训练容器（使用传入的网络模式，覆盖 ENTRYPOINT，直接运行训练脚本）
 DOCKER_OUTPUT=$(docker run -d --rm \
     --name "$CONTAINER_NAME" \
     --network "$NETWORK_MODE" \
-    $GPU_ARGS \
+    $DEVICE_ARGS \
     --entrypoint /apps/support-files/scripts/train-model.sh \
     -e MINIO_ENDPOINT="$MINIO_ENDPOINT" \
     -e MLFLOW_TRACKING_URI="$MLFLOW_TRACKING_URI" \

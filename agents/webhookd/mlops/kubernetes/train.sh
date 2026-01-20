@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # webhookd mlops train script (Kubernetes)
-# 接收 JSON: {"id": "train-001", "bucket": "datasets", "dataset": "file.zip", "config": "config.yml", "train_image": "classify-timeseries:latest", "namespace": "mlops", "minio_endpoint": "http://minio.default.svc.cluster.local:9000", "mlflow_tracking_uri": "http://mlflow.default.svc.cluster.local:15000", "minio_access_key": "...", "minio_secret_key": "...", "gpu": "count:1"}
+# 接收 JSON: {"id": "train-001", "bucket": "datasets", "dataset": "file.zip", "config": "config.yml", "train_image": "classify-timeseries:latest", "namespace": "mlops", "minio_endpoint": "http://minio.default.svc.cluster.local:9000", "mlflow_tracking_uri": "http://mlflow.default.svc.cluster.local:15000", "minio_access_key": "...", "minio_secret_key": "...", "device": "auto|cpu|gpu"}
 
 set -e
 
@@ -46,7 +46,7 @@ MINIO_ACCESS_KEY=$(echo "$JSON_DATA" | jq -r '.minio_access_key // empty')
 MINIO_SECRET_KEY=$(echo "$JSON_DATA" | jq -r '.minio_secret_key // empty')
 NAMESPACE=$(echo "$JSON_DATA" | jq -r '.namespace // empty')
 TRAIN_IMAGE=$(echo "$JSON_DATA" | jq -r '.train_image // empty')
-GPU_CONFIG=$(echo "$JSON_DATA" | jq -r '.gpu // empty')
+DEVICE=$(echo "$JSON_DATA" | jq -r '.device // empty')
 
 # 使用默认命名空间（如果未指定）
 if [ -z "$NAMESPACE" ]; then
@@ -124,8 +124,11 @@ create_minio_secret "$NAMESPACE" "$SECRET_NAME" "$MINIO_ACCESS_KEY" "$MINIO_SECR
     exit 1
 }
 
-# 配置 GPU 资源
-setup_gpu_resources "$GPU_CONFIG"
+# 配置设备资源
+setup_device_resources "$DEVICE" || {
+    json_error "DEVICE_SETUP_FAILED" "$ID" "Failed to setup device: GPU required but not available"
+    exit 1
+}
 
 # 生成 Kubernetes Job YAML
 JOB_YAML=$(cat <<EOF
@@ -171,15 +174,15 @@ spec:
 EOF
 )
 
-# 添加 GPU 资源限制（如果配置了）
-if [ -n "$GPU_LIMIT_YAML" ]; then
+# 添加设备资源限制（如果配置了）
+if [ -n "$DEVICE_LIMIT_YAML" ]; then
     JOB_YAML=$(cat <<EOF
 ${JOB_YAML}
         resources:
           limits:
-${GPU_LIMIT_YAML}
+${DEVICE_LIMIT_YAML}
           requests:
-${GPU_LIMIT_YAML}
+${DEVICE_LIMIT_YAML}
 EOF
 )
 fi
