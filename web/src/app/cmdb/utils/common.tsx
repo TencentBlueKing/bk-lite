@@ -17,7 +17,6 @@ import {
   OriginSubGroupItem,
   EnumList,
 } from '@/app/cmdb/types/assetManage';
-const { RangePicker } = DatePicker;
 
 // 查找组织对象
 const findOrganizationById = (arr: Array<any>, targetValue: unknown) => {
@@ -129,14 +128,21 @@ export const deepClone = (obj: any, hash = new WeakMap()) => {
       ? new Date(obj)
       : obj instanceof RegExp
         ? new RegExp(obj.source, obj.flags)
-        : obj.constructor
-          ? new obj.constructor()
-          : Object.create(null);
+        : dayjs.isDayjs(obj)
+          ? obj.clone()
+          : obj.constructor
+            ? new obj.constructor()
+            : Object.create(null);
 
   hash.set(obj, result);
 
   if (obj instanceof Map) {
     Array.from(obj, ([key, val]) => result.set(key, deepClone(val, hash)));
+  }
+
+  // 如果是 dayjs 对象，直接返回克隆后的对象
+  if (dayjs.isDayjs(obj)) {
+    return result;
   }
 
   // 复制函数
@@ -409,12 +415,7 @@ export const getFieldItem = (config: {
       case 'organization':
         return <GroupTreeSelector multiple={true} />;
       case 'time':
-        return (
-          <RangePicker
-            showTime={{ format: 'HH:mm' }}
-            format="YYYY-MM-DD HH:mm"
-          />
-        );
+        return <DatePicker showTime format="YYYY-MM-DD HH:mm:ss" />;
       default:
         return <Input />;
     }

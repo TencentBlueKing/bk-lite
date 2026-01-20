@@ -238,3 +238,28 @@
     color: #40a9ff;
   }
 }
+
+// 组织结构样式
+.organization {
+  font-size: 14px;
+  font-weight: 500;
+  color: #63656e;
+  line-height: 4vh;
+}
+
+// 其他分组标题样式
+.groupOther {
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--color-text-2);
+  padding-top: 15px;
+  padding-bottom: 7px;
+}
+
+// 组织结构标题样式
+.groupOrganization {
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--color-text-2);
+  padding-bottom: 10px;
+}

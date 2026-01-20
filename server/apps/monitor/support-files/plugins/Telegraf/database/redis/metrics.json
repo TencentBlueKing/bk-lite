@@ -8,7 +8,7 @@
   "description": "",
   "default_metric": "any({instance_type='redis'}) by (instance_id)",
   "instance_id_keys": ["instance_id"],
-  "supplementary_indicators": ["redis_mem_fragmentation_ratio", "redis_connected_clients", "redis_evicted_keys_rate"],
+  "supplementary_indicators": ["redis_mem_fragmentation_ratio", "redis_clients", "redis_evicted_keys_rate"],
   "metrics": [
     {
       "metric_group": "Base",
@@ -49,7 +49,7 @@
       "display_name": "Memory Fragmentation Ratio",
       "instance_id_keys": ["instance_id"],
       "data_type": "Number",
-      "unit": "short",
+      "unit": "none",
       "dimensions": [],
       "description": "Ratio of memory allocated by allocator to memory reported by OS, reflects degree of memory fragmentation, high ratio may affect memory allocation efficiency",
       "query": "redis_mem_fragmentation_ratio{__$labels__}"
@@ -133,14 +133,14 @@
     },
     {
       "metric_group": "Client",
-      "name": "redis_connected_clients",
+      "name": "redis_clients",
       "display_name": "Client Connections",
       "instance_id_keys": ["instance_id"],
       "data_type": "Number",
-      "unit": "short",
+      "unit": "counts",
       "dimensions": [],
       "description": "Number of currently active client connections, reflects service concurrent processing capacity, approaching max connections configuration may affect new connection establishment",
-      "query": "redis_connected_clients{__$labels__}"
+      "query": "redis_clients{__$labels__}"
     },
     {
       "metric_group": "Client",
@@ -148,7 +148,7 @@
       "display_name": "Blocked Clients",
       "instance_id_keys": ["instance_id"],
       "data_type": "Number",
-      "unit": "short",
+      "unit": "counts",
       "dimensions": [],
       "description": "Number of clients in blocked waiting state, non-zero value indicates performance bottlenecks or resource contention, requires further investigation",
       "query": "redis_blocked_clients{__$labels__}"

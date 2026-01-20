@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import Introduction from '@/app/cmdb/components/introduction';
-import { Input, Button, Modal, message, Spin, Empty } from 'antd';
+import { Input, Button, Modal, message, Spin, Empty, Tooltip } from 'antd';
 import { deepClone } from '@/app/cmdb/utils/common';
 import { GroupItem, ModelItem } from '@/app/cmdb/types/assetManage';
 import {
@@ -354,13 +354,14 @@ const AssetManage = () => {
                             instPermissions={model.permission}
                           >
                             <div className={assetManageStyle.copyButton}>
-                              <Button
-                                type="primary"
-                                shape="circle"
-                                icon={<CopyOutlined />}
-                                onClick={(e) => handleCopyClick(e, model)}
-                                title={t('Model.copy')}
-                              />
+                              <Tooltip title={t('Model.copyModel')}>
+                                <Button
+                                  type="primary"
+                                  shape="circle"
+                                  icon={<CopyOutlined />}
+                                  onClick={(e) => handleCopyClick(e, model)}
+                                />
+                              </Tooltip>
                             </div>
                           </PermissionWrapper>
                         )}

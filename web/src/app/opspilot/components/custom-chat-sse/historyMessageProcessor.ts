@@ -3,7 +3,7 @@
  * 用于将历史会话中的 AG-UI 协议消息解析并渲染为 HTML
  */
 
-import { renderToolCallCard, ToolCallInfo } from './toolCallRenderer';
+import { renderToolCallCard, renderErrorMessage, ToolCallInfo } from './toolCallRenderer';
 
 /**
  * 处理历史消息中的 bot 内容
@@ -93,6 +93,23 @@ export const processHistoryMessageContent = (content: string, role: string): str
               lastBlockType = 'toolCall';
             }
           }
+          break;
+          
+        case 'RUN_ERROR':
+        case 'ERROR':
+          // 处理错误消息
+          if (currentText) {
+            parts.push(currentText);
+            currentText = '';
+          }
+          const errorMessage = msg.message || '执行过程中发生错误';
+          const errorHtml = renderErrorMessage(errorMessage, msg.type === 'RUN_ERROR' ? 'run_error' : 'error', msg.code);
+          if (parts.length > 0) {
+            parts.push('\n\n' + errorHtml);
+          } else {
+            parts.push(errorHtml);
+          }
+          lastBlockType = 'error';
           break;
           
         default:

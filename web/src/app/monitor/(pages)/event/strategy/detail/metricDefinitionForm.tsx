@@ -68,21 +68,23 @@ const MetricDefinitionForm: React.FC<MetricDefinitionFormProps> = ({
 
   return (
     <>
-      <Form.Item
-        name="collect_type"
-        label={
-          <span className="w-[100px]">
-            {t('monitor.events.collectionTemplate')}
-          </span>
-        }
-        rules={[{ required: true, message: t('common.required') }]}
-      >
-        <Segmented
-          className="custom-tabs"
-          options={pluginList}
-          onChange={onCollectTypeChange}
-        />
-      </Form.Item>
+      {pluginList.length > 1 && (
+        <Form.Item
+          name="collect_type"
+          label={
+            <span className="w-[100px]">
+              {t('monitor.events.collectionTemplate')}
+            </span>
+          }
+          rules={[{ required: true, message: t('common.required') }]}
+        >
+          <Segmented
+            className="custom-tabs"
+            options={pluginList}
+            onChange={onCollectTypeChange}
+          />
+        </Form.Item>
+      )}
       <Form.Item
         noStyle
         shouldUpdate={(prevValues, currentValues) =>

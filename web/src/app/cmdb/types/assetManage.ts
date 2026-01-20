@@ -209,17 +209,17 @@ export interface RelationInstanceRef {
 }
 
 export interface FieldConfig {
-    type: string;
-    attrList: AttrFieldType[];
-    formInfo: any;
-    subTitle: string;
-    title: string;
-    model_id: string;
-    list: Array<any>;
+  type: string;
+  attrList: FullInfoGroupItem[]; // 属性列表，分组数据
+  formInfo: any;
+  subTitle: string;
+  title: string;
+  model_id: string;
+  list: Array<any>;
 }
 
 export interface FieldModalRef {
-    showModal: (config: FieldConfig) => void;
+  showModal: (config: FieldConfig) => void;
 }
 
 // 属性分组相关类型
@@ -286,5 +286,3 @@ export interface ModelFullInfoResponse {
   result: boolean;
   message: string;
 }
-
-

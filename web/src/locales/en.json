@@ -50,6 +50,7 @@
     "selectTip": "Please select",
     "yes": "Yes",
     "no": "No",
+    "updatedTime": "Updated Time",
     "inputTip": "Please input",
     "serverError": "Server error, please try again later.",
     "fileType": "is not a supported file type.",
