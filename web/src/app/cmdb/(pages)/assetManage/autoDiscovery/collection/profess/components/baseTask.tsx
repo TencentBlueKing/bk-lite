@@ -591,7 +591,7 @@ const BaseTaskForm = forwardRef<BaseTaskRef, BaseTaskFormProps>(
                       rules={[
                         {
                           required: true,
-                          validator: (_, value) => {
+                          validator: (_, value: string[]) => {
                             const ipReg =
                               /^((2[0-4]\d|25[0-5]|[01]?\d\d?)\.){3}(2[0-4]\d|25[0-5]|[01]?\d\d?)$/;
                             if (
@@ -605,6 +605,19 @@ const BaseTaskForm = forwardRef<BaseTaskRef, BaseTaskFormProps>(
                                 )
                               );
                             }
+
+                            const ipToNumber = (ip: string) =>
+                              ip.split('.').reduce(
+                                (acc, curr) => acc * 256 + Number(curr),
+                                0
+                              );
+
+                            if (ipToNumber(value[0]) > ipToNumber(value[1])) {
+                              return Promise.reject(
+                                new Error(t('Collection.ipRangeOrderInvalid'))
+                              );
+                            }
+
                             return Promise.resolve();
                           },
                         },
@@ -747,12 +760,11 @@ const BaseTaskForm = forwardRef<BaseTaskRef, BaseTaskFormProps>(
         />
 
         <Drawer
-            title={
-              isCommonSelectInstTask
-                ? t('Collection.chooseAsset')
-                : `选择${dropdownItems.items.find((item) => item.key === relateType)?.label || '资产'}`
-            }
-
+          title={
+            isCommonSelectInstTask
+              ? t('Collection.chooseAsset')
+              : `选择${dropdownItems.items.find((item) => item.key === relateType)?.label || '资产'}`
+          }
           width={620}
           open={instVisible}
           onClose={handleDrawerClose}
@@ -778,13 +790,12 @@ const BaseTaskForm = forwardRef<BaseTaskRef, BaseTaskFormProps>(
             scroll={{ y: 'calc(100vh - 280px)' }}
             pagination={{
               ...instPagination,
-                onChange: (page, pageSize) =>
-                  fetchInstData(
-                    isCommonSelectInstTask ? modelId : relateType,
-                    page,
-                    pageSize
-                  ),
-
+              onChange: (page, pageSize) =>
+                fetchInstData(
+                  isCommonSelectInstTask ? modelId : relateType,
+                  page,
+                  pageSize
+                ),
             }}
             rowSelection={{
               type: 'checkbox',
