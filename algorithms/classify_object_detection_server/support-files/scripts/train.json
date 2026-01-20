@@ -1,27 +1,33 @@
 {
   "model": {
-    "type": "YOLOv11Detection",
-    "name": "yolov11_detection"
+    "type": "YOLODetection",
+    "name": "yolo_detection"
   },
   "hyperparams": {
     "_comment": "核心训练超参数",
     "model_name": "yolo11n.pt",
     "epochs": 100,
-    "imgsz": 640,
-    "batch": 16,
-    "lr0": 0.01,
     "optimizer": "SGD",
     "device": "auto",
     "amp": true,
     "patience": 50,
     
     "_comment_tuning": "超参数优化配置（可选）",
-    "max_evals": 0,
+    "_comment_tuning_note": "如果定义了search_space，对应参数将使用搜索空间而非固定值",
+    "max_evals": 50,
     "metric": "mAP50-95",
     "search_space": {
+      "_comment": "搜索空间定义：列表中第一个值将作为默认值",
       "lr0": [0.001, 0.01, 0.05],
       "batch": [8, 16, 32],
       "imgsz": [416, 512, 640]
+    },
+    
+    "_comment_no_tuning": "如不需要超参数优化，设置 max_evals=0 并定义固定值",
+    "_example_fixed_values": {
+      "imgsz": 640,
+      "batch": 16,
+      "lr0": 0.01
     }
   },
   "preprocessing": {

@@ -3,8 +3,14 @@ import { FormInstance, message, Form, Select, Input, InputNumber } from 'antd';
 import { useTranslation } from '@/utils/i18n';
 import useMlopsTaskApi from '@/app/mlops/api/task';
 import type { Option } from '@/types';
-import type { TrainJob } from '@/app/mlops/types/task';
+import type { TrainJob, FieldConfig } from '@/app/mlops/types/task';
 import { OBJECT_DETECTION_ALGORITHM_CONFIGS, OBJECT_DETECTION_ALGORITHM_SCENARIOS } from '@/app/mlops/constants';
+import { AlgorithmFieldRenderer } from '@/app/mlops/components/AlgorithmFieldRenderer';
+import {
+  transformGroupData,
+  reverseTransformGroupData,
+  extractDefaultValues
+} from '@/app/mlops/utils/algorithmConfigUtils';
 
 interface ModalState {
   isOpen: boolean;
@@ -46,6 +52,7 @@ export const useObjectDetectionForm = ({ datasetOptions, onSuccess, formRef }: U
   });
   const [datasetVersions, setDatasetVersions] = useState<Option[]>([]);
   const [isShow, setIsShow] = useState<boolean>(false);
+  const [formValues, setFormValues] = useState<any>({});
 
   // 当 formData 和 modalState.isOpen 改变时初始化表单
   useEffect(() => {
@@ -56,6 +63,15 @@ export const useObjectDetectionForm = ({ datasetOptions, onSuccess, formRef }: U
 
   // 后端数据 → 表单数据
   const apiToForm = (data: any) => {
+    const config = data.hyperopt_config || {};
+    const algorithm = data.algorithm;
+    const algorithmConfig = OBJECT_DETECTION_ALGORITHM_CONFIGS[algorithm];
+
+    if (!algorithmConfig) {
+      console.error(`Unknown algorithm: ${algorithm}`);
+      return {};
+    }
+
     const result: any = {
       name: data.name,
       algorithm: data.algorithm,
@@ -64,12 +80,25 @@ export const useObjectDetectionForm = ({ datasetOptions, onSuccess, formRef }: U
       max_evals: data.max_evals,
     };
 
-    // 如果有 hyperopt_config，展开其中的参数
-    if (data.hyperopt_config && data.hyperopt_config.hyperparams) {
-      const hyperparams = data.hyperopt_config.hyperparams;
-      if (hyperparams.model_name) {
-        result.model_name = hyperparams.model_name;
-      }
+    // 转换 hyperparams
+    if (algorithmConfig.groups.hyperparams) {
+      const allHyperparamFields = algorithmConfig.groups.hyperparams.flatMap(g => g.fields);
+      const hyperparamsData = reverseTransformGroupData(config, allHyperparamFields);
+      Object.assign(result, hyperparamsData);
+    }
+
+    // 转换 preprocessing
+    if (algorithmConfig.groups.preprocessing && config.preprocessing) {
+      const allPreprocessingFields = algorithmConfig.groups.preprocessing.flatMap(g => g.fields);
+      const preprocessingData = reverseTransformGroupData(config, allPreprocessingFields);
+      Object.assign(result, preprocessingData);
+    }
+
+    // 转换 feature_engineering
+    if (algorithmConfig.groups.feature_engineering && config.feature_engineering) {
+      const allFeatureEngineeringFields = algorithmConfig.groups.feature_engineering.flatMap(g => g.fields);
+      const featureEngineeringData = reverseTransformGroupData(config, allFeatureEngineeringFields);
+      Object.assign(result, featureEngineeringData);
     }
 
     return result;
@@ -77,18 +106,38 @@ export const useObjectDetectionForm = ({ datasetOptions, onSuccess, formRef }: U
 
   // 表单数据 → 后端数据
   const formToApi = (formValues: any) => {
-    const hyperopt_config: Record<string, any> = {
-      hyperparams: {
-        model_name: formValues.model_name || 'yolo11n.pt'
-      }
-    };
+    const algorithm = formValues.algorithm;
+    const algorithmConfig = OBJECT_DETECTION_ALGORITHM_CONFIGS[algorithm];
+
+    if (!algorithmConfig) {
+      console.error(`Unknown algorithm: ${algorithm}`);
+      return {};
+    }
+
+    const hyperopt_config: Record<string, any> = {};
+
+    // 转换所有配置组
+    const allFields: FieldConfig[] = [];
+    if (algorithmConfig.groups.hyperparams) {
+      allFields.push(...algorithmConfig.groups.hyperparams.flatMap(g => g.fields));
+    }
+    if (algorithmConfig.groups.preprocessing) {
+      allFields.push(...algorithmConfig.groups.preprocessing.flatMap(g => g.fields));
+    }
+    if (algorithmConfig.groups.feature_engineering) {
+      allFields.push(...algorithmConfig.groups.feature_engineering.flatMap(g => g.fields));
+    }
+
+    // 一次性转换所有字段，transformGroupData 会根据字段的 name 路径自动分组
+    const transformed = transformGroupData(formValues, allFields);
+    Object.assign(hyperopt_config, transformed);
 
     const result = {
       name: formValues.name,
       algorithm: formValues.algorithm,
       dataset: formValues.dataset,
       dataset_version: formValues.dataset_version,
-      max_evals: formValues.max_evals,
+      max_evals: formValues.max_evals || 0,
       status: 'pending',
       description: formValues.name || '',
       hyperopt_config
@@ -114,12 +163,12 @@ export const useObjectDetectionForm = ({ datasetOptions, onSuccess, formRef }: U
 
     if (modalState.type === 'add') {
       formRef.current.setFieldsValue({
-        max_evals: 50,
-        model_name: 'yolo11n.pt'
+        max_evals: 50
       });
     } else if (formData) {
       const formValues = apiToForm(formData);
       formRef.current.setFieldsValue(formValues);
+      setFormValues(formValues);
       setIsShow(true);
       handleAsyncDataLoading(formData.dataset_version as number);
     }
@@ -178,20 +227,20 @@ export const useObjectDetectionForm = ({ datasetOptions, onSuccess, formRef }: U
       return;
     }
 
-    // 设置默认值
+    // 从配置中提取默认值
     const defaultValues = {
-      max_evals: 50,
-      model_name: 'yolo11n.pt'
+      // max_evals: 50,
+      ...extractDefaultValues(algorithmConfig)
     };
 
     formRef.current.setFieldsValue(defaultValues);
+    setFormValues(defaultValues);
     setIsShow(true);
   }, []);
 
-  // 表单值变化处理（预留给将来扩展）
+  // 表单值变化处理（用于更新 formValues 状态）
   const onFormValuesChange = useCallback((changedValues: any, allValues: any) => {
-    // 预留给将来的依赖字段处理
-    console.log(changedValues, allValues)
+    setFormValues(allValues);
   }, []);
 
   // 提交处理
@@ -231,12 +280,14 @@ export const useObjectDetectionForm = ({ datasetOptions, onSuccess, formRef }: U
     formRef.current?.resetFields();
     setDatasetVersions([]);
     setFormData(null);
+    setFormValues({});
     setIsShow(false);
   }, []);
 
   // 渲染表单内容
   const renderFormContent = useCallback(() => {
     const currentAlgorithm = formRef.current?.getFieldValue('algorithm');
+    const algorithmConfig = currentAlgorithm ? OBJECT_DETECTION_ALGORITHM_CONFIGS[currentAlgorithm] : null;
 
     return (
       <>
@@ -250,7 +301,7 @@ export const useObjectDetectionForm = ({ datasetOptions, onSuccess, formRef }: U
             placeholder={t('traintask.selectAlgorithmsMsg')}
             onChange={onAlgorithmChange}
             options={[
-              { value: 'YOLO11Detection', label: 'YOLO11Detection' },
+              { value: 'YOLODetection', label: 'YOLODetection' },
             ]}
           />
         </Form.Item>
@@ -281,27 +332,19 @@ export const useObjectDetectionForm = ({ datasetOptions, onSuccess, formRef }: U
         </Form.Item>
 
         <Form.Item name='max_evals' label="训练轮次" rules={[{ required: true, message: '请输入训练轮次' }]}>
-          <InputNumber style={{ width: '100%' }} min={1} placeholder="训练的轮次" />
+          <InputNumber style={{ width: '100%' }} min={0} placeholder="超参数搜索的评估轮次" />
         </Form.Item>
 
-        {/* ========== 算法配置（简化版） ========== */}
-        {isShow && (
-          <Form.Item name='model_name' label="预训练模型" rules={[{ required: true, message: '请选择预训练模型' }]}>
-            <Select
-              placeholder="选择预训练模型"
-              options={[
-                { label: 'YOLOv11n (最快)', value: 'yolo11n.pt' },
-                { label: 'YOLOv11s (轻量级)', value: 'yolo11s.pt' },
-                { label: 'YOLOv11m (平衡型，推荐)', value: 'yolo11m.pt' },
-                { label: 'YOLOv11l (高精度)', value: 'yolo11l.pt' },
-                { label: 'YOLOv11x (最高精度)', value: 'yolo11x.pt' }
-              ]}
-            />
-          </Form.Item>
+        {/* ========== 动态渲染算法配置 ========== */}
+        {isShow && algorithmConfig && (
+          <AlgorithmFieldRenderer
+            config={algorithmConfig}
+            formValues={formValues}
+          />
         )}
       </>
     );
-  }, [t, datasetOptions, datasetVersions, loadingState.select, isShow, onAlgorithmChange, renderOptions]);
+  }, [t, datasetOptions, datasetVersions, loadingState.select, isShow, formValues, onAlgorithmChange, renderOptions]);
 
   return {
     modalState,

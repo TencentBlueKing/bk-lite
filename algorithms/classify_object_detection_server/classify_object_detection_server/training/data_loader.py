@@ -17,16 +17,16 @@ def load_yolo_dataset(dataset_yaml_path: str) -> str:
     加载YOLO格式数据集.
 
     Args:
-        dataset_yaml_path: dataset.yaml文件路径
+        dataset_yaml_path: data.yaml文件路径（支持 data.yaml 或 dataset.yaml）
 
     Returns:
-        dataset.yaml的绝对路径（YOLO训练时使用）
+        data.yaml的绝对路径（YOLO训练时使用）
 
     Raises:
         DataLoaderError: 数据集格式错误或文件不存在
 
     Note:
-        期望的dataset.yaml格式:
+        期望的data.yaml格式:
         ```yaml
         path: /absolute/path/to/dataset  # 数据集根目录
         train: images/train              # 训练集图片目录（相对路径）
@@ -55,37 +55,56 @@ def load_yolo_dataset(dataset_yaml_path: str) -> str:
     except Exception as e:
         raise DataLoaderError(f"读取YAML文件失败: {e}")
 
-    # 验证必需字段
-    required_fields = ["path", "train", "val", "nc", "names"]
+    # 验证必需字段（nc 可选，可从 names 推断）
+    required_fields = ["path", "train", "val", "names"]
     missing_fields = [field for field in required_fields if field not in dataset_config]
     if missing_fields:
         raise DataLoaderError(f"数据集配置缺少必需字段: {missing_fields}")
 
-    # 验证类别数量
-    nc = dataset_config["nc"]
+    # 获取类别信息
     names = dataset_config["names"]
-    if not isinstance(nc, int) or nc <= 0:
-        raise DataLoaderError(f"无效的类别数量: {nc}，必须是正整数")
-
     if not isinstance(names, (list, dict)):
         raise DataLoaderError(f"类别名称格式错误，应为列表或字典，实际: {type(names)}")
 
-    # 统一转换为列表格式
+    # 统一转换为列表格式并推断类别数
     if isinstance(names, dict):
+        # 从字典推断类别数
+        nc = len(names)
         names_list = [names.get(i, f"class_{i}") for i in range(nc)]
     else:
+        # 从列表推断类别数
+        nc = len(names)
         names_list = names
 
-    if len(names_list) != nc:
-        raise DataLoaderError(
-            f"类别名称数量({len(names_list)})与声明的类别数({nc})不匹配"
-        )
+    # 如果配置中指定了 nc，验证一致性
+    if "nc" in dataset_config:
+        config_nc = dataset_config["nc"]
+        if not isinstance(config_nc, int) or config_nc <= 0:
+            raise DataLoaderError(f"无效的类别数量: {config_nc}，必须是正整数")
+        if config_nc != nc:
+            raise DataLoaderError(f"配置中的 nc({config_nc}) 与 names 数量({nc})不匹配")
+        logger.info(f"✓ 配置中的 nc 字段与 names 一致: {nc}")
+    else:
+        logger.info(f"✓ 从 names 推断类别数: {nc}")
 
     # 验证路径存在性
     dataset_root = Path(dataset_config["path"])
     if not dataset_root.is_absolute():
         # 如果是相对路径，基于yaml文件位置解析
         dataset_root = (yaml_path.parent / dataset_root).resolve()
+
+    # 修正data.yaml中的path字段为绝对路径，避免YOLO内部路径解析错误
+    if dataset_config["path"] != str(dataset_root):
+        logger.info(
+            f"修正data.yaml中的相对路径: {dataset_config['path']} -> {dataset_root}"
+        )
+        dataset_config["path"] = str(dataset_root)
+        try:
+            with open(yaml_path, "w", encoding="utf-8") as f:
+                yaml.safe_dump(dataset_config, f, sort_keys=False, allow_unicode=True)
+            logger.info(f"✓ 已更新data.yaml为绝对路径")
+        except Exception as e:
+            logger.warning(f"⚠️  无法更新data.yaml: {e}，YOLO可能会遇到路径问题")
 
     if not dataset_root.exists():
         logger.warning(
@@ -124,7 +143,7 @@ def validate_yolo_dataset(dataset_yaml_path: str) -> dict:
     验证YOLO数据集的完整性.
 
     Args:
-        dataset_yaml_path: dataset.yaml文件路径
+        dataset_yaml_path: data.yaml文件路径（支持 data.yaml 或 dataset.yaml）
 
     Returns:
         验证结果字典:

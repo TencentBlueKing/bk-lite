@@ -229,7 +229,7 @@ export const useImageClassificationForm = ({ datasetOptions, onSuccess, formRef 
 
     // 从配置中提取默认值
     const defaultValues = {
-      max_evals: 50,
+      // max_evals: 50,
       ...extractDefaultValues(algorithmConfig)
     };
 
@@ -332,7 +332,7 @@ export const useImageClassificationForm = ({ datasetOptions, onSuccess, formRef 
         </Form.Item>
 
         <Form.Item name='max_evals' label="训练轮次" rules={[{ required: true, message: '请输入训练轮次' }]}>
-          <InputNumber style={{ width: '100%' }} min={1} placeholder="超参数搜索的评估轮次" />
+          <InputNumber style={{ width: '100%' }} min={0} placeholder="超参数搜索的评估轮次" />
         </Form.Item>
 
         {/* ========== 算法特定配置 ========== */}

@@ -7,20 +7,25 @@ from loguru import logger
 from ultralytics import YOLO, settings
 import uuid
 import time
+import logging
 
 from classify_object_detection_server import PROJECT_ROOT
 from .base import BaseObjectDetectionModel, ModelRegistry
 
 # 禁用YOLO的MLflow自动集成，避免与自定义MLflow管理冲突
 settings.update({"mlflow": False})
-logger.info("已禁用YOLO的MLflow自动集成")
+
+# 禁用YOLO的详细日志输出
+logging.getLogger("ultralytics").setLevel(logging.WARNING)
+
+logger.info("已禁用YOLO的MLflow自动集成和详细日志")
 
 
-@ModelRegistry.register("YOLOv11Detection")
-class YOLOv11DetectionModel(BaseObjectDetectionModel):
+@ModelRegistry.register("YOLODetection")
+class YOLODetectionModel(BaseObjectDetectionModel):
     """YOLO目标检测模型.
 
-    封装ultralytics YOLOv11检测模型，实现统一的训练和推理接口。
+    封装ultralytics YOLO检测模型，实现统一的训练和推理接口。
     """
 
     def __init__(self, model_name: str = "yolo11n.pt", **hyperparams):
@@ -37,7 +42,41 @@ class YOLOv11DetectionModel(BaseObjectDetectionModel):
         self.class_names = None
         self._results = None
 
-        logger.info(f"YOLOv11DetectionModel初始化: {self.model_name}")
+        logger.info(f"YOLODetectionModel初始化: {self.model_name}")
+
+    def _get_param_value(self, param_name: str, default_value):
+        """
+        智能获取参数值：优先使用搜索空间中的默认值，其次使用固定值，最后使用代码默认值.
+
+        如果参数在 search_space 中定义，则使用搜索空间的第一个值作为默认值，
+        忽略 hyperparams 中的固定值，避免配置混淆。
+
+        Args:
+            param_name: 参数名称
+            default_value: 代码中的默认值（最终回退值）
+
+        Returns:
+            参数值
+        """
+        search_space = self.hyperparams.get("search_space", {})
+
+        # 如果参数在搜索空间中定义，使用搜索空间的第一个值
+        if param_name in search_space:
+            space_config = search_space[param_name]
+            if isinstance(space_config, list) and len(space_config) > 0:
+                # 搜索空间是列表，取第一个值作为默认值
+                return space_config[0]
+            elif isinstance(space_config, dict):
+                # 搜索空间是字典配置
+                if space_config.get("type") == "choice":
+                    options = space_config.get("options", [])
+                    if options:
+                        return options[0]
+                # 其他类型（uniform, loguniform等）使用 low 作为默认值
+                return space_config.get("low", default_value)
+
+        # 否则使用 hyperparams 中的固定值
+        return self.hyperparams.get(param_name, default_value)
 
     def fit(
         self,
@@ -46,12 +85,12 @@ class YOLOv11DetectionModel(BaseObjectDetectionModel):
         device: str = "auto",
         log_artifacts: bool = True,
         **kwargs,
-    ) -> "YOLOv11DetectionModel":
+    ) -> "YOLODetectionModel":
         """
         训练YOLO检测模型.
 
         Args:
-            dataset_yaml: YOLO格式数据集配置文件路径
+            dataset_yaml: YOLO格式数据集配置文件路径（data.yaml 或 dataset.yaml）
             val_data: 验证集配置（可选，通常已包含在dataset_yaml中）
             device: 设备配置
             log_artifacts: 是否上传训练产生的artifacts到MLflow，默认True
@@ -70,9 +109,9 @@ class YOLOv11DetectionModel(BaseObjectDetectionModel):
         train_kwargs = {
             "data": dataset_yaml,
             "epochs": self.hyperparams.get("epochs", 100),
-            "imgsz": self.hyperparams.get("imgsz", 640),
-            "batch": self.hyperparams.get("batch", 16),
-            "lr0": self.hyperparams.get("lr0", 0.01),
+            "imgsz": self._get_param_value("imgsz", 640),
+            "batch": self._get_param_value("batch", 16),
+            "lr0": self._get_param_value("lr0", 0.01),
             "lrf": self.hyperparams.get("lrf", 0.01),
             "momentum": self.hyperparams.get("momentum", 0.937),
             "weight_decay": self.hyperparams.get("weight_decay", 0.0005),
@@ -119,6 +158,9 @@ class YOLOv11DetectionModel(BaseObjectDetectionModel):
             train_kwargs["amp"] = True
             logger.info("⚡ 启用混合精度训练（AMP）")
 
+        # 禁用YOLO的详细输出(模型架构等)
+        # train_kwargs["verbose"] = False
+
         # 执行训练
         logger.info(
             f"🚀 开始训练 - epochs={train_kwargs['epochs']}, batch={train_kwargs['batch']}, imgsz={train_kwargs['imgsz']}"
@@ -131,27 +173,76 @@ class YOLOv11DetectionModel(BaseObjectDetectionModel):
 
         self._results = results
 
-        # 记录训练指标
-        loss_info = ""
+        # 记录训练结果 - 增强日志输出
+        logger.info("=" * 70)
+        logger.info(f"✓ 训练完成 - 耗时: {train_duration / 60:.1f}分钟")
+        logger.info("=" * 70)
+
+        # 1. 尝试从 results_dict 获取指标
         try:
             if hasattr(results, "results_dict") and results.results_dict:
                 results_dict = results.results_dict
-                # 检测模型的loss包含: box_loss, cls_loss, dfl_loss
+
+                # 训练集损失
                 box_loss = results_dict.get("train/box_loss")
                 cls_loss = results_dict.get("train/cls_loss")
                 dfl_loss = results_dict.get("train/dfl_loss")
 
                 if box_loss is not None:
-                    loss_info = f", box_loss={box_loss:.4f}"
+                    logger.info("📊 最终训练损失:")
+                    logger.info(f"   Box Loss (定位损失):     {box_loss:.4f}")
                     if cls_loss is not None:
-                        loss_info += f", cls_loss={cls_loss:.4f}"
+                        logger.info(f"   Class Loss (分类损失):   {cls_loss:.4f}")
                     if dfl_loss is not None:
-                        loss_info += f", dfl_loss={dfl_loss:.4f}"
-                    logger.info(f"📊 训练loss{loss_info}")
-        except Exception as e:
-            logger.debug(f"无法获取loss信息: {e}")
+                        logger.info(f"   DFL Loss (分布损失):     {dfl_loss:.4f}")
 
-        logger.info(f"✓ 训练完成 - 耗时: {train_duration / 60:.1f}分钟{loss_info}")
+                # 验证集指标（如果有）
+                val_map = results_dict.get("metrics/mAP50(B)")
+                val_map50_95 = results_dict.get("metrics/mAP50-95(B)")
+
+                if val_map is not None or val_map50_95 is not None:
+                    logger.info("")
+                    logger.info("📈 验证集性能指标:")
+                    if val_map50_95 is not None:
+                        logger.info(
+                            f"   mAP@0.5:0.95:  {val_map50_95:.4f}  ⭐ (主要指标)"
+                        )
+                    if val_map is not None:
+                        logger.info(f"   mAP@0.5:       {val_map:.4f}")
+
+                    precision = results_dict.get("metrics/precision(B)")
+                    recall = results_dict.get("metrics/recall(B)")
+                    if precision is not None:
+                        logger.info(f"   Precision:     {precision:.4f}")
+                    if recall is not None:
+                        logger.info(f"   Recall:        {recall:.4f}")
+
+        except Exception as e:
+            logger.debug(f"从 results_dict 获取指标失败: {e}")
+
+        # 2. 尝试从 results 对象直接获取指标
+        try:
+            if hasattr(results, "box"):
+                logger.info("")
+                logger.info("📈 最佳验证集性能 (训练期间):")
+                logger.info(f"   mAP@0.5:0.95:  {float(results.box.map):.4f}  ⭐")
+                logger.info(f"   mAP@0.5:       {float(results.box.map50):.4f}")
+                logger.info(f"   Precision:     {float(results.box.mp):.4f}")
+                logger.info(f"   Recall:        {float(results.box.mr):.4f}")
+        except Exception as e:
+            logger.debug(f"从 results.box 获取指标失败: {e}")
+
+        # 3. 记录训练参数摘要
+        logger.info("")
+        logger.info("⚙️  训练配置:")
+        logger.info(f"   Epochs:        {train_kwargs['epochs']}")
+        logger.info(f"   Batch Size:    {train_kwargs['batch']}")
+        logger.info(f"   Image Size:    {train_kwargs['imgsz']}")
+        logger.info(f"   Learning Rate: {train_kwargs['lr0']}")
+        logger.info(f"   Optimizer:     {train_kwargs['optimizer']}")
+        logger.info(f"   Patience:      {train_kwargs['patience']}")
+
+        logger.info("=" * 70)
 
         # 手动上传YOLO训练产生的artifacts到MLflow
         if log_artifacts:
@@ -455,8 +546,8 @@ class YOLOv11DetectionModel(BaseObjectDetectionModel):
 
                 logger.info(f"  Trial {trial_count[0]} 使用 {trial_epochs} epochs")
 
-                temp_model = YOLOv11DetectionModel(
-                    size=self.model_size, **temp_hyperparams
+                temp_model = YOLODetectionModel(
+                    model_name=self.model_name, **temp_hyperparams
                 )
 
                 temp_model.fit(train_data, val_data, device=device, log_artifacts=False)
@@ -466,10 +557,14 @@ class YOLOv11DetectionModel(BaseObjectDetectionModel):
                 # 使用mAP@0.5:0.95作为优化目标（取负数用于最小化）
                 score = -val_metrics["val_map"]
 
+                # 判断是否是最优结果
+                is_best = score < best_score[0]
+                best_indicator = " 🎯 NEW BEST!" if is_best else ""
+
                 logger.info(
-                    f"  Trial {trial_count[0]} 结果: "
-                    f"mAP={val_metrics['val_map']:.4f}, "
-                    f"mAP50={val_metrics['val_map50']:.4f}, "
+                    f"  Trial {trial_count[0]} 结果{best_indicator}: "
+                    f"mAP@0.5:0.95={val_metrics['val_map']:.4f}, "
+                    f"mAP@0.5={val_metrics['val_map50']:.4f}, "
                     f"precision={val_metrics['val_precision']:.4f}, "
                     f"recall={val_metrics['val_recall']:.4f}"
                 )
@@ -518,6 +613,12 @@ class YOLOv11DetectionModel(BaseObjectDetectionModel):
                         del temp_model.yolo
                     del temp_model
 
+                # Force garbage collection for both CPU and GPU
+                import gc
+
+                gc.collect()
+
+                # Clear CUDA cache if available
                 if device != "cpu":
                     import torch
 
@@ -546,10 +647,30 @@ class YOLOv11DetectionModel(BaseObjectDetectionModel):
         actual_evals = len(trials.trials)
         is_early_stopped = actual_evals < max_evals
 
-        logger.info(f"✓ 超参数优化完成 - 耗时: {optimization_duration / 60:.1f}分钟")
-        logger.info(f"  最优参数: {best_params}")
-        logger.info(f"  最优mAP: {-trials.best_trial['result']['loss']:.4f}")
-        logger.info(f"  实际评估次数: {actual_evals}/{max_evals}")
+        # 增强的超参数优化总结日志
+        logger.info("")
+        logger.info("=" * 70)
+        logger.info("✓ 超参数优化完成")
+        logger.info("=" * 70)
+        logger.info(f"⏱️  总耗时: {optimization_duration / 60:.1f} 分钟")
+        logger.info(f"🔢 Trial 评估:")
+        logger.info(f"   计划: {max_evals} 次")
+        logger.info(f"   实际: {actual_evals} 次")
+        if is_early_stopped:
+            logger.info(f"   状态: ⚠️  早停触发 (patience={patience})")
+        else:
+            logger.info(f"   状态: ✓ 完整运行")
+
+        logger.info("")
+        logger.info(f"🏆 最优结果:")
+        logger.info(f"   mAP@0.5:0.95: {-trials.best_trial['result']['loss']:.4f}")
+
+        logger.info("")
+        logger.info(f"🎯 最优超参数:")
+        for key, value in best_params.items():
+            logger.info(f"   {key:15s}: {value}")
+
+        logger.info("=" * 70)
 
         if mlflow.active_run():
             success_trials = [
@@ -599,10 +720,6 @@ class YOLOv11DetectionModel(BaseObjectDetectionModel):
                 converted_params[key] = value.tolist()
             else:
                 converted_params[key] = value
-
-        logger.info(
-            f"转换后的参数类型: {[(k, type(v).__name__) for k, v in converted_params.items()]}"
-        )
 
         # 更新模型超参数
         self.hyperparams.update(converted_params)
@@ -763,7 +880,6 @@ class YOLOv11DetectionModel(BaseObjectDetectionModel):
     def get_params(self) -> Dict[str, Any]:
         """获取模型参数."""
         return {
-            "model_size": self.model_size,
             "model_name": self.model_name,
             **self.hyperparams,
         }

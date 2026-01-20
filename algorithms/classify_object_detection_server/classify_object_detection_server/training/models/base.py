@@ -23,7 +23,7 @@ class BaseObjectDetectionModel(ABC):
         训练模型.
 
         Args:
-            dataset_yaml: YOLO格式数据集配置文件路径（包含train/val/test路径和类别信息）
+            dataset_yaml: YOLO格式数据集配置文件路径（data.yaml 或 dataset.yaml，包含train/val/test路径和类别信息）
             val_data: 验证集配置（可选，通常包含在dataset_yaml中）
             device: 设备配置（'auto', 'cpu', 'gpu', 'gpus', '0,1,2'等）
             **kwargs: 其他训练参数
@@ -133,8 +133,8 @@ class ModelRegistry:
         模型注册装饰器.
 
         Usage:
-            @ModelRegistry.register("YOLOv11Detection")
-            class YOLOv11DetectionModel(BaseObjectDetectionModel):
+            @ModelRegistry.register("YOLODetection")
+            class YOLODetectionModel(BaseObjectDetectionModel):
                 ...
 
         Args:

@@ -1,4 +1,4 @@
-import { LevelMap, Option, } from "@/app/mlops/types";
+﻿import { LevelMap, Option, } from "@/app/mlops/types";
 import { AlgorithmConfig } from "@/app/mlops/types/task";
 
 const LEVEL_MAP: LevelMap = {
@@ -546,17 +546,6 @@ const ANOMALY_ALGORITHM_CONFIGS: Record<string, AlgorithmConfig> = {
               placeholder: '例: 42',
               defaultValue: 42,
               min: 0
-            },
-            {
-              name: ['hyperparams', 'max_evals'],
-              label: '最大评估次数',
-              type: 'inputNumber',
-              required: true,
-              tooltip: '超参数搜索的最大迭代次数，越大搜索越充分但耗时更长',
-              placeholder: '推荐: 20-50',
-              defaultValue: 30,
-              min: 1,
-              max: 200
             }
           ]
         },
@@ -781,45 +770,6 @@ const IMAGE_CLASSIFICATION_ALGORITHM_CONFIGS: Record<string, AlgorithmConfig> = 
               max: 1000
             },
             {
-              name: ['hyperparams', 'imgsz'],
-              label: '输入图片尺寸',
-              type: 'select',
-              required: true,
-              placeholder: '选择输入尺寸',
-              defaultValue: 224,
-              tooltip: '图片会被缩放到此尺寸。越大精度可能越高但训练越慢，需要更多显存',
-              options: [
-                { label: '224 (快速，推荐)', value: 224 },
-                { label: '256', value: 256 },
-                { label: '320', value: 320 },
-                { label: '384 (高精度)', value: 384 },
-                { label: '416 (最高精度)', value: 416 }
-              ]
-            },
-            {
-              name: ['hyperparams', 'batch'],
-              label: '批次大小',
-              type: 'inputNumber',
-              required: true,
-              tooltip: '单次训练的图片数量。根据GPU显存调整：4GB显存用8，8GB用16，16GB用32。越大训练越快但需要更多显存',
-              placeholder: '推荐: 8-32',
-              defaultValue: 16,
-              min: 1,
-              max: 128
-            },
-            {
-              name: ['hyperparams', 'lr0'],
-              label: '初始学习率',
-              type: 'inputNumber',
-              required: true,
-              tooltip: '控制模型更新的步长。太大可能不收敛，太小训练太慢。建议从0.01开始尝试',
-              placeholder: '例: 0.01',
-              defaultValue: 0.01,
-              min: 0.0001,
-              max: 0.1,
-              step: 0.001
-            },
-            {
               name: ['hyperparams', 'optimizer'],
               label: '优化器',
               type: 'select',
@@ -869,7 +819,7 @@ const IMAGE_CLASSIFICATION_ALGORITHM_CONFIGS: Record<string, AlgorithmConfig> = 
                 { label: 'Top-1 准确率 (推荐)', value: 'acc_top1' },
                 { label: 'Top-5 准确率', value: 'acc_top5' }
               ],
-              dependencies: [['hyperparams', 'max_evals']]
+              dependencies: [['max_evals']]
             },
             {
               name: ['hyperparams', 'search_space', 'lr0'],
@@ -879,7 +829,7 @@ const IMAGE_CLASSIFICATION_ALGORITHM_CONFIGS: Record<string, AlgorithmConfig> = 
               tooltip: '可选的学习率候选值，算法会自动选择最优值',
               placeholder: '例: 0.0001,0.001,0.01,0.05,0.1',
               defaultValue: '0.0001,0.001,0.01,0.05,0.1',
-              dependencies: [['hyperparams', 'max_evals']]
+              dependencies: [['max_evals']]
             },
             {
               name: ['hyperparams', 'search_space', 'batch'],
@@ -889,7 +839,7 @@ const IMAGE_CLASSIFICATION_ALGORITHM_CONFIGS: Record<string, AlgorithmConfig> = 
               tooltip: '可选的批次大小候选值',
               placeholder: '例: 8,16,32,64',
               defaultValue: '8,16,32,64',
-              dependencies: [['hyperparams', 'max_evals']]
+              dependencies: [['max_evals']]
             },
             {
               name: ['hyperparams', 'search_space', 'imgsz'],
@@ -899,7 +849,7 @@ const IMAGE_CLASSIFICATION_ALGORITHM_CONFIGS: Record<string, AlgorithmConfig> = 
               tooltip: '可选的图片尺寸候选值',
               placeholder: '例: 224,256,320,384',
               defaultValue: '224,256,320,384',
-              dependencies: [['hyperparams', 'max_evals']]
+              dependencies: [['max_evals']]
             }
           ]
         }
@@ -959,17 +909,17 @@ const IMAGE_CLASSIFICATION_ALGORITHM_CONFIGS: Record<string, AlgorithmConfig> = 
 
 // 目标检测算法场景描述
 const OBJECT_DETECTION_ALGORITHM_SCENARIOS: Record<string, string> = {
-  YOLO11Detection: '基于 YOLO11 的高性能目标检测算法，适用于工业缺陷检测、物体识别定位、智能监控等场景。支持实时检测，可精确标注物体位置和类别'
+  YOLODetection: '基于 YOLO11 的高性能目标检测算法，适用于工业缺陷检测、物体识别定位、智能监控等场景。支持实时检测，可精确标注物体位置和类别'
 };
 
 // 目标检测算法配置 - 用于动态表单渲染
 const OBJECT_DETECTION_ALGORITHM_CONFIGS: Record<string, AlgorithmConfig> = {
-  YOLO11Detection: {
-    algorithm: 'YOLO11Detection',
+  YOLODetection: {
+    algorithm: 'YOLODetection',
     groups: {
       hyperparams: [
         {
-          title: '基础配置',
+          title: '模型配置',
           fields: [
             {
               name: ['hyperparams', 'model_name'],
@@ -978,14 +928,177 @@ const OBJECT_DETECTION_ALGORITHM_CONFIGS: Record<string, AlgorithmConfig> = {
               required: true,
               placeholder: '选择预训练模型',
               defaultValue: 'yolo11n.pt',
-              tooltip: 'n适合快速验证，m适合生产环境，x适合追求极致精度',
+              tooltip: '模型规模越大，精度越高但速度越慢。n适合快速验证，m/l适合生产环境，x适合追求极致精度',
               options: [
-                { label: 'YOLOv11n (最快)', value: 'yolo11n.pt' },
+                { label: 'YOLOv11n (最快，适合边缘设备)', value: 'yolo11n.pt' },
                 { label: 'YOLOv11s (轻量级)', value: 'yolo11s.pt' },
                 { label: 'YOLOv11m (平衡型，推荐)', value: 'yolo11m.pt' },
                 { label: 'YOLOv11l (高精度)', value: 'yolo11l.pt' },
                 { label: 'YOLOv11x (最高精度)', value: 'yolo11x.pt' }
               ]
+            },
+            {
+              name: ['hyperparams', 'device'],
+              label: '训练设备',
+              type: 'select',
+              required: true,
+              placeholder: '选择训练设备',
+              defaultValue: 'auto',
+              options: [
+                { label: '自动检测 (推荐)', value: 'auto' },
+                { label: 'CPU (慢但兼容性好)', value: 'cpu' },
+                { label: 'GPU (单卡)', value: 'gpu' },
+                { label: 'GPUs (多卡分布式)', value: 'gpus' }
+              ]
+            }
+          ]
+        },
+        {
+          title: '训练参数',
+          fields: [
+            {
+              name: ['hyperparams', 'epochs'],
+              label: '遍历轮数',
+              type: 'inputNumber',
+              required: true,
+              tooltip: '完整遍历训练集的次数。小数据集建议50-100轮，大数据集100-300轮',
+              placeholder: '例: 100',
+              defaultValue: 100,
+              min: 1,
+              max: 1000
+            },
+            {
+              name: ['hyperparams', 'optimizer'],
+              label: '优化器',
+              type: 'select',
+              required: true,
+              placeholder: '选择优化器',
+              defaultValue: 'SGD',
+              tooltip: 'SGD是目标检测的经典选择，稳定可靠；Adam收敛更快但可能不如SGD稳定',
+              options: [
+                { label: 'SGD (推荐，适合目标检测)', value: 'SGD' },
+                { label: 'Adam (收敛快)', value: 'Adam' },
+                { label: 'AdamW (改进版Adam)', value: 'AdamW' },
+                { label: 'RMSProp', value: 'RMSProp' }
+              ]
+            },
+            {
+              name: ['hyperparams', 'patience'],
+              label: '早停耐心值',
+              type: 'inputNumber',
+              required: true,
+              tooltip: '验证集指标连续多少轮不提升则提前停止训练，避免过拟合',
+              placeholder: '例: 50',
+              defaultValue: 50,
+              min: 1,
+              max: 200
+            },
+            {
+              name: ['hyperparams', 'amp'],
+              label: '混合精度训练',
+              type: 'switch',
+              defaultValue: true,
+              layout: 'horizontal',
+              tooltip: '使用FP16+FP32混合精度，GPU训练建议开启，可加速2-3倍并节省显存'
+            }
+          ]
+        },
+        {
+          title: '超参数优化 (可选)',
+          fields: [
+            {
+              name: ['hyperparams', 'metric'],
+              label: '优化目标',
+              type: 'select',
+              required: true,
+              placeholder: '选择优化指标',
+              defaultValue: 'mAP50-95',
+              options: [
+                { label: 'mAP@0.5:0.95 (推荐，COCO标准)', value: 'mAP50-95' },
+                { label: 'mAP@0.5 (宽松评估)', value: 'mAP50' },
+                { label: 'Precision (精确率)', value: 'precision' },
+                { label: 'Recall (召回率)', value: 'recall' }
+              ],
+              dependencies: [['max_evals']]
+            },
+            {
+              name: ['hyperparams', 'search_space', 'lr0'],
+              label: '学习率搜索空间',
+              type: 'stringArray',
+              required: false,
+              tooltip: '可选的学习率候选值，算法会自动选择最优值',
+              placeholder: '例: 0.001,0.01,0.05',
+              defaultValue: '0.001,0.01,0.05',
+              dependencies: [['max_evals']]
+            },
+            {
+              name: ['hyperparams', 'search_space', 'batch'],
+              label: '批次大小搜索空间',
+              type: 'stringArray',
+              required: false,
+              tooltip: '可选的批次大小候选值',
+              placeholder: '例: 8,16,32',
+              defaultValue: '8,16,32',
+              dependencies: [['max_evals']]
+            },
+            {
+              name: ['hyperparams', 'search_space', 'imgsz'],
+              label: '图片尺寸搜索空间',
+              type: 'stringArray',
+              required: false,
+              tooltip: '可选的图片尺寸候选值',
+              placeholder: '例: 416,512,640',
+              defaultValue: '416,512,640',
+              dependencies: [['max_evals']]
+            }
+          ]
+        }
+      ],
+      preprocessing: [
+        {
+          title: '数据预处理',
+          fields: [
+            {
+              name: ['preprocessing', 'min_image_size'],
+              label: '最小图片尺寸',
+              type: 'inputNumber',
+              required: true,
+              tooltip: '过滤掉宽或高小于此值的图片，避免低质量数据影响训练',
+              placeholder: '例: 32',
+              defaultValue: 32,
+              min: 1,
+              max: 512
+            },
+            {
+              name: ['preprocessing', 'allowed_extensions'],
+              label: '允许的图片格式',
+              type: 'multiSelect',
+              required: true,
+              placeholder: '选择支持的图片格式',
+              defaultValue: ['.jpg', '.jpeg', '.png', '.bmp'],
+              options: [
+                { label: 'JPG', value: '.jpg' },
+                { label: 'JPEG', value: '.jpeg' },
+                { label: 'PNG', value: '.png' },
+                { label: 'BMP', value: '.bmp' },
+                { label: 'TIFF', value: '.tiff' },
+                { label: 'WEBP', value: '.webp' }
+              ]
+            }
+          ]
+        }
+      ],
+      feature_engineering: [
+        {
+          title: '数据增强',
+          fields: [
+            {
+              name: ['feature_engineering', 'augmentation_enabled'],
+              label: '启用数据增强',
+              type: 'switch',
+              defaultValue: true,
+              layout: 'horizontal',
+              tooltip: '开启后将自动应用随机翻转、旋转、缩放、亮度调整等增强，提升模型泛化能力。YOLO内部自动处理'
             }
           ]
         }
@@ -1689,17 +1802,6 @@ const CLASSIFICATION_ALGORITHM_CONFIGS: Record<string, AlgorithmConfig> = {
               tooltip: 'f1_weighted=适用于类别不平衡，f1_macro=各类别同等重要，accuracy=类别平衡时使用'
             },
             {
-              name: ['hyperparams', 'max_evals'],
-              label: '最大评估次数',
-              type: 'inputNumber',
-              required: true,
-              tooltip: '超参数搜索的最大迭代次数，越大搜索越充分但耗时更长',
-              placeholder: '推荐: 20-50',
-              defaultValue: 30,
-              min: 1,
-              max: 200
-            },
-            {
               name: ['hyperparams', 'use_feature_engineering'],
               label: '启用特征工程',
               type: 'switch',
@@ -1985,17 +2087,6 @@ const LOG_CLUSTERING_ALGORITHM_CONFIGS: Record<string, AlgorithmConfig> = {
               placeholder: '例: 42',
               defaultValue: 42,
               min: 0
-            },
-            {
-              name: ['hyperparams', 'max_evals'],
-              label: '最大评估次数',
-              type: 'inputNumber',
-              required: true,
-              tooltip: '超参数搜索的最大迭代次数。设为 0 跳过搜索，直接使用搜索空间中的第一个值。大于 0 时自动启用早停机制',
-              placeholder: '推荐: 20-50',
-              defaultValue: 50,
-              min: 0,
-              max: 200
             }
           ]
         },

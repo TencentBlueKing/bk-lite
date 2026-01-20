@@ -52,7 +52,7 @@ class UniversalTrainer:
         执行完整训练流程.
 
         Args:
-            dataset_yaml_path: YOLO格式数据集配置文件路径
+            dataset_yaml_path: YOLO格式数据集配置文件路径（data.yaml 或 dataset.yaml）
 
         Returns:
             训练结果字典

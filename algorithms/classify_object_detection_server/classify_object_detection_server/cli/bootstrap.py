@@ -14,25 +14,26 @@ load_dotenv()
 class CLI:
     """目标检测服务CLI命令."""
 
-    def train(self, dataset_yaml: str, config: str, run_name: str = None):
+    def train(self, dataset_path: str, config: str, run_name: str = None):
         """
         训练目标检测模型.
         
         Args:
-            dataset_yaml: YOLO格式数据集配置文件路径（dataset.yaml）
-                必须包含: path, train, val, test, nc, names
+            dataset_path: 数据集目录路径（YOLO格式）
+                预期结构: dataset_path/data.yaml（必需）
+                data.yaml必须包含: path, train, val, test, nc, names
             config: 训练配置文件路径
             run_name: MLflow运行名称，默认使用配置文件中的值
         
         Example:
             # 使用默认配置训练
             classify_object_detection_server train \\
-                --dataset-yaml=/path/to/dataset.yaml \\
+                --dataset-path=/path/to/dataset \\
                 --config=support-files/scripts/train.json
             
             # 指定运行名称
             classify_object_detection_server train \\
-                --dataset-yaml=/path/to/dataset.yaml \\
+                --dataset-path=/path/to/dataset \\
                 --config=my_config.json \\
                 --run-name=experiment_001
         """
@@ -68,11 +69,23 @@ class CLI:
             config_obj.set("mlflow", "tracking_uri", value="mlruns")
             logger.info("使用默认MLflow Tracking URI: mlruns")
 
-        # 验证数据集配置文件路径
-        dataset_yaml_path = Path(dataset_yaml).resolve()
-        if not dataset_yaml_path.exists():
-            raise FileNotFoundError(f"数据集配置文件不存在: {dataset_yaml_path}")
+        # 验证数据集目录路径
+        dataset_dir = Path(dataset_path).resolve()
+        if not dataset_dir.exists():
+            raise FileNotFoundError(f"数据集目录不存在: {dataset_dir}")
 
+        if not dataset_dir.is_dir():
+            raise ValueError(f"数据集路径必须是目录: {dataset_dir}")
+
+        # 查找 data.yaml 文件
+        dataset_yaml_path = dataset_dir / "data.yaml"
+        if not dataset_yaml_path.exists():
+            raise FileNotFoundError(
+                f"数据集目录中未找到 data.yaml 文件: {dataset_yaml_path}\n"
+                f"YOLO格式数据集必须在根目录包含 data.yaml 配置文件"
+            )
+
+        logger.info(f"数据集目录: {dataset_dir}")
         logger.info(f"数据集配置: {dataset_yaml_path}")
         logger.info(f"模型类型: {config_obj.model_type}")
         logger.info(f"设备配置: {config_obj.get_device_config()}")

@@ -144,7 +144,9 @@
     "generateContent": "Changes not saved. Confirm generating dataset?",
     "editImageType": "Specify the folder location for generating YOLO datasets from designated images.",
     "saveChanges": "Save Changes",
-    "folder": "Folder"
+    "folder": "Folder",
+    "labelManagement": "Label Management",
+    "addLabel": "Add Label"
   },
   "traintask": {
     "train": "Train",

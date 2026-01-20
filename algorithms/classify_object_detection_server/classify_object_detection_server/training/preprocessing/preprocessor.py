@@ -35,7 +35,7 @@ class ImagePreprocessor:
         验证目标检测数据集.
 
         Args:
-            dataset_yaml_path: YOLO格式数据集配置文件路径
+            dataset_yaml_path: YOLO格式数据集配置文件路径（data.yaml 或 dataset.yaml）
 
         Returns:
             验证结果字典

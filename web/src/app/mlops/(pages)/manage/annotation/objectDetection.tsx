@@ -1,12 +1,11 @@
 'use client'
-import { SaveOutlined, ReloadOutlined, PlusOutlined, MinusCircleOutlined, SearchOutlined, TagsOutlined } from '@ant-design/icons';
+import { ReloadOutlined, PlusOutlined, MinusCircleOutlined, SearchOutlined } from '@ant-design/icons';
 import type { AnnotatorRef, ImageSample } from '@labelu/image-annotator-react';
 import {
   Button,
   message,
   Modal,
   Spin,
-  Tooltip,
   Tabs,
   Input,
   // Tag
@@ -62,7 +61,6 @@ ImageAnnotatorWrapper.displayName = 'ImageAnnotatorWrapper';
 
 // 默认标签配置（用于初始化）
 const defaultRectLabels = ['human', 'bicycle', 'traffic_sign', 'reactant', 'catalyst', 'product'];
-const defaultPointLabels = ['knee', 'head', 'hand', 'elbow', 'foot'];
 
 const ObjectDetection = ({
   // isChange,
@@ -76,11 +74,11 @@ const ObjectDetection = ({
   const annotatorRef = useRef<AnnotatorRef>(null);
   const searchParams = useSearchParams();
   const { getTrainDataInfo, updateObjectDetectionTrainData } = useMlopsManageApi();
-  
+
   // 资源管理 refs
   const imageUrlsRef = useRef<string[]>([]);
   const imageBlobsRef = useRef<Map<string, Blob>>(new Map());
-  
+
   // 标签管理状态
   const [rectLabels, setRectLabels] = useState<Array<{ id: number; name: string; color: string }>>(
     defaultRectLabels.map((name, index) => ({
@@ -89,30 +87,14 @@ const ObjectDetection = ({
       color: ['#03ba18ba', '#ff00ff', '#2e5fff', '#662eff', '#ffb62e', '#ff2ea4'][index] || generateUniqueRandomColor()
     }))
   );
-  const [pointLabels, setPointLabels] = useState<Array<{ id: number; name: string; color: string }>>(
-    defaultPointLabels.map((name, index) => ({
-      id: index + 1,
-      name,
-      color: ['#1899fb', '#6b18fb', '#5cfb18', '#fb8d18', '#fb187e'][index] || generateUniqueRandomColor()
-    }))
-  );
-  const [lineLabels, setLineLabels] = useState<Array<{ id: number; name: string; color: string }>>([
-    { id: 1, name: 'lane', color: '#ff0000' }
-  ]);
   const [polygonLabels, setPolygonLabels] = useState<Array<{ id: number; name: string; color: string }>>([
     { id: 1, name: 'house', color: '#8400ff' }
   ]);
-  const [relationLabels, setRelationLabels] = useState<Array<{ id: number; name: string; color: string }>>([
-    { id: 1, name: 'hit', color: '#741a2a' }
-  ]);
-  const [cuboidLabels, setCuboidLabels] = useState<Array<{ id: number; name: string; color: string }>>([
-    { id: 1, name: 'car', color: '#ff6d2e' }
-  ]);
-  const [activeToolType, setActiveToolType] = useState<'rect' | 'point' | 'line' | 'polygon' | 'relation' | 'cuboid'>('rect');
+  const [activeToolType, setActiveToolType] = useState<'rect' | 'polygon'>('rect');
   const [searchValue, setSearchValue] = useState('');
   const [showAddLabel, setShowAddLabel] = useState(false);
   const [labelModalOpen, setLabelModalOpen] = useState(false);
-  
+
   const [config, setConfig] = useState<any>(null);
   const [currentSample, setCurrentSample] = useState<ImageSample | null>(null);
   const [loading, setLoading] = useState<boolean>(false)
@@ -132,7 +114,7 @@ const ObjectDetection = ({
     }
   })
   const id = searchParams.get('id') || '';
-  
+
   // 清理ObjectURL的函数
   const cleanupImageUrls = useCallback(() => {
     imageUrlsRef.current.forEach(url => {
@@ -151,25 +133,6 @@ const ObjectDetection = ({
         url: "",
         rotate: 0
       },
-      point: {
-        maxPointAmount: 100,
-        labels: pointLabels.map(l => ({
-          color: l.color,
-          key: l.name.charAt(0).toUpperCase() + l.name.slice(1),
-          value: l.name
-        }))
-      },
-      line: {
-        lineType: 'line',
-        minPointAmount: 2,
-        maxPointAmount: 100,
-        edgeAdsorptive: false,
-        labels: lineLabels.map(l => ({
-          color: l.color,
-          key: l.name.charAt(0).toUpperCase() + l.name.slice(1),
-          value: l.name
-        }))
-      },
       rect: {
         minWidth: 1,
         minHeight: 1,
@@ -181,7 +144,7 @@ const ObjectDetection = ({
       },
       polygon: {
         lineType: 'line',
-        minPointAmount: 2,
+        minPointAmount: 3,
         maxPointAmount: 100,
         edgeAdsorptive: false,
         labels: polygonLabels.map(l => ({
@@ -190,39 +153,21 @@ const ObjectDetection = ({
           value: l.name
         }))
       },
-      relation: {
-        style: {
-          lineStyle: 'dashed',
-          arrowType: 'single',
-        },
-        labels: relationLabels.map(l => ({
-          color: l.color,
-          key: l.name.charAt(0).toUpperCase() + l.name.slice(1),
-          value: l.name
-        }))
-      },
-      cuboid: {
-        labels: cuboidLabels.map(l => ({
-          color: l.color,
-          key: l.name.charAt(0).toUpperCase() + l.name.slice(1),
-          value: l.name
-        }))
-      },
     };
-  }, [rectLabels, pointLabels, lineLabels, polygonLabels, relationLabels, cuboidLabels]);
+  }, [rectLabels, polygonLabels]);
 
   // 标签变化时更新config
   useEffect(() => {
     const newConfig = buildConfig();
     setConfig(newConfig);
-  }, [rectLabels, pointLabels, lineLabels, polygonLabels, relationLabels, cuboidLabels, buildConfig]);
+  }, [rectLabels, polygonLabels, buildConfig]);
 
   useEffect(() => {
     if (id) {
       getObjectTrainDataInfo();
     }
   }, [id]);
-  
+
   // 组件卸载时清理资源
   useEffect(() => {
     return () => {
@@ -232,23 +177,10 @@ const ObjectDetection = ({
 
 
   const samples = useMemo(() => {
-    console.log('[samples memo] 计算 samples:', {
-      trainDataLength: trainData?.length,
-      metaDataLabelsKeys: Object.keys(metaData?.labels || {}),
-      metaDataLabels: metaData?.labels
-    });
-    
     const _images = trainData?.map((item, index) => {
       // 从 YOLO 格式读取标注数据
       const yoloAnnotations = metaData?.labels?.[item.image_name] || [];
-      
-      console.log(`[samples memo] 处理图片 ${item.image_name}:`, {
-        yoloAnnotationsCount: yoloAnnotations.length,
-        yoloAnnotations,
-        itemWidth: item.width,
-        itemHeight: item.height
-      });
-      
+
       // 将 YOLO 格式转换为 Annotator 格式
       const rectAnnotations = yoloAnnotations.map((ann, annIndex) => {
         // YOLO 归一化坐标 → Annotator 像素坐标
@@ -256,12 +188,7 @@ const ObjectDetection = ({
         const y = (ann.y_center - ann.height / 2) * item.height;
         const width = ann.width * item.width;
         const height = ann.height * item.height;
-        
-        console.log(`[samples memo] 转换标注 ${annIndex}:`, {
-          yolo: ann,
-          annotator: { x, y, width, height }
-        });
-        
+
         return {
           type: 'rect' as const,
           x: Math.max(0, x),  // 防止负值
@@ -273,7 +200,7 @@ const ObjectDetection = ({
           order: annIndex
         };
       });
-      
+
       return {
         id: index,
         name: item.image_name || '',
@@ -284,40 +211,48 @@ const ObjectDetection = ({
       };
     }) || [];
 
-    console.log('[samples memo] 最终 samples:', _images);
-
-    if (!currentSample && _images.length > 0) {
-      setCurrentSample(_images[0]);
+    // 当 samples 更新时，尝试恢复之前选中的图片
+    if (_images.length > 0) {
+      if (currentSample) {
+        // 根据图片名称找回之前的图片（因为重新加载后 url 会变）
+        const matchedImage = _images.find(img => img.name === currentSample.name);
+        if (matchedImage && matchedImage.url !== currentSample.url) {
+          setCurrentSample(matchedImage);
+        }
+      } else {
+        // 首次加载，选中第一张
+        setCurrentSample(_images[0]);
+      }
     }
-    
+
     return _images;
-  }, [trainData, metaData, currentSample]);
+  }, [trainData, metaData]);
 
   // 发生变化时更新samples的标注数据
   const updateSamples = (labels: any, currentSample: ImageSample | null) => {
     if (!labels || !currentSample) return;
-    
+
     const imageName = currentSample.name || '';
     const imageData = trainData.find(item => item.image_name === imageName);
-    
+
     if (!imageData) return;
-    
+
     const rectAnnotations = labels.rect || [];
-    
+
     // Convert Annotator format → YOLO format
     const yoloAnnotations: YOLOAnnotation[] = rectAnnotations
       .filter((ann: any) => !!ann.label) // labels.rect 数组中的元素已经是 rect 类型，只需检查是否有 label
       .map((ann: any) => {
         const { x, y, width, height, label } = ann;
-        
+
         // Annotator uses pixel coordinates, convert to normalized YOLO format
         const x_center = (x + width / 2) / imageData.width;
         const y_center = (y + height / 2) / imageData.height;
         const norm_width = width / imageData.width;
         const norm_height = height / imageData.height;
-        
+
         const classId = rectLabels.findIndex(l => l.name === label);
-        
+
         return {
           class_id: classId >= 0 ? classId : 0,
           class_name: label,
@@ -327,22 +262,22 @@ const ObjectDetection = ({
           height: Number(norm_height.toFixed(6))
         };
       });
-    
+
     // Update metadata with new YOLO annotations
     setMetadata((prev) => {
       const newLabels = { ...prev.labels };
       newLabels[imageName] = yoloAnnotations;
-      
+
       // Recalculate statistics
       const allAnnotations = Object.values(newLabels).flat();
       const classDistribution: Record<string, number> = {};
-      
+
       allAnnotations.forEach(ann => {
         classDistribution[ann.class_name] = (classDistribution[ann.class_name] || 0) + 1;
       });
-      
+
       const imagesWithAnnotations = Object.values(newLabels).filter(anns => anns.length > 0).length;
-      
+
       const newMetaData = {
         ...prev,
         labels: newLabels,
@@ -353,7 +288,7 @@ const ObjectDetection = ({
           class_distribution: classDistribution
         }
       };
-      
+
       return newMetaData;
     });
   };
@@ -361,7 +296,7 @@ const ObjectDetection = ({
   const getCurrentAnnotations = () => {
     const current = annotatorRef.current?.getSample();
     const labels = annotatorRef.current?.getAnnotations();
-    
+
     return {
       current,
       labels
@@ -372,11 +307,7 @@ const ObjectDetection = ({
   const getCurrentLabels = () => {
     switch (activeToolType) {
       case 'rect': return rectLabels;
-      case 'point': return pointLabels;
-      case 'line': return lineLabels;
       case 'polygon': return polygonLabels;
-      case 'relation': return relationLabels;
-      case 'cuboid': return cuboidLabels;
       default: return rectLabels;
     }
   };
@@ -384,11 +315,7 @@ const ObjectDetection = ({
   const setCurrentLabels = (labels: Array<{ id: number; name: string; color: string }>) => {
     switch (activeToolType) {
       case 'rect': setRectLabels(labels); break;
-      case 'point': setPointLabels(labels); break;
-      case 'line': setLineLabels(labels); break;
       case 'polygon': setPolygonLabels(labels); break;
-      case 'relation': setRelationLabels(labels); break;
-      case 'cuboid': setCuboidLabels(labels); break;
     }
   };
 
@@ -407,7 +334,7 @@ const ObjectDetection = ({
       name: value,
       color: generateUniqueRandomColor()
     };
-    
+
     setCurrentLabels([...currentLabels, newLabel]);
     setShowAddLabel(false);
     setIsChange(true);
@@ -419,7 +346,7 @@ const ObjectDetection = ({
 
     const currentLabels = getCurrentLabels();
     const labelItem = currentLabels.find(l => l.id === id);
-    
+
     // 检查标签是否被使用
     const allAnnotations = Object.values(metaData.labels || {}).flat();
     const hasUsed = allAnnotations.some(ann => ann.class_name === labelItem?.name);
@@ -439,7 +366,7 @@ const ObjectDetection = ({
     return currentLabels.filter(label =>
       label.name.toLowerCase().includes(searchValue.toLowerCase())
     );
-  }, [searchValue, rectLabels, pointLabels, lineLabels, polygonLabels, relationLabels, cuboidLabels, activeToolType]);
+  }, [searchValue, rectLabels, polygonLabels, activeToolType]);
 
   const onLoad = (engine: any) => {
     // 清理可能遗留的 DOM 元素
@@ -449,7 +376,7 @@ const ObjectDetection = ({
 
     const updateSampleData = (eventName: string) => {
       const { current, labels } = getCurrentAnnotations()
-      
+
       // const current = annotatorRef.current?.getSample();
       if (eventName !== 'imageChange') setIsChange(true);
       // 对于删除事件，需要延迟获取标注数据，等待状态更新完成
@@ -500,14 +427,6 @@ const ObjectDetection = ({
     engine.on('backgroundImageLoaded', backgroundImageLoadHandler);
   };
 
-  // const showResult = useCallback(() => {
-  //   const labels = annotatorRef.current?.getAnnotations();
-  //   setResult(() => ({
-  //     ...labels
-  //   }));
-
-  //   setResultOpen(true);
-  // }, [samples]);
 
   const saveResult = async () => {
     setLoading(true);
@@ -517,14 +436,14 @@ const ObjectDetection = ({
       if (currentSample && currentLabels) {
         updateSamples(currentLabels, currentSample);
       }
-      
+
       // 使用 flushSync 确保状态同步更新（需要 import）
       // 或者等待下一个事件循环
       await new Promise(resolve => setTimeout(resolve, 100));
-      
+
       // 读取最新的 metaData（通过 setMetadata 的回调来获取）
       let latestLabels: Record<string, YOLOAnnotation[]> = {};
-      
+
       await new Promise<void>((resolve) => {
         setMetadata((prev) => {
           latestLabels = prev.labels || {};
@@ -532,30 +451,30 @@ const ObjectDetection = ({
           return prev; // 不修改状态，只读取
         });
       });
-      
+
       // 重新计算统计信息
       const classDistribution: Record<string, number> = {};
       let totalAnnotations = 0;
       let imagesWithAnnotations = 0;
       let imagesWithoutAnnotations = 0;
-      
+
       trainData.forEach((imageData) => {
         const imageName = imageData.image_name;
         const yoloAnnotations = latestLabels[imageName] || [];
-        
+
         if (yoloAnnotations.length === 0) {
           imagesWithoutAnnotations++;
         } else {
           imagesWithAnnotations++;
           totalAnnotations += yoloAnnotations.length;
-          
+
           // 统计类别分布
           yoloAnnotations.forEach((ann) => {
             classDistribution[ann.class_name] = (classDistribution[ann.class_name] || 0) + 1;
           });
         }
       });
-      
+
       // 构建新的metadata结构（YOLO格式）
       const newMetaData: ObjectDetectionMetadata = {
         format: 'YOLO',
@@ -570,17 +489,17 @@ const ObjectDetection = ({
           class_distribution: classDistribution
         }
       };
-      
+
       // 重新打包所有图片为ZIP
       const zip = new JSZip();
-      
+
       trainData.forEach((item) => {
         const blob = imageBlobsRef.current.get(item.image_name);
         if (blob) {
           zip.file(item.image_name, blob);
         }
       });
-      
+
       const zipBlob = await zip.generateAsync({
         type: 'blob',
         compression: 'DEFLATE',
@@ -588,21 +507,21 @@ const ObjectDetection = ({
           level: 6
         }
       });
-      
+
       // 构建FormData上传
       const formData = new FormData();
       formData.append('train_data', zipBlob, 'train_data.zip');
       formData.append('metadata', JSON.stringify(newMetaData));
-      
+
       // 调用更新接口
       await updateObjectDetectionTrainData(id, formData);
       setIsChange(false);
       message.success('标注已保存');
-      
+
       // 重新加载数据（确保与后端同步）
       getObjectTrainDataInfo();
     } catch (e) {
-      console.log(e);
+      console.error('保存标注失败:', e);
       message.error('保存失败');
     } finally {
       setLoading(false);
@@ -621,16 +540,10 @@ const ObjectDetection = ({
 
   const toolbarRight = useMemo(() => {
     return (
-      <div className='flex items-center'>
-        <Tooltip title={t('datasets.labelManagement') || '标签管理'}>
-          <Button type='default' className='rounded-none' icon={<TagsOutlined rev={undefined} />} onClick={() => setLabelModalOpen(true)} />
-        </Tooltip>
-        <Tooltip title={t('common.refresh')}>
-          <Button type='default' className='rounded-none' icon={<ReloadOutlined rev={undefined} />} onClick={() => getObjectTrainDataInfo()} />
-        </Tooltip>
-        <Tooltip title={t('datasets.saveChanges')}>
-          <Button type='default' className='rounded-none' icon={<SaveOutlined rev={undefined} />} onClick={saveResult} />
-        </Tooltip>
+      <div className='flex items-center gap-2'>
+        <Button type='primary' onClick={() => setLabelModalOpen(true)}>{t(`datasets.labelManagement`)}</Button>
+        <Button type='primary' onClick={saveResult}>{t(`datasets.saveChanges`)}</Button>
+        <ReloadOutlined onClick={() => getObjectTrainDataInfo()} />
       </div>
     )
   }, [t]);
@@ -638,16 +551,12 @@ const ObjectDetection = ({
   const getObjectTrainDataInfo = async () => {
     // 清理旧的ObjectURL
     cleanupImageUrls();
-    
+
     setLoading(true);
     try {
       // 1. 获取metadata (不获取train_data，避免大量数据传输)
       const data = await getTrainDataInfo(id, 'object_detection', false, true);
-      
-      console.log('[getObjectTrainDataInfo] API 返回的原始数据:', data);
-      console.log('[getObjectTrainDataInfo] metadata字段:', data.metadata);
-      console.log('[getObjectTrainDataInfo] metadata.labels:', data.metadata?.labels);
-      
+
       const metadata: ObjectDetectionMetadata = data.metadata || {
         format: 'YOLO',
         classes: defaultRectLabels,
@@ -661,10 +570,7 @@ const ObjectDetection = ({
           class_distribution: {}
         }
       };
-      
-      console.log('[getObjectTrainDataInfo] 处理后的 metadata:', metadata);
-      console.log('[getObjectTrainDataInfo] metadata.labels:', metadata.labels);
-      
+
       // 更新标签列表（从metadata加载）
       if (metadata.classes && metadata.classes.length > 0) {
         const loadedLabels = metadata.classes.map((name, index) => ({
@@ -674,7 +580,7 @@ const ObjectDetection = ({
         }));
         setRectLabels(loadedLabels);
       }
-      
+
       // 2. 下载ZIP
       const response = await fetch(
         `/api/proxy/mlops/object_detection_train_data/${id}/download/`,
@@ -685,33 +591,33 @@ const ObjectDetection = ({
           },
         }
       );
-      
+
       if (!response.ok) {
         throw new Error(`下载失败: ${response.status}`);
       }
-      
+
       const zipBlob = await response.blob();
-      
+
       // 3. 解压ZIP
       const zip = await JSZip.loadAsync(zipBlob);
       const imageFiles: ObjectDetectionTrainData[] = [];
       const imageExtensions = /\.(jpg|jpeg|png|gif|bmp|webp)$/i;
-      
+
       let batchIndex = 0;
       const entries = Object.entries(zip.files);
       const totalImages = entries.filter(([name, file]) => !file.dir && imageExtensions.test(name)).length;
-      
+
       for (const [fileName, file] of entries) {
         if (file.dir) continue;
         if (!imageExtensions.test(fileName)) continue;
-        
+
         const blob = await file.async('blob');
         const imageUrl = URL.createObjectURL(blob);
-        
+
         // 保存ObjectURL和Blob
         imageUrlsRef.current.push(imageUrl);
         imageBlobsRef.current.set(fileName, blob);
-        
+
         // 获取图片尺寸
         const dimensions = await new Promise<{ width: number; height: number }>((resolve) => {
           const img = new Image();
@@ -723,7 +629,7 @@ const ObjectDetection = ({
           };
           img.src = imageUrl;
         });
-        
+
         imageFiles.push({
           width: dimensions.width,
           height: dimensions.height,
@@ -736,12 +642,12 @@ const ObjectDetection = ({
           type: 'train' // 默认为训练集
         });
       }
-      
+
       setTrainData(imageFiles);
       setMetadata(metadata);
-      
+
     } catch (e) {
-      console.log(e);
+      console.error('加载训练数据失败:', e);
       message.error('加载失败');
     } finally {
       setLoading(false);
@@ -769,7 +675,7 @@ const ObjectDetection = ({
           )}
         </div>
       </Spin>
-      
+
       {/* 标签管理模态框 */}
       <Modal
         title={t('datasets.labelManagement') || '标签管理'}
@@ -785,14 +691,10 @@ const ObjectDetection = ({
           size="small"
           items={[
             { key: 'rect', label: 'Rect' },
-            { key: 'point', label: 'Point' },
-            { key: 'line', label: 'Line' },
             { key: 'polygon', label: 'Polygon' },
-            { key: 'relation', label: 'Relation' },
-            { key: 'cuboid', label: 'Cuboid' },
           ]}
         />
-        
+
         {/* 搜索和添加 */}
         <div className="flex flex-col gap-2 mb-3 mt-3">
           <Input
@@ -803,9 +705,9 @@ const ObjectDetection = ({
             size="small"
           />
           <div>
-            <Button 
-              type="link" 
-              size="small" 
+            <Button
+              type="link"
+              size="small"
               icon={<PlusOutlined />}
               onClick={() => setShowAddLabel(true)}
             >
@@ -832,8 +734,8 @@ const ObjectDetection = ({
                 className="flex justify-between items-center px-3 py-2 border border-gray-200 rounded cursor-pointer hover:bg-blue-50 hover:border-blue-400 transition-all"
               >
                 <div className="flex items-center gap-2 flex-1">
-                  <div 
-                    className="w-4 h-4 rounded" 
+                  <div
+                    className="w-4 h-4 rounded"
                     style={{ backgroundColor: label.color }}
                   />
                   <span className="text-sm">{label.name}</span>
@@ -845,12 +747,6 @@ const ObjectDetection = ({
               </div>
             ))}
           </div>
-        </div>
-
-        {/* 统计信息 */}
-        <div className="mt-3 pt-3 border-t border-gray-200 text-xs text-gray-500">
-          <div>{t('datasets.totalLabels') || '标签总数'}: {getCurrentLabels().length}</div>
-          <div>{t('datasets.filteredLabels') || '筛选结果'}: {filteredLabels.length}</div>
         </div>
       </Modal>
 

@@ -4,7 +4,7 @@ from typing import List
 
 # 支持的模型类型
 SUPPORTED_MODELS: List[str] = [
-    "YOLOv11Detection",  # YOLOv11目标检测模型
+    "YOLODetection",  # YOLO目标检测模型
 ]
 
 # 支持的设备类型
