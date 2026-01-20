@@ -1,6 +1,11 @@
 push:
 	git add . && codegpt commit . && git push
 
+bootstrap:
+	install
+	migrate
+	server-init
+
 install:
 	uv sync --all-groups
 	uv sync --all-extras
@@ -14,18 +19,7 @@ migrate:
 	uv run python manage.py createcachetable django_cache
 
 server-init:
-	uv run python manage.py init_realm_resource
-	uv run python manage.py init_login_settings
-	uv run python manage.py create_user admin password --email=admin@bklite.net --is_superuser
-	uv run python manage.py model_init
-	uv run python manage.py plugin_init
-	uv run python manage.py node_init
-	uv run python manage.py log_init
-	uv run python manage.py init_bot
-	uv run python manage.py init_channel
-	uv run python manage.py init_llm
-	uv run python manage.py init_bk_login_settings
-	uv run python manage.py create_builtin_rules --update
+	uv run manage.py batch_init --apps="system_mgmt,cmdb,monitor,node_mgmt,console_mgmt,alerts,log,mlops,operation_analysis"
 
 setup-dev-user:
 	DJANGO_SUPERUSER_USERNAME=admin DJANGO_SUPERUSER_EMAIL=admin@example.com DJANGO_SUPERUSER_PASSWORD=password uv run python manage.py createsuperuser --noinput
