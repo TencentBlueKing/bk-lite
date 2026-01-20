@@ -25,6 +25,7 @@ WORKERS=$(echo "$JSON_DATA" | jq -r '.workers // "2"')
 PORT=$(echo "$JSON_DATA" | jq -r '.port // empty')
 NETWORK_MODE=$(echo "$JSON_DATA" | jq -r '.network_mode // "bridge"')
 TRAIN_IMAGE=$(echo "$JSON_DATA" | jq -r '.train_image // empty')
+GPU_CONFIG=$(echo "$JSON_DATA" | jq -r '.gpu // empty')  # 未传递时为空字符串
 
 # 验证必需参数
 if [ -z "$ID" ] || [ -z "$MLFLOW_TRACKING_URI" ] || [ -z "$MLFLOW_MODEL_URI" ]; then
@@ -69,11 +70,15 @@ else
     PORT_MAPPING="${CONTAINER_PORT}"
 fi
 
+# 配置 GPU 参数
+setup_gpu_args "$GPU_CONFIG"
+
 # 启动 serving 容器（使用 Makefile 统一入口）
 DOCKER_OUTPUT=$(docker run -d \
     --name "$ID" \
     --network "$NETWORK_MODE" \
     -p "${PORT_MAPPING}" \
+    $GPU_ARGS \
     --restart unless-stopped \
     --log-driver json-file \
     --log-opt max-size=100m \
