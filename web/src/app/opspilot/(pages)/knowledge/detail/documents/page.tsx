@@ -445,7 +445,7 @@ const DocumentsPage: React.FC = () => {
     if (mainTabKey === 'source_files') {
       fetchData(searchText);
     }
-  }, [id, activeTabKey]);
+  }, [id, activeTabKey, pagination.current, pagination.pageSize, searchText]);
 
   useEffect(() => {
     if (mainTabKey === 'qa_pairs') {
