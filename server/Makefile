@@ -51,7 +51,9 @@ test:
 	uv run pytest
 
 bootstrap:
-	install
-	migrate
-	init-buckets
-	server-init
+	uv sync --all-groups --all-extras
+	uv run python manage.py makemigrations
+	uv run python manage.py migrate
+	uv run python manage.py createcachetable django_cache
+	uv run python manage.py initialize_buckets
+	uv run python manage.py batch_init --apps="system_mgmt,cmdb,monitor,node_mgmt,console_mgmt,alerts,log,mlops,operation_analysis"
