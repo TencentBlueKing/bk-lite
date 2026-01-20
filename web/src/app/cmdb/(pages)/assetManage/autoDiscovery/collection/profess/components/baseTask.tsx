@@ -25,13 +25,25 @@ import {
   createTaskValidationRules,
 } from '@/app/cmdb/constants/professCollection';
 
-const IP_SELECTION_NODE_IDS = [
-  'network_topo',
-  'network',
-  'databases',
-  'host_manage',
+// 需要IP选择的任务类型
+const IP_SELECTION_TASK_TYPES = [
+  'snmp',
+  'db',
+  'host',
+  'middleware',
+  'protocol',
+  'host',
+];
+// 需要通用实例选择的任务类型
+const COMMON_SELECT_INST_TASK_TYPES = [
+  'db',
+  'cloud',
+  'host',
+  'protocol',
   'middleware',
 ];
+// 需要单实例选择的任务类型
+const SINGLE_INSTANCE_SELECT_TASK_TYPES = ['vm', 'k8s', 'cloud'];
 
 import {
   CaretRightOutlined,
@@ -106,7 +118,8 @@ const BaseTaskForm = forwardRef<BaseTaskRef, BaseTaskFormProps>(
     ref
   ) => {
     const { editingId, scan_cycle_type } = useAssetManageStore();
-    const { model_id: modelId } = modelItem;
+    const { model_id: modelId, task_type: taskType } = modelItem;
+    const normalizedTaskType = taskType || nodeId || '';
     const { t } = useTranslation();
     const instanceApi = useInstanceApi();
     const collectApi = useCollectApi();
@@ -147,12 +160,17 @@ const BaseTaskForm = forwardRef<BaseTaskRef, BaseTaskFormProps>(
       items: NETWORK_DEVICE_OPTIONS,
     };
 
-    const isCommonSelectInstNode = [
-      'databases',
-      'cloud',
-      'host_manage',
-      'middleware',
-    ].includes(nodeId as string);
+    const supportsIpSelection = IP_SELECTION_TASK_TYPES.includes(
+      normalizedTaskType
+    );
+
+    const requiresSingleInstanceSelect = SINGLE_INSTANCE_SELECT_TASK_TYPES.includes(
+      normalizedTaskType
+    );
+
+    const isCommonSelectInstTask = COMMON_SELECT_INST_TASK_TYPES.includes(
+      normalizedTaskType
+    );
 
     const instColumns = [
       {
@@ -202,7 +220,7 @@ const BaseTaskForm = forwardRef<BaseTaskRef, BaseTaskFormProps>(
 
     const handleOpenDrawer = () => {
       setInstVisible(true);
-      if (isCommonSelectInstNode) {
+      if (isCommonSelectInstTask) {
         fetchInstData(modelId);
       }
     };
@@ -523,7 +541,7 @@ const BaseTaskForm = forwardRef<BaseTaskRef, BaseTaskFormProps>(
             </Form.Item>
 
             {/* 实例选择 */}
-            {['vmware', 'k8s', 'cloud'].includes(nodeId as string) && (
+            {requiresSingleInstanceSelect && (
               <Form.Item label={instPlaceholder} required>
                 <Space>
                   <Form.Item name="instId" rules={rules.instId} noStyle>
@@ -550,7 +568,7 @@ const BaseTaskForm = forwardRef<BaseTaskRef, BaseTaskFormProps>(
             )}
 
             {/* ip选择 */}
-            {nodeId && IP_SELECTION_NODE_IDS.includes(nodeId) && (
+            {supportsIpSelection && (
               <>
                 {
                   <Radio.Group
@@ -606,7 +624,7 @@ const BaseTaskForm = forwardRef<BaseTaskRef, BaseTaskFormProps>(
                   >
                     <div>
                       <Space>
-                        {isCommonSelectInstNode ? (
+                        {isCommonSelectInstTask ? (
                           <Button type="primary" onClick={handleOpenDrawer}>
                             {t('common.select')}
                           </Button>
@@ -649,7 +667,7 @@ const BaseTaskForm = forwardRef<BaseTaskRef, BaseTaskFormProps>(
               </>
             )}
             {/* 接入点 */}
-            {nodeId !== 'k8s' && (
+            {normalizedTaskType !== 'k8s' && normalizedTaskType !== 'kubernetes' && (
               <Form.Item
                 label={t('Collection.accessPoint')}
                 name="accessPointId"
@@ -729,11 +747,12 @@ const BaseTaskForm = forwardRef<BaseTaskRef, BaseTaskFormProps>(
         />
 
         <Drawer
-          title={
-            isCommonSelectInstNode
-              ? t('Collection.chooseAsset')
-              : `选择${dropdownItems.items.find((item) => item.key === relateType)?.label || '资产'}`
-          }
+            title={
+              isCommonSelectInstTask
+                ? t('Collection.chooseAsset')
+                : `选择${dropdownItems.items.find((item) => item.key === relateType)?.label || '资产'}`
+            }
+
           width={620}
           open={instVisible}
           onClose={handleDrawerClose}
@@ -759,12 +778,13 @@ const BaseTaskForm = forwardRef<BaseTaskRef, BaseTaskFormProps>(
             scroll={{ y: 'calc(100vh - 280px)' }}
             pagination={{
               ...instPagination,
-              onChange: (page, pageSize) =>
-                fetchInstData(
-                  isCommonSelectInstNode ? modelId : relateType,
-                  page,
-                  pageSize
-                ),
+                onChange: (page, pageSize) =>
+                  fetchInstData(
+                    isCommonSelectInstTask ? modelId : relateType,
+                    page,
+                    pageSize
+                  ),
+
             }}
             rowSelection={{
               type: 'checkbox',

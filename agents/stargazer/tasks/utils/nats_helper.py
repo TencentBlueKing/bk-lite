@@ -6,8 +6,8 @@
 NATS 推送辅助工具
 处理指标数据推送到 NATS（InfluxDB Line Protocol 格式）
 """
+import json
 import os
-import re
 import traceback
 from typing import Dict, Any
 from sanic.log import logger
@@ -47,7 +47,6 @@ async def publish_metrics_to_nats(
 
         logger.info(
             f"[NATS Helper] Preparing to publish to subject: {subject}")
-
         # 将 Prometheus 格式转换为 InfluxDB Line Protocol 格式
         influx_lines = convert_prometheus_to_influx(metrics_data, params)
 
@@ -238,15 +237,13 @@ def convert_prometheus_to_influx(prometheus_data: str, params: Dict[str, Any]) -
 
             # 1. 先添加 Prometheus labels（低优先级）
             if labels_part:
-                # 使用正则匹配：key="value" 格式（支持值中包含逗号等特殊字符）
-                label_pattern = r'(\w+)="([^"]*?)"'
-                matches = re.findall(label_pattern, labels_part)
+                parsed_labels = _parse_prometheus_labels(labels_part)
 
-                for key, val in matches:
-                    # 清理标签值中的换行符（Prometheus 可能包含 \n）
-                    cleaned_val = val.replace(
-                        '\\n', ' ').replace('  ', ' ').strip()
+                for key, raw_val in parsed_labels.items():
+                    cleaned_val = _decode_prometheus_value(raw_val)
                     all_tags[key] = cleaned_val
+
+
 
             # 2. 再覆盖 common_tags（高优先级，已清理特殊字符）
             for tag_key, tag_value in common_tags.items():
@@ -308,6 +305,97 @@ def convert_prometheus_to_influx(prometheus_data: str, params: Dict[str, Any]) -
             continue
 
     return lines
+
+
+def _parse_prometheus_labels(label_str: str) -> Dict[str, str]:
+    """Parse the label segment inside metric_name{...}."""
+    labels = {}
+    if not label_str:
+        return labels
+
+    length = len(label_str)
+    idx = 0
+
+    while idx < length:
+        # Skip commas or spaces between pairs
+        while idx < length and label_str[idx] in {',', ' ', '\t'}:
+            idx += 1
+
+        if idx >= length:
+            break
+
+        key_start = idx
+        while idx < length and label_str[idx] not in {'=', ' ', '\t'}:
+            idx += 1
+        key = label_str[key_start:idx].strip()
+
+        if not key:
+            break
+
+        # Move to '='
+        while idx < length and label_str[idx] != '=':
+            idx += 1
+
+        if idx >= length or label_str[idx] != '=':
+            logger.debug(
+                f"[NATS Helper] Incomplete label segment near key '{key}' in '{label_str}'")
+            break
+
+        idx += 1  # skip '='
+
+        # Skip optional spaces before value
+        while idx < length and label_str[idx].isspace():
+            idx += 1
+
+        if idx >= length or label_str[idx] != '"':
+            logger.debug(
+                f"[NATS Helper] Missing opening quote for key '{key}' in '{label_str}'")
+            break
+
+        idx += 1  # skip opening quote
+        value_chars = []
+
+        while idx < length:
+            ch = label_str[idx]
+            if ch == '\\':
+                # Preserve escape sequence to let decoder handle it later
+                if idx + 1 < length:
+                    value_chars.append(ch)
+                    value_chars.append(label_str[idx + 1])
+                    idx += 2
+                    continue
+                value_chars.append(ch)
+                idx += 1
+                break
+            if ch == '"':
+                idx += 1
+                break
+            value_chars.append(ch)
+            idx += 1
+
+        labels[key] = ''.join(value_chars)
+
+        # Skip trailing whitespaces after value and optional comma
+        while idx < length and label_str[idx].isspace():
+            idx += 1
+        if idx < length and label_str[idx] == ',':
+            idx += 1
+
+    return labels
+
+
+def _decode_prometheus_value(raw_value: str) -> str:
+    """Convert Prometheus label raw value into decoded text."""
+    if raw_value is None:
+        return ""
+
+    try:
+        decoded = json.loads(f'"{raw_value}"')
+    except json.JSONDecodeError:
+        cleaned = raw_value.replace('\\n', ' ').replace('  ', ' ').strip()
+        return cleaned
+
+    return decoded.replace('\n', ' ').strip()
 
 
 def _build_common_tags(params: Dict[str, Any]) -> Dict[str, str]:
