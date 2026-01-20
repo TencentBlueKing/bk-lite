@@ -1,3 +1,8 @@
+"""微信公众号 ChatFlow 工具类
+
+继承 BaseChatFlowUtils，实现微信公众号特定的消息发送逻辑
+"""
+
 import base64
 import time
 
@@ -11,18 +16,16 @@ from wechatpy.messages import MESSAGE_TYPES, UnknownMessage
 from wechatpy.utils import check_signature, to_binary, to_text
 
 from apps.core.logger import opspilot_logger as logger
-from apps.opspilot.models import Bot, BotWorkFlow
-from apps.opspilot.utils.chat_flow_utils.engine.factory import create_chat_flow_engine
+from apps.opspilot.utils.base_chat_flow_utils import BaseChatFlowUtils
 
 
-class WechatOfficialChatFlowUtils(object):
-    def __init__(self, bot_id):
-        """初始化微信公众号ChatFlow工具类
+class WechatOfficialChatFlowUtils(BaseChatFlowUtils):
+    """微信公众号 ChatFlow 工具类"""
 
-        Args:
-            bot_id: Bot ID
-        """
-        self.bot_id = bot_id
+    # 渠道配置
+    channel_name = "微信公众号"
+    channel_code = "wechat_official_account"
+    cache_key_prefix = "wechat_official_msg"
 
     def send_message_chunks(self, openid, text: str, appid, secret):
         """分片发送较长的消息
@@ -85,31 +88,6 @@ class WechatOfficialChatFlowUtils(object):
 
         return message_class(message)
 
-    def validate_bot_and_workflow(self):
-        """验证Bot和ChatFlow配置
-
-        Returns:
-            tuple: (bot_chat_flow, error_response)
-                   如果验证失败，error_response不为None
-        """
-        # 验证Bot对象
-        bot_obj = Bot.objects.filter(id=self.bot_id, online=True).first()
-        if not bot_obj:
-            logger.error(f"微信公众号ChatFlow执行失败：Bot {self.bot_id} 不存在或未上线")
-            return None, HttpResponse("success")
-
-        # 验证工作流配置
-        bot_chat_flow = BotWorkFlow.objects.filter(bot_id=bot_obj.id).first()
-        if not bot_chat_flow:
-            logger.error(f"微信公众号ChatFlow执行失败：Bot {self.bot_id} 未配置工作流")
-            return None, HttpResponse("success")
-
-        if not bot_chat_flow.flow_json:
-            logger.error(f"微信公众号ChatFlow执行失败：Bot {self.bot_id} 工作流配置为空")
-            return None, HttpResponse("success")
-
-        return bot_chat_flow, None
-
     def get_wechat_official_node_config(self, bot_chat_flow):
         """从ChatFlow中获取微信公众号节点配置
 
@@ -171,70 +149,34 @@ class WechatOfficialChatFlowUtils(object):
             logger.exception(e)
             return HttpResponse("fail")
 
-    def execute_chatflow_with_message(self, bot_chat_flow, node_id, message, sender_id):
-        """执行ChatFlow并返回结果
-
-        Args:
-            bot_chat_flow: Bot工作流对象
-            node_id: 节点ID
-            message: 用户消息
-            sender_id: 发送者ID（OpenID）
-
-        Returns:
-            str: ChatFlow执行结果文本
-        """
-        logger.info(f"微信公众号执行ChatFlow流程开始，Bot {self.bot_id}, Node {node_id}")
-
-        # 创建ChatFlow引擎
-        engine = create_chat_flow_engine(bot_chat_flow, node_id)
-
-        # 准备输入数据
-        input_data = {
-            "last_message": message,
-            "user_id": sender_id,
-            "bot_id": self.bot_id,
-            "node_id": node_id,
-            "channel": "wechat_official_account",
-        }
-
-        # 执行ChatFlow
-        result = engine.execute(input_data)
-
-        # 处理执行结果
-        if isinstance(result, dict):
-            reply_text = result.get("content") or result.get("data") or str(result)
-        else:
-            reply_text = str(result) if result else "处理完成"
-
-        logger.info(f"微信公众号ChatFlow流程执行完成，Bot {self.bot_id}")
-
-        return reply_text
-
-    def send_reply_to_wechat(self, reply_text, openid, appid, secret):
-        """发送回复消息到微信公众号（使用客服消息接口）
+    def send_reply(self, reply_text: str, sender_id: str, config: dict):
+        """发送回复消息到微信公众号（实现基类抽象方法）
 
         Args:
             reply_text: 回复文本
-            openid: 用户OpenID
-            appid: 公众号AppID
-            secret: 公众号Secret
+            sender_id: 发送者ID（OpenID）
+            config: 微信公众号配置，包含 appid, secret
         """
         if not reply_text:
             logger.warning(f"微信公众号回复消息为空，Bot {self.bot_id}")
             return
+
+        appid = config["appid"]
+        secret = config["secret"]
 
         # 处理换行符
         reply_text = reply_text.replace("\r\n", "\n").replace("\r", "\n")
 
         try:
             # 使用客服消息接口发送
-            self.send_message_chunks(openid, reply_text, appid, secret)
+            self.send_message_chunks(sender_id, reply_text, appid, secret)
             logger.info(f"微信公众号消息发送成功，Bot {self.bot_id}")
         except Exception as e:
             logger.error(f"微信公众号发送消息失败，Bot {self.bot_id}，错误: {str(e)}")
             logger.exception(e)
 
     def decrypt(self, encrypt, aes_key, appid):
+        """解密微信公众号消息"""
         encoding_aes_key = to_binary(aes_key + "=")
         key = base64.b64decode(encoding_aes_key)
         pc = PrpCrypto(key)
@@ -242,6 +184,11 @@ class WechatOfficialChatFlowUtils(object):
 
     def handle_wechat_message(self, request, wechat_config, bot_chat_flow):
         """处理微信公众号消息（POST请求，安全模式）
+
+        采用异步处理模式：
+        1. 立即返回success给微信（避免5秒超时重试）
+        2. 使用消息ID去重（防止重试导致重复处理）
+        3. 异步执行ChatFlow并通过客服消息接口回复
 
         Args:
             request: Django request对象
@@ -281,24 +228,28 @@ class WechatOfficialChatFlowUtils(object):
             # 获取消息内容和发送者OpenID
             message = getattr(msg, "content", "")
             openid = getattr(msg, "source", "")
+            msg_id = getattr(msg, "id", "") or f"{openid}:{hash(message)}:{timestamp}"
 
             if not message:
                 logger.warning(f"微信公众号收到空消息，Bot {self.bot_id}")
                 return HttpResponse("success")
 
-            logger.info(f"微信公众号收到文本消息，Bot {self.bot_id}")
+            # 消息去重检查（使用基类方法）
+            if self.is_message_processed(msg_id):
+                logger.info(f"微信公众号消息已处理，跳过重复消息，Bot {self.bot_id}，MsgId {msg_id}")
+                return HttpResponse("success")
 
-            # 执行ChatFlow
-            node_id = wechat_config["node_id"]
-            logger.info(f"微信公众号开始执行ChatFlow，Bot {self.bot_id}")
-            reply_text = self.execute_chatflow_with_message(bot_chat_flow, node_id, message, openid)
+            # 异步处理消息（使用基类方法，立即返回避免超时）
+            self.process_message_async(
+                self.async_process_and_reply,
+                bot_chat_flow,
+                wechat_config,
+                message,
+                openid,
+                msg_id,
+            )
 
-            # 发送回复消息（使用客服消息接口，异步发送）
-            self.send_reply_to_wechat(reply_text, openid, wechat_config["appid"], wechat_config["secret"])
-
-            # 微信公众号要求5秒内必须回复，这里直接返回success
-            # 实际回复通过客服消息接口异步发送
-            logger.info(f"微信公众号消息处理完成，Bot {self.bot_id}")
+            logger.info(f"微信公众号消息已接收，异步处理中，Bot {self.bot_id}，MsgId {msg_id}")
             return HttpResponse("success")
 
         except InvalidSignatureException:

@@ -358,9 +358,35 @@ const BaseTaskForm = forwardRef<BaseTaskRef, BaseTaskFormProps>(
     const showFieldModal = async () => {
       try {
         const attrList = await modelApi.getModelAttrList(modelId);
+        // API 返回扁平数组，需要转换为分组结构
+        const groupMap = new Map<string, any[]>();
+        (attrList || []).forEach((attr: any) => {
+          const groupName = attr.attr_group;
+          if (!groupMap.has(groupName)) {
+            groupMap.set(groupName, []);
+          }
+          groupMap.get(groupName)!.push(attr);
+        });
+
+        // 转换为 FullInfoGroupItem[] 格式
+        const groupedAttrList = Array.from(groupMap.entries()).map(
+          ([groupName, attrs], index) => ({
+            id: index,
+            group_name: groupName,
+            attrs,
+            order: index,
+            is_collapsed: false,
+            description: '',
+            attrs_count: attrs.length,
+            can_move_up: false,
+            can_move_down: false,
+            can_delete: false,
+          })
+        );
+
         fieldRef.current?.showModal({
           type: 'add',
-          attrList,
+          attrList: groupedAttrList,
           formInfo: {},
           subTitle: '',
           title: t('common.addNew'),
