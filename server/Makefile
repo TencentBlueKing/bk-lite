@@ -4,6 +4,7 @@ push:
 bootstrap:
 	install
 	migrate
+	init-buckets
 	server-init
 
 install:
