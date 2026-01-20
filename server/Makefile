@@ -1,12 +1,6 @@
 push:
 	git add . && codegpt commit . && git push
 
-bootstrap:
-	install
-	migrate
-	init-buckets
-	server-init
-
 install:
 	uv sync --all-groups
 	uv sync --all-extras
@@ -55,3 +49,9 @@ start-nats:
 
 test:
 	uv run pytest
+
+bootstrap:
+	install
+	migrate
+	init-buckets
+	server-init
