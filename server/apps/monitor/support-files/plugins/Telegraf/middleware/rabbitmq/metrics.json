@@ -17,7 +17,7 @@
       "instance_id_keys": ["instance_id"],
       "data_type": "Number",
       "unit": "s",
-      "dimensions": ["url"],
+      "dimensions": [{"name": "url", "description": "管理接口地址"}],
       "description": "Uptime of RabbitMQ node since startup, reflecting node stability",
       "query": "rabbitmq_node_uptime{__$labels__}"
     },
@@ -28,7 +28,7 @@
       "instance_id_keys": ["instance_id"],
       "data_type": "Enum",
       "unit": "[{\"name\":\"静止\",\"id\":0,\"color\":\"#ff4d4f\"},{\"name\":\"运行中\",\"id\":1,\"color\":\"#1ac44a\"}]",
-      "dimensions": ["url"],
+      "dimensions": [{"name": "url", "description": "管理接口地址"}],
       "description": "Whether RabbitMQ node is running, 1 indicates running, 0 indicates stopped",
       "query": "rabbitmq_node_running{__$labels__}"
     },
@@ -39,7 +39,7 @@
       "instance_id_keys": ["instance_id"],
       "data_type": "Number",
       "unit": "counts",
-      "dimensions": ["url"],
+      "dimensions": [{"name": "url", "description": "管理接口地址"}],
       "description": "Number of active client connections, reflecting system load",
       "query": "rabbitmq_overview_connections{__$labels__}"
     },
@@ -50,7 +50,7 @@
       "instance_id_keys": ["instance_id"],
       "data_type": "Number",
       "unit": "counts",
-      "dimensions": ["url"],
+      "dimensions": [{"name": "url", "description": "管理接口地址"}],
       "description": "Number of open channels, reflecting message flow control capability",
       "query": "rabbitmq_overview_channels{__$labels__}"
     },
@@ -61,7 +61,7 @@
       "instance_id_keys": ["instance_id"],
       "data_type": "Number",
       "unit": "counts",
-      "dimensions": ["url"],
+      "dimensions": [{"name": "url", "description": "管理接口地址"}],
       "description": "Number of active consumers, reflecting message consumption capacity",
       "query": "rabbitmq_overview_consumers{__$labels__}"
     },
@@ -72,7 +72,7 @@
       "instance_id_keys": ["instance_id"],
       "data_type": "Number",
       "unit": "counts",
-      "dimensions": ["url"],
+      "dimensions": [{"name": "url", "description": "管理接口地址"}],
       "description": "Number of defined queues, reflecting message storage structure",
       "query": "rabbitmq_overview_queues{__$labels__}"
     },
@@ -83,7 +83,7 @@
       "instance_id_keys": ["instance_id"],
       "data_type": "Number",
       "unit": "counts",
-      "dimensions": ["url"],
+      "dimensions": [{"name": "url", "description": "管理接口地址"}],
       "description": "Total messages in all queues, reflecting message backlog",
       "query": "rabbitmq_overview_messages{__$labels__}"
     },
@@ -94,7 +94,7 @@
       "instance_id_keys": ["instance_id"],
       "data_type": "Number",
       "unit": "counts",
-      "dimensions": ["url"],
+      "dimensions": [{"name": "url", "description": "管理接口地址"}],
       "description": "Number of messages ready for delivery in queues, reflecting pending messages",
       "query": "rabbitmq_overview_messages_ready{__$labels__}"
     },
@@ -105,7 +105,7 @@
       "instance_id_keys": ["instance_id"],
       "data_type": "Number",
       "unit": "counts",
-      "dimensions": ["url"],
+      "dimensions": [{"name": "url", "description": "管理接口地址"}],
       "description": "Number of delivered but unacknowledged messages, reflecting message processing delay",
       "query": "rabbitmq_overview_messages_unacked{__$labels__}"
     },
@@ -116,7 +116,7 @@
       "instance_id_keys": ["instance_id"],
       "data_type": "Number",
       "unit": "counts",
-      "dimensions": ["url"],
+      "dimensions": [{"name": "url", "description": "管理接口地址"}],
       "description": "Rate of messages published to RabbitMQ, reflecting message production volume",
       "query": "rate(rabbitmq_overview_messages_published{__$labels__}[5m])"
     },
@@ -127,7 +127,7 @@
       "instance_id_keys": ["instance_id"],
       "data_type": "Number",
       "unit": "counts",
-      "dimensions": ["url"],
+      "dimensions": [{"name": "url", "description": "管理接口地址"}],
       "description": "Erlang run queue length, reflecting system CPU load and scheduling delay",
       "query": "rabbitmq_node_run_queue{__$labels__}"
     },
@@ -138,7 +138,7 @@
       "instance_id_keys": ["instance_id"],
       "data_type": "Number",
       "unit": "counts",
-      "dimensions": ["url"],
+      "dimensions": [{"name": "url", "description": "管理接口地址"}],
       "description": "Rate of Mnesia database disk transactions, reflecting data persistence activity intensity",
       "query": "rate(rabbitmq_node_mnesia_disk_tx_count{__$labels__}[5m])"
     },
@@ -149,7 +149,7 @@
       "instance_id_keys": ["instance_id"],
       "data_type": "Number",
       "unit": "bytes",
-      "dimensions": ["url"],
+      "dimensions": [{"name": "url", "description": "管理接口地址"}],
       "description": "Current memory used by RabbitMQ node, reflecting memory resource consumption",
       "query": "rabbitmq_node_mem_used{__$labels__}"
     },
@@ -160,7 +160,7 @@
       "instance_id_keys": ["instance_id"],
       "data_type": "Number",
       "unit": "bytes",
-      "dimensions": ["url"],
+      "dimensions": [{"name": "url", "description": "管理接口地址"}],
       "description": "Memory limit for RabbitMQ node, used to calculate memory usage rate",
       "query": "rabbitmq_node_mem_limit{__$labels__}"
     },
@@ -171,7 +171,7 @@
       "instance_id_keys": ["instance_id"],
       "data_type": "Enum",
       "unit": "[{\"name\":\"正常\",\"id\":0,\"color\":\"#1ac44a\"},{\"name\":\"告警\",\"id\":1,\"color\":\"#ff4d4f\"}]",
-      "dimensions": ["url"],
+      "dimensions": [{"name": "url", "description": "管理接口地址"}],
       "description": "Whether memory usage triggers alarm, 1 indicates alarm, 0 indicates normal",
       "query": "rabbitmq_node_mem_alarm{__$labels__}"
     },
@@ -182,7 +182,7 @@
       "instance_id_keys": ["instance_id"],
       "data_type": "Number",
       "unit": "bytes",
-      "dimensions": ["url"],
+      "dimensions": [{"name": "url", "description": "管理接口地址"}],
       "description": "Available free disk space for RabbitMQ node, reflecting storage capacity",
       "query": "rabbitmq_node_disk_free{__$labels__}"
     },
@@ -191,9 +191,9 @@
       "name": "rabbitmq_node_disk_free_alarm",
       "display_name": "Disk Space Alarm",
       "instance_id_keys": ["instance_id"],
-      "data_type": "Enum",
-      "unit": "[{\"name\":\"正常\",\"id\":0,\"color\":\"#1ac44a\"},{\"name\":\"告警\",\"id\":1,\"color\":\"#ff4d4f\"}]",
-      "dimensions": ["url"],
+      "data_type": "Number",
+      "unit": "none",
+      "dimensions": [{"name": "url", "description": "管理接口地址"}],
       "description": "Whether disk space usage triggers alarm, 1 indicates alarm, 0 indicates normal",
       "query": "rabbitmq_node_disk_free_alarm{__$labels__}"
     },
@@ -204,7 +204,7 @@
       "instance_id_keys": ["instance_id"],
       "data_type": "Number",
       "unit": "counts",
-      "dimensions": ["url"],
+      "dimensions": [{"name": "url", "description": "管理接口地址"}],
       "description": "Number of file descriptors currently used by RabbitMQ node, reflecting system resource usage",
       "query": "rabbitmq_node_fd_used{__$labels__}"
     },
@@ -215,7 +215,7 @@
       "instance_id_keys": ["instance_id"],
       "data_type": "Number",
       "unit": "counts",
-      "dimensions": ["url"],
+      "dimensions": [{"name": "url", "description": "管理接口地址"}],
       "description": "Number of sockets currently used by RabbitMQ node, reflecting network connection status",
       "query": "rabbitmq_node_sockets_used{__$labels__}"
     },
@@ -226,7 +226,7 @@
       "instance_id_keys": ["instance_id"],
       "data_type": "Number",
       "unit": "counts",
-      "dimensions": ["url"],
+      "dimensions": [{"name": "url", "description": "管理接口地址"}],
       "description": "Number of Erlang processes currently used by RabbitMQ node, reflecting system process load",
       "query": "rabbitmq_node_proc_used{__$labels__}"
     }
