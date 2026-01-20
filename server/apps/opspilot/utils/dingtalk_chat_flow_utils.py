@@ -9,6 +9,7 @@ import dingtalk_stream
 import requests
 from django.http import JsonResponse
 
+from apps.core.backends import cache
 from apps.core.logger import opspilot_logger as logger
 from apps.opspilot.models import Bot, BotWorkFlow
 from apps.opspilot.utils.chat_flow_utils.engine.factory import create_chat_flow_engine
@@ -19,6 +20,9 @@ DINGTALK_ALLOWED_DOMAINS = [
     "api.dingtalk.com",
 ]
 
+# 消息去重缓存过期时间（秒）
+MESSAGE_DEDUP_EXPIRE_SECONDS = 60
+
 
 def is_valid_dingtalk_url(url: str) -> bool:
     """验证 URL 是否为钉钉官方域名，防止 SSRF 攻击"""
@@ -28,9 +32,7 @@ def is_valid_dingtalk_url(url: str) -> bool:
         parsed = urlparse(url)
         if parsed.scheme not in ("https", "http"):
             return False
-        return parsed.netloc in DINGTALK_ALLOWED_DOMAINS or parsed.netloc.endswith(
-            ".dingtalk.com"
-        )
+        return parsed.netloc in DINGTALK_ALLOWED_DOMAINS or parsed.netloc.endswith(".dingtalk.com")
     except Exception:
         return False
 
@@ -61,15 +63,11 @@ class DingTalkChatFlowUtils(object):
         bot_chat_flow = BotWorkFlow.objects.filter(bot_id=bot_obj.id).first()
         if not bot_chat_flow:
             logger.error(f"钉钉ChatFlow执行失败：Bot {self.bot_id} 未配置工作流")
-            return None, JsonResponse(
-                {"success": False, "message": "Workflow not configured"}
-            )
+            return None, JsonResponse({"success": False, "message": "Workflow not configured"})
 
         if not bot_chat_flow.flow_json:
             logger.error(f"钉钉ChatFlow执行失败：Bot {self.bot_id} 工作流配置为空")
-            return None, JsonResponse(
-                {"success": False, "message": "Workflow config is empty"}
-            )
+            return None, JsonResponse({"success": False, "message": "Workflow config is empty"})
 
         return bot_chat_flow, None
 
@@ -84,12 +82,8 @@ class DingTalkChatFlowUtils(object):
         dingtalk_nodes = [node for node in flow_nodes if node.get("type") == "dingtalk"]
 
         if not dingtalk_nodes:
-            logger.error(
-                f"钉钉ChatFlow执行失败：Bot {self.bot_id} 工作流中没有钉钉节点"
-            )
-            return None, JsonResponse(
-                {"success": False, "message": "DingTalk node not found"}
-            )
+            logger.error(f"钉钉ChatFlow执行失败：Bot {self.bot_id} 工作流中没有钉钉节点")
+            return None, JsonResponse({"success": False, "message": "DingTalk node not found"})
 
         dingtalk_node = dingtalk_nodes[0]
         dingtalk_data = dingtalk_node.get("data", {})
@@ -100,9 +94,7 @@ class DingTalkChatFlowUtils(object):
         missing_params = [p for p in required_params if not dingtalk_config.get(p)]
         dingtalk_config["node_id"] = dingtalk_node["id"]
         if missing_params:
-            logger.error(
-                f"钉钉ChatFlow执行失败：Bot {self.bot_id} 缺少配置参数: {', '.join(missing_params)}"
-            )
+            logger.error(f"钉钉ChatFlow执行失败：Bot {self.bot_id} 缺少配置参数: {', '.join(missing_params)}")
             return None, JsonResponse(
                 {
                     "success": False,
@@ -137,8 +129,15 @@ class DingTalkChatFlowUtils(object):
             logger.error(f"钉钉签名验证失败，Bot {self.bot_id}，错误: {str(e)}")
             return False
 
-    def execute_chatflow_with_message(self, bot_chat_flow, node_id, message, sender_id):
+    def execute_chatflow_with_message(self, bot_chat_flow, node_id, message, sender_id, is_third_party=False):
         """执行ChatFlow并返回结果
+
+        Args:
+            bot_chat_flow: Bot工作流对象
+            node_id: 节点ID
+            message: 用户消息
+            sender_id: 发送者ID
+            is_third_party: 是否为第三方渠道调用，默认False
 
         Returns:
             str: ChatFlow执行结果文本
@@ -155,6 +154,7 @@ class DingTalkChatFlowUtils(object):
             "bot_id": self.bot_id,
             "node_id": node_id,
             "channel": "ding_talk",
+            "is_third_party": is_third_party,
         }
 
         # 执行ChatFlow
@@ -209,9 +209,7 @@ class DingTalkChatFlowUtils(object):
                 return False
 
             if not is_valid_dingtalk_url(webhook_url):
-                logger.error(
-                    f"钉钉发送消息失败：webhook_url 不是有效的钉钉域名，Bot {self.bot_id}"
-                )
+                logger.error(f"钉钉发送消息失败：webhook_url 不是有效的钉钉域名，Bot {self.bot_id}")
                 return False
 
             payload = {"msgtype": msg_type, msg_type: content}
@@ -220,9 +218,7 @@ class DingTalkChatFlowUtils(object):
             result = response.json()
 
             if result.get("errcode") != 0:
-                logger.error(
-                    f"钉钉发送消息失败，Bot {self.bot_id}，错误: {result.get('errmsg')}"
-                )
+                logger.error(f"钉钉发送消息失败，Bot {self.bot_id}，错误: {result.get('errmsg')}")
                 return False
 
             logger.info(f"钉钉消息发送成功，Bot {self.bot_id}")
@@ -232,8 +228,51 @@ class DingTalkChatFlowUtils(object):
             logger.error(f"钉钉发送消息异常，Bot {self.bot_id}，错误: {str(e)}")
             return False
 
+    def _is_message_processed(self, msg_id: str) -> bool:
+        """检查消息是否已处理（去重）
+
+        Args:
+            msg_id: 消息唯一标识
+
+        Returns:
+            bool: True表示已处理过，False表示未处理
+        """
+        cache_key = f"dingtalk_msg:{self.bot_id}:{msg_id}"
+        if cache.get(cache_key):
+            return True
+        # 标记为已处理
+        cache.set(cache_key, "1", MESSAGE_DEDUP_EXPIRE_SECONDS)
+        return False
+
+    def _async_process_and_reply(self, bot_chat_flow, dingtalk_config, text_content, sender_id, webhook_url, msg_id):
+        """异步处理消息并回复
+
+        Args:
+            bot_chat_flow: Bot工作流对象
+            dingtalk_config: 钉钉配置
+            text_content: 用户消息
+            sender_id: 发送者ID
+            webhook_url: 回复webhook地址
+            msg_id: 消息ID
+        """
+        try:
+            node_id = dingtalk_config["node_id"]
+            reply_text = self.execute_chatflow_with_message(bot_chat_flow, node_id, text_content, sender_id, is_third_party=True)
+
+            if webhook_url and reply_text:
+                markdown_content = {"title": "机器人回复", "text": reply_text}
+                self.send_message(webhook_url, "markdown", markdown_content)
+        except Exception as e:
+            logger.error(f"钉钉异步处理消息失败，Bot {self.bot_id}，MsgId {msg_id}，错误: {str(e)}")
+            logger.exception(e)
+
     def handle_dingtalk_message(self, request, bot_chat_flow, dingtalk_config):
         """处理钉钉消息
+
+        采用异步处理模式：
+        1. 立即返回success给钉钉（避免超时重试）
+        2. 使用消息ID去重（防止重试导致重复处理）
+        3. 异步执行ChatFlow并通过webhook回复
 
         Returns:
             JsonResponse: 消息处理响应
@@ -247,43 +286,40 @@ class DingTalkChatFlowUtils(object):
             timestamp = request.headers.get("timestamp")
             sign = request.headers.get("sign")
             if timestamp and sign:
-                if not self.verify_signature(
-                    timestamp, sign, dingtalk_config["client_secret"]
-                ):
+                if not self.verify_signature(timestamp, sign, dingtalk_config["client_secret"]):
                     logger.error(f"钉钉消息签名验证失败，Bot {self.bot_id}")
-                    return JsonResponse(
-                        {"success": False, "message": "Invalid signature"}
-                    )
+                    return JsonResponse({"success": False, "message": "Invalid signature"})
 
             # 获取消息内容
             msg_type = data.get("msgtype")
             if msg_type != "text":
-                logger.info(
-                    f"钉钉收到非文本消息，类型: {msg_type}，Bot {self.bot_id}，忽略处理"
-                )
+                logger.info(f"钉钉收到非文本消息，类型: {msg_type}，Bot {self.bot_id}，忽略处理")
                 return JsonResponse({"success": True})
 
             text_content = data.get("text", {}).get("content", "")
             sender_id = data.get("senderStaffId", "") or data.get("senderId", "")
+            msg_id = data.get("msgId", "") or f"{sender_id}:{hash(text_content)}:{timestamp or ''}"
+            webhook_url = data.get("sessionWebhook")
 
             if not text_content:
                 logger.warning(f"钉钉收到空消息，Bot {self.bot_id}")
                 return JsonResponse({"success": True})
 
-            # 执行ChatFlow
-            node_id = dingtalk_config["node_id"]
-            reply_text = self.execute_chatflow_with_message(
-                bot_chat_flow, node_id, text_content, sender_id
+            # 消息去重检查
+            if self._is_message_processed(msg_id):
+                logger.info(f"钉钉消息已处理，跳过重复消息，Bot {self.bot_id}，MsgId {msg_id}")
+                return JsonResponse({"success": True})
+
+            # 异步处理消息（立即返回，避免超时）
+            thread = threading.Thread(
+                target=self._async_process_and_reply,
+                args=(bot_chat_flow, dingtalk_config, text_content, sender_id, webhook_url, msg_id),
+                daemon=True,
             )
+            thread.start()
 
-            # 发送回复消息（如果配置了webhook）
-            webhook_url = data.get("sessionWebhook")
-            if webhook_url and reply_text:
-                # 发送Markdown格式消息
-                markdown_content = {"title": "机器人回复", "text": reply_text}
-                self.send_message(webhook_url, "markdown", markdown_content)
-
-            return JsonResponse({"success": True, "data": {"reply": reply_text}})
+            logger.info(f"钉钉消息已接收，异步处理中，Bot {self.bot_id}，MsgId {msg_id}")
+            return JsonResponse({"success": True})
 
         except Exception as e:
             logger.error(f"钉钉ChatFlow流程执行失败，Bot {self.bot_id}，错误: {str(e)}")
@@ -330,15 +366,11 @@ class DingTalkStreamCallbackHandler(dingtalk_stream.CallbackHandler):
 
             msg_type = incoming_message.get("msgtype")
             if msg_type != "text":
-                logger.info(
-                    f"钉钉Stream收到非文本消息，类型: {msg_type}，Bot {self.bot_id}，忽略处理"
-                )
+                logger.info(f"钉钉Stream收到非文本消息，类型: {msg_type}，Bot {self.bot_id}，忽略处理")
                 return dingtalk_stream.AckMessage.STATUS_OK, "OK"
 
             text_content = incoming_message.get("text", {}).get("content", "")
-            sender_id = incoming_message.get(
-                "senderStaffId", ""
-            ) or incoming_message.get("senderId", "")
+            sender_id = incoming_message.get("senderStaffId", "") or incoming_message.get("senderId", "")
 
             if not text_content:
                 logger.warning(f"钉钉Stream收到空消息，Bot {self.bot_id}")
@@ -347,7 +379,11 @@ class DingTalkStreamCallbackHandler(dingtalk_stream.CallbackHandler):
             # 执行ChatFlow
             node_id = self.dingtalk_config["node_id"]
             reply_text = self.utils.execute_chatflow_with_message(
-                self.bot_chat_flow, node_id, text_content, sender_id
+                self.bot_chat_flow,
+                node_id,
+                text_content,
+                sender_id,
+                is_third_party=True,
             )
 
             logger.info(f"钉钉Stream处理完成，Bot {self.bot_id}")
@@ -380,9 +416,7 @@ def start_dingtalk_stream_client(bot_id, bot_chat_flow, dingtalk_config):
         client_secret = dingtalk_config.get("client_secret")
 
         if not client_id or not client_secret:
-            logger.error(
-                f"钉钉Stream启动失败：缺少client_id或client_secret，Bot {bot_id}"
-            )
+            logger.error(f"钉钉Stream启动失败：缺少client_id或client_secret，Bot {bot_id}")
             return False
 
         # 创建凭证和客户端
@@ -393,12 +427,8 @@ def start_dingtalk_stream_client(bot_id, bot_chat_flow, dingtalk_config):
         client.register_all_event_handler(DingTalkStreamEventHandler(bot_id))
 
         # 注册回调处理器
-        callback_handler = DingTalkStreamCallbackHandler(
-            bot_id, bot_chat_flow, dingtalk_config
-        )
-        client.register_callback_handler(
-            dingtalk_stream.ChatbotMessage.TOPIC, callback_handler
-        )
+        callback_handler = DingTalkStreamCallbackHandler(bot_id, bot_chat_flow, dingtalk_config)
+        client.register_callback_handler(dingtalk_stream.ChatbotMessage.TOPIC, callback_handler)
 
         # 在新线程中启动客户端
         def start_client():
