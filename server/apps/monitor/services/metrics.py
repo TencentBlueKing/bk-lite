@@ -2,7 +2,6 @@ import ast
 
 import pandas as pd
 
-from apps.monitor.constants.unit_converter import UnitConverterConstants
 from apps.monitor.models.monitor_metrics import Metric
 from apps.monitor.models.monitor_object import MonitorObject
 from apps.monitor.utils.unit_converter import UnitConverter
@@ -107,8 +106,8 @@ class Metrics:
         # 替换查询语句中的占位符
         query = metric_query.replace("__$labels__", labels_str)
 
-        # 构建分组条件
-        group_by = ", ".join(dimensions) if dimensions else ""
+        dimension_names = [d["name"] for d in dimensions] if dimensions else []
+        group_by = ", ".join(dimension_names) if dimension_names else ""
 
         # 使用 any() 聚合函数进行即时查询
         if group_by:
