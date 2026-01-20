@@ -36,7 +36,7 @@ RUN apt-get update -y && \
         libpango-1.0-0 \
         libcairo2 \
         libxshmfence1 \
-        lib3xfixes3 \
+        libxfixes3 \
         libglu1-mesa && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*
