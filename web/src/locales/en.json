@@ -71,6 +71,8 @@
     "api": "API",
     "open": "Open",
     "close": "Close",
+    "enable": "Enabled",
+    "disable": "Disabled",
     "navigation": "Navigation",
     "appList": "App List",
     "clear": "Clear",
