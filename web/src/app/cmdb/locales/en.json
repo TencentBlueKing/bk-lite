@@ -182,6 +182,7 @@
         "syncSuccess": "Sync Successfully!",
         "syncFailed": "Sync Failed",
         "ipRange": "IP Range",
+        "ipRangeOrderInvalid": "Start IP must not be greater than End IP",
         "chooseIp": "Choose IP",
         "chooseAsset": "Choose Asset",
         "everyMinute": "Every",

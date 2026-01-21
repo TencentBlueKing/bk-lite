@@ -178,6 +178,7 @@
         "syncFailed": "同步失败",
         "accessPoint": "接入点",
         "ipRange": "IP范围",
+        "ipRangeOrderInvalid": "起始 IP 不可大于结束 IP",
         "chooseIp": "选择IP",
         "chooseAsset": "选择资产",
         "everyMinute": "每",
