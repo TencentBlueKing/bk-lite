@@ -1,5 +1,7 @@
 """告警检测服务 - 负责告警事件的检测和恢复"""
 
+from string import Template
+
 from django.db.models import F
 
 from apps.monitor.models import MonitorAlert
@@ -41,8 +43,16 @@ class AlertDetector:
             self.metric_query_service.instance_id_keys,
         )
 
+        template_context = {
+            "monitor_object": self.policy.monitor_object.name
+            if self.policy.monitor_object
+            else "",
+            "metric_name": self._get_metric_display_name(),
+            "instances_map": self.instances_map,
+        }
+
         alert_events, info_events = calculate_alerts(
-            self.policy.alert_name, df, self.policy.threshold
+            self.policy.alert_name, df, self.policy.threshold, template_context
         )
 
         if self.policy.source:
@@ -53,6 +63,13 @@ class AlertDetector:
             self._log_alert_events(alert_events, vm_data)
 
         return alert_events, info_events
+
+    def _get_metric_display_name(self):
+        """获取指标展示名称"""
+        metric = self.metric_query_service.metric
+        if metric:
+            return metric.display_name or metric.name
+        return self.policy.query_condition.get("metric_id", "")
 
     def detect_no_data_alerts(self):
         """检测无数据告警
@@ -88,14 +105,35 @@ class AlertDetector:
     def _build_no_data_events(self, aggregation_result):
         """构建无数据事件列表"""
         events = []
+        no_data_alert_name = self.policy.no_data_alert_name or "no data"
+        monitor_object_name = (
+            self.policy.monitor_object.name if self.policy.monitor_object else ""
+        )
+        metric_name = self._get_metric_display_name()
+        no_data_level = self.policy.no_data_level or "warning"
+
         for instance_id in self.instances_map.keys():
             if instance_id not in aggregation_result:
+                template_context = {
+                    "instance_id": instance_id,
+                    "metric_instance_id": instance_id,
+                    "monitor_instance_id": instance_id,
+                    "instance_name": self.instances_map.get(instance_id, instance_id),
+                    "monitor_object": monitor_object_name,
+                    "metric_name": metric_name,
+                    "level": no_data_level,
+                    "value": "",
+                }
+
+                template = Template(no_data_alert_name)
+                content = template.safe_substitute(template_context)
+
                 events.append(
                     {
                         "instance_id": instance_id,
                         "value": None,
                         "level": "no_data",
-                        "content": "no data",
+                        "content": content,
                     }
                 )
         return events

@@ -175,7 +175,7 @@ class EventAlertManager:
                 alert_type = "no_data"
                 level = self.policy.no_data_level
                 value = None
-                content = "no data"
+                content = event["content"]
 
             create_alerts.append(
                 MonitorAlert(

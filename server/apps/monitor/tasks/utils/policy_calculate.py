@@ -14,7 +14,11 @@ def vm_to_dataframe(vm_data, instance_id_keys=None):
 
     # 选择用于拼接 instance_id 的维度字段
     if instance_id_keys:
-        selected_cols = [f"metric_{key}" for key in instance_id_keys if f"metric_{key}" in metric_cols]
+        selected_cols = [
+            f"metric_{key}"
+            for key in instance_id_keys
+            if f"metric_{key}" in metric_cols
+        ]
     else:
         selected_cols = ["metric_instance_id"]  # 默认使用 instance_id
 
@@ -25,55 +29,74 @@ def vm_to_dataframe(vm_data, instance_id_keys=None):
     return df
 
 
-def calculate_alerts(alert_name, df, thresholds, n=1):
-    """计算告警事件"""
-    alert_events, info_events = [], []
+def calculate_alerts(alert_name, df, thresholds, template_context=None, n=1):
+    """计算告警事件
 
-    # 遍历每一行数据（每个 instance_id）
+    Args:
+        alert_name: 告警名称模板
+        df: 指标数据DataFrame
+        thresholds: 阈值配置列表
+        template_context: 模板变量上下文，包含 monitor_object, metric_name, instances_map 等
+        n: 数据点窗口大小
+    """
+    alert_events, info_events = [], []
+    template_context = template_context or {}
+    instances_map = template_context.get("instances_map", {})
+
     for _, row in df.iterrows():
         instance_id = str(row["instance_id"])
 
-        # 取最近 n 个数据点，保证窗口长度为 n
         values = row["values"][-n:]
         if len(values) < n:
             continue
 
         raw_data = row.to_dict()
         raw_data["values"] = values
-        # 计算该窗口是否满足阈值
+
         alert_triggered = False
         for threshold_info in thresholds:
             method = AlertConstants.THRESHOLD_METHODS.get(threshold_info["method"])
             if not method:
-                raise BaseAppException(f"Invalid threshold method: {threshold_info['method']}")
+                raise BaseAppException(
+                    f"Invalid threshold method: {threshold_info['method']}"
+                )
 
-            # 解析值并检查是否满足阈值
             if all(method(float(v[1]), threshold_info["value"]) for v in values):
-                # 生成告警事件
+                alert_value = values[-1][1]
+                context = {
+                    **raw_data,
+                    "monitor_object": template_context.get("monitor_object", ""),
+                    "instance_name": instances_map.get(instance_id, instance_id),
+                    "metric_name": template_context.get("metric_name", ""),
+                    "level": threshold_info["level"],
+                    "value": alert_value,
+                }
+
                 template = Template(alert_name)
-                content = template.safe_substitute(raw_data)
+                content = template.safe_substitute(context)
 
                 event = {
                     "instance_id": instance_id,
-                    "value": values[-1][1],  # 最后一个时间点的值
-                    "timestamp": values[-1][0],  # 最后一个时间点的时间戳
+                    "value": alert_value,
+                    "timestamp": values[-1][0],
                     "level": threshold_info["level"],
                     "content": content,
-                    "raw_data": raw_data,  # 记录最近 n 个匹配的原始数据
+                    "raw_data": raw_data,
                 }
                 alert_events.append(event)
                 alert_triggered = True
-                break  # 一旦匹配，跳出阈值循环
+                break
 
         if not alert_triggered:
-            # 记录 info 事件，也包含 raw_data
-            info_events.append({
-                "instance_id": instance_id,
-                "value": values[-1][1],
-                "timestamp": values[-1][0],
-                "level": "info",
-                "content": "info",
-                "raw_data": raw_data,  # 为 info 事件也添加原始数据
-            })
+            info_events.append(
+                {
+                    "instance_id": instance_id,
+                    "value": values[-1][1],
+                    "timestamp": values[-1][0],
+                    "level": "info",
+                    "content": "info",
+                    "raw_data": raw_data,
+                }
+            )
 
     return alert_events, info_events
