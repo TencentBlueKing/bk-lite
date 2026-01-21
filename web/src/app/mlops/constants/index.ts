@@ -431,8 +431,9 @@ const SERVING_MAP: Record<string, string> = {
   'anomaly_detection': 'anomaly_detection_servings',
   'classification': 'classification_servings',
   'timeseries_predict': 'timeseries_predict_servings',
-  'image_classisification': 'image_classification_servings',
+  'image_classification': 'image_classification_servings',
   'log_clustering': 'log_clustering_servings',
+  'object_detection': 'object_detection_servings'
 };
 
 const TYPE_FILE_MAP: Record<string, any> = {

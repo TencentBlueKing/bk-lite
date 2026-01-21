@@ -575,7 +575,61 @@ class ObjectDetectionServingViewSet(ModelViewSet):
 
     @HasPermission("object_detection_servings-View")
     def list(self, request, *args, **kwargs):
-        return super().list(request, *args, **kwargs)
+        """列表查询，实时同步容器状态"""
+        response = super().list(request, *args, **kwargs)
+
+        if isinstance(response.data, dict):
+            servings = response.data.get("items", [])
+        else:
+            servings = response.data
+
+        if not servings:
+            return response
+
+        serving_ids = [f"ObjectDetection_Serving_{s['id']}" for s in servings]
+
+        try:
+            # 批量查询容器状态
+            result = WebhookClient.get_status(serving_ids)
+            status_map = {s.get("id"): s for s in result}
+
+            updates = []
+            for serving_data in servings:
+                serving_id = f"ObjectDetection_Serving_{serving_data['id']}"
+                container_info = status_map.get(serving_id)
+
+                if container_info:
+                    serving_data["container_info"] = container_info
+
+                    # 同步到数据库
+                    serving_obj = ObjectDetectionServing.objects.get(
+                        id=serving_data["id"]
+                    )
+                    serving_obj.container_info = container_info
+                    updates.append(serving_obj)
+                else:
+                    serving_data["container_info"] = {
+                        "status": "error",
+                        "state": "unknown",
+                        "message": "webhookd 未返回此容器状态",
+                    }
+
+            if updates:
+                ObjectDetectionServing.objects.bulk_update(updates, ["container_info"])
+
+        except WebhookError as e:
+            logger.error(f"查询容器状态失败: {e}")
+            # 降级：使用数据库中的旧值
+            for serving_data in servings:
+                old_info = serving_data.get("container_info") or {}
+                serving_data["container_info"] = {
+                    **old_info,
+                    "status": "error",
+                    "_query_failed": True,
+                    "_error": str(e),
+                }
+
+        return response
 
     @HasPermission("object_detection_servings-View")
     def retrieve(self, request, *args, **kwargs):
@@ -587,7 +641,119 @@ class ObjectDetectionServingViewSet(ModelViewSet):
 
     @HasPermission("object_detection_servings-Add")
     def create(self, request, *args, **kwargs):
-        return super().create(request, *args, **kwargs)
+        """创建 serving 服务并自动启动容器"""
+        response = super().create(request, *args, **kwargs)
+        serving_id = response.data["id"]
+
+        try:
+            serving = ObjectDetectionServing.objects.get(id=serving_id)
+
+            # 获取环境变量
+            mlflow_tracking_uri = os.getenv("MLFLOW_TRACKER_URL", "")
+            if not mlflow_tracking_uri:
+                logger.error("环境变量 MLFLOW_TRACKER_URL 未配置")
+                serving.container_info = {
+                    "status": "error",
+                    "message": "环境变量 MLFLOW_TRACKER_URL 未配置",
+                }
+                serving.save(update_fields=["container_info"])
+                response.data["container_info"] = serving.container_info
+                response.data["message"] = "服务已创建但启动失败：环境变量未配置"
+                return response
+
+            # 解析 model_uri
+            try:
+                model_uri = self._resolve_model_uri(serving)
+            except ValueError as e:
+                logger.error(f"解析 model URI 失败: {e}")
+                serving.container_info = {
+                    "status": "error",
+                    "message": f"解析模型 URI 失败: {str(e)}",
+                }
+                serving.save(update_fields=["container_info"])
+                response.data["container_info"] = serving.container_info
+                response.data["message"] = f"服务已创建但启动失败：{str(e)}"
+                return response
+
+            # 构建 serving ID
+            container_id = f"ObjectDetection_Serving_{serving.id}"
+
+            # 从关联训练任务的 hyperopt_config 中提取 device 参数
+            device = None
+            if serving.train_job and serving.train_job.hyperopt_config:
+                hyperparams = serving.train_job.hyperopt_config.get("hyperparams", {})
+                device = hyperparams.get("device")
+
+            logger.info(
+                f"自动启动 serving 服务: {container_id}, Model URI: {model_uri}, Port: {serving.port or 'auto'}, Device: {device or 'default'}"
+            )
+
+            try:
+                # 调用 WebhookClient 启动服务
+                result = WebhookClient.serve(
+                    container_id,
+                    mlflow_tracking_uri,
+                    model_uri,
+                    port=serving.port,
+                    train_image="object-detection:latest",
+                    device=device,
+                )
+
+                serving.container_info = result
+                serving.save(update_fields=["container_info"])
+
+                logger.info(
+                    f"Serving 服务已自动启动: {container_id}, Port: {result.get('port')}"
+                )
+
+                response.data["container_info"] = result
+                response.data["message"] = "服务已创建并启动"
+
+            except WebhookError as e:
+                error_msg = str(e)
+                logger.error(f"自动启动 serving 失败: {error_msg}")
+
+                # 处理容器已存在的情况
+                if e.code == "CONTAINER_ALREADY_EXISTS":
+                    try:
+                        result = WebhookClient.get_status([container_id])
+                        container_info = (
+                            result[0]
+                            if result
+                            else {
+                                "status": "error",
+                                "id": container_id,
+                                "message": "无法查询容器状态",
+                            }
+                        )
+
+                        serving.container_info = container_info
+                        serving.save(update_fields=["container_info"])
+
+                        response.data["container_info"] = container_info
+                        response.data["message"] = (
+                            "服务已创建，检测到容器已存在并同步容器状态"
+                        )
+                        response.data["warning"] = "容器已存在，已同步容器信息"
+                    except WebhookError:
+                        serving.container_info = {
+                            "status": "error",
+                            "message": f"容器已存在但同步状态失败: {error_msg}",
+                        }
+                        serving.save(update_fields=["container_info"])
+                        response.data["container_info"] = serving.container_info
+                        response.data["message"] = "服务已创建但启动失败"
+                else:
+                    serving.container_info = {"status": "error", "message": error_msg}
+                    serving.save(update_fields=["container_info"])
+                    response.data["container_info"] = serving.container_info
+                    response.data["message"] = f"服务已创建但启动失败: {error_msg}"
+
+        except Exception as e:
+            logger.error(f"自动启动 serving 异常: {str(e)}", exc_info=True)
+            response.data["message"] = f"服务已创建但启动异常: {str(e)}"
+
+        return response
 
     @HasPermission("object_detection_servings-Edit")
     def update(self, request, *args, **kwargs):
@@ -798,6 +964,91 @@ class ObjectDetectionServingViewSet(ModelViewSet):
             logger.error(f"删除目标检测 serving 容器失败: {str(e)}", exc_info=True)
             return Response(
                 {"error": f"删除容器失败: {str(e)}"},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
+
+    @action(detail=True, methods=["post"], url_path="predict")
+    @HasPermission("object_detection_servings-Predict")
+    def predict(self, request, *args, **kwargs):
+        """
+        调用目标检测 serving 服务进行预测
+
+        请求参数:
+            url: 预测服务主机地址
+            image: base64编码的图片数据
+
+        Returns:
+            目标检测结果（边界框、类别、置信度）
+        """
+        serving = self.get_object()
+
+        # 验证容器信息
+        if not serving.container_info or not isinstance(serving.container_info, dict):
+            return Response(
+                {"error": "服务未启动或容器信息不可用"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        # 获取端口
+        port = serving.container_info.get("port")
+        if not port:
+            return Response(
+                {"error": "服务端口不可用"}, status=status.HTTP_400_BAD_REQUEST
+            )
+
+        # 获取预测参数
+        url = request.data.get("url")
+        image_data = request.data.get("image")
+
+        if not url:
+            return Response(
+                {"error": "缺少参数: url"}, status=status.HTTP_400_BAD_REQUEST
+            )
+        if not image_data:
+            return Response(
+                {"error": "缺少参数: image"}, status=status.HTTP_400_BAD_REQUEST
+            )
+
+        # 构建预测请求URL
+        predict_url = f"{url}:{port}/predict"
+
+        try:
+            logger.info(f"调用目标检测推理服务: {predict_url}")
+
+            # 调用推理服务
+            response = requests.post(
+                predict_url, json={"image": image_data}, timeout=60
+            )
+            response.raise_for_status()
+
+            result = response.json()
+            logger.info(
+                f"目标检测推理成功，检测到 {len(result.get('predictions', []))} 个目标"
+            )
+
+            return Response(result)
+
+        except requests.exceptions.Timeout:
+            logger.error(f"推理请求超时: {predict_url}")
+            return Response(
+                {"error": "推理请求超时"}, status=status.HTTP_504_GATEWAY_TIMEOUT
+            )
+        except requests.exceptions.ConnectionError as e:
+            logger.error(f"无法连接推理服务: {predict_url}, 错误: {e}")
+            return Response(
+                {"error": f"无法连接推理服务: {str(e)}"},
+                status=status.HTTP_503_SERVICE_UNAVAILABLE,
+            )
+        except requests.exceptions.HTTPError as e:
+            logger.error(f"推理服务返回错误: {e}")
+            return Response(
+                {"error": f"推理服务错误: {str(e)}"},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
+        except Exception as e:
+            logger.error(f"目标检测推理失败: {str(e)}", exc_info=True)
+            return Response(
+                {"error": f"推理失败: {str(e)}"},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
 

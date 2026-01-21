@@ -20,6 +20,8 @@ const ReleaseModal = forwardRef<ModalRef, ReleaseModalProps>(({ trainjobs, activ
     addLogClusteringServings, updateLogClusteringServings,
     addTimeseriesPredictServings, updateTimeSeriesPredictServings,
     addClassificationServings, updateClassificationServings,
+    addImageClassificationServings, updateImageClassificationServings,
+    addObjectDetectionServings, updateObjectDetectionServings,
     getModelVersionList
   } = useMlopsModelReleaseApi();
   const formRef = useRef<FormInstance>(null);
@@ -127,6 +129,26 @@ const ReleaseModal = forwardRef<ModalRef, ReleaseModalProps>(({ trainjobs, activ
             <Select options={trainjobs} placeholder={t(`model-release.selectTraintask`)} onChange={(value) => onTrainJobChange(value, tagName)} />
           </Form.Item>
         )
+      case 'image_classification':
+        return (
+          <Form.Item
+            name='train_job'
+            label={t(`traintask.traintask`)}
+            rules={[{ required: true, message: t('common.inputMsg') }]}
+          >
+            <Select options={trainjobs} placeholder={t(`model-release.selectTraintask`)} onChange={(value) => onTrainJobChange(value, tagName)} />
+          </Form.Item>
+        )
+      case 'object_detection':
+        return (
+          <Form.Item
+            name='train_job'
+            label={t(`traintask.traintask`)}
+            rules={[{ required: true, message: t('common.inputMsg') }]}
+          >
+            <Select options={trainjobs} placeholder={t(`model-release.selectTraintask`)} onChange={(value) => onTrainJobChange(value, tagName)} />
+          </Form.Item>
+        )
 
       default:
         return null;
@@ -147,6 +169,12 @@ const ReleaseModal = forwardRef<ModalRef, ReleaseModalProps>(({ trainjobs, activ
     'classification': async (params: any) => {
       await addClassificationServings(params);
     },
+    'image_classification': async (params: any) => {
+      await addImageClassificationServings(params);
+    },
+    'object_detection': async (params: any) => {
+      await addObjectDetectionServings(params);
+    },
   };
 
   const handleUpdateMap: Record<string, ((id: number, params: any) => Promise<void>) | null> = {
@@ -162,6 +190,12 @@ const ReleaseModal = forwardRef<ModalRef, ReleaseModalProps>(({ trainjobs, activ
     },
     'classification': async (id: number, params: any) => {
       await updateClassificationServings(id, params);
+    },
+    'image_classification': async (id: number, params: any) => {
+      await updateImageClassificationServings(id, params);
+    },
+    'object_detection': async (id: number, params: any) => {
+      await updateObjectDetectionServings(id, params);
     },
   };
 
@@ -195,6 +229,8 @@ const ReleaseModal = forwardRef<ModalRef, ReleaseModalProps>(({ trainjobs, activ
     try {
       const [tagName] = activeTag;
       const data = await formRef.current?.validateFields();
+
+      console.log(data);
 
       if (type === 'add') {
         if (!handleAddMap[tagName]) {

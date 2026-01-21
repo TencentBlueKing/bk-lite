@@ -103,6 +103,30 @@ const useMlopsModelReleaseApi = () => {
     return await post(`/mlops/classification_servings/`, params);
   };
 
+  // 新增图片分类任务能力
+  const addImageClassificationServings = async (params: {
+    name: string;
+    description: string;
+    model_version: string;
+    classification_train_job: string;
+    status: string;
+    anomaly_threshold: number;
+  }) => {
+    return await post(`/mlops/image_classification_servings/`, params);
+  };
+
+  // 新增目标检测任务能力
+  const addObjectDetectionServings = async (params: {
+    name: string;
+    description: string;
+    model_version: string;
+    classification_train_job: string;
+    status: string;
+    anomaly_threshold: number;
+  }) => {
+    return await post(`/mlops/object_detection_servings/`, params);
+  };
+
   // 异常检测推理
   const anomalyDetectionReason = async (params: AnomalyDetectionReason) => {
     return await post(`/mlops/anomaly_detection_servings/predict/`, params);
@@ -171,6 +195,30 @@ const useMlopsModelReleaseApi = () => {
     return await patch(`/mlops/classification_servings/${id}/`, params)
   };
 
+  // 编辑图片分类任务能力
+  const updateImageClassificationServings = async (id: number, params: {
+    name?: string;
+    description?: string;
+    model_version?: string;
+    classification_train_job?: string;
+    status?: string;
+    anomaly_threshold?: number;
+  }) => {
+    return await patch(`/mlops/image_classification_servings/${id}/`, params)
+  };
+
+  // 编辑目标检测任务能力
+  const updateObjectDetectionServings = async (id: number, params: {
+    name?: string;
+    description?: string;
+    model_version?: string;
+    classification_train_job?: string;
+    status?: string;
+    anomaly_threshold?: number;
+  }) => {
+    return await patch(`/mlops/object_detection_servings/${id}/`, params)
+  };
+
   // 删除能力发布
   const deleteServing = async (id: number, key: DatasetReleaseKey) => {
     return await del(`/mlops/${SERVING_MAP[key]}/${id}/`);
@@ -196,6 +244,8 @@ const useMlopsModelReleaseApi = () => {
     addLogClusteringServings,
     addTimeseriesPredictServings,
     addClassificationServings,
+    addImageClassificationServings,
+    addObjectDetectionServings,
     anomalyDetectionReason,
     timeseriesPredictReason,
     logClusteringReason,
@@ -204,6 +254,8 @@ const useMlopsModelReleaseApi = () => {
     updateTimeSeriesPredictServings,
     updateLogClusteringServings,
     updateClassificationServings,
+    updateImageClassificationServings,
+    updateObjectDetectionServings,
     deleteServing,
     startServingContainer,
     stopServingContainer

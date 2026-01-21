@@ -49,6 +49,9 @@ const ModelRelease = () => {
     updateTimeSeriesPredictServings,
     updateLogClusteringServings,
     updateClassificationServings,
+    updateImageClassificationServings,
+    updateObjectDetectionServings,
+
     startServingContainer, stopServingContainer
   } = useMlopsModelReleaseApi();
   const [trainjobs, setTrainjobs] = useState<Option[]>([]);
@@ -189,8 +192,8 @@ const ModelRelease = () => {
     'log_clustering': updateLogClusteringServings,
     'timeseries_predict': updateTimeSeriesPredictServings,
     'classification': updateClassificationServings,
-    'image_classification': null,
-    'object_detection': null
+    'image_classification': updateImageClassificationServings,
+    'object_detection': updateObjectDetectionServings
   };
 
   const topSection = (
@@ -232,6 +235,7 @@ const ModelRelease = () => {
 
   const getModelServings = async () => {
     const [activeTypes] = selectedKeys;
+    console.log(activeTypes);
     if (!activeTypes) {
       setTableData([]);
       return;

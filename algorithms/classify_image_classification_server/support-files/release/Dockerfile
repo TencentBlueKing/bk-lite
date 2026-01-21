@@ -5,7 +5,19 @@ ARG NEXUS_PYTHON_REPOSITY
 RUN sed -i 's/deb.debian.org/repo.huaweicloud.com/g' /etc/apt/sources.list.d/debian.sources
 
 RUN apt-get update -y
-RUN apt-get install -y vim supervisor unzip curl fonts-wqy-zenhei
+RUN apt-get install -y \
+    vim \
+    supervisor \
+    unzip \
+    curl \
+    fonts-wqy-zenhei \
+    libgl1-mesa-glx \
+    libglib2.0-0 \
+    libsm6 \
+    libxext6 \
+    libxrender1 \
+    libgomp1 \
+    && rm -rf /var/lib/apt/lists/*
 
 # 更新系统字体缓存
 RUN fc-cache -fv
