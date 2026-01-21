@@ -108,7 +108,7 @@
     "saveSuccess": "Save Successful",
     "addSuccess": "Add Successful",
     "editSuccess": "Update Successful",
-    "downloadError": "Download file error",
+    "uploadError": "Upload file error",
     "downloadCSV": "Only csv format files are supported, click on the",
     "downloadTxt": "Only txt format files are supported, click on the",
     "template": "Download template",
@@ -146,7 +146,8 @@
     "saveChanges": "Save Changes",
     "folder": "Folder",
     "labelManagement": "Label Management",
-    "addLabel": "Add Label"
+    "addLabel": "Add Label",
+    "fileNameVaild": "The filename does not comply with specifications (it may only contain English letters, numbers, and underscores, and must not exceed 64 characters in length): "
   },
   "traintask": {
     "train": "Train",

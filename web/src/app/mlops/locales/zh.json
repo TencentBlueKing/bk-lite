@@ -32,7 +32,7 @@
     "datasets": "数据集",
     "datasetsDetail": "数据集详情",
     "title": "文档列表",
-    "detail": "支持上传时序数据，并为这些数据进行打标，以便后续进行模型训练。",
+    
     "intent": "意图",
     "intentTitle": "意图管理",
     "intentName": "意图名称",
@@ -103,21 +103,27 @@
     "rasa": "Rasa模型",
     "timeseriesPredict": "时序预测",
     "logClustering": "日志聚类",
-    "uploadSuccess": "上传成功",
-    "pleaseUpload": "请上传文件",
-    "uploadWarn": "仅支持上传csv文件",
+    
+    
     "saveSuccess": "保存成功",
     "addSuccess": "添加成功",
     "editSuccess": "更新成功",
     "saveError": "保存错误",
-    "downloadError": "上传错误",
     "downloadCSV": "仅支持csv格式的文件，点击",
     "downloadTxt": "仅支持txt格式的文件，点击",
     "template": "下载模板",
     "anomalyTitle": "异常点",
     "annotate": "标注",
     "unlabeled": "未标注",
+
     "upload": "上传",
+    "uploadError": "上传错误",
+    "pleaseUpload": "请上传文件",
+    "uploadWarn": "仅支持上传csv文件",
+    "uploading": "上传中...",
+    "uploadSuccess": "上传成功",
+    "detail": "支持上传时序数据，并为这些数据进行打标，以便后续进行模型训练。",
+
     "typeSelect": "训练文件类型选择",
     "uploadText": "拖动文件或文件夹到此处上传",
     "deleteTitle": "删除文件",
@@ -138,7 +144,7 @@
     "selectLab": "请在右侧选择标签",
     "addImage": "添加图片",
     "tabBar": "标签栏",
-    "uploading": "上传中...",
+    
     "objectDetection": "目标检测",
     "generateTitle": "生成YOLO格式数据集,用于进行目标检测训练任务",
     "generateContent": "修改尚未保存, 确认生成数据集吗？",
@@ -146,7 +152,8 @@
     "saveChanges": "保存变更",
     "folder": "文件夹",
     "labelManagement": "标签管理",
-    "addLabel": "添加标签"
+    "addLabel": "添加标签",
+    "fileNameVaild": "文件名不符合规范(只能包含英文字母、数字、下划线, 长度不超过64个字符): "
   },
   "traintask": {
     "train": "训练",

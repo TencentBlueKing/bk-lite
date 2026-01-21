@@ -771,6 +771,33 @@ const IMAGE_CLASSIFICATION_ALGORITHM_CONFIGS: Record<string, AlgorithmConfig> = 
               max: 1000
             },
             {
+              name: ['hyperparams', 'lr0'],
+              label: '学习率',
+              type: 'inputNumber',
+              required: true,
+              tooltip: '默认学习率',
+              placeholder: '例: 0.0001,0.001,0.01,0.05,0.1',
+              defaultValue: 0.01,
+            },
+            {
+              name: ['hyperparams', 'batch'],
+              label: '批次大小',
+              type: 'inputNumber',
+              required: true,
+              tooltip: '默认批次大小',
+              placeholder: '例: 8,16,32,64',
+              defaultValue: 16
+            },
+            {
+              name: ['hyperparams', 'imgsz'],
+              label: '图片尺寸',
+              type: 'inputNumber',
+              required: true,
+              tooltip: '默认图片尺寸候',
+              placeholder: '例: 224,256,320,384',
+              defaultValue: 224,
+            },
+            {
               name: ['hyperparams', 'optimizer'],
               label: '优化器',
               type: 'select',
@@ -967,6 +994,33 @@ const OBJECT_DETECTION_ALGORITHM_CONFIGS: Record<string, AlgorithmConfig> = {
               defaultValue: 100,
               min: 1,
               max: 1000
+            },
+            {
+              name: ['hyperparams', 'lr0'],
+              label: '学习率',
+              type: 'inputNumber',
+              required: true,
+              tooltip: '默认学习率',
+              placeholder: '例: 0.0001,0.001,0.01,0.05,0.1',
+              defaultValue: 0.01,
+            },
+            {
+              name: ['hyperparams', 'batch'],
+              label: '批次大小',
+              type: 'inputNumber',
+              required: true,
+              tooltip: '默认批次大小',
+              placeholder: '例: 8,16,32,64',
+              defaultValue: 16
+            },
+            {
+              name: ['hyperparams', 'imgsz'],
+              label: '图片尺寸',
+              type: 'inputNumber',
+              required: true,
+              tooltip: '默认图片尺寸候',
+              placeholder: '例: 224,256,320,384',
+              defaultValue: 224,
             },
             {
               name: ['hyperparams', 'optimizer'],

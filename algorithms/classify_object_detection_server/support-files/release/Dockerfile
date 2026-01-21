@@ -11,7 +11,7 @@ RUN apt-get install -y \
     unzip \
     curl \
     fonts-wqy-zenhei \
-    libgl1-mesa-glx \
+    libgl1 \
     libglib2.0-0 \
     libsm6 \
     libxext6 \

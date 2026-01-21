@@ -69,13 +69,6 @@ const Detail = () => {
     object_detection: <ObjectDetectionDetail />
   }), [activeTap]);
 
-  // const Intro = useMemo(() => (
-  //   <div className="flex h-[58px] flex-col items-center justify-center">
-  //     <h2 className="text-base font-semibold mb-2">{folder_name}</h2>
-  //     <h1 className="text-center">{description}</h1>
-  //   </div>
-  // ), [folder_name]);
-
   const topSection = useMemo(() => {
     if (menu)
       return <TopSection title={t(`datasets.${menu}`)} content={RasaContent(menu)} />;
@@ -88,7 +81,6 @@ const Detail = () => {
     <>
       <div className='w-full'>
         <Sublayout
-          // intro={Intro}
           topSection={topSection}
           showSideMenu={showSideMenu}
           activeKeyword

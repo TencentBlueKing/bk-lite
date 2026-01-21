@@ -65,35 +65,26 @@ setup_device_args() {
     
     # 未传递、null 或 cpu：默认 CPU 模式
     if [ -z "$device" ] || [ "$device" = "null" ] || [ "$device" = "cpu" ]; then
-        echo "[INFO] Device: CPU" >&2
         return 0
     fi
     
     case "$device" in
         "auto")
             # 自动检测 GPU
-            echo "[INFO] Device: auto (detecting GPU availability...)" >&2
             if check_gpu_available; then
                 DEVICE_ARGS="--gpus all"
-                echo "[INFO] GPU detected, using GPU mode" >&2
-            else
-                echo "[INFO] No GPU detected, using CPU mode" >&2
             fi
             return 0
             ;;
         "gpu")
             # 必须使用 GPU
-            echo "[INFO] Device: GPU (required)" >&2
             if ! check_gpu_available; then
-                echo "[ERROR] GPU required but not available" >&2
                 return 1
             fi
             DEVICE_ARGS="--gpus all"
-            echo "[INFO] GPU available, using GPU mode" >&2
             return 0
             ;;
         *)
-            echo "[ERROR] Invalid device parameter: $device (expected: cpu, gpu, auto)" >&2
             return 1
             ;;
     esac

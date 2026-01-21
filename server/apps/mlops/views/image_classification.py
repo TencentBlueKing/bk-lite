@@ -19,6 +19,8 @@ from apps.mlops.utils.webhook_client import (
     WebhookTimeoutError,
 )
 import os
+import pandas as pd
+import numpy as np
 
 
 class ImageClassificationDatasetViewSet(ModelViewSet):
@@ -354,8 +356,8 @@ class ImageClassificationTrainJobViewSet(ModelViewSet):
 
             # 检查必要字段
             if (
-                not train_job.dataset_release
-                or not train_job.dataset_release.dataset_file
+                not train_job.dataset_version
+                or not train_job.dataset_version.dataset_file
             ):
                 return Response(
                     {"error": "数据集文件不存在"}, status=status.HTTP_400_BAD_REQUEST
@@ -374,8 +376,6 @@ class ImageClassificationTrainJobViewSet(ModelViewSet):
             )
 
             logger.info(f"启动图片分类训练任务: {job_id}")
-            logger.info(f"  Dataset: {train_job.dataset_release.dataset_file.name}")
-            logger.info(f"  Config: {train_job.config_url.name}")
 
             # 从 hyperopt_config 中提取 device 参数
             device = None
@@ -389,13 +389,13 @@ class ImageClassificationTrainJobViewSet(ModelViewSet):
             WebhookClient.train(
                 job_id=job_id,
                 bucket=bucket,
-                dataset=train_job.dataset_release.dataset_file.name,
+                dataset=train_job.dataset_version.dataset_file.name,
                 config=train_job.config_url.name,
                 minio_endpoint=minio_endpoint,
                 mlflow_tracking_uri=mlflow_tracking_uri,
                 minio_access_key=minio_access_key,
                 minio_secret_key=minio_secret_key,
-                train_image="image-classification:latest",  # YOLO 训练镜像
+                train_image="classify-image-classification:latest",  # YOLO 训练镜像
                 device=device,
             )
 
@@ -576,6 +576,235 @@ class ImageClassificationTrainJobViewSet(ModelViewSet):
             logger.error(f"下载模型失败: {str(e)}", exc_info=True)
             return Response(
                 {"error": f"下载模型失败: {str(e)}"},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
+
+    @action(detail=True, methods=["get"], url_path="runs_data_list")
+    @HasPermission("train_tasks-View")
+    def get_run_data_list(self, request, pk=None):
+        try:
+            # 获取训练任务
+            train_job = self.get_object()
+
+            # 构造实验名称（与训练时保持一致）
+            experiment_name = mlflow_service.build_experiment_name(
+                prefix=self.MLFLOW_PREFIX,
+                algorithm=train_job.algorithm,
+                train_job_id=train_job.id,
+            )
+
+            # 查找实验
+            experiment = mlflow_service.get_experiment_by_name(experiment_name)
+            if not experiment:
+                return Response(
+                    {
+                        "train_job_id": train_job.id,
+                        "train_job_name": train_job.name,
+                        "algorithm": train_job.algorithm,
+                        "job_status": train_job.status,
+                        "message": "未找到对应的MLflow实验",
+                        "data": [],
+                    }
+                )
+
+            # 查找该实验中的运行
+            runs = mlflow_service.get_experiment_runs(experiment.experiment_id)
+
+            if runs.empty:
+                return Response(
+                    {
+                        "train_job_id": train_job.id,
+                        "train_job_name": train_job.name,
+                        "algorithm": train_job.algorithm,
+                        "job_status": train_job.status,
+                        "message": "未找到训练运行记录",
+                        "data": [],
+                    }
+                )
+
+            # 每次运行信息的耗时和名称
+            run_datas = []
+            latest_run_status = None
+
+            for idx, row in runs.iterrows():
+                # 处理时间计算，避免产生NaN或Infinity
+                try:
+                    start_time = row["start_time"]
+                    end_time = row["end_time"]
+
+                    # 计算耗时
+                    if pd.notna(start_time):
+                        if pd.notna(end_time):
+                            duration_seconds = (end_time - start_time).total_seconds()
+                        else:
+                            current_time = pd.Timestamp.now(tz=start_time.tz)
+                            duration_seconds = (
+                                current_time - start_time
+                            ).total_seconds()
+                        duration_minutes = duration_seconds / 60
+                    else:
+                        duration_minutes = 0
+
+                    # 获取run_name，处理可能的缺失值
+                    run_name = row.get("tags.mlflow.runName", "")
+                    if pd.isna(run_name):
+                        run_name = ""
+
+                    # 获取状态
+                    run_status = row.get("status", "UNKNOWN")
+
+                    # 记录第一条（最新）的运行状态
+                    if idx == 0:
+                        latest_run_status = run_status
+
+                    run_data = {
+                        "run_id": str(row["run_id"]),
+                        "run_name": str(run_name),
+                        "status": str(run_status),
+                        "start_time": start_time.isoformat()
+                        if pd.notna(start_time)
+                        else None,
+                        "end_time": end_time.isoformat()
+                        if pd.notna(end_time)
+                        else None,
+                        "duration_minutes": float(duration_minutes)
+                        if np.isfinite(duration_minutes)
+                        else 0,
+                    }
+                    run_datas.append(run_data)
+
+                except Exception as e:
+                    logger.warning(f"解析 run 数据失败: {e}")
+                    continue
+
+            # 同步最新运行状态到 TrainJob
+            if latest_run_status and train_job.status == "running":
+                status_map = {
+                    "FINISHED": "completed",
+                    "FAILED": "failed",
+                    "KILLED": "failed",
+                }
+                new_status = status_map.get(latest_run_status)
+
+                if new_status:
+                    train_job.status = new_status
+                    train_job.save(update_fields=["status"])
+                    logger.info(
+                        f"自动同步 TrainJob {train_job.id} 状态: running -> {new_status} (基于 MLflow: {latest_run_status})"
+                    )
+
+            return Response(
+                {
+                    "train_job_id": train_job.id,
+                    "train_job_name": train_job.name,
+                    "algorithm": train_job.algorithm,
+                    "job_status": train_job.status,
+                    "total_runs": len(run_datas),
+                    "data": run_datas,
+                }
+            )
+        except Exception as e:
+            logger.error(f"获取训练记录列表失败: {str(e)}", exc_info=True)
+            return Response(
+                {"error": f"获取训练记录失败: {str(e)}"},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
+
+    @action(detail=False, methods=["get"], url_path="runs_metrics_list/(?P<run_id>.+?)")
+    @HasPermission("train_tasks-View")
+    def get_runs_metrics_list(self, request, run_id: str):
+        try:
+            # 获取运行的指标列表（过滤系统指标）
+            model_metrics = mlflow_service.get_run_metrics(
+                run_id=run_id, filter_system=True
+            )
+
+            return Response({"run_id": run_id, "metrics": model_metrics})
+
+        except Exception as e:
+            return Response(
+                {"error": f"获取指标列表失败: {str(e)}"},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
+
+    @action(
+        detail=False,
+        methods=["get"],
+        url_path="runs_metrics_history/(?P<run_id>.+?)/(?P<metric_name>.+?)",
+    )
+    @HasPermission("train_tasks-View")
+    def get_metric_data(self, request, run_id: str, metric_name: str):
+        """
+        获取指定 run 的指定指标的历史数据
+        """
+        try:
+            # 获取指标历史数据（自动处理排序）
+            metric_data = mlflow_service.get_metric_history(run_id, metric_name)
+
+            if not metric_data:
+                return Response(
+                    {
+                        "run_id": run_id,
+                        "metric_name": metric_name,
+                        "total_points": 0,
+                        "metric_history": [],
+                    }
+                )
+
+            logger.info(f"返回 {len(metric_data)} 条指标数据")
+
+            return Response(
+                {
+                    "run_id": run_id,
+                    "metric_name": metric_name,
+                    "total_points": len(metric_data),
+                    "metric_history": metric_data,
+                }
+            )
+
+        except Exception as e:
+            logger.error(f"获取指标历史数据失败: {str(e)}", exc_info=True)
+            return Response(
+                {"error": f"获取指标历史数据失败: {str(e)}"},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
+
+    @action(detail=False, methods=["get"], url_path="run_params/(?P<run_id>.+?)")
+    @HasPermission("train_tasks-View")
+    def get_run_params(self, request, run_id: str):
+        """
+        获取指定 run 的配置参数（用于查看历史训练的配置）
+        """
+        try:
+            # 获取运行信息和参数
+            run = mlflow_service.get_run_info(run_id)
+            params = mlflow_service.get_run_params(run_id)
+
+            # 提取运行元信息
+            run_name = run.data.tags.get("mlflow.runName", run_id)
+            run_status = run.info.status
+            start_time = run.info.start_time
+            end_time = run.info.end_time
+
+            return Response(
+                {
+                    "run_id": run_id,
+                    "run_name": run_name,
+                    "status": run_status,
+                    "start_time": pd.Timestamp(start_time, unit="ms").isoformat()
+                    if start_time
+                    else None,
+                    "end_time": pd.Timestamp(end_time, unit="ms").isoformat()
+                    if end_time
+                    else None,
+                    "params": params,
+                }
+            )
+
+        except Exception as e:
+            logger.error(f"获取运行参数失败: {str(e)}", exc_info=True)
+            return Response(
+                {"error": f"获取运行参数失败: {str(e)}"},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
 

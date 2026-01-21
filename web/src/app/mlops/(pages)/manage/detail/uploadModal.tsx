@@ -243,7 +243,7 @@ const UploadModal = forwardRef<ModalRef, UploadModalProps>(({ onSuccess }, ref) 
   // 处理提交错误
   const handleSubmitError = (error: any) => {
     console.log(error);
-    message.error(t('datasets.uploadError') || '上传失败，请重试');
+    message.error(t('datasets.uploadError'));
   };
 
   const handleSubmit = async () => {
@@ -269,7 +269,7 @@ const UploadModal = forwardRef<ModalRef, UploadModalProps>(({ onSuccess }, ref) 
             content: (
               <div>
                 <div style={{ marginBottom: 8, fontWeight: 500 }}>
-                  文件名不符合规范（只能包含英文字母、数字、下划线，长度不超过64个字符）：
+                  {t(`datasets.fileNameVaild`)}
                 </div>
                 {invalidFiles.map((msg, idx) => (
                   <div key={idx} style={{ fontSize: 12, marginLeft: 8, marginTop: 4 }}>
@@ -359,7 +359,7 @@ const UploadModal = forwardRef<ModalRef, UploadModalProps>(({ onSuccess }, ref) 
       document.body.removeChild(a);
       URL.revokeObjectURL(url);
     } else {
-      message.error(t('datasets.downloadError'));
+      message.error(t('datasets.uploadError'));
     }
   };
 
@@ -409,7 +409,7 @@ const UploadModal = forwardRef<ModalRef, UploadModalProps>(({ onSuccess }, ref) 
         <p className="ant-upload-text">{t('datasets.uploadText')}</p>
         {config?.fileType === 'image' && (
           <p className="ant-upload-hint" style={{ fontSize: 12, color: '#999', margin: '4px 0 0' }}>
-            文件名只能包含英文字母、数字和下划线，长度不超过64个字符
+            {t(`datasets.fileNameVaild`)}
           </p>
         )}
       </Dragger>
