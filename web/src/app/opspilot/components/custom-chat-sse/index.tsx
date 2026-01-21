@@ -14,6 +14,7 @@ import KnowledgeBase from '../custom-chat/knowledgeBase';
 import AnnotationModal from '../custom-chat/annotationModal';
 import KnowledgeGraphView from '../knowledge/knowledgeGraphView';
 import PermissionWrapper from '@/components/permission';
+import BrowserStepProgress from './BrowserStepProgress';
 import { CustomChatMessage, Annotation } from '@/app/opspilot/types/global';
 import { useSession } from 'next-auth/react';
 import { useAuth } from '@/context/auth';
@@ -298,8 +299,7 @@ const CustomChatSSE: React.FC<CustomChatSSEProps> = ({
   );
 
   const renderContent = (msg: CustomChatMessage) => {
-    const { content, knowledgeBase, images } = msg;
-    // 渲染前先替换 reference-link 和 suggestion-link
+    const { content, knowledgeBase, images, browserStepsHistory } = msg;
     let replacedContent = parseReferenceLinks(content || '');
     replacedContent = parseSuggestionLinks(replacedContent);
     const html = md.render(replacedContent);
@@ -322,14 +322,19 @@ const CustomChatSSE: React.FC<CustomChatSSEProps> = ({
             </Image.PreviewGroup>
           </div>
         )}
-        <div
-          dangerouslySetInnerHTML={{ __html: html }}
-          className={styles.markdownBody}
-          onClick={e => {
-            handleReferenceClick(e);
-            handleSuggestionClick(e);
-          }}
-        />
+        {browserStepsHistory && browserStepsHistory.steps.length > 0 && (
+          <BrowserStepProgress history={browserStepsHistory} />
+        )}
+        {content && (
+          <div
+            dangerouslySetInnerHTML={{ __html: html }}
+            className={styles.markdownBody}
+            onClick={e => {
+              handleReferenceClick(e);
+              handleSuggestionClick(e);
+            }}
+          />
+        )}
         {Array.isArray(knowledgeBase) && knowledgeBase.length ? (
           <KnowledgeBase knowledgeList={knowledgeBase} />
         ) : null}
@@ -557,35 +562,40 @@ const CustomChatSSE: React.FC<CustomChatSSEProps> = ({
             </div>
           )}
           <Flex gap="small" vertical>
-            {messages.map(msg => (
-              <Bubble
-                key={msg.id}
-                className={styles.bubbleWrapper}
-                placement={msg.role === 'user' ? 'end' : 'start'}
-                loading={msg.content === '' && loading && currentBotMessageRef.current?.id === msg.id}
-                content={renderContent(msg)}
-                avatar={{
-                  icon: (
-                    <Icon
-                      type={msg.role === 'user' ? 'yonghu' : 'jiqiren3'}
-                      className={styles.avatar}
-                    />
-                  )
-                }}
-                footer={
-                  msg.content === '' && loading && currentBotMessageRef.current?.id === msg.id ? null : (
-                    <MessageActions
-                      message={msg}
-                      onCopy={handleCopyMessage}
-                      onRegenerate={handleRegenerateMessage}
-                      onDelete={handleDeleteMessage}
-                      onMark={toggleAnnotationModal}
-                      showMarkOnly={showMarkOnly}
-                    />
-                  )
-                }
-              />
-            ))}
+            {messages.map(msg => {
+              const hasBrowserSteps = msg.browserStepsHistory && msg.browserStepsHistory.steps.length > 0;
+              const isEmptyMessage = !msg.content && !hasBrowserSteps;
+              const isCurrentBotLoading = loading && currentBotMessageRef.current?.id === msg.id;
+              return (
+                <Bubble
+                  key={msg.id}
+                  className={styles.bubbleWrapper}
+                  placement={msg.role === 'user' ? 'end' : 'start'}
+                  loading={isEmptyMessage && isCurrentBotLoading}
+                  content={renderContent(msg)}
+                  avatar={{
+                    icon: (
+                      <Icon
+                        type={msg.role === 'user' ? 'yonghu' : 'jiqiren3'}
+                        className={styles.avatar}
+                      />
+                    )
+                  }}
+                  footer={
+                    isEmptyMessage && isCurrentBotLoading ? null : (
+                      <MessageActions
+                        message={msg}
+                        onCopy={handleCopyMessage}
+                        onRegenerate={handleRegenerateMessage}
+                        onDelete={handleDeleteMessage}
+                        onMark={toggleAnnotationModal}
+                        showMarkOnly={showMarkOnly}
+                      />
+                    )
+                  }
+                />
+              );
+            })}
           </Flex>
         </div>
 

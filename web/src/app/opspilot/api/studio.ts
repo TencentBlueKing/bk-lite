@@ -119,11 +119,20 @@ export const useStudioApi = () => {
   };
 
   /**
-   * Executes a workflow node manually.
+   * Executes a workflow node manually (JSON response).
    * @param payload - The execution payload including message, bot_id, and node_id.
    */
   const executeWorkflow = async (payload: { message?: string; bot_id: string; node_id: string }): Promise<any> => {
     return post(`/opspilot/bot_mgmt/execute_chat_flow/${payload.bot_id}/${payload.node_id}`, { message: payload.message, is_test: true });
+  };
+
+  /**
+   * Gets the SSE URL for executing a workflow node with streaming.
+   * @param botId - The ID of the bot.
+   * @param nodeId - The ID of the node.
+   */
+  const getExecuteWorkflowSSEUrl = (botId: string, nodeId: string): string => {
+    return `/api/proxy/opspilot/bot_mgmt/execute_chat_flow/${botId}/${nodeId}`;
   };
 
   /**
@@ -206,6 +215,7 @@ export const useStudioApi = () => {
     fetchConversations,
     fetchActiveUsers,
     executeWorkflow,
+    getExecuteWorkflowSSEUrl,
     getAllUsers,
     fetchWorkflowLogs,
     fetchWorkflowLogDetail,
