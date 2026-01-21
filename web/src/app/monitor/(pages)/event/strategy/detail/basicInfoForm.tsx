@@ -45,7 +45,7 @@ const BasicInfoForm: React.FC<BasicInfoFormProps> = ({
       >
         <Input
           placeholder={t('monitor.events.strategyName')}
-          className="w-[800px]"
+          className="w-full"
         />
       </Form.Item>
       <Form.Item<StrategyFields>
@@ -66,7 +66,7 @@ const BasicInfoForm: React.FC<BasicInfoFormProps> = ({
         >
           <Input
             placeholder={t('monitor.events.alertName')}
-            className="w-[800px]"
+            className="w-full"
           />
         </Form.Item>
         <div className="text-[var(--color-text-3)] mt-[10px]">
@@ -89,7 +89,7 @@ const BasicInfoForm: React.FC<BasicInfoFormProps> = ({
         >
           <GroupTreeSelector
             style={{
-              width: '800px',
+              width: '100%',
               marginRight: '8px',
             }}
             placeholder={t('common.group')}
