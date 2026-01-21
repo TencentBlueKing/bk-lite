@@ -24,6 +24,7 @@ server-init:
 	uv run python manage.py init_bot
 	uv run python manage.py init_channel
 	uv run python manage.py init_llm
+	uv run python manage.py init_chatflow
 	uv run python manage.py init_bk_login_settings
 	uv run python manage.py create_builtin_rules --update
 
