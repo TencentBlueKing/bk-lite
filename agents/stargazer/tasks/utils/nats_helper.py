@@ -204,7 +204,7 @@ def convert_prometheus_to_influx(prometheus_data: str, params: Dict[str, Any]) -
                 # 有 labels
                 metric_name = line[:line.index('{')]
                 rest = line[line.index('{') + 1:]
-                labels_part = rest[:rest.index('}')]
+                labels_part = rest[:rest.rindex('}')]
                 value_part = rest[rest.index('}') + 1:].strip()
             else:
                 # 无 labels
