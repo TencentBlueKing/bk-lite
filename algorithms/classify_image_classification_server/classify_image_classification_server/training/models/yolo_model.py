@@ -783,47 +783,57 @@ class YOLOClassificationModel(BaseImageClassificationModel):
 
         logger.info("保存YOLO模型到MLflow...")
 
-        # 保存YOLO权重文件
-        weights_path = "yolo_best.pt"
-        self.yolo.save(weights_path)
-        logger.info(f"YOLO权重已保存: {weights_path}")
-
-        # 创建MLflow pyfunc包装器
-        from .yolo_wrapper import YOLOClassificationWrapper
-
-        wrapper = YOLOClassificationWrapper()
-
-        # 保存类别名称到文件
+        # 使用 Path 对象确保跨平台兼容性
         import json
-
-        class_names_path = "class_names.json"
-        with open(class_names_path, "w", encoding="utf-8") as f:
-            json.dump(self.class_names, f, ensure_ascii=False, indent=2)
-
-        # 记录到MLflow
-        mlflow.pyfunc.log_model(
-            artifact_path=artifact_path,
-            python_model=wrapper,
-            artifacts={"weights": weights_path, "class_names": class_names_path},
-            pip_requirements=[
-                "ultralytics>=8.3.0",
-                "torch>=2.0.0",
-                "torchvision>=0.15.0",
-                "Pillow>=10.0.0",
-            ],
-        )
-
-        logger.info(f"模型已保存到MLflow: {artifact_path}")
-
-        # 清理临时文件
+        import tempfile
         import os
 
+        # 创建临时目录用于存放模型文件
+        temp_dir = Path(tempfile.mkdtemp())
+
         try:
-            os.remove(weights_path)
-            os.remove(class_names_path)
-            logger.debug("临时文件已清理")
-        except Exception as e:
-            logger.warning(f"清理临时文件失败: {e}")
+            # 保存YOLO权重文件到临时目录
+            weights_path = temp_dir / "yolo_best.pt"
+            self.yolo.save(str(weights_path))
+            logger.info(f"YOLO权重已保存: {weights_path}")
+
+            # 保存类别名称到临时目录
+            class_names_path = temp_dir / "class_names.json"
+            with open(class_names_path, "w", encoding="utf-8") as f:
+                json.dump(self.class_names, f, ensure_ascii=False, indent=2)
+
+            # 创建MLflow pyfunc包装器
+            from .yolo_wrapper import YOLOClassificationWrapper
+
+            wrapper = YOLOClassificationWrapper()
+
+            # 记录到MLflow - 使用 str() 确保路径格式正确
+            mlflow.pyfunc.log_model(
+                artifact_path=artifact_path,
+                python_model=wrapper,
+                artifacts={
+                    "weights": str(weights_path),
+                    "class_names": str(class_names_path),
+                },
+                pip_requirements=[
+                    "ultralytics>=8.3.0",
+                    "torch>=2.0.0",
+                    "torchvision>=0.15.0",
+                    "Pillow>=10.0.0",
+                ],
+            )
+
+            logger.info(f"模型已保存到MLflow: {artifact_path}")
+
+        finally:
+            # 清理临时目录和文件
+            import shutil
+
+            try:
+                shutil.rmtree(temp_dir)
+                logger.debug(f"临时目录已清理: {temp_dir}")
+            except Exception as e:
+                logger.warning(f"清理临时目录失败: {e}")
 
     def get_params(self) -> Dict[str, Any]:
         """获取模型参数."""

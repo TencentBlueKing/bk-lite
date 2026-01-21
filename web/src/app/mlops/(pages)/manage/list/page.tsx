@@ -148,30 +148,26 @@ const DatasetManagePage = () => {
     modalRef.current?.showModal(object);
   };
 
-  const onSearch = () => {
-    // getDataSets();
-  };
-
   const infoText = (item: any) => {
-    return <p className='text-right font-mini text-[var(--color-text-3)]'>{`${t(`mlops-common.owner`)}: ${item.creator}`}</p>;
+    return <p className='text-right font-mini text-(--color-text-3)'>{`${t(`mlops-common.owner`)}: ${item.creator}`}</p>;
   };
 
   const menuActions = (item: any) => {
     return (
       <Menu onClick={(e) => e.domEvent.preventDefault()}>
         <Menu.Item
-          className="!p-0"
+          className="p-0!"
           onClick={() => handleOpenModal({ title: 'editform', type: 'edit', form: item })}
         >
-          <PermissionWrapper requiredPermissions={['Edit']} className="!block" >
+          <PermissionWrapper requiredPermissions={['Edit']} className="block!" >
             <Button type="text" className="w-full">
               {t(`common.edit`)}
             </Button>
           </PermissionWrapper>
         </Menu.Item>
         {item?.name !== "default" && (
-          <Menu.Item className="!p-0" onClick={() => handleDelete(item.id)}>
-            <PermissionWrapper requiredPermissions={['Delete']} className="!block" >
+          <Menu.Item className="p-0!" onClick={() => handleDelete(item.id)}>
+            <PermissionWrapper requiredPermissions={['Delete']} className="block!" >
               <Button type="text" className="w-full">
                 {t(`common.delete`)}
               </Button>
@@ -204,7 +200,7 @@ const DatasetManagePage = () => {
         loading={loading}
         onCardClick={navigateToNode}
         openModal={() => handleOpenModal({ type: 'add', title: 'addform', form: {} })}
-        onSearch={onSearch}
+        onSearch={() => { }}
         descSlot={infoText}
       />
     </div>

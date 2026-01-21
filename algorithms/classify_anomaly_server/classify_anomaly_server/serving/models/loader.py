@@ -3,9 +3,12 @@
 from typing import Any
 
 from loguru import logger
+from dotenv import load_dotenv
 
 from ..config import ModelConfig
 from .dummy_model import DummyModel
+
+load_dotenv()
 
 
 def load_model(config: ModelConfig) -> Any:
