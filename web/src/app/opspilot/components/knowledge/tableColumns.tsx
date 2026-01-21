@@ -75,6 +75,12 @@ export const getDocumentColumns = (
     render: (text: string) => convertToLocalizedTime(text),
   },
   {
+    title: t('common.updatedTime'),
+    dataIndex: 'updated_at',
+    key: 'updated_at',
+    render: (text: string) => text ? convertToLocalizedTime(text) : '--',
+  },
+  {
     title: t('knowledge.documents.createdBy'),
     key: 'created_by',
     dataIndex: 'created_by',
@@ -261,6 +267,12 @@ export const getQAPairColumns = (
     dataIndex: 'created_at',
     key: 'created_at',
     render: (text: string) => convertToLocalizedTime(text),
+  },
+  {
+    title: t('common.updatedTime'),
+    dataIndex: 'updated_at',
+    key: 'updated_at',
+    render: (text: string) => text ? convertToLocalizedTime(text) : '--',
   },
   {
     title: t('knowledge.documents.createdBy'),
