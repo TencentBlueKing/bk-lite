@@ -30,6 +30,7 @@
     "addNew": "新增",
     "model": "模型",
     "refresh": "刷新",
+    "stop": "停止",
     "error": "错误",
     "delConfirm": "你确定要删除选中的项吗？",
     "delConfirmCxt": "删除后，数据无法恢复。",
