@@ -1,4 +1,5 @@
 [[inputs.mem]]
+    startup_error_behavior = "retry"
     interval = "{{ interval }}s"
     [inputs.mem.tags]
         instance_id = "{{ instance_id }}"
