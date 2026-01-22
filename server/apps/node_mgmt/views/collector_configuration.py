@@ -8,10 +8,14 @@ from apps.node_mgmt.models.sidecar import CollectorConfiguration, Node
 from apps.node_mgmt.serializers.collector_configuration import (
     CollectorConfigurationSerializer,
     CollectorConfigurationCreateSerializer,
-    CollectorConfigurationUpdateSerializer, BulkDeleteConfigurationSerializer, ApplyToNodeSerializer
+    CollectorConfigurationUpdateSerializer,
+    BulkDeleteConfigurationSerializer,
+    ApplyToNodeSerializer,
 )
 from apps.node_mgmt.filters.collector_configuration import CollectorConfigurationFilter
-from apps.node_mgmt.services.collector_configuration import CollectorConfigurationService
+from apps.node_mgmt.services.collector_configuration import (
+    CollectorConfigurationService,
+)
 from django.core.cache import cache
 
 
@@ -19,19 +23,22 @@ class CollectorConfigurationViewSet(ModelViewSet):
     queryset = CollectorConfiguration.objects.all().order_by("-created_at")
     serializer_class = CollectorConfigurationSerializer
     filterset_class = CollectorConfigurationFilter
-    search_fields = ['id', 'name']
+    search_fields = ["id", "name"]
 
     def list(self, request, *args, **kwargs):
         response = super().list(request, *args, **kwargs)
-        if isinstance(response.data, dict) and 'items' in response.data:
-            response.data['items'] = CollectorConfigurationService.calculate_node_count(response.data['items'])
+        if isinstance(response.data, dict) and "items" in response.data:
+            response.data["items"] = CollectorConfigurationService.calculate_node_count(
+                response.data["items"]
+            )
         else:
-            response.data = CollectorConfigurationService.calculate_node_count(response.data)
+            response.data = CollectorConfigurationService.calculate_node_count(
+                response.data
+            )
         return response
 
     @action(detail=False, methods=["post"], url_path="config_node_asso")
     def get_config_node_asso(self, request):
-
         # 获取用户节点权限列表
         permission = get_permission_rules(
             request.user,
@@ -39,14 +46,22 @@ class CollectorConfigurationViewSet(ModelViewSet):
             "node_mgmt",
             NodeConstants.MODULE,
         )
-        queryset = permission_filter(Node, permission, team_key="nodeorganization__organization__in", id_key="id__in")
+        queryset = permission_filter(
+            Node,
+            permission,
+            team_key="nodeorganization__organization__in",
+            id_key="id__in",
+        )
         node_ids = list(queryset.values_list("id", flat=True).distinct())
         if not node_ids:
             return WebUtils.response_success([])
 
-        qs = CollectorConfiguration.objects.select_related("collector").prefetch_related("nodes").filter(
-            cloud_region_id=request.data["cloud_region_id"],
-            nodes__id__in=node_ids,     # 权限
+        qs = (
+            CollectorConfiguration.objects.select_related("collector")
+            .prefetch_related("nodes")
+            .filter(
+                nodes__id__in=node_ids,
+            )
         )
 
         if request.data.get("ids"):
@@ -84,14 +99,14 @@ class CollectorConfigurationViewSet(ModelViewSet):
 
     def create(self, request, *args, **kwargs):
         # 清除cache中的etag
-        pk = kwargs.get('pk')
+        pk = kwargs.get("pk")
         cache.delete(f"configuration_etag_{pk}")
         self.serializer_class = CollectorConfigurationCreateSerializer
         return super().create(request, *args, **kwargs)
 
     def partial_update(self, request, *args, **kwargs):
         # 清除cache中的etag
-        pk = kwargs.get('pk')
+        pk = kwargs.get("pk")
         cache.delete(f"configuration_etag_{pk}")
         self.serializer_class = CollectorConfigurationUpdateSerializer
         return super().partial_update(request, *args, **kwargs)
@@ -100,38 +115,40 @@ class CollectorConfigurationViewSet(ModelViewSet):
         return super().destroy(request, *args, **kwargs)
 
     def update(self, request, *args, **kwargs):
-
         return super().update(request, *args, **kwargs)
 
     def retrieve(self, request, *args, **kwargs):
         return super().retrieve(request, *args, **kwargs)
 
-    @action(methods=['post'], detail=False, url_path='bulk_delete')
+    @action(methods=["post"], detail=False, url_path="bulk_delete")
     def bulk_delete(self, request):
         serializer = BulkDeleteConfigurationSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
-        ids = serializer.validated_data['ids']
+        ids = serializer.validated_data["ids"]
         CollectorConfiguration.objects.filter(id__in=ids).delete()
         return WebUtils.response_success()
 
-    @action(methods=['post'], detail=False, url_path='apply_to_node')
+    @action(methods=["post"], detail=False, url_path="apply_to_node")
     def apply_to_node(self, request):
-
         result = []
         for item in request.data:
             collector_configuration_id = item["collector_configuration_id"]
             node_id = item["node_id"]
-            success, message = CollectorConfigurationService.apply_to_node(node_id, collector_configuration_id)
-            result.append({
-                "node_id": node_id,
-                "collector_configuration_id": collector_configuration_id,
-                "success": success,
-                "message": message
-            })
+            success, message = CollectorConfigurationService.apply_to_node(
+                node_id, collector_configuration_id
+            )
+            result.append(
+                {
+                    "node_id": node_id,
+                    "collector_configuration_id": collector_configuration_id,
+                    "success": success,
+                    "message": message,
+                }
+            )
 
         return WebUtils.response_success(result)
 
-    @action(methods=['post'], detail=False, url_path='cancel_apply_to_node')
+    @action(methods=["post"], detail=False, url_path="cancel_apply_to_node")
     def cancel_apply_to_node(self, request):
         config_id = request.data["collector_configuration_id"]
         node_id = request.data["node_id"]
