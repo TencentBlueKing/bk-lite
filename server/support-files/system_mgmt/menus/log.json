@@ -6,7 +6,7 @@
   "tags": [
     "多日志接入","灵活检索","监控告警","权限管控"
   ],
-  "description": "For centralized collection, storage, and analysis of log data, helping users achieve efficient log monitoring and troubleshooting.",
+  "description": "app.log",
   "menus": [
     {
       "name": "Search",

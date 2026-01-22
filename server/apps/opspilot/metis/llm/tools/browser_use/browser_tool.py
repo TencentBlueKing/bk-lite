@@ -20,6 +20,10 @@ from tenacity import retry, stop_after_attempt, wait_exponential
 DEFAULT_TIMEOUT = 60
 MAX_RETRIES = 4
 
+# 浏览器超时配置（秒），可通过环境变量调整
+BROWSER_LLM_TIMEOUT = int(os.getenv("BROWSER_LLM_TIMEOUT", "30"))  # LLM 调用超时
+BROWSER_STEP_TIMEOUT = int(os.getenv("BROWSER_STEP_TIMEOUT", "30"))  # 单步执行超时（包含导航、页面加载等）
+
 
 class BrowserStepInfo(TypedDict):
     """浏览器执行步骤信息，用于流式传递给前端"""
@@ -306,6 +310,8 @@ CORE RULES (MUST FOLLOW):
             max_actions_per_step=5,  # 每步最多5个动作，避免过度操作
             max_failures=3,  # 最大失败重试次数
             sensitive_data=sensitive_data,  # 敏感数据脱敏
+            llm_timeout=BROWSER_LLM_TIMEOUT,  # LLM 调用超时
+            step_timeout=BROWSER_STEP_TIMEOUT,  # 单步执行超时（包含导航等待）
         )
 
         # 执行浏览任务

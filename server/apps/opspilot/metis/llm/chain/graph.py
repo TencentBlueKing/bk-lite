@@ -21,7 +21,7 @@ from ag_ui.core import (
     ToolCallStartEvent,
 )
 from ag_ui.encoder import EventEncoder
-from langchain_core.messages import AIMessage, AIMessageChunk, HumanMessage, SystemMessage, ToolMessage
+from langchain_core.messages import AIMessage, AIMessageChunk, HumanMessage, SystemMessage
 from langchain_core.messages.base import BaseMessage
 from langgraph.constants import START
 from loguru import logger
@@ -284,15 +284,257 @@ class BasicGraph(ABC):
         result = await self.invoke(graph, request, stream_mode="messages")
         return result
 
+    def _handle_chat_model_stream_content(
+        self,
+        chunk: Any,
+        encoder: EventEncoder,
+        run_id: str,
+        current_message_id: Optional[str],
+        message_started: bool,
+    ) -> tuple[list[str], Optional[str], bool]:
+        """处理 on_chat_model_stream 事件中的文本内容
+
+        Returns:
+            (events_to_yield, updated_message_id, updated_message_started)
+        """
+        events = []
+        if not (chunk and hasattr(chunk, "content") and chunk.content):
+            return events, current_message_id, message_started
+
+        # 首次输出内容时发送 TEXT_MESSAGE_START
+        if not message_started:
+            current_message_id = f"msg_{run_id}_{int(time.time() * 1000)}"
+            message_started = True
+            events.append(
+                encoder.encode(
+                    TextMessageStartEvent(
+                        type=EventType.TEXT_MESSAGE_START,
+                        message_id=current_message_id,
+                        role="assistant",
+                        timestamp=int(time.time() * 1000),
+                    )
+                )
+            )
+
+        # 发送内容块 (token-by-token)
+        content_delta = chunk.content if isinstance(chunk.content, str) else str(chunk.content)
+        events.append(
+            encoder.encode(
+                TextMessageContentEvent(
+                    type=EventType.TEXT_MESSAGE_CONTENT,
+                    message_id=current_message_id,
+                    delta=content_delta,
+                    timestamp=int(time.time() * 1000),
+                )
+            )
+        )
+        return events, current_message_id, message_started
+
+    def _handle_tool_call_chunks(
+        self,
+        chunk: Any,
+        encoder: EventEncoder,
+        current_message_id: Optional[str],
+        current_tool_calls: Dict[str, Dict],
+    ) -> list[str]:
+        """处理 on_chat_model_stream 事件中的流式工具调用"""
+        events = []
+        if not (chunk and hasattr(chunk, "tool_call_chunks") and chunk.tool_call_chunks):
+            return events
+
+        for tool_chunk in chunk.tool_call_chunks:
+            tool_call_id = tool_chunk.get("id")
+            if tool_call_id and tool_call_id not in current_tool_calls:
+                tool_name = tool_chunk.get("name", "unknown")
+                current_tool_calls[tool_call_id] = {"name": tool_name, "started": True}
+                events.append(
+                    encoder.encode(
+                        ToolCallStartEvent(
+                            type=EventType.TOOL_CALL_START,
+                            tool_call_id=tool_call_id,
+                            tool_call_name=tool_name,
+                            parent_message_id=current_message_id,
+                            timestamp=int(time.time() * 1000),
+                        )
+                    )
+                )
+        return events
+
+    def _handle_tool_start_event(
+        self,
+        event: Dict[str, Any],
+        event_data: Dict[str, Any],
+        encoder: EventEncoder,
+        current_message_id: Optional[str],
+        current_tool_calls: Dict[str, Dict],
+    ) -> list[str]:
+        """处理 on_tool_start 事件"""
+        events = []
+        tool_name = event.get("name", "unknown")
+        tool_input = event_data.get("input", {})
+        run_id_from_event = event.get("run_id", "")
+
+        # 查找已存在的相同工具名的未结束调用
+        existing_tool_call_id = None
+        for tid, tinfo in current_tool_calls.items():
+            if tinfo.get("name") == tool_name and not tinfo.get("ended") and not tinfo.get("tool_started"):
+                existing_tool_call_id = tid
+                tinfo["tool_started"] = True
+                tinfo["run_id"] = run_id_from_event
+                break
+
+        if existing_tool_call_id:
+            if tool_input:
+                events.append(
+                    encoder.encode(
+                        ToolCallArgsEvent(
+                            type=EventType.TOOL_CALL_ARGS,
+                            tool_call_id=existing_tool_call_id,
+                            delta=json.dumps(tool_input, ensure_ascii=False) if isinstance(tool_input, dict) else str(tool_input),
+                            timestamp=int(time.time() * 1000),
+                        )
+                    )
+                )
+        else:
+            tool_call_id = f"tool_{run_id_from_event}" if run_id_from_event else f"tool_{uuid.uuid4()}"
+            current_tool_calls[tool_call_id] = {
+                "name": tool_name,
+                "started": True,
+                "tool_started": True,
+                "run_id": run_id_from_event,
+            }
+            events.append(
+                encoder.encode(
+                    ToolCallStartEvent(
+                        type=EventType.TOOL_CALL_START,
+                        tool_call_id=tool_call_id,
+                        tool_call_name=tool_name,
+                        parent_message_id=current_message_id,
+                        timestamp=int(time.time() * 1000),
+                    )
+                )
+            )
+            if tool_input:
+                events.append(
+                    encoder.encode(
+                        ToolCallArgsEvent(
+                            type=EventType.TOOL_CALL_ARGS,
+                            tool_call_id=tool_call_id,
+                            delta=json.dumps(tool_input, ensure_ascii=False) if isinstance(tool_input, dict) else str(tool_input),
+                            timestamp=int(time.time() * 1000),
+                        )
+                    )
+                )
+        return events
+
+    def _handle_tool_end_event(
+        self,
+        event: Dict[str, Any],
+        event_data: Dict[str, Any],
+        encoder: EventEncoder,
+        current_tool_calls: Dict[str, Dict],
+    ) -> list[str]:
+        """处理 on_tool_end 事件"""
+        events = []
+        tool_name = event.get("name", "unknown")
+        tool_output = event_data.get("output", "")
+        run_id_from_event = event.get("run_id", "")
+
+        # 优先使用 run_id 匹配
+        tool_call_id = None
+        for tid, tinfo in current_tool_calls.items():
+            if tinfo.get("run_id") == run_id_from_event and not tinfo.get("ended"):
+                tool_call_id = tid
+                tinfo["ended"] = True
+                break
+
+        # 用 tool_name 兜底
+        if not tool_call_id:
+            for tid, tinfo in current_tool_calls.items():
+                if tinfo.get("name") == tool_name and not tinfo.get("ended"):
+                    tool_call_id = tid
+                    tinfo["ended"] = True
+                    break
+
+        if tool_call_id:
+            events.append(
+                encoder.encode(
+                    ToolCallEndEvent(
+                        type=EventType.TOOL_CALL_END,
+                        tool_call_id=tool_call_id,
+                        timestamp=int(time.time() * 1000),
+                    )
+                )
+            )
+            events.append(
+                encoder.encode(
+                    ToolCallResultEvent(
+                        type=EventType.TOOL_CALL_RESULT,
+                        message_id=f"result_{uuid.uuid4()}",
+                        tool_call_id=tool_call_id,
+                        content=str(tool_output) if tool_output else "",
+                        role="tool",
+                        timestamp=int(time.time() * 1000),
+                    )
+                )
+            )
+        return events
+
+    def _handle_chat_model_end_event(
+        self,
+        event_data: Dict[str, Any],
+        encoder: EventEncoder,
+        current_message_id: Optional[str],
+        current_tool_calls: Dict[str, Dict],
+    ) -> list[str]:
+        """处理 on_chat_model_end 事件中的完整工具调用"""
+        events = []
+        output = event_data.get("output")
+        if not (output and hasattr(output, "tool_calls") and output.tool_calls):
+            return events
+
+        for tool_call in output.tool_calls:
+            if hasattr(tool_call, "get"):
+                tool_call_id = tool_call.get("id") or f"tool_{uuid.uuid4()}"
+                tool_name = tool_call.get("name", "unknown")
+                tool_args = tool_call.get("args")
+            else:
+                tool_call_id = getattr(tool_call, "id", None) or f"tool_{uuid.uuid4()}"
+                tool_name = getattr(tool_call, "name", "unknown")
+                tool_args = getattr(tool_call, "args", None)
+
+            if tool_call_id not in current_tool_calls:
+                current_tool_calls[tool_call_id] = {"name": tool_name, "started": True}
+                events.append(
+                    encoder.encode(
+                        ToolCallStartEvent(
+                            type=EventType.TOOL_CALL_START,
+                            tool_call_id=tool_call_id,
+                            tool_call_name=tool_name,
+                            parent_message_id=current_message_id,
+                            timestamp=int(time.time() * 1000),
+                        )
+                    )
+                )
+                if tool_args:
+                    events.append(
+                        encoder.encode(
+                            ToolCallArgsEvent(
+                                type=EventType.TOOL_CALL_ARGS,
+                                tool_call_id=tool_call_id,
+                                delta=json.dumps(tool_args, ensure_ascii=False) if isinstance(tool_args, dict) else str(tool_args),
+                                timestamp=int(time.time() * 1000),
+                            )
+                        )
+                    )
+        return events
+
     async def agui_stream(self, request: BasicLLMRequest) -> AsyncGenerator[str, None]:
         """
         使用 agui 协议以 SSE 格式流式输出事件
 
-        支持浏览器工具执行进度的实时流式推送。当使用 browser-use 工具时，
-        每个执行步骤都会通过 CustomEvent (name="browser_step_progress") 实时推送。
-
-        使用 _merge_async_streams 并发消费 LangGraph 流和浏览器事件队列，
-        实现真正的实时流式输出，而不是等待 LangGraph 产生 chunk 时才检查队列。
+        使用 astream_events(version="v2") 获取细粒度的流式事件，实现真正的 token-by-token 输出。
+        支持浏览器工具执行进度的实时流式推送。
 
         Args:
             request: 基础 LLM 请求对象
@@ -303,14 +545,13 @@ class BasicGraph(ABC):
         encoder = EventEncoder()
         run_id = str(uuid.uuid4())
         thread_id = request.thread_id or str(uuid.uuid4())
-        current_message_id = None
+        current_message_id: Optional[str] = None
         current_tool_calls: Dict[str, Dict] = {}
+        message_started = False
 
         # 创建浏览器步骤事件队列和回调
         browser_event_queue: asyncio.Queue[str] = asyncio.Queue(maxsize=100)
         browser_step_callback = create_browser_step_callback(browser_event_queue, encoder)
-
-        # 停止信号，用于通知队列消费者停止
         stop_event = asyncio.Event()
 
         try:
@@ -324,106 +565,77 @@ class BasicGraph(ABC):
                 )
             )
 
-            # 获取消息流，注入浏览器步骤回调
+            # 编译图并获取配置
             graph = await self.compile_graph(request)
-            result = await self.invoke(
-                graph,
-                request,
-                stream_mode="messages",
-                extra_configurable={"browser_step_callback": browser_step_callback},
+            if graph is None:
+                raise RuntimeError("Failed to compile graph: graph is None")
+
+            config = {
+                "recursion_limit": 50,
+                "trace_id": str(uuid.uuid4()),
+                "configurable": {
+                    "graph_request": request,
+                    "user_id": request.user_id or "",
+                    **request.extra_config,
+                    "browser_step_callback": browser_step_callback,
+                },
+            }
+
+            langgraph_stream = graph.astream_events(
+                {"messages": [], "graph_request": request},
+                config=config,
+                version="v2",
             )
 
-            # 使用并发流合并器处理 LangGraph 流和浏览器事件
+            async for stream_type, stream_data in _merge_async_streams(langgraph_stream, browser_event_queue, stop_event):
+                if stream_type == "browser":
+                    yield stream_data
+                    continue
+
+                event = stream_data
+                event_type = event.get("event")
+                event_data = event.get("data", {})
+
+                if event_type == "on_chat_model_stream":
+                    chunk = event_data.get("chunk")
+                    # 处理文本内容
+                    content_events, current_message_id, message_started = self._handle_chat_model_stream_content(
+                        chunk, encoder, run_id, current_message_id, message_started
+                    )
+                    for ev in content_events:
+                        yield ev
+                    # 处理工具调用 chunks
+                    for ev in self._handle_tool_call_chunks(chunk, encoder, current_message_id, current_tool_calls):
+                        yield ev
+
+                elif event_type == "on_tool_start":
+                    for ev in self._handle_tool_start_event(
+                        event,
+                        event_data,
+                        encoder,
+                        current_message_id,
+                        current_tool_calls,
+                    ):
+                        yield ev
+
+                elif event_type == "on_tool_end":
+                    for ev in self._handle_tool_end_event(event, event_data, encoder, current_tool_calls):
+                        yield ev
+
+                elif event_type == "on_chat_model_end":
+                    for ev in self._handle_chat_model_end_event(event_data, encoder, current_message_id, current_tool_calls):
+                        yield ev
+
+            # 清空剩余的浏览器事件
             try:
-                async for event_type, data in _merge_async_streams(result, browser_event_queue, stop_event):
-                    # 处理浏览器步骤事件 - 已编码，直接 yield
-                    if event_type == "browser":
-                        yield data
-                        continue
-
-                    # 处理 LangGraph 消息块
-                    chunk = data
-                    if not chunk:
-                        continue
-
-                    message = chunk[0] if isinstance(chunk, (list, tuple)) else chunk
-
-                    # 处理 AI 消息块
-                    if isinstance(message, AIMessageChunk):
-                        async for event in self._handle_ai_message_chunk(
-                            message,
-                            encoder,
-                            run_id,
-                            current_message_id,
-                            current_tool_calls,
-                        ):
-                            yield event
-                        # 更新 current_message_id（如果是首次创建）
-                        if message.content and current_message_id is None:
-                            current_message_id = f"msg_{run_id}_{int(time.time() * 1000)}"
-
-                    # 处理工具执行结果
-                    elif isinstance(message, ToolMessage):
-                        yield encoder.encode(
-                            ToolCallResultEvent(
-                                type=EventType.TOOL_CALL_RESULT,
-                                message_id=f"result_{uuid.uuid4()}",
-                                tool_call_id=getattr(message, "tool_call_id", str(uuid.uuid4())),
-                                content=str(message.content),
-                                role="tool",
-                                timestamp=int(time.time() * 1000),
-                            )
-                        )
-
-                    # 处理完整 AI 消息（非流式块）
-                    elif isinstance(message, AIMessage) and not isinstance(message, AIMessageChunk):
-                        # 为每个完整 AIMessage 创建独立的消息 ID
-                        complete_message_id = f"msg_{run_id}_{int(time.time() * 1000)}"
-
-                        # 处理工具调用（如果存在）
-                        if hasattr(message, "tool_calls") and message.tool_calls:
-                            for event in self._handle_tool_calls_sync(
-                                message.tool_calls,
-                                encoder,
-                                complete_message_id,
-                                current_tool_calls,
-                            ):
-                                yield event
-
-                        # 处理文本内容（如果存在）
-                        if message.content:
-                            yield encoder.encode(
-                                TextMessageStartEvent(
-                                    type=EventType.TEXT_MESSAGE_START,
-                                    message_id=complete_message_id,
-                                    role="assistant",
-                                    timestamp=int(time.time() * 1000),
-                                )
-                            )
-
-                            yield encoder.encode(
-                                TextMessageContentEvent(
-                                    type=EventType.TEXT_MESSAGE_CONTENT,
-                                    message_id=complete_message_id,
-                                    delta=message.content,
-                                    timestamp=int(time.time() * 1000),
-                                )
-                            )
-
-                            yield encoder.encode(
-                                TextMessageEndEvent(
-                                    type=EventType.TEXT_MESSAGE_END,
-                                    message_id=complete_message_id,
-                                    timestamp=int(time.time() * 1000),
-                                )
-                            )
-
-            except Exception:
-                # 继续抛出异常，让外层 catch 处理
-                raise
+                while True:
+                    browser_event = browser_event_queue.get_nowait()
+                    yield browser_event
+            except asyncio.QueueEmpty:
+                pass
 
             # 发送消息结束事件
-            if current_message_id is not None:
+            if message_started and current_message_id is not None:
                 yield encoder.encode(
                     TextMessageEndEvent(
                         type=EventType.TEXT_MESSAGE_END,
@@ -453,7 +665,6 @@ class BasicGraph(ABC):
                 )
             )
         finally:
-            # 确保停止信号被设置，清理后台任务
             stop_event.set()
 
     async def _handle_ai_message_chunk(
@@ -461,14 +672,25 @@ class BasicGraph(ABC):
         message: AIMessageChunk,
         encoder: EventEncoder,
         run_id: str,
-        current_message_id: str,
+        current_message_id: Optional[str],
         current_tool_calls: Dict[str, Dict],
     ):
         """处理 AI 消息块，包括文本内容和工具调用"""
         content = message.content
 
-        # 处理文本内容
-        if content:
+        # 处理文本内容 (content 可能是 str 或 list)
+        content_str = ""
+        if isinstance(content, str):
+            content_str = content
+        elif isinstance(content, list):
+            # 多模态消息，只提取文本部分
+            for item in content:
+                if isinstance(item, str):
+                    content_str += item
+                elif isinstance(item, dict) and item.get("type") == "text":
+                    content_str += item.get("text", "")
+
+        if content_str:
             # 首次输出内容时发送 TEXT_MESSAGE_START
             if current_message_id is None:
                 current_message_id = f"msg_{run_id}_{int(time.time() * 1000)}"
@@ -486,27 +708,39 @@ class BasicGraph(ABC):
                 TextMessageContentEvent(
                     type=EventType.TEXT_MESSAGE_CONTENT,
                     message_id=current_message_id,
-                    delta=content,
+                    delta=content_str,
                     timestamp=int(time.time() * 1000),
                 )
             )
 
         # 处理工具调用
         if hasattr(message, "tool_calls") and message.tool_calls:
-            async for event in self._handle_tool_calls(message.tool_calls, encoder, current_message_id, current_tool_calls):
+            async for event in self._handle_tool_calls(
+                message.tool_calls,
+                encoder,
+                current_message_id or "",
+                current_tool_calls,
+            ):
                 yield event
 
     async def _handle_tool_calls(
         self,
-        tool_calls: List[Dict],
+        tool_calls: List[Any],
         encoder: EventEncoder,
         parent_message_id: str,
         current_tool_calls: Dict[str, Dict],
     ) -> AsyncGenerator[str, None]:
         """处理工具调用事件（异步生成器版本，用于流式场景）"""
         for tool_call in tool_calls:
-            tool_call_id = tool_call.get("id") or tool_call.get("tool_call_id", f"tool_{uuid.uuid4()}")
-            tool_name = tool_call.get("name", "unknown")
+            # 支持 dict 和 ToolCall 对象
+            if hasattr(tool_call, "get"):
+                tool_call_id = tool_call.get("id") or tool_call.get("tool_call_id", f"tool_{uuid.uuid4()}")
+                tool_name = tool_call.get("name", "unknown")
+                tool_args = tool_call.get("args")
+            else:
+                tool_call_id = getattr(tool_call, "id", None) or f"tool_{uuid.uuid4()}"
+                tool_name = getattr(tool_call, "name", "unknown")
+                tool_args = getattr(tool_call, "args", None)
 
             # 如果是新的工具调用
             if tool_call_id not in current_tool_calls:
@@ -524,12 +758,12 @@ class BasicGraph(ABC):
                 )
 
                 # 发送工具参数
-                if "args" in tool_call:
+                if tool_args:
                     yield encoder.encode(
                         ToolCallArgsEvent(
                             type=EventType.TOOL_CALL_ARGS,
                             tool_call_id=tool_call_id,
-                            delta=json.dumps(tool_call["args"], ensure_ascii=False),
+                            delta=json.dumps(tool_args, ensure_ascii=False) if isinstance(tool_args, dict) else str(tool_args),
                             timestamp=int(time.time() * 1000),
                         )
                     )
@@ -545,15 +779,22 @@ class BasicGraph(ABC):
 
     def _handle_tool_calls_sync(
         self,
-        tool_calls: List[Dict],
+        tool_calls: List[Any],
         encoder: EventEncoder,
         parent_message_id: str,
         current_tool_calls: Dict[str, Dict],
     ):
         """处理工具调用事件（同步生成器版本，用于完整消息）"""
         for tool_call in tool_calls:
-            tool_call_id = tool_call.get("id") or tool_call.get("tool_call_id", f"tool_{uuid.uuid4()}")
-            tool_name = tool_call.get("name", "unknown")
+            # 支持 dict 和 ToolCall 对象
+            if hasattr(tool_call, "get"):
+                tool_call_id = tool_call.get("id") or tool_call.get("tool_call_id", f"tool_{uuid.uuid4()}")
+                tool_name = tool_call.get("name", "unknown")
+                tool_args = tool_call.get("args")
+            else:
+                tool_call_id = getattr(tool_call, "id", None) or f"tool_{uuid.uuid4()}"
+                tool_name = getattr(tool_call, "name", "unknown")
+                tool_args = getattr(tool_call, "args", None)
 
             # 如果是新的工具调用
             if tool_call_id not in current_tool_calls:
@@ -571,12 +812,12 @@ class BasicGraph(ABC):
                 )
 
                 # 发送工具参数
-                if "args" in tool_call:
+                if tool_args:
                     yield encoder.encode(
                         ToolCallArgsEvent(
                             type=EventType.TOOL_CALL_ARGS,
                             tool_call_id=tool_call_id,
-                            delta=json.dumps(tool_call["args"], ensure_ascii=False),
+                            delta=json.dumps(tool_args, ensure_ascii=False) if isinstance(tool_args, dict) else str(tool_args),
                             timestamp=int(time.time() * 1000),
                         )
                     )
