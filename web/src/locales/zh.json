@@ -73,6 +73,8 @@
     "api": "接口",
     "open": "开启",
     "close": "关闭",
+    "enable": "启用",
+    "disable": "禁用",
     "navigation": "工作台",
     "appList": "应用列表",
     "clear": "清空",
