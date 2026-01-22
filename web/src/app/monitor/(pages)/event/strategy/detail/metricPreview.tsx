@@ -17,7 +17,6 @@ import { InstanceItem } from '@/app/monitor/types/search';
 import {
   mergeViewQueryKeyValues,
   renderChart,
-  getRecentTimeRange,
 } from '@/app/monitor/utils/common';
 
 const { Option } = Select;
@@ -137,6 +136,60 @@ const MetricPreview: React.FC<MetricPreviewProps> = ({
     return metrics.find((item) => item.name === metric);
   }, [metrics, metric]);
 
+  // 将汇聚周期转换为秒
+  const getPeriodInSeconds = (): number => {
+    const periodValue = period || 5;
+    switch (periodUnit) {
+      case 'min':
+        return periodValue * 60;
+      case 'hour':
+        return periodValue * 3600;
+      case 'day':
+        return periodValue * 86400;
+      default:
+        return periodValue * 60;
+    }
+  };
+
+  // 获取汇聚周期的时间字符串（用于 PromQL）
+  const getPeriodString = (): string => {
+    const periodValue = period || 5;
+    switch (periodUnit) {
+      case 'min':
+        return `${periodValue}m`;
+      case 'hour':
+        return `${periodValue}h`;
+      case 'day':
+        return `${periodValue}d`;
+      default:
+        return `${periodValue}m`;
+    }
+  };
+
+  // 根据汇聚方式包装查询语句
+  const wrapQueryWithAlgorithm = (baseQuery: string): string => {
+    if (!algorithm) return baseQuery;
+    const periodStr = getPeriodString();
+    const groupByClause = groupBy?.length ? ` by (${groupBy.join(', ')})` : '';
+    // _over_time 函数需要时间范围参数
+    const overTimeFunctions = [
+      'sum_over_time',
+      'max_over_time',
+      'min_over_time',
+      'avg_over_time',
+      'last_over_time',
+      'count_over_time',
+    ];
+    if (overTimeFunctions.includes(algorithm)) {
+      // 例如: sum_over_time(metric{labels}[5m])
+      return `${algorithm}(${baseQuery}[${periodStr}])${groupByClause}`;
+    } else {
+      // 聚合函数如 sum, avg, max, min, count
+      // 例如: sum by (instance_id) (metric{labels})
+      return `${algorithm}${groupByClause}(${baseQuery})`;
+    }
+  };
+
   // 构建查询参数
   const getQueryParams = () => {
     if (!currentMetric || !selectedInstance) return null;
@@ -169,21 +222,27 @@ const MetricPreview: React.FC<MetricPreviewProps> = ({
         query += conditionQueries.join(',');
       }
     }
-    // 时间范围：最近15分钟
-    const timeRange = getRecentTimeRange({
-      timeRange: [],
-      originValue: 1440,
-    });
-    const startTime = timeRange[0];
-    const endTime = timeRange[1];
-    const MAX_POINTS = 100;
-    const DEFAULT_STEP = 360;
-    const step = Math.max(
-      Math.ceil((endTime / MAX_POINTS - startTime / MAX_POINTS) / DEFAULT_STEP),
-      1
-    );
+
+    // 基础查询语句（替换标签占位符）
+    const baseQuery = metricQuery.replace(/__\$labels__/g, query);
+    // 根据汇聚方式包装查询语句
+    const finalQuery = wrapQueryWithAlgorithm(baseQuery);
+    // 计算时间范围和步长
+    // 基于汇聚周期计算：显示最近 N 个周期的数据（至少显示 50 个点）
+    const periodInSeconds = getPeriodInSeconds();
+    const MIN_POINTS = 50;
+    const now = Date.now();
+    // 时间范围：至少显示 50 个汇聚周期，最少 1 小时，最多 24 小时
+    const minDuration = Math.max(periodInSeconds * MIN_POINTS * 1000, 3600000);
+    const maxDuration = 86400000; // 24 小时
+    const duration = Math.min(minDuration, maxDuration);
+    const startTime = now - duration;
+    const endTime = now;
+    // step 设置为汇聚周期（秒）
+    const step = periodInSeconds;
+
     return {
-      query: metricQuery.replace(/__\$labels__/g, query),
+      query: finalQuery,
       source_unit: currentMetric.unit || '',
       start: startTime,
       end: endTime,
