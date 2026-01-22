@@ -34,6 +34,28 @@ from apps.core.logger import cmdb_logger as logger
 
 
 class InstanceManage(object):
+    @staticmethod
+    def _normalize_cloud_value(value):
+        if value is None:
+            return None
+        if isinstance(value, str):
+            return value
+        return str(value)
+
+    @classmethod
+    def _normalize_cloud_fields_inplace(cls, instance: dict):
+        if not instance or not isinstance(instance, dict):
+            return
+        if "cloud" in instance:
+            instance["cloud"] = cls._normalize_cloud_value(instance.get("cloud"))
+
+    @classmethod
+    def _normalize_cloud_list_inplace(cls, instances: list):
+        if not instances or not isinstance(instances, list):
+            return
+        for item in instances:
+            cls._normalize_cloud_fields_inplace(item)
+
     @classmethod
     def search_inst(cls, model_id: str, inst_name: str = None, _id: int = None):
         """查询实例"""
@@ -46,6 +68,7 @@ class InstanceManage(object):
                     {"field": "inst_name", "type": "str=", "value": inst_name}
                 )
             inst_list, count = ag.query_entity(INSTANCE, params)
+        cls._normalize_cloud_list_inplace(inst_list)
         return inst_list, count
 
     @staticmethod
@@ -120,11 +143,13 @@ class InstanceManage(object):
                 case_sensitive=case_sensitive,
             )
             inst_list, count = ag.query_entity(**query)
+        InstanceManage._normalize_cloud_list_inplace(inst_list)
         return inst_list, count
 
     @staticmethod
     def instance_create(model_id: str, instance_info: dict, operator: str):
         """创建实例"""
+        InstanceManage._normalize_cloud_fields_inplace(instance_info)
         instance_info.update(model_id=model_id)
         attrs = ModelManage.search_model_attr(model_id)
         check_attr_map = dict(is_only={}, is_required={})
@@ -166,6 +191,7 @@ class InstanceManage(object):
         user_groups: list, roles: list, inst_id: int, update_attr: dict, operator: str
     ):
         """修改实例属性"""
+        InstanceManage._normalize_cloud_fields_inplace(update_attr)
         inst_info = InstanceManage.query_entity_by_id(inst_id)
 
         if not inst_info:
@@ -241,6 +267,8 @@ class InstanceManage(object):
     @staticmethod
     def batch_instance_update(inst_ids: list, update_attr: dict, operator: str):
         """批量修改实例属性"""
+
+        InstanceManage._normalize_cloud_fields_inplace(update_attr)
 
         inst_list = InstanceManage.query_entity_by_ids(inst_ids)
 
@@ -581,6 +609,7 @@ class InstanceManage(object):
         """根据实例ID查询实例详情"""
         with GraphClient() as ag:
             entity = ag.query_entity_by_id(inst_id)
+        InstanceManage._normalize_cloud_fields_inplace(entity)
         return entity
 
     @staticmethod
@@ -588,6 +617,7 @@ class InstanceManage(object):
         """根据实例ID查询实例详情"""
         with GraphClient() as ag:
             entity_list = ag.query_entity_by_ids(inst_ids)
+        InstanceManage._normalize_cloud_list_inplace(entity_list)
         return entity_list
 
     @staticmethod

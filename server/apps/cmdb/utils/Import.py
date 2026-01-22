@@ -341,6 +341,10 @@ class Import:
     def inst_list_save(self, inst_list):
         """实例列表保存"""
 
+        for item in inst_list or []:
+            if isinstance(item, dict) and "cloud" in item and item.get("cloud") is not None:
+                item["cloud"] = str(item.get("cloud"))
+
         with GraphClient() as ag:
             result = ag.batch_create_entity(INSTANCE, inst_list, self.get_check_attr_map(), self.exist_items,
                                             self.operator)
@@ -348,6 +352,10 @@ class Import:
 
     def inst_list_update(self, inst_list):
         """实例列表更新"""
+
+        for item in inst_list or []:
+            if isinstance(item, dict) and "cloud" in item and item.get("cloud") is not None:
+                item["cloud"] = str(item.get("cloud"))
 
         with GraphClient() as ag:
             add_results, update_results = ag.batch_save_entity(INSTANCE, inst_list, self.get_check_attr_map(),

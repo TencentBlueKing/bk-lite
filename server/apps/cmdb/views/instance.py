@@ -66,6 +66,15 @@ class InstanceViewSet(viewsets.ViewSet):
             if isinstance(value, list) and not value:
                 return
 
+            # cloud 字段统一按字符串存储/查询，避免 int/str 混用导致查询不到
+            if field == "cloud":
+                if isinstance(value, list):
+                    value = [str(v) for v in value if v is not None]
+                else:
+                    value = str(value)
+                if isinstance(_type, str) and _type.startswith("int"):
+                    _type = "str="
+
             normalized.append({"field": field, "type": _type, "value": value})
 
         def walk(node):
