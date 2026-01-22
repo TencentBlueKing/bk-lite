@@ -14,7 +14,23 @@ import { renderToolCallCard, renderErrorMessage, ToolCallInfo } from './toolCall
  */
 export const processHistoryMessageContent = (content: string, role: string): string => {
   // 非 bot 消息直接返回
-  if (role !== 'bot') return content;
+  if (role !== 'bot') return typeof content === 'string' ? content : String(content ?? '');
+  
+  // 确保 content 是字符串
+  if (typeof content !== 'string') {
+    // 如果是对象或数组，尝试转换为字符串
+    if (content === null || content === undefined) {
+      return '';
+    }
+    if (typeof content === 'object') {
+      try {
+        return JSON.stringify(content);
+      } catch {
+        return String(content);
+      }
+    }
+    return String(content);
+  }
   
   try {
     // 尝试解析为 JSON 数组

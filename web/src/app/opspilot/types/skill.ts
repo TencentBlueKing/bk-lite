@@ -29,6 +29,7 @@ export interface SelectorOption {
   id: number;
   name: string;
   icon?: string;
+  description?: string;
 }
 
 export interface KnowledgeBaseRagSource {
