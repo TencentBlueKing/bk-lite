@@ -338,6 +338,10 @@ const StrategyOperation = () => {
     const target = metrics.find((item) => item.name === val);
     const _labels = (target?.dimensions || []).map((item) => item.name);
     setLabels(_labels);
+    // 在新增模式下，自动设置单位为指标的默认单位
+    if (['builtIn', 'add'].includes(type)) {
+      setCalculationUnit(target?.unit || null);
+    }
   };
 
   const getMetrics = async (params = {}, type = '') => {
@@ -674,6 +678,7 @@ const StrategyOperation = () => {
                 periodUnit={periodUnit}
                 algorithm={form.getFieldValue('algorithm')}
                 threshold={threshold}
+                calculationUnit={calculationUnit}
                 scrollContainerRef={formContainerRef}
                 anchorRef={basicInfoRef}
               />

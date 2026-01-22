@@ -32,6 +32,7 @@ interface MetricPreviewProps {
   periodUnit: string;
   algorithm: string | null;
   threshold: ThresholdField[];
+  calculationUnit?: string | null;
   scrollContainerRef?: RefObject<HTMLDivElement | null>;
   anchorRef?: RefObject<HTMLDivElement | null>;
 }
@@ -47,6 +48,7 @@ const MetricPreview: React.FC<MetricPreviewProps> = ({
   periodUnit,
   algorithm,
   threshold,
+  calculationUnit,
   scrollContainerRef,
   anchorRef,
 }) => {
@@ -244,6 +246,7 @@ const MetricPreview: React.FC<MetricPreviewProps> = ({
     return {
       query: finalQuery,
       source_unit: currentMetric.unit || '',
+      unit: calculationUnit || '',
       start: startTime,
       end: endTime,
       step,
@@ -400,6 +403,7 @@ const MetricPreview: React.FC<MetricPreviewProps> = ({
     period,
     periodUnit,
     algorithm,
+    calculationUnit,
   ]);
 
   // 清理
@@ -464,8 +468,10 @@ const MetricPreview: React.FC<MetricPreviewProps> = ({
       {currentMetric && (
         <div className="text-[12px] text-[var(--color-text-2)] mb-2">
           {currentMetric.display_name || metric}
-          {unit && (
-            <span className="text-[var(--color-text-3)] ml-1">({unit})</span>
+          {(calculationUnit || unit) && (
+            <span className="text-[var(--color-text-3)] ml-1">
+              ({calculationUnit || unit})
+            </span>
           )}
         </div>
       )}
