@@ -124,7 +124,17 @@
       "triggerWarningAlert": "触发警告告警",
       "noDataAlertCondition": "当检测指标最近",
       "noDataAlertSuffix": "分钟查询结果为空时，",
-      "metricPreview": "指标预览"
+      "metricPreview": "指标预览",
+      "optionalVariables": "可选变量",
+      "variableName": "变量名",
+      "useVariable": "选用",
+      "variableMonitorObject": "监控对象名称",
+      "variableInstanceName": "实例名称",
+      "variableLevel": "告警级别",
+      "variableMetricName": "指标名称（来自指标表）",
+      "variableValue": "告警值（无数据告警为空）",
+      "variableInstanceId": "实例ID",
+      "noDataAlertNameDefault": "${monitor_object}${instance_name}产生${metric_name}无数据告警"
     },
     "views": {
       "vmware_esxi_count": "ESXI数量",

@@ -36,6 +36,7 @@ import MetricDefinitionForm from './metricDefinitionForm';
 import AlertConditionsForm from './alertConditionsForm';
 import NotificationForm from './notificationForm';
 import MetricPreview from './metricPreview';
+import VariablesTable from './variablesTable';
 const defaultGroup = ['instance_id'];
 
 const StrategyOperation = () => {
@@ -156,7 +157,13 @@ const StrategyOperation = () => {
         feedbackThreshold(strategyInfo.threshold || []);
         _metricId = strategyInfo.metric_name || null;
       }
-      form.setFieldsValue(initForm);
+      // 设置无数据告警名称默认值
+      const defaultNoDataAlertName = t('monitor.events.noDataAlertNameDefault');
+      setNoDataAlertName(defaultNoDataAlertName);
+      form.setFieldsValue({
+        ...initForm,
+        no_data_alert_name: defaultNoDataAlertName,
+      });
       setMetric(_metricId);
       const instanceIdStr = searchParams.get('instanceId');
       let instanceIds: string[] = [];
@@ -268,7 +275,17 @@ const StrategyOperation = () => {
     } else {
       setNoDataAlertLevel('none');
     }
-    setNoDataAlertName((no_data_alert_name as string) || '');
+    // 如果无数据告警名称为空，使用默认值
+    const defaultNoDataAlertName = t('monitor.events.noDataAlertNameDefault');
+    const finalNoDataAlertName =
+      (no_data_alert_name as string) || defaultNoDataAlertName;
+    setNoDataAlertName(finalNoDataAlertName);
+    // 同步更新 form 字段
+    if (!no_data_alert_name) {
+      form.setFieldsValue({
+        no_data_alert_name: defaultNoDataAlertName,
+      });
+    }
   };
 
   const processMetricData = (data: StrategyFields) => {
@@ -636,7 +653,16 @@ const StrategyOperation = () => {
                 />
               </Form>
             </div>
-            {false && (
+            <div className="flex flex-col">
+              <VariablesTable
+                onVariableSelect={(variable: string) => {
+                  const currentAlertName =
+                    form.getFieldValue('alert_name') || '';
+                  form.setFieldsValue({
+                    alert_name: currentAlertName + variable,
+                  });
+                }}
+              />
               <MetricPreview
                 monitorObjId={monitorObjId}
                 source={source}
@@ -651,7 +677,7 @@ const StrategyOperation = () => {
                 scrollContainerRef={formContainerRef}
                 anchorRef={basicInfoRef}
               />
-            )}
+            </div>
           </div>
         </div>
         <div className={strategyStyle.footer}>

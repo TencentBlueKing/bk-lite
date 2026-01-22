@@ -197,6 +197,7 @@ const AlertConditionsForm: React.FC<AlertConditionsFormProps> = ({
                     value={noDataAlertName}
                     placeholder={t('monitor.events.noDataAlertName')}
                     onChange={(e) => onNoDataAlertNameChange(e.target.value)}
+                    disabled
                   />
                 </Form.Item>
               )}
