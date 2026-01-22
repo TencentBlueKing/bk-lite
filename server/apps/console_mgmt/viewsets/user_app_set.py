@@ -4,6 +4,7 @@ from rest_framework.decorators import action
 
 from apps.console_mgmt.models import UserAppSet
 from apps.console_mgmt.serializers import UserAppSetSerializer
+from apps.core.utils.loader import LanguageLoader
 
 
 class UserAppSetViewSet(viewsets.ModelViewSet):
@@ -63,8 +64,19 @@ class UserAppSetViewSet(viewsets.ModelViewSet):
         user_app_set = UserAppSet.objects.filter(username=username, domain=domain).first()
 
         if user_app_set:
-            # 如果找到记录，直接返回
-            return JsonResponse({"result": True, "data": user_app_set.app_config_list})
+            app_config_list = user_app_set.app_config_list
+            # 对内置应用的 description 进行翻译
+            if app_config_list:
+                locale = getattr(request.user, "locale", "en")
+                loader = LanguageLoader(app="core", default_lang=locale)
+                for app_config in app_config_list:
+                    if app_config.get("is_build_in") and app_config.get("name"):
+                        # 使用 app.{name} 作为翻译 key
+                        translation_key = f"app.{app_config['name']}"
+                        translated = loader.get(translation_key)
+                        if translated:
+                            app_config["description"] = translated
+            return JsonResponse({"result": True, "data": app_config_list})
 
         return JsonResponse({"result": True, "data": []})
 

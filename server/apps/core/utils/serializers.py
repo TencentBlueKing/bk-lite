@@ -1,4 +1,3 @@
-from django.utils.translation import gettext as _
 from rest_framework import serializers
 from rest_framework.fields import empty
 
@@ -25,17 +24,7 @@ class UsernameSerializer(serializers.ModelSerializer):
         return response
 
 
-class I18nSerializer(UsernameSerializer):
-    def to_representation(self, instance):
-        response = super().to_representation(instance)
-        if "is_build_in" in list(response.keys()):
-            for key in response.keys():
-                if isinstance(response[key], str):
-                    response[key] = _(response[key])
-        return response
-
-
-class TeamSerializer(I18nSerializer):
+class TeamSerializer(UsernameSerializer):
     team_name = serializers.SerializerMethodField()
 
     def __init__(self, instance=None, data=empty, **kwargs):

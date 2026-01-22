@@ -9,7 +9,7 @@
     "监控策略",
     "智能告警"
   ],
-  "description": "Real-time monitoring and management platform for system operation status, providing data visualization, alert notifications, performance analysis and other functions to help quickly identify problems and ensure business stability",
+  "description": "app.monitor",
   "icon": "monitor",
   "menus": [
     {

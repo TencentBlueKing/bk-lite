@@ -132,6 +132,10 @@ class LLMViewSet(AuthViewSet):
             instance.rag_score_threshold_map = score_threshold_map
             knowledge_base_list = KnowledgeBase.objects.filter(id__in=list(score_threshold_map.keys()))
             instance.knowledge_base.set(knowledge_base_list)
+        # 当 enable_rag=False 时，清空知识库和阈值配置
+        if "enable_rag" in params and not params["enable_rag"]:
+            instance.knowledge_base.clear()
+            instance.rag_score_threshold_map = {}
         instance.save()
         return JsonResponse({"result": True})
 
