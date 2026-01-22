@@ -148,7 +148,7 @@ const TrainTask = () => {
         return creator ? (
           <div className="flex h-full items-center" title={creator}>
             <span
-              className="block w-[18px] h-[18px] leading-[18px] text-center content-center rounded-[50%] mr-2 text-white"
+              className="block w-4.5 h-4.5 leading-4.5 text-center content-center rounded-[50%] mr-2 text-white"
               style={{ background: 'blue' }}
             >
               {creator.slice(0, 1).toLocaleUpperCase()}
@@ -172,7 +172,7 @@ const TrainTask = () => {
       width: 120,
       render: (_, record: TrainJob) => {
         return record.status ? (<Tag color={getStatusColor(record.status, TRAIN_STATUS_MAP)} className=''>
-          {t(`traintask.${getStatusText(record.status, TRAIN_TEXT)}`)}
+          {t(`mlops-common.${getStatusText(record.status, TRAIN_TEXT)}`)}
         </Tag>) : (<p>--</p>)
       }
     },
@@ -196,7 +196,7 @@ const TrainTask = () => {
               >
                 <Button
                   type="link"
-                  className="mr-[10px]"
+                  className="mr-2.5"
                 >
                   {t('traintask.train')}
                 </Button>
@@ -205,7 +205,7 @@ const TrainTask = () => {
             <PermissionWrapper requiredPermissions={['View']}>
               <Button
                 type="link"
-                className="mr-[10px]"
+                className="mr-2.5"
                 onClick={() => openDrawer(record)}
               >
                 {t('common.detail')}
@@ -214,7 +214,7 @@ const TrainTask = () => {
             <PermissionWrapper requiredPermissions={['Edit']}>
               <Button
                 type="link"
-                className="mr-[10px]"
+                className="mr-2.5"
                 onClick={() => handleEdit(record)}
               >
                 {t('common.edit')}
@@ -441,7 +441,7 @@ const TrainTask = () => {
             <div className="flex justify-end items-center mb-4 gap-2">
               <div className="flex items-center">
                 <Search
-                  className="w-[240px] mr-1.5"
+                  className="w-60 mr-1.5"
                   placeholder={t('traintask.searchText')}
                   enterButton
                   onSearch={onSearch}

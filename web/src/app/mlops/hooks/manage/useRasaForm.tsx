@@ -219,7 +219,7 @@ const useRasaIntentForm = (
                   />
                 ) : (
                   <div
-                    className={`${styles.inputWidth} border border-gray-300 rounded-md px-3 py-1 min-h-[32px] bg-white flex items-center cursor-text hover:border-blue-400`}
+                    className={`${styles.inputWidth} border border-gray-300 rounded-md px-3 py-1 min-h-8 bg-white flex items-center cursor-text hover:border-blue-400`}
                     onClick={() => setEditingIndex(index)}
                   >
                     {parts.map((part: any, partIndex: number) => (
@@ -1027,7 +1027,7 @@ const useRasaForms = ({
             ]}
           />
           <Select
-            className={`!w-[45%]`}
+            className={`w-[45%]!`}
             value={item?.name}
             options={options.filter(itm => itm?.slot_type === (item?.type || 'text'))}
             onChange={(value: any) => {
@@ -1122,7 +1122,7 @@ const useRasaActionForm = ({
             }
           ]} />
           <Input
-            className="!w-[150px]"
+            className="w-37.5!"
             value={item as string}
             onChange={(e) => {
               onSampleListChange(e, index);

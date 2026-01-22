@@ -7,7 +7,9 @@ import CustomTable from '@/components/custom-table';
 import useMlopsTaskApi from '@/app/mlops/api/task';
 import { useLocalizedTime } from '@/hooks/useLocalizedTime';
 import { ModalRef, ColumnItem, DatasetReleaseKey } from '@/app/mlops/types';
+import { DATASET_RELEASE_MAP } from '@/app/mlops/constants';
 import DatasetReleaseModal from './DatasetReleaseModal';
+import { useAuth } from "@/context/auth";
 
 interface DatasetRelease {
   id: number;
@@ -37,6 +39,7 @@ const SUPPORTED_DATASET_TYPES = ['timeseries_predict', 'anomaly_detection', 'log
 
 const DatasetReleaseList: React.FC<DatasetReleaseListProps> = ({ datasetType }) => {
   const { t } = useTranslation();
+  const authContext = useAuth();
   const { convertToLocalizedTime } = useLocalizedTime();
   const searchParams = useSearchParams();
   const datasetId = searchParams.get('folder_id');
@@ -67,9 +70,8 @@ const DatasetReleaseList: React.FC<DatasetReleaseListProps> = ({ datasetType }) 
     if (!isSupportedType) return;
     setLoading(true);
     try {
-      console.log(datasetType)
       const result = await taskApi.getDatasetReleases(
-        datasetType as 'timeseries_predict' | 'anomaly_detection',
+        datasetType,
         {
           dataset: Number(datasetId),
           page: pagination.current,
@@ -121,7 +123,7 @@ const DatasetReleaseList: React.FC<DatasetReleaseListProps> = ({ datasetType }) 
   const handleDeleteRelease = async (record: DatasetRelease) => {
     try {
       await taskApi.deleteDatasetRelease(
-        datasetType as 'timeseries_predict' | 'anomaly_detection',
+        datasetType,
         record.id.toString()
       );
       message.success(t(`common.delSuccess`));
@@ -153,6 +155,51 @@ const DatasetReleaseList: React.FC<DatasetReleaseListProps> = ({ datasetType }) 
 
   const handleRelease = () => {
     releaseModalRef.current?.showModal({ type: '' });
+  };
+
+  const downloadReleaseZip = async (record: any) => {
+    try {
+      message.info(t(`mlops-common.downloadStart`));
+
+      const response = await fetch(
+        `/api/proxy/mlops/${DATASET_RELEASE_MAP[datasetType]}/${record.id}/download/`,
+        {
+          method: 'GET',
+          headers: {
+            Authorization: `Bearer ${authContext?.token}`,
+          },
+        }
+      );
+
+      if (!response.ok) {
+        throw new Error(`下载失败: ${response.status}`);
+      }
+
+      const blob = await response.blob();
+
+      // 从 Content-Disposition 头提取文件名
+      const contentDisposition = response.headers.get('content-disposition');
+      let fileName = `${record.name}.zip`;
+      if (contentDisposition) {
+        const match = contentDisposition.match(/filename[^;=\n]*=(['\"]?)([^'"\n]*?)\1/);
+        if (match && match[2]) {
+          fileName = match[2];
+        }
+      }
+
+      // 创建下载链接
+      const fileUrl = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = fileUrl;
+      link.download = fileName;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      window.URL.revokeObjectURL(fileUrl);
+    } catch (error: any) {
+      console.error(t(`traintask.downloadFailed`), error);
+      message.error(error.message || t('common.errorFetch'));
+    }
   };
 
   const getStatusTag = (status: string) => {
@@ -230,7 +277,7 @@ const DatasetReleaseList: React.FC<DatasetReleaseListProps> = ({ datasetType }) 
               type="link"
               size="small"
               disabled={record.status === 'pending' || record.status == 'failed'}
-              href={record.dataset_file}
+              onClick={() => downloadReleaseZip(record)}
             >
               {t(`common.download`)}
             </Button>
@@ -248,8 +295,9 @@ const DatasetReleaseList: React.FC<DatasetReleaseListProps> = ({ datasetType }) 
               </Button>
             </Popconfirm>
           )}
-          {(record.status == 'archived' || record.status == 'failed') && (
+          {(record.status == 'archived' || record.status == 'failed' || record.status === 'pending') && (
             <Popconfirm
+              placement='left'
               title={t(`mlops-common.deleteConfirm`)}
               description={t(`mlops-common.fileDelDes`)}
               onConfirm={() => handleDeleteRelease(record)}

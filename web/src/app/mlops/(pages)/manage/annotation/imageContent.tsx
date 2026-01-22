@@ -459,7 +459,7 @@ const ImageContent = () => {
               </div>
 
               {/* 识别结果 */}
-              <div className="w-[15%] bg-white p-2 border border-gray-200 rounded flex-shrink-0">
+              <div className="w-[15%] bg-white p-2 border border-gray-200 rounded shrink-0">
                 <div className="font-medium mb-2">{t('datasets.labelResult')}</div>
                 <div className="text-sm text-gray-500">
                   {rendenrLabelResult}
@@ -468,7 +468,7 @@ const ImageContent = () => {
             </div>
 
             {/* 底部缩略图列表 */}
-            <div className="h-[108px] bg-white border border-gray-200 rounded px-3 pt-3 flex-shrink-0">
+            <div className="h-27 bg-white border border-gray-200 rounded px-3 pt-3 shrink-0">
               <div
                 ref={thumbnailContainerRef}
                 className="flex gap-2 overflow-x-auto"
@@ -479,7 +479,7 @@ const ImageContent = () => {
                     key={index}
                     onClick={() => goToSlide(index)}
                     className={
-                      `relative flex-shrink-0 w-[120px] h-[80px] cursor-pointer border-2 rounded overflow-hidden transition-all ${currentIndex === index
+                      `relative shrink-0 w-30 h-20 cursor-pointer border-2 rounded overflow-hidden transition-all ${currentIndex === index
                         ? 'border-blue-500 shadow-lg'
                         : 'border-gray-200 hover:border-blue-300'
                       } ${!item.label ? 'opacity-70' : ''}`
@@ -506,7 +506,7 @@ const ImageContent = () => {
                 {/* 添加图片按钮 */}
                 <Upload {...props}>
                   <div
-                    className="flex-shrink-0 w-[120px] h-[80px] border-2 border-dashed border-gray-300 rounded flex items-center justify-center cursor-pointer hover:border-blue-400 hover:bg-blue-50 transition-all"
+                    className="shrink-0 w-30 h-20 border-2 border-dashed border-gray-300 rounded flex items-center justify-center cursor-pointer hover:border-blue-400 hover:bg-blue-50 transition-all"
                   >
                     <div className="text-center">
                       <PlusOutlined className="text-2xl text-gray-400 mb-1" />

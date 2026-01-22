@@ -57,11 +57,11 @@ const AnomalyDetail = () => {
       key: 'name',
       dataIndex: 'name',
     },
-    {
-      title: t('datasets.anomalyTitle'),
-      key: 'count',
-      dataIndex: 'count',
-    },
+    // {
+    //   title: t('datasets.anomalyTitle'),
+    //   key: 'count',
+    //   dataIndex: 'count',
+    // },
     {
       title: t('datasets.trainFileType'),
       key: 'type',

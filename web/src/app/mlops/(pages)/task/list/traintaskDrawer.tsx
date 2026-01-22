@@ -59,7 +59,7 @@ const TrainTaskDrawer = ({ open, onCancel, selectId, activeTag }:
   const downloadModel = async (record: any) => {
     const [tagName] = activeTag;
     try {
-      message.info(t(`traintask.downloadStart`));
+      message.info(t(`mlops-common.downloadStart`));
 
       const response = await fetch(
         `/api/proxy/mlops/${TRAINJOB_MAP[tagName]}/download_model/${record.run_id}/`,

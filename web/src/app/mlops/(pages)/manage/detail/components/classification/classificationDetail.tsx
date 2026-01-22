@@ -80,7 +80,7 @@ const ClassificationDetail = () => {
           <PermissionWrapper requiredPermissions={['File Edit']}>
             <Button
               type="link"
-              className="mr-[10px]"
+              className="mr-2.5"
               onClick={() => toAnnotation(record)}
             >
               {t('common.detail')}
@@ -89,7 +89,7 @@ const ClassificationDetail = () => {
           <PermissionWrapper requiredPermissions={['File Edit']}>
             <Button
               type="link"
-              className="mr-[10px]"
+              className="mr-2.5"
               onClick={() => openModal(record)}
             >
               {t('common.edit')}
@@ -246,7 +246,7 @@ const ClassificationDetail = () => {
         </div>
         <div className='flex gap-2'>
           <Search
-            className="w-[240px] mr-1.5"
+            className="w-60 mr-1.5"
             placeholder={t('common.search')}
             enterButton
             onSearch={onSearch}

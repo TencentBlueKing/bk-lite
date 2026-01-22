@@ -21,6 +21,7 @@ from apps.mlops.utils.webhook_client import (
 import os
 import pandas as pd
 import numpy as np
+import requests
 
 
 class ImageClassificationDatasetViewSet(ModelViewSet):

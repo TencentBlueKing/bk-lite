@@ -29,7 +29,13 @@
     "publishFailed": "Publish Failed",
     "published": "Published",
     "publishing": "Publishing",
+    "waitRelease": "Awaiting release",
     "failed": "Failed",
+    "notStarted": "Not Started",
+    "inProgress": "In progress",
+    "completed": "Completed",
+    "trainFailed": "Training failure",
+    "killed": "Training terminated",
     "archived": "Archived",
     "archiveConfirm": "Confirm archiving",
     "archivingMsg": "After archiving, this version will be marked as obsolete.",
@@ -42,7 +48,12 @@
     "valfile": "Verification data file",
     "selectValfile": "Select a verification file",
     "testfile": "Test data file",
-    "selectTestfile": "Select a test file"
+    "selectTestfile": "Select a test file",
+    "port": "Port",
+    "portIptMsg": "Please enter the port number",
+    "containerStatus": "Contrainer Status",
+    "downloadStart": "Start Download",
+    "downloadFailed": "Download Failed"
   },
   "datasets": {
     "datasets": "Datasets",
@@ -193,19 +204,12 @@
     "delTraintask": "Delete TrainTask",
     "delTraintaskContent": "Sure you want to delete this training task?",
     "IsolationForst": "Isolation Forest",
-    "notStarted": "Not Started",
-    "inProgress": "In progress",
-    "completed": "Completed",
-    "trainFailed": "Training failure",
-    "killed": "Training terminated",
     "maxEvals": "Maximum number of training rounds",
     "maxEvalsMsg": "Please enter the maximum number of training rounds",
     "hyperopt": "Hyperparameterization",
     "getTrainStatusFailed": "Error retrieving training status",
     "selectedColumns": "Selected Columns",
-    "waitData": "Waiting for data...",
-    "downloadStart": "Start downloading the model",
-    "downloadFailed": "Download Failed"
+    "waitData": "Waiting for data..."
   },
   "model-release": {
     "release": "Release",

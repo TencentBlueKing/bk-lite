@@ -541,11 +541,6 @@ const useMlopsManageApi = () => {
     return await del(`/mlops/${TRAINDATA_MAP[key]}/${id}/`);
   };
 
-  // 生成yolo数据集
-  const generateYoloDataset = async (id: string) => {
-    return await post(`/mlops/object_detection_traindata/${id}/generate_dataset/`);
-  };
-
   return {
     getDatasetsList,
     getOneDatasetInfo,
@@ -609,8 +604,6 @@ const useMlopsManageApi = () => {
     deleteRasaSlotFile,
     deleteRasaFormFile,
     deleteRasaActionFile,
-    
-    generateYoloDataset
   }
 };
 

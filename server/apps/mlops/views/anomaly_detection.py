@@ -490,10 +490,16 @@ class AnomalyDetectionTrainJobViewSet(ModelViewSet):
                 return Response({"model_name": model_name, "versions": [], "total": 0})
 
             logger.info(
-                f"获取模型版本列表成功: {model_name}, 共 {version_data['total']} 个版本"
+                f"获取模型版本列表成功: {model_name}, 共 {len(version_data)} 个版本"
             )
 
-            return Response(version_data)
+            return Response(
+                {
+                    "model_name": model_name,
+                    "total": len(version_data),
+                    "versions": version_data,
+                }
+            )
 
         except Exception as e:
             logger.error(f"获取模型版本列表失败: {str(e)}", exc_info=True)

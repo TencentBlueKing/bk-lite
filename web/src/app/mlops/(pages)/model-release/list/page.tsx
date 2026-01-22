@@ -119,12 +119,11 @@ const ModelRelease = () => {
       key: 'status',
       render: (_, record) => {
         const isAcitve = record.status === 'active'
-        // return <Switch checked={record.status === 'active'} onChange={(value: boolean) => handleModelAcitve(record.id, value)} />
-        return <Tag color={isAcitve ? 'green' : 'default'}>{isAcitve ? '已发布' : '未发布'}</Tag>
+        return <Tag color={isAcitve ? 'green' : 'default'}>{isAcitve ? t(`mlops-common.published`) : t(`mlops-common.waitRelease`)}</Tag>
       }
     },
     {
-      title: '容器状态',
+      title: t(`mlops-common.containerStatus`),
       dataIndex: 'container_info',
       key: 'container_info',
       render: (_, record) => {
@@ -197,7 +196,7 @@ const ModelRelease = () => {
   };
 
   const topSection = (
-    <TopSection title={t('model-release.title')} content={t('model-release.detail')} />
+    <TopSection title={t(`model-release.title`)} content={t(`model-release.detail`)} />
   );
 
   const leftSection = (
@@ -235,7 +234,6 @@ const ModelRelease = () => {
 
   const getModelServings = async () => {
     const [activeTypes] = selectedKeys;
-    console.log(activeTypes);
     if (!activeTypes) {
       setTableData([]);
       return;
@@ -251,7 +249,7 @@ const ModelRelease = () => {
 
       // 获取任务列表和服务列表
       const [taskList, { count, items }] = await Promise.all([
-        getTrainJobList({key: activeTypes as DatasetReleaseKey}),
+        getTrainJobList({ key: activeTypes as DatasetReleaseKey }),
         getServingList(params)
       ]);
 
@@ -311,7 +309,7 @@ const ModelRelease = () => {
     try {
       await deleteServing(id, activeTypes as DatasetReleaseKey);
       getModelServings();
-      message.success(t('common.delSuccess'));
+      message.success(t(`common.delSuccess`));
     } catch (e) {
       console.log(e);
       message.error(t(`common.delFailed`));
@@ -319,7 +317,6 @@ const ModelRelease = () => {
   };
 
   const handleModelAcitve = async (id: number, value: boolean) => {
-    // const [activeTypes] = selectedKeys;
     if (!activeTypes || !updateMap[activeTypes]) {
       return;
     }
@@ -328,10 +325,10 @@ const ModelRelease = () => {
     try {
       const status = value ? 'inactive' : 'active';
       await updateMap[activeTypes]!(id, { status });
-      message.success(t('common.updateSuccess'));
+      message.success(t(`common.updateSuccess`));
     } catch (e) {
       console.log(e);
-      message.error(t('common.updateFailed'));
+      message.error(t(`common.updateFailed`));
     } finally {
       getModelServings();
     }

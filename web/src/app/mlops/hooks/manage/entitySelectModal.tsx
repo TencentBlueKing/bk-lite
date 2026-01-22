@@ -106,7 +106,7 @@ const EntitySelectModal = forwardRef<ModalRef, EntitySelectModalProps>(({ datase
               <Select options={options} placeholder={t(`datasets.entitySelect`)} />
             </Form.Item>
             <p>{t(`datasets.entityTip`)}
-              <a href="#" className="text-[var(--color-text-active)]" onClick={() => setIsAdd(true)}>{t(`common.add`)}</a>
+              <a href="#" className="text-(--color-text-active)" onClick={() => setIsAdd(true)}>{t(`common.add`)}</a>
             </p>
           </>
         )}

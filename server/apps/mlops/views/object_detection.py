@@ -21,7 +21,7 @@ from apps.mlops.utils.webhook_client import (
 import os
 import pandas as pd
 import numpy as np
-
+import requests
 
 class ObjectDetectionDatasetViewSet(ModelViewSet):
     """目标检测数据集视图集"""

@@ -41,13 +41,6 @@ interface TrainDataModalProps {
   [key: string]: any
 }
 
-interface TrainDataParams {
-  timestamp: string;
-  value: number;
-  label?: number;
-  index?: number;
-  [key: string]: any
-}
 
 interface DataSet {
   id: number;
@@ -83,10 +76,6 @@ interface AnnotationData {
   [key: string]: unknown;
 }
 
-interface FileReadResult {
-  train_data: TrainDataParams[] | string[];
-  headers?: string[];
-}
 
 interface RasaMenus {
   menu: string;
@@ -100,11 +89,9 @@ export type {
   AnomalyTrainData,
   TrainDataModalProps,
   TrainData,
-  TrainDataParams,
   DataSet,
   AnomalyDataSet,
   LabelData,
   AnnotationData,
-  FileReadResult,
   RasaMenus
 }
