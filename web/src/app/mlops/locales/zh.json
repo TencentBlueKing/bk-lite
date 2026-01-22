@@ -5,7 +5,7 @@
     "type": "类型",
     "status": "状态",
     "creator": "创建人",
-    "owner":"所有者",
+    "owner": "所有者",
     "createdAt": "创建时间",
     "min": "最小值",
     "max": "最大值",
@@ -26,13 +26,31 @@
     "refreshList": "刷新列表",
     "loadingData": "加载数据中",
     "start": "启动",
-    "stop": "停止"
+    "stop": "停止",
+    "publishFailed": "发布失败",
+    "published": "已发布",
+    "publishing": "发布中",
+    "failed": "失败",
+    "archived": "归档",
+    "archiveConfirm": "确认归档",
+    "archivingMsg": "归档后该版本将标记为旧版本",
+    "deleteConfirm": "确认删除",
+    "fileDelDes": "该文件将被删除",
+    "inputVersionMsg": "请输入版本号",
+    "versionIptMsg": "请输入语义化版本号，例如: v1.0.0",
+    "trainfile": "训练文件",
+    "selectTrainfile": "选择一个训练文件",
+    "valfile": "验证文件",
+    "selectValfile": "选择一个验证文件",
+    "testfile": "测试文件",
+    "selectTestfile": "选择一个测试文件"
   },
   "datasets": {
     "datasets": "数据集",
     "datasetsDetail": "数据集详情",
+    "datasetsRelease": "数据集版本管理",
     "title": "文档列表",
-    
+    "fileSize": "文件大小",
     "intent": "意图",
     "intentTitle": "意图管理",
     "intentName": "意图名称",
@@ -103,8 +121,6 @@
     "rasa": "Rasa模型",
     "timeseriesPredict": "时序预测",
     "logClustering": "日志聚类",
-    
-    
     "saveSuccess": "保存成功",
     "addSuccess": "添加成功",
     "editSuccess": "更新成功",
@@ -115,7 +131,6 @@
     "anomalyTitle": "异常点",
     "annotate": "标注",
     "unlabeled": "未标注",
-
     "upload": "上传",
     "uploadError": "上传错误",
     "pleaseUpload": "请上传文件",
@@ -123,7 +138,6 @@
     "uploading": "上传中...",
     "uploadSuccess": "上传成功",
     "detail": "支持上传时序数据，并为这些数据进行打标，以便后续进行模型训练。",
-
     "typeSelect": "训练文件类型选择",
     "uploadText": "拖动文件或文件夹到此处上传",
     "deleteTitle": "删除文件",
@@ -144,7 +158,6 @@
     "selectLab": "请在右侧选择标签",
     "addImage": "添加图片",
     "tabBar": "标签栏",
-    
     "objectDetection": "目标检测",
     "generateTitle": "生成YOLO格式数据集,用于进行目标检测训练任务",
     "generateContent": "修改尚未保存, 确认生成数据集吗？",
@@ -153,7 +166,7 @@
     "folder": "文件夹",
     "labelManagement": "标签管理",
     "addLabel": "添加标签",
-    "fileNameVaild": "文件名不符合规范(只能包含英文字母、数字、下划线, 长度不超过64个字符): "
+    "fileNameVaild": "文件名不符合规范(只能包含英文字母、数字、下划线, 长度不超过64个字符)"
   },
   "traintask": {
     "train": "训练",
@@ -165,10 +178,9 @@
     "searchText": "搜索任务名称",
     "description": "创建训练任务，对各个模型进行训练，训练完成后，可在模型库查看最终的模型。",
     "traindata": "训练数据",
-    "trainfile": "训练文件",
     "datasets": "数据集",
     "algorithms": "训练算法",
-    "selectAlgorithmsMsg":"请选择一个训练算法",
+    "selectAlgorithmsMsg": "请选择一个训练算法",
     "addtask": "新增训练任务",
     "edittask": "编辑训练任务",
     "history": "历史记录",
@@ -184,7 +196,7 @@
     "notStarted": "未开始",
     "inProgress": "进行中",
     "completed": "已完成",
-    "failed": "训练失败",
+    "trainFailed": "训练失败",
     "killed": "训练终止",
     "maxEvals": "最大训练轮次",
     "maxEvalsMsg": "请输入最大训练轮次",
@@ -197,7 +209,7 @@
   },
   "model-release": {
     "release": "发布",
-    "modelName":"能力名称",
+    "modelName": "能力名称",
     "title": "能力发布",
     "detail": "对训练完成的模型进行发布管理。",
     "modalTitle": "选择模型版本",
@@ -208,7 +220,6 @@
     "modelRelease": "模型发布",
     "modelThreshold": "异常阈值",
     "selectTraintask": "请选择训练任务",
-    "inputVersionMsg": "请输入版本号",
     "inputThreshold": "请输入异常阈值",
     "publishSuccess": "发布成功",
     "publishStatus": "发布状态",

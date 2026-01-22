@@ -83,8 +83,8 @@ const DatasetReleaseList: React.FC<DatasetReleaseListProps> = ({ datasetType }) 
         total: result.count || 0,
       }));
     } catch (error) {
-      console.error('获取版本列表失败:', error);
-      message.error('获取版本列表失败');
+      console.error(t(`common.fetchFailed`), error);
+      message.error(t(`common.fetchFailed`));
     } finally {
       setLoading(false);
     }
@@ -93,28 +93,28 @@ const DatasetReleaseList: React.FC<DatasetReleaseListProps> = ({ datasetType }) 
   const handleArchive = async (record: DatasetRelease) => {
     try {
       await taskApi.archiveDatasetRelease(
-        datasetType as 'timeseries_predict' | 'anomaly_detection',
+        datasetType,
         record.id.toString()
       );
-      message.success('归档成功');
+      message.success(t(`common.updateSuccess`));
       fetchReleases();
     } catch (error) {
-      console.error('归档失败:', error);
-      message.error('归档失败');
+      console.error(t(`common.updateFailed`), error);
+      message.error(t(`common.updateFailed`));
     }
   };
 
   const handleUnarchive = async (record: DatasetRelease) => {
     try {
       await taskApi.unarchiveDatasetRelease(
-        datasetType as 'timeseries_predict' | 'anomaly_detection',
+        datasetType,
         record.id.toString()
       );
-      message.success('发布成功');
+      message.success(t(`common.publishSuccess`));
       fetchReleases()
     } catch (error) {
-      console.error('发布失败', error);
-      message.error('发布失败');
+      console.error(t(`mlops-common.publishFailed`), error);
+      message.error(t(`mlops-common.publishFailed`));
     }
   };
 
@@ -157,10 +157,10 @@ const DatasetReleaseList: React.FC<DatasetReleaseListProps> = ({ datasetType }) 
 
   const getStatusTag = (status: string) => {
     const statusMap: Record<string, { color: string; text: string }> = {
-      published: { color: 'success', text: '已发布' },
-      pending: { color: 'processing', text: '发布中' },
-      failed: { color: 'error', text: '失败' },
-      archived: { color: 'default', text: '归档' }
+      published: { color: 'success', text: t(`mlops-common.published`) },
+      pending: { color: 'processing', text: t(`mlops-common.publishing`) },
+      failed: { color: 'error', text: t(`mlops-common.failed`) },
+      archived: { color: 'default', text: t(`mlops-common.archived`) }
     };
     const config = statusMap[status] || { color: 'default', text: status };
     return <Tag color={config.color}>{config.text}</Tag>;
@@ -176,34 +176,34 @@ const DatasetReleaseList: React.FC<DatasetReleaseListProps> = ({ datasetType }) 
 
   const columns: ColumnItem[] = [
     {
-      title: '版本号',
+      title: t(`common.version`),
       dataIndex: 'version',
       key: 'version',
       width: 120,
       render: (_, record: DatasetRelease) => <Tag color="blue">{record.version}</Tag>,
     },
     {
-      title: '版本名称',
+      title: t(`common.name`),
       dataIndex: 'name',
       key: 'name',
       ellipsis: true,
     },
     {
-      title: '文件大小',
+      title: t(`datasets.fileSize`),
       dataIndex: 'file_size',
       key: 'file_size',
       width: 120,
       render: (_, record: DatasetRelease) => <>{formatBytes(record.file_size)}</>,
     },
     {
-      title: '状态',
+      title: t(`mlops-common.status`),
       dataIndex: 'status',
       key: 'status',
       width: 100,
       render: (_, record: DatasetRelease) => getStatusTag(record.status),
     },
     {
-      title: '创建时间',
+      title: t(`mlops-common.createdAt`),
       dataIndex: 'created_at',
       key: 'created_at',
       width: 180,
@@ -237,24 +237,24 @@ const DatasetReleaseList: React.FC<DatasetReleaseListProps> = ({ datasetType }) 
           }
           {record.status === 'published' && (
             <Popconfirm
-              title="确认归档"
-              description="归档后该版本将标记为旧版本"
+              title={t(`mlops-common.archiveConfirm`)}
+              description={t(`mlops-common.archivingMsg`)}
               onConfirm={() => handleArchive(record)}
-              okText="确认"
-              cancelText="取消"
+              okText={t(`common.confirm`)}
+              cancelText={t(`common.cancel`)}
             >
               <Button type="link" size="small" danger>
-                归档
+                {t(`mlops-common.archived`)}
               </Button>
             </Popconfirm>
           )}
           {(record.status == 'archived' || record.status == 'failed') && (
             <Popconfirm
-              title="确认删除"
-              description="该文件将被删除"
+              title={t(`mlops-common.deleteConfirm`)}
+              description={t(`mlops-common.fileDelDes`)}
               onConfirm={() => handleDeleteRelease(record)}
-              okText="确认"
-              cancelText="取消"
+              okText={t(`common.confirm`)}
+              cancelText={t(`common.cancel`)}
             >
               <Button type="link" size="small" danger>
                 {t(`common.delete`)}
@@ -269,15 +269,15 @@ const DatasetReleaseList: React.FC<DatasetReleaseListProps> = ({ datasetType }) 
   return (
     <>
       <Button type="primary" className="mr-2.5" onClick={handleOpenDrawer} disabled={!isSupportedType}>
-        版本
+        {t(`common.version`)}
       </Button>
 
       <Drawer
-        title="数据集版本管理"
+        title={t(`datasets.datasetsRelease`)}
         footer={
           <div className='flex justify-end'>
             <Button type="primary" onClick={handleRelease}>
-              发布版本
+              {t(`common.publish`)}
             </Button>
           </div>
         }

@@ -1026,15 +1026,15 @@ class AnomalyDetectionServingViewSet(ModelViewSet):
         # 保存旧值用于判断变更
         old_port = instance.port
         old_model_version = instance.model_version
-        old_train_job_id = instance.anomaly_detection_train_job.id
+        old_train_job_id = instance.train_job.id
 
         # 检测是否更新了影响容器的字段（基于请求数据与旧值对比）
         model_version_changed = "model_version" in request.data and str(
             request.data["model_version"]
         ) != str(old_model_version)
         train_job_changed = (
-            "anomaly_detection_train_job" in request.data
-            and int(request.data["anomaly_detection_train_job"]) != old_train_job_id
+            "train_job" in request.data
+            and int(request.data["train_job"]) != old_train_job_id
         )
         port_changed = "port" in request.data and request.data.get("port") != old_port
 
@@ -1505,7 +1505,7 @@ class AnomalyDetectionServingViewSet(ModelViewSet):
         Raises:
             ValueError: 解析失败时抛出
         """
-        train_job = serving.anomaly_detection_train_job
+        train_job = serving.train_job
         model_name = mlflow_service.build_model_name(
             prefix=self.MLFLOW_PREFIX,
             algorithm=train_job.algorithm,

@@ -83,8 +83,8 @@ class LogClusteringServingFilter(FilterSet):
         label="服务状态"
     )
     model_version = CharFilter(field_name="model_version", lookup_expr="icontains", label="模型版本")
-    log_clustering_train_job__name = CharFilter(
-        field_name="log_clustering_train_job__name",
+    train_job__name = CharFilter(
+        field_name="train_job__name",
         lookup_expr="icontains",
         label="训练任务名称"
     )
@@ -95,4 +95,4 @@ class LogClusteringServingFilter(FilterSet):
 
     class Meta:
         model = LogClusteringServing
-        fields = ["name", "status", "model_version", "log_clustering_train_job", "port", "created_by"]
+        fields = ["name", "status", "model_version", "train_job", "port", "created_by"]

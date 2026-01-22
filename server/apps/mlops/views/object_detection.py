@@ -336,8 +336,8 @@ class ObjectDetectionTrainJobViewSet(ModelViewSet):
 
             # 检查必要字段
             if (
-                not train_job.dataset_release
-                or not train_job.dataset_release.dataset_file
+                not train_job.dataset_version
+                or not train_job.dataset_version.dataset_file
             ):
                 return Response(
                     {"error": "数据集文件不存在"}, status=status.HTTP_400_BAD_REQUEST
@@ -356,7 +356,7 @@ class ObjectDetectionTrainJobViewSet(ModelViewSet):
             )
 
             logger.info(f"启动目标检测训练任务: {job_id}")
-            logger.info(f"  Dataset: {train_job.dataset_release.dataset_file.name}")
+            logger.info(f"  Dataset: {train_job.dataset_version.dataset_file.name}")
             logger.info(f"  Config: {train_job.config_url.name}")
 
             # 从 hyperopt_config 中提取 device 参数
@@ -371,13 +371,13 @@ class ObjectDetectionTrainJobViewSet(ModelViewSet):
             WebhookClient.train(
                 job_id=job_id,
                 bucket=bucket,
-                dataset=train_job.dataset_release.dataset_file.name,
+                dataset=train_job.dataset_version.dataset_file.name,
                 config=train_job.config_url.name,
                 minio_endpoint=minio_endpoint,
                 mlflow_tracking_uri=mlflow_tracking_uri,
                 minio_access_key=minio_access_key,
                 minio_secret_key=minio_secret_key,
-                train_image="object-detection:latest",  # YOLO 目标检测训练镜像
+                train_image="classify-object-detection:latest",  # YOLO 目标检测训练镜像
                 device=device,
             )
 
@@ -926,7 +926,7 @@ class ObjectDetectionServingViewSet(ModelViewSet):
                     mlflow_tracking_uri,
                     model_uri,
                     port=serving.port,
-                    train_image="object-detection:latest",
+                    train_image="classify-object-detection:latest",
                     device=device,
                 )
 
@@ -1033,7 +1033,7 @@ class ObjectDetectionServingViewSet(ModelViewSet):
                     mlflow_tracking_uri,
                     model_uri,
                     port=serving.port,
-                    train_image="object-detection:latest",  # YOLO 目标检测推理镜像
+                    train_image="classify-object-detection:latest",  # YOLO 目标检测推理镜像
                     device=device,
                 )
 

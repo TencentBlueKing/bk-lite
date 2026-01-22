@@ -59,8 +59,8 @@ const DatasetReleaseModal = forwardRef<ModalRef, DatasetReleaseModalProps>(
         setValFiles(val);
         setTestFiles(test);
       } catch (error) {
-        console.error('获取文件列表失败:', error);
-        message.error('获取文件列表失败');
+        console.error(t(`common.fetchFailed`), error);
+        message.error(t(`common.fetchFailed`));
       }
     };
 
@@ -74,23 +74,21 @@ const DatasetReleaseModal = forwardRef<ModalRef, DatasetReleaseModalProps>(
       try {
         const values = await formRef.current?.validateFields();
 
-        const result = await taskApi.createDatasetRelease(
-          datasetType as 'timeseries_predict' | 'anomaly_detection',
+        await taskApi.createDatasetRelease(
+          datasetType,
           {
             dataset: parseInt(datasetId),
             ...values,
           }
         );
 
-        message.success('数据集发布成功');
-        console.log('发布结果:', result);
-
+        message.success(t(`common.publishSuccess`));
         setOpen(false);
         formRef.current?.resetFields();
         onSuccess?.();
       } catch (error: any) {
-        console.error('数据集发布失败:', error);
-        message.error('数据集发布失败: ' + (error?.response?.data?.error || error.message));
+        console.error(t(`mlops-common.publishFailed`) + ':', error);
+        message.error(t(`mlops-common.publishFailed`) + ':' + (error?.response?.data?.error || error.message));
       } finally {
         setConfirmLoading(false);
       }
@@ -98,7 +96,7 @@ const DatasetReleaseModal = forwardRef<ModalRef, DatasetReleaseModalProps>(
 
     return (
       <OperateModal
-        title="发布数据集版本"
+        title={t(`common.publish`)}
         open={open}
         onCancel={handleCancel}
         width={700}
@@ -114,44 +112,24 @@ const DatasetReleaseModal = forwardRef<ModalRef, DatasetReleaseModalProps>(
         <Form ref={formRef} layout="vertical">
           <Form.Item
             name="version"
-            label="版本号"
+            label={t(`common.version`)}
             rules={[
-              { required: true, message: '请输入版本号' },
-              { pattern: /^v\d+\.\d+\.\d+$/, message: '版本号格式: v1.0.0' }
+              { required: true, message: t(`mlops-common.inputVersionMsg`) },
+              { pattern: /^v\d+\.\d+\.\d+$/, message: 'type: v1.0.0' }
             ]}
           >
-            <Input placeholder="请输入语义化版本号，例如: v1.0.0" />
+            <Input placeholder={t(`mlops-common.versionIptMsg`)} />
           </Form.Item>
-
-          {/* <Form.Item
-            name="name"
-            label="版本名称（可选）"
-          >
-            <Input placeholder="如不填写，将自动生成" />
-          </Form.Item>
-
-          <Form.Item
-            name="description"
-            label="版本描述（可选）"
-          >
-            <TextArea
-              rows={3}
-              placeholder="描述此版本的主要变更内容..."
-              maxLength={500}
-              showCount
-            />
-          </Form.Item> */}
 
           <Form.Item
             name="train_file_id"
-            label="训练文件"
+            label={t(`mlops-common.trainfile`)}
             rules={[
-              { required: true, message: '请选择一个训练文件' }
+              { required: true, message: t(`mlops-common.selectTrainfile`) }
             ]}
           >
             <Select
-              // mode="multiple"
-              placeholder="选择训练数据文件"
+              placeholder={t(`mlops-common.selectTrainfile`)}
               style={{ width: '100%' }}
               options={trainFiles.map(file => ({ label: file.name, value: file.id }))}
             />
@@ -159,14 +137,13 @@ const DatasetReleaseModal = forwardRef<ModalRef, DatasetReleaseModalProps>(
 
           <Form.Item
             name="val_file_id"
-            label="验证文件"
+            label={t(`mlops-common.valfile`)}
             rules={[
-              { required: true, message: '请选择一个验证文件' }
+              { required: true, message: t(`mlops-common.selectValfile`) }
             ]}
           >
             <Select
-              // mode="multiple"
-              placeholder="选择验证数据文件"
+              placeholder={t(`mlops-common.selectValfile`)}
               style={{ width: '100%' }}
               options={valFiles.map(file => ({ label: file.name, value: file.id }))}
             />
@@ -174,14 +151,13 @@ const DatasetReleaseModal = forwardRef<ModalRef, DatasetReleaseModalProps>(
 
           <Form.Item
             name="test_file_id"
-            label="测试文件"
+            label={t(`mlops-common.testfile`)}
             rules={[
-              { required: true, message: '请选择一个测试文件' }
+              { required: true, message: t(`mlops-common.selectTestfile`) }
             ]}
           >
             <Select
-              // mode="multiple"
-              placeholder="选择测试数据文件"
+              placeholder={t(`mlops-common.selectTestfile`)}
               style={{ width: '100%' }}
               options={testFiles.map(file => ({ label: file.name, value: file.id }))}
             />

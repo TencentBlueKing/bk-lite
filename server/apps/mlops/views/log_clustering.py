@@ -933,7 +933,7 @@ class LogClusteringServingViewSet(ModelViewSet):
         # 保存旧值用于判断变更
         old_port = instance.port
         old_model_version = instance.model_version
-        old_train_job_id = instance.log_clustering_train_job.id
+        old_train_job_id = instance.train_job.id
         
         # 检测是否更新了影响容器的字段
         model_version_changed = (
@@ -941,8 +941,8 @@ class LogClusteringServingViewSet(ModelViewSet):
             str(request.data['model_version']) != str(old_model_version)
         )
         train_job_changed = (
-            'log_clustering_train_job' in request.data and 
-            int(request.data['log_clustering_train_job']) != old_train_job_id
+            'train_job' in request.data and 
+            int(request.data['train_job']) != old_train_job_id
         )
         port_changed = (
             'port' in request.data and 

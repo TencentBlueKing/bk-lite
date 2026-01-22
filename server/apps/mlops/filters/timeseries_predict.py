@@ -67,8 +67,8 @@ class TimeSeriesPredictServingFilter(FilterSet):
         label="服务状态"
     )
     model_version = CharFilter(field_name="model_version", lookup_expr="icontains", label="模型版本")
-    time_series_predict_train_job__name = CharFilter(
-        field_name="time_series_predict_train_job__name",
+    train_job__name = CharFilter(
+        field_name="train_job__name",
         lookup_expr="icontains",
         label="训练任务名称"
     )
@@ -78,7 +78,7 @@ class TimeSeriesPredictServingFilter(FilterSet):
 
     class Meta:
         model = TimeSeriesPredictServing
-        fields = ["name", "status", "model_version", "time_series_predict_train_job", "created_by"]
+        fields = ["name", "status", "model_version", "train_job", "created_by"]
 
 
 class TimeSeriesPredictDatasetReleaseFilter(FilterSet):

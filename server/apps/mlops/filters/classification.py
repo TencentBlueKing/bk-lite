@@ -24,8 +24,8 @@ class ClassificationServingFilter(FilterSet):
         choices=ClassificationServing._meta.get_field('status').choices,
         label="服务状态"
     )
-    classification_train_job__name = CharFilter(
-        field_name="classification_train_job__name", 
+    train_job__name = CharFilter(
+        field_name="train_job__name", 
         lookup_expr="icontains", 
         label="训练任务名称"
     )
@@ -35,7 +35,7 @@ class ClassificationServingFilter(FilterSet):
 
     class Meta:
         model = ClassificationServing
-        fields = ["name", "status", "classification_train_job", "created_by"]
+        fields = ["name", "status", "train_job", "created_by"]
 
 class ClassificationTrainDataFilter(FilterSet):
     """分类任务训练数据过滤器"""

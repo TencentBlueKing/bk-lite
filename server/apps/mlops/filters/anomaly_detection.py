@@ -68,6 +68,6 @@ class AnomalyDetectionServingFilter(FilterSet):
         model = AnomalyDetectionServing
         fields = {
             "name": ["exact", "icontains"],
-            "anomaly_detection_train_job": ["exact"],
+            "train_job": ["exact"],
             "status": ["exact"],
         }

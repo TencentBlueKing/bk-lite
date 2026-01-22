@@ -362,7 +362,7 @@ class TimeSeriesPredictServing(MaintainerInfo, TimeInfo):
         verbose_name="服务描述",
         help_text="服务的详细描述",
     )
-    time_series_predict_train_job = models.ForeignKey(
+    train_job = models.ForeignKey(
         TimeSeriesPredictTrainJob,
         on_delete=models.CASCADE,
         related_name="servings",

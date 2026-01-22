@@ -812,7 +812,7 @@ class TimeSeriesPredictServingViewSet(ModelViewSet):
         # 保存旧值用于判断变更
         old_port = instance.port
         old_model_version = instance.model_version
-        old_train_job_id = instance.time_series_predict_train_job.id
+        old_train_job_id = instance.train_job.id
         
         # 检测是否更新了影响容器的字段（基于请求数据与旧值对比）
         model_version_changed = (
@@ -820,8 +820,8 @@ class TimeSeriesPredictServingViewSet(ModelViewSet):
             str(request.data['model_version']) != str(old_model_version)
         )
         train_job_changed = (
-            'time_series_predict_train_job' in request.data and 
-            int(request.data['time_series_predict_train_job']) != old_train_job_id
+            'train_job' in request.data and 
+            int(request.data['train_job']) != old_train_job_id
         )
         port_changed = (
             'port' in request.data and 
@@ -1274,7 +1274,7 @@ class TimeSeriesPredictServingViewSet(ModelViewSet):
         Raises:
             ValueError: 解析失败时抛出
         """
-        train_job = serving.time_series_predict_train_job
+        train_job = serving.train_job
         model_name = mlflow_service.build_model_name(
             prefix=self.MLFLOW_PREFIX,
             algorithm=train_job.algorithm,

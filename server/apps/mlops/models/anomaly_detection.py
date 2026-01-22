@@ -359,7 +359,7 @@ class AnomalyDetectionServing(MaintainerInfo, TimeInfo):
         verbose_name="服务描述",
         help_text="服务的详细描述",
     )
-    anomaly_detection_train_job = models.ForeignKey(
+    train_job = models.ForeignKey(
         AnomalyDetectionTrainJob,
         on_delete=models.CASCADE,
         related_name="servings",

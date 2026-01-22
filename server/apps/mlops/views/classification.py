@@ -507,7 +507,7 @@ class ClassificationServingViewSet(ModelViewSet):
         Raises:
             ValueError: 解析失败时抛出
         """
-        train_job = serving.classification_train_job
+        train_job = serving.train_job
         model_name = mlflow_service.build_model_name(
             prefix=self.MLFLOW_PREFIX,
             algorithm=train_job.algorithm,

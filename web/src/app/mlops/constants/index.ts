@@ -751,7 +751,7 @@ const IMAGE_CLASSIFICATION_ALGORITHM_CONFIGS: Record<string, AlgorithmConfig> = 
                 { label: '自动检测 (推荐)', value: 'auto' },
                 { label: 'CPU (慢但兼容性好)', value: 'cpu' },
                 { label: 'GPU (单卡)', value: 'gpu' },
-                { label: 'GPUs (多卡分布式)', value: 'gpus' }
+                // { label: 'GPUs (多卡分布式)', value: 'gpus' }
               ]
             }
           ]
@@ -976,7 +976,7 @@ const OBJECT_DETECTION_ALGORITHM_CONFIGS: Record<string, AlgorithmConfig> = {
                 { label: '自动检测 (推荐)', value: 'auto' },
                 { label: 'CPU (慢但兼容性好)', value: 'cpu' },
                 { label: 'GPU (单卡)', value: 'gpu' },
-                { label: 'GPUs (多卡分布式)', value: 'gpus' }
+                // { label: 'GPUs (多卡分布式)', value: 'gpus' }
               ]
             }
           ]
